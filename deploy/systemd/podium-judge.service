@@ -1,0 +1,26 @@
+[Unit]
+Description=Podium judge worker
+After=network-online.target isolate.service podium-server.service
+Wants=network-online.target
+Requires=isolate.service
+
+[Service]
+User=judge
+Group=judge
+EnvironmentFile=/etc/podium/judge.env
+ExecStart=/usr/local/bin/podium-judge
+Restart=always
+RestartSec=2
+# Covers the worker process only. Sandboxes run in isolate.slice, which has
+# its own cap (isolate.slice.d/podium.conf). Inputs and programs the worker
+# copies into the tmpfs box root are charged here until the box is
+# destroyed, hence the headroom above the Go heap limit.
+MemoryMax=256M
+Environment=GOMEMLIMIT=96MiB
+# isolate is setuid root, so NoNewPrivileges and ProtectSystem stay off.
+# The judge never touches the database: hide it entirely.
+InaccessiblePaths=/var/lib/podium
+ProtectHome=yes
+
+[Install]
+WantedBy=multi-user.target

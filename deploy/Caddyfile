@@ -1,0 +1,14 @@
+# Installed by deploy/install.sh, which replaces PODIUM_HOST with the host of
+# PODIUM_BASE_URL and appends a www redirect when www.<host> resolves.
+# Caddy obtains and renews the TLS certificate itself and redirects http to
+# https.
+
+PODIUM_HOST {
+	# Server-sent events must not be buffered by compression.
+	@compressible not path /api/events*
+	encode @compressible zstd gzip
+
+	reverse_proxy 127.0.0.1:8080 {
+		flush_interval -1
+	}
+}

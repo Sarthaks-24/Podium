@@ -1,0 +1,129 @@
+/*
+  Design tokens for podium. Values come from cache/v1/design.md section 3.
+  This is the only file in the web app allowed to contain colour literals;
+  components read everything through these custom properties.
+
+  Theme rules:
+  - Light is the default.
+  - Dark applies when the user picks it (data-theme="dark" on <html>), or when
+    the system prefers dark and the user has not picked light.
+  The dark values are written twice because a selector list cannot mix a
+  plain rule with a media-query rule.
+*/
+
+:root {
+  color-scheme: light;
+
+  /* surfaces */
+  --paper: #F3F4F1;
+  --surface: #FFFFFF;
+  --surface-2: #ECEEE9;      /* table header, rail background */
+  --well: #171B1F;           /* editor background: the single dark element in light mode */
+  --well-ink: #E6E8E3;
+
+  /* ink */
+  --ink: #16211C;
+  --ink-muted: #5B6660;
+  --ink-faint: #828B85;      /* disabled text only (3.18:1 on paper); placeholders use --ink-muted */
+  --line: #D8DBD3;
+  --line-strong: #B9BEB5;
+
+  /* the one action colour */
+  --act: #2B3FD6;
+  --act-ink: #FFFFFF;
+  --act-tint: #E7EAFB;       /* own row on standings, selected rail item */
+
+  /* verdicts */
+  --ok: #1B7F4C;   --ok-tint: #E2F2E8;
+  --part: #B86A00; --part-tint: #FBEEDA;
+  --bad: #B42318;  --bad-tint: #FBE4E1;
+  --wait: #5B6660; --wait-tint: #ECEEE9;
+
+  /* type */
+  --font-ui: "Schibsted Grotesk", system-ui, sans-serif;
+  --font-mono: "Fragment Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  --fs-0: 0.8125rem;  /* 13 */
+  --fs-1: 1rem;       /* 16 */
+  --fs-2: 1.1875rem;  /* 19 */
+  --fs-3: 1.4375rem;  /* 23 */
+  --fs-4: 1.75rem;    /* 28 */
+  --fs-5: 2.125rem;   /* 34 */
+  --lh-body: 1.5;
+  --lh-tight: 1.2;
+
+  /* shape and space */
+  --radius: 6px;             /* controls only; tables and the editor well are square */
+  --space-1: 4px; --space-2: 8px; --space-3: 12px; --space-4: 16px;
+  --space-5: 24px; --space-6: 32px; --space-7: 48px;
+  --shadow-menu: 0 8px 24px rgba(22, 33, 28, 0.14);   /* menus and dialogs only */
+  --focus: 0 0 0 2px var(--paper), 0 0 0 4px var(--act);
+  --dur-fast: 120ms; --dur: 200ms; --dur-slow: 320ms;
+  --ease: cubic-bezier(0.2, 0, 0, 1);
+
+  /* layout (design.md section 5 and 6) */
+  --content-max: 1440px;
+  --gutter: var(--space-4);  /* phone: 16 */
+  --control-h: 32px;         /* desktop control height */
+  --control-h-touch: 44px;   /* touch control height */
+  --rule: 1px;               /* structural border width */
+}
+
+@media (min-width: 768px) {
+  :root { --gutter: var(--space-5); }  /* 24 */
+}
+
+@media (min-width: 1024px) {
+  :root { --gutter: var(--space-6); }  /* 32 */
+}
+
+@media (pointer: coarse) {
+  :root { --control-h: var(--control-h-touch); }
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+
+  --paper: #121513;
+  --surface: #1A1E1B;
+  --surface-2: #202521;
+  --well: #0E1012;
+  --well-ink: #E6E8E3;
+  --ink: #E9ECE6;
+  --ink-muted: #9AA39D;
+  --ink-faint: #6F7872;
+  --line: #2C322E;
+  --line-strong: #3C443F;
+  --act: #8A97FF;
+  --act-ink: #0E1012;
+  --act-tint: #232846;
+  --ok: #5CC489;   --ok-tint: #17301F;
+  --part: #E9A23B; --part-tint: #332611;
+  --bad: #F0776B;  --bad-tint: #3A1C18;
+  --wait: #9AA39D; --wait-tint: #202521;
+  --shadow-menu: 0 8px 24px rgba(0, 0, 0, 0.5);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+
+    --paper: #121513;
+    --surface: #1A1E1B;
+    --surface-2: #202521;
+    --well: #0E1012;
+    --well-ink: #E6E8E3;
+    --ink: #E9ECE6;
+    --ink-muted: #9AA39D;
+    --ink-faint: #6F7872;
+    --line: #2C322E;
+    --line-strong: #3C443F;
+    --act: #8A97FF;
+    --act-ink: #0E1012;
+    --act-tint: #232846;
+    --ok: #5CC489;   --ok-tint: #17301F;
+    --part: #E9A23B; --part-tint: #332611;
+    --bad: #F0776B;  --bad-tint: #3A1C18;
+    --wait: #9AA39D; --wait-tint: #202521;
+    --shadow-menu: 0 8px 24px rgba(0, 0, 0, 0.5);
+  }
+}

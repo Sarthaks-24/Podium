@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <!-- A lowercase "p" drawn as a stem and a bowl, in the --act colour of each theme. -->
+  <style>
+    .p { fill: none; stroke: #2B3FD6; stroke-width: 4; }
+    @media (prefers-color-scheme: dark) { .p { stroke: #8A97FF; } }
+  </style>
+  <path class="p" d="M9 6v24" />
+  <circle class="p" cx="17" cy="15" r="7" />
+</svg>

@@ -21,6 +21,9 @@ judge.env
 
 # Go
 server/bin/
+# The web build copied in for go:embed (make embed); only the marker is kept.
+server/internal/webui/dist/*
+!server/internal/webui/dist/.keep
 server/dist/
 *.exe
 *.test
@@ -49,9 +52,10 @@ release/
 *.sqlite3
 
 # Judge runtime data (test blobs, compile cache, isolate boxes) when run locally
-data/
-tests-blobs/
-compile-cache/
+/data/
+/server/data/
+/tests-blobs/
+/compile-cache/
 /box/
 
 # Test and audit artefacts
@@ -63,7 +67,8 @@ web/tests/**/*-snapshots/*-darwin.*
 tools/loadtest/results/
 
 # Logs
-logs/
+/logs/
+/server/logs/
 *.log
 
 # Editor / OS

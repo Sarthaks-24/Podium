@@ -1,0 +1,22 @@
+[Unit]
+Description=Podium contest server
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=podium
+Group=podium
+EnvironmentFile=/etc/podium/server.env
+ExecStart=/usr/local/bin/podium-server
+Restart=always
+RestartSec=2
+MemoryMax=300M
+LimitNOFILE=65536
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+ReadWritePaths=/var/lib/podium
+
+[Install]
+WantedBy=multi-user.target

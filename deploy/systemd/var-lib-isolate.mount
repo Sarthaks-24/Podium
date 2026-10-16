@@ -1,0 +1,18 @@
+# Installed by deploy/install.sh. Keeps isolate's box root on tmpfs.
+# Files a sandboxed program writes are then charged to its own memory
+# control group, so --cg-mem bounds its total disk use as well: a program
+# writing many files below the --fsize cap is stopped by the memory limit
+# instead of filling the disk the database lives on. Boxes are destroyed
+# after every test, so the mount holds at most a few boxes at a time.
+[Unit]
+Description=tmpfs for isolate sandboxes (podium)
+Before=isolate.service
+
+[Mount]
+What=tmpfs
+Where=/var/lib/isolate
+Type=tmpfs
+Options=mode=0755,size=1200m,nosuid,nodev
+
+[Install]
+WantedBy=local-fs.target
