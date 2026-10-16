@@ -1,0 +1,11 @@
+# Normalise to LF in the repository; the VM is Linux and shell scripts must stay LF.
+* text=auto eol=lf
+
+# Binary files
+*.png binary
+*.jpg binary
+*.webp binary
+*.woff2 binary
+*.ico binary
+*.zip binary
+*.tar.gz binary

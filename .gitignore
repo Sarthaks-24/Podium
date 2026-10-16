@@ -1,0 +1,77 @@
+# Local context that is needed to work but never shipped:
+# council transcripts, research, scratch scripts, screenshots, load-test output,
+# calibration raw data, downloaded reference material.
+cache/
+
+# Claude Code local worktrees, session files and the assistant rules file.
+# CLAUDE.md is part of the planning material and stays local.
+.claude/
+CLAUDE.md
+CLAUDE.local.md
+AGENTS.md
+
+# Secrets and local configuration
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+server.env
+judge.env
+
+# Go
+server/bin/
+server/dist/
+*.exe
+*.test
+*.out
+coverage.*
+
+# Node / web
+web/node_modules/
+node_modules/
+web/dist/
+web/.svelte-kit/
+web/.vite/
+*.tsbuildinfo
+
+# Release artefacts
+release/
+*.tar.gz
+*.zip
+
+# SQLite databases and their side files
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite3
+
+# Judge runtime data (test blobs, compile cache, isolate boxes) when run locally
+data/
+tests-blobs/
+compile-cache/
+/box/
+
+# Test and audit artefacts
+playwright-report/
+test-results/
+web/tests/**/*-snapshots/*-win32.*
+web/tests/**/*-snapshots/*-darwin.*
+.shots/
+tools/loadtest/results/
+
+# Logs
+logs/
+*.log
+
+# Editor / OS
+.vscode/*
+!.vscode/extensions.json
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+Desktop.ini
