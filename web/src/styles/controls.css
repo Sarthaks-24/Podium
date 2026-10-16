@@ -1,0 +1,205 @@
+/*
+  Shared controls: buttons, inputs, selects, fields, tables and banners
+  (design.md section 6). Imported once from main.ts. Everything reads tokens;
+  radius is used on controls only, tables and banners stay square.
+*/
+
+/* Buttons: primary, secondary, quiet, danger, and danger-quiet. */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  min-height: var(--control-h);
+  padding-inline: var(--space-4);
+  border: var(--rule) solid transparent;
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--ink);
+  font-size: var(--fs-1);
+  font-weight: 500;
+  line-height: var(--lh-tight);
+  text-decoration: none;
+  white-space: nowrap;
+  transition:
+    background-color var(--dur-fast) var(--ease),
+    border-color var(--dur-fast) var(--ease),
+    color var(--dur-fast) var(--ease);
+}
+
+.btn-compact {
+  padding-inline: var(--space-3);
+  font-size: var(--fs-0);
+}
+
+.btn-primary {
+  background: var(--act);
+  color: var(--act-ink);
+}
+
+.btn-primary:hover {
+  background: color-mix(in srgb, var(--act) 86%, var(--ink));
+}
+
+.btn-secondary {
+  border-color: var(--line-strong);
+  background: var(--surface);
+}
+
+.btn-secondary:hover {
+  border-color: var(--ink-muted);
+}
+
+.btn-quiet:hover {
+  background: var(--surface-2);
+}
+
+.btn-danger {
+  background: var(--bad);
+  color: var(--surface);
+}
+
+.btn-danger:hover {
+  background: color-mix(in srgb, var(--bad) 86%, var(--ink));
+}
+
+.btn-danger-quiet {
+  color: var(--bad);
+}
+
+.btn-danger-quiet:hover {
+  background: var(--bad-tint);
+}
+
+.btn:disabled,
+.btn[aria-disabled='true'] {
+  cursor: not-allowed;
+  border-color: var(--line);
+  background: var(--surface-2);
+  color: var(--ink-faint);
+}
+
+/* Inputs and selects */
+.input,
+.select {
+  min-height: var(--control-h);
+  width: 100%;
+  padding-inline: var(--space-3);
+  border: var(--rule) solid var(--line-strong);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--ink);
+  font-size: var(--fs-1);
+  transition: border-color var(--dur-fast) var(--ease);
+}
+
+.input::placeholder {
+  color: var(--ink-muted);
+}
+
+.input:hover,
+.select:hover {
+  border-color: var(--ink-muted);
+}
+
+.input[aria-invalid='true'] {
+  border-color: var(--bad);
+}
+
+/* A label above its control. */
+.field {
+  display: grid;
+  gap: var(--space-1);
+  align-content: start;
+}
+
+.field > label {
+  font-size: var(--fs-0);
+  font-weight: 500;
+  color: var(--ink);
+}
+
+/* An inline error under a form, tied to its inputs with aria-describedby. */
+.field-error {
+  color: var(--bad);
+  font-size: var(--fs-0);
+}
+
+/* Tables: square, ruled with --line, header on --surface-2. */
+.table-wrap {
+  /* A containing block, so absolutely positioned content (visually hidden
+     header text) is clipped by the scroller instead of widening the page. */
+  position: relative;
+  max-width: 100%;
+  overflow-x: auto;
+  border: var(--rule) solid var(--line);
+  background: var(--surface);
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--fs-1);
+}
+
+.table th,
+.table td {
+  padding: var(--space-2) var(--space-3);
+  border-bottom: var(--rule) solid var(--line);
+  text-align: left;
+  vertical-align: middle;
+}
+
+.table thead th {
+  background: var(--surface-2);
+  font-size: var(--fs-0);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+/* Every body row is tall enough for a control, so rows with and without a
+   button line up. In a table cell, height acts as a minimum. */
+.table tbody th,
+.table tbody td {
+  height: calc(var(--control-h) + 2 * var(--space-2));
+}
+
+.table tbody tr:last-child > * {
+  border-bottom: 0;
+}
+
+.table .num {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* Banners: a full-width message with a 1 px rule. */
+.banner {
+  padding: var(--space-3) var(--space-4);
+  border: var(--rule) solid var(--line-strong);
+  background: var(--surface);
+  color: var(--ink);
+}
+
+.banner-error {
+  border-color: var(--bad);
+  background: var(--bad-tint);
+  color: var(--bad);
+}
+
+.banner-info {
+  border-color: var(--act);
+  background: var(--act-tint);
+  color: var(--ink);
+}
+
+.banner a {
+  color: inherit;
+  font-weight: 500;
+}
+
+/* Muted supporting text. */
+.muted {
+  color: var(--ink-muted);
+}

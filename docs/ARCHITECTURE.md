@@ -27,6 +27,24 @@ The design target is 700+ students in one contest on a VM with 2 GB of RAM. That
 
 Server packages (`server/internal`): `config` (environment and start-up validator), `db` (SQLite and migrations), `httpapi` (routes and middleware), `webui` (embedded app), `judge` (sandbox driver, verdicts, checkers), `judge/calib` (host calibration and the hostile-program suite). Later milestones add `auth`, `problems`, `contest`, `ai` and `events`.
 
+## Identity
+
+Sign-in is Google OpenID Connect, run entirely by the server (`server/internal/auth`):
+
+1. `/api/auth/google/start` creates a random state, a nonce and a PKCE verifier, keeps them in a 10-minute HttpOnly cookie signed with `PODIUM_SESSION_SECRET` (named `__Host-podium_signin` on https, so a sibling subdomain or a plain http response cannot plant one and finish an attacker's sign-in in a victim's browser), and redirects to Google. When exactly one domain is allowed it is passed as Google's `hd` hint, which only filters the account picker.
+2. Google redirects to `/api/auth/google/callback`. The server checks the state against the cookie (and deletes the cookie), exchanges the code with the PKCE verifier and client secret, and verifies the ID token itself: RS256 signature against Google's published keys (cached, refetched for an unknown key id at most once a minute), issuer, audience, expiry, and the nonce.
+3. The verified email must have `email_verified`. It may sign in when its domain is on the allowed list, when the account already holds the admin or owner role, or when it is `PODIUM_OWNER_EMAIL`. The domain check never trusts Google's `hd` claim. Each account is bound to the Google subject id (`sub`) that first signed in with it, and a different subject with the same address is refused: addresses get reassigned (a graduate's address given to someone new, or recreated as a consumer Google account), subject ids do not. An owner can reset the link from the People page.
+4. The server creates or updates the user and starts a session: 32 random bytes in the cookie, only the SHA-256 in the `sessions` table. The cookie is HttpOnly and `SameSite=Lax`; with an `https` base URL it is also `Secure` and `__Host-` prefixed (host-only, whole site). Sessions last 30 days and renew on use, at most one database write per day; an hourly sweep deletes expired ones.
+
+Every authenticated request reads the user and role from the database, so disabling an account takes effect on the next request. Removing an organiser's role ends their sessions, and removing a domain ends the sessions of students on it, so nobody keeps access that the current rules would not grant. State-changing API requests must come from the site's own origin (`Origin` equal to `PODIUM_BASE_URL`), on top of the `SameSite` cookie.
+
+| Rule | Why |
+|---|---|
+| Organisers may sign in from any domain | Admins are invited by exact email, often co-teachers on another domain; the role is a stronger statement than the domain. |
+| `PODIUM_OWNER_EMAIL` is always an owner | A permanent recovery path: if every owner is removed or the domain list is emptied, setting it and restarting restores access. The People page shows this owner as locked. |
+| Allowed domains seed from configuration once | Only on a fresh install; afterwards the owner's edits on the People page win, so a restart never undoes a removal. |
+| ID token signature is verified, not only taken from TLS | The token arrives over TLS from Google's token endpoint, which OpenID Connect accepts on its own; verifying the signature too costs one cached key fetch and removes any dependence on that reasoning. Uses only the Go standard library plus `golang.org/x/oauth2` for the code exchange. |
+
 ## The judge
 
 ### Sandbox

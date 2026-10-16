@@ -4,6 +4,16 @@ Dated entries per release. Unreleased work is listed at the top.
 
 ## Unreleased
 
+### Milestone M1: identity (2026-10-17)
+
+- Google sign-in run by the server: PKCE, nonce, signed single-use state cookie, ID token signature and claims verified with the standard library.
+- Email-domain check on the server; organisers and the configured owner may sign in from any domain; refusals explain what to do.
+- Sessions stored by token hash, 30 days with renewal on use, `__Host-` and `Secure` cookies on https, hourly sweep of expired sessions.
+- Roles owner, admin and student, read from the database on every request; `PODIUM_OWNER_EMAIL` is a permanent owner and the recovery path.
+- Owner People page: add and remove organisers, manage allowed domains; the last owner cannot be removed.
+- Cross-site check on state-changing API requests.
+- New server variables: `PODIUM_OWNER_EMAIL`, `PODIUM_ALLOWED_DOMAINS`, `PODIUM_SESSION_SECRET`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`.
+
 ### Milestone M0: foundations (2026-10-17)
 
 - Go module with `podium-server` and `podium-judge`, cross-compiled for Linux with `CGO_ENABLED=0`.

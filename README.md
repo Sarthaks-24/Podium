@@ -4,7 +4,7 @@ A self-hosted platform for weekly programming contests at a college. Students si
 
 Everything runs on one small Linux VM (2 GB RAM is the target) and is built to serve 700+ students in one contest.
 
-Status: milestone M0 (foundations). The judge sandbox, server skeleton and web scaffold exist; sign-in, problems, submissions and contests arrive in M1 to M4. See `CHANGELOG.md`.
+Status: milestone M1 (identity). The judge sandbox, Google sign-in with the domain check, roles and the owner's People page exist; problems, submissions and contests arrive in M2 to M4. See `CHANGELOG.md`.
 
 ## How it fits together
 
@@ -33,7 +33,7 @@ Prerequisites:
 
 Steps:
 
-1. Copy `server/.env.example` to `server/.env` and set `PODIUM_BASE_URL=http://localhost:5173`. The file is git-ignored; never commit it.
+1. Copy `server/.env.example` to `server/.env` and fill it in: `PODIUM_BASE_URL=http://localhost:5173`, your Google address as `PODIUM_OWNER_EMAIL`, a random `PODIUM_SESSION_SECRET` (`openssl rand -base64 48`), and a Google OAuth client with redirect URI `http://localhost:5173/api/auth/google/callback` (steps in `docs/OPERATIONS.md`, "Google sign-in"). The file is git-ignored; never commit it.
 2. `make dev` starts the Go server on port 8080 and the Vite dev server on port 5173 (which proxies `/api` and `/healthz` to Go). Open http://localhost:5173.
 3. Judge setup in WSL2, once: `wsl -d Ubuntu-24.04 -u root -- bash deploy/install.sh packages isolate users` from the repository folder. This installs the compilers, isolate, and the `judge` user.
 4. `make sandbox-test` runs the hostile-program suite inside isolate (in WSL2). `make calibrate` prints timing tables for the machine.

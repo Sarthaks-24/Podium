@@ -134,7 +134,26 @@ func (r *reader) baseURL(name string) string {
 		r.p.add("%s must be an absolute http or https URL such as https://contest.example.edu", name)
 		return ""
 	}
-	return strings.TrimRight(s, "/")
+	// podium serves from the root of its host: the value is compared with
+	// browsers' Origin header, which never carries a path.
+	if (u.Path != "" && u.Path != "/") || u.RawQuery != "" || u.Fragment != "" || u.User != nil {
+		r.p.add("%s must be just the scheme and host, such as https://contest.example.edu (no path); podium runs at the root of its own host", name)
+		return ""
+	}
+	// Browsers send Origin without the default port and with the host in
+	// ASCII (punycode), so normalise to that form or every write would be
+	// refused as cross-site.
+	host := strings.ToLower(u.Hostname())
+	for _, c := range host {
+		if c > 0x7e {
+			r.p.add("%s must use the ASCII (punycode) form of the host name, such as https://xn--bcher-kva.example", name)
+			return ""
+		}
+	}
+	if port := u.Port(); port != "" && !(u.Scheme == "https" && port == "443") && !(u.Scheme == "http" && port == "80") {
+		host += ":" + port
+	}
+	return u.Scheme + "://" + host
 }
 
 // Summary returns slog attributes reporting each variable as "set" or

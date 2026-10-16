@@ -1,7 +1,8 @@
 // Package httpapi wires podium-server's HTTP routes: the JSON API under
 // /api/, the health check, and the embedded web app for everything else.
-// It also owns cross-cutting middleware: security headers, panic recovery
-// and request logging. Route shapes are documented in docs/API.md.
+// It also owns cross-cutting middleware: security headers, the cross-site
+// request check, session authentication, panic recovery and request
+// logging. Route shapes are documented in docs/API.md.
 package httpapi
 
 import (
@@ -12,6 +13,8 @@ import (
 	"net/http"
 	"runtime/debug"
 	"time"
+
+	"github.com/Sarthaks-24/podium/internal/auth"
 )
 
 // Deps are the services the handlers use.
@@ -19,19 +22,47 @@ type Deps struct {
 	DB     *sql.DB
 	Log    *slog.Logger
 	WebApp http.Handler
+	// Auth applies the identity rules; IdP is the sign-in provider.
+	Auth *auth.Service
+	IdP  IdentityProvider
+	// BaseURL is the public origin, used for cookie flags and the
+	// cross-site check.
+	BaseURL string
+	// SessionSecret signs the sign-in state cookie.
+	SessionSecret []byte
 }
 
 // New returns the root handler.
 func New(d Deps) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", d.healthz)
+
+	mux.HandleFunc("GET /api/auth/config", d.authConfig)
+	mux.HandleFunc("GET /api/auth/google/start", d.googleStart)
+	mux.HandleFunc("GET /api/auth/google/callback", d.googleCallback)
+	mux.HandleFunc("POST /api/auth/logout", d.logout)
+	mux.HandleFunc("GET /api/me", d.requireRole(auth.Student, d.me))
+
+	mux.HandleFunc("GET /api/admin/people", d.requireRole(auth.Owner, d.listPeople))
+	mux.HandleFunc("POST /api/admin/people", d.requireRole(auth.Owner, d.grantRole))
+	mux.HandleFunc("DELETE /api/admin/people/{id}", d.requireRole(auth.Owner, d.revokeRole))
+	mux.HandleFunc("POST /api/admin/accounts/reset-google", d.requireRole(auth.Owner, d.resetGoogleAccount))
+	mux.HandleFunc("POST /api/admin/domains", d.requireRole(auth.Owner, d.addDomain))
+	mux.HandleFunc("DELETE /api/admin/domains/{domain}", d.requireRole(auth.Owner, d.removeDomain))
+
 	mux.HandleFunc("/api/", func(w http.ResponseWriter, r *http.Request) {
 		WriteError(w, http.StatusNotFound, "not_found", "This API route does not exist.")
 	})
 	mux.Handle("/", d.WebApp)
 	// recoverer sits inside logRequests so a request that panics is still
 	// logged with its 500.
-	return d.logRequests(d.recoverer(securityHeaders(mux)))
+	return d.logRequests(d.recoverer(securityHeaders(d.sameOrigin(mux))))
+}
+
+// internalError logs err and answers with a generic 500.
+func (d Deps) internalError(w http.ResponseWriter, r *http.Request, err error) {
+	d.Log.Error("request failed", "path", r.URL.Path, "err", err)
+	WriteError(w, http.StatusInternalServerError, "internal", "Something went wrong on the server. Try again; if it keeps happening, tell an organiser.")
 }
 
 func (d Deps) healthz(w http.ResponseWriter, r *http.Request) {

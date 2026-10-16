@@ -1,0 +1,85 @@
+<!--
+  Toasts: the stack of notifications in the bottom-left corner. It renders
+  the shared state in lib/toast.svelte.ts. The container is a polite live
+  region that is always in the page, so screen readers announce new info
+  toasts; each error toast has role="alert" and a Dismiss button, because
+  errors do not go away on their own. Toasts appear at --dur with a short
+  rise, and without motion when reduced motion is requested. Takes no props.
+-->
+<script lang="ts">
+  import { dismissToast, toasts } from '../lib/toast.svelte';
+</script>
+
+<div class="toasts" aria-live="polite">
+  {#each toasts.items as item (item.id)}
+    {#if item.kind === 'error'}
+      <div class="toast toast-error" role="alert">
+        <p>{item.message}</p>
+        <button type="button" class="btn btn-quiet btn-compact dismiss" onclick={() => dismissToast(item.id)}>
+          Dismiss
+        </button>
+      </div>
+    {:else}
+      <div class="toast">
+        <p>{item.message}</p>
+      </div>
+    {/if}
+  {/each}
+</div>
+
+<style>
+  .toasts {
+    position: fixed;
+    left: var(--gutter);
+    bottom: var(--space-4);
+    z-index: 20;
+    display: grid;
+    gap: var(--space-2);
+    width: min(28rem, calc(100vw - 2 * var(--gutter)));
+    pointer-events: none;
+  }
+
+  .toast {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-3);
+    min-height: var(--space-7);
+    padding: var(--space-2) var(--space-4);
+    border: var(--rule) solid var(--ink);
+    border-radius: var(--radius);
+    background: var(--ink);
+    color: var(--paper);
+    box-shadow: var(--shadow-menu);
+    pointer-events: auto;
+    animation: toast-in var(--dur) var(--ease);
+  }
+
+  .toast-error {
+    border-color: var(--bad);
+    background: var(--bad-tint);
+    color: var(--bad);
+  }
+
+  .dismiss {
+    flex: none;
+    color: inherit;
+  }
+
+  .dismiss:hover {
+    background: color-mix(in srgb, var(--bad) 12%, transparent);
+  }
+
+  @keyframes toast-in {
+    from {
+      opacity: 0;
+      transform: translateY(var(--space-2));
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .toast {
+      animation: none;
+    }
+  }
+</style>

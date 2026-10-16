@@ -1,0 +1,91 @@
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { displayName, loadSession, session, signOut, type User } from './session.svelte';
+import { NETWORK_MESSAGE } from './api';
+
+const student: User = { id: 2, email: 'asha@college.edu', name: 'Asha Rao', avatar_url: '', role: 'student' };
+
+function stubFetch(handler: (path: string, init?: RequestInit) => Response | Promise<Response>) {
+  const fn = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => handler(String(input), init));
+  vi.stubGlobal('fetch', fn);
+  return fn;
+}
+
+function json(status: number, body: unknown): Response {
+  return new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
+}
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+  session.status = 'loading';
+  session.user = undefined;
+});
+
+describe('loadSession', () => {
+  it('starts in the loading state', () => {
+    expect(session.status).toBe('loading');
+    expect(session.user).toBeUndefined();
+  });
+
+  it('is signed in when /api/me answers 200', async () => {
+    const fn = stubFetch(() => json(200, student));
+    await expect(loadSession()).resolves.toBeNull();
+    expect(fn.mock.calls[0][0]).toBe('/api/me');
+    expect(session.status).toBe('signed-in');
+    expect(session.user).toEqual(student);
+  });
+
+  it('is signed out without an error when /api/me answers 401', async () => {
+    stubFetch(() => json(401, { error: { code: 'signed_out', message: 'Sign in to continue.' } }));
+    await expect(loadSession()).resolves.toBeNull();
+    expect(session.status).toBe('signed-out');
+    expect(session.user).toBeUndefined();
+  });
+
+  it('is signed out and returns the error when the server cannot answer', async () => {
+    stubFetch(() => {
+      throw new TypeError('Failed to fetch');
+    });
+    const err = await loadSession();
+    expect(err?.code).toBe('network');
+    expect(err?.message).toBe(NETWORK_MESSAGE);
+    expect(session.status).toBe('signed-out');
+  });
+
+  it('returns server errors other than 401', async () => {
+    stubFetch(() => json(500, { error: { code: 'internal', message: 'Something broke on the server.' } }));
+    const err = await loadSession();
+    expect(err?.status).toBe(500);
+    expect(session.status).toBe('signed-out');
+  });
+});
+
+describe('signOut', () => {
+  it('posts to /api/auth/logout and clears the session', async () => {
+    session.status = 'signed-in';
+    session.user = student;
+    const fn = stubFetch(() => new Response(null, { status: 204 }));
+    await expect(signOut()).resolves.toBeNull();
+    expect(fn.mock.calls[0][0]).toBe('/api/auth/logout');
+    expect(fn.mock.calls[0][1]?.method).toBe('POST');
+    expect(session.status).toBe('signed-out');
+    expect(session.user).toBeUndefined();
+  });
+
+  it('clears the session even when the request fails', async () => {
+    session.status = 'signed-in';
+    session.user = student;
+    stubFetch(() => {
+      throw new TypeError('Failed to fetch');
+    });
+    const err = await signOut();
+    expect(err?.code).toBe('network');
+    expect(session.status).toBe('signed-out');
+  });
+});
+
+describe('displayName', () => {
+  it('falls back to the email when the name is empty', () => {
+    expect(displayName(student)).toBe('Asha Rao');
+    expect(displayName({ name: '  ', email: 'ta@college.edu' })).toBe('ta@college.edu');
+  });
+});

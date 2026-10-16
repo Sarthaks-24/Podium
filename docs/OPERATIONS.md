@@ -45,11 +45,33 @@ All configuration comes from environment variables. On the VM they live in `/etc
 
 | Variable | Required | Default | Purpose |
 |---|---|---|---|
-| `PODIUM_BASE_URL` | yes | | Public URL students open, for example `https://contest.example.edu`. Used for sign-in redirects and the Caddy host. |
+| `PODIUM_BASE_URL` | yes | | Public URL students open, for example `https://contest.example.edu`. Used for sign-in redirects, cookie flags (`https` makes the session cookie `Secure` and `__Host-` prefixed), the cross-site check and the Caddy host. |
 | `PODIUM_LISTEN` | no | `127.0.0.1:8080` | Address the HTTP server binds; Caddy proxies to it. |
 | `PODIUM_DB_PATH` | no | `data/podium.db` | SQLite file. On the VM use `/var/lib/podium/db/podium.db`. |
 | `PODIUM_TESTS_DIR` | no | `data/tests` | Test files by SHA-256. On the VM use `/var/lib/podium/tests`. |
+| `PODIUM_OWNER_EMAIL` | yes | | Your Google account. Always an owner, may sign in from any domain, and is shown as the organiser to contact. The recovery path if every other owner is removed. |
+| `PODIUM_ALLOWED_DOMAINS` | no | none | Comma-separated email domains, read only on the very first start to seed the list. Afterwards owners manage it on the People page. |
+| `PODIUM_SESSION_SECRET` | yes | | At least 32 random characters (`openssl rand -base64 48`). Signs the sign-in state cookie. Changing it only interrupts sign-ins in progress. Secret. |
+| `GOOGLE_CLIENT_ID` | yes | | OAuth client ID from the Google Cloud console (see below). |
+| `GOOGLE_CLIENT_SECRET` | yes | | That client's secret. Secret. |
 | `PODIUM_LOG_LEVEL` | no | `info` | `debug`, `info`, `warn` or `error`. |
+
+### Google sign-in
+
+1. In the [Google Cloud console](https://console.cloud.google.com/), create or pick a project, then open APIs and Services, OAuth consent screen. For a college Google Workspace choose "Internal" (only your domain's accounts can sign in); otherwise "External", and add the scopes `openid`, `email`, `profile`.
+2. Credentials, Create credentials, OAuth client ID, application type "Web application".
+3. Authorised redirect URI: `<PODIUM_BASE_URL>/api/auth/google/callback`, for example `https://contest.example.edu/api/auth/google/callback`. For local work add `http://localhost:5173/api/auth/google/callback` too.
+4. Put the client ID and secret in `server.env` and restart the server.
+
+Who can sign in: anyone whose verified Google email is on an allowed domain, anyone holding the admin or owner role (on any domain), and `PODIUM_OWNER_EMAIL`. Removing an admin ends their sessions at once; removing a domain ends the sessions of students on it.
+
+`PODIUM_BASE_URL` must be just the scheme and host (no path); podium runs at the root of its own host name.
+
+### Recovering access
+
+If you are locked out (every owner removed, or the domain list emptied), set `PODIUM_OWNER_EMAIL` to your address and restart: that account is made an owner again at start-up. Sessions can be ended for everyone with `sqlite3 /var/lib/podium/db/podium.db "DELETE FROM sessions"`.
+
+Each account is linked to the Google account that first signed in with it. If someone sees "This email is linked to a different Google account" after their address legitimately moved to a new Google account, reset the link on the People page ("Google account links"). If that someone is you, the configured owner, use `sqlite3 /var/lib/podium/db/podium.db "UPDATE users SET google_sub = NULL WHERE email = 'you@college.edu'"`.
 
 ### podium-judge (`/etc/podium/judge.env`)
 
@@ -60,7 +82,7 @@ All configuration comes from environment variables. On the VM they live in `/etc
 | `PODIUM_JUDGE_CACHE_DIR` | no | `/var/cache/podium-judge` | Cached tests and compiled programs. |
 | `PODIUM_LOG_LEVEL` | no | `info` | As above. |
 
-Variables added by later milestones (Google sign-in, session secret, judge token, backups) appear here when their code lands.
+Variables added by later milestones (judge token, backups) appear here when their code lands.
 
 ## Health
 

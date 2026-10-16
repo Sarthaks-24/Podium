@@ -16,6 +16,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/Sarthaks-24/podium/internal/auth"
 	"github.com/Sarthaks-24/podium/internal/config"
 	"github.com/Sarthaks-24/podium/internal/db"
 	"github.com/Sarthaks-24/podium/internal/httpapi"
@@ -69,15 +70,26 @@ func run(envFile string) error {
 		log.Info("applied migrations", "versions", applied)
 	}
 
+	authSvc := &auth.Service{DB: database, OwnerEmail: cfg.OwnerEmail}
+	if err := authSvc.Bootstrap(ctx, cfg.AllowedDomains); err != nil {
+		return err
+	}
+	go sweepSessions(ctx, authSvc, log)
+	provider := auth.NewProvider(auth.GoogleEndpoints, cfg.GoogleClientID, cfg.GoogleClientSecret, httpapi.RedirectURL(cfg.BaseURL))
+
 	// Request contexts derive from base, which is cancelled when shutdown
 	// begins, so long-lived event streams end instead of holding Shutdown
 	// open until its timeout.
 	base, cancelBase := context.WithCancel(context.Background())
 	defer cancelBase()
+	handler := httpapi.New(httpapi.Deps{
+		DB: database, Log: log, WebApp: webui.Handler(),
+		Auth: authSvc, IdP: provider, BaseURL: cfg.BaseURL, SessionSecret: cfg.SessionSecret,
+	})
 	srv := &http.Server{
 		BaseContext:       func(net.Listener) context.Context { return base },
 		Addr:              cfg.Listen,
-		Handler:           httpapi.New(httpapi.Deps{DB: database, Log: log, WebApp: webui.Handler()}),
+		Handler:           handler,
 		ReadHeaderTimeout: 10 * time.Second,
 		ReadTimeout:       30 * time.Second,
 		// No WriteTimeout: server-sent event streams stay open for hours.
@@ -104,4 +116,22 @@ func run(envFile string) error {
 		srv.Close()
 	}
 	return nil
+}
+
+// sweepSessions deletes expired sessions every hour until ctx ends.
+func sweepSessions(ctx context.Context, a *auth.Service, log *slog.Logger) {
+	t := time.NewTicker(time.Hour)
+	defer t.Stop()
+	for {
+		if n, err := a.DeleteExpiredSessions(ctx); err != nil && ctx.Err() == nil {
+			log.Warn("session sweep failed", "err", err)
+		} else if n > 0 {
+			log.Debug("expired sessions removed", "count", n)
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+		}
+	}
 }

@@ -9,6 +9,10 @@ CREATE TABLE users (
   avatar_url    TEXT    NOT NULL DEFAULT '',
   role          TEXT    NOT NULL DEFAULT 'student' CHECK (role IN ('owner', 'admin', 'student')),
   disabled      INTEGER NOT NULL DEFAULT 0 CHECK (disabled IN (0, 1)),
+  -- Google's stable account id ("sub"), bound at first sign-in. A later
+  -- sign-in with the same email but a different sub is refused: email
+  -- addresses can be reassigned, sub values are not.
+  google_sub    TEXT UNIQUE,
   created_at    INTEGER NOT NULL,
   last_login_at INTEGER
 ) STRICT;

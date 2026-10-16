@@ -156,3 +156,12 @@ pre,
     scroll-behavior: auto !important;
   }
 }
+
+/* Page headings take programmatic focus after a client-side navigation so
+   screen readers start at the new page. They are not controls and are not
+   in the tab order, so that focus draws no ring. */
+h1[tabindex="-1"]:focus,
+h2[tabindex="-1"]:focus {
+  outline: none;
+  box-shadow: none;
+}
