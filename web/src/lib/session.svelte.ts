@@ -3,10 +3,13 @@
  *
  * loadSession() asks GET /api/me once at start-up: 200 means signed in, 401
  * means signed out. Any other failure also leaves the app signed out and
- * returns the error so the shell can say what happened. signOut() ends the
- * session on the server and goes to the sign-in page.
+ * returns the error so the shell can say what happened. A loaded session
+ * brings the account's display preferences with it. signOut() ends the
+ * session on the server, returns the display to the defaults (the next
+ * person at a shared machine starts fresh) and goes to the sign-in page.
  */
 import { ApiError, getJSON, sendJSON } from './api';
+import { adoptAccountPreferences, resetPreferences } from './preferences.svelte';
 import { navigate } from './router.svelte';
 
 export type Role = 'student' | 'admin' | 'owner';
@@ -18,6 +21,9 @@ export interface User {
   name: string;
   avatar_url: string;
   role: Role;
+  /** Theme id, or "" to follow the system (lib/theme.ts). */
+  theme: string;
+  verdicts: string;
 }
 
 export type SessionStatus = 'loading' | 'signed-out' | 'signed-in';
@@ -44,6 +50,7 @@ export async function loadSession(): Promise<ApiError | null> {
     const user = await getJSON<User>('/api/me');
     session.user = user;
     session.status = 'signed-in';
+    adoptAccountPreferences(user.theme, user.verdicts);
     return null;
   } catch (err) {
     session.user = undefined;
@@ -66,6 +73,7 @@ export async function signOut(): Promise<ApiError | null> {
   }
   session.user = undefined;
   session.status = 'signed-out';
+  resetPreferences();
   navigate('/signin');
   return failure;
 }

@@ -1,13 +1,20 @@
 import { describe, expect, it } from 'vitest';
 import themeInit from '../../public/theme-init.js?raw';
 import {
-  STORAGE_KEY,
-  applyChoice,
+  DEFAULT_PREFERENCES,
+  GROUPS,
+  THEMES,
+  THEME_KEY,
+  VERDICTS_KEY,
+  applyPreferences,
   choiceLabel,
-  nextChoice,
+  fromAccount,
   parseChoice,
-  readChoice,
-  saveChoice,
+  parseVerdicts,
+  readPreferences,
+  savePreferences,
+  themesIn,
+  toAccount,
   type ThemeStorage,
 } from './theme';
 
@@ -46,76 +53,106 @@ function fakeRoot() {
   };
 }
 
-describe('parseChoice', () => {
-  it('accepts light and dark', () => {
-    expect(parseChoice('light')).toBe('light');
-    expect(parseChoice('dark')).toBe('dark');
+describe('the theme list', () => {
+  it('has unique ids in the shape the server accepts', () => {
+    const ids = THEMES.map((t) => t.id);
+    expect(new Set(ids).size).toBe(ids.length);
+    for (const id of ids) expect(id).toMatch(/^[a-z0-9-]{1,32}$/);
   });
 
-  it('falls back to system for anything else', () => {
-    for (const value of [null, undefined, '', 'system', 'Dark', 'blue', 1]) {
-      expect(parseChoice(value)).toBe('system');
+  it('puts every theme in a listed group', () => {
+    expect(GROUPS.flatMap((g) => themesIn(g)).length).toBe(THEMES.length);
+  });
+
+  it('uses sentence-case labels', () => {
+    for (const { label } of THEMES) {
+      // Only the first letter and the OLED acronym are capitals.
+      const rest = label.replace(/^OLED/, 'Oled').slice(1);
+      expect(label[0]).toBe(label[0].toUpperCase());
+      expect(rest).toBe(rest.toLowerCase());
     }
   });
 });
 
-describe('nextChoice', () => {
-  it('cycles system, light, dark, system', () => {
-    expect(nextChoice('system')).toBe('light');
-    expect(nextChoice('light')).toBe('dark');
-    expect(nextChoice('dark')).toBe('system');
+describe('parsing', () => {
+  it('accepts known theme ids and falls back to system', () => {
+    expect(parseChoice('nordic-frost')).toBe('nordic-frost');
+    for (const value of [null, undefined, '', 'system', 'Dark', 'neon', 1]) {
+      expect(parseChoice(value)).toBe('system');
+    }
   });
-});
 
-describe('choiceLabel', () => {
-  it('uses sentence case', () => {
+  it('accepts the signal verdict set only by its exact name', () => {
+    expect(parseVerdicts('signal')).toBe('signal');
+    for (const value of [null, '', 'standard', 'Signal', 2]) expect(parseVerdicts(value)).toBe('standard');
+  });
+
+  it('names choices in sentence case', () => {
     expect(choiceLabel('system')).toBe('System');
-    expect(choiceLabel('light')).toBe('Light');
-    expect(choiceLabel('dark')).toBe('Dark');
+    expect(choiceLabel('hc-dark')).toBe('High contrast dark');
+    expect(choiceLabel('gone')).toBe('System');
   });
 });
 
-describe('readChoice and saveChoice', () => {
-  it('round-trips a forced theme', () => {
+describe('account round trip', () => {
+  it('stores the system theme as an empty string', () => {
+    expect(toAccount({ theme: 'system', verdicts: 'standard' })).toEqual({ theme: '', verdicts: 'standard' });
+    expect(toAccount({ theme: 'overcast', verdicts: 'signal' })).toEqual({ theme: 'overcast', verdicts: 'signal' });
+  });
+
+  it('reads the account back, ignoring ids this build does not know', () => {
+    expect(fromAccount('', 'standard')).toEqual(DEFAULT_PREFERENCES);
+    expect(fromAccount('overcast', 'signal')).toEqual({ theme: 'overcast', verdicts: 'signal' });
+    expect(fromAccount('retired', undefined)).toEqual(DEFAULT_PREFERENCES);
+  });
+});
+
+describe('the pre-paint cache', () => {
+  it('round-trips forced choices', () => {
     const storage = memoryStorage();
-    expect(saveChoice(storage, 'dark')).toBe(true);
-    expect(storage.data[STORAGE_KEY]).toBe('dark');
-    expect(readChoice(storage)).toBe('dark');
+    expect(savePreferences(storage, { theme: 'hc-light', verdicts: 'signal' })).toBe(true);
+    expect(storage.data).toEqual({ [THEME_KEY]: 'hc-light', [VERDICTS_KEY]: 'signal' });
+    expect(readPreferences(storage)).toEqual({ theme: 'hc-light', verdicts: 'signal' });
   });
 
-  it('clears the key for system', () => {
-    const storage = memoryStorage({ [STORAGE_KEY]: 'light' });
-    expect(saveChoice(storage, 'system')).toBe(true);
-    expect(STORAGE_KEY in storage.data).toBe(false);
-    expect(readChoice(storage)).toBe('system');
+  it('clears both keys for the defaults', () => {
+    const storage = memoryStorage({ [THEME_KEY]: 'dark', [VERDICTS_KEY]: 'signal' });
+    expect(savePreferences(storage, DEFAULT_PREFERENCES)).toBe(true);
+    expect(storage.data).toEqual({});
   });
 
-  it('ignores a corrupt stored value', () => {
-    expect(readChoice(memoryStorage({ [STORAGE_KEY]: 'neon' }))).toBe('system');
+  it('ignores corrupt values', () => {
+    expect(readPreferences(memoryStorage({ [THEME_KEY]: 'neon', [VERDICTS_KEY]: 'x' }))).toEqual(DEFAULT_PREFERENCES);
   });
 
   it('survives missing or blocked storage', () => {
-    expect(readChoice(null)).toBe('system');
-    expect(readChoice(throwingStorage)).toBe('system');
-    expect(saveChoice(null, 'dark')).toBe(false);
-    expect(saveChoice(throwingStorage, 'dark')).toBe(false);
+    expect(readPreferences(null)).toEqual(DEFAULT_PREFERENCES);
+    expect(readPreferences(throwingStorage)).toEqual(DEFAULT_PREFERENCES);
+    expect(savePreferences(null, DEFAULT_PREFERENCES)).toBe(false);
+    expect(savePreferences(throwingStorage, DEFAULT_PREFERENCES)).toBe(false);
   });
 });
 
-describe('applyChoice', () => {
-  it('sets data-theme for light and dark and removes it for system', () => {
+describe('applyPreferences', () => {
+  it('sets and clears data-theme and data-verdicts', () => {
     const root = fakeRoot();
-    applyChoice(root, 'dark');
-    expect(root.attrs.get('data-theme')).toBe('dark');
-    applyChoice(root, 'light');
-    expect(root.attrs.get('data-theme')).toBe('light');
-    applyChoice(root, 'system');
-    expect(root.attrs.has('data-theme')).toBe(false);
+    applyPreferences(root, { theme: 'cosmic-violet', verdicts: 'signal' });
+    expect(root.attrs.get('data-theme')).toBe('cosmic-violet');
+    expect(root.attrs.get('data-verdicts')).toBe('signal');
+    applyPreferences(root, DEFAULT_PREFERENCES);
+    expect(root.attrs.size).toBe(0);
   });
 });
 
 describe('pre-paint script', () => {
-  it('reads the same storage key as theme.ts', () => {
-    expect(themeInit).toContain(`'${STORAGE_KEY}'`);
+  it('reads the same storage keys as theme.ts', () => {
+    expect(themeInit).toContain(`'${THEME_KEY}'`);
+    expect(themeInit).toContain(`'${VERDICTS_KEY}'`);
+  });
+
+  it('knows exactly the themes theme.ts lists', () => {
+    const list = /const themes = \[([^\]]*)\]/.exec(themeInit)?.[1] ?? '';
+    const ids = [...list.matchAll(/'([^']+)'/g)].map((m) => m[1]);
+    expect(ids).toEqual(THEMES.map((t) => t.id));
   });
 });

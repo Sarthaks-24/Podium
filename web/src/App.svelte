@@ -2,7 +2,7 @@
   App: the shell around every screen. The header holds the podium word-mark
   (a link home) and, once signed in, the main navigation ("Contests", plus
   "People" for owners), the user's name, a Sign out button and the theme
-  control. Under 768 px those collapse behind a Menu button that opens a
+  menu. Under 768 px those collapse behind a Menu button that opens a
   panel; Escape closes it. The main area shows the screen for the current
   path from lib/router.svelte.ts, after the session from GET /api/me has
   loaded: signed-out visitors to a protected path are sent to /signin with a
@@ -13,7 +13,7 @@
 <script lang="ts">
   import { onMount, tick } from 'svelte';
   import Toasts from './components/Toasts.svelte';
-  import ThemeToggle from './lib/ThemeToggle.svelte';
+  import ThemeMenu from './lib/ThemeMenu.svelte';
   import { installLinkInterception, matchRoute, navigate, router } from './lib/router.svelte';
   import { displayName, loadSession, session, signOut } from './lib/session.svelte';
   import { safeNext } from './lib/signin';
@@ -124,11 +124,11 @@
           <div class="account">
             <span class="who">{displayName(session.user)}</span>
             <button type="button" class="btn btn-quiet btn-compact signout" onclick={onSignOut}>Sign out</button>
-            <ThemeToggle />
+            <ThemeMenu />
           </div>
         </div>
       {:else}
-        <ThemeToggle />
+        <ThemeMenu />
       {/if}
     </div>
   </header>

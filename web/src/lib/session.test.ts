@@ -1,8 +1,17 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { displayName, loadSession, session, signOut, type User } from './session.svelte';
 import { NETWORK_MESSAGE } from './api';
+import { preferences } from './preferences.svelte';
 
-const student: User = { id: 2, email: 'asha@college.edu', name: 'Asha Rao', avatar_url: '', role: 'student' };
+const student: User = {
+  id: 2,
+  email: 'asha@college.edu',
+  name: 'Asha Rao',
+  avatar_url: '',
+  role: 'student',
+  theme: 'hc-dark',
+  verdicts: 'signal',
+};
 
 function stubFetch(handler: (path: string, init?: RequestInit) => Response | Promise<Response>) {
   const fn = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => handler(String(input), init));
@@ -32,6 +41,18 @@ describe('loadSession', () => {
     expect(fn.mock.calls[0][0]).toBe('/api/me');
     expect(session.status).toBe('signed-in');
     expect(session.user).toEqual(student);
+  });
+
+  it("adopts the account's display preferences", async () => {
+    stubFetch(() => json(200, student));
+    await loadSession();
+    expect(preferences.current).toEqual({ theme: 'hc-dark', verdicts: 'signal' });
+  });
+
+  it('treats an unknown or empty theme as the system theme', async () => {
+    stubFetch(() => json(200, { ...student, theme: 'retired-theme', verdicts: 'standard' }));
+    await loadSession();
+    expect(preferences.current).toEqual({ theme: 'system', verdicts: 'standard' });
   });
 
   it('is signed out without an error when /api/me answers 401', async () => {
@@ -69,6 +90,15 @@ describe('signOut', () => {
     expect(fn.mock.calls[0][1]?.method).toBe('POST');
     expect(session.status).toBe('signed-out');
     expect(session.user).toBeUndefined();
+  });
+
+  it('returns the display to the defaults for the next person', async () => {
+    session.status = 'signed-in';
+    session.user = student;
+    preferences.current = { theme: 'hc-dark', verdicts: 'signal' };
+    stubFetch(() => new Response(null, { status: 204 }));
+    await signOut();
+    expect(preferences.current).toEqual({ theme: 'system', verdicts: 'standard' });
   });
 
   it('clears the session even when the request fails', async () => {

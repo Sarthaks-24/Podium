@@ -1,44 +1,27 @@
 /*
-  Design tokens for podium. Values come from cache/v1/design.md section 3.
-  This is the only file in the web app allowed to contain colour literals;
-  components read everything through these custom properties.
+  Design tokens for podium. Values come from cache/v1/design.md section 3,
+  and the extra themes from decisions D39 to D41. This is the only file in
+  the web app allowed to contain colour literals; components read
+  everything through these custom properties.
 
   Theme rules:
-  - Light is the default.
-  - Dark applies when the user picks it (data-theme="dark" on <html>), or when
-    the system prefers dark and the user has not picked light.
-  The dark values are written twice because a selector list cannot mix a
-  plain rule with a media-query rule.
+  - Light is the default. With no data-theme on <html>, the system's
+    prefers-color-scheme picks Light or Dark.
+  - data-theme="<id>" forces a theme. The ids are listed in lib/theme.ts.
+  - Every theme belongs to a family, light or dark, which supplies the
+    verdict colours and color-scheme; a theme block only changes surfaces,
+    ink, rules and the action colour. Verdict colours are not themeable
+    (D40); the high-contrast themes have their own 7:1 set.
+  - data-verdicts="signal" on <html> swaps the verdicts for the colour-blind
+    safe set (teal, purple, orange) in whichever family is showing.
+  - Selectors are [data-theme] rather than :root[data-theme], so a swatch
+    in the theme picker can carry data-theme and paint itself in that
+    theme without changing the page.
+  - tests: lib/theme-contrast.test.ts checks every theme against the
+    contrast and distinguishability rules in D41.
 */
 
 :root {
-  color-scheme: light;
-
-  /* surfaces */
-  --paper: #F3F4F1;
-  --surface: #FFFFFF;
-  --surface-2: #ECEEE9;      /* table header, rail background */
-  --well: #171B1F;           /* editor background: the single dark element in light mode */
-  --well-ink: #E6E8E3;
-
-  /* ink */
-  --ink: #16211C;
-  --ink-muted: #5B6660;
-  --ink-faint: #828B85;      /* disabled text only (3.18:1 on paper); placeholders use --ink-muted */
-  --line: #D8DBD3;
-  --line-strong: #B9BEB5;
-
-  /* the one action colour */
-  --act: #2B3FD6;
-  --act-ink: #FFFFFF;
-  --act-tint: #E7EAFB;       /* own row on standings, selected rail item */
-
-  /* verdicts */
-  --ok: #1B7F4C;   --ok-tint: #E2F2E8;
-  --part: #B86A00; --part-tint: #FBEEDA;
-  --bad: #B42318;  --bad-tint: #FBE4E1;
-  --wait: #5B6660; --wait-tint: #ECEEE9;
-
   /* type */
   --font-ui: "Schibsted Grotesk", system-ui, sans-serif;
   --font-mono: "Fragment Mono", ui-monospace, "SF Mono", Menlo, monospace;
@@ -55,7 +38,6 @@
   --radius: 6px;             /* controls only; tables and the editor well are square */
   --space-1: 4px; --space-2: 8px; --space-3: 12px; --space-4: 16px;
   --space-5: 24px; --space-6: 32px; --space-7: 48px;
-  --shadow-menu: 0 8px 24px rgba(22, 33, 28, 0.14);   /* menus and dialogs only */
   --focus: 0 0 0 2px var(--paper), 0 0 0 4px var(--act);
   --dur-fast: 120ms; --dur: 200ms; --dur-slow: 320ms;
   --ease: cubic-bezier(0.2, 0, 0, 1);
@@ -80,7 +62,49 @@
   :root { --control-h: var(--control-h-touch); }
 }
 
-:root[data-theme="dark"] {
+/* Light family: the Light theme's values, also the default. */
+:root,
+[data-theme="light"],
+[data-theme="nordic-frost"],
+[data-theme="soft-lavender"],
+[data-theme="hc-light"] {
+  color-scheme: light;
+
+  /* surfaces */
+  --paper: #F3F4F1;
+  --surface: #FFFFFF;
+  --surface-2: #ECEEE9;      /* table header, rail background */
+  --well: #171B1F;           /* editor background: the single dark element in light mode */
+  --well-ink: #E6E8E3;
+
+  /* ink */
+  --ink: #16211C;
+  --ink-muted: #5B6660;
+  --ink-faint: #828B85;      /* disabled text only (3.18:1 on paper); placeholders use --ink-muted */
+  --line: #D8DBD3;           /* structural rules */
+  --line-strong: #858981;    /* control borders, 3:1 on paper and surface (D41) */
+
+  /* the one action colour */
+  --act: #2B3FD6;
+  --act-ink: #FFFFFF;
+  --act-tint: #E7EAFB;       /* own row on standings, selected rail item */
+
+  /* verdicts */
+  --ok: #137A48;   --ok-tint: #E2F2E8;
+  --part: #9D5D13; --part-tint: #FBEEDA;
+  --bad: #B42318;  --bad-tint: #FBE4E1;
+  --wait: #5B6660; --wait-tint: #ECEEE9;
+
+  --shadow-menu: 0 8px 24px rgba(22, 33, 28, 0.14);   /* menus and dialogs only */
+}
+
+/* Dark family: the Dark theme's values. */
+[data-theme="dark"],
+[data-theme="overcast"],
+[data-theme="oled-black"],
+[data-theme="nordic-slate"],
+[data-theme="cosmic-violet"],
+[data-theme="hc-dark"] {
   color-scheme: dark;
 
   --paper: #121513;
@@ -92,7 +116,7 @@
   --ink-muted: #9AA39D;
   --ink-faint: #6F7872;
   --line: #2C322E;
-  --line-strong: #3C443F;
+  --line-strong: #68706B;
   --act: #8A97FF;
   --act-ink: #0E1012;
   --act-tint: #232846;
@@ -103,8 +127,159 @@
   --shadow-menu: 0 8px 24px rgba(0, 0, 0, 0.5);
 }
 
+/* Light themes. */
+
+/* Nordic frost: pale mist slate with an ocean-blue action colour. */
+[data-theme="nordic-frost"] {
+  --paper: #F1F5F9;
+  --surface: #FFFFFF;
+  --surface-2: #E2E8F0;
+  --well: #0F1A26;
+  --well-ink: #E6EEF5;
+  --ink: #081726;
+  --ink-muted: #3E5670;
+  --ink-faint: #74859B;
+  --line: #CBD5E1;
+  --line-strong: #6F869D;
+  --act: #0369A1;
+  --act-ink: #FFFFFF;
+  --act-tint: #E0EEF6;
+}
+
+/* Soft lavender: pale lilac with an amethyst action colour. */
+[data-theme="soft-lavender"] {
+  --paper: #F5F3F9;
+  --surface: #FFFFFF;
+  --surface-2: #EAE5F5;
+  --well: #1A1526;
+  --well-ink: #ECE8F4;
+  --ink: #140B24;
+  --ink-muted: #5B497A;
+  --ink-faint: #8B7EA3;
+  --line: #DCD3EA;
+  --line-strong: #8B7AAD;
+  --act: #6D28D9;
+  --act-ink: #FFFFFF;
+  --act-tint: #EEE6FB;
+}
+
+/* Dark themes. */
+
+/* Overcast: a dimmer mid-grey dark, easier in a bright room. */
+[data-theme="overcast"] {
+  --paper: #22272E;
+  --surface: #2A2F37;
+  --surface-2: #32373F;
+  --well: #1C2128;
+  --well-ink: #E6EDF3;
+  --ink: #EDF2FA;
+  --ink-muted: #B4B9C1;
+  --ink-faint: #8B9097;
+  --line: #3E434B;
+  --line-strong: #7A7F87;
+  --act: #6CB6FF;
+  --act-ink: #0D1117;
+  --act-tint: #2B3D52;
+}
+
+/* OLED black: true black for OLED screens. */
+[data-theme="oled-black"] {
+  --paper: #000000;
+  --surface: #0A0A0A;
+  --surface-2: #141414;
+  --well: #0A0A0A;
+  --well-ink: #E6E8E3;
+  --ink: #F2F2F2;
+  --ink-muted: #ADADAD;
+  --ink-faint: #767676;
+  --line: #262626;
+  --line-strong: #5E5E5E;
+  --act: #8A97FF;
+  --act-ink: #000000;
+  --act-tint: #1A1C33;
+}
+
+/* Nordic slate: deep navy with a sky-blue action colour. */
+[data-theme="nordic-slate"] {
+  --paper: #0B1320;
+  --surface: #132034;
+  --surface-2: #1D2E49;
+  --well: #08101B;
+  --well-ink: #E6EEF8;
+  --ink: #F0F8FF;
+  --ink-muted: #88A5C4;
+  --ink-faint: #6A85A3;
+  --line: #283E60;
+  --line-strong: #4F6D97;
+  --act: #7DD3FC;
+  --act-ink: #041426;
+  --act-tint: #1C3A55;
+}
+
+/* Cosmic violet: night violet with a soft violet action colour. */
+[data-theme="cosmic-violet"] {
+  --paper: #0C0A14;
+  --surface: #151222;
+  --surface-2: #1F1A32;
+  --well: #09070F;
+  --well-ink: #ECE8F7;
+  --ink: #F5F3FF;
+  --ink-muted: #A69CC6;
+  --ink-faint: #7A7199;
+  --line: #2E274A;
+  --line-strong: #6C60A1;
+  --act: #B49DFB;
+  --act-ink: #0C0A14;
+  --act-tint: #2B2448;
+}
+
+/* Accessible themes: all text at 7:1 or more, verdicts included. */
+
+[data-theme="hc-light"] {
+  --paper: #FFFFFF;
+  --surface: #FFFFFF;
+  --surface-2: #F0F0F0;
+  --well: #000000;
+  --well-ink: #FFFFFF;
+  --ink: #000000;
+  --ink-muted: #333333;
+  --ink-faint: #595959;
+  --line: #767676;
+  --line-strong: #3D3D3D;
+  --act: #0025A2;
+  --act-ink: #FFFFFF;
+  --act-tint: #E5E9F7;
+  --ok: #0A5A2E;   --ok-tint: #E3F1E8;
+  --part: #6A4400; --part-tint: #FBEEDA;
+  --bad: #8A1209;  --bad-tint: #FBE4E1;
+  --wait: #333333; --wait-tint: #F0F0F0;
+}
+
+[data-theme="hc-dark"] {
+  --paper: #000000;
+  --surface: #0D0D0D;
+  --surface-2: #1A1A1A;
+  --well: #000000;
+  --well-ink: #FFFFFF;
+  --ink: #FFFFFF;
+  --ink-muted: #E6E6E6;
+  --ink-faint: #9A9A9A;
+  --line: #5C5C5C;
+  --line-strong: #9A9A9A;
+  --act: #9CCBFF;
+  --act-ink: #000000;
+  --act-tint: #14263A;
+  --ok: #7EE2A8;   --ok-tint: #0B2616;
+  --part: #FFC56B; --part-tint: #2B1C05;
+  --bad: #FF9A8F;  --bad-tint: #300F0B;
+  --wait: #D0D0D0; --wait-tint: #1A1A1A;
+}
+
+/* No theme chosen and the system prefers dark: the Dark theme. These are
+   the dark family values again, because a selector list cannot mix a plain
+   rule with a media-query rule. */
 @media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
+  :root:not([data-theme]) {
     color-scheme: dark;
 
     --paper: #121513;
@@ -116,7 +291,7 @@
     --ink-muted: #9AA39D;
     --ink-faint: #6F7872;
     --line: #2C322E;
-    --line-strong: #3C443F;
+    --line-strong: #68706B;
     --act: #8A97FF;
     --act-ink: #0E1012;
     --act-tint: #232846;
@@ -125,5 +300,46 @@
     --bad: #F0776B;  --bad-tint: #3A1C18;
     --wait: #9AA39D; --wait-tint: #202521;
     --shadow-menu: 0 8px 24px rgba(0, 0, 0, 0.5);
+  }
+}
+
+/* Colour-blind safe verdicts (D40): accepted teal, partial purple, wrong
+   orange, chosen to stay apart under protanopia and deuteranopia. Later
+   and more specific rules win, so the order below matters. */
+[data-verdicts="signal"] {
+  --ok: #267260;   --ok-tint: #E5EEEC;
+  --part: #6E519D; --part-tint: #EEEAF3;
+  --bad: #A73C00;  --bad-tint: #F4E8E0;
+}
+
+[data-verdicts="signal"]:is(
+  [data-theme="dark"],
+  [data-theme="overcast"],
+  [data-theme="oled-black"],
+  [data-theme="nordic-slate"],
+  [data-theme="cosmic-violet"]
+) {
+  --ok: #00DEB6;   --ok-tint: #163D34;
+  --part: #F098F7; --part-tint: #3C323E;
+  --bad: #FF9766;  --bad-tint: #3F3127;
+}
+
+[data-verdicts="signal"][data-theme="hc-light"] {
+  --ok: #07565B;   --ok-tint: #E0EFEF;
+  --part: #59369F; --part-tint: #EDE9F6;
+  --bad: #902602;  --bad-tint: #F5E7E2;
+}
+
+[data-verdicts="signal"][data-theme="hc-dark"] {
+  --ok: #00DEB6;   --ok-tint: #0B2E28;
+  --part: #CEA4FF; --part-tint: #2C2534;
+  --bad: #FF9B5A;  --bad-tint: #342419;
+}
+
+@media (prefers-color-scheme: dark) {
+  [data-verdicts="signal"]:not([data-theme]) {
+    --ok: #00DEB6;   --ok-tint: #163D34;
+    --part: #F098F7; --part-tint: #3C323E;
+    --bad: #FF9766;  --bad-tint: #3F3127;
   }
 }

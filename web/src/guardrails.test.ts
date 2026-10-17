@@ -14,6 +14,8 @@ const TOKENS = '/src/styles/tokens.css';
 // Browser chrome metas and the favicon cannot use CSS variables, so they
 // carry copies of token values; the test below keeps the copies exact.
 const MIRRORS_TOKENS = ['/index.html', '/public/favicon.svg'];
+// Tests may name colours to check the contrast maths.
+const isTest = (path: string) => path.endsWith('.test.ts');
 
 function hexes(text: string): string[] {
   return (text.match(new RegExp(HEX_COLOUR.source, 'g')) ?? []).map((h) => h.toUpperCase());
@@ -28,7 +30,7 @@ describe('web source guardrails', () => {
 
   it('keeps hex colours inside tokens.css', () => {
     const offenders = Object.entries(sources)
-      .filter(([path]) => path !== TOKENS && !MIRRORS_TOKENS.includes(path))
+      .filter(([path]) => path !== TOKENS && !MIRRORS_TOKENS.includes(path) && !isTest(path))
       .filter(([, text]) => HEX_COLOUR.test(text))
       .map(([path]) => path);
     expect(offenders).toEqual([]);

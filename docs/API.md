@@ -68,8 +68,22 @@ Ends the current session and clears the cookie. `204` with no body, also when al
 
 | Status | Body |
 |---|---|
-| 200 | `{"id":1,"email":"a@college.edu","name":"Asha Rao","avatar_url":"https://...","role":"student"}` |
+| 200 | `{"id":1,"email":"a@college.edu","name":"Asha Rao","avatar_url":"https://...","role":"student","theme":"","verdicts":"standard"}` |
 | 401 | `{"error":{"code":"signed_out",...}}` |
+
+`theme` is the display theme id, or `""` to follow the system. `verdicts` is `standard` or `signal` (colour-blind safe verdict colours).
+
+### `PUT /api/me/preferences`
+
+Saves the signed-in person's display preferences, so they follow the account to another machine.
+
+Request: `{"theme":"nordic-frost","verdicts":"signal"}`. `theme` is `""` (follow the system) or an id of 1 to 32 characters from `a-z`, `0-9` and `-`; the server checks only the shape, and the web app treats ids it does not know as `""`. `verdicts` is `standard` or `signal`; both fields are required.
+
+| Status | Body |
+|---|---|
+| 200 | the saved preferences, as sent |
+| 400 | `bad_request`: a malformed theme id or an unknown verdict set |
+| 401 | `signed_out` |
 
 ## People and domains (owner)
 

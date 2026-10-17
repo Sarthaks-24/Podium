@@ -42,6 +42,7 @@ func New(d Deps) http.Handler {
 	mux.HandleFunc("GET /api/auth/google/callback", d.googleCallback)
 	mux.HandleFunc("POST /api/auth/logout", d.logout)
 	mux.HandleFunc("GET /api/me", d.requireRole(auth.Student, d.me))
+	mux.HandleFunc("PUT /api/me/preferences", d.requireRole(auth.Student, d.setPreferences))
 
 	mux.HandleFunc("GET /api/admin/people", d.requireRole(auth.Owner, d.listPeople))
 	mux.HandleFunc("POST /api/admin/people", d.requireRole(auth.Owner, d.grantRole))

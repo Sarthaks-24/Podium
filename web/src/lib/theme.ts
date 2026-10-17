@@ -1,45 +1,100 @@
 /**
- * Theme choice: follow the system, or force light or dark.
+ * Display preferences: the colour theme and the verdict colour set.
  *
- * The choice is stored in localStorage under STORAGE_KEY and applied as a
- * data-theme attribute on <html>. "system" removes the attribute so the
- * prefers-color-scheme rules in tokens.css take over. public/theme-init.js
- * reads the same key before first paint; a test keeps the two in step.
+ * A theme choice is "system" (no data-theme on <html>, so tokens.css follows
+ * prefers-color-scheme) or one of the theme ids below, applied as
+ * data-theme. The verdict set is "standard" or "signal", the colour-blind
+ * safe set, applied as data-verdicts="signal" (decision D40).
  *
- * Storage access can throw (private windows, blocked site data), so every
- * read and write is guarded and the app works without it.
+ * The account holds the real preferences (GET /api/me, PUT
+ * /api/me/preferences; decision D42). localStorage keeps a copy under
+ * THEME_KEY and VERDICTS_KEY only so public/theme-init.js can paint the
+ * first frame right; a test keeps that script's id list in step with
+ * THEMES. Storage access can throw (private windows, blocked site data), so
+ * every read and write is guarded and the app works without it.
  */
 
-export type ThemeChoice = 'system' | 'light' | 'dark';
-
-/** localStorage key, also read by public/theme-init.js. */
-export const STORAGE_KEY = 'podium-theme';
-
-const ORDER: readonly ThemeChoice[] = ['system', 'light', 'dark'];
-
-const LABELS: Record<ThemeChoice, string> = {
-  system: 'System',
-  light: 'Light',
-  dark: 'Dark',
-};
-
-/** The subset of Storage this module uses, so tests can pass a fake. */
-export type ThemeStorage = Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>;
-
-/** Turns any stored value into a valid choice, defaulting to "system". */
-export function parseChoice(value: unknown): ThemeChoice {
-  return value === 'light' || value === 'dark' ? value : 'system';
+/** A theme the picker offers, in the order it lists them. */
+export interface ThemeInfo {
+  id: string;
+  label: string;
+  group: ThemeGroup;
+  /** Light or dark family: decides verdict colours and color-scheme. */
+  family: 'light' | 'dark';
 }
 
-/** The choice the theme button moves to next: System, Light, Dark, then back. */
-export function nextChoice(current: ThemeChoice): ThemeChoice {
-  return ORDER[(ORDER.indexOf(current) + 1) % ORDER.length];
+export type ThemeGroup = 'Light' | 'Dark' | 'Accessible';
+
+/** Group order in the picker. */
+export const GROUPS: readonly ThemeGroup[] = ['Light', 'Dark', 'Accessible'];
+
+/** Every theme in tokens.css (decision D39). */
+export const THEMES: readonly ThemeInfo[] = [
+  { id: 'light', label: 'Light', group: 'Light', family: 'light' },
+  { id: 'nordic-frost', label: 'Nordic frost', group: 'Light', family: 'light' },
+  { id: 'soft-lavender', label: 'Soft lavender', group: 'Light', family: 'light' },
+  { id: 'dark', label: 'Dark', group: 'Dark', family: 'dark' },
+  { id: 'overcast', label: 'Overcast', group: 'Dark', family: 'dark' },
+  { id: 'oled-black', label: 'OLED black', group: 'Dark', family: 'dark' },
+  { id: 'nordic-slate', label: 'Nordic slate', group: 'Dark', family: 'dark' },
+  { id: 'cosmic-violet', label: 'Cosmic violet', group: 'Dark', family: 'dark' },
+  { id: 'hc-light', label: 'High contrast light', group: 'Accessible', family: 'light' },
+  { id: 'hc-dark', label: 'High contrast dark', group: 'Accessible', family: 'dark' },
+];
+
+/** "system", or a theme id from THEMES. */
+export type ThemeChoice = string;
+
+export type VerdictSet = 'standard' | 'signal';
+
+export interface Preferences {
+  theme: ThemeChoice;
+  verdicts: VerdictSet;
+}
+
+export const DEFAULT_PREFERENCES: Preferences = { theme: 'system', verdicts: 'standard' };
+
+/** localStorage keys, also read by public/theme-init.js. */
+export const THEME_KEY = 'podium-theme';
+export const VERDICTS_KEY = 'podium-verdicts';
+
+const BY_ID = new Map(THEMES.map((t) => [t.id, t]));
+
+/** Turns any value into a valid theme choice, defaulting to "system". */
+export function parseChoice(value: unknown): ThemeChoice {
+  return typeof value === 'string' && BY_ID.has(value) ? value : 'system';
+}
+
+/** Turns any value into a verdict set, defaulting to "standard". */
+export function parseVerdicts(value: unknown): VerdictSet {
+  return value === 'signal' ? 'signal' : 'standard';
 }
 
 /** Sentence-case name of a choice for the interface. */
 export function choiceLabel(choice: ThemeChoice): string {
-  return LABELS[choice];
+  return BY_ID.get(choice)?.label ?? 'System';
 }
+
+/** The themes in one picker group. */
+export function themesIn(group: ThemeGroup): ThemeInfo[] {
+  return THEMES.filter((t) => t.group === group);
+}
+
+/**
+ * Converts the account's stored values (theme "" means system) into
+ * preferences. Unknown theme ids fall back to the system theme.
+ */
+export function fromAccount(theme: string | undefined, verdicts: string | undefined): Preferences {
+  return { theme: parseChoice(theme), verdicts: parseVerdicts(verdicts) };
+}
+
+/** The body for PUT /api/me/preferences. */
+export function toAccount(p: Preferences): { theme: string; verdicts: VerdictSet } {
+  return { theme: p.theme === 'system' ? '' : p.theme, verdicts: p.verdicts };
+}
+
+/** The subset of Storage this module uses, so tests can pass a fake. */
+export type ThemeStorage = Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>;
 
 /** Returns window.localStorage, or null when it is missing or blocked. */
 export function getStorage(): ThemeStorage | null {
@@ -50,39 +105,53 @@ export function getStorage(): ThemeStorage | null {
   }
 }
 
-/** Reads the saved choice; any failure means "system". */
-export function readChoice(storage: ThemeStorage | null): ThemeChoice {
-  if (!storage) return 'system';
+/** Reads the cached preferences; any failure means the defaults. */
+export function readPreferences(storage: ThemeStorage | null): Preferences {
+  if (!storage) return { ...DEFAULT_PREFERENCES };
   try {
-    return parseChoice(storage.getItem(STORAGE_KEY));
+    return { theme: parseChoice(storage.getItem(THEME_KEY)), verdicts: parseVerdicts(storage.getItem(VERDICTS_KEY)) };
   } catch {
-    return 'system';
+    return { ...DEFAULT_PREFERENCES };
   }
 }
 
 /**
- * Saves the choice. "system" clears the key so a fresh visit follows the
- * system again. Returns false when storage is unavailable.
+ * Caches the preferences. Defaults clear their key, so a fresh visit
+ * follows the system. Returns false when storage is unavailable.
  */
-export function saveChoice(storage: ThemeStorage | null, choice: ThemeChoice): boolean {
+export function savePreferences(storage: ThemeStorage | null, p: Preferences): boolean {
   if (!storage) return false;
   try {
-    if (choice === 'system') {
-      storage.removeItem(STORAGE_KEY);
-    } else {
-      storage.setItem(STORAGE_KEY, choice);
-    }
+    if (p.theme === 'system') storage.removeItem(THEME_KEY);
+    else storage.setItem(THEME_KEY, p.theme);
+    if (p.verdicts === 'standard') storage.removeItem(VERDICTS_KEY);
+    else storage.setItem(VERDICTS_KEY, p.verdicts);
     return true;
   } catch {
     return false;
   }
 }
 
-/** Applies the choice to an element, normally document.documentElement. */
-export function applyChoice(root: Pick<Element, 'setAttribute' | 'removeAttribute'>, choice: ThemeChoice): void {
-  if (choice === 'system') {
-    root.removeAttribute('data-theme');
-  } else {
-    root.setAttribute('data-theme', choice);
+/** Element operations applyPreferences needs, so tests can pass a fake. */
+export type ThemeRoot = Pick<Element, 'setAttribute' | 'removeAttribute'>;
+
+/** Applies preferences to an element, normally document.documentElement. */
+export function applyPreferences(root: ThemeRoot, p: Preferences): void {
+  if (p.theme === 'system') root.removeAttribute('data-theme');
+  else root.setAttribute('data-theme', p.theme);
+  if (p.verdicts === 'signal') root.setAttribute('data-verdicts', 'signal');
+  else root.removeAttribute('data-verdicts');
+}
+
+/**
+ * Points the browser chrome colour at the theme's paper. With the system
+ * theme the two media-specific metas in index.html are right already, so
+ * their own values are restored.
+ */
+export function syncThemeColor(doc: Document, p: Preferences): void {
+  const paper = getComputedStyle(doc.documentElement).getPropertyValue('--paper').trim();
+  for (const meta of doc.querySelectorAll<HTMLMetaElement>('meta[name="theme-color"]')) {
+    meta.dataset.initial ??= meta.content;
+    meta.content = p.theme === 'system' || paper === '' ? meta.dataset.initial : paper;
   }
 }

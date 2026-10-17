@@ -49,6 +49,9 @@ type User struct {
 	AvatarURL string `json:"avatar_url"`
 	Role      Role   `json:"role"`
 	Disabled  bool   `json:"-"`
+	// Theme and Verdicts are the display preferences (preferences.go).
+	Theme    string `json:"theme"`
+	Verdicts string `json:"verdicts"`
 }
 
 // SessionTTL is how long a session lasts without use; use renews it.
@@ -203,7 +206,7 @@ func (s *Service) SignIn(ctx context.Context, id Identity, ip, userAgent string)
 	err = tx.QueryRowContext(ctx, `INSERT INTO users (email, name, avatar_url, google_sub, created_at, last_login_at) VALUES (?, ?, ?, ?, ?, ?)
 		ON CONFLICT (email) DO UPDATE SET name = excluded.name, avatar_url = excluded.avatar_url,
 			google_sub = excluded.google_sub, last_login_at = excluded.last_login_at
-		RETURNING id, role`, email, u.Name, u.AvatarURL, id.Subject, now.UnixMilli(), now.UnixMilli()).Scan(&u.ID, &u.Role)
+		RETURNING id, role, theme, verdicts`, email, u.Name, u.AvatarURL, id.Subject, now.UnixMilli(), now.UnixMilli()).Scan(&u.ID, &u.Role, &u.Theme, &u.Verdicts)
 	if err != nil {
 		return User{}, "", time.Time{}, fmt.Errorf("record user: %w", err)
 	}
@@ -226,9 +229,9 @@ func (s *Service) Authenticate(ctx context.Context, token string) (u User, renew
 	id := hashToken(token)
 	now := s.now()
 	var expires int64
-	err = s.DB.QueryRowContext(ctx, `SELECT u.id, u.email, u.name, u.avatar_url, u.role, u.disabled, s.expires_at
+	err = s.DB.QueryRowContext(ctx, `SELECT u.id, u.email, u.name, u.avatar_url, u.role, u.disabled, u.theme, u.verdicts, s.expires_at
 		FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.id = ?`, id).
-		Scan(&u.ID, &u.Email, &u.Name, &u.AvatarURL, &u.Role, &u.Disabled, &expires)
+		Scan(&u.ID, &u.Email, &u.Name, &u.AvatarURL, &u.Role, &u.Disabled, &u.Theme, &u.Verdicts, &expires)
 	if errors.Is(err, sql.ErrNoRows) {
 		return User{}, time.Time{}, ErrNoSession
 	}

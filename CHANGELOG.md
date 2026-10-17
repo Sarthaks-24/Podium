@@ -4,6 +4,14 @@ Dated entries per release. Unreleased work is listed at the top.
 
 ## Unreleased
 
+### Themes (2026-10-18)
+
+- Ten colour themes plus System, in Light, Dark and Accessible groups, chosen from a menu in the header with a swatch for each.
+- Colour-blind safe verdict colours (teal, purple, orange) as a separate setting that works with every theme.
+- Preferences belong to the account (`PUT /api/me/preferences`, migration `0002_preferences.sql`) and are cleared from the browser on sign-out.
+- Every theme is tested for text contrast, control borders at 3:1, verdict contrast, and the distance between the action colour and the verdicts; a browser test checks the CSS cascade gives the tested values.
+- Fixed in the existing themes: light "accepted" and "partial" colours and control borders in both themes were below the contrast floor.
+
 ### Milestone M1: identity (2026-10-17)
 
 - Google sign-in run by the server: PKCE, nonce, signed single-use state cookie, ID token signature and claims verified with the standard library.

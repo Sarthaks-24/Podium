@@ -167,6 +167,18 @@ func (d Deps) me(w http.ResponseWriter, r *http.Request) {
 	WriteJSON(w, http.StatusOK, userFrom(r.Context()))
 }
 
+func (d Deps) setPreferences(w http.ResponseWriter, r *http.Request) {
+	var p auth.Preferences
+	if !decodeJSON(w, r, &p) {
+		return
+	}
+	if err := d.Auth.SetPreferences(r.Context(), userFrom(r.Context()).ID, p); err != nil {
+		d.changeError(w, r, err)
+		return
+	}
+	WriteJSON(w, http.StatusOK, p)
+}
+
 type userKey struct{}
 
 func userFrom(ctx context.Context) auth.User {
