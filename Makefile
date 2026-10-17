@@ -1,9 +1,19 @@
-# podium build and development tasks. Runs under bash: Git Bash on Windows,
-# any shell on Linux. On Windows install make with
+# podium build and development tasks. Recipes run under bash: Git Bash on
+# Windows (make can be started from PowerShell, cmd or Git Bash), any shell
+# on Linux. On Windows install make with
 #   winget install ezwinports.make
 # Run `make help` for the list of targets.
 
-SHELL := bash
+# On Windows a bare "bash" is not found from PowerShell, or resolves to the
+# WSL launcher in System32, and make silently falls back to cmd.exe. Name Git
+# Bash by its full path instead; its bin/bash.exe puts grep, sed and find on
+# PATH. Override with make GIT_BASH=... if Git is installed elsewhere.
+ifeq ($(OS),Windows_NT)
+  GIT_BASH ?= C:/Program Files/Git/bin/bash.exe
+  SHELL := $(GIT_BASH)
+else
+  SHELL := bash
+endif
 .SHELLFLAGS := -eu -o pipefail -c
 .DEFAULT_GOAL := help
 # release runs check and build, and build reinstalls node_modules; never

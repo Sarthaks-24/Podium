@@ -28,7 +28,7 @@ Prerequisites:
 | Go 1.27+ | `winget install GoLang.Go` |
 | Node 22.12+ | `winget install OpenJS.NodeJS.LTS` |
 | GNU make | `winget install ezwinports.make` |
-| Git Bash | comes with Git for Windows; run `make` from it |
+| Git Bash | comes with Git for Windows; `make` runs its recipes in it, so start `make` from PowerShell or Git Bash. If Git is not in `C:\Program Files\Git`, pass `make GIT_BASH=<path to Git\bin\bash.exe>` |
 | WSL2 Ubuntu 24.04 (for the judge) | `wsl --install -d Ubuntu-24.04` |
 
 Steps:
