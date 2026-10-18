@@ -32,6 +32,9 @@ server/dist/
 !problems/*/tests/*.out
 coverage.*
 
+# graphify knowledge graph of the repo (local, rebuilt on demand)
+graphify-out/
+
 # Node / web
 web/node_modules/
 node_modules/
