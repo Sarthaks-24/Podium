@@ -28,6 +28,8 @@ server/dist/
 *.exe
 *.test
 *.out
+# Expected outputs of the example packs are test data, not build output.
+!problems/*/tests/*.out
 coverage.*
 
 # Node / web
