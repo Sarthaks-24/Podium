@@ -268,6 +268,20 @@ The timeline (submissions with typed and pasted counts, pastes, focus changes, s
 
 **Why on the server (D49).** The check runs in one bounded background goroutine in `podium-server`, not as a judge job: its inputs are trusted text (sources, verdicts, output hashes) and nothing is executed, so the sandbox adds nothing, while sending every source to the judge would widen what the judge holds. One check runs at a time per server (`409 busy` otherwise), with a 10-minute limit; the request returns at once with the run's id and the page polls. A check left running by a restart is marked failed at start-up. Revisit if a large contest's check takes long enough to hurt request latency.
 
+### Fixes after the integrity review
+
+- **Signal and run ids are never reused** (`AUTOINCREMENT`), and a case's compare view reads the case's own copy of the evidence through its own route. A re-run used to free ids that SQLite handed out again, so a case could open another pair of students.
+- **The case state machine is enforced on the server.** An allowed-transitions table; action needs every student's turn to be over (an explanation after the latest share, or the 7-day response window, `integrity.ResponseWindow`); a reopen ends the turn and needs a new share. Clearing is always allowed because it never hurts a student. Reason: D47 says students explain before any decision; the review showed a case could be actioned the instant it was shared.
+- **Explanations are versioned** in `integrity_explanations`; a decision carries the versions the reviewer read and is refused (409) if a newer one exists. The decision row stores them (`explanations_seen`).
+- **The decision log is append only in the database**: triggers refuse UPDATE and DELETE on `integrity_decisions`, and `case_id` and `by_user` are `ON DELETE RESTRICT`. The triggers also block cascades, on purpose: nothing deletes users, cases, or contests that have cases (the clone rollback deletes only a contest created a moment earlier, which has none), so a cascade into the log would only ever be a mistake.
+- **False-positive guards found by the review:**
+  - Hard-coded answers skip expected outputs that appear in the reference, the brute force or the statement, or in the programs of more than max(3, 10%) of the students; each distinct source is squashed once (was once per submission per output, about 8.5 s per problem in the worst case).
+  - Probing ignores all-SK attempts, compares near-identity with the first attempt of a run, and counts only flips (AC back to a failure, or one failure to another), not forward progress.
+  - Similar code: strength needs an amount of shared fingerprints as well as the score; the common-fingerprint limit is counted per language; `Settings.ExtraBase` accepts more base programs (templates), not yet filled from any setting.
+  - Same wrong output: the common-mistake limit is max(3, 2% of the students).
+- **The lexer reads hidden code**: the body of a C++ `#define` (only `#include` lines are dropped; line continuations join lines) and a Python string literal passed straight to `exec` or `eval`.
+- `integrity` now imports `contests` for `RetentionPeriod`.
+
 ## What students can see
 
 Decision D47 sets the rule: hidden tests never show their input, output or checker comment, and the figures a student sees are coarse enough that they cannot be used to read hidden tests.

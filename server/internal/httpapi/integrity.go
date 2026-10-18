@@ -5,7 +5,12 @@ package httpapi
 // that contest whose own role is not student: co-organisers who are
 // students (TAs) never review their classmates. Anyone who does not
 // organise the contest gets the same 404 as a missing contest, and a
-// signal, student or case id from another contest is a 404 too.
+// signal, student or case id from another contest is a 404 too. A
+// reviewer who is one of a case's students (a student later made an
+// admin) gets the same 404 for that case and never sees it in the list.
+//
+// A case's own pair view reads the evidence copied into the case, never
+// the live signals, so a re-run cannot change what it shows.
 //
 // Students see only cases a reviewer shared with them, worded for them:
 // their own evidence and code, never another student's name or program.
@@ -16,6 +21,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"strconv"
 
 	"github.com/Sarthaks-24/podium/internal/auth"
 	"github.com/Sarthaks-24/podium/internal/contests"
@@ -32,6 +38,7 @@ func (d Deps) integrityRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/admin/contests/{id}/integrity/cases", signedIn(d.limitReads(d.listIntegrityCases)))
 	mux.HandleFunc("POST /api/admin/contests/{id}/integrity/cases", signedIn(d.openIntegrityCase))
 	mux.HandleFunc("GET /api/admin/integrity/cases/{case}", signedIn(d.limitReads(d.getIntegrityCase)))
+	mux.HandleFunc("GET /api/admin/integrity/cases/{case}/evidence/{index}/pair", signedIn(d.limitReads(d.getIntegrityCasePair)))
 	mux.HandleFunc("PUT /api/admin/integrity/cases/{case}", signedIn(d.decideIntegrityCase))
 
 	mux.HandleFunc("GET /api/integrity/cases", signedIn(d.limitReads(d.myIntegrityCases)))
@@ -86,12 +93,13 @@ func (d Deps) reviewedCase(w http.ResponseWriter, r *http.Request) (*integrity.C
 		d.internalError(w, r, err)
 		return nil, false
 	}
-	may, err := d.mayReview(r.Context(), userFrom(r.Context()), c.ContestID)
+	u := userFrom(r.Context())
+	may, err := d.mayReview(r.Context(), u, c.ContestID)
 	if err != nil {
 		d.internalError(w, r, err)
 		return nil, false
 	}
-	if !may {
+	if !may || c.Involves(u.ID) {
 		writeNoCase(w)
 		return nil, false
 	}
@@ -112,6 +120,8 @@ func (d Deps) integrityError(w http.ResponseWriter, r *http.Request, err error, 
 		WriteError(w, http.StatusNotFound, "not_found", notFound)
 	case errors.Is(err, integrity.ErrBusy):
 		WriteError(w, http.StatusConflict, "busy", "A check is already running. Try again in a minute.")
+	case errors.Is(err, integrity.ErrExplanationChanged):
+		WriteError(w, http.StatusConflict, "explanation_changed", "A student changed their explanation. Reload before deciding.")
 	default:
 		d.internalError(w, r, err)
 	}
@@ -244,10 +254,17 @@ func (d Deps) listIntegrityCases(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	list, err := d.Integrity.Cases(r.Context(), c.ID)
+	all, err := d.Integrity.Cases(r.Context(), c.ID)
 	if err != nil {
 		d.internalError(w, r, err)
 		return
+	}
+	me := userFrom(r.Context()).ID
+	list := []integrity.Case{}
+	for _, cs := range all {
+		if !cs.Involves(me) {
+			list = append(list, cs)
+		}
 	}
 	WriteJSON(w, http.StatusOK, map[string]any{"cases": list, "server_now": d.serverNow()})
 }
@@ -281,22 +298,49 @@ func (d Deps) getIntegrityCase(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// getIntegrityCasePair is the side-by-side view of a case's similar-code
+// evidence, numbered from 0 in the case's evidence list: the case's own
+// copy of the signal and the submissions it names, which must still
+// belong to the case's contest. It answers the same Side shape as the
+// live pair route, plus the copied signal.
+func (d Deps) getIntegrityCasePair(w http.ResponseWriter, r *http.Request) {
+	cs, ok := d.reviewedCase(w, r)
+	if !ok {
+		return
+	}
+	const missing = "There is no such similar-code evidence in this case, or its code is no longer kept."
+	index, err := strconv.Atoi(r.PathValue("index"))
+	if err != nil || index < 0 {
+		WriteError(w, http.StatusNotFound, "not_found", missing)
+		return
+	}
+	sg, a, b, err := d.Integrity.CasePair(r.Context(), cs, index)
+	if err != nil {
+		d.integrityError(w, r, err, missing)
+		return
+	}
+	WriteJSON(w, http.StatusOK, map[string]any{"a": a, "b": b, "signal": sg, "server_now": d.serverNow()})
+}
+
 // decideIntegrityCase changes a case's state with a reason: sharing it
 // with the students (awaiting_student), reopening, clearing or actioning.
+// seen_explanations names, per student id, the created_at of the latest
+// explanation version the reviewer read; a newer one answers 409.
 func (d Deps) decideIntegrityCase(w http.ResponseWriter, r *http.Request) {
 	cs, ok := d.reviewedCase(w, r)
 	if !ok {
 		return
 	}
 	var req struct {
-		State string `json:"state"`
-		Note  string `json:"note"`
+		State            string          `json:"state"`
+		Note             string          `json:"note"`
+		SeenExplanations map[int64]int64 `json:"seen_explanations"`
 	}
 	if !decodeJSON(w, r, &req) {
 		return
 	}
 	u := userFrom(r.Context())
-	out, err := d.Integrity.Decide(r.Context(), cs.ID, u.ID, req.State, req.Note)
+	out, err := d.Integrity.Decide(r.Context(), cs.ID, u.ID, req.State, req.Note, req.SeenExplanations)
 	if err != nil {
 		d.integrityError(w, r, err, "There is no such case.")
 		return

@@ -492,7 +492,9 @@ func (d Deps) contestFeed(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	q := r.URL.Query()
-	f := contests.FeedFilter{Verdict: q.Get("verdict")}
+	// Typed, pasted and focus counts are integrity data: owners and admins
+	// only, never a co-organiser whose site role is student.
+	f := contests.FeedFilter{Verdict: q.Get("verdict"), IntegrityCounts: userFrom(r.Context()).Role.AtLeast(auth.Admin)}
 	f.Page, _ = strconv.Atoi(q.Get("page"))
 	if label := q.Get("problem"); label != "" {
 		for _, p := range c.Problems {

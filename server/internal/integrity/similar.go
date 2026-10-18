@@ -25,11 +25,17 @@ type Pair struct {
 	A, B Subject
 	// Score is containment: shared fingerprints over the smaller
 	// program's fingerprints, after the common ones are dropped.
-	Score    float64
-	Shared   int
-	Strength string
-	SpansA   []Span
-	SpansB   []Span
+	Score float64
+	// Shared is the number of fingerprints in common, Fingerprints the
+	// smaller program's count (the score's denominator) and Tokens the
+	// shorter program's length in tokens: how much evidence is behind the
+	// score.
+	Shared       int
+	Fingerprints int
+	Tokens       int
+	Strength     string
+	SpansA       []Span
+	SpansB       []Span
 }
 
 // Settings tune the comparison; Defaults are the council's values.
@@ -43,21 +49,53 @@ type Settings struct {
 	// Threshold is the lowest score reported.
 	Threshold float64
 	// CommonShare and CommonFloor drop a fingerprint that more than
-	// max(CommonShare of the students, CommonFloor) students have: shared
-	// idioms, not copying.
+	// max(CommonShare of the students in that language, CommonFloor)
+	// students have: shared idioms, not copying. The share is counted per
+	// language, so the input lines of a language few students use are
+	// still dropped.
 	CommonShare float64
 	CommonFloor int
+	// ExtraBase holds more programs everyone may share, added to the
+	// reference and brute force: an organiser's template or starter code.
+	// Nothing fills it yet (a per-contest list of templates is a known gap,
+	// docs/INTEGRITY.md); the comparison is ready for it.
+	ExtraBase []Subject
 }
 
 // Defaults are the integrity plan's settings (cache/v1/integrity-plan.md).
 var Defaults = Settings{MinTokens: 40, MinFingerprints: 8, Threshold: 0.6, CommonShare: 0.1, CommonFloor: 5}
 
-// Strength words a score for reviewers, who see the number beside it.
-func Strength(score float64) string {
+// withDefaults takes the numeric settings from Defaults when none is set
+// and keeps ExtraBase, so a caller can set ExtraBase alone.
+func (s Settings) withDefaults() Settings {
+	if s.MinTokens == 0 && s.MinFingerprints == 0 && s.Threshold == 0 && s.CommonShare == 0 && s.CommonFloor == 0 {
+		extra := s.ExtraBase
+		s = Defaults
+		s.ExtraBase = extra
+	}
+	return s
+}
+
+// Strength levels of similar code. A high score from a handful of
+// fingerprints is what short programs and textbook algorithms produce
+// without copying (integrity review 2026-10-18: honest pairs reached 1.00
+// with 14 to 29 shared fingerprints, real copies had 81 to 108), so each
+// level also needs an amount of shared code.
+const (
+	StrongScore    = 0.9
+	StrongShared   = 40
+	ModerateScore  = 0.75
+	ModerateShared = 25
+)
+
+// Strength words a score for reviewers, who see the number beside it:
+// strong needs a score of at least 0.9 and 40 shared fingerprints,
+// moderate 0.75 and 25; anything else that is reported is weak.
+func Strength(score float64, shared int) string {
 	switch {
-	case score >= 0.9:
+	case score >= StrongScore && shared >= StrongShared:
 		return "strong"
-	case score >= 0.75:
+	case score >= ModerateScore && shared >= ModerateShared:
 		return "moderate"
 	default:
 		return "weak"
@@ -65,37 +103,49 @@ func Strength(score float64) string {
 }
 
 // Compare finds similar pairs among one problem's subjects. base holds
-// programs everyone may legitimately share (reference, brute force,
-// starter code, editorial); their fingerprints never count. A pair of
-// students appears once, with their most similar programs.
+// programs everyone may legitimately share (reference, brute force), and
+// s.ExtraBase more of them (a template); their fingerprints never count. A
+// pair of students appears once, with their most similar programs. Zero
+// numeric settings take the Defaults.
 func Compare(subjects []Subject, base []Subject, s Settings) []Pair {
+	s = s.withDefaults()
 	ignore := map[uint64]bool{}
-	for _, b := range base {
+	for _, b := range append(append([]Subject{}, base...), s.ExtraBase...) {
 		for h := range Prepare(b.Language, b.Source).Set {
 			ignore[h] = true
 		}
 	}
 	docs := make([]Doc, len(subjects))
-	users := map[int64]bool{}
+	users := map[string]map[int64]bool{} // language to students
 	for i, sub := range subjects {
 		docs[i] = Prepare(sub.Language, sub.Source)
-		users[sub.UserID] = true
+		if users[sub.Language] == nil {
+			users[sub.Language] = map[int64]bool{}
+		}
+		users[sub.Language][sub.UserID] = true
 	}
-	// How many students have each fingerprint.
-	holders := map[uint64]map[int64]bool{}
+	// How many students of each language have each fingerprint.
+	type langHash struct {
+		lang string
+		h    uint64
+	}
+	holders := map[langHash]map[int64]bool{}
 	for i, d := range docs {
 		for h := range d.Set {
-			if holders[h] == nil {
-				holders[h] = map[int64]bool{}
+			k := langHash{subjects[i].Language, h}
+			if holders[k] == nil {
+				holders[k] = map[int64]bool{}
 			}
-			holders[h][subjects[i].UserID] = true
+			holders[k][subjects[i].UserID] = true
 		}
 	}
-	limit := int(math.Ceil(s.CommonShare * float64(len(users))))
-	if limit < s.CommonFloor {
-		limit = s.CommonFloor
+	limits := map[string]int{}
+	for lang, us := range users {
+		limits[lang] = max(int(math.Ceil(s.CommonShare*float64(len(us)))), s.CommonFloor)
 	}
-	keep := func(h uint64) bool { return !ignore[h] && len(holders[h]) <= limit }
+	keep := func(lang string, h uint64) bool {
+		return !ignore[h] && len(holders[langHash{lang, h}]) <= limits[lang]
+	}
 
 	eff := make([]map[uint64]bool, len(docs))
 	index := map[uint64][]int{}
@@ -105,7 +155,7 @@ func Compare(subjects []Subject, base []Subject, s Settings) []Pair {
 		}
 		e := map[uint64]bool{}
 		for h := range d.Set {
-			if keep(h) {
+			if keep(subjects[i].Language, h) {
 				e[h] = true
 			}
 		}
@@ -151,7 +201,8 @@ func Compare(subjects []Subject, base []Subject, s Settings) []Pair {
 				common[h] = true
 			}
 		}
-		best[key] = Pair{A: subjects[a], B: subjects[b], Score: score, Shared: n, Strength: Strength(score),
+		best[key] = Pair{A: subjects[a], B: subjects[b], Score: score, Shared: n, Fingerprints: smaller,
+			Tokens: min(docs[a].Tokens, docs[b].Tokens), Strength: Strength(score, n),
 			SpansA: spans(docs[a], common), SpansB: spans(docs[b], common)}
 	}
 	out := make([]Pair, 0, len(best))

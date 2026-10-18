@@ -3,8 +3,11 @@
  * sections 5 and 7, docs/INTEGRITY.md).
  *
  * The shapes mirror the API: Run from GET /api/admin/contests/{id}/integrity,
- * PairSide from .../signals/{signal}/pair, Moment from .../timeline/{user},
- * Case from the case routes, and StudentCase from GET /api/integrity/cases.
+ * PairSide from .../signals/{signal}/pair (and from a case's own copy at
+ * /api/admin/integrity/cases/{case}/evidence/{index}/pair), Moment from
+ * .../timeline/{user}, Case from the case routes, and StudentCase from
+ * GET /api/integrity/cases. A similarity score is the share of the shorter
+ * program found in the other, shown with how much code is behind it.
  *
  * The rest is pure wording and maths. Signals are reasons to look, never
  * proof, so they are worded as strength ("Strong", "Moderate", "Weak") with
@@ -30,7 +33,12 @@ export interface Span {
 
 /** Evidence by kind; every field is optional because it depends on the kind. */
 export interface SignalEvidence {
+  /** Similar code: fingerprints in common. */
   shared?: number;
+  /** Similar code: the smaller program's fingerprints, the score's denominator. */
+  fingerprints?: number;
+  /** Similar code: the shorter program's length in tokens. */
+  tokens?: number;
   spans_a?: Span[];
   spans_b?: Span[];
   language_a?: string;
@@ -96,6 +104,13 @@ export interface PairSide {
   spans: Span[];
 }
 
+/** GET .../signals/{signal}/pair; the case route adds the case's copy of the signal. */
+export interface Pair {
+  a: PairSide;
+  b: PairSide;
+  signal?: Signal;
+}
+
 export type MomentKind = 'submission' | 'paste' | 'blur' | 'focus' | 'second_session' | 'shared_device';
 
 /** One entry of a student's timeline. */
@@ -106,21 +121,37 @@ export interface Moment {
   text: string;
 }
 
+/** One saved version of a student's explanation; created_at names it. */
+export interface ExplanationVersion {
+  text: string;
+  created_at: number;
+}
+
 export interface CaseUser {
   user_id: number;
   name: string;
+  /** The first share: from then on the student sees the case. */
   shared_at: number | null;
+  /** The latest share, which starts the student's turn; null while no turn is open. */
+  asked_at?: number | null;
+  /** The end of the student's response window. */
+  respond_by?: number | null;
+  /** The latest version. */
   explanation: string;
   explained_at: number | null;
+  /** Every version, oldest first. */
+  explanations?: ExplanationVersion[];
 }
 
 export interface Decision {
   by: number;
+  /** The reviewer's name; empty when the account is gone. */
+  by_name?: string;
   state: CaseState;
   note: string;
   created_at: number;
-  /** Not in the contract; used when the server sends it. */
-  by_name?: string;
+  /** The explanation version of each student the reviewer had read. */
+  explanations_seen?: Record<string, number>;
 }
 
 /** A case as organisers see it. */
@@ -196,9 +227,27 @@ export function strengthWord(strength: string): string {
   return STRENGTHS.find((s) => s.id === strength)?.label ?? strength;
 }
 
-/** The raw number beside the strength: a share to two places, a count as is. */
-export function formatScore(score: number): string {
-  return Number.isInteger(score) ? String(score) : score.toFixed(2);
+/**
+ * The raw number beside the strength, by kind: similar code is a share,
+ * always to two places (1.00, never 1, which reads like a count); the
+ * other kinds are counts.
+ */
+export function formatScore(score: number, kind: string): string {
+  return kind === 'similar' ? score.toFixed(2) : String(Math.round(score));
+}
+
+/** What a similarity score means, shown wherever one is. */
+export const SCORE_MEANING = 'The score is the share of the shorter program found in the other, not a probability.';
+
+/**
+ * How much code is behind a similarity score, or "" when the evidence does
+ * not say (signals from before the counts were stored).
+ */
+export function evidenceSize(ev: SignalEvidence | null | undefined): string {
+  if (!ev || ev.shared === undefined) return '';
+  const fps = ev.fingerprints !== undefined ? ` of ${ev.fingerprints}` : '';
+  const tokens = ev.tokens !== undefined ? `, shorter program ${ev.tokens} tokens` : '';
+  return `${ev.shared}${fps} fingerprints shared${tokens}`;
 }
 
 /** Joins words as "a", "a and b", "a, b and c". */
@@ -275,6 +324,51 @@ export function caseStateWord(state: string): string {
     default:
       return state;
   }
+}
+
+/** The days each student has to explain, mirrored from the server's ResponseWindow. */
+export const RESPONSE_DAYS = 7;
+
+/** When a student last saved an explanation, or null. */
+export function latestExplanationAt(u: Pick<CaseUser, 'explanations' | 'explained_at'>): number | null {
+  const vs = u.explanations ?? [];
+  return vs.length > 0 ? vs[vs.length - 1].created_at : (u.explained_at ?? null);
+}
+
+/**
+ * The explanation version of each student the reviewer has in front of
+ * them, sent with a decision as seen_explanations. The server refuses the
+ * decision when a student saved a newer one.
+ */
+export function seenExplanations(c: Pick<Case, 'users'>): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const u of c.users) {
+    const at = latestExplanationAt(u);
+    if (at !== null) out[String(u.user_id)] = at;
+  }
+  return out;
+}
+
+/** Whether a student's turn is over: they explained after the latest share, or their window ended. */
+export function turnOver(u: CaseUser, now: number): boolean {
+  if (u.asked_at === null || u.asked_at === undefined) return false;
+  const at = latestExplanationAt(u);
+  if (at !== null && at >= u.asked_at) return true;
+  return u.respond_by !== null && u.respond_by !== undefined && now >= u.respond_by;
+}
+
+/**
+ * Whether "Take action" is open and, when it is not, why. The server
+ * applies the same rule: the case is shared, and every student explained
+ * after the latest share or had their days to explain run out. `opensAt`
+ * is when the last window ends, for the help text.
+ */
+export function actionState(c: Pick<Case, 'state' | 'users'>, now: number): { open: boolean; opensAt: number | null } {
+  if (c.state !== 'awaiting_student' || c.users.length === 0) return { open: false, opensAt: null };
+  const waiting = c.users.filter((u) => !turnOver(u, now));
+  if (waiting.length === 0) return { open: true, opensAt: null };
+  const ends = waiting.map((u) => u.respond_by ?? 0);
+  return { open: false, opensAt: Math.max(...ends) || null };
 }
 
 /** The student's sentence for a case state. */

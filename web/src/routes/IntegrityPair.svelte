@@ -5,11 +5,18 @@
   (GET .../integrity); for similar code the two programs come from
   GET .../signals/{signal}/pair and sit side by side from 1024 px, stacked
   below, each with its student, language and time, line numbers and the
-  shared passages tinted (CodeView). Below are the timelines of the
-  students named (GET .../timeline/{user}), which are context and never a
-  signal on their own. "Open a case" opens OpenCaseDialog with this
-  signal. A signal that a newer check replaced says so. Props: `id` (the
-  contest), `signal`.
+  shared passages tinted (CodeView), with how much code is behind the
+  score and what the score means. Below are the timelines of the students
+  named (GET .../timeline/{user}), which are context and never a signal on
+  their own. "Open a case" opens OpenCaseDialog with this signal. A signal
+  that a newer check replaced says so.
+
+  With ?case={case}&evidence={index} it shows a case's evidence instead:
+  the signal as copied into the case (GET /api/admin/integrity/cases/{case})
+  and its programs from GET .../cases/{case}/evidence/{index}/pair, so a
+  later check can never put other students' code under the case. It links
+  back to the case and offers no "Open a case". Props: `id` (the contest),
+  `signal`.
 -->
 <script lang="ts">
   import { onMount } from 'svelte';
@@ -21,6 +28,8 @@
   import { formatDateTime } from '../lib/format';
   import { setTitle } from '../lib/head';
   import {
+    SCORE_MEANING,
+    evidenceSize,
     formatScore,
     kindWord,
     signalDetail,
@@ -29,11 +38,12 @@
     userName,
     type Case,
     type Moment,
-    type PairSide,
+    type Pair,
+    type ReviewUser,
     type Run,
     type Signal,
   } from '../lib/review';
-  import { navigate } from '../lib/router.svelte';
+  import { navigate, router } from '../lib/router.svelte';
   import { session } from '../lib/session.svelte';
   import { showToast } from '../lib/toast.svelte';
   import { languageLabel } from '../lib/workspace';
@@ -43,17 +53,32 @@
   let loadState = $state<'loading' | 'ready' | 'forbidden' | 'missing' | 'gone' | 'error'>('loading');
   let loadError = $state('');
   let run = $state.raw<Run | null>(null);
+  let kase = $state.raw<Case | null>(null);
   let sig = $state.raw<Signal | null>(null);
-  let pair = $state.raw<{ a: PairSide; b: PairSide } | null>(null);
+  let pair = $state.raw<Pair | null>(null);
   let pairError = $state('');
   let timelines = $state<Record<number, Moment[] | string>>({});
   let dialogOpen = $state(false);
 
+  // Read once: the page reloads when the address changes.
+  const caseId = router.query.get('case') ?? '';
+  const evidence = router.query.get('evidence') ?? '';
+  const fromCase = /^\d+$/.test(caseId) && /^\d+$/.test(evidence);
+
   const isOrganiser = $derived(session.user?.role === 'admin' || session.user?.role === 'owner');
   const base = $derived(`/api/admin/contests/${encodeURIComponent(id)}/integrity`);
-  const back = $derived(`/admin/contests/${encodeURIComponent(id)}/integrity`);
+  const back = $derived(fromCase ? `/admin/integrity/cases/${caseId}` : `/admin/contests/${encodeURIComponent(id)}/integrity`);
+  const backLabel = $derived(fromCase ? (kase ? `Case: ${kase.title}` : 'Case') : 'Integrity');
   const students = $derived(sig ? [sig.user_a, sig.user_b].filter((u): u is number => !!u) : []);
-  const problem = $derived(sig && sig.problem_id ? run?.problems?.[String(sig.problem_id)] : undefined);
+  // Names: the case's own students first, then the check's map.
+  const users = $derived.by(() => {
+    const out: Record<string, ReviewUser> = { ...(run?.users ?? {}) };
+    for (const u of kase?.users ?? []) out[String(u.user_id)] = { name: u.name, email: out[String(u.user_id)]?.email ?? '' };
+    return out;
+  });
+  const problems = $derived(run?.problems);
+  const problem = $derived(sig && sig.problem_id ? problems?.[String(sig.problem_id)] : undefined);
+  const size = $derived(sig?.kind === 'similar' ? evidenceSize(sig.evidence) : '');
 
   function handleAuth(e: unknown): boolean {
     if (!(e instanceof ApiError)) return false;
@@ -73,8 +98,16 @@
     return e instanceof ApiError ? e.message : 'Something went wrong. Try again in a moment.';
   }
 
+  function show(found: Signal) {
+    setTitle(signalStudents(found, users), kindWord(found.kind));
+    loadState = 'ready';
+    if (found.kind === 'similar') void loadPair();
+    for (const u of [found.user_a, found.user_b]) if (u) void loadTimeline(u);
+  }
+
   async function load() {
     loadState = 'loading';
+    if (fromCase) return loadFromCase();
     let r: Run;
     try {
       r = await getJSON<Run>(base);
@@ -99,24 +132,59 @@
       void restore();
       return;
     }
-    setTitle(signalStudents(found, r.users), kindWord(found.kind));
-    loadState = 'ready';
+    show(found);
     void restore();
-    if (found.kind === 'similar') void loadPair();
-    for (const u of [found.user_a, found.user_b]) if (u) void loadTimeline(u);
+  }
+
+  // A case's evidence: the case's copy of the signal, names from the case
+  // (and from the latest check when there is one).
+  async function loadFromCase() {
+    let c: Case;
+    try {
+      c = await getJSON<Case>(`/api/admin/integrity/cases/${caseId}`);
+    } catch (e) {
+      if (handleAuth(e)) return;
+      if (e instanceof ApiError && e.status === 404) {
+        loadState = 'missing';
+        setTitle('Evidence not found');
+        return;
+      }
+      loadError = messageOf(e);
+      loadState = 'error';
+      return;
+    }
+    const found = c.evidence[Number(evidence)] ?? null;
+    const restore = keepHeadingFocus();
+    kase = c;
+    sig = found;
+    if (!found) {
+      loadState = 'missing';
+      setTitle('Evidence not found');
+      void restore();
+      return;
+    }
+    try {
+      run = await getJSON<Run>(`/api/admin/contests/${c.contest_id}/integrity`);
+    } catch {
+      // Names and labels are a convenience; the case reads without them.
+    }
+    show(found);
+    void restore();
   }
 
   async function loadPair() {
+    const url = fromCase ? `/api/admin/integrity/cases/${caseId}/evidence/${evidence}/pair` : `${base}/signals/${encodeURIComponent(signal)}/pair`;
     try {
-      pair = await getJSON<{ a: PairSide; b: PairSide }>(`${base}/signals/${encodeURIComponent(signal)}/pair`);
+      pair = await getJSON<Pair>(url);
     } catch (e) {
       if (!handleAuth(e)) pairError = messageOf(e);
     }
   }
 
   async function loadTimeline(user: number) {
+    const contest = kase ? String(kase.contest_id) : encodeURIComponent(id);
     try {
-      const data = await getJSON<{ moments: Moment[] }>(`${base}/timeline/${user}`);
+      const data = await getJSON<{ moments: Moment[] }>(`/api/admin/contests/${contest}/integrity/timeline/${user}`);
       timelines = { ...timelines, [user]: data.moments ?? [] };
     } catch (e) {
       if (!handleAuth(e)) timelines = { ...timelines, [user]: messageOf(e) };
@@ -125,7 +193,7 @@
 
   function problemLabel(problemId: number | undefined): string {
     if (!problemId) return '';
-    return run?.problems?.[String(problemId)]?.label ?? '';
+    return problems?.[String(problemId)]?.label ?? '';
   }
 
   function created(c: Case) {
@@ -144,11 +212,13 @@
 {#if loadState === 'forbidden'}
   <h1 tabindex="-1">Signal</h1>
   <p class="lead">Only owners and admins can review integrity. Ask an owner if you need access.</p>
-{:else if loadState !== 'ready' || !sig || !run}
-  <a class="back" href={back}>Integrity</a>
-  <h1 tabindex="-1">{loadState === 'missing' || loadState === 'gone' ? 'Signal not found' : 'Signal'}</h1>
+{:else if loadState !== 'ready' || !sig}
+  <a class="back" href={back}>{backLabel}</a>
+  <h1 tabindex="-1">{loadState === 'missing' || loadState === 'gone' ? (fromCase ? 'Evidence not found' : 'Signal not found') : 'Signal'}</h1>
   {#if loadState === 'loading'}
     <p class="lead muted" role="status">Loading the signal</p>
+  {:else if loadState === 'missing' && fromCase}
+    <p class="lead">There is no such evidence in this case, or you cannot review it. <a href="/admin/contests">Go to the contest list.</a></p>
   {:else if loadState === 'missing'}
     <p class="lead">This contest has not been checked yet. <a href={back}>Go to the integrity check.</a></p>
   {:else if loadState === 'gone'}
@@ -158,15 +228,22 @@
     <p class="retry"><button type="button" class="btn btn-secondary" onclick={load}>Try again</button></p>
   {/if}
 {:else}
-  <a class="back" href={back}>Integrity</a>
-  <h1 tabindex="-1">{signalStudents(sig, run.users)}</h1>
+  <a class="back" href={back}>{backLabel}</a>
+  <h1 tabindex="-1">{signalStudents(sig, users)}</h1>
   <p class="summary">
-    {kindWord(sig.kind)} on {problem ? `problem ${problem.label}, ${problem.title}` : 'the whole contest'}. Strength:
-    {strengthWord(sig.strength).toLowerCase()} <span class="mono">({formatScore(sig.score)})</span>. {signalDetail(sig)}.
+    {kindWord(sig.kind)} on {problem ? `problem ${problem.label}, ${problem.title}` : sig.problem_id ? 'this problem' : 'the whole contest'}. Strength:
+    {strengthWord(sig.strength).toLowerCase()} <span class="mono">({formatScore(sig.score, sig.kind)})</span>. {signalDetail(sig)}.
   </p>
-  <p class="actions">
-    <button type="button" class="btn btn-primary" onclick={() => (dialogOpen = true)}>Open a case</button>
-  </p>
+  {#if sig.kind === 'similar'}
+    <p class="meaning muted">{size ? `${size}. ` : ''}{SCORE_MEANING}</p>
+  {/if}
+  {#if fromCase}
+    <p class="from-case muted">Evidence as it was when the case opened; a later check does not change it.</p>
+  {:else}
+    <p class="actions">
+      <button type="button" class="btn btn-primary" onclick={() => (dialogOpen = true)}>Open a case</button>
+    </p>
+  {/if}
 
   <div class="note"><IntegrityNote /></div>
 
@@ -181,7 +258,7 @@
       {:else}
         <div class="sides">
           {#each [pair.a, pair.b] as side (side.submission_id)}
-            {@const name = userName(run.users, side.user_id)}
+            {@const name = userName(users, side.user_id)}
             <div class="side">
               <h3>{name}</h3>
               <p class="meta muted">{languageLabel(side.language)}, submitted <span class="mono">{formatDateTime(side.created_at)}</span>, submission <span class="mono">{side.submission_id}</span></p>
@@ -200,7 +277,7 @@
       {#each students as u (u)}
         {@const t = timelines[u]}
         <div class="timeline">
-          <h3 id="timeline-{u}">{userName(run.users, u)}</h3>
+          <h3 id="timeline-{u}">{userName(users, u)}</h3>
           {#if t === undefined}
             <p class="muted" role="status">Loading the timeline</p>
           {:else if typeof t === 'string'}
@@ -222,15 +299,17 @@
     </div>
   </section>
 
-  <OpenCaseDialog
-    open={dialogOpen}
-    contestId={id}
-    signals={[sig]}
-    users={run.users}
-    problems={run.problems}
-    onclose={() => (dialogOpen = false)}
-    oncreated={created}
-  />
+  {#if !fromCase}
+    <OpenCaseDialog
+      open={dialogOpen}
+      contestId={id}
+      signals={[sig]}
+      {users}
+      {problems}
+      onclose={() => (dialogOpen = false)}
+      oncreated={created}
+    />
+  {/if}
 {/if}
 
 <style>
@@ -263,6 +342,13 @@
 
   .actions {
     margin-top: var(--space-4);
+  }
+
+  .meaning,
+  .from-case {
+    margin-top: var(--space-2);
+    max-width: 56rem;
+    font-size: var(--fs-0);
   }
 
   .note {

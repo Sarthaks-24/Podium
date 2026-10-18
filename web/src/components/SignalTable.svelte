@@ -1,16 +1,22 @@
 <!--
   SignalTable: integrity signals as a table (docs/INTEGRITY.md): the
   students named, the kind in words, the strength in words with the raw
-  number beside it, what was found, and for similar code a link to the
-  side-by-side view. With `selectable` each row starts with a checkbox for
+  number beside it (a similarity to two places), what was found, and for
+  similar code how much code is behind the score and a link to the
+  side-by-side view. Under a table with similar code, one line says what
+  the score means. With `selectable` each row starts with a checkbox for
   choosing signals to open a case from. Under 768 px each row reads as the
   students, then the kind and strength, then the details. Props: `signals`,
   `users` and `problems` (the run's maps), `contestId`, `caption`,
-  `showProblem` (adds a problem column, for a case's evidence),
-  `selectable`, `selected` (chosen signal ids) and `ontoggle`.
+  `showProblem` (adds a problem column, for a case's evidence), `caseId`
+  (the rows are a case's evidence: links open the case's own copy, as
+  ?case={caseId}&evidence={row}), `selectable`, `selected` (chosen signal
+  ids) and `ontoggle`.
 -->
 <script lang="ts">
   import {
+    SCORE_MEANING,
+    evidenceSize,
     formatScore,
     kindWord,
     problemName,
@@ -29,14 +35,20 @@
     contestId: string | number;
     caption: string;
     showProblem?: boolean;
+    caseId?: number;
     selectable?: boolean;
     selected?: ReadonlySet<number>;
     ontoggle?: (id: number, on: boolean) => void;
   }
 
-  let { signals, users, problems, contestId, caption, showProblem = false, selectable = false, selected = new Set(), ontoggle }: Props = $props();
+  let { signals, users, problems, contestId, caption, showProblem = false, caseId, selectable = false, selected = new Set(), ontoggle }: Props = $props();
 
   const base = $derived(`/admin/contests/${encodeURIComponent(String(contestId))}/integrity/signals`);
+  const anySimilar = $derived(signals.some((s) => s.kind === 'similar'));
+
+  function href(s: Signal, row: number): string {
+    return caseId === undefined ? `${base}/${s.id}` : `${base}/${s.id}?case=${caseId}&evidence=${row}`;
+  }
 </script>
 
 <div class="table-wrap signals" class:selectable>
@@ -54,8 +66,9 @@
       </tr>
     </thead>
     <tbody>
-      {#each signals as s (s.id)}
+      {#each signals as s, row (s.id)}
         {@const who = signalStudents(s, users)}
+        {@const size = s.kind === 'similar' ? evidenceSize(s.evidence) : ''}
         <tr class:chosen={selected.has(s.id)}>
           {#if selectable}
             <td class="pick">
@@ -72,13 +85,13 @@
           <th scope="row" class="who">{who}</th>
           {#if showProblem}<td class="prob">{problemName(problems, s.problem_id)}</td>{/if}
           <td class="kind">{kindWord(s.kind)}</td>
-          <td class="strength"><span class="word word-{s.strength}">{strengthWord(s.strength)}</span> <span class="mono">{formatScore(s.score)}</span></td>
-          <td class="detail">{signalDetail(s)}</td>
+          <td class="strength"><span class="word word-{s.strength}">{strengthWord(s.strength)}</span> <span class="mono">{formatScore(s.score, s.kind)}</span></td>
+          <td class="detail">{signalDetail(s)}{#if size}<span class="size"><span class="visually-hidden">. </span>{size}</span>{/if}</td>
           <td class="link">
             {#if s.kind === 'similar'}
-              <a href="{base}/{s.id}">Compare code<span class="visually-hidden"> of {who}</span></a>
+              <a href={href(s, row)}>Compare code<span class="visually-hidden"> of {who}</span></a>
             {:else}
-              <a href="{base}/{s.id}">Timelines<span class="visually-hidden"> of {who}</span></a>
+              <a href={href(s, row)}>Timelines<span class="visually-hidden"> of {who}</span></a>
             {/if}
           </td>
         </tr>
@@ -86,6 +99,9 @@
     </tbody>
   </table>
 </div>
+{#if anySimilar}
+  <p class="meaning">{SCORE_MEANING}</p>
+{/if}
 
 <style>
   .signals .table {
@@ -135,6 +151,17 @@
 
   .link {
     white-space: nowrap;
+  }
+
+  .size {
+    display: block;
+    color: var(--ink-muted);
+  }
+
+  .meaning {
+    margin-top: var(--space-2);
+    color: var(--ink-muted);
+    font-size: var(--fs-0);
   }
 
   /* Fixed shares, so the tables of every problem line up. */

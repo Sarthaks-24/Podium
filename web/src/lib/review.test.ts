@@ -3,9 +3,14 @@ import {
   byteSpansToText,
   clusters,
   codeLines,
+  actionState,
   defaultTitle,
+  evidenceSize,
   filterSignals,
   formatScore,
+  seenExplanations,
+  turnOver,
+  type CaseUser,
   groupByProblem,
   noteCounter,
   noteLength,
@@ -127,8 +132,18 @@ describe('wording', () => {
   });
 
   it('formats the number beside the strength', () => {
-    expect(formatScore(0.9)).toBe('0.90');
-    expect(formatScore(4)).toBe('4');
+    expect(formatScore(0.9, 'similar')).toBe('0.90');
+    // A similarity of 1 is a share, never a count.
+    expect(formatScore(1, 'similar')).toBe('1.00');
+    expect(formatScore(4, 'wrong_output')).toBe('4');
+    expect(formatScore(8, 'probing')).toBe('8');
+  });
+
+  it('says how much code is behind a similarity', () => {
+    expect(evidenceSize({ shared: 41, fingerprints: 44, tokens: 210 })).toBe('41 of 44 fingerprints shared, shorter program 210 tokens');
+    expect(evidenceSize({ shared: 12 })).toBe('12 fingerprints shared');
+    expect(evidenceSize({ spans_a: [] })).toBe('');
+    expect(evidenceSize(null)).toBe('');
   });
 
   it('says what each kind found', () => {
@@ -195,5 +210,45 @@ describe('grouping', () => {
       [7, 8],
       [9, 10],
     ]);
+  });
+});
+
+describe("the students' turn", () => {
+  const day = 86_400_000;
+  const asked = 1_000 * day;
+  const user = (over: Partial<CaseUser>): CaseUser => ({
+    user_id: 7,
+    name: 'Asha Rao',
+    shared_at: asked,
+    asked_at: asked,
+    respond_by: asked + 7 * day,
+    explanation: '',
+    explained_at: null,
+    explanations: [],
+    ...over,
+  });
+  const explained = (at: number): Partial<CaseUser> => ({ explanation: 'Mine.', explained_at: at, explanations: [{ text: 'Mine.', created_at: at }] });
+
+  it('ends with an explanation after the latest share or when the days run out', () => {
+    expect(turnOver(user({}), asked + day)).toBe(false);
+    expect(turnOver(user({}), asked + 7 * day)).toBe(true);
+    expect(turnOver(user(explained(asked + 5)), asked + 10)).toBe(true);
+    // An explanation from before a new share does not count.
+    expect(turnOver(user(explained(asked - 5)), asked + 10)).toBe(false);
+    // After a reopen no turn is open.
+    expect(turnOver(user({ asked_at: null, respond_by: null, ...explained(asked + 5) }), asked + 10 * day)).toBe(false);
+  });
+
+  it('opens Take action only on a shared case where every turn is over', () => {
+    const a = user(explained(asked + 5));
+    const b = user({ user_id: 8, name: 'Ravi Kumar', respond_by: asked + 7 * day });
+    expect(actionState({ state: 'open', users: [a, b] }, asked + 8 * day)).toEqual({ open: false, opensAt: null });
+    expect(actionState({ state: 'awaiting_student', users: [a, b] }, asked + day)).toEqual({ open: false, opensAt: asked + 7 * day });
+    expect(actionState({ state: 'awaiting_student', users: [a, b] }, asked + 7 * day)).toEqual({ open: true, opensAt: null });
+  });
+
+  it('sends the latest explanation version of each student', () => {
+    const versions = { explanations: [{ text: 'One.', created_at: 5 }, { text: 'Two.', created_at: 9 }], explained_at: 9 };
+    expect(seenExplanations({ users: [user(versions), user({ user_id: 8 })] })).toEqual({ '7': 9 });
   });
 });

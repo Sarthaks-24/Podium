@@ -4,9 +4,10 @@
 // contexts, solve A with the same program under different names (with a
 // multibyte comment, so the spans cross UTF-8 characters); after the end
 // the organiser runs the integrity check, finds the similar-code signal,
-// compares the code, opens a case and shares it; the first student sees
-// the notice, their own evidence and saves an explanation; the organiser
-// sees it and clears the case. Takes about six minutes, most of it waiting
+// compares the code, opens a case and shares it (action stays closed while
+// the students have their turn); the first student sees the notice, their
+// own evidence and saves an explanation; the organiser opens the case's own
+// pair view, sees the explanation and clears the case. Takes about six minutes, most of it waiting
 // for the contest to end.
 import { expect, test, type Browser, type Page } from '@playwright/test';
 
@@ -133,7 +134,9 @@ test('an organiser checks a finished contest, opens a case and a student explain
   await admin.getByLabel('Note for the log').fill('Asking both students to explain, live run.');
   await admin.getByRole('button', { name: 'Share with the students' }).click();
   await admin.getByRole('dialog', { name: 'Share with the students?' }).getByRole('button', { name: 'Share with the students' }).click();
-  await expect(admin.getByRole('button', { name: 'Take action' })).toBeEnabled();
+  // Shared is not enough: action waits for the students' turn.
+  await expect(admin.locator('.head .state')).toHaveText('Shared with the students');
+  await expect(admin.getByRole('button', { name: 'Take action' })).toBeDisabled();
 
   // The student sees the notice and only their own work.
   await first.goto('/');
@@ -146,8 +149,15 @@ test('an organiser checks a finished contest, opens a case and a student explain
   await expect(first.getByText('Saved. You can change it until a decision is made.')).toBeVisible();
   await first.screenshot({ path: `${shots}live-student-1440.png`, fullPage: true });
 
+  // The case's own pair view, from its copy of the evidence.
   await admin.reload();
+  await admin.getByRole('table', { name: 'Evidence in this case' }).getByRole('link', { name: /^Compare code/ }).click();
+  await expect(admin).toHaveURL(/\?case=\d+&evidence=0$/);
+  await expect(admin.locator('mark').first()).toBeVisible();
+  await admin.goBack();
   await expect(admin.getByText('I wrote it myself during the contest, live run.')).toBeVisible();
+  // One student explained; the other still has days left.
+  await expect(admin.getByRole('button', { name: 'Take action' })).toBeDisabled();
   await admin.getByLabel('Note for the log').fill('Explanation accepted after a short talk, live run.');
   await admin.getByRole('button', { name: 'Clear' }).click();
   await expect(admin.getByRole('button', { name: 'Reopen the case' })).toBeVisible();

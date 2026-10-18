@@ -242,6 +242,12 @@ The server logs `integrity check started`, `integrity case opened`, `integrity c
 
 **Retention of cases.** A case keeps its evidence and the students' explanations for 2 years after it is cleared or actioned. Then the same 12-hourly job empties both and logs `integrity case evidence past retention removed` with the count; the case, its title and its decision log with the reasons stay. Open and awaiting_student cases are never emptied, and reopening a closed case restarts the clock at its next decision.
 
+### After the integrity review
+
+- Retention: the 12-hour retention pass (`integrity.Service.Retain`, already called by main) now also deletes integrity runs and signals of contests that ended for everyone more than 180 days ago (same cutoff as `contests.Retain`), and deletes the explanation versions of cases closed more than 2 years ago along with the evidence. Cases keep their own copy of signals, so open cases are unaffected. A run still in state `running` is left for the next pass. Deletions are logged at info as "integrity checks past retention removed" with counts when the service has a logger. `integrity.Service.RetainSignals` is exported if main should log it separately.
+- The response window (7 days) is a constant, `ResponseWindow` in `server/internal/integrity/cases.go`; changing it needs a rebuild (and `RESPONSE_DAYS` in `web/src/lib/review.ts` for the help text).
+- Migration note: `0006_integrity.sql` was edited in place (unreleased). A development database that already ran 0006 must be recreated (or the integrity tables dropped and the `0006_integrity` row removed from `schema_migrations`) to pick up the new columns, table and triggers.
+
 ## AI wizard keys
 
 The AI wizard ("New problem with AI" and "Can a model solve this?", `docs/AUTHORING.md`) uses the organiser's own Anthropic API key. There is no variable for it and nothing to configure on the VM (decision D50).

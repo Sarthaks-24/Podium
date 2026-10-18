@@ -17,7 +17,7 @@ func texts(toks []Token) string {
 func TestLexNormalises(t *testing.T) {
 	cases := []struct{ lang, src, want string }{
 		{"cpp17", "#include <bits/stdc++.h>\n#define F(i) \\\n  for(;;)\nint main(){ long long total = 42; // sum\n return total; }",
-			"int I ( ) { long long I = N ; return I ; }"},
+			"I ( I ) for ( ; ; ) int I ( ) { long long I = N ; return I ; }"},
 		{"cpp17", `auto s = R"x(a "quoted" )" here)x"; char c = '\''; s += u8"y";`,
 			"auto I = S ; char I = S ; I += S ;"},
 		{"cpp17", "int x = 1'000'000 + 0x1Fu + 1.5e-3;", "int I = N + N + N ;"},
@@ -25,6 +25,12 @@ func TestLexNormalises(t *testing.T) {
 		{"python3", "def f(n):\n    s = r'\\d' + f\"{n}\" + '''x\n'''  # note\n    return n // 2", "def I ( I ) : I = S + S + S return I // N"},
 		{"node22", "const s = `a ${ {b: 1}.b } c`; let x = y ?? z?.w; // end", "const I = S ; let I = I ?? I ?. I ;"},
 		{"python3", "nombre = 'unterminated\nx = 1", "I = S I = N"},
+		// Code passed to exec or eval as a string literal is lexed as code;
+		// an escaped quote inside it opens and closes a string.
+		{"python3", `exec('x = 1\nprint(x, \'s\')')`, "I ( I = N I ( I , S ) )"},
+		{"python3", "eval(r'''a+b''') + exec(f(1))", "I ( I + I ) + I ( I ( N ) )"},
+		// A #define body is code; only #include lines are dropped.
+		{"cpp17", "#include <cstdio>\n#  define SQ(x) ((x)*(x))\n#pragma once", "I ( I ) ( ( I ) * ( I ) ) I"},
 	}
 	for _, c := range cases {
 		if got := texts(Lex(c.lang, c.src)); got != c.want {

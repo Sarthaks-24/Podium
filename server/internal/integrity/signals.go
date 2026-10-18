@@ -1,6 +1,7 @@
 package integrity
 
 import (
+	"math"
 	"sort"
 	"strings"
 	"unicode"
@@ -30,13 +31,25 @@ type WrongPair struct {
 	Strength     string
 }
 
-// maxWrongHolders: a wrong output more students than this printed is a
+// wrongHolderFloor and wrongHolderShare: a wrong output more than
+// max(wrongHolderFloor, wrongHolderShare of the students) printed is a
 // common mistake (an overflow everyone makes), not a shared source.
-const maxWrongHolders = 3
+const (
+	wrongHolderFloor = 3
+	wrongHolderShare = 0.02
+)
+
+// WrongHolderLimit is the most students who may share a wrong output for
+// it to still count, in a problem with this many students.
+func WrongHolderLimit(students int) int {
+	return max(wrongHolderFloor, int(math.Ceil(wrongHolderShare*float64(students))))
+}
 
 // IdenticalWrong finds pairs sharing at least two wrong outputs on one
-// problem; four or more is strong.
-func IdenticalWrong(outputs []TestOutput) []WrongPair {
+// problem; four or more is strong. students is how many students submitted
+// to the problem, for the common-mistake limit.
+func IdenticalWrong(outputs []TestOutput, students int) []WrongPair {
+	limit := WrongHolderLimit(students)
 	type key struct {
 		problem int64
 		test    int
@@ -58,7 +71,7 @@ func IdenticalWrong(outputs []TestOutput) []WrongPair {
 	}
 	shared := map[pairKey]map[int]bool{}
 	for k, users := range holders {
-		if len(users) < 2 || len(users) > maxWrongHolders {
+		if len(users) < 2 || len(users) > limit {
 			continue
 		}
 		ids := sortedIDs(users)
@@ -114,31 +127,128 @@ type Expected struct {
 	Output  string
 }
 
-// Hardcoded names the hidden tests whose expected output appears in a
-// source. Samples are visible to everyone, so callers pass hidden tests
-// only. Outputs shorter than 8 bytes or a single number of up to 6 digits
-// are skipped: they appear in honest code by chance.
-func Hardcoded(source string, hidden []Expected) (tests []int, strength string) {
-	src := squash(source)
-	longest := 0
+// Program is one submission searched for hard-coded answers.
+type Program struct {
+	UserID       int64
+	SubmissionID int64
+	Source       string
+}
+
+// HardcodedHit is a student whose program contains the expected output of
+// hidden tests.
+type HardcodedHit struct {
+	UserID       int64
+	SubmissionID int64
+	Tests        []int
+	Strength     string
+}
+
+// hardcodedFloor and hardcodedShare: an expected output found in the
+// programs of more than max(hardcodedFloor, hardcodedShare of the
+// students) is a word or constant the problem makes everyone write
+// (IMPOSSIBLE, 1000000000), not an answer pasted in.
+const (
+	hardcodedFloor = 3
+	hardcodedShare = 0.1
+)
+
+// FindHardcoded reports, per student, the submission containing the most
+// hidden expected outputs. Samples are visible to everyone, so callers
+// pass hidden tests only. An output is never looked for when:
+//
+//   - it is shorter than 8 bytes or a single number of up to 6 digits: it
+//     appears in honest code by chance;
+//   - one of the shared texts contains it (the reference, the brute force,
+//     the statement): the problem itself names it;
+//   - the programs of more than max(3, 10% of the students) contain it.
+//
+// Each distinct source is squashed once and every output is looked for in
+// it, so the cost is one pass per distinct source and output.
+func FindHardcoded(progs []Program, hidden []Expected, shared []string) []HardcodedHit {
+	type output struct {
+		test int
+		text string
+	}
+	var texts []string
+	for _, t := range shared {
+		if t != "" {
+			texts = append(texts, squash(t))
+		}
+	}
+	var outs []output
+next:
 	for _, e := range hidden {
 		out := squash(e.Output)
 		if len(out) < 8 || smallNumber(out) {
 			continue
 		}
-		if strings.Contains(src, out) {
-			tests = append(tests, e.TestIdx)
-			longest = max(longest, len(out))
+		for _, t := range texts {
+			if strings.Contains(t, out) {
+				continue next
+			}
+		}
+		outs = append(outs, output{e.TestIdx, out})
+	}
+	if len(outs) == 0 {
+		return nil
+	}
+	// The outputs each distinct source contains, as indexes into outs.
+	found := map[string][]int{}
+	students := map[int64]bool{}
+	for _, p := range progs {
+		students[p.UserID] = true
+		if _, done := found[p.Source]; done {
+			continue
+		}
+		src := squash(p.Source)
+		in := []int{}
+		for i, o := range outs {
+			if strings.Contains(src, o.text) {
+				in = append(in, i)
+			}
+		}
+		found[p.Source] = in
+	}
+	holders := make([]map[int64]bool, len(outs))
+	for _, p := range progs {
+		for _, i := range found[p.Source] {
+			if holders[i] == nil {
+				holders[i] = map[int64]bool{}
+			}
+			holders[i][p.UserID] = true
 		}
 	}
-	switch {
-	case len(tests) == 0:
-		return nil, ""
-	case len(tests) >= 2 || longest >= 32:
-		return tests, "strong"
-	default:
-		return tests, "moderate"
+	limit := max(hardcodedFloor, int(math.Ceil(hardcodedShare*float64(len(students)))))
+	best := map[int64]HardcodedHit{}
+	for _, p := range progs {
+		var tests []int
+		longest := 0
+		for _, i := range found[p.Source] {
+			if len(holders[i]) > limit {
+				continue
+			}
+			tests = append(tests, outs[i].test)
+			longest = max(longest, len(outs[i].text))
+		}
+		if len(tests) == 0 {
+			continue
+		}
+		if old, ok := best[p.UserID]; ok && len(old.Tests) >= len(tests) {
+			continue
+		}
+		sort.Ints(tests)
+		strength := "moderate"
+		if len(tests) >= 2 || longest >= 32 {
+			strength = "strong"
+		}
+		best[p.UserID] = HardcodedHit{UserID: p.UserID, SubmissionID: p.SubmissionID, Tests: tests, Strength: strength}
 	}
+	out := make([]HardcodedHit, 0, len(best))
+	for _, h := range best {
+		out = append(out, h)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].UserID < out[j].UserID })
+	return out
 }
 
 // squash collapses runs of whitespace to one space and trims the ends.
@@ -164,27 +274,49 @@ type Attempt struct {
 	SubmissionID int64
 	Language     string
 	Source       string
-	// Verdicts is the verdict of each hidden test, in test order.
+	// Verdicts is the verdict of each hidden test, in test order; SK marks
+	// a test that did not run.
 	Verdicts []string
 }
 
 // Probing counts how many different hidden-test results a student drew
-// from near-identical code: someone flipping a branch to learn the hidden
-// tests one bit at a time. It returns the largest count among runs of
-// consecutive attempts whose code barely changed, and a strength when
-// the count reaches 6 (10 is strong).
+// from near-identical code by flipping them: someone changing a branch to
+// learn the hidden tests one bit at a time. Honest debugging moves
+// forward, so only flips count:
+//
+//   - Attempts whose hidden tests all show SK (a compile error, a failed
+//     sample) are ignored.
+//   - Attempts form a run while their code stays near-identical to the
+//     first attempt of the run, not to the previous one, so small edits
+//     cannot chain without end.
+//   - Within a run, an attempt counts when, compared with the attempt
+//     before it, some hidden test went from AC back to a failure, or from
+//     one kind of failure to another (WA to TLE). Tests that newly pass or
+//     newly run are progress and never count.
+//
+// It returns the largest number of distinct counted results in one run,
+// and a strength when that reaches 6 (10 is strong).
 func Probing(attempts []Attempt) (distinct int, strength string) {
 	best := 0
 	seen := map[string]bool{}
-	var prev Doc
-	for i, a := range attempts {
-		d := Prepare(a.Language, a.Source)
-		if i == 0 || !nearIdentical(prev, d) {
-			seen = map[string]bool{}
+	var anchor Doc
+	var prev []string
+	started := false
+	for _, a := range attempts {
+		if allSkipped(a.Verdicts) {
+			continue
 		}
-		seen[strings.Join(a.Verdicts, ",")] = true
-		best = max(best, len(seen))
-		prev = d
+		d := Prepare(a.Language, a.Source)
+		if !started || !nearIdentical(anchor, d) {
+			anchor, prev, started = d, a.Verdicts, true
+			seen = map[string]bool{}
+			continue
+		}
+		if flipped(prev, a.Verdicts) {
+			seen[strings.Join(a.Verdicts, ",")] = true
+			best = max(best, len(seen))
+		}
+		prev = a.Verdicts
 	}
 	switch {
 	case best >= 10:
@@ -194,6 +326,29 @@ func Probing(attempts []Attempt) (distinct int, strength string) {
 	default:
 		return best, ""
 	}
+}
+
+func allSkipped(v []string) bool {
+	for _, x := range v {
+		if x != "SK" && x != "" {
+			return false
+		}
+	}
+	return true
+}
+
+// flipped reports whether some test went from AC to a failure, or from one
+// failure to another, between two results. SK on either side carries no
+// information: the judge stops a subtask at its first failure.
+func flipped(before, after []string) bool {
+	for i := 0; i < len(before) && i < len(after); i++ {
+		b, a := before[i], after[i]
+		if b == a || b == "SK" || a == "SK" || b == "" || a == "" || a == "AC" {
+			continue
+		}
+		return true
+	}
+	return false
 }
 
 // nearIdentical: at least 90% of fingerprints in common (Jaccard), or

@@ -85,11 +85,63 @@ type lexer struct {
 	// lineStart is true until the first token of a line, for C++
 	// preprocessor lines.
 	lineStart bool
+	// escapes is set while lexing the inside of a Python string passed to
+	// exec or eval: a backslash and the character after it are an escape
+	// sequence, read as a space.
+	escapes bool
+	// call tracks a Python exec or eval call: 1 after the name, 2 after
+	// its opening parenthesis, when a string literal is lexed as code.
+	call int
 }
 
 func (l *lexer) emit(text string, start int) {
 	l.out = append(l.out, Token{Text: text, Start: start, End: l.pos})
 	l.lineStart = false
+	switch {
+	case l.python() && text == "I" && (l.src[start:l.pos] == "exec" || l.src[start:l.pos] == "eval"):
+		l.call = 1
+	case l.call == 1 && text == "(":
+		l.call = 2
+	default:
+		l.call = 0
+	}
+}
+
+// literal emits the string literal that starts at start (its prefix, if
+// any) and whose quote is at quote, already consumed up to l.pos. A Python
+// string that is the first argument of exec or eval is code hidden from
+// the comparison, so its contents are lexed as Python instead.
+func (l *lexer) literal(start, quote int, raw bool) {
+	if l.call == 2 && l.python() {
+		if toks := l.inner(quote, raw); len(toks) > 0 {
+			l.out = append(l.out, toks...)
+			l.lineStart = false
+			l.call = 0
+			return
+		}
+	}
+	l.emit("S", start)
+}
+
+// inner lexes the contents of the Python string literal whose quote is at
+// quote and which ends at l.pos. Offsets stay those of the whole source.
+func (l *lexer) inner(quote int, raw bool) []Token {
+	q := l.src[quote]
+	open, closing := quote+1, l.pos-1
+	if triple := strings.Repeat(string(q), 3); strings.HasPrefix(l.src[quote:], triple) {
+		open, closing = quote+3, l.pos-3
+		if !strings.HasSuffix(l.src[:l.pos], triple) {
+			return nil // unterminated
+		}
+	} else if l.src[l.pos-1] != q {
+		return nil
+	}
+	if closing <= open {
+		return nil
+	}
+	sub := lexer{src: l.src[:closing], lang: l.lang, kw: l.kw, pos: open, escapes: !raw}
+	sub.run()
+	return sub.out
 }
 
 func (l *lexer) python() bool { return l.lang == "python3" }
@@ -105,6 +157,17 @@ func (l *lexer) run() {
 			l.lineStart = true
 		case c == ' ' || c == '\t' || c == '\r' || c == '\f' || c == '\v':
 			l.pos++
+		case l.escapes && c == '\\' && (l.peek(1) == '\'' || l.peek(1) == '"'):
+			// An escaped quote inside exec's string opens a string.
+			l.pos++
+		case l.escapes && c == '\\':
+			l.pos += 2
+		case l.lang == "cpp17" && c == '\\' && (l.peek(1) == '\n' || l.peek(1) == '\r' && l.peek(2) == '\n'):
+			// A line continuation joins two lines, as the compiler does.
+			l.pos += 2
+			if l.src[l.pos-1] == '\r' {
+				l.pos++
+			}
 		case l.python() && c == '#':
 			l.skipLine()
 		case !l.python() && c == '/' && l.peek(1) == '/':
@@ -112,11 +175,15 @@ func (l *lexer) run() {
 		case !l.python() && c == '/' && l.peek(1) == '*':
 			l.skipBlockComment()
 		case l.lang == "cpp17" && c == '#' && l.lineStart:
-			// Preprocessor lines (#include, #define) are template noise.
-			l.skipDirective()
+			// #include lines are template noise and are dropped. Any
+			// other directive is read past its name and its body lexed as
+			// code: a #define can hold a whole copied program.
+			if l.directive() == "include" {
+				l.skipDirective()
+			}
 		case c == '"' || c == '\'' || (c == '`' && l.lang == "node22"):
 			l.str()
-			l.emit("S", start)
+			l.literal(start, start, false)
 		case isDigit(c) || (c == '.' && isDigit(l.peek(1))):
 			l.number()
 			l.emit("N", start)
@@ -129,8 +196,9 @@ func (l *lexer) run() {
 				continue
 			}
 			if l.stringPrefix(word) {
+				quote := l.pos
 				l.str()
-				l.emit("S", start)
+				l.literal(start, quote, strings.ContainsAny(word, "rR"))
 				continue
 			}
 			if l.kw[word] {
@@ -167,6 +235,21 @@ func (l *lexer) skipBlockComment() {
 		}
 		l.pos++
 	}
+}
+
+// directive reads a preprocessor line's '#' and name (spaces may sit
+// between them) and returns the name.
+func (l *lexer) directive() string {
+	l.pos++
+	for l.pos < len(l.src) && (l.src[l.pos] == ' ' || l.src[l.pos] == '\t') {
+		l.pos++
+	}
+	start := l.pos
+	for l.pos < len(l.src) && isLetter(l.src[l.pos]) {
+		l.pos++
+	}
+	l.lineStart = false
+	return l.src[start:l.pos]
 }
 
 // skipDirective skips a preprocessor line and its backslash continuations.
@@ -246,6 +329,11 @@ func (l *lexer) str() {
 	for l.pos < len(l.src) {
 		c := l.src[l.pos]
 		switch {
+		case l.escapes && c == '\\' && l.peek(1) == q:
+			// Inside exec's string, an escaped quote closes the string
+			// it opened.
+			l.pos += 2
+			return
 		case c == '\\':
 			l.pos += 2
 			continue

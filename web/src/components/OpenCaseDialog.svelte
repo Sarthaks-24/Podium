@@ -133,7 +133,7 @@
         {#each signals as s (s.id)}
           <li>
             <span class="where">{problemName(problems, s.problem_id)}:</span>
-            {kindWord(s.kind)}, {signalStudents(s, users)}, {strengthWord(s.strength).toLowerCase()} <span class="mono">{formatScore(s.score)}</span>
+            {kindWord(s.kind)}, {signalStudents(s, users)}, {strengthWord(s.strength).toLowerCase()} <span class="mono">{formatScore(s.score, s.kind)}</span>
           </li>
         {/each}
       </ul>

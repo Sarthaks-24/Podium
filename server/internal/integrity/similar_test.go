@@ -7,8 +7,8 @@ import (
 
 // Calibration set (integrity plan section 6): six independent solutions
 // to one problem (shortest path on a grid from S to E) in different
-// styles, and three disguised copies. Copies must be found at least
-// moderate; no independent pair may be reported.
+// styles, and three disguised copies. Copies must be found strong; no
+// independent pair may be reported.
 var independent = map[int64]Subject{
 	1: {Language: "cpp17", Source: `#include <bits/stdc++.h>
 using namespace std;
@@ -339,8 +339,8 @@ func TestCalibrationFindsCopiesOnly(t *testing.T) {
 			t.Errorf("copy by %d of %d not found", copier, c.of)
 			continue
 		}
-		if p.Strength == "weak" {
-			t.Errorf("copy by %d of %d only weak: %.2f", copier, c.of, p.Score)
+		if p.Strength != "strong" {
+			t.Errorf("copy by %d of %d only %s: %.2f with %d shared", copier, c.of, p.Strength, p.Score, p.Shared)
 		}
 		if len(p.SpansA) == 0 || len(p.SpansB) == 0 {
 			t.Errorf("copy by %d of %d has no matched spans", copier, c.of)

@@ -799,6 +799,82 @@ Students (any signed-in user):
 - A new check replaces the contest's previous signals; cases keep their copy.
 - Case opens, state changes and explanations are logged at info with ids only (`by`, `contest_id`, `case_id`, `state`), never notes, explanations or code.
 
+### Changes after the integrity review
+
+#### Changed: `GET /api/admin/integrity/cases/{case}` and every route that returns a Case
+
+`users[]` gains three fields; `decisions[]` gains two.
+
+```json
+{
+  "users": [{
+    "user_id": 7, "name": "Asha Rao",
+    "shared_at": 1792300000000,
+    "asked_at": 1792300000000,
+    "respond_by": 1792904800000,
+    "explanation": "latest text", "explained_at": 1792300500000,
+    "explanations": [{ "text": "first", "created_at": 1792300400000 }, { "text": "latest text", "created_at": 1792300500000 }]
+  }],
+  "decisions": [{
+    "by": 2, "by_name": "Arjun Mehta", "state": "cleared", "note": "...", "created_at": 1792300600000,
+    "explanations_seen": { "7": 1792300500000 }
+  }]
+}
+```
+
+- `shared_at`: the first share; the student sees the case from then on.
+- `asked_at`: the latest share, which starts the student's turn. `null` before the first share and after a reopen.
+- `respond_by`: `asked_at` plus the response window (7 days). `null` with `asked_at`.
+- `explanations`: every saved version, oldest first. `created_at` is unique per case and student and names the version. `explanation` and `explained_at` stay as the latest version.
+- `by_name`: the reviewer's name (or email); `""` if unknown.
+- `explanations_seen`: per student id, the explanation version the reviewer had read when deciding.
+
+A reviewer who is one of a case's students (a student later made an admin) gets 404 on the case, its pair view and its decision, and the case is left out of `GET /api/admin/contests/{id}/integrity/cases`.
+
+#### Changed: `PUT /api/admin/integrity/cases/{case}`
+
+Request: `{ "state": "...", "note": "...", "seen_explanations": { "7": 1792300500000 } }`.
+
+- `seen_explanations`: per student id, the `created_at` of the latest explanation version the reviewer read (the web sends the latest of each student as loaded). If any student has a newer version, or one the map leaves out: **409** `explanation_changed`, "A student changed their explanation. Reload before deciding."
+- Allowed changes (anything else is 400 `bad_request` with one of the sentences below):
+
+| From | To |
+|---|---|
+| open | awaiting_student, cleared |
+| awaiting_student | cleared, actioned, open |
+| cleared, actioned | open (reopen) |
+
+- `awaiting_student` sets each student's `asked_at` (and `shared_at` the first time). `open` from a decided case clears `asked_at`: a new share is needed before action.
+- `actioned` needs every student to have an explanation version created at or after `asked_at`, or `asked_at` at least 7 days ago.
+- Refusal sentences (400 `bad_request`):
+  - "Unknown case state."
+  - "The case is already open. Reload to see its latest state." (or "shared with the students", "cleared", "closed with action taken")
+  - "Share the case with the students before taking action. They explain first."
+  - "The case is decided. Reopen it before changing the decision."
+  - "Every student needs to explain, or to have had 7 days since the case was last shared, before you take action."
+
+#### New: `GET /api/admin/integrity/cases/{case}/evidence/{index}/pair`
+
+The side-by-side view of a case's similar-code evidence, from the case's own copy of the signal (index from 0 in the case's `evidence` array), never the live signals. Same access as the case (404 for anyone who may not review it). The submissions must still belong to the case's contest and to the students the signal names.
+
+```json
+{ "a": Side, "b": Side, "signal": Signal, "server_now": 1792300000000 }
+```
+
+`Side` is the shape of `GET .../integrity/signals/{signal}/pair`. 404 `not_found`, "There is no such similar-code evidence in this case, or its code is no longer kept.", for a bad index, a signal that is not similar code, emptied evidence (2 years after the decision) or a submission no longer in the contest.
+
+#### Changed: similar-code signal evidence
+
+`evidence` of a `similar` signal gains `fingerprints` (the smaller program's fingerprints, the score's denominator) and `tokens` (the shorter program's length in tokens), next to `shared`. Strength now needs both score and amount: strong at score >= 0.9 and shared >= 40, moderate at >= 0.75 and >= 25, otherwise weak.
+
+#### Changed: `GET /api/admin/contests/{id}/submissions` (console feed)
+
+`typed_chars`, `pasted_chars` and `focus_losses` are present only for owners and admins. For a contest co-organiser whose site role is student they are left out of each item.
+
+#### Changed: `PUT /api/integrity/cases/{case}/explanation`
+
+Unchanged request and responses. Each save now adds a version; earlier versions are kept for reviewers.
+
 ## Judge worker API
 
 Used only by `podium-judge work` (decision D44). It is served on its own listener, `PODIUM_JUDGE_LISTEN` (default `127.0.0.1:8081`, loopback only), never through Caddy, and is not part of the public API above: no session cookies, no cross-site check. The request and response types live in `server/internal/judgeapi`, shared by both programs.

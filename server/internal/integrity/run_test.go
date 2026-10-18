@@ -24,6 +24,8 @@ type rig struct {
 	problem *problems.Problem
 	contest int64
 	nextJob int64
+	// clock is the time the service sees; tests move it.
+	clock *time.Time
 }
 
 func newRig(t *testing.T) *rig {
@@ -38,7 +40,8 @@ func newRig(t *testing.T) *rig {
 		t.Fatal(err)
 	}
 	now := time.UnixMilli(1_800_000_000_000)
-	tick := func() time.Time { return now }
+	clock := &now
+	tick := func() time.Time { return *clock }
 	bank := &problems.Service{DB: d, Blobs: problems.Blobs{Dir: filepath.Join(t.TempDir(), "tests")}, Now: tick}
 	pk, err := problems.ReadPack(zipDir(t, "../../../problems/a-plus-b"))
 	if err != nil {
@@ -60,7 +63,7 @@ func newRig(t *testing.T) *rig {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return &rig{svc: &Service{DB: d, Problems: bank, Now: tick}, db: d, problem: got, contest: cid}
+	return &rig{svc: &Service{DB: d, Problems: bank, Now: tick}, db: d, problem: got, contest: cid, clock: clock}
 }
 
 func mustExec(t *testing.T, d *sql.DB, q string, args ...any) sql.Result {
@@ -256,7 +259,7 @@ func TestCaseLifecycle(t *testing.T) {
 		t.Fatalf("case %+v", c)
 	}
 	// Action before the students could explain is refused.
-	if _, err := r.svc.Decide(ctx, c.ID, 100, Actioned, "Copying is clear from the matched code."); err == nil {
+	if _, err := r.svc.Decide(ctx, c.ID, 100, Actioned, "Copying is clear from the matched code.", nil); err == nil {
 		t.Error("actioned before sharing")
 	}
 	// Nothing is visible to the student until the case is shared.
@@ -266,7 +269,7 @@ func TestCaseLifecycle(t *testing.T) {
 	if err := r.svc.Explain(ctx, c.ID, 7, "I wrote it myself."); !errors.Is(err, ErrNotFound) {
 		t.Errorf("explained an unshared case: %v", err)
 	}
-	if _, err := r.svc.Decide(ctx, c.ID, 100, AwaitingStudent, "Please explain how you wrote this solution."); err != nil {
+	if _, err := r.svc.Decide(ctx, c.ID, 100, AwaitingStudent, "Please explain how you wrote this solution.", nil); err != nil {
 		t.Fatal(err)
 	}
 	mine, err := r.svc.MyCases(ctx, 7)
@@ -297,7 +300,7 @@ func TestCaseLifecycle(t *testing.T) {
 	if err := r.svc.Explain(ctx, c.ID, 3, "Not mine."); !errors.Is(err, ErrNotFound) {
 		t.Errorf("outsider explained: %v", err)
 	}
-	c, err = r.svc.Decide(ctx, c.ID, 100, Cleared, "The explanation is consistent with the timeline.")
+	c, err = r.svc.Decide(ctx, c.ID, 100, Cleared, "The explanation is consistent with the timeline.", seenAll(t, r, c.ID))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -333,6 +336,7 @@ func TestRetainEmptiesOldClosedCases(t *testing.T) {
 		mustExec(t, r.db, `INSERT INTO integrity_cases (id, contest_id, state, title, evidence, created_at, updated_at, closed_at)
 			VALUES (?, ?, ?, 'Case', '[{"id":1}]', 0, 0, ?)`, c.id, r.contest, c.state, c.closed)
 		mustExec(t, r.db, `INSERT INTO integrity_case_users (case_id, user_id, shared_at, explanation) VALUES (?, 1, 0, 'Mine.')`, c.id)
+		mustExec(t, r.db, `INSERT INTO integrity_explanations (case_id, user_id, text, created_at) VALUES (?, 1, 'Mine.', 0)`, c.id)
 		mustExec(t, r.db, `INSERT INTO integrity_decisions (case_id, by_user, state, note, created_at) VALUES (?, 100, ?, 'A reason of enough length.', 0)`,
 			c.id, c.state)
 	}
@@ -341,12 +345,12 @@ func TestRetainEmptiesOldClosedCases(t *testing.T) {
 		t.Fatalf("retain: %d %v", n, err)
 	}
 	old, _ := r.svc.GetCase(ctx, 1)
-	if string(old.Evidence) != "[]" || old.Users[0].Explanation != "" || len(old.Decisions) != 1 {
+	if string(old.Evidence) != "[]" || old.Users[0].Explanation != "" || len(old.Users[0].Explanations) != 0 || len(old.Decisions) != 1 {
 		t.Errorf("old case after retention: %+v", old)
 	}
 	for _, id := range []int64{2, 3} {
 		c, _ := r.svc.GetCase(ctx, id)
-		if string(c.Evidence) == "[]" || c.Users[0].Explanation == "" {
+		if string(c.Evidence) == "[]" || c.Users[0].Explanation == "" || len(c.Users[0].Explanations) != 1 {
 			t.Errorf("case %d emptied too early", id)
 		}
 	}

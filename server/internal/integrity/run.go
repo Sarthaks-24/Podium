@@ -44,12 +44,7 @@ func (s *Service) now() time.Time {
 	return time.Now()
 }
 
-func (s *Service) settings() Settings {
-	if s.Settings == (Settings{}) {
-		return Defaults
-	}
-	return s.Settings
-}
+func (s *Service) settings() Settings { return s.Settings.withDefaults() }
 
 // Start begins a check of a contest in the background and returns its
 // run id. One check runs at a time per server (D49). The caller checks
@@ -192,8 +187,8 @@ func (s *Service) checkProblem(ctx context.Context, p *problems.Problem, subs []
 	}
 	pairs := Compare(subjects, base, s.settings())
 	for _, pr := range pairs {
-		ev, _ := json.Marshal(map[string]any{"shared": pr.Shared, "spans_a": pr.SpansA, "spans_b": pr.SpansB,
-			"language_a": pr.A.Language, "language_b": pr.B.Language})
+		ev, _ := json.Marshal(map[string]any{"shared": pr.Shared, "fingerprints": pr.Fingerprints, "tokens": pr.Tokens,
+			"spans_a": pr.SpansA, "spans_b": pr.SpansB, "language_a": pr.A.Language, "language_b": pr.B.Language})
 		out = append(out, Signal{ProblemID: p.ID, Kind: "similar", Strength: pr.Strength, Score: round2(pr.Score),
 			UserA: pr.A.UserID, UserB: pr.B.UserID, SubmissionA: pr.A.SubmissionID, SubmissionB: pr.B.SubmissionID, Evidence: ev})
 	}
@@ -225,7 +220,11 @@ func (s *Service) checkProblem(ctx context.Context, p *problems.Problem, subs []
 		}
 		attempts[sub.user] = append(attempts[sub.user], Attempt{SubmissionID: sub.id, Language: sub.lang, Source: sub.source, Verdicts: verdicts})
 	}
-	for _, w := range IdenticalWrong(outputs) {
+	students := map[int64]bool{}
+	for _, sub := range subs {
+		students[sub.user] = true
+	}
+	for _, w := range IdenticalWrong(outputs, len(students)) {
 		ev, _ := json.Marshal(map[string]any{"tests": w.Tests})
 		out = append(out, Signal{ProblemID: p.ID, Kind: "wrong_output", Strength: w.Strength, Score: float64(len(w.Tests)),
 			UserA: w.UserA, UserB: w.UserB, Evidence: ev})
@@ -244,20 +243,21 @@ func (s *Service) checkProblem(ctx context.Context, p *problems.Problem, subs []
 		hidden = append(hidden, Expected{TestIdx: t.Idx, Output: string(b)})
 	}
 	if len(hidden) > 0 {
-		best := map[int64]Signal{}
-		for _, sub := range subs {
-			tests, strength := Hardcoded(sub.source, hidden)
-			if strength == "" {
-				continue
-			}
-			if old, ok := best[sub.user]; ok && old.Score >= float64(len(tests)) {
-				continue
-			}
-			ev, _ := json.Marshal(map[string]any{"tests": tests})
-			best[sub.user] = Signal{ProblemID: p.ID, Kind: "hardcoded", Strength: strength, Score: float64(len(tests)),
-				UserA: sub.user, SubmissionA: sub.id, Evidence: ev}
+		// Text the problem itself gives everyone: an expected output found
+		// there is a fixed word or constant, not a pasted answer.
+		shared := []string{p.Reference.Source, p.Statement}
+		if p.Brute != nil {
+			shared = append(shared, p.Brute.Source)
 		}
-		out = append(out, sortedByUser(best)...)
+		progs := make([]Program, len(subs))
+		for i, sub := range subs {
+			progs[i] = Program{UserID: sub.user, SubmissionID: sub.id, Source: sub.source}
+		}
+		for _, h := range FindHardcoded(progs, hidden, shared) {
+			ev, _ := json.Marshal(map[string]any{"tests": h.Tests})
+			out = append(out, Signal{ProblemID: p.ID, Kind: "hardcoded", Strength: h.Strength, Score: float64(len(h.Tests)),
+				UserA: h.UserID, SubmissionA: h.SubmissionID, Evidence: ev})
+		}
 	}
 
 	// Probing.

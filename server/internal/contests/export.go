@@ -274,6 +274,10 @@ type FeedFilter struct {
 	UserID    int64
 	Verdict   string
 	Page      int // from 1
+	// IntegrityCounts includes each submission's typed, pasted and focus
+	// counts. Only owners and admins get them: a co-organiser whose site
+	// role is student (a TA) never sees a classmate's integrity data.
+	IntegrityCounts bool
 }
 
 // FeedPage is how many submissions one page of the feed holds.
@@ -295,9 +299,10 @@ type FeedItem struct {
 	JudgedAt     *int64 `json:"judged_at"`
 	Practice     bool   `json:"practice"`
 	Rejudged     bool   `json:"rejudged"`
-	TypedChars   int    `json:"typed_chars"`
-	PastedChars  int    `json:"pasted_chars"`
-	FocusLosses  int    `json:"focus_losses"`
+	// The integrity counts are left out unless FeedFilter.IntegrityCounts.
+	TypedChars  *int `json:"typed_chars,omitempty"`
+	PastedChars *int `json:"pasted_chars,omitempty"`
+	FocusLosses *int `json:"focus_losses,omitempty"`
 }
 
 // Feed lists the contest's submissions, newest first, a page at a time,
@@ -338,9 +343,13 @@ func (s *Service) Feed(ctx context.Context, c *Contest, f FeedFilter) ([]FeedIte
 		var it FeedItem
 		var pid int64
 		var judged *int64
+		var typed, pasted, losses int
 		if err := rows.Scan(&it.ID, &it.UserID, &it.Name, &it.Email, &pid, &it.Language, &it.State, &it.Verdict, &it.Score,
-			&it.MaxScore, &it.CreatedAt, &judged, &it.Practice, &it.Rejudged, &it.TypedChars, &it.PastedChars, &it.FocusLosses); err != nil {
+			&it.MaxScore, &it.CreatedAt, &judged, &it.Practice, &it.Rejudged, &typed, &pasted, &losses); err != nil {
 			return nil, false, err
+		}
+		if f.IntegrityCounts {
+			it.TypedChars, it.PastedChars, it.FocusLosses = &typed, &pasted, &losses
 		}
 		it.JudgedAt = judged
 		it.ProblemLabel = labels[pid]

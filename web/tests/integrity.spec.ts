@@ -82,7 +82,7 @@ const SPANS_B = [span(SOURCE_B, 'vector<pair', 's.first;'), span(SOURCE_B, 'sort
 
 function signals(): Json[] {
   return [
-    { id: 31, problem_id: 12, kind: 'similar', strength: 'strong', score: 0.94, user_a: 7, user_b: 8, submission_a: 301, submission_b: 302, evidence: { shared: 41, spans_a: SPANS_A, spans_b: SPANS_B, language_a: 'cpp17', language_b: 'cpp17' } },
+    { id: 31, problem_id: 12, kind: 'similar', strength: 'strong', score: 0.94, user_a: 7, user_b: 8, submission_a: 301, submission_b: 302, evidence: { shared: 41, fingerprints: 44, tokens: 212, spans_a: SPANS_A, spans_b: SPANS_B, language_a: 'cpp17', language_b: 'cpp17' } },
     { id: 34, problem_id: 12, kind: 'hardcoded', strength: 'strong', score: 2, user_a: 12, submission_a: 310, evidence: { tests: [7, 9] } },
     { id: 32, problem_id: 12, kind: 'similar', strength: 'moderate', score: 0.78, user_a: 8, user_b: 9, submission_a: 302, submission_b: 303, evidence: { shared: 30, spans_a: [], spans_b: [], language_a: 'cpp17', language_b: 'java21' } },
     { id: 33, problem_id: 11, kind: 'wrong_output', strength: 'moderate', score: 3, user_a: 10, user_b: 11, evidence: { tests: [3, 5, 7] } },
@@ -103,7 +103,13 @@ interface Options {
   decided?: boolean;
   /** The student has no cases. */
   noCases?: boolean;
+  /** A re-run after the case opened: live signal 31 now names other students. */
+  rerun?: boolean;
 }
+
+type CaseUserJson = Json & { user_id: number; shared_at: number | null; asked_at: number | null; respond_by: number | null; explanations: { text: string; created_at: number }[] };
+
+const DAY = 86_400_000;
 
 function json(route: Route, status: number, body?: unknown) {
   return route.fulfill({ status, contentType: 'application/json; charset=utf-8', body: body === undefined ? '' : JSON.stringify(body) });
@@ -125,7 +131,20 @@ async function mockApi(page: Page, options: Options = {}) {
     puts: [] as Json[],
     explanations: [] as Json[],
     kase: null as Json | null,
+    livePairGets: 0,
+    casePairGets: 0,
+    /** A student in the case saves an explanation (a new version). */
+    explain(userId: number, text: string) {
+      const k = (state.kase ??= baseCase());
+      const at = Date.now();
+      k.users = (k.users as CaseUserJson[]).map((u) =>
+        u.user_id === userId ? { ...u, explanation: text, explained_at: at, explanations: [...u.explanations, { text, created_at: at }] } : u,
+      );
+    },
   };
+
+  // After a re-run, live signal 31 is another pair; the case keeps its copy.
+  const liveSignals = () => (options.rerun ? signals().map((s) => (s.id === 31 ? { ...s, user_a: 13, user_b: 14, submission_a: 330, submission_b: 331 } : s)) : signals());
 
   const run = () => ({
     id: 5,
@@ -133,7 +152,7 @@ async function mockApi(page: Page, options: Options = {}) {
     started_at: now - 3 * MIN,
     finished_at: state.run?.state === 'running' ? null : now - 2 * MIN,
     stats: { students: 30, submissions: 84, problems: 2, signals: { similar: 3, wrong_output: 1, hardcoded: 1, probing: 1 }, clusters: 2 },
-    signals: state.run?.state === 'running' ? [] : signals(),
+    signals: state.run?.state === 'running' ? [] : liveSignals(),
     users: USERS,
     problems: PROBLEMS,
     server_now: Date.now(),
@@ -165,10 +184,11 @@ async function mockApi(page: Page, options: Options = {}) {
     created_at: now - 20 * MIN,
     updated_at: now - 20 * MIN,
     users: [
-      { user_id: 7, name: 'Asha Rao', shared_at: null, explanation: '', explained_at: null },
-      { user_id: 8, name: 'Ravi Kumar', shared_at: null, explanation: '', explained_at: null },
+      { user_id: 7, name: 'Asha Rao', shared_at: null, asked_at: null, respond_by: null, explanation: '', explained_at: null, explanations: [] },
+      { user_id: 8, name: 'Ravi Kumar', shared_at: null, asked_at: null, respond_by: null, explanation: '', explained_at: null, explanations: [] },
     ],
-    decisions: [{ by: 2, state: 'open', note: 'Both programs share the whole greedy loop, renamed.', created_at: now - 20 * MIN }],
+    decisions: [{ by: 5, by_name: 'Priya Nair', state: 'open', note: 'Both programs share the whole greedy loop, renamed.', created_at: now - 20 * MIN, explanations_seen: {} }],
+    server_now: Date.now(),
   });
 
   const studentCase = (): Json => ({
@@ -237,9 +257,26 @@ async function mockApi(page: Page, options: Options = {}) {
         state.run = { state: 'running' };
         return json(route, 202, { run_id: 6, server_now: Date.now() });
       }
+      if (path === '/api/admin/integrity/cases/3/evidence/0/pair' && method === 'GET') {
+        state.casePairGets++;
+        return json(route, 200, {
+          a: { submission_id: 301, user_id: 7, language: 'cpp17', source: SOURCE_A, created_at: now - 2 * 3_600_000 - 50 * MIN, spans: SPANS_A },
+          b: { submission_id: 302, user_id: 8, language: 'cpp17', source: SOURCE_B, created_at: now - 2 * 3_600_000 - 41 * MIN, spans: SPANS_B },
+          signal: signals()[0],
+          server_now: Date.now(),
+        });
+      }
       const pair = path.match(/^\/api\/admin\/contests\/4\/integrity\/signals\/(\d+)\/pair$/);
       if (pair) {
+        state.livePairGets++;
         if (pair[1] !== '31') return apiError(route, 404, 'not_found', 'Only similar code has a pair.');
+        if (options.rerun) {
+          return json(route, 200, {
+            a: { submission_id: 330, user_id: 13, language: 'cpp17', source: 'int main() { return 13; }\n', created_at: now - 3_600_000, spans: [] },
+            b: { submission_id: 331, user_id: 14, language: 'cpp17', source: 'int main() { return 14; }\n', created_at: now - 3_600_000, spans: [] },
+            server_now: Date.now(),
+          });
+        }
         return json(route, 200, {
           a: { submission_id: 301, user_id: 7, language: 'cpp17', source: SOURCE_A, created_at: now - 2 * 3_600_000 - 50 * MIN, spans: SPANS_A },
           b: { submission_id: 302, user_id: 8, language: 'cpp17', source: SOURCE_B, created_at: now - 2 * 3_600_000 - 41 * MIN, spans: SPANS_B },
@@ -279,20 +316,33 @@ async function mockApi(page: Page, options: Options = {}) {
         return json(route, 200, state.kase);
       }
       if (path === '/api/admin/integrity/cases/3' && method === 'PUT') {
-        const body = req.postDataJSON() as { state: string; note: string };
+        const body = req.postDataJSON() as { state: string; note: string; seen_explanations?: Record<string, number> };
         state.puts.push(body);
         const k = (state.kase ??= baseCase());
-        const users = k.users as Json[];
-        if (body.state === 'actioned' && users.some((u) => u.shared_at === null)) {
-          return apiError(route, 400, 'bad_request', 'Share the case with the students and give them time to explain before taking action.');
-        }
+        const users = k.users as CaseUserJson[];
         const at = Date.now();
+        // The server's rules: a newer explanation than the reviewer read is
+        // refused, and action waits for every student's turn.
+        const latest = (u: CaseUserJson) => u.explanations[u.explanations.length - 1]?.created_at ?? null;
+        if (users.some((u) => latest(u) !== null && (body.seen_explanations?.[String(u.user_id)] ?? 0) < latest(u)!)) {
+          return apiError(route, 409, 'explanation_changed', 'A student changed their explanation. Reload before deciding.');
+        }
+        const turnOver = (u: CaseUserJson) => u.asked_at !== null && ((latest(u) ?? -1) >= u.asked_at || at >= (u.respond_by ?? Infinity));
+        if (body.state === 'actioned' && (k.state !== 'awaiting_student' || !users.every(turnOver))) {
+          return apiError(route, 400, 'bad_request', 'Every student needs to explain, or to have had 7 days since the case was last shared, before you take action.');
+        }
         state.kase = {
           ...k,
           state: body.state,
           updated_at: at,
-          users: body.state === 'awaiting_student' ? users.map((u) => ({ ...u, shared_at: u.shared_at ?? at })) : users,
-          decisions: [...(k.decisions as Json[]), { by: 2, state: body.state, note: body.note, created_at: at }],
+          users:
+            body.state === 'awaiting_student'
+              ? users.map((u) => ({ ...u, shared_at: u.shared_at ?? at, asked_at: at, respond_by: at + 7 * DAY }))
+              : body.state === 'open'
+                ? users.map((u) => ({ ...u, asked_at: null, respond_by: null }))
+                : users,
+          decisions: [...(k.decisions as Json[]), { by: 2, by_name: 'Arjun Mehta', state: body.state, note: body.note, created_at: at, explanations_seen: body.seen_explanations ?? {} }],
+          server_now: at,
         };
         return json(route, 200, state.kase);
       }
@@ -336,6 +386,16 @@ const SCREENS: Screen[] = [
   {
     name: 'integrity-pair',
     path: '/admin/contests/4/integrity/signals/31',
+    options: {},
+    title: 'Asha Rao and Ravi Kumar · Similar code · podium',
+    ready: async (page) => {
+      await expect(page.locator('mark').first()).toBeVisible();
+      await expect(page.getByText('Same browser and network as Ravi Kumar.')).toBeVisible();
+    },
+  },
+  {
+    name: 'integrity-case-pair',
+    path: '/admin/contests/4/integrity/signals/31?case=3&evidence=0',
     options: {},
     title: 'Asha Rao and Ravi Kumar · Similar code · podium',
     ready: async (page) => {
@@ -521,7 +581,7 @@ test('the pair view tints the shared passages, marks them for screen readers and
   await expect(page.getByRole('button', { name: 'Open a case' })).toBeFocused();
 });
 
-test('a case is shared with a note, action waits for sharing, and the log grows', async ({ page }) => {
+test("a case is shared with a note, action waits for the students' turn, and the log grows", async ({ page }) => {
   const api = await mockApi(page);
   await page.goto('/admin/integrity/cases/3');
   await expect(page.getByRole('heading', { level: 1, name: 'Similar code on B: Asha Rao and Ravi Kumar' })).toBeVisible();
@@ -548,21 +608,77 @@ test('a case is shared with a note, action waits for sharing, and the log grows'
   await confirmShare.getByRole('button', { name: 'Share with the students' }).click();
   await expect(page.locator('.head .state')).toHaveText('Shared with the students');
   await expect(students.getByRole('row').filter({ hasText: 'Asha Rao' })).toContainText('Shared');
-  expect(api.puts).toEqual([{ state: 'awaiting_student', note: 'Asking both students how they wrote the loop.' }]);
+  await expect(students.getByRole('row').filter({ hasText: 'Asha Rao' })).toContainText('Can explain until');
+  expect(api.puts).toEqual([{ state: 'awaiting_student', note: 'Asking both students how they wrote the loop.', seen_explanations: {} }]);
   await expect(page.getByLabel('Note for the log')).toHaveValue('');
 
-  await expect(action).toBeEnabled();
+  // Shared is not enough: each student explains first, or their 7 days run out.
+  await expect(action).toBeDisabled();
+  await expect(action).toHaveAccessibleDescription(/^Take action opens when every student has explained since the case was shared, or when their 7 days to explain end on /);
+
+  // Both students explain while the page is open; Asha writes twice.
+  api.explain(7, 'I wrote it in the lab from the lecture notes.');
+  api.explain(8, 'A friend shared their notes with me before the contest.');
+  await page.waitForTimeout(5);
+  api.explain(7, 'I wrote it in the lab from the lecture notes, then fixed the loop.');
   await page.getByLabel('Note for the log').fill('Both explanations describe the same shared notes from a friend.');
+  await page.getByRole('button', { name: 'Clear' }).click();
+  await expect(page.getByText('A student changed their explanation. Reload before deciding.')).toBeVisible();
+  await page.getByRole('button', { name: 'Reload the case' }).click();
+  await expect(page.getByText('A student changed their explanation.')).toHaveCount(0);
+  // Every version is shown with its time; the note is kept.
+  const versions = page.getByRole('list', { name: "Asha Rao's explanations, oldest first" });
+  await expect(versions.getByRole('listitem')).toHaveCount(2);
+  await expect(versions.getByRole('listitem').first()).toContainText('Version 1, written');
+  await expect(versions.getByRole('listitem').last()).toContainText('Latest version, written');
+  await expect(versions).toContainText('then fixed the loop.');
+  await expect(page.getByLabel('Note for the log')).toHaveValue('Both explanations describe the same shared notes from a friend.');
+
+  await expect(action).toBeEnabled();
   await action.click();
   const confirmAction = page.getByRole('dialog', { name: 'Take action?' });
   await confirmAction.getByRole('button', { name: 'Take action' }).click();
   await expect(page.locator('.head .state')).toHaveText('Action taken');
   await expect(page.getByRole('button', { name: 'Reopen the case' })).toBeVisible();
+  const decision = api.puts[api.puts.length - 1] as { state: string; seen_explanations: Record<string, number> };
+  expect(decision.state).toBe('actioned');
+  expect(Object.keys(decision.seen_explanations).sort()).toEqual(['7', '8']);
   const log = page.locator('.log li');
   await expect(log).toHaveCount(3);
+  // The reviewer's name comes from the server.
+  await expect(log.nth(0)).toContainText('Open, by Priya Nair');
   await expect(log.nth(2)).toContainText('Action taken, by You');
   await expect(log.nth(2)).toContainText('Both explanations describe the same shared notes from a friend.');
   await page.screenshot({ path: `${shots()}integrity-case-decided-1440-light.png`, fullPage: true });
+
+  // A reopen ends the turn: the case needs a new share before any action.
+  await page.getByLabel('Note for the log').fill('Reopening: a new submission came to light after the decision.');
+  await page.getByRole('button', { name: 'Reopen the case' }).click();
+  await expect(page.locator('.head .state')).toHaveText('Open');
+  await expect(action).toBeDisabled();
+  await expect(students.getByRole('row').filter({ hasText: 'Asha Rao' })).toContainText('Reopened: share again for a new turn');
+});
+
+test("a case's evidence opens the case's own copy, whatever a re-run changed", async ({ page }) => {
+  const api = await mockApi(page, { rerun: true });
+  await page.goto('/admin/integrity/cases/3');
+  const evidence = page.getByRole('table', { name: 'Evidence in this case' });
+  await expect(evidence).toContainText('41 of 44 fingerprints shared, shorter program 212 tokens');
+  await expect(page.getByText('The score is the share of the shorter program found in the other, not a probability.')).toBeVisible();
+  const link = evidence.getByRole('link', { name: 'Compare code of Asha Rao and Ravi Kumar' });
+  await expect(link).toHaveAttribute('href', '/admin/contests/4/integrity/signals/31?case=3&evidence=0');
+  await link.click();
+  await expect(page.getByRole('heading', { level: 1, name: 'Asha Rao and Ravi Kumar' })).toBeFocused();
+  await expect(page.getByRole('link', { name: 'Case: Similar code on B: Asha Rao and Ravi Kumar' })).toHaveAttribute('href', '/admin/integrity/cases/3');
+  await expect(page.getByRole('region', { name: /^Asha Rao's program, 12 lines, 2 shared passages$/ })).toBeVisible();
+  await expect(page.getByRole('region', { name: /^Ravi Kumar's program, 12 lines, 2 shared passages$/ })).toBeVisible();
+  await expect(page.getByText('Evidence as it was when the case opened', { exact: false })).toBeVisible();
+  await expect(page.getByText('41 of 44 fingerprints shared, shorter program 212 tokens', { exact: false })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Open a case' })).toHaveCount(0);
+  // Rohan and Sara now hold live signal 31; their code never appears here.
+  await expect(page.locator('main')).not.toContainText('return 13;');
+  expect(api.casePairGets).toBe(1);
+  expect(api.livePairGets).toBe(0);
 });
 
 test('a student sees a quiet notice, their own evidence, and saves an explanation', async ({ page }) => {
