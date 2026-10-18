@@ -13,11 +13,13 @@ func env(m map[string]string) Getenv { return func(k string) string { return m[k
 // validServer is a complete configuration with fake values.
 func validServer(overrides map[string]string) map[string]string {
 	m := map[string]string{
+		"PODIUM_MODE":           "dev",
 		"PODIUM_BASE_URL":       "https://contest.example.edu/",
 		"PODIUM_OWNER_EMAIL":    "Owner@Example.edu",
 		"PODIUM_SESSION_SECRET": strings.Repeat("s", 40),
 		"GOOGLE_CLIENT_ID":      "123-test.apps.googleusercontent.com",
 		"GOOGLE_CLIENT_SECRET":  "fake-test-secret",
+		"PODIUM_JUDGE_TOKEN":    strings.Repeat("j", 40),
 	}
 	for k, v := range overrides {
 		m[k] = v

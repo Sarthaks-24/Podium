@@ -6,6 +6,8 @@ describe('matchRoute', () => {
     expect(matchRoute('/').route.name).toBe('home');
     expect(matchRoute('/signin').route.name).toBe('signin');
     expect(matchRoute('/admin/people').route.name).toBe('people');
+    expect(matchRoute('/admin/problems').route.name).toBe('problems');
+    expect(matchRoute('/admin/problems/12')).toEqual({ route: expect.objectContaining({ name: 'problem' }), params: { id: '12' } });
   });
 
   it('ignores trailing slashes', () => {

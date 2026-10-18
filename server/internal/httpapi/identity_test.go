@@ -23,15 +23,28 @@ import (
 	"github.com/Sarthaks-24/podium/internal/auth"
 	"github.com/Sarthaks-24/podium/internal/auth/authtest"
 	"github.com/Sarthaks-24/podium/internal/db"
+	"github.com/Sarthaks-24/podium/internal/jobs"
+	"github.com/Sarthaks-24/podium/internal/judgeapi"
+	"github.com/Sarthaks-24/podium/internal/problems"
 )
 
 type site struct {
 	t   *testing.T
 	srv *httptest.Server
 	idp *authtest.IdP
+	// bank and judge are the problem bank and the judge worker API,
+	// which runs on its own listener as in production.
+	bank  *problems.Service
+	judge *httptest.Server
 }
 
-func newSite(t *testing.T) *site {
+// judgeToken is the worker token the test site's judge API accepts.
+const judgeToken = "test-judge-token-test-judge-token-000000"
+
+func newSite(t *testing.T) *site { return newSiteMode(t, "production") }
+
+// newSiteMode builds the test site in the given run mode.
+func newSiteMode(t *testing.T, mode string) *site {
 	t.Helper()
 	ctx := context.Background()
 	d, err := db.Open(ctx, filepath.Join(t.TempDir(), "e2e.db"))
@@ -47,7 +60,12 @@ func newSite(t *testing.T) *site {
 		t.Fatal(err)
 	}
 	idp := authtest.New(t)
-	s := &site{t: t, idp: idp}
+	log := slog.New(slog.NewTextHandler(io.Discard, nil))
+	jobSvc := &jobs.Service{DB: d, Kinds: map[string]jobs.Kind{judgeapi.KindValidate: problems.ValidateKind{}}}
+	blobs := problems.Blobs{Dir: filepath.Join(t.TempDir(), "tests")}
+	s := &site{t: t, idp: idp, bank: &problems.Service{DB: d, Blobs: blobs, Jobs: jobSvc}}
+	s.judge = httptest.NewServer(NewJudge(JudgeDeps{Log: log, Jobs: jobSvc, Blobs: blobs, Token: judgeToken}))
+	t.Cleanup(s.judge.Close)
 	// The server's URL is only known once it starts, so the handler is
 	// built on first request.
 	var h http.Handler
@@ -59,6 +77,7 @@ func newSite(t *testing.T) *site {
 		Auth:    svc,
 		IdP:     auth.NewProvider(idp.Endpoints(), idp.ClientID, idp.ClientSecret, RedirectURL(s.srv.URL)),
 		BaseURL: s.srv.URL, SessionSecret: []byte(strings.Repeat("e", 32)),
+		Problems: s.bank, Mode: mode,
 	})
 	return s
 }

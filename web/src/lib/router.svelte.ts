@@ -8,6 +8,10 @@
  * ordinary <a href="/..."> elements. Links under /api/ always get a full page
  * load, because /api/auth/google/start is a server redirect.
  *
+ * A screen with unsaved work can install a navigation guard with
+ * setNavigationGuard(); intercepted link clicks ask it first and stay put
+ * when it says no. The browser's back button is not guarded.
+ *
  * The route table, matching and interception rules live in routing.ts and
  * are re-exported here.
  */
@@ -45,6 +49,27 @@ if (typeof window !== 'undefined') {
   window.addEventListener('popstate', syncFromWindow);
 }
 
+/**
+ * Decides whether an in-app link may navigate to `to`. Returning false keeps
+ * the current screen; the guard is then responsible for asking the person
+ * and calling navigate() itself if they agree.
+ */
+export type NavigationGuard = (to: string) => boolean;
+
+let guard: NavigationGuard | null = null;
+
+/**
+ * Installs the guard consulted before intercepted link clicks navigate.
+ * There is one guard at a time; the returned function removes it if it is
+ * still the installed one.
+ */
+export function setNavigationGuard(fn: NavigationGuard): () => void {
+  guard = fn;
+  return () => {
+    if (guard === fn) guard = null;
+  };
+}
+
 /** Changes the URL without a page load and updates `router`. */
 export function navigate(to: string, options: { replace?: boolean } = {}): void {
   if (typeof window === 'undefined') return;
@@ -77,6 +102,7 @@ export function installLinkInterception(doc: Document = document): () => void {
     );
     if (to === null) return;
     event.preventDefault();
+    if (guard !== null && !guard(to)) return;
     navigate(to);
   }
   doc.addEventListener('click', onClick);

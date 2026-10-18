@@ -1,0 +1,432 @@
+<!--
+  ProblemBank: the admin list of problems at /admin/problems
+  (GET /api/admin/problems). A table gives each problem's title (a link to
+  its editor), slug, test count, points, a status word (Validated, Not
+  validated or Archived) and when it last changed. "New problem" opens a
+  small form for a title and a slug, suggested from the title until the
+  slug is edited, and goes to the new problem's editor. "Import pack" picks
+  a .zip and sends it as is (application/zip); a refused pack shows the
+  server's message and its list of problems. "Show archived" adds
+  ?archived=1 to the address. Students see a short explanation instead.
+  Takes no props.
+-->
+<script lang="ts">
+  import { onMount, tick, untrack } from 'svelte';
+  import { ApiError, getJSON, sendBody, sendJSON } from '../lib/api';
+  import { formatDateTime } from '../lib/format';
+  import { setTitle } from '../lib/head';
+  import { slugify, statusWord, type Problem, type ProblemSummary } from '../lib/problems';
+  import { navigate, router } from '../lib/router.svelte';
+  import { session } from '../lib/session.svelte';
+  import { showToast } from '../lib/toast.svelte';
+
+  let loadState = $state<'loading' | 'ready' | 'forbidden' | 'error'>('loading');
+  let loadError = $state('');
+  let problems = $state<ProblemSummary[]>([]);
+
+  let creating = $state(false);
+  let newTitle = $state('');
+  let newSlug = $state('');
+  let slugEdited = $state(false);
+  let createBusy = $state(false);
+  let createError = $state('');
+  let createFields = $state<Record<string, string>>({});
+  let titleInput: HTMLInputElement | undefined = $state();
+  let newButton: HTMLButtonElement | undefined = $state();
+
+  let fileInput: HTMLInputElement | undefined = $state();
+  let importing = $state(false);
+  let importError = $state<{ message: string; problems: readonly string[] } | null>(null);
+
+  const isOrganiser = $derived(session.user?.role === 'admin' || session.user?.role === 'owner');
+  const showArchived = $derived(router.query.get('archived') === '1');
+
+  /** Handles errors every request can hit; returns true when it did. */
+  function handleSessionError(err: unknown): boolean {
+    if (!(err instanceof ApiError)) return false;
+    if (err.status === 401) {
+      session.user = undefined;
+      session.status = 'signed-out';
+      return true;
+    }
+    if (err.status === 403 && err.code === 'forbidden') {
+      loadState = 'forbidden';
+      return true;
+    }
+    return false;
+  }
+
+  function messageOf(err: unknown): string {
+    return err instanceof ApiError ? err.message : 'Something went wrong. Try again in a moment.';
+  }
+
+  async function load(archived: boolean) {
+    loadState = 'loading';
+    try {
+      const data = await getJSON<{ problems: ProblemSummary[] }>(`/api/admin/problems${archived ? '?archived=1' : ''}`);
+      problems = data.problems ?? [];
+      loadState = 'ready';
+    } catch (err) {
+      if (handleSessionError(err)) return;
+      loadError = messageOf(err);
+      loadState = 'error';
+    }
+  }
+
+  onMount(() => setTitle('Problems'));
+
+  $effect(() => {
+    const archived = showArchived;
+    if (!isOrganiser) {
+      loadState = 'forbidden';
+      return;
+    }
+    untrack(() => load(archived));
+  });
+
+  function toggleArchived(event: Event) {
+    const on = (event.currentTarget as HTMLInputElement).checked;
+    navigate(on ? '/admin/problems?archived=1' : '/admin/problems', { replace: true });
+  }
+
+  async function openCreate() {
+    creating = true;
+    createError = '';
+    createFields = {};
+    await tick();
+    titleInput?.focus();
+  }
+
+  async function closeCreate() {
+    creating = false;
+    newTitle = '';
+    newSlug = '';
+    slugEdited = false;
+    createError = '';
+    createFields = {};
+    await tick();
+    newButton?.focus();
+  }
+
+  function onTitleInput() {
+    if (!slugEdited) newSlug = slugify(newTitle);
+  }
+
+  function onSlugInput() {
+    slugEdited = newSlug !== '';
+  }
+
+  async function create(event: SubmitEvent) {
+    event.preventDefault();
+    createError = '';
+    createFields = {};
+    const title = newTitle.trim();
+    const slug = newSlug.trim();
+    if (title === '') createFields.title = 'Enter a title.';
+    if (slug === '') createFields.slug = 'Enter a slug, for example interval-covering.';
+    if (Object.keys(createFields).length > 0) {
+      await tick();
+      document.querySelector<HTMLElement>('.create [aria-invalid="true"]')?.focus();
+      return;
+    }
+    createBusy = true;
+    try {
+      const problem = await sendJSON<Problem>('POST', '/api/admin/problems', { title, slug });
+      showToast(`Created ${problem.title}`);
+      navigate(`/admin/problems/${problem.id}`);
+    } catch (err) {
+      if (handleSessionError(err)) return;
+      if (err instanceof ApiError && Object.keys(err.fields).length > 0) {
+        createFields = { ...err.fields };
+        const known = ['title', 'slug'];
+        if (Object.keys(err.fields).some((k) => !known.includes(k))) createError = err.message;
+      } else {
+        createError = messageOf(err);
+      }
+    } finally {
+      createBusy = false;
+    }
+  }
+
+  function pickPack() {
+    fileInput?.click();
+  }
+
+  async function importPack() {
+    const file = fileInput?.files?.[0];
+    if (!fileInput || !file) return;
+    fileInput.value = '';
+    importError = null;
+    importing = true;
+    try {
+      const problem = await sendBody<Problem>('POST', '/api/admin/problems/import', file, 'application/zip');
+      showToast(`Imported ${problem.title}`);
+      navigate(`/admin/problems/${problem.id}`);
+    } catch (err) {
+      if (handleSessionError(err)) return;
+      importError = {
+        message: messageOf(err),
+        problems: err instanceof ApiError ? err.problems : [],
+      };
+    } finally {
+      importing = false;
+    }
+  }
+</script>
+
+<h1 tabindex="-1">Problems</h1>
+
+{#if loadState === 'forbidden'}
+  <p class="lead">Only admins can manage problems. Ask an owner if you need access.</p>
+{:else}
+  <div class="toolbar">
+    <div class="buttons">
+      <button
+        type="button"
+        class="btn btn-primary"
+        aria-expanded={creating}
+        aria-controls="create-problem"
+        bind:this={newButton}
+        onclick={() => (creating ? closeCreate() : openCreate())}
+      >
+        New problem
+      </button>
+      <button type="button" class="btn btn-secondary" disabled={importing} onclick={pickPack}>Import pack</button>
+      <input
+        bind:this={fileInput}
+        class="file"
+        type="file"
+        accept=".zip,application/zip"
+        aria-label="Pack to import"
+        tabindex="-1"
+        onchange={importPack}
+      />
+    </div>
+    <label class="toggle">
+      <input type="checkbox" checked={showArchived} onchange={toggleArchived} />
+      Show archived
+    </label>
+  </div>
+
+  {#if importing}
+    <p class="status muted" role="status">Importing pack</p>
+  {/if}
+
+  {#if importError}
+    <div class="banner banner-error import-error" role="alert">
+      <p>{importError.message}</p>
+      {#if importError.problems.length > 0}
+        <ul>
+          {#each importError.problems as problem, i (i)}<li>{problem}</li>{/each}
+        </ul>
+      {/if}
+    </div>
+  {/if}
+
+  {#if creating}
+    <form id="create-problem" class="create" novalidate onsubmit={create} aria-labelledby="create-heading">
+      <h2 id="create-heading" class="create-heading">New problem</h2>
+      <div class="create-fields">
+        <div class="field grow">
+          <label for="new-title">Title</label>
+          <input
+            id="new-title"
+            class="input"
+            type="text"
+            autocomplete="off"
+            bind:this={titleInput}
+            bind:value={newTitle}
+            oninput={onTitleInput}
+            aria-invalid={createFields.title ? 'true' : undefined}
+            aria-describedby={createFields.title ? 'new-title-error' : undefined}
+          />
+          {#if createFields.title}<p id="new-title-error" class="field-error">{createFields.title}</p>{/if}
+        </div>
+        <div class="field grow">
+          <label for="new-slug">Slug</label>
+          <input
+            id="new-slug"
+            class="input mono"
+            type="text"
+            autocomplete="off"
+            autocapitalize="none"
+            spellcheck="false"
+            bind:value={newSlug}
+            oninput={onSlugInput}
+            aria-invalid={createFields.slug ? 'true' : undefined}
+            aria-describedby="new-slug-help{createFields.slug ? ' new-slug-error' : ''}"
+          />
+          <p id="new-slug-help" class="field-help">Lower case letters, digits and hyphens. Used in pack file names.</p>
+          {#if createFields.slug}<p id="new-slug-error" class="field-error">{createFields.slug}</p>{/if}
+        </div>
+      </div>
+      <div class="create-actions">
+        <button type="submit" class="btn btn-primary" disabled={createBusy}>Create problem</button>
+        <button type="button" class="btn btn-quiet" onclick={closeCreate}>Cancel</button>
+      </div>
+      {#if createError !== ''}<p class="field-error" role="alert">{createError}</p>{/if}
+    </form>
+  {/if}
+
+  {#if loadState === 'loading'}
+    <p class="lead muted" role="status">Loading problems</p>
+  {:else if loadState === 'error'}
+    <div class="banner banner-error lead" role="alert">
+      <p>{loadError}</p>
+    </div>
+    <p class="retry"><button type="button" class="btn btn-secondary" onclick={() => load(showArchived)}>Try again</button></p>
+  {:else if problems.length === 0}
+    <p class="lead muted">No problems yet. Import a pack or create one.</p>
+  {:else}
+    <div class="table-wrap list">
+      <table class="table">
+        <thead>
+          <tr>
+            <th scope="col">Title</th>
+            <th scope="col">Slug</th>
+            <th scope="col" class="right">Tests</th>
+            <th scope="col" class="right">Points</th>
+            <th scope="col">Status</th>
+            <th scope="col">Updated</th>
+          </tr>
+        </thead>
+        <tbody>
+          {#each problems as p (p.id)}
+            <tr>
+              <th scope="row" class="title"><a href="/admin/problems/{p.id}">{p.title.trim() !== '' ? p.title : p.slug}</a></th>
+              <td class="num slug">{p.slug}</td>
+              <td class="num right">{p.test_count}</td>
+              <td class="num right">{p.points}</td>
+              <td class="state" class:ok={statusWord(p) === 'Validated'}>{statusWord(p)}</td>
+              <td class="num">{formatDateTime(p.updated_at)}</td>
+            </tr>
+          {/each}
+        </tbody>
+      </table>
+    </div>
+  {/if}
+{/if}
+
+<style>
+  .lead {
+    margin-top: var(--space-4);
+    max-width: 40rem;
+  }
+
+  .retry {
+    margin-top: var(--space-4);
+  }
+
+  .toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-3) var(--space-5);
+    margin-top: var(--space-5);
+  }
+
+  .buttons {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-3);
+  }
+
+  .file {
+    display: none;
+  }
+
+  .toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+    min-height: var(--control-h);
+    cursor: pointer;
+  }
+
+  .toggle input {
+    width: var(--space-4);
+    height: var(--space-4);
+    margin: 0;
+    accent-color: var(--act);
+  }
+
+  .status {
+    margin-top: var(--space-3);
+  }
+
+  .import-error {
+    max-width: 48rem;
+    margin-top: var(--space-4);
+  }
+
+  .import-error ul {
+    margin-top: var(--space-2);
+    padding-left: var(--space-5);
+    color: var(--ink);
+  }
+
+  .create {
+    max-width: 48rem;
+    margin-top: var(--space-5);
+    padding: var(--space-4);
+    border: var(--rule) solid var(--line);
+    background: var(--surface);
+  }
+
+  .create-heading {
+    font-size: var(--fs-2);
+  }
+
+  .create-fields {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-3) var(--space-4);
+    margin-top: var(--space-3);
+  }
+
+  .create-fields .grow {
+    flex: 1 1 14rem;
+  }
+
+  .create-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-3);
+    margin-top: var(--space-4);
+  }
+
+  .create .field-error[role='alert'] {
+    margin-top: var(--space-2);
+  }
+
+  .list {
+    margin-top: var(--space-5);
+  }
+
+  .title {
+    font-weight: 500;
+    min-width: 9rem;
+  }
+
+  .slug {
+    color: var(--ink-muted);
+  }
+
+  .right {
+    text-align: right;
+  }
+
+  .table .right {
+    text-align: right;
+  }
+
+  .state {
+    color: var(--ink-muted);
+    white-space: nowrap;
+  }
+
+  .state.ok {
+    color: var(--ok);
+  }
+</style>

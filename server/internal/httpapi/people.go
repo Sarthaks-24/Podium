@@ -17,11 +17,18 @@ const maxBody = 64 << 10
 // requires Content-Type application/json, which a plain cross-site HTML
 // form cannot send.
 func decodeJSON(w http.ResponseWriter, r *http.Request, v any) bool {
+	r.Body = http.MaxBytesReader(w, r.Body, maxBody)
+	return decodeJSONBody(w, r, v)
+}
+
+// decodeJSONBody is decodeJSON without the size limit, for callers that set
+// their own.
+func decodeJSONBody(w http.ResponseWriter, r *http.Request, v any) bool {
 	if mt, _, err := mime.ParseMediaType(r.Header.Get("Content-Type")); err != nil || mt != "application/json" {
 		WriteError(w, http.StatusUnsupportedMediaType, "bad_request", "Send the request body as application/json.")
 		return false
 	}
-	dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxBody))
+	dec := json.NewDecoder(r.Body)
 	dec.DisallowUnknownFields()
 	if err := dec.Decode(v); err != nil || dec.Decode(&struct{}{}) != io.EOF {
 		WriteError(w, http.StatusBadRequest, "bad_request", "The request body is not valid JSON for this action.")

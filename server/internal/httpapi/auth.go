@@ -65,7 +65,37 @@ func (d Deps) authConfig(w http.ResponseWriter, r *http.Request) {
 	for i, dm := range domains {
 		names[i] = dm.Domain
 	}
-	WriteJSON(w, http.StatusOK, map[string]any{"allowed_domains": names, "contact_email": d.Auth.OwnerEmail})
+	mode := d.Mode
+	if mode == "" {
+		mode = "production"
+	}
+	WriteJSON(w, http.StatusOK, map[string]any{"allowed_domains": names, "contact_email": d.Auth.OwnerEmail, "mode": mode})
+}
+
+// testSignIn signs in as anyone with any role, for testing mode only (the
+// route is not registered otherwise).
+func (d Deps) testSignIn(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Email string    `json:"email"`
+		Name  string    `json:"name"`
+		Role  auth.Role `json:"role"`
+		Next  string    `json:"next"`
+	}
+	if !decodeJSON(w, r, &req) {
+		return
+	}
+	u, token, expires, err := d.Auth.TestSignIn(r.Context(), req.Email, req.Name, req.Role, clientIP(r), r.UserAgent())
+	if err != nil {
+		d.changeError(w, r, err)
+		return
+	}
+	// As with Google, a new sign-in ends this browser's previous session.
+	if old, err := r.Cookie(d.sessionCookieName()); err == nil {
+		d.Auth.SignOut(r.Context(), old.Value)
+	}
+	d.setSessionCookie(w, token, expires)
+	d.Log.Info("test sign-in", "user_id", u.ID, "role", u.Role)
+	WriteJSON(w, http.StatusOK, map[string]string{"next": auth.SafeNext(req.Next)})
 }
 
 func (d Deps) googleStart(w http.ResponseWriter, r *http.Request) {

@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/Sarthaks-24/podium/internal/auth"
+	"github.com/Sarthaks-24/podium/internal/problems"
 )
 
 // Deps are the services the handlers use.
@@ -30,6 +31,12 @@ type Deps struct {
 	BaseURL string
 	// SessionSecret signs the sign-in state cookie.
 	SessionSecret []byte
+	// Problems is the problem bank.
+	Problems *problems.Service
+	// Mode is the run mode (testing, dev or production). Testing mode has
+	// no Google sign-in; instead anyone at this machine signs in with a
+	// form (decision D48).
+	Mode string
 }
 
 // New returns the root handler.
@@ -38,8 +45,12 @@ func New(d Deps) http.Handler {
 	mux.HandleFunc("GET /healthz", d.healthz)
 
 	mux.HandleFunc("GET /api/auth/config", d.authConfig)
-	mux.HandleFunc("GET /api/auth/google/start", d.googleStart)
-	mux.HandleFunc("GET /api/auth/google/callback", d.googleCallback)
+	if d.Mode == "testing" {
+		mux.HandleFunc("POST /api/auth/test-signin", d.testSignIn)
+	} else {
+		mux.HandleFunc("GET /api/auth/google/start", d.googleStart)
+		mux.HandleFunc("GET /api/auth/google/callback", d.googleCallback)
+	}
 	mux.HandleFunc("POST /api/auth/logout", d.logout)
 	mux.HandleFunc("GET /api/me", d.requireRole(auth.Student, d.me))
 	mux.HandleFunc("PUT /api/me/preferences", d.requireRole(auth.Student, d.setPreferences))
@@ -50,6 +61,19 @@ func New(d Deps) http.Handler {
 	mux.HandleFunc("POST /api/admin/accounts/reset-google", d.requireRole(auth.Owner, d.resetGoogleAccount))
 	mux.HandleFunc("POST /api/admin/domains", d.requireRole(auth.Owner, d.addDomain))
 	mux.HandleFunc("DELETE /api/admin/domains/{domain}", d.requireRole(auth.Owner, d.removeDomain))
+
+	admin := func(h http.HandlerFunc) http.HandlerFunc { return d.requireRole(auth.Admin, h) }
+	mux.HandleFunc("GET /api/admin/problems", admin(d.listProblems))
+	mux.HandleFunc("POST /api/admin/problems", admin(d.createProblem))
+	mux.HandleFunc("POST /api/admin/problems/import", admin(d.importProblem))
+	mux.HandleFunc("GET /api/admin/problems/{id}", admin(d.getProblem))
+	mux.HandleFunc("PUT /api/admin/problems/{id}", admin(d.updateProblem))
+	mux.HandleFunc("DELETE /api/admin/problems/{id}", admin(d.archiveProblem))
+	mux.HandleFunc("PUT /api/admin/problems/{id}/tests", admin(d.replaceTests))
+	mux.HandleFunc("GET /api/admin/problems/{id}/tests/{idx}/{part}", admin(d.downloadTest))
+	mux.HandleFunc("GET /api/admin/problems/{id}/export", admin(d.exportProblem))
+	mux.HandleFunc("POST /api/admin/problems/{id}/validate", admin(d.validateProblem))
+	mux.HandleFunc("GET /api/admin/problems/{id}/validation", admin(d.getValidation))
 
 	mux.HandleFunc("/api/", func(w http.ResponseWriter, r *http.Request) {
 		WriteError(w, http.StatusNotFound, "not_found", "This API route does not exist.")
@@ -90,6 +114,11 @@ func WriteJSON(w http.ResponseWriter, status int, v any) {
 type APIError struct {
 	Code    string `json:"code"`
 	Message string `json:"message"`
+	// Fields maps a form field to what is wrong with it.
+	Fields map[string]string `json:"fields,omitempty"`
+	// Problems lists everything wrong with an upload or a request to
+	// validate, so it can be fixed in one pass.
+	Problems []string `json:"problems,omitempty"`
 }
 
 // WriteError writes an APIError.

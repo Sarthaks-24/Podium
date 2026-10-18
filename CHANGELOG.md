@@ -4,6 +4,28 @@ Dated entries per release. Unreleased work is listed at the top.
 
 ## Unreleased
 
+### Milestone M2: problems (2026-10-18)
+
+- Problem bank for admins and owners: list, create, edit, archive; statement editor with a live preview (Markdown, KaTeX maths, sanitised with DOMPurify).
+- Problem packs: import and export of `problem.yaml`, `statement.md`, sources, an optional testlib `checker.cpp` and `tests/NN.in`/`NN.out`; strict YAML; a refused pack lists everything wrong with it at once. Packs must contain their outputs (output generation arrives in M3).
+- Pack import treated as untrusted parsing: 32 MB zipped, 128 MB counted on decompressed bytes, 2,000 entries read from the zip's end record before decoding, 16 MB per file, unsafe paths and links refused, one pack operation at a time.
+- Validation on the real judge: compiles and runs the reference, an optional brute force, an optional input validator and the checker on every test in isolate; fails when the reference is not accepted everywhere, the brute force disagrees, the validator rejects an input, or the reference uses more than half its time limit. The report names each failing test with program and verdict.
+- "Validated" is bound to a content hash of everything validation depends on; statement and title edits keep it, any other change clears it, and a failing re-run of the same content withdraws it.
+- Custom checkers with testlib: `install.sh` step `testlib` installs `testlib.h` at a pinned commit, checked by SHA-256; checkers compile with a 30 s budget and run in a fresh box.
+- Judge protocol (brought forward from M3): one `jobs` queue in SQLite, `job_results`, 60 s leases renewed by reports, three attempts, per-job deadlines, blobs served only to the lease holder and re-hashed by the judge, summary computed by the server. Served on a separate loopback-only listener, `PODIUM_JUDGE_LISTEN`, with a bearer token.
+- `podium-judge work` runs the worker loop; the systemd unit now starts it.
+- Migration `0003_problems.sql`; new routes under `/api/admin/problems` and `/api/judge/`.
+- `make sandbox-test` also runs the M2 acceptance test: the three example packs in `problems/` validate on real isolate, and a broken output fails naming the test.
+- New variables: server `PODIUM_JUDGE_LISTEN`, `PODIUM_JUDGE_TOKEN`; judge `PODIUM_SERVER_URL`, `PODIUM_JUDGE_TOKEN`.
+
+### Run modes (2026-10-18)
+
+- `PODIUM_MODE` for both services: `testing`, `dev` or `production` (the default).
+- Testing mode needs no keys: no Google client, a sign-in form for any email and role (`POST /api/auth/test-signin`), a random session secret, the public testing judge token, loopback only, and a banner on every page.
+- Dev mode: Google sign-in over http, judge testing token allowed. Production: every value required, https base URL, testing token refused.
+- `GET /api/auth/config` now returns `mode`.
+- `make dev-test` runs server, judge and web app in testing mode (`tools/dev-stack.sh`, state in `/var/tmp/podium-dev`); `npm run test:live` runs browser tests against it with nothing mocked.
+
 ### Themes (2026-10-18)
 
 - Ten colour themes plus System, in Light, Dark and Accessible groups, chosen from a menu in the header with a swatch for each.

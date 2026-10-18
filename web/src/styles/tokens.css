@@ -48,6 +48,10 @@
   --control-h: 32px;         /* desktop control height */
   --control-h-touch: 44px;   /* touch control height */
   --rule: 1px;               /* structural border width */
+
+  /* Images in problem statements sit on this in every theme, because
+     figures are usually drawn black on transparent. Not themed on purpose. */
+  --figure-backing: #FFFFFF;
 }
 
 @media (min-width: 768px) {

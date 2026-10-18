@@ -1,0 +1,17 @@
+title: Pair with sum
+slug: pair-with-sum
+time_limit_ms: 1000
+memory_limit_mb: 256
+checker: custom
+tags: [hashing, two-pointers]
+difficulty: medium
+reference: solution.cpp
+brute: brute.js
+samples: [1, 2]
+subtasks:
+  - points: 30
+    title: Small n
+    tests: "3-4"
+  - points: 70
+    title: Large n
+    tests: "5-6"

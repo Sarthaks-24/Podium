@@ -4,13 +4,16 @@
   GET /api/auth/config), an error banner when Google sign-in came back with
   ?error=, the "Continue with Google" link, and a contact line. The link is
   a full page navigation to /api/auth/google/start carrying the ?next= path
-  this page was opened with. Signed-in visitors are redirected away by the
-  app shell before this renders. Takes no props.
+  this page was opened with. When the server runs in testing mode the link
+  is replaced by the TestSignIn form. Signed-in visitors are redirected away
+  by the app shell before this renders. Takes no props.
 -->
 <script lang="ts">
   import { onMount } from 'svelte';
   import Message from '../components/Message.svelte';
+  import TestSignIn from '../components/TestSignIn.svelte';
   import { getJSON } from '../lib/api';
+  import { parseMode, runMode } from '../lib/mode.svelte';
   import { setTitle } from '../lib/head';
   import { router } from '../lib/router.svelte';
   import { audienceLine, errorMessage, parseErrorCode, safeNext, startHref } from '../lib/signin';
@@ -18,6 +21,7 @@
   interface AuthConfig {
     allowed_domains: string[];
     contact_email: string;
+    mode?: string;
   }
 
   let config = $state<AuthConfig | null>(null);
@@ -35,7 +39,9 @@
     let active = true;
     getJSON<AuthConfig>('/api/auth/config')
       .then((c) => {
-        if (active) config = { allowed_domains: c.allowed_domains ?? [], contact_email: c.contact_email ?? '' };
+        if (!active) return;
+        config = { allowed_domains: c.allowed_domains ?? [], contact_email: c.contact_email ?? '', mode: c.mode };
+        runMode.mode = parseMode(c.mode);
       })
       .catch(() => {
         if (active) configFailed = true;
@@ -49,16 +55,21 @@
 <div class="signin">
   <h1 tabindex="-1">Weekly programming contests</h1>
   <p class="audience" aria-live="polite">
-    {#if ready}{audienceLine(domains)}{/if}
+    {#if ready && config?.mode !== 'testing'}{audienceLine(domains)}{/if}
   </p>
 
   {#if error}
     <p class="banner banner-error error" role="alert"><Message parts={error} /></p>
   {/if}
 
-  <p class="action">
-    <a class="btn btn-primary" href={startHref(next)}>Continue with Google</a>
-  </p>
+  {#if config?.mode === 'testing'}
+    <p class="testing">This server is in testing mode. Pick any email and role; nothing is checked.</p>
+    <TestSignIn {next} />
+  {:else}
+    <p class="action">
+      <a class="btn btn-primary" href={startHref(next)}>Continue with Google</a>
+    </p>
+  {/if}
 
   {#if contactEmail !== ''}
     <p class="contact muted">
@@ -84,7 +95,8 @@
     margin-top: var(--space-5);
   }
 
-  .action {
+  .action,
+  .testing {
     margin-top: var(--space-5);
   }
 

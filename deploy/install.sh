@@ -8,7 +8,7 @@
 #                                  WSL2 judge setup, where caddy and swap are
 #                                  not wanted)
 #
-# Steps: packages isolate users dirs app caddy swap
+# Steps: packages isolate testlib users dirs app caddy swap
 #
 # The script never writes secrets. It creates /etc/podium/server.env and
 # /etc/podium/judge.env from the .env.example files only when they do not
@@ -17,7 +17,7 @@
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-ALL_STEPS=(packages isolate users dirs app caddy swap)
+ALL_STEPS=(packages isolate testlib users dirs app caddy swap)
 
 NODE_MAJOR=22
 JAVA_PKG=openjdk-21-jdk-headless
@@ -82,6 +82,25 @@ step_isolate() {
   isolate-check-environment || echo "isolate-check-environment reported warnings; see docs/OPERATIONS.md"
 }
 
+# testlib.h for custom checkers, pinned to release 0.9.41 by checksum.
+# Checkers are compiled inside isolate, which binds /usr, so
+# /usr/local/include is on the compiler's search path there too.
+TESTLIB_COMMIT=68f9f300b6abebec82d2a68d8ca04394f2664fb6
+TESTLIB_SHA256=70f74c570f2b45d63086ae6e4c41bbb5c5ffd4428cba9914bbc0396d29be10d8
+step_testlib() {
+  log "testlib: header for custom checkers"
+  if [[ -f /usr/local/include/testlib.h ]] && echo "$TESTLIB_SHA256  /usr/local/include/testlib.h" | sha256sum -c --quiet 2>/dev/null; then
+    echo "testlib.h already installed"
+    return
+  fi
+  local tmp
+  tmp=$(mktemp -d)
+  curl -fsSL -o "$tmp/testlib.h" "https://raw.githubusercontent.com/MikeMirzayanov/testlib/$TESTLIB_COMMIT/testlib.h"
+  echo "$TESTLIB_SHA256  $tmp/testlib.h" | sha256sum -c --quiet || die "testlib.h checksum mismatch"
+  install -m 644 "$tmp/testlib.h" /usr/local/include/testlib.h
+  rm -rf "$tmp"
+}
+
 step_users() {
   log "users: podium (server) and judge (worker)"
   id podium >/dev/null 2>&1 || useradd --system --home-dir /var/lib/podium --shell /usr/sbin/nologin podium
@@ -128,10 +147,12 @@ step_app() {
   install -m 644 "$HERE/systemd/podium-judge.service" /etc/systemd/system/
   systemctl daemon-reload
   systemctl enable podium-server.service podium-judge.service
-  if grep -q 'change-me' /etc/podium/server.env 2>/dev/null; then
-    echo "not starting the services: /etc/podium/server.env still has placeholder values"
-    return
-  fi
+  for env in server judge; do
+    if grep -q 'change-me' "/etc/podium/$env.env" 2>/dev/null; then
+      echo "not starting the services: /etc/podium/$env.env still has placeholder values"
+      return
+    fi
+  done
   systemctl restart podium-server.service podium-judge.service
 }
 

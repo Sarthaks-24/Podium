@@ -49,6 +49,15 @@ dev: ## Run the server and the Vite dev server together (needs server/.env)
 	  (cd web && exec npm run dev) & \
 	  wait
 
+.PHONY: dev-test
+dev-test: ## Run server, judge and web app in testing mode: no keys needed (judge in WSL2 on Windows)
+	cd server && $(GOFLAGS_LINUX) go build -o bin/linux/ ./cmd/...
+	@test -d web/node_modules || (cd web && npm ci)
+	@trap 'kill 0' EXIT; \
+	  $(LINUX) bash tools/dev-stack.sh server/bin/linux & \
+	  (cd web && exec npm run dev) & \
+	  wait
+
 .PHONY: web
 web: ## Build the web app into web/dist
 	cd web && npm ci && npm run build
@@ -76,9 +85,11 @@ check: ## Everything CI runs: formatting, vet, svelte-check, ESLint, tests
 	$(MAKE) test
 
 .PHONY: sandbox-test
-sandbox-test: ## Hostile-program suite in isolate (Linux, or WSL2 on Windows)
+sandbox-test: ## Hostile-program suite and M2 validation acceptance in isolate (Linux, or WSL2 on Windows)
 	cd server && $(GOFLAGS_LINUX) go test -c -tags sandbox -o bin/calib.test ./internal/judge/calib
+	cd server && $(GOFLAGS_LINUX) go test -c -tags sandbox -o bin/worker.test ./internal/worker
 	$(LINUX) bash tools/sandbox-test.sh server/bin/calib.test -test.v -test.timeout 10m
+	$(LINUX) bash tools/sandbox-test.sh server/bin/worker.test -test.v -test.timeout 20m -examples "$(CURDIR)/problems"
 
 .PHONY: calibrate
 calibrate: ## Measure this judge host and print the calibration tables

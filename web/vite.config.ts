@@ -10,6 +10,11 @@ export default defineConfig({
     // Computed once per build so the footer year is never hard-coded.
     __BUILD_YEAR__: JSON.stringify(new Date().getFullYear()),
   },
+  // The statement renderer is imported lazily, so the dev server would only
+  // discover these on first use and reload the page to re-bundle them.
+  optimizeDeps: {
+    include: ['marked', 'dompurify', 'katex'],
+  },
   server: {
     proxy: {
       '/api': apiTarget,

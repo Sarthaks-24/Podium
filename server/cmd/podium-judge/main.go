@@ -2,20 +2,23 @@
 // judge user, never opens the database, and executes every compile and run
 // inside isolate. Subcommands:
 //
+//	podium-judge work                  claim and run jobs from the server
 //	podium-judge calibrate [-reps N]   measure this host and print Markdown
 //
 // Stop the podium-judge service before calibrating: calibrate is a separate
 // process with its own memory budget and would overlap the worker's boxes.
-//
-// The worker loop that claims submissions from the server arrives in M3.
 package main
 
 import (
 	"context"
 	"flag"
 	"fmt"
+	"log/slog"
+	"net/http"
 	"os"
+	"os/exec"
 	"os/signal"
+	"path/filepath"
 	"runtime"
 	"strings"
 	"syscall"
@@ -24,12 +27,16 @@ import (
 	"github.com/Sarthaks-24/podium/internal/config"
 	"github.com/Sarthaks-24/podium/internal/judge"
 	"github.com/Sarthaks-24/podium/internal/judge/calib"
+	"github.com/Sarthaks-24/podium/internal/worker"
 )
+
+// version is set at release time with -ldflags "-X main.version=...".
+var version = "dev"
 
 func main() {
 	envFile := flag.String("env-file", "", "load variables from this file before reading the environment (local development)")
 	flag.Usage = func() {
-		fmt.Fprintln(os.Stderr, "usage: podium-judge [-env-file FILE] calibrate [-reps N]")
+		fmt.Fprintln(os.Stderr, "usage: podium-judge [-env-file FILE] work | calibrate [-reps N]")
 	}
 	flag.Parse()
 	if *envFile != "" {
@@ -38,6 +45,8 @@ func main() {
 		}
 	}
 	switch flag.Arg(0) {
+	case "work":
+		fail(work())
 	case "calibrate":
 		fail(calibrate(flag.Args()[1:]))
 	default:
@@ -90,6 +99,52 @@ func calibrate(args []string) error {
 		}
 	}
 	return nil
+}
+
+// work runs the worker loop until SIGINT or SIGTERM.
+func work() error {
+	cfg, err := config.LoadWorker(os.Getenv)
+	if err != nil {
+		return err
+	}
+	log := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: cfg.LogLevel}))
+	log.Info("starting podium-judge", append([]any{"version", version, "lanes", cfg.Lanes}, config.Summary(os.Getenv, config.JudgeVars)...)...)
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	blobs := filepath.Join(cfg.CacheDir, "blobs")
+	jobs := filepath.Join(cfg.CacheDir, "jobs")
+	for _, dir := range []string{blobs, jobs} {
+		if err := os.MkdirAll(dir, 0o700); err != nil {
+			return fmt.Errorf("judge cache: %w", err)
+		}
+	}
+	host, _ := os.Hostname()
+	client := &worker.Client{BaseURL: cfg.ServerURL, Token: cfg.Token, HTTP: &http.Client{Timeout: 5 * time.Minute}}
+	w := &worker.Worker{
+		Runner:  &judge.Runner{Iso: judge.Isolate{Path: cfg.IsolatePath}},
+		Client:  client,
+		Cache:   &worker.Cache{Dir: blobs, Client: client},
+		Log:     log,
+		Lanes:   cfg.Lanes,
+		WorkDir: jobs,
+		Name:    host,
+		Version: version,
+		Isolate: isolateVersion(ctx, cfg.IsolatePath),
+	}
+	w.Run(ctx)
+	log.Info("stopped")
+	return nil
+}
+
+// isolateVersion is the first line of "isolate --version", for the log.
+func isolateVersion(ctx context.Context, path string) string {
+	out, err := exec.CommandContext(ctx, path, "--version").Output()
+	if err != nil {
+		return "unknown"
+	}
+	line, _, _ := strings.Cut(string(out), "\n")
+	return strings.TrimSpace(line)
 }
 
 func hostDescription() string {

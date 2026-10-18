@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { ApiError, NETWORK_MESSAGE, UNEXPECTED_MESSAGE, getJSON, sendJSON } from './api';
+import { ApiError, NETWORK_MESSAGE, UNEXPECTED_MESSAGE, getJSON, sendBody, sendJSON } from './api';
 
 function respond(status: number, body?: unknown): Response {
   const text = body === undefined ? null : typeof body === 'string' ? body : JSON.stringify(body);
@@ -123,5 +123,44 @@ describe('sendJSON', () => {
     expect(err.status).toBe(409);
     expect(err.code).toBe('conflict');
     expect(err.message).toBe('The configured owner cannot be changed here.');
+  });
+});
+
+describe('error details', () => {
+  it('keeps field errors and problem lists from the error shape', async () => {
+    fakeFetch(
+      respond(400, {
+        error: {
+          code: 'bad_request',
+          message: 'The pack has 2 problems.',
+          fields: { slug: 'That slug is taken.', bad: 3 },
+          problems: ['tests/03.out is missing.', 7, 'problem.yaml: unknown key "foo".'],
+        },
+      }),
+    );
+    const err = await caught(sendJSON('PUT', '/api/admin/problems/1', {}));
+    expect(err.fields).toEqual({ slug: 'That slug is taken.' });
+    expect(err.problems).toEqual(['tests/03.out is missing.', 'problem.yaml: unknown key "foo".']);
+  });
+
+  it('defaults to no details', async () => {
+    fakeFetch(respond(404, { error: { code: 'not_found', message: 'No such problem.' } }));
+    const err = await caught(getJSON('/api/admin/problems/9'));
+    expect(err.fields).toEqual({});
+    expect(err.problems).toEqual([]);
+  });
+});
+
+describe('sendBody', () => {
+  it('sends raw bytes with the given content type', async () => {
+    const fn = fakeFetch(respond(201, { id: 4 }));
+    const zip = new Blob([new Uint8Array([0x50, 0x4b, 3, 4])], { type: 'application/zip' });
+    await expect(sendBody('POST', '/api/admin/problems/import', zip, 'application/zip')).resolves.toEqual({ id: 4 });
+    const [path, init] = fn.mock.calls[0];
+    expect(path).toBe('/api/admin/problems/import');
+    expect(init?.method).toBe('POST');
+    expect(init?.body).toBe(zip);
+    expect((init?.headers as Record<string, string>)['Content-Type']).toBe('application/zip');
+    expect((init?.headers as Record<string, string>).Accept).toBe('application/json');
   });
 });

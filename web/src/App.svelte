@@ -1,7 +1,8 @@
 <!--
   App: the shell around every screen. The header holds the podium word-mark
   (a link home) and, once signed in, the main navigation ("Contests", plus
-  "People" for owners), the user's name, a Sign out button and the theme
+  "Problems" for admins and owners and "People" for owners), the user's
+  name, a Sign out button and the theme
   menu. Under 768 px those collapse behind a Menu button that opens a
   panel; Escape closes it. The main area shows the screen for the current
   path from lib/router.svelte.ts, after the session from GET /api/me has
@@ -14,6 +15,7 @@
   import { onMount, tick } from 'svelte';
   import Toasts from './components/Toasts.svelte';
   import ThemeMenu from './lib/ThemeMenu.svelte';
+  import { loadMode, runMode } from './lib/mode.svelte';
   import { installLinkInterception, matchRoute, navigate, router } from './lib/router.svelte';
   import { displayName, loadSession, session, signOut } from './lib/session.svelte';
   import { safeNext } from './lib/signin';
@@ -21,6 +23,8 @@
   import Home from './routes/Home.svelte';
   import NotFound from './routes/NotFound.svelte';
   import People from './routes/People.svelte';
+  import ProblemBank from './routes/ProblemBank.svelte';
+  import ProblemEditor from './routes/ProblemEditor.svelte';
   import SignIn from './routes/SignIn.svelte';
 
   const year = __BUILD_YEAR__;
@@ -28,9 +32,11 @@
   let menuOpen = $state(false);
   let menuButton: HTMLButtonElement | undefined = $state();
 
-  const route = $derived(matchRoute(router.path).route);
+  const match = $derived(matchRoute(router.path));
+  const route = $derived(match.route);
   const signedIn = $derived(session.status === 'signed-in');
   const isOwner = $derived(session.user?.role === 'owner');
+  const isOrganiser = $derived(session.user?.role === 'admin' || session.user?.role === 'owner');
   const needsSignIn = $derived(route.auth && session.status === 'signed-out');
   const leaveSignIn = $derived(route.name === 'signin' && signedIn);
 
@@ -70,6 +76,7 @@
     loadSession().then((err) => {
       if (err) showToast(err.message, 'error');
     });
+    loadMode();
     return removeInterception;
   });
 
@@ -92,7 +99,13 @@
 <div class="page">
   <a class="skip" href="#main">Skip to content</a>
 
+
   <header class="bar">
+    {#if runMode.mode === 'testing'}
+      <p class="mode-banner" role="note">
+        Testing mode: sign-in is off and anyone at this machine can sign in as anyone. Do not use it for a real contest.
+      </p>
+    {/if}
     <div class="inner bar-inner">
       <a class="wordmark" href="/">podium</a>
 
@@ -114,6 +127,14 @@
               <li>
                 <a href="/" aria-current={route.name === 'home' ? 'page' : undefined}>Contests</a>
               </li>
+              {#if isOrganiser}
+                <li>
+                  <a
+                    href="/admin/problems"
+                    aria-current={route.name === 'problems' || route.name === 'problem' ? 'page' : undefined}>Problems</a
+                  >
+                </li>
+              {/if}
               {#if isOwner}
                 <li>
                   <a href="/admin/people" aria-current={route.name === 'people' ? 'page' : undefined}>People</a>
@@ -142,6 +163,12 @@
       <Home />
     {:else if route.name === 'people'}
       <People />
+    {:else if route.name === 'problems'}
+      <ProblemBank />
+    {:else if route.name === 'problem'}
+      {#key match.params.id}
+        <ProblemEditor id={match.params.id} />
+      {/key}
     {:else}
       <NotFound />
     {/if}
@@ -177,6 +204,14 @@
 
   .skip:focus-visible {
     transform: none;
+  }
+
+  .mode-banner {
+    padding: var(--space-2) var(--gutter);
+    border-bottom: var(--rule) solid var(--line);
+    background: var(--part-tint);
+    color: var(--ink);
+    font-size: var(--fs-0);
   }
 
   .inner {

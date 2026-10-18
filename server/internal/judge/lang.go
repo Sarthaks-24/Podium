@@ -3,6 +3,7 @@ package judge
 import (
 	"strconv"
 	"strings"
+	"time"
 )
 
 // Language describes how to compile and run one supported language inside
@@ -20,6 +21,9 @@ type Language struct {
 	// CompileProcesses and CompileMemoryMB bound the compiler.
 	CompileProcesses int
 	CompileMemoryMB  int
+	// CompileCPU overrides the default 10 s compile time limit; zero keeps
+	// the default. Only the checker language sets it.
+	CompileCPU time.Duration
 	// Run is the run command. "{mem}" is replaced with the problem memory
 	// limit in megabytes.
 	Run []string
@@ -80,6 +84,16 @@ var Languages = map[string]Language{
 		TimeFactor: 2.0, MemoryOverheadMB: 128, Processes: 16,
 		OOMMarkers: []string{"JavaScript heap out of memory"},
 	},
+}
+
+// CheckerLanguage is C++17 with a longer compile budget: testlib.h is a
+// 6,000-line header and a checker takes several seconds to build, which a
+// student submission never needs. Checkers are setter code and are still
+// compiled and run inside isolate.
+func CheckerLanguage() Language {
+	l := Languages["cpp17"]
+	l.CompileCPU = 30 * time.Second
+	return l
 }
 
 // RunCommand returns the run command with the memory limit substituted.

@@ -8,7 +8,7 @@ Requires=isolate.service
 User=judge
 Group=judge
 EnvironmentFile=/etc/podium/judge.env
-ExecStart=/usr/local/bin/podium-judge
+ExecStart=/usr/local/bin/podium-judge work
 Restart=always
 RestartSec=2
 # Covers the worker process only. Sandboxes run in isolate.slice, which has

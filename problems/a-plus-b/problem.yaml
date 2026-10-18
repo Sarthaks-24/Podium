@@ -1,0 +1,18 @@
+title: A plus B
+slug: a-plus-b
+time_limit_ms: 1000
+memory_limit_mb: 256
+checker: tokens
+tags: [math, implementation]
+difficulty: easy
+reference: solution.cpp
+brute: brute.py
+validator: validator.py
+samples: [1, 2]
+subtasks:
+  - points: 40
+    title: Small numbers
+    tests: "3-4"
+  - points: 60
+    title: Full range
+    tests: "5-6"

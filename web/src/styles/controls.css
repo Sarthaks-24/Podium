@@ -102,8 +102,44 @@
   border-color: var(--ink-muted);
 }
 
-.input[aria-invalid='true'] {
+.input[aria-invalid='true'],
+.select[aria-invalid='true'] {
   border-color: var(--bad);
+}
+
+/* A multi-line input. .textarea-code is for source and Markdown: mono,
+   no wrapping, tabs four spaces wide. */
+textarea.input {
+  display: block;
+  padding-block: var(--space-2);
+  line-height: var(--lh-body);
+  resize: vertical;
+}
+
+.textarea-code {
+  font-family: var(--font-mono);
+  font-size: var(--fs-0);
+  tab-size: 4;
+  white-space: pre;
+  overflow-wrap: normal;
+  overflow-x: auto;
+}
+
+/* Program source sits in the editor well, dark in every theme (design.md
+   5.3), so it already looks like the code editor that replaces it. */
+.textarea-well,
+.textarea-well:hover {
+  border-color: var(--well);
+  border-radius: 0;
+  background: var(--well);
+  color: var(--well-ink);
+  caret-color: var(--well-ink);
+}
+
+/* Help text under a control. */
+.field-help {
+  color: var(--ink-muted);
+  font-size: var(--fs-0);
 }
 
 /* A label above its control. */

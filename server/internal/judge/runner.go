@@ -115,6 +115,9 @@ func (r *Runner) Compile(ctx context.Context, box int, lang Language, source []b
 	}
 	lim := Limits{CPU: compileCPU, Wall: compileWall, MemoryKB: lang.CompileMemoryMB * 1024,
 		Processes: lang.CompileProcesses, FileSizeKB: compileFileSizeKB}
+	if lang.CompileCPU > 0 {
+		lim.CPU, lim.Wall = lang.CompileCPU, 2*lang.CompileCPU
+	}
 	release, err := r.reserve(ctx, lim.MemoryKB)
 	if err != nil {
 		return prog, CompileResult{}, err
@@ -145,7 +148,7 @@ func (r *Runner) Compile(ctx context.Context, box int, lang Language, source []b
 	case meta.OOMKilled:
 		res.Verdict, res.Output = CompileError, appendNote(res.Output, "The compiler ran out of memory.")
 	case meta.Status == "TO":
-		res.Verdict, res.Output = CompileError, appendNote(res.Output, "Compilation took longer than 10 seconds.")
+		res.Verdict, res.Output = CompileError, appendNote(res.Output, fmt.Sprintf("Compilation took longer than %d seconds.", int(lim.CPU.Seconds())))
 	case meta.Status != "" || meta.ExitCode != 0:
 		res.Verdict = CompileError
 	}

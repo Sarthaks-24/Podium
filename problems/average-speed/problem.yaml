@@ -1,0 +1,19 @@
+title: Average speed
+slug: average-speed
+time_limit_ms: 1000
+memory_limit_mb: 256
+checker: float
+epsilon: 1e-6
+tags: [math]
+difficulty: easy
+reference: solution.java
+brute: brute.py
+validator: validator.py
+samples: [1]
+subtasks:
+  - points: 30
+    title: One segment
+    tests: "2-3"
+  - points: 70
+    title: Many segments
+    tests: "4-6"

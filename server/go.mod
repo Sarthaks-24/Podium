@@ -3,6 +3,7 @@ module github.com/Sarthaks-24/podium
 go 1.27.0
 
 require (
+	go.yaml.in/yaml/v3 v3.0.4
 	golang.org/x/oauth2 v0.37.0
 	modernc.org/sqlite v1.60.1
 )
