@@ -10,6 +10,7 @@
 // keyboard path through /admin/people, the confirm and add flows, the
 // sign-in redirects and the small-screen menu.
 import { expect, test, type Page, type Route } from '@playwright/test';
+import { activate } from './keyboard';
 
 /** cache/screenshots-m1/ at the repository root (git-ignored), with a trailing slash. */
 function shots(): string {
@@ -297,7 +298,7 @@ test('removing an organiser asks first and confirms with a toast', async ({ page
   await page.getByRole('button', { name: 'Remove Arjun Mehta' }).click();
   await dialog.getByRole('button', { name: 'Remove' }).click();
   await expect(dialog).toBeHidden();
-  await expect(page.getByText('Removed', { exact: true })).toBeVisible();
+  await expect(page.getByText('Removed Arjun Mehta', { exact: true })).toBeVisible();
   await expect(page.getByRole('cell', { name: 'arjun.mehta@college.edu', exact: true })).toHaveCount(0);
   await expect(page.getByText('Set in server configuration')).toBeVisible();
 });
@@ -437,10 +438,53 @@ test('the small-screen menu opens, and Escape closes it', async ({ page }) => {
   await expect(menu).toHaveAttribute('aria-expanded', 'false');
   await expect(menu).toBeFocused();
 
+  // With the theme panel open inside the menu, one Escape closes one thing.
+  await menu.click();
+  const theme = page.getByRole('button', { name: 'Theme' });
+  await theme.click();
+  await expect(theme).toHaveAttribute('aria-expanded', 'true');
+  await page.keyboard.press('Escape');
+  await expect(theme).toHaveAttribute('aria-expanded', 'false');
+  await expect(theme).toBeFocused();
+  await expect(menu).toHaveAttribute('aria-expanded', 'true');
+  await page.keyboard.press('Escape');
+  await expect(menu).toHaveAttribute('aria-expanded', 'false');
+  await expect(menu).toBeFocused();
+
   await menu.click();
   await page.getByRole('link', { name: 'People' }).click();
   await expect(page).toHaveURL('/admin/people');
   await expect(menu).toHaveAttribute('aria-expanded', 'false');
+});
+
+test('keyboard only: sign in, the theme menu and the shortcut list are reachable', async ({ page }) => {
+  await mockApi(page, 'signed-out');
+  await page.goto('/signin');
+  await page.keyboard.press('Tab');
+  await expect(page.getByRole('link', { name: 'Skip to content' })).toBeFocused();
+  await activate(page, page.getByRole('link', { name: 'Continue with Google' }), 'Tab');
+  await expect(page.getByRole('link', { name: 'Continue with Google' })).not.toBeFocused();
+
+  // The footer button and "?" open the same list; Escape closes it and focus returns.
+  const footer = page.getByRole('button', { name: 'Keyboard shortcuts' });
+  await activate(page, footer);
+  const keys = page.getByRole('dialog', { name: 'Keyboard shortcuts' });
+  await expect(keys).toBeVisible();
+  await expect(keys.getByRole('heading', { name: 'Problem editor' })).toHaveCount(0);
+  await page.keyboard.press('Escape');
+  await expect(keys).toBeHidden();
+  await expect(footer).toBeFocused();
+  await page.keyboard.press('?');
+  await expect(keys).toBeVisible();
+  for (const width of WIDTHS) {
+    for (const theme of THEMES) {
+      await page.emulateMedia({ colorScheme: theme });
+      await page.setViewportSize({ width, height: 900 });
+      await page.screenshot({ path: `${shots()}shortcuts-${width}-${theme}.png` });
+    }
+  }
+  await activate(page, keys.getByRole('button', { name: 'Close keyboard shortcuts' }));
+  await expect(keys).toBeHidden();
 });
 
 test('a network failure on start-up is reported', async ({ page }) => {

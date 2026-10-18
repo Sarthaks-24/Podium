@@ -4,8 +4,8 @@
   It loads the contest (for its title and problem letters) and
   GET /api/contests/{slug}/standings, says whether the board is live,
   frozen ("Frozen at 20:30. Updates when the contest ends.", or after the
-  end, held for the reveal, "The final board appears when the organisers
-  release it.") or final and how many submissions are still judging, with
+  end, held for the reveal, "The final standings appear when the organisers
+  release them.") or final and how many submissions are still judging, with
   a line explaining the time under each score, and draws StandingsTable with the
   student's own row tinted and "Jump to you". A window-mode contest answers
   403 until the student's window closes; the page then says "The board
@@ -26,7 +26,7 @@
 
   let { slug }: { slug: string } = $props();
 
-  const CLOSED = 'The board opens when the window closes.';
+  const CLOSED = 'The standings open when the contest closes.';
 
   let loadState = $state<'loading' | 'ready' | 'closed' | 'forbidden' | 'missing' | 'error'>('loading');
   let message = $state('');
@@ -65,7 +65,7 @@
       }
       if (quiet && loadState === 'ready') return;
       if (e instanceof ApiError && e.status === 403) {
-        const closed = e.code === 'board_closed' || e.message === CLOSED || /window closes/i.test(e.message);
+        const closed = e.code === 'board_closed' || e.message === CLOSED || /window closes|contest closes/i.test(e.message);
         loadState = closed ? 'closed' : 'forbidden';
         message = closed ? CLOSED : e.message;
       } else if (e instanceof ApiError && e.status === 404) {
@@ -132,7 +132,7 @@
   <p class="lead muted" role="status">Loading the standings</p>
 {:else if loadState === 'closed'}
   <p class="lead">{CLOSED}</p>
-  <p class="muted small">Everyone starts at a different time in this contest, so the board stays hidden until your window has closed.</p>
+  <p class="muted small">Everyone starts at a different time in this contest, so the standings stay hidden until everyone has had their time.</p>
 {:else if loadState === 'forbidden'}
   <p class="lead">{message}</p>
 {:else if loadState === 'missing'}

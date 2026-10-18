@@ -284,7 +284,7 @@ describe('AI drafts and the solve check', () => {
   });
 
   it('says how much a model scored and what it means', () => {
-    expect(solveLine({ score: 100, max_score: 100 })).toBe('A model solved this zero-shot: 100 of 100');
+    expect(solveLine({ score: 100, max_score: 100 })).toBe('A model solved this on its first try: 100 of 100');
     expect(solveMeaning({ score: 100, max_score: 100 })).toMatch(/full marks/);
     expect(solveMeaning({ score: 40, max_score: 100 })).toMatch(/part of the marks/);
     expect(solveMeaning({ score: 0, max_score: 100 })).toMatch(/scored nothing/);

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { formatDateTime, roleLabel } from './format';
+import { countOf, formatDateTime, roleLabel } from './format';
 import { formatTitle } from './head';
 
 describe('formatDateTime', () => {
@@ -24,5 +24,14 @@ describe('formatTitle', () => {
     expect(formatTitle('B', 'Weekly 12')).toBe('B · Weekly 12 · podium');
     expect(formatTitle()).toBe('podium');
     expect(formatTitle('', ' ')).toBe('podium');
+  });
+});
+
+describe('countOf', () => {
+  it('uses the singular for one and the plural otherwise', () => {
+    expect(countOf(1, 'minute')).toBe('1 minute');
+    expect(countOf(0, 'minute')).toBe('0 minutes');
+    expect(countOf(15, 'minute')).toBe('15 minutes');
+    expect(countOf(2, 'match', 'matches')).toBe('2 matches');
   });
 });

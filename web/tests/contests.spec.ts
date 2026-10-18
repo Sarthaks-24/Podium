@@ -11,6 +11,7 @@
 // during and after a contest, exam mode, the frozen and the closed board,
 // the editor, the console and the reveal.
 import { expect, test, type Page, type Route } from '@playwright/test';
+import { activate, hasFocus, tabTo } from './keyboard';
 import { longLivedEvents } from './sse';
 
 function shots(): string {
@@ -596,7 +597,7 @@ const SCREENS: Screen[] = [
     path: '/contests/week-6/standings',
     options: { phase: 'during', startMode: 'window', boardClosed: true },
     title: 'Standings · Week 6 contest · podium',
-    ready: (page) => expect(page.getByText('The board opens when the window closes.')).toBeVisible(),
+    ready: (page) => expect(page.getByText('The standings open when the contest closes.')).toBeVisible(),
   },
   {
     name: 'admin-contests',
@@ -698,9 +699,9 @@ test('a student agrees to the honour code, solves, reads an announcement and ask
   const rail = page.getByRole('navigation', { name: 'Problems' });
   await expect(rail.locator('.problems').getByRole('link')).toHaveCount(3);
   await expect(rail.getByRole('link', { name: 'Problem A, A plus B, not tried' })).toHaveAttribute('aria-current', 'page');
-  await expect(page.getByRole('heading', { level: 1 })).toHaveText('AA plus B');
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('A. A plus B');
   await expect(page.getByRole('timer')).toHaveText(/^\d{2}:\d{2}:\d{2}$/);
-  await expect(page.getByText(/^Board freezes in/)).toBeVisible();
+  await expect(page.getByText(/^Standings freeze in/)).toBeVisible();
   await expect(page.getByLabel('Language').locator('option')).toHaveText(['C++17', 'Java 21', 'Python 3']);
 
   // Submit, then the judged result comes in and the rail picks up the score.
@@ -746,7 +747,7 @@ test('a student agrees to the honour code, solves, reads an announcement and ask
   // The rail moves between problems, and focus goes to the new heading.
   await rail.getByRole('link', { name: /Problem B/ }).click();
   await expect(page).toHaveURL('/contests/week-6/problems/B');
-  await expect(page.getByRole('heading', { level: 1 })).toHaveText('BInterval covering');
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('B. Interval covering');
   await expect(page.getByRole('heading', { level: 1 })).toBeFocused();
 });
 
@@ -755,19 +756,19 @@ test('an upcoming fixed-start contest counts down and keeps the start button clo
   await page.goto('/contests/week-6');
   await expect(page.getByRole('timer')).toHaveText(/^02:0\d:\d{2}$/);
   await expect(page.getByRole('button', { name: 'I agree, start the contest' })).toBeDisabled();
-  await expect(page.getByText(/^The button opens at/)).toBeVisible();
+  await expect(page.getByText(/^You can start at/)).toBeVisible();
 });
 
 test('a window-mode contest starts the clock on agreement', async ({ page }) => {
   const api = await mockApi(page, { phase: 'ready', startMode: 'window' });
   await page.goto('/contests/week-6');
-  await expect(page.getByText('Your clock starts when you press Start and runs 1 h', { exact: false })).toBeVisible();
-  await expect(page.getByText('The board opens when the window closes.')).toBeVisible();
+  await expect(page.getByText('Your clock starts when you agree and start, and runs 1 h', { exact: false })).toBeVisible();
+  await expect(page.getByText('The standings open when the contest closes.')).toBeVisible();
   await page.getByRole('button', { name: 'I agree, start the contest' }).click();
   await expect.poll(() => api.starts).toBe(1);
   await expect(page.getByRole('timer')).toHaveText(/^00:(39|40):\d{2}$/);
   // Window mode has no board to freeze, so no freeze line.
-  await expect(page.getByText(/Board freezes/)).toHaveCount(0);
+  await expect(page.getByText(/Standings freeze/)).toHaveCount(0);
 });
 
 test('exam mode shows only "Submitted"', async ({ page }) => {
@@ -787,7 +788,7 @@ test('exam mode shows only "Submitted"', async ({ page }) => {
   await page.waitForTimeout(1500);
   await expect(result.getByText(/Partial|Wrong answer|Accepted|40 of 100/)).toHaveCount(0);
   await expect(result.locator('.strip')).toHaveCount(0);
-  await expect(result.locator('[aria-live="polite"]').first()).toHaveText('Submitted.');
+  await expect(page.locator('.ws > [aria-live="polite"]').first()).toHaveText('Submitted.');
   const rail = page.getByRole('navigation', { name: 'Problems' });
   await expect(rail.getByRole('link', { name: 'Problem A, A plus B, submitted once, score after the contest' })).toBeVisible();
   await expect(rail.getByRole('link', { name: /Problem A/ }).locator('.score')).toHaveText('Submitted');
@@ -809,8 +810,8 @@ test('after the contest: result, submissions, editorial and practice', async ({ 
   await expect(page.locator('details[open]').getByText('40 of 100').first()).toBeVisible();
 
   await page.getByRole('link', { name: 'Practise problem B' }).click();
-  await expect(page.getByRole('heading', { level: 1 })).toHaveText('BInterval covering');
-  await expect(page.getByText('Practice: submissions now count in no standings.')).toBeVisible();
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('B. Interval covering');
+  await expect(page.getByText('Practice is open. Submissions you make now do not count towards the standings.')).toBeVisible();
   await expect(page.getByRole('button', { name: 'Submit', exact: true })).toBeEnabled();
 });
 
@@ -858,7 +859,7 @@ test('the frozen board shows pending cells, tints the own row and jumps to it', 
 test('a window-mode board stays closed until the window closes', async ({ page }) => {
   await mockApi(page, { phase: 'during', startMode: 'window', boardClosed: true });
   await page.goto('/contests/week-6/standings');
-  await expect(page.getByText('The board opens when the window closes.')).toBeVisible();
+  await expect(page.getByText('The standings open when the contest closes.')).toBeVisible();
   await expect(page.getByRole('table')).toHaveCount(0);
 });
 
@@ -1121,11 +1122,11 @@ test('after the end, a held board gives the place only and says when it updates'
   await mockApi(page, { phase: 'after', studentFrozen: true });
   await page.goto('/contests/week-6');
   await expect(
-    page.getByText(/^On the frozen board you are \d+(st|nd|rd|th) of 28\. Your final place shows when the organisers release the results\.$/),
+    page.getByText(/^In the frozen standings you are \d+(st|nd|rd|th) of 28\. Your final place shows when the organisers release the results\.$/),
   ).toBeVisible();
   await expect(page.getByText(/points\.$/)).toHaveCount(0);
   await page.getByRole('link', { name: 'See the standings' }).click();
-  await expect(page.getByText(/^Frozen at \d{2}:\d{2}\. The final board appears when the organisers release it\./)).toBeVisible();
+  await expect(page.getByText(/^Frozen at \d{2}:\d{2}\. The final standings appear when the organisers release them\./)).toBeVisible();
   await expect(page.getByText('The time under each score is when it was reached, from the start.')).toBeVisible();
   await expect(page.locator('tr.me th.name')).toContainText('Asha Rao (you)');
 });
@@ -1149,4 +1150,172 @@ test('a missing contest says so', async ({ page }) => {
   await mockApi(page);
   await page.goto('/contests/nope');
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('Contest not found');
+});
+
+test('keyboard only: a student starts, solves, submits, reads the verdict, asks and checks the standings', async ({ page }) => {
+  const api = await mockApi(page, { phase: 'ready' });
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto('/');
+  await expect(page.getByRole('link', { name: 'Week 6 contest' })).toBeVisible();
+
+  // The first Tab shows the skip link, and it moves focus into the page.
+  await page.keyboard.press('Tab');
+  const skip = page.getByRole('link', { name: 'Skip to content' });
+  await expect(skip).toBeFocused();
+  await expect(skip).toBeInViewport();
+  await page.keyboard.press('Enter');
+  await expect(page.locator('main')).toBeFocused();
+
+  // Contest list, then the rules and the start button.
+  await activate(page, page.getByRole('link', { name: 'Week 6 contest' }));
+  await expect(page).toHaveURL('/contests/week-6');
+  await expect(page.getByRole('heading', { level: 1 })).toBeFocused();
+  await activate(page, page.getByRole('button', { name: 'I agree, start the contest' }));
+  await expect.poll(() => api.starts).toBe(1);
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('A. A plus B');
+
+  // "]" and "[" move between problems when nothing is being typed.
+  await page.locator('main h1').focus();
+  await page.keyboard.press(']');
+  await expect(page).toHaveURL('/contests/week-6/problems/B');
+  await expect(page.getByRole('heading', { level: 1 })).toBeFocused();
+  await page.keyboard.press('[');
+  await expect(page).toHaveURL('/contests/week-6/problems/A');
+  await page.keyboard.press('[');
+  await expect(page).toHaveURL('/contests/week-6/problems/A');
+
+  // "?" lists the shortcuts; Escape closes the list and focus comes back.
+  await page.keyboard.press('?');
+  const keys = page.getByRole('dialog', { name: 'Keyboard shortcuts' });
+  await expect(keys).toBeVisible();
+  await expect(keys.getByRole('heading', { name: 'Solving a problem' })).toBeVisible();
+  await expect(keys.getByRole('heading', { name: 'Reveal' })).toHaveCount(0);
+  await page.keyboard.press('Escape');
+  await expect(keys).toBeHidden();
+  await expect(page.getByRole('heading', { level: 1 })).toBeFocused();
+
+  // Read the statement: the sample copy buttons are reachable.
+  await tabTo(page, page.getByRole('button', { name: /Copy sample 1 input/i }));
+
+  // Write code: Tab reaches the editor, typing "]" stays in the code, and
+  // Escape then Tab leaves it.
+  const code = page.locator('.cm-content');
+  await tabTo(page, code);
+  await page.keyboard.press('Control+End');
+  await page.keyboard.type('// a[i]?');
+  await expect(code).toContainText('// a[i]?');
+  await expect(page.getByRole('dialog', { name: 'Keyboard shortcuts' })).toBeHidden();
+  await expect(page).toHaveURL('/contests/week-6/problems/A');
+  await page.keyboard.press('Escape');
+  await page.keyboard.press('Tab');
+  expect(await hasFocus(code)).toBe(false);
+
+  // Run and submit from the keyboard.
+  await code.focus();
+  await page.keyboard.press("Control+'");
+  await expect(page.getByRole('heading', { name: 'Run on samples' })).toBeVisible();
+  await page.keyboard.press('Control+Enter');
+  await expect.poll(() => api.submits.length).toBe(1);
+  const id = Number(api.submissions.at(-1)!.id);
+  const judged = submission(id, 11, 'done', 40);
+  api.submissions[api.submissions.length - 1] = judged;
+  api.scores.A = 40;
+  api.stream.push({ type: 'submission', data: judged });
+  const result = page.getByRole('region', { name: 'Result' });
+  await expect(result.locator('.headline').first()).toHaveText('Partial, 40 of 100', { timeout: 10_000 });
+
+  // Read the verdict: the failing subtask is open, the passing one opens with Enter.
+  const passing = result.locator('details.group summary').filter({ hasText: 'Subtask 1' }).first();
+  // Focus is still in the editor, where Tab indents: Escape first, then Tab on.
+  await page.keyboard.press('Escape');
+  await tabTo(page, passing);
+  await page.keyboard.press('Enter');
+  await expect(result.locator('details.group').filter({ hasText: 'Subtask 1' }).first()).toHaveAttribute('open', '');
+
+  // Messages: open, ask, close; focus returns to the button.
+  const messages = page.getByRole('navigation', { name: 'Problems' }).getByRole('button', { name: /Messages/ });
+  // The rail comes before the heading, so Shift+Tab reaches it (forward,
+  // Tab would enter the editor, where it indents until Escape).
+  await page.locator('main h1').focus();
+  await tabTo(page, messages, { back: true });
+  await page.keyboard.press('Enter');
+  const dialog = page.getByRole('dialog', { name: 'Messages' });
+  await expect(dialog).toBeVisible();
+  await tabTo(page, dialog.getByLabel('Question', { exact: true }));
+  await page.keyboard.type('Can a and b be negative?');
+  await activate(page, dialog.getByRole('button', { name: 'Send question' }));
+  await expect.poll(() => api.asked.length).toBe(1);
+  await page.keyboard.press('Escape');
+  await expect(dialog).toBeHidden();
+  await expect(messages).toBeFocused();
+
+  // Standings: the link in the rail, then Jump to you.
+  await activate(page, page.getByRole('navigation', { name: 'Problems' }).getByRole('link', { name: 'Standings' }), 'Enter');
+  await expect(page).toHaveURL('/contests/week-6/standings');
+  await activate(page, page.getByRole('button', { name: 'Jump to you' }));
+  await expect(page.locator('tr.me')).toBeFocused();
+});
+
+test('keyboard only: an organiser edits a contest, runs the console and walks the reveal', async ({ page }) => {
+  const api = await mockApi(page, { who: 'admin', phase: 'after' });
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto('/admin/contests');
+  await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
+
+  // Contest admin list to the editor.
+  await activate(page, page.getByRole('link', { name: 'Week 6 contest', exact: true }));
+  await expect(page).toHaveURL('/admin/contests/4');
+  await expect(page.getByLabel('Title', { exact: true })).toHaveValue('Week 6 contest');
+
+  // A setting changed and saved from the keyboard.
+  await tabTo(page, page.getByLabel('Seconds between submissions'));
+  await page.keyboard.press('Control+a');
+  await page.keyboard.type('20');
+  await activate(page, page.getByRole('button', { name: 'Save changes' }));
+  await expect.poll(() => api.settingsPuts.at(-1)?.min_gap_s).toBe(20);
+
+  // Add a problem, move it with the arrow buttons; focus never drops to the page.
+  await tabTo(page, page.getByLabel('Add a validated problem'));
+  await page.getByLabel('Add a validated problem').selectOption({ label: 'Interval covering (100 points)' });
+  await activate(page, page.getByRole('button', { name: 'Add problem' }));
+  await expect(page.getByLabel('Letter for Interval covering')).toHaveValue('B');
+  await page.getByRole('button', { name: 'Move Interval covering up' }).focus();
+  await page.keyboard.press('Enter');
+  await expect(page.getByLabel('Letter for Interval covering')).toHaveValue('A');
+  // At the top the up arrow is off, so focus moved to the down arrow of the same problem.
+  await expect(page.getByRole('button', { name: 'Move Interval covering down' })).toBeFocused();
+  await page.keyboard.press('Enter');
+  await expect(page.getByRole('button', { name: 'Move Interval covering up' })).toBeFocused();
+  // Removing a problem hands focus to the row that took its place.
+  await page.getByRole('button', { name: 'Remove Interval covering' }).focus();
+  await page.keyboard.press('Enter');
+  await expect(page.getByLabel('Letter for Interval covering')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Remove A plus B' })).toBeFocused();
+
+  // Console: the section links, and an error that takes focus.
+  await activate(page, page.getByRole('link', { name: 'Console', exact: true }));
+  await expect(page).toHaveURL('/admin/contests/4/console');
+  await activate(page, page.getByRole('button', { name: 'Give extra time' }));
+  await expect(page.locator('#ext-error')).toHaveText('Choose a student.');
+  await expect(page.getByLabel('Student', { exact: true }).first()).toBeFocused();
+
+  // Results and the reveal, driven by keys from start to end and back.
+  await page.locator('main h1').focus();
+  await activate(page, page.getByRole('link', { name: 'Results', exact: true }));
+  await expect(page).toHaveURL('/admin/contests/4/results');
+  await activate(page, page.getByRole('button', { name: 'Start the reveal' }));
+  const reveal = page.getByRole('dialog', { name: 'Week 6 contest' });
+  await expect(reveal).toBeVisible();
+  await page.keyboard.press('Space');
+  await page.waitForTimeout(400);
+  await page.keyboard.press('Space');
+  await expect(reveal.getByText('All rows resolved.', { exact: false })).toBeVisible();
+  // Next is now off; focus stayed in the dialog, so the keys still work.
+  await expect.poll(() => hasFocus(reveal)).toBe(true);
+  await page.waitForTimeout(400);
+  await page.keyboard.press('ArrowLeft');
+  await expect(reveal.getByText('1 row left.', { exact: false })).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(reveal).toBeHidden();
+  await expect(page.getByRole('button', { name: 'Resume the reveal' })).toBeFocused();
 });

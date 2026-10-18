@@ -70,12 +70,20 @@
     if (!busy) onclose();
   }
 
+  async function focusInvalid() {
+    await tick();
+    dialog?.querySelector<HTMLElement>('[aria-invalid="true"]')?.focus();
+  }
+
   async function submit(event: SubmitEvent) {
     event.preventDefault();
     error = '';
     titleError = title.trim() === '' ? 'Give the case a title.' : [...title.trim()].length > MAX_TITLE ? `Keep the title to ${MAX_TITLE} characters.` : '';
     noteError = noteLength(note) < MIN_NOTE ? `Write a reason of at least ${MIN_NOTE} characters.` : '';
-    if (titleError || noteError) return;
+    if (titleError || noteError) {
+      await focusInvalid();
+      return;
+    }
     busy = true;
     try {
       const created = await sendJSON<Case>('POST', `/api/admin/contests/${encodeURIComponent(String(contestId))}/integrity/cases`, {
@@ -89,6 +97,7 @@
         titleError = e.fields.title ?? '';
         noteError = e.fields.note ?? '';
         if (!titleError && !noteError) error = e.message;
+        else void focusInvalid();
       } else {
         error = 'Something went wrong. Try again in a moment.';
       }

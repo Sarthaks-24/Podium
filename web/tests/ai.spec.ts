@@ -14,6 +14,7 @@
 // stream and from pasted text over polling, a wizard failure with reasons,
 // the editor's generator section and input generation, and the solve check.
 import { expect, test, type Page, type Route } from '@playwright/test';
+import { activate, tabTo } from './keyboard';
 import { longLivedEvents } from './sse';
 
 function shots(): string {
@@ -430,14 +431,14 @@ const SCREENS: Screen[] = [
   {
     name: 'ai-editor-generator',
     path: '/admin/problems/20',
-    title: 'Maximum subarray · Problems · podium',
+    title: 'Maximum subarray · Problem bank · podium',
     opts: { key: 'active' },
     ready: (page) => expect(page.getByRole('region', { name: 'Generator', exact: true })).toBeVisible(),
   },
   {
     name: 'ai-editor-solved',
     path: '/admin/problems/21',
-    title: 'Two sum · Problems · podium',
+    title: 'Two sum · Problem bank · podium',
     opts: { key: 'active' },
     ready: async (page) => {
       await page.getByRole('button', { name: 'Ask a model to solve it' }).click();
@@ -549,7 +550,7 @@ test('saving a key checks it, clears the field and never keeps the key', async (
 test('in testing mode the fake provider needs no key', async ({ page }) => {
   const state = await mockApi(page, { testing: true });
   await page.goto('/admin/ai');
-  await expect(page.getByText('Testing mode: choose the fake provider to try the wizard without a key.')).toBeVisible();
+  await expect(page.getByText('In testing mode, choose the fake provider to try drafting without a key.')).toBeVisible();
   await page.getByLabel('Provider').selectOption('fake');
   await expect(page.getByLabel('API key')).toHaveCount(0);
   await expect(page.getByText('The fake provider needs no key.', { exact: false })).toBeVisible();
@@ -630,7 +631,7 @@ test('the editor edits the generator and plan, and generates inputs', async ({ p
   await page.goto('/admin/problems/20');
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('Maximum subarray');
   await expect(page.locator('.action-bar').getByText('AI draft')).toBeVisible();
-  await expect(page.getByText('The AI wizard wrote this draft.', { exact: false })).toBeVisible();
+  await expect(page.getByText('The AI assistant wrote this draft.', { exact: false })).toBeVisible();
   await expect(page.getByLabel('Tags')).toHaveValue('arrays');
 
   const section = page.getByRole('region', { name: 'Generator', exact: true });
@@ -728,7 +729,7 @@ test('asking a model to solve a problem confirms first and shows the score', asy
   await dialog.getByRole('button', { name: 'Ask a model' }).click();
   await expect(page.getByText('Waiting for the model to answer').first()).toBeVisible();
   await expect(page.getByText("Judging the model's solution").first()).toBeVisible({ timeout: 10_000 });
-  await expect(page.getByText('A model solved this zero-shot: 100 of 100').first()).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByText('A model solved this on its first try: 100 of 100').first()).toBeVisible({ timeout: 10_000 });
   await expect(page.getByText('Anyone who pastes the statement into a model gets full marks.', { exact: false })).toBeVisible();
   await expect(page.getByRole('link', { name: "See the model's submission" })).toHaveAttribute('href', '/admin/problems/21/try');
   await expect(page.getByRole('button', { name: 'Ask a model again' })).toBeEnabled();
@@ -739,5 +740,22 @@ test('without a key the solve check says where to add one', async ({ page }) => 
   await page.goto('/admin/problems/21');
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('Two sum');
   await expect(page.getByRole('button', { name: 'Ask a model to solve it' })).toBeDisabled();
-  await expect(page.getByRole('link', { name: 'Add one in AI assistant' })).toHaveAttribute('href', '/admin/ai');
+  await expect(page.getByRole('link', { name: 'Add a key in AI assistant' })).toHaveAttribute('href', '/admin/ai');
+});
+
+test('keyboard only: a brief goes from the form to the draft', async ({ page }) => {
+  const state = await mockApi(page, { key: 'active', events: 'stream', wizardOnlyByEvent: true });
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto('/admin/ai/new');
+  await expect(page.getByLabel('From a brief')).toBeChecked();
+
+  await tabTo(page, page.getByLabel('Topic', { exact: true }));
+  await page.keyboard.type('Maximum subarray sum');
+  await activate(page, page.getByRole('button', { name: 'Generate' }));
+  await expect(page.getByRole('heading', { name: 'Progress' })).toBeFocused();
+  expect(state.wizardBodies).toHaveLength(1);
+
+  state.events.push(`event: wizard\ndata: ${JSON.stringify({ id: WIZARD_ID, kind: 'generate', state: 'draft_created', problem_id: 20 })}\n\n`);
+  await activate(page, page.getByRole('link', { name: 'Open the draft in the editor' }));
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Maximum subarray');
 });

@@ -120,7 +120,7 @@ export function statusLine(
   let line: string;
   if (s.variant === 'frozen') {
     const at = s.frozen_at ? `Frozen at ${clock(s.frozen_at)}.` : 'Frozen.';
-    line = ended ? `${at} The final board appears when the organisers release it.` : `${at} Updates when the contest ends.`;
+    line = ended ? `${at} The final standings appear when the organisers release them.` : `${at} Updates when the contest ends.`;
   } else if (s.final) {
     line = 'Final standings.';
   } else {
@@ -145,13 +145,13 @@ export function myRow(s: Pick<Standings, 'rows' | 'me'>): StandingsRow | undefin
  */
 export function placeSentence(s: Pick<Standings, 'rows' | 'me'> & Partial<Pick<Standings, 'variant'>>, ended = false): string {
   const row = myRow(s);
-  if (!row) return 'You are not on the board.';
+  if (!row) return 'You are not in the standings.';
   const tied = s.rows.filter((r) => r.rank === row.rank).length > 1;
   const place = `${tied ? 'tied ' : ''}${ordinalWord(row.rank)} of ${s.rows.length}`;
   if (s.variant === 'frozen') {
     return ended
-      ? `On the frozen board you are ${place}. Your final place shows when the organisers release the results.`
-      : `On the frozen board you are ${place}.`;
+      ? `In the frozen standings you are ${place}. Your final place shows when the organisers release the results.`
+      : `In the frozen standings you are ${place}.`;
   }
   return `You are ${place} with ${row.total} points.`;
 }

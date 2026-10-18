@@ -11,6 +11,7 @@
 // filtering signals, the pair view, opening, sharing and deciding a case,
 // and the student's notice, evidence and explanation.
 import { expect, test, type Page, type Route } from '@playwright/test';
+import { activate, tabTo } from './keyboard';
 
 function shots(): string {
   return `${test.info().project.testDir}/../../cache/screenshots-integrity/`;
@@ -622,7 +623,7 @@ test("a case is shared with a note, action waits for the students' turn, and the
   await page.waitForTimeout(5);
   api.explain(7, 'I wrote it in the lab from the lecture notes, then fixed the loop.');
   await page.getByLabel('Note for the log').fill('Both explanations describe the same shared notes from a friend.');
-  await page.getByRole('button', { name: 'Clear' }).click();
+  await page.getByRole('button', { name: 'Clear the case' }).click();
   await expect(page.getByText('A student changed their explanation. Reload before deciding.')).toBeVisible();
   await page.getByRole('button', { name: 'Reload the case' }).click();
   await expect(page.getByText('A student changed their explanation.')).toHaveCount(0);
@@ -647,7 +648,7 @@ test("a case is shared with a note, action waits for the students' turn, and the
   await expect(log).toHaveCount(3);
   // The reviewer's name comes from the server.
   await expect(log.nth(0)).toContainText('Open, by Priya Nair');
-  await expect(log.nth(2)).toContainText('Action taken, by You');
+  await expect(log.nth(2)).toContainText('Action taken, by you');
   await expect(log.nth(2)).toContainText('Both explanations describe the same shared notes from a friend.');
   await page.screenshot({ path: `${shots()}integrity-case-decided-1440-light.png`, fullPage: true });
 
@@ -669,7 +670,7 @@ test("a case's evidence opens the case's own copy, whatever a re-run changed", a
   await expect(link).toHaveAttribute('href', '/admin/contests/4/integrity/signals/31?case=3&evidence=0');
   await link.click();
   await expect(page.getByRole('heading', { level: 1, name: 'Asha Rao and Ravi Kumar' })).toBeFocused();
-  await expect(page.getByRole('link', { name: 'Case: Similar code on B: Asha Rao and Ravi Kumar' })).toHaveAttribute('href', '/admin/integrity/cases/3');
+  await expect(page.getByRole('link', { name: 'Similar code on B: Asha Rao and Ravi Kumar' })).toHaveAttribute('href', '/admin/integrity/cases/3');
   await expect(page.getByRole('region', { name: /^Asha Rao's program, 12 lines, 2 shared passages$/ })).toBeVisible();
   await expect(page.getByRole('region', { name: /^Ravi Kumar's program, 12 lines, 2 shared passages$/ })).toBeVisible();
   await expect(page.getByText('Evidence as it was when the case opened', { exact: false })).toBeVisible();
@@ -714,7 +715,7 @@ test('a decided case reads only for the student', async ({ page }) => {
   await expect(page.getByText('Decided: cleared. No action will be taken.')).toBeVisible();
   await expect(page.getByText('I wrote it in the lab from the lecture notes.')).toBeVisible();
   await expect(page.getByRole('button', { name: 'Save explanation' })).toHaveCount(0);
-  await expect(page.getByText('A decision has been made, so the explanation can no longer change.')).toBeVisible();
+  await expect(page.getByText('An organiser has decided, so you can no longer change your explanation.')).toBeVisible();
 });
 
 test('a student with no cases gets no notice', async ({ page }) => {
@@ -745,4 +746,48 @@ test('results and the contest nav lead to the integrity page', async ({ page }) 
   await page.getByRole('link', { name: 'Check integrity' }).click();
   await expect(page).toHaveURL(/\/admin\/contests\/4\/integrity$/);
   await expect(page.getByRole('heading', { level: 1, name: 'Week 6 contest' })).toBeFocused();
+});
+
+test('keyboard only: an organiser checks a contest, opens a case, and a student explains', async ({ page }) => {
+  const api = await mockApi(page, { unchecked: true });
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto('/admin/contests/4/integrity');
+  await expect(page.getByText('Not checked yet.', { exact: false })).toBeVisible();
+
+  // The button keeps focus while the check runs.
+  const check = page.getByRole('button', { name: 'Check integrity' });
+  await activate(page, check);
+  await expect(page.getByRole('button', { name: 'Checking' })).toBeFocused();
+  await expect(page.getByText('Checked 30 students, 84 submissions and 2 problems.', { exact: false })).toBeVisible({ timeout: 10_000 });
+
+  // Choose a signal with Space, open the case dialog, and a short reason takes focus back.
+  await activate(page, page.getByRole('checkbox', { name: 'Choose similar code, Asha Rao and Ravi Kumar' }), 'Space');
+  await activate(page, page.getByRole('button', { name: 'Open a case' }));
+  const dialog = page.getByRole('dialog', { name: 'Open a case' });
+  await expect(dialog).toBeVisible();
+  await tabTo(page, dialog.getByLabel('Reason'));
+  await page.keyboard.type('Too short');
+  await activate(page, dialog.getByRole('button', { name: 'Open the case' }));
+  await expect(dialog.getByLabel('Reason')).toBeFocused();
+  await page.keyboard.type(', the greedy loop is the same line for line.');
+  await activate(page, dialog.getByRole('button', { name: 'Open the case' }));
+  await expect(page).toHaveURL(/\/admin\/integrity\/cases\/3$/);
+  expect(api.caseBodies).toHaveLength(1);
+});
+
+test('keyboard only: a student reads the integrity question and saves an explanation', async ({ page }) => {
+  const api = await mockApi(page, { who: 'student' });
+  await page.goto('/');
+  await activate(page, page.getByRole('link', { name: 'Write your explanation' }));
+  await expect(page.getByRole('heading', { level: 1, name: 'Questions about your submissions' })).toBeFocused();
+  await expect(page.getByText('This is not a finding', { exact: false })).toBeVisible();
+
+  const field = page.getByLabel('Explain how you wrote this, in your own words');
+  await activate(page, page.getByRole('button', { name: 'Save explanation' }));
+  await expect(page.getByRole('alert').filter({ hasText: 'Write your explanation first.' })).toBeVisible();
+  await tabTo(page, field, { back: true });
+  await page.keyboard.type('I wrote it in the lab after the lecture on greedy algorithms.');
+  await activate(page, page.getByRole('button', { name: 'Save explanation' }));
+  await expect(page.getByRole('status').filter({ hasText: 'Saved. You can change it until a decision is made.' })).toBeVisible();
+  expect(api.explanations).toHaveLength(1);
 });

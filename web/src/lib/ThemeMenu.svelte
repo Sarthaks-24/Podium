@@ -87,7 +87,8 @@
   }
 
   function onWindowKeydown(event: KeyboardEvent) {
-    if (open && event.key === 'Escape') {
+    if (open && event.key === 'Escape' && !event.defaultPrevented) {
+      event.preventDefault();
       open = false;
       button?.focus();
     }

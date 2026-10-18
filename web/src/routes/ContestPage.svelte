@@ -15,10 +15,11 @@
     event stream show in a quiet banner above the title (from 1024 px the
     editor never moves); a second open tab or a second session reported
     by the server shows a notice there too. Exam mode marks submitted
-    problems "Submitted" on the rail.
+    problems "Submitted" on the rail. "[" and "]" open the previous and
+    next problem when focus is not in a text field (lib/shortcuts.ts).
   - After it: the result, each problem's score with the student's own
     submissions, the editorial once published, and practice when the
-    organisers left it open (submissions then count in no standings). A
+    organisers left it open (submissions then do not count towards the standings). A
     board still frozen after the end gives the place only, never a
     frozen total beside the live score; when the clock ran out on this
     page, "Time is up" stays on screen.
@@ -41,6 +42,7 @@
     CONTEST_EVENTS,
     bannerItems,
     formatCountdown,
+    formatSpan,
     freezeAt,
     hasAccepted,
     isForContest,
@@ -54,6 +56,8 @@
   import { keepHeadingFocus } from '../lib/focus';
   import { formatDateTime } from '../lib/format';
   import { setTitle } from '../lib/head';
+  import { navigate } from '../lib/router.svelte';
+  import { adjacentLabel, isPlainKey, isTypingTarget } from '../lib/shortcuts';
   import { session } from '../lib/session.svelte';
   import { shell } from '../lib/shell.svelte';
   import { placeSentence, type Standings } from '../lib/standings';
@@ -275,6 +279,22 @@
     if ((event.currentTarget as HTMLDetailsElement).open) void loadHistory(l);
   }
 
+  // "[" and "]" open the previous and next problem, unless the student is
+  // typing (both are everyday characters in code) or a dialog is open.
+  function onKeydown(event: KeyboardEvent) {
+    if (!showWorkspace || event.defaultPrevented || !isPlainKey(event)) return;
+    if (event.key !== '[' && event.key !== ']') return;
+    if (isTypingTarget(event.target) || document.querySelector('dialog[open]')) return;
+    const next = adjacentLabel(
+      problems.map((p) => p.label),
+      current,
+      event.key === '[' ? -1 : 1,
+    );
+    if (next === null) return;
+    event.preventDefault();
+    navigate(`/contests/${encodeURIComponent(slug)}/problems/${encodeURIComponent(next)}`);
+  }
+
   // A second tab with this contest open on this device.
   let channel: BroadcastChannel | null = null;
 
@@ -306,6 +326,8 @@
     shell.workspace = false;
   });
 </script>
+
+<svelte:window onkeydown={onKeydown} />
 
 {#snippet clockSnippet(compact: boolean)}
   {#if contest?.my_window}
@@ -373,7 +395,7 @@
         : timeUp
           ? 'Time is up. Your submissions are saved.'
           : practice
-            ? 'Practice: submissions now count in no standings.'
+            ? 'Practice is open. Submissions you make now do not count towards the standings.'
             : 'The contest has ended. You can read the problem and your submissions.'}
       banner={bannerSnippet}
       rail={railSnippet}
@@ -397,10 +419,10 @@
     </p>
 
     {#if phase === 'upcoming'}
-      <p class="countdown">Starts in <span class="mono big" role="timer">{formatCountdown(contest.starts_at - ticker.now)}</span></p>
+      <p class="countdown">Starts in <span class="mono big" role="timer">{contest.starts_at - ticker.now >= 86_400_000 ? formatSpan(contest.starts_at - ticker.now) : formatCountdown(contest.starts_at - ticker.now)}</span></p>
     {:else if contest.start_mode === 'window'}
       <p class="countdown">
-        Start any time before <span class="mono">{formatDateTime(contest.ends_at)}</span>. The window closes in
+        Start any time before <span class="mono">{formatDateTime(contest.ends_at)}</span>. The contest closes in
         <span class="mono" role="timer">{formatCountdown(contest.ends_at - ticker.now)}</span>.
       </p>
     {:else}
@@ -431,7 +453,7 @@
       </button>
       <p id="start-help" class="muted small">
         {#if phase === 'upcoming'}
-          The button opens at {formatDateTime(contest.starts_at)}.
+          You can start at {formatDateTime(contest.starts_at)}.
         {:else if contest.start_mode === 'window'}
           Your clock starts when you press it and runs {lengthText(contest).replace(' each', '')}.
         {:else}
@@ -449,7 +471,7 @@
     <p class="meta">
       {#if contest.my_window && hasAccepted(contest)}Your time ended at {formatDateTime(contest.my_window.ends_at)}.{:else}Ended
         {formatDateTime(contest.ends_at)}.{/if}
-      <span class="state">{stateWord(contest.state)}</span>
+      {#if contest.state !== 'ended'}<span class="state">{stateWord(contest.state)}</span>{/if}
     </p>
 
     {#if timeUp}<p class="time-up" role="status">Time is up. Your submissions are saved.</p>{/if}
@@ -467,7 +489,7 @@
         {#if standings}<p>{placeSentence(standings, contest.state === 'ended' || contest.state === 'practice')}</p>{/if}
         <p><a href="/contests/{encodeURIComponent(slug)}/standings">See the standings</a></p>
         {#if practice}
-          <p class="muted small">Practice is open. Submissions you make now count in no standings.</p>
+          <p class="muted small">Practice is open. Submissions you make now do not count towards the standings.</p>
         {/if}
         <div class="table-wrap results">
           <table class="table">

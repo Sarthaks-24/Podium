@@ -150,7 +150,7 @@
   }
 
   function byName(d: Decision): string {
-    if (session.user && d.by === session.user.id) return 'You';
+    if (session.user && d.by === session.user.id) return 'you';
     if (d.by_name) return d.by_name;
     const u = run?.users?.[String(d.by)];
     return u?.name || u?.email || 'An organiser';
@@ -224,6 +224,8 @@
       note = '';
       noteError = '';
       showToast(DONE[state]);
+      await tick();
+      document.getElementById('decide-title')?.focus();
     } catch (e) {
       if (handleAuth(e)) return;
       if (e instanceof ApiError && e.fields.note) noteError = e.fields.note;
@@ -327,7 +329,7 @@
   </section>
 
   <section class="section" aria-labelledby="decide-title">
-    <h2 id="decide-title">{decided ? 'Reopen' : 'Decide'}</h2>
+    <h2 id="decide-title" tabindex="-1">{decided ? 'Reopen' : 'Decide'}</h2>
     <form class="decide" novalidate onsubmit={(e) => e.preventDefault()}>
       <div class="field">
         <label for="case-decision-note">Note for the log</label>
@@ -351,7 +353,7 @@
           {#if kase.state === 'open'}
             <button type="button" class="btn btn-primary" disabled={busy} onclick={() => ask('awaiting_student')}>Share with the students</button>
           {/if}
-          <button type="button" class="btn btn-secondary" disabled={busy} onclick={() => ask('cleared')}>Clear</button>
+          <button type="button" class="btn btn-secondary" disabled={busy} onclick={() => ask('cleared')}>Clear the case</button>
           <button
             type="button"
             class="btn btn-danger"

@@ -241,7 +241,9 @@
     if (Object.keys(local).length > 0) {
       fields = local;
       await tick();
-      document.querySelector<HTMLElement>('.settings [aria-invalid="true"]')?.focus();
+      const first = document.querySelector<HTMLElement>('.settings [aria-invalid="true"]');
+      if (first) first.focus();
+      else if (local.languages) document.querySelector<HTMLElement>('.settings .checks input')?.focus();
       return;
     }
     const body: ContestSettings = {
@@ -326,11 +328,22 @@
     [next[i], next[j]] = [next[j], next[i]];
     // Letters follow the order, so A is always the first problem.
     picked = next.map((p, k) => ({ ...p, label: labelFor(k) }));
-    tick().then(() => document.getElementById(`move-${by < 0 ? 'up' : 'down'}-${j}`)?.focus());
+    // At the top or bottom the same arrow is disabled, so focus takes the other one.
+    tick().then(() => {
+      const same = document.getElementById(`move-${by < 0 ? 'up' : 'down'}-${j}`) as HTMLButtonElement | null;
+      const other = document.getElementById(`move-${by < 0 ? 'down' : 'up'}-${j}`) as HTMLButtonElement | null;
+      (same && !same.disabled ? same : other)?.focus();
+    });
   }
 
   function removeProblem(i: number) {
     picked = picked.filter((_, k) => k !== i).map((p, k) => ({ ...p, label: labelFor(k) }));
+    // The removed row took the focused button with it: focus the row now in
+    // its place, or the problem picker when the list is empty.
+    tick().then(() => {
+      const row = document.getElementById(`remove-${Math.min(i, picked.length - 1)}`);
+      (row ?? document.getElementById('add-problem'))?.focus();
+    });
   }
 
   async function saveProblems() {
@@ -339,7 +352,7 @@
       const names = gone.map((p) => `problem ${p.label} (${p.title})`).join(', ');
       confirm = {
         title: 'Save problems?',
-        body: `This takes ${names} out of the contest, and its submissions leave the board.`,
+        body: `This takes ${names} out of the contest, and ${gone.length === 1 ? 'its' : 'their'} submissions leave the board.`,
         label: 'Save problems',
         danger: true,
         run: putProblems,
@@ -447,6 +460,7 @@
     const email = adminEmail.trim();
     if (email === '') {
       adminError = 'Enter an email address.';
+      document.getElementById('admin-email')?.focus();
       return;
     }
     try {
@@ -456,6 +470,7 @@
     } catch (e) {
       if (handleAuth(e)) return;
       adminError = e instanceof ApiError ? (e.fields.email ?? e.message) : messageOf(e);
+      document.getElementById('admin-email')?.focus();
     }
   }
 
@@ -607,7 +622,7 @@
       </div>
       <div class="field">
         <label for="f-scoring_mode">Scoring</label>
-        <select id="f-scoring_mode" class="select" bind:value={form.scoring_mode} aria-invalid={fields.scoring_mode ? 'true' : undefined}>
+        <select id="f-scoring_mode" class="select" bind:value={form.scoring_mode} aria-invalid={fields.scoring_mode ? 'true' : undefined} aria-describedby={fields.scoring_mode ? 'f-scoring_mode-error' : undefined}>
           <option value="best_subtask">Best result per subtask</option>
           <option value="best_submission">Best single submission</option>
         </select>
@@ -615,7 +630,7 @@
       </div>
       <div class="field">
         <label for="f-feedback_mode">Feedback</label>
-        <select id="f-feedback_mode" class="select" bind:value={form.feedback_mode} aria-invalid={fields.feedback_mode ? 'true' : undefined} aria-describedby="f-feedback-help">
+        <select id="f-feedback_mode" class="select" bind:value={form.feedback_mode} aria-invalid={fields.feedback_mode ? 'true' : undefined} aria-describedby="f-feedback-help{fields.feedback_mode ? ' f-feedback_mode-error' : ''}">
           <option value="subtask">Subtask results and test verdicts</option>
           <option value="exam">Exam: only "Submitted" until the end</option>
         </select>
@@ -624,7 +639,7 @@
       </div>
       <div class="field">
         <label for="f-access">Who can take part</label>
-        <select id="f-access" class="select" bind:value={form.access} aria-invalid={fields.access ? 'true' : undefined}>
+        <select id="f-access" class="select" bind:value={form.access} aria-invalid={fields.access ? 'true' : undefined} aria-describedby={fields.access ? 'f-access-error' : undefined}>
           <option value="domain">Anyone from the allowed domains</option>
           <option value="roster">Only students on the roster</option>
         </select>
@@ -719,9 +734,9 @@
               {#if p.ready === false}<span class="warn"><Icon name="alert-triangle" /> Changed since it was added. Validate it, then save problems again.</span>{/if}
             </span>
             <span class="buttons">
-              <button id="move-up-{i}" type="button" class="btn btn-quiet btn-compact" aria-label="Move {p.title} up" disabled={i === 0} onclick={() => move(i, -1)}><Icon name="chevron-up" /></button>
-              <button id="move-down-{i}" type="button" class="btn btn-quiet btn-compact" aria-label="Move {p.title} down" disabled={i === picked.length - 1} onclick={() => move(i, 1)}><Icon name="chevron-down" /></button>
-              <button type="button" class="btn btn-danger-quiet btn-compact" aria-label="Remove {p.title}" onclick={() => removeProblem(i)}><Icon name="trash" /></button>
+              <button id="move-up-{i}" type="button" class="btn btn-quiet btn-compact" aria-label="Move {p.title} up" title="Move up" disabled={i === 0} onclick={() => move(i, -1)}><Icon name="chevron-up" /></button>
+              <button id="move-down-{i}" type="button" class="btn btn-quiet btn-compact" aria-label="Move {p.title} down" title="Move down" disabled={i === picked.length - 1} onclick={() => move(i, 1)}><Icon name="chevron-down" /></button>
+              <button id="remove-{i}" type="button" class="btn btn-danger-quiet btn-compact" aria-label="Remove {p.title}" title="Remove" onclick={() => removeProblem(i)}><Icon name="trash" /></button>
             </span>
           </li>
         {/each}

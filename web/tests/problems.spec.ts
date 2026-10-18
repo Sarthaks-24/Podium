@@ -13,6 +13,7 @@
 // error, validation from queued to passed and to failed, import errors and
 // success, creating, archiving, and the unsaved-changes guard.
 import { expect, test, type FileChooser, type Page, type Route } from '@playwright/test';
+import { activate, hasFocus, tabTo } from './keyboard';
 
 function shots(): string {
   return `${test.info().project.testDir}/../../cache/screenshots-m2/`;
@@ -499,13 +500,13 @@ const SCREENS: Screen[] = [
   {
     name: 'problems-bank',
     path: '/admin/problems',
-    title: 'Problems · podium',
+    title: 'Problem bank · podium',
     ready: (page) => expect(page.getByRole('link', { name: 'Interval covering', exact: true })).toBeVisible(),
   },
   {
     name: 'problem-editor',
     path: '/admin/problems/1',
-    title: 'A plus B · Problems · podium',
+    title: 'A plus B · Problem bank · podium',
     ready: async (page) => {
       await expect(page.getByRole('heading', { level: 1 })).toHaveText('A plus B');
       await expect(page.locator('.statement .katex').first()).toBeVisible();
@@ -514,19 +515,19 @@ const SCREENS: Screen[] = [
   {
     name: 'problem-editor-warnings',
     path: '/admin/problems/2',
-    title: 'Interval covering · Problems · podium',
+    title: 'Interval covering · Problem bank · podium',
     ready: (page) => expect(page.getByRole('note', { name: 'Before you validate' })).toBeVisible(),
   },
   {
     name: 'problem-editor-failed',
     path: '/admin/problems/4',
-    title: 'Average speed · Problems · podium',
+    title: 'Average speed · Problem bank · podium',
     ready: (page) => expect(page.locator('.headline')).toHaveText('Validation failed'),
   },
   {
     name: 'problem-editor-missing-outputs',
     path: '/admin/problems/5',
-    title: 'Pair sums · Problems · podium',
+    title: 'Pair sums · Problem bank · podium',
     ready: (page) => expect(page.getByText('2 tests have no expected output.', { exact: false })).toBeVisible(),
   },
   {
@@ -872,7 +873,7 @@ test('leaving with unsaved changes asks first', async ({ page }) => {
   await page.getByRole('link', { name: 'Problems', exact: true }).click();
   await dialog.getByRole('button', { name: 'Leave page' }).click();
   await expect(page).toHaveURL('/admin/problems');
-  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Problems');
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Problem bank');
 });
 
 test('replacing tests uploads a zip and lists the new tests', async ({ page }) => {
@@ -880,6 +881,10 @@ test('replacing tests uploads a zip and lists the new tests', async ({ page }) =
   const choosers = watchFileChoosers(page);
   await page.goto('/admin/problems/1');
   await page.getByRole('button', { name: 'Replace tests' }).click();
+  // Replacing every test asks first; the file picker opens from the confirm.
+  const confirm = page.getByRole('dialog', { name: /^Replace all \d+ tests\?$/ });
+  await expect(confirm.getByRole('button', { name: 'Cancel' })).toBeFocused();
+  await confirm.getByRole('button', { name: 'Replace tests' }).click();
   await (await choosers.next()).setFiles(zipFile('tests.zip', 'zip'));
   await expect(page.getByText('Replaced tests. 2 tests stored.')).toBeVisible();
   await page.getByText('Show all 2 tests').click();
@@ -957,8 +962,9 @@ test('a refused generation shows the reason in place', async ({ page }) => {
   await page.goto('/admin/problems/4');
   await page.getByRole('button', { name: 'Regenerate all outputs' }).click();
   await page.getByRole('dialog').getByRole('button', { name: 'Regenerate all outputs' }).click();
-  const alert = page.getByRole('alert').filter({ hasText: 'The problem is not ready. Fix these first.' });
-  await expect(alert).toContainText('Add a reference solution first.');
+  // Shown in the polite region under the buttons, read once (not also an alert).
+  const reason = page.locator('.generation[aria-live="polite"] .banner-error').filter({ hasText: 'The problem is not ready. Fix these first.' });
+  await expect(reason).toContainText('Add a reference solution first.');
 });
 
 test('a reference that does not compile, or a problem changed mid-run, is said plainly', async ({ page }) => {
@@ -1064,4 +1070,40 @@ test('bank rows read as title and status, then tests and date, on a phone', asyn
   expect(Math.abs(title!.y - status!.y)).toBeLessThan(6);
   expect(tests!.y).toBeGreaterThan(title!.y + title!.height - 1);
   await expect(row.locator('.tags')).toBeHidden();
+});
+
+test('keyboard only: an organiser opens a problem, edits it, saves with Ctrl+S and validates', async ({ page }) => {
+  const state = await mockApi(page);
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto('/admin/problems');
+  await expect(page.getByRole('row', { name: /A plus B/ })).toBeVisible();
+
+  await activate(page, page.getByRole('link', { name: 'A plus B', exact: true }));
+  await expect(page).toHaveURL('/admin/problems/1');
+  await expect(page.getByRole('heading', { level: 1 })).toBeFocused();
+
+  // The statement is a plain text area: Tab moves on from it, never traps.
+  const statement = page.getByLabel('Statement', { exact: true });
+  await tabTo(page, statement);
+  await page.keyboard.press('Control+End');
+  await page.keyboard.type('\n\nAll numbers fit in 64 bits.');
+  await page.keyboard.press('Tab');
+  expect(await hasFocus(statement)).toBe(false);
+  await expect(page.getByText('Unsaved changes', { exact: true })).toBeVisible();
+
+  await statement.focus();
+  await page.keyboard.press('Control+s');
+  await expect(page.getByText('Saved', { exact: true })).toBeVisible();
+  expect(String(state.puts.at(-1)?.statement_md)).toContain('All numbers fit in 64 bits.');
+
+  await activate(page, page.getByRole('button', { name: 'Validate' }));
+  await expect(page.locator('.headline')).toHaveText('Validation passed', { timeout: 15_000 });
+
+  // The shortcut list names the editor keys for organisers.
+  await page.locator('main h1').focus();
+  await page.keyboard.press('?');
+  const keys = page.getByRole('dialog', { name: 'Keyboard shortcuts' });
+  await expect(keys.getByRole('heading', { name: 'Problem editor' })).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(keys).toBeHidden();
 });

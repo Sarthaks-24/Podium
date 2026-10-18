@@ -242,7 +242,7 @@
       {:else if keyStatus}
         No key yet. <a href="/admin/ai">Add a key in AI assistant</a> before you generate.
       {:else if keyError !== ''}
-        {keyError} <a href="/admin/ai">Open AI assistant</a>
+        {keyError} <a href="/admin/ai">Go to AI assistant</a>
       {:else}
         <span class="muted">Checking the key</span>
       {/if}
@@ -284,7 +284,7 @@
           <div class="banner banner-error problems-list" role="alert">
             <p>
               {wizard.error?.message ?? 'The model could not write this problem.'}
-              {#if isKeyProblem(wizard.error?.code)}<a href="/admin/ai">Open AI assistant</a>{/if}
+              {#if isKeyProblem(wizard.error?.code)}<a href="/admin/ai">Go to AI assistant</a>{/if}
             </p>
             {#if wizard.error?.reasons && wizard.error.reasons.length > 0}
               <ul>{#each wizard.error.reasons as reason, i (i)}<li>{reason}</li>{/each}</ul>
@@ -373,7 +373,7 @@
           </div>
         {:else}
           <p id="paste-note" class="note">
-            Problems on LeetCode and similar sites are copyrighted. The model rewrites the problem in our own words with new samples and tests;
+            Problems on LeetCode and similar sites are copyrighted. The model rewrites the problem in new words with new samples and tests;
             read the result for anything copied, and do not redistribute packs made this way.
           </p>
           <div class="field">
@@ -394,17 +394,17 @@
         {/if}
 
         <div class="actions">
-          <button type="submit" class="btn btn-primary" disabled={sending || !keyActive}>
+          <button type="submit" class="btn btn-primary" disabled={sending || !keyActive} aria-describedby={keyActive ? undefined : 'generate-help'}>
             {sending ? 'Sending' : 'Generate'}
           </button>
-          {#if !keyActive}<span class="field-help">Add a key first.</span>{/if}
+          {#if !keyActive}<span id="generate-help" class="field-help">Add a key in AI assistant first.</span>{/if}
         </div>
 
         {#if requestError}
           <div class="banner banner-error problems-list" role="alert">
             <p>
               {requestError.message}
-              {#if isKeyProblem(requestError.code)}<a href="/admin/ai">Open AI assistant</a>{/if}
+              {#if isKeyProblem(requestError.code)}<a href="/admin/ai">Go to AI assistant</a>{/if}
             </p>
             {#if requestError.problems.length > 0}
               <ul>{#each requestError.problems as line, i (i)}<li>{line}</li>{/each}</ul>

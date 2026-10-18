@@ -44,6 +44,7 @@
     type FeedRow,
   } from '../lib/contests';
   import { keepHeadingFocus } from '../lib/focus';
+  import { countOf } from '../lib/format';
   import { setTitle } from '../lib/head';
   import { verdictLabel } from '../lib/problems';
   import { session } from '../lib/session.svelte';
@@ -84,6 +85,8 @@
   let extMinutes = $state('15');
   let extReason = $state('');
   let extError = $state('');
+  /** Which extension field the error is about, so only that one is marked and focused. */
+  let extField = $state<'user' | 'minutes' | ''>('');
   let rejudgeLabel = $state('');
   let students = $state<{ user_id: number; name: string }[]>([]);
 
@@ -254,9 +257,9 @@
       document.getElementById('extend-minutes')?.focus();
       return;
     }
-    ask(`Extend the contest by ${minutes} minutes?`, 'Everyone gets the extra time, and their clocks update at once.', 'Extend contest', false, async () => {
+    ask(`Extend the contest by ${countOf(minutes, 'minute')}?`, 'Everyone gets the extra time, and their clocks update at once.', 'Extend contest', false, async () => {
       await sendJSON<void>('POST', `${base}/extend`, { minutes });
-      showToast(`Extended by ${minutes} minutes. Post an announcement so students know.`);
+      showToast(`Extended by ${countOf(minutes, 'minute')}. Post an announcement so students know.`);
       annTemplate = 'extended';
       annBody = fillTemplate(ANNOUNCEMENT_TEMPLATES.find((t) => t.id === 'extended')!.text, { minutes });
       await loadContest(true);
@@ -266,24 +269,31 @@
   async function extendOne(event: SubmitEvent) {
     event.preventDefault();
     extError = '';
+    extField = '';
     const minutes = Math.round(Number(extMinutes));
     if (extUser === '') {
       extError = 'Choose a student.';
+      extField = 'user';
+      document.getElementById('ext-user')?.focus();
       return;
     }
-    if (!Number.isFinite(minutes) || minutes < 0) {
+    if (String(extMinutes).trim() === '' || !Number.isFinite(minutes) || minutes < 0) {
       extError = 'Enter the minutes, 0 to remove an extension.';
+      extField = 'minutes';
+      document.getElementById('ext-minutes')?.focus();
       return;
     }
     try {
       await sendJSON<void>('PUT', `${base}/extensions/${encodeURIComponent(extUser)}`, { minutes, reason: extReason.trim() });
       const who = students.find((s) => String(s.user_id) === extUser)?.name ?? 'the student';
-      showToast(minutes === 0 ? `Removed the extension for ${who}` : `Gave ${who} ${minutes} more minutes`);
+      showToast(minutes === 0 ? `Removed the extension for ${who}` : `Gave ${who} ${countOf(minutes, 'more minute', 'more minutes')}`);
       extReason = '';
       await loadContest(true);
     } catch (e) {
       if (handleAuth(e)) return;
       extError = e instanceof ApiError ? (e.fields.minutes ?? e.message) : messageOf(e);
+      extField = e instanceof ApiError && e.fields.minutes ? 'minutes' : 'user';
+      document.getElementById(extField === 'minutes' ? 'ext-minutes' : 'ext-user')?.focus();
     }
   }
 
@@ -300,7 +310,7 @@
   function rejudgeProblem() {
     if (rejudgeLabel === '') return;
     const l = rejudgeLabel;
-    ask(`Rejudge problem ${l}?`, 'Every submission to it is judged again. Scores on the board may change.', 'Rejudge problem', true, async () => {
+    ask(`Rejudge problem ${l}?`, 'Every submission to it is judged again. Scores in the standings may change.', 'Rejudge problem', true, async () => {
       await sendJSON<void>('POST', `${base}/rejudge`, { problem_label: l });
       showToast(`Rejudging problem ${l}`);
       await loadFeed();
@@ -317,6 +327,7 @@
     annError = '';
     if (annBody.trim() === '') {
       annError = 'Write the announcement first.';
+      document.getElementById('ann-body')?.focus();
       return;
     }
     annBusy = true;
@@ -329,6 +340,7 @@
     } catch (e) {
       if (handleAuth(e)) return;
       annError = e instanceof ApiError ? (e.fields.body_md ?? e.message) : messageOf(e);
+      document.getElementById('ann-body')?.focus();
     } finally {
       annBusy = false;
     }
@@ -346,18 +358,20 @@
     const text = r.text.trim() || (c.answer ?? '');
     if (text === '') {
       r.error = 'Write an answer or pick a canned reply.';
+      document.getElementById(`reply-${c.id}`)?.focus();
       return;
     }
     r.busy = true;
     const pub = overridePublic ?? r.public;
     try {
       await sendJSON<unknown>('PUT', `${base}/clarifications/${c.id}`, { answer: text, public: pub });
-      showToast(c.answer ? (pub ? 'Made the answer public' : 'Made the answer private') : pub ? 'Answered for everyone' : 'Answered');
+      showToast(c.answer ? (pub ? 'Made the answer public' : 'Made the answer private') : pub ? 'Sent the answer to everyone' : 'Sent the answer');
       replies[c.id] = { text: '', public: pub, error: '', busy: false };
       await loadSide();
     } catch (e) {
       if (handleAuth(e)) return;
       r.error = e instanceof ApiError ? (e.fields.answer ?? e.message) : messageOf(e);
+      document.getElementById(`reply-${c.id}`)?.focus();
     } finally {
       r.busy = false;
     }
@@ -452,7 +466,7 @@
     {#if unanswered > 0}
       <a class="questions-link" href="#clar-title">{unanswered} unanswered {unanswered === 1 ? 'question' : 'questions'}</a>
     {:else}
-      <span class="muted">No open questions</span>
+      <span class="muted">No unanswered questions</span>
     {/if}
   </div>
   <p class="visually-hidden" aria-live="polite">{questionNews}</p>
@@ -481,18 +495,18 @@
         <form class="row" novalidate onsubmit={extendOne}>
           <div class="field grow">
             <label for="ext-user">Student</label>
-            <select id="ext-user" class="select" bind:value={extUser} aria-invalid={extError ? 'true' : undefined} aria-describedby={extError ? 'ext-error' : undefined}>
+            <select id="ext-user" class="select" bind:value={extUser} aria-invalid={extError && extField === 'user' ? 'true' : undefined} aria-describedby={extError && extField === 'user' ? 'ext-error' : undefined}>
               <option value="">Choose a student</option>
               {#each students as s (s.user_id)}<option value={String(s.user_id)}>{s.name}</option>{/each}
             </select>
           </div>
           <div class="field small-field">
             <label for="ext-minutes">Extra minutes</label>
-            <input id="ext-minutes" class="input mono" type="number" min="0" inputmode="numeric" bind:value={extMinutes} />
+            <input id="ext-minutes" class="input mono" type="number" min="0" inputmode="numeric" bind:value={extMinutes} aria-invalid={extError && extField === 'minutes' ? 'true' : undefined} aria-describedby={extError && extField === 'minutes' ? 'ext-error' : undefined} />
           </div>
           <div class="field grow">
             <label for="ext-reason">Reason</label>
-            <input id="ext-reason" class="input" type="text" placeholder="Laptop crashed" bind:value={extReason} />
+            <input id="ext-reason" class="input" type="text" autocomplete="off" placeholder="Laptop crashed" bind:value={extReason} />
           </div>
           <button type="submit" class="btn btn-secondary">Give extra time</button>
         </form>

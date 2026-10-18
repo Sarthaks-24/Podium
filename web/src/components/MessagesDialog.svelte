@@ -99,7 +99,7 @@
 <dialog bind:this={dialog} class="dialog" aria-labelledby="messages-title" oncancel={onCancel}>
   <div class="head">
     <h2 id="messages-title" tabindex="-1" bind:this={heading}>Messages</h2>
-    <button type="button" class="btn btn-quiet btn-compact" aria-label="Close messages" onclick={onclose}><Icon name="x" /></button>
+    <button type="button" class="btn btn-quiet btn-compact" aria-label="Close messages" title="Close" onclick={onclose}><Icon name="x" /></button>
   </div>
 
   {#if canAsk}
@@ -130,6 +130,8 @@
       <button type="submit" class="btn btn-primary" disabled={busy}>Send question</button>
       <p class="sent" role="status">{sent}</p>
     </form>
+  {:else}
+    <p class="muted small closed">Questions close when your time in the contest ends.</p>
   {/if}
 
   <section class="section" aria-labelledby="msg-ann">
@@ -183,6 +185,7 @@
 
 <style>
   .dialog {
+    overscroll-behavior: contain;
     width: min(40rem, calc(100vw - 2 * var(--gutter)));
     max-height: calc(100dvh - 2 * var(--space-5));
     margin: auto;
@@ -232,8 +235,13 @@
     font-size: var(--fs-0);
   }
 
+  /* Kept in the page while empty, so the first "Question sent." is announced. */
   .sent:empty {
-    display: none;
+    min-height: 0;
+  }
+
+  .closed {
+    margin-top: var(--space-4);
   }
 
   .section-title {

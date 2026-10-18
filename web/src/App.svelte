@@ -10,16 +10,20 @@
   loaded: signed-out visitors to a protected path are sent to /signin with a
   ?next= back, and signed-in visitors to /signin are sent on. After each
   client-side navigation focus moves to the new page's heading. The footer
-  carries the build year. Takes no props.
+  carries the build year and a "Keyboard shortcuts" button; "?" anywhere
+  outside a text field opens the same list (components/ShortcutsDialog).
+  Takes no props.
 -->
 <script lang="ts">
   import { onMount, tick } from 'svelte';
+  import ShortcutsDialog from './components/ShortcutsDialog.svelte';
   import Toasts from './components/Toasts.svelte';
   import ThemeMenu from './lib/ThemeMenu.svelte';
   import { loadMode, runMode } from './lib/mode.svelte';
   import { installLinkInterception, matchRoute, navigate, router } from './lib/router.svelte';
   import { displayName, loadSession, session, signOut } from './lib/session.svelte';
   import { shell } from './lib/shell.svelte';
+  import { isPlainKey, isTypingTarget } from './lib/shortcuts';
   import { safeNext } from './lib/signin';
   import { showToast } from './lib/toast.svelte';
   import AdminContests from './routes/AdminContests.svelte';
@@ -100,9 +104,21 @@
   });
 
   function onKeydown(event: KeyboardEvent) {
-    if (event.key === 'Escape' && menuOpen) {
+    // An open theme panel inside the menu takes the first Escape itself.
+    const themeOpen = document.querySelector('.theme-menu [aria-expanded="true"]') !== null;
+    if (event.key === 'Escape' && menuOpen && !event.defaultPrevented && !themeOpen) {
       menuOpen = false;
       menuButton?.focus();
+    } else if (
+      event.key === '?' &&
+      !event.defaultPrevented &&
+      isPlainKey(event) &&
+      !isTypingTarget(event.target) &&
+      !document.querySelector('dialog[open]')
+    ) {
+      event.preventDefault();
+      menuOpen = false;
+      shell.shortcuts = true;
     }
   }
 
@@ -249,10 +265,14 @@
 
   <footer class="inner foot">
     <p>&copy; {year} podium</p>
+    <button type="button" class="btn btn-quiet btn-compact keys" aria-keyshortcuts="?" onclick={() => (shell.shortcuts = true)}>
+      Keyboard shortcuts
+    </button>
   </footer>
 </div>
 
 <Toasts />
+<ShortcutsDialog open={shell.shortcuts} organiser={isOrganiser} onclose={() => (shell.shortcuts = false)} />
 
 <style>
   .page {
@@ -393,9 +413,25 @@
   }
 
   .foot {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-2) var(--space-4);
     padding-block: var(--space-5);
     color: var(--ink-muted);
     font-size: var(--fs-0);
+  }
+
+  .keys {
+    color: inherit;
+  }
+
+  /* Touch screens without a keyboard have no use for the list. */
+  @media (hover: none) and (pointer: coarse) {
+    .keys {
+      display: none;
+    }
   }
 
   @media (max-width: 767px) {

@@ -67,6 +67,7 @@
   } from '../lib/drafts';
   import { keepHeadingFocus } from '../lib/focus';
   import { setTitle } from '../lib/head';
+  import { shell } from '../lib/shell.svelte';
   import { FLUSH_MS, IntegrityRecorder } from '../lib/integrity';
   import { session } from '../lib/session.svelte';
   import { isStarterOrEmpty, starter } from '../lib/starters';
@@ -465,6 +466,9 @@
     if (layout === 'phone') {
       tab = 'result';
       await tick();
+    } else if (layout === 'tablet' && tab === 'problem') {
+      tab = 'code';
+      await tick();
     }
   }
 
@@ -660,7 +664,7 @@
     {:else if loadState === 'forbidden'}
       <p>You cannot open this problem. Ask an organiser if you think you should.</p>
     {:else if loadState === 'missing'}
-      <p>There is no problem with that number. <a href={backHref}>Go back.</a></p>
+      <p>This problem does not exist. <a href={backHref}>Go back.</a></p>
     {:else if loadState === 'error'}
       <div class="banner banner-error" role="alert"><p>{loadError}</p></div>
       <p><button type="button" class="btn btn-secondary" onclick={load}>Try again</button></p>
@@ -668,6 +672,8 @@
   </div>
 {:else}
   <div class="ws" data-layout={layout}>
+    <p class="visually-hidden" aria-live="polite">{announced}</p>
+    <p class="visually-hidden" aria-live="polite">{saveState === 'failed' ? 'Draft not saved to the server. A copy is kept on this device.' : ''}</p>
     {#if layout === 'wide'}
       <aside class="rail" aria-label="Problem">
         <div class="clock-slot">
@@ -691,7 +697,7 @@
       {#if banner}<div class="banner-slot">{@render banner()}</div>{/if}
       <div class="title-main">
         <a class="back" href={backHref}>{backLabel}</a>
-        <h1 tabindex="-1">{#if label}<span class="mono letter">{label}</span>{/if}{ws.title}</h1>
+        <h1 tabindex="-1">{#if label}<span class="mono letter">{label}</span><span class="visually-hidden">.&nbsp;</span>{/if}{ws.title}</h1>
         <p class="limits">{limitsText(ws.time_limit_ms, ws.memory_limit_mb)}</p>
       </div>
       {#if layout !== 'wide' && !clock && note}
@@ -758,11 +764,24 @@
           <select id="ws-font" class="select font" value={fontSize} onchange={onFontChange}>
             {#each FONT_SIZES as size (size)}<option value={size}>{size} px</option>{/each}
           </select>
-          <span class="spacer"></span>
-          <button type="button" class="btn btn-secondary" disabled={runBusy || lockText !== ''} onclick={runSamples}>Run on samples</button>
-          <button type="button" class="btn btn-primary" disabled={submitBusy || lockText !== ''} onclick={() => submit()}>Submit</button>
+          <div class="run-actions">
+            <button
+              type="button"
+              class="btn btn-secondary"
+              disabled={runBusy || lockText !== ''}
+              aria-describedby={lockText ? 'ws-locked' : undefined}
+              onclick={runSamples}>Run on samples</button
+            >
+            <button
+              type="button"
+              class="btn btn-primary"
+              disabled={submitBusy || lockText !== ''}
+              aria-describedby={lockText ? 'ws-locked' : undefined}
+              onclick={() => submit()}>Submit</button
+            >
+          </div>
         </div>
-        {#if lockText}<p class="locked">{lockText}</p>{/if}
+        {#if lockText}<p class="locked" id="ws-locked">{lockText}</p>{/if}
 
         <div class="editor-box">
           <CodeEditor
@@ -798,16 +817,17 @@
                 bind:this={customField}
                 bind:value={customInput}
               ></textarea>
-              <button type="button" class="btn btn-secondary btn-compact" disabled={runBusy} onclick={runCustom}>Run on this input</button>
+              <button type="button" class="btn btn-secondary btn-compact" disabled={runBusy || lockText !== ''} onclick={runCustom}>Run on this input</button>
             </div>
           </details>
-          <p class="save" class:failed={saveState === 'failed'} aria-live="polite">
+          <p class="save" class:failed={saveState === 'failed'}>
             {#if saveState === 'saved'}Draft saved{:else if saveState === 'saving'}Saving draft{:else if saveState === 'failed'}Draft not saved
               to the server. A copy is kept on this device.{:else}Changes kept on this device{/if}
           </p>
         </div>
         <p class="hint" id="ws-keys">
           <kbd>{mod}+Enter</kbd> submits, <kbd>{mod}+'</kbd> runs on samples, <kbd>Esc</kbd> then <kbd>Tab</kbd> leaves the editor.
+          <button type="button" class="link-button" onclick={() => (shell.shortcuts = true)}>All shortcuts</button>
         </p>
       </section>
 
@@ -819,8 +839,6 @@
         aria-labelledby={layout === 'phone' ? 'ws-tab-result' : undefined}
         aria-label={layout === 'phone' ? undefined : 'Result'}
       >
-        <p class="visually-hidden" aria-live="polite">{announced}</p>
-
         {#if notice}
           <div class="banner banner-error notice" role="alert">
             <p>{notice.text}</p>
@@ -857,10 +875,10 @@
             <h2 class="block-title">Latest submission</h2>
             <VerdictPanel submission={current} onjump={jump} idPrefix="current" />
             {#if sampleFailure}
-              <button type="button" class="btn btn-secondary btn-compact" disabled={runBusy} onclick={runSamples}>Run on samples</button>
+              <button type="button" class="btn btn-secondary btn-compact" disabled={runBusy || lockText !== ''} onclick={runSamples}>Run on samples</button>
             {/if}
             {#if judging.run}
-              <button type="button" class="btn btn-quiet btn-compact switch" onclick={() => (view = 'run')}>Show the last run</button>
+              <button type="button" class="btn btn-quiet btn-compact switch" onclick={() => (view = 'run')}>Show the latest run</button>
             {/if}
           </div>
         {:else}
@@ -1051,8 +1069,10 @@
     width: auto;
   }
 
-  .spacer {
-    flex: 1 1 auto;
+  .run-actions {
+    display: flex;
+    gap: var(--space-2);
+    margin-left: auto;
   }
 
   .editor-box {
@@ -1088,6 +1108,19 @@
     padding-top: var(--space-1);
     color: var(--ink-muted);
     font-size: var(--fs-0);
+  }
+
+  .link-button {
+    padding: 0;
+    border: 0;
+    border-radius: var(--radius);
+    background: none;
+    color: var(--act);
+    font: inherit;
+    font-weight: 500;
+    text-decoration: underline;
+    text-underline-offset: 0.2em;
+    cursor: pointer;
   }
 
   kbd {

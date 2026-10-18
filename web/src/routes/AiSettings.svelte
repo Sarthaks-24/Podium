@@ -170,7 +170,7 @@
           <button type="button" class="btn btn-quiet btn-danger-quiet" disabled={forgetting} onclick={forget}>Forget key</button>
         </div>
       {:else if expired}
-        <p class="key-line">The key expired. Save it again to keep using the assistant.</p>
+        <p class="key-line">The key expired. Paste it again below to keep using the assistant.</p>
       {:else}
         <p class="key-line">No key yet. Add one below to draft problems with AI.</p>
       {/if}
@@ -232,7 +232,7 @@
           {#if fields.key}<p id="api-key-error" class="field-error">{fields.key}</p>{/if}
         </div>
       {:else}
-        <p class="note">The fake provider needs no key. It answers with canned problems, so the wizard can be tried in testing mode without a network.</p>
+        <p class="note">The fake provider needs no key. It answers with canned problems, so you can try drafting a problem in testing mode without a network.</p>
       {/if}
 
       <div class="actions">
@@ -241,12 +241,12 @@
           {saving ? 'Checking key' : keyNeeded ? 'Save key' : 'Use fake provider'}
         </button>
       </div>
-      {#if saving}<p class="visually-hidden" role="status">Checking key</p>{/if}
+      <p class="visually-hidden" role="status">{saving ? 'Checking key' : ''}</p>
       {#if formError !== ''}<p class="field-error form-error" role="alert">{formError}</p>{/if}
     </form>
 
     {#if hasFake && keyNeeded}
-      <p class="testing muted">Testing mode: choose the fake provider to try the wizard without a key.</p>
+      <p class="testing muted">In testing mode, choose the fake provider to try drafting without a key.</p>
     {/if}
   {/if}
 </div>

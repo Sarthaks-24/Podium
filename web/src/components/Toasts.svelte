@@ -1,9 +1,10 @@
 <!--
   Toasts: the stack of notifications in the bottom-left corner. It renders
-  the shared state in lib/toast.svelte.ts. The container is a polite live
-  region that is always in the page, so screen readers announce new info
-  toasts; each error toast has role="alert" and a Dismiss button, because
-  errors do not go away on their own. At most three show (lib/toast.svelte.ts).
+  the shared state in lib/toast.svelte.ts. Info toasts go in a polite live
+  region that is always in the page, so screen readers announce them; each
+  error toast has role="alert" and a Dismiss button, because errors do not
+  go away on their own, and sits outside the polite region so it is
+  announced once. At most three show (lib/toast.svelte.ts).
   The stack lets clicks through to the page; only an error toast, which has
   a button, takes them. Toasts appear at --dur with a short rise, and
   without motion when reduced motion is requested. Takes no props.
@@ -12,21 +13,24 @@
   import { dismissToast, toasts } from '../lib/toast.svelte';
 </script>
 
-<div class="toasts" aria-live="polite">
-  {#each toasts.items as item (item.id)}
-    {#if item.kind === 'error'}
+<div class="toasts">
+  <div class="stack">
+    {#each toasts.items.filter((t) => t.kind === 'error') as item (item.id)}
       <div class="toast toast-error" role="alert">
         <p>{item.message}</p>
         <button type="button" class="btn btn-quiet btn-compact dismiss" onclick={() => dismissToast(item.id)}>
           Dismiss
         </button>
       </div>
-    {:else}
+    {/each}
+  </div>
+  <div class="stack" aria-live="polite">
+    {#each toasts.items.filter((t) => t.kind !== 'error') as item (item.id)}
       <div class="toast">
         <p>{item.message}</p>
       </div>
-    {/if}
-  {/each}
+    {/each}
+  </div>
 </div>
 
 <style>
@@ -39,6 +43,15 @@
     gap: var(--space-2);
     width: min(24rem, calc(100vw - 2 * var(--gutter)));
     pointer-events: none;
+  }
+
+  .stack {
+    display: grid;
+    gap: var(--space-2);
+  }
+
+  .stack:empty {
+    display: none;
   }
 
   .toast {

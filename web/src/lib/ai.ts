@@ -328,9 +328,9 @@ export function withoutAIDraft(tags: readonly string[]): string[] {
   return tags.filter((t) => t.trim().toLowerCase() !== 'ai draft');
 }
 
-/** "A model solved this zero-shot: 100 of 100". */
+/** "A model solved this on its first try: 100 of 100". */
 export function solveLine(s: Pick<Submission, 'score' | 'max_score'>): string {
-  return `A model solved this zero-shot: ${s.score} of ${s.max_score}`;
+  return `A model solved this on its first try: ${s.score} of ${s.max_score}`;
 }
 
 /** What a model's score means for a graded contest, in one or two sentences. */

@@ -51,7 +51,7 @@
 
   {#each run.results as r, i (i)}
     {@const diff = r.expected !== null && r.verdict === 'WA' ? firstDifference(r.expected, r.output) : null}
-    <section class="result" aria-label={r.label}>
+    <section class="result">
       <div class="result-head">
         <h3 class="name">{r.label}</h3>
         <span class="verdict" class:bad={isBad(r.verdict)} class:ok={!isBad(r.verdict)}>{runVerdictLabel(r.verdict)}</span>

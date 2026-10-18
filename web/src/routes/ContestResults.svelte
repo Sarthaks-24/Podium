@@ -277,7 +277,7 @@
             <tr>
               <th scope="col">Problem</th>
               <th scope="col" class="right">Solved</th>
-              <th scope="col" class="right">Tried</th>
+              <th scope="col" class="right">Attempted</th>
               <th scope="col" class="right">Median attempts</th>
               <th scope="col">Students by score</th>
             </tr>
@@ -287,16 +287,16 @@
               <tr>
                 <th scope="row" class="pname"><span class="mono letter">{p.label}</span>{p.title ?? ''}</th>
                 <td class="num right solved"><span class="cell-label">Solved</span>{p.solved}</td>
-                <td class="num right tried"><span class="cell-label">Tried</span>{p.attempted ?? ''}</td>
+                <td class="num right tried"><span class="cell-label">Attempted</span>{p.attempted ?? ''}</td>
                 <td class="num right median"><span class="cell-label">Median attempts</span>{p.median_attempts ?? '-'}</td>
                 <td class="hist">
                   <ul class="buckets">
                     {#each p.histogram as h (h.score)}
                       <li>
-                        <span class="mono bucket-score">{h.score}</span>
+                        <span class="mono bucket-score" aria-hidden="true">{h.score}</span>
                         <span class="bucket-bar" aria-hidden="true"><span style:width="{Math.round((students(h) / histogramMax(p)) * 100)}%"></span></span>
-                        <span class="mono bucket-count">{students(h)}</span>
-                        <span class="visually-hidden">{students(h) === 1 ? 'student' : 'students'} scored {h.score}</span>
+                        <span class="mono bucket-count" aria-hidden="true">{students(h)}</span>
+                        <span class="visually-hidden">{students(h)} {students(h) === 1 ? 'student' : 'students'} scored {h.score}</span>
                       </li>
                     {/each}
                   </ul>

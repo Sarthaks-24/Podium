@@ -283,8 +283,8 @@ export function clockMilestone(prevLeftMs: number, leftMs: number): string | nul
 /** The freeze line under the clock, or null when the contest has no freeze. */
 export function freezeText(freeze: number | null, now: number): string | null {
   if (freeze === null) return null;
-  if (now >= freeze) return 'Board frozen';
-  return `Board freezes in ${formatSpan(freeze - now)}`;
+  if (now >= freeze) return 'Standings frozen';
+  return `Standings freeze in ${formatSpan(freeze - now)}`;
 }
 
 /** Problem labels: A to Z, then AA, AB and on. */
@@ -305,7 +305,7 @@ export function rulesSentences(c: Pick<Contest, 'start_mode' | 'duration_minutes
   const r = c.rules;
   const out: string[] = [];
   if (c.start_mode === 'window') {
-    out.push(`Your clock starts when you press Start and runs ${formatMinutes(c.duration_minutes)}, ending no later than the contest closes.`);
+    out.push(`Your clock starts when you agree and start, and runs ${formatMinutes(c.duration_minutes)}, ending no later than the contest closes.`);
   } else {
     out.push(`Everyone starts together and has ${lengthText(c)}.`);
   }
@@ -323,9 +323,9 @@ export function rulesSentences(c: Pick<Contest, 'start_mode' | 'duration_minutes
   const langs = allowedLanguages(r.languages).map((l) => l.label);
   if (langs.length > 0) out.push(`Languages: ${langs.join(', ')}.`);
   if (c.start_mode === 'fixed' && r.freeze_minutes > 0) {
-    out.push(`The board freezes ${formatMinutes(r.freeze_minutes)} before the end; later results appear after the contest.`);
+    out.push(`The standings freeze ${formatMinutes(r.freeze_minutes)} before the end; later results appear after the contest.`);
   } else if (c.start_mode === 'window') {
-    out.push('The board opens when the window closes.');
+    out.push('The standings open when the contest closes.');
   }
   return out;
 }
@@ -627,7 +627,7 @@ export const ANNOUNCEMENT_TEMPLATES: readonly { id: string; label: string; text:
   { id: 'extended', label: 'Contest extended', text: 'The contest has been extended by {minutes} minutes.' },
   { id: 'paused', label: 'Judging paused', text: 'Judging is paused for a few minutes. Keep submitting: your submissions are queued and nothing is lost.' },
   { id: 'resumed', label: 'Judging resumed', text: 'Judging has resumed. Queued submissions are being judged now.' },
-  { id: 'rejudge', label: 'Problem rejudged', text: 'Problem {label} has been rejudged after a test was fixed. Scores on the board may change.' },
+  { id: 'rejudge', label: 'Problem rejudged', text: 'Problem {label} has been rejudged after a test was fixed. Scores in the standings may change.' },
   { id: 'time', label: 'Time check', text: '{minutes} minutes left.' },
 ];
 

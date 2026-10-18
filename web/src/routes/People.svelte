@@ -144,6 +144,7 @@
     const value = email.trim();
     if (value === '') {
       personError = 'Enter an email address.';
+      document.getElementById('person-email')?.focus();
       return;
     }
     addingPerson = true;
@@ -166,6 +167,7 @@
     const value = domainInput.trim();
     if (value === '' || value === '@') {
       domainError = 'Enter a domain, for example college.edu.';
+      document.getElementById('domain-input')?.focus();
       return;
     }
     addingDomain = true;
@@ -191,6 +193,7 @@
     const value = resetEmail.trim();
     if (value === '') {
       resetError = 'Enter an email address.';
+      document.getElementById('reset-email')?.focus();
       return;
     }
     pending = { kind: 'reset', email: value };
@@ -219,7 +222,7 @@
       if (target.kind === 'person') {
         await sendJSON<void>('DELETE', `/api/admin/people/${target.person.id}`);
         people = people.filter((p) => p.id !== target.person.id);
-        showToast('Removed');
+        showToast(`Removed ${target.person.name.trim() !== '' ? target.person.name : target.person.email}`);
       } else {
         await sendJSON<void>('DELETE', `/api/admin/domains/${encodeURIComponent(target.domain)}`);
         domains = domains.filter((d) => d.domain !== target.domain);
@@ -349,7 +352,7 @@
             <span class="domain">@{d.domain}</span>
             <button
               type="button"
-              class="btn btn-quiet btn-compact"
+              class="btn btn-quiet btn-danger-quiet btn-compact"
               aria-label="Remove @{d.domain}"
               onclick={() => (pending = { kind: 'domain', domain: d.domain })}
             >

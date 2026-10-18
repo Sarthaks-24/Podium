@@ -18,7 +18,7 @@
   const isOrganiser = $derived(session.user?.role === 'admin' || session.user?.role === 'owner');
 
   onMount(() => {
-    if (!isOrganiser) setTitle('Problems');
+    if (!isOrganiser) setTitle('Problem bank');
   });
 </script>
 

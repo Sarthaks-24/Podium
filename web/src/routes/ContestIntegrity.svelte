@@ -172,6 +172,7 @@
   }
 
   async function startCheck() {
+    if (running) return;
     startError = '';
     starting = true;
     try {
@@ -242,7 +243,8 @@
       <button
         type="button"
         class="btn btn-primary"
-        disabled={!over || running}
+        disabled={!over}
+        aria-disabled={running ? 'true' : undefined}
         aria-describedby={!over ? 'check-help' : undefined}
         onclick={startCheck}>{running ? 'Checking' : 'Check integrity'}</button
       >

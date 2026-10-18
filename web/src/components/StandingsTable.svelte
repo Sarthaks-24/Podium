@@ -47,7 +47,7 @@
 {/if}
 
 {#if standings.rows.length === 0}
-  <p class="muted empty">Nobody is on the board yet. Rows appear as students submit.</p>
+  <p class="muted empty">Nobody is in the standings yet. Rows appear as students submit.</p>
 {:else}
   <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
   <div class="board-wrap" class:large bind:this={wrap} tabindex="0" role="region" aria-label={caption}>

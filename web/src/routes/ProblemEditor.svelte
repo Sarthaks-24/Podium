@@ -117,6 +117,7 @@
   let genError = $state<{ message: string; problems: readonly string[] } | null>(null);
   let genBusy = $state(false);
   let regenOpen = $state(false);
+  let replaceOpen = $state(false);
 
   let archiveOpen = $state(false);
   let archiving = $state(false);
@@ -349,7 +350,7 @@
     baseline = JSON.stringify(saved);
     if (!keep) draft = saved;
     if (validation) validation = { ...validation, current: validation.content_hash === p.content_hash };
-    setTitle(p.title, 'Problems');
+    setTitle(p.title, 'Problem bank');
   }
 
   // Polling stops for good when the editor goes away.
@@ -932,7 +933,7 @@
     {#if aiDraft}
       <div class="banner banner-info lead">
         <p>
-          The AI wizard wrote this draft. Read the statement, the solutions and the tests before you use it; students see nothing until it
+          The AI assistant wrote this draft. Read the statement, the solutions and the tests before you use it; students see nothing until it
           is validated and added to a contest. The AI draft tag goes when you save.
         </p>
       </div>
@@ -1240,7 +1241,7 @@
         <div class="files-head">
           <h3 class="sub">Test files</h3>
           <div class="file-actions">
-            <button type="button" class="btn btn-secondary" disabled={replacing} onclick={pickTests}>
+            <button type="button" class="btn btn-secondary" disabled={replacing} onclick={() => (problem && problem.tests.length > 0 ? (replaceOpen = true) : pickTests())}>
               {problem.tests.length === 0 ? 'Upload tests' : 'Replace tests'}
             </button>
             {#if problem.tests.length > 0}
@@ -1249,7 +1250,14 @@
                   Generate outputs
                 </button>
               {/if}
-              <button type="button" class="btn btn-quiet" disabled={genBusy || genPending} onclick={() => (regenOpen = true)}>
+              <button
+                type="button"
+                class="btn btn-quiet"
+                aria-disabled={genBusy || genPending ? 'true' : undefined}
+                onclick={() => {
+                  if (!genBusy && !genPending) regenOpen = true;
+                }}
+              >
                 Regenerate all outputs
               </button>
             {/if}
@@ -1280,7 +1288,7 @@
 
         <div class="generation" aria-live="polite">
           {#if genError}
-            <div class="banner banner-error problems-list" role="alert">
+            <div class="banner banner-error problems-list">
               <p>{genError.message}</p>
               {#if genError.problems.length > 0}
                 <ul>{#each genError.problems as line, i (i)}<li>{line}</li>{/each}</ul>
@@ -1543,7 +1551,7 @@
 
           <div class="generation" aria-live="polite">
             {#if inputGenError}
-              <div class="banner banner-error problems-list" role="alert">
+              <div class="banner banner-error problems-list">
                 <p>{inputGenError.message}</p>
                 {#if inputGenError.problems.length > 0}
                   <ul>{#each inputGenError.problems as line, i (i)}<li>{line}</li>{/each}</ul>
@@ -1633,7 +1641,8 @@
 
       <div class="footer">
         {#if problem.warnings.length > 0}
-          <div class="warnings" role="note" aria-label="Before you validate">
+          <div class="warnings" role="note" aria-labelledby="warnings-title">
+            <p id="warnings-title" class="warnings-title">Before you validate</p>
             <ul>{#each problem.warnings as warning, i (i)}<li>{warning}</li>{/each}</ul>
           </div>
         {/if}
@@ -1689,9 +1698,7 @@
           tests as your submission. It shows what a student who pastes the statement into a model would get.
         </p>
 
-        {#if solveWizard && solveStatus !== ''}
-          <p class="visually-hidden" role="status">{solveStatus}</p>
-        {/if}
+        <p class="visually-hidden" role="status">{solveWizard ? solveStatus : ''}</p>
 
         {#if solveDone && solveSubmission}
           <div class="solve-result tone-box-{solveTone}">
@@ -1699,7 +1706,7 @@
             <p>{solveMeaning(solveSubmission)}</p>
             <p>
               <a href="/admin/problems/{problem.id}/try">See the model's submission</a>
-              <span class="muted">in Try as a student, where your submissions are listed.</span>
+              <span class="muted">on the Try as a student page.</span>
             </p>
           </div>
         {:else if solveWaiting}
@@ -1715,7 +1722,7 @@
           <div class="banner banner-error problems-list" role="alert">
             <p>
               {solveError.message}
-              {#if isKeyProblem(solveError.code)}<a href="/admin/ai">Open AI assistant</a>{/if}
+              {#if isKeyProblem(solveError.code)}<a href="/admin/ai">Go to AI assistant</a>{/if}
             </p>
             {#if solveError.reasons.length > 0}
               <ul>{#each solveError.reasons as line, i (i)}<li>{line}</li>{/each}</ul>
@@ -1727,14 +1734,17 @@
           <button
             type="button"
             class="btn btn-secondary"
-            disabled={solveBusy || solveWaiting || keyMissing}
+            disabled={keyMissing}
+            aria-disabled={solveBusy || solveWaiting ? 'true' : undefined}
             aria-describedby={keyMissing ? 'solve-key-help' : undefined}
-            onclick={() => (solveOpen = true)}
+            onclick={() => {
+              if (!solveBusy && !solveWaiting) solveOpen = true;
+            }}
           >
             {solveWaiting ? 'Asking a model' : solveDone ? 'Ask a model again' : 'Ask a model to solve it'}
           </button>
           {#if keyMissing}
-            <p id="solve-key-help" class="field-help">No AI key. <a href="/admin/ai">Add one in AI assistant</a> to use this.</p>
+            <p id="solve-key-help" class="field-help">No AI key. <a href="/admin/ai">Add a key in AI assistant</a> to use this.</p>
           {/if}
         </div>
       </section>
@@ -1763,6 +1773,19 @@
   busy={archiving}
   onconfirm={archive}
   oncancel={() => (archiveOpen = false)}
+/>
+
+<ConfirmDialog
+  open={replaceOpen}
+  title="Replace all {problem?.tests.length ?? 0} tests?"
+  body="The tests in the .zip you pick take the place of every test now on this problem. Subtask ranges stay as they are."
+  confirmLabel="Replace tests"
+  danger
+  onconfirm={() => {
+    replaceOpen = false;
+    pickTests();
+  }}
+  oncancel={() => (replaceOpen = false)}
 />
 
 <ConfirmDialog
@@ -2126,8 +2149,10 @@
     color: var(--bad);
   }
 
+  /* Empty, it stays in the page (a live region that appears with its
+     first message is often not read), but takes no space. */
   .generation:empty {
-    display: none;
+    margin-top: 0;
   }
 
   .generation {
@@ -2260,6 +2285,14 @@
     margin-top: var(--space-7);
     padding-top: var(--space-5);
     border-top: var(--rule) solid var(--line);
+  }
+
+  .warnings-title {
+    font-weight: 600;
+  }
+
+  .editor :is(input, select, textarea) {
+    scroll-margin-top: 10rem;
   }
 
   .warnings {

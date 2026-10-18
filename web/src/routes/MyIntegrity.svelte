@@ -18,7 +18,6 @@
   import { keepHeadingFocus } from '../lib/focus';
   import { problemName, studentStateText, type StudentCase, type StudentCaseList } from '../lib/review';
   import { session } from '../lib/session.svelte';
-  import { showToast } from '../lib/toast.svelte';
 
   /** The longest explanation the server accepts. */
   const MAX_EXPLANATION = 8000;
@@ -72,7 +71,6 @@
       await sendJSON<void>('PUT', `/api/integrity/cases/${c.id}/explanation`, { explanation: text });
       if (data) data = { ...data, cases: data.cases.map((x) => (x.id === c.id ? { ...x, explanation: text } : x)) };
       saved = { ...saved, [c.id]: 'Saved. You can change it until a decision is made.' };
-      showToast('Saved your explanation');
     } catch (e) {
       if (e instanceof ApiError && e.status === 401) {
         session.user = undefined;
@@ -93,18 +91,18 @@
 </script>
 
 <h1 tabindex="-1">Questions about your submissions</h1>
-<p class="lead">
-  An organiser looked over a contest and would like you to explain some of your work. This is not a finding: a person reads your explanation before deciding anything, and only you and the organisers see it.
-</p>
 
 {#if loadState === 'loading'}
-  <p class="lead muted" role="status">Loading</p>
+  <p class="lead muted" role="status">Loading your questions</p>
 {:else if loadState === 'error'}
   <div class="banner banner-error lead" role="alert"><p>{loadError}</p></div>
   <p class="retry"><button type="button" class="btn btn-secondary" onclick={load}>Try again</button></p>
 {:else if !data || data.cases.length === 0}
   <p class="lead muted">Nothing to explain. If an organiser asks you about a submission, it appears here.</p>
 {:else}
+  <p class="lead">
+    An organiser looked over a contest and would like you to explain some of your work. This is not a finding: a person reads your explanation before deciding anything, and only you and the organisers see it.
+  </p>
   {#each data.cases as c (c.id)}
     <section class="case" aria-labelledby="case-{c.id}">
       <h2 id="case-{c.id}">{c.title}</h2>
@@ -138,7 +136,7 @@
         {:else}
           <p class="muted">You did not write an explanation.</p>
         {/if}
-        <p class="muted small">A decision has been made, so the explanation can no longer change.</p>
+        <p class="muted small">An organiser has decided, so you can no longer change your explanation.</p>
       {:else}
         <form
           class="explain"
@@ -162,7 +160,7 @@
             <p id="explain-{c.id}-help" class="field-help">
               For example: where the idea came from, what you looked up, and whether you worked with anyone. You can change it until a decision is made.
             </p>
-            {#if errors[c.id]}<p id="explain-{c.id}-error" class="field-error">{errors[c.id]}</p>{/if}
+            {#if errors[c.id]}<p id="explain-{c.id}-error" class="field-error" role="alert">{errors[c.id]}</p>{/if}
           </div>
           <div class="actions">
             <button type="submit" class="btn btn-primary" disabled={saving[c.id]}>Save explanation</button>

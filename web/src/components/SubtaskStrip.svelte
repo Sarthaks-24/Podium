@@ -49,7 +49,7 @@
       </span>
     {/each}
   </div>
-  <span class="score mono">{submission.state === 'done' ? submission.score : 0} of {submission.max_score}</span>
+  <span class="score mono">{#if submission.state === 'done'}{submission.score} of {submission.max_score}{/if}</span>
 </div>
 
 <style>

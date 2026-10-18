@@ -60,7 +60,7 @@ describe('standings wording', () => {
     expect(statusLine(board({ final: true, judging_remaining: 3 }))).toBe('Final standings. 3 submissions are still being judged.');
     // After the end a frozen board is held for the reveal: no promise that has already passed.
     expect(statusLine(board({ variant: 'frozen', frozen_at: frozenAt }), true)).toBe(
-      'Frozen at 20:30. The final board appears when the organisers release it.',
+      'Frozen at 20:30. The final standings appear when the organisers release them.',
     );
   });
 
@@ -68,13 +68,13 @@ describe('standings wording', () => {
     expect(myRow(board())?.name).toBe('Asha Rao');
     expect(placeSentence(board())).toBe('You are tied 2nd of 3 with 140 points.');
     expect(placeSentence(board({ me: 1 }))).toBe('You are 1st of 3 with 200 points.');
-    expect(placeSentence(board({ me: 99 }))).toBe('You are not on the board.');
+    expect(placeSentence(board({ me: 99 }))).toBe('You are not in the standings.');
   });
 
   it('never prints a frozen total beside the live score', () => {
-    expect(placeSentence(board({ variant: 'frozen' }))).toBe('On the frozen board you are tied 2nd of 3.');
+    expect(placeSentence(board({ variant: 'frozen' }))).toBe('In the frozen standings you are tied 2nd of 3.');
     expect(placeSentence(board({ variant: 'frozen' }), true)).toBe(
-      'On the frozen board you are tied 2nd of 3. Your final place shows when the organisers release the results.',
+      'In the frozen standings you are tied 2nd of 3. Your final place shows when the organisers release the results.',
     );
     expect(placeSentence(board({ variant: 'frozen' }), true)).not.toMatch(/points/);
   });

@@ -68,7 +68,7 @@
   const isOrganiser = $derived(session.user?.role === 'admin' || session.user?.role === 'owner');
   const base = $derived(`/api/admin/contests/${encodeURIComponent(id)}/integrity`);
   const back = $derived(fromCase ? `/admin/integrity/cases/${caseId}` : `/admin/contests/${encodeURIComponent(id)}/integrity`);
-  const backLabel = $derived(fromCase ? (kase ? `Case: ${kase.title}` : 'Case') : 'Integrity');
+  const backLabel = $derived(fromCase ? (kase ? kase.title : 'Case') : 'Integrity');
   const students = $derived(sig ? [sig.user_a, sig.user_b].filter((u): u is number => !!u) : []);
   // Names: the case's own students first, then the check's map.
   const users = $derived.by(() => {

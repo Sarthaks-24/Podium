@@ -66,6 +66,9 @@
   --code-meta: #E8A6CB;
   --code-invalid: #FF9A8F;
   --code-gutter: #858E88;
+  /* The editor's focus ring is drawn on the well, where --act can fall to
+     2.3:1, so it takes the keyword colour (at least 3:1 on every well). */
+  --code-focus: var(--code-keyword);
   --code-selection: color-mix(in srgb, var(--act) 40%, var(--well));
   --code-active-line: color-mix(in srgb, var(--well-ink) 7%, var(--well));
 

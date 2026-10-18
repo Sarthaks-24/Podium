@@ -114,7 +114,7 @@
     <tbody>
       {#each tests as t (t.idx)}
         <tr>
-          <td class="mono idx">{t.idx}</td>
+          <th scope="row" class="mono idx">{t.idx}</th>
           <td class:bad={isBad(t.verdict)} class:muted={t.verdict === '' || t.verdict === 'SK'}>{word(t)}</td>
           <td class="mono num">{t.verdict === '' || t.verdict === 'SK' ? '' : formatMs(t.time_ms)}</td>
           <td class="mono num">{t.verdict === '' || t.verdict === 'SK' ? '' : formatKb(t.memory_kb)}</td>
@@ -219,13 +219,16 @@
     font-size: var(--fs-0);
   }
 
-  .tests td {
+  .tests td,
+  .tests th {
     padding: var(--space-1) var(--space-2) var(--space-1) 0;
   }
 
   .idx {
     width: 3ch;
     color: var(--ink-muted);
+    font-weight: 400;
+    text-align: left;
   }
 
   .num {

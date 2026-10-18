@@ -24,13 +24,13 @@
   const top = $derived(items[0] ?? null);
 </script>
 
-<div class="wrap" role="status">
+<div class="wrap">
   {#if top}
     <div class="banner banner-info strip">
       <Icon name={top.kind === 'announcement' ? 'bell' : 'message-square'} />
-      <div class="text">
+      <div class="text" role="status">
         <p class="lead">
-          {top.kind === 'announcement' ? 'Announcement' : 'Your question was answered'}
+          {top.kind === 'announcement' ? 'Announcement' : 'An organiser answered your question'}
           <span class="mono when">{formatWhen(top.at)}</span>
         </p>
         {#if top.question}<p class="question">{top.question}</p>{/if}

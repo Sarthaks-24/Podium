@@ -154,8 +154,8 @@ describe('student phase and window maths', () => {
     expect(freezeAt(c)).toBe(T + 90 * MIN);
     expect(freezeAt({ ...c, start_mode: 'window' })).toBeNull();
     expect(freezeAt({ ...c, rules: { ...c.rules, freeze_minutes: 0 } })).toBeNull();
-    expect(freezeText(T + 90 * MIN, T + 58 * MIN)).toBe('Board freezes in 32 min');
-    expect(freezeText(T + 90 * MIN, T + 90 * MIN)).toBe('Board frozen');
+    expect(freezeText(T + 90 * MIN, T + 58 * MIN)).toBe('Standings freeze in 32 min');
+    expect(freezeText(T + 90 * MIN, T + 90 * MIN)).toBe('Standings frozen');
     expect(freezeText(null, T)).toBeNull();
   });
 
@@ -164,10 +164,10 @@ describe('student phase and window maths', () => {
     expect(lines[0]).toBe('Everyone starts together and has 2 h.');
     expect(lines.join(' ')).toContain('only says "Submitted"');
     expect(lines.join(' ')).toContain('Languages: C++17, Python 3.');
-    expect(lines.join(' ')).toContain('The board freezes 30 min before the end');
+    expect(lines.join(' ')).toContain('The standings freeze 30 min before the end');
     const win = rulesSentences(contest({ start_mode: 'window', duration_minutes: 90 }));
     expect(win[0]).toContain('runs 1 h 30 min');
-    expect(win.at(-1)).toBe('The board opens when the window closes.');
+    expect(win.at(-1)).toBe('The standings open when the contest closes.');
   });
 });
 

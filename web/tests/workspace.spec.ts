@@ -354,7 +354,7 @@ test('submitting fills the subtask strip as results stream in', async ({ page })
   api.stream.push({ type: 'submission', data: submission(id, 'partial') });
   await expect(panel.locator('.headline').first()).toHaveText('Partial, 40 of 100', { timeout: 10_000 });
   await expect(panel.getByText('Wrong answer on test 5').first()).toBeVisible();
-  await expect(panel.locator('[aria-live="polite"]').filter({ hasText: 'Score 40 of 100.' })).toHaveCount(1);
+  await expect(page.locator('.ws > [aria-live="polite"]').filter({ hasText: 'Score 40 of 100.' })).toHaveCount(1);
   await expect(panel.locator('.strip')).toHaveAttribute('aria-label', 'Subtask 1, 40 points, passed; Subtask 2, 60 points, failed');
   await expect(panel.getByText('Check edge cases', { exact: false }).first()).toBeVisible();
   await page.screenshot({ path: `${shots()}workspace-partial-1440-light.png` });
@@ -434,7 +434,7 @@ test('the draft comes back after a reload, from this device when the server miss
   await page.keyboard.type('// kept locally');
   await page.getByRole('heading', { level: 1 }).click();
   await expect.poll(() => api.draftPuts.length).toBeGreaterThan(0);
-  await expect(page.getByText('Draft not saved to the server.')).toBeVisible();
+  await expect(page.locator('p.save')).toContainText('Draft not saved to the server.');
 
   await page.reload();
   await expect(page.locator('.cm-content')).toBeVisible();
@@ -589,4 +589,49 @@ test('a missing problem says so', async ({ page }) => {
   await page.goto('/admin/problems/404/try');
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('Problem not found');
   await expect(page.locator('h1')).toHaveCount(1);
+});
+
+test('on small screens the tabs follow the arrow keys, and Submit opens the result', async ({ page }) => {
+  const api = await mockApi(page);
+  await page.setViewportSize({ width: 375, height: 812 });
+  await openWorkspace(page);
+  const tab = (name: string) => page.getByRole('tab', { name });
+
+  // Arrows move and choose, Home and End jump, and the ends wrap.
+  await tab('Problem').focus();
+  await page.keyboard.press('ArrowRight');
+  await expect(tab('Code')).toHaveAttribute('aria-selected', 'true');
+  await expect(tab('Code')).toBeFocused();
+  await page.keyboard.press('End');
+  await expect(tab('Result')).toHaveAttribute('aria-selected', 'true');
+  await page.keyboard.press('ArrowRight');
+  await expect(tab('Problem')).toHaveAttribute('aria-selected', 'true');
+  await page.keyboard.press('ArrowLeft');
+  await expect(tab('Result')).toBeFocused();
+  await page.keyboard.press('Home');
+  await expect(tab('Problem')).toHaveAttribute('aria-selected', 'true');
+  await expect(page.getByRole('tabpanel', { name: 'Problem' })).toBeVisible();
+
+  // Submitting from the Code tab opens the Result tab.
+  await tab('Code').click();
+  await page.locator('.cm-content').click();
+  await page.keyboard.press('Control+Enter');
+  await expect.poll(() => api.submits.length).toBe(1);
+  await expect(tab('Result')).toHaveAttribute('aria-selected', 'true');
+  await expect(page.getByRole('tabpanel', { name: 'Result' })).toBeVisible();
+
+  // The result is still announced while another tab is showing.
+  await tab('Problem').click();
+  const live = page.locator('.ws > [aria-live="polite"]').first();
+  await expect(live).not.toHaveText('');
+  expect(await live.evaluate((el) => el.closest('[hidden]') === null)).toBe(true);
+
+  // On a tablet, a submit from the Problem tab opens the Code tab, where the result sits.
+  await page.setViewportSize({ width: 800, height: 900 });
+  await expect(page.getByRole('tab')).toHaveCount(2);
+  await tab('Problem').click();
+  await page.locator('main h1').focus();
+  await page.waitForTimeout(1100);
+  await page.keyboard.press('Control+Enter');
+  await expect(tab('Code')).toHaveAttribute('aria-selected', 'true');
 });

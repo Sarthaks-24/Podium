@@ -97,7 +97,7 @@
     }
   }
 
-  onMount(() => setTitle('Problems'));
+  onMount(() => setTitle('Problem bank'));
 
   $effect(() => {
     const archived = showArchived;
@@ -198,7 +198,7 @@
   }
 </script>
 
-<h1 tabindex="-1">Problems</h1>
+<h1 tabindex="-1">Problem bank</h1>
 
 {#if loadState === 'forbidden'}
   <p class="lead">Only admins can manage problems. Ask an owner if you need access.</p>

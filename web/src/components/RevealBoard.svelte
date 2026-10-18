@@ -67,6 +67,21 @@
     shownRank = {};
     flash = null;
     said = '';
+    void keepFocus();
+  }
+
+  // A button that disables itself (Next at the end, Back and Start over at
+  // the start) drops focus to the page, outside the dialog, and the keys
+  // stop working. Focus goes to Next while there is a row left, else to the
+  // title, where Space does nothing and the arrows still work.
+  async function keepFocus() {
+    await tick();
+    if (!dialog?.open) return;
+    const active = document.activeElement;
+    if (active instanceof HTMLButtonElement ? !active.disabled : dialog.contains(active)) return;
+    const next = dialog.querySelector<HTMLButtonElement>('.next');
+    if (next && !next.disabled) next.focus();
+    else dialog.querySelector<HTMLElement>('#reveal-title')?.focus();
   }
 
   function back() {
@@ -76,6 +91,7 @@
     shownRank = {};
     said = 'Stepped back one row.';
     tick().then(scrollToNext);
+    void keepFocus();
   }
 
   function reduced(): boolean {
@@ -121,6 +137,7 @@
     reveal = result.state;
     const { move } = result;
     const row = reveal.rows[move.to];
+    void keepFocus();
     said =
       move.to < move.from
         ? `${row.name} moves from ${ordinalWord(move.rankFrom)} to ${ordinalWord(move.rankTo)} with ${row.total} points.`
@@ -182,7 +199,7 @@
 <dialog bind:this={dialog} class="reveal" aria-labelledby="reveal-title" oncancel={onCancel} onkeydown={onKeydown}>
   <header class="top">
     <div>
-      <h2 id="reveal-title">{title}</h2>
+      <h2 id="reveal-title" tabindex="-1">{title}</h2>
       <p class="hint">
         {#if done}All rows resolved. These are the final standings.{:else}Press Space or the right arrow to resolve the next row, the left
           arrow to go back. {left}
@@ -214,9 +231,13 @@
           class:flash={flash === r.user_id}
           data-user={r.user_id}
         >
+          <span class="visually-hidden">Rank</span>
           <span class="rank mono">{shownRank[r.user_id] ?? r.rank}</span>
+          <span class="visually-hidden">,</span>
           <span class="name">{r.name}</span>
+          <span class="visually-hidden">,</span>
           <span class="total mono">{r.total}</span>
+          <span class="visually-hidden">points,</span>
           {#each labels as l (l)}
             {@const v = cellView(cellFor(r, l), l)}
             <span class="cell tone-{v.tone}" class:pend={v.pending !== ''}>
@@ -310,7 +331,7 @@
     font-weight: 600;
   }
 
-  .row > span {
+  .row > span:not(.visually-hidden) {
     padding: var(--space-2) var(--space-3);
   }
 

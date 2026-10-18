@@ -103,6 +103,16 @@ describe('themes in tokens.css', () => {
     }
   });
 
+  it('draws the editor focus ring at 3:1 or more on the well in every theme', () => {
+    const root = rules.find((r) => r.media === null && r.selector === ':root' && '--code-focus' in r.vars);
+    expect(root?.vars['--code-focus']).toBe('var(--code-keyword)');
+    const ring = root?.vars['--code-keyword'] ?? '';
+    for (const { id } of THEMES) {
+      const t = resolveTheme(rules, id, false);
+      expect(contrast(ring, t['--well']), id).toBeGreaterThanOrEqual(3);
+    }
+  });
+
   it('repeats the Dark theme exactly for a system that prefers dark', () => {
     const system = rules.find((r) => r.media !== null && r.selector === ':root:not([data-theme])');
     const dark = resolveTheme(rules, 'dark', false);
