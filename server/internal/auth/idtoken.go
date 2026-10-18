@@ -133,6 +133,10 @@ type tokenRules struct {
 	audience string
 	nonce    string
 	now      time.Time
+	// maxAge, when set, refuses a token whose auth_time (when the person
+	// last signed in at the provider) is older than this. A token without
+	// auth_time passes: the max_age request parameter still applies.
+	maxAge time.Duration
 }
 
 // verifyIDToken checks an RS256-signed ID token and returns its identity.
@@ -170,6 +174,7 @@ func verifyIDToken(ctx context.Context, keys *keySet, raw string, rules tokenRul
 		Azp           string          `json:"azp"`
 		Exp           int64           `json:"exp"`
 		Iat           int64           `json:"iat"`
+		AuthTime      int64           `json:"auth_time"`
 		Nonce         string          `json:"nonce"`
 		Sub           string          `json:"sub"`
 		Email         string          `json:"email"`
@@ -191,6 +196,8 @@ func verifyIDToken(ctx context.Context, keys *keySet, raw string, rules tokenRul
 		return Identity{}, fmt.Errorf("%w: issued in the future", errToken)
 	case rules.nonce == "" || c.Nonce != rules.nonce:
 		return Identity{}, fmt.Errorf("%w: nonce", errToken)
+	case rules.maxAge > 0 && c.AuthTime != 0 && rules.now.Sub(time.Unix(c.AuthTime, 0)) > rules.maxAge+clockSkew:
+		return Identity{}, fmt.Errorf("%w: provider sign-in older than %s", errToken, rules.maxAge)
 	case c.Sub == "" || c.Email == "":
 		return Identity{}, fmt.Errorf("%w: missing subject or email", errToken)
 	}

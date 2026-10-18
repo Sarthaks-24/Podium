@@ -1,0 +1,79 @@
+#!/usr/bin/env bash
+# Restores a podium backup into a scratch directory and checks it, without
+# touching the live server. Use it to rehearse a restore, to look at old
+# data, or as the first half of a real recovery (docs/RUNBOOK.md,
+# "Restoring from a backup"). install.sh's backup step installs it as
+# /usr/local/lib/podium/podium-restore; in a checkout, tools/restore.sh
+# runs it.
+#
+#   podium-restore nightly BACKUP_DIR SCRATCH
+#       BACKUP_DIR is one nightly backup, such as /var/backups/podium/latest
+#   podium-restore litestream SCRATCH [TESTS_DIR]
+#       the newest database in the bucket (/etc/litestream.yml and
+#       /etc/podium/litestream.env), with test files copied from TESTS_DIR
+#       (default /var/backups/podium/latest/tests)
+#   podium-restore litestream-at TIMESTAMP SCRATCH [TESTS_DIR]
+#       the database as it was at TIMESTAMP (RFC 3339, UTC, such as
+#       2026-10-18T14:30:00Z), within the 14 days the bucket keeps
+#
+# The result is SCRATCH/podium.db and SCRATCH/tests, checked with
+# "podium-server check -hash". It prints how to open it in a testing-mode
+# server and how to put it in place. SCRATCH must not exist yet.
+set -euo pipefail
+
+die() { printf 'podium-restore: %s\n' "$*" >&2; exit 1; }
+usage() { sed -n '2,21p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 2; }
+[[ $# -gt 0 ]] || usage
+server=${PODIUM_SERVER_BIN:-$(command -v podium-server || echo /usr/local/bin/podium-server)}
+[[ -x $server ]] || die "podium-server not found; set PODIUM_SERVER_BIN"
+
+mode=${1:-}
+case $mode in
+  nightly)
+    [[ $# -eq 3 ]] || usage
+    src=$2 scratch=$3
+    [[ -f $src/podium.db ]] || die "$src/podium.db not found"
+    [[ ! -e $scratch ]] || die "$scratch already exists"
+    mkdir -p "$scratch"
+    cp "$src/podium.db" "$scratch/podium.db"
+    if [[ -d $src/tests ]]; then cp -a "$src/tests" "$scratch/tests"; else mkdir "$scratch/tests"; fi
+    ;;
+  litestream|litestream-at)
+    at=()
+    if [[ $mode == litestream-at ]]; then
+      [[ $# -ge 3 ]] || usage
+      at=(-timestamp "$2"); shift
+    fi
+    [[ $# -ge 2 ]] || usage
+    scratch=$2 tests=${3:-/var/backups/podium/latest/tests}
+    [[ ! -e $scratch ]] || die "$scratch already exists"
+    command -v litestream >/dev/null || die "litestream is not installed (sudo ./install.sh litestream)"
+    config=${LITESTREAM_CONFIG:-/etc/litestream.yml}
+    envfile=${LITESTREAM_ENV:-/etc/podium/litestream.env}
+    if [[ -r $envfile ]]; then
+      set -a; . "$envfile"; set +a
+    fi
+    mkdir -p "$scratch"
+    # The live database's path, as /etc/litestream.yml names it.
+    litestream restore -config "$config" "${at[@]}" -o "$scratch/podium.db" "${PODIUM_DB_PATH:-/var/lib/podium/db/podium.db}"
+    if [[ -d $tests ]]; then cp -a "$tests" "$scratch/tests"; else
+      echo "restore.sh: no test files at $tests; the check will list them as missing" >&2
+      mkdir "$scratch/tests"
+    fi
+    ;;
+  *) usage ;;
+esac
+
+echo "restored into $scratch; checking"
+code=0
+"$server" check -db "$scratch/podium.db" -tests "$scratch/tests" -hash || code=$?
+cat <<EOF
+
+To look at it in a testing-mode server on this machine (loopback only):
+  PODIUM_MODE=testing PODIUM_LISTEN=127.0.0.1:18080 PODIUM_JUDGE_LISTEN=127.0.0.1:18081 \\
+  PODIUM_DB_PATH=$scratch/podium.db PODIUM_TESTS_DIR=$scratch/tests $server
+then: curl -s http://127.0.0.1:18080/healthz
+
+To put it in place of the live data, follow docs/RUNBOOK.md, "Restoring from a backup".
+EOF
+exit $code

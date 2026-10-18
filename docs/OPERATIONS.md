@@ -1,6 +1,6 @@
 # Operations
 
-How to install, configure, check and upgrade podium on its VM, and how to run it on your own machine. The contest-day runbook is added here once it has been through a dry-run contest (milestone M7).
+How to install, configure, check, back up and upgrade podium on its VM, and how to run it on your own machine. What to do on a contest day, and the dry run with real students, are in `docs/RUNBOOK.md`.
 
 ## Install
 
@@ -15,14 +15,17 @@ sudo ./install.sh
 
 | Step | What it does |
 |---|---|
-| `packages` | g++, OpenJDK 21, Python 3, Node 22 (NodeSource repository), sqlite3 |
+| `packages` | g++, OpenJDK 21, Python 3, Node 22 (NodeSource repository), sqlite3, jq, rsync |
 | `isolate` | isolate from its upstream apt repository; mounts its box root `/var/lib/isolate` on a 1200 MB tmpfs (so files a program writes count against its memory limit); caps all sandboxes at 1100 MB through `isolate.slice`; enables `isolate.service`; runs `isolate-check-environment` |
 | `testlib` | `testlib.h` (release 0.9.41) into `/usr/local/include` for custom checkers. Downloaded from GitHub at a pinned commit and refused unless its SHA-256 matches the one in the script. Skipped when the installed file already matches. |
 | `users` | system users `podium` and `judge`; adds `judge` to group `isolate` (the isolate binary is executable only by that group) |
 | `dirs` | `/var/lib/podium/{db,tests}` (podium, 750), `/var/cache/podium-judge` (judge, 750), `/etc/podium`; creates `server.env` and `judge.env` from the examples if missing (root, 600), with the absolute VM paths for the database and tests |
 | `app` | installs both binaries and systemd units; starts the services only once `server.env` no longer contains placeholder values |
-| `caddy` | installs Caddy and writes `/etc/caddy/Caddyfile` for the host in `PODIUM_BASE_URL` |
+| `firewall` | `ufw`: inbound only ssh (the port sshd uses), 80 and 443 (TCP, and UDP for HTTP/3); ssh is allowed before the firewall is switched on. Warns when ssh still accepts passwords (see "Firewall and ssh") |
+| `caddy` | installs Caddy and writes `/etc/caddy/Caddyfile` for the host in `PODIUM_BASE_URL`: admin API off, request bodies capped at 33 MB, then restarts Caddy |
 | `swap` | 1 GB swap file, `vm.swappiness=10` |
+| `litestream` | Litestream 0.5.16 into `/usr/local/bin`, downloaded from its GitHub release and refused unless its SHA-256 matches the one in the script; `/etc/litestream.yml`; creates `/etc/podium/litestream.env` from the example if missing (root, 600); the `podium-litestream` unit, started only once that file has no placeholder values (see "Backups") |
+| `backup` | the nightly backup script in `/usr/local/lib/podium`, `/var/backups/podium` (podium, 750), and `podium-backup.timer` (about 03:15 UTC) |
 
 `isolate-check-environment` may warn about simultaneous multithreading, address-space randomisation, transparent huge pages and the core file pattern. These affect timing reproducibility, not safety. For the steadiest timings, disable transparent huge pages (`echo never > /sys/kernel/mm/transparent_hugepage/enabled`) and set `kernel.core_pattern=core`; leave address-space randomisation on.
 
@@ -52,13 +55,15 @@ Both services read `PODIUM_MODE`. A missing value means `production`, so a forgo
 | Sign-in | a form: any email, any role, no password | Google | Google |
 | Google client | not read | required | required |
 | `PODIUM_BASE_URL` | optional, default `http://localhost:5173`, must be a localhost address | required, http allowed | required, must be `https` |
-| `PODIUM_LISTEN` | must be loopback | any | any |
+| `PODIUM_LISTEN` | must be loopback | any | must be loopback |
 | `PODIUM_OWNER_EMAIL` | optional, default `owner@podium.test` | required | required |
 | `PODIUM_SESSION_SECRET` | optional, random for each run | required | required |
 | `PODIUM_JUDGE_TOKEN` | optional, public testing token when empty | optional, public testing token when empty | required, testing token refused |
 | Banner in the web app | "Testing mode: sign-in is off..." on every page | none | none |
 
 Testing mode lets anyone who can reach the server sign in as an owner, which is why the server refuses to start in that mode unless both the base URL and the listen address are on this machine. The public testing judge token is in the source code; it pairs a local server and judge without setup, the judge API only ever listens on loopback, and production refuses it.
+
+Testing mode refuses any request whose `Host` is not localhost, 127.0.0.1 or [::1], and any request carrying `X-Forwarded-For`, `Forwarded`, `X-Real-IP` or `X-Forwarded-Host`, so Caddy in front of it never works. Test sign-in also needs an `Origin` equal to the base URL. The server stores the mode it last ran in; when it starts in a different mode it ends every session, and when the new mode is dev or production it makes every admin and owner without a linked Google account a student again (except `PODIUM_OWNER_EMAIL`), logging `run mode differs from the database's last start` with the counts. Roles granted to people who have not yet signed in with Google are among them: grant them again.
 
 ## Run locally without any keys
 
@@ -94,7 +99,7 @@ Listed in the order the server reads them. The testing, dev and production colum
 |---|---|---|---|---|---|
 | `PODIUM_MODE` | | | | `production` | `testing`, `dev` or `production` (see "Run modes"). |
 | `PODIUM_BASE_URL` | optional | required | required, https | testing: `http://localhost:5173` | Public URL students open, for example `https://contest.example.edu`. Scheme and host only. Used for sign-in redirects, cookie flags (`https` makes the session cookie `Secure` and `__Host-` prefixed), the cross-site check and the Caddy host. |
-| `PODIUM_LISTEN` | loopback only | optional | optional | `127.0.0.1:8080` | Address the HTTP server binds; Caddy proxies to it. |
+| `PODIUM_LISTEN` | loopback only | optional | optional, loopback only | `127.0.0.1:8080` | Address the HTTP server binds; Caddy proxies to it. Production refuses any address that is not loopback: Caddy is the only public listener, and the server trusts `X-Forwarded-For` only from a loopback peer (see "Behind Caddy"). |
 | `PODIUM_JUDGE_LISTEN` | optional | optional | optional | `127.0.0.1:8081` | Address of the judge worker API. Must be loopback in every mode and differ from `PODIUM_LISTEN` (see "Judge API listener"). |
 | `PODIUM_DB_PATH` | optional | optional | optional | `data/podium.db` | SQLite file. On the VM use `/var/lib/podium/db/podium.db`. |
 | `PODIUM_TESTS_DIR` | optional | optional | optional | `data/tests` | Test files and program sources by SHA-256. On the VM use `/var/lib/podium/tests`. |
@@ -121,6 +126,13 @@ Who can sign in: anyone whose verified Google email is on an allowed domain, any
 
 `PODIUM_BASE_URL` must be just the scheme and host (no path); podium runs at the root of its own host name.
 
+### Sessions and shared lab PCs
+
+- The session cookie has no expiry, so the browser forgets it when it closes. The server ends every session 12 hours after sign-in, however much it is used (a constant, `auth.SessionTTL`; there is no variable for it), and at sign-out.
+- Google sign-in asks Google for a sign-in from the last 5 minutes (`prompt=select_account`, `max_age=300`) and refuses an ID token whose `auth_time` is older than 5 minutes, so the previous student's Google session on a lab PC is not one click away.
+- In labs, give each slot a browser guest profile, or a kiosk profile that is wiped on exit, and ask students to sign out of Podium and of Google before they leave.
+- To sign someone out everywhere (a lost laptop, a PC left signed in), use People, "Sessions and access", End sessions. Disable account also stops them signing in until an owner enables it. Both act at once on requests; open live updates stop within 25 s. `POST /api/admin/accounts/reset-google` is no longer the only kill switch.
+
 ### Recovering access
 
 If you are locked out (every owner removed, or the domain list emptied), set `PODIUM_OWNER_EMAIL` to your address and restart: that account is made an owner again at start-up. Sessions can be ended for everyone with `sqlite3 /var/lib/podium/db/podium.db "DELETE FROM sessions"`.
@@ -129,7 +141,7 @@ Each account is linked to the Google account that first signed in with it. If so
 
 ### podium-judge (`/etc/podium/judge.env`)
 
-Listed in the order the judge reads them, with the same mode columns. `podium-judge calibrate` reads only the last four.
+Listed in the order the judge reads them, with the same mode columns. `podium-judge calibrate` reads only `PODIUM_ISOLATE_PATH`, `PODIUM_JUDGE_LANES`, `PODIUM_JUDGE_CACHE_DIR` and `PODIUM_LOG_LEVEL`.
 
 | Variable | testing | dev | production | Default | Purpose |
 |---|---|---|---|---|---|
@@ -139,9 +151,23 @@ Listed in the order the judge reads them, with the same mode columns. `podium-ju
 | `PODIUM_ISOLATE_PATH` | optional | optional | optional | `/usr/bin/isolate` | The isolate binary. |
 | `PODIUM_JUDGE_LANES` | optional | optional | optional | `2` | Sandboxes judged in parallel (1 to 16). Two fit a 2 GB VM. |
 | `PODIUM_JUDGE_CACHE_DIR` | optional | optional | optional | `/var/cache/podium-judge` | Downloaded tests and sources, per-job work files and compiled programs (see "Judge cache"). |
+| `PODIUM_JUDGE_BLOB_CACHE_MB` | optional | optional | optional | `2048` | Cap on `blobs/` in the cache directory, in MB, 64 to 1048576. Above it the least recently used files no running job holds are removed after each job. Keep it above the largest problem's tests (every test of a problem is fetched to validate it). |
 | `PODIUM_LOG_LEVEL` | optional | optional | optional | `info` | As above. |
 
-Backup variables (Litestream) appear here when their code lands in M7.
+### Litestream (`/etc/podium/litestream.env`)
+
+Read by the `podium-litestream` unit; template `deploy/litestream.env.example`. A start-up check (`/usr/local/lib/podium/check-litestream-env`) logs `set` or `missing` for each variable and refuses to start while any is empty or `change-me`. All are required.
+
+| Variable | Purpose |
+|---|---|
+| `LITESTREAM_ACCESS_KEY_ID` | Key ID of an application key limited to the backup bucket, read and write. Backblaze B2: Application Keys, Add a New Application Key. Secret. |
+| `LITESTREAM_SECRET_ACCESS_KEY` | That key's secret (B2 shows it once). Secret. |
+| `PODIUM_BACKUP_BUCKET` | The bucket: private, encrypted, "keep only the last version". |
+| `PODIUM_BACKUP_PATH` | Folder inside the bucket, for example `podium`. |
+| `PODIUM_BACKUP_ENDPOINT` | The bucket's S3 endpoint with `https://`, for example `https://s3.us-west-004.backblazeb2.com` (B2 shows it on the bucket's page). |
+| `PODIUM_BACKUP_REGION` | The region in that endpoint, for example `us-west-004`. |
+
+Any S3-compatible store works the same way (Cloudflare R2, Wasabi, AWS S3): set its endpoint and region.
 
 ### Judge cache
 
@@ -149,7 +175,7 @@ Backup variables (Litestream) appear here when their code lands in M7.
 
 | Directory | Holds | Size |
 |---|---|---|
-| `blobs/` | tests, sources (including every submitted program) and custom inputs downloaded from the server, by SHA-256, re-hashed on download | not trimmed automatically; grows with every problem and submission judged |
+| `blobs/` | tests, sources (including every submitted program) and custom inputs downloaded from the server, by SHA-256, re-hashed on download | at most `PODIUM_JUDGE_BLOB_CACHE_MB` (2 GB); when a job ends above it, the least recently used files go until it is under 90 % of the cap; files a running job holds are kept |
 | `jobs/` | scratch files of running jobs (program outputs), removed when each job ends | small |
 | `compiled/` | the compile cache: compiled programs and checkers, keyed by language, compile command and source | at most 500 MB, least recently used removed after every job; entries in use are kept |
 
@@ -178,6 +204,12 @@ ssh -N -L 127.0.0.1:8081:127.0.0.1:8081 tunnel@contest.example.edu
 # judge.env on that machine: PODIUM_SERVER_URL=http://127.0.0.1:8081
 ```
 
+On the VM, limit that account's key to this one forward, so it can reach neither a shell nor the web listener on 8080 (where it could set `X-Forwarded-For` as if it were Caddy). In `~tunnel/.ssh/authorized_keys`:
+
+```
+restrict,port-forwarding,permitopen="127.0.0.1:8081" ssh-ed25519 AAAA... judge-machine
+```
+
 Over WireGuard, run the same forward to the server's WireGuard address; the listener itself stays on loopback. Never run judge workers on machines students can reach: the token is enough to report verdicts.
 
 ## Rate limits
@@ -192,6 +224,7 @@ Checked by the server before anything is queued. Every refusal is `429` with the
 | Submissions per problem | the contest's `max_per_problem` (default 15); none for practice | Submit in a contest (`400`) |
 | Pending runs | one per user, across problems | Run |
 | Gap between runs | 2 s per user | Run |
+| After a compile that ran out of time or memory | that user's Run and Submit in the same contest are refused for 60 s; kept in memory, so a restart forgets it. The judge also caches that compile error for the same language and source for 10 minutes, so resending the same code does not hold the compile lock again. Rejudges do not count | Run, Submit |
 | Draft saves | one per user every 2 s | drafts |
 | Code | 64 KB, UTF-8 | Run, Submit, drafts |
 | Custom input | 64 KB | Run |
@@ -200,6 +233,9 @@ Checked by the server before anything is queued. Every refusal is `429` with the
 | Clarifications | 5 unanswered questions per student per contest (`400`) | Ask |
 | AI requests | one running per admin, at most 3 minutes (`429 busy` without `retry_after_s`: try again when it ends) | the AI wizard, Can a model solve this? |
 | Event streams | 4 per user (a fifth replaces the oldest, which is told and stops reconnecting), 5,000 in total (then `503`, and the page polls) | `GET /api/events` |
+| Open requests | 8 at once per browser session, event streams aside (`429` with `Retry-After: 1`) | every API route with a session cookie |
+| Time to send a request | headers within 10 s, the whole request within 15 s; 120 s for the routes that take an upload | every route; the long one for pack import, test replacement and roster upload |
+| Request body at the edge | 33 MB (Caddy refuses more with `413` before the server sees it) | everything through Caddy |
 
 A retried Submit with the same `client_key` returns the first submission and is not counted again, so a flaky network does not trip these limits. Only the contest limits are configurable, per contest in its settings.
 
@@ -223,6 +259,8 @@ All of this is in the contest's live console in the web app; the routes are in `
 **After.** Students see the frozen board from the freeze until everyone's time is up (including personal extensions), then the full board. To keep the result for a projector walk, turn on "Hold the reveal" before the end: students stay on the frozen board until you choose Reveal. The reveal screen opens once every window has closed. Export the results as CSV (spreadsheet-safe: cells that would start a formula get a leading `'`) or JSON. Publish the editorial when ready; students see it, and practice opens, only once every student's time is up (including personal extensions). Clone a contest to run it again with new dates.
 
 **Retention.** Integrity evidence (paste and focus events, second sessions, each submission's typed and pasted counts and client hash) is deleted 180 days after a contest ended for everyone (D47), except for students in an open or awaiting_student integrity case for that contest; theirs goes on the first run after the case is decided. The server applies this at start-up and every 12 hours and logs `integrity data past retention removed` with counts. Scores, submissions and code are kept.
+
+**Unused test files.** The same 12-hourly pass deletes files in `PODIUM_TESTS_DIR` that nothing refers to any more: tests replaced by new ones, old copies of reference solutions, checkers and generators, and runs' custom inputs. A file is kept while any problem's test, any submission or run, or any job that is waiting, running or less than 7 days old names it, and for a day after it was last saved; the judge's own uploads that were never used go after a day too. The log line is `unused test files removed` with counts and MB. Nightly backups keep their own hard-linked copies, so a file removed here is still in the backups taken before.
 
 ## Integrity checks
 
@@ -274,6 +312,28 @@ Models offered: Claude Opus 5.5 (default), Claude Sonnet 5.5, Claude Haiku 5.5. 
 
 Testing mode (`PODIUM_MODE=testing`, `make dev-test`) also offers a "Test provider (canned problems)": no key, no network, two canned problems whose programs really work on the judge (one about a maximum subarray when the brief or text mentions "subarray" or "stretch", a pair sums problem otherwise). Use it to try the whole pipeline (draft, generate inputs, generate outputs, validate). It does not exist in dev or production.
 
+## Behind Caddy
+
+| Setting | Where | Why |
+|---|---|---|
+| Admin API off (`admin off`) | global options of the Caddyfile | nothing on the VM can reconfigure Caddy over `localhost:2019`. A change to `/etc/caddy/Caddyfile` needs `sudo systemctl restart caddy`; `systemctl reload caddy` fails by design |
+| `request_body { max_size 33MB }` | the site block | the largest body the server reads is a 32 MB pack; bigger ones stop at the edge |
+| `reverse_proxy 127.0.0.1:8080` | the site block | the server listens on loopback only (production refuses anything else) |
+| `X-Forwarded-For` | set by Caddy | Caddy has no `trusted_proxies`, so it ignores any `X-Forwarded-For` a client sends and sets the header to the client's own address. The server uses the header's last address, and only when the connection comes from loopback; from any other peer it uses the peer address. Sessions, integrity hashes and logs use that address |
+
+What the loopback rule relies on: only Caddy connects to `127.0.0.1:8080`. Sandboxed programs have no network, the firewall drops outside traffic, and a remote judge's tunnel key is limited to port 8081 (see "Judge API listener"). Do not run other services on the VM that forward traffic to 8080.
+
+## Firewall and ssh
+
+`install.sh firewall` leaves only ssh, 80 and 443 open. Check with `sudo ufw status verbose`. Then make ssh key-only, once your key works (keep a second session open while you try):
+
+```sh
+echo 'PasswordAuthentication no' | sudo tee /etc/ssh/sshd_config.d/90-podium.conf
+sudo sshd -t && sudo systemctl restart ssh
+```
+
+Your provider's own firewall, if it has one, should allow the same three ports.
+
 ## Event stream behind Caddy
 
 `GET /api/events` is a server-sent event stream that stays open as long as the page does. It needs no extra Caddy configuration: Caddy passes `text/event-stream` responses through without buffering, and the shipped Caddyfile also sets `flush_interval -1` and leaves `/api/events` out of compression. The server sends `event: clock` every 25 s, which keeps the connection from looking idle to any proxy in between.
@@ -293,6 +353,43 @@ If clock lines arrive in bursts or only when the request ends, something between
 - `curl -fsS http://127.0.0.1:8080/healthz` returns `{"status":"ok","db":"ok"}`, or HTTP 503 when the database is unreachable.
 - The judge API has no health route. `curl -s -o /dev/null -w '%{http_code}\n' -X POST http://127.0.0.1:8081/api/judge/claim` prints `401` when the listener is up (it asks for the token).
 - Logs: `journalctl -u podium-server -u podium-judge -f`. They are JSON lines. The worker logs `job started` and `job finished` per job; the server logs `job leased` and `job closed`.
+- `podium-server check` checks a database and its test files without changing them (see "Checking a database").
+
+## Metrics
+
+`GET /api/admin/metrics` (owners and admins) answers what to watch during a contest, from two indexed queries and in-memory counters, so polling it every few seconds costs nothing noticeable. The route is in `docs/API.md`.
+
+| Field | Meaning |
+|---|---|
+| `queue.queued`, `queue.leased` | jobs waiting and jobs a worker holds, all kinds; `queue.kinds.<kind>` splits them (`submit`, `run`, `validate`, `generate`, `generate_inputs`) |
+| `queue.queued_paused` | waiting jobs held back because their contest is paused |
+| `queue.oldest_queued_s` | age of the oldest waiting job |
+| `queue.kinds.<kind>.finished_last_minute` | jobs closed in the last minute: the judge's current throughput |
+| `queue.submit_wait_p95_ms`, `queue.submit_total_p95_ms` | for submissions judged in the last 10 minutes: 95th percentile from Submit to the judge picking it up, and to the verdict |
+| `queue.failed_last_5_min` | jobs that failed (a judge error, three lost leases, a deadline) |
+| `queue.leased_jobs` | each held job: id, kind, worker, attempts, seconds since its first claim |
+| `events.connections`, `events.users` | open event streams, and people with at least one |
+| `db.in_use`, `db.waits`, `db.wait_ms` | SQLite connections busy now, and how often and how long requests have waited for one since the start |
+| `process.heap_mb`, `process.sys_mb`, `process.goroutines` | the server's memory and goroutines |
+
+The throughput, latency and failure figures are kept in memory and start again from zero when the server restarts.
+
+From the VM, with a session cookie copied from a signed-in organiser's browser (developer tools, Application, Cookies, `__Host-podium_session`):
+
+```sh
+C='paste-the-cookie-value'
+watch -n 10 "curl -s -H 'Cookie: __Host-podium_session=$C' http://127.0.0.1:8080/api/admin/metrics | jq -c '{queued: .queue.queued, leased: .queue.leased, per_min: ([.queue.kinds[].finished_last_minute] | add), wait_p95_s: (.queue.submit_wait_p95_ms / 1000), streams: .events.connections, heap_mb: .process.heap_mb}'"
+```
+
+With an `http` base URL (testing mode, local development) the cookie is named `podium_session` instead. The cookie is a full sign-in: do not leave it in shell history on a shared machine, and sign out in the browser afterwards to end it.
+
+## Checking a database
+
+```sh
+sudo -u podium podium-server check -db /var/lib/podium/db/podium.db -tests /var/lib/podium/tests
+```
+
+It opens the database read-only and prints: SQLite's `integrity_check` and `foreign_key_check`, the migrations recorded against those this binary knows (a database written by a newer server is reported, not touched), row counts, and whether every test file and program source recorded in the database is on disk with the recorded size. `-hash` re-reads every file and compares its SHA-256 with its name. Exit status 0 means sound, 1 means something is damaged or missing (listed), 2 means the check could not run. The nightly backup and `podium-restore` run it on every copy they make.
 
 ## Validation troubleshooting
 
@@ -344,6 +441,84 @@ Upgrading to M5 (AI wizard):
 3. Migration `0007_wizard.sql` adds the generator columns and the `input_generations` table, and widens the allowed job kinds by rewriting the `CREATE TABLE jobs` text with SQLite's `writable_schema` procedure (decision D52): a table rebuild would cascade-delete every job result, because foreign keys stay on during migrations. No row changes. To check afterwards: `sqlite3 /var/lib/podium/db/podium.db "PRAGMA integrity_check"` prints `ok`.
 4. To use the wizard, an admin adds a key in the web app (see "AI wizard keys"). Nothing goes in `server.env`.
 
+Upgrading to M7 (hardening):
+
+1. `sudo ./install.sh packages firewall app caddy litestream backup`, then `sudo systemctl restart podium-server podium-judge`. No migration. The `firewall` step closes every inbound port but ssh, 80 and 443; the `caddy` step rewrites the Caddyfile (admin API off, body limit). The server unit now sets `GOMEMLIMIT=220MiB`, and production refuses a `PODIUM_LISTEN` that is not loopback. The judge reads one new optional variable, `PODIUM_JUDGE_BLOB_CACHE_MB` (default 2048); add it to `judge.env` only to change the cap.
+2. Fill in `/etc/podium/litestream.env` (see "Litestream" and "Backups"), then `sudo systemctl restart podium-litestream`.
+3. Take the first nightly backup by hand: `sudo systemctl start podium-backup`.
+4. On the first start the server removes test files nothing refers to (see "Running a contest", "Unused test files"); the log says how many.
+
 ## Backups
 
-Litestream replication and nightly snapshots are set up in milestone M7. Until then, copy the database safely with `sqlite3 /var/lib/podium/db/podium.db ".backup /var/backups/podium-$(date +%F).db"`, and copy `/var/lib/podium/tests` too: test files and program sources live there, named by hash, and the database only refers to them.
+Two layers, both installed by `install.sh` (steps `litestream` and `backup`):
+
+| | Litestream | Nightly backup |
+|---|---|---|
+| What | the database | the database and the test files |
+| Where | the bucket in `/etc/podium/litestream.env` (off the VM) | `/var/backups/podium/<date>` on the VM (podium only, 700), copied off the VM by rsync when `PODIUM_BACKUP_RSYNC` is set |
+| How often | every change, uploaded every 10 s | every night about 03:15 UTC, and on demand |
+| Kept | 14 days of history (a daily snapshot plus every change since) | 14 days |
+| Restores | the newest state, or any moment in the 14 days | that night's state |
+| Protects against | losing the VM or its disk | a bad change (a wrong rejudge, a deleted contest), a damaged database |
+
+Test files and program sources are not in the bucket: they live in `/var/lib/podium/tests`, named by SHA-256, and the database only refers to them. The nightly backup copies them as hard links, so 14 nights cost little more than one, and carries them off the VM when `PODIUM_BACKUP_RSYNC` is set (below). Set it before the first graded contest: without it, losing the VM's disk loses every test file, and only the pack zips you kept would bring the problems back. Submitted code is safe either way, since the database holds every submission's source.
+
+Backups hold every student's code and the session table, so they are private: the backup runs with umask 077 (`UMask=0077` in the unit, `umask 077` in the script), `/var/backups/podium` is mode 700, and the files are readable by the podium user only. The judge cannot read them.
+
+### Copy the nightly backup off the VM
+
+`/etc/podium/backup.env` (root, 600; template `deploy/backup.env.example`) is optional and read by `podium-backup.service`:
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `PODIUM_BACKUP_RSYNC` | empty: no copy | `user@host:/path` on another machine; after each nightly run the whole backup folder goes there with `rsync -aH --delete` over ssh, hard links kept. A failed copy fails the unit, so it shows in `systemctl --failed` |
+| `PODIUM_BACKUP_KEEP_DAYS` | 14 | nights to keep, here and (through `--delete`) on the copy |
+
+Set it up once:
+
+1. On the VM, a key for the podium user: `sudo -u podium ssh-keygen -t ed25519 -N '' -f /var/lib/podium/.ssh/id_ed25519`, and print `/var/lib/podium/.ssh/id_ed25519.pub`.
+2. On the backup machine, an account whose `authorized_keys` holds that key limited to one folder, for example with rsync's `rrsync`: `command="rrsync /srv/podium",restrict ssh-ed25519 AAAA...` (then the target is `user@host:` with the path relative to that folder, so `PODIUM_BACKUP_RSYNC=podium-backup@backup.example.edu:`).
+3. Accept the host key once: `sudo -u podium ssh podium-backup@backup.example.edu true` (it will say rrsync needs a command; that is fine).
+4. `sudoedit /etc/podium/backup.env`, set `PODIUM_BACKUP_RSYNC`, then `sudo systemctl start podium-backup` and check `journalctl -u podium-backup -n 5` ends with `copied to`.
+
+Disk snapshots from your VM provider are a fine addition but not a replacement: they usually live in the same account as the VM.
+
+### Set up the bucket (Backblaze B2)
+
+1. Create a B2 account, then Buckets, Create a Bucket: private, default encryption on. In the bucket's lifecycle settings choose "Keep only the last version of the file" (Litestream keeps its own history and deletes what it no longer needs).
+2. Application Keys, Add a New Application Key: access to that bucket only, Read and Write. Copy the keyID and the applicationKey (shown once).
+3. `sudoedit /etc/podium/litestream.env`: the key ID, the key, the bucket, a path such as `podium`, and the endpoint and region from the bucket's page.
+4. `sudo systemctl restart podium-litestream`, then `journalctl -u podium-litestream -n 30`: the start-up check lists every variable as `set`, and Litestream logs its first snapshot and then a sync every 10 s while the database changes.
+5. Prove it: `sudo /usr/local/lib/podium/podium-restore litestream /var/tmp/restore-check` restores the newest copy from the bucket and checks it; then `sudo rm -rf /var/tmp/restore-check`.
+
+Litestream has only been rehearsed against a local file replica so far (cache/v1/m7-restore.md); the first restore from your bucket in step 5 is the real test. If the first sync fails with an error about checksums or a header the provider does not support, note the exact message: Litestream 0.5 has per-provider options (`sign-payload`, `require-content-md5`) under the replica in `/etc/litestream.yml`.
+
+### Nightly backup
+
+`podium-backup.timer` runs `/usr/local/lib/podium/podium-backup` as user podium. Each run writes `/var/backups/podium/<UTC date and time>/` with:
+
+- `podium.db`: an online copy (SQLite's backup API, safe while the server writes);
+- `tests/`: hard links to every test file and source (a real copy if `/var/backups` is on another filesystem);
+- `check.txt`: the output of `podium-server check` on the copy. A copy that fails its check is discarded and the unit fails.
+
+It then points `latest` at the new backup and deletes those older than 14 days (`PODIUM_BACKUP_KEEP_DAYS` in `/etc/podium/backup.env` changes that), and copies the folder off the VM if `PODIUM_BACKUP_RSYNC` is set.
+
+| Task | Command |
+|---|---|
+| Back up now (before an upgrade, before a contest) | `sudo systemctl start podium-backup` |
+| See the last run | `systemctl status podium-backup` or `journalctl -u podium-backup -n 20` |
+| See when it runs next | `systemctl list-timers podium-backup.timer` |
+| List backups | `ls -l /var/backups/podium` |
+
+### Restore
+
+`podium-restore` (installed by the `backup` step in `/usr/local/lib/podium`; `tools/restore.sh` in a checkout) restores into a new scratch directory and runs `podium-server check -hash` on the result; it never touches the live data.
+
+```sh
+R=/usr/local/lib/podium/podium-restore
+sudo $R nightly /var/backups/podium/latest /var/tmp/restore     # a nightly backup
+sudo $R litestream /var/tmp/restore                             # newest from the bucket
+sudo $R litestream-at 2026-10-18T14:30:00Z /var/tmp/restore     # the bucket, at a moment
+```
+
+The Litestream forms take the test files from `/var/backups/podium/latest/tests` unless a third argument names another folder. Putting a restored copy in place of the live data is in `docs/RUNBOOK.md`, "Restoring from a backup".

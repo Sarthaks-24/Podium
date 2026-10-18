@@ -36,7 +36,18 @@ var version = "dev"
 
 func main() {
 	envFile := flag.String("env-file", "", "load variables from this file before reading the environment (local development)")
+	flag.Usage = func() {
+		fmt.Fprintln(os.Stderr, "usage: podium-server [-env-file FILE]           run the server")
+		fmt.Fprintln(os.Stderr, "       podium-server check [-db F] [-tests D] [-hash]  check a database and its test files")
+	}
 	flag.Parse()
+	if flag.Arg(0) == "check" {
+		os.Exit(checkCmd(flag.Args()[1:], os.Stdout))
+	}
+	if flag.NArg() > 0 {
+		flag.Usage()
+		os.Exit(2)
+	}
 	if err := run(*envFile); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		if config.IsProblems(err) {
@@ -54,6 +65,9 @@ func run(envFile string) error {
 	}
 	cfg, err := config.LoadServer(os.Getenv)
 	if err != nil {
+		return err
+	}
+	if err := config.CheckPublicListen(cfg); err != nil {
 		return err
 	}
 	log := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: cfg.LogLevel}))
@@ -81,6 +95,13 @@ func run(envFile string) error {
 	authSvc := &auth.Service{DB: database, OwnerEmail: cfg.OwnerEmail}
 	if err := authSvc.Bootstrap(ctx, cfg.AllowedDomains); err != nil {
 		return err
+	}
+	// Nothing made in testing mode may survive into another mode (S2).
+	if ch, err := authSvc.RecordMode(ctx, string(cfg.Mode)); err != nil {
+		return fmt.Errorf("record run mode: %w", err)
+	} else if ch.Changed {
+		log.Warn("run mode differs from the database's last start: every session ended",
+			"from", ch.Previous, "to", cfg.Mode, "sessions_ended", ch.SessionsEnded, "organisers_demoted", ch.Demoted)
 	}
 	go sweepSessions(ctx, authSvc, log)
 	var provider httpapi.IdentityProvider
@@ -143,26 +164,25 @@ func run(envFile string) error {
 		log.Warn("integrity checks interrupted by the last shutdown marked as failed", "count", n)
 	}
 	go sweepJobs(ctx, jobSvc, log)
-	go retainIntegrity(ctx, contestSvc, integritySvc, log)
+	go retainIntegrity(ctx, contestSvc, integritySvc, log, func(ctx context.Context) {
+		start := time.Now()
+		res, err := blobs.GC(ctx, database, start)
+		switch {
+		case err != nil && ctx.Err() == nil:
+			log.Warn("unused test files: collection failed", "err", err)
+		case res.Rows+res.Files > 0:
+			log.Info("unused test files removed", "blobs", res.Rows, "files", res.Files, "mb", res.Bytes>>20,
+				"ms", time.Since(start).Milliseconds())
+		}
+	})
 	handler := httpapi.New(httpapi.Deps{
 		DB: database, Log: log, WebApp: webui.Handler(),
 		Auth: authSvc, IdP: provider, BaseURL: cfg.BaseURL, SessionSecret: cfg.SessionSecret,
 		Problems: problemSvc, Submissions: submissionSvc, Hub: hub, Contests: contestSvc, Integrity: integritySvc,
 		AI:   &httpapi.AI{Keys: aiKeys, Slots: &ai.Slots{}},
-		Mode: string(cfg.Mode),
+		Mode: string(cfg.Mode), Version: version,
 	})
-	srv := &http.Server{
-		BaseContext:       func(net.Listener) context.Context { return base },
-		Addr:              cfg.Listen,
-		Handler:           handler,
-		ReadHeaderTimeout: 10 * time.Second,
-		// Long enough for a 32 MB pack on a slow link; headers are still
-		// bounded by ReadHeaderTimeout.
-		ReadTimeout: 120 * time.Second,
-		// No WriteTimeout: server-sent event streams stay open for hours.
-		IdleTimeout:    120 * time.Second,
-		MaxHeaderBytes: 64 << 10,
-	}
+	srv := apiServer(cfg.Listen, handler, base)
 	srv.RegisterOnShutdown(cancelBase)
 	judgeSrv := &http.Server{
 		Addr:              cfg.JudgeListen,
@@ -201,6 +221,24 @@ func run(envFile string) error {
 	return nil
 }
 
+// apiServer is the public listener's server (behind Caddy). A request must
+// arrive whole, headers and body, within ReadTimeout; the routes that take
+// large uploads extend their own deadline (httpapi.SlowBodyTimeout). There
+// is no WriteTimeout, because server-sent event streams stay open for
+// hours; once a request is read, Go clears the read deadline, so the
+// stream is not cut either (TestEventStreamOutlivesReadTimeout).
+func apiServer(addr string, h http.Handler, base context.Context) *http.Server {
+	return &http.Server{
+		BaseContext:       func(net.Listener) context.Context { return base },
+		Addr:              addr,
+		Handler:           h,
+		ReadHeaderTimeout: 10 * time.Second,
+		ReadTimeout:       15 * time.Second,
+		IdleTimeout:       120 * time.Second,
+		MaxHeaderBytes:    64 << 10,
+	}
+}
+
 // sweepJobs returns jobs whose judge went quiet to the queue every 10 s.
 func sweepJobs(ctx context.Context, j *jobs.Service, log *slog.Logger) {
 	t := time.NewTicker(10 * time.Second)
@@ -224,8 +262,10 @@ func sweepJobs(ctx context.Context, j *jobs.Service, log *slog.Logger) {
 // retainIntegrity applies the integrity retention rules at start-up and
 // every 12 hours: contest records are deleted 180 days after a contest
 // ends, except for students in an open case (D47), and a closed case's
-// evidence and explanations are emptied 2 years after its decision.
-func retainIntegrity(ctx context.Context, c *contests.Service, cases *integrity.Service, log *slog.Logger) {
+// evidence and explanations are emptied 2 years after its decision. The
+// same pass then removes test files and sources nothing refers to any more
+// (gcBlobs, problems.Blobs.GC).
+func retainIntegrity(ctx context.Context, c *contests.Service, cases *integrity.Service, log *slog.Logger, gcBlobs func(context.Context)) {
 	t := time.NewTicker(12 * time.Hour)
 	defer t.Stop()
 	for {
@@ -239,6 +279,7 @@ func retainIntegrity(ctx context.Context, c *contests.Service, cases *integrity.
 		} else if n > 0 {
 			log.Info("integrity case evidence past retention removed", "cases", n)
 		}
+		gcBlobs(ctx)
 		select {
 		case <-ctx.Done():
 			return

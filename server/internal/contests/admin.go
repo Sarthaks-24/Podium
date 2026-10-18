@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -36,8 +37,9 @@ func (s *Service) Archive(ctx context.Context, id int64) error {
 
 // Clone copies a contest's settings and problems into a new, unpublished
 // contest with its own slug, title and dates. The roster, co-organisers,
-// extensions and editorial are not copied.
-func (s *Service) Clone(ctx context.Context, id int64, slug, title string, startsAt, endsAt time.Time, by int64) (*Contest, error) {
+// extensions and editorial are not copied. An admin's reason to grade an
+// AI problem carries over, quoted in the new contest's audit log.
+func (s *Service) Clone(ctx context.Context, id int64, slug, title string, startsAt, endsAt time.Time, by Actor) (*Contest, error) {
 	src, err := s.Get(ctx, id)
 	if err != nil {
 		return nil, err
@@ -51,18 +53,25 @@ func (s *Service) Clone(ctx context.Context, id int64, slug, title string, start
 		Graded: src.Graded, PracticeAfterEnd: src.PracticeAfterEnd, StopOnSampleFail: src.StopOnSampleFail,
 		MinGapS: int(src.MinGap / time.Second), MaxPerProblem: src.MaxPerProblem, Languages: src.Languages,
 		HonourText: src.HonourText, HoldReveal: src.HoldReveal}
-	c, err := s.Create(ctx, e, by)
-	if err != nil {
-		return nil, err
-	}
 	choices := make([]ProblemChoice, 0, len(src.Problems))
 	for _, p := range src.Problems {
-		choices = append(choices, ProblemChoice{ProblemID: p.ProblemID, Label: p.Label})
+		reason, err := s.aiConfirmedIn(ctx, src.ID, p.ProblemID)
+		if err != nil {
+			return nil, err
+		}
+		if reason != "" {
+			reason = fmt.Sprintf("Copied from contest %s, where the reason was: %s", src.Slug, reason)
+		}
+		choices = append(choices, ProblemChoice{ProblemID: p.ProblemID, Label: p.Label, AIReason: reason})
+	}
+	c, err := s.Create(ctx, e, by.ID)
+	if err != nil {
+		return nil, err
 	}
 	if len(choices) == 0 {
 		return c, nil
 	}
-	out, err := s.SetProblems(ctx, c.ID, choices)
+	out, err := s.SetProblems(ctx, c.ID, choices, by)
 	if err != nil {
 		// A half-made copy helps nobody: remove it and say why.
 		s.DB.ExecContext(ctx, "DELETE FROM contests WHERE id = ?", c.ID)
@@ -173,7 +182,9 @@ func (s *Service) RosterCount(ctx context.Context, id int64) (int, error) {
 	return n, err
 }
 
-// ExtendFor gives one student extra time and tells them their new end.
+// ExtendFor gives one student extra time and tells them their new end. The
+// student must be on the roster or taking part (IsParticipant); removing
+// an extension (0 minutes) works for anyone who has one.
 func (s *Service) ExtendFor(ctx context.Context, c *Contest, userID int64, minutes int, reason string) error {
 	var n int
 	if err := s.DB.QueryRowContext(ctx, "SELECT count(*) FROM users WHERE id = ?", userID).Scan(&n); err != nil {
@@ -181,6 +192,15 @@ func (s *Service) ExtendFor(ctx context.Context, c *Contest, userID int64, minut
 	}
 	if n == 0 {
 		return ErrNotFound
+	}
+	if minutes != 0 {
+		ok, err := s.IsParticipant(ctx, c, userID)
+		if err != nil {
+			return err
+		}
+		if !ok {
+			return ErrNotParticipant
+		}
 	}
 	if err := s.SetExtension(ctx, c.ID, userID, minutes, strings.TrimSpace(reason)); err != nil {
 		return err

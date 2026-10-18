@@ -16,6 +16,7 @@ var JudgeVars = []Var{
 	{Name: "PODIUM_ISOLATE_PATH", Default: "/usr/bin/isolate"},
 	{Name: "PODIUM_JUDGE_LANES", Default: "2"},
 	{Name: "PODIUM_JUDGE_CACHE_DIR", Default: "/var/cache/podium-judge"},
+	{Name: "PODIUM_JUDGE_BLOB_CACHE_MB", Default: "2048"},
 	{Name: "PODIUM_LOG_LEVEL", Default: "info"},
 }
 
@@ -34,6 +35,9 @@ type Judge struct {
 	Lanes int
 	// CacheDir holds test blobs and compiled binaries.
 	CacheDir string
+	// BlobCacheMB caps the downloaded files in CacheDir/blobs; the least
+	// recently used ones no running job holds are removed above it.
+	BlobCacheMB int
 	// LogLevel is the minimum level written to the JSON log.
 	LogLevel slog.Level
 }
@@ -61,6 +65,7 @@ func LoadWorker(get Getenv) (Judge, error) {
 	c.IsolatePath = r.str("PODIUM_ISOLATE_PATH")
 	c.Lanes = r.int("PODIUM_JUDGE_LANES", 1, 16)
 	c.CacheDir = r.str("PODIUM_JUDGE_CACHE_DIR")
+	c.BlobCacheMB = r.int("PODIUM_JUDGE_BLOB_CACHE_MB", 64, 1<<20)
 	c.LogLevel = r.level("PODIUM_LOG_LEVEL")
 	return c, r.p.err()
 }

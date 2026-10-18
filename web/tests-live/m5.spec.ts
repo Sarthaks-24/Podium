@@ -65,7 +65,7 @@ test('the fake provider drafts problems that reach Validated', async ({ page }) 
   await page.goto(briefDraft);
   await page.getByRole('button', { name: 'Ask a model to solve it' }).click();
   await page.getByRole('dialog').getByRole('button', { name: 'Ask a model' }).click();
-  await expect(page.locator('.solve-line')).toContainText('A model solved this zero-shot:', { timeout: 240_000 });
+  await expect(page.locator('.solve-line')).toContainText('A model solved this on its first try:', { timeout: 240_000 });
   await expect(page.getByRole('link', { name: "See the model's submission" })).toBeVisible();
 });
 

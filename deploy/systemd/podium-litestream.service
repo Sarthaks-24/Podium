@@ -1,0 +1,25 @@
+# Installed by deploy/install.sh. Streams the database to the bucket in
+# /etc/podium/litestream.env (docs/OPERATIONS.md, "Backups").
+[Unit]
+Description=Podium database replication (Litestream)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=podium
+Group=podium
+EnvironmentFile=/etc/podium/litestream.env
+ExecStartPre=/usr/local/lib/podium/check-litestream-env
+ExecStart=/usr/local/bin/litestream replicate -config /etc/litestream.yml
+Restart=always
+RestartSec=10
+MemoryMax=200M
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+# Litestream keeps its own state next to the database.
+ReadWritePaths=/var/lib/podium/db
+
+[Install]
+WantedBy=multi-user.target

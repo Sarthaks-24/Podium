@@ -57,6 +57,8 @@ async function mockApi(page: Page, who: Who) {
     domains: structuredClone(DOMAINS),
     nextId: 10,
     resets: [] as string[],
+    disabled: [] as { id: number; email: string; name: string; role: string; disabled: boolean; last_login_at: number | null }[],
+    accountCalls: [] as string[],
   };
 
   await page.route(
@@ -83,7 +85,22 @@ async function mockApi(page: Page, who: Who) {
         if (me.role !== 'owner') return apiError(route, 403, 'forbidden', 'Only owners can do that.');
       }
       if (path === '/api/admin/people' && method === 'GET') {
-        return json(route, 200, { people: state.people, domains: state.domains });
+        return json(route, 200, { people: state.people, domains: state.domains, disabled: state.disabled });
+      }
+      const accountMatch = path.match(/^\/api\/admin\/accounts\/(end-sessions|disable|enable)$/);
+      if (accountMatch && method === 'POST') {
+        const kind = accountMatch[1];
+        const target = (req.postDataJSON() as { email: string }).email;
+        const known = [...state.people.map((p) => p.email), STUDENT.email];
+        if (!known.includes(target)) return apiError(route, 404, 'not_found', 'Nobody with that email has an account.');
+        if (kind === 'disable' && target === OWNER.email) {
+          return apiError(route, 409, 'conflict', 'This owner is set in the server configuration and cannot be disabled.');
+        }
+        state.accountCalls.push(`${kind} ${target}`);
+        const account = { id: target === STUDENT.email ? STUDENT.id : 50, email: target, name: '', role: 'student', disabled: kind === 'disable', last_login_at: null };
+        state.disabled = state.disabled.filter((a) => a.email !== target);
+        if (kind === 'disable') state.disabled.push(account);
+        return json(route, 200, { account, ended: kind === 'enable' ? 0 : 2 });
       }
       if (path === '/api/admin/people' && method === 'POST') {
         const body = req.postDataJSON() as { email: string; role: string };
@@ -382,6 +399,46 @@ test('resetting a Google account link asks first and reports errors inline', asy
   await expect(page.locator('#reset-error')).toHaveCount(0);
   await expect(email).toHaveValue('');
   expect(state.resets).toEqual(['asha@college.edu']);
+});
+
+test('an owner ends sessions, disables and enables an account, each asked first', async ({ page }) => {
+  const state = await mockApi(page, 'owner');
+  await page.goto('/admin/people');
+  const section = page.getByRole('region', { name: 'Sessions and access' });
+  const email = section.getByLabel('Email', { exact: true });
+  await expect(section).toContainText('No account is disabled.');
+
+  await section.getByRole('button', { name: 'End sessions' }).click();
+  await expect(page.locator('#account-error')).toHaveText('Enter an email address.');
+  await expect(email).toHaveAttribute('aria-invalid', 'true');
+
+  await email.fill('asha@college.edu');
+  await section.getByRole('button', { name: 'End sessions' }).click();
+  const end = page.getByRole('dialog', { name: 'End every session of asha@college.edu?' });
+  await expect(end).toContainText('They are signed out on every device at once');
+  await expect(end.getByRole('button', { name: 'Cancel' })).toBeFocused();
+  await end.getByRole('button', { name: 'End sessions' }).click();
+  await expect(page.getByText('Ended 2 sessions of asha@college.edu', { exact: true })).toBeVisible();
+
+  await email.fill('priya@college.edu');
+  await section.getByRole('button', { name: 'Disable account' }).click();
+  await page.getByRole('dialog', { name: 'Disable priya@college.edu?' }).getByRole('button', { name: 'Disable account' }).click();
+  await expect(page.locator('#account-error')).toHaveText('This owner is set in the server configuration and cannot be disabled.');
+
+  await email.fill('asha@college.edu');
+  await section.getByRole('button', { name: 'Disable account' }).click();
+  const disable = page.getByRole('dialog', { name: 'Disable asha@college.edu?' });
+  await expect(disable).toContainText('cannot sign in until an owner enables the account again');
+  await disable.getByRole('button', { name: 'Disable account' }).click();
+  await expect(page.getByText('Disabled asha@college.edu', { exact: true })).toBeVisible();
+  await expect(section.getByRole('listitem')).toContainText(['asha@college.edu']);
+  await page.screenshot({ path: `${shots()}people-access-1280-light.png`, fullPage: true });
+
+  await section.getByRole('button', { name: 'Enable asha@college.edu' }).click();
+  await page.getByRole('dialog', { name: 'Enable asha@college.edu?' }).getByRole('button', { name: 'Enable account' }).click();
+  await expect(page.getByText('Enabled asha@college.edu', { exact: true })).toBeVisible();
+  await expect(section).toContainText('No account is disabled.');
+  expect(state.accountCalls).toEqual(['end-sessions asha@college.edu', 'disable asha@college.edu', 'enable asha@college.edu']);
 });
 
 test('signed-out visitors are sent to sign in and back', async ({ page }) => {

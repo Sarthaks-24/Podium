@@ -38,6 +38,8 @@ type Phase = 'upcoming' | 'ready' | 'during' | 'after' | 'practice';
 
 interface Options {
   who?: 'student' | 'admin';
+  /** Interval covering came from the AI wizard: the graded contest asks for a reason. */
+  aiGate?: boolean;
   phase?: Phase;
   feedback?: 'subtask' | 'exam';
   startMode?: 'fixed' | 'window';
@@ -166,6 +168,7 @@ async function mockApi(page: Page, options: Options = {}) {
     releases: 0,
     adminDeletes: [] as Json[],
     feedQueries: [] as string[],
+    aiGate: options.aiGate ?? false,
   };
 
   state.holdReveal = options.holdReveal ?? false;
@@ -441,8 +444,14 @@ async function mockApi(page: Page, options: Options = {}) {
         return json(route, 200, { ...adminContest(), ...body });
       }
       if (path === '/api/admin/contests/4/problems' && method === 'PUT') {
-        const body = req.postDataJSON() as { problem_id: number; label: string }[];
+        const body = req.postDataJSON() as { problem_id: number; label: string; ai_reason?: string }[];
         state.problemPuts.push(body);
+        const unconfirmed = body.filter((b) => state.aiGate && b.problem_id === 12 && (b.ai_reason ?? '').length < 10);
+        if (unconfirmed.length > 0) {
+          return apiError(route, 409, 'ai_unconfirmed', `Problem ${unconfirmed[0].label} came from the AI wizard and no person has written a solution for it.`, {
+            problems: unconfirmed.map((b) => b.label),
+          });
+        }
         state.adminProblems = body.map((b) => ({ ...b, title: PROBLEMS.find((p) => p.id === b.problem_id)?.title ?? 'Problem', ready: true, max_score: 100 }));
         return json(route, 200, adminContest());
       }
@@ -526,6 +535,16 @@ async function mockApi(page: Page, options: Options = {}) {
             { label: 'B', title: 'Interval covering', max_score: 100, solved: 4, attempted: 19, median_attempts: 4, subtasks: [], histogram: [{ score: 0, students: 11 }, { score: 40, students: 8 }, { score: 100, students: 4 }] },
           ],
         });
+      }
+      if (path === '/api/admin/contests/4/audit' && method === 'GET') {
+        const actor = { user_id: 1, email: 'priya@college.edu', role: 'owner' };
+        const entries = [
+          ...Array.from({ length: state.pauses }, () => ({ action: 'pause', details: {} })),
+          ...state.extends.map((e) => ({ action: 'extend', details: e })),
+          ...state.extensions.map((x) => ({ action: 'extension', details: { email: 'asha@college.edu', ...x.body } })),
+          ...state.rejudges.map((r) => ({ action: 'rejudge', details: { ...r, queued: 1 } })),
+        ].map((e, i) => ({ id: i + 1, actor, created_at: now, ...e }));
+        return json(route, 200, { entries: entries.reverse(), page: 1, has_more: false, server_now: Date.now() });
       }
       if (path === '/api/admin/contests/4/editorial' && method === 'PUT') {
         state.editorials.push(req.postDataJSON() as Json);
@@ -1039,7 +1058,40 @@ test('the console pauses, extends, rejudges, announces and answers', async ({ pa
   await page.getByLabel('Answer for everyone').check();
   await page.getByRole('button', { name: 'Send answer' }).click();
   await expect.poll(() => api.answers).toEqual([{ id: '51', body: { answer: 'Yes.', public: true } }]);
+
+  // The audit log follows every action, newest first, with who did it.
+  const audit = page.getByRole('region', { name: 'Audit log' });
+  await expect(audit.getByRole('listitem').first()).toContainText('Rejudged problem A (1 submission)');
+  await expect(audit).toContainText('Gave asha@college.edu 10 extra minutes (Laptop crashed)');
+  await expect(audit).toContainText('Extended the contest by 15 minutes');
+  await expect(audit).toContainText('Paused judging');
+  await expect(audit).toContainText('priya@college.edu');
   await page.screenshot({ path: `${shots()}contest-console-1440-light.png`, fullPage: true });
+});
+
+test('a graded contest asks for a reason before it takes an AI problem nobody solved', async ({ page }) => {
+  const api = await mockApi(page, { who: 'admin', phase: 'upcoming', aiGate: true });
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto('/admin/contests/4');
+  await page.getByLabel('Add a validated problem').selectOption({ label: 'Interval covering (100 points)' });
+  await page.getByRole('button', { name: 'Add problem' }).click();
+  await page.getByRole('button', { name: 'Save problems' }).click();
+
+  const reason = page.getByLabel('Reason to grade problem B as the AI wrote it');
+  await expect(reason).toBeFocused();
+  await expect(page.getByText('Problem B came from the AI wizard', { exact: false })).toBeVisible();
+  await page.getByRole('button', { name: 'Grade as written' }).click();
+  await expect(page.locator('#ai-reason-error')).toHaveText('Write a reason of at least 10 characters.');
+  await expect(reason).toHaveAttribute('aria-invalid', 'true');
+
+  await reason.fill('Checked the reference by hand against the statement.');
+  await page.getByRole('button', { name: 'Grade as written' }).click();
+  await expect.poll(() => api.problemPuts.at(-1)).toEqual([
+    { problem_id: 11, label: 'A' },
+    { problem_id: 12, label: 'B', ai_reason: 'Checked the reference by hand against the statement.' },
+  ]);
+  await expect(page.getByText('Saved problems with your reason', { exact: true })).toBeVisible();
+  await expect(reason).toHaveCount(0);
 });
 
 test('results switch boards, link the exports, release a held board and save the editorial', async ({ page }) => {

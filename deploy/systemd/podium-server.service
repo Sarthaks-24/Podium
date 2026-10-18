@@ -11,6 +11,9 @@ ExecStart=/usr/local/bin/podium-server
 Restart=always
 RestartSec=2
 MemoryMax=300M
+# The Go heap limit sits below MemoryMax, so under memory pressure the
+# server collects garbage harder instead of being killed by the kernel.
+Environment=GOMEMLIMIT=220MiB
 LimitNOFILE=65536
 NoNewPrivileges=yes
 ProtectSystem=strict

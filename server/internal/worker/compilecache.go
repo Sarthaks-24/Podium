@@ -22,20 +22,37 @@ const DefaultCompileCacheBytes = 500 << 20
 // CompileCache keeps compiled programs under Dir/<key>/, keyed by language,
 // compile command and source. "Run on samples" followed by "Submit" of the
 // same code, identical resubmissions, and a problem's checker compile once.
-// Compile errors are cached too, so the same broken code is not rebuilt,
-// but failures caused by load (the compiler timing out or running out of
-// memory) are not. Entries in use by a running job are never evicted.
+// Compile errors are cached too, so the same broken code is not rebuilt.
+// A compile that ran out of time or memory is cached for transientTTL
+// only. Entries in use by a running job are never evicted.
 type CompileCache struct {
 	Dir      string
 	MaxBytes int64
 
 	mu    sync.Mutex
 	inUse map[string]int
+	now   func() time.Time // tests replace it
 }
 
+// transientTTL bounds how long a compile that ran out of time or memory is
+// cached: long enough that a student resending the same code does not hold
+// the judge-wide compile lock again, short enough that a failure caused by
+// load stops being reported once the load has passed.
+const transientTTL = 10 * time.Minute
+
 type cachedResult struct {
-	Verdict judge.Verdict `json:"verdict"`
-	Output  string        `json:"output"`
+	Verdict   judge.Verdict `json:"verdict"`
+	Output    string        `json:"output"`
+	Transient bool          `json:"transient,omitempty"`
+	// Expires is when a transient entry stops counting, in Unix ms.
+	Expires int64 `json:"expires,omitempty"`
+}
+
+func (c *CompileCache) clock() time.Time {
+	if c.now != nil {
+		return c.now()
+	}
+	return time.Now()
 }
 
 func compileKey(lang judge.Language, src []byte) string {
@@ -92,22 +109,32 @@ func (c *CompileCache) Compile(ctx context.Context, r *judge.Runner, box int, la
 		os.RemoveAll(tmp)
 		return fail(err)
 	}
-	if res.Transient {
-		// Not cached: under less load the same code may compile. The
-		// program dir is the temporary one, removed on release.
-		return judge.Program{Lang: lang, Dir: bin}, res, func() { release(); os.RemoveAll(tmp) }, nil
-	}
-	meta, _ := json.Marshal(cachedResult{Verdict: res.Verdict, Output: res.Output})
-	if err := os.WriteFile(filepath.Join(tmp, "result.json"), meta, 0o600); err != nil {
+	moved, err := c.store(tmp, dir, res)
+	if err != nil {
 		os.RemoveAll(tmp)
 		return fail(err)
 	}
-	// Another lane may have built the same key meanwhile; either copy is
-	// good, and the loser's is discarded.
-	if err := os.Rename(tmp, dir); err != nil {
-		os.RemoveAll(tmp)
+	if !moved {
+		// Another lane stored the same key meanwhile (possibly with a
+		// different outcome, if one compile ran out of time under load).
+		// This job keeps its own build, removed on release.
+		return judge.Program{Lang: lang, Dir: bin}, res, func() { release(); os.RemoveAll(tmp) }, nil
 	}
 	return judge.Program{Lang: lang, Dir: filepath.Join(dir, "bin")}, res, release, nil
+}
+
+// store writes the result next to the build in tmp and moves it to dir.
+// moved is false, and tmp left in place, when dir already exists.
+func (c *CompileCache) store(tmp, dir string, res judge.CompileResult) (moved bool, err error) {
+	r := cachedResult{Verdict: res.Verdict, Output: res.Output, Transient: res.Transient}
+	if res.Transient {
+		r.Expires = c.clock().Add(transientTTL).UnixMilli()
+	}
+	meta, _ := json.Marshal(r)
+	if err := os.WriteFile(filepath.Join(tmp, "result.json"), meta, 0o600); err != nil {
+		return false, err
+	}
+	return os.Rename(tmp, dir) == nil, nil
 }
 
 func (c *CompileCache) load(dir string) (judge.CompileResult, bool) {
@@ -121,9 +148,21 @@ func (c *CompileCache) load(dir string) (judge.CompileResult, bool) {
 	if json.Unmarshal(b, &r) != nil {
 		return judge.CompileResult{}, false
 	}
-	now := time.Now()
+	now := c.clock()
+	if r.Transient && now.UnixMilli() >= r.Expires {
+		// Expired: moved aside in one step, so a lane building the same
+		// key never finds it half deleted. It holds no program to run.
+		trash, err := os.MkdirTemp(c.Dir, ".evict-*")
+		if err == nil {
+			if os.Rename(dir, filepath.Join(trash, "entry")) != nil {
+				os.RemoveAll(dir)
+			}
+			os.RemoveAll(trash)
+		}
+		return judge.CompileResult{}, false
+	}
 	os.Chtimes(dir, now, now) // mark as recently used
-	return judge.CompileResult{Verdict: r.Verdict, Output: r.Output}, true
+	return judge.CompileResult{Verdict: r.Verdict, Output: r.Output, Transient: r.Transient}, true
 }
 
 // Evict removes least recently used entries until the cache is under its

@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+# Start-up check for podium-litestream (ExecStartPre): every variable the
+# replication needs is set and no longer the placeholder. Prints "set" or
+# "missing" per variable, never a value, and exits 2 naming the file to fix.
+set -u
+file=/etc/podium/litestream.env
+vars=(LITESTREAM_ACCESS_KEY_ID LITESTREAM_SECRET_ACCESS_KEY PODIUM_BACKUP_BUCKET PODIUM_BACKUP_PATH PODIUM_BACKUP_ENDPOINT PODIUM_BACKUP_REGION)
+bad=()
+for v in "${vars[@]}"; do
+  val=${!v:-}
+  if [[ -z $val || $val == change-me ]]; then
+    bad+=("$v")
+    echo "$v missing"
+  else
+    echo "$v set"
+  fi
+done
+if [[ -n ${PODIUM_BACKUP_ENDPOINT:-} && ${PODIUM_BACKUP_ENDPOINT} != change-me && ${PODIUM_BACKUP_ENDPOINT} != https://* ]]; then
+  bad+=(PODIUM_BACKUP_ENDPOINT)
+  echo "PODIUM_BACKUP_ENDPOINT must start with https://"
+fi
+if (( ${#bad[@]} > 0 )); then
+  echo "podium-litestream cannot start: set ${bad[*]} in $file (see docs/OPERATIONS.md, Backups)." >&2
+  exit 2
+fi

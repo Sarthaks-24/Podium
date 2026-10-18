@@ -278,6 +278,10 @@ type FeedFilter struct {
 	// counts. Only owners and admins get them: a co-organiser whose site
 	// role is student (a TA) never sees a classmate's integrity data.
 	IntegrityCounts bool
+	// Hide blanks the results a co-organiser without the admin role may not
+	// see yet (CoOrganiserHide). A verdict filter must not be combined
+	// with it: the handler refuses one while anything is hidden.
+	Hide Hide
 }
 
 // FeedPage is how many submissions one page of the feed holds.
@@ -299,6 +303,9 @@ type FeedItem struct {
 	JudgedAt     *int64 `json:"judged_at"`
 	Practice     bool   `json:"practice"`
 	Rejudged     bool   `json:"rejudged"`
+	// Hidden marks a submission whose result the viewer may not see yet:
+	// state "submitted", no verdict, score, judging time or rejudge mark.
+	Hidden bool `json:"hidden,omitempty"`
 	// The integrity counts are left out unless FeedFilter.IntegrityCounts.
 	TypedChars  *int `json:"typed_chars,omitempty"`
 	PastedChars *int `json:"pasted_chars,omitempty"`
@@ -353,6 +360,9 @@ func (s *Service) Feed(ctx context.Context, c *Contest, f FeedFilter) ([]FeedIte
 		}
 		it.JudgedAt = judged
 		it.ProblemLabel = labels[pid]
+		if f.Hide.Covers(time.UnixMilli(it.CreatedAt)) && it.State != "error" {
+			it.State, it.Verdict, it.Score, it.JudgedAt, it.Rejudged, it.Hidden = "submitted", "", 0, nil, false, true
+		}
 		out = append(out, it)
 	}
 	more := len(out) > FeedPage
@@ -367,7 +377,9 @@ type JSONExport struct {
 	Contest     any                `json:"contest"`
 	Standings   []ExportRow        `json:"standings"`
 	Submissions []ExportSubmission `json:"submissions"`
-	ExportedAt  int64              `json:"exported_at"`
+	// Audit is the contest's audit log, oldest first.
+	Audit      []AuditEntry `json:"audit"`
+	ExportedAt int64        `json:"exported_at"`
 }
 
 // MarshalExport encodes an export; split out so tests can check it.

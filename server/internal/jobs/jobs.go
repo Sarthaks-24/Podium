@@ -132,6 +132,10 @@ type Service struct {
 	// lastRun is set when the latest claim was a run, so the next claim
 	// prefers a waiting submission (runs never starve submissions).
 	lastRun bool
+	// done remembers recently closed jobs for Stats, as a ring of
+	// finishedRing entries; doneNext is the next slot to overwrite.
+	done     []finishedJob
+	doneNext int
 }
 
 func (s *Service) now() time.Time {
@@ -495,6 +499,7 @@ func (s *Service) Report(ctx context.Context, r judgeapi.Report) error {
 	if err := tx.Commit(); err != nil {
 		return err
 	}
+	s.recordFinished(job, now)
 	s.dropUploads(r.JobID)
 	s.changed(r.JobID, kindName)
 	return nil
@@ -608,6 +613,7 @@ func (s *Service) Sweep(ctx context.Context) (requeued, failed int64, err error)
 		reason string
 	}
 	var touched [][2]any
+	var closed []Job
 	var doomed []dead
 	for rows.Next() {
 		var d dead
@@ -632,6 +638,7 @@ func (s *Service) Sweep(ctx context.Context) (requeued, failed int64, err error)
 			return 0, 0, err
 		}
 		failed++
+		closed = append(closed, job)
 		touched = append(touched, [2]any{job.ID, job.Kind})
 	}
 	// Results from an abandoned attempt are dropped: the next worker
@@ -662,6 +669,9 @@ func (s *Service) Sweep(ctx context.Context) (requeued, failed int64, err error)
 	requeued, _ = res.RowsAffected()
 	if err := tx.Commit(); err != nil {
 		return 0, 0, err
+	}
+	for _, j := range closed {
+		s.recordFinished(j, now)
 	}
 	ids := make([]int64, 0, len(touched))
 	for _, t := range touched {

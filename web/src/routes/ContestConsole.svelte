@@ -17,6 +17,10 @@
     in over the event stream (and the 10 s refresh); the status strip and
     the tab title count the unanswered ones, and a polite live region names
     each new one.
+  - Audit log: every organiser action that can change results (settings,
+    problems, roster, extensions, extend, pause and resume, rejudges, the
+    reveal, the editorial, co-organisers), newest first, from
+    GET .../audit, refreshed with the feed and after each action here.
 
   From 1024 px the feed sits beside the questions and announcements, the
   questions first. Under 768 px each feed row reads as two lines.
@@ -34,11 +38,13 @@
     ANNOUNCEMENT_TEMPLATES,
     CANNED_REPLIES,
     askerName,
+    auditSummary,
     fillTemplate,
     formatCountdown,
     stateWord,
     type AdminContest,
     type Announcement,
+    type AuditEntry,
     type Clarification,
     type FeedPage,
     type FeedRow,
@@ -97,6 +103,12 @@
   let annError = $state('');
   let annBusy = $state(false);
 
+  // Audit log.
+  let audit = $state<AuditEntry[]>([]);
+  let auditState = $state<'loading' | 'ready' | 'error'>('loading');
+  let auditAll = $state(false);
+  const AUDIT_SHOWN = 10;
+
   // Clarifications.
   let clarifications = $state<Clarification[]>([]);
   let replies = $state<Record<number, { text: string; public: boolean; error: string; busy: boolean }>>({});
@@ -141,6 +153,8 @@
       setTitle(c.title, 'Console');
       loadState = 'ready';
       void restore();
+      // Every action here reloads the contest, so the log follows it.
+      void loadAudit();
     } catch (e) {
       if (handleAuth(e) || quiet) return;
       if (e instanceof ApiError && e.status === 404) {
@@ -194,6 +208,16 @@
       replies = next;
     } catch (e) {
       handleAuth(e);
+    }
+  }
+
+  async function loadAudit() {
+    try {
+      const data = await getJSON<{ entries: AuditEntry[] }>(`${base}/audit`);
+      audit = data.entries ?? [];
+      auditState = 'ready';
+    } catch (e) {
+      if (!handleAuth(e)) auditState = 'error';
     }
   }
 
@@ -301,7 +325,7 @@
     try {
       await sendJSON<void>('POST', `${base}/rejudge`, { submission_id: row.id });
       showToast(`Rejudging ${row.name}'s submission to ${row.problem_label ?? row.label ?? ''}`);
-      await loadFeed();
+      await Promise.all([loadFeed(), loadAudit()]);
     } catch (e) {
       if (!handleAuth(e)) showToast(messageOf(e), 'error');
     }
@@ -313,7 +337,7 @@
     ask(`Rejudge problem ${l}?`, 'Every submission to it is judged again. Scores in the standings may change.', 'Rejudge problem', true, async () => {
       await sendJSON<void>('POST', `${base}/rejudge`, { problem_label: l });
       showToast(`Rejudging problem ${l}`);
-      await loadFeed();
+      await Promise.all([loadFeed(), loadAudit()]);
     });
   }
 
@@ -378,6 +402,7 @@
   }
 
   function stateText(row: FeedRow): string {
+    if (row.state === 'submitted') return 'Submitted';
     if (row.state === 'queued') return 'Queued';
     if (row.state === 'running') return 'Judging';
     if (row.state === 'error') return 'Judge error';
@@ -402,6 +427,7 @@
       if (!autoRefresh || loadState !== 'ready' || document.visibilityState === 'hidden') return;
       void loadFeed();
       void loadSide();
+      void loadAudit();
     }, 10_000);
     // New questions arrive at once over the stream; the refresh above is the fallback.
     stream = new EventStream({
@@ -680,6 +706,32 @@
           </ul>
         {/if}
       </section>
+
+      <section class="section" aria-labelledby="audit-title">
+        <h2 id="audit-title">Audit log</h2>
+        <p class="muted small">Every change that can affect results, with who made it. Nothing here can be edited or deleted.</p>
+        {#if auditState === 'loading'}
+          <p class="muted small" role="status">Loading the audit log</p>
+        {:else if auditState === 'error'}
+          <p class="muted small">The audit log could not be loaded. It refreshes with the feed.</p>
+        {:else if audit.length === 0}
+          <p class="muted small">Nothing recorded yet.</p>
+        {:else}
+          <ul class="items audit">
+            {#each auditAll ? audit : audit.slice(0, AUDIT_SHOWN) as e (e.id)}
+              <li>
+                <p class="meta small"><span class="mono">{formatWhen(e.created_at)}</span> {e.actor.email}</p>
+                <p class="entry">{auditSummary(e)}</p>
+              </li>
+            {/each}
+          </ul>
+          {#if audit.length > AUDIT_SHOWN}
+            <button type="button" class="btn btn-quiet btn-compact" aria-expanded={auditAll} onclick={() => (auditAll = !auditAll)}>
+              {auditAll ? 'Show the latest 10' : `Show all ${audit.length}`}
+            </button>
+          {/if}
+        {/if}
+      </section>
     </div>
   </div>
 
@@ -896,6 +948,10 @@
 
   .a {
     white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+
+  .audit .entry {
     overflow-wrap: anywhere;
   }
 

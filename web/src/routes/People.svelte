@@ -4,8 +4,11 @@
   /api/admin/accounts/reset-google). The first section is a table of
   everyone with the admin or owner role and a form to add one; the second
   lists the domains whose addresses may sign in and a form to add one; the
-  third resets the Google account tied to an email. Every removal and every
-  reset asks first in a ConfirmDialog. Successes are toasts; form errors
+  third resets the Google account tied to an email; the fourth ends every
+  session of an account, or disables it (/api/admin/accounts/end-sessions,
+  /disable, /enable), and lists the disabled accounts with Enable. Every
+  removal, reset, sign-out, disable and enable asks first in a
+  ConfirmDialog. Successes are toasts; form errors
   appear under their form and are tied to the inputs with aria-describedby;
   removal errors are error toasts. Anyone who is not an owner sees a short
   explanation instead. Takes no props.
@@ -14,7 +17,7 @@
   import { onMount, tick } from 'svelte';
   import ConfirmDialog from '../components/ConfirmDialog.svelte';
   import { ApiError, getJSON, sendJSON } from '../lib/api';
-  import { formatDateTime, roleLabel } from '../lib/format';
+  import { countOf, formatDateTime, roleLabel } from '../lib/format';
   import { setTitle } from '../lib/head';
   import { session } from '../lib/session.svelte';
   import { showToast } from '../lib/toast.svelte';
@@ -28,6 +31,7 @@
     role: OrganiserRole;
     last_login_at: number | null;
     locked: boolean;
+    disabled?: boolean;
   }
 
   interface Domain {
@@ -35,10 +39,22 @@
     created_at: number;
   }
 
+  interface Account {
+    id: number;
+    email: string;
+    name: string;
+    role: string;
+    disabled: boolean;
+    last_login_at: number | null;
+  }
+
   type Pending =
     | { kind: 'person'; person: Person }
     | { kind: 'domain'; domain: string }
     | { kind: 'reset'; email: string }
+    | { kind: 'end-sessions'; email: string }
+    | { kind: 'disable'; email: string }
+    | { kind: 'enable'; email: string }
     | null;
 
   let loadState = $state<'loading' | 'ready' | 'forbidden' | 'error'>('loading');
@@ -57,6 +73,10 @@
 
   let resetEmail = $state('');
   let resetError = $state('');
+
+  let disabled = $state<Account[]>([]);
+  let accountEmail = $state('');
+  let accountError = $state('');
 
   let pending = $state<Pending>(null);
   let removing = $state(false);
@@ -89,6 +109,27 @@
         label: 'Reset link',
       };
     }
+    if (pending?.kind === 'end-sessions') {
+      return {
+        title: `End every session of ${pending.email}?`,
+        body: 'They are signed out on every device at once, open contest pages included. They can sign in again.',
+        label: 'End sessions',
+      };
+    }
+    if (pending?.kind === 'disable') {
+      return {
+        title: `Disable ${pending.email}?`,
+        body: 'They are signed out on every device at once and cannot sign in until an owner enables the account again.',
+        label: 'Disable account',
+      };
+    }
+    if (pending?.kind === 'enable') {
+      return {
+        title: `Enable ${pending.email}?`,
+        body: 'They can sign in again with their Google account.',
+        label: 'Enable account',
+      };
+    }
     return { title: '', body: '' };
   });
 
@@ -118,9 +159,10 @@
   async function load() {
     loadState = 'loading';
     try {
-      const data = await getJSON<{ people: Person[]; domains: Domain[] }>('/api/admin/people');
+      const data = await getJSON<{ people: Person[]; domains: Domain[]; disabled?: Account[] }>('/api/admin/people');
       people = data.people ?? [];
       domains = data.domains ?? [];
+      disabled = data.disabled ?? [];
       loadState = 'ready';
     } catch (err) {
       if (handleSessionError(err)) return;
@@ -213,10 +255,51 @@
     }
   }
 
+  /** Checks the account form and asks before ending sessions or disabling. */
+  function askAccount(kind: 'end-sessions' | 'disable') {
+    accountError = '';
+    const value = accountEmail.trim();
+    if (value === '') {
+      accountError = 'Enter an email address.';
+      document.getElementById('account-email')?.focus();
+      return;
+    }
+    pending = { kind, email: value };
+  }
+
+  async function confirmAccount(kind: 'end-sessions' | 'disable' | 'enable', target: string) {
+    removing = true;
+    try {
+      const out = await sendJSON<{ account: Account; ended: number }>('POST', `/api/admin/accounts/${kind}`, { email: target });
+      if (kind === 'end-sessions') {
+        showToast(out.ended === 0 ? `${target} had no open sessions` : `Ended ${countOf(out.ended, 'session')} of ${target}`);
+      } else if (kind === 'disable') {
+        disabled = [...disabled.filter((a) => a.id !== out.account.id), out.account].sort((a, b) => a.email.localeCompare(b.email));
+        showToast(`Disabled ${target}`);
+      } else {
+        disabled = disabled.filter((a) => a.id !== out.account.id);
+        showToast(`Enabled ${target}`);
+      }
+      if (kind !== 'enable') accountEmail = '';
+      people = people.map((p) => (p.id === out.account.id ? { ...p, disabled: out.account.disabled } : p));
+    } catch (err) {
+      if (!handleSessionError(err)) {
+        if (kind === 'enable') showToast(messageOf(err), 'error');
+        else accountError = messageOf(err);
+      }
+    } finally {
+      removing = false;
+      pending = null;
+    }
+  }
+
   async function confirmAction() {
     const target = pending;
     if (!target) return;
     if (target.kind === 'reset') return confirmReset(target.email);
+    if (target.kind === 'end-sessions' || target.kind === 'disable' || target.kind === 'enable') {
+      return confirmAccount(target.kind, target.email);
+    }
     removing = true;
     try {
       if (target.kind === 'person') {
@@ -280,7 +363,7 @@
                 {#if person.name.trim() !== ''}{person.name}{:else}<span class="muted">Not signed in yet</span>{/if}
               </th>
               <td class="email">{person.email}</td>
-              <td>{roleLabel(person.role)}</td>
+              <td>{roleLabel(person.role)}{#if person.disabled}<span class="muted">, disabled</span>{/if}</td>
               <td class="num">
                 {#if person.last_login_at !== null}{formatDateTime(person.last_login_at)}{:else}<span class="muted word">Never</span>{/if}
               </td>
@@ -418,6 +501,58 @@
       <p id="reset-error" class="field-error form-error" role="alert">{resetError}</p>
     {/if}
   </section>
+
+  <section class="section" aria-labelledby="access-heading">
+    <h2 id="access-heading">Sessions and access</h2>
+    <p class="intro muted">
+      End sessions signs someone out on every device, for a lost laptop or a shared lab PC left signed in. Disable also
+      stops them signing in again until you enable the account.
+    </p>
+
+    <form class="form" novalidate onsubmit={(e) => { e.preventDefault(); askAccount('end-sessions'); }}>
+      <div class="field grow">
+        <label for="account-email">Email</label>
+        <input
+          id="account-email"
+          class="input"
+          type="email"
+          autocomplete="off"
+          spellcheck="false"
+          bind:value={accountEmail}
+          aria-invalid={accountError !== '' ? 'true' : undefined}
+          aria-describedby={accountError !== '' ? 'account-error' : undefined}
+        />
+      </div>
+      <button type="submit" class="btn btn-secondary submit" disabled={removing && pending?.kind === 'end-sessions'}>End sessions</button>
+      <button type="button" class="btn btn-danger submit" disabled={removing && pending?.kind === 'disable'} onclick={() => askAccount('disable')}>
+        Disable account
+      </button>
+    </form>
+    {#if accountError !== ''}
+      <p id="account-error" class="field-error form-error" role="alert">{accountError}</p>
+    {/if}
+
+    <h3 class="subhead">Disabled accounts</h3>
+    {#if disabled.length > 0}
+      <ul class="domains">
+        {#each disabled as a (a.id)}
+          <li>
+            <span class="domain">{a.email}{#if a.name.trim() !== ''}<span class="muted"> ({a.name})</span>{/if}</span>
+            <button
+              type="button"
+              class="btn btn-quiet btn-compact"
+              aria-label="Enable {a.email}"
+              onclick={() => (pending = { kind: 'enable', email: a.email })}
+            >
+              Enable
+            </button>
+          </li>
+        {/each}
+      </ul>
+    {:else}
+      <p class="empty muted">No account is disabled.</p>
+    {/if}
+  </section>
 {/if}
 
 <ConfirmDialog
@@ -425,7 +560,7 @@
   title={confirmCopy.title}
   body={confirmCopy.body}
   confirmLabel={confirmCopy.label ?? 'Remove'}
-  danger
+  danger={pending?.kind !== 'enable'}
   busy={removing}
   onconfirm={confirmAction}
   oncancel={() => (pending = null)}
@@ -454,6 +589,11 @@
 
   h2 {
     font-size: var(--fs-3);
+  }
+
+  .subhead {
+    margin-top: var(--space-6);
+    font-size: var(--fs-2);
   }
 
   .intro {

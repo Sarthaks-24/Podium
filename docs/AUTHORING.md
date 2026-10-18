@@ -262,11 +262,13 @@ Problem statements on LeetCode, Codeforces and similar sites are copyrighted. Th
 ### What happens next
 
 1. The answer is checked: every field, the sample count, subtask points adding up to 100, the planned tests, and the editor's own rules. An answer that fails is sent back once with the reasons; if the second one fails too, the wizard says "The model's answer could not be used." and lists them.
-2. A draft problem is created with origin `ai` and the tag "ai draft". The tag stays until a person saves the problem.
+2. A draft problem is created with origin `ai` and the tag "ai draft". The tag stays until a person changes the statement, the reference or the brute force and saves. A save that changes none of them keeps the tag, and the change that ends it also withdraws the validation, so the problem must pass again as the person left it.
 3. Generate inputs is queued at once, which chains Generate outputs and Validate (see "Tests from a generator"). The editor shows each step.
 4. You read every part of the draft, fix what needs fixing, save it and validate it. The aim is a draft that needs at most one manual edit.
 
 The model's code is never run on the server: it goes to the judge, in isolate, like any setter's code. Nothing AI-made reaches students before a person has reviewed and validated it: only validated problems can be added to a contest, and a problem still tagged "ai draft" is refused even when the chain validated it ("The problem for label B is an AI draft. Read it and save it in the editor before adding it to a contest.").
+
+**Graded contests need a person's solution.** The tests of an AI problem come from the model's generator and their expected outputs from the model's reference, so validation cannot catch a wrong reference: they agree by construction. A graded contest therefore refuses an AI problem until a person has written a solution for it: an editor save that changes the reference or the brute force (write your own brute force; it is the independent check), followed by a validation that passes. An admin may instead grade it as written by giving a reason of at least 10 characters when adding it; the reason is kept in the contest's audit log, and the contest editor asks for it. Turning grading on for a contest that already holds such a problem is refused the same way.
 
 One AI request per admin runs at a time, for at most 3 minutes. A refusal by the model, a cut-off answer, a rate limit or a provider outage is shown in words; nothing is created.
 
@@ -287,7 +289,7 @@ Validation does not start while the structure is incomplete (see "Samples and su
 2. For each test, in order:
    - the validator reads the input on standard input. Exit 0 accepts it; any other exit rejects it, and the end of its standard error is shown as the reason.
    - the reference runs with the problem's limits, and its output goes through the checker.
-   - the brute force runs with a longer limit, and its output goes through the checker. Running out of time is recorded as skipped, not as a failure: brute forces are expected to be slow on large tests.
+   - the brute force runs with a longer limit, and its output goes through the checker. Running out of time is not a failure in itself (brute forces are slow on large tests), but that test's expected output was not cross-checked, and the report says so.
 3. The server reads the results and decides.
 
 | Program | CPU time | Memory |
@@ -307,9 +309,10 @@ All of these must hold:
 - the reference gets Accepted on every test;
 - the validator accepts every input (when there is one);
 - the brute force never disagrees with an expected output (when there is one);
+- with a brute force, at least half of the tests were cross-checked: the brute force finished them, so their expected outputs were compared with a second solution. Fewer fails: "Only 2 of 6 tests were cross-checked against the brute force; at least half must be." Add smaller tests the brute force can finish, or make it faster;
 - the reference's slowest test takes at most half of its time limit (see below).
 
-Warnings never fail validation: the reference above a third of its limit, no brute force, no validator, a brute force that finished no test in time (so it checked nothing), a brute force crash or memory failure, and subtask points not adding up to 100.
+Warnings never fail validation: the reference above a third of its limit, no brute force, no validator, tests the brute force did not finish ("2 of 6 tests were not cross-checked: the brute force ran out of time or was skipped on tests 5 and 6."), a brute force crash or memory failure, and subtask points not adding up to 100.
 
 ### Reference timing
 
@@ -324,7 +327,8 @@ The limit compared is the time limit times the reference's language factor. With
 | Waiting for the judge (2nd in queue) / Running | Still in progress. Waiting for a long time means no judge is running (`docs/OPERATIONS.md`, "Validation troubleshooting"). |
 | Reference solution did not compile | The compiler output follows. The same line exists for the brute force, validator and checker. |
 | Reference solution passed 5 of 6 tests | Accepted tests out of all tests. Every test must pass. |
-| Brute force agreed on 6 of 6 tests | Out of the tests where the brute force did not run out of time; skipped tests are not counted. A disagreement fails validation; a crash is only a warning. |
+| Brute force agreed on 6 of 6 tests | Out of the tests where the brute force did not run out of time. A disagreement fails validation; a crash is only a warning. |
+| 2 of 6 tests not cross-checked: the brute force did not finish them | Tests resting on the reference alone. Muted while at least half are cross-checked; red, and validation fails, when fewer are. |
 | Validator accepted 6 of 6 inputs | Every input must be accepted. |
 | Slowest reference run 3 ms of 1000 ms | The reference's slowest test against its limit; red above half. |
 | Test 4: reference solution got wrong answer. ... | One line per failure, naming the test, the program and the verdict, with the checker's or validator's message. |
@@ -344,6 +348,18 @@ The full table of every program on every test opens on request below the report.
 Title, slug, statement, tags, difficulty and subtask titles do not. Upgrading the judge does not either; but if a later run of the very same content fails (a slower judge, a fixed judge bug), the validation is withdrawn.
 
 Generating outputs or inputs changes test files, so it unvalidates the problem too. The generator and the plan themselves are not in the hash (decision D53): editing the generator does not unvalidate the tests it already made. Generate inputs again to use the new generator.
+
+On an AI draft, the first save that changes the statement withdraws the validation too (see "The AI wizard"), although the statement is not in the hash.
+
+## Before a graded contest: the setter checklist
+
+Validation proves the tests and the reference agree with each other. It cannot prove they are right. Before every graded contest, for every problem in it:
+
+1. **Reference judged live.** Open the problem from the contest as an organiser (the workspace) and submit the reference solution on the real judge. It must get the full score on every subtask.
+2. **A known-wrong solution judged live.** Submit at least one solution you know is wrong in a typical way (an `int` that should be `long long`, a missing edge case, a brute force that is too slow). It must lose points, on the subtask you expect. A wrong solution that scores full marks means the tests are too weak.
+3. **Brute force cross-checked.** Validation passes with a brute force, and the report shows at least half the tests cross-checked. Look at which tests were not, and add small tests if the large ones carry subtasks of their own.
+4. **AI problems.** For every problem whose origin is `ai`, write a solution of your own (a brute force is enough), save it, and validate: it must pass every test. Grading an AI problem as written, with a reason, is the exception, and the reason is in the audit log.
+5. **Freeze.** In the contest window, import no packs, run no AI wizard and rejudge nothing unless a test is wrong. A rejudge is recorded in the audit log with who asked for it.
 
 ## Trying a problem as a student
 

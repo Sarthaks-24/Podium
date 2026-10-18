@@ -184,8 +184,12 @@ func TestM5WizardWithFakeProvider(t *testing.T) {
 	edit["subtasks"] = plainSubtasks
 	code, saved := admin.do("PUT", "/api/admin/problems/"+pid, edit, s.srv.URL)
 	if code != 200 || saved["generator"] == nil || len(saved["plan"].([]any)) != len(plan) ||
-		len(saved["subtasks"].([]any)[0].(map[string]any)["generator_args"].([]any)) == 0 || strings.Contains(fmt.Sprint(saved["tags"]), "ai draft") {
-		t.Fatalf("save without generator fields: %d %v", code, saved)
+		len(saved["subtasks"].([]any)[0].(map[string]any)["generator_args"].([]any)) == 0 || !strings.Contains(fmt.Sprint(saved["tags"]), "ai draft") {
+		t.Fatalf("save without generator fields (and no change, so the AI draft tag stays): %d %v", code, saved)
+	}
+	edit["statement_md"] = fmt.Sprint(p["statement_md"]) + "\n\nRead by a person."
+	if code, saved := admin.do("PUT", "/api/admin/problems/"+pid, edit, s.srv.URL); code != 200 || strings.Contains(fmt.Sprint(saved["tags"]), "ai draft") {
+		t.Fatalf("a person's statement edit kept the AI draft tag: %d %v", code, saved["tags"])
 	}
 	edit["generator"], edit["plan"] = nil, []any{}
 	if code, saved := admin.do("PUT", "/api/admin/problems/"+pid, edit, s.srv.URL); code != 200 || saved["generator"] != nil || len(saved["plan"].([]any)) != 0 {
@@ -243,11 +247,54 @@ func TestM5WizardWithFakeProvider(t *testing.T) {
 		"checker_source", "reference", "brute", "validator", "tags", "difficulty", "samples", "subtasks", "generator", "plan"} {
 		edit[k] = pasted[k]
 	}
+	// A save that changes nothing is no review: still an AI draft.
 	if code, saved := admin.do("PUT", "/api/admin/problems/"+pasteID, edit, s.srv.URL); code != 200 || saved["validated"] != true {
-		t.Fatalf("a person's save: %d %v", code, saved)
+		t.Fatalf("a save without changes: %d %v", code, saved)
 	}
+	if code, body := admin.do("PUT", fmt.Sprintf("/api/admin/contests/%d/problems", cid), choices, s.srv.URL); code != 400 || !strings.Contains(fmt.Sprint(body), "AI draft") {
+		t.Errorf("AI draft added after a save that changed nothing: %d %v", code, body)
+	}
+	// A person's statement edit ends the draft marking and withdraws the
+	// validation until it passes again.
+	edit["statement_md"] = fmt.Sprint(pasted["statement_md"]) + "\n\nRead by a person."
+	if code, saved := admin.do("PUT", "/api/admin/problems/"+pasteID, edit, s.srv.URL); code != 200 || saved["validated"] != false {
+		t.Fatalf("a person's statement edit: %d validated=%v", code, saved["validated"])
+	}
+	s.validate(draftID)
+	// The reference is still the model's, so a graded contest asks for a
+	// person's solution or an admin's reason (security council S10).
+	code, body = admin.do("PUT", fmt.Sprintf("/api/admin/contests/%d/problems", cid), choices, s.srv.URL)
+	if code != 409 || errCode(body) != "ai_unconfirmed" {
+		t.Fatalf("AI reference added to a graded contest: %d %v", code, body)
+	}
+	choices[1]["ai_reason"] = "ok"
+	if code, body := admin.do("PUT", fmt.Sprintf("/api/admin/contests/%d/problems", cid), choices, s.srv.URL); code != 409 {
+		t.Errorf("a two-letter reason accepted: %d %v", code, body)
+	}
+	choices[1]["ai_reason"] = "Checked the reference by hand against the statement."
 	if code, body := admin.do("PUT", fmt.Sprintf("/api/admin/contests/%d/problems", cid), choices, s.srv.URL); code != 200 {
-		t.Errorf("reviewed draft added to a contest: %d %v", code, body)
+		t.Fatalf("AI problem with a reason: %d %v", code, body)
+	}
+	var reason string
+	s.db.QueryRow("SELECT json_extract(details, '$.reason') FROM contest_audit WHERE contest_id = ? AND action = 'ai_problem'", cid).Scan(&reason)
+	if !strings.Contains(reason, "by hand") {
+		t.Errorf("the reason is not in the audit log: %q", reason)
+	}
+	// Once confirmed for this contest, saving the list again needs no reason.
+	delete(choices[1], "ai_reason")
+	if code, body := admin.do("PUT", fmt.Sprintf("/api/admin/contests/%d/problems", cid), choices, s.srv.URL); code != 200 {
+		t.Errorf("confirmed AI problem saved again: %d %v", code, body)
+	}
+	// A solution a person wrote is enough on its own, in another contest.
+	cid2 := s.createContest(admin, "week-2", time.Now().Add(time.Hour), map[string]int64{"A": solid}, nil)
+	ref := pasted["reference"].(map[string]any)
+	edit["reference"] = map[string]any{"language": ref["language"], "source": fmt.Sprint(ref["source"]) + "\n// rewritten by a person\n"}
+	if code, saved := admin.do("PUT", "/api/admin/problems/"+pasteID, edit, s.srv.URL); code != 200 {
+		t.Fatalf("a person's reference: %d %v", code, saved)
+	}
+	s.validate(draftID)
+	if code, body := admin.do("PUT", fmt.Sprintf("/api/admin/contests/%d/problems", cid2), choices, s.srv.URL); code != 200 {
+		t.Errorf("AI problem with a person's reference: %d %v", code, body)
 	}
 
 	if code, _ := admin.do("DELETE", "/api/admin/ai/key", nil, s.srv.URL); code != 204 {

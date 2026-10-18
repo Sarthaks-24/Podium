@@ -54,11 +54,11 @@ type User struct {
 	Verdicts string `json:"verdicts"`
 }
 
-// SessionTTL is how long a session lasts without use; use renews it.
-const SessionTTL = 30 * 24 * time.Hour
-
-// renewAfter limits session renewal to one database write per day.
-const renewAfter = 24 * time.Hour
+// SessionTTL is how long a session lasts: 12 hours from sign-in, however
+// much it is used, so a session left open on a shared lab PC is gone by
+// the next day at the latest (security council S5). The cookie itself has
+// no expiry, so closing the browser ends it sooner.
+const SessionTTL = 12 * time.Hour
 
 // Sign-in refusals. Handlers map them to the /signin?error= codes.
 var (
@@ -219,38 +219,33 @@ func (s *Service) SignIn(ctx context.Context, id Identity, ip, userAgent string)
 	return u, token, expires, tx.Commit()
 }
 
-// Authenticate resolves a session token to its user, renewing the session
-// at most once a day. renewed is the new expiry when the cookie should be
-// re-sent, otherwise zero.
+// Authenticate resolves a session token to its user. Sessions never
+// renew: one ends SessionTTL after sign-in (a session made before that
+// rule, with a later expiry, ends at the same cap), when its user is
+// disabled, or at sign-out. renewed is always zero; it stays in the
+// signature so callers that re-send a renewed cookie need no change.
 func (s *Service) Authenticate(ctx context.Context, token string) (u User, renewed time.Time, err error) {
 	if token == "" || len(token) > 100 {
 		return User{}, time.Time{}, ErrNoSession
 	}
 	id := hashToken(token)
 	now := s.now()
-	var expires int64
-	err = s.DB.QueryRowContext(ctx, `SELECT u.id, u.email, u.name, u.avatar_url, u.role, u.disabled, u.theme, u.verdicts, s.expires_at
-		FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.id = ?`, id).
-		Scan(&u.ID, &u.Email, &u.Name, &u.AvatarURL, &u.Role, &u.Disabled, &u.Theme, &u.Verdicts, &expires)
+	var created, expires int64
+	err = s.DB.QueryRowContext(ctx, `SELECT u.id, u.email, u.name, u.avatar_url, u.role, u.disabled, u.theme, u.verdicts,
+		s.created_at, s.expires_at FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.id = ?`, id).
+		Scan(&u.ID, &u.Email, &u.Name, &u.AvatarURL, &u.Role, &u.Disabled, &u.Theme, &u.Verdicts, &created, &expires)
 	if errors.Is(err, sql.ErrNoRows) {
 		return User{}, time.Time{}, ErrNoSession
 	}
 	if err != nil {
 		return User{}, time.Time{}, err
 	}
-	if now.UnixMilli() >= expires || u.Disabled {
+	end := min(expires, created+SessionTTL.Milliseconds())
+	if now.UnixMilli() >= end || u.Disabled {
 		s.DB.ExecContext(ctx, "DELETE FROM sessions WHERE id = ?", id)
 		return User{}, time.Time{}, ErrNoSession
 	}
-	if time.UnixMilli(expires).Sub(now) < SessionTTL-renewAfter {
-		renewed = now.Add(SessionTTL)
-		// A failed renewal (for example a busy database at contest start)
-		// must not fail the request; the next one tries again.
-		if _, err := s.DB.ExecContext(ctx, "UPDATE sessions SET expires_at = ? WHERE id = ?", renewed.UnixMilli(), id); err != nil {
-			renewed = time.Time{}
-		}
-	}
-	return u, renewed, nil
+	return u, time.Time{}, nil
 }
 
 // ResetGoogleAccount unbinds an account from its Google account, so the
@@ -287,9 +282,11 @@ func (s *Service) SignOut(ctx context.Context, token string) error {
 	return err
 }
 
-// DeleteExpiredSessions removes sessions past their expiry.
+// DeleteExpiredSessions removes sessions past their expiry or SessionTTL
+// after sign-in.
 func (s *Service) DeleteExpiredSessions(ctx context.Context) (int64, error) {
-	res, err := s.DB.ExecContext(ctx, "DELETE FROM sessions WHERE expires_at <= ?", s.now().UnixMilli())
+	now := s.now().UnixMilli()
+	res, err := s.DB.ExecContext(ctx, "DELETE FROM sessions WHERE expires_at <= ? OR created_at <= ?", now, now-SessionTTL.Milliseconds())
 	if err != nil {
 		return 0, err
 	}
@@ -305,6 +302,8 @@ type Person struct {
 	LastLoginAt *int64 `json:"last_login_at"`
 	// Locked marks the configured owner, whose role cannot be changed.
 	Locked bool `json:"locked"`
+	// Disabled marks an account an owner has disabled (accounts.go).
+	Disabled bool `json:"disabled"`
 }
 
 // Domain is an allowed email domain.
@@ -315,7 +314,7 @@ type Domain struct {
 
 // Organisers lists everyone with the admin or owner role, owners first.
 func (s *Service) Organisers(ctx context.Context) ([]Person, error) {
-	rows, err := s.DB.QueryContext(ctx, `SELECT id, email, name, role, last_login_at FROM users
+	rows, err := s.DB.QueryContext(ctx, `SELECT id, email, name, role, last_login_at, disabled FROM users
 		WHERE role IN ('owner', 'admin') ORDER BY role = 'owner' DESC, lower(name) = '', lower(name), email`)
 	if err != nil {
 		return nil, err
@@ -324,7 +323,7 @@ func (s *Service) Organisers(ctx context.Context) ([]Person, error) {
 	out := []Person{}
 	for rows.Next() {
 		var p Person
-		if err := rows.Scan(&p.ID, &p.Email, &p.Name, &p.Role, &p.LastLoginAt); err != nil {
+		if err := rows.Scan(&p.ID, &p.Email, &p.Name, &p.Role, &p.LastLoginAt, &p.Disabled); err != nil {
 			return nil, err
 		}
 		p.Locked = p.Email == s.OwnerEmail

@@ -13,7 +13,8 @@ All API routes live under `/api/` and speak JSON. Every other path serves the we
 
 - Request bodies are JSON, sent with `Content-Type: application/json` (anything else gets `415 bad_request`), at most 64 KB unless a route says otherwise, with no unknown fields.
 - Every response carries a strict Content-Security-Policy (`script-src 'self'`, no inline scripts), `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY` and `Referrer-Policy: same-origin`.
-- **Sessions.** Signing in sets an HttpOnly session cookie, `SameSite=Lax`, valid for 30 days and renewed while in use. With an `https` base URL it is named `__Host-podium_session` and marked `Secure`; with a local `http` base URL it is named `podium_session`.
+- **Sessions.** Signing in sets an HttpOnly session cookie, `SameSite=Lax`, with no `Expires` or `Max-Age`: the browser forgets it when it closes, which matters on shared lab PCs. The server ends every session 12 hours after sign-in however much it is used (a fixed limit, `auth.SessionTTL`; sessions never renew), at sign-out, when an owner ends the person's sessions or disables the account, and when the server starts in a different `PODIUM_MODE` than last time. With an `https` base URL the cookie is named `__Host-podium_session` and marked `Secure`; with a local `http` base URL it is named `podium_session`.
+- **Testing mode is local only.** With `PODIUM_MODE=testing`, a request whose `Host` is not `localhost`, `127.0.0.1` or `[::1]` (any port), or that carries `X-Forwarded-For`, `Forwarded`, `X-Real-IP` or `X-Forwarded-Host`, is refused with `403 testing_mode_local`: a proxy such as Caddy in front means the browser is not on this machine.
 - **Cross-site requests.** `POST`, `PUT`, `PATCH` and `DELETE` under `/api/` are refused with `403 cross_site` unless the request's `Origin` matches `PODIUM_BASE_URL` (or, without an `Origin` header, `Sec-Fetch-Site` is `same-origin` or absent).
 - **Roles.** `student` < `admin` < `owner`. Routes marked "owner" return `401 signed_out` without a session and `403 forbidden` for lower roles. Roles are read from the database on every request, so removing an admin takes effect immediately.
 
@@ -23,7 +24,7 @@ All API routes live under `/api/` and speak JSON. Every other path serves the we
 { "error": { "code": "bad_request", "message": "Some fields need fixing.", "fields": { "slug": "Use lowercase letters, digits and single hyphens, like two-sum." } } }
 ```
 
-Common error codes: `bad_request`, `signed_out`, `forbidden`, `not_found`, `cross_site`, `conflict`, `internal`. The problem routes add `bad_pack`, `not_ready`, `too_large` and `busy`; the AI wizard adds `no_key`, `bad_key` and `busy`; the workspace routes add `not_ready` and `rate_limited`; the contest routes add `not_on_roster`, `not_started`, `contest_over`, `board_closed` and `too_early`; the event stream adds `busy` and `unsupported`; the judge API adds `unauthorized`, `lease`, `bad_report`, `bad_upload` and `too_large`.
+Common error codes: `bad_request`, `signed_out`, `forbidden`, `not_found`, `cross_site`, `conflict`, `internal`, and in testing mode `testing_mode_local`. Test sign-in adds `disabled`. The problem routes add `bad_pack`, `not_ready`, `too_large` and `busy`; the AI wizard adds `no_key`, `bad_key` and `busy`; the workspace routes add `not_ready` and `rate_limited`; the contest routes add `not_on_roster`, `not_started`, `contest_over`, `board_closed` and `too_early`; the organiser contest routes add `locked_after_start`, `results_hidden`, `not_participant` and `ai_unconfirmed`; the event stream adds `busy` and `unsupported`; the judge API adds `unauthorized`, `lease`, `bad_report`, `bad_upload` and `too_large`.
 
 ## Health
 
@@ -33,6 +34,27 @@ Common error codes: `bad_request`, `signed_out`, `forbidden`, `not_found`, `cros
 |---|---|
 | 200 | `{"status":"ok","db":"ok"}` |
 | 503 | `{"status":"degraded","db":"unreachable"}` |
+
+### `GET /api/admin/metrics` (admin)
+
+What an organiser watches on contest day; also read by the load test (`tools/loadtest`). Owners and admins only (`403 forbidden` for co-organisers and students). Not rate limited: it costs two indexed queries and in-memory counters.
+
+```json
+{ "server_now": 1792183192400, "uptime_s": 5400, "version": "v1.0.0",
+  "queue": { "kinds": { "submit": { "queued": 40, "leased": 2, "finished_last_minute": 31, "finished_last_5_min": 150 },
+                        "run": { "queued": 3, "leased": 0, "finished_last_minute": 12, "finished_last_5_min": 55 } },
+             "queued": 43, "leased": 2, "queued_paused": 0, "oldest_queued_s": 81.5,
+             "leased_jobs": [ { "id": 9120, "kind": "submit", "worker": "vm-1", "attempts": 1, "running_s": 2.4 } ],
+             "submit_wait_p50_ms": 30500, "submit_wait_p95_ms": 78000, "submit_total_p50_ms": 33800, "submit_total_p95_ms": 84100,
+             "submits_judged_last_10_min": 290, "failed_last_5_min": 0 },
+  "events": { "connections": 712, "users": 698 },
+  "db": { "max_open": 8, "open": 8, "in_use": 1, "idle": 7, "waits": 120, "wait_ms": 340 },
+  "process": { "goroutines": 1480, "heap_mb": 41, "sys_mb": 78, "gc_cycles": 902 } }
+```
+
+- `queue.kinds` lists every job kind the server knows, with zeros when idle. `queued` includes jobs held back by a paused contest (`queued_paused`).
+- `finished_*`, the `submit_*` percentiles (Submit to first claim, and Submit to verdict, over submissions closed in the last 10 minutes) and `failed_last_5_min` come from memory and restart at zero with the server.
+- `db.waits` and `db.wait_ms` count, since the start, requests that waited for one of the SQLite connections.
 
 ## Sign-in
 
@@ -48,7 +70,7 @@ What the sign-in page needs to explain who may sign in, and which sign-in to off
 
 ### `POST /api/auth/test-signin` (public, testing mode only)
 
-Registered only when `PODIUM_MODE=testing`, which runs on loopback alone; in other modes it is `404 not_found`. Signs in as anyone, with any role, without Google.
+Registered only when `PODIUM_MODE=testing`, which runs on loopback alone; in other modes it is `404 not_found`. Signs in as anyone, with any role, without Google. Besides the local-only rule above, the request must carry an `Origin` header equal to the base URL (the sign-in page sends one; a script elsewhere has no reason to).
 
 Request: `{"email":"asha@college.edu","name":"Asha Rao","role":"admin","next":"/admin/problems"}`. `name` and `next` may be empty; `role` is `student`, `admin` or `owner`. The account is created if needed, otherwise its name and role are updated. `PODIUM_OWNER_EMAIL` always keeps the owner role, and the account's Google link is left untouched.
 
@@ -56,18 +78,19 @@ Request: `{"email":"asha@college.edu","name":"Asha Rao","role":"admin","next":"/
 |---|---|
 | 200 | `{"next":"/admin/problems"}`, with the session cookie set; `next` is made safe as for Google sign-in (anything that is not a path on this site becomes `/`) |
 | 400 | `bad_request`: not an email address, or an unknown role |
+| 403 | `cross_site`: no `Origin`, or not the base URL; `testing_mode_local`; `disabled`: an owner disabled the account |
 
-Any session the browser already had ends, as with Google sign-in.
+Any session the browser already had ends, as with Google sign-in. Nothing made here survives a change of mode: when the server next starts in `dev` or `production`, every session ends and every admin or owner without a linked Google account (other than `PODIUM_OWNER_EMAIL`) becomes a student again, with a log line giving the counts.
 
 ### `GET /api/auth/google/start?next=/path` (public, browser navigation)
 
 Not registered in testing mode, nor is the callback below.
 
-Redirects (302) to Google's consent screen with PKCE, a nonce and a state value held in a short-lived signed cookie. `next` must be a path on this site (it starts with `/` and not `//`); anything else becomes `/`. When exactly one domain is allowed it is passed to Google as a hint.
+Redirects (302) to Google's consent screen with PKCE, a nonce and a state value held in a short-lived signed cookie. `next` must be a path on this site (it starts with `/` and not `//`); anything else becomes `/`. When exactly one domain is allowed it is passed to Google as a hint. It shows the account chooser and asks Google to accept only a sign-in from the last 5 minutes (`prompt=select_account`, `max_age=300`; Google does not support `prompt=login`), so on a shared PC the previous student's Google sign-in is not one click away.
 
 ### `GET /api/auth/google/callback` (Google redirects here)
 
-Verifies the state, exchanges the code, verifies the ID token (signature, issuer, audience and authorised party, expiry, nonce) and requires `email_verified`. The email may sign in when its domain is on the allowed list, or when the account already has the admin or owner role, or when it is `PODIUM_OWNER_EMAIL`. Each account is bound to the Google account (`sub`) that first signed in with it; a different Google account with the same address is refused. On success it creates the user if needed, ends any session the browser already had, starts a new one and redirects to `next`.
+Verifies the state, exchanges the code, verifies the ID token (signature, issuer, audience and authorised party, expiry, nonce, and `auth_time` no older than 5 minutes when present) and requires `email_verified`. The email may sign in when its domain is on the allowed list, or when the account already has the admin or owner role, or when it is `PODIUM_OWNER_EMAIL`. Each account is bound to the Google account (`sub`) that first signed in with it; a different Google account with the same address is refused. On success it creates the user if needed, ends any session the browser already had, starts a new one and redirects to `next`.
 
 On failure it redirects to `/signin?error=<code>`:
 
@@ -83,7 +106,7 @@ On failure it redirects to `/signin?error=<code>`:
 
 ### `POST /api/auth/logout`
 
-Ends the current session and clears the cookie. `204` with no body, also when already signed out.
+Ends the current session on the server (the session row is deleted, so a copy of the cookie is useless) and clears the cookie. `204` with no body, also when already signed out.
 
 ### `GET /api/me`
 
@@ -110,19 +133,21 @@ Request: `{"theme":"nordic-frost","verdicts":"signal"}`. `theme` is `""` (follow
 
 ### `GET /api/admin/people`
 
-Everyone with the admin or owner role, plus the allowed domains.
+Everyone with the admin or owner role, the allowed domains, and the disabled accounts.
 
 ```json
 {
   "people": [
     { "id": 1, "email": "owner@college.edu", "name": "Priya Raman", "role": "owner",
-      "last_login_at": 1792183192359, "locked": true }
+      "last_login_at": 1792183192359, "locked": true, "disabled": false }
   ],
-  "domains": [ { "domain": "college.edu", "created_at": 1792183192359 } ]
+  "domains": [ { "domain": "college.edu", "created_at": 1792183192359 } ],
+  "disabled": [ { "id": 7, "email": "asha@college.edu", "name": "Asha Rao", "role": "student",
+      "disabled": true, "last_login_at": 1792183100000 } ]
 }
 ```
 
-`last_login_at` is Unix milliseconds or `null` (added but never signed in). `locked` is true for `PODIUM_OWNER_EMAIL`, whose owner role comes from the server configuration and cannot be changed here.
+`last_login_at` is Unix milliseconds or `null` (added but never signed in). `locked` is true for `PODIUM_OWNER_EMAIL`, whose owner role comes from the server configuration and cannot be changed here. `disabled` lists every disabled account (`Account`), by email.
 
 ### `POST /api/admin/people`
 
@@ -142,6 +167,20 @@ Errors: `404 not_found`, `409 conflict` (the configured owner, or the last remai
 Unlinks an account from its Google account, for when someone's address moved to a new Google account. Their sessions end; the next Google account that signs in with the address is linked to it.
 
 Request: `{"email":"asha@college.edu"}`. Response `204`. Errors: `404 not_found` (no account with that email).
+
+### `POST /api/admin/accounts/end-sessions`
+
+Signs a person out everywhere, for a lost laptop or a shared PC left signed in: every session of the account is deleted. Their next request gets `401 signed_out`, and their open live streams close at the next clock tick (25 s at most). They can sign in again.
+
+Request: `{"email":"asha@college.edu"}`. Response `200`: `{"account": Account, "ended": 2}`. Errors: `404 not_found`.
+
+### `POST /api/admin/accounts/disable` and `POST /api/admin/accounts/enable`
+
+Disable ends every session as above, and the account is refused at sign-in (`/signin?error=disabled`) and at every signed-in route until an owner enables it again. Enable lets them sign in again (it starts no session).
+
+Request: `{"email":"asha@college.edu"}`. Response `200`: `{"account": Account, "ended": 1}` (`ended` is 0 for enable). Errors: `404 not_found`; `409 conflict` for `PODIUM_OWNER_EMAIL` (the recovery account) and for disabling yourself.
+
+`Account` is `{id, email, name, role, disabled, last_login_at}`.
 
 ### `POST /api/admin/domains`
 
@@ -186,7 +225,7 @@ An `{id}` that is not a problem gives `404 not_found` on every route.
   "validated": true, "validated_at": 1792183192359, "updated_at": 1792183100000 }
 ```
 
-- `difficulty` is `easy`, `medium`, `hard` or `""`. `origin` is `manual`, `import` or `ai` (made by the AI wizard). A wizard draft carries the tag `ai draft` until a person first saves it.
+- `difficulty` is `easy`, `medium`, `hard` or `""`. `origin` is `manual`, `import` or `ai` (made by the AI wizard). A wizard draft carries the tag `ai draft` until a person changes its statement, reference or brute force.
 - `validated` is true when the last passing validation covers the problem as it is now (its content hash equals the problem's). `validated_at` is `null` whenever `validated` is false.
 - Times are Unix milliseconds.
 
@@ -232,7 +271,7 @@ A `brute` or `validator` with empty source counts as none. Subtasks are numbered
 - Leave out both `generator` and `plan` to keep the generator, the plan and each subtask's `generator_args` (an editor that does not know about generators cannot erase one).
 - Send either to replace them: the one left out keeps its stored value, and each subtask's `generator_args` then comes from the body (left out means none). `null`, or a generator with empty source, removes the generator; the plan must then be empty.
 - Field errors: `generator`, `plan` (one sentence for the first wrong entry) and `subtasks.N.generator_args`.
-- Any save removes the `ai draft` tag. The generator and the plan are not part of the content hash, so changing them does not withdraw "validated" (D53).
+- A save that changes the statement, the reference or the brute force removes the `ai draft` tag and withdraws "validated" (the person's version must pass again); a save that changes none of them keeps the tag, even when `tags` leaves it out. A save that changes the reference or the brute force also marks the problem as having a person's solution, which graded contests need for problems whose origin is `ai`. The generator and the plan are not part of the content hash, so changing them does not withdraw "validated" (D53).
 
 `Validation`:
 
@@ -243,7 +282,8 @@ A `brute` or `validator` with empty source counts as none. Subtasks are numbered
   "tests": [ { "idx": 4, "role": "reference", "verdict": "WA", "time_ms": 3, "memory_kb": 1024,
                "message": "Token 1 differs: expected \"7\", found \"8\"." } ],
   "summary": { "passed": false, "reference_passed": 5, "reference_total": 6,
-               "brute_agreed": 6, "brute_total": 6, "validator_passed": 6, "validator_total": 6,
+               "brute_agreed": 6, "brute_total": 6, "brute_unchecked": 0, "brute_unchecked_tests": [],
+               "validator_passed": 6, "validator_total": 6,
                "max_time_ms": 3, "time_limit_ms": 1000,
                "problems": ["Test 4: reference solution got wrong answer. Token 1 differs: expected \"7\", found \"8\"."],
                "warnings": [] },
@@ -254,6 +294,7 @@ A `brute` or `validator` with empty source counts as none. Subtasks are numbered
 - `current` is false when the problem has changed since this validation was requested.
 - `role` is `reference`, `brute`, `validator` or `checker` (the checker appears only in `compile`). Compile verdicts are `OK` or `CE`; test verdicts are `AC`, `WA`, `TLE`, `MLE`, `RE`, `OLE`, `IE` or `SK` (a brute force that ran out of time). `message` is a checker comment or the end of a validator's error output, at most 256 bytes.
 - `summary` is computed by the server from the recorded results once the job closes. `time_limit_ms` there is the problem's limit times the reference language's time factor. `passed` is true when `problems` is empty.
+- `brute_unchecked` counts the tests the brute force did not finish (`TLE` or `SK`), so nothing cross-checked their expected output, and `brute_unchecked_tests` names them; a warning says so. When a problem has a brute force, fewer than half of its tests cross-checked (brute force `AC` or `WA`) is a problem, so validation fails.
 
 ### Errors
 
@@ -503,7 +544,7 @@ Times are rounded to 10 ms (100 ms for a student in a graded contest). A run use
 
 A submission never carries the input, output or checker comment of any test (decision D47). Times are rounded to 10 ms. How scoring works: `docs/ARCHITECTURE.md`, "Submissions and scoring".
 
-**What a student sees of their own submission.** The same view on every path (`GET /api/submissions/{id}`, the workspace list, the answer to a submit or a repeated `client_key`, and live events). Owners and admins see every figure. A contest's co-organisers see the student view, both of their own submissions and of the contest's submissions they read: they are not trusted with what exact figures reveal about hidden tests.
+**What a student sees of their own submission.** The same view on every path (`GET /api/submissions/{id}`, the workspace list, the answer to a submit or a repeated `client_key`, and live events). Owners and admins see every figure. A contest's co-organisers whose site role is student see the student view, both of their own submissions and of the contest's submissions they read: they are not trusted with what exact figures reveal about hidden tests. For them "the student's window" is the last student's: in exam mode nothing shows until every window is over, and a submission made from the freeze is hidden while students see the frozen board.
 
 - Coarse figures: no memory figure for hidden tests (`memory_kb` 0), `max_memory_kb` rounded up to the next 16 MB, times rounded to 100 ms in graded contests and 10 ms otherwise.
 - While judging: per-test verdicts only inside finished blocks (the samples as a whole, each whole subtask), and `max_time_ms` and `max_memory_kb` stay 0 until the end, so polling shows no more than the live stream.
@@ -517,6 +558,7 @@ A submission never carries the input, output or checker comment of any test (dec
 |---|---|---|
 | Pending submissions | one per user per problem; not applied in exam mode, where a new submission queues behind the pending one (a refusal that ends when judging ends would tell the student when it finished) | `429 rate_limited`: "Your last submission for this problem is still being judged. Wait for its result." |
 | Gap between submits | 5 s per user, across all problems (organisers trying problems; contests set their own in M4) | `429 rate_limited`: "Submissions are limited to one every 5 seconds. Try again in 3 s." |
+| Compile that ran out of time | after the user's last program (a Run or a Submit in the same contest scope) failed to compile because the compiler ran out of time or memory, 60 s before the next Run or Submit; compiles see no tests, so the same message is shown in exam mode | `429 rate_limited`: "Your last program took too long to compile. Try again in N seconds; a program that compiles for 10 seconds is usually a template or include problem." |
 | Code | at most 64 KB, UTF-8, a known language | `400 bad_request` |
 | `client_key` | optional, at most 64 characters | `400 bad_request` |
 | Problem | tests, samples and subtasks fit together and every test has an expected output; validation is not required to try a problem | `409 not_ready` with `problems` |
@@ -703,6 +745,14 @@ At most 5 unanswered questions per student per contest (`400` with `fields.quest
 
 Owners and admins organise every contest; a co-organiser organises only the contests they were added to. For anyone else, every route below answers `404 not_found`, so ids cannot be probed. Creating, cloning, archiving, choosing co-organisers, choosing the contest's problems and publishing or unpublishing need the admin or owner role (`403 forbidden`): problems come from the bank, which co-organisers (often student TAs) never see, and publishing hands them to students. Every id in a URL or body (a submission, a clarification, a label) is checked against the contest in the URL; one from another contest is a `404`.
 
+**Co-organisers whose site role is student** (security council S1, 2026-10-18). Below, "admin" means the owner or an admin; a co-organiser who is a student:
+
+- cannot replace the roster, set extensions, extend, pause, resume or rejudge (`403 forbidden`);
+- before the start may edit every setting except publishing; once the contest has started, a change to any of `locked_after_start` (`slug`, `starts_at`, `ends_at`, `start_mode`, `duration_minutes`, `freeze_minutes`, `scoring_mode`, `access`, `feedback_mode`, `graded`, `practice_after_end`, `stop_on_sample_fail`, `min_gap_s`, `max_per_problem`, `languages`, `hold_reveal`) is `403 locked_after_start`, with the fields in `problems`. Admins may still change them (the web app asks first);
+- sees results only as a student whose window closes last would: in exam mode, until every window is over, feed rows are `"hidden": true`, `"state": "submitted"` with no verdict or score, a `verdict` filter is `403 results_hidden`, and the boards are `403 board_closed`; while students see the frozen board, the boards are frozen (whatever `variant` asks) and feed rows made from the freeze are hidden. The stats and both exports are `403 results_hidden` until students see the full board. Integrity counts are never shown to them.
+
+Every change that can affect results is recorded in the contest's audit log (below), and an extension must name a student on the roster or one who started or submitted (`409 not_participant` otherwise; removing one with 0 minutes always works).
+
 | Route | Request | Success |
 |---|---|---|
 | `GET /api/admin/contests` (`?archived=1`) | | 200 `{contests:[AdminContest], server_now}` (a co-organiser sees their own) |
@@ -711,15 +761,16 @@ Owners and admins organise every contest; a co-organiser organises only the cont
 | `PUT /api/admin/contests/{id}` | `ContestEdit` (fields left out keep their value) | 200 `AdminContest` |
 | `DELETE /api/admin/contests/{id}` | | 204 (archived; nothing deleted) |
 | `POST /api/admin/contests/{id}/clone` | `{slug, title, starts_at, ends_at}` | 201 `AdminContest`: settings and problems copied, not the roster, co-organisers, extensions or editorial |
-| `PUT /api/admin/contests/{id}/problems` (admin) | `[{"problem_id":3,"label":"A"}]` | 200 `AdminContest`; each problem must be validated and not tagged `ai draft` (a person saves AI drafts first); its content hash and subtask points are pinned. Errors name the label, never the problem's title |
+| `PUT /api/admin/contests/{id}/problems` (admin) | `[{"problem_id":3,"label":"A","ai_reason":"..."}]` (`ai_reason` optional) | 200 `AdminContest`; each problem must be validated and not tagged `ai draft` (a person edits AI drafts first); its content hash and subtask points are pinned. In a graded contest a problem whose origin is `ai` and for which no person has written a solution (no editor save has changed its reference or brute force) is `409 ai_unconfirmed` with the labels in `problems`, unless `ai_reason` (at least 10 characters) gives the admin's reason to grade it as written; the reason goes to the audit log, and once recorded for this contest it is not asked again. Errors name the label, never the problem's title |
 | `GET /api/admin/contests/{id}/roster` | | 200 `{roster:[{email,name,roll_number,section}], count}` |
-| `PUT /api/admin/contests/{id}/roster` | `text/csv` (header row naming `email`, and optionally `name`, `roll_number`, `section`) or a JSON array of the same objects; at most 2 MB and 5,000 students | 200 `{added, removed, roster_count}`. A full replace: on a roster contest, anyone left out loses access at once, so show the counts before and after |
+| `PUT /api/admin/contests/{id}/roster` (admin) | `text/csv` (header row naming `email`, and optionally `name`, `roll_number`, `section`) or a JSON array of the same objects; at most 2 MB and 5,000 students | 200 `{added, removed, roster_count}`. A full replace: on a roster contest, anyone left out loses access at once, so show the counts before and after |
 | `POST`, `DELETE /api/admin/contests/{id}/admins` | `{"email":"ta@college.edu"}` (they must have signed in once) | 200 `AdminContest` |
-| `PUT /api/admin/contests/{id}/extensions/{user}` | `{"minutes":15,"reason":"..."}` (0 to 1440; 0 removes) | 200 `AdminContest`; the student gets a `contest` event |
-| `POST /api/admin/contests/{id}/extend` | `{"minutes":10}` (1 to 240, adds to earlier extensions) | 200 `AdminContest`; members get a `contest` event |
-| `POST /api/admin/contests/{id}/pause`, `/resume` | | 200 `AdminContest` |
-| `GET /api/admin/contests/{id}/submissions?problem=A&user=7&verdict=WA&page=1` | | 200 `{submissions:[...], page, has_more, server_now}` |
-| `POST /api/admin/contests/{id}/rejudge` | `{"problem_label":"A"}` or `{"submission_id":80}` | 202 `{queued, server_now}` |
+| `PUT /api/admin/contests/{id}/extensions/{user}` (admin) | `{"minutes":15,"reason":"..."}` (0 to 1440; 0 removes) | 200 `AdminContest`; the student gets a `contest` event. `409 not_participant` unless the student is on the roster or started or submitted |
+| `POST /api/admin/contests/{id}/extend` (admin) | `{"minutes":10}` (1 to 240, adds to earlier extensions) | 200 `AdminContest`; members get a `contest` event |
+| `POST /api/admin/contests/{id}/pause`, `/resume` (admin) | | 200 `AdminContest` |
+| `GET /api/admin/contests/{id}/submissions?problem=A&user=7&verdict=WA&page=1` | | 200 `{submissions:[...], page, has_more, results_hidden, server_now}`; `results_hidden` is true when some rows are hidden from this viewer |
+| `POST /api/admin/contests/{id}/rejudge` (admin) | `{"problem_label":"A"}` or `{"submission_id":80}` | 202 `{queued, server_now}` |
+| `GET /api/admin/contests/{id}/audit?page=1` | | 200 `{entries:[AuditEntry], page, has_more, server_now}`, newest first, 200 per page; every organiser of the contest may read it |
 | `GET`, `POST /api/admin/contests/{id}/announcements` | `{"body_md":"..."}` (at most 4,000 characters) | 200 `{announcements, server_now}`; 201 `Announcement` |
 | `GET /api/admin/contests/{id}/clarifications` | | 200 `{clarifications, server_now}`, each with `asked_by {user_id, email, name}` |
 | `PUT /api/admin/contests/{id}/clarifications/{cid}` | `{"answer":"...","public":false}` | 200 `Clarification` |
@@ -735,7 +786,26 @@ Owners and admins organise every contest; a co-organiser organises only the cont
 
 `ContestEdit` holds the form's fields: `slug`, `title`, `description_md`, `starts_at`, `ends_at`, `start_mode` (`fixed` or `window`), `duration_minutes` (window mode, at least 10 and at most the whole window), `freeze_minutes`, `scoring_mode` (`best_subtask` or `best_submission`), `access` (`domain` or `roster`), `feedback_mode` (`subtask` or `exam`), `graded`, `published`, `practice_after_end`, `stop_on_sample_fail`, `min_gap_s` (0 to 3600), `max_per_problem` (1 to 1000), `languages`, `honour_text` (empty for the default), `hold_reveal`. Defaults on create: fixed start, best per subtask, domain access, subtask feedback, graded, practice after the end, stop on a failing sample, 30 s gap, 15 per problem, all four languages. Unknown fields are refused. Publishing checks that every problem is still the validated version that was added ("Problem B changed or lost its validation since it was added. Validate it and add it again."). Invalid fields: `400 bad_request` with `fields`.
 
-`AdminContest` is every `ContestEdit` field plus `id`, `close_at` (end plus contest-wide extension), `default_honour_text`, `editorial_md`, `editorial_published`, `paused`, `extended_minutes`, `revealed_at`, `archived`, `state`, `problems [{label, problem_id, title, pinned_hash, ready, max_score}]` (`ready` is false when the problem changed since it was added), `admins [{user_id, email, name}]`, `extensions [{user_id, email, name, minutes, reason}]`, `roster_count`, `created_at`, `updated_at`, `server_now`.
+`AdminContest` is every `ContestEdit` field plus `id`, `close_at` (end plus contest-wide extension), `default_honour_text`, `editorial_md`, `editorial_published`, `paused`, `extended_minutes`, `revealed_at`, `archived`, `state`, `problems [{label, problem_id, title, pinned_hash, ready, max_score}]` (`ready` is false when the problem changed since it was added), `admins [{user_id, email, name}]`, `extensions [{user_id, email, name, minutes, reason}]`, `roster_count`, `created_at`, `updated_at`, `server_now`, `locked_after_start` (the field names above that only admins may change once the contest has started).
+
+Turning `graded` on is `409 ai_unconfirmed` while the contest holds an AI problem no person has written a solution for and no admin has confirmed for this contest.
+
+### `AuditEntry`
+
+`{id, action, actor: {user_id, email, role}, details, created_at}`. The actor's email and site role are as they were at the time. The table is append only (database triggers refuse every update and delete), and the JSON export carries the whole log as `audit`, oldest first.
+
+| `action` | `details` |
+|---|---|
+| `settings` | `{"changes": {"feedback_mode": {"from": "subtask", "to": "exam"}, ...}}`, times in Unix ms; the description and honour code are recorded as their sizes |
+| `problems` | `{"from": [{label, problem_id, pinned_hash}], "to": [...]}` |
+| `ai_problem` | `{label, problem_id, reason}`: an admin's reason to grade an AI problem as written |
+| `roster` | `{count, added, removed}` |
+| `extension` | `{user_id, email, from_minutes, minutes, reason}` |
+| `extend` | `{minutes, extended_minutes}` |
+| `pause`, `resume`, `reveal`, `archive` | `{}` |
+| `rejudge` | `{problem_label}` or `{submission_id}`, with `queued` |
+| `editorial` | `{published, was_published, changed, bytes}`, recorded when it is published or unpublished, or changed while published |
+| `organisers` | `{email, added}` |
 
 ### Running a contest
 
@@ -747,7 +817,7 @@ Owners and admins organise every contest; a co-organiser organises only the cont
 ### Export and stats
 
 - CSV columns: `rank, name, email, roll_number, section, started` (UTC, RFC 3339), `total`, then one column per problem label. A cell starting with `=`, `+`, `-`, `@`, a tab or a carriage return gets a leading `'`, so a spreadsheet never runs a name as a formula.
-- JSON: `{contest: AdminContest, standings: [Standings row plus email, roll_number, section, started_at], submissions: [{id, user_id, problem_label, language, state, verdict, score, created_at, practice}], exported_at}`. No code and no integrity data.
+- JSON: `{contest: AdminContest, standings: [Standings row plus email, roll_number, section, started_at], submissions: [{id, user_id, problem_label, language, state, verdict, score, created_at, practice}], audit: [AuditEntry], exported_at}`. No code and no integrity data.
 - `ProblemStats`: `{label, title, max_score, attempted, solved` (full score)`, subtasks [{idx, points, earned}], histogram [{score, students}]` (highest score first)`, median_attempts}`, over students on the board and their non-practice submissions.
 
 ## Integrity

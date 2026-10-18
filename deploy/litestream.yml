@@ -1,0 +1,32 @@
+# Installed by deploy/install.sh as /etc/litestream.yml. Litestream copies
+# every change to podium's SQLite database to an S3-compatible bucket
+# (Backblaze B2 by default) within seconds, so a lost VM loses at most the
+# last few seconds of data. See docs/OPERATIONS.md, "Backups".
+#
+# No secrets here. Litestream replaces ${NAME} with the variable from
+# /etc/podium/litestream.env (template: deploy/litestream.env.example),
+# which the podium-litestream unit loads. The access key and secret are
+# read by Litestream straight from LITESTREAM_ACCESS_KEY_ID and
+# LITESTREAM_SECRET_ACCESS_KEY in the same file.
+#
+# Only the database is replicated. Test files and program sources live in
+# /var/lib/podium/tests and are copied by the nightly backup
+# (podium-backup.timer) instead.
+
+dbs:
+  - path: /var/lib/podium/db/podium.db
+    replica:
+      type: s3
+      bucket: ${PODIUM_BACKUP_BUCKET}
+      path: ${PODIUM_BACKUP_PATH}
+      endpoint: ${PODIUM_BACKUP_ENDPOINT}
+      region: ${PODIUM_BACKUP_REGION}
+      # Upload changes every 10 s instead of every second: fewer requests
+      # (B2 bills class A calls), and at most 10 s of changes at risk.
+      sync-interval: 10s
+
+# A full snapshot every day, kept for 14 days; point-in-time restore works
+# anywhere inside that window.
+snapshot:
+  interval: 24h
+  retention: 336h

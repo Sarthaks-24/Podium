@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   allowedLanguages,
+  auditSummary,
   clockMilestone,
   formatCountdown,
   formatMinutes,
@@ -230,5 +231,37 @@ describe('roster CSV', () => {
   it('writes CSV that parses back', () => {
     const entries = [{ email: 'a@b.co', display_name: 'A "Q", R', roll_number: '1', section: '' }];
     expect(parseRoster(rosterCsv(entries)).lines[0]).toMatchObject(entries[0]);
+  });
+});
+
+describe('auditSummary', () => {
+  it('names each change in the past tense', () => {
+    expect(
+      auditSummary({
+        action: 'settings',
+        details: {
+          changes: {
+            feedback_mode: { from: 'subtask', to: 'exam' },
+            graded: { from: true, to: false },
+            languages: { from: ['cpp17'], to: [] },
+          },
+        },
+      }),
+    ).toBe('Changed feedback from subtask to exam; graded from yes to no; languages from cpp17 to none');
+    expect(auditSummary({ action: 'extension', details: { email: 'asha@college.edu', minutes: 20, reason: 'laptop crashed' } })).toBe(
+      'Gave asha@college.edu 20 extra minutes (laptop crashed)',
+    );
+    expect(auditSummary({ action: 'extension', details: { email: 'asha@college.edu', minutes: 0 } })).toBe(
+      'Removed the extension for asha@college.edu',
+    );
+    expect(auditSummary({ action: 'rejudge', details: { problem_label: 'B', queued: 1 } })).toBe('Rejudged problem B (1 submission)');
+    expect(auditSummary({ action: 'rejudge', details: { submission_id: 42, queued: 1 } })).toBe('Rejudged submission 42');
+    expect(auditSummary({ action: 'problems', details: { from: [], to: [{ label: 'A' }, { label: 'B' }] } })).toBe('Set the problems to A, B');
+    expect(auditSummary({ action: 'ai_problem', details: { label: 'B', reason: 'Checked by hand.' } })).toBe(
+      'Graded AI problem B as written: Checked by hand.',
+    );
+    expect(auditSummary({ action: 'editorial', details: { published: true, was_published: false } })).toBe('Published the editorial');
+    expect(auditSummary({ action: 'pause', details: {} })).toBe('Paused judging');
+    expect(auditSummary({ action: 'something_new', details: {} })).toBe('something_new');
   });
 });

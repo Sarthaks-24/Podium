@@ -3,7 +3,21 @@
 # Caddy obtains and renews the TLS certificate itself and redirects http to
 # https.
 
+{
+	# No admin API: nothing on the VM can reconfigure Caddy through
+	# localhost:2019. A configuration change needs a restart
+	# (install.sh caddy does it), not a reload.
+	admin off
+}
+
 PODIUM_HOST {
+	# Refuse bodies larger than the server would read anyway: the largest
+	# is a 32 MB problem pack. Caddy stops them at the edge instead of
+	# streaming them to the server.
+	request_body {
+		max_size 33MB
+	}
+
 	# Server-sent events must not be buffered by compression.
 	@compressible not path /api/events*
 	encode @compressible zstd gzip

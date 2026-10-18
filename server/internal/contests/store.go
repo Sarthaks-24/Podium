@@ -10,6 +10,7 @@ import (
 	"io"
 	"net/mail"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -256,9 +257,11 @@ func (s *Service) Create(ctx context.Context, e Edit, by int64) (*Contest, error
 	return s.Get(ctx, id)
 }
 
-// Update saves the contest form. Publishing checks every problem is still
-// the validated version that was added.
-func (s *Service) Update(ctx context.Context, id int64, e Edit) (*Contest, error) {
+// Update saves the contest form for by. Publishing checks every problem is
+// still the validated version that was added; turning grading on checks
+// no AI problem is left unconfirmed (AIProblemError). The settings that
+// changed are recorded in the audit log in the same transaction.
+func (s *Service) Update(ctx context.Context, id int64, e Edit, by Actor) (*Contest, error) {
 	if errs := e.check(); errs != nil {
 		return nil, errs
 	}
@@ -276,8 +279,28 @@ func (s *Service) Update(ctx context.Context, id int64, e Edit) (*Contest, error
 			}
 		}
 	}
+	tx, err := s.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+	if e.Graded && !c.Graded {
+		var labels []string
+		for _, p := range c.Problems {
+			unconfirmed, err := unconfirmedAI(ctx, tx, id, p.ProblemID)
+			if err != nil {
+				return nil, err
+			}
+			if unconfirmed {
+				labels = append(labels, p.Label)
+			}
+		}
+		if len(labels) > 0 {
+			return nil, &AIProblemError{Labels: labels, Grading: true}
+		}
+	}
 	langs, _ := json.Marshal(e.Languages)
-	_, err = s.DB.ExecContext(ctx, `UPDATE contests SET slug = ?, title = ?, description_md = ?, starts_at = ?, ends_at = ?, start_mode = ?,
+	_, err = tx.ExecContext(ctx, `UPDATE contests SET slug = ?, title = ?, description_md = ?, starts_at = ?, ends_at = ?, start_mode = ?,
 		duration_minutes = ?, freeze_minutes = ?, scoring_mode = ?, access = ?, feedback_mode = ?, graded = ?, published = ?,
 		practice_after_end = ?, stop_on_sample_fail = ?, min_gap_s = ?, max_per_problem = ?, languages = ?, honour_text = ?,
 		hold_reveal = ?, updated_at = ? WHERE id = ?`,
@@ -288,6 +311,14 @@ func (s *Service) Update(ctx context.Context, id int64, e Edit) (*Contest, error
 		return nil, FieldErrors{"slug": "Another contest already uses this slug."}
 	}
 	if err != nil {
+		return nil, err
+	}
+	if changes := settingChanges(c, e); len(changes) > 0 {
+		if err := s.recordTx(ctx, tx, id, by, AuditSettings, map[string]any{"changes": changes}); err != nil {
+			return nil, err
+		}
+	}
+	if err := tx.Commit(); err != nil {
 		return nil, err
 	}
 	s.changed(id)
@@ -427,13 +458,28 @@ func (s *Service) List(ctx context.Context, archived bool) ([]*Contest, error) {
 type ProblemChoice struct {
 	ProblemID int64
 	Label     string
+	// AIReason is an admin's reason to grade a problem the AI wizard made
+	// when no person has written a solution for it. It is recorded in the
+	// audit log; once recorded for this contest it is not asked again.
+	AIReason string
 }
 
 var labelPattern = regexp.MustCompile(`^[A-Z][0-9]?$`)
 
-// SetProblems replaces the contest's problems. Each must be validated; its
-// current content hash is pinned.
-func (s *Service) SetProblems(ctx context.Context, id int64, choices []ProblemChoice) (*Contest, error) {
+// pin is one problem as the audit log records a problem change.
+type pin struct {
+	Label     string `json:"label"`
+	ProblemID int64  `json:"problem_id"`
+	Hash      string `json:"pinned_hash"`
+}
+
+// SetProblems replaces the contest's problems for by. Each must be
+// validated; its current content hash is pinned. In a graded contest a
+// problem the AI wizard made needs a person's solution (problems saved with
+// a changed reference or brute force) or an admin's reason (AIReason),
+// else the whole change is refused with AIProblemError. The change, and
+// each new reason, is recorded in the audit log in the same transaction.
+func (s *Service) SetProblems(ctx context.Context, id int64, choices []ProblemChoice, by Actor) (*Contest, error) {
 	if len(choices) > 26 {
 		return nil, FieldErrors{"problems": "Use at most 26 problems."}
 	}
@@ -442,16 +488,42 @@ func (s *Service) SetProblems(ctx context.Context, id int64, choices []ProblemCh
 		return nil, err
 	}
 	defer tx.Rollback()
-	var exists int
-	if err := tx.QueryRowContext(ctx, "SELECT count(*) FROM contests WHERE id = ?", id).Scan(&exists); err != nil {
+	var graded bool
+	err = tx.QueryRowContext(ctx, "SELECT graded FROM contests WHERE id = ?", id).Scan(&graded)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, ErrNotFound
+	}
+	if err != nil {
 		return nil, err
 	}
-	if exists == 0 {
-		return nil, ErrNotFound
+	var before []pin
+	rows, err := tx.QueryContext(ctx, "SELECT label, problem_id, pinned_hash FROM contest_problems WHERE contest_id = ? ORDER BY ord", id)
+	if err != nil {
+		return nil, err
+	}
+	for rows.Next() {
+		var p pin
+		if err := rows.Scan(&p.Label, &p.ProblemID, &p.Hash); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		before = append(before, p)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return nil, err
 	}
 	if _, err := tx.ExecContext(ctx, "DELETE FROM contest_problems WHERE contest_id = ?", id); err != nil {
 		return nil, err
 	}
+	after := []pin{}
+	var unconfirmed []string
+	type confirmation struct {
+		label     string
+		problemID int64
+		reason    string
+	}
+	var confirmations []confirmation
 	seenLabel, seenProblem := map[string]bool{}, map[int64]bool{}
 	for i, ch := range choices {
 		if !labelPattern.MatchString(ch.Label) || seenLabel[ch.Label] {
@@ -485,6 +557,20 @@ func (s *Service) SetProblems(ctx context.Context, id int64, choices []ProblemCh
 				return nil, FieldErrors{"problems": fmt.Sprintf("The problem for label %s is an AI draft. Read it and save it in the editor before adding it to a contest.", ch.Label)}
 			}
 		}
+		if graded {
+			needs, err := unconfirmedAI(ctx, tx, id, ch.ProblemID)
+			if err != nil {
+				return nil, err
+			}
+			reason := strings.TrimSpace(ch.AIReason)
+			switch {
+			case !needs:
+			case utf8.RuneCountInString(reason) >= minAIReason:
+				confirmations = append(confirmations, confirmation{ch.Label, ch.ProblemID, limitStr(reason, 1000)})
+			default:
+				unconfirmed = append(unconfirmed, ch.Label)
+			}
+		}
 		points, err := subtaskPoints(ctx, tx, ch.ProblemID)
 		if err != nil {
 			return nil, err
@@ -493,12 +579,34 @@ func (s *Service) SetProblems(ctx context.Context, id int64, choices []ProblemCh
 			id, ch.ProblemID, ch.Label, i, hash, points); err != nil {
 			return nil, err
 		}
+		after = append(after, pin{ch.Label, ch.ProblemID, hash})
+	}
+	if len(unconfirmed) > 0 {
+		return nil, &AIProblemError{Labels: unconfirmed}
+	}
+	for _, cf := range confirmations {
+		if err := s.recordTx(ctx, tx, id, by, AuditAIProblem, map[string]any{"label": cf.label, "problem_id": cf.problemID,
+			"reason": cf.reason}); err != nil {
+			return nil, err
+		}
+	}
+	if !slices.Equal(before, after) {
+		if err := s.recordTx(ctx, tx, id, by, AuditProblems, map[string]any{"from": nonNilPins(before), "to": after}); err != nil {
+			return nil, err
+		}
 	}
 	if err := tx.Commit(); err != nil {
 		return nil, err
 	}
 	s.changed(id)
 	return s.Get(ctx, id)
+}
+
+func nonNilPins(p []pin) []pin {
+	if p == nil {
+		return []pin{}
+	}
+	return p
 }
 
 // subtaskPoints returns a problem's subtask points as a JSON array, for

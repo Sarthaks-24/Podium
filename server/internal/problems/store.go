@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"path"
 	"regexp"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -415,12 +416,21 @@ func (s *Service) Update(ctx context.Context, id int64, e Edit) (*Problem, error
 	if err != nil {
 		return nil, err
 	}
+	// The AI draft marking ends only when a person changes the statement or
+	// a solution, and then the validation is withdrawn, so the problem must
+	// pass again as the person left it before a contest can take it. A save
+	// that changes neither keeps the marking (security council S10).
+	draft := slices.ContainsFunc(p.Tags, isAIDraftTag)
+	solutionEdited := e.Reference != p.Reference || !sameSource(emptyToNil(e.Brute), p.Brute)
+	personEdit := solutionEdited || e.Statement != p.Statement
 	p.Title, p.Slug, p.Statement = e.Title, e.Slug, e.Statement
 	p.TimeLimitMS, p.MemoryLimitMB = e.TimeLimitMS, e.MemoryLimitMB
 	p.Checker, p.Epsilon, p.CheckerSource = e.Checker, e.Epsilon, e.CheckerSource
 	p.Reference, p.Brute, p.Validator = e.Reference, emptyToNil(e.Brute), emptyToNil(e.Validator)
-	// A person's save ends the AI draft marking.
 	p.Tags, p.Difficulty = withoutAIDraftTag(nonNil(e.Tags)), e.Difficulty
+	if draft && !personEdit {
+		p.Tags = append(p.Tags, AIDraftTag)
+	}
 	oldArgs := map[int][]string{}
 	for _, st := range p.Subtasks {
 		oldArgs[st.Idx] = st.GeneratorArgs
@@ -441,10 +451,34 @@ func (s *Service) Update(ctx context.Context, id int64, e Edit) (*Problem, error
 	if err := s.save(ctx, tx, p); err != nil {
 		return nil, err
 	}
+	if draft && personEdit {
+		if _, err := tx.ExecContext(ctx, "UPDATE problems SET validated_hash = NULL, validated_at = NULL WHERE id = ?", p.ID); err != nil {
+			return nil, err
+		}
+		p.ValidatedHash, p.ValidatedAt = "", time.Time{}
+	}
+	// A reference or brute force a person wrote is what lets a graded
+	// contest take a problem the AI wizard made (contests.SetProblems).
+	if solutionEdited {
+		if _, err := tx.ExecContext(ctx, "UPDATE problems SET solution_by_person = 1 WHERE id = ?", p.ID); err != nil {
+			return nil, err
+		}
+	}
 	if err := tx.Commit(); err != nil {
 		return nil, err
 	}
 	return p, nil
+}
+
+// isAIDraftTag reports whether a tag is the AI draft marking.
+func isAIDraftTag(t string) bool { return strings.ToLower(strings.TrimSpace(t)) == AIDraftTag }
+
+// sameSource compares two optional programs.
+func sameSource(a, b *Source) bool {
+	if a == nil || b == nil {
+		return a == b
+	}
+	return *a == *b
 }
 
 // emptyToNil treats a brute or validator with no source as absent.

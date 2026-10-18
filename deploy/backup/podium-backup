@@ -1,0 +1,96 @@
+#!/usr/bin/env bash
+# Nightly backup of podium (podium-backup.timer runs it as user podium):
+#
+#   /var/backups/podium/<UTC date and time>/podium.db   consistent copy
+#   /var/backups/podium/<UTC date and time>/tests/      test files, sources
+#
+# The database is copied with SQLite's online backup, which is safe while
+# the server writes. Test files are named by their SHA-256 and never change
+# once written, so each night's tests/ is a tree of hard links into
+# /var/lib/podium/tests: a new night costs only the files added since. A
+# file the server later removes stays in the backups that link to it.
+# Each backup is checked with "podium-server check" before it counts, and
+# backups older than PODIUM_BACKUP_KEEP_DAYS are deleted.
+#
+# Everything is created readable by the podium user only (umask 077): the
+# backup holds every student's code and the session table.
+#
+# Off the VM: when PODIUM_BACKUP_RSYNC is set (in /etc/podium/backup.env,
+# template deploy/backup.env.example), the whole backup folder is then
+# copied there with rsync over ssh, hard links kept, using the podium
+# user's ssh key. The database also streams to the bucket through
+# Litestream; this copy is what carries the test files off the VM.
+#
+# Run by hand: sudo systemctl start podium-backup
+set -euo pipefail
+umask 077
+
+db=${PODIUM_DB_PATH:-/var/lib/podium/db/podium.db}
+tests=${PODIUM_TESTS_DIR:-/var/lib/podium/tests}
+dest=${PODIUM_BACKUP_DIR:-/var/backups/podium}
+keep=${PODIUM_BACKUP_KEEP_DAYS:-14}
+server=${PODIUM_SERVER_BIN:-/usr/local/bin/podium-server}
+remote=${PODIUM_BACKUP_RSYNC:-}
+
+die() { printf 'podium-backup: %s\n' "$*" >&2; exit 1; }
+[[ -f $db ]] || die "no database at $db"
+[[ -d $dest ]] || die "$dest does not exist; run: sudo ./install.sh backup"
+command -v sqlite3 >/dev/null || die "sqlite3 is not installed; run: sudo ./install.sh packages"
+[[ $keep =~ ^[0-9]+$ && $keep -ge 1 ]] || die "PODIUM_BACKUP_KEEP_DAYS must be a whole number of days, 1 or more"
+if [[ -n $remote ]]; then
+  [[ $remote == *:* && $remote != -* ]] || die "PODIUM_BACKUP_RSYNC must look like user@host:/path (in /etc/podium/backup.env)"
+  command -v rsync >/dev/null || die "rsync is not installed; run: sudo ./install.sh packages"
+fi
+
+stamp=$(date -u +%Y-%m-%dT%H%MZ)
+final=$dest/$stamp
+work=$dest/.partial-$stamp
+rm -rf "$work"
+trap 'rm -rf "$work"' EXIT
+mkdir -m 700 "$work"
+
+start=$(date +%s)
+# .backup holds a read transaction and copies page by page; the server keeps
+# writing meanwhile (WAL). The copy is a single file with no -wal.
+sqlite3 "$db" ".timeout 10000" ".backup '$work/podium.db'"
+
+if [[ -d $tests ]]; then
+  # Hard links when the backup is on the same filesystem; a real copy if not.
+  cp -al "$tests" "$work/tests" 2>/dev/null || { rm -rf "$work/tests"; cp -a "$tests" "$work/tests"; }
+else
+  mkdir "$work/tests"
+fi
+
+if [[ -x $server ]]; then
+  "$server" check -db "$work/podium.db" -tests "$work/tests" > "$work/check.txt" 2>&1 \
+    || { cat "$work/check.txt" >&2; die "the new backup failed its check; kept nothing"; }
+else
+  [[ $(sqlite3 "$work/podium.db" "PRAGMA integrity_check") == ok ]] || die "integrity_check failed on the copy"
+fi
+
+mv "$work" "$final"
+trap - EXIT
+ln -sfn "$stamp" "$dest/latest"
+
+# Keep PODIUM_BACKUP_KEEP_DAYS days. Names sort by date; never touch the
+# newest, whatever the clock says.
+cutoff=$(date -u -d "-$keep days" +%Y-%m-%dT%H%MZ)
+for d in "$dest"/20*; do
+  if [[ -d $d && $(basename "$d") < $cutoff && $d != "$final" ]]; then
+    rm -rf "$d"
+  fi
+done
+
+size=$(du -sh "$final/podium.db" | cut -f1)
+files=$(find "$final/tests" -type f | wc -l)
+count=$(find "$dest" -maxdepth 1 -name '20*' -type d | wc -l)
+echo "podium-backup: $final done in $(( $(date +%s) - start )) s: database $size, $files test files, $count backups kept"
+
+if [[ -n $remote ]]; then
+  # -H keeps the hard links between nights, so the remote copy is as small
+  # as the local one; --delete mirrors the 14-day pruning. BatchMode makes
+  # a missing or unaccepted key fail at once instead of asking.
+  rsync -aH --delete -e "ssh -o BatchMode=yes" -- "$dest/" "$remote/" \
+    || die "the local backup is done, but copying it to $remote failed"
+  echo "podium-backup: copied to $remote"
+fi

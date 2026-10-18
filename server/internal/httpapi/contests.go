@@ -77,7 +77,10 @@ type contestJSON struct {
 // contestError maps the contests package's errors to responses.
 func (d Deps) contestError(w http.ResponseWriter, r *http.Request, err error) {
 	var fields contests.FieldErrors
+	var aiErr *contests.AIProblemError
 	switch {
+	case errors.As(err, &aiErr):
+		WriteJSON(w, http.StatusConflict, map[string]APIError{"error": {Code: "ai_unconfirmed", Message: aiErr.Error(), Problems: aiErr.Labels}})
 	case errors.Is(err, contests.ErrNotFound):
 		WriteError(w, http.StatusNotFound, "not_found", "There is no such contest, or it is not open to you.")
 	case errors.Is(err, contests.ErrForbidden):
@@ -319,10 +322,11 @@ func (d Deps) contestProblem(w http.ResponseWriter, r *http.Request) (*contestTa
 		} else {
 			// A co-organiser (often a student TA) may try the contest's
 			// problems at any time, but is not trusted with hidden data:
-			// the student view of their own submissions and the contest's
-			// limits.
+			// the contest's limits, and the student view of their own
+			// submissions as for a student whose window closes last (so in
+			// exam mode no verdict until every window is over).
 			t.scope.MinGap, t.scope.MaxPerProblem = c.MinGap, c.MaxPerProblem
-			t.scope.View = c.ViewOptions(contests.StudentState{Over: true})
+			t.scope.View = d.Contests.CoOrganiserViewOptions(c)
 		}
 		if !t.problem.Ready {
 			t.open, t.refusal = false, contests.ErrNotReady
@@ -535,7 +539,16 @@ func (d Deps) getStandings(w http.ResponseWriter, r *http.Request) {
 	}
 	u := userFrom(r.Context())
 	variant := contests.VariantFull
-	if !organiser {
+	switch {
+	case organiser && !u.Role.AtLeast(auth.Admin):
+		// A co-organiser whose site role is student sees what a student
+		// whose window closes last would.
+		v, err := d.coOrganiserVariant(w, r, c)
+		if err != nil {
+			return
+		}
+		variant = v
+	case !organiser:
 		st, err := d.Contests.State(r.Context(), c, u.ID)
 		if err != nil {
 			d.internalError(w, r, err)

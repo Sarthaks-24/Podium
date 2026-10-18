@@ -17,7 +17,10 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
+	"sync"
+	"time"
 
 	"github.com/Sarthaks-24/podium/internal/judgeapi"
 )
@@ -111,12 +114,120 @@ func (c *Client) Report(ctx context.Context, rep judgeapi.Report) error {
 	return httpError("report", resp)
 }
 
+// DefaultBlobCacheBytes caps the blob cache when MaxBytes is not set.
+const DefaultBlobCacheBytes = 2048 << 20
+
 // Cache keeps downloaded blobs under Dir/<sha[0:2]>/<sha>. A file is only
 // stored after its content hashes to its name, so a corrupted download or
 // a misbehaving server cannot plant the wrong test.
+//
+// The cache is bounded: Evict removes the least recently used files above
+// MaxBytes, never one a running job holds. A job holds every blob it asked
+// for from Path or Read until Release(jobID).
 type Cache struct {
-	Dir    string
-	Client *Client
+	Dir      string
+	Client   *Client
+	MaxBytes int64
+
+	mu    sync.Mutex
+	inUse map[string]int            // sha -> number of jobs holding it
+	held  map[int64]map[string]bool // job id -> the shas it holds
+	// size is the bytes stored, known once scanned is true; downloads add
+	// to it so Evict only walks the directory when the cap may be passed.
+	size    int64
+	scanned bool
+}
+
+// hold marks sha as needed by a job until Release.
+func (c *Cache) hold(jobID int64, sha string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.held == nil {
+		c.held, c.inUse = map[int64]map[string]bool{}, map[string]int{}
+	}
+	if c.held[jobID] == nil {
+		c.held[jobID] = map[string]bool{}
+	}
+	if !c.held[jobID][sha] {
+		c.held[jobID][sha] = true
+		c.inUse[sha]++
+	}
+}
+
+// Release lets Evict remove the blobs a finished job used.
+func (c *Cache) Release(jobID int64) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	for sha := range c.held[jobID] {
+		if c.inUse[sha]--; c.inUse[sha] <= 0 {
+			delete(c.inUse, sha)
+		}
+	}
+	delete(c.held, jobID)
+}
+
+// Evict removes least recently used blobs until the cache is under 90 %
+// of its cap, skipping blobs a job holds. It walks the directory only
+// when the stored total may be over the cap. The worker calls it after
+// every job.
+func (c *Cache) Evict() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	limit := c.MaxBytes
+	if limit <= 0 {
+		limit = DefaultBlobCacheBytes
+	}
+	if c.scanned && c.size <= limit {
+		return
+	}
+	type entry struct {
+		path, sha string
+		used      time.Time
+		size      int64
+	}
+	var all []entry
+	var total int64
+	dirs, err := os.ReadDir(c.Dir)
+	if err != nil {
+		return
+	}
+	for _, d := range dirs {
+		if !d.IsDir() || len(d.Name()) != 2 {
+			continue
+		}
+		files, err := os.ReadDir(filepath.Join(c.Dir, d.Name()))
+		if err != nil {
+			continue
+		}
+		for _, f := range files {
+			if !judgeapi.ValidSHA(f.Name()) {
+				continue // a download in progress (.dl-*)
+			}
+			info, err := f.Info()
+			if err != nil {
+				continue
+			}
+			all = append(all, entry{filepath.Join(c.Dir, d.Name(), f.Name()), f.Name(), info.ModTime(), info.Size()})
+			total += info.Size()
+		}
+	}
+	c.size, c.scanned = total, true
+	if total <= limit {
+		return
+	}
+	sort.Slice(all, func(i, j int) bool { return all[i].used.Before(all[j].used) })
+	target := limit / 10 * 9
+	for _, e := range all {
+		if c.size <= target {
+			break
+		}
+		if c.inUse[e.sha] > 0 {
+			continue
+		}
+		if os.Remove(e.path) == nil {
+			c.size -= e.size
+		}
+	}
 }
 
 // Lease identifies the job a download is for; the server serves only the
@@ -133,7 +244,12 @@ func (c *Cache) Path(ctx context.Context, l Lease, sha string) (string, error) {
 		return "", fmt.Errorf("blob name %q is not a SHA-256", sha)
 	}
 	p := filepath.Join(c.Dir, sha[:2], sha)
+	// Held before the file is looked at, so Evict cannot remove it
+	// between this check and the job using it.
+	c.hold(l.JobID, sha)
 	if _, err := os.Stat(p); err == nil {
+		now := time.Now()
+		os.Chtimes(p, now, now) // mark as recently used
 		return p, nil
 	}
 	if err := os.MkdirAll(filepath.Dir(p), 0o700); err != nil {
@@ -170,6 +286,9 @@ func (c *Cache) Path(ctx context.Context, l Lease, sha string) (string, error) {
 	if err := os.Rename(tmp.Name(), p); err != nil {
 		return "", err
 	}
+	c.mu.Lock()
+	c.size += n
+	c.mu.Unlock()
 	return p, nil
 }
 

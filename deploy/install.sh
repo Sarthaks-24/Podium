@@ -8,16 +8,16 @@
 #                                  WSL2 judge setup, where caddy and swap are
 #                                  not wanted)
 #
-# Steps: packages isolate testlib users dirs app caddy swap
+# Steps: packages isolate testlib users dirs firewall app caddy swap litestream backup
 #
-# The script never writes secrets. It creates /etc/podium/server.env and
-# /etc/podium/judge.env from the .env.example files only when they do not
-# exist yet, and the owner fills in the values.
+# The script never writes secrets. It creates /etc/podium/server.env,
+# /etc/podium/judge.env and /etc/podium/litestream.env from the example
+# files only when they do not exist yet, and the owner fills in the values.
 
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-ALL_STEPS=(packages isolate testlib users dirs app caddy swap)
+ALL_STEPS=(packages isolate testlib users dirs firewall app caddy swap litestream backup)
 
 NODE_MAJOR=22
 JAVA_PKG=openjdk-21-jdk-headless
@@ -44,7 +44,7 @@ add_repo() {
 step_packages() {
   log "packages: compilers, runtimes, tools"
   apt-get update -q
-  apt-get install -y -q ca-certificates curl gnupg sqlite3
+  apt-get install -y -q ca-certificates curl gnupg sqlite3 jq rsync
   add_repo nodesource https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key \
     "deb [signed-by=/etc/apt/keyrings/nodesource.asc] https://deb.nodesource.com/node_${NODE_MAJOR}.x nodistro main"
   apt-get update -q
@@ -173,7 +173,30 @@ step_caddy() {
     printf '\nwww.%s {\n\tredir https://%s{uri} permanent\n}\n' "$host" "$host" >> /etc/caddy/Caddyfile
   fi
   caddy validate --config /etc/caddy/Caddyfile
-  systemctl reload-or-restart caddy
+  # The admin API is off (see the Caddyfile), so a reload cannot work.
+  systemctl restart caddy
+}
+
+# Inbound traffic: ssh, http (certificate checks and the https redirect)
+# and https (TCP, and UDP for HTTP/3). Everything else is dropped,
+# including the server's own ports, which listen on loopback anyway. ssh is
+# allowed before the firewall is switched on, so an ssh session survives.
+step_firewall() {
+  log "firewall: only ssh, http and https inbound"
+  apt-get install -y -q ufw
+  local port
+  port=$(sshd -T 2>/dev/null | sed -n 's/^port //p' | head -n1)
+  ufw default deny incoming
+  ufw default allow outgoing
+  ufw allow "${port:-22}/tcp" comment 'ssh'
+  ufw allow 80/tcp comment 'http'
+  ufw allow 443/tcp comment 'https'
+  ufw allow 443/udp comment 'https (HTTP/3)'
+  ufw --force enable
+  ufw status verbose
+  if sshd -T 2>/dev/null | grep -qx 'passwordauthentication yes'; then
+    echo "warning: ssh still accepts passwords. Once your key works, set PasswordAuthentication no in /etc/ssh/sshd_config.d/ and restart ssh (docs/OPERATIONS.md, Firewall and ssh)."
+  fi
 }
 
 step_swap() {
@@ -189,14 +212,71 @@ step_swap() {
   sysctl -q --system
 }
 
+# Litestream streams the database to an S3-compatible bucket. Pinned to a
+# release and refused unless the tarball's SHA-256 matches the one here
+# (taken from the release's checksums.txt and checked against it).
+LITESTREAM_VERSION=0.5.16
+LITESTREAM_SHA256=9e29112380a942e4a62ee07773684396cb8b308dc4d67e130bef41f75e937f0a
+step_litestream() {
+  log "litestream: database replication to a bucket"
+  if [[ -x /usr/local/bin/litestream ]] && [[ $(/usr/local/bin/litestream version 2>/dev/null) == "$LITESTREAM_VERSION" ]]; then
+    echo "litestream $LITESTREAM_VERSION already installed"
+  else
+    local tmp tarball=litestream-$LITESTREAM_VERSION-linux-x86_64.tar.gz
+    tmp=$(mktemp -d)
+    curl -fsSL -o "$tmp/$tarball" "https://github.com/benbjohnson/litestream/releases/download/v$LITESTREAM_VERSION/$tarball"
+    echo "$LITESTREAM_SHA256  $tmp/$tarball" | sha256sum -c --quiet || die "litestream tarball checksum mismatch"
+    tar -xzf "$tmp/$tarball" -C "$tmp" litestream
+    install -m 755 "$tmp/litestream" /usr/local/bin/litestream
+    rm -rf "$tmp"
+  fi
+  install -m 644 "$HERE/litestream.yml" /etc/litestream.yml
+  install -d -m 755 /usr/local/lib/podium
+  install -m 755 "$HERE/backup/check-litestream-env" /usr/local/lib/podium/check-litestream-env
+  install -d -o root -g root -m 755 /etc/podium
+  if [[ ! -e /etc/podium/litestream.env ]]; then
+    install -o root -g root -m 600 "$HERE/litestream.env.example" /etc/podium/litestream.env
+    echo "created /etc/podium/litestream.env from the example; fill in the bucket and key"
+  fi
+  install -m 644 "$HERE/systemd/podium-litestream.service" /etc/systemd/system/
+  systemctl daemon-reload
+  systemctl enable podium-litestream.service
+  if grep -q 'change-me' /etc/podium/litestream.env; then
+    echo "not starting replication: /etc/podium/litestream.env still has placeholder values"
+    return
+  fi
+  systemctl restart podium-litestream.service
+}
+
+step_backup() {
+  log "backup: nightly copy of the database and test files"
+  command -v sqlite3 >/dev/null || die "sqlite3 missing; run the packages step first"
+  id podium >/dev/null 2>&1 || die "user podium missing; run the users step first"
+  install -d -m 755 /usr/local/lib/podium
+  install -m 755 "$HERE/backup/podium-backup" /usr/local/lib/podium/podium-backup
+  install -m 755 "$HERE/backup/podium-restore" /usr/local/lib/podium/podium-restore
+  install -d -o podium -g podium -m 700 /var/backups/podium
+  chmod 700 /var/backups/podium
+  install -d -o root -g root -m 755 /etc/podium
+  if [[ ! -e /etc/podium/backup.env ]]; then
+    install -o root -g root -m 600 "$HERE/backup.env.example" /etc/podium/backup.env
+  fi
+  install -m 644 "$HERE/systemd/podium-backup.service" "$HERE/systemd/podium-backup.timer" /etc/systemd/system/
+  systemctl daemon-reload
+  systemctl enable --now podium-backup.timer
+  systemctl list-timers podium-backup.timer --no-pager | head -n 2
+}
+
 checklist() {
   cat <<'EOF'
 
 First-run checklist
   1. Fill in /etc/podium/server.env and /etc/podium/judge.env (see docs/OPERATIONS.md).
-  2. sudo ./install.sh caddy        once PODIUM_BASE_URL is set
+  2. sudo ./install.sh caddy swap litestream backup   once PODIUM_BASE_URL is set
   3. sudo systemctl restart podium-server podium-judge
   4. curl -fsS http://127.0.0.1:8080/healthz
+  5. Fill in /etc/podium/litestream.env, then: sudo systemctl restart podium-litestream
+  6. sudo systemctl start podium-backup, then: ls /var/backups/podium/latest
 EOF
 }
 

@@ -337,6 +337,8 @@ Every authenticated request reads the user and role from the database, so disabl
 | Allowed domains seed from configuration once | Only on a fresh install; afterwards the owner's edits on the People page win, so a restart never undoes a removal. |
 | ID token signature is verified, not only taken from TLS | The token arrives over TLS from Google's token endpoint, which OpenID Connect accepts on its own; verifying the signature too costs one cached key fetch and removes any dependence on that reasoning. Uses only the Go standard library plus `golang.org/x/oauth2` for the code exchange. |
 
+**Security council fixes (2026-10-18).** Sessions are browser-session cookies with a fixed 12-hour server-side life and no renewal; Google sign-in accepts only a sign-in from the last 5 minutes (`max_age`; Google does not support `prompt=login`) and the server checks `auth_time`. Owners can end a person's sessions and disable accounts. Testing mode is refused through any proxy and is undone when the server next starts in another mode (the mode is stored in the `settings` table). A co-organiser whose site role is student is treated as a student whose window closes last: they see results only when students do, cannot change the schedule or rules after the start, and cannot use the levers that change results (roster, extensions, extend, pause, resume, rejudge). Every such lever, and every settings change, writes an append-only `contest_audit` row (migration 0008; triggers refuse update and delete, as for `integrity_decisions`), which the console shows and the JSON export carries. Settings and problem changes are recorded in the same transaction as the change; the other actions are recorded right after it, and a failed write is logged at error level. Validation now reports the tests the brute force did not finish and fails when fewer than half were cross-checked, the `ai draft` tag needs a real edit and a new validation to clear, and a graded contest takes an AI problem only with a person's solution or an admin's recorded reason.
+
 ## The judge
 
 ### Sandbox
@@ -395,13 +397,24 @@ Run, submit and generate jobs compile through a cache in the judge's cache direc
 | Size | 500 MB, least recently used first (a hit refreshes the entry's time). Evicted after every job. |
 | Entries in use | Reference-counted per running job and never evicted while held; an entry is renamed aside before deletion, so a concurrent lookup sees it gone rather than half deleted. Two lanes building the same key keep whichever finishes first. |
 
+### Blob cache
+
+Tests, sources and custom inputs a job fetches land in `blobs/<sha[0:2]>/<sha>` in the judge's cache directory, stored only once the content hashes to the name. The cache is bounded by `PODIUM_JUDGE_BLOB_CACHE_MB` (2 GB by default):
+
+| Rule | Value and reason |
+|---|---|
+| Holding | A job holds every blob it asks for, from the moment it asks (before the file is even looked at) until the job ends, so a blob can never be removed between the check and its use. |
+| Eviction | After every job, if the tracked total may be over the cap, the directory is walked and the least recently used blobs no job holds are removed until the total is under 90 % of the cap, so the next few jobs do not each walk it again. A hit refreshes the file's time. |
+| Cost when under the cap | None: the total is tracked from downloads and the walk only happens when it passes the cap. |
+| A removed blob | Downloads again, under the lease of the job that needs it. |
+
 ### Checkers
 
 `tokens` (default) compares whitespace-separated tokens; a single token longer than 4 MB in the student's output is a wrong answer. `exact` compares bytes after turning CRLF into LF and dropping trailing newlines, streaming both sides so the judge never holds a whole output in memory. `float` compares numeric tokens with absolute or relative error 1e-6 by default. `custom` runs a testlib checker, compiled as C++17 with a 30 s compile budget (testlib is a large header), in a fresh box like any submission: 10 s CPU, 256 MB, one process. Exit 0 is accepted; wrong answer, presentation error and partial scores are wrong answer until per-test scoring arrives in v2; `_fail`, a crash or a limit is an internal error. `testlib.h` is installed by `install.sh` at a pinned commit, checked against its SHA-256.
 
 ## Data
 
-SQLite in WAL mode, opened once per process with a 5 s busy timeout, foreign keys on, and transactions that begin `IMMEDIATE` (read-only work should use read-only transactions or none, so it does not queue behind writers). `synchronous=NORMAL` is safe against crashes of the process; a power cut can lose the last committed transaction, which Litestream replication (M7) bounds.
+SQLite in WAL mode, opened once per process with a 5 s busy timeout, foreign keys on, and transactions that begin `IMMEDIATE` (read-only work should use read-only transactions or none, so it does not queue behind writers). Writes take turns in Go before they reach SQLite (`server/internal/db/writegate.go`): every transaction that is not read-only, and every statement outside a transaction that is not a read, waits on one in-process gate, so writers never meet SQLite's busy handler, which sleeps and polls (1 ms rising to 100 ms) while holding a pooled connection. The 700-student load test showed why: with that hand-off, four connections all sat in waiting writers, reads queued behind them, and judging stalled for 90 s (cache/v1/m7-load.md). Reads run in parallel on the pool's other connections (8 in all). A write that waits 10 s for its turn fails with "database is busy", as `SQLITE_BUSY` did before; other processes (the sqlite3 shell, Litestream) still use the busy timeout. `synchronous=NORMAL` is safe against crashes of the process; a power cut can lose the last committed transaction. Litestream replicates the database to a bucket, uploading changes every 10 s, and a nightly job copies the database (SQLite's online backup) and hard-links the test files into `/var/backups/podium` (`docs/OPERATIONS.md`, "Backups"). `podium-server check` verifies a database and its files read-only: integrity and foreign key checks, migrations against the binary, and every recorded file present with its size (or, with `-hash`, its content).
 
 Schema changes are numbered files in `server/internal/db/migrations` (`0001_identity.sql`, `0002_preferences.sql`, `0003_problems.sql`, `0004_submissions.sql`, then one per milestone), applied at start-up, each in its own transaction that also re-checks whether it already ran. The server refuses to start when the database records a migration the binary does not know, which means an older binary is running against a newer schema. After the first release the files are append-only. Nothing alters tables at run time.
 
@@ -410,6 +423,18 @@ Before the first release, M3 edited `0003_problems.sql` in place instead of addi
 `0007_wizard.sql` (M5) adds the generator columns and `input_generations`, and widens the `jobs.kind` CHECK to accept `generate_inputs`. SQLite cannot alter a CHECK constraint, and the usual way round it, rebuilding the table, does not work here: with foreign keys on, dropping the old `jobs` table would cascade into `job_results` and delete every recorded result, and the migration runner cannot switch foreign keys off because `PRAGMA foreign_keys` is a no-op inside the transaction each migration runs in. So the migration widens the constraint in place with SQLite's documented `writable_schema` procedure: it rewrites only the text of the `CREATE TABLE jobs` statement in `sqlite_master` (every existing row already satisfies the wider check, and no page on disk changes), then `PRAGMA writable_schema = RESET` reloads the schema, and the `CREATE TABLE` that follows bumps the schema cookie so every other connection reloads it too (D52). A test upgrades a database holding jobs and results from 0006 to 0007 and checks the rows survive, every pooled connection accepts the new kind, `PRAGMA integrity_check` says `ok` and `foreign_key_check` finds nothing.
 
 Times are Unix milliseconds. Sessions are stored by the SHA-256 of the cookie value, so a copy of the database cannot be replayed as logins.
+
+## Unused files on the server
+
+`PODIUM_TESTS_DIR` keeps every file a job may fetch. Tests and submitted programs are referenced from the database for as long as their rows live; reference solutions, checkers, generators and custom inputs are written again each time a job needs them and are only referenced by job payloads. Without a clean-up, every edited reference solution, replaced test and custom input would stay forever. The 12-hourly retention pass removes them (`problems.Blobs.GC`):
+
+| Kept | Why |
+|---|---|
+| Any test of any problem, any submission's or run's source | still referenced |
+| Anything a job that is waiting or running names, and anything a job less than 7 days old names | the judge may still fetch it; a recent run still shows its samples' expected output |
+| A blob recorded in the last 24 hours, or a file with no row written in the last 24 hours | a save or an upload in progress; 24 hours is longer than any job may run |
+
+Removal and saving cannot race: every save records its blob (or refreshes the row's time) inside the transaction that adds the reference, and checks the file is still there inside that transaction. The collection deletes each batch of rows and files inside one write transaction, and deletes a row only if its time is still old, so a blob saved again after the candidates were read is skipped, and a save that lands just after a removal writes the file back (or, for test uploads written before their transaction, fails with "try again" instead of leaving a row without a file). `testcases` also references `blobs` by foreign key, so a test can never lose its row. Job payloads are scanned as text for 64-digit hex runs, so every hash any job kind could fetch is seen whatever the payload's shape.
 
 ## Themes
 
@@ -435,7 +460,7 @@ The themes are curated versions of palettes from the owner's AdminPanelManager p
 |---|---|
 | Kernel, systemd, sshd, journald | 200 to 250 MB |
 | Caddy | 30 to 40 MB |
-| `podium-server` (capped at 300 MB by systemd) | 50 to 80 MB |
+| `podium-server` (capped at 300 MB by systemd, Go heap limit 220 MB) | 50 to 80 MB |
 | `podium-judge` worker (capped at 256 MB, Go heap limit 96 MB; inputs copied into tmpfs boxes count here) | 20 to 60 MB |
 | Two sandbox lanes plus one JVM (all boxes together capped at 1100 MB on `isolate.slice`, 1024 MB budget in the runner) | up to about 1 GB |
 

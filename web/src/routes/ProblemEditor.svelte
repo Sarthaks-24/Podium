@@ -35,7 +35,7 @@
   bar and a note until a person saves it. Last, "Can a model solve this?"
   asks a model for a solution after a confirmation, follows the `wizard`
   and `submission` live events with polling as the fallback, and shows
-  "A model solved this zero-shot: N of 100" with what that means for graded
+  "A model solved this on its first try: N of 100" with what that means for graded
   contests and a link to the submission. Props: `id`, the problem id from
   the address.
 -->

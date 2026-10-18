@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"strconv"
 	"time"
 
 	"golang.org/x/oauth2"
@@ -53,14 +54,26 @@ func NewProvider(ep Endpoints, clientID, clientSecret, redirectURL string) *Prov
 	}
 }
 
-// AuthCodeURL is where the browser goes to sign in. hd, when not empty, asks
-// Google to offer only accounts from that domain; it is a convenience, the
-// server checks the domain itself.
+// SignInMaxAge is how recently the person must have typed their Google
+// password (or passed Google's own check) for a sign-in to count. On a
+// shared lab PC the previous student is often still signed in to Google;
+// without this, the next student would be one click from their account
+// (security council S5).
+const SignInMaxAge = 5 * time.Minute
+
+// AuthCodeURL is where the browser goes to sign in. It asks Google to show
+// the account chooser (prompt=select_account; Google does not support
+// prompt=login) and to accept only a sign-in from the last SignInMaxAge
+// (max_age), which makes Google ask for the password again on a shared PC;
+// Exchange checks the token's auth_time against the same limit. hd, when not empty, asks Google to offer only
+// accounts from that domain; it is a convenience, the server checks the
+// domain itself.
 func (p *Provider) AuthCodeURL(state, nonce, verifier, hd string) string {
 	opts := []oauth2.AuthCodeOption{
 		oauth2.S256ChallengeOption(verifier),
 		oauth2.SetAuthURLParam("nonce", nonce),
 		oauth2.SetAuthURLParam("prompt", "select_account"),
+		oauth2.SetAuthURLParam("max_age", strconv.Itoa(int(SignInMaxAge.Seconds()))),
 	}
 	if hd != "" {
 		opts = append(opts, oauth2.SetAuthURLParam("hd", hd))
@@ -81,6 +94,6 @@ func (p *Provider) Exchange(ctx context.Context, code, verifier, nonce string, n
 		return Identity{}, fmt.Errorf("%w: token response has no id_token", errToken)
 	}
 	return verifyIDToken(ctx, p.keys, raw, tokenRules{
-		issuers: p.issuers, audience: p.oauth.ClientID, nonce: nonce, now: now,
+		issuers: p.issuers, audience: p.oauth.ClientID, nonce: nonce, now: now, maxAge: SignInMaxAge,
 	})
 }

@@ -323,6 +323,11 @@ func (s *Service) Submit(ctx context.Context, r SubmitRequest) (v *SubmissionVie
 		}
 	}
 	now := s.now()
+	// After the repeat check, so a retried request still gets its
+	// submission back.
+	if err := checkCompileTimeout(r.UserID, r.Scope.ContestID, now); err != nil {
+		return nil, false, err
+	}
 	var pending, judged, count int
 	// A rejudge waiting in the queue is the organisers' work, not the
 	// student's own pending submission.
@@ -483,6 +488,9 @@ func (s *Service) Run(ctx context.Context, r RunRequest) (*RunView, error) {
 	}
 	if r.Input != nil && len(*r.Input) > MaxInput {
 		return nil, &InputError{"The input is longer than 64 KB."}
+	}
+	if err := checkCompileTimeout(r.UserID, r.Scope.ContestID, s.now()); err != nil {
+		return nil, err
 	}
 	p, err := s.problemForJudging(ctx, r.ProblemID)
 	if err != nil {

@@ -404,8 +404,12 @@ func TestM1SessionCookieFlags(t *testing.T) {
 	if !sc.HttpOnly || !sc.Secure || sc.SameSite != http.SameSiteLaxMode || sc.Path != "/" || sc.Domain != "" {
 		t.Errorf("session cookie flags: %+v", sc)
 	}
-	if days := time.Duration(sc.MaxAge) * time.Second / (24 * time.Hour); days < 29 || days > 30 {
-		t.Errorf("session cookie Max-Age %d s, want about 30 days", sc.MaxAge)
+	// A browser-session cookie: closing the browser on a shared lab PC
+	// forgets it (the server ends the session 12 hours after sign-in).
+	for _, raw := range rec.Header().Values("Set-Cookie") {
+		if strings.HasPrefix(raw, "__Host-podium_session=") && (strings.Contains(raw, "Max-Age") || strings.Contains(raw, "Expires")) {
+			t.Errorf("session cookie has a lifetime, want a browser-session cookie: %s", raw)
+		}
 	}
 	if len(sc.Value) < 40 {
 		t.Errorf("session token looks short: %d chars", len(sc.Value))

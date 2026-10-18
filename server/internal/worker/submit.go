@@ -38,6 +38,8 @@ func (w *Worker) startJob(ctx context.Context, c *judgeapi.Claim, payload any) (
 			release()
 		}
 		w.Compiled.Evict()
+		w.Cache.Release(c.JobID)
+		w.Cache.Evict()
 	}, nil
 }
 
@@ -94,7 +96,7 @@ func (w *Worker) compile(ctx context.Context, box int, lease Lease, rep *reporte
 		verdict = string(judge.CompileError)
 	}
 	out := clip(strings.ToValidUTF8(res.Output, ""), judgeapi.MaxCompileOutput)
-	if err := rep.send(ctx, judgeapi.Report{Compile: []judgeapi.CompileResult{{Role: role, Verdict: verdict, Output: out}}}); err != nil {
+	if err := rep.send(ctx, judgeapi.Report{Compile: []judgeapi.CompileResult{{Role: role, Verdict: verdict, Output: out, TimedOut: res.Transient}}}); err != nil {
 		return nil, false, err
 	}
 	if verdict != string(judge.OK) {

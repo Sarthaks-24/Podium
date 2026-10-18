@@ -256,6 +256,8 @@ export interface Validation {
     reference_total: number;
     brute_agreed: number;
     brute_total: number;
+    /** Tests the brute force did not finish (time limit or skipped): nothing cross-checked them. */
+    brute_unchecked?: number;
     validator_passed: number;
     validator_total: number;
     max_time_ms: number;
@@ -543,6 +545,21 @@ export function progressText(v: Pick<Validation, 'state' | 'queue_position'>): s
 }
 
 /** One line of the validation report. */
+/**
+ * The tests the brute force did not finish, so nothing cross-checked their
+ * expected output. Fewer than half cross-checked fails validation, so the
+ * line is then drawn as a failure.
+ */
+export function uncheckedLine(s: NonNullable<Validation['summary']>): ReportLine | null {
+  const n = s.brute_unchecked ?? 0;
+  if (n === 0) return null;
+  const checked = s.reference_total - n;
+  return {
+    text: `${n} of ${s.reference_total} tests not cross-checked: the brute force did not finish them`,
+    tone: checked * 2 < s.reference_total ? 'bad' : 'note',
+  };
+}
+
 export interface ReportLine {
   text: string;
   /** ok and bad are drawn in the verdict colours; note is muted. */
@@ -578,6 +595,8 @@ export function reportLines(v: Validation): ReportLine[] {
         tone: s.brute_agreed === s.brute_total ? 'ok' : 'bad',
       });
     }
+    const unchecked = uncheckedLine(s);
+    if (unchecked) lines.push(unchecked);
     if (s.validator_total > 0) {
       lines.push({
         text: `Validator accepted ${s.validator_passed} of ${s.validator_total} inputs`,
@@ -720,6 +739,8 @@ export function buildReport(v: Validation): Report {
         tone: s.validator_passed === s.validator_total ? 'ok' : 'bad',
       });
     }
+    const unchecked = uncheckedLine(s);
+    if (unchecked) section('brute').lines.unshift(unchecked);
     if (s.brute_total > 0) {
       section('brute').lines.unshift({
         text: `Brute force agreed on ${s.brute_agreed} of ${s.brute_total} tests`,

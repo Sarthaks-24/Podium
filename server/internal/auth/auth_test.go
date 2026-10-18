@@ -217,16 +217,23 @@ func TestSessions(t *testing.T) {
 	if err != nil || got.ID != u.ID || !renewed.IsZero() {
 		t.Fatalf("fresh session: %+v %v %v", got, renewed, err)
 	}
-	c.t = c.t.Add(3 * 24 * time.Hour)
-	if _, renewed, err = s.Authenticate(ctx, token); err != nil || renewed.IsZero() {
-		t.Fatalf("session used after 3 days should renew: %v %v", renewed, err)
+	// Use never renews a session: it ends 12 hours after sign-in.
+	c.t = c.t.Add(11 * time.Hour)
+	if _, renewed, err = s.Authenticate(ctx, token); err != nil || !renewed.IsZero() {
+		t.Fatalf("session after 11 hours: renewed %v err %v; want valid and not renewed", renewed, err)
 	}
-	if !renewed.Equal(c.t.Add(auth.SessionTTL)) {
-		t.Errorf("renewed to %v", renewed)
-	}
-	c.t = c.t.Add(auth.SessionTTL + time.Second)
+	c.t = c.t.Add(time.Hour)
 	if _, _, err := s.Authenticate(ctx, token); !errors.Is(err, auth.ErrNoSession) {
-		t.Errorf("expired session accepted: %v", err)
+		t.Errorf("session 12 hours after sign-in accepted: %v", err)
+	}
+	// A session from before the cap, stored with a 30-day expiry, ends at
+	// the same 12 hours.
+	_, old, _, _ := s.SignIn(ctx, id("old@college.edu"), "", "")
+	s.DB.ExecContext(ctx, "UPDATE sessions SET expires_at = ? WHERE user_id = (SELECT id FROM users WHERE email = 'old@college.edu')",
+		c.t.Add(30*24*time.Hour).UnixMilli())
+	c.t = c.t.Add(auth.SessionTTL)
+	if _, _, err := s.Authenticate(ctx, old); !errors.Is(err, auth.ErrNoSession) {
+		t.Errorf("old 30-day session accepted past the 12-hour cap: %v", err)
 	}
 	if _, _, err := s.Authenticate(ctx, "forged"); !errors.Is(err, auth.ErrNoSession) {
 		t.Errorf("unknown token accepted: %v", err)

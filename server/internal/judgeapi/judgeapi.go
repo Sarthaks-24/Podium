@@ -107,11 +107,15 @@ type ValidatePayload struct {
 	Points int `json:"points"`
 }
 
-// CompileResult reports one program's compile.
+// CompileResult reports one program's compile. TimedOut marks a compile
+// error caused by the compiler running out of time or memory; the server
+// uses it to slow down a student who keeps sending such a program, since
+// every C++ and Java compile on the judge waits behind it.
 type CompileResult struct {
-	Role    string `json:"role"`
-	Verdict string `json:"verdict"`
-	Output  string `json:"output"`
+	Role     string `json:"role"`
+	Verdict  string `json:"verdict"`
+	Output   string `json:"output"`
+	TimedOut bool   `json:"timed_out,omitempty"`
 }
 
 // TestResult reports one program on one test. Output is set only by run

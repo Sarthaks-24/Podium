@@ -16,6 +16,7 @@ import {
   statusWord,
   toDraft,
   toEdit,
+  uncheckedLine,
   verdictLabel,
   type Problem,
   type Validation,
@@ -247,6 +248,29 @@ describe('words', () => {
     expect(progressText({ state: 'queued', queue_position: 2 })).toBe('Waiting for the judge (2nd in queue)');
     expect(progressText({ state: 'queued', queue_position: null })).toBe('Waiting for the judge');
     expect(progressText({ state: 'running', queue_position: null })).toBe('Running');
+  });
+});
+
+describe('uncheckedLine', () => {
+  const summary = {
+    reference_passed: 6,
+    reference_total: 6,
+    brute_agreed: 4,
+    brute_total: 4,
+    validator_passed: 6,
+    validator_total: 6,
+    max_time_ms: 10,
+    time_limit_ms: 1000,
+    problems: [],
+    warnings: [],
+  };
+  it('counts the tests the brute force did not finish', () => {
+    expect(uncheckedLine(summary)).toBeNull();
+    expect(uncheckedLine({ ...summary, brute_unchecked: 2 })).toEqual({
+      text: '2 of 6 tests not cross-checked: the brute force did not finish them',
+      tone: 'note',
+    });
+    expect(uncheckedLine({ ...summary, brute_unchecked: 4 })?.tone).toBe('bad');
   });
 });
 

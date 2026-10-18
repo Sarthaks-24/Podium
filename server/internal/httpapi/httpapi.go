@@ -56,6 +56,8 @@ type Deps struct {
 	// no Google sign-in; instead anyone at this machine signs in with a
 	// form (decision D48).
 	Mode string
+	// Version is the server's release version, shown in the metrics.
+	Version string
 }
 
 // New returns the root handler.
@@ -79,17 +81,18 @@ func New(d Deps) http.Handler {
 	mux.HandleFunc("POST /api/admin/people", d.requireRole(auth.Owner, d.grantRole))
 	mux.HandleFunc("DELETE /api/admin/people/{id}", d.requireRole(auth.Owner, d.revokeRole))
 	mux.HandleFunc("POST /api/admin/accounts/reset-google", d.requireRole(auth.Owner, d.resetGoogleAccount))
+	d.securityRoutes(mux)
 	mux.HandleFunc("POST /api/admin/domains", d.requireRole(auth.Owner, d.addDomain))
 	mux.HandleFunc("DELETE /api/admin/domains/{domain}", d.requireRole(auth.Owner, d.removeDomain))
 
 	admin := func(h http.HandlerFunc) http.HandlerFunc { return d.requireRole(auth.Admin, h) }
 	mux.HandleFunc("GET /api/admin/problems", admin(d.listProblems))
 	mux.HandleFunc("POST /api/admin/problems", admin(d.createProblem))
-	mux.HandleFunc("POST /api/admin/problems/import", admin(d.importProblem))
+	mux.HandleFunc("POST /api/admin/problems/import", admin(slowBody(d.importProblem)))
 	mux.HandleFunc("GET /api/admin/problems/{id}", admin(d.getProblem))
 	mux.HandleFunc("PUT /api/admin/problems/{id}", admin(d.updateProblem))
 	mux.HandleFunc("DELETE /api/admin/problems/{id}", admin(d.archiveProblem))
-	mux.HandleFunc("PUT /api/admin/problems/{id}/tests", admin(d.replaceTests))
+	mux.HandleFunc("PUT /api/admin/problems/{id}/tests", admin(slowBody(d.replaceTests)))
 	mux.HandleFunc("GET /api/admin/problems/{id}/tests/{idx}/{part}", admin(d.downloadTest))
 	mux.HandleFunc("GET /api/admin/problems/{id}/export", admin(d.exportProblem))
 	mux.HandleFunc("POST /api/admin/problems/{id}/validate", admin(d.validateProblem))
@@ -111,6 +114,9 @@ func New(d Deps) http.Handler {
 	mux.HandleFunc("POST /api/workspace/{problem}/events", admin(d.recordEvents))
 	mux.HandleFunc("GET /api/submissions/{id}", d.requireRole(auth.Student, d.getSubmission))
 	mux.HandleFunc("GET /api/runs/{id}", d.requireRole(auth.Student, d.getRun))
+	if d.Submissions != nil && d.Submissions.Jobs != nil {
+		mux.HandleFunc("GET /api/admin/metrics", admin(d.metrics))
+	}
 	mux.HandleFunc("GET /api/events", d.requireRole(auth.Student, d.eventStream))
 
 	if d.Contests != nil {
@@ -125,8 +131,9 @@ func New(d Deps) http.Handler {
 	})
 	mux.Handle("/", d.WebApp)
 	// recoverer sits inside logRequests so a request that panics is still
-	// logged with its 500.
-	return d.logRequests(d.recoverer(securityHeaders(d.sameOrigin(mux))))
+	// logged with its 500. In testing mode localOnlyAll refuses anything
+	// that did not come from this machine's own browser (S2).
+	return d.logRequests(d.recoverer(securityHeaders(d.localOnlyAll(newInFlight().limit(d.sessionCookieName(), d.sameOrigin(mux))))))
 }
 
 // contestRoutes mounts the contest API (milestone M4). Every route needs a
@@ -152,7 +159,7 @@ func (d Deps) contestRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/admin/contests/{id}/clone", signedIn(d.cloneContest))
 	mux.HandleFunc("PUT /api/admin/contests/{id}/problems", signedIn(d.setContestProblems))
 	mux.HandleFunc("GET /api/admin/contests/{id}/roster", signedIn(d.getRoster))
-	mux.HandleFunc("PUT /api/admin/contests/{id}/roster", signedIn(d.setRoster))
+	mux.HandleFunc("PUT /api/admin/contests/{id}/roster", signedIn(slowBody(d.setRoster)))
 	mux.HandleFunc("POST /api/admin/contests/{id}/admins", signedIn(d.changeContestAdmin(true)))
 	mux.HandleFunc("DELETE /api/admin/contests/{id}/admins", signedIn(d.changeContestAdmin(false)))
 	mux.HandleFunc("PUT /api/admin/contests/{id}/extensions/{user}", signedIn(d.setExtension))

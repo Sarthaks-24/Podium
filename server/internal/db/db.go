@@ -18,11 +18,14 @@ import (
 	"strings"
 	"time"
 
-	_ "modernc.org/sqlite" // registers the "sqlite" driver
+	"modernc.org/sqlite" // also registers the "sqlite" driver, used read-only by "podium-server check"
 )
 
 //go:embed migrations/*.sql
 var migrationFS embed.FS
+
+// MaxConns is the size of the connection pool.
+const MaxConns = 8
 
 // pragmas are applied to every pooled connection.
 var pragmas = []string{
@@ -44,14 +47,16 @@ func Open(ctx context.Context, path string) (*sql.DB, error) {
 		q = append(q, "_pragma="+p)
 	}
 	q = append(q, "_txlock=immediate")
-	d, err := sql.Open("sqlite", path+"?"+strings.Join(q, "&"))
+	connector, err := sqlite.NewConnector(path + "?" + strings.Join(q, "&"))
 	if err != nil {
 		return nil, err
 	}
-	// A few connections are enough: SQLite has one writer, and each
-	// connection carries its own page cache on a 2 GB machine.
-	d.SetMaxOpenConns(4)
-	d.SetMaxIdleConns(4)
+	// Writes take turns in Go (writegate.go); reads run in parallel on the
+	// other connections. Eight connections let reads go on while writers
+	// queue; each carries its own page cache (2 MB at most).
+	d := sql.OpenDB(gatedConnector{Connector: connector, gate: newWriteGate()})
+	d.SetMaxOpenConns(MaxConns)
+	d.SetMaxIdleConns(MaxConns)
 	d.SetConnMaxIdleTime(5 * time.Minute)
 	if err := d.PingContext(ctx); err != nil {
 		d.Close()

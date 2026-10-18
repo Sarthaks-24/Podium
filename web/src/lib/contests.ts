@@ -14,6 +14,7 @@
  * parsing for the preview, problem labels, and the templates and canned
  * replies the console offers.
  */
+import { countOf, formatDateTime } from './format';
 import { LANGUAGES, type Language } from './problems';
 
 export type ContestState = 'upcoming' | 'live' | 'frozen' | 'ended' | 'practice';
@@ -442,13 +443,15 @@ export interface FeedRow {
   /** Older shape of problem_label. */
   label?: string;
   language: string;
-  state: 'queued' | 'running' | 'done' | 'error';
+  /** "submitted" when the result is hidden from this viewer (a co-organiser in exam mode or the freeze). */
+  state: 'queued' | 'running' | 'done' | 'error' | 'submitted';
   verdict: string;
   score: number;
   max_score: number;
   created_at: number;
   practice?: boolean;
   rejudged?: boolean;
+  hidden?: boolean;
 }
 
 export interface FeedPage {
@@ -456,6 +459,98 @@ export interface FeedPage {
   page?: number;
   has_more?: boolean;
   total?: number;
+  /** Some results are hidden from this viewer until students can see them. */
+  results_hidden?: boolean;
+}
+
+/** One row of GET /api/admin/contests/{id}/audit: an organiser action that can change results. */
+export interface AuditEntry {
+  id: number;
+  action: string;
+  actor: { user_id: number; email: string; role: string };
+  details: Record<string, unknown>;
+  created_at: number;
+}
+
+/** The contest form's fields as the audit log names them. */
+const AUDIT_FIELDS: Record<string, string> = {
+  slug: 'slug',
+  title: 'title',
+  description_md: 'description',
+  honour_text: 'honour code',
+  starts_at: 'start',
+  ends_at: 'end',
+  start_mode: 'start mode',
+  duration_minutes: 'window length',
+  freeze_minutes: 'freeze',
+  scoring_mode: 'scoring',
+  access: 'access',
+  feedback_mode: 'feedback',
+  graded: 'graded',
+  published: 'published',
+  practice_after_end: 'practice after the end',
+  stop_on_sample_fail: 'stop on a failed sample',
+  min_gap_s: 'gap between submissions',
+  max_per_problem: 'submissions per problem',
+  languages: 'languages',
+  hold_reveal: 'hold the reveal',
+};
+
+function auditValue(field: string, v: unknown): string {
+  if ((field === 'starts_at' || field === 'ends_at') && typeof v === 'number') return formatDateTime(v);
+  if (typeof v === 'boolean') return v ? 'yes' : 'no';
+  if (Array.isArray(v)) return v.length === 0 ? 'none' : v.join(', ');
+  return String(v);
+}
+
+/** One sentence for an audit row, in the past tense. */
+export function auditSummary(e: Pick<AuditEntry, 'action' | 'details'>): string {
+  const d = e.details ?? {};
+  const str = (k: string) => (typeof d[k] === 'string' ? (d[k] as string) : '');
+  const num = (k: string) => (typeof d[k] === 'number' ? (d[k] as number) : 0);
+  switch (e.action) {
+    case 'settings': {
+      const changes = (d.changes ?? {}) as Record<string, { from: unknown; to: unknown }>;
+      const parts = Object.keys(changes)
+        .sort()
+        .map((k) => `${AUDIT_FIELDS[k] ?? k} from ${auditValue(k, changes[k].from)} to ${auditValue(k, changes[k].to)}`);
+      return parts.length === 0 ? 'Saved the settings' : `Changed ${parts.join('; ')}`;
+    }
+    case 'problems': {
+      const to = Array.isArray(d.to) ? (d.to as { label: string }[]).map((p) => p.label) : [];
+      return to.length === 0 ? 'Removed every problem' : `Set the problems to ${to.join(', ')}`;
+    }
+    case 'ai_problem':
+      return `Graded AI problem ${str('label')} as written: ${str('reason')}`;
+    case 'roster':
+      return `Replaced the roster: ${countOf(num('count'), 'student')}, ${num('added')} added, ${num('removed')} removed`;
+    case 'extension': {
+      const who = str('email') || `user ${num('user_id')}`;
+      if (num('minutes') === 0) return `Removed the extension for ${who}`;
+      const reason = str('reason');
+      return `Gave ${who} ${countOf(num('minutes'), 'extra minute')}${reason ? ` (${reason})` : ''}`;
+    }
+    case 'extend':
+      return `Extended the contest by ${countOf(num('minutes'), 'minute')}`;
+    case 'pause':
+      return 'Paused judging';
+    case 'resume':
+      return 'Resumed judging';
+    case 'rejudge':
+      return str('problem_label') !== ''
+        ? `Rejudged problem ${str('problem_label')} (${countOf(num('queued'), 'submission')})`
+        : `Rejudged submission ${num('submission_id')}`;
+    case 'reveal':
+      return 'Revealed the final board';
+    case 'editorial':
+      if (d.published !== true) return 'Unpublished the editorial';
+      return d.was_published === true ? 'Edited the published editorial' : 'Published the editorial';
+    case 'organisers':
+      return d.added === true ? `Added co-organiser ${str('email')}` : `Removed co-organiser ${str('email')}`;
+    case 'archive':
+      return 'Archived the contest';
+  }
+  return e.action;
 }
 
 export interface ProblemStats {

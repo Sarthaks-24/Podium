@@ -75,7 +75,7 @@ Other targets: `make help`.
 
 ## Build a release
 
-`make release` runs the checks, builds the web app, embeds it, cross-compiles both binaries for Linux with `CGO_ENABLED=0`, and writes `release/podium-<version>.tar.gz` containing `bin/`, `env/` (the example env files), `install.sh`, the systemd units and the Caddyfile. Building on Windows is fine: the tarball loses the execute bit on the Linux binaries, and `install.sh` sets it when it installs them.
+`make release` runs the checks, builds the web app, embeds it, cross-compiles both binaries for Linux with `CGO_ENABLED=0`, and writes `release/podium-<version>.tar.gz` containing `bin/`, `env/` (the example env files), `install.sh`, the systemd units, the Caddyfile, `litestream.yml` with its example env file, and the backup and restore scripts in `backup/`. Building on Windows is fine: the tarball loses the execute bit on the Linux binaries, and `install.sh` sets it when it installs them.
 
 ## Deploy to the VM
 
@@ -83,22 +83,30 @@ On a fresh Ubuntu 24.04 VM, in production mode (the default):
 
 ```sh
 tar xzf podium-<version>.tar.gz && cd podium-<version>
-sudo ./install.sh                 # packages, isolate, testlib, users, dirs, app, caddy, swap
+sudo ./install.sh                 # packages, isolate, testlib, users, dirs, app, caddy, swap, litestream, backup
 openssl rand -hex 32              # the judge token: same value in both files below
 sudoedit /etc/podium/server.env   # fill in the values (see docs/OPERATIONS.md)
 sudoedit /etc/podium/judge.env    # PODIUM_JUDGE_TOKEN
 sudo ./install.sh caddy           # once PODIUM_BASE_URL is set
 sudo systemctl restart podium-server podium-judge
+sudoedit /etc/podium/litestream.env   # the backup bucket and its key
+sudo systemctl restart podium-litestream
+sudo systemctl start podium-backup    # the first nightly backup, by hand
 ```
 
-Production needs an https `PODIUM_BASE_URL`, the Google client, the session secret and your own judge token; the server names anything missing and refuses to start. Then verify the sandbox on the VM itself (with the worker stopped): `sudo -u judge podium-judge calibrate`. Full operations guide, configuration reference and backups: `docs/OPERATIONS.md`.
+Production needs an https `PODIUM_BASE_URL`, the Google client, the session secret and your own judge token; the server names anything missing and refuses to start. Then verify the sandbox on the VM itself (with the worker stopped): `sudo -u judge podium-judge calibrate`. Full operations guide, configuration reference and backups: `docs/OPERATIONS.md`. Contest day: `docs/RUNBOOK.md`.
+
+## Load test
+
+`tools/loadtest/` holds a k6 script that plays a whole contest (sign-in, event streams, drafts, standings, runs and submissions with an end-of-contest spike, fixed and window modes) against a testing-mode stack, a seed script and a summary script. How to run it: `tools/loadtest/README.md`.
 
 ## Documentation
 
 | File | Contents |
 |---|---|
 | `docs/ARCHITECTURE.md` | Services, data flow, judge design, and why each choice was made |
-| `docs/OPERATIONS.md` | Install, run modes, configuration variables, upgrades, backups, validation troubleshooting, contest day |
+| `docs/OPERATIONS.md` | Install, run modes, configuration variables, metrics, upgrades, backups and restore, validation troubleshooting |
+| `docs/RUNBOOK.md` | Contest day: checklists, what to watch, what to do when something goes wrong, restoring, the dry run with real students |
 | `docs/AUTHORING.md` | Writing problems: the pack format, statements, subtasks, checkers, validation |
 | `docs/API.md` | HTTP routes, the judge worker API, and their request and response shapes |
 | `CHANGELOG.md` | Dated changes per release |

@@ -42,10 +42,12 @@ func (d Deps) flowCookie() (name, path string) {
 
 func (d Deps) secure() bool { return strings.HasPrefix(d.BaseURL, "https://") }
 
-func (d Deps) setSessionCookie(w http.ResponseWriter, token string, expires time.Time) {
+// setSessionCookie sets a browser-session cookie: no Expires or Max-Age,
+// so closing the browser forgets it (a shared lab PC, security council
+// S5). The server ends the session itself auth.SessionTTL after sign-in.
+func (d Deps) setSessionCookie(w http.ResponseWriter, token string) {
 	http.SetCookie(w, &http.Cookie{
 		Name: d.sessionCookieName(), Value: token, Path: "/",
-		Expires: expires, MaxAge: int(time.Until(expires).Seconds()),
 		HttpOnly: true, Secure: d.secure(), SameSite: http.SameSiteLaxMode,
 	})
 }
@@ -55,7 +57,57 @@ func (d Deps) clearCookie(w http.ResponseWriter, name, path string) {
 		HttpOnly: true, Secure: d.secure(), SameSite: http.SameSiteLaxMode})
 }
 
+// forwardedHeaders are set by reverse proxies. In testing mode any of them
+// means the request did not come from this machine's own browser: Caddy
+// (or any other proxy) in front of a testing-mode server must never work.
+var forwardedHeaders = []string{"X-Forwarded-For", "Forwarded", "X-Real-Ip", "X-Forwarded-Host"}
+
+// isLocalHost reports whether a Host header names this machine:
+// localhost, 127.0.0.1 or [::1], with any port.
+func isLocalHost(host string) bool {
+	if h, _, err := net.SplitHostPort(host); err == nil {
+		host = h
+	}
+	host = strings.TrimSuffix(strings.TrimPrefix(host, "["), "]")
+	return strings.EqualFold(host, "localhost") || host == "127.0.0.1" || host == "::1"
+}
+
+// localOnly refuses, in testing mode, a request whose Host is not this
+// machine or that carries a proxy's forwarding header (security council
+// S2). The configuration check already keeps testing mode on loopback;
+// this stops a proxy on the same host (Caddy on the real VM) from
+// publishing it. Outside testing mode it lets everything through. It
+// answers the refusal itself and returns false.
+func (d Deps) localOnly(w http.ResponseWriter, r *http.Request) bool {
+	if d.Mode != "testing" {
+		return true
+	}
+	ok := isLocalHost(r.Host)
+	for _, h := range forwardedHeaders {
+		if r.Header.Get(h) != "" {
+			ok = false
+		}
+	}
+	if !ok {
+		WriteError(w, http.StatusForbidden, "testing_mode_local", "This server is in testing mode, which works only from a browser on the same machine.")
+	}
+	return ok
+}
+
+// localOnlyAll is localOnly as middleware, so New can apply it to every
+// route, the web app included.
+func (d Deps) localOnlyAll(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if d.localOnly(w, r) {
+			next.ServeHTTP(w, r)
+		}
+	})
+}
+
 func (d Deps) authConfig(w http.ResponseWriter, r *http.Request) {
+	if !d.localOnly(w, r) {
+		return
+	}
 	domains, err := d.Auth.AllowedDomains(r.Context())
 	if err != nil {
 		d.internalError(w, r, err)
@@ -73,8 +125,18 @@ func (d Deps) authConfig(w http.ResponseWriter, r *http.Request) {
 }
 
 // testSignIn signs in as anyone with any role, for testing mode only (the
-// route is not registered otherwise).
+// route is not registered otherwise). Beyond the local-only check every
+// testing-mode route gets, it needs an Origin header equal to the base URL:
+// the page's own form sends one, a script on another machine has no
+// reason to.
 func (d Deps) testSignIn(w http.ResponseWriter, r *http.Request) {
+	if !d.localOnly(w, r) {
+		return
+	}
+	if r.Header.Get("Origin") != d.BaseURL {
+		WriteError(w, http.StatusForbidden, "cross_site", "Test sign-in works only from the sign-in page at "+d.BaseURL+".")
+		return
+	}
 	var req struct {
 		Email string    `json:"email"`
 		Name  string    `json:"name"`
@@ -84,7 +146,11 @@ func (d Deps) testSignIn(w http.ResponseWriter, r *http.Request) {
 	if !decodeJSON(w, r, &req) {
 		return
 	}
-	u, token, expires, err := d.Auth.TestSignIn(r.Context(), req.Email, req.Name, req.Role, clientIP(r), r.UserAgent())
+	u, token, _, err := d.Auth.TestSignIn(r.Context(), req.Email, req.Name, req.Role, clientIP(r), r.UserAgent())
+	if errors.Is(err, auth.ErrDisabled) {
+		WriteError(w, http.StatusForbidden, "disabled", "This account is disabled. An owner can enable it on the People page.")
+		return
+	}
 	if err != nil {
 		d.changeError(w, r, err)
 		return
@@ -94,7 +160,7 @@ func (d Deps) testSignIn(w http.ResponseWriter, r *http.Request) {
 		d.Auth.SignOut(r.Context(), old.Value)
 		d.forgetKey(old.Value)
 	}
-	d.setSessionCookie(w, token, expires)
+	d.setSessionCookie(w, token)
 	d.Log.Info("test sign-in", "user_id", u.ID, "role", u.Role)
 	WriteJSON(w, http.StatusOK, map[string]string{"next": auth.SafeNext(req.Next)})
 }
@@ -150,7 +216,7 @@ func (d Deps) googleCallback(w http.ResponseWriter, r *http.Request) {
 		fail("google")
 		return
 	}
-	u, token, expires, err := d.Auth.SignIn(r.Context(), id, clientIP(r), r.UserAgent())
+	u, token, _, err := d.Auth.SignIn(r.Context(), id, clientIP(r), r.UserAgent())
 	switch {
 	case errors.Is(err, auth.ErrDomain):
 		d.Log.Info("sign-in refused: domain not allowed", "domain", domainOf(id.Email))
@@ -179,7 +245,7 @@ func (d Deps) googleCallback(w http.ResponseWriter, r *http.Request) {
 		d.forgetKey(old.Value)
 	}
 	d.Log.Info("signed in", "user_id", u.ID, "role", u.Role)
-	d.setSessionCookie(w, token, expires)
+	d.setSessionCookie(w, token)
 	w.Header().Set("Cache-Control", "no-store")
 	http.Redirect(w, r, auth.SafeNext(f.Next), http.StatusFound)
 }
@@ -225,12 +291,15 @@ func userFrom(ctx context.Context) auth.User {
 // min. The role comes from the database on every request.
 func (d Deps) requireRole(min auth.Role, h http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		if !d.localOnly(w, r) {
+			return
+		}
 		c, err := r.Cookie(d.sessionCookieName())
 		if err != nil {
 			WriteError(w, http.StatusUnauthorized, "signed_out", "Sign in to continue.")
 			return
 		}
-		u, renewed, err := d.Auth.Authenticate(r.Context(), c.Value)
+		u, _, err := d.Auth.Authenticate(r.Context(), c.Value)
 		if errors.Is(err, auth.ErrNoSession) {
 			d.clearCookie(w, d.sessionCookieName(), "/")
 			WriteError(w, http.StatusUnauthorized, "signed_out", "Your session has ended. Sign in again.")
@@ -239,9 +308,6 @@ func (d Deps) requireRole(min auth.Role, h http.HandlerFunc) http.HandlerFunc {
 		if err != nil {
 			d.internalError(w, r, err)
 			return
-		}
-		if !renewed.IsZero() {
-			d.setSessionCookie(w, c.Value, renewed)
 		}
 		if !u.Role.AtLeast(min) {
 			WriteError(w, http.StatusForbidden, "forbidden", "You do not have access to this. Ask an owner if you need it.")

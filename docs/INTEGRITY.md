@@ -22,6 +22,14 @@ Students are told all of this on the honour-code screen before they start.
 
 Integrity records are deleted 180 days after the contest ends, except for students in an open case. The checks' results (runs and signals) go at the same time; a case keeps its own copy of the signals it was opened from.
 
+## Organisers and the record
+
+Integrity is also about the people running the contest. A dispute about a grade has to be settled from facts, so:
+
+- **The audit log.** Every organiser action that can change results is written to the contest's audit log with who did it and when: settings (each field, from and to), problem pins, the roster, extensions, extend, pause and resume, rejudges, the reveal, the editorial, co-organisers, and an admin's reason to grade an AI problem as written. Nothing can edit or delete a row, not even the server (database triggers refuse it). The console shows the log, and the JSON export carries it. Store the export, and its SHA-256, off the server after each graded contest.
+- **Student co-organisers (TAs).** A co-organiser whose own role is student can answer questions, post announcements and edit the contest before it starts. They cannot change its rules or schedule once it starts, nor replace the roster, give extra time, extend, pause, resume or rejudge: those are for owners and admins. They see results as a student would (no verdicts in exam mode until every student's time is up, the frozen board during the freeze, no integrity counts, and their own submissions under the contest's limits), so the role is no window onto hidden tests or classmates' results. Extra time can only go to a student on the roster or one who took part.
+- **Shared lab PCs.** Sign-in accepts only a Google sign-in from the last 5 minutes, Podium's cookie ends when the browser closes, and every session ends 12 hours after sign-in at the latest. Still: give each lab slot a browser guest profile (or a kiosk profile that is wiped on exit), and ask students to sign out of Podium and of Google before they leave. An owner can end anyone's sessions, or disable an account, on the People page; a disabled student's next request is refused and their open contest page loses its live updates within 25 seconds.
+
 ## The checks
 
 An organiser presses **Check integrity** on a contest's results page after the contest has ended for everyone. It takes under a minute for a few hundred students and replaces the previous check's signals; open cases keep their own copy of the evidence.

@@ -55,6 +55,9 @@ type grant struct {
 	nonce       string
 	challenge   string
 	redirectURI string
+	// maxAge is set when the request carried max_age: like Google, the
+	// provider then states auth_time (the person "signs in" just now).
+	maxAge bool
 }
 
 // New starts a fake provider; it stops when the test ends.
@@ -99,7 +102,8 @@ func (p *IdP) authorize(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	code := fmt.Sprintf("code-%d", len(p.codes)+1)
-	p.codes[code] = grant{person: p.next, nonce: q.Get("nonce"), challenge: q.Get("code_challenge"), redirectURI: q.Get("redirect_uri")}
+	p.codes[code] = grant{person: p.next, nonce: q.Get("nonce"), challenge: q.Get("code_challenge"), redirectURI: q.Get("redirect_uri"),
+		maxAge: q.Get("max_age") != ""}
 	p.mu.Unlock()
 	back, _ := url.Parse(q.Get("redirect_uri"))
 	bq := back.Query()
@@ -140,6 +144,9 @@ func (p *IdP) token(w http.ResponseWriter, r *http.Request) {
 		"iat": now.Unix(), "exp": now.Add(time.Hour).Unix(), "nonce": g.nonce,
 		"email": g.person.Email, "email_verified": g.person.Verified, "name": g.person.Name,
 		"picture": "https://lh3.googleusercontent.com/a/test",
+	}
+	if g.maxAge {
+		claims["auth_time"] = now.Unix()
 	}
 	if mutate != nil {
 		mutate(claims)

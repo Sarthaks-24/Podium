@@ -49,6 +49,8 @@ func checkCompile(cs []judgeapi.CompileResult, roles ...string) error {
 			return jobs.Badf("compile verdict %q", jobs.Clip(c.Verdict))
 		case len(c.Output) > judgeapi.MaxCompileOutput || !utf8.ValidString(c.Output):
 			return jobs.Badf("compile output too long or not UTF-8")
+		case c.TimedOut && c.Verdict != string(judge.CompileError):
+			return jobs.Badf("a compile that timed out must be CE")
 		}
 		seen[c.Role] = true
 	}
@@ -79,8 +81,9 @@ func decodeSubmit(raw json.RawMessage) (judgeapi.SubmitPayload, error) {
 
 // CheckReport refuses results for tests the submission does not have, any
 // output text (hidden tests stay hidden), and messages on hidden tests (a
-// checker comment can quote the expected answer).
-func (SubmitKind) CheckReport(raw json.RawMessage, r judgeapi.Report) error {
+// checker comment can quote the expected answer). It also notes a program
+// compile that timed out, for Finish.
+func (k SubmitKind) CheckReport(raw json.RawMessage, r judgeapi.Report) error {
 	pl, err := decodeSubmit(raw)
 	if err != nil {
 		return err
@@ -113,6 +116,7 @@ func (SubmitKind) CheckReport(raw json.RawMessage, r judgeapi.Report) error {
 		}
 		seen[t.Idx] = true
 	}
+	noteCompileTimeout(r, nowOr(k.Now))
 	return nil
 }
 
@@ -146,6 +150,9 @@ func (SubmitKind) MaxDuration(raw json.RawMessage) time.Duration {
 func (k SubmitKind) Finish(ctx context.Context, tx *sql.Tx, job *jobs.Job) error {
 	pl, err := decodeSubmit(job.Payload)
 	if err != nil {
+		return err
+	}
+	if err := finishCompileTimeout(ctx, tx, job, pl.SubmissionID, nowOr(k.Now)); err != nil {
 		return err
 	}
 	now := nowOr(k.Now).UnixMilli()
@@ -205,8 +212,9 @@ func decodeRun(raw json.RawMessage) (judgeapi.RunPayload, error) {
 }
 
 // CheckReport refuses results for inputs the run does not have and output
-// beyond the excerpt size.
-func (RunKind) CheckReport(raw json.RawMessage, r judgeapi.Report) error {
+// beyond the excerpt size. It also notes a program compile that timed out,
+// for Finish.
+func (k RunKind) CheckReport(raw json.RawMessage, r judgeapi.Report) error {
 	pl, err := decodeRun(raw)
 	if err != nil {
 		return err
@@ -233,6 +241,7 @@ func (RunKind) CheckReport(raw json.RawMessage, r judgeapi.Report) error {
 		}
 		seen[t.Idx] = true
 	}
+	noteCompileTimeout(r, nowOr(k.Now))
 	return nil
 }
 
@@ -268,6 +277,9 @@ func (RunKind) MaxDuration(raw json.RawMessage) time.Duration {
 func (k RunKind) Finish(ctx context.Context, tx *sql.Tx, job *jobs.Job) error {
 	pl, err := decodeRun(job.Payload)
 	if err != nil {
+		return err
+	}
+	if err := finishCompileTimeout(ctx, tx, job, pl.SubmissionID, nowOr(k.Now)); err != nil {
 		return err
 	}
 	state, msg := "done", ""

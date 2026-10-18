@@ -3,12 +3,18 @@ package httpapi
 // Organiser contest routes (cache/v1/m4-plan.md section 4). Owners and
 // admins organise every contest; a contest's co-organisers organise only
 // that one. Everyone else gets a 404, so contest ids cannot be probed.
-// Creating, cloning, archiving and choosing co-organisers need the admin
-// role.
+// Creating, cloning, archiving, choosing problems and co-organisers, and
+// everything that changes a running contest's results (the roster,
+// extensions, extend, pause and resume, rejudge) need the admin role. A
+// co-organiser whose site role is student cannot change the rules once the
+// contest starts, and sees results only as a student would (security
+// council S1, contests/coorganiser.go). Every change that can affect
+// results is written to the contest's audit log (S9).
 
 import (
 	"bytes"
 	"context"
+	"errors"
 	"io"
 	"mime"
 	"net/http"
@@ -71,6 +77,9 @@ type adminContestJSON struct {
 	CreatedAt          int64                `json:"created_at"`
 	UpdatedAt          int64                `json:"updated_at"`
 	ServerNow          int64                `json:"server_now"`
+	// LockedAfterStart names the settings only owners and admins may change
+	// once the contest has started.
+	LockedAfterStart []string `json:"locked_after_start"`
 }
 
 func (d Deps) adminContestOut(ctx context.Context, c *contests.Contest) (*adminContestJSON, error) {
@@ -84,7 +93,8 @@ func (d Deps) adminContestOut(ctx context.Context, c *contests.Contest) (*adminC
 		HoldReveal: c.HoldReveal, EditorialMD: c.Editorial, EditorialPublished: c.EditorialPublished, Paused: c.Paused,
 		ExtendedMinutes: int(c.Schedule.Extended / time.Minute), RevealedAt: millis(c.RevealedAt), Archived: c.Archived,
 		State: c.Schedule.State(now, c.PracticeAfterEnd), Problems: []adminProblemJSON{},
-		CreatedAt: c.CreatedAt.UnixMilli(), UpdatedAt: c.UpdatedAt.UnixMilli(), ServerNow: now.UnixMilli()}
+		CreatedAt: c.CreatedAt.UnixMilli(), UpdatedAt: c.UpdatedAt.UnixMilli(), ServerNow: now.UnixMilli(),
+		LockedAfterStart: contests.LockedAfterStart}
 	for _, p := range c.Problems {
 		out.Problems = append(out.Problems, adminProblemJSON{Label: p.Label, ProblemID: p.ProblemID, Title: p.Title,
 			PinnedHash: p.PinnedHash, Ready: p.Ready, MaxScore: p.MaxScore()})
@@ -147,10 +157,45 @@ func (d Deps) organisedContest(w http.ResponseWriter, r *http.Request) (*contest
 
 // requireAdmin answers 403 unless the user is an admin or the owner.
 func requireAdmin(w http.ResponseWriter, r *http.Request) bool {
-	if !userFrom(r.Context()).Role.AtLeast(auth.Admin) {
+	if !siteAdmin(r) {
 		WriteError(w, http.StatusForbidden, "forbidden", "Only owners and admins can do this.")
 		return false
 	}
+	return true
+}
+
+// siteAdmin reports whether the user is an owner or admin, as opposed to a
+// co-organiser whose site role is student.
+func siteAdmin(r *http.Request) bool { return userFrom(r.Context()).Role.AtLeast(auth.Admin) }
+
+// actor is the signed-in user as the audit log names them.
+func actor(r *http.Request) contests.Actor {
+	u := userFrom(r.Context())
+	return contests.Actor{ID: u.ID, Email: u.Email, Role: string(u.Role)}
+}
+
+// audit appends to a contest's audit log after a change that already
+// happened. A failure cannot undo the change, so it is logged loudly for
+// the operator instead of failing the request.
+func (d Deps) audit(r *http.Request, contestID int64, action string, details any) {
+	if err := d.Contests.Record(r.Context(), contestID, actor(r), action, details); err != nil {
+		d.Log.Error("audit log write failed", "contest_id", contestID, "action", action, "by", userFrom(r.Context()).ID, "err", err)
+	}
+}
+
+// resultsHidden reports whether a co-organiser without the admin role must
+// not see the contest's results now (exam mode, the freeze, a held
+// reveal): then the stats and the exports are refused to them. It answers
+// the refusal itself.
+func (d Deps) resultsHidden(w http.ResponseWriter, r *http.Request, c *contests.Contest) bool {
+	if siteAdmin(r) {
+		return false
+	}
+	v, err := d.Contests.CoOrganiserVariant(r.Context(), c)
+	if err == nil && v == contests.VariantFull && !d.Contests.CoOrganiserHide(r.Context(), c).Active() {
+		return false
+	}
+	WriteError(w, http.StatusForbidden, "results_hidden", "Co-organisers see results when students can: once every student's time is up and the board is revealed.")
 	return true
 }
 
@@ -262,11 +307,21 @@ func (d Deps) updateContest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// Publishing hands the problems to students: owners and admins only.
-	if req.Published != c.Published && !userFrom(r.Context()).Role.AtLeast(auth.Admin) {
+	if req.Published != c.Published && !siteAdmin(r) {
 		WriteError(w, http.StatusForbidden, "forbidden", "Only owners and admins can publish or unpublish a contest.")
 		return
 	}
-	if _, err := d.Contests.Update(r.Context(), c.ID, req.edit()); err != nil {
+	// Once the contest starts, the rules and the schedule are the owners'
+	// and admins' to change (the web app asks them to confirm).
+	if !siteAdmin(r) && c.Started(d.Contests.Clock()) {
+		if locked := c.LockedChanges(req.edit()); len(locked) > 0 {
+			WriteJSON(w, http.StatusForbidden, map[string]APIError{"error": {Code: "locked_after_start",
+				Message:  "The contest has started, so only owners and admins can change its schedule and rules: " + strings.Join(locked, ", ") + ".",
+				Problems: locked}})
+			return
+		}
+	}
+	if _, err := d.Contests.Update(r.Context(), c.ID, req.edit(), actor(r)); err != nil {
 		d.contestError(w, r, err)
 		return
 	}
@@ -282,6 +337,7 @@ func (d Deps) archiveContest(w http.ResponseWriter, r *http.Request) {
 		d.contestError(w, r, err)
 		return
 	}
+	d.audit(r, c.ID, contests.AuditArchive, nil)
 	d.Log.Info("contest archived", "by", userFrom(r.Context()).ID, "contest_id", c.ID)
 	w.WriteHeader(http.StatusNoContent)
 }
@@ -301,7 +357,7 @@ func (d Deps) cloneContest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	out, err := d.Contests.Clone(r.Context(), c.ID, strings.TrimSpace(req.Slug), req.Title, time.UnixMilli(req.StartsAt),
-		time.UnixMilli(req.EndsAt), userFrom(r.Context()).ID)
+		time.UnixMilli(req.EndsAt), actor(r))
 	if err != nil {
 		d.contestError(w, r, err)
 		return
@@ -319,15 +375,18 @@ func (d Deps) setContestProblems(w http.ResponseWriter, r *http.Request) {
 	var req []struct {
 		ProblemID int64  `json:"problem_id"`
 		Label     string `json:"label"`
+		// AIReason confirms an AI problem no person has written a solution
+		// for, in a graded contest (security council S10).
+		AIReason string `json:"ai_reason"`
 	}
 	if !decodeJSON(w, r, &req) {
 		return
 	}
 	choices := make([]contests.ProblemChoice, 0, len(req))
 	for _, p := range req {
-		choices = append(choices, contests.ProblemChoice{ProblemID: p.ProblemID, Label: p.Label})
+		choices = append(choices, contests.ProblemChoice{ProblemID: p.ProblemID, Label: p.Label, AIReason: p.AIReason})
 	}
-	if _, err := d.Contests.SetProblems(r.Context(), c.ID, choices); err != nil {
+	if _, err := d.Contests.SetProblems(r.Context(), c.ID, choices, actor(r)); err != nil {
 		d.contestError(w, r, err)
 		return
 	}
@@ -342,9 +401,10 @@ type rosterEntryJSON struct {
 }
 
 // setRoster replaces the roster from a CSV body (text/csv) or a JSON array.
+// Owners and admins only: the roster decides who may compete.
 func (d Deps) setRoster(w http.ResponseWriter, r *http.Request) {
 	c, ok := d.organisedContest(w, r)
-	if !ok {
+	if !ok || !requireAdmin(w, r) {
 		return
 	}
 	var entries []contests.RosterEntry
@@ -380,6 +440,7 @@ func (d Deps) setRoster(w http.ResponseWriter, r *http.Request) {
 		d.contestError(w, r, err)
 		return
 	}
+	d.audit(r, c.ID, contests.AuditRoster, map[string]int{"count": ch.Count, "added": ch.Added, "removed": ch.Removed})
 	d.Log.Info("contest roster replaced", "by", userFrom(r.Context()).ID, "contest_id", c.ID,
 		"count", ch.Count, "added", ch.Added, "removed", ch.Removed)
 	WriteJSON(w, http.StatusOK, map[string]any{"added": ch.Added, "removed": ch.Removed, "roster_count": ch.Count})
@@ -418,14 +479,17 @@ func (d Deps) changeContestAdmin(add bool) http.HandlerFunc {
 			d.contestError(w, r, err)
 			return
 		}
+		d.audit(r, c.ID, contests.AuditOrganisers, map[string]any{"email": strings.ToLower(strings.TrimSpace(req.Email)), "added": add})
 		d.Log.Info("contest co-organiser changed", "by", userFrom(r.Context()).ID, "contest_id", c.ID, "added", add)
 		d.writeAdminContest(w, r, c.ID, http.StatusOK)
 	}
 }
 
+// setExtension gives one student on the roster, or taking part, extra time.
+// Owners and admins only.
 func (d Deps) setExtension(w http.ResponseWriter, r *http.Request) {
 	c, ok := d.organisedContest(w, r)
-	if !ok {
+	if !ok || !requireAdmin(w, r) {
 		return
 	}
 	userID, ok := parseID(r.PathValue("user"))
@@ -440,21 +504,43 @@ func (d Deps) setExtension(w http.ResponseWriter, r *http.Request) {
 	if !decodeJSON(w, r, &req) {
 		return
 	}
-	if err := d.Contests.ExtendFor(r.Context(), c, userID, req.Minutes, req.Reason); err != nil {
-		if err == contests.ErrNotFound {
-			WriteError(w, http.StatusNotFound, "not_found", "There is no such person.")
-			return
+	before := contests.Extension{}
+	if list, err := d.Contests.Extensions(r.Context(), c.ID); err == nil {
+		for _, e := range list {
+			if e.UserID == userID {
+				before = e
+			}
 		}
-		d.contestError(w, r, err)
+	}
+	if err := d.Contests.ExtendFor(r.Context(), c, userID, req.Minutes, req.Reason); err != nil {
+		switch {
+		case errors.Is(err, contests.ErrNotFound):
+			WriteError(w, http.StatusNotFound, "not_found", "There is no such person.")
+		case errors.Is(err, contests.ErrNotParticipant):
+			WriteError(w, http.StatusConflict, "not_participant", err.Error())
+		default:
+			d.contestError(w, r, err)
+		}
 		return
 	}
+	if before.Email == "" {
+		if list, err := d.Contests.Extensions(r.Context(), c.ID); err == nil {
+			for _, e := range list {
+				if e.UserID == userID {
+					before.Email = e.Email
+				}
+			}
+		}
+	}
+	d.audit(r, c.ID, contests.AuditExtension, map[string]any{"user_id": userID, "email": before.Email,
+		"from_minutes": before.Minutes, "minutes": req.Minutes, "reason": strings.TrimSpace(req.Reason)})
 	d.Log.Info("contest extension set", "by", userFrom(r.Context()).ID, "contest_id", c.ID, "user_id", userID, "minutes", req.Minutes)
 	d.writeAdminContest(w, r, c.ID, http.StatusOK)
 }
 
 func (d Deps) extendContest(w http.ResponseWriter, r *http.Request) {
 	c, ok := d.organisedContest(w, r)
-	if !ok {
+	if !ok || !requireAdmin(w, r) {
 		return
 	}
 	var req struct {
@@ -463,10 +549,12 @@ func (d Deps) extendContest(w http.ResponseWriter, r *http.Request) {
 	if !decodeJSON(w, r, &req) {
 		return
 	}
-	if _, err := d.Contests.ExtendAll(r.Context(), c.ID, req.Minutes); err != nil {
+	out, err := d.Contests.ExtendAll(r.Context(), c.ID, req.Minutes)
+	if err != nil {
 		d.contestError(w, r, err)
 		return
 	}
+	d.audit(r, c.ID, contests.AuditExtend, map[string]int{"minutes": req.Minutes, "extended_minutes": int(out.Schedule.Extended / time.Minute)})
 	d.Log.Info("contest extended", "by", userFrom(r.Context()).ID, "contest_id", c.ID, "minutes", req.Minutes)
 	d.writeAdminContest(w, r, c.ID, http.StatusOK)
 }
@@ -474,13 +562,18 @@ func (d Deps) extendContest(w http.ResponseWriter, r *http.Request) {
 func (d Deps) pauseContest(paused bool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		c, ok := d.organisedContest(w, r)
-		if !ok {
+		if !ok || !requireAdmin(w, r) {
 			return
 		}
 		if err := d.Contests.SetPaused(r.Context(), c.ID, paused); err != nil {
 			d.contestError(w, r, err)
 			return
 		}
+		action := contests.AuditResume
+		if paused {
+			action = contests.AuditPause
+		}
+		d.audit(r, c.ID, action, nil)
 		d.Log.Info("contest judging paused or resumed", "by", userFrom(r.Context()).ID, "contest_id", c.ID, "paused", paused)
 		d.writeAdminContest(w, r, c.ID, http.StatusOK)
 	}
@@ -493,8 +586,17 @@ func (d Deps) contestFeed(w http.ResponseWriter, r *http.Request) {
 	}
 	q := r.URL.Query()
 	// Typed, pasted and focus counts are integrity data: owners and admins
-	// only, never a co-organiser whose site role is student.
-	f := contests.FeedFilter{Verdict: q.Get("verdict"), IntegrityCounts: userFrom(r.Context()).Role.AtLeast(auth.Admin)}
+	// only, never a co-organiser whose site role is student. Such a
+	// co-organiser also sees results only as a student would: none in exam
+	// mode, none from the freeze while the board is frozen.
+	f := contests.FeedFilter{Verdict: q.Get("verdict"), IntegrityCounts: siteAdmin(r)}
+	if !siteAdmin(r) {
+		f.Hide = d.Contests.CoOrganiserHide(r.Context(), c)
+		if f.Hide.Active() && strings.TrimSpace(f.Verdict) != "" {
+			WriteError(w, http.StatusForbidden, "results_hidden", "Verdicts are hidden from co-organisers until students can see them, so the feed cannot be filtered by verdict yet.")
+			return
+		}
+	}
 	f.Page, _ = strconv.Atoi(q.Get("page"))
 	if label := q.Get("problem"); label != "" {
 		for _, p := range c.Problems {
@@ -521,12 +623,14 @@ func (d Deps) contestFeed(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	WriteJSON(w, http.StatusOK, map[string]any{"submissions": items, "page": max(f.Page, 1), "has_more": more,
-		"server_now": d.Contests.Clock().UnixMilli()})
+		"results_hidden": f.Hide.Active(), "server_now": d.Contests.Clock().UnixMilli()})
 }
 
+// rejudge queues a problem's or one submission's rejudge. Owners and admins
+// only: a rejudge can change every score on the board.
 func (d Deps) rejudge(w http.ResponseWriter, r *http.Request) {
 	c, ok := d.organisedContest(w, r)
-	if !ok {
+	if !ok || !requireAdmin(w, r) {
 		return
 	}
 	var req struct {
@@ -583,6 +687,13 @@ func (d Deps) rejudge(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	d.Contests.Invalidate(c.ID)
+	what := map[string]any{"queued": n}
+	if req.ProblemLabel != "" {
+		what["problem_label"] = req.ProblemLabel
+	} else {
+		what["submission_id"] = req.SubmissionID
+	}
+	d.audit(r, c.ID, contests.AuditRejudge, what)
 	d.Log.Info("rejudge queued", "by", userFrom(r.Context()).ID, "contest_id", c.ID, "count", n)
 	WriteJSON(w, http.StatusAccepted, map[string]any{"queued": n, "server_now": d.Contests.Clock().UnixMilli()})
 }
@@ -670,6 +781,17 @@ func (d Deps) adminStandings(w http.ResponseWriter, r *http.Request) {
 	if r.URL.Query().Get("variant") == contests.VariantFrozen {
 		variant = contests.VariantFrozen
 	}
+	// A co-organiser whose site role is student gets the board a student
+	// would see: frozen during the freeze, none yet in exam mode.
+	if !siteAdmin(r) {
+		v, err := d.coOrganiserVariant(w, r, c)
+		if err != nil {
+			return
+		}
+		if v == contests.VariantFrozen {
+			variant = v
+		}
+	}
 	out, err := d.standingsOut(r.Context(), c, variant, userFrom(r.Context()).ID)
 	if err != nil {
 		d.internalError(w, r, err)
@@ -719,6 +841,9 @@ func (d Deps) postReveal(w http.ResponseWriter, r *http.Request) {
 		d.contestError(w, r, err)
 		return
 	}
+	if c.RevealedAt.IsZero() {
+		d.audit(r, c.ID, contests.AuditReveal, nil)
+	}
 	d.Log.Info("contest revealed", "by", userFrom(r.Context()).ID, "contest_id", c.ID)
 	d.writeAdminContest(w, r, c.ID, http.StatusOK)
 }
@@ -731,7 +856,7 @@ func attachment(w http.ResponseWriter, contentType, name string) {
 
 func (d Deps) exportCSV(w http.ResponseWriter, r *http.Request) {
 	c, ok := d.organisedContest(w, r)
-	if !ok {
+	if !ok || d.resultsHidden(w, r, c) {
 		return
 	}
 	rows, _, err := d.Contests.Export(r.Context(), c)
@@ -751,7 +876,7 @@ func (d Deps) exportCSV(w http.ResponseWriter, r *http.Request) {
 
 func (d Deps) exportJSON(w http.ResponseWriter, r *http.Request) {
 	c, ok := d.organisedContest(w, r)
-	if !ok {
+	if !ok || d.resultsHidden(w, r, c) {
 		return
 	}
 	rows, _, err := d.Contests.Export(r.Context(), c)
@@ -769,7 +894,12 @@ func (d Deps) exportJSON(w http.ResponseWriter, r *http.Request) {
 		d.internalError(w, r, err)
 		return
 	}
-	body, err := contests.MarshalExport(contests.JSONExport{Contest: meta, Standings: rows, Submissions: subs,
+	log, err := d.Contests.AuditAll(r.Context(), c.ID)
+	if err != nil {
+		d.internalError(w, r, err)
+		return
+	}
+	body, err := contests.MarshalExport(contests.JSONExport{Contest: meta, Standings: rows, Submissions: subs, Audit: log,
 		ExportedAt: d.Contests.Clock().UnixMilli()})
 	if err != nil {
 		d.internalError(w, r, err)
@@ -782,7 +912,7 @@ func (d Deps) exportJSON(w http.ResponseWriter, r *http.Request) {
 
 func (d Deps) contestStats(w http.ResponseWriter, r *http.Request) {
 	c, ok := d.organisedContest(w, r)
-	if !ok {
+	if !ok || d.resultsHidden(w, r, c) {
 		return
 	}
 	stats, err := d.Contests.Stats(r.Context(), c)
@@ -809,5 +939,43 @@ func (d Deps) setEditorial(w http.ResponseWriter, r *http.Request) {
 		d.contestError(w, r, err)
 		return
 	}
+	// Publishing the editorial hands students the solutions: recorded when
+	// it is published, unpublished, or changed while published.
+	changed := req.EditorialMD != c.Editorial
+	if req.Published != c.EditorialPublished || (req.Published && changed) {
+		d.audit(r, c.ID, contests.AuditEditorial, map[string]any{"published": req.Published, "was_published": c.EditorialPublished,
+			"changed": changed, "bytes": len(req.EditorialMD)})
+	}
 	d.writeAdminContest(w, r, c.ID, http.StatusOK)
+}
+
+// coOrganiserVariant is the board a co-organiser whose site role is
+// student may see, or answers 403 board_closed itself and returns an error.
+func (d Deps) coOrganiserVariant(w http.ResponseWriter, r *http.Request, c *contests.Contest) (string, error) {
+	v, err := d.Contests.CoOrganiserVariant(r.Context(), c)
+	if errors.Is(err, contests.ErrBoardClosed) {
+		WriteError(w, http.StatusForbidden, "board_closed", "Co-organisers see the board when students do: in this contest, once every student's time is up.")
+		return "", err
+	}
+	if err != nil {
+		d.internalError(w, r, err)
+	}
+	return v, err
+}
+
+// contestAudit lists the contest's audit log, newest first, to its
+// organisers (co-organisers included).
+func (d Deps) contestAudit(w http.ResponseWriter, r *http.Request) {
+	c, ok := d.organisedContest(w, r)
+	if !ok {
+		return
+	}
+	page, _ := strconv.Atoi(r.URL.Query().Get("page"))
+	list, more, err := d.Contests.AuditLog(r.Context(), c.ID, page)
+	if err != nil {
+		d.internalError(w, r, err)
+		return
+	}
+	WriteJSON(w, http.StatusOK, map[string]any{"entries": list, "page": max(page, 1), "has_more": more,
+		"server_now": d.Contests.Clock().UnixMilli()})
 }

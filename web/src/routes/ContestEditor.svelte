@@ -14,7 +14,10 @@
   - Problems: the contest's problems with their letters, reordered with the
     arrow buttons, picked from validated problems in the bank. Saving pins
     each problem's current version; a problem changed since it was added is
-    marked.
+    marked. A graded contest refuses a problem the AI wizard made when no
+    person has written a solution for it; the section then asks for a
+    reason, and "Grade as written" saves again with it (the server records
+    the reason in the contest's audit log).
   - Roster: a CSV file or pasted text (email, name, roll number, section)
     with a preview of every parsed line and why any will be refused, and
     how many students the file adds and removes against the current
@@ -79,6 +82,10 @@
   let addId = $state('');
   let problemsError = $state('');
   let problemsBusy = $state(false);
+  // AI problems the server refused for a graded contest, and the reason to grade them as written.
+  let aiLabels = $state<string[]>([]);
+  let aiReason = $state('');
+  let aiError = $state('');
 
   let rosterText = $state('');
   let rosterBusy = $state(false);
@@ -355,14 +362,26 @@
         body: `This takes ${names} out of the contest, and ${gone.length === 1 ? 'its' : 'their'} submissions leave the board.`,
         label: 'Save problems',
         danger: true,
-        run: putProblems,
+        run: () => putProblems(),
       };
       return;
     }
     await putProblems();
   }
 
-  async function putProblems() {
+  /** Saves the problems again with the reason to grade the refused AI problems as written. */
+  async function gradeAsWritten(event: SubmitEvent) {
+    event.preventDefault();
+    aiError = '';
+    if (aiReason.trim().length < 10) {
+      aiError = 'Write a reason of at least 10 characters.';
+      document.getElementById('ai-reason')?.focus();
+      return;
+    }
+    await putProblems(aiReason.trim());
+  }
+
+  async function putProblems(reason = '') {
     problemsError = '';
     const labels = picked.map((p) => p.label.trim().toUpperCase());
     if (labels.some((l) => !/^[A-Z]{1,3}$/.test(l))) {
@@ -378,12 +397,26 @@
       const value = await sendJSON<unknown>(
         'PUT',
         `${base}/problems`,
-        picked.map((p, i) => ({ problem_id: p.problem_id, label: labels[i] })),
+        picked.map((p, i) =>
+          reason !== '' && aiLabels.includes(labels[i])
+            ? { problem_id: p.problem_id, label: labels[i], ai_reason: reason }
+            : { problem_id: p.problem_id, label: labels[i] },
+        ),
       );
       await settle(value);
-      showToast('Saved problems');
+      showToast(reason !== '' ? 'Saved problems with your reason' : 'Saved problems');
+      aiLabels = [];
+      aiReason = '';
     } catch (e) {
       if (handleAuth(e)) return;
+      if (e instanceof ApiError && e.code === 'ai_unconfirmed') {
+        aiLabels = [...e.problems];
+        aiError = reason !== '' ? e.message : '';
+        problemsError = reason !== '' ? '' : e.message;
+        await tick();
+        document.getElementById('ai-reason')?.focus();
+        return;
+      }
       problemsError = e instanceof ApiError && e.problems.length > 0 ? `${e.message} ${e.problems.join(' ')}` : messageOf(e);
     } finally {
       problemsBusy = false;
@@ -756,6 +789,29 @@
     <div class="actions">
       <button type="button" class="btn btn-primary" disabled={problemsBusy} onclick={saveProblems}>Save problems</button>
     </div>
+    {#if aiLabels.length > 0}
+      <form class="ai-confirm" novalidate onsubmit={gradeAsWritten}>
+        <div class="field">
+          <label for="ai-reason">Reason to grade {aiLabels.length === 1 ? `problem ${aiLabels[0]}` : `problems ${aiLabels.join(', ')}`} as the AI wrote it</label>
+          <textarea
+            id="ai-reason"
+            class="input"
+            rows="2"
+            bind:value={aiReason}
+            aria-invalid={aiError ? 'true' : undefined}
+            aria-describedby="ai-reason-help{aiError ? ' ai-reason-error' : ''}"
+          ></textarea>
+          <p id="ai-reason-help" class="field-help">
+            Better: write your own solution in the problem editor and validate it. The reason is kept in this contest's audit log.
+          </p>
+          {#if aiError}<p id="ai-reason-error" class="field-error">{aiError}</p>{/if}
+        </div>
+        <div class="row">
+          <button type="submit" class="btn btn-danger" disabled={problemsBusy}>Grade as written</button>
+          <button type="button" class="btn btn-secondary" onclick={() => { aiLabels = []; aiReason = ''; aiError = ''; problemsError = ''; }}>Cancel</button>
+        </div>
+      </form>
+    {/if}
   </section>
 
   <section class="section" aria-labelledby="roster-title">
@@ -981,6 +1037,14 @@
 
   .small {
     font-size: var(--fs-0);
+  }
+
+  .ai-confirm {
+    display: grid;
+    gap: var(--space-3);
+    padding: var(--space-3) var(--space-4);
+    border: var(--rule) solid var(--line-strong);
+    background: var(--surface);
   }
 
   .picked {

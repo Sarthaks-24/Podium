@@ -65,7 +65,62 @@ func (d Deps) listPeople(w http.ResponseWriter, r *http.Request) {
 		d.internalError(w, r, err)
 		return
 	}
-	WriteJSON(w, http.StatusOK, map[string]any{"people": people, "domains": domains})
+	disabled, err := d.Auth.DisabledAccounts(r.Context())
+	if err != nil {
+		d.internalError(w, r, err)
+		return
+	}
+	WriteJSON(w, http.StatusOK, map[string]any{"people": people, "domains": domains, "disabled": disabled})
+}
+
+// securityRoutes mounts the routes the security council's fixes added
+// (2026-10-18): the owner's account actions (S6) and the contest audit log
+// (S9). New calls it.
+func (d Deps) securityRoutes(mux *http.ServeMux) {
+	mux.HandleFunc("POST /api/admin/accounts/end-sessions", d.requireRole(auth.Owner, d.endSessions))
+	mux.HandleFunc("POST /api/admin/accounts/disable", d.requireRole(auth.Owner, d.setAccountDisabled(true)))
+	mux.HandleFunc("POST /api/admin/accounts/enable", d.requireRole(auth.Owner, d.setAccountDisabled(false)))
+	if d.Contests != nil {
+		mux.HandleFunc("GET /api/admin/contests/{id}/audit", d.requireRole(auth.Student, d.contestAudit))
+	}
+}
+
+// endSessions signs a person out everywhere, for a lost laptop or a shared
+// session. Their open streams close at the next clock tick.
+func (d Deps) endSessions(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Email string `json:"email"`
+	}
+	if !decodeJSON(w, r, &req) {
+		return
+	}
+	a, n, err := d.Auth.EndSessions(r.Context(), req.Email)
+	if err != nil {
+		d.changeError(w, r, err)
+		return
+	}
+	d.Log.Info("sessions ended", "by", userFrom(r.Context()).ID, "user_id", a.ID, "count", n)
+	WriteJSON(w, http.StatusOK, map[string]any{"account": a, "ended": n})
+}
+
+// setAccountDisabled disables or re-enables an account. A disabled account
+// is refused at sign-in and at every signed-in route.
+func (d Deps) setAccountDisabled(disabled bool) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			Email string `json:"email"`
+		}
+		if !decodeJSON(w, r, &req) {
+			return
+		}
+		a, n, err := d.Auth.SetDisabled(r.Context(), req.Email, disabled, userFrom(r.Context()).ID)
+		if err != nil {
+			d.changeError(w, r, err)
+			return
+		}
+		d.Log.Info("account disabled or enabled", "by", userFrom(r.Context()).ID, "user_id", a.ID, "disabled", disabled, "sessions_ended", n)
+		WriteJSON(w, http.StatusOK, map[string]any{"account": a, "ended": n})
+	}
 }
 
 func (d Deps) grantRole(w http.ResponseWriter, r *http.Request) {

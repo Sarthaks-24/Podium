@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -190,22 +191,49 @@ func TestDraftThroughGenerateInputsOutputsAndValidation(t *testing.T) {
 		t.Fatalf("not validated: %+v", v.Summary)
 	}
 
-	// A person's save ends the AI draft tag and keeps the generator.
+	hasDraftTag := func(p *Problem) bool { return slices.Contains(p.Tags, AIDraftTag) }
+	// A save that changes nothing, even one that leaves the tag out, keeps
+	// the AI draft tag, the validation and the generator.
 	e := editOf(got)
 	for i := range e.Subtasks {
 		e.Subtasks[i].GeneratorArgs = nil // an editor that does not know them
 	}
+	e.Tags = nil
 	got, err = s.Update(ctx, p.ID, e)
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, tag := range got.Tags {
-		if tag == AIDraftTag {
-			t.Error("AI draft tag survived a person's save")
-		}
+	if !hasDraftTag(got) || !got.Validated() {
+		t.Errorf("a save that changed nothing: tags %v validated=%v; want the AI draft tag kept and still validated", got.Tags, got.Validated())
 	}
-	if got.Generator == nil || len(got.Plan) != 2 || len(got.Subtasks[0].GeneratorArgs) != 1 || !got.Validated() {
-		t.Errorf("save lost the generator: %+v %+v validated=%v", got.Plan, got.Subtasks, got.Validated())
+	if got.Generator == nil || len(got.Plan) != 2 || len(got.Subtasks[0].GeneratorArgs) != 1 {
+		t.Errorf("save lost the generator: %+v %+v", got.Plan, got.Subtasks)
+	}
+	// Editing the statement ends the tag and withdraws the validation: the
+	// person's version must pass again. It is not a person's solution.
+	e = editOf(got)
+	e.Statement += "\n\nChecked by a person."
+	got, err = s.Update(ctx, p.ID, e)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if hasDraftTag(got) || got.Validated() {
+		t.Errorf("after a statement edit: tags %v validated=%v; want no AI draft tag and not validated", got.Tags, got.Validated())
+	}
+	var byPerson bool
+	s.DB.QueryRowContext(ctx, "SELECT solution_by_person FROM problems WHERE id = ?", p.ID).Scan(&byPerson)
+	if byPerson {
+		t.Error("a statement edit marked the problem as having a person's solution")
+	}
+	// Changing the reference marks a person's solution.
+	e = editOf(got)
+	e.Reference.Source += "\n# checked by a person\n"
+	if _, err := s.Update(ctx, p.ID, e); err != nil {
+		t.Fatal(err)
+	}
+	s.DB.QueryRowContext(ctx, "SELECT solution_by_person FROM problems WHERE id = ?", p.ID).Scan(&byPerson)
+	if !byPerson {
+		t.Error("a changed reference did not mark a person's solution")
 	}
 }
 

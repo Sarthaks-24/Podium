@@ -1,0 +1,12 @@
+# Installed by deploy/install.sh. Nightly backup at about 03:15 UTC, after
+# any evening contest; a missed run (VM off) happens at the next boot.
+[Unit]
+Description=Podium nightly backup
+
+[Timer]
+OnCalendar=*-*-* 03:15:00 UTC
+RandomizedDelaySec=10min
+Persistent=true
+
+[Install]
+WantedBy=timers.target

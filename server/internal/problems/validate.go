@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -50,17 +51,22 @@ type Validation struct {
 
 // Summary is the server's verdict on a finished validation.
 type Summary struct {
-	Passed          bool     `json:"passed"`
-	ReferencePassed int      `json:"reference_passed"`
-	ReferenceTotal  int      `json:"reference_total"`
-	BruteAgreed     int      `json:"brute_agreed"`
-	BruteTotal      int      `json:"brute_total"`
-	ValidatorPassed int      `json:"validator_passed"`
-	ValidatorTotal  int      `json:"validator_total"`
-	MaxTimeMS       int      `json:"max_time_ms"`
-	TimeLimitMS     int      `json:"time_limit_ms"`
-	Problems        []string `json:"problems"`
-	Warnings        []string `json:"warnings"`
+	Passed          bool `json:"passed"`
+	ReferencePassed int  `json:"reference_passed"`
+	ReferenceTotal  int  `json:"reference_total"`
+	BruteAgreed     int  `json:"brute_agreed"`
+	BruteTotal      int  `json:"brute_total"`
+	// BruteUnchecked counts tests the brute force did not finish (time
+	// limit exceeded or skipped), so nothing cross-checked their expected
+	// output; BruteUncheckedTests names them.
+	BruteUnchecked      int      `json:"brute_unchecked"`
+	BruteUncheckedTests []int    `json:"brute_unchecked_tests"`
+	ValidatorPassed     int      `json:"validator_passed"`
+	ValidatorTotal      int      `json:"validator_total"`
+	MaxTimeMS           int      `json:"max_time_ms"`
+	TimeLimitMS         int      `json:"time_limit_ms"`
+	Problems            []string `json:"problems"`
+	Warnings            []string `json:"warnings"`
 }
 
 // RequestValidation queues a validation of the problem as it is now.
@@ -376,7 +382,8 @@ var verdictWords = map[string]string{
 }
 
 func summarise(pl judgeapi.ValidatePayload, res jobs.Result) Summary {
-	sm := Summary{Problems: []string{}, Warnings: []string{}}
+	sm := Summary{Problems: []string{}, Warnings: []string{}, BruteUncheckedTests: []int{}}
+	bruteWrong := 0
 	refLang := judge.Languages[pl.Programs.Reference.Language]
 	sm.TimeLimitMS = int(float64(pl.TimeLimitMS) * refLang.TimeFactor)
 	if sm.TimeLimitMS == 0 {
@@ -460,9 +467,13 @@ func summarise(pl judgeapi.ValidatePayload, res jobs.Result) Summary {
 					sm.BruteAgreed++
 				case "WA":
 					sm.BruteTotal++
+					bruteWrong++
 					sm.Problems = append(sm.Problems, fmt.Sprintf("Test %d: the brute force disagrees with the expected output.%s", t.Idx, detail(b.Message)))
 				case "SK", "TLE":
-					// Too slow on a large test is what brute forces do.
+					// Too slow on a large test is what brute forces do, but
+					// the test's expected output went unchecked: say so.
+					sm.BruteUnchecked++
+					sm.BruteUncheckedTests = append(sm.BruteUncheckedTests, t.Idx)
 				default:
 					sm.BruteTotal++
 					sm.Warnings = append(sm.Warnings, fmt.Sprintf("Test %d: the brute force got %s.", t.Idx, verdictWords[b.Verdict]))
@@ -482,8 +493,19 @@ func summarise(pl judgeapi.ValidatePayload, res jobs.Result) Summary {
 		sm.Warnings = append(sm.Warnings, fmt.Sprintf("The reference solution took %d ms on test %d, more than a third of the %d ms limit.",
 			sm.MaxTimeMS, slowest, sm.TimeLimitMS))
 	}
-	if pl.Programs.Brute != nil && sm.BruteTotal == 0 && compiled[judgeapi.RoleBrute] {
-		sm.Warnings = append(sm.Warnings, "The brute force finished no test in time, so it checked nothing.")
+	// A brute force that finishes only the small tests leaves the large
+	// ones resting on the reference alone (security council S10). Each
+	// unchecked test is reported, and fewer than half cross-checked fails
+	// the problem: add smaller tests the brute force can finish.
+	if pl.Programs.Brute != nil && compiled[judgeapi.RoleBrute] {
+		if sm.BruteUnchecked > 0 {
+			sm.Warnings = append(sm.Warnings, fmt.Sprintf("%d of %d tests were not cross-checked: the brute force ran out of time or was skipped on %s.",
+				sm.BruteUnchecked, len(pl.Tests), testList(sm.BruteUncheckedTests)))
+		}
+		if checked := sm.BruteAgreed + bruteWrong; checked*2 < len(pl.Tests) {
+			sm.Problems = append(sm.Problems, fmt.Sprintf("Only %d of %d tests were cross-checked against the brute force; at least half must be. Add smaller tests the brute force can finish, or make it faster.",
+				checked, len(pl.Tests)))
+		}
 	}
 	if pl.Programs.Brute == nil {
 		sm.Warnings = append(sm.Warnings, "No brute force solution: the reference was not cross-checked.")
@@ -496,6 +518,21 @@ func summarise(pl judgeapi.ValidatePayload, res jobs.Result) Summary {
 	}
 	sm.Passed = len(sm.Problems) == 0
 	return sm
+}
+
+// testList names tests for a sentence: "test 4", "tests 4, 5 and 9".
+func testList(idx []int) string {
+	parts := make([]string, len(idx))
+	for i, n := range idx {
+		parts[i] = strconv.Itoa(n)
+	}
+	switch len(parts) {
+	case 0:
+		return "no tests"
+	case 1:
+		return "test " + parts[0]
+	}
+	return "tests " + strings.Join(parts[:len(parts)-1], ", ") + " and " + parts[len(parts)-1]
 }
 
 func hasCompileError(res jobs.Result, role string) bool {

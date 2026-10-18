@@ -125,7 +125,7 @@ func work() error {
 	w := &worker.Worker{
 		Runner:   &judge.Runner{Iso: judge.Isolate{Path: cfg.IsolatePath}},
 		Client:   client,
-		Cache:    &worker.Cache{Dir: blobs, Client: client},
+		Cache:    &worker.Cache{Dir: blobs, Client: client, MaxBytes: int64(cfg.BlobCacheMB) << 20},
 		Compiled: &worker.CompileCache{Dir: compiled, MaxBytes: worker.DefaultCompileCacheBytes},
 		Log:      log,
 		Lanes:    cfg.Lanes,
