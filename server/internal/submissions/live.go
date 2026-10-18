@@ -61,10 +61,10 @@ func (s *Service) OnJobChange(jobID int64, kind string) {
 		defer unlock()
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
-		var id, user int64
+		var id, user, contest int64
 		var role, state string
-		if err := s.DB.QueryRowContext(ctx, `SELECT s.id, s.user_id, u.role, s.state FROM submissions s JOIN users u ON u.id = s.user_id
-			WHERE s.job_id = ?`, jobID).Scan(&id, &user, &role, &state); err != nil {
+		if err := s.DB.QueryRowContext(ctx, `SELECT s.id, s.user_id, coalesce(s.contest_id, 0), u.role, s.state
+			FROM submissions s JOIN users u ON u.id = s.user_id WHERE s.job_id = ?`, jobID).Scan(&id, &user, &contest, &role, &state); err != nil {
 			return
 		}
 		finished := state == "done" || state == "error"
@@ -72,22 +72,43 @@ func (s *Service) OnJobChange(jobID int64, kind string) {
 			s.pub.changed(jobID, "", finished)
 			return
 		}
+		opts := s.ViewFor(ctx, contest, user, role == "student")
 		if kind == judgeapi.KindRun {
-			v, err := s.GetRun(ctx, id)
+			v, err := s.GetRunWith(ctx, id, opts)
 			if err == nil && s.pub.changed(jobID, fmt.Sprintf("%s/%d", v.State, runDone(v)), finished) {
 				s.Hub.Publish(user, "run", v)
 			}
 			return
 		}
-		opts := ViewOptions{Coarse: role == "student"}
 		v, err := s.GetWith(ctx, id, opts)
 		if err != nil {
+			return
+		}
+		// Exam mode: the answer to Submit already said "Submitted". Any
+		// later event would arrive when judging reached some point, and its
+		// timing is a channel on hidden tests, so nothing is sent until the
+		// window closes, except a judge failure the student must act on.
+		if opts.Hide && v.State != "error" {
+			s.pub.changed(jobID, "", finished)
 			return
 		}
 		if s.pub.changed(jobID, signature(v, opts.Coarse), finished) {
 			s.Hub.Publish(user, "submission", v)
 		}
 	}()
+}
+
+// ViewFor is how a viewer sees their own submission in a contest (0
+// outside contests): organisers see every figure; students see the coarse
+// view with their contest's rules on top.
+func (s *Service) ViewFor(ctx context.Context, contestID, userID int64, student bool) ViewOptions {
+	if !student {
+		return ViewOptions{}
+	}
+	if contestID > 0 && s.ContestView != nil {
+		return s.ContestView(ctx, contestID, userID)
+	}
+	return StudentView
 }
 
 // runDone counts a run's inputs that have a verdict.

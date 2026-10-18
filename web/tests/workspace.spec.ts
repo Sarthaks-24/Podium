@@ -1,10 +1,10 @@
 // Screen sweep and flows for the M3 workspace at /admin/problems/{id}/try.
 // Every /api/ call is answered by an in-test mock of the routes in
 // cache/v1/m3-plan.md sections 5 to 7a, one per page. GET /api/events is
-// mocked as a stream that sends what the test queued and then ends, so the
-// app's EventSource reconnects (after a jittered delay under 1.5 s) and
-// picks up the next queued event: that is how the subtask strip is seen to
-// fill step by step.
+// mocked as a response that sends what the test queued and then ends; the
+// page's EventSource is replaced (tests/sse.ts) by one that stays open and
+// reads that route again every 250 ms, so each queued event arrives in
+// turn: that is how the subtask strip is seen to fill step by step.
 //
 // The sweep saves screenshots to cache/screenshots-m3/<screen>-<width>-<theme>.png
 // at 375, 768, 1024 and 1440 px in light and dark, and checks one h1 and
@@ -13,6 +13,7 @@
 // coming back after a reload, the 429 message, offline retry with the same
 // idempotency key, keyboard shortcuts and integrity counts.
 import { expect, test, type Page, type Route } from '@playwright/test';
+import { longLivedEvents } from './sse';
 
 function shots(): string {
   return `${test.info().project.testDir}/../../cache/screenshots-m3/`;
@@ -145,6 +146,7 @@ interface MockOptions {
 
 /** Installs the API mock for one page and returns its mutable state. */
 async function mockApi(page: Page, options: MockOptions = {}) {
+  await longLivedEvents(page);
   const state = {
     draft: options.draft ? { ...options.draft, updated_at: T0 } : null as Json | null,
     submissions: structuredClone(options.submissions ?? []) as Json[],
@@ -442,7 +444,8 @@ test('the draft comes back after a reload, from this device when the server miss
 test('a newer server draft wins over an older local copy', async ({ page }) => {
   await mockApi(page, { draft: { language: 'python3', source: 'print(42)\n' } });
   await page.addInitScript(() => {
-    localStorage.setItem('podium-draft:/api/workspace/1', JSON.stringify({ language: 'cpp17', source: 'old', updated_at: 1 }));
+    localStorage.setItem('podium-last-user', '2');
+    localStorage.setItem('podium-draft:2:/api/workspace/1', JSON.stringify({ language: 'cpp17', source: 'old', updated_at: 1, owner: 2 }));
   });
   await openWorkspace(page);
   await expect.poll(() => editorText(page)).toBe('print(42)\n');
@@ -533,6 +536,52 @@ test('Escape then Tab leaves the editor while Tab indents', async ({ page }) => 
   await page.keyboard.press('Escape');
   await page.keyboard.press('Tab');
   await expect(page.locator('.cm-content')).not.toBeFocused();
+});
+
+test("a draft another account left on this device is never shown or saved", async ({ page }) => {
+  const api = await mockApi(page);
+  await page.addInitScript(() => {
+    if (sessionStorage.getItem('seeded')) return;
+    sessionStorage.setItem('seeded', '1');
+    // The last student on this lab machine, user 9, left code behind.
+    localStorage.setItem('podium-last-user', '9');
+    localStorage.setItem('podium-draft:9:/api/workspace/1', JSON.stringify({ language: 'python3', source: 'print("student nine")', updated_at: 9e15, owner: 9 }));
+    localStorage.setItem('podium-draft:/api/workspace/1', JSON.stringify({ language: 'python3', source: 'print("old shape")', updated_at: 9e15 }));
+  });
+  await openWorkspace(page);
+  expect(await editorText(page)).toContain('ios::sync_with_stdio(false);');
+  expect(await editorText(page)).not.toContain('student nine');
+  const left = await page.evaluate(() => Object.keys(localStorage).filter((k) => k.startsWith('podium-draft:')));
+  expect(left.every((k) => k.startsWith('podium-draft:2:'))).toBe(true);
+  await page.getByRole('heading', { level: 1 }).click();
+  await page.waitForTimeout(500);
+  expect(api.draftPuts.filter((b) => String(b.source).includes('student nine') || String(b.source).includes('old shape'))).toEqual([]);
+
+  // Signing out removes this account's mirror as well.
+  await page.locator('.cm-content').click();
+  await page.keyboard.type('// mine');
+  await page.waitForTimeout(600);
+  expect(await page.evaluate(() => Object.keys(localStorage).some((k) => k.startsWith('podium-draft:2:')))).toBe(true);
+  await page.getByRole('button', { name: 'Sign out' }).click();
+  await expect(page).toHaveURL(/\/signin/);
+  expect(await page.evaluate(() => Object.keys(localStorage).filter((k) => k.startsWith('podium-draft:')))).toEqual([]);
+});
+
+test('a page whose live updates moved to another tab stops and can resume', async ({ page }) => {
+  const api = await mockApi(page);
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await openWorkspace(page);
+  api.stream.push({ type: 'replaced', data: {} });
+  const notice = page.getByText('This page stopped live updates because Podium is open in another tab or window.');
+  await expect(notice).toBeVisible();
+  const after = api.connections;
+  await page.waitForTimeout(1500);
+  expect(api.connections, 'no reconnect after replaced').toBe(after);
+  await page.screenshot({ path: `${shots()}workspace-replaced-1440-light.png` });
+
+  await page.getByRole('button', { name: 'Resume here' }).click();
+  await expect(notice).toBeHidden();
+  await expect.poll(() => api.connections).toBeGreaterThan(after);
 });
 
 test('a missing problem says so', async ({ page }) => {

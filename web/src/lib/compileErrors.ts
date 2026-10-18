@@ -11,6 +11,12 @@
  *
  * The output itself is never changed: segments() splits it into plain text
  * and location parts that together spell the original exactly.
+ *
+ * Compiler output can echo a student's text, so the patterns are built to
+ * run in linear time: a file name may only start where a run of name
+ * characters starts (a lookbehind), every repeat is bounded, and only the
+ * first MAX_LINE characters of each line are searched. A 16 KB identifier
+ * costs microseconds, not a frozen tab.
  */
 
 /** A place in the student's source; lines and columns count from 1. */
@@ -30,32 +36,35 @@ interface Pattern {
 
 const num = (s: string | undefined): number | null => (s === undefined ? null : Number(s));
 
+/** Only this much of each line is searched for locations. */
+export const MAX_LINE = 2000;
+
 const CPP: Pattern = {
   // Headers such as /usr/include/c++/12/bits/stl_vector.h are not the
   // student's file, so only source extensions count.
-  re: /[\w./-]*\.(?:cpp|cc|cxx):(\d+)(?::(\d+))?/g,
+  re: /(?<![\w./-])[\w./-]{0,200}\.(?:cpp|cc|cxx):(\d{1,9})(?::(\d{1,9}))?/g,
   read: (m) => ({ line: Number(m[1]), col: num(m[2]) }),
 };
 
 const JAVA: Pattern = {
-  re: /[\w./-]*\.java:(\d+)(?::(\d+))?/g,
+  re: /(?<![\w./-])[\w./-]{0,200}\.java:(\d{1,9})(?::(\d{1,9}))?/g,
   read: (m) => ({ line: Number(m[1]), col: num(m[2]) }),
 };
 
 const PYTHON: Pattern = {
-  re: /File "([^"]*)", line (\d+)/g,
+  re: /File "([^"\n]{0,500})", line (\d{1,9})/g,
   read: (m) => (/^<|\/usr\/|\/lib\/python|site-packages/.test(m[1]) ? null : { line: Number(m[2]), col: null }),
 };
 
 // SyntaxError summaries that name a line without a File frame, such as
 // "IndentationError: unexpected indent (main.py, line 12)".
 const PYTHON_BARE: Pattern = {
-  re: /\(\w+\.py, line (\d+)\)/g,
-  read: (m) => ({ line: Number(m[1]), col: null }),
+  re: /\((\w{1,200})\.py, line (\d{1,9})\)/g,
+  read: (m) => ({ line: Number(m[2]), col: null }),
 };
 
 const NODE: Pattern = {
-  re: /[\w./-]*\.(?:js|mjs|cjs):(\d+)(?::(\d+))?/g,
+  re: /(?<![\w./-])[\w./-]{0,200}\.(?:js|mjs|cjs):(\d{1,9})(?::(\d{1,9}))?/g,
   read: (m) => ({ line: Number(m[1]), col: num(m[2]) }),
 };
 
@@ -75,13 +84,22 @@ const ALL = [CPP, JAVA, PYTHON, PYTHON_BARE, NODE];
 export function segments(output: string, language?: string): Segment[] {
   const patterns = (language && BY_LANGUAGE[language]) || ALL;
   const found: { start: number; end: number; loc: Location }[] = [];
-  for (const p of patterns) {
-    const re = new RegExp(p.re.source, p.re.flags);
-    let m: RegExpExecArray | null;
-    while ((m = re.exec(output)) !== null) {
-      const loc = p.read(m);
-      if (loc && loc.line > 0) found.push({ start: m.index, end: m.index + m[0].length, loc });
+  let lineStart = 0;
+  while (lineStart <= output.length) {
+    const nl = output.indexOf('\n', lineStart);
+    const lineEnd = nl < 0 ? output.length : nl;
+    const head = output.slice(lineStart, Math.min(lineEnd, lineStart + MAX_LINE));
+    for (const p of patterns) {
+      const re = new RegExp(p.re.source, p.re.flags);
+      let m: RegExpExecArray | null;
+      while ((m = re.exec(head)) !== null) {
+        const loc = p.read(m);
+        const start = lineStart + m.index;
+        if (loc && loc.line > 0) found.push({ start, end: start + m[0].length, loc });
+      }
     }
+    if (nl < 0) break;
+    lineStart = nl + 1;
   }
   found.sort((a, b) => a.start - b.start);
 

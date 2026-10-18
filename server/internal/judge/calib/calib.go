@@ -53,6 +53,9 @@ var Hostile = []Case{
 	// output here is empty, so seeing it means the judge followed a link.
 	{Name: "output symlinked to /proc/self/environ (C++)", Lang: "cpp17", File: "symlink_output.cpp", Want: []judge.Verdict{judge.OK}, Forbidden: "PATH="},
 	{Name: "output replaced by a FIFO (C++)", Lang: "cpp17", File: "fifo_output.cpp", Want: []judge.Verdict{judge.OK}},
+	// An unreadable output file reads as empty; a runner error here would
+	// let the program choose when the judge fails.
+	{Name: "output chmod 000 (C++)", Lang: "cpp17", File: "chmod_output.cpp", Want: []judge.Verdict{judge.OK}},
 	{Name: "endless output (Java)", Lang: "java21", File: "java_print.java", Want: []judge.Verdict{judge.OutputLimit}},
 	{Name: "endless output (Python)", Lang: "python3", File: "py_print.py", Want: []judge.Verdict{judge.OutputLimit}},
 	{Name: "fill /tmp with 16 MB files (C++)", Lang: "cpp17", File: "disk_fill.cpp", Want: []judge.Verdict{judge.MemoryLimit, judge.RuntimeError}, Time: 5 * time.Second},

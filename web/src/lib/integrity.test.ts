@@ -1,11 +1,32 @@
 import { describe, expect, it } from 'vitest';
-import { IntegrityRecorder, MAX_BATCH } from './integrity';
+import { IntegrityRecorder, MAX_BATCH, MIN_GAP_MS } from './integrity';
 
 function recorder() {
   const sent: { url: string; body: { events: { kind: string; size: number; at: number }[] } }[] = [];
   let now = 100;
-  const r = new IntegrityRecorder('/api/workspace/1/events', () => now++, (url, body) => sent.push({ url, body: JSON.parse(body) }));
-  return { r, sent };
+  const clock = { t: 1_000_000 };
+  const timers: { fn: () => void; at: number; id: number }[] = [];
+  let nextId = 1;
+  const r = new IntegrityRecorder('/api/workspace/1/events', () => now++, (url, body) => sent.push({ url, body: JSON.parse(body) }), {
+    clock: () => clock.t,
+    setTimer: (fn, ms) => {
+      timers.push({ fn, at: clock.t + ms, id: nextId });
+      return nextId++;
+    },
+    clearTimer: (id) => {
+      const i = timers.findIndex((t) => t.id === id);
+      if (i >= 0) timers.splice(i, 1);
+    },
+  });
+  /** Moves the clock on and runs the timers that are due. */
+  const advance = (ms: number) => {
+    clock.t += ms;
+    for (const t of timers.filter((x) => x.at <= clock.t)) {
+      timers.splice(timers.indexOf(t), 1);
+      t.fn();
+    }
+  };
+  return { r, sent, timers, advance };
 }
 
 describe('integrity recorder', () => {
@@ -42,10 +63,40 @@ describe('integrity recorder', () => {
     expect(sent).toHaveLength(1);
   });
 
-  it('never sends more than the batch limit in one request', () => {
-    const { r, sent } = recorder();
+  it('never sends more than the batch limit in one request, one batch per gap', () => {
+    const { r, sent, advance } = recorder();
+    // The 100th event sends a batch at once; the next 100 wait for the gap.
     for (let i = 0; i < MAX_BATCH * 2 + 5; i++) r.blur();
+    expect(sent.map((s) => s.body.events.length)).toEqual([MAX_BATCH]);
     r.flush();
+    expect(sent).toHaveLength(1);
+    advance(MIN_GAP_MS);
+    expect(sent.map((s) => s.body.events.length)).toEqual([MAX_BATCH, MAX_BATCH]);
+    advance(MIN_GAP_MS);
     expect(sent.map((s) => s.body.events.length)).toEqual([MAX_BATCH, MAX_BATCH, 5]);
+  });
+
+  it('keeps 5 s between batches, the server limit, except when the page closes', () => {
+    const { r, sent, timers, advance } = recorder();
+    r.paste(3);
+    r.flush();
+    expect(sent).toHaveLength(1);
+    // A submit two seconds later flushes again: the batch waits for the gap.
+    advance(2000);
+    r.blur();
+    r.flush();
+    r.flush();
+    expect(sent).toHaveLength(1);
+    expect(timers).toHaveLength(1);
+    advance(2999);
+    expect(sent).toHaveLength(1);
+    advance(1);
+    expect(sent).toHaveLength(2);
+    // Closing the page sends at once and leaves nothing waiting.
+    r.focus();
+    r.flush(true);
+    expect(sent).toHaveLength(3);
+    r.stop();
+    expect(timers).toHaveLength(0);
   });
 });

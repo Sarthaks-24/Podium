@@ -8,13 +8,15 @@
   problem with the best score so far), the statement with its samples, and
   the code column with the editor in the dark well over the verdict panel.
   From 768 to 1023 px, Problem and Code tabs, the verdict under the editor.
-  Under 768 px, Problem, Code and Result tabs, and the clock slot sits in
-  the title area.
+  Under 768 px, Problem, Code and Result tabs. Below 1024 px a contest
+  clock sits in a one-line strip that sticks to the top of the window, so
+  it never scrolls away (design.md 5.3); a note stays in the title area.
 
   Behaviour:
   - The draft is saved to the server every 10 s and when the editor or the
-    window loses focus, and mirrored to localStorage on every pause; on load
-    the newer of the two wins (lib/drafts.ts). An empty draft starts from
+    window loses focus, and mirrored to localStorage on every pause, under
+    the signed-in user's own key; on load the newer of the two wins
+    (lib/drafts.ts). An empty draft starts from
     the language's starter with fast input (lib/starters.ts).
   - Submit sends an idempotency key made per press and reused by Retry, so
     a retry after a lost answer never counts twice. Offline or unreachable
@@ -22,7 +24,8 @@
     sentence with the wait in seconds.
   - Results stream over GET /api/events (lib/stream.ts): reconnects with
     jitter, falls back to polling every 15 s after three failures, and
-    refetches own submissions after every reconnect. server_now on every
+    refetches own submissions after every reconnect; when another tab takes
+    over live updates, it stops and offers "Resume here". server_now on every
     response keeps the clock offset (lib/clock.ts).
   - Integrity counts (lib/integrity.ts): typed and pasted characters from
     the editor, window blur and focus, sent in batches; never in the way of
@@ -33,7 +36,18 @@
   Props: `base` (the API base, such as "/api/workspace/12"), `backHref` and
   `backLabel` (the link above the title), `note` (one line in the clock
   slot when there is no clock, optional) and `clock` (a snippet for a
-  contest clock, optional).
+  contest clock, given true when it should be one compact line, optional).
+  For contests (M4): `banner` (a snippet drawn above the title, so from
+  1024 px it never moves the editor), `rail` (a snippet given the
+  layout, drawn in place of the single-problem rail item, and under the
+  title below 1024 px), `label` (the problem letter, shown before the
+  title) and `context` (the contest title, for the document title),
+  `feedback` ("exam" shows only "Submitted" for each submission),
+  `showScores` (exam mode after the end: scores are shown), `locked` (a
+  sentence; Run and Submit are off and it says why, unless the workspace's
+  own `refusal` from the server says it better), and `extraEvents` with
+  `onevent` (further event names to listen for on the same stream; every
+  event, submissions included, is passed to `onevent`).
 -->
 <script lang="ts">
   import { onMount, tick, type Snippet } from 'svelte';
@@ -43,6 +57,7 @@
     DEFAULT_FONT_SIZE,
     FONT_SIZES,
     draftStorage,
+    mayMirror,
     mirrorKey,
     pickDraft,
     readEditorPrefs,
@@ -50,17 +65,19 @@
     writeEditorPrefs,
     writeMirror,
   } from '../lib/drafts';
+  import { keepHeadingFocus } from '../lib/focus';
   import { setTitle } from '../lib/head';
   import { FLUSH_MS, IntegrityRecorder } from '../lib/integrity';
   import { session } from '../lib/session.svelte';
   import { isStarterOrEmpty, starter } from '../lib/starters';
-  import { EventStream } from '../lib/stream';
+  import { EventStream, type StreamMode } from '../lib/stream';
   import { mergeRun, mergeSubmission, mergeSubmissions, reduceEvent, type JudgingState, type StreamEvent } from '../lib/submissionState';
   import {
     LANGUAGES,
     announcement,
     bestScore,
     firstFailure,
+    formatWhen,
     isWaiting,
     languageLabel,
     limitsText,
@@ -74,6 +91,7 @@
   import CodeEditor from './CodeEditor.svelte';
   import RunResults from './RunResults.svelte';
   import Statement from './Statement.svelte';
+  import StreamNotice from './StreamNotice.svelte';
   import SubmissionList from './SubmissionList.svelte';
   import VerdictPanel from './VerdictPanel.svelte';
 
@@ -82,16 +100,44 @@
     backHref: string;
     backLabel: string;
     note?: string;
-    clock?: Snippet;
+    clock?: Snippet<[boolean]>;
+    banner?: Snippet;
+    rail?: Snippet<[string]>;
+    label?: string;
+    context?: string;
+    feedback?: 'subtask' | 'exam';
+    showScores?: boolean;
+    locked?: string;
+    extraEvents?: readonly string[];
+    onevent?: (type: string, data: unknown) => void;
   }
 
-  let { base, backHref, backLabel, note = '', clock }: Props = $props();
+  let {
+    base,
+    backHref,
+    backLabel,
+    note = '',
+    clock,
+    banner,
+    rail,
+    label = '',
+    context = '',
+    feedback = 'subtask',
+    showScores = false,
+    locked = '',
+    extraEvents = [],
+    onevent,
+  }: Props = $props();
+
+  const exam = $derived(feedback === 'exam');
 
   /** How often the draft is saved while it changes. */
   const SAVE_MS = 10_000;
 
   const paths = $derived(workspacePaths(base));
   const storage = draftStorage();
+  // The mirror is per account (lib/drafts.ts); the shell mounts this only when signed in.
+  const owner = session.user?.id ?? 0;
   const prefs = readEditorPrefs(storage);
   const isMac = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
   const mod = isMac ? 'Cmd' : 'Ctrl';
@@ -123,7 +169,7 @@
   let notice = $state<{ action: 'submit' | 'run'; text: string; retry: boolean } | null>(null);
   let waitUntil = $state(0);
   let nowTick = $state(Date.now());
-  let streamMode = $state<'live' | 'polling' | 'connecting'>('connecting');
+  let streamMode = $state<StreamMode>('connecting');
 
   // Custom input.
   let customOpen = $state(false);
@@ -133,6 +179,16 @@
   // Layout.
   let layout = $state<'wide' | 'tablet' | 'phone'>('wide');
   let tab = $state<'problem' | 'code' | 'result'>('problem');
+
+  // The contest may allow fewer languages than the judge knows.
+  const languages = $derived.by(() => {
+    const ids = (ws?.languages ?? []).map((l) => l.id);
+    return ids.length > 0 ? LANGUAGES.filter((l) => ids.includes(l.id)) : [...LANGUAGES];
+  });
+
+  // The server says why Run and Submit are off when they are (its sentence is
+  // the precise one, such as practice opening later); `locked` is the fallback.
+  const lockText = $derived(ws?.refusal ? ws.refusal : locked);
 
   const latest = $derived(judging.submissions[0] ?? null);
   const current = $derived(
@@ -210,11 +266,16 @@
     }
     if (!alive) return;
     ws = data;
-    setTitle(`Try ${data.title}`);
+    if (label !== '') setTitle(`${label}. ${data.title}`, context);
+    else setTitle(`Try ${data.title}`);
 
-    const picked = pickDraft(data.draft, readMirror(storage, mirrorKey(base)));
-    if (picked.draft) {
+    const allowed = (data.languages ?? []).map((l) => l.id);
+    if (allowed.length > 0 && !allowed.includes(language)) language = allowed[0];
+    const picked = pickDraft(data.draft, readMirror(storage, mirrorKey(owner, base), owner));
+    if (picked.draft && (allowed.length === 0 || allowed.includes(picked.draft.language))) {
       language = picked.draft.language;
+      source = picked.draft.source;
+    } else if (picked.draft) {
       source = picked.draft.source;
     } else {
       source = starter(language);
@@ -232,7 +293,9 @@
       if (picked.origin === 'local') saveDraft();
     }
     judging = { ...judging, submissions: mergeSubmissions([], data.submissions ?? []), serverNow: data.server_now };
+    const restore = keepHeadingFocus();
     loadState = 'ready';
+    void restore();
     startStream();
   }
 
@@ -240,8 +303,11 @@
     stream?.stop();
     stream = new EventStream({
       url: '/api/events',
-      events: ['submission', 'run', 'clock'],
-      onEvent: (type, data) => onStreamEvent({ type, data } as StreamEvent),
+      events: ['submission', 'run', 'clock', ...extraEvents],
+      onEvent: (type, data) => {
+        if (type === 'submission' || type === 'run' || type === 'clock') onStreamEvent({ type, data } as StreamEvent);
+        onevent?.(type, data);
+      },
       onReconnect: refetchOwn,
       poll: pollPending,
       onMode: (m) => (streamMode = m),
@@ -294,7 +360,8 @@
   $effect(() => {
     const s = watchId !== null ? judging.submissions.find((x) => x.id === watchId) : undefined;
     if (!s) return;
-    const text = announcement(s);
+    // In exam mode only the submit itself is announced.
+    const text = exam || s.hidden ? 'Submitted.' : announcement(s);
     if (text !== announced) announced = text;
   });
 
@@ -310,7 +377,7 @@
     if (saveState === 'saved' && (source !== savedSource || language !== savedLanguage)) saveState = 'local';
     clearTimeout(mirrorTimer);
     mirrorTimer = setTimeout(() => {
-      writeMirror(storage, mirrorKey(base), { language, source, updated_at: serverClock.serverNow() });
+      mirror({ language, source, updated_at: serverClock.serverNow() });
     }, 400);
   }
 
@@ -318,7 +385,7 @@
     if (loadState !== 'ready' && saveState !== 'local') return;
     if (source === savedSource && language === savedLanguage) return;
     const body = { language, source };
-    writeMirror(storage, mirrorKey(base), { ...body, updated_at: serverClock.serverNow() });
+    mirror({ ...body, updated_at: serverClock.serverNow() });
     saveState = 'saving';
     try {
       await sendJSON<void>('PUT', paths.draft, body);
@@ -327,14 +394,26 @@
       saveState = source === savedSource && language === savedLanguage ? 'saved' : 'local';
     } catch (e) {
       if (handleSessionError(e)) return;
-      saveState = 'failed';
+      // Saved too soon after the last save: the copy here is kept and the next save sends it.
+      saveState = e instanceof ApiError && e.status === 429 ? 'local' : 'failed';
     }
   }
 
   /** The last chance to save when the page goes away; not awaited. */
+  /**
+   * Mirrors the draft on this device, only while its owner is still the
+   * signed-in user: at sign-out the shell unmounts this after the mirrors
+   * were removed, and nothing may be written back for the next person.
+   */
+  function mirror(draft: { language: Language; source: string; updated_at: number }) {
+    if (!mayMirror(owner)) return;
+    writeMirror(storage, mirrorKey(owner, base), draft, owner);
+  }
+
   function saveOnLeave() {
     if (source === savedSource && language === savedLanguage) return;
-    writeMirror(storage, mirrorKey(base), { language, source, updated_at: serverClock.serverNow() });
+    if (!mayMirror(owner)) return;
+    mirror({ language, source, updated_at: serverClock.serverNow() });
     try {
       void fetch(paths.draft, {
         method: 'PUT',
@@ -390,7 +469,7 @@
   }
 
   async function submit(retryKey?: string) {
-    if (submitBusy || loadState !== 'ready') return;
+    if (submitBusy || loadState !== 'ready' || lockText !== '') return;
     if (waitLeft > 0 && retryKey === undefined) {
       notice = { action: 'submit', text: `Wait ${waitLeft} s before submitting again.`, retry: false };
       return;
@@ -432,7 +511,7 @@
   }
 
   async function startRun(body: { language: Language; source: string; input?: string }) {
-    if (runBusy || loadState !== 'ready') return;
+    if (runBusy || loadState !== 'ready' || lockText !== '') return;
     pendingRun = body;
     notice = null;
     runBusy = true;
@@ -514,7 +593,7 @@
   }
 
   function onPageHide() {
-    integrity?.flush();
+    integrity?.flush(true);
     saveOnLeave();
   }
 
@@ -562,7 +641,8 @@
       clearInterval(secondTimer);
       clearTimeout(mirrorTimer);
       stream?.stop();
-      integrity?.flush();
+      integrity?.flush(true);
+      integrity?.stop();
       saveOnLeave();
     };
   });
@@ -591,30 +671,40 @@
     {#if layout === 'wide'}
       <aside class="rail" aria-label="Problem">
         <div class="clock-slot">
-          {#if clock}{@render clock()}{:else if note}<p class="note">{note}</p>{/if}
+          {#if clock}{@render clock(false)}{:else if note}<p class="note">{note}</p>{/if}
         </div>
-        <div class="rail-problem">
-          <span class="rail-title">{ws.title}</span>
-          <span class="mono rail-score">{best ? `${best.score} of ${best.max}` : 'Not submitted'}</span>
-          <span class="bar" aria-hidden="true">
-            <span class="bar-fill" style:width="{best && best.max > 0 ? Math.round((best.score / best.max) * 100) : 0}%"></span>
-          </span>
-        </div>
+        {#if rail}
+          {@render rail(layout)}
+        {:else}
+          <div class="rail-problem">
+            <span class="rail-title">{ws.title}</span>
+            <span class="mono rail-score">{best ? `${best.score} of ${best.max}` : 'Not submitted'}</span>
+            <span class="bar" aria-hidden="true">
+              <span class="bar-fill" style:width="{best && best.max > 0 ? Math.round((best.score / best.max) * 100) : 0}%"></span>
+            </span>
+          </div>
+        {/if}
       </aside>
     {/if}
 
     <div class="title-area">
+      {#if banner}<div class="banner-slot">{@render banner()}</div>{/if}
       <div class="title-main">
         <a class="back" href={backHref}>{backLabel}</a>
-        <h1 tabindex="-1">{ws.title}</h1>
+        <h1 tabindex="-1">{#if label}<span class="mono letter">{label}</span>{/if}{ws.title}</h1>
         <p class="limits">{limitsText(ws.time_limit_ms, ws.memory_limit_mb)}</p>
       </div>
-      {#if layout !== 'wide'}
-        <div class="clock-slot clock-inline">
-          {#if clock}{@render clock()}{:else if note}<p class="note">{note}</p>{/if}
-        </div>
+      {#if layout !== 'wide' && !clock && note}
+        <div class="clock-slot clock-inline"><p class="note">{note}</p></div>
+      {/if}
+      {#if layout !== 'wide' && rail}
+        <div class="rail-inline">{@render rail(layout)}</div>
       {/if}
     </div>
+
+    {#if layout !== 'wide' && clock}
+      <div class="clock-bar">{@render clock(true)}</div>
+    {/if}
 
     {#if layout !== 'wide'}
       <div class="tabs" role="tablist" aria-label="Workspace">
@@ -662,16 +752,17 @@
         <div class="toolbar">
           <label class="visually-hidden" for="ws-language">Language</label>
           <select id="ws-language" class="select lang" value={language} onchange={onLanguageChange}>
-            {#each LANGUAGES as l (l.id)}<option value={l.id}>{l.label}</option>{/each}
+            {#each languages as l (l.id)}<option value={l.id}>{l.label}</option>{/each}
           </select>
           <label class="visually-hidden" for="ws-font">Font size</label>
           <select id="ws-font" class="select font" value={fontSize} onchange={onFontChange}>
             {#each FONT_SIZES as size (size)}<option value={size}>{size} px</option>{/each}
           </select>
           <span class="spacer"></span>
-          <button type="button" class="btn btn-secondary" disabled={runBusy} onclick={runSamples}>Run on samples</button>
-          <button type="button" class="btn btn-primary" disabled={submitBusy} onclick={() => submit()}>Submit</button>
+          <button type="button" class="btn btn-secondary" disabled={runBusy || lockText !== ''} onclick={runSamples}>Run on samples</button>
+          <button type="button" class="btn btn-primary" disabled={submitBusy || lockText !== ''} onclick={() => submit()}>Submit</button>
         </div>
+        {#if lockText}<p class="locked">{lockText}</p>{/if}
 
         <div class="editor-box">
           <CodeEditor
@@ -741,9 +832,7 @@
         {#if waitLeft > 0 && !notice}
           <p class="muted small">You can submit again in {waitLeft} s.</p>
         {/if}
-        {#if streamMode === 'polling'}
-          <p class="muted small">Live updates are paused. Checking for results every 15 s.</p>
-        {/if}
+        <StreamNotice mode={streamMode} onresume={() => stream?.resume()} />
 
         {#if view === 'run' && judging.run}
           <div class="block">
@@ -752,6 +841,16 @@
             {#if current}
               <button type="button" class="btn btn-quiet btn-compact switch" onclick={() => (view = 'submission')}>Show the latest submission</button>
             {/if}
+          </div>
+        {:else if current && (exam || current.hidden)}
+          <div class="block">
+            <h2 class="block-title">Latest submission</h2>
+            <p class="headline-exam">Submitted</p>
+            <p class="muted small">
+              {formatWhen(current.created_at)}, {languageLabel(current.language)}.
+              {#if showScores && current.state === 'done'}Score <span class="mono">{current.score} of {current.max_score}</span>.{:else}Scores
+                appear after the contest.{/if}
+            </p>
           </div>
         {:else if current}
           <div class="block">
@@ -770,7 +869,7 @@
 
         <div class="block">
           <h2 class="block-title">Your submissions</h2>
-          <SubmissionList submissions={judging.submissions} onjump={jump} />
+          <SubmissionList submissions={judging.submissions} onjump={jump} {exam} {showScores} />
         </div>
       </section>
     </div>
@@ -826,6 +925,28 @@
     font-size: var(--fs-0);
   }
 
+  .letter {
+    margin-right: var(--space-3);
+    color: var(--ink-muted);
+    font-weight: 400;
+  }
+
+  .rail-inline {
+    flex-basis: 100%;
+    min-width: 0;
+  }
+
+  .locked {
+    padding-bottom: var(--space-2);
+    color: var(--ink-muted);
+    font-size: var(--fs-0);
+  }
+
+  .headline-exam {
+    font-size: var(--fs-2);
+    font-weight: 600;
+  }
+
   .clock-slot:empty {
     display: none;
   }
@@ -833,6 +954,26 @@
   .note {
     color: var(--ink-muted);
     font-size: var(--fs-0);
+  }
+
+  .banner-slot {
+    flex-basis: 100%;
+    min-width: 0;
+  }
+
+  .banner-slot:empty {
+    display: none;
+  }
+
+  /* Below 1024 px the contest clock sticks to the top of the window. */
+  .clock-bar {
+    position: sticky;
+    top: 0;
+    z-index: 5;
+    margin-top: var(--space-3);
+    padding-block: var(--space-2);
+    border-bottom: var(--rule) solid var(--line);
+    background: var(--paper);
   }
 
   .clock-inline {

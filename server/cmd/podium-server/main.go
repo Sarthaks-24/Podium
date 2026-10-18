@@ -18,6 +18,7 @@ import (
 
 	"github.com/Sarthaks-24/podium/internal/auth"
 	"github.com/Sarthaks-24/podium/internal/config"
+	"github.com/Sarthaks-24/podium/internal/contests"
 	"github.com/Sarthaks-24/podium/internal/db"
 	"github.com/Sarthaks-24/podium/internal/events"
 	"github.com/Sarthaks-24/podium/internal/httpapi"
@@ -102,15 +103,28 @@ func run(envFile string) error {
 		judgeapi.KindSubmit:   submissions.SubmitKind{},
 		judgeapi.KindRun:      submissions.RunKind{},
 	}}
+	// Outputs a generate job's worker uploaded but nothing used are deleted
+	// when the job closes or its lease is swept.
+	jobSvc.Discard = func(shas []string) {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		blobs.DiscardUnrecorded(ctx, database, shas)
+	}
 	problemSvc := &problems.Service{DB: database, Blobs: blobs, Jobs: jobSvc}
 	hub := &events.Hub{}
 	submissionSvc := &submissions.Service{DB: database, Jobs: jobSvc, Problems: problemSvc, Hub: hub, HashKey: cfg.SessionSecret}
-	jobSvc.OnChange = submissionSvc.OnJobChange
+	contestSvc := &contests.Service{DB: database, Problems: problemSvc, Hub: hub}
+	submissionSvc.ContestView = contestSvc.ViewFor
+	jobSvc.OnChange = func(jobID int64, kind string) {
+		submissionSvc.OnJobChange(jobID, kind)
+		contestSvc.OnJobChange(jobID, kind)
+	}
 	go sweepJobs(ctx, jobSvc, log)
+	go retainIntegrity(ctx, contestSvc, log)
 	handler := httpapi.New(httpapi.Deps{
 		DB: database, Log: log, WebApp: webui.Handler(),
 		Auth: authSvc, IdP: provider, BaseURL: cfg.BaseURL, SessionSecret: cfg.SessionSecret,
-		Problems: problemSvc, Submissions: submissionSvc, Hub: hub, Mode: string(cfg.Mode),
+		Problems: problemSvc, Submissions: submissionSvc, Hub: hub, Contests: contestSvc, Mode: string(cfg.Mode),
 	})
 	srv := &http.Server{
 		BaseContext:       func(net.Listener) context.Context { return base },
@@ -178,6 +192,25 @@ func sweepJobs(ctx context.Context, j *jobs.Service, log *slog.Logger) {
 			log.Warn("job sweep failed", "err", err)
 		case requeued > 0 || failed > 0:
 			log.Warn("judge leases expired", "requeued", requeued, "failed", failed)
+		}
+	}
+}
+
+// retainIntegrity applies the integrity retention rule (D47: evidence is
+// deleted 180 days after a contest ends) at start-up and every 12 hours.
+func retainIntegrity(ctx context.Context, c *contests.Service, log *slog.Logger) {
+	t := time.NewTicker(12 * time.Hour)
+	defer t.Stop()
+	for {
+		if events, subs, err := c.Retain(ctx); err != nil && ctx.Err() == nil {
+			log.Warn("integrity retention failed", "err", err)
+		} else if events > 0 || subs > 0 {
+			log.Info("integrity data past retention removed", "events", events, "submissions", subs)
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
 		}
 	}
 }

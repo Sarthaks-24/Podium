@@ -2,10 +2,16 @@ package problems
 
 import (
 	"context"
+	"crypto/sha256"
 	"database/sql"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
+	"net/http"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -290,12 +296,74 @@ func (k GenerateKind) Finish(ctx context.Context, tx *sql.Tx, job *jobs.Job) err
 	return svc.save(ctx, tx, p)
 }
 
-// UploadOutput stores an output a generate job's worker sends, after
-// checking that it hashes to want.
-func (b Blobs) UploadOutput(data []byte, want string) error {
-	if got := SHA(data); got != want {
-		return fmt.Errorf("output hash %s does not match the name %s", got[:12], want[:min(12, len(want))])
+// ErrUploadTooLarge means an upload passed its size cap.
+var ErrUploadTooLarge = errors.New("upload too large")
+
+// ErrUploadHash means an upload does not hash to its name.
+var ErrUploadHash = errors.New("upload does not match its hash")
+
+// UploadOutput stores an output a generate job's worker sends, streamed
+// to a temporary file in the blob directory while it is hashed, and
+// renamed into place only if it hashes to want and is at most maxBytes.
+// Nothing is held in memory, so concurrent uploads cost disk, not RAM.
+func (b Blobs) UploadOutput(r io.Reader, want string, maxBytes int64) error {
+	if !judgeapi.ValidSHA(want) {
+		return ErrUploadHash
 	}
-	_, err := b.Write(data)
-	return err
+	p := b.path(want)
+	if err := os.MkdirAll(filepath.Dir(p), 0o750); err != nil {
+		return err
+	}
+	tmp, err := os.CreateTemp(filepath.Dir(p), ".upload-*")
+	if err != nil {
+		return err
+	}
+	keep := false
+	defer func() {
+		if !keep {
+			os.Remove(tmp.Name())
+		}
+	}()
+	h := sha256.New()
+	n, err := io.Copy(io.MultiWriter(tmp, h), io.LimitReader(r, maxBytes+1))
+	if cerr := tmp.Close(); err == nil {
+		err = cerr
+	}
+	if err != nil {
+		var tooBig *http.MaxBytesError
+		if errors.As(err, &tooBig) {
+			return ErrUploadTooLarge
+		}
+		return err
+	}
+	if n > maxBytes {
+		return ErrUploadTooLarge
+	}
+	if hex.EncodeToString(h.Sum(nil)) != want {
+		return ErrUploadHash
+	}
+	if _, err := os.Stat(p); err == nil {
+		return nil // already stored: same content
+	}
+	if err := os.Rename(tmp.Name(), p); err != nil {
+		return err
+	}
+	keep = true
+	return nil
+}
+
+// DiscardUnrecorded deletes uploaded files that no problem ended up using:
+// those not in the blobs table. Generate jobs record the outputs they
+// apply; anything else a worker uploaded is an orphan.
+func (b Blobs) DiscardUnrecorded(ctx context.Context, db *sql.DB, shas []string) {
+	for _, sha := range shas {
+		if !judgeapi.ValidSHA(sha) {
+			continue
+		}
+		var n int
+		if err := db.QueryRowContext(ctx, "SELECT count(*) FROM blobs WHERE sha = ?", sha).Scan(&n); err != nil || n > 0 {
+			continue
+		}
+		os.Remove(b.path(sha))
+	}
 }

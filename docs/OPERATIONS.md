@@ -184,17 +184,42 @@ Checked by the server before anything is queued. Every refusal is `429` with the
 
 | Limit | Value | Applies to |
 |---|---|---|
-| Pending submissions | one per user per problem | Submit |
-| Gap between submits | 5 s per user, across problems | Submit by organisers trying a problem (contests set their own in M4) |
+| Pending submissions | one per user per problem (a queued rejudge does not count); not in exam mode, where a new submission queues behind the pending one | Submit |
+| Heavy reads | 10 a second per user, bursts of 20 | the contest list and page, the contest workspace, the standings, the organisers' workspace |
+| Gap between submits | 5 s per user, across problems, for organisers trying a problem; in a contest, its `min_gap_s` (default 30 s) | Submit |
+| Submissions per problem | the contest's `max_per_problem` (default 15); none for practice | Submit in a contest (`400`) |
 | Pending runs | one per user, across problems | Run |
 | Gap between runs | 2 s per user | Run |
+| Draft saves | one per user every 2 s | drafts |
 | Code | 64 KB, UTF-8 | Run, Submit, drafts |
 | Custom input | 64 KB | Run |
 | Request body | 160 KB | Run, Submit, drafts |
-| Integrity events | 100 per request; after 5,000 per user per problem, more are dropped | the editor's paste, blur and focus events |
-| Event streams | 4 per user (a fifth replaces the oldest), 5,000 in total (then `503`, and the page polls) | `GET /api/events` |
+| Integrity events | one batch per user every 5 s, 100 per request; after 5,000 per user per problem, more are dropped | the editor's paste, blur and focus events |
+| Clarifications | 5 unanswered questions per student per contest (`400`) | Ask |
+| Event streams | 4 per user (a fifth replaces the oldest, which is told and stops reconnecting), 5,000 in total (then `503`, and the page polls) | `GET /api/events` |
 
-A retried Submit with the same `client_key` returns the first submission and is not counted again, so a flaky network does not trip these limits. None of them is configurable yet.
+A retried Submit with the same `client_key` returns the first submission and is not counted again, so a flaky network does not trip these limits. Only the contest limits are configurable, per contest in its settings.
+
+## Running a contest
+
+All of this is in the contest's live console in the web app; the routes are in `docs/API.md`, "Contests: organisers".
+
+**Before.** Add validated problems (each is pinned to the version you validated; owners and admins only), upload the roster (CSV with a header row naming at least `email`; `name`, `roll_number` and `section` are optional) if access is by roster, add co-organisers by email (they must have signed in once), then publish (owners and admins only). Co-organisers run the contest but do not see the problem bank, and their own tries get the student view. An upload replaces the whole roster: anyone left out of the new file loses access at once, and the answer says how many were added and removed, so check those numbers when changing the roster of a live contest. Publishing refuses a problem that changed since it was added. Graded contests default to a fixed start (D47); the honour code students accept lists what is recorded and for how long.
+
+**During.**
+
+| Situation | Action | Effect |
+|---|---|---|
+| A test or the checker is wrong | Pause, fix the problem, validate it, add it to the contest again, Rejudge the problem, Resume | Pause holds the contest's submissions in the queue (nothing is lost; students can keep submitting). Until the problem is added again, run and submit on it answer "This problem is being updated by the organisers." Rejudge re-runs every submission of the problem at priority 50 with the new tests, including those still waiting for the judge on the old tests; the board recomputes as results arrive (at most every 2 s). Pressing it twice adds nothing. |
+| One submission looks wrongly judged | Rejudge that submission | Only it is judged again. |
+| Lost time for everyone (power cut, network) | Extend by N minutes | Everyone's end moves; open pages get the new end at once. Extensions add up. |
+| One student lost time (crashed laptop, accommodation) | Set their extension (0 removes it) | Only their end moves; give a reason for the record. |
+| A question many students will have | Answer it and make it public, or post an announcement | Arrives on every open page as a banner. |
+| The judge is behind | Watch `judging_remaining` on the board and the feed | Setter work (validation, generation) is limited to one lane while a graded contest is live; runs never take every lane from submissions. |
+
+**After.** Students see the frozen board from the freeze until everyone's time is up (including personal extensions), then the full board. To keep the result for a projector walk, turn on "Hold the reveal" before the end: students stay on the frozen board until you choose Reveal. The reveal screen opens once every window has closed. Export the results as CSV (spreadsheet-safe: cells that would start a formula get a leading `'`) or JSON. Publish the editorial when ready; students see it, and practice opens, only once every student's time is up (including personal extensions). Clone a contest to run it again with new dates.
+
+**Retention.** Integrity evidence (paste and focus events, second sessions, each submission's typed and pasted counts and client hash) is deleted 180 days after a contest ended for everyone (D47). The server applies this at start-up and every 12 hours and logs `integrity data past retention removed` with counts. Scores, submissions and code are kept.
 
 ## Event stream behind Caddy
 
@@ -249,6 +274,10 @@ Upgrading to M3 from M2:
 
 1. `sudo ./install.sh app`, then `sudo systemctl restart podium-server podium-judge`. Migration `0004_submissions.sql` runs on start; the judge creates `compiled/` in its cache directory. No new variables.
 2. Reset any database created before M3. Migrations `0003_problems.sql` and `0004_submissions.sql` were changed before the first release (outputs may be missing, new job kinds), and a migration that already ran is never run again, so an older database keeps the old tables and judging fails on it. Stop the server and delete the database with its `-wal` and `-shm` files: `data/podium.db` for `make dev`, `/var/tmp/podium-dev` for `make dev-test`, `/var/lib/podium/db/podium.db` on a VM that ran a pre-release build. Then re-import problems from their packs.
+
+Upgrading to M4 from M3:
+
+1. `sudo ./install.sh app`, then `sudo systemctl restart podium-server podium-judge`. Migration `0005_contests.sql` runs on start. No new variables.
 
 ## Backups
 

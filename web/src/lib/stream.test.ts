@@ -116,7 +116,59 @@ describe('event stream', () => {
     h.sources[3].open();
     expect(h.modes.at(-1)).toBe('live');
     expect(h.reconnects()).toBe(1);
+    // Only the 30 s stability timer is left.
+    expect(h.timers.map((t) => t.ms)).toEqual([30_000]);
+  });
+
+  it('keeps the backoff growing when a stream is dropped soon after it opens', () => {
+    const h = harness();
+    h.stream.start();
+    h.sources[0].open();
+    h.sources[0].fail();
+    expect(h.timers.map((t) => t.ms)).toEqual([750]);
+    h.fire();
+    h.sources[1].open();
+    h.sources[1].fail();
+    // Second failure in a row: the delay doubled instead of starting again.
+    expect(h.timers.map((t) => t.ms)).toEqual([1500]);
+    h.fire();
+    h.sources[2].open();
+    h.sources[2].fail();
+    expect(h.modes.at(-1)).toBe('polling');
+  });
+
+  it('resets the backoff once a stream stays open for 30 s', () => {
+    const h = harness();
+    h.stream.start();
+    h.sources[0].open();
+    h.sources[0].fail();
+    h.fire();
+    h.sources[1].open();
+    expect(h.timers.map((t) => t.ms)).toEqual([30_000]);
+    h.fire();
+    h.sources[1].fail();
+    expect(h.timers.map((t) => t.ms)).toEqual([750]);
+  });
+
+  it('stops for good when replaced by a newer tab, and resumes on request', () => {
+    const h = harness();
+    h.stream.start();
+    h.sources[0].open();
+    h.sources[0].send('replaced', {});
+    expect(h.sources[0].closed).toBe(true);
+    expect(h.modes.at(-1)).toBe('replaced');
     expect(h.timers).toHaveLength(0);
+    // A late error from the dropped source changes nothing.
+    h.sources[0].fail();
+    expect(h.timers).toHaveLength(0);
+    expect(h.sources).toHaveLength(1);
+    expect(h.polls()).toBe(0);
+
+    h.stream.resume();
+    expect(h.sources).toHaveLength(2);
+    h.sources[1].open();
+    expect(h.modes.at(-1)).toBe('live');
+    expect(h.reconnects()).toBe(1);
   });
 
   it('stops every timer and the source on stop', () => {

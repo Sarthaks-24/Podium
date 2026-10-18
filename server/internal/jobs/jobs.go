@@ -6,7 +6,10 @@
 // results into an outcome. Leases are secrets handed to the worker and
 // stored only as hashes. A lease that is not renewed within LeaseTTL
 // returns the job to the queue and the third expiry fails it; a job still
-// running at its deadline fails even if its worker keeps renewing.
+// running at its deadline fails even if its worker keeps renewing. Two
+// contest rules apply at claim (M4): jobs of a paused contest wait, and
+// while a graded contest is live at most one validation or generation job
+// is leased at a time.
 package jobs
 
 import (
@@ -116,10 +119,19 @@ type Service struct {
 	// outside the transaction, so watchers (the live event stream) can
 	// read the new state. It must not block.
 	OnChange func(jobID int64, kind string)
+	// Discard, when set, receives the outputs a job's worker uploaded once
+	// the job closed or its lease was swept, if no other open job holds
+	// them; it deletes those nothing ended up using.
+	Discard func(shas []string)
 
 	mu      sync.Mutex
 	blobs   map[int64]map[string]bool // job id -> downloadable hashes, while leased
 	uploads map[int64]map[string]bool // job id -> hashes its worker uploaded
+	// reserved counts uploads in flight per job (MayUpload to RecordUpload).
+	reserved map[int64]int
+	// lastRun is set when the latest claim was a run, so the next claim
+	// prefers a waiting submission (runs never starve submissions).
+	lastRun bool
 }
 
 func (s *Service) now() time.Time {
@@ -174,12 +186,38 @@ func (s *Service) Claim(ctx context.Context, req judgeapi.ClaimRequest) (*judgea
 	}
 	defer tx.Rollback()
 
+	now := s.now()
+	known, err = s.contestGate(ctx, tx, known, now)
+	if err != nil {
+		return nil, err
+	}
+	if len(known) == 0 {
+		return nil, nil
+	}
 	var c judgeapi.Claim
 	var payload string
 	var deadline sql.NullInt64
-	q := `SELECT id, kind, payload, deadline_at FROM jobs WHERE state = 'queued' AND kind IN (?` + strings.Repeat(", ?", len(known)-1) + `)
-		ORDER BY priority, id LIMIT 1`
-	err = tx.QueryRowContext(ctx, q, known...).Scan(&c.JobID, &c.Kind, &payload, &deadline)
+	// Jobs of a paused contest wait in the queue (judging paused, nothing
+	// lost); everything behind them still runs.
+	pick := func(kinds []any) error {
+		q := `SELECT id, kind, payload, deadline_at FROM jobs WHERE state = 'queued' AND kind IN (?` + strings.Repeat(", ?", len(kinds)-1) + `)
+			AND (contest_id IS NULL OR NOT EXISTS (SELECT 1 FROM contests c WHERE c.id = jobs.contest_id AND c.paused = 1))
+			ORDER BY priority, id LIMIT 1`
+		return tx.QueryRowContext(ctx, q, kinds...).Scan(&c.JobID, &c.Kind, &payload, &deadline)
+	}
+	// Runs outrank submissions, so students pressing Run could starve
+	// judging. After a run, the next claim takes other work first when any
+	// is waiting: at least every other claim goes to a submission.
+	err = sql.ErrNoRows
+	s.mu.Lock()
+	afterRun := s.lastRun
+	s.mu.Unlock()
+	if others := withoutKind(known, judgeapi.KindRun); afterRun && len(others) > 0 && len(others) < len(known) {
+		err = pick(others)
+	}
+	if errors.Is(err, sql.ErrNoRows) {
+		err = pick(known)
+	}
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
@@ -188,7 +226,6 @@ func (s *Service) Claim(ctx context.Context, req judgeapi.ClaimRequest) (*judgea
 	}
 	kind := s.Kinds[c.Kind]
 	lease := newLease()
-	now := s.now()
 	if !deadline.Valid {
 		deadline.Int64 = now.Add(kind.MaxDuration(json.RawMessage(payload))).UnixMilli()
 	}
@@ -201,11 +238,63 @@ func (s *Service) Claim(ctx context.Context, req judgeapi.ClaimRequest) (*judgea
 	if err := tx.Commit(); err != nil {
 		return nil, err
 	}
+	s.mu.Lock()
+	s.lastRun = c.Kind == judgeapi.KindRun
+	s.mu.Unlock()
 	s.changed(c.JobID, c.Kind)
 	c.Lease = lease
 	c.LeaseSeconds = judgeapi.LeaseSeconds
 	c.Payload = json.RawMessage(payload)
 	return &c, nil
+}
+
+func withoutKind(kinds []any, drop string) []any {
+	out := make([]any, 0, len(kinds))
+	for _, k := range kinds {
+		if k.(string) != drop {
+			out = append(out, k)
+		}
+	}
+	return out
+}
+
+// heavyKinds are the setters' jobs that run a problem's whole test set.
+var heavyKinds = map[string]bool{judgeapi.KindValidate: true, judgeapi.KindGenerate: true}
+
+// contestGate drops validation and generation from the kinds a worker may
+// claim while a graded contest is live and one such job is already leased,
+// so setters' work never takes more than one lane from students' judging
+// during a contest (m4-plan section 2). A contest is live from its start
+// to its close plus the longest personal extension.
+func (s *Service) contestGate(ctx context.Context, tx *sql.Tx, kinds []any, now time.Time) ([]any, error) {
+	asksHeavy := false
+	for _, k := range kinds {
+		if heavyKinds[k.(string)] {
+			asksHeavy = true
+		}
+	}
+	if !asksHeavy {
+		return kinds, nil
+	}
+	var live, leased int
+	ms := now.UnixMilli()
+	if err := tx.QueryRowContext(ctx, `SELECT
+		EXISTS (SELECT 1 FROM contests c WHERE c.graded = 1 AND c.published = 1 AND c.archived = 0 AND c.starts_at <= ?
+			AND c.ends_at + 60000 * (c.extended_minutes + coalesce((SELECT max(minutes) FROM contest_extensions e WHERE e.contest_id = c.id), 0)) > ?),
+		(SELECT count(*) FROM jobs WHERE state = 'leased' AND kind IN (?, ?))`,
+		ms, ms, judgeapi.KindValidate, judgeapi.KindGenerate).Scan(&live, &leased); err != nil {
+		return nil, err
+	}
+	if live == 0 || leased == 0 {
+		return kinds, nil
+	}
+	out := kinds[:0:0]
+	for _, k := range kinds {
+		if !heavyKinds[k.(string)] {
+			out = append(out, k)
+		}
+	}
+	return out, nil
 }
 
 // leased checks a lease inside tx and returns the job's kind and payload.
@@ -270,7 +359,11 @@ type Uploader interface {
 }
 
 // MayUpload reports whether the worker holding jobID's lease may upload a
-// file: only for a leased job whose kind accepts uploads.
+// file: only for a leased job whose kind accepts uploads, with a slot left
+// in its budget. A true answer reserves the slot, so concurrent uploads
+// under one lease cannot all pass the check before any is recorded; the
+// caller must follow with RecordUpload on success or ReleaseUpload on
+// failure.
 func (s *Service) MayUpload(ctx context.Context, jobID int64, lease string) (bool, error) {
 	tx, err := s.DB.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
 	if err != nil {
@@ -290,13 +383,22 @@ func (s *Service) MayUpload(ctx context.Context, jobID int64, lease string) (boo
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return len(s.uploads[jobID]) < u.MaxUploads(payload), nil
+	if len(s.uploads[jobID])+s.reserved[jobID] >= u.MaxUploads(payload) {
+		return false, nil
+	}
+	if s.reserved == nil {
+		s.reserved = map[int64]int{}
+	}
+	s.reserved[jobID]++
+	return true, nil
 }
 
-// RecordUpload notes a file a job's worker sent, so reports may name it.
+// RecordUpload turns a reserved slot into a file a job's worker sent, so
+// reports may name it.
 func (s *Service) RecordUpload(jobID int64, sha string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	s.release(jobID)
 	if s.uploads == nil {
 		s.uploads = map[int64]map[string]bool{}
 	}
@@ -304,6 +406,23 @@ func (s *Service) RecordUpload(jobID int64, sha string) {
 		s.uploads[jobID] = map[string]bool{}
 	}
 	s.uploads[jobID][sha] = true
+}
+
+// ReleaseUpload gives back a slot reserved by MayUpload when the upload
+// failed.
+func (s *Service) ReleaseUpload(jobID int64) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.release(jobID)
+}
+
+// release drops one reservation; s.mu must be held.
+func (s *Service) release(jobID int64) {
+	if s.reserved[jobID] > 1 {
+		s.reserved[jobID]--
+	} else {
+		delete(s.reserved, jobID)
+	}
 }
 
 // checkUploads refuses output hashes a job's worker did not upload.
@@ -375,8 +494,49 @@ func (s *Service) Report(ctx context.Context, r judgeapi.Report) error {
 	if err := tx.Commit(); err != nil {
 		return err
 	}
+	s.dropUploads(r.JobID)
 	s.changed(r.JobID, kindName)
 	return nil
+}
+
+// dropUploads forgets the files the jobs' workers uploaded and hands the
+// ones no other open job holds to Discard, which deletes those that ended
+// up unused. Called after the transaction that closed or requeued the jobs
+// has committed, so whatever Finish recorded is visible.
+func (s *Service) dropUploads(jobIDs ...int64) {
+	s.mu.Lock()
+	var gone []string
+	for _, id := range jobIDs {
+		for sha := range s.uploads[id] {
+			gone = append(gone, sha)
+		}
+		delete(s.uploads, id)
+	}
+	held := map[string]bool{}
+	for _, set := range s.uploads {
+		for sha := range set {
+			held[sha] = true
+		}
+	}
+	s.mu.Unlock()
+	var orphans []string
+	for _, sha := range gone {
+		if !held[sha] {
+			orphans = append(orphans, sha)
+		}
+	}
+	if len(orphans) > 0 && s.Discard != nil {
+		s.Discard(orphans)
+	}
+}
+
+// Cancel ends an unfinished job inside tx without running its kind's
+// Finish: a rejudge replaced it. A worker still holding it gets 409 on its
+// next report and drops it.
+func (s *Service) Cancel(ctx context.Context, tx *sql.Tx, id int64, reason string) error {
+	_, err := tx.ExecContext(ctx, `UPDATE jobs SET state = 'failed', error = ?, lease_hash = NULL, lease_expires_at = NULL,
+		finished_at = ? WHERE id = ? AND state IN ('queued', 'leased')`, reason, s.now().UnixMilli(), id)
+	return err
 }
 
 func (s *Service) changed(jobID int64, kind string) {
@@ -422,7 +582,6 @@ func (s *Service) close(ctx context.Context, tx *sql.Tx, job *Job, now time.Time
 		job.State, job.Error, string(job.Result.Summary), now.UnixMilli(), job.ID)
 	s.mu.Lock()
 	delete(s.blobs, job.ID)
-	delete(s.uploads, job.ID)
 	s.mu.Unlock()
 	return err
 }
@@ -503,11 +662,11 @@ func (s *Service) Sweep(ctx context.Context) (requeued, failed int64, err error)
 	if err := tx.Commit(); err != nil {
 		return 0, 0, err
 	}
-	s.mu.Lock()
+	ids := make([]int64, 0, len(touched))
 	for _, t := range touched {
-		delete(s.uploads, t[0].(int64))
+		ids = append(ids, t[0].(int64))
 	}
-	s.mu.Unlock()
+	s.dropUploads(ids...)
 	for _, t := range touched {
 		s.changed(t[0].(int64), t[1].(string))
 	}

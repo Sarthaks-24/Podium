@@ -19,6 +19,19 @@ function stubFetch(handler: (path: string, init?: RequestInit) => Response | Pro
   return fn;
 }
 
+function fakeStorage() {
+  const data = new Map<string, string>();
+  return {
+    getItem: (k: string) => data.get(k) ?? null,
+    setItem: (k: string, v: string) => void data.set(k, v),
+    removeItem: (k: string) => void data.delete(k),
+    key: (i: number) => [...data.keys()][i] ?? null,
+    get length() {
+      return data.size;
+    },
+  };
+}
+
 function json(status: number, body: unknown): Response {
   return new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
 }
@@ -41,6 +54,17 @@ describe('loadSession', () => {
     expect(fn.mock.calls[0][0]).toBe('/api/me');
     expect(session.status).toBe('signed-in');
     expect(session.user).toEqual(student);
+  });
+
+  it('removes the mirrors of another account when a different user signs in', async () => {
+    const store = fakeStorage();
+    vi.stubGlobal('localStorage', store);
+    store.setItem('podium-last-user', '9');
+    store.setItem('podium-draft:9:/api/workspace/1', '{"source":"secret"}');
+    stubFetch(() => json(200, student));
+    await loadSession();
+    expect(store.getItem('podium-draft:9:/api/workspace/1')).toBeNull();
+    expect(store.getItem('podium-last-user')).toBe('2');
   });
 
   it("adopts the account's display preferences", async () => {
@@ -99,6 +123,19 @@ describe('signOut', () => {
     stubFetch(() => new Response(null, { status: 204 }));
     await signOut();
     expect(preferences.current).toEqual({ theme: 'system', verdicts: 'standard' });
+  });
+
+  it('removes every local draft mirror, so the next person never sees them', async () => {
+    const store = fakeStorage();
+    vi.stubGlobal('localStorage', store);
+    store.setItem('podium-draft:2:/api/workspace/1', '{"source":"secret"}');
+    store.setItem('podium-editor-font', '16');
+    session.status = 'signed-in';
+    session.user = student;
+    stubFetch(() => new Response(null, { status: 204 }));
+    await signOut();
+    expect(store.getItem('podium-draft:2:/api/workspace/1')).toBeNull();
+    expect(store.getItem('podium-editor-font')).toBe('16');
   });
 
   it('clears the session even when the request fails', async () => {

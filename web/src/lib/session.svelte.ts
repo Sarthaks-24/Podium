@@ -6,9 +6,12 @@
  * returns the error so the shell can say what happened. A loaded session
  * brings the account's display preferences with it. signOut() ends the
  * session on the server, returns the display to the defaults (the next
- * person at a shared machine starts fresh) and goes to the sign-in page.
+ * person at a shared machine starts fresh), removes every local draft
+ * mirror (lib/drafts.ts), and goes to the sign-in page. Signing in as a
+ * different account from the last one on this device also removes them.
  */
 import { ApiError, getJSON, sendJSON } from './api';
+import { forgetDraftsAtSignOut, noteSignedInUser } from './drafts';
 import { adoptAccountPreferences, resetPreferences } from './preferences.svelte';
 import { navigate } from './router.svelte';
 
@@ -48,6 +51,7 @@ export function displayName(user: Pick<User, 'name' | 'email'>): string {
 export async function loadSession(): Promise<ApiError | null> {
   try {
     const user = await getJSON<User>('/api/me');
+    noteSignedInUser(user.id);
     session.user = user;
     session.status = 'signed-in';
     adoptAccountPreferences(user.theme, user.verdicts);
@@ -74,6 +78,7 @@ export async function signOut(): Promise<ApiError | null> {
   session.user = undefined;
   session.status = 'signed-out';
   resetPreferences();
+  forgetDraftsAtSignOut();
   navigate('/signin');
   return failure;
 }

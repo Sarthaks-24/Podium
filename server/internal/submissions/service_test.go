@@ -313,7 +313,7 @@ func TestGenerateFillsMissingOutputs(t *testing.T) {
 			continue
 		}
 		sha := problems.SHA(out)
-		if err := r.bank.Blobs.UploadOutput(out, sha); err != nil {
+		if err := r.bank.Blobs.UploadOutput(bytes.NewReader(out), sha, 1<<24); err != nil {
 			t.Fatal(err)
 		}
 		r.jobs.RecordUpload(c.JobID, sha)
@@ -332,7 +332,7 @@ func TestGenerateFillsMissingOutputs(t *testing.T) {
 	if !strings.Contains(probs, "Test 4 has no expected output") || strings.Contains(probs, "Test 1 has no expected output") {
 		t.Errorf("after generation: %s", probs)
 	}
-	if err := r.bank.Blobs.UploadOutput([]byte("x"), problems.SHA([]byte("y"))); err == nil {
+	if err := r.bank.Blobs.UploadOutput(strings.NewReader("x"), problems.SHA([]byte("y")), 1<<24); err == nil {
 		t.Error("an upload with the wrong hash was stored")
 	}
 }

@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/fs"
 	"math"
 	"os"
 	"path/filepath"
@@ -234,28 +233,41 @@ func (r *Runner) Execute(ctx context.Context, box int, prog Program, timeLimit t
 }
 
 // copyBoxOutput copies at most capBytes of a box file to dst and returns the
-// number of bytes copied. A missing or non-regular source yields an empty
-// dst.
+// number of bytes copied. The box file belongs to the sandboxed program, so
+// anything wrong with it is the program's output, never a judge failure: a
+// missing, non-regular or unreadable source (the program may chmod its own
+// stdout to 000) yields an empty dst, and a read that fails part way keeps
+// what was read. Otherwise a program could turn a chosen test into a fatal
+// job error, a one-bit oracle on hidden data. Only failures writing dst,
+// on the judge's side, are errors.
 func copyBoxOutput(src, dst string, capBytes int64) (int64, error) {
 	out, err := os.OpenFile(dst, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o644)
 	if err != nil {
 		return 0, err
 	}
 	in, err := openBoxFile(src)
-	if errors.Is(err, fs.ErrNotExist) || errors.Is(err, errNotRegular) {
+	if err != nil {
 		return 0, out.Close()
 	}
-	if err != nil {
-		out.Close()
-		return 0, err
-	}
 	defer in.Close()
-	n, err := io.Copy(out, io.LimitReader(in, capBytes))
+	n, err := io.Copy(out, &boxReader{r: io.LimitReader(in, capBytes)})
 	if err != nil {
 		out.Close()
 		return n, err
 	}
 	return n, out.Close()
+}
+
+// boxReader turns a read error on a box file into the end of the file, so
+// io.Copy reports only errors writing the destination.
+type boxReader struct{ r io.Reader }
+
+func (b *boxReader) Read(p []byte) (int, error) {
+	n, err := b.r.Read(p)
+	if err != nil && err != io.EOF {
+		return n, io.EOF
+	}
+	return n, err
 }
 
 // copyRegularFiles copies the regular files directly inside src into dst.

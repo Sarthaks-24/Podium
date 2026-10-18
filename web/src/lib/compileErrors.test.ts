@@ -82,6 +82,31 @@ describe('compile error locations', () => {
     ]);
   });
 
+  it('parses a 16 KB identifier in linear time, for every language', () => {
+    const word = 'a'.repeat(16 * 1024);
+    const nasty = [
+      `main.cpp:3:1: error: '${word}' was not declared in this scope`,
+      `${word}.${word}/${word}`,
+      `File "${word}`,
+      `(${word}`,
+      `#error ${word}.cpp${word}`,
+    ].join('\n');
+    for (const lang of ['cpp17', 'java21', 'python3', 'node22', undefined]) {
+      const t0 = performance.now();
+      const parts = segments(nasty, lang);
+      const ms = performance.now() - t0;
+      expect(ms, `${lang ?? 'any language'} took ${ms.toFixed(1)} ms`).toBeLessThan(50);
+      expect(parts.map((s) => (typeof s === 'string' ? s : s.text)).join('')).toBe(nasty);
+    }
+    expect(locations(nasty, 'cpp17')).toEqual([{ line: 3, col: 1 }]);
+  });
+
+  it('only looks at the start of very long lines', () => {
+    const late = `${' '.repeat(2500)}main.cpp:4:2: error`;
+    expect(locations(late, 'cpp17')).toEqual([]);
+    expect(locations(`main.cpp:4:2: error ${'x'.repeat(5000)}`, 'cpp17')).toEqual([{ line: 4, col: 2 }]);
+  });
+
   it('returns plain text when nothing matches', () => {
     expect(segments('Killed', 'cpp17')).toEqual(['Killed']);
     expect(segments('', 'cpp17')).toEqual([]);

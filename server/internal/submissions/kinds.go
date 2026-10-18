@@ -149,15 +149,17 @@ func (k SubmitKind) Finish(ctx context.Context, tx *sql.Tx, job *jobs.Job) error
 		return err
 	}
 	now := nowOr(k.Now).UnixMilli()
+	// Every update names the job too: a job a rejudge replaced must never
+	// overwrite the submission its successor is judging.
 	if job.State == jobs.Failed {
-		_, err := tx.ExecContext(ctx, `UPDATE submissions SET state = 'error', error = ?, judged_at = ? WHERE id = ?`,
-			"The judge could not finish this submission. It is not counted; submit again.", now, pl.SubmissionID)
+		_, err := tx.ExecContext(ctx, `UPDATE submissions SET state = 'error', error = ?, judged_at = ? WHERE id = ? AND job_id = ?`,
+			JudgeFailedMessage, now, pl.SubmissionID, job.ID)
 		return err
 	}
 	for _, c := range job.Result.Compile {
 		if c.Role == judgeapi.RoleChecker && c.Verdict == string(judge.CompileError) {
-			_, err := tx.ExecContext(ctx, `UPDATE submissions SET state = 'error', error = ?, judged_at = ? WHERE id = ?`,
-				"The problem's checker does not compile. Tell an organiser; this submission is not counted.", now, pl.SubmissionID)
+			_, err := tx.ExecContext(ctx, `UPDATE submissions SET state = 'error', error = ?, judged_at = ? WHERE id = ? AND job_id = ?`,
+				"The problem's checker does not compile. Tell an organiser; this submission is not counted.", now, pl.SubmissionID, job.ID)
 			return err
 		}
 	}
@@ -175,11 +177,24 @@ func (k SubmitKind) Finish(ctx context.Context, tx *sql.Tx, job *jobs.Job) error
 	}
 	summary, _ := json.Marshal(map[string]any{"verdict": sc.Verdict, "score": sc.Score})
 	job.Result.Summary = summary
+	earned := ""
+	if sc.Verdict != verdictCompile {
+		pts := make([]int, len(sc.Subtasks))
+		for i, st := range sc.Subtasks {
+			pts[i] = st.Earned
+		}
+		b, _ := json.Marshal(pts)
+		earned = string(b)
+	}
 	_, err = tx.ExecContext(ctx, `UPDATE submissions SET state = 'done', verdict = ?, score = ?, max_score = ?, max_time_ms = ?,
-		max_memory_kb = ?, result = ?, judged_at = ? WHERE id = ?`,
-		sc.Verdict, sc.Score, sc.MaxScore, sc.MaxTimeMS, sc.MaxMemoryKB, string(stored), now, pl.SubmissionID)
+		max_memory_kb = ?, result = ?, earned = ?, judged_at = ? WHERE id = ? AND job_id = ?`,
+		sc.Verdict, sc.Score, sc.MaxScore, sc.MaxTimeMS, sc.MaxMemoryKB, string(stored), earned, now, pl.SubmissionID, job.ID)
 	return err
 }
+
+// JudgeFailedMessage is the error a submission shows when the judge could
+// not finish it.
+const JudgeFailedMessage = "The judge could not finish this submission. It is not counted; submit again."
 
 func decodeRun(raw json.RawMessage) (judgeapi.RunPayload, error) {
 	var pl judgeapi.RunPayload

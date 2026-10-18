@@ -23,7 +23,7 @@ All API routes live under `/api/` and speak JSON. Every other path serves the we
 { "error": { "code": "bad_request", "message": "Some fields need fixing.", "fields": { "slug": "Use lowercase letters, digits and single hyphens, like two-sum." } } }
 ```
 
-Common error codes: `bad_request`, `signed_out`, `forbidden`, `not_found`, `cross_site`, `conflict`, `internal`. The problem routes add `bad_pack`, `not_ready`, `too_large` and `busy`; the workspace routes add `not_ready` and `rate_limited`; the event stream adds `busy` and `unsupported`; the judge API adds `unauthorized`, `lease`, `bad_report`, `bad_upload` and `too_large`.
+Common error codes: `bad_request`, `signed_out`, `forbidden`, `not_found`, `cross_site`, `conflict`, `internal`. The problem routes add `bad_pack`, `not_ready`, `too_large` and `busy`; the workspace routes add `not_ready` and `rate_limited`; the contest routes add `not_on_roster`, `not_started`, `contest_over`, `board_closed` and `too_early`; the event stream adds `busy` and `unsupported`; the judge API adds `unauthorized`, `lease`, `bad_report`, `bad_upload` and `too_large`.
 
 ## Health
 
@@ -296,7 +296,7 @@ Rules:
 
 ## Workspace, runs and submissions
 
-The workspace is the page where code is written, run and submitted. In M3 only organisers reach it, to try a problem as a student would ("Try as a student"); submissions made there count in no contest. M4 mounts the same shapes under contests for students.
+The workspace is the page where code is written, run and submitted. Under `/api/workspace/` only organisers reach it, to try a problem as a student would ("Try as a student"); submissions made there count in no contest. Students reach the same shapes under a contest (see "Contests: students").
 
 | Route | Who | Request | Success |
 |---|---|---|---|
@@ -331,7 +331,7 @@ The workspace is the page where code is written, run and submitted. In M3 only o
 
 ### Drafts
 
-`PUT .../draft` stores the editor's code for this user and problem, replacing the last one. The web app saves every 10 s and when the editor or window loses focus. Errors: `400 bad_request` (unknown language, code over 64 KB, not UTF-8), `404 not_found`.
+`PUT .../draft` stores the editor's code for this user and problem, replacing the last one. The web app saves every 10 s and when the editor or window loses focus. Each user may save at most one draft every 2 s (every save takes the database's single writer lock). Errors: `400 bad_request` (unknown language, a language the contest does not allow, code over 64 KB, not UTF-8), `404 not_found`, `429 rate_limited` with `retry_after_s`.
 
 ### `Run`
 
@@ -352,7 +352,7 @@ The workspace is the page where code is written, run and submitted. In M3 only o
 | `message` | the checker's comment on a sample, `""` otherwise |
 | `compile_output` | the compiler's output; a compile error leaves every `verdict` empty |
 
-Times are rounded to 10 ms. A run uses the problem's limits and checker. Running the samples on a problem without samples is `400 bad_request` ("Run it on your own input instead").
+Times are rounded to 10 ms (100 ms for a student in a graded contest). A run uses the problem's limits and checker. Running the samples on a problem without samples is `400 bad_request` ("Run it on your own input instead").
 
 ### `Submission`
 
@@ -380,19 +380,25 @@ Times are rounded to 10 ms. A run uses the problem's limits and checker. Running
 
 A submission never carries the input, output or checker comment of any test (decision D47). Times are rounded to 10 ms. How scoring works: `docs/ARCHITECTURE.md`, "Submissions and scoring".
 
-Coarse figures for students: a student's own live events (see "Live updates") show no memory figure for hidden tests (`memory_kb` 0), `max_memory_kb` rounded up to the next 16 MB, and rounded times. In M3 only organisers submit, and the `GET` routes and the workspace list return the full figures.
+**What a student sees of their own submission.** The same view on every path (`GET /api/submissions/{id}`, the workspace list, the answer to a submit or a repeated `client_key`, and live events). Owners and admins see every figure. A contest's co-organisers see the student view, both of their own submissions and of the contest's submissions they read: they are not trusted with what exact figures reveal about hidden tests.
+
+- Coarse figures: no memory figure for hidden tests (`memory_kb` 0), `max_memory_kb` rounded up to the next 16 MB, times rounded to 100 ms in graded contests and 10 ms otherwise.
+- While judging: per-test verdicts only inside finished blocks (the samples as a whole, each whole subtask), and `max_time_ms` and `max_memory_kb` stay 0 until the end, so polling shows no more than the live stream.
+- Exam feedback mode, until the student's window closes: `"hidden": true`, `"state": "submitted"`, an empty `verdict`, `score` 0, no `samples`, `subtasks`, times or compile output, and no live `submission` events. Nothing a student can observe changes when judging finishes. The one exception is a judge failure: `"state": "error"` with its `error` sentence, so the student knows it did not count and can submit again (it is never something the program chose). After the window closes the full student view returns.
+
+`hidden` is `false` in every other case.
 
 ### Submit rules
 
 | Rule | Value | Refusal |
 |---|---|---|
-| Pending submissions | one per user per problem | `429 rate_limited`: "Your last submission for this problem is still being judged. Wait for its result." |
+| Pending submissions | one per user per problem; not applied in exam mode, where a new submission queues behind the pending one (a refusal that ends when judging ends would tell the student when it finished) | `429 rate_limited`: "Your last submission for this problem is still being judged. Wait for its result." |
 | Gap between submits | 5 s per user, across all problems (organisers trying problems; contests set their own in M4) | `429 rate_limited`: "Submissions are limited to one every 5 seconds. Try again in 3 s." |
 | Code | at most 64 KB, UTF-8, a known language | `400 bad_request` |
 | `client_key` | optional, at most 64 characters | `400 bad_request` |
 | Problem | tests, samples and subtasks fit together and every test has an expected output; validation is not required to try a problem | `409 not_ready` with `problems` |
 
-- `client_key` is a random value the browser makes per press of Submit and reuses on a retry. Keys are per user and problem (the same key on another problem is a new submission). The same key from the same user on the same problem returns the first submission with `200` and counts nothing again, so a retry after a timeout never trips the rate limit.
+- `client_key` is a random value the browser makes per press of Submit and reuses on a retry. Keys are per user, problem and contest (the same key on another problem, or in another contest, is a new submission). The same key from the same user on the same problem returns the first submission with `200` and counts nothing again, so a retry after a timeout never trips the rate limit.
 - `typed_chars`, `pasted_chars` and `focus_losses` are the editor's counts since the last submission (D47), clamped to 0 to 10,000,000. They never block a submit.
 - The server also stores a hash of the client's IP address and user agent with each submission, an HMAC keyed by `PODIUM_SESSION_SECRET`, so it cannot be reversed by trying campus addresses.
 
@@ -417,9 +423,12 @@ Coarse figures for students: a student's own live events (see "Live updates") sh
 
 | Status | When |
 |---|---|
-| 204 | stored; also when this user already has 5,000 events on this problem, in which case the new ones are dropped |
+| 204 | stored; also when this user already has 5,000 events on this problem, in which case the new ones are dropped, and in a contest outside the student's window, when nothing is recorded |
 | 400 `bad_request` | an unknown `kind`, or more than 100 events |
 | 404 `not_found` | no such problem |
+| 429 `rate_limited` | more than one batch per user in 5 s; the web app sends a batch every 30 s and on submit |
+
+Kinds, the rate and the 5,000 cap are checked before anything is written.
 
 ## Live updates
 
@@ -432,6 +441,11 @@ A `text/event-stream` for the signed-in user, read with `EventSource`. Not JSON:
 | `clock` | `{"server_now":1792183192400}` | at once on connecting, then every 25 s (it also keeps proxies from closing an idle stream) |
 | `submission` | a `Submission` | when one of the user's submissions changes in a way the user can see |
 | `run` | a `Run` | when one of the user's runs changes: a judge starts it, each input gets a verdict, and it finishes |
+| `standings` | `{"contest":"week-6","contest_id":4,"version":12}` | a contest's board changed and the new board is ready (at most about once every 2 s per contest); refetch the board. In exam-mode contests it goes to organisers only |
+| `announcement` | `{"contest","contest_id","id","body_md"}` | an organiser posted an announcement |
+| `clarification` | `{"contest","contest_id","id"}` | a question was answered (to the asker; to everyone in the contest when public) or asked (to organisers); refetch the contest |
+| `contest` | `{"contest","contest_id","ends_at"}` | the end moved: the whole contest was extended, or this student got extra time (`ends_at` is then their own end) |
+| `replaced` | `{}` | sent just before the server closes this stream because the user opened a fifth one; do not reconnect |
 
 ```
 event: clock
@@ -442,12 +456,174 @@ data: {"id":80,"state":"running","verdict":"",...}
 ```
 
 - Events for one run or submission arrive in order, and only when something visible changed. For an organiser that is each test; for a student it is the sample block finishing and each whole subtask finishing, never a single hidden test.
-- Each user may hold 4 streams (tabs); a fifth replaces the oldest, which the server closes.
+- Contest events go to the contest's members who have a stream open: organisers, and for a published contest the students who may enter it (anyone signed in for domain access, the roster otherwise). Membership is checked when each event is sent, so a student taken off the roster stops receiving them at once.
+- On every `clock` tick the server checks the session again; a stream whose session has ended (signed out, expired, account disabled) is closed.
+- Each user may hold 4 streams (tabs); a fifth replaces the oldest, which gets a `replaced` event and is closed. The web app then stops reconnecting that tab and offers to continue in the newer one.
+- In a live contest, opening a stream from another browser or machine while one is open is recorded for the organisers as a "second session" (decision D47). Nothing is shown to the student.
 - The server holds at most 5,000 streams. Beyond that: `503 busy` with `Retry-After: 30`, and the page polls instead.
 - A stream that falls 16 events behind, or does not accept a write within 10 s, is closed; the browser reconnects.
 - `501 unsupported` if the server cannot stream; the page polls instead.
 
 The web app reconnects with jitter, refetches the user's submissions after every reconnect, and falls back to polling every 15 s after three failed attempts.
+
+## Contests: students
+
+Every route needs a signed-in user. Access: a published, unarchived contest with domain access is open to everyone who can sign in; with roster access, to the emails on its roster. Organisers (owners, admins, and the contest's co-organisers) always get in, see everything, and are never on the board. Times are Unix ms; every answer carries `server_now`, and every rule about time is applied with the server's clock.
+
+| Route | Request | Success |
+|---|---|---|
+| `GET /api/contests` | | 200 `{live:[ContestSummary], upcoming:[...], past:[...], server_now}` |
+| `GET /api/contests/{slug}` | | 200 `Contest` |
+| `POST /api/contests/{slug}/start` | `{"accept_honour":true}` | 200 `Contest` |
+| `GET /api/contests/{slug}/problems/{label}` | | 200 contest `Workspace` |
+| `PUT /api/contests/{slug}/problems/{label}/draft` | as the workspace | 204 |
+| `POST /api/contests/{slug}/problems/{label}/run` | as the workspace | 202 `Run` |
+| `POST /api/contests/{slug}/problems/{label}/submit` | as the workspace | 202 `Submission` (200 for a repeated `client_key`) |
+| `POST /api/contests/{slug}/problems/{label}/events` | as the workspace | 204 |
+| `GET /api/contests/{slug}/standings` | | 200 `Standings` |
+| `POST /api/contests/{slug}/clarifications` | `{"problem_label":"A" or null,"question":"..."}` | 201 `{clarification, server_now}` |
+
+Errors: `404 not_found` for a contest that does not exist, is unpublished or archived, and for a label that is not in the contest; `403 not_on_roster` for a roster contest the student is not on.
+
+Reads that cost several queries (the contest list, the contest page, the contest workspace, the standings, and the organisers' `GET /api/workspace/{problem}`) are limited per user to 10 a second on average with bursts of 20; beyond that `429 rate_limited` with `retry_after_s` and `Retry-After`. A page needs a handful.
+
+### `ContestSummary` and `Contest`
+
+```json
+{ "slug": "week-6", "title": "Week 6", "starts_at": 1792310400000, "ends_at": 1792317600000, "start_mode": "fixed",
+  "duration_minutes": 0, "problem_count": 3, "state": "live", "my_score": 140,
+  "my_window": { "started_at": 1792310400000, "ends_at": 1792317600000 } }
+```
+
+| Field | Meaning |
+|---|---|
+| `ends_at` | when the contest closes for everyone: its end plus any contest-wide extension |
+| `state` | for this student: `upcoming`, `live`, `frozen` (fixed start, during the freeze), `ended`, or `practice` (ended, practice open). A personal extension keeps it `live` for them; in window mode their own clock decides |
+| `my_score` | their total from their own submissions (never frozen); `null` before they accept the rules, and in exam mode until their window closes |
+| `my_window` | their window: fixed start, the contest's times plus their extension; window mode, from their Start for `duration_minutes` plus extensions, never past the close plus their extension; `null` in window mode before Start |
+
+`Contest` adds:
+
+```json
+{ "description_md": "...", "honour_text": "This contest is graded. ...", "accepted": true, "organiser": false,
+  "rules": { "feedback_mode": "subtask", "scoring_mode": "best_subtask", "min_gap_s": 30, "max_per_problem": 15,
+             "languages": ["cpp17", "python3"], "freeze_minutes": 30, "graded": true, "practice_after_end": true },
+  "problems": [ { "label": "A", "title": "A plus B", "my_score": 40, "max_score": 100, "my_submission_count": 3 } ],
+  "announcements": [ { "id": 3, "body_md": "...", "created_at": 1792311000000 } ],
+  "my_clarifications": [ Clarification ], "public_clarifications": [ Clarification ],
+  "editorial_md": null, "server_now": 1792311000000 }
+```
+
+- `problems` is empty until the student has accepted the rules and their window has opened (fixed start: the contest has started; window mode: they pressed Start), and once their window is over. Per-problem `my_score` is `null` when it would be hidden.
+- `honour_text` is the contest's honour code, or the default listing what Podium records and for how long (D47).
+- `my_submission_count` is how many submissions the student made to the problem, practice and judge failures excluded. It counts submissions as they are made, never how far judging got, so in exam mode it is the one per-problem figure shown and says nothing about results.
+- `editorial_md` is set only when the editorial is published and every student's window is over (the close plus the longest personal extension).
+- `Clarification`: `{id, problem_label, question, answer, public, created_at, answered_at}`. Students never see who asked a public question.
+
+### Start
+
+`POST .../start` with `{"accept_honour": true}` records acceptance of the honour code. In window mode it also starts the student's clock; pressing it again changes nothing. It is needed in both modes before the problems open. Refusals, `400 bad_request` with `fields.accept_honour`: not accepted; "The contest has not started yet."; window mode after the close; fixed start after the end ("The contest has ended.").
+
+### Contest workspace
+
+The M3 `Workspace` plus:
+
+```json
+{ "label": "A", "contest": "week-6", "window": { "started_at": 1792310400000, "ends_at": 1792317600000 },
+  "feedback_mode": "subtask", "can_submit": true, "practice": false, "refusal": null }
+```
+
+- `languages` lists only the contest's languages; others are refused with `400` ("This contest allows C++17 and Python 3.").
+- Submissions are counted while the student's own window is open. After it, they are practice (judged at a lower priority, never on the board) when the contest allows practice and every student's window is over; otherwise run and submit are refused. A submission the judge could not finish does not count toward `max_per_problem`.
+- Co-organisers may try the contest's problems at any time, with the contest's gap and per-problem limit and the student view of their results.
+- `can_submit` and `refusal` say whether run and submit work now, and why not.
+
+| Refusal | When |
+|---|---|
+| `403 not_started` "Accept the rules on the contest page to start." | before the student's window opens (also for reading the problem) |
+| `403 contest_over` "The contest has ended." | the window is over and practice is off |
+| `403 contest_over` "Your time is up. Practice opens when every student's time is up." | the student's time is up but others are still in their windows (window mode, or a personal extension) |
+| `409 not_ready` | the problem changed since it was added to the contest (organisers must validate it and add it again) |
+| `429 rate_limited` | one pending submit per problem, the contest's gap between submits (`min_gap_s`, across problems) |
+| `400 bad_request` | the problem's `max_per_problem` submits are used ("You have used all 15 submissions for this problem.") |
+
+### `Standings`
+
+```json
+{ "variant": "frozen", "version": 12, "frozen_at": 1792315800000, "final": false, "judging_remaining": 2,
+  "labels": ["A", "B"],
+  "rows": [ { "rank": 1, "user_id": 7, "name": "Asha R", "total": 140, "last_improvement_s": 2400,
+              "cells": [ { "label": "A", "score": 100, "max": 100, "pending": 0, "tried": true },
+                         { "label": "B", "score": 40, "max": 100, "pending": 1, "tried": true } ] } ],
+  "me": 7, "server_now": 1792316000000 }
+```
+
+- Rank by `total`, then by `last_improvement_s` (seconds from the student's start to when they reached their total); equal totals and times share a rank.
+- `pending` counts submissions made after the freeze (frozen board) that the board does not show yet.
+- `name` is the roster name, then the account name, then "Student {id}"; never an email.
+- `final` is true on the full board once every window has closed and nothing is waiting for the judge.
+
+Which board a student gets:
+
+| Contest | During | After |
+|---|---|---|
+| Window mode, or exam feedback | `403 board_closed` "The board opens when your window closes." until the student's own window closes | full (frozen while a held reveal is pending) |
+| Fixed start | full until the freeze, then frozen | frozen until every student's window has closed and, with `hold_reveal`, until an organiser reveals; then full |
+
+### Clarifications
+
+At most 5 unanswered questions per student per contest (`400` with `fields.question`); questions close when the student's window does (`403 contest_over`). `problem_label` must be a label of the contest or null.
+
+## Contests: organisers
+
+Owners and admins organise every contest; a co-organiser organises only the contests they were added to. For anyone else, every route below answers `404 not_found`, so ids cannot be probed. Creating, cloning, archiving, choosing co-organisers, choosing the contest's problems and publishing or unpublishing need the admin or owner role (`403 forbidden`): problems come from the bank, which co-organisers (often student TAs) never see, and publishing hands them to students. Every id in a URL or body (a submission, a clarification, a label) is checked against the contest in the URL; one from another contest is a `404`.
+
+| Route | Request | Success |
+|---|---|---|
+| `GET /api/admin/contests` (`?archived=1`) | | 200 `{contests:[AdminContest], server_now}` (a co-organiser sees their own) |
+| `POST /api/admin/contests` | `ContestEdit` | 201 `AdminContest` (unpublished) |
+| `GET /api/admin/contests/{id}` | | 200 `AdminContest` |
+| `PUT /api/admin/contests/{id}` | `ContestEdit` (fields left out keep their value) | 200 `AdminContest` |
+| `DELETE /api/admin/contests/{id}` | | 204 (archived; nothing deleted) |
+| `POST /api/admin/contests/{id}/clone` | `{slug, title, starts_at, ends_at}` | 201 `AdminContest`: settings and problems copied, not the roster, co-organisers, extensions or editorial |
+| `PUT /api/admin/contests/{id}/problems` (admin) | `[{"problem_id":3,"label":"A"}]` | 200 `AdminContest`; each problem must be validated; its content hash and subtask points are pinned. Errors name the label, never the problem's title |
+| `GET /api/admin/contests/{id}/roster` | | 200 `{roster:[{email,name,roll_number,section}], count}` |
+| `PUT /api/admin/contests/{id}/roster` | `text/csv` (header row naming `email`, and optionally `name`, `roll_number`, `section`) or a JSON array of the same objects; at most 2 MB and 5,000 students | 200 `{added, removed, roster_count}`. A full replace: on a roster contest, anyone left out loses access at once, so show the counts before and after |
+| `POST`, `DELETE /api/admin/contests/{id}/admins` | `{"email":"ta@college.edu"}` (they must have signed in once) | 200 `AdminContest` |
+| `PUT /api/admin/contests/{id}/extensions/{user}` | `{"minutes":15,"reason":"..."}` (0 to 1440; 0 removes) | 200 `AdminContest`; the student gets a `contest` event |
+| `POST /api/admin/contests/{id}/extend` | `{"minutes":10}` (1 to 240, adds to earlier extensions) | 200 `AdminContest`; members get a `contest` event |
+| `POST /api/admin/contests/{id}/pause`, `/resume` | | 200 `AdminContest` |
+| `GET /api/admin/contests/{id}/submissions?problem=A&user=7&verdict=WA&page=1` | | 200 `{submissions:[...], page, has_more, server_now}` |
+| `POST /api/admin/contests/{id}/rejudge` | `{"problem_label":"A"}` or `{"submission_id":80}` | 202 `{queued, server_now}` |
+| `GET`, `POST /api/admin/contests/{id}/announcements` | `{"body_md":"..."}` (at most 4,000 characters) | 200 `{announcements, server_now}`; 201 `Announcement` |
+| `GET /api/admin/contests/{id}/clarifications` | | 200 `{clarifications, server_now}`, each with `asked_by {user_id, email, name}` |
+| `PUT /api/admin/contests/{id}/clarifications/{cid}` | `{"answer":"...","public":false}` | 200 `Clarification` |
+| `GET /api/admin/contests/{id}/standings` (`?variant=frozen`) | | 200 `Standings` (full unless asked) |
+| `GET /api/admin/contests/{id}/reveal` | | 200 `{frozen: Standings, full: Standings, revealed_at, server_now}` |
+| `POST /api/admin/contests/{id}/reveal` | | 200 `AdminContest`; students held on the frozen board see the full one |
+| `GET /api/admin/contests/{id}/export.csv` | | 200 `text/csv` attachment |
+| `GET /api/admin/contests/{id}/export.json` | | 200 JSON attachment |
+| `GET /api/admin/contests/{id}/stats` | | 200 `{problems:[ProblemStats], server_now}` |
+| `PUT /api/admin/contests/{id}/editorial` | `{"editorial_md":"...","published":true}` (at most 64 KB) | 200 `AdminContest` |
+
+### `ContestEdit` and `AdminContest`
+
+`ContestEdit` holds the form's fields: `slug`, `title`, `description_md`, `starts_at`, `ends_at`, `start_mode` (`fixed` or `window`), `duration_minutes` (window mode, at least 10 and at most the whole window), `freeze_minutes`, `scoring_mode` (`best_subtask` or `best_submission`), `access` (`domain` or `roster`), `feedback_mode` (`subtask` or `exam`), `graded`, `published`, `practice_after_end`, `stop_on_sample_fail`, `min_gap_s` (0 to 3600), `max_per_problem` (1 to 1000), `languages`, `honour_text` (empty for the default), `hold_reveal`. Defaults on create: fixed start, best per subtask, domain access, subtask feedback, graded, practice after the end, stop on a failing sample, 30 s gap, 15 per problem, all four languages. Unknown fields are refused. Publishing checks that every problem is still the validated version that was added ("Problem B changed or lost its validation since it was added. Validate it and add it again."). Invalid fields: `400 bad_request` with `fields`.
+
+`AdminContest` is every `ContestEdit` field plus `id`, `close_at` (end plus contest-wide extension), `default_honour_text`, `editorial_md`, `editorial_published`, `paused`, `extended_minutes`, `revealed_at`, `archived`, `state`, `problems [{label, problem_id, title, pinned_hash, ready, max_score}]` (`ready` is false when the problem changed since it was added), `admins [{user_id, email, name}]`, `extensions [{user_id, email, name, minutes, reason}]`, `roster_count`, `created_at`, `updated_at`, `server_now`.
+
+### Running a contest
+
+- **Pause** stops the judge from taking the contest's submissions and runs; they still queue, and nothing is lost. **Resume** lets them through in order.
+- **Rejudge** queues every submission of a problem (or one submission) again at priority 50 with the problem's current tests; each goes back to `queued` and counts again once judged. Submissions still waiting for the judge, or being judged, on the old tests are included: their old job is cancelled and replaced. A submission already waiting on exactly the current tests is left alone, so pressing Rejudge twice adds nothing (`queued` counts only what was queued). The problem must still match its pin: after editing tests, validate the problem and add it to the contest again first (`409 not_ready` otherwise). A rejudge waiting in the queue never blocks the student from submitting.
+- **Feed** rows: `{id, user_id, name, email, problem_label, language, state, verdict, score, max_score, created_at, judged_at, practice, rejudged, typed_chars, pasted_chars, focus_losses}`, newest first, 50 per page.
+- **Reveal** answers `409 too_early` "The reveal opens when every student's time is up." until the close plus the longest personal extension. The web app walks the frozen board from the bottom, moving each row to its place on the full board.
+
+### Export and stats
+
+- CSV columns: `rank, name, email, roll_number, section, started` (UTC, RFC 3339), `total`, then one column per problem label. A cell starting with `=`, `+`, `-`, `@`, a tab or a carriage return gets a leading `'`, so a spreadsheet never runs a name as a formula.
+- JSON: `{contest: AdminContest, standings: [Standings row plus email, roll_number, section, started_at], submissions: [{id, user_id, problem_label, language, state, verdict, score, created_at, practice}], exported_at}`. No code and no integrity data.
+- `ProblemStats`: `{label, title, max_score, attempted, solved` (full score)`, subtasks [{idx, points, earned}], histogram [{score, students}]` (highest score first)`, median_attempts}`, over students on the board and their non-practice submissions.
 
 ## Judge worker API
 
@@ -465,12 +641,18 @@ Request: `{"kinds":["run","submit","generate","validate"],"worker":"vm-1","versi
 | 204 | no queued job of those kinds (unknown kinds are ignored) |
 | 200 | `{"job_id":41,"kind":"validate","lease":"<secret>","lease_seconds":60,"payload":{...}}` |
 
-The next job is the queued one with the lowest priority number, then the oldest.
+The next job is the queued one with the lowest priority number, then the oldest, with three exceptions:
+
+- Jobs of a paused contest are skipped (they wait in the queue until it resumes).
+- After a `run` is claimed, the next claim takes the best job of any other kind when one is waiting, so runs (priority 10) can never starve submissions: at least every other claim goes to other work.
+- While a graded contest is live (from its start to its close plus the longest personal extension), at most one `validate` or `generate` job is leased at a time; a worker asking only for those gets 204 until it finishes.
 
 | Kind | Priority | What the worker does |
 |---|---|---|
 | `run` | 10 | compile, run each input, check samples against their expected output, report an output excerpt |
 | `submit` | 20 plus the number of this user's judged submissions on this problem, at most 30 | compile, judge the samples, then each subtask in order (rules below) |
+| rejudge (`submit`) | 50 | as `submit` |
+| practice (`submit`) | 60 | as `submit` |
 | `generate` | 85 | compile the reference, run it on each input, upload each output |
 | `validate` | 90 | the M2 validation run |
 
@@ -524,7 +706,7 @@ Uploads one output of a `generate` job. Headers: `X-Podium-Job` and `X-Podium-Le
 | Status | Body |
 |---|---|
 | 204 | stored, and noted as uploaded by this job |
-| 409 `lease` | the lease is not current, the job is not a `generate` job, or the job has used its upload budget (one per input, plus 2 for retries) |
+| 409 `lease` | the lease is not current, the job is not a `generate` job, or the job has used its upload budget (one per input, plus 2 for retries). The slot is reserved before the body is read and given back if the upload fails, so concurrent uploads under one lease cannot exceed the budget. The body streams to a temporary file while it is hashed (nothing is held in memory) and is renamed into place only if the hash matches. Uploads nothing ended up using are deleted when the job closes or its lease is swept |
 | 413 `too_large` | the body is over 16 MB |
 | 400 `bad_upload` | the body does not hash to `{sha}` |
 

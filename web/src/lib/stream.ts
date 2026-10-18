@@ -9,6 +9,16 @@
  * is tried again every fourth poll and polling stops once it opens. Each
  * open after a failure calls onReconnect(), so the caller can refetch what
  * it may have missed.
+ *
+ * A stream only counts as healthy once it has stayed open for 30 s: an
+ * open that is dropped sooner still counts as a failure, so the backoff
+ * keeps growing instead of starting again from 1 s.
+ *
+ * The server keeps a few streams per person and drops the oldest for a
+ * newer one, sending it a last `replaced` event first. A replaced stream
+ * stops for good, with no reconnect and no polling, so five open tabs do
+ * not evict each other in a loop; the page says so and offers resume(),
+ * which connects again (and replaces the other tab in turn).
  */
 
 /** The delay before reconnect attempt `attempt` (0 for the first), in ms. */
@@ -25,6 +35,12 @@ export interface EventSourceLike {
   close(): void;
 }
 
+/** live: open; connecting: retrying; polling: fallback; replaced: stopped for a newer tab. */
+export type StreamMode = 'live' | 'polling' | 'connecting' | 'replaced';
+
+/** The event the server sends a stream it is about to drop for a newer one. */
+export const REPLACED_EVENT = 'replaced';
+
 export interface StreamOptions {
   url: string;
   /** Event names to listen for. */
@@ -36,8 +52,10 @@ export interface StreamOptions {
   /** Called every pollMs while the stream is down. */
   poll: () => void;
   /** Called when the mode changes, for a quiet status line. */
-  onMode?: (mode: 'live' | 'polling' | 'connecting') => void;
+  onMode?: (mode: StreamMode) => void;
   pollMs?: number;
+  /** How long a stream must stay open before the failure count resets. */
+  stableMs?: number;
   maxErrors?: number;
   random?: () => number;
   create?: (url: string) => EventSourceLike;
@@ -52,15 +70,17 @@ export class EventStream {
   private hadError = false;
   private retryTimer: unknown = null;
   private pollTimer: unknown = null;
+  private stableTimer: unknown = null;
   private polls = 0;
   private stopped = false;
-  mode: 'live' | 'polling' | 'connecting' = 'connecting';
+  mode: StreamMode = 'connecting';
 
   private readonly o: Required<Omit<StreamOptions, 'onMode'>> & Pick<StreamOptions, 'onMode'>;
 
   constructor(options: StreamOptions) {
     this.o = {
       pollMs: 15_000,
+      stableMs: 30_000,
       maxErrors: 3,
       random: Math.random,
       create: (url) => new EventSource(url, { withCredentials: true }) as unknown as EventSourceLike,
@@ -81,10 +101,33 @@ export class EventStream {
     this.stopped = true;
     this.es?.close();
     this.es = null;
-    if (this.retryTimer !== null) this.o.clearTimer(this.retryTimer);
-    if (this.pollTimer !== null) this.o.clearTimer(this.pollTimer);
+    this.clearTimers();
+  }
+
+  /** Connects again after the stream was replaced by another tab. */
+  resume(): void {
+    this.stop();
+    this.errors = 0;
+    this.hadError = true;
+    this.stopped = false;
+    this.setMode('connecting');
+    this.connect();
+  }
+
+  private clearTimers() {
+    for (const t of [this.retryTimer, this.pollTimer, this.stableTimer]) if (t !== null) this.o.clearTimer(t);
     this.retryTimer = null;
     this.pollTimer = null;
+    this.stableTimer = null;
+  }
+
+  /** The server dropped this stream for a newer one: stop without retrying. */
+  private replaced() {
+    this.stopped = true;
+    this.es?.close();
+    this.es = null;
+    this.clearTimers();
+    this.setMode('replaced');
   }
 
   private setMode(mode: EventStream['mode']) {
@@ -107,9 +150,14 @@ export class EventStream {
     es.onopen = () => {
       if (this.es !== es) return;
       const wasDown = this.hadError;
-      this.errors = 0;
       this.hadError = false;
       this.stopPolling();
+      // The failure count resets only once this stream has proved stable.
+      if (this.stableTimer !== null) this.o.clearTimer(this.stableTimer);
+      this.stableTimer = this.o.setTimer(() => {
+        this.stableTimer = null;
+        if (this.es === es) this.errors = 0;
+      }, this.o.stableMs);
       this.setMode('live');
       if (wasDown) this.o.onReconnect();
     };
@@ -117,8 +165,13 @@ export class EventStream {
       if (this.es !== es) return;
       es.close();
       this.es = null;
+      if (this.stableTimer !== null) this.o.clearTimer(this.stableTimer);
+      this.stableTimer = null;
       this.fail();
     };
+    es.addEventListener(REPLACED_EVENT, () => {
+      if (this.es === es) this.replaced();
+    });
     for (const type of this.o.events) {
       es.addEventListener(type, (ev: MessageEvent) => {
         if (this.es !== es) return;

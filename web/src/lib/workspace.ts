@@ -44,9 +44,16 @@ export interface Workspace {
   /** Own submissions, newest first, at most 20. */
   submissions: Submission[];
   server_now: number;
+  /** Contest workspaces (M4): why Run and Submit are off, or null. */
+  refusal?: string | null;
+  can_submit?: boolean;
+  /** True when submissions now count as practice. */
+  practice?: boolean;
+  feedback_mode?: string;
 }
 
-export type JudgeState = 'queued' | 'running' | 'done' | 'error';
+/** "submitted" is an exam-mode submission whose result is hidden until the end (M4). */
+export type JudgeState = 'queued' | 'running' | 'done' | 'error' | 'submitted';
 
 /** One judged test. verdict is "" while the test waits its turn. */
 export interface TestResult {
@@ -88,6 +95,8 @@ export interface Submission {
   subtasks: SubtaskResult[];
   samples: TestResult[];
   server_now?: number;
+  /** Exam mode before the end: everything but the time and language is withheld. */
+  hidden?: boolean;
 }
 
 /** One input of a run: a sample, or the custom input. */

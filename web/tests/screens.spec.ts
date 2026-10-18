@@ -74,6 +74,9 @@ async function mockApi(page: Page, who: Who) {
       if (path === '/api/me' && method === 'GET') {
         return me ? json(route, 200, me) : apiError(route, 401, 'signed_out', 'Sign in to continue.');
       }
+      if (path === '/api/contests' && method === 'GET') {
+        return me ? json(route, 200, { live: [], upcoming: [], past: [] }) : apiError(route, 401, 'signed_out', 'Sign in to continue.');
+      }
       if (path.startsWith('/api/admin/')) {
         if (!me) return apiError(route, 401, 'signed_out', 'Sign in to continue.');
         if (me.role !== 'owner') return apiError(route, 403, 'forbidden', 'Only owners can do that.');

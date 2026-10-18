@@ -8,6 +8,7 @@ package httpapi
 import (
 	"bytes"
 	"context"
+	"database/sql"
 	"encoding/json"
 	"io"
 	"log/slog"
@@ -17,11 +18,13 @@ import (
 	"net/url"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/Sarthaks-24/podium/internal/auth"
 	"github.com/Sarthaks-24/podium/internal/auth/authtest"
+	"github.com/Sarthaks-24/podium/internal/contests"
 	"github.com/Sarthaks-24/podium/internal/db"
 	"github.com/Sarthaks-24/podium/internal/events"
 	"github.com/Sarthaks-24/podium/internal/jobs"
@@ -40,6 +43,30 @@ type site struct {
 	judge *httptest.Server
 	subs  *submissions.Service
 	hub   *events.Hub
+	// contests runs contests; db is the database; clock shifts the time
+	// seen by contests, submissions and jobs (sign-in uses the real time).
+	contests *contests.Service
+	db       *sql.DB
+	clock    *testClock
+}
+
+// testClock is the real time plus an offset tests can move forward.
+type testClock struct {
+	mu     sync.Mutex
+	offset time.Duration
+}
+
+func (c *testClock) now() time.Time {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return time.Now().Add(c.offset)
+}
+
+// set moves the clock so that now is t.
+func (c *testClock) set(t time.Time) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.offset = time.Until(t)
 }
 
 // judgeToken is the worker token the test site's judge API accepts.
@@ -66,15 +93,24 @@ func newSiteMode(t *testing.T, mode string) *site {
 	idp := authtest.New(t)
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
 	blobs := problems.Blobs{Dir: filepath.Join(t.TempDir(), "tests")}
-	jobSvc := &jobs.Service{DB: d, Kinds: map[string]jobs.Kind{
+	clock := &testClock{}
+	jobSvc := &jobs.Service{DB: d, Now: clock.now, Kinds: map[string]jobs.Kind{
 		judgeapi.KindValidate: problems.ValidateKind{},
 		judgeapi.KindGenerate: problems.GenerateKind{Store: blobs},
-		judgeapi.KindSubmit:   submissions.SubmitKind{},
-		judgeapi.KindRun:      submissions.RunKind{},
+		judgeapi.KindSubmit:   submissions.SubmitKind{Now: clock.now},
+		judgeapi.KindRun:      submissions.RunKind{Now: clock.now},
 	}}
-	s := &site{t: t, idp: idp, bank: &problems.Service{DB: d, Blobs: blobs, Jobs: jobSvc}, hub: &events.Hub{}}
-	s.subs = &submissions.Service{DB: d, Jobs: jobSvc, Problems: s.bank, Hub: s.hub}
-	jobSvc.OnChange = s.subs.OnJobChange
+	s := &site{t: t, idp: idp, bank: &problems.Service{DB: d, Blobs: blobs, Jobs: jobSvc}, hub: &events.Hub{}, db: d, clock: clock}
+	s.subs = &submissions.Service{DB: d, Jobs: jobSvc, Problems: s.bank, Hub: s.hub, Now: clock.now, HashKey: []byte("test-hash-key")}
+	jobSvc.Discard = func(shas []string) { blobs.DiscardUnrecorded(context.Background(), d, shas) }
+	// Boards recompute on the first read after a change, so a test reads
+	// what it just did; the rate limit has its own test.
+	s.contests = &contests.Service{DB: d, Problems: s.bank, Hub: s.hub, Now: clock.now, BoardEvery: time.Nanosecond}
+	s.subs.ContestView = s.contests.ViewFor
+	jobSvc.OnChange = func(id int64, kind string) {
+		s.subs.OnJobChange(id, kind)
+		s.contests.OnJobChange(id, kind)
+	}
 	s.judge = httptest.NewServer(NewJudge(JudgeDeps{Log: log, Jobs: jobSvc, Blobs: blobs, Token: judgeToken}))
 	t.Cleanup(s.judge.Close)
 	// The server's URL is only known once it starts, so the handler is
@@ -88,7 +124,7 @@ func newSiteMode(t *testing.T, mode string) *site {
 		Auth:    svc,
 		IdP:     auth.NewProvider(idp.Endpoints(), idp.ClientID, idp.ClientSecret, RedirectURL(s.srv.URL)),
 		BaseURL: s.srv.URL, SessionSecret: []byte(strings.Repeat("e", 32)),
-		Problems: s.bank, Submissions: s.subs, Hub: s.hub, Mode: mode,
+		Problems: s.bank, Submissions: s.subs, Hub: s.hub, Contests: s.contests, Mode: mode,
 	})
 	return s
 }

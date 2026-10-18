@@ -8,7 +8,21 @@
  */
 
 /** Names of the screens the app can show. */
-export type RouteName = 'home' | 'signin' | 'people' | 'problems' | 'problem' | 'problem-try' | 'not-found';
+export type RouteName =
+  | 'home'
+  | 'signin'
+  | 'people'
+  | 'problems'
+  | 'problem'
+  | 'problem-try'
+  | 'contest'
+  | 'contest-problem'
+  | 'standings'
+  | 'admin-contests'
+  | 'admin-contest'
+  | 'contest-console'
+  | 'contest-results'
+  | 'not-found';
 
 /** One row of the route table. */
 export interface RouteDef {
@@ -27,6 +41,13 @@ export const ROUTES: readonly RouteDef[] = [
   { pattern: '/admin/problems', name: 'problems', auth: true },
   { pattern: '/admin/problems/:id', name: 'problem', auth: true },
   { pattern: '/admin/problems/:id/try', name: 'problem-try', auth: true },
+  { pattern: '/contests/:slug', name: 'contest', auth: true },
+  { pattern: '/contests/:slug/standings', name: 'standings', auth: true },
+  { pattern: '/contests/:slug/problems/:label', name: 'contest-problem', auth: true },
+  { pattern: '/admin/contests', name: 'admin-contests', auth: true },
+  { pattern: '/admin/contests/:id', name: 'admin-contest', auth: true },
+  { pattern: '/admin/contests/:id/console', name: 'contest-console', auth: true },
+  { pattern: '/admin/contests/:id/results', name: 'contest-results', auth: true },
 ];
 
 /** Shown for any path that matches nothing in ROUTES. */

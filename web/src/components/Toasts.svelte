@@ -3,8 +3,10 @@
   the shared state in lib/toast.svelte.ts. The container is a polite live
   region that is always in the page, so screen readers announce new info
   toasts; each error toast has role="alert" and a Dismiss button, because
-  errors do not go away on their own. Toasts appear at --dur with a short
-  rise, and without motion when reduced motion is requested. Takes no props.
+  errors do not go away on their own. At most three show (lib/toast.svelte.ts).
+  The stack lets clicks through to the page; only an error toast, which has
+  a button, takes them. Toasts appear at --dur with a short rise, and
+  without motion when reduced motion is requested. Takes no props.
 -->
 <script lang="ts">
   import { dismissToast, toasts } from '../lib/toast.svelte';
@@ -35,7 +37,7 @@
     z-index: 20;
     display: grid;
     gap: var(--space-2);
-    width: min(28rem, calc(100vw - 2 * var(--gutter)));
+    width: min(24rem, calc(100vw - 2 * var(--gutter)));
     pointer-events: none;
   }
 
@@ -51,11 +53,12 @@
     background: var(--ink);
     color: var(--paper);
     box-shadow: var(--shadow-menu);
-    pointer-events: auto;
+    pointer-events: none;
     animation: toast-in var(--dur) var(--ease);
   }
 
   .toast-error {
+    pointer-events: auto;
     border-color: var(--bad);
     background: var(--bad-tint);
     color: var(--bad);

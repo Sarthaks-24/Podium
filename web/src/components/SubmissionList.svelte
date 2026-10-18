@@ -3,7 +3,9 @@
   first. Each row reads as when, language, outcome and score, and opens in
   place to show the full verdict panel for that submission. Props:
   `submissions` (newest first), `onjump` (passed to each panel for compile
-  error jumps).
+  error jumps), `exam` (contest exam mode: each row only says "Submitted"
+  and does not open) and `showScores` (with `exam`, after the end: the
+  score is shown too).
 -->
 <script lang="ts">
   import { formatWhen, headline, languageLabel, type Submission } from '../lib/workspace';
@@ -12,9 +14,11 @@
   interface Props {
     submissions: Submission[];
     onjump: ((line: number, col: number | null) => void) | null;
+    exam?: boolean;
+    showScores?: boolean;
   }
 
-  let { submissions, onjump }: Props = $props();
+  let { submissions, onjump, exam = false, showScores = false }: Props = $props();
 
   let open = $state<Record<number, boolean>>({});
 </script>
@@ -26,23 +30,32 @@
     {#each submissions as s (s.id)}
       {@const h = headline(s)}
       <li class="item">
-        <button
-          type="button"
-          class="row"
-          aria-expanded={open[s.id] === true}
-          aria-controls="submission-{s.id}"
-          onclick={() => (open[s.id] = !open[s.id])}
-        >
-          <span class="mono when">{formatWhen(s.created_at)}</span>
-          <span class="lang">{languageLabel(s.language)}</span>
-          <span class="outcome tone-{h.tone}">{h.text}</span>
-          <span class="mono score">{s.state === 'done' ? `${s.score} of ${s.max_score}` : ''}</span>
-        </button>
-        <div id="submission-{s.id}" class="body" hidden={open[s.id] !== true}>
-          {#if open[s.id]}
-            <VerdictPanel submission={s} {onjump} idPrefix="submission-{s.id}" />
-          {/if}
-        </div>
+        {#if exam || s.hidden}
+          <div class="row">
+            <span class="mono when">{formatWhen(s.created_at)}</span>
+            <span class="lang">{languageLabel(s.language)}</span>
+            <span class="outcome">Submitted</span>
+            <span class="mono score">{showScores && s.state === 'done' ? `${s.score} of ${s.max_score}` : ''}</span>
+          </div>
+        {:else}
+          <button
+            type="button"
+            class="row"
+            aria-expanded={open[s.id] === true}
+            aria-controls="submission-{s.id}"
+            onclick={() => (open[s.id] = !open[s.id])}
+          >
+            <span class="mono when">{formatWhen(s.created_at)}</span>
+            <span class="lang">{languageLabel(s.language)}</span>
+            <span class="outcome tone-{h.tone}">{h.text}</span>
+            <span class="mono score">{s.state === 'done' ? `${s.score} of ${s.max_score}` : ''}</span>
+          </button>
+          <div id="submission-{s.id}" class="body" hidden={open[s.id] !== true}>
+            {#if open[s.id]}
+              <VerdictPanel submission={s} {onjump} idPrefix="submission-{s.id}" />
+            {/if}
+          </div>
+        {/if}
       </li>
     {/each}
   </ul>
@@ -80,7 +93,7 @@
     text-align: left;
   }
 
-  .row:hover .outcome {
+  button.row:hover .outcome {
     text-decoration: underline;
   }
 

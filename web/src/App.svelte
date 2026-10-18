@@ -1,8 +1,8 @@
 <!--
   App: the shell around every screen. The header holds the podium word-mark
-  (a link home) and, once signed in, the main navigation ("Contests", plus
-  "Problems" for admins and owners and "People" for owners), the user's
-  name, a Sign out button and the theme
+  (a link home) and, once signed in, the main navigation ("Contests" for
+  everyone, "Contest admin" and "Problems" for admins and owners, and
+  "People" for owners), the user's name, a Sign out button and the theme
   menu. Under 768 px those collapse behind a Menu button that opens a
   panel; Escape closes it. The main area shows the screen for the current
   path from lib/router.svelte.ts, after the session from GET /api/me has
@@ -18,8 +18,14 @@
   import { loadMode, runMode } from './lib/mode.svelte';
   import { installLinkInterception, matchRoute, navigate, router } from './lib/router.svelte';
   import { displayName, loadSession, session, signOut } from './lib/session.svelte';
+  import { shell } from './lib/shell.svelte';
   import { safeNext } from './lib/signin';
   import { showToast } from './lib/toast.svelte';
+  import AdminContests from './routes/AdminContests.svelte';
+  import ContestConsole from './routes/ContestConsole.svelte';
+  import ContestEditor from './routes/ContestEditor.svelte';
+  import ContestPage from './routes/ContestPage.svelte';
+  import ContestResults from './routes/ContestResults.svelte';
   import Home from './routes/Home.svelte';
   import NotFound from './routes/NotFound.svelte';
   import People from './routes/People.svelte';
@@ -27,6 +33,7 @@
   import ProblemEditor from './routes/ProblemEditor.svelte';
   import ProblemTry from './routes/ProblemTry.svelte';
   import SignIn from './routes/SignIn.svelte';
+  import StandingsPage from './routes/StandingsPage.svelte';
 
   const year = __BUILD_YEAR__;
 
@@ -40,6 +47,8 @@
   const isOrganiser = $derived(session.user?.role === 'admin' || session.user?.role === 'owner');
   const needsSignIn = $derived(route.auth && session.status === 'signed-out');
   const leaveSignIn = $derived(route.name === 'signin' && signedIn);
+  const inContests = $derived(['home', 'contest', 'contest-problem', 'standings'].includes(route.name));
+  const inContestAdmin = $derived(['admin-contests', 'admin-contest', 'contest-console', 'contest-results'].includes(route.name));
 
   // Redirects are not navigations the person chose, so they keep focus where
   // it is. The redirect's target path is remembered so the focus effect can
@@ -126,9 +135,12 @@
           <nav class="nav" aria-label="Main">
             <ul>
               <li>
-                <a href="/" aria-current={route.name === 'home' ? 'page' : undefined}>Contests</a>
+                <a href="/" aria-current={inContests ? 'page' : undefined}>Contests</a>
               </li>
               {#if isOrganiser}
+                <li>
+                  <a href="/admin/contests" aria-current={inContestAdmin ? 'page' : undefined}>Contest admin</a>
+                </li>
                 <li>
                   <a
                     href="/admin/problems"
@@ -157,7 +169,12 @@
     </div>
   </header>
 
-  <main id="main" class="inner main" class:main-workspace={route.name === 'problem-try'} tabindex="-1">
+  <main
+    id="main"
+    class="inner main"
+    class:main-workspace={route.name === 'problem-try' || (shell.workspace && route.name.startsWith('contest'))}
+    tabindex="-1"
+  >
     {#if session.status === 'loading' || needsSignIn || leaveSignIn}
       <p class="visually-hidden" role="status">Loading</p>
     {:else if route.name === 'signin'}
@@ -175,6 +192,28 @@
     {:else if route.name === 'problem-try'}
       {#key match.params.id}
         <ProblemTry id={match.params.id} />
+      {/key}
+    {:else if route.name === 'contest' || route.name === 'contest-problem'}
+      {#key match.params.slug}
+        <ContestPage slug={match.params.slug} label={match.params.label ?? ''} />
+      {/key}
+    {:else if route.name === 'standings'}
+      {#key match.params.slug}
+        <StandingsPage slug={match.params.slug} />
+      {/key}
+    {:else if route.name === 'admin-contests'}
+      <AdminContests />
+    {:else if route.name === 'admin-contest'}
+      {#key match.params.id}
+        <ContestEditor id={match.params.id} />
+      {/key}
+    {:else if route.name === 'contest-console'}
+      {#key match.params.id}
+        <ContestConsole id={match.params.id} />
+      {/key}
+    {:else if route.name === 'contest-results'}
+      {#key match.params.id}
+        <ContestResults id={match.params.id} />
       {/key}
     {:else}
       <NotFound />

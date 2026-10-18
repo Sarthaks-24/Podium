@@ -13,6 +13,11 @@
  * batch is dropped rather than retried: these are signals for an organiser
  * to look closer, not evidence on their own. The character counts and the
  * number of focus losses since the last submission go with the next submit.
+ *
+ * The server takes at most one batch every 5 s per person (M4), so batches
+ * are paced: a flush within 5 s of the last send waits for the gap, and a
+ * queue longer than one batch goes out one batch per gap. Only the last
+ * flush as the page closes sends at once, because there is no later.
  */
 
 export type IntegrityKind = 'paste' | 'blur' | 'focus';
@@ -37,7 +42,23 @@ export const FLUSH_MS = 30_000;
 /** The most events one request may carry. */
 export const MAX_BATCH = 100;
 
+/** The least time between two batches; the server refuses closer ones. */
+export const MIN_GAP_MS = 5_000;
+
 type Sender = (url: string, body: string) => void;
+
+/** Timers for pacing; tests pass fakes. */
+export interface Pacing {
+  clock: () => number;
+  setTimer: (fn: () => void, ms: number) => unknown;
+  clearTimer: (id: unknown) => void;
+}
+
+const realPacing: Pacing = {
+  clock: () => Date.now(),
+  setTimer: (fn, ms) => setTimeout(fn, ms),
+  clearTimer: (id) => clearTimeout(id as ReturnType<typeof setTimeout>),
+};
 
 /** Sends a JSON body that should outlive the page. */
 export function sendKeepalive(url: string, body: string): void {
@@ -67,11 +88,15 @@ export class IntegrityRecorder {
   private readonly url: string;
   private readonly now: () => number;
   private readonly send: Sender;
+  private readonly pace: Pacing;
+  private lastSent = Number.NEGATIVE_INFINITY;
+  private timer: unknown = null;
 
-  constructor(url: string, now: () => number, send: Sender = sendKeepalive) {
+  constructor(url: string, now: () => number, send: Sender = sendKeepalive, pace: Pacing = realPacing) {
     this.url = url;
     this.now = now;
     this.send = send;
+    this.pace = pace;
   }
 
   /** Characters typed in the editor. */
@@ -108,12 +133,38 @@ export class IntegrityRecorder {
     return this.queue;
   }
 
-  /** Sends what is queued, in batches of at most MAX_BATCH. */
-  flush(): void {
-    while (this.queue.length > 0) {
-      const batch = this.queue.splice(0, MAX_BATCH);
-      this.send(this.url, JSON.stringify({ events: batch }));
+  /**
+   * Sends one batch of what is queued, now or as soon as the gap since the
+   * last batch allows; the rest follows one batch per gap. `final` (the
+   * page is closing) sends a batch at once.
+   */
+  flush(final = false): void {
+    if (this.queue.length === 0) return;
+    const wait = this.lastSent + MIN_GAP_MS - this.pace.clock();
+    if (wait > 0 && !final) {
+      this.schedule(wait);
+      return;
     }
+    if (this.timer !== null) this.pace.clearTimer(this.timer);
+    this.timer = null;
+    const batch = this.queue.splice(0, MAX_BATCH);
+    this.lastSent = this.pace.clock();
+    this.send(this.url, JSON.stringify({ events: batch }));
+    if (this.queue.length > 0 && !final) this.schedule(MIN_GAP_MS);
+  }
+
+  private schedule(ms: number) {
+    if (this.timer !== null) return;
+    this.timer = this.pace.setTimer(() => {
+      this.timer = null;
+      this.flush();
+    }, ms);
+  }
+
+  /** Stops a waiting send; call when the workspace closes, after the final flush. */
+  stop(): void {
+    if (this.timer !== null) this.pace.clearTimer(this.timer);
+    this.timer = null;
   }
 
   /** The counts for a submission. */

@@ -72,8 +72,13 @@ type Service struct {
 	Now func() time.Time
 	// HashKey keys ClientHash (the server's session secret).
 	HashKey []byte
+	// ContestView, when set, says how a student sees a submission made in
+	// a contest (rounding in graded contests, exam mode hiding results). It
+	// is used for live updates; handlers pass the same options directly.
+	ContestView func(ctx context.Context, contestID, userID int64) ViewOptions
 
-	pub publisher
+	pub    publisher
+	limits rateLimiter
 }
 
 func (s *Service) now() time.Time {
@@ -95,6 +100,48 @@ type Scope struct {
 	Practice bool
 	// NoStopOnSample keeps judging after a failing sample.
 	NoStopOnSample bool
+	// Languages limits the languages allowed; empty allows all four.
+	Languages []string
+	// View is how the viewer sees the submissions listed in the workspace
+	// and returned by Submit.
+	View ViewOptions
+}
+
+// allows reports whether the scope accepts a language.
+func (sc Scope) allows(language string) bool {
+	if len(sc.Languages) == 0 {
+		return true
+	}
+	for _, l := range sc.Languages {
+		if l == language {
+			return true
+		}
+	}
+	return false
+}
+
+// checkLanguage refuses a language the contest does not allow.
+func (sc Scope) checkLanguage(language string) error {
+	if sc.allows(language) {
+		return nil
+	}
+	names := make([]string, 0, len(sc.Languages))
+	for _, l := range languages {
+		if sc.allows(l.ID) {
+			names = append(names, l.Name)
+		}
+	}
+	return &InputError{"This contest allows " + joinWords(names) + "."}
+}
+
+func joinWords(w []string) string {
+	switch len(w) {
+	case 0:
+		return "no languages"
+	case 1:
+		return w[0]
+	}
+	return strings.Join(w[:len(w)-1], ", ") + " and " + w[len(w)-1]
 }
 
 // Sample is a sample test shown with the statement.
@@ -147,8 +194,13 @@ func (s *Service) Workspace(ctx context.Context, problemID, userID int64, sc Sco
 		return nil, err
 	}
 	w := &Workspace{ProblemID: p.ID, Title: p.Title, StatementMD: p.Statement, TimeLimitMS: p.TimeLimitMS,
-		MemoryLimitMB: p.MemoryLimitMB, Languages: languages, Samples: []Sample{}, Submissions: []SubmissionView{},
+		MemoryLimitMB: p.MemoryLimitMB, Languages: []Language{}, Samples: []Sample{}, Submissions: []SubmissionView{},
 		ServerNow: s.now().UnixMilli()}
+	for _, l := range languages {
+		if sc.allows(l.ID) {
+			w.Languages = append(w.Languages, l)
+		}
+	}
 	for _, t := range p.Tests {
 		if !p.IsSample(t.Idx) || t.OutputSHA == "" {
 			continue
@@ -166,7 +218,7 @@ func (s *Service) Workspace(ctx context.Context, problemID, userID int64, sc Sco
 	} else if !errors.Is(err, sql.ErrNoRows) {
 		return nil, err
 	}
-	w.Submissions, err = s.listMine(ctx, userID, problemID, sc.ContestID)
+	w.Submissions, err = s.listMine(ctx, userID, problemID, sc.ContestID, sc.View)
 	return w, err
 }
 
@@ -196,6 +248,12 @@ func checkCode(language, source string) error {
 // SaveDraft stores the editor's code.
 func (s *Service) SaveDraft(ctx context.Context, problemID, userID int64, sc Scope, language, source string) error {
 	if err := checkCode(language, source); err != nil {
+		return err
+	}
+	if err := sc.checkLanguage(language); err != nil {
+		return err
+	}
+	if err := s.limits.allow(userID, "draft", draftGap, s.now(), "Drafts are saved"); err != nil {
 		return err
 	}
 	_, err := s.DB.ExecContext(ctx, `INSERT INTO drafts (user_id, problem_id, contest_id, language, source, updated_at) VALUES (?, ?, ?, ?, ?, ?)
@@ -234,6 +292,9 @@ func (s *Service) Submit(ctx context.Context, r SubmitRequest) (v *SubmissionVie
 	if err := checkCode(r.Language, r.Source); err != nil {
 		return nil, false, err
 	}
+	if err := r.Scope.checkLanguage(r.Language); err != nil {
+		return nil, false, err
+	}
 	if len(r.ClientKey) > 64 {
 		return nil, false, &InputError{"The request key is too long."}
 	}
@@ -250,11 +311,11 @@ func (s *Service) Submit(ctx context.Context, r SubmitRequest) (v *SubmissionVie
 	defer tx.Rollback()
 	if r.ClientKey != "" {
 		var id int64
-		err := tx.QueryRowContext(ctx, "SELECT id FROM submissions WHERE user_id = ? AND client_key = ? AND problem_id = ?",
-			r.UserID, r.ClientKey, r.ProblemID).Scan(&id)
+		err := tx.QueryRowContext(ctx, `SELECT id FROM submissions WHERE user_id = ? AND problem_id = ? AND coalesce(contest_id, 0) = ?
+			AND client_key = ? AND client_key <> ''`, r.UserID, r.ProblemID, r.Scope.ContestID, r.ClientKey).Scan(&id)
 		if err == nil {
 			tx.Rollback()
-			v, err := s.Get(ctx, id)
+			v, err := s.GetWith(ctx, id, r.Scope.View)
 			return v, true, err
 		}
 		if !errors.Is(err, sql.ErrNoRows) {
@@ -263,16 +324,25 @@ func (s *Service) Submit(ctx context.Context, r SubmitRequest) (v *SubmissionVie
 	}
 	now := s.now()
 	var pending, judged, count int
-	if err := tx.QueryRowContext(ctx, `SELECT coalesce(sum(state IN ('queued', 'running')), 0), coalesce(sum(state = 'done'), 0), count(*)
+	// A rejudge waiting in the queue is the organisers' work, not the
+	// student's own pending submission.
+	// A submission the judge could not finish is not counted, so it does
+	// not use up one of the student's attempts either.
+	if err := tx.QueryRowContext(ctx, `SELECT coalesce(sum(state IN ('queued', 'running') AND rejudged_at IS NULL), 0),
+		coalesce(sum(state = 'done'), 0), coalesce(sum(state <> 'error'), 0)
 		FROM submissions WHERE user_id = ? AND problem_id = ? AND coalesce(contest_id, 0) = ? AND kind = 'submit'`,
 		r.UserID, r.ProblemID, r.Scope.ContestID).Scan(&pending, &judged, &count); err != nil {
 		return nil, false, err
 	}
-	if pending > 0 {
-		return nil, false, &RateError{"Your last submission for this problem is still being judged. Wait for its result.", 5 * time.Second}
-	}
 	if r.Scope.MaxPerProblem > 0 && count >= r.Scope.MaxPerProblem {
 		return nil, false, &InputError{fmt.Sprintf("You have used all %d submissions for this problem.", r.Scope.MaxPerProblem)}
+	}
+	// In exam mode no refusal may depend on judging: "still being judged"
+	// would tell the student when their hidden submission finished, a
+	// timing channel on hidden tests. A new submission queues behind the
+	// pending one instead, still bounded by the cap and the gap.
+	if pending > 0 && !r.Scope.View.Hide {
+		return nil, false, &RateError{"Your last submission for this problem is still being judged. Wait for its result.", 5 * time.Second}
 	}
 	// The gap is per person, across problems (PLAN.md 7.5).
 	var last sql.NullInt64
@@ -337,7 +407,7 @@ func (s *Service) Submit(ctx context.Context, r SubmitRequest) (v *SubmissionVie
 	if err := tx.Commit(); err != nil {
 		return nil, false, err
 	}
-	v, err = s.Get(ctx, id)
+	v, err = s.GetWith(ctx, id, r.Scope.View)
 	return v, false, err
 }
 
@@ -408,6 +478,9 @@ func (s *Service) Run(ctx context.Context, r RunRequest) (*RunView, error) {
 	if err := checkCode(r.Language, r.Source); err != nil {
 		return nil, err
 	}
+	if err := r.Scope.checkLanguage(r.Language); err != nil {
+		return nil, err
+	}
 	if r.Input != nil && len(*r.Input) > MaxInput {
 		return nil, &InputError{"The input is longer than 64 KB."}
 	}
@@ -468,9 +541,13 @@ func (s *Service) Run(ctx context.Context, r RunRequest) (*RunView, error) {
 	if r.Scope.ContestID > 0 {
 		contest = r.Scope.ContestID
 	}
+	// A run row keeps only the hash of its code: the text is in the blob
+	// store already, and up to 128 KB inline per run would make every
+	// later scan of the table walk overflow pages. The custom input is
+	// likewise kept only as a blob (in the job payload).
 	var id int64
 	if err := tx.QueryRowContext(ctx, `INSERT INTO submissions (problem_id, contest_id, user_id, kind, language, source, source_sha, input, created_at)
-		VALUES (?, ?, ?, 'run', ?, ?, ?, ?, ?) RETURNING id`, r.ProblemID, contest, r.UserID, r.Language, r.Source, srcSHA, input,
+		VALUES (?, ?, ?, 'run', ?, '', ?, '', ?) RETURNING id`, r.ProblemID, contest, r.UserID, r.Language, srcSHA,
 		s.now().UnixMilli()).Scan(&id); err != nil {
 		return nil, err
 	}
@@ -482,10 +559,15 @@ func (s *Service) Run(ctx context.Context, r RunRequest) (*RunView, error) {
 	if _, err := tx.ExecContext(ctx, "UPDATE submissions SET job_id = ? WHERE id = ?", jobID, id); err != nil {
 		return nil, err
 	}
+	if r.Scope.ContestID > 0 {
+		if _, err := tx.ExecContext(ctx, "UPDATE jobs SET contest_id = ? WHERE id = ?", r.Scope.ContestID, jobID); err != nil {
+			return nil, err
+		}
+	}
 	if err := tx.Commit(); err != nil {
 		return nil, err
 	}
-	return s.GetRun(ctx, id)
+	return s.GetRunWith(ctx, id, r.Scope.View)
 }
 
 // Event is one integrity event from the editor (D47). At is when it
@@ -507,13 +589,23 @@ func (s *Service) RecordEvents(ctx context.Context, problemID, userID int64, sc 
 	if len(evs) > maxEvents {
 		return &InputError{"Too many events in one request."}
 	}
-	tx, err := s.DB.BeginTx(ctx, nil)
-	if err != nil {
+	// Everything that can refuse the batch is checked before the write
+	// lock is taken: kinds, the rate, and the cap (a plain read).
+	for _, e := range evs {
+		switch e.Kind {
+		case "paste", "blur", "focus":
+		default:
+			return &InputError{"Unknown event kind."}
+		}
+	}
+	if len(evs) == 0 {
+		return nil
+	}
+	if err := s.limits.allow(userID, "events", eventsGap, s.now(), "Editor events are sent"); err != nil {
 		return err
 	}
-	defer tx.Rollback()
 	var have, exists int
-	if err := tx.QueryRowContext(ctx, `SELECT (SELECT count(*) FROM integrity_events WHERE user_id = ? AND problem_id = ? AND contest_id = ?),
+	if err := s.DB.QueryRowContext(ctx, `SELECT (SELECT count(*) FROM integrity_events WHERE user_id = ? AND problem_id = ? AND contest_id = ?),
 		(SELECT count(*) FROM problems WHERE id = ?)`, userID, problemID, sc.ContestID, problemID).Scan(&have, &exists); err != nil {
 		return err
 	}
@@ -523,13 +615,13 @@ func (s *Service) RecordEvents(ctx context.Context, problemID, userID int64, sc 
 	if have+len(evs) > maxEventsPerScope {
 		return nil // enough recorded; dropping more loses nothing a reviewer needs
 	}
+	tx, err := s.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
 	now := s.now().UnixMilli()
 	for _, e := range evs {
-		switch e.Kind {
-		case "paste", "blur", "focus":
-		default:
-			return &InputError{"Unknown event kind."}
-		}
 		at := e.At
 		if at > now || at < now-eventAgeLimit.Milliseconds() {
 			at = now
@@ -544,9 +636,24 @@ func (s *Service) RecordEvents(ctx context.Context, problemID, userID int64, sc 
 
 // Owner returns who made a submission or run, for access checks.
 func (s *Service) Owner(ctx context.Context, id int64) (userID int64, kind string, err error) {
-	err = s.DB.QueryRowContext(ctx, "SELECT user_id, kind FROM submissions WHERE id = ?", id).Scan(&userID, &kind)
+	i, err := s.Info(ctx, id)
+	return i.UserID, i.Kind, err
+}
+
+// Info is what access checks need to know about a submission or run.
+type Info struct {
+	UserID, ContestID, ProblemID int64
+	Kind                         string
+}
+
+// Info returns who made a submission or run, and in which contest (0
+// outside contests).
+func (s *Service) Info(ctx context.Context, id int64) (Info, error) {
+	var i Info
+	err := s.DB.QueryRowContext(ctx, "SELECT user_id, coalesce(contest_id, 0), problem_id, kind FROM submissions WHERE id = ?", id).
+		Scan(&i.UserID, &i.ContestID, &i.ProblemID, &i.Kind)
 	if errors.Is(err, sql.ErrNoRows) {
-		return 0, "", ErrNotFound
+		return Info{}, ErrNotFound
 	}
-	return userID, kind, err
+	return i, err
 }

@@ -30,7 +30,10 @@ type SubmissionView struct {
 	Subtasks      []SubtaskResult `json:"subtasks"`
 	Samples       []TestOutcome   `json:"samples"`
 	Error         string          `json:"error,omitempty"`
-	ServerNow     int64           `json:"server_now"`
+	// Hidden is set in exam mode while the student's window is open: the
+	// submission was received, and nothing about its result is shown.
+	Hidden    bool  `json:"hidden"`
+	ServerNow int64 `json:"server_now"`
 }
 
 // RunResult is one input of a run.
@@ -55,10 +58,8 @@ type RunView struct {
 	ServerNow     int64       `json:"server_now"`
 }
 
-// roundTime rounds a displayed time to 10 ms: finer figures add noise and
-// help nobody.
-func roundTime(ms int) int { return roundTo(ms, 10) }
-
+// roundTo rounds a displayed time to step ms (10 by default, 100 in graded
+// contests): finer figures add noise and help nobody.
 func roundTo(ms, step int) int {
 	if step <= 1 {
 		return ms
@@ -75,7 +76,15 @@ type ViewOptions struct {
 	Coarse bool
 	// RoundMS rounds displayed times (100 in graded contests); 0 means 10.
 	RoundMS int
+	// Hide shows only that the submission was received (exam mode while
+	// the student's window is open): state "submitted", no verdict, score,
+	// tests, times or compile output.
+	Hide bool
 }
+
+// StudentView is how a student sees a submission outside any contest
+// rules.
+var StudentView = ViewOptions{Coarse: true}
 
 const memoryStepKB = 16 << 10
 
@@ -146,6 +155,19 @@ func (s *Service) GetWith(ctx context.Context, id int64, o ViewOptions) (*Submis
 	if r.kind != "submit" {
 		return nil, ErrNotFound
 	}
+	if o.Hide {
+		v := &SubmissionView{ID: r.id, ProblemID: r.problemID, Language: r.language, State: "submitted",
+			MaxScore: r.maxScore, CreatedAt: r.createdAt, Subtasks: []SubtaskResult{}, Samples: []TestOutcome{},
+			Hidden: true, ServerNow: s.now().UnixMilli()}
+		// A submission the judge could not finish is not counted, and the
+		// student must know to submit again. The failure is the judge's or
+		// the checker's, never something the program chose, so it tells
+		// nothing about hidden tests.
+		if r.state == "error" {
+			v.State, v.Error = "error", r.errorMsg
+		}
+		return v, nil
+	}
 	v := &SubmissionView{ID: r.id, ProblemID: r.problemID, Language: r.language, State: r.state, Verdict: r.verdict,
 		Score: r.score, MaxScore: r.maxScore, MaxTimeMS: r.maxTime, MaxMemoryKB: r.maxMem, CreatedAt: r.createdAt,
 		Error: r.errorMsg, Subtasks: []SubtaskResult{}, Samples: []TestOutcome{}, ServerNow: s.now().UnixMilli()}
@@ -189,9 +211,37 @@ func (s *Service) GetWith(ctx context.Context, id int64, o ViewOptions) (*Submis
 	}
 	sc := ScoreSubmission(pl, program, job.Result.Tests, false)
 	applyView(&sc, o)
+	if o.Coarse {
+		maskUnfinished(&sc)
+	}
 	v.Subtasks, v.Samples, v.Score, v.MaxTimeMS, v.MaxMemoryKB = sc.Subtasks, sc.Samples, sc.Score, sc.MaxTimeMS, sc.MaxMemoryKB
 	v.CompileOutput = compileOutput(program)
 	return v, nil
+}
+
+// maskUnfinished hides per-test progress inside a block that is still
+// being judged (the samples, or a subtask), so polling a submission shows
+// as much as the live stream does and no more: when a whole block
+// finishes, never when one hidden test does (D47).
+func maskUnfinished(sc *Score) {
+	blank := func(tests []TestOutcome) {
+		for i := range tests {
+			tests[i] = TestOutcome{Idx: tests[i].Idx}
+		}
+	}
+	for _, t := range sc.Samples {
+		if t.Verdict == "" {
+			blank(sc.Samples)
+			break
+		}
+	}
+	for i := range sc.Subtasks {
+		if sc.Subtasks[i].Verdict == "" {
+			blank(sc.Subtasks[i].Tests)
+		}
+	}
+	// The maximum time and memory so far would reveal the same progress.
+	sc.MaxTimeMS, sc.MaxMemoryKB = 0, 0
 }
 
 func compileOutput(cs []judgeapi.CompileResult) string {
@@ -212,6 +262,16 @@ type storedResult struct {
 
 // GetRun returns a run with whatever results have arrived.
 func (s *Service) GetRun(ctx context.Context, id int64) (*RunView, error) {
+	return s.GetRunWith(ctx, id, ViewOptions{})
+}
+
+// GetRunWith returns a run with times rounded as the options say. A run
+// uses the samples or the student's own input, so nothing else is hidden.
+func (s *Service) GetRunWith(ctx context.Context, id int64, o ViewOptions) (*RunView, error) {
+	step := o.RoundMS
+	if step == 0 {
+		step = 10
+	}
 	r, err := s.loadRow(ctx, id)
 	if err != nil {
 		return nil, err
@@ -253,7 +313,7 @@ func (s *Service) GetRun(ctx context.Context, id int64) (*RunView, error) {
 			}
 		}
 		if t, ok := got[in.Idx]; ok {
-			res.Verdict, res.TimeMS, res.MemoryKB, res.Message = t.Verdict, roundTime(t.TimeMS), t.MemoryKB, t.Message
+			res.Verdict, res.TimeMS, res.MemoryKB, res.Message = t.Verdict, roundTo(t.TimeMS, step), t.MemoryKB, t.Message
 			res.Output = t.Output
 			// The worker cuts at MaxRunOutput and drops a split rune (at
 			// most 3 bytes), so anything that close to the cap was cut.
@@ -264,8 +324,9 @@ func (s *Service) GetRun(ctx context.Context, id int64) (*RunView, error) {
 	return v, nil
 }
 
-// listMine returns a user's newest submissions on a problem.
-func (s *Service) listMine(ctx context.Context, userID, problemID, contestID int64) ([]SubmissionView, error) {
+// listMine returns a user's newest submissions on a problem as a viewer
+// with the given options sees them.
+func (s *Service) listMine(ctx context.Context, userID, problemID, contestID int64, o ViewOptions) ([]SubmissionView, error) {
 	rows, err := s.DB.QueryContext(ctx, `SELECT id FROM submissions WHERE user_id = ? AND problem_id = ? AND coalesce(contest_id, 0) = ?
 		AND kind = 'submit' ORDER BY id DESC LIMIT ?`, userID, problemID, contestID, listLimit)
 	if err != nil {
@@ -283,7 +344,7 @@ func (s *Service) listMine(ctx context.Context, userID, problemID, contestID int
 	rows.Close()
 	out := []SubmissionView{}
 	for _, id := range ids {
-		v, err := s.Get(ctx, id)
+		v, err := s.GetWith(ctx, id, o)
 		if err != nil {
 			return nil, err
 		}

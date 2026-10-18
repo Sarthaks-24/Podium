@@ -1,0 +1,280 @@
+<!--
+  StandingsTable: the leaderboard (design.md 5.4). A dense table in its own
+  scroll box, so the header row stays put while rows scroll and, on
+  phones, the rank and name columns stay pinned while the problem columns
+  scroll sideways. Rank and scores are mono with tabular figures. Each
+  problem cell has a two-tone background, the earned fraction in a light
+  tint of --ok (full) or --part (partial) over --surface, and "+N" in
+  --ink-muted for submissions made after the freeze; screen readers hear
+  each cell as a sentence (lib/standings.ts). The signed-in student's row
+  is tinted with --act-tint and marked "(you)", and "Jump to you" scrolls
+  to it and moves focus there. Under 768 px the box only scrolls sideways
+  and the page scrolls the rows, so a swipe is never trapped. Props: `standings`, `labels` (the problem
+  letters, in order), `caption` (the table's accessible name) and `large`
+  (bigger type, for a projector).
+-->
+<script lang="ts">
+  import { tick } from 'svelte';
+  import { cellFor, cellView, formatElapsed, myRow, type Standings } from '../lib/standings';
+
+  interface Props {
+    standings: Standings;
+    labels: string[];
+    caption: string;
+    large?: boolean;
+  }
+
+  let { standings, labels, caption, large = false }: Props = $props();
+
+  let wrap: HTMLDivElement | undefined = $state();
+  const mine = $derived(myRow(standings));
+
+  async function jump() {
+    if (!mine || !wrap) return;
+    await tick();
+    const row = wrap.querySelector<HTMLTableRowElement>(`[data-user="${mine.user_id}"]`);
+    if (!row) return;
+    const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    row.scrollIntoView({ block: 'center', behavior: reduce ? 'auto' : 'smooth' });
+    row.focus({ preventScroll: true });
+  }
+</script>
+
+{#if mine}
+  <p class="tools">
+    <button type="button" class="btn btn-secondary btn-compact" onclick={jump}>Jump to you</button>
+  </p>
+{/if}
+
+{#if standings.rows.length === 0}
+  <p class="muted empty">Nobody is on the board yet. Rows appear as students submit.</p>
+{:else}
+  <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+  <div class="board-wrap" class:large bind:this={wrap} tabindex="0" role="region" aria-label={caption}>
+    <table class="board">
+      <caption class="visually-hidden">{caption}</caption>
+      <thead>
+        <tr>
+          <th scope="col" class="rank"><span aria-hidden="true">#</span><span class="visually-hidden">Rank</span></th>
+          <th scope="col" class="name">Name</th>
+          <th scope="col" class="total">Score</th>
+          {#each labels as l (l)}<th scope="col" class="pcell head"><span class="visually-hidden">Problem </span>{l}</th>{/each}
+        </tr>
+      </thead>
+      <tbody>
+        {#each standings.rows as r (r.user_id)}
+          {@const me = mine?.user_id === r.user_id}
+          <tr class:me data-user={r.user_id} tabindex={me ? -1 : undefined}>
+            <td class="rank mono">{r.rank}</td>
+            <th scope="row" class="name">
+              <span class="name-text" title={r.name}>{r.name}</span>{#if me}<span class="you">&nbsp;(you)</span>{/if}
+            </th>
+            <td class="total mono">
+              {r.total}<span class="visually-hidden">, reached after</span>
+              <span class="time" title="Time to reach this score">{formatElapsed(r.last_improvement_s)}</span>
+            </td>
+            {#each labels as l (l)}
+              {@const v = cellView(cellFor(r, l), l)}
+              <td class="pcell tone-{v.tone}">
+                <span class="fillbar" style:width="{Math.round(v.fraction * 100)}%" aria-hidden="true"></span>
+                <span class="ctext mono" aria-hidden="true">
+                  {#if v.text !== ''}<span class:untried={v.tone === 'none'}>{v.text}</span>{/if}{#if v.pending}<span class="pending">{v.pending}</span>{/if}
+                </span>
+                <span class="visually-hidden">{v.sentence}</span>
+              </td>
+            {/each}
+          </tr>
+        {/each}
+      </tbody>
+    </table>
+  </div>
+{/if}
+
+<style>
+  .tools {
+    margin-bottom: var(--space-3);
+  }
+
+  .empty {
+    margin-top: var(--space-4);
+  }
+
+  .board-wrap {
+    --rank-w: 3.25rem;
+    position: relative;
+    max-width: 100%;
+    max-height: max(20rem, calc(100dvh - 15rem));
+    overflow: auto;
+    border: var(--rule) solid var(--line);
+    background: var(--surface);
+    overscroll-behavior: contain;
+  }
+
+  .board {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0;
+    font-size: var(--fs-0);
+  }
+
+  .board th,
+  .board td {
+    height: calc(var(--control-h) + var(--space-2));
+    padding: var(--space-1) var(--space-3);
+    border-bottom: var(--rule) solid var(--line);
+    background: var(--surface);
+    text-align: left;
+    vertical-align: middle;
+    white-space: nowrap;
+  }
+
+  .board thead th {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    background: var(--surface-2);
+    font-weight: 600;
+  }
+
+  .board tbody tr:last-child > * {
+    border-bottom: 0;
+  }
+
+  .board tr.me > * {
+    background: var(--act-tint);
+  }
+
+  .board tr.me:focus-visible {
+    outline: 2px solid var(--act);
+    outline-offset: -2px;
+  }
+
+  .rank {
+    position: sticky;
+    left: 0;
+    z-index: 1;
+    width: var(--rank-w);
+    min-width: var(--rank-w);
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .board td.rank {
+    text-align: right;
+  }
+
+  .name {
+    position: sticky;
+    left: var(--rank-w);
+    z-index: 1;
+    max-width: 16rem;
+    overflow: hidden;
+    border-right: var(--rule) solid var(--line);
+    font-weight: 500;
+    text-overflow: ellipsis;
+  }
+
+  .board thead .rank,
+  .board thead .name {
+    z-index: 3;
+  }
+
+  .you {
+    margin-left: 0.3em;
+    color: var(--ink-muted);
+    font-weight: 400;
+  }
+
+  .total {
+    width: 6rem;
+    font-variant-numeric: tabular-nums;
+    text-align: right;
+  }
+
+  .board th.total {
+    text-align: right;
+  }
+
+  .board td.total {
+    text-align: right;
+    font-size: var(--fs-1);
+  }
+
+  .time {
+    display: block;
+    color: var(--ink-muted);
+    font-size: var(--fs-0);
+    line-height: 1;
+  }
+
+  /* Problem columns stay narrow and equal; the name column takes the rest. */
+  .pcell {
+    position: relative;
+    width: 5.5rem;
+    min-width: 4.5rem;
+    text-align: center;
+  }
+
+  .board .pcell {
+    text-align: center;
+  }
+
+  .fillbar {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 0;
+  }
+
+  .tone-ok .fillbar {
+    background: var(--ok-tint);
+  }
+
+  .tone-part .fillbar {
+    background: var(--part-tint);
+  }
+
+  .ctext {
+    position: relative;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .untried {
+    color: var(--ink-muted);
+  }
+
+  .pending {
+    margin-left: var(--space-1);
+    color: var(--ink-muted);
+  }
+
+  .large .board {
+    font-size: var(--fs-3);
+  }
+
+  .large .board td.total {
+    font-size: var(--fs-3);
+  }
+
+  @media (max-width: 767px) {
+    .board-wrap {
+      --rank-w: 2.75rem;
+    }
+
+    .name {
+      max-width: 9rem;
+    }
+
+    .board-wrap {
+      max-height: none;
+      overflow-y: visible;
+      overscroll-behavior: auto;
+      overscroll-behavior-x: contain;
+    }
+
+    .board th,
+    .board td {
+      padding-inline: var(--space-2);
+    }
+  }
+</style>

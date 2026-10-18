@@ -1,7 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
   DEFAULT_FONT_SIZE,
+  forgetDrafts,
+  forgetDraftsAtSignOut,
+  mayMirror,
   mirrorKey,
+  noteSignedInUser,
   pickDraft,
   readEditorPrefs,
   readMirror,
@@ -18,6 +22,10 @@ function memory(): DraftStorage & { data: Map<string, string> } {
     getItem: (k) => data.get(k) ?? null,
     setItem: (k, v) => void data.set(k, v),
     removeItem: (k) => void data.delete(k),
+    key: (i) => [...data.keys()][i] ?? null,
+    get length() {
+      return data.size;
+    },
   };
 }
 
@@ -56,23 +64,64 @@ describe('draft merge', () => {
 });
 
 describe('local mirror', () => {
-  it('round-trips a draft under the workspace key', () => {
+  it('round-trips a draft under the user and workspace key', () => {
     const s = memory();
-    const key = mirrorKey('/api/workspace/3');
-    expect(key).toBe('podium-draft:/api/workspace/3');
-    expect(writeMirror(s, key, server)).toBe(true);
-    expect(readMirror(s, key)).toEqual(server);
+    const key = mirrorKey(7, '/api/workspace/3');
+    expect(key).toBe('podium-draft:7:/api/workspace/3');
+    expect(writeMirror(s, key, server, 7)).toBe(true);
+    expect(JSON.parse(s.data.get(key)!)).toEqual({ ...server, owner: 7 });
+    expect(readMirror(s, key, 7)).toEqual(server);
+  });
+
+  it('never hands one user the code of another', () => {
+    const s = memory();
+    // A mirror written for student 7, read back as student 8 under any key.
+    writeMirror(s, mirrorKey(7, '/api/workspace/3'), server, 7);
+    expect(readMirror(s, mirrorKey(8, '/api/workspace/3'), 8)).toBeNull();
+    s.setItem(mirrorKey(8, '/api/workspace/3'), s.data.get(mirrorKey(7, '/api/workspace/3'))!);
+    expect(readMirror(s, mirrorKey(8, '/api/workspace/3'), 8)).toBeNull();
+    // The M3 shape with no owner is ignored too.
+    s.setItem('podium-draft:/api/workspace/3', JSON.stringify(server));
+    expect(readMirror(s, 'podium-draft:/api/workspace/3', 8)).toBeNull();
+  });
+
+  it('removes every mirror at sign-out and when another account signs in', () => {
+    const s = memory();
+    s.setItem('podium-editor-font', '16');
+    noteSignedInUser(7, s);
+    writeMirror(s, mirrorKey(7, '/api/workspace/3'), server, 7);
+    writeMirror(s, mirrorKey(7, '/api/contests/w/problems/A'), server, 7);
+    s.setItem('podium-draft:/api/workspace/1', JSON.stringify(server));
+
+    noteSignedInUser(7, s);
+    expect(readMirror(s, mirrorKey(7, '/api/workspace/3'), 7)).toEqual(server);
+
+    noteSignedInUser(8, s);
+    expect([...s.data.keys()].filter((k) => k.startsWith('podium-draft:'))).toEqual([]);
+    expect(s.getItem('podium-editor-font')).toBe('16');
+
+    writeMirror(s, mirrorKey(8, '/api/workspace/3'), server, 8);
+    expect(mayMirror(8)).toBe(true);
+    expect(mayMirror(7)).toBe(false);
+    forgetDraftsAtSignOut(s);
+    expect([...s.data.keys()]).toEqual(['podium-editor-font']);
+    // A workspace closing after sign-out may not write its mirror back.
+    expect(mayMirror(8)).toBe(false);
+    noteSignedInUser(8, s);
+    expect(mayMirror(8)).toBe(true);
+    expect(() => forgetDrafts(broken)).not.toThrow();
+    expect(() => noteSignedInUser(1, broken)).not.toThrow();
   });
 
   it('ignores junk and survives storage that throws', () => {
     const s = memory();
     s.setItem('k', '{not json');
-    expect(readMirror(s, 'k')).toBeNull();
-    s.setItem('k', JSON.stringify({ language: 'cobol', source: '', updated_at: 1 }));
-    expect(readMirror(s, 'k')).toBeNull();
-    expect(readMirror(broken, 'k')).toBeNull();
-    expect(writeMirror(broken, 'k', server)).toBe(false);
-    expect(readMirror(null, 'k')).toBeNull();
+    expect(readMirror(s, 'k', 1)).toBeNull();
+    s.setItem('k', JSON.stringify({ language: 'cobol', source: '', updated_at: 1, owner: 1 }));
+    expect(readMirror(s, 'k', 1)).toBeNull();
+    expect(readMirror(broken, 'k', 1)).toBeNull();
+    expect(writeMirror(broken, 'k', server, 1)).toBe(false);
+    expect(readMirror(null, 'k', 1)).toBeNull();
   });
 });
 

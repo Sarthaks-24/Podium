@@ -3,7 +3,6 @@ package httpapi
 import (
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"strconv"
 	"time"
@@ -19,7 +18,7 @@ import (
 const organiserGap = 5 * time.Second
 
 // clockEvery is how often the event stream sends the server's clock.
-const clockEvery = 25 * time.Second
+var clockEvery = 25 * time.Second
 
 // maxRunBody bounds a run or submit: 64 KB of code plus 64 KB of input.
 const maxRunBody = 160 << 10
@@ -162,32 +161,59 @@ func (d Deps) recordEvents(w http.ResponseWriter, r *http.Request) {
 }
 
 // mayRead lets the author read their own run or submission, and organisers
-// read anyone's.
-func (d Deps) mayRead(w http.ResponseWriter, r *http.Request, wantKind string) (int64, bool) {
+// (owners, admins, and co-organisers of the submission's contest) read
+// anyone's. It returns the id and how the viewer sees it: organisers every
+// figure, the author the student view of their contest (coarse figures,
+// rounded times, exam mode hiding results; decision D47).
+func (d Deps) mayRead(w http.ResponseWriter, r *http.Request, wantKind string) (int64, submissions.ViewOptions, bool) {
+	notFound := func() (int64, submissions.ViewOptions, bool) {
+		WriteError(w, http.StatusNotFound, "not_found", "There is no such submission.")
+		return 0, submissions.ViewOptions{}, false
+	}
 	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
 	if err != nil || id <= 0 {
-		WriteError(w, http.StatusNotFound, "not_found", "There is no such submission.")
-		return 0, false
+		return notFound()
 	}
-	owner, kind, err := d.Submissions.Owner(r.Context(), id)
-	u := userFrom(r.Context())
-	if errors.Is(err, submissions.ErrNotFound) || (err == nil && (kind != wantKind || (owner != u.ID && !u.Role.AtLeast(auth.Admin)))) {
-		WriteError(w, http.StatusNotFound, "not_found", "There is no such submission.")
-		return 0, false
+	info, err := d.Submissions.Info(r.Context(), id)
+	if errors.Is(err, submissions.ErrNotFound) {
+		return notFound()
 	}
 	if err != nil {
 		d.internalError(w, r, err)
-		return 0, false
+		return 0, submissions.ViewOptions{}, false
 	}
-	return id, true
+	if info.Kind != wantKind {
+		return notFound()
+	}
+	u := userFrom(r.Context())
+	if u.Role.AtLeast(auth.Admin) {
+		return id, submissions.ViewOptions{}, true
+	}
+	if info.UserID == u.ID {
+		return id, d.Submissions.ViewFor(r.Context(), info.ContestID, u.ID, true), true
+	}
+	// A co-organiser reads the submissions of their contest with the
+	// coarse figures a student sees: they are not trusted with what exact
+	// figures reveal about hidden tests.
+	if info.ContestID > 0 && d.Contests != nil {
+		ok, err := d.Contests.IsContestAdmin(r.Context(), info.ContestID, u.ID)
+		if err != nil {
+			d.internalError(w, r, err)
+			return 0, submissions.ViewOptions{}, false
+		}
+		if ok {
+			return id, submissions.StudentView, true
+		}
+	}
+	return notFound()
 }
 
 func (d Deps) getSubmission(w http.ResponseWriter, r *http.Request) {
-	id, ok := d.mayRead(w, r, "submit")
+	id, view, ok := d.mayRead(w, r, "submit")
 	if !ok {
 		return
 	}
-	v, err := d.Submissions.Get(r.Context(), id)
+	v, err := d.Submissions.GetWith(r.Context(), id, view)
 	if err != nil {
 		d.submissionError(w, r, err)
 		return
@@ -196,11 +222,11 @@ func (d Deps) getSubmission(w http.ResponseWriter, r *http.Request) {
 }
 
 func (d Deps) getRun(w http.ResponseWriter, r *http.Request) {
-	id, ok := d.mayRead(w, r, "run")
+	id, view, ok := d.mayRead(w, r, "run")
 	if !ok {
 		return
 	}
-	v, err := d.Submissions.GetRun(r.Context(), id)
+	v, err := d.Submissions.GetRunWith(r.Context(), id, view)
 	if err != nil {
 		d.submissionError(w, r, err)
 		return
@@ -209,14 +235,31 @@ func (d Deps) getRun(w http.ResponseWriter, r *http.Request) {
 }
 
 // eventStream is the signed-in user's server-sent event stream: run and
-// submission updates as they happen, and the server's clock every 25 s.
+// submission updates as they happen, contest events, and the server's
+// clock every 25 s. On each clock tick the session is checked again, so a
+// stream ends with its session (logout, expiry, a disabled account). A
+// stream displaced by the user's fifth tab gets a final "replaced" event,
+// so that tab stops reconnecting. Opening a stream from a second machine
+// or browser while another is open is recorded for live contests (D47).
 func (d Deps) eventStream(w http.ResponseWriter, r *http.Request) {
 	_, ok := w.(http.Flusher)
 	if !ok || d.Hub == nil {
 		WriteError(w, http.StatusNotImplemented, "unsupported", "Live updates are not available; the page will poll instead.")
 		return
 	}
-	c, err := d.Hub.Subscribe(userFrom(r.Context()).ID)
+	u := userFrom(r.Context())
+	tag := d.Submissions.ClientHash(clientIP(r), r.UserAgent())
+	if d.Contests != nil && u.Role == auth.Student {
+		for _, other := range d.Hub.Tags(u.ID) {
+			if other != tag {
+				if err := d.Contests.RecordSecondSession(r.Context(), u.ID); err != nil {
+					d.Log.Warn("second session not recorded", "user_id", u.ID, "err", err)
+				}
+				break
+			}
+		}
+	}
+	c, err := d.Hub.SubscribeTagged(u.ID, tag)
 	if err != nil {
 		w.Header().Set("Retry-After", "30")
 		WriteError(w, http.StatusServiceUnavailable, "busy", "Too many live connections right now; the page will poll instead.")
@@ -252,17 +295,32 @@ func (d Deps) eventStream(w http.ResponseWriter, r *http.Request) {
 		case <-r.Context().Done():
 			return
 		case <-c.Done:
-			return // too slow; the browser reconnects
+			if c.Replaced() {
+				write("event: replaced\ndata: {}\n\n")
+			}
+			return // too slow (the browser reconnects), or replaced
 		case ev := <-c.C:
 			if !write("event: %s\ndata: %s\n\n", ev.Type, ev.Data) {
 				return
 			}
 		case <-t.C:
-			if !clock() {
+			if !d.sessionLive(r) || !clock() {
 				return
 			}
 		}
 	}
+}
+
+// sessionLive reports whether the request's session is still valid and its
+// account enabled. Contest events need nothing more here: they are
+// addressed at send time to the users who may still enter the contest.
+func (d Deps) sessionLive(r *http.Request) bool {
+	c, err := r.Cookie(d.sessionCookieName())
+	if err != nil {
+		return false
+	}
+	u, _, err := d.Auth.Authenticate(r.Context(), c.Value)
+	return err == nil && u.ID == userFrom(r.Context()).ID
 }
 
 type generationJSON struct {
@@ -350,13 +408,22 @@ func (d JudgeDeps) uploadBlob(w http.ResponseWriter, r *http.Request) {
 		WriteError(w, http.StatusConflict, "lease", "This lease does not allow more uploads.")
 		return
 	}
-	data, err := io.ReadAll(http.MaxBytesReader(w, r.Body, problems.MaxPackFile))
-	if err != nil {
+	// The slot is reserved: give it back unless the upload is recorded.
+	// The body streams to a temporary file while it is hashed.
+	err = d.Blobs.UploadOutput(http.MaxBytesReader(w, r.Body, problems.MaxPackFile), sha, problems.MaxPackFile)
+	switch {
+	case errors.Is(err, problems.ErrUploadTooLarge):
+		d.Jobs.ReleaseUpload(jobID)
 		WriteError(w, http.StatusRequestEntityTooLarge, "too_large", "Outputs are limited to 16 MB.")
 		return
-	}
-	if err := d.Blobs.UploadOutput(data, sha); err != nil {
+	case errors.Is(err, problems.ErrUploadHash):
+		d.Jobs.ReleaseUpload(jobID)
 		WriteError(w, http.StatusBadRequest, "bad_upload", "The upload does not match its hash.")
+		return
+	case err != nil:
+		d.Jobs.ReleaseUpload(jobID)
+		d.Log.Error("upload failed", "job_id", jobID, "err", err)
+		WriteError(w, http.StatusInternalServerError, "internal", "The server could not store the upload.")
 		return
 	}
 	d.Jobs.RecordUpload(jobID, sha)

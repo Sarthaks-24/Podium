@@ -10,6 +10,17 @@ describe('matchRoute', () => {
     expect(matchRoute('/admin/problems/12')).toEqual({ route: expect.objectContaining({ name: 'problem' }), params: { id: '12' } });
   });
 
+  it('matches the contest screens', () => {
+    expect(matchRoute('/contests/week-6')).toEqual({ route: expect.objectContaining({ name: 'contest' }), params: { slug: 'week-6' } });
+    expect(matchRoute('/contests/week-6/standings').route.name).toBe('standings');
+    expect(matchRoute('/contests/week-6/problems/B').params).toEqual({ slug: 'week-6', label: 'B' });
+    expect(matchRoute('/admin/contests').route.name).toBe('admin-contests');
+    expect(matchRoute('/admin/contests/4').route.name).toBe('admin-contest');
+    expect(matchRoute('/admin/contests/4/console').route.name).toBe('contest-console');
+    expect(matchRoute('/admin/contests/4/results').route.name).toBe('contest-results');
+    expect(matchRoute('/contests/week-6/standings').route.auth).toBe(true);
+  });
+
   it('ignores trailing slashes', () => {
     expect(matchRoute('/signin/').route.name).toBe('signin');
     expect(matchRoute('/admin/people/').route.name).toBe('people');

@@ -74,7 +74,9 @@ podium-server                                      podium-judge work (one loop p
 | Piece | Design |
 |---|---|
 | One queue | A single `jobs` table (`kind`, `priority`, `state` queued, leased, done or failed, `payload`, lease hash, lease expiry, deadline, attempts). Four kinds: `run` (priority 10), `submit` (20 to 30), `generate` (85) and `validate` (90). A submission or run is a row in `submissions` that references its job, not a second queue. Lower priority numbers run first, so setter work waits behind contest work. |
-| Fair queue | A submission's priority is 20 plus the number of the user's judged submissions on that problem, at most 30. Someone's first attempt goes ahead of someone else's tenth, so one person resubmitting cannot starve the room. |
+| Fair queue | A submission's priority is 20 plus the number of the user's judged submissions on that problem, at most 30. Someone's first attempt goes ahead of someone else's tenth, so one person resubmitting cannot starve the room. Rejudges run at 50 and practice submissions at 60. |
+| Claim rules | Strict priority with three exceptions. After a run is claimed, the next claim takes other work first when any is waiting, so students pressing Run (priority 10) cannot starve submissions: at least every other claim is a submission. Jobs of a paused contest are skipped. While a graded contest is live, at most one validation or generation job is leased at a time, so setters' work never takes more than one lane from contest judging. |
+| Upload budget | A generate job's upload slot is reserved, under the queue's lock, before the body is read and given back if the upload fails, so concurrent uploads under one lease cannot exceed the budget. The body streams to a temporary file in the blob directory while it is hashed and is renamed into place only if the hash matches, so uploads cost disk, not memory. When the job closes or its lease is swept, uploads that no problem recorded (and no other open job holds) are deleted. |
 | Results | One `job_results` row per compile or test result, so a report is an insert, and a unique key on (job, kind, test, role) refuses a result reported twice. |
 | Leases | A claim returns a random lease, stored only as its SHA-256. It lasts 60 s and every report renews it; the worker sends an empty report every 20 s during long runs. A sweep every 10 s requeues jobs whose lease expired and drops their partial results; the third expiry fails the job. A report with a stale lease gets 409 and the worker drops the job. |
 | Deadlines | Set at the first claim from the job's size (for validation: 4 min plus 3 min and six times the time limit per test, at most 2 h) and kept across attempts, so a worker that keeps renewing cannot hold a lane forever. |
@@ -110,7 +112,7 @@ Generators (programs that write the inputs) are still deferred.
 
 ## Submissions and scoring
 
-`0004_submissions.sql` adds `submissions` (one row per Run or Submit, with its job, state, verdict, score, the full result as JSON once done, the client key and the integrity counts), `drafts`, `generations` and `integrity_events`. In M3 the workspace is reached only by organisers ("Try as a student"), so the problem bank is never exposed to students; M4 mounts the same workspace under contests.
+`0004_submissions.sql` adds `submissions` (one row per Run or Submit, with its job, state, verdict, score, the full result as JSON once done, the client key and the integrity counts), `drafts`, `generations` and `integrity_events`. Outside contests the workspace is reached only by organisers ("Try as a student"), so the problem bank is never exposed to students; contests mount the same workspace for students with contest rules (see "Contests"). A run row keeps only the hash of its code and no copy of its custom input: both are in the blob store, and 128 KB inline per run would make every scan of a user's rows walk overflow pages while holding SQLite's single writer lock.
 
 ```
 browser                          podium-server                              podium-judge
@@ -123,7 +125,7 @@ browser                          podium-server                              podi
                                  final: score stored in submissions  <----  final
 ```
 
-**Judging order and stop rules.** The payload lists the samples first, then each subtask's tests in subtask order. A failing sample stops the whole submission (the payload flag `stop_on_sample_fail`, on for every M3 submission); a failing test stops the rest of its subtask, since the subtask is lost anyway. Every test not run is reported as `SK`, so the result always has a row per test.
+**Judging order and stop rules.** The payload lists the samples first, then each subtask's tests in subtask order. A failing sample stops the whole submission (the payload flag `stop_on_sample_fail`, on outside contests and a per-contest setting, on by default); a failing test stops the rest of its subtask, since the subtask is lost anyway. Every test not run is reported as `SK`, so the result always has a row per test.
 
 **The server scores; the judge only reports.** Score and verdict are recomputed from the per-test rows and the payload on every read while judging, and once more when the job closes. Rules:
 
@@ -136,7 +138,7 @@ browser                          podium-server                              podi
 | The judge fails the job | The submission ends in `error`, shows no score and is not counted. |
 | The checker does not compile | `error`: the student's code is not at fault, so nothing is counted. Only the program's own compile can produce `CE`. |
 
-**What must hold before anything is judged.** Run and Submit require the problem's structure to be complete (`Problems()` empty: tests, samples and subtasks fit together, every test has an expected output); otherwise `409 not_ready` lists what an organiser must fix. Before this check an organiser could submit to a broken problem and an empty subtask scored full points. Validation is not required to try a problem; contests (M4) will require it.
+**What must hold before anything is judged.** Run and Submit require the problem's structure to be complete (`Problems()` empty: tests, samples and subtasks fit together, every test has an expected output); otherwise `409 not_ready` lists what an organiser must fix. Before this check an organiser could submit to a broken problem and an empty subtask scored full points. Validation is not required to try a problem; contests require it, and the problem must still be the validated version that was added.
 
 **Rate limits and retries.**
 
@@ -144,13 +146,67 @@ browser                          podium-server                              podi
 |---|---|---|
 | Pending submissions | one per user per problem | The verdict of the last one should be read before the next. |
 | Gap between submits | 5 s per user across problems for organisers; contests set their own (M4) | Per user rather than per problem, otherwise spreading submits over problems defeats it. |
-| Pending runs, gap between runs | one per user; 2 s | Runs have the highest priority, so they need their own brake. |
+| Pending runs, gap between runs | one per user; 2 s | Runs have the highest priority, so they need their own brake. Both checks read only the `submissions_by_kind (user_id, kind, state, created_at)` index. |
 | Code and custom input | 64 KB each | Keeps payloads, blobs and compile times small. |
-| Integrity events | 100 per request, 5,000 per user per problem | Bounded storage; beyond that more events tell a reviewer nothing new. |
+| Draft saves | one per user every 2 s | Each save takes the writer lock; a script saving in a loop would hold up judge reports for everyone. |
+| Integrity events | one batch per user every 5 s, 100 per request, 5,000 per user per problem | Bounded storage; beyond that more events tell a reviewer nothing new. Kinds, rate and cap are checked before the write lock is taken. |
 
-Every refusal says how long to wait, in the message and as `retry_after_s`. The browser makes a `client_key` per press of Submit and reuses it on a retry; the server looks the key up inside the same transaction as the rate checks, scoped to the user and problem, and answers a repeat with the first submission (200). A retry after a lost answer therefore never counts twice and never trips the limit it would otherwise hit.
+Every refusal says how long to wait, in the message and as `retry_after_s`. The browser makes a `client_key` per press of Submit and reuses it on a retry; the server looks the key up inside the same transaction as the rate checks, scoped to the user, problem and contest, and answers a repeat with the first submission (200), shown as the viewer may see it. A retry after a lost answer therefore never counts twice and never trips the limit it would otherwise hit.
 
 **Integrity counts (D47).** Each submission stores the typed and pasted character counts and focus losses since the previous one; paste, blur and focus events go to `integrity_events` in batches, outside the submit path, so they never slow or block a submit. Counts only: no keystroke timing and no replay. The client hash is an HMAC of IP address and user agent keyed by the session secret, enough to notice two people on one browser, not reversible by trying campus address ranges. Nothing here scores or flags anyone; it is evidence for a human reviewer in the integrity milestone after M4.
+
+## Contests
+
+`0005_contests.sql` adds `contests` (schedule, rules and switches), `contest_problems` (label, order and the pinned content hash), `contest_roster`, `contest_admins` (co-organisers), `contest_starts` (honour code acceptance and, in window mode, the start of the student's clock), `contest_extensions`, `clarifications` and `announcements`. The code is `server/internal/contests`; the contest workspace reuses `server/internal/submissions` with a scope built from the contest.
+
+**Problems are pinned.** A contest takes only validated problems, and adding one records its content hash and its subtask points; the board scores against the pinned points and clamps any earned value to them, so an edit to a problem never changes a contest's board until the problem is added again. Only owners and admins choose a contest's problems and publish it: the problem bank is theirs, and co-organisers (often student TAs) never see it. A problem is ready only while both its content hash and its validated hash still equal the pin. Publishing, running, submitting and rejudging all require that: a test edited mid-contest stops judging of that problem (`409 not_ready`) until it is validated and added again, so no student is ever judged against tests nobody checked.
+
+**Time.** Every rule uses the server's clock, and every answer carries `server_now` so the page can show a correct countdown from a wrong laptop clock.
+
+| Start mode | A student's window |
+|---|---|
+| Fixed | From the start to the end, plus any contest-wide extension, plus their own extension. |
+| Window | From when they press Start (after accepting the honour code) for `duration_minutes`, plus extensions, never past the end plus the contest-wide extension plus their own. |
+
+Submissions count while the student's own window is open. After it they are practice (judged at priority 60, never on the board) when the contest allows practice and every student's window is over (the close plus the longest personal extension), so nobody can test solutions against hidden tests, with full feedback, while a classmate with a later start or extra time is still competing. The published editorial waits for the same moment. Otherwise run and submit are refused. Problems open once the student has accepted the honour code and their window has opened (graded contests record the acceptance time, D47), and stay readable after it closes.
+
+**Access.** Domain access: anyone who can sign in (sign-in already requires an allowed domain). Roster access: the emails on the roster. Owners, admins and the contest's co-organisers organise it and are never on the board. Co-organisers are trusted with the running of their contest, not with hidden data: they may try its problems at any time, but with the contest's limits and the student view of results, and they cannot choose problems or publish. Every id in a contest route is resolved through the contest in the URL (a label to a problem id, a clarification or submission id checked against the contest), so ids from another contest give `404`, and organiser routes answer `404` rather than `403` to anyone who does not organise that contest.
+
+**Scoring (PLAN.md section 9).**
+
+| Rule | Detail |
+|---|---|
+| Best per subtask (default) | Per problem, the sum over subtasks of the best points earned on that subtask across the student's non-practice submissions. Two partial submissions can make a full score. |
+| Best submission | The single highest-scoring submission per problem. |
+| Rank | Total, highest first; ties broken by the earliest time at which the student reached their final total, measured from their own start in window mode; equal totals and times share a rank. |
+| Freeze | The frozen board counts only submissions made before the freeze. Fixed start: one time for everyone, the close minus `freeze_minutes`; a personal extension never moves it, or a student's first minutes of the freeze would show to everyone. Window mode: each student's own end minus `freeze_minutes`. Later submissions show as "+N" pending in their cell. |
+
+**Which board a student sees.**
+
+| Contest | Board |
+|---|---|
+| Fixed start | Full until the freeze; frozen from the freeze until every window has closed (including personal extensions); then full. With `hold_reveal`, frozen until an organiser reveals, so the projector walk is a surprise. |
+| Window mode | None until the student's own window closes (the window-mode ruling: a live board in a flexible window tells later starters what is achievable), then full. |
+| Exam feedback | None until the student's own window closes, since the board would show their score. |
+
+Organisers always see the full board, and either variant on request. The reveal hands the projector both boards once every window has closed; the web app walks the frozen board from the bottom, moving each row to its final place.
+
+**The board cache.** Standings are a pure function of the contest, its problems and its submissions (`contests.Compute`, tested against hand-computed boards), cached in memory per contest and variant. Anything that changes a board (a verdict, a rejudge, a pin change, an extension, a new participant) bumps the contest's version; a new submission does not, since it changes nothing until its verdict. The work is bounded however many people look at once:
+
+| Rule | Effect |
+|---|---|
+| One computation at a time per contest and variant | Readers arriving meanwhile get the last board, or wait for the running computation when there is no board yet or it is already for the current version. Measured: 100 concurrent reads after a change compute once. |
+| At most one recompute every 2 s per contest | Inside that time the last board is served and one refresh is scheduled; a burst of verdicts costs one recompute. |
+| Refresh, then tell | After a change the server recomputes the boards that are being watched, then sends the `standings` event, so 700 browsers refetch a board already in the cache. Exam-mode contests send it to organisers only. |
+| Index-only read | Each judged submission stores its earned points per subtask in a small `earned` column, written when judging finishes; the board reads only the `submissions_by_board` index, never the rows with their inline code and full results. Measured: about 34 ms for 300 students with 40 submissions each (it was 0.87 s reading the rows). |
+
+Why in memory and not a `standings_cache` table: one server, a few thousand submissions per contest, and a recompute measured in milliseconds. A table would add writes on the judging path for no gain, and a stale row would be a correctness risk after a restart.
+
+**Feedback.** "Subtask" shows subtask results and per-test verdicts with coarse figures. "Exam" shows only "Submitted" until the student's window closes, then the score. Displayed times round to 100 ms in graded contests and 10 ms otherwise (D47). Hidden tests never show input or output in any mode.
+
+**Running a contest.** Pause stops the judge taking the contest's jobs (they queue; nothing is lost). Extend adds minutes to everyone's end; a personal extension adds minutes for one student. Rejudge queues a problem's submissions (or one) again at priority 50 with the current tests and clears their results, so the board counts each again once judged; a waiting rejudge never blocks the student's own next submission. Submissions still waiting or being judged on the old tests are included: their job is cancelled and replaced, and a job's Finish updates its submission only while it is still that submission's job, so a replaced job can never overwrite the new result. Targets are chosen inside the same write transaction, and one already waiting on exactly the current tests is skipped, so two rejudges at once do the work once. Clarifications are private to the asker until an organiser makes the answer public; students never see who asked. Announcements and answers arrive as live events.
+
+**Integrity (D47).** A second event stream opened from another browser or machine while one is open is recorded as a `second_session` event for every contest whose window is open for that student, at most once per 10 minutes per contest. A retention job, run at start-up and every 12 hours, deletes integrity events and clears submissions' client hash, typed and pasted counts and focus losses 180 days after a contest ended for everyone. Review cases (and the "unless part of an open case" exception) arrive with the integrity milestone.
 
 ## What students can see
 
@@ -160,13 +216,16 @@ Decision D47 sets the rule: hidden tests never show their input, output or check
 |---|---|
 | Judge report | A `submit` report carrying any output text, or a checker message on a hidden test, is refused. The text never reaches the server, so no later bug can display it. Test verdicts are limited to `AC`, `WA`, `TLE`, `MLE`, `RE`, `OLE`, `SK` and `IE`. |
 | Submission view | Verdicts, times and scores per test, never input, output or messages. Sample results come with the statement anyway. |
-| Coarse view for students | No memory figure on hidden tests, maximum memory rounded up to 16 MB steps, times rounded (10 ms; 100 ms in graded contests from M4). |
+| Coarse view for students | No memory figure on hidden tests, maximum memory rounded up to 16 MB steps, times rounded (10 ms; 100 ms in graded contests). Applied on every path a student can reach: reading a submission, the workspace list, the answer to a submit or a retried key, and live events. |
+| Progress while judging | Students see per-test verdicts only inside finished blocks (the samples, a whole subtask), and no running maximum time or memory, so polling shows no more than the stream. |
 | Live events for students | Sent when the sample block or a whole subtask finishes, never per hidden test. |
+| Exam feedback mode | Until the student's window closes, only "Submitted": no verdict, score, tests, times or compile output, on every path. Nothing the student can observe changes when judging finishes: no live submission or standings events, and no "still being judged" refusal (a new submission queues behind the pending one), since the moment judging ends depends on how long the program chose to run on hidden tests. A judge failure is shown, because it is never the program's doing and the student must resubmit. |
 | Runs | Show output and the expected output, but only on samples or the student's own input. |
+| Box output | Whatever a program does to its own output file (removes it, replaces it with a link or a FIFO, makes it unreadable) gives empty or cut-short output, so a verdict, never a judge error. Otherwise a program could choose, from the hidden input, which tests fail the whole job: a one-bit channel even in exam mode. |
 
 Why coarse: a program can encode a few bits of a hidden test's values in how much memory it allocates or how long it runs, then read them back from exact figures, and repeat over many submissions until the test is known. The per-test event timing leaks the same way, since when an event arrives says how long that test took. Rounding to steps far wider than the signal, dropping per-test memory on hidden tests, and batching events per subtask close those channels while keeping what a student needs: which subtask failed, with which verdict, and roughly how close to the limits.
 
-In M3 only organisers submit, so the read routes return full figures; the coarse view is applied to live events for student accounts now and to every student-facing route when M4 opens the workspace to students.
+Owners and admins see every figure; a contest's co-organisers see the student view.
 
 ## Live updates
 
@@ -177,7 +236,9 @@ One `GET /api/events` stream per open tab, served by the `events` hub. The jobs 
 | Ordering | Updates for one job are serialised, so they arrive in order. |
 | Only visible changes | An update is sent only when its signature (state, verdict, number of finished tests, or for students finished subtasks) differs from the last one sent, which also keeps a 50-test submission from producing 50 identical reads. Users with no open stream are skipped before any read. |
 | Never blocks judging | Each stream has a buffer of 16 events. A stream that is full is dropped, not waited for; the browser reconnects and refetches. Every write has a 10 s deadline, so a reader that stops reading frees its goroutine. |
-| Limits | 4 streams per user (a fifth replaces the oldest) and 5,000 in total (then `503 busy`, and the page polls). |
+| Limits | 4 streams per user and 5,000 in total (then `503 busy`, and the page polls). A fifth stream replaces the oldest, which first gets `event: replaced` so that tab stops reconnecting; without it, five tabs evicted each other in an endless reconnect loop. |
+| Session | Checked again on every clock tick; a stream ends with its session (sign-out, expiry, disabled account). |
+| Contest events | Standings versions, announcements, clarifications and new end times go to the connected users who belong to the contest, worked out with one query per event against the hub's list of connected users. There is no topic registry: membership (roster, co-organisers, publication) is read at send time, so a change of access applies to the next event. Standings events follow the board refresh, at most about one per contest every 2 s, and go to organisers only in exam-mode contests. |
 | Clock | `event: clock` with `server_now` on connect and every 25 s, instead of a comment ping: it keeps proxies from timing out an idle stream and lets the page keep an offset to the server's clock for contest timers. |
 | Fallback | After three failed connections the page polls every 15 s. |
 
@@ -223,7 +284,7 @@ Compiles get 10 s of CPU, 20 s wall, 512 MB, and their output is truncated to 16
 
 **A fresh box per test.** The runner initialises a new box for each compile and for each test: it copies the compiled program and the input in, runs, copies the output out, and destroys the box. A control group keeps the memory peak of earlier runs, so reusing a box would report wrong memory figures; and a program could leave files behind for later tests. The cost was measured at about 30 ms per test.
 
-**Only regular files cross the boundary, and links are never followed.** Every file the judge reads from a box is opened with `O_NOFOLLOW` and `O_NONBLOCK` and must be a regular file. A program that replaces its output with a symlink (say to `/proc/self/environ`, which would expose the judge's own environment) or with a FIFO (which would hang the lane) simply produces empty output. Artifacts are capped in total size.
+**Only regular files cross the boundary, and links are never followed.** Every file the judge reads from a box is opened with `O_NOFOLLOW` and `O_NONBLOCK` and must be a regular file. A program that replaces its output with a symlink (say to `/proc/self/environ`, which would expose the judge's own environment) or with a FIFO (which would hang the lane) simply produces empty output. So does one that makes its output unreadable (`chmod 000` on its own stdout): any failure to open or read the box's output file is the program's output, empty or cut short where the read failed, never a judge error. Only a failure writing the judge's own copy fails the job. Artifacts are capped in total size.
 
 **Boxes live on tmpfs.** isolate's box root `/var/lib/isolate` is a tmpfs mount. Pages written to tmpfs are charged to the writing process's memory control group, so a program's files count against its own memory limit: writing many files just under the 16 MB per-file cap ends in "Memory limit exceeded" instead of filling the disk the database lives on. It also makes the per-test box set-up cheaper (about 22 ms).
 

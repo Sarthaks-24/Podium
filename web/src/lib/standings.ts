@@ -1,0 +1,173 @@
+/**
+ * Standings as the API returns them, and how each part reads on screen
+ * (cache/v1/m4-plan.md section 3, design.md section 5.4).
+ *
+ * The server ranks; the web app only draws. Each problem cell is a score,
+ * a two-tone fill (earned fraction over the rest) and, on a frozen board,
+ * "+N" for submissions made after the freeze. A cell nobody tried shows a
+ * plain hyphen. Every cell also has a sentence for screen readers, so
+ * "70+1" is heard as "Problem D, 70 of 100, 1 pending".
+ */
+
+/** One problem cell. tried is optional; without it a cell counts as tried when it scored or has pending. */
+export interface StandingsCell {
+  label: string;
+  score: number;
+  max: number;
+  pending: number;
+  tried?: boolean;
+}
+
+export interface StandingsRow {
+  rank: number;
+  user_id: number;
+  name: string;
+  total: number;
+  /** Seconds from the start (or the student's own start) to the final total. */
+  last_improvement_s: number;
+  cells: StandingsCell[];
+}
+
+/** GET /api/contests/{slug}/standings and the organiser variants. */
+export interface Standings {
+  variant: 'full' | 'frozen';
+  version: number;
+  frozen_at: number | null;
+  final: boolean;
+  judging_remaining: number;
+  rows: StandingsRow[];
+  me: number | null;
+  labels?: string[];
+  server_now?: number;
+}
+
+/** The problem labels for the header: the board's own, else the first row's cells, else the fallback. */
+export function boardLabels(s: Pick<Standings, 'labels' | 'rows'>, fallback: readonly string[] = []): string[] {
+  if (s.labels && s.labels.length > 0) return [...s.labels];
+  const first = s.rows.find((r) => r.cells.length > 0);
+  if (first) return first.cells.map((c) => c.label);
+  return [...fallback];
+}
+
+/** The cell for a label in a row, if any. */
+export function cellFor(row: Pick<StandingsRow, 'cells'>, label: string): StandingsCell | undefined {
+  return row.cells.find((c) => c.label === label);
+}
+
+/** True when a cell was attempted. */
+export function isTried(cell: StandingsCell | undefined): boolean {
+  if (!cell) return false;
+  if (typeof cell.tried === 'boolean') return cell.tried || cell.pending > 0;
+  return cell.score > 0 || cell.pending > 0;
+}
+
+export type CellTone = 'ok' | 'part' | 'none';
+
+/** What a cell shows. */
+export interface CellView {
+  /** The score, or "-" when not tried, or "" when only pending. */
+  text: string;
+  /** "+2" for pending submissions after the freeze, or "". */
+  pending: string;
+  /** Earned fraction from 0 to 1, for the two-tone fill. */
+  fraction: number;
+  tone: CellTone;
+  /** The cell as a sentence. */
+  sentence: string;
+}
+
+/** How a cell reads. */
+export function cellView(cell: StandingsCell | undefined, label: string): CellView {
+  if (!isTried(cell) || !cell) {
+    return { text: '-', pending: '', fraction: 0, tone: 'none', sentence: `Problem ${label}, not tried` };
+  }
+  const fraction = cell.max > 0 ? Math.min(1, Math.max(0, cell.score / cell.max)) : 0;
+  const tone: CellTone = cell.max > 0 && cell.score >= cell.max ? 'ok' : cell.score > 0 ? 'part' : 'none';
+  // A cell whose only attempts came after the freeze reads "+2" alone.
+  const text = cell.score > 0 || cell.pending === 0 ? String(cell.score) : '';
+  const pending = cell.pending > 0 ? `+${cell.pending}` : '';
+  let sentence = `Problem ${label}, `;
+  sentence += text === '' ? 'no score before the freeze' : `${cell.score} of ${cell.max}`;
+  if (cell.pending > 0) sentence += `, ${cell.pending} pending`;
+  return { text, pending, fraction, tone, sentence };
+}
+
+/** Seconds as "1:02:03" or "12:03". */
+export function formatElapsed(seconds: number): string {
+  const s = Math.max(0, Math.round(seconds));
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const r = s % 60;
+  const mm = String(m).padStart(h > 0 ? 2 : 1, '0');
+  return h > 0 ? `${h}:${mm}:${String(r).padStart(2, '0')}` : `${mm}:${String(r).padStart(2, '0')}`;
+}
+
+function clock(ms: number): string {
+  const d = new Date(ms);
+  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+}
+
+/**
+ * The line under the heading: frozen, final or live, and what is still
+ * judging. `ended` says the contest is over: a board still frozen then is
+ * held for the reveal, and promising an update "when the contest ends"
+ * would be wrong.
+ */
+export function statusLine(
+  s: Pick<Standings, 'variant' | 'frozen_at' | 'final' | 'judging_remaining'>,
+  ended = false,
+): string {
+  let line: string;
+  if (s.variant === 'frozen') {
+    const at = s.frozen_at ? `Frozen at ${clock(s.frozen_at)}.` : 'Frozen.';
+    line = ended ? `${at} The final board appears when the organisers release it.` : `${at} Updates when the contest ends.`;
+  } else if (s.final) {
+    line = 'Final standings.';
+  } else {
+    line = 'Live. Updates as submissions are judged.';
+  }
+  if (s.judging_remaining > 0) {
+    line += s.judging_remaining === 1 ? ' 1 submission is still being judged.' : ` ${s.judging_remaining} submissions are still being judged.`;
+  }
+  return line;
+}
+
+/** The signed-in student's own row, if they are on the board. */
+export function myRow(s: Pick<Standings, 'rows' | 'me'>): StandingsRow | undefined {
+  if (s.me === null || s.me === undefined) return undefined;
+  return s.rows.find((r) => r.user_id === s.me);
+}
+
+/**
+ * The student's place as a sentence. On a frozen board it gives the place
+ * only, never the frozen total, which would contradict the student's own
+ * live score printed beside it.
+ */
+export function placeSentence(s: Pick<Standings, 'rows' | 'me'> & Partial<Pick<Standings, 'variant'>>, ended = false): string {
+  const row = myRow(s);
+  if (!row) return 'You are not on the board.';
+  const tied = s.rows.filter((r) => r.rank === row.rank).length > 1;
+  const place = `${tied ? 'tied ' : ''}${ordinalWord(row.rank)} of ${s.rows.length}`;
+  if (s.variant === 'frozen') {
+    return ended
+      ? `On the frozen board you are ${place}. Your final place shows when the organisers release the results.`
+      : `On the frozen board you are ${place}.`;
+  }
+  return `You are ${place} with ${row.total} points.`;
+}
+
+/** 1st, 2nd, 3rd, 4th, 11th, 12th, 13th, 21st. */
+export function ordinalWord(n: number): string {
+  const tens = n % 100;
+  if (tens >= 11 && tens <= 13) return `${n}th`;
+  switch (n % 10) {
+    case 1:
+      return `${n}st`;
+    case 2:
+      return `${n}nd`;
+    case 3:
+      return `${n}rd`;
+    default:
+      return `${n}th`;
+  }
+}

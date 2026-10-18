@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/Sarthaks-24/podium/internal/auth"
+	"github.com/Sarthaks-24/podium/internal/contests"
 	"github.com/Sarthaks-24/podium/internal/events"
 	"github.com/Sarthaks-24/podium/internal/problems"
 	"github.com/Sarthaks-24/podium/internal/submissions"
@@ -39,6 +40,11 @@ type Deps struct {
 	// updates to browsers.
 	Submissions *submissions.Service
 	Hub         *events.Hub
+	// Contests runs contests: schedules, access, standings, clarifications.
+	Contests *contests.Service
+
+	// reads limits heavy reads per user; New sets it.
+	reads *readLimiter
 	// Mode is the run mode (testing, dev or production). Testing mode has
 	// no Google sign-in; instead anyone at this machine signs in with a
 	// form (decision D48).
@@ -47,6 +53,7 @@ type Deps struct {
 
 // New returns the root handler.
 func New(d Deps) http.Handler {
+	d.reads = newReadLimiter()
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", d.healthz)
 
@@ -85,7 +92,7 @@ func New(d Deps) http.Handler {
 
 	// The workspace is for organisers trying a problem until contests
 	// arrive in M4, which mounts the same handlers under a contest.
-	mux.HandleFunc("GET /api/workspace/{problem}", admin(d.getWorkspace))
+	mux.HandleFunc("GET /api/workspace/{problem}", admin(d.limitReads(d.getWorkspace)))
 	mux.HandleFunc("PUT /api/workspace/{problem}/draft", admin(d.saveDraft))
 	mux.HandleFunc("POST /api/workspace/{problem}/run", admin(d.runCode))
 	mux.HandleFunc("POST /api/workspace/{problem}/submit", admin(d.submitCode))
@@ -94,6 +101,10 @@ func New(d Deps) http.Handler {
 	mux.HandleFunc("GET /api/runs/{id}", d.requireRole(auth.Student, d.getRun))
 	mux.HandleFunc("GET /api/events", d.requireRole(auth.Student, d.eventStream))
 
+	if d.Contests != nil {
+		d.contestRoutes(mux)
+	}
+
 	mux.HandleFunc("/api/", func(w http.ResponseWriter, r *http.Request) {
 		WriteError(w, http.StatusNotFound, "not_found", "This API route does not exist.")
 	})
@@ -101,6 +112,51 @@ func New(d Deps) http.Handler {
 	// recoverer sits inside logRequests so a request that panics is still
 	// logged with its 500.
 	return d.logRequests(d.recoverer(securityHeaders(d.sameOrigin(mux))))
+}
+
+// contestRoutes mounts the contest API (milestone M4). Every route needs a
+// signed-in user; the handlers apply the contest's own access rules.
+func (d Deps) contestRoutes(mux *http.ServeMux) {
+	signedIn := func(h http.HandlerFunc) http.HandlerFunc { return d.requireRole(auth.Student, h) }
+	mux.HandleFunc("GET /api/contests", signedIn(d.limitReads(d.listContests)))
+	mux.HandleFunc("GET /api/contests/{slug}", signedIn(d.limitReads(d.getContest)))
+	mux.HandleFunc("POST /api/contests/{slug}/start", signedIn(d.startContest))
+	mux.HandleFunc("GET /api/contests/{slug}/problems/{label}", signedIn(d.limitReads(d.getContestWorkspace)))
+	mux.HandleFunc("PUT /api/contests/{slug}/problems/{label}/draft", signedIn(d.saveContestDraft))
+	mux.HandleFunc("POST /api/contests/{slug}/problems/{label}/run", signedIn(d.runContestCode))
+	mux.HandleFunc("POST /api/contests/{slug}/problems/{label}/submit", signedIn(d.submitContestCode))
+	mux.HandleFunc("POST /api/contests/{slug}/problems/{label}/events", signedIn(d.recordContestEvents))
+	mux.HandleFunc("GET /api/contests/{slug}/standings", signedIn(d.limitReads(d.getStandings)))
+	mux.HandleFunc("POST /api/contests/{slug}/clarifications", signedIn(d.askClarification))
+
+	mux.HandleFunc("GET /api/admin/contests", signedIn(d.listAdminContests))
+	mux.HandleFunc("POST /api/admin/contests", signedIn(d.createContest))
+	mux.HandleFunc("GET /api/admin/contests/{id}", signedIn(d.getAdminContest))
+	mux.HandleFunc("PUT /api/admin/contests/{id}", signedIn(d.updateContest))
+	mux.HandleFunc("DELETE /api/admin/contests/{id}", signedIn(d.archiveContest))
+	mux.HandleFunc("POST /api/admin/contests/{id}/clone", signedIn(d.cloneContest))
+	mux.HandleFunc("PUT /api/admin/contests/{id}/problems", signedIn(d.setContestProblems))
+	mux.HandleFunc("GET /api/admin/contests/{id}/roster", signedIn(d.getRoster))
+	mux.HandleFunc("PUT /api/admin/contests/{id}/roster", signedIn(d.setRoster))
+	mux.HandleFunc("POST /api/admin/contests/{id}/admins", signedIn(d.changeContestAdmin(true)))
+	mux.HandleFunc("DELETE /api/admin/contests/{id}/admins", signedIn(d.changeContestAdmin(false)))
+	mux.HandleFunc("PUT /api/admin/contests/{id}/extensions/{user}", signedIn(d.setExtension))
+	mux.HandleFunc("POST /api/admin/contests/{id}/extend", signedIn(d.extendContest))
+	mux.HandleFunc("POST /api/admin/contests/{id}/pause", signedIn(d.pauseContest(true)))
+	mux.HandleFunc("POST /api/admin/contests/{id}/resume", signedIn(d.pauseContest(false)))
+	mux.HandleFunc("GET /api/admin/contests/{id}/submissions", signedIn(d.contestFeed))
+	mux.HandleFunc("POST /api/admin/contests/{id}/rejudge", signedIn(d.rejudge))
+	mux.HandleFunc("GET /api/admin/contests/{id}/announcements", signedIn(d.listAnnouncements))
+	mux.HandleFunc("POST /api/admin/contests/{id}/announcements", signedIn(d.postAnnouncement))
+	mux.HandleFunc("GET /api/admin/contests/{id}/clarifications", signedIn(d.listClarifications))
+	mux.HandleFunc("PUT /api/admin/contests/{id}/clarifications/{cid}", signedIn(d.answerClarification))
+	mux.HandleFunc("GET /api/admin/contests/{id}/standings", signedIn(d.adminStandings))
+	mux.HandleFunc("GET /api/admin/contests/{id}/reveal", signedIn(d.getReveal))
+	mux.HandleFunc("POST /api/admin/contests/{id}/reveal", signedIn(d.postReveal))
+	mux.HandleFunc("GET /api/admin/contests/{id}/export.csv", signedIn(d.exportCSV))
+	mux.HandleFunc("GET /api/admin/contests/{id}/export.json", signedIn(d.exportJSON))
+	mux.HandleFunc("GET /api/admin/contests/{id}/stats", signedIn(d.contestStats))
+	mux.HandleFunc("PUT /api/admin/contests/{id}/editorial", signedIn(d.setEditorial))
 }
 
 // internalError logs err and answers with a generic 500.
