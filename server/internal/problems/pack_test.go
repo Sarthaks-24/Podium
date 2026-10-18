@@ -136,17 +136,16 @@ func TestPackRefusals(t *testing.T) {
 		entries []entry
 		want    string
 	}{
-		"zip slip":         {minimalPack(entry{name: "../evil.txt", body: "x"}), "not a clean path"},
-		"absolute path":    {minimalPack(entry{name: "/etc/passwd", body: "x"}), "not a relative path"},
-		"backslash":        {minimalPack(entry{name: `tests\..\x`, body: "x"}), "not a relative path"},
-		"drive letter":     {minimalPack(entry{name: "C:/x", body: "x"}), "not a relative path"},
-		"symlink":          {minimalPack(entry{name: "link", body: "/etc/shadow", mode: fs.ModeSymlink | 0o777}), "not a regular file"},
-		"oversized file":   {minimalPack(entry{name: "tests/03.in", body: big}), "larger than 16 MB"},
-		"no problem.yaml":  {[]entry{{name: "solution.cpp", body: "x"}}, "no problem.yaml"},
-		"unknown yaml key": {[]entry{{name: "problem.yaml", body: minimalYAML + "generator: gen.py\n"}}, "generator"},
-		"missing output": {[]entry{{name: "problem.yaml", body: minimalYAML}, {name: "solution.cpp", body: "x"},
-			{name: "tests/01.in", body: "1"}, {name: "tests/01.out", body: "1"}, {name: "tests/02.in", body: "2"}}, "no output"},
-		"test in no subtask": {minimalPack(entry{name: "tests/03.in", body: "3"}, entry{name: "tests/03.out", body: "3"}), "Test 3 is in no subtask"},
+		"zip slip":             {minimalPack(entry{name: "../evil.txt", body: "x"}), "not a clean path"},
+		"absolute path":        {minimalPack(entry{name: "/etc/passwd", body: "x"}), "not a relative path"},
+		"backslash":            {minimalPack(entry{name: `tests\..\x`, body: "x"}), "not a relative path"},
+		"drive letter":         {minimalPack(entry{name: "C:/x", body: "x"}), "not a relative path"},
+		"symlink":              {minimalPack(entry{name: "link", body: "/etc/shadow", mode: fs.ModeSymlink | 0o777}), "not a regular file"},
+		"oversized file":       {minimalPack(entry{name: "tests/03.in", body: big}), "larger than 16 MB"},
+		"no problem.yaml":      {[]entry{{name: "solution.cpp", body: "x"}}, "no problem.yaml"},
+		"unknown yaml key":     {[]entry{{name: "problem.yaml", body: minimalYAML + "generator: gen.py\n"}}, "generator"},
+		"output without input": {minimalPack(entry{name: "tests/09.out", body: "9"}), "output but no input"},
+		"test in no subtask":   {minimalPack(entry{name: "tests/03.in", body: "3"}, entry{name: "tests/03.out", body: "3"}), "Test 3 is in no subtask"},
 		"missing reference": {[]entry{{name: "problem.yaml", body: strings.Replace(minimalYAML, "solution.cpp", "sol.cpp", 1)},
 			{name: "tests/01.in", body: "1"}, {name: "tests/01.out", body: "1"}}, "no such file"},
 		"bad slug": {[]entry{{name: "problem.yaml", body: strings.Replace(minimalYAML, "slug: tiny", "slug: Tiny Problem", 1)},
@@ -282,3 +281,18 @@ func TestPackRefusesHugeDirectoryBeforeReadingIt(t *testing.T) {
 }
 
 func jsonInt(i int) string { return strconv.Itoa(i) }
+
+func TestPackMayOmitOutputs(t *testing.T) {
+	pk, err := ReadPack(zipEntries(t, entry{name: "problem.yaml", body: minimalYAML}, entry{name: "solution.cpp", body: "x"},
+		entry{name: "tests/01.in", body: "1"}, entry{name: "tests/01.out", body: "1"}, entry{name: "tests/02.in", body: "2"}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if pk.Problem.Tests[1].OutputSHA != "" || pk.Problem.Tests[0].OutputSHA != SHA([]byte("1")) {
+		t.Errorf("tests %+v", pk.Problem.Tests)
+	}
+	probs := strings.Join(pk.Problem.Problems(), " ")
+	if !strings.Contains(probs, "Test 2 has no expected output") {
+		t.Errorf("missing output not listed: %s", probs)
+	}
+}

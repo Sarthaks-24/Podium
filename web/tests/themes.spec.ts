@@ -133,7 +133,7 @@ test('applies, saves and clears preferences', async ({ page }) => {
   const html = page.locator('html');
   await expect(html).toHaveAttribute('data-theme', 'overcast');
 
-  const trigger = page.getByRole('button', { name: 'Theme: Overcast' });
+  const trigger = page.getByRole('button', { name: 'Theme', exact: true });
   await trigger.focus();
   await page.keyboard.press('Enter');
   await expect(trigger).toHaveAttribute('aria-expanded', 'true');
@@ -155,9 +155,11 @@ test('applies, saves and clears preferences', async ({ page }) => {
     'signal',
   ]);
 
+  // The quiet trigger keeps its name; the panel says which theme is on.
+  await expect(page.locator('#theme-panel')).toContainText('Current theme: OLED black');
   await page.keyboard.press('Escape');
-  await expect(trigger).toBeHidden();
-  const renamed = page.getByRole('button', { name: 'Theme: OLED black' });
+  await expect(page.locator('#theme-panel')).toBeHidden();
+  const renamed = page.getByRole('button', { name: 'Theme', exact: true });
   await expect(renamed).toHaveAttribute('aria-expanded', 'false');
   await expect(renamed).toBeFocused();
 
@@ -186,7 +188,7 @@ test('applies, saves and clears preferences', async ({ page }) => {
 test('a click outside closes the menu', async ({ page }) => {
   await mockApi(page, false);
   await page.goto('/signin');
-  const trigger = page.getByRole('button', { name: /^Theme:/ });
+  const trigger = page.getByRole('button', { name: 'Theme', exact: true });
   await trigger.click();
   await expect(page.getByRole('radio', { name: 'Nordic frost' })).toBeVisible();
   await page.locator('h1').click();
@@ -197,7 +199,7 @@ test('a click outside closes the menu', async ({ page }) => {
 test('tabbing out of the menu closes it', async ({ page }) => {
   await mockApi(page, false);
   await page.goto('/signin');
-  await page.getByRole('button', { name: /^Theme:/ }).click();
+  await page.getByRole('button', { name: 'Theme', exact: true }).click();
   await page.getByRole('checkbox', { name: /Colour-blind safe verdict colours/ }).focus();
   await page.keyboard.press('Tab');
   await expect(page.locator('#theme-panel')).toBeHidden();
@@ -206,7 +208,7 @@ test('tabbing out of the menu closes it', async ({ page }) => {
 test('signed out, a choice applies on this device without saving', async ({ page }) => {
   const api = await mockApi(page, false);
   await page.goto('/signin');
-  await page.getByRole('button', { name: /^Theme:/ }).click();
+  await page.getByRole('button', { name: 'Theme', exact: true }).click();
   await page.getByRole('radio', { name: 'Soft lavender' }).check();
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'soft-lavender');
   expect(api.saved).toEqual([]);
@@ -239,7 +241,7 @@ for (const width of [375, 1440]) {
     await page.setViewportSize({ width, height: width < 768 ? 812 : 900 });
     await page.goto('/');
     if (width < 768) await page.getByRole('button', { name: 'Menu' }).click();
-    await page.getByRole('button', { name: /^Theme:/ }).click();
+    await page.getByRole('button', { name: 'Theme', exact: true }).click();
     const panel = page.locator('#theme-panel');
     await expect(panel).toBeVisible();
     const box = await panel.boundingBox();

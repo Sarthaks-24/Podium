@@ -197,6 +197,30 @@ function problemFixtures(): Record<number, Json> {
       tests: Array.from({ length: 15 }, (_, i) => test_(i + 1, i === 0 ? 'sample' : 1, '2\n10 4\n', '2.500000\n')),
       content_hash: 'h4',
     },
+    5: {
+      ...base,
+      id: 5,
+      slug: 'pair-sums',
+      title: 'Pair sums',
+      test_count: 5,
+      points: 100,
+      updated_at: T0 - 600000,
+      statement_md: 'Count pairs with sum $k$.',
+      time_limit_ms: 1000,
+      memory_limit_mb: 256,
+      reference: { language: 'cpp17', source: 'int main() {}\n' },
+      samples: [1],
+      subtasks: [{ idx: 1, points: 100, title: 'All', tests: '2-5' }],
+      tests: [
+        test_(1, 'sample', '3 4\n1 2 3\n', '1\n'),
+        test_(2, 1, '2 3\n1 2\n', '1\n'),
+        test_(3, 1, '2 9\n1 2\n', '0\n'),
+        { ...test_(4, 1, '5 6\n1 2 3 4 5\n', ''), output_missing: true },
+        { ...test_(5, 1, '1 1\n1\n', ''), output_missing: true },
+      ],
+      warnings: ['Tests 4 and 5 have no expected output. Generate outputs.'],
+      content_hash: 'h5',
+    },
   };
 }
 
@@ -291,6 +315,11 @@ async function mockApi(page: Page, who: 'admin' | 'student' = 'admin') {
     puts: [] as Json[],
     archived: [] as number[],
     imports: [] as string[],
+    generates: [] as Json[],
+    generations: {} as Record<number, Json>,
+    genScripts: {} as Record<number, Json[]>,
+    // How the next generation ends: 'ok', 'compile' (the reference fails to compile) or 'stale' (the problem changed).
+    genOutcome: 'ok' as 'ok' | 'compile' | 'stale',
     nextId: 10,
     hash: 100,
   };
@@ -410,6 +439,43 @@ async function mockApi(page: Page, who: 'admin' | 'student' = 'admin') {
           }
           return json(route, 202, state.validations[id]);
         }
+        if (rest === '/generate' && method === 'POST') {
+          const body = req.postDataJSON() as Json;
+          state.generates.push(body);
+          if (id === 4) {
+            return json(route, 409, {
+              error: { code: 'not_ready', message: 'The problem is not ready. Fix these first.', problems: ['Add a reference solution first.'] },
+            });
+          }
+          const idxs = (p.tests as Json[]).filter((t) => body.all || t.output_missing).map((t) => Number(t.idx));
+          const results = idxs.map((idx) => ({ idx, verdict: 'OK', time_ms: 200 + idx * 3 }));
+          const done: Json =
+            state.genOutcome === 'compile'
+              ? { results: [], compile_output: 'main.cpp:3:5: error: expected ; before return\n', summary: { applied: 0, problems: [] } }
+              : state.genOutcome === 'stale'
+                ? { results, summary: { applied: 0, problems: ['The problem changed while outputs were generated. Generate them again.'] } }
+                : { results, summary: { applied: idxs.length, problems: [] } };
+          state.generations[id] = { id: 1, state: 'queued', results: [], error: null };
+          state.genScripts[id] = [
+            { id: 1, state: 'running', results: [], error: null },
+            { id: 1, state: 'done', error: null, ...done },
+          ];
+          return json(route, 202, state.generations[id]);
+        }
+        if (rest === '/generation' && method === 'GET') {
+          const script = state.genScripts[id];
+          if (script && script.length > 0) {
+            state.generations[id] = script.shift()!;
+            if (state.generations[id].state === 'done' && state.genOutcome === 'ok') {
+              for (const t of p.tests as Json[]) {
+                if (t.output_missing) Object.assign(t, { output_missing: false, output_size: 2, output_preview: '2\n' });
+              }
+              p.warnings = [];
+            }
+          }
+          const g = state.generations[id];
+          return g ? json(route, 200, g) : apiError(route, 404, 'not_found', 'Outputs were never generated for this problem.');
+        }
         if (rest === '/tests' && method === 'PUT') {
           p.tests = [test_(1, 'sample', '1 1\n', '2\n'), test_(2, null, '2 2\n', '4\n')];
           p.test_count = 2;
@@ -434,7 +500,7 @@ const SCREENS: Screen[] = [
     name: 'problems-bank',
     path: '/admin/problems',
     title: 'Problems · podium',
-    ready: (page) => expect(page.getByRole('link', { name: 'Interval covering' })).toBeVisible(),
+    ready: (page) => expect(page.getByRole('link', { name: 'Interval covering', exact: true })).toBeVisible(),
   },
   {
     name: 'problem-editor',
@@ -456,6 +522,12 @@ const SCREENS: Screen[] = [
     path: '/admin/problems/4',
     title: 'Average speed · Problems · podium',
     ready: (page) => expect(page.locator('.headline')).toHaveText('Validation failed'),
+  },
+  {
+    name: 'problem-editor-missing-outputs',
+    path: '/admin/problems/5',
+    title: 'Pair sums · Problems · podium',
+    ready: (page) => expect(page.getByText('2 tests have no expected output.', { exact: false })).toBeVisible(),
   },
   {
     name: 'problem-not-found',
@@ -523,7 +595,8 @@ for (const width of [1440, 375]) {
     await mockApi(page);
     await page.setViewportSize({ width, height: 900 });
     await page.goto('/admin/problems/1');
-    await expect(page.locator('.statement .katex').first()).toBeVisible();
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText('A plus B');
+    if (width >= 768) await expect(page.locator('.statement .katex').first()).toBeVisible();
 
     const reached: string[] = [];
     for (let i = 0; i < 120; i++) {
@@ -535,12 +608,15 @@ for (const width of [1440, 375]) {
       if (info.name === 'Archive problem') break;
     }
 
-    for (const name of [
-      'Problem bank', 'title', 'slug', 'statement_md', 'time_limit_ms', 'memory_limit_mb', 'checker', 'tags',
-      'difficulty', 'samples', 'subtask-0-points', 'Remove subtask 1', 'Remove subtask 2', 'Add subtask',
-      'Replace tests', 'Download input of test 5', 'reference-language', 'reference-source', 'Remove brute force',
-      'Add validator', 'Save changes', 'Validate', 'Download pack', 'Archive problem',
-    ]) {
+    const always = [
+      'Problem bank', 'Try as a student', 'Validated 16 Oct 02:09', 'Save changes', 'Validate', 'title', 'slug',
+      'statement_md', 'time_limit_ms', 'memory_limit_mb', 'checker', 'tags', 'difficulty', 'samples', 'subtask-0-points',
+      'Remove subtask 1', 'Remove subtask 2', 'Add subtask', 'Replace tests', 'Regenerate all outputs', 'Show all 5 tests',
+      'reference-language', 'reference-source', 'Remove brute force', 'Add validator', 'Download pack', 'Archive problem',
+    ];
+    const wide = ['Details', 'Tests', 'Solutions', 'Validation'];
+    const phone = ['Write'];
+    for (const name of [...always, ...(width >= 768 ? wide : phone)]) {
       expect(reached, `Tab did not reach "${name}"`).toContain(name);
     }
   });
@@ -592,14 +668,33 @@ test('subtasks, saving and validating work from the keyboard', async ({ page }) 
   await page.screenshot({ path: `${shots()}problem-editor-validated-1440-light.png`, fullPage: true });
 });
 
-test('the editor stacks at 375 px: form, preview, tests, solutions', async ({ page }) => {
+test('the editor stacks at 375 px with Write and Preview tabs for the statement', async ({ page }) => {
   await mockApi(page);
   await page.setViewportSize({ width: 375, height: 812 });
   await page.goto('/admin/problems/1');
-  await expect(page.locator('.statement .katex').first()).toBeVisible();
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('A plus B');
+  await expect(page.getByRole('region', { name: 'Preview', exact: true })).toHaveCount(0);
+
+  const write = page.getByRole('tab', { name: 'Write' });
+  await expect(write).toHaveAttribute('aria-selected', 'true');
+  await write.focus();
+  await page.keyboard.press('ArrowRight');
+  await expect(page.getByRole('tab', { name: 'Preview' })).toHaveAttribute('aria-selected', 'true');
+  await expect(page.getByRole('tabpanel', { name: 'Preview' }).locator('.katex').first()).toBeVisible();
+  await expect(page.locator('#statement_md')).toBeHidden();
+  await page.screenshot({ path: `${shots()}problem-editor-preview-tab-375-light.png`, fullPage: true });
+  await page.getByRole('tab', { name: 'Write' }).click();
+  await expect(page.locator('#statement_md')).toBeVisible();
+
+  // Tests stack: input over output.
+  await page.getByText('Show all 5 tests').click();
+  const row = page.getByRole('row', { name: /^5 Subtask 2/ });
+  const input = await row.locator('.file-cell').nth(0).boundingBox();
+  const output = await row.locator('.file-cell').nth(1).boundingBox();
+  expect(output!.y).toBeGreaterThan(input!.y + input!.height - 1);
 
   const boxes = [];
-  for (const name of ['Details', 'Preview', 'Tests', 'Solutions']) {
+  for (const name of ['Details', 'Tests', 'Solutions']) {
     const box = await page.getByRole('region', { name, exact: true }).boundingBox();
     expect(box, name).not.toBeNull();
     boxes.push(box!);
@@ -636,11 +731,24 @@ test('a failed validation names the test, program and verdict', async ({ page })
   await mockApi(page);
   await page.goto('/admin/problems/4');
   await expect(page.locator('.headline')).toHaveText('Validation failed');
-  await expect(page.getByText('Test 7: reference solution got wrong answer')).toBeVisible();
-  await expect(page.getByText('Line 1: expected 2.500000, found 2.400000')).toBeVisible();
-  await expect(page.getByText('Brute force did not compile', { exact: true })).toBeVisible();
-  await expect(page.locator('pre').filter({ hasText: "SyntaxError: '(' was never closed" })).toBeVisible();
-  await expect(page.getByText('Reference solution passed 14 of 15 tests')).toBeVisible();
+  await expect(page.locator('.status')).toHaveText('Validation failed, 1 problem');
+  await expect(page.locator('.report .lead')).toHaveText('Fix the brute force: it did not compile.');
+
+  // Grouped by program, each with a link to its source.
+  const reference = page.getByRole('region', { name: 'Reference solution' });
+  await expect(reference.getByText('Wrong answer on test 7')).toBeVisible();
+  await expect(reference.getByText('Line 1: expected 2.500000, found 2.400000')).toBeVisible();
+  await expect(reference.getByText('Reference solution passed 14 of 15 tests')).toBeVisible();
+  await expect(reference.locator('.guidance')).toContainText('expected output');
+  const brute = page.getByRole('region', { name: 'Brute force' });
+  await expect(brute.getByText('Brute force did not compile', { exact: true })).toBeVisible();
+  await expect(brute.locator('pre').filter({ hasText: "SyntaxError: '(' was never closed" })).toBeVisible();
+  await brute.getByRole('link', { name: 'Go to brute force' }).click();
+  await expect(page.locator('#brute-source')).toBeFocused();
+  // Only failing lines are red.
+  const passColour = await reference.locator('.line.tone-ok').first().evaluate((el) => getComputedStyle(el).color);
+  const inkColour = await page.locator('h1').evaluate((el) => getComputedStyle(el).color);
+  expect(passColour).toBe(inkColour);
 
   await page.getByText('All test results').click();
   await expect(page.getByRole('cell', { name: 'Wrong answer' })).toBeVisible();
@@ -648,7 +756,7 @@ test('a failed validation names the test, program and verdict', async ({ page })
   await page.getByRole('button', { name: 'Validate' }).click();
   await expect(page.getByText('Waiting for the judge (2nd in queue)')).toBeVisible();
   await expect(page.locator('.headline')).toHaveText('Validation failed', { timeout: 10_000 });
-  await expect(page.getByText('Test 7: reference solution got wrong answer')).toBeVisible();
+  await expect(page.getByText('Wrong answer on test 7')).toBeVisible();
 });
 
 test('validation is refused while a test is in no subtask', async ({ page }) => {
@@ -656,7 +764,17 @@ test('validation is refused while a test is in no subtask', async ({ page }) => 
   await page.goto('/admin/problems/2');
   const note = page.getByRole('note', { name: 'Before you validate' });
   await expect(note).toContainText('Test 7 is in no subtask. Add it to a subtask or mark it as a sample.');
+  // Named outside the table, which stays closed until asked for.
+  await expect(page.getByText('7 tests: 1 sample, 5 in 2 subtasks, 1 in no subtask.')).toBeVisible();
+  await expect(page.getByText('Test 7 is in no subtask. Add it to a subtask range or to the samples.')).toBeVisible();
+  await page.getByText('Show all 7 tests').click();
   await expect(page.getByRole('row', { name: /^7 Not in a subtask/ })).toBeVisible();
+
+  // Groups follow the subtasks as typed, before saving.
+  await page.locator('#subtask-1-tests').fill('5-7');
+  await expect(page.getByRole('row', { name: /^7 Subtask 2/ })).toBeVisible();
+  await expect(page.getByText('Test 7 is in no subtask. Add it to a subtask range or to the samples.')).toHaveCount(0);
+  await page.locator('#subtask-1-tests').fill('5-6');
   await expect(page.getByLabel('Allowed error')).toBeVisible();
 
   await page.getByRole('button', { name: 'Validate' }).click();
@@ -669,8 +787,8 @@ test('importing a pack shows its problems, then opens the new problem', async ({
   const state = await mockApi(page);
   const choosers = watchFileChoosers(page);
   await page.goto('/admin/problems');
-  await expect(page.getByRole('link', { name: 'A plus B' })).toBeVisible();
-  await expect(page.getByRole('link', { name: 'Old sorting' })).toHaveCount(0);
+  await expect(page.getByRole('link', { name: 'A plus B', exact: true })).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Old sorting', exact: true })).toHaveCount(0);
 
   const importButton = page.getByRole('button', { name: 'Import pack' });
   await importButton.focus();
@@ -733,7 +851,7 @@ test('archiving asks first and returns to the bank', async ({ page }) => {
   await dialog.getByRole('button', { name: 'Archive problem' }).click();
   await expect(page).toHaveURL('/admin/problems');
   await expect(page.getByText('Archived', { exact: true })).toBeVisible();
-  await expect(page.getByRole('link', { name: 'A plus B' })).toHaveCount(0);
+  await expect(page.getByRole('link', { name: 'A plus B', exact: true })).toHaveCount(0);
   expect(state.archived).toEqual([1]);
 });
 
@@ -764,7 +882,9 @@ test('replacing tests uploads a zip and lists the new tests', async ({ page }) =
   await page.getByRole('button', { name: 'Replace tests' }).click();
   await (await choosers.next()).setFiles(zipFile('tests.zip', 'zip'));
   await expect(page.getByText('Replaced tests. 2 tests stored.')).toBeVisible();
-  await expect(page.getByRole('row', { name: /^2 Not in a subtask/ })).toBeVisible();
+  await page.getByText('Show all 2 tests').click();
+  // Groups come from the sample and subtask lists as they stand (samples 1, 2).
+  await expect(page.getByRole('row', { name: /^2 Sample/ })).toBeVisible();
   await expect(page.getByRole('link', { name: 'Download output of test 2' })).toHaveAttribute(
     'href',
     '/api/admin/problems/1/tests/2/output',
@@ -802,7 +922,146 @@ test('admins see the Problems link and it marks the current page', async ({ page
   await expect(page).toHaveURL('/admin/problems');
   await expect(page.getByRole('link', { name: 'Problems', exact: true })).toHaveAttribute('aria-current', 'page');
   await expect(page.getByRole('heading', { level: 1 })).toBeFocused();
-  await page.getByRole('link', { name: 'A plus B' }).click();
+  await page.getByRole('link', { name: 'A plus B', exact: true }).click();
   await expect(page.getByRole('link', { name: 'Problems', exact: true })).toHaveAttribute('aria-current', 'page');
   await expect(page.getByRole('link', { name: 'People' })).toHaveCount(0);
+});
+
+test('missing outputs are named and generated from the reference', async ({ page }) => {
+  const state = await mockApi(page);
+  await page.goto('/admin/problems/5');
+  await expect(page.getByText('2 tests have no expected output. Generate outputs to fill them from the reference solution.')).toBeVisible();
+  await page.getByText('Show all 5 tests').click();
+  await expect(page.getByRole('row', { name: /^4 Subtask 1/ })).toContainText('Output missing');
+  await expect(page.getByRole('link', { name: 'Download output of test 4' })).toHaveCount(0);
+
+  await page.getByRole('button', { name: 'Generate outputs' }).click();
+  await expect(page.locator('.gen-line')).toHaveText('Generating outputs');
+  expect(state.generates).toEqual([{ all: false }]);
+  await expect(page.locator('.gen-line')).toHaveText('Generated 2 outputs. Slowest run 220 ms.', { timeout: 10_000 });
+  await expect(page.getByText('Output missing')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Generate outputs' })).toHaveCount(0);
+  await page.screenshot({ path: `${shots()}problem-editor-generated-1440-light.png`, fullPage: true });
+
+  // Regenerating everything asks first and uses the same word.
+  await page.getByRole('button', { name: 'Regenerate all outputs' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Regenerate all outputs?' });
+  await expect(dialog.getByRole('button', { name: 'Cancel' })).toBeFocused();
+  await dialog.getByRole('button', { name: 'Regenerate all outputs' }).click();
+  await expect.poll(() => state.generates.at(-1)).toEqual({ all: true });
+  await expect(page.locator('.gen-line')).toHaveText('Generated 5 outputs. Slowest run 220 ms.', { timeout: 10_000 });
+});
+
+test('a refused generation shows the reason in place', async ({ page }) => {
+  await mockApi(page);
+  await page.goto('/admin/problems/4');
+  await page.getByRole('button', { name: 'Regenerate all outputs' }).click();
+  await page.getByRole('dialog').getByRole('button', { name: 'Regenerate all outputs' }).click();
+  const alert = page.getByRole('alert').filter({ hasText: 'The problem is not ready. Fix these first.' });
+  await expect(alert).toContainText('Add a reference solution first.');
+});
+
+test('a reference that does not compile, or a problem changed mid-run, is said plainly', async ({ page }) => {
+  const state = await mockApi(page);
+  state.genOutcome = 'compile';
+  await page.goto('/admin/problems/5');
+  await page.getByRole('button', { name: 'Generate outputs' }).click();
+  await expect(page.locator('.gen-line')).toHaveText('The reference solution did not compile, so no outputs were generated.', {
+    timeout: 10_000,
+  });
+  await expect(page.locator('.gen-failures')).toContainText('expected ; before return');
+
+  state.genOutcome = 'stale';
+  await page.getByRole('button', { name: 'Generate outputs' }).click();
+  await expect(page.locator('.gen-line')).toHaveText('Some outputs were not applied.', { timeout: 10_000 });
+  await expect(page.locator('.gen-failures')).toContainText('The problem changed while outputs were generated.');
+});
+
+test('the sticky bar keeps status, field errors and the main actions in reach', async ({ page }) => {
+  const state = await mockApi(page);
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto('/admin/problems/1');
+  await expect(page.getByRole('link', { name: 'Try as a student' })).toHaveAttribute('href', '/admin/problems/1/try');
+  const validate = page.getByRole('button', { name: 'Validate', exact: true });
+  await expect(validate).toHaveClass(/btn-secondary/);
+
+  await page.locator('#title').fill('A plus B, edited');
+  await expect(page.getByRole('button', { name: 'Save and validate' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Save changes' })).toHaveClass(/btn-primary/);
+
+  // The bar stays at the top while the page scrolls.
+  await page.getByRole('link', { name: 'Solutions', exact: true }).click();
+  await page.mouse.wheel(0, 2000);
+  const bar = await page.locator('.action-bar').boundingBox();
+  expect(bar!.y).toBeLessThanOrEqual(1);
+  await page.screenshot({ path: `${shots()}problem-editor-sticky-1440-light.png` });
+
+  // Ctrl+S saves.
+  await page.keyboard.press('Control+s');
+  await expect(page.getByText('Saved', { exact: true })).toBeVisible();
+  expect(state.puts).toHaveLength(1);
+
+  // Field errors: a count in the bar and a list of links that focus each field.
+  await page.locator('#slug').fill('taken');
+  await page.getByRole('button', { name: 'Save changes' }).click();
+  await expect(page.locator('.error-count')).toHaveText('2 fields need attention');
+  const list = page.locator('#field-errors');
+  await list.getByRole('link', { name: 'Subtask 2 points: Points run from 1 to 1000.' }).click();
+  await expect(page.locator('#subtask-1-points')).toBeFocused();
+  await list.getByRole('link', { name: 'Slug: Another problem already uses this slug.' }).click();
+  await expect(page.locator('#slug')).toBeFocused();
+});
+
+test('a problem with no tests offers Upload tests', async ({ page }) => {
+  await mockApi(page);
+  await page.goto('/admin/problems/3');
+  await expect(page.getByRole('button', { name: 'Upload tests' })).toBeVisible();
+  await expect(page.getByText('No tests yet. Upload a .zip of numbered input and output files to add them.')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Regenerate all outputs' })).toHaveCount(0);
+  await expect(page.getByText('No validator. Add one to check inputs against the constraints.')).toBeVisible();
+});
+
+test('reference and brute force sit side by side at 1440 px', async ({ page }) => {
+  await mockApi(page);
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto('/admin/problems/1');
+  const ref = await page.getByRole('group', { name: 'Reference solution' }).boundingBox();
+  const brute = await page.getByRole('group', { name: 'Brute force' }).boundingBox();
+  expect(Math.abs(ref!.y - brute!.y)).toBeLessThan(2);
+  expect(brute!.x).toBeGreaterThan(ref!.x + ref!.width - 1);
+});
+
+test('the bank sorts by last change, filters past ten problems and links to Try', async ({ page }) => {
+  const state = await mockApi(page);
+  for (let i = 0; i < 8; i++) {
+    const id = 20 + i;
+    state.problems[id] = { ...state.problems[1], id, slug: `extra-${i}`, title: `Extra ${i}`, tags: i === 3 ? ['graphs'] : [], updated_at: T0 - (40 + i) * 86400000 };
+  }
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto('/admin/problems');
+  const titles = page.locator('tbody th.title');
+  await expect(titles.first()).toHaveText('Pair sums');
+  await expect(titles.nth(1)).toHaveText('Interval covering');
+  await expect(page.getByRole('row', { name: /A plus B/ }).first()).toContainText('Easy');
+  await expect(page.getByRole('row', { name: /A plus B/ }).first()).toContainText('math, intro');
+  await expect(page.getByRole('link', { name: 'Try A plus B as a student' }).first()).toHaveAttribute('href', '/admin/problems/1/try');
+
+  const filter = page.getByLabel('Filter by title or tag');
+  await filter.fill('graphs');
+  await expect(titles).toHaveText(['Extra 3']);
+  await filter.fill('nothing like this');
+  await expect(page.getByText('No problem matches "nothing like this". Try another word.')).toBeVisible();
+});
+
+test('bank rows read as title and status, then tests and date, on a phone', async ({ page }) => {
+  await mockApi(page);
+  await page.setViewportSize({ width: 375, height: 812 });
+  await page.goto('/admin/problems');
+  const row = page.getByRole('row', { name: /A plus B/ });
+  const title = await row.locator('.title').boundingBox();
+  const status = await row.locator('.state').boundingBox();
+  const tests = await row.locator('.tests').boundingBox();
+  expect(Math.abs(title!.y - status!.y)).toBeLessThan(6);
+  expect(tests!.y).toBeGreaterThan(title!.y + title!.height - 1);
+  await expect(row.locator('.tags')).toBeHidden();
 });

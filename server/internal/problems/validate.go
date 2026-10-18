@@ -258,6 +258,8 @@ func (ValidateKind) CheckReport(raw json.RawMessage, r judgeapi.Report) error {
 			return jobs.Badf("impossible time or memory on test %d", t.Idx)
 		case len(t.Message) > judgeapi.MaxMessage || !utf8.ValidString(t.Message):
 			return jobs.Badf("message too long or not UTF-8")
+		case t.Output != "" || t.OutputSHA != "":
+			return jobs.Badf("output on test %d of a validation", t.Idx)
 		}
 		seen[k] = true
 	}

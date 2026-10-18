@@ -1,0 +1,293 @@
+package submissions
+
+import (
+	"context"
+	"database/sql"
+	"encoding/json"
+	"errors"
+	"fmt"
+
+	"github.com/Sarthaks-24/podium/internal/jobs"
+	"github.com/Sarthaks-24/podium/internal/judgeapi"
+)
+
+// SubmissionView is a submission as its author sees it: verdicts, times
+// and scores, never the input or output of a hidden test (decision D47).
+type SubmissionView struct {
+	ID            int64           `json:"id"`
+	ProblemID     int64           `json:"problem_id"`
+	Language      string          `json:"language"`
+	State         string          `json:"state"`
+	Verdict       string          `json:"verdict"`
+	Score         int             `json:"score"`
+	MaxScore      int             `json:"max_score"`
+	MaxTimeMS     int             `json:"max_time_ms"`
+	MaxMemoryKB   int             `json:"max_memory_kb"`
+	CreatedAt     int64           `json:"created_at"`
+	JudgedAt      *int64          `json:"judged_at"`
+	QueuePosition *int            `json:"queue_position"`
+	CompileOutput string          `json:"compile_output"`
+	Subtasks      []SubtaskResult `json:"subtasks"`
+	Samples       []TestOutcome   `json:"samples"`
+	Error         string          `json:"error,omitempty"`
+	ServerNow     int64           `json:"server_now"`
+}
+
+// RunResult is one input of a run.
+type RunResult struct {
+	Label           string  `json:"label"`
+	Verdict         string  `json:"verdict"`
+	TimeMS          int     `json:"time_ms"`
+	MemoryKB        int     `json:"memory_kb"`
+	Output          string  `json:"output"`
+	OutputTruncated bool    `json:"output_truncated"`
+	Expected        *string `json:"expected"`
+	Message         string  `json:"message"`
+}
+
+// RunView is a run as its author sees it.
+type RunView struct {
+	ID            int64       `json:"id"`
+	State         string      `json:"state"`
+	CompileOutput string      `json:"compile_output"`
+	Results       []RunResult `json:"results"`
+	Error         string      `json:"error,omitempty"`
+	ServerNow     int64       `json:"server_now"`
+}
+
+// roundTime rounds a displayed time to 10 ms: finer figures add noise and
+// help nobody.
+func roundTime(ms int) int { return roundTo(ms, 10) }
+
+func roundTo(ms, step int) int {
+	if step <= 1 {
+		return ms
+	}
+	return (ms + step/2) / step * step
+}
+
+// ViewOptions say how much a viewer may see of a submission.
+type ViewOptions struct {
+	// Coarse is for students (decision D47): no memory figure for hidden
+	// tests, the maximum rounded up to 16 MB steps, times rounded to
+	// RoundMS. Exact figures on hidden tests let a program leak a test's
+	// values a few bits per submission.
+	Coarse bool
+	// RoundMS rounds displayed times (100 in graded contests); 0 means 10.
+	RoundMS int
+}
+
+const memoryStepKB = 16 << 10
+
+func applyView(s *Score, o ViewOptions) {
+	step := o.RoundMS
+	if step == 0 {
+		step = 10
+	}
+	s.MaxTimeMS = roundTo(s.MaxTimeMS, step)
+	for i := range s.Samples {
+		s.Samples[i].TimeMS = roundTo(s.Samples[i].TimeMS, step)
+	}
+	for i := range s.Subtasks {
+		for j := range s.Subtasks[i].Tests {
+			t := &s.Subtasks[i].Tests[j]
+			t.TimeMS = roundTo(t.TimeMS, step)
+			if o.Coarse {
+				t.MemoryKB = 0
+			}
+		}
+	}
+	if o.Coarse && s.MaxMemoryKB > 0 {
+		s.MaxMemoryKB = (s.MaxMemoryKB + memoryStepKB - 1) / memoryStepKB * memoryStepKB
+	}
+}
+
+// round applies the default (organiser) view.
+func round(s *Score) { applyView(s, ViewOptions{}) }
+
+type row struct {
+	id, problemID, jobID      int64
+	kind, language, state     string
+	verdict, result, errorMsg string
+	score, maxScore           int
+	maxTime, maxMem           int
+	createdAt                 int64
+	judgedAt                  sql.NullInt64
+}
+
+func (s *Service) loadRow(ctx context.Context, id int64) (row, error) {
+	var r row
+	var job sql.NullInt64
+	err := s.DB.QueryRowContext(ctx, `SELECT id, problem_id, job_id, kind, language, state, verdict, result, error,
+		score, max_score, max_time_ms, max_memory_kb, created_at, judged_at FROM submissions WHERE id = ?`, id).
+		Scan(&r.id, &r.problemID, &job, &r.kind, &r.language, &r.state, &r.verdict, &r.result, &r.errorMsg,
+			&r.score, &r.maxScore, &r.maxTime, &r.maxMem, &r.createdAt, &r.judgedAt)
+	if errors.Is(err, sql.ErrNoRows) {
+		return row{}, ErrNotFound
+	}
+	r.jobID = job.Int64
+	return r, err
+}
+
+// Get returns a submission with every figure (organisers, and owners in
+// M3, where only organisers submit).
+func (s *Service) Get(ctx context.Context, id int64) (*SubmissionView, error) {
+	return s.GetWith(ctx, id, ViewOptions{})
+}
+
+// GetWith returns a submission as a viewer with the given options sees
+// it. While it is being judged the score so far is computed from the
+// results that have arrived.
+func (s *Service) GetWith(ctx context.Context, id int64, o ViewOptions) (*SubmissionView, error) {
+	r, err := s.loadRow(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	if r.kind != "submit" {
+		return nil, ErrNotFound
+	}
+	v := &SubmissionView{ID: r.id, ProblemID: r.problemID, Language: r.language, State: r.state, Verdict: r.verdict,
+		Score: r.score, MaxScore: r.maxScore, MaxTimeMS: r.maxTime, MaxMemoryKB: r.maxMem, CreatedAt: r.createdAt,
+		Error: r.errorMsg, Subtasks: []SubtaskResult{}, Samples: []TestOutcome{}, ServerNow: s.now().UnixMilli()}
+	if r.judgedAt.Valid {
+		v.JudgedAt = &r.judgedAt.Int64
+	}
+	if r.state == "done" && r.result != "" {
+		var sc storedResult
+		if err := json.Unmarshal([]byte(r.result), &sc); err != nil {
+			return nil, fmt.Errorf("submission %d result: %w", id, err)
+		}
+		view := Score{Samples: sc.Samples, Subtasks: sc.Subtasks, MaxTimeMS: v.MaxTimeMS, MaxMemoryKB: v.MaxMemoryKB}
+		applyView(&view, o)
+		v.Subtasks, v.Samples, v.CompileOutput, v.MaxTimeMS, v.MaxMemoryKB = view.Subtasks, view.Samples, sc.CompileOutput, view.MaxTimeMS, view.MaxMemoryKB
+		return v, nil
+	}
+	if r.jobID == 0 || r.state == "error" {
+		// A failed submission is not counted: no partial score.
+		return v, nil
+	}
+	job, err := s.Jobs.Get(ctx, r.jobID)
+	if err != nil {
+		return nil, err
+	}
+	switch job.State {
+	case jobs.Queued:
+		pos, _ := s.Jobs.QueuePosition(ctx, r.jobID)
+		v.QueuePosition = &pos
+	case jobs.Leased:
+		v.State = "running"
+	}
+	var pl judgeapi.SubmitPayload
+	if err := json.Unmarshal(job.Payload, &pl); err != nil {
+		return nil, err
+	}
+	var program []judgeapi.CompileResult
+	for _, c := range job.Result.Compile {
+		if c.Role == judgeapi.RoleProgram {
+			program = append(program, c)
+		}
+	}
+	sc := ScoreSubmission(pl, program, job.Result.Tests, false)
+	applyView(&sc, o)
+	v.Subtasks, v.Samples, v.Score, v.MaxTimeMS, v.MaxMemoryKB = sc.Subtasks, sc.Samples, sc.Score, sc.MaxTimeMS, sc.MaxMemoryKB
+	v.CompileOutput = compileOutput(program)
+	return v, nil
+}
+
+func compileOutput(cs []judgeapi.CompileResult) string {
+	for _, c := range cs {
+		if c.Role == judgeapi.RoleProgram {
+			return c.Output
+		}
+	}
+	return ""
+}
+
+// storedResult is what a finished submission keeps in submissions.result.
+type storedResult struct {
+	Subtasks      []SubtaskResult `json:"subtasks"`
+	Samples       []TestOutcome   `json:"samples"`
+	CompileOutput string          `json:"compile_output"`
+}
+
+// GetRun returns a run with whatever results have arrived.
+func (s *Service) GetRun(ctx context.Context, id int64) (*RunView, error) {
+	r, err := s.loadRow(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	if r.kind != "run" {
+		return nil, ErrNotFound
+	}
+	v := &RunView{ID: r.id, State: r.state, Results: []RunResult{}, Error: r.errorMsg, ServerNow: s.now().UnixMilli()}
+	if r.state == "error" {
+		return v, nil
+	}
+	if r.jobID == 0 {
+		return v, nil
+	}
+	job, err := s.Jobs.Get(ctx, r.jobID)
+	if err != nil {
+		return nil, err
+	}
+	if job.State == jobs.Leased {
+		v.State = "running"
+	}
+	var pl judgeapi.RunPayload
+	if err := json.Unmarshal(job.Payload, &pl); err != nil {
+		return nil, err
+	}
+	v.CompileOutput = compileOutput(job.Result.Compile)
+	got := map[int]judgeapi.TestResult{}
+	for _, t := range job.Result.Tests {
+		got[t.Idx] = t
+	}
+	for n, in := range pl.Inputs {
+		res := RunResult{Label: "Custom input"}
+		if in.Idx > 0 {
+			res.Label = fmt.Sprintf("Sample %d", n+1)
+			if in.ExpectedSHA != "" {
+				exp, _ := s.Problems.Blobs.Read(in.ExpectedSHA, maxSampleTxt+1)
+				text := clipText(exp, maxSampleTxt)
+				res.Expected = &text
+			}
+		}
+		if t, ok := got[in.Idx]; ok {
+			res.Verdict, res.TimeMS, res.MemoryKB, res.Message = t.Verdict, roundTime(t.TimeMS), t.MemoryKB, t.Message
+			res.Output = t.Output
+			// The worker cuts at MaxRunOutput and drops a split rune (at
+			// most 3 bytes), so anything that close to the cap was cut.
+			res.OutputTruncated = len(t.Output) >= judgeapi.MaxRunOutput-3
+		}
+		v.Results = append(v.Results, res)
+	}
+	return v, nil
+}
+
+// listMine returns a user's newest submissions on a problem.
+func (s *Service) listMine(ctx context.Context, userID, problemID, contestID int64) ([]SubmissionView, error) {
+	rows, err := s.DB.QueryContext(ctx, `SELECT id FROM submissions WHERE user_id = ? AND problem_id = ? AND coalesce(contest_id, 0) = ?
+		AND kind = 'submit' ORDER BY id DESC LIMIT ?`, userID, problemID, contestID, listLimit)
+	if err != nil {
+		return nil, err
+	}
+	var ids []int64
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	rows.Close()
+	out := []SubmissionView{}
+	for _, id := range ids {
+		v, err := s.Get(ctx, id)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, *v)
+	}
+	return out, nil
+}

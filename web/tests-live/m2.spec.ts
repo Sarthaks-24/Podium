@@ -15,7 +15,7 @@ test('a setter signs in and reads a validation report', async ({ page }) => {
   const row = page.getByRole('row', { name: /A plus B/ });
   await expect(row).toContainText('Validated');
 
-  await row.getByRole('link', { name: 'A plus B' }).click();
+  await row.getByRole('link', { name: 'A plus B', exact: true }).click();
   await expect(page.getByRole('heading', { level: 1 })).toContainText('A plus B');
   await expect(page.getByText(/Reference solution passed 6 of 6 tests/)).toBeVisible();
   await expect(page.getByText(/Validator accepted 6 of 6 inputs/)).toBeVisible();

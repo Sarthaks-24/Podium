@@ -163,9 +163,11 @@ func load(ctx context.Context, q queryer, id int64) (*Problem, error) {
 	defer rows.Close()
 	for rows.Next() {
 		var t Test
-		if err := rows.Scan(&t.Idx, &t.InputSHA, &t.OutputSHA, &t.InputSize, &t.OutputSize); err != nil {
+		var out sql.NullString
+		if err := rows.Scan(&t.Idx, &t.InputSHA, &out, &t.InputSize, &t.OutputSize); err != nil {
 			return nil, err
 		}
+		t.OutputSHA = out.String
 		p.Tests = append(p.Tests, t)
 	}
 	return p, rows.Err()
@@ -274,10 +276,14 @@ func (s *Service) writeTests(tests []Test, ins, outs map[int][]byte) error {
 		if t.InputSHA, err = s.Blobs.Write(in); err != nil {
 			return err
 		}
+		t.InputSize = int64(len(in))
+		if out == nil {
+			continue // missing output, generated later
+		}
 		if t.OutputSHA, err = s.Blobs.Write(out); err != nil {
 			return err
 		}
-		t.InputSize, t.OutputSize = int64(len(in)), int64(len(out))
+		t.OutputSize = int64(len(out))
 	}
 	return nil
 }
@@ -286,6 +292,9 @@ func (s *Service) recordTests(ctx context.Context, tx *sql.Tx, tests []Test) err
 	for _, t := range tests {
 		if err := s.Blobs.Record(ctx, tx, t.InputSHA, t.InputSize); err != nil {
 			return err
+		}
+		if t.OutputSHA == "" {
+			continue
 		}
 		if err := s.Blobs.Record(ctx, tx, t.OutputSHA, t.OutputSize); err != nil {
 			return err
@@ -349,7 +358,7 @@ func (s *Service) writeChildren(ctx context.Context, tx *sql.Tx, p *Problem) err
 	}
 	for _, t := range p.Tests {
 		if _, err := tx.ExecContext(ctx, `INSERT INTO testcases (problem_id, idx, input_sha, output_sha, input_size, output_size)
-			VALUES (?, ?, ?, ?, ?, ?)`, p.ID, t.Idx, t.InputSHA, t.OutputSHA, t.InputSize, t.OutputSize); err != nil {
+			VALUES (?, ?, ?, ?, ?, ?)`, p.ID, t.Idx, t.InputSHA, nullIfEmpty(t.OutputSHA), t.InputSize, t.OutputSize); err != nil {
 			return err
 		}
 	}
@@ -455,11 +464,6 @@ func (s *Service) ReplaceTests(ctx context.Context, id int64, zipData []byte) (*
 		}
 		target[n] = body
 	}
-	for n := range ins {
-		if _, ok := outs[n]; !ok {
-			problems = append(problems, fmt.Sprintf("Test %d has an input but no output.", n))
-		}
-	}
 	for n := range outs {
 		if _, ok := ins[n]; !ok {
 			problems = append(problems, fmt.Sprintf("Test %d has an output but no input.", n))
@@ -521,12 +525,19 @@ func (s *Service) TestBlob(ctx context.Context, id int64, idx int, output bool) 
 	if output {
 		col = "output_sha"
 	}
-	var sha string
+	var sha sql.NullString
 	err := s.DB.QueryRowContext(ctx, "SELECT "+col+" FROM testcases WHERE problem_id = ? AND idx = ?", id, idx).Scan(&sha)
-	if errors.Is(err, sql.ErrNoRows) {
+	if errors.Is(err, sql.ErrNoRows) || (err == nil && !sha.Valid) {
 		return "", ErrNotFound
 	}
-	return sha, err
+	return sha.String, err
+}
+
+func nullIfEmpty(s string) any {
+	if s == "" {
+		return nil
+	}
+	return s
 }
 
 func isUnique(err error) bool {

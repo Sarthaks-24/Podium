@@ -296,8 +296,15 @@ func TestEditRulesAndStructure(t *testing.T) {
 			t.Errorf("problems miss %q:\n%s", want, probs)
 		}
 	}
-	if _, err := s.ReplaceTests(ctx, p.ID, zipEntries(t, entry{name: "1.in", body: "1"})); err == nil {
-		t.Error("input without output accepted")
+	got, err = s.ReplaceTests(ctx, p.ID, zipEntries(t, entry{name: "1.in", body: "1"}, entry{name: "2.in", body: "2"}, entry{name: "2.out", body: "2"}))
+	if err != nil {
+		t.Fatalf("input without output: %v", err)
+	}
+	if !strings.Contains(strings.Join(got.Problems(), " "), "Test 1 has no expected output") {
+		t.Errorf("missing output not listed: %v", got.Problems())
+	}
+	if _, err := s.ReplaceTests(ctx, p.ID, zipEntries(t, entry{name: "3.out", body: "3"})); err == nil {
+		t.Error("output without input accepted")
 	}
 	if err := s.Archive(ctx, p.ID); err != nil {
 		t.Fatal(err)

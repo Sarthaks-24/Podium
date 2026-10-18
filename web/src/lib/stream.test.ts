@@ -1,0 +1,131 @@
+import { describe, expect, it } from 'vitest';
+import { EventStream, reconnectDelay, type EventSourceLike } from './stream';
+
+class FakeSource implements EventSourceLike {
+  onopen: ((ev: Event) => void) | null = null;
+  onerror: ((ev: Event) => void) | null = null;
+  listeners = new Map<string, (ev: MessageEvent) => void>();
+  closed = false;
+  addEventListener(type: string, fn: (ev: MessageEvent) => void) {
+    this.listeners.set(type, fn);
+  }
+  close() {
+    this.closed = true;
+  }
+  open() {
+    this.onopen?.(new Event('open'));
+  }
+  fail() {
+    this.onerror?.(new Event('error'));
+  }
+  send(type: string, data: unknown) {
+    this.listeners.get(type)?.({ data: JSON.stringify(data) } as MessageEvent);
+  }
+}
+
+function harness() {
+  const sources: FakeSource[] = [];
+  const timers: { fn: () => void; ms: number; id: number }[] = [];
+  let nextId = 1;
+  const events: [string, unknown][] = [];
+  const modes: string[] = [];
+  let polls = 0;
+  let reconnects = 0;
+  const stream = new EventStream({
+    url: '/api/events',
+    events: ['submission', 'clock'],
+    onEvent: (t, d) => events.push([t, d]),
+    onReconnect: () => reconnects++,
+    poll: () => polls++,
+    onMode: (m) => modes.push(m),
+    random: () => 0.5,
+    create: () => {
+      const s = new FakeSource();
+      sources.push(s);
+      return s;
+    },
+    setTimer: (fn, ms) => {
+      const id = nextId++;
+      timers.push({ fn, ms, id });
+      return id;
+    },
+    clearTimer: (id) => {
+      const i = timers.findIndex((t) => t.id === id);
+      if (i >= 0) timers.splice(i, 1);
+    },
+  });
+  const fire = () => {
+    const t = timers.shift();
+    t?.fn();
+    return t;
+  };
+  return { stream, sources, timers, events, modes, fire, polls: () => polls, reconnects: () => reconnects };
+}
+
+describe('reconnect delay', () => {
+  it('grows from 1 s, capped at 30 s, with half of it jittered', () => {
+    expect(reconnectDelay(0, () => 0)).toBe(500);
+    expect(reconnectDelay(0, () => 1)).toBe(1000);
+    expect(reconnectDelay(2, () => 0.5)).toBe(3000);
+    expect(reconnectDelay(10, () => 1)).toBe(30_000);
+    expect(reconnectDelay(10, () => 0)).toBe(15_000);
+  });
+});
+
+describe('event stream', () => {
+  it('passes parsed events through and ignores junk', () => {
+    const h = harness();
+    h.stream.start();
+    h.sources[0].open();
+    h.sources[0].send('submission', { id: 1 });
+    h.sources[0].listeners.get('clock')?.({ data: 'not json' } as MessageEvent);
+    expect(h.events).toEqual([['submission', { id: 1 }]]);
+    expect(h.modes).toEqual(['live']);
+  });
+
+  it('reconnects with a jittered delay and refetches after it opens again', () => {
+    const h = harness();
+    h.stream.start();
+    h.sources[0].open();
+    h.sources[0].fail();
+    expect(h.sources[0].closed).toBe(true);
+    expect(h.timers[0].ms).toBe(750);
+    h.fire();
+    expect(h.sources).toHaveLength(2);
+    h.sources[1].open();
+    expect(h.reconnects()).toBe(1);
+  });
+
+  it('falls back to polling every 15 s after three failures, and stops once the stream opens', () => {
+    const h = harness();
+    h.stream.start();
+    h.sources[0].fail();
+    h.fire();
+    h.sources[1].fail();
+    h.fire();
+    h.sources[2].fail();
+    expect(h.modes.at(-1)).toBe('polling');
+    expect(h.polls()).toBe(1);
+    expect(h.timers).toHaveLength(1);
+    expect(h.timers[0].ms).toBe(15_000);
+
+    // Polls continue; every fourth one tries the stream again.
+    for (let i = 0; i < 4; i++) h.fire();
+    expect(h.polls()).toBe(5);
+    expect(h.sources).toHaveLength(4);
+    h.sources[3].open();
+    expect(h.modes.at(-1)).toBe('live');
+    expect(h.reconnects()).toBe(1);
+    expect(h.timers).toHaveLength(0);
+  });
+
+  it('stops every timer and the source on stop', () => {
+    const h = harness();
+    h.stream.start();
+    h.sources[0].fail();
+    h.stream.stop();
+    expect(h.timers).toHaveLength(0);
+    h.sources[0].open();
+    expect(h.modes).not.toContain('live');
+  });
+});

@@ -10,10 +10,24 @@ export default defineConfig({
     // Computed once per build so the footer year is never hard-coded.
     __BUILD_YEAR__: JSON.stringify(new Date().getFullYear()),
   },
-  // The statement renderer is imported lazily, so the dev server would only
-  // discover these on first use and reload the page to re-bundle them.
+  // The statement renderer and the code editor are imported lazily, so the
+  // dev server would only discover these on first use and reload the page
+  // to re-bundle them.
   optimizeDeps: {
-    include: ['marked', 'dompurify', 'katex'],
+    include: [
+      'marked',
+      'dompurify',
+      'katex',
+      '@codemirror/state',
+      '@codemirror/view',
+      '@codemirror/commands',
+      '@codemirror/language',
+      '@codemirror/lang-cpp',
+      '@codemirror/lang-java',
+      '@codemirror/lang-javascript',
+      '@codemirror/lang-python',
+      '@lezer/highlight',
+    ],
   },
   server: {
     proxy: {

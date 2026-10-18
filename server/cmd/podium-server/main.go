@@ -19,10 +19,12 @@ import (
 	"github.com/Sarthaks-24/podium/internal/auth"
 	"github.com/Sarthaks-24/podium/internal/config"
 	"github.com/Sarthaks-24/podium/internal/db"
+	"github.com/Sarthaks-24/podium/internal/events"
 	"github.com/Sarthaks-24/podium/internal/httpapi"
 	"github.com/Sarthaks-24/podium/internal/jobs"
 	"github.com/Sarthaks-24/podium/internal/judgeapi"
 	"github.com/Sarthaks-24/podium/internal/problems"
+	"github.com/Sarthaks-24/podium/internal/submissions"
 	"github.com/Sarthaks-24/podium/internal/webui"
 )
 
@@ -93,14 +95,22 @@ func run(envFile string) error {
 	// open until its timeout.
 	base, cancelBase := context.WithCancel(context.Background())
 	defer cancelBase()
-	jobSvc := &jobs.Service{DB: database, Kinds: map[string]jobs.Kind{judgeapi.KindValidate: problems.ValidateKind{}}}
 	blobs := problems.Blobs{Dir: cfg.TestsDir}
+	jobSvc := &jobs.Service{DB: database, Kinds: map[string]jobs.Kind{
+		judgeapi.KindValidate: problems.ValidateKind{},
+		judgeapi.KindGenerate: problems.GenerateKind{Store: blobs},
+		judgeapi.KindSubmit:   submissions.SubmitKind{},
+		judgeapi.KindRun:      submissions.RunKind{},
+	}}
 	problemSvc := &problems.Service{DB: database, Blobs: blobs, Jobs: jobSvc}
+	hub := &events.Hub{}
+	submissionSvc := &submissions.Service{DB: database, Jobs: jobSvc, Problems: problemSvc, Hub: hub, HashKey: cfg.SessionSecret}
+	jobSvc.OnChange = submissionSvc.OnJobChange
 	go sweepJobs(ctx, jobSvc, log)
 	handler := httpapi.New(httpapi.Deps{
 		DB: database, Log: log, WebApp: webui.Handler(),
 		Auth: authSvc, IdP: provider, BaseURL: cfg.BaseURL, SessionSecret: cfg.SessionSecret,
-		Problems: problemSvc, Mode: string(cfg.Mode),
+		Problems: problemSvc, Submissions: submissionSvc, Hub: hub, Mode: string(cfg.Mode),
 	})
 	srv := &http.Server{
 		BaseContext:       func(net.Listener) context.Context { return base },

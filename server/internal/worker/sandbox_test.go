@@ -29,6 +29,7 @@ import (
 	"github.com/Sarthaks-24/podium/internal/judge"
 	"github.com/Sarthaks-24/podium/internal/judgeapi"
 	"github.com/Sarthaks-24/podium/internal/problems"
+	"github.com/Sarthaks-24/podium/internal/submissions"
 )
 
 var (
@@ -40,6 +41,7 @@ const testToken = "sandbox-test-token-sandbox-test-token-0001"
 
 type rig struct {
 	bank *problems.Service
+	subs *submissions.Service
 }
 
 func newRig(t *testing.T) *rig {
@@ -58,9 +60,18 @@ func newRig(t *testing.T) *rig {
 		t.Fatal(err)
 	}
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
-	jobSvc := &jobs.Service{DB: d, Kinds: map[string]jobs.Kind{judgeapi.KindValidate: problems.ValidateKind{}}}
 	blobs := problems.Blobs{Dir: filepath.Join(t.TempDir(), "tests")}
+	jobSvc := &jobs.Service{DB: d, Kinds: map[string]jobs.Kind{
+		judgeapi.KindValidate: problems.ValidateKind{},
+		judgeapi.KindGenerate: problems.GenerateKind{Store: blobs},
+		judgeapi.KindSubmit:   submissions.SubmitKind{},
+		judgeapi.KindRun:      submissions.RunKind{},
+	}}
 	bank := &problems.Service{DB: d, Blobs: blobs, Jobs: jobSvc}
+	subs := &submissions.Service{DB: d, Jobs: jobSvc, Problems: bank}
+	if _, err := d.Exec(`INSERT INTO users (id, email, role, created_at) VALUES (1, 'setter@college.edu', 'admin', 0)`); err != nil {
+		t.Fatal(err)
+	}
 	srv := httptest.NewServer(httpapi.NewJudge(httpapi.JudgeDeps{Log: log, Jobs: jobSvc, Blobs: blobs, Token: testToken}))
 	t.Cleanup(srv.Close)
 
@@ -68,16 +79,18 @@ func newRig(t *testing.T) *rig {
 	work := t.TempDir()
 	os.MkdirAll(filepath.Join(work, "blobs"), 0o700)
 	os.MkdirAll(filepath.Join(work, "jobs"), 0o700)
+	os.MkdirAll(filepath.Join(work, "compiled"), 0o700)
 	w := &Worker{
 		Runner: &judge.Runner{Iso: judge.Isolate{Path: *isolatePath}},
 		Client: client, Cache: &Cache{Dir: filepath.Join(work, "blobs"), Client: client},
-		Log:   slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelWarn})),
-		Lanes: 2, WorkDir: filepath.Join(work, "jobs"), Name: "sandbox-test", Version: "test",
+		Compiled: &CompileCache{Dir: filepath.Join(work, "compiled")},
+		Log:      slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelWarn})),
+		Lanes:    2, WorkDir: filepath.Join(work, "jobs"), Name: "sandbox-test", Version: "test",
 	}
 	done := make(chan struct{})
 	go func() { w.Run(ctx); close(done) }()
 	t.Cleanup(func() { cancel(); <-done })
-	return &rig{bank: bank}
+	return &rig{bank: bank, subs: subs}
 }
 
 func zipPack(t *testing.T, dir string, edit map[string]string) []byte {

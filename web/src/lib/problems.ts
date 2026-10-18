@@ -81,6 +81,8 @@ export interface TestCase {
   output_size: number;
   input_preview: string;
   output_preview: string;
+  /** True when the test has no expected output yet (waiting for generation). */
+  output_missing?: boolean;
 }
 
 /** GET /api/admin/problems/{id}. */
@@ -472,6 +474,212 @@ export function reportLines(v: Validation): ReportLine[] {
     for (const w of s.warnings) lines.push({ text: w, tone: 'note' });
   }
   return lines;
+}
+
+/** One program's part of the validation report. */
+export interface ReportSection {
+  role: Role;
+  /** "Reference solution", "Brute force", "Validator" or "Checker". */
+  title: string;
+  lines: (ReportLine & { guidance?: string })[];
+}
+
+/** The validation report: what to fix first, then each program, then notes. */
+export interface Report {
+  /** One sentence naming the first thing to fix; empty when nothing is wrong. */
+  lead: string;
+  sections: ReportSection[];
+  /** The server's problems and warnings, and any judge error. */
+  notes: ReportLine[];
+}
+
+/** Programs in the order the report lists them. */
+export const ROLE_ORDER: readonly Role[] = ['reference', 'checker', 'validator', 'brute'];
+
+/** A failing test as a line: "Wrong answer on test 7", or the role's own wording. */
+export function testFailureText(t: { idx: number; role: Role; verdict: string }): string {
+  if (t.role === 'validator' && t.verdict === 'WA') return `Rejected the input of test ${t.idx}`;
+  if (t.role === 'brute' && t.verdict === 'WA') return `Disagreed with the reference on test ${t.idx}`;
+  if (t.role === 'checker') return `Failed on test ${t.idx}`;
+  return `${verdictLabel(t.verdict)} on test ${t.idx}`;
+}
+
+/** One line of guidance for a setter, by program and verdict. */
+export function setterGuidance(role: Role, verdict: string): string {
+  if (role === 'validator') return 'Fix this input so it meets the constraints, or fix the validator.';
+  if (role === 'checker') return 'Check that the checker accepts every valid output and exits with 0, 1 or 2.';
+  if (role === 'brute') {
+    if (verdict === 'WA') return 'The brute force and the reference disagree here, so one of them is wrong. Compare them on this input.';
+    if (verdict === 'TLE') return 'A slow brute force is expected; give it smaller tests or leave it out of the large ones.';
+    return 'Run the brute force on this input to see what goes wrong.';
+  }
+  switch (verdict) {
+    case 'WA':
+      return "The reference must match every expected output. Check this test's output file, or the solution.";
+    case 'TLE':
+      return 'The reference must finish within half the time limit. Speed it up or raise the limit.';
+    case 'MLE':
+      return 'Reduce the memory the reference uses, or raise the memory limit.';
+    case 'RE':
+      return "Run the reference on this test's input; check bounds and recursion depth.";
+    default:
+      return 'Run the reference on this input to see what goes wrong.';
+  }
+}
+
+/**
+ * Builds the validation report grouped by program (decision from the M2 UI
+ * review): a lead sentence naming the first thing to fix, then per program
+ * its summary line, compile failure and failing tests with one line of
+ * guidance each, then the server's problems and warnings.
+ */
+export function buildReport(v: Validation): Report {
+  const sections = new Map<Role, ReportSection>();
+  const section = (role: Role) => {
+    let s = sections.get(role);
+    if (!s) {
+      s = { role, title: capitalise(roleName(role)), lines: [] };
+      sections.set(role, s);
+    }
+    return s;
+  };
+  let lead = '';
+  const firstFix = (text: string) => {
+    if (lead === '') lead = text;
+  };
+
+  // Compile failures come first, in program order.
+  for (const role of ROLE_ORDER) {
+    for (const c of v.compile.filter((x) => x.role === role)) {
+      if (c.verdict === 'CE') {
+        section(role).lines.push({ text: `${capitalise(roleName(role))} did not compile`, tone: 'bad', detail: c.output });
+        firstFix(`Fix the ${roleName(role)}: it did not compile.`);
+      } else if (isFailure(c.verdict)) {
+        section(role).lines.push({
+          text: `${capitalise(roleName(role))}: ${verdictLabel(c.verdict).toLowerCase()} while compiling`,
+          tone: 'bad',
+          detail: c.output || undefined,
+        });
+        firstFix(`Fix the ${roleName(role)}: it failed while compiling.`);
+      }
+    }
+  }
+
+  const s = v.summary;
+  if (s) {
+    if (s.reference_total > 0) {
+      section('reference').lines.unshift(
+        {
+          text: `Reference solution passed ${s.reference_passed} of ${s.reference_total} tests`,
+          tone: s.reference_passed === s.reference_total ? 'ok' : 'bad',
+        },
+        {
+          text: `Slowest reference run ${s.max_time_ms} ms of ${s.time_limit_ms} ms`,
+          tone: s.max_time_ms * 2 <= s.time_limit_ms ? 'ok' : 'bad',
+        },
+      );
+      if (s.max_time_ms * 2 > s.time_limit_ms) {
+        section('reference').lines[1] = {
+          ...section('reference').lines[1],
+          guidance: 'The reference must finish within half the time limit. Speed it up or raise the limit.',
+        };
+      }
+    }
+    if (s.validator_total > 0) {
+      section('validator').lines.unshift({
+        text: `Validator accepted ${s.validator_passed} of ${s.validator_total} inputs`,
+        tone: s.validator_passed === s.validator_total ? 'ok' : 'bad',
+      });
+    }
+    if (s.brute_total > 0) {
+      section('brute').lines.unshift({
+        text: `Brute force agreed on ${s.brute_agreed} of ${s.brute_total} tests`,
+        tone: s.brute_agreed === s.brute_total ? 'ok' : 'bad',
+      });
+    }
+  }
+
+  for (const role of ROLE_ORDER) {
+    for (const t of v.tests.filter((x) => x.role === role && isFailure(x.verdict))) {
+      const text = testFailureText(t);
+      section(role).lines.push({ text, tone: 'bad', detail: t.message || undefined, guidance: setterGuidance(role, t.verdict) });
+      const verb = role === 'brute' ? 'Check' : 'Fix';
+      firstFix(`${verb} the ${roleName(role)}: ${text.charAt(0).toLowerCase()}${text.slice(1)}.`);
+    }
+  }
+
+  const notes: ReportLine[] = [];
+  if (s) {
+    for (const p of s.problems) notes.push({ text: p, tone: 'bad' });
+    for (const w of s.warnings) notes.push({ text: w, tone: 'note' });
+  }
+  if (v.state === 'failed' && s && s.max_time_ms * 2 > s.time_limit_ms) {
+    firstFix('Fix the reference solution: it is slower than half the time limit.');
+  }
+  if (v.state !== 'failed' && v.state !== 'error') lead = '';
+  else if (lead === '') lead = s?.problems[0] ?? v.error ?? '';
+
+  const ordered = ROLE_ORDER.map((r) => sections.get(r)).filter((x): x is ReportSection => x !== undefined);
+  return { lead, sections: ordered, notes };
+}
+
+/** The element id of a program's source field in the editor. */
+export function programFieldId(role: Role): string {
+  return role === 'checker' ? 'checker_source' : `${role}-source`;
+}
+
+/** The headline status of a problem, as the editor's header says it. */
+export function editorStatus(
+  p: Pick<Problem, 'archived' | 'validated' | 'validated_at' | 'content_hash'>,
+  v: Validation | null,
+): { text: string; tone: 'ok' | 'bad' | 'wait' | 'note' } {
+  if (p.archived) return { text: 'Archived', tone: 'note' };
+  if (v && isPending(v)) {
+    if (v.state === 'running') return { text: 'Validating', tone: 'wait' };
+    return {
+      text: v.queue_position !== null && v.queue_position > 0 ? `Validating, ${ordinal(v.queue_position)} in queue` : 'Validating',
+      tone: 'wait',
+    };
+  }
+  if (v && v.content_hash === p.content_hash && (v.state === 'failed' || v.state === 'error')) {
+    const n = v.summary?.problems.length ?? 0;
+    return { text: n > 0 ? `Validation failed, ${n} ${n === 1 ? 'problem' : 'problems'}` : 'Validation failed', tone: 'bad' };
+  }
+  if (p.validated && p.validated_at !== null) return { text: `Validated ${formatShort(p.validated_at)}`, tone: 'ok' };
+  return { text: 'Not validated', tone: 'note' };
+}
+
+const SHORT_MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+/** "16 Oct 19:42" in local time. */
+export function formatShort(ms: number): string {
+  const d = new Date(ms);
+  return `${d.getDate()} ${SHORT_MONTHS[d.getMonth()]} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+}
+
+/**
+ * Where each test belongs according to the draft as typed: "Sample",
+ * "Subtask 2" or "Not in a subtask". A list that cannot be read yet falls
+ * back to what the server last saved for that test.
+ */
+export function draftGroups(tests: readonly TestCase[], d: Pick<Draft, 'samples' | 'subtasks'>): Map<number, string> {
+  const out = new Map<number, string>();
+  const samples = parseTestList(d.samples);
+  const ranges = d.subtasks.map((s) => parseTestList(s.tests));
+  for (const t of tests) {
+    const saved = t.sample ? 'Sample' : t.subtask_idx !== null ? `Subtask ${t.subtask_idx}` : 'Not in a subtask';
+    if (!samples.ok || ranges.some((r) => !r.ok)) {
+      out.set(t.idx, saved);
+      continue;
+    }
+    if (samples.tests.includes(t.idx)) {
+      out.set(t.idx, 'Sample');
+      continue;
+    }
+    const i = ranges.findIndex((r) => r.ok && r.tests.includes(t.idx));
+    out.set(t.idx, i >= 0 ? `Subtask ${i + 1}` : 'Not in a subtask');
+  }
+  return out;
 }
 
 /** Formats a byte count: "512 B", "12.4 KB", "1.0 MB". */

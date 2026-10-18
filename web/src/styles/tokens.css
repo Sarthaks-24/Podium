@@ -52,6 +52,22 @@
   /* Images in problem statements sit on this in every theme, because
      figures are usually drawn black on transparent. Not themed on purpose. */
   --figure-backing: #FFFFFF;
+
+  /* Code in the editor well. The well is dark in every theme (from #000000
+     to #1C2128), so one set serves them all; each colour is at least
+     4.5:1 on the lightest well, and the gutter at least 4.5:1 too. The
+     selection and active line are mixed from the theme's own colours. */
+  --code-keyword: #A5B4FF;
+  --code-string: #9FD8A4;
+  --code-number: #F2C58A;
+  --code-comment: #939C96;
+  --code-type: #7FD1CC;
+  --code-function: #E6E8E3;
+  --code-meta: #E8A6CB;
+  --code-invalid: #FF9A8F;
+  --code-gutter: #858E88;
+  --code-selection: color-mix(in srgb, var(--act) 40%, var(--well));
+  --code-active-line: color-mix(in srgb, var(--well-ink) 7%, var(--well));
 }
 
 @media (min-width: 768px) {

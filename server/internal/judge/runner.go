@@ -99,6 +99,9 @@ type CompileResult struct {
 	Output string
 	Time   time.Duration
 	Wall   time.Duration
+	// Transient marks a compile error caused by load (the compiler ran out
+	// of time or memory) rather than by the code, so it is not cached.
+	Transient bool
 }
 
 // Compile writes source into a fresh box, compiles it, and copies the
@@ -146,9 +149,9 @@ func (r *Runner) Compile(ctx context.Context, box int, lang Language, source []b
 	case meta.Status == "XX":
 		return prog, res, fmt.Errorf("compile box %d: isolate internal error: %s", box, meta.Message)
 	case meta.OOMKilled:
-		res.Verdict, res.Output = CompileError, appendNote(res.Output, "The compiler ran out of memory.")
+		res.Verdict, res.Output, res.Transient = CompileError, appendNote(res.Output, "The compiler ran out of memory."), true
 	case meta.Status == "TO":
-		res.Verdict, res.Output = CompileError, appendNote(res.Output, fmt.Sprintf("Compilation took longer than %d seconds.", int(lim.CPU.Seconds())))
+		res.Verdict, res.Output, res.Transient = CompileError, appendNote(res.Output, fmt.Sprintf("Compilation took longer than %d seconds.", int(lim.CPU.Seconds()))), true
 	case meta.Status != "" || meta.ExitCode != 0:
 		res.Verdict = CompileError
 	}

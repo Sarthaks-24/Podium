@@ -1,6 +1,7 @@
 <!--
-  ThemeMenu: the header's theme control. A button labelled with the current
-  theme ("Theme: Nordic frost") opens a panel holding one radio group for
+  ThemeMenu: the header's theme control. A quiet button, the word Theme with
+  a sun or moon icon for the family showing, opens a panel that names the
+  current theme and holds one radio group for
   the theme (System, then the Light, Dark and Accessible groups from
   lib/theme.ts, each option with a small swatch painted in that theme) and
   a checkbox for colour-blind safe verdict colours. A choice applies at
@@ -11,11 +12,12 @@
   hidden status line announces each change. Takes no props.
 -->
 <script lang="ts">
-  import { tick } from 'svelte';
+  import { onMount, tick } from 'svelte';
+  import Icon from '../components/Icon.svelte';
   import { ApiError, sendJSON } from './api';
   import { choosePreferences, preferences } from './preferences.svelte';
   import { session } from './session.svelte';
-  import { GROUPS, choiceLabel, themesIn, toAccount, type Preferences } from './theme';
+  import { GROUPS, THEMES, choiceLabel, themesIn, toAccount, type Preferences } from './theme';
   import { showToast } from './toast.svelte';
 
   let open = $state(false);
@@ -25,6 +27,18 @@
   let panel: HTMLDivElement | undefined = $state();
 
   const current = $derived(preferences.current);
+  let systemDark = $state(false);
+  const dark = $derived(
+    current.theme === 'system' ? systemDark : THEMES.find((t) => t.id === current.theme)?.family === 'dark',
+  );
+
+  onMount(() => {
+    const query = window.matchMedia('(prefers-color-scheme: dark)');
+    const sync = () => (systemDark = query.matches);
+    sync();
+    query.addEventListener('change', sync);
+    return () => query.removeEventListener('change', sync);
+  });
   const panelId = 'theme-panel';
 
   async function change(next: Preferences, message: string) {
@@ -102,10 +116,12 @@
     bind:this={button}
     onclick={toggle}
   >
-    Theme: {choiceLabel(current.theme)}
+    <Icon name={dark ? 'moon' : 'sun'} />
+    Theme
   </button>
 
   <div id={panelId} class="panel" hidden={!open} bind:this={panel}>
+    <p class="current">Current theme: {choiceLabel(current.theme)}</p>
     <fieldset class="group">
       <legend class="visually-hidden">Theme</legend>
       <label class="option">
@@ -166,20 +182,31 @@
   }
 
   .trigger {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
     min-height: var(--control-h);
-    padding-inline: var(--space-3);
-    border: var(--rule) solid var(--line-strong);
+    padding-inline: var(--space-2);
+    border: 0;
     border-radius: var(--radius);
-    background: var(--surface);
-    color: var(--ink);
+    background: transparent;
+    color: var(--ink-muted);
     font-size: var(--fs-0);
     font-weight: 500;
     white-space: nowrap;
-    transition: border-color var(--dur-fast) var(--ease);
+    transition: color var(--dur-fast) var(--ease), background-color var(--dur-fast) var(--ease);
   }
 
-  .trigger:hover {
-    border-color: var(--ink-muted);
+  .trigger:hover,
+  .trigger[aria-expanded='true'] {
+    background: var(--surface-2);
+    color: var(--ink);
+  }
+
+  .current {
+    margin: var(--space-1) var(--space-2) var(--space-2);
+    color: var(--ink-muted);
+    font-size: var(--fs-0);
   }
 
   .panel {

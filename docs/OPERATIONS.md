@@ -136,10 +136,20 @@ Listed in the order the judge reads them, with the same mode columns. `podium-ju
 | `PODIUM_JUDGE_TOKEN` | optional | optional | required | testing and dev: the public testing token | The server's `PODIUM_JUDGE_TOKEN`. Production refuses the testing token. Secret. |
 | `PODIUM_ISOLATE_PATH` | optional | optional | optional | `/usr/bin/isolate` | The isolate binary. |
 | `PODIUM_JUDGE_LANES` | optional | optional | optional | `2` | Sandboxes judged in parallel (1 to 16). Two fit a 2 GB VM. |
-| `PODIUM_JUDGE_CACHE_DIR` | optional | optional | optional | `/var/cache/podium-judge` | Downloaded tests and sources (`blobs/`, re-hashed on download) and per-job work files (`jobs/`). |
+| `PODIUM_JUDGE_CACHE_DIR` | optional | optional | optional | `/var/cache/podium-judge` | Downloaded tests and sources, per-job work files and compiled programs (see "Judge cache"). |
 | `PODIUM_LOG_LEVEL` | optional | optional | optional | `info` | As above. |
 
 Backup variables (Litestream) appear here when their code lands in M7.
+
+### Judge cache
+
+`PODIUM_JUDGE_CACHE_DIR` (owned by `judge`, mode 750) holds three directories. All of it can be deleted with the judge stopped; it refills on demand.
+
+| Directory | Holds | Size |
+|---|---|---|
+| `blobs/` | tests, sources (including every submitted program) and custom inputs downloaded from the server, by SHA-256, re-hashed on download | not trimmed automatically; grows with every problem and submission judged |
+| `jobs/` | scratch files of running jobs (program outputs), removed when each job ends | small |
+| `compiled/` | the compile cache: compiled programs and checkers, keyed by language, compile command and source | at most 500 MB, least recently used removed after every job; entries in use are kept |
 
 ### Judge token
 
@@ -168,6 +178,38 @@ ssh -N -L 127.0.0.1:8081:127.0.0.1:8081 tunnel@contest.example.edu
 
 Over WireGuard, run the same forward to the server's WireGuard address; the listener itself stays on loopback. Never run judge workers on machines students can reach: the token is enough to report verdicts.
 
+## Rate limits
+
+Checked by the server before anything is queued. Every refusal is `429` with the wait in the message, in `retry_after_s` and in a `Retry-After` header.
+
+| Limit | Value | Applies to |
+|---|---|---|
+| Pending submissions | one per user per problem | Submit |
+| Gap between submits | 5 s per user, across problems | Submit by organisers trying a problem (contests set their own in M4) |
+| Pending runs | one per user, across problems | Run |
+| Gap between runs | 2 s per user | Run |
+| Code | 64 KB, UTF-8 | Run, Submit, drafts |
+| Custom input | 64 KB | Run |
+| Request body | 160 KB | Run, Submit, drafts |
+| Integrity events | 100 per request; after 5,000 per user per problem, more are dropped | the editor's paste, blur and focus events |
+| Event streams | 4 per user (a fifth replaces the oldest), 5,000 in total (then `503`, and the page polls) | `GET /api/events` |
+
+A retried Submit with the same `client_key` returns the first submission and is not counted again, so a flaky network does not trip these limits. None of them is configurable yet.
+
+## Event stream behind Caddy
+
+`GET /api/events` is a server-sent event stream that stays open as long as the page does. It needs no extra Caddy configuration: Caddy passes `text/event-stream` responses through without buffering, and the shipped Caddyfile also sets `flush_interval -1` and leaves `/api/events` out of compression. The server sends `event: clock` every 25 s, which keeps the connection from looking idle to any proxy in between.
+
+Check it from the VM with a session cookie copied from the browser:
+
+```sh
+curl -N -H 'Cookie: __Host-podium_session=<value>' https://contest.example.edu/api/events
+# event: clock
+# data: {"server_now":1792183192400}
+```
+
+If clock lines arrive in bursts or only when the request ends, something between the browser and Caddy (a campus proxy or a CDN) is buffering; the page then falls back to polling every 15 s, which still works but costs more requests.
+
 ## Health
 
 - `curl -fsS http://127.0.0.1:8080/healthz` returns `{"status":"ok","db":"ok"}`, or HTTP 503 when the database is unreachable.
@@ -185,6 +227,8 @@ Over WireGuard, run the same forward to the server's WireGuard address; the list
 | "The checker does not compile" with `testlib.h: No such file or directory` | The `testlib` install step has not run on this host | `sudo ./install.sh testlib`. On WSL2: `deploy/install.sh testlib` as root. |
 | A custom checker takes several seconds to compile | Expected: `testlib.h` is a large header. Checkers get a 30 s CPU compile budget instead of the usual 10 s | Nothing. A checker that needs more than 30 s is reported as a compile error. |
 | A second pack import waits | Imports, test replacements and pack downloads run one at a time, because each can hold over 100 MB in memory | Wait for the first to finish. |
+| "Generating outputs" never finishes | No worker is claiming jobs, as for validation | As the first row. Generation runs after contest work, before validation. |
+| Run or Submit says "This problem cannot be judged yet" | Tests outside subtasks, or tests without an expected output | Fix the listed items in the editor; choose Generate outputs for missing outputs. |
 
 ## Upgrade
 
@@ -200,6 +244,11 @@ Upgrading to M2 from M1:
 1. `sudo ./install.sh testlib app` (installs `testlib.h` and the new judge unit, which runs `podium-judge work`).
 2. Add `PODIUM_JUDGE_TOKEN` to both env files (see "Judge token"). Without it the server refuses to start in production mode. `PODIUM_MODE`, `PODIUM_JUDGE_LISTEN` and `PODIUM_SERVER_URL` can stay unset: their defaults are right for one VM.
 3. `sudo systemctl restart podium-server podium-judge`. Migration `0003_problems.sql` runs on start.
+
+Upgrading to M3 from M2:
+
+1. `sudo ./install.sh app`, then `sudo systemctl restart podium-server podium-judge`. Migration `0004_submissions.sql` runs on start; the judge creates `compiled/` in its cache directory. No new variables.
+2. Reset any database created before M3. Migrations `0003_problems.sql` and `0004_submissions.sql` were changed before the first release (outputs may be missing, new job kinds), and a migration that already ran is never run again, so an older database keeps the old tables and judging fails on it. Stop the server and delete the database with its `-wal` and `-shm` files: `data/podium.db` for `make dev`, `/var/tmp/podium-dev` for `make dev-test`, `/var/lib/podium/db/podium.db` on a VM that ran a pre-release build. Then re-import problems from their packs.
 
 ## Backups
 

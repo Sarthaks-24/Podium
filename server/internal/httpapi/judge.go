@@ -38,6 +38,7 @@ func NewJudge(d JudgeDeps) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /api/judge/claim", d.claim)
 	mux.HandleFunc("GET /api/judge/blob/{sha}", d.blob)
+	mux.HandleFunc("PUT /api/judge/blob/{sha}", d.uploadBlob)
 	mux.HandleFunc("POST /api/judge/report", d.report)
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		WriteError(w, http.StatusNotFound, "not_found", "This judge API route does not exist.")

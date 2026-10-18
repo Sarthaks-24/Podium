@@ -4,6 +4,24 @@ Dated entries per release. Unreleased work is listed at the top.
 
 ## Unreleased
 
+### Milestone M3: submissions (2026-10-18)
+
+- Student workspace: statement with copyable samples, CodeMirror 6 editor in C++, Java, Python and JavaScript, Run on samples or on a custom input, Submit, and a verdict panel with a subtask strip that fills as tests are judged, per-test rows, queue position and compile errors verbatim. Three columns from 1024 px, tabs below. Ctrl+Enter submits, Ctrl+' runs.
+- Until contests arrive in M4, organisers reach it with "Try as a student" in the problem editor and "Try" in the bank (`/admin/problems/{id}/try`); the bank is never shown to students.
+- Drafts saved to the server every 10 s and on blur, mirrored in the browser; a refresh restores the newer copy.
+- New job kinds `run`, `submit` and `generate` on the M2 judge protocol, with priorities 10, 20 to 30 (a fair queue that puts a first attempt ahead of a tenth) and 85.
+- Scoring on the server from per-test results: samples first, all-or-nothing subtasks, judging stops at a failing sample and at the first failure in a subtask (the rest `SK`), unreported tests `IE`, an empty subtask earns nothing. A job the judge cannot finish leaves the submission in `error`, not counted.
+- Live updates over server-sent events (`GET /api/events`): `submission`, `run` and a `clock` event every 25 s; 4 streams per user, 5,000 in total, slow clients dropped; the page falls back to polling every 15 s. No Caddy change needed.
+- Hidden tests stay hidden (decision D47): submit reports carrying output text, or checker messages on hidden tests, are refused; live events for students are coarse (no per-test memory on hidden tests, memory in 16 MB steps, rounded times) and sent per subtask.
+- Rate limits: one pending submission per user per problem, 5 s between an organiser's submits across problems, one pending run per user and 2 s between runs, 64 KB of code and of input. Refusals say when to try again. A `client_key` per press of Submit makes retries safe: a repeat returns the first submission with 200.
+- Run and Submit refuse a problem whose structure is incomplete or that lacks expected outputs (`409 not_ready`, listing what to fix). Validate and Generate outputs now refuse with the same `409 not_ready`; M2 answered `400`.
+- Integrity counts (D47): typed and pasted characters and focus losses per submission, paste, blur and focus events in batches, and an HMAC of IP and user agent keyed by the session secret. Counts only, never keystroke timing; nothing is scored or flagged.
+- Output generation: packs and test zips may leave out `.out` files; "Generate outputs" fills missing ones from the reference solution on the judge and "Regenerate all outputs" replaces them after a confirmation. Outputs come back through `PUT /api/judge/blob/{sha}`, accepted only for a generate job under its lease, within a budget of one per input plus 2, hash-checked, at most 16 MB; a report may name only outputs that job uploaded, and nothing is applied if the problem changed meanwhile.
+- Compile cache on the judge (`compiled/` in the cache directory): keyed by language, compile command and source, 500 MB, least recently used evicted after each job, entries in use never evicted, compile timeouts and compiler out-of-memory never cached.
+- Migration `0004_submissions.sql` (submissions, drafts, generations, integrity events). `0003_problems.sql` was changed before the first release (nullable `output_sha`, new job kinds, output columns in `job_results`): delete any development database created earlier (`data/podium.db`, or `/var/tmp/podium-dev` for `make dev-test`).
+- New routes under `/api/workspace/`, `/api/runs/`, `/api/submissions/`, `/api/events`, `/api/admin/problems/{id}/generate` and `/generation`, and `PUT /api/judge/blob/{sha}`.
+- `make sandbox-test` also runs the M3 acceptance test: AC, WA, TLE, MLE and CE submissions in all four languages, a run on samples, and outputs generated for a pack shipped without them, then validated.
+
 ### Milestone M2: problems (2026-10-18)
 
 - Problem bank for admins and owners: list, create, edit, archive; statement editor with a live preview (Markdown, KaTeX maths, sanitised with DOMPurify).

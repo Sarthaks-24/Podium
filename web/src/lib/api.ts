@@ -8,7 +8,8 @@
  * message is a sentence meant for people and is shown as is. The error may
  * also carry "fields" (a request field name to a sentence about it) and
  * "problems" (a list of sentences, for example everything wrong with an
- * imported pack). A network failure throws ApiError with code "network". A
+ * imported pack), and "retry_after_s" (seconds to wait, on a 429 from a
+ * rate limit). A network failure throws ApiError with code "network". A
  * 204 response resolves to undefined.
  */
 
@@ -20,12 +21,14 @@ export class ApiError extends Error {
   readonly fields: Readonly<Record<string, string>>;
   /** Further sentences that belong with the message, in order. */
   readonly problems: readonly string[];
+  /** Seconds until a refused request may be tried again, or null. */
+  readonly retryAfter: number | null;
 
   constructor(
     status: number,
     code: string,
     message: string,
-    details: { fields?: Record<string, string>; problems?: string[] } = {},
+    details: { fields?: Record<string, string>; problems?: string[]; retryAfter?: number | null } = {},
   ) {
     super(message);
     this.name = 'ApiError';
@@ -33,6 +36,7 @@ export class ApiError extends Error {
     this.code = code;
     this.fields = details.fields ?? {};
     this.problems = details.problems ?? [];
+    this.retryAfter = details.retryAfter ?? null;
   }
 }
 
@@ -57,9 +61,13 @@ function errorFromBody(status: number, body: unknown): ApiError {
   if (typeof body === 'object' && body !== null && 'error' in body) {
     const err = (body as { error: unknown }).error;
     if (typeof err === 'object' && err !== null) {
-      const { code, message, fields, problems } = err as Record<string, unknown>;
+      const { code, message, fields, problems, retry_after_s: retry } = err as Record<string, unknown>;
       if (typeof code === 'string' && typeof message === 'string' && message !== '') {
-        return new ApiError(status, code, message, { fields: stringMap(fields), problems: stringList(problems) });
+        return new ApiError(status, code, message, {
+          fields: stringMap(fields),
+          problems: stringList(problems),
+          retryAfter: typeof retry === 'number' && Number.isFinite(retry) && retry >= 0 ? retry : null,
+        });
       }
     }
   }

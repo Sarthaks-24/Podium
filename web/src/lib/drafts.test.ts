@@ -1,0 +1,90 @@
+import { describe, expect, it } from 'vitest';
+import {
+  DEFAULT_FONT_SIZE,
+  mirrorKey,
+  pickDraft,
+  readEditorPrefs,
+  readMirror,
+  writeEditorPrefs,
+  writeMirror,
+  type DraftStorage,
+} from './drafts';
+import type { Draft } from './workspace';
+
+function memory(): DraftStorage & { data: Map<string, string> } {
+  const data = new Map<string, string>();
+  return {
+    data,
+    getItem: (k) => data.get(k) ?? null,
+    setItem: (k, v) => void data.set(k, v),
+    removeItem: (k) => void data.delete(k),
+  };
+}
+
+const broken: DraftStorage = {
+  getItem: () => {
+    throw new Error('blocked');
+  },
+  setItem: () => {
+    throw new Error('blocked');
+  },
+  removeItem: () => {
+    throw new Error('blocked');
+  },
+};
+
+const server: Draft = { language: 'cpp17', source: 'server code', updated_at: 1000 };
+
+describe('draft merge', () => {
+  it('takes the newer copy', () => {
+    const newer: Draft = { language: 'python3', source: 'local code', updated_at: 2000 };
+    const older: Draft = { language: 'python3', source: 'local code', updated_at: 500 };
+    expect(pickDraft(server, newer)).toEqual({ draft: newer, origin: 'local' });
+    expect(pickDraft(server, older)).toEqual({ draft: server, origin: 'server' });
+  });
+
+  it('lets the server win a tie and identical code', () => {
+    expect(pickDraft(server, { ...server, source: 'other', updated_at: 1000 }).origin).toBe('server');
+    expect(pickDraft(server, { ...server, updated_at: 9999 }).origin).toBe('server');
+  });
+
+  it('uses whichever exists, or none', () => {
+    expect(pickDraft(server, null)).toEqual({ draft: server, origin: 'server' });
+    expect(pickDraft(null, server)).toEqual({ draft: server, origin: 'local' });
+    expect(pickDraft(null, null)).toEqual({ draft: null, origin: 'none' });
+  });
+});
+
+describe('local mirror', () => {
+  it('round-trips a draft under the workspace key', () => {
+    const s = memory();
+    const key = mirrorKey('/api/workspace/3');
+    expect(key).toBe('podium-draft:/api/workspace/3');
+    expect(writeMirror(s, key, server)).toBe(true);
+    expect(readMirror(s, key)).toEqual(server);
+  });
+
+  it('ignores junk and survives storage that throws', () => {
+    const s = memory();
+    s.setItem('k', '{not json');
+    expect(readMirror(s, 'k')).toBeNull();
+    s.setItem('k', JSON.stringify({ language: 'cobol', source: '', updated_at: 1 }));
+    expect(readMirror(s, 'k')).toBeNull();
+    expect(readMirror(broken, 'k')).toBeNull();
+    expect(writeMirror(broken, 'k', server)).toBe(false);
+    expect(readMirror(null, 'k')).toBeNull();
+  });
+});
+
+describe('editor settings', () => {
+  it('defaults, remembers, and rejects sizes off the list', () => {
+    const s = memory();
+    expect(readEditorPrefs(s)).toEqual({ fontSize: DEFAULT_FONT_SIZE, tabMovesFocus: false, language: 'cpp17' });
+    writeEditorPrefs(s, { fontSize: 20, tabMovesFocus: true, language: 'java21' });
+    expect(readEditorPrefs(s)).toEqual({ fontSize: 20, tabMovesFocus: true, language: 'java21' });
+    s.setItem('podium-editor-font', '99');
+    expect(readEditorPrefs(s).fontSize).toBe(DEFAULT_FONT_SIZE);
+    expect(readEditorPrefs(broken).fontSize).toBe(DEFAULT_FONT_SIZE);
+    expect(() => writeEditorPrefs(broken, { fontSize: 12, tabMovesFocus: false, language: 'cpp17' })).not.toThrow();
+  });
+});

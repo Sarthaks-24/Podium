@@ -25,6 +25,7 @@
   import People from './routes/People.svelte';
   import ProblemBank from './routes/ProblemBank.svelte';
   import ProblemEditor from './routes/ProblemEditor.svelte';
+  import ProblemTry from './routes/ProblemTry.svelte';
   import SignIn from './routes/SignIn.svelte';
 
   const year = __BUILD_YEAR__;
@@ -131,7 +132,9 @@
                 <li>
                   <a
                     href="/admin/problems"
-                    aria-current={route.name === 'problems' || route.name === 'problem' ? 'page' : undefined}>Problems</a
+                    aria-current={route.name === 'problems' || route.name === 'problem' || route.name === 'problem-try'
+                      ? 'page'
+                      : undefined}>Problems</a
                   >
                 </li>
               {/if}
@@ -154,7 +157,7 @@
     </div>
   </header>
 
-  <main id="main" class="inner main" tabindex="-1">
+  <main id="main" class="inner main" class:main-workspace={route.name === 'problem-try'} tabindex="-1">
     {#if session.status === 'loading' || needsSignIn || leaveSignIn}
       <p class="visually-hidden" role="status">Loading</p>
     {:else if route.name === 'signin'}
@@ -168,6 +171,10 @@
     {:else if route.name === 'problem'}
       {#key match.params.id}
         <ProblemEditor id={match.params.id} />
+      {/key}
+    {:else if route.name === 'problem-try'}
+      {#key match.params.id}
+        <ProblemTry id={match.params.id} />
       {/key}
     {:else}
       <NotFound />
@@ -312,6 +319,11 @@
 
   .main:focus {
     outline: none;
+  }
+
+  /* The workspace fills the window below the header. */
+  .main-workspace {
+    padding-block: var(--space-3);
   }
 
   .foot {

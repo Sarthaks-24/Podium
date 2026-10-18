@@ -24,12 +24,17 @@ type Worker struct {
 	Runner *judge.Runner
 	Client *Client
 	Cache  *Cache
-	Log    *slog.Logger
-	Lanes  int
+	// Compiled caches compiled programs across jobs.
+	Compiled *CompileCache
+	Log      *slog.Logger
+	Lanes    int
 	// WorkDir holds compiled programs and outputs while a job runs.
 	WorkDir string
 	// Name, Version and Isolate identify this worker in the server's log.
 	Name, Version, Isolate string
+
+	mu    sync.Mutex
+	holds map[int64]*[]func()
 }
 
 // Run claims and runs jobs on every lane until ctx ends.
@@ -53,7 +58,8 @@ func (w *Worker) lane(ctx context.Context, box int) {
 	backoff := idlePoll
 	for ctx.Err() == nil {
 		claim, err := w.Client.Claim(ctx, judgeapi.ClaimRequest{
-			Kinds: []string{judgeapi.KindValidate}, Worker: w.Name, Version: w.Version, Isolate: w.Isolate,
+			Kinds:  []string{judgeapi.KindRun, judgeapi.KindSubmit, judgeapi.KindGenerate, judgeapi.KindValidate},
+			Worker: w.Name, Version: w.Version, Isolate: w.Isolate,
 		})
 		switch {
 		case err != nil:
@@ -75,6 +81,12 @@ func (w *Worker) lane(ctx context.Context, box int) {
 		switch claim.Kind {
 		case judgeapi.KindValidate:
 			err = w.validate(ctx, box, claim)
+		case judgeapi.KindSubmit:
+			err = w.submit(ctx, box, claim)
+		case judgeapi.KindRun:
+			err = w.run(ctx, box, claim)
+		case judgeapi.KindGenerate:
+			err = w.generate(ctx, box, claim)
 		default:
 			err = errors.New("unknown job kind " + claim.Kind)
 		}

@@ -114,14 +114,19 @@ type CompileResult struct {
 	Output  string `json:"output"`
 }
 
-// TestResult reports one program on one test.
+// TestResult reports one program on one test. Output is set only by run
+// jobs (at most MaxRunOutput); OutputSHA by generate jobs (the uploaded
+// output) and by submit jobs (the hash of the program's output, for
+// integrity checks: the text itself is never sent).
 type TestResult struct {
-	Idx      int    `json:"idx"`
-	Role     string `json:"role"`
-	Verdict  string `json:"verdict"`
-	TimeMS   int    `json:"time_ms"`
-	MemoryKB int    `json:"memory_kb"`
-	Message  string `json:"message"`
+	Idx       int    `json:"idx"`
+	Role      string `json:"role"`
+	Verdict   string `json:"verdict"`
+	TimeMS    int    `json:"time_ms"`
+	MemoryKB  int    `json:"memory_kb"`
+	Message   string `json:"message"`
+	Output    string `json:"output,omitempty"`
+	OutputSHA string `json:"output_sha,omitempty"`
 }
 
 // Report adds results to a leased job. Final closes the job; Fatal closes

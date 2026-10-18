@@ -1,8 +1,11 @@
 <!--
   ProblemBank: the admin list of problems at /admin/problems
-  (GET /api/admin/problems). A table gives each problem's title (a link to
-  its editor), slug, test count, points, a status word (Validated, Not
-  validated or Archived) and when it last changed. "New problem" opens a
+  (GET /api/admin/problems), most recently changed first. A table gives
+  each problem's title (a link to its editor), difficulty, tags, test
+  count, points, a status word (Validated, Not validated or Archived), when
+  it last changed and a Try link that opens it as a student would see it.
+  Past ten problems a filter narrows the list by title or tag. Under 768 px
+  each row reads as title and status, then tests and the date, muted. "New problem" opens a
   small form for a title and a slug, suggested from the title until the
   slug is edited, and goes to the new problem's editor. "Import pack" picks
   a .zip and sends it as is (application/zip); a refused pack shows the
@@ -15,7 +18,7 @@
   import { ApiError, getJSON, sendBody, sendJSON } from '../lib/api';
   import { formatDateTime } from '../lib/format';
   import { setTitle } from '../lib/head';
-  import { slugify, statusWord, type Problem, type ProblemSummary } from '../lib/problems';
+  import { DIFFICULTIES, slugify, statusWord, type Problem, type ProblemSummary } from '../lib/problems';
   import { navigate, router } from '../lib/router.svelte';
   import { session } from '../lib/session.svelte';
   import { showToast } from '../lib/toast.svelte';
@@ -37,6 +40,23 @@
   let fileInput: HTMLInputElement | undefined = $state();
   let importing = $state(false);
   let importError = $state<{ message: string; problems: readonly string[] } | null>(null);
+
+  /** The filter appears once the list is longer than this. */
+  const FILTER_FROM = 10;
+  let filter = $state('');
+
+  const sorted = $derived([...problems].sort((a, b) => b.updated_at - a.updated_at || b.id - a.id));
+  const shown = $derived.by(() => {
+    const q = filter.trim().toLowerCase();
+    if (q === '') return sorted;
+    return sorted.filter(
+      (p) => p.title.toLowerCase().includes(q) || p.slug.includes(q) || p.tags.some((t) => t.toLowerCase().includes(q)),
+    );
+  });
+
+  function difficultyLabel(d: ProblemSummary['difficulty']): string {
+    return d === '' ? '' : (DIFFICULTIES.find((x) => x.id === d)?.label ?? d);
+  }
 
   const isOrganiser = $derived(session.user?.role === 'admin' || session.user?.role === 'owner');
   const showArchived = $derived(router.query.get('archived') === '1');
@@ -278,32 +298,47 @@
   {:else if problems.length === 0}
     <p class="lead muted">No problems yet. Import a pack or create one.</p>
   {:else}
-    <div class="table-wrap list">
-      <table class="table">
-        <thead>
-          <tr>
-            <th scope="col">Title</th>
-            <th scope="col">Slug</th>
-            <th scope="col" class="right">Tests</th>
-            <th scope="col" class="right">Points</th>
-            <th scope="col">Status</th>
-            <th scope="col">Updated</th>
-          </tr>
-        </thead>
-        <tbody>
-          {#each problems as p (p.id)}
+    {#if problems.length > FILTER_FROM}
+      <div class="field filter">
+        <label for="bank-filter">Filter by title or tag</label>
+        <input id="bank-filter" class="input" type="search" autocomplete="off" bind:value={filter} />
+      </div>
+    {/if}
+    {#if shown.length === 0}
+      <p class="lead muted" role="status">No problem matches "{filter.trim()}". Try another word.</p>
+    {:else}
+      <div class="table-wrap list">
+        <table class="table">
+          <thead>
             <tr>
-              <th scope="row" class="title"><a href="/admin/problems/{p.id}">{p.title.trim() !== '' ? p.title : p.slug}</a></th>
-              <td class="num slug">{p.slug}</td>
-              <td class="num right">{p.test_count}</td>
-              <td class="num right">{p.points}</td>
-              <td class="state" class:ok={statusWord(p) === 'Validated'}>{statusWord(p)}</td>
-              <td class="num">{formatDateTime(p.updated_at)}</td>
+              <th scope="col">Title</th>
+              <th scope="col">Difficulty</th>
+              <th scope="col">Tags</th>
+              <th scope="col" class="right">Tests</th>
+              <th scope="col" class="right">Points</th>
+              <th scope="col">Status</th>
+              <th scope="col">Updated</th>
+              <th scope="col"><span class="visually-hidden">Try</span></th>
             </tr>
-          {/each}
-        </tbody>
-      </table>
-    </div>
+          </thead>
+          <tbody>
+            {#each shown as p (p.id)}
+              {@const name = p.title.trim() !== '' ? p.title : p.slug}
+              <tr>
+                <th scope="row" class="title"><a href="/admin/problems/{p.id}">{name}</a></th>
+                <td class="difficulty">{difficultyLabel(p.difficulty)}</td>
+                <td class="tags">{p.tags.join(', ')}</td>
+                <td class="num right tests"><span class="cell-label">Tests</span>{p.test_count}</td>
+                <td class="num right points">{p.points}</td>
+                <td class="state" class:ok={statusWord(p) === 'Validated'}>{statusWord(p)}</td>
+                <td class="num updated">{formatDateTime(p.updated_at)}</td>
+                <td class="try"><a href="/admin/problems/{p.id}/try" aria-label="Try {name} as a student">Try</a></td>
+              </tr>
+            {/each}
+          </tbody>
+        </table>
+      </div>
+    {/if}
   {/if}
 {/if}
 
@@ -409,8 +444,26 @@
     min-width: 9rem;
   }
 
-  .slug {
+  .filter {
+    max-width: 24rem;
+    margin-top: var(--space-5);
+  }
+
+  .difficulty,
+  .tags {
     color: var(--ink-muted);
+  }
+
+  .tags {
+    min-width: 8rem;
+  }
+
+  .cell-label {
+    display: none;
+  }
+
+  .try {
+    white-space: nowrap;
   }
 
   .right {
@@ -428,5 +481,80 @@
 
   .state.ok {
     color: var(--ok);
+  }
+
+  /* Phones: each row is the title and status, then tests and the date. */
+  @media (max-width: 767px) {
+    .list thead {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      overflow: hidden;
+      clip: rect(0, 0, 0, 0);
+    }
+
+    .list tbody tr {
+      display: grid;
+      grid-template-columns: auto minmax(0, 1fr) auto;
+      grid-template-areas:
+        'title title state'
+        'tests updated try';
+      align-items: baseline;
+      gap: var(--space-1) var(--space-3);
+      padding: var(--space-3);
+      border-bottom: var(--rule) solid var(--line);
+    }
+
+    .list tbody tr:last-child {
+      border-bottom: 0;
+    }
+
+    .list tbody :is(th, td) {
+      height: auto;
+      padding: 0;
+      border: 0;
+    }
+
+    .title {
+      grid-area: title;
+      min-width: 0;
+    }
+
+    .state {
+      grid-area: state;
+      text-align: right;
+    }
+
+    .difficulty,
+    .tags,
+    .points {
+      display: none;
+    }
+
+    .tests,
+    .updated {
+      color: var(--ink-muted);
+      font-size: var(--fs-0);
+      text-align: left;
+    }
+
+    .tests {
+      grid-area: tests;
+    }
+
+    .updated {
+      grid-area: updated;
+    }
+
+    .cell-label {
+      display: inline;
+      margin-right: var(--space-1);
+      font-family: var(--font-ui);
+    }
+
+    .try {
+      grid-area: try;
+      justify-self: end;
+    }
   }
 </style>

@@ -4,7 +4,7 @@ A self-hosted platform for weekly programming contests at a college. Students si
 
 Everything runs on one small Linux VM (2 GB RAM is the target) and is built to serve 700+ students in one contest.
 
-Status: milestone M2 (problems). The judge sandbox, Google sign-in with the domain check, roles, the owner's People page, the problem bank with pack import and export, and validation on the real judge exist; submissions and contests arrive in M3 and M4. See `CHANGELOG.md`.
+Status: milestone M3 (submissions). The judge sandbox, Google sign-in with the domain check, roles, the owner's People page, the problem bank with pack import and export, output generation, validation on the real judge, and the student workspace with live verdicts exist; organisers try it with "Try as a student" until contests arrive in M4. See `CHANGELOG.md`.
 
 ## How it fits together
 
@@ -48,6 +48,7 @@ This installs the compilers, isolate, `testlib.h` for custom checkers, and the `
 1. `make dev-test`, then open http://localhost:5173.
 2. Sign in from the form with any email and a role (choose Admin or Owner to see Problems). A banner on every page says this is testing mode.
 3. Import a pack: zip a folder from `problems/` and choose Import pack, then Validate.
+4. Choose "Try as a student" to run and submit code against it.
 
 It listens on loopback only and is not for real contests. Details, and `npm run test:live` for browser tests against this stack: `docs/OPERATIONS.md`, "Run locally without any keys".
 
@@ -64,7 +65,7 @@ See "Deploy to the VM" below: production mode is the default and requires every 
 
 ### Check the sandbox
 
-`make sandbox-test` runs the hostile-program suite and the M2 acceptance test (validating the example packs, then breaking one output) inside isolate in WSL2. `make calibrate` prints timing tables for the machine.
+`make sandbox-test` runs the hostile-program suite and the M2 and M3 acceptance tests (validating the example packs, then breaking one output; submitting each verdict in every language; generating outputs) inside isolate in WSL2. `make calibrate` prints timing tables for the machine.
 
 Other targets: `make help`.
 

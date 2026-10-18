@@ -1,8 +1,8 @@
 <!--
   ProgramField: one program of a problem (reference solution, brute force or
   validator) in the problem editor: a group named by `label` holding a
-  language select and a mono source textarea. CodeMirror replaces the
-  textarea in M3. Props: `id` (prefix for the control ids), `label` (the
+  language select and a mono source textarea (the student workspace uses
+  CodeMirror; setters keep the plain textarea for now). Props: `id` (prefix for the control ids), `label` (the
   group's name), `program` (bindable {language, source}), `help` (one line
   under the name, optional), `error` (a sentence shown under the source
   and tied to it, optional), and `onremove` with `removeLabel` (adds a

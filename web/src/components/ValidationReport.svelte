@@ -1,21 +1,25 @@
 <!--
-  ValidationReport: the result of the latest validation of a problem, as a
-  plain list with one line per check (lib/problems.ts reportLines), failing
-  tests named with the program and verdict, compiler output and checker
-  messages verbatim in mono, and every test result in a table that opens on
-  request. While the judge has the job it shows the queue position or
-  "Running". A result for an older version of the problem says so. State
-  changes are announced through a polite live region. Props: `validation`
-  (the Validation from the API, or null when the problem was never
-  validated).
+  ValidationReport: the result of the latest validation of a problem
+  (lib/problems.ts buildReport). A failed run leads with one sentence
+  naming what to fix first. Then each program that has something to say
+  gets its own group with a link that moves focus to its source: the
+  summary line, a compile failure with the compiler's output verbatim, and
+  each failing test in verdict wording ("Wrong answer on test 7") with the
+  checker's message and one line of guidance. Only failing lines are red.
+  The server's problems and warnings follow, and every test result sits in
+  a table that opens on request. While the judge has the job it shows the
+  queue position or "Running". A result for an older version of the
+  problem says so. State changes are announced through a polite live
+  region. Props: `validation` (the Validation from the API, or null when
+  the problem was never validated).
 -->
 <script lang="ts">
   import { formatDateTime } from '../lib/format';
-  import { isPending, progressText, reportLines, roleName, verdictLabel, type Validation } from '../lib/problems';
+  import { buildReport, isPending, programFieldId, progressText, roleName, verdictLabel, type Role, type Validation } from '../lib/problems';
 
   let { validation }: { validation: Validation | null } = $props();
 
-  const lines = $derived(validation ? reportLines(validation) : []);
+  const report = $derived(validation ? buildReport(validation) : null);
 
   const headline = $derived.by(() => {
     if (!validation) return { text: '', tone: '' };
@@ -39,17 +43,26 @@
     if (validation.state === 'running') return 'Running';
     return headline.text;
   });
+
+  function goTo(event: MouseEvent, role: Role) {
+    const el = document.getElementById(programFieldId(role));
+    if (!el) return;
+    event.preventDefault();
+    el.scrollIntoView({ block: 'center' });
+    el.focus({ preventScroll: true });
+  }
 </script>
 
 <p class="visually-hidden" aria-live="polite">{announcement}</p>
 
-{#if !validation}
+{#if !validation || !report}
   <p class="muted">
     Not validated yet. Validate runs the reference solution, brute force and validator on every test.
   </p>
 {:else}
   <div class="report">
     <p class="headline tone-{headline.tone}">{headline.text}</p>
+    {#if report.lead}<p class="lead">{report.lead}</p>{/if}
 
     {#if !validation.current}
       <p class="stale">These results are for an earlier version. Validate again.</p>
@@ -60,13 +73,28 @@
       <p class="muted">When that is fixed, validate again.</p>
     {/if}
 
-    {#if lines.length > 0}
-      <ul class="lines">
-        {#each lines as line, i (i)}
-          <li class="line tone-{line.tone}">
-            <span>{line.text}</span>
-            {#if line.detail}<pre class="detail">{line.detail}</pre>{/if}
-          </li>
+    {#each report.sections as section (section.role)}
+      <section class="program" aria-label={section.title}>
+        <div class="program-head">
+          <h3 class="program-title">{section.title}</h3>
+          <a class="go" href="#{programFieldId(section.role)}" onclick={(e) => goTo(e, section.role)}>Go to {roleName(section.role)}</a>
+        </div>
+        <ul class="lines">
+          {#each section.lines as line, i (i)}
+            <li class="line tone-{line.tone}">
+              <span>{line.text}</span>
+              {#if line.detail}<pre class="detail">{line.detail}</pre>{/if}
+              {#if line.guidance}<p class="guidance">{line.guidance}</p>{/if}
+            </li>
+          {/each}
+        </ul>
+      </section>
+    {/each}
+
+    {#if report.notes.length > 0}
+      <ul class="lines notes">
+        {#each report.notes as line, i (i)}
+          <li class="line tone-{line.tone}">{line.text}</li>
         {/each}
       </ul>
     {/if}
@@ -112,13 +140,18 @@
 <style>
   .report {
     display: grid;
-    gap: var(--space-3);
+    gap: var(--space-4);
     min-width: 0;
   }
 
   .headline {
     font-size: var(--fs-2);
     font-weight: 600;
+  }
+
+  .lead {
+    max-width: 60ch;
+    font-weight: 500;
   }
 
   .tone-ok {
@@ -146,6 +179,28 @@
     color: var(--bad);
   }
 
+  .program {
+    display: grid;
+    gap: var(--space-2);
+    min-width: 0;
+  }
+
+  .program-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: var(--space-1) var(--space-4);
+  }
+
+  .program-title {
+    font-size: var(--fs-1);
+  }
+
+  .go {
+    border-radius: var(--radius);
+    font-size: var(--fs-0);
+  }
+
   .lines {
     display: grid;
     gap: var(--space-2);
@@ -159,8 +214,16 @@
     padding-block: var(--space-2) 0;
   }
 
+  /* Passing lines are plain ink; only failures are red. */
   .line.tone-ok {
     color: var(--ink);
+  }
+
+  .guidance {
+    margin-top: var(--space-1);
+    color: var(--ink-muted);
+    font-size: var(--fs-0);
+    max-width: 72ch;
   }
 
   .detail {

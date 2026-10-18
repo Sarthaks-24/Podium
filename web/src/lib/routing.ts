@@ -8,7 +8,7 @@
  */
 
 /** Names of the screens the app can show. */
-export type RouteName = 'home' | 'signin' | 'people' | 'problems' | 'problem' | 'not-found';
+export type RouteName = 'home' | 'signin' | 'people' | 'problems' | 'problem' | 'problem-try' | 'not-found';
 
 /** One row of the route table. */
 export interface RouteDef {
@@ -26,6 +26,7 @@ export const ROUTES: readonly RouteDef[] = [
   { pattern: '/admin/people', name: 'people', auth: true },
   { pattern: '/admin/problems', name: 'problems', auth: true },
   { pattern: '/admin/problems/:id', name: 'problem', auth: true },
+  { pattern: '/admin/problems/:id/try', name: 'problem-try', auth: true },
 ];
 
 /** Shown for any path that matches nothing in ROUTES. */

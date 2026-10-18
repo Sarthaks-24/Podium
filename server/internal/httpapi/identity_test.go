@@ -23,9 +23,11 @@ import (
 	"github.com/Sarthaks-24/podium/internal/auth"
 	"github.com/Sarthaks-24/podium/internal/auth/authtest"
 	"github.com/Sarthaks-24/podium/internal/db"
+	"github.com/Sarthaks-24/podium/internal/events"
 	"github.com/Sarthaks-24/podium/internal/jobs"
 	"github.com/Sarthaks-24/podium/internal/judgeapi"
 	"github.com/Sarthaks-24/podium/internal/problems"
+	"github.com/Sarthaks-24/podium/internal/submissions"
 )
 
 type site struct {
@@ -36,6 +38,8 @@ type site struct {
 	// which runs on its own listener as in production.
 	bank  *problems.Service
 	judge *httptest.Server
+	subs  *submissions.Service
+	hub   *events.Hub
 }
 
 // judgeToken is the worker token the test site's judge API accepts.
@@ -61,9 +65,16 @@ func newSiteMode(t *testing.T, mode string) *site {
 	}
 	idp := authtest.New(t)
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
-	jobSvc := &jobs.Service{DB: d, Kinds: map[string]jobs.Kind{judgeapi.KindValidate: problems.ValidateKind{}}}
 	blobs := problems.Blobs{Dir: filepath.Join(t.TempDir(), "tests")}
-	s := &site{t: t, idp: idp, bank: &problems.Service{DB: d, Blobs: blobs, Jobs: jobSvc}}
+	jobSvc := &jobs.Service{DB: d, Kinds: map[string]jobs.Kind{
+		judgeapi.KindValidate: problems.ValidateKind{},
+		judgeapi.KindGenerate: problems.GenerateKind{Store: blobs},
+		judgeapi.KindSubmit:   submissions.SubmitKind{},
+		judgeapi.KindRun:      submissions.RunKind{},
+	}}
+	s := &site{t: t, idp: idp, bank: &problems.Service{DB: d, Blobs: blobs, Jobs: jobSvc}, hub: &events.Hub{}}
+	s.subs = &submissions.Service{DB: d, Jobs: jobSvc, Problems: s.bank, Hub: s.hub}
+	jobSvc.OnChange = s.subs.OnJobChange
 	s.judge = httptest.NewServer(NewJudge(JudgeDeps{Log: log, Jobs: jobSvc, Blobs: blobs, Token: judgeToken}))
 	t.Cleanup(s.judge.Close)
 	// The server's URL is only known once it starts, so the handler is
@@ -77,7 +88,7 @@ func newSiteMode(t *testing.T, mode string) *site {
 		Auth:    svc,
 		IdP:     auth.NewProvider(idp.Endpoints(), idp.ClientID, idp.ClientSecret, RedirectURL(s.srv.URL)),
 		BaseURL: s.srv.URL, SessionSecret: []byte(strings.Repeat("e", 32)),
-		Problems: s.bank, Mode: mode,
+		Problems: s.bank, Submissions: s.subs, Hub: s.hub, Mode: mode,
 	})
 	return s
 }

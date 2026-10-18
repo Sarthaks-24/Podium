@@ -37,7 +37,7 @@ solution.cpp        reference solution (any name; problem.yaml names it)
 brute.py            brute force solution (optional)
 validator.py        input validator (optional)
 checker.cpp         testlib checker (required when checker is custom; this name is fixed)
-tests/01.in         test inputs and their expected outputs
+tests/01.in         test inputs and their expected outputs (outputs may be left out)
 tests/01.out
 tests/02.in
 tests/02.out
@@ -77,7 +77,8 @@ Quote every `tests` value, so YAML reads it as text.
 ### Tests
 
 - `tests/NN.in` and `tests/NN.out`, with `NN` from 1 to 999 and any zero padding (`1.in`, `01.in` and `001.in` are all test 1, so do not mix them).
-- Every input needs its expected output. Generating outputs from the reference solution arrives in M3; until then the pack must contain them.
+- An expected output may be left out. Such a test shows "Output missing" in the editor, and the problem lists "Test 3 has no expected output." until you choose Generate outputs (see "Generating outputs"). Validation and judging wait until every test has one.
+- An output without its input is refused.
 - At most 16 MB per file.
 
 ## Statement
@@ -158,11 +159,33 @@ Use `_fail` when the expected answer itself is wrong, as above: during validatio
 
 Limits: compiling gets 30 s of CPU (testlib is a large header; a normal compile gets 10 s). Each run gets 10 s of CPU, 20 s of wall time, 256 MB and one process. The first 256 bytes of what it prints (standard output and error together) are kept as the message shown with the result.
 
+## Generating outputs
+
+Write the inputs and a correct reference solution; the judge writes the expected outputs.
+
+| Button | What it does |
+|---|---|
+| Generate outputs | Shown while any test has no output. Runs the reference on those inputs only. |
+| Regenerate all outputs | Runs the reference on every input and replaces every output. Asks to confirm first: "Every expected output is replaced by what the reference solution prints." |
+
+How it runs:
+
+- Unsaved changes are saved first. The reference runs in isolate with the problem's time and memory limits (times its language factor), at a lower priority than contest work.
+- Only one generation per problem runs at a time. The result appears in the editor while it waits and runs.
+- A test where the reference fails keeps no output, and the result names it: "The reference solution failed on 1 test, so those outputs are still missing", with the verdict and test number. Outputs from the tests that passed are kept.
+- If the reference does not compile, nothing is generated: "The reference solution did not compile, so no outputs were generated", with the first lines of the compiler's message.
+- If you change the problem while outputs are being generated, nothing is applied: "Some outputs were not applied", with the reason. Generate again.
+- New outputs change the problem's content, so validate again afterwards. Validation then checks the generated outputs against the brute force and the checker like any other.
+
+Generated outputs are ordinary test files: Download pack includes them, and they can be replaced later with "Replace tests".
+
 ## Validation
 
 Validation runs the problem on the real judge, in isolate, exactly as a contest would. Choose Validate in the editor; the report updates every 2 seconds while the job waits and runs. Validation has the lowest priority, behind all contest work.
 
 ### What runs
+
+Validation does not start while the structure is incomplete (see "Samples and subtasks") or any test has no expected output.
 
 1. Compile the reference, brute force, validator and checker. If the reference or the checker does not compile, nothing else runs. A brute force or validator that does not compile is reported, the run goes on without it, and validation fails.
 2. For each test, in order:
@@ -224,6 +247,20 @@ The full table of every program on every test opens on request below the report.
 
 Title, slug, statement, tags, difficulty and subtask titles do not. Upgrading the judge does not either; but if a later run of the very same content fails (a slower judge, a fixed judge bug), the validation is withdrawn.
 
+Generating outputs changes test files, so it unvalidates the problem too.
+
+## Trying a problem as a student
+
+"Try as a student" in the editor's title area, or "Try" on a row of the problem bank, opens the problem in the student workspace (`/admin/problems/{id}/try`): the statement with its samples, the code editor, Run on samples, a custom input, and Submit with the subtask strip filling in as tests are judged.
+
+- Use it to check the statement reads well, the samples copy cleanly, and a wrong solution gets the verdict and score you expect.
+- These submissions are yours and count in no contest. Your draft is kept per problem.
+- The problem does not need to be validated, but it must be complete: tests in subtasks and every expected output present. Otherwise Run and Submit list what to fix.
+- Submits are limited to one every 5 seconds, one waiting per problem; runs to one every 2 seconds.
+- You see full figures (exact memory per test). Students will see coarser figures and no hidden test data (`docs/ARCHITECTURE.md`, "What students can see").
+
+Students get the same workspace inside contests in M4.
+
 ## Import limits
 
 Packs are parsed on the server outside any sandbox, so the server is strict:
@@ -249,10 +286,12 @@ Only one pack import, test replacement or pack download runs at a time; a second
 |---|---|
 | Create | Problems, New problem: enter a title and a slug. The problem starts with a statement outline and a C++ reference template. |
 | Import | Problems, Import pack: pick the `.zip`. The editor opens on the new problem, with any warnings. |
-| Edit | Statement on the left with a live preview on the right; limits, checker, samples and subtasks; reference, brute force, validator and checker as a language and a source each (a code editor arrives in M3). Save changes. |
-| Replace tests | Upload a zip of `NN.in` and `NN.out` files, at its top level or in `tests/`. Every test is replaced; samples and subtask ranges stay as written, and the editor lists any that no longer fit. Single test files can be downloaded from the test list. |
+| Edit | Statement on the left with a live preview on the right; limits, checker, samples and subtasks; reference, brute force, validator and checker as a language and a source each (in a plain text field; the code editor is in the workspace). Save changes. |
+| Replace tests | Upload a zip of `NN.in` files, each with an optional `NN.out`, at its top level or in `tests/`. Every test is replaced; samples and subtask ranges stay as written, and the editor lists any that no longer fit. Single test files can be downloaded from the test list. |
+| Generate outputs | Fills missing outputs from the reference solution; "Regenerate all outputs" replaces them all after a confirmation (see "Generating outputs"). |
 | Validate | Saves unsaved changes first, then queues the run. |
-| Download pack | The same layout as an import, ready to re-import or keep in version control. Sources are named `solution`, `brute` and `validator` with their language's extension, and tests are numbered with two digits (three from test 100). |
+| Try as a student | Opens the problem in the student workspace (see "Trying a problem as a student"). |
+| Download pack | The same layout as an import, ready to re-import or keep in version control. Sources are named `solution`, `brute` and `validator` with their language's extension, and tests are numbered with two digits (three from test 100). Outputs not generated yet are left out. |
 | Archive problem | Asks to confirm, then hides the problem from the bank. Its tests and history are kept; "Show archived" lists it again. |
 
 ## Example packs

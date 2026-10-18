@@ -250,11 +250,6 @@ func parsePackFiles(files map[string][]byte) (*Pack, error) {
 		}
 		target[n] = body
 	}
-	for n := range pk.Inputs {
-		if _, ok := pk.Outputs[n]; !ok {
-			add("Test %d has an input but no output. Add tests/%02d.out (outputs are not generated yet).", n, n)
-		}
-	}
 	for n := range pk.Outputs {
 		if _, ok := pk.Inputs[n]; !ok {
 			add("Test %d has an output but no input.", n)
@@ -263,10 +258,14 @@ func parsePackFiles(files map[string][]byte) (*Pack, error) {
 	if len(pk.Inputs) == 0 {
 		add("The pack has no tests. Put them in tests/ as 01.in and 01.out.")
 	}
-	for n := range pk.Inputs {
-		if _, ok := pk.Outputs[n]; ok {
-			p.Tests = append(p.Tests, Test{Idx: n})
+	// A test may arrive without its output; "Generate outputs" fills it
+	// from the reference solution before validation.
+	for n, in := range pk.Inputs {
+		t := Test{Idx: n, InputSHA: SHA(in), InputSize: int64(len(in))}
+		if out, ok := pk.Outputs[n]; ok {
+			t.OutputSHA, t.OutputSize = SHA(out), int64(len(out))
 		}
+		p.Tests = append(p.Tests, t)
 	}
 	sort.Slice(p.Tests, func(i, j int) bool { return p.Tests[i].Idx < p.Tests[j].Idx })
 
@@ -288,7 +287,9 @@ func parsePackFiles(files map[string][]byte) (*Pack, error) {
 		}
 	}
 	if len(problems) == 0 {
-		problems = append(problems, p.Problems()...)
+		// Missing outputs are filled after import; everything else must
+		// be right in the pack.
+		problems = append(problems, p.StructureProblems()...)
 	}
 	if len(problems) > 0 {
 		sort.Strings(problems)
@@ -429,6 +430,9 @@ func WritePack(w io.Writer, p *Problem, read func(sha string) ([]byte, error)) e
 	}
 	for _, t := range p.Tests {
 		for _, part := range []struct{ ext, sha string }{{"in", t.InputSHA}, {"out", t.OutputSHA}} {
+			if part.sha == "" {
+				continue // output not generated yet
+			}
 			body, err := read(part.sha)
 			if err != nil {
 				return fmt.Errorf("test %d %s: %w", t.Idx, part.ext, err)

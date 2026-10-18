@@ -114,7 +114,8 @@ func work() error {
 
 	blobs := filepath.Join(cfg.CacheDir, "blobs")
 	jobs := filepath.Join(cfg.CacheDir, "jobs")
-	for _, dir := range []string{blobs, jobs} {
+	compiled := filepath.Join(cfg.CacheDir, "compiled")
+	for _, dir := range []string{blobs, jobs, compiled} {
 		if err := os.MkdirAll(dir, 0o700); err != nil {
 			return fmt.Errorf("judge cache: %w", err)
 		}
@@ -122,15 +123,16 @@ func work() error {
 	host, _ := os.Hostname()
 	client := &worker.Client{BaseURL: cfg.ServerURL, Token: cfg.Token, HTTP: &http.Client{Timeout: 5 * time.Minute}}
 	w := &worker.Worker{
-		Runner:  &judge.Runner{Iso: judge.Isolate{Path: cfg.IsolatePath}},
-		Client:  client,
-		Cache:   &worker.Cache{Dir: blobs, Client: client},
-		Log:     log,
-		Lanes:   cfg.Lanes,
-		WorkDir: jobs,
-		Name:    host,
-		Version: version,
-		Isolate: isolateVersion(ctx, cfg.IsolatePath),
+		Runner:   &judge.Runner{Iso: judge.Isolate{Path: cfg.IsolatePath}},
+		Client:   client,
+		Cache:    &worker.Cache{Dir: blobs, Client: client},
+		Compiled: &worker.CompileCache{Dir: compiled, MaxBytes: worker.DefaultCompileCacheBytes},
+		Log:      log,
+		Lanes:    cfg.Lanes,
+		WorkDir:  jobs,
+		Name:     host,
+		Version:  version,
+		Isolate:  isolateVersion(ctx, cfg.IsolatePath),
 	}
 	w.Run(ctx)
 	log.Info("stopped")

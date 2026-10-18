@@ -112,9 +112,14 @@ type Service struct {
 	Kinds map[string]Kind
 	// Now is the clock; tests replace it.
 	Now func() time.Time
+	// OnChange, when set, is called after every committed report or close,
+	// outside the transaction, so watchers (the live event stream) can
+	// read the new state. It must not block.
+	OnChange func(jobID int64, kind string)
 
-	mu    sync.Mutex
-	blobs map[int64]map[string]bool // job id -> downloadable hashes, while leased
+	mu      sync.Mutex
+	blobs   map[int64]map[string]bool // job id -> downloadable hashes, while leased
+	uploads map[int64]map[string]bool // job id -> hashes its worker uploaded
 }
 
 func (s *Service) now() time.Time {
@@ -196,6 +201,7 @@ func (s *Service) Claim(ctx context.Context, req judgeapi.ClaimRequest) (*judgea
 	if err := tx.Commit(); err != nil {
 		return nil, err
 	}
+	s.changed(c.JobID, c.Kind)
 	c.Lease = lease
 	c.LeaseSeconds = judgeapi.LeaseSeconds
 	c.Payload = json.RawMessage(payload)
@@ -256,6 +262,65 @@ func (s *Service) MayFetch(ctx context.Context, jobID int64, lease, sha string) 
 	return set[sha], nil
 }
 
+// Uploader is implemented by kinds whose worker sends files back (output
+// generation). MaxUploads bounds how many files one job may send; every
+// output hash a report names must be one of them.
+type Uploader interface {
+	MaxUploads(payload json.RawMessage) int
+}
+
+// MayUpload reports whether the worker holding jobID's lease may upload a
+// file: only for a leased job whose kind accepts uploads.
+func (s *Service) MayUpload(ctx context.Context, jobID int64, lease string) (bool, error) {
+	tx, err := s.DB.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+	if err != nil {
+		return false, err
+	}
+	defer tx.Rollback()
+	kind, payload, err := s.leased(ctx, tx, jobID, lease)
+	if errors.Is(err, ErrLease) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	u, ok := s.Kinds[kind].(Uploader)
+	if !ok {
+		return false, nil
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return len(s.uploads[jobID]) < u.MaxUploads(payload), nil
+}
+
+// RecordUpload notes a file a job's worker sent, so reports may name it.
+func (s *Service) RecordUpload(jobID int64, sha string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.uploads == nil {
+		s.uploads = map[int64]map[string]bool{}
+	}
+	if s.uploads[jobID] == nil {
+		s.uploads[jobID] = map[string]bool{}
+	}
+	s.uploads[jobID][sha] = true
+}
+
+// checkUploads refuses output hashes a job's worker did not upload.
+func (s *Service) checkUploads(kind string, jobID int64, r judgeapi.Report) error {
+	if _, ok := s.Kinds[kind].(Uploader); !ok {
+		return nil
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, t := range r.Results {
+		if t.OutputSHA != "" && !s.uploads[jobID][t.OutputSHA] {
+			return Badf("output %s for input %d was not uploaded under this lease", Clip(t.OutputSHA), t.Idx)
+		}
+	}
+	return nil
+}
+
 // Report records results for a leased job and renews the lease; a final
 // or fatal report closes the job. An empty report is a heartbeat.
 func (s *Service) Report(ctx context.Context, r judgeapi.Report) error {
@@ -277,6 +342,9 @@ func (s *Service) Report(ctx context.Context, r judgeapi.Report) error {
 		if err := kind.CheckReport(payload, r); err != nil {
 			return err
 		}
+		if err := s.checkUploads(kindName, r.JobID, r); err != nil {
+			return err
+		}
 		if err := s.insertResults(ctx, tx, r); err != nil {
 			return err
 		}
@@ -285,7 +353,13 @@ func (s *Service) Report(ctx context.Context, r judgeapi.Report) error {
 		if _, err := tx.ExecContext(ctx, "UPDATE jobs SET lease_expires_at = ? WHERE id = ?", now.Add(LeaseTTL).UnixMilli(), r.JobID); err != nil {
 			return err
 		}
-		return tx.Commit()
+		if err := tx.Commit(); err != nil {
+			return err
+		}
+		if len(r.Compile)+len(r.Results) > 0 {
+			s.changed(r.JobID, kindName)
+		}
+		return nil
 	}
 	job, err := s.load(ctx, tx, r.JobID)
 	if err != nil {
@@ -298,7 +372,17 @@ func (s *Service) Report(ctx context.Context, r judgeapi.Report) error {
 	if err := s.close(ctx, tx, &job, now); err != nil {
 		return err
 	}
-	return tx.Commit()
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+	s.changed(r.JobID, kindName)
+	return nil
+}
+
+func (s *Service) changed(jobID int64, kind string) {
+	if s.OnChange != nil {
+		s.OnChange(jobID, kind)
+	}
 }
 
 func (s *Service) insertResults(ctx context.Context, tx *sql.Tx, r judgeapi.Report) error {
@@ -306,22 +390,22 @@ func (s *Service) insertResults(ctx context.Context, tx *sql.Tx, r judgeapi.Repo
 	if err := tx.QueryRowContext(ctx, "SELECT coalesce(max(seq), 0) FROM job_results WHERE job_id = ?", r.JobID).Scan(&seq); err != nil {
 		return err
 	}
-	insert := func(kind string, idx int, role, verdict string, timeMS, memKB int, msg string) error {
+	insert := func(kind string, idx int, role, verdict string, timeMS, memKB int, msg, output, outputSHA string) error {
 		seq++
-		_, err := tx.ExecContext(ctx, `INSERT INTO job_results (job_id, seq, kind, idx, role, verdict, time_ms, memory_kb, message)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`, r.JobID, seq, kind, idx, role, verdict, timeMS, memKB, msg)
+		_, err := tx.ExecContext(ctx, `INSERT INTO job_results (job_id, seq, kind, idx, role, verdict, time_ms, memory_kb, message, output, output_sha)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, r.JobID, seq, kind, idx, role, verdict, timeMS, memKB, msg, output, outputSHA)
 		if err != nil && strings.Contains(err.Error(), "UNIQUE constraint failed") {
 			return Badf("second result for %s %s %d", kind, Clip(role), idx)
 		}
 		return err
 	}
 	for _, c := range r.Compile {
-		if err := insert("compile", 0, c.Role, c.Verdict, 0, 0, c.Output); err != nil {
+		if err := insert("compile", 0, c.Role, c.Verdict, 0, 0, c.Output, "", ""); err != nil {
 			return err
 		}
 	}
 	for _, t := range r.Results {
-		if err := insert("test", t.Idx, t.Role, t.Verdict, t.TimeMS, t.MemoryKB, t.Message); err != nil {
+		if err := insert("test", t.Idx, t.Role, t.Verdict, t.TimeMS, t.MemoryKB, t.Message, t.Output, t.OutputSHA); err != nil {
 			return err
 		}
 	}
@@ -338,6 +422,7 @@ func (s *Service) close(ctx context.Context, tx *sql.Tx, job *Job, now time.Time
 		job.State, job.Error, string(job.Result.Summary), now.UnixMilli(), job.ID)
 	s.mu.Lock()
 	delete(s.blobs, job.ID)
+	delete(s.uploads, job.ID)
 	s.mu.Unlock()
 	return err
 }
@@ -362,6 +447,7 @@ func (s *Service) Sweep(ctx context.Context) (requeued, failed int64, err error)
 		id     int64
 		reason string
 	}
+	var touched [][2]any
 	var doomed []dead
 	for rows.Next() {
 		var d dead
@@ -386,9 +472,24 @@ func (s *Service) Sweep(ctx context.Context) (requeued, failed int64, err error)
 			return 0, 0, err
 		}
 		failed++
+		touched = append(touched, [2]any{job.ID, job.Kind})
 	}
 	// Results from an abandoned attempt are dropped: the next worker
 	// starts the job again from the beginning.
+	expired, err := tx.QueryContext(ctx, "SELECT id, kind FROM jobs WHERE state = 'leased' AND lease_expires_at < ?", now.UnixMilli())
+	if err != nil {
+		return 0, 0, err
+	}
+	for expired.Next() {
+		var id int64
+		var kind string
+		if err := expired.Scan(&id, &kind); err != nil {
+			expired.Close()
+			return 0, 0, err
+		}
+		touched = append(touched, [2]any{id, kind})
+	}
+	expired.Close()
 	if _, err := tx.ExecContext(ctx, `DELETE FROM job_results WHERE job_id IN
 		(SELECT id FROM jobs WHERE state = 'leased' AND lease_expires_at < ?)`, now.UnixMilli()); err != nil {
 		return 0, 0, err
@@ -399,7 +500,18 @@ func (s *Service) Sweep(ctx context.Context) (requeued, failed int64, err error)
 		return 0, 0, err
 	}
 	requeued, _ = res.RowsAffected()
-	return requeued, failed, tx.Commit()
+	if err := tx.Commit(); err != nil {
+		return 0, 0, err
+	}
+	s.mu.Lock()
+	for _, t := range touched {
+		delete(s.uploads, t[0].(int64))
+	}
+	s.mu.Unlock()
+	for _, t := range touched {
+		s.changed(t[0].(int64), t[1].(string))
+	}
+	return requeued, failed, nil
 }
 
 // Get returns a job by id with its results.
@@ -456,23 +568,23 @@ func (s *Service) load(ctx context.Context, q queryer, id int64) (Job, error) {
 	if finished.Valid {
 		j.FinishedAt = time.UnixMilli(finished.Int64)
 	}
-	rows, err := q.QueryContext(ctx, `SELECT kind, idx, role, verdict, time_ms, memory_kb, message FROM job_results
+	rows, err := q.QueryContext(ctx, `SELECT kind, idx, role, verdict, time_ms, memory_kb, message, output, output_sha FROM job_results
 		WHERE job_id = ? ORDER BY seq`, id)
 	if err != nil {
 		return Job{}, err
 	}
 	defer rows.Close()
 	for rows.Next() {
-		var kind, role, verdict, msg string
+		var kind, role, verdict, msg, output, outputSHA string
 		var idx, timeMS, memKB int
-		if err := rows.Scan(&kind, &idx, &role, &verdict, &timeMS, &memKB, &msg); err != nil {
+		if err := rows.Scan(&kind, &idx, &role, &verdict, &timeMS, &memKB, &msg, &output, &outputSHA); err != nil {
 			return Job{}, err
 		}
 		if kind == "compile" {
 			j.Result.Compile = append(j.Result.Compile, judgeapi.CompileResult{Role: role, Verdict: verdict, Output: msg})
 		} else {
 			j.Result.Tests = append(j.Result.Tests, judgeapi.TestResult{Idx: idx, Role: role, Verdict: verdict,
-				TimeMS: timeMS, MemoryKB: memKB, Message: msg})
+				TimeMS: timeMS, MemoryKB: memKB, Message: msg, Output: output, OutputSHA: outputSHA})
 		}
 	}
 	return j, rows.Err()

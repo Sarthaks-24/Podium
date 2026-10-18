@@ -72,6 +72,9 @@ type testJSON struct {
 	OutputSize    int64  `json:"output_size"`
 	InputPreview  string `json:"input_preview"`
 	OutputPreview string `json:"output_preview"`
+	// OutputMissing marks a test whose expected output is still to be
+	// generated from the reference solution.
+	OutputMissing bool `json:"output_missing"`
 }
 
 type problemJSON struct {
@@ -209,7 +212,10 @@ func (d Deps) problemJSON(p *problems.Problem) problemJSON {
 	}
 	for _, t := range p.Tests {
 		tj := testJSON{Idx: t.Idx, Sample: p.IsSample(t.Idx), InputSize: t.InputSize, OutputSize: t.OutputSize,
-			InputPreview: d.preview(t.InputSHA), OutputPreview: d.preview(t.OutputSHA)}
+			InputPreview: d.preview(t.InputSHA), OutputMissing: t.OutputSHA == ""}
+		if t.OutputSHA != "" {
+			tj.OutputPreview = d.preview(t.OutputSHA)
+		}
 		if st := p.SubtaskOf(t.Idx); st > 0 {
 			tj.SubtaskIdx = &st
 		}
@@ -263,8 +269,8 @@ func (d Deps) problemError(w http.ResponseWriter, r *http.Request, err error) {
 		WriteJSON(w, http.StatusBadRequest, map[string]APIError{"error": {Code: "bad_pack",
 			Message: "The pack cannot be imported. Fix these and upload it again.", Problems: pack.Problems}})
 	case errors.As(err, &notReady):
-		WriteJSON(w, http.StatusBadRequest, map[string]APIError{"error": {Code: "not_ready",
-			Message: "The problem is not ready to validate. Fix these first.", Problems: notReady.Problems}})
+		WriteJSON(w, http.StatusConflict, map[string]APIError{"error": {Code: "not_ready",
+			Message: "The problem is not ready. Fix these first.", Problems: notReady.Problems}})
 	default:
 		d.internalError(w, r, err)
 	}

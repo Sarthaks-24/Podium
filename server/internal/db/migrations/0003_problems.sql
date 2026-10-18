@@ -63,7 +63,9 @@ CREATE TABLE testcases (
   problem_id  INTEGER NOT NULL REFERENCES problems (id) ON DELETE CASCADE,
   idx         INTEGER NOT NULL CHECK (idx >= 1),
   input_sha   TEXT    NOT NULL REFERENCES blobs (sha),
-  output_sha  TEXT    NOT NULL REFERENCES blobs (sha),
+  -- NULL until the expected output exists: packs may carry inputs only,
+  -- and "Generate outputs" fills them from the reference solution.
+  output_sha  TEXT    REFERENCES blobs (sha),
   input_size  INTEGER NOT NULL,
   output_size INTEGER NOT NULL,
   UNIQUE (problem_id, idx)
@@ -73,7 +75,7 @@ CREATE TABLE testcases (
 -- here rather than being a second queue. Lower priority runs first.
 CREATE TABLE jobs (
   id               INTEGER PRIMARY KEY,
-  kind             TEXT    NOT NULL CHECK (kind IN ('validate')),
+  kind             TEXT    NOT NULL CHECK (kind IN ('validate', 'submit', 'run', 'generate')),
   priority         INTEGER NOT NULL,
   state            TEXT    NOT NULL DEFAULT 'queued' CHECK (state IN ('queued', 'leased', 'done', 'failed')),
   payload          TEXT    NOT NULL,
@@ -110,6 +112,11 @@ CREATE TABLE job_results (
   time_ms   INTEGER NOT NULL DEFAULT 0,
   memory_kb INTEGER NOT NULL DEFAULT 0,
   message   TEXT    NOT NULL DEFAULT '',
+  -- Run jobs: the start of the program's output. Generate jobs: the hash
+  -- of the uploaded output. Never set for submissions (hidden tests stay
+  -- hidden, D47), except output_hash for integrity checks.
+  output    TEXT    NOT NULL DEFAULT '',
+  output_sha TEXT   NOT NULL DEFAULT '',
   PRIMARY KEY (job_id, seq),
   UNIQUE (job_id, kind, idx, role)
 ) STRICT;

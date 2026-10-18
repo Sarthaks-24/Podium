@@ -85,7 +85,7 @@ check: ## Everything CI runs: formatting, vet, svelte-check, ESLint, tests
 	$(MAKE) test
 
 .PHONY: sandbox-test
-sandbox-test: ## Hostile-program suite and M2 validation acceptance in isolate (Linux, or WSL2 on Windows)
+sandbox-test: ## Hostile-program suite and M2 and M3 acceptance in isolate (Linux, or WSL2 on Windows)
 	cd server && $(GOFLAGS_LINUX) go test -c -tags sandbox -o bin/calib.test ./internal/judge/calib
 	cd server && $(GOFLAGS_LINUX) go test -c -tags sandbox -o bin/worker.test ./internal/worker
 	$(LINUX) bash tools/sandbox-test.sh server/bin/calib.test -test.v -test.timeout 10m

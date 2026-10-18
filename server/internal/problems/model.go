@@ -100,7 +100,8 @@ type Subtask struct {
 	Tests  string
 }
 
-// Test is one test case, by the hashes of its files.
+// Test is one test case, by the hashes of its files. OutputSHA is empty
+// while the expected output is missing (generated from the reference).
 type Test struct {
 	Idx        int
 	InputSHA   string
@@ -269,6 +270,23 @@ func checkStructure(errs FieldErrors, p *Problem) {
 // tests missing, tests in no subtask or in two, ranges naming tests that do
 // not exist. An empty list means the structure is complete.
 func (p *Problem) Problems() []string {
+	return append(p.StructureProblems(), p.missingOutputs()...)
+}
+
+// missingOutputs lists tests still waiting for their expected output.
+func (p *Problem) missingOutputs() []string {
+	var out []string
+	for _, t := range p.Tests {
+		if t.OutputSHA == "" {
+			out = append(out, fmt.Sprintf("Test %d has no expected output. Generate outputs from the reference solution.", t.Idx))
+		}
+	}
+	return out
+}
+
+// StructureProblems is Problems without missing outputs: tests, samples and
+// subtasks that do not fit together.
+func (p *Problem) StructureProblems() []string {
 	var out []string
 	if len(p.Tests) == 0 {
 		return []string{"Add tests before validating."}

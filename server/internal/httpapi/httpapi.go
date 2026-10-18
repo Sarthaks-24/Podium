@@ -15,7 +15,9 @@ import (
 	"time"
 
 	"github.com/Sarthaks-24/podium/internal/auth"
+	"github.com/Sarthaks-24/podium/internal/events"
 	"github.com/Sarthaks-24/podium/internal/problems"
+	"github.com/Sarthaks-24/podium/internal/submissions"
 )
 
 // Deps are the services the handlers use.
@@ -33,6 +35,10 @@ type Deps struct {
 	SessionSecret []byte
 	// Problems is the problem bank.
 	Problems *problems.Service
+	// Submissions runs and judges students' code; Hub carries live
+	// updates to browsers.
+	Submissions *submissions.Service
+	Hub         *events.Hub
 	// Mode is the run mode (testing, dev or production). Testing mode has
 	// no Google sign-in; instead anyone at this machine signs in with a
 	// form (decision D48).
@@ -74,6 +80,19 @@ func New(d Deps) http.Handler {
 	mux.HandleFunc("GET /api/admin/problems/{id}/export", admin(d.exportProblem))
 	mux.HandleFunc("POST /api/admin/problems/{id}/validate", admin(d.validateProblem))
 	mux.HandleFunc("GET /api/admin/problems/{id}/validation", admin(d.getValidation))
+	mux.HandleFunc("POST /api/admin/problems/{id}/generate", admin(d.generateOutputs))
+	mux.HandleFunc("GET /api/admin/problems/{id}/generation", admin(d.getGeneration))
+
+	// The workspace is for organisers trying a problem until contests
+	// arrive in M4, which mounts the same handlers under a contest.
+	mux.HandleFunc("GET /api/workspace/{problem}", admin(d.getWorkspace))
+	mux.HandleFunc("PUT /api/workspace/{problem}/draft", admin(d.saveDraft))
+	mux.HandleFunc("POST /api/workspace/{problem}/run", admin(d.runCode))
+	mux.HandleFunc("POST /api/workspace/{problem}/submit", admin(d.submitCode))
+	mux.HandleFunc("POST /api/workspace/{problem}/events", admin(d.recordEvents))
+	mux.HandleFunc("GET /api/submissions/{id}", d.requireRole(auth.Student, d.getSubmission))
+	mux.HandleFunc("GET /api/runs/{id}", d.requireRole(auth.Student, d.getRun))
+	mux.HandleFunc("GET /api/events", d.requireRole(auth.Student, d.eventStream))
 
 	mux.HandleFunc("/api/", func(w http.ResponseWriter, r *http.Request) {
 		WriteError(w, http.StatusNotFound, "not_found", "This API route does not exist.")
