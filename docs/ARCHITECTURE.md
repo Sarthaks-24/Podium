@@ -42,8 +42,10 @@ Server packages (`server/internal`):
 | `judge` | sandbox driver, verdicts, built-in and testlib checkers |
 | `judge/calib` | host calibration and the hostile-program suite |
 | `worker` | the judge's claim loop, blob cache, compile cache, and the validate, run, submit and generate jobs |
+| `contests` | schedules, windows, access, standings, clarifications, export, integrity retention |
+| `integrity` | integrity checks after a contest (lexers, winnowing, signals), the review cases and their retention |
 
-Later milestones add `contest` and `ai`.
+Later milestones add `ai`.
 
 ## Run modes
 
@@ -206,7 +208,34 @@ Why in memory and not a `standings_cache` table: one server, a few thousand subm
 
 **Running a contest.** Pause stops the judge taking the contest's jobs (they queue; nothing is lost). Extend adds minutes to everyone's end; a personal extension adds minutes for one student. Rejudge queues a problem's submissions (or one) again at priority 50 with the current tests and clears their results, so the board counts each again once judged; a waiting rejudge never blocks the student's own next submission. Submissions still waiting or being judged on the old tests are included: their job is cancelled and replaced, and a job's Finish updates its submission only while it is still that submission's job, so a replaced job can never overwrite the new result. Targets are chosen inside the same write transaction, and one already waiting on exactly the current tests is skipped, so two rejudges at once do the work once. Clarifications are private to the asker until an organiser makes the answer public; students never see who asked. Announcements and answers arrive as live events.
 
-**Integrity (D47).** A second event stream opened from another browser or machine while one is open is recorded as a `second_session` event for every contest whose window is open for that student, at most once per 10 minutes per contest. A retention job, run at start-up and every 12 hours, deletes integrity events and clears submissions' client hash, typed and pasted counts and focus losses 180 days after a contest ended for everyone. Review cases (and the "unless part of an open case" exception) arrive with the integrity milestone.
+**Integrity (D47).** A second event stream opened from another browser or machine while one is open is recorded as a `second_session` event for every contest whose window is open for that student, at most once per 10 minutes per contest. A retention job, run at start-up and every 12 hours, deletes integrity events and clears submissions' client hash, typed and pasted counts and focus losses 180 days after a contest ended for everyone, except for students in an `open` or `awaiting_student` review case for that contest (see "Integrity" below).
+
+## Integrity
+
+`0006_integrity.sql` adds `integrity_runs` (one per "Check integrity" press, with its counts), `integrity_signals`, `integrity_cases` (with a copy of their evidence), `integrity_case_users` (sharing and the student's explanation) and `integrity_decisions` (append only). The code is `server/internal/integrity`; the routes are in `server/internal/httpapi/integrity.go`. The reviewer's guide and the policy template are `docs/INTEGRITY.md`.
+
+**What is checked.** An organiser with review permission starts a check once the contest is over for everyone (the close plus the longest personal extension). It reads each problem's judged, non-practice contest submissions by students; organisers' and co-organisers' submissions are never evidence.
+
+| Signal | Method |
+|---|---|
+| Similar code | Each student's best submission per problem and their last one below full marks. A lexer per language turns code into tokens with identifiers and literals collapsed and comments and layout dropped; winnowing (k=5, w=4, FNV-64) picks fingerprints. Fingerprints of the reference and brute force, and those more than a tenth of the students (at least 5) share, are dropped. Score is containment: shared fingerprints over the smaller program's. Programs under 40 tokens or 8 remaining fingerprints are skipped. Pairs at 0.6 or more are reported (weak; moderate at 0.75, strong at 0.9), with matched byte spans for the side-by-side view, and joined into clusters. |
+| Same wrong output | Students grouped by problem, hidden test and the SHA-256 of their wrong output (reported by the judge since M3). Outputs more than 3 students printed, or empty output, are ignored. Two shared tests are moderate, four strong. Works across languages. |
+| Hard-coded answers | A hidden test's expected output (8 bytes to 4 KB, not a single small number) found in a source with whitespace normalised. |
+| Probing | Six or more distinct verdict vectors on hidden tests from consecutive attempts whose code barely changed (ten is strong). |
+
+The timeline (submissions with typed and pasted counts, pastes, focus changes, second sessions, other students on the same browser and network) is context for a reviewer and never a signal: lab machines are shared, and pasting your own template is allowed.
+
+**Calibration.** The calibration test in `server/internal/integrity/similar_test.go` has six independent solutions to one problem in different styles and three disguised copies (renamed identifiers, reordered functions, changed comments and layout). The copies score 0.94 to 0.98; the most similar independent pair scores 0.27 against the 0.6 threshold, and the test fails if any independent pair comes within 0.2 of it. Short programs (A plus B) and programs everyone shares produce nothing.
+
+**Review.** A case is opened from signals with a title and a reason of at least 20 characters; the signals are copied into it, so a new check (which replaces the contest's signals) never changes a case. Sharing the case (`awaiting_student`) lets each student see their own evidence and write an explanation; they never see another student's name, email or code, or the reviewers' notes. Clearing or actioning closes the case; action is refused until every student in it was shared it. Every state change, the first one included, is a row in `integrity_decisions`, which the code only ever inserts into, and the server log records opens and decisions by id.
+
+**Who reviews.** Owners and admins, and co-organisers of the contest whose role is not student. Co-organisers who are students (TAs) run contests but never review their classmates.
+
+**Retention.** Contest records follow the 180-day rule above, skipping students in an open case until it is decided. A closed case keeps its evidence and explanations for 2 years after the decision; then both are emptied and the case row with its decision log stays, so the outcome and its reasons remain on record. Submissions themselves are not deleted by either rule.
+
+**Why there is no AI score.** No tool reliably tells AI-written code from a student's own: detectors are wrong often enough to accuse honest students, and a number on a screen gets quoted as proof. Podium relies on prevention (fixed-start contests in a lab, the honour code, and in M5 a "Can a model solve this?" check for setters), indirect evidence (large pastes, a full score far faster than the class, clusters of near-identical code) and verification (the student explains or changes the code in front of an organiser). Signals are worded as strength, with the raw number beside them, and nothing happens without a person.
+
+**Why on the server (D49).** The check runs in one bounded background goroutine in `podium-server`, not as a judge job: its inputs are trusted text (sources, verdicts, output hashes) and nothing is executed, so the sandbox adds nothing, while sending every source to the judge would widen what the judge holds. One check runs at a time per server (`409 busy` otherwise), with a 10-minute limit; the request returns at once with the run's id and the page polls. A check left running by a restart is marked failed at start-up. Revisit if a large contest's check takes long enough to hurt request latency.
 
 ## What students can see
 
@@ -384,6 +413,9 @@ isolate places every box under `isolate.service`, not under the `podium-judge` u
 | Submit reports carry no output text | filtering output when displaying | Text that never reaches the server cannot be leaked by a later display bug (D47). |
 | Coarse figures and per-subtask events for students | exact figures and per-test events | Exact memory and timing on hidden tests are a side channel that reads test data a few bits per submit (D47). |
 | Evidence for a reviewer, never an AI-likelihood score | automatic plagiarism or AI detection | No tool reliably tells AI-written code from a student's own; a number gets quoted as proof and flags strong students. Counts are collected for a human (D47). |
+| Integrity checks in a background goroutine on the server | a judge job kind | Nothing is executed, so the sandbox adds nothing, and the judge never needs every student's source (D49). |
+| Containment over winnowed fingerprints, minus shared code | edit distance, or a plain token overlap | Survives renaming and reordering; dropping the reference and class-wide idioms keeps short and textbook problems from flagging everyone. |
+| Case evidence copied at opening, decisions append only | cases pointing at live signals | A re-run or a later change cannot alter what a student was asked to explain or why a decision was made. |
 | A client key per press of Submit | relying on the rate limit alone | A retry after a timeout returns the first submission instead of being refused or counted twice. |
 | Rate gap per user, across problems | a gap per problem | A per-problem gap is defeated by spreading submits over problems. |
 | Fair queue priority | first come, first served | One student resubmitting in a loop cannot push everyone else's first attempt back. |

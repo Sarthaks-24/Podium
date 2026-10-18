@@ -1,0 +1,235 @@
+package integrity
+
+import (
+	"math"
+	"sort"
+)
+
+// Subject is one program to compare: a student's best submission on a
+// problem, or their last wrong one.
+type Subject struct {
+	SubmissionID int64
+	UserID       int64
+	Language     string
+	Source       string
+}
+
+// Span is a byte range in a source that matched the other program.
+type Span struct {
+	Start int `json:"start"`
+	End   int `json:"end"`
+}
+
+// Pair is two students whose programs share more than chance explains.
+type Pair struct {
+	A, B Subject
+	// Score is containment: shared fingerprints over the smaller
+	// program's fingerprints, after the common ones are dropped.
+	Score    float64
+	Shared   int
+	Strength string
+	SpansA   []Span
+	SpansB   []Span
+}
+
+// Settings tune the comparison; Defaults are the council's values.
+type Settings struct {
+	// MinTokens skips programs too short to tell apart (A plus B).
+	MinTokens int
+	// MinFingerprints skips programs left with too few fingerprints after
+	// the common ones are dropped: a tiny denominator makes any overlap
+	// look total.
+	MinFingerprints int
+	// Threshold is the lowest score reported.
+	Threshold float64
+	// CommonShare and CommonFloor drop a fingerprint that more than
+	// max(CommonShare of the students, CommonFloor) students have: shared
+	// idioms, not copying.
+	CommonShare float64
+	CommonFloor int
+}
+
+// Defaults are the integrity plan's settings (cache/v1/integrity-plan.md).
+var Defaults = Settings{MinTokens: 40, MinFingerprints: 8, Threshold: 0.6, CommonShare: 0.1, CommonFloor: 5}
+
+// Strength words a score for reviewers, who see the number beside it.
+func Strength(score float64) string {
+	switch {
+	case score >= 0.9:
+		return "strong"
+	case score >= 0.75:
+		return "moderate"
+	default:
+		return "weak"
+	}
+}
+
+// Compare finds similar pairs among one problem's subjects. base holds
+// programs everyone may legitimately share (reference, brute force,
+// starter code, editorial); their fingerprints never count. A pair of
+// students appears once, with their most similar programs.
+func Compare(subjects []Subject, base []Subject, s Settings) []Pair {
+	ignore := map[uint64]bool{}
+	for _, b := range base {
+		for h := range Prepare(b.Language, b.Source).Set {
+			ignore[h] = true
+		}
+	}
+	docs := make([]Doc, len(subjects))
+	users := map[int64]bool{}
+	for i, sub := range subjects {
+		docs[i] = Prepare(sub.Language, sub.Source)
+		users[sub.UserID] = true
+	}
+	// How many students have each fingerprint.
+	holders := map[uint64]map[int64]bool{}
+	for i, d := range docs {
+		for h := range d.Set {
+			if holders[h] == nil {
+				holders[h] = map[int64]bool{}
+			}
+			holders[h][subjects[i].UserID] = true
+		}
+	}
+	limit := int(math.Ceil(s.CommonShare * float64(len(users))))
+	if limit < s.CommonFloor {
+		limit = s.CommonFloor
+	}
+	keep := func(h uint64) bool { return !ignore[h] && len(holders[h]) <= limit }
+
+	eff := make([]map[uint64]bool, len(docs))
+	index := map[uint64][]int{}
+	for i, d := range docs {
+		if d.Tokens < s.MinTokens {
+			continue
+		}
+		e := map[uint64]bool{}
+		for h := range d.Set {
+			if keep(h) {
+				e[h] = true
+			}
+		}
+		if len(e) < s.MinFingerprints {
+			continue
+		}
+		eff[i] = e
+		for h := range e {
+			index[h] = append(index[h], i)
+		}
+	}
+	shared := map[[2]int]int{}
+	for _, list := range index {
+		for x := 0; x < len(list); x++ {
+			for y := x + 1; y < len(list); y++ {
+				a, b := list[x], list[y]
+				if subjects[a].UserID == subjects[b].UserID {
+					continue
+				}
+				shared[[2]int{a, b}]++
+			}
+		}
+	}
+	best := map[[2]int64]Pair{}
+	for k, n := range shared {
+		a, b := k[0], k[1]
+		smaller := min(len(eff[a]), len(eff[b]))
+		score := float64(n) / float64(smaller)
+		if score < s.Threshold {
+			continue
+		}
+		ua, ub := subjects[a].UserID, subjects[b].UserID
+		if ua > ub {
+			a, b, ua, ub = b, a, ub, ua
+		}
+		key := [2]int64{ua, ub}
+		if old, ok := best[key]; ok && old.Score >= score {
+			continue
+		}
+		common := map[uint64]bool{}
+		for h := range eff[a] {
+			if eff[b][h] {
+				common[h] = true
+			}
+		}
+		best[key] = Pair{A: subjects[a], B: subjects[b], Score: score, Shared: n, Strength: Strength(score),
+			SpansA: spans(docs[a], common), SpansB: spans(docs[b], common)}
+	}
+	out := make([]Pair, 0, len(best))
+	for _, p := range best {
+		out = append(out, p)
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].Score != out[j].Score {
+			return out[i].Score > out[j].Score
+		}
+		if out[i].A.UserID != out[j].A.UserID {
+			return out[i].A.UserID < out[j].A.UserID
+		}
+		return out[i].B.UserID < out[j].B.UserID
+	})
+	return out
+}
+
+// spans merges the source ranges of a document's fingerprints in common.
+func spans(d Doc, common map[uint64]bool) []Span {
+	var out []Span
+	for _, f := range d.Fingerprints {
+		if !common[f.Hash] {
+			continue
+		}
+		if n := len(out); n > 0 && f.Start <= out[n-1].End {
+			if f.End > out[n-1].End {
+				out[n-1].End = f.End
+			}
+			continue
+		}
+		out = append(out, Span{f.Start, f.End})
+	}
+	return out
+}
+
+// Clusters groups students linked by pairs, largest group first; each
+// group lists user ids in ascending order.
+func Clusters(pairs []Pair) [][]int64 {
+	parent := map[int64]int64{}
+	var find func(int64) int64
+	find = func(x int64) int64 {
+		if parent[x] == x {
+			return x
+		}
+		parent[x] = find(parent[x])
+		return parent[x]
+	}
+	for _, p := range pairs {
+		for _, u := range []int64{p.A.UserID, p.B.UserID} {
+			if _, ok := parent[u]; !ok {
+				parent[u] = u
+			}
+		}
+		ra, rb := find(p.A.UserID), find(p.B.UserID)
+		if ra != rb {
+			if ra < rb {
+				parent[rb] = ra
+			} else {
+				parent[ra] = rb
+			}
+		}
+	}
+	groups := map[int64][]int64{}
+	for u := range parent {
+		r := find(u)
+		groups[r] = append(groups[r], u)
+	}
+	out := make([][]int64, 0, len(groups))
+	for _, g := range groups {
+		sort.Slice(g, func(i, j int) bool { return g[i] < g[j] })
+		out = append(out, g)
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if len(out[i]) != len(out[j]) {
+			return len(out[i]) > len(out[j])
+		}
+		return out[i][0] < out[j][0]
+	})
+	return out
+}

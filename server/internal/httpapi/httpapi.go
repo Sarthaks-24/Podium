@@ -17,6 +17,7 @@ import (
 	"github.com/Sarthaks-24/podium/internal/auth"
 	"github.com/Sarthaks-24/podium/internal/contests"
 	"github.com/Sarthaks-24/podium/internal/events"
+	"github.com/Sarthaks-24/podium/internal/integrity"
 	"github.com/Sarthaks-24/podium/internal/problems"
 	"github.com/Sarthaks-24/podium/internal/submissions"
 )
@@ -42,6 +43,9 @@ type Deps struct {
 	Hub         *events.Hub
 	// Contests runs contests: schedules, access, standings, clarifications.
 	Contests *contests.Service
+	// Integrity runs integrity checks after a contest and keeps the review
+	// cases (D47, D49). Its routes need Contests too.
+	Integrity *integrity.Service
 
 	// reads limits heavy reads per user; New sets it.
 	reads *readLimiter
@@ -103,6 +107,9 @@ func New(d Deps) http.Handler {
 
 	if d.Contests != nil {
 		d.contestRoutes(mux)
+		if d.Integrity != nil {
+			d.integrityRoutes(mux)
+		}
 	}
 
 	mux.HandleFunc("/api/", func(w http.ResponseWriter, r *http.Request) {

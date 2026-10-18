@@ -12,7 +12,8 @@
   score, as a second line on phones); and the editorial, written in
   Markdown with a preview, saved as a draft or published with
   PUT .../editorial. Students see a short
-  explanation instead. Props: `id`.
+  explanation instead. A last section links to the integrity check.
+  Props: `id`.
 -->
 <script lang="ts">
   import { onMount } from 'svelte';
@@ -342,6 +343,12 @@
         {#if editorial.trim() === ''}<p class="muted">Nothing to preview yet.</p>{:else}<Markdown source={editorial} />{/if}
       </div>
     {/if}
+  </section>
+
+  <section class="section" aria-labelledby="integrity-title">
+    <h2 id="integrity-title">Integrity</h2>
+    <p class="muted">Look for copied code, shared wrong outputs, hard-coded answers and probing once the contest has ended for everyone. Signals are reasons to look, not proof.</p>
+    <p><a class="btn btn-secondary" href="/admin/contests/{encodeURIComponent(id)}/integrity">Check integrity</a></p>
   </section>
 
   <ConfirmDialog

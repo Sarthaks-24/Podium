@@ -1,17 +1,17 @@
 <!--
-  ContestAdminNav: the header of the three organiser screens for one
+  ContestAdminNav: the header of the organiser screens for one
   contest: a link back to the contest admin list, the contest's title as
-  the page heading with its state word, and links to Settings, Console and
-  Results, the current one marked with aria-current. Props: `id`, `title`,
-  `state` (a state word, or ""), `current` ("settings", "console" or
-  "results").
+  the page heading with its state word, and links to Settings, Console,
+  Results and Integrity, the current one marked with aria-current. Props:
+  `id`, `title`, `state` (a state word, or ""), `current` ("settings",
+  "console", "results" or "integrity").
 -->
 <script lang="ts">
   interface Props {
     id: string | number;
     title: string;
     state: string;
-    current: 'settings' | 'console' | 'results';
+    current: 'settings' | 'console' | 'results' | 'integrity';
   }
 
   let { id, title, state, current }: Props = $props();
@@ -21,6 +21,7 @@
     { id: 'settings', label: 'Settings', href: base },
     { id: 'console', label: 'Console', href: `${base}/console` },
     { id: 'results', label: 'Results', href: `${base}/results` },
+    { id: 'integrity', label: 'Integrity', href: `${base}/integrity` },
   ] as const);
 </script>
 
@@ -99,5 +100,12 @@
     box-shadow:
       inset 0 calc(-2 * var(--rule)) 0 var(--act),
       var(--focus);
+  }
+
+  /* Phones: four tabs fit at 375 px with narrower padding. */
+  @media (max-width: 767px) {
+    .sub a {
+      padding-inline: var(--space-2);
+    }
   }
 </style>

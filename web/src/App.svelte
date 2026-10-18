@@ -24,9 +24,13 @@
   import AdminContests from './routes/AdminContests.svelte';
   import ContestConsole from './routes/ContestConsole.svelte';
   import ContestEditor from './routes/ContestEditor.svelte';
+  import ContestIntegrity from './routes/ContestIntegrity.svelte';
   import ContestPage from './routes/ContestPage.svelte';
   import ContestResults from './routes/ContestResults.svelte';
   import Home from './routes/Home.svelte';
+  import IntegrityCase from './routes/IntegrityCase.svelte';
+  import IntegrityPair from './routes/IntegrityPair.svelte';
+  import MyIntegrity from './routes/MyIntegrity.svelte';
   import NotFound from './routes/NotFound.svelte';
   import People from './routes/People.svelte';
   import ProblemBank from './routes/ProblemBank.svelte';
@@ -48,7 +52,9 @@
   const needsSignIn = $derived(route.auth && session.status === 'signed-out');
   const leaveSignIn = $derived(route.name === 'signin' && signedIn);
   const inContests = $derived(['home', 'contest', 'contest-problem', 'standings'].includes(route.name));
-  const inContestAdmin = $derived(['admin-contests', 'admin-contest', 'contest-console', 'contest-results'].includes(route.name));
+  const inContestAdmin = $derived(
+    ['admin-contests', 'admin-contest', 'contest-console', 'contest-results', 'contest-integrity', 'integrity-pair', 'integrity-case'].includes(route.name),
+  );
 
   // Redirects are not navigations the person chose, so they keep focus where
   // it is. The redirect's target path is remembered so the focus effect can
@@ -215,6 +221,20 @@
       {#key match.params.id}
         <ContestResults id={match.params.id} />
       {/key}
+    {:else if route.name === 'contest-integrity'}
+      {#key match.params.id}
+        <ContestIntegrity id={match.params.id} />
+      {/key}
+    {:else if route.name === 'integrity-pair'}
+      {#key `${match.params.id}/${match.params.signal}`}
+        <IntegrityPair id={match.params.id} signal={match.params.signal} />
+      {/key}
+    {:else if route.name === 'integrity-case'}
+      {#key match.params.case}
+        <IntegrityCase id={match.params.case} />
+      {/key}
+    {:else if route.name === 'my-integrity'}
+      <MyIntegrity />
     {:else}
       <NotFound />
     {/if}

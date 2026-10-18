@@ -185,7 +185,7 @@ Checked by the server before anything is queued. Every refusal is `429` with the
 | Limit | Value | Applies to |
 |---|---|---|
 | Pending submissions | one per user per problem (a queued rejudge does not count); not in exam mode, where a new submission queues behind the pending one | Submit |
-| Heavy reads | 10 a second per user, bursts of 20 | the contest list and page, the contest workspace, the standings, the organisers' workspace |
+| Heavy reads | 10 a second per user, bursts of 20 | the contest list and page, the contest workspace, the standings, the organisers' workspace, the integrity pages and a student's cases |
 | Gap between submits | 5 s per user, across problems, for organisers trying a problem; in a contest, its `min_gap_s` (default 30 s) | Submit |
 | Submissions per problem | the contest's `max_per_problem` (default 15); none for practice | Submit in a contest (`400`) |
 | Pending runs | one per user, across problems | Run |
@@ -219,7 +219,25 @@ All of this is in the contest's live console in the web app; the routes are in `
 
 **After.** Students see the frozen board from the freeze until everyone's time is up (including personal extensions), then the full board. To keep the result for a projector walk, turn on "Hold the reveal" before the end: students stay on the frozen board until you choose Reveal. The reveal screen opens once every window has closed. Export the results as CSV (spreadsheet-safe: cells that would start a formula get a leading `'`) or JSON. Publish the editorial when ready; students see it, and practice opens, only once every student's time is up (including personal extensions). Clone a contest to run it again with new dates.
 
-**Retention.** Integrity evidence (paste and focus events, second sessions, each submission's typed and pasted counts and client hash) is deleted 180 days after a contest ended for everyone (D47). The server applies this at start-up and every 12 hours and logs `integrity data past retention removed` with counts. Scores, submissions and code are kept.
+**Retention.** Integrity evidence (paste and focus events, second sessions, each submission's typed and pasted counts and client hash) is deleted 180 days after a contest ended for everyone (D47), except for students in an open or awaiting_student integrity case for that contest; theirs goes on the first run after the case is decided. The server applies this at start-up and every 12 hours and logs `integrity data past retention removed` with counts. Scores, submissions and code are kept.
+
+## Integrity checks
+
+The reviewer's guide, what each signal means and the policy template are in `docs/INTEGRITY.md`; the routes are in `docs/API.md`, "Integrity". Owners and admins review; co-organisers who are students do not.
+
+**Running a check.** On the contest's results page, choose "Check integrity" once the contest is over for everyone, personal extensions included (before that the answer is "Check integrity after the contest ends for everyone."). The check runs on the server in the background, not on the judge (D49), so judging is unaffected; a few hundred students take well under a minute, and the page shows "running" until it finishes. One check runs at a time on the whole server; a second press anywhere answers "A check is already running. Try again in a minute." Running it again replaces the contest's signals, for example after a rejudge; open cases keep their own copy of the evidence.
+
+| What you see | Cause | What to do |
+|---|---|---|
+| "The check could not finish." | An error while reading submissions or tests | The server log has `integrity check failed` with the `run_id`, `contest_id` and the error. Fix the cause and run it again. |
+| "The server restarted during the check." | The server stopped while a check ran; at start-up it marks such checks failed and logs a warning with the count | Run it again. |
+| No signals on a short problem | Programs under 40 tokens are skipped, and code everyone shares does not count | Expected: short problems cannot tell copying from the one natural solution. |
+
+**Reviewing.** Read the signal and, for similar code, the side-by-side view; look at both students' timelines. Open a case from one or more signals with a title and a reason of at least 20 characters. The title is shown to the students, so describe the problem, not the people ("Problem B, similar code"). Share the case: each student sees only their own evidence and writes an explanation, which they can change until the decision. Then clear or take action, again with a reason; action is refused until every student in the case was shared it. Every change is kept in the case's log and cannot be edited.
+
+The server logs `integrity check started`, `integrity case opened`, `integrity case decided` and `integrity explanation saved` at info with ids only (`by`, `contest_id`, `case_id`, `run_id`, `state`); notes, explanations and code never go to the log.
+
+**Retention of cases.** A case keeps its evidence and the students' explanations for 2 years after it is cleared or actioned. Then the same 12-hourly job empties both and logs `integrity case evidence past retention removed` with the count; the case, its title and its decision log with the reasons stay. Open and awaiting_student cases are never emptied, and reopening a closed case restarts the clock at its next decision.
 
 ## Event stream behind Caddy
 
@@ -278,6 +296,10 @@ Upgrading to M3 from M2:
 Upgrading to M4 from M3:
 
 1. `sudo ./install.sh app`, then `sudo systemctl restart podium-server podium-judge`. Migration `0005_contests.sql` runs on start. No new variables.
+
+Adding integrity checks:
+
+1. `sudo ./install.sh app`, then `sudo systemctl restart podium-server`. Migration `0006_integrity.sql` runs on start and only adds tables, so existing contests and submissions are untouched and can be checked at once. No new variables; the judge needs no change.
 
 ## Backups
 

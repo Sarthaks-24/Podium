@@ -186,6 +186,58 @@ func TestRetentionClearsOldIntegrityData(t *testing.T) {
 	}
 }
 
+// Students in an open or awaiting_student case keep their integrity data
+// past the retention period; a decided case releases it, and a case in
+// another contest protects nothing here.
+func TestRetentionSkipsStudentsInOpenCases(t *testing.T) {
+	r := newSvc(t)
+	ctx := context.Background()
+	c := r.contest(t, nil)
+	other := r.contest(t, func(e *Edit) { e.Slug = "week-2" })
+	end := t0.Add(-200 * 24 * time.Hour)
+	if _, err := r.svc.DB.Exec("UPDATE contests SET starts_at = ?, ends_at = ?", end.Add(-time.Hour).UnixMilli(), end.UnixMilli()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := r.svc.DB.Exec(`INSERT INTO problems (id, slug, title, time_limit_ms, memory_limit_mb, checker, reference_language,
+		created_at, updated_at, content_hash) VALUES (1, 'p', 'P', 1000, 256, 'tokens', 'cpp17', 0, 0, 'h')`); err != nil {
+		t.Fatal(err)
+	}
+	for _, user := range []int{2, 3} {
+		r.svc.DB.Exec(`INSERT INTO integrity_events (user_id, problem_id, contest_id, kind, size, created_at) VALUES (?, 1, ?, 'paste', 50, 0)`, user, c.ID)
+		if _, err := r.svc.DB.Exec(`INSERT INTO submissions (problem_id, contest_id, user_id, kind, language, source, source_sha, typed_chars,
+			pasted_chars, focus_losses, client_hash, created_at) VALUES (1, ?, ?, 'submit', 'cpp17', '', 's', 10, 20, 3, 'abc', 0)`, c.ID, user); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// Asha (2) is in an awaiting_student case here; Bilal (3) only in a
+	// case of the other contest.
+	for _, row := range []struct {
+		id, contest int64
+		user        int
+	}{{1, c.ID, 2}, {2, other.ID, 3}} {
+		if _, err := r.svc.DB.Exec(`INSERT INTO integrity_cases (id, contest_id, state, title, created_at, updated_at)
+			VALUES (?, ?, 'awaiting_student', 'Case', 0, 0)`, row.id, row.contest); err != nil {
+			t.Fatal(err)
+		}
+		r.svc.DB.Exec("INSERT INTO integrity_case_users (case_id, user_id, shared_at) VALUES (?, ?, 0)", row.id, row.user)
+	}
+	*r.now = t0
+	events, subs, err := r.svc.Retain(ctx)
+	if err != nil || events != 1 || subs != 1 {
+		t.Fatalf("retain: %d events, %d submissions, %v; want only Bilal's", events, subs, err)
+	}
+	var kept int
+	r.svc.DB.QueryRow(`SELECT count(*) FROM submissions WHERE user_id = 2 AND client_hash = 'abc' AND pasted_chars = 20`).Scan(&kept)
+	if kept != 1 {
+		t.Error("the student in an open case lost their submission counts")
+	}
+	// Once the case is decided, the next run removes the rest.
+	r.svc.DB.Exec("UPDATE integrity_cases SET state = 'cleared' WHERE id = 1")
+	if events, subs, _ := r.svc.Retain(ctx); events != 1 || subs != 1 {
+		t.Errorf("after the decision: %d events, %d submissions", events, subs)
+	}
+}
+
 func TestSecondSessionRecordedOncePerQuietPeriod(t *testing.T) {
 	r := newSvc(t)
 	ctx := context.Background()

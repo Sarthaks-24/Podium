@@ -625,6 +625,55 @@ Owners and admins organise every contest; a co-organiser organises only the cont
 - JSON: `{contest: AdminContest, standings: [Standings row plus email, roll_number, section, started_at], submissions: [{id, user_id, problem_label, language, state, verdict, score, created_at, practice}], exported_at}`. No code and no integrity data.
 - `ProblemStats`: `{label, title, max_score, attempted, solved` (full score)`, subtasks [{idx, points, earned}], histogram [{score, students}]` (highest score first)`, median_attempts}`, over students on the board and their non-practice submissions.
 
+## Integrity
+
+Checks for copying after a contest, and the review of what they find (decisions D47 and D49; the reviewer's guide is `docs/INTEGRITY.md`). Signals are reasons to look, not proof: a person opens a case, the students explain, and a person decides with a written reason.
+
+**Who may review.** The owner and admins, and co-organisers of that contest whose own role is not student. A co-organiser who is a student gets `403 forbidden` on the contest's integrity routes and `404` on case routes; anyone who does not organise the contest gets `404 not_found`, as on every organiser route. A signal, student or case id from another contest is a `404`, and a case cannot be opened from another contest's signals (`400`). Every answer carries `server_now`.
+
+| Route | Request | Success |
+|---|---|---|
+| `POST /api/admin/contests/{id}/integrity/run` | none | 202 `{run_id, server_now}`; the check runs in the background |
+| `GET /api/admin/contests/{id}/integrity` | | 200 `Run` plus `users`, `problems` and `server_now`; `404 not_found` "This contest has not been checked yet." |
+| `GET /api/admin/contests/{id}/integrity/signals/{signal}/pair` | | 200 `{a: Side, b: Side, server_now}` for a `similar` signal; any other kind is a `404` |
+| `GET /api/admin/contests/{id}/integrity/timeline/{user}` | | 200 `{moments: [Moment], server_now}`; `404` when the user neither accepted the rules nor submitted in this contest |
+| `GET /api/admin/contests/{id}/integrity/cases` | | 200 `{cases: [Case], server_now}`, newest first |
+| `POST /api/admin/contests/{id}/integrity/cases` | `{title, note, signal_ids: [n]}` | 201 `Case` |
+| `GET /api/admin/integrity/cases/{case}` | | 200 `Case` |
+| `PUT /api/admin/integrity/cases/{case}` | `{state, note}` | 200 `Case`; appends a decision |
+
+Students (any signed-in user):
+
+| Route | Request | Success |
+|---|---|---|
+| `GET /api/integrity/cases` | | 200 `{cases: [StudentCase], contests: {id: {slug, title}}, problems: {id: {label, title}}, server_now}`: only cases shared with the user |
+| `PUT /api/integrity/cases/{case}/explanation` | `{explanation}` (1 to 8,000 characters) | 204; editable until the case is decided |
+
+### Shapes
+
+- `Run`: `{id, state` (`running`, `done` or `error`)`, started_at, finished_at|null, error?, stats: {students, submissions, problems, signals: {kind: n}, clusters}, signals: [Signal]}`. Signals come strongest first. `error` is a sentence for people; the cause is in the server log.
+- `Signal`: `{id, problem_id, kind, strength, score, user_a, user_b?, submission_a?, submission_b?, evidence}`. `kind` is `similar`, `wrong_output`, `hardcoded` or `probing`; `strength` is `strong`, `moderate` or `weak`, with the raw `score` beside it (containment for `similar`, the number of tests for `wrong_output` and `hardcoded`, distinct results for `probing`). `evidence`: similar `{shared, spans_a, spans_b, language_a, language_b}`; wrong_output and hardcoded `{tests: [n]}`; probing `{distinct, attempts}`.
+- `users`: `{id: {name, email, roll_number}}` for every user a signal names. The name and roll number come from the contest's roster when the student is on it, otherwise the account's name and an empty roll number.
+- `problems`: `{id: {label, title}}` for the contest's problems.
+- `Side`: `{submission_id, user_id, language, source, created_at, spans: [{start, end}]}`; spans are byte offsets into `source`.
+- `Moment`: `{at, kind, problem_id?, text}`; `kind` is `submission`, `paste`, `blur`, `focus`, `second_session` or `shared_device`, oldest first. `shared_device` names the other student ("Same browser and network as ...") and is never a signal.
+- `Case`: `{id, contest_id, state, title, evidence: [Signal], created_at, updated_at, users: [{user_id, name, shared_at|null, explanation, explained_at|null}], decisions: [{by, state, note, created_at}]}`. `evidence` is a copy of the signals taken when the case opened, so a later check cannot change it. The students are the users its signals name.
+- `StudentCase`: `{id, contest_id, state, title, evidence: [{problem_id, kind, text, submission_id?, source?, spans?}], explanation, shared_at, decided}`. Only the student's own evidence, worded for them; `source` and `spans` are their own program for `similar`. Never another student's name, email or code, never the case title (`title` here is the contest's title, because a reviewer's title may name people) and never the decision notes.
+
+### Rules and errors
+
+| Status | When |
+|---|---|
+| 409 `contest_live` | "Check integrity after the contest ends for everyone.": before the close plus the longest personal extension, the moment practice and the editorial open |
+| 409 `busy` | "A check is already running. Try again in a minute.": one check runs at a time on the server, for any contest |
+| 400 `bad_request` | a title empty or over 120 characters; a note under 20 or over 4,000 characters; no signals or more than 50; a signal not in the contest's latest check; an unknown state; `actioned` before every student in the case was shared it ("Share the case with the students and give them time to explain before taking action."); an empty explanation |
+| 404 `not_found` | explaining a case not shared with the user, or already `cleared` or `actioned` |
+| 429 `rate_limited` | the read routes share the per-user read limit |
+
+- States: `open`, `awaiting_student` (shared: the students see their evidence and explain), `cleared`, `actioned`. Any state can follow any other, each with a note; the decision log is append only.
+- A new check replaces the contest's previous signals; cases keep their copy.
+- Case opens, state changes and explanations are logged at info with ids only (`by`, `contest_id`, `case_id`, `state`), never notes, explanations or code.
+
 ## Judge worker API
 
 Used only by `podium-judge work` (decision D44). It is served on its own listener, `PODIUM_JUDGE_LISTEN` (default `127.0.0.1:8081`, loopback only), never through Caddy, and is not part of the public API above: no session cookies, no cross-site check. The request and response types live in `server/internal/judgeapi`, shared by both programs.

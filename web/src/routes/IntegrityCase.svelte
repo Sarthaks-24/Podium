@@ -1,0 +1,479 @@
+<!--
+  IntegrityCase: one integrity case at /admin/integrity/cases/{case}
+  (integrity-plan.md sections 5 and 7, docs/INTEGRITY.md "Reviewing").
+  From GET /api/admin/integrity/cases/{case}: the title and state, the
+  students with whether the case was shared with them and their
+  explanations, the evidence copied when the case was opened (a later
+  check cannot change it), and the decision log, oldest first, which
+  nothing can edit. Every change of state needs a note of at least 20
+  characters (PUT with {state, note}): "Share with the students" and
+  "Take action" ask first; "Take action" stays disabled, with the reason,
+  until every student was shared the case; a decided case can be
+  reopened. Names and problem labels come from the contest's latest check
+  when it loads. Props: `id` (the case).
+-->
+<script lang="ts">
+  import { onMount, tick } from 'svelte';
+  import ConfirmDialog from '../components/ConfirmDialog.svelte';
+  import IntegrityNote from '../components/IntegrityNote.svelte';
+  import SignalTable from '../components/SignalTable.svelte';
+  import { ApiError, getJSON, sendJSON } from '../lib/api';
+  import type { AdminContest } from '../lib/contests';
+  import { keepHeadingFocus } from '../lib/focus';
+  import { formatDateTime } from '../lib/format';
+  import { setTitle } from '../lib/head';
+  import { MIN_NOTE, caseStateWord, noteCounter, noteLength, type Case, type CaseState, type Decision, type ReviewUser, type Run } from '../lib/review';
+  import { session } from '../lib/session.svelte';
+  import { showToast } from '../lib/toast.svelte';
+
+  let { id }: { id: string } = $props();
+
+  let loadState = $state<'loading' | 'ready' | 'forbidden' | 'missing' | 'error'>('loading');
+  let loadError = $state('');
+  let kase = $state.raw<Case | null>(null);
+  let run = $state.raw<Run | null>(null);
+  let contestTitle = $state('');
+
+  let note = $state('');
+  let noteError = $state('');
+  let actionError = $state('');
+  let busy = $state(false);
+  let noteField: HTMLTextAreaElement | undefined = $state();
+  let confirm = $state<null | { state: CaseState; title: string; body: string; label: string; danger: boolean }>(null);
+
+  const isOrganiser = $derived(session.user?.role === 'admin' || session.user?.role === 'owner');
+  const api = $derived(`/api/admin/integrity/cases/${encodeURIComponent(id)}`);
+  const back = $derived(kase ? `/admin/contests/${kase.contest_id}/integrity` : '/admin/contests');
+  const allShared = $derived(!!kase && kase.users.length > 0 && kase.users.every((u) => u.shared_at !== null));
+  const decided = $derived(kase?.state === 'cleared' || kase?.state === 'actioned');
+  // Names for the evidence: the case's own students first, then the check's map.
+  const users = $derived.by(() => {
+    const out: Record<string, ReviewUser> = { ...(run?.users ?? {}) };
+    for (const u of kase?.users ?? []) out[String(u.user_id)] = { name: u.name, email: out[String(u.user_id)]?.email ?? '' };
+    return out;
+  });
+
+  function handleAuth(e: unknown): boolean {
+    if (!(e instanceof ApiError)) return false;
+    if (e.status === 401) {
+      session.user = undefined;
+      session.status = 'signed-out';
+      return true;
+    }
+    if (e.status === 403 && e.code === 'forbidden') {
+      loadState = 'forbidden';
+      return true;
+    }
+    return false;
+  }
+
+  function messageOf(e: unknown): string {
+    return e instanceof ApiError ? e.message : 'Something went wrong. Try again in a moment.';
+  }
+
+  async function load() {
+    loadState = 'loading';
+    try {
+      const c = await getJSON<Case>(api);
+      const restore = keepHeadingFocus();
+      kase = c;
+      setTitle(c.title, 'Case');
+      loadState = 'ready';
+      void restore();
+      void loadContext(c.contest_id);
+    } catch (e) {
+      if (handleAuth(e)) return;
+      if (e instanceof ApiError && e.status === 404) {
+        loadState = 'missing';
+        setTitle('Case not found');
+        return;
+      }
+      loadError = messageOf(e);
+      loadState = 'error';
+    }
+  }
+
+  // Names and labels are a convenience; the case reads without them.
+  async function loadContext(contestId: number) {
+    const contestApi = `/api/admin/contests/${contestId}`;
+    const [r, c] = await Promise.allSettled([getJSON<Run>(`${contestApi}/integrity`), getJSON<AdminContest>(contestApi)]);
+    if (r.status === 'fulfilled') run = r.value;
+    if (c.status === 'fulfilled') contestTitle = c.value.title;
+  }
+
+  function byName(d: Decision): string {
+    if (d.by_name) return d.by_name;
+    if (session.user && d.by === session.user.id) return 'You';
+    const u = run?.users?.[String(d.by)];
+    return u?.name || u?.email || 'An organiser';
+  }
+
+  async function checkNote(): Promise<boolean> {
+    actionError = '';
+    noteError = noteLength(note) < MIN_NOTE ? `Write a note of at least ${MIN_NOTE} characters for the log first.` : '';
+    if (noteError) {
+      await tick();
+      noteField?.focus();
+      return false;
+    }
+    return true;
+  }
+
+  async function ask(state: CaseState) {
+    if (!(await checkNote())) return;
+    if (state === 'awaiting_student') {
+      confirm = {
+        state,
+        title: 'Share with the students?',
+        body: "Each student sees their own evidence, never another student's name or code, and can write an explanation.",
+        label: 'Share with the students',
+        danger: false,
+      };
+    } else if (state === 'actioned') {
+      confirm = {
+        state,
+        title: 'Take action?',
+        body: 'This closes the case with action taken. The log keeps your note, and nothing in it can be edited later.',
+        label: 'Take action',
+        danger: true,
+      };
+    } else {
+      await change(state);
+    }
+  }
+
+  const DONE: Record<CaseState, string> = {
+    open: 'Reopened the case',
+    awaiting_student: 'Shared with the students',
+    cleared: 'Cleared the case',
+    actioned: 'Action taken',
+  };
+
+  async function change(state: CaseState) {
+    busy = true;
+    actionError = '';
+    try {
+      kase = await sendJSON<Case>('PUT', api, { state, note: note.trim() });
+      note = '';
+      noteError = '';
+      showToast(DONE[state]);
+    } catch (e) {
+      if (handleAuth(e)) return;
+      if (e instanceof ApiError && e.fields.note) noteError = e.fields.note;
+      else actionError = messageOf(e);
+    } finally {
+      busy = false;
+      confirm = null;
+    }
+  }
+
+  onMount(() => {
+    setTitle('Case');
+    if (!isOrganiser) loadState = 'forbidden';
+    else void load();
+  });
+</script>
+
+{#if loadState === 'forbidden'}
+  <h1 tabindex="-1">Case</h1>
+  <p class="lead">Only owners and admins can review integrity. Ask an owner if you need access.</p>
+{:else if loadState !== 'ready' || !kase}
+  <a class="back" href="/admin/contests">Contest admin</a>
+  <h1 tabindex="-1">{loadState === 'missing' ? 'Case not found' : 'Case'}</h1>
+  {#if loadState === 'loading'}
+    <p class="lead muted" role="status">Loading the case</p>
+  {:else if loadState === 'missing'}
+    <p class="lead">There is no case with that number, or you cannot review its contest. <a href="/admin/contests">Go to the contest list.</a></p>
+  {:else}
+    <div class="banner banner-error lead" role="alert"><p>{loadError}</p></div>
+    <p class="retry"><button type="button" class="btn btn-secondary" onclick={load}>Try again</button></p>
+  {/if}
+{:else}
+  <a class="back" href={back}>{contestTitle ? `Integrity for ${contestTitle}` : 'Integrity'}</a>
+  <div class="head">
+    <h1 tabindex="-1">{kase.title}</h1>
+    <span class="state state-{kase.state}">{caseStateWord(kase.state)}</span>
+  </div>
+  <p class="muted small dates">Opened <span class="mono">{formatDateTime(kase.created_at)}</span>, last changed <span class="mono">{formatDateTime(kase.updated_at)}</span>.</p>
+
+  <div class="note"><IntegrityNote /></div>
+
+  <section class="section" aria-labelledby="students-title">
+    <h2 id="students-title">Students</h2>
+    <div class="table-wrap students">
+      <table class="table">
+        <caption class="visually-hidden">Students in this case</caption>
+        <thead>
+          <tr>
+            <th scope="col">Student</th>
+            <th scope="col">Shared</th>
+            <th scope="col">Explanation</th>
+          </tr>
+        </thead>
+        <tbody>
+          {#each kase.users as u (u.user_id)}
+            <tr>
+              <th scope="row" class="s-name">{u.name}</th>
+              <td class="s-shared">
+                {#if u.shared_at !== null}Shared <span class="mono">{formatDateTime(u.shared_at)}</span>{:else}<span class="muted">Not shared yet</span>{/if}
+              </td>
+              <td class="s-text">
+                {#if u.explanation.trim() !== ''}
+                  <p class="prose">{u.explanation}</p>
+                  {#if u.explained_at !== null}<p class="muted small">Written <span class="mono">{formatDateTime(u.explained_at)}</span></p>{/if}
+                {:else}
+                  <span class="muted">{u.shared_at !== null ? 'No explanation yet' : 'Can explain once shared'}</span>
+                {/if}
+              </td>
+            </tr>
+          {/each}
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="section" aria-labelledby="evidence-title">
+    <h2 id="evidence-title">Evidence</h2>
+    <p class="muted small">Copied when the case was opened; a later check does not change it. Each student sees only their own part.</p>
+    {#if kase.evidence.length === 0}
+      <p class="muted">No evidence in this case.</p>
+    {:else}
+      <SignalTable signals={kase.evidence} {users} problems={run?.problems} contestId={kase.contest_id} caption="Evidence in this case" showProblem />
+    {/if}
+  </section>
+
+  <section class="section" aria-labelledby="decide-title">
+    <h2 id="decide-title">{decided ? 'Reopen' : 'Decide'}</h2>
+    <form class="decide" novalidate onsubmit={(e) => e.preventDefault()}>
+      <div class="field">
+        <label for="case-decision-note">Note for the log</label>
+        <textarea
+          id="case-decision-note"
+          class="input"
+          rows="4"
+          bind:this={noteField}
+          bind:value={note}
+          aria-invalid={noteError ? 'true' : undefined}
+          aria-describedby="case-decision-help case-decision-count{noteError ? ' case-decision-error' : ''}"
+        ></textarea>
+        <p id="case-decision-help" class="field-help">Every change needs a reason. The log keeps it, and nothing in the log can be edited later.</p>
+        <p id="case-decision-count" class="field-help">{noteCounter(note)}</p>
+        {#if noteError}<p id="case-decision-error" class="field-error">{noteError}</p>{/if}
+      </div>
+      <div class="buttons">
+        {#if decided}
+          <button type="button" class="btn btn-secondary" disabled={busy} onclick={() => ask('open')}>Reopen the case</button>
+        {:else}
+          {#if kase.state === 'open'}
+            <button type="button" class="btn btn-primary" disabled={busy} onclick={() => ask('awaiting_student')}>Share with the students</button>
+          {/if}
+          <button type="button" class="btn btn-secondary" disabled={busy} onclick={() => ask('cleared')}>Clear</button>
+          <button
+            type="button"
+            class="btn btn-danger"
+            disabled={busy || !allShared}
+            aria-describedby={allShared ? undefined : 'action-help'}
+            onclick={() => ask('actioned')}>Take action</button
+          >
+        {/if}
+      </div>
+      {#if !decided && !allShared}
+        <p id="action-help" class="muted small">Take action opens once the case is shared with every student, so they can explain first.</p>
+      {/if}
+      {#if actionError}<p class="field-error" role="alert">{actionError}</p>{/if}
+    </form>
+  </section>
+
+  <section class="section" aria-labelledby="log-title">
+    <h2 id="log-title">Decision log</h2>
+    {#if kase.decisions.length === 0}
+      <p class="muted">Nothing recorded yet.</p>
+    {:else}
+      <ol class="log">
+        {#each kase.decisions as d, i (i)}
+          <li>
+            <p class="log-head">
+              <span class="mono when">{formatDateTime(d.created_at)}</span>
+              <span><strong>{caseStateWord(d.state)}</strong>, by {byName(d)}</span>
+            </p>
+            <p class="prose">{d.note}</p>
+          </li>
+        {/each}
+      </ol>
+    {/if}
+  </section>
+
+  <ConfirmDialog
+    open={confirm !== null}
+    title={confirm?.title ?? ''}
+    body={confirm?.body ?? ''}
+    confirmLabel={confirm?.label ?? ''}
+    danger={confirm?.danger ?? false}
+    {busy}
+    onconfirm={() => confirm && change(confirm.state)}
+    oncancel={() => (confirm = null)}
+  />
+{/if}
+
+<style>
+  .back {
+    display: inline-block;
+    margin-bottom: var(--space-2);
+    border-radius: var(--radius);
+    font-size: var(--fs-0);
+    font-weight: 500;
+  }
+
+  .head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: var(--space-2) var(--space-4);
+  }
+
+  h1 {
+    font-size: var(--fs-4);
+    overflow-wrap: anywhere;
+  }
+
+  .state {
+    color: var(--ink-muted);
+    font-weight: 600;
+  }
+
+  .lead {
+    margin-top: var(--space-4);
+    max-width: 40rem;
+  }
+
+  .retry {
+    margin-top: var(--space-4);
+  }
+
+  .dates {
+    margin-top: var(--space-2);
+  }
+
+  .note {
+    margin-top: var(--space-5);
+  }
+
+  .small {
+    font-size: var(--fs-0);
+  }
+
+  .section {
+    display: grid;
+    gap: var(--space-3);
+    margin-top: var(--space-6);
+    min-width: 0;
+  }
+
+  .section h2 {
+    font-size: var(--fs-3);
+  }
+
+  .prose {
+    max-width: 60ch;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+
+  .students .table {
+    font-size: var(--fs-0);
+  }
+
+  .s-name {
+    font-weight: 500;
+    white-space: nowrap;
+  }
+
+  .s-shared {
+    white-space: nowrap;
+  }
+
+  .s-text {
+    padding-block: var(--space-3);
+  }
+
+  .decide {
+    display: grid;
+    gap: var(--space-3);
+    max-width: 48rem;
+  }
+
+  .buttons {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-3);
+  }
+
+  .log {
+    display: grid;
+    max-width: 56rem;
+    padding: 0;
+    border: var(--rule) solid var(--line);
+    background: var(--surface);
+    list-style: none;
+  }
+
+  .log li {
+    display: grid;
+    gap: var(--space-1);
+    padding: var(--space-3) var(--space-4);
+    border-bottom: var(--rule) solid var(--line);
+  }
+
+  .log li:last-child {
+    border-bottom: 0;
+  }
+
+  .log-head {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-1) var(--space-3);
+    font-size: var(--fs-0);
+  }
+
+  .log-head strong {
+    font-weight: 600;
+  }
+
+  .when {
+    color: var(--ink-muted);
+  }
+
+  /* Phones: name and share state on one line, the explanation below. */
+  @media (max-width: 767px) {
+    .students thead {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      overflow: hidden;
+      clip: rect(0, 0, 0, 0);
+    }
+
+    .students tbody tr {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr);
+      gap: var(--space-1);
+      padding: var(--space-3);
+      border-bottom: var(--rule) solid var(--line);
+    }
+
+    .students tbody tr:last-child {
+      border-bottom: 0;
+    }
+
+    .students tbody :is(th, td) {
+      height: auto;
+      padding: 0;
+      border: 0;
+    }
+
+    .s-shared {
+      color: var(--ink-muted);
+      white-space: normal;
+    }
+  }
+</style>

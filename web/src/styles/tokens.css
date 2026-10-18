@@ -68,6 +68,13 @@
   --code-gutter: #858E88;
   --code-selection: color-mix(in srgb, var(--act) 40%, var(--well));
   --code-active-line: color-mix(in srgb, var(--well-ink) 7%, var(--well));
+
+  /* Passages two programs share, in the integrity views. The edge marks
+     the line in the gutter so the match does not rely on the tint alone;
+     --well-ink stays at least 4.5:1 on the tint in every theme (checked in
+     lib/theme-contrast.test.ts). */
+  --code-match-edge: var(--code-number);
+  --code-match: color-mix(in srgb, var(--code-match-edge) 28%, var(--well));
 }
 
 @media (min-width: 768px) {

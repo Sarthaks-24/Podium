@@ -22,6 +22,10 @@ export type RouteName =
   | 'admin-contest'
   | 'contest-console'
   | 'contest-results'
+  | 'contest-integrity'
+  | 'integrity-pair'
+  | 'integrity-case'
+  | 'my-integrity'
   | 'not-found';
 
 /** One row of the route table. */
@@ -48,6 +52,10 @@ export const ROUTES: readonly RouteDef[] = [
   { pattern: '/admin/contests/:id', name: 'admin-contest', auth: true },
   { pattern: '/admin/contests/:id/console', name: 'contest-console', auth: true },
   { pattern: '/admin/contests/:id/results', name: 'contest-results', auth: true },
+  { pattern: '/admin/contests/:id/integrity', name: 'contest-integrity', auth: true },
+  { pattern: '/admin/contests/:id/integrity/signals/:signal', name: 'integrity-pair', auth: true },
+  { pattern: '/admin/integrity/cases/:case', name: 'integrity-case', auth: true },
+  { pattern: '/integrity', name: 'my-integrity', auth: true },
 ];
 
 /** Shown for any path that matches nothing in ROUTES. */

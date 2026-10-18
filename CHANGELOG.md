@@ -4,6 +4,15 @@ Dated entries per release. Unreleased work is listed at the top.
 
 ## Unreleased
 
+### Integrity checks (2026-10-18)
+
+- Integrity checks after a contest (decisions D47 and D49), run by owners, admins and co-organisers who are not students, once the contest is over for everyone. Four signals: similar code (per-language lexers, winnowing, containment with the reference, brute force and class-wide idioms subtracted, programs under 40 tokens skipped, pairs at 0.6 or more and clusters), the same wrong output on hidden tests (across languages), hard-coded expected outputs, and probing. Strength in words with the raw number beside it; no AI-likelihood score and nothing automatic. Migration `0006_integrity.sql`.
+- The check runs in one background goroutine on the server, not on the judge: nothing is executed, and the judge never holds every source. One check at a time per server; a check left running by a restart is marked failed at start-up.
+- Organiser routes under `/api/admin/contests/{id}/integrity` (run, latest run with `users` and `problems` maps, side-by-side pair with matched spans, a student's timeline, cases) and `/api/admin/integrity/cases/{case}` (read, change state with a note). Refusals: `409 contest_live` before every window has closed, `409 busy` while a check runs. Ids from another contest are `404`.
+- Review cases: opened from signals with a reason of at least 20 characters, evidence copied at opening so a re-run cannot change it, shared with the students before any action, cleared or actioned with a reason. Every change is an append-only decision, and opens and decisions are logged by id.
+- Students: `GET /api/integrity/cases` lists cases shared with them, with only their own evidence and code (never another student's name or program, nor the reviewers' notes), and `PUT /api/integrity/cases/{case}/explanation` until the decision.
+- Retention: the 180-day job skips students in an open or awaiting_student case for that contest; a closed case's evidence and explanations are emptied 2 years after its decision, and its decision log is kept.
+
 ### Milestone M4: contests (2026-10-18)
 
 - Contests (server): fixed start or a flexible window per student, freeze, best-per-subtask or best-submission scoring, domain or roster access, subtask or exam feedback, graded flag, practice after the end, per-contest gap between submits, submissions per problem and languages, honour code with recorded acceptance, editorial. Migration `0005_contests.sql`.

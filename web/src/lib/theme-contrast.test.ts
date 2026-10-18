@@ -14,6 +14,13 @@ const HIGH_CONTRAST = new Set(['hc-light', 'hc-dark']);
 // 0.091 (dark colour-blind set, deuteranopia); see D41.
 const MIN_DISTANCE = 0.09;
 
+/** color-mix(in srgb, a p, b): a straight mix of the encoded channels. */
+function mixSrgb(a: string, b: string, p: number): string {
+  const ch = (hex: string) => [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
+  const [x, y] = [ch(a), ch(b)];
+  return `#${x.map((v, i) => Math.round(v * p + y[i] * (1 - p)).toString(16).padStart(2, '0')).join('')}`;
+}
+
 function failures(id: string, signal: boolean): string[] {
   const t = resolveTheme(rules, id, signal);
   const out: string[] = [];
@@ -83,6 +90,18 @@ describe('themes in tokens.css', () => {
       });
     }
   }
+
+  it('keeps code readable on the shared-passage tint in every theme', () => {
+    const root = rules.find((r) => r.media === null && r.selector === ':root' && '--code-match' in r.vars);
+    expect(root?.vars['--code-match']).toBe('color-mix(in srgb, var(--code-match-edge) 28%, var(--well))');
+    const edge = root?.vars['--code-number'] ?? '';
+    for (const { id } of THEMES) {
+      const t = resolveTheme(rules, id, false);
+      const tint = mixSrgb(edge, t['--well'], 0.28);
+      expect(contrast(t['--well-ink'], tint), id).toBeGreaterThanOrEqual(4.5);
+      expect(contrast(edge, t['--well']), `${id} edge`).toBeGreaterThanOrEqual(3);
+    }
+  });
 
   it('repeats the Dark theme exactly for a system that prefers dark', () => {
     const system = rules.find((r) => r.media !== null && r.selector === ':root:not([data-theme])');

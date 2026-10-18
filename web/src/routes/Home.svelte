@@ -9,8 +9,10 @@
   out; under 768 px each row reads as title and state, then the start,
   then the length and the student's score. A countdown over a day reads
   as a span ("Starts in 2 d 23 h"). Organisers also get a link to the contest
-  admin. The app shell sends signed-out visitors to /signin first. Takes no
-  props.
+  admin. When an organiser has shared an integrity case that is not yet
+  decided (GET /api/integrity/cases), a quiet notice links to /integrity;
+  that request failing shows nothing. The app shell sends signed-out
+  visitors to /signin first. Takes no props.
 -->
 <script lang="ts">
   import { onMount } from 'svelte';
@@ -20,11 +22,13 @@
   import { formatDateTime } from '../lib/format';
   import { setTitle } from '../lib/head';
   import { session } from '../lib/session.svelte';
+  import type { StudentCaseList } from '../lib/review';
   import { refreshTicker, ticker, useTicker } from '../lib/ticker.svelte';
 
   let loadState = $state<'loading' | 'ready' | 'error'>('loading');
   let loadError = $state('');
   let contests = $state<ContestSummary[]>([]);
+  let asked = $state(false);
 
   const isOrganiser = $derived(session.user?.role === 'admin' || session.user?.role === 'owner');
 
@@ -62,6 +66,16 @@
     if (loadState === 'ready' && ticker.now >= reloadAt) void load();
   });
 
+  // A notice only; any failure leaves the page as it was.
+  async function loadAsked() {
+    try {
+      const data = await getJSON<StudentCaseList>('/api/integrity/cases');
+      asked = (data.cases ?? []).some((c) => !c.decided);
+    } catch {
+      asked = false;
+    }
+  }
+
   function scoreText(c: ContestSummary): string {
     if (c.my_score === null) return '';
     return c.max_score !== undefined ? `${c.my_score} of ${c.max_score}` : String(c.my_score);
@@ -70,11 +84,16 @@
   onMount(() => {
     setTitle('Your contests');
     void load();
+    void loadAsked();
     return useTicker();
   });
 </script>
 
 <h1 tabindex="-1">Your contests</h1>
+
+{#if asked}
+  <p class="banner asked">An organiser asked you to explain a submission. <a href="/integrity">Write your explanation</a></p>
+{/if}
 
 {#if isOrganiser}
   <p class="org muted">To create a contest or follow one live, open <a href="/admin/contests">Contest admin</a>.</p>
@@ -123,6 +142,11 @@
 {/if}
 
 <style>
+  .asked {
+    margin-top: var(--space-4);
+    max-width: 44rem;
+  }
+
   .org {
     margin-top: var(--space-3);
     font-size: var(--fs-0);

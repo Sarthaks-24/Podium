@@ -2,12 +2,13 @@ package contests
 
 import (
 	"context"
+	"fmt"
 	"time"
 )
 
 // RetentionPeriod is how long integrity evidence is kept after a contest
-// has ended for everyone (decision D47 default: 180 days, unless part of an
-// open case; review cases arrive in the integrity milestone).
+// has ended for everyone (decision D47 default: 180 days, unless the
+// student is in an open integrity case for the contest).
 const RetentionPeriod = 180 * 24 * time.Hour
 
 // secondSessionQuiet stops one pair of machines from recording a second
@@ -56,24 +57,31 @@ func (s *Service) RecordSecondSession(ctx context.Context, userID int64) error {
 
 // Retain deletes integrity events and clears the per-submission integrity
 // counts (client hash, typed and pasted characters, focus losses) of every
-// contest that ended for everyone more than RetentionPeriod ago. It is
-// idempotent and returns how many events and submissions it changed.
+// contest that ended for everyone more than RetentionPeriod ago. Students
+// in an open or awaiting_student integrity case for that contest keep
+// theirs until the case is decided; the next run after the decision
+// removes them. It is idempotent and returns how many events and
+// submissions it changed.
 func (s *Service) Retain(ctx context.Context) (events, subs int64, err error) {
 	cutoff := s.now().Add(-RetentionPeriod).UnixMilli()
 	const old = `SELECT c.id FROM contests c WHERE c.ends_at + 60000 * (c.extended_minutes +
 		coalesce((SELECT max(minutes) FROM contest_extensions e WHERE e.contest_id = c.id), 0)) < ?`
+	// inCase is filled with the table name whose row is being checked.
+	const inCase = ` AND NOT EXISTS (SELECT 1 FROM integrity_case_users cu JOIN integrity_cases ic ON ic.id = cu.case_id
+		WHERE cu.user_id = %[1]s.user_id AND ic.contest_id = %[1]s.contest_id AND ic.state IN ('open', 'awaiting_student'))`
 	tx, err := s.DB.BeginTx(ctx, nil)
 	if err != nil {
 		return 0, 0, err
 	}
 	defer tx.Rollback()
-	res, err := tx.ExecContext(ctx, "DELETE FROM integrity_events WHERE contest_id IN ("+old+")", cutoff)
+	res, err := tx.ExecContext(ctx, "DELETE FROM integrity_events WHERE contest_id IN ("+old+")"+fmt.Sprintf(inCase, "integrity_events"), cutoff)
 	if err != nil {
 		return 0, 0, err
 	}
 	events, _ = res.RowsAffected()
 	res, err = tx.ExecContext(ctx, `UPDATE submissions SET client_hash = '', typed_chars = 0, pasted_chars = 0, focus_losses = 0
-		WHERE contest_id IN (`+old+`) AND (client_hash <> '' OR typed_chars <> 0 OR pasted_chars <> 0 OR focus_losses <> 0)`, cutoff)
+		WHERE contest_id IN (`+old+`) AND (client_hash <> '' OR typed_chars <> 0 OR pasted_chars <> 0 OR focus_losses <> 0)`+
+		fmt.Sprintf(inCase, "submissions"), cutoff)
 	if err != nil {
 		return 0, 0, err
 	}

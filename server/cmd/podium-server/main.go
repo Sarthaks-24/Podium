@@ -22,6 +22,7 @@ import (
 	"github.com/Sarthaks-24/podium/internal/db"
 	"github.com/Sarthaks-24/podium/internal/events"
 	"github.com/Sarthaks-24/podium/internal/httpapi"
+	"github.com/Sarthaks-24/podium/internal/integrity"
 	"github.com/Sarthaks-24/podium/internal/jobs"
 	"github.com/Sarthaks-24/podium/internal/judgeapi"
 	"github.com/Sarthaks-24/podium/internal/problems"
@@ -119,12 +120,21 @@ func run(envFile string) error {
 		submissionSvc.OnJobChange(jobID, kind)
 		contestSvc.OnJobChange(jobID, kind)
 	}
+	// Integrity checks run in one background goroutine on this server,
+	// not on the judge (D49).
+	integritySvc := &integrity.Service{DB: database, Problems: problemSvc, Log: log}
+	if n, err := integritySvc.Recover(ctx); err != nil {
+		return fmt.Errorf("integrity: mark interrupted checks: %w", err)
+	} else if n > 0 {
+		log.Warn("integrity checks interrupted by the last shutdown marked as failed", "count", n)
+	}
 	go sweepJobs(ctx, jobSvc, log)
-	go retainIntegrity(ctx, contestSvc, log)
+	go retainIntegrity(ctx, contestSvc, integritySvc, log)
 	handler := httpapi.New(httpapi.Deps{
 		DB: database, Log: log, WebApp: webui.Handler(),
 		Auth: authSvc, IdP: provider, BaseURL: cfg.BaseURL, SessionSecret: cfg.SessionSecret,
-		Problems: problemSvc, Submissions: submissionSvc, Hub: hub, Contests: contestSvc, Mode: string(cfg.Mode),
+		Problems: problemSvc, Submissions: submissionSvc, Hub: hub, Contests: contestSvc, Integrity: integritySvc,
+		Mode: string(cfg.Mode),
 	})
 	srv := &http.Server{
 		BaseContext:       func(net.Listener) context.Context { return base },
@@ -196,9 +206,11 @@ func sweepJobs(ctx context.Context, j *jobs.Service, log *slog.Logger) {
 	}
 }
 
-// retainIntegrity applies the integrity retention rule (D47: evidence is
-// deleted 180 days after a contest ends) at start-up and every 12 hours.
-func retainIntegrity(ctx context.Context, c *contests.Service, log *slog.Logger) {
+// retainIntegrity applies the integrity retention rules at start-up and
+// every 12 hours: contest records are deleted 180 days after a contest
+// ends, except for students in an open case (D47), and a closed case's
+// evidence and explanations are emptied 2 years after its decision.
+func retainIntegrity(ctx context.Context, c *contests.Service, cases *integrity.Service, log *slog.Logger) {
 	t := time.NewTicker(12 * time.Hour)
 	defer t.Stop()
 	for {
@@ -206,6 +218,11 @@ func retainIntegrity(ctx context.Context, c *contests.Service, log *slog.Logger)
 			log.Warn("integrity retention failed", "err", err)
 		} else if events > 0 || subs > 0 {
 			log.Info("integrity data past retention removed", "events", events, "submissions", subs)
+		}
+		if n, err := cases.Retain(ctx); err != nil && ctx.Err() == nil {
+			log.Warn("integrity case retention failed", "err", err)
+		} else if n > 0 {
+			log.Info("integrity case evidence past retention removed", "cases", n)
 		}
 		select {
 		case <-ctx.Done():
