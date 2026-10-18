@@ -36,6 +36,8 @@ statement.md        the statement in Markdown
 solution.cpp        reference solution (any name; problem.yaml names it)
 brute.py            brute force solution (optional)
 validator.py        input validator (optional)
+generator.py        test generator (optional; see "Tests from a generator")
+tests.yaml          the generator's planned tests (optional; this name is fixed)
 checker.cpp         testlib checker (required when checker is custom; this name is fixed)
 tests/01.in         test inputs and their expected outputs (outputs may be left out)
 tests/01.out
@@ -62,11 +64,13 @@ difficulty: medium              # easy, medium, hard, or leave it out
 reference: solution.cpp         # required: the setter's correct solution
 brute: brute.js                 # optional: a slow, obviously correct solution
 validator: validator.py         # optional: checks every input against the constraints
+generator: generator.py         # optional: makes the inputs planned in tests.yaml
 samples: [1, 2]                 # test numbers shown with the statement; they carry no points
 subtasks:                       # at least one; scored all or nothing
   - points: 30                  # 1 to 1000; the subtasks should add up to 100
     title: Small n              # optional
     tests: "3-4"                # range list, see "Samples and subtasks"
+    generator_args: [n=100]     # optional: proposed arguments for this subtask's planned tests
   - points: 70
     title: Large n
     tests: "5-6"
@@ -80,6 +84,7 @@ Quote every `tests` value, so YAML reads it as text.
 - An expected output may be left out. Such a test shows "Output missing" in the editor, and the problem lists "Test 3 has no expected output." until you choose Generate outputs (see "Generating outputs"). Validation and judging wait until every test has one.
 - An output without its input is refused.
 - At most 16 MB per file.
+- A test planned in `tests.yaml` needs no files: Generate inputs makes its input and Generate outputs its output. A pack must have at least one test file or one planned test.
 
 ## Statement
 
@@ -179,6 +184,97 @@ How it runs:
 
 Generated outputs are ordinary test files: Download pack includes them, and they can be replaced later with "Replace tests".
 
+## Tests from a generator
+
+Instead of writing every input by hand, give the problem a generator and a plan: the judge runs the generator once per planned test and keeps what it prints as that test's input.
+
+### generator.py
+
+- Any of the four languages; Python 3 with the standard library is the usual choice.
+- `argv[1]` is the seed, an integer from 0 to 2147483647. The rest are the test's arguments, each up to 64 characters of letters, digits and `_ . , : = + -` (no spaces or braces), at most 16. Writing them `key=value` keeps them readable.
+- Same seed and arguments, same output: seed your random generator with the seed (`random.Random(seed)`), never the clock.
+- Print exactly one input on standard output. Standard input is empty.
+- Limits per test: 5 s of CPU times the language factor (a Python generator gets 15 s), 256 MB, 16 MB of output.
+- It runs in isolate like any setter code, never on the server.
+
+```python
+import random
+import sys
+
+seed = int(sys.argv[1])
+opts = dict(arg.split("=", 1) for arg in sys.argv[2:])
+max_n = int(opts.get("n", "100"))
+rng = random.Random(seed)
+n = max_n if seed % 2 == 0 else rng.randint(1, max_n)   # even seeds hit the maximum size
+values = [rng.randint(-10**9, 10**9) for _ in range(n)]
+print(n)
+print(" ".join(map(str, values)))
+```
+
+### tests.yaml
+
+A YAML list, parsed strictly like `problem.yaml`. Each entry makes one test:
+
+```yaml
+- test: 3          # the test number this input becomes; not a sample
+  subtask: 1       # the subtask it is meant for (the subtask's range must list it)
+  seed: 3
+  args: [n=100]
+- test: 4
+  subtask: 1
+  seed: 4
+  args: [n=100]
+- test: 5
+  subtask: 2
+  seed: 5
+  args: [n=200000]
+- test: 6
+  subtask: 2
+  seed: 6
+  args: [n=200000]
+```
+
+Rules: each test number once, 1 to 999, never a sample (samples come from the statement); the subtask must exist; planned tests need a generator. A planned test that a subtask's range does not list, or that has no input yet, is a warning in the editor. `generator_args` on a subtask in `problem.yaml` are the arguments the editor proposes when you plan more tests for it.
+
+### Generate inputs
+
+Generate inputs in the editor runs the generator for every planned test, in one judge job. When every planned test got an input, outputs are generated from the reference, and when every output arrived, validation is queued: one press, three steps, each shown in the editor.
+
+- Nothing is applied unless every planned test got an input. Each failure is named: "The generator failed on test 7 (subtask 2, seed 3): Runtime error.", followed by the end of the generator's error output. An empty output is named too.
+- A planned input replaces any test with the same number, and that test's expected output is cleared until outputs are generated.
+- If the problem, the generator or the plan changed while the job ran, nothing is applied. Generate again.
+- Only one input or output generation per problem runs at a time.
+
+## The AI wizard
+
+"New problem with AI" on the problem bank asks a model to write a whole problem: statement, samples, subtasks, a C++ reference, a Python brute force, a Python generator with its plan, a Python validator, the checker and limits. An owner or admin pastes their own provider key first (Anthropic; see `docs/OPERATIONS.md`, "AI wizard keys"). The key stays in the server's memory for 2 hours and is forgotten on sign-out.
+
+### From a brief
+
+Give a topic, a difficulty (easy, medium or hard), constraints and subtask ideas, each up to 2,000 characters. Concrete constraints ("n up to 2e5, values up to 1e9 in absolute value") give better generators and validators than adjectives ("large").
+
+### From pasted text
+
+Paste an existing problem, up to 20,000 characters. The model rewrites it in its own words as a standard input and output problem; the text goes to the model as data inside a delimited block, and instructions hidden in it are ignored.
+
+Problem statements on LeetCode, Codeforces and similar sites are copyrighted. The rewrite keeps the idea, not the prose, but the result is still derived from someone else's work: use it in your own contests, and do not publish or redistribute such packs.
+
+### What happens next
+
+1. The answer is checked: every field, the sample count, subtask points adding up to 100, the planned tests, and the editor's own rules. An answer that fails is sent back once with the reasons; if the second one fails too, the wizard says "The model's answer could not be used." and lists them.
+2. A draft problem is created with origin `ai` and the tag "ai draft". The tag stays until a person saves the problem.
+3. Generate inputs is queued at once, which chains Generate outputs and Validate (see "Tests from a generator"). The editor shows each step.
+4. You read every part of the draft, fix what needs fixing, save it and validate it. The aim is a draft that needs at most one manual edit.
+
+The model's code is never run on the server: it goes to the judge, in isolate, like any setter's code. Nothing AI-made reaches students before a person has reviewed and validated it: only validated problems can be added to a contest, and a problem still tagged "ai draft" is refused even when the chain validated it ("The problem for label B is an AI draft. Read it and save it in the editor before adding it to a contest.").
+
+One AI request per admin runs at a time, for at most 3 minutes. A refusal by the model, a cut-off answer, a rate limit or a provider outage is shown in words; nothing is created.
+
+### Can a model solve this?
+
+In the editor, "Can a model solve this?" sends the statement alone (no tests, no reference) to the same provider and asks for a C++ solution. The answer is judged on the problem's tests as your own submission, and the editor shows "A model solved this zero-shot: N of 100". A high score is a warning for graded contests: students with an AI assistant can likely solve it too. It runs only when you press it, and only on a problem that can be judged (every test has an output).
+
+
 ## Validation
 
 Validation runs the problem on the real judge, in isolate, exactly as a contest would. Choose Validate in the editor; the report updates every 2 seconds while the job waits and runs. Validation has the lowest priority, behind all contest work.
@@ -247,7 +343,7 @@ The full table of every program on every test opens on request below the report.
 
 Title, slug, statement, tags, difficulty and subtask titles do not. Upgrading the judge does not either; but if a later run of the very same content fails (a slower judge, a fixed judge bug), the validation is withdrawn.
 
-Generating outputs changes test files, so it unvalidates the problem too.
+Generating outputs or inputs changes test files, so it unvalidates the problem too. The generator and the plan themselves are not in the hash (decision D53): editing the generator does not unvalidate the tests it already made. Generate inputs again to use the new generator.
 
 ## Trying a problem as a student
 
@@ -289,9 +385,12 @@ Only one pack import, test replacement or pack download runs at a time; a second
 | Edit | Statement on the left with a live preview on the right; limits, checker, samples and subtasks; reference, brute force, validator and checker as a language and a source each (in a plain text field; the code editor is in the workspace). Save changes. |
 | Replace tests | Upload a zip of `NN.in` files, each with an optional `NN.out`, at its top level or in `tests/`. Every test is replaced; samples and subtask ranges stay as written, and the editor lists any that no longer fit. Single test files can be downloaded from the test list. |
 | Generate outputs | Fills missing outputs from the reference solution; "Regenerate all outputs" replaces them all after a confirmation (see "Generating outputs"). |
+| Generate inputs | Runs the generator for every planned test, then generates outputs and validates (see "Tests from a generator"). |
+| New problem with AI | On the problem bank: the AI wizard writes a draft from a brief or from pasted text (see "The AI wizard"). |
+| Can a model solve this? | Sends the statement to the AI provider and judges its answer (see "The AI wizard"). |
 | Validate | Saves unsaved changes first, then queues the run. |
 | Try as a student | Opens the problem in the student workspace (see "Trying a problem as a student"). |
-| Download pack | The same layout as an import, ready to re-import or keep in version control. Sources are named `solution`, `brute` and `validator` with their language's extension, and tests are numbered with two digits (three from test 100). Outputs not generated yet are left out. |
+| Download pack | The same layout as an import, ready to re-import or keep in version control. Sources are named `solution`, `brute`, `validator` and `generator` with their language's extension, the plan is written to `tests.yaml`, and tests are numbered with two digits (three from test 100). Outputs not generated yet are left out. |
 | Archive problem | Asks to confirm, then hides the problem from the bank. Its tests and history are kept; "Show archived" lists it again. |
 
 ## Example packs

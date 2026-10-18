@@ -258,8 +258,9 @@ func withoutKind(kinds []any, drop string) []any {
 	return out
 }
 
-// heavyKinds are the setters' jobs that run a problem's whole test set.
-var heavyKinds = map[string]bool{judgeapi.KindValidate: true, judgeapi.KindGenerate: true}
+// heavyKinds are the setters' jobs that run a problem's whole test set or
+// its generator.
+var heavyKinds = map[string]bool{judgeapi.KindValidate: true, judgeapi.KindGenerate: true, judgeapi.KindGenerateInputs: true}
 
 // contestGate drops validation and generation from the kinds a worker may
 // claim while a graded contest is live and one such job is already leased,
@@ -281,8 +282,8 @@ func (s *Service) contestGate(ctx context.Context, tx *sql.Tx, kinds []any, now 
 	if err := tx.QueryRowContext(ctx, `SELECT
 		EXISTS (SELECT 1 FROM contests c WHERE c.graded = 1 AND c.published = 1 AND c.archived = 0 AND c.starts_at <= ?
 			AND c.ends_at + 60000 * (c.extended_minutes + coalesce((SELECT max(minutes) FROM contest_extensions e WHERE e.contest_id = c.id), 0)) > ?),
-		(SELECT count(*) FROM jobs WHERE state = 'leased' AND kind IN (?, ?))`,
-		ms, ms, judgeapi.KindValidate, judgeapi.KindGenerate).Scan(&live, &leased); err != nil {
+		(SELECT count(*) FROM jobs WHERE state = 'leased' AND kind IN (?, ?, ?))`,
+		ms, ms, judgeapi.KindValidate, judgeapi.KindGenerate, judgeapi.KindGenerateInputs).Scan(&live, &leased); err != nil {
 		return nil, err
 	}
 	if live == 0 || leased == 0 {
@@ -352,7 +353,7 @@ func (s *Service) MayFetch(ctx context.Context, jobID int64, lease, sha string) 
 }
 
 // Uploader is implemented by kinds whose worker sends files back (output
-// generation). MaxUploads bounds how many files one job may send; every
+// and input generation). MaxUploads bounds how many files one job may send; every
 // output hash a report names must be one of them.
 type Uploader interface {
 	MaxUploads(payload json.RawMessage) int

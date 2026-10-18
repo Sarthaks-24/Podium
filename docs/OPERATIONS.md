@@ -106,6 +106,8 @@ Listed in the order the server reads them. The testing, dev and production colum
 | `PODIUM_JUDGE_TOKEN` | optional | optional | required | testing and dev: the public testing token | Shared token for the judge API, at least 32 characters (`openssl rand -hex 32`). The same value goes in `judge.env`. Production refuses the testing token. Secret. |
 | `PODIUM_LOG_LEVEL` | optional | optional | optional | `info` | `debug`, `info`, `warn` or `error`. |
 
+The AI wizard's provider key is deliberately not a variable: an admin pastes it in the web app and the server holds it in memory only (see "AI wizard keys").
+
 ### Google sign-in
 
 Needed in dev and production mode only.
@@ -196,6 +198,7 @@ Checked by the server before anything is queued. Every refusal is `429` with the
 | Request body | 160 KB | Run, Submit, drafts |
 | Integrity events | one batch per user every 5 s, 100 per request; after 5,000 per user per problem, more are dropped | the editor's paste, blur and focus events |
 | Clarifications | 5 unanswered questions per student per contest (`400`) | Ask |
+| AI requests | one running per admin, at most 3 minutes (`429 busy` without `retry_after_s`: try again when it ends) | the AI wizard, Can a model solve this? |
 | Event streams | 4 per user (a fifth replaces the oldest, which is told and stops reconnecting), 5,000 in total (then `503`, and the page polls) | `GET /api/events` |
 
 A retried Submit with the same `client_key` returns the first submission and is not counted again, so a flaky network does not trip these limits. Only the contest limits are configurable, per contest in its settings.
@@ -239,6 +242,32 @@ The server logs `integrity check started`, `integrity case opened`, `integrity c
 
 **Retention of cases.** A case keeps its evidence and the students' explanations for 2 years after it is cleared or actioned. Then the same 12-hourly job empties both and logs `integrity case evidence past retention removed` with the count; the case, its title and its decision log with the reasons stay. Open and awaiting_student cases are never emptied, and reopening a closed case restarts the clock at its next decision.
 
+## AI wizard keys
+
+The AI wizard ("New problem with AI" and "Can a model solve this?", `docs/AUTHORING.md`) uses the organiser's own Anthropic API key. There is no variable for it and nothing to configure on the VM (decision D50).
+
+Adding a key:
+
+1. Get an API key from the Anthropic Console (console.anthropic.com, API keys). A workspace with a spending limit is a good idea.
+2. In podium, signed in as an owner or admin, open AI assistant in the problem bank, choose a model and paste the key.
+3. The server checks it with one model lookup, which costs no tokens, and shows "Key active until 14:32". A refusal says why ("Anthropic refused the key. Check it and paste it again."), never repeating the key.
+
+Models offered: Claude Opus 5.5 (default), Claude Sonnet 5.5, Claude Haiku 5.5. Opus and Sonnet requests have server-side refusal fallbacks switched on (beta `server-side-fallback-2026-07-01`): when the safety classifier refuses a request for a reason that does not apply to a fallback model, that model answers instead of the request failing, and the answer may then come from a different model than the one chosen. Haiku has no fallback (D54).
+
+| Stored | Not stored |
+|---|---|
+| The drafts the wizard creates (origin `ai`), like any problem | The key: held in the server's memory only, tied to the session that pasted it |
+| A log line per request with user id, provider, model and outcome code | The key, the brief, the pasted text or the model's answer in any log |
+| The solve submission, as the admin's own submission | The key in any job payload, the database, backups, `cache/` or the judge |
+
+- The key lasts 2 hours, then the form asks for it again. Signing out, signing in again in the same browser, removing the key in the form, or restarting the server forgets it at once.
+- Each admin's key is their own: another admin's session cannot use it.
+- One AI request per admin at a time, at most 3 minutes each.
+- The server needs outbound HTTPS to `api.anthropic.com`. If the VM's firewall blocks it, every request ends with "The provider is unavailable. Try again in a few minutes."
+- The wizard's client adds about 5 MB to the server binary and no memory while idle.
+
+Testing mode (`PODIUM_MODE=testing`, `make dev-test`) also offers a "Test provider (canned problems)": no key, no network, two canned problems whose programs really work on the judge (one about a maximum subarray when the brief or text mentions "subarray" or "stretch", a pair sums problem otherwise). Use it to try the whole pipeline (draft, generate inputs, generate outputs, validate). It does not exist in dev or production.
+
 ## Event stream behind Caddy
 
 `GET /api/events` is a server-sent event stream that stays open as long as the page does. It needs no extra Caddy configuration: Caddy passes `text/event-stream` responses through without buffering, and the shipped Caddyfile also sets `flush_interval -1` and leaves `/api/events` out of compression. The server sends `event: clock` every 25 s, which keeps the connection from looking idle to any proxy in between.
@@ -271,6 +300,7 @@ If clock lines arrive in bursts or only when the request ends, something between
 | A custom checker takes several seconds to compile | Expected: `testlib.h` is a large header. Checkers get a 30 s CPU compile budget instead of the usual 10 s | Nothing. A checker that needs more than 30 s is reported as a compile error. |
 | A second pack import waits | Imports, test replacements and pack downloads run one at a time, because each can hold over 100 MB in memory | Wait for the first to finish. |
 | "Generating outputs" never finishes | No worker is claiming jobs, as for validation | As the first row. Generation runs after contest work, before validation. |
+| "Generating inputs" ends with "The generator failed on test 7 (subtask 2, seed 3)" | The generator crashed, ran out of time or memory, or printed nothing for that seed and those arguments | Run the generator locally with the same argv (`python3 generator.py 3 n=1000`), fix it, save, and Generate inputs again. Nothing was applied, so no test changed. |
 | Run or Submit says "This problem cannot be judged yet" | Tests outside subtasks, or tests without an expected output | Fix the listed items in the editor; choose Generate outputs for missing outputs. |
 
 ## Upgrade
@@ -300,6 +330,13 @@ Upgrading to M4 from M3:
 Adding integrity checks:
 
 1. `sudo ./install.sh app`, then `sudo systemctl restart podium-server`. Migration `0006_integrity.sql` runs on start and only adds tables, so existing contests and submissions are untouched and can be checked at once. No new variables; the judge needs no change.
+
+Upgrading to M5 (AI wizard):
+
+1. Take a backup first (see "Backups"): migration `0007_wizard.sql` edits the schema text of the `jobs` table in place.
+2. `sudo ./install.sh app`, then `sudo systemctl restart podium-server podium-judge`. Restart both: the server must know the new `generate_inputs` job kind before a judge claims one. No new variables.
+3. Migration `0007_wizard.sql` adds the generator columns and the `input_generations` table, and widens the allowed job kinds by rewriting the `CREATE TABLE jobs` text with SQLite's `writable_schema` procedure (decision D52): a table rebuild would cascade-delete every job result, because foreign keys stay on during migrations. No row changes. To check afterwards: `sqlite3 /var/lib/podium/db/podium.db "PRAGMA integrity_check"` prints `ok`.
+4. To use the wizard, an admin adds a key in the web app (see "AI wizard keys"). Nothing goes in `server.env`.
 
 ## Backups
 

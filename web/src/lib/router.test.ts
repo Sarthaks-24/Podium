@@ -7,6 +7,8 @@ describe('matchRoute', () => {
     expect(matchRoute('/signin').route.name).toBe('signin');
     expect(matchRoute('/admin/people').route.name).toBe('people');
     expect(matchRoute('/admin/problems').route.name).toBe('problems');
+    expect(matchRoute('/admin/ai').route.name).toBe('ai-settings');
+    expect(matchRoute('/admin/ai/new').route.name).toBe('ai-new');
     expect(matchRoute('/admin/problems/12')).toEqual({ route: expect.objectContaining({ name: 'problem' }), params: { id: '12' } });
   });
 

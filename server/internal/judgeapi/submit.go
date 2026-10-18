@@ -76,4 +76,8 @@ type GeneratePayload struct {
 	// All replaces every output; otherwise only missing outputs are
 	// filled.
 	All bool `json:"all"`
+	// ThenValidate asks the server to queue a validation when every
+	// output arrived (set when generate_inputs queued this job). The
+	// worker ignores it.
+	ThenValidate bool `json:"then_validate,omitempty"`
 }

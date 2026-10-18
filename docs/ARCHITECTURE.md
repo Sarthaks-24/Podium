@@ -34,18 +34,17 @@ Server packages (`server/internal`):
 | `httpapi` | public routes and middleware, and the judge API handler on its own listener |
 | `webui` | the embedded web app |
 | `auth` | Google sign-in, sessions, roles, testing-mode sign-in |
-| `problems` | problem bank, pack format, content hash, validation rules and summary, output generation |
+| `problems` | problem bank, pack format, content hash, validation rules and summary, output generation, generators and the generate inputs chain, AI drafts |
 | `submissions` | runs, submissions, drafts, rate limits, scoring, what each viewer may see, integrity counts |
 | `events` | the server-sent event hub: streams per user, fan-out, slow clients dropped |
 | `jobs` | the one queue of judge work: leases, results, uploads, sweeps, change notifications |
 | `judgeapi` | request and response types shared by server and judge |
 | `judge` | sandbox driver, verdicts, built-in and testlib checkers |
 | `judge/calib` | host calibration and the hostile-program suite |
-| `worker` | the judge's claim loop, blob cache, compile cache, and the validate, run, submit and generate jobs |
+| `worker` | the judge's claim loop, blob cache, compile cache, and the validate, run, submit, generate and generate_inputs jobs |
 | `contests` | schedules, windows, access, standings, clarifications, export, integrity retention |
 | `integrity` | integrity checks after a contest (lexers, winnowing, signals), the review cases and their retention |
-
-Later milestones add `ai`.
+| `ai` | the AI wizard's model side: the in-memory key store, the Anthropic client and the testing-mode fake, the problem schema and prompts, answer checks |
 
 ## Run modes
 
@@ -68,16 +67,16 @@ podium-server                                      podium-judge work (one loop p
   jobs table  <-- POST /api/judge/claim  ---------  every 2 s when idle, with jitter
               --> {job_id, lease, payload}
   blobs dir   <-- GET /api/judge/blob/{sha} -------  X-Podium-Job, X-Podium-Lease; re-hashed, cached
-  blobs dir   <-- PUT /api/judge/blob/{sha} -------  generate jobs only: one output, hash checked
+  blobs dir   <-- PUT /api/judge/blob/{sha} -------  generate and generate_inputs jobs only: hash checked
   job_results <-- POST /api/judge/report ---------  after each compile and test; empty = heartbeat
                   final: server computes summary, score, verdict
 ```
 
 | Piece | Design |
 |---|---|
-| One queue | A single `jobs` table (`kind`, `priority`, `state` queued, leased, done or failed, `payload`, lease hash, lease expiry, deadline, attempts). Four kinds: `run` (priority 10), `submit` (20 to 30), `generate` (85) and `validate` (90). A submission or run is a row in `submissions` that references its job, not a second queue. Lower priority numbers run first, so setter work waits behind contest work. |
+| One queue | A single `jobs` table (`kind`, `priority`, `state` queued, leased, done or failed, `payload`, lease hash, lease expiry, deadline, attempts). Five kinds: `run` (priority 10), `submit` (20 to 30), `generate` and `generate_inputs` (85) and `validate` (90). A submission or run is a row in `submissions` that references its job, not a second queue. Lower priority numbers run first, so setter work waits behind contest work. |
 | Fair queue | A submission's priority is 20 plus the number of the user's judged submissions on that problem, at most 30. Someone's first attempt goes ahead of someone else's tenth, so one person resubmitting cannot starve the room. Rejudges run at 50 and practice submissions at 60. |
-| Claim rules | Strict priority with three exceptions. After a run is claimed, the next claim takes other work first when any is waiting, so students pressing Run (priority 10) cannot starve submissions: at least every other claim is a submission. Jobs of a paused contest are skipped. While a graded contest is live, at most one validation or generation job is leased at a time, so setters' work never takes more than one lane from contest judging. |
+| Claim rules | Strict priority with three exceptions. After a run is claimed, the next claim takes other work first when any is waiting, so students pressing Run (priority 10) cannot starve submissions: at least every other claim is a submission. Jobs of a paused contest are skipped. While a graded contest is live, at most one validation or generation job (outputs or inputs) is leased at a time, so setters' work never takes more than one lane from contest judging. |
 | Upload budget | A generate job's upload slot is reserved, under the queue's lock, before the body is read and given back if the upload fails, so concurrent uploads under one lease cannot exceed the budget. The body streams to a temporary file in the blob directory while it is hashed and is renamed into place only if the hash matches, so uploads cost disk, not memory. When the job closes or its lease is swept, uploads that no problem recorded (and no other open job holds) are deleted. |
 | Results | One `job_results` row per compile or test result, so a report is an insert, and a unique key on (job, kind, test, role) refuses a result reported twice. |
 | Leases | A claim returns a random lease, stored only as its SHA-256. It lasts 60 s and every report renews it; the worker sends an empty report every 20 s during long runs. A sweep every 10 s requeues jobs whose lease expired and drops their partial results; the third expiry fails the job. A report with a stale lease gets 409 and the worker drops the job. |
@@ -110,7 +109,39 @@ Problems live in SQLite (`0003_problems.sql`: `problems`, `subtasks`, `testcases
 | One generation per problem at a time; "Regenerate all outputs" asks to confirm | Replacing outputs is the one action here that destroys setter data. |
 | Applied outputs change the content hash | The problem must pass validation again before a contest can use it. |
 
-Generators (programs that write the inputs) are still deferred.
+**Tests from a generator (M5).** A problem may carry a generator (setter code in any of the four languages, usually Python) and a plan: a list of tests, each with its subtask, a seed and arguments (`problems.generator_language`, `generator_source`, `generator_plan`, and `subtasks.generator_args` for the arguments the editor proposes). "Generate inputs" queues a `generate_inputs` job (priority 85): the judge compiles the generator, runs it in isolate once per planned test with argv seed then arguments and an empty stdin, and uploads each output through the same `PUT /api/judge/blob/{sha}` route and budget rules as output generation (one per planned test, plus 2). When every planned test got an input, the job's `Finish` stores them as tests and, in the same transaction, queues output generation from the reference with `then_validate` set; that job's `Finish` queues validation when every output arrived. One press runs the whole chain, and each step reports its own failures by test, subtask and seed.
+
+Arguments are limited to letters, digits and `_ . , : = + -` (64 characters, 16 per test) and seeds to a signed 32-bit integer. Braces are excluded because the judge substitutes `{mem}` in run commands; the arguments reach the program as argv after isolate's `--`, never through a shell. The worker checks them again before building a command line.
+
+**The generator is not part of the content hash (D53).** The content hash covers the tests the generator made, which is what students are judged on. Hashing the generator too would unvalidate a problem when someone tidies the generator without regenerating, although nothing a student sees changed. Instead a separate plan hash (generator language and source hash, plus the plan) travels in the `generate_inputs` payload, next to the content hash; `Finish` applies nothing if either changed while the job ran, so inputs from an older generator are never mixed in. Editing a generator therefore leaves validated tests alone until someone presses Generate inputs again.
+
+## AI wizard
+
+The `ai` package (M5) is the model side: the key store, the provider clients, the problem schema and prompts, and the checks that turn a model's answer into a draft. `httpapi` holds the routes and the in-memory wizard runs; `problems` turns a checked answer into a draft and runs the generator chain.
+
+```
+admin pastes key --> PUT /api/admin/ai/key --> ai.NewSecret at once --> Check (model lookup, no tokens) --> ai.Keys (memory, 2 h)
+admin: brief or text --> POST /api/admin/ai/wizard --> slot (one per admin) --> goroutine, 3 min:
+    ai.Generate: one structured call, checks, at most one retry
+    --> problems.CreateDraft (origin ai, tag "ai draft") --> RequestInputGeneration
+    --> generate_inputs --> generate (then_validate) --> validate          (all on the judge, in isolate)
+```
+
+**The key never touches disk (D50).** The key is pasted by an admin, never configured: there is no environment variable, so the owner never has to put a provider key on the VM, and an organisation with no key loses nothing but the wizard. On the key route the request body is decoded into a local string, wrapped in `ai.Secret` and the string cleared before anything else runs. `Secret` prints, formats, marshals to JSON or text and logs (`slog.LogValuer`) as `[redacted]`; only the `ai` package can read the value, to hand it to the SDK per request with `option.WithAPIKey`, with the SDK's environment lookup switched off (`option.WithoutEnvironmentDefaults`). Keys sit in a map keyed by the SHA-256 of the session cookie, for 2 hours; a sweep every 10 minutes drops expired ones, signing out (or signing in again in the same browser) drops the session's key, and a restart drops them all. Provider errors are mapped to fixed sentences: the SDK's error holds the request, whose headers carry the key, and the raw response body, so it is never wrapped, formatted or logged. Job payloads hold only the generator, the plan and hashes. Request bodies are never logged. An end-to-end test runs the wizard with a real-looking key against a stand-in for the Claude API and then searches every log line (debug included), the SQLite database and WAL files and the blob store for it.
+
+**One structured call.** The client is the official Go SDK (`anthropic-sdk-go`, pinned). A generation streams (`Messages.NewStreaming`, accumulated), with `max_tokens` 64,000, thinking left at the model's default and effort `high`. The answer's shape is enforced with structured outputs: `output_config.format` carries a JSON schema for the whole pack (statement, samples, subtasks with generator arguments and test counts, C++ reference, Python brute force, generator and validator, checker, limits, tags, difficulty) with `additionalProperties: false` everywhere. Lengths and ranges are not expressible there, so the server decodes strictly and then checks the wizard's rules (one to five samples, points adding up to 100, at most 30 planned tests) and the editor's own field rules on the draft the answer would become. A failing answer is sent back once with the list of reasons; a cut-off answer (`stop_reason` `max_tokens`) is retried once with a request for a shorter answer; a refusal (`stop_reason` `refusal`) is reported with its category and not retried.
+
+**Refusal fallbacks (D54).** For Opus 5.5 and Sonnet 5.5 requests carry the beta `server-side-fallback-2026-07-01` with `fallbacks: "default"`, so a request refused by the safety classifier for a reason that does not apply to a fallback model is answered by that model instead of failing (contest problems about "attacks" on a grid or "exploiting" a recurrence are ordinary). A mid-stream fallback restarts the text, and the client keeps only the fallback's answer. Haiku 5.5 has no fallback. The default model is Opus 5.5; the admin may choose Sonnet 5.5 or Haiku 5.5.
+
+**Prompt injection.** The system prompt is fixed text. The brief or pasted text goes into the user message inside one `<brief>` or `<problem_text>` block, the system prompt says that everything inside it is data, and any tag in the data that could close the block early is defused. The worst a hostile text can do is make the model write a bad problem, which the checks, the judge and the admin's review catch: the model's code is never run on the server, only on the judge in isolate, like any setter's code.
+
+**Nothing AI-made reaches students unreviewed.** A draft carries the tag `ai draft` until a person saves it. The chain may validate the draft on its own, but a contest refuses a problem still tagged `ai draft`, and only validated problems can join a contest at all.
+
+**Can a model solve this?** sends the statement alone and asks for a C++17 solution, then judges the answer as the admin's own submission (client key `ai-solve-{wizard_id}`), so the editor reads the score from the ordinary submission view.
+
+**Limits.** One AI request per admin at a time (a second is refused, not queued, so a double click cannot spend twice), 3 minutes per request with its retry, 20,000 characters of pasted text. Wizard runs live in memory for an hour after they end. In testing mode a `fake` provider answers with two canned packs whose programs really work on the judge, so the whole pipeline is tested without a network or a key.
+
+**Cost on the VM.** The SDK adds about 4.9 MB to the stripped release binary (13.7 MB to 18.6 MB, linux/amd64, measured 2026-10-18; 7.1 MB unstripped) and nothing at rest: no goroutine runs until a request does.
 
 ## Submissions and scoring
 
@@ -268,6 +299,7 @@ One `GET /api/events` stream per open tab, served by the `events` hub. The jobs 
 | Limits | 4 streams per user and 5,000 in total (then `503 busy`, and the page polls). A fifth stream replaces the oldest, which first gets `event: replaced` so that tab stops reconnecting; without it, five tabs evicted each other in an endless reconnect loop. |
 | Session | Checked again on every clock tick; a stream ends with its session (sign-out, expiry, disabled account). |
 | Contest events | Standings versions, announcements, clarifications and new end times go to the connected users who belong to the contest, worked out with one query per event against the hub's list of connected users. There is no topic registry: membership (roster, co-organisers, publication) is read at send time, so a change of access applies to the next event. Standings events follow the board refresh, at most about one per contest every 2 s, and go to organisers only in exam-mode contests. |
+| Setter events (M5) | `wizard` goes to the admin who started an AI request when it ends. `input_generation` goes to the admin who queued a generate inputs job on each change, sent by one goroutine fed by a buffered channel from the change hook, so events keep their order and a full buffer drops an event rather than blocking judging (the editor also polls). |
 | Clock | `event: clock` with `server_now` on connect and every 25 s, instead of a comment ping: it keeps proxies from timing out an idle stream and lets the page keep an offset to the server's clock for contest timers. |
 | Fallback | After three failed connections the page polls every 15 s. |
 
@@ -361,6 +393,8 @@ Schema changes are numbered files in `server/internal/db/migrations` (`0001_iden
 
 Before the first release, M3 edited `0003_problems.sql` in place instead of adding a table rebuild: `testcases.output_sha` became nullable (outputs may be missing), `jobs.kind` accepts `submit`, `run` and `generate`, and `job_results` gained `output` (run excerpts) and `output_sha` (generated outputs, and the hash of a submission's output). A development database created before that change must be deleted (`docs/OPERATIONS.md`, "Upgrade").
 
+`0007_wizard.sql` (M5) adds the generator columns and `input_generations`, and widens the `jobs.kind` CHECK to accept `generate_inputs`. SQLite cannot alter a CHECK constraint, and the usual way round it, rebuilding the table, does not work here: with foreign keys on, dropping the old `jobs` table would cascade into `job_results` and delete every recorded result, and the migration runner cannot switch foreign keys off because `PRAGMA foreign_keys` is a no-op inside the transaction each migration runs in. So the migration widens the constraint in place with SQLite's documented `writable_schema` procedure: it rewrites only the text of the `CREATE TABLE jobs` statement in `sqlite_master` (every existing row already satisfies the wider check, and no page on disk changes), then `PRAGMA writable_schema = RESET` reloads the schema, and the `CREATE TABLE` that follows bumps the schema cookie so every other connection reloads it too (D52). A test upgrades a database holding jobs and results from 0006 to 0007 and checks the rows survive, every pooled connection accepts the new kind, `PRAGMA integrity_check` says `ok` and `foreign_key_check` finds nothing.
+
 Times are Unix milliseconds. Sessions are stored by the SHA-256 of the cookie value, so a copy of the database cannot be replayed as logins.
 
 ## Themes
@@ -421,6 +455,13 @@ isolate places every box under `isolate.service`, not under the `podium-judge` u
 | Fair queue priority | first come, first served | One student resubmitting in a loop cannot push everyone else's first attempt back. |
 | Compile cache keyed by language, command and source | compiling every job | Run then Submit is the common pattern, and compiles hold the scarce compile mutex. Load-dependent failures are not cached, so a busy moment never becomes a permanent CE. |
 | Output generation on the judge, uploaded under lease | running the reference on the server, or accepting any hash | The server never runs untrusted code; tying uploads to the job and its budget keeps the one judge-to-test-data path closed to everything else. |
+| Generators run on the judge, chained into outputs and validation | generating inputs on the server, or one button per step | Generator code is setter or model code and runs only in isolate; one press for the whole chain is what an AI draft needs to reach "Validated" with at most one edit. |
+| The generator outside the content hash, a plan hash in the payload (D53) | hashing the generator with the tests | Students are judged on the tests, not the generator; a tidy-up should not unvalidate a problem, yet inputs from an older generator must never be applied. |
+| AI key pasted per session, in memory only (D50) | an environment variable or a stored key | Nothing to leak from the disk, the database, backups or logs; the owner never handles a provider key, and a deployment without one loses only the wizard. |
+| Structured outputs plus server-side checks | asking for JSON in the prompt | The provider enforces the shape; the server still checks every rule the schema cannot express, and the answer passes the editor's own field rules before it becomes a draft. |
+| The official Anthropic Go SDK | a hand-written HTTP client | Streaming, retries, error types and beta fields are maintained upstream; it costs about 5 MB of binary and no memory at rest. |
+| Refusal fallbacks on for Opus and Sonnet (D54) | failing on any refusal | Contest problems use words like "attack" and "exploit" innocently; a fallback model answers instead of the request failing. |
+| Widening `jobs.kind` with `writable_schema` (D52) | rebuilding the table | A rebuild with foreign keys on would cascade into `job_results`, and migrations cannot turn foreign keys off. |
 | Event hub with a small buffer that drops slow clients | waiting for slow clients | A slow phone must never delay judging or other students' updates; reconnecting is cheap. |
 | A clock event every 25 s | a comment ping | The same keep-alive also gives the page the server's time for contest timers. |
 | `PODIUM_MODE` with a key-free testing mode | one strict configuration | Anyone can try podium and run browser tests against the real server with no Google client; production stays the strict default. |

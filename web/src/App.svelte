@@ -1,7 +1,8 @@
 <!--
   App: the shell around every screen. The header holds the podium word-mark
   (a link home) and, once signed in, the main navigation ("Contests" for
-  everyone, "Contest admin" and "Problems" for admins and owners, and
+  everyone, "Contest admin" and "Problems" for admins and owners, the
+  latter also current on the AI assistant screens, and
   "People" for owners), the user's name, a Sign out button and the theme
   menu. Under 768 px those collapse behind a Menu button that opens a
   panel; Escape closes it. The main area shows the screen for the current
@@ -22,6 +23,8 @@
   import { safeNext } from './lib/signin';
   import { showToast } from './lib/toast.svelte';
   import AdminContests from './routes/AdminContests.svelte';
+  import AiSettings from './routes/AiSettings.svelte';
+  import AiWizard from './routes/AiWizard.svelte';
   import ContestConsole from './routes/ContestConsole.svelte';
   import ContestEditor from './routes/ContestEditor.svelte';
   import ContestIntegrity from './routes/ContestIntegrity.svelte';
@@ -150,7 +153,7 @@
                 <li>
                   <a
                     href="/admin/problems"
-                    aria-current={route.name === 'problems' || route.name === 'problem' || route.name === 'problem-try'
+                    aria-current={['problems', 'problem', 'problem-try', 'ai-settings', 'ai-new'].includes(route.name)
                       ? 'page'
                       : undefined}>Problems</a
                   >
@@ -199,6 +202,10 @@
       {#key match.params.id}
         <ProblemTry id={match.params.id} />
       {/key}
+    {:else if route.name === 'ai-settings'}
+      <AiSettings />
+    {:else if route.name === 'ai-new'}
+      <AiWizard />
     {:else if route.name === 'contest' || route.name === 'contest-problem'}
       {#key match.params.slug}
         <ContestPage slug={match.params.slug} label={match.params.label ?? ''} />

@@ -92,6 +92,7 @@ func (d Deps) testSignIn(w http.ResponseWriter, r *http.Request) {
 	// As with Google, a new sign-in ends this browser's previous session.
 	if old, err := r.Cookie(d.sessionCookieName()); err == nil {
 		d.Auth.SignOut(r.Context(), old.Value)
+		d.forgetKey(old.Value)
 	}
 	d.setSessionCookie(w, token, expires)
 	d.Log.Info("test sign-in", "user_id", u.ID, "role", u.Role)
@@ -175,6 +176,7 @@ func (d Deps) googleCallback(w http.ResponseWriter, r *http.Request) {
 	// Signing in replaces any session this browser already had.
 	if old, err := r.Cookie(d.sessionCookieName()); err == nil {
 		d.Auth.SignOut(r.Context(), old.Value)
+		d.forgetKey(old.Value)
 	}
 	d.Log.Info("signed in", "user_id", u.ID, "role", u.Role)
 	d.setSessionCookie(w, token, expires)
@@ -184,6 +186,9 @@ func (d Deps) googleCallback(w http.ResponseWriter, r *http.Request) {
 
 func (d Deps) logout(w http.ResponseWriter, r *http.Request) {
 	if c, err := r.Cookie(d.sessionCookieName()); err == nil {
+		// The AI key goes first: it must not outlive the session even if
+		// the database write fails.
+		d.forgetKey(c.Value)
 		if err := d.Auth.SignOut(r.Context(), c.Value); err != nil {
 			d.internalError(w, r, err)
 			return

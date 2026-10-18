@@ -103,18 +103,19 @@ type queryer interface {
 
 func load(ctx context.Context, q queryer, id int64) (*Problem, error) {
 	p := &Problem{ID: id}
-	var tags, samples, bruteLang, bruteSrc, valLang, valSrc string
+	var tags, samples, bruteLang, bruteSrc, valLang, valSrc, genLang, genSrc, plan string
 	var vhash sql.NullString
 	var vat, author sql.NullInt64
 	var created, updated int64
 	err := q.QueryRowContext(ctx, `SELECT slug, title, statement_md, time_limit_ms, memory_limit_mb, checker, epsilon,
 		checker_source, reference_language, reference_source, brute_language, brute_source, validator_language,
 		validator_source, tags, difficulty, samples, origin, author_id, archived, created_at, updated_at,
-		content_hash, validated_hash, validated_at FROM problems WHERE id = ?`, id).Scan(
+		content_hash, validated_hash, validated_at, generator_language, generator_source, generator_plan
+		FROM problems WHERE id = ?`, id).Scan(
 		&p.Slug, &p.Title, &p.Statement, &p.TimeLimitMS, &p.MemoryLimitMB, &p.Checker, &p.Epsilon,
 		&p.CheckerSource, &p.Reference.Language, &p.Reference.Source, &bruteLang, &bruteSrc, &valLang,
 		&valSrc, &tags, &p.Difficulty, &samples, &p.Origin, &author, &p.Archived, &created, &updated,
-		&p.ContentHash, &vhash, &vat)
+		&p.ContentHash, &vhash, &vat, &genLang, &genSrc, &plan)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
@@ -127,6 +128,10 @@ func load(ctx context.Context, q queryer, id int64) (*Problem, error) {
 	if valSrc != "" {
 		p.Validator = &Source{valLang, valSrc}
 	}
+	if genSrc != "" {
+		p.Generator = &Source{genLang, genSrc}
+	}
+	json.Unmarshal([]byte(plan), &p.Plan)
 	json.Unmarshal([]byte(tags), &p.Tags)
 	json.Unmarshal([]byte(samples), &p.Samples)
 	if p.Tags == nil {
@@ -142,16 +147,18 @@ func load(ctx context.Context, q queryer, id int64) (*Problem, error) {
 	}
 	p.CreatedAt, p.UpdatedAt = time.UnixMilli(created), time.UnixMilli(updated)
 
-	rows, err := q.QueryContext(ctx, "SELECT idx, points, title, tests FROM subtasks WHERE problem_id = ? ORDER BY idx", id)
+	rows, err := q.QueryContext(ctx, "SELECT idx, points, title, tests, generator_args FROM subtasks WHERE problem_id = ? ORDER BY idx", id)
 	if err != nil {
 		return nil, err
 	}
 	for rows.Next() {
 		var st Subtask
-		if err := rows.Scan(&st.Idx, &st.Points, &st.Title, &st.Tests); err != nil {
+		var args string
+		if err := rows.Scan(&st.Idx, &st.Points, &st.Title, &st.Tests, &args); err != nil {
 			rows.Close()
 			return nil, err
 		}
+		json.Unmarshal([]byte(args), &st.GeneratorArgs)
 		p.Subtasks = append(p.Subtasks, st)
 	}
 	rows.Close()
@@ -314,9 +321,9 @@ func (s *Service) insert(ctx context.Context, tx *sql.Tx, p *Problem) error {
 	cols := rowValues(p)
 	err := tx.QueryRowContext(ctx, `INSERT INTO problems (slug, title, statement_md, time_limit_ms, memory_limit_mb,
 		checker, epsilon, checker_source, reference_language, reference_source, brute_language, brute_source,
-		validator_language, validator_source, tags, difficulty, samples, content_hash,
-		origin, author_id, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
+		validator_language, validator_source, tags, difficulty, samples, generator_language, generator_source,
+		generator_plan, content_hash, origin, author_id, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
 		append(cols, p.Origin, author, now.UnixMilli(), now.UnixMilli())...).Scan(&p.ID)
 	if isUnique(err) {
 		return FieldErrors{"slug": fmt.Sprintf("Another problem already uses the slug %s.", p.Slug)}
@@ -329,18 +336,22 @@ func (s *Service) insert(ctx context.Context, tx *sql.Tx, p *Problem) error {
 
 // rowValues are the editable columns in the order insert and update use.
 func rowValues(p *Problem) []any {
-	var bl, bs, vl, vs string
+	var bl, bs, vl, vs, gl, gs string
 	if p.Brute != nil {
 		bl, bs = p.Brute.Language, p.Brute.Source
 	}
 	if p.Validator != nil {
 		vl, vs = p.Validator.Language, p.Validator.Source
 	}
+	if p.Generator != nil {
+		gl, gs = p.Generator.Language, p.Generator.Source
+	}
 	tags, _ := json.Marshal(nonNil(p.Tags))
 	samples, _ := json.Marshal(nonNilInts(p.Samples))
+	plan, _ := json.Marshal(nonNilPlan(p.Plan))
 	return []any{p.Slug, p.Title, p.Statement, p.TimeLimitMS, p.MemoryLimitMB, p.Checker, p.Epsilon,
 		p.CheckerSource, p.Reference.Language, p.Reference.Source, bl, bs, vl, vs,
-		string(tags), p.Difficulty, string(samples), p.ContentHash}
+		string(tags), p.Difficulty, string(samples), gl, gs, string(plan), p.ContentHash}
 }
 
 func (s *Service) writeChildren(ctx context.Context, tx *sql.Tx, p *Problem) error {
@@ -348,8 +359,9 @@ func (s *Service) writeChildren(ctx context.Context, tx *sql.Tx, p *Problem) err
 		return err
 	}
 	for _, st := range p.Subtasks {
-		if _, err := tx.ExecContext(ctx, "INSERT INTO subtasks (problem_id, idx, points, title, tests) VALUES (?, ?, ?, ?, ?)",
-			p.ID, st.Idx, st.Points, st.Title, st.Tests); err != nil {
+		args, _ := json.Marshal(nonNil(st.GeneratorArgs))
+		if _, err := tx.ExecContext(ctx, "INSERT INTO subtasks (problem_id, idx, points, title, tests, generator_args) VALUES (?, ?, ?, ?, ?, ?)",
+			p.ID, st.Idx, st.Points, st.Title, st.Tests, string(args)); err != nil {
 			return err
 		}
 	}
@@ -378,6 +390,18 @@ type Edit struct {
 	Difficulty                 string
 	Samples                    []int
 	Subtasks                   []Subtask
+	// Generator, when set, replaces the generator, the plan and each
+	// subtask's generator arguments (taken from Subtasks). When nil they
+	// are kept, matched to subtasks by number, so an editor that does not
+	// know about generators cannot erase one.
+	Generator *GeneratorEdit
+}
+
+// GeneratorEdit is the generator part of an editor save. A nil or empty
+// Source removes the generator; the plan must then be empty.
+type GeneratorEdit struct {
+	Source *Source
+	Plan   []PlannedTest
 }
 
 // Update applies an edit. Field errors come back as FieldErrors.
@@ -395,8 +419,22 @@ func (s *Service) Update(ctx context.Context, id int64, e Edit) (*Problem, error
 	p.TimeLimitMS, p.MemoryLimitMB = e.TimeLimitMS, e.MemoryLimitMB
 	p.Checker, p.Epsilon, p.CheckerSource = e.Checker, e.Epsilon, e.CheckerSource
 	p.Reference, p.Brute, p.Validator = e.Reference, emptyToNil(e.Brute), emptyToNil(e.Validator)
-	p.Tags, p.Difficulty = nonNil(e.Tags), e.Difficulty
+	// A person's save ends the AI draft marking.
+	p.Tags, p.Difficulty = withoutAIDraftTag(nonNil(e.Tags)), e.Difficulty
+	oldArgs := map[int][]string{}
+	for _, st := range p.Subtasks {
+		oldArgs[st.Idx] = st.GeneratorArgs
+	}
 	p.Samples, p.Subtasks = nonNilInts(e.Samples), e.Subtasks
+	if e.Generator != nil {
+		p.Generator, p.Plan = emptyToNil(e.Generator.Source), e.Generator.Plan
+	} else {
+		for i := range p.Subtasks {
+			if p.Subtasks[i].GeneratorArgs == nil {
+				p.Subtasks[i].GeneratorArgs = oldArgs[i+1]
+			}
+		}
+	}
 	if errs := checkFields(p); errs != nil {
 		return nil, errs
 	}
@@ -423,7 +461,7 @@ func (s *Service) save(ctx context.Context, tx *sql.Tx, p *Problem) error {
 	_, err := tx.ExecContext(ctx, `UPDATE problems SET slug = ?, title = ?, statement_md = ?, time_limit_ms = ?,
 		memory_limit_mb = ?, checker = ?, epsilon = ?, checker_source = ?, reference_language = ?, reference_source = ?,
 		brute_language = ?, brute_source = ?, validator_language = ?, validator_source = ?, tags = ?, difficulty = ?,
-		samples = ?, content_hash = ?, updated_at = ? WHERE id = ?`,
+		samples = ?, generator_language = ?, generator_source = ?, generator_plan = ?, content_hash = ?, updated_at = ? WHERE id = ?`,
 		append(rowValues(p), p.UpdatedAt.UnixMilli(), p.ID)...)
 	if isUnique(err) {
 		return FieldErrors{"slug": fmt.Sprintf("Another problem already uses the slug %s.", p.Slug)}

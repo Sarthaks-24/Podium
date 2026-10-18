@@ -16,6 +16,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/Sarthaks-24/podium/internal/ai"
 	"github.com/Sarthaks-24/podium/internal/auth"
 	"github.com/Sarthaks-24/podium/internal/config"
 	"github.com/Sarthaks-24/podium/internal/contests"
@@ -98,12 +99,16 @@ func run(envFile string) error {
 	base, cancelBase := context.WithCancel(context.Background())
 	defer cancelBase()
 	blobs := problems.Blobs{Dir: cfg.TestsDir}
-	jobSvc := &jobs.Service{DB: database, Kinds: map[string]jobs.Kind{
-		judgeapi.KindValidate: problems.ValidateKind{},
-		judgeapi.KindGenerate: problems.GenerateKind{Store: blobs},
-		judgeapi.KindSubmit:   submissions.SubmitKind{},
-		judgeapi.KindRun:      submissions.RunKind{},
-	}}
+	// The kinds are set after the service exists: output and input
+	// generation queue the next step of their chain through it.
+	jobSvc := &jobs.Service{DB: database}
+	jobSvc.Kinds = map[string]jobs.Kind{
+		judgeapi.KindValidate:       problems.ValidateKind{},
+		judgeapi.KindGenerate:       problems.GenerateKind{Store: blobs, Jobs: jobSvc},
+		judgeapi.KindGenerateInputs: problems.GenerateInputsKind{Store: blobs, Jobs: jobSvc},
+		judgeapi.KindSubmit:         submissions.SubmitKind{},
+		judgeapi.KindRun:            submissions.RunKind{},
+	}
 	// Outputs a generate job's worker uploaded but nothing used are deleted
 	// when the job closes or its lease is swept.
 	jobSvc.Discard = func(shas []string) {
@@ -116,9 +121,18 @@ func run(envFile string) error {
 	submissionSvc := &submissions.Service{DB: database, Jobs: jobSvc, Problems: problemSvc, Hub: hub, HashKey: cfg.SessionSecret}
 	contestSvc := &contests.Service{DB: database, Problems: problemSvc, Hub: hub}
 	submissionSvc.ContestView = contestSvc.ViewFor
+	inputEvents := &httpapi.InputGenerationEvents{Problems: problemSvc, Hub: hub}
 	jobSvc.OnChange = func(jobID int64, kind string) {
 		submissionSvc.OnJobChange(jobID, kind)
 		contestSvc.OnJobChange(jobID, kind)
+		inputEvents.OnJobChange(jobID, kind)
+	}
+	// AI wizard keys live in this process's memory only (D50): no
+	// variable, no file, gone on restart.
+	aiKeys := &ai.Keys{}
+	go sweepAIKeys(ctx, aiKeys)
+	if cfg.Mode == config.ModeTesting {
+		log.Warn("testing mode: the AI wizard offers the test provider with canned problems")
 	}
 	// Integrity checks run in one background goroutine on this server,
 	// not on the judge (D49).
@@ -134,6 +148,7 @@ func run(envFile string) error {
 		DB: database, Log: log, WebApp: webui.Handler(),
 		Auth: authSvc, IdP: provider, BaseURL: cfg.BaseURL, SessionSecret: cfg.SessionSecret,
 		Problems: problemSvc, Submissions: submissionSvc, Hub: hub, Contests: contestSvc, Integrity: integritySvc,
+		AI:   &httpapi.AI{Keys: aiKeys, Slots: &ai.Slots{}},
 		Mode: string(cfg.Mode),
 	})
 	srv := &http.Server{
@@ -228,6 +243,22 @@ func retainIntegrity(ctx context.Context, c *contests.Service, cases *integrity.
 		case <-ctx.Done():
 			return
 		case <-t.C:
+		}
+	}
+}
+
+// sweepAIKeys drops expired AI keys every 10 minutes, so a key whose
+// session never comes back does not stay in memory past its two hours by
+// more than that.
+func sweepAIKeys(ctx context.Context, k *ai.Keys) {
+	t := time.NewTicker(10 * time.Minute)
+	defer t.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+			k.Sweep()
 		}
 	}
 }

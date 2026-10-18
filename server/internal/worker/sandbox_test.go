@@ -61,12 +61,14 @@ func newRig(t *testing.T) *rig {
 	}
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
 	blobs := problems.Blobs{Dir: filepath.Join(t.TempDir(), "tests")}
-	jobSvc := &jobs.Service{DB: d, Kinds: map[string]jobs.Kind{
-		judgeapi.KindValidate: problems.ValidateKind{},
-		judgeapi.KindGenerate: problems.GenerateKind{Store: blobs},
-		judgeapi.KindSubmit:   submissions.SubmitKind{},
-		judgeapi.KindRun:      submissions.RunKind{},
-	}}
+	jobSvc := &jobs.Service{DB: d}
+	jobSvc.Kinds = map[string]jobs.Kind{
+		judgeapi.KindValidate:       problems.ValidateKind{},
+		judgeapi.KindGenerate:       problems.GenerateKind{Store: blobs, Jobs: jobSvc},
+		judgeapi.KindGenerateInputs: problems.GenerateInputsKind{Store: blobs, Jobs: jobSvc},
+		judgeapi.KindSubmit:         submissions.SubmitKind{},
+		judgeapi.KindRun:            submissions.RunKind{},
+	}
 	bank := &problems.Service{DB: d, Blobs: blobs, Jobs: jobSvc}
 	subs := &submissions.Service{DB: d, Jobs: jobSvc, Problems: bank}
 	if _, err := d.Exec(`INSERT INTO users (id, email, role, created_at) VALUES (1, 'setter@college.edu', 'admin', 0)`); err != nil {

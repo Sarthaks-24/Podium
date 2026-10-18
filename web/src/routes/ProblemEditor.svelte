@@ -23,8 +23,21 @@
   from 1440 px), the warnings, Download pack and Archive problem, and the
   validation report, polled every 2 s while the judge has the job. Server
   field errors appear next to their fields and as a list of links above
-  the actions. Leaving with unsaved changes asks first. Props: `id`, the
-  problem id from the address.
+  the actions. Leaving with unsaved changes asks first.
+
+  From M5 (when the server sends a "generator" key) there is a Generator
+  section between the tests and the solutions: the generator program, its
+  arguments per subtask, and the plan as a compact table of test, subtask,
+  seed and arguments with rows to add and remove, then "Generate inputs"
+  with its result in place (failures name the test, subtask and seed); good
+  inputs chain into output generation and validation, each shown where it
+  already is. A problem the wizard made carries an "AI draft" tag in the
+  bar and a note until a person saves it. Last, "Can a model solve this?"
+  asks a model for a solution after a confirmation, follows the `wizard`
+  and `submission` live events with polling as the fallback, and shows
+  "A model solved this zero-shot: N of 100" with what that means for graded
+  contests and a link to the submission. Props: `id`, the problem id from
+  the address.
 -->
 <script lang="ts">
   import { onMount, tick } from 'svelte';
@@ -32,6 +45,20 @@
   import ProgramField from '../components/ProgramField.svelte';
   import StatementPreview from '../components/StatementPreview.svelte';
   import ValidationReport from '../components/ValidationReport.svelte';
+  import {
+    aiPaths,
+    inputGenPending,
+    inputGenReport,
+    isAIDraft,
+    isKeyProblem,
+    modelLabel,
+    solveLine,
+    solveMeaning,
+    wizardPending,
+    type InputGeneration,
+    type KeyStatus,
+    type Wizard,
+  } from '../lib/ai';
   import { ApiError, getJSON, sendBody, sendJSON } from '../lib/api';
   import { setTitle } from '../lib/head';
   import {
@@ -43,8 +70,10 @@
     formatBytes,
     isFailure,
     isPending,
+    nextPlanRow,
     ordinal,
     problemPath,
+    readPlan,
     toDraft,
     toEdit,
     verdictLabel,
@@ -54,8 +83,9 @@
   } from '../lib/problems';
   import { navigate, setNavigationGuard } from '../lib/router.svelte';
   import { session } from '../lib/session.svelte';
+  import { EventStream, type StreamMode } from '../lib/stream';
   import { showToast } from '../lib/toast.svelte';
-  import { formatMs, type Generation } from '../lib/workspace';
+  import { formatMs, type Generation, type Submission } from '../lib/workspace';
 
   let { id }: { id: string } = $props();
 
@@ -93,6 +123,21 @@
   let leaveTo = $state<string | null>(null);
 
   let addSubtaskButton: HTMLButtonElement | undefined = $state();
+
+  // M5: the generator, its plan, and generating inputs from it.
+  let inputGen = $state<InputGeneration | null>(null);
+  let inputGenError = $state<{ message: string; problems: readonly string[] } | null>(null);
+  let inputGenBusy = $state(false);
+  let addPlanButton: HTMLButtonElement | undefined = $state();
+
+  // M5: "Can a model solve this?"
+  let aiStatus = $state<KeyStatus | null>(null);
+  let solveOpen = $state(false);
+  let solveBusy = $state(false);
+  let solveWizard = $state<Wizard | null>(null);
+  let solveSubmission = $state<Submission | null>(null);
+  let solveError = $state<{ message: string; code: string; reasons: readonly string[] } | null>(null);
+  let solveMode = $state<StreamMode>('connecting');
 
   let phone = $state(false);
   let statementTab = $state<'write' | 'preview'>('write');
@@ -154,6 +199,35 @@
     return { tone: 'ok', text: `Generated ${n} ${n === 1 ? 'output' : 'outputs'}. Slowest run ${formatMs(slowest)}.`, lines: [] as string[] };
   });
 
+  // A server from M5 on sends "generator" (null when there is none).
+  const hasGenerator = $derived(problem !== null && problem.generator !== undefined);
+  const aiDraft = $derived(problem !== null && isAIDraft(problem.tags));
+  const inputPending = $derived(inputGenPending(inputGen));
+  const inputReport = $derived(inputGen && problem ? inputGenReport(inputGen, readPlan(problem.plan)) : null);
+  const canGenerateInputs = $derived(draft !== null && !!draft.generator && (draft.plan?.length ?? 0) > 0);
+
+  const solveWaiting = $derived(
+    solveWizard !== null &&
+      solveWizard.state !== 'error' &&
+      (wizardPending(solveWizard) || solveSubmission === null || solveSubmission.state === 'queued' || solveSubmission.state === 'running'),
+  );
+  const solveDone = $derived(solveSubmission !== null && solveSubmission.state === 'done');
+  const solveStatus = $derived.by(() => {
+    if (solveWizard === null) return '';
+    if (solveWizard.state === 'error') return 'The model could not answer';
+    if (wizardPending(solveWizard)) return 'Waiting for the model to answer';
+    if (solveSubmission === null || solveSubmission.state === 'queued' || solveSubmission.state === 'running') return "Judging the model's solution";
+    if (solveSubmission.state === 'error') return "The judge could not finish the model's submission";
+    return solveLine(solveSubmission);
+  });
+  const solveTone = $derived.by(() => {
+    const s = solveSubmission;
+    if (!s || s.state !== 'done') return 'note';
+    if (s.max_score > 0 && s.score >= s.max_score) return 'bad';
+    return s.score > 0 ? 'part' : 'ok';
+  });
+  const keyMissing = $derived(aiStatus !== null && !aiStatus.active);
+
   // Field errors, each with the control it belongs to where there is one.
   const FIELD_LABELS: Record<string, string> = {
     title: 'Title',
@@ -171,9 +245,31 @@
     reference: 'Reference solution',
     brute: 'Brute force',
     validator: 'Validator',
+    generator: 'Generator',
+    plan: 'Planned tests',
   };
 
+  const PLAN_PARTS: Record<string, string> = { idx: 'test', subtask: 'subtask', seed: 'seed', args: 'arguments' };
+
   function fieldTarget(key: string): { id: string | null; label: string } {
+    const args = /^subtasks\.(\d+)\.generator_args$/.exec(key);
+    if (args) {
+      const i = Number(args[1]);
+      const ok = draft !== null && i < draft.subtasks.length && hasGenerator;
+      return { id: ok ? `subtask-${i}-args` : null, label: `Subtask ${i + 1} generator arguments` };
+    }
+    const planRow = /^plan\.(\d+)\.(idx|subtask|seed|args)$/.exec(key);
+    if (planRow) {
+      const i = Number(planRow[1]);
+      const ok = draft?.plan !== undefined && i < draft.plan.length;
+      return { id: ok ? `plan-${i}-${planRow[2]}` : null, label: `Planned test ${i + 1} ${PLAN_PARTS[planRow[2]]}` };
+    }
+    if (key === 'plan') return { id: hasGenerator ? 'add-plan-row' : null, label: FIELD_LABELS.plan };
+    const generator = /^generator(?:\.(\w+))?$/.exec(key);
+    if (generator) {
+      const part = generator[1] === 'language' ? 'language' : 'source';
+      return { id: draft?.generator ? `generator-${part}` : null, label: FIELD_LABELS.generator };
+    }
     const row = /^subtasks\.(\d+)\.(points|title|tests)$/.exec(key);
     if (row) {
       const i = Number(row[1]);
@@ -199,7 +295,7 @@
   );
 
   /** The error for a program, whichever of its keys the server used. */
-  function programError(role: 'reference' | 'brute' | 'validator'): string {
+  function programError(role: 'reference' | 'brute' | 'validator' | 'generator'): string {
     const key = Object.keys(fields).find((k) => k === role || k.startsWith(`${role}.`));
     return key ? fields[key] : '';
   }
@@ -260,6 +356,9 @@
   let alive = true;
   let pollTimer: ReturnType<typeof setTimeout> | undefined;
   let genTimer: ReturnType<typeof setTimeout> | undefined;
+  let inputTimer: ReturnType<typeof setTimeout> | undefined;
+  let solveTimer: ReturnType<typeof setTimeout> | undefined;
+  let solveStream: EventStream | null = null;
 
   function schedulePoll() {
     clearTimeout(pollTimer);
@@ -291,11 +390,37 @@
       const g = await getJSON<Generation>(problemPath(id, '/generation'));
       if (!alive) return;
       generation = g;
-      if (wasPending && !(g.state === 'queued' || g.state === 'running')) refreshProblem();
+      if (wasPending && !(g.state === 'queued' || g.state === 'running')) {
+        refreshProblem();
+        // After generated inputs, the server queues validation next.
+        if (hasGenerator && !isPending(validation)) void poll();
+      }
     } catch (e) {
       if (handleSessionError(e)) return;
     }
     scheduleGenPoll();
+  }
+
+  function scheduleInputPoll() {
+    clearTimeout(inputTimer);
+    if (alive && inputPending) inputTimer = setTimeout(pollInputGen, POLL_MS);
+  }
+
+  async function pollInputGen() {
+    const wasPending = inputPending;
+    try {
+      const g = await getJSON<InputGeneration>(problemPath(id, '/input-generation'));
+      if (!alive) return;
+      inputGen = g;
+      if (wasPending && !inputGenPending(g)) {
+        refreshProblem();
+        // Output generation follows good inputs; show it and poll it.
+        if (g.summary?.generating_outputs) void pollGeneration();
+      }
+    } catch (e) {
+      if (handleSessionError(e)) return;
+    }
+    scheduleInputPoll();
   }
 
   async function refreshProblem() {
@@ -340,6 +465,20 @@
       if (handleSessionError(e)) return;
       generation = null;
     }
+    if (!hasGenerator) return;
+    try {
+      inputGen = await getJSON<InputGeneration>(problemPath(id, '/input-generation'));
+      scheduleInputPoll();
+    } catch (e) {
+      if (handleSessionError(e)) return;
+      inputGen = null;
+    }
+    try {
+      aiStatus = await getJSON<KeyStatus>(aiPaths.key);
+    } catch {
+      // Without the key's state the button still works; the server says when a key is missing.
+      aiStatus = null;
+    }
   }
 
   onMount(() => {
@@ -366,6 +505,8 @@
       alive = false;
       clearTimeout(pollTimer);
       clearTimeout(genTimer);
+      clearTimeout(inputTimer);
+      stopSolveWatch();
       removeGuard();
       query.removeEventListener('change', sync);
     };
@@ -460,7 +601,7 @@
 
   async function addSubtask() {
     if (!draft) return;
-    draft.subtasks.push({ points: null, title: '', tests: '' });
+    draft.subtasks.push(draft.plan !== undefined ? { points: null, title: '', tests: '', args: '' } : { points: null, title: '', tests: '' });
     await tick();
     document.getElementById(`subtask-${draft.subtasks.length - 1}-points`)?.focus();
   }
@@ -468,10 +609,167 @@
   async function removeSubtask(index: number) {
     if (!draft) return;
     draft.subtasks.splice(index, 1);
+    // Planned tests name subtasks by number, so later ones move down.
+    for (const row of draft.plan ?? []) if (row.subtask > index + 1) row.subtask--;
     // Row errors are keyed by position, so they no longer line up.
-    fields = Object.fromEntries(Object.entries(fields).filter(([k]) => !k.startsWith('subtasks.')));
+    fields = Object.fromEntries(Object.entries(fields).filter(([k]) => !k.startsWith('subtasks.') && !k.startsWith('plan.')));
     await tick();
     addSubtaskButton?.focus();
+  }
+
+  async function addGenerator() {
+    if (!draft) return;
+    draft.generator = {
+      language: 'python3',
+      source: 'import random\nimport sys\n\nseed = int(sys.argv[1])\nargs = dict(a.split("=", 1) for a in sys.argv[2:])\nrng = random.Random(seed)\n',
+    };
+    await tick();
+    document.getElementById('generator-source')?.focus();
+  }
+
+  async function removeGenerator() {
+    if (!draft) return;
+    draft.generator = null;
+    await tick();
+    document.getElementById('add-generator')?.focus();
+  }
+
+  async function addPlanRow() {
+    if (!draft || draft.plan === undefined || !problem) return;
+    draft.plan.push(nextPlanRow(draft.plan, problem.tests.map((t) => t.idx), draft.subtasks.length));
+    await tick();
+    document.getElementById(`plan-${draft.plan.length - 1}-seed`)?.focus();
+  }
+
+  async function removePlanRow(index: number) {
+    if (!draft || draft.plan === undefined) return;
+    draft.plan.splice(index, 1);
+    fields = Object.fromEntries(Object.entries(fields).filter(([k]) => !k.startsWith('plan.')));
+    await tick();
+    addPlanButton?.focus();
+  }
+
+  /** The errors of one planned test row, in column order. */
+  function planErrors(i: number): { key: string; message: string }[] {
+    return ['idx', 'subtask', 'seed', 'args']
+      .map((part) => ({ key: `plan.${i}.${part}`, message: err(`plan.${i}.${part}`) }))
+      .filter((e) => e.message !== '');
+  }
+
+  async function generateInputs() {
+    inputGenError = null;
+    if (dirty && !(await save())) return;
+    inputGenBusy = true;
+    try {
+      inputGen = await sendJSON<InputGeneration>('POST', problemPath(id, '/generate-inputs'));
+      scheduleInputPoll();
+    } catch (e) {
+      if (handleSessionError(e)) return;
+      inputGenError = { message: messageOf(e), problems: e instanceof ApiError ? e.problems : [] };
+    } finally {
+      inputGenBusy = false;
+    }
+  }
+
+  function stopSolveWatch() {
+    solveStream?.stop();
+    solveStream = null;
+    clearTimeout(solveTimer);
+  }
+
+  function solveFinished(): boolean {
+    if (!solveWizard) return true;
+    if (solveWizard.state === 'error') return true;
+    const s = solveSubmission;
+    return s !== null && (s.state === 'done' || s.state === 'error');
+  }
+
+  /** Takes a newer copy of the solve request; true when it just gained its submission. */
+  function adoptSolveWizard(w: Wizard): boolean {
+    if (!solveWizard || String(w.id) !== String(solveWizard.id)) return false;
+    const hadSubmission = solveWizard.submission_id ?? null;
+    solveWizard = w;
+    if (w.state === 'error') {
+      solveError = { message: w.error?.message ?? 'The model could not answer.', code: w.error?.code ?? 'error', reasons: w.error?.reasons ?? [] };
+      stopSolveWatch();
+      return false;
+    }
+    return hadSubmission === null && !!w.submission_id;
+  }
+
+  function adoptSolveSubmission(s: Submission) {
+    if (!solveWizard?.submission_id || s.id !== solveWizard.submission_id) return;
+    solveSubmission = s;
+    if (solveFinished()) stopSolveWatch();
+  }
+
+  function scheduleSolvePoll() {
+    clearTimeout(solveTimer);
+    if (!alive || solveFinished()) return;
+    solveTimer = setTimeout(pollSolve, solveMode === 'live' ? 3 * POLL_MS : POLL_MS);
+  }
+
+  async function pollSolve() {
+    const w = solveWizard;
+    if (!w) return;
+    try {
+      if (!w.submission_id) {
+        const next = await getJSON<Wizard>(aiPaths.wizardOne(w.id));
+        if (!alive) return;
+        adoptSolveWizard(next);
+      }
+      const sid = solveWizard?.submission_id;
+      if (sid && !solveFinished()) {
+        const s = await getJSON<Submission>(`/api/submissions/${encodeURIComponent(String(sid))}`);
+        if (!alive) return;
+        adoptSolveSubmission(s);
+      }
+    } catch (e) {
+      if (handleSessionError(e)) return;
+      // A failed poll is tried again on the next tick.
+    }
+    scheduleSolvePoll();
+  }
+
+  async function solve() {
+    solveError = null;
+    solveSubmission = null;
+    solveBusy = true;
+    try {
+      const answer = await sendJSON<{ wizard_id: string | number }>('POST', problemPath(id, '/solve'));
+      solveWizard = { id: String(answer.wizard_id), state: 'thinking' };
+      solveOpen = false;
+      stopSolveWatch();
+      solveMode = 'connecting';
+      solveStream = new EventStream({
+        url: '/api/events',
+        events: ['wizard', 'submission'],
+        onEvent: (type, data) => {
+          if (!data || typeof data !== 'object') return;
+          // A submission that just appeared is fetched at once; later changes come as events.
+          if (type === 'wizard' && adoptSolveWizard(data as Wizard)) void pollSolve();
+          else if (type === 'submission') adoptSolveSubmission(data as Submission);
+        },
+        onReconnect: () => void pollSolve(),
+        poll: () => undefined,
+        onMode: (m) => {
+          solveMode = m;
+        },
+      });
+      solveStream.start();
+      scheduleSolvePoll();
+    } catch (e) {
+      solveOpen = false;
+      if (handleSessionError(e)) return;
+      solveError = {
+        message: messageOf(e),
+        code: e instanceof ApiError ? e.code : 'unexpected',
+        reasons: e instanceof ApiError ? e.problems : [],
+      };
+      if (e instanceof ApiError && e.code === 'no_key' && aiStatus) aiStatus = { ...aiStatus, active: false };
+    } finally {
+      solveBusy = false;
+    }
   }
 
   async function addProgram(role: 'brute' | 'validator') {
@@ -595,6 +893,7 @@
             {#if status.tone === 'ok'}<span class="dot" aria-hidden="true"></span>{/if}{status.text}
           </a>
         {/if}
+        {#if aiDraft}<span class="ai-draft">AI draft</span>{/if}
         {#if dirty}<span class="unsaved">Unsaved changes</span>{/if}
         {#if fieldList.length > 0}
           <a class="error-count" href="#field-errors">
@@ -605,6 +904,7 @@
       <nav class="jumps" aria-label="Sections">
         <a href="#details-heading">Details</a>
         <a href="#tests-heading">Tests</a>
+        {#if hasGenerator}<a href="#generator-heading">Generator</a>{/if}
         <a href="#solutions-heading">Solutions</a>
         <a href="#validation-heading">Validation</a>
       </nav>
@@ -626,6 +926,15 @@
     {#if problem.archived}
       <div class="banner banner-info lead">
         <p>This problem is archived. It is hidden from the bank and kept for the contests that used it.</p>
+      </div>
+    {/if}
+
+    {#if aiDraft}
+      <div class="banner banner-info lead">
+        <p>
+          The AI wizard wrote this draft. Read the statement, the solutions and the tests before you use it; students see nothing until it
+          is validated and added to a contest. The AI draft tag goes when you save.
+        </p>
       </div>
     {/if}
 
@@ -1046,6 +1355,210 @@
         {/if}
       </section>
 
+      {#if hasGenerator && draft.plan !== undefined}
+        <section class="block" aria-labelledby="generator-heading">
+          <h2 id="generator-heading" tabindex="-1">Generator</h2>
+          <p class="field-help sub-help">
+            A program that prints one test input. The judge runs it in the sandbox once per planned test, as generator.py with the seed,
+            the subtask's arguments and the test's own arguments, and stores what it prints as that test's input.
+          </p>
+
+          <div class="programs">
+            {#if draft.generator}
+              <ProgramField
+                id="generator"
+                label="Generator program"
+                help="Reads the seed from sys.argv[1] and its arguments after it. Draw every random number from the seed, so a test can be made again."
+                bind:program={draft.generator}
+                error={programError('generator')}
+                onremove={removeGenerator}
+                removeLabel="Remove generator"
+              />
+            {:else}
+              <div class="optional">
+                <h3 class="program-name">Generator program</h3>
+                <p class="field-help">No generator. Add one to make test inputs from seeds instead of uploading them.</p>
+                <button id="add-generator" type="button" class="btn btn-secondary" onclick={addGenerator}>Add generator</button>
+              </div>
+            {/if}
+          </div>
+
+          <h3 class="sub">Arguments per subtask</h3>
+          <p class="field-help sub-help">
+            Given to the generator after the seed for every planned test of the subtask, separated by spaces, for example n=1000
+            max=1000000000.
+          </p>
+          {#if draft.subtasks.length === 0}
+            <p class="muted empty">Add subtasks first; each gets its own arguments.</p>
+          {:else}
+            <div class="arg-rows">
+              {#each draft.subtasks as subtask, i (i)}
+                <div class="field">
+                  <label for="subtask-{i}-args">Subtask {i + 1}{subtask.title.trim() !== '' ? `, ${subtask.title.trim()}` : ''}</label>
+                  <input
+                    id="subtask-{i}-args"
+                    class="input mono"
+                    type="text"
+                    autocomplete="off"
+                    autocapitalize="none"
+                    spellcheck="false"
+                    bind:value={subtask.args}
+                    aria-invalid={err(`subtasks.${i}.generator_args`) ? 'true' : undefined}
+                    aria-describedby={described(`subtasks.${i}.generator_args`)}
+                  />
+                  {#if err(`subtasks.${i}.generator_args`)}
+                    <p id="subtasks-{i}-generator_args-error" class="field-error">{err(`subtasks.${i}.generator_args`)}</p>
+                  {/if}
+                </div>
+              {/each}
+            </div>
+          {/if}
+
+          <h3 class="sub" id="plan-heading">Planned tests</h3>
+          <p class="field-help sub-help">
+            Each row makes one test from a seed and optional arguments of its own. Samples come from the statement, so leave their
+            numbers out.
+          </p>
+          {#if err('plan')}<p id="plan-error" class="field-error">{err('plan')}</p>{/if}
+
+          {#if draft.plan.length > 0}
+            <div class="table-wrap plan">
+              <table class="table" aria-labelledby="plan-heading">
+                <thead>
+                  <tr>
+                    <th scope="col">Test</th>
+                    <th scope="col">Subtask</th>
+                    <th scope="col">Seed</th>
+                    <th scope="col">Arguments</th>
+                    <th scope="col"><span class="visually-hidden">Remove</span></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {#each draft.plan as row, i (i)}
+                    {@const rowErrors = planErrors(i)}
+                    <tr class:has-errors={rowErrors.length > 0}>
+                      <td class="plan-idx">
+                        <span class="cell-label" aria-hidden="true">Test</span>
+                        <input
+                          id="plan-{i}-idx"
+                          class="input mono"
+                          type="number"
+                          inputmode="numeric"
+                          min="1"
+                          max="999"
+                          aria-label="Row {i + 1}, test number"
+                          bind:value={row.idx}
+                          aria-invalid={err(`plan.${i}.idx`) ? 'true' : undefined}
+                          aria-describedby={described(`plan.${i}.idx`)}
+                        />
+                      </td>
+                      <td class="plan-subtask">
+                        <span class="cell-label" aria-hidden="true">Subtask</span>
+                        <select
+                          id="plan-{i}-subtask"
+                          class="select"
+                          aria-label="Row {i + 1}, subtask"
+                          bind:value={row.subtask}
+                          aria-invalid={err(`plan.${i}.subtask`) ? 'true' : undefined}
+                          aria-describedby={described(`plan.${i}.subtask`)}
+                        >
+                          {#each draft.subtasks.map((_, j) => j + 1) as n (n)}<option value={n}>{n}</option>{/each}
+                          {#if row.subtask > draft.subtasks.length}<option value={row.subtask}>{row.subtask} (removed)</option>{/if}
+                        </select>
+                      </td>
+                      <td class="plan-seed">
+                        <span class="cell-label" aria-hidden="true">Seed</span>
+                        <input
+                          id="plan-{i}-seed"
+                          class="input mono"
+                          type="number"
+                          inputmode="numeric"
+                          min="0"
+                          aria-label="Row {i + 1}, seed"
+                          bind:value={row.seed}
+                          aria-invalid={err(`plan.${i}.seed`) ? 'true' : undefined}
+                          aria-describedby={described(`plan.${i}.seed`)}
+                        />
+                      </td>
+                      <td class="plan-args">
+                        <span class="cell-label" aria-hidden="true">Arguments</span>
+                        <input
+                          id="plan-{i}-args"
+                          class="input mono"
+                          type="text"
+                          autocomplete="off"
+                          autocapitalize="none"
+                          spellcheck="false"
+                          aria-label="Row {i + 1}, arguments"
+                          bind:value={row.args}
+                          aria-invalid={err(`plan.${i}.args`) ? 'true' : undefined}
+                          aria-describedby={described(`plan.${i}.args`)}
+                        />
+                      </td>
+                      <td class="plan-remove">
+                        <button
+                          type="button"
+                          class="btn btn-quiet btn-danger-quiet btn-compact"
+                          aria-label="Remove planned test {row.idx ?? i + 1}"
+                          onclick={() => removePlanRow(i)}
+                        >
+                          Remove
+                        </button>
+                      </td>
+                    </tr>
+                    {#if rowErrors.length > 0}
+                      <tr class="plan-error-row">
+                        <td colspan="5">
+                          {#each rowErrors as e (e.key)}
+                            <p id="{e.key.replace(/\./g, '-')}-error" class="field-error">{e.message}</p>
+                          {/each}
+                        </td>
+                      </tr>
+                    {/if}
+                  {/each}
+                </tbody>
+              </table>
+            </div>
+          {:else}
+            <p class="muted empty">No planned tests yet.</p>
+          {/if}
+
+          <div class="plan-actions">
+            <button id="add-plan-row" type="button" class="btn btn-secondary" bind:this={addPlanButton} onclick={addPlanRow}>
+              Add planned test
+            </button>
+            <button
+              type="button"
+              class="btn btn-secondary"
+              disabled={inputGenBusy || inputPending || saving || !canGenerateInputs}
+              aria-describedby={canGenerateInputs ? undefined : 'generate-inputs-help'}
+              onclick={generateInputs}
+            >
+              {inputPending ? 'Generating inputs' : dirty ? 'Save and generate inputs' : 'Generate inputs'}
+            </button>
+            {#if !canGenerateInputs}
+              <p id="generate-inputs-help" class="field-help">Add a generator and at least one planned test first.</p>
+            {/if}
+          </div>
+
+          <div class="generation" aria-live="polite">
+            {#if inputGenError}
+              <div class="banner banner-error problems-list" role="alert">
+                <p>{inputGenError.message}</p>
+                {#if inputGenError.problems.length > 0}
+                  <ul>{#each inputGenError.problems as line, i (i)}<li>{line}</li>{/each}</ul>
+                {/if}
+              </div>
+            {:else if inputReport}
+              <p class="gen-line tone-{inputReport.tone}">{inputReport.text}</p>
+              {#if inputReport.lines.length > 0}
+                <ul class="gen-failures">{#each inputReport.lines as line, i (i)}<li>{line}</li>{/each}</ul>
+              {/if}
+            {/if}
+          </div>
+        </section>
+      {/if}
+
       <section class="block" aria-labelledby="solutions-heading">
         <h2 id="solutions-heading" tabindex="-1">Solutions</h2>
 
@@ -1167,8 +1680,79 @@
       {/if}
       <ValidationReport {validation} />
     </section>
+
+    {#if hasGenerator}
+      <section class="block solve" aria-labelledby="solve-heading">
+        <h2 id="solve-heading" tabindex="-1">Can a model solve this?</h2>
+        <p class="solve-help">
+          Sends only the statement to the AI model with your key and asks for a C++ solution, then judges the answer on this problem's
+          tests as your submission. It shows what a student who pastes the statement into a model would get.
+        </p>
+
+        {#if solveWizard && solveStatus !== ''}
+          <p class="visually-hidden" role="status">{solveStatus}</p>
+        {/if}
+
+        {#if solveDone && solveSubmission}
+          <div class="solve-result tone-box-{solveTone}">
+            <p class="solve-line">{solveLine(solveSubmission)}</p>
+            <p>{solveMeaning(solveSubmission)}</p>
+            <p>
+              <a href="/admin/problems/{problem.id}/try">See the model's submission</a>
+              <span class="muted">in Try as a student, where your submissions are listed.</span>
+            </p>
+          </div>
+        {:else if solveWaiting}
+          <p class="solve-progress muted">{solveStatus}</p>
+          {#if solveMode === 'polling'}
+            <p class="field-help">Live updates are down, so the result is checked every few seconds.</p>
+          {/if}
+        {:else if solveSubmission && solveSubmission.state === 'error'}
+          <div class="banner banner-error problems-list"><p>{solveStatus}. Ask again.</p></div>
+        {/if}
+
+        {#if solveError}
+          <div class="banner banner-error problems-list" role="alert">
+            <p>
+              {solveError.message}
+              {#if isKeyProblem(solveError.code)}<a href="/admin/ai">Open AI assistant</a>{/if}
+            </p>
+            {#if solveError.reasons.length > 0}
+              <ul>{#each solveError.reasons as line, i (i)}<li>{line}</li>{/each}</ul>
+            {/if}
+          </div>
+        {/if}
+
+        <div class="solve-actions">
+          <button
+            type="button"
+            class="btn btn-secondary"
+            disabled={solveBusy || solveWaiting || keyMissing}
+            aria-describedby={keyMissing ? 'solve-key-help' : undefined}
+            onclick={() => (solveOpen = true)}
+          >
+            {solveWaiting ? 'Asking a model' : solveDone ? 'Ask a model again' : 'Ask a model to solve it'}
+          </button>
+          {#if keyMissing}
+            <p id="solve-key-help" class="field-help">No AI key. <a href="/admin/ai">Add one in AI assistant</a> to use this.</p>
+          {/if}
+        </div>
+      </section>
+    {/if}
   {/if}
 </div>
+
+<ConfirmDialog
+  open={solveOpen}
+  title="Ask a model to solve this problem?"
+  body="The statement goes to {aiStatus?.active
+    ? modelLabel(aiStatus, aiStatus.provider, aiStatus.model)
+    : 'the AI model'} with your key, and its answer is judged on the tests as your submission. Nothing else is sent."
+  confirmLabel="Ask a model"
+  busy={solveBusy}
+  onconfirm={solve}
+  oncancel={() => (solveOpen = false)}
+/>
 
 <ConfirmDialog
   open={archiveOpen}
@@ -1711,6 +2295,116 @@
     max-width: 64rem;
   }
 
+  .ai-draft {
+    padding: 0 var(--space-1);
+    border: var(--rule) solid var(--part);
+    border-radius: var(--radius);
+    color: var(--part);
+    font-size: var(--fs-0);
+    font-weight: 500;
+    white-space: nowrap;
+  }
+
+  .arg-rows {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 18rem), 1fr));
+    gap: var(--space-3) var(--space-4);
+    max-width: 64rem;
+    margin-top: var(--space-3);
+  }
+
+  .plan {
+    max-width: 64rem;
+    margin-top: var(--space-3);
+  }
+
+  .plan td {
+    padding-block: var(--space-1);
+  }
+
+  .plan-idx,
+  .plan-subtask,
+  .plan-seed {
+    width: 8rem;
+  }
+
+  .plan-args {
+    min-width: 12rem;
+  }
+
+  .plan-remove {
+    width: 1%;
+    text-align: right;
+  }
+
+  .plan tr.has-errors > td {
+    border-bottom: 0;
+  }
+
+  .plan-error-row td {
+    height: auto;
+    padding-top: 0;
+  }
+
+  .plan-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-2) var(--space-3);
+    max-width: 64rem;
+    margin-top: var(--space-4);
+  }
+
+  .solve {
+    display: grid;
+    gap: var(--space-3);
+    max-width: 64rem;
+  }
+
+  .solve-help {
+    max-width: 72ch;
+    color: var(--ink-muted);
+  }
+
+  .solve-result {
+    display: grid;
+    gap: var(--space-2);
+    max-width: 48rem;
+    padding: var(--space-3) var(--space-4);
+    border: var(--rule) solid var(--line-strong);
+    background: var(--surface);
+  }
+
+  .tone-box-bad {
+    border-color: var(--bad);
+    background: var(--bad-tint);
+  }
+
+  .tone-box-part {
+    border-color: var(--part);
+    background: var(--part-tint);
+  }
+
+  .tone-box-ok {
+    border-color: var(--ok);
+    background: var(--ok-tint);
+  }
+
+  .solve-line {
+    font-weight: 600;
+  }
+
+  .solve-progress {
+    font-weight: 500;
+  }
+
+  .solve-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-2) var(--space-3);
+  }
+
   @media (min-width: 1024px) {
     .top {
       grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
@@ -1826,8 +2520,79 @@
       font-weight: 500;
     }
 
-    .actions .btn {
+    .actions .btn,
+    .plan-actions .btn,
+    .solve-actions .btn {
       flex: 1 1 auto;
+    }
+
+    /* Planned tests stack: test and subtask, then seed and arguments. */
+    .plan thead {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      overflow: hidden;
+      clip: rect(0, 0, 0, 0);
+    }
+
+    .plan tbody tr {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
+      grid-template-areas:
+        'idx subtask remove'
+        'seed args args';
+      align-items: end;
+      gap: var(--space-2) var(--space-3);
+      padding: var(--space-3);
+      border-bottom: var(--rule) solid var(--line);
+    }
+
+    .plan tbody tr.has-errors {
+      border-bottom: 0;
+      padding-bottom: 0;
+    }
+
+    .plan tbody tr.plan-error-row {
+      display: block;
+      padding-top: var(--space-1);
+    }
+
+    .plan tbody tr:last-child {
+      border-bottom: 0;
+    }
+
+    .plan tbody :is(th, td) {
+      display: grid;
+      gap: var(--space-1);
+      width: auto;
+      min-width: 0;
+      height: auto;
+      padding: 0;
+      border: 0;
+    }
+
+    .plan-idx {
+      grid-area: idx;
+    }
+
+    .plan-subtask {
+      grid-area: subtask;
+    }
+
+    .plan-seed {
+      grid-area: seed;
+    }
+
+    .plan-args {
+      grid-area: args;
+    }
+
+    .plan-remove {
+      grid-area: remove;
+    }
+
+    .plan .cell-label {
+      margin-right: 0;
     }
 
     /* Archive sits apart, below the other actions, after a rule. */

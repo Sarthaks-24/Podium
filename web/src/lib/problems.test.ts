@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import {
+  checkArgs,
   failureSentence,
+  nextPlanRow,
+  readPlan,
+  splitArgs,
   fieldKey,
   formatBytes,
   formatTestList,
@@ -134,6 +138,75 @@ describe('toDraft and toEdit', () => {
     expect(result.ok).toBe(false);
     if (result.ok) return;
     expect(Object.keys(result.fields).sort()).toEqual(['samples', 'subtasks.0.points', 'subtasks.1.tests', 'time_limit_ms']);
+  });
+
+  it('leaves the generator out for a server before M5', () => {
+    const draft = toDraft(PROBLEM);
+    expect('generator' in draft).toBe(false);
+    expect('plan' in draft).toBe(false);
+    const edit = toEdit(draft);
+    expect(edit.ok && ('generator' in edit.edit || 'plan' in edit.edit)).toBe(false);
+  });
+
+  it('round-trips a generator, its plan and per-subtask arguments', () => {
+    const p: Problem = {
+      ...PROBLEM,
+      tags: ['math', 'ai draft'],
+      generator: { language: 'python3', source: 'import sys' },
+      subtasks: [
+        { idx: 1, points: 40, title: 'Small', tests: '3-4', generator_args: ['n=10'] },
+        { idx: 2, points: 60, title: 'Large', tests: '5', generator_args: [] },
+      ],
+      plan: [
+        { idx: 3, subtask: 1, seed: 1, args: [] },
+        { idx: 5, subtask: 2, seed: 7, args: ['max', 'k=3'] },
+      ],
+    };
+    const draft = toDraft(p);
+    expect(draft.tags).toBe('math');
+    expect(draft.subtasks.map((s) => s.args)).toEqual(['n=10', '']);
+    expect(draft.plan).toEqual([
+      { idx: 3, subtask: 1, seed: 1, args: '' },
+      { idx: 5, subtask: 2, seed: 7, args: 'max k=3' },
+    ]);
+    const result = toEdit(draft);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.edit.generator).toEqual({ language: 'python3', source: 'import sys' });
+    expect(result.edit.plan).toEqual(p.plan);
+    expect(result.edit.subtasks.map((s) => s.generator_args)).toEqual([['n=10'], []]);
+  });
+
+  it('reads a plan that names the test "test"', () => {
+    expect(readPlan([{ test: 4, subtask: 2, seed: 9, args: ['a=1'] }])).toEqual([{ idx: 4, subtask: 2, seed: 9, args: ['a=1'] }]);
+    expect(readPlan(null)).toEqual([]);
+  });
+
+  it('reports bad plan rows and arguments under their own keys', () => {
+    const draft = toDraft({ ...PROBLEM, generator: null, plan: [] });
+    draft.subtasks[0].args = 'n=10 {bad}';
+    draft.plan = [
+      { idx: 6, subtask: 1, seed: 1, args: '' },
+      { idx: 6, subtask: 3, seed: null, args: 'x y' },
+    ];
+    const result = toEdit(draft);
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(Object.keys(result.fields).sort()).toEqual(['plan', 'plan.1.idx', 'plan.1.seed', 'plan.1.subtask', 'subtasks.0.generator_args']);
+    expect(result.fields['plan.1.idx']).toBe('Test 6 is planned twice.');
+    expect(result.fields.plan).toBe('Planned tests need a generator. Add one, or remove the planned tests.');
+  });
+
+  it('checks and splits generator arguments', () => {
+    expect(splitArgs('  n=10   max ')).toEqual(['n=10', 'max']);
+    expect(checkArgs('n=10 k=-3 r=1.5,2')).toBe('');
+    expect(checkArgs('a $x')).toBe('"$x" is not a valid argument. Use letters, digits and _ . , : = + -, separated by spaces.');
+    expect(checkArgs(Array.from({ length: 17 }, (_, i) => `a${i}`).join(' '))).toBe('Use at most 16 arguments.');
+  });
+
+  it('suggests the next planned test after the stored tests and the plan', () => {
+    expect(nextPlanRow([], [1, 2, 3], 2)).toEqual({ idx: 4, subtask: 2, seed: 1, args: '' });
+    expect(nextPlanRow([{ idx: 9, subtask: 1, seed: 4 }], [1, 2], 2)).toEqual({ idx: 10, subtask: 1, seed: 5, args: '' });
   });
 
   it('asks for epsilon only with the float checker, and drops checker source unless custom', () => {

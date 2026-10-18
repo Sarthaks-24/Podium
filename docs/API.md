@@ -23,7 +23,7 @@ All API routes live under `/api/` and speak JSON. Every other path serves the we
 { "error": { "code": "bad_request", "message": "Some fields need fixing.", "fields": { "slug": "Use lowercase letters, digits and single hyphens, like two-sum." } } }
 ```
 
-Common error codes: `bad_request`, `signed_out`, `forbidden`, `not_found`, `cross_site`, `conflict`, `internal`. The problem routes add `bad_pack`, `not_ready`, `too_large` and `busy`; the workspace routes add `not_ready` and `rate_limited`; the contest routes add `not_on_roster`, `not_started`, `contest_over`, `board_closed` and `too_early`; the event stream adds `busy` and `unsupported`; the judge API adds `unauthorized`, `lease`, `bad_report`, `bad_upload` and `too_large`.
+Common error codes: `bad_request`, `signed_out`, `forbidden`, `not_found`, `cross_site`, `conflict`, `internal`. The problem routes add `bad_pack`, `not_ready`, `too_large` and `busy`; the AI wizard adds `no_key`, `bad_key` and `busy`; the workspace routes add `not_ready` and `rate_limited`; the contest routes add `not_on_roster`, `not_started`, `contest_over`, `board_closed` and `too_early`; the event stream adds `busy` and `unsupported`; the judge API adds `unauthorized`, `lease`, `bad_report`, `bad_upload` and `too_large`.
 
 ## Health
 
@@ -170,6 +170,9 @@ Every route here needs the admin or owner role. Pack format and rules: `docs/AUT
 | `GET /api/admin/problems/{id}/validation` | | 200 `Validation`, the latest one |
 | `POST /api/admin/problems/{id}/generate` | `{"all":false}` | 202 `Generation` (see "Output generation") |
 | `GET /api/admin/problems/{id}/generation` | | 200 `Generation`, the latest one |
+| `POST /api/admin/problems/{id}/generate-inputs` | no body | 202 `InputGeneration` (see "Input generation") |
+| `GET /api/admin/problems/{id}/input-generation` | | 200 `InputGeneration`, the latest one |
+| `POST /api/admin/problems/{id}/solve` | no body | 202 `{"wizard_id","server_now"}` (see "AI wizard") |
 
 An `{id}` that is not a problem gives `404 not_found` on every route.
 
@@ -183,7 +186,7 @@ An `{id}` that is not a problem gives `404 not_found` on every route.
   "validated": true, "validated_at": 1792183192359, "updated_at": 1792183100000 }
 ```
 
-- `difficulty` is `easy`, `medium`, `hard` or `""`. `origin` is `manual` or `import`.
+- `difficulty` is `easy`, `medium`, `hard` or `""`. `origin` is `manual`, `import` or `ai` (made by the AI wizard). A wizard draft carries the tag `ai draft` until a person first saves it.
 - `validated` is true when the last passing validation covers the problem as it is now (its content hash equals the problem's). `validated_at` is `null` whenever `validated` is false.
 - Times are Unix milliseconds.
 
@@ -195,15 +198,18 @@ An `{id}` that is not a problem gives `404 not_found` on every route.
   "reference": { "language": "cpp17", "source": "#include <cstdio>..." },
   "brute": { "language": "python3", "source": "..." },
   "validator": null,
+  "generator": { "language": "python3", "source": "import random, sys..." },
+  "plan": [ { "idx": 3, "subtask": 1, "seed": 3, "args": ["n=10"] } ],
   "samples": [1, 2],
-  "subtasks": [ { "idx": 1, "points": 40, "title": "Small numbers", "tests": "3-4" } ],
+  "subtasks": [ { "idx": 1, "points": 40, "title": "Small numbers", "tests": "3-4", "generator_args": ["n=10"] } ],
   "tests": [ { "idx": 1, "sample": true, "subtask_idx": null, "input_size": 8, "output_size": 3,
                "input_preview": "2\n1 2\n", "output_preview": "3\n", "output_missing": false } ],
   "content_hash": "9f2c...", "validated_hash": "9f2c...",
   "problems": [], "warnings": ["No input validator: validation cannot check inputs against the constraints."] }
 ```
 
-- `language` is `cpp17`, `java21`, `python3` or `node22`. `brute` and `validator` are `null` when the problem has none.
+- `language` is `cpp17`, `java21`, `python3` or `node22`. `brute`, `validator` and `generator` are `null` when the problem has none.
+- `plan` lists the tests the generator makes (always an array): test `idx` of subtask `subtask`, made by running the generator with argv `seed` followed by `args`. `subtasks[].generator_args` are the arguments the editor proposes for new planned tests of that subtask (always an array). Format and rules: `docs/AUTHORING.md`, "Tests from a generator".
 - `checker` is `tokens`, `exact`, `float` or `custom`. `epsilon` matters only for `float`; `checker_source` is the testlib checker for `custom` and `""` otherwise.
 - `tests[].subtask_idx` is `null` for a sample. Previews are the first 200 bytes of each file, cut at a whole UTF-8 character.
 - `tests[].output_missing` is true while a test has no expected output (a pack or test zip without its `.out` file); `output_preview` is then `""`. "Generate outputs" fills it.
@@ -220,6 +226,13 @@ An `{id}` that is not a problem gives `404 not_found` on every route.
 ```
 
 A `brute` or `validator` with empty source counts as none. Subtasks are numbered in the order sent, and each `tests` range list is stored in its shortest form (`"3, 4, 5"` becomes `"3-5"`).
+
+`ProblemEdit` may also carry `generator` (`{language, source}` or `null`), `plan` (as in `Problem`) and `subtasks[].generator_args`:
+
+- Leave out both `generator` and `plan` to keep the generator, the plan and each subtask's `generator_args` (an editor that does not know about generators cannot erase one).
+- Send either to replace them: the one left out keeps its stored value, and each subtask's `generator_args` then comes from the body (left out means none). `null`, or a generator with empty source, removes the generator; the plan must then be empty.
+- Field errors: `generator`, `plan` (one sentence for the first wrong entry) and `subtasks.N.generator_args`.
+- Any save removes the `ai draft` tag. The generator and the plan are not part of the content hash, so changing them does not withdraw "validated" (D53).
 
 `Validation`:
 
@@ -256,6 +269,8 @@ A `brute` or `validator` with empty source counts as none. Subtasks are numbered
 | validation | 404 `not_found` | the problem has never been validated |
 | generate | 409 `not_ready` with `problems` | no tests, no reference source, a generation still queued or running, or (with `all` false) no output missing |
 | generation | 404 `not_found` | outputs have never been generated for the problem |
+| generate-inputs | 409 `not_ready` with `problems` | no generator, no planned tests, no reference source, or an input or output generation still queued or running |
+| input-generation | 404 `not_found` | inputs have never been generated for the problem |
 
 Validate notes:
 
@@ -293,6 +308,114 @@ Rules:
 - Outputs from the tests that passed are applied even when other tests failed.
 - Applied outputs change the content hash, so the problem must be validated again.
 - Priority 85: after every contest job, before validation.
+
+### Input generation
+
+`POST /api/admin/problems/{id}/generate-inputs` runs the problem's generator on the judge, in isolate, once per planned test (argv: seed, then the test's args) and stores what it prints as that test's input. When every planned test got an input, output generation from the reference is queued, and when every output arrived, validation is queued: one press runs the whole chain. Priority 85, like output generation. Unsaved edits are not seen.
+
+`InputGeneration`:
+
+```json
+{ "id": 2, "problem_id": 7, "state": "done", "planned": 6, "queued_at": 1792183192359, "finished_at": 1792183200000,
+  "results": [ { "idx": 3, "verdict": "OK" }, { "idx": 4, "verdict": "RE", "message": "Traceback ..." } ],
+  "compile_output": "",
+  "summary": { "applied": 0, "generating_outputs": false,
+               "problems": ["The generator failed on test 4 (subtask 1, seed 4): Runtime error. Traceback ..."] },
+  "error": null, "server_now": 1792183200100 }
+```
+
+| Field | Meaning |
+|---|---|
+| `state` | `queued`, `running`, `done`, or `error` (the job could not finish; `error` says why and `summary` is `null`) |
+| `planned` | how many tests the run was asked to make |
+| `results` | one row per planned test the generator ran on; `OK` means its output was uploaded as the input; `message` (left out when empty) is the end of the generator's error output |
+| `compile_output` | the generator's compiler output, `""` for Python or a clean compile |
+| `summary.applied` | how many inputs were written into the problem: 0 or `planned`, because nothing is applied unless every planned test got an input |
+| `summary.generating_outputs` | output generation was queued next |
+| `summary.problems` | why nothing was applied, one sentence per test, naming the test, subtask and seed |
+
+Rules:
+
+- Inputs replace any test with the same number; its expected output is cleared until output generation fills it.
+- The job records the content hash and a plan hash (generator plus plan) when queued. If either changed before it finished, nothing is applied: "The problem changed while inputs were being generated. Generate them again."
+- Generator limits: 5 s per test before the language factor, 256 MB, 16 MB of output per test; the worker may upload one input per planned test plus 2.
+- One input or output generation per problem at a time.
+- Each change of the job is also sent to the admin who queued it as an `input_generation` event (see "Live updates"). The output generation and validation that follow are read from `/generation` and `/validation` as before.
+
+## AI wizard (admin)
+
+Every route needs the admin or owner role and answers with `server_now`. The provider key is pasted per session and held in the server's memory only, for 2 hours, tied to the session: never stored, logged, sent to the judge or shown back (decision D50, `docs/ARCHITECTURE.md`). Signing out, signing in again in the same browser, or a restart forgets it. Request bodies of the key route are never logged.
+
+| Route | Request | Success |
+|---|---|---|
+| `GET /api/admin/ai/key` | | 200 `KeyStatus` |
+| `PUT /api/admin/ai/key` | `{"provider":"anthropic","model":"claude-opus-5-5","key":"..."}` | 200 `KeyStatus` |
+| `DELETE /api/admin/ai/key` | | 204 |
+| `POST /api/admin/ai/wizard` | `WizardRequest` (at most 256 KB) | 202 `{"wizard_id":"3f9c...","server_now":...}` |
+| `GET /api/admin/ai/wizard/{id}` | | 200 `Wizard` |
+| `POST /api/admin/problems/{id}/solve` | no body | 202 `{"wizard_id":"...","server_now":...}` |
+
+`KeyStatus`:
+
+```json
+{ "active": true, "provider": "anthropic", "model": "claude-opus-5-5", "active_until": 1792190392359,
+  "providers": [ { "id": "anthropic", "name": "Anthropic", "models": [
+      { "id": "claude-opus-5-5", "name": "Claude Opus 5.5 (default)" },
+      { "id": "claude-sonnet-5-5", "name": "Claude Sonnet 5.5" },
+      { "id": "claude-haiku-5-5", "name": "Claude Haiku 5.5" } ] } ],
+  "server_now": 1792183192359 }
+```
+
+- Without a key: `active` false, `active_until` `null`, and `provider` and `model` are the defaults (`anthropic`, `claude-opus-5-5`) for the form to preselect.
+- In testing mode `providers` also lists `{"id":"fake","name":"Test provider (canned problems)","models":[{"id":"canned","name":"Canned problems"}]}`. The fake provider needs no key and answers with one of two canned problems: a maximum subarray problem when the brief or text mentions "subarray" or "stretch", a pair sums problem otherwise.
+
+`PUT /api/admin/ai/key`: `model` empty means the default; `key` is ignored for `fake`. The key is checked with one call that costs no tokens (a model lookup) before it is kept.
+
+| Status and code | When |
+|---|---|
+| 400 `bad_request` | a provider or model the server does not offer, or an empty key |
+| 400 `bad_key` | the check call failed; the message says what the provider said, in words ("Anthropic refused the key. Check it and paste it again.", "Anthropic says this key cannot use claude-opus-5-5. ...", "The provider is unavailable. ..."), never echoing the key |
+
+`WizardRequest`, from a brief or from pasted text:
+
+```json
+{ "mode": "brief", "brief": { "topic": "Maximum subarray sum", "difficulty": "medium",
+  "constraints": "n up to 2e5, values up to 1e9 in absolute value", "subtasks": "n up to 1000, then full" } }
+```
+
+```json
+{ "mode": "paste", "text": "The problem statement, copied from elsewhere..." }
+```
+
+`difficulty` is `easy`, `medium` or `hard`; `topic` is required; each brief field is at most 2,000 characters and `text` at most 20,000.
+
+| Status and code | When |
+|---|---|
+| 400 `bad_request` | an unknown mode or difficulty, an empty topic or text, or a field over its limit |
+| 409 `no_key` | "Add a key in AI assistant first." |
+| 429 `busy` | "One AI request at a time. Wait for the current one to finish." (a generation or a solve of this admin is still running) |
+
+The call runs in the background, at most 3 minutes with its one retry. When the answer passes the checks it becomes a draft problem (origin `ai`, tag `ai draft`; a taken slug gets `-2`, `-3` and so on), and input generation is queued for it at once, which chains output generation and validation.
+
+`Wizard` (the admin's own runs only; kept in memory for an hour after it ends):
+
+```json
+{ "id": "3f9c...", "kind": "generate", "state": "draft_created", "problem_id": 12,
+  "started_at": 1792183192359, "server_now": 1792183230000 }
+```
+
+```json
+{ "id": "c3d4...", "kind": "generate", "state": "error", "started_at": 1792183192359, "server_now": 1792183230000,
+  "error": { "code": "invalid_answer", "message": "The model's answer could not be used.",
+             "reasons": ["Subtask points add up to 90; make them add up to 100."] } }
+```
+
+- `state`: `thinking`, then `draft_created` (generate), `submitted` (solve) or `error`. `problem_id` is the draft (generate) or the problem solved (solve); a solve adds `submission_id`.
+- `error.code`: `key_refused`, `no_access`, `model_not_found`, `rate_limited`, `unavailable`, `bad_request`, `refused` (the model declined; the message names the category), `cut_off` (too long, after one shorter retry), `invalid_answer` (with `reasons`, after one retry with them), `timeout`, `canceled`, `input`, `not_ready` (solve: the problem cannot be judged), `not_found`, `internal`. `reasons` is always an array.
+- `404 not_found` for another admin's run, an unknown id, or a run that ended over an hour ago or before a restart.
+- The same object is sent as a `wizard` event to the admin who started it when the run ends.
+
+`POST /api/admin/problems/{id}/solve` ("Can a model solve this?") sends the statement alone and asks for a C++17 solution, which is judged on the problem's tests as the admin's own submission (`client_key` `ai-solve-{wizard_id}`, listed with the admin's other submissions). The editor reads the score from `GET /api/submissions/{submission_id}`. Refusals: `404 not_found`, `409 no_key`, `409 not_ready` with `problems` before any call when the problem cannot be judged (its structure, or missing outputs), `429 busy`. The one-pending-submission rule still applies: the run then ends in `error` with `rate_limited`.
 
 ## Workspace, runs and submissions
 
@@ -445,6 +568,8 @@ A `text/event-stream` for the signed-in user, read with `EventSource`. Not JSON:
 | `announcement` | `{"contest","contest_id","id","body_md"}` | an organiser posted an announcement |
 | `clarification` | `{"contest","contest_id","id"}` | a question was answered (to the asker; to everyone in the contest when public) or asked (to organisers); refetch the contest |
 | `contest` | `{"contest","contest_id","ends_at"}` | the end moved: the whole contest was extended, or this student got extra time (`ends_at` is then their own end) |
+| `wizard` | a `Wizard` | an AI wizard run or solve of this admin ended |
+| `input_generation` | an `InputGeneration` | a generate inputs job this admin queued changed (claimed, reported, finished); the editor may also poll |
 | `replaced` | `{}` | sent just before the server closes this stream because the user opened a fifth one; do not reconnect |
 
 ```
@@ -586,7 +711,7 @@ Owners and admins organise every contest; a co-organiser organises only the cont
 | `PUT /api/admin/contests/{id}` | `ContestEdit` (fields left out keep their value) | 200 `AdminContest` |
 | `DELETE /api/admin/contests/{id}` | | 204 (archived; nothing deleted) |
 | `POST /api/admin/contests/{id}/clone` | `{slug, title, starts_at, ends_at}` | 201 `AdminContest`: settings and problems copied, not the roster, co-organisers, extensions or editorial |
-| `PUT /api/admin/contests/{id}/problems` (admin) | `[{"problem_id":3,"label":"A"}]` | 200 `AdminContest`; each problem must be validated; its content hash and subtask points are pinned. Errors name the label, never the problem's title |
+| `PUT /api/admin/contests/{id}/problems` (admin) | `[{"problem_id":3,"label":"A"}]` | 200 `AdminContest`; each problem must be validated and not tagged `ai draft` (a person saves AI drafts first); its content hash and subtask points are pinned. Errors name the label, never the problem's title |
 | `GET /api/admin/contests/{id}/roster` | | 200 `{roster:[{email,name,roll_number,section}], count}` |
 | `PUT /api/admin/contests/{id}/roster` | `text/csv` (header row naming `email`, and optionally `name`, `roll_number`, `section`) or a JSON array of the same objects; at most 2 MB and 5,000 students | 200 `{added, removed, roster_count}`. A full replace: on a roster contest, anyone left out loses access at once, so show the counts before and after |
 | `POST`, `DELETE /api/admin/contests/{id}/admins` | `{"email":"ta@college.edu"}` (they must have signed in once) | 200 `AdminContest` |

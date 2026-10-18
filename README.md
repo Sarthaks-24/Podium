@@ -4,7 +4,7 @@ A self-hosted platform for weekly programming contests at a college. Students si
 
 Everything runs on one small Linux VM (2 GB RAM is the target) and is built to serve 700+ students in one contest.
 
-Status: milestone M3 (submissions). The judge sandbox, Google sign-in with the domain check, roles, the owner's People page, the problem bank with pack import and export, output generation, validation on the real judge, and the student workspace with live verdicts exist; organisers try it with "Try as a student" until contests arrive in M4. See `CHANGELOG.md`.
+Status: milestone M5 (AI wizard). The judge sandbox, Google sign-in with the domain check, roles, the problem bank with pack import and export, output and input generation, validation on the real judge, the student workspace with live verdicts, contests with standings, freeze and reveal, integrity checks with review cases, and the bring-your-own-key AI wizard exist. See `CHANGELOG.md`.
 
 ## How it fits together
 
@@ -65,7 +65,7 @@ See "Deploy to the VM" below: production mode is the default and requires every 
 
 ### Check the sandbox
 
-`make sandbox-test` runs the hostile-program suite and the M2 and M3 acceptance tests (validating the example packs, then breaking one output; submitting each verdict in every language; generating outputs) inside isolate in WSL2. `make calibrate` prints timing tables for the machine.
+`make sandbox-test` runs the hostile-program suite and the M2, M3 and M5 acceptance tests (validating the example packs, then breaking one output; submitting each verdict in every language; generating outputs; generating inputs for the AI wizard's drafts) inside isolate in WSL2. `make calibrate` prints timing tables for the machine.
 
 Other targets: `make help`.
 

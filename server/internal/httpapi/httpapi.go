@@ -46,6 +46,9 @@ type Deps struct {
 	// Integrity runs integrity checks after a contest and keeps the review
 	// cases (D47, D49). Its routes need Contests too.
 	Integrity *integrity.Service
+	// AI is the wizard's in-memory state (M5): pasted keys, one call per
+	// admin, wizard runs. Its routes are mounted only when it is set.
+	AI *AI
 
 	// reads limits heavy reads per user; New sets it.
 	reads *readLimiter
@@ -93,6 +96,11 @@ func New(d Deps) http.Handler {
 	mux.HandleFunc("GET /api/admin/problems/{id}/validation", admin(d.getValidation))
 	mux.HandleFunc("POST /api/admin/problems/{id}/generate", admin(d.generateOutputs))
 	mux.HandleFunc("GET /api/admin/problems/{id}/generation", admin(d.getGeneration))
+	mux.HandleFunc("POST /api/admin/problems/{id}/generate-inputs", admin(d.generateInputs))
+	mux.HandleFunc("GET /api/admin/problems/{id}/input-generation", admin(d.getInputGeneration))
+	if d.AI != nil {
+		d.aiRoutes(mux)
+	}
 
 	// The workspace is for organisers trying a problem until contests
 	// arrive in M4, which mounts the same handlers under a contest.
@@ -247,7 +255,9 @@ func (s *statusRecorder) Unwrap() http.ResponseWriter { return s.ResponseWriter 
 
 // logRequests logs server errors at warn and everything else at debug, so
 // a 700-student contest does not flood the journal. Query strings are not
-// logged because OAuth callbacks carry codes in them.
+// logged because OAuth callbacks carry codes in them, and request bodies
+// never are: PUT /api/admin/ai/key carries a provider key (CLAUDE.md 3a).
+// A test checks that the key never reaches this log.
 func (d Deps) logRequests(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()

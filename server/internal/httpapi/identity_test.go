@@ -22,6 +22,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Sarthaks-24/podium/internal/ai"
 	"github.com/Sarthaks-24/podium/internal/auth"
 	"github.com/Sarthaks-24/podium/internal/auth/authtest"
 	"github.com/Sarthaks-24/podium/internal/contests"
@@ -48,11 +49,16 @@ type site struct {
 	// seen by contests, submissions and jobs (sign-in uses the real time).
 	contests *contests.Service
 	db       *sql.DB
+	dbPath   string
 	clock    *testClock
 	// integrity runs integrity checks on the same clock.
 	integrity *integrity.Service
-	// logs holds the handlers' log lines at info and above.
-	logs *syncBuffer
+	// logs holds the handlers' and the judge API's log lines at
+	// logLevel (info unless a test lowers it).
+	logs     *syncBuffer
+	logLevel *slog.LevelVar
+	// ai is the wizard's state; the fake provider exists in testing mode.
+	ai *AI
 }
 
 // syncBuffer is a bytes.Buffer safe for concurrent handlers.
@@ -101,7 +107,8 @@ func newSite(t *testing.T) *site { return newSiteMode(t, "production") }
 func newSiteMode(t *testing.T, mode string) *site {
 	t.Helper()
 	ctx := context.Background()
-	d, err := db.Open(ctx, filepath.Join(t.TempDir(), "e2e.db"))
+	dbPath := filepath.Join(t.TempDir(), "e2e.db")
+	d, err := db.Open(ctx, dbPath)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -114,17 +121,20 @@ func newSiteMode(t *testing.T, mode string) *site {
 		t.Fatal(err)
 	}
 	idp := authtest.New(t)
-	log := slog.New(slog.NewTextHandler(io.Discard, nil))
+	logs, level := &syncBuffer{}, &slog.LevelVar{}
+	log := slog.New(slog.NewJSONHandler(logs, &slog.HandlerOptions{Level: level}))
 	blobs := problems.Blobs{Dir: filepath.Join(t.TempDir(), "tests")}
 	clock := &testClock{}
-	jobSvc := &jobs.Service{DB: d, Now: clock.now, Kinds: map[string]jobs.Kind{
-		judgeapi.KindValidate: problems.ValidateKind{},
-		judgeapi.KindGenerate: problems.GenerateKind{Store: blobs},
-		judgeapi.KindSubmit:   submissions.SubmitKind{Now: clock.now},
-		judgeapi.KindRun:      submissions.RunKind{Now: clock.now},
-	}}
+	jobSvc := &jobs.Service{DB: d, Now: clock.now}
+	jobSvc.Kinds = map[string]jobs.Kind{
+		judgeapi.KindValidate:       problems.ValidateKind{},
+		judgeapi.KindGenerate:       problems.GenerateKind{Store: blobs, Jobs: jobSvc, Now: clock.now},
+		judgeapi.KindGenerateInputs: problems.GenerateInputsKind{Store: blobs, Jobs: jobSvc, Now: clock.now},
+		judgeapi.KindSubmit:         submissions.SubmitKind{Now: clock.now},
+		judgeapi.KindRun:            submissions.RunKind{Now: clock.now},
+	}
 	s := &site{t: t, idp: idp, bank: &problems.Service{DB: d, Blobs: blobs, Jobs: jobSvc}, hub: &events.Hub{}, db: d, clock: clock,
-		logs: &syncBuffer{}}
+		dbPath: dbPath, logs: logs, logLevel: level, ai: &AI{Keys: &ai.Keys{}, Slots: &ai.Slots{}}}
 	s.subs = &submissions.Service{DB: d, Jobs: jobSvc, Problems: s.bank, Hub: s.hub, Now: clock.now, HashKey: []byte("test-hash-key")}
 	jobSvc.Discard = func(shas []string) { blobs.DiscardUnrecorded(context.Background(), d, shas) }
 	// Boards recompute on the first read after a change, so a test reads
@@ -132,9 +142,11 @@ func newSiteMode(t *testing.T, mode string) *site {
 	s.contests = &contests.Service{DB: d, Problems: s.bank, Hub: s.hub, Now: clock.now, BoardEvery: time.Nanosecond}
 	s.subs.ContestView = s.contests.ViewFor
 	s.integrity = &integrity.Service{DB: d, Problems: s.bank, Now: clock.now}
+	inputEvents := &InputGenerationEvents{Problems: s.bank, Hub: s.hub}
 	jobSvc.OnChange = func(id int64, kind string) {
 		s.subs.OnJobChange(id, kind)
 		s.contests.OnJobChange(id, kind)
+		inputEvents.OnJobChange(id, kind)
 	}
 	s.judge = httptest.NewServer(NewJudge(JudgeDeps{Log: log, Jobs: jobSvc, Blobs: blobs, Token: judgeToken}))
 	t.Cleanup(s.judge.Close)
@@ -144,12 +156,13 @@ func newSiteMode(t *testing.T, mode string) *site {
 	s.srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { h.ServeHTTP(w, r) }))
 	t.Cleanup(s.srv.Close)
 	h = New(Deps{
-		DB: d, Log: slog.New(slog.NewJSONHandler(s.logs, nil)),
+		DB: d, Log: log,
 		WebApp:  http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { io.WriteString(w, "web app") }),
 		Auth:    svc,
 		IdP:     auth.NewProvider(idp.Endpoints(), idp.ClientID, idp.ClientSecret, RedirectURL(s.srv.URL)),
 		BaseURL: s.srv.URL, SessionSecret: []byte(strings.Repeat("e", 32)),
 		Problems: s.bank, Submissions: s.subs, Hub: s.hub, Contests: s.contests, Integrity: s.integrity, Mode: mode,
+		AI: s.ai,
 	})
 	return s
 }

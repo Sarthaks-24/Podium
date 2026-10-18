@@ -45,6 +45,8 @@ const (
 const (
 	OriginManual = "manual"
 	OriginImport = "import"
+	// OriginAI marks a draft the AI wizard made (M5).
+	OriginAI = "ai"
 )
 
 // Problem is one problem in the bank.
@@ -60,8 +62,12 @@ type Problem struct {
 	CheckerSource string
 	Reference     Source
 	// Brute and Validator are nil when the problem has none.
-	Brute      *Source
-	Validator  *Source
+	Brute     *Source
+	Validator *Source
+	// Generator, when set, makes the inputs of the tests in Plan (M5). It
+	// is setter code like the others and runs only inside isolate.
+	Generator  *Source
+	Plan       []PlannedTest
 	Tags       []string
 	Difficulty string
 	Origin     string
@@ -92,12 +98,14 @@ type Source struct {
 }
 
 // Subtask is a group of tests scored all or nothing. Tests is the range
-// list as written ("3-5,8").
+// list as written ("3-5,8"). GeneratorArgs are the arguments the
+// generator gets when tests are planned for this subtask.
 type Subtask struct {
-	Idx    int
-	Points int
-	Title  string
-	Tests  string
+	Idx           int
+	Points        int
+	Title         string
+	Tests         string
+	GeneratorArgs []string
 }
 
 // Test is one test case, by the hashes of its files. OutputSHA is empty
@@ -191,6 +199,9 @@ func checkFields(p *Problem) FieldErrors {
 	if p.Validator != nil {
 		checkSource(errs, "validator", p.Validator, false)
 	}
+	if p.Generator != nil {
+		checkSource(errs, "generator", p.Generator, false)
+	}
 	if len(p.Tags) > MaxTags {
 		errs["tags"] = fmt.Sprintf("Use at most %d tags.", MaxTags)
 	}
@@ -207,6 +218,7 @@ func checkFields(p *Problem) FieldErrors {
 		errs["difficulty"] = "Choose easy, medium, hard or none."
 	}
 	checkStructure(errs, p)
+	checkPlan(errs, p)
 	if len(errs) == 0 {
 		return nil
 	}
@@ -350,7 +362,7 @@ func (p *Problem) Warnings() []string {
 	if n := len(p.Tests) - len(p.Samples); n > 10 {
 		out = append(out, fmt.Sprintf("%d hidden tests. Keep it to about 10 so contests judge quickly.", n))
 	}
-	return out
+	return append(out, p.planWarnings()...)
 }
 
 // SubtaskOf returns the subtask containing test n, or 0.

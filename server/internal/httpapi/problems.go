@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -62,6 +63,17 @@ type subtaskJSON struct {
 	Points int    `json:"points"`
 	Title  string `json:"title"`
 	Tests  string `json:"tests"`
+	// GeneratorArgs are the arguments the generator gets for this
+	// subtask's planned tests (M5). Left out of a save, they are kept.
+	GeneratorArgs []string `json:"generator_args"`
+}
+
+// planJSON is one test the generator makes (M5).
+type planJSON struct {
+	Idx     int      `json:"idx"`
+	Subtask int      `json:"subtask"`
+	Seed    int64    `json:"seed"`
+	Args    []string `json:"args"`
 }
 
 type testJSON struct {
@@ -88,6 +100,8 @@ type problemJSON struct {
 	Reference     sourceJSON    `json:"reference"`
 	Brute         *sourceJSON   `json:"brute"`
 	Validator     *sourceJSON   `json:"validator"`
+	Generator     *sourceJSON   `json:"generator"`
+	Plan          []planJSON    `json:"plan"`
 	Samples       []int         `json:"samples"`
 	Subtasks      []subtaskJSON `json:"subtasks"`
 	Tests         []testJSON    `json:"tests"`
@@ -113,6 +127,10 @@ type problemEditJSON struct {
 	Difficulty    string        `json:"difficulty"`
 	Samples       []int         `json:"samples"`
 	Subtasks      []subtaskJSON `json:"subtasks"`
+	// Generator and Plan are raw so a save can tell "left out" (keep the
+	// generator, the plan and each subtask's arguments) from null or [].
+	Generator json.RawMessage `json:"generator"`
+	Plan      json.RawMessage `json:"plan"`
 }
 
 type validationJSON struct {
@@ -197,7 +215,8 @@ func (d Deps) problemJSON(p *problems.Problem) problemJSON {
 		StatementMD: p.Statement, TimeLimitMS: p.TimeLimitMS, MemoryLimitMB: p.MemoryLimitMB,
 		Checker: p.Checker, Epsilon: p.Epsilon, CheckerSource: p.CheckerSource,
 		Reference: sourceJSON{p.Reference.Language, p.Reference.Source},
-		Brute:     optSource(p.Brute), Validator: optSource(p.Validator),
+		Brute:     optSource(p.Brute), Validator: optSource(p.Validator), Generator: optSource(p.Generator),
+		Plan:    []planJSON{},
 		Samples: p.Samples, Subtasks: []subtaskJSON{}, Tests: []testJSON{},
 		ContentHash: p.ContentHash, Problems: nonNil(p.Problems()), Warnings: nonNil(p.Warnings()),
 	}
@@ -208,7 +227,10 @@ func (d Deps) problemJSON(p *problems.Problem) problemJSON {
 		out.ValidatedHash = &p.ValidatedHash
 	}
 	for _, st := range p.Subtasks {
-		out.Subtasks = append(out.Subtasks, subtaskJSON{st.Idx, st.Points, st.Title, st.Tests})
+		out.Subtasks = append(out.Subtasks, subtaskJSON{st.Idx, st.Points, st.Title, st.Tests, nonNil(st.GeneratorArgs)})
+	}
+	for _, t := range p.Plan {
+		out.Plan = append(out.Plan, planJSON{t.Test, t.Subtask, t.Seed, nonNil(t.Args)})
 	}
 	for _, t := range p.Tests {
 		tj := testJSON{Idx: t.Idx, Sample: p.IsSample(t.Idx), InputSize: t.InputSize, OutputSize: t.OutputSize,
@@ -388,7 +410,15 @@ func (d Deps) updateProblem(w http.ResponseWriter, r *http.Request) {
 		Brute:     fromSourceJSON(req.Brute), Validator: fromSourceJSON(req.Validator),
 		Tags: req.Tags, Difficulty: req.Difficulty, Samples: req.Samples}
 	for _, st := range req.Subtasks {
-		e.Subtasks = append(e.Subtasks, problems.Subtask{Points: st.Points, Title: st.Title, Tests: st.Tests})
+		e.Subtasks = append(e.Subtasks, problems.Subtask{Points: st.Points, Title: st.Title, Tests: st.Tests, GeneratorArgs: st.GeneratorArgs})
+	}
+	if req.Generator != nil || req.Plan != nil {
+		g, err := d.generatorEdit(r, id, req.Generator, req.Plan)
+		if err != nil {
+			d.problemError(w, r, err)
+			return
+		}
+		e.Generator = g
 	}
 	p, err := d.Problems.Update(r.Context(), id, e)
 	if err != nil {
@@ -396,6 +426,40 @@ func (d Deps) updateProblem(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	WriteJSON(w, http.StatusOK, d.problemJSON(p))
+}
+
+// generatorEdit builds the generator part of a save from the raw fields.
+// When only one of them was sent, the other keeps its stored value.
+func (d Deps) generatorEdit(r *http.Request, id int64, rawGen, rawPlan json.RawMessage) (*problems.GeneratorEdit, error) {
+	var cur *problems.Problem
+	if rawGen == nil || rawPlan == nil {
+		var err error
+		if cur, err = d.Problems.Get(r.Context(), id); err != nil {
+			return nil, err
+		}
+	}
+	g := &problems.GeneratorEdit{}
+	if rawGen != nil {
+		var src *sourceJSON
+		if err := json.Unmarshal(rawGen, &src); err != nil {
+			return nil, problems.FieldErrors{"generator": "Send the generator as {language, source} or null."}
+		}
+		g.Source = fromSourceJSON(src)
+	} else {
+		g.Source = cur.Generator
+	}
+	if rawPlan != nil {
+		var plan []planJSON
+		if err := json.Unmarshal(rawPlan, &plan); err != nil {
+			return nil, problems.FieldErrors{"plan": "Send the plan as a list of {idx, subtask, seed, args}."}
+		}
+		for _, t := range plan {
+			g.Plan = append(g.Plan, problems.PlannedTest{Test: t.Idx, Subtask: t.Subtask, Seed: t.Seed, Args: t.Args})
+		}
+	} else {
+		g.Plan = cur.Plan
+	}
+	return g, nil
 }
 
 func (d Deps) replaceTests(w http.ResponseWriter, r *http.Request) {

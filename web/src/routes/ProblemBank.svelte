@@ -7,7 +7,10 @@
   Past ten problems a filter narrows the list by title or tag. Under 768 px
   each row reads as title and status, then tests and the date, muted. "New problem" opens a
   small form for a title and a slug, suggested from the title until the
-  slug is edited, and goes to the new problem's editor. "Import pack" picks
+  slug is edited, and goes to the new problem's editor. "New problem with
+  AI" opens the wizard at /admin/ai/new, and "AI assistant settings" the
+  key screen; a problem the wizard made carries an "AI draft" mark beside
+  its title until a person saves it. "Import pack" picks
   a .zip and sends it as is (application/zip); a refused pack shows the
   server's message and its list of problems. "Show archived" adds
   ?archived=1 to the address. Students see a short explanation instead.
@@ -15,6 +18,7 @@
 -->
 <script lang="ts">
   import { onMount, tick, untrack } from 'svelte';
+  import { isAIDraft, withoutAIDraft } from '../lib/ai';
   import { ApiError, getJSON, sendBody, sendJSON } from '../lib/api';
   import { formatDateTime } from '../lib/format';
   import { setTitle } from '../lib/head';
@@ -211,6 +215,7 @@
       >
         New problem
       </button>
+      <a class="btn btn-secondary" href="/admin/ai/new">New problem with AI</a>
       <button type="button" class="btn btn-secondary" disabled={importing} onclick={pickPack}>Import pack</button>
       <input
         bind:this={fileInput}
@@ -222,10 +227,13 @@
         onchange={importPack}
       />
     </div>
-    <label class="toggle">
-      <input type="checkbox" checked={showArchived} onchange={toggleArchived} />
-      Show archived
-    </label>
+    <div class="aside">
+      <a class="settings-link" href="/admin/ai">AI assistant settings</a>
+      <label class="toggle">
+        <input type="checkbox" checked={showArchived} onchange={toggleArchived} />
+        Show archived
+      </label>
+    </div>
   </div>
 
   {#if importing}
@@ -296,7 +304,7 @@
     </div>
     <p class="retry"><button type="button" class="btn btn-secondary" onclick={() => load(showArchived)}>Try again</button></p>
   {:else if problems.length === 0}
-    <p class="lead muted">No problems yet. Import a pack or create one.</p>
+    <p class="lead muted">No problems yet. Import a pack, create one, or draft one with AI.</p>
   {:else}
     {#if problems.length > FILTER_FROM}
       <div class="field filter">
@@ -325,9 +333,11 @@
             {#each shown as p (p.id)}
               {@const name = p.title.trim() !== '' ? p.title : p.slug}
               <tr>
-                <th scope="row" class="title"><a href="/admin/problems/{p.id}">{name}</a></th>
+                <th scope="row" class="title">
+                  <a href="/admin/problems/{p.id}">{name}</a>{#if isAIDraft(p.tags)}<span class="ai-draft">AI draft</span>{/if}
+                </th>
                 <td class="difficulty">{difficultyLabel(p.difficulty)}</td>
-                <td class="tags">{p.tags.join(', ')}</td>
+                <td class="tags">{withoutAIDraft(p.tags).join(', ')}</td>
                 <td class="num right tests"><span class="cell-label">Tests</span>{p.test_count}</td>
                 <td class="num right points">{p.points}</td>
                 <td class="state" class:ok={statusWord(p) === 'Validated'}>{statusWord(p)}</td>
@@ -369,6 +379,30 @@
 
   .file {
     display: none;
+  }
+
+  .aside {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-2) var(--space-5);
+  }
+
+  .settings-link {
+    border-radius: var(--radius);
+    font-size: var(--fs-0);
+    font-weight: 500;
+  }
+
+  .ai-draft {
+    margin-left: var(--space-2);
+    padding: 0 var(--space-1);
+    border: var(--rule) solid var(--part);
+    border-radius: var(--radius);
+    color: var(--part);
+    font-size: var(--fs-0);
+    font-weight: 500;
+    white-space: nowrap;
   }
 
   .toggle {

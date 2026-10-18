@@ -58,7 +58,7 @@ func (w *Worker) lane(ctx context.Context, box int) {
 	backoff := idlePoll
 	for ctx.Err() == nil {
 		claim, err := w.Client.Claim(ctx, judgeapi.ClaimRequest{
-			Kinds:  []string{judgeapi.KindRun, judgeapi.KindSubmit, judgeapi.KindGenerate, judgeapi.KindValidate},
+			Kinds:  []string{judgeapi.KindRun, judgeapi.KindSubmit, judgeapi.KindGenerate, judgeapi.KindGenerateInputs, judgeapi.KindValidate},
 			Worker: w.Name, Version: w.Version, Isolate: w.Isolate,
 		})
 		switch {
@@ -87,6 +87,8 @@ func (w *Worker) lane(ctx context.Context, box int) {
 			err = w.run(ctx, box, claim)
 		case judgeapi.KindGenerate:
 			err = w.generate(ctx, box, claim)
+		case judgeapi.KindGenerateInputs:
+			err = w.generateInputs(ctx, box, claim)
 		default:
 			err = errors.New("unknown job kind " + claim.Kind)
 		}

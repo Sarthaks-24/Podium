@@ -102,6 +102,21 @@ func TestOneSetterJobAtATimeDuringAGradedContest(t *testing.T) {
 	}
 }
 
+func TestInputGenerationCountsAsASetterJob(t *testing.T) {
+	s, c := newMixed(t)
+	s.Kinds[judgeapi.KindGenerateInputs] = &uploadKind{}
+	contest(t, s, c, false, true)
+	add(t, s, judgeapi.KindGenerateInputs, 85, 0)
+	add(t, s, judgeapi.KindValidate, 90, 0)
+	all := []string{judgeapi.KindGenerateInputs, judgeapi.KindValidate, judgeapi.KindGenerate}
+	if got := claimKinds(t, s, all...); got == nil || got.Kind != judgeapi.KindGenerateInputs {
+		t.Fatalf("first setter job %+v", got)
+	}
+	if got := claimKinds(t, s, all...); got != nil {
+		t.Fatalf("validation leased beside an input generation during a graded contest: %+v", got)
+	}
+}
+
 func TestRunsDoNotStarveSubmissions(t *testing.T) {
 	s, _ := newMixed(t)
 	var runs []int64

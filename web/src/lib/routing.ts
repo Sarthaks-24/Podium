@@ -15,6 +15,8 @@ export type RouteName =
   | 'problems'
   | 'problem'
   | 'problem-try'
+  | 'ai-settings'
+  | 'ai-new'
   | 'contest'
   | 'contest-problem'
   | 'standings'
@@ -45,6 +47,8 @@ export const ROUTES: readonly RouteDef[] = [
   { pattern: '/admin/problems', name: 'problems', auth: true },
   { pattern: '/admin/problems/:id', name: 'problem', auth: true },
   { pattern: '/admin/problems/:id/try', name: 'problem-try', auth: true },
+  { pattern: '/admin/ai', name: 'ai-settings', auth: true },
+  { pattern: '/admin/ai/new', name: 'ai-new', auth: true },
   { pattern: '/contests/:slug', name: 'contest', auth: true },
   { pattern: '/contests/:slug/standings', name: 'standings', auth: true },
   { pattern: '/contests/:slug/problems/:label', name: 'contest-problem', auth: true },

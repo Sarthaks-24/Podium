@@ -61,15 +61,21 @@ type packMeta struct {
 	Reference     string        `yaml:"reference"`
 	Brute         string        `yaml:"brute,omitempty"`
 	Validator     string        `yaml:"validator,omitempty"`
+	Generator     string        `yaml:"generator,omitempty"`
 	Samples       []int         `yaml:"samples,flow"`
 	Subtasks      []packSubtask `yaml:"subtasks"`
 }
 
 type packSubtask struct {
-	Points int    `yaml:"points"`
-	Title  string `yaml:"title,omitempty"`
-	Tests  string `yaml:"tests"`
+	Points        int      `yaml:"points"`
+	Title         string   `yaml:"title,omitempty"`
+	Tests         string   `yaml:"tests"`
+	GeneratorArgs []string `yaml:"generator_args,omitempty,flow"`
 }
+
+// packPlanFile lists the generator's planned tests: a YAML list of
+// {test, subtask, seed, args}.
+const packPlanFile = "tests.yaml"
 
 var (
 	testFile   = regexp.MustCompile(`^tests/0*([1-9][0-9]{0,2})\.(in|out)$`)
@@ -195,7 +201,7 @@ func parsePackFiles(files map[string][]byte) (*Pack, error) {
 	p.Difficulty = meta.Difficulty
 	p.Samples = meta.Samples
 	for _, st := range meta.Subtasks {
-		p.Subtasks = append(p.Subtasks, Subtask{Points: st.Points, Title: st.Title, Tests: st.Tests})
+		p.Subtasks = append(p.Subtasks, Subtask{Points: st.Points, Title: st.Title, Tests: st.Tests, GeneratorArgs: st.GeneratorArgs})
 	}
 	if s, ok := files["statement.md"]; ok {
 		p.Statement = string(s)
@@ -225,6 +231,19 @@ func parsePackFiles(files map[string][]byte) (*Pack, error) {
 	}
 	p.Brute = source("brute", meta.Brute)
 	p.Validator = source("validator", meta.Validator)
+	p.Generator = source("generator", meta.Generator)
+	if raw, ok := files[packPlanFile]; ok {
+		used[packPlanFile] = true
+		if len(raw) > MaxProblemYAML {
+			add("%s is larger than 64 KB.", packPlanFile)
+		} else {
+			dec := yaml.NewDecoder(bytes.NewReader(raw))
+			dec.KnownFields(true)
+			if err := dec.Decode(&p.Plan); err != nil && err != io.EOF {
+				add("%s: %s", packPlanFile, yamlMessage(err))
+			}
+		}
+	}
 	if p.Checker == CheckerCustom {
 		if s, ok := files[packCheckerSource]; ok {
 			p.CheckerSource = string(s)
@@ -255,8 +274,8 @@ func parsePackFiles(files map[string][]byte) (*Pack, error) {
 			add("Test %d has an output but no input.", n)
 		}
 	}
-	if len(pk.Inputs) == 0 {
-		add("The pack has no tests. Put them in tests/ as 01.in and 01.out.")
+	if len(pk.Inputs) == 0 && len(p.Plan) == 0 {
+		add("The pack has no tests. Put them in tests/ as 01.in and 01.out, or plan them in tests.yaml with a generator.")
 	}
 	// A test may arrive without its output; "Generate outputs" fills it
 	// from the reference solution before validation.
@@ -287,15 +306,34 @@ func parsePackFiles(files map[string][]byte) (*Pack, error) {
 		}
 	}
 	if len(problems) == 0 {
-		// Missing outputs are filled after import; everything else must
-		// be right in the pack.
-		problems = append(problems, p.StructureProblems()...)
+		// Missing outputs are filled after import, and planned tests are
+		// made by Generate inputs; everything else must be right in the
+		// pack.
+		problems = append(problems, withPlanned(p).StructureProblems()...)
 	}
 	if len(problems) > 0 {
 		sort.Strings(problems)
 		return nil, &PackError{problems}
 	}
 	return pk, nil
+}
+
+// withPlanned returns a copy of p in which every planned test exists, for
+// checking the structure of a pack whose generator has not run yet.
+func withPlanned(p *Problem) *Problem {
+	q := *p
+	q.Tests = append([]Test{}, p.Tests...)
+	have := map[int]bool{}
+	for _, t := range p.Tests {
+		have[t.Idx] = true
+	}
+	for _, t := range p.Plan {
+		if !have[t.Test] {
+			q.Tests = append(q.Tests, Test{Idx: t.Test})
+		}
+	}
+	sort.Slice(q.Tests, func(i, j int) bool { return q.Tests[i].Idx < q.Tests[j].Idx })
+	return &q
 }
 
 // packField names a field the way problem.yaml spells it.
@@ -305,6 +343,8 @@ func packField(k string) string {
 		return "statement.md"
 	case k == "checker_source":
 		return "checker.cpp"
+	case k == "plan":
+		return packPlanFile
 	case strings.HasPrefix(k, "subtasks."):
 		parts := strings.Split(k, ".")
 		n, _ := strconv.Atoi(parts[1])
@@ -403,8 +443,22 @@ func WritePack(w io.Writer, p *Problem, read func(sha string) ([]byte, error)) e
 	if p.Checker == CheckerCustom {
 		files = append(files, packFile{packCheckerSource, []byte(p.CheckerSource)})
 	}
+	if p.Generator != nil {
+		meta.Generator = "generator" + ExtByLanguage[p.Generator.Language]
+		files = append(files, packFile{meta.Generator, []byte(p.Generator.Source)})
+		if len(p.Plan) > 0 {
+			var plan bytes.Buffer
+			penc := yaml.NewEncoder(&plan)
+			penc.SetIndent(2)
+			if err := penc.Encode(p.Plan); err != nil {
+				return err
+			}
+			penc.Close()
+			files = append(files, packFile{packPlanFile, plan.Bytes()})
+		}
+	}
 	for _, st := range p.Subtasks {
-		meta.Subtasks = append(meta.Subtasks, packSubtask{Points: st.Points, Title: st.Title, Tests: st.Tests})
+		meta.Subtasks = append(meta.Subtasks, packSubtask{Points: st.Points, Title: st.Title, Tests: st.Tests, GeneratorArgs: st.GeneratorArgs})
 	}
 	var y bytes.Buffer
 	enc := yaml.NewEncoder(&y)

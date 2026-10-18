@@ -41,6 +41,9 @@ type Generation struct {
 type GenerationSummary struct {
 	Applied  int      `json:"applied"`
 	Problems []string `json:"problems"`
+	// Validating is set when this generation queued a validation (the
+	// generate inputs, outputs, validate chain).
+	Validating bool `json:"validating,omitempty"`
 }
 
 // RequestGeneration queues a run of the reference solution on the
@@ -62,45 +65,64 @@ func (s *Service) RequestGeneration(ctx context.Context, id, userID int64, all b
 	if strings.TrimSpace(p.Reference.Source) == "" {
 		return nil, &NotReadyError{[]string{"Write the reference solution before generating outputs."}}
 	}
-	var pending int
-	if err := tx.QueryRowContext(ctx, `SELECT count(*) FROM generations g JOIN jobs j ON j.id = g.job_id
-		WHERE g.problem_id = ? AND j.state IN ('queued', 'leased')`, id).Scan(&pending); err != nil {
+	if err := pendingGeneration(ctx, tx, id); err != nil {
 		return nil, err
 	}
-	if pending > 0 {
-		return nil, &NotReadyError{[]string{"Outputs are already being generated. Wait for that run to finish."}}
-	}
-	pl := judgeapi.GeneratePayload{ProblemID: p.ID, ContentHash: p.ContentHash, TimeLimitMS: p.TimeLimitMS,
-		MemoryLimitMB: p.MemoryLimitMB, All: all}
-	for _, t := range p.Tests {
-		if all || t.OutputSHA == "" {
-			pl.Inputs = append(pl.Inputs, judgeapi.RunInput{Idx: t.Idx, InputSHA: t.InputSHA})
-		}
-	}
-	if len(pl.Inputs) == 0 {
-		return nil, &NotReadyError{[]string{"Every test already has an output. Use Regenerate all outputs to replace them."}}
-	}
-	sha, err := s.Blobs.Put(ctx, tx, []byte(p.Reference.Source))
-	if err != nil {
-		return nil, err
-	}
-	pl.Program = judgeapi.Program{Language: p.Reference.Language, SourceSHA: sha}
-	jobID, err := s.Jobs.Enqueue(ctx, tx, judgeapi.KindGenerate, GeneratePriority, pl, userID)
-	if err != nil {
-		return nil, err
-	}
-	var by any
-	if userID > 0 {
-		by = userID
-	}
-	if _, err := tx.ExecContext(ctx, `INSERT INTO generations (problem_id, job_id, all_outputs, requested_by, created_at) VALUES (?, ?, ?, ?, ?)`,
-		p.ID, jobID, all, by, s.now().UnixMilli()); err != nil {
+	if err := s.queue().enqueueGeneration(ctx, tx, p, userID, all, false); err != nil {
 		return nil, err
 	}
 	if err := tx.Commit(); err != nil {
 		return nil, err
 	}
 	return s.LatestGeneration(ctx, id)
+}
+
+// pendingGeneration refuses a new input or output generation while one of
+// either is waiting or running for the problem: each replaces files the
+// other reads.
+func pendingGeneration(ctx context.Context, tx *sql.Tx, id int64) error {
+	var outputs, inputs int
+	if err := tx.QueryRowContext(ctx, `SELECT
+		(SELECT count(*) FROM generations g JOIN jobs j ON j.id = g.job_id WHERE g.problem_id = ? AND j.state IN ('queued', 'leased')),
+		(SELECT count(*) FROM input_generations g JOIN jobs j ON j.id = g.job_id WHERE g.problem_id = ? AND j.state IN ('queued', 'leased'))`,
+		id, id).Scan(&outputs, &inputs); err != nil {
+		return err
+	}
+	switch {
+	case outputs > 0:
+		return &NotReadyError{[]string{"Outputs are already being generated. Wait for that run to finish."}}
+	case inputs > 0:
+		return &NotReadyError{[]string{"Inputs are being generated. Wait for that run to finish."}}
+	}
+	return nil
+}
+
+// enqueueGeneration queues output generation for p inside tx: tests
+// missing an output, or every test when all is set. thenValidate asks the
+// job's Finish to queue a validation once every output arrived.
+func (q queue) enqueueGeneration(ctx context.Context, tx *sql.Tx, p *Problem, userID int64, all, thenValidate bool) error {
+	pl := judgeapi.GeneratePayload{ProblemID: p.ID, ContentHash: p.ContentHash, TimeLimitMS: p.TimeLimitMS,
+		MemoryLimitMB: p.MemoryLimitMB, All: all, ThenValidate: thenValidate}
+	for _, t := range p.Tests {
+		if all || t.OutputSHA == "" {
+			pl.Inputs = append(pl.Inputs, judgeapi.RunInput{Idx: t.Idx, InputSHA: t.InputSHA})
+		}
+	}
+	if len(pl.Inputs) == 0 {
+		return &NotReadyError{[]string{"Every test already has an output. Use Regenerate all outputs to replace them."}}
+	}
+	sha, err := q.blobs.Put(ctx, tx, []byte(p.Reference.Source))
+	if err != nil {
+		return err
+	}
+	pl.Program = judgeapi.Program{Language: p.Reference.Language, SourceSHA: sha}
+	jobID, err := q.jobs.Enqueue(ctx, tx, judgeapi.KindGenerate, GeneratePriority, pl, userID)
+	if err != nil {
+		return err
+	}
+	_, err = tx.ExecContext(ctx, `INSERT INTO generations (problem_id, job_id, all_outputs, requested_by, created_at) VALUES (?, ?, ?, ?, ?)`,
+		p.ID, jobID, all, nullUser(userID), q.at())
+	return err
 }
 
 // LatestGeneration returns the problem's most recent generation run.
@@ -143,7 +165,10 @@ func (s *Service) LatestGeneration(ctx context.Context, id int64) (*Generation, 
 // each one exists before using it.
 type GenerateKind struct {
 	Store Blobs
-	Now   func() time.Time
+	// Jobs queues the validation that follows a generation started by
+	// generate_inputs. When nil, nothing is chained.
+	Jobs *jobs.Service
+	Now  func() time.Time
 }
 
 // MaxUploads lets the worker upload one output per input, with a little
@@ -293,7 +318,25 @@ func (k GenerateKind) Finish(ctx context.Context, tx *sql.Tx, job *jobs.Job) err
 		return nil
 	}
 	svc := Service{DB: nil, Now: k.Now}
-	return svc.save(ctx, tx, p)
+	if err := svc.save(ctx, tx, p); err != nil {
+		return err
+	}
+	if !pl.ThenValidate || k.Jobs == nil || len(sm.Problems) > 0 || len(p.Problems()) > 0 {
+		return nil
+	}
+	by, err := jobCreator(ctx, tx, job.ID)
+	if err != nil {
+		return err
+	}
+	sm.Validating, err = queue{k.Jobs, k.Store, k.Now}.enqueueValidation(ctx, tx, p, by)
+	return err
+}
+
+// jobCreator returns the user who queued a job, or 0.
+func jobCreator(ctx context.Context, tx *sql.Tx, jobID int64) (int64, error) {
+	var by sql.NullInt64
+	err := tx.QueryRowContext(ctx, "SELECT created_by FROM jobs WHERE id = ?", jobID).Scan(&by)
+	return by.Int64, err
 }
 
 // ErrUploadTooLarge means an upload passed its size cap.

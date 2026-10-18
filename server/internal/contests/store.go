@@ -461,10 +461,10 @@ func (s *Service) SetProblems(ctx context.Context, id int64, choices []ProblemCh
 			return nil, FieldErrors{"problems": "A problem appears twice."}
 		}
 		seenLabel[ch.Label], seenProblem[ch.ProblemID] = true, true
-		var hash string
+		var hash, tags string
 		var validated sql.NullString
-		err := tx.QueryRowContext(ctx, "SELECT content_hash, validated_hash FROM problems WHERE id = ? AND archived = 0", ch.ProblemID).
-			Scan(&hash, &validated)
+		err := tx.QueryRowContext(ctx, "SELECT content_hash, validated_hash, tags FROM problems WHERE id = ? AND archived = 0", ch.ProblemID).
+			Scan(&hash, &validated, &tags)
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, FieldErrors{"problems": fmt.Sprintf("The problem for label %s no longer exists.", ch.Label)}
 		}
@@ -475,6 +475,15 @@ func (s *Service) SetProblems(ctx context.Context, id int64, choices []ProblemCh
 		// problem's title, so ids cannot be used to list the bank.
 		if validated.String != hash {
 			return nil, FieldErrors{"problems": fmt.Sprintf("The problem for label %s is not validated. Validate it before adding it to a contest.", ch.Label)}
+		}
+		// The wizard's chain can validate a draft on its own; a person
+		// must still read and save it before students can see it (M5).
+		var tagList []string
+		json.Unmarshal([]byte(tags), &tagList)
+		for _, t := range tagList {
+			if t == problems.AIDraftTag {
+				return nil, FieldErrors{"problems": fmt.Sprintf("The problem for label %s is an AI draft. Read it and save it in the editor before adding it to a contest.", ch.Label)}
+			}
 		}
 		points, err := subtaskPoints(ctx, tx, ch.ProblemID)
 		if err != nil {

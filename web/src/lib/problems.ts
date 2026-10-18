@@ -7,6 +7,11 @@
  * a Problem and toEdit() turns it back into the ProblemEdit body for PUT,
  * reporting input it cannot read as field errors keyed like the server's.
  * The rest turns a Validation into the plain sentences the report shows.
+ *
+ * From M5 a problem may carry a generator and a plan of the tests it makes
+ * (cache/v1/m5-plan.md section 7). A server that sends no "generator" key
+ * predates M5: the draft then has no generator part and toEdit() sends
+ * none, so older servers and fixtures see the same body as before.
  */
 
 /** Program languages, as the API names them. */
@@ -69,6 +74,71 @@ export interface Subtask {
   points: number;
   title: string;
   tests: string;
+  /** Arguments the generator gets for this subtask's planned tests (M5). */
+  generator_args?: string[];
+}
+
+/** One test the generator makes: argv is the seed, then `args`. */
+export interface PlannedTest {
+  idx: number;
+  subtask: number;
+  seed: number;
+  args: string[];
+}
+
+/** Normalises a plan from the server, accepting "test" for "idx". */
+export function readPlan(raw: unknown): PlannedTest[] {
+  if (!Array.isArray(raw)) return [];
+  return raw.map((r: Record<string, unknown>) => ({
+    idx: Number(r.idx ?? r.test ?? 0),
+    subtask: Number(r.subtask ?? 1),
+    seed: Number(r.seed ?? 0),
+    args: Array.isArray(r.args) ? r.args.map(String) : [],
+  }));
+}
+
+/** One generator argument: letters, digits and _ . , : = + -, up to 64 characters. */
+export const ARG_PATTERN = /^[A-Za-z0-9_.,:=+-]{1,64}$/;
+
+/** At most this many arguments per test or subtask. */
+export const MAX_ARGS = 16;
+
+/** The largest seed a planned test may use. */
+export const MAX_SEED = 1_000_000_000;
+
+/** Splits typed arguments on spaces; an empty string is no arguments. */
+export function splitArgs(text: string): string[] {
+  return text.split(/\s+/).filter((a) => a !== '');
+}
+
+/** Checks typed arguments; returns a sentence about the first problem, or "". */
+export function checkArgs(text: string): string {
+  const args = splitArgs(text);
+  if (args.length > MAX_ARGS) return `Use at most ${MAX_ARGS} arguments.`;
+  const bad = args.find((a) => !ARG_PATTERN.test(a));
+  if (bad !== undefined) {
+    const shown = bad.length > 24 ? `${bad.slice(0, 24)}...` : bad;
+    return `"${shown}" is not a valid argument. Use letters, digits and _ . , : = + -, separated by spaces.`;
+  }
+  return '';
+}
+
+/**
+ * The row "Add planned test" appends: the next free test number after the
+ * stored tests and the plan, the last row's subtask (or the last subtask),
+ * and the next seed.
+ */
+export function nextPlanRow(
+  plan: readonly { idx: number | null; subtask: number; seed: number | null }[],
+  testIdxs: readonly number[],
+  subtaskCount: number,
+): { idx: number; subtask: number; seed: number; args: string } {
+  const used = [...testIdxs, ...plan.map((r) => r.idx ?? 0)];
+  const idx = Math.min(999, used.reduce((m, n) => Math.max(m, n), 0) + 1);
+  const last = plan.at(-1);
+  const subtask = last ? last.subtask : Math.max(1, subtaskCount);
+  const seed = plan.reduce((m, r) => Math.max(m, r.seed ?? 0), 0) + 1;
+  return { idx, subtask, seed, args: '' };
 }
 
 /** One stored test. Previews are the first 200 bytes of each file. */
@@ -96,6 +166,10 @@ export interface Problem extends ProblemSummary {
   reference: Program;
   brute: Program | null;
   validator: Program | null;
+  /** The input generator (M5); absent from servers before M5. */
+  generator?: Program | null;
+  /** The tests the generator makes (M5). */
+  plan?: PlannedTest[];
   samples: number[];
   subtasks: Subtask[];
   tests: TestCase[];
@@ -120,7 +194,18 @@ export interface ProblemEdit {
   tags: string[];
   difficulty: Difficulty;
   samples: number[];
-  subtasks: { points: number; title: string; tests: string }[];
+  subtasks: { points: number; title: string; tests: string; generator_args?: string[] }[];
+  generator?: Program | null;
+  plan?: PlannedTest[];
+}
+
+/** One planned test as the editor's table holds it. */
+export interface PlanRow {
+  idx: number | null;
+  subtask: number;
+  seed: number | null;
+  /** Arguments separated by spaces, as typed. */
+  args: string;
 }
 
 /** The editor's working copy of a problem. */
@@ -141,7 +226,11 @@ export interface Draft {
   difficulty: Difficulty;
   /** Test numbers and ranges, as typed, for example "1, 2". */
   samples: string;
-  subtasks: { points: number | null; title: string; tests: string }[];
+  /** `args`: generator arguments separated by spaces, present from M5. */
+  subtasks: { points: number | null; title: string; tests: string; args?: string }[];
+  /** Present only when the server knows about generators (M5). */
+  generator?: Program | null;
+  plan?: PlanRow[];
 }
 
 export type ValidationState = 'queued' | 'running' | 'passed' | 'failed' | 'error';
@@ -236,7 +325,8 @@ export function formatTestList(tests: readonly number[]): string {
 
 /** Builds the editor's working copy from a problem. */
 export function toDraft(p: Problem): Draft {
-  return {
+  const gen = p.generator !== undefined;
+  const draft: Draft = {
     title: p.title,
     slug: p.slug,
     statement_md: p.statement_md,
@@ -248,11 +338,21 @@ export function toDraft(p: Problem): Draft {
     reference: { ...p.reference },
     brute: p.brute ? { ...p.brute } : null,
     validator: p.validator ? { ...p.validator } : null,
-    tags: p.tags.join(', '),
+    // The AI draft tag goes when a person saves, so it is not edited here.
+    tags: p.tags.filter((t) => t.trim().toLowerCase() !== 'ai draft').join(', '),
     difficulty: p.difficulty,
     samples: formatTestList(p.samples),
-    subtasks: p.subtasks.map((s) => ({ points: s.points, title: s.title, tests: s.tests })),
+    subtasks: p.subtasks.map((s) =>
+      gen
+        ? { points: s.points, title: s.title, tests: s.tests, args: (s.generator_args ?? []).join(' ') }
+        : { points: s.points, title: s.title, tests: s.tests },
+    ),
   };
+  if (gen) {
+    draft.generator = p.generator ? { ...p.generator } : null;
+    draft.plan = readPlan(p.plan).map((t) => ({ idx: t.idx, subtask: t.subtask, seed: t.seed, args: t.args.join(' ') }));
+  }
+  return draft;
 }
 
 /** The result of turning a draft into a request body. */
@@ -285,8 +385,35 @@ export function toEdit(d: Draft): EditResult {
     const range = parseTestList(s.tests);
     if (!range.ok) fields[`subtasks.${i}.tests`] = range.error;
     else if (range.tests.length === 0) fields[`subtasks.${i}.tests`] = 'Enter the tests in this subtask, for example 3-5.';
-    return { points, title: s.title.trim(), tests: s.tests.trim() };
+    if (s.args === undefined) return { points, title: s.title.trim(), tests: s.tests.trim() };
+    const argError = checkArgs(s.args);
+    if (argError !== '') fields[`subtasks.${i}.generator_args`] = argError;
+    return { points, title: s.title.trim(), tests: s.tests.trim(), generator_args: splitArgs(s.args) };
   });
+
+  let plan: PlannedTest[] | undefined;
+  if (d.plan !== undefined) {
+    const seen = new Set<number>();
+    plan = d.plan.map((row, i) => {
+      if (row.idx === null || !Number.isInteger(row.idx) || row.idx < 1 || row.idx > 999) {
+        fields[`plan.${i}.idx`] = 'Enter a test number from 1 to 999.';
+      } else if (seen.has(row.idx)) {
+        fields[`plan.${i}.idx`] = `Test ${row.idx} is planned twice.`;
+      } else {
+        seen.add(row.idx);
+      }
+      if (!Number.isInteger(row.subtask) || row.subtask < 1 || row.subtask > d.subtasks.length) {
+        fields[`plan.${i}.subtask`] = 'Choose one of the subtasks.';
+      }
+      if (row.seed === null || !Number.isInteger(row.seed) || row.seed < 0 || row.seed > MAX_SEED) {
+        fields[`plan.${i}.seed`] = `Enter a seed from 0 to ${MAX_SEED}.`;
+      }
+      const argError = checkArgs(row.args);
+      if (argError !== '') fields[`plan.${i}.args`] = argError;
+      return { idx: row.idx ?? 0, subtask: row.subtask, seed: row.seed ?? 0, args: splitArgs(row.args) };
+    });
+    if (plan.length > 0 && !d.generator) fields.plan = 'Planned tests need a generator. Add one, or remove the planned tests.';
+  }
 
   if (Object.keys(fields).length > 0) return { ok: false, fields };
   return {
@@ -310,6 +437,8 @@ export function toEdit(d: Draft): EditResult {
       difficulty: d.difficulty,
       samples: samples.ok ? samples.tests : [],
       subtasks,
+      ...(d.generator !== undefined ? { generator: d.generator ? { ...d.generator } : null } : {}),
+      ...(plan !== undefined ? { plan } : {}),
     },
   };
 }

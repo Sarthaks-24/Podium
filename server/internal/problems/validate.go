@@ -77,23 +77,50 @@ func (s *Service) RequestValidation(ctx context.Context, id, userID int64) (*Val
 	if probs := p.Problems(); len(probs) > 0 {
 		return nil, &NotReadyError{probs}
 	}
-	// One open validation per problem: asking again for the same content
-	// returns the run already waiting; a run for older content still
-	// waiting is superseded.
+	if _, err := s.queue().enqueueValidation(ctx, tx, p, userID); err != nil {
+		return nil, err
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+	return s.LatestValidation(ctx, id)
+}
+
+// queue is what enqueueing setter jobs needs, shared by the service and by
+// job kinds that queue the next step from inside their Finish.
+type queue struct {
+	jobs  *jobs.Service
+	blobs Blobs
+	now   func() time.Time
+}
+
+func (s *Service) queue() queue { return queue{s.Jobs, s.Blobs, s.now} }
+
+func (q queue) at() int64 {
+	if q.now != nil {
+		return q.now().UnixMilli()
+	}
+	return time.Now().UnixMilli()
+}
+
+// enqueueValidation queues a validation of p inside tx. One validation is
+// open per problem: when one for the same content is already waiting,
+// nothing is queued and queued is false; one for older content still
+// waiting is superseded.
+func (q queue) enqueueValidation(ctx context.Context, tx *sql.Tx, p *Problem, userID int64) (queued bool, err error) {
 	var openID, openJob int64
 	var openHash string
 	err = tx.QueryRowContext(ctx, `SELECT v.id, v.job_id, v.content_hash FROM validations v JOIN jobs j ON j.id = v.job_id
-		WHERE v.problem_id = ? AND j.state IN ('queued', 'leased') ORDER BY v.id DESC LIMIT 1`, id).Scan(&openID, &openJob, &openHash)
+		WHERE v.problem_id = ? AND j.state IN ('queued', 'leased') ORDER BY v.id DESC LIMIT 1`, p.ID).Scan(&openID, &openJob, &openHash)
 	switch {
 	case err == nil && openHash == p.ContentHash:
-		tx.Rollback()
-		return s.LatestValidation(ctx, id)
+		return false, nil
 	case err == nil:
-		if err := s.Jobs.Supersede(ctx, tx, openJob, "A newer version of the problem was sent for validation."); err != nil {
-			return nil, err
+		if err := q.jobs.Supersede(ctx, tx, openJob, "A newer version of the problem was sent for validation."); err != nil {
+			return false, err
 		}
 	case !errors.Is(err, sql.ErrNoRows):
-		return nil, err
+		return false, err
 	}
 	points := 0
 	for _, st := range p.Subtasks {
@@ -105,11 +132,11 @@ func (s *Service) RequestValidation(ctx context.Context, id, userID int64) (*Val
 		Checker: judgeapi.Checker{Type: p.Checker, Epsilon: p.Epsilon},
 	}
 	putSource := func(src Source) (judgeapi.Program, error) {
-		sha, err := s.Blobs.Put(ctx, tx, []byte(src.Source))
+		sha, err := q.blobs.Put(ctx, tx, []byte(src.Source))
 		return judgeapi.Program{Language: src.Language, SourceSHA: sha}, err
 	}
 	if payload.Programs.Reference, err = putSource(p.Reference); err != nil {
-		return nil, err
+		return false, err
 	}
 	for _, opt := range []struct {
 		src  *Source
@@ -120,34 +147,35 @@ func (s *Service) RequestValidation(ctx context.Context, id, userID int64) (*Val
 		}
 		prog, err := putSource(*opt.src)
 		if err != nil {
-			return nil, err
+			return false, err
 		}
 		*opt.dest = &prog
 	}
 	if p.Checker == CheckerCustom {
-		if payload.Checker.SourceSHA, err = s.Blobs.Put(ctx, tx, []byte(p.CheckerSource)); err != nil {
-			return nil, err
+		if payload.Checker.SourceSHA, err = q.blobs.Put(ctx, tx, []byte(p.CheckerSource)); err != nil {
+			return false, err
 		}
 	}
 	for _, t := range p.Tests {
 		payload.Tests = append(payload.Tests, judgeapi.Test{Idx: t.Idx, Sample: p.IsSample(t.Idx), InputSHA: t.InputSHA, OutputSHA: t.OutputSHA})
 	}
-	jobID, err := s.Jobs.Enqueue(ctx, tx, judgeapi.KindValidate, ValidatePriority, payload, userID)
+	jobID, err := q.jobs.Enqueue(ctx, tx, judgeapi.KindValidate, ValidatePriority, payload, userID)
 	if err != nil {
-		return nil, err
-	}
-	var by any
-	if userID > 0 {
-		by = userID
+		return false, err
 	}
 	if _, err := tx.ExecContext(ctx, `INSERT INTO validations (problem_id, job_id, content_hash, requested_by, created_at)
-		VALUES (?, ?, ?, ?, ?)`, p.ID, jobID, p.ContentHash, by, s.now().UnixMilli()); err != nil {
-		return nil, err
+		VALUES (?, ?, ?, ?, ?)`, p.ID, jobID, p.ContentHash, nullUser(userID), q.at()); err != nil {
+		return false, err
 	}
-	if err := tx.Commit(); err != nil {
-		return nil, err
+	return true, nil
+}
+
+// nullUser stores a missing user as NULL.
+func nullUser(id int64) any {
+	if id > 0 {
+		return id
 	}
-	return s.LatestValidation(ctx, id)
+	return nil
 }
 
 // LatestValidation returns the problem's most recent validation, or
