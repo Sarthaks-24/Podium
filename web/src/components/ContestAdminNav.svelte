@@ -66,6 +66,7 @@
     align-items: center;
     min-height: var(--control-h-touch);
     padding-inline: var(--space-3);
+    border-bottom: calc(2 * var(--rule)) solid transparent;
     border-radius: var(--radius) var(--radius) 0 0;
     color: var(--ink-muted);
     font-weight: 500;
@@ -76,15 +77,20 @@
     color: var(--ink);
   }
 
+  /* State is a shape (F9): a border, which forced-colours mode keeps. */
   .sub a[aria-current='page'] {
+    border-bottom-color: var(--act);
     color: var(--ink);
-    box-shadow: inset 0 calc(-2 * var(--rule)) 0 var(--act);
   }
 
-  .sub a[aria-current='page']:focus-visible {
-    box-shadow:
-      inset 0 calc(-2 * var(--rule)) 0 var(--act),
-      var(--focus);
+  @media (forced-colors: active) {
+    .sub a {
+      border-bottom-color: Canvas;
+    }
+
+    .sub a[aria-current='page'] {
+      border-bottom-color: Highlight;
+    }
   }
 
   /* Phones: four tabs fit at 375 px with narrower padding. */

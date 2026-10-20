@@ -260,7 +260,10 @@
     background: var(--surface-2);
   }
 
+  /* The ring is a shadow; the transparent outline shows in forced colours. */
   .option:has(input:focus-visible) {
+    outline: calc(2 * var(--rule)) solid transparent;
+    outline-offset: calc(2 * var(--rule));
     box-shadow: var(--focus);
   }
 

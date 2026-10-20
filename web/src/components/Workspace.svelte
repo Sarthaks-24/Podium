@@ -1003,21 +1003,18 @@
     min-height: var(--control-h-touch);
     padding-inline: var(--space-4);
     border: 0;
+    border-bottom: calc(2 * var(--rule)) solid transparent;
     border-radius: var(--radius) var(--radius) 0 0;
     background: none;
     color: var(--ink-muted);
     font-weight: 500;
   }
 
+  /* State is a shape (F9): the selected tab is underlined by a border, which
+     forced-colours mode keeps, unlike an inset shadow. */
   .tab[aria-selected='true'] {
+    border-bottom-color: var(--act);
     color: var(--ink);
-    box-shadow: inset 0 calc(-2 * var(--rule)) 0 var(--act);
-  }
-
-  .tab[aria-selected='true']:focus-visible {
-    box-shadow:
-      inset 0 calc(-2 * var(--rule)) 0 var(--act),
-      var(--focus);
   }
 
   .dot {
@@ -1231,6 +1228,27 @@
     display: block;
     height: 100%;
     background: var(--ok);
+  }
+
+  /* Forced colours drop backgrounds: the rail bar keeps its track and fill. */
+  @media (forced-colors: active) {
+    .bar {
+      outline: var(--rule) solid CanvasText;
+    }
+
+    .bar-fill {
+      background: Highlight;
+      forced-color-adjust: none;
+    }
+
+    /* A transparent border would be forced to CanvasText: unselected tabs paint theirs as the canvas. */
+    .tab {
+      border-bottom-color: Canvas;
+    }
+
+    .tab[aria-selected='true'] {
+      border-bottom-color: Highlight;
+    }
   }
 
   /* Tablet: the result follows the editor in the Code tab. */

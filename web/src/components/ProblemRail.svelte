@@ -218,4 +218,21 @@
   .wide .messages {
     margin-left: calc(-1 * var(--space-3));
   }
+
+  /* Forced colours drop the tint and the bar fills: the current problem
+     gets an outline and the bars keep their track and fill. */
+  @media (forced-colors: active) {
+    .problem[aria-current='page'] {
+      outline: calc(2 * var(--rule)) solid Highlight;
+    }
+
+    .bar {
+      outline: var(--rule) solid CanvasText;
+    }
+
+    .fill {
+      background: Highlight;
+      forced-color-adjust: none;
+    }
+  }
 </style>
