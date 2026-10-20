@@ -500,6 +500,8 @@ export interface AdminContestProblem extends Partial<Omit<ProblemPin, 'label' | 
   title: string;
   max_score?: number;
   ready?: boolean;
+  /** The judge's toolchain differs from the one this problem was validated on (B1.5). */
+  toolchain_drift?: boolean;
 }
 
 export interface RosterEntry {
@@ -569,6 +571,10 @@ export interface AdminContest extends ContestSettings {
   default_honour_text?: string;
   /** Every pin change, newest first (C4, v1.2.0). */
   pin_history?: PinChange[];
+  /** Queue health, the judge's last request for work and the unanswered count (C10, v1.3.0). */
+  queue?: QueueHealth;
+  judge_last_claim_at?: number | null;
+  unanswered?: number;
   server_now?: number;
 }
 
@@ -622,7 +628,7 @@ export const AUDIT_ACTIONS: readonly { id: string; label: string }[] = [
   { id: 'extend', label: 'Contest extended' },
   { id: 'pause', label: 'Judging paused' },
   { id: 'resume', label: 'Judging resumed' },
-  { id: 'rejudge', label: 'Rejudges' },
+  { id: 'rejudge', label: 'Judged again' },
   { id: 'reveal', label: 'Reveal' },
   { id: 'editorial', label: 'Editorial' },
   { id: 'organisers', label: 'Co-organisers' },
@@ -662,8 +668,13 @@ function auditValue(field: string, v: unknown): string {
   return String(v);
 }
 
-/** One sentence for an audit row, in the past tense. */
-export function auditSummary(e: Pick<AuditEntry, 'action' | 'details'>): string {
+/**
+ * One sentence for an audit row, in the past tense. `names` maps user ids
+ * to names, for rows that name a student only by id: the extension row is
+ * to stop carrying the email and reason (P3 security review, D162's
+ * amendment), so the feed must read without them.
+ */
+export function auditSummary(e: Pick<AuditEntry, 'action' | 'details'>, names?: ReadonlyMap<number, string>): string {
   const d = e.details ?? {};
   const str = (k: string) => (typeof d[k] === 'string' ? (d[k] as string) : '');
   const num = (k: string) => (typeof d[k] === 'number' ? (d[k] as number) : 0);
@@ -696,7 +707,7 @@ export function auditSummary(e: Pick<AuditEntry, 'action' | 'details'>): string 
       return `Moved problem ${str('label')} from revision ${num('from_rev')} to revision ${num('to_rev')} (${what} changed)`;
     }
     case 'extension': {
-      const who = str('email') || `user ${num('user_id')}`;
+      const who = str('email') || names?.get(num('user_id')) || `user ${num('user_id')}`;
       if (num('minutes') === 0) return `Removed the extension for ${who}`;
       const reason = str('reason');
       return `Gave ${who} ${countOf(num('minutes'), 'extra minute')}${reason ? ` (${reason})` : ''}`;
@@ -709,8 +720,8 @@ export function auditSummary(e: Pick<AuditEntry, 'action' | 'details'>): string 
       return 'Resumed judging';
     case 'rejudge':
       return str('problem_label') !== ''
-        ? `Rejudged problem ${str('problem_label')} (${countOf(num('queued'), 'submission')})`
-        : `Rejudged submission ${num('submission_id')}`;
+        ? `Judged problem ${str('problem_label')} again (${countOf(num('queued'), 'submission')})`
+        : `Judged submission ${num('submission_id')} again`;
     case 'reveal':
       return 'Revealed the final board';
     case 'editorial':
@@ -793,6 +804,129 @@ export function publishChecks(
   out.push(c.languages.length > 0 ? { tone: 'ok', text: `${c.languages.length} ${c.languages.length === 1 ? 'language' : 'languages'} allowed.` } : { tone: 'bad', text: 'Allow at least one language.' });
   if (c.hold_reveal && c.freeze_minutes <= 0) out.push({ tone: 'part', text: 'The board is held for a reveal, but with no freeze there is nothing to reveal.' });
   return out;
+}
+
+/** Queue health on the organiser contest response (C10, v1.3.0). */
+export interface QueueHealth {
+  waiting: number;
+  judging: number;
+  errors: number;
+  oldest_wait_s: number;
+}
+
+/** One item of the console's attention strip; only "part" and "bad" ask for action. */
+export interface AttentionItem {
+  key: 'time' | 'freeze' | 'judging' | 'queue' | 'errors' | 'judge' | 'questions' | 'drift';
+  text: string;
+  tone: 'note' | 'part' | 'bad';
+  href: string;
+}
+
+/** A judge asks for work every few seconds; a minute without that means none is working (C10). */
+export const JUDGE_SILENT_MS = 60_000;
+
+/** A wait the queue should not reach in a calm contest. */
+export const SLOW_WAIT_S = 60;
+
+/**
+ * The console's attention strip (F6.1, C1 with the C10 fields): time to
+ * the start or end, when the board freezes, judging on or paused, the
+ * queue, judge errors, whether a judge is asking for work, unanswered
+ * questions and problems validated on another judge toolchain. Each item
+ * links to where it is handled; an item turns "part" or "bad" only when it
+ * needs action. Older servers without the C10 fields simply give fewer
+ * items.
+ */
+export function attentionItems(
+  c: Pick<AdminContest, 'starts_at' | 'ends_at' | 'start_mode' | 'freeze_minutes' | 'paused' | 'problems' | 'state'> & {
+    close_at?: number;
+    queue?: QueueHealth;
+    judge_last_claim_at?: number | null;
+  },
+  now: number,
+  unanswered: number,
+): AttentionItem[] {
+  const out: AttentionItem[] = [];
+  const close = c.close_at ?? c.ends_at;
+  if (now < c.starts_at) out.push({ key: 'time', text: `Starts in ${formatCountdown(c.starts_at - now)}`, tone: 'note', href: '#time-title' });
+  else if (now < close) out.push({ key: 'time', text: `Ends in ${formatCountdown(close - now)}`, tone: 'note', href: '#time-title' });
+  else out.push({ key: 'time', text: 'Ended', tone: 'note', href: '#time-title' });
+
+  const freeze = c.start_mode === 'fixed' && c.freeze_minutes > 0 ? c.ends_at - c.freeze_minutes * 60_000 : null;
+  if (freeze !== null && now >= c.starts_at && now < close) {
+    out.push({ key: 'freeze', text: now < freeze ? `Board freezes in ${formatSpan(freeze - now)}` : 'Board frozen', tone: 'note', href: '#time-title' });
+  }
+
+  out.push(c.paused ? { key: 'judging', text: 'Judging paused', tone: 'part', href: '#time-title' } : { key: 'judging', text: 'Judging on', tone: 'note', href: '#time-title' });
+
+  if (c.queue) {
+    const q = c.queue;
+    if (q.waiting === 0 && q.judging === 0) out.push({ key: 'queue', text: 'Queue empty', tone: 'note', href: '#feed-title' });
+    else {
+      const wait = q.oldest_wait_s > 0 ? `, oldest ${formatSpan(q.oldest_wait_s * 1000)}` : '';
+      out.push({ key: 'queue', text: `${q.waiting} waiting, ${q.judging} judging${wait}`, tone: q.oldest_wait_s >= SLOW_WAIT_S && !c.paused ? 'part' : 'note', href: '#feed-title' });
+    }
+    if (q.errors > 0) out.push({ key: 'errors', text: countOf(q.errors, 'judge error'), tone: 'bad', href: '#feed-title' });
+  }
+
+  if (c.judge_last_claim_at !== undefined) {
+    const last = c.judge_last_claim_at;
+    if (last === null) out.push({ key: 'judge', text: 'No judge has asked for work since the server started', tone: 'bad', href: '#feed-title' });
+    else if (now - last > JUDGE_SILENT_MS) out.push({ key: 'judge', text: `No judge for ${formatSpan(now - last)}`, tone: 'bad', href: '#feed-title' });
+    else out.push({ key: 'judge', text: `Judge seen ${formatSpan(Math.max(1000, now - last))} ago`, tone: 'note', href: '#feed-title' });
+  }
+
+  out.push(
+    unanswered > 0
+      ? { key: 'questions', text: countOf(unanswered, 'unanswered question'), tone: 'bad', href: '#clar-title' }
+      : { key: 'questions', text: 'No unanswered questions', tone: 'note', href: '#clar-title' },
+  );
+
+  const drift = c.problems.filter((p) => p.toolchain_drift).map((p) => p.label);
+  if (drift.length > 0) {
+    out.push({
+      key: 'drift',
+      text: `${drift.length === 1 ? `Problem ${drift[0]} was` : `Problems ${drift.join(', ')} were`} validated on another judge toolchain`,
+      tone: 'part',
+      href: '#versions-title',
+    });
+  }
+  return out;
+}
+
+/**
+ * A feed row's outcome as students word it (audit O3): "Accepted" for full
+ * marks, "Partial, 40 of 100" for some points, the verdict for none; the
+ * tone colours the badge.
+ */
+export function feedOutcome(row: Pick<FeedRow, 'state' | 'verdict' | 'score' | 'max_score'>): { text: string; tone: 'ok' | 'part' | 'bad' | 'wait' | 'neutral' } {
+  if (row.state === 'submitted') return { text: 'Submitted', tone: 'neutral' };
+  if (row.state === 'queued') return { text: 'Queued', tone: 'wait' };
+  if (row.state === 'running') return { text: 'Judging', tone: 'wait' };
+  if (row.state === 'error') return { text: 'Judge error', tone: 'bad' };
+  if (row.max_score > 0 && row.score >= row.max_score) return { text: 'Accepted', tone: 'ok' };
+  if (row.score > 0) return { text: `Partial, ${row.score} of ${row.max_score}`, tone: 'part' };
+  return { text: verdictWord(row.verdict), tone: 'bad' };
+}
+
+const VERDICT_WORDS: Record<string, string> = {
+  AC: 'Accepted',
+  WA: 'Wrong answer',
+  TLE: 'Time limit exceeded',
+  MLE: 'Memory limit exceeded',
+  RE: 'Runtime error',
+  CE: 'Compile error',
+  OLE: 'Output limit exceeded',
+};
+
+function verdictWord(code: string): string {
+  return VERDICT_WORDS[code] ?? (code === '' ? 'No score' : code);
+}
+
+/** When a submission came in, from the contest start: "+7 min"; before the start, null. */
+export function sinceStart(at: number, startsAt: number): string | null {
+  if (at < startsAt) return null;
+  return `+${Math.floor((at - startsAt) / 60_000)} min`;
 }
 
 /** Defaults for a new contest: tomorrow at 18:00 local, two hours, graded. */
@@ -953,7 +1087,7 @@ export const ANNOUNCEMENT_TEMPLATES: readonly { id: string; label: string; text:
   { id: 'extended', label: 'Contest extended', text: 'The contest has been extended by {minutes} minutes.' },
   { id: 'paused', label: 'Judging paused', text: 'Judging is paused for a few minutes. Keep submitting: your submissions are queued and nothing is lost.' },
   { id: 'resumed', label: 'Judging resumed', text: 'Judging has resumed. Queued submissions are being judged now.' },
-  { id: 'rejudge', label: 'Problem rejudged', text: 'Problem {label} has been rejudged after a test was fixed. Scores in the standings may change.' },
+  { id: 'rejudge', label: 'Problem judged again', text: 'Every submission to problem {label} is being judged again after a test was fixed. Scores in the standings may change.' },
   { id: 'time', label: 'Time check', text: '{minutes} minutes left.' },
 ];
 

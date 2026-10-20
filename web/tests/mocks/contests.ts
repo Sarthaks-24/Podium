@@ -52,6 +52,8 @@ export interface Options {
   published?: boolean;
   /** PUT settings may publish (by default it refuses with a changed problem, P3). */
   publishOk?: boolean;
+  /** Queue health on the contest response (C10): calm by default, or a slow queue, a silent judge and toolchain drift. */
+  queueHealth?: 'calm' | 'trouble';
   /** Problem B moved to a new revision after the start, changing its statement (C3). */
   statementUpdated?: boolean;
   /** Problem A has a newer validated revision to update the contest to (C4). */
@@ -323,6 +325,9 @@ export async function mockApi(page: Page, options: Options = {}) {
       { label: 'A', problem_id: 11, revision_id: 12, rev: 2, from_at: startsAt - 60 * MIN, actor: { user_id: 1, email: 'priya@college.edu', role: 'owner' } },
     ],
     roster_count: 1,
+    queue: options.queueHealth === 'trouble' ? { waiting: 14, judging: 2, errors: 1, oldest_wait_s: 95 } : { waiting: 0, judging: 1, errors: 1, oldest_wait_s: 0 },
+    judge_last_claim_at: options.queueHealth === 'trouble' ? nowMs() - 3 * MIN : nowMs() - 4000,
+    unanswered: state.answers.length ? 0 : 1,
     close_at: endsAt,
     default_honour_text: 'This contest is graded. By starting you agree to these rules.',
     hold_reveal: state.holdReveal,
@@ -345,6 +350,7 @@ export async function mockApi(page: Page, options: Options = {}) {
       update_available: latest > rev,
       update_statement_only: true,
       reconstructed: false,
+      toolchain_drift: options.queueHealth === 'trouble' && String(p.label) === 'A',
     };
   }
 
@@ -581,6 +587,7 @@ export async function mockApi(page: Page, options: Options = {}) {
           { id: 300, user_id: 101, name: 'Arjun Mehta', email: 'arjun@college.edu', problem_label: 'A', language: 'python3', state: 'done', verdict: 'AC', score: 100, max_score: 100, created_at: now - 5 * MIN, practice: false, rejudged: false },
           { id: 299, user_id: 102, name: 'Ravi Kumar', email: 'ravi@college.edu', problem_label: 'C', language: 'java21', state: 'running', verdict: '', score: 0, max_score: 100, created_at: now - 6 * MIN, practice: false, rejudged: false },
           { id: 298, user_id: 103, name: 'Meera Iyer', email: 'meera@college.edu', problem_label: 'B', language: 'cpp17', state: 'error', verdict: '', score: 0, max_score: 100, created_at: now - 7 * MIN, practice: false, rejudged: false },
+          { id: 297, user_id: 104, name: 'Kiran Das', email: 'kiran@college.edu', problem_label: 'C', language: 'cpp17', state: 'done', verdict: 'WA', score: 0, max_score: 100, created_at: now - 9 * MIN, practice: false, rejudged: false },
         ];
         const problem = url.searchParams.get('problem');
         const user = url.searchParams.get('user');
@@ -729,7 +736,7 @@ export const SCREENS: Screen[] = [
     title: '(1) Console · Week 6 contest · podium',
     ready: async (page) => {
       await expect(page.getByText('Can intervals have zero length?')).toBeVisible();
-      await expect(page.getByRole('cell', { name: 'Wrong answer' })).toBeVisible();
+      await expect(page.getByRole('cell', { name: 'Partial, 40 of 100' })).toBeVisible();
     },
   },
   {
