@@ -126,7 +126,7 @@ test('subtasks, saving and validating work from the keyboard', async ({ page }) 
   await page.locator('#subtask-1-points').fill('50');
   await page.getByRole('button', { name: 'Save changes' }).focus();
   await page.keyboard.press('Enter');
-  await expect(page.getByText('Saved', { exact: true })).toBeVisible();
+  await expect(page.getByText('Saved', { exact: true }).first()).toBeVisible();
   expect(state.puts.at(-1)?.subtasks).toEqual([
     { points: 40, title: 'Small numbers', tests: '3-4' },
     { points: 50, title: 'Full range', tests: '5' },
@@ -507,7 +507,7 @@ test('the sticky bar keeps status, field errors and the main actions in reach', 
 
   // Ctrl+S saves.
   await page.keyboard.press('Control+s');
-  await expect(page.getByText('Saved', { exact: true })).toBeVisible();
+  await expect(page.getByText('Saved', { exact: true }).first()).toBeVisible();
   expect(state.puts).toHaveLength(1);
 
   // Field errors: a count in the bar and a list of links that focus each field.
@@ -596,7 +596,7 @@ test('keyboard only: an organiser opens a problem, edits it, saves with Ctrl+S a
 
   await statement.focus();
   await page.keyboard.press('Control+s');
-  await expect(page.getByText('Saved', { exact: true })).toBeVisible();
+  await expect(page.getByText('Saved', { exact: true }).first()).toBeVisible();
   expect(String(state.puts.at(-1)?.statement_md)).toContain('All numbers fit in 64 bits.');
 
   await activate(page, page.getByRole('button', { name: 'Validate' }));
