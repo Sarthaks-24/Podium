@@ -134,7 +134,7 @@ func TestMigrateFromV110(t *testing.T) {
 		t.Fatalf("problem 1 revision 1 fields: %+v", a[0])
 	}
 	var subs []struct {
-		Idx, Points int
+		Idx, Points  int
 		Title, Tests string
 	}
 	if err := json.Unmarshal([]byte(a[0].subtasks), &subs); err != nil || len(subs) != 2 || subs[1].Tests != "3" || subs[0].Title != "Small" {
