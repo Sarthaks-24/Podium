@@ -1,22 +1,41 @@
 <!--
   RunResults: the outcome of "Run on samples" or "Run on this input". While
   the judge has it, it says where the run is in the queue. Then, for each
-  input, the verdict in words with time and memory, the program's output
-  and, for a sample, the expected output and the checker's comment. A wrong
-  answer on a sample also shows the first differing line with whitespace
-  made visible (lib/diff.ts). Compiler output comes first, verbatim, with
-  clickable line jumps; when the code did not compile, the empty input
-  rows are left out (audit 2026-10-20 S4). A failing sample also offers "Run on this input",
-  which puts that sample's input in the custom input box, opens the box
-  and runs it there, so the student can then change the input and run
-  again (D114). Props: `run`, `language` (for the compiler's location
-  shapes), `onjump`, `samples` (the workspace's samples, for their
-  inputs) and `onruninput` (optional; without it the button is left out).
+  input, the verdict in words with time and memory and, through
+  TestDetail, the program's output and, for a sample, the expected output,
+  the checker's comment and for a wrong answer the first differing line;
+  a passed sample shows its verdict line only, so the failure is near the
+  top.
+  Compiler output comes first, verbatim, with clickable line jumps; when
+  the code did not compile, the empty input rows are left out (audit
+  2026-10-20 S4). After the samples come the problem's open tests (D115),
+  "Open test 1" and on: a passed one shows its verdict only, one not run
+  says why. The run's first failing sample or open test is revealed
+  (`run.revealed`): its row becomes a block with "This test is shown
+  because this was a run.", the input, the expected output, the program's
+  output and "Run on this input". A failing sample without that offers the
+  button too, with the sample's own input (D114). The button puts the
+  input in the custom input box, opens it and runs it there. Props: `run`,
+  `language` (for the compiler's location shapes), `onjump`, `samples`
+  (the workspace's samples, for their inputs) and `onruninput` (optional;
+  without it the button is left out).
 -->
 <script lang="ts">
-  import { firstDifference, showWhitespace } from '../lib/diff';
-  import { formatKb, formatMs, isBad, runCompileFailed, runHeadline, runVerdictLabel, type Run, type Sample } from '../lib/workspace';
+  import {
+    formatKb,
+    formatMs,
+    isBad,
+    isCustomResult,
+    revealedReason,
+    runCompileFailed,
+    runHeadline,
+    runVerdictLabel,
+    type Run,
+    type RunResult,
+    type Sample,
+  } from '../lib/workspace';
   import CompileOutput from './CompileOutput.svelte';
+  import TestDetail from './TestDetail.svelte';
 
   interface Props {
     run: Run;
@@ -36,6 +55,10 @@
     if (!m) return null;
     return samples.find((x) => x.idx === Number(m[1]))?.input ?? null;
   }
+
+  function isRevealed(r: RunResult): boolean {
+    return !!run.revealed && run.revealed.label === r.label;
+  }
 </script>
 
 <div class="run">
@@ -50,45 +73,41 @@
 
   <!-- A run that did not compile ran no input: the empty sample rows stay out (S4). -->
   {#each runCompileFailed(run) ? [] : run.results as r, i (i)}
-    {@const diff = r.expected !== null && r.verdict === 'WA' ? firstDifference(r.expected, r.output) : null}
     <section class="result">
       <div class="result-head">
         <h3 class="name">{r.label}</h3>
-        <span class="verdict" class:bad={isBad(r.verdict)} class:ok={!isBad(r.verdict)}>{runVerdictLabel(r.verdict)}</span>
-        <span class="mono meta">{formatMs(r.time_ms)}</span>
-        <span class="mono meta">{formatKb(r.memory_kb)}</span>
-      </div>
-      {#if r.message}<p class="message">{r.message}</p>{/if}
-      {#if onruninput && isBad(r.verdict) && sampleInput(r.label) !== null}
-        <button type="button" class="btn btn-quiet btn-compact use-input" onclick={() => onruninput(sampleInput(r.label) ?? '')}>Run on this input</button>
-      {/if}
-
-      {#if diff}
-        <div class="diff">
-          <p class="diff-title">First difference on line {diff.line}</p>
-          <dl>
-            <dt>Expected</dt>
-            <dd class="mono">{diff.expected === null ? '(no more lines)' : showWhitespace(diff.expected) || '(empty line)'}</dd>
-            <dt>Your output</dt>
-            <dd class="mono bad">{diff.actual === null ? '(no more lines)' : showWhitespace(diff.actual) || '(empty line)'}</dd>
-          </dl>
-          <p class="hint">Spaces show as a middle dot and tabs as an arrow.</p>
-        </div>
-      {/if}
-
-      <div class="outputs" class:pair={r.expected !== null}>
-        <div class="out">
-          <p class="label">Your output</p>
-          <pre>{r.output}</pre>
-          {#if r.output_truncated}<p class="hint">Only the first 4 KB is shown.</p>{/if}
-        </div>
-        {#if r.expected !== null}
-          <div class="out">
-            <p class="label">Expected</p>
-            <pre>{r.expected}</pre>
-          </div>
+        <span class="verdict" class:bad={isBad(r.verdict)} class:ok={!isBad(r.verdict) && r.verdict !== 'SK'}>{runVerdictLabel(r.verdict)}</span>
+        {#if r.verdict !== 'SK' && r.verdict !== ''}
+          <span class="mono meta">{formatMs(r.time_ms)}</span>
+          <span class="mono meta">{formatKb(r.memory_kb)}</span>
         {/if}
       </div>
+      {#if r.message}<p class="message">{r.message}</p>{/if}
+
+      {#if r.verdict === 'SK'}
+        <p class="meta">An earlier test failed, so this one was not run.</p>
+      {:else if run.revealed && isRevealed(r)}
+        {@const rv = run.revealed}
+        <TestDetail
+          reason={revealedReason('run')}
+          input={rv.input}
+          expected={rv.expected}
+          output={rv.output}
+          cut={rv.truncated}
+          verdict={r.verdict}
+          runInput={rv.input}
+          {onruninput}
+        />
+      {:else if isCustomResult(r) || (r.kind !== 'open' && isBad(r.verdict))}
+        <TestDetail
+          expected={r.expected}
+          output={r.output}
+          outputCut={r.output_truncated}
+          verdict={r.verdict}
+          runInput={isBad(r.verdict) ? sampleInput(r.label) : null}
+          {onruninput}
+        />
+      {/if}
     </section>
   {/each}
 </div>
@@ -161,73 +180,5 @@
 
   .message {
     font-size: var(--fs-0);
-  }
-
-  .use-input {
-    justify-self: start;
-    margin-left: calc(-1 * var(--space-3));
-    color: var(--act);
-  }
-
-  .diff {
-    padding: var(--space-2) var(--space-3);
-    border: var(--rule) solid var(--line-strong);
-    background: var(--surface);
-  }
-
-  .diff-title {
-    font-weight: 500;
-  }
-
-  .diff dl {
-    display: grid;
-    grid-template-columns: auto minmax(0, 1fr);
-    gap: var(--space-1) var(--space-3);
-    margin-top: var(--space-1);
-    font-size: var(--fs-0);
-  }
-
-  .diff dt {
-    color: var(--ink-muted);
-  }
-
-  .diff dd {
-    margin: 0;
-    white-space: pre-wrap;
-    overflow-wrap: anywhere;
-  }
-
-  .hint {
-    margin-top: var(--space-1);
-    color: var(--ink-muted);
-    font-size: var(--fs-0);
-  }
-
-  .outputs {
-    display: grid;
-    gap: var(--space-2);
-    min-width: 0;
-  }
-
-  .out {
-    display: grid;
-    gap: var(--space-1);
-    min-width: 0;
-  }
-
-  .out pre {
-    max-height: calc(10 * var(--lh-body) * var(--fs-0));
-    min-height: calc(var(--lh-body) * var(--fs-0) + 2 * var(--space-2));
-    padding: var(--space-2) var(--space-3);
-    overflow: auto;
-    border: var(--rule) solid var(--line);
-    background: var(--surface-2);
-    font-size: var(--fs-0);
-  }
-
-  @container result (min-width: 30rem) {
-    .outputs.pair {
-      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-    }
   }
 </style>
