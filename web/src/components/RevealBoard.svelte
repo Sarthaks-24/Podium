@@ -5,7 +5,8 @@
   browser in full screen, and closing it leaves full screen. Space, Enter or the right arrow
   (or the Next button) resolves the lowest unresolved row: its pending
   cells fill with their final scores, the row slides to its final place
-  over --dur-slow and its rank number counts to the new one. The left
+  over --dur-slow above the rows it passes, and its rank number counts to
+  the new one. The left
   arrow (or Back) undoes a step, and "Start over" begins again. Rows still
   to come have muted names and their pending cells sit on --wait-tint, so
   the room can see what is left. Escape (or Exit) leaves and keeps the
@@ -37,6 +38,8 @@
   let past = $state.raw<RevealState[]>([]);
   let shownRank = $state<Record<number, number>>({});
   let flash = $state<number | null>(null);
+  // The row sliding to its new place, drawn above the rows it passes.
+  let moving = $state<number | null>(null);
   let said = $state('');
   let busy = false;
 
@@ -154,6 +157,7 @@
         if (flash === move.user_id) flash = null;
       }, 1000);
     } else {
+      moving = move.user_id;
       // FLIP: start every moved row where it was, then let it slide home.
       for (const el of list?.querySelectorAll<HTMLElement>('[data-user]') ?? []) {
         const old = before[Number(el.dataset.user)];
@@ -175,6 +179,7 @@
     setTimeout(
       () => {
         busy = false;
+        if (moving === move.user_id) moving = null;
         scrollToNext();
       },
       reduced() ? 0 : 340,
@@ -233,6 +238,7 @@
           class:next-row={nextRow?.user_id === r.user_id}
           class:resolved={r.resolved}
           class:flash={flash === r.user_id}
+          class:moving={moving === r.user_id}
           data-user={r.user_id}
         >
           <span class="visually-hidden">Rank</span>
@@ -395,6 +401,11 @@
 
   .cell.pend {
     background: var(--wait-tint);
+  }
+
+  /* Below the sticky head (2), above the rows the climbing row slides past. */
+  .row.moving {
+    z-index: 1;
   }
 
   /* Reduced motion: the resolved row is outlined above the cell fills. */

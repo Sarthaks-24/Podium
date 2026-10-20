@@ -1182,9 +1182,22 @@ for (const motion of ['no-preference', 'reduce'] as const) {
     await expect(reveal.locator('.row.next-row .name')).toHaveText('Asha Rao');
     await page.screenshot({ path: `${shots()}reveal-start-1440-${motion}.png` });
 
+    // Record each row that is marked as moving, with its stacking order, as it happens.
+    await reveal.evaluate((el) => {
+      const seen: string[] = [];
+      (window as unknown as { movingSeen: string[] }).movingSeen = seen;
+      new MutationObserver(() => {
+        for (const row of el.querySelectorAll<HTMLElement>('.row.moving')) seen.push(`${row.querySelector('.name')?.textContent} ${getComputedStyle(row).zIndex}`);
+      }).observe(el, { subtree: true, attributes: true, attributeFilter: ['class'] });
+    });
     await page.keyboard.press('Space');
     await expect.poll(names).toEqual(['Priya Raman', 'Asha Rao', 'Arjun Mehta', 'Ravi Kumar']);
     await expect(reveal.locator('[aria-live="polite"]')).toHaveText('Asha Rao moves from 3rd to 2nd with 200 points.');
+    // The climbing row is drawn above the row it passes while it slides (no move to draw with reduced motion).
+    const seen = () => page.evaluate(() => [...new Set((window as unknown as { movingSeen: string[] }).movingSeen)]);
+    if (motion === 'no-preference') await expect.poll(seen).toEqual(['Asha Rao 1']);
+    else expect(await seen()).toEqual([]);
+    await expect(reveal.locator('.row.moving')).toHaveCount(0);
     if (motion === 'reduce') await expect(reveal.locator('.row.flash .name')).toHaveText('Asha Rao');
     await page.waitForTimeout(400);
     await expect(reveal.locator('.row').filter({ hasText: 'Asha Rao' }).locator('.rank')).toHaveText('2');
