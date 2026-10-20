@@ -1379,4 +1379,28 @@ Rules:
 | missing files with an extension | `404` |
 | any other path | `index.html`, `no-cache` |
 
+A renamed contest's old `/contests/<slug>` paths answer `301` first (see "Renamed contests").
+
+### The route manifest and the page markers (contract C2, from v1.1.0)
+
+The web build writes `web/dist/routes.json`, embedded with the app; a copy is checked in at `server/internal/webui/testdata/routes.json` for the server's tests, and a web unit test fails when the two drift. The server reads it from P3 on (B3.4, B3.5) to fill the head of each page; until then nothing reads it.
+
+```json
+{ "version": 1,
+  "routes": [ { "pattern": "/signin", "name": "signin", "auth": false, "public": true,
+                "title": "Sign in", "description": "Sign in to podium with your college Google account to enter the weekly programming contests." } ],
+  "notFound": { "pattern": "*", "name": "not-found", "auth": false, "public": true, "title": "Page not found", "description": "That page does not exist on podium." } }
+```
+
+| Field | Meaning |
+|---|---|
+| `version` | the manifest format, 1 |
+| `routes[].pattern` | the client route, as `routing.ts` matches it |
+| `name`, `auth` | the route's name, and whether it needs a signed-in user |
+| `public` | the page may be indexed and gets a canonical URL and Open Graph tags (P3); every other page stays `noindex` |
+| `title`, `description` | the page's title and description, written by the frontend |
+| `notFound` | the 404 page, in the same shape |
+
+`web/index.html` carries two marker pairs the server replaces at request time and never edits in the file: `<!--podium:head-->` ... `<!--/podium:head-->` around the robots meta (`noindex` by default), and `<!--podium:body-->` ... `<!--/podium:body-->` inside a fallback `<main>` that the app clears before it mounts (P3 fills it for `/privacy`, so the page reads without JavaScript). The frontend owns both files and the manifest's content.
+
 Contests are added to this document in M4, the milestone that builds them.
