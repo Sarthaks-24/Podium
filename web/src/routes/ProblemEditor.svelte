@@ -33,11 +33,8 @@
   inputs chain into output generation and validation, each shown where it
   already is. A problem the wizard made carries an "AI draft" tag in the
   bar and a note until a person saves it. Last, "Can a model solve this?"
-  asks a model for a solution after a confirmation, follows the `wizard`
-  and `submission` live events with polling as the fallback, and shows
-  "A model solved this on its first try: N of 100" with what that means for graded
-  contests and a link to the submission. Props: `id`, the problem id from
-  the address.
+  (components/problem/ModelSolve). Props: `id`, the problem id from the
+  address.
 -->
 <script lang="ts">
   import PageState from '../components/PageState.svelte';
@@ -48,22 +45,11 @@
   import ProgramField from '../components/ProgramField.svelte';
   import StatementPreview from '../components/StatementPreview.svelte';
   import ValidationReport from '../components/ValidationReport.svelte';
-  import {
-    aiPaths,
-    inputGenPending,
-    inputGenReport,
-    isAIDraft,
-    isKeyProblem,
-    modelLabel,
-    solveLine,
-    solveMeaning,
-    wizardPending,
-    type InputGeneration,
-    type KeyStatus,
-    type Wizard,
-  } from '../lib/ai';
+  import { inputGenPending, inputGenReport, isAIDraft, type InputGeneration } from '../lib/ai';
   import { ApiError, getJSON, sendBody, sendJSON } from '../lib/api';
+  import ModelSolve from '../components/problem/ModelSolve.svelte';
   import RevisionHistory from '../components/problem/RevisionHistory.svelte';
+  import '../components/problem/editor.css';
   import { setTitle } from '../lib/head';
   import { routeTitle } from '../lib/routing';
   import {
@@ -88,9 +74,8 @@
   } from '../lib/problems';
   import { navigate, setNavigationGuard } from '../lib/router.svelte';
   import { session } from '../lib/session.svelte';
-  import { EventStream, type StreamMode } from '../lib/stream';
   import { showToast } from '../lib/toast.svelte';
-  import { formatMs, type Generation, type Submission } from '../lib/workspace';
+  import { formatMs, type Generation } from '../lib/workspace';
 
   let { id }: { id: string } = $props();
 
@@ -137,15 +122,6 @@
   let inputGenError = $state<{ message: string; problems: readonly string[] } | null>(null);
   let inputGenBusy = $state(false);
   let addPlanButton: HTMLButtonElement | undefined = $state();
-
-  // M5: "Can a model solve this?"
-  let aiStatus = $state<KeyStatus | null>(null);
-  let solveOpen = $state(false);
-  let solveBusy = $state(false);
-  let solveWizard = $state<Wizard | null>(null);
-  let solveSubmission = $state<Submission | null>(null);
-  let solveError = $state<{ message: string; code: string; reasons: readonly string[] } | null>(null);
-  let solveMode = $state<StreamMode>('connecting');
 
   let phone = $state(false);
   let statementTab = $state<'write' | 'preview'>('write');
@@ -213,28 +189,6 @@
   const inputPending = $derived(inputGenPending(inputGen));
   const inputReport = $derived(inputGen && problem ? inputGenReport(inputGen, readPlan(problem.plan)) : null);
   const canGenerateInputs = $derived(draft !== null && !!draft.generator && (draft.plan?.length ?? 0) > 0);
-
-  const solveWaiting = $derived(
-    solveWizard !== null &&
-      solveWizard.state !== 'error' &&
-      (wizardPending(solveWizard) || solveSubmission === null || solveSubmission.state === 'queued' || solveSubmission.state === 'running'),
-  );
-  const solveDone = $derived(solveSubmission !== null && solveSubmission.state === 'done');
-  const solveStatus = $derived.by(() => {
-    if (solveWizard === null) return '';
-    if (solveWizard.state === 'error') return 'The model could not answer';
-    if (wizardPending(solveWizard)) return 'Waiting for the model to answer';
-    if (solveSubmission === null || solveSubmission.state === 'queued' || solveSubmission.state === 'running') return "Judging the model's solution";
-    if (solveSubmission.state === 'error') return "The judge could not finish the model's submission";
-    return solveLine(solveSubmission);
-  });
-  const solveTone = $derived.by(() => {
-    const s = solveSubmission;
-    if (!s || s.state !== 'done') return 'note';
-    if (s.max_score > 0 && s.score >= s.max_score) return 'bad';
-    return s.score > 0 ? 'part' : 'ok';
-  });
-  const keyMissing = $derived(aiStatus !== null && !aiStatus.active);
 
   // Field errors, each with the control it belongs to where there is one.
   const FIELD_LABELS: Record<string, string> = {
@@ -365,8 +319,6 @@
   let pollTimer: ReturnType<typeof setTimeout> | undefined;
   let genTimer: ReturnType<typeof setTimeout> | undefined;
   let inputTimer: ReturnType<typeof setTimeout> | undefined;
-  let solveTimer: ReturnType<typeof setTimeout> | undefined;
-  let solveStream: EventStream | null = null;
 
   function schedulePoll() {
     clearTimeout(pollTimer);
@@ -481,12 +433,6 @@
       if (handleSessionError(e)) return;
       inputGen = null;
     }
-    try {
-      aiStatus = await getJSON<KeyStatus>(aiPaths.key);
-    } catch {
-      // Without the key's state the button still works; the server says when a key is missing.
-      aiStatus = null;
-    }
   }
 
   onMount(() => {
@@ -514,7 +460,6 @@
       clearTimeout(pollTimer);
       clearTimeout(genTimer);
       clearTimeout(inputTimer);
-      stopSolveWatch();
       removeGuard();
       query.removeEventListener('change', sync);
     };
@@ -679,107 +624,6 @@
       inputGenError = { message: messageOf(e), problems: e instanceof ApiError ? e.problems : [] };
     } finally {
       inputGenBusy = false;
-    }
-  }
-
-  function stopSolveWatch() {
-    solveStream?.stop();
-    solveStream = null;
-    clearTimeout(solveTimer);
-  }
-
-  function solveFinished(): boolean {
-    if (!solveWizard) return true;
-    if (solveWizard.state === 'error') return true;
-    const s = solveSubmission;
-    return s !== null && (s.state === 'done' || s.state === 'error');
-  }
-
-  /** Takes a newer copy of the solve request; true when it just gained its submission. */
-  function adoptSolveWizard(w: Wizard): boolean {
-    if (!solveWizard || String(w.id) !== String(solveWizard.id)) return false;
-    const hadSubmission = solveWizard.submission_id ?? null;
-    solveWizard = w;
-    if (w.state === 'error') {
-      solveError = { message: w.error?.message ?? 'The model could not answer.', code: w.error?.code ?? 'error', reasons: w.error?.reasons ?? [] };
-      stopSolveWatch();
-      return false;
-    }
-    return hadSubmission === null && !!w.submission_id;
-  }
-
-  function adoptSolveSubmission(s: Submission) {
-    if (!solveWizard?.submission_id || s.id !== solveWizard.submission_id) return;
-    solveSubmission = s;
-    if (solveFinished()) stopSolveWatch();
-  }
-
-  function scheduleSolvePoll() {
-    clearTimeout(solveTimer);
-    if (!alive || solveFinished()) return;
-    solveTimer = setTimeout(pollSolve, solveMode === 'live' ? 3 * POLL_MS : POLL_MS);
-  }
-
-  async function pollSolve() {
-    const w = solveWizard;
-    if (!w) return;
-    try {
-      if (!w.submission_id) {
-        const next = await getJSON<Wizard>(aiPaths.wizardOne(w.id));
-        if (!alive) return;
-        adoptSolveWizard(next);
-      }
-      const sid = solveWizard?.submission_id;
-      if (sid && !solveFinished()) {
-        const s = await getJSON<Submission>(`/api/submissions/${encodeURIComponent(String(sid))}`);
-        if (!alive) return;
-        adoptSolveSubmission(s);
-      }
-    } catch (e) {
-      if (handleSessionError(e)) return;
-      // A failed poll is tried again on the next tick.
-    }
-    scheduleSolvePoll();
-  }
-
-  async function solve() {
-    solveError = null;
-    solveSubmission = null;
-    solveBusy = true;
-    try {
-      const answer = await sendJSON<{ wizard_id: string | number }>('POST', problemPath(id, '/solve'));
-      solveWizard = { id: String(answer.wizard_id), state: 'thinking' };
-      solveOpen = false;
-      stopSolveWatch();
-      solveMode = 'connecting';
-      solveStream = new EventStream({
-        url: '/api/events',
-        events: ['wizard', 'submission'],
-        onEvent: (type, data) => {
-          if (!data || typeof data !== 'object') return;
-          // A submission that just appeared is fetched at once; later changes come as events.
-          if (type === 'wizard' && adoptSolveWizard(data as Wizard)) void pollSolve();
-          else if (type === 'submission') adoptSolveSubmission(data as Submission);
-        },
-        onReconnect: () => void pollSolve(),
-        poll: () => undefined,
-        onMode: (m) => {
-          solveMode = m;
-        },
-      });
-      solveStream.start();
-      scheduleSolvePoll();
-    } catch (e) {
-      solveOpen = false;
-      if (handleSessionError(e)) return;
-      solveError = {
-        message: messageOf(e),
-        code: e instanceof ApiError ? e.code : 'unexpected',
-        reasons: e instanceof ApiError ? e.problems : [],
-      };
-      if (e instanceof ApiError && e.code === 'no_key' && aiStatus) aiStatus = { ...aiStatus, active: false };
-    } finally {
-      solveBusy = false;
     }
   }
 
@@ -1732,78 +1576,10 @@
     </section>
 
     {#if hasGenerator}
-      <section class="block solve" aria-labelledby="solve-heading">
-        <h2 id="solve-heading" tabindex="-1">Can a model solve this?</h2>
-        <p class="solve-help">
-          Sends only the statement to the AI model with your key and asks for a C++ solution, then judges the answer on this problem's
-          tests as your submission. It shows what a student who pastes the statement into a model would get.
-        </p>
-
-        <p class="visually-hidden" role="status">{solveWizard ? solveStatus : ''}</p>
-
-        {#if solveDone && solveSubmission}
-          <div class="solve-result tone-box-{solveTone}">
-            <p class="solve-line">{solveLine(solveSubmission)}</p>
-            <p>{solveMeaning(solveSubmission)}</p>
-            <p>
-              <a href="/admin/problems/{problem.id}/try">See the model's submission</a>
-              <span class="muted">on the Try as a student page.</span>
-            </p>
-          </div>
-        {:else if solveWaiting}
-          <p class="solve-progress muted">{solveStatus}</p>
-          {#if solveMode === 'polling'}
-            <p class="field-help">Live updates are down, so the result is checked every few seconds.</p>
-          {/if}
-        {:else if solveSubmission && solveSubmission.state === 'error'}
-          <div class="banner banner-error problems-list"><p>{solveStatus}. Ask again.</p></div>
-        {/if}
-
-        {#if solveError}
-          <div class="banner banner-error problems-list" role="alert">
-            <p>
-              {solveError.message}
-              {#if isKeyProblem(solveError.code)}<a href="/admin/ai">Go to AI assistant</a>{/if}
-            </p>
-            {#if solveError.reasons.length > 0}
-              <ul>{#each solveError.reasons as line, i (i)}<li>{line}</li>{/each}</ul>
-            {/if}
-          </div>
-        {/if}
-
-        <div class="solve-actions">
-          <button
-            type="button"
-            class="btn btn-secondary"
-            disabled={keyMissing}
-            aria-disabled={solveBusy || solveWaiting ? 'true' : undefined}
-            aria-describedby={keyMissing ? 'solve-key-help' : undefined}
-            onclick={() => {
-              if (!solveBusy && !solveWaiting) solveOpen = true;
-            }}
-          >
-            {solveWaiting ? 'Asking a model' : solveDone ? 'Ask a model again' : 'Ask a model to solve it'}
-          </button>
-          {#if keyMissing}
-            <p id="solve-key-help" class="field-help">No AI key. <a href="/admin/ai">Add a key in AI assistant</a> to use this.</p>
-          {/if}
-        </div>
-      </section>
+      <ModelSolve {id} onsessionerror={handleSessionError} />
     {/if}
   {/if}
 </div>
-
-<ConfirmDialog
-  open={solveOpen}
-  title="Ask a model to solve this problem?"
-  body="The statement goes to {aiStatus?.active
-    ? modelLabel(aiStatus, aiStatus.provider, aiStatus.model)
-    : 'the AI model'} with your key, and its answer is judged on the tests as your submission. Nothing else is sent."
-  confirmLabel="Ask a model"
-  busy={solveBusy}
-  onconfirm={solve}
-  oncancel={() => (solveOpen = false)}
-/>
 
 <ConfirmDialog
   open={archiveOpen}
@@ -1973,11 +1749,6 @@
     margin-top: var(--space-6);
   }
 
-  section h2 {
-    font-size: var(--fs-3);
-    scroll-margin-top: var(--space-7);
-  }
-
   .details {
     display: grid;
     gap: var(--space-4);
@@ -2068,13 +1839,6 @@
     padding: var(--space-3) var(--space-4);
   }
 
-  .block {
-    margin-top: var(--space-7);
-    padding-top: var(--space-6);
-    border-top: var(--rule) solid var(--line);
-    min-width: 0;
-  }
-
   .samples {
     max-width: 24rem;
     margin-top: var(--space-4);
@@ -2153,21 +1917,6 @@
   .files-head + .field-help {
     margin-top: var(--space-1);
     max-width: 72ch;
-  }
-
-  .problems-list {
-    max-width: 48rem;
-    margin-top: var(--space-3);
-  }
-
-  .problems-list ul {
-    margin-top: var(--space-2);
-    padding-left: var(--space-5);
-    color: var(--ink);
-  }
-
-  .problems-list a {
-    color: var(--bad);
   }
 
   /* Empty, it stays in the page (a live region that appears with its
@@ -2340,7 +2089,7 @@
     margin-left: auto;
   }
 
-  .validation {
+  .validation.block {
     display: grid;
     gap: var(--space-4);
     margin-top: var(--space-6);
@@ -2407,56 +2156,6 @@
     gap: var(--space-2) var(--space-3);
     max-width: 64rem;
     margin-top: var(--space-4);
-  }
-
-  .solve {
-    display: grid;
-    gap: var(--space-3);
-    max-width: 64rem;
-  }
-
-  .solve-help {
-    max-width: 72ch;
-    color: var(--ink-muted);
-  }
-
-  .solve-result {
-    display: grid;
-    gap: var(--space-2);
-    max-width: 48rem;
-    padding: var(--space-3) var(--space-4);
-    border: var(--rule) solid var(--line-strong);
-    background: var(--surface);
-  }
-
-  .tone-box-bad {
-    border-color: var(--bad);
-    background: var(--bad-tint);
-  }
-
-  .tone-box-part {
-    border-color: var(--part);
-    background: var(--part-tint);
-  }
-
-  .tone-box-ok {
-    border-color: var(--ok);
-    background: var(--ok-tint);
-  }
-
-  .solve-line {
-    font-weight: 600;
-  }
-
-  .solve-progress {
-    font-weight: 500;
-  }
-
-  .solve-actions {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: var(--space-2) var(--space-3);
   }
 
   @media (min-width: 1024px) {
@@ -2554,8 +2253,7 @@
     }
 
     .actions .btn,
-    .plan-actions .btn,
-    .solve-actions .btn {
+    .plan-actions .btn {
       flex: 1 1 auto;
     }
 
