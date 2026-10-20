@@ -242,6 +242,15 @@ func TestAppendOnlyTablesAndCutoff(t *testing.T) {
 			t.Errorf("%s: want append only, got %v", q, err)
 		}
 	}
+	// A cutoff of now, which would open the tables, is refused.
+	for _, q := range []string{
+		"INSERT INTO retention_cutoffs (tbl, before_ms) VALUES ('site_audit', CAST(unixepoch() AS INTEGER) * 1000)",
+		"INSERT INTO retention_cutoffs (tbl, before_ms) VALUES ('problem_revisions', (CAST(unixepoch() AS INTEGER) - 30 * 86400) * 1000)",
+	} {
+		if _, err := d.ExecContext(ctx, q); err == nil || !strings.Contains(err.Error(), "may not be that recent") {
+			t.Errorf("%s: %v", q, err)
+		}
+	}
 	// The retention cutoff lets the old rows go and keeps the new ones.
 	if _, err := d.ExecContext(ctx, `INSERT INTO retention_cutoffs (tbl, before_ms) VALUES ('site_audit', 1000), ('revision_views', 1000), ('contest_audit', 1000)`); err != nil {
 		t.Fatal(err)

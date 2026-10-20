@@ -1095,7 +1095,7 @@ P3 adds `settings_changed`, `contact_deleted` and `user_forgotten`; show an unkn
 
 ### Renamed contests
 
-Renaming a contest (its `slug`) records the old slug. `GET /contests/<old>` and every path under it answer `301` to the same path under the new slug, keeping the query; so do `GET` requests under `/api/contests/<old>` (other methods answer `404`). A slug in the history cannot be given to another contest: `400 bad_request` with `fields.slug` "This slug belonged to another contest. Choose another so its old links keep working." A contest may take back its own old slug.
+Renaming a contest (its `slug`) records the old slug. `GET /contests/<old>` and every path under it answer `301` to the same path under the new slug, keeping the query; so do `GET` requests under `/api/contests/<old>` (other methods answer `404`). Only a published contest records its old slug (a draft has no links out there), and only a published, unarchived contest is redirected to. A slug in the history cannot be given to another contest: `400 bad_request` with `fields.slug` "This slug belonged to another contest. Choose another so its old links keep working." A contest may take back its own old slug.
 
 ## Integrity
 

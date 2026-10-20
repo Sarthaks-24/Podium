@@ -26,8 +26,8 @@ const rejudgeReason = "Replaced by a rejudge."
 // Rejudge queues the submissions again with the problem's current tests,
 // at RejudgePriority, and returns how many were queued. Each new job and
 // its submission record the revision the contest pins now (B2.10); the
-// old job keeps its own. Practice submissions and those of an ungraded
-// contest still reveal their first failing hidden test (D115). Each submission
+// old job keeps its own. A submission that revealed its first failing
+// hidden test (D115) still does; no other starts to. Each submission
 // goes back to "queued" with its old result cleared, so standings count it
 // only once the new result is in.
 //
@@ -70,8 +70,8 @@ func (s *Service) Rejudge(ctx context.Context, r RejudgeRequest) (int, error) {
 	}
 	defer tx.Rollback()
 	q := `SELECT s.id, s.problem_id, s.language, s.source_sha, s.state, coalesce(s.job_id, 0), coalesce(j.state, ''), coalesce(j.payload, ''),
-		s.practice = 1 OR coalesce(c.graded, 1) = 0, coalesce(cp.revision_id, 0)
-		FROM submissions s LEFT JOIN jobs j ON j.id = s.job_id LEFT JOIN contests c ON c.id = s.contest_id
+		coalesce(cp.revision_id, 0)
+		FROM submissions s LEFT JOIN jobs j ON j.id = s.job_id
 		LEFT JOIN contest_problems cp ON cp.contest_id = s.contest_id AND cp.problem_id = s.problem_id
 		WHERE s.contest_id = ? AND s.kind = 'submit'`
 	args := []any{r.ContestID}
@@ -90,13 +90,12 @@ func (s *Service) Rejudge(ctx context.Context, r RejudgeRequest) (int, error) {
 		id, problem, job         int64
 		language, source         string
 		state, jobState, payload string
-		reveal                   bool
 		revision                 int64
 	}
 	var targets []target
 	for rows.Next() {
 		var t target
-		if err := rows.Scan(&t.id, &t.problem, &t.language, &t.source, &t.state, &t.job, &t.jobState, &t.payload, &t.reveal, &t.revision); err != nil {
+		if err := rows.Scan(&t.id, &t.problem, &t.language, &t.source, &t.state, &t.job, &t.jobState, &t.payload, &t.revision); err != nil {
 			rows.Close()
 			return 0, err
 		}
@@ -115,7 +114,14 @@ func (s *Service) Rejudge(ctx context.Context, r RejudgeRequest) (int, error) {
 		}
 		pl := submitPayload(p, t.id, judgeapi.Program{Language: t.language, SourceSHA: t.source})
 		pl.StopOnSampleFail = !r.NoStopOnSample
-		pl.Reveal = t.reveal
+		// The reveal was decided when the submission was made, by who made
+		// it and when (D115); a rejudge never widens it. An old payload
+		// without the field reveals nothing.
+		var old struct {
+			Reveal bool `json:"reveal"`
+		}
+		json.Unmarshal([]byte(t.payload), &old)
+		pl.Reveal = old.Reveal
 		if p.Checker == problems.CheckerCustom {
 			if pl.Checker.SourceSHA, err = s.Problems.Blobs.Put(ctx, tx, []byte(p.CheckerSource)); err != nil {
 				return 0, err

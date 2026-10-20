@@ -293,7 +293,7 @@ v1.2.0 (P2, decision D61). Before it, a contest pinned a content hash, which lea
 
 **The upgrade (backfill).** Migration 0010 makes revision 1 of every problem from its working copy. A contest pin whose hash is older than the working copy cannot be rebuilt in full, so it becomes a *reconstructed* revision, numbered before the working copy: tests and limits from the newest judging job of a contest that pinned it (a contest only judges a problem whose content equals its pin), the title of the working copy, no statement. It is marked "reconstructed: tests only, statement not recorded", and the workspace serves the working copy's statement for it, as v1.1.0 did. The source hashes are computed in SQL by `podium_sha256`, a function the db package registers on every connection, so the backfill stays in the migration file.
 
-**Append only, with a retention cutoff (D69).** `problem_revisions`, `revision_tests`, `contest_pin_history`, `revision_views`, `site_audit` and `contest_audit` refuse every update and every delete of a row newer than their table's cutoff in `retention_cutoffs`, a table only the retention job (P3) writes. No row means nothing may be deleted, which is the state until P3. Foreign keys keep a pinned or judged revision from being deleted at all. The blob collection keeps the test files of every pinned or judged revision.
+**Append only, with a retention cutoff (D69).** `problem_revisions`, `revision_tests`, `contest_pin_history`, `revision_views`, `site_audit` and `contest_audit` refuse every update and every delete of a row newer than their table's cutoff in `retention_cutoffs`, a table only the retention job (P3) writes. No row means nothing may be deleted, which is the state until P3, and a trigger refuses a cutoff newer than 90 days ago (draft revisions) or a year ago (everything else), so a stray statement cannot open the tables. A rejudge keeps each submission's own reveal decision (D115), so it never shows a hidden test to someone who did not have it. Foreign keys keep a pinned or judged revision from being deleted at all. The blob collection keeps the test files of every pinned or judged revision.
 
 ## Audit logs
 
@@ -308,7 +308,7 @@ Each row keeps the actor's email and role as they were. The actor rides on the r
 
 ### Slug history
 
-`slug_history` (0011, D65): renaming a contest records its old slug. `GET /contests/<old>/...` and `GET /api/contests/<old>/...` answer `301` to the same path under the current slug, checked only after no contest has the slug; other methods are not redirected. No other contest may take a slug in the history, so an old link never lands on a different contest; a contest may take back its own.
+`slug_history` (0011, D65): renaming a published contest records its old slug (a draft has no links to keep). `GET /contests/<old>/...` and `GET /api/contests/<old>/...` answer `301` to the same path under the current slug, checked only after no contest has the slug; other methods are not redirected. No other contest may take a slug in the history, so an old link never lands on a different contest; a contest may take back its own.
 
 ## Integrity
 

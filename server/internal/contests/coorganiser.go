@@ -113,7 +113,10 @@ func (s *Service) CoOrganiserVariant(ctx context.Context, c *Contest) (string, e
 // their own submissions in the contest: the student view, with results
 // hidden in exam mode until every window is over.
 func (s *Service) CoOrganiserViewOptions(c *Contest) submissions.ViewOptions {
-	return c.ViewOptions(s.coOrganiserState(c))
+	o := c.ViewOptions(s.coOrganiserState(c))
+	// Not trusted with hidden tests, so never shown a revealed one (D115).
+	o.NoReveal = true
+	return o
 }
 
 // CoOrganiserView is how a co-organiser without the admin role sees one

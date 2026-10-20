@@ -372,3 +372,73 @@ func TestP2PracticeRevealsAndContestSubmitNever(t *testing.T) {
 		t.Errorf("a co-organiser sees the revealed test: %v", v["revealed"])
 	}
 }
+
+// Security review F1: a rejudge keeps each submission's own reveal
+// decision, so a co-organiser's submissions in an ungraded contest never
+// start showing hidden tests, and a student's practice submission keeps
+// its reveal.
+func TestP2RejudgeNeverWidensTheReveal(t *testing.T) {
+	s := newSite(t)
+	owner := s.signedIn("owner@college.edu", "Owner")
+	pid := s.importProblem(owner, "sum")
+	start := time.Now().Add(time.Hour)
+	cid := s.createContest(owner, "ungraded", start, map[string]int64{"A": pid}, map[string]any{"graded": false})
+	ta := s.signedIn("ta@college.edu", "TA")
+	owner.do("POST", fmt.Sprintf("/api/admin/contests/%d/admins", cid), map[string]string{"email": "ta@college.edu"}, s.srv.URL)
+	student := s.signedIn("asha@college.edu", "Asha")
+	s.at(start, 1)
+	student.do("POST", "/api/contests/ungraded/start", map[string]any{"accept_honour": true}, s.srv.URL)
+	c1, mine := s.submit(student, "ungraded", "A", "int32")
+	c2, theirs := s.submit(ta, "ungraded", "A", "int32")
+	if c1 != 202 || c2 != 202 {
+		t.Fatalf("submits %d %v, %d %v", c1, mine, c2, theirs)
+	}
+	if _, v := ta.do("GET", fmt.Sprintf("/api/submissions/%v", theirs["id"]), nil, ""); v["state"] != "done" || v["revealed"] != nil {
+		t.Fatalf("co-organiser submission before the rejudge: %v", v)
+	}
+	if code, _ := owner.do("POST", fmt.Sprintf("/api/admin/contests/%d/rejudge", cid), map[string]any{"problem_label": "A"}, s.srv.URL); code != 202 {
+		t.Fatal("rejudge")
+	}
+	s.judgeAll()
+	if _, v := student.do("GET", fmt.Sprintf("/api/submissions/%v", mine["id"]), nil, ""); v["revealed"] == nil {
+		t.Errorf("an ungraded student submission lost its reveal on a rejudge: %v", v)
+	}
+	if _, v := ta.do("GET", fmt.Sprintf("/api/submissions/%v", theirs["id"]), nil, ""); v["revealed"] != nil {
+		t.Errorf("a rejudge gave a co-organiser a revealed hidden test: %v", v["revealed"])
+	}
+}
+
+// Security review F3 and F4: renaming a draft reserves no slug, and an
+// unpublished contest's new slug is not told to whoever asks with the old.
+func TestP2DraftRenamesReserveNothing(t *testing.T) {
+	s := newSite(t)
+	owner := s.signedIn("owner@college.edu", "Owner")
+	code, out := owner.do("POST", "/api/admin/contests", map[string]any{"slug": "draft-a", "title": "Draft",
+		"starts_at": time.Now().Add(time.Hour).UnixMilli(), "ends_at": time.Now().Add(2 * time.Hour).UnixMilli()}, s.srv.URL)
+	if code != 201 {
+		t.Fatalf("create %d %v", code, out)
+	}
+	id := int64(out["id"].(float64))
+	if code, _ := owner.do("PUT", fmt.Sprintf("/api/admin/contests/%d", id), map[string]any{"slug": "draft-b"}, s.srv.URL); code != 200 {
+		t.Fatal("rename")
+	}
+	var n int
+	s.db.QueryRow("SELECT count(*) FROM slug_history").Scan(&n)
+	if n != 0 {
+		t.Errorf("a draft rename wrote %d slug history rows", n)
+	}
+	if current, err := s.contests.RenamedTo(context.Background(), "draft-a"); err != nil || current != "" {
+		t.Errorf("draft redirect %q %v", current, err)
+	}
+	// A published contest renamed, then unpublished, stops redirecting.
+	pid := s.importProblem(owner, "sum")
+	cid := s.createContest(owner, "pub-a", time.Now().Add(time.Hour), map[string]int64{"A": pid}, nil)
+	owner.do("PUT", fmt.Sprintf("/api/admin/contests/%d", cid), map[string]any{"slug": "pub-b"}, s.srv.URL)
+	if current, _ := s.contests.RenamedTo(context.Background(), "pub-a"); current != "pub-b" {
+		t.Fatalf("published redirect %q", current)
+	}
+	owner.do("PUT", fmt.Sprintf("/api/admin/contests/%d", cid), map[string]any{"published": false}, s.srv.URL)
+	if current, _ := s.contests.RenamedTo(context.Background(), "pub-a"); current != "" {
+		t.Errorf("an unpublished contest's new slug is told: %q", current)
+	}
+}

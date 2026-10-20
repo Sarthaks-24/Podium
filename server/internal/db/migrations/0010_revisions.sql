@@ -12,6 +12,24 @@ CREATE TABLE retention_cutoffs (
   before_ms INTEGER NOT NULL
 ) STRICT;
 
+-- A cutoff can only reach rows older than the shortest retention period
+-- (90 days for unused draft revisions, a year for everything else; the
+-- real periods, in P3, are longer), so a bug or a stray statement cannot
+-- open the append-only tables by writing a cutoff of now.
+CREATE TRIGGER retention_cutoffs_floor_insert BEFORE INSERT ON retention_cutoffs
+WHEN NEW.before_ms > CAST((julianday('now') - 2440587.5) * 86400000 AS INTEGER)
+  - (CASE NEW.tbl WHEN 'problem_revisions' THEN 90 ELSE 365 END) * 86400000
+BEGIN
+  SELECT RAISE(ABORT, 'a retention cutoff may not be that recent');
+END;
+
+CREATE TRIGGER retention_cutoffs_floor_update BEFORE UPDATE ON retention_cutoffs
+WHEN NEW.before_ms > CAST((julianday('now') - 2440587.5) * 86400000 AS INTEGER)
+  - (CASE NEW.tbl WHEN 'problem_revisions' THEN 90 ELSE 365 END) * 86400000
+BEGIN
+  SELECT RAISE(ABORT, 'a retention cutoff may not be that recent');
+END;
+
 -- One row per version of a problem. The problems row stays the editable
 -- working copy; every save that changes anything adds a revision, a save
 -- that changes nothing adds none. Programs are kept by hash (their text is

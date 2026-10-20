@@ -321,10 +321,14 @@ func (s *Service) Update(ctx context.Context, id int64, e Edit, by Actor) (*Cont
 		if err := s.checkSlugFree(ctx, tx, e.Slug, id); err != nil {
 			return nil, err
 		}
-		// The old slug keeps answering with a redirect (B2.9).
-		if _, err := tx.ExecContext(ctx, `INSERT OR IGNORE INTO slug_history (entity, old_slug, entity_id, changed_at) VALUES ('contest', ?, ?, ?)`,
-			c.Slug, id, s.now().UnixMilli()); err != nil {
-			return nil, err
+		// The old slug keeps answering with a redirect (B2.9). Only a
+		// contest that was published can have links out there, so renaming
+		// a draft reserves nothing.
+		if c.Published {
+			if _, err := tx.ExecContext(ctx, `INSERT OR IGNORE INTO slug_history (entity, old_slug, entity_id, changed_at) VALUES ('contest', ?, ?, ?)`,
+				c.Slug, id, s.now().UnixMilli()); err != nil {
+				return nil, err
+			}
 		}
 	}
 	langs, _ := json.Marshal(e.Languages)
@@ -378,11 +382,14 @@ func (s *Service) checkSlugFree(ctx context.Context, q interface {
 }
 
 // RenamedTo returns the current slug of the contest that once had slug,
-// or "" when no contest did or a contest has that slug now.
+// or "" when no contest did, a contest has that slug now, or the renamed
+// contest is unpublished or archived (its new slug is not told to anyone
+// who asks with the old one).
 func (s *Service) RenamedTo(ctx context.Context, slug string) (string, error) {
 	var current string
 	err := s.DB.QueryRowContext(ctx, `SELECT c.slug FROM slug_history h JOIN contests c ON c.id = h.entity_id
-		WHERE h.entity = 'contest' AND h.old_slug = ? AND NOT EXISTS (SELECT 1 FROM contests n WHERE n.slug = ?)`, slug, slug).Scan(&current)
+		WHERE h.entity = 'contest' AND h.old_slug = ? AND c.published = 1 AND c.archived = 0
+		AND NOT EXISTS (SELECT 1 FROM contests n WHERE n.slug = ?)`, slug, slug).Scan(&current)
 	if errors.Is(err, sql.ErrNoRows) {
 		return "", nil
 	}
