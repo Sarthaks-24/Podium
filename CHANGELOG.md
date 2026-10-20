@@ -4,6 +4,20 @@ Dated entries per release. Unreleased work is listed at the top.
 
 ## Unreleased
 
+### v2 P1, frontend (2026-10-20)
+
+Becomes `v1.1.0` with the backend's P1 work when the P1 gate is signed. Live-safe: the token pass is one commit, so reverting it restores the v1 look.
+
+- A calmer, more even look (Direction A with one display figure kept for standings, D80): small text is 14 px, every page title, section and subsection has one size on every screen, links have a thinner underline that fills on hover, buttons show hover and pressed states, table headers recede, rows you can open show a quiet hover, and mono digits sit one optical step smaller beside the text.
+- Every screen has the same header: organiser screens show where you are as a breadcrumb trail ("Contest admin, Week 6 contest, Console"), student screens keep one back link.
+- Loading, error, no access, not found and empty states read the same everywhere; a screen you cannot open names the organisers' contact email.
+- Dialogs share one shell: a dimmer backdrop in dark themes too, the title and close button stay in view while the dialog scrolls, and on phones the dialog opens at the top so the keyboard never covers its fields.
+- On phones, the contest lists, problem bank, console feed, integrity tables and the Results statistics stack as rows, and a whole row opens what it names. The Results statistics no longer scroll sideways at 320 px.
+- Windows high-contrast mode keeps the selected tab, the current contest tab, the next reveal row, the subtask strip and the rail bars visible.
+- AI assistant: choose Anthropic, OpenAI or Google Gemini and keep one key for each; the model picker shows the provider's own current list, and any model id can be typed. The wizard says which provider and model made a draft.
+- Contrast fixes: comments stay readable on a selection in the code editor in every theme, control borders reach 3:1 in Overcast, OLED black and Nordic slate, and the error toast's Dismiss keeps its contrast on hover.
+- For the server: the build writes `routes.json` (each route's title, description and whether it is public), and `index.html` has the `podium:head` and `podium:body` blocks the server will fill in P3.
+
 Becomes `v1.0.0` when the v2 P0 gate is signed.
 
 ### v2 P0, backend (2026-10-20)

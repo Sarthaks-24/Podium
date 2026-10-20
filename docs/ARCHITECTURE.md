@@ -436,6 +436,26 @@ Times are Unix milliseconds. Sessions are stored by the SHA-256 of the cookie va
 
 Removal and saving cannot race: every save records its blob (or refreshes the row's time) inside the transaction that adds the reference, and checks the file is still there inside that transaction. The collection deletes each batch of rows and files inside one write transaction, and deletes a row only if its time is still old, so a blob saved again after the candidates were read is skipped, and a save that lands just after a removal writes the file back (or, for test uploads written before their transaction, fails with "try again" instead of leaving a row without a file). `testcases` also references `blobs` by foreign key, so a test can never lose its row. Job payloads are scanned as text for 64-digit hex runs, so every hash any job kind could fetch is seen whatever the payload's shape.
 
+## Frontend structure
+
+The web app is one Svelte single-page app with no component library. Since v2 P1 every screen is built from a few shared pieces, so a pattern is changed in one place:
+
+| Piece | Where | Job |
+|---|---|---|
+| Tokens | `web/src/styles/tokens.css` | Every colour, size, measure and z-index. Type roles `--fs-page` (28 px on phones, 34 px from 768 px), `--fs-section`, `--fs-sub`; `--fs-6` only for the student's own place on standings (D80); `--mono-optical` sets mono digits one step down beside the Grotesk |
+| Controls | `web/src/styles/controls.css` | Buttons with hover and pressed states, fields, tables (`.table-dense` for logs and feeds, `.table-stack` for stacked phone rows with a `.row-link` that covers its row), `.back`, `.state-word`, `.page-section`, the dialog shell |
+| `PageHeader` | `web/src/components/PageHeader.svelte` | The top of every route: breadcrumbs on organiser screens or one back link on student screens, the page's only `h1` (focused after each client-side navigation), state word, actions, lead line and the contest sub-nav |
+| `Breadcrumbs` | `web/src/components/Breadcrumbs.svelte` | `nav aria-label="Breadcrumb"`, an ordered list, the current page last with `aria-current` |
+| `PageState` | `web/src/components/PageState.svelte` | Loading (shown after 300 ms), error with Try again, forbidden with the organisers' contact email, missing with a link to the parent, empty with its next action |
+| Announcer | `web/src/lib/announce.svelte.ts` | Two always-present live regions in `App.svelte`, polite and assertive. Each message clears its region first, so the same sentence said twice is spoken twice. Widgets with a running text (the contest clock) keep their own region |
+| Breakpoints | `web/src/lib/breakpoints.ts` | Tiers at 768, 1024 and 1440 px plus a short height tier. CSS writes `(min-width: 768px)` or its exact complement `(width < 768px)`, never `max-width: 767px`, so no zoomed width falls between two layouts; a guardrail test fails on any other width |
+| Icons | `web/src/lib/icons.ts`, `web/src/components/Icon.svelte` | Lucide shapes as data, 20 px beside words and never instead of them |
+| Route table | `web/src/lib/routing.ts` | Each route's pattern, sign-in need, `public`, `title` and `description`. Page titles read it, and the build writes it to `dist/routes.json` for the server's head, 404 and robots (contract C2) |
+
+State is a shape: a selected tab, the current sub-nav link and the next reveal row are drawn with borders, and components that draw fills (subtask strip, rail bars) carry a `forced-colors` block, so Windows high-contrast mode keeps every state visible.
+
+`web/index.html` carries two marker pairs the server fills per route (D100): `<!--podium:head-->` around the default `noindex` robots meta, and `<!--podium:body-->` inside a fallback `<main>` that `main.ts` clears before the app mounts.
+
 ## Themes
 
 The web app ships ten colour themes plus "System", which follows the device's light or dark setting:
