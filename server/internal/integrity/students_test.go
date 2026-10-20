@@ -674,3 +674,36 @@ func TestNotesAndRecordViews(t *testing.T) {
 		t.Errorf("views %+v", views)
 	}
 }
+
+// In a pair case the outcome is for one student: the other reads the
+// decision as cleared, on their notice and on their standing.
+func TestPairCaseOutcomeForOneStudent(t *testing.T) {
+	r := newStudentsRig(t)
+	ctx := context.Background()
+	c := copyCase(t, r.rig)
+	r.svc.Decide(ctx, c.ID, 100, AwaitingStudent, reason, nil)
+	for _, u := range []int64{2, 7} {
+		r.svc.Explain(ctx, c.ID, u, "My account of how I wrote it.")
+	}
+	if _, err := r.svc.Propose(ctx, c.ID, 100, ProposeInput{Outcome: OutcomeWarning, UserIDs: []int64{7}, Note: reason, Reason: forStudent,
+		Seen: seenAll(t, r.rig, c.ID)}); err != nil {
+		t.Fatal(err)
+	}
+	got, _ := r.svc.GetCase(ctx, c.ID)
+	if _, err := r.svc.Confirm(ctx, c.ID, got.Proposals[0].ID, 101, reason, "", seenAll(t, r.rig, c.ID)); err != nil {
+		t.Fatal(err)
+	}
+	inbox := &notifications.Service{DB: r.db, Now: func() time.Time { return *r.clock }}
+	for u, want := range map[int64]string{7: "is decided: a warning.", 2: "is closed with no action."} {
+		page, _ := inbox.List(ctx, u, 0)
+		if len(page.Notices) == 0 || !strings.HasSuffix(page.Notices[0].Happened, want) {
+			t.Errorf("student %d: %+v", u, page.Notices)
+		}
+	}
+	if a, b := r.rating(t, 7), r.rating(t, 2); a != 95 || b != 100 {
+		t.Errorf("ratings 7=%d 2=%d", a, b)
+	}
+	if sd, _ := r.svc.StandingOf(ctx, 2); len(sd.Lines) != 0 {
+		t.Errorf("the cleared student has lines: %+v", sd.Lines)
+	}
+}

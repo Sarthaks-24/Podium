@@ -292,8 +292,10 @@ func (s *Service) facts(ctx context.Context, r Row) (facts, error) {
 		label(problemID)
 	case CaseDecided:
 		var problemID int64
-		s.DB.QueryRowContext(ctx, "SELECT outcome, coalesce(outcome_problem_id, 0) FROM integrity_decisions WHERE id = ?", r.DecisionID).
-			Scan(&f.outcome, &problemID)
+		// A pair case can action one student and clear the other: each
+		// reads the decision as it applies to them.
+		s.DB.QueryRowContext(ctx, `SELECT CASE WHEN EXISTS (SELECT 1 FROM json_each(outcome_users) WHERE value = ?) THEN outcome ELSE '' END,
+			coalesce(outcome_problem_id, 0) FROM integrity_decisions WHERE id = ?`, r.UserID, r.DecisionID).Scan(&f.outcome, &problemID)
 		label(problemID)
 	case AppealDecided:
 		var rating sql.NullInt64
