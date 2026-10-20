@@ -11,7 +11,8 @@
   ("-" for none), which scrolls sideways when there are many. Under the
   problems, during the window only, "2 of 5 tried" ("submitted" in exam
   mode); then the standings link, "Rules" (opens the rules dialog) and the
-  Messages button with its unread count. Each link keeps one sentence for
+  Messages button with its unread count, all quiet buttons with no
+  underline (the control system in styles/controls.css). Each link keeps one sentence for
   screen readers (sentence()).
   Props: `problems`, `slug`, `current` (the open label), `layout` ("wide",
   "tablet" or "phone"), `exam`, `unread` (messages not yet seen),
@@ -97,9 +98,9 @@
   </ul>
   {#if tried}<p class="tried">{tried}</p>{/if}
   <div class="links">
-    <a class="link" href="{base}/standings">Standings</a>
-    {#if onrules}<button type="button" class="link link-button" onclick={onrules}>Rules</button>{/if}
-    <button type="button" class="btn btn-quiet btn-compact messages" onclick={onmessages}>
+    <a class="btn btn-link btn-compact" href="{base}/standings">Standings</a>
+    {#if onrules}<button type="button" class="btn btn-link btn-compact" onclick={onrules}>Rules</button>{/if}
+    <button type="button" class="btn btn-link btn-compact messages" onclick={onmessages}>
       <Icon name="message-square" />
       Messages{#if unread > 0}<span class="mono count">{unread}</span><span class="visually-hidden">&nbsp;unread</span>{/if}
     </button>
@@ -212,41 +213,11 @@
     font-size: var(--fs-0);
   }
 
-  .link-button {
-    padding: 0;
-    border: 0;
-    background: none;
-    color: var(--act);
-    font-family: inherit;
-    text-decoration: underline;
-    text-decoration-thickness: var(--rule);
-    text-underline-offset: 0.2em;
-    text-decoration-color: color-mix(in srgb, currentColor 45%, transparent);
-    cursor: pointer;
-  }
-
-  .link-button:hover {
-    text-decoration-color: currentColor;
-  }
-
   .links {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
     gap: var(--space-2) var(--space-3);
-  }
-
-  .link {
-    display: inline-flex;
-    align-items: center;
-    min-height: var(--control-h);
-    border-radius: var(--radius);
-    font-size: var(--fs-0);
-    font-weight: 500;
-  }
-
-  .messages {
-    color: var(--act);
   }
 
   .count {
@@ -291,8 +262,9 @@
     gap: var(--space-1);
   }
 
-  .wide .messages {
-    margin-left: calc(-1 * var(--space-3));
+  /* Quiet buttons line their words up with the rail's edge. */
+  .wide .links .btn {
+    margin-inline-start: calc(-1 * var(--space-3));
   }
 
   /* Forced colours drop the tint and the bar fills: the current problem

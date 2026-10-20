@@ -16,8 +16,10 @@
   - During their window: the shared Workspace on the contest's routes with
     the rail of problem letters (score and 2 px bar), the contest clock and
     freeze line, the Standings link and Messages. Exam contests show only
-    "Submitted". Announcements and answered questions arriving over the
-    event stream show in a quiet banner above the title (from 1024 px the
+    "Submitted". Announcements and answered questions newer than the last
+    time the student read the messages on this device (localStorage
+    podium-messages-read:{slug}, audit S1) show in a quiet banner above the
+    title and as the count on Messages (from 1024 px the
     editor never moves); a second open tab or a second session reported
     by the server shows a notice there too. Exam mode marks submitted
     problems "submitted" on the rail. "Rules" in the rail opens the same
@@ -37,6 +39,7 @@
   Props: `slug`, and `label` (the problem letter from the address, or "").
 -->
 <script lang="ts">
+  import MonoDigits from '../components/MonoDigits.svelte';
   import PageState from '../components/PageState.svelte';
   import PageHeader from '../components/PageHeader.svelte';
   import { onDestroy, onMount, untrack } from 'svelte';
@@ -56,6 +59,8 @@
   import {
     CONTEST_EVENTS,
     bannerItems,
+    markMessagesRead,
+    messagesReadAt,
     formatCountdown,
     formatSpan,
     freezeAt,
@@ -73,7 +78,7 @@
   import { polite } from '../lib/announce.svelte';
   import { keepHeadingFocus } from '../lib/focus';
   import { statementBannerKey, statementUpdatedText, type StatementEvent } from '../lib/history';
-  import { formatDateTime } from '../lib/format';
+  import { formatDateTime, scoreParts } from '../lib/format';
   import { setTitle } from '../lib/head';
   import { routeTitle } from '../lib/routing';
   import { navigate } from '../lib/router.svelte';
@@ -95,7 +100,8 @@
   let startError = $state('');
   let messagesOpen = $state(false);
   let dismissed = $state<Set<string>>(new Set());
-  let since = $state(0);
+  /** The last time the student read this contest's messages on this device (S1). */
+  let lastRead = $state(0);
   let otherTab = $state(false);
   let sessionNoticeHidden = $state(false);
   let streamMode = $state<StreamMode>('connecting');
@@ -117,7 +123,7 @@
   const currentProblem = $derived(problems.find((p) => p.label === current) ?? null);
   const exam = $derived(contest?.rules.feedback_mode === 'exam');
   const practice = $derived(contest?.state === 'practice');
-  const banner = $derived(contest ? bannerItems(contest, dismissed, since) : []);
+  const banner = $derived(contest ? bannerItems(contest, dismissed, lastRead) : []);
   const showWorkspace = $derived(
     contest !== null && currentProblem !== null && (phase === 'during' || (phase === 'after' && label !== '')),
   );
@@ -158,6 +164,9 @@
   }
 
   function dismiss(key: string) {
+    // Dismissing the last waiting message counts as reading them all.
+    const waiting = banner.filter((i) => i.key !== key);
+    if (banner.some((i) => i.key === key) && waiting.length === 0) lastRead = markMessagesRead(slug, Math.max(...banner.map((i) => i.at)));
     const next = new Set([...dismissed, key]);
     dismissed = next;
     try {
@@ -168,8 +177,8 @@
   }
 
   function openMessages() {
-    // Opening the messages counts as reading what the banner holds.
-    for (const item of banner) dismiss(item.key);
+    // Opening the messages counts as reading everything the page has loaded.
+    lastRead = markMessagesRead(slug, Math.max(contest?.server_now ?? 0, ...banner.map((i) => i.at)));
     messagesOpen = true;
   }
 
@@ -189,7 +198,6 @@
       const data = await getJSON<Contest>(api);
       serverClock.observe(data.server_now, sent, Date.now());
       refreshTicker();
-      if (since === 0) since = data.server_now;
       const restore = keepHeadingFocus();
       contest = data;
       setTitle(data.title);
@@ -362,6 +370,7 @@
 
   onMount(() => {
     dismissed = readDismissed();
+    lastRead = messagesReadAt(slug);
     try {
       workspaceSeen = localStorage.getItem(seenKey()) === '1';
     } catch {
@@ -512,12 +521,12 @@
       <p class="countdown">Starts in <span class="mono big" role="timer">{startNow.ms >= 86_400_000 ? formatSpan(startNow.ms) : formatCountdown(startNow.ms)}</span></p>
     {:else if startNow.kind === 'window'}
       <p class="countdown">
-        Start any time before <span class="mono">{formatDateTime(contest.ends_at)}</span>. The contest closes in
+        Start any time before <MonoDigits text={formatDateTime(contest.ends_at)} />. The contest closes in
         <span class="mono" role="timer">{formatCountdown(startNow.ms)}</span>.
       </p>
     {:else}
       <p class="countdown">
-        The contest started at <span class="mono">{formatDateTime(contest.starts_at).slice(-5)}</span> and your time is running. It ends in
+        The contest started at <MonoDigits text={formatDateTime(contest.starts_at).slice(-5)} /> and your time is running. It ends in
         <span class="mono big" role="timer">{formatCountdown(startNow.ms)}</span>.
       </p>
     {/if}
@@ -618,9 +627,9 @@
               {#each problems as p (p.label)}
                 <tr>
                   <th scope="row"><span class="mono letter">{p.label}</span>{p.title}</th>
-                  <td class="num right">{p.my_score ?? 0} of {p.max_score}</td>
+                  <td class="right score"><MonoDigits parts={scoreParts(p.my_score ?? 0, p.max_score)} /></td>
                   <td class="open">
-                    <a href="/contests/{encodeURIComponent(slug)}/problems/{encodeURIComponent(p.label)}" aria-label="{practice ? 'Practise' : 'Review'} problem {p.label}">
+                    <a class="btn btn-link btn-compact" href="/contests/{encodeURIComponent(slug)}/problems/{encodeURIComponent(p.label)}" aria-label="{practice ? 'Practise' : 'Review'} problem {p.label}">
                       {practice ? 'Practise' : 'Review'}
                     </a>
                   </td>
@@ -663,7 +672,7 @@
         <h2 id="ann-title">Announcements</h2>
         <ul class="announcements">
           {#each [...contest.announcements].sort((a, b) => b.created_at - a.created_at) as a (a.id)}
-            <li><p class="mono muted small">{formatDateTime(a.created_at)}</p><Markdown source={a.body_md} compact /></li>
+            <li><p class="muted small"><MonoDigits text={formatDateTime(a.created_at)} /></p><Markdown source={a.body_md} compact /></li>
           {/each}
         </ul>
       </section>
@@ -823,6 +832,10 @@
   .right,
   .table .right {
     text-align: right;
+  }
+
+  .score {
+    white-space: nowrap;
   }
 
   .open {

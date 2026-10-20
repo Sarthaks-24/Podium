@@ -66,6 +66,37 @@
   background: var(--surface-2);
 }
 
+/*
+  The control system (audit 2026-10-20 change 4):
+  - Every button is --control-h tall (32 px on desktop, 44 px on touch).
+    .btn-compact only narrows the padding and the type, inside table rows
+    and toolbars; it never changes the height.
+  - One .btn-primary per view: the action the page is for.
+  - Actions in bars, rails and table rows are quiet buttons with no
+    underline: .btn-quiet for ink, .btn-link for an action that opens
+    something (action colour). An <a class="btn ..."> reads the same.
+  - Underlines are for links inside prose and for breadcrumbs only.
+*/
+.btn-link {
+  color: var(--act);
+}
+
+.btn-link:hover {
+  background: var(--act-tint);
+}
+
+.btn-link:active:not(:disabled) {
+  background: color-mix(in srgb, var(--act) 18%, var(--act-tint));
+}
+
+/* A row of buttons: wraps, one gap, aligned on the controls' centre line. */
+.action-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
 /* A button that reads as a link inside a line of text (T16). */
 .btn-inline {
   min-height: auto;
@@ -158,7 +189,7 @@ textarea.input {
    5.3), so it already looks like the code editor that replaces it. */
 .textarea-well,
 .textarea-well:hover {
-  border-color: var(--well);
+  border-color: var(--well-edge);
   border-radius: 0;
   background: var(--well);
   color: var(--well-ink);
@@ -299,19 +330,52 @@ textarea.input {
   font-weight: 500;
 }
 
-/* One state word (T14): Live and Frozen in the action colour, Upcoming
-   and Practice in ink, Ended and the rest muted. */
+/*
+  Badges (audit change 3, design.md 6 "Badge: verdict and state words
+  only"): a word in sentence case on a tint, never an icon or a count.
+  components/Badge.svelte draws one; lib/badges.ts picks the tone.
+  data-tone: act (Live, Frozen), ok (Accepted, Validated), part (Partial,
+  Not validated), bad (Wrong answer), wait (Judging, AI draft), muted
+  (Ended, Archived) and neutral (Upcoming, Draft, Practice; the default).
+  The transparent border shows in forced colours, so the badge keeps its
+  shape there.
+*/
+.badge,
 .state-word {
-  color: var(--ink-muted);
+  display: inline-flex;
+  align-items: center;
+  padding: 0 var(--space-2);
+  border: var(--rule) solid transparent;
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  color: var(--ink);
+  font-family: var(--font-ui);
+  font-size: var(--fs-0);
+  font-weight: 500;
+  line-height: var(--lh-body);
   white-space: nowrap;
 }
 
+.badge[data-tone='act'] { background: var(--act-tint); color: var(--act); font-weight: 600; }
+.badge[data-tone='ok'] { background: var(--ok-tint); color: var(--ok); }
+.badge[data-tone='part'] { background: var(--part-tint); color: var(--part); }
+.badge[data-tone='bad'] { background: var(--bad-tint); color: var(--bad); }
+.badge[data-tone='wait'] { background: var(--wait-tint); color: var(--wait); }
+.badge[data-tone='muted'] { color: var(--ink-muted); }
+
+/* One state word (T14), drawn as a badge: Live and Frozen in the action
+   colour, Upcoming and Practice in ink, Ended and the rest muted. */
+.state-word {
+  color: var(--ink-muted);
+}
+
 .state-word:is([data-state='live'], [data-state='frozen']) {
+  background: var(--act-tint);
   color: var(--act);
   font-weight: 600;
 }
 
-.state-word:is([data-state='upcoming'], [data-state='practice']) {
+.state-word:is([data-state='upcoming'], [data-state='practice'], [data-state='draft']) {
   color: var(--ink);
 }
 

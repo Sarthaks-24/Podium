@@ -113,6 +113,7 @@
     display: grid;
     min-height: 0;
     height: 100%;
+    border: var(--rule) solid var(--well-edge);
     background: var(--well);
     color: var(--well-ink);
   }

@@ -62,6 +62,26 @@ test('the contest list puts the live contest first with a countdown', async ({ p
   await expect(page.getByRole('link', { name: 'Problem bank' })).toHaveCount(0);
 });
 
+test('messages posted while the student was away still show, until read (S1)', async ({ page }) => {
+  const api = await mockApi(page, { phase: 'during' });
+  const before = Date.now() - 5 * 60_000;
+  api.announcements.push({ id: 5, body_md: 'Sample 2 of B is fixed.', created_at: before });
+  api.clarifications.push({ id: 9, problem_label: 'A', question: 'Can a be negative?', answer: 'No, a is at least 0.', public: false, created_at: before - 60_000, answered_at: before + 60_000 });
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto('/contests/week-6/problems/A');
+  const rail = page.getByRole('navigation', { name: 'Problems' });
+  await expect(page.locator('.banner-slot .strip')).toContainText('No, a is at least 0.');
+  await expect(page.locator('.banner-slot .strip')).toContainText('1 more message waiting.');
+  await expect(rail.getByRole('button', { name: /Messages/ })).toContainText('2');
+  await rail.getByRole('button', { name: /Messages/ }).click();
+  await expect(page.getByRole('dialog', { name: 'Messages' })).toBeVisible();
+  await page.keyboard.press('Escape');
+  await page.reload();
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('A. A plus B');
+  await expect(page.locator('.banner-slot .strip')).toHaveCount(0);
+  await expect(rail.getByRole('button', { name: /Messages/ })).not.toContainText('2');
+});
+
 test('a student agrees to the honour code, solves, reads an announcement and asks a question', async ({ page }) => {
   const api = await mockApi(page, { phase: 'ready' });
   await page.setViewportSize({ width: 1440, height: 900 });
@@ -310,6 +330,21 @@ test('students cannot open the contest admin', async ({ page }) => {
   await expect(page.getByText('Only admins can manage contests.')).toBeVisible();
   // F3: a closed screen names where to ask, as a mailto link.
   await expect(page.getByRole('main').getByRole('link', { name: 'priya@college.edu' })).toHaveAttribute('href', 'mailto:priya@college.edu');
+});
+
+test('the Console link counts unanswered questions on Settings (O4)', async ({ page }) => {
+  await mockApi(page, { who: 'admin', phase: 'during' });
+  const asked: string[] = [];
+  page.on('request', (r) => {
+    if (r.url().includes('/clarifications')) asked.push(new URL(r.url()).pathname);
+  });
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto('/admin/contests/4');
+  const nav = page.getByRole('navigation', { name: 'Contest' });
+  await expect(nav.getByRole('link', { name: /Console/ })).toContainText('1');
+  await expect(nav.getByRole('link', { name: /Console/ })).toContainText('unanswered question');
+  expect(asked).toContain('/api/admin/contests/4/clarifications');
+  expect(asked.filter((p) => !p.startsWith('/api/'))).toEqual([]);
 });
 
 test('the editor shows field errors, picks problems and previews a roster', async ({ page }) => {
@@ -799,7 +834,7 @@ test('keyboard only: an organiser edits a contest, runs the console and walks th
   await expect(page.getByRole('button', { name: 'Remove A plus B' })).toBeFocused();
 
   // Console: the section links, and an error that takes focus.
-  await activate(page, page.getByRole('link', { name: 'Console', exact: true }));
+  await activate(page, page.getByRole('navigation', { name: 'Contest' }).getByRole('link', { name: /^Console/ }));
   await expect(page).toHaveURL('/admin/contests/4/console');
   await activate(page, page.getByRole('button', { name: 'Give extra time' }));
   await expect(page.locator('#ext-error')).toHaveText('Choose a student.');

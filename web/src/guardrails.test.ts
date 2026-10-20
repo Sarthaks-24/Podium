@@ -58,10 +58,7 @@ describe('web source guardrails', () => {
 // complement "width < tier", and the range "tier <= width < tier".
 const TIER_PX = new Set(Object.values(TIERS).map(String));
 // Queries outside the tiers that a later plan item removes, by file.
-const KNOWN_WIDTHS: Record<string, string[]> = {
-  // The verdict panel's wider split; P5 (F-V7) moves the workspace to the shell's tiers and the short tier.
-  '/src/components/Workspace.svelte': ['(min-width: 1280px)'],
-};
+const KNOWN_WIDTHS: Record<string, string[]> = {};
 
 /** Every width condition in a media query prelude, as written. */
 function widthConditions(prelude: string): string[] {
@@ -106,6 +103,7 @@ describe('breakpoints', () => {
     expect(QUERIES).toEqual({
       tablet: '(min-width: 768px)',
       laptop: '(min-width: 1024px)',
+      desk: '(min-width: 1280px)',
       wide: '(min-width: 1440px)',
       short: '(min-width: 1024px) and (max-height: 45rem)',
     });
@@ -113,7 +111,8 @@ describe('breakpoints', () => {
 
   it('catches a query off the tiers', () => {
     expect(widthAllowed('(max-width: 767px)')).toBe(false);
-    expect(widthAllowed('(min-width: 1280px)')).toBe(false);
+    expect(widthAllowed('(min-width: 1200px)')).toBe(false);
+    expect(widthAllowed('(min-width: 1280px)')).toBe(true);
     expect(widthAllowed('(width < 768px)')).toBe(true);
     expect(widthAllowed('(768px <= width < 1024px)')).toBe(true);
   });
