@@ -29,6 +29,7 @@
   import { keepHeadingFocus } from '../lib/focus';
   import { formatDateTime } from '../lib/format';
   import { setTitle } from '../lib/head';
+  import { routeTitle } from '../lib/routing';
   import {
     MIN_NOTE,
     RESPONSE_DAYS,
@@ -125,7 +126,7 @@
       setClock(c.server_now);
       kase = c;
       stale = false;
-      setTitle(c.title, 'Case');
+      setTitle(c.title, routeTitle('integrity-case'));
       loadState = 'ready';
       void restore();
       void loadContext(c.contest_id);
@@ -238,7 +239,7 @@
   }
 
   onMount(() => {
-    setTitle('Case');
+    setTitle(routeTitle('integrity-case'));
     if (!isOrganiser) loadState = 'forbidden';
     else void load();
     timer = setInterval(() => (now = Date.now() + skew), 30_000);

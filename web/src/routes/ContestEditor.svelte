@@ -52,6 +52,7 @@
   } from '../lib/contests';
   import { keepHeadingFocus } from '../lib/focus';
   import { setTitle } from '../lib/head';
+  import { routeTitle } from '../lib/routing';
   import { LANGUAGES, type ProblemSummary } from '../lib/problems';
   import { navigate } from '../lib/router.svelte';
   import { session } from '../lib/session.svelte';
@@ -159,7 +160,7 @@
     contest = c;
     form = toForm(c);
     picked = (c.problems ?? []).map((p) => ({ ...p }));
-    setTitle(c.title, 'Contest settings');
+    setTitle(c.title, routeTitle('admin-contest'));
     if (cloneSlug === '') {
       cloneSlug = `${c.slug}-copy`;
       cloneStart = toLocalInput(c.starts_at + 7 * 86_400_000);
@@ -572,7 +573,7 @@
   }
 
   onMount(() => {
-    setTitle('Contest settings');
+    setTitle(routeTitle('admin-contest'));
     if (!isOrganiser) loadState = 'forbidden';
     else void load();
   });

@@ -5,8 +5,9 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { setTitle } from '../lib/head';
+  import { routeTitle } from '../lib/routing';
 
-  onMount(() => setTitle('Page not found'));
+  onMount(() => setTitle(routeTitle('not-found')));
 </script>
 
 <h1 tabindex="-1">Page not found</h1>

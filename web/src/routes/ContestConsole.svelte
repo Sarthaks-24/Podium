@@ -52,6 +52,7 @@
   import { keepHeadingFocus } from '../lib/focus';
   import { countOf } from '../lib/format';
   import { setTitle } from '../lib/head';
+  import { routeTitle } from '../lib/routing';
   import { verdictLabel } from '../lib/problems';
   import { session } from '../lib/session.svelte';
   import type { Standings } from '../lib/standings';
@@ -150,7 +151,7 @@
       refreshTicker();
       const restore = keepHeadingFocus();
       contest = c;
-      setTitle(c.title, 'Console');
+      setTitle(c.title, routeTitle('contest-console'));
       loadState = 'ready';
       void restore();
       // Every action here reloads the contest, so the log follows it.
@@ -412,7 +413,7 @@
   let timer: ReturnType<typeof setInterval> | undefined;
 
   onMount(() => {
-    setTitle('Console');
+    setTitle(routeTitle('contest-console'));
     if (!isOrganiser) {
       loadState = 'forbidden';
       return;
@@ -448,7 +449,7 @@
   // The tab title carries the unanswered count, so a waiting question shows from another tab.
   $effect(() => {
     if (!contest) return;
-    setTitle(unanswered > 0 ? `(${unanswered}) ${contest.title}` : contest.title, 'Console');
+    setTitle(unanswered > 0 ? `(${unanswered}) ${contest.title}` : contest.title, routeTitle('contest-console'));
   });
 
   onDestroy(() => {

@@ -19,6 +19,7 @@
   import { ApiError, getJSON, sendJSON } from '../lib/api';
   import { countOf, formatDateTime, roleLabel } from '../lib/format';
   import { setTitle } from '../lib/head';
+  import { routeTitle } from '../lib/routing';
   import { session } from '../lib/session.svelte';
   import { showToast } from '../lib/toast.svelte';
 
@@ -172,7 +173,7 @@
   }
 
   onMount(() => {
-    setTitle('People');
+    setTitle(routeTitle('people'));
     if (isOwner) {
       load();
     } else {

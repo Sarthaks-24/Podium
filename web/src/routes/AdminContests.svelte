@@ -25,6 +25,7 @@
   } from '../lib/contests';
   import { formatDateTime } from '../lib/format';
   import { setTitle } from '../lib/head';
+  import { routeTitle } from '../lib/routing';
   import { slugify } from '../lib/problems';
   import { navigate } from '../lib/router.svelte';
   import { session } from '../lib/session.svelte';
@@ -136,7 +137,7 @@
   }
 
   onMount(() => {
-    setTitle('Contest admin');
+    setTitle(routeTitle('admin-contests'));
     if (!isOrganiser) loadState = 'forbidden';
     else void load();
   });

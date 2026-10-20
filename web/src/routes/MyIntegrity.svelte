@@ -15,6 +15,7 @@
   import { ApiError, getJSON, sendJSON } from '../lib/api';
   import { formatDateTime } from '../lib/format';
   import { setTitle } from '../lib/head';
+  import { routeTitle } from '../lib/routing';
   import { keepHeadingFocus } from '../lib/focus';
   import { problemName, studentStateText, type StudentCase, type StudentCaseList } from '../lib/review';
   import { session } from '../lib/session.svelte';
@@ -85,7 +86,7 @@
   }
 
   onMount(() => {
-    setTitle('Questions about your submissions');
+    setTitle(routeTitle('my-integrity'));
     void load();
   });
 </script>

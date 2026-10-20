@@ -27,6 +27,7 @@
   import { keepHeadingFocus } from '../lib/focus';
   import { formatDateTime } from '../lib/format';
   import { setTitle } from '../lib/head';
+  import { routeTitle } from '../lib/routing';
   import {
     SCORE_MEANING,
     evidenceSize,
@@ -203,7 +204,7 @@
   }
 
   onMount(() => {
-    setTitle('Signal');
+    setTitle(routeTitle('integrity-pair'));
     if (!isOrganiser) loadState = 'forbidden';
     else void load();
   });

@@ -28,6 +28,7 @@
   } from '../lib/ai';
   import { ApiError, getJSON, sendJSON } from '../lib/api';
   import { setTitle } from '../lib/head';
+  import { routeTitle } from '../lib/routing';
   import { session } from '../lib/session.svelte';
   import { showToast } from '../lib/toast.svelte';
 
@@ -80,7 +81,7 @@
   }
 
   onMount(() => {
-    setTitle('AI assistant');
+    setTitle(routeTitle('ai-settings'));
     const role = session.user?.role;
     if (role === 'admin' || role === 'owner') load();
     else loadState = 'forbidden';

@@ -10,6 +10,7 @@
   import { onMount } from 'svelte';
   import Workspace from '../components/Workspace.svelte';
   import { setTitle } from '../lib/head';
+  import { routeTitle } from '../lib/routing';
   import { session } from '../lib/session.svelte';
   import { problemWorkspace } from '../lib/workspace';
 
@@ -18,7 +19,7 @@
   const isOrganiser = $derived(session.user?.role === 'admin' || session.user?.role === 'owner');
 
   onMount(() => {
-    if (!isOrganiser) setTitle('Problem bank');
+    if (!isOrganiser) setTitle(routeTitle('problems'));
   });
 </script>
 

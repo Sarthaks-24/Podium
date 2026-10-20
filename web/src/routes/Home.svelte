@@ -21,6 +21,7 @@
   import { formatCountdown, formatSpan, lengthText, listCountdown, orderedContests, stateWord, type ContestList, type ContestSummary } from '../lib/contests';
   import { formatDateTime } from '../lib/format';
   import { setTitle } from '../lib/head';
+  import { routeTitle } from '../lib/routing';
   import { session } from '../lib/session.svelte';
   import type { StudentCaseList } from '../lib/review';
   import { refreshTicker, ticker, useTicker } from '../lib/ticker.svelte';
@@ -82,7 +83,7 @@
   }
 
   onMount(() => {
-    setTitle('Your contests');
+    setTitle(routeTitle('home'));
     void load();
     void loadAsked();
     return useTicker();

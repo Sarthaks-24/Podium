@@ -27,6 +27,7 @@
   import { stateWord, type AdminContest, type ProblemStats } from '../lib/contests';
   import { keepHeadingFocus } from '../lib/focus';
   import { setTitle } from '../lib/head';
+  import { routeTitle } from '../lib/routing';
   import { session } from '../lib/session.svelte';
   import { boardLabels, statusLine, type Standings } from '../lib/standings';
   import { ticker, useTicker } from '../lib/ticker.svelte';
@@ -91,7 +92,7 @@
       contest = c;
       editorial = c.editorial_md ?? '';
       editorialPublished = c.editorial_published ?? false;
-      setTitle(c.title, 'Results');
+      setTitle(c.title, routeTitle('contest-results'));
       loadState = 'ready';
       void restore();
     } catch (e) {
@@ -197,7 +198,7 @@
   }
 
   onMount(() => {
-    setTitle('Results');
+    setTitle(routeTitle('contest-results'));
     if (!isOrganiser) loadState = 'forbidden';
     else void load();
     return useTicker();

@@ -56,6 +56,7 @@
   import { keepHeadingFocus } from '../lib/focus';
   import { formatDateTime } from '../lib/format';
   import { setTitle } from '../lib/head';
+  import { routeTitle } from '../lib/routing';
   import { navigate } from '../lib/router.svelte';
   import { adjacentLabel, isPlainKey, isTypingTarget } from '../lib/shortcuts';
   import { session } from '../lib/session.svelte';
@@ -162,14 +163,14 @@
       if (e instanceof ApiError && e.status === 403) {
         loadError = e.message;
         loadState = 'forbidden';
-        setTitle('Contest');
+        setTitle(routeTitle('contest'));
       } else if (e instanceof ApiError && e.status === 404) {
         loadState = 'missing';
         setTitle('Contest not found');
       } else {
         loadError = e instanceof ApiError ? e.message : 'Something went wrong. Try again in a moment.';
         loadState = 'error';
-        setTitle('Contest');
+        setTitle(routeTitle('contest'));
       }
     }
   }

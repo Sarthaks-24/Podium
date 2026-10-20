@@ -35,6 +35,7 @@
   } from '../lib/ai';
   import { ApiError, getJSON, sendJSON } from '../lib/api';
   import { setTitle } from '../lib/head';
+  import { routeTitle } from '../lib/routing';
   import { navigate, router } from '../lib/router.svelte';
   import { session } from '../lib/session.svelte';
   import { EventStream, type StreamMode } from '../lib/stream';
@@ -153,7 +154,7 @@
   }
 
   onMount(() => {
-    setTitle('New problem with AI');
+    setTitle(routeTitle('ai-new'));
     const role = session.user?.role;
     if (role !== 'admin' && role !== 'owner') {
       loadState = 'forbidden';

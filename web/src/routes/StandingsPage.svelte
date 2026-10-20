@@ -20,6 +20,7 @@
   import { serverClock } from '../lib/clock';
   import { isForContest, type Contest } from '../lib/contests';
   import { setTitle } from '../lib/head';
+  import { routeTitle } from '../lib/routing';
   import { session } from '../lib/session.svelte';
   import { boardLabels, statusLine, type Standings } from '../lib/standings';
   import { EventStream, type StreamMode } from '../lib/stream';
@@ -44,7 +45,7 @@
       const c = await getJSON<Contest>(api);
       serverClock.observe(c.server_now, sent, Date.now());
       contest = c;
-      setTitle('Standings', c.title);
+      setTitle(routeTitle('standings'), c.title);
     } catch {
       // The board says what went wrong.
     }
@@ -105,7 +106,7 @@
   let stream: EventStream | null = null;
 
   onMount(() => {
-    setTitle('Standings');
+    setTitle(routeTitle('standings'));
     void loadContest();
     void loadBoard();
     stream = new EventStream({

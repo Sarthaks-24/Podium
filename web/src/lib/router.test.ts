@@ -50,7 +50,7 @@ describe('matchRoute', () => {
   });
 
   it('captures and decodes parameters', () => {
-    const table: RouteDef[] = [{ pattern: '/contests/:id/problems/:letter', name: 'home', auth: true }];
+    const table: RouteDef[] = [{ pattern: '/contests/:id/problems/:letter', name: 'home', auth: true, public: false, title: 'Test', description: 'Test.' }];
     expect(matchRoute('/contests/12/problems/B', table).params).toEqual({ id: '12', letter: 'B' });
     expect(matchRoute('/contests/a%20b/problems/C', table).params).toEqual({ id: 'a b', letter: 'C' });
     expect(matchRoute('/contests/%E0%A4/problems/C', table).route).toBe(NOT_FOUND);

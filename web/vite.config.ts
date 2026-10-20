@@ -1,11 +1,31 @@
 import { defineConfig } from 'vitest/config';
+import type { Plugin } from 'vite';
 import { svelte } from '@sveltejs/vite-plugin-svelte';
+import { routeManifest } from './src/lib/routing';
 
 // The Go server listens here during development (`make dev`).
 const apiTarget = 'http://127.0.0.1:8080';
 
+/**
+ * Writes dist/routes.json from the route table in src/lib/routing.ts
+ * (contract C2). The server reads it from the embedded build for the real
+ * 404, the public head and robots; a copy is checked in at
+ * server/internal/webui/testdata/routes.json and lib/routing.test.ts fails
+ * when the two differ.
+ */
+function routesManifest(): Plugin {
+  return {
+    name: 'podium-routes-manifest',
+    apply: 'build',
+    generateBundle() {
+      this.emitFile({ type: 'asset', fileName: 'routes.json', source: `${JSON.stringify(routeManifest(), null, 2)}
+` });
+    },
+  };
+}
+
 export default defineConfig({
-  plugins: [svelte()],
+  plugins: [svelte(), routesManifest()],
   define: {
     // Computed once per build so the footer year is never hard-coded.
     __BUILD_YEAR__: JSON.stringify(new Date().getFullYear()),

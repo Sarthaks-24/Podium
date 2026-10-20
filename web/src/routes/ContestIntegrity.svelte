@@ -24,6 +24,7 @@
   import { keepHeadingFocus } from '../lib/focus';
   import { formatDateTime } from '../lib/format';
   import { setTitle } from '../lib/head';
+  import { routeTitle } from '../lib/routing';
   import {
     KINDS,
     STRENGTHS,
@@ -105,7 +106,7 @@
       const c = await getJSON<AdminContest>(base);
       const restore = keepHeadingFocus();
       contest = c;
-      setTitle(c.title, 'Integrity');
+      setTitle(c.title, routeTitle('contest-integrity'));
       loadState = 'ready';
       void restore();
     } catch (e) {
@@ -203,7 +204,7 @@
   }
 
   onMount(() => {
-    setTitle('Integrity');
+    setTitle(routeTitle('contest-integrity'));
     if (!isOrganiser) loadState = 'forbidden';
     else void load();
     const stop = useTicker();

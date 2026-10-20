@@ -15,6 +15,7 @@
   import { getJSON } from '../lib/api';
   import { parseMode, runMode } from '../lib/mode.svelte';
   import { setTitle } from '../lib/head';
+  import { routeTitle } from '../lib/routing';
   import { router } from '../lib/router.svelte';
   import { audienceLine, errorMessage, parseErrorCode, safeNext, startHref } from '../lib/signin';
 
@@ -35,7 +36,7 @@
   const error = $derived(ready ? errorMessage(errorCode, domains, contactEmail) : null);
 
   onMount(() => {
-    setTitle('Sign in');
+    setTitle(routeTitle('signin'));
     let active = true;
     getJSON<AuthConfig>('/api/auth/config')
       .then((c) => {

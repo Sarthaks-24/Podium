@@ -61,6 +61,7 @@
   } from '../lib/ai';
   import { ApiError, getJSON, sendBody, sendJSON } from '../lib/api';
   import { setTitle } from '../lib/head';
+  import { routeTitle } from '../lib/routing';
   import {
     CHECKERS,
     DIFFICULTIES,
@@ -350,7 +351,7 @@
     baseline = JSON.stringify(saved);
     if (!keep) draft = saved;
     if (validation) validation = { ...validation, current: validation.content_hash === p.content_hash };
-    setTitle(p.title, 'Problem bank');
+    setTitle(p.title, routeTitle('problems'));
   }
 
   // Polling stops for good when the editor goes away.
@@ -483,7 +484,7 @@
   }
 
   onMount(() => {
-    setTitle('Problem');
+    setTitle(routeTitle('problem'));
     const role = session.user?.role;
     if (role === 'admin' || role === 'owner') {
       load();

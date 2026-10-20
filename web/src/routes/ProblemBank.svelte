@@ -22,6 +22,7 @@
   import { ApiError, getJSON, sendBody, sendJSON } from '../lib/api';
   import { formatDateTime } from '../lib/format';
   import { setTitle } from '../lib/head';
+  import { routeTitle } from '../lib/routing';
   import { DIFFICULTIES, slugify, statusWord, type Problem, type ProblemSummary } from '../lib/problems';
   import { navigate, router } from '../lib/router.svelte';
   import { session } from '../lib/session.svelte';
@@ -97,7 +98,7 @@
     }
   }
 
-  onMount(() => setTitle('Problem bank'));
+  onMount(() => setTitle(routeTitle('problems')));
 
   $effect(() => {
     const archived = showArchived;
