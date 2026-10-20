@@ -8,6 +8,7 @@
 // progress request is made for a contest whose board is still frozen.
 // Screenshots go to cache/screenshots-p4-student/.
 import { expect, test, type Page } from '@playwright/test';
+import { activate, tabTo } from './keyboard';
 import * as contests from './mocks/contests';
 import { LEAKED_RATING, mockApi, settle, shots, SCREENS, THEMES, WIDTHS } from './mocks/students';
 
@@ -340,4 +341,51 @@ test('no student page prints the rating value', async ({ page }) => {
     expect(text, path).not.toContain(String(LEAKED_RATING));
     expect(text, path).not.toContain((LEAKED_RATING / 10).toFixed(1));
   }
+});
+
+test('the privacy draft lists the P4 data and who sees it (F9.6)', async ({ page }) => {
+  await mockApi(page);
+  await page.goto('/privacy?draft');
+  const main = page.locator('main');
+  for (const text of [
+    'Your result in each contest.',
+    'Notices.',
+    "Organisers' private notes.",
+    'Questions about your work, and decisions.',
+    'Your standing.',
+    'A rating, for the organisers only.',
+    "Who read a student's record.",
+    'whether you chose to hide your progress page',
+    'sees the record of who read a student',
+  ]) {
+    await expect(main.getByText(text, { exact: false }).first(), text).toBeVisible();
+  }
+});
+
+test('keyboard only: notices to the case, an explanation, and an appeal on a decided case', async ({ page }) => {
+  const api = await mockApi(page);
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto('/');
+  await expect(page.getByRole('heading', { level: 1, name: 'Your contests' })).toBeVisible();
+  await activate(page, page.getByRole('link', { name: 'Notices, 2 unread' }));
+  await expect(page.getByRole('heading', { level: 1, name: 'Notices' })).toBeFocused();
+  await activate(page, page.getByRole('link', { name: 'Reply on the case page' }).first());
+  await expect(page.getByRole('heading', { level: 1, name: 'Question about Week 6 contest' })).toBeFocused();
+  const field = page.getByLabel('Explain how you wrote this, in your own words');
+  await activate(page, page.getByRole('button', { name: 'Save explanation' }));
+  await expect(field).toBeFocused();
+  await page.keyboard.type('I wrote the special case to test the sample and forgot it.');
+  await activate(page, page.getByRole('button', { name: 'Save explanation' }));
+  await expect(page.getByRole('status').filter({ hasText: 'Saved.' })).toBeVisible();
+  expect(api.explanations).toHaveLength(1);
+
+  await page.goto('/integrity/cases/8');
+  await expect(page.getByText('Zero for problem B in Week 3 contest.')).toBeVisible();
+  await activate(page, page.getByRole('button', { name: 'Appeal this decision' }));
+  await expect(page.getByLabel('Why do you think the decision is wrong?')).toBeFocused();
+  await page.keyboard.type('The fixed answer was a leftover debug line; the real solution follows it.');
+  await tabTo(page, page.getByRole('button', { name: 'Send appeal' }));
+  await page.keyboard.press('Enter');
+  await expect(page.getByRole('region', { name: 'Decision' }).getByText('Under appeal')).toBeVisible();
+  expect(api.appeals).toHaveLength(1);
 });

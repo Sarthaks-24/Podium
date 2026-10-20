@@ -118,6 +118,7 @@
             role="img"
             aria-labelledby="score-line-summary"
             onpointermove={onMove}
+            onpointerdown={onMove}
             onpointerleave={() => (active = null)}
           >
             {#each [0, 50, 100] as g (g)}

@@ -78,6 +78,8 @@
       <label for="{id}-text">Why do you think the decision is wrong?</label>
       <textarea
         id="{id}-text"
+        name="appeal"
+        autocomplete="off"
         class="input"
         rows="5"
         maxlength={MAX_APPEAL}

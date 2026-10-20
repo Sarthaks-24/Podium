@@ -61,7 +61,7 @@
       const restore = keepHeadingFocus();
       data = withDerived(p);
       loadState = 'ready';
-      if (organiser) setTitle(`${data.user.name}'s progress`);
+      if (organiser) setTitle(ownerTitle(data.user.name));
       void restore();
     } catch (e) {
       if (e instanceof ApiError && e.status === 401) {
@@ -94,7 +94,12 @@
     }
   }
 
-  const title = $derived(organiser ? (data ? `${data.user.name}'s progress` : 'Student progress') : 'Your progress');
+  /** "Asha Rao's progress", or "Student progress" for an account with no name. */
+  function ownerTitle(name: string): string {
+    return name.trim() !== '' ? `${name.trim()}'s progress` : routeTitle('admin-progress');
+  }
+
+  const title = $derived(organiser ? (data ? ownerTitle(data.user.name) : routeTitle('admin-progress')) : 'Your progress');
   const titles = $derived(Object.fromEntries((data?.contests ?? []).map((c) => [c.slug, c.title])));
 
   const topicRows = $derived<MeterRow[]>(

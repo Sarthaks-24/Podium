@@ -93,8 +93,8 @@
     font-size: var(--fs-4);
   }
 
-  /* "830 of 1400" stays on one line in a phone's half column. */
-  @media (width < 768px) {
+  /* "830 of 1400" stays on one line in a narrow column. */
+  @media (width < 1024px) {
     .value.mono,
     .value :global(.mono) {
       font-size: var(--fs-3);

@@ -52,6 +52,7 @@
   let error = $state('');
   let saved = $state('');
   let opened = false;
+  let box: HTMLTextAreaElement | undefined = $state();
 
   const contestTitle = $derived(c ? (list?.contests?.[String(c.contest_id)]?.title ?? '') : '');
   const badge = $derived(c ? caseBadge(c) : null);
@@ -104,10 +105,12 @@
     saved = '';
     if (text === '') {
       error = 'Write your explanation first.';
+      box?.focus();
       return;
     }
     if ([...text].length > MAX_EXPLANATION) {
       error = `Keep the explanation to ${MAX_EXPLANATION} characters.`;
+      box?.focus();
       return;
     }
     saving = true;
@@ -227,7 +230,10 @@
               <label for="explain-{c.id}">Explain how you wrote this, in your own words</label>
               <textarea
                 id="explain-{c.id}"
+                name="explanation"
+                autocomplete="off"
                 class="input"
+                bind:this={box}
                 rows="8"
                 maxlength={MAX_EXPLANATION}
                 bind:value={draft}
