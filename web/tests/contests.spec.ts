@@ -340,7 +340,7 @@ test('admins land on their contest list, named by job', async ({ page }) => {
   await page.goto('/');
   await expect(page).toHaveURL('/admin/contests');
   const nav = page.getByRole('navigation', { name: 'Main' });
-  await expect(nav.getByRole('link')).toHaveText(['Contests', 'Problem bank']);
+  await expect(nav.getByRole('link')).toHaveText(['Contests', 'Problem bank', 'Inbox']);
   await expect(nav.getByRole('link', { name: 'Contests' })).toHaveAttribute('aria-current', 'page');
   await expect(page.getByText('To create a contest or follow one live')).toHaveCount(0);
   await expect(page.getByRole('row', { name: /Week 7 contest/ })).toContainText('Draft');
