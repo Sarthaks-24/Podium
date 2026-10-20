@@ -81,6 +81,7 @@ check: ## Everything CI runs: formatting, vet, svelte-check, ESLint, tests
 	@out=$$(cd server && gofmt -l .); test -z "$$out" || { echo "gofmt needed:"; echo "$$out"; exit 1; }
 	cd server && go mod tidy -diff
 	cd server && go vet ./... && $(GOFLAGS_LINUX) go vet -tags sandbox ./...
+	@test -d web/node_modules || (cd web && npm ci)
 	cd web && npm run check && npm run lint
 	$(MAKE) test
 
@@ -98,7 +99,7 @@ calibrate: ## Measure this judge host and print the calibration tables
 
 .PHONY: release
 release: check build ## Build the release tarball in release/
-	@if grep -rIqE '[Ll]orem ipsum|TODO' web/dist; then echo "placeholder text found in web/dist"; exit 1; fi
+	bash tools/check-placeholders.sh
 	rm -rf $(RELEASE) && mkdir -p $(RELEASE)/bin $(RELEASE)/env
 	cp server/bin/podium-server server/bin/podium-judge $(RELEASE)/bin/
 	cp -r deploy/. $(RELEASE)/
@@ -106,6 +107,11 @@ release: check build ## Build the release tarball in release/
 	cp judge/.env.example $(RELEASE)/env/judge.env.example
 	tar -C release -czf $(RELEASE).tar.gz podium-$(VERSION)
 	@echo "Built $(RELEASE).tar.gz"
+
+.PHONY: deploy
+deploy: ## Build a release and install it on HOST with install.sh upgrade (make deploy HOST=user@vm)
+	@test -n "$(HOST)" || { echo "usage: make deploy HOST=user@vm"; exit 1; }
+	bash tools/deploy.sh "$(HOST)"
 
 .PHONY: check-secrets
 check-secrets: ## Fail if the staged diff contains a secret

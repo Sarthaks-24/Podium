@@ -1,0 +1,87 @@
+#!/usr/bin/env bash
+# Posts one podium alert to PODIUM_ALERT_WEBHOOK (/etc/podium/alert.env,
+# template deploy/alert.env.example), for example an ntfy topic URL.
+# Installed as /usr/local/lib/podium/podium-alert by install.sh alerts.
+#
+#   podium-alert failed UNIT
+#       a unit failed (run by podium-alert@UNIT.service through OnFailure=).
+#       At most one alert per unit every 10 minutes, so a crash loop does
+#       not flood the phone; the next one says how many were held back.
+#   podium-alert send KEY TITLE MESSAGE
+#       a finding of podium-check; KEY names the problem for the same
+#       10-minute rule. podium-check itself decides how often to repeat.
+#   podium-alert test
+#       one test alert, to prove the channel end to end.
+#
+# The message names the unit, the host and the time, and where to look.
+# Never log lines or values: the webhook URL is a secret, and journal
+# lines can carry student emails.
+set -euo pipefail
+
+die() { printf 'podium-alert: %s\n' "$*" >&2; exit 1; }
+url=${PODIUM_ALERT_WEBHOOK:-}
+state=${STATE_DIRECTORY:-/var/lib/podium-alert}
+host=$(hostname)
+now=$(date -u +%s)
+when=$(date -u '+%Y-%m-%d %H:%M UTC')
+
+# post TITLE PRIORITY MESSAGE
+post() {
+  if [[ -z $url || $url == change-me ]]; then
+    die "PODIUM_ALERT_WEBHOOK missing in /etc/podium/alert.env; not sent: $1"
+  fi
+  [[ $url == https://* ]] || die "PODIUM_ALERT_WEBHOOK must start with https:// (in /etc/podium/alert.env)"
+  # ntfy reads Title, Priority and Tags; any other webhook gets the body.
+  # -s hides the URL from curl's own messages; the exit code is enough.
+  curl -fsS -m 15 --retry 3 -o /dev/null \
+    -H "Title: $1" -H "Priority: $2" -H "Tags: warning" \
+    --data-binary "$3" "$url" 2>/dev/null || die "posting the alert failed (webhook unreachable or refused): $1"
+  echo "podium-alert: sent: $1"
+}
+
+# throttle KEY: true when an alert for KEY may go now; counts held ones.
+held=0
+throttle() {
+  local f
+  f="$state/$(printf '%s' "$1" | tr -c 'A-Za-z0-9_.@-' '_')"
+  mkdir -p "$state"
+  if [[ -f $f ]]; then
+    local last count
+    read -r last count < "$f" || true
+    if (( now - ${last:-0} < 600 )); then
+      echo "${last:-0} $(( ${count:-0} + 1 ))" > "$f"
+      echo "podium-alert: held back (one per 10 minutes): $1"
+      return 1
+    fi
+    held=${count:-0}
+  fi
+  echo "$now 0" > "$f"
+}
+
+case ${1:-} in
+  failed)
+    [[ $# -eq 2 ]] || die "usage: podium-alert failed UNIT"
+    unit=$2
+    throttle "$unit" || exit 0
+    msg="$unit failed on $host at $when."
+    (( held > 0 )) && msg+=" It also failed $held more times since the last alert."
+    msg+=" Look: systemctl status $unit; journalctl -u $unit -n 50 --no-pager"
+    post "podium: $unit failed" high "$msg"
+    ;;
+  send)
+    [[ $# -eq 4 ]] || die "usage: podium-alert send KEY TITLE MESSAGE"
+    throttle "check-$2" || exit 0
+    post "podium: $3" high "$4 (on $host at $when)"
+    ;;
+  resolved)
+    [[ $# -eq 3 ]] || die "usage: podium-alert resolved TITLE MESSAGE"
+    post "podium: $2" default "$3 (on $host at $when)"
+    ;;
+  test)
+    post "podium: test alert" default "Test alert from $host at $when. Alerts reach you."
+    ;;
+  *)
+    sed -n '2,16p' "$0" | sed 's/^# \{0,1\}//' >&2
+    exit 2
+    ;;
+esac

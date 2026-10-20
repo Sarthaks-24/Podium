@@ -1,26 +1,41 @@
 #!/usr/bin/env bash
-# Install or update podium on an Ubuntu 24.04 VM. Idempotent: safe to re-run.
+# Install, upgrade, roll back and verify podium on an Ubuntu 24.04 VM
+# (amd64). Every step is idempotent: safe to re-run.
 #
 # Usage:
-#   sudo ./install.sh              run every step in order
+#   sudo ./install.sh              run every step in order, then the checklist
 #   sudo ./install.sh packages isolate
 #                                  run only the named steps (used for local
 #                                  WSL2 judge setup, where caddy and swap are
 #                                  not wanted)
+#   sudo ./install.sh upgrade [--force "<reason>"]
+#                                  install this release over the running one
+#                                  (deploy guard, drain, backup, keep the
+#                                  previous binaries, install, verify)
+#   sudo ./install.sh rollback     put the previous release back
+#   sudo ./install.sh verify       check the installed system, names only
 #
-# Steps: packages isolate testlib users dirs firewall app caddy swap litestream backup
+# Steps: packages isolate testlib users dirs firewall app swap litestream
+# backup alerts caddy. caddy comes last and skips itself while
+# PODIUM_BASE_URL is a placeholder or its DNS name does not point at this
+# VM, so a fresh install always reaches the end.
 #
-# The script never writes secrets. It creates /etc/podium/server.env,
-# /etc/podium/judge.env and /etc/podium/litestream.env from the example
-# files only when they do not exist yet, and the owner fills in the values.
+# The script never writes secrets. It creates /etc/podium/*.env from the
+# example files only when they do not exist yet, and the owner fills in the
+# values. It prints variable names, never values.
 
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-ALL_STEPS=(packages isolate testlib users dirs firewall app caddy swap litestream backup)
+ALL_STEPS=(packages isolate testlib users dirs firewall app swap litestream backup alerts caddy)
 
 NODE_MAJOR=22
 JAVA_PKG=openjdk-21-jdk-headless
+LIB=/usr/local/lib/podium
+PREVIOUS=$LIB/previous
+MANIFEST=$LIB/MANIFEST
+UNITS=(podium-server.service podium-judge.service podium-litestream.service podium-backup.service
+       podium-backup.timer podium-alert@.service podium-check.service podium-check.timer)
 
 log() { printf '\n== %s\n' "$*"; }
 die() { printf 'install.sh: %s\n' "$*" >&2; exit 1; }
@@ -28,18 +43,46 @@ die() { printf 'install.sh: %s\n' "$*" >&2; exit 1; }
 [[ $EUID -eq 0 ]] || die "run as root (sudo ./install.sh)"
 . /etc/os-release
 [[ "${ID:-}" == "ubuntu" ]] || die "this script targets Ubuntu 24.04; found ${PRETTY_NAME:-unknown}"
+[[ $(uname -m) == x86_64 ]] || die "podium releases are built for amd64 (x86_64) only; this machine is $(uname -m)"
 
 export DEBIAN_FRONTEND=noninteractive
-install -d -m 755 /etc/apt/keyrings
 
 # add_repo NAME KEY_URL "DEB_LINE"
 add_repo() {
   local name=$1 key_url=$2 line=$3
+  install -d -m 755 /etc/apt/keyrings
   if [[ ! -s /etc/apt/keyrings/$name.asc ]]; then
     curl -fsSL "$key_url" -o "/etc/apt/keyrings/$name.asc"
   fi
   echo "$line" > "/etc/apt/sources.list.d/$name.list"
 }
+
+# envval FILE NAME: a variable's value from an env file (last assignment,
+# surrounding double quotes removed), empty when absent.
+envval() {
+  [[ -r $1 ]] || return 0
+  sed -n "s/^$2=//p" "$1" | tail -n1 | sed -e 's/^"\(.*\)"$/\1/'
+}
+
+# placeholders FILE: the names whose values are still a placeholder
+# (change-me, you@change-me..., your-google-client-id). Names only.
+placeholders() {
+  [[ -r $1 ]] || return 0
+  sed -n -E 's/^([A-Z][A-Z0-9_]*)=("?)(.*change-me.*|your-[a-z-]+)\2$/\1/p' "$1"
+}
+
+# db_path and server URLs from server.env, with the server's defaults.
+db_path() { local v; v=$(envval /etc/podium/server.env PODIUM_DB_PATH); echo "${v:-/var/lib/podium/db/podium.db}"; }
+listen_addr() { local v; v=$(envval /etc/podium/server.env PODIUM_LISTEN); echo "${v:-127.0.0.1:8080}"; }
+judge_addr() { local v; v=$(envval /etc/podium/server.env PODIUM_JUDGE_LISTEN); echo "${v:-127.0.0.1:8081}"; }
+
+# migrations DB: the applied migration versions, comma-separated.
+migrations() {
+  [[ -f $1 ]] || return 0
+  runuser -u podium -- sqlite3 -readonly "$1" "SELECT group_concat(version, ',') FROM (SELECT version FROM schema_migrations ORDER BY version)" 2>/dev/null || true
+}
+
+release_name() { basename "$HERE"; }
 
 step_packages() {
   log "packages: compilers, runtimes, tools"
@@ -78,8 +121,36 @@ step_isolate() {
   systemctl enable --now var-lib-isolate.mount
   systemctl enable --now isolate.service
   findmnt -no FSTYPE /var/lib/isolate | grep -qx tmpfs || die "/var/lib/isolate is not on tmpfs"
+  isolate_tuning
   isolate --version | head -n1
   isolate-check-environment || echo "isolate-check-environment reported warnings; see docs/OPERATIONS.md"
+}
+
+# Settings isolate-check-environment asks for, made to survive a reboot:
+# transparent huge pages off (timing noise) through a tmpfiles rule, a
+# plain core pattern and hard-link protection through sysctl.d. Address
+# space randomisation stays on (safety beats timing reproducibility).
+# Ubuntu's apport rewrites core_pattern at boot, so it is turned off: its
+# crash reports would also copy contestants' process memory to disk.
+isolate_tuning() {
+  cat > /etc/tmpfiles.d/podium-isolate.conf <<'EOF'
+# Installed by podium's install.sh (isolate step): no transparent huge
+# pages, for steadier sandbox timings.
+w /sys/kernel/mm/transparent_hugepage/enabled - - - - never
+w /sys/kernel/mm/transparent_hugepage/defrag - - - - never
+w /sys/kernel/mm/transparent_hugepage/khugepaged/defrag - - - - 0
+EOF
+  cat > /etc/sysctl.d/91-podium-isolate.conf <<'EOF'
+# Installed by podium's install.sh (isolate step), for isolate.
+kernel.core_pattern = core
+fs.protected_hardlinks = 1
+EOF
+  if systemctl list-unit-files apport.service >/dev/null 2>&1 && systemctl is-enabled --quiet apport.service 2>/dev/null; then
+    systemctl disable --now apport.service
+    echo "apport disabled: it rewrites kernel.core_pattern at boot"
+  fi
+  systemd-tmpfiles --create /etc/tmpfiles.d/podium-isolate.conf
+  sysctl -q -p /etc/sysctl.d/91-podium-isolate.conf
 }
 
 # testlib.h for custom checkers, pinned to release 0.9.41 by checksum.
@@ -111,19 +182,24 @@ step_users() {
   usermod -aG isolate judge
 }
 
+# example_for NAME: the example env file of server or judge, from the
+# release tarball's env/ or a repository checkout.
+example_for() {
+  local example="$HERE/env/$1.env.example"
+  [[ -f "$example" ]] || example="$HERE/../$1/.env.example"
+  [[ -f "$example" ]] || die "cannot find the $1 .env.example next to install.sh"
+  echo "$example"
+}
+
 step_dirs() {
   log "dirs: data, tests, judge cache, config"
   install -d -o podium -g podium -m 750 /var/lib/podium /var/lib/podium/db /var/lib/podium/tests
   install -d -o judge  -g judge  -m 750 /var/cache/podium-judge
   install -d -o root   -g root   -m 755 /etc/podium
-  local svc example
+  local svc
   for svc in server judge; do
     [[ -e /etc/podium/$svc.env ]] && continue
-    # Release tarball layout first, then a repository checkout.
-    example="$HERE/env/$svc.env.example"
-    [[ -f "$example" ]] || example="$HERE/../$svc/.env.example"
-    [[ -f "$example" ]] || die "cannot find the $svc .env.example next to install.sh"
-    install -o root -g root -m 600 "$example" "/etc/podium/$svc.env"
+    install -o root -g root -m 600 "$(example_for "$svc")" "/etc/podium/$svc.env"
     if [[ $svc == server ]]; then
       # The examples carry local relative paths; the VM uses absolute ones
       # (the server unit runs with a read-only filesystem outside them).
@@ -134,8 +210,9 @@ step_dirs() {
   done
 }
 
-step_app() {
-  log "app: binaries and systemd units"
+# install_app_files: binaries, systemd units and helper scripts of this
+# release, without starting anything. Used by app and upgrade.
+install_app_files() {
   local bin
   for bin in podium-server podium-judge; do
     # -f, not -x: a tarball built on Windows loses the execute bit; install
@@ -143,29 +220,101 @@ step_app() {
     [[ -f "$HERE/bin/$bin" ]] || die "missing $HERE/bin/$bin; build a release with make release"
     install -m 755 "$HERE/bin/$bin" "/usr/local/bin/$bin"
   done
-  install -m 644 "$HERE/systemd/podium-server.service" /etc/systemd/system/
-  install -m 644 "$HERE/systemd/podium-judge.service" /etc/systemd/system/
+  install -m 644 "$HERE/systemd/podium-server.service" "$HERE/systemd/podium-judge.service" \
+    "$HERE/systemd/podium-alert@.service" /etc/systemd/system/
+  install -d -m 755 "$LIB"
+  install -m 755 "$HERE/backup/podium-alert" "$LIB/podium-alert"
   systemctl daemon-reload
+}
+
+# write_manifest: what is installed now, for upgrade and rollback. The
+# release MANIFEST with checksums arrives in P1; until then this one is
+# written on the VM.
+write_manifest() {
+  local out=${1:-$MANIFEST}
+  {
+    echo "release=$(release_name)"
+    echo "installed_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    echo "podium_server_sha256=$(sha256sum /usr/local/bin/podium-server | cut -d' ' -f1)"
+    echo "podium_judge_sha256=$(sha256sum /usr/local/bin/podium-judge | cut -d' ' -f1)"
+    echo "migrations=$(migrations "$(db_path)")"
+  } > "$out"
+}
+
+step_app() {
+  log "app: binaries and systemd units"
+  install_app_files
   systemctl enable podium-server.service podium-judge.service
+  local env bad
   for env in server judge; do
-    if grep -q 'change-me' "/etc/podium/$env.env" 2>/dev/null; then
-      echo "not starting the services: /etc/podium/$env.env still has placeholder values"
+    bad=$(placeholders "/etc/podium/$env.env" | tr '\n' ' ')
+    if [[ -n $bad ]]; then
+      echo "not starting the services: /etc/podium/$env.env still has placeholder values for: $bad"
       return
     fi
   done
   systemctl restart podium-server.service podium-judge.service
+  wait_healthz || die "podium-server did not answer /healthz; journalctl -u podium-server -n 50"
+  write_manifest
+}
+
+# wait_healthz: up to 60 s for the server's /healthz to answer ok.
+wait_healthz() {
+  local _
+  for _ in $(seq 60); do
+    curl -fsS -m 2 "http://$(listen_addr)/healthz" 2>/dev/null | grep -q '"status":"ok"' && return 0
+    sleep 1
+  done
+  return 1
+}
+
+# dns_points_here HOST: true when HOST resolves to an address of this VM
+# (a local interface, or the public address behind the provider's NAT).
+# Prints what it found. Let's Encrypt allows only a few failed attempts an
+# hour, so a wrong record must stop the step before Caddy asks.
+dns_points_here() {
+  local host=$1 resolved local_ips public
+  resolved=$(getent ahosts "$host" | awk '{print $1}' | sort -u | tr '\n' ' ')
+  if [[ -z $resolved ]]; then
+    echo "DNS: $host does not resolve yet. Create an A record for it pointing at this VM's public address, wait for it to resolve, then: sudo ./install.sh caddy"
+    return 1
+  fi
+  local_ips=$(ip -o addr show scope global | awk '{print $4}' | cut -d/ -f1 | tr '\n' ' ')
+  # A provider with NAT gives the VM only a private address; ask once
+  # what the outside sees (this sends nothing but the request itself).
+  public=$(curl -fsS -4 -m 5 https://checkip.amazonaws.com 2>/dev/null | tr -d '[:space:]' || true)
+  local ip
+  for ip in $resolved; do
+    if [[ " $local_ips $public " == *" $ip "* ]]; then
+      echo "DNS: $host resolves to $ip, an address of this VM"
+      return 0
+    fi
+  done
+  if [[ -z $public ]]; then
+    echo "DNS: $host resolves to $resolved; this VM's public address could not be determined, so the certificate request goes ahead"
+    return 0
+  fi
+  echo "DNS: $host resolves to $resolved, but this VM is ${public} (interfaces: $local_ips). Fix the A record, wait for it to update, then: sudo ./install.sh caddy"
+  return 1
 }
 
 step_caddy() {
   log "caddy: TLS reverse proxy"
+  local base host
+  base=$(envval /etc/podium/server.env PODIUM_BASE_URL)
+  host=${base#https://}; host=${host#http://}; host=${host%%/*}
+  if [[ -z "$host" || "$host" == *change-me* ]]; then
+    echo "caddy skipped: PODIUM_BASE_URL in /etc/podium/server.env is still a placeholder. Set it, then: sudo ./install.sh caddy"
+    return 0
+  fi
+  if ! dns_points_here "$host"; then
+    echo "caddy skipped: no certificate is requested until DNS points here"
+    return 0
+  fi
   add_repo caddy https://dl.cloudsmith.io/public/caddy/stable/gpg.key \
     "deb [signed-by=/etc/apt/keyrings/caddy.asc] https://dl.cloudsmith.io/public/caddy/stable/deb/debian any-version main"
   apt-get update -q
   apt-get install -y -q caddy
-  local base host
-  base=$(sed -n 's/^PODIUM_BASE_URL=//p' /etc/podium/server.env | tr -d '"' | tail -n1)
-  host=${base#https://}; host=${host#http://}; host=${host%%/*}
-  [[ -n "$host" && "$host" != *change-me* ]] || die "set PODIUM_BASE_URL in /etc/podium/server.env first"
   sed "s/PODIUM_HOST/$host/g" "$HERE/Caddyfile" > /etc/caddy/Caddyfile
   # Caddy retries certificates for every site it serves; add the www
   # redirect only when that name actually resolves.
@@ -181,14 +330,13 @@ step_caddy() {
 # and https (TCP, and UDP for HTTP/3). Everything else is dropped,
 # including the server's own ports, which listen on loopback anyway. ssh is
 # allowed before the firewall is switched on, so an ssh session survives.
+ssh_port() { local p; p=$(sshd -T 2>/dev/null | sed -n 's/^port //p' | head -n1); echo "${p:-22}"; }
 step_firewall() {
   log "firewall: only ssh, http and https inbound"
   apt-get install -y -q ufw
-  local port
-  port=$(sshd -T 2>/dev/null | sed -n 's/^port //p' | head -n1)
   ufw default deny incoming
   ufw default allow outgoing
-  ufw allow "${port:-22}/tcp" comment 'ssh'
+  ufw allow "$(ssh_port)/tcp" comment 'ssh'
   ufw allow 80/tcp comment 'http'
   ufw allow 443/tcp comment 'https'
   ufw allow 443/udp comment 'https (HTTP/3)'
@@ -231,8 +379,8 @@ step_litestream() {
     rm -rf "$tmp"
   fi
   install -m 644 "$HERE/litestream.yml" /etc/litestream.yml
-  install -d -m 755 /usr/local/lib/podium
-  install -m 755 "$HERE/backup/check-litestream-env" /usr/local/lib/podium/check-litestream-env
+  install -d -m 755 "$LIB"
+  install -m 755 "$HERE/backup/check-litestream-env" "$LIB/check-litestream-env"
   install -d -o root -g root -m 755 /etc/podium
   if [[ ! -e /etc/podium/litestream.env ]]; then
     install -o root -g root -m 600 "$HERE/litestream.env.example" /etc/podium/litestream.env
@@ -241,25 +389,32 @@ step_litestream() {
   install -m 644 "$HERE/systemd/podium-litestream.service" /etc/systemd/system/
   systemctl daemon-reload
   systemctl enable podium-litestream.service
-  if grep -q 'change-me' /etc/podium/litestream.env; then
-    echo "not starting replication: /etc/podium/litestream.env still has placeholder values"
+  if [[ -n $(placeholders /etc/podium/litestream.env) ]]; then
+    echo "not starting replication: /etc/podium/litestream.env still has placeholder values for: $(placeholders /etc/podium/litestream.env | tr '\n' ' ')"
     return
   fi
   systemctl restart podium-litestream.service
 }
 
 step_backup() {
-  log "backup: nightly copy of the database and test files"
+  log "backup: nightly copy of the database and test files, encrypted copy off the VM"
   command -v sqlite3 >/dev/null || die "sqlite3 missing; run the packages step first"
   id podium >/dev/null 2>&1 || die "user podium missing; run the users step first"
-  install -d -m 755 /usr/local/lib/podium
-  install -m 755 "$HERE/backup/podium-backup" /usr/local/lib/podium/podium-backup
-  install -m 755 "$HERE/backup/podium-restore" /usr/local/lib/podium/podium-restore
+  # age encrypts the nightly copy to the owner's public key; rclone carries
+  # it to B2. Both from Ubuntu's signed archive (universe), with security
+  # updates through apt.
+  if ! command -v age >/dev/null || ! command -v rclone >/dev/null; then
+    apt-get install -y -q age rclone
+  fi
+  install -d -m 755 "$LIB"
+  install -m 755 "$HERE/backup/podium-backup" "$LIB/podium-backup"
+  install -m 755 "$HERE/backup/podium-restore" "$LIB/podium-restore"
   install -d -o podium -g podium -m 700 /var/backups/podium
   chmod 700 /var/backups/podium
   install -d -o root -g root -m 755 /etc/podium
   if [[ ! -e /etc/podium/backup.env ]]; then
     install -o root -g root -m 600 "$HERE/backup.env.example" /etc/podium/backup.env
+    echo "created /etc/podium/backup.env from the example; set the age public key and the B2 key for the encrypted copy"
   fi
   install -m 644 "$HERE/systemd/podium-backup.service" "$HERE/systemd/podium-backup.timer" /etc/systemd/system/
   systemctl daemon-reload
@@ -267,23 +422,372 @@ step_backup() {
   systemctl list-timers podium-backup.timer --no-pager | head -n 2
 }
 
+step_alerts() {
+  log "alerts: a failed unit, disk, WAL, replication and the weekly restore proof post to the webhook"
+  install -d -m 755 "$LIB"
+  install -m 755 "$HERE/backup/podium-alert" "$LIB/podium-alert"
+  install -m 755 "$HERE/backup/podium-check" "$LIB/podium-check"
+  install -d -o root -g root -m 755 /etc/podium
+  if [[ ! -e /etc/podium/alert.env ]]; then
+    install -o root -g root -m 600 "$HERE/alert.env.example" /etc/podium/alert.env
+    echo "created /etc/podium/alert.env from the example; set PODIUM_ALERT_WEBHOOK, then: sudo $LIB/podium-alert test"
+  fi
+  install -m 644 "$HERE/systemd/podium-alert@.service" "$HERE/systemd/podium-check.service" \
+    "$HERE/systemd/podium-check.timer" /etc/systemd/system/
+  systemctl daemon-reload
+  systemctl enable --now podium-check.timer
+  systemctl list-timers podium-check.timer --no-pager | head -n 2
+}
+
+# --- upgrade, rollback, verify ---------------------------------------------
+
+# env_names_check: every variable the new release's examples list is named
+# in the VM's env files. A required one missing stops the upgrade; an
+# optional one is listed and its default applies. Names only, never values.
+# A variable counts as optional when the comment above it has a line
+# starting "Optional".
+env_names_check() {
+  local pair example file missing_req="" name kind
+  for pair in "$(example_for server):/etc/podium/server.env" "$(example_for judge):/etc/podium/judge.env" \
+              "$HERE/litestream.env.example:/etc/podium/litestream.env" "$HERE/backup.env.example:/etc/podium/backup.env" \
+              "$HERE/alert.env.example:/etc/podium/alert.env"; do
+    example=${pair%%:*} file=${pair#*:}
+    [[ -f $example ]] || continue
+    if [[ ! -f $file ]]; then
+      case $file in
+        */server.env|*/judge.env) die "$file is missing; run: sudo ./install.sh dirs, then fill it in" ;;
+        *) echo "env: $file does not exist yet; its step creates it from the example"; continue ;;
+      esac
+    fi
+    while read -r kind name; do
+      grep -q "^$name=" "$file" && continue
+      if [[ $kind == R ]]; then
+        missing_req+=" $name ($file)"
+      else
+        echo "env: new optional variable $name is not in $file; its default applies (docs/OPERATIONS.md)"
+      fi
+    done < <(awk '
+      /^#/ { if ($0 ~ /^# *Optional/) opt = 1; next }
+      /^[A-Z][A-Z0-9_]*=/ { split($0, a, "="); print (opt ? "O" : "R"), a[1]; opt = 0; next }
+      { opt = 0 }' "$example")
+  done
+  [[ -z $missing_req ]] || die "this release needs variables the VM does not have:$missing_req. Add each with sudoedit (docs/OPERATIONS.md, Configuration), then run the upgrade again"
+}
+
+# guard_binary: the new release's podium-server, runnable by the podium
+# user (a tarball built on Windows has no execute bit).
+guard_binary() {
+  local tmp
+  tmp=$(mktemp -d /tmp/podium-guard.XXXXXX)
+  chmod 755 "$tmp"
+  install -m 755 "$HERE/bin/podium-server" "$tmp/podium-server"
+  echo "$tmp/podium-server"
+}
+
+cmd_upgrade() {
+  local force=""
+  while [[ $# -gt 0 ]]; do
+    case $1 in
+      --force) [[ $# -ge 2 ]] || die "--force needs a reason in quotes"; force=$2; shift 2 ;;
+      *) die "upgrade: unknown argument '$1' (usage: sudo ./install.sh upgrade [--force \"<reason>\"])" ;;
+    esac
+  done
+  [[ -x /usr/local/bin/podium-server ]] || die "no podium installed here; run sudo ./install.sh for a fresh install"
+  [[ -f $HERE/bin/podium-server && -f $HERE/bin/podium-judge ]] || die "missing $HERE/bin; unpack a release built with make release"
+  local db release guard code=0 out
+  db=$(db_path)
+  release=$(release_name)
+  [[ -f $db ]] || die "no database at $db; nothing to upgrade (start the server once, or run a fresh install)"
+
+  log "upgrade to $release: 1/8 deploy guard"
+  guard=$(guard_binary)
+  out=$(runuser -u podium -- "$guard" deploy-check -db "$db") || code=$?
+  echo "$out"
+  case $code in
+    0) ;;
+    1)
+      [[ -n $force ]] || die "the deploy guard refused (above). A fix that cannot wait: sudo ./install.sh upgrade --force \"<reason>\""
+      code=0
+      out=$(runuser -u podium -- "$guard" deploy-check -db "$db" -force "$force" -release "$release") || code=$?
+      echo "$out"
+      (( code == 0 )) || die "recording the forced deploy failed (above); nothing was changed"
+      echo "forced: the reason is in each contest's audit log. The student banner arrives in a later release; announce the restart in the contest meanwhile."
+      ;;
+    *) die "the deploy guard could not run (above); nothing was changed" ;;
+  esac
+  rm -rf "$(dirname "$guard")"
+
+  log "2/8 configuration: variable names in the new examples against /etc/podium"
+  env_names_check
+
+  log "3/8 judge: stop claiming, finish and report the running jobs (up to 20 minutes)"
+  systemctl stop podium-judge.service
+
+  log "4/8 backup before the upgrade"
+  local before after
+  local backup_ms=$(( $(date +%s) * 1000 ))
+  before=$(readlink /var/backups/podium/latest 2>/dev/null || true)
+  systemctl start podium-backup.service || echo "podium-backup reported a failure; checking whether the local backup was made"
+  after=$(readlink /var/backups/podium/latest 2>/dev/null || true)
+  if [[ -z $after || $after == "$before" ]]; then
+    systemctl start podium-judge.service
+    die "no new local backup was made (journalctl -u podium-backup -n 30); the judge is running again and nothing else changed"
+  fi
+  local backup=/var/backups/podium/$after
+  echo "backup: $backup"
+
+  log "5/8 keep the running release in $PREVIOUS"
+  rm -rf "$PREVIOUS.new"
+  install -d -m 755 "$PREVIOUS.new/bin" "$PREVIOUS.new/systemd"
+  cp -a /usr/local/bin/podium-server /usr/local/bin/podium-judge "$PREVIOUS.new/bin/"
+  local u
+  for u in "${UNITS[@]}"; do
+    [[ -f /etc/systemd/system/$u ]] && cp -a "/etc/systemd/system/$u" "$PREVIOUS.new/systemd/"
+  done
+  if [[ -f $MANIFEST ]]; then cp "$MANIFEST" "$PREVIOUS.new/MANIFEST"; else
+    write_manifest "$PREVIOUS.new/MANIFEST"
+    sed -i 's/^release=.*/release=unknown (installed before MANIFEST existed)/' "$PREVIOUS.new/MANIFEST"
+  fi
+  {
+    echo "migrations_before_upgrade=$(migrations "$db")"
+    echo "backup_before_upgrade=$backup"
+    echo "backup_started_ms=$backup_ms"
+    echo "upgraded_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    echo "upgraded_at_ms=$(( $(date +%s) * 1000 ))"
+    echo "upgraded_to=$release"
+  } >> "$PREVIOUS.new/MANIFEST"
+  rm -rf "$PREVIOUS"
+  mv "$PREVIOUS.new" "$PREVIOUS"
+
+  log "6/8 install $release"
+  install_app_files
+  step_litestream
+  step_backup
+  step_alerts
+
+  log "7/8 start: server (migrations run now), then the judge"
+  systemctl restart podium-server.service
+  if ! wait_healthz; then
+    die "podium-server did not answer /healthz within 60 s (journalctl -u podium-server -n 50). Roll back with: sudo $HERE/install.sh rollback"
+  fi
+  systemctl start podium-judge.service
+  write_manifest
+
+  log "8/8 verify"
+  local vcode=0
+  cmd_verify || vcode=$?
+  cat <<EOF
+
+Upgraded to $release.
+  Backup taken before the upgrade: $backup
+  Previous release kept in:        $PREVIOUS
+  To go back:                      sudo $HERE/install.sh rollback
+EOF
+  (( vcode == 0 )) || die "verify found problems (above); fix them or roll back"
+}
+
+cmd_rollback() {
+  [[ -f $PREVIOUS/MANIFEST && -f $PREVIOUS/bin/podium-server && -f $PREVIOUS/bin/podium-judge ]] \
+    || die "no previous release in $PREVIOUS (rollback works once, after an upgrade)"
+  local db before now_list backup upgraded_ms prev_release
+  db=$(db_path)
+  before=$(sed -n 's/^migrations_before_upgrade=//p' "$PREVIOUS/MANIFEST")
+  backup=$(sed -n 's/^backup_before_upgrade=//p' "$PREVIOUS/MANIFEST")
+  upgraded_ms=$(sed -n "s/^backup_started_ms=//p" "$PREVIOUS/MANIFEST")
+  prev_release=$(sed -n 's/^release=//p' "$PREVIOUS/MANIFEST" | head -n1)
+  now_list=$(migrations "$db")
+  local newer="" v
+  for v in ${now_list//,/ }; do
+    [[ ",$before," == *",$v,"* ]] || newer+=" $v"
+  done
+
+  if [[ -z $newer ]]; then
+    log "rollback to $prev_release: same schema, so only the binaries change"
+    systemctl stop podium-judge.service
+    systemctl stop podium-server.service
+    restore_previous_files
+    systemctl start podium-server.service
+    wait_healthz || die "the previous podium-server did not answer /healthz (journalctl -u podium-server -n 50)"
+    systemctl start podium-judge.service
+  else
+    log "rollback to $prev_release: the upgrade applied migrations$newer, which the previous server refuses"
+    [[ -n $backup && -f $backup/podium.db ]] || die "the pre-upgrade backup $backup is gone; restore by hand (docs/RUNBOOK.md, Restoring from a backup)"
+    local subs="unknown"
+    if [[ -n $upgraded_ms ]]; then
+      subs=$(runuser -u podium -- sqlite3 -readonly "$db" "SELECT count(*) FROM submissions WHERE created_at >= $upgraded_ms" 2>/dev/null || echo unknown)
+    fi
+    cat <<EOF
+
+The database goes back to the backup taken just before the upgrade:
+  $backup
+Everything written since that backup started is lost, the upgrade included:
+  $subs submissions and runs, and every sign-in, draft, clarification,
+  announcement and setting change made since then.
+The current database is kept as $(dirname "$db").before-rollback-<time>.
+EOF
+    local answer
+    read -r -p "Type ROLLBACK to restore that backup and the previous release: " answer
+    [[ $answer == ROLLBACK ]] || die "nothing changed"
+    local scratch stamp
+    stamp=$(date -u +%Y%m%dT%H%M%SZ)
+    scratch=/var/tmp/podium-rollback-$stamp
+    # Checked by the previous binary: it must accept the restored schema.
+    PODIUM_SERVER_BIN=$PREVIOUS/bin/podium-server "$LIB/podium-restore" nightly "$backup" "$scratch" \
+      || die "the backup in $backup failed its check (above); nothing changed"
+    systemctl stop podium-judge.service
+    systemctl stop podium-litestream.service podium-server.service
+    mv "$(dirname "$db")" "$(dirname "$db").before-rollback-$stamp"
+    install -d -o podium -g podium -m 750 "$(dirname "$db")"
+    install -o podium -g podium -m 640 "$scratch/podium.db" "$db"
+    # Adds files the backup has and the live folder lost; keeps the rest.
+    local tests
+    tests=$(envval /etc/podium/server.env PODIUM_TESTS_DIR); tests=${tests:-/var/lib/podium/tests}
+    cp -an "$scratch/tests/." "$tests/"
+    chown -R podium:podium "$tests"
+    restore_previous_files
+    systemctl start podium-server.service
+    wait_healthz || die "the previous podium-server did not answer /healthz (journalctl -u podium-server -n 50)"
+    systemctl start podium-judge.service
+    systemctl start podium-litestream.service || true
+    rm -rf "$scratch"
+    echo "restored $backup; Litestream starts a new history from it"
+  fi
+  # The previous release is now the current one; there is nothing further
+  # back to roll to.
+  cp "$PREVIOUS/MANIFEST" "$MANIFEST"
+  sed -i '/^migrations_before_upgrade=\|^backup_before_upgrade=\|^upgraded_at\|^upgraded_to=/d' "$MANIFEST"
+  echo "installed_at=$(date -u +%Y-%m-%dT%H:%M:%SZ) (rollback)" >> "$MANIFEST"
+  mv "$PREVIOUS" "$PREVIOUS.rolled-back-$(date -u +%Y%m%dT%H%M%SZ)"
+  cmd_verify || die "verify found problems after the rollback (above)"
+  echo "rolled back to $prev_release"
+}
+
+restore_previous_files() {
+  install -m 755 "$PREVIOUS/bin/podium-server" "$PREVIOUS/bin/podium-judge" /usr/local/bin/
+  local u
+  for u in "$PREVIOUS"/systemd/*; do
+    [[ -f $u ]] && install -m 644 "$u" /etc/systemd/system/
+  done
+  systemctl daemon-reload
+}
+
+# verify: the state the gate needs, as ok, warn or FAIL lines. Exit 1 on any
+# FAIL. Names only, never values.
+cmd_verify() {
+  local fails=0
+  ok() { printf '  ok    %s\n' "$*"; }
+  warn() { printf '  warn  %s\n' "$*"; }
+  fail() { printf '  FAIL  %s\n' "$*"; fails=$((fails + 1)); }
+
+  log "verify: services"
+  local u
+  for u in podium-server podium-judge isolate var-lib-isolate.mount podium-backup.timer podium-check.timer; do
+    if systemctl is-active --quiet "$u"; then ok "$u active"; else fail "$u is $(systemctl is-active "$u" 2>/dev/null || true)"; fi
+  done
+  if [[ -n $(placeholders /etc/podium/litestream.env) || ! -f /etc/podium/litestream.env ]]; then
+    fail "podium-litestream not configured: /etc/podium/litestream.env has placeholders (the database has no copy off the VM)"
+  elif systemctl is-active --quiet podium-litestream; then ok "podium-litestream active"
+  else fail "podium-litestream is $(systemctl is-active podium-litestream 2>/dev/null || true)"
+  fi
+  local base
+  base=$(envval /etc/podium/server.env PODIUM_BASE_URL)
+  if [[ -z $base || $base == *change-me* ]]; then
+    fail "PODIUM_BASE_URL is a placeholder, so caddy was skipped: no HTTPS yet"
+  elif systemctl is-active --quiet caddy; then ok "caddy active"
+  else fail "caddy is $(systemctl is-active caddy 2>/dev/null || echo missing): sudo ./install.sh caddy"
+  fi
+
+  log "verify: endpoints"
+  if curl -fsS -m 3 "http://$(listen_addr)/healthz" 2>/dev/null | grep -q '"status":"ok"'; then ok "/healthz ok"; else fail "/healthz does not answer ok on $(listen_addr)"; fi
+  local code
+  code=$(curl -s -o /dev/null -m 3 -w '%{http_code}' -X POST "http://$(judge_addr)/api/judge/claim" 2>/dev/null || true)
+  if [[ $code == 401 ]]; then ok "judge API answers 401 without a token"; else fail "judge API on $(judge_addr) answered '${code:-nothing}', want 401"; fi
+
+  log "verify: network"
+  if ufw status 2>/dev/null | grep -q '^Status: active'; then
+    local extra
+    extra=$(ufw status | awk '/ALLOW/ {print $1}' | sed 's/ (v6)//' | sort -u | grep -vxE "($(ssh_port)|80|443)(/tcp|/udp)?" || true)
+    if [[ -z $extra ]]; then ok "ufw active: only ssh, 80 and 443 allowed"; else fail "ufw allows more than ssh, 80 and 443: $(echo "$extra" | tr '\n' ' ')"; fi
+  else
+    fail "ufw is not active: sudo ./install.sh firewall"
+  fi
+  local addr port
+  for addr in "$(listen_addr)" "$(judge_addr)"; do
+    port=${addr##*:}
+    if ss -Hltn "sport = :$port" | awk '{print $4}' | grep -qvE '^(127\.|\[::1\]|::1)'; then
+      fail "something listens on port $port beyond loopback"
+    elif ss -Hltn "sport = :$port" | grep -q .; then ok "port $port on loopback only"
+    else fail "nothing listens on port $port"
+    fi
+  done
+
+  log "verify: configuration (names only)"
+  local f mode
+  for f in server judge; do
+    mode=$(envval "/etc/podium/$f.env" PODIUM_MODE)
+    if [[ -z $mode || $mode == production ]]; then ok "$f.env runs in production mode"; else fail "$f.env sets PODIUM_MODE=$mode; the VM runs production"; fi
+  done
+  for f in server judge litestream backup alert; do
+    local p=/etc/podium/$f.env bad
+    if [[ ! -f $p ]]; then
+      [[ $f == alert || $f == backup ]] && { fail "$p missing: sudo ./install.sh ${f/alert/alerts}"; continue; }
+      fail "$p missing"; continue
+    fi
+    [[ $(stat -c '%U %a' "$p") == "root 600" ]] || fail "$p is $(stat -c '%U %a' "$p"), want root 600"
+    bad=$(placeholders "$p" | tr '\n' ' ')
+    if [[ -n $bad ]]; then fail "$p has placeholders: $bad"; else ok "$p has no placeholders"; fi
+  done
+  [[ -n $(envval /etc/podium/alert.env PODIUM_ALERT_WEBHOOK) ]] && ok "PODIUM_ALERT_WEBHOOK set" || fail "PODIUM_ALERT_WEBHOOK missing in /etc/podium/alert.env: no alert reaches anyone"
+  [[ -n $(envval /etc/podium/backup.env PODIUM_BACKUP_AGE_RECIPIENT) ]] && ok "encrypted copy configured" || warn "encrypted copy off the VM not configured in /etc/podium/backup.env: test files are lost with the disk"
+  [[ -n $(envval /etc/podium/backup.env PODIUM_HEARTBEAT_URL) ]] && ok "PODIUM_HEARTBEAT_URL set" || warn "PODIUM_HEARTBEAT_URL missing: a missed backup goes unnoticed"
+  if [[ $(stat -c '%U %a' /var/backups/podium 2>/dev/null) == "podium 700" ]]; then ok "/var/backups/podium podium 700"; else fail "/var/backups/podium is $(stat -c '%U %a' /var/backups/podium 2>/dev/null || echo missing), want podium 700"; fi
+
+  log "verify: clock"
+  # Every freeze, end and extension is a clock comparison.
+  local sync
+  sync=$(timedatectl show -p NTPSynchronized --value 2>/dev/null || echo no)
+  if systemctl is-active --quiet chrony || systemctl is-active --quiet chronyd || systemctl is-active --quiet systemd-timesyncd; then
+    if [[ $sync == yes ]]; then ok "time sync active and synchronised"; else fail "time sync is running but not synchronised yet (timedatectl timesync-status)"; fi
+  else
+    fail "no time sync service is active: sudo systemctl enable --now systemd-timesyncd (or install chrony)"
+  fi
+
+  log "verify: sandbox host"
+  if [[ $(cat /sys/kernel/mm/transparent_hugepage/enabled 2>/dev/null) == *"[never]"* ]]; then ok "transparent huge pages off"; else warn "transparent huge pages are on: sudo ./install.sh isolate"; fi
+  [[ -f $MANIFEST ]] && ok "installed: $(sed -n 's/^release=//p' "$MANIFEST")" || warn "no $MANIFEST yet (written by app and upgrade)"
+
+  if (( fails > 0 )); then
+    printf '\nverify: %d problem(s)\n' "$fails"
+    return 1
+  fi
+  printf '\nverify: everything checked is in order\n'
+}
+
 checklist() {
   cat <<'EOF'
 
-First-run checklist
-  1. Fill in /etc/podium/server.env and /etc/podium/judge.env (see docs/OPERATIONS.md).
-  2. sudo ./install.sh caddy swap litestream backup   once PODIUM_BASE_URL is set
-  3. sudo systemctl restart podium-server podium-judge
-  4. curl -fsS http://127.0.0.1:8080/healthz
-  5. Fill in /etc/podium/litestream.env, then: sudo systemctl restart podium-litestream
-  6. sudo systemctl start podium-backup, then: ls /var/backups/podium/latest
+First-run checklist (docs/OPERATIONS.md, "Install")
+  1. Fill in /etc/podium/server.env and /etc/podium/judge.env (the same
+     PODIUM_JUDGE_TOKEN in both), then: sudo ./install.sh app
+  2. Fill in /etc/podium/litestream.env, then: sudo systemctl restart podium-litestream
+  3. Fill in /etc/podium/backup.env (age public key, B2 key, heartbeat URL),
+     then: sudo systemctl start podium-backup
+  4. Fill in /etc/podium/alert.env, then: sudo /usr/local/lib/podium/podium-alert test
+  5. Point DNS at this VM, then: sudo ./install.sh caddy
+  6. sudo ./install.sh verify     must end with "everything checked is in order"
 EOF
 }
+
+case ${1:-} in
+  upgrade) shift; cmd_upgrade "$@"; exit ;;
+  rollback) shift; [[ $# -eq 0 ]] || die "rollback takes no arguments"; cmd_rollback; exit ;;
+  verify) shift; cmd_verify; exit ;;
+esac
 
 steps=("$@")
 [[ ${#steps[@]} -gt 0 ]] || steps=("${ALL_STEPS[@]}")
 for s in "${steps[@]}"; do
-  declare -F "step_$s" >/dev/null || die "unknown step '$s' (known: ${ALL_STEPS[*]})"
+  declare -F "step_$s" >/dev/null || die "unknown step '$s' (known: ${ALL_STEPS[*]}; commands: upgrade, rollback, verify)"
 done
 for s in "${steps[@]}"; do "step_$s"; done
 [[ $# -gt 0 ]] || checklist

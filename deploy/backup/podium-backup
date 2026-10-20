@@ -15,31 +15,80 @@
 # Everything is created readable by the podium user only (umask 077): the
 # backup holds every student's code and the session table.
 #
-# Off the VM: when PODIUM_BACKUP_RSYNC is set (in /etc/podium/backup.env,
-# template deploy/backup.env.example), the whole backup folder is then
-# copied there with rsync over ssh, hard links kept, using the podium
-# user's ssh key. The database also streams to the bucket through
-# Litestream; this copy is what carries the test files off the VM.
+# Off the VM, two optional copies (settings in /etc/podium/backup.env,
+# template deploy/backup.env.example):
+#   - the encrypted copy: the new backup packed with tar, encrypted with
+#     age to PODIUM_BACKUP_AGE_RECIPIENT (a public key; the private key
+#     never comes near the VM) and streamed to Backblaze B2 with rclone.
+#     This is what carries the test files off the VM: Litestream only
+#     replicates the database.
+#   - PODIUM_BACKUP_RSYNC: the whole backup folder copied with rsync over
+#     ssh to a machine you run.
+# After everything succeeded it pings PODIUM_HEARTBEAT_URL, so a dead-man
+# service notices a night without a backup.
 #
 # Run by hand: sudo systemctl start podium-backup
 set -euo pipefail
 umask 077
 
-db=${PODIUM_DB_PATH:-/var/lib/podium/db/podium.db}
-tests=${PODIUM_TESTS_DIR:-/var/lib/podium/tests}
-dest=${PODIUM_BACKUP_DIR:-/var/backups/podium}
-keep=${PODIUM_BACKUP_KEEP_DAYS:-14}
-server=${PODIUM_SERVER_BIN:-/usr/local/bin/podium-server}
-remote=${PODIUM_BACKUP_RSYNC:-}
-
+env_file=/etc/podium/backup.env
 die() { printf 'podium-backup: %s\n' "$*" >&2; exit 1; }
-[[ -f $db ]] || die "no database at $db"
+
+# Start-up check: each variable in the order read, as set, default or
+# missing. Never a value: the B2 key and the heartbeat URL are secrets.
+report() { # NAME DEFAULT_TEXT
+  local v=${!1:-}
+  if [[ -n $v && $v != change-me ]]; then echo "podium-backup: $1 set"
+  elif [[ -n $2 ]]; then echo "podium-backup: $1 default"
+  else echo "podium-backup: $1 missing"
+  fi
+}
+value() { local v=${!1:-}; [[ $v == change-me ]] && v=; printf '%s' "$v"; }
+
+for v in PODIUM_DB_PATH PODIUM_TESTS_DIR PODIUM_BACKUP_DIR PODIUM_BACKUP_KEEP_DAYS PODIUM_SERVER_BIN; do report "$v" yes; done
+for v in PODIUM_BACKUP_RSYNC PODIUM_BACKUP_AGE_RECIPIENT PODIUM_BACKUP_B2_PATH \
+         RCLONE_CONFIG_B2_TYPE RCLONE_CONFIG_B2_ACCOUNT RCLONE_CONFIG_B2_KEY PODIUM_HEARTBEAT_URL; do report "$v" ""; done
+
+db=$(value PODIUM_DB_PATH); db=${db:-/var/lib/podium/db/podium.db}
+tests=$(value PODIUM_TESTS_DIR); tests=${tests:-/var/lib/podium/tests}
+dest=$(value PODIUM_BACKUP_DIR); dest=${dest:-/var/backups/podium}
+keep=$(value PODIUM_BACKUP_KEEP_DAYS); keep=${keep:-14}
+server=$(value PODIUM_SERVER_BIN); server=${server:-/usr/local/bin/podium-server}
+remote=$(value PODIUM_BACKUP_RSYNC)
+recipient=$(value PODIUM_BACKUP_AGE_RECIPIENT)
+b2path=$(value PODIUM_BACKUP_B2_PATH)
+heartbeat=$(value PODIUM_HEARTBEAT_URL)
+
+[[ -f $db ]] || die "no database at $db (PODIUM_DB_PATH in $env_file)"
 [[ -d $dest ]] || die "$dest does not exist; run: sudo ./install.sh backup"
 command -v sqlite3 >/dev/null || die "sqlite3 is not installed; run: sudo ./install.sh packages"
-[[ $keep =~ ^[0-9]+$ && $keep -ge 1 ]] || die "PODIUM_BACKUP_KEEP_DAYS must be a whole number of days, 1 or more"
+[[ $keep =~ ^[0-9]+$ && $keep -ge 1 ]] || die "PODIUM_BACKUP_KEEP_DAYS must be a whole number of days, 1 or more (in $env_file)"
 if [[ -n $remote ]]; then
-  [[ $remote == *:* && $remote != -* ]] || die "PODIUM_BACKUP_RSYNC must look like user@host:/path (in /etc/podium/backup.env)"
+  [[ $remote == *:* && $remote != -* ]] || die "PODIUM_BACKUP_RSYNC must look like user@host:/path (in $env_file)"
   command -v rsync >/dev/null || die "rsync is not installed; run: sudo ./install.sh packages"
+fi
+
+# The encrypted copy needs all five of its variables, or none.
+offsite=()
+for v in PODIUM_BACKUP_AGE_RECIPIENT PODIUM_BACKUP_B2_PATH RCLONE_CONFIG_B2_TYPE RCLONE_CONFIG_B2_ACCOUNT RCLONE_CONFIG_B2_KEY; do
+  [[ -n $(value "$v") ]] || offsite+=("$v")
+done
+encrypt=no
+if (( ${#offsite[@]} == 0 )); then
+  encrypt=yes
+  [[ $recipient == age1* ]] || die "PODIUM_BACKUP_AGE_RECIPIENT must be an age public key starting with age1 (in $env_file)"
+  [[ $(value RCLONE_CONFIG_B2_TYPE) == b2 ]] || die "RCLONE_CONFIG_B2_TYPE must be b2 (in $env_file)"
+  [[ $b2path != /* && $b2path != *:* ]] \
+    || die "PODIUM_BACKUP_B2_PATH must be bucket/folder, without b2: or a leading / (in $env_file)"
+  command -v age >/dev/null || die "age is not installed; run: sudo ./install.sh backup"
+  command -v rclone >/dev/null || die "rclone is not installed; run: sudo ./install.sh backup"
+elif (( ${#offsite[@]} < 5 )); then
+  die "the encrypted off-VM copy is half configured: set ${offsite[*]} in $env_file (docs/OPERATIONS.md, \"Encrypted copy off the VM\")"
+else
+  echo "podium-backup: warning: no encrypted copy off the VM; test files are lost with the VM's disk until PODIUM_BACKUP_AGE_RECIPIENT and the B2 settings are set in $env_file"
+fi
+if [[ -n $heartbeat && $heartbeat != https://* ]]; then
+  die "PODIUM_HEARTBEAT_URL must start with https:// (in $env_file)"
 fi
 
 stamp=$(date -u +%Y-%m-%dT%H%MZ)
@@ -66,6 +115,7 @@ if [[ -x $server ]]; then
     || { cat "$work/check.txt" >&2; die "the new backup failed its check; kept nothing"; }
 else
   [[ $(sqlite3 "$work/podium.db" "PRAGMA integrity_check") == ok ]] || die "integrity_check failed on the copy"
+  echo "integrity_check: ok ($server not found, so test files were not checked)" > "$work/check.txt"
 fi
 
 mv "$work" "$final"
@@ -86,11 +136,43 @@ files=$(find "$final/tests" -type f | wc -l)
 count=$(find "$dest" -maxdepth 1 -name '20*' -type d | wc -l)
 echo "podium-backup: $final done in $(( $(date +%s) - start )) s: database $size, $files test files, $count backups kept"
 
+if [[ $encrypt == yes ]]; then
+  # One object per night: podium-<stamp>.tar.age, the database copy, the
+  # test files and the check report. tar | age | rclone streams it, so
+  # nothing unencrypted is written twice. Small chunks and one transfer
+  # keep rclone's memory near 16 MB on the 2 GB VM. --config "" keeps
+  # rclone off any config file: the remote "b2" is the RCLONE_CONFIG_B2_*
+  # variables.
+  object="b2:$b2path/podium-$stamp.tar.age"
+  rc=(rclone --config "" --transfers 1 --b2-chunk-size 16M --retries 3 --low-level-retries 5)
+  if ! tar -C "$final" -cf - podium.db tests check.txt | age -r "$recipient" | "${rc[@]}" rcat "$object"; then
+    # A failed pipe may still have stored a truncated object: remove it,
+    # so the bucket never holds a copy that looks whole and is not.
+    "${rc[@]}" deletefile --b2-hard-delete "$object" 2>/dev/null || true
+    die "the local backup is done, but the encrypted copy to B2 failed (rclone above; check the B2 key and PODIUM_BACKUP_B2_PATH)"
+  fi
+  # The bucket keeps the same days as the VM. Hard delete: B2 would
+  # otherwise only hide the files and keep billing for them.
+  "${rc[@]}" delete --b2-hard-delete --min-age "${keep}d" --include 'podium-*.tar.age' "b2:$b2path" \
+    || die "the encrypted copy is uploaded, but deleting copies older than $keep days failed"
+  echo "podium-backup: encrypted copy uploaded as podium-$stamp.tar.age"
+fi
+
 if [[ -n $remote ]]; then
   # -H keeps the hard links between nights, so the remote copy is as small
-  # as the local one; --delete mirrors the 14-day pruning. BatchMode makes
-  # a missing or unaccepted key fail at once instead of asking.
+  # as the local one; --delete mirrors the pruning. BatchMode makes a
+  # missing or unaccepted key fail at once instead of asking.
   rsync -aH --delete -e "ssh -o BatchMode=yes" -- "$dest/" "$remote/" \
     || die "the local backup is done, but copying it to $remote failed"
   echo "podium-backup: copied to $remote"
+fi
+
+if [[ -n $heartbeat ]]; then
+  # Silence at the heartbeat service is the alert, so a failed ping only
+  # warns here.
+  if curl -fsS -m 15 --retry 3 -o /dev/null "$heartbeat" 2>/dev/null; then
+    echo "podium-backup: heartbeat sent"
+  else
+    echo "podium-backup: warning: the heartbeat ping failed; the heartbeat service will report a missed backup" >&2
+  fi
 fi

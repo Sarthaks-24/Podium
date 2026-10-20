@@ -1,0 +1,227 @@
+#!/usr/bin/env bash
+# podium's health check, run as root every 15 minutes by podium-check.timer
+# (install.sh alerts installs it as /usr/local/lib/podium/podium-check).
+# Each finding is posted through podium-alert to PODIUM_ALERT_WEBHOOK,
+# repeated every 6 hours while it lasts, and followed by a "resolved"
+# message when it clears. Nothing stays resident between runs (D70, D113).
+#
+#   podium-check                     the 15-minute run:
+#       free space   below 2 x the database plus 2 GB on its filesystem
+#       WAL          podium.db-wal above 256 MB (checkpoints are stuck)
+#       Litestream   podium-litestream not running, or changes made more
+#                    than 10 minutes after its last upload to the bucket
+#       encrypted    (every 6 hours, when configured in backup.env) the
+#       copy         newest podium-*.tar.age in B2 older than 30 hours
+#       restore      (once a week) the restore proof below
+#   podium-check restore-proof [--corrupt]
+#       restore the bucket's newest database into a scratch folder now and
+#       check it with "podium-server check -hash" against the live test
+#       files; alert on failure. --corrupt damages the scratch copy first,
+#       to prove on purpose that a bad restore raises the alert.
+#   podium-check status
+#       run the 15-minute checks and print them, without alerting.
+set -euo pipefail
+
+state=${STATE_DIRECTORY:-/var/lib/podium-check}
+alert=${PODIUM_ALERT_BIN:-/usr/local/lib/podium/podium-alert}
+server=${PODIUM_SERVER_BIN:-/usr/local/bin/podium-server}
+mkdir -p "$state/open"
+now=$(date -u +%s)
+quiet=no
+failed=0
+
+# envget FILE NAME DEFAULT: one variable from an env file, without
+# sourcing the file into this shell.
+envget() {
+  local v=""
+  [[ -r $1 ]] && v=$(sed -n "s/^$2=//p" "$1" | tail -n1 | sed -e 's/^"\(.*\)"$/\1/')
+  printf '%s' "${v:-$3}"
+}
+# The variables override server.env for a rehearsal on another machine.
+db=${PODIUM_DB_PATH:-$(envget /etc/podium/server.env PODIUM_DB_PATH /var/lib/podium/db/podium.db)}
+tests=${PODIUM_TESTS_DIR:-$(envget /etc/podium/server.env PODIUM_TESTS_DIR /var/lib/podium/tests)}
+
+# problem KEY TITLE MESSAGE and fine KEY TITLE MESSAGE: report one check.
+problem() {
+  echo "PROBLEM $2: $3"
+  [[ $quiet == yes ]] && return 0
+  local f="$state/open/$1" last=0
+  [[ -f $f ]] && last=$(cat "$f")
+  if (( now - last >= 6 * 3600 )); then
+    if "$alert" send "$1" "$2" "$3"; then echo "$now" > "$f"; else failed=1; fi
+  fi
+}
+fine() {
+  echo "ok      $2: $3"
+  [[ $quiet == yes ]] && return 0
+  if [[ -f $state/open/$1 ]]; then
+    "$alert" resolved "$2 resolved" "$3" || failed=1
+    rm -f "$state/open/$1"
+  fi
+}
+
+# due NAME SECONDS: true when NAME last ran at least SECONDS ago.
+due() { local f="$state/last-$1" last=0; [[ -f $f ]] && last=$(cat "$f"); (( now - last >= $2 )); }
+ran() { echo "${2:-$now}" > "$state/last-$1"; }
+
+mib() { echo $(( $1 / 1048576 )); }
+
+check_disk() {
+  local dir size wal avail need
+  dir=$(dirname "$db")
+  [[ -f $db ]] || { problem disk "database missing" "no database at $db"; return; }
+  size=$(stat -c %s "$db"); wal=0
+  [[ -f $db-wal ]] && wal=$(stat -c %s "$db-wal")
+  avail=$(df --output=avail -B1 "$dir" | tail -n1 | tr -d ' ')
+  need=$(( 2 * (size + wal) + 2 * 1073741824 ))
+  if (( avail < need )); then
+    problem disk "disk almost full" "$(mib "$avail") MB free next to the database, below the $(mib "$need") MB rule (2 x database plus 2 GB). Free space: du -sh /var/lib/podium/* /var/cache/podium-judge/* /var/backups/podium"
+  else
+    fine disk "disk" "$(mib "$avail") MB free, rule $(mib "$need") MB"
+  fi
+  if (( wal > 256 * 1048576 )); then
+    problem wal "database WAL large" "podium.db-wal is $(mib "$wal") MB (above 256 MB): checkpoints are not keeping up. A long read may be holding them; restart podium-litestream, then podium-server at a quiet moment"
+  else
+    fine wal "WAL" "$(mib "$wal") MB"
+  fi
+}
+
+# litestream_env: export the bucket settings for rclone and litestream in
+# a subshell; returns 1 when the file still has placeholders.
+litestream_ready() {
+  local f=/etc/podium/litestream.env v
+  [[ -r $f ]] || return 1
+  for v in LITESTREAM_ACCESS_KEY_ID LITESTREAM_SECRET_ACCESS_KEY PODIUM_BACKUP_BUCKET PODIUM_BACKUP_PATH PODIUM_BACKUP_ENDPOINT PODIUM_BACKUP_REGION; do
+    local x
+    x=$(envget "$f" "$v" "")
+    [[ -n $x && $x != change-me ]] || return 1
+  done
+}
+
+# newest_remote REMOTE_PATH [rclone filter flags...]: Unix time of the
+# newest file, or 0. Server-side times only: no request per object.
+newest_remote() {
+  local path=$1; shift
+  local t
+  t=$(rclone --config "" --cache-dir /tmp/rclone lsjson -R --files-only --no-mimetype --use-server-modtime "$@" "$path" \
+      | jq -r 'map(.ModTime) | max // empty') || return 1
+  [[ -n $t ]] && date -u -d "$t" +%s || echo 0
+}
+
+check_litestream() {
+  if ! litestream_ready; then
+    problem litestream "replication not configured" "/etc/podium/litestream.env still has placeholders: the database has no copy off the VM (docs/OPERATIONS.md, Backups)"
+    return
+  fi
+  if ! systemctl is-active --quiet podium-litestream; then
+    problem litestream "Litestream not running" "podium-litestream is $(systemctl is-active podium-litestream 2>/dev/null || true): database changes are not leaving the VM. Start it: sudo systemctl start podium-litestream; journalctl -u podium-litestream -n 30"
+    return
+  fi
+  local f=/etc/podium/litestream.env newest local_t
+  newest=$(
+    export RCLONE_CONFIG_LS_TYPE=s3 RCLONE_CONFIG_LS_PROVIDER=Other
+    RCLONE_CONFIG_LS_ACCESS_KEY_ID=$(envget "$f" LITESTREAM_ACCESS_KEY_ID "")
+    RCLONE_CONFIG_LS_SECRET_ACCESS_KEY=$(envget "$f" LITESTREAM_SECRET_ACCESS_KEY "")
+    RCLONE_CONFIG_LS_ENDPOINT=$(envget "$f" PODIUM_BACKUP_ENDPOINT "")
+    RCLONE_CONFIG_LS_REGION=$(envget "$f" PODIUM_BACKUP_REGION "")
+    export RCLONE_CONFIG_LS_ACCESS_KEY_ID RCLONE_CONFIG_LS_SECRET_ACCESS_KEY RCLONE_CONFIG_LS_ENDPOINT RCLONE_CONFIG_LS_REGION
+    newest_remote "ls:$(envget "$f" PODIUM_BACKUP_BUCKET "")/$(envget "$f" PODIUM_BACKUP_PATH "")" --max-age 7d
+  ) || { problem litestream "bucket unreachable" "listing the Litestream bucket failed: the key, endpoint or network is wrong"; return; }
+  local_t=$(stat -c %Y "$db")
+  [[ -f $db-wal ]] && local_t=$(( $(stat -c %Y "$db-wal") > local_t ? $(stat -c %Y "$db-wal") : local_t ))
+  if (( local_t - newest > 600 )); then
+    problem litestream "Litestream behind" "the database changed at $(date -u -d "@$local_t" '+%H:%M UTC') but the bucket's newest upload is from $( (( newest > 0 )) && date -u -d "@$newest" '+%Y-%m-%d %H:%M UTC' || echo 'over 7 days ago'). journalctl -u podium-litestream -n 30"
+  else
+    fine litestream "Litestream" "running; last upload $(( (now - newest) / 60 )) min ago, local change $(( (now - local_t) / 60 )) min ago"
+  fi
+}
+
+check_encrypted_copy() {
+  local f=/etc/podium/backup.env path newest
+  path=$(envget "$f" PODIUM_BACKUP_B2_PATH "")
+  if [[ -z $path ]]; then
+    fine offsite "encrypted copy" "not configured in $f (warning only; see docs/OPERATIONS.md)"
+    return
+  fi
+  [[ $quiet == yes ]] || due offsite 21600 || return 0
+  newest=$(
+    RCLONE_CONFIG_B2_TYPE=b2
+    RCLONE_CONFIG_B2_ACCOUNT=$(envget "$f" RCLONE_CONFIG_B2_ACCOUNT "")
+    RCLONE_CONFIG_B2_KEY=$(envget "$f" RCLONE_CONFIG_B2_KEY "")
+    export RCLONE_CONFIG_B2_TYPE RCLONE_CONFIG_B2_ACCOUNT RCLONE_CONFIG_B2_KEY
+    newest_remote "b2:$path" --include 'podium-*.tar.age' --max-age 7d
+  ) || { problem offsite "B2 unreachable" "listing $path in B2 failed: the key or network is wrong"; return; }
+  ran offsite
+  if (( now - newest > 30 * 3600 )); then
+    problem offsite "encrypted copy missing" "no encrypted backup in B2 for $(( (now - newest) / 3600 )) hours: journalctl -u podium-backup -n 30"
+  else
+    fine offsite "encrypted copy" "newest $(( (now - newest) / 3600 )) h old"
+  fi
+}
+
+restore_proof() {
+  local corrupt=$1 scratch start code=0 out
+  if ! litestream_ready; then
+    problem restore "restore proof skipped" "Litestream is not configured, so there is nothing to restore"
+    return
+  fi
+  command -v litestream >/dev/null || { problem restore "restore proof failed" "litestream is not installed"; return; }
+  scratch=$(mktemp -d /tmp/podium-verify.XXXXXX)
+  start=$(date +%s)
+  out=$(
+    set -a; . /etc/podium/litestream.env; set +a
+    litestream restore -config /etc/litestream.yml -o "$scratch/podium.db" "$db" 2>&1
+  ) || code=$?
+  if (( code != 0 )); then
+    rm -rf "$scratch"
+    problem restore "restore proof failed" "litestream restore from the bucket failed (exit $code): $(printf '%s' "$out" | tail -n1 | cut -c1-200)"
+    return
+  fi
+  if [[ $corrupt == yes ]]; then
+    # Overwrite the schema page after the 100-byte header: the copy can no
+    # longer be read, which the check must report.
+    dd if=/dev/urandom of="$scratch/podium.db" bs=1 seek=100 count=3996 conv=notrunc status=none
+    echo "restore-proof: scratch copy damaged on purpose (--corrupt)"
+  fi
+  "$server" check -db "$scratch/podium.db" -tests "$tests" -hash > "$scratch/check.txt" 2>&1 || code=$?
+  local took=$(( $(date +%s) - start ))
+  if (( code != 0 )); then
+    problem restore "restore proof failed" "the newest bucket copy restored but failed podium-server check -hash (exit $code): $(grep -m1 -E 'integrity|result|check:' "$scratch/check.txt" | cut -c1-200)"
+  else
+    fine restore "restore proof" "bucket copy restored and checked in $took s ($(grep -m1 'test files' -A1 "$scratch/check.txt" | tail -n1 | sed 's/^ *//'))"
+  fi
+  rm -rf "$scratch"
+}
+
+case ${1:-} in
+  "")
+    check_disk
+    check_litestream
+    check_encrypted_copy
+    if due restore $(( 7 * 86400 )); then
+      # A failure retries after a day, not every 15 minutes.
+      ran restore $(( now - 6 * 86400 ))
+      restore_proof no
+      [[ -f $state/open/restore ]] || ran restore
+    fi
+    ;;
+  restore-proof)
+    corrupt=no
+    [[ ${2:-} == --corrupt ]] && corrupt=yes
+    # A drill always alerts, whatever an earlier finding said.
+    [[ $corrupt == yes ]] && rm -f "$state/open/restore"
+    restore_proof "$corrupt"
+    [[ $corrupt == yes || -f $state/open/restore ]] || ran restore
+    ;;
+  status)
+    quiet=yes
+    check_disk
+    check_litestream
+    check_encrypted_copy
+    ;;
+  *)
+    sed -n '2,24p' "$0" | sed 's/^# \{0,1\}//' >&2
+    exit 2
+    ;;
+esac
+exit $failed
