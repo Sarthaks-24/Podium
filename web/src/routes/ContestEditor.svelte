@@ -33,9 +33,11 @@
   Props: `id`.
 -->
 <script lang="ts">
+  import PageState from '../components/PageState.svelte';
   import { onMount, tick, untrack } from 'svelte';
   import ConfirmDialog from '../components/ConfirmDialog.svelte';
   import ContestAdminNav from '../components/ContestAdminNav.svelte';
+  import PageHeader from '../components/PageHeader.svelte';
   import Icon from '../components/Icon.svelte';
   import { ApiError, getJSON, sendBody, sendJSON } from '../lib/api';
   import {
@@ -43,7 +45,6 @@
     labelFor,
     parseRoster,
     rosterCsv,
-    stateWord,
     toLocalInput,
     type AdminContest,
     type AdminContestProblem,
@@ -52,6 +53,7 @@
   } from '../lib/contests';
   import { keepHeadingFocus } from '../lib/focus';
   import { setTitle } from '../lib/head';
+  import { routeTitle } from '../lib/routing';
   import { LANGUAGES, type ProblemSummary } from '../lib/problems';
   import { navigate } from '../lib/router.svelte';
   import { session } from '../lib/session.svelte';
@@ -159,7 +161,7 @@
     contest = c;
     form = toForm(c);
     picked = (c.problems ?? []).map((p) => ({ ...p }));
-    setTitle(c.title, 'Contest settings');
+    setTitle(c.title, routeTitle('admin-contest'));
     if (cloneSlug === '') {
       cloneSlug = `${c.slug}-copy`;
       cloneStart = toLocalInput(c.starts_at + 7 * 86_400_000);
@@ -572,7 +574,7 @@
   }
 
   onMount(() => {
-    setTitle('Contest settings');
+    setTitle(routeTitle('admin-contest'));
     if (!isOrganiser) loadState = 'forbidden';
     else void load();
   });
@@ -583,21 +585,22 @@
 {/snippet}
 
 {#if loadState === 'forbidden'}
-  <h1 tabindex="-1">Contest settings</h1>
-  <p class="lead">Only admins can manage contests. Ask an owner if you need access.</p>
+  <PageHeader title="Contest settings" />
+  <PageState kind="forbidden" message="Only admins can manage contests." />
 {:else if loadState !== 'ready' || !contest || !form}
-  <a class="back" href="/admin/contests">Contest admin</a>
-  <h1 tabindex="-1">{loadState === 'missing' ? 'Contest not found' : 'Contest settings'}</h1>
+  <PageHeader
+    title={loadState === 'missing' ? 'Contest not found' : 'Contest settings'}
+    crumbs={[{ label: 'Contest admin', href: '/admin/contests' }, { label: loadState === 'missing' ? 'Contest not found' : 'Contest settings' }]}
+  />
   {#if loadState === 'loading'}
-    <p class="lead muted" role="status">Loading the contest</p>
+    <PageState kind="loading" message="Loading the contest" />
   {:else if loadState === 'missing'}
-    <p class="lead">There is no contest with that number. <a href="/admin/contests">Go back to the list.</a></p>
+    <PageState kind="missing" message="There is no contest with that number." parent={{ href: '/admin/contests', label: 'Go back to the list.' }} />
   {:else}
-    <div class="banner banner-error lead" role="alert"><p>{loadError}</p></div>
-    <p class="retry"><button type="button" class="btn btn-secondary" onclick={load}>Try again</button></p>
+    <PageState kind="error" message={loadError} onretry={load} />
   {/if}
 {:else}
-  <ContestAdminNav {id} title={contest.title} state={stateWord(contest.state)} current="settings" />
+  <ContestAdminNav {id} title={contest.title} state={contest.state} current="settings" />
 
   <form class="settings section" novalidate onsubmit={save} aria-labelledby="settings-title">
     <h2 id="settings-title">Settings</h2>
@@ -838,7 +841,7 @@
           {rosterDiff.removed === 1 ? 'student' : 'students'}.{/if}
       </p>
       <div class="table-wrap preview">
-        <table class="table">
+        <table class="table table-dense">
           <caption class="visually-hidden">Roster preview</caption>
           <thead>
             <tr><th scope="col" class="right">Line</th><th scope="col">Email</th><th scope="col">Name</th><th scope="col">Roll number</th><th scope="col">Section</th><th scope="col">Check</th></tr>
@@ -944,23 +947,6 @@
 {/if}
 
 <style>
-  .back {
-    display: inline-block;
-    margin-bottom: var(--space-2);
-    border-radius: var(--radius);
-    font-size: var(--fs-0);
-    font-weight: 500;
-  }
-
-  .lead {
-    margin-top: var(--space-4);
-    max-width: 40rem;
-  }
-
-  .retry {
-    margin-top: var(--space-4);
-  }
-
   .section {
     display: grid;
     gap: var(--space-4);
@@ -1111,10 +1097,6 @@
     overflow: auto;
   }
 
-  .preview .table {
-    font-size: var(--fs-0);
-  }
-
   .right,
   .table .right {
     text-align: right;
@@ -1158,7 +1140,7 @@
     gap: var(--space-2) var(--space-3);
   }
 
-  @media (max-width: 767px) {
+  @media (width < 768px) {
     .pick {
       grid-template-columns: 3.5rem minmax(0, 1fr);
     }

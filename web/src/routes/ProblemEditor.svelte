@@ -40,6 +40,9 @@
   the address.
 -->
 <script lang="ts">
+  import PageState from '../components/PageState.svelte';
+  import PageHeader from '../components/PageHeader.svelte';
+  import { media } from '../lib/breakpoints';
   import { onMount, tick } from 'svelte';
   import ConfirmDialog from '../components/ConfirmDialog.svelte';
   import ProgramField from '../components/ProgramField.svelte';
@@ -61,6 +64,7 @@
   } from '../lib/ai';
   import { ApiError, getJSON, sendBody, sendJSON } from '../lib/api';
   import { setTitle } from '../lib/head';
+  import { routeTitle } from '../lib/routing';
   import {
     CHECKERS,
     DIFFICULTIES,
@@ -350,7 +354,7 @@
     baseline = JSON.stringify(saved);
     if (!keep) draft = saved;
     if (validation) validation = { ...validation, current: validation.content_hash === p.content_hash };
-    setTitle(p.title, 'Problem bank');
+    setTitle(p.title, routeTitle('problems'));
   }
 
   // Polling stops for good when the editor goes away.
@@ -483,7 +487,7 @@
   }
 
   onMount(() => {
-    setTitle('Problem');
+    setTitle(routeTitle('problem'));
     const role = session.user?.role;
     if (role === 'admin' || role === 'owner') {
       load();
@@ -495,9 +499,9 @@
       leaveTo = to;
       return false;
     });
-    const query = window.matchMedia('(max-width: 767px)');
+    const query = media('tablet');
     const sync = () => {
-      phone = query.matches;
+      phone = !query.matches;
       if (!phone) statementTab = 'write';
     };
     sync();
@@ -860,32 +864,31 @@
       },
     };
   }
+
+  const pageTitle = $derived(
+    loadState === 'missing' ? 'Problem not found' : problem ? (problem.title.trim() !== '' ? problem.title : problem.slug) : 'Problem',
+  );
 </script>
 
 <svelte:window onbeforeunload={onBeforeUnload} onkeydown={onKeydown} />
 
 <div class="editor">
-  <div class="head">
-    <a class="back" href="/admin/problems">Problem bank</a>
-    <div class="title-row">
-      <h1 tabindex="-1">
-        {#if loadState === 'missing'}Problem not found{:else if problem}{problem.title.trim() !== '' ? problem.title : problem.slug}{:else}Problem{/if}
-      </h1>
+  <PageHeader title={pageTitle} crumbs={[{ label: 'Problem bank', href: '/admin/problems' }, { label: pageTitle }]}>
+    {#snippet actions()}
       {#if problem && loadState === 'ready'}
         <a class="try" href="/admin/problems/{problem.id}/try">Try as a student</a>
       {/if}
-    </div>
-  </div>
+    {/snippet}
+  </PageHeader>
 
   {#if loadState === 'forbidden'}
-    <p class="lead">Only admins can manage problems. Ask an owner if you need access.</p>
+    <PageState kind="forbidden" message="Only admins can manage problems." />
   {:else if loadState === 'missing'}
-    <p class="lead">There is no problem with that number. <a href="/admin/problems">Go to the problem bank.</a></p>
+    <PageState kind="missing" message="There is no problem with that number." parent={{ href: '/admin/problems', label: 'Go to the problem bank.' }} />
   {:else if loadState === 'loading'}
-    <p class="lead muted" role="status">Loading problem</p>
+    <PageState kind="loading" message="Loading problem" />
   {:else if loadState === 'error'}
-    <div class="banner banner-error lead" role="alert"><p>{loadError}</p></div>
-    <p class="retry"><button type="button" class="btn btn-secondary" onclick={load}>Try again</button></p>
+    <PageState kind="error" message={loadError} onretry={load} />
   {:else if problem && draft}
     <div class="action-bar">
       <div class="bar-status">
@@ -1318,7 +1321,7 @@
           <details class="all-tests">
             <summary>Show all {problem.tests.length} {problem.tests.length === 1 ? 'test' : 'tests'}</summary>
             <div class="table-wrap tests">
-              <table class="table">
+              <table class="table table-stack">
                 <thead>
                   <tr>
                     <th scope="col">Test</th>
@@ -1431,7 +1434,7 @@
 
           {#if draft.plan.length > 0}
             <div class="table-wrap plan">
-              <table class="table" aria-labelledby="plan-heading">
+              <table class="table table-stack" aria-labelledby="plan-heading">
                 <thead>
                   <tr>
                     <th scope="col">Test</th>
@@ -1811,31 +1814,6 @@
 <style>
   .editor {
     min-width: 0;
-  }
-
-  .head {
-    display: grid;
-    gap: var(--space-2);
-  }
-
-  .back {
-    width: fit-content;
-    border-radius: var(--radius);
-    font-size: var(--fs-0);
-    font-weight: 500;
-  }
-
-  .title-row {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: baseline;
-    justify-content: space-between;
-    gap: var(--space-2) var(--space-5);
-  }
-
-  h1 {
-    min-width: 0;
-    overflow-wrap: anywhere;
   }
 
   .try {
@@ -2464,7 +2442,7 @@
     }
   }
 
-  @media (max-width: 767px) {
+  @media (width < 768px) {
     .jumps {
       display: none;
     }
@@ -2509,30 +2487,9 @@
     }
 
     /* Tests stack: number and group, then input over output. */
-    .tests thead {
-      position: absolute;
-      width: 1px;
-      height: 1px;
-      overflow: hidden;
-      clip: rect(0, 0, 0, 0);
-    }
 
     .tests tbody tr {
-      display: grid;
       grid-template-columns: auto minmax(0, 1fr);
-      gap: var(--space-1) var(--space-3);
-      padding: var(--space-3);
-      border-bottom: var(--rule) solid var(--line);
-    }
-
-    .tests tbody tr:last-child {
-      border-bottom: 0;
-    }
-
-    .tests tbody :is(th, td) {
-      height: auto;
-      padding: 0;
-      border: 0;
     }
 
     .tests .file-cell,
@@ -2560,24 +2517,14 @@
     }
 
     /* Planned tests stack: test and subtask, then seed and arguments. */
-    .plan thead {
-      position: absolute;
-      width: 1px;
-      height: 1px;
-      overflow: hidden;
-      clip: rect(0, 0, 0, 0);
-    }
 
     .plan tbody tr {
-      display: grid;
       grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
       grid-template-areas:
         'idx subtask remove'
         'seed args args';
       align-items: end;
       gap: var(--space-2) var(--space-3);
-      padding: var(--space-3);
-      border-bottom: var(--rule) solid var(--line);
     }
 
     .plan tbody tr.has-errors {
@@ -2590,18 +2537,11 @@
       padding-top: var(--space-1);
     }
 
-    .plan tbody tr:last-child {
-      border-bottom: 0;
-    }
-
     .plan tbody :is(th, td) {
       display: grid;
       gap: var(--space-1);
       width: auto;
       min-width: 0;
-      height: auto;
-      padding: 0;
-      border: 0;
     }
 
     .plan-idx {

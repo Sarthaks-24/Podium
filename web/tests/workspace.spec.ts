@@ -378,3 +378,30 @@ test('on small screens the tabs follow the arrow keys, and Submit opens the resu
   await page.keyboard.press('Control+Enter');
   await expect(tab('Code')).toHaveAttribute('aria-selected', 'true');
 });
+
+// F9: state is a shape. In forced colours the selected tab keeps a solid
+// underline, and the subtask strip and rail fills keep a visible fill.
+test('selected tabs and fills survive forced colours', async ({ page }) => {
+  await mockApi(page, { submissions: HISTORY });
+  await page.emulateMedia({ forcedColors: 'active' });
+  await page.setViewportSize({ width: 375, height: 812 });
+  await openWorkspace(page);
+  const tab = page.getByRole('tab', { selected: true });
+  const style = await tab.evaluate((el) => {
+    const s = getComputedStyle(el);
+    return { width: s.borderBottomWidth, style: s.borderBottomStyle, color: s.borderBottomColor };
+  });
+  expect(style.style).toBe('solid');
+  expect(parseFloat(style.width)).toBeGreaterThanOrEqual(2);
+  expect(style.color).not.toMatch(/rgba\(0, 0, 0, 0\)|transparent/);
+  const other = await page.getByRole('tab', { selected: false }).first().evaluate((el) => getComputedStyle(el).borderBottomColor);
+  expect(other).not.toBe(style.color);
+  await page.screenshot({ path: `${shots()}forced-colours-tabs-375.png`, fullPage: true });
+  await page.getByRole('tab', { name: 'Result' }).click();
+  const fills = page.locator('.fill');
+  if ((await fills.count()) > 0) {
+    const adjust = await fills.first().evaluate((el) => getComputedStyle(el).forcedColorAdjust);
+    expect(adjust).toBe('none');
+  }
+  await page.screenshot({ path: `${shots()}forced-colours-result-375.png`, fullPage: true });
+});

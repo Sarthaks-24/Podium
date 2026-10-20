@@ -41,7 +41,7 @@
 </script>
 
 <dialog bind:this={dialog} class="dialog" aria-labelledby="shortcuts-title" oncancel={onCancel}>
-  <div class="head">
+  <div class="dialog-head">
     <h2 id="shortcuts-title" tabindex="-1" bind:this={heading}>Keyboard shortcuts</h2>
     <button type="button" class="btn btn-quiet btn-compact" aria-label="Close keyboard shortcuts" title="Close" onclick={onclose}>
       <Icon name="x" />
@@ -65,34 +65,6 @@
 </dialog>
 
 <style>
-  .dialog {
-    width: min(40rem, calc(100vw - 2 * var(--gutter)));
-    max-height: calc(100dvh - 2 * var(--space-5));
-    margin: auto;
-    padding: var(--space-5);
-    border: var(--rule) solid var(--line-strong);
-    border-radius: var(--radius);
-    background: var(--surface);
-    color: var(--ink);
-    box-shadow: var(--shadow-menu);
-    overscroll-behavior: contain;
-  }
-
-  .dialog::backdrop {
-    background: color-mix(in srgb, var(--ink) 40%, transparent);
-  }
-
-  .head {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: var(--space-3);
-  }
-
-  h2 {
-    font-size: var(--fs-3);
-  }
-
   .group {
     margin-top: var(--space-5);
   }
@@ -141,7 +113,7 @@
     white-space: nowrap;
   }
 
-  @media (max-width: 767px) {
+  @media (width < 768px) {
     .row {
       grid-template-columns: minmax(0, 1fr);
       gap: var(--space-1);

@@ -15,12 +15,15 @@
   visitors to /signin first. Takes no props.
 -->
 <script lang="ts">
+  import PageState from '../components/PageState.svelte';
+  import PageHeader from '../components/PageHeader.svelte';
   import { onMount } from 'svelte';
   import { ApiError, getJSON } from '../lib/api';
   import { serverClock } from '../lib/clock';
   import { formatCountdown, formatSpan, lengthText, listCountdown, orderedContests, stateWord, type ContestList, type ContestSummary } from '../lib/contests';
   import { formatDateTime } from '../lib/format';
   import { setTitle } from '../lib/head';
+  import { routeTitle } from '../lib/routing';
   import { session } from '../lib/session.svelte';
   import type { StudentCaseList } from '../lib/review';
   import { refreshTicker, ticker, useTicker } from '../lib/ticker.svelte';
@@ -82,14 +85,14 @@
   }
 
   onMount(() => {
-    setTitle('Your contests');
+    setTitle(routeTitle('home'));
     void load();
     void loadAsked();
     return useTicker();
   });
 </script>
 
-<h1 tabindex="-1">Your contests</h1>
+<PageHeader title="Your contests" />
 
 {#if asked}
   <p class="banner asked">An organiser asked you to explain a submission. <a href="/integrity">Write your explanation</a></p>
@@ -100,15 +103,14 @@
 {/if}
 
 {#if loadState === 'loading'}
-  <p class="lead muted" role="status">Loading contests</p>
+  <PageState kind="loading" message="Loading contests" />
 {:else if loadState === 'error'}
-  <div class="banner banner-error lead" role="alert"><p>{loadError}</p></div>
-  <p class="retry"><button type="button" class="btn btn-secondary" onclick={load}>Try again</button></p>
+  <PageState kind="error" message={loadError} onretry={load} />
 {:else if contests.length === 0}
-  <p class="lead muted">No contests yet. When an organiser schedules one, it appears here.</p>
+  <PageState kind="empty" message="No contests yet. When an organiser schedules one, it appears here." />
 {:else}
   <div class="table-wrap list">
-    <table class="table">
+    <table class="table table-stack">
       <thead>
         <tr>
           <th scope="col">Contest</th>
@@ -124,7 +126,7 @@
           {@const cd = listCountdown(c, ticker.now)}
           <tr class:live={c.state === 'live' || c.state === 'frozen'}>
             <th scope="row" class="title">
-              <a href="/contests/{encodeURIComponent(c.slug)}">{c.title}</a>
+              <a class="row-link" href="/contests/{encodeURIComponent(c.slug)}">{c.title}</a>
               {#if cd && cd.ms > 0}
                 <span class="countdown">{cd.lead} <span class="mono">{cd.ms >= 86_400_000 ? formatSpan(cd.ms) : formatCountdown(cd.ms)}</span></span>
               {/if}
@@ -210,7 +212,7 @@
   }
 
   /* Tablets: the length and problem count make room for the state. */
-  @media (min-width: 768px) and (max-width: 1023px) {
+  @media (768px <= width < 1024px) {
     .length,
     .problems {
       display: none;
@@ -218,35 +220,13 @@
   }
 
   /* Phones: title and state, then the details in one muted line. */
-  @media (max-width: 767px) {
-    .list thead {
-      position: absolute;
-      width: 1px;
-      height: 1px;
-      overflow: hidden;
-      clip: rect(0, 0, 0, 0);
-    }
-
+  @media (width < 768px) {
     .list tbody tr {
-      display: grid;
       grid-template-columns: minmax(0, 1fr) auto;
       grid-template-areas:
         'title state'
         'when when'
         'meta score';
-      gap: var(--space-1) var(--space-3);
-      padding: var(--space-3);
-      border-bottom: var(--rule) solid var(--line);
-    }
-
-    .list tbody tr:last-child {
-      border-bottom: 0;
-    }
-
-    .list tbody :is(th, td) {
-      height: auto;
-      padding: 0;
-      border: 0;
     }
 
     .title {

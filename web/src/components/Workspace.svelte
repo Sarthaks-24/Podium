@@ -50,6 +50,9 @@
   event, submissions included, is passed to `onevent`).
 -->
 <script lang="ts">
+  import PageHeader from './PageHeader.svelte';
+  import { media } from '../lib/breakpoints';
+  import PageState from './PageState.svelte';
   import { onMount, tick, type Snippet } from 'svelte';
   import { ApiError, getJSON, sendJSON } from '../lib/api';
   import { serverClock } from '../lib/clock';
@@ -617,8 +620,8 @@
   }
 
   onMount(() => {
-    const wide = window.matchMedia('(min-width: 1024px)');
-    const tablet = window.matchMedia('(min-width: 768px)');
+    const wide = media('laptop');
+    const tablet = media('tablet');
     const place = () => {
       layout = wide.matches ? 'wide' : tablet.matches ? 'tablet' : 'phone';
       if (layout === 'tablet' && tab === 'result') tab = 'code';
@@ -657,17 +660,15 @@
 
 {#if loadState !== 'ready' || !ws}
   <div class="state">
-    <a class="back" href={backHref}>{backLabel}</a>
-    <h1 tabindex="-1">{loadState === 'missing' ? 'Problem not found' : 'Problem'}</h1>
+    <PageHeader compact title={loadState === 'missing' ? 'Problem not found' : 'Problem'} back={{ href: backHref, label: backLabel }} />
     {#if loadState === 'loading'}
-      <p class="muted" role="status">Loading the problem</p>
+      <PageState kind="loading" message="Loading the problem" />
     {:else if loadState === 'forbidden'}
-      <p>You cannot open this problem. Ask an organiser if you think you should.</p>
+      <PageState kind="forbidden" message="You cannot open this problem." ask="Ask an organiser if you think you should." />
     {:else if loadState === 'missing'}
-      <p>This problem does not exist. <a href={backHref}>Go back.</a></p>
+      <PageState kind="missing" message="This problem does not exist." parent={{ href: backHref, label: 'Go back.' }} />
     {:else if loadState === 'error'}
-      <div class="banner banner-error" role="alert"><p>{loadError}</p></div>
-      <p><button type="button" class="btn btn-secondary" onclick={load}>Try again</button></p>
+      <PageState kind="error" message={loadError} onretry={load} />
     {/if}
   </div>
 {:else}
@@ -696,8 +697,9 @@
     <div class="title-area">
       {#if banner}<div class="banner-slot">{@render banner()}</div>{/if}
       <div class="title-main">
-        <a class="back" href={backHref}>{backLabel}</a>
-        <h1 tabindex="-1">{#if label}<span class="mono letter">{label}</span><span class="visually-hidden">.&nbsp;</span>{/if}{ws.title}</h1>
+        <PageHeader compact back={{ href: backHref, label: backLabel }}>
+          {#snippet heading()}{#if label}<span class="mono letter">{label}</span><span class="visually-hidden">.&nbsp;</span>{/if}{ws?.title ?? ''}{/snippet}
+        </PageHeader>
         <p class="limits">{limitsText(ws.time_limit_ms, ws.memory_limit_mb)}</p>
       </div>
       {#if layout !== 'wide' && !clock && note}
@@ -901,13 +903,6 @@
     max-width: 48rem;
   }
 
-  .back {
-    width: fit-content;
-    border-radius: var(--radius);
-    font-size: var(--fs-0);
-    font-weight: 500;
-  }
-
   .ws {
     display: grid;
     grid-template-columns: minmax(0, 1fr);
@@ -931,11 +926,6 @@
     display: grid;
     gap: var(--space-1);
     min-width: 0;
-  }
-
-  h1 {
-    font-size: var(--fs-4);
-    overflow-wrap: anywhere;
   }
 
   .limits {
@@ -1013,21 +1003,18 @@
     min-height: var(--control-h-touch);
     padding-inline: var(--space-4);
     border: 0;
+    border-bottom: calc(2 * var(--rule)) solid transparent;
     border-radius: var(--radius) var(--radius) 0 0;
     background: none;
     color: var(--ink-muted);
     font-weight: 500;
   }
 
+  /* State is a shape (F9): the selected tab is underlined by a border, which
+     forced-colours mode keeps, unlike an inset shadow. */
   .tab[aria-selected='true'] {
+    border-bottom-color: var(--act);
     color: var(--ink);
-    box-shadow: inset 0 calc(-2 * var(--rule)) 0 var(--act);
-  }
-
-  .tab[aria-selected='true']:focus-visible {
-    box-shadow:
-      inset 0 calc(-2 * var(--rule)) 0 var(--act),
-      var(--focus);
   }
 
   .dot {
@@ -1243,8 +1230,29 @@
     background: var(--ok);
   }
 
+  /* Forced colours drop backgrounds: the rail bar keeps its track and fill. */
+  @media (forced-colors: active) {
+    .bar {
+      outline: var(--rule) solid CanvasText;
+    }
+
+    .bar-fill {
+      background: Highlight;
+      forced-color-adjust: none;
+    }
+
+    /* A transparent border would be forced to CanvasText: unselected tabs paint theirs as the canvas. */
+    .tab {
+      border-bottom-color: Canvas;
+    }
+
+    .tab[aria-selected='true'] {
+      border-bottom-color: Highlight;
+    }
+  }
+
   /* Tablet: the result follows the editor in the Code tab. */
-  @media (min-width: 768px) and (max-width: 1023px) {
+  @media (768px <= width < 1024px) {
     .result-pane {
       border-top: var(--rule) solid var(--line);
       margin-top: var(--space-4);
@@ -1275,7 +1283,7 @@
       border-bottom: var(--rule) solid var(--line);
     }
 
-    h1 {
+    .ws .title-area :global(h1) {
       font-size: var(--fs-3);
     }
 

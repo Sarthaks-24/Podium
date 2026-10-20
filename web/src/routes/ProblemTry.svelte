@@ -7,9 +7,12 @@
   Props: `id`, the problem id from the address.
 -->
 <script lang="ts">
+  import PageState from '../components/PageState.svelte';
+  import PageHeader from '../components/PageHeader.svelte';
   import { onMount } from 'svelte';
   import Workspace from '../components/Workspace.svelte';
   import { setTitle } from '../lib/head';
+  import { routeTitle } from '../lib/routing';
   import { session } from '../lib/session.svelte';
   import { problemWorkspace } from '../lib/workspace';
 
@@ -18,7 +21,7 @@
   const isOrganiser = $derived(session.user?.role === 'admin' || session.user?.role === 'owner');
 
   onMount(() => {
-    if (!isOrganiser) setTitle('Problem bank');
+    if (!isOrganiser) setTitle(routeTitle('problems'));
   });
 </script>
 
@@ -30,13 +33,9 @@
     note="You are trying this problem as a student. These submissions count in no contest."
   />
 {:else}
-  <h1 tabindex="-1">Problems</h1>
-  <p class="lead">Only admins can manage problems. Ask an owner if you need access.</p>
+  <PageHeader title="Problems" />
+  <PageState kind="forbidden" message="Only admins can manage problems." />
 {/if}
 
 <style>
-  .lead {
-    margin-top: var(--space-4);
-    max-width: 40rem;
-  }
 </style>

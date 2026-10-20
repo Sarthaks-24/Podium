@@ -16,17 +16,20 @@
   Props: `id`.
 -->
 <script lang="ts">
+  import PageState from '../components/PageState.svelte';
   import { onMount } from 'svelte';
   import ConfirmDialog from '../components/ConfirmDialog.svelte';
   import ContestAdminNav from '../components/ContestAdminNav.svelte';
+  import PageHeader from '../components/PageHeader.svelte';
   import Icon from '../components/Icon.svelte';
   import Markdown from '../components/Markdown.svelte';
   import RevealBoard from '../components/RevealBoard.svelte';
   import StandingsTable from '../components/StandingsTable.svelte';
   import { ApiError, getJSON, sendJSON } from '../lib/api';
-  import { stateWord, type AdminContest, type ProblemStats } from '../lib/contests';
+  import { type AdminContest, type ProblemStats } from '../lib/contests';
   import { keepHeadingFocus } from '../lib/focus';
   import { setTitle } from '../lib/head';
+  import { routeTitle } from '../lib/routing';
   import { session } from '../lib/session.svelte';
   import { boardLabels, statusLine, type Standings } from '../lib/standings';
   import { ticker, useTicker } from '../lib/ticker.svelte';
@@ -91,7 +94,7 @@
       contest = c;
       editorial = c.editorial_md ?? '';
       editorialPublished = c.editorial_published ?? false;
-      setTitle(c.title, 'Results');
+      setTitle(c.title, routeTitle('contest-results'));
       loadState = 'ready';
       void restore();
     } catch (e) {
@@ -197,7 +200,7 @@
   }
 
   onMount(() => {
-    setTitle('Results');
+    setTitle(routeTitle('contest-results'));
     if (!isOrganiser) loadState = 'forbidden';
     else void load();
     return useTicker();
@@ -205,21 +208,22 @@
 </script>
 
 {#if loadState === 'forbidden'}
-  <h1 tabindex="-1">Results</h1>
-  <p class="lead">Only admins can see full results. Ask an owner if you need access.</p>
+  <PageHeader title="Results" />
+  <PageState kind="forbidden" message="Only admins can see full results." />
 {:else if loadState !== 'ready' || !contest}
-  <a class="back" href="/admin/contests">Contest admin</a>
-  <h1 tabindex="-1">{loadState === 'missing' ? 'Contest not found' : 'Results'}</h1>
+  <PageHeader
+    title={loadState === 'missing' ? 'Contest not found' : 'Results'}
+    crumbs={[{ label: 'Contest admin', href: '/admin/contests' }, { label: loadState === 'missing' ? 'Contest not found' : 'Results' }]}
+  />
   {#if loadState === 'loading'}
-    <p class="lead muted" role="status">Loading the contest</p>
+    <PageState kind="loading" message="Loading the contest" />
   {:else if loadState === 'missing'}
-    <p class="lead">There is no contest with that number. <a href="/admin/contests">Go back to the list.</a></p>
+    <PageState kind="missing" message="There is no contest with that number." parent={{ href: '/admin/contests', label: 'Go back to the list.' }} />
   {:else}
-    <div class="banner banner-error lead" role="alert"><p>{loadError}</p></div>
-    <p class="retry"><button type="button" class="btn btn-secondary" onclick={load}>Try again</button></p>
+    <PageState kind="error" message={loadError} onretry={load} />
   {/if}
 {:else}
-  <ContestAdminNav {id} title={contest.title} state={stateWord(contest.state)} current="results" />
+  <ContestAdminNav {id} title={contest.title} state={contest.state} current="results" />
 
   <section class="section" aria-labelledby="board-title">
     <div class="section-head">
@@ -272,7 +276,7 @@
       <p class="muted">No statistics yet. They appear once students submit.</p>
     {:else}
       <div class="table-wrap">
-        <table class="table stats">
+        <table class="table table-dense table-stack stats">
           <thead>
             <tr>
               <th scope="col">Problem</th>
@@ -375,23 +379,6 @@
 {/if}
 
 <style>
-  .back {
-    display: inline-block;
-    margin-bottom: var(--space-2);
-    border-radius: var(--radius);
-    font-size: var(--fs-0);
-    font-weight: 500;
-  }
-
-  .lead {
-    margin-top: var(--space-4);
-    max-width: 40rem;
-  }
-
-  .retry {
-    margin-top: var(--space-4);
-  }
-
   .section {
     display: grid;
     gap: var(--space-3);
@@ -450,33 +437,22 @@
   }
 
   /* Phones: each problem is its name, then the counts, then the histogram. */
-  @media (max-width: 767px) {
-    .stats thead {
-      position: absolute;
-      width: 1px;
-      height: 1px;
-      overflow: hidden;
-      clip: rect(0, 0, 0, 0);
-    }
-
+  @media (width < 768px) {
     .stats tbody tr {
-      display: grid;
-      grid-template-columns: repeat(3, auto);
+      grid-template-columns: repeat(3, minmax(0, auto));
       grid-template-areas:
         'pname pname pname'
         'solved tried median'
         'hist hist hist';
       justify-content: start;
       gap: var(--space-2) var(--space-4);
-      padding: var(--space-3);
-      border-bottom: var(--rule) solid var(--line);
     }
 
     .stats tbody :is(th, td) {
-      height: auto;
-      padding: 0;
-      border: 0;
+      min-width: 0;
       text-align: left;
+      white-space: normal;
+      overflow-wrap: anywhere;
     }
 
     .stats .pname {
@@ -520,10 +496,6 @@
     display: flex;
     flex-wrap: wrap;
     gap: var(--space-3);
-  }
-
-  .stats {
-    font-size: var(--fs-0);
   }
 
   .letter {

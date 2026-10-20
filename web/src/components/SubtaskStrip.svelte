@@ -71,8 +71,8 @@
     flex-basis: 0;
     height: var(--space-3);
     overflow: hidden;
+    border: var(--rule) solid var(--line);
     background: var(--surface-2);
-    box-shadow: inset 0 0 0 var(--rule) var(--line);
   }
 
   .fill {
@@ -105,6 +105,28 @@
   @media (prefers-reduced-motion: reduce) {
     .fill {
       transition: none;
+    }
+  }
+
+  /* Forced colours drop backgrounds: keep each cell's outline and draw the
+     fill in the system highlight, so passed subtasks still read as filled. */
+  @media (forced-colors: active) {
+    .cell {
+      border-color: CanvasText;
+    }
+
+    .fill {
+      background: Highlight;
+      forced-color-adjust: none;
+    }
+
+    /* A failed subtask stays unfilled, as it would read without colour. */
+    .fill.tone-bad {
+      background: Canvas;
+    }
+
+    .fill.tone-wait {
+      background: GrayText;
     }
   }
 </style>

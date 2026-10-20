@@ -9,12 +9,14 @@
   by the app shell before this renders. Takes no props.
 -->
 <script lang="ts">
+  import PageHeader from '../components/PageHeader.svelte';
   import { onMount } from 'svelte';
   import Message from '../components/Message.svelte';
   import TestSignIn from '../components/TestSignIn.svelte';
   import { getJSON } from '../lib/api';
   import { parseMode, runMode } from '../lib/mode.svelte';
   import { setTitle } from '../lib/head';
+  import { routeTitle } from '../lib/routing';
   import { router } from '../lib/router.svelte';
   import { audienceLine, errorMessage, parseErrorCode, safeNext, startHref } from '../lib/signin';
 
@@ -35,7 +37,7 @@
   const error = $derived(ready ? errorMessage(errorCode, domains, contactEmail) : null);
 
   onMount(() => {
-    setTitle('Sign in');
+    setTitle(routeTitle('signin'));
     let active = true;
     getJSON<AuthConfig>('/api/auth/config')
       .then((c) => {
@@ -53,7 +55,7 @@
 </script>
 
 <div class="signin">
-  <h1 tabindex="-1">Weekly programming contests</h1>
+  <PageHeader title="Weekly programming contests" />
   <p class="audience" aria-live="polite">
     {#if ready && config?.mode !== 'testing'}{audienceLine(domains)}{/if}
   </p>

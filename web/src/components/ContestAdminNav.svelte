@@ -1,20 +1,26 @@
 <!--
-  ContestAdminNav: the header of the organiser screens for one
-  contest: a link back to the contest admin list, the contest's title as
-  the page heading with its state word, and links to Settings, Console,
-  Results and Integrity, the current one marked with aria-current. Props:
-  `id`, `title`, `state` (a state word, or ""), `current` ("settings",
-  "console", "results" or "integrity").
+  ContestAdminNav: the PageHeader of the organiser screens for one
+  contest: the trail "Contest admin, the contest, the current screen", the
+  contest's title as the page heading with its state word, and links to
+  Settings, Console, Results and Integrity, the current one marked with
+  aria-current. Props: `id`, `title`, `state` (a ContestState, or "" for
+  none), `current` ("settings", "console", "results" or "integrity"), and
+  an optional `actions` snippet for the title row.
 -->
 <script lang="ts">
+  import type { Snippet } from 'svelte';
+  import { stateWord, type ContestState } from '../lib/contests';
+  import PageHeader from './PageHeader.svelte';
+
   interface Props {
     id: string | number;
     title: string;
-    state: string;
+    state: ContestState | '';
     current: 'settings' | 'console' | 'results' | 'integrity';
+    actions?: Snippet;
   }
 
-  let { id, title, state, current }: Props = $props();
+  let { id, title, state, current, actions }: Props = $props();
 
   const base = $derived(`/admin/contests/${encodeURIComponent(String(id))}`);
   const links = $derived([
@@ -23,49 +29,28 @@
     { id: 'results', label: 'Results', href: `${base}/results` },
     { id: 'integrity', label: 'Integrity', href: `${base}/integrity` },
   ] as const);
+  const here = $derived(links.find((l) => l.id === current)?.label ?? '');
 </script>
 
-<a class="back" href="/admin/contests">Contest admin</a>
-<div class="head">
-  <h1 tabindex="-1">{title}</h1>
-  {#if state}<span class="state">{state}</span>{/if}
-</div>
-<nav class="sub" aria-label="Contest">
-  <ul>
-    {#each links as l (l.id)}
-      <li><a href={l.href} aria-current={current === l.id ? 'page' : undefined}>{l.label}</a></li>
-    {/each}
-  </ul>
-</nav>
+<PageHeader
+  {title}
+  crumbs={[{ label: 'Contest admin', href: '/admin/contests' }, { label: title, href: base }, { label: here }]}
+  state={state ? { word: stateWord(state), kind: state } : null}
+  {actions}
+>
+  {#snippet nav()}
+    <nav class="sub" aria-label="Contest">
+      <ul>
+        {#each links as l (l.id)}
+          <li><a href={l.href} aria-current={current === l.id ? 'page' : undefined}>{l.label}</a></li>
+        {/each}
+      </ul>
+    </nav>
+  {/snippet}
+</PageHeader>
 
 <style>
-  .back {
-    display: inline-block;
-    margin-bottom: var(--space-2);
-    border-radius: var(--radius);
-    font-size: var(--fs-0);
-    font-weight: 500;
-  }
-
-  .head {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: baseline;
-    gap: var(--space-2) var(--space-4);
-  }
-
-  h1 {
-    font-size: var(--fs-4);
-    overflow-wrap: anywhere;
-  }
-
-  .state {
-    color: var(--ink-muted);
-    font-weight: 600;
-  }
-
   .sub {
-    margin-top: var(--space-4);
     border-bottom: var(--rule) solid var(--line);
   }
 
@@ -81,6 +66,7 @@
     align-items: center;
     min-height: var(--control-h-touch);
     padding-inline: var(--space-3);
+    border-bottom: calc(2 * var(--rule)) solid transparent;
     border-radius: var(--radius) var(--radius) 0 0;
     color: var(--ink-muted);
     font-weight: 500;
@@ -91,19 +77,24 @@
     color: var(--ink);
   }
 
+  /* State is a shape (F9): a border, which forced-colours mode keeps. */
   .sub a[aria-current='page'] {
+    border-bottom-color: var(--act);
     color: var(--ink);
-    box-shadow: inset 0 calc(-2 * var(--rule)) 0 var(--act);
   }
 
-  .sub a[aria-current='page']:focus-visible {
-    box-shadow:
-      inset 0 calc(-2 * var(--rule)) 0 var(--act),
-      var(--focus);
+  @media (forced-colors: active) {
+    .sub a {
+      border-bottom-color: Canvas;
+    }
+
+    .sub a[aria-current='page'] {
+      border-bottom-color: Highlight;
+    }
   }
 
   /* Phones: four tabs fit at 375 px with narrower padding. */
-  @media (max-width: 767px) {
+  @media (width < 768px) {
     .sub a {
       padding-inline: var(--space-2);
     }

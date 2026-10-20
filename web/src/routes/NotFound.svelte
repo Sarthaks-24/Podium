@@ -3,13 +3,15 @@
   not exist and links to the contest list. Takes no props.
 -->
 <script lang="ts">
+  import PageHeader from '../components/PageHeader.svelte';
   import { onMount } from 'svelte';
   import { setTitle } from '../lib/head';
+  import { routeTitle } from '../lib/routing';
 
-  onMount(() => setTitle('Page not found'));
+  onMount(() => setTitle(routeTitle('not-found')));
 </script>
 
-<h1 tabindex="-1">Page not found</h1>
+<PageHeader title="Page not found" />
 <p class="text">That page does not exist. <a href="/">Go to your contests.</a></p>
 
 <style>

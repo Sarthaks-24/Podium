@@ -13,17 +13,20 @@
   that they leak by design. Every view carries IntegrityNote. Props: `id`.
 -->
 <script lang="ts">
+  import PageState from '../components/PageState.svelte';
   import { onMount } from 'svelte';
   import { SvelteSet } from 'svelte/reactivity';
   import ContestAdminNav from '../components/ContestAdminNav.svelte';
+  import PageHeader from '../components/PageHeader.svelte';
   import IntegrityNote from '../components/IntegrityNote.svelte';
   import OpenCaseDialog from '../components/OpenCaseDialog.svelte';
   import SignalTable from '../components/SignalTable.svelte';
   import { ApiError, getJSON, sendJSON } from '../lib/api';
-  import { stateWord, type AdminContest } from '../lib/contests';
+  import { type AdminContest } from '../lib/contests';
   import { keepHeadingFocus } from '../lib/focus';
   import { formatDateTime } from '../lib/format';
   import { setTitle } from '../lib/head';
+  import { routeTitle } from '../lib/routing';
   import {
     KINDS,
     STRENGTHS,
@@ -105,7 +108,7 @@
       const c = await getJSON<AdminContest>(base);
       const restore = keepHeadingFocus();
       contest = c;
-      setTitle(c.title, 'Integrity');
+      setTitle(c.title, routeTitle('contest-integrity'));
       loadState = 'ready';
       void restore();
     } catch (e) {
@@ -203,7 +206,7 @@
   }
 
   onMount(() => {
-    setTitle('Integrity');
+    setTitle(routeTitle('contest-integrity'));
     if (!isOrganiser) loadState = 'forbidden';
     else void load();
     const stop = useTicker();
@@ -216,21 +219,22 @@
 </script>
 
 {#if loadState === 'forbidden'}
-  <h1 tabindex="-1">Integrity</h1>
-  <p class="lead">Only owners and admins can review integrity. Ask an owner if you need access.</p>
+  <PageHeader title="Integrity" />
+  <PageState kind="forbidden" message="Only owners and admins can review integrity." />
 {:else if loadState !== 'ready' || !contest}
-  <a class="back" href="/admin/contests">Contest admin</a>
-  <h1 tabindex="-1">{loadState === 'missing' ? 'Contest not found' : 'Integrity'}</h1>
+  <PageHeader
+    title={loadState === 'missing' ? 'Contest not found' : 'Integrity'}
+    crumbs={[{ label: 'Contest admin', href: '/admin/contests' }, { label: loadState === 'missing' ? 'Contest not found' : 'Integrity' }]}
+  />
   {#if loadState === 'loading'}
-    <p class="lead muted" role="status">Loading the contest</p>
+    <PageState kind="loading" message="Loading the contest" />
   {:else if loadState === 'missing'}
-    <p class="lead">There is no contest with that number. <a href="/admin/contests">Go back to the list.</a></p>
+    <PageState kind="missing" message="There is no contest with that number." parent={{ href: '/admin/contests', label: 'Go back to the list.' }} />
   {:else}
-    <div class="banner banner-error lead" role="alert"><p>{loadError}</p></div>
-    <p class="retry"><button type="button" class="btn btn-secondary" onclick={load}>Try again</button></p>
+    <PageState kind="error" message={loadError} onretry={load} />
   {/if}
 {:else}
-  <ContestAdminNav {id} title={contest.title} state={stateWord(contest.state)} current="integrity" />
+  <ContestAdminNav {id} title={contest.title} state={contest.state} current="integrity" />
 
   <div class="section">
     <IntegrityNote />
@@ -356,7 +360,7 @@
       <p class="muted">No cases yet. Choose signals above and open a case when one deserves a closer look.</p>
     {:else}
       <div class="table-wrap case-list">
-        <table class="table">
+        <table class="table table-stack">
           <caption class="visually-hidden">Cases for {contest.title}</caption>
           <thead>
             <tr>
@@ -369,7 +373,7 @@
           <tbody>
             {#each cases as c (c.id)}
               <tr>
-                <th scope="row" class="case-title"><a href="/admin/integrity/cases/{c.id}">{c.title}</a></th>
+                <th scope="row" class="case-title"><a class="row-link" href="/admin/integrity/cases/{c.id}">{c.title}</a></th>
                 <td class="case-who">{caseStudents(c)}</td>
                 <td class="case-state">{caseStateWord(c.state)}</td>
                 <td class="num case-when">{formatDateTime(c.updated_at)}</td>
@@ -393,23 +397,6 @@
 {/if}
 
 <style>
-  .back {
-    display: inline-block;
-    margin-bottom: var(--space-2);
-    border-radius: var(--radius);
-    font-size: var(--fs-0);
-    font-weight: 500;
-  }
-
-  .lead {
-    margin-top: var(--space-4);
-    max-width: 40rem;
-  }
-
-  .retry {
-    margin-top: var(--space-4);
-  }
-
   .section {
     display: grid;
     gap: var(--space-3);
@@ -497,35 +484,13 @@
   }
 
   /* Phones: the case title, then the students, then state and time. */
-  @media (max-width: 767px) {
-    .case-list thead {
-      position: absolute;
-      width: 1px;
-      height: 1px;
-      overflow: hidden;
-      clip: rect(0, 0, 0, 0);
-    }
-
+  @media (width < 768px) {
     .case-list tbody tr {
-      display: grid;
       grid-template-columns: minmax(0, 1fr) auto;
       grid-template-areas:
         'title title'
         'who who'
         'state when';
-      gap: var(--space-1) var(--space-3);
-      padding: var(--space-3);
-      border-bottom: var(--rule) solid var(--line);
-    }
-
-    .case-list tbody tr:last-child {
-      border-bottom: 0;
-    }
-
-    .case-list tbody :is(th, td) {
-      height: auto;
-      padding: 0;
-      border: 0;
     }
 
     .case-title {

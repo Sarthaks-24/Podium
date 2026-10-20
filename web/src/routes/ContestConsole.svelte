@@ -27,9 +27,11 @@
   Students see a short explanation instead. Props: `id`.
 -->
 <script lang="ts">
+  import PageState from '../components/PageState.svelte';
   import { onDestroy, onMount } from 'svelte';
   import ConfirmDialog from '../components/ConfirmDialog.svelte';
   import ContestAdminNav from '../components/ContestAdminNav.svelte';
+  import PageHeader from '../components/PageHeader.svelte';
   import Icon from '../components/Icon.svelte';
   import Markdown from '../components/Markdown.svelte';
   import { ApiError, getJSON, sendJSON } from '../lib/api';
@@ -41,7 +43,6 @@
     auditSummary,
     fillTemplate,
     formatCountdown,
-    stateWord,
     type AdminContest,
     type Announcement,
     type AuditEntry,
@@ -52,6 +53,7 @@
   import { keepHeadingFocus } from '../lib/focus';
   import { countOf } from '../lib/format';
   import { setTitle } from '../lib/head';
+  import { routeTitle } from '../lib/routing';
   import { verdictLabel } from '../lib/problems';
   import { session } from '../lib/session.svelte';
   import type { Standings } from '../lib/standings';
@@ -150,7 +152,7 @@
       refreshTicker();
       const restore = keepHeadingFocus();
       contest = c;
-      setTitle(c.title, 'Console');
+      setTitle(c.title, routeTitle('contest-console'));
       loadState = 'ready';
       void restore();
       // Every action here reloads the contest, so the log follows it.
@@ -412,7 +414,7 @@
   let timer: ReturnType<typeof setInterval> | undefined;
 
   onMount(() => {
-    setTitle('Console');
+    setTitle(routeTitle('contest-console'));
     if (!isOrganiser) {
       loadState = 'forbidden';
       return;
@@ -448,7 +450,7 @@
   // The tab title carries the unanswered count, so a waiting question shows from another tab.
   $effect(() => {
     if (!contest) return;
-    setTitle(unanswered > 0 ? `(${unanswered}) ${contest.title}` : contest.title, 'Console');
+    setTitle(unanswered > 0 ? `(${unanswered}) ${contest.title}` : contest.title, routeTitle('contest-console'));
   });
 
   onDestroy(() => {
@@ -458,21 +460,22 @@
 </script>
 
 {#if loadState === 'forbidden'}
-  <h1 tabindex="-1">Console</h1>
-  <p class="lead">Only admins can run contests. Ask an owner if you need access.</p>
+  <PageHeader title="Console" />
+  <PageState kind="forbidden" message="Only admins can run contests." />
 {:else if loadState !== 'ready' || !contest}
-  <a class="back" href="/admin/contests">Contest admin</a>
-  <h1 tabindex="-1">{loadState === 'missing' ? 'Contest not found' : 'Console'}</h1>
+  <PageHeader
+    title={loadState === 'missing' ? 'Contest not found' : 'Console'}
+    crumbs={[{ label: 'Contest admin', href: '/admin/contests' }, { label: loadState === 'missing' ? 'Contest not found' : 'Console' }]}
+  />
   {#if loadState === 'loading'}
-    <p class="lead muted" role="status">Loading the contest</p>
+    <PageState kind="loading" message="Loading the contest" />
   {:else if loadState === 'missing'}
-    <p class="lead">There is no contest with that number. <a href="/admin/contests">Go back to the list.</a></p>
+    <PageState kind="missing" message="There is no contest with that number." parent={{ href: '/admin/contests', label: 'Go back to the list.' }} />
   {:else}
-    <div class="banner banner-error lead" role="alert"><p>{loadError}</p></div>
-    <p class="retry"><button type="button" class="btn btn-secondary" onclick={() => loadContest()}>Try again</button></p>
+    <PageState kind="error" message={loadError} onretry={() => loadContest()} />
   {/if}
 {:else}
-  <ContestAdminNav {id} title={contest.title} state={stateWord(contest.state)} current="console" />
+  <ContestAdminNav {id} title={contest.title} state={contest.state} current="console" />
 
   <div class="status">
     <p>
@@ -587,7 +590,7 @@
           <p class="muted">No submissions match. They appear here as students submit.</p>
         {:else}
           <div class="table-wrap feed">
-            <table class="table">
+            <table class="table table-dense table-stack">
               <thead>
                 <tr>
                   <th scope="col">Time</th>
@@ -749,14 +752,6 @@
 {/if}
 
 <style>
-  .back {
-    display: inline-block;
-    margin-bottom: var(--space-2);
-    border-radius: var(--radius);
-    font-size: var(--fs-0);
-    font-weight: 500;
-  }
-
   .lead {
     margin-top: var(--space-4);
     max-width: 40rem;
@@ -849,10 +844,6 @@
     height: var(--space-4);
     margin: 0;
     accent-color: var(--act);
-  }
-
-  .feed .table {
-    font-size: var(--fs-0);
   }
 
   .who {
@@ -983,31 +974,14 @@
   }
 
   /* Phones: each feed row is time, student and problem, then verdict, score and Rejudge. */
-  @media (max-width: 767px) {
-    .feed thead {
-      position: absolute;
-      width: 1px;
-      height: 1px;
-      overflow: hidden;
-      clip: rect(0, 0, 0, 0);
-    }
-
+  @media (width < 768px) {
     .feed tbody tr {
-      display: grid;
       grid-template-columns: auto minmax(0, 1fr) auto;
       grid-template-areas:
         'when who plabel'
         'verdict fscore act';
       align-items: center;
-      gap: var(--space-1) var(--space-3);
       padding: var(--space-2) var(--space-3);
-      border-bottom: var(--rule) solid var(--line);
-    }
-
-    .feed tbody :is(th, td) {
-      height: auto;
-      padding: 0;
-      border: 0;
     }
 
     .feed .when {

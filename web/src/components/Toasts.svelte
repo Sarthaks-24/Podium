@@ -82,8 +82,11 @@
     color: inherit;
   }
 
+  /* Hover is a shape, not a fill, so the text keeps its 4.5:1 (7:1 in
+     the high-contrast themes) on the toast's own tint (X5). */
   .dismiss:hover {
-    background: color-mix(in srgb, var(--bad) 12%, transparent);
+    border-color: var(--bad);
+    background: transparent;
   }
 
   @keyframes toast-in {

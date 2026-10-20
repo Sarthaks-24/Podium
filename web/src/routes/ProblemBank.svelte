@@ -17,11 +17,14 @@
   Takes no props.
 -->
 <script lang="ts">
+  import PageState from '../components/PageState.svelte';
+  import PageHeader from '../components/PageHeader.svelte';
   import { onMount, tick, untrack } from 'svelte';
   import { isAIDraft, withoutAIDraft } from '../lib/ai';
   import { ApiError, getJSON, sendBody, sendJSON } from '../lib/api';
   import { formatDateTime } from '../lib/format';
   import { setTitle } from '../lib/head';
+  import { routeTitle } from '../lib/routing';
   import { DIFFICULTIES, slugify, statusWord, type Problem, type ProblemSummary } from '../lib/problems';
   import { navigate, router } from '../lib/router.svelte';
   import { session } from '../lib/session.svelte';
@@ -97,7 +100,7 @@
     }
   }
 
-  onMount(() => setTitle('Problem bank'));
+  onMount(() => setTitle(routeTitle('problems')));
 
   $effect(() => {
     const archived = showArchived;
@@ -198,10 +201,10 @@
   }
 </script>
 
-<h1 tabindex="-1">Problem bank</h1>
+<PageHeader title="Problem bank" />
 
 {#if loadState === 'forbidden'}
-  <p class="lead">Only admins can manage problems. Ask an owner if you need access.</p>
+  <PageState kind="forbidden" message="Only admins can manage problems." />
 {:else}
   <div class="toolbar">
     <div class="buttons">
@@ -297,14 +300,11 @@
   {/if}
 
   {#if loadState === 'loading'}
-    <p class="lead muted" role="status">Loading problems</p>
+    <PageState kind="loading" message="Loading problems" />
   {:else if loadState === 'error'}
-    <div class="banner banner-error lead" role="alert">
-      <p>{loadError}</p>
-    </div>
-    <p class="retry"><button type="button" class="btn btn-secondary" onclick={() => load(showArchived)}>Try again</button></p>
+    <PageState kind="error" message={loadError} onretry={() => load(showArchived)} />
   {:else if problems.length === 0}
-    <p class="lead muted">No problems yet. Import a pack, create one, or draft one with AI.</p>
+    <PageState kind="empty" message="No problems yet. Import a pack, create one, or draft one with AI." />
   {:else}
     {#if problems.length > FILTER_FROM}
       <div class="field filter">
@@ -316,7 +316,7 @@
       <p class="lead muted" role="status">No problem matches "{filter.trim()}". Try another word.</p>
     {:else}
       <div class="table-wrap list">
-        <table class="table">
+        <table class="table table-stack">
           <thead>
             <tr>
               <th scope="col">Title</th>
@@ -334,7 +334,7 @@
               {@const name = p.title.trim() !== '' ? p.title : p.slug}
               <tr>
                 <th scope="row" class="title">
-                  <a href="/admin/problems/{p.id}">{name}</a>{#if isAIDraft(p.tags)}<span class="ai-draft">AI draft</span>{/if}
+                  <a class="row-link" href="/admin/problems/{p.id}">{name}</a>{#if isAIDraft(p.tags)}<span class="ai-draft">AI draft</span>{/if}
                 </th>
                 <td class="difficulty">{difficultyLabel(p.difficulty)}</td>
                 <td class="tags">{withoutAIDraft(p.tags).join(', ')}</td>
@@ -356,10 +356,6 @@
   .lead {
     margin-top: var(--space-4);
     max-width: 40rem;
-  }
-
-  .retry {
-    margin-top: var(--space-4);
   }
 
   .toolbar {
@@ -518,35 +514,13 @@
   }
 
   /* Phones: each row is the title and status, then tests and the date. */
-  @media (max-width: 767px) {
-    .list thead {
-      position: absolute;
-      width: 1px;
-      height: 1px;
-      overflow: hidden;
-      clip: rect(0, 0, 0, 0);
-    }
-
+  @media (width < 768px) {
     .list tbody tr {
-      display: grid;
       grid-template-columns: auto minmax(0, 1fr) auto;
       grid-template-areas:
         'title title state'
         'tests updated try';
       align-items: baseline;
-      gap: var(--space-1) var(--space-3);
-      padding: var(--space-3);
-      border-bottom: var(--rule) solid var(--line);
-    }
-
-    .list tbody tr:last-child {
-      border-bottom: 0;
-    }
-
-    .list tbody :is(th, td) {
-      height: auto;
-      padding: 0;
-      border: 0;
     }
 
     .title {

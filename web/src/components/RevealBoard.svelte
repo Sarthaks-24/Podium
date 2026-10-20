@@ -328,6 +328,7 @@
     align-items: center;
     min-width: max-content;
     border-bottom: var(--rule) solid var(--line);
+    border-left: var(--space-1) solid transparent;
     background: var(--surface);
     font-size: var(--fs-3);
   }
@@ -390,8 +391,21 @@
     color: var(--ink-muted);
   }
 
+  /* The next row to reveal is marked by a border, not an inset shadow (F9),
+     so the mark survives forced colours. Every row carries the border,
+     transparent, so the columns line up. */
   .row.next-row {
-    box-shadow: inset 4px 0 0 var(--act);
+    border-left-color: var(--act);
+  }
+
+  @media (forced-colors: active) {
+    .row {
+      border-left-color: Canvas;
+    }
+
+    .row.next-row {
+      border-left-color: Highlight;
+    }
   }
 
   /* Still to come: muted names, pending cells on the waiting tint. */

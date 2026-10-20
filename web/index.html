@@ -3,7 +3,14 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <!--
+      The server replaces everything between the two podium:head markers per
+      route (D100, P3): public routes get their title, description, canonical
+      and robots index; every other route keeps this default-closed noindex.
+    -->
+    <!--podium:head-->
     <meta name="robots" content="noindex" />
+    <!--/podium:head-->
     <meta name="color-scheme" content="light dark" />
     <!-- Browser chrome colour: matches --paper in src/styles/tokens.css (light and dark). -->
     <meta name="theme-color" content="#F3F4F1" media="(prefers-color-scheme: light)" />
@@ -16,7 +23,10 @@
     <script src="/theme-init.js"></script>
   </head>
   <body>
-    <div id="app"></div>
+    <div id="app">
+      <!-- Fallback until the app starts (main.ts clears it). The server fills the podium:body block for pages that must read without JavaScript. -->
+      <main><!--podium:body--><!--/podium:body--></main>
+    </div>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

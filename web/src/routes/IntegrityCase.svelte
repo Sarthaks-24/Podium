@@ -20,6 +20,8 @@
   Props: `id` (the case).
 -->
 <script lang="ts">
+  import PageState from '../components/PageState.svelte';
+  import PageHeader from '../components/PageHeader.svelte';
   import { onDestroy, onMount, tick } from 'svelte';
   import ConfirmDialog from '../components/ConfirmDialog.svelte';
   import IntegrityNote from '../components/IntegrityNote.svelte';
@@ -29,6 +31,7 @@
   import { keepHeadingFocus } from '../lib/focus';
   import { formatDateTime } from '../lib/format';
   import { setTitle } from '../lib/head';
+  import { routeTitle } from '../lib/routing';
   import {
     MIN_NOTE,
     RESPONSE_DAYS,
@@ -125,7 +128,7 @@
       setClock(c.server_now);
       kase = c;
       stale = false;
-      setTitle(c.title, 'Case');
+      setTitle(c.title, routeTitle('integrity-case'));
       loadState = 'ready';
       void restore();
       void loadContext(c.contest_id);
@@ -238,7 +241,7 @@
   }
 
   onMount(() => {
-    setTitle('Case');
+    setTitle(routeTitle('integrity-case'));
     if (!isOrganiser) loadState = 'forbidden';
     else void load();
     timer = setInterval(() => (now = Date.now() + skew), 30_000);
@@ -248,25 +251,31 @@
 </script>
 
 {#if loadState === 'forbidden'}
-  <h1 tabindex="-1">Case</h1>
-  <p class="lead">Only owners and admins can review integrity. Ask an owner if you need access.</p>
+  <PageHeader title="Case" />
+  <PageState kind="forbidden" message="Only owners and admins can review integrity." />
 {:else if loadState !== 'ready' || !kase}
-  <a class="back" href="/admin/contests">Contest admin</a>
-  <h1 tabindex="-1">{loadState === 'missing' ? 'Case not found' : 'Case'}</h1>
+  <PageHeader
+    title={loadState === 'missing' ? 'Case not found' : 'Case'}
+    crumbs={[{ label: 'Contest admin', href: '/admin/contests' }, { label: loadState === 'missing' ? 'Case not found' : 'Case' }]}
+  />
   {#if loadState === 'loading'}
-    <p class="lead muted" role="status">Loading the case</p>
+    <PageState kind="loading" message="Loading the case" />
   {:else if loadState === 'missing'}
-    <p class="lead">There is no case with that number, or you cannot review its contest. <a href="/admin/contests">Go to the contest list.</a></p>
+    <PageState kind="missing" message="There is no case with that number, or you cannot review its contest." parent={{ href: '/admin/contests', label: 'Go to the contest list.' }} />
   {:else}
-    <div class="banner banner-error lead" role="alert"><p>{loadError}</p></div>
-    <p class="retry"><button type="button" class="btn btn-secondary" onclick={load}>Try again</button></p>
+    <PageState kind="error" message={loadError} onretry={load} />
   {/if}
 {:else}
-  <a class="back" href={back}>{contestTitle ? `Integrity for ${contestTitle}` : 'Integrity'}</a>
-  <div class="head">
-    <h1 tabindex="-1">{kase.title}</h1>
-    <span class="state state-{kase.state}">{caseStateWord(kase.state)}</span>
-  </div>
+  <PageHeader
+    title={kase.title}
+    crumbs={[
+      { label: 'Contest admin', href: '/admin/contests' },
+      { label: contestTitle || 'Contest', href: `/admin/contests/${kase.contest_id}` },
+      { label: 'Integrity', href: back },
+      { label: kase.title },
+    ]}
+    state={{ word: caseStateWord(kase.state), kind: kase.state }}
+  />
   <p class="muted small dates">Opened <span class="mono">{formatDateTime(kase.created_at)}</span>, last changed <span class="mono">{formatDateTime(kase.updated_at)}</span>.</p>
 
   <div class="note"><IntegrityNote /></div>
@@ -274,7 +283,7 @@
   <section class="section" aria-labelledby="students-title">
     <h2 id="students-title">Students</h2>
     <div class="table-wrap students">
-      <table class="table">
+      <table class="table table-dense table-stack">
         <caption class="visually-hidden">Students in this case</caption>
         <thead>
           <tr>
@@ -407,40 +416,6 @@
 {/if}
 
 <style>
-  .back {
-    display: inline-block;
-    margin-bottom: var(--space-2);
-    border-radius: var(--radius);
-    font-size: var(--fs-0);
-    font-weight: 500;
-  }
-
-  .head {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: baseline;
-    gap: var(--space-2) var(--space-4);
-  }
-
-  h1 {
-    font-size: var(--fs-4);
-    overflow-wrap: anywhere;
-  }
-
-  .state {
-    color: var(--ink-muted);
-    font-weight: 600;
-  }
-
-  .lead {
-    margin-top: var(--space-4);
-    max-width: 40rem;
-  }
-
-  .retry {
-    margin-top: var(--space-4);
-  }
-
   .dates {
     margin-top: var(--space-2);
   }
@@ -468,10 +443,6 @@
     max-width: 60ch;
     white-space: pre-wrap;
     overflow-wrap: anywhere;
-  }
-
-  .students .table {
-    font-size: var(--fs-0);
   }
 
   .s-name {
@@ -554,31 +525,10 @@
   }
 
   /* Phones: name and share state on one line, the explanation below. */
-  @media (max-width: 767px) {
-    .students thead {
-      position: absolute;
-      width: 1px;
-      height: 1px;
-      overflow: hidden;
-      clip: rect(0, 0, 0, 0);
-    }
-
+  @media (width < 768px) {
     .students tbody tr {
-      display: grid;
       grid-template-columns: minmax(0, 1fr);
       gap: var(--space-1);
-      padding: var(--space-3);
-      border-bottom: var(--rule) solid var(--line);
-    }
-
-    .students tbody tr:last-child {
-      border-bottom: 0;
-    }
-
-    .students tbody :is(th, td) {
-      height: auto;
-      padding: 0;
-      border: 0;
     }
 
     .s-shared {

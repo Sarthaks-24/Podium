@@ -41,17 +41,46 @@
   background: color-mix(in srgb, var(--act) 86%, var(--ink));
 }
 
+/* Pressed (T6): one step darker than hover. */
+.btn-primary:active:not(:disabled) {
+  background: color-mix(in srgb, var(--act) 76%, var(--ink));
+}
+
 .btn-secondary {
   border-color: var(--line-strong);
   background: var(--surface);
 }
 
+/* Hover shows on the fill as well as the border (T7). */
 .btn-secondary:hover {
   border-color: var(--ink-muted);
+  background: color-mix(in srgb, var(--ink) 4%, var(--surface));
 }
 
 .btn-quiet:hover {
   background: var(--surface-2);
+}
+
+.btn-secondary:active:not(:disabled),
+.btn-quiet:active:not(:disabled) {
+  background: var(--surface-2);
+}
+
+/* A button that reads as a link inside a line of text (T16). */
+.btn-inline {
+  min-height: auto;
+  padding-inline: 0;
+}
+
+.btn-inline:hover {
+  background: transparent;
+  text-decoration: underline;
+}
+
+/* An icon beside a button's words takes the words' size. */
+.btn .icon {
+  width: 1.125em;
+  height: 1.125em;
 }
 
 .btn-danger {
@@ -186,10 +215,13 @@ textarea.input {
   vertical-align: middle;
 }
 
+/* Headers recede so the data reads first (T8). Tabular figures stay on
+   .num only: on the whole table they would also space Grotesk's commas. */
 .table thead th {
   background: var(--surface-2);
+  color: var(--ink-muted);
   font-size: var(--fs-0);
-  font-weight: 600;
+  font-weight: 500;
   white-space: nowrap;
 }
 
@@ -204,10 +236,27 @@ textarea.input {
   border-bottom: 0;
 }
 
+/* Rows you can act on show a quiet hover (T10). */
+.table tbody tr:has(a, button):hover > * {
+  background: color-mix(in srgb, var(--surface-2) 50%, var(--surface));
+}
+
+/* Mono digits one optical step down, to match the Grotesk beside them (T11). */
 .table .num {
   font-family: var(--font-mono);
+  font-size: var(--mono-optical);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
+}
+
+/* Dense tables (T9): logs, feeds, signal lists and standings. Lists of
+   things you open keep the default size. */
+.table-dense {
+  font-size: var(--fs-0);
+}
+
+.table-dense tbody :is(th, td) {
+  height: calc(var(--control-h) + 2 * var(--space-1));
 }
 
 /* Banners: a full-width message with a 1 px rule. */
@@ -238,4 +287,134 @@ textarea.input {
 /* Muted supporting text. */
 .muted {
   color: var(--ink-muted);
+}
+
+/* One back link above a page title (T13), tall enough to tap (X4). */
+.back {
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--control-h);
+  border-radius: var(--radius);
+  font-size: var(--fs-0);
+  font-weight: 500;
+}
+
+/* One state word (T14): Live and Frozen in the action colour, Upcoming
+   and Practice in ink, Ended and the rest muted. */
+.state-word {
+  color: var(--ink-muted);
+  white-space: nowrap;
+}
+
+.state-word:is([data-state='live'], [data-state='frozen']) {
+  color: var(--act);
+  font-weight: 600;
+}
+
+.state-word:is([data-state='upcoming'], [data-state='practice']) {
+  color: var(--ink);
+}
+
+/* Section rhythm (T15): every h2 section after the first gets the section
+   gap and a rule above it. */
+.page-section + .page-section {
+  margin-top: var(--section-gap);
+  padding-top: var(--space-6);
+  border-top: var(--rule) solid var(--line);
+}
+
+/* Dialogs (F6): one shell for every native <dialog>. The scrim dims the
+   page in light and dark themes alike; the head with the title and close
+   button stays in view while the body scrolls. On phones the dialog sits
+   at the top, so the on-screen keyboard never covers its fields. */
+.dialog {
+  width: min(var(--measure-narrow), calc(100vw - 2 * var(--gutter)));
+  max-height: calc(100dvh - 2 * var(--space-4));
+  margin: var(--space-4) auto auto;
+  padding: var(--space-5);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  /* A field reached with Tab scrolls clear of the sticky head. */
+  scroll-padding-top: calc(var(--control-h-touch) + 2 * var(--space-5));
+  border: var(--rule) solid var(--line-strong);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--ink);
+  box-shadow: var(--shadow-menu);
+}
+
+/* A question with two buttons. */
+.dialog-small {
+  width: min(30rem, calc(100vw - 2 * var(--gutter)));
+}
+
+.dialog::backdrop {
+  background: var(--scrim);
+}
+
+.dialog-head {
+  position: sticky;
+  /* Sticky offsets count from the dialog's content edge, so the head
+     reaches back over the padding to sit flush with the top. */
+  top: calc(-1 * var(--space-5));
+  z-index: var(--z-sticky);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin: calc(-1 * var(--space-5)) calc(-1 * var(--space-5)) 0;
+  padding: var(--space-5) var(--space-5) var(--space-3);
+  background: var(--surface);
+}
+
+@media (min-width: 768px) {
+  .dialog {
+    max-height: calc(100dvh - 2 * var(--space-5));
+    margin: auto;
+  }
+}
+
+/* Stacked rows on phones (F7): add .table-stack to a .table, then give its
+   cells grid areas in the component. Under 768 px the header is hidden
+   (kept for screen readers), each row becomes a padded grid and the cells
+   lose their own padding and rules. A link with .row-link stretches over
+   its whole row, so the row is one large target; other controls in the
+   row stay above it. */
+@media (width < 768px) {
+  .table-stack thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+  }
+
+  .table-stack tbody tr {
+    position: relative;
+    display: grid;
+    gap: var(--space-1) var(--space-3);
+    padding: var(--space-3);
+    border-bottom: var(--rule) solid var(--line);
+  }
+
+  .table-stack tbody tr:last-child {
+    border-bottom: 0;
+  }
+
+  .table-stack tbody :is(th, td) {
+    height: auto;
+    padding: 0;
+    border: 0;
+  }
+
+  .table-stack .row-link::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+  }
+
+  .table-stack tbody :is(a, button, input, select, label):not(.row-link) {
+    position: relative;
+    z-index: 1;
+  }
 }

@@ -27,6 +27,8 @@
   Props: `slug`, and `label` (the problem letter from the address, or "").
 -->
 <script lang="ts">
+  import PageState from '../components/PageState.svelte';
+  import PageHeader from '../components/PageHeader.svelte';
   import { onDestroy, onMount, untrack } from 'svelte';
   import ContestBanner from '../components/ContestBanner.svelte';
   import ContestClock from '../components/ContestClock.svelte';
@@ -56,6 +58,7 @@
   import { keepHeadingFocus } from '../lib/focus';
   import { formatDateTime } from '../lib/format';
   import { setTitle } from '../lib/head';
+  import { routeTitle } from '../lib/routing';
   import { navigate } from '../lib/router.svelte';
   import { adjacentLabel, isPlainKey, isTypingTarget } from '../lib/shortcuts';
   import { session } from '../lib/session.svelte';
@@ -162,14 +165,14 @@
       if (e instanceof ApiError && e.status === 403) {
         loadError = e.message;
         loadState = 'forbidden';
-        setTitle('Contest');
+        setTitle(routeTitle('contest'));
       } else if (e instanceof ApiError && e.status === 404) {
         loadState = 'missing';
         setTitle('Contest not found');
       } else {
         loadError = e instanceof ApiError ? e.message : 'Something went wrong. Try again in a moment.';
         loadState = 'error';
-        setTitle('Contest');
+        setTitle(routeTitle('contest'));
       }
     }
   }
@@ -364,17 +367,15 @@
 {/snippet}
 
 {#if loadState !== 'ready' || !contest}
-  <a class="back" href="/">Your contests</a>
-  <h1 tabindex="-1">{loadState === 'missing' ? 'Contest not found' : 'Contest'}</h1>
+  <PageHeader title={loadState === 'missing' ? 'Contest not found' : 'Contest'} back={{ href: '/', label: 'Your contests' }} />
   {#if loadState === 'loading'}
-    <p class="lead muted" role="status">Loading the contest</p>
+    <PageState kind="loading" message="Loading the contest" />
   {:else if loadState === 'missing'}
-    <p class="lead">There is no contest at this address. <a href="/">Go to your contests.</a></p>
+    <PageState kind="missing" message="There is no contest at this address." parent={{ href: '/', label: 'Go to your contests.' }} />
   {:else if loadState === 'forbidden'}
     <p class="lead">{loadError}</p>
   {:else if loadState === 'error'}
-    <div class="banner banner-error lead" role="alert"><p>{loadError}</p></div>
-    <p class="retry"><button type="button" class="btn btn-secondary" onclick={() => load()}>Try again</button></p>
+    <PageState kind="error" message={loadError} onretry={() => load()} />
   {/if}
 {:else if showWorkspace && currentProblem}
   {#key `${current}:${phase}`}
@@ -411,12 +412,12 @@
   />
 {:else if phase === 'upcoming' || phase === 'ready'}
   <div class="page">
-    <a class="back" href="/">Your contests</a>
-    <h1 tabindex="-1">{contest.title}</h1>
-    <p class="meta">
-      {formatDateTime(contest.starts_at)}, {lengthText(contest)}, {contest.problem_count}
-      {contest.problem_count === 1 ? 'problem' : 'problems'}. <span class="state">{stateWord(contest.state)}</span>
-    </p>
+    <PageHeader title={contest.title} back={{ href: '/', label: 'Your contests' }}>
+      <p class="meta">
+        {formatDateTime(contest.starts_at)}, {lengthText(contest)}, {contest.problem_count}
+        {contest.problem_count === 1 ? 'problem' : 'problems'}. <span class="state">{stateWord(contest.state)}</span>
+      </p>
+    </PageHeader>
 
     {#if phase === 'upcoming'}
       <p class="countdown">Starts in <span class="mono big" role="timer">{contest.starts_at - ticker.now >= 86_400_000 ? formatSpan(contest.starts_at - ticker.now) : formatCountdown(contest.starts_at - ticker.now)}</span></p>
@@ -466,13 +467,13 @@
   </div>
 {:else}
   <div class="page">
-    <a class="back" href="/">Your contests</a>
-    <h1 tabindex="-1">{contest.title}</h1>
-    <p class="meta">
-      {#if contest.my_window && hasAccepted(contest)}Your time ended at {formatDateTime(contest.my_window.ends_at)}.{:else}Ended
-        {formatDateTime(contest.ends_at)}.{/if}
-      {#if contest.state !== 'ended'}<span class="state">{stateWord(contest.state)}</span>{/if}
-    </p>
+    <PageHeader title={contest.title} back={{ href: '/', label: 'Your contests' }}>
+      <p class="meta">
+        {#if contest.my_window && hasAccepted(contest)}Your time ended at {formatDateTime(contest.my_window.ends_at)}.{:else}Ended
+          {formatDateTime(contest.ends_at)}.{/if}
+        {#if contest.state !== 'ended'}<span class="state">{stateWord(contest.state)}</span>{/if}
+      </p>
+    </PageHeader>
 
     {#if timeUp}<p class="time-up" role="status">Time is up. Your submissions are saved.</p>{/if}
 
@@ -564,20 +565,9 @@
     max-width: 48rem;
   }
 
-  .back {
-    width: fit-content;
-    border-radius: var(--radius);
-    font-size: var(--fs-0);
-    font-weight: 500;
-  }
-
   .lead {
     margin-top: var(--space-4);
     max-width: 40rem;
-  }
-
-  .retry {
-    margin-top: var(--space-4);
   }
 
   .meta {

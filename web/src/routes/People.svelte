@@ -14,11 +14,14 @@
   explanation instead. Takes no props.
 -->
 <script lang="ts">
+  import PageState from '../components/PageState.svelte';
+  import PageHeader from '../components/PageHeader.svelte';
   import { onMount, tick } from 'svelte';
   import ConfirmDialog from '../components/ConfirmDialog.svelte';
   import { ApiError, getJSON, sendJSON } from '../lib/api';
   import { countOf, formatDateTime, roleLabel } from '../lib/format';
   import { setTitle } from '../lib/head';
+  import { routeTitle } from '../lib/routing';
   import { session } from '../lib/session.svelte';
   import { showToast } from '../lib/toast.svelte';
 
@@ -172,7 +175,7 @@
   }
 
   onMount(() => {
-    setTitle('People');
+    setTitle(routeTitle('people'));
     if (isOwner) {
       load();
     } else {
@@ -329,17 +332,14 @@
   }
 </script>
 
-<h1 tabindex="-1">People</h1>
+<PageHeader title="People" />
 
 {#if loadState === 'forbidden'}
-  <p class="lead">Only owners can manage people. Ask an owner if you need access.</p>
+  <PageState kind="forbidden" message="Only owners can manage people." />
 {:else if loadState === 'loading'}
-  <p class="lead muted" role="status">Loading people</p>
+  <PageState kind="loading" message="Loading people" />
 {:else if loadState === 'error'}
-  <div class="banner banner-error lead" role="alert">
-    <p>{loadError}</p>
-  </div>
-  <p class="retry"><button type="button" class="btn btn-secondary" onclick={load}>Try again</button></p>
+  <PageState kind="error" message={loadError} onretry={load} />
 {:else}
   <section class="section" aria-labelledby="organisers-heading">
     <h2 id="organisers-heading" tabindex="-1" bind:this={organisersHeading}>Organisers</h2>
@@ -567,15 +567,6 @@
 />
 
 <style>
-  .lead {
-    margin-top: var(--space-4);
-    max-width: 40rem;
-  }
-
-  .retry {
-    margin-top: var(--space-4);
-  }
-
   .section {
     max-width: 64rem;
     margin-top: var(--space-7);
@@ -671,7 +662,7 @@
     margin-top: var(--space-2);
   }
 
-  @media (max-width: 767px) {
+  @media (width < 768px) {
     .form .grow {
       max-width: none;
     }

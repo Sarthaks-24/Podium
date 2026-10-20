@@ -97,7 +97,7 @@
 </script>
 
 <dialog bind:this={dialog} class="dialog" aria-labelledby="messages-title" oncancel={onCancel}>
-  <div class="head">
+  <div class="dialog-head">
     <h2 id="messages-title" tabindex="-1" bind:this={heading}>Messages</h2>
     <button type="button" class="btn btn-quiet btn-compact" aria-label="Close messages" title="Close" onclick={onclose}><Icon name="x" /></button>
   </div>
@@ -184,34 +184,6 @@
 </dialog>
 
 <style>
-  .dialog {
-    overscroll-behavior: contain;
-    width: min(40rem, calc(100vw - 2 * var(--gutter)));
-    max-height: calc(100dvh - 2 * var(--space-5));
-    margin: auto;
-    padding: var(--space-5);
-    border: var(--rule) solid var(--line-strong);
-    border-radius: var(--radius);
-    background: var(--surface);
-    color: var(--ink);
-    box-shadow: var(--shadow-menu);
-  }
-
-  .dialog::backdrop {
-    background: color-mix(in srgb, var(--ink) 40%, transparent);
-  }
-
-  .head {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: var(--space-3);
-  }
-
-  .head h2 {
-    font-size: var(--fs-3);
-  }
-
   .section,
   .ask {
     display: grid;

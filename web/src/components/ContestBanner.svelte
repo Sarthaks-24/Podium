@@ -95,7 +95,7 @@
     gap: var(--space-1);
   }
 
-  @media (max-width: 767px) {
+  @media (width < 768px) {
     .strip {
       grid-template-columns: auto minmax(0, 1fr);
     }

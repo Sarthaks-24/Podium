@@ -126,7 +126,8 @@
 
   /* The ring shows when the editor's text area has keyboard focus. */
   .host:focus-within {
-    box-shadow: inset 0 0 0 calc(2 * var(--rule)) var(--code-focus);
+    outline: calc(2 * var(--rule)) solid var(--code-focus);
+    outline-offset: calc(-2 * var(--rule));
   }
 
   .note {

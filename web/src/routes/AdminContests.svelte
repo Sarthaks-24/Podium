@@ -11,6 +11,8 @@
   its settings. Students see a short explanation instead. Takes no props.
 -->
 <script lang="ts">
+  import PageState from '../components/PageState.svelte';
+  import PageHeader from '../components/PageHeader.svelte';
   import { onMount, tick } from 'svelte';
   import { ApiError, getJSON, sendJSON } from '../lib/api';
   import {
@@ -25,6 +27,7 @@
   } from '../lib/contests';
   import { formatDateTime } from '../lib/format';
   import { setTitle } from '../lib/head';
+  import { routeTitle } from '../lib/routing';
   import { slugify } from '../lib/problems';
   import { navigate } from '../lib/router.svelte';
   import { session } from '../lib/session.svelte';
@@ -136,16 +139,16 @@
   }
 
   onMount(() => {
-    setTitle('Contest admin');
+    setTitle(routeTitle('admin-contests'));
     if (!isOrganiser) loadState = 'forbidden';
     else void load();
   });
 </script>
 
-<h1 tabindex="-1">Contest admin</h1>
+<PageHeader title="Contest admin" />
 
 {#if loadState === 'forbidden'}
-  <p class="lead">Only admins can manage contests. Ask an owner if you need access.</p>
+  <PageState kind="forbidden" message="Only admins can manage contests." />
 {:else}
   <div class="toolbar">
     <button
@@ -230,15 +233,14 @@
   {/if}
 
   {#if loadState === 'loading'}
-    <p class="lead muted" role="status">Loading contests</p>
+    <PageState kind="loading" message="Loading contests" />
   {:else if loadState === 'error'}
-    <div class="banner banner-error lead" role="alert"><p>{loadError}</p></div>
-    <p class="retry"><button type="button" class="btn btn-secondary" onclick={load}>Try again</button></p>
+    <PageState kind="error" message={loadError} onretry={load} />
   {:else if contests.length === 0}
-    <p class="lead muted">No contests yet. Create one, then add validated problems to it.</p>
+    <PageState kind="empty" message="No contests yet. Create one, then add validated problems to it." />
   {:else}
     <div class="table-wrap list">
-      <table class="table">
+      <table class="table table-stack">
         <thead>
           <tr>
             <th scope="col">Title</th>
@@ -253,7 +255,7 @@
         <tbody>
           {#each sorted as c (c.id)}
             <tr>
-              <th scope="row" class="title"><a href="/admin/contests/{c.id}">{c.title}</a></th>
+              <th scope="row" class="title"><a class="row-link" href="/admin/contests/{c.id}">{c.title}</a></th>
               <td class="num when">{formatDateTime(c.starts_at)}</td>
               <td class="length">{lengthText(c)}</td>
               <td class="num right problems">{problemCount(c)}</td>
@@ -274,15 +276,6 @@
 {/if}
 
 <style>
-  .lead {
-    margin-top: var(--space-4);
-    max-width: 40rem;
-  }
-
-  .retry {
-    margin-top: var(--space-4);
-  }
-
   .toolbar {
     margin-top: var(--space-5);
   }
@@ -350,35 +343,13 @@
     gap: var(--space-3);
   }
 
-  @media (max-width: 767px) {
-    .list thead {
-      position: absolute;
-      width: 1px;
-      height: 1px;
-      overflow: hidden;
-      clip: rect(0, 0, 0, 0);
-    }
-
+  @media (width < 768px) {
     .list tbody tr {
-      display: grid;
       grid-template-columns: minmax(0, 1fr) auto;
       grid-template-areas:
         'title state'
         'when pub'
         'links links';
-      gap: var(--space-1) var(--space-3);
-      padding: var(--space-3);
-      border-bottom: var(--rule) solid var(--line);
-    }
-
-    .list tbody tr:last-child {
-      border-bottom: 0;
-    }
-
-    .list tbody :is(th, td) {
-      height: auto;
-      padding: 0;
-      border: 0;
     }
 
     .title {

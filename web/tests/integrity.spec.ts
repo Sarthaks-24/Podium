@@ -132,6 +132,11 @@ test('the pair view tints the shared passages, marks them for screen readers and
   await expect(page).toHaveURL(/\/integrity\/signals\/31$/);
   await expect(page.getByRole('heading', { level: 1, name: 'Asha Rao and Ravi Kumar' })).toBeFocused();
   await expect(page.getByText('Similar code on problem B, Interval covering.', { exact: false })).toBeVisible();
+  // F4: the trail names the contest and ends on this page.
+  const trail = page.getByRole('navigation', { name: 'Breadcrumb' });
+  await expect(trail.getByRole('listitem')).toHaveText(['Contest admin', 'Week 6 contest', 'Integrity', 'Asha Rao and Ravi Kumar']);
+  await expect(trail.locator('[aria-current="page"]')).toHaveText('Asha Rao and Ravi Kumar');
+  await expect(trail.getByRole('link', { name: 'Integrity' })).toHaveAttribute('href', '/admin/contests/4/integrity');
 
   const asha = page.getByRole('region', { name: /^Asha Rao's program, 12 lines, 2 shared passages$/ });
   const ravi = page.getByRole('region', { name: /^Ravi Kumar's program, 12 lines, 2 shared passages$/ });
@@ -173,7 +178,9 @@ test("a case is shared with a note, action waits for the students' turn, and the
   const api = await mockApi(page);
   await page.goto('/admin/integrity/cases/3');
   await expect(page.getByRole('heading', { level: 1, name: 'Similar code on B: Asha Rao and Ravi Kumar' })).toBeVisible();
-  await expect(page.getByRole('link', { name: 'Integrity for Week 6 contest' })).toHaveAttribute('href', '/admin/contests/4/integrity');
+  const trail = page.getByRole('navigation', { name: 'Breadcrumb' });
+  await expect(trail.getByRole('link', { name: 'Week 6 contest' })).toHaveAttribute('href', '/admin/contests/4');
+  await expect(trail.getByRole('link', { name: 'Integrity' })).toHaveAttribute('href', '/admin/contests/4/integrity');
   const students = page.getByRole('table', { name: 'Students in this case' });
   await expect(students.getByRole('row').filter({ hasText: 'Asha Rao' })).toContainText('Not shared yet');
   await expect(page.getByRole('table', { name: 'Evidence in this case' })).toContainText('B. Interval covering');
@@ -194,7 +201,7 @@ test("a case is shared with a note, action waits for the students' turn, and the
   await expect(confirmShare).toContainText("never another student's name or code");
   await expect(confirmShare.getByRole('button', { name: 'Cancel' })).toBeFocused();
   await confirmShare.getByRole('button', { name: 'Share with the students' }).click();
-  await expect(page.locator('.head .state')).toHaveText('Shared with the students');
+  await expect(page.locator('.page-header .state-word')).toHaveText('Shared with the students');
   await expect(students.getByRole('row').filter({ hasText: 'Asha Rao' })).toContainText('Shared');
   await expect(students.getByRole('row').filter({ hasText: 'Asha Rao' })).toContainText('Can explain until');
   expect(api.puts).toEqual([{ state: 'awaiting_student', note: 'Asking both students how they wrote the loop.', seen_explanations: {} }]);
@@ -226,7 +233,7 @@ test("a case is shared with a note, action waits for the students' turn, and the
   await action.click();
   const confirmAction = page.getByRole('dialog', { name: 'Take action?' });
   await confirmAction.getByRole('button', { name: 'Take action' }).click();
-  await expect(page.locator('.head .state')).toHaveText('Action taken');
+  await expect(page.locator('.page-header .state-word')).toHaveText('Action taken');
   await expect(page.getByRole('button', { name: 'Reopen the case' })).toBeVisible();
   const decision = api.puts[api.puts.length - 1] as { state: string; seen_explanations: Record<string, number> };
   expect(decision.state).toBe('actioned');
@@ -242,7 +249,7 @@ test("a case is shared with a note, action waits for the students' turn, and the
   // A reopen ends the turn: the case needs a new share before any action.
   await page.getByLabel('Note for the log').fill('Reopening: a new submission came to light after the decision.');
   await page.getByRole('button', { name: 'Reopen the case' }).click();
-  await expect(page.locator('.head .state')).toHaveText('Open');
+  await expect(page.locator('.page-header .state-word')).toHaveText('Open');
   await expect(action).toBeDisabled();
   await expect(students.getByRole('row').filter({ hasText: 'Asha Rao' })).toContainText('Reopened: share again for a new turn');
 });

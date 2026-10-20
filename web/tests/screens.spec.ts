@@ -332,6 +332,16 @@ test('keyboard only: sign in, the theme menu and the shortcut list are reachable
       await page.screenshot({ path: `${shots()}shortcuts-${width}-${theme}.png` });
     }
   }
+  // F6: on a phone the dialog sits at the top, and its head stays in view while the body scrolls.
+  await page.setViewportSize({ width: 375, height: 640 });
+  const box = await keys.boundingBox();
+  expect(box?.y ?? 0).toBeLessThanOrEqual(24);
+  await keys.evaluate((d) => d.scrollTo(0, d.scrollHeight));
+  const close = keys.getByRole('button', { name: 'Close keyboard shortcuts' });
+  await expect(close).toBeInViewport();
+  const closeBox = await close.boundingBox();
+  expect(closeBox && box ? closeBox.y - box.y : 999).toBeLessThan(40);
+  await page.screenshot({ path: `${shots()}shortcuts-375-scrolled.png` });
   await activate(page, keys.getByRole('button', { name: 'Close keyboard shortcuts' }));
   await expect(keys).toBeHidden();
 });

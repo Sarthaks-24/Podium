@@ -19,6 +19,10 @@
   `signal`.
 -->
 <script lang="ts">
+  import PageState from '../components/PageState.svelte';
+  import PageHeader from '../components/PageHeader.svelte';
+  import type { Crumb } from '../components/Breadcrumbs.svelte';
+  import type { AdminContest } from '../lib/contests';
   import { onMount } from 'svelte';
   import CodeView from '../components/CodeView.svelte';
   import IntegrityNote from '../components/IntegrityNote.svelte';
@@ -27,6 +31,7 @@
   import { keepHeadingFocus } from '../lib/focus';
   import { formatDateTime } from '../lib/format';
   import { setTitle } from '../lib/head';
+  import { routeTitle } from '../lib/routing';
   import {
     SCORE_MEANING,
     evidenceSize,
@@ -68,7 +73,19 @@
   const isOrganiser = $derived(session.user?.role === 'admin' || session.user?.role === 'owner');
   const base = $derived(`/api/admin/contests/${encodeURIComponent(id)}/integrity`);
   const back = $derived(fromCase ? `/admin/integrity/cases/${caseId}` : `/admin/contests/${encodeURIComponent(id)}/integrity`);
-  const backLabel = $derived(fromCase ? (kase ? kase.title : 'Case') : 'Integrity');
+  let contestTitle = $state('');
+
+  /** Contest admin, the contest, Integrity, the case when the evidence came from one, then this page. */
+  function trail(here: string): Crumb[] {
+    const contest = `/admin/contests/${encodeURIComponent(id)}`;
+    const out: Crumb[] = [
+      { label: 'Contest admin', href: '/admin/contests' },
+      { label: contestTitle || 'Contest', href: contest },
+      { label: 'Integrity', href: `${contest}/integrity` },
+    ];
+    if (fromCase) out.push({ label: kase ? kase.title : 'Case', href: back });
+    return [...out, { label: here }];
+  }
   const students = $derived(sig ? [sig.user_a, sig.user_b].filter((u): u is number => !!u) : []);
   // Names: the case's own students first, then the check's map.
   const users = $derived.by(() => {
@@ -203,33 +220,39 @@
   }
 
   onMount(() => {
-    setTitle('Signal');
+    setTitle(routeTitle('integrity-pair'));
     if (!isOrganiser) loadState = 'forbidden';
-    else void load();
+    else {
+      void load();
+      // The contest title is only for the trail; the page reads without it.
+      getJSON<AdminContest>(`/api/admin/contests/${encodeURIComponent(id)}`)
+        .then((c) => (contestTitle = c.title))
+        .catch(() => {});
+    }
   });
 </script>
 
 {#if loadState === 'forbidden'}
-  <h1 tabindex="-1">Signal</h1>
-  <p class="lead">Only owners and admins can review integrity. Ask an owner if you need access.</p>
+  <PageHeader title="Signal" />
+  <PageState kind="forbidden" message="Only owners and admins can review integrity." />
 {:else if loadState !== 'ready' || !sig}
-  <a class="back" href={back}>{backLabel}</a>
-  <h1 tabindex="-1">{loadState === 'missing' || loadState === 'gone' ? (fromCase ? 'Evidence not found' : 'Signal not found') : 'Signal'}</h1>
+  <PageHeader
+    title={loadState === 'missing' || loadState === 'gone' ? (fromCase ? 'Evidence not found' : 'Signal not found') : 'Signal'}
+    crumbs={trail(loadState === 'missing' || loadState === 'gone' ? (fromCase ? 'Evidence not found' : 'Signal not found') : 'Signal')}
+  />
   {#if loadState === 'loading'}
-    <p class="lead muted" role="status">Loading the signal</p>
+    <PageState kind="loading" message="Loading the signal" />
   {:else if loadState === 'missing' && fromCase}
-    <p class="lead">There is no such evidence in this case, or you cannot review it. <a href="/admin/contests">Go to the contest list.</a></p>
+    <PageState kind="missing" message="There is no such evidence in this case, or you cannot review it." parent={{ href: '/admin/contests', label: 'Go to the contest list.' }} />
   {:else if loadState === 'missing'}
-    <p class="lead">This contest has not been checked yet. <a href={back}>Go to the integrity check.</a></p>
+    <PageState kind="missing" message="This contest has not been checked yet." parent={{ href: back, label: 'Go to the integrity check.' }} />
   {:else if loadState === 'gone'}
-    <p class="lead">This signal is not in the latest check: a newer check replaced it. Cases keep their own copy. <a href={back}>See the latest signals.</a></p>
+    <PageState kind="missing" message="This signal is not in the latest check: a newer check replaced it. Cases keep their own copy." parent={{ href: back, label: 'See the latest signals.' }} />
   {:else}
-    <div class="banner banner-error lead" role="alert"><p>{loadError}</p></div>
-    <p class="retry"><button type="button" class="btn btn-secondary" onclick={load}>Try again</button></p>
+    <PageState kind="error" message={loadError} onretry={load} />
   {/if}
 {:else}
-  <a class="back" href={back}>{backLabel}</a>
-  <h1 tabindex="-1">{signalStudents(sig, users)}</h1>
+  <PageHeader title={signalStudents(sig, users)} crumbs={trail(signalStudents(sig, users))} />
   <p class="summary">
     {kindWord(sig.kind)} on {problem ? `problem ${problem.label}, ${problem.title}` : sig.problem_id ? 'this problem' : 'the whole contest'}. Strength:
     {strengthWord(sig.strength).toLowerCase()} <span class="mono">({formatScore(sig.score, sig.kind)})</span>. {signalDetail(sig)}.
@@ -313,19 +336,6 @@
 {/if}
 
 <style>
-  .back {
-    display: inline-block;
-    margin-bottom: var(--space-2);
-    border-radius: var(--radius);
-    font-size: var(--fs-0);
-    font-weight: 500;
-  }
-
-  h1 {
-    font-size: var(--fs-4);
-    overflow-wrap: anywhere;
-  }
-
   .lead {
     margin-top: var(--space-4);
     max-width: 40rem;
@@ -468,7 +478,7 @@
     }
   }
 
-  @media (max-width: 767px) {
+  @media (width < 768px) {
     .moment {
       grid-template-columns: minmax(0, 1fr);
       gap: 0;

@@ -13,6 +13,8 @@
   says its version changed, at most once every 3 s. Props: `slug`.
 -->
 <script lang="ts">
+  import PageState from '../components/PageState.svelte';
+  import PageHeader from '../components/PageHeader.svelte';
   import { onDestroy, onMount } from 'svelte';
   import StandingsTable from '../components/StandingsTable.svelte';
   import StreamNotice from '../components/StreamNotice.svelte';
@@ -20,6 +22,7 @@
   import { serverClock } from '../lib/clock';
   import { isForContest, type Contest } from '../lib/contests';
   import { setTitle } from '../lib/head';
+  import { routeTitle } from '../lib/routing';
   import { session } from '../lib/session.svelte';
   import { boardLabels, statusLine, type Standings } from '../lib/standings';
   import { EventStream, type StreamMode } from '../lib/stream';
@@ -44,7 +47,7 @@
       const c = await getJSON<Contest>(api);
       serverClock.observe(c.server_now, sent, Date.now());
       contest = c;
-      setTitle('Standings', c.title);
+      setTitle(routeTitle('standings'), c.title);
     } catch {
       // The board says what went wrong.
     }
@@ -105,7 +108,7 @@
   let stream: EventStream | null = null;
 
   onMount(() => {
-    setTitle('Standings');
+    setTitle(routeTitle('standings'));
     void loadContest();
     void loadBoard();
     stream = new EventStream({
@@ -125,21 +128,19 @@
   });
 </script>
 
-<a class="back" href="/contests/{encodeURIComponent(slug)}">{contest?.title ?? 'Contest'}</a>
-<h1 tabindex="-1">Standings</h1>
+<PageHeader title="Standings" back={{ href: `/contests/${encodeURIComponent(slug)}`, label: contest?.title ?? 'Contest' }} />
 
 {#if loadState === 'loading'}
-  <p class="lead muted" role="status">Loading the standings</p>
+  <PageState kind="loading" message="Loading the standings" />
 {:else if loadState === 'closed'}
   <p class="lead">{CLOSED}</p>
   <p class="muted small">Everyone starts at a different time in this contest, so the standings stay hidden until everyone has had their time.</p>
 {:else if loadState === 'forbidden'}
   <p class="lead">{message}</p>
 {:else if loadState === 'missing'}
-  <p class="lead">There is no contest at this address. <a href="/">Go to your contests.</a></p>
+  <PageState kind="missing" message="There is no contest at this address." parent={{ href: '/', label: 'Go to your contests.' }} />
 {:else if loadState === 'error'}
-  <div class="banner banner-error lead" role="alert"><p>{message}</p></div>
-  <p class="retry"><button type="button" class="btn btn-secondary" onclick={() => loadBoard()}>Try again</button></p>
+  <PageState kind="error" message={message} onretry={() => loadBoard()} />
 {:else if standings}
   <p class="status" class:frozen={standings.variant === 'frozen'}>{statusLine(standings, ended)}</p>
   <p class="legend">The time under each score is when it was reached, from the start.</p>
@@ -150,14 +151,6 @@
 {/if}
 
 <style>
-  .back {
-    display: inline-block;
-    margin-bottom: var(--space-2);
-    border-radius: var(--radius);
-    font-size: var(--fs-0);
-    font-weight: 500;
-  }
-
   .lead {
     margin-top: var(--space-4);
     max-width: 40rem;
@@ -167,10 +160,6 @@
     margin-top: var(--space-2);
     max-width: 40rem;
     font-size: var(--fs-0);
-  }
-
-  .retry {
-    margin-top: var(--space-4);
   }
 
   .status {

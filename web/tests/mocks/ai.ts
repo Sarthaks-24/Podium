@@ -28,21 +28,56 @@ export const WIZARD_ID = '0f3a9c2e7b1d4e8fa6c5b2d1e0f9a8b7';
 export const SOLVE_ID = '9b8a7f6e5d4c3b2a19087f6e5d4c3b2a';
 // Split so tools/check-secrets.sh does not read the fake as a credential.
 export const FAKE_KEY = 'sk-' + 'ant-api03-PLAYWRIGHT-ONLY-not-a-real-key-42';
+export const OPENAI_KEY = 'sk-' + 'proj-PLAYWRIGHT-ONLY-not-a-real-key-7';
+export const GEMINI_KEY = 'AIza' + 'PLAYWRIGHT-ONLY-not-a-real-key-9';
 
 export type Json = Record<string, unknown>;
 
-export const PROVIDERS = [
-  {
-    id: 'anthropic',
-    name: 'Anthropic',
-    models: [
-      { id: 'claude-opus-5-5', name: 'Claude Opus 5.5 (default)' },
-      { id: 'claude-sonnet-5-5', name: 'Claude Sonnet 5.5' },
-      { id: 'claude-haiku-5-5', name: 'Claude Haiku 5.5' },
-    ],
-  },
-];
-export const FAKE_PROVIDER = { id: 'fake', name: 'Test provider (canned problems)', models: [{ id: 'canned', name: 'Canned problems' }] };
+// Contract C11 (docs/API.md "Providers and models"): three providers, the
+// models each lists for a key (already filtered by the server), and no
+// default model. A model id outside the list is still accepted when the
+// provider's own lookup knows it (LOOKUP).
+export const PROVIDER_NAMES: Record<string, string> = { anthropic: 'Anthropic', openai: 'OpenAI', gemini: 'Google Gemini' };
+export const KEYS: Record<string, string> = { anthropic: FAKE_KEY, openai: OPENAI_KEY, gemini: GEMINI_KEY };
+export const LISTS: Record<string, { id: string; name: string }[]> = {
+  anthropic: [
+    { id: 'claude-opus-5-5', name: 'Claude Opus 5.5' },
+    { id: 'claude-sonnet-5-5', name: 'Claude Sonnet 5.5' },
+  ],
+  openai: [
+    { id: 'gpt-x', name: 'gpt-x' },
+    { id: 'gpt-x-mini', name: 'gpt-x-mini' },
+  ],
+  gemini: [
+    { id: 'gemini-x-pro', name: 'Gemini X Pro' },
+    { id: 'gemini-x-flash', name: 'Gemini X Flash' },
+  ],
+  fake: [{ id: 'canned', name: 'Canned problems' }],
+};
+/** Models the providers' lookups know although their lists leave them out. */
+export const LOOKUP = new Set(['gpt-x-preview', 'gemini-x-experimental']);
+/** A model a refreshed list adds, so the refresh button has something to show. */
+export const NEW_MODEL = { openai: { id: 'gpt-x-2', name: 'gpt-x-2' } } as Record<string, { id: string; name: string }>;
+const MODEL_REFUSED: Record<string, (m: string) => string> = {
+  anthropic: (m) => `Anthropic does not offer the model ${m} to this key. Choose another model.`,
+  openai: (m) => `OpenAI does not offer the model ${m} to this key. Choose another model.`,
+  gemini: (m) => `Gemini does not offer the model ${m} to this key. Choose another model.`,
+};
+const KEY_REFUSED: Record<string, string> = {
+  anthropic: 'Anthropic refused the key. Check it and paste it again.',
+  openai: 'OpenAI refused the key. Check it and paste it again.',
+  gemini: 'Google refused the key. Check it in Google AI Studio and paste it again.',
+};
+
+/** What the session holds for one provider. */
+export interface Held {
+  has_key: boolean;
+  model: string;
+  active_until: number | null;
+  models: { id: string; name: string }[];
+}
+
+const none = (): Held => ({ has_key: false, model: '', active_until: null, models: [] });
 
 export function test_(idx: number, group: number | 'sample', input: string, output: string): Json {
   return {
@@ -133,8 +168,8 @@ export function apiError(route: Route, status: number, code: string, message: st
 }
 
 export interface MockOptions {
-  /** The key status the page starts with. */
-  key?: 'none' | 'active';
+  /** The key status the page starts with: none, an Anthropic key with a model, or an OpenAI key saved without a model. */
+  key?: 'none' | 'active' | 'no-model';
   /** Testing mode: the fake provider is offered. */
   testing?: boolean;
   /** How /api/events answers: a long-lived stream of queued events, or 503 (polling). */
@@ -147,12 +182,15 @@ export interface MockOptions {
 
 /** Installs the API mock for one page and returns its mutable state. */
 export async function mockApi(page: Page, opts: MockOptions = {}) {
+  const held: Record<string, Held> = { anthropic: none(), openai: none(), gemini: none() };
+  if (opts.testing) held.fake = { ...none(), models: LISTS.fake };
+  if (opts.key === 'active') held.anthropic = { has_key: true, model: 'claude-opus-5-5', active_until: UNTIL, models: LISTS.anthropic };
+  if (opts.key === 'no-model') held.openai = { has_key: true, model: '', active_until: UNTIL, models: LISTS.openai };
   const state = {
-    key:
-      opts.key === 'active'
-        ? { active: true, provider: 'anthropic', model: 'claude-opus-5-5', active_until: UNTIL }
-        : { active: false, provider: 'anthropic', model: 'claude-opus-5-5', active_until: null as number | null },
+    held,
+    active: (opts.key === 'active' ? 'anthropic' : opts.key === 'no-model' ? 'openai' : null) as string | null,
     keyBodies: [] as Json[],
+    modelGets: [] as string[],
     wizardBodies: [] as Json[],
     wizardGets: 0,
     wizard: null as Json | null,
@@ -167,7 +205,20 @@ export async function mockApi(page: Page, opts: MockOptions = {}) {
     submissionGets: 0,
     requestedUrls: [] as string[],
   };
-  const providers = opts.testing ? [...PROVIDERS, FAKE_PROVIDER] : PROVIDERS;
+  const ids = opts.testing ? ['anthropic', 'openai', 'gemini', 'fake'] : ['anthropic', 'openai', 'gemini'];
+  const name = (id: string) => (id === 'fake' ? 'Test provider (canned problems)' : PROVIDER_NAMES[id]);
+  /** KeyStatus as C11 shapes it. */
+  const keyStatus = () => {
+    const a = state.active ? state.held[state.active] : null;
+    return {
+      active: a !== null,
+      provider: state.active ?? 'anthropic',
+      model: a?.model ?? '',
+      active_until: a?.active_until ?? null,
+      providers: ids.map((id) => ({ id, name: name(id), ...state.held[id] })),
+      server_now: T0,
+    };
+  };
 
   if (opts.events === 'stream') await longLivedEvents(page);
 
@@ -189,25 +240,63 @@ export async function mockApi(page: Page, opts: MockOptions = {}) {
         return route.fulfill({ status: 200, contentType: 'text/event-stream', body: body || ': idle\n\n' });
       }
 
+      if (path === '/api/admin/ai/providers' && method === 'GET') {
+        const k = keyStatus();
+        return json(route, 200, {
+          providers: k.providers.map((p) => ({ id: p.id, name: p.name, has_key: p.has_key, model: p.model, active_until: p.active_until })),
+          active_provider: state.active,
+          server_now: T0,
+        });
+      }
+
+      if (path === '/api/admin/ai/models' && method === 'GET') {
+        const p = url.searchParams.get('provider') ?? '';
+        state.modelGets.push(url.search);
+        if (!ids.includes(p)) return apiError(route, 400, 'bad_request', 'Choose one of the providers.');
+        const h = state.held[p];
+        if (!h.has_key && p !== 'fake') return apiError(route, 409, 'no_key', `Add an ${name(p)} key first.`);
+        if (url.searchParams.get('refresh') === '1' && NEW_MODEL[p] && !h.models.some((m) => m.id === NEW_MODEL[p].id)) {
+          h.models = [NEW_MODEL[p], ...h.models];
+        }
+        if (h.models.length === 0) h.models = LISTS[p];
+        return json(route, 200, { provider: p, models: h.models, listed_at: T0, server_now: T0 });
+      }
+
       if (path === '/api/admin/ai/key') {
-        if (method === 'GET') return json(route, 200, { ...state.key, providers, server_now: T0 });
+        if (method === 'GET') return json(route, 200, keyStatus());
         if (method === 'PUT') {
           const body = req.postDataJSON() as Json;
           state.keyBodies.push(body);
-          if (body.provider === 'anthropic' && body.key !== FAKE_KEY) {
-            return apiError(route, 400, 'bad_key', 'Anthropic refused the key. Check it and paste it again.');
+          const p = String(body.provider ?? '');
+          const key = String(body.key ?? '');
+          const model = String(body.model ?? '').replace(/^models\//, '');
+          if (!ids.includes(p)) return apiError(route, 400, 'bad_request', 'Choose one of the providers.');
+          if (p === 'fake') {
+            state.held.fake = { has_key: true, model: 'canned', active_until: null, models: LISTS.fake };
+            state.active = 'fake';
+            return json(route, 200, keyStatus());
           }
-          state.key = { active: true, provider: String(body.provider), model: String(body.model), active_until: UNTIL };
-          return json(route, 200, { ...state.key, providers, server_now: T0 });
+          const h = state.held[p];
+          if (key === '' && !h.has_key) return apiError(route, 400, 'bad_request', 'Paste your API key.');
+          if (key !== '' && key !== KEYS[p]) return apiError(route, 400, 'bad_key', KEY_REFUSED[p]);
+          if (model !== '' && !LISTS[p].some((m) => m.id === model) && !LOOKUP.has(model)) {
+            return apiError(route, 400, 'bad_key', MODEL_REFUSED[p](model));
+          }
+          state.held[p] = { has_key: true, model, active_until: key !== '' ? UNTIL : h.active_until, models: h.models.length > 0 ? h.models : LISTS[p] };
+          state.active = p;
+          return json(route, 200, keyStatus());
         }
         if (method === 'DELETE') {
-          state.key = { active: false, provider: 'anthropic', model: 'claude-opus-5-5', active_until: null };
+          const p = url.searchParams.get('provider');
+          for (const id of p ? [p] : ids) state.held[id] = id === 'fake' ? { ...none(), models: LISTS.fake } : none();
+          if (state.active === null || !state.held[state.active].has_key) state.active = ids.find((id) => state.held[id].has_key) ?? null;
           return json(route, 204);
         }
       }
 
       if (path === '/api/admin/ai/wizard' && method === 'POST') {
-        if (!state.key.active) return apiError(route, 409, 'no_key', 'Add a key in AI assistant first.');
+        if (state.active === null) return apiError(route, 409, 'no_key', 'Add a key in AI assistant first.');
+        if (state.held[state.active].model === '') return apiError(route, 409, 'no_model', `Choose a model for ${name(state.active)} in AI assistant first.`);
         state.wizardBodies.push(req.postDataJSON() as Json);
         state.wizard = { id: WIZARD_ID, kind: 'generate', state: 'thinking', started_at: T0, server_now: T0 };
         state.wizardGets = 0;
@@ -229,7 +318,14 @@ export async function mockApi(page: Page, opts: MockOptions = {}) {
                     reasons: ['subtasks: points add up to 90, not 100.', 'reference: the C++ source is empty.'],
                   },
                 }
-              : { id: WIZARD_ID, kind: 'generate', state: 'draft_created', problem_id: 20 };
+              : {
+                  id: WIZARD_ID,
+                  kind: 'generate',
+                  state: 'draft_created',
+                  problem_id: 20,
+                  provider: state.active,
+                  model: state.active ? state.held[state.active].model : '',
+                };
         }
         return json(route, 200, state.wizard);
       }
@@ -338,7 +434,7 @@ export async function mockApi(page: Page, opts: MockOptions = {}) {
           return json(route, 202, state.inputGen);
         }
         if (rest === '/solve' && method === 'POST') {
-          if (!state.key.active) return apiError(route, 409, 'no_key', 'Add a key in AI assistant first.');
+          if (state.active === null) return apiError(route, 409, 'no_key', 'Add a key in AI assistant first.');
           state.solveGets = 0;
           state.submissionGets = 0;
           return json(route, 202, { wizard_id: SOLVE_ID });
@@ -351,17 +447,20 @@ export async function mockApi(page: Page, opts: MockOptions = {}) {
 }
 
 /** Fails the test when the key shows up in the page, its storage or any address it asked for. */
+/** Checks that none of the three providers' keys is left in the page, its storage, its address or a request URL. */
 export async function expectKeyGone(page: Page, state: Awaited<ReturnType<typeof mockApi>>) {
-  const found = await page.evaluate((key) => {
-    const inputs = [...document.querySelectorAll('input, textarea')].some((el) => (el as HTMLInputElement).value.includes(key));
-    const html = document.documentElement.outerHTML.includes(key);
-    const stored = [localStorage, sessionStorage].some((s) =>
-      Array.from({ length: s.length }, (_, i) => s.key(i) ?? '').some((k) => k.includes(key) || (s.getItem(k) ?? '').includes(key)),
-    );
-    return { inputs, html, stored, url: location.href.includes(key), title: document.title.includes(key) };
-  }, FAKE_KEY);
-  expect(found).toEqual({ inputs: false, html: false, stored: false, url: false, title: false });
-  expect(state.requestedUrls.some((u) => u.includes(FAKE_KEY))).toBe(false);
+  for (const secret of Object.values(KEYS)) {
+    const found = await page.evaluate((key) => {
+      const inputs = [...document.querySelectorAll('input, textarea')].some((el) => (el as HTMLInputElement).value.includes(key));
+      const html = document.documentElement.outerHTML.includes(key);
+      const stored = [localStorage, sessionStorage].some((s) =>
+        Array.from({ length: s.length }, (_, i) => s.key(i) ?? '').some((k) => k.includes(key) || (s.getItem(k) ?? '').includes(key)),
+      );
+      return { inputs, html, stored, url: location.href.includes(key), title: document.title.includes(key) };
+    }, secret);
+    expect(found).toEqual({ inputs: false, html: false, stored: false, url: false, title: false });
+    expect(state.requestedUrls.some((u) => u.includes(secret))).toBe(false);
+  }
 }
 
 export interface Screen {
@@ -384,14 +483,31 @@ export const SCREENS: Screen[] = [
     path: '/admin/ai',
     title: 'AI assistant · podium',
     opts: { key: 'active' },
-    ready: (page) => expect(page.getByText('Key active until 14:32')).toBeVisible(),
+    ready: (page) => expect(page.getByText('Anthropic: Key active until 14:32')).toBeVisible(),
+  },
+  {
+    name: 'ai-settings-no-model',
+    path: '/admin/ai',
+    title: 'AI assistant · podium',
+    opts: { key: 'no-model' },
+    ready: (page) => expect(page.getByText('No model chosen yet', { exact: false })).toBeVisible(),
+  },
+  {
+    name: 'ai-settings-typed-model',
+    path: '/admin/ai',
+    title: 'AI assistant · podium',
+    opts: { key: 'no-model' },
+    ready: async (page) => {
+      await page.getByLabel('Model', { exact: true }).selectOption({ label: 'Type a model id' });
+      await expect(page.getByLabel('Model id')).toBeFocused();
+    },
   },
   {
     name: 'ai-wizard-brief',
     path: '/admin/ai/new',
     title: 'New problem with AI · podium',
     opts: { key: 'active' },
-    ready: (page) => expect(page.getByText('Using Claude Opus 5.5. Key active until 14:32.')).toBeVisible(),
+    ready: (page) => expect(page.getByText('Using Anthropic, Claude Opus 5.5. Key active until 14:32.')).toBeVisible(),
   },
   {
     name: 'ai-wizard-paste',

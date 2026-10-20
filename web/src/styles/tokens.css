@@ -19,20 +19,63 @@
     theme without changing the page.
   - tests: lib/theme-contrast.test.ts checks every theme against the
     contrast and distinguishability rules in D41.
+
+  Breakpoints (v2 F8; the source is lib/breakpoints.ts, and
+  guardrails.test.ts fails on any other width):
+    phone   below 768 px     (width < 768px)
+    tablet  from 768 px      (min-width: 768px)
+    laptop  from 1024 px     (min-width: 1024px)
+    wide    from 1440 px     (min-width: 1440px)
+    short   laptop and at most 45rem tall
+  Custom properties cannot be used in a media query, so the numbers are
+  written out where a query needs them.
 */
 
 :root {
   /* type */
   --font-ui: "Schibsted Grotesk", system-ui, sans-serif;
   --font-mono: "Fragment Mono", ui-monospace, "SF Mono", Menlo, monospace;
-  --fs-0: 0.8125rem;  /* 13 */
+  --fs-0: 0.875rem;   /* 14 (was 13, D82) */
   --fs-1: 1rem;       /* 16 */
   --fs-2: 1.1875rem;  /* 19 */
   --fs-3: 1.4375rem;  /* 23 */
   --fs-4: 1.75rem;    /* 28 */
   --fs-5: 2.125rem;   /* 34 */
+  /* The one display figure (D80: the student's own place on standings,
+     "7 of 24"). Used nowhere else. */
+  --fs-6: 2.75rem;    /* 44 */
   --lh-body: 1.5;
   --lh-tight: 1.2;
+
+  /* type roles (v2 F1, audit 05 T1): every page title, section heading
+     and subsection heading reads the same size on every screen. The page
+     title steps down to --fs-4 on phones (below). */
+  --fs-page: var(--fs-4);      /* 28 on phones, 34 from 768 px */
+  --fs-section: var(--fs-3);   /* 23 */
+  --fs-sub: var(--fs-2);       /* 19 */
+  /* Reveal rows on a projector: 23 px on a laptop to 34 px on a wide room screen (D82). */
+  --fs-reveal: clamp(var(--fs-3), 2.4vw, var(--fs-5));
+  /* Fragment Mono beside Schibsted Grotesk reads one step large, so mono
+     digits inside text and tables are set at this fraction (T11). */
+  --mono-optical: 0.9375em;
+
+  /* measures (T12): the widths text and forms are held to */
+  --measure-narrow: 40rem;
+  --measure-form: 48rem;
+  --measure-wide: 64rem;
+  --measure-prose: 72ch;
+  /* the space and rule between h2 sections of one page (T15) */
+  --section-gap: var(--space-7);
+  /* Lucide icons beside words (F10) */
+  --icon-size: 1.25rem;        /* 20 */
+
+  /* stacking order, lowest first (F8): sticky bars inside a page, the
+     page's own fixed bars, toasts, and the skip link above everything.
+     Native dialogs sit in the top layer and need none. */
+  --z-sticky: 10;
+  --z-bar: 20;
+  --z-toast: 40;
+  --z-skip: 50;
 
   /* shape and space */
   --radius: 6px;             /* controls only; tables and the editor well are square */
@@ -60,7 +103,7 @@
   --code-keyword: #A5B4FF;
   --code-string: #9FD8A4;
   --code-number: #F2C58A;
-  --code-comment: #939C96;
+  --code-comment: #B8BFBA;   /* italic; 4.5:1 on the selection in every theme (X5) */
   --code-type: #7FD1CC;
   --code-function: #E6E8E3;
   --code-meta: #E8A6CB;
@@ -69,7 +112,7 @@
   /* The editor's focus ring is drawn on the well, where --act can fall to
      2.3:1, so it takes the keyword colour (at least 3:1 on every well). */
   --code-focus: var(--code-keyword);
-  --code-selection: color-mix(in srgb, var(--act) 40%, var(--well));
+  --code-selection: color-mix(in srgb, var(--act) 30%, var(--well));
   --code-active-line: color-mix(in srgb, var(--well-ink) 7%, var(--well));
 
   /* Passages two programs share, in the integrity views. The edge marks
@@ -81,7 +124,10 @@
 }
 
 @media (min-width: 768px) {
-  :root { --gutter: var(--space-5); }  /* 24 */
+  :root {
+    --gutter: var(--space-5);  /* 24 */
+    --fs-page: var(--fs-5);    /* 34 */
+  }
 }
 
 @media (min-width: 1024px) {
@@ -126,6 +172,8 @@
   --wait: #5B6660; --wait-tint: #ECEEE9;
 
   --shadow-menu: 0 8px 24px rgba(22, 33, 28, 0.14);   /* menus and dialogs only */
+  /* Behind a modal dialog. Light themes dim the page with ink (F6). */
+  --scrim: rgba(22, 33, 28, 0.4);
 }
 
 /* Dark family: the Dark theme's values. */
@@ -155,6 +203,8 @@
   --bad: #F0776B;  --bad-tint: #3A1C18;
   --wait: #9AA39D; --wait-tint: #202521;
   --shadow-menu: 0 8px 24px rgba(0, 0, 0, 0.5);
+  /* Dark themes dim with black too: an ink-coloured scrim would lighten the page. */
+  --scrim: rgba(0, 0, 0, 0.6);
 }
 
 /* Light themes. */
@@ -206,7 +256,7 @@
   --ink-muted: #B4B9C1;
   --ink-faint: #8B9097;
   --line: #3E434B;
-  --line-strong: #7A7F87;
+  --line-strong: #7C8189;   /* 3:1 on surface-2 too (X5) */
   --act: #6CB6FF;
   --act-ink: #0D1117;
   --act-tint: #2B3D52;
@@ -223,7 +273,7 @@
   --ink-muted: #ADADAD;
   --ink-faint: #767676;
   --line: #262626;
-  --line-strong: #5E5E5E;
+  --line-strong: #636363;   /* 3:1 on surface-2 too (X5) */
   --act: #8A97FF;
   --act-ink: #000000;
   --act-tint: #1A1C33;
@@ -240,7 +290,7 @@
   --ink-muted: #88A5C4;
   --ink-faint: #6A85A3;
   --line: #283E60;
-  --line-strong: #4F6D97;
+  --line-strong: #5B79A3;   /* 3:1 on surface-2 too (X5) */
   --act: #7DD3FC;
   --act-ink: #041426;
   --act-tint: #1C3A55;
@@ -330,6 +380,7 @@
     --bad: #F0776B;  --bad-tint: #3A1C18;
     --wait: #9AA39D; --wait-tint: #202521;
     --shadow-menu: 0 8px 24px rgba(0, 0, 0, 0.5);
+    --scrim: rgba(0, 0, 0, 0.6);
   }
 }
 
