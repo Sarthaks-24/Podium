@@ -16,8 +16,10 @@
   - During their window: the shared Workspace on the contest's routes with
     the rail of problem letters (score and 2 px bar), the contest clock and
     freeze line, the Standings link and Messages. Exam contests show only
-    "Submitted". Announcements and answered questions arriving over the
-    event stream show in a quiet banner above the title (from 1024 px the
+    "Submitted". Announcements and answered questions newer than the last
+    time the student read the messages on this device (localStorage
+    podium-messages-read:{slug}, audit S1) show in a quiet banner above the
+    title and as the count on Messages (from 1024 px the
     editor never moves); a second open tab or a second session reported
     by the server shows a notice there too. Exam mode marks submitted
     problems "submitted" on the rail. "Rules" in the rail opens the same
@@ -56,6 +58,8 @@
   import {
     CONTEST_EVENTS,
     bannerItems,
+    markMessagesRead,
+    messagesReadAt,
     formatCountdown,
     formatSpan,
     freezeAt,
@@ -95,7 +99,8 @@
   let startError = $state('');
   let messagesOpen = $state(false);
   let dismissed = $state<Set<string>>(new Set());
-  let since = $state(0);
+  /** The last time the student read this contest's messages on this device (S1). */
+  let lastRead = $state(0);
   let otherTab = $state(false);
   let sessionNoticeHidden = $state(false);
   let streamMode = $state<StreamMode>('connecting');
@@ -117,7 +122,7 @@
   const currentProblem = $derived(problems.find((p) => p.label === current) ?? null);
   const exam = $derived(contest?.rules.feedback_mode === 'exam');
   const practice = $derived(contest?.state === 'practice');
-  const banner = $derived(contest ? bannerItems(contest, dismissed, since) : []);
+  const banner = $derived(contest ? bannerItems(contest, dismissed, lastRead) : []);
   const showWorkspace = $derived(
     contest !== null && currentProblem !== null && (phase === 'during' || (phase === 'after' && label !== '')),
   );
@@ -158,6 +163,9 @@
   }
 
   function dismiss(key: string) {
+    // Dismissing the last waiting message counts as reading them all.
+    const waiting = banner.filter((i) => i.key !== key);
+    if (banner.some((i) => i.key === key) && waiting.length === 0) lastRead = markMessagesRead(slug, Math.max(...banner.map((i) => i.at)));
     const next = new Set([...dismissed, key]);
     dismissed = next;
     try {
@@ -168,8 +176,8 @@
   }
 
   function openMessages() {
-    // Opening the messages counts as reading what the banner holds.
-    for (const item of banner) dismiss(item.key);
+    // Opening the messages counts as reading everything the page has loaded.
+    lastRead = markMessagesRead(slug, Math.max(contest?.server_now ?? 0, ...banner.map((i) => i.at)));
     messagesOpen = true;
   }
 
@@ -189,7 +197,6 @@
       const data = await getJSON<Contest>(api);
       serverClock.observe(data.server_now, sent, Date.now());
       refreshTicker();
-      if (since === 0) since = data.server_now;
       const restore = keepHeadingFocus();
       contest = data;
       setTitle(data.title);
@@ -362,6 +369,7 @@
 
   onMount(() => {
     dismissed = readDismissed();
+    lastRead = messagesReadAt(slug);
     try {
       workspaceSeen = localStorage.getItem(seenKey()) === '1';
     } catch {
