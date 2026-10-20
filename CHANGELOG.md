@@ -4,6 +4,23 @@ Dated entries per release. Unreleased work is listed at the top.
 
 ## Unreleased
 
+### v2 P3, frontend: student and styles (2026-10-21)
+
+Becomes `v1.3.0` with the rest of P3. The workspace items (S2, S4) are student-facing and ship only in a calendar slot; each is its own commit so it can be held.
+
+- A shared layout and control system (usability audit 2026-10-20): a two-column working layout from 1280 px with a sticky context column (`.page-split`), surface panels for task areas, badges for state and verdict words, one button system (32 px, one primary per view, quiet row and bar actions with no underline) and mono only for digits (`MonoDigits`). The editor well has a visible edge in dark themes.
+- Messages that arrived while a student was away (a reload, coming back from the contest page) now show in the banner and as the count on Messages, until read on that device (S1).
+- The Console count of unanswered questions shows on every organiser contest screen again (O4: the request missed the API).
+- Before the start the countdown is the display figure, then the honour code with the start button; the rules and the workspace guide sit beside it (S3).
+- After the end the place is the display figure, one line names the end and the score, the newest submission opens by itself, and the answers to the student's own questions are on the page (S9).
+- Your contests pins the live or next contest on top with its countdown and one button (S10).
+- Standings cells draw the earned share as a bar along the bottom, a tried zero reads as a zero, the legend is one line with a disclosure, and Jump to you steps aside while the own row is in view (S8).
+- The workspace toolbar is one row; font size and Tab moves focus moved into Editor settings; Custom input opens in the result pane; the workspace fills the window under the header (S2). The submit gap counts down inside the button, and a submit after a run that did not compile asks once (S4).
+- Sign-in and the footer show the organisation's name, email and phone (C5); `/signin?error=rate_limited` explains itself; signed-in people can write to the organisers at `/contact`, and owners and admins read the messages at `/admin/contact` (C6).
+- The privacy notice is drafted and built for the no-JavaScript page; it stays unlinked and non-public until the owner approves it (D85).
+- A social card, `favicon.ico`, a touch icon and a web manifest; a Playwright crawl of every link and button.
+- "The site was updated at 14:02" for students after an emergency deploy, once per update (D112).
+
 ### v2 P3, backend (2026-10-20)
 
 Becomes `v1.3.0` when the P3 gate is signed. Schema change (0012): deploys in slot S3 only; the head, manifest and robots work is live-safe on its own but ships in the same release. Upgrades from `v1.2.0` only.
