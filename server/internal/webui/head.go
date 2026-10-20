@@ -212,7 +212,9 @@ func (s *site) page(w http.ResponseWriter, r *http.Request) {
 	} else {
 		h.Set("X-Robots-Tag", "noindex")
 	}
-	if route.Pattern == "/privacy" {
+	// The text is served only once the manifest marks the page public,
+	// which happens when the owner approves it (D85).
+	if route.Public && route.Pattern == "/privacy" {
 		doc = replaceBlock(doc, bodyOpen, bodyClose, s.privacy)
 	}
 	w.WriteHeader(status)

@@ -208,10 +208,11 @@ func TestPrivacyBody(t *testing.T) {
 			t.Errorf("%s served: %d", p, w.Code)
 		}
 	}
-	// The checked-in manifest has no /privacy yet: a 404, nothing filled.
-	old := handlerFor(buildFS(t, "routes.json", fstest.MapFS{"privacy-body.html": {Data: []byte(text)}}), Options{BaseURL: testBase})
-	if w := get(old, "/privacy"); w.Code != 404 || strings.Contains(w.Body.String(), "keeps your email") {
-		t.Errorf("/privacy without a route: %d", w.Code)
+	// The checked-in manifest has /privacy but not public, because the
+	// text waits for the owner's approval (D85): nothing filled, noindex.
+	held := handlerFor(buildFS(t, "routes.json", fstest.MapFS{"privacy-body.html": {Data: []byte(text)}}), Options{BaseURL: testBase})
+	if w := get(held, "/privacy"); strings.Contains(w.Body.String(), "keeps your email") || w.Header().Get("X-Robots-Tag") != "noindex" {
+		t.Errorf("/privacy before approval: %d, robots %q", w.Code, w.Header().Get("X-Robots-Tag"))
 	}
 }
 
