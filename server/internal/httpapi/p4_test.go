@@ -4,12 +4,17 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/Sarthaks-24/podium/internal/auth"
 )
+
+// standaloneNumber finds the rating value 95 on its own, not inside a
+// timestamp such as 1793749560029.
+var standaloneNumber = regexp.MustCompile(`(^|[^0-9])95([^0-9]|$)`)
 
 func viewsOf(t *testing.T, s *site, kind string, subject int64) int {
 	t.Helper()
@@ -113,7 +118,7 @@ func TestStudentsAuthorisationMatrix(t *testing.T) {
 	code, st := w.asha.do("GET", "/api/me/standing", nil, "")
 	js, _ := json.Marshal(st)
 	if code != 200 || st["band"] != "good" || len(st["lines"].([]any)) != 1 || strings.Contains(string(js), "value") ||
-		strings.Contains(string(js), "rating") || strings.Contains(string(js), "95") {
+		strings.Contains(string(js), "rating") || standaloneNumber.MatchString(string(js)) {
 		t.Errorf("own standing: %d %s", code, js)
 	}
 	_, bst := w.bilal.do("GET", "/api/me/standing", nil, "")

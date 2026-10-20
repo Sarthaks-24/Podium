@@ -145,6 +145,10 @@ test.describe('touch', () => {
 const FROZEN = Date.UTC(2026, 9, 20, 4, 30);
 
 test.describe('pixel baselines', () => {
+  // Under a full parallel run a frame is now and then taken mid-layout (the
+  // whole page one pixel off); one at a time they always match. A real change
+  // fails every retry.
+  test.describe.configure({ retries: 2 });
   test.beforeEach(async ({ page }) => {
     freezeClock(FROZEN);
     await page.clock.setFixedTime(FROZEN);

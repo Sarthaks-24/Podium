@@ -281,7 +281,12 @@ func TestStaticTypes(t *testing.T) {
 // scripts, sitemap entries) and expects each to answer 200 (web-quality
 // item 20, backend half).
 func TestLinkCrawl(t *testing.T) {
-	h := handlerFor(buildFS(t, "routes-p3.json", fstest.MapFS{"og.png": {Data: []byte("png")}}), Options{BaseURL: testBase})
+	h := handlerFor(buildFS(t, "routes-p3.json", fstest.MapFS{
+		"og.png":               {Data: []byte("png")},
+		"favicon.ico":          {Data: []byte("ico")},
+		"apple-touch-icon.png": {Data: []byte("png")},
+		"site.webmanifest":     {Data: []byte("{}")},
+	}), Options{BaseURL: testBase})
 	ref := regexp.MustCompile(`(?:href|src|content)="([^"]+)"|<loc>([^<]+)</loc>|Sitemap: (\S+)`)
 	seen := map[string]bool{}
 	queue := []string{"/signin", "/privacy", "/robots.txt", "/sitemap.xml"}
@@ -310,9 +315,14 @@ func TestLinkCrawl(t *testing.T) {
 			queue = append(queue, u.Path)
 		}
 	}
-	for _, want := range []string{"/favicon.svg", "/og.png", "/theme-init.js", "/fonts/schibsted-grotesk-600.woff2"} {
+	for _, want := range []string{"/favicon.svg", "/favicon.ico", "/apple-touch-icon.png", "/site.webmanifest", "/og.png", "/theme-init.js", "/fonts/schibsted-grotesk-600.woff2"} {
 		if !seen[want] {
 			t.Errorf("crawl never reached %s (seen %v)", want, seen)
+		}
+	}
+	for p, want := range map[string]string{"/site.webmanifest": "application/manifest+json", "/favicon.ico": "image/x-icon"} {
+		if ct := get(h, p).Header().Get("Content-Type"); !strings.HasPrefix(ct, want) {
+			t.Errorf("%s: Content-Type %q, want %s", p, ct, want)
 		}
 	}
 }
