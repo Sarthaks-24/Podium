@@ -262,6 +262,9 @@ describe('auditSummary', () => {
     );
     expect(auditSummary({ action: 'editorial', details: { published: true, was_published: false } })).toBe('Published the editorial');
     expect(auditSummary({ action: 'pause', details: {} })).toBe('Paused judging');
+    expect(auditSummary({ action: 'deploy_forced', details: { reason: 'Fix the judge crash', release: 'v1.0.1', refused: 'contest running' } })).toBe(
+      'Deployed release v1.0.1 during the contest: Fix the judge crash',
+    );
     expect(auditSummary({ action: 'something_new', details: {} })).toBe('something_new');
   });
 });

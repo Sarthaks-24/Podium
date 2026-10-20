@@ -232,7 +232,7 @@ export function wizardSteps(w: Pick<Wizard, 'state'>): WizardStep[] {
   const created = w.state === 'draft_created' || w.state === 'done';
   return [
     { text: 'Writing the problem', state: failed ? 'failed' : created ? 'done' : 'current' },
-    { text: 'Draft created, generating tests', state: created ? 'current' : 'waiting' },
+    { text: 'Draft created, generating tests', state: w.state === 'done' ? 'done' : created ? 'current' : 'waiting' },
   ];
 }
 

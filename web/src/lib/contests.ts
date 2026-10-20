@@ -549,6 +549,11 @@ export function auditSummary(e: Pick<AuditEntry, 'action' | 'details'>): string 
       return d.added === true ? `Added co-organiser ${str('email')}` : `Removed co-organiser ${str('email')}`;
     case 'archive':
       return 'Archived the contest';
+    case 'deploy_forced': {
+      // Written by podium-server deploy-check -force (P0 backend), not by an organiser.
+      const release = str('release');
+      return `Deployed ${release ? `release ${release}` : 'a new release'} during the contest: ${str('reason')}`;
+    }
   }
   return e.action;
 }

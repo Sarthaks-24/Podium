@@ -267,7 +267,9 @@
     const c = contest;
     // The form works in whole minutes, so times are compared to the minute.
     const minute = (ms: number) => Math.floor(ms / 60_000);
-    const timing =
+    // shortcut: published joins this confirm until the v2 console item C5 gives it its own.
+    const liveChange =
+      body.published !== c.published ||
       minute(body.starts_at) !== minute(c.starts_at) ||
       minute(body.ends_at) !== minute(c.ends_at) ||
       body.start_mode !== c.start_mode ||
@@ -275,10 +277,10 @@
       body.scoring_mode !== c.scoring_mode ||
       body.feedback_mode !== c.feedback_mode ||
       body.freeze_minutes !== c.freeze_minutes;
-    if (live && timing) {
+    if (live && liveChange) {
       confirm = {
         title: 'Change a live contest?',
-        body: 'Students see the new times, scoring, feedback or freeze at once, and their clocks and scores can change. To give more time, Extend contest in the console is safer.',
+        body: 'Students see the change at once: new times, scoring, feedback or freeze can change their clocks and scores, and unpublishing hides the contest from them. To give more time, Extend contest in the console is safer.',
         label: 'Save changes',
         danger: true,
         run: () => putSettings(body),

@@ -214,6 +214,10 @@ describe('wizard progress', () => {
     expect(wizardSteps({ state: 'error' }).map((s) => s.state)).toEqual(['failed', 'waiting']);
   });
 
+  it('marks both steps done when the wizard is done', () => {
+    expect(wizardSteps({ state: 'done' }).map((s) => s.state)).toEqual(['done', 'done']);
+  });
+
   it('links to the settings for key problems only', () => {
     expect(isKeyProblem('no_key')).toBe(true);
     expect(isKeyProblem('key_refused')).toBe(true);

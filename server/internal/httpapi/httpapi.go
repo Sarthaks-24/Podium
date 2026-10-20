@@ -105,8 +105,9 @@ func New(d Deps) http.Handler {
 		d.aiRoutes(mux)
 	}
 
-	// The workspace is for organisers trying a problem until contests
-	// arrive in M4, which mounts the same handlers under a contest.
+	// The organisers' workspace: an admin tries a problem from the bank
+	// ("Try as a student"). Students reach the same workspace through the
+	// contest routes under /api/contests/{slug}/problems/{label} below.
 	mux.HandleFunc("GET /api/workspace/{problem}", admin(d.limitReads(d.getWorkspace)))
 	mux.HandleFunc("PUT /api/workspace/{problem}/draft", admin(d.saveDraft))
 	mux.HandleFunc("POST /api/workspace/{problem}/run", admin(d.runCode))

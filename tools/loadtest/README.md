@@ -1,6 +1,6 @@
 # Load test
 
-A k6 script that plays a whole contest against a podium server in testing mode: one virtual user per student, plus one that watches the server's metrics until the judge queue has drained. Results from the runs so far are in `cache/v1/m7-load.md` (not shipped).
+A k6 script that plays a whole contest against a podium server in testing mode: one virtual user per student, plus one that watches the server's metrics until the judge queue has drained. Each run against the VM is written up in `cache/v2-plan/drills/<date>-load.md` (not shipped); its numbers go in a dated section of the calibration notes.
 
 | File | What it does |
 |---|---|
@@ -100,5 +100,5 @@ The acceptance target is the 2 GB VM itself (PLAN.md M7: API p95 under 300 ms at
 
 - The k6 summary prints the API's p50, p95 and p99, failures, 429s, event stream reconnects and the per-route p95.
 - `summarize.py` writes `results/console-*.csv` (one row per 5 s: queued and leased jobs, judged per minute, p95 wait for a submission, event streams, database pool waits, heap) and prints the peak queue, the judge's throughput while the queue was long, and how many seconds after the end the queue drained.
-- Compare the peak and the drain time with PLAN.md section 4.1 using the throughput the run measured: a fixed-start spike of S submissions a minute for T minutes against a judge doing J a minute builds a queue of about (S - J) × T and drains in about that divided by J.
+- Record the peak, the drain time and the throughput the run measured in a new dated section of the calibration notes; the docs quote only those numbers. A fixed-start spike of S submissions a minute for T minutes against a judge doing J a minute builds a queue of about (S - J) × T and drains in about that divided by J.
 - The metrics route the monitor reads, `GET /api/admin/metrics`, is described in `docs/OPERATIONS.md`, "Metrics".

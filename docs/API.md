@@ -768,7 +768,7 @@ Every change that can affect results is recorded in the contest's audit log (bel
 | `PUT /api/admin/contests/{id}/extensions/{user}` (admin) | `{"minutes":15,"reason":"..."}` (0 to 1440; 0 removes) | 200 `AdminContest`; the student gets a `contest` event. `409 not_participant` unless the student is on the roster or started or submitted |
 | `POST /api/admin/contests/{id}/extend` (admin) | `{"minutes":10}` (1 to 240, adds to earlier extensions) | 200 `AdminContest`; members get a `contest` event |
 | `POST /api/admin/contests/{id}/pause`, `/resume` (admin) | | 200 `AdminContest` |
-| `GET /api/admin/contests/{id}/submissions?problem=A&user=7&verdict=WA&page=1` | | 200 `{submissions:[...], page, has_more, results_hidden, server_now}`; `results_hidden` is true when some rows are hidden from this viewer |
+| `GET /api/admin/contests/{id}/submissions?problem=A&user=7&verdict=WA&page=1` | | 200 `{submissions:[...], page, has_more, results_hidden, server_now}`; `results_hidden` is true when some rows are hidden from this viewer. `verdict` is a verdict code (`AC`, `WA`, `TLE`, `MLE`, `RE`, `CE`), `pending` (state `queued` or `running`) or `error` (state `error`, a judge error); case does not matter |
 | `POST /api/admin/contests/{id}/rejudge` (admin) | `{"problem_label":"A"}` or `{"submission_id":80}` | 202 `{queued, server_now}` |
 | `GET /api/admin/contests/{id}/audit?page=1` | | 200 `{entries:[AuditEntry], page, has_more, server_now}`, newest first, 200 per page; every organiser of the contest may read it |
 | `GET`, `POST /api/admin/contests/{id}/announcements` | `{"body_md":"..."}` (at most 4,000 characters) | 200 `{announcements, server_now}`; 201 `Announcement` |

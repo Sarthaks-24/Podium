@@ -571,6 +571,7 @@
             <select id="f-verdict" class="select" bind:value={fVerdict}>
               <option value="">All</option>
               <option value="pending">Waiting or judging</option>
+              <option value="error">Judge error</option>
               {#each VERDICTS as v (v)}<option value={v}>{verdictLabel(v)}</option>{/each}
             </select>
           </div>
