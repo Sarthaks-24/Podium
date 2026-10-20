@@ -385,3 +385,22 @@ test('keyboard only: a student reads the integrity question and saves an explana
   await expect(page.getByRole('status').filter({ hasText: 'Saved. You can change it until a decision is made.' })).toBeVisible();
   expect(api.explanations).toHaveLength(1);
 });
+
+test('checking again asks first, and the pair view puts Open a case after the timelines (P3 C3, C7)', async ({ page }) => {
+  const api = await mockApi(page);
+  await page.goto('/admin/contests/4/integrity');
+  const again = page.getByRole('button', { name: 'Check again' });
+  await again.click();
+  const dialog = page.getByRole('dialog', { name: 'Check again?' });
+  await expect(dialog).toContainText('Cases already open keep their own copy of the evidence.');
+  await dialog.getByRole('button', { name: 'Cancel' }).click();
+  expect(api.runPosts).toBe(0);
+  await again.click();
+  await dialog.getByRole('button', { name: 'Check again' }).click();
+  await expect.poll(() => api.runPosts).toBe(1);
+
+  await page.goto('/admin/contests/4/integrity/signals/31');
+  const timelines = await page.getByRole('heading', { name: 'Timelines' }).boundingBox();
+  const open = await page.getByRole('button', { name: 'Open a case' }).boundingBox();
+  expect(open!.y).toBeGreaterThan(timelines!.y);
+});

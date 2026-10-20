@@ -197,7 +197,7 @@
       confirm = {
         state,
         title: 'Take action?',
-        body: 'This closes the case with action taken. The log keeps your note, and nothing in it can be edited later.',
+        body: 'This closes the case with action taken. Each student sees that action was taken in their case; scores do not change. The log keeps your note, and nothing in it can be edited later.',
         label: 'Take action',
         danger: true,
       };

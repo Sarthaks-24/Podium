@@ -262,10 +262,6 @@
   {/if}
   {#if fromCase}
     <p class="from-case muted">Evidence as it was when the case opened; a later check does not change it.</p>
-  {:else}
-    <p class="actions">
-      <button type="button" class="btn btn-primary" onclick={() => (dialogOpen = true)}>Open a case</button>
-    </p>
   {/if}
 
   <div class="note"><IntegrityNote /></div>
@@ -323,6 +319,10 @@
   </section>
 
   {#if !fromCase}
+    <!-- After the code and the timelines it asks you to read first (C7). -->
+    <p class="actions">
+      <button type="button" class="btn btn-primary" onclick={() => (dialogOpen = true)}>Open a case</button>
+    </p>
     <OpenCaseDialog
       open={dialogOpen}
       contestId={id}

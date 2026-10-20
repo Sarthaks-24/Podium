@@ -14,6 +14,7 @@
 -->
 <script lang="ts">
   import PageState from '../components/PageState.svelte';
+  import ConfirmDialog from '../components/ConfirmDialog.svelte';
   import { onMount } from 'svelte';
   import { SvelteSet } from 'svelte/reactivity';
   import ContestAdminNav from '../components/ContestAdminNav.svelte';
@@ -174,7 +175,11 @@
     }, POLL_MS);
   }
 
+  /** A new check replaces the signals shown, so checking again asks first (C3). */
+  let recheckOpen = $state(false);
+
   async function startCheck() {
+    recheckOpen = false;
     if (running) return;
     startError = '';
     starting = true;
@@ -250,7 +255,8 @@
         disabled={!over}
         aria-disabled={running ? 'true' : undefined}
         aria-describedby={!over ? 'check-help' : undefined}
-        onclick={startCheck}>{running ? 'Checking' : 'Check integrity'}</button
+        onclick={() => (run?.state === 'done' && !running ? (recheckOpen = true) : startCheck())}
+        >{running ? 'Checking' : run?.state === 'done' ? 'Check again' : 'Check integrity'}</button
       >
       <div class="run-text">
         {#if !over}
@@ -393,6 +399,14 @@
     problems={run?.problems}
     onclose={() => (dialogOpen = false)}
     oncreated={created}
+  />
+  <ConfirmDialog
+    open={recheckOpen}
+    title="Check again?"
+    body="The new check replaces the signals listed here. Cases already open keep their own copy of the evidence."
+    confirmLabel="Check again"
+    onconfirm={startCheck}
+    oncancel={() => (recheckOpen = false)}
   />
 {/if}
 
