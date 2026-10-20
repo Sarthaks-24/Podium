@@ -1,19 +1,25 @@
 <!--
   ProblemRail: the contest's problems in the workspace rail (design.md
   5.3). From 1024 px each row is the letter, the title (cut to one line,
-  whole on hover), the score in mono and a 2 px bar of earned over total;
-  the open problem is tinted. Below 1024 px the same links sit in one
-  row of letters with their scores, which scrolls sideways when there are
-  many. Under the problems: the standings link and the Messages button with
-  its unread count. In exam mode, until scores are out, a problem the
-  student submitted reads "Submitted" (my_submission_count, read as 0 when
-  the server leaves it out).
+  whole on hover), the score cell in mono and a 2 px bar of earned over
+  total, in the partial colour for a partial score; the open problem is
+  marked by a border on its inline start (a shape, not only a tint, audit
+  06-7). The score cell carries the status word (D114, design.md 8): "not
+  tried" with no submission, the score with "tried" or "solved" under it,
+  and in exam mode "not submitted" or "submitted" until scores are out.
+  Below 1024 px the same links sit in one row of letters with their scores
+  ("-" for none), which scrolls sideways when there are many. Under the
+  problems, during the window only, "2 of 5 tried" ("submitted" in exam
+  mode); then the standings link, "Rules" (opens the rules dialog) and the
+  Messages button with its unread count. Each link keeps one sentence for
+  screen readers (sentence()).
   Props: `problems`, `slug`, `current` (the open label), `layout` ("wide",
-  "tablet" or "phone"), `exam`, `unread` (messages not yet seen) and
-  `onmessages` (opens the messages dialog).
+  "tablet" or "phone"), `exam`, `unread` (messages not yet seen),
+  `during` (the student's window is open), `onmessages` (opens the
+  messages dialog) and `onrules` (optional; opens the rules dialog).
 -->
 <script lang="ts">
-  import type { ContestProblem } from '../lib/contests';
+  import { railStatus, triedLine, type ContestProblem } from '../lib/contests';
   import Icon from './Icon.svelte';
 
   interface Props {
@@ -23,10 +29,13 @@
     layout: string;
     exam?: boolean;
     unread?: number;
+    during?: boolean;
     onmessages: () => void;
+    onrules?: () => void;
   }
 
-  let { problems, slug, current, layout, exam = false, unread = 0, onmessages }: Props = $props();
+  let { problems, slug, current, layout, exam = false, unread = 0, during = false, onmessages, onrules }: Props = $props();
+  const tried = $derived(during ? triedLine(problems, exam) : '');
 
   const base = $derived(`/contests/${encodeURIComponent(slug)}`);
 
@@ -53,6 +62,10 @@
   function percent(p: ContestProblem): number {
     return p.my_score !== null && p.max_score > 0 ? Math.round((p.my_score / p.max_score) * 100) : 0;
   }
+
+  function partial(p: ContestProblem): boolean {
+    return p.my_score !== null && p.my_score > 0 && p.my_score < p.max_score;
+  }
 </script>
 
 <nav class="rail-nav" class:wide={layout === 'wide'} aria-label="Problems">
@@ -67,15 +80,25 @@
           title={p.title}
         >
           <span class="mono letter">{p.label}</span>
-          {#if layout === 'wide'}<span class="title">{p.title}</span>{/if}
-          <span class="mono score" class:sent={scoreText(p) === 'Submitted'}>{scoreText(p)}</span>
-          <span class="bar" aria-hidden="true"><span class="fill" style:width="{percent(p)}%"></span></span>
+          {#if layout === 'wide'}
+            {@const st = railStatus(p, exam)}
+            <span class="title">{p.title}</span>
+            <span class="cell">
+              {#if st.score}<span class="mono score">{st.score}</span>{/if}
+              {#if st.word}<span class="word" class:alone={!st.score}>{st.word}</span>{/if}
+            </span>
+          {:else}
+            <span class="mono score" class:sent={scoreText(p) === 'Submitted'}>{scoreText(p)}</span>
+          {/if}
+          <span class="bar" aria-hidden="true"><span class="fill" class:part={partial(p)} style:width="{percent(p)}%"></span></span>
         </a>
       </li>
     {/each}
   </ul>
+  {#if tried}<p class="tried">{tried}</p>{/if}
   <div class="links">
     <a class="link" href="{base}/standings">Standings</a>
+    {#if onrules}<button type="button" class="link link-button" onclick={onrules}>Rules</button>{/if}
     <button type="button" class="btn btn-quiet btn-compact messages" onclick={onmessages}>
       <Icon name="message-square" />
       Messages{#if unread > 0}<span class="mono count">{unread}</span><span class="visually-hidden">&nbsp;unread</span>{/if}
@@ -121,8 +144,16 @@
     background: var(--surface-2);
   }
 
+  /* State is a shape (F9, audit 06-7): the open problem has a border on its
+     inline start, which forced colours keep, besides the tint. */
+  .problem {
+    border-inline-start: calc(2 * var(--rule)) solid transparent;
+  }
+
   .problem[aria-current='page'] {
+    border-inline-start-color: var(--act);
     background: var(--act-tint);
+    font-weight: 600;
   }
 
   .letter {
@@ -151,6 +182,51 @@
     display: block;
     height: 100%;
     background: var(--ok);
+  }
+
+  /* A partial score fills in the partial colour, as standings cells do (audit 01-15). */
+  .fill.part {
+    background: var(--part);
+  }
+
+  .cell {
+    display: grid;
+    justify-items: end;
+    line-height: var(--lh-tight);
+  }
+
+  /* Words in the interface face; mono is for the digits (design.md amendment). */
+  .word {
+    color: var(--ink-muted);
+    font-family: var(--font-ui);
+    font-size: var(--fs-0);
+    white-space: nowrap;
+  }
+
+  .word:not(.alone) {
+    font-size: calc(var(--fs-0) * 0.9);
+  }
+
+  .tried {
+    color: var(--ink-muted);
+    font-size: var(--fs-0);
+  }
+
+  .link-button {
+    padding: 0;
+    border: 0;
+    background: none;
+    color: var(--act);
+    font-family: inherit;
+    text-decoration: underline;
+    text-decoration-thickness: var(--rule);
+    text-underline-offset: 0.2em;
+    text-decoration-color: color-mix(in srgb, currentColor 45%, transparent);
+    cursor: pointer;
+  }
+
+  .link-button:hover {
+    text-decoration-color: currentColor;
   }
 
   .links {
@@ -222,7 +298,12 @@
   /* Forced colours drop the tint and the bar fills: the current problem
      gets an outline and the bars keep their track and fill. */
   @media (forced-colors: active) {
+    .problem {
+      border-inline-start-color: Canvas;
+    }
+
     .problem[aria-current='page'] {
+      border-inline-start-color: Highlight;
       outline: calc(2 * var(--rule)) solid Highlight;
     }
 

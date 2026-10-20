@@ -15,6 +15,7 @@
  * replies the console offers.
  */
 import { countOf, formatDateTime } from './format';
+import type { PinChange, ProblemPin, StatementStamp } from './history';
 import { LANGUAGES, type Language } from './problems';
 
 export type ContestState = 'upcoming' | 'live' | 'frozen' | 'ended' | 'practice';
@@ -92,6 +93,31 @@ export interface Clarification {
   asker_name?: string;
 }
 
+/**
+ * The rail's score cell in the wide layout (D114, design.md 8): the score
+ * where one exists, with the status word under it; the word alone where
+ * there is no score. "not tried", "tried" (submitted, not full marks),
+ * "solved" (full marks); in exam mode, until scores are out, "not
+ * submitted" and "submitted".
+ */
+export function railStatus(p: Pick<ContestProblem, 'my_score' | 'max_score' | 'my_submission_count'>, exam: boolean): { score: string; word: string } {
+  const count = p.my_submission_count ?? 0;
+  if (p.my_score === null) {
+    if (exam) return { score: '', word: count > 0 ? 'submitted' : 'not submitted' };
+    return { score: '', word: count > 0 ? 'tried' : 'not tried' };
+  }
+  const score = `${p.my_score}/${p.max_score}`;
+  if (p.max_score > 0 && p.my_score >= p.max_score) return { score, word: 'solved' };
+  return { score, word: count > 0 || p.my_score > 0 ? 'tried' : 'not tried' };
+}
+
+/** "2 of 5 tried" under the rail during the window ("submitted" in exam mode, D114). */
+export function triedLine(problems: readonly Pick<ContestProblem, 'my_score' | 'my_submission_count'>[], exam: boolean): string {
+  if (problems.length === 0) return '';
+  const n = problems.filter((p) => (p.my_submission_count ?? 0) > 0 || (p.my_score ?? 0) > 0).length;
+  return `${n} of ${problems.length} ${exam ? 'submitted' : 'tried'}`;
+}
+
 /** Who asked, for the organiser inbox. */
 export function askerName(c: Pick<Clarification, 'asked_by' | 'asker_name'>): string {
   if (c.asked_by && typeof c.asked_by === 'object') return c.asked_by.name || c.asked_by.email || 'A student';
@@ -105,7 +131,7 @@ export interface Contest extends ContestSummary {
   rules: ContestRules;
   honour_text: string;
   /** Only once the student's window started or ended. */
-  problems: ContestProblem[] | null;
+  problems: (ContestProblem & StatementStamp)[] | null;
   announcements: Announcement[];
   my_clarifications: Clarification[];
   public_clarifications: Clarification[];
@@ -121,17 +147,24 @@ export interface Contest extends ContestSummary {
 /** A message shown in the banner above the workspace. */
 export interface BannerItem {
   key: string;
-  kind: 'announcement' | 'answer';
+  /** "public" is an answer an organiser gave everyone (B1). */
+  kind: 'announcement' | 'answer' | 'public';
   body: string;
   question?: string;
   at: number;
 }
 
 /**
- * The banner queue: announcements and answered own questions not yet
- * dismissed, newest first. Keys are "a<id>" and "c<id>".
+ * The banner queue: announcements, answered own questions and answers an
+ * organiser made public for everyone (B1, audit 01-2) not yet dismissed,
+ * newest first. Keys are "a<id>" and "c<id>"; a public answer to the
+ * student's own question shows once, as their own.
  */
-export function bannerItems(c: Pick<Contest, 'announcements' | 'my_clarifications'>, dismissed: ReadonlySet<string>, since: number): BannerItem[] {
+export function bannerItems(
+  c: Pick<Contest, 'announcements' | 'my_clarifications'> & { public_clarifications?: Clarification[] },
+  dismissed: ReadonlySet<string>,
+  since: number,
+): BannerItem[] {
   const items: BannerItem[] = [];
   for (const a of c.announcements ?? []) {
     if (a.created_at >= since && !dismissed.has(`a${a.id}`)) items.push({ key: `a${a.id}`, kind: 'announcement', body: a.body_md, at: a.created_at });
@@ -140,11 +173,24 @@ export function bannerItems(c: Pick<Contest, 'announcements' | 'my_clarification
     const at = q.answered_at ?? 0;
     if (q.answer && at >= since && !dismissed.has(`c${q.id}`)) items.push({ key: `c${q.id}`, kind: 'answer', body: q.answer, question: q.question, at });
   }
+  const own = new Set((c.my_clarifications ?? []).map((q) => q.id));
+  for (const q of c.public_clarifications ?? []) {
+    const at = q.answered_at ?? 0;
+    if (!q.answer || own.has(q.id) || at < since || dismissed.has(`c${q.id}`)) continue;
+    items.push({ key: `c${q.id}`, kind: 'public', body: q.answer, question: q.question, at });
+  }
   return items.sort((x, y) => y.at - x.at);
 }
 
+/** The lead of a banner item. */
+export function bannerLead(kind: BannerItem['kind']): string {
+  if (kind === 'announcement') return 'Announcement';
+  if (kind === 'public') return 'An organiser answered a question for everyone';
+  return 'An organiser answered your question';
+}
+
 /** The SSE events a contest page listens for, besides submissions. */
-export const CONTEST_EVENTS = ['standings', 'announcement', 'clarification', 'contest'] as const;
+export const CONTEST_EVENTS = ['standings', 'announcement', 'clarification', 'contest', 'statement'] as const;
 
 /** True when an event's `contest` field names this contest (or names none). */
 export function isForContest(data: unknown, c: { id?: number; slug: string }): boolean {
@@ -168,6 +214,20 @@ export function stateWord(state: ContestState): string {
     default:
       return 'Ended';
   }
+}
+
+/**
+ * The state word a student reads (decision D84): a frozen contest is still
+ * running for them, so it reads 'Live' and the countdown line adds
+ * "standings frozen". Organiser screens keep stateWord.
+ */
+export function studentStateWord(state: ContestState): string {
+  return state === 'frozen' ? 'Live' : stateWord(state);
+}
+
+/** The state a student's state word is styled as: frozen looks like live. */
+export function studentState(state: ContestState): ContestState {
+  return state === 'frozen' ? 'live' : state;
 }
 
 /** The list in display order: live first, then upcoming, then past. */
@@ -250,19 +310,34 @@ export function lengthText(c: Pick<ContestSummary, 'start_mode' | 'duration_minu
   return formatMinutes(Math.round((c.ends_at - c.starts_at) / 60_000));
 }
 
-/** The countdown line for a row of the contest list, or "" for none. */
-export function listCountdown(c: ContestSummary, now: number): { lead: string; ms: number } | null {
-  if (c.state === 'upcoming') return { lead: 'Starts in', ms: c.starts_at - now };
+/**
+ * The countdown line for a row of the contest list, or null for none.
+ * `after` follows the time: ", standings frozen" during the freeze (D84).
+ */
+export function listCountdown(c: ContestSummary, now: number): { lead: string; ms: number; after: string } | null {
+  if (c.state === 'upcoming') return { lead: 'Starts in', ms: c.starts_at - now, after: '' };
   if (c.state === 'live' || c.state === 'frozen') {
+    const after = c.state === 'frozen' ? ', standings frozen' : '';
     if (c.start_mode === 'window') {
-      if (!c.my_window) return { lead: 'Open for', ms: c.ends_at - now };
-      if (now < c.my_window.ends_at) return { lead: 'Your time left', ms: c.my_window.ends_at - now };
+      if (!c.my_window) return { lead: 'Open for', ms: c.ends_at - now, after };
+      if (now < c.my_window.ends_at) return { lead: 'Your time left', ms: c.my_window.ends_at - now, after };
       return null;
     }
     // Fixed start: the student's own end includes any personal extension.
-    return { lead: 'Ends in', ms: (c.my_window?.ends_at ?? c.ends_at) - now };
+    return { lead: 'Ends in', ms: (c.my_window?.ends_at ?? c.ends_at) - now, after };
   }
   return null;
+}
+
+/**
+ * The line under the title before a student starts: a countdown before the
+ * start, or, for a late arrival in a fixed-start contest, that their time
+ * is already running (audit 01-17). `ms` is the countdown in the line.
+ */
+export function startLine(c: Pick<Contest, 'start_mode' | 'starts_at' | 'ends_at'>, now: number): { kind: 'before' | 'window' | 'late'; ms: number } {
+  if (now < c.starts_at) return { kind: 'before', ms: c.starts_at - now };
+  if (c.start_mode === 'window') return { kind: 'window', ms: c.ends_at - now };
+  return { kind: 'late', ms: c.ends_at - now };
 }
 
 /** Minutes left at which the clock is announced, largest first. */
@@ -301,7 +376,17 @@ export function allowedLanguages(ids: readonly string[] | undefined): { id: Lang
   return LANGUAGES.filter((l) => ids.includes(l.id));
 }
 
-/** The rules paragraph shown before the start. */
+/** The three sentences that teach the two buttons (v2 S3, audit 01-4). True in both scoring modes. */
+export const WORKSPACE_SENTENCES: readonly string[] = [
+  'Run on samples tries your code on the examples in the statement. It never counts.',
+  'Submit grades your code on hidden tests, in parts called subtasks.',
+  'A later, worse submission never lowers your score.',
+];
+
+/** The line the workspace Rules dialog adds to the rules (D114, what D47 records). */
+export const RECORDED_SENTENCE = 'Podium records how many characters you paste and when you leave the page.';
+
+/** The rules shown before the start, and again in the workspace Rules dialog. */
 export function rulesSentences(c: Pick<Contest, 'start_mode' | 'duration_minutes' | 'starts_at' | 'ends_at' | 'rules'>): string[] {
   const r = c.rules;
   const out: string[] = [];
@@ -310,6 +395,7 @@ export function rulesSentences(c: Pick<Contest, 'start_mode' | 'duration_minutes
   } else {
     out.push(`Everyone starts together and has ${lengthText(c)}.`);
   }
+  out.push(...WORKSPACE_SENTENCES);
   out.push(
     r.scoring_mode === 'best_submission'
       ? 'Each problem scores your best single submission.'
@@ -349,6 +435,20 @@ export interface AdminContestSummary {
   problem_count?: number;
   problems?: AdminContestProblem[];
   paused?: boolean;
+  /** ends_at plus the contest-wide extension. */
+  close_at?: number;
+}
+
+/**
+ * The organiser list in display order (v2 N6): live and frozen contests
+ * first by their end, so an extended contest never drops among the past
+ * ones; then upcoming soonest first; then the rest newest first.
+ */
+export function organiserOrder<T extends Pick<AdminContestSummary, 'state' | 'starts_at' | 'ends_at'>>(list: readonly T[]): T[] {
+  const live = list.filter((c) => c.state === 'live' || c.state === 'frozen').sort((a, b) => a.ends_at - b.ends_at);
+  const upcoming = list.filter((c) => c.state === 'upcoming').sort((a, b) => a.starts_at - b.starts_at);
+  const rest = list.filter((c) => c.state === 'ended' || c.state === 'practice').sort((a, b) => b.starts_at - a.starts_at);
+  return [...live, ...upcoming, ...rest];
 }
 
 /** How many problems an organiser's contest row has. */
@@ -356,8 +456,8 @@ export function problemCount(c: Pick<AdminContestSummary, 'problem_count' | 'pro
   return c.problem_count ?? c.problems?.length ?? 0;
 }
 
-/** A problem in the organiser's view; ready is false when it changed since it was added. */
-export interface AdminContestProblem {
+/** A problem in the organiser's view; ready is false when it changed since it was added. The pin fields are C4 (v1.2.0). */
+export interface AdminContestProblem extends Partial<Omit<ProblemPin, 'label' | 'problem_id'>> {
   label: string;
   problem_id: number;
   title: string;
@@ -430,6 +530,8 @@ export interface AdminContest extends ContestSettings {
   /** ends_at plus the contest-wide extension. */
   close_at?: number;
   default_honour_text?: string;
+  /** Every pin change, newest first (C4, v1.2.0). */
+  pin_history?: PinChange[];
   server_now?: number;
 }
 
@@ -467,10 +569,30 @@ export interface FeedPage {
 export interface AuditEntry {
   id: number;
   action: string;
-  actor: { user_id: number; email: string; role: string };
+  /** null for rows the server wrote itself (from v1.2.0). */
+  actor: { user_id: number; email: string; role: string } | null;
   details: Record<string, unknown>;
   created_at: number;
 }
+
+/** The kinds of change the console's Changes filter offers, with their words. */
+export const AUDIT_ACTIONS: readonly { id: string; label: string }[] = [
+  { id: 'settings', label: 'Settings' },
+  { id: 'problems', label: 'Problems' },
+  { id: 'revision', label: 'Problem revisions' },
+  { id: 'roster', label: 'Roster' },
+  { id: 'extension', label: 'Extra time for a student' },
+  { id: 'extend', label: 'Contest extended' },
+  { id: 'pause', label: 'Judging paused' },
+  { id: 'resume', label: 'Judging resumed' },
+  { id: 'rejudge', label: 'Rejudges' },
+  { id: 'reveal', label: 'Reveal' },
+  { id: 'editorial', label: 'Editorial' },
+  { id: 'organisers', label: 'Co-organisers' },
+  { id: 'ai_problem', label: 'AI problems graded as written' },
+  { id: 'archive', label: 'Archived' },
+  { id: 'deploy_forced', label: 'Emergency deploy' },
+];
 
 /** The contest form's fields as the audit log names them. */
 const AUDIT_FIELDS: Record<string, string> = {
@@ -522,8 +644,20 @@ export function auditSummary(e: Pick<AuditEntry, 'action' | 'details'>): string 
     }
     case 'ai_problem':
       return `Graded AI problem ${str('label')} as written: ${str('reason')}`;
-    case 'roster':
-      return `Replaced the roster: ${countOf(num('count'), 'student')}, ${num('added')} added, ${num('removed')} removed`;
+    case 'roster': {
+      const list = (k: string) => (Array.isArray(d[k]) ? (d[k] as unknown[]).filter((x): x is string => typeof x === 'string') : []);
+      const names = (emails: string[]) => (emails.length > 3 ? `${emails.slice(0, 3).join(', ')} and ${emails.length - 3} more` : emails.join(', '));
+      const added = list('emails_added');
+      const removed = list('emails_removed');
+      let line = `Replaced the roster: ${countOf(num('count'), 'student')}, ${num('added')} added, ${num('removed')} removed`;
+      if (added.length > 0) line += `; added ${names(added)}`;
+      if (removed.length > 0) line += `; removed ${names(removed)}`;
+      return line;
+    }
+    case 'revision': {
+      const what = d.statement_changed === true && d.judging_changed === true ? 'statement and tests' : d.judging_changed === true ? 'tests' : 'statement';
+      return `Moved problem ${str('label')} from revision ${num('from_rev')} to revision ${num('to_rev')} (${what} changed)`;
+    }
     case 'extension': {
       const who = str('email') || `user ${num('user_id')}`;
       if (num('minutes') === 0) return `Removed the extension for ${who}`;

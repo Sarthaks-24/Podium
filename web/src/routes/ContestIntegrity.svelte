@@ -108,7 +108,7 @@
       const c = await getJSON<AdminContest>(base);
       const restore = keepHeadingFocus();
       contest = c;
-      setTitle(c.title, routeTitle('contest-integrity'));
+      setTitle(routeTitle('contest-integrity'), c.title);
       loadState = 'ready';
       void restore();
     } catch (e) {
@@ -224,7 +224,7 @@
 {:else if loadState !== 'ready' || !contest}
   <PageHeader
     title={loadState === 'missing' ? 'Contest not found' : 'Integrity'}
-    crumbs={[{ label: 'Contest admin', href: '/admin/contests' }, { label: loadState === 'missing' ? 'Contest not found' : 'Integrity' }]}
+    crumbs={[{ label: 'Contests', href: '/admin/contests' }, { label: loadState === 'missing' ? 'Contest not found' : 'Integrity' }]}
   />
   {#if loadState === 'loading'}
     <PageState kind="loading" message="Loading the contest" />
@@ -234,7 +234,7 @@
     <PageState kind="error" message={loadError} onretry={load} />
   {/if}
 {:else}
-  <ContestAdminNav {id} title={contest.title} state={contest.state} current="integrity" />
+  <ContestAdminNav {id} slug={contest.slug} title={contest.title} state={contest.state} current="integrity" />
 
   <div class="section">
     <IntegrityNote />

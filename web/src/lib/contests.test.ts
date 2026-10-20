@@ -14,11 +14,19 @@ import {
   labelFor,
   lengthText,
   listCountdown,
+  organiserOrder,
+  studentState,
+  studentStateWord,
   orderedContests,
   parseCsv,
   parseRoster,
   rosterCsv,
   rulesSentences,
+  bannerItems,
+  bannerLead,
+  railStatus,
+  triedLine,
+  startLine,
   studentPhase,
   toLocalInput,
   type Contest,
@@ -105,14 +113,73 @@ describe('countdowns', () => {
   });
 
   it('picks the list countdown by state and window', () => {
-    expect(listCountdown(summary({ state: 'upcoming' }), T - 5 * MIN)).toEqual({ lead: 'Starts in', ms: 5 * MIN });
-    expect(listCountdown(summary(), T + 20 * MIN)).toEqual({ lead: 'Ends in', ms: 100 * MIN });
+    expect(listCountdown(summary({ state: 'upcoming' }), T - 5 * MIN)).toEqual({ lead: 'Starts in', ms: 5 * MIN, after: '' });
+    expect(listCountdown(summary(), T + 20 * MIN)).toEqual({ lead: 'Ends in', ms: 100 * MIN, after: '' });
     const win = summary({ start_mode: 'window', duration_minutes: 60, my_window: { started_at: T + 10 * MIN, ends_at: T + 70 * MIN } });
-    expect(listCountdown(win, T + 20 * MIN)).toEqual({ lead: 'Your time left', ms: 50 * MIN });
-    expect(listCountdown(summary({ start_mode: 'window', duration_minutes: 60 }), T)).toEqual({ lead: 'Open for', ms: 120 * MIN });
+    expect(listCountdown(win, T + 20 * MIN)).toEqual({ lead: 'Your time left', ms: 50 * MIN, after: '' });
+    expect(listCountdown(summary({ start_mode: 'window', duration_minutes: 60 }), T)).toEqual({ lead: 'Open for', ms: 120 * MIN, after: '' });
     expect(listCountdown(summary({ state: 'ended' }), T + 200 * MIN)).toBeNull();
     // A fixed start with a personal extension counts to the student's own end.
-    expect(listCountdown(summary({ my_window: { started_at: T, ends_at: T + 130 * MIN } }), T)).toEqual({ lead: 'Ends in', ms: 130 * MIN });
+    expect(listCountdown(summary({ my_window: { started_at: T, ends_at: T + 130 * MIN } }), T)).toEqual({ lead: 'Ends in', ms: 130 * MIN, after: '' });
+  });
+
+  it('reads a frozen contest as live for students, with the freeze in the countdown (D84)', () => {
+    expect(studentStateWord('frozen')).toBe('Live');
+    expect(studentStateWord('practice')).toBe('Practice');
+    expect(studentState('frozen')).toBe('live');
+    expect(listCountdown(summary({ state: 'frozen' }), T + 100 * MIN)).toEqual({ lead: 'Ends in', ms: 20 * MIN, after: ', standings frozen' });
+  });
+});
+
+describe('the banner queue (B1)', () => {
+  const q = (id: number, answered_at: number | null, pub: boolean, answer: string | null = 'Yes.') => ({
+    id, problem_label: 'B', question: 'Zero length?', answer, public: pub, created_at: 1, answered_at,
+  });
+  it('adds answers given to everyone, newest first, and skips own and old ones', () => {
+    const items = bannerItems(
+      {
+        announcements: [{ id: 3, body_md: 'Problem A fixed.', created_at: 500 }],
+        my_clarifications: [q(10, 600, true)],
+        public_clarifications: [q(10, 600, true), q(11, 700, true), q(12, 50, true), q(13, null, true, null)],
+      },
+      new Set(),
+      100,
+    );
+    expect(items.map((i) => [i.key, i.kind])).toEqual([
+      ['c11', 'public'],
+      ['c10', 'answer'],
+      ['a3', 'announcement'],
+    ]);
+    expect(bannerItems({ announcements: [], my_clarifications: [], public_clarifications: [q(11, 700, true)] }, new Set(['c11']), 0)).toEqual([]);
+    expect(bannerLead('public')).toBe('An organiser answered a question for everyone');
+    expect(bannerLead('answer')).toBe('An organiser answered your question');
+  });
+});
+
+describe('rail status words (D114)', () => {
+  const p = (my_score: number | null, my_submission_count: number, max_score = 100) => ({ my_score, max_score, my_submission_count });
+  it('puts a word in the score cell', () => {
+    expect(railStatus(p(null, 0), false)).toEqual({ score: '', word: 'not tried' });
+    expect(railStatus(p(null, 2), false)).toEqual({ score: '', word: 'tried' });
+    expect(railStatus(p(40, 2), false)).toEqual({ score: '40/100', word: 'tried' });
+    expect(railStatus(p(0, 1), false)).toEqual({ score: '0/100', word: 'tried' });
+    expect(railStatus(p(100, 3), false)).toEqual({ score: '100/100', word: 'solved' });
+    expect(railStatus(p(null, 0), true)).toEqual({ score: '', word: 'not submitted' });
+    expect(railStatus(p(null, 1), true)).toEqual({ score: '', word: 'submitted' });
+  });
+
+  it('counts the problems tried', () => {
+    expect(triedLine([p(100, 1), p(null, 0), p(null, 2)], false)).toBe('2 of 3 tried');
+    expect(triedLine([p(null, 1), p(null, 0)], true)).toBe('1 of 2 submitted');
+    expect(triedLine([], false)).toBe('');
+  });
+});
+
+describe('organiser order (N6)', () => {
+  it('puts live and frozen first, then upcoming soonest, then the rest newest', () => {
+    const row = (id: number, state: string, starts: number, ends: number) => ({ id, state: state as 'live', starts_at: starts, ends_at: ends });
+    const list = [row(1, 'ended', 10, 20), row(2, 'upcoming', 500, 600), row(3, 'frozen', 100, 400), row(4, 'upcoming', 300, 350), row(5, 'practice', 30, 40), row(6, 'live', 90, 200)];
+    expect(organiserOrder(list).map((c) => c.id)).toEqual([6, 3, 4, 2, 5, 1]);
   });
 });
 
@@ -169,6 +236,22 @@ describe('student phase and window maths', () => {
     const win = rulesSentences(contest({ start_mode: 'window', duration_minutes: 90 }));
     expect(win[0]).toContain('runs 1 h 30 min');
     expect(win.at(-1)).toBe('The standings open when the contest closes.');
+  });
+
+  it('teaches Run and Submit right after the timing (S3)', () => {
+    const lines = rulesSentences(contest());
+    expect(lines.slice(1, 4)).toEqual([
+      'Run on samples tries your code on the examples in the statement. It never counts.',
+      'Submit grades your code on hidden tests, in parts called subtasks.',
+      'A later, worse submission never lowers your score.',
+    ]);
+  });
+
+  it('says the time of a late arrival is already running', () => {
+    const c = contest();
+    expect(startLine(c, c.starts_at - MIN)).toEqual({ kind: 'before', ms: MIN });
+    expect(startLine(c, c.starts_at + MIN).kind).toBe('late');
+    expect(startLine({ ...c, start_mode: 'window' }, c.starts_at + MIN).kind).toBe('window');
   });
 });
 
@@ -235,6 +318,17 @@ describe('roster CSV', () => {
 });
 
 describe('auditSummary', () => {
+  it('names revision moves and who a roster change let in or out (v1.2.0)', () => {
+    expect(auditSummary({ action: 'revision', details: { label: 'A', from_rev: 2, to_rev: 3, statement_changed: true, judging_changed: false } })).toBe(
+      'Moved problem A from revision 2 to revision 3 (statement changed)',
+    );
+    expect(auditSummary({ action: 'revision', details: { label: 'B', from_rev: 1, to_rev: 2, statement_changed: false, judging_changed: true } })).toContain('(tests changed)');
+    expect(
+      auditSummary({ action: 'roster', details: { count: 30, added: 2, removed: 1, emails_added: ['a@c.edu', 'b@c.edu'], emails_removed: ['z@c.edu'] } }),
+    ).toBe('Replaced the roster: 30 students, 2 added, 1 removed; added a@c.edu, b@c.edu; removed z@c.edu');
+    expect(auditSummary({ action: 'roster', details: { count: 5, added: 5, removed: 0, emails_added: ['1@c', '2@c', '3@c', '4@c', '5@c'] } })).toContain('added 1@c, 2@c, 3@c and 2 more');
+  });
+
   it('names each change in the past tense', () => {
     expect(
       auditSummary({

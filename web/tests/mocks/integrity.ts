@@ -360,7 +360,7 @@ export const SCREENS: Screen[] = [
     name: 'integrity',
     path: '/admin/contests/4/integrity',
     options: {},
-    title: 'Week 6 contest · Integrity · podium',
+    title: 'Integrity · Week 6 contest · podium',
     ready: async (page) => {
       await expect(page.getByRole('table', { name: 'Signals on B. Interval covering' })).toBeVisible();
       await expect(page.getByRole('link', { name: 'Same wrong output on A' })).toBeVisible();
@@ -370,7 +370,7 @@ export const SCREENS: Screen[] = [
     name: 'integrity-live',
     path: '/admin/contests/4/integrity',
     options: { live: true, unchecked: true, window: true },
-    title: 'Week 6 contest · Integrity · podium',
+    title: 'Integrity · Week 6 contest · podium',
     ready: (page) => expect(page.getByText('Not checked yet.', { exact: false })).toBeVisible(),
   },
   {

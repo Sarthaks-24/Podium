@@ -1,14 +1,17 @@
 <!--
-  ContestBanner: the newest announcement or answered question that arrived
-  while the student was in the contest (design.md section 6, Banner), shown
-  in one quiet strip above the workspace. It is a polite status, never an
-  alert: it does not take focus or interrupt typing. Dismiss hides it;
+  ContestBanner: the newest announcement, answered question or answer an
+  organiser gave everyone (B1) that arrived while the student was in the
+  contest (design.md section 6, Banner), shown in one quiet strip above the
+  workspace. Each new message is spoken once through the app's polite
+  announcer (X1, audit 06-5), never as an alert: it does not take focus or
+  interrupt typing. Dismiss hides it;
   "Show all messages" opens the messages dialog. When several arrived, the
   strip says how many more are waiting. Props: `items` (newest first),
   `ondismiss` (with the item's key) and `onopen`.
 -->
 <script lang="ts">
-  import type { BannerItem } from '../lib/contests';
+  import { polite } from '../lib/announce.svelte';
+  import { bannerLead, type BannerItem } from '../lib/contests';
   import { formatWhen } from '../lib/workspace';
   import Icon from './Icon.svelte';
   import Markdown from './Markdown.svelte';
@@ -22,15 +25,25 @@
   let { items, ondismiss, onopen }: Props = $props();
 
   const top = $derived(items[0] ?? null);
+
+  // Speak each message once, when it first reaches the top of the strip.
+  let spoken = new Set<string>();
+  $effect(() => {
+    const t = top;
+    if (!t || spoken.has(t.key)) return;
+    spoken = new Set([...spoken, t.key]);
+    const text = t.body.replace(/[#*_`>]/g, '').trim();
+    polite(`${bannerLead(t.kind)}: ${t.question ? `${t.question} ` : ''}${text}`);
+  });
 </script>
 
 <div class="wrap">
   {#if top}
     <div class="banner banner-info strip">
       <Icon name={top.kind === 'announcement' ? 'bell' : 'message-square'} />
-      <div class="text" role="status">
+      <div class="text">
         <p class="lead">
-          {top.kind === 'announcement' ? 'Announcement' : 'An organiser answered your question'}
+          {bannerLead(top.kind)}
           <span class="mono when">{formatWhen(top.at)}</span>
         </p>
         {#if top.question}<p class="question">{top.question}</p>{/if}

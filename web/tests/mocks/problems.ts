@@ -294,6 +294,20 @@ export function summaryOf(p: Json): Json {
 }
 
 /** Installs the API mock for one page and returns its mutable state. */
+/** Problem 1's revisions (contract C4), newest first: 3 edited the statement, 2 the tests. */
+export function revisionsFixture(): Json {
+  return {
+    revision: { id: 14, rev: 3 },
+    revisions_total: 3,
+    revisions: [
+      { id: 14, rev: 3, created_at: T0 - 3_600_000, created_by: { user_id: 2, email: 'arjun.mehta@college.edu', name: 'Arjun Mehta' }, reason: 'Fix the bound on n in the statement.', content_hash: 'h1', statement_changed: true, judging_changed: false, reconstructed: false, validated: true, pinned_in: [] },
+      { id: 12, rev: 2, created_at: T0 - 86_400_000, created_by: { user_id: 2, email: 'arjun.mehta@college.edu', name: 'Arjun Mehta' }, reason: '', content_hash: 'h0', statement_changed: false, judging_changed: true, reconstructed: false, validated: true, pinned_in: [{ contest_id: 4, slug: 'week-6', label: 'A' }] },
+      { id: 11, rev: 1, created_at: T0 - 2 * 86_400_000, created_by: null, reason: '', content_hash: 'hx', statement_changed: false, judging_changed: false, reconstructed: false, validated: false, pinned_in: [] },
+    ],
+    live_contests: [],
+  };
+}
+
 export async function mockApi(page: Page, who: 'admin' | 'student' = 'admin') {
   const state = {
     problems: problemFixtures(),
@@ -310,7 +324,9 @@ export async function mockApi(page: Page, who: 'admin' | 'student' = 'admin') {
     genOutcome: 'ok' as 'ok' | 'compile' | 'stale',
     nextId: 10,
     hash: 100,
+    diffQueries: [] as string[],
   };
+  Object.assign(state.problems[1], revisionsFixture());
 
   await page.route(
     (url) => url.pathname.startsWith('/api/'),
@@ -380,9 +396,23 @@ export async function mockApi(page: Page, who: 'admin' | 'student' = 'admin') {
         if (!p) return apiError(route, 404, 'not_found', 'There is no problem with that id.');
 
         if (rest === '' && method === 'GET') return json(route, 200, p);
+        if (rest === '/revisions/diff' && method === 'GET') {
+          state.diffQueries.push(url.search);
+          const to = Number(url.searchParams.get('to'));
+          return json(route, 200, {
+            from_rev: to - 1, to_rev: to, title_from: 'A plus B', title_to: 'A plus B',
+            changed: to === 3 ? ['statement'] : ['tests'], statement_only: to === 3, coarse: false,
+            lines: to === 3 ? [{ op: 'same', text: 'Read two integers.' }, { op: 'del', text: '1 <= n <= 10' }, { op: 'add', text: '1 <= n <= 100' }] : [{ op: 'same', text: 'Read two integers.' }],
+          });
+        }
         if (rest === '' && method === 'PUT') {
           const body = req.postDataJSON() as Json;
           state.puts.push(body);
+          if (((p.live_contests as unknown[] | undefined) ?? []).length > 0 && String(body.reason ?? '').trim() === '') {
+            return apiError(route, 400, 'bad_request', 'Say why you changed the problem while a contest is running.', {
+              fields: { reason: 'Say why you changed the problem while a contest is running.' },
+            });
+          }
           if (body.slug === 'taken') {
             return apiError(route, 400, 'bad_request', 'Some fields need attention.', {
               fields: { slug: 'Another problem already uses this slug.', 'subtasks[1].points': 'Points run from 1 to 1000.' },
@@ -390,7 +420,9 @@ export async function mockApi(page: Page, who: 'admin' | 'student' = 'admin') {
           }
           const subtasks: Json[] = (body.subtasks as Json[]).map((s, i) => ({ ...s, idx: i + 1 }));
           const hash = `h${state.hash++}`;
-          Object.assign(p, body, {
+          const { reason: _reason, ...edit } = body;
+          void _reason;
+          Object.assign(p, edit, {
             subtasks,
             points: subtasks.reduce((n, s) => n + Number(s.points), 0),
             content_hash: hash,

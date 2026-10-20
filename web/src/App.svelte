@@ -1,32 +1,43 @@
 <!--
-  App: the shell around every screen. The header holds the podium word-mark
-  (a link home) and, once signed in, the main navigation ("Contests" for
-  everyone, "Contest admin" and "Problems" for admins and owners, the
-  latter also current on the AI assistant screens, and
-  "People" for owners), the user's name, a Sign out button and the theme
-  menu. Under 768 px those collapse behind a Menu button that opens a
-  panel; Escape closes it. The main area shows the screen for the current
-  path from lib/router.svelte.ts, after the session from GET /api/me has
-  loaded: signed-out visitors to a protected path are sent to /signin with a
+  App: the shell around every screen (v2 N1 to N7). The header holds the
+  podium word-mark (a link home), the main navigation and one account
+  control (components/AccountMenu). Navigation is named by job: students
+  get "Contests" (Your contests) and, once an organiser has shared an
+  integrity case with them, "Questions"; admins and owners get "Contests"
+  (the organiser list at /admin/contests, where "/" sends them),
+  "Problem bank" (also current on the AI assistant screens) and, for
+  owners, "People". From 768 px everything fits one row; under 768 px an
+  organiser's nav and account items collapse behind a Menu button that
+  opens a panel (Escape closes it), while a student keeps the links and the
+  account button in the row. Signed out, only the theme control shows.
+
+  The main area shows the screen for the current path from
+  lib/router.svelte.ts, after the session from GET /api/me has loaded:
+  signed-out visitors to a protected path are sent to /signin with a
   ?next= back, and signed-in visitors to /signin are sent on. After each
-  client-side navigation focus moves to the new page's heading. The two
-  announcer regions of lib/announce.svelte.ts live at the end. The footer
-  carries the build year and a "Keyboard shortcuts" button; "?" anywhere
-  outside a text field opens the same list (components/ShortcutsDialog).
-  Takes no props.
+  client-side navigation focus moves to the new page's heading. The footer
+  carries "Contact the organisers: {email}" when the server names one,
+  the Privacy link once the owner approves the text (lib/site.ts), a
+  "Keyboard shortcuts" button and the build year; "?" anywhere outside a
+  text field opens the same list (components/ShortcutsDialog). The two
+  announcer regions of lib/announce.svelte.ts live at the end. Takes no
+  props.
 -->
 <script lang="ts">
   import { onMount, tick } from 'svelte';
+  import AccountMenu from './components/AccountMenu.svelte';
   import ShortcutsDialog from './components/ShortcutsDialog.svelte';
+  import ThemeDialog from './components/ThemeDialog.svelte';
   import Toasts from './components/Toasts.svelte';
   import ThemeMenu from './lib/ThemeMenu.svelte';
   import { regions } from './lib/announce.svelte';
   import { loadMode, runMode } from './lib/mode.svelte';
   import { installLinkInterception, matchRoute, navigate, router } from './lib/router.svelte';
-  import { displayName, loadSession, session, signOut } from './lib/session.svelte';
-  import { shell } from './lib/shell.svelte';
+  import { loadSession, session, signOut } from './lib/session.svelte';
+  import { loadQuestions, shell } from './lib/shell.svelte';
   import { isPlainKey, isTypingTarget } from './lib/shortcuts';
   import { safeNext } from './lib/signin';
+  import { PRIVACY_LINKED } from './lib/site';
   import { showToast } from './lib/toast.svelte';
   import AdminContests from './routes/AdminContests.svelte';
   import AiSettings from './routes/AiSettings.svelte';
@@ -42,6 +53,7 @@
   import MyIntegrity from './routes/MyIntegrity.svelte';
   import NotFound from './routes/NotFound.svelte';
   import People from './routes/People.svelte';
+  import Privacy from './routes/Privacy.svelte';
   import ProblemBank from './routes/ProblemBank.svelte';
   import ProblemEditor from './routes/ProblemEditor.svelte';
   import ProblemTry from './routes/ProblemTry.svelte';
@@ -60,10 +72,28 @@
   const isOrganiser = $derived(session.user?.role === 'admin' || session.user?.role === 'owner');
   const needsSignIn = $derived(route.auth && session.status === 'signed-out');
   const leaveSignIn = $derived(route.name === 'signin' && signedIn);
-  const inContests = $derived(['home', 'contest', 'contest-problem', 'standings'].includes(route.name));
-  const inContestAdmin = $derived(
-    ['admin-contests', 'admin-contest', 'contest-console', 'contest-results', 'contest-integrity', 'integrity-pair', 'integrity-case'].includes(route.name),
-  );
+  // Organisers land on their own contest list; "/" is the student list (N1).
+  const organiserHome = $derived(route.name === 'home' && isOrganiser);
+
+  /** The main navigation for the signed-in role, by job (N1). */
+  const navLinks = $derived.by(() => {
+    const name = route.name;
+    if (!isOrganiser) {
+      const links = [{ href: '/', label: 'Contests', current: ['home', 'contest', 'contest-problem', 'standings'].includes(name) }];
+      if (shell.questions !== 'none') links.push({ href: '/integrity', label: 'Questions', current: name === 'my-integrity' });
+      return links;
+    }
+    const links = [
+      {
+        href: '/admin/contests',
+        label: 'Contests',
+        current: ['admin-contests', 'admin-contest', 'contest-console', 'contest-results', 'contest-integrity', 'integrity-pair', 'integrity-case'].includes(name),
+      },
+      { href: '/admin/problems', label: 'Problem bank', current: ['problems', 'problem', 'problem-try', 'ai-settings', 'ai-new'].includes(name) },
+    ];
+    if (isOwner) links.push({ href: '/admin/people', label: 'People', current: name === 'people' });
+    return links;
+  });
 
   // Redirects are not navigations the person chose, so they keep focus where
   // it is. The redirect's target path is remembered so the focus effect can
@@ -81,6 +111,8 @@
       redirect(`/signin?next=${encodeURIComponent(router.fullPath)}`);
     } else if (leaveSignIn) {
       redirect(safeNext(router.query.get('next')));
+    } else if (organiserHome) {
+      redirect('/admin/contests');
     }
   });
 
@@ -96,6 +128,19 @@
     lastPath = path;
   });
 
+  // A student's "Questions" link, loaded once per sign-in (S7).
+  let questionsFor: number | null = null;
+  $effect(() => {
+    const user = session.user;
+    if (session.status !== 'signed-in' || !user) {
+      questionsFor = null;
+      shell.questions = 'none';
+    } else if (user.role === 'student' && questionsFor !== user.id) {
+      questionsFor = user.id;
+      void loadQuestions();
+    }
+  });
+
   onMount(() => {
     const removeInterception = installLinkInterception();
     loadSession().then((err) => {
@@ -106,18 +151,12 @@
   });
 
   function onKeydown(event: KeyboardEvent) {
-    // An open theme panel inside the menu takes the first Escape itself.
-    const themeOpen = document.querySelector('.theme-menu [aria-expanded="true"]') !== null;
-    if (event.key === 'Escape' && menuOpen && !event.defaultPrevented && !themeOpen) {
+    // A dialog opened from the menu takes its own Escape.
+    const dialogOpen = document.querySelector('dialog[open]') !== null;
+    if (event.key === 'Escape' && menuOpen && !event.defaultPrevented && !dialogOpen) {
       menuOpen = false;
       menuButton?.focus();
-    } else if (
-      event.key === '?' &&
-      !event.defaultPrevented &&
-      isPlainKey(event) &&
-      !isTypingTarget(event.target) &&
-      !document.querySelector('dialog[open]')
-    ) {
+    } else if (event.key === '?' && !event.defaultPrevented && isPlainKey(event) && !isTypingTarget(event.target) && !dialogOpen) {
       event.preventDefault();
       menuOpen = false;
       shell.shortcuts = true;
@@ -136,7 +175,6 @@
 <div class="page">
   <a class="skip" href="#main">Skip to content</a>
 
-
   <header class="bar">
     {#if runMode.mode === 'testing'}
       <p class="mode-banner" role="note">
@@ -144,54 +182,39 @@
       </p>
     {/if}
     <div class="inner bar-inner">
-      <a class="wordmark" href="/">podium</a>
+      <a class="wordmark" href="/" translate="no">podium</a>
 
       {#if signedIn && session.user}
-        <button
-          type="button"
-          class="btn btn-secondary btn-compact menu-button"
-          aria-expanded={menuOpen}
-          aria-controls="site-menu"
-          bind:this={menuButton}
-          onclick={() => (menuOpen = !menuOpen)}
-        >
-          Menu
-        </button>
+        {#if isOrganiser}
+          <button
+            type="button"
+            class="btn btn-secondary btn-compact menu-button"
+            aria-expanded={menuOpen}
+            aria-controls="site-menu"
+            bind:this={menuButton}
+            onclick={() => (menuOpen = !menuOpen)}
+          >
+            Menu
+          </button>
+        {/if}
 
-        <div id="site-menu" class="menu" class:open={menuOpen}>
+        <div id="site-menu" class="menu" class:collapsible={isOrganiser} class:open={menuOpen}>
           <nav class="nav" aria-label="Main">
             <ul>
-              <li>
-                <a href="/" aria-current={inContests ? 'page' : undefined}>Contests</a>
-              </li>
-              {#if isOrganiser}
-                <li>
-                  <a href="/admin/contests" aria-current={inContestAdmin ? 'page' : undefined}>Contest admin</a>
-                </li>
-                <li>
-                  <a
-                    href="/admin/problems"
-                    aria-current={['problems', 'problem', 'problem-try', 'ai-settings', 'ai-new'].includes(route.name)
-                      ? 'page'
-                      : undefined}>Problems</a
-                  >
-                </li>
-              {/if}
-              {#if isOwner}
-                <li>
-                  <a href="/admin/people" aria-current={route.name === 'people' ? 'page' : undefined}>People</a>
-                </li>
-              {/if}
+              {#each navLinks as l (l.href)}
+                <li><a href={l.href} aria-current={l.current ? 'page' : undefined}>{l.label}</a></li>
+              {/each}
             </ul>
           </nav>
-          <div class="account">
-            <span class="who">{displayName(session.user)}</span>
-            <button type="button" class="btn btn-quiet btn-compact signout" onclick={onSignOut}>Sign out</button>
-            <ThemeMenu />
-          </div>
+          {#if isOrganiser}
+            <div class="account-inline"><AccountMenu user={session.user} inline onsignout={onSignOut} /></div>
+          {/if}
+        </div>
+        <div class="account-popover" class:organiser={isOrganiser}>
+          <AccountMenu user={session.user} onsignout={onSignOut} />
         </div>
       {:else}
-        <ThemeMenu />
+        <div class="signed-out-theme"><ThemeMenu /></div>
       {/if}
     </div>
   </header>
@@ -202,7 +225,7 @@
     class:main-workspace={route.name === 'problem-try' || (shell.workspace && route.name.startsWith('contest'))}
     tabindex="-1"
   >
-    {#if session.status === 'loading' || needsSignIn || leaveSignIn}
+    {#if session.status === 'loading' || needsSignIn || leaveSignIn || organiserHome}
       <p class="visually-hidden" role="status">Loading</p>
     {:else if route.name === 'signin'}
       <SignIn />
@@ -260,16 +283,27 @@
       {/key}
     {:else if route.name === 'my-integrity'}
       <MyIntegrity />
+    {:else if route.name === 'privacy'}
+      <Privacy />
     {:else}
       <NotFound />
     {/if}
   </main>
 
   <footer class="inner foot">
-    <p>&copy; {year} podium</p>
-    <button type="button" class="btn btn-quiet btn-compact keys" aria-keyshortcuts="?" onclick={() => (shell.shortcuts = true)}>
-      Keyboard shortcuts
-    </button>
+    <!-- Sign-in carries the same line in its own column. -->
+    {#if runMode.contactEmail !== '' && route.name !== 'signin'}
+      <p class="contact">Contact the organisers: <a href="mailto:{runMode.contactEmail}">{runMode.contactEmail}</a></p>
+    {/if}
+    <ul class="foot-links">
+      {#if PRIVACY_LINKED}<li><a href="/privacy">Privacy</a></li>{/if}
+      <li class="keys">
+        <button type="button" class="btn btn-quiet btn-compact" aria-keyshortcuts="?" onclick={() => (shell.shortcuts = true)}>
+          Keyboard shortcuts
+        </button>
+      </li>
+      <li><span>&copy; {year} podium</span></li>
+    </ul>
   </footer>
 </div>
 
@@ -278,6 +312,7 @@
 <div class="visually-hidden" aria-live="polite" data-announcer="polite">{regions.polite}</div>
 <div class="visually-hidden" aria-live="assertive" data-announcer="assertive">{regions.assertive}</div>
 <ShortcutsDialog open={shell.shortcuts} organiser={isOrganiser} onclose={() => (shell.shortcuts = false)} />
+{#if signedIn}<ThemeDialog open={shell.theme} onclose={() => (shell.theme = false)} />{/if}
 
 <style>
   .page {
@@ -292,7 +327,7 @@
     position: absolute;
     left: var(--gutter);
     top: var(--space-2);
-    z-index: 30;
+    z-index: var(--z-skip);
     padding: var(--space-2) var(--space-3);
     border-radius: var(--radius);
     background: var(--surface);
@@ -323,6 +358,7 @@
     border-bottom: var(--rule) solid var(--line);
   }
 
+  /* One row from 768 px (N7): word-mark, nav, then the account button. */
   .bar-inner {
     display: flex;
     flex-wrap: wrap;
@@ -336,7 +372,6 @@
     display: inline-flex;
     align-items: center;
     min-height: var(--control-h);
-    margin-right: auto;
     color: var(--ink);
     font-size: var(--fs-2);
     font-weight: 600;
@@ -353,12 +388,21 @@
     display: flex;
     flex: 1 1 auto;
     align-items: center;
-    justify-content: space-between;
-    gap: var(--space-4);
+    min-width: 0;
+  }
+
+  .account-inline {
+    display: none;
+  }
+
+  .account-popover,
+  .signed-out-theme {
+    margin-left: auto;
   }
 
   .nav ul {
     display: flex;
+    flex-wrap: wrap;
     gap: var(--space-1);
     padding: 0;
     list-style: none;
@@ -373,6 +417,7 @@
     color: var(--ink-muted);
     font-weight: 500;
     text-decoration: none;
+    white-space: nowrap;
     transition: color var(--dur-fast) var(--ease);
   }
 
@@ -386,22 +431,6 @@
     text-decoration-color: var(--act);
     text-decoration-thickness: 2px;
     text-underline-offset: 0.45em;
-  }
-
-  .account {
-    display: flex;
-    align-items: center;
-    gap: var(--space-2);
-    min-width: 0;
-  }
-
-  .who {
-    min-width: 0;
-    overflow: hidden;
-    color: var(--ink-muted);
-    font-size: var(--fs-0);
-    text-overflow: ellipsis;
-    white-space: nowrap;
   }
 
   .main {
@@ -422,13 +451,33 @@
     flex-wrap: wrap;
     align-items: center;
     justify-content: space-between;
-    gap: var(--space-2) var(--space-4);
+    gap: var(--space-2) var(--space-5);
     padding-block: var(--space-5);
     color: var(--ink-muted);
     font-size: var(--fs-0);
   }
 
-  .keys {
+  .contact {
+    overflow-wrap: anywhere;
+  }
+
+  .foot-links {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-1) var(--space-4);
+    margin-left: auto;
+    padding: 0;
+    list-style: none;
+  }
+
+  .foot-links a {
+    display: inline-flex;
+    align-items: center;
+    min-height: var(--control-h);
+  }
+
+  .keys .btn {
     color: inherit;
   }
 
@@ -439,12 +488,30 @@
     }
   }
 
+  /* Phones: a student keeps the links and the account button in the row;
+     an organiser's nav and account items go behind Menu (N7, audit 04-15). */
   @media (width < 768px) {
+    .bar-inner {
+      gap: var(--space-2) var(--space-3);
+    }
+
+    .wordmark {
+      margin-right: auto;
+    }
+
+    .menu {
+      flex: 0 1 auto;
+    }
+
     .menu-button {
       display: inline-flex;
     }
 
-    .menu {
+    .account-popover.organiser {
+      display: none;
+    }
+
+    .menu.collapsible {
       display: none;
       flex-basis: 100%;
       flex-direction: column;
@@ -454,34 +521,32 @@
       border-top: var(--rule) solid var(--line);
     }
 
-    .menu.open {
+    .menu.collapsible.open {
       display: flex;
     }
 
-    .nav ul {
+    .collapsible .nav ul {
       flex-direction: column;
       gap: 0;
     }
 
-    .nav a {
+    .collapsible .nav a {
       width: 100%;
       padding-inline: 0;
     }
 
-    .account {
-      flex-wrap: wrap;
+    .collapsible .account-inline {
+      display: block;
       padding-top: var(--space-3);
       border-top: var(--rule) solid var(--line);
     }
 
-    .who {
-      flex-basis: 100%;
-      font-size: var(--fs-1);
+    .account-popover {
+      margin-left: 0;
     }
 
-    /* Line the quiet button's text up with the name and links above it. */
-    .signout {
-      margin-left: calc(-1 * var(--space-3));
+    .foot-links {
+      margin-left: 0;
     }
   }
 </style>

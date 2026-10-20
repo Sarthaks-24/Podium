@@ -11,7 +11,10 @@
   to it and moves focus there. The box is sized to the screen and scrolls
   both ways at every width, so the header row sticks on phones too; under
   768 px a vertical swipe that reaches the end of the box goes on to the
-  page, so it is never trapped. Props: `standings`, `labels` (the problem
+  page, so it is never trapped. From 768 px the board is as wide as its
+  content (names stop at 16rem), so scores sit beside names (audit 01-10);
+  on phones a long name wraps to two lines instead of being cut (audit
+  07-9). Props: `standings`, `labels` (the problem
   letters, in order), `caption` (the table's accessible name) and `large`
   (bigger type, for a projector).
 -->
@@ -104,6 +107,7 @@
   .board-wrap {
     --rank-w: 3.25rem;
     position: relative;
+    width: fit-content;
     max-width: 100%;
     max-height: max(20rem, calc(100dvh - 15rem));
     overflow: auto;
@@ -113,7 +117,7 @@
   }
 
   .board {
-    width: 100%;
+    width: auto;
     border-collapse: separate;
     border-spacing: 0;
     font-size: var(--fs-0);
@@ -263,8 +267,19 @@
       --rank-w: 2.75rem;
     }
 
-    .name {
+    .board .name {
+      min-width: 7.5rem;
       max-width: 9rem;
+      white-space: normal;
+    }
+
+    .name-text {
+      display: -webkit-box;
+      overflow: hidden;
+      -webkit-box-orient: vertical;
+      -webkit-line-clamp: 2;
+      line-clamp: 2;
+      overflow-wrap: break-word;
     }
 
     .board-wrap {

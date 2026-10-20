@@ -69,6 +69,8 @@
 
   async function ask(event: SubmitEvent) {
     event.preventDefault();
+    // While a question is on its way the button stays focusable (aria-disabled) and repeats do nothing.
+    if (busy) return;
     error = '';
     sent = '';
     const text = question.trim();
@@ -127,7 +129,7 @@
           {#if error}<p id="ask-error" class="field-error" role="alert">{error}</p>{/if}
         </div>
       </div>
-      <button type="submit" class="btn btn-primary" disabled={busy}>Send question</button>
+      <button type="submit" class="btn btn-primary" aria-disabled={busy ? 'true' : undefined}>{busy ? 'Sending' : 'Send question'}</button>
       <p class="sent" role="status">{sent}</p>
     </form>
   {:else}

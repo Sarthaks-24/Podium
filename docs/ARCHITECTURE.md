@@ -529,6 +529,38 @@ State is a shape: a selected tab, the current sub-nav link and the next reveal r
 
 `web/index.html` carries two marker pairs the server fills per route (D100): `<!--podium:head-->` around the default `noindex` robots meta, and `<!--podium:body-->` inside a fallback `<main>` that `main.ts` clears before the app mounts.
 
+### The shell by role (v2 P2)
+
+Navigation is named by job (D81, D146). Organisers do not share the students' landing page:
+
+| Role | Header nav | "/" lands on | Account menu |
+|---|---|---|---|
+| Signed out | none; a Theme control | Sign in | none |
+| Student | Contests; Questions once an organiser has shared an integrity case | Your contests | Signed in as {email}, the role word, Theme and colours, Keyboard shortcuts, Sign out |
+| Admin | Contests (`/admin/contests`), Problem bank | `/admin/contests` | same |
+| Owner | Contests, Problem bank, People | `/admin/contests` | same |
+
+- One account control (`components/AccountMenu.svelte`) holds identity, "Theme and colours" (a dialog the shell owns, `ThemeDialog`, with `ThemePicker`), Keyboard shortcuts and Sign out. The header fits one row from 768 px: the button names the person from 1024 px and reads "Account" below that. Under 768 px organisers get a Menu panel with the account items inline; students keep their links and the account button in the row.
+- Sign out first runs every save registered with `beforeSignOut()` (`lib/session.svelte.ts`, at most 3 s), so the workspace's last edits reach the server before the session ends. The confirmation during a live contest is P5's sign-out guard.
+- The contest sub-nav ends with "Student view" and shows the unanswered question count after Console; it wraps instead of scrolling at 320 px.
+- The footer names the organisers ("Contact the organisers: {email}" from `GET /api/auth/config`). `/privacy` exists but nothing links it until the owner approves its text (D85): one constant, `PRIVACY_LINKED` in `web/src/lib/site.ts`, turns on the footer and sign-in links.
+- Organiser page titles read page first ("Console · Week 6 contest · podium"), so browser tabs differ when cut short.
+
+### Announcements to screen readers (X1)
+
+Everything spoken goes through the one announcer (`lib/announce.svelte.ts`): submission results and the submit itself, every stage of a run ("Running on samples.", "Passed 1 of 2 samples.", "Compile error."), pacing refusals, contest announcements and answers in the workspace banner, a statement change, info toasts, the start of a contest the student is waiting for, and a change of the student's own place on the standings ("You are now 12th with 240 points."). Only the contest clock keeps its own region, for its 30, 10, 5 and 1 minute milestones. Error toasts stay `role="alert"`.
+
+### History screens (contracts C3 and C4)
+
+`web/src/lib/history.ts` is the one adapter for the revision, pin and audit routes, so a renamed field is a one-file change. The screens:
+
+- Students: when an organiser moves a problem of a running contest to a new revision, the workspace says "Statement updated 14:32. See what changed" (from `statement_updated_at` on load and from the `statement` event), and the open problem's statement reloads without touching the editor. "See what changed" opens `StatementDiff`, a line diff of the statements only; the route never carries test data (D47).
+- Problem editor: a History section lists the revisions with who, when, why and where each is pinned, and compares a revision with the one before (`components/problem/RevisionHistory.svelte`). While a running contest pins the problem, a save asks for a reason.
+- Console: "Problem versions" shows each pinned revision and offers "Update contest to revision N" when a newer one is validated. The confirmation says what students get and whether judging again is needed; afterwards the server's prefilled announcement waits in the announcement box for the organiser to post. A rejudge names the revision it judges against. The audit log is now "Changes", with filters by kind and by who.
+- People: "History" is the site audit (roles, domains, accounts, run mode, emergency deploys), newest first, with a filter by kind and a search by email.
+
+Diffs are drawn by `DiffLines`, which marks lines with "+" and "-" and hidden words, never by colour alone, and shows statements as plain text.
+
 ## Themes
 
 The web app ships ten colour themes plus "System", which follows the device's light or dark setting:
@@ -544,6 +576,8 @@ All colours live in `web/src/styles/tokens.css`. A theme changes surfaces, ink, 
 The choice belongs to the account (`users.theme`, `users.verdicts`; `PUT /api/me/preferences`), because students share lab machines: a high-contrast theme chosen for low vision follows the person, and signing out returns the machine to the system theme. The browser keeps a copy in localStorage only so the first frame is painted right.
 
 Every theme is checked by tests rather than by eye: text at 4.5:1 (7:1 in the high-contrast themes) on every surface, control borders at 3:1, verdicts at 4.5:1 on their tints, and a minimum OKLab distance between the action colour and each verdict and between the verdicts themselves. A browser test confirms the CSS cascade produces exactly the values checked.
+
+Nordic slate's action colour is a mid-saturation blue since v2 P2 (D83): the bright sky-cyan it had sat close to the banned slate-plus-neon look.
 
 The themes are curated versions of palettes from the owner's AdminPanelManager project. Palettes were left out where they break the design brief's bans (dark slate with neon, cream with terracotta, glows), where their accent is a verdict colour (green or amber accents read as "accepted" or "partial"), or where they depend on two competing accents. Projector reveal mode (M4) ignores personal themes and uses High contrast light.
 

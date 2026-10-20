@@ -65,7 +65,7 @@ test('the bank links to the wizard and the settings, and marks AI drafts', async
   await expect(page.getByRole('button', { name: 'Generate' })).toBeDisabled();
   await page.getByRole('link', { name: 'Add a key in AI assistant' }).click();
   await expect(page.getByRole('heading', { level: 1, name: 'AI assistant' })).toBeFocused();
-  await expect(page.getByRole('navigation', { name: 'Main' }).getByRole('link', { name: 'Problems' })).toHaveAttribute('aria-current', 'page');
+  await expect(page.getByRole('navigation', { name: 'Main' }).getByRole('link', { name: 'Problem bank' })).toHaveAttribute('aria-current', 'page');
 });
 
 test('saving a key checks it, lists the models, clears the field and never keeps the key', async ({ page }) => {

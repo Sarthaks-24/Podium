@@ -6,8 +6,11 @@
   frozen ("Frozen at 20:30. Updates when the contest ends.", or after the
   end, held for the reveal, "The final standings appear when the organisers
   release them.") or final and how many submissions are still judging, with
-  a line explaining the time under each score, and draws StandingsTable with the
-  student's own row tinted and "Jump to you". A window-mode contest answers
+  a legend for the shading, "+2", the dash and the time under each score
+  (audit 01-11), the student's own place as the page's one display figure
+  ("7 of 24" at --fs-6, D80), and StandingsTable with the student's own row
+  tinted and "Jump to you". When a refetch moves the student's own place or
+  score, the announcer says so as a sentence (S6, X1). A window-mode contest answers
   403 until the student's window closes; the page then says "The board
   opens when the window closes." The board refetches when the event stream
   says its version changed, at most once every 3 s. Props: `slug`.
@@ -24,7 +27,8 @@
   import { setTitle } from '../lib/head';
   import { routeTitle } from '../lib/routing';
   import { session } from '../lib/session.svelte';
-  import { boardLabels, statusLine, type Standings } from '../lib/standings';
+  import { polite } from '../lib/announce.svelte';
+  import { boardLabels, placeFigure, rankAnnouncement, statusLine, type Standings } from '../lib/standings';
   import { EventStream, type StreamMode } from '../lib/stream';
 
   let { slug }: { slug: string } = $props();
@@ -40,6 +44,7 @@
   const api = $derived(`/api/contests/${encodeURIComponent(slug)}`);
   const ended = $derived(contest?.state === 'ended' || contest?.state === 'practice');
   const labels = $derived(standings ? boardLabels(standings, (contest?.problems ?? []).map((p) => p.label)) : []);
+  const place = $derived(standings ? placeFigure(standings) : null);
 
   async function loadContest() {
     try {
@@ -58,6 +63,8 @@
     try {
       const s = await getJSON<Standings>(`${api}/standings`);
       if (standings && s.version < standings.version && s.variant === standings.variant) return;
+      const said = rankAnnouncement(standings, s);
+      if (said !== '') polite(said);
       standings = s;
       loadState = 'ready';
     } catch (e) {
@@ -143,7 +150,20 @@
   <PageState kind="error" message={message} onretry={() => loadBoard()} />
 {:else if standings}
   <p class="status" class:frozen={standings.variant === 'frozen'}>{statusLine(standings, ended)}</p>
-  <p class="legend">The time under each score is when it was reached, from the start.</p>
+  {#if place}
+    <p class="place">
+      <span class="place-label">{place.label}</span>
+      <span class="place-figure">
+        {#if place.tied}<span class="place-of">tied</span>{/if}
+        <span class="mono place-rank">{place.rank}</span>
+        <span class="place-of">of {place.of}</span>
+      </span>
+    </p>
+  {/if}
+  <p class="legend">
+    The shaded part of a cell is the share of points earned. A number after a score, such as +2, counts submissions made after the
+    freeze, shown when the contest ends. A dash means not tried. The time under each total is when it was reached, from the start.
+  </p>
   <StreamNotice mode={streamMode} onresume={() => stream?.resume()} />
   <div class="board">
     <StandingsTable {standings} {labels} caption="Standings for {contest?.title ?? 'this contest'}" />
@@ -172,10 +192,38 @@
   }
 
   .legend {
+    max-width: var(--measure-prose);
     margin-top: calc(-1 * var(--space-3));
     margin-bottom: var(--space-4);
     color: var(--ink-muted);
     font-size: var(--fs-0);
+  }
+
+  /* The page's one display figure (D80): mono number, Grotesk words, a muted
+     label, no box. */
+  .place {
+    display: grid;
+    gap: var(--space-1);
+    margin-bottom: var(--space-6);
+  }
+
+  .place-label {
+    color: var(--ink-muted);
+    font-size: var(--fs-0);
+  }
+
+  .place-figure {
+    line-height: var(--lh-tight);
+  }
+
+  /* Beats the inline mono step (base.css) on purpose: this is the display figure. */
+  .place-figure .place-rank {
+    font-size: var(--fs-6);
+    line-height: 1;
+  }
+
+  .place-of {
+    font-size: var(--fs-2);
   }
 
   .board {

@@ -279,7 +279,7 @@
   --act-tint: #1A1C33;
 }
 
-/* Nordic slate: deep navy with a sky-blue action colour. */
+/* Nordic slate: deep navy with a calm mid-blue action colour. */
 [data-theme="nordic-slate"] {
   --paper: #0B1320;
   --surface: #132034;
@@ -291,9 +291,11 @@
   --ink-faint: #6A85A3;
   --line: #283E60;
   --line-strong: #5B79A3;   /* 3:1 on surface-2 too (X5) */
-  --act: #7DD3FC;
+  /* A mid-saturation blue, retuned in v2 P2 (D83, audit 05-18): the bright
+     sky-cyan it replaced sat close to the banned slate-plus-neon look. */
+  --act: #82A9DE;
   --act-ink: #041426;
-  --act-tint: #1C3A55;
+  --act-tint: #1E3250;
 }
 
 /* Cosmic violet: night violet with a soft violet action colour. */

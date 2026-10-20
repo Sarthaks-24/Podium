@@ -29,3 +29,32 @@ const ROLE_LABELS: Record<Role, string> = { student: 'Student', admin: 'Admin', 
 export function roleLabel(role: Role): string {
   return ROLE_LABELS[role];
 }
+
+/** A run of text, set in Fragment Mono when it is a number (v2 S2, audit 01-19). */
+export interface TextPart {
+  text: string;
+  mono: boolean;
+}
+
+/**
+ * Splits text into number runs and word runs, so only the digits are set in
+ * mono: "2 d 23 h" keeps "d" and "h" in the interface face. A clock such as
+ * "01:12:48" is one number run.
+ */
+export function numberParts(text: string): TextPart[] {
+  const parts: TextPart[] = [];
+  for (const m of text.matchAll(/(\d+(?:[:.]\d+)*)|(\D+)/g)) {
+    parts.push({ text: m[0], mono: m[1] !== undefined });
+  }
+  return parts;
+}
+
+/** A score as "240 of 300", with mono digits and the word in the interface face. */
+export function scoreParts(score: number, max?: number | null): TextPart[] {
+  if (max === undefined || max === null) return [{ text: String(score), mono: true }];
+  return [
+    { text: String(score), mono: true },
+    { text: ' of ', mono: false },
+    { text: String(max), mono: true },
+  ];
+}

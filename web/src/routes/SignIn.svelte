@@ -5,8 +5,10 @@
   ?error=, the "Continue with Google" link, and a contact line. The link is
   a full page navigation to /api/auth/google/start carrying the ?next= path
   this page was opened with. When the server runs in testing mode the link
-  is replaced by the TestSignIn form. Signed-in visitors are redirected away
-  by the app shell before this renders. Takes no props.
+  is replaced by the TestSignIn form. The privacy link joins the contact
+  line once the owner approves the text (lib/site.ts PRIVACY_LINKED, D85).
+  Signed-in visitors are redirected away by the app shell before this
+  renders. Takes no props.
 -->
 <script lang="ts">
   import PageHeader from '../components/PageHeader.svelte';
@@ -17,6 +19,7 @@
   import { parseMode, runMode } from '../lib/mode.svelte';
   import { setTitle } from '../lib/head';
   import { routeTitle } from '../lib/routing';
+  import { PRIVACY_LINKED } from '../lib/site';
   import { router } from '../lib/router.svelte';
   import { audienceLine, errorMessage, parseErrorCode, safeNext, startHref } from '../lib/signin';
 
@@ -78,6 +81,9 @@
       Contact the organisers: <a href="mailto:{contactEmail}">{contactEmail}</a>
     </p>
   {/if}
+  {#if PRIVACY_LINKED}
+    <p class="privacy muted"><a href="/privacy">What podium records about you</a></p>
+  {/if}
 </div>
 
 <style>
@@ -105,5 +111,9 @@
   .contact {
     margin-top: var(--space-6);
     overflow-wrap: anywhere;
+  }
+
+  .privacy {
+    margin-top: var(--space-2);
   }
 </style>

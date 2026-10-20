@@ -161,7 +161,7 @@
     contest = c;
     form = toForm(c);
     picked = (c.problems ?? []).map((p) => ({ ...p }));
-    setTitle(c.title, routeTitle('admin-contest'));
+    setTitle(routeTitle('admin-contest'), c.title);
     if (cloneSlug === '') {
       cloneSlug = `${c.slug}-copy`;
       cloneStart = toLocalInput(c.starts_at + 7 * 86_400_000);
@@ -590,7 +590,7 @@
 {:else if loadState !== 'ready' || !contest || !form}
   <PageHeader
     title={loadState === 'missing' ? 'Contest not found' : 'Contest settings'}
-    crumbs={[{ label: 'Contest admin', href: '/admin/contests' }, { label: loadState === 'missing' ? 'Contest not found' : 'Contest settings' }]}
+    crumbs={[{ label: 'Contests', href: '/admin/contests' }, { label: loadState === 'missing' ? 'Contest not found' : 'Contest settings' }]}
   />
   {#if loadState === 'loading'}
     <PageState kind="loading" message="Loading the contest" />
@@ -600,7 +600,7 @@
     <PageState kind="error" message={loadError} onretry={load} />
   {/if}
 {:else}
-  <ContestAdminNav {id} title={contest.title} state={contest.state} current="settings" />
+  <ContestAdminNav {id} slug={contest.slug} title={contest.title} state={contest.state} current="settings" />
 
   <form class="settings section" novalidate onsubmit={save} aria-labelledby="settings-title">
     <h2 id="settings-title">Settings</h2>

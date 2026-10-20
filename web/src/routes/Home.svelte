@@ -1,39 +1,49 @@
 <!--
-  Home: "Your contests" (design.md 5.2), the signed-in landing page. One
-  list from GET /api/contests, not cards: live contests first with their
-  countdown in mono, then upcoming ones soonest first, then past ones
-  newest first. Each row gives the title (a link to the contest), when it
-  runs, how long it lasts, the problem count, the student's score once
-  they have one, and a state word (Upcoming, Live, Frozen, Ended,
-  Practice). From 768 to 1023 px the length and problem count are left
-  out; under 768 px each row reads as title and state, then the start,
-  then the length and the student's score. A countdown over a day reads
-  as a span ("Starts in 2 d 23 h"). Organisers also get a link to the contest
-  admin. When an organiser has shared an integrity case that is not yet
-  decided (GET /api/integrity/cases), a quiet notice links to /integrity;
-  that request failing shows nothing. The app shell sends signed-out
-  visitors to /signin first. Takes no props.
+  Home: "Your contests" (design.md 5.2, v2 S2), the student's landing page
+  (organisers land on /admin/contests instead). One list from
+  GET /api/contests, not cards: live contests first with their countdown,
+  then upcoming ones soonest first, then past ones newest first. Each row
+  gives the title (a link to the contest; on phones the whole row is the
+  link), when it runs, how long it lasts, the problem count, the student's
+  score once they have one ("240 of 300", digits in mono) and the state
+  word. A live row adds an "Open contest" button after its countdown. A
+  frozen contest reads "Live" with "standings frozen" in its countdown
+  (D84). Under 768 px each row reads as title and state, then the start,
+  then the length and problem count in one muted line beside the score. A
+  countdown over a day reads as a span ("Starts in 2 d 23 h"). When an
+  organiser has shared an integrity case with the student (shell.questions,
+  loaded by the shell), a quiet line links to /integrity, worded by where
+  the cases stand. The app shell sends signed-out visitors to /signin
+  first. Takes no props.
 -->
 <script lang="ts">
+  import MonoDigits from '../components/MonoDigits.svelte';
   import PageState from '../components/PageState.svelte';
   import PageHeader from '../components/PageHeader.svelte';
   import { onMount } from 'svelte';
   import { ApiError, getJSON } from '../lib/api';
   import { serverClock } from '../lib/clock';
-  import { formatCountdown, formatSpan, lengthText, listCountdown, orderedContests, stateWord, type ContestList, type ContestSummary } from '../lib/contests';
-  import { formatDateTime } from '../lib/format';
+  import {
+    formatCountdown,
+    formatSpan,
+    lengthText,
+    listCountdown,
+    orderedContests,
+    studentState,
+    studentStateWord,
+    type ContestList,
+    type ContestSummary,
+  } from '../lib/contests';
+  import { countOf, formatDateTime, numberParts, scoreParts } from '../lib/format';
   import { setTitle } from '../lib/head';
   import { routeTitle } from '../lib/routing';
   import { session } from '../lib/session.svelte';
-  import type { StudentCaseList } from '../lib/review';
+  import { shell } from '../lib/shell.svelte';
   import { refreshTicker, ticker, useTicker } from '../lib/ticker.svelte';
 
   let loadState = $state<'loading' | 'ready' | 'error'>('loading');
   let loadError = $state('');
   let contests = $state<ContestSummary[]>([]);
-  let asked = $state(false);
-
-  const isOrganiser = $derived(session.user?.role === 'admin' || session.user?.role === 'owner');
 
   async function load() {
     loadState = 'loading';
@@ -69,38 +79,26 @@
     if (loadState === 'ready' && ticker.now >= reloadAt) void load();
   });
 
-  // A notice only; any failure leaves the page as it was.
-  async function loadAsked() {
-    try {
-      const data = await getJSON<StudentCaseList>('/api/integrity/cases');
-      asked = (data.cases ?? []).some((c) => !c.decided);
-    } catch {
-      asked = false;
-    }
-  }
-
-  function scoreText(c: ContestSummary): string {
-    if (c.my_score === null) return '';
-    return c.max_score !== undefined ? `${c.my_score} of ${c.max_score}` : String(c.my_score);
+  function isLive(c: ContestSummary): boolean {
+    return c.state === 'live' || c.state === 'frozen';
   }
 
   onMount(() => {
     setTitle(routeTitle('home'));
     void load();
-    void loadAsked();
     return useTicker();
   });
 </script>
 
 <PageHeader title="Your contests" />
 
-{#if asked}
+{#if shell.questions === 'asked'}
   <p class="banner asked">An organiser asked you to explain a submission. <a href="/integrity">Write your explanation</a></p>
+{:else if shell.questions === 'decided'}
+  <p class="banner asked">An organiser decided on a question about your submission. <a href="/integrity">Read the decision</a></p>
 {/if}
 
-{#if isOrganiser}
-  <p class="org muted">To create a contest or follow one live, open <a href="/admin/contests">Contest admin</a>.</p>
-{/if}
+<!-- D92: the "Across 5 contests" progress line goes here once "Your progress" (S8, P4) has its route. -->
 
 {#if loadState === 'loading'}
   <PageState kind="loading" message="Loading contests" />
@@ -124,18 +122,24 @@
       <tbody>
         {#each contests as c (c.slug)}
           {@const cd = listCountdown(c, ticker.now)}
-          <tr class:live={c.state === 'live' || c.state === 'frozen'}>
+          {@const href = `/contests/${encodeURIComponent(c.slug)}`}
+          <tr class:live={isLive(c)}>
             <th scope="row" class="title">
-              <a class="row-link" href="/contests/{encodeURIComponent(c.slug)}">{c.title}</a>
+              <a class="row-link" id="contest-{c.slug}" {href}>{c.title}</a>
               {#if cd && cd.ms > 0}
-                <span class="countdown">{cd.lead} <span class="mono">{cd.ms >= 86_400_000 ? formatSpan(cd.ms) : formatCountdown(cd.ms)}</span></span>
+                <span class="countdown">{cd.lead} <MonoDigits parts={numberParts(cd.ms >= 86_400_000 ? formatSpan(cd.ms) : formatCountdown(cd.ms))} />{cd.after}</span>
+              {/if}
+              {#if isLive(c)}
+                <a class="btn btn-primary btn-compact open" {href} aria-describedby="contest-{c.slug}">Open contest</a>
               {/if}
             </th>
             <td class="num when">{formatDateTime(c.starts_at)}</td>
-            <td class="length">{lengthText(c)}</td>
-            <td class="num right problems"><span class="cell-label">Problems</span>{c.problem_count}</td>
-            <td class="num right score">{#if scoreText(c)}<span class="cell-label">Score</span>{scoreText(c)}{/if}</td>
-            <td class="state state-{c.state}">{stateWord(c.state)}</td>
+            <td class="length"><span class="meta">{lengthText(c)}<span class="phone-only">, {countOf(c.problem_count, 'problem')}</span></span></td>
+            <td class="num right problems">{c.problem_count}</td>
+            <td class="right score">
+              {#if c.my_score !== null}<span class="cell-label">Score </span><MonoDigits parts={scoreParts(c.my_score, c.max_score)} />{/if}
+            </td>
+            <td class="state"><span class="state-word" data-state={studentState(c.state)}>{studentStateWord(c.state)}</span></td>
           </tr>
         {/each}
       </tbody>
@@ -147,20 +151,6 @@
   .asked {
     margin-top: var(--space-4);
     max-width: 44rem;
-  }
-
-  .org {
-    margin-top: var(--space-3);
-    font-size: var(--fs-0);
-  }
-
-  .lead {
-    margin-top: var(--space-4);
-    max-width: 40rem;
-  }
-
-  .retry {
-    margin-top: var(--space-4);
   }
 
   .list {
@@ -183,6 +173,10 @@
     color: var(--ink);
   }
 
+  .open {
+    margin-top: var(--space-2);
+  }
+
   .length {
     white-space: nowrap;
   }
@@ -192,34 +186,20 @@
     text-align: right;
   }
 
-  .cell-label {
+  .score {
+    white-space: nowrap;
+  }
+
+  .cell-label,
+  .phone-only {
     display: none;
   }
 
   .state {
-    color: var(--ink-muted);
     white-space: nowrap;
   }
 
-  .state-live,
-  .state-frozen {
-    color: var(--act);
-    font-weight: 600;
-  }
-
-  .state-practice {
-    color: var(--ink);
-  }
-
-  /* Tablets: the length and problem count make room for the state. */
-  @media (768px <= width < 1024px) {
-    .length,
-    .problems {
-      display: none;
-    }
-  }
-
-  /* Phones: title and state, then the details in one muted line. */
+  /* Phones: title and state, then the start, then length, problems and score. */
   @media (width < 768px) {
     .list tbody tr {
       grid-template-columns: minmax(0, 1fr) auto;
@@ -245,7 +225,6 @@
 
     .when,
     .length,
-    .problems,
     .score {
       color: var(--ink-muted);
       font-size: var(--fs-0);
@@ -254,6 +233,10 @@
 
     .length {
       grid-area: meta;
+    }
+
+    .phone-only {
+      display: inline;
     }
 
     .problems {
@@ -267,8 +250,6 @@
 
     .cell-label {
       display: inline;
-      margin-right: var(--space-1);
-      font-family: var(--font-ui);
     }
   }
 </style>

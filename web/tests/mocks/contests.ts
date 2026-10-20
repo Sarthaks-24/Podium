@@ -50,7 +50,14 @@ export interface Options {
   endsInMs?: number;
   /** The organiser's contest starts out published. */
   published?: boolean;
+  /** Problem B moved to a new revision after the start, changing its statement (C3). */
+  statementUpdated?: boolean;
+  /** Problem A has a newer validated revision to update the contest to (C4). */
+  updateAvailable?: boolean;
 }
+
+/** When B's statement changed, minutes before the page loads (the C3 fixture). */
+export const STATEMENT_CHANGED_MIN = 12;
 
 export function json(route: Route, status: number, body?: unknown) {
   return route.fulfill({ status, contentType: 'application/json; charset=utf-8', body: body === undefined ? '' : JSON.stringify(body) });
@@ -169,6 +176,12 @@ export async function mockApi(page: Page, options: Options = {}) {
     adminDeletes: [] as Json[],
     feedQueries: [] as string[],
     aiGate: options.aiGate ?? false,
+    publicClarifications: [] as Json[],
+    statementAt: options.statementUpdated ? now - STATEMENT_CHANGED_MIN * MIN : (null as number | null),
+    revisionQueries: [] as string[],
+    pinPuts: [] as { label: string; body: Json }[],
+    pinnedRev: { A: options.updateAvailable ? 2 : 3 } as Record<string, number>,
+    auditQueries: [] as string[],
   };
 
   state.holdReveal = options.holdReveal ?? false;
@@ -226,12 +239,14 @@ export async function mockApi(page: Page, options: Options = {}) {
             my_score: state.scores[p.label],
             max_score: p.max,
             my_submission_count: state.submissions.filter((s) => s.problem_id === p.id).length,
+            revision_id: 10 + p.id,
+            statement_updated_at: p.label === 'B' ? state.statementAt : null,
           }))
         : null,
     accepted: state.accepted,
     announcements: state.announcements,
     my_clarifications: state.clarifications,
-    public_clarifications: [],
+    public_clarifications: state.publicClarifications,
     editorial_md: phase === 'after' || phase === 'practice' ? '## A plus B\n\nUse 64-bit integers.' : null,
     second_session: options.secondSession ?? false,
     server_now: nowMs(),
@@ -300,7 +315,11 @@ export async function mockApi(page: Page, options: Options = {}) {
     extended_minutes: 0,
     editorial_md: '## A\n\nUse long long.',
     editorial_published: false,
-    problems: state.adminProblems,
+    problems: state.adminProblems.map((p) => pinFields(p)),
+    pin_history: [
+      ...state.pinPuts.map((x, i) => ({ label: x.label, problem_id: 11, revision_id: Number(x.body.revision_id), rev: 3, from_at: now + i, actor: { user_id: 2, email: 'arjun.mehta@college.edu', role: 'admin' } })).reverse(),
+      { label: 'A', problem_id: 11, revision_id: 12, rev: 2, from_at: startsAt - 60 * MIN, actor: { user_id: 1, email: 'priya@college.edu', role: 'owner' } },
+    ],
     roster_count: 1,
     close_at: endsAt,
     default_honour_text: 'This contest is graded. By starting you agree to these rules.',
@@ -310,6 +329,22 @@ export async function mockApi(page: Page, options: Options = {}) {
     admins: [{ user_id: 3, email: 'ta@college.edu', name: 'Meera Iyer' }],
     server_now: nowMs(),
   });
+
+  /** C4 pin fields: A is pinned to revision 2 and, with updateAvailable, revision 3 is validated. */
+  function pinFields(p: Json): Json {
+    const rev = state.pinnedRev[String(p.label)] ?? 1;
+    const latest = String(p.label) === 'A' ? 3 : rev;
+    return {
+      ...p,
+      revision_id: 10 + rev,
+      rev,
+      latest_revision_id: 10 + latest,
+      latest_rev: latest,
+      update_available: latest > rev,
+      update_statement_only: true,
+      reconstructed: false,
+    };
+  }
 
   const revealBoards = () => {
     const row = (user_id: number, name: string, rank: number, a: number, b: number, t: number, pa = 0, pb = 0) => ({
@@ -388,6 +423,36 @@ export async function mockApi(page: Page, options: Options = {}) {
         const c = { id: 90 + state.asked.length, problem_label: body.problem_label, question: body.question, answer: null, public: false, created_at: nowMs(), answered_at: null };
         state.clarifications.push(c);
         return json(route, 201, { clarification: c, server_now: nowMs() });
+      }
+      const revs = path.match(/^\/api\/contests\/week-6\/problems\/([A-Z])\/revisions$/);
+      if (revs && method === 'GET') {
+        state.revisionQueries.push(url.search);
+        const at = state.statementAt;
+        if (!at) {
+          return json(route, 200, { label: revs[1], current_revision_id: 21, statement_updated_at: null, revisions: [{ revision_id: 21, rev: 1, pinned_at: startsAt - 60 * MIN, title: 'Interval covering', statement_changed: false, statement_recorded: true }], diff: null, server_now: nowMs() });
+        }
+        const fromOld = url.searchParams.get('from') === '19';
+        return json(route, 200, {
+          label: revs[1],
+          current_revision_id: 22,
+          statement_updated_at: at,
+          revisions: [
+            { revision_id: 22, rev: 3, pinned_at: at, title: 'Interval covering', statement_changed: true, statement_recorded: true },
+            { revision_id: 21, rev: 2, pinned_at: startsAt - 60 * MIN, title: 'Interval covering', statement_changed: true, statement_recorded: true },
+            { revision_id: 19, rev: 1, pinned_at: startsAt - 120 * MIN, title: 'Intervals', statement_changed: false, statement_recorded: true },
+          ],
+          diff: {
+            from_revision_id: fromOld ? 19 : 21, to_revision_id: 22, from_rev: fromOld ? 1 : 2, to_rev: 3,
+            title_from: fromOld ? 'Intervals' : 'Interval covering', title_to: 'Interval covering', coarse: false,
+            lines: [
+              { op: 'same', text: 'Cover the line with the fewest intervals.' },
+              { op: 'del', text: '1 <= n <= 1000' },
+              { op: 'add', text: '1 <= n <= 100000' },
+              { op: 'same', text: 'Intervals may touch at an end.' },
+            ],
+          },
+          server_now: nowMs(),
+        });
       }
       const prob = path.match(/^\/api\/contests\/week-6\/problems\/([A-Z])(\/(draft|run|submit|events))?$/);
       if (prob) {
@@ -490,6 +555,19 @@ export async function mockApi(page: Page, options: Options = {}) {
         state.extensions.push({ user: ext[1], body: req.postDataJSON() as Json });
         return json(route, 200, adminContest());
       }
+      const pin = path.match(/^\/api\/admin\/contests\/4\/problems\/([A-Z])\/revision$/);
+      if (pin && method === 'PUT') {
+        const body = req.postDataJSON() as Json;
+        state.pinPuts.push({ label: pin[1], body });
+        state.pinnedRev[pin[1]] = Number(body.revision_id) - 10;
+        return json(route, 200, {
+          contest: adminContest(),
+          announcement_md: `The statement of problem ${pin[1]} was updated. Open the problem and choose "See what changed".`,
+          statement_changed: true,
+          rejudge_needed: false,
+          server_now: nowMs(),
+        });
+      }
       if (path === '/api/admin/contests/4/rejudge' && method === 'POST') {
         state.rejudges.push(req.postDataJSON() as Json);
         return json(route, 202, { queued: 1, server_now: nowMs() });
@@ -542,14 +620,19 @@ export async function mockApi(page: Page, options: Options = {}) {
         });
       }
       if (path === '/api/admin/contests/4/audit' && method === 'GET') {
+        state.auditQueries.push(url.search);
         const actor = { user_id: 1, email: 'priya@college.edu', role: 'owner' };
         const entries = [
           ...Array.from({ length: state.pauses }, () => ({ action: 'pause', details: {} })),
           ...state.extends.map((e) => ({ action: 'extend', details: e })),
           ...state.extensions.map((x) => ({ action: 'extension', details: { email: 'asha@college.edu', ...x.body } })),
           ...state.rejudges.map((r) => ({ action: 'rejudge', details: { ...r, queued: 1 } })),
+          ...state.pinPuts.map((x) => ({ action: 'revision', details: { label: x.label, from_rev: 2, to_rev: 3, statement_changed: true, judging_changed: false } })),
         ].map((e, i) => ({ id: i + 1, actor, created_at: now, ...e }));
-        return json(route, 200, { entries: entries.reverse(), page: 1, has_more: false, server_now: nowMs() });
+        const want = url.searchParams.get('action') ?? '';
+        const who = (url.searchParams.get('actor') ?? '').toLowerCase();
+        const shown = entries.filter((e) => (want === '' || e.action === want) && (who === '' || e.actor.email.includes(who)));
+        return json(route, 200, { entries: shown.reverse(), page: 1, has_more: false, server_now: nowMs() });
       }
       if (path === '/api/admin/contests/4/editorial' && method === 'PUT') {
         state.editorials.push(req.postDataJSON() as Json);
@@ -627,21 +710,21 @@ export const SCREENS: Screen[] = [
     name: 'admin-contests',
     path: '/admin/contests',
     options: { who: 'admin', phase: 'during' },
-    title: 'Contest admin · podium',
+    title: 'Contests · podium',
     ready: (page) => expect(page.getByRole('link', { name: 'Week 7 contest', exact: true })).toBeVisible(),
   },
   {
     name: 'contest-editor',
     path: '/admin/contests/4',
     options: { who: 'admin', phase: 'during' },
-    title: 'Week 6 contest · Contest settings · podium',
+    title: 'Contest settings · Week 6 contest · podium',
     ready: (page) => expect(page.getByRole('heading', { name: 'Co-organisers' })).toBeVisible(),
   },
   {
     name: 'contest-console',
     path: '/admin/contests/4/console',
     options: { who: 'admin', phase: 'during' },
-    title: '(1) Week 6 contest · Console · podium',
+    title: '(1) Console · Week 6 contest · podium',
     ready: async (page) => {
       await expect(page.getByText('Can intervals have zero length?')).toBeVisible();
       await expect(page.getByRole('cell', { name: 'Wrong answer' })).toBeVisible();
@@ -651,7 +734,7 @@ export const SCREENS: Screen[] = [
     name: 'contest-results',
     path: '/admin/contests/4/results',
     options: { who: 'admin', phase: 'after' },
-    title: 'Week 6 contest · Results · podium',
+    title: 'Results · Week 6 contest · podium',
     ready: async (page) => {
       await expect(page.getByRole('region', { name: /Standings for Week 6 contest/ })).toBeVisible();
       await expect(page.getByText('Interval covering').first()).toBeVisible();

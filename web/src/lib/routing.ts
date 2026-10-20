@@ -28,6 +28,7 @@ export type RouteName =
   | 'integrity-pair'
   | 'integrity-case'
   | 'my-integrity'
+  | 'privacy'
   | 'not-found';
 
 /** One row of the route table. */
@@ -67,13 +68,14 @@ export const ROUTES: readonly RouteDef[] = [
   { pattern: '/contests/:slug', name: 'contest', auth: true, public: false, title: 'Contest', description: 'A contest: its problems, time left and your submissions.' },
   { pattern: '/contests/:slug/standings', name: 'standings', auth: true, public: false, title: 'Standings', description: 'The standings of a contest.' },
   { pattern: '/contests/:slug/problems/:label', name: 'contest-problem', auth: true, public: false, title: 'Contest', description: 'One problem of a contest, with the editor and your results.' },
-  { pattern: '/admin/contests', name: 'admin-contests', auth: true, public: false, title: 'Contest admin', description: 'Every contest, its state and its settings.' },
+  { pattern: '/admin/contests', name: 'admin-contests', auth: true, public: false, title: 'Contests', description: 'Every contest, its state and its settings.' },
   { pattern: '/admin/contests/:id', name: 'admin-contest', auth: true, public: false, title: 'Contest settings', description: 'Edit a contest: times, problems, rules and publishing.' },
   { pattern: '/admin/contests/:id/console', name: 'contest-console', auth: true, public: false, title: 'Console', description: 'Run a live contest: submissions, questions, announcements and time.' },
   { pattern: '/admin/contests/:id/results', name: 'contest-results', auth: true, public: false, title: 'Results', description: 'Final scores and problem statistics for a contest.' },
   { pattern: '/admin/contests/:id/integrity', name: 'contest-integrity', auth: true, public: false, title: 'Integrity', description: 'Signals worth a look and open cases for a contest.' },
   { pattern: '/admin/contests/:id/integrity/signals/:signal', name: 'integrity-pair', auth: true, public: false, title: 'Signal', description: 'One integrity signal with its evidence.' },
   { pattern: '/admin/integrity/cases/:case', name: 'integrity-case', auth: true, public: false, title: 'Case', description: 'One integrity case: evidence, notes and the decision.' },
+  { pattern: '/privacy', name: 'privacy', auth: false, public: false, title: 'Privacy', description: 'What podium records about you, who can see it and how long it is kept.' },
   { pattern: '/integrity', name: 'my-integrity', auth: true, public: false, title: 'Questions about your submissions', description: 'Questions the organisers have about your submissions, and your replies.' },
 ];
 

@@ -9,6 +9,11 @@
  * person at a shared machine starts fresh), removes every local draft
  * mirror (lib/drafts.ts), and goes to the sign-in page. Signing in as a
  * different account from the last one on this device also removes them.
+ *
+ * Screens holding unsaved work register a save with beforeSignOut(); sign
+ * out waits for those saves (at most SIGN_OUT_WAIT_MS) before it ends the
+ * session, so the workspace's last edits reach the server first (audit
+ * 01-9). The confirmation during a live contest is P5's sign-out guard.
  */
 import { ApiError, getJSON, sendJSON } from './api';
 import { forgetDraftsAtSignOut, noteSignedInUser } from './drafts';
@@ -64,12 +69,39 @@ export async function loadSession(): Promise<ApiError | null> {
   }
 }
 
+/** The longest sign out waits for registered saves. */
+export const SIGN_OUT_WAIT_MS = 3000;
+
+// Not reactive state: nothing renders from it.
+// eslint-disable-next-line svelte/prefer-svelte-reactivity
+const savers = new Set<() => Promise<unknown>>();
+
+/**
+ * Registers a save to run before signing out; returns the function that
+ * removes it. A failing or slow save never blocks the sign-out.
+ */
+export function beforeSignOut(save: () => Promise<unknown>): () => void {
+  savers.add(save);
+  return () => savers.delete(save);
+}
+
+/** Runs every registered save, waiting at most SIGN_OUT_WAIT_MS in all. */
+export async function runSignOutSaves(wait = SIGN_OUT_WAIT_MS): Promise<void> {
+  if (savers.size === 0) return;
+  const all = Promise.allSettled([...savers].map((save) => Promise.resolve().then(save)));
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const limit = new Promise<void>((resolve) => (timer = setTimeout(resolve, wait)));
+  await Promise.race([all, limit]);
+  clearTimeout(timer);
+}
+
 /**
  * Ends the session and goes to /signin. The local state is cleared even when
  * the request fails, and the error is returned so the caller can report it.
  */
 export async function signOut(): Promise<ApiError | null> {
   let failure: ApiError | null = null;
+  await runSignOutSaves();
   try {
     await sendJSON<void>('POST', '/api/auth/logout');
   } catch (err) {

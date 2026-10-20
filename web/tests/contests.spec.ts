@@ -58,7 +58,8 @@ test('the contest list puts the live contest first with a countdown', async ({ p
   await page.setViewportSize({ width: 1280, height: 800 });
   // Students get only the Contests link.
   await expect(page.getByRole('link', { name: 'Contests', exact: true })).toHaveAttribute('aria-current', 'page');
-  await expect(page.getByRole('link', { name: 'Contest admin' })).toHaveCount(0);
+  await expect(page.getByRole('navigation', { name: 'Main' }).getByRole('link')).toHaveText(['Contests']);
+  await expect(page.getByRole('link', { name: 'Problem bank' })).toHaveCount(0);
 });
 
 test('a student agrees to the honour code, solves, reads an announcement and asks a question', async ({ page }) => {
@@ -71,7 +72,12 @@ test('a student agrees to the honour code, solves, reads an announcement and ask
   await expect(page.getByRole('heading', { name: 'Rules' })).toBeVisible();
   await expect(page.getByText('You can submit up to 15 times per problem, at least 30 s apart.')).toBeVisible();
   await expect(page.getByText('It is deleted 180 days after the contest.', { exact: false })).toBeVisible();
-  await expect(page.getByText(/^Started\. Ends in/)).toBeVisible();
+  await expect(page.getByText(/^The contest started at \d{2}:\d{2} and your time is running\. It ends in/)).toBeVisible();
+  // S3: the workspace is taught before the clock starts, with the real verdict pieces.
+  const how = page.getByRole('region', { name: 'How the workspace works' });
+  await expect(how.locator('details.how')).toHaveAttribute('open', '');
+  await expect(how.getByText('Partial, 40 of 100')).toBeVisible();
+  await expect(how.locator('.strip')).toHaveAttribute('aria-label', 'Subtask 1, 40 points, passed; Subtask 2, 60 points, failed');
 
   await page.getByRole('button', { name: 'I agree, start the contest' }).click();
   await expect.poll(() => api.starts).toBe(1);
@@ -98,8 +104,10 @@ test('a student agrees to the honour code, solves, reads an announcement and ask
   // An announcement arrives as a quiet banner, not an alert.
   api.announcements.push({ id: 1, body_md: 'Problem B: the statement has been corrected.', created_at: Date.now() + 1000 });
   api.stream.push({ type: 'announcement', data: { contest: 4, id: 1, body_md: 'Problem B: the statement has been corrected.' } });
-  const banner = page.getByRole('status').filter({ hasText: 'Problem B: the statement has been corrected.' });
+  const banner = page.locator('.banner-slot .strip').filter({ hasText: 'Problem B: the statement has been corrected.' });
   await expect(banner).toBeVisible({ timeout: 10_000 });
+  // X1: spoken once through the polite announcer.
+  await expect(page.locator('[data-announcer="polite"]')).toHaveText('Announcement: Problem B: the statement has been corrected.');
   await expect(page.getByRole('alert')).toHaveCount(0);
   await expect(rail.getByRole('button', { name: /Messages/ })).toContainText('1');
   await page.screenshot({ path: `${shots()}contest-banner-1440-light.png` });
@@ -167,10 +175,10 @@ test('exam mode shows only "Submitted"', async ({ page }) => {
   await page.waitForTimeout(1500);
   await expect(result.getByText(/Partial|Wrong answer|Accepted|40 of 100/)).toHaveCount(0);
   await expect(result.locator('.strip')).toHaveCount(0);
-  await expect(page.locator('.ws > [aria-live="polite"]').first()).toHaveText('Submitted.');
+  await expect(page.locator('[data-announcer="polite"]')).toHaveText('Submitted.');
   const rail = page.getByRole('navigation', { name: 'Problems' });
   await expect(rail.getByRole('link', { name: 'Problem A, A plus B, submitted once, score after the contest' })).toBeVisible();
-  await expect(rail.getByRole('link', { name: /Problem A/ }).locator('.score')).toHaveText('Submitted');
+  await expect(rail.getByRole('link', { name: /Problem A/ }).locator('.word')).toHaveText('submitted');
   await expect(rail.getByRole('link', { name: 'Problem B, Interval covering, not submitted' })).toBeVisible();
   await page.screenshot({ path: `${shots()}contest-exam-1440-light.png` });
 });
@@ -278,12 +286,14 @@ test('a second tab with the same contest shows a notice, as does a second sessio
   await elsewhere.close();
 });
 
-test('admins see the Contest admin link and the contest list', async ({ page }) => {
+test('admins land on their contest list, named by job', async ({ page }) => {
   await mockApi(page, { who: 'admin', phase: 'during' });
   await page.goto('/');
-  await page.getByRole('navigation', { name: 'Main' }).getByRole('link', { name: 'Contest admin' }).click();
   await expect(page).toHaveURL('/admin/contests');
-  await expect(page.getByRole('link', { name: 'Contest admin', exact: true }).first()).toHaveAttribute('aria-current', 'page');
+  const nav = page.getByRole('navigation', { name: 'Main' });
+  await expect(nav.getByRole('link')).toHaveText(['Contests', 'Problem bank']);
+  await expect(nav.getByRole('link', { name: 'Contests' })).toHaveAttribute('aria-current', 'page');
+  await expect(page.getByText('To create a contest or follow one live')).toHaveCount(0);
   await expect(page.getByRole('row', { name: /Week 7 contest/ })).toContainText('Draft');
   await expect(page.getByRole('row', { name: /Week 6 contest/ })).toContainText('Published');
 
@@ -299,7 +309,7 @@ test('students cannot open the contest admin', async ({ page }) => {
   await page.goto('/admin/contests');
   await expect(page.getByText('Only admins can manage contests.')).toBeVisible();
   // F3: a closed screen names where to ask, as a mailto link.
-  await expect(page.getByRole('link', { name: 'priya@college.edu' })).toHaveAttribute('href', 'mailto:priya@college.edu');
+  await expect(page.getByRole('main').getByRole('link', { name: 'priya@college.edu' })).toHaveAttribute('href', 'mailto:priya@college.edu');
 });
 
 test('the editor shows field errors, picks problems and previews a roster', async ({ page }) => {
@@ -396,7 +406,7 @@ test('the console pauses, extends, rejudges, announces and answers', async ({ pa
   await page.getByRole('button', { name: 'Resume judging' }).click();
   await expect(page.getByText('Judging is running.')).toBeVisible();
 
-  await expect(page.getByRole('link', { name: '1 unanswered question' })).toHaveAttribute('href', '#clar-title');
+  await expect(page.getByRole('link', { name: '1 unanswered question', exact: true })).toHaveAttribute('href', '#clar-title');
   await page.getByLabel('Minutes for everyone').fill('0');
   await page.getByRole('button', { name: 'Extend contest' }).click();
   await expect(page.locator('#extend-error')).toHaveText('Enter the minutes to add, 1 or more.');
@@ -439,7 +449,7 @@ test('the console pauses, extends, rejudges, announces and answers', async ({ pa
   await expect.poll(() => api.answers).toEqual([{ id: '51', body: { answer: 'Yes.', public: true } }]);
 
   // The audit log follows every action, newest first, with who did it.
-  const audit = page.getByRole('region', { name: 'Audit log' });
+  const audit = page.getByRole('region', { name: 'Changes' });
   await expect(audit.getByRole('listitem').first()).toContainText('Rejudged problem A (1 submission)');
   await expect(audit).toContainText('Gave asha@college.edu 10 extra minutes (Laptop crashed)');
   await expect(audit).toContainText('Extended the contest by 15 minutes');
@@ -616,7 +626,12 @@ test('after the end, a held board gives the place only and says when it updates'
   await expect(page.getByText(/points\.$/)).toHaveCount(0);
   await page.getByRole('link', { name: 'See the standings' }).click();
   await expect(page.getByText(/^Frozen at \d{2}:\d{2}\. The final standings appear when the organisers release them\./)).toBeVisible();
-  await expect(page.getByText('The time under each score is when it was reached, from the start.')).toBeVisible();
+  await expect(page.locator('.legend')).toContainText('The shaded part of a cell is the share of points earned.');
+  await expect(page.locator('.legend')).toContainText('A dash means not tried.');
+  // S6: the own place is the page's one display figure, labelled for the frozen board.
+  await expect(page.locator('.place')).toContainText('Your place on the frozen board');
+  await expect(page.locator(".place-figure")).toHaveText(/^\s*\d+ of 28$/);
+  expect(await page.locator('.place-rank').evaluate((el) => getComputedStyle(el).fontSize)).toBe('44px');
   await expect(page.locator('tr.me th.name')).toContainText('Asha Rao (you)');
 });
 

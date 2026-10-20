@@ -12,6 +12,12 @@ import {
   newKey,
   runVerdictLabel,
   waitingText,
+  EXAMPLE_SUBMISSION,
+  problemScoreLine,
+  runAnnouncement,
+  runHeadline,
+  usedText,
+  type Run,
   type Submission,
 } from './workspace';
 
@@ -100,8 +106,9 @@ describe('headlines and announcements', () => {
     expect(announcement(tle)).toBe('Time limit exceeded on test 9. Score 0 of 100.');
 
     expect(headline(sub({ verdict: 'CE', score: 0 })).text).toBe('Compile error');
-    expect(headline(sub({ state: 'queued', verdict: '', queue_position: 3 })).text).toBe('3rd in queue');
-    expect(headline(sub({ state: 'running', verdict: '' })).text).toBe('Judging');
+    expect(headline(sub({ state: 'queued', verdict: '', queue_position: 3 })).text).toBe('Submitted, 3rd in queue');
+    expect(headline(sub({ state: 'running', verdict: '' })).text).toBe('Submitted, judging');
+    expect(headline(sub({ state: 'queued', verdict: '', queue_position: null })).text).toBe('Submitted, waiting for the judge');
     expect(announcement(sub())).toBe('Accepted. Score 100 of 100.');
   });
 
@@ -135,5 +142,36 @@ describe('headlines and announcements', () => {
     const b = newKey();
     expect(a).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
     expect(a).not.toBe(b);
+  });
+});
+
+describe('S4 wording and the run announcement (X1)', () => {
+  const run = (over: Partial<Run>): Run => ({ id: 1, state: 'done', compile_output: '', results: [], ...over });
+  const sample = (verdict: string) => ({ label: 'Sample 1', verdict, time_ms: 10, memory_kb: 3000, output: '3\n', expected: '3\n' });
+
+  it('says when a lower score leaves the problem score as it was', () => {
+    const done = { state: 'done' as const, score: 20, hidden: false };
+    expect(problemScoreLine(done, { score: 60, max: 100 })).toBe('Your score on this problem stays 60 of 100.');
+    expect(problemScoreLine({ ...done, score: 60 }, { score: 60, max: 100 })).toBe('');
+    expect(problemScoreLine({ ...done, state: 'queued' }, { score: 60, max: 100 })).toBe('');
+    expect(problemScoreLine(done, { score: null, max: 100 })).toBe('');
+    expect(problemScoreLine(done, null)).toBe('');
+  });
+
+  it('counts submissions used', () => {
+    expect(usedText(3, 50)).toBe('3 of 50 submissions used');
+  });
+
+  it('announces each stage of a run once', () => {
+    expect(runAnnouncement(run({ state: 'queued' }))).toBe('');
+    expect(runAnnouncement(run({ state: 'running', results: [{ ...sample('') }] }))).toBe('Running on samples.');
+    expect(runAnnouncement(run({ state: 'running', results: [{ ...sample(''), label: 'Custom input', expected: null }] }))).toBe('Running on your input.');
+    expect(runAnnouncement(run({ results: [sample('AC'), { ...sample('WA'), label: 'Sample 2' }] }))).toBe('Passed 1 of 2 samples.');
+    expect(runAnnouncement(run({ compile_output: 'main.cpp:3: error', results: [sample('')] }))).toBe('Compile error.');
+    expect(runHeadline(run({ state: 'error' })).tone).toBe('bad');
+  });
+
+  it('keeps the example result partial, with one passed and one failed subtask', () => {
+    expect(headline(EXAMPLE_SUBMISSION)).toEqual({ text: 'Partial, 40 of 100', tone: 'part', detail: 'Wrong answer on test 5' });
   });
 });

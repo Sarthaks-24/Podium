@@ -218,9 +218,19 @@ export function waitingText(x: { state: JudgeState; queue_position?: number | nu
   return 'Waiting for the judge';
 }
 
+/**
+ * The waiting headline of a submission: the press is confirmed with the
+ * button's word (design.md 8, audit 01-1): "Submitted, 3rd in queue",
+ * "Submitted, waiting for the judge", "Submitted, judging".
+ */
+export function submittedText(x: { state: JudgeState; queue_position?: number | null }): string {
+  const rest = waitingText(x);
+  return `Submitted, ${rest.charAt(0).toLowerCase()}${rest.slice(1)}`;
+}
+
 /** The headline for a submission in any state. */
 export function headline(s: Submission): Headline {
-  if (isWaiting(s)) return { text: waitingText(s), tone: 'wait', detail: '' };
+  if (isWaiting(s)) return { text: submittedText(s), tone: 'wait', detail: '' };
   if (s.state === 'error')
     return {
       text: 'The judge could not finish this submission',
@@ -254,6 +264,76 @@ export function announcement(s: Submission): string {
   const lead = h.tone === 'part' ? `Partial score. ${h.detail}` : h.text;
   return `${lead}. Score ${s.score} of ${s.max_score}.`;
 }
+
+/**
+ * The line under a finished submission that scored less than the problem
+ * already has: "Your score on this problem stays 60 of 100." (audit 01-5).
+ * Empty when the submission is not done or did not score lower.
+ */
+export function problemScoreLine(s: Pick<Submission, 'state' | 'score' | 'hidden'>, problem: { score: number | null; max: number } | null): string {
+  if (!problem || problem.score === null || s.state !== 'done' || s.hidden) return '';
+  return problem.score > s.score ? `Your score on this problem stays ${problem.score} of ${problem.max}.` : '';
+}
+
+/** "3 of 50 submissions used" beside Submit (audit 01-6). */
+export function usedText(count: number, max: number): string {
+  return `${count} of ${max} submissions used`;
+}
+
+/** The headline and tone of a run (RunResults shows it; the announcer speaks it). */
+export function runHeadline(run: Run): { text: string; tone: Tone } {
+  if (isWaiting(run)) return { text: run.state === 'running' ? 'Running' : waitingText(run), tone: 'wait' };
+  if (run.state === 'error') return { text: 'The run could not finish. Try again in a moment.', tone: 'bad' };
+  if (run.results.every((r) => r.verdict === '') && run.compile_output) return { text: 'Compile error', tone: 'bad' };
+  const samples = run.results.filter((r) => r.expected !== null);
+  if (samples.length > 0) {
+    const passed = samples.filter((r) => !isBad(r.verdict)).length;
+    return {
+      text: `Passed ${passed} of ${samples.length} ${samples.length === 1 ? 'sample' : 'samples'}`,
+      tone: passed === samples.length ? 'ok' : 'bad',
+    };
+  }
+  const r = run.results[0];
+  return r ? { text: runVerdictLabel(r.verdict), tone: isBad(r.verdict) ? 'bad' : 'ok' } : { text: 'Finished', tone: 'ok' };
+}
+
+/**
+ * The sentence announced for a run (X1, audit 06-2): "Running on samples.",
+ * "Passed 2 of 3 samples.", "Compile error.", or "" while it waits in the
+ * queue, so a queue position never repeats.
+ */
+export function runAnnouncement(run: Run): string {
+  if (run.state === 'queued') return '';
+  const custom = run.results.some((r) => r.expected === null);
+  if (run.state === 'running') return custom ? 'Running on your input.' : 'Running on samples.';
+  return `${runHeadline(run).text}.`;
+}
+
+/**
+ * A fixed submission for the before-start page's "How the workspace
+ * works" (S3): partial, the first subtask passed and the second failed on
+ * test 5. Not anybody's result.
+ */
+export const EXAMPLE_SUBMISSION: Submission = {
+  id: 0,
+  problem_id: 0,
+  language: 'cpp17',
+  state: 'done',
+  verdict: 'WA',
+  score: 40,
+  max_score: 100,
+  max_time_ms: 30,
+  max_memory_kb: 3300,
+  created_at: 0,
+  judged_at: 0,
+  queue_position: null,
+  compile_output: '',
+  samples: [{ idx: 1, verdict: 'AC', time_ms: 10, memory_kb: 3100 }],
+  subtasks: [
+    { idx: 1, points: 40, earned: 40, verdict: 'AC', tests: [{ idx: 2, verdict: 'AC', time_ms: 10, memory_kb: 3200 }, { idx: 3, verdict: 'AC', time_ms: 20, memory_kb: 3200 }] },
+    { idx: 2, points: 60, earned: 0, verdict: 'WA', tests: [{ idx: 4, verdict: 'AC', time_ms: 20, memory_kb: 3300 }, { idx: 5, verdict: 'WA', time_ms: 30, memory_kb: 3300 }, { idx: 6, verdict: 'SK', time_ms: 0, memory_kb: 0 }] },
+  ],
+};
 
 const GUIDANCE: Record<string, string> = {
   WA: 'Your output differs from the expected answer. Check edge cases such as the smallest and largest inputs, and the output format in the samples.',
