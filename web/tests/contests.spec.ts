@@ -265,9 +265,17 @@ test('the frozen board shows pending cells, tints the own row and jumps to it', 
   const plain = await page.locator('tbody tr').first().locator('th').evaluate((el) => getComputedStyle(el).backgroundColor);
   expect(tint).not.toBe(plain);
 
+  // S8: a partial cell is a bar along its bottom, a tried zero reads in the wrong colour.
+  const partial = page.locator('td.pcell.tone-part').first();
+  await expect(partial.locator('.meter-fill')).toBeAttached();
+  expect(await partial.evaluate((el) => getComputedStyle(el).backgroundColor)).toBe(plain);
+  await expect(page.getByRole('button', { name: 'Jump to you' })).toBeVisible();
   await page.getByRole('button', { name: 'Jump to you' }).click();
   await expect(mine).toBeFocused();
   await expect(mine).toBeInViewport();
+  // With the own row in view the button hides, keeping its place.
+  await expect(page.locator('.tools')).toHaveClass(/away/);
+  await expect(page.locator('tr.me .name-text')).toHaveText(/Asha Rao\s\(you\)/);
 
   // The header stays put while rows scroll.
   const head = page.locator('.board-wrap thead th').first();
@@ -682,8 +690,9 @@ test('after the end, a held board gives the place only and says when it updates'
   await expect(page.getByText(/points\.$/)).toHaveCount(0);
   await page.getByRole('link', { name: 'See the standings' }).click();
   await expect(page.getByText(/^Frozen at \d{2}:\d{2}\. The final standings appear when the organisers release them\./)).toBeVisible();
-  await expect(page.locator('.legend')).toContainText('The shaded part of a cell is the share of points earned.');
-  await expect(page.locator('.legend')).toContainText('A dash means not tried.');
+  await expect(page.locator('.legend')).toHaveText('The bar under a score is the share of points earned. A dash means not tried.');
+  await page.getByText('How to read the board').click();
+  await expect(page.getByText('counts submissions made after the freeze', { exact: false })).toBeVisible();
   // S6: the own place is the page's one display figure, labelled for the frozen board.
   await expect(page.locator('.place')).toContainText('Your place on the frozen board');
   await expect(page.locator(".place-figure")).toHaveText(/^\s*\d+ of 28$/);
@@ -814,8 +823,10 @@ test('keyboard only: a student starts, solves, submits, reads the verdict, asks 
   await tabTo(page, page.getByRole('navigation', { name: 'Problems' }).getByRole('link', { name: 'Standings' }), { back: true });
   await page.keyboard.press('Enter');
   await expect(page).toHaveURL('/contests/week-6/standings');
-  await activate(page, page.getByRole('button', { name: 'Jump to you' }));
-  await expect(page.locator('tr.me')).toBeFocused();
+  // The own row is already on screen, so "Jump to you" steps aside (S8) and the board box takes focus.
+  await expect(page.locator('tr.me')).toBeInViewport();
+  await expect(page.locator('.tools')).toHaveClass(/away/);
+  await tabTo(page, page.getByRole('region', { name: /^Standings for/ }));
 });
 
 test('keyboard only: an organiser edits a contest, runs the console and walks the reveal', async ({ page }) => {

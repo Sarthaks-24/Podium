@@ -6,8 +6,9 @@
   frozen ("Frozen at 20:30. Updates when the contest ends.", or after the
   end, held for the reveal, "The final standings appear when the organisers
   release them.") or final and how many submissions are still judging, with
-  a legend for the shading, "+2", the dash and the time under each score
-  (audit 01-11), the student's own place as the page's one display figure
+  one legend line under the board and a "How to read the board"
+  disclosure for "+2" and the time under each score (audit 01-11 and
+  2026-10-20 S8), the student's own place as the page's one display figure
   ("7 of 24" at --fs-6, D80), and StandingsTable with the student's own row
   tinted and "Jump to you". When a refetch moves the student's own place or
   score, the announcer says so as a sentence (S6, X1). A window-mode contest answers
@@ -154,14 +155,20 @@
   {#if place}
     <div class="place-wrap"><PlaceFigure {place} /></div>
   {/if}
-  <p class="legend">
-    The shaded part of a cell is the share of points earned. A number after a score, such as +2, counts submissions made after the
-    freeze, shown when the contest ends. A dash means not tried. The time under each total is when it was reached, from the start.
-  </p>
   <StreamNotice mode={streamMode} onresume={() => stream?.resume()} />
   <div class="board">
     <StandingsTable {standings} {labels} caption="Standings for {contest?.title ?? 'this contest'}" />
   </div>
+  <!-- S8: one line under the board, the rest behind a disclosure. -->
+  <p class="legend">The bar under a score is the share of points earned. A dash means not tried.</p>
+  <details class="how-to">
+    <summary>How to read the board</summary>
+    <ul>
+      <li>Each problem cell is that student's score on the problem, with a bar for the share of its points.</li>
+      <li>A number after a score, such as +2, counts submissions made after the freeze. They are shown when the contest ends.</li>
+      <li>The time under each total is when it was reached, counted from the start. Equal scores are ordered by that time.</li>
+    </ul>
+  </details>
 {/if}
 
 <style>
@@ -187,10 +194,32 @@
 
   .legend {
     max-width: var(--measure-prose);
-    margin-top: calc(-1 * var(--space-3));
-    margin-bottom: var(--space-4);
+    margin-top: var(--space-3);
     color: var(--ink-muted);
     font-size: var(--fs-0);
+  }
+
+  .how-to {
+    max-width: var(--measure-prose);
+    margin-top: var(--space-2);
+    font-size: var(--fs-0);
+  }
+
+  .how-to summary {
+    width: fit-content;
+    min-height: var(--control-h);
+    border-radius: var(--radius);
+    color: var(--act);
+    font-weight: 500;
+    line-height: var(--control-h);
+    cursor: pointer;
+  }
+
+  .how-to ul {
+    display: grid;
+    gap: var(--space-1);
+    padding-left: var(--space-5);
+    color: var(--ink-muted);
   }
 
   .place-wrap {

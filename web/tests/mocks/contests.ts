@@ -697,7 +697,7 @@ export const SCREENS: Screen[] = [
     path: '/contests/week-6/standings',
     options: { phase: 'during' },
     title: 'Standings · Week 6 contest · podium',
-    ready: (page) => expect(page.getByRole('button', { name: 'Jump to you' })).toBeVisible(),
+    ready: (page) => expect(page.locator('tr.me')).toBeVisible(),
   },
   {
     name: 'standings-closed',
