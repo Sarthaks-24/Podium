@@ -5,7 +5,8 @@
   and, for a sample, the expected output and the checker's comment. A wrong
   answer on a sample also shows the first differing line with whitespace
   made visible (lib/diff.ts). Compiler output comes first, verbatim, with
-  clickable line jumps. A failing sample also offers "Run on this input",
+  clickable line jumps; when the code did not compile, the empty input
+  rows are left out (audit 2026-10-20 S4). A failing sample also offers "Run on this input",
   which puts that sample's input in the custom input box, opens the box
   and runs it there, so the student can then change the input and run
   again (D114). Props: `run`, `language` (for the compiler's location
@@ -14,7 +15,7 @@
 -->
 <script lang="ts">
   import { firstDifference, showWhitespace } from '../lib/diff';
-  import { formatKb, formatMs, isBad, runHeadline, runVerdictLabel, type Run, type Sample } from '../lib/workspace';
+  import { formatKb, formatMs, isBad, runCompileFailed, runHeadline, runVerdictLabel, type Run, type Sample } from '../lib/workspace';
   import CompileOutput from './CompileOutput.svelte';
 
   interface Props {
@@ -47,7 +48,8 @@
     </div>
   {/if}
 
-  {#each run.results as r, i (i)}
+  <!-- A run that did not compile ran no input: the empty sample rows stay out (S4). -->
+  {#each runCompileFailed(run) ? [] : run.results as r, i (i)}
     {@const diff = r.expected !== null && r.verdict === 'WA' ? firstDifference(r.expected, r.output) : null}
     <section class="result">
       <div class="result-head">

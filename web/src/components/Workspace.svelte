@@ -21,9 +21,13 @@
   - Submit sends an idempotency key made per press and reused by "Submit
     again", so a retry after a lost answer never counts twice. Offline or
     unreachable requests say "Not sent" with "Submit again" or "Run again".
-    Pacing refusals (the client gap and the server's 429s) are a muted
-    status line beside Submit, never a red alert (S4, audit 01-3); so is
-    "3 of 15 submissions used" in a contest. While a submit is on its way
+    The contest's gap between submits (`minGapS`) and a server 429 with a
+    wait count down inside the button, "Submit in 24 s", aria-disabled
+    with a fixed width, so nothing moves (audit 2026-10-20 S4); a refusal
+    without a known wait is a muted status line beside Submit, never a red
+    alert (S4, audit 01-3); so is "3 of 15 submissions used" in a contest.
+    After a Run that did not compile, Submit asks once "Your last run did
+    not compile. Submit anyway?" while the code is unchanged. While a submit is on its way
     the button reads "Submitting" and is aria-disabled, so focus stays.
   - A waiting submission reads "Submitted, 3rd in queue"; one that scored
     less than the problem already has adds "Your score on this problem
@@ -58,7 +62,8 @@
   sentence; Run and Submit are off and it says why, unless the workspace's
   own `refusal` from the server says it better), `problemScore` ({ score,
   max } of the problem so far, for "your score stays"), `used` ({ count,
-  max } submissions, for "3 of 15 submissions used"), `statementKey` (a
+  max } submissions, for "3 of 15 submissions used"), `minGapS` (the
+  contest's seconds between submits, counted down in the button), `statementKey` (a
   number the contest page raises when an organiser moved this problem to
   another revision: the statement, title, limits and samples reload, the
   editor is left alone), and `extraEvents` with
@@ -104,6 +109,7 @@
     limitsText,
     newKey,
     runAnnouncement,
+    runCompileFailed,
     usedText,
     workspacePaths,
     type Language,
@@ -118,6 +124,7 @@
   import StreamNotice from './StreamNotice.svelte';
   import SubmissionList from './SubmissionList.svelte';
   import VerdictPanel from './VerdictPanel.svelte';
+  import ConfirmDialog from './ConfirmDialog.svelte';
 
   interface Props {
     base: string;
@@ -134,6 +141,7 @@
     locked?: string;
     problemScore?: { score: number | null; max: number } | null;
     used?: { count: number; max: number } | null;
+    minGapS?: number;
     statementKey?: number;
     extraEvents?: readonly string[];
     onevent?: (type: string, data: unknown) => void;
@@ -154,6 +162,7 @@
     locked = '',
     problemScore = null,
     used = null,
+    minGapS = 0,
     statementKey = 0,
     extraEvents = [],
     onevent,
@@ -197,6 +206,10 @@
   let runBusy = $state(false);
   let pendingKey: string | null = null;
   let pendingRun: { language: Language; source: string; input?: string } | null = null;
+  /** The code and language of the last run, so a compile error is only warned about while the code is unchanged (S4). */
+  let lastRunBody = $state.raw<{ language: Language; source: string } | null>(null);
+  let compileWarned = $state(false);
+  let confirmCompile = $state(false);
   /** A refusal or failure: "pace" is a normal pacing rule (a muted status line), "error" a real failure. */
   let notice = $state<{ action: 'submit' | 'run'; text: string; retry: boolean; kind: 'pace' | 'error' } | null>(null);
   let waitUntil = $state(0);
@@ -232,7 +245,18 @@
   const usedNow = $derived(
     used ? { count: Math.max(used.count, judging.submissions.filter((x) => x.state !== 'error').length), max: used.max } : null,
   );
-  const paceText = $derived(notice?.kind === 'pace' ? notice.text : waitLeft > 0 ? `You can submit again in ${waitLeft} s.` : '');
+  // S4: a known wait counts down inside the Submit button; only a refusal
+  // without a known wait takes the status line.
+  const paceText = $derived(notice?.kind === 'pace' && waitLeft === 0 && waitUntil === 0 ? notice.text : '');
+  const submitLabel = $derived(submitBusy ? 'Submitting' : waitLeft > 0 ? `Submit in ${waitLeft} s` : 'Submit');
+  // The last run did not compile and the code has not changed since.
+  const runDidNotCompile = $derived(
+    judging.run !== null &&
+      lastRunBody !== null &&
+      runCompileFailed(judging.run) &&
+      lastRunBody.source === source &&
+      lastRunBody.language === language,
+  );
   // A pacing refusal is said once, politely; the line itself only counts down.
   $effect(() => {
     if (notice?.kind === 'pace') polite(notice.text);
@@ -551,10 +575,15 @@
     }
   }
 
-  async function submit(retryKey?: string) {
+  async function submit(retryKey?: string, confirmed = false) {
     if (submitBusy || loadState !== 'ready' || lockText !== '') return;
     if (waitLeft > 0 && retryKey === undefined) {
-      notice = { action: 'submit', text: `You can submit again in ${waitLeft} s.`, retry: false, kind: 'pace' };
+      polite(`You can submit again in ${waitLeft} s.`);
+      return;
+    }
+    // A run that did not compile asks once before a submit uses up an attempt (S4).
+    if (retryKey === undefined && !confirmed && runDidNotCompile && !compileWarned) {
+      confirmCompile = true;
       return;
     }
     const key = retryKey ?? newKey();
@@ -572,6 +601,11 @@
       integrity?.resetCounts();
       judging = { ...judging, submissions: mergeSubmission(judging.submissions, s) };
       watchId = s.id;
+      // The contest's gap between submits counts down in the button.
+      if (minGapS > 0) {
+        waitUntil = Date.now() + minGapS * 1000;
+        nowTick = Date.now();
+      }
       view = 'submission';
       void saveDraft();
       await revealResult();
@@ -597,6 +631,8 @@
   async function startRun(body: { language: Language; source: string; input?: string }) {
     if (runBusy || loadState !== 'ready' || lockText !== '') return;
     pendingRun = body;
+    lastRunBody = { language: body.language, source: body.source };
+    compileWarned = false;
     notice = null;
     runBusy = true;
     try {
@@ -868,11 +904,11 @@
             >
             <button
               type="button"
-              class="btn btn-primary"
+              class="btn btn-primary submit"
               disabled={lockText !== ''}
-              aria-disabled={submitBusy ? 'true' : undefined}
+              aria-disabled={submitBusy || waitLeft > 0 ? 'true' : undefined}
               aria-describedby={lockText ? 'ws-locked' : paceText || usedNow ? 'ws-submit-status' : undefined}
-              onclick={() => submit()}><Icon name="send" />{submitBusy ? 'Submitting' : 'Submit'}</button
+              onclick={() => submit()}><Icon name="send" />{submitLabel}</button
             >
           </div>
           <!-- Pacing and the submission count: muted, beside Submit, never an alert (S4). The announcer speaks the pacing line. -->
@@ -994,6 +1030,22 @@
     </div>
   </div>
 {/if}
+
+<ConfirmDialog
+  open={confirmCompile}
+  title="Your last run did not compile. Submit anyway?"
+  body="A submission that does not compile still uses one of your attempts."
+  confirmLabel="Submit anyway"
+  onconfirm={() => {
+    confirmCompile = false;
+    compileWarned = true;
+    void submit(undefined, true);
+  }}
+  oncancel={() => {
+    confirmCompile = false;
+    compileWarned = true;
+  }}
+/>
 
 <style>
   .state {
@@ -1159,6 +1211,11 @@
     display: flex;
     gap: var(--space-2);
     margin-left: auto;
+  }
+
+  /* "Submit in 24 s" fits without the button growing as it counts (S4). */
+  .submit {
+    min-width: 9.5rem;
   }
 
   .editor-box {

@@ -509,6 +509,7 @@
       locked={phase === 'after' && !practice ? 'The contest has ended. Submissions are closed.' : ''}
       problemScore={exam && phase === 'during' ? null : { score: currentProblem.my_score, max: currentProblem.max_score }}
       {used}
+      minGapS={phase === 'during' ? contest.rules.min_gap_s : 0}
       {statementKey}
       extraEvents={CONTEST_EVENTS}
       onevent={onEvent}
