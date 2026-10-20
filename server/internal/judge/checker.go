@@ -17,7 +17,8 @@ const (
 	CheckTokens CheckerType = "tokens"
 	CheckExact  CheckerType = "exact"
 	CheckFloat  CheckerType = "float"
-	// CheckCustom (a testlib checker run in the sandbox) arrives in M2.
+	// CheckCustom is a testlib checker, run in the sandbox by
+	// Runner.RunChecker (custom_checker.go), not by Check.
 	CheckCustom CheckerType = "custom"
 )
 
