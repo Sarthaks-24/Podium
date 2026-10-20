@@ -8,10 +8,15 @@
   statement), `markdown` (the statement source), `timeLimitMs` and
   `memoryMb` (the limits line; either may be null while being edited), and
   `headingBase` (the level a "#" heading becomes, default 4, to sit under
-  the editor's own headings).
+  the editor's own headings), and `samples`: when given, the statement and
+  its samples are drawn by the students' own Statement component, so the
+  preview matches what students see (v2 P3 A5); `samplesCut` says the
+  sample text is only the start of each file.
 -->
 <script lang="ts">
   import { onMount } from 'svelte';
+  import Statement from './Statement.svelte';
+  import type { Sample } from '../lib/workspace';
 
   interface Props {
     title: string;
@@ -19,9 +24,11 @@
     timeLimitMs: number | null;
     memoryMb: number | null;
     headingBase?: number;
+    samples?: Sample[];
+    samplesCut?: boolean;
   }
 
-  let { title, markdown, timeLimitMs, memoryMb, headingBase = 4 }: Props = $props();
+  let { title, markdown, timeLimitMs, memoryMb, headingBase = 4, samples, samplesCut = false }: Props = $props();
 
   type Renderer = typeof import('../lib/markdown');
 
@@ -86,7 +93,14 @@
   {#if empty && renderer !== null}
     <p class="muted note">Write the statement to see it here.</p>
   {/if}
-  <div class="statement" bind:this={target} hidden={empty || renderer === null}></div>
+  {#if samples}
+    <div class="as-students" hidden={empty}>
+      <Statement {markdown} {samples} {headingBase} />
+      {#if samplesCut}<p class="muted note">Long samples show only their first 200 bytes here; students see them whole.</p>{/if}
+    </div>
+  {:else}
+    <div class="statement" bind:this={target} hidden={empty || renderer === null}></div>
+  {/if}
 </div>
 
 <style>
@@ -116,8 +130,13 @@
     overflow-wrap: break-word;
   }
 
-  .statement[hidden] {
+  .statement[hidden],
+  .as-students[hidden] {
     display: none;
+  }
+
+  .as-students {
+    margin-top: var(--space-4);
   }
 
   .statement :global(:is(p, ul, ol, pre, blockquote, table, .math-block, hr)) {

@@ -404,11 +404,14 @@ describe('auditSummary', () => {
     expect(auditSummary({ action: 'extension', details: { email: 'asha@college.edu', minutes: 20, reason: 'laptop crashed' } })).toBe(
       'Gave asha@college.edu 20 extra minutes (laptop crashed)',
     );
+    // Without the email and reason (the shape after the P3 review), the name comes from the console's list.
+    expect(auditSummary({ action: 'extension', details: { user_id: 7, minutes: 15 } }, new Map([[7, 'Asha Rao']]))).toBe('Gave Asha Rao 15 extra minutes');
+    expect(auditSummary({ action: 'extension', details: { user_id: 7, minutes: 15 } })).toBe('Gave user 7 15 extra minutes');
     expect(auditSummary({ action: 'extension', details: { email: 'asha@college.edu', minutes: 0 } })).toBe(
       'Removed the extension for asha@college.edu',
     );
-    expect(auditSummary({ action: 'rejudge', details: { problem_label: 'B', queued: 1 } })).toBe('Rejudged problem B (1 submission)');
-    expect(auditSummary({ action: 'rejudge', details: { submission_id: 42, queued: 1 } })).toBe('Rejudged submission 42');
+    expect(auditSummary({ action: 'rejudge', details: { problem_label: 'B', queued: 1 } })).toBe('Judged problem B again (1 submission)');
+    expect(auditSummary({ action: 'rejudge', details: { submission_id: 42, queued: 1 } })).toBe('Judged submission 42 again');
     expect(auditSummary({ action: 'problems', details: { from: [], to: [{ label: 'A' }, { label: 'B' }] } })).toBe('Set the problems to A, B');
     expect(auditSummary({ action: 'ai_problem', details: { label: 'B', reason: 'Checked by hand.' } })).toBe(
       'Graded AI problem B as written: Checked by hand.',

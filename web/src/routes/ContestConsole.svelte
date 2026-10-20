@@ -1,62 +1,61 @@
 <!--
   ContestConsole: the organiser's live view of one contest at
-  /admin/contests/{id}/console (cache/v1/m4-plan.md section 4).
+  /admin/contests/{id}/console (cache/v1/m4-plan.md section 4; laid out
+  again in v2 P3 F6.1 and F6.2 and audit 2026-10-20 O3 and O5).
 
-  - Status: the state, the time to the end on the server's clock, and
-    judging running or paused with Pause judging (asks first; submissions
-    keep queuing) and Resume judging.
-  - Time: extend the contest for everyone (asks first, then reminds to
-    announce it), and give one student extra minutes with a reason.
-  - Submissions: the feed from GET .../submissions with filters for
-    problem, student and verdict, pages, a refresh every 10 s while the
-    page is open, and Rejudge for one submission or a whole problem.
-  - Announcements: post one, starting from a template.
-  - Questions: the clarifications inbox, unanswered first, each answered
-    from a free reply or a canned one, privately or for everyone; an
-    answered question can be made public or private later. Questions come
-    in over the event stream (and the 10 s refresh); the status strip and
-    the tab title count the unanswered ones, and a polite live region names
-    each new one.
-  - Problem versions (C4, F10.1): the revision each problem is pinned to;
-    when a newer validated revision exists, "Update contest to revision N"
-    asks first, saying what students get and whether judging again is
-    needed, then puts the server's prefilled announcement in the
-    announcement box (it is never posted by itself) and, when the tests
-    changed, picks the problem for "Judge again". The pin history sits
-    folded below. A problem rejudge states the revision it judges against.
-  - Changes: every organiser action that can change results (settings,
-    problems and revisions, roster with the emails added and removed,
-    extensions, extend, pause and resume, rejudges, the reveal, the
-    editorial, co-organisers), newest first, from GET .../audit with a
-    filter by kind and by who, older pages on request, refreshed with the
-    feed and after each action here.
+  - Attention strip: one ruled line of linked items (lib/contests
+    attentionItems): time to the end, when the board freezes, judging on
+    or paused with Pause or Resume, the queue and its oldest wait, judge
+    errors, whether a judge is asking for work, unanswered questions,
+    problems validated on another toolchain, and when the page last
+    refreshed. An item is coloured only when it needs action. A failed
+    refresh keeps the last rows and says so.
+  - Beside the work from 1280 px, and first below that: Questions, each
+    answered from a free reply or a standard answer picked from one list,
+    privately or for everyone ("Send to everyone"); then Announcements,
+    with a preview and a confirmation before anything is posted.
+  - Submissions: the feed with filters for problem, student and verdict,
+    pages, and a refresh every 10 s. Outcomes read as students read them
+    ("Partial, 40 of 100" apart from a zero); the time is minutes from the
+    start, with the clock time on hover; "Judge again" is a quiet button
+    per row, and judging a whole problem again says what it does.
+  - Time: extend the contest for everyone (the confirmation names the new
+    end), extra minutes for one student with a reason, and "End the
+    contest now", which says its effect before it sets the end to now.
+  - Problem versions, folded unless an update is available (C4, F10.1),
+    and Changes, every action that can change results.
 
-  From 1024 px the feed sits beside the questions and announcements, the
-  questions first. Under 768 px each feed row reads as two lines.
-  Students see a short explanation instead. Props: `id`.
+  After Pause, Resume, Extend and Judge again the announcement box is
+  filled from a template; it is never posted by itself. Students see a
+  short explanation instead. Props: `id`.
 -->
 <script lang="ts">
   import PageState from '../components/PageState.svelte';
   import { onDestroy, onMount } from 'svelte';
+  import Badge from '../components/Badge.svelte';
   import ConfirmDialog from '../components/ConfirmDialog.svelte';
   import ContestAdminNav from '../components/ContestAdminNav.svelte';
   import PageHeader from '../components/PageHeader.svelte';
   import Icon from '../components/Icon.svelte';
   import Markdown from '../components/Markdown.svelte';
+  import MonoDigits from '../components/MonoDigits.svelte';
   import { ApiError, getJSON, sendJSON } from '../lib/api';
   import { serverClock } from '../lib/clock';
   import {
     ANNOUNCEMENT_TEMPLATES,
     CANNED_REPLIES,
     askerName,
+    attentionItems,
     AUDIT_ACTIONS,
     auditSummary,
+    feedOutcome,
     fillTemplate,
-    formatCountdown,
+    sinceStart,
     type AdminContest,
     type Announcement,
     type AuditEntry,
     type Clarification,
+    type ContestSettings,
     type FeedPage,
     type FeedRow,
   } from '../lib/contests';
@@ -91,9 +90,12 @@
   let fUser = $state('');
   let fVerdict = $state('');
   let autoRefresh = $state(true);
+  /** When the shown rows arrived, and when a later refresh failed (C2). */
+  let feedAt = $state(0);
+  let feedFailedAt = $state(0);
 
   // Controls.
-  let confirm = $state<null | { title: string; body: string; label: string; danger: boolean; run: () => Promise<void> }>(null);
+  let confirm = $state<null | { title: string; body: string; items?: string[]; label: string; danger: boolean; run: () => Promise<void> }>(null);
   let confirmBusy = $state(false);
   let extendMinutes = $state('10');
   let extendError = $state('');
@@ -137,11 +139,20 @@
   const base = $derived(`/api/admin/contests/${encodeURIComponent(id)}`);
   const labels = $derived((contest?.problems ?? []).map((p) => p.label));
   const closeAt = $derived(contest ? (contest.close_at ?? contest.ends_at) : 0);
-  const left = $derived(contest ? closeAt - ticker.now : 0);
   const inbox = $derived(
     [...clarifications].sort((a, b) => Number(Boolean(a.answer)) - Number(Boolean(b.answer)) || b.created_at - a.created_at),
   );
   const unanswered = $derived(clarifications.filter((c) => !c.answer).length);
+  const attention = $derived(contest ? attentionItems(contest, ticker.now, unanswered) : []);
+  const running = $derived(contest !== null && ticker.now >= contest.starts_at && ticker.now < closeAt);
+  const updateWaiting = $derived((contest?.problems ?? []).some((p) => p.update_available || p.toolchain_drift));
+  /** Problem versions stay folded until an update or a toolchain change needs them; they never fold by themselves. */
+  let versionsOpen = $state(false);
+  $effect(() => {
+    if (updateWaiting) versionsOpen = true;
+  });
+  /** Names by user id, for change rows that name a student by id only. */
+  const names = $derived(new Map([...students.map((s) => [s.user_id, s.name] as const), ...(contest?.extensions ?? []).map((x) => [x.user_id, x.name || x.email] as const)]));
 
   function handleAuth(e: unknown): boolean {
     if (!(e instanceof ApiError)) return false;
@@ -159,6 +170,12 @@
 
   function messageOf(e: unknown): string {
     return e instanceof ApiError ? e.message : 'Something went wrong. Try again in a moment.';
+  }
+
+  /** "14:02:10" in local time. */
+  function clock(ms: number): string {
+    const d = new Date(ms);
+    return [d.getHours(), d.getMinutes(), d.getSeconds()].map((n) => String(n).padStart(2, '0')).join(':');
   }
 
   async function loadContest(quiet = false) {
@@ -199,8 +216,15 @@
       feed = data.submissions ?? [];
       hasMore = data.has_more ?? false;
       feedState = 'ready';
+      feedAt = serverClock.serverNow();
+      feedFailedAt = 0;
     } catch (e) {
       if (handleAuth(e)) return;
+      // A failed refresh keeps the rows already shown (C2).
+      if (feedState === 'ready') {
+        feedFailedAt = serverClock.serverNow();
+        return;
+      }
       feedError = messageOf(e);
       feedState = 'error';
     }
@@ -252,7 +276,7 @@
     void loadAudit(1);
   }
 
-  /** The pinned revision of a problem, as the rejudge confirmation names it. */
+  /** The pinned revision of a problem, as the confirmation to judge again names it. */
   function pinnedRev(label: string): number | undefined {
     return contest?.problems.find((p) => p.label === label)?.rev;
   }
@@ -270,8 +294,8 @@
       annTemplate = '';
       annBody = out.announcement_md ?? '';
       pinNote = out.rejudge_needed
-        ? `The tests of problem ${label} changed. Read the announcement below, post it, then judge problem ${label} again.`
-        : `Read the announcement below and post it, so students know to look at problem ${label}.`;
+        ? `The tests of problem ${label} changed. Read the announcement in Announcements, post it, then judge problem ${label} again.`
+        : `Read the announcement in Announcements and post it, so students know to look at problem ${label}.`;
       if (out.rejudge_needed) rejudgeLabel = label;
       await loadAudit();
     });
@@ -292,8 +316,17 @@
     void loadFeed();
   }
 
-  function ask(title: string, body: string, label: string, danger: boolean, run: () => Promise<void>) {
-    confirm = { title, body, label, danger, run };
+  /** Shows only the submissions that ended in a judge error (from the attention strip). */
+  function showJudgeErrors(event: MouseEvent) {
+    event.preventDefault();
+    fVerdict = 'error';
+    page = 1;
+    void loadFeed();
+    document.getElementById('submissions-title')?.scrollIntoView({ block: 'start' });
+  }
+
+  function ask(title: string, body: string, label: string, danger: boolean, run: () => Promise<void>, items?: string[]) {
+    confirm = { title, body, label, danger, run, items };
   }
 
   async function runConfirm() {
@@ -310,18 +343,34 @@
     }
   }
 
+  /** Puts a template in the announcement box; posting it stays the organiser's choice (C3). */
+  function suggest(templateId: string, values: { label?: string; minutes?: number } = {}) {
+    const t = ANNOUNCEMENT_TEMPLATES.find((x) => x.id === templateId);
+    if (!t) return;
+    annTemplate = templateId;
+    annBody = fillTemplate(t.text, values);
+  }
+
   function pause() {
-    ask('Pause judging?', 'Submissions keep queuing and nothing is lost. Nothing is judged until you resume.', 'Pause judging', true, async () => {
-      await sendJSON<void>('POST', `${base}/pause`);
-      showToast('Paused judging');
-      await loadContest(true);
-    });
+    ask(
+      'Pause judging?',
+      'Nothing is judged until you resume. Students can keep submitting: their submissions wait in the queue and nothing is lost.',
+      'Pause judging',
+      true,
+      async () => {
+        await sendJSON<void>('POST', `${base}/pause`);
+        showToast('Paused judging. An announcement is ready to post.');
+        suggest('paused');
+        await loadContest(true);
+      },
+    );
   }
 
   async function resume() {
     try {
       await sendJSON<void>('POST', `${base}/resume`);
-      showToast('Resumed judging');
+      showToast('Resumed judging. An announcement is ready to post.');
+      suggest('resumed');
       await loadContest(true);
     } catch (e) {
       if (!handleAuth(e)) showToast(messageOf(e), 'error');
@@ -337,13 +386,72 @@
       document.getElementById('extend-minutes')?.focus();
       return;
     }
-    ask(`Extend the contest by ${countOf(minutes, 'minute')}?`, 'Everyone gets the extra time, and their clocks update at once.', 'Extend contest', false, async () => {
-      await sendJSON<void>('POST', `${base}/extend`, { minutes });
-      showToast(`Extended by ${countOf(minutes, 'minute')}. Post an announcement so students know.`);
-      annTemplate = 'extended';
-      annBody = fillTemplate(ANNOUNCEMENT_TEMPLATES.find((t) => t.id === 'extended')!.text, { minutes });
-      await loadContest(true);
-    });
+    ask(
+      `Extend the contest by ${countOf(minutes, 'minute')}?`,
+      `Everyone's contest then ends at ${formatWhen(closeAt + minutes * 60_000, ticker.now)}, and their clocks update at once.`,
+      'Extend contest',
+      false,
+      async () => {
+        await sendJSON<void>('POST', `${base}/extend`, { minutes });
+        showToast(`Extended by ${countOf(minutes, 'minute')}. Post an announcement so students know.`);
+        suggest('extended', { minutes });
+        await loadContest(true);
+      },
+    );
+  }
+
+  /** The settings as the server holds them, for a change of one field. */
+  function settingsOf(c: AdminContest): ContestSettings {
+    return {
+      slug: c.slug,
+      title: c.title,
+      description_md: c.description_md ?? '',
+      starts_at: c.starts_at,
+      ends_at: c.ends_at,
+      start_mode: c.start_mode,
+      duration_minutes: c.duration_minutes,
+      freeze_minutes: c.freeze_minutes,
+      scoring_mode: c.scoring_mode,
+      access: c.access,
+      feedback_mode: c.feedback_mode,
+      graded: c.graded,
+      published: c.published,
+      practice_after_end: c.practice_after_end,
+      stop_on_sample_fail: c.stop_on_sample_fail,
+      min_gap_s: c.min_gap_s,
+      max_per_problem: c.max_per_problem,
+      languages: [...(c.languages ?? [])],
+      honour_text: c.honour_text ?? '',
+      hold_reveal: c.hold_reveal ?? false,
+    };
+  }
+
+  /** Ends a running contest now (audit O5): the end moves to the server's now, minus any time added for everyone. */
+  function endNow() {
+    const c = contest;
+    if (!c) return;
+    const personal = (c.extensions ?? []).filter((x) => x.minutes > 0).length;
+    const items = [
+      'Queued submissions are still judged.',
+      c.practice_after_end ? 'Students see Ended, and practice opens.' : 'Students see Ended.',
+    ];
+    if (personal > 0) items.push(`${countOf(personal, 'student')} with extra time keep${personal === 1 ? 's' : ''} it.`);
+    ask(
+      'End the contest now?',
+      "Everyone's time ends now: the problems close for new contest submissions at once.",
+      'End the contest',
+      true,
+      async () => {
+        const now = Math.ceil(serverClock.serverNow() / 1000) * 1000;
+        const ends = now - (c.extended_minutes ?? 0) * 60_000;
+        if (ends <= c.starts_at) throw new ApiError(400, 'bad_request', 'The time added for everyone is longer than the time run so far, so the end cannot move before the start. Remove the extension first.');
+        const updated = await sendJSON<AdminContest>('PUT', base, { ...settingsOf(c), ends_at: ends });
+        if (updated && typeof updated === 'object' && 'id' in updated) contest = updated;
+        showToast('Ended the contest');
+        await loadContest(true);
+      },
+      items,
+    );
   }
 
   async function extendOne(event: SubmitEvent) {
@@ -380,7 +488,7 @@
   async function rejudgeOne(row: FeedRow) {
     try {
       await sendJSON<void>('POST', `${base}/rejudge`, { submission_id: row.id });
-      showToast(`Rejudging ${row.name}'s submission to ${row.problem_label ?? row.label ?? ''}`);
+      showToast(`Judging ${row.name}'s submission to ${row.problem_label ?? row.label ?? ''} again`);
       await Promise.all([loadFeed(), loadAudit()]);
     } catch (e) {
       if (!handleAuth(e)) showToast(messageOf(e), 'error');
@@ -391,12 +499,20 @@
     if (rejudgeLabel === '') return;
     const l = rejudgeLabel;
     const rev = pinnedRev(l);
-    const against = rev !== undefined ? ` against revision ${rev}` : '';
-    ask(`Rejudge problem ${l}?`, `Every submission to it is judged again${against}. Scores in the standings may change.`, 'Rejudge problem', true, async () => {
-      await sendJSON<void>('POST', `${base}/rejudge`, { problem_label: l });
-      showToast(`Rejudging problem ${l}`);
-      await Promise.all([loadFeed(), loadAudit()]);
-    });
+    const against = rev !== undefined ? ` against revision ${rev}, the one students are served` : '';
+    ask(
+      `Judge problem ${l} again?`,
+      `Every submission to problem ${l} is judged again${against}. New submissions still go first, so the queue keeps moving. Scores in the standings may change.`,
+      'Judge again',
+      true,
+      async () => {
+        const out = await sendJSON<{ queued?: number } | null>('POST', `${base}/rejudge`, { problem_label: l });
+        const n = out && typeof out.queued === 'number' ? out.queued : null;
+        showToast(n !== null ? `Judging ${countOf(n, 'submission')} to problem ${l} again` : `Judging problem ${l} again`);
+        suggest('rejudge', { label: l });
+        await Promise.all([loadFeed(), loadAudit()]);
+      },
+    );
   }
 
   function useTemplate() {
@@ -404,7 +520,8 @@
     if (t) annBody = fillTemplate(t.text, { label: labels[0] ?? 'A', minutes: Math.round(Number(extendMinutes)) || 10 });
   }
 
-  async function postAnnouncement(event: SubmitEvent) {
+  /** Posting reaches every student at once, so it asks first (C3). */
+  function postAnnouncement(event: SubmitEvent) {
     event.preventDefault();
     annError = '';
     if (annBody.trim() === '') {
@@ -412,6 +529,10 @@
       document.getElementById('ann-body')?.focus();
       return;
     }
+    ask('Post to every student?', 'It shows at once as a banner over every workspace in this contest. It cannot be taken back.', 'Post announcement', false, sendAnnouncement);
+  }
+
+  async function sendAnnouncement() {
     annBusy = true;
     try {
       await sendJSON<unknown>('POST', `${base}/announcements`, { body_md: annBody.trim() });
@@ -434,12 +555,22 @@
     return replies[c.id] ?? EMPTY_REPLY;
   }
 
+  /** Puts a standard answer in the reply box from the one list (O3). */
+  function insertStandard(c: Clarification, event: Event) {
+    const select = event.currentTarget as HTMLSelectElement;
+    const r = reply(c);
+    if (select.value === '') return;
+    r.text = CANNED_REPLIES[Number(select.value)] ?? r.text;
+    select.value = '';
+    document.getElementById(`reply-${c.id}`)?.focus();
+  }
+
   async function answer(c: Clarification, overridePublic?: boolean) {
     const r = reply(c);
     r.error = '';
     const text = r.text.trim() || (c.answer ?? '');
     if (text === '') {
-      r.error = 'Write an answer or pick a canned reply.';
+      r.error = 'Write an answer or insert a standard one.';
       document.getElementById(`reply-${c.id}`)?.focus();
       return;
     }
@@ -457,14 +588,6 @@
     } finally {
       r.busy = false;
     }
-  }
-
-  function stateText(row: FeedRow): string {
-    if (row.state === 'submitted') return 'Submitted';
-    if (row.state === 'queued') return 'Queued';
-    if (row.state === 'running') return 'Judging';
-    if (row.state === 'error') return 'Judge error';
-    return verdictLabel(row.verdict);
   }
 
   let timer: ReturnType<typeof setInterval> | undefined;
@@ -485,7 +608,8 @@
       if (!autoRefresh || loadState !== 'ready' || document.visibilityState === 'hidden') return;
       void loadFeed();
       void loadSide();
-      void loadAudit();
+      // The contest carries the queue health (C10); loading it also refreshes the changes.
+      void loadContest(true);
     }, 10_000);
     // New questions arrive at once over the stream; the refresh above is the fallback.
     stream = new EventStream({
@@ -531,115 +655,125 @@
     <PageState kind="error" message={loadError} onretry={() => loadContest()} />
   {/if}
 {:else}
-  <ContestAdminNav {id} slug={contest.slug} title={contest.title} state={contest.state} current="console" {unanswered} />
+  <ContestAdminNav {id} slug={contest.slug} title={contest.title} state={contest.state} published={contest.published} current="console" {unanswered} />
 
-  <div class="status">
-    <p>
-      {#if left > 0 && ticker.now >= contest.starts_at}Ends in <span class="mono">{formatCountdown(left)}</span>{:else if ticker.now < contest.starts_at}Starts
-        in <span class="mono">{formatCountdown(contest.starts_at - ticker.now)}</span>{:else}Ended{/if}
-      {#if contest.extended_minutes > 0}<span class="muted">, extended by {contest.extended_minutes} min</span>{/if}
-    </p>
-    <p class="judging" class:paused={contest.paused}>
-      <Icon name={contest.paused ? 'lock' : 'clock'} />
-      {contest.paused ? 'Judging is paused. Submissions are queuing.' : 'Judging is running.'}
-    </p>
-    {#if contest.paused}
-      <button type="button" class="btn btn-primary btn-compact" onclick={resume}>Resume judging</button>
-    {:else}
-      <button type="button" class="btn btn-secondary btn-compact" onclick={pause}>Pause judging</button>
-    {/if}
-    {#if unanswered > 0}
-      <a class="questions-link" href="#clar-title">{unanswered} unanswered {unanswered === 1 ? 'question' : 'questions'}</a>
-    {:else}
-      <span class="muted">No unanswered questions</span>
-    {/if}
+  <div class="strip" role="region" aria-label="Needs attention">
+    <ul class="strip-items">
+      {#each attention as item (item.key)}
+        <li class="item tone-{item.tone}">
+          {#if item.key === 'errors'}
+            <a href={item.href} onclick={showJudgeErrors}><MonoDigits text={item.text} /></a>
+          {:else}
+            <a href={item.href}><MonoDigits text={item.text} /></a>
+          {/if}
+          {#if item.key === 'judging'}
+            {#if contest.paused}
+              <button type="button" class="btn btn-primary btn-compact" onclick={resume}>Resume judging</button>
+            {:else}
+              <button type="button" class="btn btn-quiet btn-compact" onclick={pause}>Pause judging</button>
+            {/if}
+          {/if}
+        </li>
+      {/each}
+      {#if feedAt > 0}
+        <li class="item" class:tone-part={feedFailedAt > 0}>
+          {#if feedFailedAt > 0}
+            <span role="status"><MonoDigits text={`Could not refresh at ${clock(feedFailedAt)}. Showing ${clock(feedAt)}. Retrying.`} /></span>
+          {:else}
+            <span class="muted"><MonoDigits text={`Updated ${clock(feedAt)}`} /></span>
+          {/if}
+        </li>
+      {/if}
+    </ul>
   </div>
   <p class="visually-hidden" aria-live="polite">{questionNews}</p>
 
-  <div class="layout">
-    <div class="main-col">
-      <section class="section" aria-labelledby="time-title">
-        <h2 id="time-title">Time</h2>
-        <form class="row" novalidate onsubmit={extendAll}>
-          <div class="field small-field">
-            <label for="extend-minutes">Minutes for everyone</label>
-            <input
-              id="extend-minutes"
-              class="input mono"
-              type="number"
-              min="1"
-              inputmode="numeric"
-              bind:value={extendMinutes}
-              aria-invalid={extendError ? 'true' : undefined}
-              aria-describedby={extendError ? 'extend-error' : undefined}
-            />
-          </div>
-          <button type="submit" class="btn btn-secondary">Extend contest</button>
-        </form>
-        {#if extendError}<p id="extend-error" class="field-error">{extendError}</p>{/if}
-        <form class="row" novalidate onsubmit={extendOne}>
-          <div class="field grow">
-            <label for="ext-user">Student</label>
-            <select id="ext-user" class="select" bind:value={extUser} aria-invalid={extError && extField === 'user' ? 'true' : undefined} aria-describedby={extError && extField === 'user' ? 'ext-error' : undefined}>
-              <option value="">Choose a student</option>
-              {#each students as s (s.user_id)}<option value={String(s.user_id)}>{s.name}</option>{/each}
-            </select>
-          </div>
-          <div class="field small-field">
-            <label for="ext-minutes">Extra minutes</label>
-            <input id="ext-minutes" class="input mono" type="number" min="0" inputmode="numeric" bind:value={extMinutes} aria-invalid={extError && extField === 'minutes' ? 'true' : undefined} aria-describedby={extError && extField === 'minutes' ? 'ext-error' : undefined} />
-          </div>
-          <div class="field grow">
-            <label for="ext-reason">Reason</label>
-            <input id="ext-reason" class="input" type="text" autocomplete="off" placeholder="Laptop crashed" bind:value={extReason} />
-          </div>
-          <button type="submit" class="btn btn-secondary">Give extra time</button>
-        </form>
-        {#if extError}<p id="ext-error" class="field-error">{extError}</p>{/if}
-        {#if (contest.extensions ?? []).length > 0}
-          <ul class="extensions small">
-            {#each contest.extensions ?? [] as x (x.user_id)}
-              <li>{x.name || x.email}: <span class="mono">{x.minutes}</span> min{x.reason ? `, ${x.reason}` : ''}</li>
+  <div class="page-split console-split">
+    <aside class="page-split-aside" aria-label="Questions and announcements">
+      <section class="panel" aria-labelledby="clar-title">
+        <div class="panel-head">
+          <h2 id="clar-title">Questions</h2>
+          {#if unanswered > 0}<Badge tone="bad">{countOf(unanswered, 'unanswered', 'unanswered')}</Badge>{/if}
+        </div>
+        {#if inbox.length === 0}
+          <p class="muted small">No questions yet. They appear here the moment a student asks.</p>
+        {:else}
+          <ul class="items">
+            {#each inbox as c (c.id)}
+              {@const r = reply(c)}
+              <li class="clar" class:open={!c.answer}>
+                <p class="meta small">
+                  <MonoDigits text={formatWhen(c.created_at, ticker.now)} />
+                  {askerName(c)}, {c.problem_label ? `problem ${c.problem_label}` : 'general'}{c.public ? ', public' : ''}
+                </p>
+                <p class="q">{c.question}</p>
+                {#if c.answer}
+                  <p class="a">{c.answer}</p>
+                  <button type="button" class="btn btn-quiet btn-compact" disabled={r.busy} onclick={() => answer(c, !c.public)}>
+                    {c.public ? 'Make private' : 'Make public'}
+                  </button>
+                {:else}
+                  <div class="field">
+                    <label for="std-{c.id}">Insert a standard answer</label>
+                    <select id="std-{c.id}" class="select" onchange={(e) => insertStandard(c, e)}>
+                      <option value="">Choose one</option>
+                      {#each CANNED_REPLIES as text, i (i)}<option value={String(i)}>{text}</option>{/each}
+                    </select>
+                  </div>
+                  <div class="field">
+                    <label for="reply-{c.id}">Answer</label>
+                    <textarea id="reply-{c.id}" class="input" rows="2" bind:value={r.text} aria-invalid={r.error ? 'true' : undefined} aria-describedby={r.error ? `reply-${c.id}-error` : undefined}></textarea>
+                    {#if r.error}<p id="reply-{c.id}-error" class="field-error">{r.error}</p>{/if}
+                  </div>
+                  <label class="choice"><input type="checkbox" bind:checked={r.public} /> Answer for everyone</label>
+                  <button type="button" class="btn btn-primary btn-compact" disabled={r.busy} onclick={() => answer(c)}>
+                    {r.public ? 'Send to everyone' : 'Send answer'}
+                  </button>
+                {/if}
+              </li>
             {/each}
           </ul>
         {/if}
       </section>
 
-      <section class="section" aria-labelledby="versions-title">
-        <h2 id="versions-title">Problem versions</h2>
-        <p class="muted small">Students are served the revision each problem is pinned to. An edit in the problem bank reaches them only when you update the contest here.</p>
-        <ul class="items versions">
-          {#each contest.problems as p (p.label)}
-            <li>
-              <p>
-                <span class="mono plabel">{p.label}</span>
-                {p.title}{#if p.rev !== undefined}, revision <span class="mono">{p.rev}</span>{/if}{#if p.reconstructed}<span class="muted"> (rebuilt at the upgrade)</span>{/if}
-              </p>
-              {#if p.update_available && p.latest_rev !== undefined}
-                <p class="muted small">
-                  Revision <span class="mono">{p.latest_rev}</span> is validated{p.update_statement_only ? ' and changes only the statement' : ' and changes the tests or limits'}.
-                </p>
-                <button type="button" class="btn btn-secondary btn-compact" onclick={() => updatePin(p.label)}>{updateLabel(p.latest_rev)}</button>
-              {:else if p.latest_rev !== undefined && p.rev !== undefined && p.latest_rev > p.rev}
-                <p class="muted small">Revision <span class="mono">{p.latest_rev}</span> is not validated yet. Validate it in the problem bank to offer it here.</p>
-              {/if}
-            </li>
-          {/each}
-        </ul>
-        {#if pinNote}<p class="banner banner-info pin-note">{pinNote}</p>{/if}
-        {#if (contest.pin_history ?? []).length > 0}
-          <details class="pins">
-            <summary>Pin history</summary>
-            <ul class="items small">
-              {#each contest.pin_history ?? [] as h, i (i)}<li>{pinChangeText(h)}</li>{/each}
-            </ul>
-          </details>
+      <section class="panel" aria-labelledby="ann-title">
+        <h2 id="ann-title">Announcements</h2>
+        <form class="ann" novalidate onsubmit={postAnnouncement}>
+          <div class="field">
+            <label for="ann-template">Start from a template</label>
+            <select id="ann-template" class="select" bind:value={annTemplate} onchange={useTemplate}>
+              <option value="">No template</option>
+              {#each ANNOUNCEMENT_TEMPLATES as t (t.id)}<option value={t.id}>{t.label}</option>{/each}
+            </select>
+          </div>
+          <div class="field">
+            <label for="ann-body">Announcement (Markdown)</label>
+            <textarea id="ann-body" class="input" rows="3" bind:value={annBody} aria-invalid={annError ? 'true' : undefined} aria-describedby="ann-help{annError ? ' ann-error' : ''}"></textarea>
+            <p id="ann-help" class="field-help">Every student sees it at once as a banner over their workspace.</p>
+            {#if annError}<p id="ann-error" class="field-error">{annError}</p>{/if}
+          </div>
+          {#if annBody.trim() !== ''}
+            <div class="ann-preview" role="group" aria-label="Preview">
+              <p class="small muted">Preview</p>
+              <Markdown source={annBody} compact />
+            </div>
+          {/if}
+          <button type="submit" class="btn btn-secondary" disabled={annBusy}>Post announcement</button>
+        </form>
+        {#if announcements.length > 0}
+          <ul class="items">
+            {#each announcements as a (a.id)}
+              <li><p class="muted small"><MonoDigits text={formatWhen(a.created_at, ticker.now)} /></p><Markdown source={a.body_md} compact /></li>
+            {/each}
+          </ul>
         {/if}
       </section>
+    </aside>
 
-      <section class="section" aria-labelledby="feed-title">
-        <div class="section-head">
-          <h2 id="feed-title">Submissions</h2>
+    <div class="page-split-main console-main">
+      <section class="panel" aria-labelledby="submissions-title">
+        <div class="panel-head">
+          <h2 id="submissions-title">Submissions</h2>
           <label class="choice"><input type="checkbox" bind:checked={autoRefresh} /> Refresh every 10 s</label>
         </div>
         <form class="row filters" novalidate onsubmit={applyFilters}>
@@ -685,26 +819,26 @@
                   <th scope="col">Student</th>
                   <th scope="col">Problem</th>
                   <th scope="col">Language</th>
-                  <th scope="col">Verdict</th>
-                  <th scope="col" class="right">Score</th>
-                  <th scope="col"><span class="visually-hidden">Rejudge</span></th>
+                  <th scope="col">Outcome</th>
+                  <th scope="col"><span class="visually-hidden">Judge again</span></th>
                 </tr>
               </thead>
               <tbody>
                 {#each feed as row (row.id)}
+                  {@const out = feedOutcome(row)}
+                  {@const since = sinceStart(row.created_at, contest.starts_at)}
                   <tr>
-                    <td class="num when">{formatWhen(row.created_at)}</td>
+                    <td class="when" title={formatWhen(row.created_at, ticker.now)}><MonoDigits text={since ?? formatWhen(row.created_at, ticker.now)} /></td>
                     <th scope="row" class="who">{row.name}{#if row.practice}<span class="muted"> (practice)</span>{/if}</th>
                     <td class="mono plabel">{row.problem_label ?? row.label}</td>
                     <td class="lang">{languageLabel(row.language)}</td>
-                    <td class="verdict v-{row.state === 'done' ? row.verdict : row.state}">{stateText(row)}</td>
-                    <td class="num right fscore">{row.state === 'done' ? `${row.score} of ${row.max_score}` : ''}</td>
+                    <td class="verdict"><Badge tone={out.tone}><span><MonoDigits text={out.text} /></span></Badge></td>
                     <td class="act">
                       <button
                         type="button"
-                        class="btn btn-quiet btn-compact"
-                        aria-label="Rejudge submission by {row.name} to {row.problem_label ?? row.label} at {formatWhen(row.created_at)}"
-                        onclick={() => rejudgeOne(row)}>Rejudge</button
+                        class="btn btn-quiet btn-compact again"
+                        aria-label="Judge again: {row.name}, problem {row.problem_label ?? row.label}, {formatWhen(row.created_at, ticker.now)}"
+                        onclick={() => rejudgeOne(row)}>Judge again</button
                       >
                     </td>
                   </tr>
@@ -714,95 +848,121 @@
           </div>
           <div class="pager">
             <button type="button" class="btn btn-secondary btn-compact" disabled={page <= 1} onclick={() => { page -= 1; void loadFeed(); }}>Newer</button>
-            <span class="muted small">Page {page}</span>
+            <span class="muted small">Page <span class="mono">{page}</span></span>
             <button type="button" class="btn btn-secondary btn-compact" disabled={!hasMore} onclick={() => { page += 1; void loadFeed(); }}>Older</button>
           </div>
         {/if}
 
         <div class="row">
           <div class="field">
-            <label for="rejudge-label">Rejudge every submission to</label>
+            <label for="rejudge-label">Judge every submission to a problem again</label>
             <select id="rejudge-label" class="select" bind:value={rejudgeLabel}>
               <option value="">Choose a problem</option>
               {#each labels as l (l)}<option value={l}>Problem {l}</option>{/each}
             </select>
           </div>
-          <button type="button" class="btn btn-secondary" disabled={rejudgeLabel === ''} onclick={rejudgeProblem}>Rejudge problem</button>
+          <button type="button" class="btn btn-secondary" disabled={rejudgeLabel === ''} onclick={rejudgeProblem}>Judge problem again</button>
         </div>
         {#if rejudgeLabel !== '' && pinnedRev(rejudgeLabel) !== undefined}
-          <p class="muted small">Rejudge against revision <span class="mono">{pinnedRev(rejudgeLabel)}</span>, the one students are served.</p>
+          <p class="muted small">Judged against revision <span class="mono">{pinnedRev(rejudgeLabel)}</span>, the one students are served.</p>
         {/if}
       </section>
-    </div>
 
-    <div class="side-col">
-      <section class="section" aria-labelledby="clar-title">
-        <h2 id="clar-title">Questions{#if unanswered > 0}<span class="count mono">{unanswered}</span><span class="visually-hidden"> unanswered</span>{/if}</h2>
-        {#if inbox.length === 0}
-          <p class="muted small">No questions yet.</p>
-        {:else}
-          <ul class="items">
-            {#each inbox as c (c.id)}
-              {@const r = reply(c)}
-              <li class="clar" class:open={!c.answer}>
-                <p class="meta small">
-                  <span class="mono">{formatWhen(c.created_at)}</span>
-                  {askerName(c)}, {c.problem_label ? `problem ${c.problem_label}` : 'general'}{c.public ? ', public' : ''}
+      <section class="panel" aria-labelledby="time-title">
+        <h2 id="time-title">Time</h2>
+        <form class="row" novalidate onsubmit={extendAll}>
+          <div class="field small-field">
+            <label for="extend-minutes">Minutes for everyone</label>
+            <input
+              id="extend-minutes"
+              class="input mono"
+              type="number"
+              min="1"
+              inputmode="numeric"
+              bind:value={extendMinutes}
+              aria-invalid={extendError ? 'true' : undefined}
+              aria-describedby={extendError ? 'extend-error' : undefined}
+            />
+          </div>
+          <button type="submit" class="btn btn-secondary">Extend contest</button>
+        </form>
+        {#if extendError}<p id="extend-error" class="field-error">{extendError}</p>{/if}
+        {#if contest.extended_minutes > 0}<p class="muted small">Extended for everyone by <span class="mono">{contest.extended_minutes}</span> min so far.</p>{/if}
+        <form class="row" novalidate onsubmit={extendOne}>
+          <div class="field grow">
+            <label for="ext-user">Student</label>
+            <select id="ext-user" class="select" bind:value={extUser} aria-invalid={extError && extField === 'user' ? 'true' : undefined} aria-describedby={extError && extField === 'user' ? 'ext-error' : undefined}>
+              <option value="">Choose a student</option>
+              {#each students as s (s.user_id)}<option value={String(s.user_id)}>{s.name}</option>{/each}
+            </select>
+          </div>
+          <div class="field small-field">
+            <label for="ext-minutes">Extra minutes</label>
+            <input id="ext-minutes" class="input mono" type="number" min="0" inputmode="numeric" bind:value={extMinutes} aria-invalid={extError && extField === 'minutes' ? 'true' : undefined} aria-describedby={extError && extField === 'minutes' ? 'ext-error' : undefined} />
+          </div>
+          <div class="field grow">
+            <label for="ext-reason">Reason</label>
+            <input id="ext-reason" class="input" type="text" autocomplete="off" placeholder="Laptop crashed" bind:value={extReason} />
+          </div>
+          <button type="submit" class="btn btn-secondary">Give extra time</button>
+        </form>
+        {#if extError}<p id="ext-error" class="field-error">{extError}</p>{/if}
+        {#if (contest.extensions ?? []).length > 0}
+          <ul class="extensions small">
+            {#each contest.extensions ?? [] as x (x.user_id)}
+              <li>{x.name || x.email}: <span class="mono">{x.minutes}</span> min{x.reason ? `, ${x.reason}` : ''}</li>
+            {/each}
+          </ul>
+        {/if}
+        {#if running}
+          <div class="end-now">
+            <button type="button" class="btn btn-secondary end-btn" onclick={endNow}>End the contest now</button>
+            <p class="muted small">Stops the contest for everyone at once. To give more time instead, extend it above.</p>
+          </div>
+        {/if}
+      </section>
+
+      <section class="panel" aria-labelledby="versions-title">
+        <details class="versions-box" bind:open={versionsOpen}>
+          <summary>
+            <h2 id="versions-title" class="summary-title">Problem versions <Icon name="chevron-down" /></h2>
+            <span class="muted small">{updateWaiting ? 'An update is available.' : 'Every problem is on its pinned revision.'}</span>
+          </summary>
+          <p class="muted small">Students are served the revision each problem is pinned to. An edit in the problem bank reaches them only when you update the contest here.</p>
+          <ul class="items versions">
+            {#each contest.problems as p (p.label)}
+              <li>
+                <p>
+                  <span class="mono plabel">{p.label}</span>
+                  {p.title}{#if p.rev !== undefined}, revision <span class="mono">{p.rev}</span>{/if}{#if p.reconstructed}<span class="muted"> (rebuilt at the upgrade)</span>{/if}
                 </p>
-                <p class="q">{c.question}</p>
-                {#if c.answer}
-                  <p class="a">{c.answer}</p>
-                  <button type="button" class="btn btn-quiet btn-compact" disabled={r.busy} onclick={() => answer(c, !c.public)}>
-                    {c.public ? 'Make private' : 'Make public'}
-                  </button>
-                {:else}
-                  <div class="canned" role="group" aria-label="Canned replies">
-                    {#each CANNED_REPLIES as text, i (i)}
-                      <button type="button" class="btn btn-secondary btn-compact" onclick={() => (r.text = text)}>{text}</button>
-                    {/each}
-                  </div>
-                  <div class="field">
-                    <label for="reply-{c.id}">Answer</label>
-                    <textarea id="reply-{c.id}" class="input" rows="2" bind:value={r.text} aria-invalid={r.error ? 'true' : undefined} aria-describedby={r.error ? `reply-${c.id}-error` : undefined}></textarea>
-                    {#if r.error}<p id="reply-{c.id}-error" class="field-error">{r.error}</p>{/if}
-                  </div>
-                  <label class="choice"><input type="checkbox" bind:checked={r.public} /> Answer for everyone</label>
-                  <button type="button" class="btn btn-primary btn-compact" disabled={r.busy} onclick={() => answer(c)}>Send answer</button>
+                {#if p.toolchain_drift}
+                  <p class="drift small">Validated on another judge toolchain. Validate it again in the problem bank before you judge it again.</p>
+                {/if}
+                {#if p.update_available && p.latest_rev !== undefined}
+                  <p class="muted small">
+                    Revision <span class="mono">{p.latest_rev}</span> is validated{p.update_statement_only ? ' and changes only the statement' : ' and changes the tests or limits'}.
+                  </p>
+                  <button type="button" class="btn btn-secondary btn-compact" onclick={() => updatePin(p.label)}>{updateLabel(p.latest_rev)}</button>
+                {:else if p.latest_rev !== undefined && p.rev !== undefined && p.latest_rev > p.rev}
+                  <p class="muted small">Revision <span class="mono">{p.latest_rev}</span> is not validated yet. Validate it in the problem bank to offer it here.</p>
                 {/if}
               </li>
             {/each}
           </ul>
-        {/if}
+          {#if pinNote}<p class="banner banner-info pin-note">{pinNote}</p>{/if}
+          {#if (contest.pin_history ?? []).length > 0}
+            <details class="pins">
+              <summary>Pin history</summary>
+              <ul class="items small">
+                {#each contest.pin_history ?? [] as h, i (i)}<li>{pinChangeText(h)}</li>{/each}
+              </ul>
+            </details>
+          {/if}
+        </details>
       </section>
 
-      <section class="section" aria-labelledby="ann-title">
-        <h2 id="ann-title">Announcements</h2>
-        <form class="ann" novalidate onsubmit={postAnnouncement}>
-          <div class="field">
-            <label for="ann-template">Start from a template</label>
-            <select id="ann-template" class="select" bind:value={annTemplate} onchange={useTemplate}>
-              <option value="">No template</option>
-              {#each ANNOUNCEMENT_TEMPLATES as t (t.id)}<option value={t.id}>{t.label}</option>{/each}
-            </select>
-          </div>
-          <div class="field">
-            <label for="ann-body">Announcement (Markdown)</label>
-            <textarea id="ann-body" class="input" rows="3" bind:value={annBody} aria-invalid={annError ? 'true' : undefined} aria-describedby="ann-help{annError ? ' ann-error' : ''}"></textarea>
-            <p id="ann-help" class="field-help">Students see it at once as a banner over their workspace.</p>
-            {#if annError}<p id="ann-error" class="field-error">{annError}</p>{/if}
-          </div>
-          <button type="submit" class="btn btn-primary" disabled={annBusy}>Post announcement</button>
-        </form>
-        {#if announcements.length > 0}
-          <ul class="items">
-            {#each announcements as a (a.id)}
-              <li><p class="mono muted small">{formatWhen(a.created_at)}</p><Markdown source={a.body_md} compact /></li>
-            {/each}
-          </ul>
-        {/if}
-      </section>
-
-      <section class="section" aria-labelledby="audit-title">
+      <section class="panel" aria-labelledby="audit-title">
         <h2 id="audit-title">Changes</h2>
         <p class="muted small">Every change that can affect results, with who made it. Nothing here can be edited or deleted.</p>
         <form class="row audit-filters" novalidate onsubmit={filterAudit}>
@@ -817,7 +977,7 @@
             <label for="audit-actor">Made by</label>
             <input id="audit-actor" class="input" type="search" autocomplete="off" spellcheck="false" placeholder="ta@college.edu" bind:value={auditActor} />
           </div>
-          <button type="submit" class="btn btn-secondary btn-compact">Search</button>
+          <button type="submit" class="btn btn-secondary">Search</button>
         </form>
         {#if auditState === 'loading'}
           <p class="muted small" role="status">Loading the changes</p>
@@ -829,8 +989,8 @@
           <ul class="items audit">
             {#each auditAll ? audit : audit.slice(0, AUDIT_SHOWN) as e (e.id)}
               <li>
-                <p class="meta small"><span class="mono">{formatWhen(e.created_at)}</span> {e.actor?.email ?? 'The server'}</p>
-                <p class="entry">{auditSummary(e)}</p>
+                <p class="meta small"><MonoDigits text={formatWhen(e.created_at, ticker.now)} /> {e.actor?.email ?? 'The server'}</p>
+                <p class="entry">{auditSummary(e, names)}</p>
               </li>
             {/each}
           </ul>
@@ -851,6 +1011,7 @@
     open={confirm !== null}
     title={confirm?.title ?? ''}
     body={confirm?.body ?? ''}
+    items={confirm?.items ?? []}
     confirmLabel={confirm?.label ?? ''}
     danger={confirm?.danger ?? false}
     busy={confirmBusy}
@@ -860,10 +1021,79 @@
 {/if}
 
 <style>
+  /* The attention strip: one ruled line of linked items; colour only where action is needed. */
+  .strip {
+    margin-top: var(--space-4);
+    padding-block: var(--space-2);
+    border-block: var(--rule) solid var(--line);
+  }
+
+  .strip-items {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-1) var(--space-5);
+    padding: 0;
+    list-style: none;
+  }
+
+  .item {
+    display: inline-flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-2);
+    min-height: var(--control-h);
+  }
+
+  .item a {
+    color: var(--ink);
+    text-decoration: none;
+  }
+
+  .item a:hover {
+    text-decoration: underline;
+  }
+
+  .item.tone-part a,
+  .item.tone-part {
+    color: var(--part);
+    font-weight: 600;
+  }
+
+  .item.tone-bad a {
+    color: var(--bad);
+    font-weight: 600;
+  }
+
+  .console-split {
+    margin-top: var(--space-5);
+  }
+
+  /* One column that never grows past the page: the feed scrolls inside it. */
+  .console-main {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  /* The work column is wider here than a form: the feed needs the room. */
+  @media (min-width: 1280px) {
+    .console-split {
+      grid-template-columns: minmax(0, 1fr) minmax(0, var(--measure-aside));
+    }
+  }
+
+  .panel h2 {
+    font-size: var(--fs-section);
+  }
+
   .versions li {
     display: grid;
     gap: var(--space-1);
     justify-items: start;
+  }
+
+  .drift {
+    color: var(--part);
+    font-weight: 500;
   }
 
   .pin-note {
@@ -883,71 +1113,36 @@
     cursor: pointer;
   }
 
-  .audit-filters {
-    margin-top: var(--space-2);
+  .versions-box > summary {
+    display: grid;
+    gap: var(--space-1);
+    width: fit-content;
+    max-width: 100%;
+    border-radius: var(--radius);
+    cursor: pointer;
+    list-style: none;
   }
 
-  .lead {
-    margin-top: var(--space-4);
-    max-width: 40rem;
+  .versions-box > summary::-webkit-details-marker {
+    display: none;
   }
 
-  .retry {
-    margin-top: var(--space-4);
+  .versions-box[open] > summary {
+    margin-bottom: var(--space-3);
   }
 
-  .status {
+  .summary-title {
     display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: var(--space-2) var(--space-5);
-    margin-top: var(--space-4);
-    padding: var(--space-3) var(--space-4);
-    border: var(--rule) solid var(--line);
-    background: var(--surface);
-  }
-
-  .judging {
-    display: inline-flex;
     align-items: center;
     gap: var(--space-2);
-    color: var(--ink-muted);
   }
 
-  .judging.paused {
-    color: var(--part);
-    font-weight: 600;
+  .summary-title :global(svg) {
+    transition: transform var(--dur-fast) var(--ease);
   }
 
-  .layout {
-    display: grid;
-    gap: 0 var(--space-6);
-  }
-
-  .main-col,
-  .side-col {
-    display: grid;
-    align-content: start;
-    min-width: 0;
-  }
-
-  .section {
-    display: grid;
-    gap: var(--space-3);
-    margin-top: var(--space-6);
-    min-width: 0;
-  }
-
-  .section h2 {
-    font-size: var(--fs-3);
-  }
-
-  .section-head {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: baseline;
-    justify-content: space-between;
-    gap: var(--space-2) var(--space-4);
+  .versions-box[open] .summary-title :global(svg) {
+    transform: rotate(180deg);
   }
 
   .row {
@@ -986,30 +1181,22 @@
     white-space: nowrap;
   }
 
-  .lang {
-    white-space: nowrap;
-  }
-
+  .lang,
+  .when,
   .verdict {
     white-space: nowrap;
   }
 
-  .v-AC {
-    color: var(--ok);
+  /* Judge again is quiet in every row and full strength only on the row a pointer or focus is on (O3). */
+  .again {
+    color: var(--ink-muted);
+    font-size: var(--fs-0);
+    font-weight: 400;
   }
 
-  .v-WA,
-  .v-TLE,
-  .v-MLE,
-  .v-RE,
-  .v-CE,
-  .v-error {
-    color: var(--bad);
-  }
-
-  .right,
-  .table .right {
-    text-align: right;
+  .feed tbody tr:hover .again,
+  .again:focus-visible {
+    color: var(--ink);
   }
 
   .extensions {
@@ -1017,6 +1204,25 @@
     gap: var(--space-1);
     padding-left: var(--space-5);
     color: var(--ink-muted);
+  }
+
+  /* Danger as a secondary button: bordered in the danger colour, not filled (a local primitive; controls.css has none). */
+  .end-btn {
+    border-color: var(--bad);
+    color: var(--bad);
+  }
+
+  .end-btn:hover {
+    background: var(--bad-tint);
+  }
+
+  .end-now {
+    display: grid;
+    justify-items: start;
+    gap: var(--space-1);
+    margin-top: var(--space-2);
+    padding-top: var(--space-4);
+    border-top: var(--rule) solid var(--line);
   }
 
   .pager {
@@ -1035,8 +1241,14 @@
     justify-items: start;
   }
 
-  .ann .field {
+  .ann .field,
+  .ann-preview {
     width: 100%;
+  }
+
+  .ann-preview {
+    padding: var(--space-3);
+    border: var(--rule) dashed var(--line-strong);
   }
 
   .items {
@@ -1061,7 +1273,8 @@
 
   .clar.open {
     padding-inline: var(--space-3);
-    background: var(--surface);
+    border: var(--rule) solid var(--line-strong);
+    background: var(--paper);
   }
 
   .meta {
@@ -1082,39 +1295,13 @@
     overflow-wrap: anywhere;
   }
 
-  .canned {
-    display: flex;
-    flex-wrap: wrap;
-    gap: var(--space-1);
-  }
-
-  .canned .btn {
-    max-width: 100%;
-    white-space: normal;
-    text-align: left;
-  }
-
-  .count {
-    margin-left: var(--space-2);
-    padding: 0 var(--space-2);
-    border-radius: var(--radius);
-    background: var(--act);
-    color: var(--act-ink);
-    font-size: var(--fs-1);
-    vertical-align: middle;
-  }
-
-  .questions-link {
-    font-weight: 600;
-  }
-
-  /* Phones: each feed row is time, student and problem, then verdict, score and Rejudge. */
+  /* Phones: each feed row is time, student and problem, then the outcome and Judge again. */
   @media (width < 768px) {
     .feed tbody tr {
       grid-template-columns: auto minmax(0, 1fr) auto;
       grid-template-areas:
         'when who plabel'
-        'verdict fscore act';
+        'verdict verdict act';
       align-items: center;
       padding: var(--space-2) var(--space-3);
     }
@@ -1142,20 +1329,9 @@
       grid-area: verdict;
     }
 
-    .feed .fscore {
-      grid-area: fscore;
-      text-align: left;
-    }
-
     .feed .act {
       grid-area: act;
       justify-self: end;
-    }
-  }
-
-  @media (min-width: 1024px) {
-    .layout {
-      grid-template-columns: minmax(0, 1.7fr) minmax(20rem, 1fr);
     }
   }
 </style>

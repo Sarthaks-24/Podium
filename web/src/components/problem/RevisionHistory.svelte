@@ -10,6 +10,7 @@
   revision fields of the problem).
 -->
 <script lang="ts">
+  import MonoDigits from '../MonoDigits.svelte';
   import { ApiError, getJSON } from '../../lib/api';
   import { formatDateTime } from '../../lib/format';
   import { diffSummary, revisionChangeText, type ProblemHistory, type RevisionDiff } from '../../lib/history';
@@ -80,7 +81,7 @@
         <div class="head">
           <span class="rev">Revision <span class="mono">{r.rev}</span></span>
           {#if history.revision?.id === r.id}<span class="state-word" data-state="live">Current</span>{/if}
-          <span class="muted when"><span class="mono">{formatDateTime(r.created_at)}</span>{r.created_by ? `, ${r.created_by.email}` : ', made by the server'}</span>
+          <span class="muted when"><MonoDigits text={formatDateTime(r.created_at)} />{r.created_by ? `, ${r.created_by.email}` : ', made by the server'}</span>
         </div>
         <p>{revisionChangeText(r)}. {r.validated ? 'Validated.' : 'Not validated.'}</p>
         {#if r.reason}<p class="reason">Reason: {r.reason}</p>{/if}

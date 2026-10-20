@@ -13,7 +13,11 @@
     asks before it changes (the same POST upserts the role).
   - Allowed email domains: the list and a form to add one.
   - Account help: one email field for "Reset Google link", "End sessions"
-    and "Disable account", then the disabled accounts with Enable.
+    and "Disable account", then the disabled accounts with Enable. The
+    field says whose account it is when the page knows the address (an
+    organiser or a disabled account), and that students are not listed
+    otherwise; the confirmation names the person (audit 2026-10-20 O10;
+    a lookup of any account waits on an API route).
   - History: every change to people, domains and the site, newest first,
     with a filter by kind and a search by email, and "Show older changes".
 
@@ -28,6 +32,7 @@
   import PageHeader from '../components/PageHeader.svelte';
   import { onMount, tick } from 'svelte';
   import ConfirmDialog from '../components/ConfirmDialog.svelte';
+  import MonoDigits from '../components/MonoDigits.svelte';
   import { polite } from '../lib/announce.svelte';
   import { ApiError, getJSON, sendJSON } from '../lib/api';
   import { countOf, formatDateTime, roleLabel } from '../lib/format';
@@ -110,7 +115,26 @@
 
   const isOwner = $derived(session.user?.role === 'owner');
   const origin = typeof window !== 'undefined' ? window.location.origin : '';
-  const coTeachers = $derived(people.filter((p) => !p.locked).length);
+  // Organisers other than the configured owner and the person signed in (audit O10).
+  const coTeachers = $derived(people.filter((p) => !p.locked && p.id !== session.user?.id).length);
+
+  /** The account the help field names, when this page already knows it. */
+  const accountMatch = $derived.by(() => {
+    const e = accountEmail.trim().toLowerCase();
+    if (e === '') return null;
+    const person = people.find((x) => x.email.toLowerCase() === e);
+    if (person) return { name: personLabel(person), role: roleLabel(person.role).toLowerCase(), last: person.last_login_at, disabled: !!person.disabled };
+    const account = disabled.find((x) => x.email.toLowerCase() === e);
+    if (account) return { name: account.name.trim() || account.email, role: account.role, last: account.last_login_at, disabled: true };
+    return null;
+  });
+  const accountLooksLikeEmail = $derived(/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(accountEmail.trim()));
+
+  /** "Asha Verma (asha@college.edu)" when the page knows the name, else the address. */
+  function accountName(target: string): string {
+    const m = accountMatch;
+    return m && m.name !== target ? `${m.name} (${target})` : target;
+  }
   const fresh = $derived(loadState === 'ready' && (domains.length === 0 || coTeachers === 0));
 
   function personLabel(p: Pick<Person, 'name' | 'email'>): string {
@@ -144,21 +168,21 @@
     }
     if (pending?.kind === 'reset') {
       return {
-        title: `Reset the Google account link for ${pending.email}?`,
+        title: `Reset the Google account link for ${accountName(pending.email)}?`,
         body: 'Their current sessions end. The next Google account that signs in with this address is linked to it.',
         label: 'Reset Google link',
       };
     }
     if (pending?.kind === 'end-sessions') {
       return {
-        title: `End every session of ${pending.email}?`,
+        title: `End every session of ${accountName(pending.email)}?`,
         body: 'They are signed out on every device at once, open contest pages included. They can sign in again.',
         label: 'End sessions',
       };
     }
     if (pending?.kind === 'disable') {
       return {
-        title: `Disable ${pending.email}?`,
+        title: `Disable ${accountName(pending.email)}?`,
         body: 'They are signed out on every device at once and cannot sign in until an owner enables the account again.',
         label: 'Disable account',
       };
@@ -483,7 +507,7 @@
                 {#if person.disabled}<span class="muted">, disabled</span>{/if}
               </td>
               <td class="num last">
-                <span class="cell-label">Last sign-in</span>{#if person.last_login_at !== null}{formatDateTime(person.last_login_at)}{:else}<span class="muted word">Never</span>{/if}
+                <span class="cell-label">Last sign-in</span>{#if person.last_login_at !== null}<MonoDigits text={formatDateTime(person.last_login_at)} />{:else}<span class="muted word">Never</span>{/if}
               </td>
               <td class="actions">
                 {#if person.locked}
@@ -613,14 +637,25 @@
           spellcheck="false"
           bind:value={accountEmail}
           aria-invalid={accountError !== '' ? 'true' : undefined}
-          aria-describedby={accountError !== '' ? 'account-error' : undefined}
+          aria-describedby="account-who{accountError !== '' ? ' account-error' : ''}"
         />
+        <p id="account-who" class="field-help who" aria-live="polite">
+          {#if accountMatch}
+            <MonoDigits
+              text={`${accountMatch.name}, ${accountMatch.role}${accountMatch.disabled ? ', disabled' : ''}, ${accountMatch.last !== null ? `last signed in ${formatDateTime(accountMatch.last)}` : 'never signed in'}.`}
+            />
+          {:else if accountLooksLikeEmail}
+            Not an organiser or a disabled account. Students are not listed on this page yet, so check the address before you act.
+          {:else}
+            The account's email address, as they sign in with it.
+          {/if}
+        </p>
       </div>
       <button type="submit" class="btn btn-secondary submit" disabled={removing && pending?.kind === 'reset'}>Reset Google link</button>
       <button type="button" class="btn btn-secondary submit" disabled={removing && pending?.kind === 'end-sessions'} onclick={() => askAccount('end-sessions')}>
         End sessions
       </button>
-      <button type="button" class="btn btn-danger submit" disabled={removing && pending?.kind === 'disable'} onclick={() => askAccount('disable')}>
+      <button type="button" class="btn btn-secondary danger-secondary submit" disabled={removing && pending?.kind === 'disable'} onclick={() => askAccount('disable')}>
         Disable account
       </button>
     </form>
@@ -683,7 +718,7 @@
       <ul class="history">
         {#each history as e (e.id)}
           <li>
-            <span class="mono when">{formatDateTime(e.at)}</span>
+            <span class="when"><MonoDigits text={formatDateTime(e.at)} /></span>
             <span class="what">{siteAuditSummary(e)}</span>
             <span class="who muted">{actorText(e.actor)}</span>
           </li>
@@ -847,6 +882,20 @@
 
   .empty {
     margin-top: var(--space-4);
+  }
+
+  /* Danger as a secondary button: the danger colour on its border and words, not a fill (no such class in controls.css). */
+  .danger-secondary {
+    border-color: var(--bad);
+    color: var(--bad);
+  }
+
+  .danger-secondary:hover {
+    background: var(--bad-tint);
+  }
+
+  .who {
+    max-width: var(--measure-form);
   }
 
   .form {

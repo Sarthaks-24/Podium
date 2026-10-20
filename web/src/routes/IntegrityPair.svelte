@@ -19,6 +19,7 @@
   `signal`.
 -->
 <script lang="ts">
+  import MonoDigits from '../components/MonoDigits.svelte';
   import PageState from '../components/PageState.svelte';
   import PageHeader from '../components/PageHeader.svelte';
   import type { Crumb } from '../components/Breadcrumbs.svelte';
@@ -262,10 +263,6 @@
   {/if}
   {#if fromCase}
     <p class="from-case muted">Evidence as it was when the case opened; a later check does not change it.</p>
-  {:else}
-    <p class="actions">
-      <button type="button" class="btn btn-primary" onclick={() => (dialogOpen = true)}>Open a case</button>
-    </p>
   {/if}
 
   <div class="note"><IntegrityNote /></div>
@@ -284,7 +281,7 @@
             {@const name = userName(users, side.user_id)}
             <div class="side">
               <h3>{name}</h3>
-              <p class="meta muted">{languageLabel(side.language)}, submitted <span class="mono">{formatDateTime(side.created_at)}</span>, submission <span class="mono">{side.submission_id}</span></p>
+              <p class="meta muted">{languageLabel(side.language)}, submitted <MonoDigits text={formatDateTime(side.created_at)} />, submission <span class="mono">{side.submission_id}</span></p>
               <CodeView source={side.source} spans={side.spans ?? []} label="{name}'s program" />
             </div>
           {/each}
@@ -311,7 +308,7 @@
             <ol class="moments" aria-labelledby="timeline-{u}">
               {#each t as m, i (i)}
                 <li class="moment moment-{m.kind}">
-                  <span class="mono when">{formatDateTime(m.at)}</span>
+                  <span class="when"><MonoDigits text={formatDateTime(m.at)} /></span>
                   <span class="what">{#if problemLabel(m.problem_id)}<span class="mono plabel"><span class="visually-hidden">Problem </span>{problemLabel(m.problem_id)}<span class="visually-hidden">: </span></span>{/if}{m.text}</span>
                 </li>
               {/each}
@@ -323,6 +320,10 @@
   </section>
 
   {#if !fromCase}
+    <!-- After the code and the timelines it asks you to read first (C7). -->
+    <p class="actions">
+      <button type="button" class="btn btn-primary" onclick={() => (dialogOpen = true)}>Open a case</button>
+    </p>
     <OpenCaseDialog
       open={dialogOpen}
       contestId={id}

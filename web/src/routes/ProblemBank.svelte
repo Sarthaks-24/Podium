@@ -2,30 +2,37 @@
   ProblemBank: the admin list of problems at /admin/problems
   (GET /api/admin/problems), most recently changed first. A table gives
   each problem's title (a link to its editor), difficulty, tags, test
-  count, points, a status word (Validated, Not validated or Archived), when
-  it last changed and a Try link that opens it as a student would see it.
+  count, points, the status as a badge (Validated, Validating, Not
+  validated or Archived), when it last changed, "Validate" on a
+  problem that is not validated, and Try, which opens it as a student
+  would see it.
   Past ten problems a filter narrows the list by title or tag. Under 768 px
   each row reads as title and status, then tests and the date, muted. "New problem" opens a
   small form for a title and a slug, suggested from the title until the
   slug is edited, and goes to the new problem's editor. "New problem with
   AI" opens the wizard at /admin/ai/new, and "AI assistant settings" the
   key screen; a problem the wizard made carries an "AI draft" mark beside
-  its title until a person saves it. "Import pack" picks
-  a .zip and sends it as is (application/zip); a refused pack shows the
-  server's message and its list of problems. "Show archived" adds
+  its title until a person saves it. "Import pack" picks one or more .zip
+  files and sends each as is (application/zip), then starts validating
+  each imported problem and stays on the list, so three packs need no
+  page visits (audit O6); a refused pack shows the server's message and
+  its list of problems. "Show archived" adds
   ?archived=1 to the address. Students see a short explanation instead.
   Takes no props.
 -->
 <script lang="ts">
   import PageState from '../components/PageState.svelte';
   import PageHeader from '../components/PageHeader.svelte';
-  import { onMount, tick, untrack } from 'svelte';
+  import Badge from '../components/Badge.svelte';
+  import MonoDigits from '../components/MonoDigits.svelte';
+  import { onDestroy, onMount, tick, untrack } from 'svelte';
+  import { problemTone } from '../lib/badges';
   import { isAIDraft, withoutAIDraft } from '../lib/ai';
   import { ApiError, getJSON, sendBody, sendJSON } from '../lib/api';
   import { formatDateTime } from '../lib/format';
   import { setTitle } from '../lib/head';
   import { routeTitle } from '../lib/routing';
-  import { DIFFICULTIES, slugify, statusWord, type Problem, type ProblemSummary } from '../lib/problems';
+  import { DIFFICULTIES, isPending, problemPath, slugify, statusWord, type Problem, type ProblemSummary, type Validation } from '../lib/problems';
   import { navigate, router } from '../lib/router.svelte';
   import { session } from '../lib/session.svelte';
   import { showToast } from '../lib/toast.svelte';
@@ -47,6 +54,15 @@
   let fileInput: HTMLInputElement | undefined = $state();
   let importing = $state(false);
   let importError = $state<{ message: string; problems: readonly string[] } | null>(null);
+
+  /** Problems whose validation this page started and is waiting for. */
+  let validating = $state<ReadonlySet<number>>(new Set());
+  let pollTimer: ReturnType<typeof setTimeout> | undefined;
+  let alive = true;
+  onDestroy(() => {
+    alive = false;
+    clearTimeout(pollTimer);
+  });
 
   /** The filter appears once the list is longer than this. */
   const FILTER_FROM = 10;
@@ -87,8 +103,8 @@
     return err instanceof ApiError ? err.message : 'Something went wrong. Try again in a moment.';
   }
 
-  async function load(archived: boolean) {
-    loadState = 'loading';
+  async function load(archived: boolean, quiet = false) {
+    if (!quiet) loadState = 'loading';
     try {
       const data = await getJSON<{ problems: ProblemSummary[] }>(`/api/admin/problems${archived ? '?archived=1' : ''}`);
       problems = data.problems ?? [];
@@ -179,24 +195,80 @@
     fileInput?.click();
   }
 
+  /** The words a row's status badge says: the page's own validations first. */
+  function statusOf(p: ProblemSummary): string {
+    if (validating.has(p.id)) return 'Validating';
+    return statusWord(p);
+  }
+
+  /** Asks the judge to validate a problem; false (with the reason in a toast) when it cannot yet. */
+  async function startValidation(id: number, name: string, quiet = false): Promise<boolean> {
+    try {
+      await sendJSON<Validation>('POST', problemPath(id, '/validate'));
+      validating = new Set([...validating, id]);
+      schedulePoll();
+      if (!quiet) showToast(`Validating ${name}`);
+      return true;
+    } catch (err) {
+      if (handleSessionError(err)) return false;
+      const why = err instanceof ApiError && err.problems.length > 0 ? err.problems[0] : messageOf(err);
+      showToast(`${name} cannot be validated yet: ${why} Open it to fix that.`, 'error');
+      return false;
+    }
+  }
+
+  function schedulePoll() {
+    clearTimeout(pollTimer);
+    if (alive && validating.size > 0) pollTimer = setTimeout(pollValidations, 2000);
+  }
+
+  /** Follows the validations this page started; the list reloads when one finishes. */
+  async function pollValidations() {
+    const finished: number[] = [];
+    for (const id of validating) {
+      try {
+        const v = await getJSON<Validation>(problemPath(id, '/validation'));
+        if (!isPending(v)) finished.push(id);
+      } catch (err) {
+        if (handleSessionError(err)) return;
+      }
+    }
+    if (!alive) return;
+    const done = finished.length > 0;
+    validating = new Set([...validating].filter((id) => !finished.includes(id)));
+    if (done) await load(showArchived, true);
+    schedulePoll();
+  }
+
   async function importPack() {
-    const file = fileInput?.files?.[0];
-    if (!fileInput || !file) return;
+    const files = [...(fileInput?.files ?? [])];
+    if (!fileInput || files.length === 0) return;
     fileInput.value = '';
     importError = null;
     importing = true;
+    const made: string[] = [];
     try {
-      const problem = await sendBody<Problem>('POST', '/api/admin/problems/import', file, 'application/zip');
-      showToast(`Imported ${problem.title}`);
-      navigate(`/admin/problems/${problem.id}`);
-    } catch (err) {
-      if (handleSessionError(err)) return;
-      importError = {
-        message: messageOf(err),
-        problems: err instanceof ApiError ? err.problems : [],
-      };
+      for (const file of files) {
+        let problem: Problem;
+        try {
+          problem = await sendBody<Problem>('POST', '/api/admin/problems/import', file, 'application/zip');
+        } catch (err) {
+          if (handleSessionError(err)) return;
+          importError = {
+            message: files.length > 1 ? `${file.name}: ${messageOf(err)}` : messageOf(err),
+            problems: err instanceof ApiError ? err.problems : [],
+          };
+          break;
+        }
+        const ok = await startValidation(problem.id, problem.title, true);
+        made.push(ok ? `Imported ${problem.title}. Validating.` : `Imported ${problem.title}.`);
+      }
     } finally {
       importing = false;
+    }
+    if (made.length > 0) {
+      showToast(made.join(' '));
+      await load(showArchived, true);
     }
   }
 </script>
@@ -224,6 +296,7 @@
         bind:this={fileInput}
         class="file"
         type="file"
+        multiple
         accept=".zip,application/zip"
         aria-label="Pack to import"
         tabindex="-1"
@@ -231,7 +304,7 @@
       />
     </div>
     <div class="aside">
-      <a class="settings-link" href="/admin/ai">AI assistant settings</a>
+      <a class="btn btn-quiet" href="/admin/ai">AI assistant</a>
       <label class="toggle">
         <input type="checkbox" checked={showArchived} onchange={toggleArchived} />
         Show archived
@@ -304,7 +377,7 @@
   {:else if loadState === 'error'}
     <PageState kind="error" message={loadError} onretry={() => load(showArchived)} />
   {:else if problems.length === 0}
-    <PageState kind="empty" message="No problems yet. Import a pack, create one, or draft one with AI." />
+    <PageState kind="empty" message="No problems yet. Import a pack, create one, or draft one with AI. Imported packs are validated at once." />
   {:else}
     {#if problems.length > FILTER_FROM}
       <div class="field filter">
@@ -326,23 +399,31 @@
               <th scope="col" class="right">Points</th>
               <th scope="col">Status</th>
               <th scope="col">Updated</th>
-              <th scope="col"><span class="visually-hidden">Try</span></th>
+              <th scope="col"><span class="visually-hidden">Actions</span></th>
             </tr>
           </thead>
           <tbody>
             {#each shown as p (p.id)}
               {@const name = p.title.trim() !== '' ? p.title : p.slug}
+              {@const word = statusOf(p)}
               <tr>
                 <th scope="row" class="title">
-                  <a class="row-link" href="/admin/problems/{p.id}">{name}</a>{#if isAIDraft(p.tags)}<span class="ai-draft">AI draft</span>{/if}
+                  <a class="row-link" href="/admin/problems/{p.id}">{name}</a>{#if isAIDraft(p.tags)}<span class="ai-draft"><Badge tone="wait" text="AI draft" /></span>{/if}
                 </th>
                 <td class="difficulty">{difficultyLabel(p.difficulty)}</td>
                 <td class="tags">{withoutAIDraft(p.tags).join(', ')}</td>
                 <td class="num right tests"><span class="cell-label">Tests</span>{p.test_count}</td>
                 <td class="num right points">{p.points}</td>
-                <td class="state" class:ok={statusWord(p) === 'Validated'}>{statusWord(p)}</td>
-                <td class="num updated">{formatDateTime(p.updated_at)}</td>
-                <td class="try"><a href="/admin/problems/{p.id}/try" aria-label="Try {name} as a student">Try</a></td>
+                <td class="state"><Badge tone={word === 'Validating' ? 'wait' : problemTone(word)} text={word} /></td>
+                <td class="updated"><MonoDigits text={formatDateTime(p.updated_at)} /></td>
+                <td class="try">
+                  <span class="row-actions">
+                    {#if !p.validated && !p.archived && word !== 'Validating'}
+                      <button type="button" class="btn btn-quiet btn-compact" aria-label="Validate {name}" onclick={() => startValidation(p.id, name)}>Validate</button>
+                    {/if}
+                    <a class="btn btn-quiet btn-compact" href="/admin/problems/{p.id}/try" aria-label="Try {name} as a student">Try</a>
+                  </span>
+                </td>
               </tr>
             {/each}
           </tbody>
@@ -384,21 +465,8 @@
     gap: var(--space-2) var(--space-5);
   }
 
-  .settings-link {
-    border-radius: var(--radius);
-    font-size: var(--fs-0);
-    font-weight: 500;
-  }
-
   .ai-draft {
     margin-left: var(--space-2);
-    padding: 0 var(--space-1);
-    border: var(--rule) solid var(--part);
-    border-radius: var(--radius);
-    color: var(--part);
-    font-size: var(--fs-0);
-    font-weight: 500;
-    white-space: nowrap;
   }
 
   .toggle {
@@ -493,6 +561,7 @@
   }
 
   .try {
+    text-align: right;
     white-space: nowrap;
   }
 
@@ -505,12 +574,17 @@
   }
 
   .state {
-    color: var(--ink-muted);
     white-space: nowrap;
   }
 
-  .state.ok {
-    color: var(--ok);
+  .row-actions {
+    display: inline-flex;
+    gap: var(--space-1);
+  }
+
+  .row-actions :is(a, button) {
+    position: relative;
+    z-index: 1;
   }
 
   /* Phones: each row is the title and status, then tests and the date. */

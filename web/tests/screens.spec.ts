@@ -163,7 +163,7 @@ test('resetting a Google account link asks first and reports errors inline', asy
 
   await submit.click();
   await expect(page.locator('#account-error')).toHaveText('Enter an email address.');
-  await expect(email).toHaveAttribute('aria-describedby', 'account-error');
+  await expect(email).toHaveAttribute('aria-describedby', 'account-who account-error');
 
   await email.fill('nobody@college.edu');
   await submit.click();
@@ -210,23 +210,26 @@ test('an owner ends sessions, disables and enables an account, each asked first'
   await end.getByRole('button', { name: 'End sessions' }).click();
   await expect(page.getByText('Ended 2 sessions of asha@college.edu', { exact: true })).toBeVisible();
 
+  // The field says whose account it is when the page knows it, and the confirmation names them (P3 O10).
   await email.fill('priya@college.edu');
+  await expect(section.locator('#account-who')).toContainText('owner');
   await section.getByRole('button', { name: 'Disable account' }).click();
-  await page.getByRole('dialog', { name: 'Disable priya@college.edu?' }).getByRole('button', { name: 'Disable account' }).click();
+  await page.getByRole('dialog', { name: /^Disable .+ \(priya@college\.edu\)\?$/ }).getByRole('button', { name: 'Disable account' }).click();
   await expect(page.locator('#account-error')).toHaveText('This owner is set in the server configuration and cannot be disabled.');
 
   await email.fill('asha@college.edu');
+  await expect(section.locator('#account-who')).toContainText('Students are not listed on this page yet');
   await section.getByRole('button', { name: 'Disable account' }).click();
   const disable = page.getByRole('dialog', { name: 'Disable asha@college.edu?' });
   await expect(disable).toContainText('cannot sign in until an owner enables the account again');
   await disable.getByRole('button', { name: 'Disable account' }).click();
-  await expect(page.getByText('Disabled asha@college.edu', { exact: true })).toBeVisible();
+  await expect(page.getByText('Disabled asha@college.edu', { exact: true }).first()).toBeVisible();
   await expect(section.getByRole('listitem')).toContainText(['asha@college.edu']);
   await page.screenshot({ path: `${shots()}people-access-1280-light.png`, fullPage: true });
 
   await section.getByRole('button', { name: 'Enable asha@college.edu' }).click();
   await page.getByRole('dialog', { name: 'Enable asha@college.edu?' }).getByRole('button', { name: 'Enable account' }).click();
-  await expect(page.getByText('Enabled asha@college.edu', { exact: true })).toBeVisible();
+  await expect(page.getByText('Enabled asha@college.edu', { exact: true }).first()).toBeVisible();
   await expect(section).toContainText('No account is disabled.');
   expect(state.accountCalls).toEqual(['end-sessions asha@college.edu', 'disable asha@college.edu', 'enable asha@college.edu']);
 });
@@ -257,11 +260,12 @@ test('after adding an organiser, the page says what to send them', async ({ page
   await page.getByRole('region', { name: 'Organisers' }).getByLabel('Email', { exact: true }).fill('new.ta@college.edu');
   await page.getByRole('button', { name: 'Add organiser' }).click();
   const note = page.locator('.invite');
-  await expect(note).toContainText('Send new.ta@college.edu this address: http://127.0.0.1:5179. They sign in with Google using that email.');
+  const origin = new URL(page.url()).origin;
+  await expect(note).toContainText(`Send new.ta@college.edu this address: ${origin}. They sign in with Google using that email.`);
   await expect(page.getByRole('row', { name: /new\.ta@college\.edu/ })).toContainText('Invited');
   await note.getByRole('button', { name: 'Copy address' }).click();
   await expect(page.getByText('Copied the address', { exact: true })).toBeVisible();
-  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe('http://127.0.0.1:5179');
+  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(origin);
   await note.getByRole('button', { name: 'Dismiss' }).click();
   await expect(note).toHaveCount(0);
 });
@@ -274,7 +278,7 @@ test('a fresh install starts with a short checklist', async ({ page }) => {
   const start = page.getByRole('region', { name: 'Getting started' });
   await expect(start.getByRole('listitem')).toHaveCount(3);
   await expect(start.getByRole('listitem').nth(0)).toContainText('To do');
-  await expect(start).toContainText('Share the address with your students: http://127.0.0.1:5179');
+  await expect(start).toContainText(`Share the address with your students: ${new URL(page.url()).origin}`);
   await page.screenshot({ path: `${shots()}people-fresh-1280-light.png`, fullPage: true });
 
   await page.getByLabel('Domain', { exact: true }).fill('college.edu');

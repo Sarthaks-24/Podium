@@ -578,6 +578,18 @@ The web app is one Svelte single-page app with no component library. Since v2 P1
 | Icons | `web/src/lib/icons.ts`, `web/src/components/Icon.svelte` | Lucide shapes as data, 20 px beside words and never instead of them |
 | Route table | `web/src/lib/routing.ts` | Each route's pattern, sign-in need, `public`, `title` and `description`. Page titles read it, and the build writes it to `dist/routes.json` for the server's head, 404 and robots (contract C2) |
 
+### Organiser screens (v2 P3)
+
+The organiser screens use the P3 working layout (`.page-split`): the form or feed on the left and a sticky context column from 1280 px (D181).
+
+| Screen | Context column | Notes |
+|---|---|---|
+| Problem editor (`routes/ProblemEditor.svelte`) | `ReadinessPanel` and the preview | The route keeps loading, saving, the polling and the dialogs (under 700 lines); the sections are `components/problem/*`: `EditorBar`, `StatementSection`, `SolutionsSection`, `TestsSection`, `GeneratorPanel`, `JudgingSection`, `EditorFooter`, `ModelSolve`, `RevisionHistory`, with shared classes in `editor.css` and field error lookups in `lib/problemFields.ts`. `lib/problems.ts` `judgedFieldsChanged` mirrors `server/internal/problems/hash.go`, so the panel can say a save needs a new validation; keep the two in step |
+| Contest editor | "Before you publish" (`lib/contests.ts` `publishChecks`) | Publishing is in the title row with a confirmation; problems save on each change; rules fold under a summary; leaving with unsaved settings asks first |
+| Console | Questions and announcements | The attention strip (`attentionItems`) reads the C10 queue health on the contest response, refreshed every 10 s with the feed; End the contest now uses the settings update with the end set to the server's now |
+
+Organiser state words come from `organiserState` in `lib/contests.ts`: "Draft" while unpublished and "Ended, practice open" after the end, so a contest that is over never reads "Practice" to its organisers. The AI key form is one component (`components/ai/KeyForm.svelte`) on the settings page and inline in the wizard.
+
 State is a shape: a selected tab, the current sub-nav link and the next reveal row are drawn with borders, and components that draw fills (subtask strip, rail bars) carry a `forced-colors` block, so Windows high-contrast mode keeps every state visible.
 
 `web/index.html` carries two marker pairs the server fills per route (D100): `<!--podium:head-->` around the default `noindex` robots meta, and `<!--podium:body-->` inside a fallback `<main>` that `main.ts` clears before the app mounts.

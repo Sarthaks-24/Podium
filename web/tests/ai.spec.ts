@@ -61,9 +61,19 @@ test('the bank links to the wizard and the settings, and marks AI drafts', async
   await expect(row.locator('.tags')).toHaveText('arrays');
   await page.getByRole('link', { name: 'New problem with AI' }).click();
   await expect(page.getByRole('heading', { level: 1, name: 'New problem with AI' })).toBeFocused();
-  await expect(page.getByText('No key yet.')).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Generate' })).toBeDisabled();
-  await page.getByRole('link', { name: 'Add a key in AI assistant' }).click();
+  await expect(page.getByText('No key yet.', { exact: false })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Generate draft' })).toBeDisabled();
+  // The key form is on the wizard itself, above the brief (P3 O7).
+  const inline = page.getByRole('form', { name: 'Add a key to start' });
+  await inline.getByLabel('API key').fill(FAKE_KEY);
+  await inline.getByRole('button', { name: 'Save key' }).click();
+  const model = page.getByRole('form', { name: 'Choose a model to start' });
+  await model.getByLabel('Model', { exact: true }).selectOption({ label: 'Claude Opus 5.5' });
+  await model.getByRole('button', { name: 'Save model' }).click();
+  await expect(page.getByRole('button', { name: 'Generate draft' })).toBeEnabled();
+  await expect(page.getByRole('form', { name: /to start$/ })).toHaveCount(0);
+  await expect(page.getByLabel('Topic', { exact: true })).toBeFocused();
+  await page.getByRole('link', { name: 'Change key or model' }).click();
   await expect(page.getByRole('heading', { level: 1, name: 'AI assistant' })).toBeFocused();
   await expect(page.getByRole('navigation', { name: 'Main' }).getByRole('link', { name: 'Problem bank' })).toHaveAttribute('aria-current', 'page');
 });
@@ -239,10 +249,10 @@ test('a wizard from a brief follows the live event to the draft', async ({ page 
   state.events.push(
     `event: wizard\ndata: ${JSON.stringify({ id: WIZARD_ID, kind: 'generate', state: 'draft_created', problem_id: 20, provider: 'anthropic', model: 'claude-opus-5-5' })}\n\n`,
   );
-  await expect(page.locator('.step-current')).toHaveText(/Draft created, generating tests/);
+  await expect(page.locator('.step-current')).toHaveText(/Generating the tests/);
   // C11: the run names the provider and model that made the draft.
   await expect(page.getByText('Drafted by Anthropic with Claude Opus 5.5.', { exact: false })).toBeVisible();
-  await expect(page.getByRole('status').filter({ hasText: 'Draft created, generating tests' })).toHaveCount(1);
+  await expect(page.getByRole('status').filter({ hasText: 'Generating the tests' })).toHaveCount(1);
   await page.getByRole('link', { name: 'Open the draft in the editor' }).click();
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('Maximum subarray');
 });
@@ -258,7 +268,7 @@ test('a wizard from pasted text polls when live updates are down', async ({ page
   await expect(page.getByText(`${pasted.length} of 20,000 characters`)).toBeVisible();
   await page.getByRole('button', { name: 'Generate' }).click();
   await expect(page.locator('.step-current')).toHaveText(/Writing the problem/);
-  await expect(page.locator('.step-current')).toHaveText(/Draft created, generating tests/, { timeout: 10_000 });
+  await expect(page.locator('.step-current')).toHaveText(/Generating the tests/, { timeout: 10_000 });
   expect(state.wizardBodies).toEqual([{ mode: 'paste', text: pasted }]);
   await expect(page.getByRole('link', { name: 'Open the draft in the editor' })).toHaveAttribute('href', '/admin/problems/20');
 
@@ -412,4 +422,26 @@ test('keyboard only: a brief goes from the form to the draft', async ({ page }) 
   state.events.push(`event: wizard\ndata: ${JSON.stringify({ id: WIZARD_ID, kind: 'generate', state: 'draft_created', problem_id: 20 })}\n\n`);
   await activate(page, page.getByRole('link', { name: 'Open the draft in the editor' }));
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('Maximum subarray');
+});
+
+test('the wizard follows the draft until it is validated (P3 O7)', async ({ page }) => {
+  await mockApi(page, { key: 'active', chain: true });
+  await page.goto('/admin/ai/new');
+  await page.getByLabel('Topic', { exact: true }).fill('Maximum subarray sum');
+  await page.getByRole('button', { name: 'Generate draft' }).click();
+  const progress = page.getByRole('region', { name: 'Progress' });
+  await expect(progress.getByRole('listitem')).toHaveText([/Writing the problem/, /Draft created/, /Generating the tests/, /Validating the draft/]);
+  await expect(progress.getByRole('listitem').nth(2)).toContainText('in progress', { timeout: 10_000 });
+  await expect(progress).toContainText('Validation passed. Read the draft, then add it to a contest.', { timeout: 40_000 });
+  await expect(progress.getByRole('link', { name: 'Open the draft' })).toHaveAttribute('href', '/admin/problems/20');
+  await expect(progress.getByRole('listitem').nth(3)).toContainText('done');
+});
+
+test('wizard copy keeps its spaces and full stops (P3 O7)', async ({ page }) => {
+  await mockApi(page, { key: 'active' });
+  await page.goto('/admin/ai/new');
+  await expect(page.locator('.key-state')).not.toContainText('needed Change');
+  await page.getByLabel('Topic', { exact: true }).fill('Maximum subarray sum');
+  await page.getByRole('button', { name: 'Generate draft' }).click();
+  await expect(page.locator('.created')).toHaveText(/^Drafted by .+\. The draft is in the problem bank\./, { timeout: 10_000 });
 });

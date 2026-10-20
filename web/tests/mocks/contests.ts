@@ -45,12 +45,18 @@ export interface Options {
   boardClosed?: boolean;
   secondSession?: boolean;
   holdReveal?: boolean;
+  /** The reveal board: a long one with pending cells on every row (C6 skip), or one with nothing pending. */
+  revealBoard?: 'long' | 'nothing';
   /** After the end, students still get the frozen board (held for the reveal). */
   studentFrozen?: boolean;
   /** The student's window ends this many ms after the page loads. */
   endsInMs?: number;
   /** The organiser's contest starts out published. */
   published?: boolean;
+  /** PUT settings may publish (by default it refuses with a changed problem, P3). */
+  publishOk?: boolean;
+  /** Queue health on the contest response (C10): calm by default, or a slow queue, a silent judge and toolchain drift. */
+  queueHealth?: 'calm' | 'trouble';
   /** Problem B moved to a new revision after the start, changing its statement (C3). */
   statementUpdated?: boolean;
   /** Problem A has a newer validated revision to update the contest to (C4). */
@@ -325,6 +331,9 @@ export async function mockApi(page: Page, options: Options = {}) {
       { label: 'A', problem_id: 11, revision_id: 12, rev: 2, from_at: startsAt - 60 * MIN, actor: { user_id: 1, email: 'priya@college.edu', role: 'owner' } },
     ],
     roster_count: 1,
+    queue: options.queueHealth === 'trouble' ? { waiting: 14, judging: 2, errors: 1, oldest_wait_s: 95 } : { waiting: 0, judging: 1, errors: 1, oldest_wait_s: 0 },
+    judge_last_claim_at: options.queueHealth === 'trouble' ? nowMs() - 3 * MIN : nowMs() - 4000,
+    unanswered: state.answers.length ? 0 : 1,
     close_at: endsAt,
     default_honour_text: 'This contest is graded. By starting you agree to these rules.',
     hold_reveal: state.holdReveal,
@@ -347,6 +356,7 @@ export async function mockApi(page: Page, options: Options = {}) {
       update_available: latest > rev,
       update_statement_only: true,
       reconstructed: false,
+      toolchain_drift: options.queueHealth === 'trouble' && String(p.label) === 'A',
     };
   }
 
@@ -362,6 +372,22 @@ export async function mockApi(page: Page, options: Options = {}) {
         { label: 'B', score: b, max: 100, pending: pb },
       ],
     });
+    if (options.revealBoard === 'long') {
+      const names = Array.from({ length: 14 }, (_, i) => `Student ${i + 1}`);
+      const frozenRows = names.map((n, i) => row(i + 1, n, i + 1, 100 - i * 5, 0, 1000 + i, 0, 1));
+      const fullRows = names.map((n, i) => row(i + 1, n, i + 1, 100 - i * 5, 2, 1000 + i));
+      return {
+        frozen: { variant: 'frozen', version: 3, frozen_at: endsAt - 30 * MIN, final: false, judging_remaining: 0, me: null, labels: ['A', 'B'], rows: frozenRows },
+        full: { variant: 'full', version: 3, frozen_at: null, final: true, judging_remaining: 0, me: null, labels: ['A', 'B'], rows: fullRows },
+      };
+    }
+    if (options.revealBoard === 'nothing') {
+      const rows = [row(1, 'Priya Raman', 1, 100, 100, 3000), row(2, 'Arjun Mehta', 2, 100, 40, 2000)];
+      return {
+        frozen: { variant: 'frozen', version: 3, frozen_at: null, final: false, judging_remaining: 0, me: null, labels: ['A', 'B'], rows },
+        full: { variant: 'full', version: 3, frozen_at: null, final: true, judging_remaining: 0, me: null, labels: ['A', 'B'], rows },
+      };
+    }
     return {
       frozen: {
         variant: 'frozen', version: 3, frozen_at: endsAt - 30 * MIN, final: false, judging_remaining: 0, me: null, labels: ['A', 'B'],
@@ -511,7 +537,7 @@ export async function mockApi(page: Page, options: Options = {}) {
         const body = req.postDataJSON() as Json;
         state.settingsPuts.push(body);
         if (body.slug === 'Week 6') return apiError(route, 400, 'bad_request', 'Check the highlighted fields.', { fields: { slug: 'Use lowercase letters, digits and single hyphens, like week-6.' } });
-        if (body.published === true) return apiError(route, 409, 'conflict', 'The contest cannot be published yet.', { fields: { published: 'Problem B changed since it was added; validate it and add it again.' } });
+        if (body.published === true && !options.publishOk) return apiError(route, 409, 'conflict', 'The contest cannot be published yet.', { fields: { published: 'Problem B changed since it was added; validate it and add it again.' } });
         return json(route, 200, { ...adminContest(), ...body });
       }
       if (path === '/api/admin/contests/4/problems' && method === 'PUT') {
@@ -585,6 +611,7 @@ export async function mockApi(page: Page, options: Options = {}) {
           { id: 300, user_id: 101, name: 'Arjun Mehta', email: 'arjun@college.edu', problem_label: 'A', language: 'python3', state: 'done', verdict: 'AC', score: 100, max_score: 100, created_at: now - 5 * MIN, practice: false, rejudged: false },
           { id: 299, user_id: 102, name: 'Ravi Kumar', email: 'ravi@college.edu', problem_label: 'C', language: 'java21', state: 'running', verdict: '', score: 0, max_score: 100, created_at: now - 6 * MIN, practice: false, rejudged: false },
           { id: 298, user_id: 103, name: 'Meera Iyer', email: 'meera@college.edu', problem_label: 'B', language: 'cpp17', state: 'error', verdict: '', score: 0, max_score: 100, created_at: now - 7 * MIN, practice: false, rejudged: false },
+          { id: 297, user_id: 104, name: 'Kiran Das', email: 'kiran@college.edu', problem_label: 'C', language: 'cpp17', state: 'done', verdict: 'WA', score: 0, max_score: 100, created_at: now - 9 * MIN, practice: false, rejudged: false },
         ];
         const problem = url.searchParams.get('problem');
         const user = url.searchParams.get('user');
@@ -738,7 +765,7 @@ export const SCREENS: Screen[] = [
     title: '(1) Console · Week 6 contest · podium',
     ready: async (page) => {
       await expect(page.getByText('Can intervals have zero length?')).toBeVisible();
-      await expect(page.getByRole('cell', { name: 'Wrong answer' })).toBeVisible();
+      await expect(page.getByRole('cell', { name: 'Partial, 40 of 100' })).toBeVisible();
     },
   },
   {

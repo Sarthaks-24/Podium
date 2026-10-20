@@ -128,3 +128,25 @@ export function revealAll(state: RevealState): RevealState {
   for (let next = revealStep(s); next; next = revealStep(s)) s = next.state;
   return s;
 }
+
+/**
+ * Resolves, without steps to show, every row still to come that is placed
+ * below `top` (C6 "Skip to the top 10"), so the room goes straight to the
+ * rows that matter. Rows that would climb into the top stay to be shown.
+ */
+export function skipToTop(state: RevealState, top = 10): RevealState {
+  let s = state;
+  for (;;) {
+    const i = nextIndex(s);
+    if (i < 0 || s.rows[i].rank <= top) return s;
+    const next = revealStep(s);
+    if (!next) return s;
+    if (next.state.rows[next.move.to].rank <= top) return s;
+    s = next.state;
+  }
+}
+
+/** True when the frozen board already equals the full one: nothing is left to reveal. */
+export function nothingToReveal(state: RevealState): boolean {
+  return state.step === 0 && isDone(state);
+}

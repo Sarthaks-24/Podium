@@ -93,9 +93,10 @@ for (const width of [1440, 375]) {
       'Remove subtask 1', 'Remove subtask 2', 'Add subtask', 'Replace tests', 'Regenerate all outputs', 'Show all 5 tests',
       'reference-language', 'reference-source', 'Remove brute force', 'Add validator', 'Download pack', 'Archive problem',
     ];
-    const wide = ['Details', 'Tests', 'Solutions', 'Validation'];
+    // The jump links carry a short state (P3 A3) and stay on phones as one scrolling row.
+    const wide = ['Statement', 'Solutions with brute force', 'Tests 5', 'Judging no validator', 'Validation'];
     const phone = ['Write'];
-    for (const name of [...always, ...(width >= 768 ? wide : phone)]) {
+    for (const name of [...always, ...wide, ...(width >= 768 ? [] : phone)]) {
       expect(reached, `Tab did not reach "${name}"`).toContain(name);
     }
   });
@@ -125,7 +126,7 @@ test('subtasks, saving and validating work from the keyboard', async ({ page }) 
   await page.locator('#subtask-1-points').fill('50');
   await page.getByRole('button', { name: 'Save changes' }).focus();
   await page.keyboard.press('Enter');
-  await expect(page.getByText('Saved', { exact: true })).toBeVisible();
+  await expect(page.getByText('Saved', { exact: true }).first()).toBeVisible();
   expect(state.puts.at(-1)?.subtasks).toEqual([
     { points: 40, title: 'Small numbers', tests: '3-4' },
     { points: 50, title: 'Full range', tests: '5' },
@@ -173,7 +174,8 @@ test('the editor stacks at 375 px with Write and Preview tabs for the statement'
   expect(output!.y).toBeGreaterThan(input!.y + input!.height - 1);
 
   const boxes = [];
-  for (const name of ['Details', 'Tests', 'Solutions']) {
+  // Sections in dependency order (P3 A3): the statement, the solutions the outputs come from, then the tests.
+  for (const name of ['Statement and limits', 'Solutions', 'Tests']) {
     const box = await page.getByRole('region', { name, exact: true }).boundingBox();
     expect(box, name).not.toBeNull();
     boxes.push(box!);
@@ -241,8 +243,12 @@ test('a failed validation names the test, program and verdict', async ({ page })
 test('validation is refused while a test is in no subtask', async ({ page }) => {
   await mockApi(page);
   await page.goto('/admin/problems/2');
-  const note = page.getByRole('note', { name: 'Before you validate' });
-  await expect(note).toContainText('Test 7 is in no subtask. Add it to a subtask or mark it as a sample.');
+  // The readiness panel names what blocks validation first, then the advice (P3 A1).
+  const blockers = page.getByRole('group', { name: 'Fix this before you validate' });
+  await expect(blockers).toContainText('Test 7 is in no subtask. Add it to a subtask or mark it as a sample.');
+  await expect(page.getByRole('note', { name: 'Before you validate' })).toContainText('No brute force');
+  // While something blocks validation, Validate is not the primary action.
+  await expect(page.getByRole('button', { name: 'Validate' })).toHaveClass(/btn-secondary/);
   // Named outside the table, which stays closed until asked for.
   await expect(page.getByText('7 tests: 1 sample, 5 in 2 subtasks, 1 in no subtask.')).toBeVisible();
   await expect(page.getByText('Test 7 is in no subtask. Add it to a subtask range or to the samples.')).toBeVisible();
@@ -262,7 +268,7 @@ test('validation is refused while a test is in no subtask', async ({ page }) => 
   await expect(page.getByText('Not validated yet.')).toBeVisible();
 });
 
-test('importing a pack shows its problems, then opens the new problem', async ({ page }) => {
+test('importing a pack shows its problems, then validates the new problem in place (P3 O6)', async ({ page }) => {
   const state = await mockApi(page);
   const choosers = watchFileChoosers(page);
   await page.goto('/admin/problems');
@@ -282,10 +288,28 @@ test('importing a pack shows its problems, then opens the new problem', async ({
   ]);
   await page.screenshot({ path: `${shots()}problems-bank-import-error-1440-light.png`, fullPage: true });
 
+  // A good pack stays on the list and starts validating at once: no visit to the editor needed.
   await page.locator('input[type="file"]').setInputFiles(zipFile('pair.zip', 'good pack'));
-  await expect(page).toHaveURL('/admin/problems/10');
-  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Pair with sum');
+  await expect(page.getByText('Imported Pair with sum. Validating.', { exact: true }).first()).toBeVisible();
+  await expect(page).toHaveURL('/admin/problems');
+  const row = page.getByRole('row', { name: /Pair with sum/ });
+  await expect(row.locator('.badge')).toHaveText('Validating');
+  await expect(row.locator('.badge')).toHaveText('Validated', { timeout: 15_000 });
   expect(state.imports).toEqual(['bad pack', 'good pack']);
+  await row.getByRole('link', { name: 'Pair with sum', exact: true }).click();
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Pair with sum');
+});
+
+test('several packs import in one pick, and a row offers Validate when it is not validated (P3 O6)', async ({ page }) => {
+  const state = await mockApi(page);
+  await page.goto('/admin/problems');
+  await expect(page.getByRole('row', { name: /Interval covering/ }).locator('.badge')).toHaveText('Not validated');
+  await page.locator('input[type="file"]').setInputFiles([zipFile('one.zip', 'good pack 1'), zipFile('two.zip', 'good pack 2')]);
+  await expect.poll(() => state.imports).toEqual(['good pack 1', 'good pack 2']);
+  await expect(page.getByText('Imported Pair with sum. Validating. Imported Pair with sum. Validating.', { exact: true }).first()).toBeVisible();
+  // Interval covering has a test in no subtask, so validating it is refused with the reason.
+  await page.getByRole('button', { name: 'Validate Interval covering' }).click();
+  await expect(page.getByText('Interval covering cannot be validated yet: Test 7 is in no subtask.', { exact: false }).first()).toBeVisible();
 });
 
 test('the bank shows status words, archived problems on request, and creates problems', async ({ page }) => {
@@ -475,7 +499,7 @@ test('the sticky bar keeps status, field errors and the main actions in reach', 
   await expect(page.getByRole('button', { name: 'Save changes' })).toHaveClass(/btn-primary/);
 
   // The bar stays at the top while the page scrolls.
-  await page.getByRole('link', { name: 'Solutions', exact: true }).click();
+  await page.getByRole('link', { name: /^Solutions/ }).click();
   await page.mouse.wheel(0, 2000);
   const bar = await page.locator('.action-bar').boundingBox();
   expect(bar!.y).toBeLessThanOrEqual(1);
@@ -483,7 +507,7 @@ test('the sticky bar keeps status, field errors and the main actions in reach', 
 
   // Ctrl+S saves.
   await page.keyboard.press('Control+s');
-  await expect(page.getByText('Saved', { exact: true })).toBeVisible();
+  await expect(page.getByText('Saved', { exact: true }).first()).toBeVisible();
   expect(state.puts).toHaveLength(1);
 
   // Field errors: a count in the bar and a list of links that focus each field.
@@ -503,7 +527,7 @@ test('a problem with no tests offers Upload tests', async ({ page }) => {
   await expect(page.getByRole('button', { name: 'Upload tests' })).toBeVisible();
   await expect(page.getByText('No tests yet. Upload a .zip of numbered input and output files to add them.')).toBeVisible();
   await expect(page.getByRole('button', { name: 'Regenerate all outputs' })).toHaveCount(0);
-  await expect(page.getByText('No validator. Add one to check inputs against the constraints.')).toBeVisible();
+  await expect(page.getByText('No validator. Add one to check every test input against the constraints.')).toBeVisible();
 });
 
 test('reference and brute force sit side by side at 1440 px', async ({ page }) => {
@@ -572,7 +596,7 @@ test('keyboard only: an organiser opens a problem, edits it, saves with Ctrl+S a
 
   await statement.focus();
   await page.keyboard.press('Control+s');
-  await expect(page.getByText('Saved', { exact: true })).toBeVisible();
+  await expect(page.getByText('Saved', { exact: true }).first()).toBeVisible();
   expect(String(state.puts.at(-1)?.statement_md)).toContain('All numbers fit in 64 bits.');
 
   await activate(page, page.getByRole('button', { name: 'Validate' }));
@@ -585,4 +609,51 @@ test('keyboard only: an organiser opens a problem, edits it, saves with Ctrl+S a
   await expect(keys.getByRole('heading', { name: 'Problem editor' })).toBeVisible();
   await page.keyboard.press('Escape');
   await expect(keys).toBeHidden();
+});
+
+test('a finished validation says its result in the bar and the report link takes focus (P3 O2)', async ({ page }) => {
+  await mockApi(page);
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto('/admin/problems/1');
+  const readiness = page.getByRole('region', { name: /^Readiness/ });
+  await expect(readiness).toContainText('Validated on this version.');
+  await expect(readiness.getByRole('link', { name: 'Add to a contest' })).toHaveAttribute('href', '/admin/contests');
+
+  // An unsaved judged change says it will need a new validation; a title change does not.
+  await page.locator('#title').fill('A plus B again');
+  await expect(readiness).toContainText('Validated on this version. Your unsaved changes do not affect it.');
+  await page.locator('#time_limit_ms').fill('2000');
+  await expect(readiness).toContainText('Saving needs a new validation: you changed the limits.');
+  await page.locator('#time_limit_ms').fill('1000');
+  await page.locator('#title').fill('A plus B');
+
+  await page.getByRole('button', { name: 'Validate' }).click();
+  const bar = page.locator('.bar-result');
+  await expect(bar).toHaveText(/Validation passed: 5 of 5 tests, slowest 212 ms\.\s*See the report/, { timeout: 15_000 });
+  await bar.getByRole('link', { name: 'See the report' }).click();
+  await expect(page.getByRole('heading', { name: 'Validation', exact: true })).toBeFocused();
+});
+
+test('removing the brute force or validator can be undone until the next save (P3 A6)', async ({ page }) => {
+  await mockApi(page);
+  await page.goto('/admin/problems/2');
+  await page.getByRole('button', { name: 'Remove validator' }).click();
+  await expect(page.getByText('Validator removed. It goes for good when you save.')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Undo remove' })).toBeFocused();
+  await page.getByRole('button', { name: 'Undo remove' }).click();
+  await expect(page.locator('#validator-source')).toBeFocused();
+  await expect(page.getByText('Unsaved changes', { exact: true })).toHaveCount(0);
+});
+
+test('the preview shows the samples as students see them (P3 A5)', async ({ page }) => {
+  await mockApi(page);
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto('/admin/problems/1');
+  const preview = page.getByRole('region', { name: 'Preview' });
+  await expect(preview.getByRole('heading', { name: 'Sample 1' })).toBeVisible();
+  await expect(preview.getByRole('heading', { name: 'Sample 2' })).toBeVisible();
+  await expect(preview.getByRole('button', { name: 'Copy sample 1 input' })).toBeVisible();
+  // The samples follow the field as typed.
+  await page.locator('#samples').fill('1');
+  await expect(preview.getByRole('heading', { name: 'Sample 2' })).toHaveCount(0);
 });

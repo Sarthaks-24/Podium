@@ -1,0 +1,130 @@
+/*
+  Classes shared by the problem editor route and its section components
+  (components/problem/*). Imported once by routes/ProblemEditor.svelte; every
+  rule sits under .editor so nothing leaks onto other screens.
+*/
+
+.editor :is(.block, .details, .preview) > h2 {
+  font-size: var(--fs-3);
+  scroll-margin-top: var(--space-7);
+}
+
+.editor .block {
+  margin-top: var(--space-7);
+  padding-top: var(--space-6);
+  border-top: var(--rule) solid var(--line);
+  min-width: 0;
+}
+
+.editor .problems-list {
+  max-width: 48rem;
+  margin-top: var(--space-3);
+}
+
+.editor .problems-list ul {
+  margin-top: var(--space-2);
+  padding-left: var(--space-5);
+  color: var(--ink);
+}
+
+.editor .problems-list a {
+  color: var(--bad);
+}
+
+.editor .sub {
+  font-size: var(--fs-2);
+}
+
+.editor h3.sub {
+  margin-top: var(--space-6);
+}
+
+.editor .sub-help {
+  margin-top: var(--space-1);
+  max-width: 72ch;
+}
+
+.editor .empty {
+  margin-top: var(--space-4);
+}
+
+/* Empty, it stays in the page (a live region that appears with its
+   first message is often not read), but takes no space. */
+.editor .generation:empty {
+  margin-top: 0;
+}
+
+.editor .generation {
+  max-width: 64rem;
+  margin-top: var(--space-3);
+}
+
+.editor .gen-line {
+  font-weight: 500;
+}
+
+.editor .gen-line.tone-ok {
+  color: var(--ok);
+}
+
+.editor .gen-line.tone-bad {
+  color: var(--bad);
+}
+
+.editor .gen-line:is(.tone-wait, .tone-note) {
+  color: var(--ink-muted);
+}
+
+.editor .gen-failures {
+  margin-top: var(--space-1);
+  padding-left: var(--space-5);
+  color: var(--bad);
+}
+
+.editor .cell-label {
+  display: none;
+}
+
+.editor .programs {
+  display: grid;
+  gap: var(--space-6);
+  max-width: 64rem;
+  margin-top: var(--space-4);
+}
+
+.editor .program-name {
+  font-size: var(--fs-2);
+}
+
+.editor .optional {
+  display: grid;
+  justify-items: start;
+  align-content: start;
+  gap: var(--space-2);
+}
+
+/* Reference and brute force side by side on wide screens. */
+@media (min-width: 1440px) {
+  .editor .programs {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    max-width: none;
+  }
+
+  .editor .programs > .full {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (width < 768px) {
+  .editor .cell-label {
+    display: inline;
+    margin-right: var(--space-2);
+    font-size: var(--fs-0);
+    font-weight: 500;
+  }
+}
+
+/* Fields scrolled to from the error list clear the sticky bar. */
+.editor :is(input, select, textarea) {
+  scroll-margin-top: 10rem;
+}

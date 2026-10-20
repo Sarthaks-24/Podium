@@ -47,6 +47,21 @@ Becomes `v1.3.0` with the rest of P3. The workspace items (S2, S4) are student-f
 - A social card, `favicon.ico`, a touch icon and a web manifest; a Playwright crawl of every link and button.
 - "The site was updated at 14:02" for students after an emergency deploy, once per update (D112).
 
+### v2 P3, frontend: organiser (2026-10-21)
+
+Ships with `v1.3.0`. Live-safe: organiser screens only; no student screen changes. Needs the C10 queue health fields of the P3 backend for the console's attention strip (older servers show fewer items).
+
+- Problem editor (F5.1, F5.2, A3 to A6; audit O2): the 2,626-line route is split into section components under `components/problem/` (the route is under 700 lines). From 1280 px a sticky column beside the form holds the readiness panel and the preview. The panel names what blocks validation, the warnings, statement images without a description, the generate chain while it runs, and whether the validation covers this version or which unsaved judged changes need a new one; once validated it offers Add to a contest. A finished validation says its result in the sticky bar with a link that focuses the report. Sections follow their dependencies (statement, solutions, tests, generator, judging), the jump links carry a state and scroll as one row on phones, the checker reads in plain words with help, an unused generator is one line, removing the brute force, validator or generator can be undone until the next save, and the preview shows the samples as students see them.
+- Problem bank (audit O6): import takes several packs at once and validates each in place; status is a badge; rows that are not validated offer Validate.
+- Contest editor (F6.3; audit O1, O8): Publish contest is in the title row with a status line and a confirmation that lists the checks; a sticky checklist says what is missing; problems save on every add, remove and reorder (no Save problems) and show their points and pinned revision; Basics come first with Starts and Ends on one row; rules and scoring fold under a summary; holding the board for a reveal needs a freeze; leaving with unsaved settings asks first. Unpublished contests read Draft, and ended ones with practice read Ended, practice open, on every organiser screen.
+- Contest list (F6.5; audit O6, O9): the state column is the organiser state badge, rows stack below 1024 px, row links are quiet buttons, and an empty list points to the problem bank.
+- Console (F6.1, F6.2; audit O3, O5): an attention strip with time, freeze, judging, queue health, judge errors, the judge's last request for work, unanswered questions and toolchain drift; questions and announcements beside the feed; outcomes as students read them (Partial, 40 of 100); minutes from the start; a quiet Judge again per row; risky actions that state their effect; an announcement preview and confirmation; one list of standard answers; a failed refresh that keeps the rows; End the contest now.
+- Reveal (F6.4): room-scale rows, the action colour only on the row that just moved, Skip to the top 10, Release the full board at the end, a board that was never frozen says there is nothing to reveal, plain labels, and a FLIP loop that reads before it writes.
+- AI (audit O7, A7): the key form is shown inline in the wizard when no key or model is active; the wizard follows the draft until it is validated; two copy defects fixed; Generate draft.
+- People (audit O10): Account help says whose account it acts on when the page knows it, each confirmation names the person, Disable account is a danger-coloured secondary button, and Getting started counts organisers other than the configured owner.
+- Integrity (F6.2, C3, C7): checking again asks first; Take action says what students see; Open a case comes after the timelines.
+- Dates on organiser screens set only their digits in mono (audit O9).
+
 ### v2 P3, backend (2026-10-20)
 
 Becomes `v1.3.0` when the P3 gate is signed. Schema change (0012): deploys in slot S3 only; the head, manifest and robots work is live-safe on its own but ships in the same release. Upgrades from `v1.2.0` only.

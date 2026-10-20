@@ -20,6 +20,7 @@
   Props: `id` (the case).
 -->
 <script lang="ts">
+  import MonoDigits from '../components/MonoDigits.svelte';
   import PageState from '../components/PageState.svelte';
   import PageHeader from '../components/PageHeader.svelte';
   import { onDestroy, onMount, tick } from 'svelte';
@@ -197,7 +198,7 @@
       confirm = {
         state,
         title: 'Take action?',
-        body: 'This closes the case with action taken. The log keeps your note, and nothing in it can be edited later.',
+        body: 'This closes the case with action taken. Each student sees that action was taken in their case; scores do not change. The log keeps your note, and nothing in it can be edited later.',
         label: 'Take action',
         danger: true,
       };
@@ -276,7 +277,7 @@
     ]}
     state={{ word: caseStateWord(kase.state), kind: kase.state }}
   />
-  <p class="muted small dates">Opened <span class="mono">{formatDateTime(kase.created_at)}</span>, last changed <span class="mono">{formatDateTime(kase.updated_at)}</span>.</p>
+  <p class="muted small dates">Opened <MonoDigits text={formatDateTime(kase.created_at)} />, last changed <MonoDigits text={formatDateTime(kase.updated_at)} />.</p>
 
   <div class="note"><IntegrityNote /></div>
 
@@ -299,7 +300,7 @@
             <tr>
               <th scope="row" class="s-name">{u.name}</th>
               <td class="s-shared">
-                {#if u.shared_at !== null}Shared <span class="mono">{formatDateTime(u.asked_at ?? u.shared_at)}</span>{:else}<span class="muted">Not shared yet</span>{/if}
+                {#if u.shared_at !== null}Shared <MonoDigits text={formatDateTime(u.asked_at ?? u.shared_at)} />{:else}<span class="muted">Not shared yet</span>{/if}
                 {#if u.shared_at !== null && (u.asked_at === null || u.asked_at === undefined)}<span class="turn muted">Reopened: share again for a new turn</span>{/if}
                 {#if waiting}<span class="turn muted">{waiting}</span>{/if}
               </td>
@@ -308,14 +309,14 @@
                   <ol class="versions" aria-label="{u.name}'s explanations, oldest first">
                     {#each versions as v, i (v.created_at)}
                       <li>
-                        <p class="muted small">{i === versions.length - 1 ? 'Latest version' : `Version ${i + 1}`}, written <span class="mono">{formatDateTime(v.created_at)}</span></p>
+                        <p class="muted small">{i === versions.length - 1 ? 'Latest version' : `Version ${i + 1}`}, written <MonoDigits text={formatDateTime(v.created_at)} /></p>
                         <p class="prose">{v.text}</p>
                       </li>
                     {/each}
                   </ol>
                 {:else if u.explanation.trim() !== ''}
                   <p class="prose">{u.explanation}</p>
-                  {#if u.explained_at !== null}<p class="muted small">Written <span class="mono">{formatDateTime(u.explained_at)}</span></p>{/if}
+                  {#if u.explained_at !== null}<p class="muted small">Written <MonoDigits text={formatDateTime(u.explained_at)} /></p>{/if}
                 {:else}
                   <span class="muted">{u.shared_at !== null ? 'No explanation yet' : 'Can explain once shared'}</span>
                 {/if}
@@ -393,7 +394,7 @@
         {#each kase.decisions as d, i (i)}
           <li>
             <p class="log-head">
-              <span class="mono when">{formatDateTime(d.created_at)}</span>
+              <span class="when"><MonoDigits text={formatDateTime(d.created_at)} /></span>
               <span><strong>{caseStateWord(d.state)}</strong>, by {byName(d)}</span>
             </p>
             <p class="prose">{d.note}</p>

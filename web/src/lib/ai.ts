@@ -300,6 +300,42 @@ export function wizardSteps(w: Pick<Wizard, 'state'>): WizardStep[] {
   ];
 }
 
+/** A judge job's state as the chain needs it; null when the problem never had one. */
+type Job = { state: string } | null;
+
+/**
+ * The wizard page's steps from the request to a validated draft (audit
+ * 2026-10-20 O7: progress used to stop at "Draft created"): writing the
+ * problem, the draft created, its tests generated (inputs, then outputs
+ * from the reference), and validation. After the draft exists the page
+ * follows the problem's own input generation, output generation and
+ * validation. `outcome` is the closing line once the chain stops.
+ */
+export function draftChainSteps(
+  w: Pick<Wizard, 'state' | 'problem_id'>,
+  inputs: Job,
+  outputs: Job,
+  validation: Job,
+): { steps: WizardStep[]; done: boolean; outcome: '' | 'passed' | 'failed' | 'tests_failed' } {
+  const busy = (j: Job) => j !== null && (j.state === 'queued' || j.state === 'running');
+  const broke = (j: Job) => j !== null && (j.state === 'error' || j.state === 'failed');
+  const failed = w.state === 'error';
+  const created = !failed && (w.state === 'draft_created' || w.state === 'done' || !!w.problem_id);
+  const testsFailed = created && (broke(inputs) || broke(outputs));
+  const testsDone = created && !testsFailed && (validation !== null || (outputs !== null && outputs.state === 'done' && !busy(inputs)));
+  const validationDone = testsDone && validation !== null && !busy(validation);
+  const passed = validationDone && validation?.state === 'passed';
+  const step = (done: boolean, current: boolean, bad = false): WizardStep['state'] => (bad ? 'failed' : done ? 'done' : current ? 'current' : 'waiting');
+  const steps: WizardStep[] = [
+    { text: 'Writing the problem', state: step(created, !created && !failed, failed) },
+    { text: 'Draft created', state: step(created, false) },
+    { text: 'Generating the tests', state: step(testsDone, created && !testsDone, testsFailed) },
+    { text: 'Validating the draft', state: step(passed, testsDone && !validationDone, validationDone && !passed) },
+  ];
+  const outcome = testsFailed ? 'tests_failed' : validationDone ? (passed ? 'passed' : 'failed') : '';
+  return { steps, done: failed || outcome !== '', outcome };
+}
+
 /** The live sentence for a wizard's state. */
 export function wizardStatusText(w: Pick<Wizard, 'state'>): string {
   if (w.state === 'thinking') return 'Writing the problem';

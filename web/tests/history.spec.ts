@@ -83,7 +83,7 @@ test('the console moves a problem to a new revision and offers the announcement'
     'The statement of problem A was updated. Open the problem and choose "See what changed".',
   );
   expect(api.posted).toEqual([]);
-  await expect(versions.locator('.pin-note')).toContainText('Read the announcement below and post it');
+  await expect(versions.locator('.pin-note')).toContainText('Read the announcement in Announcements and post it');
   await expect(versions).toContainText('A plus B, revision 3');
   await versions.getByText('Pin history').click();
   await expect(versions.locator('.pins li').first()).toContainText('Problem A pinned to revision 3');
@@ -106,8 +106,10 @@ test('a rejudge names the revision it judges against', async ({ page }) => {
   await contests.mockApi(page, { who: 'admin', phase: 'during' });
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto('/admin/contests/4/console');
-  await page.getByLabel('Rejudge every submission to').selectOption('A');
-  await expect(page.getByText('Rejudge against revision 3, the one students are served.')).toBeVisible();
-  await page.getByRole('button', { name: 'Rejudge problem' }).click();
-  await expect(page.getByRole('dialog', { name: 'Rejudge problem A?' })).toContainText('Every submission to it is judged again against revision 3.');
+  await page.getByLabel('Judge every submission to a problem again').selectOption('A');
+  await expect(page.getByText('Judged against revision 3, the one students are served.')).toBeVisible();
+  await page.getByRole('button', { name: 'Judge problem again' }).click();
+  await expect(page.getByRole('dialog', { name: 'Judge problem A again?' })).toContainText(
+    'Every submission to problem A is judged again against revision 3, the one students are served. New submissions still go first',
+  );
 });

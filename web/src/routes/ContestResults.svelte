@@ -223,7 +223,7 @@
     <PageState kind="error" message={loadError} onretry={load} />
   {/if}
 {:else}
-  <ContestAdminNav {id} slug={contest.slug} title={contest.title} state={contest.state} current="results" />
+  <ContestAdminNav {id} slug={contest.slug} title={contest.title} state={contest.state} published={contest.published} current="results" />
 
   <section class="section" aria-labelledby="board-title">
     <div class="section-head">
@@ -373,6 +373,8 @@
       full={revealData.full}
       labels={boardLabels(revealData.full, labels)}
       title={contest.title}
+      held={!!contest.hold_reveal && !contest.revealed_at}
+      onrelease={() => (releaseOpen = true)}
       onclose={closeReveal}
     />
   {/if}

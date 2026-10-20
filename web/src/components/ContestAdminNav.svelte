@@ -12,14 +12,16 @@
   on narrow screens, so the page never scrolls sideways at 320 px.
 
   Props: `id`, `slug` (for "Student view"), `title`, `state` (a
-  ContestState, or "" for none), `current` ("settings", "console",
+  ContestState, or "" for none), `published` (false reads "Draft", and an
+  ended contest with practice open reads "Ended, practice open":
+  lib/contests organiserState), `current` ("settings", "console",
   "results" or "integrity"), `unanswered` (optional), and an optional
   `actions` snippet for the title row.
 -->
 <script lang="ts">
   import type { Snippet } from 'svelte';
   import { getJSON } from '../lib/api';
-  import { stateWord, type Clarification, type ContestState } from '../lib/contests';
+  import { organiserState, type Clarification, type ContestState } from '../lib/contests';
   import PageHeader from './PageHeader.svelte';
 
   interface Props {
@@ -27,12 +29,14 @@
     slug: string;
     title: string;
     state: ContestState | '';
+    /** False shows the state word "Draft" (audit O1); left out, the state alone decides. */
+    published?: boolean;
     current: 'settings' | 'console' | 'results' | 'integrity';
     unanswered?: number;
     actions?: Snippet;
   }
 
-  let { id, slug, title, state: contestState, current, unanswered, actions }: Props = $props();
+  let { id, slug, title, state: contestState, published, current, unanswered, actions }: Props = $props();
 
   let fetched = $state<number | null>(null);
   const count = $derived(unanswered ?? fetched ?? 0);
@@ -67,7 +71,7 @@
 <PageHeader
   {title}
   crumbs={[{ label: 'Contests', href: '/admin/contests' }, { label: title, href: base }, { label: here }]}
-  state={contestState ? { word: stateWord(contestState), kind: contestState } : null}
+  state={contestState ? organiserState({ state: contestState, published }) : null}
   {actions}
 >
   {#snippet nav()}

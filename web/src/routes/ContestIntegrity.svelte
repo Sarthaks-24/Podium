@@ -13,7 +13,9 @@
   that they leak by design. Every view carries IntegrityNote. Props: `id`.
 -->
 <script lang="ts">
+  import MonoDigits from '../components/MonoDigits.svelte';
   import PageState from '../components/PageState.svelte';
+  import ConfirmDialog from '../components/ConfirmDialog.svelte';
   import { onMount } from 'svelte';
   import { SvelteSet } from 'svelte/reactivity';
   import ContestAdminNav from '../components/ContestAdminNav.svelte';
@@ -174,7 +176,11 @@
     }, POLL_MS);
   }
 
+  /** A new check replaces the signals shown, so checking again asks first (C3). */
+  let recheckOpen = $state(false);
+
   async function startCheck() {
+    recheckOpen = false;
     if (running) return;
     startError = '';
     starting = true;
@@ -234,7 +240,7 @@
     <PageState kind="error" message={loadError} onretry={load} />
   {/if}
 {:else}
-  <ContestAdminNav {id} slug={contest.slug} title={contest.title} state={contest.state} current="integrity" />
+  <ContestAdminNav {id} slug={contest.slug} title={contest.title} state={contest.state} published={contest.published} current="integrity" />
 
   <div class="section">
     <IntegrityNote />
@@ -250,7 +256,8 @@
         disabled={!over}
         aria-disabled={running ? 'true' : undefined}
         aria-describedby={!over ? 'check-help' : undefined}
-        onclick={startCheck}>{running ? 'Checking' : 'Check integrity'}</button
+        onclick={() => (run?.state === 'done' && !running ? (recheckOpen = true) : startCheck())}
+        >{running ? 'Checking' : run?.state === 'done' ? 'Check again' : 'Check integrity'}</button
       >
       <div class="run-text">
         {#if !over}
@@ -281,7 +288,7 @@
     {:else if run.state === 'running'}
       <p class="muted">The signals appear when the check is done.</p>
     {:else}
-      <p class="stats">{statsLine(run.stats)} <span class="muted">Finished {formatDateTime(run.finished_at ?? run.started_at)}.</span></p>
+      <p class="stats">{statsLine(run.stats)} <span class="muted">Finished <MonoDigits text={formatDateTime(run.finished_at ?? run.started_at)} />.</span></p>
 
       {#if (run.signals ?? []).length > 0}
         <div class="filters">
@@ -376,7 +383,7 @@
                 <th scope="row" class="case-title"><a class="row-link" href="/admin/integrity/cases/{c.id}">{c.title}</a></th>
                 <td class="case-who">{caseStudents(c)}</td>
                 <td class="case-state">{caseStateWord(c.state)}</td>
-                <td class="num case-when">{formatDateTime(c.updated_at)}</td>
+                <td class="case-when"><MonoDigits text={formatDateTime(c.updated_at)} /></td>
               </tr>
             {/each}
           </tbody>
@@ -393,6 +400,14 @@
     problems={run?.problems}
     onclose={() => (dialogOpen = false)}
     oncreated={created}
+  />
+  <ConfirmDialog
+    open={recheckOpen}
+    title="Check again?"
+    body="The new check replaces the signals listed here. Cases already open keep their own copy of the evidence."
+    confirmLabel="Check again"
+    onconfirm={startCheck}
+    oncancel={() => (recheckOpen = false)}
   />
 {/if}
 
