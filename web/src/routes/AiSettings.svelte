@@ -242,13 +242,9 @@
                   {#if !needsKey(p.id)}Canned problems{:else if p.model}{modelLabel(status, p.id, p.model)}{:else}No model chosen yet{/if}{#if p.id === status.provider}. Used for new drafts.{/if}
                 </p>
               </div>
-              <button
-                type="button"
-                class="btn btn-quiet btn-compact btn-danger-quiet"
-                aria-label="Forget the {p.name} key"
-                disabled={forgetting !== ''}
-                onclick={() => forget(p)}>Forget key</button
-              >
+              <button type="button" class="btn btn-quiet btn-compact btn-danger-quiet" disabled={forgetting !== ''} onclick={() => forget(p)}>
+                Forget key<span class="visually-hidden"> for {p.name}</span>
+              </button>
             </li>
           {/each}
         </ul>

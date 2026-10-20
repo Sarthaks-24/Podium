@@ -124,7 +124,7 @@ test('saving a key checks it, lists the models, clears the field and never keeps
   await expect(page.getByLabel('Model', { exact: true })).toHaveValue('claude-sonnet-5-5');
   await expectKeyGone(page, state);
 
-  await page.getByRole('button', { name: 'Forget the Anthropic key' }).click();
+  await page.getByRole('button', { name: 'Forget key for Anthropic' }).click();
   await expect(page.getByText('No key yet. Add one below to draft problems with AI.')).toBeVisible();
   await expect(page.getByLabel('Provider')).toBeFocused();
   await expectKeyGone(page, state);
@@ -182,7 +182,7 @@ test('each provider keeps its own key, a typed model id is accepted, and the lis
   await expectKeyGone(page, state);
 
   // Forgetting one provider's key leaves the others.
-  await page.getByRole('button', { name: 'Forget the OpenAI key' }).click();
+  await page.getByRole('button', { name: 'Forget key for OpenAI' }).click();
   await expect(page.getByText('OpenAI: Key active until 14:32')).toHaveCount(0);
   await expect(page.getByText('Google Gemini: Key active until 14:32')).toBeVisible();
   await expect(page.getByText('Anthropic: Key active until 14:32')).toBeVisible();

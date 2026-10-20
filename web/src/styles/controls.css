@@ -334,6 +334,8 @@ textarea.input {
   padding: var(--space-5);
   overflow-y: auto;
   overscroll-behavior: contain;
+  /* A field reached with Tab scrolls clear of the sticky head. */
+  scroll-padding-top: calc(var(--control-h-touch) + 2 * var(--space-5));
   border: var(--rule) solid var(--line-strong);
   border-radius: var(--radius);
   background: var(--surface);
