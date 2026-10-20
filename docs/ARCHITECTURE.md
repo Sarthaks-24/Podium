@@ -454,6 +454,18 @@ Every theme is checked by tests rather than by eye: text at 4.5:1 (7:1 in the hi
 
 The themes are curated versions of palettes from the owner's AdminPanelManager project. Palettes were left out where they break the design brief's bans (dark slate with neon, cream with terracotta, glows), where their accent is a verdict colour (green or amber accents read as "accepted" or "partial"), or where they depend on two competing accents. Projector reveal mode (M4) ignores personal themes and uses High contrast light.
 
+## Safe to run: deploys, backups and alerts
+
+**Deploy guard (D112).** A deploy restarts the server, so none starts in the 48 hours before a published contest, while one runs, or while its submissions are still being judged. `podium-server deploy-check` reads the published contests straight from the database rather than asking the running server, because the question must be answerable when the server is down, and `/healthz` is public. `install.sh upgrade` runs the new release's own guard, so even the first upgrade from an older build is guarded. A fix that cannot wait uses `--force "<reason>"`; the reason goes in the audit log of each contest that refused, under the owner's account, before anything is installed. The other direction of D112 (warning when a contest is published soon after a deploy) and the student banner arrive in later releases.
+
+**Upgrade and rollback.** An upgrade drains the judge, backs up, keeps the running binaries and units, installs, and verifies. Rollback across a migration is a restore, because an older server refuses a database a newer one migrated (`db.Migrate`); it names what is lost and needs a typed confirmation. Configuration files are never written by the scripts: an upgrade stops when the new release needs a variable the VM's files do not name.
+
+**Graceful judge stop.** Jobs run under a context of their own, separate from the one that ends claiming, so SIGTERM lets each lane finish and report its job instead of killing isolate and waiting out the lease. `KillMode=mixed` keeps systemd from signalling the sandboxes directly. A forced stop still loses nothing: the job's lease runs out and the server hands it out again.
+
+**Backups off the VM.** Litestream streams the database to a bucket every 10 seconds. The test files only exist on the VM, so each night's backup is packed, encrypted with `age` to a public key whose private half never leaves the owner's machine, and uploaded to a separate B2 bucket. A stolen VM or B2 key therefore yields no readable test files or student code.
+
+**Alerts without a monitoring stack (D70, D113).** Nothing stays resident: systemd's `OnFailure=` starts a one-shot unit that posts the failed unit's name to an ntfy topic, and a 15-minute timer checks free space, WAL size, Litestream's last upload and the encrypted copy's age. Once a week the same timer restores the bucket's newest database into a scratch folder and runs `podium-server check -hash` on it, so the backups are proved, not assumed. A dead-man heartbeat after each good backup and an external uptime check on `/healthz` cover the cases where the VM cannot report itself.
+
 ## Memory budget on the 2 GB VM
 
 | Component | Approx. RSS |

@@ -6,6 +6,21 @@ Dated entries per release. Unreleased work is listed at the top.
 
 Becomes `v1.0.0` when the v2 P0 gate is signed.
 
+### v2 P0, backend (2026-10-20)
+
+- `install.sh upgrade [--force "<reason>"]`: asks the deploy guard, checks that every variable the new release's examples name exists in `/etc/podium/*.env` (names only), drains the judge, takes a backup, keeps the running release in `/usr/local/lib/podium/previous/`, installs, starts the server and waits for `/healthz`, starts the judge, verifies, and prints the backup folder and the rollback command.
+- `install.sh rollback`: puts the previous binaries back; when the upgrade applied a migration, restores the pre-upgrade backup after a typed confirmation that names what is lost.
+- `install.sh verify`: units, `/healthz`, judge API 401, ufw, loopback listeners, production mode, env files root 600 with no placeholder (names only), alert webhook, backup folder mode, time sync. Exits 1 on any failure.
+- `podium-server deploy-check`: the deploy guard (D112). Reads the published contests from the database, so it works with the server down; refuses in the 48 hours before a contest, while it runs, and while its queue drains. `-force` records the reason in each refusing contest's audit log (`deploy_forced`).
+- `tools/deploy.sh HOST` and `make deploy HOST=...`: guard, `make release`, confirmation before anything leaves the machine, `scp`, `install.sh upgrade`.
+- The judge stops gracefully: the first SIGTERM stops claiming and lets running jobs finish and report; the unit waits up to 20 minutes and signals only the worker.
+- Encrypted copy off the VM: each nightly backup is packed, encrypted with `age` to the owner's public key and uploaded to B2 with `rclone`; a heartbeat URL is pinged after a good run. `podium-backup` prints every variable it reads as set, default or missing.
+- Alerts with nothing resident: `podium-alert@.service` on the failure of the server, judge, Litestream, backup and checker units; `podium-check.timer` every 15 minutes for free space, WAL size, Litestream running and uploading, the encrypted copy's age, and a weekly restore of the bucket's newest database checked with `podium-server check -hash`. Posts to an ntfy topic.
+- Fresh installs reach the end: `caddy` runs last and skips while `PODIUM_BASE_URL` is a placeholder or DNS does not point at the VM; isolate's tuning (transparent huge pages off, core pattern, hard-link protection) survives reboots.
+- `make release` on a fresh clone installs `web/node_modules`; the placeholder check reads the app's source instead of vendor chunks.
+- New variables (all optional, in `/etc/podium/backup.env` and `/etc/podium/alert.env`): `PODIUM_BACKUP_AGE_RECIPIENT`, `PODIUM_BACKUP_B2_PATH`, `RCLONE_CONFIG_B2_TYPE`, `RCLONE_CONFIG_B2_ACCOUNT`, `RCLONE_CONFIG_B2_KEY`, `PODIUM_HEARTBEAT_URL`, `PODIUM_ALERT_WEBHOOK`.
+- amd64 only, stated in the README and OPERATIONS, and enforced by `install.sh`.
+
 ### v2 P0, frontend (2026-10-20)
 
 - The console's "Waiting or judging" filter works, and a new "Judge error" filter lists submissions the judge could not finish: the feed's `verdict` parameter takes `pending` (queued or being judged) and `error` as states (B2).
