@@ -54,3 +54,10 @@ DELETE FROM unmapped_pins;
 DROP TABLE temp.unmapped_pins;
 
 ALTER TABLE contest_problems DROP COLUMN pinned_hash;
+
+-- The draft revision retention (90 days) asks, per old revision, whether
+-- anything names it.
+CREATE INDEX submissions_by_revision ON submissions (revision_id) WHERE revision_id IS NOT NULL;
+CREATE INDEX jobs_by_revision ON jobs (revision_id) WHERE revision_id IS NOT NULL;
+CREATE INDEX revision_views_by_revision ON revision_views (revision_id);
+CREATE INDEX contest_pin_history_by_revision ON contest_pin_history (revision_id);

@@ -494,6 +494,31 @@ watch -n 10 "curl -s -H 'Cookie: __Host-podium_session=$C' http://127.0.0.1:8080
 
 With an `http` base URL (testing mode, local development) the cookie is named `podium_session` instead. The cookie is a full sign-in: do not leave it in shell history on a shared machine, and sign out in the browser afterwards to end it.
 
+## Retention
+
+How long the server keeps each kind of data (v1.3.0). The periods are constants in `server/internal/retention/periods.go`; `GET /api/auth/config` returns them as `retention`, and the privacy page renders its table from that response. A test fails when this table and the code differ, so change both together.
+
+| Id | Data | Kept | How it ends |
+|---|---|---|---|
+| `sessions` | Sign-in sessions | 12 hours after sign-in | hourly sweep |
+| `integrity_events` | Paste and focus events during contests, and their counts | 180 days after the contest | integrity retention every 12 hours; kept while the student is in an open case |
+| `case_evidence` | Evidence and explanations in a closed integrity case | 2 years after the decision | integrity retention every 12 hours; the case and its decisions stay |
+| `run_payloads` | Custom input and program output of a Run | 30 days | daily retention job; the run's verdict row stays |
+| `contact_messages` | Messages sent to the organisers | 180 days | daily retention job |
+| `draft_revisions` | Problem versions no contest or submission used | 90 days | daily retention job, through the `retention_cutoffs` row; never a problem's newest revision |
+| `submissions` | Submissions, their verdicts and what each contest showed | 4 years after the contest | daily retention job; the final standings are kept in `contest_results` first |
+| `audit` | Records of organiser actions | 4 years | daily retention job, through the `retention_cutoffs` rows |
+| `backups` | Backups | 14 days | `podium-backup` (`PODIUM_BACKUP_KEEP_DAYS`) and the bucket's lifecycle rule |
+
+The daily job starts a minute after the server and then runs every 24 hours, in batches of 2,000 rows per transaction, and logs one line with what it removed (`data past retention removed`). What it does, per row:
+
+- **Run payloads:** a run job's payload (the code and custom input it named) becomes `{}` and its output excerpts are emptied; the next blob collection then removes the custom input files. A run older than 30 days shows its verdicts and no output.
+- **Draft revisions:** a revision older than 90 days goes when it is not its problem's newest, no contest pins or pinned it, no submission or job names it and no student was served it. Its tests go with it.
+- **Submissions:** 4 years after a contest's last moment (its end plus every extension), its final standings (rank, user id, total, per-problem scores, no names) are written to `contest_results`, then its submissions and their jobs, its pin history and served log are deleted and its pins stop naming a revision; the revisions themselves then go by the rule above. Submissions outside contests (an organiser trying a problem) go 4 years after they were made. Contest settings, problems, clarifications and announcements stay.
+- **Audit:** site audit and contest audit rows older than 4 years.
+
+The append-only tables accept a delete only of rows older than their `retention_cutoffs` row, which only this job writes, and a database trigger refuses a cutoff newer than 90 days (draft revisions) or a year (everything else), so no bug can open them wider (D69).
+
 ## Checking a database
 
 ```sh
