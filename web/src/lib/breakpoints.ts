@@ -8,6 +8,7 @@
  * | phone  | 0       | one column, the workspace in three tabs          |
  * | tablet | 768 px  | wider gutters, the workspace in two tabs         |
  * | laptop | 1024 px | the three-column workspace, side by side tables  |
+ * | desk   | 1280 px | .page-split: a sticky context column beside the work (D181) |
  * | wide   | 1440 px | the widest measures                              |
  * | short  | laptop and at most 45rem tall: the workspace keeps the editor tall (P5) |
  *
@@ -17,12 +18,13 @@
  */
 
 /** The width tiers, in CSS pixels. */
-export const TIERS = { tablet: 768, laptop: 1024, wide: 1440 } as const;
+export const TIERS = { tablet: 768, laptop: 1024, desk: 1280, wide: 1440 } as const;
 
 /** The media queries for each tier, for window.matchMedia. */
 export const QUERIES = {
   tablet: `(min-width: ${TIERS.tablet}px)`,
   laptop: `(min-width: ${TIERS.laptop}px)`,
+  desk: `(min-width: ${TIERS.desk}px)`,
   wide: `(min-width: ${TIERS.wide}px)`,
   short: `(min-width: ${TIERS.laptop}px) and (max-height: 45rem)`,
 } as const;

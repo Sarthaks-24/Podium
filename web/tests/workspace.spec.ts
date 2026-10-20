@@ -147,16 +147,50 @@ test('running on samples shows the first difference', async ({ page }) => {
   await expect(fromSample).toHaveCount(1);
   await fromSample.click();
   await expect(page.getByLabel('Custom input')).toHaveValue('-5 7\n');
-  await expect(page.locator('details.custom')).toHaveAttribute('open', '');
+  await expect(page.locator('#ws-custom-panel')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Custom input' })).toHaveAttribute('aria-expanded', 'true');
   await expect.poll(() => api.runs.length).toBe(2);
   expect(api.runs[1].input).toBe('-5 7\n');
   api.runs.length = 1;
 
   // Custom input runs that input.
   await page.getByLabel('Custom input').fill('4 5\n');
-  await page.locator('.custom-body').getByRole('button', { name: 'Run on this input' }).click();
+  await page.locator('#ws-custom-panel').getByRole('button', { name: 'Run on this input' }).click();
   await expect.poll(() => api.runs.length).toBe(2);
   expect(api.runs[1].input).toBe('4 5\n');
+});
+
+test('after a run that did not compile, Submit asks once and the empty sample rows stay out (S4)', async ({ page }) => {
+  const api = await mockApi(page);
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await openWorkspace(page);
+  await page.getByRole('button', { name: 'Run on samples' }).click();
+  await expect(page.getByText('1st in queue')).toBeVisible();
+  api.stream.push({
+    type: 'run',
+    data: {
+      id: 51,
+      state: 'done',
+      compile_output: "main.cpp:3:5: error: expected ';' before 'return'\n",
+      results: [
+        { label: 'Sample 1', verdict: '', time_ms: 0, memory_kb: 0, output: '', expected: '3\n', message: '' },
+        { label: 'Sample 2', verdict: '', time_ms: 0, memory_kb: 0, output: '', expected: '2\n', message: '' },
+      ],
+    },
+  });
+  const panel = page.getByRole('region', { name: 'Result' });
+  await expect(panel.getByText('Compile error', { exact: true })).toBeVisible({ timeout: 10_000 });
+  await expect(panel.getByRole('heading', { name: 'Sample 1' })).toHaveCount(0);
+
+  await page.getByRole('button', { name: 'Submit', exact: true }).click();
+  const ask = page.getByRole('dialog', { name: 'Your last run did not compile. Submit anyway?' });
+  await expect(ask).toBeVisible();
+  await ask.getByRole('button', { name: 'Cancel' }).click();
+  expect(api.submissions.length).toBe(0);
+  // Asked once: the next press submits.
+  await page.getByRole('button', { name: 'Submit', exact: true }).click();
+  await expect(ask).toBeHidden();
+  await expect.poll(() => api.submissions.length).toBe(1);
 });
 
 test('a compile error line jumps to the editor', async ({ page }) => {
@@ -213,12 +247,19 @@ test('a rate limit says how long to wait', async ({ page }) => {
   api.submitMode = 'rate';
   await page.setViewportSize({ width: 1440, height: 900 });
   await openWorkspace(page);
+  const box = await page.locator('.editor-box').boundingBox();
   await page.getByRole('button', { name: 'Submit', exact: true }).click();
-  // S4: pacing is a muted status line beside Submit, never a red alert.
-  await expect(page.locator('#ws-submit-status')).toHaveText('Submissions are limited to one every 30 seconds. Try again in 12 s.');
+  // S4: the wait counts down inside the button; no line is added and the editor stays put.
+  const counting = page.getByRole('button', { name: /^Submit in \d+ s$/ });
+  await expect(counting).toHaveAttribute('aria-disabled', 'true');
+  await expect(counting).toBeFocused();
+  await expect(page.locator('#ws-submit-status')).toHaveCount(0);
   await expect(page.getByRole('alert')).toHaveCount(0);
-  await expect(page.getByRole('button', { name: 'Submit', exact: true })).toHaveAttribute('aria-describedby', 'ws-submit-status');
+  expect((await page.locator('.editor-box').boundingBox())!.y).toBe(box!.y);
   await expect(page.locator('[data-announcer="polite"]')).toHaveText('Submissions are limited to one every 30 seconds. Try again in 12 s.');
+  // Pressing it again only says how long is left.
+  await counting.click({ force: true });
+  await expect(page.locator('[data-announcer="polite"]')).toHaveText(/^You can submit again in \d+ s\.$/);
   await page.screenshot({ path: `${shots()}workspace-rate-limit-1440-light.png` });
 });
 
@@ -274,13 +315,21 @@ test('keyboard shortcuts submit and run, and integrity counts go with the submit
     expect.objectContaining({ kind: 'paste', size: 7 }),
   ]);
 
-  // The editor's settings: Tab moves focus when asked, and the font size sticks.
+  // The editor's settings (S2: behind "Editor settings"): Tab moves focus when asked, and the font size sticks.
+  const settings = page.getByRole('button', { name: 'Editor settings' });
+  await settings.click();
   await page.getByLabel('Tab moves focus').check();
   await page.locator('.cm-content').click();
+  await expect(page.getByLabel('Tab moves focus')).toBeHidden();
   await page.keyboard.press('Tab');
   await expect(page.locator('.cm-content')).not.toBeFocused();
+  await settings.click();
   await page.getByLabel('Font size').selectOption('18');
+  await page.keyboard.press('Escape');
+  await expect(settings).toBeFocused();
+  await expect(settings).toHaveAttribute('aria-expanded', 'false');
   await page.reload();
+  await page.getByRole('button', { name: 'Editor settings' }).click();
   await expect(page.getByLabel('Font size')).toHaveValue('18');
   await expect(page.getByLabel('Tab moves focus')).toBeChecked();
   await expect(page.locator('.cm-content')).toHaveAttribute('aria-label', 'Code for A plus B, C++17');
@@ -502,6 +551,13 @@ test.describe('in a contest', () => {
     await page.setViewportSize({ width: 1440, height: 900 });
     await page.goto('/contests/week-6/problems/A');
     await expect(page.locator('.cm-content')).toBeVisible();
+    // S2: at 1440 by 900 the toolbar is one row, and it stays one row while Submit counts down.
+    const oneRow = async () => {
+      const top = async (sel: string) => (await page.locator(sel).first().boundingBox())!.y;
+      expect(Math.abs((await top('#ws-language')) - (await top('button.submit')))).toBeLessThan(8);
+    };
+    await oneRow();
+    expect((await page.locator('.editor-box').boundingBox())!.height).toBeGreaterThan(380);
     const submit = page.getByRole('button', { name: 'Submit', exact: true });
     await expect(page.locator('#ws-submit-status')).toHaveText('0 of 15 submissions used');
     await submit.focus();
@@ -509,9 +565,14 @@ test.describe('in a contest', () => {
     const panel = page.getByRole('region', { name: 'Result' });
     await expect(panel.locator('.headline').first()).toHaveText('Submitted, 2nd in queue');
     await expect(page.locator('[data-announcer="polite"]')).toHaveText('Submitted. Waiting for the judge.');
-    await expect(submit).toBeFocused();
+    // S4: the contest's 30 s gap counts down in the same button, which keeps focus.
+    const counting = page.locator('button.submit');
+    await expect(counting).toHaveText(/^Submit in (30|29|28) s$/);
+    await oneRow();
+    await expect(counting).toBeFocused();
+    await expect(counting).toHaveAttribute('aria-disabled', 'true');
     await expect(page.locator('#ws-submit-status')).toHaveText('1 of 15 submissions used');
-    await expect(submit.locator('svg')).toHaveCount(1);
+    await expect(counting.locator('svg')).toHaveCount(1);
     await expect(page.getByRole('button', { name: 'Run on samples' }).locator('svg')).toHaveCount(1);
   });
 

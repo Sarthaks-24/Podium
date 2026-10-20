@@ -21,9 +21,13 @@
   - Submit sends an idempotency key made per press and reused by "Submit
     again", so a retry after a lost answer never counts twice. Offline or
     unreachable requests say "Not sent" with "Submit again" or "Run again".
-    Pacing refusals (the client gap and the server's 429s) are a muted
-    status line beside Submit, never a red alert (S4, audit 01-3); so is
-    "3 of 15 submissions used" in a contest. While a submit is on its way
+    The contest's gap between submits (`minGapS`) and a server 429 with a
+    wait count down inside the button, "Submit in 24 s", aria-disabled
+    with a fixed width, so nothing moves (audit 2026-10-20 S4); a refusal
+    without a known wait is a muted status line beside Submit, never a red
+    alert (S4, audit 01-3); so is "3 of 15 submissions used" in a contest.
+    After a Run that did not compile, Submit asks once "Your last run did
+    not compile. Submit anyway?" while the code is unchanged. While a submit is on its way
     the button reads "Submitting" and is aria-disabled, so focus stays.
   - A waiting submission reads "Submitted, 3rd in queue"; one that scored
     less than the problem already has adds "Your score on this problem
@@ -38,10 +42,17 @@
   - Integrity counts (lib/integrity.ts): typed and pasted characters from
     the editor, window blur and focus, sent in batches; never in the way of
     a submit.
-  - Ctrl+Enter submits and Ctrl+' runs on samples (Cmd on a Mac); the
-    app's announcer (lib/announce.svelte.ts) speaks each submission and run
-    result as a sentence, compile errors included. The key hint is left out
-    on touch-only screens. Sign out waits for the draft save
+  - The code column's toolbar is one row (audit 2026-10-20 S2): the
+    language, "Editor settings" (font size and "Tab moves focus",
+    components/EditorSettings) and Run and Submit at the end. Under the
+    editor one line holds "Custom input" (a quiet button that opens its box
+    at the top of the result pane), the submission count and the draft
+    state. From 1024 px the workspace is sized from the shell's measured
+    header (--shell-head), so the page does not scroll.
+  - Ctrl+Enter submits and Ctrl+' runs on samples (Cmd on a Mac), listed
+    under "Keyboard shortcuts" in the footer; the app's announcer
+    (lib/announce.svelte.ts) speaks each submission and run result as a
+    sentence, compile errors included. Sign out waits for the draft save
     (beforeSignOut).
 
   Props: `base` (the API base, such as "/api/workspace/12"), `backHref` and
@@ -58,7 +69,8 @@
   sentence; Run and Submit are off and it says why, unless the workspace's
   own `refusal` from the server says it better), `problemScore` ({ score,
   max } of the problem so far, for "your score stays"), `used` ({ count,
-  max } submissions, for "3 of 15 submissions used"), `statementKey` (a
+  max } submissions, for "3 of 15 submissions used"), `minGapS` (the
+  contest's seconds between submits, counted down in the button), `statementKey` (a
   number the contest page raises when an organiser moved this problem to
   another revision: the statement, title, limits and samples reload, the
   editor is left alone), and `extraEvents` with
@@ -87,7 +99,6 @@
   import { polite } from '../lib/announce.svelte';
   import { keepHeadingFocus } from '../lib/focus';
   import { setTitle } from '../lib/head';
-  import { shell } from '../lib/shell.svelte';
   import { FLUSH_MS, IntegrityRecorder } from '../lib/integrity';
   import { beforeSignOut, session } from '../lib/session.svelte';
   import { isStarterOrEmpty, starter } from '../lib/starters';
@@ -104,6 +115,7 @@
     limitsText,
     newKey,
     runAnnouncement,
+    runCompileFailed,
     usedText,
     workspacePaths,
     type Language,
@@ -118,6 +130,8 @@
   import StreamNotice from './StreamNotice.svelte';
   import SubmissionList from './SubmissionList.svelte';
   import VerdictPanel from './VerdictPanel.svelte';
+  import ConfirmDialog from './ConfirmDialog.svelte';
+  import EditorSettings from './EditorSettings.svelte';
 
   interface Props {
     base: string;
@@ -134,6 +148,7 @@
     locked?: string;
     problemScore?: { score: number | null; max: number } | null;
     used?: { count: number; max: number } | null;
+    minGapS?: number;
     statementKey?: number;
     extraEvents?: readonly string[];
     onevent?: (type: string, data: unknown) => void;
@@ -154,6 +169,7 @@
     locked = '',
     problemScore = null,
     used = null,
+    minGapS = 0,
     statementKey = 0,
     extraEvents = [],
     onevent,
@@ -170,7 +186,6 @@
   const owner = session.user?.id ?? 0;
   const prefs = readEditorPrefs(storage);
   const isMac = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
-  const mod = isMac ? 'Cmd' : 'Ctrl';
 
   let loadState = $state<'loading' | 'ready' | 'missing' | 'forbidden' | 'error'>('loading');
   let loadError = $state('');
@@ -197,6 +212,10 @@
   let runBusy = $state(false);
   let pendingKey: string | null = null;
   let pendingRun: { language: Language; source: string; input?: string } | null = null;
+  /** The code and language of the last run, so a compile error is only warned about while the code is unchanged (S4). */
+  let lastRunBody = $state.raw<{ language: Language; source: string } | null>(null);
+  let compileWarned = $state(false);
+  let confirmCompile = $state(false);
   /** A refusal or failure: "pace" is a normal pacing rule (a muted status line), "error" a real failure. */
   let notice = $state<{ action: 'submit' | 'run'; text: string; retry: boolean; kind: 'pace' | 'error' } | null>(null);
   let waitUntil = $state(0);
@@ -232,7 +251,18 @@
   const usedNow = $derived(
     used ? { count: Math.max(used.count, judging.submissions.filter((x) => x.state !== 'error').length), max: used.max } : null,
   );
-  const paceText = $derived(notice?.kind === 'pace' ? notice.text : waitLeft > 0 ? `You can submit again in ${waitLeft} s.` : '');
+  // S4: a known wait counts down inside the Submit button; only a refusal
+  // without a known wait takes the status line.
+  const paceText = $derived(notice?.kind === 'pace' && waitLeft === 0 && waitUntil === 0 ? notice.text : '');
+  const submitLabel = $derived(submitBusy ? 'Submitting' : waitLeft > 0 ? `Submit in ${waitLeft} s` : 'Submit');
+  // The last run did not compile and the code has not changed since.
+  const runDidNotCompile = $derived(
+    judging.run !== null &&
+      lastRunBody !== null &&
+      runCompileFailed(judging.run) &&
+      lastRunBody.source === source &&
+      lastRunBody.language === language,
+  );
   // A pacing refusal is said once, politely; the line itself only counts down.
   $effect(() => {
     if (notice?.kind === 'pace') polite(notice.text);
@@ -551,10 +581,15 @@
     }
   }
 
-  async function submit(retryKey?: string) {
+  async function submit(retryKey?: string, confirmed = false) {
     if (submitBusy || loadState !== 'ready' || lockText !== '') return;
     if (waitLeft > 0 && retryKey === undefined) {
-      notice = { action: 'submit', text: `You can submit again in ${waitLeft} s.`, retry: false, kind: 'pace' };
+      polite(`You can submit again in ${waitLeft} s.`);
+      return;
+    }
+    // A run that did not compile asks once before a submit uses up an attempt (S4).
+    if (retryKey === undefined && !confirmed && runDidNotCompile && !compileWarned) {
+      confirmCompile = true;
       return;
     }
     const key = retryKey ?? newKey();
@@ -572,6 +607,11 @@
       integrity?.resetCounts();
       judging = { ...judging, submissions: mergeSubmission(judging.submissions, s) };
       watchId = s.id;
+      // The contest's gap between submits counts down in the button.
+      if (minGapS > 0) {
+        waitUntil = Date.now() + minGapS * 1000;
+        nowTick = Date.now();
+      }
       view = 'submission';
       void saveDraft();
       await revealResult();
@@ -597,6 +637,8 @@
   async function startRun(body: { language: Language; source: string; input?: string }) {
     if (runBusy || loadState !== 'ready' || lockText !== '') return;
     pendingRun = body;
+    lastRunBody = { language: body.language, source: body.source };
+    compileWarned = false;
     notice = null;
     runBusy = true;
     try {
@@ -632,9 +674,19 @@
   async function runOnInput(input: string) {
     customInput = input;
     customOpen = true;
-    if (layout !== 'wide') tab = 'code';
+    if (layout === 'phone') tab = 'result';
+    else if (layout === 'tablet') tab = 'code';
     await tick();
     runCustom();
+  }
+
+  /** "Custom input" opens its box at the top of the result pane (S2) and puts the cursor in it. */
+  async function toggleCustom() {
+    customOpen = !customOpen;
+    if (!customOpen) return;
+    if (layout === 'phone') tab = 'result';
+    await tick();
+    customField?.focus();
   }
 
   function retry() {
@@ -848,19 +900,17 @@
         aria-labelledby={layout === 'wide' ? undefined : 'ws-tab-code'}
         aria-label={layout === 'wide' ? 'Code' : undefined}
       >
+        <!-- S2: one row. Language, the editor settings, then Run and Submit at the end. -->
         <div class="toolbar">
           <label class="visually-hidden" for="ws-language">Language</label>
           <select id="ws-language" class="select lang" value={language} onchange={onLanguageChange}>
             {#each languages as l (l.id)}<option value={l.id}>{l.label}</option>{/each}
           </select>
-          <label class="visually-hidden" for="ws-font">Font size</label>
-          <select id="ws-font" class="select font" value={fontSize} onchange={onFontChange}>
-            {#each FONT_SIZES as size (size)}<option value={size}>{size} px</option>{/each}
-          </select>
+          <EditorSettings {fontSize} sizes={FONT_SIZES} {tabMovesFocus} onfont={onFontChange} ontab={onTabToggle} />
           <div class="run-actions">
             <button
               type="button"
-              class="btn btn-secondary"
+              class="btn btn-secondary btn-compact"
               disabled={lockText !== ''}
               aria-disabled={runBusy ? 'true' : undefined}
               aria-describedby={lockText ? 'ws-locked' : undefined}
@@ -868,20 +918,13 @@
             >
             <button
               type="button"
-              class="btn btn-primary"
+              class="btn btn-primary btn-compact submit"
               disabled={lockText !== ''}
-              aria-disabled={submitBusy ? 'true' : undefined}
+              aria-disabled={submitBusy || waitLeft > 0 ? 'true' : undefined}
               aria-describedby={lockText ? 'ws-locked' : paceText || usedNow ? 'ws-submit-status' : undefined}
-              onclick={() => submit()}><Icon name="send" />{submitBusy ? 'Submitting' : 'Submit'}</button
+              onclick={() => submit()}><Icon name="send" />{submitLabel}</button
             >
           </div>
-          <!-- Pacing and the submission count: muted, beside Submit, never an alert (S4). The announcer speaks the pacing line. -->
-          {#if paceText || (usedNow && !lockText)}
-            <p class="submit-status" id="ws-submit-status">
-              {#if paceText}<span>{paceText}</span>{/if}
-              {#if usedNow && !lockText}<span class="used">{usedText(usedNow.count, usedNow.max)}</span>{/if}
-            </p>
-          {/if}
         </div>
         {#if lockText}<p class="locked" id="ws-locked">{lockText}</p>{/if}
 
@@ -903,36 +946,25 @@
         </div>
 
         <div class="under">
-          <label class="tab-toggle">
-            <input type="checkbox" checked={tabMovesFocus} onchange={onTabToggle} />
-            Tab moves focus
-          </label>
-          <details class="custom" bind:open={customOpen}>
-            <summary>Custom input</summary>
-            <div class="custom-body">
-              <label class="visually-hidden" for="ws-custom">Custom input</label>
-              <textarea
-                id="ws-custom"
-                class="input textarea-code"
-                rows="4"
-                spellcheck="false"
-                bind:this={customField}
-                bind:value={customInput}
-              ></textarea>
-              <button type="button" class="btn btn-secondary btn-compact" disabled={lockText !== ''} aria-disabled={runBusy ? 'true' : undefined} onclick={runCustom}>
-                <Icon name="play" />Run on this input
-              </button>
-            </div>
-          </details>
+          <button
+            type="button"
+            class="btn btn-link btn-compact custom-toggle"
+            aria-expanded={customOpen}
+            aria-controls="ws-custom-panel"
+            onclick={toggleCustom}>Custom input</button
+          >
+          <!-- Pacing and the submission count: muted, never an alert (S4). The announcer speaks the pacing line. -->
+          {#if paceText || (usedNow && !lockText)}
+            <p class="submit-status" id="ws-submit-status">
+              {#if paceText}<span>{paceText}</span>{/if}
+              {#if usedNow && !lockText}<span class="used">{usedText(usedNow.count, usedNow.max)}</span>{/if}
+            </p>
+          {/if}
           <p class="save" class:failed={saveState === 'failed'}>
             {#if saveState === 'saved'}Draft saved{:else if saveState === 'saving'}Saving draft{:else if saveState === 'failed'}Draft not saved
               to the server. A copy is kept on this device.{:else}Changes kept on this device{/if}
           </p>
         </div>
-        <p class="hint" id="ws-keys">
-          <kbd>{mod}+Enter</kbd> submits, <kbd>{mod}+'</kbd> runs on samples, <kbd>Esc</kbd> then <kbd>Tab</kbd> leaves the editor.
-          <button type="button" class="link-button" onclick={() => (shell.shortcuts = true)}>All shortcuts</button>
-        </p>
       </section>
 
       <section
@@ -949,6 +981,25 @@
             {#if notice.retry}
               <button type="button" class="btn btn-secondary btn-compact" onclick={retry}>{notice.action === 'submit' ? 'Submit again' : 'Run again'}</button>
             {/if}
+          </div>
+        {/if}
+        {#if customOpen}
+          <div class="custom-panel" id="ws-custom-panel">
+            <div class="custom-head">
+              <label for="ws-custom">Custom input</label>
+              <button type="button" class="btn btn-quiet btn-compact" onclick={() => (customOpen = false)}>Close</button>
+            </div>
+            <textarea
+              id="ws-custom"
+              class="input textarea-code"
+              rows="4"
+              spellcheck="false"
+              bind:this={customField}
+              bind:value={customInput}
+            ></textarea>
+            <button type="button" class="btn btn-secondary btn-compact" disabled={lockText !== ''} aria-disabled={runBusy ? 'true' : undefined} onclick={runCustom}>
+              <Icon name="play" />Run on this input
+            </button>
           </div>
         {/if}
         <StreamNotice mode={streamMode} onresume={() => stream?.resume()} />
@@ -994,6 +1045,22 @@
     </div>
   </div>
 {/if}
+
+<ConfirmDialog
+  open={confirmCompile}
+  title="Your last run did not compile. Submit anyway?"
+  body="A submission that does not compile still uses one of your attempts."
+  confirmLabel="Submit anyway"
+  onconfirm={() => {
+    confirmCompile = false;
+    compileWarned = true;
+    void submit(undefined, true);
+  }}
+  oncancel={() => {
+    confirmCompile = false;
+    compileWarned = true;
+  }}
+/>
 
 <style>
   .state {
@@ -1155,15 +1222,50 @@
     width: auto;
   }
 
+  .toolbar .lang {
+    width: 8rem;
+  }
+
   .run-actions {
     display: flex;
     gap: var(--space-2);
     margin-left: auto;
   }
 
+  /* "Submit in 24 s" fits without the button growing as it counts (S4). */
+  .submit {
+    min-width: 9rem;
+  }
+
   .editor-box {
     height: max(18rem, 55dvh);
     min-height: 0;
+  }
+
+  /* The custom input box at the top of the result pane (S2). */
+  .custom-panel {
+    display: grid;
+    justify-items: start;
+    gap: var(--space-2);
+    padding-bottom: var(--space-3);
+    border-bottom: var(--rule) solid var(--line);
+  }
+
+  .custom-panel .input {
+    width: 100%;
+  }
+
+  .custom-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+    font-size: var(--fs-0);
+    font-weight: 500;
+  }
+
+  .custom-toggle {
+    margin-inline-start: calc(-1 * var(--space-3));
   }
 
   .under {
@@ -1175,32 +1277,16 @@
     font-size: var(--fs-0);
   }
 
-  .tab-toggle {
-    display: inline-flex;
-    align-items: center;
-    gap: var(--space-2);
-    min-height: var(--control-h);
-    cursor: pointer;
+
+
+
+
+  .under .submit-status {
+    margin-left: auto;
   }
 
-  .tab-toggle input {
-    width: var(--space-4);
-    height: var(--space-4);
-    margin: 0;
-    accent-color: var(--act);
-  }
-
-  .hint {
-    padding-top: var(--space-1);
-    color: var(--ink-muted);
-    font-size: var(--fs-0);
-  }
-
-  /* Touch screens have no Ctrl+Enter: the key hint would only mislead (audit 07-14). */
-  @media (hover: none) and (pointer: coarse) {
-    .hint {
-      display: none;
-    }
+  .submit-status + .save {
+    margin-left: 0;
   }
 
   .submit-status {
@@ -1213,31 +1299,8 @@
     text-align: right;
   }
 
-  .toolbar .submit-status {
-    flex-basis: 100%;
-  }
 
-  .link-button {
-    padding: 0;
-    border: 0;
-    border-radius: var(--radius);
-    background: none;
-    color: var(--act);
-    font: inherit;
-    font-weight: 500;
-    text-decoration: underline;
-    text-underline-offset: 0.2em;
-    cursor: pointer;
-  }
 
-  kbd {
-    padding: 0 var(--space-1);
-    border: var(--rule) solid var(--line-strong);
-    border-radius: var(--radius);
-    background: var(--surface);
-    font-size: 0.92em;
-    white-space: nowrap;
-  }
 
   .save {
     margin-left: auto;
@@ -1248,29 +1311,8 @@
     color: var(--bad);
   }
 
-  /* Opened, the custom input takes a row of its own under the others. */
-  .custom[open] {
-    flex-basis: 100%;
-    order: 1;
-  }
 
-  .custom summary {
-    width: fit-content;
-    min-height: var(--control-h);
-    border-radius: var(--radius);
-    color: var(--act);
-    font-size: var(--fs-0);
-    font-weight: 500;
-    line-height: var(--control-h);
-    cursor: pointer;
-  }
 
-  .custom-body {
-    display: grid;
-    justify-items: start;
-    gap: var(--space-2);
-    padding-bottom: var(--space-2);
-  }
 
   .result-pane {
     display: grid;
@@ -1392,7 +1434,9 @@
       grid-template-areas:
         'rail title code'
         'rail statement code';
-      height: calc(100dvh - var(--space-7) - 2 * var(--space-3) - var(--rule));
+      /* Sized from the shell (S2): the header's real height, testing banner
+         included, comes from App.svelte as --shell-head. */
+      height: calc(100dvh - var(--shell-head, var(--space-7)) - 2 * var(--space-3));
       min-height: 32rem;
       border: var(--rule) solid var(--line);
       background: var(--surface);

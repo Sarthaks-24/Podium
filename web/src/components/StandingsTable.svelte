@@ -2,13 +2,16 @@
   StandingsTable: the leaderboard (design.md 5.4). A dense table in its own
   scroll box, so the header row stays put while rows scroll and, on
   phones, the rank and name columns stay pinned while the problem columns
-  scroll sideways. Rank and scores are mono with tabular figures. Each
-  problem cell has a two-tone background, the earned fraction in a light
-  tint of --ok (full) or --part (partial) over --surface, and "+N" in
-  --ink-muted for submissions made after the freeze; screen readers hear
-  each cell as a sentence (lib/standings.ts). The signed-in student's row
-  is tinted with --act-tint and marked "(you)", and "Jump to you" scrolls
-  to it and moves focus there. The box is sized to the screen and scrolls
+  scroll sideways, with a line saying so while columns wait to the right.
+  Rank and scores are mono with tabular figures. Each tried problem cell
+  has a 4 px bar along its bottom, the earned share in --ok (full) or
+  --part (partial) on a --line track, on a --surface cell (audit
+  2026-10-20 S8); a tried zero is "0" in --bad, untried a muted dash, and
+  "+N" in --ink-muted counts submissions made after the freeze; screen
+  readers hear each cell as a sentence (lib/standings.ts). The signed-in
+  student's row is tinted with --act-tint and marked "(you)", and "Jump to
+  you" scrolls to it and moves focus there; it hides (keeping its space)
+  while that row is already in view. The box is sized to the screen and scrolls
   both ways at every width, so the header row sticks on phones too; under
   768 px a vertical swipe that reaches the end of the box goes on to the
   page, so it is never trapped. From 768 px the board is as wide as its
@@ -19,7 +22,7 @@
   (bigger type, for a projector).
 -->
 <script lang="ts">
-  import { tick } from 'svelte';
+  import { onMount, tick } from 'svelte';
   import { cellFor, cellView, formatElapsed, myRow, type Standings } from '../lib/standings';
 
   interface Props {
@@ -33,6 +36,43 @@
 
   let wrap: HTMLDivElement | undefined = $state();
   const mine = $derived(myRow(standings));
+  /** The own row is inside the box's view, so "Jump to you" has nothing to do (S8). */
+  let mineInView = $state(false);
+  /** More problem columns wait to the right of the box (phones, S8). */
+  let moreRight = $state(false);
+
+  function measure() {
+    if (!wrap) return;
+    moreRight = wrap.scrollWidth - wrap.clientWidth - wrap.scrollLeft > 1;
+    const row = mine ? wrap.querySelector<HTMLElement>(`[data-user="${mine.user_id}"]`) : null;
+    if (!row) {
+      mineInView = false;
+      return;
+    }
+    const box = wrap.getBoundingClientRect();
+    const r = row.getBoundingClientRect();
+    const head = wrap.querySelector('thead')?.getBoundingClientRect().height ?? 0;
+    mineInView = r.top >= box.top + head - 1 && r.bottom <= box.bottom + 1 && r.top >= 0 && r.bottom <= window.innerHeight;
+  }
+
+  onMount(() => {
+    const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(() => measure()) : null;
+    if (wrap && ro) ro.observe(wrap);
+    window.addEventListener('scroll', measure, { passive: true });
+    window.addEventListener('resize', measure);
+    measure();
+    return () => {
+      ro?.disconnect();
+      window.removeEventListener('scroll', measure);
+      window.removeEventListener('resize', measure);
+    };
+  });
+
+  // Rows move as the board refreshes.
+  $effect(() => {
+    void standings;
+    void tick().then(measure);
+  });
 
   async function jump() {
     if (!mine || !wrap) return;
@@ -46,16 +86,18 @@
 </script>
 
 {#if mine}
-  <p class="tools">
+  <!-- Hidden, not removed, while the own row is in view, so the board never shifts. -->
+  <p class="tools" class:away={mineInView} inert={mineInView}>
     <button type="button" class="btn btn-secondary btn-compact" onclick={jump}>Jump to you</button>
   </p>
 {/if}
+{#if moreRight}<p class="more muted">Scroll the board sideways to see every problem.</p>{/if}
 
 {#if standings.rows.length === 0}
   <p class="muted empty">Nobody is in the standings yet. Rows appear as students submit.</p>
 {:else}
   <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
-  <div class="board-wrap" class:large bind:this={wrap} tabindex="0" role="region" aria-label={caption}>
+  <div class="board-wrap" class:large bind:this={wrap} tabindex="0" role="region" aria-label={caption} onscroll={measure}>
     <table class="board">
       <caption class="visually-hidden">{caption}</caption>
       <thead>
@@ -72,7 +114,7 @@
           <tr class:me data-user={r.user_id} tabindex={me ? -1 : undefined}>
             <td class="rank mono">{r.rank}</td>
             <th scope="row" class="name">
-              <span class="name-text" title={r.name}>{r.name}</span>{#if me}<span class="you">&nbsp;(you)</span>{/if}
+              <span class="name-text" title={r.name}>{r.name}{#if me}<span class="you">&nbsp;(you)</span>{/if}</span>
             </th>
             <td class="total mono">
               {r.total}<span class="visually-hidden">, reached after</span>
@@ -81,7 +123,9 @@
             {#each labels as l (l)}
               {@const v = cellView(cellFor(r, l), l)}
               <td class="pcell tone-{v.tone}">
-                <span class="fillbar" style:width="{Math.round(v.fraction * 100)}%" aria-hidden="true"></span>
+                {#if v.tone !== 'none'}
+                  <span class="meter" aria-hidden="true"><span class="meter-fill" style:width="{Math.round(v.fraction * 100)}%"></span></span>
+                {/if}
                 <span class="ctext mono" aria-hidden="true">
                   {#if v.text !== ''}<span class:untried={v.tone === 'none'}>{v.text}</span>{/if}{#if v.pending}<span class="pending">{v.pending}</span>{/if}
                 </span>
@@ -98,6 +142,15 @@
 <style>
   .tools {
     margin-bottom: var(--space-3);
+  }
+
+  .tools.away {
+    visibility: hidden;
+  }
+
+  .more {
+    margin-bottom: var(--space-2);
+    font-size: var(--fs-0);
   }
 
   .empty {
@@ -225,19 +278,43 @@
     text-align: center;
   }
 
-  .fillbar {
+  /* S8: the earned share is a 4 px bar along the bottom of the cell on a
+     --line track, so a partial reads as progress; the cell stays --surface. */
+  .meter {
     position: absolute;
-    top: 0;
-    bottom: 0;
-    left: 0;
+    right: var(--space-2);
+    bottom: var(--space-1);
+    left: var(--space-2);
+    height: var(--space-1);
+    background: var(--line);
   }
 
-  .tone-ok .fillbar {
-    background: var(--ok-tint);
+  .meter-fill {
+    display: block;
+    height: 100%;
   }
 
-  .tone-part .fillbar {
-    background: var(--part-tint);
+  .tone-ok .meter-fill {
+    background: var(--ok);
+  }
+
+  .tone-part .meter-fill {
+    background: var(--part);
+  }
+
+  .tone-zero .ctext {
+    color: var(--bad);
+  }
+
+  @media (forced-colors: active) {
+    .meter {
+      outline: var(--rule) solid CanvasText;
+    }
+
+    .meter-fill {
+      background: Highlight;
+      forced-color-adjust: none;
+    }
   }
 
   .ctext {

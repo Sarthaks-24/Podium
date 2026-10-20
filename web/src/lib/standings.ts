@@ -61,7 +61,8 @@ export function isTried(cell: StandingsCell | undefined): boolean {
   return cell.score > 0 || cell.pending > 0;
 }
 
-export type CellTone = 'ok' | 'part' | 'none';
+/** ok full marks, part some points, zero tried for no points, none not tried (or only pending). */
+export type CellTone = 'ok' | 'part' | 'zero' | 'none';
 
 /** What a cell shows. */
 export interface CellView {
@@ -82,9 +83,9 @@ export function cellView(cell: StandingsCell | undefined, label: string): CellVi
     return { text: '-', pending: '', fraction: 0, tone: 'none', sentence: `Problem ${label}, not tried` };
   }
   const fraction = cell.max > 0 ? Math.min(1, Math.max(0, cell.score / cell.max)) : 0;
-  const tone: CellTone = cell.max > 0 && cell.score >= cell.max ? 'ok' : cell.score > 0 ? 'part' : 'none';
   // A cell whose only attempts came after the freeze reads "+2" alone.
   const text = cell.score > 0 || cell.pending === 0 ? String(cell.score) : '';
+  const tone: CellTone = cell.max > 0 && cell.score >= cell.max ? 'ok' : cell.score > 0 ? 'part' : text === '0' ? 'zero' : 'none';
   const pending = cell.pending > 0 ? `+${cell.pending}` : '';
   let sentence = `Problem ${label}, `;
   sentence += text === '' ? 'no score before the freeze' : `${cell.score} of ${cell.max}`;

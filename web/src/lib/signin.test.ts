@@ -38,6 +38,10 @@ describe('parseErrorCode', () => {
     expect(parseErrorCode('google')).toBe('google');
     expect(parseErrorCode('account')).toBe('account');
     expect(parseErrorCode('server')).toBe('server');
+    expect(parseErrorCode('rate_limited')).toBe('rate_limited');
+    expect(messageText(errorMessage('rate_limited', ['college.edu'], '') ?? [])).toBe(
+      'Too many people are signing in from this network at once. Wait a few seconds, then start again.',
+    );
     expect(parseErrorCode('Domain')).toBeNull();
     expect(parseErrorCode('<script>')).toBeNull();
     expect(parseErrorCode(null)).toBeNull();

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { countOf, formatDateTime, numberParts, roleLabel, scoreParts } from './format';
+import { countOf, formatDateTime, formatDayTime, numberParts, roleLabel, scoreParts } from './format';
 import { formatTitle } from './head';
 
 describe('formatDateTime', () => {
@@ -7,6 +7,10 @@ describe('formatDateTime', () => {
     const ms = new Date(2026, 9, 16, 19, 42).getTime();
     expect(formatDateTime(ms)).toBe('16 Oct 2026 19:42');
     expect(formatDateTime(new Date(2026, 0, 3, 7, 5).getTime())).toBe('3 Jan 2026 07:05');
+  });
+
+  it('formats a day and time for a sentence as "21 Oct, 00:11"', () => {
+    expect(formatDayTime(new Date(2026, 9, 21, 0, 11).getTime())).toBe('21 Oct, 00:11');
   });
 });
 

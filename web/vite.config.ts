@@ -1,7 +1,9 @@
 import { defineConfig } from 'vitest/config';
 import type { Plugin } from 'vite';
 import { svelte } from '@sveltejs/vite-plugin-svelte';
+import { readFileSync } from 'node:fs';
 import { routeManifest } from './src/lib/routing.ts';
+import { privacyBodyHtml } from './src/lib/privacyBody.ts';
 
 // Node's process, declared here so the web app needs no @types/node.
 declare const process: { env: Record<string, string | undefined> };
@@ -27,8 +29,26 @@ function routesManifest(): Plugin {
   };
 }
 
+/**
+ * Writes dist/privacy-body.html from src/content/privacy.md (P3 FP.1,
+ * D100): the notice rendered with marked and sanitised with DOMPurify at
+ * build time, for the server's <!--podium:body--> block on /privacy, so
+ * the page reads without JavaScript. The server serves it only once
+ * routing.ts marks /privacy public, which waits for the owner (D85).
+ */
+function privacyBody(): Plugin {
+  return {
+    name: 'podium-privacy-body',
+    apply: 'build',
+    async generateBundle() {
+      const markdown = readFileSync(new URL('./src/content/privacy.md', import.meta.url), 'utf8');
+      this.emitFile({ type: 'asset', fileName: 'privacy-body.html', source: await privacyBodyHtml(markdown) });
+    },
+  };
+}
+
 export default defineConfig({
-  plugins: [svelte(), routesManifest()],
+  plugins: [svelte(), routesManifest(), privacyBody()],
   // Component tests mount Svelte in jsdom, which needs the client build of
   // svelte rather than the server one Node would pick.
   resolve: process.env.VITEST ? { conditions: ['browser'] } : undefined,

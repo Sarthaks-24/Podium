@@ -36,6 +36,7 @@
     max-width: 100%;
     max-height: 70vh;
     overflow: auto;
+    border: var(--rule) solid var(--well-edge);
     background: var(--well);
     color: var(--well-ink);
   }

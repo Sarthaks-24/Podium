@@ -43,23 +43,47 @@ for (const theme of THEMES) {
 test('the contest list puts the live contest first with a countdown', async ({ page }) => {
   await mockApi(page, { phase: 'during' });
   await page.goto('/');
+  // S10: the live contest is pinned on top with its countdown and one button.
+  const pinned = page.getByRole('region', { name: 'Week 6 contest' });
+  await expect(pinned).toContainText('Live');
+  await expect(pinned.locator('.pinned-count')).toHaveText(/^Ends in\s*\d{2}:\d{2}:\d{2}$/);
+  await expect(pinned.getByRole('link', { name: 'Continue' })).toHaveAttribute('href', '/contests/week-6');
+  await expect(pinned.getByRole('link', { name: 'Continue' })).toHaveClass(/btn-primary/);
+  await expect(page.locator('.btn-primary')).toHaveCount(1);
   const rows = page.locator('tbody tr');
-  await expect(rows).toHaveCount(3);
-  await expect(rows.nth(0)).toContainText('Week 6 contest');
-  await expect(rows.nth(0)).toContainText('Live');
-  await expect(rows.nth(0).locator('.countdown')).toHaveText(/^Ends in \d{2}:\d{2}:\d{2}$/);
-  await expect(rows.nth(1)).toContainText('Upcoming');
-  await expect(rows.nth(2)).toContainText('240 of 300');
-  await expect(rows.nth(2)).toContainText('Ended');
-  await expect(rows.nth(1).locator('.countdown')).toHaveText(/^Starts in \d d( \d+ h)?$/);
+  await expect(rows).toHaveCount(2);
+  await expect(rows.nth(0)).toContainText('Upcoming');
+  await expect(rows.nth(1)).toContainText('240 of 300');
+  await expect(rows.nth(1)).toContainText('Ended');
+  await expect(rows.nth(0).locator('.countdown')).toHaveText(/^Starts in \d d( \d+ h)?$/);
   // Phones keep the score, on the line under the start.
   await page.setViewportSize({ width: 375, height: 812 });
-  await expect(rows.nth(2).getByText('240 of 300')).toBeVisible();
+  await expect(rows.nth(1).getByText('240 of 300')).toBeVisible();
   await page.setViewportSize({ width: 1280, height: 800 });
   // Students get only the Contests link.
   await expect(page.getByRole('link', { name: 'Contests', exact: true })).toHaveAttribute('aria-current', 'page');
   await expect(page.getByRole('navigation', { name: 'Main' }).getByRole('link')).toHaveText(['Contests']);
   await expect(page.getByRole('link', { name: 'Problem bank' })).toHaveCount(0);
+});
+
+test('messages posted while the student was away still show, until read (S1)', async ({ page }) => {
+  const api = await mockApi(page, { phase: 'during' });
+  const before = Date.now() - 5 * 60_000;
+  api.announcements.push({ id: 5, body_md: 'Sample 2 of B is fixed.', created_at: before });
+  api.clarifications.push({ id: 9, problem_label: 'A', question: 'Can a be negative?', answer: 'No, a is at least 0.', public: false, created_at: before - 60_000, answered_at: before + 60_000 });
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto('/contests/week-6/problems/A');
+  const rail = page.getByRole('navigation', { name: 'Problems' });
+  await expect(page.locator('.banner-slot .strip')).toContainText('No, a is at least 0.');
+  await expect(page.locator('.banner-slot .strip')).toContainText('1 more message waiting.');
+  await expect(rail.getByRole('button', { name: /Messages/ })).toContainText('2');
+  await rail.getByRole('button', { name: /Messages/ }).click();
+  await expect(page.getByRole('dialog', { name: 'Messages' })).toBeVisible();
+  await page.keyboard.press('Escape');
+  await page.reload();
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('A. A plus B');
+  await expect(page.locator('.banner-slot .strip')).toHaveCount(0);
+  await expect(rail.getByRole('button', { name: /Messages/ })).not.toContainText('2');
 });
 
 test('a student agrees to the honour code, solves, reads an announcement and asks a question', async ({ page }) => {
@@ -144,6 +168,17 @@ test('an upcoming fixed-start contest counts down and keeps the start button clo
   await expect(page.getByRole('timer')).toHaveText(/^02:0\d:\d{2}$/);
   await expect(page.getByRole('button', { name: 'I agree, start the contest' })).toBeDisabled();
   await expect(page.getByText(/^You can start at/)).toBeVisible();
+  // S3: the countdown, the honour code and the button come first, above the fold.
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await expect(page.getByRole('button', { name: 'I agree, start the contest' })).toBeInViewport();
+  await page.setViewportSize({ width: 375, height: 812 });
+  await expect(page.getByRole('timer')).toBeInViewport();
+  const order = await page.evaluate(() => {
+    const at = (sel: string) => document.querySelector(sel)?.getBoundingClientRect().top ?? -1;
+    return [at('[role="timer"]'), at('#honour-title'), at('#rules-title')];
+  });
+  expect(order[0]).toBeLessThan(order[1]);
+  expect(order[1]).toBeLessThan(order[2]);
 });
 
 test('a window-mode contest starts the clock on agreement', async ({ page }) => {
@@ -184,16 +219,22 @@ test('exam mode shows only "Submitted"', async ({ page }) => {
 });
 
 test('after the contest: result, submissions, editorial and practice', async ({ page }) => {
-  await mockApi(page, { phase: 'practice' });
+  const api = await mockApi(page, { phase: 'practice' });
+  api.clarifications.push({ id: 9, problem_label: 'B', question: 'Can intervals touch?', answer: 'Yes, touching counts as covered.', public: false, created_at: Date.now() - 3 * 3_600_000, answered_at: Date.now() - 3 * 3_600_000 + 60_000 });
+  await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto('/contests/week-6');
+  const questions = page.getByRole('region', { name: 'Your questions' });
+  await expect(questions).toContainText('Can intervals touch?');
+  await expect(questions).toContainText('Yes, touching counts as covered.');
   await expect(page.getByRole('heading', { name: 'Your result' })).toBeVisible();
-  await expect(page.locator('.total')).toContainText('140');
-  await expect(page.locator('.total')).toContainText('of 300 points');
-  await expect(page.getByText(/^You are \d+(st|nd|rd|th) of 28 with \d+ points\.$/)).toBeVisible();
-  await expect(page.getByText('Practice is open.', { exact: false })).toBeVisible();
+  // S9: one lead, the place as the display figure, no repeated sentence.
+  await expect(page.locator('.result-lead')).toHaveText(/^Ended \d+ [A-Z][a-z]{2}, \d{2}:\d{2}\. You scored 140 of 300\.$/);
+  await expect(page.locator('.result .place-figure')).toHaveText(/^\s*\d+ of 28$/);
+  await expect(page.getByText(/You are \d+/)).toHaveCount(0);
+  await expect(page.getByText('Practice is open: new submissions do not count.')).toBeVisible();
   await expect(page.getByText('Use 64-bit integers.')).toBeVisible();
-
-  await page.getByText('Problem B: Interval covering').click();
+  // The problem with the newest submission opens by itself.
+  await expect(page.locator('details[open] summary')).toHaveText(['Problem B: Interval covering']);
   await expect(page.locator('details[open]').getByText('40 of 100').first()).toBeVisible();
 
   await page.getByRole('link', { name: 'Practise problem B' }).click();
@@ -224,9 +265,17 @@ test('the frozen board shows pending cells, tints the own row and jumps to it', 
   const plain = await page.locator('tbody tr').first().locator('th').evaluate((el) => getComputedStyle(el).backgroundColor);
   expect(tint).not.toBe(plain);
 
+  // S8: a partial cell is a bar along its bottom, a tried zero reads in the wrong colour.
+  const partial = page.locator('td.pcell.tone-part').first();
+  await expect(partial.locator('.meter-fill')).toBeAttached();
+  expect(await partial.evaluate((el) => getComputedStyle(el).backgroundColor)).toBe(plain);
+  await expect(page.getByRole('button', { name: 'Jump to you' })).toBeVisible();
   await page.getByRole('button', { name: 'Jump to you' }).click();
   await expect(mine).toBeFocused();
   await expect(mine).toBeInViewport();
+  // With the own row in view the button hides, keeping its place.
+  await expect(page.locator('.tools')).toHaveClass(/away/);
+  await expect(page.locator('tr.me .name-text')).toHaveText(/Asha Rao\s\(you\)/);
 
   // The header stays put while rows scroll.
   const head = page.locator('.board-wrap thead th').first();
@@ -291,7 +340,7 @@ test('admins land on their contest list, named by job', async ({ page }) => {
   await page.goto('/');
   await expect(page).toHaveURL('/admin/contests');
   const nav = page.getByRole('navigation', { name: 'Main' });
-  await expect(nav.getByRole('link')).toHaveText(['Contests', 'Problem bank']);
+  await expect(nav.getByRole('link')).toHaveText(['Contests', 'Problem bank', 'Inbox']);
   await expect(nav.getByRole('link', { name: 'Contests' })).toHaveAttribute('aria-current', 'page');
   await expect(page.getByText('To create a contest or follow one live')).toHaveCount(0);
   await expect(page.getByRole('row', { name: /Week 7 contest/ })).toContainText('Draft');
@@ -310,6 +359,21 @@ test('students cannot open the contest admin', async ({ page }) => {
   await expect(page.getByText('Only admins can manage contests.')).toBeVisible();
   // F3: a closed screen names where to ask, as a mailto link.
   await expect(page.getByRole('main').getByRole('link', { name: 'priya@college.edu' })).toHaveAttribute('href', 'mailto:priya@college.edu');
+});
+
+test('the Console link counts unanswered questions on Settings (O4)', async ({ page }) => {
+  await mockApi(page, { who: 'admin', phase: 'during' });
+  const asked: string[] = [];
+  page.on('request', (r) => {
+    if (r.url().includes('/clarifications')) asked.push(new URL(r.url()).pathname);
+  });
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto('/admin/contests/4');
+  const nav = page.getByRole('navigation', { name: 'Contest' });
+  await expect(nav.getByRole('link', { name: /Console/ })).toContainText('1');
+  await expect(nav.getByRole('link', { name: /Console/ })).toContainText('unanswered question');
+  expect(asked).toContain('/api/admin/contests/4/clarifications');
+  expect(asked.filter((p) => !p.startsWith('/api/'))).toEqual([]);
 });
 
 test('the editor shows field errors, picks problems and previews a roster', async ({ page }) => {
@@ -626,8 +690,9 @@ test('after the end, a held board gives the place only and says when it updates'
   await expect(page.getByText(/points\.$/)).toHaveCount(0);
   await page.getByRole('link', { name: 'See the standings' }).click();
   await expect(page.getByText(/^Frozen at \d{2}:\d{2}\. The final standings appear when the organisers release them\./)).toBeVisible();
-  await expect(page.locator('.legend')).toContainText('The shaded part of a cell is the share of points earned.');
-  await expect(page.locator('.legend')).toContainText('A dash means not tried.');
+  await expect(page.locator('.legend')).toHaveText('The bar under a score is the share of points earned. A dash means not tried.');
+  await page.getByText('How to read the board').click();
+  await expect(page.getByText('counts submissions made after the freeze', { exact: false })).toBeVisible();
   // S6: the own place is the page's one display figure, labelled for the frozen board.
   await expect(page.locator('.place')).toContainText('Your place on the frozen board');
   await expect(page.locator(".place-figure")).toHaveText(/^\s*\d+ of 28$/);
@@ -758,8 +823,10 @@ test('keyboard only: a student starts, solves, submits, reads the verdict, asks 
   await tabTo(page, page.getByRole('navigation', { name: 'Problems' }).getByRole('link', { name: 'Standings' }), { back: true });
   await page.keyboard.press('Enter');
   await expect(page).toHaveURL('/contests/week-6/standings');
-  await activate(page, page.getByRole('button', { name: 'Jump to you' }));
-  await expect(page.locator('tr.me')).toBeFocused();
+  // The own row is already on screen, so "Jump to you" steps aside (S8) and the board box takes focus.
+  await expect(page.locator('tr.me')).toBeInViewport();
+  await expect(page.locator('.tools')).toHaveClass(/away/);
+  await tabTo(page, page.getByRole('region', { name: /^Standings for/ }));
 });
 
 test('keyboard only: an organiser edits a contest, runs the console and walks the reveal', async ({ page }) => {
@@ -799,7 +866,7 @@ test('keyboard only: an organiser edits a contest, runs the console and walks th
   await expect(page.getByRole('button', { name: 'Remove A plus B' })).toBeFocused();
 
   // Console: the section links, and an error that takes focus.
-  await activate(page, page.getByRole('link', { name: 'Console', exact: true }));
+  await activate(page, page.getByRole('navigation', { name: 'Contest' }).getByRole('link', { name: /^Console/ }));
   await expect(page).toHaveURL('/admin/contests/4/console');
   await activate(page, page.getByRole('button', { name: 'Give extra time' }));
   await expect(page.locator('#ext-error')).toHaveText('Choose a student.');

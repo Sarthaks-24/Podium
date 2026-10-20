@@ -573,7 +573,7 @@ The web app is one Svelte single-page app with no component library. Since v2 P1
 | `Breadcrumbs` | `web/src/components/Breadcrumbs.svelte` | `nav aria-label="Breadcrumb"`, an ordered list, the current page last with `aria-current` |
 | `PageState` | `web/src/components/PageState.svelte` | Loading (shown after 300 ms), error with Try again, forbidden with the organisers' contact email, missing with a link to the parent, empty with its next action |
 | Announcer | `web/src/lib/announce.svelte.ts` | Two always-present live regions in `App.svelte`, polite and assertive. Each message clears its region first, so the same sentence said twice is spoken twice. Widgets with a running text (the contest clock) keep their own region |
-| Breakpoints | `web/src/lib/breakpoints.ts` | Tiers at 768, 1024 and 1440 px plus a short height tier. CSS writes `(min-width: 768px)` or its exact complement `(width < 768px)`, never `max-width: 767px`, so no zoomed width falls between two layouts; a guardrail test fails on any other width |
+| Breakpoints | `web/src/lib/breakpoints.ts` | Tiers at 768, 1024, 1280 (`desk`, the page split, D181) and 1440 px plus a short height tier. CSS writes `(min-width: 768px)` or its exact complement `(width < 768px)`, never `max-width: 767px`, so no zoomed width falls between two layouts; a guardrail test fails on any other width |
 | Icons | `web/src/lib/icons.ts`, `web/src/components/Icon.svelte` | Lucide shapes as data, 20 px beside words and never instead of them |
 | Route table | `web/src/lib/routing.ts` | Each route's pattern, sign-in need, `public`, `title` and `description`. Page titles read it, and the build writes it to `dist/routes.json` for the server's head, 404 and robots (contract C2) |
 
@@ -589,14 +589,38 @@ Navigation is named by job (D81, D146). Organisers do not share the students' la
 |---|---|---|---|
 | Signed out | none; a Theme control | Sign in | none |
 | Student | Contests; Questions once an organiser has shared an integrity case | Your contests | Signed in as {email}, the role word, Theme and colours, Keyboard shortcuts, Sign out |
-| Admin | Contests (`/admin/contests`), Problem bank | `/admin/contests` | same |
-| Owner | Contests, Problem bank, People | `/admin/contests` | same |
+| Admin | Contests (`/admin/contests`), Problem bank, Inbox (P3) | `/admin/contests` | same |
+| Owner | Contests, Problem bank, People, Inbox (P3) | `/admin/contests` | same |
 
 - One account control (`components/AccountMenu.svelte`) holds identity, "Theme and colours" (a dialog the shell owns, `ThemeDialog`, with `ThemePicker`), Keyboard shortcuts and Sign out. The header fits one row from 768 px: the button names the person from 1024 px and reads "Account" below that. Under 768 px organisers get a Menu panel with the account items inline; students keep their links and the account button in the row.
 - Sign out first runs every save registered with `beforeSignOut()` (`lib/session.svelte.ts`, at most 3 s), so the workspace's last edits reach the server before the session ends. The confirmation during a live contest is P5's sign-out guard.
 - The contest sub-nav ends with "Student view" and shows the unanswered question count after Console; it wraps instead of scrolling at 320 px.
 - The footer names the organisers ("Contact the organisers: {email}" from `GET /api/auth/config`). `/privacy` exists but nothing links it until the owner approves its text (D85): one constant, `PRIVACY_LINKED` in `web/src/lib/site.ts`, turns on the footer and sign-in links.
 - Organiser page titles read page first ("Console · Week 6 contest · podium"), so browser tabs differ when cut short.
+
+### Page layout and controls (v2 P3, D181 to D184)
+
+The 2026-10-20 usability audit found the screens unfinished at the layout level: one narrow column on wide screens, every section at the same weight, and links, buttons and mono text mixed with no system. P3 adds five shared pieces and every screen uses them:
+
+| Piece | Where | Rule |
+|---|---|---|
+| `.page-split` | `styles/base.css` | From 1280 px the work sits at `--measure-form` and a sticky context column (`--measure-aside`) beside it: rules beside the start button, messages beside the result, other ways to write beside the contact form. Below 1280 px the two stack in DOM order |
+| `.panel` | `styles/base.css` | One task area on `--surface` with a `--line` border, square, no shadow, as tall as its content; never a grid of equal tiles |
+| `Badge` and `.badge` | `components/Badge.svelte`, `lib/badges.ts`, `styles/controls.css` | Verdict and state words on a tint, sentence case. `.state-word` is drawn the same way, so every state word on every screen reads alike |
+| Controls | `styles/controls.css` | Every button is `--control-h`; `.btn-compact` only narrows padding and type, inside rows and toolbars; one primary per view; actions in bars, rails and rows are quiet buttons (`.btn-quiet`, or `.btn-link` in the action colour) with no underline; underlines stay for prose links and breadcrumbs |
+| `MonoDigits` | `components/MonoDigits.svelte` | Mono for digits only: dates, times and "40 of 100" keep their words in Grotesk |
+
+The editor well gets a `--well-edge` border, the well's own colour in light themes and `--line-strong` in dark ones, where the dark well would otherwise vanish into the dark page. The own place on standings and on the contest result is one component, `PlaceFigure`.
+
+**Why 1280 px.** The form measure (48rem) and a useful context column (about 26rem) with the gutters need about 1,250 px; at 1024 the context column would squeeze the form. The workspace already used 1280 for its wider split, so the tier was added to `lib/breakpoints.ts` rather than kept as an exception (D181).
+
+### Public pages and contact (v2 P3, FP.1 to FP.5)
+
+- `lib/mode.svelte.ts` loads `GET /api/auth/config` once per page and holds the run mode, the contact email, the organisation (C5) and the retention periods; the sign-in page, the footer, `PageState`, `/contact` and `/privacy` read that one copy. A field the owner has not entered shows nothing.
+- The privacy notice is Markdown in `web/src/content/privacy.md` with a `<!-- retention -->` marker. `/privacy` renders it with the retention table from the config, never typed by hand. The build (`vite.config.ts`, `lib/privacyBody.ts`) renders the same Markdown with marked and DOMPurify on jsdom to `dist/privacy-body.html` for the server's body block, with a `<!--podium:retention-->` block in place of the table. Until the owner approves the text (D85) the route is not public and the page shows a placeholder; `/privacy?draft` shows the draft.
+- `/contact` (signed in) posts to `POST /api/contact`; `/admin/contact` is the organisers' inbox with "Reply by email" as a `mailto:` link. Messages are plain text everywhere.
+- `web/public` holds the 1200 by 630 social card `og.png`, `favicon.ico`, the touch icon, two manifest icons and `site.webmanifest`; `tests/links.spec.ts` checks them, crawls every link and presses every button on the mocked screens.
+- After an emergency deploy, students see "The site was updated at 14:02" once per update (D112, `lib/siteUpdate.ts`); the shell reads `/api/me` again whenever a live stream reconnects.
 
 ### Announcements to screen readers (X1)
 

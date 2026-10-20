@@ -156,30 +156,67 @@ export interface BannerItem {
 
 /**
  * The banner queue: announcements, answered own questions and answers an
- * organiser made public for everyone (B1, audit 01-2) not yet dismissed,
- * newest first. Keys are "a<id>" and "c<id>"; a public answer to the
- * student's own question shows once, as their own.
+ * organiser made public for everyone (B1, audit 01-2) newer than the
+ * student's last read time and not dismissed, newest first. Keys are
+ * "a<id>" and "c<id>"; a public answer to the student's own question shows
+ * once, as their own. `lastRead` is a server time kept per contest on the
+ * device (messagesReadAt), not the time the page opened: a message posted
+ * while the student was elsewhere still shows (audit 2026-10-20 S1).
  */
 export function bannerItems(
   c: Pick<Contest, 'announcements' | 'my_clarifications'> & { public_clarifications?: Clarification[] },
   dismissed: ReadonlySet<string>,
-  since: number,
+  lastRead: number,
 ): BannerItem[] {
   const items: BannerItem[] = [];
   for (const a of c.announcements ?? []) {
-    if (a.created_at >= since && !dismissed.has(`a${a.id}`)) items.push({ key: `a${a.id}`, kind: 'announcement', body: a.body_md, at: a.created_at });
+    if (a.created_at > lastRead && !dismissed.has(`a${a.id}`)) items.push({ key: `a${a.id}`, kind: 'announcement', body: a.body_md, at: a.created_at });
   }
   for (const q of c.my_clarifications ?? []) {
     const at = q.answered_at ?? 0;
-    if (q.answer && at >= since && !dismissed.has(`c${q.id}`)) items.push({ key: `c${q.id}`, kind: 'answer', body: q.answer, question: q.question, at });
+    if (q.answer && at > lastRead && !dismissed.has(`c${q.id}`)) items.push({ key: `c${q.id}`, kind: 'answer', body: q.answer, question: q.question, at });
   }
   const own = new Set((c.my_clarifications ?? []).map((q) => q.id));
   for (const q of c.public_clarifications ?? []) {
     const at = q.answered_at ?? 0;
-    if (!q.answer || own.has(q.id) || at < since || dismissed.has(`c${q.id}`)) continue;
+    if (!q.answer || own.has(q.id) || at <= lastRead || dismissed.has(`c${q.id}`)) continue;
     items.push({ key: `c${q.id}`, kind: 'public', body: q.answer, question: q.question, at });
   }
   return items.sort((x, y) => y.at - x.at);
+}
+
+/** The storage key of a contest's last read time on this device. */
+export function messagesReadKey(slug: string): string {
+  return `podium-messages-read:${slug}`;
+}
+
+/** When the student last read this contest's messages on this device, in server ms; 0 when never or unreadable. */
+export function messagesReadAt(slug: string, store: Pick<Storage, 'getItem'> | null = safeLocalStorage()): number {
+  try {
+    const n = Number(store?.getItem(messagesReadKey(slug)) ?? 0);
+    return Number.isFinite(n) && n > 0 ? n : 0;
+  } catch {
+    return 0;
+  }
+}
+
+/** Records the last read time; never moves it backwards. Returns the time kept. */
+export function markMessagesRead(slug: string, at: number, store: Pick<Storage, 'getItem' | 'setItem'> | null = safeLocalStorage()): number {
+  const kept = Math.max(messagesReadAt(slug, store), Number.isFinite(at) ? at : 0);
+  try {
+    store?.setItem(messagesReadKey(slug), String(kept));
+  } catch {
+    // Read for this page only; the banner shows the messages again next time.
+  }
+  return kept;
+}
+
+function safeLocalStorage(): Storage | null {
+  try {
+    return typeof localStorage === 'undefined' ? null : localStorage;
+  } catch {
+    return null;
+  }
 }
 
 /** The lead of a banner item. */
@@ -327,6 +364,17 @@ export function listCountdown(c: ContestSummary, now: number): { lead: string; m
     return { lead: 'Ends in', ms: (c.my_window?.ends_at ?? c.ends_at) - now, after };
   }
   return null;
+}
+
+/**
+ * The button on the contest pinned at the top of "Your contests" (audit
+ * 2026-10-20 S10): "Open the contest" before the start, "Continue" while
+ * it is live and the student's time runs, "See your result" afterwards.
+ */
+export function pinnedAction(c: Pick<ContestSummary, 'state' | 'my_window'>, now: number): string {
+  if (c.state === 'upcoming') return 'Open the contest';
+  if (c.state === 'live' || c.state === 'frozen') return c.my_window && c.my_window.ends_at <= now ? 'See your result' : 'Continue';
+  return 'See your result';
 }
 
 /**

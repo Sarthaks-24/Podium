@@ -24,6 +24,9 @@ import {
   rulesSentences,
   bannerItems,
   bannerLead,
+  markMessagesRead,
+  pinnedAction,
+  messagesReadAt,
   railStatus,
   triedLine,
   startLine,
@@ -153,6 +156,62 @@ describe('the banner queue (B1)', () => {
     expect(bannerItems({ announcements: [], my_clarifications: [], public_clarifications: [q(11, 700, true)] }, new Set(['c11']), 0)).toEqual([]);
     expect(bannerLead('public')).toBe('An organiser answered a question for everyone');
     expect(bannerLead('answer')).toBe('An organiser answered your question');
+  });
+});
+
+describe('the pinned contest on Your contests (S10)', () => {
+  it('names the next step', () => {
+    expect(pinnedAction({ state: 'upcoming', my_window: null }, T)).toBe('Open the contest');
+    expect(pinnedAction({ state: 'live', my_window: { started_at: T, ends_at: T + MIN } }, T)).toBe('Continue');
+    expect(pinnedAction({ state: 'frozen', my_window: null }, T)).toBe('Continue');
+    expect(pinnedAction({ state: 'live', my_window: { started_at: T - 2 * MIN, ends_at: T - MIN } }, T)).toBe('See your result');
+    expect(pinnedAction({ state: 'practice', my_window: null }, T)).toBe('See your result');
+    expect(pinnedAction({ state: 'ended', my_window: null }, T)).toBe('See your result');
+  });
+});
+
+describe('messages read time (audit S1)', () => {
+  function memory(): Pick<Storage, 'getItem' | 'setItem'> & { data: Map<string, string> } {
+    const data = new Map<string, string>();
+    return { data, getItem: (k) => data.get(k) ?? null, setItem: (k, v) => void data.set(k, v) };
+  }
+
+  it('shows a message older than the page load but newer than the last read', () => {
+    const store = memory();
+    markMessagesRead('week-6', 1_000, store);
+    const pageLoadedAt = 5_000;
+    const items = bannerItems(
+      {
+        announcements: [
+          { id: 1, body_md: 'Old news.', created_at: 900 },
+          { id: 2, body_md: 'Sample 2 of B is fixed.', created_at: 3_000 },
+        ],
+        my_clarifications: [{ id: 7, problem_label: 'A', question: 'Is n at most 10?', answer: 'Yes.', public: false, created_at: 2_000, answered_at: 4_000 }],
+      },
+      new Set(),
+      messagesReadAt('week-6', store),
+    );
+    expect(items.map((i) => i.key)).toEqual(['c7', 'a2']);
+    expect(items.every((i) => i.at < pageLoadedAt)).toBe(true);
+  });
+
+  it('starts at zero, never moves back, and survives a broken store', () => {
+    const store = memory();
+    expect(messagesReadAt('week-6', store)).toBe(0);
+    expect(markMessagesRead('week-6', 4_000, store)).toBe(4_000);
+    expect(markMessagesRead('week-6', 2_000, store)).toBe(4_000);
+    expect(store.data.get('podium-messages-read:week-6')).toBe('4000');
+    const broken = {
+      getItem: () => {
+        throw new Error('blocked');
+      },
+      setItem: () => {
+        throw new Error('blocked');
+      },
+    };
+    expect(messagesReadAt('week-6', broken)).toBe(0);
+    expect(markMessagesRead('week-6', 10, broken)).toBe(10);
+    expect(messagesReadAt('week-6', null)).toBe(0);
   });
 });
 

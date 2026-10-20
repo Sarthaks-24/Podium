@@ -14,6 +14,7 @@
   server returns it).
 -->
 <script lang="ts">
+  import MonoDigits from './MonoDigits.svelte';
   import { tick } from 'svelte';
   import { ApiError, sendJSON } from '../lib/api';
   import type { Clarification, Contest } from '../lib/contests';
@@ -144,7 +145,7 @@
       <ul class="items">
         {#each announcements as a (a.id)}
           <li class="item">
-            <p class="mono when">{formatWhen(a.created_at)}</p>
+            <p class="when"><MonoDigits text={formatWhen(a.created_at)} /></p>
             <Markdown source={a.body_md} compact />
           </li>
         {/each}
@@ -160,7 +161,7 @@
       <ul class="items">
         {#each mine as c (c.id)}
           <li class="item">
-            <p class="meta"><span class="mono when">{formatWhen(c.created_at)}</span> {topicText(c.problem_label)}{c.public ? ', answered for everyone' : ''}</p>
+            <p class="meta"><span class="when"><MonoDigits text={formatWhen(c.created_at)} /></span> {topicText(c.problem_label)}{c.public ? ', answered for everyone' : ''}</p>
             <p class="q">{c.question}</p>
             {#if c.answer}<p class="a">{c.answer}</p>{:else}<p class="muted small">Waiting for an answer.</p>{/if}
           </li>
@@ -175,7 +176,7 @@
       <ul class="items">
         {#each everyone as c (c.id)}
           <li class="item">
-            <p class="meta"><span class="mono when">{formatWhen(c.answered_at ?? c.created_at)}</span> {topicText(c.problem_label)}</p>
+            <p class="meta"><span class="when"><MonoDigits text={formatWhen(c.answered_at ?? c.created_at)} /></span> {topicText(c.problem_label)}</p>
             <p class="q">{c.question}</p>
             <p class="a">{c.answer}</p>
           </li>

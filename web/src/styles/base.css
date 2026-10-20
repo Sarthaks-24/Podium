@@ -207,3 +207,87 @@ h2[tabindex="-1"]:focus {
   outline: none;
   box-shadow: none;
 }
+
+/*
+  The working layout (D181, audit 2026-10-20 change 1). On a wide screen a
+  page is the work on the left at --measure-form and a context column on
+  the right: status, readiness, the next action, rules, a preview. The
+  context column stays in view while the work scrolls. Below 1280 px the
+  two stack in DOM order, so put whatever a phone needs first first.
+
+    <div class="page-split">
+      <div class="page-split-main">...</div>
+      <aside class="page-split-aside" aria-label="...">...</aside>
+    </div>
+*/
+.page-split {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-6);
+  align-items: start;
+}
+
+.page-split-main,
+.page-split-aside {
+  display: grid;
+  gap: var(--space-5);
+  align-content: start;
+  min-width: 0;
+}
+
+@media (min-width: 1280px) {
+  .page-split {
+    grid-template-columns: minmax(0, var(--measure-form)) minmax(0, var(--measure-aside));
+    grid-template-areas: 'main aside';
+    gap: var(--space-7);
+  }
+
+  .page-split-main {
+    grid-area: main;
+  }
+
+  .page-split-aside {
+    grid-area: aside;
+    /* Sticks while the work is longer than the context; a context
+       column longer than the work simply scrolls with the page. */
+    position: sticky;
+    top: var(--space-5);
+  }
+}
+
+/*
+  A surface panel (audit change 2): one task area (Questions, Submissions,
+  the honour code, a readiness list) on --surface with a --line border,
+  square like tables, no shadow, as tall as its content. Panels group the
+  parts of one page; they are not cards and never sit in a grid of equal
+  tiles. The --paper page stays the background. .panel-head is the row at
+  the top: the heading, then any count or action at the end.
+*/
+.panel {
+  display: grid;
+  gap: var(--space-3);
+  align-content: start;
+  min-width: 0;
+  padding: var(--space-5);
+  border: var(--rule) solid var(--line);
+  background: var(--surface);
+}
+
+.panel-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-2) var(--space-3);
+}
+
+@media (width < 768px) {
+  .panel {
+    padding: var(--space-4);
+  }
+}
+
+/* A phone number never breaks across lines. */
+a[href^='tel:'] {
+  white-space: nowrap;
+}

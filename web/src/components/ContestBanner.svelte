@@ -1,7 +1,8 @@
 <!--
   ContestBanner: the newest announcement, answered question or answer an
-  organiser gave everyone (B1) that arrived while the student was in the
-  contest (design.md section 6, Banner), shown in one quiet strip above the
+  organiser gave everyone (B1) that the student has not read yet, even
+  when it arrived while they were away (design.md section 6, Banner; audit
+  S1), shown in one quiet strip above the
   workspace. Each new message is spoken once through the app's polite
   announcer (X1, audit 06-5), never as an alert: it does not take focus or
   interrupt typing. Dismiss hides it;
@@ -10,6 +11,7 @@
   `ondismiss` (with the item's key) and `onopen`.
 -->
 <script lang="ts">
+  import MonoDigits from './MonoDigits.svelte';
   import { polite } from '../lib/announce.svelte';
   import { bannerLead, type BannerItem } from '../lib/contests';
   import { formatWhen } from '../lib/workspace';
@@ -44,7 +46,7 @@
       <div class="text">
         <p class="lead">
           {bannerLead(top.kind)}
-          <span class="mono when">{formatWhen(top.at)}</span>
+          <span class="when"><MonoDigits text={formatWhen(top.at)} /></span>
         </p>
         {#if top.question}<p class="question">{top.question}</p>{/if}
         <Markdown source={top.body} compact />

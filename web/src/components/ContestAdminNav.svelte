@@ -48,7 +48,8 @@
 
   $effect(() => {
     if (unanswered !== undefined) return;
-    const url = `${base}/clarifications`;
+    // The page path is /admin/contests/{id}; the API lives under /api (audit O4).
+    const url = `/api${base}/clarifications`;
     let live = true;
     getJSON<{ clarifications: Clarification[] }>(url)
       .then((data) => {

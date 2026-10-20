@@ -1,12 +1,15 @@
 <!--
   App: the shell around every screen (v2 N1 to N7). The header holds the
   podium word-mark (a link home), the main navigation and one account
-  control (components/AccountMenu). Navigation is named by job: students
+  control (components/AccountMenu). After an emergency deploy a
+  signed-in student sees one line above it, "The site was updated at
+  14:02", once per update (D112, lib/siteUpdate.ts); /api/me is read
+  again whenever a live stream reconnects. Navigation is named by job: students
   get "Contests" (Your contests) and, once an organiser has shared an
   integrity case with them, "Questions"; admins and owners get "Contests"
   (the organiser list at /admin/contests, where "/" sends them),
-  "Problem bank" (also current on the AI assistant screens) and, for
-  owners, "People". From 768 px everything fits one row; under 768 px an
+  "Problem bank" (also current on the AI assistant screens), for owners
+  "People", and "Inbox" (messages sent through /contact, FP.2). From 768 px everything fits one row; under 768 px an
   organiser's nav and account items collapse behind a Menu button that
   opens a panel (Escape closes it), while a student keeps the links and the
   account button in the row. Signed out, only the theme control shows.
@@ -16,7 +19,9 @@
   signed-out visitors to a protected path are sent to /signin with a
   ?next= back, and signed-in visitors to /signin are sent on. After each
   client-side navigation focus moves to the new page's heading. The footer
-  carries "Contact the organisers: {email}" when the server names one,
+  carries the organisation's name and "Contact the organisers: {email}"
+  (and its phone as a tel: link) when the server names them (C5, FP.3),
+  "Write to the organisers" (the signed-in /contact form, FP.2),
   the Privacy link once the owner approves the text (lib/site.ts), a
   "Keyboard shortcuts" button and the build year; "?" anywhere outside a
   text field opens the same list (components/ShortcutsDialog). The two
@@ -31,9 +36,11 @@
   import Toasts from './components/Toasts.svelte';
   import ThemeMenu from './lib/ThemeMenu.svelte';
   import { regions } from './lib/announce.svelte';
-  import { loadMode, runMode } from './lib/mode.svelte';
+  import { loadMode, runMode, telHref } from './lib/mode.svelte';
   import { installLinkInterception, matchRoute, navigate, router } from './lib/router.svelte';
-  import { loadSession, session, signOut } from './lib/session.svelte';
+  import { loadSession, refreshSiteUpdated, session, signOut } from './lib/session.svelte';
+  import { isNewUpdate, markUpdateSeen, seenUpdate, updateLine } from './lib/siteUpdate';
+  import { onStreamReconnect } from './lib/stream';
   import { loadQuestions, shell } from './lib/shell.svelte';
   import { isPlainKey, isTypingTarget } from './lib/shortcuts';
   import { safeNext } from './lib/signin';
@@ -47,6 +54,8 @@
   import ContestIntegrity from './routes/ContestIntegrity.svelte';
   import ContestPage from './routes/ContestPage.svelte';
   import ContestResults from './routes/ContestResults.svelte';
+  import Contact from './routes/Contact.svelte';
+  import ContactInbox from './routes/ContactInbox.svelte';
   import Home from './routes/Home.svelte';
   import IntegrityCase from './routes/IntegrityCase.svelte';
   import IntegrityPair from './routes/IntegrityPair.svelte';
@@ -64,6 +73,32 @@
 
   let menuOpen = $state(false);
   let menuButton: HTMLButtonElement | undefined = $state();
+  let header: HTMLElement | undefined = $state();
+
+  // D112: "The site was updated at 14:02", once per update, for students.
+  let siteUpdate = $state<number | null>(null);
+  $effect(() => {
+    const at = session.user?.site_updated_at;
+    if (session.user?.role !== 'student' || typeof at !== 'number') return;
+    if (siteUpdate !== at && isNewUpdate(at, seenUpdate())) {
+      siteUpdate = at;
+      markUpdateSeen(at);
+    }
+  });
+
+  // The header's real height (testing banner and wrapped rows included), so
+  // the workspace can fill the rest of the window (audit 2026-10-20 S2).
+  $effect(() => {
+    const el = header;
+    if (!el || typeof ResizeObserver === 'undefined') return;
+    const root = document.documentElement;
+    const ro = new ResizeObserver(() => root.style.setProperty('--shell-head', `${el.offsetHeight}px`));
+    ro.observe(el);
+    return () => {
+      ro.disconnect();
+      root.style.removeProperty('--shell-head');
+    };
+  });
 
   const match = $derived(matchRoute(router.path));
   const route = $derived(match.route);
@@ -92,6 +127,7 @@
       { href: '/admin/problems', label: 'Problem bank', current: ['problems', 'problem', 'problem-try', 'ai-settings', 'ai-new'].includes(name) },
     ];
     if (isOwner) links.push({ href: '/admin/people', label: 'People', current: name === 'people' });
+    links.push({ href: '/admin/contact', label: 'Inbox', current: name === 'contact-inbox' });
     return links;
   });
 
@@ -146,8 +182,12 @@
     loadSession().then((err) => {
       if (err) showToast(err.message, 'error');
     });
-    loadMode();
-    return removeInterception;
+    void loadMode();
+    const removeReconnect = onStreamReconnect(() => void refreshSiteUpdated());
+    return () => {
+      removeInterception();
+      removeReconnect();
+    };
   });
 
   function onKeydown(event: KeyboardEvent) {
@@ -175,11 +215,17 @@
 <div class="page">
   <a class="skip" href="#main">Skip to content</a>
 
-  <header class="bar">
+  <header class="bar" bind:this={header}>
     {#if runMode.mode === 'testing'}
       <p class="mode-banner" role="note">
         Testing mode: sign-in is off and anyone at this machine can sign in as anyone. Do not use it for a real contest.
       </p>
+    {/if}
+    {#if siteUpdate !== null && signedIn}
+      <div class="site-update" role="status">
+        <p>{updateLine(siteUpdate)} Your code and submissions are kept.</p>
+        <button type="button" class="btn btn-quiet btn-compact" onclick={() => (siteUpdate = null)}>Dismiss</button>
+      </div>
     {/if}
     <div class="inner bar-inner">
       <a class="wordmark" href="/" translate="no">podium</a>
@@ -285,6 +331,10 @@
       <MyIntegrity />
     {:else if route.name === 'privacy'}
       <Privacy />
+    {:else if route.name === 'contact'}
+      <Contact />
+    {:else if route.name === 'contact-inbox'}
+      <ContactInbox />
     {:else}
       <NotFound />
     {/if}
@@ -293,9 +343,14 @@
   <footer class="inner foot">
     <!-- Sign-in carries the same line in its own column. -->
     {#if runMode.contactEmail !== '' && route.name !== 'signin'}
-      <p class="contact">Contact the organisers: <a href="mailto:{runMode.contactEmail}">{runMode.contactEmail}</a></p>
+      <p class="contact">
+        {#if runMode.organisation.name !== ''}{`${runMode.organisation.name}. `}{/if}Contact the organisers:
+        <a href="mailto:{runMode.contactEmail}">{runMode.contactEmail}</a>{#if runMode.organisation.phone !== ''},
+          <a href={telHref(runMode.organisation.phone)}>{runMode.organisation.phone}</a>{/if}
+      </p>
     {/if}
     <ul class="foot-links">
+      {#if signedIn}<li><a href="/contact">Write to the organisers</a></li>{/if}
       {#if PRIVACY_LINKED}<li><a href="/privacy">Privacy</a></li>{/if}
       <li class="keys">
         <button type="button" class="btn btn-quiet btn-compact" aria-keyshortcuts="?" onclick={() => (shell.shortcuts = true)}>
@@ -343,6 +398,19 @@
     padding: var(--space-2) var(--gutter);
     border-bottom: var(--rule) solid var(--line);
     background: var(--part-tint);
+    color: var(--ink);
+    font-size: var(--fs-0);
+  }
+
+  .site-update {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-1) var(--space-3);
+    padding: var(--space-1) var(--gutter);
+    border-bottom: var(--rule) solid var(--line);
+    background: var(--act-tint);
     color: var(--ink);
     font-size: var(--fs-0);
   }

@@ -281,6 +281,11 @@ export function usedText(count: number, max: number): string {
 }
 
 /** The headline and tone of a run (RunResults shows it; the announcer speaks it). */
+/** True when a finished run stopped at the compiler: no input ran, and there is compiler output. */
+export function runCompileFailed(run: Run): boolean {
+  return run.state === 'done' && run.compile_output !== '' && run.results.every((r) => r.verdict === '');
+}
+
 export function runHeadline(run: Run): { text: string; tone: Tone } {
   if (isWaiting(run)) return { text: run.state === 'running' ? 'Running' : waitingText(run), tone: 'wait' };
   if (run.state === 'error') return { text: 'The run could not finish. Try again in a moment.', tone: 'bad' };

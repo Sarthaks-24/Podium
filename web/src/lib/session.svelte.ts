@@ -32,6 +32,8 @@ export interface User {
   /** Theme id, or "" to follow the system (lib/theme.ts). */
   theme: string;
   verdicts: string;
+  /** When an emergency deploy restarted the site in the last 12 hours (Unix ms), else null (D112). */
+  site_updated_at?: number | null;
 }
 
 export type SessionStatus = 'loading' | 'signed-out' | 'signed-in';
@@ -66,6 +68,20 @@ export async function loadSession(): Promise<ApiError | null> {
     session.status = 'signed-out';
     if (err instanceof ApiError && err.status === 401) return null;
     return err instanceof ApiError ? err : new ApiError(0, 'unexpected', String(err));
+  }
+}
+
+/**
+ * Reads /api/me again for its site_updated_at only, after a live stream
+ * reconnects (D112). Failures are quiet: the next page load tries again.
+ */
+export async function refreshSiteUpdated(): Promise<void> {
+  if (session.status !== 'signed-in' || !session.user) return;
+  try {
+    const user = await getJSON<User>('/api/me');
+    if (session.user && session.user.id === user.id) session.user = { ...session.user, site_updated_at: user.site_updated_at ?? null };
+  } catch {
+    // Nothing to show; the line waits for the next load.
   }
 }
 
