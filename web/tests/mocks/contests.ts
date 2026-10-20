@@ -3,6 +3,15 @@
 import { expect, test, type Page, type Route } from '@playwright/test';
 import { longLivedEvents } from '../sse';
 
+let frozenNow: number | null = null;
+/** The mock's clock: real time, or a fixed instant for pixel baselines (pair it with page.clock.setFixedTime). */
+export function freezeClock(at: number | null): void {
+  frozenNow = at;
+}
+function nowMs(): number {
+  return frozenNow ?? Date.now();
+}
+
 export function shots(): string {
   return `${test.info().project.testDir}/../../cache/screenshots-m4/`;
 }
@@ -51,7 +60,7 @@ export function apiError(route: Route, status: number, code: string, message: st
   return json(route, status, { error: { code, message, ...extra } });
 }
 
-export function submission(id: number, problemId: number, state: 'queued' | 'done', score = 0, created = Date.now()): Json {
+export function submission(id: number, problemId: number, state: 'queued' | 'done', score = 0, created = nowMs()): Json {
   const done = state === 'done';
   return {
     id,
@@ -79,7 +88,7 @@ export function submission(id: number, problemId: number, state: 'queued' | 'don
 export function hidden(id: number, problemId: number): Json {
   return {
     id, problem_id: problemId, language: 'cpp17', state: 'submitted', hidden: true, verdict: '', score: 0, max_score: 100,
-    max_time_ms: 0, max_memory_kb: 0, created_at: Date.now(), judged_at: null, queue_position: null, compile_output: '', samples: [], subtasks: [],
+    max_time_ms: 0, max_memory_kb: 0, created_at: nowMs(), judged_at: null, queue_position: null, compile_output: '', samples: [], subtasks: [],
   };
 }
 
@@ -123,7 +132,7 @@ export function boardRows(count: number, meIndex: number, frozen: boolean) {
 
 export async function mockApi(page: Page, options: Options = {}) {
   await longLivedEvents(page);
-  const now = Date.now();
+  const now = nowMs();
   const startMode = options.startMode ?? 'fixed';
   const phase = options.phase ?? 'ready';
   const startsAt = phase === 'upcoming' ? now + 2 * 3_600_000 + 5 * MIN : phase === 'after' || phase === 'practice' ? now - 4 * 3_600_000 : now - 30 * MIN;
@@ -225,7 +234,7 @@ export async function mockApi(page: Page, options: Options = {}) {
     public_clarifications: [],
     editorial_md: phase === 'after' || phase === 'practice' ? '## A plus B\n\nUse 64-bit integers.' : null,
     second_session: options.secondSession ?? false,
-    server_now: Date.now(),
+    server_now: nowMs(),
   });
 
   const workspace = (label: string) => {
@@ -245,7 +254,7 @@ export async function mockApi(page: Page, options: Options = {}) {
       samples: [{ idx: 1, input: '1 2\n', output: '3\n', truncated: false }],
       draft: null,
       submissions: state.submissions.filter((s) => s.problem_id === p.id).sort((a, b) => Number(b.id) - Number(a.id)),
-      server_now: Date.now(),
+      server_now: nowMs(),
     };
   };
 
@@ -299,7 +308,7 @@ export async function mockApi(page: Page, options: Options = {}) {
     revealed_at: state.revealedAt,
     extensions: state.extensions.map((x) => ({ user_id: Number(x.user), email: 'asha@college.edu', name: 'Asha Rao', minutes: x.body.minutes, reason: x.body.reason })),
     admins: [{ user_id: 3, email: 'ta@college.edu', name: 'Meera Iyer' }],
-    server_now: Date.now(),
+    server_now: nowMs(),
   });
 
   const revealBoards = () => {
@@ -340,7 +349,7 @@ export async function mockApi(page: Page, options: Options = {}) {
       if (path === '/api/auth/logout') return json(route, 204);
       if (path === '/api/events') {
         const next = state.stream.shift();
-        let body = `event: clock\ndata: ${JSON.stringify({ server_now: Date.now() })}\n\n`;
+        let body = `event: clock\ndata: ${JSON.stringify({ server_now: nowMs() })}\n\n`;
         if (next) body += `event: ${next.type}\ndata: ${JSON.stringify(next.data)}\n\n`;
         return route.fulfill({ status: 200, headers: { 'Content-Type': 'text/event-stream' }, body });
       }
@@ -357,7 +366,7 @@ export async function mockApi(page: Page, options: Options = {}) {
             { ...summary(), slug: 'week-5', title: 'Week 5 contest', state: 'ended', starts_at: now - 7 * 86_400_000, ends_at: now - 7 * 86_400_000 + 2 * 3_600_000, my_score: 240, my_window: null },
             ...(phase === 'after' || phase === 'practice' ? [summary()] : []),
           ],
-          server_now: Date.now(),
+          server_now: nowMs(),
         });
       }
       if (path === '/api/contests/week-6' && method === 'GET') return json(route, 200, contest());
@@ -376,9 +385,9 @@ export async function mockApi(page: Page, options: Options = {}) {
       if (path === '/api/contests/week-6/clarifications' && method === 'POST') {
         const body = req.postDataJSON() as Json;
         state.asked.push(body);
-        const c = { id: 90 + state.asked.length, problem_label: body.problem_label, question: body.question, answer: null, public: false, created_at: Date.now(), answered_at: null };
+        const c = { id: 90 + state.asked.length, problem_label: body.problem_label, question: body.question, answer: null, public: false, created_at: nowMs(), answered_at: null };
         state.clarifications.push(c);
-        return json(route, 201, { clarification: c, server_now: Date.now() });
+        return json(route, 201, { clarification: c, server_now: nowMs() });
       }
       const prob = path.match(/^\/api\/contests\/week-6\/problems\/([A-Z])(\/(draft|run|submit|events))?$/);
       if (prob) {
@@ -387,13 +396,13 @@ export async function mockApi(page: Page, options: Options = {}) {
         if (!p) return apiError(route, 404, 'not_found', 'No such problem.');
         if (!prob[2] && method === 'GET') return json(route, 200, workspace(label));
         if (prob[3] === 'draft' || prob[3] === 'events') return json(route, 204);
-        if (prob[3] === 'run') return json(route, 202, { id: 70, state: 'queued', queue_position: 1, compile_output: '', results: [], server_now: Date.now() });
+        if (prob[3] === 'run') return json(route, 202, { id: 70, state: 'queued', queue_position: 1, compile_output: '', results: [], server_now: nowMs() });
         if (prob[3] === 'submit') {
           const body = req.postDataJSON() as Json;
           state.submits.push({ ...body, label });
           const s = options.feedback === 'exam' ? hidden(state.nextId++, p.id) : submission(state.nextId++, p.id, 'queued');
           state.submissions.push(s);
-          return json(route, 202, { ...s, server_now: Date.now() });
+          return json(route, 202, { ...s, server_now: nowMs() });
         }
       }
       const sub = path.match(/^\/api\/submissions\/(\d+)$/);
@@ -419,7 +428,7 @@ export async function mockApi(page: Page, options: Options = {}) {
             { ...adminContest(), published: true, problems: PROBLEMS.map((p) => ({ label: p.label, problem_id: p.id, title: p.title, ready: true, max_score: 100 })) },
             { ...adminContest(), id: 5, slug: 'week-7', title: 'Week 7 contest', starts_at: now + 3 * 86_400_000, ends_at: now + 3 * 86_400_000 + 2 * 3_600_000, close_at: now + 3 * 86_400_000 + 2 * 3_600_000, start_mode: 'window', duration_minutes: 90, state: 'upcoming', published: false, problems: [] },
           ],
-          server_now: Date.now(),
+          server_now: nowMs(),
         });
       }
       if (path === '/api/admin/contests' && method === 'POST') {
@@ -459,7 +468,7 @@ export async function mockApi(page: Page, options: Options = {}) {
       }
       if (path === '/api/admin/contests/4/reveal' && method === 'POST') {
         state.releases++;
-        state.revealedAt = Date.now();
+        state.revealedAt = nowMs();
         return json(route, 200, adminContest());
       }
       if (path === '/api/admin/contests/4/pause' && method === 'POST') {
@@ -483,7 +492,7 @@ export async function mockApi(page: Page, options: Options = {}) {
       }
       if (path === '/api/admin/contests/4/rejudge' && method === 'POST') {
         state.rejudges.push(req.postDataJSON() as Json);
-        return json(route, 202, { queued: 1, server_now: Date.now() });
+        return json(route, 202, { queued: 1, server_now: nowMs() });
       }
       if (path === '/api/admin/contests/4/submissions' && method === 'GET') {
         state.feedQueries.push(url.search);
@@ -500,7 +509,7 @@ export async function mockApi(page: Page, options: Options = {}) {
         const matches = (r: (typeof rows)[number]) =>
           !verdict || (verdict === 'pending' ? r.state === 'queued' || r.state === 'running' : verdict === 'error' ? r.state === 'error' : r.verdict === verdict);
         const shown = rows.filter((r) => (!problem || r.problem_label === problem) && (!user || String(r.user_id) === user) && matches(r));
-        return json(route, 200, { submissions: shown, page: 1, has_more: false, server_now: Date.now() });
+        return json(route, 200, { submissions: shown, page: 1, has_more: false, server_now: nowMs() });
       }
       if (path === '/api/admin/contests/4/announcements' && method === 'GET') return json(route, 200, { announcements: state.posted.map((p, i) => ({ id: i + 1, body_md: p.body_md, created_at: now })) });
       if (path === '/api/admin/contests/4/announcements' && method === 'POST') {
@@ -540,7 +549,7 @@ export async function mockApi(page: Page, options: Options = {}) {
           ...state.extensions.map((x) => ({ action: 'extension', details: { email: 'asha@college.edu', ...x.body } })),
           ...state.rejudges.map((r) => ({ action: 'rejudge', details: { ...r, queued: 1 } })),
         ].map((e, i) => ({ id: i + 1, actor, created_at: now, ...e }));
-        return json(route, 200, { entries: entries.reverse(), page: 1, has_more: false, server_now: Date.now() });
+        return json(route, 200, { entries: entries.reverse(), page: 1, has_more: false, server_now: nowMs() });
       }
       if (path === '/api/admin/contests/4/editorial' && method === 'PUT') {
         state.editorials.push(req.postDataJSON() as Json);
