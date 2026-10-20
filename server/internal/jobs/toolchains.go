@@ -34,6 +34,13 @@ func (s *Service) RegisterToolchain(ctx context.Context, t judgeapi.Toolchain) (
 	_, err := s.DB.ExecContext(ctx, `INSERT INTO toolchains (hash, details, first_seen, last_seen)
 		VALUES (?1, ?2, ?3, max(?3, (SELECT coalesce(max(last_seen), 0) + 1 FROM toolchains)))
 		ON CONFLICT (hash) DO UPDATE SET last_seen = excluded.last_seen`, hash, string(details), now)
+	if err != nil {
+		return "", err
+	}
+	// The judge holds the token but is not trusted: keep the table small.
+	// A toolchain no job ran on and not among the 20 latest goes.
+	_, err = s.DB.ExecContext(ctx, `DELETE FROM toolchains WHERE id NOT IN (SELECT toolchain_id FROM jobs WHERE toolchain_id IS NOT NULL)
+		AND id NOT IN (SELECT id FROM toolchains ORDER BY last_seen DESC LIMIT 20)`)
 	return hash, err
 }
 

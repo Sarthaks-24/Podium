@@ -224,7 +224,7 @@ func (g *Gemini) call(ctx context.Context, system string, msgs []geminiContent, 
 }
 
 func geminiRefusal(reason string) *Error {
-	cat := strings.ToLower(reason)
+	cat := safeCategory(strings.ToLower(reason))
 	return &Error{Code: CodeRefused, Category: cat,
 		Message: fmt.Sprintf("The model declined this request (category: %s). Rephrase it and try again.", cat)}
 }

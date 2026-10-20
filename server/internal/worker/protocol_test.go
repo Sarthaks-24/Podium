@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -144,5 +145,38 @@ func TestToolchainStoredOnceAndOnEachJob(t *testing.T) {
 	var hash string
 	if err := r.jobs.DB.QueryRow("SELECT t.hash FROM jobs j JOIN toolchains t ON t.id = j.toolchain_id WHERE j.id = ?", id).Scan(&hash); err != nil || hash != h1 {
 		t.Errorf("job toolchain %q %v", hash, err)
+	}
+}
+
+// A 400 bad_report to a toolchain report is a refused report, retried,
+// not a stop (P1 security review, finding 7).
+func TestBadReportIsNotAProtocolStop(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(400)
+		io.WriteString(w, `{"error":{"code":"bad_report","message":"each toolchain field is valid UTF-8 of at most 200 bytes"}}`)
+	}))
+	defer srv.Close()
+	_, err := (&Client{BaseURL: srv.URL, Token: "t", HTTP: srv.Client()}).ReportToolchain(context.Background(), judgeapi.Toolchain{})
+	var pe *ProtocolError
+	if err == nil || errors.As(err, &pe) {
+		t.Errorf("got %v", err)
+	}
+}
+
+// The toolchains table keeps the 20 latest plus those jobs ran on.
+func TestToolchainsArePruned(t *testing.T) {
+	r := newDrainRig(t)
+	for i := 0; i < 30; i++ {
+		if _, err := r.jobs.RegisterToolchain(context.Background(), judgeapi.Toolchain{GCC: "g++ " + strconv.Itoa(i)}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var n int
+	r.jobs.DB.QueryRow("SELECT count(*) FROM toolchains").Scan(&n)
+	if n != 20 {
+		t.Errorf("%d toolchains kept", n)
+	}
+	if cur, _ := r.jobs.CurrentToolchain(context.Background()); cur == nil || cur.Details.GCC != "g++ 29" {
+		t.Errorf("current %+v", cur)
 	}
 }

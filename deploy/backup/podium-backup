@@ -48,7 +48,9 @@ if (( EUID == 0 )); then
   id podium-backup >/dev/null 2>&1 || die "user podium-backup missing; run: sudo ./install.sh users"
   # as_podium: the local work, with an environment that holds nothing
   # secret. as_offsite: rclone and the heartbeat, with the variables.
-  as_podium() { setpriv --reuid=podium --regid=podium --init-groups -- env -i PATH="$PATH" HOME=/var/lib/podium LC_ALL=C.UTF-8 "$@"; }
+  # env -i runs first, as root: the environment is empty before the uid
+  # changes, so no podium process ever holds the key, even for an exec.
+  as_podium() { env -i PATH="$PATH" HOME=/var/lib/podium LC_ALL=C.UTF-8 setpriv --reuid=podium --regid=podium --init-groups -- "$@"; }
   as_offsite() { setpriv --reuid=podium-backup --regid=podium-backup --init-groups -- "$@"; }
 else
   as_podium() { "$@"; }

@@ -88,6 +88,19 @@ type Error struct {
 
 func (e *Error) Error() string { return e.Message }
 
+// safeCategory keeps a provider's refusal category to what a fixed
+// sentence may carry: at most 40 lower-case letters, digits and
+// underscores, or "other".
+func safeCategory(s string) string {
+	if s == "" {
+		return ""
+	}
+	if len(s) > 40 || strings.Trim(s, "abcdefghijklmnopqrstuvwxyz0123456789_") != "" {
+		return "other"
+	}
+	return s
+}
+
 // Provider names.
 const (
 	ProviderAnthropic = "anthropic"

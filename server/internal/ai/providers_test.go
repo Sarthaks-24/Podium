@@ -347,3 +347,25 @@ func TestGeminiModelsAndErrors(t *testing.T) {
 		t.Errorf("deadline: %v", err)
 	}
 }
+
+// The P1 security review: a refusal category from a provider is clipped
+// to a safe word, and the Anthropic client follows no redirect with the key.
+func TestCategoryAndRedirect(t *testing.T) {
+	for in, want := range map[string]string{"": "", "cyber": "cyber", "prohibited_content": "prohibited_content",
+		"<b>x</b>": "other", strings.Repeat("a", 41): "other"} {
+		if got := safeCategory(in); got != want {
+			t.Errorf("safeCategory(%q) = %q, want %q", in, got, want)
+		}
+	}
+	var hits int
+	away := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { hits++ }))
+	defer away.Close()
+	redirect := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, away.URL+r.URL.Path, http.StatusTemporaryRedirect)
+	}))
+	defer redirect.Close()
+	a := &Anthropic{Key: NewSecret(testKey), Model: testModel, BaseURL: redirect.URL, MaxRetries: 0}
+	if err := a.Check(context.Background()); err == nil || hits != 0 {
+		t.Errorf("redirect followed: %v, %d requests at the other host", err, hits)
+	}
+}

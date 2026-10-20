@@ -42,7 +42,9 @@ func (a *Anthropic) client() anthropic.Client {
 	if hc == nil {
 		// No client timeout: the caller's context bounds each call (3
 		// minutes for a generation), and a long stream must not be cut.
-		hc = &http.Client{}
+		// No redirects: Go would resend the X-Api-Key header to the new
+		// host (it strips only Authorization and Cookie).
+		hc = &http.Client{CheckRedirect: noRedirect}
 	}
 	opts := []option.RequestOption{
 		option.WithoutEnvironmentDefaults(),
@@ -103,7 +105,7 @@ func (a *Anthropic) call(ctx context.Context, system string, msgs []anthropic.Be
 	}
 	switch msg.StopReason {
 	case anthropic.BetaStopReasonRefusal:
-		cat := string(msg.StopDetails.Category)
+		cat := safeCategory(string(msg.StopDetails.Category))
 		m := "The model declined this request."
 		if cat != "" {
 			m = fmt.Sprintf("The model declined this request (category: %s).", cat)

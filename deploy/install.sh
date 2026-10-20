@@ -211,6 +211,7 @@ step_dirs() {
   install -d -o podium -g podium -m 750 /var/lib/podium /var/lib/podium/tests
   # Group podium (podium-backup's Litestream) may write the database
   # directory; setgid keeps new files in the group.
+  [[ -L /var/lib/podium/db ]] && die "/var/lib/podium/db is a symlink; move it aside and run the dirs step again"
   install -d -o podium -g podium -m 2770 /var/lib/podium/db
   install -d -o judge  -g judge  -m 750 /var/cache/podium-judge
   install -d -o root   -g root   -m 755 /etc/podium
@@ -285,7 +286,9 @@ version_ge() { [[ $(printf '%s\n%s\n' "${2#v}" "${1#v}" | sort -V | head -n1) ==
 is_release_version() { [[ $1 =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; }
 
 # verify_release: every file of the unpacked release matches SHA256SUMS,
-# so a damaged or altered tarball installs nothing.
+# so a damaged or half-copied tarball installs nothing. It proves
+# integrity, not origin: SHA256SUMS travels in the same tarball. Check the
+# tarball's .sha256 from the GitHub release before unpacking for that.
 verify_release() {
   if [[ ! -f $HERE/SHA256SUMS ]]; then
     [[ -f $HERE/MANIFEST ]] && die "$HERE has a MANIFEST but no SHA256SUMS; unpack the release tarball again"
@@ -322,15 +325,18 @@ check_upgrade_path() {
 # db_group_rw: the database files writable by group podium, so
 # Litestream (user podium-backup) can checkpoint. SQLite gives the -wal
 # and -shm files the database file's mode, so this holds once set.
+# The folder and files belong to podium, which a taken-over server could
+# swap for symlinks; so this runs as podium, never as root, and skips
+# symlinks (P1 security review, finding 1).
 db_group_rw() {
   local db dir
   db=$(db_path); dir=$(dirname "$db")
-  [[ -d $dir ]] && chmod 2770 "$dir" && chgrp podium "$dir"
-  local f
-  for f in "$db" "$db-wal" "$db-shm"; do
-    [[ -f $f ]] && chmod 660 "$f" && chgrp podium "$f"
-  done
-  true
+  [[ -d $dir && ! -L $dir ]] || return 0
+  setpriv --reuid=podium --regid=podium --init-groups -- sh -c '
+    chmod 2770 "$1"
+    for f in "$2" "$2-wal" "$2-shm"; do
+      if [ -f "$f" ] && [ ! -L "$f" ]; then chmod 660 "$f"; fi
+    done' db_group_rw "$dir" "$db" || echo "warning: could not make $dir group-writable for Litestream"
 }
 
 step_app() {
