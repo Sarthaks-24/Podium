@@ -5,8 +5,8 @@
   get "Contests" (Your contests) and, once an organiser has shared an
   integrity case with them, "Questions"; admins and owners get "Contests"
   (the organiser list at /admin/contests, where "/" sends them),
-  "Problem bank" (also current on the AI assistant screens) and, for
-  owners, "People". From 768 px everything fits one row; under 768 px an
+  "Problem bank" (also current on the AI assistant screens), for owners
+  "People", and "Inbox" (messages sent through /contact, FP.2). From 768 px everything fits one row; under 768 px an
   organiser's nav and account items collapse behind a Menu button that
   opens a panel (Escape closes it), while a student keeps the links and the
   account button in the row. Signed out, only the theme control shows.
@@ -49,6 +49,8 @@
   import ContestIntegrity from './routes/ContestIntegrity.svelte';
   import ContestPage from './routes/ContestPage.svelte';
   import ContestResults from './routes/ContestResults.svelte';
+  import Contact from './routes/Contact.svelte';
+  import ContactInbox from './routes/ContactInbox.svelte';
   import Home from './routes/Home.svelte';
   import IntegrityCase from './routes/IntegrityCase.svelte';
   import IntegrityPair from './routes/IntegrityPair.svelte';
@@ -109,6 +111,7 @@
       { href: '/admin/problems', label: 'Problem bank', current: ['problems', 'problem', 'problem-try', 'ai-settings', 'ai-new'].includes(name) },
     ];
     if (isOwner) links.push({ href: '/admin/people', label: 'People', current: name === 'people' });
+    links.push({ href: '/admin/contact', label: 'Inbox', current: name === 'contact-inbox' });
     return links;
   });
 
@@ -302,6 +305,10 @@
       <MyIntegrity />
     {:else if route.name === 'privacy'}
       <Privacy />
+    {:else if route.name === 'contact'}
+      <Contact />
+    {:else if route.name === 'contact-inbox'}
+      <ContactInbox />
     {:else}
       <NotFound />
     {/if}
@@ -311,7 +318,7 @@
     <!-- Sign-in carries the same line in its own column. -->
     {#if runMode.contactEmail !== '' && route.name !== 'signin'}
       <p class="contact">
-        {#if runMode.organisation.name !== ''}{runMode.organisation.name}. {/if}Contact the organisers:
+        {#if runMode.organisation.name !== ''}{`${runMode.organisation.name}. `}{/if}Contact the organisers:
         <a href="mailto:{runMode.contactEmail}">{runMode.contactEmail}</a>{#if runMode.organisation.phone !== ''},
           <a href={telHref(runMode.organisation.phone)}>{runMode.organisation.phone}</a>{/if}
       </p>

@@ -286,3 +286,8 @@ h2[tabindex="-1"]:focus {
     padding: var(--space-4);
   }
 }
+
+/* A phone number never breaks across lines. */
+a[href^='tel:'] {
+  white-space: nowrap;
+}
