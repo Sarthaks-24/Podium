@@ -10,7 +10,7 @@ import (
 // code, evidence or a test, or uses the words the plan rules out.
 func TestNoticeTextCarriesNoCodeTestDataOrNames(t *testing.T) {
 	forbidden := []string{"flag", "trust", "suspicious", "cheat", "test", "evidence", "source", "code", "output", "input", "rating",
-		"score", "@", "Asha", "Ravi", "—", "–", "!"}
+		"score", "@", "Asha", "Ravi", "\u2014", "\u2013", "!"}
 	for _, kind := range Kinds {
 		for _, outcome := range []string{"", "warning", "zero_problem", "referred"} {
 			for _, contest := range []string{"", "Week 6"} {
