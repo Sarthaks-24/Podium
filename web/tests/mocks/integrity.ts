@@ -216,6 +216,8 @@ export async function mockApi(page: Page, options: Options = {}) {
       if (path === '/api/contests') return json(route, 200, { live: [], upcoming: [], past: [{ slug: 'week-6', title: 'Week 6 contest', starts_at: endsAt - 2 * 3_600_000, ends_at: endsAt, start_mode: 'fixed', duration_minutes: 0, problem_count: 2, state: 'ended', my_score: 140, max_score: 200, my_window: null }], server_now: Date.now() });
 
       // Student routes.
+      if (path === '/api/me/standing' && method === 'GET') return json(route, 200, { band: 'good', band_name: 'Good standing', lines: [], server_now: Date.now() });
+      if (path === '/api/integrity/cases/3/opened' && method === 'POST') return json(route, 204);
       if (path === '/api/integrity/cases' && method === 'GET') {
         return json(route, 200, {
           cases: options.noCases || me.role !== 'student' ? [] : [studentCase()],
@@ -409,9 +411,9 @@ export const SCREENS: Screen[] = [
   },
   {
     name: 'student-integrity',
-    path: '/integrity',
+    path: '/integrity/cases/3',
     options: { who: 'student' },
-    title: 'Questions about your submissions · podium',
+    title: 'Question about your submission · Week 6 contest · podium',
     ready: (page) => expect(page.locator('mark').first()).toBeVisible(),
   },
 ];

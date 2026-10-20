@@ -28,6 +28,10 @@ export type RouteName =
   | 'integrity-pair'
   | 'integrity-case'
   | 'my-integrity'
+  | 'my-case'
+  | 'progress'
+  | 'admin-progress'
+  | 'inbox'
   | 'privacy'
   | 'contact'
   | 'contact-inbox'
@@ -80,7 +84,11 @@ export const ROUTES: readonly RouteDef[] = [
   { pattern: '/privacy', name: 'privacy', auth: false, public: false, title: 'Privacy', description: 'What podium records about you, who can see it and how long it is kept.' },
   { pattern: '/contact', name: 'contact', auth: true, public: false, title: 'Write to the organisers', description: 'Send the organisers a message about a contest, your account or your data.' },
   { pattern: '/admin/contact', name: 'contact-inbox', auth: true, public: false, title: 'Messages to the organisers', description: 'Messages people sent to the organisers, with a reply link.' },
-  { pattern: '/integrity', name: 'my-integrity', auth: true, public: false, title: 'Questions about your submissions', description: 'Questions the organisers have about your submissions, and your replies.' },
+  { pattern: '/integrity', name: 'my-integrity', auth: true, public: false, title: 'Questions and standing', description: 'Your standing, and the questions the organisers asked about your submissions with your replies.' },
+  { pattern: '/integrity/cases/:case', name: 'my-case', auth: true, public: false, title: 'Question about your submission', description: 'One question from the organisers about your submission, your reply and any decision.' },
+  { pattern: '/progress', name: 'progress', auth: true, public: false, title: 'Your progress', description: 'Your final results across contests, where points were lost and what to practise next.' },
+  { pattern: '/admin/users/:id/progress', name: 'admin-progress', auth: true, public: false, title: 'Student progress', description: 'The final results of one student across contests, as they see them.' },
+  { pattern: '/notices', name: 'inbox', auth: true, public: false, title: 'Notices', description: 'Notices about your results and about questions from the organisers.' },
 ];
 
 /** Shown for any path that matches nothing in ROUTES. */

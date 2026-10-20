@@ -17,6 +17,7 @@ import * as contests from './mocks/contests';
 import * as integrity from './mocks/integrity';
 import * as problems from './mocks/problems';
 import * as screens from './mocks/screens';
+import * as students from './mocks/students';
 import * as workspace from './mocks/workspace';
 
 interface Target {
@@ -31,6 +32,7 @@ const TARGETS: Target[] = [
   ...problems.SCREENS.map((s) => ({ ...s, mock: (p: Page) => problems.mockApi(p) })),
   ...ai.SCREENS.map((s) => ({ ...s, mock: (p: Page) => ai.mockApi(p, s.opts) })),
   ...contests.SCREENS.map((s) => ({ ...s, mock: (p: Page) => contests.mockApi(p, s.options) })),
+  ...students.SCREENS.map((s) => ({ ...s, name: `p4-${s.name}`, mock: (p: Page) => students.mockApi(p, s.options) })),
   ...integrity.SCREENS.map((s) => ({ ...s, name: s.name.startsWith('integrity') ? s.name : `integrity-${s.name}`, mock: (p: Page) => integrity.mockApi(p, s.options) })),
   {
     name: 'problem-try',

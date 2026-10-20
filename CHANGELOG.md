@@ -19,6 +19,17 @@ Becomes `v1.4.0` when the P4 gate is signed and the owner has re-approved the pr
 - Retention rows for notes, notices, record views, the rating history, summaries and standing entries; erasure also removes notices and summaries.
 - The contest audit's `extension` rows record `reason_given` instead of the reason text.
 
+### v2 P4, frontend: student screens (2026-10-21)
+
+Becomes `v1.4.0` with the rest of P4. The privacy text changed and waits for the owner's re-approval (input 29); it stays unlinked until then.
+
+- "Your progress" at `/progress`, a new item in the student nav: the figures row, score over time (inline SVG with "Show as table"), each contest's problems drawn like standings cells, topics weakest first, difficulty, where points were lost with one line of guidance, and what to practise next. Only final results; the place is small and muted, and there is no comparison with anyone (D94, D95). Owners and admins open the same page at `/admin/users/{id}/progress`.
+- Your contests sums up the final results in one line with a link to progress (D92). A final result links to progress and names the problem to practise next; nothing is asked while a board is frozen or held.
+- Notices at `/notices`, with the unread count beside the account button and in the account menu: what happened, what to do, by when, and on a question the line "Nothing affects your marks until a person decides". Notices wait while the student is in a contest.
+- `/integrity` is now "Questions and standing": the standing band and its dated lines with reasons, never a number, with an appeal for each line, then the questions. Each question has its own page, `/integrity/cases/{case}`, with the evidence (a manual case's lines highlighted), the explanation, the decision with its reason and the appeal form.
+- "Hide my progress" in the account menu. A problem a review decision set to zero says so on the student's own result, with a link to the case.
+- The privacy notice lists the P4 data: contest summaries, notices, private notes, questions, decisions and appeals, the standing, the organisers' rating, the record view log and the hide-progress choice, with who sees each.
+
 ### v2 P3, frontend: student and styles (2026-10-21)
 
 Becomes `v1.3.0` with the rest of P3. The workspace items (S2, S4) are student-facing and ship only in a calendar slot; each is its own commit so it can be held.

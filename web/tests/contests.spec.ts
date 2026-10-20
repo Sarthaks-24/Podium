@@ -60,9 +60,9 @@ test('the contest list puts the live contest first with a countdown', async ({ p
   await page.setViewportSize({ width: 375, height: 812 });
   await expect(rows.nth(1).getByText('240 of 300')).toBeVisible();
   await page.setViewportSize({ width: 1280, height: 800 });
-  // Students get only the Contests link.
+  // Students get Contests and Your progress (P4).
   await expect(page.getByRole('link', { name: 'Contests', exact: true })).toHaveAttribute('aria-current', 'page');
-  await expect(page.getByRole('navigation', { name: 'Main' }).getByRole('link')).toHaveText(['Contests']);
+  await expect(page.getByRole('navigation', { name: 'Main' }).getByRole('link')).toHaveText(['Contests', 'Your progress']);
   await expect(page.getByRole('link', { name: 'Problem bank' })).toHaveCount(0);
 });
 

@@ -174,8 +174,40 @@
       "name": "my-integrity",
       "auth": true,
       "public": false,
-      "title": "Questions about your submissions",
-      "description": "Questions the organisers have about your submissions, and your replies."
+      "title": "Questions and standing",
+      "description": "Your standing, and the questions the organisers asked about your submissions with your replies."
+    },
+    {
+      "pattern": "/integrity/cases/:case",
+      "name": "my-case",
+      "auth": true,
+      "public": false,
+      "title": "Question about your submission",
+      "description": "One question from the organisers about your submission, your reply and any decision."
+    },
+    {
+      "pattern": "/progress",
+      "name": "progress",
+      "auth": true,
+      "public": false,
+      "title": "Your progress",
+      "description": "Your final results across contests, where points were lost and what to practise next."
+    },
+    {
+      "pattern": "/admin/users/:id/progress",
+      "name": "admin-progress",
+      "auth": true,
+      "public": false,
+      "title": "Student progress",
+      "description": "The final results of one student across contests, as they see them."
+    },
+    {
+      "pattern": "/notices",
+      "name": "inbox",
+      "auth": true,
+      "public": false,
+      "title": "Notices",
+      "description": "Notices about your results and about questions from the organisers."
     }
   ],
   "notFound": {

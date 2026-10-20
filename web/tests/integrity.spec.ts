@@ -283,8 +283,12 @@ test('a student sees a quiet notice, their own evidence, and saves an explanatio
   await expect(notice).toBeVisible();
   await page.getByRole('link', { name: 'Write your explanation' }).click();
   await expect(page).toHaveURL(/\/integrity$/);
-  await expect(page.getByRole('heading', { level: 1, name: 'Questions about your submissions' })).toBeFocused();
+  await expect(page.getByRole('heading', { level: 1, name: 'Questions and standing' })).toBeFocused();
   await expect(page.getByText('Waiting for your explanation. Nothing has been decided.')).toBeVisible();
+  // P4: each question has its own page.
+  await page.getByRole('link', { name: 'Open the question' }).click();
+  await expect(page).toHaveURL(/\/integrity\/cases\/3$/);
+  await expect(page.getByRole('heading', { level: 1, name: 'Question about Week 6 contest' })).toBeFocused();
   await expect(page.getByText("Your submission shares long passages with another student's submission.", { exact: false })).toBeVisible();
   // Never another student's name, never a strength or a signal word.
   await expect(page.locator('main')).not.toContainText('Ravi Kumar');
@@ -307,6 +311,8 @@ test('a decided case reads only for the student', async ({ page }) => {
   await mockApi(page, { who: 'student', decided: true });
   await page.goto('/integrity');
   await expect(page.getByText('Decided: cleared. No action will be taken.')).toBeVisible();
+  await page.getByRole('link', { name: 'Open the question' }).click();
+  await expect(page.getByText('Decided: cleared. No action will be taken.')).toBeVisible();
   await expect(page.getByText('I wrote it in the lab from the lecture notes.')).toBeVisible();
   await expect(page.getByRole('button', { name: 'Save explanation' })).toHaveCount(0);
   await expect(page.getByText('An organiser has decided, so you can no longer change your explanation.')).toBeVisible();
@@ -318,7 +324,7 @@ test('a student with no cases gets no notice', async ({ page }) => {
   await expect(page.getByRole('link', { name: 'Week 6 contest' })).toBeVisible();
   await expect(page.getByText('An organiser asked you to explain a submission.')).toHaveCount(0);
   await page.goto('/integrity');
-  await expect(page.getByText('Nothing to explain.', { exact: false })).toBeVisible();
+  await expect(page.getByText('No questions. If an organiser asks you about a submission', { exact: false })).toBeVisible();
 });
 
 test('students cannot open the organiser screens', async ({ page }) => {
@@ -373,8 +379,10 @@ test('keyboard only: a student reads the integrity question and saves an explana
   const api = await mockApi(page, { who: 'student' });
   await page.goto('/');
   await activate(page, page.getByRole('link', { name: 'Write your explanation' }));
-  await expect(page.getByRole('heading', { level: 1, name: 'Questions about your submissions' })).toBeFocused();
+  await expect(page.getByRole('heading', { level: 1, name: 'Questions and standing' })).toBeFocused();
   await expect(page.getByText('This is not a finding', { exact: false })).toBeVisible();
+  await activate(page, page.getByRole('link', { name: 'Open the question' }));
+  await expect(page.getByRole('heading', { level: 1, name: 'Question about Week 6 contest' })).toBeFocused();
 
   const field = page.getByLabel('Explain how you wrote this, in your own words');
   await activate(page, page.getByRole('button', { name: 'Save explanation' }));

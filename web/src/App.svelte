@@ -9,7 +9,12 @@
   integrity case with them, "Questions"; admins and owners get "Contests"
   (the organiser list at /admin/contests, where "/" sends them),
   "Problem bank" (also current on the AI assistant screens), for owners
-  "People", and "Inbox" (messages sent through /contact, FP.2). From 768 px everything fits one row; under 768 px an
+  "People", and "Inbox" (messages sent through /contact, FP.2). Students
+  also get "Your progress" (/progress, v2 P4), and beside the account
+  button a "Notices" link with the unread count from /api/me (F9.1,
+  lib/notices.svelte.ts), read again when a live stream reconnects and
+  when the tab comes back; under 768 px their nav links take a second row
+  so the word-mark, Notices and Account keep the first. From 768 px everything fits one row; under 768 px an
   organiser's nav and account items collapse behind a Menu button that
   opens a panel (Escape closes it), while a student keeps the links and the
   account button in the row. Signed out, only the theme control shows.
@@ -31,6 +36,7 @@
 <script lang="ts">
   import { onMount, tick } from 'svelte';
   import AccountMenu from './components/AccountMenu.svelte';
+  import Icon from './components/Icon.svelte';
   import ShortcutsDialog from './components/ShortcutsDialog.svelte';
   import ThemeDialog from './components/ThemeDialog.svelte';
   import Toasts from './components/Toasts.svelte';
@@ -42,6 +48,8 @@
   import { isNewUpdate, markUpdateSeen, seenUpdate, updateLine } from './lib/siteUpdate';
   import { onStreamReconnect } from './lib/stream';
   import { loadQuestions, shell } from './lib/shell.svelte';
+  import { adoptUnread, notices, refreshUnread } from './lib/notices.svelte';
+  import { noticesLabel } from './lib/notifications';
   import { isPlainKey, isTypingTarget } from './lib/shortcuts';
   import { safeNext } from './lib/signin';
   import { PRIVACY_LINKED } from './lib/site';
@@ -58,7 +66,9 @@
   import ContactInbox from './routes/ContactInbox.svelte';
   import Home from './routes/Home.svelte';
   import IntegrityCase from './routes/IntegrityCase.svelte';
+  import Inbox from './routes/Inbox.svelte';
   import IntegrityPair from './routes/IntegrityPair.svelte';
+  import MyCase from './routes/MyCase.svelte';
   import MyIntegrity from './routes/MyIntegrity.svelte';
   import NotFound from './routes/NotFound.svelte';
   import People from './routes/People.svelte';
@@ -114,8 +124,11 @@
   const navLinks = $derived.by(() => {
     const name = route.name;
     if (!isOrganiser) {
-      const links = [{ href: '/', label: 'Contests', current: ['home', 'contest', 'contest-problem', 'standings'].includes(name) }];
-      if (shell.questions !== 'none') links.push({ href: '/integrity', label: 'Questions', current: name === 'my-integrity' });
+      const links = [
+        { href: '/', label: 'Contests', current: ['home', 'contest', 'contest-problem', 'standings'].includes(name) },
+        { href: '/progress', label: 'Your progress', current: name === 'progress' },
+      ];
+      if (shell.questions !== 'none') links.push({ href: '/integrity', label: 'Questions', current: name === 'my-integrity' || name === 'my-case' });
       return links;
     }
     const links = [
@@ -177,16 +190,34 @@
     }
   });
 
+  // The unread notice count arrives with the session (C9).
+  $effect(() => {
+    adoptUnread(session.user?.notifications_unread);
+  });
+
+  // A notice released when a contest ends shows without a reload.
+  function onVisible() {
+    if (document.visibilityState === 'visible') void refreshUnread();
+  }
+
+  // Loaded on first visit only; the page is not needed during a contest.
+  const loadProgress = () => import('./routes/Progress.svelte');
+
   onMount(() => {
     const removeInterception = installLinkInterception();
     loadSession().then((err) => {
       if (err) showToast(err.message, 'error');
     });
     void loadMode();
-    const removeReconnect = onStreamReconnect(() => void refreshSiteUpdated());
+    const removeReconnect = onStreamReconnect(() => {
+      void refreshSiteUpdated();
+      void refreshUnread(true);
+    });
+    document.addEventListener('visibilitychange', onVisible);
     return () => {
       removeInterception();
       removeReconnect();
+      document.removeEventListener('visibilitychange', onVisible);
     };
   });
 
@@ -244,7 +275,7 @@
           </button>
         {/if}
 
-        <div id="site-menu" class="menu" class:collapsible={isOrganiser} class:open={menuOpen}>
+        <div id="site-menu" class="menu" class:collapsible={isOrganiser} class:student-menu={!isOrganiser} class:open={menuOpen}>
           <nav class="nav" aria-label="Main">
             <ul>
               {#each navLinks as l (l.href)}
@@ -256,6 +287,11 @@
             <div class="account-inline"><AccountMenu user={session.user} inline onsignout={onSignOut} /></div>
           {/if}
         </div>
+        {#if !isOrganiser}
+          <a class="notices-link" href="/notices" aria-label={noticesLabel(notices.unread)} aria-current={route.name === 'inbox' ? 'page' : undefined}>
+            <Icon name="bell" /><span class="notices-word">Notices</span>{#if notices.unread > 0}<span class="count mono" aria-hidden="true">{notices.unread}</span>{/if}
+          </a>
+        {/if}
         <div class="account-popover" class:organiser={isOrganiser}>
           <AccountMenu user={session.user} onsignout={onSignOut} />
         </div>
@@ -329,6 +365,22 @@
       {/key}
     {:else if route.name === 'my-integrity'}
       <MyIntegrity />
+    {:else if route.name === 'my-case'}
+      {#key match.params.case}
+        <MyCase id={match.params.case} />
+      {/key}
+    {:else if route.name === 'progress' || route.name === 'admin-progress'}
+      {#await loadProgress()}
+        <p class="visually-hidden" role="status">Loading</p>
+      {:then mod}
+        {#key match.params.id ?? ''}
+          <mod.default userId={route.name === 'admin-progress' ? match.params.id : ''} />
+        {/key}
+      {:catch}
+        <p class="banner banner-error" role="alert">This page could not load. Reload to try again.</p>
+      {/await}
+    {:else if route.name === 'inbox'}
+      <Inbox />
     {:else if route.name === 'privacy'}
       <Privacy />
     {:else if route.name === 'contact'}
@@ -466,6 +518,43 @@
   .account-popover,
   .signed-out-theme {
     margin-left: auto;
+  }
+
+  /* A student's Notices link sits just before the account button. */
+  .notices-link {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-1);
+    min-height: var(--control-h);
+    margin-left: auto;
+    padding-inline: var(--space-2);
+    border-radius: var(--radius);
+    color: var(--ink-muted);
+    font-size: var(--fs-0);
+    font-weight: 500;
+    text-decoration: none;
+    white-space: nowrap;
+    transition: color var(--dur-fast) var(--ease), background-color var(--dur-fast) var(--ease);
+  }
+
+  .notices-link:hover,
+  .notices-link[aria-current='page'] {
+    background: var(--surface-2);
+    color: var(--ink);
+  }
+
+  .notices-link + .account-popover {
+    margin-left: 0;
+  }
+
+  .count {
+    min-width: 1.5em;
+    padding-inline: var(--space-1);
+    border-radius: var(--radius);
+    background: var(--act);
+    color: var(--act-ink);
+    line-height: 1.4;
+    text-align: center;
   }
 
   .nav ul {
@@ -611,6 +700,20 @@
 
     .account-popover {
       margin-left: 0;
+    }
+
+    /* A student's links take their own row under the word-mark, Notices and Account. */
+    .menu.student-menu {
+      flex-basis: 100%;
+      order: 1;
+    }
+
+    .student-menu .nav ul {
+      gap: 0 var(--space-3);
+    }
+
+    .student-menu .nav a {
+      padding-inline: 0;
     }
 
     .foot-links {

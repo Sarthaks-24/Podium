@@ -17,7 +17,11 @@
   countdown over a day reads as a span ("Starts in 2 d 23 h"). When an
   organiser has shared an integrity case with the student (shell.questions,
   loaded by the shell), a quiet line links to /integrity, worded by where
-  the cases stand. The app shell sends signed-out visitors to /signin
+  the cases stand. Once a contest the student took part in has final
+  results, one line under the heading sums them up (D92, from
+  GET /api/me/progress): "Across 5 contests: 820 of 1500 points. See your
+  progress"; it is left out when the student hid their progress or the
+  request fails. The app shell sends signed-out visitors to /signin
   first. Takes no props.
 -->
 <script lang="ts">
@@ -40,6 +44,7 @@
     type ContestSummary,
   } from '../lib/contests';
   import { countOf, formatDateTime, numberParts, scoreParts } from '../lib/format';
+  import { homeLine, type Progress } from '../lib/progress';
   import { setTitle } from '../lib/head';
   import { routeTitle } from '../lib/routing';
   import { session } from '../lib/session.svelte';
@@ -49,6 +54,16 @@
   let loadState = $state<'loading' | 'ready' | 'error'>('loading');
   let loadError = $state('');
   let contests = $state<ContestSummary[]>([]);
+  let summary = $state<ReturnType<typeof homeLine>>(null);
+
+  // D92: one line from "Your progress"; quiet when it cannot load.
+  async function loadSummary() {
+    try {
+      summary = homeLine(await getJSON<Progress>('/api/me/progress'));
+    } catch {
+      summary = null;
+    }
+  }
 
   async function load() {
     loadState = 'loading';
@@ -91,6 +106,7 @@
   onMount(() => {
     setTitle(routeTitle('home'));
     void load();
+    if (session.user?.role === 'student') void loadSummary();
     return useTicker();
   });
 </script>
@@ -103,7 +119,12 @@
   <p class="banner asked">An organiser decided on a question about your submission. <a href="/integrity">Read the decision</a></p>
 {/if}
 
-<!-- D92: the "Across 5 contests" progress line goes here once "Your progress" (S8, P4) has its route. -->
+{#if summary}
+  <p class="summary">
+    Across <MonoDigits text={countOf(summary.contests, 'contest')} />: <MonoDigits parts={scoreParts(summary.points, summary.max)} /> points.
+    <a href="/progress">See your progress</a>
+  </p>
+{/if}
 
 {#if loadState === 'loading'}
   <PageState kind="loading" message="Loading contests" />
@@ -182,6 +203,11 @@
   .asked {
     margin-top: var(--space-4);
     max-width: 44rem;
+  }
+
+  .summary {
+    margin-top: var(--space-3);
+    color: var(--ink-muted);
   }
 
   .pinned {

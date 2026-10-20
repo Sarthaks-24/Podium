@@ -338,13 +338,13 @@ test('students see their own nav, with Questions once a case is shared', async (
   const api = await mockApi(page, 'student');
   await page.goto('/');
   const nav = page.getByRole('navigation', { name: 'Main' });
-  await expect(nav.getByRole('link')).toHaveText(['Contests']);
+  await expect(nav.getByRole('link')).toHaveText(['Contests', 'Your progress']);
   await expect(page.getByRole('link', { name: 'People' })).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Asha Rao' })).toBeVisible();
 
   api.cases = [{ id: 2, decided: true }];
   await page.reload();
-  await expect(nav.getByRole('link')).toHaveText(['Contests', 'Questions']);
+  await expect(nav.getByRole('link')).toHaveText(['Contests', 'Your progress', 'Questions']);
   await expect(page.getByText('An organiser decided on a question about your submission.')).toBeVisible();
   await expect(page.getByRole('link', { name: 'Read the decision' })).toHaveAttribute('href', '/integrity');
 });
