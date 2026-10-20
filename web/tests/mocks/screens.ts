@@ -1,0 +1,212 @@
+// Fixtures and the API mock of screens.spec.ts, moved here so a11y.spec.ts
+// and baseline.spec.ts reuse them. The spec's header describes them.
+import { expect, test, type Page, type Route } from '@playwright/test';
+
+/** cache/screenshots-m1/ at the repository root (git-ignored), with a trailing slash. */
+export function shots(): string {
+  return `${test.info().project.testDir}/../../cache/screenshots-m1/`;
+}
+export const WIDTHS = [375, 768, 1024, 1440] as const;
+export const THEMES = ['light', 'dark'] as const;
+
+export type Who = 'signed-out' | 'student' | 'owner';
+
+export const OWNER = { id: 1, email: 'priya@college.edu', name: 'Priya Raman', avatar_url: '', role: 'owner' };
+export const STUDENT = { id: 7, email: 'asha@college.edu', name: 'Asha Rao', avatar_url: '', role: 'student' };
+
+export const PEOPLE = [
+  { id: 1, email: 'priya@college.edu', name: 'Priya Raman', role: 'owner', last_login_at: 1792183192359, locked: true },
+  { id: 2, email: 'arjun.mehta@college.edu', name: 'Arjun Mehta', role: 'admin', last_login_at: 1791923992359, locked: false },
+  { id: 3, email: 'ta@college.edu', name: '', role: 'admin', last_login_at: null, locked: false },
+];
+
+export const DOMAINS = [
+  { domain: 'college.edu', created_at: 1791000000000 },
+  { domain: 'cs.college.edu', created_at: 1791500000000 },
+];
+
+export const CONFIG = { allowed_domains: ['college.edu'], contact_email: 'priya@college.edu' };
+
+export function json(route: Route, status: number, body?: unknown) {
+  return route.fulfill({
+    status,
+    contentType: 'application/json; charset=utf-8',
+    body: body === undefined ? '' : JSON.stringify(body),
+  });
+}
+
+export function apiError(route: Route, status: number, code: string, message: string) {
+  return json(route, status, { error: { code, message } });
+}
+
+/** Installs the API mock for one page and returns its mutable state. */
+export async function mockApi(page: Page, who: Who) {
+  const state = {
+    who,
+    people: structuredClone(PEOPLE),
+    domains: structuredClone(DOMAINS),
+    nextId: 10,
+    resets: [] as string[],
+    disabled: [] as { id: number; email: string; name: string; role: string; disabled: boolean; last_login_at: number | null }[],
+    accountCalls: [] as string[],
+  };
+
+  await page.route(
+    (url) => url.pathname.startsWith('/api/'),
+    async (route) => {
+      const req = route.request();
+      const path = new URL(req.url()).pathname;
+      const method = req.method();
+      const me = state.who === 'owner' ? OWNER : state.who === 'student' ? STUDENT : null;
+
+      if (path === '/api/auth/config' && method === 'GET') return json(route, 200, CONFIG);
+      if (path === '/api/auth/logout' && method === 'POST') {
+        state.who = 'signed-out';
+        return json(route, 204);
+      }
+      if (path === '/api/me' && method === 'GET') {
+        return me ? json(route, 200, me) : apiError(route, 401, 'signed_out', 'Sign in to continue.');
+      }
+      if (path === '/api/contests' && method === 'GET') {
+        return me ? json(route, 200, { live: [], upcoming: [], past: [] }) : apiError(route, 401, 'signed_out', 'Sign in to continue.');
+      }
+      if (path.startsWith('/api/admin/')) {
+        if (!me) return apiError(route, 401, 'signed_out', 'Sign in to continue.');
+        if (me.role !== 'owner') return apiError(route, 403, 'forbidden', 'Only owners can do that.');
+      }
+      if (path === '/api/admin/people' && method === 'GET') {
+        return json(route, 200, { people: state.people, domains: state.domains, disabled: state.disabled });
+      }
+      const accountMatch = path.match(/^\/api\/admin\/accounts\/(end-sessions|disable|enable)$/);
+      if (accountMatch && method === 'POST') {
+        const kind = accountMatch[1];
+        const target = (req.postDataJSON() as { email: string }).email;
+        const known = [...state.people.map((p) => p.email), STUDENT.email];
+        if (!known.includes(target)) return apiError(route, 404, 'not_found', 'Nobody with that email has an account.');
+        if (kind === 'disable' && target === OWNER.email) {
+          return apiError(route, 409, 'conflict', 'This owner is set in the server configuration and cannot be disabled.');
+        }
+        state.accountCalls.push(`${kind} ${target}`);
+        const account = { id: target === STUDENT.email ? STUDENT.id : 50, email: target, name: '', role: 'student', disabled: kind === 'disable', last_login_at: null };
+        state.disabled = state.disabled.filter((a) => a.email !== target);
+        if (kind === 'disable') state.disabled.push(account);
+        return json(route, 200, { account, ended: kind === 'enable' ? 0 : 2 });
+      }
+      if (path === '/api/admin/people' && method === 'POST') {
+        const body = req.postDataJSON() as { email: string; role: string };
+        if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(body.email)) {
+          return apiError(route, 400, 'bad_request', 'Enter a full email address, for example ta@college.edu.');
+        }
+        const person = { id: state.nextId++, email: body.email, name: '', role: body.role, last_login_at: null, locked: false };
+        state.people.push(person);
+        return json(route, 200, person);
+      }
+      const personMatch = path.match(/^\/api\/admin\/people\/(\d+)$/);
+      if (personMatch && method === 'DELETE') {
+        const id = Number(personMatch[1]);
+        const person = state.people.find((p) => p.id === id);
+        if (!person) return apiError(route, 404, 'not_found', 'That person is not an organiser.');
+        if (person.locked) return apiError(route, 409, 'conflict', 'The configured owner cannot be changed here.');
+        state.people = state.people.filter((p) => p.id !== id);
+        return json(route, 204);
+      }
+      if (path === '/api/admin/domains' && method === 'POST') {
+        const raw = (req.postDataJSON() as { domain: string }).domain.toLowerCase().replace(/^@/, '');
+        if (!/^[a-z0-9-]+(\.[a-z0-9-]+)+$/.test(raw)) {
+          return apiError(route, 400, 'bad_request', 'Enter a domain like college.edu.');
+        }
+        const existing = state.domains.find((d) => d.domain === raw);
+        if (existing) return json(route, 200, existing);
+        const added = { domain: raw, created_at: Date.now() };
+        state.domains.push(added);
+        return json(route, 201, added);
+      }
+      if (path === '/api/admin/accounts/reset-google' && method === 'POST') {
+        const type = (await req.headerValue('content-type')) ?? '';
+        if (!type.startsWith('application/json')) {
+          return apiError(route, 415, 'unsupported_media_type', 'Send the request as JSON.');
+        }
+        const target = (req.postDataJSON() as { email: string }).email;
+        if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(target)) {
+          return apiError(route, 400, 'bad_request', 'Enter a full email address, for example ta@college.edu.');
+        }
+        const known = [...state.people.map((p) => p.email), STUDENT.email];
+        if (!known.includes(target)) return apiError(route, 404, 'not_found', 'Nobody with that email has an account.');
+        state.resets.push(target);
+        return json(route, 204);
+      }
+      const domainMatch = path.match(/^\/api\/admin\/domains\/(.+)$/);
+      if (domainMatch && method === 'DELETE') {
+        const domain = decodeURIComponent(domainMatch[1]);
+        if (!state.domains.some((d) => d.domain === domain)) {
+          return apiError(route, 404, 'not_found', 'That domain is not on the list.');
+        }
+        state.domains = state.domains.filter((d) => d.domain !== domain);
+        return json(route, 204);
+      }
+      return apiError(route, 404, 'not_found', 'This API route does not exist.');
+    },
+  );
+  return state;
+}
+
+export interface Screen {
+  name: string;
+  path: string;
+  who: Who;
+  title: string;
+  /** Something that is only on the page once it has finished loading. */
+  ready: (page: Page) => Promise<void>;
+}
+
+export const SCREENS: Screen[] = [
+  {
+    name: 'signin-error-account',
+    path: '/signin?error=account',
+    who: 'signed-out',
+    title: 'Sign in · podium',
+    ready: (page) => expect(page.getByRole('alert')).toContainText('This email is linked to a different Google account.'),
+  },
+  {
+    name: 'signin',
+    path: '/signin',
+    who: 'signed-out',
+    title: 'Sign in · podium',
+    ready: (page) => expect(page.getByText('Sign in with your @college.edu Google account.')).toBeVisible(),
+  },
+  {
+    name: 'signin-error-domain',
+    path: '/signin?error=domain',
+    who: 'signed-out',
+    title: 'Sign in · podium',
+    ready: (page) => expect(page.getByRole('alert')).toContainText('This account is not on the allowed list.'),
+  },
+  {
+    name: 'home-owner',
+    path: '/',
+    who: 'owner',
+    title: 'Your contests · podium',
+    ready: (page) => expect(page.getByText('No contests yet.')).toBeVisible(),
+  },
+  {
+    name: 'people-owner',
+    path: '/admin/people',
+    who: 'owner',
+    title: 'People · podium',
+    ready: (page) => expect(page.getByRole('table')).toBeVisible(),
+  },
+  {
+    name: 'people-student',
+    path: '/admin/people',
+    who: 'student',
+    title: 'People · podium',
+    ready: (page) => expect(page.getByText('Only owners can manage people.')).toBeVisible(),
+  },
+  {
+    name: 'not-found',
+    path: '/no-such-page',
+    who: 'owner',
+    title: 'Page not found · podium',
+    ready: (page) => expect(page.getByRole('link', { name: 'Go to your contests.' })).toBeVisible(),
+  },
+];
