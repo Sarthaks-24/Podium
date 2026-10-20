@@ -19,6 +19,16 @@
     theme without changing the page.
   - tests: lib/theme-contrast.test.ts checks every theme against the
     contrast and distinguishability rules in D41.
+
+  Breakpoints (v2 F8; the source is lib/breakpoints.ts, and
+  guardrails.test.ts fails on any other width):
+    phone   below 768 px     (width < 768px)
+    tablet  from 768 px      (min-width: 768px)
+    laptop  from 1024 px     (min-width: 1024px)
+    wide    from 1440 px     (min-width: 1440px)
+    short   laptop and at most 45rem tall
+  Custom properties cannot be used in a media query, so the numbers are
+  written out where a query needs them.
 */
 
 :root {

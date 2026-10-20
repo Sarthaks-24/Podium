@@ -514,7 +514,7 @@
   }
 
   /* Phones: each row is the title and status, then tests and the date. */
-  @media (max-width: 767px) {
+  @media (width < 768px) {
     .list tbody tr {
       grid-template-columns: auto minmax(0, 1fr) auto;
       grid-template-areas:

@@ -343,7 +343,7 @@
     gap: var(--space-3);
   }
 
-  @media (max-width: 767px) {
+  @media (width < 768px) {
     .list tbody tr {
       grid-template-columns: minmax(0, 1fr) auto;
       grid-template-areas:

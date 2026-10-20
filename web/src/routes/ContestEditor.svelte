@@ -1140,7 +1140,7 @@
     gap: var(--space-2) var(--space-3);
   }
 
-  @media (max-width: 767px) {
+  @media (width < 768px) {
     .pick {
       grid-template-columns: 3.5rem minmax(0, 1fr);
     }

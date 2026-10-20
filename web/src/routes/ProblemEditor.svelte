@@ -42,6 +42,7 @@
 <script lang="ts">
   import PageState from '../components/PageState.svelte';
   import PageHeader from '../components/PageHeader.svelte';
+  import { media } from '../lib/breakpoints';
   import { onMount, tick } from 'svelte';
   import ConfirmDialog from '../components/ConfirmDialog.svelte';
   import ProgramField from '../components/ProgramField.svelte';
@@ -498,9 +499,9 @@
       leaveTo = to;
       return false;
     });
-    const query = window.matchMedia('(max-width: 767px)');
+    const query = media('tablet');
     const sync = () => {
-      phone = query.matches;
+      phone = !query.matches;
       if (!phone) statementTab = 'write';
     };
     sync();
@@ -2441,7 +2442,7 @@
     }
   }
 
-  @media (max-width: 767px) {
+  @media (width < 768px) {
     .jumps {
       display: none;
     }

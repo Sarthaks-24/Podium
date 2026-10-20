@@ -344,7 +344,7 @@
     font-size: var(--fs-0);
   }
 
-  @media (max-width: 767px) {
+  @media (width < 768px) {
     .actions .btn,
     .state-actions .btn {
       flex: 1 1 auto;

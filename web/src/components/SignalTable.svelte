@@ -180,7 +180,7 @@
   }
 
   /* Phones: students first, then kind and strength, then what was found. */
-  @media (max-width: 767px) {
+  @media (width < 768px) {
     .signals tbody tr {
       grid-template-columns: auto minmax(0, 1fr) auto;
       grid-template-areas:

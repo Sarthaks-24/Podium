@@ -478,7 +478,7 @@
     }
   }
 
-  @media (max-width: 767px) {
+  @media (width < 768px) {
     .moment {
       grid-template-columns: minmax(0, 1fr);
       gap: 0;

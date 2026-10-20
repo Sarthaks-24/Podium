@@ -609,7 +609,7 @@
     color: var(--bad);
   }
 
-  @media (max-width: 767px) {
+  @media (width < 768px) {
     .actions .btn {
       flex: 1 1 auto;
     }

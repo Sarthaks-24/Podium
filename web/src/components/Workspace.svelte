@@ -51,6 +51,7 @@
 -->
 <script lang="ts">
   import PageHeader from './PageHeader.svelte';
+  import { media } from '../lib/breakpoints';
   import PageState from './PageState.svelte';
   import { onMount, tick, type Snippet } from 'svelte';
   import { ApiError, getJSON, sendJSON } from '../lib/api';
@@ -619,8 +620,8 @@
   }
 
   onMount(() => {
-    const wide = window.matchMedia('(min-width: 1024px)');
-    const tablet = window.matchMedia('(min-width: 768px)');
+    const wide = media('laptop');
+    const tablet = media('tablet');
     const place = () => {
       layout = wide.matches ? 'wide' : tablet.matches ? 'tablet' : 'phone';
       if (layout === 'tablet' && tab === 'result') tab = 'code';
@@ -1233,7 +1234,7 @@
   }
 
   /* Tablet: the result follows the editor in the Code tab. */
-  @media (min-width: 768px) and (max-width: 1023px) {
+  @media (768px <= width < 1024px) {
     .result-pane {
       border-top: var(--rule) solid var(--line);
       margin-top: var(--space-4);

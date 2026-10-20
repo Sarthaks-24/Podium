@@ -439,7 +439,7 @@
     }
   }
 
-  @media (max-width: 767px) {
+  @media (width < 768px) {
     .menu-button {
       display: inline-flex;
     }

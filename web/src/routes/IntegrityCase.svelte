@@ -525,7 +525,7 @@
   }
 
   /* Phones: name and share state on one line, the explanation below. */
-  @media (max-width: 767px) {
+  @media (width < 768px) {
     .students tbody tr {
       grid-template-columns: minmax(0, 1fr);
       gap: var(--space-1);

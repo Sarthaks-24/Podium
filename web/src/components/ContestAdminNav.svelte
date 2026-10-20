@@ -88,7 +88,7 @@
   }
 
   /* Phones: four tabs fit at 375 px with narrower padding. */
-  @media (max-width: 767px) {
+  @media (width < 768px) {
     .sub a {
       padding-inline: var(--space-2);
     }

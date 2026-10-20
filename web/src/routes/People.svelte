@@ -662,7 +662,7 @@
     margin-top: var(--space-2);
   }
 
-  @media (max-width: 767px) {
+  @media (width < 768px) {
     .form .grow {
       max-width: none;
     }

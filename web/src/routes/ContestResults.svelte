@@ -437,7 +437,7 @@
   }
 
   /* Phones: each problem is its name, then the counts, then the histogram. */
-  @media (max-width: 767px) {
+  @media (width < 768px) {
     .stats tbody tr {
       grid-template-columns: repeat(3, minmax(0, auto));
       grid-template-areas:

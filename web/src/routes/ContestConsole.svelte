@@ -974,7 +974,7 @@
   }
 
   /* Phones: each feed row is time, student and problem, then verdict, score and Rejudge. */
-  @media (max-width: 767px) {
+  @media (width < 768px) {
     .feed tbody tr {
       grid-template-columns: auto minmax(0, 1fr) auto;
       grid-template-areas:

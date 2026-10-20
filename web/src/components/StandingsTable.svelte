@@ -258,7 +258,7 @@
     font-size: var(--fs-3);
   }
 
-  @media (max-width: 767px) {
+  @media (width < 768px) {
     .board-wrap {
       --rank-w: 2.75rem;
     }

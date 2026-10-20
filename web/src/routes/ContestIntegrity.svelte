@@ -484,7 +484,7 @@
   }
 
   /* Phones: the case title, then the students, then state and time. */
-  @media (max-width: 767px) {
+  @media (width < 768px) {
     .case-list tbody tr {
       grid-template-columns: minmax(0, 1fr) auto;
       grid-template-areas:

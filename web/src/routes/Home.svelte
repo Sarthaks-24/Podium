@@ -212,7 +212,7 @@
   }
 
   /* Tablets: the length and problem count make room for the state. */
-  @media (min-width: 768px) and (max-width: 1023px) {
+  @media (768px <= width < 1024px) {
     .length,
     .problems {
       display: none;
@@ -220,7 +220,7 @@
   }
 
   /* Phones: title and state, then the details in one muted line. */
-  @media (max-width: 767px) {
+  @media (width < 768px) {
     .list tbody tr {
       grid-template-columns: minmax(0, 1fr) auto;
       grid-template-areas:
