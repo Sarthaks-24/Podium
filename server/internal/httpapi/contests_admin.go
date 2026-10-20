@@ -615,7 +615,7 @@ func (d Deps) setExtension(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	d.audit(r, c.ID, contests.AuditExtension, map[string]any{"user_id": userID, "email": before.Email,
-		"from_minutes": before.Minutes, "minutes": req.Minutes, "reason": strings.TrimSpace(req.Reason)})
+		"from_minutes": before.Minutes, "minutes": req.Minutes, "reason_given": strings.TrimSpace(req.Reason) != ""})
 	d.Log.Info("contest extension set", "by", userFrom(r.Context()).ID, "contest_id", c.ID, "user_id", userID, "minutes", req.Minutes)
 	d.writeAdminContest(w, r, c.ID, http.StatusOK)
 }
@@ -703,6 +703,12 @@ func (d Deps) contestFeed(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		d.internalError(w, r, err)
 		return
+	}
+	if siteAdmin(r) {
+		if err := d.annotateFeed(r.Context(), c.ID, items); err != nil {
+			d.internalError(w, r, err)
+			return
+		}
 	}
 	WriteJSON(w, http.StatusOK, map[string]any{"submissions": items, "page": max(f.Page, 1), "has_more": more,
 		"results_hidden": f.Hide.Active(), "server_now": d.Contests.Clock().UnixMilli()})
@@ -951,13 +957,13 @@ func (d Deps) exportCSV(w http.ResponseWriter, r *http.Request) {
 	if !ok || d.resultsHidden(w, r, c) {
 		return
 	}
-	rows, _, err := d.Contests.Export(r.Context(), c)
+	rows, _, err := d.Contests.Export(r.Context(), c, siteAdmin(r))
 	if err != nil {
 		d.internalError(w, r, err)
 		return
 	}
 	var buf bytes.Buffer
-	if err := contests.WriteCSV(&buf, c, rows); err != nil {
+	if err := contests.WriteCSV(&buf, c, rows, siteAdmin(r)); err != nil {
 		d.internalError(w, r, err)
 		return
 	}
@@ -971,7 +977,7 @@ func (d Deps) exportJSON(w http.ResponseWriter, r *http.Request) {
 	if !ok || d.resultsHidden(w, r, c) {
 		return
 	}
-	rows, _, err := d.Contests.Export(r.Context(), c)
+	rows, _, err := d.Contests.Export(r.Context(), c, siteAdmin(r))
 	if err != nil {
 		d.internalError(w, r, err)
 		return
@@ -986,7 +992,7 @@ func (d Deps) exportJSON(w http.ResponseWriter, r *http.Request) {
 		d.internalError(w, r, err)
 		return
 	}
-	log, err := d.Contests.AuditAll(r.Context(), c.ID)
+	log, err := d.Contests.AuditAll(r.Context(), c.ID, !siteAdmin(r))
 	if err != nil {
 		d.internalError(w, r, err)
 		return
@@ -1064,11 +1070,48 @@ func (d Deps) contestAudit(w http.ResponseWriter, r *http.Request) {
 	}
 	q := r.URL.Query()
 	page, _ := strconv.Atoi(q.Get("page"))
-	list, more, err := d.Contests.AuditLog(r.Context(), c.ID, page, contests.AuditFilter{Action: q.Get("action"), Actor: q.Get("actor")})
+	list, more, err := d.Contests.AuditLog(r.Context(), c.ID, page, contests.AuditFilter{Action: q.Get("action"), Actor: q.Get("actor"),
+		NoIntegrity: !siteAdmin(r)})
 	if err != nil {
 		d.internalError(w, r, err)
 		return
 	}
 	WriteJSON(w, http.StatusOK, map[string]any{"entries": list, "page": max(page, 1), "has_more": more,
 		"server_now": d.Contests.Clock().UnixMilli()})
+}
+
+// annotateFeed adds each item's note count and manual case, for reviewers
+// (owners and admins) only.
+func (d Deps) annotateFeed(ctx context.Context, contestID int64, items []contests.FeedItem) error {
+	notes, cases := map[int64]int{}, map[int64]int64{}
+	rows, err := d.DB.QueryContext(ctx, "SELECT submission_id, count(*) FROM submission_notes WHERE contest_id = ? GROUP BY submission_id", contestID)
+	if err != nil {
+		return err
+	}
+	for rows.Next() {
+		var id int64
+		var n int
+		rows.Scan(&id, &n)
+		notes[id] = n
+	}
+	rows.Close()
+	rows, err = d.DB.QueryContext(ctx, `SELECT submission_id, max(id) FROM integrity_cases WHERE contest_id = ? AND source = 'manual'
+		AND submission_id IS NOT NULL GROUP BY submission_id`, contestID)
+	if err != nil {
+		return err
+	}
+	for rows.Next() {
+		var sub, id int64
+		rows.Scan(&sub, &id)
+		cases[sub] = id
+	}
+	rows.Close()
+	for i := range items {
+		n := notes[items[i].ID]
+		items[i].NoteCount = &n
+		if id, ok := cases[items[i].ID]; ok {
+			items[i].CaseID = &id
+		}
+	}
+	return rows.Err()
 }

@@ -62,15 +62,25 @@ func wantRefusal(t *testing.T, step string, err error, sentence string) {
 }
 
 const (
-	notYet     = "Every student needs to explain, or to have had 7 days since the case was last shared, before you take action."
+	notYet     = "Every student needs to reply, or to have run out of time to reply, before you propose an outcome."
 	reason     = "A reason that is long enough for the log."
+	forStudent = "A reason the student reads on their standing."
 	shareFirst = "Share the case with the students before taking action. They explain first."
 	decided    = "The case is decided. Reopen it before changing the decision."
 )
 
-// Each refused change says why, and action waits for every student's
-// turn: an explanation after the latest share, or the response window.
-func TestDecideFollowsTheStudentsTurn(t *testing.T) {
+// propose proposes a warning for every student of the case as reviewer 100.
+func propose(t *testing.T, r *rig, caseID int64) error {
+	t.Helper()
+	_, err := r.svc.Propose(context.Background(), caseID, 100, ProposeInput{Outcome: OutcomeWarning, Note: reason, Reason: forStudent,
+		Seen: seenAll(t, r, caseID)})
+	return err
+}
+
+// Each refused change says why; action is never one step, and a proposal
+// waits for every student's turn: a reply after the latest share, or the
+// reply window (7 days from first opening, 21 at most).
+func TestProposalFollowsTheStudentsTurn(t *testing.T) {
 	r := newRig(t)
 	ctx := context.Background()
 	c := copyCase(t, r)
@@ -81,32 +91,49 @@ func TestDecideFollowsTheStudentsTurn(t *testing.T) {
 	_, err := r.svc.Decide(ctx, c.ID, 100, "closed", reason, nil)
 	wantRefusal(t, "unknown state", err, "Unknown case state.")
 	wantRefusal(t, "open to actioned", decide(Actioned), shareFirst)
+	wantRefusal(t, "propose before sharing", propose(t, r, c.ID), shareFirst)
 	wantRefusal(t, "open to open", decide(Open), "The case is already open. Reload to see its latest state.")
 	if err := decide(AwaitingStudent); err != nil {
 		t.Fatal(err)
 	}
+	if err := decide(Actioned); !errors.Is(err, ErrProposalNeeded) {
+		t.Errorf("action in one step: %v", err)
+	}
 	wantRefusal(t, "share twice", decide(AwaitingStudent), "The case is already shared with the students. Reload to see its latest state.")
-	// The moment it is shared, nobody has had a turn yet.
-	wantRefusal(t, "action at once", decide(Actioned), notYet)
+	wantRefusal(t, "propose at once", propose(t, r, c.ID), notYet)
+	// Student 7 opens the case and replies; student 2 opens it a day later
+	// and never replies.
+	if err := r.svc.Opened(ctx, c.ID, 7); err != nil {
+		t.Fatal(err)
+	}
 	if err := r.svc.Explain(ctx, c.ID, 7, "We revised together from the same notes."); err != nil {
 		t.Fatal(err)
 	}
-	// Student 2 has neither explained nor had 7 days.
-	*r.clock = r.clock.Add(ResponseWindow - time.Minute)
-	wantRefusal(t, "action before student 2's window ends", decide(Actioned), notYet)
-	*r.clock = r.clock.Add(time.Minute)
-	if err := decide(Actioned); err != nil {
-		t.Fatalf("action after the window: %v", err)
+	*r.clock = r.clock.Add(24 * time.Hour)
+	if err := r.svc.Opened(ctx, c.ID, 2); err != nil {
+		t.Fatal(err)
 	}
-	wantRefusal(t, "actioned to cleared", decide(Cleared), decided)
-	wantRefusal(t, "actioned to shared", decide(AwaitingStudent), decided)
-
-	// A reopen ends the turn: the case must be shared again, and each
-	// student gets a new window. Their earlier explanations do not count.
+	opened := r.clock.UnixMilli()
+	got, _ := r.svc.GetCase(ctx, c.ID)
+	for _, u := range got.Users {
+		if u.UserID == 2 && (u.FirstOpenedAt == nil || *u.RespondBy != opened+ResponseWindow.Milliseconds()) {
+			t.Errorf("student 2 after opening: %+v", u)
+		}
+	}
+	*r.clock = r.clock.Add(ResponseWindow - time.Minute)
+	wantRefusal(t, "propose before student 2's window ends", propose(t, r, c.ID), notYet)
+	*r.clock = r.clock.Add(time.Minute)
+	if err := propose(t, r, c.ID); err != nil {
+		t.Fatalf("propose after the window: %v", err)
+	}
+	// A clear supersedes the proposal; a reopen ends the turn.
 	if err := decide(Open); err != nil {
 		t.Fatal(err)
 	}
-	got, _ := r.svc.GetCase(ctx, c.ID)
+	got, _ = r.svc.GetCase(ctx, c.ID)
+	if got.Proposals[0].State != ProposalSuperseded {
+		t.Errorf("proposal after the reopen: %+v", got.Proposals[0])
+	}
 	for _, u := range got.Users {
 		if u.AskedAt != nil || u.RespondBy != nil || u.SharedAt == nil {
 			t.Errorf("after the reopen user %d: asked %v respond by %v shared %v", u.UserID, u.AskedAt, u.RespondBy, u.SharedAt)
@@ -118,17 +145,22 @@ func TestDecideFollowsTheStudentsTurn(t *testing.T) {
 		t.Fatal(err)
 	}
 	got, _ = r.svc.GetCase(ctx, c.ID)
-	if u := got.Users[0]; u.AskedAt == nil || *u.RespondBy != *u.AskedAt+ResponseWindow.Milliseconds() || *u.AskedAt != r.clock.UnixMilli() {
+	// Nobody opened the new share yet: the 21-day cap is the deadline.
+	if u := got.Users[0]; u.AskedAt == nil || u.FirstOpenedAt != nil || *u.RespondBy != *u.NoticeAvailableAt+ReplyCap.Milliseconds() {
 		t.Errorf("new turn: %+v", u)
 	}
-	wantRefusal(t, "action after the new share with old explanations", decide(Actioned), notYet)
+	wantRefusal(t, "propose after the new share with old explanations", propose(t, r, c.ID), notYet)
 	for _, u := range []int64{2, 7} {
 		if err := r.svc.Explain(ctx, c.ID, u, "My account of how I wrote it, again."); err != nil {
 			t.Fatal(err)
 		}
 	}
-	if err := decide(Actioned); err != nil {
-		t.Errorf("action after both explained: %v", err)
+	if err := propose(t, r, c.ID); err != nil {
+		t.Errorf("propose after both explained: %v", err)
+	}
+	if _, err := r.svc.Propose(ctx, c.ID, 100, ProposeInput{Outcome: OutcomeWarning, Note: reason, Reason: forStudent,
+		Seen: seenAll(t, r, c.ID)}); !errors.Is(err, ErrProposalPending) {
+		t.Errorf("a second pending proposal: %v", err)
 	}
 }
 

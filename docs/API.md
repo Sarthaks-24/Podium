@@ -24,7 +24,7 @@ All API routes live under `/api/` and speak JSON. Every other path serves the we
 { "error": { "code": "bad_request", "message": "Some fields need fixing.", "fields": { "slug": "Use lowercase letters, digits and single hyphens, like two-sum." } } }
 ```
 
-Common error codes: `bad_request`, `rate_limited` (before sign-in, v1.3.0), `signed_out`, `forbidden`, `not_found`, `cross_site`, `conflict`, `internal`, and in testing mode `testing_mode_local`. Test sign-in adds `disabled`. The problem routes add `bad_pack`, `not_ready`, `too_large` and `busy`; the AI wizard adds `no_key`, `no_model`, `bad_key`, `provider_error` and `busy`; the workspace routes add `not_ready` and `rate_limited`; the contest routes add `not_on_roster`, `not_started`, `contest_over`, `board_closed` and `too_early`; the organiser contest routes add `locked_after_start`, `results_hidden`, `not_participant` and `ai_unconfirmed`; the event stream adds `busy` and `unsupported`; the judge API adds `unauthorized`, `protocol` (426), `lease`, `bad_report`, `bad_upload` and `too_large`.
+Common error codes: `bad_request`, `rate_limited` (before sign-in, v1.3.0), `signed_out`, `forbidden`, `not_found`, `cross_site`, `conflict`, `internal`, and in testing mode `testing_mode_local`. Test sign-in adds `disabled`. The problem routes add `bad_pack`, `not_ready`, `too_large` and `busy`; the AI wizard adds `no_key`, `no_model`, `bad_key`, `provider_error` and `busy`; the workspace routes add `not_ready` and `rate_limited`; the contest routes add `not_on_roster`, `not_started`, `contest_over`, `board_closed` and `too_early`; the organiser contest routes add `locked_after_start`, `results_hidden`, `not_participant` and `ai_unconfirmed`; the event stream adds `busy` and `unsupported`; the students routes (v1.4.0) add `proposal_needed`, `proposal_pending`, `two_person_rule`, `uninvolved_reviewer`, `rating_changed` and `not_final`; the judge API adds `unauthorized`, `protocol` (426), `lease`, `bad_report`, `bad_upload` and `too_large`.
 
 ## Health
 
@@ -1261,6 +1261,7 @@ Students (any signed-in user):
 | Route | Request | Success |
 |---|---|---|
 | `GET /api/integrity/cases` | | 200 `{cases: [StudentCase], contests: {id: {slug, title}}, problems: {id: {label, title}}, server_now}`: only cases shared with the user |
+| `POST /api/integrity/cases/{case}/opened` | none | 204 (v1.4.0): the student opened the case; see "C9: deadlines" |
 | `PUT /api/integrity/cases/{case}/explanation` | `{explanation}` (1 to 8,000 characters) | 204; editable until the case is decided |
 
 ### Shapes
@@ -1363,6 +1364,322 @@ The side-by-side view of a case's similar-code evidence, from the case's own cop
 #### Changed: `PUT /api/integrity/cases/{case}/explanation`
 
 Unchanged request and responses. Each save now adds a version; earlier versions are kept for reviewers.
+
+## Students (v1.4.0, contracts C8, C9 and C12)
+
+Progress, manual review, notices, Standing and the organisers' students pages (v2 P4; decisions D74 as amended by D110, D77 as amended, D97, D166 to D180). Times are Unix ms and every answer carries `server_now`. "Reviewer" means who may review the contest's integrity results (the owner, admins, and a co-organiser whose site role is not student, as in "Integrity" above); "organiser" in a route below means the owner or an admin unless the row says otherwise.
+
+Nothing in this section ever returns another student's name to a student, code to anyone but its author and reviewers, test data, or the rating's number to a student. The rating is read by the record page, the students table and the rating routes only; standings, results, progress, exports and notices never read it (a test checks the code).
+
+### Who may do what
+
+| Data or action | Student (own) | Student (another's) | Co-organiser, site role student | Admin | Owner |
+|---|---|---|---|---|---|
+| Own progress, standing, notices, appeals | yes | 404 | own only | own only | own only |
+| `GET /api/admin/users/{id}/progress` | 403 | 403 | 403 | yes | yes |
+| Private notes, read and write | 404 | 404 | 403 on their contest, 404 elsewhere | yes | yes |
+| Open a manual case | 404 | 404 | 403 on their contest, 404 elsewhere | yes | yes |
+| Propose an outcome | - | - | 404 | yes | yes |
+| Confirm an outcome | - | - | 404 | yes, if they did not open the case or propose | yes, same; alone only as sole organiser |
+| Rule on an appeal | - | - | 404 | yes, if they took no part | yes, same; alone only as sole organiser |
+| Record page, rating, rating edit | 403 | 403 | 403 | yes | yes |
+| Students table, student page | 403 | 403 | 403 | yes | yes |
+| Class view of a contest | 404 | 404 | when results are not hidden from them | yes | yes |
+| Reviewer oversight, record view log | 403 | 403 | 403 | 403 | yes |
+
+Every read of a student's record page, of a case, and of the notes on a submission by someone other than that student adds a row to the record view log (D97), which only the owner reads.
+
+### C8: progress
+
+| Route | Who | Success |
+|---|---|---|
+| `GET /api/me/progress` | any signed-in person, for themselves | 200 `Progress` |
+| `GET /api/admin/users/{id}/progress` | owner, admin | 200 `Progress` for that account; 404 for an unknown id |
+
+```json
+{
+  "user": { "id": 7, "name": "Asha Rao" },
+  "hide_progress": false,
+  "generated_at": 1792183192359,
+  "totals": {
+    "contests_taken": 5, "graded_taken": 4,
+    "points": 820, "max_points": 1500,
+    "problems_full": 7, "problems_partial": 5, "problems_zero": 3,
+    "personal_best_percent": 86.7,
+    "upsolved": 2
+  },
+  "contests": [
+    {
+      "contest_id": 3, "slug": "week-6", "title": "Week 6 contest",
+      "graded": true, "feedback_mode": "subtask", "detail": "full",
+      "ended_at": 1792183192359, "finalised_at": 1792183252359,
+      "score": 240, "max_score": 300, "percent": 80.0,
+      "rank": 12, "ranked_count": 140,
+      "problems": [
+        {
+          "label": "A", "title": "A plus B", "problem_id": 11,
+          "score": 100, "max_score": 100,
+          "attempts": 2, "full_at_minutes": 14, "best_verdict": "AC",
+          "subtasks": [ { "idx": 0, "points": 40, "earned": 40 }, { "idx": 1, "points": 60, "earned": 60 } ],
+          "tags": ["math"], "difficulty": "easy",
+          "practice_open": true, "upsolved": false,
+          "zero_by_decision": false
+        }
+      ]
+    }
+  ],
+  "by_tag": [ { "tag": "graphs", "earned": 120, "available": 300, "problems": 3 } ],
+  "by_difficulty": [ { "difficulty": "easy", "earned": 300, "available": 300, "problems": 3 } ],
+  "losses": [ { "verdict": "WA", "problems": 4 }, { "verdict": "TLE", "problems": 2 } ],
+  "retry": [ { "slug": "week-6", "label": "B", "title": "Paths", "score": 40, "max_score": 100, "practice_open": true } ],
+  "server_now": 1792183300000
+}
+```
+
+| Field | Meaning |
+|---|---|
+| `contests` | only contests the person took part in (on the final board), newest first, and only once the results are final for students: every window closed, judging done, and with `hold_reveal` only after the reveal. A contest still frozen or held is absent. A contest past retention (4 years) drops out |
+| `detail` | `full`, or `totals` for an exam-mode contest: then each problem's `score`, `attempts`, `full_at_minutes`, `best_verdict` and `subtasks` are `null`, and the contest counts only in `totals.points`, `max_points` and `contests_taken`, never in `by_tag`, `by_difficulty`, `losses`, the problem counts or `retry` |
+| `percent` | `score` of `max_score`, one decimal; `personal_best_percent` is the highest over graded contests, `null` without one |
+| `rank`, `ranked_count` | the final board's rank and how many were on it; equal totals and times share a rank |
+| `full_at_minutes` | minutes from the person's own start to the first submission that reached full score; `null` if never |
+| `best_verdict` | the verdict code (`AC`, `WA`, `TLE`, `MLE`, `RE`, `CE`) of the highest-scoring submission (the earliest of equals); `null` without a judged submission |
+| `subtasks` | the points each subtask earned on the board, never a test, its number or its data |
+| `tags` | the problem's tags without `ai draft`; contests reach this response only after they end, so tags never spoil a live problem |
+| `practice_open` | the contest is open for practice now |
+| `upsolved` | the problem was below full score on the board and later reached full score in practice; `totals.upsolved` counts them |
+| `zero_by_decision` | a review decision set this problem to zero on the board (D77); the person's case says why |
+| `by_tag`, `by_difficulty`, `losses`, `retry` | computed by the server from the `full` contests, so the web app need not derive them. `by_difficulty` is in the order easy, medium, hard; `losses` counts problems below full score by `best_verdict`, largest first; `retry` lists problems below full score, newest contest first |
+| `hide_progress` | the person's own preference (`PUT /api/me/preferences`). On `GET /api/me/progress`, when `true`, `contests`, `by_tag`, `by_difficulty`, `losses` and `retry` are empty and `totals` are zero, so the page can offer "Show my progress" and nothing else. The organisers' route ignores it and leaves the field out |
+
+Practice never changes a contest's score, rank or the counts; it shows only as `upsolved`. There is no class median, percentile or comparison here (D94). After `podium-server forget-user` the account's progress is empty. Progress is read from the per-student contest summaries (below), which are written when a contest turns final and again after a rejudge of a final contest; there is no per-request recompute.
+
+### C9: notices
+
+`GET /api/me` gains two fields:
+
+```json
+{ "notifications_unread": 2, "hide_progress": false }
+```
+
+`notifications_unread` is `0` while the person is in a live contest (their own window is open in a contest they started or submitted to): notices are held, never delivered, during a contest.
+
+`PUT /api/me/preferences` accepts `hide_progress` (boolean, optional; left out keeps the saved value) next to `theme` and `verdicts`, and answers with all three.
+
+| Route | Request | Success |
+|---|---|---|
+| `GET /api/me/notifications` (`?before=ID`) | | 200 `{notifications: [Notice], unread, held, has_more, server_now}`, newest first, 50 per page |
+| `POST /api/me/notifications/read` | `{"ids": [12, 14]}` or `{"all": true}` | 204; ids that are not the person's are ignored |
+
+While the person is in a live contest the list is empty, `unread` is `0` and `held` is `true`; everything shows once their window closes. A notice made for a case shared during a contest becomes available when that contest ends for the student.
+
+```json
+{ "id": 14, "kind": "case_shared",
+  "happened": "An organiser asked you to explain your submission to problem B in Week 6.",
+  "todo": "Read the question and reply on the case page.",
+  "due_at": 1792904800000,
+  "reassurance": "Nothing affects your marks until a person decides.",
+  "link": "/integrity#case-12", "case_id": 12, "contest_id": 3,
+  "created_at": 1792300000000, "read_at": null }
+```
+
+| `kind` | When | `due_at` |
+|---|---|---|
+| `case_shared` | a reviewer shared a case with the person | the reply deadline (see "Deadlines") |
+| `reminder` | 5 days after the notice was opened (or became available, if never opened), with no reply yet | the reply deadline |
+| `case_decided` | the case was cleared, or an outcome was confirmed | the appeal deadline for an outcome; `null` when cleared |
+| `appeal_decided` | a ruling on the person's appeal | `null` |
+| `standing_adjusted` | an organiser changed the person's standing by hand | the appeal deadline |
+| `results_final` | a contest the person took part in has final results | `null` |
+
+The server writes the sentences from fixed templates with the contest's title, a problem's label and nothing else: never code, evidence, test data, a reviewer's note or any person's name. `reassurance` is set on `case_shared` and `reminder` only. The web app formats `due_at` in the reader's time zone ("Reply by 26 Oct"). `link` is a path in the web app. Notices are kept 180 days.
+
+### C9: private notes and manual cases
+
+| Route | Who | Request | Success |
+|---|---|---|---|
+| `GET /api/admin/submissions/{id}/notes` | reviewers of the submission's contest (owners and admins; a co-organiser whose role is not student is an admin) | | 200 `{submission: SubmissionRef, notes: [Note], case_id, server_now}`; logged; `404` on one's own submission |
+| `POST /api/admin/submissions/{id}/notes` | same | `{"text": "...", "lines": [{"from": 12, "to": 18}]}` | 201 `Note` |
+| `POST /api/admin/submissions/{id}/case` | same | `{"title": "...", "note": "..."}` | 201 `Case` |
+
+- A note or a manual case is possible on a Submit (not a Run) of a contest, practice after the contest included. A submission outside a contest is `404`.
+- `text` is 1 to 2,000 characters, plain text, never rendered as HTML. `lines` are 1-based line ranges of the submission's code to highlight, at most 20, each `from <= to`.
+- `SubmissionRef`: `{id, contest_id, user_id, problem_label, language, practice, created_at}`.
+- `Note`: `{id, submission_id, by, by_name, text, lines, created_at, expires_at}`. `expires_at` is when the note is deleted (30 days after it was written), `null` once a case has been opened from the submission: then it is kept with the case. Notes are append only: they cannot be edited or deleted by hand. The student is never told about a note.
+- `case_id` is the manual case opened from the submission, `null` if none.
+- The student sees a manual case's evidence as `kind: "manual"`, the sentence "An organiser asked you to explain this submission. The lines in question are highlighted.", their own `source` and `lines` (the notes' ranges); never the notes' text.
+- Opening a case: `title` at most 120 characters, `note` (the reason, for reviewers) 20 to 4,000; the case's student is the submission's author, its `source` is `manual`, its evidence is the submission and its notes, copied. The reviewer may not be the author (`400`). The case starts `open`, as one from signals does, and is shared with `PUT /api/admin/integrity/cases/{case}` as before.
+- The console feed (`GET /api/admin/contests/{id}/submissions`) gains `note_count` and `case_id` on each item for reviewers; others never see them.
+
+### C9: cases, outcomes and the two-person rule
+
+Every route that returns a `Case` adds:
+
+```json
+{
+  "source": "manual", "submission_id": 80, "created_by": 2,
+  "users": [{
+    "user_id": 7, "name": "Asha Rao",
+    "notice_available_at": 1792300000000, "first_opened_at": 1792310000000,
+    "respond_by": 1792914800000, "prior_outcomes": 1
+  }],
+  "ready_at": 1792914800000, "decide_by": 1794124400000, "overdue": false,
+  "policy": "referral_suggested",
+  "proposals": [ Proposal ],
+  "decisions": [{ "outcome": "zero_problem", "outcome_problem_label": "B", "outcome_users": [7], "proposal_id": 4, "sole_organiser": "" }],
+  "appeals": [ Appeal ],
+  "may_confirm": true, "may_rule": false, "sole_organiser": false
+}
+```
+
+| Field | Meaning |
+|---|---|
+| `source` | `signals` (opened from a check) or `manual` (opened from a submission) |
+| `notice_available_at` | when the student could first see the latest share: the share, or the end of a contest they were in when it was shared |
+| `first_opened_at` | when the student first opened the case after the latest share |
+| `respond_by` | the student's reply deadline (see "Deadlines"); `null` while no turn is open |
+| `prior_outcomes` | the student's confirmed outcomes above a warning in the last 2 years, in other cases, not overturned |
+| `ready_at`, `decide_by`, `overdue` | when every student had replied or run out of time; 14 days after that; whether `decide_by` has passed with the case still undecided. `null` and `false` while not shared |
+| `policy` | `referral_suggested` when a student of the case has a prior outcome above a warning in the last 2 years: the decision form says "Policy: referral suggested". A person still decides |
+| `may_confirm` | the viewer may confirm the pending proposal (not its proposer, not the case's opener) |
+| `sole_organiser` | the viewer is the owner and no other owner or admin exists: they may confirm their own proposal or rule alone, with a written reason |
+| `may_rule` | the viewer may rule on an open appeal of the case |
+
+`Proposal`: `{id, by, by_name, outcome, problem_label, user_ids, note, reason, created_at, state}`; `state` is `pending`, `confirmed` or `superseded` (a later decision came first).
+
+| Route | Request | Success |
+|---|---|---|
+| `POST /api/admin/integrity/cases/{case}/proposals` | `{"outcome": "zero_problem", "problem_label": "B", "user_ids": [7], "note": "...", "reason": "...", "seen_explanations": {"7": 1792300500000}}` | 201 `Case` |
+| `POST /api/admin/integrity/cases/{case}/proposals/{id}/confirm` | `{"note": "...", "seen_explanations": {...}, "sole_organiser_reason": "..."}` | 200 `Case` |
+
+- `outcome` is `warning`, `zero_problem` (needs `problem_label`, a label of the case's contest) or `referred`. `user_ids` are the students of the case the outcome is for (all of them when left out); the others are cleared by it. `note` (20 to 4,000) is for reviewers; `reason` (20 to 2,000) is the sentence the student reads on their standing.
+- A proposal needs a shared case where every student replied after the latest share or ran out of time (the same rule as before for action), the contest over for everyone, and no other pending proposal (`409 proposal_pending`). A seen explanation that is out of date is `409 explanation_changed`.
+- Confirming needs a reviewer who neither opened the case nor made the proposal, and who is not one of its students; anyone else is `403 two_person_rule`, "A second reviewer who did not open the case or propose this outcome confirms it." The exception: when no other owner or admin account exists, the owner may confirm with `sole_organiser_reason` (20 to 1,000 characters), recorded on the decision as `sole_organiser`.
+- Confirming writes the decision (state `actioned`, with `outcome`, `outcome_problem_label`, `outcome_users`, `proposal_id`), closes the case, lowers each student's rating (warning 0.5, zero for problem 1.5, referred 2.5; never below 0), sends `case_decided`, and for `zero_problem` changes the board (below).
+- `PUT /api/admin/integrity/cases/{case}` with `state: "actioned"` is now `400 proposal_needed`, "Propose the outcome instead: a second reviewer confirms it." Clearing, sharing and reopening are unchanged, except that a case closed with a confirmed outcome cannot be reopened (`400`, "An outcome is changed only through an appeal."). Clearing sends `case_decided`; sharing sends `case_shared`.
+
+**Zero for problem changes the board (D77 amended).** The confirmed decision sets that student's score on that problem to 0 on every board computed from then on, so a later rejudge cannot bring it back; the rank order and tie-break follow. The public `Cell` carries no mark. `Standings` gains:
+
+```json
+{ "board_updated_at": 1792400000000, "board_update_reason": "review_decision" }
+```
+
+both `null` until a decision changed the board, so the results page can say "Board updated on <date> after a review decision" without a name. A frozen board does not change until the contest is over for everyone. The contest audit gains `board_adjusted` rows (`{decision_id, problem_label, user_id, rank_before, total_before, score_before, reversed}`) which co-organisers whose site role is student do not see. The CSV export gains a last column `zero_by_decision` (the labels set to zero by a decision, separated by `;`) and the JSON export's standings rows gain `zero_by_decision: ["B"]`, both for owners and admins only. The student's own `Contest` response marks the problem: `problems[].zero_by_decision: true` and `problems[].zero_case_id: 12` (absent for anyone else).
+
+### C9: appeals
+
+| Route | Who | Request | Success |
+|---|---|---|---|
+| `POST /api/me/appeals` | the student the outcome or adjustment is about | `{"case_id": 12, "text": "..."}` or `{"adjustment_id": 40, "text": "..."}` | 201 `Appeal` |
+| `GET /api/admin/appeals` (`?state=open`) | owner, admin | | 200 `{appeals: [Appeal], server_now}`, open first, then newest |
+| `POST /api/admin/appeals/{id}/ruling` | owner, admin who took no part | `{"upheld": true, "reason": "...", "sole_organiser_reason": "..."}` | 200 `Appeal` |
+
+`Appeal`: `{id, case_id, adjustment_id, user_id, text, created_at, decide_by, overdue, state, ruling}`; `state` is `open`, `upheld` or `rejected`; `ruling` is `{by, by_name, upheld, reason, created_at}` or `null`. Students get their own appeals without `by` and `by_name`; reviewers also get `user {name, email, roll_number}` (roll number empty here).
+
+- One appeal per outcome per student and one per adjustment, within 14 days of the decision or the adjustment (`400` after: "The 14 days to appeal have passed."). `text` 20 to 4,000 characters.
+- A ruling needs an owner or admin who did not open the case, propose, confirm or decide anything on it, and is not one of its students; for an adjustment, not the person who made or confirmed it. Anyone else is `403 uninvolved_reviewer`. The sole-organiser exception applies as above.
+- `reason` (20 to 2,000) is shown to the student.
+- **Upheld** on an outcome: the outcome leaves the student's standing, their rating gets back the amount that outcome took (never above 10), the semester rollover that outcome blocked is applied if nothing else blocks it, a zero on the board is removed (the board and the summary are rewritten), and when no student of the case keeps an outcome the case becomes `cleared` with a decision row. **Upheld** on an adjustment: the rating gets back that adjustment's change, within 0 to 10. **Rejected:** the reason is recorded. Either way `appeal_decided` is sent.
+
+### C9: deadlines
+
+| Clock | Rule |
+|---|---|
+| Reply | 7 days from the student first opening the case, never later than 21 days after the notice became available; a reminder on day 5 |
+| Decide | 14 days from `ready_at`; after that the case is `overdue` for the owner |
+| Appeal | 14 days from the decision or the adjustment |
+| Ruling | 14 days from the appeal; then `overdue` |
+
+Cases shared before v1.4.0 keep the old rule: 7 days from the latest share.
+
+The student's `GET /api/integrity/cases` lists a case only once its notice is available (the shell's one call per sign-in does not count as opening). The case page calls `POST /api/integrity/cases/{case}/opened` (no body, `204`; `404` for a case not shared with the caller) when it shows the case: the first call after each share records `first_opened_at` and starts the 7 days. A client that never calls it leaves the 21-day cap in force, which never shortens a student's time. `StudentCase` gains:
+
+```json
+{ "respond_by": 1792914800000,
+  "outcome": { "kind": "zero_problem", "problem_label": "B", "decided_at": 1792400000000, "reason": "...", "appeal_by": 1793609600000 },
+  "appeal": Appeal, "can_appeal": true }
+```
+
+`outcome` is `null` unless the case closed with an outcome for this student; `reason` is the proposal's `reason`, written for the student.
+
+### C9 and C12: Standing
+
+| Route | Who | Success |
+|---|---|---|
+| `GET /api/me/standing` | any signed-in person, for themselves | 200 `{band, band_name, lines: [StandingLine], server_now}` |
+
+```json
+{ "band": "on_record", "band_name": "Outcomes on record",
+  "lines": [
+    { "id": "outcome-31-7", "kind": "outcome", "at": 1792400000000,
+      "text": "Week 6: zero for problem B.", "reason": "...",
+      "case_id": 12, "adjustment_id": null,
+      "appeal": null, "appeal_by": 1793609600000, "can_appeal": true },
+    { "id": "adjustment-40", "kind": "adjustment", "at": 1792500000000,
+      "text": "Standing adjusted by an organiser.", "reason": "...",
+      "case_id": null, "adjustment_id": 40,
+      "appeal": { "state": "open", "created_at": 1792600000000 }, "appeal_by": 1793709600000, "can_appeal": false } ] }
+```
+
+- `band`: `good` "Good standing" (rating 9.0 to 10), `on_record` "Outcomes on record" (6.0 to 8.9), `repeated` "Repeated outcomes" (below 6.0). The number itself is never in a student's response.
+- `lines`: confirmed outcomes for this person that no appeal overturned, and every manual adjustment, newest first, for 2 years after each. An open appeal shows as `appeal.state: "open"` ("Under appeal").
+
+**Record page (C12).** `GET /api/admin/students/{id}/record` (owner, admin; logged):
+
+```json
+{ "student": { "id": 7, "name": "Asha Rao", "email": "asha@college.edu", "disabled": false },
+  "standing": { "band": "on_record", "band_name": "Outcomes on record", "lines": [ StandingLine ] },
+  "rating": { "value_tenths": 85, "band": "on_record",
+              "history": [ { "id": 40, "at": 1792500000000, "delta_tenths": -15, "value_tenths": 85, "cause": "outcome",
+                             "reason": "...", "case_id": 12, "decision_id": 31, "appeal_id": null,
+                             "actor": { "id": 3, "name": "Ravi K" }, "confirmer": { "id": 2, "name": "Arjun M" },
+                             "semester_label": "", "band_before": "good", "band_after": "on_record" } ] },
+  "pending_rating": { "id": 5, "from_tenths": 85, "to_tenths": 55, "reason": "...", "by": { "id": 3, "name": "Ravi K" },
+                      "created_at": 1792600000000, "may_confirm": true },
+  "cases": [ { "id": 12, "contest_id": 3, "contest_title": "Week 6", "state": "actioned", "source": "manual",
+               "outcome": "zero_problem", "created_at": 1792300000000, "decided_at": 1792400000000 } ],
+  "notes": [ Note ],
+  "appeals": [ Appeal ],
+  "server_now": 1792700000000 }
+```
+
+- `value_tenths` is the rating in tenths, 0 to 100 (show 85 as 8.5); a student never rated yet is 100. `history` is newest first, kept 4 years; `cause` is `outcome`, `manual`, `appeal` or `rollover`; `band_before` and `band_after` differ on the line that crossed a band. `pending_rating` is `null` when nothing waits.
+- `cases` are every case the student is in, for reviewers; `notes` every note on the student's submissions still kept. A viewer who is a student of a case never gets it here, nor its standing lines and appeals. Nobody opens their own record page (`403`), and an erased account is `404` on every students route.
+- Every read of a case is logged: the case page, the contest's case list and the pair view, one row per student of the case; so is every appeal returned by `GET /api/admin/appeals`.
+
+| Route | Who | Request | Success |
+|---|---|---|---|
+| `PUT /api/admin/students/{id}/rating` | owner, admin | `{"value_tenths": 70, "reason": "..."}` | 200 `{rating, pending_rating: null}` when applied; 202 `{rating, pending_rating}` when it waits for a second organiser |
+| `POST /api/admin/students/{id}/rating/proposals/{pid}/confirm` | owner, admin other than the proposer | `{"sole_organiser_reason": "..."}` (only for the exception) | 200 `{rating, pending_rating: null}` |
+| `POST /api/admin/students/{id}/rating/proposals/{pid}/decline` | owner, admin | | 200 `{rating, pending_rating: null}` |
+
+- `value_tenths` 0 to 100 and different from the current value; `reason` 20 to 1,000 characters, shown to the student on their standing. A co-organiser is `403 forbidden`.
+- An edit that lowers the student's band is a proposal: `202`, until a second owner or admin confirms it (`403 two_person_rule` for the proposer, except as sole organiser). A new edit replaces a pending one. A confirm after the rating moved is `409 rating_changed`, "The rating changed since this was proposed. Propose it again."
+- Every applied edit writes a dated line on the student's standing ("Standing adjusted by an organiser" with the reason), sends `standing_adjusted`, and can be appealed.
+- Writes to one student's rating go one at a time; every write keeps the value within 0 to 10.
+
+**Semester rollover of the rating.** `podium-server semester-rollover [-db F] [-dry-run] LABEL` (on the VM, by the owner, when a term ends) adds 0.5 to every student with no confirmed outcome since the previous rollover, up to 10, with cause `rollover` and the label. A label runs once; running it again changes nothing. This is separate from `POST /api/admin/rollover`, which archives contests and disables old accounts.
+
+### C9: organisers' students pages
+
+| Route | Who | Success |
+|---|---|---|
+| `GET /api/admin/students` (`?filter=missed_last_two` or `?filter=no_accepted`, `&q=`) | owner, admin | 200 `{students: [StudentRow], filter, last_graded: [{contest_id, slug, title}], server_now}`, sorted by name |
+| `GET /api/admin/students/{id}` | owner, admin | 200 `{student: {id, name, email}, contests: [StudentContest], server_now}` |
+| `GET /api/admin/contests/{id}/class` | the contest's organisers (co-organisers whose site role is student once results are not hidden from them) | 200 `ClassView`; `409 not_final` "The class view opens when the results are final." |
+| `GET /api/admin/integrity/oversight` | owner | 200 `{reviewers: [{user_id, name, email, manual_opened, cleared, actioned, overdue, proposals, confirmations, rulings}], server_now}` |
+| `GET /api/admin/record-views` (`?subject=ID&viewer=ID&before=ID`) | owner | 200 `{views: [{id, at, kind, ref_id, viewer: {id, name, email}, subject: {id, name}}], has_more, server_now}`, newest first, 100 per page |
+
+- `StudentRow`: `{id, name, email, graded_contests, last_graded_percent, last_graded_slug, last_submission_at, rating_tenths}`. `graded_contests` counts final graded contests the student took part in; `last_graded_percent` is their percent in the most recent one (`null` without one); `last_submission_at` is their latest Submit anywhere (practice included), `null` if none. Sorting is by name, never by score.
+- Filters, over final graded contests only (practice never triggers one): `missed_last_two`, the two most recent graded contests the student could enter (domain access, or on the roster) and is on neither board; `no_accepted`, in the most recent graded contest, 10 or more submissions and none accepted. `last_graded` names the contests the filters used. `q` matches name or email.
+- `StudentContest`: `{contest_id, slug, title, graded, ended_at, score, max_score, percent, class_median_percent, rank, ranked_count, problems_attempted, problems_full, submissions, accepted}`, newest first. No integrity data on this page.
+- `ClassView`: `{contest_id, participants, problems: [{label, title, max_score, attempted, full, median_score, subtasks: [{idx, points, solved, solve_rate}], most_failed_test: {subtask_idx, test, failed} | null}], server_now}`: totals only, no names or user ids. `solve_rate` is the share of participants who earned the subtask's full points, one decimal; `most_failed_test` is the test (1-based within its subtask) that was the first failure in the most participants' best submissions, among those that failed one. In exam mode the subtasks and the failing test are left out.
+
+### Changed by v1.4.0 elsewhere
+
+- **Contest audit, `extension`:** new rows carry `reason_given` (`true` when a reason was written) instead of `reason`; the reason itself stays on the extension, where organisers read it. Rows written before v1.4.0 keep `reason` until the audit retention removes them, so read `reason_given` and fall back to `reason`.
+- **`board_adjusted`** joins the contest audit actions (above).
+- **Erasure:** `podium-server forget-user` also deletes the person's notices and contest summaries and resets `hide_progress`; notes, cases, appeals, the rating and its history stay until their own retention (they are the organisers' record of a decision).
 
 ## Judge worker API
 

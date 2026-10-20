@@ -410,10 +410,10 @@ func TestM4ExportEscapesAndStats(t *testing.T) {
 	resp.Body.Close()
 	lines := strings.Split(strings.TrimSpace(string(body)), "\n")
 	if resp.Header.Get("Content-Type") != "text/csv; charset=utf-8" || len(lines) != 2 ||
-		lines[0] != "rank,name,email,roll_number,section,started,total,A" {
+		lines[0] != "rank,name,email,roll_number,section,started,total,A,zero_by_decision" {
 		t.Fatalf("csv %q", body)
 	}
-	if !strings.HasPrefix(lines[1], `1,"'=HYPERLINK(""x"")",asha@college.edu,'+91,'@A,`) || !strings.HasSuffix(lines[1], ",40,40") {
+	if !strings.HasPrefix(lines[1], `1,"'=HYPERLINK(""x"")",asha@college.edu,'+91,'@A,`) || !strings.HasSuffix(lines[1], ",40,40,") {
 		t.Errorf("csv row %q", lines[1])
 	}
 	code, stats := owner.do("GET", fmt.Sprintf("/api/admin/contests/%d/stats", id), nil, "")

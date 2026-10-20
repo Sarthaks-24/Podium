@@ -19,11 +19,16 @@ type ExportRow struct {
 	RollNumber string `json:"roll_number"`
 	Section    string `json:"section"`
 	StartedAt  *int64 `json:"started_at"`
+	// ZeroByDecision lists the labels a review decision set to zero
+	// (D77 amended). It is set only for owners and admins: integrity data
+	// never reaches a co-organiser whose site role is student.
+	ZeroByDecision *[]string `json:"zero_by_decision,omitempty"`
 }
 
 // Export returns the full board with each row's email, roll number,
-// section and start time. For organisers only.
-func (s *Service) Export(ctx context.Context, c *Contest) ([]ExportRow, *Standings, error) {
+// section and start time. For organisers only; withZero adds each row's
+// zero-by-decision labels (owners and admins).
+func (s *Service) Export(ctx context.Context, c *Contest, withZero bool) ([]ExportRow, *Standings, error) {
 	st, err := s.Board(ctx, c, VariantFull)
 	if err != nil {
 		return nil, nil, err
@@ -58,6 +63,10 @@ func (s *Service) Export(ctx context.Context, c *Contest) ([]ExportRow, *Standin
 	for _, r := range st.Rows {
 		ct := byUser[r.UserID]
 		e := ExportRow{Row: r, Email: ct.email, RollNumber: ct.roll, Section: ct.section}
+		if withZero {
+			z := append([]string{}, r.Zeroed...)
+			e.ZeroByDecision = &z
+		}
 		if ct.started > 0 {
 			e.StartedAt = &ct.started
 		}
@@ -81,12 +90,17 @@ func csvCell(v string) string {
 }
 
 // WriteCSV writes the results as CSV: rank, name, email, roll number,
-// section, started (UTC, RFC 3339), total, then one column per problem.
-func WriteCSV(w io.Writer, c *Contest, rows []ExportRow) error {
+// section, started (UTC, RFC 3339), total, then one column per problem,
+// and with withZero last zero_by_decision (labels separated by ";").
+// Scores stay numbers, so a zero by decision is a 0 in its column.
+func WriteCSV(w io.Writer, c *Contest, rows []ExportRow, withZero bool) error {
 	cw := csv.NewWriter(w)
 	head := []string{"rank", "name", "email", "roll_number", "section", "started", "total"}
 	for _, p := range c.Problems {
 		head = append(head, p.Label)
+	}
+	if withZero {
+		head = append(head, "zero_by_decision")
 	}
 	if err := cw.Write(head); err != nil {
 		return err
@@ -100,6 +114,13 @@ func WriteCSV(w io.Writer, c *Contest, rows []ExportRow) error {
 			started, strconv.Itoa(r.Total)}
 		for _, cell := range r.Cells {
 			rec = append(rec, strconv.Itoa(cell.Score))
+		}
+		if withZero {
+			z := ""
+			if r.ZeroByDecision != nil {
+				z = strings.Join(*r.ZeroByDecision, ";")
+			}
+			rec = append(rec, z)
 		}
 		if err := cw.Write(rec); err != nil {
 			return err
@@ -312,6 +333,10 @@ type FeedItem struct {
 	TypedChars  *int `json:"typed_chars,omitempty"`
 	PastedChars *int `json:"pasted_chars,omitempty"`
 	FocusLosses *int `json:"focus_losses,omitempty"`
+	// NoteCount and CaseID (v1.4.0) are the private notes on the
+	// submission and the manual case opened from it, for reviewers only.
+	NoteCount *int   `json:"note_count,omitempty"`
+	CaseID    *int64 `json:"case_id,omitempty"`
 }
 
 // Feed lists the contest's submissions, newest first, a page at a time,

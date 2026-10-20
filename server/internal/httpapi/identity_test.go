@@ -148,7 +148,7 @@ func newSiteMode(t *testing.T, mode string) *site {
 	// what it just did; the rate limit has its own test.
 	s.contests = &contests.Service{DB: d, Problems: s.bank, Hub: s.hub, Now: clock.now, BoardEvery: time.Nanosecond}
 	s.subs.ContestView = s.contests.ViewFor
-	s.integrity = &integrity.Service{DB: d, Problems: s.bank, Now: clock.now}
+	s.integrity = &integrity.Service{DB: d, Problems: s.bank, Contests: s.contests, Now: clock.now}
 	inputEvents := &InputGenerationEvents{Problems: s.bank, Hub: s.hub}
 	jobSvc.OnChange = func(id int64, kind string) {
 		s.subs.OnJobChange(id, kind)

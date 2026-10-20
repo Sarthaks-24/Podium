@@ -22,7 +22,7 @@ const (
 	AuditProblems   = "problems"   // problems and pins: {"from": [...], "to": [...]}
 	AuditAIProblem  = "ai_problem" // an admin's reason to grade an AI problem
 	AuditRoster     = "roster"     // {"count", "added", "removed"}
-	AuditExtension  = "extension"  // {"user_id", "email", "minutes", "from_minutes", "reason"}
+	AuditExtension  = "extension"  // {"user_id", "email", "minutes", "from_minutes", "reason_given"} (v1.4.0; "reason" before)
 	AuditExtend     = "extend"     // {"minutes", "extended_minutes"}
 	AuditPause      = "pause"
 	AuditResume     = "resume"
@@ -33,6 +33,12 @@ const (
 	AuditArchive    = "archive"
 	// AuditDeployForced is written by podium-server deploy-check -force.
 	AuditDeployForced = "deploy_forced" // {"reason", "release", "refused"}
+	// AuditBoardAdjusted is a review decision zeroing a student's problem
+	// on the board, or an upheld appeal removing that zero (D77 amended):
+	// {"decision_id", "problem_label", "user_id", "rank_before",
+	// "total_before", "score_before", "reversed"}. Integrity data: never
+	// shown to a co-organiser whose site role is student.
+	AuditBoardAdjusted = "board_adjusted"
 )
 
 // Actor is the person an audit row names.
@@ -129,11 +135,11 @@ func nonNilStrings(s []string) []string {
 }
 
 // AuditAll lists every audit row of the contest, oldest first, for the
-// JSON export.
-func (s *Service) AuditAll(ctx context.Context, contestID int64) ([]AuditEntry, error) {
+// JSON export. noIntegrity leaves out the integrity rows, as AuditFilter.
+func (s *Service) AuditAll(ctx context.Context, contestID int64, noIntegrity bool) ([]AuditEntry, error) {
 	var out []AuditEntry
 	for page := 1; ; page++ {
-		list, more, err := s.AuditLog(ctx, contestID, page, AuditFilter{})
+		list, more, err := s.AuditLog(ctx, contestID, page, AuditFilter{NoIntegrity: noIntegrity})
 		if err != nil {
 			return nil, err
 		}
@@ -156,6 +162,9 @@ const AuditPage = 200
 // actors whose email contains Actor (case insensitive).
 type AuditFilter struct {
 	Action, Actor string
+	// NoIntegrity leaves out board_adjusted rows, for a co-organiser
+	// whose site role is student.
+	NoIntegrity bool
 }
 
 // AuditLog lists the contest's audit rows, newest first, a page at a time
@@ -173,6 +182,9 @@ func (s *Service) AuditLog(ctx context.Context, contestID int64, page int, f Aud
 	if f.Actor != "" {
 		q += " AND instr(lower(actor_email), ?) > 0"
 		args = append(args, strings.ToLower(f.Actor))
+	}
+	if f.NoIntegrity {
+		q += " AND action <> '" + AuditBoardAdjusted + "'"
 	}
 	rows, err := s.DB.QueryContext(ctx, q+" ORDER BY id DESC LIMIT ? OFFSET ?", append(args, AuditPage+1, (page-1)*AuditPage)...)
 	if err != nil {
@@ -194,4 +206,10 @@ func (s *Service) AuditLog(ctx context.Context, contestID int64, page int, f Aud
 		out = out[:AuditPage]
 	}
 	return out, more, rows.Err()
+}
+
+// RecordTx is Record inside the caller's transaction (a review decision
+// records its board change with the decision).
+func (s *Service) RecordTx(ctx context.Context, tx *sql.Tx, contestID int64, a Actor, action string, details any) error {
+	return s.recordTx(ctx, tx, contestID, a, action, details)
 }

@@ -50,7 +50,7 @@ func (s *Service) TestSignIn(ctx context.Context, email, name string, role Role,
 	u := User{Email: email, Name: limit(strings.TrimSpace(name), 200), Role: role}
 	err = tx.QueryRowContext(ctx, `INSERT INTO users (email, name, role, created_at, last_login_at) VALUES (?, ?, ?, ?, ?)
 		ON CONFLICT (email) DO UPDATE SET name = excluded.name, role = excluded.role, last_login_at = excluded.last_login_at
-		RETURNING id, theme, verdicts`, email, u.Name, string(role), now.UnixMilli(), now.UnixMilli()).Scan(&u.ID, &u.Theme, &u.Verdicts)
+		RETURNING id, theme, verdicts, hide_progress`, email, u.Name, string(role), now.UnixMilli(), now.UnixMilli()).Scan(&u.ID, &u.Theme, &u.Verdicts, &u.HideProgress)
 	if err != nil {
 		return User{}, "", time.Time{}, fmt.Errorf("record test user: %w", err)
 	}

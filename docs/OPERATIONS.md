@@ -505,7 +505,13 @@ How long the server keeps each kind of data (v1.3.0). The periods are constants 
 |---|---|---|---|
 | `sessions` | Sign-in sessions | 12 hours after sign-in | hourly sweep |
 | `integrity_events` | Paste and focus events during contests, and their counts | 180 days after the contest | integrity retention every 12 hours; kept while the student is in an open case |
-| `case_evidence` | Evidence and explanations in a closed integrity case | 2 years after the decision | integrity retention every 12 hours; the case and its decisions stay |
+| `case_evidence` | Evidence, explanations and appeals in a closed integrity case | 2 years after the decision | integrity retention every 12 hours; the case, its decisions and rulings stay; a manual case's notes go with it |
+| `standing_entries` | Outcomes and adjustments shown on your standing | 2 years after the decision | read time: a line older than 2 years is no longer shown; the decision record stays with the case |
+| `private_notes` | Organisers' private notes on a submission, unless a case is opened from it | 30 days | daily retention job, through the `retention_cutoffs` row (floor 30 days); a note whose submission has a manual case goes with that case's evidence |
+| `notifications` | Notices in your inbox | 180 days | daily retention job; erasure deletes them at once |
+| `record_views` | Records of who read a student's record, cases or notes | 2 years | daily retention job, through the `retention_cutoffs` row |
+| `rating_history` | The organisers' rating of a student and its changes | 4 years | daily retention job, through the `retention_cutoffs` rows, with the band-lowering proposals and how they ended; the current value stays |
+| `contest_summaries` | Your result summary for each contest | 4 years after the contest | daily retention job, with the contest's submissions; erasure deletes them at once |
 | `run_payloads` | Custom input and program output of a Run | 30 days | daily retention job; the run's verdict row stays |
 | `contact_messages` | Messages sent to the organisers | 180 days | daily retention job |
 | `draft_revisions` | Problem versions no contest or submission used | 90 days | daily retention job, through the `retention_cutoffs` row; never a problem's newest revision |
@@ -519,8 +525,11 @@ The daily job starts a minute after the server and then runs every 24 hours, in 
 - **Draft revisions:** a revision older than 90 days goes when it is not its problem's newest, no contest pins or pinned it, no submission or job names it and no student was served it. Its tests go with it.
 - **Submissions:** 4 years after a contest's last moment (its end plus every extension), unless one of its integrity cases is still open, its final standings (rank, user id, total, per-problem scores, no names) are written to `contest_results`, then its submissions made before the cutoff and their jobs, its pin history and served log are deleted, and, once the contest is archived or closed to practice, its pins stop naming a revision; the revisions themselves then go by the rule above. Practice made later stays until it is 4 years old itself. One contest that fails (its export, say) is skipped and the rest of the pass still runs; the journal line names it. Submissions outside contests (an organiser trying a problem) go 4 years after they were made. Contest settings, problems, clarifications and announcements stay.
 - **Audit:** site audit and contest audit rows older than 4 years.
+- **Private notes (v1.4.0):** notes older than 30 days whose submission has no manual case. A manual case keeps its notes until its evidence is emptied, 2 years after the decision.
+- **Notices, record views, rating history (v1.4.0):** older than 180 days, 2 years and 4 years. Pruning the rating history never changes a rating: the current value is stored on its own.
+- **Contest summaries (v1.4.0):** deleted with the contest's submissions.
 
-The append-only tables accept a delete only of rows older than their `retention_cutoffs` row, which only this job writes, and a database trigger refuses a cutoff newer than 90 days (draft revisions) or a year (everything else), so no bug can open them wider (D69).
+The append-only tables accept a delete only of rows older than their `retention_cutoffs` row, which only this job writes, and a database trigger refuses a cutoff newer than 90 days (draft revisions), 30 days (private notes, v1.4.0) or a year (everything else), so no bug can open them wider (D69).
 
 ## Site settings
 
@@ -544,11 +553,29 @@ sudo -u podium podium-server forget-user -db /var/lib/podium/db/podium.db -owner
 
 It deletes the account's sessions, drafts, integrity events and contact messages, clears the browser hashes on its submissions, its co-organiser places and the reasons given for its extensions (an accommodation can be health data), replaces its clarification questions with a removal note (the answers stay), replaces the name and email with `Removed user N` and `removed-user-N@removed.invalid` (N is the account id) in the account and in every contest roster (roll number and section are emptied there), clears the Google link and disables the account. Submissions and scores stay, so past standings stay correct under the placeholder. The site audit gets one `user_forgotten` row as the owner account (`-owner`, default `PODIUM_OWNER_EMAIL`), naming the account by id only. Refused: `PODIUM_OWNER_EMAIL` itself, another owner unless `-allow-owner` is given (better: remove the role on People first), an account already forgotten, an address with neither an account nor a roster entry, and any run without the configured owner's address: `sudo -u podium` does not load `/etc/podium/server.env`, so pass `-owner` with the `PODIUM_OWNER_EMAIL` value. Someone on a roster who never signed in has no account; then only their roster rows are replaced (`Removed person`, a random placeholder address).
 
-Not touched, by design, and listed by the command: submissions, scores and code (under the placeholder); integrity cases, explanations and decisions until the case retention (2 years after the decision); audit rows written before the erasure, which keep the address and text they recorded (an extension's reason, for one) until the audit retention removes them (4 years); and backups until they age out (14 days). If the person signs in again with the same Google account, a new, empty account is made.
+From v1.4.0 it also deletes the person's notices and contest summaries (their progress is empty from then on) and resets `hide_progress`.
+
+Not touched, by design, and listed by the command: submissions, scores and code (under the placeholder); integrity cases, explanations, appeals and decisions until the case retention (2 years after the decision); private notes on their submissions until the note retention; the rating and its history until the rating retention (4 years); audit rows written before the erasure, which keep the address and text they recorded (an extension's reason, for one) until the audit retention removes them (4 years); and backups until they age out (14 days). If the person signs in again with the same Google account, a new, empty account is made.
 
 ## Semester rollover
 
 At the end of a term an owner archives its contests and disables the student accounts nobody has used for 180 days, with `POST /api/admin/rollover` (an owner action; the People screen for it is the frontend's). Send it first without `"apply": true` and read the lists; then send it again with `"apply": true` and the same `label` (for example `2026 odd semester`). Contests are archived (nothing is deleted; each gets an `archive` row in its audit log), accounts are disabled and signed out (an owner can enable one again on People), and the site audit records the label, the counts and the emails. Organisers and `PODIUM_OWNER_EMAIL` are never disabled by it.
+
+## Semester rollover of the rating (v1.4.0)
+
+Separate from the rollover above: when a term ends, the owner gives every student with no confirmed outcome that term 0.5 on their rating (D110), on the VM:
+
+```sh
+sudo -u podium podium-server semester-rollover -db /var/lib/podium/db/podium.db -dry-run 2026-odd
+# read the counts, then:
+sudo -u podium podium-server semester-rollover -db /var/lib/podium/db/podium.db 2026-odd
+```
+
+"This term" is everything since the previous rollover (or since the start, for the first). A label runs once: running it again prints that it was done and changes nothing. Ratings never go above 10. The site audit records `rating_rollover` with the label and the counts. An outcome overturned on appeal later gives that student the rollover it blocked.
+
+## Students data in the background (v1.4.0)
+
+Once a minute the server writes the per-student summaries of contests that turned final (or were rejudged, had a pin changed or got extra time since), tells participants the results are final once they can see the final board, and sends the day-5 reply reminders. The journal shows `contest summaries written` and `case reminders sent`; a failure is a warning and the next minute tries again. Contests that ended more than a day before the upgrade to v1.4.0 get their summaries in the first minutes after it, without a notice.
 
 ## Checking a database
 

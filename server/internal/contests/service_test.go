@@ -269,7 +269,7 @@ func TestCSVInjectionIsNeutralised(t *testing.T) {
 	}
 	c := &Contest{Problems: []ContestProblem{{Label: "A"}}}
 	var buf bytes.Buffer
-	WriteCSV(&buf, c, []ExportRow{{Row: Row{Rank: 1, Name: "=1+1", Total: 40, Cells: []Cell{{Label: "A", Score: 40}}}, Email: "a@b.c"}})
+	WriteCSV(&buf, c, []ExportRow{{Row: Row{Rank: 1, Name: "=1+1", Total: 40, Cells: []Cell{{Label: "A", Score: 40}}}, Email: "a@b.c"}}, false)
 	if lines := strings.Split(strings.TrimSpace(buf.String()), "\n"); lines[1] != "1,'=1+1,a@b.c,,,,40,40" {
 		t.Errorf("csv %q", buf.String())
 	}

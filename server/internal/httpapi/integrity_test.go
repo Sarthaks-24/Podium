@@ -363,10 +363,10 @@ func TestIntegrityCaseFlowOverHTTP(t *testing.T) {
 	if code, out := decide("awaiting_student", "Please explain how you wrote this solution."); code != 200 || out["state"] != "awaiting_student" {
 		t.Fatalf("share: %d %v", code, out)
 	}
-	// Action waits for the students' turn: nobody has explained or had 7 days.
+	// Action is never one step: an outcome is proposed and confirmed.
 	if code, out := decide("actioned", "Copying is clear from the matched code."); code != 400 ||
-		out["error"].(map[string]any)["message"] != "Every student needs to explain, or to have had 7 days since the case was last shared, before you take action." {
-		t.Errorf("action during the response window: %d %v", code, out)
+		out["error"].(map[string]any)["code"] != "proposal_needed" {
+		t.Errorf("action in one step: %d %v", code, out)
 	}
 
 	// Retention 200 days later keeps the data of the students in the open

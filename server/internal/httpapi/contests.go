@@ -61,6 +61,11 @@ type contestProblemJSON struct {
 	// change after the start that changed its statement (C3).
 	RevisionID         int64  `json:"revision_id"`
 	StatementUpdatedAt *int64 `json:"statement_updated_at"`
+	// ZeroByDecision and ZeroCaseID mark, for the student it is about, a
+	// problem a review decision set to zero (D77 amended). Absent for
+	// everyone else.
+	ZeroByDecision bool   `json:"zero_by_decision,omitempty"`
+	ZeroCaseID     *int64 `json:"zero_case_id,omitempty"`
 }
 
 // contestJSON is Contest in docs/API.md.
@@ -230,6 +235,12 @@ func (d Deps) contestDetail(ctx context.Context, c *contests.Contest, u auth.Use
 		if err != nil {
 			return nil, err
 		}
+		zeroed := map[int64]int64{}
+		if !organiser {
+			if zeroed, err = d.Contests.ZeroedFor(ctx, c.ID, u.ID); err != nil {
+				return nil, err
+			}
+		}
 		for _, p := range c.Problems {
 			pj := contestProblemJSON{Label: p.Label, Title: p.Title, MaxScore: p.MaxScore(), MySubmissionCount: counts[p.ProblemID],
 				RevisionID: p.RevisionID}
@@ -238,6 +249,9 @@ func (d Deps) contestDetail(ctx context.Context, c *contests.Contest, u auth.Use
 			}
 			if cell, ok := cells[p.Label]; ok {
 				pj.MyScore = ptr(cell.Score)
+			}
+			if caseID, ok := zeroed[p.ProblemID]; ok {
+				pj.ZeroByDecision, pj.ZeroCaseID = true, ptr(caseID)
 			}
 			out.Problems = append(out.Problems, pj)
 		}
@@ -540,6 +554,10 @@ type standingsJSON struct {
 	Rows             []contests.Row `json:"rows"`
 	Me               int64          `json:"me"`
 	ServerNow        int64          `json:"server_now"`
+	// BoardUpdatedAt and BoardUpdateReason say that a review decision
+	// changed the board, without a name (D77 amended); null otherwise.
+	BoardUpdatedAt    *int64  `json:"board_updated_at"`
+	BoardUpdateReason *string `json:"board_update_reason"`
 }
 
 func (d Deps) standingsOut(ctx context.Context, c *contests.Contest, variant string, me int64) (*standingsJSON, error) {
@@ -560,6 +578,11 @@ func (d Deps) standingsOut(ctx context.Context, c *contests.Contest, variant str
 	}
 	if variant == contests.VariantFrozen {
 		out.FrozenAt = millis(c.FrozenAt())
+	}
+	// A frozen board shows a decision made after the close at once, and
+	// one made before (impossible through the routes) after the end.
+	if !c.BoardAdjustedAt.IsZero() && (variant == contests.VariantFull || !now.Before(c.Final()) || !c.BoardAdjustedAt.Before(c.Schedule.Close())) {
+		out.BoardUpdatedAt, out.BoardUpdateReason = millis(c.BoardAdjustedAt), ptr("review_decision")
 	}
 	return out, nil
 }
