@@ -43,18 +43,22 @@ for (const theme of THEMES) {
 test('the contest list puts the live contest first with a countdown', async ({ page }) => {
   await mockApi(page, { phase: 'during' });
   await page.goto('/');
+  // S10: the live contest is pinned on top with its countdown and one button.
+  const pinned = page.getByRole('region', { name: 'Week 6 contest' });
+  await expect(pinned).toContainText('Live');
+  await expect(pinned.locator('.pinned-count')).toHaveText(/^Ends in\s*\d{2}:\d{2}:\d{2}$/);
+  await expect(pinned.getByRole('link', { name: 'Continue' })).toHaveAttribute('href', '/contests/week-6');
+  await expect(pinned.getByRole('link', { name: 'Continue' })).toHaveClass(/btn-primary/);
+  await expect(page.locator('.btn-primary')).toHaveCount(1);
   const rows = page.locator('tbody tr');
-  await expect(rows).toHaveCount(3);
-  await expect(rows.nth(0)).toContainText('Week 6 contest');
-  await expect(rows.nth(0)).toContainText('Live');
-  await expect(rows.nth(0).locator('.countdown')).toHaveText(/^Ends in \d{2}:\d{2}:\d{2}$/);
-  await expect(rows.nth(1)).toContainText('Upcoming');
-  await expect(rows.nth(2)).toContainText('240 of 300');
-  await expect(rows.nth(2)).toContainText('Ended');
-  await expect(rows.nth(1).locator('.countdown')).toHaveText(/^Starts in \d d( \d+ h)?$/);
+  await expect(rows).toHaveCount(2);
+  await expect(rows.nth(0)).toContainText('Upcoming');
+  await expect(rows.nth(1)).toContainText('240 of 300');
+  await expect(rows.nth(1)).toContainText('Ended');
+  await expect(rows.nth(0).locator('.countdown')).toHaveText(/^Starts in \d d( \d+ h)?$/);
   // Phones keep the score, on the line under the start.
   await page.setViewportSize({ width: 375, height: 812 });
-  await expect(rows.nth(2).getByText('240 of 300')).toBeVisible();
+  await expect(rows.nth(1).getByText('240 of 300')).toBeVisible();
   await page.setViewportSize({ width: 1280, height: 800 });
   // Students get only the Contests link.
   await expect(page.getByRole('link', { name: 'Contests', exact: true })).toHaveAttribute('aria-current', 'page');

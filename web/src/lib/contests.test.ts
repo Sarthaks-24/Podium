@@ -25,6 +25,7 @@ import {
   bannerItems,
   bannerLead,
   markMessagesRead,
+  pinnedAction,
   messagesReadAt,
   railStatus,
   triedLine,
@@ -155,6 +156,17 @@ describe('the banner queue (B1)', () => {
     expect(bannerItems({ announcements: [], my_clarifications: [], public_clarifications: [q(11, 700, true)] }, new Set(['c11']), 0)).toEqual([]);
     expect(bannerLead('public')).toBe('An organiser answered a question for everyone');
     expect(bannerLead('answer')).toBe('An organiser answered your question');
+  });
+});
+
+describe('the pinned contest on Your contests (S10)', () => {
+  it('names the next step', () => {
+    expect(pinnedAction({ state: 'upcoming', my_window: null }, T)).toBe('Open the contest');
+    expect(pinnedAction({ state: 'live', my_window: { started_at: T, ends_at: T + MIN } }, T)).toBe('Continue');
+    expect(pinnedAction({ state: 'frozen', my_window: null }, T)).toBe('Continue');
+    expect(pinnedAction({ state: 'live', my_window: { started_at: T - 2 * MIN, ends_at: T - MIN } }, T)).toBe('See your result');
+    expect(pinnedAction({ state: 'practice', my_window: null }, T)).toBe('See your result');
+    expect(pinnedAction({ state: 'ended', my_window: null }, T)).toBe('See your result');
   });
 });
 

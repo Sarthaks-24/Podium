@@ -6,7 +6,11 @@
   gives the title (a link to the contest; on phones the whole row is the
   link), when it runs, how long it lasts, the problem count, the student's
   score once they have one ("240 of 300", digits in mono) and the state
-  word. A live row adds an "Open contest" button after its countdown. A
+  word. The first contest (live, else the next, else the latest) is
+  pinned above the table in a panel with its countdown as mono digits and
+  one primary button: "Open the contest", "Continue" or "See your result"
+  (audit 2026-10-20 S10); the table lists the rest under "Other
+  contests". A live row in the table adds an "Open contest" button. A
   frozen contest reads "Live" with "standings frozen" in its countdown
   (D84). Under 768 px each row reads as title and state, then the start,
   then the length and problem count in one muted line beside the score. A
@@ -29,6 +33,7 @@
     lengthText,
     listCountdown,
     orderedContests,
+    pinnedAction,
     studentState,
     studentStateWord,
     type ContestList,
@@ -107,6 +112,31 @@
 {:else if contests.length === 0}
   <PageState kind="empty" message="No contests yet. When an organiser schedules one, it appears here." />
 {:else}
+  {@const pin = contests[0]}
+  {@const pcd = listCountdown(pin, ticker.now)}
+  {@const pinHref = `/contests/${encodeURIComponent(pin.slug)}`}
+  <!-- S10: the live or next contest on top, with its countdown and one button. -->
+  <section class="panel pinned" aria-labelledby="pinned-title">
+    <div class="pinned-head">
+      <h2 id="pinned-title"><a href={pinHref} id="contest-{pin.slug}">{pin.title}</a></h2>
+      <span class="state-word" data-state={studentState(pin.state)}>{studentStateWord(pin.state)}</span>
+    </div>
+    {#if pcd && pcd.ms > 0}
+      <p class="pinned-count">
+        <span class="count-lead">{pcd.lead}</span>
+        <span class="mono figure">{pcd.ms >= 86_400_000 ? formatSpan(pcd.ms) : formatCountdown(pcd.ms)}</span>{#if pcd.after}<span class="count-lead">{pcd.after}</span>{/if}
+      </p>
+    {/if}
+    <p class="muted">
+      <MonoDigits text={formatDateTime(pin.starts_at)} />, {lengthText(pin)}, {countOf(pin.problem_count, 'problem')}{#if pin.my_score !== null}. Your score <MonoDigits parts={scoreParts(pin.my_score, pin.max_score)} />{/if}.
+    </p>
+    <div class="action-row">
+      <a class="btn btn-primary" href={pinHref} aria-describedby="pinned-title">{pinnedAction(pin, ticker.now)}</a>
+    </div>
+  </section>
+
+  {#if contests.length > 1}
+  <h2 class="others">Other contests</h2>
   <div class="table-wrap list">
     <table class="table table-stack">
       <thead>
@@ -120,7 +150,7 @@
         </tr>
       </thead>
       <tbody>
-        {#each contests as c (c.slug)}
+        {#each contests.slice(1) as c (c.slug)}
           {@const cd = listCountdown(c, ticker.now)}
           {@const href = `/contests/${encodeURIComponent(c.slug)}`}
           <tr class:live={isLive(c)}>
@@ -145,6 +175,7 @@
       </tbody>
     </table>
   </div>
+  {/if}
 {/if}
 
 <style>
@@ -153,8 +184,44 @@
     max-width: 44rem;
   }
 
-  .list {
+  .pinned {
+    max-width: var(--measure-form);
     margin-top: var(--space-5);
+  }
+
+  .pinned-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: var(--space-2) var(--space-3);
+  }
+
+  .pinned-head a {
+    color: var(--ink);
+  }
+
+  .pinned-count {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0 var(--space-2);
+  }
+
+  .count-lead {
+    color: var(--ink-muted);
+  }
+
+  .pinned-count .figure {
+    font-size: var(--fs-4);
+    line-height: var(--lh-tight);
+  }
+
+  .others {
+    margin-top: var(--section-gap);
+  }
+
+  .list {
+    margin-top: var(--space-4);
   }
 
   .title {
