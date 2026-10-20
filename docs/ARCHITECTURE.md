@@ -593,7 +593,7 @@ Navigation is named by job (D81, D146). Organisers do not share the students' la
 | Owner | Contests, Problem bank, People, Inbox (P3) | `/admin/contests` | same |
 
 - One account control (`components/AccountMenu.svelte`) holds identity, "Theme and colours" (a dialog the shell owns, `ThemeDialog`, with `ThemePicker`), Keyboard shortcuts and Sign out. The header fits one row from 768 px: the button names the person from 1024 px and reads "Account" below that. Under 768 px organisers get a Menu panel with the account items inline; students keep their links and the account button in the row.
-- Sign out first runs every save registered with `beforeSignOut()` (`lib/session.svelte.ts`, at most 3 s), so the workspace's last edits reach the server before the session ends. The confirmation during a live contest is P5's sign-out guard.
+- Sign out first runs every save registered with `beforeSignOut()` (`lib/session.svelte.ts`, at most 3 s), so the workspace's last edits reach the server before the session ends. During a live contest the workspace also registers `guardSignOut()`, and the shell asks "Sign out during the contest?" first (P5, D216).
 - The contest sub-nav ends with "Student view" and shows the unanswered question count after Console; it wraps instead of scrolling at 320 px.
 - The footer names the organisers ("Contact the organisers: {email}" from `GET /api/auth/config`). `/privacy` exists but nothing links it until the owner approves its text (D85): one constant, `PRIVACY_LINKED` in `web/src/lib/site.ts`, turns on the footer and sign-in links.
 - Organiser page titles read page first ("Console · Week 6 contest · podium"), so browser tabs differ when cut short.
@@ -621,6 +621,22 @@ The editor well gets a `--well-edge` border, the well's own colour in light them
 - `/contact` (signed in) posts to `POST /api/contact`; `/admin/contact` is the organisers' inbox with "Reply by email" as a `mailto:` link. Messages are plain text everywhere.
 - `web/public` holds the 1200 by 630 social card `og.png`, `favicon.ico`, the touch icon, two manifest icons and `site.webmanifest`; `tests/links.spec.ts` checks them, crawls every link and presses every button on the mocked screens.
 - After an emergency deploy, students see "The site was updated at 14:02" once per update (D112, `lib/siteUpdate.ts`); the shell reads `/api/me` again whenever a live stream reconnects.
+
+### The workspace (v2 P5, D211 to D220)
+
+`components/Workspace.svelte` is one screen at three sizes. What P5 changed, and why:
+
+| Where | What | Why |
+|---|---|---|
+| Under 1024 px | One sticky strip: the contest clock with links to the previous and next problem (the same `adjacentLabel()` as the "[" and "]" keys), then the tabs with Submit at the end. Submit lives only there; the letters with scores stay in the title area and the limits open the Problem tab | Students on phones had Submit on another tab and the statement 460 px down (audit S7) |
+| While the strip sticks | `html` gets `scroll-padding-top` from the strip's measured height (`--sticky-bar-h`, any element with `data-sticky-bar`) | A focused field or the editor's caret never lands under the strip (X3) |
+| From 1024 px | The workspace is sized from the shell's measured header, with no 32rem floor; a `role="separator"` between editor and result sets the result's share (20 to 80 percent) by drag or keyboard and "Hide result" folds it to one line that keeps the verdict; both are kept per device | Short laptops scrolled the page and got a 118 px editor (F7.3, F7.5, D87) |
+| Short tier | 1024 px and wider, at most 45rem tall: tighter title row, a 30 percent first result share, and under 1280 px a 10rem rail and a wider code column; a code column under 36rem drops the toolbar icons, so the toolbar keeps one row | 1366 by 768 at 125 percent is a 1093 px window about 610 px tall (D214) |
+| Focus | A tab that switches by itself after Submit or Run moves focus to the result's heading; time running out moves it to the page's h1 | Nothing pressed, nothing announced otherwise (F7.4, D215) |
+| Touch | `interactive-widget=resizes-content` in the viewport meta; editor and custom input at least 16 px on coarse pointers | The keyboard resizes the layout, so the strip stays visible, and iOS does not zoom on focus |
+| Verdict | VerdictPanel's headline and subtask strip stick to the top of the result pane while the tests scroll | The verdict landed below the fold (S5) |
+| Revealed test (D115) | `TestDetail` shows a revealed test's input, expected output, output, first difference and "Run on this input", with the line "This test is shown because this is practice." or "because this was a run."; the run headline counts samples and open tests | The server decides what is revealed; the screen only shows what the response carries (D217) |
+| Editor | Each CodeMirror language mode is its own chunk, loaded when chosen; the editor's keyboard hint is linked by `aria-describedby`; "Reset to starter" in Editor settings confirms and saves at once | 34 percent less editor code for a C++ student (`calibration.md`); X2; F7.12 |
 
 ### Announcements to screen readers (X1)
 
