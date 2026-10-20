@@ -322,7 +322,7 @@ func (s *Service) revealed(r *storedReveal) *RevealedTest {
 	in, _ := s.Problems.Blobs.Read(r.InputSHA, maxSampleTxt+1)
 	exp, _ := s.Problems.Blobs.Read(r.ExpectedSHA, maxSampleTxt+1)
 	return &RevealedTest{Idx: r.Idx, SubtaskIdx: r.Subtask, Input: clipText(in, maxSampleTxt), Expected: clipText(exp, maxSampleTxt),
-		Output: clipText([]byte(r.Output), maxSampleTxt),
+		Output:    clipText([]byte(r.Output), maxSampleTxt),
 		Truncated: len(in) > maxSampleTxt || len(exp) > maxSampleTxt || len(r.Output) >= judgeapi.MaxRunOutput-3}
 }
 

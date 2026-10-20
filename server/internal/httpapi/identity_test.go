@@ -59,6 +59,8 @@ type site struct {
 	logLevel *slog.LevelVar
 	// ai is the wizard's state; the fake provider exists in testing mode.
 	ai *AI
+	// authSvc applies the identity rules.
+	authSvc *auth.Service
 	// restart replaces the handler with one built from fresh services on
 	// the same database, as a server restart does: every in-memory state
 	// (event hub, rate limits, boards) starts again, the database stays.
@@ -137,9 +139,10 @@ func newSiteMode(t *testing.T, mode string) *site {
 		judgeapi.KindSubmit:         submissions.SubmitKind{Now: clock.now},
 		judgeapi.KindRun:            submissions.RunKind{Now: clock.now},
 	}
-	s := &site{t: t, idp: idp, bank: &problems.Service{DB: d, Blobs: blobs, Jobs: jobSvc}, hub: &events.Hub{}, db: d, clock: clock,
+	s := &site{t: t, idp: idp, bank: &problems.Service{DB: d, Blobs: blobs, Jobs: jobSvc, Now: clock.now}, hub: &events.Hub{}, db: d, clock: clock,
 		dbPath: dbPath, logs: logs, logLevel: level, ai: &AI{Keys: &ai.Keys{}, Slots: &ai.Slots{}}}
 	s.subs = &submissions.Service{DB: d, Jobs: jobSvc, Problems: s.bank, Hub: s.hub, Now: clock.now, HashKey: []byte("test-hash-key")}
+	s.authSvc = svc
 	jobSvc.Discard = func(shas []string) { blobs.DiscardUnrecorded(context.Background(), d, shas) }
 	// Boards recompute on the first read after a change, so a test reads
 	// what it just did; the rate limit has its own test.
