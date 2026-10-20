@@ -93,6 +93,9 @@ The sum can exceed the range of a 32-bit integer.
 			{Input: "2\n1 2\n3 4\n", Output: "3\n7\n"},
 			{Input: "1\n-5 5\n", Output: "0\n"},
 		},
+		OpenTests: []WizardSample{
+			{Input: "3\n0 0\n10 -3\n999 1\n", Output: "0\n7\n1000\n"},
+		},
 		Subtasks: []WizardSubtask{
 			{Points: 40, Title: "Small numbers", Constraints: "|a|, |b| <= 1000", GeneratorArgs: []string{"t=200", "v=1000"}, TestCount: 2},
 			{Points: 60, Title: "Full range", Constraints: "|a|, |b| <= 10^18", GeneratorArgs: []string{"t=1000", "v=1000000000000000000"}, TestCount: 2},
