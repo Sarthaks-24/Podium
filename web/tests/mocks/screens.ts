@@ -237,6 +237,13 @@ export const SCREENS: Screen[] = [
     ready: (page) => expect(page.getByText('Only owners can manage people.')).toBeVisible(),
   },
   {
+    name: 'privacy',
+    path: '/privacy',
+    who: 'signed-out',
+    title: 'Privacy · podium',
+    ready: (page) => expect(page.getByText('The privacy notice for podium is being written.')).toBeVisible(),
+  },
+  {
     name: 'not-found',
     path: '/no-such-page',
     who: 'owner',

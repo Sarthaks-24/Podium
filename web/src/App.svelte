@@ -182,7 +182,7 @@
       </p>
     {/if}
     <div class="inner bar-inner">
-      <a class="wordmark" href="/">podium</a>
+      <a class="wordmark" href="/" translate="no">podium</a>
 
       {#if signedIn && session.user}
         {#if isOrganiser}

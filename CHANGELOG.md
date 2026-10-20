@@ -4,6 +4,26 @@ Dated entries per release. Unreleased work is listed at the top.
 
 ## Unreleased
 
+### v2 P2, frontend (2026-10-20)
+
+Becomes `v1.2.0` with the backend's P2 work when the P2 gate is signed (slot S2: the backend's schema changes). The history screens need the backend's C3 and C4 routes.
+
+- Organisers get their own navigation, named by job: Contests, Problem bank and People. Signing in lands them on their contest list, with the live or next contest first, its countdown, its unanswered questions and Console first in its links. Live and frozen contests stay at the top, also when extended.
+- One account menu: who is signed in and as what, Theme and colours (now a dialog), Keyboard shortcuts and Sign out. The header fits one row from 768 px. Students on phones keep their links in the header with no Menu button. Signing out saves the code being written first.
+- Each contest's organiser screens link to the contest as students see it and show the unanswered questions on the Console tab; the tabs wrap on narrow phones instead of scrolling the page.
+- Every page's footer names the organisers' contact email. A page that does not exist says which address failed and offers the links that fit you. Organiser tab titles start with the page ("Console · Week 6 contest").
+- People: rows stack on phones; after adding an organiser the page says what address to send them, with Copy; someone who has not signed in reads "Invited"; a role changes from its row after a confirmation; account repairs share one Account help form; a fresh install starts with a three-step checklist; and History lists every change to people, domains and the site.
+- Your contests: an Open contest button on live rows, digits in mono and words in the text face ("240 of 300"), the length and problem count shown at every width, and a frozen contest reads Live with "standings frozen" in its countdown.
+- Before a contest starts, the rules teach the two buttons ("Run on samples ... never counts", "Submit grades your code on hidden tests", "A later, worse submission never lowers your score"), "How the workspace works" shows an example result with the real verdict panel, a late arrival reads that their time is already running, and a screen reader hears when Start opens.
+- Workspace: "Submitted, 3rd in queue"; pacing refusals ("Try again in 12 s") are a muted line beside Submit, never a red alert; "Your score on this problem stays 60 of 100" after a lower score; "3 of 15 submissions used"; partial scores fill the rail in the partial colour; the open problem has a border; the last five minutes are a sentence under the clock; Run and Submit have their icons; the key hint is left out on touch screens; "Submit again" and "Run again" after a failed send; Submit reads "Submitting" while it sends.
+- The rail says not tried, tried or solved (not submitted or submitted in an exam), counts "2 of 5 tried" during the contest, and has a Rules link that opens the contest's rules and what is recorded. A failing sample offers "Run on this input", which puts its input in the custom input box and runs it.
+- An answer an organiser gives everyone now reaches every student as a banner ("An organiser answered a question for everyone").
+- Standings: the board is as wide as its content, the legend explains the shading, "+2" and the dash, long names wrap on phones, your place is the one large figure ("7 of 24"), and a screen reader hears when your place changes.
+- Screen readers hear run results, compile errors, announcements and toasts through one always-present announcer.
+- History: a statement updated during a contest says so with "See what changed" and a line diff; the problem editor lists its revisions and compares them, and asks why while a contest is running with it; the console updates a contest to a new revision with a prefilled announcement, says which revision a rejudge uses, and its audit log is now Changes with filters.
+- The Nordic slate theme's action colour is a calmer blue.
+- `/privacy` exists for the drafted notice; nothing links it until the owner approves the text (D85).
+
 ### v2 P1, backend (2026-10-20)
 
 Becomes `v1.1.0` when the P1 gate is signed.

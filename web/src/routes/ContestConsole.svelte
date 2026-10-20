@@ -815,7 +815,7 @@
           </div>
           <div class="field grow">
             <label for="audit-actor">Made by</label>
-            <input id="audit-actor" class="input" type="search" autocomplete="off" spellcheck="false" placeholder="Email" bind:value={auditActor} />
+            <input id="audit-actor" class="input" type="search" autocomplete="off" spellcheck="false" placeholder="ta@college.edu" bind:value={auditActor} />
           </div>
           <button type="submit" class="btn btn-secondary btn-compact">Search</button>
         </form>

@@ -789,8 +789,13 @@
     text-align: right;
   }
 
+  /* Wraps rather than pushing the table past the page from 768 px. */
   .locked {
+    display: inline-block;
+    max-width: 9rem;
     font-size: var(--fs-0);
+    white-space: normal;
+    text-align: left;
   }
 
   .cell-label {
@@ -896,6 +901,17 @@
 
   .more {
     margin-top: var(--space-3);
+  }
+
+  /* Tablets: the sign-in time and the locked note wrap, so the table fits 720 px. */
+  @media (768px <= width < 1024px) {
+    .organisers .last {
+      white-space: normal;
+    }
+
+    .role-select {
+      min-width: 0;
+    }
   }
 
   @media (width < 768px) {
