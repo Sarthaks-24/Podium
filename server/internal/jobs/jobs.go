@@ -25,6 +25,7 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/Sarthaks-24/podium/internal/judgeapi"
@@ -136,6 +137,17 @@ type Service struct {
 	// finishedRing entries; doneNext is the next slot to overwrite.
 	done     []finishedJob
 	doneNext int
+	// lastClaim is when a judge last asked for work (Unix ms), whether or
+	// not it got any: the console's "judge last seen" (C10). In memory
+	// only; zero until the first claim after a start.
+	lastClaim atomic.Int64
+}
+
+// LastClaimAt returns when a judge last asked for work, and false when
+// none has since the server started.
+func (s *Service) LastClaimAt() (time.Time, bool) {
+	ms := s.lastClaim.Load()
+	return time.UnixMilli(ms), ms > 0
 }
 
 func (s *Service) now() time.Time {
@@ -175,6 +187,7 @@ func (s *Service) Supersede(ctx context.Context, tx *sql.Tx, id int64, reason st
 // Claim leases the next queued job of one of the given kinds to worker,
 // or returns nil when there is none.
 func (s *Service) Claim(ctx context.Context, req judgeapi.ClaimRequest) (*judgeapi.Claim, error) {
+	s.lastClaim.Store(s.now().UnixMilli())
 	var known []any
 	for _, k := range req.Kinds {
 		if _, ok := s.Kinds[k]; ok {

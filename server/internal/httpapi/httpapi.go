@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/Sarthaks-24/podium/internal/auth"
+	"github.com/Sarthaks-24/podium/internal/contact"
 	"github.com/Sarthaks-24/podium/internal/contests"
 	"github.com/Sarthaks-24/podium/internal/db/migrations"
 	"github.com/Sarthaks-24/podium/internal/events"
@@ -51,6 +52,9 @@ type Deps struct {
 	// AI is the wizard's in-memory state (M5): pasted keys, one call per
 	// admin, wizard runs. Its routes are mounted only when it is set.
 	AI *AI
+	// Contact keeps the contact form's messages (C6). New makes one from
+	// DB and Auth when it is not set.
+	Contact *contact.Service
 
 	// reads limits heavy reads per user; New sets it.
 	reads *readLimiter
@@ -65,6 +69,12 @@ type Deps struct {
 // New returns the root handler.
 func New(d Deps) http.Handler {
 	d.reads = newReadLimiter()
+	if d.Contact == nil {
+		d.Contact = &contact.Service{DB: d.DB, Auth: d.Auth}
+		if d.Contests != nil {
+			d.Contact.Now = d.Contests.Clock
+		}
+	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", d.healthz)
 
@@ -191,6 +201,14 @@ func (d Deps) contestRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/admin/contests/{id}/export.json", signedIn(d.exportJSON))
 	mux.HandleFunc("GET /api/admin/contests/{id}/stats", signedIn(d.contestStats))
 	mux.HandleFunc("PUT /api/admin/contests/{id}/editorial", signedIn(d.setEditorial))
+}
+
+// now is the server's clock: the contests service's, which tests replace.
+func (d Deps) now() time.Time {
+	if d.Contests != nil {
+		return d.Contests.Clock()
+	}
+	return time.Now()
 }
 
 // internalError logs err and answers with a generic 500.

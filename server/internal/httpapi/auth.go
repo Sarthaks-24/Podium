@@ -122,9 +122,19 @@ func (d Deps) authConfig(w http.ResponseWriter, r *http.Request) {
 	if mode == "" {
 		mode = "production"
 	}
-	WriteJSON(w, http.StatusOK, map[string]any{"allowed_domains": names, "contact_email": d.Auth.OwnerEmail, "mode": mode,
-		"organisation": map[string]string{"name": "", "contact_email": "", "phone": "", "privacy_contact": ""},
-		"retention":    retention.Periods()})
+	org, err := d.Auth.Organisation(r.Context())
+	if err != nil {
+		d.internalError(w, r, err)
+		return
+	}
+	// The organisation's own address replaces the owner's personal one as
+	// soon as an owner enters it (pre-auth review, observation 1).
+	contactEmail := org.ContactEmail
+	if contactEmail == "" {
+		contactEmail = d.Auth.OwnerEmail
+	}
+	WriteJSON(w, http.StatusOK, map[string]any{"allowed_domains": names, "contact_email": contactEmail, "mode": mode,
+		"organisation": org, "retention": retention.Periods()})
 }
 
 // testSignIn signs in as anyone with any role, for testing mode only (the

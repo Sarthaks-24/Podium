@@ -100,7 +100,7 @@ type PinUpdate struct {
 // UpdatePin moves a label of the contest to another revision of its
 // problem, for by: the revision must be the validated content of the
 // problem now (its content hash equals the problem's, and a passing
-// validation covers it). The pin, pinned_hash and the subtask points
+// validation covers it). The pin and the subtask points
 // change in one transaction with a pin history row and an audit row.
 // Students get a statement event.
 func (s *Service) UpdatePin(ctx context.Context, contestID int64, label string, revisionID int64, by Actor) (*PinUpdate, error) {
@@ -152,8 +152,8 @@ func (s *Service) UpdatePin(ctx context.Context, contestID int64, label string, 
 	}
 	pointsJSON, _ := json.Marshal(points)
 	now := s.now()
-	if _, err := tx.ExecContext(ctx, `UPDATE contest_problems SET revision_id = ?, pinned_hash = ?, points = ? WHERE contest_id = ? AND label = ?`,
-		to.ID, to.ContentHash, string(pointsJSON), contestID, label); err != nil {
+	if _, err := tx.ExecContext(ctx, `UPDATE contest_problems SET revision_id = ?, points = ? WHERE contest_id = ? AND label = ?`,
+		to.ID, string(pointsJSON), contestID, label); err != nil {
 		return nil, err
 	}
 	if err := s.recordPinTx(ctx, tx, contestID, label, cp.ProblemID, to.ID, by, now); err != nil {

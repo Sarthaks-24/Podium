@@ -179,6 +179,17 @@ func (d Deps) adminContestOut(ctx context.Context, c *contests.Contest) (*adminC
 	if out.PinHistory, err = d.Contests.PinHistory(ctx, c.ID); err != nil {
 		return nil, err
 	}
+	q, err := d.Contests.QueueHealth(ctx, c.ID)
+	if err != nil {
+		return nil, err
+	}
+	out.Queue = queueJSON{Waiting: q.Waiting, Judging: q.Judging, Errors: q.Errors, OldestWaitS: q.OldestWait.Seconds()}
+	out.Unanswered = q.Unanswered
+	if d.Problems != nil && d.Problems.Jobs != nil {
+		if at, ok := d.Problems.Jobs.LastClaimAt(); ok {
+			out.JudgeLastClaimAt = millis(at)
+		}
+	}
 	return out, nil
 }
 

@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/Sarthaks-24/podium/internal/config"
+	"github.com/Sarthaks-24/podium/internal/retention"
 )
 
 // Role is a global role. The order is student < admin < owner.
@@ -58,7 +59,7 @@ type User struct {
 // much it is used, so a session left open on a shared lab PC is gone by
 // the next day at the latest (security council S5). The cookie itself has
 // no expiry, so closing the browser ends it sooner.
-const SessionTTL = 12 * time.Hour
+const SessionTTL = retention.Sessions
 
 // Sign-in refusals. Handlers map them to the /signin?error= codes.
 var (
@@ -91,6 +92,9 @@ type Service struct {
 	OwnerEmail string
 	// Now is the clock; tests replace it.
 	Now func() time.Time
+
+	// org caches the site settings (site.go).
+	org orgCache
 }
 
 func (s *Service) now() time.Time {

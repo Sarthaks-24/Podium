@@ -90,7 +90,7 @@ func TestMigrateFromV110(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Join(applied, ",") != "0010_revisions,0011_site_audit" {
+	if strings.Join(applied, ",") != "0010_revisions,0011_site_audit,0012_contact" {
 		t.Fatalf("applied %v", applied)
 	}
 	rep, err := Check(ctx, d)
@@ -198,11 +198,13 @@ func TestMigrateFromV110(t *testing.T) {
 	if from1 != 300 || from2 != 70 || actor.Valid {
 		t.Fatalf("pin history from %d %d actor %v", from1, from2, actor)
 	}
-	// pinned_hash stays (expand only).
+	// pinned_hash went in 0012 (the contract step); the pin's revision
+	// carries the hash it held.
 	var hash string
-	d.QueryRowContext(ctx, "SELECT pinned_hash FROM contest_problems WHERE contest_id = 2").Scan(&hash)
+	d.QueryRowContext(ctx, `SELECT r.content_hash FROM contest_problems cp JOIN problem_revisions r ON r.id = cp.revision_id
+		WHERE cp.contest_id = 2`).Scan(&hash)
 	if hash != "hash-b-old" {
-		t.Fatalf("pinned_hash %q", hash)
+		t.Fatalf("pinned revision hash %q", hash)
 	}
 }
 
