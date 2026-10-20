@@ -277,7 +277,7 @@ The timeline (submissions with typed and pasted counts, pastes, focus changes, s
 - **False-positive guards found by the review:**
   - Hard-coded answers skip expected outputs that appear in the reference, the brute force or the statement, or in the programs of more than max(3, 10%) of the students; each distinct source is squashed once (was once per submission per output, about 8.5 s per problem in the worst case).
   - Probing ignores all-SK attempts, compares near-identity with the first attempt of a run, and counts only flips (AC back to a failure, or one failure to another), not forward progress.
-  - Similar code: strength needs an amount of shared fingerprints as well as the score; the common-fingerprint limit is counted per language; `Settings.ExtraBase` accepts more base programs (templates), not yet filled from any setting.
+  - Similar code: strength needs an amount of shared fingerprints as well as the score; the common-fingerprint limit is counted per language. The shared base is the reference and the brute force only; the unused `Settings.ExtraBase` hook for organiser templates was removed in v1.1.0 (B1.11), since nothing could fill it.
   - Same wrong output: the common-mistake limit is max(3, 2% of the students).
 - **The lexer reads hidden code**: the body of a C++ `#define` (only `#include` lines are dropped; line continuations join lines) and a Python string literal passed straight to `exec` or `eval`.
 - `integrity` now imports `contests` for `RetentionPeriod`.

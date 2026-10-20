@@ -94,7 +94,7 @@ Still out of reach:
 
 - **Another language.** A program translated by hand into another language shares no fingerprints with the original.
 - **Code built at run time.** A string assembled, decoded or read from input before `exec`, `eval` or a macro trick hides the code; only literals passed straight to `exec` or `eval` are read.
-- **Shared templates.** Code an organiser gave the class (a starter file, a lab template) is not discounted unless it is the reference or the brute force, so students who build on the same template look alike. Podium cannot yet take a list of templates per contest; the comparison is ready for it (`Settings.ExtraBase` in the server). Until then, read similar-code signals on templated problems with that in mind. This is a known gap.
+- **Shared templates.** Code an organiser gave the class (a starter file, a lab template) is not discounted unless it is the reference or the brute force, so students who build on the same template look alike. Podium cannot take a list of templates per contest, so read similar-code signals on templated problems with that in mind. This is a known gap. Code shared by many students (the editor's starter code among it) is dropped anyway once more than a tenth of the students in that language have it.
 - **AI-written code.** See below.
 
 ## AI-written code

@@ -173,10 +173,10 @@ void solve();
 int main(){ ios::sync_with_stdio(false); cin.tie(nullptr); int t=1; while(t--) solve(); return 0; }
 `
 
-// A template the organiser gives the class goes into ExtraBase and stops
-// counting; without it, three independent solutions on the template are
-// listed.
-func TestExtraBaseDiscountsATemplate(t *testing.T) {
+// Code in the shared base stops counting: three independent solutions on
+// one template are listed, and are not once the template is in base (as
+// the reference and brute force always are).
+func TestBaseDiscountsATemplate(t *testing.T) {
 	kadane := subjects("cpp17", teacherTemplate+`
 void solve(){
     int n; read(n);
@@ -217,7 +217,7 @@ void solve(){
 	if listed == 0 {
 		t.Fatal("the template alone links nobody: the test proves nothing")
 	}
-	with := padded(kadane, nil, 37, Settings{ExtraBase: []Subject{{Language: "cpp17", Source: teacherTemplate}}})
+	with := padded(kadane, []Subject{{Language: "cpp17", Source: teacherTemplate}}, 37, Defaults)
 	for k, p := range with {
 		if p.Score >= Defaults.Threshold {
 			t.Errorf("with the template in base %v: %.2f %s", k, p.Score, p.Strength)
