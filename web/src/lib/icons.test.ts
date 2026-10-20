@@ -13,7 +13,7 @@ describe('icon set', () => {
   it('lists exactly these icons', () => {
     expect(Object.keys(ICONS).sort()).toEqual(
       [
-        'alert-triangle', 'bell', 'check', 'chevron-down', 'chevron-right', 'chevron-up', 'circle-alert', 'circle-check',
+        'alert-triangle', 'bell', 'check', 'chevron-down', 'chevron-left', 'chevron-right', 'chevron-up', 'circle-alert', 'circle-check',
         'circle-x', 'clock', 'copy', 'download', 'lock', 'maximize', 'menu', 'message-square', 'moon', 'pause', 'play',
         'plus', 'refresh-cw', 'send', 'sun', 'trash', 'upload', 'x',
       ].sort(),

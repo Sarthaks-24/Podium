@@ -9,8 +9,9 @@
   mono face has one weight, so the time is never set in a faked bold (S4,
   audit 01-8). At zero the clock says "Time is up. Your submissions are saved." on
   screen too. Props: `endsAt` (Unix ms), `freeze` (Unix ms or null),
-  `onexpire` (called once when the time reaches zero) and `compact` (one
-  line, for the sticky strip under 1024 px).
+  `onexpire` (called once when the time reaches zero) and `compact` (for
+  the sticky strip under 1024 px: the time over the freeze
+  line, the "Time left" label kept for screen readers only).
 -->
 <script lang="ts">
   import { onMount } from 'svelte';
@@ -102,14 +103,29 @@
     font-weight: 500;
   }
 
+  /* The workspace strip under 1024 px (F7.2): the time over the freeze
+     line, beside the previous and next problem; "Time left" stays for
+     screen readers as the timer's name. */
   .compact {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: baseline;
-    gap: 0 var(--space-3);
+    gap: 0;
+  }
+
+  .compact .label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
   }
 
   .compact .time {
     font-size: var(--fs-2);
+  }
+
+  .compact .late,
+  .compact .up {
+    padding-bottom: 0;
+    border-bottom: 0;
   }
 </style>

@@ -29,6 +29,8 @@ export const ICONS = {
   'chevron-up': [path('M18 15l-6-6-6 6')],
   'chevron-down': [path('M6 9l6 6 6-6')],
   'chevron-right': [path('m9 18l6-6l-6-6')],
+  // P5: Previous in the workspace's phone strip.
+  'chevron-left': [path('m15 18l-6-6l6-6')],
   trash: [path('M3 6h18M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2')],
   clock: [ring, path('M12 6v6l4 2')],
   lock: [{ tag: 'rect', x: 3, y: 11, width: 18, height: 11, rx: 2 }, path('M7 11V7a5 5 0 0 1 10 0v4')],
