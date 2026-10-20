@@ -8,9 +8,11 @@
   contest: live and frozen ones first (an extended contest stays among
   them), upcoming ones soonest first, past ones newest first. A table
   gives each contest's title (a link to its settings), when it starts, how
-  long it lasts, the problem count, the state word, whether it is
-  published, and links to its console and results. Under 768 px each row
-  reads as title and state, then the start and the links. "New contest"
+  long it lasts, the problem count, the organiser state word ("Draft"
+  while students cannot see it, lib/contests organiserState) and its
+  Console and Results. Under 1024 px each row reads as title and state,
+  then the start and the links (R1). With no contests yet it points to
+  the problem bank (audit O6). "New contest"
   opens a small form for a title, a slug (suggested from the title until it
   is edited) and the start and end, creates the contest unpublished with
   the default settings (graded, fixed start, subtask feedback) and goes to
@@ -26,8 +28,8 @@
     fromLocalInput,
     lengthText,
     organiserOrder,
+    organiserState,
     problemCount,
-    stateWord,
     toLocalInput,
     type AdminContest,
     type AdminContestSummary,
@@ -186,16 +188,17 @@
     {@const f = featured}
     {@const left = isLive(f) ? (f.close_at ?? f.ends_at) - ticker.now : f.starts_at - ticker.now}
     {@const fbase = `/admin/contests/${f.id}`}
+    {@const fs = organiserState(f)}
     <section class="featured" aria-labelledby="featured-title">
       <div class="featured-head">
         <h2 id="featured-title">{f.title}</h2>
-        <span class="state-word" data-state={f.state}>{stateWord(f.state)}</span>
+        <span class="state-word" data-state={fs.kind}>{fs.word}</span>
       </div>
       <p class="featured-line">
         {#if left > 0}
           {isLive(f) ? 'Ends in' : 'Starts in'} <MonoDigits parts={numberParts(left >= 86_400_000 ? formatSpan(left) : formatCountdown(left))} />{#if f.paused}, judging paused{/if}
         {:else}
-          {formatDateTime(f.starts_at)}
+          <MonoDigits text={formatDateTime(f.starts_at)} />
         {/if}
       </p>
       {#if isLive(f) && unanswered !== null}
@@ -203,11 +206,11 @@
           {#if unanswered > 0}<a href="{fbase}/console#clar-title">{countOf(unanswered, 'unanswered question')}</a>{:else}No unanswered questions{/if}
         </p>
       {/if}
-      <p class="featured-links">
-        <a class="btn btn-primary btn-compact" href="{fbase}/console">Console</a>
-        <a href={fbase}>Settings</a>
-        <a href="{fbase}/results">Results</a>
-        <a href="/contests/{encodeURIComponent(f.slug)}">Student view</a>
+      <p class="featured-links action-row">
+        <a class="btn btn-primary" href="{fbase}/console">Console</a>
+        <a class="btn btn-quiet" href={fbase}>Settings</a>
+        <a class="btn btn-quiet" href="{fbase}/results">Results</a>
+        <a class="btn btn-quiet" href="/contests/{encodeURIComponent(f.slug)}">Student view</a>
       </p>
     </section>
   {/if}
@@ -215,7 +218,7 @@
   <div class="toolbar">
     <button
       type="button"
-      class="btn btn-primary"
+      class="btn {featured ? 'btn-secondary' : 'btn-primary'}"
       aria-expanded={creating}
       aria-controls="create-contest"
       bind:this={newButton}
@@ -299,7 +302,9 @@
   {:else if loadState === 'error'}
     <PageState kind="error" message={loadError} onretry={load} />
   {:else if contests.length === 0}
-    <PageState kind="empty" message="No contests yet. Create one, then add validated problems to it." />
+    <PageState kind="empty" message="No contests yet. Contests use validated problems from the problem bank.">
+      {#snippet action()}<a class="btn btn-secondary" href="/admin/problems">Go to the problem bank</a>{/snippet}
+    </PageState>
   {:else}
     <div class="table-wrap list">
       <table class="table table-stack">
@@ -310,23 +315,22 @@
             <th scope="col">Length</th>
             <th scope="col" class="right">Problems</th>
             <th scope="col">State</th>
-            <th scope="col">Visibility</th>
             <th scope="col"><span class="visually-hidden">Links</span></th>
           </tr>
         </thead>
         <tbody>
           {#each sorted as c (c.id)}
+            {@const st = organiserState(c)}
             <tr>
               <th scope="row" class="title"><a class="row-link" href="/admin/contests/{c.id}">{c.title}</a></th>
-              <td class="num when">{formatDateTime(c.starts_at)}</td>
+              <td class="when"><MonoDigits text={formatDateTime(c.starts_at)} /></td>
               <td class="length">{lengthText(c)}</td>
               <td class="num right problems">{problemCount(c)}</td>
-              <td class="state">{stateWord(c.state)}{c.paused ? ', judging paused' : ''}</td>
-              <td class="pub" class:draft={!c.published}>{c.published ? 'Published' : 'Draft'}</td>
+              <td class="state"><span class="state-word" data-state={st.kind}>{st.word}</span>{#if c.paused}<span class="paused">Judging paused</span>{/if}</td>
               <td class="links">
                 <span class="link-row">
-                  <a href="/admin/contests/{c.id}/console" aria-label="Console for {c.title}">Console</a>
-                  <a href="/admin/contests/{c.id}/results" aria-label="Results for {c.title}">Results</a>
+                  <a class="btn btn-quiet btn-compact" href="/admin/contests/{c.id}/console" aria-label="Console for {c.title}">Console</a>
+                  <a class="btn btn-quiet btn-compact" href="/admin/contests/{c.id}/results" aria-label="Results for {c.title}">Results</a>
                 </span>
               </td>
             </tr>
@@ -426,13 +430,15 @@
   }
 
   .length,
-  .state,
-  .pub {
+  .state {
     white-space: nowrap;
   }
 
-  .pub.draft {
-    color: var(--ink-muted);
+  .paused {
+    margin-left: var(--space-2);
+    color: var(--part);
+    font-size: var(--fs-0);
+    font-weight: 500;
   }
 
   .links {
@@ -441,16 +447,53 @@
 
   .link-row {
     display: inline-flex;
-    gap: var(--space-3);
+    gap: var(--space-1);
   }
 
-  @media (width < 768px) {
+  /* Rows stack below 1024 px here (R1), wider than the phone tier of
+     .table-stack in controls.css: title and state, then the start and the
+     links. */
+  @media (width < 1024px) {
+    .list thead {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      overflow: hidden;
+      clip: rect(0, 0, 0, 0);
+    }
+
     .list tbody tr {
+      position: relative;
+      display: grid;
       grid-template-columns: minmax(0, 1fr) auto;
       grid-template-areas:
         'title state'
-        'when pub'
-        'links links';
+        'when links';
+      align-items: center;
+      gap: var(--space-1) var(--space-3);
+      padding: var(--space-3);
+      border-bottom: var(--rule) solid var(--line);
+    }
+
+    .list tbody tr:last-child {
+      border-bottom: 0;
+    }
+
+    .list tbody :is(th, td) {
+      height: auto;
+      padding: 0;
+      border: 0;
+    }
+
+    .list .row-link::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+    }
+
+    .list .link-row a {
+      position: relative;
+      z-index: 1;
     }
 
     .title {
@@ -469,12 +512,6 @@
       font-size: var(--fs-0);
     }
 
-    .pub {
-      grid-area: pub;
-      font-size: var(--fs-0);
-      text-align: right;
-    }
-
     .length,
     .problems {
       display: none;
@@ -482,7 +519,20 @@
 
     .links {
       grid-area: links;
-      height: auto;
+      justify-self: end;
+    }
+  }
+
+  @media (width < 768px) {
+    .list tbody tr {
+      grid-template-areas:
+        'title state'
+        'when when'
+        'links links';
+    }
+
+    .links {
+      justify-self: start;
     }
   }
 </style>

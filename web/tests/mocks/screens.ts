@@ -217,7 +217,7 @@ export const SCREENS: Screen[] = [
     path: '/',
     who: 'owner',
     title: 'Contests · podium',
-    ready: (page) => expect(page.getByText('No contests yet. Create one')).toBeVisible(),
+    ready: (page) => expect(page.getByText('No contests yet. Contests use validated problems')).toBeVisible(),
   },
   {
     name: 'people-owner',

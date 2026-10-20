@@ -315,7 +315,8 @@ test('admins land on their contest list, named by job', async ({ page }) => {
   await expect(nav.getByRole('link', { name: 'Contests' })).toHaveAttribute('aria-current', 'page');
   await expect(page.getByText('To create a contest or follow one live')).toHaveCount(0);
   await expect(page.getByRole('row', { name: /Week 7 contest/ })).toContainText('Draft');
-  await expect(page.getByRole('row', { name: /Week 6 contest/ })).toContainText('Published');
+  // A published live contest reads by its state; there is no separate visibility column (P3 O1).
+  await expect(page.getByRole('row', { name: /Week 6 contest/ }).locator('.state-word')).toHaveText(/^(Live|Frozen)$/);
 
   await page.getByRole('button', { name: 'New contest' }).click();
   await page.getByLabel('Title').fill('Week 8 contest');
@@ -401,7 +402,7 @@ test('the editor shows field errors, picks problems and previews a roster', asyn
     { problem_id: 11, label: 'A' },
     { problem_id: 12, label: 'B' },
   ]);
-  await expect(page.getByText('Added Interval covering as B', { exact: true })).toBeVisible();
+  await expect(page.getByText('Added Interval covering as B', { exact: true }).first()).toBeVisible();
   await expect(page.getByRole('button', { name: 'Save problems' })).toHaveCount(0);
   await page.getByRole('button', { name: 'Move Interval covering up' }).click();
   await expect(page.getByLabel('Letter for Interval covering')).toHaveValue('A');
@@ -912,4 +913,21 @@ test('an unpublished contest reads Draft, and holding the board needs a freeze (
   await expect(leave).toContainText('Problems are saved already.');
   await leave.getByRole('button', { name: 'Cancel' }).click();
   await expect(page).toHaveURL('/admin/contests/4');
+});
+
+test('the contest list stacks below 1024 px and points to the bank when empty (P3 R1, O6)', async ({ page }) => {
+  await mockApi(page, { who: 'admin', phase: 'during' });
+  await page.setViewportSize({ width: 900, height: 900 });
+  await page.goto('/admin/contests');
+  const row = page.getByRole('row', { name: /Week 7 contest/ });
+  await expect(row).toBeVisible();
+  await expect(page.locator('.list thead')).toHaveCSS('position', 'absolute');
+  await expect(row).toHaveCSS('display', 'grid');
+  const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+  expect(overflow).toBeLessThanOrEqual(0);
+
+  await page.route('**/api/admin/contests', (route) => route.fulfill({ json: { contests: [], server_now: Date.now() } }));
+  await page.reload();
+  await expect(page.getByText('No contests yet. Contests use validated problems from the problem bank.')).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Go to the problem bank' })).toHaveAttribute('href', '/admin/problems');
 });

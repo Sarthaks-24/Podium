@@ -257,11 +257,12 @@ test('after adding an organiser, the page says what to send them', async ({ page
   await page.getByRole('region', { name: 'Organisers' }).getByLabel('Email', { exact: true }).fill('new.ta@college.edu');
   await page.getByRole('button', { name: 'Add organiser' }).click();
   const note = page.locator('.invite');
-  await expect(note).toContainText('Send new.ta@college.edu this address: http://127.0.0.1:5179. They sign in with Google using that email.');
+  const origin = new URL(page.url()).origin;
+  await expect(note).toContainText(`Send new.ta@college.edu this address: ${origin}. They sign in with Google using that email.`);
   await expect(page.getByRole('row', { name: /new\.ta@college\.edu/ })).toContainText('Invited');
   await note.getByRole('button', { name: 'Copy address' }).click();
   await expect(page.getByText('Copied the address', { exact: true })).toBeVisible();
-  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe('http://127.0.0.1:5179');
+  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(origin);
   await note.getByRole('button', { name: 'Dismiss' }).click();
   await expect(note).toHaveCount(0);
 });
@@ -274,7 +275,7 @@ test('a fresh install starts with a short checklist', async ({ page }) => {
   const start = page.getByRole('region', { name: 'Getting started' });
   await expect(start.getByRole('listitem')).toHaveCount(3);
   await expect(start.getByRole('listitem').nth(0)).toContainText('To do');
-  await expect(start).toContainText('Share the address with your students: http://127.0.0.1:5179');
+  await expect(start).toContainText(`Share the address with your students: ${new URL(page.url()).origin}`);
   await page.screenshot({ path: `${shots()}people-fresh-1280-light.png`, fullPage: true });
 
   await page.getByLabel('Domain', { exact: true }).fill('college.edu');
