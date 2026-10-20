@@ -163,7 +163,7 @@ test('resetting a Google account link asks first and reports errors inline', asy
 
   await submit.click();
   await expect(page.locator('#account-error')).toHaveText('Enter an email address.');
-  await expect(email).toHaveAttribute('aria-describedby', 'account-error');
+  await expect(email).toHaveAttribute('aria-describedby', 'account-who account-error');
 
   await email.fill('nobody@college.edu');
   await submit.click();
@@ -210,12 +210,15 @@ test('an owner ends sessions, disables and enables an account, each asked first'
   await end.getByRole('button', { name: 'End sessions' }).click();
   await expect(page.getByText('Ended 2 sessions of asha@college.edu', { exact: true })).toBeVisible();
 
+  // The field says whose account it is when the page knows it, and the confirmation names them (P3 O10).
   await email.fill('priya@college.edu');
+  await expect(section.locator('#account-who')).toContainText('owner');
   await section.getByRole('button', { name: 'Disable account' }).click();
-  await page.getByRole('dialog', { name: 'Disable priya@college.edu?' }).getByRole('button', { name: 'Disable account' }).click();
+  await page.getByRole('dialog', { name: /^Disable .+ \(priya@college\.edu\)\?$/ }).getByRole('button', { name: 'Disable account' }).click();
   await expect(page.locator('#account-error')).toHaveText('This owner is set in the server configuration and cannot be disabled.');
 
   await email.fill('asha@college.edu');
+  await expect(section.locator('#account-who')).toContainText('Students are not listed on this page yet');
   await section.getByRole('button', { name: 'Disable account' }).click();
   const disable = page.getByRole('dialog', { name: 'Disable asha@college.edu?' });
   await expect(disable).toContainText('cannot sign in until an owner enables the account again');
