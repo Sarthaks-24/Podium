@@ -8,9 +8,17 @@
   row giving the verdict in words, the time in mono and the memory. A
   waiting submission reads "Submitted, 3rd in queue"; one that scored less
   than the problem already has adds "Your score on this problem stays 60
-  of 100" (S4). Props: `submission`, `onjump` (moves the editor to a
-  compile error's line), `idPrefix` (keeps ids unique when several panels
-  are on the page) and `problemScore` (optional, { score, max } so far).
+  of 100" (S4). A practice submission may carry its first failing hidden
+  test (`revealed`, D115): it is shown in full under the strip through
+  TestDetail, with "This test is shown because this is practice." and
+  "Run on this input"; a submission that counts never carries one, so it
+  never shows. With `sticky` the headline, its detail line and the strip
+  stay at the top of a scrolling result pane while the rest scrolls under
+  them (audit 2026-10-20 S5). Props: `submission`, `onjump` (moves the
+  editor to a compile error's line), `idPrefix` (keeps ids unique when
+  several panels are on the page), `problemScore` (optional, { score, max }
+  so far), `sticky` (optional) and `onruninput` (optional; puts an input
+  in the custom input box and runs it).
 -->
 <script lang="ts">
   import { verdictLabel } from '../lib/problems';
@@ -23,20 +31,30 @@
     isBad,
     problemScoreLine,
     isWaiting,
+    revealedReason,
+    revealedTitle,
     type Submission,
     type TestResult,
   } from '../lib/workspace';
   import CompileOutput from './CompileOutput.svelte';
   import SubtaskStrip from './SubtaskStrip.svelte';
+  import TestDetail from './TestDetail.svelte';
 
   interface Props {
     submission: Submission;
     onjump: ((line: number, col: number | null) => void) | null;
     idPrefix: string;
     problemScore?: { score: number | null; max: number } | null;
+    sticky?: boolean;
+    onruninput?: (input: string) => void;
   }
 
-  let { submission, onjump, idPrefix, problemScore = null }: Props = $props();
+  let { submission, onjump, idPrefix, problemScore = null, sticky = false, onruninput }: Props = $props();
+  // D115: only a finished submission that never counts carries it; the server decides.
+  const revealed = $derived(submission.state === 'done' && submission.revealed ? submission.revealed : null);
+  const revealedVerdict = $derived(
+    revealed ? (submission.subtasks.flatMap((st) => st.tests).find((t) => t.idx === revealed.idx)?.verdict ?? '') : '',
+  );
   const stays = $derived(problemScoreLine(submission, problemScore));
 
   const head = $derived(headline(submission));
@@ -67,14 +85,29 @@
   }
 </script>
 
-<div class="panel">
-  <p class="headline tone-{head.tone}">{head.text}</p>
-  {#if head.detail}<p class="detail">{head.detail}</p>{/if}
+<div class="verdict">
+  <div class="head" class:sticky>
+    <p class="headline tone-{head.tone}">{head.text}</p>
+    {#if head.detail}<p class="detail">{head.detail}</p>{/if}
+    {#if submission.subtasks.length > 0 && submission.verdict !== 'CE'}
+      <SubtaskStrip {submission} />
+    {/if}
+  </div>
   {#if stays}<p class="stays">{stays}</p>{/if}
   {#each advice as line, i (i)}<p class="advice">{line}</p>{/each}
 
-  {#if submission.subtasks.length > 0 && submission.verdict !== 'CE'}
-    <SubtaskStrip {submission} />
+  {#if revealed}
+    <TestDetail
+      heading={revealedTitle(revealed)}
+      reason={revealedReason('submission')}
+      input={revealed.input}
+      expected={revealed.expected}
+      output={revealed.output}
+      cut={revealed.truncated}
+      verdict={revealedVerdict}
+      runInput={revealed.input}
+      {onruninput}
+    />
   {/if}
 
   {#if submission.compile_output}
@@ -132,10 +165,29 @@
 {/snippet}
 
 <style>
-  .panel {
+  /* Not .panel: the result pane is the task area; the verdict needs no second box inside it. */
+  .verdict {
     display: grid;
     gap: var(--space-2);
     min-width: 0;
+  }
+
+  .head {
+    display: grid;
+    gap: var(--space-2);
+  }
+
+  /* S5: the verdict, its detail and the strip stay in view while the tests scroll. The
+     pane says how much padding it has (--sticky-top, --sticky-bleed), so the
+     head sticks to the pane's very top and its background covers the sides. */
+  .head.sticky {
+    position: sticky;
+    top: calc(-1 * var(--sticky-top, 0px));
+    z-index: var(--z-sticky);
+    margin-inline: calc(-1 * var(--sticky-bleed, 0px));
+    padding: var(--space-2) var(--sticky-bleed, 0px);
+    border-bottom: var(--rule) solid var(--line);
+    background: var(--surface);
   }
 
   .headline {

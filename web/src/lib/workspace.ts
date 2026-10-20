@@ -44,6 +44,8 @@ export interface Workspace {
   /** Own submissions, newest first, at most 20. */
   submissions: Submission[];
   server_now: number;
+  /** How many open tests a Run checks after the samples (D115); their inputs are never listed. */
+  open_test_count?: number;
   /** Contest workspaces (M4): why Run and Submit are off, or null. */
   refusal?: string | null;
   can_submit?: boolean;
@@ -97,10 +99,31 @@ export interface Submission {
   server_now?: number;
   /** Exam mode before the end: everything but the time and language is withheld. */
   hidden?: boolean;
+  /** The first failing hidden test, on a submission that never counts (D115). */
+  revealed?: SubmissionRevealed | null;
 }
 
-/** One input of a run: a sample, or the custom input. */
+/** A hidden test a practice submission shows in full (D115). Each text is at most 4 KB. */
+export interface SubmissionRevealed {
+  idx: number;
+  subtask_idx: number | null;
+  input: string;
+  expected: string;
+  output: string;
+  /** True when any of the three was cut at 4 KB. */
+  truncated: boolean;
+}
+
+/** The first failing sample or open test of a Run, in full (D115). */
+export interface RunRevealed extends SubmissionRevealed {
+  kind: 'sample' | 'open';
+  label: string;
+}
+
+/** One input of a run: a sample, an open test (D115), or the custom input. */
 export interface RunResult {
+  /** Missing from servers before v1.2.0, which ran samples and custom input only. */
+  kind?: 'sample' | 'open' | 'custom';
   label: string;
   /** "OK" when a custom input ran without error, else the verdict. */
   verdict: string;
@@ -120,6 +143,8 @@ export interface Run {
   compile_output: string;
   queue_position?: number | null;
   results: RunResult[];
+  /** The first failing sample or open test; absent for a custom input and when all passed (D115). */
+  revealed?: RunRevealed | null;
   server_now?: number;
 }
 
@@ -280,26 +305,61 @@ export function usedText(count: number, max: number): string {
   return `${count} of ${max} submissions used`;
 }
 
-/** The headline and tone of a run (RunResults shows it; the announcer speaks it). */
 /** True when a finished run stopped at the compiler: no input ran, and there is compiler output. */
 export function runCompileFailed(run: Run): boolean {
   return run.state === 'done' && run.compile_output !== '' && run.results.every((r) => r.verdict === '');
 }
 
+/** True for the row of a custom input. Older servers send no kind: a row without an expected output was one. */
+export function isCustomResult(r: Pick<RunResult, 'kind' | 'expected'>): boolean {
+  return r.kind ? r.kind === 'custom' : r.expected === null;
+}
+
+function passedCount(list: readonly RunResult[]): number {
+  return list.filter((r) => r.verdict === 'AC' || r.verdict === 'OK').length;
+}
+
+function countOf(n: number, one: string, many: string): string {
+  return n === 1 ? one : many;
+}
+
+/**
+ * The headline and tone of a run (RunResults shows it; the announcer
+ * speaks it): "Passed 2 of 2 samples", and with open tests (D115) "Passed
+ * 2 of 2 samples and 0 of 3 open tests". An open test that was not run
+ * because an earlier one failed counts as not passed.
+ */
 export function runHeadline(run: Run): { text: string; tone: Tone } {
   if (isWaiting(run)) return { text: run.state === 'running' ? 'Running' : waitingText(run), tone: 'wait' };
   if (run.state === 'error') return { text: 'The run could not finish. Try again in a moment.', tone: 'bad' };
   if (run.results.every((r) => r.verdict === '') && run.compile_output) return { text: 'Compile error', tone: 'bad' };
-  const samples = run.results.filter((r) => r.expected !== null);
-  if (samples.length > 0) {
-    const passed = samples.filter((r) => !isBad(r.verdict)).length;
-    return {
-      text: `Passed ${passed} of ${samples.length} ${samples.length === 1 ? 'sample' : 'samples'}`,
-      tone: passed === samples.length ? 'ok' : 'bad',
-    };
+  const tests = run.results.filter((r) => !isCustomResult(r));
+  if (tests.length > 0) {
+    const samples = tests.filter((r) => r.kind !== 'open');
+    const open = tests.filter((r) => r.kind === 'open');
+    const ps = passedCount(samples);
+    const po = passedCount(open);
+    let text = `Passed ${ps} of ${samples.length} ${countOf(samples.length, 'sample', 'samples')}`;
+    if (open.length > 0) {
+      text =
+        samples.length > 0
+          ? `${text} and ${po} of ${open.length} ${countOf(open.length, 'open test', 'open tests')}`
+          : `Passed ${po} of ${open.length} ${countOf(open.length, 'open test', 'open tests')}`;
+    }
+    return { text, tone: ps + po === tests.length ? 'ok' : 'bad' };
   }
   const r = run.results[0];
   return r ? { text: runVerdictLabel(r.verdict), tone: isBad(r.verdict) ? 'bad' : 'ok' } : { text: 'Finished', tone: 'ok' };
+}
+
+/** Why a full test is on screen (D115): practice submissions and every run show their first failing test. */
+export function revealedReason(from: 'run' | 'submission'): string {
+  return from === 'run' ? 'This test is shown because this was a run.' : 'This test is shown because this is practice.';
+}
+
+/** The heading of a submission's revealed test: "Test 5, in subtask 2". */
+export function revealedTitle(r: Pick<SubmissionRevealed, 'idx' | 'subtask_idx'>): string {
+  return r.subtask_idx === null ? `Test ${r.idx}` : `Test ${r.idx}, in subtask ${r.subtask_idx}`;
 }
 
 /**
@@ -309,7 +369,7 @@ export function runHeadline(run: Run): { text: string; tone: Tone } {
  */
 export function runAnnouncement(run: Run): string {
   if (run.state === 'queued') return '';
-  const custom = run.results.some((r) => r.expected === null);
+  const custom = run.results.some(isCustomResult);
   if (run.state === 'running') return custom ? 'Running on your input.' : 'Running on samples.';
   return `${runHeadline(run).text}.`;
 }

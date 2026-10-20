@@ -1,7 +1,7 @@
 <!--
   ProblemRail: the contest's problems in the workspace rail (design.md
-  5.3). From 1024 px each row is the letter, the title (cut to one line,
-  whole on hover), the score cell in mono and a 2 px bar of earned over
+  5.3). From 1024 px each row is the letter, the title (up to two lines,
+  then cut, whole on hover; R4, audit S6), the score cell in mono and a 2 px bar of earned over
   total, in the partial colour for a partial score; the open problem is
   marked by a border on its inline start (a shape, not only a tint, audit
   06-7). The score cell carries the status word (D114, design.md 8): "not
@@ -14,13 +14,18 @@
   Messages button with its unread count, all quiet buttons with no
   underline (the control system in styles/controls.css). Each link keeps one sentence for
   screen readers (sentence()).
+  With `layout` "strip" it draws only the workspace's sticky strip part
+  under 1024 px (P5 F7.2, D114): links to the previous and next problem,
+  the chevron and the letter on phones, "Previous A" and "Next C" from 768
+  px, built with the same adjacentLabel() as the "[" and "]" keys.
   Props: `problems`, `slug`, `current` (the open label), `layout` ("wide",
-  "tablet" or "phone"), `exam`, `unread` (messages not yet seen),
+  "tablet", "phone" or "strip"), `exam`, `unread` (messages not yet seen),
   `during` (the student's window is open), `onmessages` (opens the
   messages dialog) and `onrules` (optional; opens the rules dialog).
 -->
 <script lang="ts">
   import { railStatus, triedLine, type ContestProblem } from '../lib/contests';
+  import { adjacentLabel } from '../lib/shortcuts';
   import Icon from './Icon.svelte';
 
   interface Props {
@@ -39,6 +44,13 @@
   const tried = $derived(during ? triedLine(problems, exam) : '');
 
   const base = $derived(`/contests/${encodeURIComponent(slug)}`);
+  const labels = $derived(problems.map((p) => p.label));
+  const prev = $derived(problems.find((p) => p.label === adjacentLabel(labels, current, -1)) ?? null);
+  const next = $derived(problems.find((p) => p.label === adjacentLabel(labels, current, 1)) ?? null);
+
+  function href(label: string): string {
+    return `${base}/problems/${encodeURIComponent(label)}`;
+  }
 
   function count(p: ContestProblem): number {
     return p.my_submission_count ?? 0;
@@ -69,6 +81,24 @@
   }
 </script>
 
+{#if layout === 'strip'}
+  <nav class="step-nav" aria-label="Previous and next problem">
+    {#if prev}
+      <a class="btn btn-quiet btn-compact step" href={href(prev.label)}
+        ><Icon name="chevron-left" /><span class="step-word">Previous </span><span class="mono">{prev.label}</span><span
+          class="visually-hidden">, {prev.title}</span
+        ></a
+      >
+    {/if}
+    {#if next}
+      <a class="btn btn-quiet btn-compact step" href={href(next.label)}
+        ><span class="step-word">Next </span><span class="mono">{next.label}</span><span class="visually-hidden">, {next.title}</span><Icon
+          name="chevron-right"
+        /></a
+      >
+    {/if}
+  </nav>
+{:else}
 <nav class="rail-nav" class:wide={layout === 'wide'} aria-label="Problems">
   <ul class="problems">
     {#each problems as p (p.label)}
@@ -106,6 +136,7 @@
     </button>
   </div>
 </nav>
+{/if}
 
 <style>
   .rail-nav {
@@ -250,10 +281,33 @@
     min-height: var(--control-h);
   }
 
+  /* R4, audit S6: up to two lines, then cut; the whole title is on hover and in the link's name. */
   .wide .title {
+    display: -webkit-box;
     overflow: hidden;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
     font-size: var(--fs-0);
-    text-overflow: ellipsis;
+    line-height: var(--lh-tight);
+    white-space: normal;
+    overflow-wrap: break-word;
+  }
+
+  /* The rail is 11rem or less under 1280 px: the status goes under the title, which keeps the width. */
+  @media (width < 1280px) {
+    .wide .problem {
+      grid-template-columns: auto minmax(0, 1fr);
+    }
+
+    .wide .cell {
+      display: flex;
+      grid-column: 2;
+      flex-wrap: wrap;
+      align-items: baseline;
+      gap: 0 var(--space-2);
+      justify-items: start;
+    }
   }
 
   .wide .links {
@@ -265,6 +319,32 @@
   /* Quiet buttons line their words up with the rail's edge. */
   .wide .links .btn {
     margin-inline-start: calc(-1 * var(--space-3));
+  }
+
+  /* The strip under 1024 px (F7.2): Previous and Next at touch height. */
+  .step-nav {
+    display: flex;
+    align-items: center;
+    gap: var(--space-1);
+    margin-inline-start: auto;
+  }
+
+  .step {
+    min-height: var(--control-h-touch);
+    gap: var(--space-1);
+    color: var(--ink);
+  }
+
+  /* On phones the chevron and the letter carry it; the word stays for screen readers. */
+  @media (width < 768px) {
+    .step-word {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      overflow: hidden;
+      clip-path: inset(50%);
+      white-space: nowrap;
+    }
   }
 
   /* Forced colours drop the tint and the bar fills: the current problem

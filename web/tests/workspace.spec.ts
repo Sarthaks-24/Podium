@@ -319,7 +319,8 @@ test('keyboard shortcuts submit and run, and integrity counts go with the submit
   const settings = page.getByRole('button', { name: 'Editor settings' });
   await settings.click();
   await page.getByLabel('Tab moves focus').check();
-  await page.locator('.cm-content').click();
+  // Into the editor beside the open panel (it now ends with "Reset to starter").
+  await page.locator('.cm-content').click({ position: { x: 24, y: 8 } });
   await expect(page.getByLabel('Tab moves focus')).toBeHidden();
   await page.keyboard.press('Tab');
   await expect(page.locator('.cm-content')).not.toBeFocused();
@@ -643,5 +644,375 @@ test.describe('in a contest', () => {
     await page.goto('/contests/week-6/problems/A');
     await expect(page.getByText('Under 5 minutes left. Submit what you have.')).toBeVisible();
     expect(await page.locator('.clock .time').evaluate((el) => getComputedStyle(el).fontWeight)).toBe('400');
+  });
+});
+
+// v2 P5 (F-V7): the phone strip, the short laptop, focus moves, the
+// resizable result panel, the sign-out guard, the editor hint, lazy
+// language packs, reset to starter and the revealed test (D115).
+test.describe('P5 workspace', () => {
+  test('under 1024 px one strip holds the clock, previous and next, the tabs and Submit (F7.2)', async ({ page }) => {
+    await contests.mockApi(page, { phase: 'during' });
+    await page.setViewportSize({ width: 375, height: 812 });
+    await page.goto('/contests/week-6/problems/B');
+    await expect(page.locator('.cm-content')).toHaveAttribute('data-language', /.+/);
+    const strip = page.locator('[data-sticky-bar]');
+    await expect(strip.getByRole('timer')).toBeVisible();
+    await expect(strip.getByRole('link', { name: /^Previous A\s*, A plus B$/ })).toBeVisible();
+    await expect(strip.getByRole('link', { name: /^Next C\s*, Shortest detour$/ })).toBeVisible();
+    // On a phone the chevron and the letter show; the words are for screen readers.
+    await expect(strip.getByRole('link', { name: /^Previous A/ })).toHaveText(/Previous\s*A/);
+    await expect(strip.getByRole('tab')).toHaveText(['Problem', 'Code', 'Result']);
+    // One Submit on the page, in the strip, on the same row as the tabs.
+    const submit = page.getByRole('button', { name: 'Submit', exact: true });
+    await expect(submit).toHaveCount(1);
+    await expect(strip.getByRole('button', { name: 'Submit', exact: true })).toBeVisible();
+    const tabBox = (await strip.getByRole('tab', { name: 'Result' }).boundingBox())!;
+    const submitBox = (await submit.boundingBox())!;
+    expect(Math.abs(tabBox.y + tabBox.height / 2 - (submitBox.y + submitBox.height / 2))).toBeLessThan(8);
+    await page.screenshot({ path: `${shots()}workspace-strip-375-light.png` });
+
+    // The strip sticks to the top, and the page leaves room for it when something takes focus (X3).
+    await strip.getByRole('tab', { name: 'Code' }).click();
+    await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+    await expect.poll(async () => (await strip.boundingBox())!.y).toBeLessThanOrEqual(1);
+    const padding = await page.evaluate(() => parseFloat(getComputedStyle(document.documentElement).scrollPaddingTop));
+    expect(padding).toBeGreaterThanOrEqual((await strip.boundingBox())!.height);
+
+    // The on-screen keyboard open (a shorter window): Submit is still on screen.
+    await page.locator('.cm-content').click();
+    await page.setViewportSize({ width: 375, height: 476 });
+    await expect(page.locator('.cm-content')).toBeFocused();
+    const kb = (await submit.boundingBox())!;
+    expect(kb.y).toBeGreaterThanOrEqual(0);
+    expect(kb.y + kb.height).toBeLessThanOrEqual(476);
+    await page.screenshot({ path: `${shots()}workspace-strip-keyboard-375-light.png` });
+
+    // Next goes to the next problem, as "]" does.
+    await page.setViewportSize({ width: 375, height: 812 });
+    await strip.getByRole('link', { name: /^Next C/ }).click();
+    await expect(page).toHaveURL(/\/problems\/C$/);
+    await expect(page.getByRole('heading', { level: 1 })).toContainText('Shortest detour');
+    await expect(strip.getByRole('link', { name: /^Next/ })).toHaveCount(0);
+    await expect(strip.getByRole('link', { name: /^Previous B\s*, Interval covering$/ })).toBeVisible();
+
+    // From 768 px the words show.
+    await page.setViewportSize({ width: 800, height: 900 });
+    await expect(strip.getByRole('link', { name: /^Previous B/ })).toContainText('Previous');
+    await expect(strip.getByRole('tab')).toHaveText(['Problem', 'Code']);
+  });
+
+  test('when a tab switches by itself, focus moves to the result (F7.4)', async ({ page }) => {
+    const api = await mockApi(page);
+    await page.setViewportSize({ width: 375, height: 812 });
+    await openWorkspace(page);
+    await page.getByRole('tab', { name: 'Code' }).click();
+    await page.getByRole('button', { name: 'Submit', exact: true }).click();
+    await expect(page.getByRole('tab', { name: 'Result' })).toHaveAttribute('aria-selected', 'true');
+    await expect(page.getByRole('heading', { name: 'Latest submission' })).toBeFocused();
+    expect(api.submits).toHaveLength(1);
+
+    // Tablet: from the Problem tab the Code tab opens, and focus goes to the result under the editor.
+    await page.setViewportSize({ width: 800, height: 900 });
+    await page.getByRole('tab', { name: 'Problem' }).click();
+    await page.locator('main h1').focus();
+    await page.waitForTimeout(1100);
+    await page.keyboard.press("Control+'");
+    await expect(page.getByRole('tab', { name: 'Code' })).toHaveAttribute('aria-selected', 'true');
+    await expect(page.getByRole('heading', { name: 'Run on samples' })).toBeFocused();
+
+    // From 1024 px nothing switches, so focus stays on the button pressed.
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.getByRole('button', { name: 'Run on samples' }).click();
+    await expect(page.getByRole('button', { name: 'Run on samples' })).toBeFocused();
+  });
+
+  test('when the time runs out, focus goes to the title (F7.4)', async ({ page }) => {
+    await contests.mockApi(page, { phase: 'during', endsInMs: 9000 });
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto('/contests/week-6/problems/A');
+    // Still in the window: the clock runs and the editor takes focus.
+    await expect(page.getByRole('timer')).toBeVisible();
+    await page.locator('.cm-content').click();
+    await expect(page.locator('.cm-content')).toBeFocused();
+    await expect(page.locator('main h1')).toBeFocused({ timeout: 20_000 });
+    await expect(page.locator('#ws-locked')).toHaveText('The contest has ended. Submissions are closed.');
+    await expect(page.getByText('Time is up. Your submissions are saved.').first()).toBeVisible();
+  });
+
+  test('the result panel resizes and hides from the keyboard, and keeps its size (F7.5)', async ({ page }) => {
+    await mockApi(page, { submissions: HISTORY });
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await openWorkspace(page);
+    const sep = page.getByRole('separator', { name: 'Result panel size' });
+    const result = page.getByRole('region', { name: 'Result' });
+    await expect(sep).toHaveAttribute('aria-valuenow', '40');
+    await expect(sep).toHaveAttribute('aria-controls', 'ws-result');
+    const before = (await result.boundingBox())!.height;
+    await sep.focus();
+    await page.keyboard.press('ArrowUp');
+    await expect(sep).toHaveAttribute('aria-valuenow', '45');
+    expect((await result.boundingBox())!.height).toBeGreaterThan(before);
+    await page.keyboard.press('End');
+    await expect(sep).toHaveAttribute('aria-valuenow', '80');
+    await page.keyboard.press('Home');
+    await expect(sep).toHaveAttribute('aria-valuenow', '20');
+    // A step below the smallest hides the result; its verdict stays in the bar.
+    await page.keyboard.press('ArrowDown');
+    await expect(sep).toHaveAttribute('aria-valuenow', '0');
+    await expect(sep).toHaveAttribute('aria-valuetext', 'Result hidden');
+    await expect(result).toBeHidden();
+    await expect(page.locator('.split-summary')).toHaveText('Partial, 40 of 100');
+    const show = page.getByRole('button', { name: 'Show result' });
+    await expect(show).toHaveAttribute('aria-expanded', 'false');
+    expect((await page.locator('.editor-box').boundingBox())!.height).toBeGreaterThan(600);
+    await expect(sep).toBeFocused();
+    await page.screenshot({ path: `${shots()}workspace-result-hidden-1440-light.png` });
+    // Enter shows it again at the size it had.
+    await page.keyboard.press('Enter');
+    await expect(result).toBeVisible();
+    await expect(sep).toHaveAttribute('aria-valuenow', '20');
+
+    // A drag moves it too.
+    const grip = (await sep.boundingBox())!;
+    await page.mouse.move(grip.x + grip.width / 4, grip.y + grip.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(grip.x + grip.width / 4, grip.y - 150, { steps: 5 });
+    await page.mouse.up();
+    const dragged = Number(await sep.getAttribute('aria-valuenow'));
+    expect(dragged).toBeGreaterThan(30);
+
+    // The button hides it, and the size is kept on this device.
+    await page.getByRole('button', { name: 'Hide result' }).click();
+    await expect(result).toBeHidden();
+    await page.reload();
+    await expect(page.getByRole('button', { name: 'Show result' })).toBeVisible();
+    await page.getByRole('button', { name: 'Show result' }).click();
+    await expect(page.getByRole('separator', { name: 'Result panel size' })).toHaveAttribute('aria-valuenow', String(dragged));
+  });
+
+  test('the verdict head stays at the top of the result while the tests scroll (S5)', async ({ page }) => {
+    await mockApi(page, { submissions: HISTORY });
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await openWorkspace(page);
+    const pane = page.locator('#ws-result');
+    await pane.evaluate((el) => (el.scrollTop = el.scrollHeight));
+    const paneBox = (await pane.boundingBox())!;
+    const head = page.locator('#ws-result .head.sticky');
+    await expect(head).toContainText('Partial, 40 of 100');
+    await expect.poll(async () => Math.abs((await head.boundingBox())!.y - paneBox.y)).toBeLessThan(2);
+    // "Show the latest run" sits on the heading's row once a run exists (S5).
+    await page.screenshot({ path: `${shots()}workspace-sticky-head-1440-light.png` });
+  });
+
+  test('sign out during a live contest asks first and saves the draft (F7.6)', async ({ page }) => {
+    const api = await contests.mockApi(page, { phase: 'during' });
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto('/contests/week-6/problems/A');
+    await expect(page.locator('.cm-content')).toHaveAttribute('data-language', /.+/);
+    await page.locator('.cm-content').click({ position: { x: 24, y: 8 } });
+    await page.keyboard.press('Control+End');
+    await page.keyboard.type('// before sign out');
+    await page.getByRole('button', { name: 'Asha Rao' }).click();
+    await page.getByRole('button', { name: 'Sign out' }).click();
+    const ask = page.getByRole('dialog', { name: 'Sign out during the contest?' });
+    await expect(ask).toContainText('Your draft is saved first. Your time keeps running while you are signed out.');
+    await expect(ask.getByRole('button', { name: 'Cancel' })).toBeFocused();
+    await page.screenshot({ path: `${shots()}workspace-sign-out-guard-1440-light.png` });
+    await ask.getByRole('button', { name: 'Cancel' }).click();
+    await expect(page).toHaveURL(/\/problems\/A$/);
+    await expect(page.getByRole('button', { name: 'Asha Rao' })).toBeFocused();
+
+    await page.getByRole('button', { name: 'Asha Rao' }).click();
+    await page.getByRole('button', { name: 'Sign out' }).click();
+    await ask.getByRole('button', { name: 'Sign out' }).click();
+    await expect(page).toHaveURL(/\/signin/);
+    expect(api.draftPuts.some((b) => String(b.source).includes('// before sign out'))).toBe(true);
+  });
+
+  test('outside a contest sign out does not ask', async ({ page }) => {
+    await mockApi(page);
+    await openWorkspace(page);
+    await page.getByRole('button', { name: 'Arjun Mehta' }).click();
+    await page.getByRole('button', { name: 'Sign out' }).click();
+    await expect(page).toHaveURL(/\/signin/);
+  });
+
+  test('the editor names its keyboard hint, and each language loads when chosen (X2, F7.8)', async ({ page }) => {
+    const chunks: string[] = [];
+    page.on('request', (r) => {
+      const m = /lang-(cpp|javascript|java|python)/.exec(r.url());
+      if (m) chunks.push(m[1]);
+    });
+    await mockApi(page);
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await openWorkspace(page);
+    const content = page.locator('.cm-content');
+    const hint = await content.getAttribute('aria-describedby');
+    expect(hint).toMatch(/^editor-hint-/);
+    await expect(page.locator(`#${hint}`)).toHaveText(/Tab indents\. Press Escape, then Tab, to leave the editor\.\s+Ctrl\+Enter submits and Ctrl\+' runs on samples\./);
+    await expect(content).toHaveAttribute('data-language', 'cpp');
+    expect([...new Set(chunks)]).toEqual(['cpp']);
+
+    await page.getByLabel('Language').selectOption('python3');
+    await expect(content).toHaveAttribute('data-language', 'python');
+    await page.getByLabel('Language').selectOption('node22');
+    await expect(content).toHaveAttribute('data-language', 'javascript');
+    expect([...new Set(chunks)].sort()).toEqual(['cpp', 'javascript', 'python']);
+  });
+
+  test('reset to starter asks, saves at once, and survives the next save and a reload (F7.10, F7.12)', async ({ page }) => {
+    test.slow();
+    const api = await mockApi(page);
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await openWorkspace(page);
+    const starterText = await editorText(page);
+    await page.locator('.cm-content').click({ position: { x: 24, y: 8 } });
+    await page.keyboard.press('Control+End');
+    await page.keyboard.type('// mine');
+    await page.getByRole('heading', { level: 1 }).click();
+    await expect.poll(() => api.draftPuts.some((b) => String(b.source).includes('// mine'))).toBe(true);
+
+    const settings = page.getByRole('button', { name: 'Editor settings' });
+    await settings.click();
+    await page.getByRole('button', { name: 'Reset to starter' }).click();
+    const ask = page.getByRole('dialog', { name: 'Reset to starter?' });
+    await expect(ask).toContainText('Your code for this problem is replaced with the C++17 starter, and the draft is saved.');
+    await expect(ask.getByRole('button', { name: 'Cancel' })).toBeFocused();
+    await page.screenshot({ path: `${shots()}workspace-reset-confirm-1440-light.png` });
+    await ask.getByRole('button', { name: 'Cancel' }).click();
+    await expect(settings).toBeFocused();
+    expect(await editorText(page)).toContain('// mine');
+
+    await settings.click();
+    await page.getByRole('button', { name: 'Reset to starter' }).click();
+    await ask.getByRole('button', { name: 'Reset to starter' }).click();
+    await expect.poll(() => editorText(page)).toBe(starterText);
+    await expect.poll(() => String(api.draftPuts.at(-1)?.source)).not.toContain('// mine');
+    await expect(page.locator('.cm-content')).toBeFocused();
+    await expect(page.locator('[data-announcer="polite"]')).toHaveText('Reset to the starter.');
+
+    // Past one 10 s save tick, then a reload: the starter is still there.
+    await page.waitForTimeout(10_500);
+    expect(api.draftPuts.at(-1)?.source).not.toContain('// mine');
+    await page.reload();
+    await expect(page.locator('.cm-content')).toHaveAttribute('data-language', /.+/);
+    await expect.poll(() => editorText(page)).toBe(starterText);
+  });
+
+  test('a practice submission shows its first failing hidden test, and a counting one never does (F7.13, D115)', async ({ page }) => {
+    const api = await contests.mockApi(page, { phase: 'practice' });
+    api.submissions.push({
+      ...contests.submission(50, 11, 'done', 40, Date.now() - 60_000),
+      revealed: { idx: 3, subtask_idx: 2, input: '4 4\n', expected: '8\n', output: '7\n', truncated: false },
+    });
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto('/contests/week-6/problems/A');
+    const panel = page.getByRole('region', { name: 'Result' });
+    const block = panel.locator('.revealed');
+    await expect(block.getByRole('heading', { name: 'Test 3, in subtask 2' })).toBeVisible();
+    await expect(block).toContainText('This test is shown because this is practice.');
+    await expect(block.locator('pre').nth(0)).toHaveText('4 4');
+    await expect(block).toContainText('First difference on line 1');
+    await expect(block.locator('.diff dd').nth(0)).toHaveText('8');
+    await expect(block.locator('.diff dd').nth(1)).toHaveText('7');
+    await page.screenshot({ path: `${shots()}workspace-revealed-practice-1440-light.png` });
+    await block.getByRole('button', { name: 'Run on this input' }).click();
+    await expect(page.getByLabel('Custom input')).toHaveValue('4 4\n');
+    await expect.poll(() => api.runs.length).toBe(1);
+    expect(api.runs[0].input).toBe('4 4\n');
+
+    // During the window the server sends no revealed test, and nothing shows.
+    await page.goto('about:blank');
+    await page.unrouteAll({ behavior: 'ignoreErrors' });
+    const live = await contests.mockApi(page, { phase: 'during' });
+    live.submissions.push(contests.submission(51, 11, 'done', 40));
+    await page.goto('/contests/week-6/problems/A');
+    await expect(page.getByRole('region', { name: 'Result' }).locator('.headline').first()).toHaveText('Partial, 40 of 100');
+    await expect(page.getByText(/This test is shown because/)).toHaveCount(0);
+  });
+
+  test('a run shows its first failing open test, and an input over 4 KB cannot be rerun (F7.13, D115)', async ({ page }) => {
+    const api = await mockApi(page);
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await openWorkspace(page);
+    await page.getByRole('button', { name: 'Run on samples' }).click();
+    await expect(page.getByText('1st in queue')).toBeVisible();
+    const row = (kind: string, label: string, verdict: string, output = '', expected: string | null = null) => ({
+      kind, label, verdict, time_ms: verdict === 'SK' ? 0 : 10, memory_kb: verdict === 'SK' ? 0 : 3100, output, output_truncated: false, expected, message: '',
+    });
+    api.stream.push({
+      type: 'run',
+      data: {
+        id: 51,
+        state: 'done',
+        compile_output: '',
+        results: [
+          row('sample', 'Sample 1', 'AC', '3\n', '3\n'),
+          row('sample', 'Sample 2', 'AC', '2\n', '2\n'),
+          row('open', 'Open test 1', 'WA', '7\n', '8\n'),
+          row('open', 'Open test 2', 'SK'),
+        ],
+        revealed: { idx: 3, kind: 'open', label: 'Open test 1', input: '4 4\n', expected: '8\n', output: '7\n', truncated: false },
+      },
+    });
+    const panel = page.getByRole('region', { name: 'Result' });
+    await expect(panel.getByText('Passed 2 of 2 samples and 0 of 2 open tests')).toBeVisible({ timeout: 10_000 });
+    const block = panel.locator('.revealed');
+    await expect(block).toContainText('This test is shown because this was a run.');
+    await expect(block.locator('pre').nth(0)).toHaveText('4 4');
+    await expect(panel.getByText('An earlier test failed, so this one was not run.')).toBeVisible();
+    await expect(page.locator('[data-announcer="polite"]')).toHaveText('Passed 2 of 2 samples and 0 of 2 open tests.');
+    await page.screenshot({ path: `${shots()}workspace-revealed-run-1440-light.png` });
+    await block.getByRole('button', { name: 'Run on this input' }).click();
+    await expect.poll(() => api.runs.length).toBe(2);
+    expect(api.runs[1].input).toBe('4 4\n');
+
+    // Cut at 4 KB: shown, said so, and not offered as a run.
+    api.stream.push({
+      type: 'run',
+      data: {
+        id: 52,
+        state: 'done',
+        compile_output: '',
+        results: [row('sample', 'Sample 1', 'AC', '3\n', '3\n'), row('open', 'Open test 1', 'TLE', '', null)],
+        revealed: { idx: 2, kind: 'open', label: 'Open test 1', input: '100000\n1 2 3', expected: '5000050000\n', output: '', truncated: true },
+      },
+    });
+    await expect(panel.getByText('This test is longer than 4 KB', { exact: false })).toBeVisible({ timeout: 10_000 });
+    await expect(panel.locator('.revealed').getByRole('button', { name: 'Run on this input' })).toHaveCount(0);
+  });
+
+  test('rail titles take up to two lines (R4)', async ({ page }) => {
+    await contests.mockApi(page, { phase: 'during' });
+    await page.setViewportSize({ width: 1024, height: 800 });
+    await page.goto('/contests/week-6/problems/A');
+    const title = page.getByRole('navigation', { name: 'Problems' }).getByRole('link', { name: /^Problem B/ }).locator('.title');
+    await expect(title).toHaveText('Interval covering');
+    const lines = await title.evaluate((el) => Math.round(el.getBoundingClientRect().height / parseFloat(getComputedStyle(el).lineHeight)));
+    expect(lines).toBe(2);
+    expect(await title.evaluate((el) => getComputedStyle(el).webkitLineClamp)).toBe('2');
+    await page.screenshot({ path: `${shots()}workspace-rail-1024-light.png` });
+  });
+
+  test('a short laptop keeps the toolbar on one row and the page still (F7.3)', async ({ page }) => {
+    await contests.mockApi(page, { phase: 'during' });
+    for (const size of [
+      { width: 1093, height: 500 },
+      { width: 1280, height: 720 },
+    ]) {
+      await page.setViewportSize(size);
+      await page.goto('/contests/week-6/problems/A');
+      await expect(page.locator('.cm-content')).toHaveAttribute('data-language', /.+/);
+      const top = async (sel: string) => (await page.locator(sel).first().boundingBox())!.y;
+      expect(Math.abs((await top('#ws-language')) - (await top('button.submit'))), `one row at ${size.width}`).toBeLessThan(8);
+      const scroll = await page.evaluate(() => document.documentElement.scrollHeight - document.documentElement.clientHeight);
+      // The workspace fills the window under the header; only the footer lies below it.
+      const ws = (await page.locator('.ws').boundingBox())!;
+      expect(ws.y + ws.height, `workspace inside the window at ${size.width}`).toBeLessThanOrEqual(size.height);
+      expect(scroll).toBeGreaterThanOrEqual(0);
+      // A new viewer on a short laptop starts with the smaller result.
+      await expect(page.getByRole('separator', { name: 'Result panel size' })).toHaveAttribute('aria-valuenow', '30');
+    }
   });
 });

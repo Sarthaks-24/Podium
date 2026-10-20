@@ -8,6 +8,7 @@ import {
   formatWhen,
   guidance,
   headline,
+  isCustomResult,
   limitsText,
   newKey,
   runVerdictLabel,
@@ -16,6 +17,8 @@ import {
   problemScoreLine,
   runAnnouncement,
   runHeadline,
+  revealedReason,
+  revealedTitle,
   usedText,
   type Run,
   type Submission,
@@ -173,5 +176,36 @@ describe('S4 wording and the run announcement (X1)', () => {
 
   it('keeps the example result partial, with one passed and one failed subtask', () => {
     expect(headline(EXAMPLE_SUBMISSION)).toEqual({ text: 'Partial, 40 of 100', tone: 'part', detail: 'Wrong answer on test 5' });
+  });
+});
+
+describe('open tests and the revealed test (P5 F7.13, D115)', () => {
+  const run = (results: Run['results']): Run => ({ id: 1, state: 'done', compile_output: '', results });
+  const row = (kind: 'sample' | 'open' | 'custom', verdict: string, expected: string | null = '3\n') => ({
+    kind, label: kind === 'custom' ? 'Custom input' : 'x', verdict, time_ms: 10, memory_kb: 3000, output: '3\n', expected,
+  });
+
+  it('counts samples and open tests apart, a skipped open test as not passed', () => {
+    expect(runHeadline(run([row('sample', 'AC'), row('sample', 'AC'), row('open', 'WA'), row('open', 'SK', null)]))).toEqual({
+      text: 'Passed 2 of 2 samples and 0 of 2 open tests',
+      tone: 'bad',
+    });
+    expect(runHeadline(run([row('sample', 'AC'), row('open', 'AC', null)]))).toEqual({ text: 'Passed 1 of 1 sample and 1 of 1 open test', tone: 'ok' });
+    expect(runHeadline(run([row('sample', 'WA'), row('sample', 'AC')])).text).toBe('Passed 1 of 2 samples');
+  });
+
+  it('tells a custom input by its kind, and by a missing expected output from older servers', () => {
+    expect(isCustomResult({ kind: 'open', expected: null })).toBe(false);
+    expect(isCustomResult({ kind: 'custom', expected: null })).toBe(true);
+    expect(isCustomResult({ expected: null })).toBe(true);
+    expect(isCustomResult({ expected: '3\n' })).toBe(false);
+    expect(runAnnouncement({ ...run([row('open', '', null)]), state: 'running' })).toBe('Running on samples.');
+  });
+
+  it('says why a test is shown, and names it', () => {
+    expect(revealedReason('submission')).toBe('This test is shown because this is practice.');
+    expect(revealedReason('run')).toBe('This test is shown because this was a run.');
+    expect(revealedTitle({ idx: 5, subtask_idx: 2 })).toBe('Test 5, in subtask 2');
+    expect(revealedTitle({ idx: 1, subtask_idx: null })).toBe('Test 1');
   });
 });

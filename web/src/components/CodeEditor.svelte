@@ -2,8 +2,13 @@
   CodeEditor: the workspace's code editor in the dark well (design.md 5.3).
   On mount it loads lib/editor.ts with a dynamic import, so CodeMirror is
   fetched only by screens that edit code, and shows a short loading line
-  until then. Changing `language`, `label` or `tabMovesFocus` reconfigures
-  the running editor; `fontSize` sets --editor-font-size on the well.
+  until then; each language's highlighting is its own chunk, fetched when
+  that language is chosen (F7.8). Changing `language`, `label` or
+  `tabMovesFocus` reconfigures the running editor; `fontSize` sets
+  --editor-font-size on the well, at least 16 px on touch screens so iOS
+  never zooms into the editor (F7.4). A visually hidden line, referenced
+  by the editor's aria-describedby, says how to leave the editor and which
+  keys run and submit (X2).
   Callers reach jumpTo(), setDoc() and focus() through bind:this.
   Props: `initial` (the code to start with), `language`, `label` (the
   editor's accessible name, naming the problem and language), `fontSize`
@@ -14,6 +19,10 @@
   import { onMount } from 'svelte';
   import type { EditorHandle } from '../lib/editor';
   import type { Language } from '../lib/workspace';
+
+  const isMac = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
+  const mod = isMac ? 'Cmd' : 'Ctrl';
+  const hintId = `editor-hint-${Math.random().toString(36).slice(2, 9)}`;
 
   interface Props {
     initial: string;
@@ -50,6 +59,7 @@
           doc: pendingDoc ?? initial,
           language,
           label,
+          describedBy: hintId,
           tabMovesFocus,
           onChange: (s) => onchange(s),
           onTyped: (n) => ontyped(n),
@@ -100,6 +110,10 @@
 
 <div class="well" style:--editor-font-size="{fontSize}px">
   <div class="host" bind:this={host}></div>
+  <p class="visually-hidden" id={hintId}>
+    {tabMovesFocus ? 'Tab leaves the editor.' : 'Tab indents. Press Escape, then Tab, to leave the editor.'}
+    {mod}+Enter submits and {mod}+' runs on samples.
+  </p>
   {#if failed}
     <p class="note">The editor could not load. Reload the page to try again; your code is kept.</p>
   {:else if handle === null}
@@ -109,6 +123,8 @@
 
 <style>
   .well {
+    /* lib/editor.ts reads the size from here; touch screens never go under 16 px (F7.4). */
+    --editor-font-size-used: var(--editor-font-size);
     position: relative;
     display: grid;
     min-height: 0;
@@ -129,6 +145,12 @@
   .host:focus-within {
     outline: calc(2 * var(--rule)) solid var(--code-focus);
     outline-offset: calc(-2 * var(--rule));
+  }
+
+  @media (pointer: coarse) {
+    .well {
+      --editor-font-size-used: max(var(--fs-1), var(--editor-font-size));
+    }
   }
 
   .note {

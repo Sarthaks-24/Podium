@@ -52,6 +52,13 @@ html {
   text-size-adjust: 100%;
 }
 
+/* X3: while a bar sticks to the top (data-sticky-bar, such as the workspace
+   strip under 1024 px), anything focused or jumped to lands below it. The
+   bar's owner sets --sticky-bar-h to its measured height. */
+html:has([data-sticky-bar]) {
+  scroll-padding-top: calc(var(--sticky-bar-h, var(--space-7)) + var(--space-2));
+}
+
 /* Checkboxes, radios and ranges take the action colour everywhere (T4). */
 :root {
   accent-color: var(--act);

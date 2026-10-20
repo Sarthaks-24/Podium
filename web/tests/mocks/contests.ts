@@ -163,6 +163,9 @@ export async function mockApi(page: Page, options: Options = {}) {
     stream: [] as { type: string; data: Json }[],
     starts: 0,
     submits: [] as Json[],
+    /** Draft saves on the contest's workspace routes (P5 sign-out guard). */
+    draftPuts: [] as Json[],
+    runs: [] as Json[],
     asked: [] as Json[],
     nextId: 40,
     // Organiser side.
@@ -492,8 +495,12 @@ export async function mockApi(page: Page, options: Options = {}) {
         const p = PROBLEMS.find((x) => x.label === label);
         if (!p) return apiError(route, 404, 'not_found', 'No such problem.');
         if (!prob[2] && method === 'GET') return json(route, 200, workspace(label));
+        if (prob[3] === 'draft' && method === 'PUT') state.draftPuts.push(req.postDataJSON() as Json);
         if (prob[3] === 'draft' || prob[3] === 'events') return json(route, 204);
-        if (prob[3] === 'run') return json(route, 202, { id: 70, state: 'queued', queue_position: 1, compile_output: '', results: [], server_now: nowMs() });
+        if (prob[3] === 'run') {
+          state.runs.push({ ...(req.postDataJSON() as Json), label });
+          return json(route, 202, { id: 70, state: 'queued', queue_position: 1, compile_output: '', results: [], server_now: nowMs() });
+        }
         if (prob[3] === 'submit') {
           const body = req.postDataJSON() as Json;
           state.submits.push({ ...body, label });
@@ -715,6 +722,8 @@ export const SCREENS: Screen[] = [
     title: 'B. Interval covering · Week 6 contest · podium',
     ready: async (page) => {
       await expect(page.locator('.cm-content')).toBeVisible();
+      // The language's highlighting is its own chunk (P5 F7.8); wait for it.
+      await expect(page.locator('.cm-content')).toHaveAttribute('data-language', /.+/);
       await expect(page.locator('.statement .katex').first()).toBeVisible();
     },
   },

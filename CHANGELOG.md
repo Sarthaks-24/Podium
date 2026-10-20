@@ -4,6 +4,21 @@ Dated entries per release. Unreleased work is listed at the top.
 
 ## Unreleased
 
+### v2 P5, frontend: workspace (2026-10-21)
+
+Becomes `v1.5.0` when the P5 gate is signed. Student-facing: deploys only in slot S5, announced in the next contest's description. Each item is its own commit.
+
+- Under 1024 px one strip sticks to the top: the time, the previous and next problem, the Problem, Code and Result tabs and Submit, which is always one tap away. The limits open the Problem tab (F7.2, audit S7).
+- The workspace fills the window with no minimum height; short laptops (1366 by 768 at 125 percent) get a tighter title row, a narrower rail and a one-row toolbar (F7.3).
+- When Submit or Run switches the tab by itself, focus moves to the result; when the time runs out, to the page title. On touch screens the editor and custom input are at least 16 px, and the on-screen keyboard resizes the page (F7.4).
+- The result panel can be resized with a drag or the keyboard and hidden to one line that keeps the verdict; the size is kept on the device (F7.5). The verdict and subtask strip stay at the top of the result while the tests scroll (S5).
+- Sign out during a live contest asks first; the draft is saved before the session ends (F7.6).
+- The editor's keyboard hint is linked to the editor for screen readers; the page leaves room for the sticky strip when something takes focus (F7.7).
+- Each editor language loads when it is chosen: 34 percent less editor code for C++ (F7.8).
+- Rail titles take two lines; the rail is wider from 1280 px and the back link sits under the clock (F7.9, S6).
+- "Reset to starter" in Editor settings asks first and saves at once, so a reload keeps the starter (F7.12).
+- A practice submission shows its first failing hidden test in full, and every run its first failing sample or open test, with "Run on this input"; a contest submission never does. Runs count open tests in their headline (F7.13, D115).
+
 ### v2 P4, backend (2026-10-20)
 
 Becomes `v1.4.0` when the P4 gate is signed and the owner has re-approved the privacy page (input 29). Schema change (0013, expand only): deploys in slot S4. Upgrades from `v1.3.0` only; rolling back is a restore.

@@ -13,7 +13,9 @@
  * Screens holding unsaved work register a save with beforeSignOut(); sign
  * out waits for those saves (at most SIGN_OUT_WAIT_MS) before it ends the
  * session, so the workspace's last edits reach the server first (audit
- * 01-9). The confirmation during a live contest is P5's sign-out guard.
+ * 01-9). During a live contest the workspace also registers a guard with
+ * guardSignOut(): the shell then asks before signing out (P5 F7.6, N2),
+ * and the saves still run first.
  */
 import { ApiError, getJSON, sendJSON } from './api';
 import { forgetDraftsAtSignOut, noteSignedInUser } from './drafts';
@@ -103,6 +105,26 @@ const savers = new Set<() => Promise<unknown>>();
 export function beforeSignOut(save: () => Promise<unknown>): () => void {
   savers.add(save);
   return () => savers.delete(save);
+}
+
+// The screens that want sign out confirmed, newest last. Not reactive state either.
+// eslint-disable-next-line svelte/prefer-svelte-reactivity
+const guards = new Set<string>();
+
+/**
+ * Asks the shell to confirm a sign out while this screen is open, with
+ * `why` as the dialog's line; returns the function that removes it.
+ */
+export function guardSignOut(why: string): () => void {
+  guards.add(why);
+  return () => guards.delete(why);
+}
+
+/** The line to confirm sign out with, or null when nothing asks for it. */
+export function signOutGuard(): string | null {
+  let last: string | null = null;
+  for (const g of guards) last = g;
+  return last;
 }
 
 /** Runs every registered save, waiting at most SIGN_OUT_WAIT_MS in all. */
