@@ -4,6 +4,21 @@ Dated entries per release. Unreleased work is listed at the top.
 
 ## Unreleased
 
+### v2 P4, backend (2026-10-20)
+
+Becomes `v1.4.0` when the P4 gate is signed and the owner has re-approved the privacy page (input 29). Schema change (0013, expand only): deploys in slot S4. Upgrades from `v1.3.0` only; rolling back is a restore.
+
+- Manual review: private notes on a contest submission for reviewers (deleted after 30 days unless a case is opened), and cases opened from a submission with its notes as evidence.
+- Outcomes (warning, zero for a problem, referral) are proposed by one reviewer and confirmed by a second who did not open the case; the owner alone only as the sole organiser, with a reason. Zero for a problem changes the final board for every later computation, and the results page and organiser exports say so (D77 amended).
+- Appeals within 14 days, ruled on by a reviewer who took no part; an upheld appeal removes the outcome, its rating change and its zero.
+- Time limits: 7 days to reply from first opening, 21 at most, a reminder on day 5, 14 days to decide, appeal and rule, with overdue marks for the owner.
+- Notices (case shared, reminder, decided, appeal ruled, standing adjusted, results final) in an inbox with an unread count on `GET /api/me`; never delivered during the student's live contest; no names, code or test data.
+- The rating (0 to 10, organisers only) and the Standing band students see (D110): outcomes, manual edits with a reason (a band-lowering one needs a second organiser), appeals, and `podium-server semester-rollover LABEL`.
+- The record page, the record view log and reviewer oversight for the owner (D97); the students table with its two filters, the student page with the class median, and the class view of a final contest.
+- Per-student contest summaries written at final and after a rejudge; `GET /api/me/progress` and the organisers' progress route (C8); `hide_progress` in the preferences.
+- Retention rows for notes, notices, record views, the rating history, summaries and standing entries; erasure also removes notices and summaries.
+- The contest audit's `extension` rows record `reason_given` instead of the reason text.
+
 ### v2 P3, backend (2026-10-20)
 
 Becomes `v1.3.0` when the P3 gate is signed. Schema change (0012): deploys in slot S3 only; the head, manifest and robots work is live-safe on its own but ships in the same release. Upgrades from `v1.2.0` only.
