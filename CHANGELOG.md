@@ -4,6 +4,21 @@ Dated entries per release. Unreleased work is listed at the top.
 
 ## Unreleased
 
+### v2 P2, backend (2026-10-20)
+
+Becomes `v1.2.0` when the P2 gate is signed. Schema change (0010, 0011): deploys in slot S2 only. Judge protocol 3: install on the server and the judge together.
+
+- Problem revisions (D61): every save that changes a problem makes a numbered, immutable revision with its statement, limits, solutions by hash and tests by kind; saves that change nothing make none. Revision 1 is back-filled for every problem; a contest pin older than its problem becomes a "reconstructed" revision (tests only). While a live contest pins a problem, a change needs a reason.
+- Contests pin a revision. Students are served the pinned revision's statement and samples, never the bank's working copy. "Update contest to revision N" (`PUT /api/admin/contests/{id}/problems/{label}/revision`) moves the pin with a prefilled announcement; the pin history is on the contest response; submissions, runs and rejudges record the revision they were judged against.
+- The served log records the first time each student is served each revision; `podium-server saw` answers "what did X see at T".
+- Students read the statement history of a contest problem with a line diff (`GET /api/contests/{slug}/problems/{label}/revisions`), statements only; a `statement` event and `statement_updated_at` drive the "Statement updated" banner. Organisers read revisions and diffs on the problem routes.
+- Site audit (D62): role, domain, account, session, Google link, run mode and forced deploy changes, with the actor as they were, on `GET /api/admin/site-audit` (People, History). Contest roster entries in the audit name the emails added and removed; the contest audit takes `action` and `actor` filters (console, Changes). A test proves no AI key, session token, cookie or OAuth code reaches either table.
+- Renamed contests: the old slug answers `301` on the web app's and the API's GET paths, and cannot be given to another contest.
+- Open tests (D115), pack format 2: a third kind of test beside samples and subtasks. Run checks them after the samples and stops at the first failure, which it reveals with its input, expected output and the program's output. A practice submission (and one in an ungraded contest) reveals its first failing hidden test; a counting submission never does. The AI wizard proposes open tests; the `average-speed` example has one.
+- `GET /api/me` carries `site_updated_at` for 12 hours after a forced deploy (D112), and `deploy-check -force` writes a site audit row once the table exists.
+- `podium-server migrate -db COPY` rehearses an upgrade on a copy; `check` reports any problem whose working copy skipped its revision; `runs-report` gives the P2 calibration row of runs with a custom input per contest.
+- Append-only tables honour a retention cutoff row (D69), which the P3 retention job will write.
+
 ### v2 P1, backend (2026-10-20)
 
 Becomes `v1.1.0` when the P1 gate is signed.

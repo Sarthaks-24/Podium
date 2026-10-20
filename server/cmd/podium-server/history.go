@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/Sarthaks-24/podium/internal/contests"
+	"github.com/Sarthaks-24/podium/internal/db"
 	"github.com/Sarthaks-24/podium/internal/problems"
 )
 
@@ -169,3 +170,50 @@ const runsReportSQL = `SELECT c.slug, c.starts_at,
 	LEFT JOIN jobs j ON j.id = s.job_id
 	WHERE s.kind = 'run'
 	GROUP BY c.id ORDER BY c.starts_at, c.id`
+
+// migrateCmd runs "podium-server migrate -db COPY": applies this release's
+// migrations to a database file and checks the result, for rehearsing an
+// upgrade on a copy of the live database before the deploy slot (D68).
+// It refuses the configured live database, which the server migrates
+// itself when it starts.
+func migrateCmd(args []string, out io.Writer) int {
+	fs := flag.NewFlagSet("migrate", flag.ContinueOnError)
+	fs.SetOutput(out)
+	dbPath := fs.String("db", "", "the copy to migrate (never the live database)")
+	if err := fs.Parse(args); err != nil {
+		return 2
+	}
+	if *dbPath == "" {
+		fmt.Fprintln(out, "migrate: give -db with the path of a copy")
+		return 2
+	}
+	if live := os.Getenv("PODIUM_DB_PATH"); live != "" && sameFile(live, *dbPath) {
+		fmt.Fprintln(out, "migrate: that is the live database (PODIUM_DB_PATH); copy it to a scratch folder first")
+		return 2
+	}
+	if _, err := os.Stat(*dbPath); err != nil {
+		fmt.Fprintf(out, "migrate: %v\n", err)
+		return 2
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
+	defer cancel()
+	d, err := db.Open(ctx, *dbPath)
+	if err != nil {
+		fmt.Fprintf(out, "migrate: %v\n", err)
+		return 2
+	}
+	applied, err := db.Migrate(ctx, d)
+	d.Close()
+	if err != nil {
+		fmt.Fprintf(out, "migrate: %v\n", err)
+		return 1
+	}
+	fmt.Fprintf(out, "applied %d migrations: %v\n", len(applied), applied)
+	return checkCmd([]string{"-db", *dbPath, "-tests", envOr("PODIUM_TESTS_DIR", "data/tests")}, out)
+}
+
+func sameFile(a, b string) bool {
+	fa, errA := os.Stat(a)
+	fb, errB := os.Stat(b)
+	return errA == nil && errB == nil && os.SameFile(fa, fb)
+}

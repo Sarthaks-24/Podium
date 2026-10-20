@@ -68,3 +68,27 @@ func TestSawNeedsItsFlags(t *testing.T) {
 		t.Errorf("unknown contest: exit %d %s", code, out.String())
 	}
 }
+
+func TestMigrateACopy(t *testing.T) {
+	ctx := context.Background()
+	path := filepath.Join(t.TempDir(), "copy.db")
+	d, err := db.Open(ctx, path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.MigrateTo(ctx, d, "0009_toolchains"); err != nil {
+		t.Fatal(err)
+	}
+	d.Close()
+	t.Setenv("PODIUM_TESTS_DIR", t.TempDir())
+	var out bytes.Buffer
+	if code := migrateCmd([]string{"-db", path}, &out); code != 0 || !strings.Contains(out.String(), "0011_site_audit") ||
+		!strings.Contains(out.String(), "revisions: ok") || !strings.Contains(out.String(), "result: ok") {
+		t.Fatalf("exit %d\n%s", code, out.String())
+	}
+	t.Setenv("PODIUM_DB_PATH", path)
+	out.Reset()
+	if code := migrateCmd([]string{"-db", path}, &out); code != 2 || !strings.Contains(out.String(), "live database") {
+		t.Errorf("the live database: exit %d %s", code, out.String())
+	}
+}

@@ -124,8 +124,9 @@ func loadGuardContests(ctx context.Context, d *sql.DB) ([]guardContest, error) {
 //
 // With -force REASON a refusal is overridden: one contest_audit row per
 // refusing contest records the reason and -release, written as the owner
-// account. install.sh upgrade --force calls it this way. The student
-// banner of D112 reads these rows from P2 on.
+// account, and from schema 0011 one site_audit row, which the student
+// banner of D112 reads (GET /api/me). install.sh upgrade --force calls it
+// this way.
 func deployCheckCmd(args []string, out io.Writer) int {
 	fs := flag.NewFlagSet("deploy-check", flag.ContinueOnError)
 	fs.SetOutput(out)
@@ -202,9 +203,8 @@ func deployCheckCmd(args []string, out io.Writer) int {
 
 // recordForcedDeploy writes one contest_audit row per refusing contest,
 // as the owner account (the only person who runs install.sh): the one
-// named by -owner when it is an enabled owner, else the first owner. P0 adds no
-// table, so the per-contest audit log carries the record until the site
-// audit of P2 exists.
+// named by -owner when it is an enabled owner, else the first owner, plus
+// one site audit row when the database has that table (schema 0011).
 func recordForcedDeploy(ctx context.Context, dbPath string, refusals []guardRefusal, reason, release, owner string, now time.Time) error {
 	d, err := db.Open(ctx, dbPath)
 	if err != nil {
