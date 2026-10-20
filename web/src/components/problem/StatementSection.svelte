@@ -5,24 +5,30 @@
   from 1024 px; under 1024 px the preview follows the form, under 768 px
   the statement has Write and Preview tabs instead, and from 1280 px the
   editor shows the preview in its context column (`showPreview` false).
-  The checker is in JudgingSection. Props: `draft` (bindable), `fields`
-  (the field errors by key) and `showPreview`.
+  The checker is in JudgingSection. The preview draws the statement and
+  its samples with the students' own component (A5). Props: `draft`
+  (bindable), `fields` (the field errors by key), `showPreview` and
+  `tests` (for the samples).
 -->
 <script lang="ts">
   import { onMount, tick } from 'svelte';
   import StatementPreview from '../StatementPreview.svelte';
   import { media } from '../../lib/breakpoints';
   import { describedBy } from '../../lib/problemFields';
-  import { DIFFICULTIES, type Draft } from '../../lib/problems';
+  import { DIFFICULTIES, previewSamples, type Draft, type Problem } from '../../lib/problems';
 
   interface Props {
     draft: Draft;
     fields: Record<string, string>;
     /** False when the editor shows the preview in its context column instead (from 1280 px). */
     showPreview?: boolean;
+    /** The stored tests, for the samples the preview shows as students see them (A5). */
+    tests?: Problem['tests'];
   }
 
-  let { draft = $bindable(), fields, showPreview = true }: Props = $props();
+  let { draft = $bindable(), fields, showPreview = true, tests = [] }: Props = $props();
+
+  const preview = $derived(previewSamples(tests, draft.samples));
 
   let phone = $state(!media('tablet').matches);
   let statementTab = $state<'write' | 'preview'>('write');
@@ -158,6 +164,8 @@
             markdown={draft.statement_md}
             timeLimitMs={draft.time_limit_ms}
             memoryMb={draft.memory_limit_mb}
+            samples={preview.samples}
+            samplesCut={preview.cut}
           />
         </div>
       {/if}
@@ -237,6 +245,8 @@
           markdown={draft.statement_md}
           timeLimitMs={draft.time_limit_ms}
           memoryMb={draft.memory_limit_mb}
+          samples={preview.samples}
+          samplesCut={preview.cut}
         />
       </div>
     </section>

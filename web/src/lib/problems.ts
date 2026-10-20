@@ -944,3 +944,18 @@ export function pipelineLine(inputs: JobState, outputs: JobState, validation: Jo
   parts.push(`validation ${validationWord}`);
   return parts.join(', ');
 }
+
+/**
+ * The samples the editor's preview shows, as the samples field is typed
+ * (falling back to the saved sample flags while it cannot be read): each
+ * with the stored preview of its input and output, the first 200 bytes.
+ * `cut` is true when any file is longer than its preview.
+ */
+export function previewSamples(tests: readonly TestCase[], samplesText: string): { samples: { idx: number; input: string; output: string; truncated: boolean }[]; cut: boolean } {
+  const typed = parseTestList(samplesText);
+  const chosen = tests.filter((t) => (typed.ok ? typed.tests.includes(t.idx) : t.sample));
+  return {
+    samples: chosen.map((t) => ({ idx: t.idx, input: t.input_preview, output: t.output_preview, truncated: false })),
+    cut: chosen.some((t) => t.input_size > t.input_preview.length || t.output_size > t.output_preview.length),
+  };
+}

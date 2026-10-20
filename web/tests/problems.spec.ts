@@ -644,3 +644,16 @@ test('removing the brute force or validator can be undone until the next save (P
   await expect(page.locator('#validator-source')).toBeFocused();
   await expect(page.getByText('Unsaved changes', { exact: true })).toHaveCount(0);
 });
+
+test('the preview shows the samples as students see them (P3 A5)', async ({ page }) => {
+  await mockApi(page);
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto('/admin/problems/1');
+  const preview = page.getByRole('region', { name: 'Preview' });
+  await expect(preview.getByRole('heading', { name: 'Sample 1' })).toBeVisible();
+  await expect(preview.getByRole('heading', { name: 'Sample 2' })).toBeVisible();
+  await expect(preview.getByRole('button', { name: 'Copy sample 1 input' })).toBeVisible();
+  // The samples follow the field as typed.
+  await page.locator('#samples').fill('1');
+  await expect(preview.getByRole('heading', { name: 'Sample 2' })).toHaveCount(0);
+});

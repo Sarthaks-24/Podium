@@ -42,6 +42,7 @@
     isFailure,
     isPending,
     judgedFieldsChanged,
+    previewSamples,
     ordinal,
     problemPath,
     readPlan,
@@ -629,6 +630,8 @@
               markdown={draft.statement_md}
               timeLimitMs={draft.time_limit_ms}
               memoryMb={draft.memory_limit_mb}
+              samples={previewSamples(problem.tests, draft.samples).samples}
+              samplesCut={previewSamples(problem.tests, draft.samples).cut}
             />
           </section>
         {/if}
@@ -636,7 +639,7 @@
 
       <div class="page-split-main editor-main">
         <form id="problem-form" class="form" novalidate onsubmit={onSubmit}>
-          <StatementSection bind:draft {fields} showPreview={!desk} />
+          <StatementSection bind:draft {fields} showPreview={!desk} tests={problem.tests} />
 
           <SolutionsSection bind:draft {fields} />
 
