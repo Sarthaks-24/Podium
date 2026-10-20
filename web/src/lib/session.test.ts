@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { displayName, loadSession, session, signOut, type User } from './session.svelte';
+import { beforeSignOut, displayName, loadSession, runSignOutSaves, session, signOut, type User } from './session.svelte';
 import { NETWORK_MESSAGE } from './api';
 import { preferences } from './preferences.svelte';
 
@@ -147,6 +147,43 @@ describe('signOut', () => {
     const err = await signOut();
     expect(err?.code).toBe('network');
     expect(session.status).toBe('signed-out');
+  });
+});
+
+describe('beforeSignOut', () => {
+  it('runs registered saves before the logout request', async () => {
+    session.status = 'signed-in';
+    session.user = student;
+    const order: string[] = [];
+    const remove = beforeSignOut(async () => {
+      order.push('save');
+    });
+    stubFetch((path) => {
+      order.push(path);
+      return new Response(null, { status: 204 });
+    });
+    await signOut();
+    remove();
+    expect(order).toEqual(['save', '/api/auth/logout']);
+  });
+
+  it('never waits longer than the limit, and a failing save does not block', async () => {
+    const removeSlow = beforeSignOut(() => new Promise(() => undefined));
+    const removeBad = beforeSignOut(async () => {
+      throw new Error('offline');
+    });
+    const started = Date.now();
+    await runSignOutSaves(50);
+    removeSlow();
+    removeBad();
+    expect(Date.now() - started).toBeLessThan(1000);
+  });
+
+  it('forgets a save once removed', async () => {
+    const save = vi.fn(async () => undefined);
+    beforeSignOut(save)();
+    await runSignOutSaves(50);
+    expect(save).not.toHaveBeenCalled();
   });
 });
 

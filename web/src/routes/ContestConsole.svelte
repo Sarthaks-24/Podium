@@ -152,7 +152,7 @@
       refreshTicker();
       const restore = keepHeadingFocus();
       contest = c;
-      setTitle(c.title, routeTitle('contest-console'));
+      setTitle(routeTitle('contest-console'), c.title);
       loadState = 'ready';
       void restore();
       // Every action here reloads the contest, so the log follows it.
@@ -450,7 +450,7 @@
   // The tab title carries the unanswered count, so a waiting question shows from another tab.
   $effect(() => {
     if (!contest) return;
-    setTitle(unanswered > 0 ? `(${unanswered}) ${contest.title}` : contest.title, routeTitle('contest-console'));
+    setTitle(unanswered > 0 ? `(${unanswered}) ${routeTitle('contest-console')}` : routeTitle('contest-console'), contest.title);
   });
 
   onDestroy(() => {
@@ -465,7 +465,7 @@
 {:else if loadState !== 'ready' || !contest}
   <PageHeader
     title={loadState === 'missing' ? 'Contest not found' : 'Console'}
-    crumbs={[{ label: 'Contest admin', href: '/admin/contests' }, { label: loadState === 'missing' ? 'Contest not found' : 'Console' }]}
+    crumbs={[{ label: 'Contests', href: '/admin/contests' }, { label: loadState === 'missing' ? 'Contest not found' : 'Console' }]}
   />
   {#if loadState === 'loading'}
     <PageState kind="loading" message="Loading the contest" />
@@ -475,7 +475,7 @@
     <PageState kind="error" message={loadError} onretry={() => loadContest()} />
   {/if}
 {:else}
-  <ContestAdminNav {id} title={contest.title} state={contest.state} current="console" />
+  <ContestAdminNav {id} slug={contest.slug} title={contest.title} state={contest.state} current="console" {unanswered} />
 
   <div class="status">
     <p>

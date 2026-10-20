@@ -18,6 +18,8 @@ import {
   signalStudents,
   statsLine,
   studentStateText,
+  casesStanding,
+  studentLead,
   type Signal,
 } from './review';
 
@@ -173,6 +175,15 @@ describe('wording', () => {
     expect(studentStateText({ state: 'awaiting_student', explanation: '', decided: false })).toMatch(/^Waiting for your explanation/);
     expect(studentStateText({ state: 'awaiting_student', explanation: 'I wrote it.', decided: false })).toMatch(/^Your explanation is saved/);
     expect(studentStateText({ state: 'cleared', explanation: '', decided: true })).toMatch(/^Decided: cleared/);
+  });
+
+  it('says where all the cases of a student stand, for the nav and Home', () => {
+    expect(casesStanding(undefined)).toBe('none');
+    expect(casesStanding([])).toBe('none');
+    expect(casesStanding([{ decided: true }, { decided: false }])).toBe('asked');
+    expect(casesStanding([{ decided: true }])).toBe('decided');
+    expect(studentLead('decided')).toMatch(/where each one ended/);
+    expect(studentLead('asked')).toMatch(/^An organiser looked over a contest/);
   });
 
   it('suggests a title from the chosen signals', () => {

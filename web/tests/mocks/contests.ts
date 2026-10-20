@@ -627,21 +627,21 @@ export const SCREENS: Screen[] = [
     name: 'admin-contests',
     path: '/admin/contests',
     options: { who: 'admin', phase: 'during' },
-    title: 'Contest admin · podium',
+    title: 'Contests · podium',
     ready: (page) => expect(page.getByRole('link', { name: 'Week 7 contest', exact: true })).toBeVisible(),
   },
   {
     name: 'contest-editor',
     path: '/admin/contests/4',
     options: { who: 'admin', phase: 'during' },
-    title: 'Week 6 contest · Contest settings · podium',
+    title: 'Contest settings · Week 6 contest · podium',
     ready: (page) => expect(page.getByRole('heading', { name: 'Co-organisers' })).toBeVisible(),
   },
   {
     name: 'contest-console',
     path: '/admin/contests/4/console',
     options: { who: 'admin', phase: 'during' },
-    title: '(1) Week 6 contest · Console · podium',
+    title: '(1) Console · Week 6 contest · podium',
     ready: async (page) => {
       await expect(page.getByText('Can intervals have zero length?')).toBeVisible();
       await expect(page.getByRole('cell', { name: 'Wrong answer' })).toBeVisible();
@@ -651,7 +651,7 @@ export const SCREENS: Screen[] = [
     name: 'contest-results',
     path: '/admin/contests/4/results',
     options: { who: 'admin', phase: 'after' },
-    title: 'Week 6 contest · Results · podium',
+    title: 'Results · Week 6 contest · podium',
     ready: async (page) => {
       await expect(page.getByRole('region', { name: /Standings for Week 6 contest/ })).toBeVisible();
       await expect(page.getByText('Interval covering').first()).toBeVisible();

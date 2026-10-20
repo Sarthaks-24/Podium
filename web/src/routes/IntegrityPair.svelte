@@ -75,11 +75,11 @@
   const back = $derived(fromCase ? `/admin/integrity/cases/${caseId}` : `/admin/contests/${encodeURIComponent(id)}/integrity`);
   let contestTitle = $state('');
 
-  /** Contest admin, the contest, Integrity, the case when the evidence came from one, then this page. */
+  /** Contests, the contest, Integrity, the case when the evidence came from one, then this page. */
   function trail(here: string): Crumb[] {
     const contest = `/admin/contests/${encodeURIComponent(id)}`;
     const out: Crumb[] = [
-      { label: 'Contest admin', href: '/admin/contests' },
+      { label: 'Contests', href: '/admin/contests' },
       { label: contestTitle || 'Contest', href: contest },
       { label: 'Integrity', href: `${contest}/integrity` },
     ];

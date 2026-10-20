@@ -170,6 +170,20 @@ export function stateWord(state: ContestState): string {
   }
 }
 
+/**
+ * The state word a student reads (decision D84): a frozen contest is still
+ * running for them, so it reads 'Live' and the countdown line adds
+ * "standings frozen". Organiser screens keep stateWord.
+ */
+export function studentStateWord(state: ContestState): string {
+  return state === 'frozen' ? 'Live' : stateWord(state);
+}
+
+/** The state a student's state word is styled as: frozen looks like live. */
+export function studentState(state: ContestState): ContestState {
+  return state === 'frozen' ? 'live' : state;
+}
+
 /** The list in display order: live first, then upcoming, then past. */
 export function orderedContests(list: ContestList): ContestSummary[] {
   const live = [...(list.live ?? [])].sort((a, b) => a.ends_at - b.ends_at);
@@ -250,17 +264,21 @@ export function lengthText(c: Pick<ContestSummary, 'start_mode' | 'duration_minu
   return formatMinutes(Math.round((c.ends_at - c.starts_at) / 60_000));
 }
 
-/** The countdown line for a row of the contest list, or "" for none. */
-export function listCountdown(c: ContestSummary, now: number): { lead: string; ms: number } | null {
-  if (c.state === 'upcoming') return { lead: 'Starts in', ms: c.starts_at - now };
+/**
+ * The countdown line for a row of the contest list, or null for none.
+ * `after` follows the time: ", standings frozen" during the freeze (D84).
+ */
+export function listCountdown(c: ContestSummary, now: number): { lead: string; ms: number; after: string } | null {
+  if (c.state === 'upcoming') return { lead: 'Starts in', ms: c.starts_at - now, after: '' };
   if (c.state === 'live' || c.state === 'frozen') {
+    const after = c.state === 'frozen' ? ', standings frozen' : '';
     if (c.start_mode === 'window') {
-      if (!c.my_window) return { lead: 'Open for', ms: c.ends_at - now };
-      if (now < c.my_window.ends_at) return { lead: 'Your time left', ms: c.my_window.ends_at - now };
+      if (!c.my_window) return { lead: 'Open for', ms: c.ends_at - now, after };
+      if (now < c.my_window.ends_at) return { lead: 'Your time left', ms: c.my_window.ends_at - now, after };
       return null;
     }
     // Fixed start: the student's own end includes any personal extension.
-    return { lead: 'Ends in', ms: (c.my_window?.ends_at ?? c.ends_at) - now };
+    return { lead: 'Ends in', ms: (c.my_window?.ends_at ?? c.ends_at) - now, after };
   }
   return null;
 }
@@ -349,6 +367,20 @@ export interface AdminContestSummary {
   problem_count?: number;
   problems?: AdminContestProblem[];
   paused?: boolean;
+  /** ends_at plus the contest-wide extension. */
+  close_at?: number;
+}
+
+/**
+ * The organiser list in display order (v2 N6): live and frozen contests
+ * first by their end, so an extended contest never drops among the past
+ * ones; then upcoming soonest first; then the rest newest first.
+ */
+export function organiserOrder<T extends Pick<AdminContestSummary, 'state' | 'starts_at' | 'ends_at'>>(list: readonly T[]): T[] {
+  const live = list.filter((c) => c.state === 'live' || c.state === 'frozen').sort((a, b) => a.ends_at - b.ends_at);
+  const upcoming = list.filter((c) => c.state === 'upcoming').sort((a, b) => a.starts_at - b.starts_at);
+  const rest = list.filter((c) => c.state === 'ended' || c.state === 'practice').sort((a, b) => b.starts_at - a.starts_at);
+  return [...live, ...upcoming, ...rest];
 }
 
 /** How many problems an organiser's contest row has. */

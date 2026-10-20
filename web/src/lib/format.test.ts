@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { countOf, formatDateTime, roleLabel } from './format';
+import { countOf, formatDateTime, numberParts, roleLabel, scoreParts } from './format';
 import { formatTitle } from './head';
 
 describe('formatDateTime', () => {
@@ -33,5 +33,28 @@ describe('countOf', () => {
     expect(countOf(0, 'minute')).toBe('0 minutes');
     expect(countOf(15, 'minute')).toBe('15 minutes');
     expect(countOf(2, 'match', 'matches')).toBe('2 matches');
+  });
+});
+
+describe('numberParts and scoreParts', () => {
+  it('sets only the digits in mono', () => {
+    expect(numberParts('2 d 23 h')).toEqual([
+      { text: '2', mono: true },
+      { text: ' d ', mono: false },
+      { text: '23', mono: true },
+      { text: ' h', mono: false },
+    ]);
+    expect(numberParts('01:12:48')).toEqual([{ text: '01:12:48', mono: true }]);
+    expect(numberParts('Ends in')).toEqual([{ text: 'Ends in', mono: false }]);
+  });
+
+  it('writes a score as digits around a Grotesk "of"', () => {
+    expect(scoreParts(240, 300)).toEqual([
+      { text: '240', mono: true },
+      { text: ' of ', mono: false },
+      { text: '300', mono: true },
+    ]);
+    expect(scoreParts(140)).toEqual([{ text: '140', mono: true }]);
+    expect(scoreParts(0, null)).toEqual([{ text: '0', mono: true }]);
   });
 });

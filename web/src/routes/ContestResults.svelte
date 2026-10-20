@@ -94,7 +94,7 @@
       contest = c;
       editorial = c.editorial_md ?? '';
       editorialPublished = c.editorial_published ?? false;
-      setTitle(c.title, routeTitle('contest-results'));
+      setTitle(routeTitle('contest-results'), c.title);
       loadState = 'ready';
       void restore();
     } catch (e) {
@@ -213,7 +213,7 @@
 {:else if loadState !== 'ready' || !contest}
   <PageHeader
     title={loadState === 'missing' ? 'Contest not found' : 'Results'}
-    crumbs={[{ label: 'Contest admin', href: '/admin/contests' }, { label: loadState === 'missing' ? 'Contest not found' : 'Results' }]}
+    crumbs={[{ label: 'Contests', href: '/admin/contests' }, { label: loadState === 'missing' ? 'Contest not found' : 'Results' }]}
   />
   {#if loadState === 'loading'}
     <PageState kind="loading" message="Loading the contest" />
@@ -223,7 +223,7 @@
     <PageState kind="error" message={loadError} onretry={load} />
   {/if}
 {:else}
-  <ContestAdminNav {id} title={contest.title} state={contest.state} current="results" />
+  <ContestAdminNav {id} slug={contest.slug} title={contest.title} state={contest.state} current="results" />
 
   <section class="section" aria-labelledby="board-title">
     <div class="section-head">

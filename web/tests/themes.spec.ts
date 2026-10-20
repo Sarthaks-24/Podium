@@ -133,10 +133,15 @@ test('applies, saves and clears preferences', async ({ page }) => {
   const html = page.locator('html');
   await expect(html).toHaveAttribute('data-theme', 'overcast');
 
-  const trigger = page.getByRole('button', { name: 'Theme', exact: true });
-  await trigger.focus();
+  // Signed in, the picker is the account menu's "Theme and colours" dialog (N2).
+  const account = page.getByRole('button', { name: 'Priya Raman' });
+  await account.focus();
   await page.keyboard.press('Enter');
-  await expect(trigger).toHaveAttribute('aria-expanded', 'true');
+  const item = page.getByRole('button', { name: 'Theme and colours' });
+  await item.focus();
+  await page.keyboard.press('Enter');
+  const dialog = page.getByRole('dialog', { name: 'Theme and colours' });
+  await expect(dialog).toBeVisible();
   const overcast = page.getByRole('radio', { name: 'Overcast' });
   await expect(overcast).toBeChecked();
 
@@ -155,13 +160,11 @@ test('applies, saves and clears preferences', async ({ page }) => {
     'signal',
   ]);
 
-  // The quiet trigger keeps its name; the panel says which theme is on.
-  await expect(page.locator('#theme-panel')).toContainText('Current theme: OLED black');
+  // The dialog says which theme is on; Escape closes it and focus returns to the item.
+  await expect(dialog).toContainText('Current theme: OLED black');
   await page.keyboard.press('Escape');
-  await expect(page.locator('#theme-panel')).toBeHidden();
-  const renamed = page.getByRole('button', { name: 'Theme', exact: true });
-  await expect(renamed).toHaveAttribute('aria-expanded', 'false');
-  await expect(renamed).toBeFocused();
+  await expect(dialog).toBeHidden();
+  await expect(item).toBeFocused();
 
   // Reload: the pre-paint cache and the account agree.
   await page.reload();
@@ -169,13 +172,15 @@ test('applies, saves and clears preferences', async ({ page }) => {
   await expect(html).toHaveAttribute('data-verdicts', 'signal');
 
   // System clears the attribute and is saved as an empty theme.
-  await renamed.click();
+  await account.click();
+  await item.click();
   await page.getByRole('radio', { name: /^System/ }).check();
   await expect(html).not.toHaveAttribute('data-theme', /.*/);
   await expect.poll(() => api.saved.at(-1)).toEqual({ theme: '', verdicts: 'signal' });
 
   // Sign out: the next person at this machine starts from the defaults.
   await page.keyboard.press('Escape');
+  await expect(dialog).toBeHidden();
   await page.getByRole('button', { name: 'Sign out' }).click();
   await expect(page).toHaveURL(/\/signin/);
   await expect(html).not.toHaveAttribute('data-verdicts', /.*/);
@@ -240,9 +245,14 @@ for (const width of [375, 1440]) {
     await mockApi(page, true);
     await page.setViewportSize({ width, height: width < 768 ? 812 : 900 });
     await page.goto('/');
-    if (width < 768) await page.getByRole('button', { name: 'Menu' }).click();
-    await page.getByRole('button', { name: 'Theme', exact: true }).click();
-    const panel = page.locator('#theme-panel');
+    if (width < 768) {
+      await page.getByRole('button', { name: 'Menu' }).click();
+      await page.locator('#site-menu').getByRole('button', { name: 'Theme and colours' }).click();
+    } else {
+      await page.getByRole('button', { name: 'Priya Raman' }).click();
+      await page.getByRole('button', { name: 'Theme and colours' }).click();
+    }
+    const panel = page.getByRole('dialog', { name: 'Theme and colours' });
     await expect(panel).toBeVisible();
     const box = await panel.boundingBox();
     expect(box && box.x >= 0 && box.x + box.width <= width, 'panel inside the viewport').toBe(true);

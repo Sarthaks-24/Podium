@@ -134,7 +134,7 @@ test('the pair view tints the shared passages, marks them for screen readers and
   await expect(page.getByText('Similar code on problem B, Interval covering.', { exact: false })).toBeVisible();
   // F4: the trail names the contest and ends on this page.
   const trail = page.getByRole('navigation', { name: 'Breadcrumb' });
-  await expect(trail.getByRole('listitem')).toHaveText(['Contest admin', 'Week 6 contest', 'Integrity', 'Asha Rao and Ravi Kumar']);
+  await expect(trail.getByRole('listitem')).toHaveText(['Contests', 'Week 6 contest', 'Integrity', 'Asha Rao and Ravi Kumar']);
   await expect(trail.locator('[aria-current="page"]')).toHaveText('Asha Rao and Ravi Kumar');
   await expect(trail.getByRole('link', { name: 'Integrity' })).toHaveAttribute('href', '/admin/contests/4/integrity');
 
@@ -335,7 +335,7 @@ test('results and the contest nav lead to the integrity page', async ({ page }) 
   const nav = page.getByRole('navigation', { name: 'Contest' });
   await expect(nav.getByRole('link', { name: 'Integrity' })).toHaveAttribute('aria-current', 'page');
   await expect(nav.getByRole('link', { name: 'Results' })).toHaveAttribute('href', '/admin/contests/4/results');
-  await expect(page.getByRole('navigation', { name: 'Main' }).getByRole('link', { name: 'Contest admin' })).toHaveAttribute('aria-current', 'page');
+  await expect(page.getByRole('navigation', { name: 'Main' }).getByRole('link', { name: 'Contests' })).toHaveAttribute('aria-current', 'page');
   await nav.getByRole('link', { name: 'Results' }).click();
   await page.getByRole('link', { name: 'Check integrity' }).click();
   await expect(page).toHaveURL(/\/admin\/contests\/4\/integrity$/);

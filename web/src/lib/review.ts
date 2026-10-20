@@ -379,6 +379,24 @@ export function studentStateText(c: Pick<StudentCase, 'state' | 'explanation' | 
   return 'Waiting for your explanation. Nothing has been decided.';
 }
 
+/**
+ * Where a student's shared cases stand, for the shell's "Questions" link and
+ * the line on Your contests (v2 S7, audit 01-12): "none" without a case,
+ * "asked" while any case waits for a decision, "decided" once all are.
+ */
+export type CasesStanding = 'none' | 'asked' | 'decided';
+
+export function casesStanding(cases: readonly Pick<StudentCase, 'decided'>[] | undefined): CasesStanding {
+  if (!cases || cases.length === 0) return 'none';
+  return cases.some((c) => !c.decided) ? 'asked' : 'decided';
+}
+
+/** The lead line of /integrity, chosen by where the cases stand (audit 01-13). */
+export function studentLead(standing: CasesStanding): string {
+  if (standing === 'decided') return 'These are questions an organiser asked about your submissions, and where each one ended.';
+  return 'An organiser looked over a contest and would like you to explain some of your work. This is not a finding: a person reads your explanation before deciding anything, and only you and the organisers see it.';
+}
+
 /** Characters as the server counts them: code points of the trimmed text. */
 export function noteLength(text: string): number {
   return [...text.trim()].length;

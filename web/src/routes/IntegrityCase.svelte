@@ -256,7 +256,7 @@
 {:else if loadState !== 'ready' || !kase}
   <PageHeader
     title={loadState === 'missing' ? 'Case not found' : 'Case'}
-    crumbs={[{ label: 'Contest admin', href: '/admin/contests' }, { label: loadState === 'missing' ? 'Case not found' : 'Case' }]}
+    crumbs={[{ label: 'Contests', href: '/admin/contests' }, { label: loadState === 'missing' ? 'Case not found' : 'Case' }]}
   />
   {#if loadState === 'loading'}
     <PageState kind="loading" message="Loading the case" />
@@ -269,7 +269,7 @@
   <PageHeader
     title={kase.title}
     crumbs={[
-      { label: 'Contest admin', href: '/admin/contests' },
+      { label: 'Contests', href: '/admin/contests' },
       { label: contestTitle || 'Contest', href: `/admin/contests/${kase.contest_id}` },
       { label: 'Integrity', href: back },
       { label: kase.title },

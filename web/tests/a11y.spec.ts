@@ -53,13 +53,8 @@ const KNOWN: Record<string, string> = {
 };
 
 /** Screens allowed to scroll sideways at 320 px, with the plan item that fixes them. */
-const SUBNAV = 'N3 (P2, F-V3): the contest sub-nav is 14 px wider than 320 px; it must wrap or scroll when N3 adds "Student view"';
 const KNOWN_REFLOW: Record<string, string> = {
-  'contest-editor': SUBNAV,
-  'contest-console': SUBNAV,
-  'contest-results': SUBNAV,
-  integrity: SUBNAV,
-  'integrity-live': SUBNAV,
+  // Empty since P2: N3 lets the contest sub-nav wrap.
 };
 
 function cache(sub: string): string {

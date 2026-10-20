@@ -58,7 +58,8 @@ test('the contest list puts the live contest first with a countdown', async ({ p
   await page.setViewportSize({ width: 1280, height: 800 });
   // Students get only the Contests link.
   await expect(page.getByRole('link', { name: 'Contests', exact: true })).toHaveAttribute('aria-current', 'page');
-  await expect(page.getByRole('link', { name: 'Contest admin' })).toHaveCount(0);
+  await expect(page.getByRole('navigation', { name: 'Main' }).getByRole('link')).toHaveText(['Contests']);
+  await expect(page.getByRole('link', { name: 'Problem bank' })).toHaveCount(0);
 });
 
 test('a student agrees to the honour code, solves, reads an announcement and asks a question', async ({ page }) => {
@@ -278,12 +279,14 @@ test('a second tab with the same contest shows a notice, as does a second sessio
   await elsewhere.close();
 });
 
-test('admins see the Contest admin link and the contest list', async ({ page }) => {
+test('admins land on their contest list, named by job', async ({ page }) => {
   await mockApi(page, { who: 'admin', phase: 'during' });
   await page.goto('/');
-  await page.getByRole('navigation', { name: 'Main' }).getByRole('link', { name: 'Contest admin' }).click();
   await expect(page).toHaveURL('/admin/contests');
-  await expect(page.getByRole('link', { name: 'Contest admin', exact: true }).first()).toHaveAttribute('aria-current', 'page');
+  const nav = page.getByRole('navigation', { name: 'Main' });
+  await expect(nav.getByRole('link')).toHaveText(['Contests', 'Problem bank']);
+  await expect(nav.getByRole('link', { name: 'Contests' })).toHaveAttribute('aria-current', 'page');
+  await expect(page.getByText('To create a contest or follow one live')).toHaveCount(0);
   await expect(page.getByRole('row', { name: /Week 7 contest/ })).toContainText('Draft');
   await expect(page.getByRole('row', { name: /Week 6 contest/ })).toContainText('Published');
 
@@ -299,7 +302,7 @@ test('students cannot open the contest admin', async ({ page }) => {
   await page.goto('/admin/contests');
   await expect(page.getByText('Only admins can manage contests.')).toBeVisible();
   // F3: a closed screen names where to ask, as a mailto link.
-  await expect(page.getByRole('link', { name: 'priya@college.edu' })).toHaveAttribute('href', 'mailto:priya@college.edu');
+  await expect(page.getByRole('main').getByRole('link', { name: 'priya@college.edu' })).toHaveAttribute('href', 'mailto:priya@college.edu');
 });
 
 test('the editor shows field errors, picks problems and previews a roster', async ({ page }) => {
@@ -396,7 +399,7 @@ test('the console pauses, extends, rejudges, announces and answers', async ({ pa
   await page.getByRole('button', { name: 'Resume judging' }).click();
   await expect(page.getByText('Judging is running.')).toBeVisible();
 
-  await expect(page.getByRole('link', { name: '1 unanswered question' })).toHaveAttribute('href', '#clar-title');
+  await expect(page.getByRole('link', { name: '1 unanswered question', exact: true })).toHaveAttribute('href', '#clar-title');
   await page.getByLabel('Minutes for everyone').fill('0');
   await page.getByRole('button', { name: 'Extend contest' }).click();
   await expect(page.locator('#extend-error')).toHaveText('Enter the minutes to add, 1 or more.');

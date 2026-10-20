@@ -1,6 +1,12 @@
 <!--
-  AdminContests: the organiser list of contests at /admin/contests
-  (GET /api/admin/contests), soonest first with past ones after. A table
+  AdminContests: "Contests", the organiser landing page at /admin/contests
+  (GET /api/admin/contests; "/" sends organisers here, v2 N1 and N6). The
+  live contest, or else the next one, comes first on its own: its state
+  word, a countdown in mono, the unanswered questions of a live contest
+  (one request to its clarifications until the contest response carries
+  the count, C10 in P3), and its links with Console first. Then every
+  contest: live and frozen ones first (an extended contest stays among
+  them), upcoming ones soonest first, past ones newest first. A table
   gives each contest's title (a link to its settings), when it starts, how
   long it lasts, the problem count, the state word, whether it is
   published, and links to its console and results. Under 768 px each row
@@ -19,13 +25,18 @@
     defaultSettings,
     fromLocalInput,
     lengthText,
+    organiserOrder,
     problemCount,
     stateWord,
     toLocalInput,
     type AdminContest,
     type AdminContestSummary,
   } from '../lib/contests';
-  import { formatDateTime } from '../lib/format';
+  import MonoDigits from '../components/MonoDigits.svelte';
+  import { serverClock } from '../lib/clock';
+  import { countOf, formatDateTime, numberParts } from '../lib/format';
+  import { formatCountdown, formatSpan, type Clarification } from '../lib/contests';
+  import { refreshTicker, ticker, useTicker } from '../lib/ticker.svelte';
   import { setTitle } from '../lib/head';
   import { routeTitle } from '../lib/routing';
   import { slugify } from '../lib/problems';
@@ -51,17 +62,37 @@
   let newButton: HTMLButtonElement | undefined = $state();
 
   const isOrganiser = $derived(session.user?.role === 'admin' || session.user?.role === 'owner');
-  const sorted = $derived.by(() => {
-    const now = Date.now();
-    const ahead = contests.filter((c) => c.ends_at >= now).sort((a, b) => a.starts_at - b.starts_at);
-    const past = contests.filter((c) => c.ends_at < now).sort((a, b) => b.starts_at - a.starts_at);
-    return [...ahead, ...past];
+  const sorted = $derived(organiserOrder(contests));
+  // The contest an organiser most likely came for: the live one, else the next.
+  const featured = $derived(sorted.find((c) => isLive(c)) ?? sorted.find((c) => c.state === 'upcoming') ?? null);
+  let unanswered = $state<number | null>(null);
+
+  function isLive(c: AdminContestSummary): boolean {
+    return c.state === 'live' || c.state === 'frozen';
+  }
+
+  async function loadUnanswered(id: number) {
+    try {
+      const data = await getJSON<{ clarifications: Clarification[] }>(`/api/admin/contests/${id}/clarifications`);
+      unanswered = (data.clarifications ?? []).filter((q) => !q.answer).length;
+    } catch {
+      unanswered = null;
+    }
+  }
+
+  $effect(() => {
+    const f = featured;
+    if (f && isLive(f)) void loadUnanswered(f.id);
+    else unanswered = null;
   });
 
   async function load() {
     loadState = 'loading';
     try {
-      const data = await getJSON<{ contests: AdminContestSummary[] }>('/api/admin/contests');
+      const sent = Date.now();
+      const data = await getJSON<{ contests: AdminContestSummary[]; server_now?: number }>('/api/admin/contests');
+      if (typeof data.server_now === 'number') serverClock.observe(data.server_now, sent, Date.now());
+      refreshTicker();
       contests = data.contests ?? [];
       loadState = 'ready';
     } catch (e) {
@@ -142,14 +173,45 @@
     setTitle(routeTitle('admin-contests'));
     if (!isOrganiser) loadState = 'forbidden';
     else void load();
+    return useTicker();
   });
 </script>
 
-<PageHeader title="Contest admin" />
+<PageHeader title="Contests" />
 
 {#if loadState === 'forbidden'}
   <PageState kind="forbidden" message="Only admins can manage contests." />
 {:else}
+  {#if loadState === 'ready' && featured}
+    {@const f = featured}
+    {@const left = isLive(f) ? (f.close_at ?? f.ends_at) - ticker.now : f.starts_at - ticker.now}
+    {@const fbase = `/admin/contests/${f.id}`}
+    <section class="featured" aria-labelledby="featured-title">
+      <div class="featured-head">
+        <h2 id="featured-title">{f.title}</h2>
+        <span class="state-word" data-state={f.state}>{stateWord(f.state)}</span>
+      </div>
+      <p class="featured-line">
+        {#if left > 0}
+          {isLive(f) ? 'Ends in' : 'Starts in'} <MonoDigits parts={numberParts(left >= 86_400_000 ? formatSpan(left) : formatCountdown(left))} />{#if f.paused}, judging paused{/if}
+        {:else}
+          {formatDateTime(f.starts_at)}
+        {/if}
+      </p>
+      {#if isLive(f) && unanswered !== null}
+        <p class="featured-line">
+          {#if unanswered > 0}<a href="{fbase}/console#clar-title">{countOf(unanswered, 'unanswered question')}</a>{:else}No unanswered questions{/if}
+        </p>
+      {/if}
+      <p class="featured-links">
+        <a class="btn btn-primary btn-compact" href="{fbase}/console">Console</a>
+        <a href={fbase}>Settings</a>
+        <a href="{fbase}/results">Results</a>
+        <a href="/contests/{encodeURIComponent(f.slug)}">Student view</a>
+      </p>
+    </section>
+  {/if}
+
   <div class="toolbar">
     <button
       type="button"
@@ -276,6 +338,45 @@
 {/if}
 
 <style>
+  .featured {
+    display: grid;
+    gap: var(--space-2);
+    max-width: var(--measure-form);
+    margin-top: var(--space-5);
+    padding-bottom: var(--space-5);
+    border-bottom: var(--rule) solid var(--line);
+  }
+
+  .featured-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: var(--space-1) var(--space-3);
+  }
+
+  .featured-head h2 {
+    font-size: var(--fs-section);
+    overflow-wrap: anywhere;
+  }
+
+  .featured-line {
+    color: var(--ink-muted);
+  }
+
+  .featured-links {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-2) var(--space-4);
+    margin-top: var(--space-1);
+  }
+
+  .featured-links a:not(.btn) {
+    display: inline-flex;
+    align-items: center;
+    min-height: var(--control-h);
+  }
+
   .toolbar {
     margin-top: var(--space-5);
   }

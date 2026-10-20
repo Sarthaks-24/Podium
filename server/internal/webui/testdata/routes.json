@@ -94,7 +94,7 @@
       "name": "admin-contests",
       "auth": true,
       "public": false,
-      "title": "Contest admin",
+      "title": "Contests",
       "description": "Every contest, its state and its settings."
     },
     {
@@ -144,6 +144,14 @@
       "public": false,
       "title": "Case",
       "description": "One integrity case: evidence, notes and the decision."
+    },
+    {
+      "pattern": "/privacy",
+      "name": "privacy",
+      "auth": false,
+      "public": false,
+      "title": "Privacy",
+      "description": "What podium records about you, who can see it and how long it is kept."
     },
     {
       "pattern": "/integrity",

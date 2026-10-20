@@ -27,6 +27,13 @@ export const DOMAINS = [
 
 export const CONFIG = { allowed_domains: ['college.edu'], contact_email: 'priya@college.edu' };
 
+/** The site audit the People "History" shows (contract C4), newest first. */
+export const SITE_AUDIT = [
+  { id: 3, at: 1792183192359, action: 'role_granted', actor: { user_id: 1, email: 'priya@college.edu', role: 'owner' }, subject_email: 'ta@college.edu', details: { role: 'admin', from_role: 'student' } },
+  { id: 2, at: 1792096792359, action: 'domain_added', actor: { user_id: 1, email: 'priya@college.edu', role: 'owner' }, subject_email: '', details: { domain: 'cs.college.edu' } },
+  { id: 1, at: 1791923992359, action: 'mode_changed', actor: null, subject_email: '', details: { from: 'testing', to: 'production', sessions_ended: 0 } },
+];
+
 export function json(route: Route, status: number, body?: unknown) {
   return route.fulfill({
     status,
@@ -49,6 +56,9 @@ export async function mockApi(page: Page, who: Who) {
     resets: [] as string[],
     disabled: [] as { id: number; email: string; name: string; role: string; disabled: boolean; last_login_at: number | null }[],
     accountCalls: [] as string[],
+    auditQueries: [] as string[],
+    audit: structuredClone(SITE_AUDIT) as typeof SITE_AUDIT,
+    cases: [] as { id: number; decided: boolean }[],
   };
 
   await page.route(
@@ -74,6 +84,22 @@ export async function mockApi(page: Page, who: Who) {
         if (!me) return apiError(route, 401, 'signed_out', 'Sign in to continue.');
         if (me.role !== 'owner') return apiError(route, 403, 'forbidden', 'Only owners can do that.');
       }
+      if (path === '/api/integrity/cases' && method === 'GET') {
+        return me ? json(route, 200, { cases: state.cases, contests: {}, problems: {} }) : apiError(route, 401, 'signed_out', 'Sign in to continue.');
+      }
+      if (path.startsWith('/api/admin/') && me?.role === 'owner' && path === '/api/admin/contests' && method === 'GET') {
+        return json(route, 200, { contests: [], server_now: Date.now() });
+      }
+      if (path === '/api/admin/site-audit' && method === 'GET') {
+        const q = new URL(req.url()).searchParams;
+        state.auditQueries.push(q.toString());
+        const action = q.get('action') ?? '';
+        const text = (q.get('q') ?? '').toLowerCase();
+        const entries = state.audit.filter(
+          (e) => (action === '' || e.action === action) && (text === '' || e.subject_email.includes(text) || (e.actor?.email ?? '').includes(text)),
+        );
+        return json(route, 200, { entries, page: Number(q.get('page') ?? 1), has_more: false, server_now: Date.now() });
+      }
       if (path === '/api/admin/people' && method === 'GET') {
         return json(route, 200, { people: state.people, domains: state.domains, disabled: state.disabled });
       }
@@ -96,6 +122,11 @@ export async function mockApi(page: Page, who: Who) {
         const body = req.postDataJSON() as { email: string; role: string };
         if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(body.email)) {
           return apiError(route, 400, 'bad_request', 'Enter a full email address, for example ta@college.edu.');
+        }
+        const existing = state.people.find((p) => p.email === body.email);
+        if (existing) {
+          existing.role = body.role;
+          return json(route, 200, existing);
         }
         const person = { id: state.nextId++, email: body.email, name: '', role: body.role, last_login_at: null, locked: false };
         state.people.push(person);
@@ -185,15 +216,18 @@ export const SCREENS: Screen[] = [
     name: 'home-owner',
     path: '/',
     who: 'owner',
-    title: 'Your contests · podium',
-    ready: (page) => expect(page.getByText('No contests yet.')).toBeVisible(),
+    title: 'Contests · podium',
+    ready: (page) => expect(page.getByText('No contests yet. Create one')).toBeVisible(),
   },
   {
     name: 'people-owner',
     path: '/admin/people',
     who: 'owner',
     title: 'People · podium',
-    ready: (page) => expect(page.getByRole('table')).toBeVisible(),
+    ready: async (page) => {
+      await expect(page.getByRole('table')).toBeVisible();
+      await expect(page.getByText('Made ta@college.edu an admin')).toBeVisible();
+    },
   },
   {
     name: 'people-student',
@@ -207,6 +241,6 @@ export const SCREENS: Screen[] = [
     path: '/no-such-page',
     who: 'owner',
     title: 'Page not found · podium',
-    ready: (page) => expect(page.getByRole('link', { name: 'Go to your contests.' })).toBeVisible(),
+    ready: (page) => expect(page.getByText('Nothing lives at /no-such-page.')).toBeVisible(),
   },
 ];

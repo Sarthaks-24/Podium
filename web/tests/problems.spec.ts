@@ -341,14 +341,14 @@ test('leaving with unsaved changes asks first', async ({ page }) => {
   await expect(page.locator('.statement').getByText('Given two integers')).toBeVisible();
   await expect(page.locator('.preview-title')).toHaveText('A plus B, edited');
 
-  await page.getByRole('link', { name: 'Problem bank' }).click();
+  await page.getByRole('navigation', { name: 'Breadcrumb' }).getByRole('link', { name: 'Problem bank' }).click();
   const dialog = page.getByRole('dialog', { name: 'Leave without saving?' });
   await expect(dialog).toBeVisible();
   await dialog.getByRole('button', { name: 'Cancel' }).click();
   await expect(page).toHaveURL('/admin/problems/1');
   await expect(page.locator('#title')).toHaveValue('A plus B, edited');
 
-  await page.getByRole('link', { name: 'Problems', exact: true }).click();
+  await page.getByRole('navigation', { name: 'Main' }).getByRole('link', { name: 'Problem bank', exact: true }).click();
   await dialog.getByRole('button', { name: 'Leave page' }).click();
   await expect(page).toHaveURL('/admin/problems');
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('Problem bank');
@@ -395,18 +395,19 @@ test('students see an explanation instead of the bank and no Problems link', asy
   await mockApi(page, 'student');
   await page.goto('/admin/problems');
   await expect(page.getByText('Only admins can manage problems.')).toBeVisible();
-  await expect(page.getByRole('link', { name: 'Problems', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('link', { name: 'Problem bank', exact: true })).toHaveCount(0);
 });
 
-test('admins see the Problems link and it marks the current page', async ({ page }) => {
+test('admins see the Problem bank link and it marks the current page', async ({ page }) => {
   await mockApi(page);
-  await page.goto('/');
-  await page.getByRole('link', { name: 'Problems', exact: true }).click();
+  await page.goto('/admin/problems/1');
+  const nav = page.getByRole('navigation', { name: 'Main' });
+  await nav.getByRole('link', { name: 'Problem bank', exact: true }).click();
   await expect(page).toHaveURL('/admin/problems');
-  await expect(page.getByRole('link', { name: 'Problems', exact: true })).toHaveAttribute('aria-current', 'page');
+  await expect(nav.getByRole('link', { name: 'Problem bank', exact: true })).toHaveAttribute('aria-current', 'page');
   await expect(page.getByRole('heading', { level: 1 })).toBeFocused();
   await page.getByRole('link', { name: 'A plus B', exact: true }).click();
-  await expect(page.getByRole('link', { name: 'Problems', exact: true })).toHaveAttribute('aria-current', 'page');
+  await expect(nav.getByRole('link', { name: 'Problem bank', exact: true })).toHaveAttribute('aria-current', 'page');
   await expect(page.getByRole('link', { name: 'People' })).toHaveCount(0);
 });
 

@@ -14,6 +14,9 @@ import {
   labelFor,
   lengthText,
   listCountdown,
+  organiserOrder,
+  studentState,
+  studentStateWord,
   orderedContests,
   parseCsv,
   parseRoster,
@@ -105,14 +108,29 @@ describe('countdowns', () => {
   });
 
   it('picks the list countdown by state and window', () => {
-    expect(listCountdown(summary({ state: 'upcoming' }), T - 5 * MIN)).toEqual({ lead: 'Starts in', ms: 5 * MIN });
-    expect(listCountdown(summary(), T + 20 * MIN)).toEqual({ lead: 'Ends in', ms: 100 * MIN });
+    expect(listCountdown(summary({ state: 'upcoming' }), T - 5 * MIN)).toEqual({ lead: 'Starts in', ms: 5 * MIN, after: '' });
+    expect(listCountdown(summary(), T + 20 * MIN)).toEqual({ lead: 'Ends in', ms: 100 * MIN, after: '' });
     const win = summary({ start_mode: 'window', duration_minutes: 60, my_window: { started_at: T + 10 * MIN, ends_at: T + 70 * MIN } });
-    expect(listCountdown(win, T + 20 * MIN)).toEqual({ lead: 'Your time left', ms: 50 * MIN });
-    expect(listCountdown(summary({ start_mode: 'window', duration_minutes: 60 }), T)).toEqual({ lead: 'Open for', ms: 120 * MIN });
+    expect(listCountdown(win, T + 20 * MIN)).toEqual({ lead: 'Your time left', ms: 50 * MIN, after: '' });
+    expect(listCountdown(summary({ start_mode: 'window', duration_minutes: 60 }), T)).toEqual({ lead: 'Open for', ms: 120 * MIN, after: '' });
     expect(listCountdown(summary({ state: 'ended' }), T + 200 * MIN)).toBeNull();
     // A fixed start with a personal extension counts to the student's own end.
-    expect(listCountdown(summary({ my_window: { started_at: T, ends_at: T + 130 * MIN } }), T)).toEqual({ lead: 'Ends in', ms: 130 * MIN });
+    expect(listCountdown(summary({ my_window: { started_at: T, ends_at: T + 130 * MIN } }), T)).toEqual({ lead: 'Ends in', ms: 130 * MIN, after: '' });
+  });
+
+  it('reads a frozen contest as live for students, with the freeze in the countdown (D84)', () => {
+    expect(studentStateWord('frozen')).toBe('Live');
+    expect(studentStateWord('practice')).toBe('Practice');
+    expect(studentState('frozen')).toBe('live');
+    expect(listCountdown(summary({ state: 'frozen' }), T + 100 * MIN)).toEqual({ lead: 'Ends in', ms: 20 * MIN, after: ', standings frozen' });
+  });
+});
+
+describe('organiser order (N6)', () => {
+  it('puts live and frozen first, then upcoming soonest, then the rest newest', () => {
+    const row = (id: number, state: string, starts: number, ends: number) => ({ id, state: state as 'live', starts_at: starts, ends_at: ends });
+    const list = [row(1, 'ended', 10, 20), row(2, 'upcoming', 500, 600), row(3, 'frozen', 100, 400), row(4, 'upcoming', 300, 350), row(5, 'practice', 30, 40), row(6, 'live', 90, 200)];
+    expect(organiserOrder(list).map((c) => c.id)).toEqual([6, 3, 4, 2, 5, 1]);
   });
 });
 
