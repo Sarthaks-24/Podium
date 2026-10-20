@@ -132,6 +132,7 @@ Every save that changes a problem (its statement, title, tests, limits, checker,
 - A contest pins one revision per problem when the problem is added. Students are served that revision's title, statement and samples, never the bank's working copy, so an edit in the bank changes nothing in a contest until you choose "Update contest to revision N" on the console.
 - The update is accepted when the revision is the validated content of the problem. When only the statement or title changed, no rejudge is needed; students see "Statement updated 14:32. See what changed" with a line diff, and the console offers an announcement to post. When the tests, limits or checker changed, validate first, update, then rejudge.
 - The editor lists the newest 50 revisions with who made each, when, the reason and the contests that pin it, and can show any revision or compare two.
+- From v1.3.0 a revision older than 90 days that no contest pins or pinned, no submission was judged against and no student was served is deleted by the daily retention job; the problem's newest revision always stays. A contest's pins go 4 years after the contest, with its submissions (`docs/OPERATIONS.md`, "Retention").
 
 ## Checkers
 
