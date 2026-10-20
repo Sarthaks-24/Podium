@@ -50,6 +50,8 @@ interface Options {
   studentFrozen?: boolean;
   /** The student's window ends this many ms after the page loads. */
   endsInMs?: number;
+  /** The organiser's contest starts out published. */
+  published?: boolean;
 }
 
 function json(route: Route, status: number, body?: unknown) {
@@ -289,7 +291,7 @@ async function mockApi(page: Page, options: Options = {}) {
     access: 'roster',
     feedback_mode: 'subtask',
     graded: true,
-    published: false,
+    published: options.published ?? false,
     practice_after_end: true,
     stop_on_sample_fail: true,
     min_gap_s: 30,
@@ -965,6 +967,7 @@ test('the editor shows field errors, picks problems and previews a roster', asyn
   await slug.fill('week-6');
   await page.getByLabel('Published: students can see the contest').check();
   await page.getByRole('button', { name: 'Save changes' }).click();
+  await page.getByRole('dialog', { name: 'Change a live contest?' }).getByRole('button', { name: 'Save changes' }).click();
   await expect(page.locator('#f-published-error')).toHaveText('Problem B changed since it was added; validate it and add it again.');
   await page.getByLabel('Published: students can see the contest').uncheck();
   await page.getByLabel('Python 3').uncheck();
@@ -1088,6 +1091,22 @@ test('the console pauses, extends, rejudges, announces and answers', async ({ pa
   await expect(audit).toContainText('Paused judging');
   await expect(audit).toContainText('priya@college.edu');
   await page.screenshot({ path: `${shots()}contest-console-1440-light.png`, fullPage: true });
+});
+
+test('unpublishing a live contest asks first', async ({ page }) => {
+  const api = await mockApi(page, { who: 'admin', phase: 'during', published: true });
+  await page.goto('/admin/contests/4');
+  const published = page.getByLabel('Published: students can see the contest');
+  await expect(published).toBeChecked();
+  await published.uncheck();
+  await page.getByRole('button', { name: 'Save changes' }).click();
+  const live = page.getByRole('dialog', { name: 'Change a live contest?' });
+  await expect(live).toContainText('unpublishing hides the contest from them');
+  await live.getByRole('button', { name: 'Cancel' }).click();
+  expect(api.settingsPuts).toHaveLength(0);
+  await page.getByRole('button', { name: 'Save changes' }).click();
+  await live.getByRole('button', { name: 'Save changes' }).click();
+  await expect.poll(() => api.settingsPuts.at(-1)?.published).toBe(false);
 });
 
 test('the console feed filters waiting or judging and judge errors', async ({ page }) => {
