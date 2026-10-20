@@ -20,6 +20,7 @@
   Props: `id` (the case).
 -->
 <script lang="ts">
+  import PageState from '../components/PageState.svelte';
   import PageHeader from '../components/PageHeader.svelte';
   import { onDestroy, onMount, tick } from 'svelte';
   import ConfirmDialog from '../components/ConfirmDialog.svelte';
@@ -251,19 +252,18 @@
 
 {#if loadState === 'forbidden'}
   <PageHeader title="Case" />
-  <p class="lead">Only owners and admins can review integrity. Ask an owner if you need access.</p>
+  <PageState kind="forbidden" message="Only owners and admins can review integrity." />
 {:else if loadState !== 'ready' || !kase}
   <PageHeader
     title={loadState === 'missing' ? 'Case not found' : 'Case'}
     crumbs={[{ label: 'Contest admin', href: '/admin/contests' }, { label: loadState === 'missing' ? 'Case not found' : 'Case' }]}
   />
   {#if loadState === 'loading'}
-    <p class="lead muted" role="status">Loading the case</p>
+    <PageState kind="loading" message="Loading the case" />
   {:else if loadState === 'missing'}
-    <p class="lead">There is no case with that number, or you cannot review its contest. <a href="/admin/contests">Go to the contest list.</a></p>
+    <PageState kind="missing" message="There is no case with that number, or you cannot review its contest." parent={{ href: '/admin/contests', label: 'Go to the contest list.' }} />
   {:else}
-    <div class="banner banner-error lead" role="alert"><p>{loadError}</p></div>
-    <p class="retry"><button type="button" class="btn btn-secondary" onclick={load}>Try again</button></p>
+    <PageState kind="error" message={loadError} onretry={load} />
   {/if}
 {:else}
   <PageHeader
@@ -416,15 +416,6 @@
 {/if}
 
 <style>
-  .lead {
-    margin-top: var(--space-4);
-    max-width: 40rem;
-  }
-
-  .retry {
-    margin-top: var(--space-4);
-  }
-
   .dates {
     margin-top: var(--space-2);
   }

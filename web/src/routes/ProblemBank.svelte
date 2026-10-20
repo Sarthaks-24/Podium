@@ -17,6 +17,7 @@
   Takes no props.
 -->
 <script lang="ts">
+  import PageState from '../components/PageState.svelte';
   import PageHeader from '../components/PageHeader.svelte';
   import { onMount, tick, untrack } from 'svelte';
   import { isAIDraft, withoutAIDraft } from '../lib/ai';
@@ -203,7 +204,7 @@
 <PageHeader title="Problem bank" />
 
 {#if loadState === 'forbidden'}
-  <p class="lead">Only admins can manage problems. Ask an owner if you need access.</p>
+  <PageState kind="forbidden" message="Only admins can manage problems." />
 {:else}
   <div class="toolbar">
     <div class="buttons">
@@ -299,14 +300,11 @@
   {/if}
 
   {#if loadState === 'loading'}
-    <p class="lead muted" role="status">Loading problems</p>
+    <PageState kind="loading" message="Loading problems" />
   {:else if loadState === 'error'}
-    <div class="banner banner-error lead" role="alert">
-      <p>{loadError}</p>
-    </div>
-    <p class="retry"><button type="button" class="btn btn-secondary" onclick={() => load(showArchived)}>Try again</button></p>
+    <PageState kind="error" message={loadError} onretry={() => load(showArchived)} />
   {:else if problems.length === 0}
-    <p class="lead muted">No problems yet. Import a pack, create one, or draft one with AI.</p>
+    <PageState kind="empty" message="No problems yet. Import a pack, create one, or draft one with AI." />
   {:else}
     {#if problems.length > FILTER_FROM}
       <div class="field filter">
@@ -358,10 +356,6 @@
   .lead {
     margin-top: var(--space-4);
     max-width: 40rem;
-  }
-
-  .retry {
-    margin-top: var(--space-4);
   }
 
   .toolbar {

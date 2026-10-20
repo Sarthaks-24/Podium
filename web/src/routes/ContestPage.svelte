@@ -27,6 +27,7 @@
   Props: `slug`, and `label` (the problem letter from the address, or "").
 -->
 <script lang="ts">
+  import PageState from '../components/PageState.svelte';
   import PageHeader from '../components/PageHeader.svelte';
   import { onDestroy, onMount, untrack } from 'svelte';
   import ContestBanner from '../components/ContestBanner.svelte';
@@ -368,14 +369,13 @@
 {#if loadState !== 'ready' || !contest}
   <PageHeader title={loadState === 'missing' ? 'Contest not found' : 'Contest'} back={{ href: '/', label: 'Your contests' }} />
   {#if loadState === 'loading'}
-    <p class="lead muted" role="status">Loading the contest</p>
+    <PageState kind="loading" message="Loading the contest" />
   {:else if loadState === 'missing'}
-    <p class="lead">There is no contest at this address. <a href="/">Go to your contests.</a></p>
+    <PageState kind="missing" message="There is no contest at this address." parent={{ href: '/', label: 'Go to your contests.' }} />
   {:else if loadState === 'forbidden'}
     <p class="lead">{loadError}</p>
   {:else if loadState === 'error'}
-    <div class="banner banner-error lead" role="alert"><p>{loadError}</p></div>
-    <p class="retry"><button type="button" class="btn btn-secondary" onclick={() => load()}>Try again</button></p>
+    <PageState kind="error" message={loadError} onretry={() => load()} />
   {/if}
 {:else if showWorkspace && currentProblem}
   {#key `${current}:${phase}`}
@@ -568,10 +568,6 @@
   .lead {
     margin-top: var(--space-4);
     max-width: 40rem;
-  }
-
-  .retry {
-    margin-top: var(--space-4);
   }
 
   .meta {

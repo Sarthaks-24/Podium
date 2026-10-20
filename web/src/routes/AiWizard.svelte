@@ -16,6 +16,7 @@
   nothing else announces. Takes no props.
 -->
 <script lang="ts">
+  import PageState from '../components/PageState.svelte';
   import PageHeader from '../components/PageHeader.svelte';
   import { onMount, tick } from 'svelte';
   import {
@@ -233,7 +234,7 @@
   <PageHeader title="New problem with AI" crumbs={[{ label: 'Problem bank', href: '/admin/problems' }, { label: 'New problem with AI' }]} />
 
   {#if loadState === 'forbidden'}
-    <p class="lead">Only admins can use the AI assistant. Ask an owner if you need access.</p>
+    <PageState kind="forbidden" message="Only admins can use the AI assistant." />
   {:else if loadState === 'ready'}
     <p class="key-state">
       {#if keyStatus && keyStatus.active}

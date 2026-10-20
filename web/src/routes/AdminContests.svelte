@@ -11,6 +11,7 @@
   its settings. Students see a short explanation instead. Takes no props.
 -->
 <script lang="ts">
+  import PageState from '../components/PageState.svelte';
   import PageHeader from '../components/PageHeader.svelte';
   import { onMount, tick } from 'svelte';
   import { ApiError, getJSON, sendJSON } from '../lib/api';
@@ -147,7 +148,7 @@
 <PageHeader title="Contest admin" />
 
 {#if loadState === 'forbidden'}
-  <p class="lead">Only admins can manage contests. Ask an owner if you need access.</p>
+  <PageState kind="forbidden" message="Only admins can manage contests." />
 {:else}
   <div class="toolbar">
     <button
@@ -232,12 +233,11 @@
   {/if}
 
   {#if loadState === 'loading'}
-    <p class="lead muted" role="status">Loading contests</p>
+    <PageState kind="loading" message="Loading contests" />
   {:else if loadState === 'error'}
-    <div class="banner banner-error lead" role="alert"><p>{loadError}</p></div>
-    <p class="retry"><button type="button" class="btn btn-secondary" onclick={load}>Try again</button></p>
+    <PageState kind="error" message={loadError} onretry={load} />
   {:else if contests.length === 0}
-    <p class="lead muted">No contests yet. Create one, then add validated problems to it.</p>
+    <PageState kind="empty" message="No contests yet. Create one, then add validated problems to it." />
   {:else}
     <div class="table-wrap list">
       <table class="table">
@@ -276,15 +276,6 @@
 {/if}
 
 <style>
-  .lead {
-    margin-top: var(--space-4);
-    max-width: 40rem;
-  }
-
-  .retry {
-    margin-top: var(--space-4);
-  }
-
   .toolbar {
     margin-top: var(--space-5);
   }

@@ -19,6 +19,7 @@
   `signal`.
 -->
 <script lang="ts">
+  import PageState from '../components/PageState.svelte';
   import PageHeader from '../components/PageHeader.svelte';
   import type { Crumb } from '../components/Breadcrumbs.svelte';
   import type { AdminContest } from '../lib/contests';
@@ -233,23 +234,22 @@
 
 {#if loadState === 'forbidden'}
   <PageHeader title="Signal" />
-  <p class="lead">Only owners and admins can review integrity. Ask an owner if you need access.</p>
+  <PageState kind="forbidden" message="Only owners and admins can review integrity." />
 {:else if loadState !== 'ready' || !sig}
   <PageHeader
     title={loadState === 'missing' || loadState === 'gone' ? (fromCase ? 'Evidence not found' : 'Signal not found') : 'Signal'}
     crumbs={trail(loadState === 'missing' || loadState === 'gone' ? (fromCase ? 'Evidence not found' : 'Signal not found') : 'Signal')}
   />
   {#if loadState === 'loading'}
-    <p class="lead muted" role="status">Loading the signal</p>
+    <PageState kind="loading" message="Loading the signal" />
   {:else if loadState === 'missing' && fromCase}
-    <p class="lead">There is no such evidence in this case, or you cannot review it. <a href="/admin/contests">Go to the contest list.</a></p>
+    <PageState kind="missing" message="There is no such evidence in this case, or you cannot review it." parent={{ href: '/admin/contests', label: 'Go to the contest list.' }} />
   {:else if loadState === 'missing'}
-    <p class="lead">This contest has not been checked yet. <a href={back}>Go to the integrity check.</a></p>
+    <PageState kind="missing" message="This contest has not been checked yet." parent={{ href: back, label: 'Go to the integrity check.' }} />
   {:else if loadState === 'gone'}
-    <p class="lead">This signal is not in the latest check: a newer check replaced it. Cases keep their own copy. <a href={back}>See the latest signals.</a></p>
+    <PageState kind="missing" message="This signal is not in the latest check: a newer check replaced it. Cases keep their own copy." parent={{ href: back, label: 'See the latest signals.' }} />
   {:else}
-    <div class="banner banner-error lead" role="alert"><p>{loadError}</p></div>
-    <p class="retry"><button type="button" class="btn btn-secondary" onclick={load}>Try again</button></p>
+    <PageState kind="error" message={loadError} onretry={load} />
   {/if}
 {:else}
   <PageHeader title={signalStudents(sig, users)} crumbs={trail(signalStudents(sig, users))} />

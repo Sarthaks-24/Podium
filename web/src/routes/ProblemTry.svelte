@@ -7,6 +7,7 @@
   Props: `id`, the problem id from the address.
 -->
 <script lang="ts">
+  import PageState from '../components/PageState.svelte';
   import PageHeader from '../components/PageHeader.svelte';
   import { onMount } from 'svelte';
   import Workspace from '../components/Workspace.svelte';
@@ -33,12 +34,8 @@
   />
 {:else}
   <PageHeader title="Problems" />
-  <p class="lead">Only admins can manage problems. Ask an owner if you need access.</p>
+  <PageState kind="forbidden" message="Only admins can manage problems." />
 {/if}
 
 <style>
-  .lead {
-    margin-top: var(--space-4);
-    max-width: 40rem;
-  }
 </style>

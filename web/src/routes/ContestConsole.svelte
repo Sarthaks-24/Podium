@@ -27,6 +27,7 @@
   Students see a short explanation instead. Props: `id`.
 -->
 <script lang="ts">
+  import PageState from '../components/PageState.svelte';
   import { onDestroy, onMount } from 'svelte';
   import ConfirmDialog from '../components/ConfirmDialog.svelte';
   import ContestAdminNav from '../components/ContestAdminNav.svelte';
@@ -460,19 +461,18 @@
 
 {#if loadState === 'forbidden'}
   <PageHeader title="Console" />
-  <p class="lead">Only admins can run contests. Ask an owner if you need access.</p>
+  <PageState kind="forbidden" message="Only admins can run contests." />
 {:else if loadState !== 'ready' || !contest}
   <PageHeader
     title={loadState === 'missing' ? 'Contest not found' : 'Console'}
     crumbs={[{ label: 'Contest admin', href: '/admin/contests' }, { label: loadState === 'missing' ? 'Contest not found' : 'Console' }]}
   />
   {#if loadState === 'loading'}
-    <p class="lead muted" role="status">Loading the contest</p>
+    <PageState kind="loading" message="Loading the contest" />
   {:else if loadState === 'missing'}
-    <p class="lead">There is no contest with that number. <a href="/admin/contests">Go back to the list.</a></p>
+    <PageState kind="missing" message="There is no contest with that number." parent={{ href: '/admin/contests', label: 'Go back to the list.' }} />
   {:else}
-    <div class="banner banner-error lead" role="alert"><p>{loadError}</p></div>
-    <p class="retry"><button type="button" class="btn btn-secondary" onclick={() => loadContest()}>Try again</button></p>
+    <PageState kind="error" message={loadError} onretry={() => loadContest()} />
   {/if}
 {:else}
   <ContestAdminNav {id} title={contest.title} state={contest.state} current="console" />

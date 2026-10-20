@@ -51,6 +51,7 @@
 -->
 <script lang="ts">
   import PageHeader from './PageHeader.svelte';
+  import PageState from './PageState.svelte';
   import { onMount, tick, type Snippet } from 'svelte';
   import { ApiError, getJSON, sendJSON } from '../lib/api';
   import { serverClock } from '../lib/clock';
@@ -660,14 +661,13 @@
   <div class="state">
     <PageHeader compact title={loadState === 'missing' ? 'Problem not found' : 'Problem'} back={{ href: backHref, label: backLabel }} />
     {#if loadState === 'loading'}
-      <p class="muted" role="status">Loading the problem</p>
+      <PageState kind="loading" message="Loading the problem" />
     {:else if loadState === 'forbidden'}
-      <p>You cannot open this problem. Ask an organiser if you think you should.</p>
+      <PageState kind="forbidden" message="You cannot open this problem." ask="Ask an organiser if you think you should." />
     {:else if loadState === 'missing'}
-      <p>This problem does not exist. <a href={backHref}>Go back.</a></p>
+      <PageState kind="missing" message="This problem does not exist." parent={{ href: backHref, label: 'Go back.' }} />
     {:else if loadState === 'error'}
-      <div class="banner banner-error" role="alert"><p>{loadError}</p></div>
-      <p><button type="button" class="btn btn-secondary" onclick={load}>Try again</button></p>
+      <PageState kind="error" message={loadError} onretry={load} />
     {/if}
   </div>
 {:else}

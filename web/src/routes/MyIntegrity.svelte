@@ -10,6 +10,7 @@
   never see signals, strengths or other students. Takes no props.
 -->
 <script lang="ts">
+  import PageState from '../components/PageState.svelte';
   import PageHeader from '../components/PageHeader.svelte';
   import { onMount } from 'svelte';
   import CodeView from '../components/CodeView.svelte';
@@ -95,12 +96,11 @@
 <PageHeader title="Questions about your submissions" />
 
 {#if loadState === 'loading'}
-  <p class="lead muted" role="status">Loading your questions</p>
+  <PageState kind="loading" message="Loading your questions" />
 {:else if loadState === 'error'}
-  <div class="banner banner-error lead" role="alert"><p>{loadError}</p></div>
-  <p class="retry"><button type="button" class="btn btn-secondary" onclick={load}>Try again</button></p>
+  <PageState kind="error" message={loadError} onretry={load} />
 {:else if !data || data.cases.length === 0}
-  <p class="lead muted">Nothing to explain. If an organiser asks you about a submission, it appears here.</p>
+  <PageState kind="empty" message="Nothing to explain. If an organiser asks you about a submission, it appears here." />
 {:else}
   <p class="lead">
     An organiser looked over a contest and would like you to explain some of your work. This is not a finding: a person reads your explanation before deciding anything, and only you and the organisers see it.
@@ -178,10 +178,6 @@
   .lead {
     margin-top: var(--space-4);
     max-width: 44rem;
-  }
-
-  .retry {
-    margin-top: var(--space-4);
   }
 
   .small {

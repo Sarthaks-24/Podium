@@ -15,6 +15,7 @@
   visitors to /signin first. Takes no props.
 -->
 <script lang="ts">
+  import PageState from '../components/PageState.svelte';
   import PageHeader from '../components/PageHeader.svelte';
   import { onMount } from 'svelte';
   import { ApiError, getJSON } from '../lib/api';
@@ -102,12 +103,11 @@
 {/if}
 
 {#if loadState === 'loading'}
-  <p class="lead muted" role="status">Loading contests</p>
+  <PageState kind="loading" message="Loading contests" />
 {:else if loadState === 'error'}
-  <div class="banner banner-error lead" role="alert"><p>{loadError}</p></div>
-  <p class="retry"><button type="button" class="btn btn-secondary" onclick={load}>Try again</button></p>
+  <PageState kind="error" message={loadError} onretry={load} />
 {:else if contests.length === 0}
-  <p class="lead muted">No contests yet. When an organiser schedules one, it appears here.</p>
+  <PageState kind="empty" message="No contests yet. When an organiser schedules one, it appears here." />
 {:else}
   <div class="table-wrap list">
     <table class="table">

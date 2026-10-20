@@ -13,6 +13,7 @@
   says its version changed, at most once every 3 s. Props: `slug`.
 -->
 <script lang="ts">
+  import PageState from '../components/PageState.svelte';
   import PageHeader from '../components/PageHeader.svelte';
   import { onDestroy, onMount } from 'svelte';
   import StandingsTable from '../components/StandingsTable.svelte';
@@ -130,17 +131,16 @@
 <PageHeader title="Standings" back={{ href: `/contests/${encodeURIComponent(slug)}`, label: contest?.title ?? 'Contest' }} />
 
 {#if loadState === 'loading'}
-  <p class="lead muted" role="status">Loading the standings</p>
+  <PageState kind="loading" message="Loading the standings" />
 {:else if loadState === 'closed'}
   <p class="lead">{CLOSED}</p>
   <p class="muted small">Everyone starts at a different time in this contest, so the standings stay hidden until everyone has had their time.</p>
 {:else if loadState === 'forbidden'}
   <p class="lead">{message}</p>
 {:else if loadState === 'missing'}
-  <p class="lead">There is no contest at this address. <a href="/">Go to your contests.</a></p>
+  <PageState kind="missing" message="There is no contest at this address." parent={{ href: '/', label: 'Go to your contests.' }} />
 {:else if loadState === 'error'}
-  <div class="banner banner-error lead" role="alert"><p>{message}</p></div>
-  <p class="retry"><button type="button" class="btn btn-secondary" onclick={() => loadBoard()}>Try again</button></p>
+  <PageState kind="error" message={message} onretry={() => loadBoard()} />
 {:else if standings}
   <p class="status" class:frozen={standings.variant === 'frozen'}>{statusLine(standings, ended)}</p>
   <p class="legend">The time under each score is when it was reached, from the start.</p>
@@ -160,10 +160,6 @@
     margin-top: var(--space-2);
     max-width: 40rem;
     font-size: var(--fs-0);
-  }
-
-  .retry {
-    margin-top: var(--space-4);
   }
 
   .status {

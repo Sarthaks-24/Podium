@@ -11,6 +11,7 @@
   needs no key, so the field is hidden for it. Takes no props.
 -->
 <script lang="ts">
+  import PageState from '../components/PageState.svelte';
   import PageHeader from '../components/PageHeader.svelte';
   import { onMount, tick } from 'svelte';
   import {
@@ -148,12 +149,11 @@
   <PageHeader title="AI assistant" crumbs={[{ label: 'Problem bank', href: '/admin/problems' }, { label: 'AI assistant' }]} />
 
   {#if loadState === 'forbidden'}
-    <p class="lead">Only admins can use the AI assistant. Ask an owner if you need access.</p>
+    <PageState kind="forbidden" message="Only admins can use the AI assistant." />
   {:else if loadState === 'loading'}
-    <p class="lead muted" role="status">Loading</p>
+    <PageState kind="loading" message="Loading" />
   {:else if loadState === 'error'}
-    <div class="banner banner-error lead" role="alert"><p>{loadError}</p></div>
-    <p class="retry"><button type="button" class="btn btn-secondary" onclick={load}>Try again</button></p>
+    <PageState kind="error" message={loadError} onretry={load} />
   {:else if status}
     <p class="lead">
       The assistant drafts problems from a brief or from pasted text with your own key. The key stays in the server's memory for {KEY_HOURS} hours
@@ -260,10 +260,6 @@
   .lead {
     margin-top: var(--space-4);
     max-width: 72ch;
-  }
-
-  .retry {
-    margin-top: var(--space-4);
   }
 
   h2 {

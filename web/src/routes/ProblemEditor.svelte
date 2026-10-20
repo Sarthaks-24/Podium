@@ -40,6 +40,7 @@
   the address.
 -->
 <script lang="ts">
+  import PageState from '../components/PageState.svelte';
   import PageHeader from '../components/PageHeader.svelte';
   import { onMount, tick } from 'svelte';
   import ConfirmDialog from '../components/ConfirmDialog.svelte';
@@ -880,14 +881,13 @@
   </PageHeader>
 
   {#if loadState === 'forbidden'}
-    <p class="lead">Only admins can manage problems. Ask an owner if you need access.</p>
+    <PageState kind="forbidden" message="Only admins can manage problems." />
   {:else if loadState === 'missing'}
-    <p class="lead">There is no problem with that number. <a href="/admin/problems">Go to the problem bank.</a></p>
+    <PageState kind="missing" message="There is no problem with that number." parent={{ href: '/admin/problems', label: 'Go to the problem bank.' }} />
   {:else if loadState === 'loading'}
-    <p class="lead muted" role="status">Loading problem</p>
+    <PageState kind="loading" message="Loading problem" />
   {:else if loadState === 'error'}
-    <div class="banner banner-error lead" role="alert"><p>{loadError}</p></div>
-    <p class="retry"><button type="button" class="btn btn-secondary" onclick={load}>Try again</button></p>
+    <PageState kind="error" message={loadError} onretry={load} />
   {:else if problem && draft}
     <div class="action-bar">
       <div class="bar-status">

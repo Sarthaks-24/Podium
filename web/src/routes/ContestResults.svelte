@@ -16,6 +16,7 @@
   Props: `id`.
 -->
 <script lang="ts">
+  import PageState from '../components/PageState.svelte';
   import { onMount } from 'svelte';
   import ConfirmDialog from '../components/ConfirmDialog.svelte';
   import ContestAdminNav from '../components/ContestAdminNav.svelte';
@@ -208,19 +209,18 @@
 
 {#if loadState === 'forbidden'}
   <PageHeader title="Results" />
-  <p class="lead">Only admins can see full results. Ask an owner if you need access.</p>
+  <PageState kind="forbidden" message="Only admins can see full results." />
 {:else if loadState !== 'ready' || !contest}
   <PageHeader
     title={loadState === 'missing' ? 'Contest not found' : 'Results'}
     crumbs={[{ label: 'Contest admin', href: '/admin/contests' }, { label: loadState === 'missing' ? 'Contest not found' : 'Results' }]}
   />
   {#if loadState === 'loading'}
-    <p class="lead muted" role="status">Loading the contest</p>
+    <PageState kind="loading" message="Loading the contest" />
   {:else if loadState === 'missing'}
-    <p class="lead">There is no contest with that number. <a href="/admin/contests">Go back to the list.</a></p>
+    <PageState kind="missing" message="There is no contest with that number." parent={{ href: '/admin/contests', label: 'Go back to the list.' }} />
   {:else}
-    <div class="banner banner-error lead" role="alert"><p>{loadError}</p></div>
-    <p class="retry"><button type="button" class="btn btn-secondary" onclick={load}>Try again</button></p>
+    <PageState kind="error" message={loadError} onretry={load} />
   {/if}
 {:else}
   <ContestAdminNav {id} title={contest.title} state={contest.state} current="results" />
@@ -379,15 +379,6 @@
 {/if}
 
 <style>
-  .lead {
-    margin-top: var(--space-4);
-    max-width: 40rem;
-  }
-
-  .retry {
-    margin-top: var(--space-4);
-  }
-
   .section {
     display: grid;
     gap: var(--space-3);
