@@ -41,13 +41,13 @@
   import PageHeader from '../components/PageHeader.svelte';
   import { onMount, tick } from 'svelte';
   import ConfirmDialog from '../components/ConfirmDialog.svelte';
-  import ProgramField from '../components/ProgramField.svelte';
   import ValidationReport from '../components/ValidationReport.svelte';
   import { inputGenPending, inputGenReport, isAIDraft, type InputGeneration } from '../lib/ai';
   import { ApiError, getJSON, sendBody, sendJSON } from '../lib/api';
   import EditorFooter from '../components/problem/EditorFooter.svelte';
   import GeneratorPanel from '../components/problem/GeneratorPanel.svelte';
   import ModelSolve from '../components/problem/ModelSolve.svelte';
+  import SolutionsSection from '../components/problem/SolutionsSection.svelte';
   import StatementSection from '../components/problem/StatementSection.svelte';
   import TestsSection from '../components/problem/TestsSection.svelte';
   import RevisionHistory from '../components/problem/RevisionHistory.svelte';
@@ -69,7 +69,7 @@
     type Problem,
     type Validation,
   } from '../lib/problems';
-  import { describedBy, fieldErrors, programError as programErrorOf } from '../lib/problemFields';
+  import { fieldErrors } from '../lib/problemFields';
   import { navigate, setNavigationGuard } from '../lib/router.svelte';
   import { session } from '../lib/session.svelte';
   import { showToast } from '../lib/toast.svelte';
@@ -167,18 +167,6 @@
   const inputReport = $derived(inputGen && problem ? inputGenReport(inputGen, readPlan(problem.plan)) : null);
 
   const fieldList = $derived(fieldErrors(fields, draft, hasGenerator));
-
-  function programError(role: 'reference' | 'brute' | 'validator' | 'generator'): string {
-    return programErrorOf(fields, role);
-  }
-
-  function err(key: string): string {
-    return fields[key] ?? '';
-  }
-
-  function described(key: string, help = ''): string | undefined {
-    return describedBy(fields, key, help);
-  }
 
   /** Handles errors every request can hit; returns true when it did. */
   function handleSessionError(e: unknown): boolean {
@@ -464,20 +452,6 @@
     }
   }
 
-  async function addProgram(role: 'brute' | 'validator') {
-    if (!draft) return;
-    draft[role] = { language: 'python3', source: '' };
-    await tick();
-    document.getElementById(`${role}-source`)?.focus();
-  }
-
-  async function removeProgram(role: 'brute' | 'validator') {
-    if (!draft) return;
-    draft[role] = null;
-    await tick();
-    document.getElementById(`add-${role}`)?.focus();
-  }
-
   function pickTests() {
     testsInput?.click();
   }
@@ -666,77 +640,7 @@
         />
       {/if}
 
-      <section class="block" aria-labelledby="solutions-heading">
-        <h2 id="solutions-heading" tabindex="-1">Solutions</h2>
-
-        <div class="programs">
-          <ProgramField
-            id="reference"
-            label="Reference solution"
-            help="Must pass every test in at most half the time limit."
-            bind:program={draft.reference}
-            error={programError('reference')}
-          />
-
-          {#if draft.brute}
-            <ProgramField
-              id="brute"
-              label="Brute force"
-              help="A slow but simple solution. Validation checks that it agrees with the reference."
-              bind:program={draft.brute}
-              error={programError('brute')}
-              onremove={() => removeProgram('brute')}
-              removeLabel="Remove brute force"
-            />
-          {:else}
-            <div class="optional">
-              <h3 class="program-name">Brute force</h3>
-              <p class="field-help">No brute force. Add a slow but simple solution and validation compares it with the reference.</p>
-              <button id="add-brute" type="button" class="btn btn-secondary" onclick={() => addProgram('brute')}>Add brute force</button>
-            </div>
-          {/if}
-
-          <div class="full">
-            {#if draft.validator}
-              <ProgramField
-                id="validator"
-                label="Validator"
-                help="Reads one test input and exits with 0 when it is valid."
-                bind:program={draft.validator}
-                error={programError('validator')}
-                onremove={() => removeProgram('validator')}
-                removeLabel="Remove validator"
-              />
-            {:else}
-              <div class="optional">
-                <h3 class="program-name">Validator</h3>
-                <p class="field-help">No validator. Add one to check inputs against the constraints.</p>
-                <button id="add-validator" type="button" class="btn btn-secondary" onclick={() => addProgram('validator')}>Add validator</button>
-              </div>
-            {/if}
-          </div>
-
-          {#if draft.checker === 'custom'}
-            <div class="field full">
-              <h3 class="program-name">Checker</h3>
-              <label for="checker_source">Checker source (C++17 with testlib)</label>
-              <textarea
-                id="checker_source"
-                class="input textarea-code textarea-well"
-                rows="12"
-                spellcheck="false"
-                bind:value={draft.checker_source}
-                aria-invalid={err('checker_source') ? 'true' : undefined}
-                aria-describedby={described('checker_source', 'checker-help')}
-              ></textarea>
-              <p id="checker-help" class="field-help">
-                Run as ./checker input output answer. Exit 0 accepts, 1 or 2 rejects.
-              </p>
-              {#if err('checker_source')}<p id="checker_source-error" class="field-error">{err('checker_source')}</p>{/if}
-            </div>
-          {/if}
-        </div>
-      </section>
+      <SolutionsSection bind:draft {fields} />
 
       <EditorFooter {id} warnings={problem.warnings} archived={!!problem.archived} {saveError} {fieldList} onarchive={() => (archiveOpen = true)} />
     </form>
