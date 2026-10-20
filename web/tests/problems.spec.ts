@@ -268,7 +268,7 @@ test('validation is refused while a test is in no subtask', async ({ page }) => 
   await expect(page.getByText('Not validated yet.')).toBeVisible();
 });
 
-test('importing a pack shows its problems, then opens the new problem', async ({ page }) => {
+test('importing a pack shows its problems, then validates the new problem in place (P3 O6)', async ({ page }) => {
   const state = await mockApi(page);
   const choosers = watchFileChoosers(page);
   await page.goto('/admin/problems');
@@ -288,10 +288,28 @@ test('importing a pack shows its problems, then opens the new problem', async ({
   ]);
   await page.screenshot({ path: `${shots()}problems-bank-import-error-1440-light.png`, fullPage: true });
 
+  // A good pack stays on the list and starts validating at once: no visit to the editor needed.
   await page.locator('input[type="file"]').setInputFiles(zipFile('pair.zip', 'good pack'));
-  await expect(page).toHaveURL('/admin/problems/10');
-  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Pair with sum');
+  await expect(page.getByText('Imported Pair with sum. Validating.', { exact: true }).first()).toBeVisible();
+  await expect(page).toHaveURL('/admin/problems');
+  const row = page.getByRole('row', { name: /Pair with sum/ });
+  await expect(row.locator('.badge')).toHaveText('Validating');
+  await expect(row.locator('.badge')).toHaveText('Validated', { timeout: 15_000 });
   expect(state.imports).toEqual(['bad pack', 'good pack']);
+  await row.getByRole('link', { name: 'Pair with sum', exact: true }).click();
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Pair with sum');
+});
+
+test('several packs import in one pick, and a row offers Validate when it is not validated (P3 O6)', async ({ page }) => {
+  const state = await mockApi(page);
+  await page.goto('/admin/problems');
+  await expect(page.getByRole('row', { name: /Interval covering/ }).locator('.badge')).toHaveText('Not validated');
+  await page.locator('input[type="file"]').setInputFiles([zipFile('one.zip', 'good pack 1'), zipFile('two.zip', 'good pack 2')]);
+  await expect.poll(() => state.imports).toEqual(['good pack 1', 'good pack 2']);
+  await expect(page.getByText('Imported Pair with sum. Validating. Imported Pair with sum. Validating.', { exact: true }).first()).toBeVisible();
+  // Interval covering has a test in no subtask, so validating it is refused with the reason.
+  await page.getByRole('button', { name: 'Validate Interval covering' }).click();
+  await expect(page.getByText('Interval covering cannot be validated yet: Test 7 is in no subtask.', { exact: false }).first()).toBeVisible();
 });
 
 test('the bank shows status words, archived problems on request, and creates problems', async ({ page }) => {
