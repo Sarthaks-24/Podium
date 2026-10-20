@@ -28,6 +28,7 @@ import (
 	"github.com/Sarthaks-24/podium/internal/jobs"
 	"github.com/Sarthaks-24/podium/internal/judgeapi"
 	"github.com/Sarthaks-24/podium/internal/problems"
+	"github.com/Sarthaks-24/podium/internal/retention"
 	"github.com/Sarthaks-24/podium/internal/submissions"
 	"github.com/Sarthaks-24/podium/internal/webui"
 )
@@ -46,6 +47,7 @@ func main() {
 		fmt.Fprintln(os.Stderr, "       podium-server saw -contest SLUG -email E -label A [-at TIME]  what a student was shown of a problem")
 		fmt.Fprintln(os.Stderr, "       podium-server runs-report [-db F]          runs with a custom input, per contest")
 		fmt.Fprintln(os.Stderr, "       podium-server migrate -db COPY             rehearse an upgrade on a copy of the database")
+		fmt.Fprintln(os.Stderr, "       podium-server forget-user [-db F] [-apply] EMAIL  erase one person (a dry run without -apply)")
 	}
 	flag.Parse()
 	if *showVersion {
@@ -63,6 +65,9 @@ func main() {
 	}
 	if flag.Arg(0) == "migrate" {
 		os.Exit(migrateCmd(flag.Args()[1:], os.Stdout))
+	}
+	if flag.Arg(0) == "forget-user" {
+		os.Exit(forgetCmd(flag.Args()[1:], os.Stdout))
 	}
 	if flag.Arg(0) == "runs-report" {
 		os.Exit(runsReportCmd(flag.Args()[1:], os.Stdout))
@@ -198,8 +203,16 @@ func run(envFile string) error {
 				"ms", time.Since(start).Milliseconds())
 		}
 	})
+	// The retention periods of internal/retention that no other job
+	// applies: run payloads, contact messages, unused revisions,
+	// submissions and audit rows (B3.1). Once a day.
+	go retainDaily(ctx, &retention.Job{DB: database, Log: log, ExportStandings: contestSvc.FinalStandings,
+		Expired: contestSvc.Invalidate}, log)
 	handler := httpapi.New(httpapi.Deps{
-		DB: database, Log: log, WebApp: webui.Handler(),
+		DB: database, Log: log, WebApp: webui.Handler(webui.Options{BaseURL: cfg.BaseURL, Log: log, Organisation: func(r *http.Request) (webui.Organisation, error) {
+			o, err := authSvc.Organisation(r.Context())
+			return webui.Organisation{Name: o.Name, Email: o.ContactEmail, Phone: o.Phone}, err
+		}}),
 		Auth: authSvc, IdP: provider, BaseURL: cfg.BaseURL, SessionSecret: cfg.SessionSecret,
 		Problems: problemSvc, Submissions: submissionSvc, Hub: hub, Contests: contestSvc, Integrity: integritySvc,
 		AI:   &httpapi.AI{Keys: aiKeys, Slots: &ai.Slots{}},
@@ -307,6 +320,31 @@ func retainIntegrity(ctx context.Context, c *contests.Service, cases *integrity.
 		case <-ctx.Done():
 			return
 		case <-t.C:
+		}
+	}
+}
+
+// retainDaily runs the retention job a minute after start-up (so a
+// restart during a contest does not add its writes to the start) and then
+// every 24 hours.
+func retainDaily(ctx context.Context, j *retention.Job, log *slog.Logger) {
+	wait := time.Minute
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(wait):
+		}
+		wait = 24 * time.Hour
+		start := time.Now()
+		res, err := j.Run(ctx)
+		switch {
+		case err != nil && ctx.Err() == nil:
+			log.Warn("retention job failed; it runs again tomorrow", "err", err)
+		case res != (retention.Result{}):
+			log.Info("data past retention removed", "runs_emptied", res.RunsEmptied, "contact_messages", res.ContactDeleted,
+				"revisions", res.RevisionsDeleted, "contests", res.ContestsExpired, "submissions", res.SubmissionsDeleted,
+				"audit_rows", res.AuditDeleted, "ms", time.Since(start).Milliseconds())
 		}
 	}
 }

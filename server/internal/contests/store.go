@@ -98,7 +98,8 @@ type ContestProblem struct {
 	ProblemID int64
 	// Title is the pinned revision's title (the bank's working copy for a
 	// pin without a revision).
-	Title      string
+	Title string
+	// PinnedHash is the pinned revision's content hash (D45).
 	PinnedHash string
 	// Ready is false when the problem changed since it was added, or lost
 	// its validation: the contest refuses to publish until it is re-added.
@@ -472,11 +473,11 @@ func (s *Service) loadProblemsOf(ctx context.Context, list []*Contest) error {
 		ids = append(ids, c.ID)
 	}
 	idsJSON, _ := json.Marshal(ids)
-	rows, err := s.DB.QueryContext(ctx, `SELECT cp.contest_id, cp.label, cp.problem_id, coalesce(r.title, p.title), cp.pinned_hash, cp.points,
-		coalesce(p.validated_hash, '') = cp.pinned_hash AND p.content_hash = cp.pinned_hash,
+	rows, err := s.DB.QueryContext(ctx, `SELECT cp.contest_id, cp.label, cp.problem_id, coalesce(r.title, p.title), coalesce(r.content_hash, ''), cp.points,
+		coalesce(coalesce(p.validated_hash, '') = r.content_hash AND p.content_hash = r.content_hash, 0),
 		coalesce(r.id, 0), coalesce(r.rev, 0), coalesce(r.reconstructed, 0), coalesce(l.id, 0), coalesce(l.rev, 0),
 		l.id IS NOT NULL AND l.reconstructed = 0 AND coalesce(p.validated_hash, '') = l.content_hash AND p.content_hash = l.content_hash,
-		l.id IS NOT NULL AND l.content_hash = cp.pinned_hash
+		coalesce(l.id IS NOT NULL AND l.content_hash = r.content_hash, 0)
 		FROM contest_problems cp JOIN problems p ON p.id = cp.problem_id
 		LEFT JOIN problem_revisions r ON r.id = cp.revision_id
 		LEFT JOIN problem_revisions l ON l.problem_id = cp.problem_id
@@ -571,7 +572,7 @@ func (s *Service) SetProblems(ctx context.Context, id int64, choices []ProblemCh
 		return nil, err
 	}
 	var before []pin
-	rows, err := tx.QueryContext(ctx, `SELECT cp.label, cp.problem_id, cp.pinned_hash, coalesce(cp.revision_id, 0), coalesce(r.rev, 0)
+	rows, err := tx.QueryContext(ctx, `SELECT cp.label, cp.problem_id, coalesce(r.content_hash, ''), coalesce(cp.revision_id, 0), coalesce(r.rev, 0)
 		FROM contest_problems cp LEFT JOIN problem_revisions r ON r.id = cp.revision_id WHERE cp.contest_id = ? ORDER BY cp.ord`, id)
 	if err != nil {
 		return nil, err
@@ -662,8 +663,8 @@ func (s *Service) SetProblems(ctx context.Context, id int64, choices []ProblemCh
 		if err != nil {
 			return nil, err
 		}
-		if _, err := tx.ExecContext(ctx, `INSERT INTO contest_problems (contest_id, problem_id, label, ord, pinned_hash, points, revision_id)
-			VALUES (?, ?, ?, ?, ?, ?, ?)`, id, ch.ProblemID, ch.Label, i, hash, points, revID); err != nil {
+		if _, err := tx.ExecContext(ctx, `INSERT INTO contest_problems (contest_id, problem_id, label, ord, points, revision_id)
+			VALUES (?, ?, ?, ?, ?, ?)`, id, ch.ProblemID, ch.Label, i, points, revID); err != nil {
 			return nil, err
 		}
 		after = append(after, pin{ch.Label, ch.ProblemID, hash, revID, rev})

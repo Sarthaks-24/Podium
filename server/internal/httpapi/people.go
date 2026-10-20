@@ -70,7 +70,12 @@ func (d Deps) listPeople(w http.ResponseWriter, r *http.Request) {
 		d.internalError(w, r, err)
 		return
 	}
-	WriteJSON(w, http.StatusOK, map[string]any{"people": people, "domains": domains, "disabled": disabled})
+	org, err := d.Auth.Organisation(r.Context())
+	if err != nil {
+		d.internalError(w, r, err)
+		return
+	}
+	WriteJSON(w, http.StatusOK, map[string]any{"people": people, "domains": domains, "disabled": disabled, "organisation": org})
 }
 
 // securityRoutes mounts the routes the security council's fixes added

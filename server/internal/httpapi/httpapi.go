@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/Sarthaks-24/podium/internal/auth"
+	"github.com/Sarthaks-24/podium/internal/contact"
 	"github.com/Sarthaks-24/podium/internal/contests"
 	"github.com/Sarthaks-24/podium/internal/db/migrations"
 	"github.com/Sarthaks-24/podium/internal/events"
@@ -51,9 +52,18 @@ type Deps struct {
 	// AI is the wizard's in-memory state (M5): pasted keys, one call per
 	// admin, wizard runs. Its routes are mounted only when it is set.
 	AI *AI
+	// Contact keeps the contact form's messages (C6). New makes one from
+	// DB and Auth when it is not set.
+	Contact *contact.Service
 
 	// reads limits heavy reads per user; New sets it.
 	reads *readLimiter
+	// preAuthLimit is the per-address budget before sign-in and flows the
+	// sign-in attempts already finished (preauth.go). New sets both;
+	// tests may set preAuthLimit first.
+	preAuthLimit  *ipLimiter
+	signInLimiter *ipLimiter
+	flows         *usedFlows
 	// Mode is the run mode (testing, dev or production). Testing mode has
 	// no Google sign-in; instead anyone at this machine signs in with a
 	// form (decision D48).
@@ -65,17 +75,30 @@ type Deps struct {
 // New returns the root handler.
 func New(d Deps) http.Handler {
 	d.reads = newReadLimiter()
-	mux := http.NewServeMux()
-	mux.HandleFunc("GET /healthz", d.healthz)
-
-	mux.HandleFunc("GET /api/auth/config", d.authConfig)
-	if d.Mode == "testing" {
-		mux.HandleFunc("POST /api/auth/test-signin", d.testSignIn)
-	} else {
-		mux.HandleFunc("GET /api/auth/google/start", d.googleStart)
-		mux.HandleFunc("GET /api/auth/google/callback", d.googleCallback)
+	if d.preAuthLimit == nil {
+		d.preAuthLimit = newIPLimiter(PreAuthBurst, PreAuthRate, nil)
 	}
-	mux.HandleFunc("POST /api/auth/logout", d.logout)
+	if d.signInLimiter == nil {
+		d.signInLimiter = newIPLimiter(SignInBurst, SignInRate, nil)
+	}
+	d.flows = newUsedFlows()
+	if d.Contact == nil {
+		d.Contact = &contact.Service{DB: d.DB, Auth: d.Auth}
+		if d.Contests != nil {
+			d.Contact.Now = d.Contests.Clock
+		}
+	}
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /healthz", d.preAuth(d.healthz))
+
+	mux.HandleFunc("GET /api/auth/config", d.preAuth(d.authConfig))
+	if d.Mode == "testing" {
+		mux.HandleFunc("POST /api/auth/test-signin", d.signInLimit(false, d.testSignIn))
+	} else {
+		mux.HandleFunc("GET /api/auth/google/start", d.signInLimit(true, d.googleStart))
+		mux.HandleFunc("GET /api/auth/google/callback", d.signInLimit(true, d.googleCallback))
+	}
+	mux.HandleFunc("POST /api/auth/logout", d.preAuth(d.logout))
 	mux.HandleFunc("GET /api/me", d.requireRole(auth.Student, d.me))
 	mux.HandleFunc("PUT /api/me/preferences", d.requireRole(auth.Student, d.setPreferences))
 
@@ -87,6 +110,11 @@ func New(d Deps) http.Handler {
 	mux.HandleFunc("POST /api/admin/domains", d.requireRole(auth.Owner, d.addDomain))
 	mux.HandleFunc("DELETE /api/admin/domains/{domain}", d.requireRole(auth.Owner, d.removeDomain))
 	mux.HandleFunc("GET /api/admin/site-audit", d.requireRole(auth.Owner, d.siteAudit))
+	mux.HandleFunc("PUT /api/admin/site-settings", d.requireRole(auth.Owner, d.setSiteSettings))
+	mux.HandleFunc("POST /api/admin/rollover", d.requireRole(auth.Owner, d.semesterRollover))
+	mux.HandleFunc("POST /api/contact", d.requireRole(auth.Student, d.sendContact))
+	mux.HandleFunc("GET /api/admin/contact", d.requireRole(auth.Admin, d.listContact))
+	mux.HandleFunc("DELETE /api/admin/contact/{id}", d.requireRole(auth.Admin, d.deleteContact))
 
 	admin := func(h http.HandlerFunc) http.HandlerFunc { return d.requireRole(auth.Admin, h) }
 	mux.HandleFunc("GET /api/admin/problems", admin(d.listProblems))
@@ -187,6 +215,14 @@ func (d Deps) contestRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/admin/contests/{id}/export.json", signedIn(d.exportJSON))
 	mux.HandleFunc("GET /api/admin/contests/{id}/stats", signedIn(d.contestStats))
 	mux.HandleFunc("PUT /api/admin/contests/{id}/editorial", signedIn(d.setEditorial))
+}
+
+// now is the server's clock: the contests service's, which tests replace.
+func (d Deps) now() time.Time {
+	if d.Contests != nil {
+		return d.Contests.Clock()
+	}
+	return time.Now()
 }
 
 // internalError logs err and answers with a generic 500.

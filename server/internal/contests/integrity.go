@@ -4,12 +4,14 @@ import (
 	"context"
 	"fmt"
 	"time"
+
+	"github.com/Sarthaks-24/podium/internal/retention"
 )
 
 // RetentionPeriod is how long integrity evidence is kept after a contest
 // has ended for everyone (decision D47 default: 180 days, unless the
 // student is in an open integrity case for the contest).
-const RetentionPeriod = 180 * 24 * time.Hour
+const RetentionPeriod = retention.IntegrityEvents
 
 // secondSessionQuiet stops one pair of machines from recording a second
 // session on every reconnect: at most one record per contest per student

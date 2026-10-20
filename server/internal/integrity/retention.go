@@ -2,9 +2,9 @@ package integrity
 
 import (
 	"context"
-	"time"
 
 	"github.com/Sarthaks-24/podium/internal/contests"
+	"github.com/Sarthaks-24/podium/internal/retention"
 )
 
 // CaseRetention is how long a closed case keeps its evidence and the
@@ -12,7 +12,7 @@ import (
 // emptied, every explanation version included; the case row and its
 // decision log stay, so the outcome and the reasons for it remain on
 // record.
-const CaseRetention = 2 * 365 * 24 * time.Hour
+const CaseRetention = retention.CaseEvidence
 
 // Retain applies both integrity retention rules and returns how many
 // cases it emptied:

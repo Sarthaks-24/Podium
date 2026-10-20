@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/Sarthaks-24/podium/internal/auth"
+	"github.com/Sarthaks-24/podium/internal/retention"
 )
 
 // IdentityProvider is the sign-in provider; *auth.Provider implements it.
@@ -121,7 +122,19 @@ func (d Deps) authConfig(w http.ResponseWriter, r *http.Request) {
 	if mode == "" {
 		mode = "production"
 	}
-	WriteJSON(w, http.StatusOK, map[string]any{"allowed_domains": names, "contact_email": d.Auth.OwnerEmail, "mode": mode})
+	org, err := d.Auth.Organisation(r.Context())
+	if err != nil {
+		d.internalError(w, r, err)
+		return
+	}
+	// The organisation's own address replaces the owner's personal one as
+	// soon as an owner enters it (pre-auth review, observation 1).
+	contactEmail := org.ContactEmail
+	if contactEmail == "" {
+		contactEmail = d.Auth.OwnerEmail
+	}
+	WriteJSON(w, http.StatusOK, map[string]any{"allowed_domains": names, "contact_email": contactEmail, "mode": mode,
+		"organisation": org, "retention": retention.Periods()})
 }
 
 // testSignIn signs in as anyone with any role, for testing mode only (the
@@ -209,6 +222,14 @@ func (d Deps) googleCallback(w http.ResponseWriter, r *http.Request) {
 		// The person cancelled at Google, or Google refused.
 		fail("google")
 		return
+	}
+	// Each attempt finishes once: a replayed callback costs no call to
+	// Google (P0 security review, finding 4).
+	if fresh, recorded := d.flows.take(f.State, f.Expires, time.Now().Unix()); !fresh {
+		fail("expired")
+		return
+	} else if !recorded {
+		d.Log.Warn("sign-in: too many attempts in flight to remember this one")
 	}
 	id, err := d.IdP.Exchange(r.Context(), q.Get("code"), f.Verifier, f.Nonce, time.Now())
 	if err != nil {

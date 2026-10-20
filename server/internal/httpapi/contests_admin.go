@@ -113,6 +113,18 @@ type adminContestJSON struct {
 	LockedAfterStart []string `json:"locked_after_start"`
 	// PinHistory is every pin change, newest first (C4).
 	PinHistory []contests.PinChange `json:"pin_history"`
+	// Queue health for the console's attention strip (C10, D103).
+	Queue            queueJSON `json:"queue"`
+	JudgeLastClaimAt *int64    `json:"judge_last_claim_at"`
+	Unanswered       int       `json:"unanswered"`
+}
+
+// queueJSON is the contest's share of the judge queue (C10).
+type queueJSON struct {
+	Waiting     int     `json:"waiting"`
+	Judging     int     `json:"judging"`
+	Errors      int     `json:"errors"`
+	OldestWaitS float64 `json:"oldest_wait_s"`
 }
 
 func (d Deps) adminContestOut(ctx context.Context, c *contests.Contest) (*adminContestJSON, error) {
@@ -166,6 +178,17 @@ func (d Deps) adminContestOut(ctx context.Context, c *contests.Contest) (*adminC
 	}
 	if out.PinHistory, err = d.Contests.PinHistory(ctx, c.ID); err != nil {
 		return nil, err
+	}
+	q, err := d.Contests.QueueHealth(ctx, c.ID)
+	if err != nil {
+		return nil, err
+	}
+	out.Queue = queueJSON{Waiting: q.Waiting, Judging: q.Judging, Errors: q.Errors, OldestWaitS: q.OldestWait.Seconds()}
+	out.Unanswered = q.Unanswered
+	if d.Problems != nil && d.Problems.Jobs != nil {
+		if at, ok := d.Problems.Jobs.LastClaimAt(); ok {
+			out.JudgeLastClaimAt = millis(at)
+		}
 	}
 	return out, nil
 }

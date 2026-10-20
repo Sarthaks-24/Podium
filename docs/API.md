@@ -1,6 +1,6 @@
 # HTTP API
 
-All API routes live under `/api/` and speak JSON. Every other path serves the web app, which renders its own pages (including its 404 page).
+All API routes live under `/api/` and speak JSON. Every other path serves the web app, which renders its own pages; from v1.3.0 the server answers a path no route matches with status 404 and fills each page's head (see "The page head, 404s, robots and the sitemap").
 
 ## Conventions
 
@@ -24,7 +24,7 @@ All API routes live under `/api/` and speak JSON. Every other path serves the we
 { "error": { "code": "bad_request", "message": "Some fields need fixing.", "fields": { "slug": "Use lowercase letters, digits and single hyphens, like two-sum." } } }
 ```
 
-Common error codes: `bad_request`, `signed_out`, `forbidden`, `not_found`, `cross_site`, `conflict`, `internal`, and in testing mode `testing_mode_local`. Test sign-in adds `disabled`. The problem routes add `bad_pack`, `not_ready`, `too_large` and `busy`; the AI wizard adds `no_key`, `no_model`, `bad_key`, `provider_error` and `busy`; the workspace routes add `not_ready` and `rate_limited`; the contest routes add `not_on_roster`, `not_started`, `contest_over`, `board_closed` and `too_early`; the organiser contest routes add `locked_after_start`, `results_hidden`, `not_participant` and `ai_unconfirmed`; the event stream adds `busy` and `unsupported`; the judge API adds `unauthorized`, `protocol` (426), `lease`, `bad_report`, `bad_upload` and `too_large`.
+Common error codes: `bad_request`, `rate_limited` (before sign-in, v1.3.0), `signed_out`, `forbidden`, `not_found`, `cross_site`, `conflict`, `internal`, and in testing mode `testing_mode_local`. Test sign-in adds `disabled`. The problem routes add `bad_pack`, `not_ready`, `too_large` and `busy`; the AI wizard adds `no_key`, `no_model`, `bad_key`, `provider_error` and `busy`; the workspace routes add `not_ready` and `rate_limited`; the contest routes add `not_on_roster`, `not_started`, `contest_over`, `board_closed` and `too_early`; the organiser contest routes add `locked_after_start`, `results_hidden`, `not_participant` and `ai_unconfirmed`; the event stream adds `busy` and `unsupported`; the judge API adds `unauthorized`, `protocol` (426), `lease`, `bad_report`, `bad_upload` and `too_large`.
 
 ## Health
 
@@ -62,13 +62,31 @@ What an organiser watches on contest day; also read by the load test (`tools/loa
 
 ### `GET /api/auth/config` (public)
 
-What the sign-in page needs to explain who may sign in, and which sign-in to offer.
+What the sign-in page, the footer and the privacy page need before anyone signs in (contract C5). No contest data, no counts, no version (owner, 2026-10-19).
 
 ```json
-{ "allowed_domains": ["college.edu"], "contact_email": "owner@college.edu", "mode": "production" }
+{ "allowed_domains": ["college.edu"],
+  "contact_email": "podium@college.edu",
+  "mode": "production",
+  "organisation": { "name": "Example College of Engineering", "contact_email": "podium@college.edu",
+                    "phone": "+91 80 1234 5678", "privacy_contact": "privacy@college.edu" },
+  "retention": [
+    { "id": "sessions", "data": "Sign-in sessions", "amount": 12, "unit": "hours", "after": "sign_in", "kept": "12 hours after sign-in" },
+    { "id": "submissions", "data": "Submissions, their verdicts and what each contest showed", "amount": 4, "unit": "years",
+      "after": "contest_end", "kept": "4 years after the contest" } ] }
 ```
 
-`contact_email` is `PODIUM_OWNER_EMAIL`, shown as the organiser to contact. `mode` is the server's `PODIUM_MODE`: `testing`, `dev` or `production`. In `testing` the web app shows the sign-in form and the testing-mode banner instead of "Continue with Google".
+| Field | Meaning |
+|---|---|
+| `allowed_domains` | every allowed sign-in domain, sorted |
+| `contact_email` | the address to show as "Contact the organisers": `organisation.contact_email` when an owner has entered one, otherwise `PODIUM_OWNER_EMAIL` |
+| `mode` | the server's `PODIUM_MODE`: `testing`, `dev` or `production`. In `testing` the web app shows the sign-in form and the testing-mode banner instead of "Continue with Google" |
+| `organisation` | the site settings an owner enters on People (v1.3.0): `name`, `contact_email`, `phone`, `privacy_contact`. Each is a string, `""` until entered; a page shows nothing for an empty field and never a made-up value |
+| `retention` | every retention period the server applies, in the order the privacy page lists them, from `server/internal/retention/periods.go` (v1.3.0). The privacy page renders its table from this list and types none of it |
+
+A `retention` row is `{id, data, amount, unit, after, kept}`: `id` is stable (`sessions`, `integrity_events`, `case_evidence`, `run_payloads`, `contact_messages`, `draft_revisions`, `submissions`, `audit`, `backups`; P4 adds its own); `data` names what is kept; `amount` and `unit` (`hours`, `days` or `years`) are the period; `after` is what it counts from (`sign_in`, `created`, `contest_end`, `decision`); `kept` is the whole period as one phrase. The full table is in `docs/OPERATIONS.md`, "Retention".
+
+The route is limited per address like the other routes before sign-in (see "Before sign-in: the per-address limit").
 
 ### `POST /api/auth/test-signin` (public, testing mode only)
 
@@ -105,6 +123,20 @@ On failure it redirects to `/signin?error=<code>`:
 | `expired` | The sign-in attempt took too long or was started in another tab. |
 | `google` | Google refused or the response could not be verified. |
 | `server` | The server failed while recording the sign-in. |
+| `rate_limited` | Too many sign-ins from this network at once (v1.3.0, see "Before sign-in"); wait a few seconds and try again. |
+
+### Before sign-in: the per-address limit (v1.3.0)
+
+The routes a visitor reaches without a session have two budgets per client address, each a token bucket:
+
+| Routes | Burst | Refill |
+|---|---|---|
+| `GET /healthz`, `GET /api/auth/config`, `POST /api/auth/logout` | 5,000 | 50 a second |
+| `GET /api/auth/google/start`, `GET /api/auth/google/callback`, `POST /api/auth/test-signin` | 2,000 | 20 a second |
+
+Past a budget, the JSON routes answer `429 rate_limited` with `Retry-After` and `retry_after_s`; the two Google routes, being browser navigations, redirect to `/signin?error=rate_limited` with `Retry-After`. The budgets are large because a whole college signs in from few addresses behind its NAT (a class of 700 loads the config about three times each and makes one start and one callback; a test proves 700 sign-ins from one address in a minute pass); they exist so that a script cannot turn the server into a flood of outbound calls to Google or of queries. The address is the peer's, or behind Caddy on the same host the last `X-Forwarded-For` entry; IPv6 addresses share a budget per /64. Requests from the VM itself (loopback, no forwarding headers) are not counted, so the load test and `install.sh verify` are never limited.
+
+Each sign-in attempt can be finished once: the callback remembers the state of every attempt it has seen until the attempt expires (10 minutes), and a second callback with the same state cookie gets `/signin?error=expired` without calling Google.
 
 ### `POST /api/auth/logout`
 
@@ -195,6 +227,44 @@ Request: `{"domain":"college.edu"}` (lowercased; a leading `@` is ignored). Resp
 ### `DELETE /api/admin/domains/{domain}`
 
 Stops sign-ins from the domain and ends the sessions of students on it; organisers on it keep access. `204`. `404 not_found` when the domain is not on the list.
+
+### `PUT /api/admin/site-settings` (owner, v1.3.0)
+
+The organisation details the public pages show (B3.7): the sign-in page, the footer, the privacy page and the Organization JSON-LD on `/signin`. Stored in the server's `settings` table, never in an environment variable. `GET /api/auth/config` returns them as `organisation`, and `GET /api/admin/people` carries the same object for the People form.
+
+Request, every field present (send `""` to clear one):
+
+```json
+{ "name": "Example College of Engineering", "contact_email": "podium@college.edu",
+  "phone": "+91 80 1234 5678", "privacy_contact": "privacy@college.edu" }
+```
+
+| Field | Rule |
+|---|---|
+| `name` | at most 120 characters, one line |
+| `contact_email` | an email address, at most 254 characters; shown as a `mailto:` link |
+| `phone` | at most 32 characters of digits, spaces, `+`, `-`, `(`, `)` and `.`, with at least 6 digits; shown as a `tel:` link |
+| `privacy_contact` | who to ask about personal data: a name or an address, at most 200 characters, one line |
+
+Leading and trailing spaces are trimmed. Response `200`: the saved object, in the request's shape. Errors: `400 bad_request` with `fields` naming each field that needs fixing. A change writes one `settings_changed` row to the site audit naming the fields that changed (the values are public, but the row carries only the names).
+
+`GET /api/admin/people` gains `organisation` in the same shape (v1.3.0).
+
+### `POST /api/admin/rollover` (owner, v1.3.0)
+
+The semester rollover (B3.3): archives the term's contests and disables student accounts not seen for 180 days. Disabled, not deleted: an owner can enable an account again (`POST /api/admin/accounts/enable`). Without `apply` it is a preview that changes nothing.
+
+Request: `{"label": "2026 odd semester", "ended_before": 1798761600000, "apply": false}`. `label` names the term (one line, 1 to 80 characters) and goes in the site audit; `ended_before` (Unix ms, optional, default now) picks the contests whose last moment, the end plus every extension, is before it and before now; `apply` defaults to false.
+
+```json
+{ "applied": false, "label": "2026 odd semester", "ended_before": 1798761600000, "idle_days": 180,
+  "contests": [ { "id": 12, "slug": "week-12", "title": "Week 12", "ends_at": 1797000000000 } ],
+  "accounts": [ { "id": 41, "email": "asha@college.edu", "name": "Asha Rao", "role": "student", "disabled": false,
+                  "last_login_at": 1781000000000 } ],
+  "server_now": 1798700000000 }
+```
+
+`accounts` are enabled student accounts whose last sign-in (or creation, when they never signed in) is more than `idle_days` ago; organisers and `PODIUM_OWNER_EMAIL` are never included. With `apply: true` the same lists come back as done: each contest is archived with an `archive` row in its audit log (`{"rollover": label}`), each account is disabled with its sessions ended, and one `semester_rollover` row goes to the site audit. Errors: `400 bad_request` with `fields.label`, `403 forbidden` for anyone but an owner.
 
 ## Problems (admin)
 
@@ -593,6 +663,8 @@ The workspace is the page where code is written, run and submitted. Under `/api/
 | `message` | the checker's comment on a sample, `""` otherwise |
 | `compile_output` | the compiler's output; a compile error leaves every `verdict` empty |
 
+A run older than 30 days keeps its row and verdict but no longer its inputs or output (v1.3.0, the `run_payloads` retention period): `results` is `[]` and `compile_output` is `""`.
+
 Times are rounded to 10 ms (100 ms for a student in a graded contest). A run uses the problem's limits and checker. Running the samples on a problem without samples is `400 bad_request` ("Run it on your own input instead").
 
 **v1.2.0, open tests and the revealed test (D115, contract row "Run").** A Run without `input` runs every sample, then the problem's open tests in order; the open tests run only while everything before them passed, and stop at the first failure. Every Run reveals its first failing test, in practice and during a contest alike.
@@ -903,7 +975,7 @@ Every change that can affect results is recorded in the contest's audit log (bel
 
 `ContestEdit` holds the form's fields: `slug`, `title`, `description_md`, `starts_at`, `ends_at`, `start_mode` (`fixed` or `window`), `duration_minutes` (window mode, at least 10 and at most the whole window), `freeze_minutes`, `scoring_mode` (`best_subtask` or `best_submission`), `access` (`domain` or `roster`), `feedback_mode` (`subtask` or `exam`), `graded`, `published`, `practice_after_end`, `stop_on_sample_fail`, `min_gap_s` (0 to 3600), `max_per_problem` (1 to 1000), `languages`, `honour_text` (empty for the default), `hold_reveal`. Defaults on create: fixed start, best per subtask, domain access, subtask feedback, graded, practice after the end, stop on a failing sample, 30 s gap, 15 per problem, all four languages. Unknown fields are refused. Publishing checks that every problem is still the validated version that was added ("Problem B changed or lost its validation since it was added. Validate it and add it again."). Invalid fields: `400 bad_request` with `fields`.
 
-`AdminContest` is every `ContestEdit` field plus `id`, `close_at` (end plus contest-wide extension), `default_honour_text`, `editorial_md`, `editorial_published`, `paused`, `extended_minutes`, `revealed_at`, `archived`, `state`, `problems [{label, problem_id, title, pinned_hash, ready, max_score, validated_toolchain, toolchain_drift}]` (`ready` is false when the problem changed since it was added), `admins [{user_id, email, name}]`, `extensions [{user_id, email, name, minutes, reason}]`, `roster_count`, `judge_toolchain`, `created_at`, `updated_at`, `server_now`, `locked_after_start` (the field names above that only admins may change once the contest has started).
+`AdminContest` is every `ContestEdit` field plus `id`, `close_at` (end plus contest-wide extension), `default_honour_text`, `editorial_md`, `editorial_published`, `paused`, `extended_minutes`, `revealed_at`, `archived`, `state`, `problems [{label, problem_id, title, pinned_hash, ready, max_score, validated_toolchain, toolchain_drift}]` (`ready` is false when the problem changed since it was added; from v1.3.0 `pinned_hash` is the pinned revision's content hash, the database column having gone), `admins [{user_id, email, name}]`, `extensions [{user_id, email, name, minutes, reason}]`, `roster_count`, `judge_toolchain`, `created_at`, `updated_at`, `server_now`, `locked_after_start` (the field names above that only admins may change once the contest has started).
 
 **Toolchain drift (v1.1.0, B1.5; shown by the console strip C1 in P3).** `judge_toolchain` is what the judge reported last, `null` before any v1.1.0 judge has started; `validated_toolchain` is the toolchain of the newest finished validation of the pinned version, `null` when that validation ran before v1.1.0. `toolchain_drift` is `true` when the two differ, `false` when they match, and `null` when either is unknown. A toolchain is `{gcc, java, python, node, isolate, kernel, first_seen}` (strings, and `first_seen` in ms). Drift is a warning, not a block: the problem stays validated (D45); revalidating it on the current toolchain clears the flag.
 
@@ -917,6 +989,25 @@ Every change that can affect results is recorded in the contest's audit log (bel
 ```
 
 Turning `graded` on is `409 ai_unconfirmed` while the contest holds an AI problem no person has written a solution for and no admin has confirmed for this contest.
+
+**Queue health (v1.3.0, contract C10, D103).** Every `AdminContest` also carries what the console's attention strip shows:
+
+```json
+{ "queue": { "waiting": 14, "judging": 2, "errors": 1, "oldest_wait_s": 37.5 },
+  "judge_last_claim_at": 1792311190000,
+  "unanswered": 3 }
+```
+
+| Field | Meaning |
+|---|---|
+| `queue.waiting` | this contest's jobs (Submit and Run) waiting for the judge, including those held by a pause |
+| `queue.judging` | this contest's jobs a judge is running now |
+| `queue.errors` | this contest's submissions (Submit) that ended in `error` (a judge error, not a verdict) and have not been judged again since |
+| `queue.oldest_wait_s` | seconds the oldest waiting job has waited; `0` when nothing waits |
+| `judge_last_claim_at` | when any judge last asked the server for work (Unix ms), whether or not it got any; `null` when no judge has asked since the server started. A judge asks every few seconds while it runs, so a value more than a minute old means no judge is working |
+| `unanswered` | this contest's clarifications with no answer yet |
+
+The counts come from one query on the jobs, submissions and clarifications indexes per response; `judge_last_claim_at` is held in memory.
 
 ### `AuditEntry`
 
@@ -1076,7 +1167,7 @@ The first time the contest workspace serves a revision to a student, the server 
 
 - Filters: `action` keeps one action; `q` keeps rows whose actor or subject email contains the text (case does not matter); `since` and `until` are Unix ms (inclusive, exclusive).
 - `actor` is `null` for changes the server made itself (a change of run mode). The actor's email and role are as they were at the time.
-- The table is append only (database triggers refuse every update, and every delete of a row newer than the retention cutoff the P3 retention job will write). It never holds an AI key, a session token, a cookie or an OAuth code: a test writes fake ones through every audited path and searches the table for them.
+- The table is append only (database triggers refuse every update, and every delete of a row newer than the retention cutoff, which the daily retention job moves to 4 years ago from v1.3.0). It never holds an AI key, a session token, a cookie or an OAuth code: a test writes fake ones through every audited path and searches the table for them.
 
 | `action` | `subject_email` | `details` |
 |---|---|---|
@@ -1091,11 +1182,62 @@ The first time the contest workspace serves a revision to a student, the server 
 | `mode_changed` | `""` | `{from, to, sessions_ended, demoted}`, the server's own record when it starts in another run mode |
 | `deploy_forced` | `""` | `{reason, release, refused: [{contest_id, slug, reason}]}`, written by `deploy-check -force` (the actor is the owner account) |
 
-P3 adds `settings_changed`, `contact_deleted` and `user_forgotten`; show an unknown action by its name.
+| `settings_changed` | `""` | `{fields}`: the names of the site settings that changed (v1.3.0) |
+| `contact_deleted` | the sender | `{message_id, topic}`, never the text (v1.3.0) |
+| `user_forgotten` | `""` | `{user_id, placeholder, role, sessions, drafts, integrity_events, contact_messages, co-organiser_places, browser_hashes_on_submissions, roster_entries}`: `podium-server forget-user` (v1.3.0); the person is named by id only |
+| `semester_rollover` | `""` | `{label, accounts_disabled, sessions_ended, emails, contests_archived: [{id, slug}], seen_before}` (v1.3.0) |
+
+Show an unknown action by its name.
 
 ### Renamed contests
 
 Renaming a contest (its `slug`) records the old slug. `GET /contests/<old>` and every path under it answer `301` to the same path under the new slug, keeping the query; so do `GET` requests under `/api/contests/<old>` (other methods answer `404`). Only a published contest records its old slug (a draft has no links out there), and only a published, unarchived contest is redirected to. A slug in the history cannot be given to another contest: `400 bad_request` with `fields.slug` "This slug belonged to another contest. Choose another so its old links keep working." A contest may take back its own old slug.
+
+## Contact (v1.3.0, contract C6)
+
+A signed-in person writes to the organisers; owners and admins read the messages in an inbox and reply by email. There is no mail server: nothing is sent anywhere (D71 as amended). Someone who cannot sign in uses the organiser address from `GET /api/auth/config` (`contact_email`) instead.
+
+### `POST /api/contact` (signed in)
+
+Any signed-in role. The sender is the session's account; the body names no sender.
+
+```json
+{ "topic": "contest", "message": "The statement of problem B says 1 <= n but the sample has n = 0." }
+```
+
+| Field | Rule |
+|---|---|
+| `topic` | `contest` (a contest or a problem), `account` (sign-in or the account), `privacy` (a copy or removal of personal data) or `other` |
+| `message` | 1 to 2,000 characters after trimming; newlines are kept; other control characters are refused |
+
+| Status | Body |
+|---|---|
+| 201 | `{"id": 12, "created_at": 1792311120000}` |
+| 400 | `bad_request` with `fields.topic` or `fields.message` |
+| 401 | `signed_out` |
+| 403 | `cross_site`: the request carried no `Origin` header, or one other than the base URL (this route needs it, unlike the general rule above) |
+| 429 | `rate_limited` with `retry_after_s`: 5 messages per person in 24 hours, or 100 in 24 hours from everyone together |
+
+The two `429` messages: "You have sent 5 messages in the last 24 hours. Try again tomorrow, or email the organisers." and "The organisers have received too many messages today. Try again tomorrow, or email the organisers." The web app's success line is "Sent. The organisers reply by email, usually within two days."
+
+Messages are stored as plain text and are never rendered as HTML anywhere. They are deleted 180 days after they were sent (see `retention` on the config route) and when the sender is erased with `podium-server forget-user`.
+
+### `GET /api/admin/contact?before=` (owner, admin)
+
+The inbox, newest first, 50 per page. `before` is a message id: the page holds messages older than it.
+
+```json
+{ "messages": [ { "id": 12, "topic": "contest", "message": "The statement of problem B says ...",
+                  "created_at": 1792311120000,
+                  "sender": { "user_id": 7, "email": "asha@college.edu", "name": "Asha Rao", "role": "student" } } ],
+  "more": false, "server_now": 1792311200000 }
+```
+
+`sender` is the account as it is now. The inbox screen offers "Reply by email" as a `mailto:` link to `sender.email`. Co-organisers whose site role is student get `403 forbidden`.
+
+### `DELETE /api/admin/contact/{id}` (owner, admin)
+
+Deletes one message. `204`. `404 not_found` when there is no such message. Writes a `contact_deleted` row to the site audit with the sender as `subject_email` and `{"message_id", "topic"}` as details (never the text).
 
 ## Integrity
 
@@ -1383,7 +1525,7 @@ A renamed contest's old `/contests/<slug>` paths answer `301` first (see "Rename
 
 ### The route manifest and the page markers (contract C2, from v1.1.0)
 
-The web build writes `web/dist/routes.json`, embedded with the app; a copy is checked in at `server/internal/webui/testdata/routes.json` for the server's tests, and a web unit test fails when the two drift. The server reads it from P3 on (B3.4, B3.5) to fill the head of each page; until then nothing reads it.
+The web build writes `web/dist/routes.json`, embedded with the app; a copy is checked in at `server/internal/webui/testdata/routes.json` for the server's tests, and a web unit test fails when the two drift. From v1.3.0 the server reads it to fill the head of each page (below).
 
 ```json
 { "version": 1,
@@ -1402,5 +1544,62 @@ The web build writes `web/dist/routes.json`, embedded with the app; a copy is ch
 | `notFound` | the 404 page, in the same shape |
 
 `web/index.html` carries two marker pairs the server replaces at request time and never edits in the file: `<!--podium:head-->` ... `<!--/podium:head-->` around the robots meta (`noindex` by default), and `<!--podium:body-->` ... `<!--/podium:body-->` inside a fallback `<main>` that the app clears before it mounts (P3 fills it for `/privacy`, so the page reads without JavaScript). The frontend owns both files and the manifest's content.
+
+### The page head, 404s, robots and the sitemap (v1.3.0, D100)
+
+The server reads `routes.json` from the embedded build once at start and answers every path that is not an API route, a file or one of the two files below with `index.html`, filled per route:
+
+| The path matches | Status | `<!--podium:head-->` block | `<title>` | `X-Robots-Tag` |
+|---|---|---|---|---|
+| a route with `public: true` | 200 | robots `index, follow`, description, canonical, Open Graph, Twitter card (below) | `{title} · podium` | none |
+| any other route | 200 | left as built (`noindex`) | `{title} · podium` | `noindex` |
+| no route | 404 | left as built (`noindex`) | `{notFound.title} · podium` | `noindex` |
+
+Matching follows `routing.ts`: trailing slashes are ignored, case matters, a `:name` segment takes any one segment. The 404 page is never indexed and has no canonical URL, whatever `notFound.public` says. Without a manifest, or with a `version` other than 1, every page answers 200 with the built head and `X-Robots-Tag: noindex` (default closed), and the server logs a warning at start.
+
+A public page's block, with `PODIUM_BASE_URL` `https://podium.example`:
+
+```html
+<meta name="robots" content="index, follow" />
+<meta name="description" content="Sign in to podium with your college Google account ..." />
+<link rel="canonical" href="https://podium.example/signin" />
+<meta property="og:type" content="website" />
+<meta property="og:site_name" content="podium" />
+<meta property="og:title" content="Sign in · podium" />
+<meta property="og:description" content="Sign in to podium with your college Google account ..." />
+<meta property="og:url" content="https://podium.example/signin" />
+<meta property="og:image" content="https://podium.example/og.png" />
+<meta property="og:image:type" content="image/png" />
+<meta property="og:image:width" content="1200" />
+<meta property="og:image:height" content="630" />
+<meta property="og:image:alt" content="podium" />
+<meta name="twitter:card" content="summary_large_image" />
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"Organization","email":"podium@college.edu","name":"Example College"}</script>
+```
+
+- The canonical URL is the base URL plus the route's pattern (for a public route with parameters, plus the request's path without its query); `og:url` is the same.
+- The image tags appear only when the build has `og.png` at its root (the 1200 x 630 card the frontend makes, FP.4); without it the card is `summary` and names no image.
+- The JSON-LD block is on `/signin` only, from the site settings only (`name`, and `email` and `telephone` when set), and absent until an owner has entered the organisation's name.
+- Every value is HTML-escaped; the JSON-LD is JSON with `<`, `>` and `&` escaped, so no setting can close the script block.
+
+**The body block.** For the route whose pattern is `/privacy`, the server puts the build's `privacy-body.html` (the approved privacy text, rendered from Markdown and sanitised at build time, FP.1) between `<!--podium:body-->` and `<!--/podium:body-->`, so the page reads without JavaScript. Until the build has the file the block stays empty. No other page fills it.
+
+`routes.json` and `privacy-body.html` are read by the server and never served as files (`404`).
+
+**`GET /robots.txt`** (text):
+
+```
+User-agent: *
+Allow: /
+Disallow: /api/
+
+Sitemap: https://podium.example/sitemap.xml
+```
+
+Private pages are kept out of search by `noindex`, which a crawler can only read if it may fetch the page, so they are not disallowed.
+
+**`GET /sitemap.xml`** (XML): one `<url><loc>` per public route without parameters, absolute from the base URL. `/contact` is signed in and never listed (D109).
+
+Both answer with `Cache-Control: public, max-age=3600`. Icons and the web manifest are files of the build: `favicon.ico` is served as `image/x-icon`, `site.webmanifest` as `application/manifest+json`, fonts as `font/woff2`.
 
 Contests are added to this document in M4, the milestone that builds them.

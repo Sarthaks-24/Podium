@@ -140,8 +140,8 @@ func TestReasonRequiredWhileALiveContestPinsTheProblem(t *testing.T) {
 		VALUES (1, 'week-1', 'Week 1', ?, ?, 1, 0, 0)`, now.Add(-time.Hour).UnixMilli(), now.Add(time.Hour).UnixMilli()); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.DB.ExecContext(ctx, `INSERT INTO contest_problems (contest_id, problem_id, label, ord, pinned_hash) VALUES (1, ?, 'A', 0, ?)`,
-		p.ID, p.ContentHash); err != nil {
+	if _, err := s.DB.ExecContext(ctx, `INSERT INTO contest_problems (contest_id, problem_id, label, ord, revision_id)
+		VALUES (1, ?, 'A', 0, (SELECT max(id) FROM problem_revisions WHERE problem_id = ?))`, p.ID, p.ID); err != nil {
 		t.Fatal(err)
 	}
 	live, err := s.LiveContests(ctx, p.ID)

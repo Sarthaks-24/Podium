@@ -58,7 +58,7 @@ func newRig(t *testing.T) *rig {
 	}
 	res := mustExec(t, d, `INSERT INTO contests (slug, title, starts_at, ends_at, created_at, updated_at) VALUES ('c', 'C', 0, 1, 0, 0)`)
 	cid, _ := res.LastInsertId()
-	mustExec(t, d, `INSERT INTO contest_problems (contest_id, problem_id, label, ord, pinned_hash) VALUES (?, ?, 'A', 0, 'x')`, cid, p.ID)
+	mustExec(t, d, `INSERT INTO contest_problems (contest_id, problem_id, label, ord) VALUES (?, ?, 'A', 0)`, cid, p.ID)
 	got, err := bank.Get(ctx, p.ID)
 	if err != nil {
 		t.Fatal(err)
