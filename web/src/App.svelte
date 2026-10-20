@@ -33,12 +33,13 @@
   import AccountMenu from './components/AccountMenu.svelte';
   import ShortcutsDialog from './components/ShortcutsDialog.svelte';
   import ThemeDialog from './components/ThemeDialog.svelte';
+  import ConfirmDialog from './components/ConfirmDialog.svelte';
   import Toasts from './components/Toasts.svelte';
   import ThemeMenu from './lib/ThemeMenu.svelte';
   import { regions } from './lib/announce.svelte';
   import { loadMode, runMode, telHref } from './lib/mode.svelte';
   import { installLinkInterception, matchRoute, navigate, router } from './lib/router.svelte';
-  import { loadSession, refreshSiteUpdated, session, signOut } from './lib/session.svelte';
+  import { loadSession, refreshSiteUpdated, session, signOut, signOutGuard } from './lib/session.svelte';
   import { isNewUpdate, markUpdateSeen, seenUpdate, updateLine } from './lib/siteUpdate';
   import { onStreamReconnect } from './lib/stream';
   import { loadQuestions, shell } from './lib/shell.svelte';
@@ -203,8 +204,30 @@
     }
   }
 
+  // Sign out during a live contest asks first (P5 F7.6, N2); the draft is saved before the session ends either way.
+  let signOutAsk = $state<string | null>(null);
+
   async function onSignOut() {
     menuOpen = false;
+    const why = signOutGuard();
+    if (why !== null) {
+      signOutAsk = why;
+      return;
+    }
+    await finishSignOut();
+  }
+
+  // The dialog gives focus back to "Sign out", which closed with its menu; the account button takes it instead.
+  function cancelSignOut() {
+    signOutAsk = null;
+    setTimeout(() => {
+      const trigger = [...document.querySelectorAll<HTMLElement>('.bar .trigger, .bar .menu-button')].find((el) => el.offsetParent !== null);
+      (trigger ?? document.querySelector<HTMLElement>('main h1'))?.focus();
+    }, 0);
+  }
+
+  async function finishSignOut() {
+    signOutAsk = null;
     const err = await signOut();
     if (err) showToast(err.message, 'error');
   }
@@ -368,6 +391,17 @@
 <div class="visually-hidden" aria-live="assertive" data-announcer="assertive">{regions.assertive}</div>
 <ShortcutsDialog open={shell.shortcuts} organiser={isOrganiser} onclose={() => (shell.shortcuts = false)} />
 {#if signedIn}<ThemeDialog open={shell.theme} onclose={() => (shell.theme = false)} />{/if}
+<!-- Only a contest workspace asks before sign out (F7.6), so the dialog exists only beside one. -->
+{#if shell.workspace}
+  <ConfirmDialog
+    open={signOutAsk !== null}
+    title="Sign out during the contest?"
+    body={signOutAsk ?? ''}
+    confirmLabel="Sign out"
+    onconfirm={() => void finishSignOut()}
+    oncancel={cancelSignOut}
+  />
+{/if}
 
 <style>
   .page {
