@@ -24,7 +24,7 @@ All API routes live under `/api/` and speak JSON. Every other path serves the we
 { "error": { "code": "bad_request", "message": "Some fields need fixing.", "fields": { "slug": "Use lowercase letters, digits and single hyphens, like two-sum." } } }
 ```
 
-Common error codes: `bad_request`, `signed_out`, `forbidden`, `not_found`, `cross_site`, `conflict`, `internal`, and in testing mode `testing_mode_local`. Test sign-in adds `disabled`. The problem routes add `bad_pack`, `not_ready`, `too_large` and `busy`; the AI wizard adds `no_key`, `bad_key` and `busy`; the workspace routes add `not_ready` and `rate_limited`; the contest routes add `not_on_roster`, `not_started`, `contest_over`, `board_closed` and `too_early`; the organiser contest routes add `locked_after_start`, `results_hidden`, `not_participant` and `ai_unconfirmed`; the event stream adds `busy` and `unsupported`; the judge API adds `unauthorized`, `lease`, `bad_report`, `bad_upload` and `too_large`.
+Common error codes: `bad_request`, `signed_out`, `forbidden`, `not_found`, `cross_site`, `conflict`, `internal`, and in testing mode `testing_mode_local`. Test sign-in adds `disabled`. The problem routes add `bad_pack`, `not_ready`, `too_large` and `busy`; the AI wizard adds `no_key`, `no_model`, `bad_key`, `provider_error` and `busy`; the workspace routes add `not_ready` and `rate_limited`; the contest routes add `not_on_roster`, `not_started`, `contest_over`, `board_closed` and `too_early`; the organiser contest routes add `locked_after_start`, `results_hidden`, `not_participant` and `ai_unconfirmed`; the event stream adds `busy` and `unsupported`; the judge API adds `unauthorized`, `lease`, `bad_report`, `bad_upload` and `too_large`.
 
 ## Health
 
@@ -385,37 +385,104 @@ Rules:
 
 ## AI wizard (admin)
 
-Every route needs the admin or owner role and answers with `server_now`. The provider key is pasted per session and held in the server's memory only, for 2 hours, tied to the session: never stored, logged, sent to the judge or shown back (decision D50, `docs/ARCHITECTURE.md`). Signing out, signing in again in the same browser, or a restart forgets it. Request bodies of the key route are never logged.
+Every route needs the admin or owner role and answers with `server_now`. Provider keys are pasted per session and held in the server's memory only, for 2 hours, tied to the session and the provider: never stored, logged, sent to the judge or shown back (decisions D50 and D111, `docs/ARCHITECTURE.md`). A session can hold one key for each provider at once. Signing out, signing in again in the same browser, or a restart forgets them all. Request bodies of the key route are never logged.
 
 | Route | Request | Success |
 |---|---|---|
+| `GET /api/admin/ai/providers` | | 200 `Providers` (C11) |
+| `GET /api/admin/ai/models?provider=openai` | `&refresh=1` lists again instead of using the session's copy | 200 `Models` (C11) |
 | `GET /api/admin/ai/key` | | 200 `KeyStatus` |
-| `PUT /api/admin/ai/key` | `{"provider":"anthropic","model":"claude-opus-5-5","key":"..."}` | 200 `KeyStatus` |
-| `DELETE /api/admin/ai/key` | | 204 |
+| `PUT /api/admin/ai/key` | `{"provider":"openai","key":"...","model":"gpt-..."}` | 200 `KeyStatus` (C11) |
+| `DELETE /api/admin/ai/key` | `?provider=openai` forgets that provider's key; without it, every key of the session | 204 |
 | `POST /api/admin/ai/wizard` | `WizardRequest` (at most 256 KB) | 202 `{"wizard_id":"3f9c...","server_now":...}` |
 | `GET /api/admin/ai/wizard/{id}` | | 200 `Wizard` |
 | `POST /api/admin/problems/{id}/solve` | no body | 202 `{"wizard_id":"...","server_now":...}` |
 
-`KeyStatus`:
+### Providers and models (contract C11)
+
+`Providers`, the three providers and what this session holds for each:
 
 ```json
-{ "active": true, "provider": "anthropic", "model": "claude-opus-5-5", "active_until": 1792190392359,
-  "providers": [ { "id": "anthropic", "name": "Anthropic", "models": [
-      { "id": "claude-opus-5-5", "name": "Claude Opus 5.5 (default)" },
-      { "id": "claude-sonnet-5-5", "name": "Claude Sonnet 5.5" },
-      { "id": "claude-haiku-5-5", "name": "Claude Haiku 5.5" } ] } ],
+{ "providers": [
+    { "id": "anthropic", "name": "Anthropic", "has_key": true, "model": "claude-opus-5-5", "active_until": 1792190392359 },
+    { "id": "openai", "name": "OpenAI", "has_key": true, "model": "", "active_until": 1792190500000 },
+    { "id": "gemini", "name": "Google Gemini", "has_key": false, "model": "", "active_until": null } ],
+  "active_provider": "anthropic",
   "server_now": 1792183192359 }
 ```
 
-- Without a key: `active` false, `active_until` `null`, and `provider` and `model` are the defaults (`anthropic`, `claude-opus-5-5`) for the form to preselect.
-- In testing mode `providers` also lists `{"id":"fake","name":"Test provider (canned problems)","models":[{"id":"canned","name":"Canned problems"}]}`. The fake provider needs no key and answers with one of two canned problems: a maximum subarray problem when the brief or text mentions "subarray" or "stretch", a pair sums problem otherwise.
+- The order is fixed: `anthropic`, `openai`, `gemini`. In testing mode a fourth entry follows, `{"id":"fake","name":"Test provider (canned problems)",...}`: it needs no key and answers with one of two canned problems (a maximum subarray problem when the brief or text mentions "subarray" or "stretch", a pair sums problem otherwise).
+- `has_key`: this session holds an unexpired key for the provider. `model` is the model id saved with it, `""` when none was chosen yet. `active_until` is `null` without a key.
+- `active_provider` is the provider the wizard and "Can a model solve this?" use: the one whose key or model was saved last. `null` when the session holds no key.
 
-`PUT /api/admin/ai/key`: `model` empty means the default; `key` is ignored for `fake`. The key is checked with one call that costs no tokens (a model lookup) before it is kept.
+`Models`, the provider's own list, filtered to models that can write a problem:
+
+```json
+{ "provider": "gemini",
+  "models": [ { "id": "gemini-x-pro", "name": "Gemini X Pro" }, { "id": "gemini-x-flash", "name": "Gemini X Flash" } ],
+  "listed_at": 1792183100000, "server_now": 1792183192359 }
+```
+
+- The server asks the provider's models endpoint with the session's key and keeps the filtered list for the session until the key expires or `refresh=1` is sent. No model id is written in the server; the filter rules are:
+
+| Provider | Endpoint | Kept | Order | `name` |
+|---|---|---|---|---|
+| `anthropic` | `GET /v1/models`, every page | models whose `capabilities` support structured outputs, adaptive thinking and effort `high` | as listed (newest first) | `display_name` |
+| `openai` | `GET /v1/models` | ids starting `gpt-` or `o` followed by a digit, except `gpt-3.5*`, `gpt-4`, `gpt-4-*`, and ids containing `audio`, `realtime`, `tts`, `transcribe`, `image`, `search`, `embedding`, `moderation` or `instruct` | newest `created` first | the id |
+| `gemini` | `GET /v1beta/models`, following `nextPageToken` | `supportedGenerationMethods` contains `generateContent`, and the id is not an embedding, image, audio or text-to-speech model; the `models/` prefix is stripped | as listed | `displayName` |
+| `fake` (testing) | none | `canned` | | `Canned problems` |
+
+- The list is a hint. The key form takes any model id typed in; a model missing from the list (new, or filtered out) is still accepted when the provider's own model lookup finds it.
 
 | Status and code | When |
 |---|---|
-| 400 `bad_request` | a provider or model the server does not offer, or an empty key |
-| 400 `bad_key` | the check call failed; the message says what the provider said, in words ("Anthropic refused the key. Check it and paste it again.", "Anthropic says this key cannot use claude-opus-5-5. ...", "The provider is unavailable. ..."), never echoing the key |
+| 400 `bad_request` | `provider` missing or not one of the providers above |
+| 409 `no_key` | the session holds no key for that provider: "Add an OpenAI key first." |
+| 502 `provider_error` | the provider refused the listing; `message` is the provider's sentence (table under the key form) |
+
+### The key form
+
+`PUT /api/admin/ai/key` with `{"provider","key","model"}`:
+
+- `provider` is required: `anthropic`, `openai`, `gemini` (and `fake` in testing mode, which ignores `key` and `model`).
+- `key` is required unless the session already holds a key for this provider; leaving it out (or `""`) then keeps the held key and changes only the model, without extending its 2 hours.
+- `model` is free text, at most 128 characters of letters, digits and `. _ - :`; a leading `models/` is dropped. Empty means "no model yet": the key is checked by listing the provider's models (which fills `Models` for the session) and kept without a model, so the form can offer the list next. With a model, the key and the model are checked together by the provider's model lookup (`GET /v1/models/{id}` at Anthropic and OpenAI, `GET /v1beta/models/{id}` at Gemini). Neither check costs tokens. For Anthropic the model must also support structured outputs, adaptive thinking and effort `high`.
+- A successful save makes this provider the `active_provider`.
+
+`KeyStatus` (`GET` and `PUT /api/admin/ai/key`) describes the active provider and repeats the providers with the session's model lists:
+
+```json
+{ "active": true, "provider": "openai", "model": "gpt-x", "active_until": 1792190392359,
+  "providers": [
+    { "id": "anthropic", "name": "Anthropic", "has_key": false, "model": "", "active_until": null, "models": [] },
+    { "id": "openai", "name": "OpenAI", "has_key": true, "model": "gpt-x", "active_until": 1792190392359,
+      "models": [ { "id": "gpt-x", "name": "gpt-x" } ] },
+    { "id": "gemini", "name": "Google Gemini", "has_key": false, "model": "", "active_until": null, "models": [] } ],
+  "server_now": 1792183192359 }
+```
+
+- Without any key: `active` false, `provider` `"anthropic"`, `model` `""`, `active_until` `null`.
+- `providers[].models` is the session's copy of `Models` for that provider, `[]` until it has been listed.
+
+| Status and code | When |
+|---|---|
+| 400 `bad_request` | an unknown provider, a model id with other characters or over 128, or no key when the session holds none for this provider |
+| 400 `bad_key` | the check failed; `message` is one of the sentences below, never the key or the provider's raw answer |
+
+What each provider's failures say (also the `message` of a wizard run's `error`, and of `502 provider_error`). X is the model id:
+
+| `error.code` in a run | Anthropic | OpenAI | Google Gemini |
+|---|---|---|---|
+| `key_refused` | "Anthropic refused the key. Check it and paste it again." | "OpenAI refused the key. Check it and paste it again." | "Google refused the key. Check it in Google AI Studio and paste it again." |
+| `no_quota` | "Anthropic says this key's account has no credit left. Add credit in the Claude Console, or use another key." | "OpenAI says this key's account has used up its quota. Check the plan and billing on the OpenAI platform, or use another key." | "Google says this key has used up its Gemini quota. Check the plan in Google AI Studio, or try again later." |
+| `model_not_found` | "Anthropic does not offer the model X to this key. Choose another model." | "OpenAI does not offer the model X to this key. Choose another model." | "Gemini does not offer the model X to this key. Choose another model." |
+| `no_access` | "Anthropic says this key cannot use X. Choose another model or key." | "OpenAI says this key cannot use X. Choose another model or key." | "Google says this key cannot use X. Choose another model or key." |
+| `unsupported_model` | "X cannot write problems here: it lacks structured outputs, adaptive thinking or effort. Choose another model." | | |
+| `rate_limited` | "Rate limited by the provider; try again in a minute." | same | same |
+| `unavailable` | "The provider is unavailable. Try again in a few minutes." | same | same |
+| `bad_request` | "Anthropic could not accept the request. Try a shorter text or another model." | "OpenAI could not accept the request. Try a shorter text or another model." | "Gemini could not accept the request. Try a shorter text or another model." |
+
+### Wizard runs
 
 `WizardRequest`, from a brief or from pasted text:
 
@@ -428,12 +495,13 @@ Every route needs the admin or owner role and answers with `server_now`. The pro
 { "mode": "paste", "text": "The problem statement, copied from elsewhere..." }
 ```
 
-`difficulty` is `easy`, `medium` or `hard`; `topic` is required; each brief field is at most 2,000 characters and `text` at most 20,000.
+`difficulty` is `easy`, `medium` or `hard`; `topic` is required; each brief field is at most 2,000 characters and `text` at most 20,000. An optional `"provider": "gemini"` picks which of the session's keys to use; without it the `active_provider` is used.
 
 | Status and code | When |
 |---|---|
 | 400 `bad_request` | an unknown mode or difficulty, an empty topic or text, or a field over its limit |
-| 409 `no_key` | "Add a key in AI assistant first." |
+| 409 `no_key` | "Add a key in AI assistant first." (no key for the provider asked for, or none at all) |
+| 409 `no_model` | "Choose a model for OpenAI in AI assistant first." (the key was saved without a model) |
 | 429 `busy` | "One AI request at a time. Wait for the current one to finish." (a generation or a solve of this admin is still running) |
 
 The call runs in the background, at most 3 minutes with its one retry. When the answer passes the checks it becomes a draft problem (origin `ai`, tag `ai draft`; a taken slug gets `-2`, `-3` and so on), and input generation is queued for it at once, which chains output generation and validation.
@@ -442,7 +510,7 @@ The call runs in the background, at most 3 minutes with its one retry. When the 
 
 ```json
 { "id": "3f9c...", "kind": "generate", "state": "draft_created", "problem_id": 12,
-  "started_at": 1792183192359, "server_now": 1792183230000 }
+  "provider": "openai", "model": "gpt-x", "started_at": 1792183192359, "server_now": 1792183230000 }
 ```
 
 ```json
@@ -451,12 +519,12 @@ The call runs in the background, at most 3 minutes with its one retry. When the 
              "reasons": ["Subtask points add up to 90; make them add up to 100."] } }
 ```
 
-- `state`: `thinking`, then `draft_created` (generate), `submitted` (solve) or `error`. `problem_id` is the draft (generate) or the problem solved (solve); a solve adds `submission_id`.
-- `error.code`: `key_refused`, `no_access`, `model_not_found`, `rate_limited`, `unavailable`, `bad_request`, `refused` (the model declined; the message names the category), `cut_off` (too long, after one shorter retry), `invalid_answer` (with `reasons`, after one retry with them), `timeout`, `canceled`, `input`, `not_ready` (solve: the problem cannot be judged), `not_found`, `internal`. `reasons` is always an array.
+- `state`: `thinking`, then `draft_created` (generate), `submitted` (solve) or `error`. `problem_id` is the draft (generate) or the problem solved (solve); a solve adds `submission_id`. `provider` and `model` name what made the draft or the solution (C11).
+- `error.code`: `key_refused`, `no_quota`, `no_access`, `model_not_found`, `unsupported_model`, `rate_limited`, `unavailable`, `bad_request`, `refused` (the model declined; the message names the category), `cut_off` (too long, after one shorter retry), `invalid_answer` (with `reasons`, after one retry with them), `timeout`, `canceled`, `input`, `not_ready` (solve: the problem cannot be judged), `not_found`, `internal`. `reasons` is always an array.
 - `404 not_found` for another admin's run, an unknown id, or a run that ended over an hour ago or before a restart.
 - The same object is sent as a `wizard` event to the admin who started it when the run ends.
 
-`POST /api/admin/problems/{id}/solve` ("Can a model solve this?") sends the statement alone and asks for a C++17 solution, which is judged on the problem's tests as the admin's own submission (`client_key` `ai-solve-{wizard_id}`, listed with the admin's other submissions). The editor reads the score from `GET /api/submissions/{submission_id}`. Refusals: `404 not_found`, `409 no_key`, `409 not_ready` with `problems` before any call when the problem cannot be judged (its structure, or missing outputs), `429 busy`. The one-pending-submission rule still applies: the run then ends in `error` with `rate_limited`.
+`POST /api/admin/problems/{id}/solve` ("Can a model solve this?") sends the statement alone and asks for a C++17 solution, which is judged on the problem's tests as the admin's own submission (`client_key` `ai-solve-{wizard_id}`, listed with the admin's other submissions). The editor reads the score from `GET /api/submissions/{submission_id}`. It uses the `active_provider`. Refusals: `404 not_found`, `409 no_key`, `409 no_model`, `409 not_ready` with `problems` before any call when the problem cannot be judged (its structure, or missing outputs), `429 busy`. The one-pending-submission rule still applies: the run then ends in `error` with `rate_limited`.
 
 ## Workspace, runs and submissions
 
