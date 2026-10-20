@@ -3,6 +3,7 @@ package contests
 import (
 	"context"
 	"errors"
+	"strconv"
 	"testing"
 	"time"
 )
@@ -141,7 +142,18 @@ func TestFrozenBoardWaitsForTheEnd(t *testing.T) {
 	if frozen := scoreA(VariantFrozen); frozen != 0 {
 		t.Errorf("after the end: frozen %d", frozen)
 	}
+	// A decision made after the close stays on the frozen board even when
+	// an extension keeps the contest frozen again (security review 7).
+	execNoFK(t, r, "DELETE FROM outcome_adjustments",
+		"INSERT INTO outcome_adjustments (contest_id, user_id, problem_id, decision_id, created_at) VALUES (1, 1000, 100, 2, "+
+			itoaMs(at(121))+")")
+	*r.now = at(100)
+	if frozen := scoreA(VariantFrozen); frozen != 0 {
+		t.Errorf("a decision after the close, frozen board again: %d", frozen)
+	}
 }
+
+func itoaMs(t time.Time) string { return strconv.FormatInt(t.UnixMilli(), 10) }
 
 // The 700-student summary build, timed for calibration.md.
 func TestSummaryBuildFor700Students(t *testing.T) {

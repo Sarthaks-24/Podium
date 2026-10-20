@@ -133,6 +133,15 @@ func TestStudentsAuthorisationMatrix(t *testing.T) {
 			t.Errorf("%s read the progress: %d", who, code)
 		}
 	}
+	if code, _ := w.admin.do("GET", fmt.Sprintf("/api/admin/students/%d/record", w.admin.userID()), nil, ""); code != 403 {
+		t.Errorf("an admin opened their own record: %d", code)
+	}
+	// The contest's case list is a case read too.
+	cases := viewsOf(t, s, "case", asha)
+	w.owner.do("GET", fmt.Sprintf("/api/admin/contests/%d/integrity/cases", w.c1), nil, "")
+	if viewsOf(t, s, "case", asha) != cases+1 {
+		t.Error("the case list read was not logged")
+	}
 	before := viewsOf(t, s, "record", asha)
 	code, rec := w.admin.do("GET", record, nil, "")
 	if code != 200 || rec["rating"].(map[string]any)["value_tenths"].(float64) != 95 || len(rec["notes"].([]any)) != 1 {
@@ -266,8 +275,16 @@ func TestStudentsAuthorisationMatrix(t *testing.T) {
 	if _, err := s.authSvc.Forget(auth.WithActor(ctx, actor), "bilal@college.edu", true, false); err != nil {
 		t.Fatal(err)
 	}
-	if code, prog := w.owner.do("GET", fmt.Sprintf("/api/admin/users/%d/progress", bilal), nil, ""); code != 200 || len(prog["contests"].([]any)) != 0 {
+	// The organisers' route answers 404 for an erased account; its data
+	// is gone too, so a later rejudge brings nothing back.
+	if code, prog := w.owner.do("GET", fmt.Sprintf("/api/admin/users/%d/progress", bilal), nil, ""); code != 404 {
 		t.Errorf("forgotten account progress: %d %v", code, prog)
+	}
+	if p, err := s.contests.Summaries(ctx, bilal); err != nil || len(p) != 0 {
+		t.Errorf("summaries after erasure: %v %v", p, err)
+	}
+	if _, err := s.contests.SweepSummaries(ctx); err != nil {
+		t.Fatal(err)
 	}
 	var left int
 	s.db.QueryRow("SELECT count(*) FROM student_contest_summary WHERE user_id = ?", bilal).Scan(&left)

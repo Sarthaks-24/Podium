@@ -283,6 +283,10 @@ func TestZeroForProblemTwoPersonRuleAndAppeal(t *testing.T) {
 	if sd.Band != BandGood || len(sd.Lines) != 0 {
 		t.Errorf("standing after the upheld appeal: %+v", sd)
 	}
+	// A case cleared by an upheld appeal is never reopened (security review 2).
+	if _, err := r.svc.Decide(ctx, kase.ID, 100, Open, reason, nil); err == nil {
+		t.Error("reopened a case whose outcome was overturned")
+	}
 	sums, _ = r.contests.ContestSummaries(ctx, r.contest)
 	for _, sm := range sums {
 		if sm.UserID == 1 && (sm.Score != 150 || sm.Rank != 1 || sm.Problems[0].Zeroed) {
@@ -427,6 +431,9 @@ func TestRatingSteps(t *testing.T) {
 	r.outcome(t, 1, r.sub(t, 1, "B", 100, 10), OutcomeWarning, "")
 	if err := r.svc.ConfirmRating(ctx, 1, p.ID, 101, ""); !errors.Is(err, ErrRatingChanged) {
 		t.Errorf("confirmed after the rating moved: %v", err)
+	}
+	if err := r.svc.DeclineRating(ctx, 1, p.ID, 1); err == nil {
+		t.Error("the student declined a change to their own rating")
 	}
 	if err := r.svc.DeclineRating(ctx, 1, p.ID, 101); err != nil {
 		t.Errorf("decline: %v", err)

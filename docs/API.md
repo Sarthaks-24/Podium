@@ -1498,7 +1498,7 @@ The server writes the sentences from fixed templates with the contest's title, a
 
 | Route | Who | Request | Success |
 |---|---|---|---|
-| `GET /api/admin/submissions/{id}/notes` | reviewers of the submission's contest | | 200 `{submission: SubmissionRef, notes: [Note], case_id, server_now}`; logged |
+| `GET /api/admin/submissions/{id}/notes` | reviewers of the submission's contest (owners and admins; a co-organiser whose role is not student is an admin) | | 200 `{submission: SubmissionRef, notes: [Note], case_id, server_now}`; logged; `404` on one's own submission |
 | `POST /api/admin/submissions/{id}/notes` | same | `{"text": "...", "lines": [{"from": 12, "to": 18}]}` | 201 `Note` |
 | `POST /api/admin/submissions/{id}/case` | same | `{"title": "...", "note": "..."}` | 201 `Case` |
 
@@ -1644,7 +1644,8 @@ The student's `GET /api/integrity/cases` lists a case only once its notice is av
 ```
 
 - `value_tenths` is the rating in tenths, 0 to 100 (show 85 as 8.5); a student never rated yet is 100. `history` is newest first, kept 4 years; `cause` is `outcome`, `manual`, `appeal` or `rollover`; `band_before` and `band_after` differ on the line that crossed a band. `pending_rating` is `null` when nothing waits.
-- `cases` are every case the student is in, for reviewers; `notes` every note on the student's submissions still kept.
+- `cases` are every case the student is in, for reviewers; `notes` every note on the student's submissions still kept. A viewer who is a student of a case never gets it here, nor its standing lines and appeals. Nobody opens their own record page (`403`), and an erased account is `404` on every students route.
+- Every read of a case is logged: the case page, the contest's case list and the pair view, one row per student of the case; so is every appeal returned by `GET /api/admin/appeals`.
 
 | Route | Who | Request | Success |
 |---|---|---|---|

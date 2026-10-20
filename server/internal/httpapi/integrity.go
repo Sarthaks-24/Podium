@@ -288,6 +288,9 @@ func (d Deps) listIntegrityCases(w http.ResponseWriter, r *http.Request) {
 	list := []integrity.Case{}
 	for _, cs := range all {
 		if !cs.Involves(me) {
+			if !d.logCase(w, r, &cs) {
+				return
+			}
 			list = append(list, cs)
 		}
 	}
@@ -322,15 +325,22 @@ func (d Deps) getIntegrityCase(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	// Every read of a case is logged per student it is about (D97).
+	if d.logCase(w, r, cs) {
+		d.writeCase(w, r, cs, http.StatusOK)
+	}
+}
+
+// logCase records a read of a case, one record view per student it is
+// about (D97): the case page, the case list and the pair view all count.
+func (d Deps) logCase(w http.ResponseWriter, r *http.Request, cs *integrity.Case) bool {
 	viewer := userFrom(r.Context()).ID
 	for _, u := range cs.Users {
 		if err := d.Integrity.LogView(r.Context(), viewer, u.UserID, integrity.ViewCase, cs.ID); err != nil {
 			d.internalError(w, r, err)
-			return
+			return false
 		}
 	}
-	d.writeCase(w, r, cs, http.StatusOK)
+	return true
 }
 
 // writeCase answers a case with the viewer's own flags (may confirm, may
@@ -362,6 +372,9 @@ func (d Deps) getIntegrityCasePair(w http.ResponseWriter, r *http.Request) {
 	sg, a, b, err := d.Integrity.CasePair(r.Context(), cs, index)
 	if err != nil {
 		d.integrityError(w, r, err, missing)
+		return
+	}
+	if !d.logCase(w, r, cs) {
 		return
 	}
 	WriteJSON(w, http.StatusOK, map[string]any{"a": a, "b": b, "signal": sg, "server_now": d.serverNow()})

@@ -49,8 +49,8 @@ func (d Deps) student(w http.ResponseWriter, r *http.Request) (*studentRef, bool
 	id, ok := parseID(r.PathValue("id"))
 	var s studentRef
 	if ok {
-		err := d.DB.QueryRowContext(r.Context(), `SELECT id, coalesce(nullif(name, ''), email), email, disabled FROM users WHERE id = ?`, id).
-			Scan(&s.ID, &s.Name, &s.Email, &s.Disabled)
+		err := d.DB.QueryRowContext(r.Context(), `SELECT id, coalesce(nullif(name, ''), email), email, disabled FROM users WHERE id = ?
+			AND email NOT LIKE '%@removed.invalid'`, id).Scan(&s.ID, &s.Name, &s.Email, &s.Disabled)
 		ok = err == nil
 	}
 	if !ok {
@@ -299,6 +299,10 @@ func (d Deps) studentRecord(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx := r.Context()
 	viewer := userFrom(ctx).ID
+	if st.ID == viewer {
+		WriteError(w, http.StatusForbidden, "forbidden", "Your own record is read by the other organisers, not by you.")
+		return
+	}
 	if err := d.Integrity.LogView(ctx, viewer, st.ID, integrity.ViewRecord, 0); err != nil {
 		d.internalError(w, r, err)
 		return
@@ -339,15 +343,29 @@ func (d Deps) studentRecord(w http.ResponseWriter, r *http.Request) {
 			kept = append(kept, c)
 		}
 	}
+	// Nor the lines and appeals of such a case.
+	lines := []integrity.StandingLine{}
+	for _, l := range standing.Lines {
+		if l.CaseID == nil || !involved[*l.CaseID] {
+			lines = append(lines, l)
+		}
+	}
+	standing.Lines = lines
 	notes, err := d.Integrity.NotesAbout(ctx, st.ID)
 	if err != nil {
 		d.internalError(w, r, err)
 		return
 	}
-	appeals, err := d.Integrity.AppealsOf(ctx, st.ID)
+	all, err := d.Integrity.AppealsOf(ctx, st.ID)
 	if err != nil {
 		d.internalError(w, r, err)
 		return
+	}
+	appeals := []integrity.Appeal{}
+	for _, a := range all {
+		if a.CaseID == nil || !involved[*a.CaseID] {
+			appeals = append(appeals, a)
+		}
 	}
 	WriteJSON(w, http.StatusOK, map[string]any{"student": st, "standing": standing, "rating": rating, "pending_rating": pending,
 		"cases": kept, "notes": notes, "appeals": appeals, "server_now": d.serverNow()})

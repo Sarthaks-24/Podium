@@ -214,7 +214,7 @@ func (d Deps) progressFor(ctx context.Context, userID int64) (*Progress, error) 
 			t, diff := d.problemMeta(ctx, sp.ProblemID)
 			pp := ProgressProblem{Label: sp.Label, Title: titles[sp.ProblemID], ProblemID: sp.ProblemID, MaxScore: sp.MaxScore, Tags: t,
 				Difficulty: diff, PracticeOpen: practice, ZeroByDecision: sp.Zeroed,
-				Upsolved: up[sp.ProblemID] && sp.Score < sp.MaxScore}
+				Upsolved: full && up[sp.ProblemID] && sp.Score < sp.MaxScore}
 			if pp.Upsolved {
 				p.Totals.Upsolved++
 			}

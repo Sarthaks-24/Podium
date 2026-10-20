@@ -46,8 +46,18 @@ func (s *Service) Retain(ctx context.Context) (int64, error) {
 	if _, err := tx.ExecContext(ctx, `DELETE FROM integrity_explanations WHERE case_id IN (`+old+`)`, cutoff); err != nil {
 		return 0, err
 	}
-	// Appeals are explanations too: their text goes; the ruling stays.
+	// Appeals are explanations too: their text goes; the ruling stays. An
+	// appeal of a manual adjustment has no case: its text goes as long
+	// after it was written.
 	if _, err := tx.ExecContext(ctx, `UPDATE integrity_appeals SET text = '' WHERE text <> '' AND case_id IN (`+old+`)`, cutoff); err != nil {
+		return 0, err
+	}
+	if _, err := tx.ExecContext(ctx, `UPDATE integrity_appeals SET text = '' WHERE text <> '' AND case_id IS NULL AND created_at < ?`, cutoff); err != nil {
+		return 0, err
+	}
+	// The reviewers' note and the student's reason on each proposal.
+	if _, err := tx.ExecContext(ctx, `UPDATE integrity_proposals SET note = '', reason = '' WHERE (note <> '' OR reason <> '')
+		AND case_id IN (`+old+`)`, cutoff); err != nil {
 		return 0, err
 	}
 	// The notes a manual case was opened with were kept for it; they go

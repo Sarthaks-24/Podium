@@ -77,10 +77,12 @@ func InsertTx(ctx context.Context, ex Execer, r Row) error {
 	if r.AvailableAt == 0 {
 		r.AvailableAt = r.CreatedAt
 	}
+	// Never for an erased account: forget-user deleted its notices.
 	_, err := ex.ExecContext(ctx, `INSERT OR IGNORE INTO notifications (user_id, kind, case_id, contest_id, decision_id, appeal_id,
-		rating_history_id, created_at, available_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		rating_history_id, created_at, available_at) SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?
+		WHERE NOT EXISTS (SELECT 1 FROM users WHERE id = ? AND email LIKE '%@removed.invalid')`,
 		r.UserID, r.Kind, nullID(r.CaseID), nullID(r.ContestID), nullID(r.DecisionID), nullID(r.AppealID), nullID(r.RatingHistoryID),
-		r.CreatedAt, r.AvailableAt)
+		r.CreatedAt, r.AvailableAt, r.UserID)
 	return err
 }
 

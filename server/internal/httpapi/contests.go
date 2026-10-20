@@ -579,9 +579,9 @@ func (d Deps) standingsOut(ctx context.Context, c *contests.Contest, variant str
 	if variant == contests.VariantFrozen {
 		out.FrozenAt = millis(c.FrozenAt())
 	}
-	// A frozen board does not show a decision until the contest is over
-	// for everyone, nor does it say one happened.
-	if !c.BoardAdjustedAt.IsZero() && (variant == contests.VariantFull || !now.Before(c.Final())) {
+	// A frozen board shows a decision made after the close at once, and
+	// one made before (impossible through the routes) after the end.
+	if !c.BoardAdjustedAt.IsZero() && (variant == contests.VariantFull || !now.Before(c.Final()) || !c.BoardAdjustedAt.Before(c.Schedule.Close())) {
 		out.BoardUpdatedAt, out.BoardUpdateReason = millis(c.BoardAdjustedAt), ptr("review_decision")
 	}
 	return out, nil

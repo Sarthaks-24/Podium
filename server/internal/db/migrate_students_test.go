@@ -135,9 +135,16 @@ func TestMigrateFromV130(t *testing.T) {
 			t.Errorf("%s: want append only, got %v", q, err)
 		}
 	}
-	// The case retention may empty an appeal's text, and nothing else.
+	// The case retention may empty an appeal's text and a proposal's
+	// note and reason, and nothing else.
 	if _, err := d.ExecContext(ctx, "UPDATE integrity_appeals SET text = '' WHERE id = 1"); err != nil {
 		t.Errorf("emptying an appeal: %v", err)
+	}
+	if _, err := d.ExecContext(ctx, "UPDATE integrity_proposals SET note = '', reason = '' WHERE id = 1"); err != nil {
+		t.Errorf("emptying a proposal: %v", err)
+	}
+	if _, err := d.ExecContext(ctx, "UPDATE integrity_proposals SET outcome = 'referred'"); err == nil {
+		t.Error("a proposal's outcome changed")
 	}
 	// Notes reach the floor at 30 days; anything else still at a year.
 	for q, ok := range map[string]bool{

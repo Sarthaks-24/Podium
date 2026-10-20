@@ -61,6 +61,12 @@ func (d Deps) listNotes(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	// Notes are about the author; an organiser never reads those on
+	// their own submissions.
+	if sub.UserID == userFrom(r.Context()).ID {
+		WriteError(w, http.StatusNotFound, "not_found", "There is no such contest submission.")
+		return
+	}
 	if err := d.Integrity.LogView(r.Context(), userFrom(r.Context()).ID, sub.UserID, integrity.ViewNotes, sub.ID); err != nil {
 		d.internalError(w, r, err)
 		return
@@ -236,6 +242,15 @@ func (d Deps) listAppeals(w http.ResponseWriter, r *http.Request) {
 	out := []integrity.Appeal{}
 	for _, a := range list {
 		if a.UserID != me && (a.CaseID == nil || !involved[*a.CaseID]) {
+			// An appeal's text is the student's record: logged (D97).
+			kind, ref := integrity.ViewRecord, int64(0)
+			if a.CaseID != nil {
+				kind, ref = integrity.ViewCase, *a.CaseID
+			}
+			if err := d.Integrity.LogView(r.Context(), me, a.UserID, kind, ref); err != nil {
+				d.internalError(w, r, err)
+				return
+			}
 			out = append(out, a)
 		}
 	}

@@ -75,6 +75,7 @@ func (j *Job) Run(ctx context.Context) (Result, error) {
 		{"private notes", j.notes},
 		{"notices", j.notices},
 		{"record views and rating history", j.records},
+		{"rating proposals", j.ratingProposals},
 	}
 	var errs []error
 	for _, s := range steps {
@@ -426,6 +427,31 @@ func (j *Job) records(ctx context.Context, now time.Time, r *Result) error {
 		}
 	}
 	return nil
+}
+
+// ratingProposals deletes band-lowering rating proposals, and how they
+// ended, as long after as the rating history.
+func (j *Job) ratingProposals(ctx context.Context, now time.Time, r *Result) error {
+	cut := now.Add(-RatingHistory).UnixMilli()
+	n, err := j.batches(ctx, func(tx *sql.Tx) (int64, error) {
+		for _, t := range []string{"rating_proposals", "rating_proposal_closures"} {
+			if err := setCutoff(ctx, tx, t, cut); err != nil {
+				return 0, err
+			}
+		}
+		if _, err := tx.ExecContext(ctx, `DELETE FROM rating_proposal_closures WHERE at < ?
+			AND proposal_id IN (SELECT id FROM rating_proposals WHERE created_at < ?)`, cut, cut); err != nil {
+			return 0, err
+		}
+		res, err := tx.ExecContext(ctx, `DELETE FROM rating_proposals WHERE id IN (SELECT p.id FROM rating_proposals p WHERE p.created_at < ?
+			AND NOT EXISTS (SELECT 1 FROM rating_proposal_closures c WHERE c.proposal_id = p.id) ORDER BY p.id LIMIT ?)`, cut, batch)
+		if err != nil {
+			return 0, err
+		}
+		return res.RowsAffected()
+	})
+	r.RatingRowsDeleted += n
+	return err
 }
 
 // ErrFloor is returned by CheckFloors for a period shorter than the

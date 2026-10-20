@@ -404,7 +404,7 @@ func (s *Service) Decide(ctx context.Context, caseID, by int64, state, note stri
 	if state == Actioned {
 		return nil, ErrProposalNeeded
 	}
-	if current == Actioned && state == Open {
+	if state == Open {
 		var outcomes int
 		if err := tx.QueryRowContext(ctx, "SELECT count(*) FROM integrity_decisions WHERE case_id = ? AND outcome <> ''", caseID).
 			Scan(&outcomes); err != nil {

@@ -54,7 +54,13 @@ CREATE TABLE integrity_proposals (
 
 CREATE INDEX integrity_proposals_by_case ON integrity_proposals (case_id, id);
 
+-- The case retention empties note and reason with the case's evidence;
+-- nothing else may change.
 CREATE TRIGGER integrity_proposals_no_update BEFORE UPDATE ON integrity_proposals
+WHEN NEW.note <> '' OR NEW.reason <> '' OR NEW.id IS NOT OLD.id OR NEW.case_id IS NOT OLD.case_id
+  OR NEW.after_decision IS NOT OLD.after_decision OR NEW.by_user IS NOT OLD.by_user OR NEW.outcome IS NOT OLD.outcome
+  OR NEW.outcome_problem_id IS NOT OLD.outcome_problem_id OR NEW.user_ids IS NOT OLD.user_ids
+  OR NEW.explanations_seen IS NOT OLD.explanations_seen OR NEW.created_at IS NOT OLD.created_at
 BEGIN
   SELECT RAISE(ABORT, 'integrity_proposals is append only');
 END;
@@ -333,7 +339,9 @@ BEGIN
   SELECT RAISE(ABORT, 'rating_proposals is append only');
 END;
 
+-- Kept as long as the rating history (4 years), through their cutoff rows.
 CREATE TRIGGER rating_proposals_no_delete BEFORE DELETE ON rating_proposals
+WHEN OLD.created_at >= coalesce((SELECT before_ms FROM retention_cutoffs WHERE tbl = 'rating_proposals'), 0)
 BEGIN
   SELECT RAISE(ABORT, 'rating_proposals is append only');
 END;
@@ -351,6 +359,7 @@ BEGIN
 END;
 
 CREATE TRIGGER rating_proposal_closures_no_delete BEFORE DELETE ON rating_proposal_closures
+WHEN OLD.at >= coalesce((SELECT before_ms FROM retention_cutoffs WHERE tbl = 'rating_proposal_closures'), 0)
 BEGIN
   SELECT RAISE(ABORT, 'rating_proposal_closures is append only');
 END;

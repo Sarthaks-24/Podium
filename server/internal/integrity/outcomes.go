@@ -392,6 +392,16 @@ func (s *Service) Propose(ctx context.Context, caseID, by int64, in ProposeInput
 	if err := tx.QueryRowContext(ctx, "SELECT coalesce(max(id), 0) FROM integrity_decisions WHERE case_id = ?", caseID).Scan(&after); err != nil {
 		return nil, err
 	}
+	// A proposal made since the latest decision is pending (checked again
+	// inside the write, so two at once cannot both be made).
+	var pending int
+	if err := tx.QueryRowContext(ctx, "SELECT count(*) FROM integrity_proposals WHERE case_id = ? AND after_decision = ?", caseID, after).
+		Scan(&pending); err != nil {
+		return nil, err
+	}
+	if pending > 0 {
+		return nil, ErrProposalPending
+	}
 	seen, _ := json.Marshal(latest)
 	ujs, _ := json.Marshal(users)
 	if _, err := tx.ExecContext(ctx, `INSERT INTO integrity_proposals (case_id, after_decision, by_user, outcome, outcome_problem_id, user_ids,

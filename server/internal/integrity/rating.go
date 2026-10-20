@@ -395,6 +395,9 @@ func (s *Service) ConfirmRating(ctx context.Context, userID, proposalID, by int6
 
 // DeclineRating closes a waiting proposal without applying it.
 func (s *Service) DeclineRating(ctx context.Context, userID, proposalID, by int64) error {
+	if userID == by {
+		return &InputError{"Nobody declines a change to their own rating."}
+	}
 	res, err := s.DB.ExecContext(ctx, `INSERT OR IGNORE INTO rating_proposal_closures (proposal_id, state, by_user, at)
 		SELECT id, 'declined', ?, ? FROM rating_proposals WHERE id = ? AND user_id = ?`, by, s.now().UnixMilli(), proposalID, userID)
 	if err != nil {

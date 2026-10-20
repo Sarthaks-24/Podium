@@ -510,7 +510,7 @@ How long the server keeps each kind of data (v1.3.0). The periods are constants 
 | `private_notes` | Organisers' private notes on a submission, unless a case is opened from it | 30 days | daily retention job, through the `retention_cutoffs` row (floor 30 days); a note whose submission has a manual case goes with that case's evidence |
 | `notifications` | Notices in your inbox | 180 days | daily retention job; erasure deletes them at once |
 | `record_views` | Records of who read a student's record, cases or notes | 2 years | daily retention job, through the `retention_cutoffs` row |
-| `rating_history` | The organisers' rating of a student and its changes | 4 years | daily retention job, through the `retention_cutoffs` row; the current value stays |
+| `rating_history` | The organisers' rating of a student and its changes | 4 years | daily retention job, through the `retention_cutoffs` rows, with the band-lowering proposals and how they ended; the current value stays |
 | `contest_summaries` | Your result summary for each contest | 4 years after the contest | daily retention job, with the contest's submissions; erasure deletes them at once |
 | `run_payloads` | Custom input and program output of a Run | 30 days | daily retention job; the run's verdict row stays |
 | `contact_messages` | Messages sent to the organisers | 180 days | daily retention job |

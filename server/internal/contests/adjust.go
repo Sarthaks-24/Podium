@@ -14,7 +14,12 @@ import (
 
 // Adjustments returns the contest's zeroed problems, by student.
 func (s *Service) Adjustments(ctx context.Context, contestID int64) (map[ZeroKey]bool, error) {
-	rows, err := s.DB.QueryContext(ctx, "SELECT user_id, problem_id FROM outcome_adjustments WHERE contest_id = ?", contestID)
+	return s.adjustmentsSince(ctx, contestID, 0)
+}
+
+// adjustmentsSince is Adjustments for decisions made at or after since.
+func (s *Service) adjustmentsSince(ctx context.Context, contestID, since int64) (map[ZeroKey]bool, error) {
+	rows, err := s.DB.QueryContext(ctx, "SELECT user_id, problem_id FROM outcome_adjustments WHERE contest_id = ? AND created_at >= ?", contestID, since)
 	if err != nil {
 		return nil, err
 	}
