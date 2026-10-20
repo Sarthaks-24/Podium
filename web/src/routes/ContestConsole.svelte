@@ -590,7 +590,7 @@
           <p class="muted">No submissions match. They appear here as students submit.</p>
         {:else}
           <div class="table-wrap feed">
-            <table class="table">
+            <table class="table table-dense table-stack">
               <thead>
                 <tr>
                   <th scope="col">Time</th>
@@ -846,10 +846,6 @@
     accent-color: var(--act);
   }
 
-  .feed .table {
-    font-size: var(--fs-0);
-  }
-
   .who {
     font-weight: 500;
     white-space: nowrap;
@@ -979,30 +975,13 @@
 
   /* Phones: each feed row is time, student and problem, then verdict, score and Rejudge. */
   @media (max-width: 767px) {
-    .feed thead {
-      position: absolute;
-      width: 1px;
-      height: 1px;
-      overflow: hidden;
-      clip: rect(0, 0, 0, 0);
-    }
-
     .feed tbody tr {
-      display: grid;
       grid-template-columns: auto minmax(0, 1fr) auto;
       grid-template-areas:
         'when who plabel'
         'verdict fscore act';
       align-items: center;
-      gap: var(--space-1) var(--space-3);
       padding: var(--space-2) var(--space-3);
-      border-bottom: var(--rule) solid var(--line);
-    }
-
-    .feed tbody :is(th, td) {
-      height: auto;
-      padding: 0;
-      border: 0;
     }
 
     .feed .when {

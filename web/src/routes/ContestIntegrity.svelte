@@ -360,7 +360,7 @@
       <p class="muted">No cases yet. Choose signals above and open a case when one deserves a closer look.</p>
     {:else}
       <div class="table-wrap case-list">
-        <table class="table">
+        <table class="table table-stack">
           <caption class="visually-hidden">Cases for {contest.title}</caption>
           <thead>
             <tr>
@@ -373,7 +373,7 @@
           <tbody>
             {#each cases as c (c.id)}
               <tr>
-                <th scope="row" class="case-title"><a href="/admin/integrity/cases/{c.id}">{c.title}</a></th>
+                <th scope="row" class="case-title"><a class="row-link" href="/admin/integrity/cases/{c.id}">{c.title}</a></th>
                 <td class="case-who">{caseStudents(c)}</td>
                 <td class="case-state">{caseStateWord(c.state)}</td>
                 <td class="num case-when">{formatDateTime(c.updated_at)}</td>
@@ -485,34 +485,12 @@
 
   /* Phones: the case title, then the students, then state and time. */
   @media (max-width: 767px) {
-    .case-list thead {
-      position: absolute;
-      width: 1px;
-      height: 1px;
-      overflow: hidden;
-      clip: rect(0, 0, 0, 0);
-    }
-
     .case-list tbody tr {
-      display: grid;
       grid-template-columns: minmax(0, 1fr) auto;
       grid-template-areas:
         'title title'
         'who who'
         'state when';
-      gap: var(--space-1) var(--space-3);
-      padding: var(--space-3);
-      border-bottom: var(--rule) solid var(--line);
-    }
-
-    .case-list tbody tr:last-child {
-      border-bottom: 0;
-    }
-
-    .case-list tbody :is(th, td) {
-      height: auto;
-      padding: 0;
-      border: 0;
     }
 
     .case-title {

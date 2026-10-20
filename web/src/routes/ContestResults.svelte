@@ -276,7 +276,7 @@
       <p class="muted">No statistics yet. They appear once students submit.</p>
     {:else}
       <div class="table-wrap">
-        <table class="table stats">
+        <table class="table table-dense table-stack stats">
           <thead>
             <tr>
               <th scope="col">Problem</th>
@@ -438,32 +438,21 @@
 
   /* Phones: each problem is its name, then the counts, then the histogram. */
   @media (max-width: 767px) {
-    .stats thead {
-      position: absolute;
-      width: 1px;
-      height: 1px;
-      overflow: hidden;
-      clip: rect(0, 0, 0, 0);
-    }
-
     .stats tbody tr {
-      display: grid;
-      grid-template-columns: repeat(3, auto);
+      grid-template-columns: repeat(3, minmax(0, auto));
       grid-template-areas:
         'pname pname pname'
         'solved tried median'
         'hist hist hist';
       justify-content: start;
       gap: var(--space-2) var(--space-4);
-      padding: var(--space-3);
-      border-bottom: var(--rule) solid var(--line);
     }
 
     .stats tbody :is(th, td) {
-      height: auto;
-      padding: 0;
-      border: 0;
+      min-width: 0;
       text-align: left;
+      white-space: normal;
+      overflow-wrap: anywhere;
     }
 
     .stats .pname {
@@ -507,10 +496,6 @@
     display: flex;
     flex-wrap: wrap;
     gap: var(--space-3);
-  }
-
-  .stats {
-    font-size: var(--fs-0);
   }
 
   .letter {

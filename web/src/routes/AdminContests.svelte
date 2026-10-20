@@ -240,7 +240,7 @@
     <PageState kind="empty" message="No contests yet. Create one, then add validated problems to it." />
   {:else}
     <div class="table-wrap list">
-      <table class="table">
+      <table class="table table-stack">
         <thead>
           <tr>
             <th scope="col">Title</th>
@@ -255,7 +255,7 @@
         <tbody>
           {#each sorted as c (c.id)}
             <tr>
-              <th scope="row" class="title"><a href="/admin/contests/{c.id}">{c.title}</a></th>
+              <th scope="row" class="title"><a class="row-link" href="/admin/contests/{c.id}">{c.title}</a></th>
               <td class="num when">{formatDateTime(c.starts_at)}</td>
               <td class="length">{lengthText(c)}</td>
               <td class="num right problems">{problemCount(c)}</td>
@@ -344,34 +344,12 @@
   }
 
   @media (max-width: 767px) {
-    .list thead {
-      position: absolute;
-      width: 1px;
-      height: 1px;
-      overflow: hidden;
-      clip: rect(0, 0, 0, 0);
-    }
-
     .list tbody tr {
-      display: grid;
       grid-template-columns: minmax(0, 1fr) auto;
       grid-template-areas:
         'title state'
         'when pub'
         'links links';
-      gap: var(--space-1) var(--space-3);
-      padding: var(--space-3);
-      border-bottom: var(--rule) solid var(--line);
-    }
-
-    .list tbody tr:last-child {
-      border-bottom: 0;
-    }
-
-    .list tbody :is(th, td) {
-      height: auto;
-      padding: 0;
-      border: 0;
     }
 
     .title {

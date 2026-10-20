@@ -316,7 +316,7 @@
       <p class="lead muted" role="status">No problem matches "{filter.trim()}". Try another word.</p>
     {:else}
       <div class="table-wrap list">
-        <table class="table">
+        <table class="table table-stack">
           <thead>
             <tr>
               <th scope="col">Title</th>
@@ -334,7 +334,7 @@
               {@const name = p.title.trim() !== '' ? p.title : p.slug}
               <tr>
                 <th scope="row" class="title">
-                  <a href="/admin/problems/{p.id}">{name}</a>{#if isAIDraft(p.tags)}<span class="ai-draft">AI draft</span>{/if}
+                  <a class="row-link" href="/admin/problems/{p.id}">{name}</a>{#if isAIDraft(p.tags)}<span class="ai-draft">AI draft</span>{/if}
                 </th>
                 <td class="difficulty">{difficultyLabel(p.difficulty)}</td>
                 <td class="tags">{withoutAIDraft(p.tags).join(', ')}</td>
@@ -515,34 +515,12 @@
 
   /* Phones: each row is the title and status, then tests and the date. */
   @media (max-width: 767px) {
-    .list thead {
-      position: absolute;
-      width: 1px;
-      height: 1px;
-      overflow: hidden;
-      clip: rect(0, 0, 0, 0);
-    }
-
     .list tbody tr {
-      display: grid;
       grid-template-columns: auto minmax(0, 1fr) auto;
       grid-template-areas:
         'title title state'
         'tests updated try';
       align-items: baseline;
-      gap: var(--space-1) var(--space-3);
-      padding: var(--space-3);
-      border-bottom: var(--rule) solid var(--line);
-    }
-
-    .list tbody tr:last-child {
-      border-bottom: 0;
-    }
-
-    .list tbody :is(th, td) {
-      height: auto;
-      padding: 0;
-      border: 0;
     }
 
     .title {

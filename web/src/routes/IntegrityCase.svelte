@@ -283,7 +283,7 @@
   <section class="section" aria-labelledby="students-title">
     <h2 id="students-title">Students</h2>
     <div class="table-wrap students">
-      <table class="table">
+      <table class="table table-dense table-stack">
         <caption class="visually-hidden">Students in this case</caption>
         <thead>
           <tr>
@@ -445,10 +445,6 @@
     overflow-wrap: anywhere;
   }
 
-  .students .table {
-    font-size: var(--fs-0);
-  }
-
   .s-name {
     font-weight: 500;
     white-space: nowrap;
@@ -530,30 +526,9 @@
 
   /* Phones: name and share state on one line, the explanation below. */
   @media (max-width: 767px) {
-    .students thead {
-      position: absolute;
-      width: 1px;
-      height: 1px;
-      overflow: hidden;
-      clip: rect(0, 0, 0, 0);
-    }
-
     .students tbody tr {
-      display: grid;
       grid-template-columns: minmax(0, 1fr);
       gap: var(--space-1);
-      padding: var(--space-3);
-      border-bottom: var(--rule) solid var(--line);
-    }
-
-    .students tbody tr:last-child {
-      border-bottom: 0;
-    }
-
-    .students tbody :is(th, td) {
-      height: auto;
-      padding: 0;
-      border: 0;
     }
 
     .s-shared {

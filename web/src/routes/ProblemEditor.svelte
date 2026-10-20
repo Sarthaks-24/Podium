@@ -1320,7 +1320,7 @@
           <details class="all-tests">
             <summary>Show all {problem.tests.length} {problem.tests.length === 1 ? 'test' : 'tests'}</summary>
             <div class="table-wrap tests">
-              <table class="table">
+              <table class="table table-stack">
                 <thead>
                   <tr>
                     <th scope="col">Test</th>
@@ -1433,7 +1433,7 @@
 
           {#if draft.plan.length > 0}
             <div class="table-wrap plan">
-              <table class="table" aria-labelledby="plan-heading">
+              <table class="table table-stack" aria-labelledby="plan-heading">
                 <thead>
                   <tr>
                     <th scope="col">Test</th>
@@ -2486,30 +2486,9 @@
     }
 
     /* Tests stack: number and group, then input over output. */
-    .tests thead {
-      position: absolute;
-      width: 1px;
-      height: 1px;
-      overflow: hidden;
-      clip: rect(0, 0, 0, 0);
-    }
 
     .tests tbody tr {
-      display: grid;
       grid-template-columns: auto minmax(0, 1fr);
-      gap: var(--space-1) var(--space-3);
-      padding: var(--space-3);
-      border-bottom: var(--rule) solid var(--line);
-    }
-
-    .tests tbody tr:last-child {
-      border-bottom: 0;
-    }
-
-    .tests tbody :is(th, td) {
-      height: auto;
-      padding: 0;
-      border: 0;
     }
 
     .tests .file-cell,
@@ -2537,24 +2516,14 @@
     }
 
     /* Planned tests stack: test and subtask, then seed and arguments. */
-    .plan thead {
-      position: absolute;
-      width: 1px;
-      height: 1px;
-      overflow: hidden;
-      clip: rect(0, 0, 0, 0);
-    }
 
     .plan tbody tr {
-      display: grid;
       grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
       grid-template-areas:
         'idx subtask remove'
         'seed args args';
       align-items: end;
       gap: var(--space-2) var(--space-3);
-      padding: var(--space-3);
-      border-bottom: var(--rule) solid var(--line);
     }
 
     .plan tbody tr.has-errors {
@@ -2567,18 +2536,11 @@
       padding-top: var(--space-1);
     }
 
-    .plan tbody tr:last-child {
-      border-bottom: 0;
-    }
-
     .plan tbody :is(th, td) {
       display: grid;
       gap: var(--space-1);
       width: auto;
       min-width: 0;
-      height: auto;
-      padding: 0;
-      border: 0;
     }
 
     .plan-idx {

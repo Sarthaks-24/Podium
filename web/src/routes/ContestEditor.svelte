@@ -841,7 +841,7 @@
           {rosterDiff.removed === 1 ? 'student' : 'students'}.{/if}
       </p>
       <div class="table-wrap preview">
-        <table class="table">
+        <table class="table table-dense">
           <caption class="visually-hidden">Roster preview</caption>
           <thead>
             <tr><th scope="col" class="right">Line</th><th scope="col">Email</th><th scope="col">Name</th><th scope="col">Roll number</th><th scope="col">Section</th><th scope="col">Check</th></tr>
@@ -1095,10 +1095,6 @@
   .preview {
     max-height: 22rem;
     overflow: auto;
-  }
-
-  .preview .table {
-    font-size: var(--fs-0);
   }
 
   .right,

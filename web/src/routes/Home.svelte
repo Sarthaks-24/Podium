@@ -110,7 +110,7 @@
   <PageState kind="empty" message="No contests yet. When an organiser schedules one, it appears here." />
 {:else}
   <div class="table-wrap list">
-    <table class="table">
+    <table class="table table-stack">
       <thead>
         <tr>
           <th scope="col">Contest</th>
@@ -126,7 +126,7 @@
           {@const cd = listCountdown(c, ticker.now)}
           <tr class:live={c.state === 'live' || c.state === 'frozen'}>
             <th scope="row" class="title">
-              <a href="/contests/{encodeURIComponent(c.slug)}">{c.title}</a>
+              <a class="row-link" href="/contests/{encodeURIComponent(c.slug)}">{c.title}</a>
               {#if cd && cd.ms > 0}
                 <span class="countdown">{cd.lead} <span class="mono">{cd.ms >= 86_400_000 ? formatSpan(cd.ms) : formatCountdown(cd.ms)}</span></span>
               {/if}
@@ -221,34 +221,12 @@
 
   /* Phones: title and state, then the details in one muted line. */
   @media (max-width: 767px) {
-    .list thead {
-      position: absolute;
-      width: 1px;
-      height: 1px;
-      overflow: hidden;
-      clip: rect(0, 0, 0, 0);
-    }
-
     .list tbody tr {
-      display: grid;
       grid-template-columns: minmax(0, 1fr) auto;
       grid-template-areas:
         'title state'
         'when when'
         'meta score';
-      gap: var(--space-1) var(--space-3);
-      padding: var(--space-3);
-      border-bottom: var(--rule) solid var(--line);
-    }
-
-    .list tbody tr:last-child {
-      border-bottom: 0;
-    }
-
-    .list tbody :is(th, td) {
-      height: auto;
-      padding: 0;
-      border: 0;
     }
 
     .title {

@@ -810,3 +810,25 @@ test('keyboard only: an organiser edits a contest, runs the console and walks th
   await expect(reveal).toBeHidden();
   await expect(page.getByRole('button', { name: 'Resume the reveal' })).toBeFocused();
 });
+
+// F7: stacked rows on a phone keep their table semantics, and the title
+// link stretches over its row so the whole row opens the contest.
+test('stacked rows stay table rows and the whole row is the link', async ({ page }) => {
+  await mockApi(page, { phase: 'during' });
+  await page.setViewportSize({ width: 375, height: 812 });
+  await page.goto('/');
+  const table = page.getByRole('table');
+  const rows = table.getByRole('row');
+  await expect(rows.first()).toBeVisible();
+  expect(await rows.count()).toBeGreaterThan(1);
+  await expect(table.getByRole('rowheader').first()).toBeVisible();
+  const row = rows.nth(1);
+  const link = row.getByRole('link').first();
+  const [rowBox, linkBox] = [await row.boundingBox(), await link.boundingBox()];
+  expect(rowBox && rowBox.height >= 44).toBe(true);
+  // A press near the row's bottom right corner, away from the title, follows the title link.
+  const href = await link.getAttribute('href');
+  expect(linkBox).not.toBeNull();
+  await page.mouse.click((rowBox?.x ?? 0) + (rowBox?.width ?? 0) - 8, (rowBox?.y ?? 0) + (rowBox?.height ?? 0) - 8);
+  await expect(page).toHaveURL(new RegExp(`${href}$`));
+});

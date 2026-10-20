@@ -371,3 +371,48 @@ textarea.input {
     margin: auto;
   }
 }
+
+/* Stacked rows on phones (F7): add .table-stack to a .table, then give its
+   cells grid areas in the component. Under 768 px the header is hidden
+   (kept for screen readers), each row becomes a padded grid and the cells
+   lose their own padding and rules. A link with .row-link stretches over
+   its whole row, so the row is one large target; other controls in the
+   row stay above it. */
+@media (width < 768px) {
+  .table-stack thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+  }
+
+  .table-stack tbody tr {
+    position: relative;
+    display: grid;
+    gap: var(--space-1) var(--space-3);
+    padding: var(--space-3);
+    border-bottom: var(--rule) solid var(--line);
+  }
+
+  .table-stack tbody tr:last-child {
+    border-bottom: 0;
+  }
+
+  .table-stack tbody :is(th, td) {
+    height: auto;
+    padding: 0;
+    border: 0;
+  }
+
+  .table-stack .row-link::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+  }
+
+  .table-stack tbody :is(a, button, input, select, label):not(.row-link) {
+    position: relative;
+    z-index: 1;
+  }
+}

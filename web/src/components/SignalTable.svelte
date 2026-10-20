@@ -52,7 +52,7 @@
 </script>
 
 <div class="table-wrap signals" class:selectable>
-  <table class="table">
+  <table class="table table-dense table-stack">
     <caption class="visually-hidden">{caption}</caption>
     <thead>
       <tr>
@@ -104,10 +104,6 @@
 {/if}
 
 <style>
-  .signals .table {
-    font-size: var(--fs-0);
-  }
-
   .pick {
     width: var(--space-7);
   }
@@ -185,16 +181,7 @@
 
   /* Phones: students first, then kind and strength, then what was found. */
   @media (max-width: 767px) {
-    .signals thead {
-      position: absolute;
-      width: 1px;
-      height: 1px;
-      overflow: hidden;
-      clip: rect(0, 0, 0, 0);
-    }
-
     .signals tbody tr {
-      display: grid;
       grid-template-columns: auto minmax(0, 1fr) auto;
       grid-template-areas:
         'pick who who'
@@ -202,9 +189,6 @@
         'pick prob prob'
         'pick detail detail'
         'pick link link';
-      gap: var(--space-1) var(--space-3);
-      padding: var(--space-3);
-      border-bottom: var(--rule) solid var(--line);
     }
 
     .signals:not(.selectable) tbody tr {
@@ -215,16 +199,6 @@
         'prob prob'
         'detail detail'
         'link link';
-    }
-
-    .signals tbody tr:last-child {
-      border-bottom: 0;
-    }
-
-    .signals tbody :is(th, td) {
-      height: auto;
-      padding: 0;
-      border: 0;
     }
 
     .pick {

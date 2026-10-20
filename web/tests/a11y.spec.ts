@@ -49,8 +49,7 @@ const TARGETS: Target[] = [
  * listed here fails the test.
  */
 const KNOWN: Record<string, string> = {
-  // The problem statistics table scrolls sideways at 320 px and its wrapper cannot take focus.
-  'scrollable-region-focusable@contest-results': 'F7 (P1, F-V2) table utilities, applied to Results by R1 (P3, F-V6)',
+  // Empty since P1: F7's stacked rows fixed the Results statistics table at 320 px.
 };
 
 /** Screens allowed to scroll sideways at 320 px, with the plan item that fixes them. */
