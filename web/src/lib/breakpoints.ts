@@ -13,7 +13,7 @@
  *
  * CSS writes a tier as (min-width: 768px) for "from the tier up" or as the
  * exact complement (width < 768px) for "below it", never max-width: 767px,
- * which leaves a gap at fractional widths on zoomed screens (D126).
+ * which leaves a gap at fractional widths on zoomed screens (D127).
  */
 
 /** The width tiers, in CSS pixels. */
