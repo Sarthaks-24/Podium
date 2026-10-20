@@ -1,7 +1,11 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   checkKeyForm,
-  defaultModel,
+  cleanModelId,
+  draftedBy,
+  heldKeys,
+  isListed,
+  wizardBlocker,
   formatClock,
   initialForm,
   isKeyProblem,
@@ -26,17 +30,29 @@ import { ApiError } from './api';
 // Split so tools/check-secrets.sh does not read the fake as a credential.
 const KEY = 'sk-' + 'ant-api03-TEST-ONLY-not-a-real-key-0123456789';
 
+// The C11 shape: no default model, a session's list per provider.
 const PROVIDERS: KeyStatus['providers'] = [
   {
     id: 'anthropic',
     name: 'Anthropic',
+    has_key: false,
+    model: '',
+    active_until: null,
+    models: [],
+  },
+  {
+    id: 'openai',
+    name: 'OpenAI',
+    has_key: true,
+    model: 'gpt-x',
+    active_until: 1792190392359,
     models: [
-      { id: 'claude-opus-5-5', name: 'Claude Opus 5.5 (default)' },
-      { id: 'claude-sonnet-5-5', name: 'Claude Sonnet 5.5' },
-      { id: 'claude-haiku-5-5', name: 'Claude Haiku 5.5' },
+      { id: 'gpt-x', name: 'gpt-x' },
+      { id: 'gpt-x-mini', name: 'gpt-x-mini' },
     ],
   },
-  { id: 'fake', name: 'Test provider (canned problems)', models: [{ id: 'canned', name: 'Canned problems' }] },
+  { id: 'gemini', name: 'Google Gemini', has_key: false, model: '', active_until: null, models: [] },
+  { id: 'fake', name: 'Test provider (canned problems)', has_key: false, model: '', active_until: null, models: [{ id: 'canned', name: 'Canned problems' }] },
 ];
 
 function status(over: Partial<KeyStatus> = {}): KeyStatus {
@@ -49,25 +65,54 @@ function serialised(value: unknown): string {
 }
 
 describe('the key form', () => {
-  it('starts on Anthropic with Claude Opus 5.5 and an empty key', () => {
-    expect(initialForm(status())).toEqual({ provider: 'anthropic', model: 'claude-opus-5-5', key: '' });
-    expect(defaultModel(PROVIDERS[0])).toBe('claude-opus-5-5');
-    expect(defaultModel({ id: 'x', name: 'X', models: [{ id: 'only', name: 'Only' }] })).toBe('only');
+  it('starts on the first provider with no model: there is no default model (C11)', () => {
+    expect(initialForm(status({ provider: 'anthropic' }))).toEqual({ provider: 'anthropic', model: '', key: '' });
+    expect(initialForm(status({ provider: '' }))).toEqual({ provider: 'anthropic', model: '', key: '' });
   });
 
-  it('starts on the active provider and model when a key is active', () => {
-    const s = status({ active: true, provider: 'anthropic', model: 'claude-haiku-5-5', active_until: 1792183192359 });
-    expect(initialForm(s)).toEqual({ provider: 'anthropic', model: 'claude-haiku-5-5', key: '' });
+  it('starts on the active provider with its saved model', () => {
+    const s = status({ active: true, provider: 'openai', model: 'gpt-x', active_until: 1792190392359 });
+    expect(initialForm(s)).toEqual({ provider: 'openai', model: 'gpt-x', key: '' });
   });
 
-  it('asks for a key except for the fake provider', () => {
-    expect(checkKeyForm({ provider: 'anthropic', model: 'claude-opus-5-5', key: '  ' })).toEqual({ key: 'Paste your API key.' });
+  it('asks for a key unless the session holds one or the provider is the fake', () => {
+    expect(checkKeyForm({ provider: 'anthropic', model: '', key: '  ' })).toEqual({ key: 'Paste your API key.' });
+    expect(checkKeyForm({ provider: 'openai', model: 'gpt-x-mini', key: '' }, { has_key: true })).toEqual({});
     expect(checkKeyForm({ provider: 'fake', model: 'canned', key: '' })).toEqual({});
   });
 
-  it('names the model without the default note', () => {
-    expect(modelLabel(status(), 'anthropic', 'claude-opus-5-5')).toBe('Claude Opus 5.5');
+  it('takes any model id the server would, typed or empty', () => {
+    expect(checkKeyForm({ provider: 'gemini', model: '', key: 'k' })).toEqual({});
+    expect(checkKeyForm({ provider: 'gemini', model: 'models/gemini-x-pro', key: 'k' })).toEqual({});
+    expect(cleanModelId('  models/gemini-x-pro ')).toBe('gemini-x-pro');
+    expect(checkKeyForm({ provider: 'openai', model: 'gpt x', key: 'k' }).model).toMatch(/letters, digits/);
+    expect(checkKeyForm({ provider: 'openai', model: 'a'.repeat(129), key: 'k' }).model).toMatch(/at most 128/);
+  });
+
+  it('names a model from the list, or by its id when it is not listed', () => {
+    expect(modelLabel(status(), 'openai', 'gpt-x-mini')).toBe('gpt-x-mini');
     expect(modelLabel(status(), 'anthropic', 'claude-unknown')).toBe('claude-unknown');
+    expect(isListed(PROVIDERS[1], 'gpt-x')).toBe(true);
+    expect(isListed(PROVIDERS[1], 'gpt-y')).toBe(false);
+    expect(isListed(PROVIDERS[1], '')).toBe(false);
+  });
+
+  it('lists the keys the session holds and drops expired ones', () => {
+    expect(heldKeys(status({ server_now: 1792183192359 })).map((p) => p.id)).toEqual(['openai']);
+    expect(heldKeys(status({ server_now: 1792190392360 }))).toEqual([]);
+  });
+
+  it('says what the wizard waits for: a key, then a model', () => {
+    expect(wizardBlocker(status())).toBe('Add a key in AI assistant first.');
+    expect(wizardBlocker(status({ active: true, provider: 'openai', model: '' }))).toBe('Choose a model for OpenAI in AI assistant first.');
+    expect(wizardBlocker(status({ active: true, provider: 'openai', model: 'gpt-x' }))).toBe('');
+    expect(wizardBlocker(status({ active: true, provider: 'fake', model: '' }))).toBe('');
+  });
+
+  it('names the provider and model that made a draft', () => {
+    expect(draftedBy({ provider: 'openai', model: 'gpt-x' }, status())).toBe('Drafted by OpenAI with gpt-x');
+    expect(draftedBy({ provider: 'gemini', model: '' }, status())).toBe('Drafted by Google Gemini');
+    expect(draftedBy({}, status())).toBe('');
   });
 
   it('says until when the key is active, in local time', () => {

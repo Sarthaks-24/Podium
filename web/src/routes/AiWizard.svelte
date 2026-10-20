@@ -1,8 +1,9 @@
 <!--
   AiWizard: "New problem with AI" at /admin/ai/new (cache/v1/m5-plan.md
-  sections 2, 4 and 7). A line under the heading names the model and the
-  key's state ("Using Claude Opus 5.5. Key active until 14:32.") with a
-  link to the AI assistant settings, or says to add a key first. Two modes,
+  sections 2, 4 and 7; contract C11). A line under the heading names the
+  provider, the model and the key's state ("Using OpenAI, gpt-x. Key
+  active until 14:32.") with a link to the AI assistant settings, or says
+  what is missing first: a key, or a model for the provider. Two modes,
   chosen with radio buttons: "From a brief" (topic, difficulty,
   constraints, subtask ideas) and "From pasted text" (a textarea of at most
   20,000 characters, with the copyright note: the rewrite is in our own
@@ -25,6 +26,9 @@
     keyLine,
     MAX_TEXT,
     modelLabel,
+    draftedBy,
+    providerLabel,
+    wizardBlocker,
     needsKey,
     WIZARD_DIFFICULTIES,
     wizardPending,
@@ -60,7 +64,9 @@
   let wizard = $state<Wizard | null>(null);
   let lostWizard = $state(false);
 
-  const keyActive = $derived(keyStatus === null || keyStatus.active);
+  // Unknown until the status loads; then the wizard needs a key and a model (C11).
+  const blocker = $derived(wizardBlocker(keyStatus));
+  const keyActive = $derived(blocker === '');
   const pending = $derived(wizardPending(wizard));
   const steps = $derived(wizard ? wizardSteps(wizard) : []);
   const textLength = $derived(text.trim().length);
@@ -210,6 +216,7 @@
         code: e instanceof ApiError ? e.code : 'unexpected',
       };
       if (e instanceof ApiError && e.code === 'no_key' && keyStatus) keyStatus = { ...keyStatus, active: false };
+      if (e instanceof ApiError && e.code === 'no_model' && keyStatus) keyStatus = { ...keyStatus, model: '' };
     } finally {
       sending = false;
     }
@@ -237,10 +244,12 @@
     <PageState kind="forbidden" message="Only admins can use the AI assistant." />
   {:else if loadState === 'ready'}
     <p class="key-state">
-      {#if keyStatus && keyStatus.active}
-        Using {modelLabel(keyStatus, keyStatus.provider, keyStatus.model)}.
+      {#if keyStatus && keyStatus.active && blocker !== ''}
+        {blocker} <a href="/admin/ai">Go to AI assistant</a>
+      {:else if keyStatus && keyStatus.active}
+        Using {providerLabel(keyStatus, keyStatus.provider)}{needsKey(keyStatus.provider) ? `, ${modelLabel(keyStatus, keyStatus.provider, keyStatus.model)}` : ''}.
         {keyLine(keyStatus)}{needsKey(keyStatus.provider) ? '.' : ''}
-        <a href="/admin/ai">Change key</a>
+        <a href="/admin/ai">Change key or model</a>
       {:else if keyStatus}
         No key yet. <a href="/admin/ai">Add a key in AI assistant</a> before you generate.
       {:else if keyError !== ''}
@@ -295,7 +304,8 @@
           <p class="actions"><button type="button" class="btn btn-secondary" onclick={startAgain}>Change the request</button></p>
         {:else if wizard.problem_id}
           <p class="created">
-            The draft is in the problem bank. Tests are being generated and validated; the editor shows each step.
+            {#if draftedBy(wizard, keyStatus)}{draftedBy(wizard, keyStatus)}. {/if}The draft is in the problem bank. Tests are being generated and
+            validated; the editor shows each step.
           </p>
           <p class="actions">
             <a class="btn btn-primary" href="/admin/problems/{wizard.problem_id}">Open the draft in the editor</a>
@@ -399,7 +409,7 @@
           <button type="submit" class="btn btn-primary" disabled={sending || !keyActive} aria-describedby={keyActive ? undefined : 'generate-help'}>
             {sending ? 'Sending' : 'Generate'}
           </button>
-          {#if !keyActive}<span id="generate-help" class="field-help">Add a key in AI assistant first.</span>{/if}
+          {#if !keyActive}<span id="generate-help" class="field-help">{blocker}</span>{/if}
         </div>
 
         {#if requestError}

@@ -15,7 +15,7 @@
 // the editor's generator section and input generation, and the solve check.
 import { expect, test } from '@playwright/test';
 import { activate, tabTo } from './keyboard';
-import { shots, WIDTHS, THEMES, T0, WIZARD_ID, FAKE_KEY, type Json, json, mockApi, expectKeyGone, SCREENS } from './mocks/ai';
+import { shots, WIDTHS, THEMES, T0, WIZARD_ID, FAKE_KEY, OPENAI_KEY, GEMINI_KEY, type Json, json, mockApi, expectKeyGone, SCREENS } from './mocks/ai';
 
 for (const theme of THEMES) {
   test.describe(`${theme} theme`, () => {
@@ -68,12 +68,15 @@ test('the bank links to the wizard and the settings, and marks AI drafts', async
   await expect(page.getByRole('navigation', { name: 'Main' }).getByRole('link', { name: 'Problems' })).toHaveAttribute('aria-current', 'page');
 });
 
-test('saving a key checks it, clears the field and never keeps the key', async ({ page }) => {
+test('saving a key checks it, lists the models, clears the field and never keeps the key', async ({ page }) => {
   const state = await mockApi(page);
   await page.goto('/admin/ai');
-  await expect(page.getByText('The key stays in the server\'s memory for 2 hours', { exact: false })).toBeVisible();
+  await expect(page.getByText("A key stays in the server's memory for 2 hours", { exact: false })).toBeVisible();
   await expect(page.getByLabel('Provider')).toHaveValue('anthropic');
-  await expect(page.getByLabel('Model')).toHaveValue('claude-opus-5-5');
+  await expect(page.getByLabel('Provider').locator('option')).toHaveText(['Anthropic', 'OpenAI', 'Google Gemini']);
+  // No default model (C11): before a key is saved there is no list, only an optional id field.
+  await expect(page.getByLabel('Model', { exact: true })).toHaveCount(0);
+  await expect(page.getByLabel('Model id')).toHaveValue('');
   const field = page.getByLabel('API key');
   await expect(field).toHaveAttribute('type', 'password');
   await expect(field).toHaveAttribute('autocomplete', 'off');
@@ -87,33 +90,111 @@ test('saving a key checks it, clears the field and never keeps the key', async (
   // A refused key: the reason sits under the field, tied to it, and the field is empty again.
   await field.fill('sk-' + 'ant-wrong-and-typed-by-mistake');
   await page.getByRole('button', { name: 'Save key' }).click();
-  const refusal = page.getByText('Anthropic refused the key. Check it and paste it again.');
-  await expect(refusal).toBeVisible();
+  await expect(page.getByText('Anthropic refused the key. Check it and paste it again.')).toBeVisible();
   await expect(field).toHaveValue('');
   await expect(field).toHaveAttribute('aria-invalid', 'true');
   await expect(field).toHaveAttribute('aria-describedby', /api-key-error/);
   await expect(field).toBeFocused();
 
-  // A good key, chosen with another model.
-  await page.getByLabel('Model').selectOption('claude-sonnet-5-5');
+  // A good key with no model: the server checks it by listing the models, which fill the picker.
   await field.fill(FAKE_KEY);
   await page.getByRole('button', { name: 'Save key' }).click();
-  await expect(page.getByText('Key active until 14:32')).toBeVisible();
-  await expect(page.getByText('Anthropic, Claude Sonnet 5.5')).toBeVisible();
-  await expect(page.getByText('Key saved', { exact: true })).toBeVisible();
+  await expect(page.getByText('Key saved. Choose a model to start drafting.')).toBeVisible();
+  expect(state.keyBodies.at(-1)).toEqual({ provider: 'anthropic', model: '', key: FAKE_KEY });
+  const picker = page.getByLabel('Model', { exact: true });
+  await expect(picker).toBeFocused();
+  await expect(picker.locator('option:not([disabled])')).toHaveText(['Claude Opus 5.5', 'Claude Sonnet 5.5', 'Type a model id']);
+  await expect(page.getByText('Anthropic: Key active until 14:32')).toBeVisible();
+  await expect(page.getByText('No model chosen yet', { exact: false })).toBeVisible();
   await expect(field).toHaveValue('');
-  expect(state.keyBodies.at(-1)).toEqual({ provider: 'anthropic', model: 'claude-sonnet-5-5', key: FAKE_KEY });
+
+  // With the key held, the model changes alone: the key field may stay empty.
+  await picker.selectOption('claude-sonnet-5-5');
+  await expect(page.getByText('A key for Anthropic is active. Leave this empty to change only the model.')).toBeVisible();
+  await page.getByRole('button', { name: 'Save model' }).click();
+  await expect(page.getByText('Model saved', { exact: true })).toBeVisible();
+  expect(state.keyBodies.at(-1)).toEqual({ provider: 'anthropic', model: 'claude-sonnet-5-5', key: '' });
+  await expect(page.getByText('Claude Sonnet 5.5. Used for new drafts.')).toBeVisible();
+  await expect(page.getByRole('link', { name: 'New problem with AI' })).toBeVisible();
   await expectKeyGone(page, state);
 
   // Reloading shows the state from the server, still without the key.
   await page.reload();
-  await expect(page.getByText('Key active until 14:32')).toBeVisible();
+  await expect(page.getByText('Anthropic: Key active until 14:32')).toBeVisible();
+  await expect(page.getByLabel('Model', { exact: true })).toHaveValue('claude-sonnet-5-5');
   await expectKeyGone(page, state);
 
-  await page.getByRole('button', { name: 'Forget key' }).click();
+  await page.getByRole('button', { name: 'Forget the Anthropic key' }).click();
   await expect(page.getByText('No key yet. Add one below to draft problems with AI.')).toBeVisible();
   await expect(page.getByLabel('Provider')).toBeFocused();
   await expectKeyGone(page, state);
+});
+
+test('each provider keeps its own key, a typed model id is accepted, and the list refreshes', async ({ page }) => {
+  const state = await mockApi(page, { key: 'active' });
+  await page.goto('/admin/ai');
+  await expect(page.getByText('Anthropic: Key active until 14:32')).toBeVisible();
+
+  // OpenAI has no key yet: no list, so its model id is typed. The provider's lookup knows this one.
+  await page.getByLabel('Provider').selectOption('openai');
+  await expect(page.getByLabel('Model', { exact: true })).toHaveCount(0);
+  await page.getByLabel('Model id').fill('gpt-x-preview');
+  await page.getByLabel('API key').fill(OPENAI_KEY);
+  await page.getByRole('button', { name: 'Save key' }).click();
+  await expect(page.getByText('Key saved', { exact: true })).toBeVisible();
+  expect(state.keyBodies.at(-1)).toEqual({ provider: 'openai', model: 'gpt-x-preview', key: OPENAI_KEY });
+  await expect(page.getByText('OpenAI: Key active until 14:32')).toBeVisible();
+  await expect(page.getByText('gpt-x-preview. Used for new drafts.')).toBeVisible();
+  // The Anthropic key is still held, no longer the one used for drafts.
+  await expect(page.getByText('Anthropic: Key active until 14:32')).toBeVisible();
+  await expect(page.getByText('Claude Opus 5.5', { exact: true })).toBeVisible();
+  // The typed model is not in the list, so the picker shows it typed.
+  await expect(page.getByLabel('Model', { exact: true })).toHaveValue('');
+  await expect(page.getByLabel('Model id')).toHaveValue('gpt-x-preview');
+
+  // Refresh asks the provider again; the new model is offered.
+  await page.getByRole('button', { name: 'Refresh the list' }).click();
+  await expect(page.getByText('Model list updated')).toBeVisible();
+  expect(state.modelGets.at(-1)).toBe('?provider=openai&refresh=1');
+  await expect(page.getByLabel('Model', { exact: true }).locator('option', { hasText: 'gpt-x-2' })).toHaveCount(1);
+
+  // A model the provider does not offer is refused in the provider's words.
+  await page.getByLabel('Model id').fill('gpt-nope');
+  await page.getByRole('button', { name: 'Save model' }).click();
+  await expect(page.getByText('OpenAI does not offer the model gpt-nope to this key. Choose another model.')).toBeVisible();
+
+  // A malformed id is caught before anything is sent.
+  const sent = state.keyBodies.length;
+  await page.getByLabel('Model id').fill('gpt x');
+  await page.getByRole('button', { name: 'Save model' }).click();
+  await expect(page.getByLabel('Model id')).toBeFocused();
+  await expect(page.getByText('A model id has only letters, digits', { exact: false })).toBeVisible();
+  expect(state.keyBodies).toHaveLength(sent);
+
+  // Gemini: a pasted "models/" prefix is dropped.
+  await page.getByLabel('Provider').selectOption('gemini');
+  await page.getByLabel('Model id').fill('models/gemini-x-pro');
+  await page.getByLabel('API key').fill(GEMINI_KEY);
+  await page.getByRole('button', { name: 'Save key' }).click();
+  await expect(page.getByText('Google Gemini: Key active until 14:32')).toBeVisible();
+  expect(state.keyBodies.at(-1)).toEqual({ provider: 'gemini', model: 'gemini-x-pro', key: GEMINI_KEY });
+  await expect(page.getByLabel('Model', { exact: true })).toHaveValue('gemini-x-pro');
+  await expectKeyGone(page, state);
+
+  // Forgetting one provider's key leaves the others.
+  await page.getByRole('button', { name: 'Forget the OpenAI key' }).click();
+  await expect(page.getByText('OpenAI: Key active until 14:32')).toHaveCount(0);
+  await expect(page.getByText('Google Gemini: Key active until 14:32')).toBeVisible();
+  await expect(page.getByText('Anthropic: Key active until 14:32')).toBeVisible();
+  await page.screenshot({ path: `${shots()}ai-settings-three-keys-1440-light.png`, fullPage: true });
+});
+
+test('the wizard waits for a model when a key was saved without one', async ({ page }) => {
+  await mockApi(page, { key: 'no-model' });
+  await page.goto('/admin/ai/new');
+  await expect(page.getByText('Choose a model for OpenAI in AI assistant first.').first()).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Generate' })).toBeDisabled();
+  await expect(page.getByRole('link', { name: 'Go to AI assistant' })).toHaveAttribute('href', '/admin/ai');
 });
 
 test('in testing mode the fake provider needs no key', async ({ page }) => {
@@ -155,8 +236,12 @@ test('a wizard from a brief follows the live event to the draft', async ({ page 
   await page.screenshot({ path: `${shots()}ai-wizard-writing-1440-light.png`, fullPage: true });
 
   // Only the live event can finish this wizard: GETs keep saying "thinking".
-  state.events.push(`event: wizard\ndata: ${JSON.stringify({ id: WIZARD_ID, kind: 'generate', state: 'draft_created', problem_id: 20 })}\n\n`);
+  state.events.push(
+    `event: wizard\ndata: ${JSON.stringify({ id: WIZARD_ID, kind: 'generate', state: 'draft_created', problem_id: 20, provider: 'anthropic', model: 'claude-opus-5-5' })}\n\n`,
+  );
   await expect(page.locator('.step-current')).toHaveText(/Draft created, generating tests/);
+  // C11: the run names the provider and model that made the draft.
+  await expect(page.getByText('Drafted by Anthropic with Claude Opus 5.5.', { exact: false })).toBeVisible();
   await expect(page.getByRole('status').filter({ hasText: 'Draft created, generating tests' })).toHaveCount(1);
   await page.getByRole('link', { name: 'Open the draft in the editor' }).click();
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('Maximum subarray');

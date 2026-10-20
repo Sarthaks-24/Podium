@@ -8,44 +8,65 @@
  * no state the page keeps afterwards. It is never written to storage, a
  * URL, the console or a message: an error that somehow carries the key has
  * it replaced by redactKey() before anyone sees it.
+ *
+ * Providers (contract C11 of the v2 plan): Anthropic, OpenAI and Google
+ * Gemini, one key per provider per session. There is no default model; the
+ * picker is filled from the provider's live list once a key is saved, and
+ * any model id can be typed instead.
  */
 import { ApiError } from './api';
 import { verdictLabel, type PlannedTest } from './problems';
 import type { Submission } from './workspace';
 
-/** One model a provider offers, as GET /api/admin/ai/key lists it. */
+/** One model a provider offers, from the provider's own list (contract C11). */
 export interface ModelOption {
   id: string;
   name: string;
 }
 
-/** A provider the server can use; "fake" exists only in testing mode. */
+/**
+ * A provider and what this session holds for it (KeyStatus.providers[],
+ * C11). "fake" exists only in testing mode and needs no key.
+ */
 export interface ProviderOption {
   id: string;
   name: string;
+  /** This session holds an unexpired key for the provider. */
+  has_key: boolean;
+  /** The model id saved with the key, "" when none was chosen yet. */
+  model: string;
+  /** Unix ms when the server forgets the key, or null without one. */
+  active_until: number | null;
+  /** The session's copy of the provider's filtered model list, [] until listed. */
   models: ModelOption[];
 }
 
 /** GET, and the answer to PUT, /api/admin/ai/key. Never holds the key. */
 export interface KeyStatus {
   active: boolean;
+  /** The active provider: the one the wizard uses. */
   provider: string;
   model: string;
-  /** Unix ms when the server forgets the key, or null. */
+  /** Unix ms when the server forgets the active key, or null. */
   active_until: number | null;
   providers: ProviderOption[];
   server_now?: number;
 }
 
-/** The key form as the settings page holds it. */
+/** GET /api/admin/ai/models?provider= (C11). */
+export interface ModelList {
+  provider: string;
+  models: ModelOption[];
+  listed_at?: number;
+  server_now?: number;
+}
+
+/** The key form as the settings page holds it. `model` is free text; the picker only fills it. */
 export interface KeyForm {
   provider: string;
   model: string;
   key: string;
 }
-
-/** The model the plan makes the default (decision in m5-plan.md section 6). */
-export const DEFAULT_MODEL = 'claude-opus-5-5';
 
 /** The provider that needs no key. */
 export const FAKE_PROVIDER = 'fake';
@@ -55,6 +76,10 @@ export const MAX_TEXT = 20_000;
 
 /** How long the server keeps a key, in words, for the settings page. */
 export const KEY_HOURS = 2;
+
+/** The longest model id the server takes, and the characters it allows (C11). */
+export const MAX_MODEL_ID = 128;
+const MODEL_ID = /^[A-Za-z0-9._:-]*$/;
 
 /** True when the provider is the testing-mode fake, which needs no key. */
 export function needsKey(provider: string): boolean {
@@ -72,11 +97,10 @@ export function formatClock(t: number): string {
   return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
 }
 
-/** A model's name without the "(default)" note the list carries. */
+/** A model's name from the provider's list, or the id itself when the list does not have it. */
 export function modelLabel(status: Pick<KeyStatus, 'providers'>, provider: string, model: string): string {
   const p = status.providers.find((x) => x.id === provider);
-  const m = p?.models.find((x) => x.id === model);
-  return (m?.name ?? model).replace(/\s*\(default\)\s*$/i, '');
+  return p?.models.find((x) => x.id === model)?.name ?? model;
 }
 
 /** A provider's name as the list gives it. */
@@ -91,22 +115,44 @@ export function keyLine(status: Pick<KeyStatus, 'active' | 'active_until' | 'pro
   return status.active_until !== null ? `Key active until ${formatClock(status.active_until)}` : 'Key active';
 }
 
-/**
- * The form a page starts with: the active provider and model, or the first
- * provider with its default model. The key is always empty.
- */
-export function initialForm(status: KeyStatus): KeyForm {
-  if (status.active && status.providers.some((p) => p.id === status.provider)) {
-    return { provider: status.provider, model: status.model, key: '' };
-  }
-  const p = status.providers[0];
-  return { provider: p?.id ?? '', model: defaultModel(p), key: '' };
+/** True when the provider's key ran out by the given clock (the server's when it sent one). */
+export function keyExpired(p: Pick<ProviderOption, 'has_key' | 'active_until'>, now: number): boolean {
+  return p.has_key && p.active_until !== null && p.active_until < now;
 }
 
-/** The provider's default model: Opus 5.5 when it is offered, else the first. */
-export function defaultModel(p: ProviderOption | undefined): string {
-  if (!p) return '';
-  return p.models.find((m) => m.id === DEFAULT_MODEL)?.id ?? p.models[0]?.id ?? '';
+/** The providers this session holds a live key for, in the server's order. */
+export function heldKeys(status: KeyStatus): ProviderOption[] {
+  const now = status.server_now ?? Date.now();
+  return status.providers.filter((p) => p.has_key && !keyExpired(p, now));
+}
+
+/**
+ * The form a page starts with: the active provider with its saved model,
+ * or the first provider with no model. There is no default model (C11):
+ * the provider's live list fills the picker once a key is saved. The key
+ * is always empty.
+ */
+export function initialForm(status: KeyStatus): KeyForm {
+  const p = status.providers.find((x) => x.id === status.provider) ?? status.providers[0];
+  return { provider: p?.id ?? '', model: p?.model ?? '', key: '' };
+}
+
+/** A typed model id as the server stores it: trimmed, without a leading "models/". */
+export function cleanModelId(model: string): string {
+  return model.trim().replace(/^models\//, '');
+}
+
+/** True when the model id is in the provider's list, so the picker can show it selected. */
+export function isListed(p: Pick<ProviderOption, 'models'> | undefined, model: string): boolean {
+  return model !== '' && (p?.models ?? []).some((m) => m.id === model);
+}
+
+/** What the wizard needs before it can start, as one sentence, or "" when it is ready. */
+export function wizardBlocker(status: KeyStatus | null): string {
+  if (!status) return '';
+  if (!status.active) return 'Add a key in AI assistant first.';
+  if (status.model === '' && needsKey(status.provider)) return `Choose a model for ${providerLabel(status, status.provider)} in AI assistant first.`;
+  return '';
 }
 
 /** Replaces every copy of the key in a sentence with "[redacted]". */
@@ -131,9 +177,10 @@ export async function saveKey(
   form: KeyForm,
 ): Promise<SaveKeyResult> {
   const key = needsKey(form.provider) ? form.key.trim() : '';
-  const cleared: KeyForm = { provider: form.provider, model: form.model, key: '' };
+  const model = cleanModelId(form.model);
+  const cleared: KeyForm = { provider: form.provider, model, key: '' };
   try {
-    const status = await put({ provider: form.provider, model: form.model, key });
+    const status = await put({ provider: form.provider, model, key });
     return { ok: true, status, form: cleared };
   } catch (e) {
     const message = e instanceof ApiError ? e.message : 'Something went wrong. Try again in a moment.';
@@ -147,12 +194,18 @@ export async function saveKey(
   }
 }
 
-/** Checks the key form before it is sent; returns field errors by name. */
-export function checkKeyForm(form: KeyForm): Record<string, string> {
+/**
+ * Checks the key form before it is sent; returns field errors by name. The
+ * model may be empty (the server then lists the provider's models), and the
+ * key may be empty when the session already holds one for the provider.
+ */
+export function checkKeyForm(form: KeyForm, provider?: Pick<ProviderOption, 'has_key'>): Record<string, string> {
   const fields: Record<string, string> = {};
   if (form.provider === '') fields.provider = 'Choose a provider.';
-  if (form.model === '') fields.model = 'Choose a model.';
-  if (needsKey(form.provider) && form.key.trim() === '') fields.key = 'Paste your API key.';
+  const model = cleanModelId(form.model);
+  if (model.length > MAX_MODEL_ID) fields.model = `A model id is at most ${MAX_MODEL_ID} characters.`;
+  else if (!MODEL_ID.test(model)) fields.model = 'A model id has only letters, digits and . _ - : in it. Copy it from the provider.';
+  if (needsKey(form.provider) && form.key.trim() === '' && !provider?.has_key) fields.key = 'Paste your API key.';
   return fields;
 }
 
@@ -208,11 +261,22 @@ export interface Wizard {
   problem_id?: number | null;
   /** Set on a solve request once the model's answer was submitted. */
   submission_id?: number | null;
+  /** The provider and model that made the draft or the solution (C11). */
+  provider?: string;
+  model?: string;
+}
+
+/** "Drafted by OpenAI with gpt-x", or "" when the run does not say. */
+export function draftedBy(w: Pick<Wizard, 'provider' | 'model'>, status: Pick<KeyStatus, 'providers'> | null): string {
+  if (!w.provider) return '';
+  const name = status ? providerLabel(status, w.provider) : w.provider;
+  const model = w.model ? (status ? modelLabel(status, w.provider, w.model) : w.model) : '';
+  return model ? `Drafted by ${name} with ${model}` : `Drafted by ${name}`;
 }
 
 /** Error codes that mean the key is missing or no longer works, so the page links to the settings. */
 export function isKeyProblem(code: string | undefined): boolean {
-  return code === 'no_key' || code === 'key_refused';
+  return ['no_key', 'no_model', 'key_refused', 'model_not_found', 'no_access', 'unsupported_model'].includes(code ?? '');
 }
 
 /** True while the model is still writing. */
@@ -247,6 +311,10 @@ export function wizardStatusText(w: Pick<Wizard, 'state'>): string {
 /** API paths of the wizard. */
 export const aiPaths = {
   key: '/api/admin/ai/key',
+  /** DELETE forgets this one provider's key. */
+  keyOf: (provider: string) => `/api/admin/ai/key?provider=${encodeURIComponent(provider)}`,
+  providers: '/api/admin/ai/providers',
+  models: (provider: string, refresh = false) => `/api/admin/ai/models?provider=${encodeURIComponent(provider)}${refresh ? '&refresh=1' : ''}`,
   wizard: '/api/admin/ai/wizard',
   wizardOne: (id: string | number) => `/api/admin/ai/wizard/${encodeURIComponent(String(id))}`,
 };
