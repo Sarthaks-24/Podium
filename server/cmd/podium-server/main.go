@@ -39,10 +39,14 @@ func main() {
 	flag.Usage = func() {
 		fmt.Fprintln(os.Stderr, "usage: podium-server [-env-file FILE]           run the server")
 		fmt.Fprintln(os.Stderr, "       podium-server check [-db F] [-tests D] [-hash]  check a database and its test files")
+		fmt.Fprintln(os.Stderr, "       podium-server deploy-check [-db F] [-force REASON -release TAG]  may a release be installed now?")
 	}
 	flag.Parse()
 	if flag.Arg(0) == "check" {
 		os.Exit(checkCmd(flag.Args()[1:], os.Stdout))
+	}
+	if flag.Arg(0) == "deploy-check" {
+		os.Exit(deployCheckCmd(flag.Args()[1:], os.Stdout))
 	}
 	if flag.NArg() > 0 {
 		flag.Usage()
