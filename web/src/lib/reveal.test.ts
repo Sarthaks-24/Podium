@@ -87,3 +87,26 @@ describe('reveal ordering', () => {
     expect(end.rows.map((r) => r.total)).toEqual(tieFull.rows.map((r) => r.total));
   });
 });
+
+describe('skipping to the top', () => {
+  it('resolves the rows below the top and stops before one that would climb into it', async () => {
+    const { skipToTop, initialReveal, nextIndex, nothingToReveal } = await import('./reveal');
+    const row = (user_id: number, rank: number, total: number, pending: number) => ({
+      user_id, name: `S${user_id}`, rank, total, last_improvement_s: user_id,
+      cells: [{ label: 'A', score: total, pending, max: 100 }],
+    });
+    const frozen = { rows: [row(1, 1, 100, 0), row(2, 2, 50, 1), row(3, 3, 40, 1), row(4, 4, 10, 1)] };
+    const full = { rows: [row(1, 1, 100, 0), row(2, 2, 60, 0), row(3, 3, 45, 0), row(4, 4, 15, 0)] };
+    const start = initialReveal(frozen as never, full as never);
+    // Below the top 2, rows 4 and 3 resolve quietly; row 2 is in the top, so it is shown.
+    const s = skipToTop(start, 2);
+    expect(s.rows[nextIndex(s)].user_id).toBe(2);
+    expect(s.rows.filter((r) => r.resolved).map((r) => r.user_id).sort()).toEqual([1, 3, 4]);
+    // A row that would climb into the top is never skipped.
+    const climb = { rows: [row(1, 1, 100, 0), row(4, 2, 90, 0), row(2, 3, 50, 0), row(3, 4, 40, 0)] };
+    const c = skipToTop(initialReveal(frozen as never, climb as never), 2);
+    expect(c.rows[nextIndex(c)].user_id).toBe(4);
+    expect(nothingToReveal(start)).toBe(false);
+    expect(nothingToReveal(initialReveal(full as never, full as never))).toBe(true);
+  });
+});

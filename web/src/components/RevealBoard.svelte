@@ -1,23 +1,29 @@
 <!--
   RevealBoard: the projector walk through the final standings (design.md
-  5.5, lib/reveal.ts). A full-screen modal on --paper with large rows
-  (--fs-3), starting from the frozen board; opening it also puts the
-  browser in full screen, and closing it leaves full screen. Space, Enter or the right arrow
-  (or the Next button) resolves the lowest unresolved row: its pending
-  cells fill with their final scores, the row slides to its final place
-  over --dur-slow above the rows it passes, and its rank number counts to
-  the new one. The left
+  5.5, lib/reveal.ts; v2 P3 F6.4, C6). A full-screen modal on --paper with
+  room-scale rows (--fs-reveal), starting from the frozen board; opening
+  it also puts the browser in full screen, and closing it leaves full
+  screen. Space, Enter or the right arrow ("Show next") resolves the
+  lowest unresolved row: its pending cells fill with their final scores,
+  the row slides to its final place over --dur-slow above the rows it
+  passes, and its rank number counts to the new one. The row that just
+  moved keeps --act-tint until the next step, so the action colour means
+  only "just moved"; the next row is marked by a --ink-muted border.
+  "Skip to the top 10" resolves the rows below the top quietly. The left
   arrow (or Back) undoes a step, and "Start over" begins again. Rows still
-  to come have muted names and their pending cells sit on --wait-tint, so
-  the room can see what is left. Escape (or Exit) leaves and keeps the
-  place: opening the board again resumes. With prefers-reduced-motion the
+  to come have muted names and their pending cells sit on --wait-tint.
+  At the end the board says "Every result is shown" and, when students
+  still see the frozen board, offers "Release the full board"; with no
+  freeze there is nothing to reveal, and it says so. Escape (or "Close the
+  reveal") leaves and keeps the place. With prefers-reduced-motion the
   row moves at once and is outlined for a second instead. A polite live
   region says each move as a sentence. Props: `open`, `frozen` and `full`
-  (the two boards), `labels`, `title` and `onclose`.
+  (the two boards), `labels`, `title`, `held` (students still see the
+  frozen board), `onrelease` and `onclose`.
 -->
 <script lang="ts">
   import { tick } from 'svelte';
-  import { initialReveal, isDone, nextIndex, revealStep, type RevealState } from '../lib/reveal';
+  import { initialReveal, isDone, nextIndex, nothingToReveal, revealStep, skipToTop, type RevealState } from '../lib/reveal';
   import { cellFor, cellView, ordinalWord, type Standings } from '../lib/standings';
 
   interface Props {
@@ -26,10 +32,23 @@
     full: Standings;
     labels: string[];
     title: string;
+    held?: boolean;
+    onrelease?: () => void;
     onclose: () => void;
   }
 
-  let { open, frozen, full, labels, title, onclose }: Props = $props();
+  let { open, frozen, full, labels, title, held = false, onrelease, onclose }: Props = $props();
+
+  /** The board's timings come from the motion tokens (--dur-slow), not from numbers here. */
+  function slowMs(): number {
+    const v = getComputedStyle(document.documentElement).getPropertyValue('--dur-slow').trim();
+    const n = parseFloat(v);
+    return Number.isFinite(n) ? (v.endsWith('ms') ? n : n * 1000) : 320;
+  }
+
+  /** The row that moved last; it keeps the action tint until the next step. */
+  let lastMoved = $state<number | null>(null);
+  const TOP = 10;
 
   let dialog: HTMLDialogElement | undefined = $state();
   let list: HTMLOListElement | undefined = $state();
@@ -49,6 +68,9 @@
     return i >= 0 ? reveal.rows[i] : null;
   });
   const left = $derived(reveal.rows.filter((r) => !r.resolved).length);
+  const empty = $derived(reveal.rows.length > 0 && nothingToReveal(reveal));
+  /** Skipping helps only while rows below the top are still to come. */
+  const canSkip = $derived(!done && nextRow !== null && nextRow.rank > TOP);
 
   $effect(() => {
     if (!dialog) return;
@@ -60,7 +82,7 @@
       document.documentElement.requestFullscreen?.().catch(() => {});
       tick().then(() => {
         scrollToNext();
-        dialog?.querySelector<HTMLButtonElement>('.next')?.focus();
+        (dialog?.querySelector<HTMLButtonElement>('.next') ?? dialog?.querySelector<HTMLElement>('#reveal-title'))?.focus();
       });
     } else if (!open && dialog.open) {
       dialog.close();
@@ -73,7 +95,18 @@
     past = [];
     shownRank = {};
     flash = null;
+    lastMoved = null;
     said = '';
+    void keepFocus();
+  }
+
+  function skip() {
+    if (busy || !canSkip) return;
+    past = [...past, reveal];
+    reveal = skipToTop(reveal, TOP);
+    lastMoved = null;
+    said = `Every row below ${ordinalWord(TOP)} is shown.`;
+    tick().then(scrollToNext);
     void keepFocus();
   }
 
@@ -96,6 +129,7 @@
     reveal = past[past.length - 1];
     past = past.slice(0, -1);
     shownRank = {};
+    lastMoved = null;
     said = 'Stepped back one row.';
     tick().then(scrollToNext);
     void keepFocus();
@@ -114,7 +148,7 @@
   function countRank(userId: number, from: number, to: number) {
     if (from === to || reduced()) return;
     const start = performance.now();
-    const ms = 320;
+    const ms = slowMs();
     const frame = (t: number) => {
       const k = Math.min(1, (t - start) / ms);
       shownRank = { ...shownRank, [userId]: Math.round(from + (to - from) * k) };
@@ -144,6 +178,7 @@
     reveal = result.state;
     const { move } = result;
     const row = reveal.rows[move.to];
+    lastMoved = move.user_id;
     void keepFocus();
     said =
       move.to < move.from
@@ -158,18 +193,21 @@
       }, 1000);
     } else {
       moving = move.user_id;
-      // FLIP: start every moved row where it was, then let it slide home.
-      for (const el of list?.querySelectorAll<HTMLElement>('[data-user]') ?? []) {
+      // FLIP, reads first: measure every row's new place, then write each
+      // offset, so the loop never forces a layout between writes.
+      const rows = [...(list?.querySelectorAll<HTMLElement>('[data-user]') ?? [])];
+      const offsets = rows.map((el) => {
         const old = before[Number(el.dataset.user)];
-        if (old === undefined) continue;
-        const dy = old - el.getBoundingClientRect().top;
-        if (Math.abs(dy) < 1) continue;
+        return old === undefined ? 0 : old - el.getBoundingClientRect().top;
+      });
+      const moved = rows.filter((el, k) => {
+        if (Math.abs(offsets[k]) < 1) return false;
         el.style.transition = 'none';
-        el.style.transform = `translateY(${dy}px)`;
-      }
+        el.style.transform = `translateY(${offsets[k]}px)`;
+        return true;
+      });
       requestAnimationFrame(() => {
-        for (const el of list?.querySelectorAll<HTMLElement>('[data-user]') ?? []) {
-          if (!el.style.transform) continue;
+        for (const el of moved) {
           el.style.transition = 'transform var(--dur-slow) var(--ease)';
           el.style.transform = '';
         }
@@ -182,7 +220,7 @@
         if (moving === move.user_id) moving = null;
         scrollToNext();
       },
-      reduced() ? 0 : 340,
+      reduced() ? 0 : slowMs() + 20,
     );
   }
 
@@ -210,16 +248,21 @@
     <div>
       <h2 id="reveal-title" tabindex="-1">{title}</h2>
       <p class="hint">
-        {#if done}All rows resolved. These are the final standings.{:else}Press Space or the right arrow to resolve the next row, the left
-          arrow to go back. {left}
+        {#if empty}Nothing to reveal: the board was never frozen, so these are the final standings.{:else if done}Every result is shown.
+          These are the final standings.{:else}Press Space or the right arrow to show the next row, the left arrow to go back. {left}
           {left === 1 ? 'row' : 'rows'} left.{/if}
       </p>
     </div>
     <div class="buttons">
-      <button type="button" class="btn btn-primary next" disabled={done} onclick={step}>Next</button>
+      {#if done}
+        {#if held && onrelease}<button type="button" class="btn btn-primary release" onclick={onrelease}>Release the full board</button>{/if}
+      {:else}
+        <button type="button" class="btn btn-primary next" onclick={step}>Show next</button>
+        {#if canSkip}<button type="button" class="btn btn-secondary skip" onclick={skip}>Skip to the top {TOP}</button>{/if}
+      {/if}
       <button type="button" class="btn btn-secondary back" disabled={past.length === 0} onclick={back}>Back</button>
       <button type="button" class="btn btn-quiet" disabled={past.length === 0} onclick={startOver}>Start over</button>
-      <button type="button" class="btn btn-secondary exit" onclick={onclose}>Exit</button>
+      <button type="button" class="btn btn-secondary exit" onclick={onclose}>Close the reveal</button>
     </div>
   </header>
   <p class="visually-hidden" aria-live="polite">{said}</p>
@@ -239,6 +282,7 @@
           class:resolved={r.resolved}
           class:flash={flash === r.user_id}
           class:moving={moving === r.user_id}
+          class:just-moved={lastMoved === r.user_id}
           data-user={r.user_id}
         >
           <span class="visually-hidden">Rank</span>
@@ -307,7 +351,10 @@
     gap: var(--space-3);
   }
 
+  /* As tall as its rows, so a short board leaves no empty white table. */
   .board {
+    align-self: start;
+    max-height: 100%;
     min-height: 0;
     overflow: auto;
     border: var(--rule) solid var(--line);
@@ -330,7 +377,7 @@
     border-bottom: var(--rule) solid var(--line);
     border-left: var(--space-1) solid transparent;
     background: var(--surface);
-    font-size: var(--fs-3);
+    font-size: var(--fs-reveal);
   }
 
   .row.head {
@@ -395,7 +442,12 @@
      so the mark survives forced colours. Every row carries the border,
      transparent, so the columns line up. */
   .row.next-row {
-    border-left-color: var(--act);
+    border-left-color: var(--ink-muted);
+  }
+
+  /* The action colour means one thing here: the row that just moved. */
+  .row.just-moved {
+    background: var(--act-tint);
   }
 
   @media (forced-colors: active) {

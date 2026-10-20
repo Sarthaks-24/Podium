@@ -373,6 +373,8 @@
       full={revealData.full}
       labels={boardLabels(revealData.full, labels)}
       title={contest.title}
+      held={!!contest.hold_reveal && !contest.revealed_at}
+      onrelease={() => (releaseOpen = true)}
       onclose={closeReveal}
     />
   {/if}

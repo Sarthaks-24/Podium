@@ -44,6 +44,8 @@ export interface Options {
   boardClosed?: boolean;
   secondSession?: boolean;
   holdReveal?: boolean;
+  /** The reveal board: a long one with pending cells on every row (C6 skip), or one with nothing pending. */
+  revealBoard?: 'long' | 'nothing';
   /** After the end, students still get the frozen board (held for the reveal). */
   studentFrozen?: boolean;
   /** The student's window ends this many ms after the page loads. */
@@ -366,6 +368,22 @@ export async function mockApi(page: Page, options: Options = {}) {
         { label: 'B', score: b, max: 100, pending: pb },
       ],
     });
+    if (options.revealBoard === 'long') {
+      const names = Array.from({ length: 14 }, (_, i) => `Student ${i + 1}`);
+      const frozenRows = names.map((n, i) => row(i + 1, n, i + 1, 100 - i * 5, 0, 1000 + i, 0, 1));
+      const fullRows = names.map((n, i) => row(i + 1, n, i + 1, 100 - i * 5, 2, 1000 + i));
+      return {
+        frozen: { variant: 'frozen', version: 3, frozen_at: endsAt - 30 * MIN, final: false, judging_remaining: 0, me: null, labels: ['A', 'B'], rows: frozenRows },
+        full: { variant: 'full', version: 3, frozen_at: null, final: true, judging_remaining: 0, me: null, labels: ['A', 'B'], rows: fullRows },
+      };
+    }
+    if (options.revealBoard === 'nothing') {
+      const rows = [row(1, 'Priya Raman', 1, 100, 100, 3000), row(2, 'Arjun Mehta', 2, 100, 40, 2000)];
+      return {
+        frozen: { variant: 'frozen', version: 3, frozen_at: null, final: false, judging_remaining: 0, me: null, labels: ['A', 'B'], rows },
+        full: { variant: 'full', version: 3, frozen_at: null, final: true, judging_remaining: 0, me: null, labels: ['A', 'B'], rows },
+      };
+    }
     return {
       frozen: {
         variant: 'frozen', version: 3, frozen_at: endsAt - 30 * MIN, final: false, judging_remaining: 0, me: null, labels: ['A', 'B'],

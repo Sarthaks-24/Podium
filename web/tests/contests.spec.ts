@@ -661,7 +661,7 @@ test('the reveal enters full screen on open and leaves it on exit', async ({ pag
   const reveal = page.getByRole('dialog', { name: 'Week 6 contest' });
   await expect(reveal).toBeVisible();
   await expect.poll(() => page.evaluate(() => document.fullscreenElement?.tagName ?? null)).toBe('HTML');
-  await reveal.getByRole('button', { name: 'Exit' }).click();
+  await reveal.getByRole('button', { name: 'Close the reveal' }).click();
   await expect(reveal).toBeHidden();
   await expect.poll(() => page.evaluate(() => document.fullscreenElement)).toBeNull();
 });
@@ -679,6 +679,8 @@ for (const motion of ['no-preference', 'reduce'] as const) {
     expect(await names()).toEqual(['Priya Raman', 'Arjun Mehta', 'Asha Rao', 'Ravi Kumar']);
     await expect(reveal.getByText('2 rows left.', { exact: false })).toBeVisible();
     await expect(reveal.locator('.row.next-row .name')).toHaveText('Asha Rao');
+    // The next row is marked in muted ink; the action colour is kept for the row that just moved (C6).
+    await expect(reveal.locator('.row.just-moved')).toHaveCount(0);
     await page.screenshot({ path: `${shots()}reveal-start-1440-${motion}.png` });
 
     // Record each row that is marked as moving, with its stacking order, as it happens.
@@ -700,6 +702,7 @@ for (const motion of ['no-preference', 'reduce'] as const) {
     if (motion === 'reduce') await expect(reveal.locator('.row.flash .name')).toHaveText('Asha Rao');
     await page.waitForTimeout(400);
     await expect(reveal.locator('.row').filter({ hasText: 'Asha Rao' }).locator('.rank')).toHaveText('2');
+    await expect(reveal.locator('.row.just-moved .name')).toHaveText('Asha Rao');
     await page.screenshot({ path: `${shots()}reveal-step-1440-${motion}.png` });
 
     // The left arrow undoes the step, the right arrow does it again.
@@ -718,12 +721,12 @@ for (const motion of ['no-preference', 'reduce'] as const) {
     await expect.poll(names).toEqual(['Priya Raman', 'Asha Rao', 'Arjun Mehta', 'Ravi Kumar']);
 
     await page.keyboard.press('ArrowRight');
-    await expect(reveal.getByText('All rows resolved.', { exact: false })).toBeVisible();
-    await expect(reveal.getByRole('button', { name: 'Next' })).toBeDisabled();
+    await expect(reveal.getByText('Every result is shown.', { exact: false })).toBeVisible();
+    await expect(reveal.getByRole('button', { name: 'Show next' })).toHaveCount(0);
     await page.screenshot({ path: `${shots()}reveal-done-1440-${motion}.png` });
 
-    // Space on Exit exits instead of stepping.
-    await reveal.getByRole('button', { name: 'Exit' }).focus();
+    // Space on Close the reveal closes instead of stepping.
+    await reveal.getByRole('button', { name: 'Close the reveal' }).focus();
     await page.keyboard.press('Space');
     await expect(reveal).toBeHidden();
     await resume.click();
@@ -731,6 +734,41 @@ for (const motion of ['no-preference', 'reduce'] as const) {
     await expect.poll(names).toEqual(['Priya Raman', 'Arjun Mehta', 'Asha Rao', 'Ravi Kumar']);
   });
 }
+
+test('the reveal skips to the top 10 and releases a held board from its end (P3 F6.4)', async ({ page }) => {
+  const api = await mockApi(page, { who: 'admin', phase: 'after', revealBoard: 'long', holdReveal: true });
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto('/admin/contests/4/results');
+  await page.getByRole('button', { name: 'Start the reveal' }).click();
+  const reveal = page.getByRole('dialog', { name: 'Week 6 contest' });
+  await expect(reveal.getByText('14 rows left.', { exact: false })).toBeVisible();
+  await reveal.getByRole('button', { name: 'Skip to the top 10' }).click();
+  await expect(reveal.getByText('10 rows left.', { exact: false })).toBeVisible();
+  await expect(reveal.getByRole('button', { name: 'Skip to the top 10' })).toHaveCount(0);
+  await expect(reveal.locator('.row.next-row .rank')).toHaveText('10');
+  for (let i = 0; i < 10; i++) {
+    await page.keyboard.press('Space');
+    await page.waitForTimeout(380);
+  }
+  await expect(reveal.getByText('Every result is shown.', { exact: false })).toBeVisible();
+  await reveal.getByRole('button', { name: 'Release the full board' }).click();
+  await page.getByRole('dialog', { name: 'Release the full board?' }).getByRole('button', { name: 'Release the full board' }).click();
+  await expect.poll(() => api.releases).toBe(1);
+  await expect(reveal.getByRole('button', { name: 'Release the full board' })).toHaveCount(0);
+});
+
+test('a board that was never frozen says there is nothing to reveal (P3 O8)', async ({ page }) => {
+  await mockApi(page, { who: 'admin', phase: 'after', revealBoard: 'nothing' });
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto('/admin/contests/4/results');
+  await page.getByRole('button', { name: 'Start the reveal' }).click();
+  const reveal = page.getByRole('dialog', { name: 'Week 6 contest' });
+  await expect(reveal.getByText('Nothing to reveal: the board was never frozen, so these are the final standings.')).toBeVisible();
+  await expect(reveal.getByRole('heading', { name: 'Week 6 contest' })).toBeFocused();
+  // The board is as tall as its rows, not the screen.
+  const board = await reveal.locator('.board').boundingBox();
+  expect(board!.height).toBeLessThan(400);
+});
 
 test('after the end, a held board gives the place only and says when it updates', async ({ page }) => {
   await mockApi(page, { phase: 'after', studentFrozen: true });
@@ -934,7 +972,7 @@ test('keyboard only: an organiser edits a contest, runs the console and walks th
   await page.keyboard.press('Space');
   await page.waitForTimeout(400);
   await page.keyboard.press('Space');
-  await expect(reveal.getByText('All rows resolved.', { exact: false })).toBeVisible();
+  await expect(reveal.getByText('Every result is shown.', { exact: false })).toBeVisible();
   // Next is now off; focus stayed in the dialog, so the keys still work.
   await expect.poll(() => hasFocus(reveal)).toBe(true);
   await page.waitForTimeout(400);
