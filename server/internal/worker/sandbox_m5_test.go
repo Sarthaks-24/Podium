@@ -79,7 +79,8 @@ func TestM5FakeWizardDraftsReachValidated(t *testing.T) {
 			t.Fatalf("%s (%s) validation:\n%s", name, p.Slug, describe(v))
 		}
 		got, _ := r.bank.Get(ctx, p.ID)
-		if !got.Validated() || len(got.Tests) != 6 {
+		// Samples, open tests (D115), then four generated tests.
+		if !got.Validated() || len(got.Tests) != len(got.Samples)+len(got.Open)+4 {
 			t.Fatalf("%s: validated=%v tests=%d", name, got.Validated(), len(got.Tests))
 		}
 		t.Logf("%s: %s validated in %s (reference %d/%d, brute agreed %d/%d, validator %d/%d, slowest %d ms)", name, p.Slug,
@@ -123,8 +124,9 @@ func TestM5BrokenGeneratorIsNamed(t *testing.T) {
 		t.Fatalf("input generation %+v", ig)
 	}
 	probs := strings.Join(ig.Summary.Problems, " | ")
-	for _, want := range []string{"The generator failed on test 5 (subtask 2, seed 5): Runtime error.", "v too large",
-		"The generator failed on test 6 (subtask 2, seed 6)"} {
+	// Two samples and one open test come first, so subtask 2's tests are 6 and 7.
+	for _, want := range []string{"The generator failed on test 6 (subtask 2, seed 6): Runtime error.", "v too large",
+		"The generator failed on test 7 (subtask 2, seed 7)"} {
 		if !strings.Contains(probs, want) {
 			t.Errorf("missing %q in %s", want, probs)
 		}
