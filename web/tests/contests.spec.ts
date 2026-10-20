@@ -1154,6 +1154,19 @@ test('results switch boards, link the exports, release a held board and save the
   await expect(page.getByRole('button', { name: 'Unpublish editorial' })).toBeVisible();
 });
 
+test('the reveal enters full screen on open and leaves it on exit', async ({ page }) => {
+  await mockApi(page, { who: 'admin', phase: 'after' });
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto('/admin/contests/4/results');
+  await page.getByRole('button', { name: 'Start the reveal' }).click();
+  const reveal = page.getByRole('dialog', { name: 'Week 6 contest' });
+  await expect(reveal).toBeVisible();
+  await expect.poll(() => page.evaluate(() => document.fullscreenElement?.tagName ?? null)).toBe('HTML');
+  await reveal.getByRole('button', { name: 'Exit' }).click();
+  await expect(reveal).toBeHidden();
+  await expect.poll(() => page.evaluate(() => document.fullscreenElement)).toBeNull();
+});
+
 for (const motion of ['no-preference', 'reduce'] as const) {
   test(`the reveal walks from the bottom one row per key press (${motion})`, async ({ page }) => {
     await page.emulateMedia({ reducedMotion: motion });

@@ -1,7 +1,8 @@
 <!--
   RevealBoard: the projector walk through the final standings (design.md
   5.5, lib/reveal.ts). A full-screen modal on --paper with large rows
-  (--fs-3), starting from the frozen board. Space, Enter or the right arrow
+  (--fs-3), starting from the frozen board; opening it also puts the
+  browser in full screen, and closing it leaves full screen. Space, Enter or the right arrow
   (or the Next button) resolves the lowest unresolved row: its pending
   cells fill with their final scores, the row slides to its final place
   over --dur-slow and its rank number counts to the new one. The left
@@ -52,12 +53,15 @@
       // Opening again resumes where the walk was left.
       if (reveal.rows.length === 0) startOver();
       dialog.showModal();
+      // The projector view: the browser refuses without a recent click, and the board still works in a window then.
+      document.documentElement.requestFullscreen?.().catch(() => {});
       tick().then(() => {
         scrollToNext();
         dialog?.querySelector<HTMLButtonElement>('.next')?.focus();
       });
     } else if (!open && dialog.open) {
       dialog.close();
+      if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
     }
   });
 
