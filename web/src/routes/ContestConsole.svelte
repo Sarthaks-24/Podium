@@ -770,7 +770,7 @@
       </section>
     </aside>
 
-    <div class="page-split-main console-main">
+    <div class="page-split-main">
       <section class="panel" aria-labelledby="submissions-title">
         <div class="panel-head">
           <h2 id="submissions-title">Submissions</h2>
@@ -832,7 +832,7 @@
                     <th scope="row" class="who">{row.name}{#if row.practice}<span class="muted"> (practice)</span>{/if}</th>
                     <td class="mono plabel">{row.problem_label ?? row.label}</td>
                     <td class="lang">{languageLabel(row.language)}</td>
-                    <td class="verdict"><Badge tone={out.tone}><span><MonoDigits text={out.text} /></span></Badge></td>
+                    <td class="verdict"><Badge tone={out.tone}><MonoDigits text={out.text} /></Badge></td>
                     <td class="act">
                       <button
                         type="button"
@@ -916,7 +916,7 @@
         {/if}
         {#if running}
           <div class="end-now">
-            <button type="button" class="btn btn-secondary end-btn" onclick={endNow}>End the contest now</button>
+            <button type="button" class="btn btn-secondary btn-danger-secondary" onclick={endNow}>End the contest now</button>
             <p class="muted small">Stops the contest for everyone at once. To give more time instead, extend it above.</p>
           </div>
         {/if}
@@ -1069,11 +1069,6 @@
     margin-top: var(--space-5);
   }
 
-  /* One column that never grows past the page: the feed scrolls inside it. */
-  .console-main {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
   /* The work column is wider here than a form: the feed needs the room. */
   @media (min-width: 1280px) {
     .console-split {
@@ -1204,16 +1199,6 @@
     gap: var(--space-1);
     padding-left: var(--space-5);
     color: var(--ink-muted);
-  }
-
-  /* Danger as a secondary button: bordered in the danger colour, not filled (a local primitive; controls.css has none). */
-  .end-btn {
-    border-color: var(--bad);
-    color: var(--bad);
-  }
-
-  .end-btn:hover {
-    background: var(--bad-tint);
   }
 
   .end-now {

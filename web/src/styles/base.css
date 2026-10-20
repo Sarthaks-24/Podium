@@ -230,6 +230,9 @@ h2[tabindex="-1"]:focus {
 .page-split-main,
 .page-split-aside {
   display: grid;
+  /* One column that never grows past the page: a wide table inside
+     scrolls in its own box instead of widening the page on a phone. */
+  grid-template-columns: minmax(0, 1fr);
   gap: var(--space-5);
   align-content: start;
   min-width: 0;

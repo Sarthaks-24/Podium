@@ -127,6 +127,20 @@
   color: var(--bad);
 }
 
+/* Danger as a secondary button: a risky action that is not the page's
+   main one ("Disable account", "End the contest now"), bordered and
+   worded in the danger colour on the surface, never filled. Use it with
+   .btn-secondary. */
+.btn-danger-secondary {
+  border-color: var(--bad);
+  color: var(--bad);
+}
+
+.btn-danger-secondary:hover {
+  border-color: var(--bad);
+  background: var(--bad-tint);
+}
+
 .btn-danger-quiet:hover {
   background: var(--bad-tint);
 }

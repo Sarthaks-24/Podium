@@ -655,7 +655,7 @@
       <button type="button" class="btn btn-secondary submit" disabled={removing && pending?.kind === 'end-sessions'} onclick={() => askAccount('end-sessions')}>
         End sessions
       </button>
-      <button type="button" class="btn btn-secondary danger-secondary submit" disabled={removing && pending?.kind === 'disable'} onclick={() => askAccount('disable')}>
+      <button type="button" class="btn btn-secondary btn-danger-secondary submit" disabled={removing && pending?.kind === 'disable'} onclick={() => askAccount('disable')}>
         Disable account
       </button>
     </form>
@@ -882,16 +882,6 @@
 
   .empty {
     margin-top: var(--space-4);
-  }
-
-  /* Danger as a secondary button: the danger colour on its border and words, not a fill (no such class in controls.css). */
-  .danger-secondary {
-    border-color: var(--bad);
-    color: var(--bad);
-  }
-
-  .danger-secondary:hover {
-    background: var(--bad-tint);
   }
 
   .who {
