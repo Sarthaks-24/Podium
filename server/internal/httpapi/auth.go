@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/Sarthaks-24/podium/internal/auth"
+	"github.com/Sarthaks-24/podium/internal/retention"
 )
 
 // IdentityProvider is the sign-in provider; *auth.Provider implements it.
@@ -121,7 +122,9 @@ func (d Deps) authConfig(w http.ResponseWriter, r *http.Request) {
 	if mode == "" {
 		mode = "production"
 	}
-	WriteJSON(w, http.StatusOK, map[string]any{"allowed_domains": names, "contact_email": d.Auth.OwnerEmail, "mode": mode})
+	WriteJSON(w, http.StatusOK, map[string]any{"allowed_domains": names, "contact_email": d.Auth.OwnerEmail, "mode": mode,
+		"organisation": map[string]string{"name": "", "contact_email": "", "phone": "", "privacy_contact": ""},
+		"retention":    retention.Periods()})
 }
 
 // testSignIn signs in as anyone with any role, for testing mode only (the

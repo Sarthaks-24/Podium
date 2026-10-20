@@ -87,6 +87,10 @@ func New(d Deps) http.Handler {
 	mux.HandleFunc("POST /api/admin/domains", d.requireRole(auth.Owner, d.addDomain))
 	mux.HandleFunc("DELETE /api/admin/domains/{domain}", d.requireRole(auth.Owner, d.removeDomain))
 	mux.HandleFunc("GET /api/admin/site-audit", d.requireRole(auth.Owner, d.siteAudit))
+	mux.HandleFunc("PUT /api/admin/site-settings", d.requireRole(auth.Owner, d.setSiteSettings))
+	mux.HandleFunc("POST /api/contact", d.requireRole(auth.Student, d.sendContact))
+	mux.HandleFunc("GET /api/admin/contact", d.requireRole(auth.Admin, d.listContact))
+	mux.HandleFunc("DELETE /api/admin/contact/{id}", d.requireRole(auth.Admin, d.deleteContact))
 
 	admin := func(h http.HandlerFunc) http.HandlerFunc { return d.requireRole(auth.Admin, h) }
 	mux.HandleFunc("GET /api/admin/problems", admin(d.listProblems))

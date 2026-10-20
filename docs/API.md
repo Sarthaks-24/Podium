@@ -24,7 +24,7 @@ All API routes live under `/api/` and speak JSON. Every other path serves the we
 { "error": { "code": "bad_request", "message": "Some fields need fixing.", "fields": { "slug": "Use lowercase letters, digits and single hyphens, like two-sum." } } }
 ```
 
-Common error codes: `bad_request`, `signed_out`, `forbidden`, `not_found`, `cross_site`, `conflict`, `internal`, and in testing mode `testing_mode_local`. Test sign-in adds `disabled`. The problem routes add `bad_pack`, `not_ready`, `too_large` and `busy`; the AI wizard adds `no_key`, `no_model`, `bad_key`, `provider_error` and `busy`; the workspace routes add `not_ready` and `rate_limited`; the contest routes add `not_on_roster`, `not_started`, `contest_over`, `board_closed` and `too_early`; the organiser contest routes add `locked_after_start`, `results_hidden`, `not_participant` and `ai_unconfirmed`; the event stream adds `busy` and `unsupported`; the judge API adds `unauthorized`, `protocol` (426), `lease`, `bad_report`, `bad_upload` and `too_large`.
+Common error codes: `bad_request`, `rate_limited` (before sign-in, v1.3.0), `signed_out`, `forbidden`, `not_found`, `cross_site`, `conflict`, `internal`, and in testing mode `testing_mode_local`. Test sign-in adds `disabled`. The problem routes add `bad_pack`, `not_ready`, `too_large` and `busy`; the AI wizard adds `no_key`, `no_model`, `bad_key`, `provider_error` and `busy`; the workspace routes add `not_ready` and `rate_limited`; the contest routes add `not_on_roster`, `not_started`, `contest_over`, `board_closed` and `too_early`; the organiser contest routes add `locked_after_start`, `results_hidden`, `not_participant` and `ai_unconfirmed`; the event stream adds `busy` and `unsupported`; the judge API adds `unauthorized`, `protocol` (426), `lease`, `bad_report`, `bad_upload` and `too_large`.
 
 ## Health
 
@@ -62,13 +62,31 @@ What an organiser watches on contest day; also read by the load test (`tools/loa
 
 ### `GET /api/auth/config` (public)
 
-What the sign-in page needs to explain who may sign in, and which sign-in to offer.
+What the sign-in page, the footer and the privacy page need before anyone signs in (contract C5). No contest data, no counts, no version (owner, 2026-10-19).
 
 ```json
-{ "allowed_domains": ["college.edu"], "contact_email": "owner@college.edu", "mode": "production" }
+{ "allowed_domains": ["college.edu"],
+  "contact_email": "podium@college.edu",
+  "mode": "production",
+  "organisation": { "name": "Example College of Engineering", "contact_email": "podium@college.edu",
+                    "phone": "+91 80 1234 5678", "privacy_contact": "privacy@college.edu" },
+  "retention": [
+    { "id": "sessions", "data": "Sign-in sessions", "amount": 12, "unit": "hours", "after": "sign_in", "kept": "12 hours after sign-in" },
+    { "id": "submissions", "data": "Submissions, their verdicts and what each contest showed", "amount": 4, "unit": "years",
+      "after": "contest_end", "kept": "4 years after the contest" } ] }
 ```
 
-`contact_email` is `PODIUM_OWNER_EMAIL`, shown as the organiser to contact. `mode` is the server's `PODIUM_MODE`: `testing`, `dev` or `production`. In `testing` the web app shows the sign-in form and the testing-mode banner instead of "Continue with Google".
+| Field | Meaning |
+|---|---|
+| `allowed_domains` | every allowed sign-in domain, sorted |
+| `contact_email` | the address to show as "Contact the organisers": `organisation.contact_email` when an owner has entered one, otherwise `PODIUM_OWNER_EMAIL` |
+| `mode` | the server's `PODIUM_MODE`: `testing`, `dev` or `production`. In `testing` the web app shows the sign-in form and the testing-mode banner instead of "Continue with Google" |
+| `organisation` | the site settings an owner enters on People (v1.3.0): `name`, `contact_email`, `phone`, `privacy_contact`. Each is a string, `""` until entered; a page shows nothing for an empty field and never a made-up value |
+| `retention` | every retention period the server applies, in the order the privacy page lists them, from `server/internal/retention/periods.go` (v1.3.0). The privacy page renders its table from this list and types none of it |
+
+A `retention` row is `{id, data, amount, unit, after, kept}`: `id` is stable (`sessions`, `integrity_events`, `case_evidence`, `run_payloads`, `contact_messages`, `draft_revisions`, `submissions`, `audit`, `backups`; P4 adds its own); `data` names what is kept; `amount` and `unit` (`hours`, `days` or `years`) are the period; `after` is what it counts from (`sign_in`, `created`, `contest_end`, `decision`); `kept` is the whole period as one phrase. The full table is in `docs/OPERATIONS.md`, "Retention".
+
+The route is limited per address like the other routes before sign-in (see "Before sign-in: the per-address limit").
 
 ### `POST /api/auth/test-signin` (public, testing mode only)
 
@@ -105,6 +123,12 @@ On failure it redirects to `/signin?error=<code>`:
 | `expired` | The sign-in attempt took too long or was started in another tab. |
 | `google` | Google refused or the response could not be verified. |
 | `server` | The server failed while recording the sign-in. |
+
+### Before sign-in: the per-address limit (v1.3.0)
+
+The routes a visitor reaches without a session (`GET /healthz`, `GET /api/auth/config`, `GET /api/auth/google/start`, `GET /api/auth/google/callback`, `POST /api/auth/test-signin`, `POST /api/auth/logout`) share one budget per client address: a burst of 600 requests, refilled at 10 per second. Past it they answer `429 rate_limited` with `Retry-After` and `retry_after_s`. The budget is large because a whole college can sign in from one address behind its NAT; it exists so that a script cannot turn the server into a flood of outbound calls to Google or of queries. The address is the peer's, or behind Caddy on the same host the last `X-Forwarded-For` entry; IPv6 addresses share a budget per /64. Requests from the VM itself (loopback, no forwarding headers) are not counted, so the load test and `install.sh verify` are never limited.
+
+Each sign-in attempt can be finished once: the callback remembers the state of every attempt it has seen until the attempt expires (10 minutes), and a second callback with the same state cookie gets `/signin?error=expired` without calling Google.
 
 ### `POST /api/auth/logout`
 
@@ -195,6 +219,28 @@ Request: `{"domain":"college.edu"}` (lowercased; a leading `@` is ignored). Resp
 ### `DELETE /api/admin/domains/{domain}`
 
 Stops sign-ins from the domain and ends the sessions of students on it; organisers on it keep access. `204`. `404 not_found` when the domain is not on the list.
+
+### `PUT /api/admin/site-settings` (owner, v1.3.0)
+
+The organisation details the public pages show (B3.7): the sign-in page, the footer, the privacy page and the Organization JSON-LD on `/signin`. Stored in the server's `settings` table, never in an environment variable. `GET /api/auth/config` returns them as `organisation`, and `GET /api/admin/people` carries the same object for the People form.
+
+Request, every field present (send `""` to clear one):
+
+```json
+{ "name": "Example College of Engineering", "contact_email": "podium@college.edu",
+  "phone": "+91 80 1234 5678", "privacy_contact": "privacy@college.edu" }
+```
+
+| Field | Rule |
+|---|---|
+| `name` | at most 120 characters, one line |
+| `contact_email` | an email address, at most 254 characters; shown as a `mailto:` link |
+| `phone` | at most 32 characters of digits, spaces, `+`, `-`, `(`, `)` and `.`, with at least 6 digits; shown as a `tel:` link |
+| `privacy_contact` | who to ask about personal data: a name or an address, at most 200 characters, one line |
+
+Leading and trailing spaces are trimmed. Response `200`: the saved object, in the request's shape. Errors: `400 bad_request` with `fields` naming each field that needs fixing. A change writes one `settings_changed` row to the site audit naming the fields that changed (the values are public, but the row carries only the names).
+
+`GET /api/admin/people` gains `organisation` in the same shape (v1.3.0).
 
 ## Problems (admin)
 
@@ -918,6 +964,25 @@ Every change that can affect results is recorded in the contest's audit log (bel
 
 Turning `graded` on is `409 ai_unconfirmed` while the contest holds an AI problem no person has written a solution for and no admin has confirmed for this contest.
 
+**Queue health (v1.3.0, contract C10, D103).** Every `AdminContest` also carries what the console's attention strip shows:
+
+```json
+{ "queue": { "waiting": 14, "judging": 2, "errors": 1, "oldest_wait_s": 37.5 },
+  "judge_last_claim_at": 1792311190000,
+  "unanswered": 3 }
+```
+
+| Field | Meaning |
+|---|---|
+| `queue.waiting` | this contest's jobs (Submit and Run) waiting for the judge, including those held by a pause |
+| `queue.judging` | this contest's jobs a judge is running now |
+| `queue.errors` | this contest's submissions (Submit) that ended in `error` (a judge error, not a verdict) and have not been judged again since |
+| `queue.oldest_wait_s` | seconds the oldest waiting job has waited; `0` when nothing waits |
+| `judge_last_claim_at` | when any judge last asked the server for work (Unix ms), whether or not it got any; `null` when no judge has asked since the server started. A judge asks every few seconds while it runs, so a value more than a minute old means no judge is working |
+| `unanswered` | this contest's clarifications with no answer yet |
+
+The counts come from one query on the jobs, submissions and clarifications indexes per response; `judge_last_claim_at` is held in memory.
+
 ### `AuditEntry`
 
 `{id, action, actor: {user_id, email, role}, details, created_at}`. The actor's email and site role are as they were at the time. The table is append only (database triggers refuse every update and delete), and the JSON export carries the whole log as `audit`, oldest first.
@@ -1096,6 +1161,52 @@ P3 adds `settings_changed`, `contact_deleted` and `user_forgotten`; show an unkn
 ### Renamed contests
 
 Renaming a contest (its `slug`) records the old slug. `GET /contests/<old>` and every path under it answer `301` to the same path under the new slug, keeping the query; so do `GET` requests under `/api/contests/<old>` (other methods answer `404`). Only a published contest records its old slug (a draft has no links out there), and only a published, unarchived contest is redirected to. A slug in the history cannot be given to another contest: `400 bad_request` with `fields.slug` "This slug belonged to another contest. Choose another so its old links keep working." A contest may take back its own old slug.
+
+## Contact (v1.3.0, contract C6)
+
+A signed-in person writes to the organisers; owners and admins read the messages in an inbox and reply by email. There is no mail server: nothing is sent anywhere (D71 as amended). Someone who cannot sign in uses the organiser address from `GET /api/auth/config` (`contact_email`) instead.
+
+### `POST /api/contact` (signed in)
+
+Any signed-in role. The sender is the session's account; the body names no sender.
+
+```json
+{ "topic": "contest", "message": "The statement of problem B says 1 <= n but the sample has n = 0." }
+```
+
+| Field | Rule |
+|---|---|
+| `topic` | `contest` (a contest or a problem), `account` (sign-in or the account), `privacy` (a copy or removal of personal data) or `other` |
+| `message` | 1 to 2,000 characters after trimming; newlines are kept; other control characters are refused |
+
+| Status | Body |
+|---|---|
+| 201 | `{"id": 12, "created_at": 1792311120000}` |
+| 400 | `bad_request` with `fields.topic` or `fields.message` |
+| 401 | `signed_out` |
+| 403 | `cross_site`: the request carried no `Origin` header, or one other than the base URL (this route needs it, unlike the general rule above) |
+| 429 | `rate_limited` with `retry_after_s`: 5 messages per person in 24 hours, or 100 in 24 hours from everyone together |
+
+The two `429` messages: "You have sent 5 messages in the last 24 hours. Try again tomorrow, or email the organisers." and "The organisers have received too many messages today. Try again tomorrow, or email the organisers." The web app's success line is "Sent. The organisers reply by email, usually within two days."
+
+Messages are stored as plain text and are never rendered as HTML anywhere. They are deleted 180 days after they were sent (see `retention` on the config route) and when the sender is erased with `podium-server forget-user`.
+
+### `GET /api/admin/contact?before=` (owner, admin)
+
+The inbox, newest first, 50 per page. `before` is a message id: the page holds messages older than it.
+
+```json
+{ "messages": [ { "id": 12, "topic": "contest", "message": "The statement of problem B says ...",
+                  "created_at": 1792311120000,
+                  "sender": { "user_id": 7, "email": "asha@college.edu", "name": "Asha Rao", "role": "student" } } ],
+  "more": false, "server_now": 1792311200000 }
+```
+
+`sender` is the account as it is now. The inbox screen offers "Reply by email" as a `mailto:` link to `sender.email`. Co-organisers whose site role is student get `403 forbidden`.
+
+### `DELETE /api/admin/contact/{id}` (owner, admin)
+
+Deletes one message. `204`. `404 not_found` when there is no such message. Writes a `contact_deleted` row to the site audit with the sender as `subject_email` and `{"message_id", "topic"}` as details (never the text).
 
 ## Integrity
 
