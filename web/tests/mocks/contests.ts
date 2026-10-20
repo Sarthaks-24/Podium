@@ -315,7 +315,11 @@ export async function mockApi(page: Page, options: Options = {}) {
     extended_minutes: 0,
     editorial_md: '## A\n\nUse long long.',
     editorial_published: false,
-    problems: state.adminProblems,
+    problems: state.adminProblems.map((p) => pinFields(p)),
+    pin_history: [
+      ...state.pinPuts.map((x, i) => ({ label: x.label, problem_id: 11, revision_id: Number(x.body.revision_id), rev: 3, from_at: now + i, actor: { user_id: 2, email: 'arjun.mehta@college.edu', role: 'admin' } })).reverse(),
+      { label: 'A', problem_id: 11, revision_id: 12, rev: 2, from_at: startsAt - 60 * MIN, actor: { user_id: 1, email: 'priya@college.edu', role: 'owner' } },
+    ],
     roster_count: 1,
     close_at: endsAt,
     default_honour_text: 'This contest is graded. By starting you agree to these rules.',
@@ -325,6 +329,22 @@ export async function mockApi(page: Page, options: Options = {}) {
     admins: [{ user_id: 3, email: 'ta@college.edu', name: 'Meera Iyer' }],
     server_now: nowMs(),
   });
+
+  /** C4 pin fields: A is pinned to revision 2 and, with updateAvailable, revision 3 is validated. */
+  function pinFields(p: Json): Json {
+    const rev = state.pinnedRev[String(p.label)] ?? 1;
+    const latest = String(p.label) === 'A' ? 3 : rev;
+    return {
+      ...p,
+      revision_id: 10 + rev,
+      rev,
+      latest_revision_id: 10 + latest,
+      latest_rev: latest,
+      update_available: latest > rev,
+      update_statement_only: true,
+      reconstructed: false,
+    };
+  }
 
   const revealBoards = () => {
     const row = (user_id: number, name: string, rank: number, a: number, b: number, t: number, pa = 0, pb = 0) => ({
@@ -535,6 +555,19 @@ export async function mockApi(page: Page, options: Options = {}) {
         state.extensions.push({ user: ext[1], body: req.postDataJSON() as Json });
         return json(route, 200, adminContest());
       }
+      const pin = path.match(/^\/api\/admin\/contests\/4\/problems\/([A-Z])\/revision$/);
+      if (pin && method === 'PUT') {
+        const body = req.postDataJSON() as Json;
+        state.pinPuts.push({ label: pin[1], body });
+        state.pinnedRev[pin[1]] = Number(body.revision_id) - 10;
+        return json(route, 200, {
+          contest: adminContest(),
+          announcement_md: `The statement of problem ${pin[1]} was updated. Open the problem and choose "See what changed".`,
+          statement_changed: true,
+          rejudge_needed: false,
+          server_now: nowMs(),
+        });
+      }
       if (path === '/api/admin/contests/4/rejudge' && method === 'POST') {
         state.rejudges.push(req.postDataJSON() as Json);
         return json(route, 202, { queued: 1, server_now: nowMs() });
@@ -587,14 +620,19 @@ export async function mockApi(page: Page, options: Options = {}) {
         });
       }
       if (path === '/api/admin/contests/4/audit' && method === 'GET') {
+        state.auditQueries.push(url.search);
         const actor = { user_id: 1, email: 'priya@college.edu', role: 'owner' };
         const entries = [
           ...Array.from({ length: state.pauses }, () => ({ action: 'pause', details: {} })),
           ...state.extends.map((e) => ({ action: 'extend', details: e })),
           ...state.extensions.map((x) => ({ action: 'extension', details: { email: 'asha@college.edu', ...x.body } })),
           ...state.rejudges.map((r) => ({ action: 'rejudge', details: { ...r, queued: 1 } })),
+          ...state.pinPuts.map((x) => ({ action: 'revision', details: { label: x.label, from_rev: 2, to_rev: 3, statement_changed: true, judging_changed: false } })),
         ].map((e, i) => ({ id: i + 1, actor, created_at: now, ...e }));
-        return json(route, 200, { entries: entries.reverse(), page: 1, has_more: false, server_now: nowMs() });
+        const want = url.searchParams.get('action') ?? '';
+        const who = (url.searchParams.get('actor') ?? '').toLowerCase();
+        const shown = entries.filter((e) => (want === '' || e.action === want) && (who === '' || e.actor.email.includes(who)));
+        return json(route, 200, { entries: shown.reverse(), page: 1, has_more: false, server_now: nowMs() });
       }
       if (path === '/api/admin/contests/4/editorial' && method === 'PUT') {
         state.editorials.push(req.postDataJSON() as Json);

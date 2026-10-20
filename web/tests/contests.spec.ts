@@ -449,7 +449,7 @@ test('the console pauses, extends, rejudges, announces and answers', async ({ pa
   await expect.poll(() => api.answers).toEqual([{ id: '51', body: { answer: 'Yes.', public: true } }]);
 
   // The audit log follows every action, newest first, with who did it.
-  const audit = page.getByRole('region', { name: 'Audit log' });
+  const audit = page.getByRole('region', { name: 'Changes' });
   await expect(audit.getByRole('listitem').first()).toContainText('Rejudged problem A (1 submission)');
   await expect(audit).toContainText('Gave asha@college.edu 10 extra minutes (Laptop crashed)');
   await expect(audit).toContainText('Extended the contest by 15 minutes');

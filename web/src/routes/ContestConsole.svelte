@@ -17,10 +17,19 @@
     in over the event stream (and the 10 s refresh); the status strip and
     the tab title count the unanswered ones, and a polite live region names
     each new one.
-  - Audit log: every organiser action that can change results (settings,
-    problems, roster, extensions, extend, pause and resume, rejudges, the
-    reveal, the editorial, co-organisers), newest first, from
-    GET .../audit, refreshed with the feed and after each action here.
+  - Problem versions (C4, F10.1): the revision each problem is pinned to;
+    when a newer validated revision exists, "Update contest to revision N"
+    asks first, saying what students get and whether judging again is
+    needed, then puts the server's prefilled announcement in the
+    announcement box (it is never posted by itself) and, when the tests
+    changed, picks the problem for "Judge again". The pin history sits
+    folded below. A problem rejudge states the revision it judges against.
+  - Changes: every organiser action that can change results (settings,
+    problems and revisions, roster with the emails added and removed,
+    extensions, extend, pause and resume, rejudges, the reveal, the
+    editorial, co-organisers), newest first, from GET .../audit with a
+    filter by kind and by who, older pages on request, refreshed with the
+    feed and after each action here.
 
   From 1024 px the feed sits beside the questions and announcements, the
   questions first. Under 768 px each feed row reads as two lines.
@@ -40,6 +49,7 @@
     ANNOUNCEMENT_TEMPLATES,
     CANNED_REPLIES,
     askerName,
+    AUDIT_ACTIONS,
     auditSummary,
     fillTemplate,
     formatCountdown,
@@ -51,6 +61,7 @@
     type FeedRow,
   } from '../lib/contests';
   import { keepHeadingFocus } from '../lib/focus';
+  import { feedQuery, pinChangeText, pinPath, updateEffect, updateLabel, type PinUpdate } from '../lib/history';
   import { countOf } from '../lib/format';
   import { setTitle } from '../lib/head';
   import { routeTitle } from '../lib/routing';
@@ -105,11 +116,18 @@
   let annError = $state('');
   let annBusy = $state(false);
 
-  // Audit log.
+  // Changes (the contest audit log).
   let audit = $state<AuditEntry[]>([]);
   let auditState = $state<'loading' | 'ready' | 'error'>('loading');
   let auditAll = $state(false);
+  let auditPage = $state(1);
+  let auditMore = $state(false);
+  let auditAction = $state('');
+  let auditActor = $state('');
   const AUDIT_SHOWN = 10;
+
+  // Problem versions.
+  let pinNote = $state('');
 
   // Clarifications.
   let clarifications = $state<Clarification[]>([]);
@@ -213,14 +231,50 @@
     }
   }
 
-  async function loadAudit() {
+  /** Loads a page of changes; page 1 replaces the list, later pages add older rows. */
+  async function loadAudit(next = 1) {
     try {
-      const data = await getJSON<{ entries: AuditEntry[] }>(`${base}/audit`);
-      audit = data.entries ?? [];
+      const data = await getJSON<{ entries: AuditEntry[]; has_more?: boolean }>(
+        `${base}/audit${feedQuery({ page: next, action: auditAction, actor: auditActor.trim() })}`,
+      );
+      audit = next === 1 ? (data.entries ?? []) : [...audit, ...(data.entries ?? [])];
+      auditPage = next;
+      auditMore = data.has_more === true;
       auditState = 'ready';
     } catch (e) {
       if (!handleAuth(e)) auditState = 'error';
     }
+  }
+
+  function filterAudit(event?: SubmitEvent) {
+    event?.preventDefault();
+    auditAll = false;
+    void loadAudit(1);
+  }
+
+  /** The pinned revision of a problem, as the rejudge confirmation names it. */
+  function pinnedRev(label: string): number | undefined {
+    return contest?.problems.find((p) => p.label === label)?.rev;
+  }
+
+  function updatePin(label: string) {
+    const p = contest?.problems.find((x) => x.label === label);
+    if (!p || p.latest_revision_id === undefined || p.latest_rev === undefined) return;
+    const target = { id: p.latest_revision_id, rev: p.latest_rev };
+    const effect = updateEffect({ label, rev: p.rev, latest_rev: p.latest_rev, update_statement_only: p.update_statement_only });
+    ask(`Update problem ${label} to revision ${target.rev}?`, effect, updateLabel(target.rev), false, async () => {
+      const out = await sendJSON<PinUpdate<AdminContest>>('PUT', pinPath(id, label), { revision_id: target.id });
+      if (out.contest && typeof out.contest === 'object') contest = out.contest;
+      showToast(`Problem ${label} now uses revision ${target.rev}`);
+      // The server words an announcement; posting it stays the organiser's choice.
+      annTemplate = '';
+      annBody = out.announcement_md ?? '';
+      pinNote = out.rejudge_needed
+        ? `The tests of problem ${label} changed. Read the announcement below, post it, then judge problem ${label} again.`
+        : `Read the announcement below and post it, so students know to look at problem ${label}.`;
+      if (out.rejudge_needed) rejudgeLabel = label;
+      await loadAudit();
+    });
   }
 
   async function loadStudents() {
@@ -336,7 +390,9 @@
   function rejudgeProblem() {
     if (rejudgeLabel === '') return;
     const l = rejudgeLabel;
-    ask(`Rejudge problem ${l}?`, 'Every submission to it is judged again. Scores in the standings may change.', 'Rejudge problem', true, async () => {
+    const rev = pinnedRev(l);
+    const against = rev !== undefined ? ` against revision ${rev}` : '';
+    ask(`Rejudge problem ${l}?`, `Every submission to it is judged again${against}. Scores in the standings may change.`, 'Rejudge problem', true, async () => {
       await sendJSON<void>('POST', `${base}/rejudge`, { problem_label: l });
       showToast(`Rejudging problem ${l}`);
       await Promise.all([loadFeed(), loadAudit()]);
@@ -549,6 +605,38 @@
         {/if}
       </section>
 
+      <section class="section" aria-labelledby="versions-title">
+        <h2 id="versions-title">Problem versions</h2>
+        <p class="muted small">Students are served the revision each problem is pinned to. An edit in the problem bank reaches them only when you update the contest here.</p>
+        <ul class="items versions">
+          {#each contest.problems as p (p.label)}
+            <li>
+              <p>
+                <span class="mono plabel">{p.label}</span>
+                {p.title}{#if p.rev !== undefined}, revision <span class="mono">{p.rev}</span>{/if}{#if p.reconstructed}<span class="muted"> (rebuilt at the upgrade)</span>{/if}
+              </p>
+              {#if p.update_available && p.latest_rev !== undefined}
+                <p class="muted small">
+                  Revision <span class="mono">{p.latest_rev}</span> is validated{p.update_statement_only ? ' and changes only the statement' : ' and changes the tests or limits'}.
+                </p>
+                <button type="button" class="btn btn-secondary btn-compact" onclick={() => updatePin(p.label)}>{updateLabel(p.latest_rev)}</button>
+              {:else if p.latest_rev !== undefined && p.rev !== undefined && p.latest_rev > p.rev}
+                <p class="muted small">Revision <span class="mono">{p.latest_rev}</span> is not validated yet. Validate it in the problem bank to offer it here.</p>
+              {/if}
+            </li>
+          {/each}
+        </ul>
+        {#if pinNote}<p class="banner banner-info pin-note">{pinNote}</p>{/if}
+        {#if (contest.pin_history ?? []).length > 0}
+          <details class="pins">
+            <summary>Pin history</summary>
+            <ul class="items small">
+              {#each contest.pin_history ?? [] as h, i (i)}<li>{pinChangeText(h)}</li>{/each}
+            </ul>
+          </details>
+        {/if}
+      </section>
+
       <section class="section" aria-labelledby="feed-title">
         <div class="section-head">
           <h2 id="feed-title">Submissions</h2>
@@ -641,6 +729,9 @@
           </div>
           <button type="button" class="btn btn-secondary" disabled={rejudgeLabel === ''} onclick={rejudgeProblem}>Rejudge problem</button>
         </div>
+        {#if rejudgeLabel !== '' && pinnedRev(rejudgeLabel) !== undefined}
+          <p class="muted small">Rejudge against revision <span class="mono">{pinnedRev(rejudgeLabel)}</span>, the one students are served.</p>
+        {/if}
       </section>
     </div>
 
@@ -712,19 +803,33 @@
       </section>
 
       <section class="section" aria-labelledby="audit-title">
-        <h2 id="audit-title">Audit log</h2>
+        <h2 id="audit-title">Changes</h2>
         <p class="muted small">Every change that can affect results, with who made it. Nothing here can be edited or deleted.</p>
+        <form class="row audit-filters" novalidate onsubmit={filterAudit}>
+          <div class="field">
+            <label for="audit-action">Kind of change</label>
+            <select id="audit-action" class="select" bind:value={auditAction} onchange={() => filterAudit()}>
+              <option value="">All changes</option>
+              {#each AUDIT_ACTIONS as a (a.id)}<option value={a.id}>{a.label}</option>{/each}
+            </select>
+          </div>
+          <div class="field grow">
+            <label for="audit-actor">Made by</label>
+            <input id="audit-actor" class="input" type="search" autocomplete="off" spellcheck="false" placeholder="Email" bind:value={auditActor} />
+          </div>
+          <button type="submit" class="btn btn-secondary btn-compact">Search</button>
+        </form>
         {#if auditState === 'loading'}
-          <p class="muted small" role="status">Loading the audit log</p>
+          <p class="muted small" role="status">Loading the changes</p>
         {:else if auditState === 'error'}
-          <p class="muted small">The audit log could not be loaded. It refreshes with the feed.</p>
+          <p class="muted small">The changes could not be loaded. They refresh with the feed.</p>
         {:else if audit.length === 0}
-          <p class="muted small">Nothing recorded yet.</p>
+          <p class="muted small">{auditAction !== '' || auditActor.trim() !== '' ? 'No change matches. Clear the filter to see everything.' : 'Nothing recorded yet.'}</p>
         {:else}
           <ul class="items audit">
             {#each auditAll ? audit : audit.slice(0, AUDIT_SHOWN) as e (e.id)}
               <li>
-                <p class="meta small"><span class="mono">{formatWhen(e.created_at)}</span> {e.actor.email}</p>
+                <p class="meta small"><span class="mono">{formatWhen(e.created_at)}</span> {e.actor?.email ?? 'The server'}</p>
                 <p class="entry">{auditSummary(e)}</p>
               </li>
             {/each}
@@ -733,6 +838,9 @@
             <button type="button" class="btn btn-quiet btn-compact" aria-expanded={auditAll} onclick={() => (auditAll = !auditAll)}>
               {auditAll ? 'Show the latest 10' : `Show all ${audit.length}`}
             </button>
+          {/if}
+          {#if auditMore && (auditAll || audit.length <= AUDIT_SHOWN)}
+            <button type="button" class="btn btn-quiet btn-compact" onclick={() => loadAudit(auditPage + 1)}>Show older changes</button>
           {/if}
         {/if}
       </section>
@@ -752,6 +860,33 @@
 {/if}
 
 <style>
+  .versions li {
+    display: grid;
+    gap: var(--space-1);
+    justify-items: start;
+  }
+
+  .pin-note {
+    margin-top: var(--space-3);
+    font-size: var(--fs-0);
+  }
+
+  .pins {
+    margin-top: var(--space-3);
+  }
+
+  .pins summary {
+    width: fit-content;
+    border-radius: var(--radius);
+    font-size: var(--fs-0);
+    font-weight: 500;
+    cursor: pointer;
+  }
+
+  .audit-filters {
+    margin-top: var(--space-2);
+  }
+
   .lead {
     margin-top: var(--space-4);
     max-width: 40rem;

@@ -63,6 +63,7 @@
     type Wizard,
   } from '../lib/ai';
   import { ApiError, getJSON, sendBody, sendJSON } from '../lib/api';
+  import RevisionHistory from '../components/problem/RevisionHistory.svelte';
   import { setTitle } from '../lib/head';
   import { routeTitle } from '../lib/routing';
   import {
@@ -107,6 +108,8 @@
 
   let fields = $state<Record<string, string>>({});
   let saveError = $state('');
+  /** Why the problem changed; required while a live contest pins it (C4, B2.2). */
+  let reason = $state('');
   let saving = $state(false);
 
   let validation = $state<Validation | null>(null);
@@ -550,8 +553,11 @@
     }
     saving = true;
     try {
-      const p = await sendJSON<Problem>('PUT', problemPath(id), result.edit);
+      const live = (problem?.live_contests ?? []).length > 0;
+      const body = live ? { ...result.edit, reason: reason.trim() } : result.edit;
+      const p = await sendJSON<Problem>('PUT', problemPath(id), body);
       adopt(p, true);
+      reason = '';
       showToast('Saved');
       return true;
     } catch (e) {
@@ -911,6 +917,7 @@
         {#if hasGenerator}<a href="#generator-heading">Generator</a>{/if}
         <a href="#solutions-heading">Solutions</a>
         <a href="#validation-heading">Validation</a>
+        <a href="#history-heading">History</a>
       </nav>
       <div class="bar-actions">
         <button type="submit" form="problem-form" class="btn {dirty ? 'btn-primary' : 'btn-secondary'}" disabled={saving}>
@@ -930,6 +937,32 @@
     {#if problem.archived}
       <div class="banner banner-info lead">
         <p>This problem is archived. It is hidden from the bank and kept for the contests that used it.</p>
+      </div>
+    {/if}
+
+    {#if (problem.live_contests ?? []).length > 0}
+      {@const live = problem.live_contests ?? []}
+      <div class="banner banner-info lead live-note">
+        <p>
+          {live.map((c) => c.title).join(', ')}
+          {live.length === 1 ? 'is' : 'are'} running with this problem. A save makes a new revision; students keep the revision their
+          contest pinned until you update the contest on its console.
+        </p>
+        <div class="field reason-field">
+          <label for="reason">Reason for this change</label>
+          <input
+            id="reason"
+            class="input"
+            type="text"
+            maxlength="500"
+            autocomplete="off"
+            bind:value={reason}
+            aria-invalid={fields.reason ? 'true' : undefined}
+            aria-describedby="reason-help{fields.reason ? ' reason-error' : ''}"
+          />
+          <p id="reason-help" class="field-help">Required while a contest is running. It is kept with the revision.</p>
+          {#if fields.reason}<p id="reason-error" class="field-error">{fields.reason}</p>{/if}
+        </div>
       </div>
     {/if}
 
@@ -1693,6 +1726,11 @@
       <ValidationReport {validation} />
     </section>
 
+    <section class="block history" aria-labelledby="history-heading">
+      <h2 id="history-heading" tabindex="-1">History</h2>
+      <RevisionHistory problemId={problem.id} history={problem} />
+    </section>
+
     {#if hasGenerator}
       <section class="block solve" aria-labelledby="solve-heading">
         <h2 id="solve-heading" tabindex="-1">Can a model solve this?</h2>
@@ -1912,6 +1950,11 @@
     flex-wrap: wrap;
     gap: var(--space-2);
     margin-left: auto;
+  }
+
+  .reason-field {
+    max-width: var(--measure-form);
+    margin-top: var(--space-3);
   }
 
   .lead {

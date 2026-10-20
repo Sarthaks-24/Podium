@@ -268,6 +268,7 @@
     }
 
     .board .name {
+      min-width: 7.5rem;
       max-width: 9rem;
       white-space: normal;
     }
@@ -278,7 +279,7 @@
       -webkit-box-orient: vertical;
       -webkit-line-clamp: 2;
       line-clamp: 2;
-      overflow-wrap: anywhere;
+      overflow-wrap: break-word;
     }
 
     .board-wrap {

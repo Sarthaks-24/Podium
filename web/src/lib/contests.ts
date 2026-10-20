@@ -569,10 +569,30 @@ export interface FeedPage {
 export interface AuditEntry {
   id: number;
   action: string;
-  actor: { user_id: number; email: string; role: string };
+  /** null for rows the server wrote itself (from v1.2.0). */
+  actor: { user_id: number; email: string; role: string } | null;
   details: Record<string, unknown>;
   created_at: number;
 }
+
+/** The kinds of change the console's Changes filter offers, with their words. */
+export const AUDIT_ACTIONS: readonly { id: string; label: string }[] = [
+  { id: 'settings', label: 'Settings' },
+  { id: 'problems', label: 'Problems' },
+  { id: 'revision', label: 'Problem revisions' },
+  { id: 'roster', label: 'Roster' },
+  { id: 'extension', label: 'Extra time for a student' },
+  { id: 'extend', label: 'Contest extended' },
+  { id: 'pause', label: 'Judging paused' },
+  { id: 'resume', label: 'Judging resumed' },
+  { id: 'rejudge', label: 'Rejudges' },
+  { id: 'reveal', label: 'Reveal' },
+  { id: 'editorial', label: 'Editorial' },
+  { id: 'organisers', label: 'Co-organisers' },
+  { id: 'ai_problem', label: 'AI problems graded as written' },
+  { id: 'archive', label: 'Archived' },
+  { id: 'deploy_forced', label: 'Emergency deploy' },
+];
 
 /** The contest form's fields as the audit log names them. */
 const AUDIT_FIELDS: Record<string, string> = {
@@ -624,8 +644,20 @@ export function auditSummary(e: Pick<AuditEntry, 'action' | 'details'>): string 
     }
     case 'ai_problem':
       return `Graded AI problem ${str('label')} as written: ${str('reason')}`;
-    case 'roster':
-      return `Replaced the roster: ${countOf(num('count'), 'student')}, ${num('added')} added, ${num('removed')} removed`;
+    case 'roster': {
+      const list = (k: string) => (Array.isArray(d[k]) ? (d[k] as unknown[]).filter((x): x is string => typeof x === 'string') : []);
+      const names = (emails: string[]) => (emails.length > 3 ? `${emails.slice(0, 3).join(', ')} and ${emails.length - 3} more` : emails.join(', '));
+      const added = list('emails_added');
+      const removed = list('emails_removed');
+      let line = `Replaced the roster: ${countOf(num('count'), 'student')}, ${num('added')} added, ${num('removed')} removed`;
+      if (added.length > 0) line += `; added ${names(added)}`;
+      if (removed.length > 0) line += `; removed ${names(removed)}`;
+      return line;
+    }
+    case 'revision': {
+      const what = d.statement_changed === true && d.judging_changed === true ? 'statement and tests' : d.judging_changed === true ? 'tests' : 'statement';
+      return `Moved problem ${str('label')} from revision ${num('from_rev')} to revision ${num('to_rev')} (${what} changed)`;
+    }
     case 'extension': {
       const who = str('email') || `user ${num('user_id')}`;
       if (num('minutes') === 0) return `Removed the extension for ${who}`;

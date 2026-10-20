@@ -318,6 +318,17 @@ describe('roster CSV', () => {
 });
 
 describe('auditSummary', () => {
+  it('names revision moves and who a roster change let in or out (v1.2.0)', () => {
+    expect(auditSummary({ action: 'revision', details: { label: 'A', from_rev: 2, to_rev: 3, statement_changed: true, judging_changed: false } })).toBe(
+      'Moved problem A from revision 2 to revision 3 (statement changed)',
+    );
+    expect(auditSummary({ action: 'revision', details: { label: 'B', from_rev: 1, to_rev: 2, statement_changed: false, judging_changed: true } })).toContain('(tests changed)');
+    expect(
+      auditSummary({ action: 'roster', details: { count: 30, added: 2, removed: 1, emails_added: ['a@c.edu', 'b@c.edu'], emails_removed: ['z@c.edu'] } }),
+    ).toBe('Replaced the roster: 30 students, 2 added, 1 removed; added a@c.edu, b@c.edu; removed z@c.edu');
+    expect(auditSummary({ action: 'roster', details: { count: 5, added: 5, removed: 0, emails_added: ['1@c', '2@c', '3@c', '4@c', '5@c'] } })).toContain('added 1@c, 2@c, 3@c and 2 more');
+  });
+
   it('names each change in the past tense', () => {
     expect(
       auditSummary({

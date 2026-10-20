@@ -2,10 +2,7 @@
   StatementDiff: "What changed in problem A", a native dialog with the line
   diff of a contest problem's statement between two pinned revisions (v2
   F10.1, contract C3; GET /api/contests/{slug}/problems/{label}/revisions
-  through lib/history.ts). It loads when opened. Removed lines are marked
-  "-" and added lines "+" in the gutter, with the word in hidden text, so
-  colour is never the only cue; long unchanged stretches fold into "12
-  unchanged lines". A title change is said in words above the lines. When
+  through lib/history.ts), drawn by DiffLines. It loads when opened. A title change is said in words above the lines. When
   more than two revisions were pinned, a select picks the older side. The
   statement is shown as plain text, never rendered, and the route carries
   no test data (D47). Escape and the close button shut it; focus starts on
@@ -14,7 +11,8 @@
 <script lang="ts">
   import { ApiError, getJSON } from '../lib/api';
   import { formatDateTime } from '../lib/format';
-  import { diffRuns, diffSummary, statementHistoryPath, type StatementHistory } from '../lib/history';
+  import { diffSummary, statementHistoryPath, type StatementHistory } from '../lib/history';
+  import DiffLines from './DiffLines.svelte';
   import Icon from './Icon.svelte';
 
   interface Props {
@@ -26,9 +24,6 @@
 
   let { open, slug, label, onclose }: Props = $props();
 
-  /** Unchanged runs longer than this fold, keeping a line of context each side. */
-  const FOLD = 6;
-
   let dialog: HTMLDialogElement | undefined = $state();
   let heading: HTMLHeadingElement | undefined = $state();
   let loadState = $state<'loading' | 'ready' | 'error'>('loading');
@@ -37,7 +32,6 @@
   let from = $state<number | null>(null);
 
   const diff = $derived(history?.diff ?? null);
-  const runs = $derived(diff ? diffRuns(diff.lines) : []);
   const older = $derived((history?.revisions ?? []).filter((r) => r.revision_id !== history?.current_revision_id));
 
   async function load(fromId: number | null) {
@@ -113,26 +107,7 @@
     {#if diff.coarse}
       <p class="muted small">The statement changed too much to compare line by line, so the old text and then the new text are shown.</p>
     {/if}
-    <div class="lines" role="group" aria-label="Statement lines">
-      {#each runs as run, i (i)}
-        {#if run.op === 'same' && run.lines.length > FOLD}
-          <p class="line same"><span class="mark" aria-hidden="true"></span><span class="text">{run.lines[0]}</span></p>
-          <details class="fold">
-            <summary>{run.lines.length - 2} unchanged lines</summary>
-            {#each run.lines.slice(1, -1) as text, j (j)}<p class="line same"><span class="mark" aria-hidden="true"></span><span class="text">{text}</span></p>{/each}
-          </details>
-          <p class="line same"><span class="mark" aria-hidden="true"></span><span class="text">{run.lines[run.lines.length - 1]}</span></p>
-        {:else}
-          {#each run.lines as text, j (j)}
-            <p class="line {run.op}">
-              <span class="mark mono" aria-hidden="true">{run.op === 'add' ? '+' : run.op === 'del' ? '-' : ''}</span>
-              {#if run.op !== 'same'}<span class="visually-hidden">{run.op === 'add' ? 'Added: ' : 'Removed: '}</span>{/if}
-              <span class="text">{text === '' ? ' ' : text}</span>
-            </p>
-          {/each}
-        {/if}
-      {/each}
-    </div>
+    <DiffLines lines={diff.lines} />
   {/if}
 </dialog>
 
@@ -153,64 +128,5 @@
 
   .small {
     font-size: var(--fs-0);
-  }
-
-  .lines {
-    margin-top: var(--space-4);
-    border: var(--rule) solid var(--line);
-    font-family: var(--font-mono);
-    font-size: var(--fs-0);
-  }
-
-  .line {
-    display: grid;
-    grid-template-columns: 2ch minmax(0, 1fr);
-    gap: var(--space-2);
-    padding: 0 var(--space-2);
-  }
-
-  .text {
-    white-space: pre-wrap;
-    overflow-wrap: anywhere;
-  }
-
-  .mark {
-    color: var(--ink-muted);
-    text-align: center;
-  }
-
-  .add {
-    background: var(--ok-tint);
-  }
-
-  .add .mark {
-    color: var(--ok);
-  }
-
-  .del {
-    background: var(--bad-tint);
-  }
-
-  .del .mark {
-    color: var(--bad);
-  }
-
-  .del .text {
-    text-decoration: line-through;
-    text-decoration-color: color-mix(in srgb, currentColor 45%, transparent);
-  }
-
-  .fold summary {
-    padding: var(--space-1) var(--space-2);
-    color: var(--ink-muted);
-    font-family: var(--font-ui);
-    cursor: pointer;
-  }
-
-  @media (forced-colors: active) {
-    .add,
-    .del {
-      border-inline-start: calc(2 * var(--rule)) solid CanvasText;
-    }
   }
 </style>

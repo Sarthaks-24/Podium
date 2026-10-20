@@ -13,6 +13,7 @@
  * predates M5: the draft then has no generator part and toEdit() sends
  * none, so older servers and fixtures see the same body as before.
  */
+import type { ProblemHistory } from './history';
 
 /** Program languages, as the API names them. */
 export type Language = 'cpp17' | 'java21' | 'python3' | 'node22';
@@ -156,7 +157,8 @@ export interface TestCase {
 }
 
 /** GET /api/admin/problems/{id}. */
-export interface Problem extends ProblemSummary {
+/** GET /api/admin/problems/{id}; the revision fields are C4 (v1.2.0, lib/history.ts). */
+export interface Problem extends ProblemSummary, ProblemHistory {
   statement_md: string;
   time_limit_ms: number;
   memory_limit_mb: number;
