@@ -35,10 +35,13 @@ ALTER TABLE integrity_decisions ADD COLUMN board_before TEXT NOT NULL DEFAULT '{
 
 -- An outcome proposed by one reviewer, waiting for a second to confirm
 -- it (the two-person rule). note is for reviewers, reason is the sentence
--- the student reads. Confirmation writes the decision row naming it.
+-- the student reads. Confirmation writes the decision row naming it; any
+-- other decision after after_decision (the case's latest decision when
+-- it was made) supersedes it.
 CREATE TABLE integrity_proposals (
   id                 INTEGER PRIMARY KEY,
   case_id            INTEGER NOT NULL REFERENCES integrity_cases (id) ON DELETE RESTRICT,
+  after_decision     INTEGER NOT NULL,
   by_user            INTEGER NOT NULL REFERENCES users (id) ON DELETE RESTRICT,
   outcome            TEXT    NOT NULL CHECK (outcome IN ('warning', 'zero_problem', 'referred')),
   outcome_problem_id INTEGER,
@@ -252,6 +255,11 @@ CREATE INDEX student_contest_summary_by_user ON student_contest_summary (user_id
 ALTER TABLE contests ADD COLUMN summarised_at INTEGER;
 ALTER TABLE contests ADD COLUMN results_notified_at INTEGER;
 ALTER TABLE contests ADD COLUMN board_adjusted_at INTEGER;
+-- Contests that ended more than a day before this upgrade get their
+-- summaries (progress shows the term so far) but no "results are final"
+-- notice: those students saw their results long ago.
+UPDATE contests SET results_notified_at = CAST((julianday('now') - 2440587.5) * 86400000 AS INTEGER)
+WHERE ends_at < CAST((julianday('now') - 2440587.5) * 86400000 AS INTEGER) - 86400000;
 
 -- Zero for problem (D77 amended): standings.Compute drops these
 -- students' submissions for these problems on every board. An upheld

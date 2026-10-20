@@ -72,7 +72,7 @@ func TestMigrateFromV130(t *testing.T) {
 	}
 	// The new tables take rows.
 	for _, q := range []string{
-		`INSERT INTO integrity_proposals (id, case_id, by_user, outcome, user_ids, note, reason, created_at) VALUES (1, 1, 1, 'warning', '[2]', 'n', 'r', 9000)`,
+		`INSERT INTO integrity_proposals (id, case_id, after_decision, by_user, outcome, user_ids, note, reason, created_at) VALUES (1, 1, 2, 1, 'warning', '[2]', 'n', 'r', 9000)`,
 		`INSERT INTO integrity_appeals (id, user_id, case_id, decision_id, text, created_at) VALUES (1, 2, 1, 2, 'please look again', 9100)`,
 		`INSERT INTO integrity_appeal_rulings (appeal_id, by_user, upheld, reason, created_at) VALUES (1, 1, 0, 'kept as decided', 9200)`,
 		`INSERT INTO submission_notes (id, submission_id, contest_id, user_id, by_user, text, created_at) VALUES (1, 1, 2, 2, 1, 'look at this', 1000)`,

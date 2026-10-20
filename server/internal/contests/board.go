@@ -164,6 +164,15 @@ func (s *Service) Board(ctx context.Context, c *Contest, variant string) (*Stand
 func (s *Service) computeBoard(ctx context.Context, c *Contest, variant string, version int64) (*Standings, error) {
 	s.board.computes.Add(1)
 	b := s.scoringBoard(c)
+	// A frozen board stays as it froze until the contest is over for
+	// everyone; the full board always applies review decisions.
+	if variant != VariantFrozen || !s.now().Before(c.Final()) {
+		z, err := s.Adjustments(ctx, c.ID)
+		if err != nil {
+			return nil, err
+		}
+		b.Zeroed = z
+	}
 	labels := make([]string, 0, len(c.Problems))
 	for _, p := range c.Problems {
 		labels = append(labels, p.Label)
@@ -307,4 +316,10 @@ func (s *Service) entries(ctx context.Context, c *Contest, userID int64) ([]Entr
 		out = append(out, e)
 	}
 	return out, remaining, rows.Err()
+}
+
+// BoardNow computes the full board from the database, bypassing the cache:
+// a review decision reads the student's rank and score just before it.
+func (s *Service) BoardNow(ctx context.Context, c *Contest) (*Standings, error) {
+	return s.computeBoard(ctx, c, VariantFull, 0)
 }
