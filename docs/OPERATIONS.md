@@ -51,7 +51,8 @@ The `app` step and every upgrade also install a copy of `install.sh` as `/usr/lo
 | Network | `ufw` active and allowing only ssh, 80 and 443; ports 8080 and 8081 listen on loopback only |
 | Configuration | `PODIUM_MODE` is production in both service files; every `/etc/podium/*.env` exists, is root 600 and has no placeholder value (names listed); `PODIUM_ALERT_WEBHOOK` set; `/var/backups/podium` podium 700. Warnings: no encrypted copy, no heartbeat URL |
 | Clock | `chrony` or `systemd-timesyncd` active and the clock synchronised: every freeze, end and extension is a clock comparison, so verify fails without it |
-| Sandbox host | transparent huge pages off (warning), the installed release from `MANIFEST` |
+| Sandbox host | transparent huge pages off (warning), the installed release from `MANIFEST`, compilers and runtimes held (warning when not, see "Holding the compilers") |
+| Backup keys | `podium-litestream` runs as `podium-backup`; the database folder is group podium, mode 2770 |
 
 Run it after a fresh install, after every upgrade (the upgrade runs it itself) and before a contest.
 
@@ -59,7 +60,17 @@ The judge unit runs `podium-judge work`, which pulls jobs from the server's judg
 
 ## Verify the sandbox on the VM
 
-After installing, and after every isolate or kernel upgrade, with the worker stopped (calibrate has its own memory budget and must not overlap the worker's boxes):
+After installing, and after every isolate, kernel or compiler upgrade, run the self-test (v1.1.0 and later). It needs no Go toolchain and changes nothing:
+
+```sh
+sudo systemctl stop podium-judge
+sudo -u judge env PODIUM_JUDGE_CACHE_DIR=/tmp podium-judge selftest
+sudo systemctl start podium-judge
+```
+
+It prints `PASS` or `FAIL` for each of the 17 hostile programs and a hello world in each of the four languages, then `PASS: all 21 programs` and exit 0, or the count that failed and exit 1. Do not judge on the host until it passes. Stopping the worker first keeps the test's box out of the worker's memory budget; it uses box 80, clear of the lanes.
+
+For the timing tables as well, with the worker stopped (calibrate has its own memory budget and must not overlap the worker's boxes):
 
 ```sh
 sudo systemctl stop podium-judge
@@ -67,7 +78,7 @@ sudo -u judge podium-judge calibrate
 sudo systemctl start podium-judge
 ```
 
-It runs the 16 hostile programs (fork bomb, 2 GB allocation, endless loop and output, `/etc/shadow`, network, compile bomb, Java and Python memory, Node threads, symlink and FIFO tricks on the output file, filling `/tmp`) and prints timing tables. It exits non-zero if any program escapes its limits. Do not run contests until it passes.
+It runs the same hostile programs (fork bomb, 2 GB allocation, endless loop and output, `/etc/shadow`, network, compile bomb, Java and Python memory, Node threads, symlink and FIFO tricks on the output file, filling `/tmp`) and prints timing tables. It exits non-zero if any program escapes its limits. Do not run contests until it passes.
 
 On a development machine, `make sandbox-test` runs the same suite plus the M2 acceptance test: it validates the three example packs in `problems/` on real isolate, breaks one expected output and checks that validation fails naming that test, and checks that a hostile custom checker is contained.
 
@@ -357,15 +368,21 @@ The server logs `integrity check started`, `integrity case opened`, `integrity c
 
 ## AI wizard keys
 
-The AI wizard ("New problem with AI" and "Can a model solve this?", `docs/AUTHORING.md`) uses the organiser's own Anthropic API key. There is no variable for it and nothing to configure on the VM (decision D50).
+The AI wizard ("New problem with AI" and "Can a model solve this?", `docs/AUTHORING.md`) uses the organiser's own key for Anthropic, OpenAI or Google Gemini (D111). There is no variable for any of them and nothing to configure on the VM (decision D50).
+
+| Provider | Where to get a key | The server calls |
+|---|---|---|
+| Anthropic | Claude Console (console.anthropic.com), API keys; a workspace with a spending limit is a good idea | `api.anthropic.com` |
+| OpenAI | OpenAI platform (platform.openai.com), API keys; a project with a budget | `api.openai.com` |
+| Google Gemini | Google AI Studio (aistudio.google.com), Get API key | `generativelanguage.googleapis.com` |
 
 Adding a key:
 
-1. Get an API key from the Anthropic Console (console.anthropic.com, API keys). A workspace with a spending limit is a good idea.
-2. In podium, signed in as an owner or admin, open AI assistant in the problem bank, choose a model and paste the key.
-3. The server checks it with one model lookup, which costs no tokens, and shows "Key active until 14:32". A refusal says why ("Anthropic refused the key. Check it and paste it again."), never repeating the key.
+1. In podium, signed in as an owner or admin, open AI assistant in the problem bank, choose the provider and paste the key.
+2. The server checks it by listing the provider's models, which costs no tokens, and offers the models that can write a problem (each provider's filter is in `docs/API.md`, "Providers and models"). Choose one, or type a model id the list does not show yet; the server checks that id with the provider's model lookup, also free.
+3. The form shows "Key active until 14:32". A refusal says why in one sentence ("OpenAI refused the key. Check it and paste it again.", "Google says this key has used up its Gemini quota. ..."), never repeating the key.
 
-Models offered: Claude Opus 5.5 (default), Claude Sonnet 5.5, Claude Haiku 5.5. Opus and Sonnet requests have server-side refusal fallbacks switched on (beta `server-side-fallback-2026-07-01`): when the safety classifier refuses a request for a reason that does not apply to a fallback model, that model answers instead of the request failing, and the answer may then come from a different model than the one chosen. Haiku has no fallback (D54).
+A session can hold one key per provider; the last one saved is the one the wizard uses. No model is preselected: model names change faster than releases, so the list comes from the provider each time. Anthropic requests to the models that offer it have server-side refusal fallbacks switched on (beta `server-side-fallback-2026-07-01`): when the safety classifier refuses a request for a reason that does not apply to a fallback model, that model answers instead, and the answer may come from a different model than the one chosen (D54). OpenAI requests are sent with `store: false`.
 
 | Stored | Not stored |
 |---|---|
@@ -376,8 +393,8 @@ Models offered: Claude Opus 5.5 (default), Claude Sonnet 5.5, Claude Haiku 5.5. 
 - The key lasts 2 hours, then the form asks for it again. Signing out, signing in again in the same browser, removing the key in the form, or restarting the server forgets it at once.
 - Each admin's key is their own: another admin's session cannot use it.
 - One AI request per admin at a time, at most 3 minutes each.
-- The server needs outbound HTTPS to `api.anthropic.com`. If the VM's firewall blocks it, every request ends with "The provider is unavailable. Try again in a few minutes."
-- The wizard's client adds about 5 MB to the server binary and no memory while idle.
+- The server needs outbound HTTPS to the chosen provider's host (table above). If the VM's firewall blocks it, every request ends with "The provider is unavailable. Try again in a few minutes."
+- The Anthropic SDK adds about 5 MB to the server binary; the OpenAI and Gemini clients use the standard library only. Nothing uses memory while idle.
 
 Testing mode (`PODIUM_MODE=testing`, `make dev-test`) also offers a "Test provider (canned problems)": no key, no network, two canned problems whose programs really work on the judge (one about a maximum subarray when the brief or text mentions "subarray" or "stretch", a pair sums problem otherwise). Use it to try the whole pipeline (draft, generate inputs, generate outputs, validate). It does not exist in dev or production.
 
@@ -521,24 +538,42 @@ The first output line is `allowed`, `refused` or `allowed (forced)`; the exit co
 ## Upgrade
 
 ```sh
+sha256sum -c podium-<new>.tar.gz.sha256      # the checksum beside the tarball, from the GitHub release
 tar xzf podium-<new>.tar.gz && cd podium-<new>
+cat MANIFEST                                 # version, commit, schema, migrations, protocol, upgrades_from
 sudo ./install.sh upgrade
 ```
+
+**What a release is (v1.1.0).** `make release` (and the release workflow, on a pushed `v*` tag) puts two files in the tarball: `MANIFEST`, one `key=value` per line (`release`, `version`, `commit`, `built`, `schema`, `migrations`, `protocol`, `upgrades_from`), and `SHA256SUMS`, the checksum of every other file. `podium-server -version` and `podium-judge -version` print the same version, commit, build date, schema and protocol, so you can match a binary to its release; `curl -s 127.0.0.1:8080/healthz` on the VM shows the running version and schema (through Caddy it does not).
+
+**The release workflow.** Push a tag (`git tag v1.1.0 && git push origin v1.1.0`); `.github/workflows/release.yml` runs `make release` and makes a draft GitHub release with the tarball, its `.sha256`, `MANIFEST` and `SHA256SUMS`. Review the draft and publish it by hand. `UPGRADES_FROM` in the `Makefile` is the release this one upgrades from; raise it in a release that drops something older releases still need (a contract migration).
 
 From Windows, `tools/deploy.sh HOST` (or `make deploy HOST=user@vm`) does all of it: it asks the guard over ssh, runs `make release`, shows the tarball and its SHA-256 and waits for you to type the host name before anything leaves the machine, copies it to `/tmp` with `scp`, and runs `install.sh upgrade` there. It also asks for a confirmation when the commit is not exactly a tag (every deploy is a tag, D105).
 
 `install.sh upgrade` runs these in order and stops at the first problem, saying what was and was not changed:
 
-1. **Deploy guard**: the new release's `podium-server deploy-check` (above). Refused means nothing changes unless `--force`.
+1. **Release files and path, then the deploy guard**: every file must match `SHA256SUMS`; the installed version (from `/usr/local/lib/podium/MANIFEST`) must be at least the new release's `upgrades_from` ("this VM runs v1.0.0, and v1.2.0 upgrades only from v1.1.0 or later. Upgrade to v1.1.0 first, then to v1.2.0") and not newer than the new release (a downgrade is a rollback). Then the new release's `podium-server deploy-check` (above): refused means nothing changes unless `--force`.
 2. **Configuration names**: every variable the new example files list must be named in the matching `/etc/podium/*.env`. A missing required one stops the upgrade and is named with its file; a missing optional one is listed and keeps its default. Names only, never values.
 3. **Judge drain**: `systemctl stop podium-judge`, graceful (see "Stopping the judge"): running jobs finish and report.
 4. **Backup**: `podium-backup` runs now; the upgrade stops (and starts the judge again) unless a new local backup folder appeared.
 5. **Keep the running release**: binaries, units and `MANIFEST` go to `/usr/local/lib/podium/previous/`, with the applied migrations, the backup folder and the time.
 6. **Install**: binaries, units, scripts, Litestream configuration, backup and alert files of the new release.
-7. **Start**: the server (migrations run now), wait up to 60 s for `/healthz`, then the judge; write the new `MANIFEST`.
+7. **Start**: the server (migrations run now), wait up to 60 s for `/healthz`, then the judge; keep the release's `MANIFEST` as `/usr/local/lib/podium/MANIFEST`, with the install time, the binaries' hashes and the applied migrations added. If the judge's protocol differs from the server's (a half-done upgrade), the judge stops with "judge protocol N needed, this judge speaks M: install the same release on both" in `journalctl -u podium-judge`, and does not restart until you install one release on both.
 8. **Verify**: `install.sh verify`, then it prints the backup folder and the rollback command.
 
 Configuration files are never overwritten: add a new variable with `sudoedit` before running the upgrade again.
+
+## Holding the compilers
+
+A gcc, JDK, Python, Node or isolate update can change how fast a reference runs or, rarely, a verdict. Before a contest season, stop apt from moving them:
+
+```sh
+sudo ./install.sh hold        # apt-mark hold on the compilers, runtimes and isolate
+apt list --upgradable         # they show as held back; apt upgrade leaves them
+sudo ./install.sh unhold      # outside a contest season, to take their updates
+```
+
+After an update of any of them: `sudo systemctl restart podium-judge` (it reports the new toolchain at start), then `podium-judge selftest` (above). The contest console flags every pinned problem whose validation ran on the old toolchain (`toolchain_drift`); revalidate those before the contest. Holding also holds their security updates: unhold between seasons. `install.sh verify` warns while nothing is held.
 
 ## Rollback
 
@@ -604,6 +639,8 @@ Two layers, both installed by `install.sh` (steps `litestream` and `backup`):
 Test files and program sources are not in the bucket: they live in `/var/lib/podium/tests`, named by SHA-256, and the database only refers to them. The nightly backup copies them as hard links, so 14 nights cost little more than one, and the encrypted copy carries them off the VM (below). Set it up before the first graded contest: without it, losing the VM's disk loses every test file, and only the pack zips you kept would bring the problems back. Submitted code is safe either way, since the database holds every submission's source.
 
 Backups hold every student's code and the session table, so they are private: the backup runs with umask 077 (`UMask=0077` in the unit, `umask 077` in the script), `/var/backups/podium` is mode 700, and the files are readable by the podium user only. The judge cannot read them.
+
+**The bucket keys are out of the server's reach (v1.1.0, D116).** A process can read the environment of any other process of its own user from `/proc`, so a server taken over as user podium could read keys from a backup process running as podium. Litestream therefore runs as its own user, `podium-backup` (in group podium, so it can write the database folder, which is mode 2770; the server keeps the database files mode 660). The nightly backup unit runs as root and splits the work: the copy, the check, `tar` and `age` run as podium with an empty environment, and only `rclone` (reading the encrypted stream on its stdin) and the heartbeat ping run as `podium-backup` with the B2 key and the heartbeat URL. `install.sh upgrade` creates the user and moves Litestream's state to it; a rollback gives it back to podium.
 
 ### Encrypted copy off the VM
 

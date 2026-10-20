@@ -4,6 +4,18 @@ Dated entries per release. Unreleased work is listed at the top.
 
 ## Unreleased
 
+### Backend
+
+- AI wizard with three providers (D111): Anthropic, OpenAI and Google Gemini. The key form lists each provider's current models from its own models endpoint, filtered to models that can write a problem, and takes a typed model id too; no model id is written in the server. One key per provider per session, still memory-only. New routes `GET /api/admin/ai/providers` and `GET /api/admin/ai/models`; each provider's refused key, used-up quota and unknown model say what to do in one sentence.
+- The Anthropic client sends adaptive thinking explicitly and puts a cache breakpoint on its fixed system prompt; billing errors read as "no credit left".
+- `podium-server -version` and `podium-judge -version`: version, commit, build date, schema and judge protocol. `/healthz` adds the version and schema for callers on the VM only.
+- Release `MANIFEST` and `SHA256SUMS` in the tarball; `install.sh upgrade` checks the sums and refuses an installed release older than the new one's `upgrades_from`, and a downgrade. A tag push builds a draft GitHub release.
+- Judge protocol version 2: a judge of another release is answered `426` and stops with "judge protocol 2 needed, this judge speaks 1: install the same release on both" instead of retrying.
+- Toolchain registry (migration 0009): the judge reports its compilers, runtimes, isolate and kernel at start; every job records which toolchain ran it, and the contest console response flags pinned problems validated on another toolchain (`toolchain_drift`).
+- `install.sh hold` and `unhold` for the compilers, runtimes and isolate. `problem.yaml` gains `format: 1`; a newer format is refused with the version named.
+- `podium-judge selftest` runs the hostile-program suite on the host and prints PASS or FAIL per program; CI runs the suite on GitHub's ubuntu-24.04 runner.
+- Litestream and the B2 upload run as a new `podium-backup` user, so a compromised server cannot read the bucket keys (D116). The judge cleans every lane's sandbox when it stops. The unused `Settings.ExtraBase` hook is gone.
+
 ### Security council fixes (2026-10-18)
 
 - Co-organisers whose site role is student can no longer change a contest's schedule or rules once it starts, replace the roster, give extra time, extend, pause, resume or rejudge. They see results only when students do (no exam-mode verdicts, the frozen board during the freeze, no stats or exports until then), including on their own submissions. Extensions go only to students on the roster or taking part.
