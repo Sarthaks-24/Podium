@@ -8,8 +8,10 @@
   --ink-muted for submissions made after the freeze; screen readers hear
   each cell as a sentence (lib/standings.ts). The signed-in student's row
   is tinted with --act-tint and marked "(you)", and "Jump to you" scrolls
-  to it and moves focus there. Under 768 px the box only scrolls sideways
-  and the page scrolls the rows, so a swipe is never trapped. Props: `standings`, `labels` (the problem
+  to it and moves focus there. The box is sized to the screen and scrolls
+  both ways at every width, so the header row sticks on phones too; under
+  768 px a vertical swipe that reaches the end of the box goes on to the
+  page, so it is never trapped. Props: `standings`, `labels` (the problem
   letters, in order), `caption` (the table's accessible name) and `large`
   (bigger type, for a projector).
 -->
@@ -266,8 +268,6 @@
     }
 
     .board-wrap {
-      max-height: none;
-      overflow-y: visible;
       overscroll-behavior: auto;
       overscroll-behavior-x: contain;
     }

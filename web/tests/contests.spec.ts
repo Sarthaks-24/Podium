@@ -880,6 +880,22 @@ test('the frozen board shows pending cells, tints the own row and jumps to it', 
   await page.screenshot({ path: `${shots()}standings-phone-scrolled-375-light.png` });
 });
 
+test('on a phone the standings header stays on screen while rows scroll', async ({ page }) => {
+  await mockApi(page, { phase: 'during' });
+  await page.setViewportSize({ width: 375, height: 812 });
+  await page.goto('/contests/week-6/standings');
+  const wrap = page.locator('.board-wrap');
+  await expect(wrap.locator('tbody tr')).toHaveCount(28);
+  // The box fits the screen and scrolls both ways, so its sticky header row has something to stick to.
+  const box = (await wrap.boundingBox())!;
+  expect(box.height).toBeLessThanOrEqual(812);
+  await wrap.evaluate((el) => (el.scrollTop = 600));
+  expect(await wrap.evaluate((el) => el.scrollTop)).toBeGreaterThan(0);
+  const head = (await wrap.locator('thead th').first().boundingBox())!;
+  expect(Math.abs(head.y - box.y)).toBeLessThanOrEqual(2);
+  await page.screenshot({ path: `${shots()}standings-phone-rows-scrolled-375-light.png` });
+});
+
 test('a window-mode board stays closed until the window closes', async ({ page }) => {
   await mockApi(page, { phase: 'during', startMode: 'window', boardClosed: true });
   await page.goto('/contests/week-6/standings');
