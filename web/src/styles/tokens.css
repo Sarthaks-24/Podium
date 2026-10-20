@@ -93,7 +93,7 @@
   --code-keyword: #A5B4FF;
   --code-string: #9FD8A4;
   --code-number: #F2C58A;
-  --code-comment: #939C96;
+  --code-comment: #B8BFBA;   /* italic; 4.5:1 on the selection in every theme (X5) */
   --code-type: #7FD1CC;
   --code-function: #E6E8E3;
   --code-meta: #E8A6CB;
@@ -102,7 +102,7 @@
   /* The editor's focus ring is drawn on the well, where --act can fall to
      2.3:1, so it takes the keyword colour (at least 3:1 on every well). */
   --code-focus: var(--code-keyword);
-  --code-selection: color-mix(in srgb, var(--act) 40%, var(--well));
+  --code-selection: color-mix(in srgb, var(--act) 30%, var(--well));
   --code-active-line: color-mix(in srgb, var(--well-ink) 7%, var(--well));
 
   /* Passages two programs share, in the integrity views. The edge marks
@@ -246,7 +246,7 @@
   --ink-muted: #B4B9C1;
   --ink-faint: #8B9097;
   --line: #3E434B;
-  --line-strong: #7A7F87;
+  --line-strong: #7C8189;   /* 3:1 on surface-2 too (X5) */
   --act: #6CB6FF;
   --act-ink: #0D1117;
   --act-tint: #2B3D52;
@@ -263,7 +263,7 @@
   --ink-muted: #ADADAD;
   --ink-faint: #767676;
   --line: #262626;
-  --line-strong: #5E5E5E;
+  --line-strong: #636363;   /* 3:1 on surface-2 too (X5) */
   --act: #8A97FF;
   --act-ink: #000000;
   --act-tint: #1A1C33;
@@ -280,7 +280,7 @@
   --ink-muted: #88A5C4;
   --ink-faint: #6A85A3;
   --line: #283E60;
-  --line-strong: #4F6D97;
+  --line-strong: #5B79A3;   /* 3:1 on surface-2 too (X5) */
   --act: #7DD3FC;
   --act-ink: #041426;
   --act-tint: #1C3A55;

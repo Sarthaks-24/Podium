@@ -130,41 +130,11 @@ describe('themes in tokens.css', () => {
 });
 
 // X5 (v2 frontend plan 6.7, audit 06-14): pairs the rules above leave out.
-// P0 adds them to the test only; the fixes belong to F-V2 (P1), which
-// empties X5_KNOWN as it fixes each pair. A pair that starts failing, or
-// one that F-V2 fixes, changes the list and fails this test.
-const X5_KNOWN: string[] = [
-  'light: error toast Dismiss hover: 4.49 < 4.5',
-  'light (signal): error toast Dismiss hover: 4.46 < 4.5',
-  'nordic-frost: --code-comment on --code-selection: 4.24 < 4.5',
-  'nordic-frost: error toast Dismiss hover: 4.49 < 4.5',
-  'nordic-frost (signal): --code-comment on --code-selection: 4.24 < 4.5',
-  'nordic-frost (signal): error toast Dismiss hover: 4.46 < 4.5',
-  'soft-lavender: error toast Dismiss hover: 4.49 < 4.5',
-  'soft-lavender (signal): error toast Dismiss hover: 4.46 < 4.5',
-  'dark: --code-comment on --code-selection: 3.19 < 4.5',
-  'dark (signal): --code-comment on --code-selection: 3.19 < 4.5',
-  'overcast: --line-strong on --surface-2: 2.97 < 3',
-  'overcast: --code-comment on --code-selection: 2.43 < 4.5',
-  'overcast (signal): --line-strong on --surface-2: 2.97 < 3',
-  'overcast (signal): --code-comment on --code-selection: 2.43 < 4.5',
-  'oled-black: --line-strong on --surface-2: 2.84 < 3',
-  'oled-black: --code-comment on --code-selection: 3.39 < 4.5',
-  'oled-black (signal): --line-strong on --surface-2: 2.84 < 3',
-  'oled-black (signal): --code-comment on --code-selection: 3.39 < 4.5',
-  'nordic-slate: --line-strong on --surface-2: 2.58 < 3',
-  'nordic-slate: --code-comment on --code-selection: 2.46 < 4.5',
-  'nordic-slate (signal): --line-strong on --surface-2: 2.58 < 3',
-  'nordic-slate (signal): --code-comment on --code-selection: 2.46 < 4.5',
-  'cosmic-violet: --code-comment on --code-selection: 3.18 < 4.5',
-  'cosmic-violet (signal): --code-comment on --code-selection: 3.18 < 4.5',
-  'hc-light: error toast Dismiss hover: 6.43 < 7',
-  'hc-light (signal): error toast Dismiss hover: 5.81 < 7',
-  'hc-dark: --code-comment on --code-selection: 2.89 < 4.5',
-  'hc-dark: error toast Dismiss hover: 6.82 < 7',
-  'hc-dark (signal): --code-comment on --code-selection: 2.89 < 4.5',
-  'hc-dark (signal): error toast Dismiss hover: 5.65 < 7',
-];
+// P0 listed 30 failing pairs; the P1 token pass fixed them all (the
+// comment colour, a 30 percent selection mix, --line-strong in three dark
+// themes, and a Dismiss hover drawn as a border). Any new failure fails
+// this test.
+const X5_KNOWN: string[] = [];
 
 function x5Failures(id: string, signal: boolean): string[] {
   const t = resolveTheme(rules, id, signal);
@@ -183,13 +153,13 @@ function x5Failures(id: string, signal: boolean): string[] {
   // --code-selection is color-mix(in srgb, var(--act) N%, var(--well)).
   const pct = Number(/var\(--act\) (\d+)%/.exec(root['--code-selection'] ?? '')?.[1]);
   need('--code-comment on --code-selection', root['--code-comment'], mixSrgb(t['--act'], t['--well'], pct / 100), 4.5);
-  // The error toast's Dismiss on hover: --bad on 12 percent --bad over --bad-tint (Toasts.svelte).
-  need('error toast Dismiss hover', t['--bad'], mixSrgb(t['--bad'], t['--bad-tint'], 0.12), text);
+  // The error toast's Dismiss on hover keeps the toast's --bad-tint fill (Toasts.svelte).
+  need('error toast Dismiss hover', t['--bad'], t['--bad-tint'], text);
   return out;
 }
 
 describe('X5 contrast pairs', () => {
-  it('fails only on the pairs listed for F-V2', () => {
+  it('passes every pair', () => {
     const all = THEMES.flatMap(({ id }) => [...x5Failures(id, false), ...x5Failures(id, true)]);
     expect([...new Set(all)]).toEqual(X5_KNOWN);
   });
