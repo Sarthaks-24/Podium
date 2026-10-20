@@ -10,6 +10,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/Sarthaks-24/podium/internal/auth"
@@ -114,6 +115,12 @@ func viewerOf(u auth.User) contests.Viewer {
 // may enter it. organiser is true for owners, admins and its co-organisers.
 func (d Deps) studentContest(w http.ResponseWriter, r *http.Request) (*contests.Contest, bool, bool) {
 	c, err := d.Contests.GetBySlug(r.Context(), r.PathValue("slug"))
+	if errors.Is(err, contests.ErrNotFound) && r.Method == http.MethodGet {
+		// A renamed contest's old slug answers 301 (B2.9).
+		if rest, ok := strings.CutPrefix(r.URL.Path, "/api/contests/"); ok && d.redirectRenamed(w, r, "/api/contests/", rest) {
+			return nil, false, false
+		}
+	}
 	if err != nil {
 		d.contestError(w, r, err)
 		return nil, false, false

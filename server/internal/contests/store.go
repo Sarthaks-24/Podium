@@ -378,11 +378,11 @@ func (s *Service) checkSlugFree(ctx context.Context, q interface {
 }
 
 // RenamedTo returns the current slug of the contest that once had slug,
-// or "" when no contest did.
+// or "" when no contest did or a contest has that slug now.
 func (s *Service) RenamedTo(ctx context.Context, slug string) (string, error) {
 	var current string
 	err := s.DB.QueryRowContext(ctx, `SELECT c.slug FROM slug_history h JOIN contests c ON c.id = h.entity_id
-		WHERE h.entity = 'contest' AND h.old_slug = ? AND c.slug <> ?`, slug, slug).Scan(&current)
+		WHERE h.entity = 'contest' AND h.old_slug = ? AND NOT EXISTS (SELECT 1 FROM contests n WHERE n.slug = ?)`, slug, slug).Scan(&current)
 	if errors.Is(err, sql.ErrNoRows) {
 		return "", nil
 	}

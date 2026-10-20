@@ -363,38 +363,39 @@ func (d Deps) siteAudit(w http.ResponseWriter, r *http.Request) {
 	WriteJSON(w, http.StatusOK, map[string]any{"entries": list, "page": max(page, 1), "has_more": more, "server_now": time.Now().UnixMilli()})
 }
 
-// renamedContest answers 301 for a GET of a renamed contest's old slug,
-// on the web app's /contests/<old>/... paths and the API's
-// /api/contests/<old>/... (B2.9). Anything else goes on to next.
+// renamedContest answers 301 for a GET of a renamed contest's old slug on
+// the web app's /contests/<old>/... paths (B2.9); the API's
+// /api/contests/<old>/... are redirected by studentContest, only when the
+// slug is not found, so the hot API paths pay nothing. Anything else goes
+// on to next.
 func (d Deps) renamedContest(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if (r.Method == http.MethodGet || r.Method == http.MethodHead) && d.Contests != nil {
-			for _, prefix := range []string{"/contests/", "/api/contests/"} {
-				rest, ok := strings.CutPrefix(r.URL.Path, prefix)
-				if !ok {
-					continue
-				}
-				slug, tail, _ := strings.Cut(rest, "/")
-				if slug == "" {
-					break
-				}
-				if _, err := d.Contests.GetBySlug(r.Context(), slug); err == nil || !errors.Is(err, contests.ErrNotFound) {
-					break
-				}
-				current, err := d.Contests.RenamedTo(r.Context(), slug)
-				if err != nil || current == "" {
-					break
-				}
-				u := *r.URL
-				u.Path = prefix + current
-				if tail != "" || strings.HasSuffix(rest, "/") {
-					u.Path += "/" + tail
-				}
-				w.Header().Set("Cache-Control", "no-store")
-				http.Redirect(w, r, u.RequestURI(), http.StatusMovedPermanently)
+			if rest, ok := strings.CutPrefix(r.URL.Path, "/contests/"); ok && d.redirectRenamed(w, r, "/contests/", rest) {
 				return
 			}
 		}
 		next.ServeHTTP(w, r)
 	})
+}
+
+// redirectRenamed answers 301 when the first segment of rest is a slug
+// no contest has now but a renamed one had. It reports whether it did.
+func (d Deps) redirectRenamed(w http.ResponseWriter, r *http.Request, prefix, rest string) bool {
+	slug, tail, _ := strings.Cut(rest, "/")
+	if slug == "" {
+		return false
+	}
+	current, err := d.Contests.RenamedTo(r.Context(), slug)
+	if err != nil || current == "" {
+		return false
+	}
+	u := *r.URL
+	u.Path = prefix + current
+	if tail != "" || strings.HasSuffix(rest, "/") {
+		u.Path += "/" + tail
+	}
+	w.Header().Set("Cache-Control", "no-store")
+	http.Redirect(w, r, u.RequestURI(), http.StatusMovedPermanently)
+	return true
 }

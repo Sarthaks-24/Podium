@@ -305,23 +305,34 @@ func (s *Service) StatementHistory(ctx context.Context, c *Contest, label string
 
 // StatementUpdates returns, per label, the time of the newest pin change
 // made after the contest started that changed the title or statement.
-// Labels without one are absent.
+// Labels without one are absent. One query on the pin history, reading
+// titles and statement hashes only: it runs on every contest page and
+// workspace load.
 func (s *Service) StatementUpdates(ctx context.Context, c *Contest) (map[string]int64, error) {
-	rows, err := s.pinRows(ctx, c.ID, "")
+	rows, err := s.DB.QueryContext(ctx, `SELECT h.label, h.from_at, r.title, r.statement_hash, r.statement_recorded
+		FROM contest_pin_history h JOIN problem_revisions r ON r.id = h.revision_id
+		WHERE h.contest_id = ? ORDER BY h.label, h.from_at, h.id`, c.ID)
 	if err != nil {
 		return nil, err
 	}
+	defer rows.Close()
 	start := c.Schedule.StartsAt.UnixMilli()
 	out := map[string]int64{}
-	for i, r := range rows {
-		if i == 0 || rows[i-1].label != r.label || r.fromAt <= start {
-			continue
+	var prev *problems.Revision
+	prevLabel := ""
+	for rows.Next() {
+		var label string
+		var at int64
+		var r problems.Revision
+		if err := rows.Scan(&label, &at, &r.Title, &r.StatementHash, &r.StatementRecorded); err != nil {
+			return nil, err
 		}
-		if problems.StatementChanged(rows[i-1].rev, r.rev) {
-			out[r.label] = r.fromAt
+		if prev != nil && prevLabel == label && at > start && problems.StatementChanged(prev, &r) {
+			out[label] = at
 		}
+		prev, prevLabel = &r, label
 	}
-	return out, nil
+	return out, rows.Err()
 }
 
 // Seen is what a student had been shown of a contest problem at a moment:
