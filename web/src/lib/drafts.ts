@@ -17,8 +17,9 @@
  * the next student never sees, or saves as their own, the last student's
  * code.
  *
- * The editor's own settings (font size, Tab behaviour, last language) live
- * here too, under their own keys.
+ * The editor's own settings (font size, Tab behaviour, last language) and
+ * the size of the workspace's result panel (P5 F7.5) live here too, under
+ * their own keys: they belong to this device, not to an account.
  */
 import type { Draft, Language } from './workspace';
 
@@ -165,6 +166,10 @@ export const DEFAULT_FONT_SIZE = 14;
 const FONT_KEY = 'podium-editor-font';
 const TAB_KEY = 'podium-editor-tab-focus';
 const LANG_KEY = 'podium-editor-language';
+const RESULT_KEY = 'podium-workspace-result';
+
+/** The result panel's share of the code column, in percent, while open (F7.5). */
+export const RESULT_SHARE = { min: 20, max: 80, default: 40 } as const;
 
 function read(storage: DraftStorage | null, key: string): string | null {
   if (!storage) return null;
@@ -189,6 +194,37 @@ export interface EditorPrefs {
   fontSize: number;
   tabMovesFocus: boolean;
   language: Language;
+}
+
+/** The result panel under the editor from 1024 px: its share when open, and whether it is collapsed. */
+export interface ResultPanelPrefs {
+  share: number;
+  collapsed: boolean;
+}
+
+/** Keeps a share inside the allowed range, rounded to a whole percent. */
+export function clampShare(share: number): number {
+  if (!Number.isFinite(share)) return RESULT_SHARE.default;
+  return Math.round(Math.min(RESULT_SHARE.max, Math.max(RESULT_SHARE.min, share)));
+}
+
+/** Reads the result panel's size, or `fallback` open when nothing usable is stored. */
+export function readResultPanel(storage: DraftStorage | null, fallback: number = RESULT_SHARE.default): ResultPanelPrefs {
+  const none = { share: clampShare(fallback), collapsed: false };
+  const raw = read(storage, RESULT_KEY);
+  if (raw === null) return none;
+  try {
+    const v = JSON.parse(raw) as { share?: unknown; collapsed?: unknown };
+    if (typeof v.share !== 'number') return none;
+    return { share: clampShare(v.share), collapsed: v.collapsed === true };
+  } catch {
+    return none;
+  }
+}
+
+/** Remembers the result panel's size on this device. */
+export function writeResultPanel(storage: DraftStorage | null, prefs: ResultPanelPrefs): void {
+  write(storage, RESULT_KEY, JSON.stringify({ share: clampShare(prefs.share), collapsed: prefs.collapsed }));
 }
 
 /** Reads the remembered editor settings, falling back to the defaults. */

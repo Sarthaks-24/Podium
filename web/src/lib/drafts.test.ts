@@ -10,6 +10,10 @@ import {
   readEditorPrefs,
   readMirror,
   writeEditorPrefs,
+  RESULT_SHARE,
+  clampShare,
+  readResultPanel,
+  writeResultPanel,
   writeMirror,
   type DraftStorage,
 } from './drafts';
@@ -135,5 +139,27 @@ describe('editor settings', () => {
     expect(readEditorPrefs(s).fontSize).toBe(DEFAULT_FONT_SIZE);
     expect(readEditorPrefs(broken).fontSize).toBe(DEFAULT_FONT_SIZE);
     expect(() => writeEditorPrefs(broken, { fontSize: 12, tabMovesFocus: false, language: 'cpp17' })).not.toThrow();
+  });
+});
+
+describe('the result panel size (P5 F7.5)', () => {
+  it('keeps the share inside 20 to 80 percent, whole', () => {
+    expect(clampShare(10)).toBe(RESULT_SHARE.min);
+    expect(clampShare(95)).toBe(RESULT_SHARE.max);
+    expect(clampShare(42.6)).toBe(43);
+    expect(clampShare(NaN)).toBe(RESULT_SHARE.default);
+  });
+
+  it('reads back what was written, and falls back when nothing usable is stored', () => {
+    const s = memory();
+    expect(readResultPanel(s)).toEqual({ share: 40, collapsed: false });
+    expect(readResultPanel(s, 30)).toEqual({ share: 30, collapsed: false });
+    writeResultPanel(s, { share: 55, collapsed: true });
+    expect(readResultPanel(s, 30)).toEqual({ share: 55, collapsed: true });
+    s.data.set('podium-workspace-result', 'not json');
+    expect(readResultPanel(s)).toEqual({ share: 40, collapsed: false });
+    s.data.set('podium-workspace-result', '{"collapsed":true}');
+    expect(readResultPanel(s, 30)).toEqual({ share: 30, collapsed: false });
+    expect(readResultPanel(null)).toEqual({ share: 40, collapsed: false });
   });
 });
