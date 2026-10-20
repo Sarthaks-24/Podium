@@ -25,6 +25,7 @@
     phone   below 768 px     (width < 768px)
     tablet  from 768 px      (min-width: 768px)
     laptop  from 1024 px     (min-width: 1024px)
+    desk    from 1280 px     (min-width: 1280px), the page split (D181)
     wide    from 1440 px     (min-width: 1440px)
     short   laptop and at most 45rem tall
   Custom properties cannot be used in a media query, so the numbers are
@@ -64,6 +65,8 @@
   --measure-form: 48rem;
   --measure-wide: 64rem;
   --measure-prose: 72ch;
+  /* the sticky context column of .page-split from 1280 px (D181) */
+  --measure-aside: 26rem;
   /* the space and rule between h2 sections of one page (T15) */
   --section-gap: var(--space-7);
   /* Lucide icons beside words (F10) */
@@ -152,6 +155,9 @@
   --surface-2: #ECEEE9;      /* table header, rail background */
   --well: #171B1F;           /* editor background: the single dark element in light mode */
   --well-ink: #E6E8E3;
+  /* The well's edge: invisible on a light page, where the well is already
+     the one dark object; a visible rule in dark themes (audit change 5). */
+  --well-edge: var(--well);
 
   /* ink */
   --ink: #16211C;
@@ -190,6 +196,7 @@
   --surface-2: #202521;
   --well: #0E1012;
   --well-ink: #E6E8E3;
+  --well-edge: var(--line-strong);
   --ink: #E9ECE6;
   --ink-muted: #9AA39D;
   --ink-faint: #6F7872;
@@ -369,6 +376,7 @@
     --surface-2: #202521;
     --well: #0E1012;
     --well-ink: #E6E8E3;
+    --well-edge: var(--line-strong);
     --ink: #E9ECE6;
     --ink-muted: #9AA39D;
     --ink-faint: #6F7872;

@@ -13,6 +13,7 @@
   once all are decided (S7, audit 01-12 and 01-13). Takes no props.
 -->
 <script lang="ts">
+  import MonoDigits from '../components/MonoDigits.svelte';
   import PageState from '../components/PageState.svelte';
   import PageHeader from '../components/PageHeader.svelte';
   import { onMount } from 'svelte';
@@ -110,7 +111,7 @@
     <section class="case" aria-labelledby="case-{c.id}">
       <h2 id="case-{c.id}">{c.title}</h2>
       <p class="muted small">
-        {#if contestTitle(c)}{contestTitle(c)}, shared{:else}Shared{/if} <span class="mono">{formatDateTime(c.shared_at)}</span>
+        {#if contestTitle(c)}{contestTitle(c)}, shared{:else}Shared{/if} <MonoDigits text={formatDateTime(c.shared_at)} />
       </p>
       <p class="where-now">{studentStateText(c)}</p>
 

@@ -11,6 +11,7 @@
   `ondismiss` (with the item's key) and `onopen`.
 -->
 <script lang="ts">
+  import MonoDigits from './MonoDigits.svelte';
   import { polite } from '../lib/announce.svelte';
   import { bannerLead, type BannerItem } from '../lib/contests';
   import { formatWhen } from '../lib/workspace';
@@ -45,7 +46,7 @@
       <div class="text">
         <p class="lead">
           {bannerLead(top.kind)}
-          <span class="mono when">{formatWhen(top.at)}</span>
+          <span class="when"><MonoDigits text={formatWhen(top.at)} /></span>
         </p>
         {#if top.question}<p class="question">{top.question}</p>{/if}
         <Markdown source={top.body} compact />

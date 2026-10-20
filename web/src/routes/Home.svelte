@@ -133,7 +133,7 @@
                 <a class="btn btn-primary btn-compact open" {href} aria-describedby="contest-{c.slug}">Open contest</a>
               {/if}
             </th>
-            <td class="num when">{formatDateTime(c.starts_at)}</td>
+            <td class="when"><MonoDigits text={formatDateTime(c.starts_at)} /></td>
             <td class="length"><span class="meta">{lengthText(c)}<span class="phone-only">, {countOf(c.problem_count, 'problem')}</span></span></td>
             <td class="num right problems">{c.problem_count}</td>
             <td class="right score">

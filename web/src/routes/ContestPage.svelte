@@ -39,6 +39,7 @@
   Props: `slug`, and `label` (the problem letter from the address, or "").
 -->
 <script lang="ts">
+  import MonoDigits from '../components/MonoDigits.svelte';
   import PageState from '../components/PageState.svelte';
   import PageHeader from '../components/PageHeader.svelte';
   import { onDestroy, onMount, untrack } from 'svelte';
@@ -77,7 +78,7 @@
   import { polite } from '../lib/announce.svelte';
   import { keepHeadingFocus } from '../lib/focus';
   import { statementBannerKey, statementUpdatedText, type StatementEvent } from '../lib/history';
-  import { formatDateTime } from '../lib/format';
+  import { formatDateTime, scoreParts } from '../lib/format';
   import { setTitle } from '../lib/head';
   import { routeTitle } from '../lib/routing';
   import { navigate } from '../lib/router.svelte';
@@ -520,12 +521,12 @@
       <p class="countdown">Starts in <span class="mono big" role="timer">{startNow.ms >= 86_400_000 ? formatSpan(startNow.ms) : formatCountdown(startNow.ms)}</span></p>
     {:else if startNow.kind === 'window'}
       <p class="countdown">
-        Start any time before <span class="mono">{formatDateTime(contest.ends_at)}</span>. The contest closes in
+        Start any time before <MonoDigits text={formatDateTime(contest.ends_at)} />. The contest closes in
         <span class="mono" role="timer">{formatCountdown(startNow.ms)}</span>.
       </p>
     {:else}
       <p class="countdown">
-        The contest started at <span class="mono">{formatDateTime(contest.starts_at).slice(-5)}</span> and your time is running. It ends in
+        The contest started at <MonoDigits text={formatDateTime(contest.starts_at).slice(-5)} /> and your time is running. It ends in
         <span class="mono big" role="timer">{formatCountdown(startNow.ms)}</span>.
       </p>
     {/if}
@@ -626,9 +627,9 @@
               {#each problems as p (p.label)}
                 <tr>
                   <th scope="row"><span class="mono letter">{p.label}</span>{p.title}</th>
-                  <td class="num right">{p.my_score ?? 0} of {p.max_score}</td>
+                  <td class="right score"><MonoDigits parts={scoreParts(p.my_score ?? 0, p.max_score)} /></td>
                   <td class="open">
-                    <a href="/contests/{encodeURIComponent(slug)}/problems/{encodeURIComponent(p.label)}" aria-label="{practice ? 'Practise' : 'Review'} problem {p.label}">
+                    <a class="btn btn-link btn-compact" href="/contests/{encodeURIComponent(slug)}/problems/{encodeURIComponent(p.label)}" aria-label="{practice ? 'Practise' : 'Review'} problem {p.label}">
                       {practice ? 'Practise' : 'Review'}
                     </a>
                   </td>
@@ -671,7 +672,7 @@
         <h2 id="ann-title">Announcements</h2>
         <ul class="announcements">
           {#each [...contest.announcements].sort((a, b) => b.created_at - a.created_at) as a (a.id)}
-            <li><p class="mono muted small">{formatDateTime(a.created_at)}</p><Markdown source={a.body_md} compact /></li>
+            <li><p class="muted small"><MonoDigits text={formatDateTime(a.created_at)} /></p><Markdown source={a.body_md} compact /></li>
           {/each}
         </ul>
       </section>
@@ -831,6 +832,10 @@
   .right,
   .table .right {
     text-align: right;
+  }
+
+  .score {
+    white-space: nowrap;
   }
 
   .open {

@@ -8,6 +8,9 @@
   score is shown too).
 -->
 <script lang="ts">
+  import Badge from './Badge.svelte';
+  import MonoDigits from './MonoDigits.svelte';
+  import { scoreParts } from '../lib/format';
   import { formatWhen, headline, languageLabel, type Submission } from '../lib/workspace';
   import VerdictPanel from './VerdictPanel.svelte';
 
@@ -32,10 +35,10 @@
       <li class="item">
         {#if exam || s.hidden}
           <div class="row">
-            <span class="mono when">{formatWhen(s.created_at)}</span>
+            <span class="when"><MonoDigits text={formatWhen(s.created_at)} /></span>
             <span class="lang">{languageLabel(s.language)}</span>
-            <span class="outcome">Submitted</span>
-            <span class="mono score">{showScores && s.state === 'done' ? `${s.score} of ${s.max_score}` : ''}</span>
+            <span class="outcome"><Badge text="Submitted" /></span>
+            <span class="score">{#if showScores && s.state === 'done'}<MonoDigits parts={scoreParts(s.score, s.max_score)} />{/if}</span>
           </div>
         {:else}
           <button
@@ -45,10 +48,10 @@
             aria-controls="submission-{s.id}"
             onclick={() => (open[s.id] = !open[s.id])}
           >
-            <span class="mono when">{formatWhen(s.created_at)}</span>
+            <span class="when"><MonoDigits text={formatWhen(s.created_at)} /></span>
             <span class="lang">{languageLabel(s.language)}</span>
-            <span class="outcome tone-{h.tone}">{h.text}</span>
-            <span class="mono score">{s.state === 'done' ? `${s.score} of ${s.max_score}` : ''}</span>
+            <span class="outcome"><Badge tone={h.tone} text={h.text} /></span>
+            <span class="score">{#if s.state === 'done'}<MonoDigits parts={scoreParts(s.score, s.max_score)} />{/if}</span>
           </button>
           <div id="submission-{s.id}" class="body" hidden={open[s.id] !== true}>
             {#if open[s.id]}
@@ -84,7 +87,7 @@
     gap: var(--space-3);
     width: 100%;
     min-height: var(--control-h);
-    padding: var(--space-2) 0;
+    padding: var(--space-2);
     border: 0;
     border-radius: var(--radius);
     background: none;
@@ -93,8 +96,8 @@
     text-align: left;
   }
 
-  button.row:hover .outcome {
-    text-decoration: underline;
+  button.row:hover {
+    background: var(--surface-2);
   }
 
   .when,
@@ -106,24 +109,13 @@
   }
 
   .outcome {
-    font-weight: 500;
+    min-width: 0;
+  }
+
+  /* A long verdict ("Time limit exceeded on test 9") wraps inside its badge. */
+  .outcome :global(.badge) {
+    white-space: normal;
     overflow-wrap: anywhere;
-  }
-
-  .tone-ok {
-    color: var(--ok);
-  }
-
-  .tone-part {
-    color: var(--part);
-  }
-
-  .tone-bad {
-    color: var(--bad);
-  }
-
-  .tone-wait {
-    color: var(--ink-muted);
   }
 
   .body {
