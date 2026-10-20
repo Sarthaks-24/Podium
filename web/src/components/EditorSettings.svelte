@@ -4,9 +4,13 @@
   size and "Tab moves focus", which used to take a row of their own above
   and below the editor. A disclosure, not a menu: the panel holds form
   controls. Escape closes it and returns focus to the button, as do a click
-  outside and tabbing out (the same behaviour as AccountMenu). Props:
-  `fontSize`, `sizes` (the choices, in px), `tabMovesFocus`, `onfont` and
-  `ontab` (the change events of the select and the checkbox).
+  outside and tabbing out (the same behaviour as AccountMenu). Under a
+  rule, "Reset to starter" (P5 F7.12, D211) closes the panel, puts focus
+  back on the button and asks the workspace to confirm, so the dialog
+  returns focus to a control that is still on screen. Props: `fontSize`,
+  `sizes` (the choices, in px), `tabMovesFocus`, `onfont` and `ontab` (the
+  change events of the select and the checkbox) and `onreset` (optional;
+  without it the reset button is left out).
 -->
 <script lang="ts">
   import Icon from './Icon.svelte';
@@ -17,9 +21,16 @@
     tabMovesFocus: boolean;
     onfont: (event: Event) => void;
     ontab: (event: Event) => void;
+    onreset?: () => void;
   }
 
-  let { fontSize, sizes, tabMovesFocus, onfont, ontab }: Props = $props();
+  let { fontSize, sizes, tabMovesFocus, onfont, ontab, onreset }: Props = $props();
+
+  function reset() {
+    open = false;
+    button?.focus();
+    onreset?.();
+  }
 
   let open = $state(false);
   let root: HTMLDivElement | undefined = $state();
@@ -68,6 +79,11 @@
       Tab moves focus
     </label>
     <p class="field-help">With it on, Tab leaves the editor instead of indenting. Esc then Tab always leaves it.</p>
+    {#if onreset}
+      <div class="reset">
+        <button type="button" class="btn btn-quiet btn-compact" onclick={reset}>Reset to starter</button>
+      </div>
+    {/if}
   </div>
 </div>
 
@@ -93,6 +109,17 @@
 
   .panel[hidden] {
     display: none;
+  }
+
+  .reset {
+    display: grid;
+    justify-items: start;
+    padding-top: var(--space-2);
+    border-top: var(--rule) solid var(--line);
+  }
+
+  .reset .btn {
+    margin-inline-start: calc(-1 * var(--space-3));
   }
 
   .check {
