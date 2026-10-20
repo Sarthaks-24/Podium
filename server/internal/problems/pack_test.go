@@ -94,7 +94,7 @@ func TestExamplePacksImport(t *testing.T) {
 		brute, valid  bool
 	}{
 		"a-plus-b":      {"tokens", "cpp17", 6, true, true},
-		"average-speed": {"float", "java21", 6, true, true},
+		"average-speed": {"float", "java21", 7, true, true},
 		"pair-with-sum": {"custom", "cpp17", 6, true, false},
 	} {
 		pk, err := ReadPack(zipDir(t, filepath.Join(examples, slug)))
@@ -226,14 +226,18 @@ func TestPackRoundTrip(t *testing.T) {
 		if !bytes.Equal(buf.Bytes(), buf2.Bytes()) {
 			t.Errorf("%s: export is not deterministic", slug)
 		}
-		// Exports write the format; format 1 written out reads back.
+		// Exports write the format: 1, or 2 for a problem with open tests.
+		wantFormat := "format: 1\n"
+		if len(p.Open) > 0 {
+			wantFormat = "format: 2\n"
+		}
 		zr, _ := zip.NewReader(bytes.NewReader(buf.Bytes()), int64(buf.Len()))
 		for _, f := range zr.File {
 			if path.Base(f.Name) == "problem.yaml" {
 				rc, _ := f.Open()
 				b, _ := io.ReadAll(rc)
 				rc.Close()
-				if !strings.HasPrefix(string(b), "format: 1\n") {
+				if !strings.HasPrefix(string(b), wantFormat) {
 					t.Errorf("%s: exported problem.yaml starts %q", slug, clip(string(b)))
 				}
 			}
