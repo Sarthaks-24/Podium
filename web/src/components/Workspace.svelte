@@ -4,13 +4,25 @@
   mounted anywhere a problem is solved: M3 mounts it for organisers at
   /admin/problems/{id}/try, M4 under a contest.
 
-  Layout: from 1024 px three columns, a rail (the clock slot and the
-  problem with the best score so far), the statement with its samples, and
-  the code column with the editor in the dark well over the verdict panel.
-  From 768 to 1023 px, Problem and Code tabs, the verdict under the editor.
-  Under 768 px, Problem, Code and Result tabs. Below 1024 px a contest
-  clock sits in a one-line strip that sticks to the top of the window, so
-  it never scrolls away (design.md 5.3); a note stays in the title area.
+  Layout: from 1024 px three columns, a rail (the clock slot, the back
+  link under it, and the problems), the statement with its samples, and
+  the code column with the editor in the dark well over the result. A
+  separator between the two (the WAI-ARIA window splitter: drag it, or
+  arrows, Page Up and Down, Home, End, Enter to hide) sets the result's
+  share, 20 to 80 percent, and "Hide result" folds it to one line that
+  still names the verdict; both are kept on this device (P5 F7.5). The
+  workspace is sized from the shell's measured header (--shell-head), so
+  the page does not scroll; a laptop at most 45rem tall (the `short` tier,
+  such as 1366 by 768 at 125 percent) gets a tighter title row, a smaller
+  first result share and, under 1280 px, a narrower rail, so the toolbar
+  keeps one row (F7.3). From 768 to 1023 px, Problem and Code tabs, the
+  result under the editor; under 768 px, Problem, Code and Result tabs.
+  Under 1024 px one strip sticks to the top of the window (F7.2, audit
+  S7): the contest clock with the previous and next problem, then the
+  tabs and Submit, which lives there instead of in the toolbar. While it
+  sticks, the page's scroll padding leaves room for it (X3). When a tab
+  switches by itself after Submit or Run, focus moves to the result's
+  heading (F7.4).
 
   Behaviour:
   - The draft is saved to the server every 10 s and when the editor or the
@@ -43,12 +55,19 @@
     the editor, window blur and focus, sent in batches; never in the way of
     a submit.
   - The code column's toolbar is one row (audit 2026-10-20 S2): the
-    language, "Editor settings" (font size and "Tab moves focus",
-    components/EditorSettings) and Run and Submit at the end. Under the
-    editor one line holds "Custom input" (a quiet button that opens its box
-    at the top of the result pane), the submission count and the draft
-    state. From 1024 px the workspace is sized from the shell's measured
-    header (--shell-head), so the page does not scroll.
+    language, "Editor settings" (font size, "Tab moves focus" and "Reset to
+    starter", components/EditorSettings) and Run and Submit at the end; a
+    narrow column drops the icons to keep the row. Under the editor one
+    line holds "Custom input" (a quiet button that opens its box at the top
+    of the result pane), the submission count and the draft state.
+  - "Reset to starter" asks first ("Reset to starter?", the danger button
+    repeating the words) and saves the draft at once, so the next timed
+    save or a reload cannot bring the old code back (F7.12, D114).
+  - A practice submission or any run may carry its first failing test in
+    full (D115); VerdictPanel and RunResults show it with "Run on this
+    input". A contest submission never carries one.
+  - During a live contest (a `clock` is given) sign out asks first
+    (App.svelte, lib/session.svelte.ts guardSignOut, F7.6).
   - Ctrl+Enter submits and Ctrl+' runs on samples (Cmd on a Mac), listed
     under "Keyboard shortcuts" in the footer; the app's announcer
     (lib/announce.svelte.ts) speaks each submission and run result as a
@@ -87,20 +106,24 @@
   import {
     DEFAULT_FONT_SIZE,
     FONT_SIZES,
+    RESULT_SHARE,
+    clampShare,
     draftStorage,
     mayMirror,
     mirrorKey,
     pickDraft,
     readEditorPrefs,
     readMirror,
+    readResultPanel,
     writeEditorPrefs,
     writeMirror,
+    writeResultPanel,
   } from '../lib/drafts';
   import { polite } from '../lib/announce.svelte';
   import { keepHeadingFocus } from '../lib/focus';
   import { setTitle } from '../lib/head';
   import { FLUSH_MS, IntegrityRecorder } from '../lib/integrity';
-  import { beforeSignOut, session } from '../lib/session.svelte';
+  import { beforeSignOut, guardSignOut, session } from '../lib/session.svelte';
   import { isStarterOrEmpty, starter } from '../lib/starters';
   import { EventStream, type StreamMode } from '../lib/stream';
   import { mergeRun, mergeSubmission, mergeSubmissions, reduceEvent, type JudgingState, type StreamEvent } from '../lib/submissionState';
@@ -110,12 +133,14 @@
     bestScore,
     firstFailure,
     formatWhen,
+    headline,
     isWaiting,
     languageLabel,
     limitsText,
     newKey,
     runAnnouncement,
     runCompileFailed,
+    runHeadline,
     usedText,
     workspacePaths,
     type Language,
@@ -230,6 +255,20 @@
   // Layout.
   let layout = $state<'wide' | 'tablet' | 'phone'>('wide');
   let tab = $state<'problem' | 'code' | 'result'>('problem');
+  /** The sticky strip under 1024 px (F7.2); its height sets the page's scroll padding (X3). */
+  let strip: HTMLDivElement | undefined = $state();
+
+  // The result panel under the editor from 1024 px (F7.5, D87): its share of
+  // the code column and whether it is hidden, kept on this device.
+  // A short laptop starts with a smaller result, so the editor keeps its height (F7.3).
+  const resultPrefs = readResultPanel(storage, typeof window !== 'undefined' && media('short').matches ? 30 : RESULT_SHARE.default);
+  let resultShare = $state(resultPrefs.share);
+  let resultCollapsed = $state(resultPrefs.collapsed);
+  let codeCol: HTMLDivElement | undefined = $state();
+  let dragging = false;
+
+  // F7.12: "Reset to starter" asks first.
+  let confirmReset = $state(false);
 
   // The contest may allow fewer languages than the judge knows.
   const languages = $derived.by(() => {
@@ -288,9 +327,25 @@
           { id: 'code', label: 'Code' },
         ] as const),
   );
+  // The one line the hidden result panel keeps in its bar.
+  const resultSummary = $derived.by(() => {
+    if (view === 'run' && judging.run) return runHeadline(judging.run).text;
+    if (!current) return '';
+    return exam || current.hidden ? 'Submitted' : headline(current).text;
+  });
+  const codeRows = $derived(
+    layout !== 'wide'
+      ? undefined
+      : resultCollapsed
+        ? 'minmax(0, 1fr) auto 0'
+        : `minmax(0, ${100 - resultShare}fr) auto minmax(0, ${resultShare}fr)`,
+  );
+
   const showStatement = $derived(layout === 'wide' || tab === 'problem');
   const showEditor = $derived(layout === 'wide' || tab === 'code');
-  const showResult = $derived(layout === 'wide' || (layout === 'tablet' ? tab === 'code' : tab === 'result'));
+  const showResult = $derived(
+    layout === 'wide' ? !resultCollapsed : layout === 'tablet' ? tab === 'code' : tab === 'result',
+  );
 
   let integrity: IntegrityRecorder | null = null;
   let stream: EventStream | null = null;
@@ -571,14 +626,24 @@
       : 'Not sent: the server could not be reached. Your code is kept on this device. Retry in a moment.';
   }
 
+  /**
+   * Shows the result pane when another tab hides it. When the tab switched
+   * by itself, focus follows to the result's heading (or to the failure
+   * notice), so a keyboard or screen reader user lands on what changed
+   * (F7.4). From 1024 px nothing switches and focus stays on the button.
+   */
   async function revealResult() {
-    if (layout === 'phone') {
+    let switched = false;
+    if (layout === 'phone' && tab !== 'result') {
       tab = 'result';
-      await tick();
+      switched = true;
     } else if (layout === 'tablet' && tab === 'problem') {
       tab = 'code';
-      await tick();
+      switched = true;
     }
+    if (!switched) return;
+    await tick();
+    document.querySelector<HTMLElement>('#ws-result [data-result-focus]')?.focus();
   }
 
   async function submit(retryKey?: string, confirmed = false) {
@@ -628,7 +693,8 @@
         }
         notice = { action: 'submit', text: messageOf(e), retry: false, kind: pace ? 'pace' : 'error' };
       }
-      await revealResult();
+      // A pacing line belongs beside Submit, and the announcer says it; only a failure opens the result.
+      if (notice?.kind === 'error') await revealResult();
     } finally {
       submitBusy = false;
     }
@@ -656,7 +722,7 @@
         pendingRun = null;
         notice = { action: 'run', text: messageOf(e), retry: false, kind: e instanceof ApiError && e.status === 429 ? 'pace' : 'error' };
       }
-      await revealResult();
+      if (notice?.kind === 'error') await revealResult();
     } finally {
       runBusy = false;
     }
@@ -687,6 +753,83 @@
     if (layout === 'phone') tab = 'result';
     await tick();
     customField?.focus();
+  }
+
+  /** F7.12: the starter replaces the code and is saved at once, so the next timed save cannot bring the old code back. */
+  async function resetToStarter() {
+    confirmReset = false;
+    const code = starter(language);
+    source = code;
+    editor?.setDoc(code);
+    await saveDraft();
+    polite('Reset to the starter.');
+    editor?.focus();
+  }
+
+  // The separator between the editor and the result (F7.5): the WAI-ARIA
+  // window splitter. Arrows move it by 5 percent, Page Up and Page Down by
+  // 15, Home and End go to the ends, Enter hides or shows the result; a
+  // step down from the smallest size hides it too.
+  function saveResultPanel() {
+    writeResultPanel(storage, { share: resultShare, collapsed: resultCollapsed });
+  }
+
+  function setResultShare(next: number) {
+    resultShare = clampShare(next);
+    resultCollapsed = false;
+    saveResultPanel();
+  }
+
+  function toggleResult() {
+    resultCollapsed = !resultCollapsed;
+    saveResultPanel();
+  }
+
+  function onSplitKey(event: KeyboardEvent) {
+    const steps: Record<string, number> = { ArrowUp: 5, ArrowDown: -5, PageUp: 15, PageDown: -15 };
+    const step = steps[event.key] ?? 0;
+    if (step !== 0) {
+      event.preventDefault();
+      if (resultCollapsed) {
+        if (step > 0) setResultShare(RESULT_SHARE.min);
+      } else if (step < 0 && resultShare <= RESULT_SHARE.min) {
+        toggleResult();
+      } else {
+        setResultShare(resultShare + step);
+      }
+    } else if (event.key === 'Home' || event.key === 'End') {
+      event.preventDefault();
+      setResultShare(event.key === 'Home' ? RESULT_SHARE.min : RESULT_SHARE.max);
+    } else if (event.key === 'Enter') {
+      event.preventDefault();
+      toggleResult();
+    }
+  }
+
+  function onSplitDown(event: PointerEvent) {
+    if (event.button !== 0 || !codeCol) return;
+    dragging = true;
+    (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
+    event.preventDefault();
+  }
+
+  function onSplitMove(event: PointerEvent) {
+    if (!dragging || !codeCol) return;
+    const box = codeCol.getBoundingClientRect();
+    const share = ((box.bottom - event.clientY) / box.height) * 100;
+    // Dragged well past the smallest size: hidden, as the step down from the smallest is.
+    if (share < RESULT_SHARE.min / 2) {
+      resultCollapsed = true;
+    } else {
+      resultCollapsed = false;
+      resultShare = clampShare(share);
+    }
+  }
+
+  function onSplitUp() {
+    if (!dragging) return;
+    dragging = false;
+    saveResultPanel();
   }
 
   function retry() {
@@ -757,6 +900,25 @@
     tick().then(() => document.getElementById(`ws-tab-${ids[next]}`)?.focus());
   }
 
+  // F7.6: during a live contest, sign out asks first (App.svelte); the draft save still runs before it.
+  $effect(() => {
+    if (!clock) return;
+    return guardSignOut('Your draft is saved first. Your time keeps running while you are signed out.');
+  });
+
+  // X3: while the strip sticks to the top, focusing or jumping to anything leaves room for it (base.css).
+  $effect(() => {
+    const el = strip;
+    if (!el || typeof ResizeObserver === 'undefined') return;
+    const root = document.documentElement;
+    const ro = new ResizeObserver(() => root.style.setProperty('--sticky-bar-h', `${el.offsetHeight}px`));
+    ro.observe(el);
+    return () => {
+      ro.disconnect();
+      root.style.removeProperty('--sticky-bar-h');
+    };
+  });
+
   onMount(() => {
     const wide = media('laptop');
     const tablet = media('tablet');
@@ -816,8 +978,12 @@
     <p class="visually-hidden" aria-live="polite">{saveState === 'failed' ? 'Draft not saved to the server. A copy is kept on this device.' : ''}</p>
     {#if layout === 'wide'}
       <aside class="rail" aria-label="Problem">
-        <div class="clock-slot">
-          {#if clock}{@render clock(false)}{:else if note}<p class="note">{note}</p>{/if}
+        <div class="rail-head">
+          <div class="clock-slot">
+            {#if clock}{@render clock(false)}{:else if note}<p class="note">{note}</p>{/if}
+          </div>
+          <!-- S6: the back link sits in the rail head, under the clock, so the title row is the title only. -->
+          <a class="back" href={backHref}>{backLabel}</a>
         </div>
         {#if rail}
           {@render rail(layout)}
@@ -840,10 +1006,10 @@
     <div class="title-area">
       {#if banner}<div class="banner-slot">{@render banner()}</div>{/if}
       <div class="title-main">
-        <PageHeader compact back={{ href: backHref, label: backLabel }}>
+        <PageHeader compact back={layout === 'wide' ? null : { href: backHref, label: backLabel }}>
           {#snippet heading()}{#if label}<span class="mono letter">{label}</span><span class="visually-hidden">.&nbsp;</span>{/if}{ws?.title ?? ''}{/snippet}
         </PageHeader>
-        <p class="limits">{limitsText(ws.time_limit_ms, ws.memory_limit_mb)}</p>
+        {#if layout === 'wide'}<p class="limits">{limitsText(ws.time_limit_ms, ws.memory_limit_mb)}</p>{/if}
       </div>
       {#if layout !== 'wide' && !clock && note}
         <div class="clock-slot clock-inline"><p class="note">{note}</p></div>
@@ -853,30 +1019,39 @@
       {/if}
     </div>
 
-    {#if layout !== 'wide' && clock}
-      <div class="clock-bar">{@render clock(true)}</div>
-    {/if}
-
     {#if layout !== 'wide'}
-      <div class="tabs" role="tablist" aria-label="Workspace">
-        {#each tabs as t (t.id)}
-          <button
-            type="button"
-            role="tab"
-            id="ws-tab-{t.id}"
-            class="tab"
-            aria-selected={tab === t.id}
-            aria-controls={t.id === 'problem' ? 'ws-problem' : t.id === 'code' && layout === 'tablet' ? 'ws-code ws-result' : `ws-${t.id}`}
-            tabindex={tab === t.id ? 0 : -1}
-            onclick={() => (tab = t.id)}
-            onkeydown={onTabKey}
-          >
-            {t.label}{#if t.id === 'result' && current && isWaiting(current)}<span class="visually-hidden">, judging</span><span
-                class="dot"
-                aria-hidden="true"
-              ></span>{/if}
-          </button>
-        {/each}
+      <!-- F7.2 (audit S7): under 1024 px one strip sticks to the top of the window: the clock and
+           the previous and next problem, then the tabs and Submit, so Submit is never a tab away. -->
+      <div class="strip" bind:this={strip} data-sticky-bar>
+        {#if clock || rail}
+          <div class="strip-top">
+            {#if clock}<div class="strip-clock">{@render clock(true)}</div>{/if}
+            {#if rail}{@render rail('strip')}{/if}
+          </div>
+        {/if}
+        <div class="strip-tabs">
+          <div class="tabs" role="tablist" aria-label="Workspace">
+            {#each tabs as t (t.id)}
+              <button
+                type="button"
+                role="tab"
+                id="ws-tab-{t.id}"
+                class="tab"
+                aria-selected={tab === t.id}
+                aria-controls={t.id === 'problem' ? 'ws-problem' : t.id === 'code' && layout === 'tablet' ? 'ws-code ws-result' : `ws-${t.id}`}
+                tabindex={tab === t.id ? 0 : -1}
+                onclick={() => (tab = t.id)}
+                onkeydown={onTabKey}
+              >
+                {t.label}{#if t.id === 'result' && current && isWaiting(current)}<span class="visually-hidden">, judging</span><span
+                    class="dot"
+                    aria-hidden="true"
+                  ></span>{/if}
+              </button>
+            {/each}
+          </div>
+          {@render submitButton()}
+        </div>
       </div>
     {/if}
 
@@ -888,10 +1063,12 @@
       aria-labelledby={layout === 'wide' ? undefined : 'ws-tab-problem'}
       aria-label={layout === 'wide' ? 'Statement' : undefined}
     >
+      <!-- Under 1024 px the limits open the Problem tab, so the statement starts higher (audit S7). -->
+      {#if layout !== 'wide'}<p class="limits limits-tab">{limitsText(ws.time_limit_ms, ws.memory_limit_mb)}</p>{/if}
       <Statement markdown={ws.statement_md} samples={ws.samples} />
     </section>
 
-    <div class="code-col">
+    <div class="code-col" bind:this={codeCol} style:grid-template-rows={codeRows}>
       <section
         id="ws-code"
         class="pane editor-pane"
@@ -900,13 +1077,20 @@
         aria-labelledby={layout === 'wide' ? undefined : 'ws-tab-code'}
         aria-label={layout === 'wide' ? 'Code' : undefined}
       >
-        <!-- S2: one row. Language, the editor settings, then Run and Submit at the end. -->
+        <!-- S2: one row. Language, the editor settings, then Run and, from 1024 px, Submit at the end. -->
         <div class="toolbar">
           <label class="visually-hidden" for="ws-language">Language</label>
           <select id="ws-language" class="select lang" value={language} onchange={onLanguageChange}>
             {#each languages as l (l.id)}<option value={l.id}>{l.label}</option>{/each}
           </select>
-          <EditorSettings {fontSize} sizes={FONT_SIZES} {tabMovesFocus} onfont={onFontChange} ontab={onTabToggle} />
+          <EditorSettings
+            {fontSize}
+            sizes={FONT_SIZES}
+            {tabMovesFocus}
+            onfont={onFontChange}
+            ontab={onTabToggle}
+            onreset={() => (confirmReset = true)}
+          />
           <div class="run-actions">
             <button
               type="button"
@@ -916,14 +1100,7 @@
               aria-describedby={lockText ? 'ws-locked' : undefined}
               onclick={runSamples}><Icon name="play" />Run on samples</button
             >
-            <button
-              type="button"
-              class="btn btn-primary btn-compact submit"
-              disabled={lockText !== ''}
-              aria-disabled={submitBusy || waitLeft > 0 ? 'true' : undefined}
-              aria-describedby={lockText ? 'ws-locked' : paceText || usedNow ? 'ws-submit-status' : undefined}
-              onclick={() => submit()}><Icon name="send" />{submitLabel}</button
-            >
+            {#if layout === 'wide'}{@render submitButton()}{/if}
           </div>
         </div>
         {#if lockText}<p class="locked" id="ws-locked">{lockText}</p>{/if}
@@ -967,6 +1144,37 @@
         </div>
       </section>
 
+      {#if layout === 'wide'}
+        <!-- F7.5: drag or use the keyboard on the separator; the button hides and shows the result. -->
+        <div class="split" class:collapsed={resultCollapsed}>
+          <!-- A focusable separator is the WAI-ARIA window splitter, an interactive widget; Svelte lists the role as static. -->
+          <!-- svelte-ignore a11y_no_noninteractive_tabindex, a11y_no_noninteractive_element_interactions -->
+          <div
+            class="grip"
+            role="separator"
+            tabindex="0"
+            aria-orientation="horizontal"
+            aria-label="Result panel size"
+            aria-controls="ws-result"
+            aria-valuemin={0}
+            aria-valuemax={RESULT_SHARE.max}
+            aria-valuenow={resultCollapsed ? 0 : resultShare}
+            aria-valuetext={resultCollapsed ? 'Result hidden' : `Result ${resultShare} percent of the column`}
+            onkeydown={onSplitKey}
+            onpointerdown={onSplitDown}
+            onpointermove={onSplitMove}
+            onpointerup={onSplitUp}
+            onpointercancel={onSplitUp}
+          >
+            <span class="grip-line" aria-hidden="true"></span>
+            {#if resultCollapsed && resultSummary}<span class="split-summary">{resultSummary}</span>{/if}
+          </div>
+          <button type="button" class="btn btn-quiet btn-compact" aria-expanded={!resultCollapsed} aria-controls="ws-result" onclick={toggleResult}>
+            {resultCollapsed ? 'Show result' : 'Hide result'}
+          </button>
+        </div>
+      {/if}
+
       <section
         id="ws-result"
         class="pane result-pane"
@@ -976,7 +1184,7 @@
         aria-label={layout === 'phone' ? undefined : 'Result'}
       >
         {#if notice && notice.kind === 'error'}
-          <div class="banner banner-error notice" role="alert">
+          <div class="banner banner-error notice" role="alert" tabindex="-1" data-result-focus>
             <p>{notice.text}</p>
             {#if notice.retry}
               <button type="button" class="btn btn-secondary btn-compact" onclick={retry}>{notice.action === 'submit' ? 'Submit again' : 'Run again'}</button>
@@ -1006,15 +1214,17 @@
 
         {#if view === 'run' && judging.run}
           <div class="block">
-            <h2 class="block-title">{judging.run.results.some((r) => r.label === 'Custom input') ? 'Run on your input' : 'Run on samples'}</h2>
+            <div class="block-head">
+              <h2 class="block-title" tabindex="-1" data-result-focus>{judging.run.results.some((r) => r.label === 'Custom input') ? 'Run on your input' : 'Run on samples'}</h2>
+              {#if current}
+                <button type="button" class="btn btn-quiet btn-compact" onclick={() => (view = 'submission')}>Show the latest submission</button>
+              {/if}
+            </div>
             <RunResults run={judging.run} {language} onjump={jump} samples={ws.samples} onruninput={lockText ? undefined : runOnInput} />
-            {#if current}
-              <button type="button" class="btn btn-quiet btn-compact switch" onclick={() => (view = 'submission')}>Show the latest submission</button>
-            {/if}
           </div>
         {:else if current && (exam || current.hidden)}
           <div class="block">
-            <h2 class="block-title">Latest submission</h2>
+            <h2 class="block-title" tabindex="-1" data-result-focus>Latest submission</h2>
             <p class="headline-exam">Submitted</p>
             <p class="muted small">
               {formatWhen(current.created_at)}, {languageLabel(current.language)}.
@@ -1024,17 +1234,27 @@
           </div>
         {:else if current}
           <div class="block">
-            <h2 class="block-title">Latest submission</h2>
-            <VerdictPanel submission={current} onjump={jump} idPrefix="current" {problemScore} />
+            <!-- S5: "Show the latest run" is a quiet button on the heading's row. -->
+            <div class="block-head">
+              <h2 class="block-title" tabindex="-1" data-result-focus>Latest submission</h2>
+              {#if judging.run}
+                <button type="button" class="btn btn-quiet btn-compact" onclick={() => (view = 'run')}>Show the latest run</button>
+              {/if}
+            </div>
+            <VerdictPanel
+              submission={current}
+              onjump={jump}
+              idPrefix="current"
+              {problemScore}
+              sticky={layout === 'wide'}
+              onruninput={lockText ? undefined : runOnInput}
+            />
             {#if sampleFailure}
               <button type="button" class="btn btn-secondary btn-compact" disabled={runBusy || lockText !== ''} onclick={runSamples}>Run on samples</button>
             {/if}
-            {#if judging.run}
-              <button type="button" class="btn btn-quiet btn-compact switch" onclick={() => (view = 'run')}>Show the latest run</button>
-            {/if}
           </div>
         {:else}
-          <p class="muted empty">Run on samples to check your code, then submit it. Results appear here.</p>
+          <p class="muted empty" tabindex="-1" data-result-focus>Run on samples to check your code, then submit it. Results appear here.</p>
         {/if}
 
         <div class="block">
@@ -1045,6 +1265,17 @@
     </div>
   </div>
 {/if}
+
+{#snippet submitButton()}
+  <button
+    type="button"
+    class="btn btn-primary btn-compact submit"
+    disabled={lockText !== ''}
+    aria-disabled={submitBusy || waitLeft > 0 ? 'true' : undefined}
+    aria-describedby={lockText ? 'ws-locked' : paceText || usedNow ? 'ws-submit-status' : undefined}
+    onclick={() => submit()}><Icon name="send" />{submitLabel}</button
+  >
+{/snippet}
 
 <ConfirmDialog
   open={confirmCompile}
@@ -1060,6 +1291,16 @@
     confirmCompile = false;
     compileWarned = true;
   }}
+/>
+
+<ConfirmDialog
+  open={confirmReset}
+  title="Reset to starter?"
+  body={`Your code for this problem is replaced with the ${languageLabel(language)} starter, and the draft is saved.`}
+  confirmLabel="Reset to starter"
+  danger
+  onconfirm={() => void resetToStarter()}
+  oncancel={() => (confirmReset = false)}
 />
 
 <style>
@@ -1097,6 +1338,10 @@
   .limits {
     color: var(--ink-muted);
     font-size: var(--fs-0);
+  }
+
+  .limits-tab {
+    margin-bottom: var(--space-3);
   }
 
   .letter {
@@ -1139,15 +1384,43 @@
     display: none;
   }
 
-  /* Below 1024 px the contest clock sticks to the top of the window. */
-  .clock-bar {
+  /* F7.2: under 1024 px the strip sticks to the top of the window, edge to edge. */
+  .strip {
     position: sticky;
     top: 0;
-    z-index: 5;
+    z-index: var(--z-sticky);
+    display: grid;
     margin-top: var(--space-3);
-    padding-block: var(--space-2);
+    margin-inline: calc(-1 * var(--gutter));
+    padding-inline: var(--gutter);
     border-bottom: var(--rule) solid var(--line);
     background: var(--paper);
+  }
+
+  .strip-top {
+    display: flex;
+    align-items: center;
+    gap: 0 var(--space-3);
+    min-height: var(--control-h-touch);
+    border-bottom: var(--rule) solid var(--line);
+  }
+
+  .strip-clock {
+    flex: 1;
+    min-width: 0;
+    padding-block: var(--space-1);
+  }
+
+  .strip-tabs {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0 var(--space-2);
+  }
+
+  .strip .submit {
+    margin-block: var(--space-1);
   }
 
   .clock-inline {
@@ -1157,8 +1430,7 @@
   .tabs {
     display: flex;
     gap: var(--space-1);
-    margin-top: var(--space-4);
-    border-bottom: var(--rule) solid var(--line);
+    margin-bottom: calc(-1 * var(--rule));
   }
 
   .tab {
@@ -1167,7 +1439,7 @@
     align-items: center;
     gap: var(--space-2);
     min-height: var(--control-h-touch);
-    padding-inline: var(--space-4);
+    padding-inline: var(--space-3);
     border: 0;
     border-bottom: calc(2 * var(--rule)) solid transparent;
     border-radius: var(--radius) var(--radius) 0 0;
@@ -1237,6 +1509,44 @@
     min-width: 9rem;
   }
 
+  /* On a phone the strip holds the three tabs and Submit on one line: the
+     word carries Submit, and the button may grow while it counts down,
+     since it ends the row and moves nothing. */
+  @media (width < 768px) {
+    .strip .submit {
+      min-width: 0;
+    }
+
+    .strip .submit :global(svg) {
+      display: none;
+    }
+
+    .strip .tab {
+      padding-inline: var(--space-2);
+    }
+  }
+
+  /* A narrow code column keeps the toolbar on one row: the icons go from
+     Run, Submit and Editor settings, and the select and buttons narrow. */
+  @container code (width < 36rem) {
+    .run-actions :global(svg),
+    .toolbar :global(.settings svg) {
+      display: none;
+    }
+
+    .run-actions .submit {
+      min-width: 7.5rem;
+    }
+
+    .toolbar .lang {
+      width: 6.5rem;
+    }
+
+    .toolbar :global(.btn) {
+      padding-inline: var(--space-2);
+    }
+  }
+
   .editor-box {
     height: max(18rem, 55dvh);
     min-height: 0;
@@ -1253,6 +1563,13 @@
 
   .custom-panel .input {
     width: 100%;
+  }
+
+  /* 16 px on touch screens, so iOS does not zoom into the box (F7.4). */
+  @media (pointer: coarse) {
+    .custom-panel .input {
+      font-size: var(--fs-1);
+    }
   }
 
   .custom-head {
@@ -1278,9 +1595,6 @@
   }
 
 
-
-
-
   .under .submit-status {
     margin-left: auto;
   }
@@ -1299,9 +1613,6 @@
     text-align: right;
   }
 
-
-
-
   .save {
     margin-left: auto;
     color: var(--ink-muted);
@@ -1311,14 +1622,29 @@
     color: var(--bad);
   }
 
-
-
-
   .result-pane {
     display: grid;
     align-content: start;
     gap: var(--space-4);
     padding-block: var(--space-5);
+  }
+
+  /* The heading of the result with its switch button on the same row (S5). */
+  .block-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-1) var(--space-3);
+  }
+
+  .block-title:focus {
+    outline: none;
+  }
+
+  .block-title:focus-visible {
+    outline: calc(2 * var(--rule)) solid var(--focus);
+    outline-offset: var(--space-1);
   }
 
   .notice {
@@ -1350,6 +1676,17 @@
 
   .block-title {
     font-size: var(--fs-1);
+  }
+
+  .rail-head {
+    display: grid;
+    justify-items: start;
+    gap: var(--space-2);
+  }
+
+  .rail-head .back {
+    margin-inline-start: calc(-1 * var(--space-1));
+    padding-inline: var(--space-1);
   }
 
   .rail {
@@ -1434,10 +1771,12 @@
       grid-template-areas:
         'rail title code'
         'rail statement code';
-      /* Sized from the shell (S2): the header's real height, testing banner
-         included, comes from App.svelte as --shell-head. */
+      /* Sized from the shell (S2, F7.3): the header's real height, testing
+         banner included, comes from App.svelte as --shell-head. No 32rem
+         floor any more, so a short laptop never scrolls the page; 18rem only
+         keeps a zoomed-in window usable. */
       height: calc(100dvh - var(--shell-head, var(--space-7)) - 2 * var(--space-3));
-      min-height: 32rem;
+      min-height: 18rem;
       border: var(--rule) solid var(--line);
       background: var(--surface);
     }
@@ -1462,9 +1801,10 @@
       overflow-y: auto;
     }
 
+    /* The rows come from the separator (F7.5) as an inline style; this is the shape before it. */
     .code-col {
       grid-area: code;
-      grid-template-rows: minmax(0, 3fr) minmax(0, 2fr);
+      grid-template-rows: minmax(0, 3fr) auto minmax(0, 2fr);
       border-left: var(--rule) solid var(--line);
       min-height: 0;
     }
@@ -1472,6 +1812,59 @@
     .editor-pane {
       min-height: 0;
       padding: var(--space-2) var(--space-3) var(--space-1);
+      container: code / inline-size;
+    }
+
+    /* F7.5: the bar between the editor and the result. The grip is the separator; the button hides the result. */
+    .split {
+      display: flex;
+      align-items: center;
+      gap: var(--space-2);
+      padding-inline-end: var(--space-2);
+      border-top: var(--rule) solid var(--line);
+    }
+
+    /* The grip line sits in the middle; a hidden result's one line sits before it. */
+    .grip {
+      display: grid;
+      flex: 1;
+      grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+      align-items: center;
+      gap: var(--space-3);
+      min-width: 0;
+      min-height: var(--control-h);
+      padding-inline: var(--space-4);
+      cursor: row-resize;
+      touch-action: none;
+      user-select: none;
+    }
+
+    .grip:focus-visible {
+      outline: calc(2 * var(--rule)) solid var(--focus);
+      outline-offset: calc(-2 * var(--rule));
+    }
+
+    .grip-line {
+      grid-column: 2;
+      width: var(--space-7);
+      height: calc(2 * var(--rule));
+      border-radius: var(--rule);
+      background: var(--line-strong);
+    }
+
+    .grip:hover .grip-line,
+    .grip:focus-visible .grip-line {
+      background: var(--ink-muted);
+    }
+
+    .split-summary {
+      grid-column: 1;
+      grid-row: 1;
+      overflow: hidden;
+      color: var(--ink-muted);
+      font-size: var(--fs-0);
+      text-overflow: ellipsis;
+      white-space: nowrap;
     }
 
     .editor-box {
@@ -1479,15 +1872,78 @@
     }
 
     .result-pane {
-      padding: var(--space-3) var(--space-4) var(--space-4);
+      --sticky-top: var(--space-3);
+      --sticky-bleed: var(--space-4);
+      padding: var(--sticky-top) var(--space-4) var(--space-4);
       overflow-y: auto;
-      border-top: var(--rule) solid var(--line);
     }
   }
 
+  /* S6: a wider rail from 1280 px, so most titles fit on their two lines. */
   @media (min-width: 1280px) {
     .ws {
-      grid-template-columns: 12.5rem minmax(0, 1fr) minmax(22.5rem, 1.15fr);
+      grid-template-columns: 13rem minmax(0, 1fr) minmax(22.5rem, 1.15fr);
+    }
+  }
+
+  /* The short tier under 1280 px (1366 by 768 at 125 percent is 1093 px
+     wide): a narrower rail and a wider code column, so the toolbar keeps
+     one row and the editor its height. */
+  @media (1024px <= width < 1280px) and (max-height: 45rem) {
+    .ws {
+      grid-template-columns: 10rem minmax(0, 1fr) minmax(22.5rem, 1.4fr);
+    }
+
+    .rail {
+      padding-inline: var(--space-3);
+    }
+
+    .editor-pane {
+      padding-inline: var(--space-2);
+    }
+  }
+
+  /* The short tier (F7.3): a laptop at most 45rem tall, such as 1366 by 768 at 125 percent.
+     The title shares one line with the limits and every pane gives back padding to the editor. */
+  @media (min-width: 1024px) and (max-height: 45rem) {
+    .title-area {
+      padding-block: var(--space-2);
+    }
+
+    .title-main {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: baseline;
+      gap: 0 var(--space-3);
+    }
+
+    .ws .title-area :global(h1) {
+      font-size: var(--fs-2);
+    }
+
+    .statement-pane {
+      padding-top: var(--space-3);
+    }
+
+    .rail {
+      gap: var(--space-3);
+      padding-block: var(--space-3);
+    }
+
+    .editor-pane {
+      padding-top: var(--space-1);
+    }
+
+    .toolbar {
+      padding-bottom: var(--space-1);
+    }
+
+    .under {
+      padding-top: var(--space-1);
+    }
+
+    .result-pane {
+      --sticky-top: var(--space-2);
     }
   }
 </style>

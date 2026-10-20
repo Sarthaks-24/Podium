@@ -49,7 +49,7 @@
   import PageState from '../components/PageState.svelte';
   import PlaceFigure from '../components/PlaceFigure.svelte';
   import PageHeader from '../components/PageHeader.svelte';
-  import { onDestroy, onMount, untrack } from 'svelte';
+  import { onDestroy, onMount, tick, untrack } from 'svelte';
   import ContestBanner from '../components/ContestBanner.svelte';
   import RulesDialog from '../components/RulesDialog.svelte';
   import StatementDiff from '../components/StatementDiff.svelte';
@@ -290,7 +290,11 @@
     if (p === null) return;
     if (lastPhase !== null && lastPhase !== p) untrack(() => refetchSoon(0));
     // The clock ran out on this page: say so on the page that replaces the workspace.
-    if (lastPhase === 'during' && p === 'after') timeUp = true;
+    // Focus goes to the new page's h1 (P5 F7.4); the workspace under it is being replaced.
+    if (lastPhase === 'during' && p === 'after') {
+      timeUp = true;
+      void tick().then(() => document.querySelector<HTMLElement>('main h1')?.focus());
+    }
     // The start arrived while the student waited on this page (audit 01-16).
     if (lastPhase === 'upcoming' && p === 'ready') polite('The contest has started. You can start now.');
     lastPhase = p;

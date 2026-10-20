@@ -704,7 +704,8 @@ test('below 1024 px the clock sticks to the top, and time up shows on screen', a
   await mockApi(page, { phase: 'during', endsInMs: 4000 });
   await page.setViewportSize({ width: 375, height: 812 });
   await page.goto('/contests/week-6');
-  const bar = page.locator('.clock-bar');
+  // P5 F7.2: the clock is in the workspace's sticky strip.
+  const bar = page.locator('[data-sticky-bar]');
   await expect(bar.getByRole('timer')).toBeVisible();
   expect(await bar.evaluate((el) => getComputedStyle(el).position)).toBe('sticky');
   await page.mouse.wheel(0, 600);
