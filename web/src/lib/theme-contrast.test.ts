@@ -195,6 +195,58 @@ describe('X5 contrast pairs', () => {
   });
 });
 
+// F1 token pass (v2 frontend plan 6.1, audit 05 T4 to T17): the fills the
+// controls mix from theme colours, with the text drawn on them.
+function f1Failures(id: string, signal: boolean): string[] {
+  const t = resolveTheme(rules, id, signal);
+  const out: string[] = [];
+  const text = HIGH_CONTRAST.has(id) ? 7 : 4.5;
+  const need = (name: string, fg: string, bg: string) => {
+    const ratio = contrast(fg, bg);
+    if (ratio < text) out.push(`${id}${signal ? ' (signal)' : ''}: ${name}: ${ratio.toFixed(2)} < ${text}`);
+  };
+  // T6 and the existing hover: primary buttons, hovered and pressed.
+  need('--act-ink on hovered primary', t['--act-ink'], mixSrgb(t['--act'], t['--ink'], 0.86));
+  need('--act-ink on pressed primary', t['--act-ink'], mixSrgb(t['--act'], t['--ink'], 0.76));
+  // T7: secondary hover.
+  need('--ink on secondary hover', t['--ink'], mixSrgb(t['--ink'], t['--surface'], 0.04));
+  // T10: the hover fill of an actionable table row, with everything a row shows.
+  const row = mixSrgb(t['--surface-2'], t['--surface'], 0.5);
+  for (const fg of ['--ink', '--ink-muted', '--act', '--ok', '--part', '--bad', '--wait']) need(`${fg} on row hover`, t[fg], row);
+  // T8: muted table headers.
+  need('--ink-muted on table header', t['--ink-muted'], t['--surface-2']);
+  // T17: selected text.
+  need('--ink on selection', t['--ink'], t['--act-tint']);
+  return out;
+}
+
+/** rgba(r, g, b, a) composited over an opaque #rrggbb. */
+function over(rgba: string, hex: string): string {
+  const m = /rgba\((\d+),\s*(\d+),\s*(\d+),\s*([\d.]+)\)/.exec(rgba);
+  if (!m) throw new Error(`not rgba: ${rgba}`);
+  const a = Number(m[4]);
+  const top = `#${[1, 2, 3].map((i) => Number(m[i]).toString(16).padStart(2, '0')).join('')}`;
+  return mixSrgb(top, hex, a);
+}
+
+describe('F1 token pass pairs', () => {
+  it('keeps text readable on every mixed control fill', () => {
+    const all = THEMES.flatMap(({ id }) => [...f1Failures(id, false), ...f1Failures(id, true)]);
+    expect(all).toEqual([]);
+  });
+
+  it('has a scrim that dims the page in every theme, light or dark (F6)', () => {
+    for (const { id } of THEMES) {
+      const t = resolveTheme(rules, id, false);
+      expect(t['--scrim'], id).toMatch(/^rgba\(/);
+      const dimmed = over(t['--scrim'], t['--paper']);
+      // Darker than the page, and the dialog's surface stands apart from it.
+      expect(contrast(dimmed, '#000000'), id).toBeLessThanOrEqual(contrast(t['--paper'], '#000000'));
+      expect(contrast(t['--surface'], dimmed), id).toBeGreaterThan(1.05);
+    }
+  });
+});
+
 describe('colour maths', () => {
   it('matches known contrast ratios', () => {
     expect(contrast('#000000', '#FFFFFF')).toBeCloseTo(21, 5);

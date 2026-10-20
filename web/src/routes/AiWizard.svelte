@@ -388,7 +388,7 @@
               aria-describedby="paste-note paste-count{fields.text ? ' text-error' : ''}"
             ></textarea>
             <p id="paste-count" class="field-help" class:over={textLength > MAX_TEXT}>
-              <span class="mono">{textLength.toLocaleString('en-GB')}</span> of {MAX_TEXT.toLocaleString('en-GB')} characters
+              <span class="mono">{textLength}</span> of {MAX_TEXT.toLocaleString('en-GB')} characters
             </p>
             {#if fields.text}<p id="text-error" class="field-error">{fields.text}</p>{/if}
           </div>
