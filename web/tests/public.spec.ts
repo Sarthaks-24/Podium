@@ -6,6 +6,7 @@
 // cache/screenshots-v2-p3/<screen>-<width>-<theme>.png at 375, 768, 1024
 // and 1440 px in light and dark and checks one h1 and no horizontal
 // overflow.
+import AxeBuilder from '@axe-core/playwright';
 import { expect, test, type Page, type Route } from '@playwright/test';
 
 const WIDTHS = [375, 768, 1024, 1440] as const;
@@ -278,3 +279,28 @@ test('organisers do not get the update line', async ({ page }) => {
   await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
   await expect(page.locator('.site-update')).toHaveCount(0);
 });
+
+for (const theme of THEMES) {
+  test(`axe finds nothing serious on the P3 pages, ${theme}`, async ({ page }) => {
+    test.setTimeout(120_000);
+    await page.emulateMedia({ colorScheme: theme });
+    for (const [path, who, ready] of [
+      ['/signin?error=rate_limited', 'signed-out', 'Continue with Google'],
+      ['/contact', 'student', 'Send message'],
+      ['/admin/contact', 'owner', 'Show older messages'],
+      ['/privacy?draft', 'signed-out', 'What podium records'],
+    ] as const) {
+      await page.unrouteAll({ behavior: 'ignoreErrors' });
+      await mockApi(page, who);
+      for (const width of [1440, 320]) {
+        await page.setViewportSize({ width, height: 900 });
+        await page.goto(path);
+        await expect(page.getByText(ready).first()).toBeVisible();
+        await settle(page);
+        const results = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa']).analyze();
+        const serious = results.violations.filter((v) => v.impact === 'serious' || v.impact === 'critical').map((v) => `${v.id}: ${v.nodes[0]?.target}`);
+        expect(serious, `${path} at ${width}`).toEqual([]);
+      }
+    }
+  });
+}
