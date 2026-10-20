@@ -2,7 +2,7 @@
 
 A self-hosted platform for weekly programming contests at a college. Students sign in with their college Google account, solve problems in C++, Java, Python or JavaScript, and get IOI-style partial scores from a sandboxed judge. A live leaderboard freezes near the end and is revealed afterwards. Admins write problems by hand, from a problem pack, or with an AI assistant that uses a temporary key.
 
-Everything runs on one small Linux VM (2 GB RAM is the target) and is built to serve 700+ students in one contest.
+Everything runs on one small Linux VM (Ubuntu 24.04, amd64 only, 2 GB RAM is the target) and is built to serve 700+ students in one contest.
 
 Status: milestone M5 (AI wizard). The judge sandbox, Google sign-in with the domain check, roles, the problem bank with pack import and export, output and input generation, validation on the real judge, the student workspace with live verdicts, contests with standings, freeze and reveal, integrity checks with review cases, and the bring-your-own-key AI wizard exist. See `CHANGELOG.md`.
 
@@ -75,26 +75,34 @@ Other targets: `make help`.
 
 ## Build a release
 
-`make release` runs the checks, builds the web app, embeds it, cross-compiles both binaries for Linux with `CGO_ENABLED=0`, and writes `release/podium-<version>.tar.gz` containing `bin/`, `env/` (the example env files), `install.sh`, the systemd units, the Caddyfile, `litestream.yml` with its example env file, and the backup and restore scripts in `backup/`. Building on Windows is fine: the tarball loses the execute bit on the Linux binaries, and `install.sh` sets it when it installs them.
+`make release` runs the checks, builds the web app, embeds it, cross-compiles both binaries for Linux with `CGO_ENABLED=0`, and writes `release/podium-<version>.tar.gz` containing `bin/`, `env/` (the example env files), `install.sh`, the systemd units, the Caddyfile, `litestream.yml`, the example env files for Litestream, the nightly backup and alerts, and the backup, restore, alert and health-check scripts in `backup/`. It refuses to build when the web app's source carries placeholder copy (`tools/check-placeholders.sh`), and installs `web/node_modules` with `npm ci` first when it is missing. Building on Windows is fine: the tarball loses the execute bit on the Linux binaries, and `install.sh` sets it when it installs them.
 
 ## Deploy to the VM
 
-On a fresh Ubuntu 24.04 VM, in production mode (the default):
+The VM is Ubuntu 24.04 on **amd64 (x86_64)**: releases contain amd64 binaries only. On a fresh VM, in production mode (the default):
 
 ```sh
 tar xzf podium-<version>.tar.gz && cd podium-<version>
-sudo ./install.sh                 # packages, isolate, testlib, users, dirs, app, caddy, swap, litestream, backup
-openssl rand -hex 32              # the judge token: same value in both files below
-sudoedit /etc/podium/server.env   # fill in the values (see docs/OPERATIONS.md)
+sudo ./install.sh                 # every step; skips what needs a value you have not set yet
+openssl rand -hex 32              # the judge token: same value in server.env and judge.env
+sudoedit /etc/podium/server.env   # fill in the values (docs/OPERATIONS.md, Configuration)
 sudoedit /etc/podium/judge.env    # PODIUM_JUDGE_TOKEN
-sudo ./install.sh caddy           # once PODIUM_BASE_URL is set
-sudo systemctl restart podium-server podium-judge
-sudoedit /etc/podium/litestream.env   # the backup bucket and its key
+sudo ./install.sh app             # starts the server and the judge once no placeholder is left
+sudoedit /etc/podium/litestream.env   # the database bucket and its key
 sudo systemctl restart podium-litestream
-sudo systemctl start podium-backup    # the first nightly backup, by hand
+sudoedit /etc/podium/backup.env   # age public key, B2 key for the encrypted copy, heartbeat URL
+sudo systemctl start podium-backup
+sudoedit /etc/podium/alert.env    # the ntfy topic URL
+sudo /usr/local/lib/podium/podium-alert test
+sudo ./install.sh caddy           # once DNS points at the VM: the HTTPS certificate
+sudo ./install.sh verify          # must end with "everything checked is in order"
 ```
 
-Production needs an https `PODIUM_BASE_URL`, the Google client, the session secret and your own judge token; the server names anything missing and refuses to start. Then verify the sandbox on the VM itself (with the worker stopped): `sudo -u judge podium-judge calibrate`. Full operations guide, configuration reference and backups: `docs/OPERATIONS.md`. Contest day: `docs/RUNBOOK.md`.
+Production needs an https `PODIUM_BASE_URL`, the Google client (its OAuth app Internal or In production, never Testing), the session secret and your own judge token; the server names anything missing and refuses to start. Then verify the sandbox on the VM itself (with the worker stopped): `sudo systemctl stop podium-judge && sudo -u judge podium-judge calibrate; sudo systemctl start podium-judge`. Keep a copy of every `/etc/podium/*.env` file and the `age` private key in your password manager: a restore onto a new VM needs them.
+
+Upgrades: `tools/deploy.sh <host>` from Git Bash (or `make deploy HOST=<host>`) builds the release, asks the deploy guard, confirms before anything leaves the machine, and runs `sudo ./install.sh upgrade` on the VM. `sudo /usr/local/lib/podium/install.sh rollback` goes back. No deploy runs in the 48 hours before a published contest, during it, or while it is still being judged.
+
+Full operations guide, configuration reference, backups, alerts, upgrades and rollback: `docs/OPERATIONS.md`. Contest day, restoring onto a new VM and the drills: `docs/RUNBOOK.md`.
 
 ## Load test
 

@@ -1,0 +1,21 @@
+# Installed by deploy/install.sh (step alerts). Started by systemd when a
+# podium unit fails: server, judge, Litestream, backup and the checker
+# carry OnFailure=podium-alert@%n.service. The instance name is the failed
+# unit. Posts one line naming the unit to PODIUM_ALERT_WEBHOOK; nothing
+# runs between alerts (docs/OPERATIONS.md, "Alerts").
+[Unit]
+Description=Podium alert: %i failed
+
+[Service]
+Type=oneshot
+EnvironmentFile=-/etc/podium/alert.env
+ExecStart=/usr/local/lib/podium/podium-alert failed %i
+DynamicUser=yes
+# Remembers when each unit last alerted, so a crash loop sends one alert
+# every 10 minutes instead of one every restart.
+StateDirectory=podium-alert
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+TimeoutStartSec=60

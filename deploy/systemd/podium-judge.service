@@ -1,5 +1,8 @@
 [Unit]
 Description=Podium judge worker
+# A failure (a crash, an OOM kill, a stop that timed out) posts an alert;
+# the unit still restarts.
+OnFailure=podium-alert@%n.service
 After=network-online.target isolate.service podium-server.service
 Wants=network-online.target
 Requires=isolate.service

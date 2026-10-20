@@ -224,6 +224,9 @@ install_app_files() {
     "$HERE/systemd/podium-alert@.service" /etc/systemd/system/
   install -d -m 755 "$LIB"
   install -m 755 "$HERE/backup/podium-alert" "$LIB/podium-alert"
+  # A copy of this script, so verify and rollback work without the release
+  # folder: sudo /usr/local/lib/podium/install.sh verify
+  install -m 755 "$HERE/install.sh" "$LIB/install.sh"
   systemctl daemon-reload
 }
 
@@ -568,7 +571,7 @@ cmd_upgrade() {
   log "7/8 start: server (migrations run now), then the judge"
   systemctl restart podium-server.service
   if ! wait_healthz; then
-    die "podium-server did not answer /healthz within 60 s (journalctl -u podium-server -n 50). Roll back with: sudo $HERE/install.sh rollback"
+    die "podium-server did not answer /healthz within 60 s (journalctl -u podium-server -n 50). Roll back with: sudo $LIB/install.sh rollback"
   fi
   systemctl start podium-judge.service
   write_manifest
@@ -581,7 +584,7 @@ cmd_upgrade() {
 Upgraded to $release.
   Backup taken before the upgrade: $backup
   Previous release kept in:        $PREVIOUS
-  To go back:                      sudo $HERE/install.sh rollback
+  To go back:                      sudo $LIB/install.sh rollback
 EOF
   (( vcode == 0 )) || die "verify found problems (above); fix them or roll back"
 }

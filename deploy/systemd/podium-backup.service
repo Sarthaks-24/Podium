@@ -3,6 +3,7 @@
 [Unit]
 Description=Podium nightly backup (database and test files)
 After=podium-server.service
+OnFailure=podium-alert@%n.service
 
 [Service]
 Type=oneshot

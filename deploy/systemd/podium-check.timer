@@ -1,0 +1,12 @@
+# Installed by deploy/install.sh (step alerts). Runs podium-check every 15
+# minutes; the weekly restore proof rides on one of these runs.
+[Unit]
+Description=Podium health check every 15 minutes
+
+[Timer]
+OnBootSec=5min
+OnUnitActiveSec=15min
+RandomizedDelaySec=60
+
+[Install]
+WantedBy=timers.target

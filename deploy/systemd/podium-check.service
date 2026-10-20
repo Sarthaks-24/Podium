@@ -1,0 +1,26 @@
+# Installed by deploy/install.sh (step alerts). Started every 15 minutes by
+# podium-check.timer: free space, WAL size, Litestream running and
+# uploading, and once a week a full restore of the bucket's newest copy
+# into a scratch folder checked with "podium-server check -hash" (D113).
+# Alerts go to PODIUM_ALERT_WEBHOOK; nothing stays resident.
+[Unit]
+Description=Podium health check
+After=podium-server.service podium-litestream.service
+OnFailure=podium-alert@%n.service
+
+[Service]
+Type=oneshot
+EnvironmentFile=-/etc/podium/alert.env
+ExecStart=/usr/local/lib/podium/podium-check
+# Root: it reads the Litestream credentials (/etc/podium/litestream.env,
+# root only) and the podium database. It writes only its state folder and
+# the private /tmp of the weekly restore.
+StateDirectory=podium-check
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+Nice=10
+IOSchedulingClass=idle
+MemoryMax=300M
+TimeoutStartSec=45min

@@ -4,30 +4,56 @@ How to install, configure, check, back up and upgrade podium on its VM, and how 
 
 ## Install
 
-Target: Ubuntu 24.04 LTS, cgroup v2 (the default), 2 GB RAM or more.
+Target: Ubuntu 24.04 LTS on **amd64 (x86_64) only**, cgroup v2 (the default), 2 GB RAM or more. Releases contain amd64 binaries; `install.sh` refuses any other architecture.
 
 ```sh
 tar xzf podium-<version>.tar.gz && cd podium-<version>
 sudo ./install.sh
 ```
 
-`install.sh` is idempotent and runs these steps in order. Name steps to run only those, for example `sudo ./install.sh packages isolate`.
+`install.sh` is idempotent and runs these steps in order. Name steps to run only those, for example `sudo ./install.sh packages isolate`. A fresh install with nothing filled in yet always reaches the end: steps that need a value you have not set skip themselves with a message naming it, and the checklist at the end lists what to fill in.
 
 | Step | What it does |
 |---|---|
 | `packages` | g++, OpenJDK 21, Python 3, Node 22 (NodeSource repository), sqlite3, jq, rsync |
-| `isolate` | isolate from its upstream apt repository; mounts its box root `/var/lib/isolate` on a 1200 MB tmpfs (so files a program writes count against its memory limit); caps all sandboxes at 1100 MB through `isolate.slice`; enables `isolate.service`; runs `isolate-check-environment` |
+| `isolate` | isolate from its upstream apt repository; mounts its box root `/var/lib/isolate` on a 1200 MB tmpfs (so files a program writes count against its memory limit); caps all sandboxes at 1100 MB through `isolate.slice`; enables `isolate.service`; makes the tuning below survive a reboot; runs `isolate-check-environment` |
 | `testlib` | `testlib.h` (release 0.9.41) into `/usr/local/include` for custom checkers. Downloaded from GitHub at a pinned commit and refused unless its SHA-256 matches the one in the script. Skipped when the installed file already matches. |
 | `users` | system users `podium` and `judge`; adds `judge` to group `isolate` (the isolate binary is executable only by that group) |
 | `dirs` | `/var/lib/podium/{db,tests}` (podium, 750), `/var/cache/podium-judge` (judge, 750), `/etc/podium`; creates `server.env` and `judge.env` from the examples if missing (root, 600), with the absolute VM paths for the database and tests |
-| `app` | installs both binaries and systemd units; starts the services only once `server.env` no longer contains placeholder values |
 | `firewall` | `ufw`: inbound only ssh (the port sshd uses), 80 and 443 (TCP, and UDP for HTTP/3); ssh is allowed before the firewall is switched on. Warns when ssh still accepts passwords (see "Firewall and ssh") |
-| `caddy` | installs Caddy and writes `/etc/caddy/Caddyfile` for the host in `PODIUM_BASE_URL`: admin API off, request bodies capped at 33 MB, then restarts Caddy |
+| `app` | installs both binaries, their systemd units and the alert unit; starts the services only once `server.env` and `judge.env` have no placeholder values left (it names the ones that remain), then waits for `/healthz` and writes `/usr/local/lib/podium/MANIFEST` |
 | `swap` | 1 GB swap file, `vm.swappiness=10` |
 | `litestream` | Litestream 0.5.16 into `/usr/local/bin`, downloaded from its GitHub release and refused unless its SHA-256 matches the one in the script; `/etc/litestream.yml`; creates `/etc/podium/litestream.env` from the example if missing (root, 600); the `podium-litestream` unit, started only once that file has no placeholder values (see "Backups") |
-| `backup` | the nightly backup script in `/usr/local/lib/podium`, `/var/backups/podium` (podium, 750), and `podium-backup.timer` (about 03:15 UTC) |
+| `backup` | `age` and `rclone` from Ubuntu's archive (for the encrypted copy); the nightly backup and restore scripts in `/usr/local/lib/podium`; `/var/backups/podium` (podium, 700); creates `/etc/podium/backup.env` from the example if missing (root, 600); `podium-backup.timer` (about 03:15 UTC) |
+| `alerts` | `podium-alert` and `podium-check` in `/usr/local/lib/podium`, the `podium-alert@.service` template, `podium-check.timer` (every 15 minutes); creates `/etc/podium/alert.env` from the example if missing (root, 600). See "Alerts" |
+| `caddy` | last on purpose. Skips with a message while `PODIUM_BASE_URL` is a placeholder. Then checks that the host name resolves to this VM (a local address, or the public address the provider's NAT shows, asked once from `checkip.amazonaws.com`) and skips with what to fix when it does not, because Let's Encrypt allows only a few failed attempts an hour. Otherwise installs Caddy and writes `/etc/caddy/Caddyfile` for that host: admin API off, request bodies capped at 33 MB, then restarts Caddy |
 
-`isolate-check-environment` may warn about simultaneous multithreading, address-space randomisation, transparent huge pages and the core file pattern. These affect timing reproducibility, not safety. For the steadiest timings, disable transparent huge pages (`echo never > /sys/kernel/mm/transparent_hugepage/enabled`) and set `kernel.core_pattern=core`; leave address-space randomisation on.
+Commands besides the steps:
+
+| Command | What it does |
+|---|---|
+| `sudo ./install.sh upgrade [--force "<reason>"]` | installs this release over the running one; see "Upgrade" |
+| `sudo ./install.sh rollback` | puts the previous release back; see "Rollback" |
+| `sudo ./install.sh verify` | checks the installed system and prints `ok`, `warn` or `FAIL` per item; exits 1 on any `FAIL`. See "Verify the installation" |
+
+The `app` step and every upgrade also install a copy of `install.sh` as `/usr/local/lib/podium/install.sh`, so `verify` and `rollback` work from any folder: `sudo /usr/local/lib/podium/install.sh verify`.
+
+`isolate-check-environment` may warn about simultaneous multithreading, address-space randomisation, transparent huge pages and the core file pattern. These affect timing reproducibility, not safety. The `isolate` step settles two of them for good: `/etc/tmpfiles.d/podium-isolate.conf` turns transparent huge pages off at every boot, and `/etc/sysctl.d/91-podium-isolate.conf` sets `kernel.core_pattern=core` and `fs.protected_hardlinks=1`. Ubuntu's `apport` rewrites the core pattern at boot (and its crash reports would copy a program's memory to disk), so the step disables it. Address-space randomisation stays on: safety beats timing reproducibility. Simultaneous multithreading is the provider's choice; on a 2-vCPU VM leave it.
+
+### Verify the installation
+
+`sudo ./install.sh verify` reads the system and changes nothing. It prints names, never values.
+
+| Area | Checked |
+|---|---|
+| Services | `podium-server`, `podium-judge`, `isolate`, the isolate tmpfs, `podium-backup.timer`, `podium-check.timer` active; `podium-litestream` configured and active; `caddy` active once `PODIUM_BASE_URL` is real |
+| Endpoints | `/healthz` answers ok; the judge API answers `401` without a token |
+| Network | `ufw` active and allowing only ssh, 80 and 443; ports 8080 and 8081 listen on loopback only |
+| Configuration | `PODIUM_MODE` is production in both service files; every `/etc/podium/*.env` exists, is root 600 and has no placeholder value (names listed); `PODIUM_ALERT_WEBHOOK` set; `/var/backups/podium` podium 700. Warnings: no encrypted copy, no heartbeat URL |
+| Clock | `chrony` or `systemd-timesyncd` active and the clock synchronised: every freeze, end and extension is a clock comparison, so verify fails without it |
+| Sandbox host | transparent huge pages off (warning), the installed release from `MANIFEST` |
+
+Run it after a fresh install, after every upgrade (the upgrade runs it itself) and before a contest.
 
 The judge unit runs `podium-judge work`, which pulls jobs from the server's judge API. It needs `PODIUM_JUDGE_TOKEN` in both `server.env` and `judge.env` (see "Judge token" below).
 
@@ -122,6 +148,16 @@ Needed in dev and production mode only.
 3. Authorised redirect URI: `<PODIUM_BASE_URL>/api/auth/google/callback`, for example `https://contest.example.edu/api/auth/google/callback`. For local work add `http://localhost:5173/api/auth/google/callback` too.
 4. Put the client ID and secret in `server.env` and restart the server.
 
+**The OAuth app's publishing status must be "Internal" or "In production", never "Testing".** In Testing, Google lets only the test users you list sign in (at most 100) and the sign-ins expire after 7 days, so most students would be refused on contest day. Check it under APIs and Services, OAuth consent screen (Google Auth Platform, Audience):
+
+| Status | Use it when | Notes |
+|---|---|---|
+| Internal | the college runs Google Workspace and the project belongs to that Workspace | only accounts of that Workspace can sign in; no Google review. The usual choice |
+| In production (External) | students sign in with accounts outside one Workspace | choose "Publish app". With only `openid`, `email` and `profile` Google does not require a verification review, but the consent screen shows the app name you set |
+| Testing | never on the VM | 100 listed test users, 7-day sign-ins |
+
+The real-domain sign-in drill (a non-owner student account on an allowed domain signing in over HTTPS and submitting) is the proof; it is part of the go-live gate.
+
 Who can sign in: anyone whose verified Google email is on an allowed domain, anyone holding the admin or owner role (on any domain), and `PODIUM_OWNER_EMAIL`. Removing an admin ends their sessions at once; removing a domain ends the sessions of students on it.
 
 `PODIUM_BASE_URL` must be just the scheme and host (no path); podium runs at the root of its own host name.
@@ -169,6 +205,35 @@ Read by the `podium-litestream` unit; template `deploy/litestream.env.example`. 
 
 Any S3-compatible store works the same way (Cloudflare R2, Wasabi, AWS S3): set its endpoint and region.
 
+### Nightly backup (`/etc/podium/backup.env`)
+
+Read by `podium-backup.service`; template `deploy/backup.env.example`. Every variable is optional. At start the script prints each one as `set`, `default` or `missing`, never a value, and stops with a message naming the variable and this file when one is wrong (a bad number of days, an rsync target without `:`, half of the encrypted-copy settings).
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `PODIUM_DB_PATH` | `/var/lib/podium/db/podium.db` | the live database to copy |
+| `PODIUM_TESTS_DIR` | `/var/lib/podium/tests` | the live test files and sources |
+| `PODIUM_BACKUP_DIR` | `/var/backups/podium` | where each night's folder goes |
+| `PODIUM_BACKUP_KEEP_DAYS` | `14` | nights kept here, in the B2 folder and on the rsync copy |
+| `PODIUM_SERVER_BIN` | `/usr/local/bin/podium-server` | the binary whose `check` verifies each backup |
+| `PODIUM_BACKUP_RSYNC` | empty: no rsync copy | `user@host:/path` for a copy over ssh (see "Copy the nightly backup off the VM") |
+| `PODIUM_BACKUP_AGE_RECIPIENT` | empty: no encrypted copy | the `age` public key (`age1...`) each night's copy is encrypted to. Made with `age-keygen` on your own machine; the private key never goes on the VM |
+| `PODIUM_BACKUP_B2_PATH` | empty | `bucket/folder` in B2 for the encrypted copies, without `b2:`; a private bucket of its own |
+| `RCLONE_CONFIG_B2_TYPE` | empty | always `b2`: rclone reads its remote named `b2` from these three variables, no config file |
+| `RCLONE_CONFIG_B2_ACCOUNT` | empty | keyID of a B2 application key limited to that bucket, read and write |
+| `RCLONE_CONFIG_B2_KEY` | empty | that key's applicationKey. Secret |
+| `PODIUM_HEARTBEAT_URL` | empty: no ping | an `https://` URL pinged after every fully successful run, for a dead-man check. Secret |
+
+The five encrypted-copy variables go together: all five or none. With none, each run warns that test files have no copy off the VM.
+
+### Alerts (`/etc/podium/alert.env`)
+
+Read by `podium-alert@.service` and `podium-check.service`; template `deploy/alert.env.example`.
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `PODIUM_ALERT_WEBHOOK` | empty: alerts fail | `https://` URL that takes a plain-text POST, for example `https://ntfy.sh/<long random topic>`. The topic name is the secret. Without it the alert unit fails, which `install.sh verify` reports |
+
 ### Judge cache
 
 `PODIUM_JUDGE_CACHE_DIR` (owned by `judge`, mode 750) holds three directories. All of it can be deleted with the judge stopped; it refills on demand.
@@ -186,6 +251,10 @@ Any S3-compatible store works the same way (Cloudflare R2, Wasabi, AWS S3): set 
 3. `sudo systemctl restart podium-server podium-judge`.
 
 To rotate it, repeat all three steps. A job the old worker held is handed out again once its lease runs out (60 s).
+
+### Stopping the judge
+
+`sudo systemctl stop podium-judge` is graceful: the worker stops claiming, every lane finishes and reports the job it holds, then it exits. Jobs take seconds; the unit waits up to 20 minutes (`TimeoutStopSec`) and signals only the worker, not the isolate runs it started (`KillMode=mixed`). A second stop signal, or the timeout, abandons the running jobs: the server hands each out again once its 60 s lease runs out, as after a crash. There is no global "pause judging" (pause is per contest), so stopping the judge is how an upgrade drains the queue's running work.
 
 ## Judge API listener
 
@@ -354,6 +423,30 @@ If clock lines arrive in bursts or only when the request ends, something between
 - The judge API has no health route. `curl -s -o /dev/null -w '%{http_code}\n' -X POST http://127.0.0.1:8081/api/judge/claim` prints `401` when the listener is up (it asks for the token).
 - Logs: `journalctl -u podium-server -u podium-judge -f`. They are JSON lines. The worker logs `job started` and `job finished` per job; the server logs `job leased` and `job closed`.
 - `podium-server check` checks a database and its test files without changing them (see "Checking a database").
+- `sudo /usr/local/lib/podium/podium-check status` prints the 15-minute health checks (free space, WAL, Litestream) without alerting; `sudo ./install.sh verify` checks the whole installation.
+
+## Alerts
+
+Nothing extra stays in memory: systemd starts a small unit when something fails, and a timer runs a check every 15 minutes (D70). Alerts go to `PODIUM_ALERT_WEBHOOK` in `/etc/podium/alert.env`; ntfy is the chosen channel.
+
+| Signal | How | Repeats |
+|---|---|---|
+| A unit failed | `OnFailure=podium-alert@%n.service` on `podium-server`, `podium-judge`, `podium-litestream`, `podium-backup` and `podium-check`. A crash, an OOM kill, a failed backup or a stop that timed out posts "podium-judge.service failed on <host>" with where to look. The unit still restarts | at most one per unit every 10 minutes; the next says how many were held back |
+| Free space | below 2 x the database (with its WAL) plus 2 GB on the database's filesystem | every 6 hours while it lasts, then "resolved" |
+| WAL size | `podium.db-wal` above 256 MB | as above |
+| Litestream | the unit is not running, the bucket cannot be listed, or the database changed more than 10 minutes after the bucket's newest upload | as above |
+| Encrypted copy | the newest `podium-*.tar.age` in B2 is older than 30 hours (checked every 6 hours, when configured) | as above |
+| Weekly restore proof (D113) | once a week the checker restores the bucket's newest database into a scratch folder with `litestream restore` and runs `podium-server check -hash` on it against the live test files. Failure alerts; it retries after a day | as above |
+| Backup missed | the nightly backup pings `PODIUM_HEARTBEAT_URL` after a fully good run; the heartbeat service alerts on silence | the service's own rule |
+| Site down | an external uptime check on `https://<host>/healthz` every 5 minutes, from a free hosted checker in your own account | the checker's own rule |
+
+Set up and prove it once:
+
+1. Pick a long random ntfy topic (`openssl rand -hex 16`), subscribe to it in the ntfy app on your phone, and put `PODIUM_ALERT_WEBHOOK=https://ntfy.sh/<topic>` in `/etc/podium/alert.env` (`sudoedit`).
+2. `sudo /usr/local/lib/podium/podium-alert test`: the phone shows "podium: test alert".
+3. Fire each alert on purpose (the drill list is in `docs/RUNBOOK.md`, "Proving the safety net"): kill a unit with `sudo systemctl kill -s KILL podium-judge`, run the restore proof against a damaged copy with `sudo /usr/local/lib/podium/podium-check restore-proof --corrupt`, stop Litestream, fill a scratch file until the disk rule trips.
+
+`podium-check restore-proof` runs the proof at once; `--corrupt` overwrites the scratch copy's schema page before the check, so it must alert.
 
 ## Metrics
 
@@ -406,14 +499,61 @@ It opens the database read-only and prints: SQLite's `integrity_check` and `fore
 | "Generating inputs" ends with "The generator failed on test 7 (subtask 2, seed 3)" | The generator crashed, ran out of time or memory, or printed nothing for that seed and those arguments | Run the generator locally with the same argv (`python3 generator.py 3 n=1000`), fix it, save, and Generate inputs again. Nothing was applied, so no test changed. |
 | Run or Submit says "This problem cannot be judged yet" | Tests outside subtasks, or tests without an expected output | Fix the listed items in the editor; choose Generate outputs for missing outputs. |
 
+## Deploy guard
+
+`podium-server deploy-check` answers whether a release may be installed now (D112). It reads the published, unarchived contests straight from the database, so it works whether or not the server runs, and it is what `install.sh upgrade` and `tools/deploy.sh` ask first. `/healthz` cannot answer this: it is public.
+
+```sh
+sudo -u podium podium-server deploy-check -db /var/lib/podium/db/podium.db
+```
+
+| A published contest | Answer |
+|---|---|
+| starts more than 48 hours from now | allowed, with the time the window closes |
+| starts within 48 hours | refused |
+| is running: from its start to its end plus the contest-wide extension plus the largest personal extension | refused |
+| has ended but some of its (non-practice) submissions are still waiting for or being judged | refused until the queue is empty |
+
+The first output line is `allowed`, `refused` or `allowed (forced)`; the exit code is 0, 1, or 2 when the check could not run. `-at 2026-11-10T13:00:00Z` asks about another moment, for rehearsals. Drafts and archived contests never block. Ungraded practice contests do block while they run: a deploy restarts the server, and students in them see one reconnect.
+
+**Emergency override.** A fix that cannot wait: `sudo ./install.sh upgrade --force "<reason>"` (or `tools/deploy.sh HOST --force "<reason>"`). The reason (10 characters or more) and the release are written as a `deploy_forced` row in the audit log of each contest that refused, under the owner's account, before anything is installed. Until the site-wide audit and the student banner of a later release exist, announce the restart in the contest yourself. A `--force` covers that one run only: the owner's "now" for a deploy is valid for that day, and the next run asks the guard again. Any admin may pause or extend a contest when the owner cannot be reached; that needs no deploy.
+
 ## Upgrade
 
 ```sh
 tar xzf podium-<new>.tar.gz && cd podium-<new>
-sudo ./install.sh app
+sudo ./install.sh upgrade
 ```
 
-Database migrations run automatically when the server starts. Configuration files are never overwritten, so add new variables by hand.
+From Windows, `tools/deploy.sh HOST` (or `make deploy HOST=user@vm`) does all of it: it asks the guard over ssh, runs `make release`, shows the tarball and its SHA-256 and waits for you to type the host name before anything leaves the machine, copies it to `/tmp` with `scp`, and runs `install.sh upgrade` there. It also asks for a confirmation when the commit is not exactly a tag (every deploy is a tag, D105).
+
+`install.sh upgrade` runs these in order and stops at the first problem, saying what was and was not changed:
+
+1. **Deploy guard**: the new release's `podium-server deploy-check` (above). Refused means nothing changes unless `--force`.
+2. **Configuration names**: every variable the new example files list must be named in the matching `/etc/podium/*.env`. A missing required one stops the upgrade and is named with its file; a missing optional one is listed and keeps its default. Names only, never values.
+3. **Judge drain**: `systemctl stop podium-judge`, graceful (see "Stopping the judge"): running jobs finish and report.
+4. **Backup**: `podium-backup` runs now; the upgrade stops (and starts the judge again) unless a new local backup folder appeared.
+5. **Keep the running release**: binaries, units and `MANIFEST` go to `/usr/local/lib/podium/previous/`, with the applied migrations, the backup folder and the time.
+6. **Install**: binaries, units, scripts, Litestream configuration, backup and alert files of the new release.
+7. **Start**: the server (migrations run now), wait up to 60 s for `/healthz`, then the judge; write the new `MANIFEST`.
+8. **Verify**: `install.sh verify`, then it prints the backup folder and the rollback command.
+
+Configuration files are never overwritten: add a new variable with `sudoedit` before running the upgrade again.
+
+## Rollback
+
+`sudo ./install.sh rollback` uses what the last upgrade kept in `/usr/local/lib/podium/previous/` and works once per upgrade.
+
+| Case | What happens |
+|---|---|
+| Same schema (the upgrade applied no migration) | stop the judge (gracefully) and the server, put the previous binaries and units back, start, wait for `/healthz`, verify |
+| Newer schema (the upgrade applied a migration the previous server does not know, so it would refuse to start) | it names the backup taken just before the upgrade and what is lost: everything written since that backup, with the count of submissions and runs, plus sign-ins, drafts, clarifications and settings. You type `ROLLBACK` to go on. The backup is restored into a scratch folder and checked by the previous binary; the current database folder is kept as `db.before-rollback-<time>`; the backup goes in place, missing test files are copied back, the previous binaries start, Litestream starts a new history |
+
+Both cases are rehearsed on the VM once in P0 and once before each schema-changing release (`docs/RUNBOOK.md`, "Proving the safety net").
+
+### Older upgrade notes
+
+Before `install.sh upgrade` existed, upgrades were `sudo ./install.sh app`. The notes below are kept for databases from those builds.
 
 Upgrading to M2 from M1:
 
@@ -455,15 +595,35 @@ Two layers, both installed by `install.sh` (steps `litestream` and `backup`):
 | | Litestream | Nightly backup |
 |---|---|---|
 | What | the database | the database and the test files |
-| Where | the bucket in `/etc/podium/litestream.env` (off the VM) | `/var/backups/podium/<date>` on the VM (podium only, 700), copied off the VM by rsync when `PODIUM_BACKUP_RSYNC` is set |
+| Where | the bucket in `/etc/podium/litestream.env` (off the VM) | `/var/backups/podium/<date>` on the VM (podium only, 700); each night also packed, encrypted with `age` and uploaded to its own B2 bucket (the encrypted copy), and copied by rsync when `PODIUM_BACKUP_RSYNC` is set |
 | How often | every change, uploaded every 10 s | every night about 03:15 UTC, and on demand |
 | Kept | 14 days of history (a daily snapshot plus every change since) | 14 days |
 | Restores | the newest state, or any moment in the 14 days | that night's state |
 | Protects against | losing the VM or its disk | a bad change (a wrong rejudge, a deleted contest), a damaged database |
 
-Test files and program sources are not in the bucket: they live in `/var/lib/podium/tests`, named by SHA-256, and the database only refers to them. The nightly backup copies them as hard links, so 14 nights cost little more than one, and carries them off the VM when `PODIUM_BACKUP_RSYNC` is set (below). Set it before the first graded contest: without it, losing the VM's disk loses every test file, and only the pack zips you kept would bring the problems back. Submitted code is safe either way, since the database holds every submission's source.
+Test files and program sources are not in the bucket: they live in `/var/lib/podium/tests`, named by SHA-256, and the database only refers to them. The nightly backup copies them as hard links, so 14 nights cost little more than one, and the encrypted copy carries them off the VM (below). Set it up before the first graded contest: without it, losing the VM's disk loses every test file, and only the pack zips you kept would bring the problems back. Submitted code is safe either way, since the database holds every submission's source.
 
 Backups hold every student's code and the session table, so they are private: the backup runs with umask 077 (`UMask=0077` in the unit, `umask 077` in the script), `/var/backups/podium` is mode 700, and the files are readable by the podium user only. The judge cannot read them.
+
+### Encrypted copy off the VM
+
+Each night, after the local backup passed its check, `podium-backup` packs that night's folder (`podium.db`, `tests/`, `check.txt`) with `tar`, encrypts it with `age` to `PODIUM_BACKUP_AGE_RECIPIENT`, and streams it to B2 with `rclone` as `podium-<UTC date and time>.tar.age` in `PODIUM_BACKUP_B2_PATH`. Nothing unencrypted is written twice, and a failed upload removes the partial object. Copies older than `PODIUM_BACKUP_KEEP_DAYS` (14) are deleted from the folder. The VM holds only the public key: if the VM is taken over, the copies stay unreadable; to read one you need the private key, which stays with you.
+
+Set it up once:
+
+1. On your own machine (not the VM): install `age` (`winget install FiloSottile.age` on Windows), then `age-keygen -o podium-backup.key`. It prints `Public key: age1...`. Store `podium-backup.key` in your password manager and one offline place; losing it makes every copy unreadable.
+2. B2 web console: Buckets, Create a Bucket, private, named for example `podium-tests` (its own bucket, not Litestream's). Application Keys, Add a New Application Key, allow access to that bucket only, Read and Write. Note the keyID and the applicationKey (shown once).
+3. `sudoedit /etc/podium/backup.env`: `PODIUM_BACKUP_AGE_RECIPIENT=age1...`, `PODIUM_BACKUP_B2_PATH=podium-tests/nightly`, `RCLONE_CONFIG_B2_TYPE=b2`, `RCLONE_CONFIG_B2_ACCOUNT=<keyID>`, `RCLONE_CONFIG_B2_KEY=<applicationKey>`.
+4. `sudo systemctl start podium-backup`, then `journalctl -u podium-backup -n 20` ends with `encrypted copy uploaded as podium-<time>.tar.age`.
+5. Prove you can read it, on your own machine: download that object from the B2 web console (Browse Files), then
+
+   ```sh
+   age -d -i podium-backup.key podium-<time>.tar.age | tar -x -C restored/
+   ```
+
+   `restored/` holds `podium.db`, `tests/` and `check.txt`. Delete the folder afterwards: it holds every student's code.
+
+rclone runs with `--transfers 1 --b2-chunk-size 16M`, so the upload adds about 16 MB of memory at 03:15. B2 bills storage per GB and the listing calls of `podium-check` stay inside the free daily allowance.
 
 ### Copy the nightly backup off the VM
 
@@ -491,7 +651,7 @@ Disk snapshots from your VM provider are a fine addition but not a replacement: 
 4. `sudo systemctl restart podium-litestream`, then `journalctl -u podium-litestream -n 30`: the start-up check lists every variable as `set`, and Litestream logs its first snapshot and then a sync every 10 s while the database changes.
 5. Prove it: `sudo /usr/local/lib/podium/podium-restore litestream /var/tmp/restore-check` restores the newest copy from the bucket and checks it; then `sudo rm -rf /var/tmp/restore-check`.
 
-Litestream has only been rehearsed against a local file replica so far (cache/v1/m7-restore.md); the first restore from your bucket in step 5 is the real test. If the first sync fails with an error about checksums or a header the provider does not support, note the exact message: Litestream 0.5 has per-provider options (`sign-payload`, `require-content-md5`) under the replica in `/etc/litestream.yml`.
+Before the P0 restore drill Litestream had only been rehearsed against a local file replica; the first restore from your bucket in step 5 is the real test, and the weekly restore proof (see "Alerts") repeats it every week. If the first sync fails with an error about checksums or a header the provider does not support, note the exact message: Litestream 0.5 has per-provider options (`sign-payload`, `require-content-md5`) under the replica in `/etc/litestream.yml`.
 
 ### Nightly backup
 

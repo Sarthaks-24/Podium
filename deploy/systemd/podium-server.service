@@ -1,5 +1,8 @@
 [Unit]
 Description=Podium contest server
+# A failure (a crash, an OOM kill, a stop that timed out) posts an alert;
+# the unit still restarts.
+OnFailure=podium-alert@%n.service
 After=network-online.target
 Wants=network-online.target
 

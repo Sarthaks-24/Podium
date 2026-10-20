@@ -51,6 +51,7 @@ case $mode in
     config=${LITESTREAM_CONFIG:-/etc/litestream.yml}
     envfile=${LITESTREAM_ENV:-/etc/podium/litestream.env}
     if [[ -r $envfile ]]; then
+      # shellcheck source=/dev/null
       set -a; . "$envfile"; set +a
     fi
     mkdir -p "$scratch"
