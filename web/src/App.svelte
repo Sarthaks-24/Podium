@@ -9,7 +9,8 @@
   path from lib/router.svelte.ts, after the session from GET /api/me has
   loaded: signed-out visitors to a protected path are sent to /signin with a
   ?next= back, and signed-in visitors to /signin are sent on. After each
-  client-side navigation focus moves to the new page's heading. The footer
+  client-side navigation focus moves to the new page's heading. The two
+  announcer regions of lib/announce.svelte.ts live at the end. The footer
   carries the build year and a "Keyboard shortcuts" button; "?" anywhere
   outside a text field opens the same list (components/ShortcutsDialog).
   Takes no props.
@@ -19,6 +20,7 @@
   import ShortcutsDialog from './components/ShortcutsDialog.svelte';
   import Toasts from './components/Toasts.svelte';
   import ThemeMenu from './lib/ThemeMenu.svelte';
+  import { regions } from './lib/announce.svelte';
   import { loadMode, runMode } from './lib/mode.svelte';
   import { installLinkInterception, matchRoute, navigate, router } from './lib/router.svelte';
   import { displayName, loadSession, session, signOut } from './lib/session.svelte';
@@ -272,6 +274,9 @@
 </div>
 
 <Toasts />
+<!-- The app's two announcer regions (lib/announce.svelte.ts). Always present, so the first message is spoken too. -->
+<div class="visually-hidden" aria-live="polite" data-announcer="polite">{regions.polite}</div>
+<div class="visually-hidden" aria-live="assertive" data-announcer="assertive">{regions.assertive}</div>
 <ShortcutsDialog open={shell.shortcuts} organiser={isOrganiser} onclose={() => (shell.shortcuts = false)} />
 
 <style>
