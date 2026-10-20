@@ -861,19 +861,19 @@ export function attentionItems(
 
   if (c.queue) {
     const q = c.queue;
-    if (q.waiting === 0 && q.judging === 0) out.push({ key: 'queue', text: 'Queue empty', tone: 'note', href: '#feed-title' });
+    if (q.waiting === 0 && q.judging === 0) out.push({ key: 'queue', text: 'Queue empty', tone: 'note', href: '#submissions-title' });
     else {
       const wait = q.oldest_wait_s > 0 ? `, oldest ${formatSpan(q.oldest_wait_s * 1000)}` : '';
-      out.push({ key: 'queue', text: `${q.waiting} waiting, ${q.judging} judging${wait}`, tone: q.oldest_wait_s >= SLOW_WAIT_S && !c.paused ? 'part' : 'note', href: '#feed-title' });
+      out.push({ key: 'queue', text: `${q.waiting} waiting, ${q.judging} judging${wait}`, tone: q.oldest_wait_s >= SLOW_WAIT_S && !c.paused ? 'part' : 'note', href: '#submissions-title' });
     }
-    if (q.errors > 0) out.push({ key: 'errors', text: countOf(q.errors, 'judge error'), tone: 'bad', href: '#feed-title' });
+    if (q.errors > 0) out.push({ key: 'errors', text: countOf(q.errors, 'judge error'), tone: 'bad', href: '#submissions-title' });
   }
 
   if (c.judge_last_claim_at !== undefined) {
     const last = c.judge_last_claim_at;
-    if (last === null) out.push({ key: 'judge', text: 'No judge has asked for work since the server started', tone: 'bad', href: '#feed-title' });
-    else if (now - last > JUDGE_SILENT_MS) out.push({ key: 'judge', text: `No judge for ${formatSpan(now - last)}`, tone: 'bad', href: '#feed-title' });
-    else out.push({ key: 'judge', text: `Judge seen ${formatSpan(Math.max(1000, now - last))} ago`, tone: 'note', href: '#feed-title' });
+    if (last === null) out.push({ key: 'judge', text: 'No judge has asked for work since the server started', tone: 'bad', href: '#submissions-title' });
+    else if (now - last > JUDGE_SILENT_MS) out.push({ key: 'judge', text: `No judge for ${formatSpan(now - last)}`, tone: 'bad', href: '#submissions-title' });
+    else out.push({ key: 'judge', text: `Judge seen ${formatSpan(Math.max(1000, now - last))} ago`, tone: 'note', href: '#submissions-title' });
   }
 
   out.push(

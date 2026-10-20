@@ -322,7 +322,7 @@
     fVerdict = 'error';
     page = 1;
     void loadFeed();
-    document.getElementById('feed-title')?.scrollIntoView({ block: 'start' });
+    document.getElementById('submissions-title')?.scrollIntoView({ block: 'start' });
   }
 
   function ask(title: string, body: string, label: string, danger: boolean, run: () => Promise<void>, items?: string[]) {
@@ -771,9 +771,9 @@
     </aside>
 
     <div class="page-split-main console-main">
-      <section class="panel" aria-labelledby="feed-title">
+      <section class="panel" aria-labelledby="submissions-title">
         <div class="panel-head">
-          <h2 id="feed-title">Submissions</h2>
+          <h2 id="submissions-title">Submissions</h2>
           <label class="choice"><input type="checkbox" bind:checked={autoRefresh} /> Refresh every 10 s</label>
         </div>
         <form class="row filters" novalidate onsubmit={applyFilters}>
