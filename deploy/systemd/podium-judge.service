@@ -11,6 +11,17 @@ EnvironmentFile=/etc/podium/judge.env
 ExecStart=/usr/local/bin/podium-judge work
 Restart=always
 RestartSec=2
+# SIGTERM stops claiming; each lane finishes and reports the job it holds,
+# then the worker exits (graceful stop, used by install.sh upgrade). Real
+# jobs take seconds; 20 minutes covers a long validation. A job still
+# running then is killed and requeued by the server once its 60 s lease
+# runs out. A second SIGTERM abandons the jobs at once.
+TimeoutStopSec=20min
+# Send that SIGTERM to the worker only. The default (control-group) would
+# also signal the isolate processes the worker started, killing the very
+# runs the stop is meant to let finish. Whatever is left at the timeout
+# gets SIGKILL.
+KillMode=mixed
 # Covers the worker process only. Sandboxes run in isolate.slice, which has
 # its own cap (isolate.slice.d/podium.conf). Inputs and programs the worker
 # copies into the tmpfs box root are charged here until the box is

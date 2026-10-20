@@ -33,30 +33,50 @@ type Worker struct {
 	// Name, Version and Isolate identify this worker in the server's log.
 	Name, Version, Isolate string
 
+	// handle replaces the job dispatch in tests; nil runs the real kinds.
+	handle func(ctx context.Context, box int, c *judgeapi.Claim) error
+
 	mu    sync.Mutex
 	holds map[int64]*[]func()
 }
 
-// Run claims and runs jobs on every lane until ctx ends.
-func (w *Worker) Run(ctx context.Context) {
+// Run claims and runs jobs on every lane until ctx ends. Ending ctx also
+// abandons the jobs that are running; use Drain to let them finish.
+func (w *Worker) Run(ctx context.Context) { w.Drain(ctx, ctx) }
+
+// Drain claims and runs jobs on every lane until stop ends. Then each lane
+// finishes the job it holds, reports it, and Drain returns once every lane
+// is idle. This is how an upgrade drains the judge: there is no global
+// pause, so stopping the judge is the drain.
+//
+// Jobs run, heartbeat and report under jobs, never under stop, so stopping
+// does not kill isolate or the closing report. Ending jobs abandons the
+// running jobs without a final report: the server hands each out again
+// once its lease runs out, exactly as after a crash.
+func (w *Worker) Drain(stop, jobs context.Context) {
 	var wg sync.WaitGroup
 	for lane := 0; lane < w.Lanes; lane++ {
 		// A box left behind by a killed worker would make Init fail.
-		if err := w.Runner.Iso.Cleanup(ctx, lane); err != nil {
-			w.Log.Warn("box cleanup failed", "box", lane, "err", err)
+		if w.Runner != nil {
+			if err := w.Runner.Iso.Cleanup(jobs, lane); err != nil {
+				w.Log.Warn("box cleanup failed", "box", lane, "err", err)
+			}
 		}
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			w.lane(ctx, lane)
+			w.lane(stop, jobs, lane)
 		}()
 	}
 	wg.Wait()
 }
 
-func (w *Worker) lane(ctx context.Context, box int) {
+func (w *Worker) lane(stop, ctx context.Context, box int) {
 	backoff := idlePoll
-	for ctx.Err() == nil {
+	for stop.Err() == nil && ctx.Err() == nil {
+		// The claim itself runs under the job context: a stop that lands
+		// while the request is in flight must not drop a job the server
+		// has already leased to this lane.
 		claim, err := w.Client.Claim(ctx, judgeapi.ClaimRequest{
 			Kinds:  []string{judgeapi.KindRun, judgeapi.KindSubmit, judgeapi.KindGenerate, judgeapi.KindGenerateInputs, judgeapi.KindValidate},
 			Worker: w.Name, Version: w.Version, Isolate: w.Isolate,
@@ -66,41 +86,49 @@ func (w *Worker) lane(ctx context.Context, box int) {
 			if ctx.Err() == nil {
 				w.Log.Warn("claim failed", "lane", box, "err", err, "retry_in", backoff)
 			}
-			sleep(ctx, backoff)
+			sleep(stop, backoff)
 			backoff = min(backoff*2, maxBackoff)
 			continue
 		case claim == nil:
 			backoff = idlePoll
 			// Jitter keeps lanes from polling in step.
-			sleep(ctx, idlePoll+time.Duration(rand.Int64N(int64(time.Second))))
+			sleep(stop, idlePoll+time.Duration(rand.Int64N(int64(time.Second))))
 			continue
 		}
 		backoff = idlePoll
 		w.Log.Info("job started", "lane", box, "job_id", claim.JobID, "kind", claim.Kind)
 		start := time.Now()
-		switch claim.Kind {
-		case judgeapi.KindValidate:
-			err = w.validate(ctx, box, claim)
-		case judgeapi.KindSubmit:
-			err = w.submit(ctx, box, claim)
-		case judgeapi.KindRun:
-			err = w.run(ctx, box, claim)
-		case judgeapi.KindGenerate:
-			err = w.generate(ctx, box, claim)
-		case judgeapi.KindGenerateInputs:
-			err = w.generateInputs(ctx, box, claim)
-		default:
-			err = errors.New("unknown job kind " + claim.Kind)
-		}
+		err = w.dispatch(ctx, box, claim)
 		switch {
 		case errors.Is(err, ErrLease):
 			w.Log.Warn("lease lost; job dropped", "lane", box, "job_id", claim.JobID)
-		case err != nil && ctx.Err() == nil:
+		case ctx.Err() != nil:
+			w.Log.Warn("job abandoned by a forced stop; the server requeues it after its lease", "lane", box, "job_id", claim.JobID)
+		case err != nil:
 			w.Log.Error("job failed", "lane", box, "job_id", claim.JobID, "err", err)
 		default:
 			w.Log.Info("job finished", "lane", box, "job_id", claim.JobID, "seconds", time.Since(start).Seconds())
 		}
 	}
+}
+
+func (w *Worker) dispatch(ctx context.Context, box int, claim *judgeapi.Claim) error {
+	if w.handle != nil {
+		return w.handle(ctx, box, claim)
+	}
+	switch claim.Kind {
+	case judgeapi.KindValidate:
+		return w.validate(ctx, box, claim)
+	case judgeapi.KindSubmit:
+		return w.submit(ctx, box, claim)
+	case judgeapi.KindRun:
+		return w.run(ctx, box, claim)
+	case judgeapi.KindGenerate:
+		return w.generate(ctx, box, claim)
+	case judgeapi.KindGenerateInputs:
+		return w.generateInputs(ctx, box, claim)
+	}
+	return errors.New("unknown job kind " + claim.Kind)
 }
 
 func sleep(ctx context.Context, d time.Duration) {

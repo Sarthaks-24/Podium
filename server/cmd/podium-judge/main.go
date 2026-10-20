@@ -101,7 +101,11 @@ func calibrate(args []string) error {
 	return nil
 }
 
-// work runs the worker loop until SIGINT or SIGTERM.
+// work runs the worker loop. The first SIGINT or SIGTERM stops claiming:
+// every lane finishes and reports the job it holds, then the process exits
+// 0 (systemd's TimeoutStopSec on podium-judge.service bounds the wait). A
+// second signal abandons the running jobs at once; the server requeues
+// them when their leases run out.
 func work() error {
 	cfg, err := config.LoadWorker(os.Getenv)
 	if err != nil {
@@ -109,8 +113,28 @@ func work() error {
 	}
 	log := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: cfg.LogLevel}))
 	log.Info("starting podium-judge", append([]any{"version", version, "lanes", cfg.Lanes}, config.Summary(os.Getenv, config.JudgeVars)...)...)
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer stop()
+	stopCtx, stopClaims := context.WithCancel(context.Background())
+	defer stopClaims()
+	ctx, abandon := context.WithCancel(context.Background())
+	defer abandon()
+	sigs := make(chan os.Signal, 2)
+	signal.Notify(sigs, os.Interrupt, syscall.SIGTERM)
+	defer signal.Stop(sigs)
+	go func() {
+		select {
+		case <-sigs:
+		case <-ctx.Done():
+			return
+		}
+		log.Info("stopping: no new jobs; finishing the running ones (a second signal abandons them)")
+		stopClaims()
+		select {
+		case <-sigs:
+			log.Warn("second signal: abandoning running jobs; the server requeues them after their leases")
+			abandon()
+		case <-ctx.Done():
+		}
+	}()
 
 	blobs := filepath.Join(cfg.CacheDir, "blobs")
 	jobs := filepath.Join(cfg.CacheDir, "jobs")
@@ -134,7 +158,7 @@ func work() error {
 		Version:  version,
 		Isolate:  isolateVersion(ctx, cfg.IsolatePath),
 	}
-	w.Run(ctx)
+	w.Drain(stopCtx, ctx)
 	log.Info("stopped")
 	return nil
 }
