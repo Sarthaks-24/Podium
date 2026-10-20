@@ -48,8 +48,15 @@ type Pack struct {
 	Ignored []string
 }
 
+// PackFormat is the version of the pack format this server reads and
+// writes (B1.7). A problem.yaml without a format line is format 1; one
+// with a higher number was written by a newer Podium and is refused,
+// rather than read with fields silently ignored.
+const PackFormat = 1
+
 // packMeta is problem.yaml.
 type packMeta struct {
+	Format        int           `yaml:"format,omitempty"`
 	Title         string        `yaml:"title"`
 	Slug          string        `yaml:"slug"`
 	TimeLimitMS   int           `yaml:"time_limit_ms"`
@@ -177,11 +184,22 @@ func parsePackFiles(files map[string][]byte) (*Pack, error) {
 	if len(raw) > MaxProblemYAML {
 		return nil, &PackError{[]string{"problem.yaml is larger than 64 KB."}}
 	}
+	// The format is read first and alone: a newer pack's unknown fields
+	// would otherwise be reported one by one, hiding the real cause.
+	var head struct {
+		Format int `yaml:"format"`
+	}
+	if err := yaml.Unmarshal(raw, &head); err == nil && head.Format > PackFormat {
+		return nil, &PackError{[]string{fmt.Sprintf("problem.yaml is pack format %d, and this server reads format %d and older. Upgrade Podium, or export the problem again from a server of this version.", head.Format, PackFormat)}}
+	}
 	var meta packMeta
 	dec := yaml.NewDecoder(bytes.NewReader(raw))
 	dec.KnownFields(true)
 	if err := dec.Decode(&meta); err != nil {
 		return nil, &PackError{[]string{"problem.yaml: " + yamlMessage(err)}}
+	}
+	if meta.Format < 0 {
+		return nil, &PackError{[]string{"problem.yaml: format must be 1 (or left out)."}}
 	}
 
 	pk := &Pack{Inputs: map[int][]byte{}, Outputs: map[int][]byte{}}
@@ -417,7 +435,8 @@ func WritePack(w io.Writer, p *Problem, read func(sha string) ([]byte, error)) e
 		return err
 	}
 	meta := packMeta{
-		Title: p.Title, Slug: p.Slug, TimeLimitMS: p.TimeLimitMS, MemoryLimitMB: p.MemoryLimitMB,
+		Format: PackFormat,
+		Title:  p.Title, Slug: p.Slug, TimeLimitMS: p.TimeLimitMS, MemoryLimitMB: p.MemoryLimitMB,
 		Checker: p.Checker, Tags: p.Tags, Difficulty: p.Difficulty, Samples: p.Samples,
 		Reference: "solution" + ExtByLanguage[p.Reference.Language],
 	}

@@ -3,8 +3,10 @@ package problems
 import (
 	"archive/zip"
 	"bytes"
+	"io"
 	"io/fs"
 	"os"
+	"path"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -152,6 +154,9 @@ func TestPackRefusals(t *testing.T) {
 			{name: "solution.cpp", body: "x"}, {name: "tests/01.in", body: "1"}, {name: "tests/01.out", body: "1"},
 			{name: "tests/02.in", body: "2"}, {name: "tests/02.out", body: "2"}}, "slug"},
 		"duplicate test number": {minimalPack(entry{name: "tests/1.in", body: "x"}), "two in files"},
+		// B1.7: a pack from a newer Podium is refused by its format, with
+		// the version named, even though it also has fields unknown here.
+		"newer format": {[]entry{{name: "problem.yaml", body: "format: 2\n" + minimalYAML + "open: [3]\n"}}, "pack format 2, and this server reads format 1"},
 	} {
 		_, err := ReadPack(zipEntries(t, tc.entries...))
 		if err == nil || !strings.Contains(err.Error(), tc.want) {
@@ -220,6 +225,18 @@ func TestPackRoundTrip(t *testing.T) {
 		})
 		if !bytes.Equal(buf.Bytes(), buf2.Bytes()) {
 			t.Errorf("%s: export is not deterministic", slug)
+		}
+		// Exports write the format; format 1 written out reads back.
+		zr, _ := zip.NewReader(bytes.NewReader(buf.Bytes()), int64(buf.Len()))
+		for _, f := range zr.File {
+			if path.Base(f.Name) == "problem.yaml" {
+				rc, _ := f.Open()
+				b, _ := io.ReadAll(rc)
+				rc.Close()
+				if !strings.HasPrefix(string(b), "format: 1\n") {
+					t.Errorf("%s: exported problem.yaml starts %q", slug, clip(string(b)))
+				}
+			}
 		}
 	}
 }
@@ -294,5 +311,30 @@ func TestPackMayOmitOutputs(t *testing.T) {
 	probs := strings.Join(pk.Problem.Problems(), " ")
 	if !strings.Contains(probs, "Test 2 has no expected output") {
 		t.Errorf("missing output not listed: %s", probs)
+	}
+}
+
+func clip(s string) string {
+	if len(s) > 40 {
+		return s[:40]
+	}
+	return s
+}
+
+// A pack without a format line is format 1, and so is one that says so.
+func TestPackFormatOne(t *testing.T) {
+	for _, head := range []string{"", "format: 1\n"} {
+		if _, err := ReadPack(zipEntries(t, minimalPack()...)); err != nil {
+			t.Fatalf("no format: %v", err)
+		}
+		entries := minimalPack()
+		for i := range entries {
+			if entries[i].name == "problem.yaml" {
+				entries[i].body = head + entries[i].body
+			}
+		}
+		if _, err := ReadPack(zipEntries(t, entries...)); err != nil {
+			t.Errorf("%q: %v", head, err)
+		}
 	}
 }
