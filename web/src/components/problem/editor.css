@@ -123,3 +123,8 @@
     font-weight: 500;
   }
 }
+
+/* Fields scrolled to from the error list clear the sticky bar. */
+.editor :is(input, select, textarea) {
+  scroll-margin-top: 10rem;
+}
