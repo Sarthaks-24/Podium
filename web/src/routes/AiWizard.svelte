@@ -11,17 +11,23 @@
   to POST /api/admin/ai/wizard and keeps the request id in the address
   (?wizard=), so a reload picks the progress up again. Progress comes from
   the `wizard` live event, with polling of GET /api/admin/ai/wizard/{id}
-  while the stream is down: "Writing the problem", then "Draft created,
-  generating tests" with a link to the draft in the editor. A failure shows
-  the server's sentence and its reasons. One status line is a live region;
-  nothing else announces. Takes no props.
+  while the stream is down: "Writing the problem", "Draft created", then,
+  following the draft's own input generation, output generation and
+  validation, "Generating the tests" and "Validating the draft", and at
+  the end "Validation passed. Open the draft" (audit 2026-10-20 O7). A
+  failure shows the server's sentence and its reasons. With no key or no
+  model the key form (components/ai/KeyForm) sits inline above the brief,
+  so nothing is filled in before the page says it cannot run. One status
+  line is a live region; nothing else announces. Takes no props.
 -->
 <script lang="ts">
   import PageState from '../components/PageState.svelte';
   import PageHeader from '../components/PageHeader.svelte';
+  import KeyForm from '../components/ai/KeyForm.svelte';
   import { onMount, tick } from 'svelte';
   import {
     aiPaths,
+    draftChainSteps,
     isKeyProblem,
     keyLine,
     MAX_TEXT,
@@ -34,12 +40,14 @@
     wizardPending,
     wizardRequest,
     wizardStatusText,
-    wizardSteps,
     type Brief,
+    type InputGeneration,
     type KeyStatus,
     type Wizard,
   } from '../lib/ai';
   import { ApiError, getJSON, sendJSON } from '../lib/api';
+  import { problemPath, type Validation } from '../lib/problems';
+  import type { Generation } from '../lib/workspace';
   import { setTitle } from '../lib/head';
   import { routeTitle } from '../lib/routing';
   import { navigate, router } from '../lib/router.svelte';
@@ -68,7 +76,21 @@
   const blocker = $derived(wizardBlocker(keyStatus));
   const keyActive = $derived(blocker === '');
   const pending = $derived(wizardPending(wizard));
-  const steps = $derived(wizard ? wizardSteps(wizard) : []);
+  // After the draft exists, its own jobs: inputs, outputs from the reference, validation.
+  let chainInputs = $state<InputGeneration | null>(null);
+  let chainOutputs = $state<Generation | null>(null);
+  let chainValidation = $state<Validation | null>(null);
+  const chain = $derived(wizard ? draftChainSteps(wizard, chainInputs, chainOutputs, chainValidation) : null);
+  const steps = $derived(chain?.steps ?? []);
+  const chainStatus = $derived.by(() => {
+    if (!wizard) return '';
+    if (chain?.outcome === 'passed') return 'Validation passed';
+    if (chain?.outcome === 'failed') return 'Validation failed';
+    if (chain?.outcome === 'tests_failed') return 'The tests could not be generated';
+    if (wizard.problem_id) return chainValidation ? 'Validating the draft' : 'Generating the tests';
+    return wizardStatusText(wizard);
+  });
+  const drafted = $derived(wizard ? draftedBy(wizard, keyStatus) : '');
   const textLength = $derived(text.trim().length);
 
   /** Handles errors every request can hit; returns true when it did. */
@@ -96,6 +118,11 @@
   let streamMode = $state<StreamMode>('connecting');
   let pollTimer: ReturnType<typeof setTimeout> | undefined;
 
+  let chainTimer: ReturnType<typeof setTimeout> | undefined;
+  let chainStarted = 0;
+  /** The page stops following the draft after this long; the editor shows the rest. */
+  const CHAIN_MAX_MS = 10 * 60_000;
+
   function stopWatch() {
     stream?.stop();
     stream = null;
@@ -105,7 +132,44 @@
   function adoptWizard(w: Wizard) {
     if (!wizard || String(w.id) !== String(wizard.id)) return;
     wizard = w;
-    if (!wizardPending(w)) stopWatch();
+    if (!wizardPending(w)) {
+      stopWatch();
+      if (w.problem_id && chainStarted === 0) {
+        chainStarted = Date.now();
+        void pollChain();
+      }
+    }
+  }
+
+  /** One job of the draft, or null when it never had one (404). */
+  async function job<T>(path: string): Promise<T | null> {
+    try {
+      return await getJSON<T>(path);
+    } catch (e) {
+      if (e instanceof ApiError && e.status === 404) return null;
+      throw e;
+    }
+  }
+
+  async function pollChain() {
+    const pid = wizard?.problem_id;
+    if (!pid || !alive) return;
+    try {
+      const [i, o, v] = await Promise.all([
+        job<InputGeneration>(problemPath(pid, '/input-generation')),
+        job<Generation>(problemPath(pid, '/generation')),
+        job<Validation>(problemPath(pid, '/validation')),
+      ]);
+      if (!alive) return;
+      chainInputs = i;
+      chainOutputs = o;
+      chainValidation = v;
+    } catch (e) {
+      if (handleSessionError(e)) return;
+      // A failed poll is tried again on the next tick.
+    }
+    clearTimeout(chainTimer);
+    if (alive && !chain?.done && Date.now() - chainStarted < CHAIN_MAX_MS) chainTimer = setTimeout(pollChain, POLL_DOWN_MS);
   }
 
   function schedulePoll() {
@@ -180,6 +244,7 @@
     return () => {
       alive = false;
       stopWatch();
+      clearTimeout(chainTimer);
     };
   });
 
@@ -224,6 +289,11 @@
 
   async function startAgain() {
     stopWatch();
+    clearTimeout(chainTimer);
+    chainStarted = 0;
+    chainInputs = null;
+    chainOutputs = null;
+    chainValidation = null;
     wizard = null;
     requestError = null;
     navigate('/admin/ai/new', { replace: true });
@@ -248,10 +318,10 @@
         {blocker} <a href="/admin/ai">Go to AI assistant</a>
       {:else if keyStatus && keyStatus.active}
         Using {providerLabel(keyStatus, keyStatus.provider)}{needsKey(keyStatus.provider) ? `, ${modelLabel(keyStatus, keyStatus.provider, keyStatus.model)}` : ''}.
-        {keyLine(keyStatus)}{needsKey(keyStatus.provider) ? '.' : ''}
+        {`${keyLine(keyStatus)}.`}
         <a href="/admin/ai">Change key or model</a>
       {:else if keyStatus}
-        No key yet. <a href="/admin/ai">Add a key in AI assistant</a> before you generate.
+        No key yet. Add one below to generate; it stays in the server's memory only.
       {:else if keyError !== ''}
         {keyError} <a href="/admin/ai">Go to AI assistant</a>
       {:else}
@@ -270,6 +340,18 @@
       </div>
     {/if}
 
+    {#if keyStatus && blocker !== '' && !wizard}
+      <section class="panel inline-key" aria-labelledby="wiz-form-heading">
+        <KeyForm
+          bind:status={keyStatus}
+          id="wiz"
+          heading={keyStatus.active ? 'Choose a model to start' : 'Add a key to start'}
+          onsessionerror={handleSessionError}
+          onsaved={() => void tick().then(() => document.getElementById(mode === 'brief' ? 'topic' : 'paste-text')?.focus())}
+        />
+      </section>
+    {/if}
+
     {#if wizard}
       <section class="progress" aria-labelledby="progress-heading">
         <h2 id="progress-heading" tabindex="-1">Progress</h2>
@@ -284,7 +366,7 @@
             </li>
           {/each}
         </ol>
-        <p class="visually-hidden" role="status">{wizardStatusText(wizard)}</p>
+        <p class="visually-hidden" role="status">{chainStatus}</p>
 
         {#if pending}
           <p class="muted hint">This takes a minute or two. You can leave this page; the draft appears in the problem bank when it is ready.</p>
@@ -304,11 +386,18 @@
           <p class="actions"><button type="button" class="btn btn-secondary" onclick={startAgain}>Change the request</button></p>
         {:else if wizard.problem_id}
           <p class="created">
-            {#if draftedBy(wizard, keyStatus)}{draftedBy(wizard, keyStatus)}. {/if}The draft is in the problem bank. Tests are being generated and
-            validated; the editor shows each step.
+            {[drafted ? `${drafted}.` : '', chain?.outcome === 'passed'
+              ? 'Validation passed. Read the draft, then add it to a contest.'
+              : chain?.outcome === 'failed'
+                ? 'Validation failed. Open the draft to see what to fix.'
+                : chain?.outcome === 'tests_failed'
+                  ? 'The tests could not be generated. Open the draft to see why.'
+                  : 'The draft is in the problem bank. Its tests are being generated and validated; this page follows each step.']
+              .filter((x) => x !== '')
+              .join(' ')}
           </p>
           <p class="actions">
-            <a class="btn btn-primary" href="/admin/problems/{wizard.problem_id}">Open the draft in the editor</a>
+            <a class="btn btn-primary" href="/admin/problems/{wizard.problem_id}">{chain?.outcome === 'passed' ? 'Open the draft' : 'Open the draft in the editor'}</a>
             <button type="button" class="btn btn-quiet" onclick={startAgain}>Start another</button>
           </p>
         {/if}
@@ -406,10 +495,10 @@
         {/if}
 
         <div class="actions">
-          <button type="submit" class="btn btn-primary" disabled={sending || !keyActive} aria-describedby={keyActive ? undefined : 'generate-help'}>
-            {sending ? 'Sending' : 'Generate'}
+          <button type="submit" class="btn {keyActive ? 'btn-primary' : 'btn-secondary'}" disabled={sending || !keyActive} aria-describedby={keyActive ? undefined : 'generate-help'}>
+            {sending ? 'Sending' : 'Generate draft'}
           </button>
-          {#if !keyActive}<span id="generate-help" class="field-help">{blocker}</span>{/if}
+          {#if !keyActive}<span id="generate-help" class="field-help">{keyStatus ? (keyStatus.active ? 'Choose a model in the form above first.' : 'Add a key in the form above first.') : blocker}</span>{/if}
         </div>
 
         {#if requestError}
@@ -429,6 +518,11 @@
 </div>
 
 <style>
+  .inline-key {
+    max-width: var(--measure-form);
+    margin-top: var(--space-5);
+  }
+
   .wizard {
     max-width: 48rem;
   }

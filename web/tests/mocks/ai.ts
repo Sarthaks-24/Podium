@@ -178,6 +178,8 @@ export interface MockOptions {
   wizardEnd?: 'draft' | 'error';
   /** Answer wizard GETs with "thinking" forever, so only the live event can finish it. */
   wizardOnlyByEvent?: boolean;
+  /** After the draft is created, problem 20 generates its tests and passes validation (P3 O7). */
+  chain?: boolean;
 }
 
 /** Installs the API mock for one page and returns its mutable state. */
@@ -193,6 +195,7 @@ export async function mockApi(page: Page, opts: MockOptions = {}) {
     modelGets: [] as string[],
     wizardBodies: [] as Json[],
     wizardGets: 0,
+    chainGets: 0,
     wizard: null as Json | null,
     events: [] as string[],
     problems: { 20: aiDraft(), 21: validated() } as Record<number, Json>,
@@ -373,6 +376,14 @@ export async function mockApi(page: Page, opts: MockOptions = {}) {
             updated_at: T0 + 1000,
           });
           return json(route, 200, p);
+        }
+        if (opts.chain && id === 20 && (rest === '/validation' || rest === '/generation' || rest === '/input-generation') && method === 'GET') {
+          state.chainGets++;
+          const n = state.chainGets;
+          if (rest === '/input-generation') return json(route, 200, { id: 1, state: n < 4 ? 'running' : 'done', planned: 4, results: [], summary: null, error: null });
+          if (rest === '/generation') return n < 7 ? apiError(route, 404, 'not_found', 'Outputs were never generated.') : json(route, 200, { id: 1, state: 'done', results: [], summary: { applied: 4, problems: [] }, error: null });
+          if (n < 10) return apiError(route, 404, 'not_found', 'This problem has not been validated yet.');
+          return json(route, 200, { id: 9, state: n < 13 ? 'running' : 'passed', content_hash: 'h20', current: true, queued_at: T0, finished_at: null, queue_position: null, compile: [], tests: [], summary: null, error: null });
         }
         if (rest === '/validation' && method === 'GET') {
           if (id === 21) {
