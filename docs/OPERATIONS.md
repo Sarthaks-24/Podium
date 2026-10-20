@@ -329,7 +329,8 @@ All of this is in the contest's live console in the web app; the routes are in `
 
 | Situation | Action | Effect |
 |---|---|---|
-| A test or the checker is wrong | Pause, fix the problem, validate it, add it to the contest again, Rejudge the problem, Resume | Pause holds the contest's submissions in the queue (nothing is lost; students can keep submitting). Until the problem is added again, run and submit on it answer "This problem is being updated by the organisers." Rejudge re-runs every submission of the problem at priority 50 with the new tests, including those still waiting for the judge on the old tests; the board recomputes as results arrive (at most every 2 s). Pressing it twice adds nothing. |
+| A typo or an unclear sentence in a statement (v1.2.0) | Edit the problem (a reason is required while the contest runs), then "Update contest to revision N" on the console, then post the offered announcement | Students keep the old statement until the update; then their page says "Statement updated 14:32. See what changed" with a line diff. No validation or rejudge is needed for a statement-only change. |
+| A test or the checker is wrong | Pause, fix the problem (with a reason), validate it, "Update contest to revision N" (before v1.2.0: add it to the contest again), Rejudge the problem, Resume | Pause holds the contest's submissions in the queue (nothing is lost; students can keep submitting). Until the contest is updated, run and submit on it answer "This problem is being updated by the organisers." Rejudge re-runs every submission of the problem at priority 50 with the new tests, including those still waiting for the judge on the old tests; the board recomputes as results arrive (at most every 2 s). Pressing it twice adds nothing. |
 | One submission looks wrongly judged | Rejudge that submission | Only it is judged again. |
 | Lost time for everyone (power cut, network) | Extend by N minutes | Everyone's end moves; open pages get the new end at once. Extensions add up. |
 | One student lost time (crashed laptop, accommodation) | Set their extension (0 removes it) | Only their end moves; give a reason for the record. |
@@ -499,7 +500,29 @@ With an `http` base URL (testing mode, local development) the cookie is named `p
 sudo -u podium podium-server check -db /var/lib/podium/db/podium.db -tests /var/lib/podium/tests
 ```
 
-It opens the database read-only and prints: SQLite's `integrity_check` and `foreign_key_check`, the migrations recorded against those this binary knows (a database written by a newer server is reported, not touched), row counts, and whether every test file and program source recorded in the database is on disk with the recorded size. `-hash` re-reads every file and compares its SHA-256 with its name. Exit status 0 means sound, 1 means something is damaged or missing (listed), 2 means the check could not run. The nightly backup and `podium-restore` run it on every copy they make.
+It opens the database read-only and prints: SQLite's `integrity_check` and `foreign_key_check`, the migrations recorded against those this binary knows (a database written by a newer server is reported, not touched), row counts, and whether every test file and program source recorded in the database is on disk with the recorded size. `-hash` re-reads every file and compares its SHA-256 with its name. From schema 0010 (v1.2.0) it also checks that every problem's working copy is recorded by its newest revision and every contest pin names a revision (`revisions: ok`); anything else means a write skipped its revision and is a bug to report. Exit status 0 means sound, 1 means something is damaged or missing (listed), 2 means the check could not run. The nightly backup and `podium-restore` run it on every copy they make.
+
+## Rehearsing a migration on a copy
+
+`podium-server migrate -db COPY` applies the migrations of this binary to a copy of the database and runs `check` on it (exit codes as for `check`). It refuses the live database. Use it before every schema-changing deploy (D68), with the new release's binary on a copy of the newest nightly backup.
+
+## What a student saw (disputes)
+
+`podium-server saw` answers "what did this student see of problem A at 14:35" from the pin history and the served log (v1.2.0). It only reads.
+
+```sh
+sudo -u podium podium-server saw -db /var/lib/podium/db/podium.db -contest week-6 -email asha@college.edu -label A -at 2026-11-10T14:35:00+05:30
+```
+
+It prints the revision pinned at that moment and since when, when the student was first served it (or "not yet"), and every revision of that problem they were served before it. The revisions themselves, with their statements and a diff, are on the problem's page in the web app.
+
+## Runs with a custom input (P2 calibration)
+
+`podium-server runs-report` prints, per contest, how many runs students made and how many used a custom input, as a Markdown table for `calibration.md` (row "Runs with a custom input, per contest", D114). It reads the run jobs' payloads, which the P3 retention job deletes after 30 days: run it before that job first runs.
+
+```sh
+sudo -u podium podium-server runs-report -db /var/lib/podium/db/podium.db
+```
 
 ## Validation troubleshooting
 
@@ -533,7 +556,7 @@ sudo -u podium podium-server deploy-check -db /var/lib/podium/db/podium.db
 
 The first output line is `allowed`, `refused` or `allowed (forced)`; the exit code is 0, 1, or 2 when the check could not run. `-at 2026-11-10T13:00:00Z` asks about another moment, for rehearsals. Drafts and archived contests never block. Ungraded practice contests do block while they run: a deploy restarts the server, and students in them see one reconnect.
 
-**Emergency override.** A fix that cannot wait: `sudo ./install.sh upgrade --force "<reason>"` (or `tools/deploy.sh HOST --force "<reason>"`). The reason (10 characters or more) and the release are written as a `deploy_forced` row in the audit log of each contest that refused, under the owner's account, before anything is installed. Until the site-wide audit and the student banner of a later release exist, announce the restart in the contest yourself. A `--force` covers that one run only: the owner's "now" for a deploy is valid for that day, and the next run asks the guard again. Any admin may pause or extend a contest when the owner cannot be reached; that needs no deploy.
+**Emergency override.** A fix that cannot wait: `sudo ./install.sh upgrade --force "<reason>"` (or `tools/deploy.sh HOST --force "<reason>"`). The reason (10 characters or more) and the release are written as a `deploy_forced` row in the audit log of each contest that refused, under the owner's account, before anything is installed. From v1.2.0 (schema 0011) it is also one row in the site audit (People, History), and for 12 hours every signed-in student's page says "The site was updated at 14:02". The first forced upgrade to v1.2.0 runs against the old schema, so it writes only the contest rows; announce that one in the contest yourself. A `--force` covers that one run only: the owner's "now" for a deploy is valid for that day, and the next run asks the guard again. Any admin may pause or extend a contest when the owner cannot be reached; that needs no deploy.
 
 ## Upgrade
 
@@ -615,6 +638,12 @@ Upgrading to M5 (AI wizard):
 2. `sudo ./install.sh app`, then `sudo systemctl restart podium-server podium-judge`. Restart both: the server must know the new `generate_inputs` job kind before a judge claims one. No new variables.
 3. Migration `0007_wizard.sql` adds the generator columns and the `input_generations` table, and widens the allowed job kinds by rewriting the `CREATE TABLE jobs` text with SQLite's `writable_schema` procedure (decision D52): a table rebuild would cascade-delete every job result, because foreign keys stay on during migrations. No row changes. To check afterwards: `sqlite3 /var/lib/podium/db/podium.db "PRAGMA integrity_check"` prints `ok`.
 4. To use the wizard, an admin adds a key in the web app (see "AI wizard keys"). Nothing goes in `server.env`.
+
+Upgrading to v1.2.0 (P2, schema change: slot S2 only):
+
+1. The judge protocol is now 3: install the release on the server and the judge together (`install.sh upgrade` does both). A v1.1.0 judge left running is refused with "judge protocol 3 needed, this judge speaks 2" and stops.
+2. Migrations `0010_revisions.sql` and `0011_site_audit.sql` only add tables and columns, and back-fill revision 1 of every problem and the pin of every contest. Before the slot, rehearse them on a copy: copy the newest nightly backup's `podium.db` (a consistent copy; never `cp` the live file) into a scratch folder, then run the new release's `podium-server migrate -db /tmp/p2/podium.db`, which applies the migrations to that file and runs `check` on it: it must end `revisions: ok` and `result: ok`. `migrate` refuses the file `PODIUM_DB_PATH` names. Rollback across these migrations is a restore (D68), rehearsed once on a copy.
+3. No new variables. A pin older than its problem's working copy becomes a "reconstructed" revision (tests only, statement not recorded); the console marks it.
 
 Upgrading to M7 (hardening):
 

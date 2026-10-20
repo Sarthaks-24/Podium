@@ -190,7 +190,7 @@ func (s *site) judgeAll() int {
 				break
 			}
 			rep.Compile = []judgeapi.CompileResult{{Role: judgeapi.RoleProgram, Verdict: "OK"}}
-			stopped := false
+			stopped, revealed := false, false
 			for _, test := range pl.Tests {
 				v := "WA"
 				if stopped {
@@ -201,15 +201,33 @@ func (s *site) judgeAll() int {
 				if test.Sample && v == "WA" && pl.StopOnSampleFail {
 					stopped = true
 				}
-				rep.Results = append(rep.Results, judgeapi.TestResult{Idx: test.Idx, Role: judgeapi.RoleProgram, Verdict: v, TimeMS: 137, MemoryKB: 5123})
+				res := judgeapi.TestResult{Idx: test.Idx, Role: judgeapi.RoleProgram, Verdict: v, TimeMS: 137, MemoryKB: 5123}
+				// As the worker does (D115): output only on the first
+				// failing hidden test of a payload that asks to reveal.
+				if pl.Reveal && !test.Sample && v == "WA" && !revealed {
+					out := runProgram(prog, read(test.InputSHA))
+					res.Output, revealed = out[:min(len(out), judgeapi.MaxRunOutput)], true
+				}
+				rep.Results = append(rep.Results, res)
 			}
 		case "run":
 			var pl judgeapi.RunPayload
 			json.Unmarshal(c.Payload, &pl)
 			rep.Compile = []judgeapi.CompileResult{{Role: judgeapi.RoleProgram, Verdict: "OK"}}
+			// As the worker does (D115): an open test runs only while every
+			// earlier checked input passed.
+			stopOpen := false
 			for _, in := range pl.Inputs {
-				rep.Results = append(rep.Results, judgeapi.TestResult{Idx: in.Idx, Role: judgeapi.RoleProgram, Verdict: "AC", TimeMS: 137,
-					Output: runProgram(read(pl.Program.SourceSHA), read(in.InputSHA))})
+				if in.Open && stopOpen {
+					rep.Results = append(rep.Results, judgeapi.TestResult{Idx: in.Idx, Role: judgeapi.RoleProgram, Verdict: "SK"})
+					continue
+				}
+				out := runProgram(read(pl.Program.SourceSHA), read(in.InputSHA))
+				v := "AC"
+				if in.ExpectedSHA != "" && !sameTokens(out, read(in.ExpectedSHA)) {
+					v, stopOpen = "WA", true
+				}
+				rep.Results = append(rep.Results, judgeapi.TestResult{Idx: in.Idx, Role: judgeapi.RoleProgram, Verdict: v, TimeMS: 137, Output: out})
 			}
 		}
 		if resp, out := s.judgeCall("POST", "/api/judge/report", judgeToken, rep); resp.StatusCode != 200 {

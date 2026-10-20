@@ -54,10 +54,19 @@ func (b Blobs) GC(ctx context.Context, db *sql.DB, now time.Time) (GCResult, err
 	if err != nil {
 		return res, err
 	}
-	rows, err := db.QueryContext(ctx, `SELECT sha FROM blobs WHERE created_at < ?
+	// The tests of a revision a contest pins (or pinned) or a submission
+	// was judged against are kept: they are the record of what judged it
+	// (B2.1). Other revisions' files go like any unused blob.
+	rows, err := db.QueryContext(ctx, `WITH pinned_revisions (revision_id) AS (
+			SELECT revision_id FROM contest_problems WHERE revision_id IS NOT NULL
+			UNION SELECT revision_id FROM contest_pin_history
+			UNION SELECT revision_id FROM submissions WHERE revision_id IS NOT NULL)
+		SELECT sha FROM blobs WHERE created_at < ?
 		EXCEPT SELECT input_sha FROM testcases
 		EXCEPT SELECT output_sha FROM testcases WHERE output_sha IS NOT NULL
-		EXCEPT SELECT source_sha FROM submissions`, cutoff)
+		EXCEPT SELECT source_sha FROM submissions
+		EXCEPT SELECT input_sha FROM revision_tests WHERE revision_id IN (SELECT revision_id FROM pinned_revisions)
+		EXCEPT SELECT output_sha FROM revision_tests WHERE output_sha IS NOT NULL AND revision_id IN (SELECT revision_id FROM pinned_revisions)`, cutoff)
 	if err != nil {
 		return res, fmt.Errorf("blob gc: %w", err)
 	}

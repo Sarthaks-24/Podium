@@ -25,6 +25,7 @@ const (
 // do not enforce lengths or ranges).
 const (
 	maxSamples       = 5
+	maxOpenTests     = 3
 	maxSample        = 4 << 10
 	maxWizSubtasks   = 10
 	maxTestsPerTask  = 8
@@ -35,10 +36,12 @@ const (
 
 // WizardPack is the model's answer: a whole stdin/stdout problem.
 type WizardPack struct {
-	Title         string          `json:"title"`
-	Slug          string          `json:"slug"`
-	StatementMD   string          `json:"statement_md"`
-	Samples       []WizardSample  `json:"samples"`
+	Title       string         `json:"title"`
+	Slug        string         `json:"slug"`
+	StatementMD string         `json:"statement_md"`
+	Samples     []WizardSample `json:"samples"`
+	// OpenTests are easy tests Run checks after the samples (D115).
+	OpenTests     []WizardSample  `json:"open_tests"`
 	Subtasks      []WizardSubtask `json:"subtasks"`
 	Reference     string          `json:"reference_cpp"`
 	Brute         string          `json:"brute_python"`
@@ -99,6 +102,10 @@ func PackSchema() map[string]any {
 			"input":  str("Exact sample input, ending with a newline."),
 			"output": str("Exact expected output, ending with a newline."),
 		})},
+		"open_tests": map[string]any{"type": "array", "description": "Zero to three open tests: small, easy, not samples.", "items": object(map[string]any{
+			"input":  str("Exact test input, ending with a newline."),
+			"output": str("Exact expected output, ending with a newline."),
+		})},
 		"subtasks": map[string]any{"type": "array", "description": "One to four subtasks; points add up to 100.", "items": object(map[string]any{
 			"points":         integer("Points for the subtask."),
 			"title":          str("Short title, like Small n."),
@@ -135,6 +142,7 @@ When the data is an existing problem (for example from LeetCode or Codeforces), 
 Answer with one JSON object in the given schema. Rules:
 - statement_md: Markdown with $...$ maths and exactly the sections "## Input", "## Output" and "## Constraints". List each subtask's constraints under Constraints. Do not put samples in the statement; they go in samples.
 - samples: one to three, small, exact, each ending with a newline. The reference must produce exactly that output.
+- open_tests: zero to three more small tests, easier than the subtasks and different from the samples, each ending with a newline; students' Run checks them after the samples and shows a failing one. The reference must produce exactly that output.
 - subtasks: one to four, points adding up to 100, test_count from 1 to 4, at most 10 generated tests in total.
 - generator_python: Python 3 standard library only. sys.argv[1] is an integer seed; the rest are this subtask's generator_args, written key=value (parse them with split("=", 1)). Use random.Random(seed) so the same seed gives the same input. Print exactly one input that meets the subtask's constraints, including edge cases (minimum and maximum sizes, extreme values) on some seeds. It must finish within a few seconds and write at most a few megabytes.
 - generator_args: only letters, digits and _ . , : = + -; no spaces or braces.
@@ -256,6 +264,17 @@ func Check(p *WizardPack) []string {
 			add("Sample %d is longer than 4 KB. Keep samples small.", i+1)
 		}
 	}
+	if len(p.OpenTests) > maxOpenTests {
+		add("Give at most %d open tests.", maxOpenTests)
+	}
+	for i, s := range p.OpenTests {
+		if strings.TrimSpace(s.Input) == "" || strings.TrimSpace(s.Output) == "" {
+			add("Open test %d needs both an input and an output.", i+1)
+		}
+		if len(s.Input) > maxSample || len(s.Output) > maxSample {
+			add("Open test %d is longer than 4 KB. Keep open tests small.", i+1)
+		}
+	}
 	if n := len(p.Subtasks); n < 1 || n > maxWizSubtasks {
 		add("Give one to %d subtasks.", maxWizSubtasks)
 	}
@@ -337,8 +356,9 @@ func slugFrom(slug, title string) string {
 }
 
 // ToDraft turns a pack into a problem draft: samples become tests 1 to k,
-// then each subtask's generated tests follow in order, seeded by their
-// test number so no two tests share a seed.
+// open tests the ones after them, then each subtask's generated tests
+// follow in order, seeded by their test number so no two tests share a
+// seed.
 func ToDraft(p *WizardPack) problems.Draft {
 	d := problems.Draft{Problem: problems.Problem{
 		Title: p.Title, Slug: slugFrom(p.Slug, p.Title), Statement: p.StatementMD,
@@ -361,7 +381,10 @@ func ToDraft(p *WizardPack) problems.Draft {
 	for _, s := range p.Samples {
 		d.Samples = append(d.Samples, problems.SampleCase{Input: s.Input, Output: s.Output})
 	}
-	next := len(p.Samples) + 1
+	for _, s := range p.OpenTests {
+		d.Open = append(d.Open, problems.SampleCase{Input: s.Input, Output: s.Output})
+	}
+	next := len(p.Samples) + len(p.OpenTests) + 1
 	for i, st := range p.Subtasks {
 		count := max(st.TestCount, 0)
 		tests := ""

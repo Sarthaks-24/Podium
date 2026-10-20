@@ -7,7 +7,10 @@ package db
 
 import (
 	"context"
+	"crypto/sha256"
 	"database/sql"
+	"database/sql/driver"
+	"encoding/hex"
 	"fmt"
 	"os"
 	"path"
@@ -21,6 +24,28 @@ import (
 
 // migrationFS holds the schema files (package migrations).
 var migrationFS = migrations.FS
+
+// init registers podium_sha256(text), the lowercase hex SHA-256 of a
+// text or blob value (problems.SHA computes the same in Go), on every
+// connection of the driver. Migration 0010 uses it to fill the revision
+// rows' source hashes, so the backfill stays in its SQL file.
+func init() {
+	sqlite.MustRegisterDeterministicScalarFunction("podium_sha256", 1, func(_ *sqlite.FunctionContext, args []driver.Value) (driver.Value, error) {
+		var b []byte
+		switch v := args[0].(type) {
+		case nil:
+			return nil, nil
+		case string:
+			b = []byte(v)
+		case []byte:
+			b = v
+		default:
+			b = []byte(fmt.Sprint(v))
+		}
+		sum := sha256.Sum256(b)
+		return hex.EncodeToString(sum[:]), nil
+	})
+}
 
 // MaxConns is the size of the connection pool.
 const MaxConns = 8
@@ -87,6 +112,13 @@ func groupWritable(path string) {
 // Migrate applies every migration in migrations/ that has not run yet, in
 // file-name order, each in its own transaction. It returns the names applied.
 func Migrate(ctx context.Context, d *sql.DB) ([]string, error) {
+	return MigrateTo(ctx, d, "")
+}
+
+// MigrateTo is Migrate stopping after the migration named last (without
+// ".sql"); an empty last applies them all. Tests use it to build the
+// schema of an older release and migrate it with fixtures in place.
+func MigrateTo(ctx context.Context, d *sql.DB, last string) ([]string, error) {
 	if _, err := d.ExecContext(ctx, `CREATE TABLE IF NOT EXISTS schema_migrations (
 		version TEXT PRIMARY KEY,
 		applied_at INTEGER NOT NULL
@@ -113,6 +145,9 @@ func Migrate(ctx context.Context, d *sql.DB) ([]string, error) {
 		}
 		if ran {
 			applied = append(applied, version)
+		}
+		if version == last {
+			break
 		}
 	}
 	return applied, nil

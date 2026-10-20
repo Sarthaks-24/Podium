@@ -124,8 +124,9 @@ func loadGuardContests(ctx context.Context, d *sql.DB) ([]guardContest, error) {
 //
 // With -force REASON a refusal is overridden: one contest_audit row per
 // refusing contest records the reason and -release, written as the owner
-// account. install.sh upgrade --force calls it this way. The student
-// banner of D112 reads these rows from P2 on.
+// account, and from schema 0011 one site_audit row, which the student
+// banner of D112 reads (GET /api/me). install.sh upgrade --force calls it
+// this way.
 func deployCheckCmd(args []string, out io.Writer) int {
 	fs := flag.NewFlagSet("deploy-check", flag.ContinueOnError)
 	fs.SetOutput(out)
@@ -202,9 +203,8 @@ func deployCheckCmd(args []string, out io.Writer) int {
 
 // recordForcedDeploy writes one contest_audit row per refusing contest,
 // as the owner account (the only person who runs install.sh): the one
-// named by -owner when it is an enabled owner, else the first owner. P0 adds no
-// table, so the per-contest audit log carries the record until the site
-// audit of P2 exists.
+// named by -owner when it is an enabled owner, else the first owner, plus
+// one site audit row when the database has that table (schema 0011).
 func recordForcedDeploy(ctx context.Context, dbPath string, refusals []guardRefusal, reason, release, owner string, now time.Time) error {
 	d, err := db.Open(ctx, dbPath)
 	if err != nil {
@@ -226,10 +226,26 @@ func recordForcedDeploy(ctx context.Context, dbPath string, refusals []guardRefu
 		return err
 	}
 	defer tx.Rollback()
+	refused := []map[string]any{}
 	for _, r := range refusals {
 		details, _ := json.Marshal(map[string]string{"reason": reason, "release": release, "refused": r.Reason})
 		if _, err := tx.ExecContext(ctx, `INSERT INTO contest_audit (contest_id, actor_id, actor_email, actor_role, action, details, created_at)
 			VALUES (?, ?, ?, 'owner', ?, ?, ?)`, r.Contest.ID, ownerID, email, auditDeployForced, string(details), now.UnixMilli()); err != nil {
+			return err
+		}
+		refused = append(refused, map[string]any{"contest_id": r.Contest.ID, "slug": r.Contest.Slug, "reason": r.Reason})
+	}
+	// From schema 0011 the override is also one site audit row, which the
+	// student banner reads (D112). deploy-check runs before the upgrade
+	// migrates, so an older database has no such table yet.
+	var hasSiteAudit int
+	if err := tx.QueryRowContext(ctx, "SELECT count(*) FROM sqlite_master WHERE type = 'table' AND name = 'site_audit'").Scan(&hasSiteAudit); err != nil {
+		return err
+	}
+	if hasSiteAudit > 0 {
+		details, _ := json.Marshal(map[string]any{"reason": reason, "release": release, "refused": refused})
+		if _, err := tx.ExecContext(ctx, `INSERT INTO site_audit (at, actor_id, actor_email, actor_role, action, subject_email, details)
+			VALUES (?, ?, ?, 'owner', ?, '', ?)`, now.UnixMilli(), ownerID, email, auditDeployForced, string(details)); err != nil {
 			return err
 		}
 	}

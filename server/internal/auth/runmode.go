@@ -62,5 +62,13 @@ func (s *Service) RecordMode(ctx context.Context, mode string) (ModeChange, erro
 		ON CONFLICT (key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`, mode, s.now().UnixMilli()); err != nil {
 		return ModeChange{}, err
 	}
+	from := ch.Previous
+	if from == "" {
+		from = "none"
+	}
+	if err := s.recordSite(ctx, tx, AuditModeChanged, "", map[string]any{"from": from, "to": mode,
+		"sessions_ended": ch.SessionsEnded, "demoted": ch.Demoted}); err != nil {
+		return ModeChange{}, err
+	}
 	return ch, tx.Commit()
 }

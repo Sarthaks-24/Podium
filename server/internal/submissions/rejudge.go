@@ -24,7 +24,10 @@ type RejudgeRequest struct {
 const rejudgeReason = "Replaced by a rejudge."
 
 // Rejudge queues the submissions again with the problem's current tests,
-// at RejudgePriority, and returns how many were queued. Each submission
+// at RejudgePriority, and returns how many were queued. Each new job and
+// its submission record the revision the contest pins now (B2.10); the
+// old job keeps its own. A submission that revealed its first failing
+// hidden test (D115) still does; no other starts to. Each submission
 // goes back to "queued" with its old result cleared, so standings count it
 // only once the new result is in.
 //
@@ -66,8 +69,10 @@ func (s *Service) Rejudge(ctx context.Context, r RejudgeRequest) (int, error) {
 		return 0, err
 	}
 	defer tx.Rollback()
-	q := `SELECT s.id, s.problem_id, s.language, s.source_sha, s.state, coalesce(s.job_id, 0), coalesce(j.state, ''), coalesce(j.payload, '')
+	q := `SELECT s.id, s.problem_id, s.language, s.source_sha, s.state, coalesce(s.job_id, 0), coalesce(j.state, ''), coalesce(j.payload, ''),
+		coalesce(cp.revision_id, 0)
 		FROM submissions s LEFT JOIN jobs j ON j.id = s.job_id
+		LEFT JOIN contest_problems cp ON cp.contest_id = s.contest_id AND cp.problem_id = s.problem_id
 		WHERE s.contest_id = ? AND s.kind = 'submit'`
 	args := []any{r.ContestID}
 	if r.SubmissionID > 0 {
@@ -85,11 +90,12 @@ func (s *Service) Rejudge(ctx context.Context, r RejudgeRequest) (int, error) {
 		id, problem, job         int64
 		language, source         string
 		state, jobState, payload string
+		revision                 int64
 	}
 	var targets []target
 	for rows.Next() {
 		var t target
-		if err := rows.Scan(&t.id, &t.problem, &t.language, &t.source, &t.state, &t.job, &t.jobState, &t.payload); err != nil {
+		if err := rows.Scan(&t.id, &t.problem, &t.language, &t.source, &t.state, &t.job, &t.jobState, &t.payload, &t.revision); err != nil {
 			rows.Close()
 			return 0, err
 		}
@@ -108,6 +114,14 @@ func (s *Service) Rejudge(ctx context.Context, r RejudgeRequest) (int, error) {
 		}
 		pl := submitPayload(p, t.id, judgeapi.Program{Language: t.language, SourceSHA: t.source})
 		pl.StopOnSampleFail = !r.NoStopOnSample
+		// The reveal was decided when the submission was made, by who made
+		// it and when (D115); a rejudge never widens it. An old payload
+		// without the field reveals nothing.
+		var old struct {
+			Reveal bool `json:"reveal"`
+		}
+		json.Unmarshal([]byte(t.payload), &old)
+		pl.Reveal = old.Reveal
 		if p.Checker == problems.CheckerCustom {
 			if pl.Checker.SourceSHA, err = s.Problems.Blobs.Put(ctx, tx, []byte(p.CheckerSource)); err != nil {
 				return 0, err
@@ -126,7 +140,7 @@ func (s *Service) Rejudge(ctx context.Context, r RejudgeRequest) (int, error) {
 		if err != nil {
 			return 0, err
 		}
-		if _, err := tx.ExecContext(ctx, "UPDATE jobs SET contest_id = ? WHERE id = ?", r.ContestID, jobID); err != nil {
+		if err := tagJob(ctx, tx, jobID, Scope{ContestID: r.ContestID, RevisionID: t.revision}); err != nil {
 			return 0, err
 		}
 		maxScore := 0
@@ -134,8 +148,9 @@ func (s *Service) Rejudge(ctx context.Context, r RejudgeRequest) (int, error) {
 			maxScore += st.Points
 		}
 		if _, err := tx.ExecContext(ctx, `UPDATE submissions SET job_id = ?, state = 'queued', verdict = '', score = 0, max_score = ?,
-			max_time_ms = 0, max_memory_kb = 0, result = '', earned = '', error = '', judged_at = NULL, rejudged_at = ? WHERE id = ?`,
-			jobID, maxScore, now, t.id); err != nil {
+			max_time_ms = 0, max_memory_kb = 0, result = '', earned = '', error = '', judged_at = NULL, rejudged_at = ?,
+			revision_id = ? WHERE id = ?`,
+			jobID, maxScore, now, nullID(t.revision), t.id); err != nil {
 			return 0, fmt.Errorf("rejudge submission %d: %w", t.id, err)
 		}
 		queued++

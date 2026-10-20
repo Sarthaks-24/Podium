@@ -154,3 +154,46 @@ func TestDeployCheckCannotRun(t *testing.T) {
 		t.Errorf("missing database: exit %d\n%s", code, out.String())
 	}
 }
+
+// From schema 0011 a forced deploy is also one site audit row, which the
+// student banner reads; on an older database (deploy-check runs before the
+// upgrade migrates) only the contest rows are written.
+func TestDeployCheckForceWritesTheSiteAudit(t *testing.T) {
+	path, raw := guardDB(t)
+	at := "2026-11-10T15:00:00Z"
+	if code, out := runGuard(t, path, at, "-force", "Fix the broken checker on B", "-release", "v1.2.1"); code != 0 {
+		t.Fatalf("forced: exit %d\n%s", code, out)
+	}
+	var action, details, email string
+	if err := raw.QueryRow(`SELECT action, details, actor_email FROM site_audit`).Scan(&action, &details, &email); err != nil {
+		t.Fatal(err)
+	}
+	if action != auditDeployForced || email != "owner@college.edu" || !strings.Contains(details, `"slug":"weekly-3"`) ||
+		!strings.Contains(details, "v1.2.1") {
+		t.Errorf("site audit row %s %s %s", action, email, details)
+	}
+
+	ctx := context.Background()
+	old := filepath.Join(t.TempDir(), "v110.db")
+	d, err := db.Open(ctx, old)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.MigrateTo(ctx, d, "0009_toolchains"); err != nil {
+		t.Fatal(err)
+	}
+	starts := time.Date(2026, 11, 10, 14, 0, 0, 0, time.UTC).UnixMilli()
+	for _, q := range []string{
+		`INSERT INTO users (id, email, role, created_at) VALUES (1, 'owner@college.edu', 'owner', 0)`,
+		`INSERT INTO contests (id, slug, title, starts_at, ends_at, published, created_at, updated_at) VALUES (1, 'w', 'W', ` +
+			itoa(starts) + `, ` + itoa(starts+7_200_000) + `, 1, 0, 0)`,
+	} {
+		if _, err := d.Exec(q); err != nil {
+			t.Fatal(err)
+		}
+	}
+	d.Close()
+	if code, out := runGuard(t, old, at, "-force", "Fix the broken checker on B"); code != 0 {
+		t.Fatalf("forced on a v1.1.0 database: exit %d\n%s", code, out)
+	}
+}

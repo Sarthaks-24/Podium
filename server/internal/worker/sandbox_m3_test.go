@@ -125,7 +125,7 @@ func TestM3GenerateOutputsThenValidate(t *testing.T) {
 	ctx := context.Background()
 	p := r.importPack(t, "a-plus-b", nil)
 	// Replace the tests with inputs only, then generate.
-	if _, err := r.bank.ReplaceTests(ctx, p.ID, inputsOnly(t, *examplesDir+"/a-plus-b/tests")); err != nil {
+	if _, err := r.bank.ReplaceTests(ctx, p.ID, inputsOnly(t, *examplesDir+"/a-plus-b/tests"), problems.RevisionNote{}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := r.bank.RequestGeneration(ctx, p.ID, 1, false); err != nil {

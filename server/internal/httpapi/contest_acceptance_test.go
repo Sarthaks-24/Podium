@@ -158,7 +158,7 @@ func TestM4MiniContest(t *testing.T) {
 		"tests/04.in":  "2\n3000000000 1\n-3000000000 -1\n",
 		"tests/04.out": "3000000001\n-3000000001\n",
 	}, true)
-	if code, out := owner.raw("PUT", fmt.Sprintf("/api/admin/problems/%d/tests", a), "application/zip", tests, s.srv.URL); code != 200 {
+	if code, out := owner.raw("PUT", fmt.Sprintf("/api/admin/problems/%d/tests?reason=Add+a+64-bit+test", a), "application/zip", tests, s.srv.URL); code != 200 {
 		t.Fatalf("replace tests %d %v", code, out)
 	}
 	if code, _ := owner.do("POST", fmt.Sprintf("/api/admin/contests/%d/rejudge", id), map[string]any{"problem_label": "A"}, s.srv.URL); code != 409 {

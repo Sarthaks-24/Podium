@@ -116,7 +116,7 @@ func TestOpenAIRequestShape(t *testing.T) {
 			t.Errorf("object not strict: %v", o)
 		}
 	})
-	if objects != 3 {
+	if objects != 4 { // the pack, a sample, an open test, a subtask
 		t.Errorf("%d objects in the schema", objects)
 	}
 }

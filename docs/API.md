@@ -119,6 +119,8 @@ Ends the current session on the server (the session row is deleted, so a copy of
 
 `theme` is the display theme id, or `""` to follow the system. `verdicts` is `standard` or `signal` (colour-blind safe verdict colours).
 
+**v1.2.0 (D112 banner):** the body also carries `site_updated_at`: the time (Unix ms) of the last emergency deploy (`install.sh upgrade --force`, recorded as `deploy_forced` in the site audit) when it was within the last 12 hours, else `null`. The web app shows "The site was updated at 14:02" to a signed-in student while it is set and newer than what that browser has already dismissed. The forced deploy restarts the server, so every live stream reconnects; the web app reads `/api/me` again after a reconnect to pick it up.
+
 ### `PUT /api/me/preferences`
 
 Saves the signed-in person's display preferences, so they follow the account to another machine.
@@ -183,6 +185,8 @@ Disable ends every session as above, and the account is refused at sign-in (`/si
 Request: `{"email":"asha@college.edu"}`. Response `200`: `{"account": Account, "ended": 1}` (`ended` is 0 for enable). Errors: `404 not_found`; `409 conflict` for `PODIUM_OWNER_EMAIL` (the recovery account) and for disabling yourself.
 
 `Account` is `{id, email, name, role, disabled, last_login_at}`.
+
+Every change on this page (roles, domains, disabling and enabling, ended sessions, Google link resets) is written to the site audit in the same transaction as the change (v1.2.0, see "Site audit: People History").
 
 ### `POST /api/admin/domains`
 
@@ -254,6 +258,7 @@ An `{id}` that is not a problem gives `404 not_found` on every route.
 - `checker` is `tokens`, `exact`, `float` or `custom`. `epsilon` matters only for `float`; `checker_source` is the testlib checker for `custom` and `""` otherwise.
 - `tests[].subtask_idx` is `null` for a sample. Previews are the first 200 bytes of each file, cut at a whole UTF-8 character.
 - `tests[].output_missing` is true while a test has no expected output (a pack or test zip without its `.out` file); `output_preview` is then `""`. "Generate outputs" fills it.
+- **v1.2.0 open tests (D115):** `open` lists the open tests (test numbers, always an array): not scored, in no subtask, run by Run after the samples, and revealed when they fail. `tests[].open` is true for one; its `subtask_idx` is `null` like a sample's. A test is a sample, an open test or in exactly one subtask. Revision fields (`revision`, `revisions`, `revisions_total`, `live_contests`) are under "History and audit".
 - `problems` lists what stops validation and judging (a test in no subtask, a range naming a missing test, "Test 3 has no expected output. Generate outputs from the reference solution."); `warnings` is advice that does not (points not adding up to 100, no brute force, no validator, more than 10 hidden tests). After an import, `warnings` also names files the pack carried that podium ignores.
 
 `ProblemEdit` replaces every editable field at once (at most 512 KB of JSON):
@@ -273,6 +278,7 @@ A `brute` or `validator` with empty source counts as none. Subtasks are numbered
 - Leave out both `generator` and `plan` to keep the generator, the plan and each subtask's `generator_args` (an editor that does not know about generators cannot erase one).
 - Send either to replace them: the one left out keeps its stored value, and each subtask's `generator_args` then comes from the body (left out means none). `null`, or a generator with empty source, removes the generator; the plan must then be empty.
 - Field errors: `generator`, `plan` (one sentence for the first wrong entry) and `subtasks.N.generator_args`.
+- **v1.2.0:** `ProblemEdit` may carry `open` (test numbers, like `samples`; left out keeps the stored list) and `reason` (at most 500 characters). `reason` is required, `400 bad_request` with `fields.reason`, when the save changes the problem while a live contest pins it (`live_contests` in `Problem` is not empty); it is recorded on the new revision. `PUT .../tests` takes it as `?reason=`.
 - A save that changes the statement, the reference or the brute force removes the `ai draft` tag and withdraws "validated" (the person's version must pass again); a save that changes none of them keeps the tag, even when `tags` leaves it out. A save that changes the reference or the brute force also marks the problem as having a person's solution, which graded contests need for problems whose origin is `ai`. The generator and the plan are not part of the content hash, so changing them does not withdraw "validated" (D53).
 
 `Validation`:
@@ -562,6 +568,7 @@ The workspace is the page where code is written, run and submitted. Under `/api/
 - `samples` holds each sample's input and output text, at most 4 KB each, cut at a whole UTF-8 character; `truncated` is true when either was cut. A sample whose output is not generated yet is left out.
 - `draft` is `null` when nothing was saved. `submissions` is the viewer's newest 20 on this problem, newest first, as `Submission` objects.
 - Starter code per language lives in the web app, not here.
+- **v1.2.0:** `open_test_count` is how many open tests a Run checks after the samples (D115); their inputs are never listed here.
 
 ### Drafts
 
@@ -588,6 +595,41 @@ The workspace is the page where code is written, run and submitted. Under `/api/
 
 Times are rounded to 10 ms (100 ms for a student in a graded contest). A run uses the problem's limits and checker. Running the samples on a problem without samples is `400 bad_request` ("Run it on your own input instead").
 
+**v1.2.0, open tests and the revealed test (D115, contract row "Run").** A Run without `input` runs every sample, then the problem's open tests in order; the open tests run only while everything before them passed, and stop at the first failure. Every Run reveals its first failing test, in practice and during a contest alike.
+
+```json
+{ "id": 78, "state": "done", "compile_output": "",
+  "results": [ { "kind": "sample", "label": "Sample 1", "verdict": "AC", "time_ms": 10, "memory_kb": 3120,
+                 "output": "3\n", "output_truncated": false, "expected": "3\n", "message": "" },
+               { "kind": "open", "label": "Open test 1", "verdict": "WA", "time_ms": 10, "memory_kb": 3100,
+                 "output": "7\n", "output_truncated": false, "expected": "8\n", "message": "" },
+               { "kind": "open", "label": "Open test 2", "verdict": "SK", "time_ms": 0, "memory_kb": 0,
+                 "output": "", "output_truncated": false, "expected": null, "message": "" } ],
+  "revealed": { "idx": 3, "kind": "open", "label": "Open test 1", "input": "4 4\n", "expected": "8\n", "output": "7\n", "truncated": false },
+  "server_now": 1792183192400 }
+```
+
+| Field | Meaning |
+|---|---|
+| `results[].kind` | `sample`, `open` or `custom` |
+| open test rows | labelled "Open test 1", "Open test 2", ... in order; `SK` when not run because an earlier sample or open test failed; `output` is `""` and `expected` `null` except on the failing one |
+| `revealed` | present only when a sample or open test failed: the first one, with its test number `idx`, `kind`, `label`, its `input`, the `expected` output and the program's `output`, each at most 4 KB cut at a whole UTF-8 character (`truncated` says one was cut). Absent for a custom input and when every test passed |
+
+### `Submission`: the revealed hidden test (v1.2.0, D115)
+
+A submission that never counts carries `revealed` for its first failing hidden test, in judging order:
+
+```json
+{ "revealed": { "idx": 5, "subtask_idx": 2, "input": "100000\n...", "expected": "4999950000\n", "output": "-1\n", "truncated": true } }
+```
+
+- Present only when all of these hold: the submission is practice (after the student's window, with `practice_after_end`), or was made in an ungraded contest, or in the organisers' `/api/workspace/`; a hidden test failed (`WA`, `TLE`, `MLE`, `RE` or `OLE`); judging is done; and the viewer is the author or an owner or admin. A co-organiser whose site role is student never sees it on someone else's submission.
+- Never present on a submission that counts in a contest, in either feedback mode, and never while exam mode hides the result. Never in the console feed, the exports, the standings or any event other than the author's own `submission` event.
+- `output` is the start of what the program printed on that test (at most 4 KB). Each field is capped at 4 KB like the samples.
+- The setter checklist in `docs/AUTHORING.md` explains the consequence: a problem used in a practice-open or ungraded contest has its hidden tests readable one at a time.
+
+Until P5 (D115) the web app ignores `revealed` and `kind` and shows open test rows like sample rows; problems have no open tests until a setter adds them.
+
 ### `Submission`
 
 ```json
@@ -612,7 +654,7 @@ Times are rounded to 10 ms (100 ms for a student in a graded contest). A run use
 | test verdicts | `AC`, `WA`, `TLE`, `MLE`, `RE`, `OLE`, `SK` (not run: an earlier test failed), `IE` (the judge never reported it), `""` while pending |
 | `compile_output` | the compiler's output for the submitted code |
 
-A submission never carries the input, output or checker comment of any test (decision D47). Times are rounded to 10 ms. How scoring works: `docs/ARCHITECTURE.md`, "Submissions and scoring".
+A submission that counts never carries the input, output or checker comment of any test (decision D47); a practice submission may carry `revealed` (D115, below). Times are rounded to 10 ms. How scoring works: `docs/ARCHITECTURE.md`, "Submissions and scoring".
 
 **What a student sees of their own submission.** The same view on every path (`GET /api/submissions/{id}`, the workspace list, the answer to a submit or a repeated `client_key`, and live events). Owners and admins see every figure. A contest's co-organisers whose site role is student see the student view, both of their own submissions and of the contest's submissions they read: they are not trusted with what exact figures reveal about hidden tests. For them "the student's window" is the last student's: in exam mode nothing shows until every window is over, and a submission made from the freeze is hidden while students see the frozen board.
 
@@ -678,6 +720,7 @@ A `text/event-stream` for the signed-in user, read with `EventSource`. Not JSON:
 | `run` | a `Run` | when one of the user's runs changes: a judge starts it, each input gets a verdict, and it finishes |
 | `standings` | `{"contest":"week-6","contest_id":4,"version":12}` | a contest's board changed and the new board is ready (at most about once every 2 s per contest); refetch the board. In exam-mode contests it goes to organisers only |
 | `announcement` | `{"contest","contest_id","id","body_md"}` | an organiser posted an announcement |
+| `statement` | `{"contest","contest_id","label","revision_id","statement_changed","pinned_at"}` | v1.2.0: an organiser moved a problem of a published contest to another revision ("Update contest to revision N"); refetch the contest, and when `statement_changed` show "Statement updated 14:32. See what changed" (C3) |
 | `clarification` | `{"contest","contest_id","id"}` | a question was answered (to the asker; to everyone in the contest when public) or asked (to organisers); refetch the contest |
 | `contest` | `{"contest","contest_id","ends_at"}` | the end moved: the whole contest was extended, or this student got extra time (`ends_at` is then their own end) |
 | `wizard` | a `Wizard` | an AI wizard run or solve of this admin ended |
@@ -717,6 +760,7 @@ Every route needs a signed-in user. Access: a published, unarchived contest with
 | `POST /api/contests/{slug}/problems/{label}/run` | as the workspace | 202 `Run` |
 | `POST /api/contests/{slug}/problems/{label}/submit` | as the workspace | 202 `Submission` (200 for a repeated `client_key`) |
 | `POST /api/contests/{slug}/problems/{label}/events` | as the workspace | 204 |
+| `GET /api/contests/{slug}/problems/{label}/revisions` | `?from=&to=` revision ids, optional | 200 `StatementHistory` (v1.2.0, C3; see "History and audit") |
 | `GET /api/contests/{slug}/standings` | | 200 `Standings` |
 | `POST /api/contests/{slug}/clarifications` | `{"problem_label":"A" or null,"question":"..."}` | 201 `{clarification, server_now}` |
 
@@ -756,6 +800,7 @@ Reads that cost several queries (the contest list, the contest page, the contest
 - `my_submission_count` is how many submissions the student made to the problem, practice and judge failures excluded. It counts submissions as they are made, never how far judging got, so in exam mode it is the one per-problem figure shown and says nothing about results.
 - `editorial_md` is set only when the editorial is published and every student's window is over (the close plus the longest personal extension).
 - `Clarification`: `{id, problem_label, question, answer, public, created_at, answered_at}`. Students never see who asked a public question.
+- **v1.2.0 (C3):** each of `problems` also carries `revision_id` (the pinned revision students are served) and `statement_updated_at`: the time (Unix ms) of the newest pin change made after the contest started that changed the statement or title, else `null`. With it the web app shows "Statement updated 14:32. See what changed" on page load as well as on the `statement` event.
 
 ### Start
 
@@ -774,6 +819,7 @@ The M3 `Workspace` plus:
 - Submissions are counted while the student's own window is open. After it, they are practice (judged at a lower priority, never on the board) when the contest allows practice and every student's window is over; otherwise run and submit are refused. A submission the judge could not finish does not count toward `max_per_problem`.
 - Co-organisers may try the contest's problems at any time, with the contest's gap and per-problem limit and the student view of their results.
 - `can_submit` and `refusal` say whether run and submit work now, and why not.
+- **v1.2.0 (B2.3):** the title, statement, limits and samples are those of the revision the contest pins, never the problem bank's working copy, so an organiser's edit reaches students only through "Update contest to revision N". The workspace also carries `revision_id` and `statement_updated_at` (as on `Contest.problems`). The first time a student is served a revision, the server records it (the served log).
 
 | Refusal | When |
 |---|---|
@@ -839,8 +885,9 @@ Every change that can affect results is recorded in the contest's audit log (bel
 | `POST /api/admin/contests/{id}/extend` (admin) | `{"minutes":10}` (1 to 240, adds to earlier extensions) | 200 `AdminContest`; members get a `contest` event |
 | `POST /api/admin/contests/{id}/pause`, `/resume` (admin) | | 200 `AdminContest` |
 | `GET /api/admin/contests/{id}/submissions?problem=A&user=7&verdict=WA&page=1` | | 200 `{submissions:[...], page, has_more, results_hidden, server_now}`; `results_hidden` is true when some rows are hidden from this viewer. `verdict` is a verdict code (`AC`, `WA`, `TLE`, `MLE`, `RE`, `CE`), `pending` (state `queued` or `running`) or `error` (state `error`, a judge error); case does not matter |
-| `POST /api/admin/contests/{id}/rejudge` (admin) | `{"problem_label":"A"}` or `{"submission_id":80}` | 202 `{queued, server_now}` |
-| `GET /api/admin/contests/{id}/audit?page=1` | | 200 `{entries:[AuditEntry], page, has_more, server_now}`, newest first, 200 per page; every organiser of the contest may read it |
+| `PUT /api/admin/contests/{id}/problems/{label}/revision` (admin) | `{"revision_id":14}` | 200 `{contest: AdminContest, announcement_md, statement_changed, rejudge_needed, server_now}` (v1.2.0, C4: "Update contest to revision N") |
+| `POST /api/admin/contests/{id}/rejudge` (admin) | `{"problem_label":"A"}` or `{"submission_id":80}` | 202 `{queued, revisions:[{label, revision_id, rev}], server_now}`; `revisions` (v1.2.0) names the pinned revision each new job judges against and records |
+| `GET /api/admin/contests/{id}/audit?page=1&action=&actor=` | | 200 `{entries:[AuditEntry], page, has_more, server_now}`, newest first, 200 per page; every organiser of the contest may read it. This is the console's "Changes" feed (v1.2.0): `action` keeps one action, `actor` keeps rows whose actor email contains the text (case does not matter) |
 | `GET`, `POST /api/admin/contests/{id}/announcements` | `{"body_md":"..."}` (at most 4,000 characters) | 200 `{announcements, server_now}`; 201 `Announcement` |
 | `GET /api/admin/contests/{id}/clarifications` | | 200 `{clarifications, server_now}`, each with `asked_by {user_id, email, name}` |
 | `PUT /api/admin/contests/{id}/clarifications/{cid}` | `{"answer":"...","public":false}` | 200 `Clarification` |
@@ -878,15 +925,19 @@ Turning `graded` on is `409 ai_unconfirmed` while the contest holds an AI proble
 | `action` | `details` |
 |---|---|
 | `settings` | `{"changes": {"feedback_mode": {"from": "subtask", "to": "exam"}, ...}}`, times in Unix ms; the description and honour code are recorded as their sizes |
-| `problems` | `{"from": [{label, problem_id, pinned_hash}], "to": [...]}` |
+| `problems` | `{"from": [{label, problem_id, pinned_hash, revision_id, rev}], "to": [...]}` (`revision_id` and `rev` from v1.2.0) |
 | `ai_problem` | `{label, problem_id, reason}`: an admin's reason to grade an AI problem as written |
-| `roster` | `{count, added, removed}` |
+| `roster` | `{count, added, removed, emails_added, emails_removed}`; the two email lists (sorted, from v1.2.0) name who gained and lost access |
 | `extension` | `{user_id, email, from_minutes, minutes, reason}` |
 | `extend` | `{minutes, extended_minutes}` |
 | `pause`, `resume`, `reveal`, `archive` | `{}` |
 | `rejudge` | `{problem_label}` or `{submission_id}`, with `queued` |
 | `editorial` | `{published, was_published, changed, bytes}`, recorded when it is published or unpublished, or changed while published |
 | `organisers` | `{email, added}` |
+| `revision` | v1.2.0, "Update contest to revision N": `{label, problem_id, from_revision_id, from_rev, to_revision_id, to_rev, statement_changed, judging_changed}` |
+| `deploy_forced` | an emergency deploy inside this contest's guard window (D112): `{reason, release, refused}`; the actor is the owner account. Also in the site audit from v1.2.0 |
+
+Unknown actions may appear in later releases; show them by their name.
 
 ### Running a contest
 
@@ -900,6 +951,151 @@ Turning `graded` on is `409 ai_unconfirmed` while the contest holds an AI proble
 - CSV columns: `rank, name, email, roll_number, section, started` (UTC, RFC 3339), `total`, then one column per problem label. A cell starting with `=`, `+`, `-`, `@`, a tab or a carriage return gets a leading `'`, so a spreadsheet never runs a name as a formula.
 - JSON: `{contest: AdminContest, standings: [Standings row plus email, roll_number, section, started_at], submissions: [{id, user_id, problem_label, language, state, verdict, score, created_at, practice}], audit: [AuditEntry], exported_at}`. No code and no integrity data.
 - `ProblemStats`: `{label, title, max_score, attempted, solved` (full score)`, subtasks [{idx, points, earned}], histogram [{score, students}]` (highest score first)`, median_attempts}`, over students on the board and their non-practice submissions.
+
+## History and audit (v1.2.0)
+
+Contracts C3 and C4 of the v2 plan, and the D115 fields above. Problems keep immutable revisions; contests pin a revision; the server records the first time each student is served a revision; site and contest changes go to append-only audit tables. Background: `docs/ARCHITECTURE.md`, "Problem revisions and pins" and "Audit logs".
+
+No history route returns a hidden test's input or output, or any test file or hash, to anyone (D47). Students see statements only.
+
+### `Revision`
+
+A problem's revisions, as `Problem` lists them for owners and admins (`GET /api/admin/problems/{id}`):
+
+```json
+{ "revision": { "id": 14, "rev": 3 },
+  "revisions_total": 3,
+  "revisions": [ { "id": 14, "rev": 3, "created_at": 1792311100000,
+                   "created_by": { "user_id": 2, "email": "ta@college.edu", "name": "Ravi K" },
+                   "reason": "Fix the bound on n in the statement.", "content_hash": "9f2c...",
+                   "statement_changed": true, "judging_changed": false, "reconstructed": false, "validated": true,
+                   "pinned_in": [ { "contest_id": 4, "slug": "week-6", "label": "A" } ] } ],
+  "live_contests": [ { "contest_id": 4, "slug": "week-6", "title": "Week 6", "label": "A" } ] }
+```
+
+| Field | Meaning |
+|---|---|
+| `revision` | the revision the working copy is now; every save that changes anything makes a new one, a save that changes nothing makes none |
+| `revisions` | newest first, at most 50; `revisions_total` counts them all |
+| `created_by` | `null` for revisions the server made (revision 1 at the upgrade, generated outputs, generated inputs) |
+| `reason` | the setter's reason, required while `live_contests` is not empty; `""` otherwise |
+| `statement_changed` | the title or statement differs from the revision before |
+| `judging_changed` | anything validation depends on differs (tests, limits, checker, solutions, samples, open tests, subtasks): its `content_hash` differs from the revision before |
+| `reconstructed` | made by the upgrade to v1.2.0 for a contest pin older than the working copy: its tests and limits come from the contest's judging jobs, its statement was not recorded |
+| `validated` | the problem's last passing validation covers this revision's content |
+| `pinned_in` | the contests that pin this revision now |
+| `live_contests` | contests that pin the problem (any revision) and are running now (from the start to the close plus the longest personal extension) |
+
+`GET /api/admin/problems/{id}/revisions/{rev}` (admin) returns one revision by its number: `Revision` plus `title`, `statement_md`, `statement_recorded`, `time_limit_ms`, `memory_limit_mb`, `checker`, `epsilon`, `samples`, `open`, `subtasks [{idx, points, title, tests}]` and `test_count`. `404 not_found` for a number the problem does not have. A reconstructed revision has `statement_md` `""` and `statement_recorded` `false` (`true` on every other), and its limits are `null` when no judging job recorded them.
+
+`GET /api/admin/problems/{id}/revisions/diff?from=2&to=3` (admin, revision numbers) compares two revisions:
+
+```json
+{ "from_rev": 2, "to_rev": 3, "title_from": "A plus B", "title_to": "A plus B",
+  "changed": ["statement"], "statement_only": true, "coarse": false,
+  "lines": [ { "op": "same", "text": "Read two integers." }, { "op": "del", "text": "1 <= n <= 10" }, { "op": "add", "text": "1 <= n <= 100" } ] }
+```
+
+- `changed` lists what differs, from `title`, `statement`, `limits`, `checker`, `solutions`, `samples`, `open`, `subtasks`, `tests`. `statement_only` is true when only `title` and `statement` changed: moving a contest to `to_rev` then needs no validation and no rejudge.
+- `lines` is a line diff of the statements: `op` is `same`, `del` (only in `from`) or `add` (only in `to`). A statement pair too large to compare line by line (more than a million line pairs after the common start and end) comes back `coarse`: every old line deleted, then every new line added.
+
+### `StatementHistory` (C3, students)
+
+`GET /api/contests/{slug}/problems/{label}/revisions` for anyone who may read the contest workspace (the student's window has opened, or organisers). Reads are rate limited like the workspace.
+
+```json
+{ "label": "A", "current_revision_id": 14, "statement_updated_at": 1792311120000,
+  "revisions": [ { "revision_id": 14, "rev": 3, "pinned_at": 1792311120000, "title": "A plus B", "statement_changed": true, "statement_recorded": true },
+                 { "revision_id": 12, "rev": 2, "pinned_at": 1792300000000, "title": "A plus B", "statement_changed": false, "statement_recorded": true } ],
+  "diff": { "from_revision_id": 12, "to_revision_id": 14, "from_rev": 2, "to_rev": 3,
+            "title_from": "A plus B", "title_to": "A plus B", "coarse": false,
+            "lines": [ { "op": "same", "text": "Read two integers $a$ and $b$." },
+                       { "op": "del", "text": "Print their sum." },
+                       { "op": "add", "text": "Print their sum modulo $10^9+7$." } ] },
+  "server_now": 1792311200000 }
+```
+
+| Field | Meaning |
+|---|---|
+| `revisions` | the revisions pinned to this label, newest first: for students the one in force when the contest started and every later pin; for organisers every pin. Each revision appears once, with the time it was last pinned |
+| `statement_changed` | the title or statement differs from the next older entry; `false` on the oldest |
+| `statement_recorded` | `false` for a revision reconstructed at the upgrade, whose statement was never recorded; a diff against it has no lines |
+| `diff` | by default the newest entry against the one before; `?from=&to=` (revision ids, both in `revisions`) picks another pair, anything else is `404 not_found`. `null` when there is only one revision |
+| `statement_updated_at` | as on `Contest.problems` |
+
+Only titles and statements: never a test, an output, a limit or a hash. A student never sees a revision that was not pinned to a contest they are in.
+
+### Pins on `AdminContest` (C4, organisers)
+
+`AdminContest.problems[]` gains these fields, and `AdminContest` gains `pin_history`:
+
+```json
+{ "problems": [ { "label": "A", "problem_id": 3, "revision_id": 12, "rev": 2, "latest_revision_id": 14, "latest_rev": 3,
+                  "update_available": true, "update_statement_only": true, "reconstructed": false } ],
+  "pin_history": [ { "label": "A", "problem_id": 3, "revision_id": 12, "rev": 2, "from_at": 1792300000000,
+                     "actor": { "user_id": 1, "email": "owner@college.edu", "role": "owner" } } ] }
+```
+
+| Field | Meaning |
+|---|---|
+| `revision_id`, `rev` | the pinned revision: what students are served and what submissions and rejudges record. The console states it before a rejudge ("Rejudge against revision 2") |
+| `latest_revision_id`, `latest_rev` | the problem's newest revision |
+| `update_available` | the newest revision differs from the pinned one and is validated, so "Update contest to revision N" will be accepted |
+| `update_statement_only` | the newest revision differs only in its title or statement: no rejudge is needed after the update |
+| `reconstructed` | the pin is a revision reconstructed at the upgrade |
+| `pin_history` | every pin change, newest first, at most 200: problems added or re-added (`PUT .../problems`) and revision updates. `actor` is `null` for pins the upgrade to v1.2.0 mapped. Co-organisers see it for their own contests |
+
+### Update contest to revision N
+
+`PUT /api/admin/contests/{id}/problems/{label}/revision` with `{"revision_id": 14}` (owners and admins).
+
+```json
+{ "contest": { "...": "AdminContest" },
+  "announcement_md": "The statement of problem A was updated. Open the problem and choose \"See what changed\".",
+  "statement_changed": true, "rejudge_needed": false, "server_now": 1792311120000 }
+```
+
+- The revision must belong to the label's problem (`404 not_found` otherwise) and be the validated content of the problem now: its content hash equals the problem's, and a passing validation covers it (`409 not_ready` "Revision 3 is not validated. Validate the problem, then update the contest."). Pinning the revision already pinned is `409 conflict`.
+- The pin, its subtask points and `pinned_hash` change in one transaction with a `contest_pin_history` row and a `revision` row in the contest audit. Students get a `statement` event; their next workspace load serves the new statement.
+- `announcement_md` is a prefilled announcement for the console to offer (it is not posted). With `rejudge_needed` (the tests, limits or checker changed) it says submissions will be judged again, and the console should offer Rejudge; with only a statement change it points students to "See what changed".
+
+### The served log and "what X saw at T"
+
+The first time the contest workspace serves a revision to a student, the server records `(student, contest, revision, first_seen_at)`; serving it again records nothing. With the pin history this answers a dispute: at time T the pinned revision was the newest pin with `from_at <= T`, and the student had been served it if its `first_seen_at <= T`. `podium-server saw` prints the answer on the VM (`docs/OPERATIONS.md`).
+
+### Site audit: People History
+
+`GET /api/admin/site-audit?page=1&action=&q=&since=&until=` (owner only) is the People page's "History": every change to people, domains and the site, newest first, 100 per page.
+
+```json
+{ "entries": [ { "id": 31, "at": 1792311120000, "action": "role_granted",
+                 "actor": { "user_id": 1, "email": "owner@college.edu", "role": "owner" },
+                 "subject_email": "ta@college.edu", "details": { "role": "admin", "from_role": "student" } } ],
+  "page": 1, "has_more": false, "server_now": 1792311200000 }
+```
+
+- Filters: `action` keeps one action; `q` keeps rows whose actor or subject email contains the text (case does not matter); `since` and `until` are Unix ms (inclusive, exclusive).
+- `actor` is `null` for changes the server made itself (a change of run mode). The actor's email and role are as they were at the time.
+- The table is append only (database triggers refuse every update, and every delete of a row newer than the retention cutoff the P3 retention job will write). It never holds an AI key, a session token, a cookie or an OAuth code: a test writes fake ones through every audited path and searches the table for them.
+
+| `action` | `subject_email` | `details` |
+|---|---|---|
+| `role_granted` | the person | `{role, from_role}` |
+| `role_revoked` | the person | `{from_role, sessions_ended}` |
+| `domain_added` | `""` | `{domain}` |
+| `domain_removed` | `""` | `{domain, sessions_ended}` |
+| `account_disabled` | the person | `{sessions_ended}` |
+| `account_enabled` | the person | `{}` |
+| `sessions_ended` | the person | `{count}` |
+| `google_reset` | the person | `{sessions_ended}` |
+| `mode_changed` | `""` | `{from, to, sessions_ended, demoted}`, the server's own record when it starts in another run mode |
+| `deploy_forced` | `""` | `{reason, release, refused: [{contest_id, slug, reason}]}`, written by `deploy-check -force` (the actor is the owner account) |
+
+P3 adds `settings_changed`, `contact_deleted` and `user_forgotten`; show an unknown action by its name.
+
+### Renamed contests
+
+Renaming a contest (its `slug`) records the old slug. `GET /contests/<old>` and every path under it answer `301` to the same path under the new slug, keeping the query; so do `GET` requests under `/api/contests/<old>` (other methods answer `404`). Only a published contest records its old slug (a draft has no links out there), and only a published, unarchived contest is redirected to. A slug in the history cannot be given to another contest: `400 bad_request` with `fields.slug` "This slug belonged to another contest. Choose another so its old links keep working." A contest may take back its own old slug.
 
 ## Integrity
 
@@ -1033,19 +1229,21 @@ Used only by `podium-judge work` (decision D44). It is served on its own listene
 - **Auth.** Every request sends `Authorization: Bearer <PODIUM_JUDGE_TOKEN>`. The server compares SHA-256 digests of the two tokens in constant time. Anything else is `401 unauthorized`.
 - **Bodies.** JSON with no unknown fields; at most 64 KB for a claim and 1 MB for a report. A malformed body is `400 bad_request`. An unknown route is `404 not_found`. The one non-JSON body is an uploaded output (`PUT /api/judge/blob/{sha}`, at most 16 MB).
 
+**Protocol versions.** 1 is the v1.0.0 judge; 2 (v1.1.0) added the toolchain report and the toolchain hash on each claim; **3 (v1.2.0, D115)** adds open tests and the revealed test: a run input may carry `"open": true` (the judge runs it only while every earlier input with an expected output passed, and reports `SK` otherwise), and a submit payload may carry `"reveal": true` (the judge then reports `output`, the first 4 KB of the program's output, on the first failing hidden test; the server refuses output on any other submit result). A judge and server of different protocols refuse each other with `426`.
+
 ### `POST /api/judge/claim`
 
-Request: `{"kinds":["run","submit","generate","validate"],"worker":"vm-1","version":"v1.1.0","isolate":"2.7","protocol":2,"toolchain":"<sha256>"}`. `worker`, `version` and `isolate` are logged and stored with the job. `protocol` is the judge's `judgeapi.ProtocolVersion`; left out, it means 1 (the v1.0.0 judge). `toolchain` is the hash `POST /api/judge/toolchain` returned; the job records that toolchain (`jobs.toolchain_id`), or none when the hash is unknown or missing.
+Request: `{"kinds":["run","submit","generate","validate"],"worker":"vm-1","version":"v1.1.0","isolate":"2.7","protocol":3,"toolchain":"<sha256>"}`. `worker`, `version` and `isolate` are logged and stored with the job. `protocol` is the judge's `judgeapi.ProtocolVersion`; left out, it means 1 (the v1.0.0 judge). `toolchain` is the hash `POST /api/judge/toolchain` returned; the job records that toolchain (`jobs.toolchain_id`), or none when the hash is unknown or missing.
 
 | Status | Body |
 |---|---|
 | 204 | no queued job of those kinds (unknown kinds are ignored) |
 | 200 | `{"job_id":41,"kind":"validate","lease":"<secret>","lease_seconds":60,"payload":{...}}` |
-| 426 `protocol` | the judge speaks another protocol: `{"error":{"code":"protocol","message":"judge protocol 2 needed, this judge speaks 1: install the same release on both"}}`. The judge stops with this message (exit status 3, which `podium-judge.service` does not restart) instead of retrying |
+| 426 `protocol` | the judge speaks another protocol: `{"error":{"code":"protocol","message":"judge protocol 3 needed, this judge speaks 2: install the same release on both"}}`. The judge stops with this message (exit status 3, which `podium-judge.service` does not restart) instead of retrying |
 
 ### `POST /api/judge/toolchain`
 
-Sent once when the judge starts (B1.4). Request: `{"protocol":2,"toolchain":{"gcc":"g++ (Ubuntu 13.3.0-6ubuntu2~24.04) 13.3.0","java":"javac 21.0.8","python":"Python 3.12.3","node":"v22.20.0","isolate":"The process isolator 2.7","kernel":"6.8.0-85-generic"}}`: the first line of each tool's version output, `missing` when the tool cannot run, each field at most 200 bytes of UTF-8.
+Sent once when the judge starts (B1.4). Request: `{"protocol":3,"toolchain":{"gcc":"g++ (Ubuntu 13.3.0-6ubuntu2~24.04) 13.3.0","java":"javac 21.0.8","python":"Python 3.12.3","node":"v22.20.0","isolate":"The process isolator 2.7","kernel":"6.8.0-85-generic"}}`: the first line of each tool's version output, `missing` when the tool cannot run, each field at most 200 bytes of UTF-8.
 
 | Status | Body |
 |---|---|
@@ -1180,5 +1378,29 @@ Rules:
 | other files (`/favicon.svg`, `/fonts/*`, `/theme-init.js`) | `public, max-age=3600` |
 | missing files with an extension | `404` |
 | any other path | `index.html`, `no-cache` |
+
+A renamed contest's old `/contests/<slug>` paths answer `301` first (see "Renamed contests").
+
+### The route manifest and the page markers (contract C2, from v1.1.0)
+
+The web build writes `web/dist/routes.json`, embedded with the app; a copy is checked in at `server/internal/webui/testdata/routes.json` for the server's tests, and a web unit test fails when the two drift. The server reads it from P3 on (B3.4, B3.5) to fill the head of each page; until then nothing reads it.
+
+```json
+{ "version": 1,
+  "routes": [ { "pattern": "/signin", "name": "signin", "auth": false, "public": true,
+                "title": "Sign in", "description": "Sign in to podium with your college Google account to enter the weekly programming contests." } ],
+  "notFound": { "pattern": "*", "name": "not-found", "auth": false, "public": true, "title": "Page not found", "description": "That page does not exist on podium." } }
+```
+
+| Field | Meaning |
+|---|---|
+| `version` | the manifest format, 1 |
+| `routes[].pattern` | the client route, as `routing.ts` matches it |
+| `name`, `auth` | the route's name, and whether it needs a signed-in user |
+| `public` | the page may be indexed and gets a canonical URL and Open Graph tags (P3); every other page stays `noindex` |
+| `title`, `description` | the page's title and description, written by the frontend |
+| `notFound` | the 404 page, in the same shape |
+
+`web/index.html` carries two marker pairs the server replaces at request time and never edits in the file: `<!--podium:head-->` ... `<!--/podium:head-->` around the robots meta (`noindex` by default), and `<!--podium:body-->` ... `<!--/podium:body-->` inside a fallback `<main>` that the app clears before it mounts (P3 fills it for `/privacy`, so the page reads without JavaScript). The frontend owns both files and the manifest's content.
 
 Contests are added to this document in M4, the milestone that builds them.

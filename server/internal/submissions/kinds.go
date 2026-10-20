@@ -80,8 +80,9 @@ func decodeSubmit(raw json.RawMessage) (judgeapi.SubmitPayload, error) {
 }
 
 // CheckReport refuses results for tests the submission does not have, any
-// output text (hidden tests stay hidden), and messages on hidden tests (a
-// checker comment can quote the expected answer). It also notes a program
+// output text (hidden tests stay hidden) except on a failing hidden test of
+// a submission whose payload asks to reveal it (D115), and messages on
+// hidden tests (a checker comment can quote the expected answer). It also notes a program
 // compile that timed out, for Finish.
 func (k SubmitKind) CheckReport(raw json.RawMessage, r judgeapi.Report) error {
 	pl, err := decodeSubmit(raw)
@@ -104,8 +105,10 @@ func (k SubmitKind) CheckReport(raw json.RawMessage, r judgeapi.Report) error {
 			return jobs.Badf("result for test %d", t.Idx)
 		case t.Role != judgeapi.RoleProgram:
 			return jobs.Badf("result role %q", jobs.Clip(t.Role))
-		case t.Output != "":
+		case t.Output != "" && !(pl.Reveal && !sample[t.Idx] && failed(t.Verdict)):
 			return jobs.Badf("submit results carry no output text")
+		case len(t.Output) > judgeapi.MaxRunOutput || !utf8.ValidString(t.Output):
+			return jobs.Badf("revealed output too long or not UTF-8")
 		case t.Message != "" && !sample[t.Idx]:
 			return jobs.Badf("message on hidden test %d", t.Idx)
 		case !testVerdicts[t.Verdict]:
@@ -178,7 +181,8 @@ func (k SubmitKind) Finish(ctx context.Context, tx *sql.Tx, job *jobs.Job) error
 	}
 	sc := ScoreSubmission(pl, program, job.Result.Tests, true)
 	round(&sc)
-	stored, err := json.Marshal(storedResult{Subtasks: sc.Subtasks, Samples: sc.Samples, CompileOutput: compileOutput(program)})
+	stored, err := json.Marshal(storedResult{Subtasks: sc.Subtasks, Samples: sc.Samples, CompileOutput: compileOutput(program),
+		Revealed: revealOf(pl, job.Result.Tests)})
 	if err != nil {
 		return err
 	}
@@ -197,6 +201,26 @@ func (k SubmitKind) Finish(ctx context.Context, tx *sql.Tx, job *jobs.Job) error
 		max_memory_kb = ?, result = ?, earned = ?, judged_at = ? WHERE id = ? AND job_id = ?`,
 		sc.Verdict, sc.Score, sc.MaxScore, sc.MaxTimeMS, sc.MaxMemoryKB, string(stored), earned, now, pl.SubmissionID, job.ID)
 	return err
+}
+
+// revealOf picks the first hidden test, in judging order, that the program
+// failed, for a payload that asks to reveal it (D115); nil otherwise.
+func revealOf(pl judgeapi.SubmitPayload, results []judgeapi.TestResult) *storedReveal {
+	if !pl.Reveal {
+		return nil
+	}
+	got := map[int]judgeapi.TestResult{}
+	for _, r := range results {
+		if r.Role == judgeapi.RoleProgram {
+			got[r.Idx] = r
+		}
+	}
+	for _, t := range pl.Tests {
+		if r, ok := got[t.Idx]; ok && !t.Sample && failed(r.Verdict) {
+			return &storedReveal{Idx: t.Idx, Subtask: t.Subtask, InputSHA: t.InputSHA, ExpectedSHA: t.OutputSHA, Output: r.Output}
+		}
+	}
+	return nil
 }
 
 // JudgeFailedMessage is the error a submission shows when the judge could

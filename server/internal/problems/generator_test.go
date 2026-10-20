@@ -235,6 +235,15 @@ func TestDraftThroughGenerateInputsOutputsAndValidation(t *testing.T) {
 	if !byPerson {
 		t.Error("a changed reference did not mark a person's solution")
 	}
+	// Every step above (draft, generated inputs, generated outputs,
+	// validation, edits) left the working copy recorded by a revision, and
+	// the server's own steps carry a reason and no author.
+	assertRevisions(t, s)
+	var serverMade int
+	s.DB.QueryRowContext(ctx, "SELECT count(*) FROM problem_revisions WHERE problem_id = ? AND created_by IS NULL AND reason <> ''", p.ID).Scan(&serverMade)
+	if serverMade != 2 {
+		t.Errorf("%d revisions from generated inputs and outputs, want 2", serverMade)
+	}
 }
 
 func TestGeneratorFailureIsNamedAndNothingApplied(t *testing.T) {

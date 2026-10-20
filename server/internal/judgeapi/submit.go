@@ -12,7 +12,8 @@ const (
 const RoleProgram = "program"
 
 // MaxRunOutput bounds the output excerpt a run reports per input. Submit
-// jobs never report output: hidden tests stay hidden (decision D47).
+// jobs report output only with Reveal, on the first failing hidden test
+// (D115); otherwise hidden tests stay hidden (decision D47).
 const MaxRunOutput = 4 << 10
 
 // SubmitTest is one test of a submission, in judging order.
@@ -43,14 +44,23 @@ type SubmitPayload struct {
 	Tests            []SubmitTest `json:"tests"`
 	Subtasks         []Subtask    `json:"subtasks"`
 	StopOnSampleFail bool         `json:"stop_on_sample_fail"`
+	// Reveal is set for a submission that never counts (practice, an
+	// ungraded contest, the organisers' workspace): the worker reports the
+	// program's output (at most MaxRunOutput) on the first hidden test
+	// that fails, so the author can see it (D115, protocol 3).
+	Reveal bool `json:"reveal,omitempty"`
 }
 
-// RunInput is one input of a run: a sample (with its expected output) or
-// the student's custom input (without).
+// RunInput is one input of a run: a sample or an open test (with its
+// expected output) or the student's custom input (without).
 type RunInput struct {
 	Idx         int    `json:"idx"`
 	InputSHA    string `json:"input_sha"`
 	ExpectedSHA string `json:"expected_sha,omitempty"`
+	// Open marks an open test (D115, protocol 3): the worker runs it only
+	// while every earlier input with an expected output passed, and
+	// reports SK otherwise.
+	Open bool `json:"open,omitempty"`
 }
 
 // RunPayload runs a program on samples or a custom input and reports its

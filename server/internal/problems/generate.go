@@ -318,7 +318,7 @@ func (k GenerateKind) Finish(ctx context.Context, tx *sql.Tx, job *jobs.Job) err
 		return nil
 	}
 	svc := Service{DB: nil, Now: k.Now}
-	if err := svc.save(ctx, tx, p); err != nil {
+	if err := svc.save(ctx, tx, p, RevisionNote{Reason: "Outputs generated from the reference solution."}); err != nil {
 		return err
 	}
 	if !pl.ThenValidate || k.Jobs == nil || len(sm.Problems) > 0 || len(p.Problems()) > 0 {
