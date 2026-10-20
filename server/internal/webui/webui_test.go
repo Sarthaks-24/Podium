@@ -14,7 +14,7 @@ func TestHandler(t *testing.T) {
 		"favicon.svg":        {Data: []byte("<svg/>")},
 		".keep":              {Data: nil},
 		"assets/.hidden.txt": {Data: []byte("x")},
-	})
+	}, Options{})
 	cases := []struct {
 		method, path string
 		status       int
@@ -45,7 +45,7 @@ func TestHandler(t *testing.T) {
 
 func TestHandlerNotBuilt(t *testing.T) {
 	rec := httptest.NewRecorder()
-	handlerFor(fstest.MapFS{}).ServeHTTP(rec, httptest.NewRequest("GET", "/", nil))
+	handlerFor(fstest.MapFS{}, Options{}).ServeHTTP(rec, httptest.NewRequest("GET", "/", nil))
 	if rec.Code != http.StatusServiceUnavailable {
 		t.Errorf("status %d, want 503", rec.Code)
 	}
