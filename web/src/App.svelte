@@ -16,7 +16,9 @@
   signed-out visitors to a protected path are sent to /signin with a
   ?next= back, and signed-in visitors to /signin are sent on. After each
   client-side navigation focus moves to the new page's heading. The footer
-  carries "Contact the organisers: {email}" when the server names one,
+  carries the organisation's name and "Contact the organisers: {email}"
+  (and its phone as a tel: link) when the server names them (C5, FP.3),
+  "Write to the organisers" (the signed-in /contact form, FP.2),
   the Privacy link once the owner approves the text (lib/site.ts), a
   "Keyboard shortcuts" button and the build year; "?" anywhere outside a
   text field opens the same list (components/ShortcutsDialog). The two
@@ -31,7 +33,7 @@
   import Toasts from './components/Toasts.svelte';
   import ThemeMenu from './lib/ThemeMenu.svelte';
   import { regions } from './lib/announce.svelte';
-  import { loadMode, runMode } from './lib/mode.svelte';
+  import { loadMode, runMode, telHref } from './lib/mode.svelte';
   import { installLinkInterception, matchRoute, navigate, router } from './lib/router.svelte';
   import { loadSession, session, signOut } from './lib/session.svelte';
   import { loadQuestions, shell } from './lib/shell.svelte';
@@ -161,7 +163,7 @@
     loadSession().then((err) => {
       if (err) showToast(err.message, 'error');
     });
-    loadMode();
+    void loadMode();
     return removeInterception;
   });
 
@@ -308,9 +310,14 @@
   <footer class="inner foot">
     <!-- Sign-in carries the same line in its own column. -->
     {#if runMode.contactEmail !== '' && route.name !== 'signin'}
-      <p class="contact">Contact the organisers: <a href="mailto:{runMode.contactEmail}">{runMode.contactEmail}</a></p>
+      <p class="contact">
+        {#if runMode.organisation.name !== ''}{runMode.organisation.name}. {/if}Contact the organisers:
+        <a href="mailto:{runMode.contactEmail}">{runMode.contactEmail}</a>{#if runMode.organisation.phone !== ''},
+          <a href={telHref(runMode.organisation.phone)}>{runMode.organisation.phone}</a>{/if}
+      </p>
     {/if}
     <ul class="foot-links">
+      {#if signedIn}<li><a href="/contact">Write to the organisers</a></li>{/if}
       {#if PRIVACY_LINKED}<li><a href="/privacy">Privacy</a></li>{/if}
       <li class="keys">
         <button type="button" class="btn btn-quiet btn-compact" aria-keyshortcuts="?" onclick={() => (shell.shortcuts = true)}>

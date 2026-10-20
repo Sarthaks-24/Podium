@@ -10,9 +10,9 @@
 export type MessagePart = string | { email: string };
 
 /** The error codes /api/auth/google/callback can send back (docs/API.md). */
-export type SignInErrorCode = 'domain' | 'unverified' | 'disabled' | 'account' | 'expired' | 'google' | 'server';
+export type SignInErrorCode = 'domain' | 'unverified' | 'disabled' | 'account' | 'expired' | 'google' | 'server' | 'rate_limited';
 
-const ERROR_CODES: readonly SignInErrorCode[] = ['domain', 'unverified', 'disabled', 'account', 'expired', 'google', 'server'];
+const ERROR_CODES: readonly SignInErrorCode[] = ['domain', 'unverified', 'disabled', 'account', 'expired', 'google', 'server', 'rate_limited'];
 
 /** Narrows a ?error= value to a known code, or null. */
 export function parseErrorCode(value: string | null): SignInErrorCode | null {
@@ -71,6 +71,8 @@ export function errorMessage(
       return ['Google sign-in did not complete. Try again in a moment.'];
     case 'server':
       return ['Something went wrong on the server while signing you in. Try again in a minute.'];
+    case 'rate_limited':
+      return ['Too many people are signing in from this network at once. Wait a few seconds, then start again.'];
     default:
       return null;
   }
