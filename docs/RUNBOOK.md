@@ -10,7 +10,7 @@ Two people make contest day easy: one at the contest's live console in the brows
 - [ ] Time limits are at least 3 times the C++ reference's time, and the validation report shows no warnings about test count (6 to 10 hidden tests), maximum-size tests (at most 2 per subtask) or output size (under 1 MB). Each extra second of tests costs every submission.
 - [ ] A second organiser has read each statement; the samples match the Input and Output sections.
 - [ ] The contest is set up: schedule, start mode, freeze, scoring and feedback modes, languages, rate limits (30 s gap and 15 per problem unless the class is small), access (domain or roster), co-organisers.
-- [ ] For more than about 300 students, prefer the flexible window (for example 2 hours inside a 3 hour window): it spreads the end-of-contest rush and leaves almost no judging tail (PLAN.md section 4.1). Say so in the announcement.
+- [ ] For a large class, prefer the flexible window (for example 2 hours inside a 3 hour window): it spreads the end-of-contest rush and leaves almost no judging tail. Say so in the announcement.
 - [ ] A practice contest with two easy problems is open, so first-timers learn the editor, Run and Submit before it counts.
 - [ ] Backups are healthy: `systemctl status podium-litestream` is active and `journalctl -u podium-litestream -n 20` shows recent syncs; `sudo ls -l /var/backups/podium` shows last night's backup, and `journalctl -u podium-backup -n 5` ends with `copied to ...` (the off-VM copy, `PODIUM_BACKUP_RSYNC`).
 - [ ] Before the first graded contest, and after any change to the backup setup: a timed restore drill on a scratch VM (or at least a scratch directory): `sudo /usr/local/lib/podium/podium-restore litestream /var/tmp/drill` with the test files from the off-VM copy, `result: ok`, and a testing-mode server on it showing the contests. Write down how long it took.
@@ -53,7 +53,7 @@ Every 10 minutes, or whenever something feels slow: the metrics watch loop (`doc
 | Figure | Normal | Act when |
 |---|---|---|
 | `queue.queued` | under 50, rising toward the end of a fixed-start contest | over 400, or rising for 15 minutes in the middle of the contest: raise the gap (below) |
-| `per_min` (sum of `finished_last_minute`) | the judge's throughput; about 100 jobs a minute with 2 lanes on 2 fast cores in the load test, likely less on the VM (measure it once with `tools/loadtest`) | 0 while `queued` is above 0: the judge is down (below) |
+| `per_min` (sum of `finished_last_minute`) | the judge's throughput | 0 while `queued` is above 0: the judge is down (below) |
 | `wait_p95_s` (`queue.submit_wait_p95_ms`) | a few seconds; minutes at the end of a fixed-start contest | over 10 minutes in the middle of the contest |
 | `queue.failed_last_5_min` | 0 | above 0: read the judge's log |
 | `streams` (`events.connections`) | about one per student with the contest open | drops to near 0 suddenly: the server restarted or a proxy is cutting streams |
