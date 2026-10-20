@@ -22,6 +22,11 @@ import {
   parseRoster,
   rosterCsv,
   rulesSentences,
+  bannerItems,
+  bannerLead,
+  railStatus,
+  triedLine,
+  startLine,
   studentPhase,
   toLocalInput,
   type Contest,
@@ -126,6 +131,50 @@ describe('countdowns', () => {
   });
 });
 
+describe('the banner queue (B1)', () => {
+  const q = (id: number, answered_at: number | null, pub: boolean, answer: string | null = 'Yes.') => ({
+    id, problem_label: 'B', question: 'Zero length?', answer, public: pub, created_at: 1, answered_at,
+  });
+  it('adds answers given to everyone, newest first, and skips own and old ones', () => {
+    const items = bannerItems(
+      {
+        announcements: [{ id: 3, body_md: 'Problem A fixed.', created_at: 500 }],
+        my_clarifications: [q(10, 600, true)],
+        public_clarifications: [q(10, 600, true), q(11, 700, true), q(12, 50, true), q(13, null, true, null)],
+      },
+      new Set(),
+      100,
+    );
+    expect(items.map((i) => [i.key, i.kind])).toEqual([
+      ['c11', 'public'],
+      ['c10', 'answer'],
+      ['a3', 'announcement'],
+    ]);
+    expect(bannerItems({ announcements: [], my_clarifications: [], public_clarifications: [q(11, 700, true)] }, new Set(['c11']), 0)).toEqual([]);
+    expect(bannerLead('public')).toBe('An organiser answered a question for everyone');
+    expect(bannerLead('answer')).toBe('An organiser answered your question');
+  });
+});
+
+describe('rail status words (D114)', () => {
+  const p = (my_score: number | null, my_submission_count: number, max_score = 100) => ({ my_score, max_score, my_submission_count });
+  it('puts a word in the score cell', () => {
+    expect(railStatus(p(null, 0), false)).toEqual({ score: '', word: 'not tried' });
+    expect(railStatus(p(null, 2), false)).toEqual({ score: '', word: 'tried' });
+    expect(railStatus(p(40, 2), false)).toEqual({ score: '40/100', word: 'tried' });
+    expect(railStatus(p(0, 1), false)).toEqual({ score: '0/100', word: 'tried' });
+    expect(railStatus(p(100, 3), false)).toEqual({ score: '100/100', word: 'solved' });
+    expect(railStatus(p(null, 0), true)).toEqual({ score: '', word: 'not submitted' });
+    expect(railStatus(p(null, 1), true)).toEqual({ score: '', word: 'submitted' });
+  });
+
+  it('counts the problems tried', () => {
+    expect(triedLine([p(100, 1), p(null, 0), p(null, 2)], false)).toBe('2 of 3 tried');
+    expect(triedLine([p(null, 1), p(null, 0)], true)).toBe('1 of 2 submitted');
+    expect(triedLine([], false)).toBe('');
+  });
+});
+
 describe('organiser order (N6)', () => {
   it('puts live and frozen first, then upcoming soonest, then the rest newest', () => {
     const row = (id: number, state: string, starts: number, ends: number) => ({ id, state: state as 'live', starts_at: starts, ends_at: ends });
@@ -187,6 +236,22 @@ describe('student phase and window maths', () => {
     const win = rulesSentences(contest({ start_mode: 'window', duration_minutes: 90 }));
     expect(win[0]).toContain('runs 1 h 30 min');
     expect(win.at(-1)).toBe('The standings open when the contest closes.');
+  });
+
+  it('teaches Run and Submit right after the timing (S3)', () => {
+    const lines = rulesSentences(contest());
+    expect(lines.slice(1, 4)).toEqual([
+      'Run on samples tries your code on the examples in the statement. It never counts.',
+      'Submit grades your code on hidden tests, in parts called subtasks.',
+      'A later, worse submission never lowers your score.',
+    ]);
+  });
+
+  it('says the time of a late arrival is already running', () => {
+    const c = contest();
+    expect(startLine(c, c.starts_at - MIN)).toEqual({ kind: 'before', ms: MIN });
+    expect(startLine(c, c.starts_at + MIN).kind).toBe('late');
+    expect(startLine({ ...c, start_mode: 'window' }, c.starts_at + MIN).kind).toBe('window');
   });
 });
 

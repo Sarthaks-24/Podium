@@ -156,6 +156,35 @@ export function placeSentence(s: Pick<Standings, 'rows' | 'me'> & Partial<Pick<S
   return `You are ${place} with ${row.total} points.`;
 }
 
+/**
+ * The own-place figure on the standings page (v2 S6, D80: Direction A with
+ * B's one display figure): the rank, the board size, whether it is a tie
+ * and the label above it. Null when the student is not on the board.
+ */
+export function placeFigure(s: Pick<Standings, 'rows' | 'me'> & Partial<Pick<Standings, 'variant'>>): { rank: number; of: number; tied: boolean; label: string } | null {
+  const row = myRow(s);
+  if (!row) return null;
+  const tied = s.rows.filter((r) => r.rank === row.rank).length > 1;
+  return { rank: row.rank, of: s.rows.length, tied, label: s.variant === 'frozen' ? 'Your place on the frozen board' : 'Your place' };
+}
+
+/**
+ * The sentence a screen reader hears when the student's own place or score
+ * changes after a refetch (S6, audit 06-6): "You are now 12th with 240
+ * points." On a frozen board only the place moves. Empty when nothing
+ * changed or the student is not on both boards.
+ */
+export function rankAnnouncement(prev: Pick<Standings, 'rows' | 'me' | 'variant'> | null, next: Pick<Standings, 'rows' | 'me' | 'variant'>): string {
+  if (!prev) return '';
+  const a = myRow(prev);
+  const b = myRow(next);
+  if (!a || !b) return '';
+  if (a.rank === b.rank && (next.variant === 'frozen' || a.total === b.total)) return '';
+  const tied = next.rows.filter((r) => r.rank === b.rank).length > 1 ? 'tied ' : '';
+  if (next.variant === 'frozen') return `You are now ${tied}${ordinalWord(b.rank)} in the frozen standings.`;
+  return `You are now ${tied}${ordinalWord(b.rank)} with ${b.total} points.`;
+}
+
 /** 1st, 2nd, 3rd, 4th, 11th, 12th, 13th, 21st. */
 export function ordinalWord(n: number): string {
   const tens = n % 100;

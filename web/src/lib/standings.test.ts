@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { boardLabels, cellView, formatElapsed, myRow, ordinalWord, placeSentence, statusLine, type Standings } from './standings';
+import { boardLabels, cellView, formatElapsed, myRow, ordinalWord, placeFigure, placeSentence, rankAnnouncement, statusLine, type Standings } from './standings';
 
 function board(over: Partial<Standings> = {}): Standings {
   return {
@@ -86,5 +86,25 @@ describe('standings wording', () => {
     expect([1, 2, 3, 4, 11, 12, 13, 21, 22, 103, 111].map(ordinalWord)).toEqual([
       '1st', '2nd', '3rd', '4th', '11th', '12th', '13th', '21st', '22nd', '103rd', '111th',
     ]);
+  });
+});
+
+describe('own place (S6)', () => {
+  const row = (user_id: number, rank: number, total: number) => ({ rank, user_id, name: `S${user_id}`, total, last_improvement_s: 0, cells: [] });
+  const board = (rows: ReturnType<typeof row>[], variant: 'full' | 'frozen' = 'full') => ({ rows, me: 7, variant });
+
+  it('gives the figure for the own row', () => {
+    expect(placeFigure(board([row(1, 1, 300), row(7, 2, 200), row(8, 2, 200)]))).toEqual({ rank: 2, of: 3, tied: true, label: 'Your place' });
+    expect(placeFigure(board([row(1, 1, 300)]))).toBeNull();
+    expect(placeFigure(board([row(7, 1, 300)], 'frozen'))?.label).toBe('Your place on the frozen board');
+  });
+
+  it('announces a change of place or score as a sentence', () => {
+    const before = board([row(1, 1, 300), row(7, 2, 200)]);
+    expect(rankAnnouncement(null, before)).toBe('');
+    expect(rankAnnouncement(before, before)).toBe('');
+    expect(rankAnnouncement(before, board([row(7, 1, 340), row(1, 2, 300)]))).toBe('You are now 1st with 340 points.');
+    expect(rankAnnouncement(before, board([row(1, 1, 300), row(7, 2, 240)]))).toBe('You are now 2nd with 240 points.');
+    expect(rankAnnouncement(board([row(7, 2, 0)], 'frozen'), board([row(7, 3, 0)], 'frozen'))).toBe('You are now 3rd in the frozen standings.');
   });
 });

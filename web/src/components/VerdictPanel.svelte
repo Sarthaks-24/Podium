@@ -5,9 +5,12 @@
   failing verdict, then the subtask strip filling as results arrive, the
   compiler output verbatim with clickable line jumps, and the tests: the
   samples and each subtask in its own disclosure, a failing one open, each
-  row giving the verdict in words, the time in mono and the memory. Props:
-  `submission`, `onjump` (moves the editor to a compile error's line), and
-  `idPrefix` (keeps ids unique when several panels are on the page).
+  row giving the verdict in words, the time in mono and the memory. A
+  waiting submission reads "Submitted, 3rd in queue"; one that scored less
+  than the problem already has adds "Your score on this problem stays 60
+  of 100" (S4). Props: `submission`, `onjump` (moves the editor to a
+  compile error's line), `idPrefix` (keeps ids unique when several panels
+  are on the page) and `problemScore` (optional, { score, max } so far).
 -->
 <script lang="ts">
   import { verdictLabel } from '../lib/problems';
@@ -18,6 +21,7 @@
     guidance,
     headline,
     isBad,
+    problemScoreLine,
     isWaiting,
     type Submission,
     type TestResult,
@@ -29,9 +33,11 @@
     submission: Submission;
     onjump: ((line: number, col: number | null) => void) | null;
     idPrefix: string;
+    problemScore?: { score: number | null; max: number } | null;
   }
 
-  let { submission, onjump, idPrefix }: Props = $props();
+  let { submission, onjump, idPrefix, problemScore = null }: Props = $props();
+  const stays = $derived(problemScoreLine(submission, problemScore));
 
   const head = $derived(headline(submission));
   const fail = $derived(firstFailure(submission));
@@ -64,6 +70,7 @@
 <div class="panel">
   <p class="headline tone-{head.tone}">{head.text}</p>
   {#if head.detail}<p class="detail">{head.detail}</p>{/if}
+  {#if stays}<p class="stays">{stays}</p>{/if}
   {#each advice as line, i (i)}<p class="advice">{line}</p>{/each}
 
   {#if submission.subtasks.length > 0 && submission.verdict !== 'CE'}
@@ -155,6 +162,10 @@
 
   .detail {
     font-weight: 500;
+  }
+
+  .stays {
+    color: var(--ink-muted);
   }
 
   .advice {

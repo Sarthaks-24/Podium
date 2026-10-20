@@ -5,38 +5,36 @@
   and, for a sample, the expected output and the checker's comment. A wrong
   answer on a sample also shows the first differing line with whitespace
   made visible (lib/diff.ts). Compiler output comes first, verbatim, with
-  clickable line jumps. Props: `run`, `language` (for the compiler's
-  location shapes) and `onjump`.
+  clickable line jumps. A failing sample also offers "Run on this input",
+  which puts that sample's input in the custom input box, opens the box
+  and runs it there, so the student can then change the input and run
+  again (D114). Props: `run`, `language` (for the compiler's location
+  shapes), `onjump`, `samples` (the workspace's samples, for their
+  inputs) and `onruninput` (optional; without it the button is left out).
 -->
 <script lang="ts">
   import { firstDifference, showWhitespace } from '../lib/diff';
-  import { formatKb, formatMs, isBad, isWaiting, runVerdictLabel, waitingText, type Run } from '../lib/workspace';
+  import { formatKb, formatMs, isBad, runHeadline, runVerdictLabel, type Run, type Sample } from '../lib/workspace';
   import CompileOutput from './CompileOutput.svelte';
 
   interface Props {
     run: Run;
     language: string;
     onjump: ((line: number, col: number | null) => void) | null;
+    samples?: Sample[];
+    onruninput?: (input: string) => void;
   }
 
-  let { run, language, onjump }: Props = $props();
+  let { run, language, onjump, samples = [], onruninput }: Props = $props();
 
-  const samples = $derived(run.results.filter((r) => r.expected !== null));
-  const passed = $derived(samples.filter((r) => !isBad(r.verdict)).length);
+  const head = $derived(runHeadline(run));
 
-  const head = $derived.by(() => {
-    if (isWaiting(run)) return { text: run.state === 'running' ? 'Running' : waitingText(run), tone: 'wait' };
-    if (run.state === 'error') return { text: 'The run could not finish. Try again in a moment.', tone: 'bad' };
-    if (run.results.length === 0 && run.compile_output) return { text: 'Compile error', tone: 'bad' };
-    if (samples.length > 0) {
-      return {
-        text: `Passed ${passed} of ${samples.length} ${samples.length === 1 ? 'sample' : 'samples'}`,
-        tone: passed === samples.length ? 'ok' : 'bad',
-      };
-    }
-    const r = run.results[0];
-    return r ? { text: runVerdictLabel(r.verdict), tone: isBad(r.verdict) ? 'bad' : 'ok' } : { text: 'Finished', tone: 'ok' };
-  });
+  /** The input of the sample a result row ran, by its "Sample N" label. */
+  function sampleInput(label: string): string | null {
+    const m = /^Sample (\d+)$/.exec(label);
+    if (!m) return null;
+    return samples.find((x) => x.idx === Number(m[1]))?.input ?? null;
+  }
 </script>
 
 <div class="run">
@@ -59,6 +57,9 @@
         <span class="mono meta">{formatKb(r.memory_kb)}</span>
       </div>
       {#if r.message}<p class="message">{r.message}</p>{/if}
+      {#if onruninput && isBad(r.verdict) && sampleInput(r.label) !== null}
+        <button type="button" class="btn btn-quiet btn-compact use-input" onclick={() => onruninput(sampleInput(r.label) ?? '')}>Run on this input</button>
+      {/if}
 
       {#if diff}
         <div class="diff">
@@ -158,6 +159,12 @@
 
   .message {
     font-size: var(--fs-0);
+  }
+
+  .use-input {
+    justify-self: start;
+    margin-left: calc(-1 * var(--space-3));
+    color: var(--act);
   }
 
   .diff {

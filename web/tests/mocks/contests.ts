@@ -50,7 +50,14 @@ export interface Options {
   endsInMs?: number;
   /** The organiser's contest starts out published. */
   published?: boolean;
+  /** Problem B moved to a new revision after the start, changing its statement (C3). */
+  statementUpdated?: boolean;
+  /** Problem A has a newer validated revision to update the contest to (C4). */
+  updateAvailable?: boolean;
 }
+
+/** When B's statement changed, minutes before the page loads (the C3 fixture). */
+export const STATEMENT_CHANGED_MIN = 12;
 
 export function json(route: Route, status: number, body?: unknown) {
   return route.fulfill({ status, contentType: 'application/json; charset=utf-8', body: body === undefined ? '' : JSON.stringify(body) });
@@ -169,6 +176,12 @@ export async function mockApi(page: Page, options: Options = {}) {
     adminDeletes: [] as Json[],
     feedQueries: [] as string[],
     aiGate: options.aiGate ?? false,
+    publicClarifications: [] as Json[],
+    statementAt: options.statementUpdated ? now - STATEMENT_CHANGED_MIN * MIN : (null as number | null),
+    revisionQueries: [] as string[],
+    pinPuts: [] as { label: string; body: Json }[],
+    pinnedRev: { A: options.updateAvailable ? 2 : 3 } as Record<string, number>,
+    auditQueries: [] as string[],
   };
 
   state.holdReveal = options.holdReveal ?? false;
@@ -226,12 +239,14 @@ export async function mockApi(page: Page, options: Options = {}) {
             my_score: state.scores[p.label],
             max_score: p.max,
             my_submission_count: state.submissions.filter((s) => s.problem_id === p.id).length,
+            revision_id: 10 + p.id,
+            statement_updated_at: p.label === 'B' ? state.statementAt : null,
           }))
         : null,
     accepted: state.accepted,
     announcements: state.announcements,
     my_clarifications: state.clarifications,
-    public_clarifications: [],
+    public_clarifications: state.publicClarifications,
     editorial_md: phase === 'after' || phase === 'practice' ? '## A plus B\n\nUse 64-bit integers.' : null,
     second_session: options.secondSession ?? false,
     server_now: nowMs(),
@@ -388,6 +403,36 @@ export async function mockApi(page: Page, options: Options = {}) {
         const c = { id: 90 + state.asked.length, problem_label: body.problem_label, question: body.question, answer: null, public: false, created_at: nowMs(), answered_at: null };
         state.clarifications.push(c);
         return json(route, 201, { clarification: c, server_now: nowMs() });
+      }
+      const revs = path.match(/^\/api\/contests\/week-6\/problems\/([A-Z])\/revisions$/);
+      if (revs && method === 'GET') {
+        state.revisionQueries.push(url.search);
+        const at = state.statementAt;
+        if (!at) {
+          return json(route, 200, { label: revs[1], current_revision_id: 21, statement_updated_at: null, revisions: [{ revision_id: 21, rev: 1, pinned_at: startsAt - 60 * MIN, title: 'Interval covering', statement_changed: false, statement_recorded: true }], diff: null, server_now: nowMs() });
+        }
+        const fromOld = url.searchParams.get('from') === '19';
+        return json(route, 200, {
+          label: revs[1],
+          current_revision_id: 22,
+          statement_updated_at: at,
+          revisions: [
+            { revision_id: 22, rev: 3, pinned_at: at, title: 'Interval covering', statement_changed: true, statement_recorded: true },
+            { revision_id: 21, rev: 2, pinned_at: startsAt - 60 * MIN, title: 'Interval covering', statement_changed: true, statement_recorded: true },
+            { revision_id: 19, rev: 1, pinned_at: startsAt - 120 * MIN, title: 'Intervals', statement_changed: false, statement_recorded: true },
+          ],
+          diff: {
+            from_revision_id: fromOld ? 19 : 21, to_revision_id: 22, from_rev: fromOld ? 1 : 2, to_rev: 3,
+            title_from: fromOld ? 'Intervals' : 'Interval covering', title_to: 'Interval covering', coarse: false,
+            lines: [
+              { op: 'same', text: 'Cover the line with the fewest intervals.' },
+              { op: 'del', text: '1 <= n <= 1000' },
+              { op: 'add', text: '1 <= n <= 100000' },
+              { op: 'same', text: 'Intervals may touch at an end.' },
+            ],
+          },
+          server_now: nowMs(),
+        });
       }
       const prob = path.match(/^\/api\/contests\/week-6\/problems\/([A-Z])(\/(draft|run|submit|events))?$/);
       if (prob) {

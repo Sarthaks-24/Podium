@@ -4,8 +4,10 @@
   ("Board freezes in 32 min", then "Board frozen") for fixed-start contests
   with a freeze. A polite live region speaks only at 30, 10, 5 and 1
   minutes left and when time is up; the timer itself is never announced.
-  In the last 5 minutes the time turns bold (no colour, to stay calm), and
-  at zero the clock says "Time is up. Your submissions are saved." on
+  In the last 5 minutes a sentence under the time says so ("Under 5
+  minutes left. Submit what you have."), with no colour, to stay calm; the
+  mono face has one weight, so the time is never set in a faked bold (S4,
+  audit 01-8). At zero the clock says "Time is up. Your submissions are saved." on
   screen too. Props: `endsAt` (Unix ms), `freeze` (Unix ms or null),
   `onexpire` (called once when the time reaches zero) and `compact` (one
   line, for the sticky strip under 1024 px).
@@ -51,7 +53,8 @@
 
 <div class="clock" class:compact>
   <p class="label" id="clock-label">Time left</p>
-  <p class="mono time" class:late={left <= 5 * 60_000} role="timer" aria-labelledby="clock-label">{formatCountdown(left)}</p>
+  <p class="mono time" role="timer" aria-labelledby="clock-label">{formatCountdown(left)}</p>
+  {#if left > 0 && left <= 5 * 60_000}<p class="late">Under 5 minutes left. Submit what you have.</p>{/if}
   {#if left <= 0}<p class="up">Time is up. Your submissions are saved.</p>{/if}
   {#if freezeLine}<p class="freeze" class:frozen={freeze !== null && ticker.now >= freeze}>{freezeLine}</p>{/if}
   <p class="visually-hidden" aria-live="polite">{spoken}</p>
@@ -73,8 +76,15 @@
     line-height: var(--lh-tight);
   }
 
-  .time.late {
-    font-weight: 600;
+  .time {
+    font-synthesis: none;
+  }
+
+  .late {
+    padding-bottom: var(--space-1);
+    border-bottom: var(--rule) solid var(--ink);
+    font-size: var(--fs-0);
+    font-weight: 500;
   }
 
   .up {

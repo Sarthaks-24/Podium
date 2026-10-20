@@ -12,7 +12,9 @@
 // running on samples with the diff, compile error line jumps, the draft
 // coming back after a reload, the 429 message, offline retry with the same
 // idempotency key, keyboard shortcuts and integrity counts.
+import AxeBuilder from '@axe-core/playwright';
 import { expect, test } from '@playwright/test';
+import * as contests from './mocks/contests';
 import { shots, WIDTHS, THEMES, type Json, submission, mockApi, HISTORY, editorText, openWorkspace } from './mocks/workspace';
 
 for (const theme of THEMES) {
@@ -83,21 +85,22 @@ test('submitting fills the subtask strip as results stream in', async ({ page })
 
   await page.getByRole('button', { name: 'Submit', exact: true }).click();
   const panel = page.getByRole('region', { name: 'Result' });
-  await expect(panel.locator('.headline').first()).toHaveText('3rd in queue');
+  await expect(panel.locator('.headline').first()).toHaveText('Submitted, 3rd in queue');
   expect(api.submits).toHaveLength(1);
   expect(api.submits[0]).toMatchObject({ language: 'cpp17', typed_chars: 0, pasted_chars: 0 });
   expect(String(api.submits[0].client_key)).toMatch(/^[0-9a-f-]{36}$/);
 
   const id = 20;
   api.stream.push({ type: 'submission', data: submission(id, 'samples') });
-  await expect(panel.locator('.headline').first()).toHaveText('Judging', { timeout: 10_000 });
+  await expect(panel.locator('.headline').first()).toHaveText('Submitted, judging', { timeout: 10_000 });
   api.stream.push({ type: 'submission', data: submission(id, 'subtask1') });
   await expect(panel.locator('.strip .fill').first()).toHaveClass(/tone-ok/, { timeout: 10_000 });
   await page.screenshot({ path: `${shots()}workspace-judging-1440-light.png` });
   api.stream.push({ type: 'submission', data: submission(id, 'partial') });
   await expect(panel.locator('.headline').first()).toHaveText('Partial, 40 of 100', { timeout: 10_000 });
   await expect(panel.getByText('Wrong answer on test 5').first()).toBeVisible();
-  await expect(page.locator('.ws > [aria-live="polite"]').filter({ hasText: 'Score 40 of 100.' })).toHaveCount(1);
+  // X1: the app's polite announcer speaks the result as a sentence.
+  await expect(page.locator('[data-announcer="polite"]')).toHaveText('Partial score. Wrong answer on test 5. Score 40 of 100.');
   await expect(panel.locator('.strip')).toHaveAttribute('aria-label', 'Subtask 1, 40 points, passed; Subtask 2, 60 points, failed');
   await expect(panel.getByText('Check edge cases', { exact: false }).first()).toBeVisible();
   await page.screenshot({ path: `${shots()}workspace-partial-1440-light.png` });
@@ -136,12 +139,22 @@ test('running on samples shows the first difference', async ({ page }) => {
   await expect(panel.locator('.diff dd').nth(0)).toHaveText('2');
   await expect(panel.locator('.diff dd').nth(1)).toHaveText('12·');
   await expect(panel.getByText('Expected 2, found 12')).toBeVisible();
+  await expect(page.locator('[data-announcer="polite"]')).toHaveText('Passed 1 of 2 samples.');
   await page.screenshot({ path: `${shots()}workspace-run-1440-light.png` });
 
+  // D114: "Run on this input" on the failing sample fills the custom box, opens it and runs it.
+  const fromSample = panel.getByRole('button', { name: 'Run on this input' });
+  await expect(fromSample).toHaveCount(1);
+  await fromSample.click();
+  await expect(page.getByLabel('Custom input')).toHaveValue('-5 7\n');
+  await expect(page.locator('details.custom')).toHaveAttribute('open', '');
+  await expect.poll(() => api.runs.length).toBe(2);
+  expect(api.runs[1].input).toBe('-5 7\n');
+  api.runs.length = 1;
+
   // Custom input runs that input.
-  await page.locator('summary', { hasText: 'Custom input' }).click();
   await page.getByLabel('Custom input').fill('4 5\n');
-  await page.getByRole('button', { name: 'Run on this input' }).click();
+  await page.locator('.custom-body').getByRole('button', { name: 'Run on this input' }).click();
   await expect.poll(() => api.runs.length).toBe(2);
   expect(api.runs[1].input).toBe('4 5\n');
 });
@@ -201,7 +214,11 @@ test('a rate limit says how long to wait', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await openWorkspace(page);
   await page.getByRole('button', { name: 'Submit', exact: true }).click();
-  await expect(page.getByRole('alert')).toHaveText('Submissions are limited to one every 30 seconds. Try again in 12 s.');
+  // S4: pacing is a muted status line beside Submit, never a red alert.
+  await expect(page.locator('#ws-submit-status')).toHaveText('Submissions are limited to one every 30 seconds. Try again in 12 s.');
+  await expect(page.getByRole('alert')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Submit', exact: true })).toHaveAttribute('aria-describedby', 'ws-submit-status');
+  await expect(page.locator('[data-announcer="polite"]')).toHaveText('Submissions are limited to one every 30 seconds. Try again in 12 s.');
   await page.screenshot({ path: `${shots()}workspace-rate-limit-1440-light.png` });
 });
 
@@ -220,10 +237,10 @@ test('an unsent submission retries with the same key', async ({ page, context })
   await context.setOffline(false);
 
   api.submitMode = 'abort-once';
-  await page.getByRole('button', { name: 'Retry' }).click();
+  await page.getByRole('button', { name: 'Submit again' }).click();
   await expect(page.getByRole('alert')).toContainText('Not sent: the server could not be reached.');
-  await page.getByRole('button', { name: 'Retry' }).click();
-  await expect(page.locator('.headline').first()).toHaveText('3rd in queue');
+  await page.getByRole('button', { name: 'Submit again' }).click();
+  await expect(page.locator('.headline').first()).toHaveText('Submitted, 3rd in queue');
   expect(api.submits).toHaveLength(3);
   expect(new Set(api.submits.map((b) => b.client_key)).size).toBe(1);
 
@@ -305,9 +322,12 @@ test("a draft another account left on this device is never shown or saved", asyn
   await page.keyboard.type('// mine');
   await page.waitForTimeout(600);
   expect(await page.evaluate(() => Object.keys(localStorage).some((k) => k.startsWith('podium-draft:2:')))).toBe(true);
+  await page.getByRole('button', { name: 'Arjun Mehta' }).click();
   await page.getByRole('button', { name: 'Sign out' }).click();
   await expect(page).toHaveURL(/\/signin/);
   expect(await page.evaluate(() => Object.keys(localStorage).filter((k) => k.startsWith('podium-draft:')))).toEqual([]);
+  // Sign out waited for the draft save first (N2, audit 01-9).
+  expect(api.draftPuts.some((b) => String(b.source).includes('// mine'))).toBe(true);
 });
 
 test('a page whose live updates moved to another tab stops and can resume', async ({ page }) => {
@@ -365,7 +385,7 @@ test('on small screens the tabs follow the arrow keys, and Submit opens the resu
 
   // The result is still announced while another tab is showing.
   await tab('Problem').click();
-  const live = page.locator('.ws > [aria-live="polite"]').first();
+  const live = page.locator('[data-announcer="polite"]');
   await expect(live).not.toHaveText('');
   expect(await live.evaluate((el) => el.closest('[hidden]') === null)).toBe(true);
 
@@ -404,4 +424,163 @@ test('selected tabs and fills survive forced colours', async ({ page }) => {
     expect(adjust).toBe('none');
   }
   await page.screenshot({ path: `${shots()}forced-colours-result-375.png`, fullPage: true });
+});
+
+// v2 P2 inside a contest (tests/mocks/contests.ts): S4 polish, the rail's
+// status words and Rules dialog (D114), the statement diff (C3) and the
+// public answer banner (B1).
+test.describe('in a contest', () => {
+  test('the rail says where each problem stands, and the tried line shows only during the window', async ({ page }) => {
+    const api = await contests.mockApi(page, { phase: 'during' });
+    api.scores.A = 100;
+    api.scores.B = 40;
+    api.submissions.push(contests.submission(30, 11, 'done', 100), contests.submission(31, 12, 'done', 40));
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto('/contests/week-6/problems/B');
+    const rail = page.getByRole('navigation', { name: 'Problems' });
+    await expect(rail.getByRole('link', { name: /^Problem A/ })).toContainText('solved');
+    await expect(rail.getByRole('link', { name: /^Problem B/ })).toContainText('40/100');
+    await expect(rail.getByRole('link', { name: /^Problem B/ })).toContainText('tried');
+    await expect(rail.getByRole('link', { name: /^Problem C/ })).toContainText('not tried');
+    // The sentence for screen readers is unchanged.
+    await expect(rail.getByRole('link', { name: 'Problem B, Interval covering, 40 of 100 points' })).toHaveAttribute('aria-current', 'page');
+    await expect(rail.locator('.tried')).toHaveText('2 of 3 tried');
+    // The open problem is marked by a border, not only a tint.
+    const border = await rail.locator('[aria-current="page"]').evaluate((el) => getComputedStyle(el).borderInlineStartWidth);
+    expect(parseFloat(border)).toBeGreaterThanOrEqual(2);
+    // A partial score fills in the partial colour.
+    await expect(rail.getByRole('link', { name: /^Problem B/ }).locator('.fill')).toHaveClass(/part/);
+    await page.screenshot({ path: `${shots()}contest-rail-words-1440-light.png` });
+
+    await page.unrouteAll();
+    await contests.mockApi(page, { phase: 'practice' });
+    await page.goto('/contests/week-6/problems/B');
+    await expect(page.locator('.cm-content')).toBeVisible();
+    await expect(page.locator('.tried')).toHaveCount(0);
+  });
+
+  test('exam mode says submitted, never tried or solved', async ({ page }) => {
+    const api = await contests.mockApi(page, { phase: 'during', feedback: 'exam' });
+    api.submissions.push(contests.hidden(30, 11));
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto('/contests/week-6/problems/A');
+    const rail = page.getByRole('navigation', { name: 'Problems' });
+    await expect(rail.getByRole('link', { name: /^Problem A/ })).toContainText('submitted');
+    await expect(rail.getByRole('link', { name: /^Problem B/ })).toContainText('not submitted');
+    await expect(rail.locator('.tried')).toHaveText('1 of 3 submitted');
+  });
+
+  test('Rules in the rail repeats the rules from before the start', async ({ page }) => {
+    await contests.mockApi(page, { phase: 'ready' });
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto('/contests/week-6');
+    const before = await page.locator('section', { has: page.getByRole('heading', { name: 'Rules' }) }).getByRole('listitem').allTextContents();
+    expect(before.slice(1, 4)).toEqual([
+      'Run on samples tries your code on the examples in the statement. It never counts.',
+      'Submit grades your code on hidden tests, in parts called subtasks.',
+      'A later, worse submission never lowers your score.',
+    ]);
+    await page.getByRole('button', { name: 'I agree, start the contest' }).click();
+    await expect(page.locator('.cm-content')).toBeVisible();
+
+    const open = page.getByRole('navigation', { name: 'Problems' }).getByRole('button', { name: 'Rules' });
+    await open.click();
+    const dialog = page.getByRole('dialog', { name: 'Rules' });
+    await expect(dialog).toBeVisible();
+    await expect(dialog.getByRole('heading', { name: 'Rules' })).toBeFocused();
+    await expect(dialog.getByRole('listitem')).toHaveText([...before, 'Podium records how many characters you paste and when you leave the page.']);
+    const results = await new AxeBuilder({ page }).include('dialog[open]').withTags(['wcag2a', 'wcag2aa', 'wcag21aa', 'wcag22aa']).analyze();
+    expect(results.violations.filter((v) => v.impact === 'serious' || v.impact === 'critical').map((v) => v.id)).toEqual([]);
+    await page.screenshot({ path: `${shots()}contest-rules-dialog-1440-light.png` });
+    await page.keyboard.press('Escape');
+    await expect(dialog).toBeHidden();
+    await expect(open).toBeFocused();
+  });
+
+  test('a submission confirms the press, counts what is used, and keeps focus on Submit', async ({ page }) => {
+    await contests.mockApi(page, { phase: 'during' });
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto('/contests/week-6/problems/A');
+    await expect(page.locator('.cm-content')).toBeVisible();
+    const submit = page.getByRole('button', { name: 'Submit', exact: true });
+    await expect(page.locator('#ws-submit-status')).toHaveText('0 of 15 submissions used');
+    await submit.focus();
+    await page.keyboard.press('Enter');
+    const panel = page.getByRole('region', { name: 'Result' });
+    await expect(panel.locator('.headline').first()).toHaveText('Submitted, 2nd in queue');
+    await expect(page.locator('[data-announcer="polite"]')).toHaveText('Submitted. Waiting for the judge.');
+    await expect(submit).toBeFocused();
+    await expect(page.locator('#ws-submit-status')).toHaveText('1 of 15 submissions used');
+    await expect(submit.locator('svg')).toHaveCount(1);
+    await expect(page.getByRole('button', { name: 'Run on samples' }).locator('svg')).toHaveCount(1);
+  });
+
+  test('a lower score says the problem score stays', async ({ page }) => {
+    const api = await contests.mockApi(page, { phase: 'during' });
+    api.scores.B = 60;
+    api.submissions.push(contests.submission(31, 12, 'done', 40));
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto('/contests/week-6/problems/B');
+    const panel = page.getByRole('region', { name: 'Result' });
+    await expect(panel.getByText('Your score on this problem stays 60 of 100.')).toBeVisible();
+  });
+
+  test('an updated statement says so and shows what changed (C3)', async ({ page }) => {
+    const api = await contests.mockApi(page, { phase: 'during', statementUpdated: true });
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto('/contests/week-6/problems/B');
+    const notice = page.locator('.statement-notice');
+    await expect(notice).toContainText(/^Statement updated \d{2}:\d{2}\. See what changed/);
+    await notice.getByRole('button', { name: 'See what changed' }).click();
+    const dialog = page.getByRole('dialog', { name: 'What changed in problem B' });
+    await expect(dialog).toContainText('Revision 3 against revision 2. 1 line added and 1 removed.');
+    await expect(dialog.locator('.line.del')).toContainText('Removed: 1 <= n <= 1000');
+    await expect(dialog.locator('.line.add')).toContainText('Added: 1 <= n <= 100000');
+    await page.screenshot({ path: `${shots()}contest-statement-diff-1440-light.png` });
+    await dialog.getByLabel('Compare with').selectOption('19');
+    await expect(dialog).toContainText('The title changed from "Intervals" to "Interval covering".');
+    expect(api.revisionQueries.at(-1)).toBe('?from=19&to=22');
+    await page.keyboard.press('Escape');
+    await expect(dialog).toBeHidden();
+    await notice.getByRole('button', { name: 'Dismiss' }).click();
+    await expect(notice).toHaveCount(0);
+    // On another problem the line names the problem.
+    await page.reload();
+    await expect(page.locator('.statement-notice')).toHaveCount(0);
+  });
+
+  test('a statement event reloads the statement and announces it', async ({ page }) => {
+    const api = await contests.mockApi(page, { phase: 'during' });
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto('/contests/week-6/problems/A');
+    await expect(page.locator('.cm-content')).toBeVisible();
+    api.statementAt = Date.now();
+    api.stream.push({ type: 'statement', data: { contest: 'week-6', contest_id: 4, label: 'B', revision_id: 22, statement_changed: true, pinned_at: Date.now() } });
+    await expect(page.locator('.statement-notice')).toContainText(/^Problem B: statement updated \d{2}:\d{2}\./, { timeout: 10_000 });
+    await expect(page.locator('[data-announcer="polite"]')).toContainText('The statement of problem B was updated.');
+  });
+
+  test('an answer for everyone reaches every student as a banner (B1)', async ({ page }) => {
+    const api = await contests.mockApi(page, { phase: 'during' });
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto('/contests/week-6/problems/A');
+    await expect(page.locator('.cm-content')).toBeVisible();
+    api.publicClarifications.push({ id: 50, problem_label: null, question: 'Is Java allowed?', answer: 'Yes, Java 21.', public: true, created_at: Date.now() - 60_000, answered_at: Date.now() + 1000 });
+    api.stream.push({ type: 'clarification', data: { contest: 'week-6', contest_id: 4, id: 50 } });
+    const banner = page.locator('.banner-slot .strip');
+    await expect(banner).toContainText('An organiser answered a question for everyone', { timeout: 10_000 });
+    await expect(banner).toContainText('Is Java allowed?');
+    await expect(banner).toContainText('Yes, Java 21.');
+    await expect(page.locator('[data-announcer="polite"]')).toContainText('An organiser answered a question for everyone: Is Java allowed? Yes, Java 21.');
+    await expect(page.getByRole('button', { name: /Messages/ })).toContainText('1');
+    await page.screenshot({ path: `${shots()}contest-public-answer-1440-light.png` });
+  });
+
+  test('the five-minute line is a sentence, not a bold', async ({ page }) => {
+    await contests.mockApi(page, { phase: 'during', endsInMs: 4 * 60_000 });
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto('/contests/week-6/problems/A');
+    await expect(page.getByText('Under 5 minutes left. Submit what you have.')).toBeVisible();
+    expect(await page.locator('.clock .time').evaluate((el) => getComputedStyle(el).fontWeight)).toBe('400');
+  });
 });

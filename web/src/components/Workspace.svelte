@@ -18,10 +18,18 @@
     the signed-in user's own key; on load the newer of the two wins
     (lib/drafts.ts). An empty draft starts from
     the language's starter with fast input (lib/starters.ts).
-  - Submit sends an idempotency key made per press and reused by Retry, so
-    a retry after a lost answer never counts twice. Offline or unreachable
-    requests say "Not sent" with a Retry button. A 429 shows the server's
-    sentence with the wait in seconds.
+  - Submit sends an idempotency key made per press and reused by "Submit
+    again", so a retry after a lost answer never counts twice. Offline or
+    unreachable requests say "Not sent" with "Submit again" or "Run again".
+    Pacing refusals (the client gap and the server's 429s) are a muted
+    status line beside Submit, never a red alert (S4, audit 01-3); so is
+    "3 of 15 submissions used" in a contest. While a submit is on its way
+    the button reads "Submitting" and is aria-disabled, so focus stays.
+  - A waiting submission reads "Submitted, 3rd in queue"; one that scored
+    less than the problem already has adds "Your score on this problem
+    stays 60 of 100" (lib/workspace.ts). A failing sample offers "Run on
+    this input" (D114), which fills the custom input box, opens it and runs
+    it. Run and Submit carry the play and send icons.
   - Results stream over GET /api/events (lib/stream.ts): reconnects with
     jitter, falls back to polling every 15 s after three failures, and
     refetches own submissions after every reconnect; when another tab takes
@@ -30,8 +38,11 @@
   - Integrity counts (lib/integrity.ts): typed and pasted characters from
     the editor, window blur and focus, sent in batches; never in the way of
     a submit.
-  - Ctrl+Enter submits and Ctrl+' runs on samples (Cmd on a Mac); a live
-    region announces each result as a sentence.
+  - Ctrl+Enter submits and Ctrl+' runs on samples (Cmd on a Mac); the
+    app's announcer (lib/announce.svelte.ts) speaks each submission and run
+    result as a sentence, compile errors included. The key hint is left out
+    on touch-only screens. Sign out waits for the draft save
+    (beforeSignOut).
 
   Props: `base` (the API base, such as "/api/workspace/12"), `backHref` and
   `backLabel` (the link above the title), `note` (one line in the clock
@@ -45,7 +56,12 @@
   `feedback` ("exam" shows only "Submitted" for each submission),
   `showScores` (exam mode after the end: scores are shown), `locked` (a
   sentence; Run and Submit are off and it says why, unless the workspace's
-  own `refusal` from the server says it better), and `extraEvents` with
+  own `refusal` from the server says it better), `problemScore` ({ score,
+  max } of the problem so far, for "your score stays"), `used` ({ count,
+  max } submissions, for "3 of 15 submissions used"), `statementKey` (a
+  number the contest page raises when an organiser moved this problem to
+  another revision: the statement, title, limits and samples reload, the
+  editor is left alone), and `extraEvents` with
   `onevent` (further event names to listen for on the same stream; every
   event, submissions included, is passed to `onevent`).
 -->
@@ -68,11 +84,12 @@
     writeEditorPrefs,
     writeMirror,
   } from '../lib/drafts';
+  import { polite } from '../lib/announce.svelte';
   import { keepHeadingFocus } from '../lib/focus';
   import { setTitle } from '../lib/head';
   import { shell } from '../lib/shell.svelte';
   import { FLUSH_MS, IntegrityRecorder } from '../lib/integrity';
-  import { session } from '../lib/session.svelte';
+  import { beforeSignOut, session } from '../lib/session.svelte';
   import { isStarterOrEmpty, starter } from '../lib/starters';
   import { EventStream, type StreamMode } from '../lib/stream';
   import { mergeRun, mergeSubmission, mergeSubmissions, reduceEvent, type JudgingState, type StreamEvent } from '../lib/submissionState';
@@ -86,6 +103,8 @@
     languageLabel,
     limitsText,
     newKey,
+    runAnnouncement,
+    usedText,
     workspacePaths,
     type Language,
     type Run,
@@ -93,6 +112,7 @@
     type Workspace,
   } from '../lib/workspace';
   import CodeEditor from './CodeEditor.svelte';
+  import Icon from './Icon.svelte';
   import RunResults from './RunResults.svelte';
   import Statement from './Statement.svelte';
   import StreamNotice from './StreamNotice.svelte';
@@ -112,6 +132,9 @@
     feedback?: 'subtask' | 'exam';
     showScores?: boolean;
     locked?: string;
+    problemScore?: { score: number | null; max: number } | null;
+    used?: { count: number; max: number } | null;
+    statementKey?: number;
     extraEvents?: readonly string[];
     onevent?: (type: string, data: unknown) => void;
   }
@@ -129,6 +152,9 @@
     feedback = 'subtask',
     showScores = false,
     locked = '',
+    problemScore = null,
+    used = null,
+    statementKey = 0,
     extraEvents = [],
     onevent,
   }: Props = $props();
@@ -165,12 +191,14 @@
   let judging = $state.raw<JudgingState>({ submissions: [], run: null, serverNow: null });
   let view = $state<'submission' | 'run'>('submission');
   let watchId = $state<number | null>(null);
-  let announced = $state('');
+  let announced = '';
+  let announcedRun = '';
   let submitBusy = $state(false);
   let runBusy = $state(false);
   let pendingKey: string | null = null;
   let pendingRun: { language: Language; source: string; input?: string } | null = null;
-  let notice = $state<{ action: 'submit' | 'run'; text: string; retry: boolean } | null>(null);
+  /** A refusal or failure: "pace" is a normal pacing rule (a muted status line), "error" a real failure. */
+  let notice = $state<{ action: 'submit' | 'run'; text: string; retry: boolean; kind: 'pace' | 'error' } | null>(null);
   let waitUntil = $state(0);
   let nowTick = $state(Date.now());
   let streamMode = $state<StreamMode>('connecting');
@@ -200,6 +228,19 @@
   );
   const best = $derived(bestScore(judging.submissions));
   const waitLeft = $derived(Math.max(0, Math.ceil((waitUntil - nowTick) / 1000)));
+  // The contest counts submissions as they are made; judge failures do not count (docs/API.md).
+  const usedNow = $derived(
+    used ? { count: Math.max(used.count, judging.submissions.filter((x) => x.state !== 'error').length), max: used.max } : null,
+  );
+  const paceText = $derived(notice?.kind === 'pace' ? notice.text : waitLeft > 0 ? `You can submit again in ${waitLeft} s.` : '');
+  // A pacing refusal is said once, politely; the line itself only counts down.
+  $effect(() => {
+    if (notice?.kind === 'pace') polite(notice.text);
+  });
+  // A wait that ran out takes its refusal with it.
+  $effect(() => {
+    if (notice?.kind === 'pace' && waitUntil > 0 && waitLeft === 0) notice = null;
+  });
   const editorLabel = $derived(`Code for ${ws?.title ?? 'this problem'}, ${languageLabel(language)}`);
   const sampleFailure = $derived(
     current && current.state === 'done' ? (firstFailure(current)?.sample ?? false) : false,
@@ -366,8 +407,43 @@
     if (!s) return;
     // In exam mode only the submit itself is announced.
     const text = exam || s.hidden ? 'Submitted.' : announcement(s);
-    if (text !== announced) announced = text;
+    // Keyed by submission, so a second "Submitted." is spoken too.
+    if (`${s.id}:${text}` !== announced) {
+      announced = `${s.id}:${text}`;
+      polite(text);
+    }
   });
+
+  // Announces the latest run as it starts and finishes (X1), compile errors included.
+  $effect(() => {
+    const r = judging.run;
+    if (!r) return;
+    const text = runAnnouncement(r);
+    if (text !== '' && `${r.id}:${text}` !== announcedRun) {
+      announcedRun = `${r.id}:${text}`;
+      polite(text);
+    }
+  });
+
+  // A new pinned revision (C3): reload what the student reads, never the editor.
+  let seenStatementKey: number | null = null;
+  $effect(() => {
+    const key = statementKey;
+    const first = seenStatementKey === null;
+    if (key === seenStatementKey) return;
+    seenStatementKey = key;
+    if (!first) void reloadStatement();
+  });
+
+  async function reloadStatement() {
+    try {
+      const data = await timed(() => getJSON<Workspace>(paths.load));
+      if (!alive || !ws) return;
+      ws = { ...ws, title: data.title, statement_md: data.statement_md, samples: data.samples, time_limit_ms: data.time_limit_ms, memory_limit_mb: data.memory_limit_mb };
+    } catch (e) {
+      handleSessionError(e);
+    }
+  }
 
   // Draft saving.
   let mirrorTimer: ReturnType<typeof setTimeout> | undefined;
@@ -478,7 +554,7 @@
   async function submit(retryKey?: string) {
     if (submitBusy || loadState !== 'ready' || lockText !== '') return;
     if (waitLeft > 0 && retryKey === undefined) {
-      notice = { action: 'submit', text: `Wait ${waitLeft} s before submitting again.`, retry: false };
+      notice = { action: 'submit', text: `You can submit again in ${waitLeft} s.`, retry: false, kind: 'pace' };
       return;
     }
     const key = retryKey ?? newKey();
@@ -502,14 +578,15 @@
     } catch (e) {
       if (handleSessionError(e)) return;
       if (e instanceof ApiError && e.code === 'network') {
-        notice = { action: 'submit', text: offlineText(), retry: true };
+        notice = { action: 'submit', text: offlineText(), retry: true, kind: 'error' };
       } else {
         pendingKey = null;
-        if (e instanceof ApiError && e.status === 429 && e.retryAfter !== null) {
+        const pace = e instanceof ApiError && e.status === 429;
+        if (pace && e.retryAfter !== null) {
           waitUntil = Date.now() + e.retryAfter * 1000;
           nowTick = Date.now();
         }
-        notice = { action: 'submit', text: messageOf(e), retry: false };
+        notice = { action: 'submit', text: messageOf(e), retry: false, kind: pace ? 'pace' : 'error' };
       }
       await revealResult();
     } finally {
@@ -532,10 +609,10 @@
     } catch (e) {
       if (handleSessionError(e)) return;
       if (e instanceof ApiError && e.code === 'network') {
-        notice = { action: 'run', text: offlineText(), retry: true };
+        notice = { action: 'run', text: offlineText(), retry: true, kind: 'error' };
       } else {
         pendingRun = null;
-        notice = { action: 'run', text: messageOf(e), retry: false };
+        notice = { action: 'run', text: messageOf(e), retry: false, kind: e instanceof ApiError && e.status === 429 ? 'pace' : 'error' };
       }
       await revealResult();
     } finally {
@@ -549,6 +626,15 @@
 
   function runCustom() {
     void startRun({ language, source, input: customInput });
+  }
+
+  /** "Run on this input" on a failing sample: the input goes in the custom box, which opens and runs it. */
+  async function runOnInput(input: string) {
+    customInput = input;
+    customOpen = true;
+    if (layout !== 'wide') tab = 'code';
+    await tick();
+    runCustom();
   }
 
   function retry() {
@@ -638,8 +724,10 @@
     }, 1000);
 
     load();
+    const forgetSave = beforeSignOut(saveDraft);
 
     return () => {
+      forgetSave();
       alive = false;
       wide.removeEventListener('change', place);
       tablet.removeEventListener('change', place);
@@ -673,7 +761,6 @@
   </div>
 {:else}
   <div class="ws" data-layout={layout}>
-    <p class="visually-hidden" aria-live="polite">{announced}</p>
     <p class="visually-hidden" aria-live="polite">{saveState === 'failed' ? 'Draft not saved to the server. A copy is kept on this device.' : ''}</p>
     {#if layout === 'wide'}
       <aside class="rail" aria-label="Problem">
@@ -687,7 +774,11 @@
             <span class="rail-title">{ws.title}</span>
             <span class="mono rail-score">{best ? `${best.score} of ${best.max}` : 'Not submitted'}</span>
             <span class="bar" aria-hidden="true">
-              <span class="bar-fill" style:width="{best && best.max > 0 ? Math.round((best.score / best.max) * 100) : 0}%"></span>
+              <span
+                class="bar-fill"
+                class:part={best !== null && best.score > 0 && best.score < best.max}
+                style:width="{best && best.max > 0 ? Math.round((best.score / best.max) * 100) : 0}%"
+              ></span>
             </span>
           </div>
         {/if}
@@ -770,18 +861,27 @@
             <button
               type="button"
               class="btn btn-secondary"
-              disabled={runBusy || lockText !== ''}
+              disabled={lockText !== ''}
+              aria-disabled={runBusy ? 'true' : undefined}
               aria-describedby={lockText ? 'ws-locked' : undefined}
-              onclick={runSamples}>Run on samples</button
+              onclick={runSamples}><Icon name="play" />Run on samples</button
             >
             <button
               type="button"
               class="btn btn-primary"
-              disabled={submitBusy || lockText !== ''}
-              aria-describedby={lockText ? 'ws-locked' : undefined}
-              onclick={() => submit()}>Submit</button
+              disabled={lockText !== ''}
+              aria-disabled={submitBusy ? 'true' : undefined}
+              aria-describedby={lockText ? 'ws-locked' : paceText || usedNow ? 'ws-submit-status' : undefined}
+              onclick={() => submit()}><Icon name="send" />{submitBusy ? 'Submitting' : 'Submit'}</button
             >
           </div>
+          <!-- Pacing and the submission count: muted, beside Submit, never an alert (S4). The announcer speaks the pacing line. -->
+          {#if paceText || (usedNow && !lockText)}
+            <p class="submit-status" id="ws-submit-status">
+              {#if paceText}<span>{paceText}</span>{/if}
+              {#if usedNow && !lockText}<span class="used">{usedText(usedNow.count, usedNow.max)}</span>{/if}
+            </p>
+          {/if}
         </div>
         {#if lockText}<p class="locked" id="ws-locked">{lockText}</p>{/if}
 
@@ -819,7 +919,9 @@
                 bind:this={customField}
                 bind:value={customInput}
               ></textarea>
-              <button type="button" class="btn btn-secondary btn-compact" disabled={runBusy || lockText !== ''} onclick={runCustom}>Run on this input</button>
+              <button type="button" class="btn btn-secondary btn-compact" disabled={lockText !== ''} aria-disabled={runBusy ? 'true' : undefined} onclick={runCustom}>
+                <Icon name="play" />Run on this input
+              </button>
             </div>
           </details>
           <p class="save" class:failed={saveState === 'failed'}>
@@ -841,23 +943,20 @@
         aria-labelledby={layout === 'phone' ? 'ws-tab-result' : undefined}
         aria-label={layout === 'phone' ? undefined : 'Result'}
       >
-        {#if notice}
+        {#if notice && notice.kind === 'error'}
           <div class="banner banner-error notice" role="alert">
             <p>{notice.text}</p>
             {#if notice.retry}
-              <button type="button" class="btn btn-secondary btn-compact" onclick={retry}>Retry</button>
+              <button type="button" class="btn btn-secondary btn-compact" onclick={retry}>{notice.action === 'submit' ? 'Submit again' : 'Run again'}</button>
             {/if}
           </div>
-        {/if}
-        {#if waitLeft > 0 && !notice}
-          <p class="muted small">You can submit again in {waitLeft} s.</p>
         {/if}
         <StreamNotice mode={streamMode} onresume={() => stream?.resume()} />
 
         {#if view === 'run' && judging.run}
           <div class="block">
             <h2 class="block-title">{judging.run.results.some((r) => r.label === 'Custom input') ? 'Run on your input' : 'Run on samples'}</h2>
-            <RunResults run={judging.run} {language} onjump={jump} />
+            <RunResults run={judging.run} {language} onjump={jump} samples={ws.samples} onruninput={lockText ? undefined : runOnInput} />
             {#if current}
               <button type="button" class="btn btn-quiet btn-compact switch" onclick={() => (view = 'submission')}>Show the latest submission</button>
             {/if}
@@ -875,7 +974,7 @@
         {:else if current}
           <div class="block">
             <h2 class="block-title">Latest submission</h2>
-            <VerdictPanel submission={current} onjump={jump} idPrefix="current" />
+            <VerdictPanel submission={current} onjump={jump} idPrefix="current" {problemScore} />
             {#if sampleFailure}
               <button type="button" class="btn btn-secondary btn-compact" disabled={runBusy || lockText !== ''} onclick={runSamples}>Run on samples</button>
             {/if}
@@ -1097,6 +1196,27 @@
     font-size: var(--fs-0);
   }
 
+  /* Touch screens have no Ctrl+Enter: the key hint would only mislead (audit 07-14). */
+  @media (hover: none) and (pointer: coarse) {
+    .hint {
+      display: none;
+    }
+  }
+
+  .submit-status {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 0 var(--space-3);
+    color: var(--ink-muted);
+    font-size: var(--fs-0);
+    text-align: right;
+  }
+
+  .toolbar .submit-status {
+    flex-basis: 100%;
+  }
+
   .link-button {
     padding: 0;
     border: 0;
@@ -1228,6 +1348,11 @@
     display: block;
     height: 100%;
     background: var(--ok);
+  }
+
+  /* A partial score fills in the partial colour, as standings cells do (audit 01-15). */
+  .bar-fill.part {
+    background: var(--part);
   }
 
   /* Forced colours drop backgrounds: the rail bar keeps its track and fill. */

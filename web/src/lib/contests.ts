@@ -15,6 +15,7 @@
  * replies the console offers.
  */
 import { countOf, formatDateTime } from './format';
+import type { PinChange, ProblemPin, StatementStamp } from './history';
 import { LANGUAGES, type Language } from './problems';
 
 export type ContestState = 'upcoming' | 'live' | 'frozen' | 'ended' | 'practice';
@@ -92,6 +93,31 @@ export interface Clarification {
   asker_name?: string;
 }
 
+/**
+ * The rail's score cell in the wide layout (D114, design.md 8): the score
+ * where one exists, with the status word under it; the word alone where
+ * there is no score. "not tried", "tried" (submitted, not full marks),
+ * "solved" (full marks); in exam mode, until scores are out, "not
+ * submitted" and "submitted".
+ */
+export function railStatus(p: Pick<ContestProblem, 'my_score' | 'max_score' | 'my_submission_count'>, exam: boolean): { score: string; word: string } {
+  const count = p.my_submission_count ?? 0;
+  if (p.my_score === null) {
+    if (exam) return { score: '', word: count > 0 ? 'submitted' : 'not submitted' };
+    return { score: '', word: count > 0 ? 'tried' : 'not tried' };
+  }
+  const score = `${p.my_score}/${p.max_score}`;
+  if (p.max_score > 0 && p.my_score >= p.max_score) return { score, word: 'solved' };
+  return { score, word: count > 0 || p.my_score > 0 ? 'tried' : 'not tried' };
+}
+
+/** "2 of 5 tried" under the rail during the window ("submitted" in exam mode, D114). */
+export function triedLine(problems: readonly Pick<ContestProblem, 'my_score' | 'my_submission_count'>[], exam: boolean): string {
+  if (problems.length === 0) return '';
+  const n = problems.filter((p) => (p.my_submission_count ?? 0) > 0 || (p.my_score ?? 0) > 0).length;
+  return `${n} of ${problems.length} ${exam ? 'submitted' : 'tried'}`;
+}
+
 /** Who asked, for the organiser inbox. */
 export function askerName(c: Pick<Clarification, 'asked_by' | 'asker_name'>): string {
   if (c.asked_by && typeof c.asked_by === 'object') return c.asked_by.name || c.asked_by.email || 'A student';
@@ -105,7 +131,7 @@ export interface Contest extends ContestSummary {
   rules: ContestRules;
   honour_text: string;
   /** Only once the student's window started or ended. */
-  problems: ContestProblem[] | null;
+  problems: (ContestProblem & StatementStamp)[] | null;
   announcements: Announcement[];
   my_clarifications: Clarification[];
   public_clarifications: Clarification[];
@@ -121,17 +147,24 @@ export interface Contest extends ContestSummary {
 /** A message shown in the banner above the workspace. */
 export interface BannerItem {
   key: string;
-  kind: 'announcement' | 'answer';
+  /** "public" is an answer an organiser gave everyone (B1). */
+  kind: 'announcement' | 'answer' | 'public';
   body: string;
   question?: string;
   at: number;
 }
 
 /**
- * The banner queue: announcements and answered own questions not yet
- * dismissed, newest first. Keys are "a<id>" and "c<id>".
+ * The banner queue: announcements, answered own questions and answers an
+ * organiser made public for everyone (B1, audit 01-2) not yet dismissed,
+ * newest first. Keys are "a<id>" and "c<id>"; a public answer to the
+ * student's own question shows once, as their own.
  */
-export function bannerItems(c: Pick<Contest, 'announcements' | 'my_clarifications'>, dismissed: ReadonlySet<string>, since: number): BannerItem[] {
+export function bannerItems(
+  c: Pick<Contest, 'announcements' | 'my_clarifications'> & { public_clarifications?: Clarification[] },
+  dismissed: ReadonlySet<string>,
+  since: number,
+): BannerItem[] {
   const items: BannerItem[] = [];
   for (const a of c.announcements ?? []) {
     if (a.created_at >= since && !dismissed.has(`a${a.id}`)) items.push({ key: `a${a.id}`, kind: 'announcement', body: a.body_md, at: a.created_at });
@@ -140,11 +173,24 @@ export function bannerItems(c: Pick<Contest, 'announcements' | 'my_clarification
     const at = q.answered_at ?? 0;
     if (q.answer && at >= since && !dismissed.has(`c${q.id}`)) items.push({ key: `c${q.id}`, kind: 'answer', body: q.answer, question: q.question, at });
   }
+  const own = new Set((c.my_clarifications ?? []).map((q) => q.id));
+  for (const q of c.public_clarifications ?? []) {
+    const at = q.answered_at ?? 0;
+    if (!q.answer || own.has(q.id) || at < since || dismissed.has(`c${q.id}`)) continue;
+    items.push({ key: `c${q.id}`, kind: 'public', body: q.answer, question: q.question, at });
+  }
   return items.sort((x, y) => y.at - x.at);
 }
 
+/** The lead of a banner item. */
+export function bannerLead(kind: BannerItem['kind']): string {
+  if (kind === 'announcement') return 'Announcement';
+  if (kind === 'public') return 'An organiser answered a question for everyone';
+  return 'An organiser answered your question';
+}
+
 /** The SSE events a contest page listens for, besides submissions. */
-export const CONTEST_EVENTS = ['standings', 'announcement', 'clarification', 'contest'] as const;
+export const CONTEST_EVENTS = ['standings', 'announcement', 'clarification', 'contest', 'statement'] as const;
 
 /** True when an event's `contest` field names this contest (or names none). */
 export function isForContest(data: unknown, c: { id?: number; slug: string }): boolean {
@@ -283,6 +329,17 @@ export function listCountdown(c: ContestSummary, now: number): { lead: string; m
   return null;
 }
 
+/**
+ * The line under the title before a student starts: a countdown before the
+ * start, or, for a late arrival in a fixed-start contest, that their time
+ * is already running (audit 01-17). `ms` is the countdown in the line.
+ */
+export function startLine(c: Pick<Contest, 'start_mode' | 'starts_at' | 'ends_at'>, now: number): { kind: 'before' | 'window' | 'late'; ms: number } {
+  if (now < c.starts_at) return { kind: 'before', ms: c.starts_at - now };
+  if (c.start_mode === 'window') return { kind: 'window', ms: c.ends_at - now };
+  return { kind: 'late', ms: c.ends_at - now };
+}
+
 /** Minutes left at which the clock is announced, largest first. */
 export const MILESTONES_MIN = [30, 10, 5, 1] as const;
 
@@ -319,7 +376,17 @@ export function allowedLanguages(ids: readonly string[] | undefined): { id: Lang
   return LANGUAGES.filter((l) => ids.includes(l.id));
 }
 
-/** The rules paragraph shown before the start. */
+/** The three sentences that teach the two buttons (v2 S3, audit 01-4). True in both scoring modes. */
+export const WORKSPACE_SENTENCES: readonly string[] = [
+  'Run on samples tries your code on the examples in the statement. It never counts.',
+  'Submit grades your code on hidden tests, in parts called subtasks.',
+  'A later, worse submission never lowers your score.',
+];
+
+/** The line the workspace Rules dialog adds to the rules (D114, what D47 records). */
+export const RECORDED_SENTENCE = 'Podium records how many characters you paste and when you leave the page.';
+
+/** The rules shown before the start, and again in the workspace Rules dialog. */
 export function rulesSentences(c: Pick<Contest, 'start_mode' | 'duration_minutes' | 'starts_at' | 'ends_at' | 'rules'>): string[] {
   const r = c.rules;
   const out: string[] = [];
@@ -328,6 +395,7 @@ export function rulesSentences(c: Pick<Contest, 'start_mode' | 'duration_minutes
   } else {
     out.push(`Everyone starts together and has ${lengthText(c)}.`);
   }
+  out.push(...WORKSPACE_SENTENCES);
   out.push(
     r.scoring_mode === 'best_submission'
       ? 'Each problem scores your best single submission.'
@@ -388,8 +456,8 @@ export function problemCount(c: Pick<AdminContestSummary, 'problem_count' | 'pro
   return c.problem_count ?? c.problems?.length ?? 0;
 }
 
-/** A problem in the organiser's view; ready is false when it changed since it was added. */
-export interface AdminContestProblem {
+/** A problem in the organiser's view; ready is false when it changed since it was added. The pin fields are C4 (v1.2.0). */
+export interface AdminContestProblem extends Partial<Omit<ProblemPin, 'label' | 'problem_id'>> {
   label: string;
   problem_id: number;
   title: string;
@@ -462,6 +530,8 @@ export interface AdminContest extends ContestSettings {
   /** ends_at plus the contest-wide extension. */
   close_at?: number;
   default_honour_text?: string;
+  /** Every pin change, newest first (C4, v1.2.0). */
+  pin_history?: PinChange[];
   server_now?: number;
 }
 

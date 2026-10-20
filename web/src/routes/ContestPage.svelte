@@ -5,9 +5,14 @@
   clock (lib/contests.ts studentPhase):
 
   - Before the start, and before they agree: the description, the rules as
-    sentences, the honour code (what is recorded and for how long, D47) and
-    "I agree, start the contest" (POST /api/contests/{slug}/start), with a
-    countdown. The button waits for the start in a fixed-start contest.
+    sentences (with the three that teach Run and Submit, S3), "How the
+    workspace works" with the real VerdictPanel (and its SubtaskStrip) on a fixed
+    example (closed once the student has started a contest on this device),
+    the honour code (what is recorded and for how long, D47) and "I agree,
+    start the contest" (POST /api/contests/{slug}/start), with a countdown.
+    The button waits for the start in a fixed-start contest; when the start
+    arrives the announcer says so. A late arrival reads that their time is
+    already running.
   - During their window: the shared Workspace on the contest's routes with
     the rail of problem letters (score and 2 px bar), the contest clock and
     freeze line, the Standings link and Messages. Exam contests show only
@@ -15,7 +20,12 @@
     event stream show in a quiet banner above the title (from 1024 px the
     editor never moves); a second open tab or a second session reported
     by the server shows a notice there too. Exam mode marks submitted
-    problems "Submitted" on the rail. "[" and "]" open the previous and
+    problems "submitted" on the rail. "Rules" in the rail opens the same
+    rules (D114). When an organiser moves a problem to a new revision
+    (statement_updated_at, or the `statement` event), a line says
+    "Statement updated 14:32. See what changed", which opens the line diff
+    (StatementDiff, contract C3), and the open problem's statement reloads.
+    A frozen contest reads "Live" to students (D84). "[" and "]" open the previous and
     next problem when focus is not in a text field (lib/shortcuts.ts).
   - After it: the result, each problem's score with the student's own
     submissions, the editorial once published, and practice when the
@@ -31,6 +41,9 @@
   import PageHeader from '../components/PageHeader.svelte';
   import { onDestroy, onMount, untrack } from 'svelte';
   import ContestBanner from '../components/ContestBanner.svelte';
+  import RulesDialog from '../components/RulesDialog.svelte';
+  import StatementDiff from '../components/StatementDiff.svelte';
+  import VerdictPanel from '../components/VerdictPanel.svelte';
   import ContestClock from '../components/ContestClock.svelte';
   import Markdown from '../components/Markdown.svelte';
   import MessagesDialog from '../components/MessagesDialog.svelte';
@@ -50,12 +63,16 @@
     isForContest,
     lengthText,
     rulesSentences,
-    stateWord,
+    startLine,
     studentPhase,
+    studentState,
+    studentStateWord,
     type Clarification,
     type Contest,
   } from '../lib/contests';
+  import { polite } from '../lib/announce.svelte';
   import { keepHeadingFocus } from '../lib/focus';
+  import { statementBannerKey, statementUpdatedText, type StatementEvent } from '../lib/history';
   import { formatDateTime } from '../lib/format';
   import { setTitle } from '../lib/head';
   import { routeTitle } from '../lib/routing';
@@ -66,7 +83,7 @@
   import { placeSentence, type Standings } from '../lib/standings';
   import { EventStream, type StreamMode } from '../lib/stream';
   import { refreshTicker, ticker, useTicker } from '../lib/ticker.svelte';
-  import type { Submission, Workspace as WorkspaceData } from '../lib/workspace';
+  import { EXAMPLE_SUBMISSION, type Submission, type Workspace as WorkspaceData } from '../lib/workspace';
 
   let { slug, label = '' }: { slug: string; label?: string } = $props();
 
@@ -83,6 +100,11 @@
   let sessionNoticeHidden = $state(false);
   let streamMode = $state<StreamMode>('connecting');
   let timeUp = $state(false);
+  let rulesOpen = $state(false);
+  let diffLabel = $state<string | null>(null);
+  /** Raised when the open problem moved to a new revision, so its statement reloads. */
+  let statementKey = $state(0);
+  let workspaceSeen = $state(false);
 
   // After the end: the student's place and their submissions per problem.
   let standings = $state.raw<Standings | null>(null);
@@ -102,6 +124,20 @@
   const totalScore = $derived(problems.reduce((n, p) => n + (p.my_score ?? 0), 0));
   const totalMax = $derived(problems.reduce((n, p) => n + p.max_score, 0));
   const secondSession = $derived(!sessionNoticeHidden && (otherTab || contest?.second_session === true));
+  // The newest statement change after the start that the student has not dismissed (C3).
+  const statementNotice = $derived.by(() => {
+    let best: { label: string; at: number } | null = null;
+    for (const p of problems) {
+      const at = p.statement_updated_at;
+      if (typeof at !== 'number' || dismissed.has(statementBannerKey(p.label, at))) continue;
+      if (!best || at > best.at || (at === best.at && p.label === current)) best = { label: p.label, at };
+    }
+    return best;
+  });
+  const startNow = $derived(contest ? startLine(contest, ticker.now) : { kind: 'before' as const, ms: 0 });
+  const used = $derived(
+    contest && currentProblem && phase === 'during' ? { count: currentProblem.my_submission_count ?? 0, max: contest.rules.max_per_problem } : null,
+  );
 
   $effect(() => {
     shell.workspace = showWorkspace;
@@ -193,6 +229,13 @@
       return;
     }
     if (!isForContest(data, contest)) return;
+    if (type === 'statement') {
+      const ev = data as Partial<StatementEvent>;
+      if (ev.label === current) statementKey++;
+      if (ev.statement_changed) polite(`The statement of problem ${ev.label} was updated. See what changed is above the problem.`);
+      refetchSoon(0);
+      return;
+    }
     if (type === 'announcement' || type === 'clarification' || type === 'contest') refetchSoon(type === 'contest' ? 0 : 400);
   }
 
@@ -206,6 +249,7 @@
         serverClock.observe(data.server_now, sent, Date.now());
         refreshTicker();
         contest = { ...data, accepted: data.accepted ?? true };
+        markWorkspaceSeen();
       } else {
         await load(true);
       }
@@ -230,6 +274,8 @@
     if (lastPhase !== null && lastPhase !== p) untrack(() => refetchSoon(0));
     // The clock ran out on this page: say so on the page that replaces the workspace.
     if (lastPhase === 'during' && p === 'after') timeUp = true;
+    // The start arrived while the student waited on this page (audit 01-16).
+    if (lastPhase === 'upcoming' && p === 'ready') polite('The contest has started. You can start now.');
     lastPhase = p;
   });
 
@@ -298,11 +344,29 @@
     navigate(`/contests/${encodeURIComponent(slug)}/problems/${encodeURIComponent(next)}`);
   }
 
+  // "How the workspace works" stays open until the student first starts a contest on this device.
+  function seenKey(): string {
+    return `podium-workspace-seen:${session.user?.id ?? 0}`;
+  }
+
+  function markWorkspaceSeen() {
+    try {
+      localStorage.setItem(seenKey(), '1');
+    } catch {
+      // Shown open again next time; nothing else depends on it.
+    }
+  }
+
   // A second tab with this contest open on this device.
   let channel: BroadcastChannel | null = null;
 
   onMount(() => {
     dismissed = readDismissed();
+    try {
+      workspaceSeen = localStorage.getItem(seenKey()) === '1';
+    } catch {
+      workspaceSeen = false;
+    }
     // Load the Markdown renderer now, so the rules never flash as raw text.
     import('../lib/markdown').catch(() => undefined);
     void load();
@@ -358,12 +422,32 @@
     </div>
   {/if}
   {#if phase === 'during'}
+    {#if statementNotice}
+      {@const n = statementNotice}
+      <div class="banner banner-info statement-notice">
+        <p>
+          {n.label === current ? statementUpdatedText(n.at) : `Problem ${n.label}: s${statementUpdatedText(n.at).slice(1)}`}
+          <button type="button" class="link-button" onclick={() => (diffLabel = n.label)}>See what changed</button>
+        </p>
+        <button type="button" class="btn btn-quiet btn-compact" onclick={() => dismiss(statementBannerKey(n.label, n.at))}>Dismiss</button>
+      </div>
+    {/if}
     <ContestBanner items={banner} ondismiss={dismiss} onopen={openMessages} />
   {/if}
 {/snippet}
 
 {#snippet railSnippet(layout: string)}
-  <ProblemRail {problems} {slug} current={current} {layout} {exam} unread={banner.length} onmessages={openMessages} />
+  <ProblemRail
+    {problems}
+    {slug}
+    current={current}
+    {layout}
+    {exam}
+    unread={banner.length}
+    during={phase === 'during'}
+    onmessages={openMessages}
+    onrules={() => (rulesOpen = true)}
+  />
 {/snippet}
 
 {#if loadState !== 'ready' || !contest}
@@ -388,6 +472,9 @@
       feedback={contest.rules.feedback_mode}
       showScores={phase === 'after'}
       locked={phase === 'after' && !practice ? 'The contest has ended. Submissions are closed.' : ''}
+      problemScore={exam && phase === 'during' ? null : { score: currentProblem.my_score, max: currentProblem.max_score }}
+      {used}
+      {statementKey}
       extraEvents={CONTEST_EVENTS}
       onevent={onEvent}
       clock={phase === 'during' ? clockSnippet : undefined}
@@ -410,24 +497,29 @@
     onclose={() => (messagesOpen = false)}
     onasked={onAsked}
   />
+  <RulesDialog open={rulesOpen} {contest} onclose={() => (rulesOpen = false)} />
+  <StatementDiff open={diffLabel !== null} {slug} label={diffLabel ?? current} onclose={() => (diffLabel = null)} />
 {:else if phase === 'upcoming' || phase === 'ready'}
   <div class="page">
     <PageHeader title={contest.title} back={{ href: '/', label: 'Your contests' }}>
       <p class="meta">
         {formatDateTime(contest.starts_at)}, {lengthText(contest)}, {contest.problem_count}
-        {contest.problem_count === 1 ? 'problem' : 'problems'}. <span class="state">{stateWord(contest.state)}</span>
+        {contest.problem_count === 1 ? 'problem' : 'problems'}. <span class="state-word" data-state={studentState(contest.state)}>{studentStateWord(contest.state)}</span>
       </p>
     </PageHeader>
 
-    {#if phase === 'upcoming'}
-      <p class="countdown">Starts in <span class="mono big" role="timer">{contest.starts_at - ticker.now >= 86_400_000 ? formatSpan(contest.starts_at - ticker.now) : formatCountdown(contest.starts_at - ticker.now)}</span></p>
-    {:else if contest.start_mode === 'window'}
+    {#if phase === 'upcoming' || startNow.kind === 'before'}
+      <p class="countdown">Starts in <span class="mono big" role="timer">{startNow.ms >= 86_400_000 ? formatSpan(startNow.ms) : formatCountdown(startNow.ms)}</span></p>
+    {:else if startNow.kind === 'window'}
       <p class="countdown">
         Start any time before <span class="mono">{formatDateTime(contest.ends_at)}</span>. The contest closes in
-        <span class="mono" role="timer">{formatCountdown(contest.ends_at - ticker.now)}</span>.
+        <span class="mono" role="timer">{formatCountdown(startNow.ms)}</span>.
       </p>
     {:else}
-      <p class="countdown">Started. Ends in <span class="mono big" role="timer">{formatCountdown(contest.ends_at - ticker.now)}</span></p>
+      <p class="countdown">
+        The contest started at <span class="mono">{formatDateTime(contest.starts_at).slice(-5)}</span> and your time is running. It ends in
+        <span class="mono big" role="timer">{formatCountdown(startNow.ms)}</span>.
+      </p>
     {/if}
 
     {#if contest.description_md.trim() !== ''}
@@ -437,8 +529,29 @@
     <section class="section" aria-labelledby="rules-title">
       <h2 id="rules-title">Rules</h2>
       <ul class="rules">
-        {#each rulesSentences(contest) as line, i (i)}<li>{line}</li>{/each}
+        {#each rulesSentences(contest) as rule, i (i)}<li>{rule}</li>{/each}
       </ul>
+    </section>
+
+    <section class="section" aria-labelledby="how-title">
+      <details class="how" open={!workspaceSeen}>
+        <summary><h2 id="how-title">How the workspace works</h2></summary>
+        <div class="how-body">
+          <p>
+            Each problem opens with its statement beside the editor. <strong>Run on samples</strong> shows your output next to the
+            expected one. <strong>Submit</strong> sends your code to the judge, and the result appears under the editor.
+          </p>
+          {#if exam}
+            <p>This contest is an exam: after Submit you see only "Submitted". Your scores appear when the contest ends.</p>
+          {:else}
+            <p>After Submit, a result looks like the example below. Each bar is one subtask: it fills when every test in it passes, and its points count only then.</p>
+            <figure class="example" aria-labelledby="example-caption">
+              <figcaption id="example-caption" class="muted small">An example result, not one of yours</figcaption>
+              <div class="example-panel"><VerdictPanel submission={EXAMPLE_SUBMISSION} onjump={null} idPrefix="example" /></div>
+            </figure>
+          {/if}
+        </div>
+      </details>
     </section>
 
     <section class="section" aria-labelledby="honour-title">
@@ -471,7 +584,7 @@
       <p class="meta">
         {#if contest.my_window && hasAccepted(contest)}Your time ended at {formatDateTime(contest.my_window.ends_at)}.{:else}Ended
           {formatDateTime(contest.ends_at)}.{/if}
-        {#if contest.state !== 'ended'}<span class="state">{stateWord(contest.state)}</span>{/if}
+        {#if contest.state !== 'ended'}<span class="state-word" data-state={studentState(contest.state)}>{studentStateWord(contest.state)}</span>{/if}
       </p>
     </PageHeader>
 
@@ -578,10 +691,6 @@
     color: var(--ink-muted);
   }
 
-  .state {
-    color: var(--ink);
-    font-weight: 600;
-  }
 
   .countdown {
     margin-top: var(--space-3);
@@ -605,6 +714,57 @@
     display: grid;
     gap: var(--space-2);
     padding-left: var(--space-5);
+  }
+
+  .how summary {
+    width: fit-content;
+    border-radius: var(--radius);
+    cursor: pointer;
+  }
+
+  .how summary h2 {
+    display: inline;
+    font-size: var(--fs-3);
+  }
+
+  .how-body {
+    display: grid;
+    gap: var(--space-3);
+    margin-top: var(--space-3);
+  }
+
+  .example {
+    display: grid;
+    gap: var(--space-2);
+    margin: 0;
+    padding: var(--space-4);
+    border: var(--rule) solid var(--line);
+    background: var(--surface);
+  }
+
+  .statement-notice {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-2) var(--space-3);
+    margin-bottom: var(--space-3);
+    padding-block: var(--space-2);
+    font-size: var(--fs-0);
+  }
+
+  .link-button {
+    padding: 0;
+    border: 0;
+    border-radius: var(--radius);
+    background: none;
+    color: var(--act);
+    font: inherit;
+    font-weight: 500;
+    text-decoration: underline;
+    text-decoration-thickness: var(--rule);
+    text-underline-offset: 0.2em;
+    cursor: pointer;
   }
 
   .honour {

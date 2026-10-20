@@ -7,7 +7,10 @@
   and the passages in question highlighted (CodeView). Each case has an
   explanation box saved with PUT /api/integrity/cases/{case}/explanation;
   it can be changed until a decision is made, then it reads only. Students
-  never see signals, strengths or other students. Takes no props.
+  never see signals, strengths or other students. The page is reached from
+  "Questions" in the header and the line on Your contests, keeps a "Your
+  contests" back link, and words its lead by where the cases stand, also
+  once all are decided (S7, audit 01-12 and 01-13). Takes no props.
 -->
 <script lang="ts">
   import PageState from '../components/PageState.svelte';
@@ -19,7 +22,7 @@
   import { setTitle } from '../lib/head';
   import { routeTitle } from '../lib/routing';
   import { keepHeadingFocus } from '../lib/focus';
-  import { problemName, studentStateText, type StudentCase, type StudentCaseList } from '../lib/review';
+  import { casesStanding, problemName, studentLead, studentStateText, type StudentCase, type StudentCaseList } from '../lib/review';
   import { session } from '../lib/session.svelte';
 
   /** The longest explanation the server accepts. */
@@ -93,7 +96,7 @@
   });
 </script>
 
-<PageHeader title="Questions about your submissions" />
+<PageHeader title="Questions about your submissions" back={{ href: '/', label: 'Your contests' }} />
 
 {#if loadState === 'loading'}
   <PageState kind="loading" message="Loading your questions" />
@@ -102,9 +105,7 @@
 {:else if !data || data.cases.length === 0}
   <PageState kind="empty" message="Nothing to explain. If an organiser asks you about a submission, it appears here." />
 {:else}
-  <p class="lead">
-    An organiser looked over a contest and would like you to explain some of your work. This is not a finding: a person reads your explanation before deciding anything, and only you and the organisers see it.
-  </p>
+  <p class="lead">{studentLead(casesStanding(data.cases))}</p>
   {#each data.cases as c (c.id)}
     <section class="case" aria-labelledby="case-{c.id}">
       <h2 id="case-{c.id}">{c.title}</h2>
