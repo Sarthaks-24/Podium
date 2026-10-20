@@ -507,7 +507,7 @@
                 {#if person.disabled}<span class="muted">, disabled</span>{/if}
               </td>
               <td class="num last">
-                <span class="cell-label">Last sign-in</span>{#if person.last_login_at !== null}{formatDateTime(person.last_login_at)}{:else}<span class="muted word">Never</span>{/if}
+                <span class="cell-label">Last sign-in</span>{#if person.last_login_at !== null}<MonoDigits text={formatDateTime(person.last_login_at)} />{:else}<span class="muted word">Never</span>{/if}
               </td>
               <td class="actions">
                 {#if person.locked}
@@ -718,7 +718,7 @@
       <ul class="history">
         {#each history as e (e.id)}
           <li>
-            <span class="mono when">{formatDateTime(e.at)}</span>
+            <span class="when"><MonoDigits text={formatDateTime(e.at)} /></span>
             <span class="what">{siteAuditSummary(e)}</span>
             <span class="who muted">{actorText(e.actor)}</span>
           </li>

@@ -13,6 +13,7 @@
   that they leak by design. Every view carries IntegrityNote. Props: `id`.
 -->
 <script lang="ts">
+  import MonoDigits from '../components/MonoDigits.svelte';
   import PageState from '../components/PageState.svelte';
   import ConfirmDialog from '../components/ConfirmDialog.svelte';
   import { onMount } from 'svelte';
@@ -287,7 +288,7 @@
     {:else if run.state === 'running'}
       <p class="muted">The signals appear when the check is done.</p>
     {:else}
-      <p class="stats">{statsLine(run.stats)} <span class="muted">Finished {formatDateTime(run.finished_at ?? run.started_at)}.</span></p>
+      <p class="stats">{statsLine(run.stats)} <span class="muted">Finished <MonoDigits text={formatDateTime(run.finished_at ?? run.started_at)} />.</span></p>
 
       {#if (run.signals ?? []).length > 0}
         <div class="filters">
@@ -382,7 +383,7 @@
                 <th scope="row" class="case-title"><a class="row-link" href="/admin/integrity/cases/{c.id}">{c.title}</a></th>
                 <td class="case-who">{caseStudents(c)}</td>
                 <td class="case-state">{caseStateWord(c.state)}</td>
-                <td class="num case-when">{formatDateTime(c.updated_at)}</td>
+                <td class="case-when"><MonoDigits text={formatDateTime(c.updated_at)} /></td>
               </tr>
             {/each}
           </tbody>
