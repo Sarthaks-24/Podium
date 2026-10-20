@@ -50,6 +50,7 @@
   event, submissions included, is passed to `onevent`).
 -->
 <script lang="ts">
+  import PageHeader from './PageHeader.svelte';
   import { onMount, tick, type Snippet } from 'svelte';
   import { ApiError, getJSON, sendJSON } from '../lib/api';
   import { serverClock } from '../lib/clock';
@@ -657,8 +658,7 @@
 
 {#if loadState !== 'ready' || !ws}
   <div class="state">
-    <a class="back" href={backHref}>{backLabel}</a>
-    <h1 tabindex="-1">{loadState === 'missing' ? 'Problem not found' : 'Problem'}</h1>
+    <PageHeader compact title={loadState === 'missing' ? 'Problem not found' : 'Problem'} back={{ href: backHref, label: backLabel }} />
     {#if loadState === 'loading'}
       <p class="muted" role="status">Loading the problem</p>
     {:else if loadState === 'forbidden'}
@@ -696,8 +696,9 @@
     <div class="title-area">
       {#if banner}<div class="banner-slot">{@render banner()}</div>{/if}
       <div class="title-main">
-        <a class="back" href={backHref}>{backLabel}</a>
-        <h1 tabindex="-1">{#if label}<span class="mono letter">{label}</span><span class="visually-hidden">.&nbsp;</span>{/if}{ws.title}</h1>
+        <PageHeader compact back={{ href: backHref, label: backLabel }}>
+          {#snippet heading()}{#if label}<span class="mono letter">{label}</span><span class="visually-hidden">.&nbsp;</span>{/if}{ws?.title ?? ''}{/snippet}
+        </PageHeader>
         <p class="limits">{limitsText(ws.time_limit_ms, ws.memory_limit_mb)}</p>
       </div>
       {#if layout !== 'wide' && !clock && note}
@@ -901,13 +902,6 @@
     max-width: 48rem;
   }
 
-  .back {
-    width: fit-content;
-    border-radius: var(--radius);
-    font-size: var(--fs-0);
-    font-weight: 500;
-  }
-
   .ws {
     display: grid;
     grid-template-columns: minmax(0, 1fr);
@@ -931,11 +925,6 @@
     display: grid;
     gap: var(--space-1);
     min-width: 0;
-  }
-
-  h1 {
-    font-size: var(--fs-4);
-    overflow-wrap: anywhere;
   }
 
   .limits {
@@ -1275,7 +1264,7 @@
       border-bottom: var(--rule) solid var(--line);
     }
 
-    h1 {
+    .ws .title-area :global(h1) {
       font-size: var(--fs-3);
     }
 

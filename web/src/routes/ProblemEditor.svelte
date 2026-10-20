@@ -40,6 +40,7 @@
   the address.
 -->
 <script lang="ts">
+  import PageHeader from '../components/PageHeader.svelte';
   import { onMount, tick } from 'svelte';
   import ConfirmDialog from '../components/ConfirmDialog.svelte';
   import ProgramField from '../components/ProgramField.svelte';
@@ -861,22 +862,22 @@
       },
     };
   }
+
+  const pageTitle = $derived(
+    loadState === 'missing' ? 'Problem not found' : problem ? (problem.title.trim() !== '' ? problem.title : problem.slug) : 'Problem',
+  );
 </script>
 
 <svelte:window onbeforeunload={onBeforeUnload} onkeydown={onKeydown} />
 
 <div class="editor">
-  <div class="head">
-    <a class="back" href="/admin/problems">Problem bank</a>
-    <div class="title-row">
-      <h1 tabindex="-1">
-        {#if loadState === 'missing'}Problem not found{:else if problem}{problem.title.trim() !== '' ? problem.title : problem.slug}{:else}Problem{/if}
-      </h1>
+  <PageHeader title={pageTitle} crumbs={[{ label: 'Problem bank', href: '/admin/problems' }, { label: pageTitle }]}>
+    {#snippet actions()}
       {#if problem && loadState === 'ready'}
         <a class="try" href="/admin/problems/{problem.id}/try">Try as a student</a>
       {/if}
-    </div>
-  </div>
+    {/snippet}
+  </PageHeader>
 
   {#if loadState === 'forbidden'}
     <p class="lead">Only admins can manage problems. Ask an owner if you need access.</p>
@@ -1812,31 +1813,6 @@
 <style>
   .editor {
     min-width: 0;
-  }
-
-  .head {
-    display: grid;
-    gap: var(--space-2);
-  }
-
-  .back {
-    width: fit-content;
-    border-radius: var(--radius);
-    font-size: var(--fs-0);
-    font-weight: 500;
-  }
-
-  .title-row {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: baseline;
-    justify-content: space-between;
-    gap: var(--space-2) var(--space-5);
-  }
-
-  h1 {
-    min-width: 0;
-    overflow-wrap: anywhere;
   }
 
   .try {

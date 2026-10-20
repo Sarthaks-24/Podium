@@ -15,6 +15,7 @@
   visitors to /signin first. Takes no props.
 -->
 <script lang="ts">
+  import PageHeader from '../components/PageHeader.svelte';
   import { onMount } from 'svelte';
   import { ApiError, getJSON } from '../lib/api';
   import { serverClock } from '../lib/clock';
@@ -90,7 +91,7 @@
   });
 </script>
 
-<h1 tabindex="-1">Your contests</h1>
+<PageHeader title="Your contests" />
 
 {#if asked}
   <p class="banner asked">An organiser asked you to explain a submission. <a href="/integrity">Write your explanation</a></p>

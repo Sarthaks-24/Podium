@@ -13,6 +13,7 @@
   says its version changed, at most once every 3 s. Props: `slug`.
 -->
 <script lang="ts">
+  import PageHeader from '../components/PageHeader.svelte';
   import { onDestroy, onMount } from 'svelte';
   import StandingsTable from '../components/StandingsTable.svelte';
   import StreamNotice from '../components/StreamNotice.svelte';
@@ -126,8 +127,7 @@
   });
 </script>
 
-<a class="back" href="/contests/{encodeURIComponent(slug)}">{contest?.title ?? 'Contest'}</a>
-<h1 tabindex="-1">Standings</h1>
+<PageHeader title="Standings" back={{ href: `/contests/${encodeURIComponent(slug)}`, label: contest?.title ?? 'Contest' }} />
 
 {#if loadState === 'loading'}
   <p class="lead muted" role="status">Loading the standings</p>
@@ -151,14 +151,6 @@
 {/if}
 
 <style>
-  .back {
-    display: inline-block;
-    margin-bottom: var(--space-2);
-    border-radius: var(--radius);
-    font-size: var(--fs-0);
-    font-weight: 500;
-  }
-
   .lead {
     margin-top: var(--space-4);
     max-width: 40rem;

@@ -30,6 +30,7 @@
   import { onDestroy, onMount } from 'svelte';
   import ConfirmDialog from '../components/ConfirmDialog.svelte';
   import ContestAdminNav from '../components/ContestAdminNav.svelte';
+  import PageHeader from '../components/PageHeader.svelte';
   import Icon from '../components/Icon.svelte';
   import Markdown from '../components/Markdown.svelte';
   import { ApiError, getJSON, sendJSON } from '../lib/api';
@@ -41,7 +42,6 @@
     auditSummary,
     fillTemplate,
     formatCountdown,
-    stateWord,
     type AdminContest,
     type Announcement,
     type AuditEntry,
@@ -459,11 +459,13 @@
 </script>
 
 {#if loadState === 'forbidden'}
-  <h1 tabindex="-1">Console</h1>
+  <PageHeader title="Console" />
   <p class="lead">Only admins can run contests. Ask an owner if you need access.</p>
 {:else if loadState !== 'ready' || !contest}
-  <a class="back" href="/admin/contests">Contest admin</a>
-  <h1 tabindex="-1">{loadState === 'missing' ? 'Contest not found' : 'Console'}</h1>
+  <PageHeader
+    title={loadState === 'missing' ? 'Contest not found' : 'Console'}
+    crumbs={[{ label: 'Contest admin', href: '/admin/contests' }, { label: loadState === 'missing' ? 'Contest not found' : 'Console' }]}
+  />
   {#if loadState === 'loading'}
     <p class="lead muted" role="status">Loading the contest</p>
   {:else if loadState === 'missing'}
@@ -473,7 +475,7 @@
     <p class="retry"><button type="button" class="btn btn-secondary" onclick={() => loadContest()}>Try again</button></p>
   {/if}
 {:else}
-  <ContestAdminNav {id} title={contest.title} state={stateWord(contest.state)} current="console" />
+  <ContestAdminNav {id} title={contest.title} state={contest.state} current="console" />
 
   <div class="status">
     <p>
@@ -750,14 +752,6 @@
 {/if}
 
 <style>
-  .back {
-    display: inline-block;
-    margin-bottom: var(--space-2);
-    border-radius: var(--radius);
-    font-size: var(--fs-0);
-    font-weight: 500;
-  }
-
   .lead {
     margin-top: var(--space-4);
     max-width: 40rem;

@@ -16,6 +16,7 @@
   nothing else announces. Takes no props.
 -->
 <script lang="ts">
+  import PageHeader from '../components/PageHeader.svelte';
   import { onMount, tick } from 'svelte';
   import {
     aiPaths,
@@ -229,8 +230,7 @@
 </script>
 
 <div class="wizard">
-  <a class="back" href="/admin/problems">Problem bank</a>
-  <h1 tabindex="-1">New problem with AI</h1>
+  <PageHeader title="New problem with AI" crumbs={[{ label: 'Problem bank', href: '/admin/problems' }, { label: 'New problem with AI' }]} />
 
   {#if loadState === 'forbidden'}
     <p class="lead">Only admins can use the AI assistant. Ask an owner if you need access.</p>
@@ -420,14 +420,6 @@
 <style>
   .wizard {
     max-width: 48rem;
-  }
-
-  .back {
-    display: inline-block;
-    margin-bottom: var(--space-2);
-    border-radius: var(--radius);
-    font-size: var(--fs-0);
-    font-weight: 500;
   }
 
   .key-state {

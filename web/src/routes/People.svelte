@@ -14,6 +14,7 @@
   explanation instead. Takes no props.
 -->
 <script lang="ts">
+  import PageHeader from '../components/PageHeader.svelte';
   import { onMount, tick } from 'svelte';
   import ConfirmDialog from '../components/ConfirmDialog.svelte';
   import { ApiError, getJSON, sendJSON } from '../lib/api';
@@ -330,7 +331,7 @@
   }
 </script>
 
-<h1 tabindex="-1">People</h1>
+<PageHeader title="People" />
 
 {#if loadState === 'forbidden'}
   <p class="lead">Only owners can manage people. Ask an owner if you need access.</p>

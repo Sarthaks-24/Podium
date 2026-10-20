@@ -20,6 +20,7 @@
   Props: `id` (the case).
 -->
 <script lang="ts">
+  import PageHeader from '../components/PageHeader.svelte';
   import { onDestroy, onMount, tick } from 'svelte';
   import ConfirmDialog from '../components/ConfirmDialog.svelte';
   import IntegrityNote from '../components/IntegrityNote.svelte';
@@ -249,11 +250,13 @@
 </script>
 
 {#if loadState === 'forbidden'}
-  <h1 tabindex="-1">Case</h1>
+  <PageHeader title="Case" />
   <p class="lead">Only owners and admins can review integrity. Ask an owner if you need access.</p>
 {:else if loadState !== 'ready' || !kase}
-  <a class="back" href="/admin/contests">Contest admin</a>
-  <h1 tabindex="-1">{loadState === 'missing' ? 'Case not found' : 'Case'}</h1>
+  <PageHeader
+    title={loadState === 'missing' ? 'Case not found' : 'Case'}
+    crumbs={[{ label: 'Contest admin', href: '/admin/contests' }, { label: loadState === 'missing' ? 'Case not found' : 'Case' }]}
+  />
   {#if loadState === 'loading'}
     <p class="lead muted" role="status">Loading the case</p>
   {:else if loadState === 'missing'}
@@ -263,11 +266,16 @@
     <p class="retry"><button type="button" class="btn btn-secondary" onclick={load}>Try again</button></p>
   {/if}
 {:else}
-  <a class="back" href={back}>{contestTitle ? `Integrity for ${contestTitle}` : 'Integrity'}</a>
-  <div class="head">
-    <h1 tabindex="-1">{kase.title}</h1>
-    <span class="state state-{kase.state}">{caseStateWord(kase.state)}</span>
-  </div>
+  <PageHeader
+    title={kase.title}
+    crumbs={[
+      { label: 'Contest admin', href: '/admin/contests' },
+      { label: contestTitle || 'Contest', href: `/admin/contests/${kase.contest_id}` },
+      { label: 'Integrity', href: back },
+      { label: kase.title },
+    ]}
+    state={{ word: caseStateWord(kase.state), kind: kase.state }}
+  />
   <p class="muted small dates">Opened <span class="mono">{formatDateTime(kase.created_at)}</span>, last changed <span class="mono">{formatDateTime(kase.updated_at)}</span>.</p>
 
   <div class="note"><IntegrityNote /></div>
@@ -408,31 +416,6 @@
 {/if}
 
 <style>
-  .back {
-    display: inline-block;
-    margin-bottom: var(--space-2);
-    border-radius: var(--radius);
-    font-size: var(--fs-0);
-    font-weight: 500;
-  }
-
-  .head {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: baseline;
-    gap: var(--space-2) var(--space-4);
-  }
-
-  h1 {
-    font-size: var(--fs-4);
-    overflow-wrap: anywhere;
-  }
-
-  .state {
-    color: var(--ink-muted);
-    font-weight: 600;
-  }
-
   .lead {
     margin-top: var(--space-4);
     max-width: 40rem;

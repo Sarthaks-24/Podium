@@ -36,6 +36,7 @@
   import { onMount, tick, untrack } from 'svelte';
   import ConfirmDialog from '../components/ConfirmDialog.svelte';
   import ContestAdminNav from '../components/ContestAdminNav.svelte';
+  import PageHeader from '../components/PageHeader.svelte';
   import Icon from '../components/Icon.svelte';
   import { ApiError, getJSON, sendBody, sendJSON } from '../lib/api';
   import {
@@ -43,7 +44,6 @@
     labelFor,
     parseRoster,
     rosterCsv,
-    stateWord,
     toLocalInput,
     type AdminContest,
     type AdminContestProblem,
@@ -584,11 +584,13 @@
 {/snippet}
 
 {#if loadState === 'forbidden'}
-  <h1 tabindex="-1">Contest settings</h1>
+  <PageHeader title="Contest settings" />
   <p class="lead">Only admins can manage contests. Ask an owner if you need access.</p>
 {:else if loadState !== 'ready' || !contest || !form}
-  <a class="back" href="/admin/contests">Contest admin</a>
-  <h1 tabindex="-1">{loadState === 'missing' ? 'Contest not found' : 'Contest settings'}</h1>
+  <PageHeader
+    title={loadState === 'missing' ? 'Contest not found' : 'Contest settings'}
+    crumbs={[{ label: 'Contest admin', href: '/admin/contests' }, { label: loadState === 'missing' ? 'Contest not found' : 'Contest settings' }]}
+  />
   {#if loadState === 'loading'}
     <p class="lead muted" role="status">Loading the contest</p>
   {:else if loadState === 'missing'}
@@ -598,7 +600,7 @@
     <p class="retry"><button type="button" class="btn btn-secondary" onclick={load}>Try again</button></p>
   {/if}
 {:else}
-  <ContestAdminNav {id} title={contest.title} state={stateWord(contest.state)} current="settings" />
+  <ContestAdminNav {id} title={contest.title} state={contest.state} current="settings" />
 
   <form class="settings section" novalidate onsubmit={save} aria-labelledby="settings-title">
     <h2 id="settings-title">Settings</h2>
@@ -945,14 +947,6 @@
 {/if}
 
 <style>
-  .back {
-    display: inline-block;
-    margin-bottom: var(--space-2);
-    border-radius: var(--radius);
-    font-size: var(--fs-0);
-    font-weight: 500;
-  }
-
   .lead {
     margin-top: var(--space-4);
     max-width: 40rem;

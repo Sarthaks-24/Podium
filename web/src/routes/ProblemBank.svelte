@@ -17,6 +17,7 @@
   Takes no props.
 -->
 <script lang="ts">
+  import PageHeader from '../components/PageHeader.svelte';
   import { onMount, tick, untrack } from 'svelte';
   import { isAIDraft, withoutAIDraft } from '../lib/ai';
   import { ApiError, getJSON, sendBody, sendJSON } from '../lib/api';
@@ -199,7 +200,7 @@
   }
 </script>
 
-<h1 tabindex="-1">Problem bank</h1>
+<PageHeader title="Problem bank" />
 
 {#if loadState === 'forbidden'}
   <p class="lead">Only admins can manage problems. Ask an owner if you need access.</p>

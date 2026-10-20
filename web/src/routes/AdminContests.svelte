@@ -11,6 +11,7 @@
   its settings. Students see a short explanation instead. Takes no props.
 -->
 <script lang="ts">
+  import PageHeader from '../components/PageHeader.svelte';
   import { onMount, tick } from 'svelte';
   import { ApiError, getJSON, sendJSON } from '../lib/api';
   import {
@@ -143,7 +144,7 @@
   });
 </script>
 
-<h1 tabindex="-1">Contest admin</h1>
+<PageHeader title="Contest admin" />
 
 {#if loadState === 'forbidden'}
   <p class="lead">Only admins can manage contests. Ask an owner if you need access.</p>

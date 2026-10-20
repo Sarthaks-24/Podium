@@ -27,6 +27,7 @@
   Props: `slug`, and `label` (the problem letter from the address, or "").
 -->
 <script lang="ts">
+  import PageHeader from '../components/PageHeader.svelte';
   import { onDestroy, onMount, untrack } from 'svelte';
   import ContestBanner from '../components/ContestBanner.svelte';
   import ContestClock from '../components/ContestClock.svelte';
@@ -365,8 +366,7 @@
 {/snippet}
 
 {#if loadState !== 'ready' || !contest}
-  <a class="back" href="/">Your contests</a>
-  <h1 tabindex="-1">{loadState === 'missing' ? 'Contest not found' : 'Contest'}</h1>
+  <PageHeader title={loadState === 'missing' ? 'Contest not found' : 'Contest'} back={{ href: '/', label: 'Your contests' }} />
   {#if loadState === 'loading'}
     <p class="lead muted" role="status">Loading the contest</p>
   {:else if loadState === 'missing'}
@@ -412,12 +412,12 @@
   />
 {:else if phase === 'upcoming' || phase === 'ready'}
   <div class="page">
-    <a class="back" href="/">Your contests</a>
-    <h1 tabindex="-1">{contest.title}</h1>
-    <p class="meta">
-      {formatDateTime(contest.starts_at)}, {lengthText(contest)}, {contest.problem_count}
-      {contest.problem_count === 1 ? 'problem' : 'problems'}. <span class="state">{stateWord(contest.state)}</span>
-    </p>
+    <PageHeader title={contest.title} back={{ href: '/', label: 'Your contests' }}>
+      <p class="meta">
+        {formatDateTime(contest.starts_at)}, {lengthText(contest)}, {contest.problem_count}
+        {contest.problem_count === 1 ? 'problem' : 'problems'}. <span class="state">{stateWord(contest.state)}</span>
+      </p>
+    </PageHeader>
 
     {#if phase === 'upcoming'}
       <p class="countdown">Starts in <span class="mono big" role="timer">{contest.starts_at - ticker.now >= 86_400_000 ? formatSpan(contest.starts_at - ticker.now) : formatCountdown(contest.starts_at - ticker.now)}</span></p>
@@ -467,13 +467,13 @@
   </div>
 {:else}
   <div class="page">
-    <a class="back" href="/">Your contests</a>
-    <h1 tabindex="-1">{contest.title}</h1>
-    <p class="meta">
-      {#if contest.my_window && hasAccepted(contest)}Your time ended at {formatDateTime(contest.my_window.ends_at)}.{:else}Ended
-        {formatDateTime(contest.ends_at)}.{/if}
-      {#if contest.state !== 'ended'}<span class="state">{stateWord(contest.state)}</span>{/if}
-    </p>
+    <PageHeader title={contest.title} back={{ href: '/', label: 'Your contests' }}>
+      <p class="meta">
+        {#if contest.my_window && hasAccepted(contest)}Your time ended at {formatDateTime(contest.my_window.ends_at)}.{:else}Ended
+          {formatDateTime(contest.ends_at)}.{/if}
+        {#if contest.state !== 'ended'}<span class="state">{stateWord(contest.state)}</span>{/if}
+      </p>
+    </PageHeader>
 
     {#if timeUp}<p class="time-up" role="status">Time is up. Your submissions are saved.</p>{/if}
 
@@ -563,13 +563,6 @@
     display: grid;
     gap: var(--space-2);
     max-width: 48rem;
-  }
-
-  .back {
-    width: fit-content;
-    border-radius: var(--radius);
-    font-size: var(--fs-0);
-    font-weight: 500;
   }
 
   .lead {

@@ -19,12 +19,13 @@
   import { onMount } from 'svelte';
   import ConfirmDialog from '../components/ConfirmDialog.svelte';
   import ContestAdminNav from '../components/ContestAdminNav.svelte';
+  import PageHeader from '../components/PageHeader.svelte';
   import Icon from '../components/Icon.svelte';
   import Markdown from '../components/Markdown.svelte';
   import RevealBoard from '../components/RevealBoard.svelte';
   import StandingsTable from '../components/StandingsTable.svelte';
   import { ApiError, getJSON, sendJSON } from '../lib/api';
-  import { stateWord, type AdminContest, type ProblemStats } from '../lib/contests';
+  import { type AdminContest, type ProblemStats } from '../lib/contests';
   import { keepHeadingFocus } from '../lib/focus';
   import { setTitle } from '../lib/head';
   import { routeTitle } from '../lib/routing';
@@ -206,11 +207,13 @@
 </script>
 
 {#if loadState === 'forbidden'}
-  <h1 tabindex="-1">Results</h1>
+  <PageHeader title="Results" />
   <p class="lead">Only admins can see full results. Ask an owner if you need access.</p>
 {:else if loadState !== 'ready' || !contest}
-  <a class="back" href="/admin/contests">Contest admin</a>
-  <h1 tabindex="-1">{loadState === 'missing' ? 'Contest not found' : 'Results'}</h1>
+  <PageHeader
+    title={loadState === 'missing' ? 'Contest not found' : 'Results'}
+    crumbs={[{ label: 'Contest admin', href: '/admin/contests' }, { label: loadState === 'missing' ? 'Contest not found' : 'Results' }]}
+  />
   {#if loadState === 'loading'}
     <p class="lead muted" role="status">Loading the contest</p>
   {:else if loadState === 'missing'}
@@ -220,7 +223,7 @@
     <p class="retry"><button type="button" class="btn btn-secondary" onclick={load}>Try again</button></p>
   {/if}
 {:else}
-  <ContestAdminNav {id} title={contest.title} state={stateWord(contest.state)} current="results" />
+  <ContestAdminNav {id} title={contest.title} state={contest.state} current="results" />
 
   <section class="section" aria-labelledby="board-title">
     <div class="section-head">
@@ -376,14 +379,6 @@
 {/if}
 
 <style>
-  .back {
-    display: inline-block;
-    margin-bottom: var(--space-2);
-    border-radius: var(--radius);
-    font-size: var(--fs-0);
-    font-weight: 500;
-  }
-
   .lead {
     margin-top: var(--space-4);
     max-width: 40rem;

@@ -7,6 +7,7 @@
   Props: `id`, the problem id from the address.
 -->
 <script lang="ts">
+  import PageHeader from '../components/PageHeader.svelte';
   import { onMount } from 'svelte';
   import Workspace from '../components/Workspace.svelte';
   import { setTitle } from '../lib/head';
@@ -31,7 +32,7 @@
     note="You are trying this problem as a student. These submissions count in no contest."
   />
 {:else}
-  <h1 tabindex="-1">Problems</h1>
+  <PageHeader title="Problems" />
   <p class="lead">Only admins can manage problems. Ask an owner if you need access.</p>
 {/if}
 

@@ -11,6 +11,7 @@
   needs no key, so the field is hidden for it. Takes no props.
 -->
 <script lang="ts">
+  import PageHeader from '../components/PageHeader.svelte';
   import { onMount, tick } from 'svelte';
   import {
     aiPaths,
@@ -144,8 +145,7 @@
 </script>
 
 <div class="settings">
-  <a class="back" href="/admin/problems">Problem bank</a>
-  <h1 tabindex="-1">AI assistant</h1>
+  <PageHeader title="AI assistant" crumbs={[{ label: 'Problem bank', href: '/admin/problems' }, { label: 'AI assistant' }]} />
 
   {#if loadState === 'forbidden'}
     <p class="lead">Only admins can use the AI assistant. Ask an owner if you need access.</p>
@@ -255,14 +255,6 @@
 <style>
   .settings {
     max-width: 48rem;
-  }
-
-  .back {
-    display: inline-block;
-    margin-bottom: var(--space-2);
-    border-radius: var(--radius);
-    font-size: var(--fs-0);
-    font-weight: 500;
   }
 
   .lead {

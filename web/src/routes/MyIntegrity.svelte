@@ -10,6 +10,7 @@
   never see signals, strengths or other students. Takes no props.
 -->
 <script lang="ts">
+  import PageHeader from '../components/PageHeader.svelte';
   import { onMount } from 'svelte';
   import CodeView from '../components/CodeView.svelte';
   import { ApiError, getJSON, sendJSON } from '../lib/api';
@@ -91,7 +92,7 @@
   });
 </script>
 
-<h1 tabindex="-1">Questions about your submissions</h1>
+<PageHeader title="Questions about your submissions" />
 
 {#if loadState === 'loading'}
   <p class="lead muted" role="status">Loading your questions</p>

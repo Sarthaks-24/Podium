@@ -16,11 +16,12 @@
   import { onMount } from 'svelte';
   import { SvelteSet } from 'svelte/reactivity';
   import ContestAdminNav from '../components/ContestAdminNav.svelte';
+  import PageHeader from '../components/PageHeader.svelte';
   import IntegrityNote from '../components/IntegrityNote.svelte';
   import OpenCaseDialog from '../components/OpenCaseDialog.svelte';
   import SignalTable from '../components/SignalTable.svelte';
   import { ApiError, getJSON, sendJSON } from '../lib/api';
-  import { stateWord, type AdminContest } from '../lib/contests';
+  import { type AdminContest } from '../lib/contests';
   import { keepHeadingFocus } from '../lib/focus';
   import { formatDateTime } from '../lib/format';
   import { setTitle } from '../lib/head';
@@ -217,11 +218,13 @@
 </script>
 
 {#if loadState === 'forbidden'}
-  <h1 tabindex="-1">Integrity</h1>
+  <PageHeader title="Integrity" />
   <p class="lead">Only owners and admins can review integrity. Ask an owner if you need access.</p>
 {:else if loadState !== 'ready' || !contest}
-  <a class="back" href="/admin/contests">Contest admin</a>
-  <h1 tabindex="-1">{loadState === 'missing' ? 'Contest not found' : 'Integrity'}</h1>
+  <PageHeader
+    title={loadState === 'missing' ? 'Contest not found' : 'Integrity'}
+    crumbs={[{ label: 'Contest admin', href: '/admin/contests' }, { label: loadState === 'missing' ? 'Contest not found' : 'Integrity' }]}
+  />
   {#if loadState === 'loading'}
     <p class="lead muted" role="status">Loading the contest</p>
   {:else if loadState === 'missing'}
@@ -231,7 +234,7 @@
     <p class="retry"><button type="button" class="btn btn-secondary" onclick={load}>Try again</button></p>
   {/if}
 {:else}
-  <ContestAdminNav {id} title={contest.title} state={stateWord(contest.state)} current="integrity" />
+  <ContestAdminNav {id} title={contest.title} state={contest.state} current="integrity" />
 
   <div class="section">
     <IntegrityNote />
@@ -394,14 +397,6 @@
 {/if}
 
 <style>
-  .back {
-    display: inline-block;
-    margin-bottom: var(--space-2);
-    border-radius: var(--radius);
-    font-size: var(--fs-0);
-    font-weight: 500;
-  }
-
   .lead {
     margin-top: var(--space-4);
     max-width: 40rem;
