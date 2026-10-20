@@ -48,6 +48,7 @@
   import { inputGenPending, inputGenReport, isAIDraft, type InputGeneration } from '../lib/ai';
   import { ApiError, getJSON, sendBody, sendJSON } from '../lib/api';
   import EditorFooter from '../components/problem/EditorFooter.svelte';
+  import GeneratorPanel from '../components/problem/GeneratorPanel.svelte';
   import ModelSolve from '../components/problem/ModelSolve.svelte';
   import RevisionHistory from '../components/problem/RevisionHistory.svelte';
   import '../components/problem/editor.css';
@@ -62,7 +63,6 @@
     formatBytes,
     isFailure,
     isPending,
-    nextPlanRow,
     ordinal,
     problemPath,
     readPlan,
@@ -73,7 +73,7 @@
     type Problem,
     type Validation,
   } from '../lib/problems';
-  import { describedBy, fieldErrors, planErrors as planErrorsOf, programError as programErrorOf } from '../lib/problemFields';
+  import { describedBy, fieldErrors, programError as programErrorOf } from '../lib/problemFields';
   import { navigate, setNavigationGuard } from '../lib/router.svelte';
   import { session } from '../lib/session.svelte';
   import { showToast } from '../lib/toast.svelte';
@@ -123,7 +123,6 @@
   let inputGen = $state<InputGeneration | null>(null);
   let inputGenError = $state<{ message: string; problems: readonly string[] } | null>(null);
   let inputGenBusy = $state(false);
-  let addPlanButton: HTMLButtonElement | undefined = $state();
 
   let phone = $state(false);
   let statementTab = $state<'write' | 'preview'>('write');
@@ -190,7 +189,6 @@
   const aiDraft = $derived(problem !== null && isAIDraft(problem.tags));
   const inputPending = $derived(inputGenPending(inputGen));
   const inputReport = $derived(inputGen && problem ? inputGenReport(inputGen, readPlan(problem.plan)) : null);
-  const canGenerateInputs = $derived(draft !== null && !!draft.generator && (draft.plan?.length ?? 0) > 0);
 
   const fieldList = $derived(fieldErrors(fields, draft, hasGenerator));
 
@@ -499,41 +497,7 @@
     addSubtaskButton?.focus();
   }
 
-  async function addGenerator() {
-    if (!draft) return;
-    draft.generator = {
-      language: 'python3',
-      source: 'import random\nimport sys\n\nseed = int(sys.argv[1])\nargs = dict(a.split("=", 1) for a in sys.argv[2:])\nrng = random.Random(seed)\n',
-    };
-    await tick();
-    document.getElementById('generator-source')?.focus();
-  }
 
-  async function removeGenerator() {
-    if (!draft) return;
-    draft.generator = null;
-    await tick();
-    document.getElementById('add-generator')?.focus();
-  }
-
-  async function addPlanRow() {
-    if (!draft || draft.plan === undefined || !problem) return;
-    draft.plan.push(nextPlanRow(draft.plan, problem.tests.map((t) => t.idx), draft.subtasks.length));
-    await tick();
-    document.getElementById(`plan-${draft.plan.length - 1}-seed`)?.focus();
-  }
-
-  async function removePlanRow(index: number) {
-    if (!draft || draft.plan === undefined) return;
-    draft.plan.splice(index, 1);
-    fields = Object.fromEntries(Object.entries(fields).filter(([k]) => !k.startsWith('plan.')));
-    await tick();
-    addPlanButton?.focus();
-  }
-
-  function planErrors(i: number): { key: string; message: string }[] {
-    return planErrorsOf(fields, i);
-  }
 
   async function generateInputs() {
     inputGenError = null;
@@ -1166,208 +1130,19 @@
         {/if}
       </section>
 
-      {#if hasGenerator && draft.plan !== undefined}
-        <section class="block" aria-labelledby="generator-heading">
-          <h2 id="generator-heading" tabindex="-1">Generator</h2>
-          <p class="field-help sub-help">
-            A program that prints one test input. The judge runs it in the sandbox once per planned test, as generator.py with the seed,
-            the subtask's arguments and the test's own arguments, and stores what it prints as that test's input.
-          </p>
-
-          <div class="programs">
-            {#if draft.generator}
-              <ProgramField
-                id="generator"
-                label="Generator program"
-                help="Reads the seed from sys.argv[1] and its arguments after it. Draw every random number from the seed, so a test can be made again."
-                bind:program={draft.generator}
-                error={programError('generator')}
-                onremove={removeGenerator}
-                removeLabel="Remove generator"
-              />
-            {:else}
-              <div class="optional">
-                <h3 class="program-name">Generator program</h3>
-                <p class="field-help">No generator. Add one to make test inputs from seeds instead of uploading them.</p>
-                <button id="add-generator" type="button" class="btn btn-secondary" onclick={addGenerator}>Add generator</button>
-              </div>
-            {/if}
-          </div>
-
-          <h3 class="sub">Arguments per subtask</h3>
-          <p class="field-help sub-help">
-            Given to the generator after the seed for every planned test of the subtask, separated by spaces, for example n=1000
-            max=1000000000.
-          </p>
-          {#if draft.subtasks.length === 0}
-            <p class="muted empty">Add subtasks first; each gets its own arguments.</p>
-          {:else}
-            <div class="arg-rows">
-              {#each draft.subtasks as subtask, i (i)}
-                <div class="field">
-                  <label for="subtask-{i}-args">Subtask {i + 1}{subtask.title.trim() !== '' ? `, ${subtask.title.trim()}` : ''}</label>
-                  <input
-                    id="subtask-{i}-args"
-                    class="input mono"
-                    type="text"
-                    autocomplete="off"
-                    autocapitalize="none"
-                    spellcheck="false"
-                    bind:value={subtask.args}
-                    aria-invalid={err(`subtasks.${i}.generator_args`) ? 'true' : undefined}
-                    aria-describedby={described(`subtasks.${i}.generator_args`)}
-                  />
-                  {#if err(`subtasks.${i}.generator_args`)}
-                    <p id="subtasks-{i}-generator_args-error" class="field-error">{err(`subtasks.${i}.generator_args`)}</p>
-                  {/if}
-                </div>
-              {/each}
-            </div>
-          {/if}
-
-          <h3 class="sub" id="plan-heading">Planned tests</h3>
-          <p class="field-help sub-help">
-            Each row makes one test from a seed and optional arguments of its own. Samples come from the statement, so leave their
-            numbers out.
-          </p>
-          {#if err('plan')}<p id="plan-error" class="field-error">{err('plan')}</p>{/if}
-
-          {#if draft.plan.length > 0}
-            <div class="table-wrap plan">
-              <table class="table table-stack" aria-labelledby="plan-heading">
-                <thead>
-                  <tr>
-                    <th scope="col">Test</th>
-                    <th scope="col">Subtask</th>
-                    <th scope="col">Seed</th>
-                    <th scope="col">Arguments</th>
-                    <th scope="col"><span class="visually-hidden">Remove</span></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {#each draft.plan as row, i (i)}
-                    {@const rowErrors = planErrors(i)}
-                    <tr class:has-errors={rowErrors.length > 0}>
-                      <td class="plan-idx">
-                        <span class="cell-label" aria-hidden="true">Test</span>
-                        <input
-                          id="plan-{i}-idx"
-                          class="input mono"
-                          type="number"
-                          inputmode="numeric"
-                          min="1"
-                          max="999"
-                          aria-label="Row {i + 1}, test number"
-                          bind:value={row.idx}
-                          aria-invalid={err(`plan.${i}.idx`) ? 'true' : undefined}
-                          aria-describedby={described(`plan.${i}.idx`)}
-                        />
-                      </td>
-                      <td class="plan-subtask">
-                        <span class="cell-label" aria-hidden="true">Subtask</span>
-                        <select
-                          id="plan-{i}-subtask"
-                          class="select"
-                          aria-label="Row {i + 1}, subtask"
-                          bind:value={row.subtask}
-                          aria-invalid={err(`plan.${i}.subtask`) ? 'true' : undefined}
-                          aria-describedby={described(`plan.${i}.subtask`)}
-                        >
-                          {#each draft.subtasks.map((_, j) => j + 1) as n (n)}<option value={n}>{n}</option>{/each}
-                          {#if row.subtask > draft.subtasks.length}<option value={row.subtask}>{row.subtask} (removed)</option>{/if}
-                        </select>
-                      </td>
-                      <td class="plan-seed">
-                        <span class="cell-label" aria-hidden="true">Seed</span>
-                        <input
-                          id="plan-{i}-seed"
-                          class="input mono"
-                          type="number"
-                          inputmode="numeric"
-                          min="0"
-                          aria-label="Row {i + 1}, seed"
-                          bind:value={row.seed}
-                          aria-invalid={err(`plan.${i}.seed`) ? 'true' : undefined}
-                          aria-describedby={described(`plan.${i}.seed`)}
-                        />
-                      </td>
-                      <td class="plan-args">
-                        <span class="cell-label" aria-hidden="true">Arguments</span>
-                        <input
-                          id="plan-{i}-args"
-                          class="input mono"
-                          type="text"
-                          autocomplete="off"
-                          autocapitalize="none"
-                          spellcheck="false"
-                          aria-label="Row {i + 1}, arguments"
-                          bind:value={row.args}
-                          aria-invalid={err(`plan.${i}.args`) ? 'true' : undefined}
-                          aria-describedby={described(`plan.${i}.args`)}
-                        />
-                      </td>
-                      <td class="plan-remove">
-                        <button
-                          type="button"
-                          class="btn btn-quiet btn-danger-quiet btn-compact"
-                          aria-label="Remove planned test {row.idx ?? i + 1}"
-                          onclick={() => removePlanRow(i)}
-                        >
-                          Remove
-                        </button>
-                      </td>
-                    </tr>
-                    {#if rowErrors.length > 0}
-                      <tr class="plan-error-row">
-                        <td colspan="5">
-                          {#each rowErrors as e (e.key)}
-                            <p id="{e.key.replace(/\./g, '-')}-error" class="field-error">{e.message}</p>
-                          {/each}
-                        </td>
-                      </tr>
-                    {/if}
-                  {/each}
-                </tbody>
-              </table>
-            </div>
-          {:else}
-            <p class="muted empty">No planned tests yet.</p>
-          {/if}
-
-          <div class="plan-actions">
-            <button id="add-plan-row" type="button" class="btn btn-secondary" bind:this={addPlanButton} onclick={addPlanRow}>
-              Add planned test
-            </button>
-            <button
-              type="button"
-              class="btn btn-secondary"
-              disabled={inputGenBusy || inputPending || saving || !canGenerateInputs}
-              aria-describedby={canGenerateInputs ? undefined : 'generate-inputs-help'}
-              onclick={generateInputs}
-            >
-              {inputPending ? 'Generating inputs' : dirty ? 'Save and generate inputs' : 'Generate inputs'}
-            </button>
-            {#if !canGenerateInputs}
-              <p id="generate-inputs-help" class="field-help">Add a generator and at least one planned test first.</p>
-            {/if}
-          </div>
-
-          <div class="generation" aria-live="polite">
-            {#if inputGenError}
-              <div class="banner banner-error problems-list">
-                <p>{inputGenError.message}</p>
-                {#if inputGenError.problems.length > 0}
-                  <ul>{#each inputGenError.problems as line, i (i)}<li>{line}</li>{/each}</ul>
-                {/if}
-              </div>
-            {:else if inputReport}
-              <p class="gen-line tone-{inputReport.tone}">{inputReport.text}</p>
-              {#if inputReport.lines.length > 0}
-                <ul class="gen-failures">{#each inputReport.lines as line, i (i)}<li>{line}</li>{/each}</ul>
-              {/if}
-            {/if}
-          </div>
-        </section>
+      {#if hasGenerator}
+        <GeneratorPanel
+          bind:draft
+          bind:fields
+          testIdx={problem.tests.map((t) => t.idx)}
+          {dirty}
+          {saving}
+          busy={inputGenBusy}
+          pending={inputPending}
+          error={inputGenError}
+          report={inputReport}
+          ongenerate={generateInputs}
+        />
       {/if}
 
       <section class="block" aria-labelledby="solutions-heading">
@@ -1732,19 +1507,6 @@
     margin-top: var(--space-4);
   }
 
-  .sub {
-    font-size: var(--fs-2);
-  }
-
-  h3.sub {
-    margin-top: var(--space-6);
-  }
-
-  .sub-help {
-    margin-top: var(--space-1);
-    max-width: 72ch;
-  }
-
   .subtasks {
     display: grid;
     gap: var(--space-3);
@@ -1807,31 +1569,6 @@
     max-width: 72ch;
   }
 
-  /* Empty, it stays in the page (a live region that appears with its
-     first message is often not read), but takes no space. */
-  .generation:empty {
-    margin-top: 0;
-  }
-
-  .generation {
-    max-width: 64rem;
-    margin-top: var(--space-3);
-  }
-
-  .gen-line {
-    font-weight: 500;
-  }
-
-  .gen-failures {
-    margin-top: var(--space-1);
-    padding-left: var(--space-5);
-    color: var(--bad);
-  }
-
-  .empty {
-    margin-top: var(--space-4);
-  }
-
   .tests-summary {
     margin-top: var(--space-4);
   }
@@ -1880,10 +1617,6 @@
     font-weight: 500;
   }
 
-  .cell-label {
-    display: none;
-  }
-
   .file-cell {
     min-width: 10rem;
     max-width: 18rem;
@@ -1919,24 +1652,6 @@
     margin-left: var(--space-3);
   }
 
-  .programs {
-    display: grid;
-    gap: var(--space-6);
-    max-width: 64rem;
-    margin-top: var(--space-4);
-  }
-
-  .program-name {
-    font-size: var(--fs-2);
-  }
-
-  .optional {
-    display: grid;
-    justify-items: start;
-    align-content: start;
-    gap: var(--space-2);
-  }
-
   .editor :is(input, select, textarea) {
     scroll-margin-top: 10rem;
   }
@@ -1960,56 +1675,6 @@
     white-space: nowrap;
   }
 
-  .arg-rows {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(min(100%, 18rem), 1fr));
-    gap: var(--space-3) var(--space-4);
-    max-width: 64rem;
-    margin-top: var(--space-3);
-  }
-
-  .plan {
-    max-width: 64rem;
-    margin-top: var(--space-3);
-  }
-
-  .plan td {
-    padding-block: var(--space-1);
-  }
-
-  .plan-idx,
-  .plan-subtask,
-  .plan-seed {
-    width: 8rem;
-  }
-
-  .plan-args {
-    min-width: 12rem;
-  }
-
-  .plan-remove {
-    width: 1%;
-    text-align: right;
-  }
-
-  .plan tr.has-errors > td {
-    border-bottom: 0;
-  }
-
-  .plan-error-row td {
-    height: auto;
-    padding-top: 0;
-  }
-
-  .plan-actions {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: var(--space-2) var(--space-3);
-    max-width: 64rem;
-    margin-top: var(--space-4);
-  }
-
   @media (min-width: 1024px) {
     .top {
       grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
@@ -2021,18 +1686,6 @@
       align-self: start;
       max-height: calc(100vh - var(--space-7) - 2 * var(--space-4));
       overflow-y: auto;
-    }
-  }
-
-  /* Reference and brute force side by side on wide screens. */
-  @media (min-width: 1440px) {
-    .programs {
-      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-      max-width: none;
-    }
-
-    .programs > .full {
-      grid-column: 1 / -1;
     }
   }
 
@@ -2097,67 +1750,5 @@
       overflow-x: auto;
     }
 
-    .cell-label {
-      display: inline;
-      margin-right: var(--space-2);
-      font-size: var(--fs-0);
-      font-weight: 500;
-    }
-
-    .plan-actions .btn {
-      flex: 1 1 auto;
-    }
-
-    /* Planned tests stack: test and subtask, then seed and arguments. */
-
-    .plan tbody tr {
-      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
-      grid-template-areas:
-        'idx subtask remove'
-        'seed args args';
-      align-items: end;
-      gap: var(--space-2) var(--space-3);
-    }
-
-    .plan tbody tr.has-errors {
-      border-bottom: 0;
-      padding-bottom: 0;
-    }
-
-    .plan tbody tr.plan-error-row {
-      display: block;
-      padding-top: var(--space-1);
-    }
-
-    .plan tbody :is(th, td) {
-      display: grid;
-      gap: var(--space-1);
-      width: auto;
-      min-width: 0;
-    }
-
-    .plan-idx {
-      grid-area: idx;
-    }
-
-    .plan-subtask {
-      grid-area: subtask;
-    }
-
-    .plan-seed {
-      grid-area: seed;
-    }
-
-    .plan-args {
-      grid-area: args;
-    }
-
-    .plan-remove {
-      grid-area: remove;
-    }
-
-    .plan .cell-label {
-      margin-right: 0;
-    }
   }
 </style>
