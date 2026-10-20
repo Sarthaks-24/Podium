@@ -1,7 +1,10 @@
 <!--
   App: the shell around every screen (v2 N1 to N7). The header holds the
   podium word-mark (a link home), the main navigation and one account
-  control (components/AccountMenu). Navigation is named by job: students
+  control (components/AccountMenu). After an emergency deploy a
+  signed-in student sees one line above it, "The site was updated at
+  14:02", once per update (D112, lib/siteUpdate.ts); /api/me is read
+  again whenever a live stream reconnects. Navigation is named by job: students
   get "Contests" (Your contests) and, once an organiser has shared an
   integrity case with them, "Questions"; admins and owners get "Contests"
   (the organiser list at /admin/contests, where "/" sends them),
@@ -35,7 +38,9 @@
   import { regions } from './lib/announce.svelte';
   import { loadMode, runMode, telHref } from './lib/mode.svelte';
   import { installLinkInterception, matchRoute, navigate, router } from './lib/router.svelte';
-  import { loadSession, session, signOut } from './lib/session.svelte';
+  import { loadSession, refreshSiteUpdated, session, signOut } from './lib/session.svelte';
+  import { isNewUpdate, markUpdateSeen, seenUpdate, updateLine } from './lib/siteUpdate';
+  import { onStreamReconnect } from './lib/stream';
   import { loadQuestions, shell } from './lib/shell.svelte';
   import { isPlainKey, isTypingTarget } from './lib/shortcuts';
   import { safeNext } from './lib/signin';
@@ -69,6 +74,17 @@
   let menuOpen = $state(false);
   let menuButton: HTMLButtonElement | undefined = $state();
   let header: HTMLElement | undefined = $state();
+
+  // D112: "The site was updated at 14:02", once per update, for students.
+  let siteUpdate = $state<number | null>(null);
+  $effect(() => {
+    const at = session.user?.site_updated_at;
+    if (session.user?.role !== 'student' || typeof at !== 'number') return;
+    if (siteUpdate !== at && isNewUpdate(at, seenUpdate())) {
+      siteUpdate = at;
+      markUpdateSeen(at);
+    }
+  });
 
   // The header's real height (testing banner and wrapped rows included), so
   // the workspace can fill the rest of the window (audit 2026-10-20 S2).
@@ -167,7 +183,11 @@
       if (err) showToast(err.message, 'error');
     });
     void loadMode();
-    return removeInterception;
+    const removeReconnect = onStreamReconnect(() => void refreshSiteUpdated());
+    return () => {
+      removeInterception();
+      removeReconnect();
+    };
   });
 
   function onKeydown(event: KeyboardEvent) {
@@ -200,6 +220,12 @@
       <p class="mode-banner" role="note">
         Testing mode: sign-in is off and anyone at this machine can sign in as anyone. Do not use it for a real contest.
       </p>
+    {/if}
+    {#if siteUpdate !== null && signedIn}
+      <div class="site-update" role="status">
+        <p>{updateLine(siteUpdate)} Your code and submissions are kept.</p>
+        <button type="button" class="btn btn-quiet btn-compact" onclick={() => (siteUpdate = null)}>Dismiss</button>
+      </div>
     {/if}
     <div class="inner bar-inner">
       <a class="wordmark" href="/" translate="no">podium</a>
@@ -372,6 +398,19 @@
     padding: var(--space-2) var(--gutter);
     border-bottom: var(--rule) solid var(--line);
     background: var(--part-tint);
+    color: var(--ink);
+    font-size: var(--fs-0);
+  }
+
+  .site-update {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-1) var(--space-3);
+    padding: var(--space-1) var(--gutter);
+    border-bottom: var(--rule) solid var(--line);
+    background: var(--act-tint);
     color: var(--ink);
     font-size: var(--fs-0);
   }

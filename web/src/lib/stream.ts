@@ -21,6 +21,20 @@
  * which connects again (and replaces the other tab in turn).
  */
 
+// Not reactive state: nothing renders from it.
+const reconnectListeners = new Set<() => void>();
+
+/**
+ * Calls `fn` whenever any live stream in this tab comes back after a
+ * failure, besides that stream's own onReconnect. The shell uses it to read
+ * /api/me again after a deploy restarted the server (D112). Returns the
+ * function that removes it.
+ */
+export function onStreamReconnect(fn: () => void): () => void {
+  reconnectListeners.add(fn);
+  return () => reconnectListeners.delete(fn);
+}
+
 /** The delay before reconnect attempt `attempt` (0 for the first), in ms. */
 export function reconnectDelay(attempt: number, random: () => number = Math.random): number {
   const base = Math.min(30_000, 1000 * 2 ** Math.max(0, attempt));
@@ -159,7 +173,10 @@ export class EventStream {
         if (this.es === es) this.errors = 0;
       }, this.o.stableMs);
       this.setMode('live');
-      if (wasDown) this.o.onReconnect();
+      if (wasDown) {
+        this.o.onReconnect();
+        for (const fn of reconnectListeners) fn();
+      }
     };
     es.onerror = () => {
       if (this.es !== es) return;

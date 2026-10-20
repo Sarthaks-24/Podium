@@ -50,7 +50,7 @@ function apiError(route: Route, status: number, code: string, message: string, e
   return json(route, status, { error: { code, message, ...extra } });
 }
 
-async function mockApi(page: Page, who: Who, options: { contactMode?: 'ok' | 'rate'; config?: unknown } = {}) {
+async function mockApi(page: Page, who: Who, options: { contactMode?: 'ok' | 'rate'; config?: unknown; siteUpdatedAt?: number } = {}) {
   const state = {
     who,
     sent: [] as { topic: string; message: string }[],
@@ -71,7 +71,7 @@ async function mockApi(page: Page, who: Who, options: { contactMode?: 'ok' | 'ra
       const method = req.method();
       const me = state.who === 'owner' ? OWNER : state.who === 'student' ? STUDENT : null;
       if (path === '/api/auth/config') return json(route, 200, options.config ?? CONFIG);
-      if (path === '/api/me') return me ? json(route, 200, { ...me, site_updated_at: null }) : apiError(route, 401, 'signed_out', 'Sign in to continue.');
+      if (path === '/api/me') return me ? json(route, 200, { ...me, site_updated_at: options.siteUpdatedAt ?? null }) : apiError(route, 401, 'signed_out', 'Sign in to continue.');
       if (path === '/api/events') return route.abort();
       if (!me) return apiError(route, 401, 'signed_out', 'Sign in to continue.');
       if (path === '/api/contests') return json(route, 200, { live: [], upcoming: [], past: [] });
@@ -254,4 +254,27 @@ test('the privacy notice waits for the owner, and its draft lists every retentio
     expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(0);
     await page.screenshot({ path: `${shots()}privacy-draft-${width}-light.png`, fullPage: true });
   }
+});
+
+test('after an emergency deploy a student sees one line, once (D112)', async ({ page }) => {
+  const at = NOW - 20 * 60_000;
+  const d = new Date(at);
+  const hhmm = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+  await mockApi(page, 'student', { siteUpdatedAt: at });
+  await page.goto('/');
+  const line = page.locator('.site-update');
+  await expect(line.locator('p')).toHaveText(`The site was updated at ${hhmm}. Your code and submissions are kept.`);
+  await expect(line).toHaveAttribute('role', 'status');
+  await line.getByRole('button', { name: 'Dismiss' }).click();
+  await expect(line).toHaveCount(0);
+  await page.reload();
+  await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
+  await expect(page.locator('.site-update')).toHaveCount(0);
+});
+
+test('organisers do not get the update line', async ({ page }) => {
+  await mockApi(page, 'owner', { siteUpdatedAt: NOW - 60_000 });
+  await page.goto('/admin/contact');
+  await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
+  await expect(page.locator('.site-update')).toHaveCount(0);
 });
