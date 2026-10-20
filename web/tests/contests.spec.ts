@@ -164,6 +164,17 @@ test('an upcoming fixed-start contest counts down and keeps the start button clo
   await expect(page.getByRole('timer')).toHaveText(/^02:0\d:\d{2}$/);
   await expect(page.getByRole('button', { name: 'I agree, start the contest' })).toBeDisabled();
   await expect(page.getByText(/^You can start at/)).toBeVisible();
+  // S3: the countdown, the honour code and the button come first, above the fold.
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await expect(page.getByRole('button', { name: 'I agree, start the contest' })).toBeInViewport();
+  await page.setViewportSize({ width: 375, height: 812 });
+  await expect(page.getByRole('timer')).toBeInViewport();
+  const order = await page.evaluate(() => {
+    const at = (sel: string) => document.querySelector(sel)?.getBoundingClientRect().top ?? -1;
+    return [at('[role="timer"]'), at('#honour-title'), at('#rules-title')];
+  });
+  expect(order[0]).toBeLessThan(order[1]);
+  expect(order[1]).toBeLessThan(order[2]);
 });
 
 test('a window-mode contest starts the clock on agreement', async ({ page }) => {
