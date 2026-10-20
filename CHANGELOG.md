@@ -12,6 +12,7 @@ Becomes `v1.0.0` when the v2 P0 gate is signed.
 - On phones the standings header stays on screen while the rows scroll (B3).
 - The reveal enters full screen when it opens and leaves it on exit (B4); the row climbing to its new place is drawn above the rows it passes (B5).
 - The AI wizard shows its second step as done when the wizard is done (B6).
+- The console's audit log names a forced deploy (`deploy_forced`, written by `podium-server deploy-check -force`) with its release and reason.
 - Unpublishing (or publishing) a live contest asks first, like any other change students see at once (B7).
 - Test suite: an axe-core accessibility pass over every route at 1440 and 320 px with forced-colours screenshots (`web/tests/a11y.spec.ts`, new dev dependency `@axe-core/playwright` 4.13.0), the student workspace and contest screens at more sizes and with touch emulation, pixel comparisons of the student screens (`web/tests/baseline.spec.ts`, references kept outside git), more contrast pairs in the theme test, and the specs' mocks moved to `web/tests/mocks/`.
 - Docs: the console feed's `verdict` values in `docs/API.md`; unmeasured judge capacity figures removed from `docs/RUNBOOK.md` until the VM is measured.
