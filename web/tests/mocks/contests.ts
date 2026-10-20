@@ -690,7 +690,12 @@ export const SCREENS: Screen[] = [
     path: '/contests/week-6',
     options: { phase: 'practice' },
     title: 'Week 6 contest · podium',
-    ready: (page) => expect(page.locator('.md :is(h3, h4)', { hasText: 'A plus B' })).toBeVisible({ timeout: 10_000 }),
+    ready: async (page) => {
+      await expect(page.locator('.md :is(h3, h4)', { hasText: 'A plus B' })).toBeVisible({ timeout: 10_000 });
+      // The place and the newest submission arrive after the page (S9).
+      await expect(page.locator('.result .place-figure')).toBeVisible();
+      await expect(page.locator('details[open] .list')).toBeVisible();
+    },
   },
   {
     name: 'standings-frozen',

@@ -551,6 +551,13 @@ test.describe('in a contest', () => {
     await page.setViewportSize({ width: 1440, height: 900 });
     await page.goto('/contests/week-6/problems/A');
     await expect(page.locator('.cm-content')).toBeVisible();
+    // S2: at 1440 by 900 the toolbar is one row, and it stays one row while Submit counts down.
+    const oneRow = async () => {
+      const top = async (sel: string) => (await page.locator(sel).first().boundingBox())!.y;
+      expect(Math.abs((await top('#ws-language')) - (await top('button.submit')))).toBeLessThan(8);
+    };
+    await oneRow();
+    expect((await page.locator('.editor-box').boundingBox())!.height).toBeGreaterThan(380);
     const submit = page.getByRole('button', { name: 'Submit', exact: true });
     await expect(page.locator('#ws-submit-status')).toHaveText('0 of 15 submissions used');
     await submit.focus();
@@ -561,6 +568,7 @@ test.describe('in a contest', () => {
     // S4: the contest's 30 s gap counts down in the same button, which keeps focus.
     const counting = page.locator('button.submit');
     await expect(counting).toHaveText(/^Submit in (30|29|28) s$/);
+    await oneRow();
     await expect(counting).toBeFocused();
     await expect(counting).toHaveAttribute('aria-disabled', 'true');
     await expect(page.locator('#ws-submit-status')).toHaveText('1 of 15 submissions used');

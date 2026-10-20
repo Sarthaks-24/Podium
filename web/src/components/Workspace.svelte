@@ -1223,7 +1223,7 @@
   }
 
   .toolbar .lang {
-    width: 9rem;
+    width: 8rem;
   }
 
   .run-actions {
@@ -1234,7 +1234,7 @@
 
   /* "Submit in 24 s" fits without the button growing as it counts (S4). */
   .submit {
-    min-width: 9.5rem;
+    min-width: 9rem;
   }
 
   .editor-box {
