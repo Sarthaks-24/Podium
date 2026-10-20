@@ -274,3 +274,34 @@ func TestCSVInjectionIsNeutralised(t *testing.T) {
 		t.Errorf("csv %q", buf.String())
 	}
 }
+
+// The console's "Waiting or judging" and "Judge error" filters match on
+// state, because neither kind of submission has a verdict.
+func TestFeedFiltersPendingAndError(t *testing.T) {
+	r := newSvc(t)
+	ctx := context.Background()
+	c := r.contest(t, nil)
+	if _, err := r.svc.DB.Exec(`INSERT INTO problems (id, slug, title, time_limit_ms, memory_limit_mb, checker, reference_language,
+		created_at, updated_at, content_hash) VALUES (1, 'p', 'P', 1000, 256, 'tokens', 'cpp17', 0, 0, 'h')`); err != nil {
+		t.Fatal(err)
+	}
+	for _, s := range [][2]string{{"queued", ""}, {"running", ""}, {"done", "WA"}, {"error", ""}} {
+		if _, err := r.svc.DB.Exec(`INSERT INTO submissions (problem_id, contest_id, user_id, kind, language, source, source_sha, state, verdict, created_at)
+			VALUES (1, ?, 2, 'submit', 'cpp17', '', 's', ?, ?, 0)`, c.ID, s[0], s[1]); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for filter, want := range map[string]string{"pending": "running queued", "error": "error", "wa": "done", "": "error done running queued"} {
+		items, _, err := r.svc.Feed(ctx, c, FeedFilter{Verdict: filter})
+		if err != nil {
+			t.Fatal(err)
+		}
+		var got []string
+		for _, it := range items {
+			got = append(got, it.State)
+		}
+		if strings.Join(got, " ") != want {
+			t.Errorf("filter %q: got %v, want %s", filter, got, want)
+		}
+	}
+}

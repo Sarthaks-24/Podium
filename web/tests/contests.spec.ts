@@ -500,10 +500,15 @@ async function mockApi(page: Page, options: Options = {}) {
           { id: 301, user_id: 7, name: 'Asha Rao', email: 'asha@college.edu', problem_label: 'B', language: 'cpp17', state: 'done', verdict: 'WA', score: 40, max_score: 100, created_at: now - 2 * MIN, practice: false, rejudged: false },
           { id: 300, user_id: 101, name: 'Arjun Mehta', email: 'arjun@college.edu', problem_label: 'A', language: 'python3', state: 'done', verdict: 'AC', score: 100, max_score: 100, created_at: now - 5 * MIN, practice: false, rejudged: false },
           { id: 299, user_id: 102, name: 'Ravi Kumar', email: 'ravi@college.edu', problem_label: 'C', language: 'java21', state: 'running', verdict: '', score: 0, max_score: 100, created_at: now - 6 * MIN, practice: false, rejudged: false },
+          { id: 298, user_id: 103, name: 'Meera Iyer', email: 'meera@college.edu', problem_label: 'B', language: 'cpp17', state: 'error', verdict: '', score: 0, max_score: 100, created_at: now - 7 * MIN, practice: false, rejudged: false },
         ];
         const problem = url.searchParams.get('problem');
         const user = url.searchParams.get('user');
-        const shown = rows.filter((r) => (!problem || r.problem_label === problem) && (!user || String(r.user_id) === user));
+        // As the server does (export.go): "pending" and "error" are states, anything else a verdict.
+        const verdict = url.searchParams.get('verdict');
+        const matches = (r: (typeof rows)[number]) =>
+          !verdict || (verdict === 'pending' ? r.state === 'queued' || r.state === 'running' : verdict === 'error' ? r.state === 'error' : r.verdict === verdict);
+        const shown = rows.filter((r) => (!problem || r.problem_label === problem) && (!user || String(r.user_id) === user) && matches(r));
         return json(route, 200, { submissions: shown, page: 1, has_more: false, server_now: Date.now() });
       }
       if (path === '/api/admin/contests/4/announcements' && method === 'GET') return json(route, 200, { announcements: state.posted.map((p, i) => ({ id: i + 1, body_md: p.body_md, created_at: now })) });
@@ -1067,6 +1072,22 @@ test('the console pauses, extends, rejudges, announces and answers', async ({ pa
   await expect(audit).toContainText('Paused judging');
   await expect(audit).toContainText('priya@college.edu');
   await page.screenshot({ path: `${shots()}contest-console-1440-light.png`, fullPage: true });
+});
+
+test('the console feed filters waiting or judging and judge errors', async ({ page }) => {
+  const api = await mockApi(page, { who: 'admin', phase: 'during' });
+  await page.goto('/admin/contests/4/console');
+  const verdict = page.getByLabel('Verdict', { exact: true });
+  await verdict.selectOption({ label: 'Waiting or judging' });
+  await page.getByRole('button', { name: 'Filter' }).click();
+  await expect.poll(() => api.feedQueries.at(-1)).toBe('?verdict=pending&page=1');
+  await expect(page.locator('.feed tbody tr')).toHaveCount(1);
+  await expect(page.locator('.feed tbody')).toContainText('Judging');
+  await verdict.selectOption({ label: 'Judge error' });
+  await page.getByRole('button', { name: 'Filter' }).click();
+  await expect.poll(() => api.feedQueries.at(-1)).toBe('?verdict=error&page=1');
+  await expect(page.locator('.feed tbody tr')).toHaveCount(1);
+  await expect(page.locator('.feed tbody')).toContainText('Meera Iyer');
 });
 
 test('a graded contest asks for a reason before it takes an AI problem nobody solved', async ({ page }) => {

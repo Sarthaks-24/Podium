@@ -272,8 +272,10 @@ func median(m map[int64]int) float64 {
 type FeedFilter struct {
 	ProblemID int64
 	UserID    int64
-	Verdict   string
-	Page      int // from 1
+	// Verdict is a verdict code (AC, WA, ...), "pending" for queued or
+	// running, or "error" for a judge error; case does not matter.
+	Verdict string
+	Page    int // from 1
 	// IntegrityCounts includes each submission's typed, pasted and focus
 	// counts. Only owners and admins get them: a co-organiser whose site
 	// role is student (a TA) never sees a classmate's integrity data.
@@ -334,7 +336,15 @@ func (s *Service) Feed(ctx context.Context, c *Contest, f FeedFilter) ([]FeedIte
 		q += " AND s.user_id = ?"
 		args = append(args, f.UserID)
 	}
-	if v := strings.ToUpper(strings.TrimSpace(f.Verdict)); v != "" {
+	// "pending" and "error" are states, not verdicts: a submission waiting
+	// or being judged has no verdict yet, and a judge error has none at all.
+	switch v := strings.ToUpper(strings.TrimSpace(f.Verdict)); v {
+	case "":
+	case "PENDING":
+		q += " AND s.state IN ('queued', 'running')"
+	case "ERROR":
+		q += " AND s.state = 'error'"
+	default:
 		q += " AND s.verdict = ?"
 		args = append(args, v)
 	}
