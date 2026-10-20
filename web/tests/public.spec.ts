@@ -230,3 +230,28 @@ test('a student who opens the inbox is told why it is closed', async ({ page }) 
   await page.goto('/admin/contact');
   await expect(page.getByText('Only organisers can read these messages.')).toBeVisible();
 });
+
+test('the privacy notice waits for the owner, and its draft lists every retention period from the config (FP.1)', async ({ page }) => {
+  await mockApi(page, 'signed-out');
+  await page.goto('/privacy');
+  await expect(page.getByText('The privacy notice for podium is being written.', { exact: false })).toBeVisible();
+  await expect(page.getByRole('table')).toHaveCount(0);
+
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto('/privacy?draft');
+  await expect(page.getByRole('note')).toHaveText("Draft for the owner's approval. Nothing links to this page yet.");
+  await expect(page.getByRole('heading', { level: 2, name: 'What podium records' })).toBeVisible();
+  const rows = page.getByRole('table', { name: 'How long podium keeps each kind of data' }).locator('tbody tr');
+  await expect(rows).toHaveCount(RETENTION.length);
+  for (const [i, r] of RETENTION.entries()) {
+    await expect(rows.nth(i).locator('th')).toHaveText(r.data);
+    await expect(rows.nth(i).locator('td')).toHaveText(r.kept);
+  }
+  await expect(page.getByRole('link', { name: 'privacy@college.edu' })).toHaveAttribute('href', 'mailto:privacy@college.edu');
+  for (const width of WIDTHS) {
+    await page.setViewportSize({ width, height: width < 768 ? 812 : 900 });
+    await settle(page);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(0);
+    await page.screenshot({ path: `${shots()}privacy-draft-${width}-light.png`, fullPage: true });
+  }
+});
