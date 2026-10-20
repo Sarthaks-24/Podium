@@ -526,6 +526,8 @@ test('the console pauses, extends, judges again, announces and answers', async (
   const post = page.getByRole('dialog', { name: 'Post to every student?' });
   await post.getByRole('button', { name: 'Post announcement' }).click();
   await expect.poll(() => api.posted.length).toBe(1);
+  // Closing hands focus back to the opener; wait so it does not land later.
+  await expect(post).toBeHidden();
 
   // A standard answer from the one list, answered for everyone.
   await page.getByLabel('Insert a standard answer').selectOption({ label: 'Yes.' });
