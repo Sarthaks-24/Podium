@@ -61,8 +61,9 @@ type Deps struct {
 	// preAuthLimit is the per-address budget before sign-in and flows the
 	// sign-in attempts already finished (preauth.go). New sets both;
 	// tests may set preAuthLimit first.
-	preAuthLimit *ipLimiter
-	flows        *usedFlows
+	preAuthLimit  *ipLimiter
+	signInLimiter *ipLimiter
+	flows         *usedFlows
 	// Mode is the run mode (testing, dev or production). Testing mode has
 	// no Google sign-in; instead anyone at this machine signs in with a
 	// form (decision D48).
@@ -77,6 +78,9 @@ func New(d Deps) http.Handler {
 	if d.preAuthLimit == nil {
 		d.preAuthLimit = newIPLimiter(PreAuthBurst, PreAuthRate, nil)
 	}
+	if d.signInLimiter == nil {
+		d.signInLimiter = newIPLimiter(SignInBurst, SignInRate, nil)
+	}
 	d.flows = newUsedFlows()
 	if d.Contact == nil {
 		d.Contact = &contact.Service{DB: d.DB, Auth: d.Auth}
@@ -89,10 +93,10 @@ func New(d Deps) http.Handler {
 
 	mux.HandleFunc("GET /api/auth/config", d.preAuth(d.authConfig))
 	if d.Mode == "testing" {
-		mux.HandleFunc("POST /api/auth/test-signin", d.preAuth(d.testSignIn))
+		mux.HandleFunc("POST /api/auth/test-signin", d.signInLimit(false, d.testSignIn))
 	} else {
-		mux.HandleFunc("GET /api/auth/google/start", d.preAuth(d.googleStart))
-		mux.HandleFunc("GET /api/auth/google/callback", d.preAuth(d.googleCallback))
+		mux.HandleFunc("GET /api/auth/google/start", d.signInLimit(true, d.googleStart))
+		mux.HandleFunc("GET /api/auth/google/callback", d.signInLimit(true, d.googleCallback))
 	}
 	mux.HandleFunc("POST /api/auth/logout", d.preAuth(d.logout))
 	mux.HandleFunc("GET /api/me", d.requireRole(auth.Student, d.me))

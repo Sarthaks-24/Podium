@@ -103,7 +103,7 @@ func check(topic, message string) (string, FieldErrors) {
 		f["message"] = "Keep the message to 2,000 characters."
 	default:
 		for _, r := range message {
-			if r != '\n' && r != '\t' && r != '\r' && unicode.IsControl(r) {
+			if r != '\n' && r != '\t' && r != '\r' && (unicode.IsControl(r) || auth.Hidden(r)) {
 				f["message"] = "The message has characters that are not text. Type it again."
 				break
 			}

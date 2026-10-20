@@ -90,11 +90,19 @@ func singleLine(v string) bool {
 		return false
 	}
 	for _, r := range v {
-		if unicode.IsControl(r) || r == ' ' || r == ' ' {
+		if unicode.IsControl(r) || Hidden(r) || r == ' ' || r == ' ' {
 			return false
 		}
 	}
 	return true
+}
+
+// Hidden reports a format character (Unicode Cf) other than the zero-width
+// joiners some scripts need: bidirectional overrides and the like, which
+// could make stored text read differently from what it says (security
+// review 2026-10-20, finding 11).
+func Hidden(r rune) bool {
+	return unicode.Is(unicode.Cf, r) && r != 0x200c && r != 0x200d
 }
 
 // checkOrganisation trims o and returns what is wrong with it.

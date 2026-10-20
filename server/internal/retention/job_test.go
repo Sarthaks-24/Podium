@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"database/sql"
+	"errors"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -232,6 +233,7 @@ func TestSubmissionsAfterFourYears(t *testing.T) {
 		f.exec(`INSERT INTO submissions (job_id, problem_id, contest_id, user_id, kind, language, source, source_sha, state, created_at, revision_id)
 			VALUES (?, 1, ?, 2, 'submit', 'cpp17', 'x', 's', 'done', 1, 1)`, 10+c, c)
 	}
+	f.exec("UPDATE contests SET archived = 1 WHERE id = 1")
 	// A late pin change on the old contest, newer than the cutoff, waits.
 	f.exec(`INSERT INTO contest_pin_history (contest_id, label, problem_id, revision_id, from_at) VALUES (1, 'A', 1, 2, ?)`, f.ago(day))
 	// Outside contests: one old, one new.
@@ -267,6 +269,26 @@ func TestSubmissionsAfterFourYears(t *testing.T) {
 	if f.count("SELECT count(*) FROM contest_problems WHERE contest_id = 1 AND revision_id IS NULL") != 1 {
 		t.Error("old contest still pins its revision")
 	}
+	// An old contest still open for practice keeps its pins and its fresh
+	// practice; one with an open integrity case waits whole.
+	f.contest(4, retention.Submissions+10*day)
+	f.contest(5, retention.Submissions+10*day)
+	f.exec(`INSERT INTO contest_problems (contest_id, problem_id, label, ord, revision_id) VALUES (4, 1, 'A', 0, 1)`)
+	f.exec(`INSERT INTO submissions (problem_id, contest_id, user_id, kind, language, source, source_sha, state, practice, created_at)
+		VALUES (1, 4, 2, 'submit', 'cpp17', 'x', 's', 'done', 0, 1), (1, 4, 2, 'submit', 'cpp17', 'x', 's', 'done', 1, ?),
+		(1, 5, 2, 'submit', 'cpp17', 'x', 's', 'done', 0, 1)`, f.ago(day))
+	f.exec(`INSERT INTO integrity_cases (contest_id, state, title, created_at, updated_at) VALUES (5, 'open', 'Case', 1, 1)`)
+	if _, err := j.Run(f.ctx); err != nil {
+		t.Fatal(err)
+	}
+	if f.count("SELECT count(*) FROM submissions WHERE contest_id = 4") != 1 || f.count("SELECT count(*) FROM submissions WHERE contest_id = 4 AND practice = 1") != 1 ||
+		f.count("SELECT count(*) FROM contest_problems WHERE contest_id = 4 AND revision_id = 1") != 1 {
+		t.Error("practice-open contest: fresh practice or pin lost")
+	}
+	if f.count("SELECT count(*) FROM submissions WHERE contest_id = 5") != 1 || f.count("SELECT count(*) FROM contest_results WHERE contest_id = 5") != 0 {
+		t.Error("contest with an open case was expired")
+	}
+
 	// A second pass changes nothing and writes no second export.
 	exported := 0
 	j.ExportStandings = func(context.Context, int64) ([]byte, error) { exported++; return []byte("[]"), nil }
@@ -309,5 +331,33 @@ func TestBackupDefaultMatches(t *testing.T) {
 	want := "keep=${keep:-" + strconv.Itoa(int(retention.Backups/retention.Day)) + "}"
 	if !strings.Contains(string(b), want) {
 		t.Errorf("podium-backup does not default to %s", want)
+	}
+}
+
+// TestOneFailingContestDoesNotStopThePass: an export that fails skips its
+// contest; the other contests and the audit rule still run, and the error
+// comes back (security review 2026-10-20, finding 8).
+func TestOneFailingContestDoesNotStopThePass(t *testing.T) {
+	f := newFixture(t)
+	f.problemWithRevisions(5 * retention.Year)
+	for _, c := range []int64{1, 2} {
+		f.contest(c, retention.Submissions+10*day)
+		f.exec(`INSERT INTO submissions (problem_id, contest_id, user_id, kind, language, source, source_sha, state, created_at)
+			VALUES (1, ?, 2, 'submit', 'cpp17', 'x', 's', 'done', 1)`, c)
+	}
+	f.exec(`INSERT INTO site_audit (at, action) VALUES (?, 'role_granted')`, f.ago(retention.Audit+day))
+	j := f.job()
+	j.ExportStandings = func(_ context.Context, id int64) ([]byte, error) {
+		if id == 1 {
+			return nil, errors.New("board unreadable")
+		}
+		return []byte("[]"), nil
+	}
+	res, err := j.Run(f.ctx)
+	if err == nil || !strings.Contains(err.Error(), "contest 1") {
+		t.Errorf("error %v", err)
+	}
+	if res.ContestsExpired != 1 || res.AuditDeleted != 1 || f.count("SELECT count(*) FROM submissions WHERE contest_id = 1") != 1 {
+		t.Errorf("result %+v", res)
 	}
 }

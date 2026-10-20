@@ -26,6 +26,7 @@ func forgetCmd(args []string, out io.Writer) int {
 	fs.SetOutput(out)
 	dbPath := fs.String("db", envOr("PODIUM_DB_PATH", "data/podium.db"), "SQLite database of the server")
 	apply := fs.Bool("apply", false, "erase for real; without it nothing changes")
+	allowOwner := fs.Bool("allow-owner", false, "allow erasing an account that has the owner role")
 	owner := fs.String("owner", envOr("PODIUM_OWNER_EMAIL", ""), "the owner running this, recorded in the site audit (default PODIUM_OWNER_EMAIL)")
 	fs.Usage = func() {
 		fmt.Fprintln(out, "usage: podium-server forget-user [-db F] [-apply] EMAIL")
@@ -68,27 +69,38 @@ func forgetCmd(args []string, out io.Writer) int {
 		fmt.Fprintf(out, "forget-user: %v\n", err)
 		return 2
 	}
-	svc := &auth.Service{DB: d, OwnerEmail: strings.ToLower(envOr("PODIUM_OWNER_EMAIL", ""))}
-	r, err := svc.Forget(auth.WithActor(ctx, actor), email, *apply)
+	svc := &auth.Service{DB: d, OwnerEmail: strings.ToLower(strings.TrimSpace(*owner))}
+	r, err := svc.Forget(auth.WithActor(ctx, actor), email, *apply, *allowOwner)
 	var ce *auth.ChangeError
 	switch {
-	case errors.As(err, &ce), errors.Is(err, auth.ErrForgetOwner), errors.Is(err, auth.ErrAlreadyForgotten):
+	case errors.As(err, &ce), errors.Is(err, auth.ErrForgetOwner), errors.Is(err, auth.ErrAlreadyForgotten),
+		errors.Is(err, auth.ErrForgetOwnerRole), errors.Is(err, auth.ErrNoOwnerEmail):
 		fmt.Fprintf(out, "refused: %v\n", err)
 		return 1
 	case err != nil:
 		fmt.Fprintf(out, "forget-user: %v\n", err)
 		return 2
 	}
+	who := fmt.Sprintf("account %d (%s, %s)", r.UserID, r.Email, r.Role)
+	if r.UserID == 0 {
+		who = r.Email + ": no account, roster entries only"
+	}
 	if r.Applied {
-		fmt.Fprintf(out, "forgotten: account %d (%s, %s)\n", r.UserID, r.Email, r.Role)
+		fmt.Fprintf(out, "forgotten: %s\n", who)
 	} else {
-		fmt.Fprintf(out, "dry run, nothing changed: account %d (%s, %s)\n", r.UserID, r.Email, r.Role)
+		fmt.Fprintf(out, "dry run, nothing changed: %s\n", who)
 	}
 	for _, c := range r.Counts {
 		fmt.Fprintf(out, "  %-30s %d\n", c.What, c.N)
 	}
-	fmt.Fprintf(out, "  name and email become %q, %s; Google link cleared; account disabled\n", r.Placeholder, r.PlaceholderEmail)
-	fmt.Fprintln(out, "  kept: submissions and scores (under the placeholder), and audit rows written before today")
+	if r.UserID > 0 {
+		fmt.Fprintf(out, "  name and email become %q, %s; Google link cleared; account disabled\n", r.Placeholder, r.PlaceholderEmail)
+	} else {
+		fmt.Fprintf(out, "  roster entries become %q, %s\n", r.Placeholder, r.PlaceholderEmail)
+	}
+	for _, k := range auth.ForgetKept {
+		fmt.Fprintf(out, "  kept: %s\n", k)
+	}
 	if !r.Applied {
 		fmt.Fprintln(out, "  run again with -apply to erase")
 	}

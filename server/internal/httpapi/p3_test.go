@@ -118,6 +118,7 @@ func TestP3ContactFormAndInbox(t *testing.T) {
 		{map[string]any{"topic": "other", "message": "   "}, "message"},
 		{map[string]any{"topic": "other", "message": strings.Repeat("é", 2001)}, "message"},
 		{map[string]any{"topic": "other", "message": "bell \a"}, "message"},
+		{map[string]any{"topic": "other", "message": "looks " + string(rune(0x202e)) + "reversed"}, "message"},
 	} {
 		code, out := asha.do("POST", "/api/contact", c.body, s.srv.URL)
 		fields, _ := out["error"].(map[string]any)["fields"].(map[string]any)

@@ -14,15 +14,22 @@ import (
 	"time"
 )
 
-// The pre-auth budget per client address: PreAuthBurst requests at once,
-// refilled at PreAuthRate per second. A college signs in from few
-// addresses behind its NAT, so the budget is sized for a whole class at
-// once (700 students each load the config and start one sign-in).
+// Budgets per client address before sign-in, each a token bucket: Burst
+// requests at once, refilled at Rate per second. A college signs in from
+// few addresses behind its NAT, so each is sized for a whole class at
+// once: 700 students load the config about three times each on the way
+// through a sign-in (the app, the sign-in page, the page after the
+// redirect) and make one start and one callback (security review
+// 2026-10-20, finding 1).
 const (
-	PreAuthBurst = 600
-	PreAuthRate  = 10
-	// preAuthMaxKeys bounds the table of addresses; past it, new
-	// addresses share one budget until the sweep frees room.
+	// The cheap routes: the config, the health check, sign-out.
+	PreAuthBurst = 5000
+	PreAuthRate  = 50
+	// The sign-in routes: Google start and callback, test sign-in. Each
+	// callback is an outbound call to Google.
+	SignInBurst = 2000
+	SignInRate  = 20
+	// preAuthMaxKeys bounds each table of addresses.
 	preAuthMaxKeys = 20000
 )
 
@@ -31,8 +38,9 @@ type ipLimiter struct {
 	burst, rate float64
 	now         func() time.Time
 
-	mu      sync.Mutex
-	buckets map[string]*ipBucket
+	mu        sync.Mutex
+	buckets   map[string]*ipBucket
+	lastSweep time.Time
 }
 
 type ipBucket struct {
@@ -48,24 +56,27 @@ func newIPLimiter(burst, rate float64, now func() time.Time) *ipLimiter {
 }
 
 // allow takes one token from key's bucket, or says how long until one is
-// free.
+// free. A full table is swept at most once a second; if it is still full,
+// one arbitrary bucket makes room, so a stranger never shares a budget
+// that someone else is draining (finding 2).
 func (l *ipLimiter) allow(key string) (bool, time.Duration) {
 	now := l.now()
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	b := l.buckets[key]
 	if b == nil {
-		if len(l.buckets) >= preAuthMaxKeys {
+		if len(l.buckets) >= preAuthMaxKeys && now.Sub(l.lastSweep) >= time.Second {
+			l.lastSweep = now
 			l.sweep(now)
 		}
 		if len(l.buckets) >= preAuthMaxKeys {
-			key = "overflow"
-			b = l.buckets[key]
+			for k := range l.buckets {
+				delete(l.buckets, k)
+				break
+			}
 		}
-		if b == nil {
-			b = &ipBucket{tokens: l.burst, at: now}
-			l.buckets[key] = b
-		}
+		b = &ipBucket{tokens: l.burst, at: now}
+		l.buckets[key] = b
 	}
 	b.tokens = min(l.burst, b.tokens+now.Sub(b.at).Seconds()*l.rate)
 	b.at = now
@@ -98,14 +109,30 @@ func addressKey(r *http.Request) string {
 	return ip.String()
 }
 
-// preAuth wraps a route a visitor reaches without a session. Requests from
-// this machine itself are not counted (the load test, install.sh verify).
+// preAuth wraps a cheap route a visitor reaches without a session, and
+// signInLimit a sign-in route. Requests from this machine itself are not
+// counted (the load test, install.sh verify). A refused sign-in, being a
+// browser navigation, lands on /signin?error=rate_limited rather than a
+// page of JSON.
 func (d Deps) preAuth(h http.HandlerFunc) http.HandlerFunc {
+	return d.limited(d.preAuthLimit, false, h)
+}
+
+func (d Deps) signInLimit(redirect bool, h http.HandlerFunc) http.HandlerFunc {
+	return d.limited(d.signInLimiter, redirect, h)
+}
+
+func (d Deps) limited(l *ipLimiter, redirect bool, h http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if !loopbackRequest(r) {
-			if ok, wait := d.preAuthLimit.allow(addressKey(r)); !ok {
+			if ok, wait := l.allow(addressKey(r)); !ok {
 				secs := max(1, int(wait.Seconds()+0.999))
 				w.Header().Set("Retry-After", strconv.Itoa(secs))
+				if redirect {
+					w.Header().Set("Cache-Control", "no-store")
+					http.Redirect(w, r, "/signin?error=rate_limited", http.StatusFound)
+					return
+				}
 				WriteJSON(w, http.StatusTooManyRequests, map[string]any{"error": map[string]any{
 					"code": "rate_limited", "message": "Too many requests from your network. Wait a few seconds and try again.",
 					"retry_after_s": secs}})

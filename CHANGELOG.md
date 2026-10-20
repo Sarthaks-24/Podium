@@ -15,8 +15,8 @@ Becomes `v1.3.0` when the P3 gate is signed. Schema change (0012): deploys in sl
 - Site settings (`PUT /api/admin/site-settings`, owners): organisation name, contact email, phone and privacy contact, returned by `GET /api/auth/config` as `organisation` (C5). The contact email replaces the owner's own address on public pages once entered. No contest data before sign-in.
 - Contact form (C6): `POST /api/contact` for signed-in people, 5 per person and 100 in total per 24 hours, and an inbox for owners and admins (`GET` and `DELETE /api/admin/contact`). No mail is sent.
 - Queue health on the organiser contest response (C10): waiting and judging jobs, the oldest wait, judge errors, unanswered clarifications and when a judge last asked for work.
-- Before sign-in, requests are limited per client address, and each Google sign-in attempt can finish only once (P0 security review, finding 4).
-- `contest_problems.pinned_hash` is gone (the contract step for v1.2.0); `pinned_hash` on the contest response is now the pinned revision's hash.
+- Before sign-in, requests are limited per client address with budgets sized for a class behind one NAT, a refused sign-in lands on `/signin?error=rate_limited`, and each Google sign-in attempt can finish only once (P0 security review, finding 4).
+- `contest_problems.pinned_hash` is gone (the contract step for v1.2.0); `pinned_hash` on the contest response is now the pinned revision's hash. A v1.2.0 binary cannot read the new schema, so rolling back is a restore (`install.sh rollback` offers it).
 
 ### v2 P2, backend (2026-10-20)
 

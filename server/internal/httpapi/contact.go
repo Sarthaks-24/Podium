@@ -36,6 +36,7 @@ func (d Deps) sendContact(w http.ResponseWriter, r *http.Request) {
 	case errors.Is(err, contact.ErrUserLimit):
 		contactLimited(w, "You have sent 5 messages in the last 24 hours. Try again tomorrow, or email the organisers.")
 	case errors.Is(err, contact.ErrSiteLimit):
+		d.Log.Warn("contact form: the site-wide cap of messages per day is reached")
 		contactLimited(w, "The organisers have received too many messages today. Try again tomorrow, or email the organisers.")
 	case err != nil:
 		d.internalError(w, r, err)

@@ -21,6 +21,10 @@ func TestForgetUser(t *testing.T) {
 		`INSERT INTO contest_roster (contest_id, email, display_name, roll_number, section) VALUES
 			(1, 'asha@college.edu', 'Asha Rao', '21CS001', 'A'), (1, 'ravi@college.edu', 'Ravi', '21CS002', 'A')`,
 		`INSERT INTO contest_admins (contest_id, user_id) VALUES (1, 7)`,
+		`INSERT INTO contest_extensions (contest_id, user_id, minutes, reason) VALUES (1, 7, 20, 'Medical accommodation')`,
+		`INSERT INTO clarifications (contest_id, asked_by, question, answer, created_at) VALUES (1, 7, 'Is n positive? Asha', 'Yes.', 0)`,
+		`INSERT INTO users (id, email, role, created_at) VALUES (9, 'co@college.edu', 'owner', 0)`,
+		`INSERT INTO contest_roster (contest_id, email, display_name, roll_number) VALUES (1, 'ghost@college.edu', 'Ghost', '21CS099')`,
 		`INSERT INTO drafts (user_id, problem_id, contest_id, language, source, updated_at) VALUES (7, 1, 1, 'cpp17', 'x', 0), (8, 1, 1, 'cpp17', 'y', 0)`,
 		`INSERT INTO integrity_events (user_id, problem_id, contest_id, kind, created_at) VALUES (7, 1, 1, 'paste', 0), (7, 1, 1, 'blur', 0)`,
 		`INSERT INTO contact_messages (user_id, topic, message, created_at) VALUES (7, 'privacy', 'Please remove my data.', 0)`,
@@ -70,7 +74,9 @@ func TestForgetUser(t *testing.T) {
 			AND avatar_url = '' AND google_sub IS NULL AND disabled = 1 AND role = 'student'`: 1,
 		`SELECT count(*) FROM contest_roster WHERE email = 'removed-user-7@removed.invalid' AND display_name = 'Removed user 7'
 			AND roll_number = '' AND section = ''`: 1,
-		"SELECT count(*) FROM contest_roster WHERE email = 'ravi@college.edu' AND roll_number = '21CS002'": 1,
+		"SELECT count(*) FROM contest_roster WHERE email = 'ravi@college.edu' AND roll_number = '21CS002'":          1,
+		"SELECT count(*) FROM contest_extensions WHERE user_id = 7 AND minutes = 20 AND reason = ''":                1,
+		"SELECT count(*) FROM clarifications WHERE asked_by = 7 AND answer = 'Yes.' AND question NOT LIKE '%Asha%'": 1,
 	} {
 		if got := count(q); got != want {
 			t.Errorf("%s: %d, want %d", strings.Join(strings.Fields(q), " "), got, want)
@@ -91,6 +97,31 @@ func TestForgetUser(t *testing.T) {
 			t.Errorf("%s still names her", tbl)
 		}
 	}
+
+	// Someone on a roster who never signed in: only the roster rows.
+	out.Reset()
+	if code := forgetCmd([]string{"ghost@college.edu", "-db", path, "-apply"}, &out); code != 0 || !strings.Contains(out.String(), "roster entries only") {
+		t.Errorf("roster only: exit %d %s", code, out.String())
+	}
+	if count("SELECT count(*) FROM contest_roster WHERE email = 'ghost@college.edu' OR roll_number = '21CS099'") != 0 {
+		t.Error("roster-only person still listed")
+	}
+	// Another owner needs -allow-owner.
+	out.Reset()
+	if code := forgetCmd([]string{"co@college.edu", "-db", path, "-apply"}, &out); code != 1 || !strings.Contains(out.String(), "-allow-owner") {
+		t.Errorf("owner without -allow-owner: exit %d %s", code, out.String())
+	}
+	out.Reset()
+	if code := forgetCmd([]string{"co@college.edu", "-db", path, "-apply", "-allow-owner"}, &out); code != 0 {
+		t.Errorf("owner with -allow-owner: exit %d %s", code, out.String())
+	}
+	// Without the configured owner's address the guard cannot work.
+	t.Setenv("PODIUM_OWNER_EMAIL", "")
+	out.Reset()
+	if code := forgetCmd([]string{"ravi@college.edu", "-db", path}, &out); code != 1 || !strings.Contains(out.String(), "PODIUM_OWNER_EMAIL is not set") {
+		t.Errorf("no owner address: exit %d %s", code, out.String())
+	}
+	t.Setenv("PODIUM_OWNER_EMAIL", "owner@college.edu")
 
 	// Refusals: the configured owner, a placeholder, an unknown address.
 	for _, email := range []string{"owner@college.edu", "removed-user-7@removed.invalid", "nobody@college.edu"} {

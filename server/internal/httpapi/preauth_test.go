@@ -29,7 +29,7 @@ func TestP3PreAuthLimitPerAddress(t *testing.T) {
 	svc := &auth.Service{DB: d, OwnerEmail: "owner@college.edu"}
 	svc.Bootstrap(ctx, []string{"college.edu"})
 	h := New(Deps{DB: d, Log: slog.New(slog.NewJSONHandler(&bytes.Buffer{}, nil)), WebApp: http.NotFoundHandler(), Auth: svc,
-		BaseURL: "https://podium.example", preAuthLimit: newIPLimiter(3, 0.01, nil)})
+		BaseURL: "https://podium.example", preAuthLimit: newIPLimiter(3, 0.01, nil), signInLimiter: newIPLimiter(0, 0.01, nil)})
 	call := func(path, peer, xff string) *httptest.ResponseRecorder {
 		r := httptest.NewRequest("GET", path, nil)
 		r.RemoteAddr = peer
@@ -76,6 +76,13 @@ func TestP3PreAuthLimitPerAddress(t *testing.T) {
 	if w := call("/api/auth/config", "[2001:db8:1:3::10]:4000", ""); w.Code != 200 {
 		t.Errorf("another /64: %d", w.Code)
 	}
+	// A refused sign-in is a browser navigation: it lands on /signin.
+	for _, p := range []string{"/api/auth/google/start?next=/", "/api/auth/google/callback?state=x&code=y"} {
+		w := call(p, "203.0.113.9:4000", "")
+		if w.Code != 302 || w.Header().Get("Location") != "/signin?error=rate_limited" || w.Header().Get("Retry-After") == "" {
+			t.Errorf("%s refused: %d %v", p, w.Code, w.Header())
+		}
+	}
 	// Signed-in routes are not part of this budget.
 	if w := call("/api/me", "203.0.113.5:4002", ""); w.Code != 401 {
 		t.Errorf("/api/me from a limited address: %d", w.Code)
@@ -94,18 +101,46 @@ func TestP3IPLimiterRefillsAndBoundsItsTable(t *testing.T) {
 	if ok, _ := l.allow("a"); !ok {
 		t.Fatal("not refilled")
 	}
-	// Past the table's bound, new addresses share one bucket; a sweep
-	// frees the ones that refilled.
-	for i := 0; i < preAuthMaxKeys; i++ {
+	// Past the table's bound a new address still gets its own full
+	// bucket: a sweep at most once a second frees refilled ones, or one
+	// arbitrary bucket makes room.
+	for i := 0; i < preAuthMaxKeys+50; i++ {
 		l.allow(string(rune(i + 1000)))
 	}
-	if len(l.buckets) > preAuthMaxKeys+1 {
+	if len(l.buckets) > preAuthMaxKeys {
 		t.Fatalf("%d buckets", len(l.buckets))
+	}
+	l.allow("x")
+	l.allow("x")
+	if ok, _ := l.allow("stranger"); !ok {
+		t.Error("a new address shared a drained budget")
 	}
 	now = now.Add(time.Minute)
 	l.allow("fresh")
 	if _, ok := l.buckets["fresh"]; !ok || len(l.buckets) > 10 {
 		t.Errorf("sweep left %d buckets", len(l.buckets))
+	}
+}
+
+// TestP3AClassSignsInFromOneAddress: 700 students behind one NAT sign in
+// within a minute, each loading the config three times and making one
+// start and one callback (security review 2026-10-20, finding 1).
+func TestP3AClassSignsInFromOneAddress(t *testing.T) {
+	now := time.Unix(1_800_000_000, 0)
+	clock := func() time.Time { return now }
+	cheap, signIn := newIPLimiter(PreAuthBurst, PreAuthRate, clock), newIPLimiter(SignInBurst, SignInRate, clock)
+	for i := 0; i < 700; i++ {
+		now = now.Add(60 * time.Second / 700)
+		for j := 0; j < 3; j++ {
+			if ok, _ := cheap.allow("198.51.100.1"); !ok {
+				t.Fatalf("student %d: config refused", i)
+			}
+		}
+		for j := 0; j < 2; j++ {
+			if ok, _ := signIn.allow("198.51.100.1"); !ok {
+				t.Fatalf("student %d: sign-in refused", i)
+			}
+		}
 	}
 }
 

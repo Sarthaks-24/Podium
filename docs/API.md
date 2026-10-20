@@ -123,10 +123,18 @@ On failure it redirects to `/signin?error=<code>`:
 | `expired` | The sign-in attempt took too long or was started in another tab. |
 | `google` | Google refused or the response could not be verified. |
 | `server` | The server failed while recording the sign-in. |
+| `rate_limited` | Too many sign-ins from this network at once (v1.3.0, see "Before sign-in"); wait a few seconds and try again. |
 
 ### Before sign-in: the per-address limit (v1.3.0)
 
-The routes a visitor reaches without a session (`GET /healthz`, `GET /api/auth/config`, `GET /api/auth/google/start`, `GET /api/auth/google/callback`, `POST /api/auth/test-signin`, `POST /api/auth/logout`) share one budget per client address: a burst of 600 requests, refilled at 10 per second. Past it they answer `429 rate_limited` with `Retry-After` and `retry_after_s`. The budget is large because a whole college can sign in from one address behind its NAT; it exists so that a script cannot turn the server into a flood of outbound calls to Google or of queries. The address is the peer's, or behind Caddy on the same host the last `X-Forwarded-For` entry; IPv6 addresses share a budget per /64. Requests from the VM itself (loopback, no forwarding headers) are not counted, so the load test and `install.sh verify` are never limited.
+The routes a visitor reaches without a session have two budgets per client address, each a token bucket:
+
+| Routes | Burst | Refill |
+|---|---|---|
+| `GET /healthz`, `GET /api/auth/config`, `POST /api/auth/logout` | 5,000 | 50 a second |
+| `GET /api/auth/google/start`, `GET /api/auth/google/callback`, `POST /api/auth/test-signin` | 2,000 | 20 a second |
+
+Past a budget, the JSON routes answer `429 rate_limited` with `Retry-After` and `retry_after_s`; the two Google routes, being browser navigations, redirect to `/signin?error=rate_limited` with `Retry-After`. The budgets are large because a whole college signs in from few addresses behind its NAT (a class of 700 loads the config about three times each and makes one start and one callback; a test proves 700 sign-ins from one address in a minute pass); they exist so that a script cannot turn the server into a flood of outbound calls to Google or of queries. The address is the peer's, or behind Caddy on the same host the last `X-Forwarded-For` entry; IPv6 addresses share a budget per /64. Requests from the VM itself (loopback, no forwarding headers) are not counted, so the load test and `install.sh verify` are never limited.
 
 Each sign-in attempt can be finished once: the callback remembers the state of every attempt it has seen until the attempt expires (10 minutes), and a second callback with the same state cookie gets `/signin?error=expired` without calling Google.
 
