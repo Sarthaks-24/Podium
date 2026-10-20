@@ -42,10 +42,17 @@
   - Integrity counts (lib/integrity.ts): typed and pasted characters from
     the editor, window blur and focus, sent in batches; never in the way of
     a submit.
-  - Ctrl+Enter submits and Ctrl+' runs on samples (Cmd on a Mac); the
-    app's announcer (lib/announce.svelte.ts) speaks each submission and run
-    result as a sentence, compile errors included. The key hint is left out
-    on touch-only screens. Sign out waits for the draft save
+  - The code column's toolbar is one row (audit 2026-10-20 S2): the
+    language, "Editor settings" (font size and "Tab moves focus",
+    components/EditorSettings) and Run and Submit at the end. Under the
+    editor one line holds "Custom input" (a quiet button that opens its box
+    at the top of the result pane), the submission count and the draft
+    state. From 1024 px the workspace is sized from the shell's measured
+    header (--shell-head), so the page does not scroll.
+  - Ctrl+Enter submits and Ctrl+' runs on samples (Cmd on a Mac), listed
+    under "Keyboard shortcuts" in the footer; the app's announcer
+    (lib/announce.svelte.ts) speaks each submission and run result as a
+    sentence, compile errors included. Sign out waits for the draft save
     (beforeSignOut).
 
   Props: `base` (the API base, such as "/api/workspace/12"), `backHref` and
@@ -92,7 +99,6 @@
   import { polite } from '../lib/announce.svelte';
   import { keepHeadingFocus } from '../lib/focus';
   import { setTitle } from '../lib/head';
-  import { shell } from '../lib/shell.svelte';
   import { FLUSH_MS, IntegrityRecorder } from '../lib/integrity';
   import { beforeSignOut, session } from '../lib/session.svelte';
   import { isStarterOrEmpty, starter } from '../lib/starters';
@@ -125,6 +131,7 @@
   import SubmissionList from './SubmissionList.svelte';
   import VerdictPanel from './VerdictPanel.svelte';
   import ConfirmDialog from './ConfirmDialog.svelte';
+  import EditorSettings from './EditorSettings.svelte';
 
   interface Props {
     base: string;
@@ -179,7 +186,6 @@
   const owner = session.user?.id ?? 0;
   const prefs = readEditorPrefs(storage);
   const isMac = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
-  const mod = isMac ? 'Cmd' : 'Ctrl';
 
   let loadState = $state<'loading' | 'ready' | 'missing' | 'forbidden' | 'error'>('loading');
   let loadError = $state('');
@@ -668,9 +674,19 @@
   async function runOnInput(input: string) {
     customInput = input;
     customOpen = true;
-    if (layout !== 'wide') tab = 'code';
+    if (layout === 'phone') tab = 'result';
+    else if (layout === 'tablet') tab = 'code';
     await tick();
     runCustom();
+  }
+
+  /** "Custom input" opens its box at the top of the result pane (S2) and puts the cursor in it. */
+  async function toggleCustom() {
+    customOpen = !customOpen;
+    if (!customOpen) return;
+    if (layout === 'phone') tab = 'result';
+    await tick();
+    customField?.focus();
   }
 
   function retry() {
@@ -884,19 +900,17 @@
         aria-labelledby={layout === 'wide' ? undefined : 'ws-tab-code'}
         aria-label={layout === 'wide' ? 'Code' : undefined}
       >
+        <!-- S2: one row. Language, the editor settings, then Run and Submit at the end. -->
         <div class="toolbar">
           <label class="visually-hidden" for="ws-language">Language</label>
           <select id="ws-language" class="select lang" value={language} onchange={onLanguageChange}>
             {#each languages as l (l.id)}<option value={l.id}>{l.label}</option>{/each}
           </select>
-          <label class="visually-hidden" for="ws-font">Font size</label>
-          <select id="ws-font" class="select font" value={fontSize} onchange={onFontChange}>
-            {#each FONT_SIZES as size (size)}<option value={size}>{size} px</option>{/each}
-          </select>
+          <EditorSettings {fontSize} sizes={FONT_SIZES} {tabMovesFocus} onfont={onFontChange} ontab={onTabToggle} />
           <div class="run-actions">
             <button
               type="button"
-              class="btn btn-secondary"
+              class="btn btn-secondary btn-compact"
               disabled={lockText !== ''}
               aria-disabled={runBusy ? 'true' : undefined}
               aria-describedby={lockText ? 'ws-locked' : undefined}
@@ -904,20 +918,13 @@
             >
             <button
               type="button"
-              class="btn btn-primary submit"
+              class="btn btn-primary btn-compact submit"
               disabled={lockText !== ''}
               aria-disabled={submitBusy || waitLeft > 0 ? 'true' : undefined}
               aria-describedby={lockText ? 'ws-locked' : paceText || usedNow ? 'ws-submit-status' : undefined}
               onclick={() => submit()}><Icon name="send" />{submitLabel}</button
             >
           </div>
-          <!-- Pacing and the submission count: muted, beside Submit, never an alert (S4). The announcer speaks the pacing line. -->
-          {#if paceText || (usedNow && !lockText)}
-            <p class="submit-status" id="ws-submit-status">
-              {#if paceText}<span>{paceText}</span>{/if}
-              {#if usedNow && !lockText}<span class="used">{usedText(usedNow.count, usedNow.max)}</span>{/if}
-            </p>
-          {/if}
         </div>
         {#if lockText}<p class="locked" id="ws-locked">{lockText}</p>{/if}
 
@@ -939,36 +946,25 @@
         </div>
 
         <div class="under">
-          <label class="tab-toggle">
-            <input type="checkbox" checked={tabMovesFocus} onchange={onTabToggle} />
-            Tab moves focus
-          </label>
-          <details class="custom" bind:open={customOpen}>
-            <summary>Custom input</summary>
-            <div class="custom-body">
-              <label class="visually-hidden" for="ws-custom">Custom input</label>
-              <textarea
-                id="ws-custom"
-                class="input textarea-code"
-                rows="4"
-                spellcheck="false"
-                bind:this={customField}
-                bind:value={customInput}
-              ></textarea>
-              <button type="button" class="btn btn-secondary btn-compact" disabled={lockText !== ''} aria-disabled={runBusy ? 'true' : undefined} onclick={runCustom}>
-                <Icon name="play" />Run on this input
-              </button>
-            </div>
-          </details>
+          <button
+            type="button"
+            class="btn btn-link btn-compact custom-toggle"
+            aria-expanded={customOpen}
+            aria-controls="ws-custom-panel"
+            onclick={toggleCustom}>Custom input</button
+          >
+          <!-- Pacing and the submission count: muted, never an alert (S4). The announcer speaks the pacing line. -->
+          {#if paceText || (usedNow && !lockText)}
+            <p class="submit-status" id="ws-submit-status">
+              {#if paceText}<span>{paceText}</span>{/if}
+              {#if usedNow && !lockText}<span class="used">{usedText(usedNow.count, usedNow.max)}</span>{/if}
+            </p>
+          {/if}
           <p class="save" class:failed={saveState === 'failed'}>
             {#if saveState === 'saved'}Draft saved{:else if saveState === 'saving'}Saving draft{:else if saveState === 'failed'}Draft not saved
               to the server. A copy is kept on this device.{:else}Changes kept on this device{/if}
           </p>
         </div>
-        <p class="hint" id="ws-keys">
-          <kbd>{mod}+Enter</kbd> submits, <kbd>{mod}+'</kbd> runs on samples, <kbd>Esc</kbd> then <kbd>Tab</kbd> leaves the editor.
-          <button type="button" class="link-button" onclick={() => (shell.shortcuts = true)}>All shortcuts</button>
-        </p>
       </section>
 
       <section
@@ -985,6 +981,25 @@
             {#if notice.retry}
               <button type="button" class="btn btn-secondary btn-compact" onclick={retry}>{notice.action === 'submit' ? 'Submit again' : 'Run again'}</button>
             {/if}
+          </div>
+        {/if}
+        {#if customOpen}
+          <div class="custom-panel" id="ws-custom-panel">
+            <div class="custom-head">
+              <label for="ws-custom">Custom input</label>
+              <button type="button" class="btn btn-quiet btn-compact" onclick={() => (customOpen = false)}>Close</button>
+            </div>
+            <textarea
+              id="ws-custom"
+              class="input textarea-code"
+              rows="4"
+              spellcheck="false"
+              bind:this={customField}
+              bind:value={customInput}
+            ></textarea>
+            <button type="button" class="btn btn-secondary btn-compact" disabled={lockText !== ''} aria-disabled={runBusy ? 'true' : undefined} onclick={runCustom}>
+              <Icon name="play" />Run on this input
+            </button>
           </div>
         {/if}
         <StreamNotice mode={streamMode} onresume={() => stream?.resume()} />
@@ -1207,6 +1222,10 @@
     width: auto;
   }
 
+  .toolbar .lang {
+    width: 9rem;
+  }
+
   .run-actions {
     display: flex;
     gap: var(--space-2);
@@ -1223,6 +1242,32 @@
     min-height: 0;
   }
 
+  /* The custom input box at the top of the result pane (S2). */
+  .custom-panel {
+    display: grid;
+    justify-items: start;
+    gap: var(--space-2);
+    padding-bottom: var(--space-3);
+    border-bottom: var(--rule) solid var(--line);
+  }
+
+  .custom-panel .input {
+    width: 100%;
+  }
+
+  .custom-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+    font-size: var(--fs-0);
+    font-weight: 500;
+  }
+
+  .custom-toggle {
+    margin-inline-start: calc(-1 * var(--space-3));
+  }
+
   .under {
     display: flex;
     flex-wrap: wrap;
@@ -1232,32 +1277,16 @@
     font-size: var(--fs-0);
   }
 
-  .tab-toggle {
-    display: inline-flex;
-    align-items: center;
-    gap: var(--space-2);
-    min-height: var(--control-h);
-    cursor: pointer;
+
+
+
+
+  .under .submit-status {
+    margin-left: auto;
   }
 
-  .tab-toggle input {
-    width: var(--space-4);
-    height: var(--space-4);
-    margin: 0;
-    accent-color: var(--act);
-  }
-
-  .hint {
-    padding-top: var(--space-1);
-    color: var(--ink-muted);
-    font-size: var(--fs-0);
-  }
-
-  /* Touch screens have no Ctrl+Enter: the key hint would only mislead (audit 07-14). */
-  @media (hover: none) and (pointer: coarse) {
-    .hint {
-      display: none;
-    }
+  .submit-status + .save {
+    margin-left: 0;
   }
 
   .submit-status {
@@ -1270,31 +1299,8 @@
     text-align: right;
   }
 
-  .toolbar .submit-status {
-    flex-basis: 100%;
-  }
 
-  .link-button {
-    padding: 0;
-    border: 0;
-    border-radius: var(--radius);
-    background: none;
-    color: var(--act);
-    font: inherit;
-    font-weight: 500;
-    text-decoration: underline;
-    text-underline-offset: 0.2em;
-    cursor: pointer;
-  }
 
-  kbd {
-    padding: 0 var(--space-1);
-    border: var(--rule) solid var(--line-strong);
-    border-radius: var(--radius);
-    background: var(--surface);
-    font-size: 0.92em;
-    white-space: nowrap;
-  }
 
   .save {
     margin-left: auto;
@@ -1305,29 +1311,8 @@
     color: var(--bad);
   }
 
-  /* Opened, the custom input takes a row of its own under the others. */
-  .custom[open] {
-    flex-basis: 100%;
-    order: 1;
-  }
 
-  .custom summary {
-    width: fit-content;
-    min-height: var(--control-h);
-    border-radius: var(--radius);
-    color: var(--act);
-    font-size: var(--fs-0);
-    font-weight: 500;
-    line-height: var(--control-h);
-    cursor: pointer;
-  }
 
-  .custom-body {
-    display: grid;
-    justify-items: start;
-    gap: var(--space-2);
-    padding-bottom: var(--space-2);
-  }
 
   .result-pane {
     display: grid;
@@ -1449,7 +1434,9 @@
       grid-template-areas:
         'rail title code'
         'rail statement code';
-      height: calc(100dvh - var(--space-7) - 2 * var(--space-3) - var(--rule));
+      /* Sized from the shell (S2): the header's real height, testing banner
+         included, comes from App.svelte as --shell-head. */
+      height: calc(100dvh - var(--shell-head, var(--space-7)) - 2 * var(--space-3));
       min-height: 32rem;
       border: var(--rule) solid var(--line);
       background: var(--surface);

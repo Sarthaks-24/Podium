@@ -147,14 +147,15 @@ test('running on samples shows the first difference', async ({ page }) => {
   await expect(fromSample).toHaveCount(1);
   await fromSample.click();
   await expect(page.getByLabel('Custom input')).toHaveValue('-5 7\n');
-  await expect(page.locator('details.custom')).toHaveAttribute('open', '');
+  await expect(page.locator('#ws-custom-panel')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Custom input' })).toHaveAttribute('aria-expanded', 'true');
   await expect.poll(() => api.runs.length).toBe(2);
   expect(api.runs[1].input).toBe('-5 7\n');
   api.runs.length = 1;
 
   // Custom input runs that input.
   await page.getByLabel('Custom input').fill('4 5\n');
-  await page.locator('.custom-body').getByRole('button', { name: 'Run on this input' }).click();
+  await page.locator('#ws-custom-panel').getByRole('button', { name: 'Run on this input' }).click();
   await expect.poll(() => api.runs.length).toBe(2);
   expect(api.runs[1].input).toBe('4 5\n');
 });
@@ -314,13 +315,21 @@ test('keyboard shortcuts submit and run, and integrity counts go with the submit
     expect.objectContaining({ kind: 'paste', size: 7 }),
   ]);
 
-  // The editor's settings: Tab moves focus when asked, and the font size sticks.
+  // The editor's settings (S2: behind "Editor settings"): Tab moves focus when asked, and the font size sticks.
+  const settings = page.getByRole('button', { name: 'Editor settings' });
+  await settings.click();
   await page.getByLabel('Tab moves focus').check();
   await page.locator('.cm-content').click();
+  await expect(page.getByLabel('Tab moves focus')).toBeHidden();
   await page.keyboard.press('Tab');
   await expect(page.locator('.cm-content')).not.toBeFocused();
+  await settings.click();
   await page.getByLabel('Font size').selectOption('18');
+  await page.keyboard.press('Escape');
+  await expect(settings).toBeFocused();
+  await expect(settings).toHaveAttribute('aria-expanded', 'false');
   await page.reload();
+  await page.getByRole('button', { name: 'Editor settings' }).click();
   await expect(page.getByLabel('Font size')).toHaveValue('18');
   await expect(page.getByLabel('Tab moves focus')).toBeChecked();
   await expect(page.locator('.cm-content')).toHaveAttribute('aria-label', 'Code for A plus B, C++17');

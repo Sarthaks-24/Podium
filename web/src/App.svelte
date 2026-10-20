@@ -64,6 +64,21 @@
 
   let menuOpen = $state(false);
   let menuButton: HTMLButtonElement | undefined = $state();
+  let header: HTMLElement | undefined = $state();
+
+  // The header's real height (testing banner and wrapped rows included), so
+  // the workspace can fill the rest of the window (audit 2026-10-20 S2).
+  $effect(() => {
+    const el = header;
+    if (!el || typeof ResizeObserver === 'undefined') return;
+    const root = document.documentElement;
+    const ro = new ResizeObserver(() => root.style.setProperty('--shell-head', `${el.offsetHeight}px`));
+    ro.observe(el);
+    return () => {
+      ro.disconnect();
+      root.style.removeProperty('--shell-head');
+    };
+  });
 
   const match = $derived(matchRoute(router.path));
   const route = $derived(match.route);
@@ -175,7 +190,7 @@
 <div class="page">
   <a class="skip" href="#main">Skip to content</a>
 
-  <header class="bar">
+  <header class="bar" bind:this={header}>
     {#if runMode.mode === 'testing'}
       <p class="mode-banner" role="note">
         Testing mode: sign-in is off and anyone at this machine can sign in as anyone. Do not use it for a real contest.
