@@ -136,6 +136,16 @@ func TestDeployCheckForceWritesTheAuditLog(t *testing.T) {
 	if n != 1 {
 		t.Errorf("%d audit rows, want 1", n)
 	}
+	// With several owners the row names PODIUM_OWNER_EMAIL (-owner), not
+	// just the first one.
+	raw.Exec(`INSERT INTO users (id, email, role, created_at) VALUES (3, 'second@college.edu', 'owner', 0)`)
+	if code, out := runGuard(t, path, at, "-force", "Second owner deploys a fix", "-owner", "Second@college.edu"); code != 0 {
+		t.Fatalf("forced by -owner: exit %d\n%s", code, out)
+	}
+	raw.QueryRow(`SELECT actor_email FROM contest_audit ORDER BY id DESC LIMIT 1`).Scan(&email)
+	if email != "second@college.edu" {
+		t.Errorf("actor %q, want the -owner account", email)
+	}
 }
 
 func TestDeployCheckCannotRun(t *testing.T) {

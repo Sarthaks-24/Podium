@@ -183,7 +183,9 @@ restore_proof() {
     dd if=/dev/urandom of="$scratch/podium.db" bs=1 seek=100 count=3996 conv=notrunc status=none
     echo "restore-proof: scratch copy damaged on purpose (--corrupt)"
   fi
-  "$server" check -db "$scratch/podium.db" -tests "$tests" -hash > "$scratch/check.txt" 2>&1 || code=$?
+  # The restored file came from the bucket: parse it as podium, not root.
+  chown -R podium:podium "$scratch"
+  runuser -u podium -- "$server" check -db "$scratch/podium.db" -tests "$tests" -hash > "$scratch/check.txt" 2>&1 || code=$?
   local took=$(( $(date +%s) - start ))
   if (( code != 0 )); then
     problem restore "restore proof failed" "the newest bucket copy restored but failed podium-server check -hash (exit $code): $(grep -m1 -E 'integrity|result|check:' "$scratch/check.txt" | cut -c1-200)"

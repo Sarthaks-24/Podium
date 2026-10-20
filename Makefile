@@ -21,6 +21,9 @@ endif
 .NOTPARALLEL:
 
 VERSION    ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
+# Fixed once per run: a recursive variable would ask git again at every
+# use, and a file saved during the build would rename the release halfway.
+VERSION    := $(VERSION)
 WSL_DISTRO ?= Ubuntu-24.04
 GOFLAGS_LINUX := GOOS=linux GOARCH=amd64 CGO_ENABLED=0
 LDFLAGS    := -s -w -X main.version=$(VERSION)

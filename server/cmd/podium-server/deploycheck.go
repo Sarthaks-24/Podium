@@ -133,6 +133,7 @@ func deployCheckCmd(args []string, out io.Writer) int {
 	at := fs.String("at", "", "check at this moment instead of now (RFC 3339), for rehearsals")
 	force := fs.String("force", "", "override a refusal for this reason (at least 10 characters); recorded in each contest's audit log")
 	release := fs.String("release", "", "the release being installed, recorded with -force")
+	owner := fs.String("owner", envOr("PODIUM_OWNER_EMAIL", ""), "the owner account -force records as the actor (default PODIUM_OWNER_EMAIL, else the first owner)")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
@@ -191,7 +192,7 @@ func deployCheckCmd(args []string, out io.Writer) int {
 		return 1
 	}
 	d.Close()
-	if err := recordForcedDeploy(ctx, *dbPath, v.Refusals, reason, *release, now); err != nil {
+	if err := recordForcedDeploy(ctx, *dbPath, v.Refusals, reason, *release, *owner, now); err != nil {
 		fmt.Fprintf(out, "deploy-check: record the override: %v\n", err)
 		return 2
 	}
@@ -200,10 +201,11 @@ func deployCheckCmd(args []string, out io.Writer) int {
 }
 
 // recordForcedDeploy writes one contest_audit row per refusing contest,
-// as the owner account (the only person who runs install.sh). P0 adds no
+// as the owner account (the only person who runs install.sh): the one
+// named by -owner when it is an enabled owner, else the first owner. P0 adds no
 // table, so the per-contest audit log carries the record until the site
 // audit of P2 exists.
-func recordForcedDeploy(ctx context.Context, dbPath string, refusals []guardRefusal, reason, release string, now time.Time) error {
+func recordForcedDeploy(ctx context.Context, dbPath string, refusals []guardRefusal, reason, release, owner string, now time.Time) error {
 	d, err := db.Open(ctx, dbPath)
 	if err != nil {
 		return err
@@ -211,7 +213,8 @@ func recordForcedDeploy(ctx context.Context, dbPath string, refusals []guardRefu
 	defer d.Close()
 	var ownerID int64
 	var email string
-	err = d.QueryRowContext(ctx, "SELECT id, email FROM users WHERE role = 'owner' AND disabled = 0 ORDER BY id LIMIT 1").Scan(&ownerID, &email)
+	err = d.QueryRowContext(ctx, `SELECT id, email FROM users WHERE role = 'owner' AND disabled = 0
+		ORDER BY (email = ? COLLATE NOCASE) DESC, id LIMIT 1`, owner).Scan(&ownerID, &email)
 	if errors.Is(err, sql.ErrNoRows) {
 		return errors.New("no owner account in the database; start the server once so PODIUM_OWNER_EMAIL is created")
 	}

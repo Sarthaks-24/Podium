@@ -245,6 +245,15 @@ func TestSessions(t *testing.T) {
 		t.Errorf("disabled user's session accepted: %v", err)
 	}
 	_, token3, _, _ := s.SignIn(ctx, id("c@college.edu"), "", "")
+	// Made-up and oversized cookies sign nobody out and fail quietly.
+	for _, junk := range []string{"forged", strings.Repeat("x", 101)} {
+		if err := s.SignOut(ctx, junk); err != nil {
+			t.Errorf("sign-out with a made-up token: %v", err)
+		}
+	}
+	if _, _, err := s.Authenticate(ctx, token3); err != nil {
+		t.Errorf("a made-up sign-out ended a real session: %v", err)
+	}
 	if err := s.SignOut(ctx, token3); err != nil {
 		t.Fatal(err)
 	}

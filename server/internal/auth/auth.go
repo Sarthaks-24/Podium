@@ -273,12 +273,24 @@ func (s *Service) ResetGoogleAccount(ctx context.Context, email string) error {
 	return tx.Commit()
 }
 
-// SignOut ends the session for token, if any.
+// SignOut ends the session for token, if any. Sign-out needs no session,
+// so a token that cannot be one, or names no session, costs only a read:
+// a flood of made-up cookies must not queue writes behind a contest's
+// submissions (P0 security review, finding 3).
 func (s *Service) SignOut(ctx context.Context, token string) error {
-	if token == "" {
+	if token == "" || len(token) > 100 {
 		return nil
 	}
-	_, err := s.DB.ExecContext(ctx, "DELETE FROM sessions WHERE id = ?", hashToken(token))
+	id := hashToken(token)
+	var one int
+	err := s.DB.QueryRowContext(ctx, "SELECT 1 FROM sessions WHERE id = ?", id).Scan(&one)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	_, err = s.DB.ExecContext(ctx, "DELETE FROM sessions WHERE id = ?", id)
 	return err
 }
 

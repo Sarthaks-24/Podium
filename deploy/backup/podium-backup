@@ -87,8 +87,8 @@ elif (( ${#offsite[@]} < 5 )); then
 else
   echo "podium-backup: warning: no encrypted copy off the VM; test files are lost with the VM's disk until PODIUM_BACKUP_AGE_RECIPIENT and the B2 settings are set in $env_file"
 fi
-if [[ -n $heartbeat && $heartbeat != https://* ]]; then
-  die "PODIUM_HEARTBEAT_URL must start with https:// (in $env_file)"
+if [[ -n $heartbeat && ( $heartbeat != https://* || $heartbeat == *[[:space:]]* || $heartbeat == *'"'* || $heartbeat == *'\'* ) ]]; then
+  die "PODIUM_HEARTBEAT_URL must start with https:// and hold no spaces or quotes (in $env_file)"
 fi
 
 stamp=$(date -u +%Y-%m-%dT%H%MZ)
@@ -170,7 +170,9 @@ fi
 if [[ -n $heartbeat ]]; then
   # Silence at the heartbeat service is the alert, so a failed ping only
   # warns here.
-  if curl -fsS -m 15 --retry 3 -o /dev/null "$heartbeat" 2>/dev/null; then
+  # On stdin, not as an argument: the process list is visible to every
+  # user, and the URL alone is enough to fake a backup.
+  if printf 'url = "%s"\n' "$heartbeat" | curl -fsS -m 15 --retry 3 -o /dev/null -K - 2>/dev/null; then
     echo "podium-backup: heartbeat sent"
   else
     echo "podium-backup: warning: the heartbeat ping failed; the heartbeat service will report a missed backup" >&2

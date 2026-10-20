@@ -511,7 +511,8 @@ cmd_upgrade() {
     1)
       [[ -n $force ]] || die "the deploy guard refused (above). A fix that cannot wait: sudo ./install.sh upgrade --force \"<reason>\""
       code=0
-      out=$(runuser -u podium -- "$guard" deploy-check -db "$db" -force "$force" -release "$release") || code=$?
+      out=$(runuser -u podium -- "$guard" deploy-check -db "$db" -force "$force" -release "$release" \
+        -owner "$(envval /etc/podium/server.env PODIUM_OWNER_EMAIL)") || code=$?
       echo "$out"
       (( code == 0 )) || die "recording the forced deploy failed (above); nothing was changed"
       echo "forced: the reason is in each contest's audit log. The student banner arrives in a later release; announce the restart in the contest meanwhile."
@@ -524,7 +525,9 @@ cmd_upgrade() {
   env_names_check
 
   log "3/8 judge: stop claiming, finish and report the running jobs (up to 20 minutes)"
+  local t0=$SECONDS
   systemctl stop podium-judge.service
+  echo "judge stopped after $(( SECONDS - t0 )) s"
 
   log "4/8 backup before the upgrade"
   local before after
@@ -631,12 +634,16 @@ EOF
     local answer
     read -r -p "Type ROLLBACK to restore that backup and the previous release: " answer
     [[ $answer == ROLLBACK ]] || die "nothing changed"
-    local scratch stamp
+    local scratch work stamp
     stamp=$(date -u +%Y%m%dT%H%M%SZ)
-    scratch=/var/tmp/podium-rollback-$stamp
+    # A private folder of the podium user: the restore and its check read
+    # podium's data, so they run as podium, not as root.
+    work=$(mktemp -d /var/tmp/podium-rollback.XXXXXX)
+    chown podium:podium "$work"
+    scratch=$work/restore
     # Checked by the previous binary: it must accept the restored schema.
-    PODIUM_SERVER_BIN=$PREVIOUS/bin/podium-server "$LIB/podium-restore" nightly "$backup" "$scratch" \
-      || die "the backup in $backup failed its check (above); nothing changed"
+    runuser -u podium -- env PODIUM_SERVER_BIN="$PREVIOUS/bin/podium-server" "$LIB/podium-restore" nightly "$backup" "$scratch" \
+      || { rm -rf "$work"; die "the backup in $backup failed its check (above); nothing changed"; }
     systemctl stop podium-judge.service
     systemctl stop podium-litestream.service podium-server.service
     mv "$(dirname "$db")" "$(dirname "$db").before-rollback-$stamp"
@@ -645,14 +652,13 @@ EOF
     # Adds files the backup has and the live folder lost; keeps the rest.
     local tests
     tests=$(envval /etc/podium/server.env PODIUM_TESTS_DIR); tests=${tests:-/var/lib/podium/tests}
-    cp -an "$scratch/tests/." "$tests/"
-    chown -R podium:podium "$tests"
+    runuser -u podium -- cp -an "$scratch/tests/." "$tests/"
     restore_previous_files
     systemctl start podium-server.service
     wait_healthz || die "the previous podium-server did not answer /healthz (journalctl -u podium-server -n 50)"
     systemctl start podium-judge.service
     systemctl start podium-litestream.service || true
-    rm -rf "$scratch"
+    rm -rf "$work"
     echo "restored $backup; Litestream starts a new history from it"
   fi
   # The previous release is now the current one; there is nothing further

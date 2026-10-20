@@ -30,12 +30,13 @@ post() {
   if [[ -z $url || $url == change-me ]]; then
     die "PODIUM_ALERT_WEBHOOK missing in /etc/podium/alert.env; not sent: $1"
   fi
-  [[ $url == https://* ]] || die "PODIUM_ALERT_WEBHOOK must start with https:// (in /etc/podium/alert.env)"
+  [[ $url == https://* && $url != *[[:space:]]* && $url != *'"'* && $url != *'\'* ]] || die "PODIUM_ALERT_WEBHOOK must start with https:// and hold no spaces or quotes (in /etc/podium/alert.env)"
   # ntfy reads Title, Priority and Tags; any other webhook gets the body.
-  # -s hides the URL from curl's own messages; the exit code is enough.
-  curl -fsS -m 15 --retry 3 -o /dev/null \
+  # The URL goes to curl on stdin, not as an argument: arguments are
+  # visible to every user in the process list, and the topic is the secret.
+  printf 'url = "%s"\n' "$url" | curl -fsS -m 15 --retry 3 -o /dev/null -K - \
     -H "Title: $1" -H "Priority: $2" -H "Tags: warning" \
-    --data-binary "$3" "$url" 2>/dev/null || die "posting the alert failed (webhook unreachable or refused): $1"
+    --data-binary "$3" 2>/dev/null || die "posting the alert failed (webhook unreachable or refused): $1"
   echo "podium-alert: sent: $1"
 }
 

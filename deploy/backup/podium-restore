@@ -34,7 +34,7 @@ case $mode in
     src=$2 scratch=$3
     [[ -f $src/podium.db ]] || die "$src/podium.db not found"
     [[ ! -e $scratch ]] || die "$scratch already exists"
-    mkdir -p "$scratch"
+    mkdir -p "$(dirname "$scratch")" && mkdir -m 700 "$scratch"   # atomic: fails if someone made it first
     cp "$src/podium.db" "$scratch/podium.db"
     if [[ -d $src/tests ]]; then cp -a "$src/tests" "$scratch/tests"; else mkdir "$scratch/tests"; fi
     ;;
@@ -51,10 +51,12 @@ case $mode in
     config=${LITESTREAM_CONFIG:-/etc/litestream.yml}
     envfile=${LITESTREAM_ENV:-/etc/podium/litestream.env}
     if [[ -r $envfile ]]; then
+      set -a
       # shellcheck source=/dev/null
-      set -a; . "$envfile"; set +a
+      . "$envfile"
+      set +a
     fi
-    mkdir -p "$scratch"
+    mkdir -p "$(dirname "$scratch")" && mkdir -m 700 "$scratch"   # atomic: fails if someone made it first
     # The live database's path, as /etc/litestream.yml names it.
     litestream restore -config "$config" "${at[@]}" -o "$scratch/podium.db" "${PODIUM_DB_PATH:-/var/lib/podium/db/podium.db}"
     if [[ -d $tests ]]; then cp -a "$tests" "$scratch/tests"; else
