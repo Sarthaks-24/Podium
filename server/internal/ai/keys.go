@@ -56,33 +56,20 @@ func (Secret) MarshalText() ([]byte, error) { return []byte(redacted), nil }
 // LogValue implements slog.LogValuer.
 func (Secret) LogValue() slog.Value { return slog.StringValue(redacted) }
 
-// Provider names.
-const (
-	ProviderAnthropic = "anthropic"
-	// ProviderFake exists only in testing mode (decision D50).
-	ProviderFake = "fake"
-)
-
-// Models offered for the Anthropic provider; the first is the default.
-var AnthropicModels = []string{"claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-5-5"}
-
-// ModelNames are the names the key form shows for AnthropicModels.
-var ModelNames = map[string]string{
-	"claude-opus-5-5":   "Claude Opus 5.5 (default)",
-	"claude-sonnet-5-5": "Claude Sonnet 5.5",
-	"claude-haiku-5-5":  "Claude Haiku 5.5",
-}
-
-// DefaultModel is used when an admin does not choose one.
-const DefaultModel = "claude-opus-5-5"
-
-// KeyEntry is one admin's provider settings. Key is never shown back:
-// views use Status.
+// KeyEntry is one admin's settings for one provider. Key is never shown
+// back: views use KeyStatus.
 type KeyEntry struct {
 	Provider string
-	Model    string
-	Key      Secret
-	Expires  time.Time
+	// Model is "" until the admin chooses one.
+	Model   string
+	Key     Secret
+	Expires time.Time
+	// Models is the provider's filtered list, kept for the session once
+	// listed; ListedAt is zero until then.
+	Models   []Model
+	ListedAt time.Time
+
+	saved time.Time
 }
 
 // KeyStatus is what the key form may show: never the key.
@@ -92,15 +79,20 @@ type KeyStatus struct {
 	ActiveUntil time.Time `json:"active_until"`
 }
 
+func (e KeyEntry) status() KeyStatus {
+	return KeyStatus{Provider: e.Provider, Model: e.Model, ActiveUntil: e.Expires}
+}
+
 // Keys holds pasted keys in memory only, keyed by a hash of the admin's
-// session token, for KeyTTL. A restart forgets them all; signing out
-// forgets that session's key. Nothing here is ever written anywhere.
+// session token and the provider, each for KeyTTL. A restart forgets them
+// all; signing out forgets that session's keys. Nothing here is ever
+// written anywhere.
 type Keys struct {
 	// Now is the clock; tests replace it.
 	Now func() time.Time
 
 	mu sync.Mutex
-	m  map[string]KeyEntry
+	m  map[string]map[string]*KeyEntry // session hash, then provider
 }
 
 func (k *Keys) now() time.Time {
@@ -115,50 +107,122 @@ func sessionKey(session string) string {
 	return hex.EncodeToString(sum[:])
 }
 
-// Put stores e for the session for KeyTTL from now and returns its status.
+// entries returns the session's live entries, dropping expired ones.
+// k.mu must be held.
+func (k *Keys) entries(session string, now time.Time) map[string]*KeyEntry {
+	h := sessionKey(session)
+	m := k.m[h]
+	for p, e := range m {
+		if !now.Before(e.Expires) {
+			delete(m, p)
+		}
+	}
+	if len(m) == 0 {
+		delete(k.m, h)
+		return nil
+	}
+	return m
+}
+
+// Put stores e for the session and its provider for KeyTTL from now,
+// replacing that provider's earlier key, and makes it the active one.
 func (k *Keys) Put(session string, e KeyEntry) KeyStatus {
 	k.mu.Lock()
 	defer k.mu.Unlock()
 	if k.m == nil {
-		k.m = map[string]KeyEntry{}
+		k.m = map[string]map[string]*KeyEntry{}
 	}
 	now := k.now()
 	k.sweep(now)
 	e.Expires = now.Add(KeyTTL)
-	k.m[sessionKey(session)] = e
-	return KeyStatus{Provider: e.Provider, Model: e.Model, ActiveUntil: e.Expires}
+	e.saved = now
+	h := sessionKey(session)
+	if k.m[h] == nil {
+		k.m[h] = map[string]*KeyEntry{}
+	}
+	k.m[h][e.Provider] = &e
+	return e.status()
 }
 
-// Get returns the session's entry if it has not expired.
+// SetModel changes the model of the session's key for provider, keeping
+// its expiry, and makes it the active one. It reports false when the
+// session holds no key for provider.
+func (k *Keys) SetModel(session, provider, model string) (KeyStatus, bool) {
+	k.mu.Lock()
+	defer k.mu.Unlock()
+	now := k.now()
+	e, ok := k.entries(session, now)[provider]
+	if !ok {
+		return KeyStatus{}, false
+	}
+	e.Model, e.saved = model, now
+	return e.status(), true
+}
+
+// SetModels keeps a provider's filtered model list for the session.
+func (k *Keys) SetModels(session, provider string, models []Model) {
+	k.mu.Lock()
+	defer k.mu.Unlock()
+	now := k.now()
+	if e, ok := k.entries(session, now)[provider]; ok {
+		e.Models, e.ListedAt = append([]Model(nil), models...), now
+	}
+}
+
+// Get returns the session's active entry: the live one saved last.
 func (k *Keys) Get(session string) (KeyEntry, bool) {
 	k.mu.Lock()
 	defer k.mu.Unlock()
-	h := sessionKey(session)
-	e, ok := k.m[h]
+	var best *KeyEntry
+	for _, e := range k.entries(session, k.now()) {
+		if best == nil || e.saved.After(best.saved) || (e.saved.Equal(best.saved) && e.Provider < best.Provider) {
+			best = e
+		}
+	}
+	if best == nil {
+		return KeyEntry{}, false
+	}
+	return *best, true
+}
+
+// GetProvider returns the session's entry for provider if it has not
+// expired.
+func (k *Keys) GetProvider(session, provider string) (KeyEntry, bool) {
+	k.mu.Lock()
+	defer k.mu.Unlock()
+	e, ok := k.entries(session, k.now())[provider]
 	if !ok {
 		return KeyEntry{}, false
 	}
-	if !k.now().Before(e.Expires) {
-		delete(k.m, h)
-		return KeyEntry{}, false
-	}
-	return e, true
+	return *e, true
 }
 
-// Status returns what the key form may show for the session.
+// Status returns what the key form may show for the session's active key.
 func (k *Keys) Status(session string) (KeyStatus, bool) {
 	e, ok := k.Get(session)
 	if !ok {
 		return KeyStatus{}, false
 	}
-	return KeyStatus{Provider: e.Provider, Model: e.Model, ActiveUntil: e.Expires}, true
+	return e.status(), true
 }
 
-// Forget drops the session's key (DELETE on the key route, and sign-out).
+// Forget drops every key of the session (sign-out, and DELETE on the key
+// route without a provider).
 func (k *Keys) Forget(session string) {
 	k.mu.Lock()
 	defer k.mu.Unlock()
 	delete(k.m, sessionKey(session))
+}
+
+// ForgetProvider drops the session's key for one provider.
+func (k *Keys) ForgetProvider(session, provider string) {
+	k.mu.Lock()
+	defer k.mu.Unlock()
+	h := sessionKey(session)
+	delete(k.m[h], provider)
+	if len(k.m[h]) == 0 {
+		delete(k.m, h)
+	}
 }
 
 // Sweep drops expired keys. Get also drops them; Sweep bounds memory for
@@ -170,8 +234,13 @@ func (k *Keys) Sweep() {
 }
 
 func (k *Keys) sweep(now time.Time) {
-	for h, e := range k.m {
-		if !now.Before(e.Expires) {
+	for h, m := range k.m {
+		for p, e := range m {
+			if !now.Before(e.Expires) {
+				delete(m, p)
+			}
+		}
+		if len(m) == 0 {
 			delete(k.m, h)
 		}
 	}

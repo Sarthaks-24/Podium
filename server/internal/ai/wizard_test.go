@@ -152,6 +152,7 @@ func (s *stub) Generate(_ context.Context, req Request) (*WizardPack, error) {
 }
 func (s *stub) Solve(context.Context, string) (string, error) { return "int main(){}", nil }
 func (s *stub) Check(context.Context) error                   { return nil }
+func (s *stub) ListModels(context.Context) ([]Model, error)   { return nil, nil }
 
 func TestGenerateRetriesOnceWithReasons(t *testing.T) {
 	bad := func() (*WizardPack, error) {

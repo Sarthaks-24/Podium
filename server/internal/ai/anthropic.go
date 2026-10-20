@@ -2,7 +2,6 @@ package ai
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -16,9 +15,13 @@ import (
 // so a large value does not risk an HTTP timeout.
 const maxTokens = 64000
 
-// fallbackModels get server-side refusal fallbacks ("default" routing by
-// refusal category). Haiku 5.5 has none.
-var fallbackModels = map[string]bool{"claude-opus-5-5": true, "claude-sonnet-5-5": true}
+// fallbackModels accept server-side refusal fallbacks ("default" routing
+// by refusal category). This is a table of a feature, not a choice of
+// model: any other model, Haiku included, is sent without them, and the
+// admin picks the model (D111).
+var fallbackModels = map[string]bool{
+	"claude-fable-5-1": true, "claude-opus-5-5": true, "claude-opus-5": true, "claude-sonnet-5-5": true,
+}
 
 // Anthropic calls the Claude API through the official Go SDK. The key is
 // passed to each client explicitly; the SDK's environment and profile
@@ -57,14 +60,26 @@ func (a *Anthropic) client() anthropic.Client {
 
 // call streams one structured request and returns the answer's text.
 func (a *Anthropic) call(ctx context.Context, system string, msgs []anthropic.BetaMessageParam, schema map[string]any) (string, error) {
+	if a.Model == "" {
+		return "", needModel(ProviderAnthropic)
+	}
 	params := anthropic.BetaMessageNewParams{
 		Model:     anthropic.Model(a.Model),
 		MaxTokens: maxTokens,
-		System:    []anthropic.BetaTextBlockParam{{Text: system}},
-		Messages:  msgs,
-		// Thinking is left unset: it is always on for Opus 5.5 and
-		// adaptive by default on the others. Effort is set explicitly
-		// because Opus 5.5 defaults to medium.
+		// The system prompt is fixed text (the pack format rules), so it
+		// carries the cache breakpoint; the schema in output_config is
+		// cached by the API on its own. A prompt under the model's
+		// minimum silently does not cache, which costs nothing.
+		System:   []anthropic.BetaTextBlockParam{{Text: system, CacheControl: anthropic.NewBetaCacheControlEphemeralParam()}},
+		Messages: msgs,
+		// Adaptive thinking, sent explicitly: leaving it unset means no
+		// thinking on some models the live list offers (Opus 4.8 and
+		// 4.7). Every listed model supports it (anthropicUsable). The
+		// thinking text is not read, so it is omitted from the stream.
+		Thinking: anthropic.BetaThinkingConfigParamUnion{OfAdaptive: &anthropic.BetaThinkingConfigAdaptiveParam{
+			Display: anthropic.BetaThinkingConfigAdaptiveDisplayOmitted}},
+		// Effort is set explicitly because Opus 5.5 and Haiku 5.5 default
+		// to medium.
 		OutputConfig: anthropic.BetaOutputConfigParam{
 			Effort: anthropic.BetaOutputConfigEffortHigh,
 			Format: anthropic.BetaJSONOutputFormatParam{Schema: schema},
@@ -134,23 +149,56 @@ func (a *Anthropic) Solve(ctx context.Context, statement string) (string, error)
 	if err != nil {
 		return "", err
 	}
-	var out struct {
-		Source string `json:"source"`
-	}
-	if err := json.Unmarshal([]byte(text), &out); err != nil {
-		return "", &Error{Code: CodeInvalidAnswer, Message: "The model's answer could not be used.", Reasons: []string{"The answer is not valid JSON."}}
-	}
-	return out.Source, nil
+	return decodeSolution(text)
 }
 
 // Check implements Provider with a model lookup: it costs no tokens and
-// proves both the key and the model name.
+// proves the key, the model name and that the model has what the wizard
+// sends (structured outputs, adaptive thinking, effort high). Without a
+// model it lists the models instead.
 func (a *Anthropic) Check(ctx context.Context) error {
+	if a.Model == "" {
+		_, err := a.ListModels(ctx)
+		return err
+	}
 	client := a.client()
-	if _, err := client.Models.Get(ctx, a.Model, anthropic.ModelGetParams{}); err != nil {
+	m, err := client.Models.Get(ctx, a.Model, anthropic.ModelGetParams{})
+	if err != nil {
 		return a.mapError(ctx, err)
 	}
+	if !anthropicUsable(m) {
+		return unsupportedModel(a.Model)
+	}
 	return nil
+}
+
+// ListModels implements Provider: every page of /v1/models, newest first
+// as the API lists them, kept when the model supports what the wizard
+// sends.
+func (a *Anthropic) ListModels(ctx context.Context) ([]Model, error) {
+	client := a.client()
+	pager := client.Models.ListAutoPaging(ctx, anthropic.ModelListParams{Limit: anthropic.Int(1000)})
+	var out []Model
+	for n := 0; pager.Next() && n < maxListed; n++ {
+		if m := pager.Current(); anthropicUsable(&m) {
+			out = append(out, Model{ID: m.ID, Name: m.DisplayName})
+		}
+	}
+	if err := pager.Err(); err != nil {
+		return nil, a.mapError(ctx, err)
+	}
+	return out, nil
+}
+
+// anthropicUsable is the Anthropic filter rule (D111): the request shape
+// in call needs structured outputs, adaptive thinking and effort high.
+func anthropicUsable(m *anthropic.ModelInfo) bool {
+	c := m.Capabilities
+	return c.StructuredOutputs.Supported && c.Thinking.Types.Adaptive.Supported && c.Effort.High.Supported
+}
+
+func unsupportedModel(model string) error {
+	return &Error{Code: CodeUnsupportedModel, Message: fmt.Sprintf("%s cannot write problems here: it lacks structured outputs, adaptive thinking or effort. Choose another model.", model)}
 }
 
 // mapError turns an SDK error into a fixed sentence. The SDK's error holds
@@ -160,6 +208,9 @@ func (a *Anthropic) mapError(ctx context.Context, err error) error {
 	var apierr *anthropic.Error
 	if errors.As(err, &apierr) {
 		switch code := apierr.StatusCode; {
+		case code == http.StatusPaymentRequired || apierr.Type() == "billing_error" ||
+			(code == http.StatusBadRequest && strings.Contains(apierr.RawJSON(), "credit balance")):
+			return &Error{Code: CodeNoQuota, Message: "Anthropic says this key's account has no credit left. Add credit in the Claude Console, or use another key."}
 		case code == http.StatusUnauthorized:
 			return &Error{Code: CodeKeyRefused, Message: "Anthropic refused the key. Check it and paste it again."}
 		case code == http.StatusForbidden:
@@ -167,18 +218,12 @@ func (a *Anthropic) mapError(ctx context.Context, err error) error {
 		case code == http.StatusNotFound:
 			return &Error{Code: CodeModelNotFound, Message: fmt.Sprintf("Anthropic does not offer the model %s to this key. Choose another model.", a.Model)}
 		case code == http.StatusTooManyRequests:
-			return &Error{Code: CodeRateLimited, Message: "Rate limited by the provider; try again in a minute."}
+			return errRateLimited()
 		case code >= 500:
-			return &Error{Code: CodeUnavailable, Message: "The provider is unavailable. Try again in a few minutes."}
+			return errUnavailable()
 		case code >= 400:
 			return &Error{Code: CodeBadRequest, Message: "Anthropic could not accept the request. Try a shorter text or another model."}
 		}
 	}
-	switch {
-	case errors.Is(ctx.Err(), context.DeadlineExceeded):
-		return &Error{Code: CodeTimeout, Message: "The provider took too long to answer. Try again."}
-	case ctx.Err() != nil:
-		return &Error{Code: CodeCanceled, Message: "The request was cancelled."}
-	}
-	return &Error{Code: CodeUnavailable, Message: "The provider is unavailable. Try again in a few minutes."}
+	return transportError(ctx)
 }

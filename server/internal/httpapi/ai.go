@@ -48,8 +48,9 @@ type AI struct {
 	// Keys holds pasted keys by session; Slots allows one call per admin.
 	Keys  *ai.Keys
 	Slots *ai.Slots
-	// BaseURL points the Anthropic client at a stand-in API. Tests only.
-	BaseURL string
+	// BaseURLs points a provider's client at a stand-in API, by provider
+	// name. Tests only: nothing a request carries can set it.
+	BaseURLs map[string]string
 
 	mu   sync.Mutex
 	runs map[string]*wizardRun
@@ -61,6 +62,8 @@ type wizardRun struct {
 	id           string
 	kind         string // generate or solve
 	userID       int64
+	provider     string
+	model        string
 	state        string
 	err          *wizardErrorJSON
 	problemID    int64
@@ -82,6 +85,8 @@ type wizardJSON struct {
 	Error        *wizardErrorJSON `json:"error,omitempty"`
 	ProblemID    *int64           `json:"problem_id,omitempty"`
 	SubmissionID *int64           `json:"submission_id,omitempty"`
+	Provider     string           `json:"provider"`
+	Model        string           `json:"model"`
 	StartedAt    int64            `json:"started_at"`
 	ServerNow    int64            `json:"server_now"`
 }
@@ -93,13 +98,14 @@ func optID(id int64) *int64 {
 	return &id
 }
 
-// start registers a new run for userID and drops runs that ended long ago.
-func (a *AI) start(kind string, userID int64, problemID int64) *wizardRun {
+// start registers a new run for userID with the provider and model of
+// entry, and drops runs that ended long ago.
+func (a *AI) start(kind string, userID int64, problemID int64, entry ai.KeyEntry) *wizardRun {
 	var b [16]byte
 	rand.Read(b[:])
 	now := time.Now()
 	run := &wizardRun{id: hex.EncodeToString(b[:]), kind: kind, userID: userID, state: wizardThinking,
-		problemID: problemID, startedAt: now}
+		problemID: problemID, provider: entry.Provider, model: entry.Model, startedAt: now}
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	if a.runs == nil {
@@ -128,7 +134,8 @@ func (a *AI) view(id string, userID int64) (wizardJSON, bool) {
 // json must be called with a.mu held.
 func (r *wizardRun) json() wizardJSON {
 	return wizardJSON{ID: r.id, Kind: r.kind, State: r.state, Error: r.err, ProblemID: optID(r.problemID),
-		SubmissionID: optID(r.submissionID), StartedAt: r.startedAt.UnixMilli(), ServerNow: time.Now().UnixMilli()}
+		SubmissionID: optID(r.submissionID), Provider: r.provider, Model: r.model,
+		StartedAt: r.startedAt.UnixMilli(), ServerNow: time.Now().UnixMilli()}
 }
 
 // finish records the outcome of a run and returns its JSON.
@@ -154,6 +161,8 @@ func wizardError(err error) *wizardErrorJSON {
 // aiRoutes mounts the wizard's routes.
 func (d Deps) aiRoutes(mux *http.ServeMux) {
 	admin := func(h http.HandlerFunc) http.HandlerFunc { return d.requireRole(auth.Admin, h) }
+	mux.HandleFunc("GET /api/admin/ai/providers", admin(d.getAIProviders))
+	mux.HandleFunc("GET /api/admin/ai/models", admin(d.getAIModels))
 	mux.HandleFunc("GET /api/admin/ai/key", admin(d.getAIKey))
 	mux.HandleFunc("PUT /api/admin/ai/key", admin(d.putAIKey))
 	mux.HandleFunc("DELETE /api/admin/ai/key", admin(d.deleteAIKey))
@@ -181,53 +190,139 @@ func (d Deps) forgetKey(token string) {
 
 func (d Deps) testing() bool { return d.Mode == "testing" }
 
-type modelJSON struct {
-	ID   string `json:"id"`
-	Name string `json:"name"`
+// providerIDs lists the providers this server offers, in the form's order.
+func (d Deps) providerIDs() []string {
+	ids := append([]string{}, ai.Providers...)
+	if d.testing() {
+		ids = append(ids, ai.ProviderFake)
+	}
+	return ids
 }
 
 type providerJSON struct {
-	ID     string      `json:"id"`
-	Name   string      `json:"name"`
-	Models []modelJSON `json:"models"`
+	ID          string `json:"id"`
+	Name        string `json:"name"`
+	HasKey      bool   `json:"has_key"`
+	Model       string `json:"model"`
+	ActiveUntil *int64 `json:"active_until"`
+}
+
+// keyProviderJSON is a provider in KeyStatus: providerJSON plus the
+// session's copy of its model list.
+type keyProviderJSON struct {
+	providerJSON
+	Models []ai.Model `json:"models"`
+}
+
+type providersJSON struct {
+	Providers      []providerJSON `json:"providers"`
+	ActiveProvider *string        `json:"active_provider"`
+	ServerNow      int64          `json:"server_now"`
 }
 
 type keyStatusJSON struct {
-	Active      bool           `json:"active"`
-	Provider    string         `json:"provider"`
-	Model       string         `json:"model"`
-	ActiveUntil *int64         `json:"active_until"`
-	Providers   []providerJSON `json:"providers"`
-	ServerNow   int64          `json:"server_now"`
+	Active      bool              `json:"active"`
+	Provider    string            `json:"provider"`
+	Model       string            `json:"model"`
+	ActiveUntil *int64            `json:"active_until"`
+	Providers   []keyProviderJSON `json:"providers"`
+	ServerNow   int64             `json:"server_now"`
 }
 
-// fakeModel is the one model of the testing-mode provider.
-const fakeModel = "canned"
+// providerEntries returns what the session holds for each provider.
+func (d Deps) providerEntries(r *http.Request) []keyProviderJSON {
+	token := d.sessionToken(r)
+	var out []keyProviderJSON
+	for _, id := range d.providerIDs() {
+		p := keyProviderJSON{providerJSON: providerJSON{ID: id, Name: ai.ProviderName(id)}, Models: []ai.Model{}}
+		if e, ok := d.AI.Keys.GetProvider(token, id); ok {
+			p.HasKey, p.Model, p.ActiveUntil = true, e.Model, millis(e.Expires)
+			if e.Models != nil {
+				p.Models = e.Models
+			}
+		}
+		out = append(out, p)
+	}
+	return out
+}
 
 func (d Deps) keyStatus(r *http.Request) keyStatusJSON {
-	out := keyStatusJSON{Provider: ai.ProviderAnthropic, Model: ai.DefaultModel, ServerNow: time.Now().UnixMilli()}
-	anthropic := providerJSON{ID: ai.ProviderAnthropic, Name: "Anthropic"}
-	for _, m := range ai.AnthropicModels {
-		anthropic.Models = append(anthropic.Models, modelJSON{m, ai.ModelNames[m]})
-	}
-	out.Providers = []providerJSON{anthropic}
-	if d.testing() {
-		out.Providers = append(out.Providers, providerJSON{ID: ai.ProviderFake, Name: "Test provider (canned problems)",
-			Models: []modelJSON{{fakeModel, "Canned problems"}}})
-	}
+	out := keyStatusJSON{Provider: ai.ProviderAnthropic, Providers: d.providerEntries(r), ServerNow: time.Now().UnixMilli()}
 	if st, ok := d.AI.Keys.Status(d.sessionToken(r)); ok {
 		out.Active, out.Provider, out.Model, out.ActiveUntil = true, st.Provider, st.Model, millis(st.ActiveUntil)
 	}
 	return out
 }
 
+func (d Deps) getAIProviders(w http.ResponseWriter, r *http.Request) {
+	out := providersJSON{ServerNow: time.Now().UnixMilli()}
+	for _, p := range d.providerEntries(r) {
+		out.Providers = append(out.Providers, p.providerJSON)
+	}
+	if st, ok := d.AI.Keys.Status(d.sessionToken(r)); ok {
+		out.ActiveProvider = &st.Provider
+	}
+	WriteJSON(w, http.StatusOK, out)
+}
+
 func (d Deps) getAIKey(w http.ResponseWriter, r *http.Request) {
 	WriteJSON(w, http.StatusOK, d.keyStatus(r))
 }
 
-// putAIKey checks a pasted key with one cheap call and keeps it for the
-// session. The request body is never logged, and the key is wrapped in a
-// Secret before anything else happens.
+// noKeyMessage asks for a key for one provider.
+func noKeyMessage(provider string) string {
+	name := ai.ProviderName(provider)
+	article := "a"
+	if strings.ContainsAny(name[:1], "AEIOU") {
+		article = "an"
+	}
+	return "Add " + article + " " + name + " key first."
+}
+
+// getAIModels lists a provider's models with the session's key, keeping
+// the filtered list for the session (C11).
+func (d Deps) getAIModels(w http.ResponseWriter, r *http.Request) {
+	provider := r.URL.Query().Get("provider")
+	if !ai.Known(provider, d.testing()) {
+		WriteError(w, http.StatusBadRequest, "bad_request", "Choose Anthropic, OpenAI or Google Gemini as the provider.")
+		return
+	}
+	token := d.sessionToken(r)
+	e, ok := d.AI.Keys.GetProvider(token, provider)
+	if !ok {
+		WriteError(w, http.StatusConflict, "no_key", noKeyMessage(provider))
+		return
+	}
+	if e.ListedAt.IsZero() || r.URL.Query().Get("refresh") == "1" {
+		prov, err := ai.NewProvider(ai.Config{Provider: provider, Key: e.Key, BaseURL: d.AI.BaseURLs[provider]}, d.testing())
+		if err != nil {
+			WriteError(w, http.StatusConflict, "no_key", noKeyMessage(provider))
+			return
+		}
+		ctx, cancel := context.WithTimeout(r.Context(), keyCheckTimeout)
+		defer cancel()
+		models, err := prov.ListModels(ctx)
+		if err != nil {
+			e := wizardError(err)
+			d.Log.Info("ai model listing failed", "user_id", userFrom(r.Context()).ID, "provider", provider, "code", e.Code)
+			WriteError(w, http.StatusBadGateway, "provider_error", e.Message)
+			return
+		}
+		d.AI.Keys.SetModels(token, provider, models)
+		e, _ = d.AI.Keys.GetProvider(token, provider)
+	}
+	models := e.Models
+	if models == nil {
+		models = []ai.Model{}
+	}
+	WriteJSON(w, http.StatusOK, map[string]any{"provider": provider, "models": models,
+		"listed_at": e.ListedAt.UnixMilli(), "server_now": time.Now().UnixMilli()})
+}
+
+// putAIKey checks a pasted key (and model, when one is given) with one
+// call that costs no tokens and keeps it for the session and provider.
+// The request body is never logged, and the key is wrapped in a Secret
+// before anything else happens.
 func (d Deps) putAIKey(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Provider string `json:"provider"`
@@ -239,49 +334,103 @@ func (d Deps) putAIKey(w http.ResponseWriter, r *http.Request) {
 	}
 	key := ai.NewSecret(strings.TrimSpace(req.Key))
 	req.Key = ""
+	token := d.sessionToken(r)
+	if !ai.Known(req.Provider, d.testing()) {
+		if req.Provider == ai.ProviderFake {
+			WriteError(w, http.StatusBadRequest, "bad_request", "The test provider exists only in testing mode.")
+		} else {
+			WriteError(w, http.StatusBadRequest, "bad_request", "Choose Anthropic, OpenAI or Google Gemini as the provider.")
+		}
+		return
+	}
+	model, ok := ai.CleanModelID(req.Model)
+	if !ok {
+		WriteError(w, http.StatusBadRequest, "bad_request", "A model id has only letters, digits and . _ - : and at most 128 characters.")
+		return
+	}
+	held, holds := d.AI.Keys.GetProvider(token, req.Provider)
 	if req.Provider == ai.ProviderFake {
-		key = ai.Secret{}
-		req.Model = fakeModel
+		key, model, holds = ai.Secret{}, ai.FakeModel, false
+	} else if key.IsZero() {
+		if !holds {
+			WriteError(w, http.StatusBadRequest, "bad_request", "Paste the provider key.")
+			return
+		}
+		key = held.Key
+	} else {
+		holds = false
 	}
-	if req.Provider == ai.ProviderAnthropic && req.Model == "" {
-		req.Model = ai.DefaultModel
-	}
-	prov, err := ai.NewProvider(ai.Config{Provider: req.Provider, Model: req.Model, Key: key, BaseURL: d.AI.BaseURL}, d.testing())
+	prov, err := ai.NewProvider(ai.Config{Provider: req.Provider, Model: model, Key: key, BaseURL: d.AI.BaseURLs[req.Provider]}, d.testing())
 	if err != nil {
 		WriteError(w, http.StatusBadRequest, "bad_request", wizardError(err).Message)
 		return
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), keyCheckTimeout)
 	defer cancel()
-	if err := prov.Check(ctx); err != nil {
+	var models []ai.Model
+	if model == "" {
+		// The listing is the check, and fills the picker in one call.
+		models, err = prov.ListModels(ctx)
+	} else {
+		err = prov.Check(ctx)
+	}
+	if err != nil {
 		e := wizardError(err)
-		d.Log.Info("ai key refused", "user_id", userFrom(r.Context()).ID, "provider", req.Provider, "model", req.Model, "code", e.Code)
+		d.Log.Info("ai key refused", "user_id", userFrom(r.Context()).ID, "provider", req.Provider, "model", model, "code", e.Code)
 		WriteError(w, http.StatusBadRequest, "bad_key", e.Message)
 		return
 	}
-	d.AI.Keys.Put(d.sessionToken(r), ai.KeyEntry{Provider: req.Provider, Model: req.Model, Key: key})
-	d.Log.Info("ai key added", "user_id", userFrom(r.Context()).ID, "provider", req.Provider, "model", req.Model)
+	if holds {
+		d.AI.Keys.SetModel(token, req.Provider, model)
+	} else {
+		d.AI.Keys.Put(token, ai.KeyEntry{Provider: req.Provider, Model: model, Key: key})
+	}
+	if models != nil || req.Provider == ai.ProviderFake {
+		if req.Provider == ai.ProviderFake {
+			models, _ = prov.ListModels(ctx)
+		}
+		d.AI.Keys.SetModels(token, req.Provider, models)
+	}
+	d.Log.Info("ai key added", "user_id", userFrom(r.Context()).ID, "provider", req.Provider, "model", model, "kept_key", holds)
 	WriteJSON(w, http.StatusOK, d.keyStatus(r))
 }
 
 func (d Deps) deleteAIKey(w http.ResponseWriter, r *http.Request) {
-	d.forgetKey(d.sessionToken(r))
-	d.Log.Info("ai key removed", "user_id", userFrom(r.Context()).ID)
+	provider := r.URL.Query().Get("provider")
+	if provider == "" {
+		d.forgetKey(d.sessionToken(r))
+	} else {
+		d.AI.Keys.ForgetProvider(d.sessionToken(r), provider)
+	}
+	d.Log.Info("ai key removed", "user_id", userFrom(r.Context()).ID, "provider", provider)
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// provider returns a client for the session's key, or writes 409 no_key.
-func (d Deps) provider(w http.ResponseWriter, r *http.Request) (ai.Provider, ai.KeyEntry, bool) {
-	e, ok := d.AI.Keys.Get(d.sessionToken(r))
+// provider returns a client for the session's key of the named provider,
+// or of the active one when name is empty, or writes 409 no_key or
+// no_model.
+func (d Deps) provider(w http.ResponseWriter, r *http.Request, name string) (ai.Provider, ai.KeyEntry, bool) {
+	token := d.sessionToken(r)
+	var e ai.KeyEntry
+	var ok bool
+	if name == "" {
+		e, ok = d.AI.Keys.Get(token)
+	} else if ai.Known(name, d.testing()) {
+		e, ok = d.AI.Keys.GetProvider(token, name)
+	}
 	if !ok {
 		WriteError(w, http.StatusConflict, "no_key", "Add a key in AI assistant first.")
 		return nil, ai.KeyEntry{}, false
 	}
-	prov, err := ai.NewProvider(ai.Config{Provider: e.Provider, Model: e.Model, Key: e.Key, BaseURL: d.AI.BaseURL}, d.testing())
+	if e.Model == "" {
+		WriteError(w, http.StatusConflict, "no_model", "Choose a model for "+ai.ProviderName(e.Provider)+" in AI assistant first.")
+		return nil, ai.KeyEntry{}, false
+	}
+	prov, err := ai.NewProvider(ai.Config{Provider: e.Provider, Model: e.Model, Key: e.Key, BaseURL: d.AI.BaseURLs[e.Provider]}, d.testing())
 	if err != nil {
-		// The key was accepted under another mode or model list; ask for
-		// it again rather than guess.
-		d.AI.Keys.Forget(d.sessionToken(r))
+		// The key was accepted under another mode; ask for it again
+		// rather than guess.
+		d.AI.Keys.ForgetProvider(token, e.Provider)
 		WriteError(w, http.StatusConflict, "no_key", "Add a key in AI assistant first.")
 		return nil, ai.KeyEntry{}, false
 	}
@@ -299,8 +448,10 @@ func (d Deps) takeSlot(w http.ResponseWriter, userID int64) (func(), bool) {
 }
 
 type wizardRequestJSON struct {
-	Mode  string `json:"mode"`
-	Brief *struct {
+	Mode string `json:"mode"`
+	// Provider picks one of the session's keys; empty means the active.
+	Provider string `json:"provider"`
+	Brief    *struct {
 		Topic       string `json:"topic"`
 		Difficulty  string `json:"difficulty"`
 		Constraints string `json:"constraints"`
@@ -339,7 +490,7 @@ func (d Deps) startWizard(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	u := userFrom(r.Context())
-	prov, entry, ok := d.provider(w, r)
+	prov, entry, ok := d.provider(w, r, body.Provider)
 	if !ok {
 		return
 	}
@@ -351,7 +502,7 @@ func (d Deps) startWizard(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	run := d.AI.start("generate", u.ID, 0)
+	run := d.AI.start("generate", u.ID, 0, entry)
 	d.Log.Info("ai wizard started", "user_id", u.ID, "wizard_id", run.id, "mode", body.Mode, "provider", entry.Provider, "model", entry.Model)
 	go func() {
 		defer release()
@@ -434,7 +585,7 @@ func (d Deps) solveProblem(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	u := userFrom(r.Context())
-	prov, entry, ok := d.provider(w, r)
+	prov, entry, ok := d.provider(w, r, "")
 	if !ok {
 		return
 	}
@@ -448,7 +599,7 @@ func (d Deps) solveProblem(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	run := d.AI.start("solve", u.ID, id)
+	run := d.AI.start("solve", u.ID, id, entry)
 	d.Log.Info("ai solve started", "user_id", u.ID, "wizard_id", run.id, "problem_id", id, "provider", entry.Provider, "model", entry.Model)
 	statement := p.Statement
 	go func() {
