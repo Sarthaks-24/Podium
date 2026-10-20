@@ -59,6 +59,10 @@ type site struct {
 	logLevel *slog.LevelVar
 	// ai is the wizard's state; the fake provider exists in testing mode.
 	ai *AI
+	// restart replaces the handler with one built from fresh services on
+	// the same database, as a server restart does: every in-memory state
+	// (event hub, rate limits, boards) starts again, the database stays.
+	restart func()
 }
 
 // syncBuffer is a bytes.Buffer safe for concurrent handlers.
@@ -155,15 +159,27 @@ func newSiteMode(t *testing.T, mode string) *site {
 	var h http.Handler
 	s.srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { h.ServeHTTP(w, r) }))
 	t.Cleanup(s.srv.Close)
-	h = New(Deps{
-		DB: d, Log: log,
-		WebApp:  http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { io.WriteString(w, "web app") }),
-		Auth:    svc,
-		IdP:     auth.NewProvider(idp.Endpoints(), idp.ClientID, idp.ClientSecret, RedirectURL(s.srv.URL)),
-		BaseURL: s.srv.URL, SessionSecret: []byte(strings.Repeat("e", 32)),
-		Problems: s.bank, Submissions: s.subs, Hub: s.hub, Contests: s.contests, Integrity: s.integrity, Mode: mode,
-		AI: s.ai,
-	})
+	build := func() http.Handler {
+		return New(Deps{
+			DB: d, Log: log,
+			WebApp:  http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { io.WriteString(w, "web app") }),
+			Auth:    svc,
+			IdP:     auth.NewProvider(idp.Endpoints(), idp.ClientID, idp.ClientSecret, RedirectURL(s.srv.URL)),
+			BaseURL: s.srv.URL, SessionSecret: []byte(strings.Repeat("e", 32)),
+			Problems: s.bank, Submissions: s.subs, Hub: s.hub, Contests: s.contests, Integrity: s.integrity, Mode: mode,
+			AI: s.ai,
+		})
+	}
+	h = build()
+	s.restart = func() {
+		svc = &auth.Service{DB: d, OwnerEmail: "owner@college.edu"}
+		s.hub = &events.Hub{}
+		s.subs = &submissions.Service{DB: d, Jobs: jobSvc, Problems: s.bank, Hub: s.hub, Now: clock.now, HashKey: []byte("test-hash-key")}
+		s.contests = &contests.Service{DB: d, Problems: s.bank, Hub: s.hub, Now: clock.now, BoardEvery: time.Nanosecond}
+		s.subs.ContestView = s.contests.ViewFor
+		s.ai = &AI{Keys: &ai.Keys{}, Slots: &ai.Slots{}}
+		h = build()
+	}
 	return s
 }
 

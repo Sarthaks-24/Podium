@@ -30,9 +30,12 @@ RELEASE    := release/podium-$(VERSION)
 ifeq ($(OS),Windows_NT)
   LINUX = wsl.exe -d $(WSL_DISTRO) -u root --cd "$(CURDIR)" --
   EXE = .exe
+  # The repository as WSL sees it, for paths handed to Linux programs.
+  LINUX_CURDIR := $(shell wsl.exe -d $(WSL_DISTRO) -- wslpath -a "$(CURDIR)")
 else
   LINUX = sudo
   EXE =
+  LINUX_CURDIR := $(CURDIR)
 endif
 
 .PHONY: help
@@ -90,7 +93,8 @@ sandbox-test: ## Hostile-program suite and M2 and M3 acceptance in isolate (Linu
 	cd server && $(GOFLAGS_LINUX) go test -c -tags sandbox -o bin/calib.test ./internal/judge/calib
 	cd server && $(GOFLAGS_LINUX) go test -c -tags sandbox -o bin/worker.test ./internal/worker
 	$(LINUX) bash tools/sandbox-test.sh server/bin/calib.test -test.v -test.timeout 10m
-	$(LINUX) bash tools/sandbox-test.sh server/bin/worker.test -test.v -test.timeout 20m -examples "$(CURDIR)/problems"
+	@# MSYS_NO_PATHCONV: Git Bash would turn the /mnt path into a Windows one.
+	MSYS_NO_PATHCONV=1 $(LINUX) bash tools/sandbox-test.sh server/bin/worker.test -test.v -test.timeout 20m -examples "$(LINUX_CURDIR)/problems"
 
 .PHONY: calibrate
 calibrate: ## Measure this judge host and print the calibration tables
