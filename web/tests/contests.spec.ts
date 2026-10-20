@@ -363,16 +363,19 @@ test('the editor shows field errors, picks problems and previews a roster', asyn
   await expect(slug).toHaveAttribute('aria-invalid', 'true');
   await expect(slug).toBeFocused();
 
-  // Publishing a contest whose problem changed is refused with the reason.
+  // Publishing is in the title row (P3 O1): it asks first, listing the checks, and a refusal names the reason.
   await slug.fill('week-6');
-  await page.getByLabel('Published: students can see the contest').check();
-  await page.getByRole('button', { name: 'Save changes' }).click();
-  await page.getByRole('dialog', { name: 'Change a live contest?' }).getByRole('button', { name: 'Save changes' }).click();
-  await expect(page.locator('#f-published-error')).toHaveText('Problem B changed since it was added; validate it and add it again.');
-  await page.getByLabel('Published: students can see the contest').uncheck();
+  await expect(page.locator('.publish-line')).toContainText('Not published. 1 problem, starts');
+  await page.getByRole('button', { name: 'Publish contest' }).click();
+  const publish = page.getByRole('dialog', { name: 'Publish Week 6 contest?' });
+  await expect(publish).toContainText('Students on the roster see it in their contest list at once.');
+  await expect(publish).toContainText('1 problem, all validated.');
+  await publish.getByRole('button', { name: 'Publish contest' }).click();
+  await expect(page.locator('#publish-error')).toHaveText('Problem B changed since it was added; validate it and add it again.');
+  await page.getByText('Rules and scoring').click();
   await page.getByLabel('Python 3').uncheck();
   await page.getByRole('button', { name: 'Save changes' }).click();
-  await expect(page.getByText('Saved changes')).toBeVisible();
+  await expect(page.getByText('Saved changes', { exact: true })).toBeVisible();
   expect(api.settingsPuts.at(-1)).toMatchObject({ slug: 'week-6', languages: ['cpp17'], published: false, freeze_minutes: 30 });
 
   // Changing the freeze of a live contest asks first.
@@ -393,9 +396,15 @@ test('the editor shows field errors, picks problems and previews a roster', asyn
   await add.selectOption({ label: 'Interval covering (100 points)' });
   await page.getByRole('button', { name: 'Add problem' }).click();
   await expect(page.getByLabel('Letter for Interval covering')).toHaveValue('B');
+  // Each change saves at once; there is no separate Save problems.
+  await expect.poll(() => api.problemPuts.at(-1)).toEqual([
+    { problem_id: 11, label: 'A' },
+    { problem_id: 12, label: 'B' },
+  ]);
+  await expect(page.getByText('Added Interval covering as B', { exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Save problems' })).toHaveCount(0);
   await page.getByRole('button', { name: 'Move Interval covering up' }).click();
   await expect(page.getByLabel('Letter for Interval covering')).toHaveValue('A');
-  await page.getByRole('button', { name: 'Save problems' }).click();
   await expect.poll(() => api.problemPuts.at(-1)).toEqual([
     { problem_id: 12, label: 'A' },
     { problem_id: 11, label: 'B' },
@@ -496,17 +505,17 @@ test('the console pauses, extends, rejudges, announces and answers', async ({ pa
 test('unpublishing a live contest asks first', async ({ page }) => {
   const api = await mockApi(page, { who: 'admin', phase: 'during', published: true });
   await page.goto('/admin/contests/4');
-  const published = page.getByLabel('Published: students can see the contest');
-  await expect(published).toBeChecked();
-  await published.uncheck();
-  await page.getByRole('button', { name: 'Save changes' }).click();
-  const live = page.getByRole('dialog', { name: 'Change a live contest?' });
-  await expect(live).toContainText('unpublishing hides the contest from them');
-  await live.getByRole('button', { name: 'Cancel' }).click();
+  await expect(page.locator('.publish-line')).toContainText('Published and live.');
+  await page.getByRole('button', { name: 'Unpublish contest' }).click();
+  const unpublish = page.getByRole('dialog', { name: 'Unpublish Week 6 contest?' });
+  await expect(unpublish).toContainText('The contest disappears from students at once, in the middle of it');
+  await expect(unpublish.getByRole('button', { name: 'Cancel' })).toBeFocused();
+  await unpublish.getByRole('button', { name: 'Cancel' }).click();
   expect(api.settingsPuts).toHaveLength(0);
-  await page.getByRole('button', { name: 'Save changes' }).click();
-  await live.getByRole('button', { name: 'Save changes' }).click();
+  await page.getByRole('button', { name: 'Unpublish contest' }).click();
+  await unpublish.getByRole('button', { name: 'Unpublish contest' }).click();
   await expect.poll(() => api.settingsPuts.at(-1)?.published).toBe(false);
+  await expect(page.getByText('Unpublished', { exact: true })).toBeVisible();
 });
 
 test('the console feed filters waiting or judging and judge errors', async ({ page }) => {
@@ -531,7 +540,6 @@ test('a graded contest asks for a reason before it takes an AI problem nobody so
   await page.goto('/admin/contests/4');
   await page.getByLabel('Add a validated problem').selectOption({ label: 'Interval covering (100 points)' });
   await page.getByRole('button', { name: 'Add problem' }).click();
-  await page.getByRole('button', { name: 'Save problems' }).click();
 
   const reason = page.getByLabel('Reason to grade problem B as the AI wrote it');
   await expect(reason).toBeFocused();
@@ -808,7 +816,8 @@ test('keyboard only: an organiser edits a contest, runs the console and walks th
   await expect(page).toHaveURL('/admin/contests/4');
   await expect(page.getByLabel('Title', { exact: true })).toHaveValue('Week 6 contest');
 
-  // A setting changed and saved from the keyboard.
+  // A setting changed and saved from the keyboard; the rules open from their summary.
+  await activate(page, page.locator('#rules summary'));
   await tabTo(page, page.getByLabel('Seconds between submissions'));
   await page.keyboard.press('Control+a');
   await page.keyboard.type('20');
@@ -828,8 +837,11 @@ test('keyboard only: an organiser edits a contest, runs the console and walks th
   await page.keyboard.press('Enter');
   await expect(page.getByRole('button', { name: 'Move Interval covering up' })).toBeFocused();
   // Removing a problem hands focus to the row that took its place.
+  // The problem is saved already and the contest is over, so removing it asks first.
   await page.getByRole('button', { name: 'Remove Interval covering' }).focus();
   await page.keyboard.press('Enter');
+  const removeDialog = page.getByRole('dialog', { name: /^Remove problem [AB]\?$/ });
+  await activate(page, removeDialog.getByRole('button', { name: 'Remove problem' }));
   await expect(page.getByLabel('Letter for Interval covering')).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Remove A plus B' })).toBeFocused();
 
@@ -881,4 +893,23 @@ test('stacked rows stay table rows and the whole row is the link', async ({ page
   expect(linkBox).not.toBeNull();
   await page.mouse.click((rowBox?.x ?? 0) + (rowBox?.width ?? 0) - 8, (rowBox?.y ?? 0) + (rowBox?.height ?? 0) - 8);
   await expect(page).toHaveURL(new RegExp(`${href}$`));
+});
+
+test('an unpublished contest reads Draft, and holding the board needs a freeze (P3 O1, O8)', async ({ page }) => {
+  await mockApi(page, { who: 'admin', phase: 'upcoming' });
+  await page.goto('/admin/contests/4');
+  await expect(page.locator('.title-row .state-word')).toHaveText('Draft');
+  await expect(page.getByRole('region', { name: 'Before you publish' })).toContainText('1 problem, all validated.');
+  await page.locator('#rules summary').click();
+  const hold = page.getByLabel('Hold the full board after the end until you reveal it');
+  await expect(hold).toBeEnabled();
+  await page.getByLabel('Freeze the board, minutes before the end').fill('0');
+  await expect(hold).toBeDisabled();
+  await expect(page.getByText('Needs a freeze; with no freeze there is nothing to reveal.')).toBeVisible();
+  // Settings left unsaved ask before leaving.
+  await page.getByRole('navigation', { name: 'Contest' }).getByRole('link', { name: /^Console/ }).click();
+  const leave = page.getByRole('dialog', { name: 'Leave without saving?' });
+  await expect(leave).toContainText('Problems are saved already.');
+  await leave.getByRole('button', { name: 'Cancel' }).click();
+  await expect(page).toHaveURL('/admin/contests/4');
 });

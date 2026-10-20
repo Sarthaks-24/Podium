@@ -50,6 +50,8 @@ export interface Options {
   endsInMs?: number;
   /** The organiser's contest starts out published. */
   published?: boolean;
+  /** PUT settings may publish (by default it refuses with a changed problem, P3). */
+  publishOk?: boolean;
   /** Problem B moved to a new revision after the start, changing its statement (C3). */
   statementUpdated?: boolean;
   /** Problem A has a newer validated revision to update the contest to (C4). */
@@ -505,7 +507,7 @@ export async function mockApi(page: Page, options: Options = {}) {
         const body = req.postDataJSON() as Json;
         state.settingsPuts.push(body);
         if (body.slug === 'Week 6') return apiError(route, 400, 'bad_request', 'Check the highlighted fields.', { fields: { slug: 'Use lowercase letters, digits and single hyphens, like week-6.' } });
-        if (body.published === true) return apiError(route, 409, 'conflict', 'The contest cannot be published yet.', { fields: { published: 'Problem B changed since it was added; validate it and add it again.' } });
+        if (body.published === true && !options.publishOk) return apiError(route, 409, 'conflict', 'The contest cannot be published yet.', { fields: { published: 'Problem B changed since it was added; validate it and add it again.' } });
         return json(route, 200, { ...adminContest(), ...body });
       }
       if (path === '/api/admin/contests/4/problems' && method === 'PUT') {

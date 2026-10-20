@@ -234,7 +234,7 @@
     <PageState kind="error" message={loadError} onretry={load} />
   {/if}
 {:else}
-  <ContestAdminNav {id} slug={contest.slug} title={contest.title} state={contest.state} current="integrity" />
+  <ContestAdminNav {id} slug={contest.slug} title={contest.title} state={contest.state} published={contest.published} current="integrity" />
 
   <div class="section">
     <IntegrityNote />

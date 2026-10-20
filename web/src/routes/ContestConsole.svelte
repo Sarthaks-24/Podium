@@ -531,7 +531,7 @@
     <PageState kind="error" message={loadError} onretry={() => loadContest()} />
   {/if}
 {:else}
-  <ContestAdminNav {id} slug={contest.slug} title={contest.title} state={contest.state} current="console" {unanswered} />
+  <ContestAdminNav {id} slug={contest.slug} title={contest.title} state={contest.state} published={contest.published} current="console" {unanswered} />
 
   <div class="status">
     <p>

@@ -740,6 +740,61 @@ export interface ProblemStats {
   max_score?: number;
 }
 
+/**
+ * A contest's state as organisers see it (audit 2026-10-20 O1, O8): a
+ * contest students cannot see yet is a draft, whatever its dates, and once
+ * it has ended it reads as ended even while practice is open. The kind
+ * picks the state word's colour (styles/controls.css .state-word).
+ */
+export function organiserState(c: { state: ContestState; published?: boolean; archived?: boolean }): { word: string; kind: string } {
+  if (c.archived) return { word: 'Archived', kind: 'ended' };
+  if (c.published === false) return { word: 'Draft', kind: 'draft' };
+  if (c.state === 'practice') return { word: 'Ended, practice open', kind: 'ended' };
+  return { word: stateWord(c.state), kind: c.state };
+}
+
+/** One line of the contest editor's publish checklist; "bad" items stop publishing. */
+export interface PublishCheck {
+  tone: 'ok' | 'part' | 'bad';
+  text: string;
+}
+
+/**
+ * What a contest needs before students can have it (F6.3, C5), from the
+ * data the editor already holds: at least one problem and none changed
+ * since it was added, a start still ahead (until it starts), someone on
+ * the roster when only the roster may take part, and a language. The
+ * server checks again when it publishes.
+ */
+export function publishChecks(
+  c: { problems: Pick<AdminContestProblem, 'label' | 'ready'>[]; access: Access; roster_count?: number; languages: string[]; starts_at: number; freeze_minutes: number; hold_reveal?: boolean },
+  started: boolean,
+  now: number,
+): PublishCheck[] {
+  const out: PublishCheck[] = [];
+  const n = c.problems.length;
+  const changed = c.problems.filter((p) => p.ready === false).map((p) => p.label);
+  if (n === 0) out.push({ tone: 'bad', text: 'Add at least one validated problem.' });
+  else if (changed.length > 0)
+    out.push({
+      tone: 'bad',
+      text: `${changed.length === 1 ? `Problem ${changed[0]} has` : `Problems ${changed.join(', ')} have`} changed since ${changed.length === 1 ? 'it was' : 'they were'} added. Validate, then add again.`,
+    });
+  else out.push({ tone: 'ok', text: `${n} ${n === 1 ? 'problem' : 'problems'}, all validated.` });
+  if (!started) {
+    out.push(c.starts_at > now ? { tone: 'ok', text: `Starts ${formatDateTime(c.starts_at)}.` } : { tone: 'part', text: 'The start time has passed. Move it ahead, or students start at once.' });
+  }
+  if (c.access === 'roster') {
+    const r = c.roster_count ?? 0;
+    out.push(r > 0 ? { tone: 'ok', text: `${r} ${r === 1 ? 'student' : 'students'} on the roster.` } : { tone: 'bad', text: 'The roster is empty, so nobody can take part. Add the roster under More.' });
+  } else {
+    out.push({ tone: 'ok', text: 'Anyone from the allowed domains can take part.' });
+  }
+  out.push(c.languages.length > 0 ? { tone: 'ok', text: `${c.languages.length} ${c.languages.length === 1 ? 'language' : 'languages'} allowed.` } : { tone: 'bad', text: 'Allow at least one language.' });
+  if (c.hold_reveal && c.freeze_minutes <= 0) out.push({ tone: 'part', text: 'The board is held for a reveal, but with no freeze there is nothing to reveal.' });
+  return out;
+}
+
 /** Defaults for a new contest: tomorrow at 18:00 local, two hours, graded. */
 export function defaultSettings(now: number): ContestSettings {
   const d = new Date(now + 86_400_000);

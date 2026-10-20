@@ -3,7 +3,8 @@
   action. Props: `open` (shows the dialog with showModal when true), `title`
   (the question, used as the dialog's accessible name), `body` (one line of
   consequence), `confirmLabel` (the action word, reused from the button that
-  opened it), `danger` (styles the confirm button as danger), `busy`
+  opened it), `items` (optional lines under the body, such as the checks a
+  publish passed), `danger` (styles the confirm button as danger), `busy`
   (disables both buttons while the request runs), `onconfirm` and
   `oncancel`. Escape and Cancel both call `oncancel`. Focus starts on Cancel
   so a stray Enter never confirms, and the browser returns focus to the
@@ -15,13 +16,14 @@
     title: string;
     body: string;
     confirmLabel: string;
+    items?: readonly string[];
     danger?: boolean;
     busy?: boolean;
     onconfirm: () => void;
     oncancel: () => void;
   }
 
-  let { open, title, body, confirmLabel, danger = false, busy = false, onconfirm, oncancel }: Props = $props();
+  let { open, title, body, confirmLabel, items = [], danger = false, busy = false, onconfirm, oncancel }: Props = $props();
 
   let dialog: HTMLDialogElement | undefined = $state();
   let cancelButton: HTMLButtonElement | undefined = $state();
@@ -51,7 +53,10 @@
   oncancel={onCancelEvent}
 >
   <h2 id="{id}-title" class="title">{title}</h2>
-  <p id="{id}-body" class="body">{body}</p>
+  <div id="{id}-body">
+    <p class="body">{body}</p>
+    {#if items.length > 0}<ul class="items">{#each items as item, i (i)}<li>{item}</li>{/each}</ul>{/if}
+  </div>
   <div class="actions">
     <button
       type="button"
@@ -68,6 +73,12 @@
 </dialog>
 
 <style>
+  .items {
+    margin-top: var(--space-2);
+    padding-left: var(--space-5);
+    color: var(--ink-muted);
+  }
+
   .body {
     margin-top: var(--space-3);
     color: var(--ink-muted);
