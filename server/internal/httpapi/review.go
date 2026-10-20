@@ -221,11 +221,21 @@ func (d Deps) listAppeals(w http.ResponseWriter, r *http.Request) {
 		d.internalError(w, r, err)
 		return
 	}
-	// A reviewer who is the appellant never sees their own appeal here.
+	// A reviewer never sees here an appeal of a case they are a student
+	// of, their own included.
 	me := userFrom(r.Context()).ID
+	mine, err := d.Integrity.CasesAbout(r.Context(), me)
+	if err != nil {
+		d.internalError(w, r, err)
+		return
+	}
+	involved := map[int64]bool{}
+	for _, c := range mine {
+		involved[c.ID] = true
+	}
 	out := []integrity.Appeal{}
 	for _, a := range list {
-		if a.UserID != me {
+		if a.UserID != me && (a.CaseID == nil || !involved[*a.CaseID]) {
 			out = append(out, a)
 		}
 	}

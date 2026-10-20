@@ -681,7 +681,8 @@ func (s *Service) Rule(ctx context.Context, appealID, by int64, upheld bool, rea
 	}
 	sole := ""
 	if involved {
-		if a.UserID == by {
+		// A student of the case never rules on it, sole organiser or not.
+		if a.UserID == by || (c != nil && c.Involves(by)) {
 			return nil, ErrUninvolved
 		}
 		ok, err := s.SoleOrganiser(ctx, by)
