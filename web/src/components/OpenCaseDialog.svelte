@@ -156,26 +156,6 @@
 </dialog>
 
 <style>
-  .dialog {
-    width: min(36rem, calc(100vw - 2 * var(--gutter)));
-    max-height: calc(100dvh - 2 * var(--space-5));
-    margin: auto;
-    padding: var(--space-5);
-    border: var(--rule) solid var(--line-strong);
-    border-radius: var(--radius);
-    background: var(--surface);
-    color: var(--ink);
-    box-shadow: var(--shadow-menu);
-  }
-
-  .dialog::backdrop {
-    background: color-mix(in srgb, var(--ink) 40%, transparent);
-  }
-
-  h2 {
-    font-size: var(--fs-3);
-  }
-
   .lead {
     margin-top: var(--space-2);
     font-size: var(--fs-0);

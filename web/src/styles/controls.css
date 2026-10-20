@@ -322,3 +322,52 @@ textarea.input {
   padding-top: var(--space-6);
   border-top: var(--rule) solid var(--line);
 }
+
+/* Dialogs (F6): one shell for every native <dialog>. The scrim dims the
+   page in light and dark themes alike; the head with the title and close
+   button stays in view while the body scrolls. On phones the dialog sits
+   at the top, so the on-screen keyboard never covers its fields. */
+.dialog {
+  width: min(var(--measure-narrow), calc(100vw - 2 * var(--gutter)));
+  max-height: calc(100dvh - 2 * var(--space-4));
+  margin: var(--space-4) auto auto;
+  padding: var(--space-5);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  border: var(--rule) solid var(--line-strong);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--ink);
+  box-shadow: var(--shadow-menu);
+}
+
+/* A question with two buttons. */
+.dialog-small {
+  width: min(30rem, calc(100vw - 2 * var(--gutter)));
+}
+
+.dialog::backdrop {
+  background: var(--scrim);
+}
+
+.dialog-head {
+  position: sticky;
+  /* Sticky offsets count from the dialog's content edge, so the head
+     reaches back over the padding to sit flush with the top. */
+  top: calc(-1 * var(--space-5));
+  z-index: var(--z-sticky);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin: calc(-1 * var(--space-5)) calc(-1 * var(--space-5)) 0;
+  padding: var(--space-5) var(--space-5) var(--space-3);
+  background: var(--surface);
+}
+
+@media (min-width: 768px) {
+  .dialog {
+    max-height: calc(100dvh - 2 * var(--space-5));
+    margin: auto;
+  }
+}

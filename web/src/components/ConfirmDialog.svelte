@@ -45,7 +45,7 @@
 
 <dialog
   bind:this={dialog}
-  class="dialog"
+  class="dialog dialog-small"
   aria-labelledby="{id}-title"
   aria-describedby="{id}-body"
   oncancel={onCancelEvent}
@@ -68,26 +68,6 @@
 </dialog>
 
 <style>
-  .dialog {
-    width: min(30rem, calc(100vw - 2 * var(--gutter)));
-    margin: auto;
-    padding: var(--space-5);
-    border: var(--rule) solid var(--line-strong);
-    border-radius: var(--radius);
-    background: var(--surface);
-    color: var(--ink);
-    box-shadow: var(--shadow-menu);
-  }
-
-  .dialog::backdrop {
-    background: color-mix(in srgb, var(--ink) 40%, transparent);
-  }
-
-  .title {
-    font-size: var(--fs-3);
-    overflow-wrap: anywhere;
-  }
-
   .body {
     margin-top: var(--space-3);
     color: var(--ink-muted);
