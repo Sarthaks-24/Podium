@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Sarthaks-24/podium/internal/auth"
 )
@@ -272,5 +273,47 @@ func TestStudentsAuthorisationMatrix(t *testing.T) {
 	s.db.QueryRow("SELECT count(*) FROM student_contest_summary WHERE user_id = ?", bilal).Scan(&left)
 	if left != 0 {
 		t.Errorf("summaries left after erasure: %d", left)
+	}
+}
+
+// Progress in exam mode shows the totals only, and a contest whose reveal
+// is held is absent until the reveal.
+func TestProgressExamTotalsAndHeldReveal(t *testing.T) {
+	s := newSite(t)
+	owner := s.signedIn("owner@college.edu", "Owner")
+	pa := s.importProblem(owner, "plus-a")
+	start := time.Now().Add(time.Hour).Truncate(time.Minute)
+	s.createContest(owner, "exam", start, map[string]int64{"A": pa}, map[string]any{"feedback_mode": "exam"})
+	s.createContest(owner, "held", start, map[string]int64{"A": pa}, map[string]any{"hold_reveal": true, "freeze_minutes": 30})
+	asha := s.signedIn("asha@college.edu", "Asha")
+	s.at(start, 5)
+	for _, slug := range []string{"exam", "held"} {
+		asha.do("POST", "/api/contests/"+slug+"/start", map[string]any{"accept_honour": true}, s.srv.URL)
+		if code, out := s.submit(asha, slug, "A", "correct"); code != 202 {
+			t.Fatalf("submit %s: %d %v", slug, code, out)
+		}
+	}
+	s.at(start, 130)
+	if _, err := s.contests.SweepSummaries(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	_, prog := asha.do("GET", "/api/me/progress", nil, "")
+	list := prog["contests"].([]any)
+	if len(list) != 1 {
+		t.Fatalf("contests in progress: %v", prog)
+	}
+	c := list[0].(map[string]any)
+	p := c["problems"].([]any)[0].(map[string]any)
+	if c["slug"] != "exam" || c["detail"] != "totals" || c["score"].(float64) != 100 || p["score"] != nil || p["best_verdict"] != nil ||
+		p["attempts"] != nil || p["subtasks"] != nil || len(prog["losses"].([]any)) != 0 {
+		t.Errorf("exam contest in progress: %v", c)
+	}
+	var held int64
+	s.db.QueryRow("SELECT id FROM contests WHERE slug = 'held'").Scan(&held)
+	if code, out := owner.do("POST", fmt.Sprintf("/api/admin/contests/%d/reveal", held), nil, s.srv.URL); code != 200 {
+		t.Fatalf("reveal: %d %v", code, out)
+	}
+	if _, prog = asha.do("GET", "/api/me/progress", nil, ""); len(prog["contests"].([]any)) != 2 {
+		t.Errorf("after the reveal: %v", prog["contests"])
 	}
 }
