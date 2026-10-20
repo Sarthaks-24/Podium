@@ -704,6 +704,12 @@ func (d Deps) contestFeed(w http.ResponseWriter, r *http.Request) {
 		d.internalError(w, r, err)
 		return
 	}
+	if siteAdmin(r) {
+		if err := d.annotateFeed(r.Context(), c.ID, items); err != nil {
+			d.internalError(w, r, err)
+			return
+		}
+	}
 	WriteJSON(w, http.StatusOK, map[string]any{"submissions": items, "page": max(f.Page, 1), "has_more": more,
 		"results_hidden": f.Hide.Active(), "server_now": d.Contests.Clock().UnixMilli()})
 }
@@ -1072,4 +1078,40 @@ func (d Deps) contestAudit(w http.ResponseWriter, r *http.Request) {
 	}
 	WriteJSON(w, http.StatusOK, map[string]any{"entries": list, "page": max(page, 1), "has_more": more,
 		"server_now": d.Contests.Clock().UnixMilli()})
+}
+
+// annotateFeed adds each item's note count and manual case, for reviewers
+// (owners and admins) only.
+func (d Deps) annotateFeed(ctx context.Context, contestID int64, items []contests.FeedItem) error {
+	notes, cases := map[int64]int{}, map[int64]int64{}
+	rows, err := d.DB.QueryContext(ctx, "SELECT submission_id, count(*) FROM submission_notes WHERE contest_id = ? GROUP BY submission_id", contestID)
+	if err != nil {
+		return err
+	}
+	for rows.Next() {
+		var id int64
+		var n int
+		rows.Scan(&id, &n)
+		notes[id] = n
+	}
+	rows.Close()
+	rows, err = d.DB.QueryContext(ctx, `SELECT submission_id, max(id) FROM integrity_cases WHERE contest_id = ? AND source = 'manual'
+		AND submission_id IS NOT NULL GROUP BY submission_id`, contestID)
+	if err != nil {
+		return err
+	}
+	for rows.Next() {
+		var sub, id int64
+		rows.Scan(&sub, &id)
+		cases[sub] = id
+	}
+	rows.Close()
+	for i := range items {
+		n := notes[items[i].ID]
+		items[i].NoteCount = &n
+		if id, ok := cases[items[i].ID]; ok {
+			items[i].CaseID = &id
+		}
+	}
+	return rows.Err()
 }

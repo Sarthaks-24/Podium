@@ -60,6 +60,8 @@ func TestPeriodsAndFloors(t *testing.T) {
 	want := map[string]string{
 		"sessions": "12 hours after sign-in", "integrity_events": "180 days after the contest",
 		"case_evidence": "2 years after the decision", "run_payloads": "30 days", "contact_messages": "180 days",
+		"standing_entries": "2 years after the decision", "private_notes": "30 days", "notifications": "180 days",
+		"record_views": "2 years", "rating_history": "4 years", "contest_summaries": "4 years after the contest",
 		"draft_revisions": "90 days", "submissions": "4 years after the contest", "audit": "4 years", "backups": "14 days",
 	}
 	for _, p := range retention.Periods() {

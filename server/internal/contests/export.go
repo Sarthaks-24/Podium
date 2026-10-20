@@ -333,6 +333,10 @@ type FeedItem struct {
 	TypedChars  *int `json:"typed_chars,omitempty"`
 	PastedChars *int `json:"pasted_chars,omitempty"`
 	FocusLosses *int `json:"focus_losses,omitempty"`
+	// NoteCount and CaseID (v1.4.0) are the private notes on the
+	// submission and the manual case opened from it, for reviewers only.
+	NoteCount *int   `json:"note_count,omitempty"`
+	CaseID    *int64 `json:"case_id,omitempty"`
 }
 
 // Feed lists the contest's submissions, newest first, a page at a time,

@@ -52,6 +52,25 @@ const (
 	// Audit: the site audit and every contest audit log, 4 years (owner,
 	// 2026-10-19).
 	Audit = 4 * Year
+	// PrivateNotes: a reviewer's note on a submission, 30 days after it
+	// was written, unless a case was opened from the submission; then it
+	// goes with the case's evidence (v1.4.0).
+	PrivateNotes = 30 * Day
+	// Notifications: a person's notices, 180 days after they were made.
+	Notifications = 180 * Day
+	// RecordViews: who read a student's record page, a case or notes
+	// (D97), 2 years.
+	RecordViews = 2 * Year
+	// RatingHistory: each change of a student's rating, 4 years like the
+	// audits (D110); the current value is kept, so pruning never changes
+	// it.
+	RatingHistory = 4 * Year
+	// ContestSummaries: a student's result summary per contest, as long
+	// as the submissions it comes from.
+	ContestSummaries = Submissions
+	// StandingEntries: an outcome or adjustment stays on the student's
+	// standing 2 years after it; the decision record stays with the case.
+	StandingEntries = CaseEvidence
 )
 
 // Trigger floors: the append-only tables' triggers (migration 0010)
@@ -59,6 +78,7 @@ const (
 // tables must be at least as long. A test checks it.
 const (
 	FloorDraftRevisions = 90 * Day
+	FloorNotes          = 30 * Day
 	FloorOther          = 365 * Day
 )
 
@@ -108,13 +128,20 @@ func row(id, data string, d time.Duration, after string) Period {
 }
 
 // Periods returns the retention table in the order the privacy page lists
-// it. Rows for data added later (P4: notes, notifications, ratings) join
-// it in the release that starts collecting that data.
+// it. Rows for data added later join it in the release that starts
+// collecting that data (v1.4.0: notes, notices, record views, the rating,
+// summaries, standing entries).
 func Periods() []Period {
 	return []Period{
 		row("sessions", "Sign-in sessions", Sessions, "sign_in"),
 		row("integrity_events", "Paste and focus events during contests, and their counts", IntegrityEvents, "contest_end"),
-		row("case_evidence", "Evidence and explanations in a closed integrity case", CaseEvidence, "decision"),
+		row("case_evidence", "Evidence, explanations and appeals in a closed integrity case", CaseEvidence, "decision"),
+		row("standing_entries", "Outcomes and adjustments shown on your standing", StandingEntries, "decision"),
+		row("private_notes", "Organisers' private notes on a submission, unless a case is opened from it", PrivateNotes, "created"),
+		row("notifications", "Notices in your inbox", Notifications, "created"),
+		row("record_views", "Records of who read a student's record, cases or notes", RecordViews, "created"),
+		row("rating_history", "The organisers' rating of a student and its changes", RatingHistory, "created"),
+		row("contest_summaries", "Your result summary for each contest", ContestSummaries, "contest_end"),
 		row("run_payloads", "Custom input and program output of a Run", RunPayloads, "created"),
 		row("contact_messages", "Messages sent to the organisers", ContactMessages, "created"),
 		row("draft_revisions", "Problem versions no contest or submission used", DraftRevisions, "created"),

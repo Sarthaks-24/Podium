@@ -48,6 +48,7 @@ func main() {
 		fmt.Fprintln(os.Stderr, "       podium-server runs-report [-db F]          runs with a custom input, per contest")
 		fmt.Fprintln(os.Stderr, "       podium-server migrate -db COPY             rehearse an upgrade on a copy of the database")
 		fmt.Fprintln(os.Stderr, "       podium-server forget-user [-db F] [-apply] EMAIL  erase one person (a dry run without -apply)")
+		fmt.Fprintln(os.Stderr, "       podium-server semester-rollover [-db F] [-dry-run] LABEL  add 0.5 to every rating with no outcome this term")
 	}
 	flag.Parse()
 	if *showVersion {
@@ -68,6 +69,9 @@ func main() {
 	}
 	if flag.Arg(0) == "forget-user" {
 		os.Exit(forgetCmd(flag.Args()[1:], os.Stdout))
+	}
+	if flag.Arg(0) == "semester-rollover" {
+		os.Exit(rolloverCmd(flag.Args()[1:], os.Stdout))
 	}
 	if flag.Arg(0) == "runs-report" {
 		os.Exit(runsReportCmd(flag.Args()[1:], os.Stdout))
@@ -185,13 +189,14 @@ func run(envFile string) error {
 	}
 	// Integrity checks run in one background goroutine on this server,
 	// not on the judge (D49).
-	integritySvc := &integrity.Service{DB: database, Problems: problemSvc, Log: log}
+	integritySvc := &integrity.Service{DB: database, Problems: problemSvc, Contests: contestSvc, Log: log}
 	if n, err := integritySvc.Recover(ctx); err != nil {
 		return fmt.Errorf("integrity: mark interrupted checks: %w", err)
 	} else if n > 0 {
 		log.Warn("integrity checks interrupted by the last shutdown marked as failed", "count", n)
 	}
 	go sweepJobs(ctx, jobSvc, log)
+	go sweepStudents(ctx, contestSvc, integritySvc, log)
 	go retainIntegrity(ctx, contestSvc, integritySvc, log, func(ctx context.Context) {
 		start := time.Now()
 		res, err := blobs.GC(ctx, database, start)
@@ -205,7 +210,8 @@ func run(envFile string) error {
 	})
 	// The retention periods of internal/retention that no other job
 	// applies: run payloads, contact messages, unused revisions,
-	// submissions and audit rows (B3.1). Once a day.
+	// submissions with their summaries, audit rows (B3.1), notes, notices,
+	// record views and rating history (B4.1). Once a day.
 	go retainDaily(ctx, &retention.Job{DB: database, Log: log, ExportStandings: contestSvc.FinalStandings,
 		Expired: contestSvc.Invalidate}, log)
 	handler := httpapi.New(httpapi.Deps{
@@ -295,6 +301,31 @@ func sweepJobs(ctx context.Context, j *jobs.Service, log *slog.Logger) {
 	}
 }
 
+// sweepStudents writes the per-student summaries of contests that turned
+// final (or were rejudged since), tells students of a revealed contest,
+// and sends the day-5 reply reminders, once a minute (B4.4, B4.7).
+func sweepStudents(ctx context.Context, c *contests.Service, cases *integrity.Service, log *slog.Logger) {
+	t := time.NewTicker(time.Minute)
+	defer t.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+		}
+		if n, err := c.SweepSummaries(ctx); err != nil && ctx.Err() == nil {
+			log.Warn("contest summaries failed", "err", err)
+		} else if n > 0 {
+			log.Info("contest summaries written", "contests", n)
+		}
+		if n, err := cases.SweepReminders(ctx); err != nil && ctx.Err() == nil {
+			log.Warn("case reminders failed", "err", err)
+		} else if n > 0 {
+			log.Info("case reminders sent", "count", n)
+		}
+	}
+}
+
 // retainIntegrity applies the integrity retention rules at start-up and
 // every 12 hours: contest records are deleted 180 days after a contest
 // ends, except for students in an open case (D47), and a closed case's
@@ -344,7 +375,8 @@ func retainDaily(ctx context.Context, j *retention.Job, log *slog.Logger) {
 		case res != (retention.Result{}):
 			log.Info("data past retention removed", "runs_emptied", res.RunsEmptied, "contact_messages", res.ContactDeleted,
 				"revisions", res.RevisionsDeleted, "contests", res.ContestsExpired, "submissions", res.SubmissionsDeleted,
-				"audit_rows", res.AuditDeleted, "ms", time.Since(start).Milliseconds())
+				"audit_rows", res.AuditDeleted, "notes", res.NotesDeleted, "notices", res.NoticesDeleted, "record_views", res.ViewsDeleted,
+				"rating_rows", res.RatingRowsDeleted, "ms", time.Since(start).Milliseconds())
 		}
 	}
 }

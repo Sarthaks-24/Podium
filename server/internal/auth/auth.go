@@ -53,6 +53,9 @@ type User struct {
 	// Theme and Verdicts are the display preferences (preferences.go).
 	Theme    string `json:"theme"`
 	Verdicts string `json:"verdicts"`
+	// HideProgress is the person's choice to hide their own progress
+	// page and Home summary (v1.4.0).
+	HideProgress bool `json:"hide_progress"`
 }
 
 // SessionTTL is how long a session lasts: 12 hours from sign-in, however
@@ -210,7 +213,7 @@ func (s *Service) SignIn(ctx context.Context, id Identity, ip, userAgent string)
 	err = tx.QueryRowContext(ctx, `INSERT INTO users (email, name, avatar_url, google_sub, created_at, last_login_at) VALUES (?, ?, ?, ?, ?, ?)
 		ON CONFLICT (email) DO UPDATE SET name = excluded.name, avatar_url = excluded.avatar_url,
 			google_sub = excluded.google_sub, last_login_at = excluded.last_login_at
-		RETURNING id, role, theme, verdicts`, email, u.Name, u.AvatarURL, id.Subject, now.UnixMilli(), now.UnixMilli()).Scan(&u.ID, &u.Role, &u.Theme, &u.Verdicts)
+		RETURNING id, role, theme, verdicts, hide_progress`, email, u.Name, u.AvatarURL, id.Subject, now.UnixMilli(), now.UnixMilli()).Scan(&u.ID, &u.Role, &u.Theme, &u.Verdicts, &u.HideProgress)
 	if err != nil {
 		return User{}, "", time.Time{}, fmt.Errorf("record user: %w", err)
 	}
@@ -236,8 +239,8 @@ func (s *Service) Authenticate(ctx context.Context, token string) (u User, renew
 	now := s.now()
 	var created, expires int64
 	err = s.DB.QueryRowContext(ctx, `SELECT u.id, u.email, u.name, u.avatar_url, u.role, u.disabled, u.theme, u.verdicts,
-		s.created_at, s.expires_at FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.id = ?`, id).
-		Scan(&u.ID, &u.Email, &u.Name, &u.AvatarURL, &u.Role, &u.Disabled, &u.Theme, &u.Verdicts, &created, &expires)
+		u.hide_progress, s.created_at, s.expires_at FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.id = ?`, id).
+		Scan(&u.ID, &u.Email, &u.Name, &u.AvatarURL, &u.Role, &u.Disabled, &u.Theme, &u.Verdicts, &u.HideProgress, &created, &expires)
 	if errors.Is(err, sql.ErrNoRows) {
 		return User{}, time.Time{}, ErrNoSession
 	}

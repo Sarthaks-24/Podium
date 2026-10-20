@@ -1261,6 +1261,7 @@ Students (any signed-in user):
 | Route | Request | Success |
 |---|---|---|
 | `GET /api/integrity/cases` | | 200 `{cases: [StudentCase], contests: {id: {slug, title}}, problems: {id: {label, title}}, server_now}`: only cases shared with the user |
+| `POST /api/integrity/cases/{case}/opened` | none | 204 (v1.4.0): the student opened the case; see "C9: deadlines" |
 | `PUT /api/integrity/cases/{case}/explanation` | `{explanation}` (1 to 8,000 characters) | 204; editable until the case is decided |
 
 ### Shapes
@@ -1506,6 +1507,7 @@ The server writes the sentences from fixed templates with the contest's title, a
 - `SubmissionRef`: `{id, contest_id, user_id, problem_label, language, practice, created_at}`.
 - `Note`: `{id, submission_id, by, by_name, text, lines, created_at, expires_at}`. `expires_at` is when the note is deleted (30 days after it was written), `null` once a case has been opened from the submission: then it is kept with the case. Notes are append only: they cannot be edited or deleted by hand. The student is never told about a note.
 - `case_id` is the manual case opened from the submission, `null` if none.
+- The student sees a manual case's evidence as `kind: "manual"`, the sentence "An organiser asked you to explain this submission. The lines in question are highlighted.", their own `source` and `lines` (the notes' ranges); never the notes' text.
 - Opening a case: `title` at most 120 characters, `note` (the reason, for reviewers) 20 to 4,000; the case's student is the submission's author, its `source` is `manual`, its evidence is the submission and its notes, copied. The reviewer may not be the author (`400`). The case starts `open`, as one from signals does, and is shared with `PUT /api/admin/integrity/cases/{case}` as before.
 - The console feed (`GET /api/admin/contests/{id}/submissions`) gains `note_count` and `case_id` on each item for reviewers; others never see them.
 
@@ -1572,7 +1574,7 @@ both `null` until a decision changed the board, so the results page can say "Boa
 | `GET /api/admin/appeals` (`?state=open`) | owner, admin | | 200 `{appeals: [Appeal], server_now}`, open first, then newest |
 | `POST /api/admin/appeals/{id}/ruling` | owner, admin who took no part | `{"upheld": true, "reason": "...", "sole_organiser_reason": "..."}` | 200 `Appeal` |
 
-`Appeal`: `{id, case_id, adjustment_id, user_id, text, created_at, decide_by, overdue, state, ruling}`; `state` is `open`, `upheld` or `rejected`; `ruling` is `{by, by_name, upheld, reason, created_at}` or `null`. Students get their own appeals without `by` and `by_name`; reviewers also get `user {id, name}`.
+`Appeal`: `{id, case_id, adjustment_id, user_id, text, created_at, decide_by, overdue, state, ruling}`; `state` is `open`, `upheld` or `rejected`; `ruling` is `{by, by_name, upheld, reason, created_at}` or `null`. Students get their own appeals without `by` and `by_name`; reviewers also get `user {name, email, roll_number}` (roll number empty here).
 
 - One appeal per outcome per student and one per adjustment, within 14 days of the decision or the adjustment (`400` after: "The 14 days to appeal have passed."). `text` 20 to 4,000 characters.
 - A ruling needs an owner or admin who did not open the case, propose, confirm or decide anything on it, and is not one of its students; for an adjustment, not the person who made or confirmed it. Anyone else is `403 uninvolved_reviewer`. The sole-organiser exception applies as above.
@@ -1590,7 +1592,7 @@ both `null` until a decision changed the board, so the results page can say "Boa
 
 Cases shared before v1.4.0 keep the old rule: 7 days from the latest share.
 
-The student's `GET /api/integrity/cases` lists a case only once its notice is available, and its first answer after a share records `first_opened_at`. `StudentCase` gains:
+The student's `GET /api/integrity/cases` lists a case only once its notice is available (the shell's one call per sign-in does not count as opening). The case page calls `POST /api/integrity/cases/{case}/opened` (no body, `204`; `404` for a case not shared with the caller) when it shows the case: the first call after each share records `first_opened_at` and starts the 7 days. A client that never calls it leaves the 21-day cap in force, which never shortens a student's time. `StudentCase` gains:
 
 ```json
 { "respond_by": 1792914800000,

@@ -43,6 +43,10 @@ type Result struct {
 	ContestsExpired    int64 // contests whose submissions passed retention
 	SubmissionsDeleted int64 // in those contests, and outside contests
 	AuditDeleted       int64 // site and contest audit rows
+	NotesDeleted       int64 // private notes no case was opened from
+	NoticesDeleted     int64
+	ViewsDeleted       int64 // record view log rows
+	RatingRowsDeleted  int64 // rating history rows
 }
 
 func (j *Job) now() time.Time {
@@ -68,6 +72,9 @@ func (j *Job) Run(ctx context.Context) (Result, error) {
 		{"submissions", j.submissions},
 		{"draft revisions", j.revisions},
 		{"audit", j.audit},
+		{"private notes", j.notes},
+		{"notices", j.notices},
+		{"record views and rating history", j.records},
 	}
 	var errs []error
 	for _, s := range steps {
@@ -266,6 +273,10 @@ func (j *Job) expireContest(ctx context.Context, id, cut int64, r *Result) error
 		return err
 	}
 	defer tx.Rollback()
+	// The summaries come from the submissions just deleted.
+	if _, err := tx.ExecContext(ctx, "DELETE FROM student_contest_summary WHERE contest_id = ?", id); err != nil {
+		return err
+	}
 	for _, t := range []string{"contest_pin_history", "revision_views"} {
 		if err := setCutoff(ctx, tx, t, cut); err != nil {
 			return err
@@ -356,6 +367,67 @@ func (j *Job) audit(ctx context.Context, now time.Time, r *Result) error {
 	return nil
 }
 
+// notes deletes private notes older than PrivateNotes whose submission no
+// manual case was opened from (those go with the case's evidence).
+func (j *Job) notes(ctx context.Context, now time.Time, r *Result) error {
+	cut := now.Add(-PrivateNotes).UnixMilli()
+	n, err := j.batches(ctx, func(tx *sql.Tx) (int64, error) {
+		if err := setCutoff(ctx, tx, "submission_notes", cut); err != nil {
+			return 0, err
+		}
+		res, err := tx.ExecContext(ctx, `DELETE FROM submission_notes WHERE id IN (SELECT n.id FROM submission_notes n WHERE n.created_at < ?
+			AND NOT EXISTS (SELECT 1 FROM integrity_cases c WHERE c.submission_id = n.submission_id AND c.source = 'manual')
+			ORDER BY n.id LIMIT ?)`, cut, batch)
+		if err != nil {
+			return 0, err
+		}
+		return res.RowsAffected()
+	})
+	r.NotesDeleted = n
+	return err
+}
+
+func (j *Job) notices(ctx context.Context, now time.Time, r *Result) error {
+	n, err := j.batches(ctx, func(tx *sql.Tx) (int64, error) {
+		res, err := tx.ExecContext(ctx, "DELETE FROM notifications WHERE id IN (SELECT id FROM notifications WHERE created_at < ? ORDER BY id LIMIT ?)",
+			now.Add(-Notifications).UnixMilli(), batch)
+		if err != nil {
+			return 0, err
+		}
+		return res.RowsAffected()
+	})
+	r.NoticesDeleted = n
+	return err
+}
+
+// records deletes record view rows older than RecordViews and rating
+// history rows older than RatingHistory, through their cutoff rows.
+func (j *Job) records(ctx context.Context, now time.Time, r *Result) error {
+	for _, t := range []struct {
+		table string
+		keep  time.Duration
+		count *int64
+	}{{"record_views", RecordViews, &r.ViewsDeleted}, {"rating_history", RatingHistory, &r.RatingRowsDeleted}} {
+		cut := now.Add(-t.keep).UnixMilli()
+		n, err := j.batches(ctx, func(tx *sql.Tx) (int64, error) {
+			if err := setCutoff(ctx, tx, t.table, cut); err != nil {
+				return 0, err
+			}
+			res, err := tx.ExecContext(ctx, "DELETE FROM "+t.table+" WHERE id IN (SELECT id FROM "+t.table+" WHERE at < ? ORDER BY id LIMIT ?)",
+				cut, batch)
+			if err != nil {
+				return 0, err
+			}
+			return res.RowsAffected()
+		})
+		*t.count += n
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // ErrFloor is returned by CheckFloors for a period shorter than the
 // trigger floor of a table it opens.
 var ErrFloor = errors.New("retention period below the trigger floor")
@@ -366,7 +438,11 @@ func CheckFloors() error {
 	if DraftRevisions < FloorDraftRevisions {
 		return fmt.Errorf("%w: draft revisions %v < %v", ErrFloor, DraftRevisions, FloorDraftRevisions)
 	}
-	for name, p := range map[string]time.Duration{"submissions": Submissions, "audit": Audit} {
+	if PrivateNotes < FloorNotes {
+		return fmt.Errorf("%w: private notes %v < %v", ErrFloor, PrivateNotes, FloorNotes)
+	}
+	for name, p := range map[string]time.Duration{"submissions": Submissions, "audit": Audit, "record views": RecordViews,
+		"rating history": RatingHistory} {
 		if p < FloorOther {
 			return fmt.Errorf("%w: %s %v < %v", ErrFloor, name, p, FloorOther)
 		}
