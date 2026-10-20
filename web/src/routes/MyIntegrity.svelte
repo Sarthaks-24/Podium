@@ -1,244 +1,256 @@
 <!--
-  MyIntegrity: the student's side of integrity cases at /integrity
-  (integrity-plan.md sections 5 and 7). Lists the cases an organiser shared
-  with the signed-in student (GET /api/integrity/cases), newest first: the
-  contest, where the case stands in words, and the evidence about the
-  student's own work only, as the server words it, with their own program
-  and the passages in question highlighted (CodeView). Each case has an
-  explanation box saved with PUT /api/integrity/cases/{case}/explanation;
-  it can be changed until a decision is made, then it reads only. Students
-  never see signals, strengths or other students. The page is reached from
-  "Questions" in the header and the line on Your contests, keeps a "Your
-  contests" back link, and words its lead by where the cases stand, also
-  once all are decided (S7, audit 01-12 and 01-13). Takes no props.
+  MyIntegrity: "Questions and standing" at /integrity, the student's side
+  of integrity review (integrity-plan.md sections 5 and 7; v2 P4 F9.2,
+  contracts C9 and C12). Reached from "Questions" in the header while a
+  case exists, "Your standing" in the account menu, the line on Your
+  contests and the notices. An old notice address /integrity#case-12 goes
+  straight to that case's page.
+
+  Two parts, in this order:
+  - "Your standing" (GET /api/me/standing): the band's name as a badge
+    ("Good standing", "Outcomes on record", "Repeated outcomes"), one
+    sentence on what it means and how it changes, then the dated lines
+    (outcomes and organiser adjustments), newest first, each with the
+    reason written for the student, a link to its case, its appeal's
+    state, and "Appeal this decision" while the 14 days run. Never a
+    number: the page has no field that could hold one.
+  - "Questions about your submissions" (GET /api/integrity/cases): one
+    row per case, newest first: the contest, where it stands as a badge
+    and a sentence, the reply deadline while it is open, and "Open the
+    question" to the case page (MyCase), where the student reads the
+    evidence, explains and appeals.
+  Either part failing to load shows its own error and "Try again"; the
+  other still shows. Takes no props.
 -->
 <script lang="ts">
+  import Badge from '../components/Badge.svelte';
   import MonoDigits from '../components/MonoDigits.svelte';
-  import PageState from '../components/PageState.svelte';
   import PageHeader from '../components/PageHeader.svelte';
+  import PageState from '../components/PageState.svelte';
+  import AppealForm from '../components/standing/AppealForm.svelte';
   import { onMount } from 'svelte';
-  import CodeView from '../components/CodeView.svelte';
-  import { ApiError, getJSON, sendJSON } from '../lib/api';
-  import { formatDateTime } from '../lib/format';
-  import { setTitle } from '../lib/head';
-  import { routeTitle } from '../lib/routing';
+  import { ApiError, getJSON } from '../lib/api';
   import { keepHeadingFocus } from '../lib/focus';
-  import { casesStanding, problemName, studentLead, studentStateText, type StudentCase, type StudentCaseList } from '../lib/review';
+  import { formatDayTime } from '../lib/format';
+  import { setTitle } from '../lib/head';
+  import { casesStanding, studentLead } from '../lib/review';
+  import { navigate } from '../lib/router.svelte';
+  import { routeTitle } from '../lib/routing';
   import { session } from '../lib/session.svelte';
+  import {
+    appealSentence,
+    appealState,
+    BAND_HELP,
+    bandName,
+    bandSentence,
+    bandTone,
+    caseBadge,
+    caseFromHash,
+    caseSentence,
+    type Standing,
+    type StandingLine,
+    type StudentAppeal,
+    type StudentCaseListV14,
+  } from '../lib/standing';
 
-  /** The longest explanation the server accepts. */
-  const MAX_EXPLANATION = 8000;
+  let standingState = $state<'loading' | 'ready' | 'error'>('loading');
+  let standingError = $state('');
+  let standing = $state.raw<Standing | null>(null);
 
-  let loadState = $state<'loading' | 'ready' | 'error'>('loading');
-  let loadError = $state('');
-  let data = $state.raw<StudentCaseList | null>(null);
-  let drafts = $state<Record<number, string>>({});
-  let saving = $state<Record<number, boolean>>({});
-  let errors = $state<Record<number, string>>({});
-  let saved = $state<Record<number, string>>({});
+  let casesState = $state<'loading' | 'ready' | 'error'>('loading');
+  let casesError = $state('');
+  let data = $state.raw<StudentCaseListV14 | null>(null);
 
-  async function load() {
-    loadState = 'loading';
+  function signedOut(e: unknown): boolean {
+    if (e instanceof ApiError && e.status === 401) {
+      session.user = undefined;
+      session.status = 'signed-out';
+      return true;
+    }
+    return false;
+  }
+
+  function message(e: unknown): string {
+    return e instanceof ApiError ? e.message : 'Something went wrong. Try again in a moment.';
+  }
+
+  async function loadStanding() {
+    standingState = 'loading';
     try {
-      const d = await getJSON<StudentCaseList>('/api/integrity/cases');
+      const s = await getJSON<Standing>('/api/me/standing');
       const restore = keepHeadingFocus();
-      data = { ...d, cases: d.cases ?? [] };
-      drafts = Object.fromEntries(data.cases.map((c) => [c.id, c.explanation ?? '']));
-      loadState = 'ready';
+      standing = { ...s, lines: s.lines ?? [] };
+      standingState = 'ready';
       void restore();
     } catch (e) {
-      if (e instanceof ApiError && e.status === 401) {
-        session.user = undefined;
-        session.status = 'signed-out';
-        return;
-      }
-      loadError = e instanceof ApiError ? e.message : 'Something went wrong. Try again in a moment.';
-      loadState = 'error';
+      if (signedOut(e)) return;
+      standingError = message(e);
+      standingState = 'error';
     }
   }
 
-  function contestTitle(c: StudentCase): string {
-    return data?.contests?.[String(c.contest_id)]?.title ?? '';
-  }
-
-  async function save(c: StudentCase) {
-    const text = (drafts[c.id] ?? '').trim();
-    errors = { ...errors, [c.id]: '' };
-    saved = { ...saved, [c.id]: '' };
-    if (text === '') {
-      errors = { ...errors, [c.id]: 'Write your explanation first.' };
-      return;
-    }
-    if ([...text].length > MAX_EXPLANATION) {
-      errors = { ...errors, [c.id]: `Keep the explanation to ${MAX_EXPLANATION.toLocaleString('en-GB')} characters.` };
-      return;
-    }
-    saving = { ...saving, [c.id]: true };
+  async function loadCases() {
+    casesState = 'loading';
     try {
-      await sendJSON<void>('PUT', `/api/integrity/cases/${c.id}/explanation`, { explanation: text });
-      if (data) data = { ...data, cases: data.cases.map((x) => (x.id === c.id ? { ...x, explanation: text } : x)) };
-      saved = { ...saved, [c.id]: 'Saved. You can change it until a decision is made.' };
+      const d = await getJSON<StudentCaseListV14>('/api/integrity/cases');
+      const restore = keepHeadingFocus();
+      data = { ...d, cases: d.cases ?? [] };
+      casesState = 'ready';
+      void restore();
     } catch (e) {
-      if (e instanceof ApiError && e.status === 401) {
-        session.user = undefined;
-        session.status = 'signed-out';
-        return;
-      }
-      const message = e instanceof ApiError ? (e.fields.explanation ?? e.message) : 'Something went wrong. Try again in a moment.';
-      errors = { ...errors, [c.id]: message };
-    } finally {
-      saving = { ...saving, [c.id]: false };
+      if (signedOut(e)) return;
+      casesError = message(e);
+      casesState = 'error';
     }
+  }
+
+  function contestTitle(contestId: number): string {
+    return data?.contests?.[String(contestId)]?.title ?? '';
+  }
+
+  function onAppeal(line: StandingLine, appeal: StudentAppeal) {
+    if (!standing) return;
+    standing = { ...standing, lines: standing.lines.map((l) => (l.id === line.id ? { ...l, appeal, can_appeal: false } : l)) };
   }
 
   onMount(() => {
+    const fromHash = caseFromHash(window.location.hash);
+    if (fromHash !== null) {
+      navigate(`/integrity/cases/${fromHash}`, { replace: true });
+      return;
+    }
     setTitle(routeTitle('my-integrity'));
-    void load();
+    void loadStanding();
+    void loadCases();
   });
 </script>
 
-<PageHeader title="Questions about your submissions" back={{ href: '/', label: 'Your contests' }} />
+<PageHeader title="Questions and standing" back={{ href: '/', label: 'Your contests' }} />
 
-{#if loadState === 'loading'}
-  <PageState kind="loading" message="Loading your questions" />
-{:else if loadState === 'error'}
-  <PageState kind="error" message={loadError} onretry={load} />
-{:else if !data || data.cases.length === 0}
-  <PageState kind="empty" message="Nothing to explain. If an organiser asks you about a submission, it appears here." />
-{:else}
-  <p class="lead">{studentLead(casesStanding(data.cases))}</p>
-  {#each data.cases as c (c.id)}
-    <section class="case" aria-labelledby="case-{c.id}">
-      <h2 id="case-{c.id}">{c.title}</h2>
-      <p class="muted small">
-        {#if contestTitle(c)}{contestTitle(c)}, shared{:else}Shared{/if} <MonoDigits text={formatDateTime(c.shared_at)} />
-      </p>
-      <p class="where-now">{studentStateText(c)}</p>
+<section class="part" aria-labelledby="standing-title">
+  <h2 id="standing-title">Your standing</h2>
+  {#if standingState === 'loading'}
+    <PageState kind="loading" message="Loading your standing" />
+  {:else if standingState === 'error'}
+    <PageState kind="error" message={standingError} onretry={loadStanding} />
+  {:else if standing}
+    <div class="panel band-panel">
+      <p class="band"><Badge tone={bandTone(standing.band)} text={bandName(standing)} /></p>
+      <p>{bandSentence(standing.band, standing.lines.length)}</p>
+      <p class="muted small">{BAND_HELP}</p>
+    </div>
 
-      <h3 class="sub">What the organiser asks about</h3>
-      {#if c.evidence.length === 0}
-        <p class="muted">The organiser did not attach anything to this question.</p>
-      {:else}
-        <ul class="evidence">
-          {#each c.evidence as ev, i (i)}
-            <li>
-              <h4>{problemName(data.problems, ev.problem_id)}</h4>
-              <p>{ev.text}</p>
-              {#if ev.source}
-                <p class="legend muted"><span class="swatch" aria-hidden="true"></span>Highlighted passages are the parts in question.</p>
-                <CodeView source={ev.source} spans={ev.spans ?? []} label="Your program for {problemName(data.problems, ev.problem_id)}" />
-              {/if}
-            </li>
-          {/each}
-        </ul>
-      {/if}
-
-      <h3 class="sub">Your explanation</h3>
-      {#if c.decided}
-        {#if c.explanation.trim() !== ''}
-          <p class="prose">{c.explanation}</p>
-        {:else}
-          <p class="muted">You did not write an explanation.</p>
-        {/if}
-        <p class="muted small">An organiser has decided, so you can no longer change your explanation.</p>
-      {:else}
-        <form
-          class="explain"
-          novalidate
-          onsubmit={(e) => {
-            e.preventDefault();
-            void save(c);
-          }}
-        >
-          <div class="field">
-            <label for="explain-{c.id}">Explain how you wrote this, in your own words</label>
-            <textarea
-              id="explain-{c.id}"
-              class="input"
-              rows="6"
-              maxlength={MAX_EXPLANATION}
-              bind:value={drafts[c.id]}
-              aria-invalid={errors[c.id] ? 'true' : undefined}
-              aria-describedby="explain-{c.id}-help{errors[c.id] ? ` explain-${c.id}-error` : ''}"
-            ></textarea>
-            <p id="explain-{c.id}-help" class="field-help">
-              For example: where the idea came from, what you looked up, and whether you worked with anyone. You can change it until a decision is made.
+    {#if standing.lines.length > 0}
+      <ul class="lines">
+        {#each standing.lines as line (line.id)}
+          <li class="line">
+            <p class="line-head">
+              <span class="line-text">{line.text}</span>
+              <span class="muted small"><MonoDigits text={formatDayTime(line.at)} /></span>
             </p>
-            {#if errors[c.id]}<p id="explain-{c.id}-error" class="field-error" role="alert">{errors[c.id]}</p>{/if}
+            {#if line.reason}<p class="prose">{line.reason}</p>{/if}
+            {#if line.case_id !== null}<p><a href="/integrity/cases/{line.case_id}">See the case</a></p>{/if}
+            {#if line.appeal}
+              {@const st = appealState(line.appeal)}
+              <p class="appeal-line"><Badge tone={st.tone} text={st.word} /> <span class="muted">{appealSentence(line.appeal)}</span></p>
+            {:else if line.can_appeal}
+              <AppealForm
+                target={line.case_id !== null ? { case_id: line.case_id } : { adjustment_id: line.adjustment_id ?? 0 }}
+                appealBy={line.appeal_by}
+                id="appeal-{line.id}"
+                onsent={(a) => onAppeal(line, a)}
+              />
+            {/if}
+          </li>
+        {/each}
+      </ul>
+    {/if}
+  {/if}
+</section>
+
+<section class="part" aria-labelledby="questions-title">
+  <h2 id="questions-title">Questions about your submissions</h2>
+  {#if casesState === 'loading'}
+    <PageState kind="loading" message="Loading your questions" />
+  {:else if casesState === 'error'}
+    <PageState kind="error" message={casesError} onretry={loadCases} />
+  {:else if !data || data.cases.length === 0}
+    <p class="muted">No questions. If an organiser asks you about a submission, it appears here and in your notices.</p>
+  {:else}
+    <p class="lead">{studentLead(casesStanding(data.cases))}</p>
+    <ul class="cases panel">
+      {#each data.cases as c (c.id)}
+        {@const badge = caseBadge(c)}
+        {@const open = !(c.decided || c.state === 'cleared' || c.state === 'actioned')}
+        <li class="case" id="case-{c.id}">
+          <div class="case-head">
+            <h3 id="case-title-{c.id}">{contestTitle(c.contest_id) || c.title}</h3>
+            <Badge tone={badge.tone} text={badge.word} />
           </div>
-          <div class="actions">
-            <button type="submit" class="btn btn-primary" disabled={saving[c.id]}>Save explanation</button>
-            <p class="muted small" role="status">{saved[c.id] ?? ''}</p>
+          <p class="muted small">Shared <MonoDigits text={formatDayTime(c.shared_at)} /></p>
+          <p>{caseSentence(c)}</p>
+          {#if open && c.respond_by}<p class="due">Reply by <MonoDigits text={formatDayTime(c.respond_by)} />.</p>{/if}
+          <div class="action-row">
+            <a class="btn {open ? 'btn-primary' : 'btn-secondary'} btn-compact" href="/integrity/cases/{c.id}" aria-describedby="case-title-{c.id}">Open the question</a>
           </div>
-        </form>
-      {/if}
-    </section>
-  {/each}
-{/if}
+        </li>
+      {/each}
+    </ul>
+  {/if}
+</section>
 
 <style>
-  .lead {
-    margin-top: var(--space-4);
-    max-width: 44rem;
+  .part {
+    display: grid;
+    gap: var(--space-4);
+    max-width: var(--measure-form);
+    margin-top: var(--space-6);
+  }
+
+  .part + .part {
+    margin-top: var(--section-gap);
+  }
+
+  .band-panel {
+    gap: var(--space-2);
+  }
+
+  .band {
+    font-size: var(--fs-2);
   }
 
   .small {
     font-size: var(--fs-0);
   }
 
-  .case {
+  .lines,
+  .cases {
     display: grid;
-    gap: var(--space-3);
-    min-width: 0;
-    margin-top: var(--space-6);
-    padding-top: var(--space-5);
-    border-top: var(--rule) solid var(--line);
-  }
-
-  .case h2 {
-    font-size: var(--fs-3);
-    overflow-wrap: anywhere;
-  }
-
-  .where-now {
-    font-weight: 500;
-  }
-
-  .sub {
-    margin-top: var(--space-3);
-    font-size: var(--fs-2);
-  }
-
-  .evidence {
-    display: grid;
-    gap: var(--space-5);
-    padding: 0;
     list-style: none;
   }
 
-  .evidence li {
+  .lines {
+    padding: 0;
+  }
+
+  .line {
     display: grid;
     gap: var(--space-2);
-    min-width: 0;
+    padding-block: var(--space-4);
+    border-bottom: var(--rule) solid var(--line);
   }
 
-  .evidence h4 {
-    font-size: var(--fs-1);
-  }
-
-  .legend {
+  .line-head,
+  .case-head {
     display: flex;
-    align-items: center;
-    gap: var(--space-2);
-    font-size: var(--fs-0);
+    flex-wrap: wrap;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: var(--space-1) var(--space-3);
   }
 
-  .swatch {
-    flex: none;
-    width: var(--space-5);
-    height: var(--space-4);
-    border-left: calc(3 * var(--rule)) solid var(--code-match-edge);
-    background: var(--code-match);
+  .line-text {
+    font-weight: 600;
   }
 
   .prose {
@@ -247,16 +259,40 @@
     overflow-wrap: anywhere;
   }
 
-  .explain {
-    display: grid;
-    gap: var(--space-3);
-    max-width: 48rem;
-  }
-
-  .actions {
+  .appeal-line {
     display: flex;
     flex-wrap: wrap;
-    align-items: center;
-    gap: var(--space-2) var(--space-4);
+    align-items: baseline;
+    gap: var(--space-2);
+  }
+
+  .lead {
+    max-width: 44rem;
+  }
+
+  .cases {
+    gap: 0;
+    padding-block: 0;
+  }
+
+  .case {
+    display: grid;
+    gap: var(--space-2);
+    padding-block: var(--space-4);
+    border-bottom: var(--rule) solid var(--line);
+  }
+
+  .case:last-child {
+    border-bottom: 0;
+  }
+
+  .case h3 {
+    min-width: 0;
+    font-size: var(--fs-sub);
+    overflow-wrap: anywhere;
+  }
+
+  .due {
+    font-weight: 600;
   }
 </style>

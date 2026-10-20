@@ -2,6 +2,7 @@
 // and baseline.spec.ts reuse them. The spec's header describes them.
 import { expect, test, type Page, type Route } from '@playwright/test';
 import { longLivedEvents } from '../sse';
+import { contestProgress } from './students';
 
 let frozenNow: number | null = null;
 /** The mock's clock: real time, or a fixed instant for pixel baselines (pair it with page.clock.setFixedTime). */
@@ -54,6 +55,8 @@ export interface Options {
   statementUpdated?: boolean;
   /** Problem A has a newer validated revision to update the contest to (C4). */
   updateAvailable?: boolean;
+  /** A review decision set Asha's problem B to zero (C9, D77). */
+  zeroB?: boolean;
 }
 
 /** When B's statement changed, minutes before the page loads (the C3 fixture). */
@@ -241,6 +244,7 @@ export async function mockApi(page: Page, options: Options = {}) {
             my_submission_count: state.submissions.filter((s) => s.problem_id === p.id).length,
             revision_id: 10 + p.id,
             statement_updated_at: p.label === 'B' ? state.statementAt : null,
+            ...(options.zeroB && p.label === 'B' ? { my_score: 0, zero_by_decision: true, zero_case_id: 12 } : {}),
           }))
         : null,
     accepted: state.accepted,
@@ -405,6 +409,8 @@ export async function mockApi(page: Page, options: Options = {}) {
         });
       }
       if (path === '/api/contests/week-6' && method === 'GET') return json(route, 200, contest());
+      // "Your progress" (C8): only final results, so Week 6 only once its board is final.
+      if (path === '/api/me/progress' && method === 'GET') return json(route, 200, contestProgress(now, phase === 'after'));
       if (path === '/api/contests/nope' && method === 'GET') return apiError(route, 404, 'not_found', 'There is no contest with that slug.');
       if (path === '/api/contests/week-6/start' && method === 'POST') {
         state.starts++;
