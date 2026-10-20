@@ -7,8 +7,10 @@ OnFailure=podium-alert@%n.service
 
 [Service]
 Type=oneshot
-User=podium
-Group=podium
+# Root, so the B2 key never sits in a process of user podium (D116): the
+# script makes the copy as podium with an empty environment, and only
+# rclone, run as podium-backup, gets the key; it reads the encrypted
+# stream on stdin, never the backup folder.
 # Optional settings (off-host copy, days kept); the leading "-" means the
 # file may be absent.
 EnvironmentFile=-/etc/podium/backup.env
@@ -17,6 +19,7 @@ UMask=0077
 ExecStart=/usr/local/lib/podium/podium-backup
 Nice=10
 IOSchedulingClass=idle
+# NoNewPrivileges stays on: runuser and setpriv only lower privileges.
 NoNewPrivileges=yes
 # "full", not "strict": strict would mount /var/lib/podium and
 # /var/backups/podium separately, and hard links (the cheap nightly copy of

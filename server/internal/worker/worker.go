@@ -96,6 +96,16 @@ func (w *Worker) Drain(stop, jobs context.Context) error {
 		}()
 	}
 	wg.Wait()
+	// Leave no box behind: after a forced stop a lane's box may still hold
+	// a program's files (tmpfs, so memory) until the next start cleans it.
+	// Cleanup runs even when jobs was cancelled (a forced stop).
+	if w.Runner != nil {
+		for lane := 0; lane < w.Lanes; lane++ {
+			if err := w.Runner.Iso.Cleanup(jobs, lane); err != nil {
+				w.Log.Warn("box cleanup at stop failed", "box", lane, "err", err)
+			}
+		}
+	}
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	return w.fatal

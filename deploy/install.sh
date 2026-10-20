@@ -14,6 +14,9 @@
 #                                  previous binaries, install, verify)
 #   sudo ./install.sh rollback     put the previous release back
 #   sudo ./install.sh verify       check the installed system, names only
+#   sudo ./install.sh hold         keep apt from upgrading the compilers,
+#                                  runtimes and isolate (before a contest
+#                                  season); unhold to let them upgrade
 #
 # Steps: packages isolate testlib users dirs firewall app swap litestream
 # backup alerts caddy. caddy comes last and skips itself while
@@ -34,6 +37,12 @@ JAVA_PKG=openjdk-21-jdk-headless
 LIB=/usr/local/lib/podium
 PREVIOUS=$LIB/previous
 MANIFEST=$LIB/MANIFEST
+# Compilers, runtimes and the sandbox whose version a validation depends
+# on (B1.6): hold keeps apt from changing them, so a gcc update cannot
+# change verdicts between a problem's validation and its contest.
+HOLD_PACKAGES=(build-essential gcc g++ cpp gcc-13 g++-13 cpp-13 libstdc++-13-dev libgcc-13-dev
+               "$JAVA_PKG" openjdk-21-jre-headless python3 python3.12 python3.12-minimal libpython3.12-stdlib
+               nodejs isolate)
 UNITS=(podium-server.service podium-judge.service podium-litestream.service podium-backup.service
        podium-backup.timer podium-alert@.service podium-check.service podium-check.timer)
 
@@ -173,9 +182,15 @@ step_testlib() {
 }
 
 step_users() {
-  log "users: podium (server) and judge (worker)"
+  log "users: podium (server), judge (worker), podium-backup (Litestream and the B2 upload)"
   id podium >/dev/null 2>&1 || useradd --system --home-dir /var/lib/podium --shell /usr/sbin/nologin podium
   id judge  >/dev/null 2>&1 || useradd --system --home-dir /var/cache/podium-judge --shell /usr/sbin/nologin judge
+  # The bucket keys live in processes of this user only, so a compromised
+  # server (user podium) cannot read them from /proc (D116). It is in group
+  # podium to write the database directory, which Litestream needs for
+  # its checkpoints.
+  id podium-backup >/dev/null 2>&1 || useradd --system --no-create-home --home-dir /nonexistent --shell /usr/sbin/nologin podium-backup
+  usermod -aG podium podium-backup
   # The packaged isolate binary is setuid root and executable only by the
   # isolate group (mode 4754), so the worker must be a member.
   getent group isolate >/dev/null || die "group isolate missing; run the isolate step first"
@@ -193,7 +208,10 @@ example_for() {
 
 step_dirs() {
   log "dirs: data, tests, judge cache, config"
-  install -d -o podium -g podium -m 750 /var/lib/podium /var/lib/podium/db /var/lib/podium/tests
+  install -d -o podium -g podium -m 750 /var/lib/podium /var/lib/podium/tests
+  # Group podium (podium-backup's Litestream) may write the database
+  # directory; setgid keeps new files in the group.
+  install -d -o podium -g podium -m 2770 /var/lib/podium/db
   install -d -o judge  -g judge  -m 750 /var/cache/podium-judge
   install -d -o root   -g root   -m 755 /etc/podium
   local svc
@@ -230,22 +248,94 @@ install_app_files() {
   systemctl daemon-reload
 }
 
-# write_manifest: what is installed now, for upgrade and rollback. The
-# release MANIFEST with checksums arrives in P1; until then this one is
-# written on the VM.
+# write_manifest: what is installed now, for upgrade and rollback: the
+# release's own MANIFEST from make release (version, commit, schema,
+# migrations it carries, protocol, oldest release it upgrades from), plus
+# when it was installed, the installed binaries' hashes and the
+# migrations the database has.
 write_manifest() {
-  local out=${1:-$MANIFEST}
   {
-    echo "release=$(release_name)"
+    if [[ -f $HERE/MANIFEST ]]; then
+      cat "$HERE/MANIFEST"
+    else
+      echo "release=$(release_name)"
+      echo "note=installed from a folder without a MANIFEST (a repository checkout)"
+    fi
     echo "installed_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
     echo "podium_server_sha256=$(sha256sum /usr/local/bin/podium-server | cut -d' ' -f1)"
     echo "podium_judge_sha256=$(sha256sum /usr/local/bin/podium-judge | cut -d' ' -f1)"
-    echo "migrations=$(migrations "$(db_path)")"
-  } > "$out"
+    echo "migrations_applied=$(migrations "$(db_path)")"
+  } > "$MANIFEST"
+}
+
+# manifest_get FILE KEY: one value of a MANIFEST.
+manifest_get() { [[ -f $1 ]] && sed -n "s/^$2=//p" "$1" | head -n1; true; }
+
+# installed_version: the installed release's version, from its MANIFEST:
+# version= since v1.1.0, else the release folder's name (podium-v1.0.0).
+installed_version() {
+  local v
+  v=$(manifest_get "$MANIFEST" version)
+  [[ -n $v ]] || { v=$(manifest_get "$MANIFEST" release); v=${v#podium-}; }
+  echo "$v"
+}
+
+# version_ge A B: A is B or later (v1.2.10 after v1.2.9).
+version_ge() { [[ $(printf '%s\n%s\n' "${2#v}" "${1#v}" | sort -V | head -n1) == "${2#v}" ]]; }
+is_release_version() { [[ $1 =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; }
+
+# verify_release: every file of the unpacked release matches SHA256SUMS,
+# so a damaged or altered tarball installs nothing.
+verify_release() {
+  if [[ ! -f $HERE/SHA256SUMS ]]; then
+    [[ -f $HERE/MANIFEST ]] && die "$HERE has a MANIFEST but no SHA256SUMS; unpack the release tarball again"
+    echo "release: no SHA256SUMS (a repository checkout); files not checked"
+    return
+  fi
+  (cd "$HERE" && sha256sum --quiet -c SHA256SUMS) \
+    || die "files in $HERE do not match its SHA256SUMS (above); download and unpack the release again"
+  echo "release: every file matches SHA256SUMS"
+}
+
+# check_upgrade_path: the new release's MANIFEST says the oldest release it
+# upgrades from; an older installed release is refused before anything
+# changes, and so is a downgrade (that is what rollback is for).
+check_upgrade_path() {
+  local from to have
+  [[ -f $HERE/MANIFEST ]] || die "$HERE has no MANIFEST; upgrade only from a release built with make release"
+  from=$(manifest_get "$HERE/MANIFEST" upgrades_from)
+  to=$(manifest_get "$HERE/MANIFEST" version)
+  have=$(installed_version)
+  [[ -n $from && -n $to ]] || die "$HERE/MANIFEST has no version or upgrades_from line; build the release again with make release"
+  if ! is_release_version "$have"; then
+    die "cannot tell which release is installed (MANIFEST says '${have:-nothing}'); $to upgrades from $from or later. Install $from first, or ask before forcing anything"
+  fi
+  if is_release_version "$from" && ! version_ge "$have" "$from"; then
+    die "this VM runs $have, and $to upgrades only from $from or later. Upgrade to $from first, then to $to"
+  fi
+  if is_release_version "$to" && ! version_ge "$to" "$have"; then
+    die "$to is older than the installed $have; to go back use: sudo $LIB/install.sh rollback"
+  fi
+  echo "upgrade path: $have to $to (this release upgrades from $from or later)"
+}
+
+# db_group_rw: the database files writable by group podium, so
+# Litestream (user podium-backup) can checkpoint. SQLite gives the -wal
+# and -shm files the database file's mode, so this holds once set.
+db_group_rw() {
+  local db dir
+  db=$(db_path); dir=$(dirname "$db")
+  [[ -d $dir ]] && chmod 2770 "$dir" && chgrp podium "$dir"
+  local f
+  for f in "$db" "$db-wal" "$db-shm"; do
+    [[ -f $f ]] && chmod 660 "$f" && chgrp podium "$f"
+  done
+  true
 }
 
 step_app() {
   log "app: binaries and systemd units"
+  verify_release
   install_app_files
   systemctl enable podium-server.service podium-judge.service
   local env bad
@@ -258,6 +348,7 @@ step_app() {
   done
   systemctl restart podium-server.service podium-judge.service
   wait_healthz || die "podium-server did not answer /healthz; journalctl -u podium-server -n 50"
+  db_group_rw
   write_manifest
 }
 
@@ -392,6 +483,12 @@ step_litestream() {
   install -m 644 "$HERE/systemd/podium-litestream.service" /etc/systemd/system/
   systemctl daemon-reload
   systemctl enable podium-litestream.service
+  id podium-backup >/dev/null 2>&1 || die "user podium-backup missing; run the users step first"
+  db_group_rw
+  # Litestream ran as podium before v1.1.0: hand its state to podium-backup.
+  local lsdir
+  lsdir="$(dirname "$(db_path)")/.$(basename "$(db_path)")-litestream"
+  [[ -d $lsdir ]] && chown -R podium-backup:podium "$lsdir"
   if [[ -n $(placeholders /etc/podium/litestream.env) ]]; then
     echo "not starting replication: /etc/podium/litestream.env still has placeholder values for: $(placeholders /etc/podium/litestream.env | tr '\n' ' ')"
     return
@@ -412,6 +509,7 @@ step_backup() {
   install -d -m 755 "$LIB"
   install -m 755 "$HERE/backup/podium-backup" "$LIB/podium-backup"
   install -m 755 "$HERE/backup/podium-restore" "$LIB/podium-restore"
+  id podium-backup >/dev/null 2>&1 || die "user podium-backup missing; run the users step first"
   install -d -o podium -g podium -m 700 /var/backups/podium
   chmod 700 /var/backups/podium
   install -d -o root -g root -m 755 /etc/podium
@@ -502,7 +600,9 @@ cmd_upgrade() {
   release=$(release_name)
   [[ -f $db ]] || die "no database at $db; nothing to upgrade (start the server once, or run a fresh install)"
 
-  log "upgrade to $release: 1/8 deploy guard"
+  log "upgrade to $release: 1/8 release files, upgrade path, deploy guard"
+  verify_release
+  check_upgrade_path
   guard=$(guard_binary)
   out=$(runuser -u podium -- "$guard" deploy-check -db "$db") || code=$?
   echo "$out"
@@ -551,8 +651,7 @@ cmd_upgrade() {
     [[ -f /etc/systemd/system/$u ]] && cp -a "/etc/systemd/system/$u" "$PREVIOUS.new/systemd/"
   done
   if [[ -f $MANIFEST ]]; then cp "$MANIFEST" "$PREVIOUS.new/MANIFEST"; else
-    write_manifest "$PREVIOUS.new/MANIFEST"
-    sed -i 's/^release=.*/release=unknown (installed before MANIFEST existed)/' "$PREVIOUS.new/MANIFEST"
+    echo "release=unknown (installed before MANIFEST existed)" > "$PREVIOUS.new/MANIFEST"
   fi
   {
     echo "migrations_before_upgrade=$(migrations "$db")"
@@ -567,6 +666,7 @@ cmd_upgrade() {
 
   log "6/8 install $release"
   install_app_files
+  step_users
   step_litestream
   step_backup
   step_alerts
@@ -577,6 +677,7 @@ cmd_upgrade() {
     die "podium-server did not answer /healthz within 60 s (journalctl -u podium-server -n 50). Roll back with: sudo $LIB/install.sh rollback"
   fi
   systemctl start podium-judge.service
+  db_group_rw
   write_manifest
 
   log "8/8 verify"
@@ -678,6 +779,13 @@ restore_previous_files() {
     [[ -f $u ]] && install -m 644 "$u" /etc/systemd/system/
   done
   systemctl daemon-reload
+  # Litestream's state belongs to the user its restored unit runs as
+  # (podium before v1.1.0, podium-backup since).
+  local lsdir owner
+  lsdir="$(dirname "$(db_path)")/.$(basename "$(db_path)")-litestream"
+  owner=$(sed -n 's/^User=//p' /etc/systemd/system/podium-litestream.service 2>/dev/null | head -n1)
+  [[ -d $lsdir && -n $owner ]] && id "$owner" >/dev/null 2>&1 && chown -R "$owner:podium" "$lsdir"
+  if systemctl is-enabled --quiet podium-litestream.service 2>/dev/null; then systemctl restart podium-litestream.service || true; fi
 }
 
 # verify: the state the gate needs, as ok, warn or FAIL lines. Exit 1 on any
@@ -764,12 +872,54 @@ cmd_verify() {
   log "verify: sandbox host"
   if [[ $(cat /sys/kernel/mm/transparent_hugepage/enabled 2>/dev/null) == *"[never]"* ]]; then ok "transparent huge pages off"; else warn "transparent huge pages are on: sudo ./install.sh isolate"; fi
   [[ -f $MANIFEST ]] && ok "installed: $(sed -n 's/^release=//p' "$MANIFEST")" || warn "no $MANIFEST yet (written by app and upgrade)"
+  local held
+  held=$(apt-mark showhold 2>/dev/null | grep -cxE "$(IFS='|'; echo "${HOLD_PACKAGES[*]}")" || true)
+  if (( held > 0 )); then ok "$held compiler, runtime and isolate packages held (unhold before upgrading them)"
+  else warn "compilers, runtimes and isolate are not held; before a contest season: sudo ./install.sh hold"; fi
+
+  log "verify: backup keys out of the server's reach"
+  local pid user
+  pid=$(systemctl show -p MainPID --value podium-litestream 2>/dev/null || echo 0)
+  if [[ ${pid:-0} != 0 ]]; then
+    user=$(ps -o user= -p "$pid" 2>/dev/null | tr -d ' ')
+    if [[ $user == podium-backup ]]; then ok "podium-litestream runs as podium-backup"; else fail "podium-litestream runs as ${user:-unknown}, want podium-backup (sudo ./install.sh users litestream)"; fi
+  fi
+  if [[ $(stat -c '%G %a' "$(dirname "$(db_path)")" 2>/dev/null) == "podium 2770" ]]; then ok "database directory group podium 2770"
+  else fail "$(dirname "$(db_path)") is $(stat -c '%G %a' "$(dirname "$(db_path)")" 2>/dev/null || echo missing), want group podium 2770 (sudo ./install.sh dirs litestream)"; fi
 
   if (( fails > 0 )); then
     printf '\nverify: %d problem(s)\n' "$fails"
     return 1
   fi
   printf '\nverify: everything checked is in order\n'
+}
+
+# held_candidates: the HOLD_PACKAGES installed on this machine.
+held_candidates() {
+  local p
+  for p in "${HOLD_PACKAGES[@]}"; do
+    dpkg-query -W -f='${Status}' "$p" 2>/dev/null | grep -qE '^(install|hold) ok installed$' && echo "$p"
+  done
+  true
+}
+
+cmd_hold() {
+  local pkgs
+  mapfile -t pkgs < <(held_candidates)
+  (( ${#pkgs[@]} > 0 )) || die "none of the compiler, runtime or isolate packages is installed; run the packages and isolate steps first"
+  log "hold: apt will not upgrade ${#pkgs[@]} packages until unhold"
+  apt-mark hold "${pkgs[@]}"
+  echo "Held. apt list --upgradable shows them as held back; security updates for them wait too."
+  echo "To upgrade them outside a contest season: sudo ./install.sh unhold, apt upgrade, restart podium-judge (it reports the new toolchain), revalidate."
+}
+
+cmd_unhold() {
+  local pkgs
+  mapfile -t pkgs < <(held_candidates)
+  (( ${#pkgs[@]} > 0 )) || die "none of the held packages is installed"
+  log "unhold: apt may upgrade the compilers, runtimes and isolate again"
+  apt-mark unhold "${pkgs[@]}"
+  echo "After an upgrade of any of them: sudo systemctl restart podium-judge. The contest console then flags each problem validated on the old toolchain."
 }
 
 checklist() {
@@ -791,12 +941,14 @@ case ${1:-} in
   upgrade) shift; cmd_upgrade "$@"; exit ;;
   rollback) shift; [[ $# -eq 0 ]] || die "rollback takes no arguments"; cmd_rollback; exit ;;
   verify) shift; cmd_verify; exit ;;
+  hold) shift; cmd_hold; exit ;;
+  unhold) shift; cmd_unhold; exit ;;
 esac
 
 steps=("$@")
 [[ ${#steps[@]} -gt 0 ]] || steps=("${ALL_STEPS[@]}")
 for s in "${steps[@]}"; do
-  declare -F "step_$s" >/dev/null || die "unknown step '$s' (known: ${ALL_STEPS[*]}; commands: upgrade, rollback, verify)"
+  declare -F "step_$s" >/dev/null || die "unknown step '$s' (known: ${ALL_STEPS[*]}; commands: upgrade, rollback, verify, hold, unhold)"
 done
 for s in "${steps[@]}"; do "step_$s"; done
 [[ $# -gt 0 ]] || checklist

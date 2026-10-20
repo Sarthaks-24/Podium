@@ -9,7 +9,11 @@ After=network-online.target
 Wants=network-online.target
 
 [Service]
-User=podium
+# Its own user (D116): the bucket key is in this process's environment,
+# and /proc lets a process read the environment of others of the same
+# user, so the server (podium) must not share it. Group podium writes the
+# database directory (mode 2770), which Litestream's checkpoints need.
+User=podium-backup
 Group=podium
 EnvironmentFile=/etc/podium/litestream.env
 ExecStartPre=/usr/local/lib/podium/check-litestream-env

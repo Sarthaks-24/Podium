@@ -40,6 +40,7 @@ func Open(ctx context.Context, path string) (*sql.DB, error) {
 	if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
 		return nil, fmt.Errorf("create database directory: %w", err)
 	}
+	groupWritable(path)
 	q := make([]string, 0, len(pragmas)+1)
 	for _, p := range pragmas {
 		q = append(q, "_pragma="+p)
@@ -66,6 +67,21 @@ func Open(ctx context.Context, path string) (*sql.DB, error) {
 		return nil, fmt.Errorf("open database: journal_mode is %q, want wal (%v)", mode, err)
 	}
 	return d, nil
+}
+
+// groupWritable makes the database file mode 0660, creating it empty
+// when it does not exist (SQLite treats an empty file as a new database).
+// Litestream runs as its own user in the server's group and must write
+// the database for its checkpoints (D116); SQLite gives the -wal and -shm
+// files the database file's mode, so they follow. Best effort: on a
+// filesystem without Unix modes nothing changes.
+func groupWritable(path string) {
+	if f, err := os.OpenFile(path, os.O_RDONLY|os.O_CREATE, 0o660); err == nil {
+		f.Close()
+	}
+	if fi, err := os.Stat(path); err == nil && fi.Mode().Perm()&0o060 != 0o060 {
+		os.Chmod(path, fi.Mode().Perm()|0o060)
+	}
 }
 
 // Migrate applies every migration in migrations/ that has not run yet, in

@@ -26,8 +26,15 @@ VERSION    ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo d
 VERSION    := $(VERSION)
 WSL_DISTRO ?= Ubuntu-24.04
 GOFLAGS_LINUX := GOOS=linux GOARCH=amd64 CGO_ENABLED=0
-LDFLAGS    := -s -w -X main.version=$(VERSION)
+COMMIT     := $(shell git rev-parse --short=12 HEAD 2>/dev/null || echo unknown)
+BUILD_DATE := $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
+BUILDINFO  := github.com/Sarthaks-24/podium/internal/buildinfo
+LDFLAGS    := -s -w -X $(BUILDINFO).Version=$(VERSION) -X $(BUILDINFO).Commit=$(COMMIT) -X $(BUILDINFO).Date=$(BUILD_DATE)
 RELEASE    := release/podium-$(VERSION)
+# The oldest installed release this one upgrades from; install.sh upgrade
+# refuses an older one. Raise it in the release that drops something an
+# older release still needs (a contract migration, PLAN.md section 8).
+UPGRADES_FROM ?= v1.0.0
 
 # Run a root command inside WSL2 when on Windows, directly otherwise.
 ifeq ($(OS),Windows_NT)
@@ -112,8 +119,10 @@ release: check build ## Build the release tarball in release/
 	cp -r deploy/. $(RELEASE)/
 	cp server/.env.example $(RELEASE)/env/server.env.example
 	cp judge/.env.example $(RELEASE)/env/judge.env.example
+	bash tools/release-manifest.sh $(RELEASE) $(VERSION) $(COMMIT) $(BUILD_DATE) $(UPGRADES_FROM)
 	tar -C release -czf $(RELEASE).tar.gz podium-$(VERSION)
-	@echo "Built $(RELEASE).tar.gz"
+	cd release && sha256sum podium-$(VERSION).tar.gz > podium-$(VERSION).tar.gz.sha256
+	@echo "Built $(RELEASE).tar.gz (MANIFEST and SHA256SUMS inside, the tarball's checksum beside it)"
 
 .PHONY: deploy
 deploy: ## Build a release and install it on HOST with install.sh upgrade (make deploy HOST=user@vm)
