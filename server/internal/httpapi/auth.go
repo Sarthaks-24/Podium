@@ -264,8 +264,24 @@ func (d Deps) logout(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// meJSON is GET /api/me: the user, and when the site was last updated by
+// an emergency deploy (D112), for the student banner.
+type meJSON struct {
+	auth.User
+	SiteUpdatedAt *int64 `json:"site_updated_at"`
+}
+
 func (d Deps) me(w http.ResponseWriter, r *http.Request) {
-	WriteJSON(w, http.StatusOK, userFrom(r.Context()))
+	out := meJSON{User: userFrom(r.Context())}
+	at, ok, err := d.Auth.LastForcedDeploy(r.Context())
+	if err != nil {
+		d.internalError(w, r, err)
+		return
+	}
+	if ok {
+		out.SiteUpdatedAt = millis(at)
+	}
+	WriteJSON(w, http.StatusOK, out)
 }
 
 func (d Deps) setPreferences(w http.ResponseWriter, r *http.Request) {
@@ -313,7 +329,10 @@ func (d Deps) requireRole(min auth.Role, h http.HandlerFunc) http.HandlerFunc {
 			WriteError(w, http.StatusForbidden, "forbidden", "You do not have access to this. Ask an owner if you need it.")
 			return
 		}
-		h(w, r.WithContext(context.WithValue(r.Context(), userKey{}, u)))
+		// The actor rides on the context so every change the request makes
+		// names them in the site audit (B2.7).
+		ctx := auth.WithActor(context.WithValue(r.Context(), userKey{}, u), auth.Actor{ID: u.ID, Email: u.Email, Role: u.Role})
+		h(w, r.WithContext(ctx))
 	}
 }
 

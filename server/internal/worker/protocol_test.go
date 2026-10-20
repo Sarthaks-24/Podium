@@ -24,6 +24,7 @@ func TestServerRefusesAnotherProtocol(t *testing.T) {
 	r := newDrainRig(t)
 	for _, body := range []string{
 		`{"kinds":["validate"],"worker":"old","version":"v1.0.0","isolate":"2.7"}`,
+		`{"kinds":["validate"],"worker":"v110","version":"v1.1.0","isolate":"2.7","protocol":2}`,
 		`{"kinds":["validate"],"worker":"new","version":"v9","isolate":"2.7","protocol":99}`,
 	} {
 		req, _ := http.NewRequest("POST", r.w.Client.BaseURL+"/api/judge/claim", strings.NewReader(body))
@@ -35,7 +36,7 @@ func TestServerRefusesAnotherProtocol(t *testing.T) {
 		}
 		b, _ := io.ReadAll(resp.Body)
 		resp.Body.Close()
-		if resp.StatusCode != http.StatusUpgradeRequired || !strings.Contains(string(b), "judge protocol 2 needed, this judge speaks") ||
+		if resp.StatusCode != http.StatusUpgradeRequired || !strings.Contains(string(b), "judge protocol 3 needed, this judge speaks") ||
 			!strings.Contains(string(b), "install the same release on both") {
 			t.Errorf("%s: %d %s", body, resp.StatusCode, b)
 		}

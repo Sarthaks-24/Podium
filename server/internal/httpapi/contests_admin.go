@@ -42,6 +42,14 @@ type adminProblemJSON struct {
 	// current one. Both are null when either is unknown (B1.5).
 	ValidatedToolchain *toolchainJSON `json:"validated_toolchain"`
 	ToolchainDrift     *bool          `json:"toolchain_drift"`
+	// The pinned revision and the problem's newest one (C4).
+	RevisionID          int64 `json:"revision_id"`
+	Rev                 int   `json:"rev"`
+	LatestRevisionID    int64 `json:"latest_revision_id"`
+	LatestRev           int   `json:"latest_rev"`
+	UpdateAvailable     bool  `json:"update_available"`
+	UpdateStatementOnly bool  `json:"update_statement_only"`
+	Reconstructed       bool  `json:"reconstructed"`
 }
 
 // toolchainJSON is a stored judge toolchain as the console shows it.
@@ -103,6 +111,8 @@ type adminContestJSON struct {
 	// LockedAfterStart names the settings only owners and admins may change
 	// once the contest has started.
 	LockedAfterStart []string `json:"locked_after_start"`
+	// PinHistory is every pin change, newest first (C4).
+	PinHistory []contests.PinChange `json:"pin_history"`
 }
 
 func (d Deps) adminContestOut(ctx context.Context, c *contests.Contest) (*adminContestJSON, error) {
@@ -128,7 +138,10 @@ func (d Deps) adminContestOut(ctx context.Context, c *contests.Contest) (*adminC
 	}
 	for _, p := range c.Problems {
 		ap := adminProblemJSON{Label: p.Label, ProblemID: p.ProblemID, Title: p.Title,
-			PinnedHash: p.PinnedHash, Ready: p.Ready, MaxScore: p.MaxScore()}
+			PinnedHash: p.PinnedHash, Ready: p.Ready, MaxScore: p.MaxScore(),
+			RevisionID: p.RevisionID, Rev: p.Rev, LatestRevisionID: p.LatestRevisionID, LatestRev: p.LatestRev,
+			UpdateAvailable:     p.LatestRevisionID != p.RevisionID && p.LatestReady,
+			UpdateStatementOnly: p.LatestRevisionID != p.RevisionID && p.LatestStatementOnly, Reconstructed: p.Reconstructed}
 		if d.Problems != nil && d.Problems.Jobs != nil {
 			validated, err := d.Problems.Jobs.ValidatedToolchain(ctx, p.ProblemID, p.PinnedHash)
 			if err != nil {
@@ -149,6 +162,9 @@ func (d Deps) adminContestOut(ctx context.Context, c *contests.Contest) (*adminC
 		return nil, err
 	}
 	if out.RosterCount, err = d.Contests.RosterCount(ctx, c.ID); err != nil {
+		return nil, err
+	}
+	if out.PinHistory, err = d.Contests.PinHistory(ctx, c.ID); err != nil {
 		return nil, err
 	}
 	return out, nil
@@ -482,7 +498,8 @@ func (d Deps) setRoster(w http.ResponseWriter, r *http.Request) {
 		d.contestError(w, r, err)
 		return
 	}
-	d.audit(r, c.ID, contests.AuditRoster, map[string]int{"count": ch.Count, "added": ch.Added, "removed": ch.Removed})
+	d.audit(r, c.ID, contests.AuditRoster, map[string]any{"count": ch.Count, "added": ch.Added, "removed": ch.Removed,
+		"emails_added": ch.EmailsAdded, "emails_removed": ch.EmailsRemoved})
 	d.Log.Info("contest roster replaced", "by", userFrom(r.Context()).ID, "contest_id", c.ID,
 		"count", ch.Count, "added", ch.Added, "removed", ch.Removed)
 	WriteJSON(w, http.StatusOK, map[string]any{"added": ch.Added, "removed": ch.Removed, "roster_count": ch.Count})
@@ -684,6 +701,7 @@ func (d Deps) rejudge(w http.ResponseWriter, r *http.Request) {
 	}
 	rr := submissions.RejudgeRequest{ContestID: c.ID, SubmissionID: req.SubmissionID, By: userFrom(r.Context()).ID,
 		NoStopOnSample: !c.StopOnSampleFail}
+	var judgedProblem int64
 	check := func(pid int64) bool {
 		for _, p := range c.Problems {
 			if p.ProblemID == pid && !p.Ready {
@@ -719,6 +737,7 @@ func (d Deps) rejudge(w http.ResponseWriter, r *http.Request) {
 		if !check(info.ProblemID) {
 			return
 		}
+		judgedProblem = info.ProblemID
 	default:
 		WriteError(w, http.StatusBadRequest, "bad_request", "Choose a problem or one submission to rejudge.")
 		return
@@ -735,9 +754,17 @@ func (d Deps) rejudge(w http.ResponseWriter, r *http.Request) {
 	} else {
 		what["submission_id"] = req.SubmissionID
 	}
+	// The revisions the new jobs judge against and record (B2.10).
+	revs := []map[string]any{}
+	for _, p := range c.Problems {
+		if p.ProblemID == rr.ProblemID || (rr.SubmissionID > 0 && p.ProblemID == judgedProblem) {
+			revs = append(revs, map[string]any{"label": p.Label, "revision_id": p.RevisionID, "rev": p.Rev})
+		}
+	}
+	what["revisions"] = revs
 	d.audit(r, c.ID, contests.AuditRejudge, what)
 	d.Log.Info("rejudge queued", "by", userFrom(r.Context()).ID, "contest_id", c.ID, "count", n)
-	WriteJSON(w, http.StatusAccepted, map[string]any{"queued": n, "server_now": d.Contests.Clock().UnixMilli()})
+	WriteJSON(w, http.StatusAccepted, map[string]any{"queued": n, "revisions": revs, "server_now": d.Contests.Clock().UnixMilli()})
 }
 
 func (d Deps) listAnnouncements(w http.ResponseWriter, r *http.Request) {
@@ -1012,8 +1039,9 @@ func (d Deps) contestAudit(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	page, _ := strconv.Atoi(r.URL.Query().Get("page"))
-	list, more, err := d.Contests.AuditLog(r.Context(), c.ID, page)
+	q := r.URL.Query()
+	page, _ := strconv.Atoi(q.Get("page"))
+	list, more, err := d.Contests.AuditLog(r.Context(), c.ID, page, contests.AuditFilter{Action: q.Get("action"), Actor: q.Get("actor")})
 	if err != nil {
 		d.internalError(w, r, err)
 		return

@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"reflect"
 	"slices"
+	"strings"
 	"time"
 )
 
@@ -30,6 +31,8 @@ const (
 	AuditEditorial  = "editorial"  // {"published", "was_published", "changed", "bytes"}
 	AuditOrganisers = "organisers" // {"email", "added"}
 	AuditArchive    = "archive"
+	// AuditDeployForced is written by podium-server deploy-check -force.
+	AuditDeployForced = "deploy_forced" // {"reason", "release", "refused"}
 )
 
 // Actor is the person an audit row names.
@@ -130,7 +133,7 @@ func nonNilStrings(s []string) []string {
 func (s *Service) AuditAll(ctx context.Context, contestID int64) ([]AuditEntry, error) {
 	var out []AuditEntry
 	for page := 1; ; page++ {
-		list, more, err := s.AuditLog(ctx, contestID, page)
+		list, more, err := s.AuditLog(ctx, contestID, page, AuditFilter{})
 		if err != nil {
 			return nil, err
 		}
@@ -149,14 +152,29 @@ func (s *Service) AuditAll(ctx context.Context, contestID int64) ([]AuditEntry, 
 // AuditPage is how many rows one page of the audit log holds.
 const AuditPage = 200
 
+// AuditFilter narrows the console's Changes feed (B2.8): one action, and
+// actors whose email contains Actor (case insensitive).
+type AuditFilter struct {
+	Action, Actor string
+}
+
 // AuditLog lists the contest's audit rows, newest first, a page at a time
 // (from 1), and reports whether there are more.
-func (s *Service) AuditLog(ctx context.Context, contestID int64, page int) ([]AuditEntry, bool, error) {
+func (s *Service) AuditLog(ctx context.Context, contestID int64, page int, f AuditFilter) ([]AuditEntry, bool, error) {
 	if page < 1 {
 		page = 1
 	}
-	rows, err := s.DB.QueryContext(ctx, `SELECT id, action, actor_id, actor_email, actor_role, details, created_at
-		FROM contest_audit WHERE contest_id = ? ORDER BY id DESC LIMIT ? OFFSET ?`, contestID, AuditPage+1, (page-1)*AuditPage)
+	q := `SELECT id, action, actor_id, actor_email, actor_role, details, created_at FROM contest_audit WHERE contest_id = ?`
+	args := []any{contestID}
+	if f.Action != "" {
+		q += " AND action = ?"
+		args = append(args, f.Action)
+	}
+	if f.Actor != "" {
+		q += " AND instr(lower(actor_email), ?) > 0"
+		args = append(args, strings.ToLower(f.Actor))
+	}
+	rows, err := s.DB.QueryContext(ctx, q+" ORDER BY id DESC LIMIT ? OFFSET ?", append(args, AuditPage+1, (page-1)*AuditPage)...)
 	if err != nil {
 		return nil, false, err
 	}

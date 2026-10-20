@@ -56,6 +56,10 @@ type contestProblemJSON struct {
 	// failures excluded), by creation only: in exam mode it is the one
 	// per-problem figure shown, and it says nothing about judging.
 	MySubmissionCount int `json:"my_submission_count"`
+	// RevisionID is the pinned revision; StatementUpdatedAt the newest pin
+	// change after the start that changed its statement (C3).
+	RevisionID         int64  `json:"revision_id"`
+	StatementUpdatedAt *int64 `json:"statement_updated_at"`
 }
 
 // contestJSON is Contest in docs/API.md.
@@ -215,8 +219,16 @@ func (d Deps) contestDetail(ctx context.Context, c *contests.Contest, u auth.Use
 		if err != nil {
 			return nil, err
 		}
+		updates, err := d.Contests.StatementUpdates(ctx, c)
+		if err != nil {
+			return nil, err
+		}
 		for _, p := range c.Problems {
-			pj := contestProblemJSON{Label: p.Label, Title: p.Title, MaxScore: p.MaxScore(), MySubmissionCount: counts[p.ProblemID]}
+			pj := contestProblemJSON{Label: p.Label, Title: p.Title, MaxScore: p.MaxScore(), MySubmissionCount: counts[p.ProblemID],
+				RevisionID: p.RevisionID}
+			if at, ok := updates[p.Label]; ok {
+				pj.StatementUpdatedAt = &at
+			}
 			if cell, ok := cells[p.Label]; ok {
 				pj.MyScore = ptr(cell.Score)
 			}
@@ -314,7 +326,8 @@ func (d Deps) contestProblem(w http.ResponseWriter, r *http.Request) (*contestTa
 		return nil, false
 	}
 	t.st = st
-	t.scope = submissions.Scope{ContestID: c.ID, Languages: c.Languages, NoStopOnSample: !c.StopOnSampleFail}
+	t.scope = submissions.Scope{ContestID: c.ID, Languages: c.Languages, NoStopOnSample: !c.StopOnSampleFail,
+		RevisionID: t.problem.RevisionID, LogView: !organiser}
 	if organiser {
 		t.open = true
 		if u.Role.AtLeast(auth.Admin) {
@@ -343,9 +356,10 @@ func (d Deps) contestProblem(w http.ResponseWriter, r *http.Request) (*contestTa
 	case !t.problem.Ready:
 		t.refusal = contests.ErrNotReady
 	case st.Open:
-		t.open = true
+		// An ungraded contest never counts, so it reveals like practice.
+		t.open, t.scope.Reveal = true, !c.Graded
 	case st.Over && c.PracticeOpen(st, now):
-		t.open, t.scope.Practice, t.scope.MaxPerProblem = true, true, 0
+		t.open, t.scope.Practice, t.scope.MaxPerProblem, t.scope.Reveal = true, true, 0, true
 	case st.Over && c.PracticeAfterEnd:
 		t.refusal = contests.ErrPracticeWait
 	case st.Over:
@@ -367,6 +381,9 @@ type contestWorkspaceJSON struct {
 	Practice     bool        `json:"practice"`
 	// Refusal says why Run and Submit are off, when they are.
 	Refusal *string `json:"refusal"`
+	// RevisionID is the pinned revision served here (B2.3).
+	RevisionID         int64  `json:"revision_id"`
+	StatementUpdatedAt *int64 `json:"statement_updated_at"`
 }
 
 func (d Deps) getContestWorkspace(w http.ResponseWriter, r *http.Request) {
@@ -380,7 +397,15 @@ func (d Deps) getContestWorkspace(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	out := contestWorkspaceJSON{Workspace: ws, Label: t.problem.Label, Contest: t.c.Slug, FeedbackMode: t.c.Feedback,
-		CanSubmit: t.open, Practice: t.scope.Practice}
+		CanSubmit: t.open, Practice: t.scope.Practice, RevisionID: t.problem.RevisionID}
+	updates, err := d.Contests.StatementUpdates(r.Context(), t.c)
+	if err != nil {
+		d.internalError(w, r, err)
+		return
+	}
+	if at, ok := updates[t.problem.Label]; ok {
+		out.StatementUpdatedAt = &at
+	}
 	if t.st.HasClock && !t.organiser {
 		out.Window = &windowJSON{StartedAt: t.st.Window.Opens.UnixMilli(), EndsAt: t.st.Window.Ends.UnixMilli()}
 	}

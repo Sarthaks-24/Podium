@@ -47,6 +47,9 @@ func (s *Service) EndSessions(ctx context.Context, email string) (Account, int64
 		return Account{}, 0, err
 	}
 	n, _ := res.RowsAffected()
+	if err := s.recordSite(ctx, tx, AuditSessionsEnded, a.Email, map[string]any{"count": n}); err != nil {
+		return Account{}, 0, err
+	}
 	return a, n, tx.Commit()
 }
 
@@ -83,6 +86,13 @@ func (s *Service) SetDisabled(ctx context.Context, email string, disabled bool, 
 			return Account{}, 0, err
 		}
 		ended, _ = res.RowsAffected()
+	}
+	action, details := AuditAccountEnabled, map[string]any{}
+	if disabled {
+		action, details = AuditAccountDisabled, map[string]any{"sessions_ended": ended}
+	}
+	if err := s.recordSite(ctx, tx, action, a.Email, details); err != nil {
+		return Account{}, 0, err
 	}
 	return a, ended, tx.Commit()
 }

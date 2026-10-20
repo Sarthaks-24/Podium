@@ -12,7 +12,8 @@ import (
 )
 
 // SubmissionView is a submission as its author sees it: verdicts, times
-// and scores, never the input or output of a hidden test (decision D47).
+// and scores, never the input or output of a hidden test (decision D47),
+// except Revealed on a submission that never counts (D115).
 type SubmissionView struct {
 	ID            int64           `json:"id"`
 	ProblemID     int64           `json:"problem_id"`
@@ -32,12 +33,47 @@ type SubmissionView struct {
 	Error         string          `json:"error,omitempty"`
 	// Hidden is set in exam mode while the student's window is open: the
 	// submission was received, and nothing about its result is shown.
-	Hidden    bool  `json:"hidden"`
-	ServerNow int64 `json:"server_now"`
+	Hidden bool `json:"hidden"`
+	// Revealed is the first failing hidden test of a submission that never
+	// counts (practice, an ungraded contest, the organisers' workspace),
+	// once judged; absent on every submission that counts (D115).
+	Revealed  *RevealedTest `json:"revealed,omitempty"`
+	ServerNow int64         `json:"server_now"`
 }
+
+// RevealedTest is a failing test shown with its input, the expected output
+// and the program's output, each at most 4 KB (D115).
+type RevealedTest struct {
+	Idx        int    `json:"idx"`
+	SubtaskIdx int    `json:"subtask_idx"`
+	Input      string `json:"input"`
+	Expected   string `json:"expected"`
+	Output     string `json:"output"`
+	Truncated  bool   `json:"truncated"`
+}
+
+// RevealedRunTest is the first failing sample or open test of a run.
+type RevealedRunTest struct {
+	Idx       int    `json:"idx"`
+	Kind      string `json:"kind"`
+	Label     string `json:"label"`
+	Input     string `json:"input"`
+	Expected  string `json:"expected"`
+	Output    string `json:"output"`
+	Truncated bool   `json:"truncated"`
+}
+
+// Run result kinds.
+const (
+	RunSample = "sample"
+	RunOpen   = "open"
+	RunCustom = "custom"
+)
 
 // RunResult is one input of a run.
 type RunResult struct {
+	// Kind is sample, open or custom (D115).
+	Kind            string  `json:"kind"`
 	Label           string  `json:"label"`
 	Verdict         string  `json:"verdict"`
 	TimeMS          int     `json:"time_ms"`
@@ -54,8 +90,10 @@ type RunView struct {
 	State         string      `json:"state"`
 	CompileOutput string      `json:"compile_output"`
 	Results       []RunResult `json:"results"`
-	Error         string      `json:"error,omitempty"`
-	ServerNow     int64       `json:"server_now"`
+	// Revealed is the first sample or open test that failed (D115).
+	Revealed  *RevealedRunTest `json:"revealed,omitempty"`
+	Error     string           `json:"error,omitempty"`
+	ServerNow int64            `json:"server_now"`
 }
 
 // roundTo rounds a displayed time to step ms (10 by default, 100 in graded
@@ -80,6 +118,10 @@ type ViewOptions struct {
 	// the student's window is open): state "submitted", no verdict, score,
 	// tests, times or compile output.
 	Hide bool
+	// NoReveal leaves out a revealed hidden test: a co-organiser whose
+	// site role is student reading someone else's submission is not
+	// trusted with hidden tests (D115).
+	NoReveal bool
 }
 
 // StudentView is how a student sees a submission outside any contest
@@ -182,6 +224,9 @@ func (s *Service) GetWith(ctx context.Context, id int64, o ViewOptions) (*Submis
 		view := Score{Samples: sc.Samples, Subtasks: sc.Subtasks, MaxTimeMS: v.MaxTimeMS, MaxMemoryKB: v.MaxMemoryKB}
 		applyView(&view, o)
 		v.Subtasks, v.Samples, v.CompileOutput, v.MaxTimeMS, v.MaxMemoryKB = view.Subtasks, view.Samples, sc.CompileOutput, view.MaxTimeMS, view.MaxMemoryKB
+		if sc.Revealed != nil && !o.NoReveal {
+			v.Revealed = s.revealed(sc.Revealed)
+		}
 		return v, nil
 	}
 	if r.jobID == 0 || r.state == "error" {
@@ -258,6 +303,27 @@ type storedResult struct {
 	Subtasks      []SubtaskResult `json:"subtasks"`
 	Samples       []TestOutcome   `json:"samples"`
 	CompileOutput string          `json:"compile_output"`
+	// Revealed is set only when the job's payload asked for it (D115).
+	Revealed *storedReveal `json:"revealed,omitempty"`
+}
+
+// storedReveal names the revealed test by its files and keeps the
+// program's output excerpt the judge sent.
+type storedReveal struct {
+	Idx         int    `json:"idx"`
+	Subtask     int    `json:"subtask"`
+	InputSHA    string `json:"input_sha"`
+	ExpectedSHA string `json:"expected_sha"`
+	Output      string `json:"output"`
+}
+
+// revealed reads a stored reveal's files, each cut at 4 KB.
+func (s *Service) revealed(r *storedReveal) *RevealedTest {
+	in, _ := s.Problems.Blobs.Read(r.InputSHA, maxSampleTxt+1)
+	exp, _ := s.Problems.Blobs.Read(r.ExpectedSHA, maxSampleTxt+1)
+	return &RevealedTest{Idx: r.Idx, SubtaskIdx: r.Subtask, Input: clipText(in, maxSampleTxt), Expected: clipText(exp, maxSampleTxt),
+		Output: clipText([]byte(r.Output), maxSampleTxt),
+		Truncated: len(in) > maxSampleTxt || len(exp) > maxSampleTxt || len(r.Output) >= judgeapi.MaxRunOutput-3}
 }
 
 // GetRun returns a run with whatever results have arrived.
@@ -302,26 +368,60 @@ func (s *Service) GetRunWith(ctx context.Context, id int64, o ViewOptions) (*Run
 	for _, t := range job.Result.Tests {
 		got[t.Idx] = t
 	}
-	for n, in := range pl.Inputs {
-		res := RunResult{Label: "Custom input"}
-		if in.Idx > 0 {
-			res.Label = fmt.Sprintf("Sample %d", n+1)
-			if in.ExpectedSHA != "" {
-				exp, _ := s.Problems.Blobs.Read(in.ExpectedSHA, maxSampleTxt+1)
-				text := clipText(exp, maxSampleTxt)
-				res.Expected = &text
+	samples, opens := 0, 0
+	for _, in := range pl.Inputs {
+		res := RunResult{Kind: RunCustom, Label: "Custom input"}
+		switch {
+		case in.Open:
+			opens++
+			res.Kind, res.Label = RunOpen, fmt.Sprintf("Open test %d", opens)
+		case in.Idx > 0:
+			samples++
+			res.Kind, res.Label = RunSample, fmt.Sprintf("Sample %d", samples)
+		}
+		var expected string
+		if in.ExpectedSHA != "" {
+			exp, _ := s.Problems.Blobs.Read(in.ExpectedSHA, maxSampleTxt+1)
+			expected = clipText(exp, maxSampleTxt)
+			if !in.Open {
+				res.Expected = &expected
 			}
 		}
-		if t, ok := got[in.Idx]; ok {
+		t, ok := got[in.Idx]
+		if ok {
 			res.Verdict, res.TimeMS, res.MemoryKB, res.Message = t.Verdict, roundTo(t.TimeMS, step), t.MemoryKB, t.Message
-			res.Output = t.Output
-			// The worker cuts at MaxRunOutput and drops a split rune (at
-			// most 3 bytes), so anything that close to the cap was cut.
-			res.OutputTruncated = len(t.Output) >= judgeapi.MaxRunOutput-3
+			if !in.Open {
+				res.Output = t.Output
+				// The worker cuts at MaxRunOutput and drops a split rune (at
+				// most 3 bytes), so anything that close to the cap was cut.
+				res.OutputTruncated = len(t.Output) >= judgeapi.MaxRunOutput-3
+			}
+		}
+		// The first failing sample or open test is revealed (D115): an
+		// open test's input, expected and actual output show only then.
+		if ok && in.ExpectedSHA != "" && v.Revealed == nil && failed(t.Verdict) {
+			raw, _ := s.Problems.Blobs.Read(in.InputSHA, maxSampleTxt+1)
+			v.Revealed = &RevealedRunTest{Idx: in.Idx, Kind: res.Kind, Label: res.Label, Input: clipText(raw, maxSampleTxt),
+				Expected: expected, Output: t.Output,
+				Truncated: len(raw) > maxSampleTxt || len(expected) >= maxSampleTxt || len(t.Output) >= judgeapi.MaxRunOutput-3}
+			if in.Open {
+				res.Output, res.Expected = t.Output, &expected
+				res.OutputTruncated = len(t.Output) >= judgeapi.MaxRunOutput-3
+			}
 		}
 		v.Results = append(v.Results, res)
 	}
 	return v, nil
+}
+
+// failed reports whether a test verdict is a failure the program caused:
+// not passed, not skipped, not a judge error.
+func failed(verdict string) bool {
+	switch verdict {
+	case "WA", "TLE", "MLE", "RE", "OLE":
+		return true
+	}
+	return false
 }
 
 // listMine returns a user's newest submissions on a problem as a viewer

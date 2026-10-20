@@ -86,6 +86,7 @@ func New(d Deps) http.Handler {
 	d.securityRoutes(mux)
 	mux.HandleFunc("POST /api/admin/domains", d.requireRole(auth.Owner, d.addDomain))
 	mux.HandleFunc("DELETE /api/admin/domains/{domain}", d.requireRole(auth.Owner, d.removeDomain))
+	mux.HandleFunc("GET /api/admin/site-audit", d.requireRole(auth.Owner, d.siteAudit))
 
 	admin := func(h http.HandlerFunc) http.HandlerFunc { return d.requireRole(auth.Admin, h) }
 	mux.HandleFunc("GET /api/admin/problems", admin(d.listProblems))
@@ -138,7 +139,7 @@ func New(d Deps) http.Handler {
 	// recoverer sits inside logRequests so a request that panics is still
 	// logged with its 500. In testing mode localOnlyAll refuses anything
 	// that did not come from this machine's own browser (S2).
-	return d.logRequests(d.recoverer(securityHeaders(d.localOnlyAll(newInFlight().limit(d.sessionCookieName(), d.sameOrigin(mux))))))
+	return d.logRequests(d.recoverer(securityHeaders(d.localOnlyAll(newInFlight().limit(d.sessionCookieName(), d.sameOrigin(d.renamedContest(mux)))))))
 }
 
 // contestRoutes mounts the contest API (milestone M4). Every route needs a
@@ -153,6 +154,7 @@ func (d Deps) contestRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/contests/{slug}/problems/{label}/run", signedIn(d.runContestCode))
 	mux.HandleFunc("POST /api/contests/{slug}/problems/{label}/submit", signedIn(d.submitContestCode))
 	mux.HandleFunc("POST /api/contests/{slug}/problems/{label}/events", signedIn(d.recordContestEvents))
+	mux.HandleFunc("GET /api/contests/{slug}/problems/{label}/revisions", signedIn(d.limitReads(d.statementHistory)))
 	mux.HandleFunc("GET /api/contests/{slug}/standings", signedIn(d.limitReads(d.getStandings)))
 	mux.HandleFunc("POST /api/contests/{slug}/clarifications", signedIn(d.askClarification))
 
@@ -163,6 +165,7 @@ func (d Deps) contestRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("DELETE /api/admin/contests/{id}", signedIn(d.archiveContest))
 	mux.HandleFunc("POST /api/admin/contests/{id}/clone", signedIn(d.cloneContest))
 	mux.HandleFunc("PUT /api/admin/contests/{id}/problems", signedIn(d.setContestProblems))
+	mux.HandleFunc("PUT /api/admin/contests/{id}/problems/{label}/revision", signedIn(d.updatePin))
 	mux.HandleFunc("GET /api/admin/contests/{id}/roster", signedIn(d.getRoster))
 	mux.HandleFunc("PUT /api/admin/contests/{id}/roster", signedIn(slowBody(d.setRoster)))
 	mux.HandleFunc("POST /api/admin/contests/{id}/admins", signedIn(d.changeContestAdmin(true)))

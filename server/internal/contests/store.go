@@ -94,14 +94,29 @@ func (c *Contest) Honour() string {
 
 // ContestProblem is a problem in a contest.
 type ContestProblem struct {
-	Label      string
-	ProblemID  int64
+	Label     string
+	ProblemID int64
+	// Title is the pinned revision's title (the bank's working copy for a
+	// pin without a revision).
 	Title      string
 	PinnedHash string
 	// Ready is false when the problem changed since it was added, or lost
 	// its validation: the contest refuses to publish until it is re-added.
 	Ready  bool
 	Points []int
+	// RevisionID and Rev name the pinned revision (B2.3); Reconstructed
+	// marks one the upgrade to v1.2.0 rebuilt from judging jobs.
+	RevisionID    int64
+	Rev           int
+	Reconstructed bool
+	// LatestRevisionID and LatestRev are the problem's newest revision.
+	// LatestReady is true when it is the validated content of the problem
+	// now (an update to it would be accepted); LatestStatementOnly when it
+	// judges exactly as the pinned one (no rejudge after the update).
+	LatestRevisionID    int64
+	LatestRev           int
+	LatestReady         bool
+	LatestStatementOnly bool
 }
 
 // MaxScore is the sum of the problem's subtask points.
@@ -238,6 +253,9 @@ func (s *Service) Create(ctx context.Context, e Edit, by int64) (*Contest, error
 	if errs := e.check(); errs != nil {
 		return nil, errs
 	}
+	if err := s.checkSlugFree(ctx, s.DB, e.Slug, 0); err != nil {
+		return nil, err
+	}
 	now := s.now().UnixMilli()
 	langs, _ := json.Marshal(e.Languages)
 	var id int64
@@ -299,6 +317,16 @@ func (s *Service) Update(ctx context.Context, id int64, e Edit, by Actor) (*Cont
 			return nil, &AIProblemError{Labels: labels, Grading: true}
 		}
 	}
+	if e.Slug != c.Slug {
+		if err := s.checkSlugFree(ctx, tx, e.Slug, id); err != nil {
+			return nil, err
+		}
+		// The old slug keeps answering with a redirect (B2.9).
+		if _, err := tx.ExecContext(ctx, `INSERT OR IGNORE INTO slug_history (entity, old_slug, entity_id, changed_at) VALUES ('contest', ?, ?, ?)`,
+			c.Slug, id, s.now().UnixMilli()); err != nil {
+			return nil, err
+		}
+	}
 	langs, _ := json.Marshal(e.Languages)
 	_, err = tx.ExecContext(ctx, `UPDATE contests SET slug = ?, title = ?, description_md = ?, starts_at = ?, ends_at = ?, start_mode = ?,
 		duration_minutes = ?, freeze_minutes = ?, scoring_mode = ?, access = ?, feedback_mode = ?, graded = ?, published = ?,
@@ -330,6 +358,35 @@ func nullID(id int64) any {
 		return id
 	}
 	return nil
+}
+
+// checkSlugFree refuses a slug another contest used before a rename, so
+// that contest's old links keep working (B2.9). A contest may take back
+// its own old slug.
+func (s *Service) checkSlugFree(ctx context.Context, q interface {
+	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
+}, slug string, self int64) error {
+	var owner int64
+	err := q.QueryRowContext(ctx, "SELECT entity_id FROM slug_history WHERE entity = 'contest' AND old_slug = ?", slug).Scan(&owner)
+	if errors.Is(err, sql.ErrNoRows) || (err == nil && owner == self) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	return FieldErrors{"slug": "This slug belonged to another contest. Choose another so its old links keep working."}
+}
+
+// RenamedTo returns the current slug of the contest that once had slug,
+// or "" when no contest did.
+func (s *Service) RenamedTo(ctx context.Context, slug string) (string, error) {
+	var current string
+	err := s.DB.QueryRowContext(ctx, `SELECT c.slug FROM slug_history h JOIN contests c ON c.id = h.entity_id
+		WHERE h.entity = 'contest' AND h.old_slug = ? AND c.slug <> ?`, slug, slug).Scan(&current)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", nil
+	}
+	return current, err
 }
 
 func isUniqueSlug(err error) bool {
@@ -408,9 +465,15 @@ func (s *Service) loadProblemsOf(ctx context.Context, list []*Contest) error {
 		ids = append(ids, c.ID)
 	}
 	idsJSON, _ := json.Marshal(ids)
-	rows, err := s.DB.QueryContext(ctx, `SELECT cp.contest_id, cp.label, cp.problem_id, p.title, cp.pinned_hash, cp.points,
-		coalesce(p.validated_hash, '') = cp.pinned_hash AND p.content_hash = cp.pinned_hash
+	rows, err := s.DB.QueryContext(ctx, `SELECT cp.contest_id, cp.label, cp.problem_id, coalesce(r.title, p.title), cp.pinned_hash, cp.points,
+		coalesce(p.validated_hash, '') = cp.pinned_hash AND p.content_hash = cp.pinned_hash,
+		coalesce(r.id, 0), coalesce(r.rev, 0), coalesce(r.reconstructed, 0), coalesce(l.id, 0), coalesce(l.rev, 0),
+		l.id IS NOT NULL AND l.reconstructed = 0 AND coalesce(p.validated_hash, '') = l.content_hash AND p.content_hash = l.content_hash,
+		l.id IS NOT NULL AND l.content_hash = cp.pinned_hash
 		FROM contest_problems cp JOIN problems p ON p.id = cp.problem_id
+		LEFT JOIN problem_revisions r ON r.id = cp.revision_id
+		LEFT JOIN problem_revisions l ON l.problem_id = cp.problem_id
+			AND l.rev = (SELECT max(m.rev) FROM problem_revisions m WHERE m.problem_id = cp.problem_id)
 		WHERE cp.contest_id IN (SELECT value FROM json_each(?)) ORDER BY cp.contest_id, cp.ord`, string(idsJSON))
 	if err != nil {
 		return err
@@ -420,7 +483,8 @@ func (s *Service) loadProblemsOf(ctx context.Context, list []*Contest) error {
 		var p ContestProblem
 		var cid int64
 		var points string
-		if err := rows.Scan(&cid, &p.Label, &p.ProblemID, &p.Title, &p.PinnedHash, &points, &p.Ready); err != nil {
+		if err := rows.Scan(&cid, &p.Label, &p.ProblemID, &p.Title, &p.PinnedHash, &points, &p.Ready,
+			&p.RevisionID, &p.Rev, &p.Reconstructed, &p.LatestRevisionID, &p.LatestRev, &p.LatestReady, &p.LatestStatementOnly); err != nil {
 			return err
 		}
 		json.Unmarshal([]byte(points), &p.Points)
@@ -468,13 +532,16 @@ var labelPattern = regexp.MustCompile(`^[A-Z][0-9]?$`)
 
 // pin is one problem as the audit log records a problem change.
 type pin struct {
-	Label     string `json:"label"`
-	ProblemID int64  `json:"problem_id"`
-	Hash      string `json:"pinned_hash"`
+	Label      string `json:"label"`
+	ProblemID  int64  `json:"problem_id"`
+	Hash       string `json:"pinned_hash"`
+	RevisionID int64  `json:"revision_id"`
+	Rev        int    `json:"rev"`
 }
 
 // SetProblems replaces the contest's problems for by. Each must be
-// validated; its current content hash is pinned. In a graded contest a
+// validated; its current content hash and newest revision are pinned, and
+// every label whose problem or revision changed gets a pin history row. In a graded contest a
 // problem the AI wizard made needs a person's solution (problems saved with
 // a changed reference or brute force) or an admin's reason (AIReason),
 // else the whole change is refused with AIProblemError. The change, and
@@ -497,13 +564,14 @@ func (s *Service) SetProblems(ctx context.Context, id int64, choices []ProblemCh
 		return nil, err
 	}
 	var before []pin
-	rows, err := tx.QueryContext(ctx, "SELECT label, problem_id, pinned_hash FROM contest_problems WHERE contest_id = ? ORDER BY ord", id)
+	rows, err := tx.QueryContext(ctx, `SELECT cp.label, cp.problem_id, cp.pinned_hash, coalesce(cp.revision_id, 0), coalesce(r.rev, 0)
+		FROM contest_problems cp LEFT JOIN problem_revisions r ON r.id = cp.revision_id WHERE cp.contest_id = ? ORDER BY cp.ord`, id)
 	if err != nil {
 		return nil, err
 	}
 	for rows.Next() {
 		var p pin
-		if err := rows.Scan(&p.Label, &p.ProblemID, &p.Hash); err != nil {
+		if err := rows.Scan(&p.Label, &p.ProblemID, &p.Hash, &p.RevisionID, &p.Rev); err != nil {
 			rows.Close()
 			return nil, err
 		}
@@ -575,11 +643,34 @@ func (s *Service) SetProblems(ctx context.Context, id int64, choices []ProblemCh
 		if err != nil {
 			return nil, err
 		}
-		if _, err := tx.ExecContext(ctx, `INSERT INTO contest_problems (contest_id, problem_id, label, ord, pinned_hash, points) VALUES (?, ?, ?, ?, ?, ?)`,
-			id, ch.ProblemID, ch.Label, i, hash, points); err != nil {
+		// The newest revision records the working copy (every save writes
+		// one), so it is the revision with this content hash.
+		var revID int64
+		var rev int
+		err = tx.QueryRowContext(ctx, `SELECT id, rev FROM problem_revisions WHERE problem_id = ? AND content_hash = ? AND reconstructed = 0
+			ORDER BY rev DESC LIMIT 1`, ch.ProblemID, hash).Scan(&revID, &rev)
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, fmt.Errorf("problem %d has no revision for its content", ch.ProblemID)
+		}
+		if err != nil {
 			return nil, err
 		}
-		after = append(after, pin{ch.Label, ch.ProblemID, hash})
+		if _, err := tx.ExecContext(ctx, `INSERT INTO contest_problems (contest_id, problem_id, label, ord, pinned_hash, points, revision_id)
+			VALUES (?, ?, ?, ?, ?, ?, ?)`, id, ch.ProblemID, ch.Label, i, hash, points, revID); err != nil {
+			return nil, err
+		}
+		after = append(after, pin{ch.Label, ch.ProblemID, hash, revID, rev})
+	}
+	now := s.now()
+	for _, a := range after {
+		unchanged := slices.ContainsFunc(before, func(b pin) bool {
+			return b.Label == a.Label && b.ProblemID == a.ProblemID && b.RevisionID == a.RevisionID
+		})
+		if !unchanged {
+			if err := s.recordPinTx(ctx, tx, id, a.Label, a.ProblemID, a.RevisionID, by, now); err != nil {
+				return nil, err
+			}
+		}
 	}
 	if len(unconfirmed) > 0 {
 		return nil, &AIProblemError{Labels: unconfirmed}
@@ -712,9 +803,12 @@ func CheckRoster(in []RosterEntry) ([]RosterEntry, error) {
 	return out, nil
 }
 
-// RosterChange counts what a roster replacement did.
+// RosterChange counts what a roster replacement did, and names the
+// emails that gained and lost access (sorted), for the audit log.
 type RosterChange struct {
 	Added, Removed, Count int
+	EmailsAdded           []string
+	EmailsRemoved         []string
 }
 
 // SetRoster replaces the contest's roster with entries: anyone left out
@@ -756,9 +850,21 @@ func (s *Service) SetRoster(ctx context.Context, id int64, entries []RosterEntry
 			delete(old, strings.ToLower(e.Email))
 		} else {
 			ch.Added++
+			ch.EmailsAdded = append(ch.EmailsAdded, strings.ToLower(e.Email))
 		}
 	}
 	ch.Removed = len(old)
+	for e := range old {
+		ch.EmailsRemoved = append(ch.EmailsRemoved, e)
+	}
+	sort.Strings(ch.EmailsAdded)
+	sort.Strings(ch.EmailsRemoved)
+	if ch.EmailsAdded == nil {
+		ch.EmailsAdded = []string{}
+	}
+	if ch.EmailsRemoved == nil {
+		ch.EmailsRemoved = []string{}
+	}
 	return ch, tx.Commit()
 }
 

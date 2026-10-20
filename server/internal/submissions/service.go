@@ -105,6 +105,17 @@ type Scope struct {
 	// View is how the viewer sees the submissions listed in the workspace
 	// and returned by Submit.
 	View ViewOptions
+	// RevisionID is the problem revision the contest pins (B2.3): the
+	// workspace serves its title, statement and samples, and submissions
+	// and runs record it. 0 outside contests.
+	RevisionID int64
+	// LogView records the first time this viewer is served RevisionID
+	// (the served log, B2.4): set for students, not for organisers.
+	LogView bool
+	// Reveal marks submissions that never count (practice after the
+	// window, an ungraded contest, the organisers' workspace): their
+	// first failing hidden test is revealed to the author (D115).
+	Reveal bool
 }
 
 // allows reports whether the scope accepts a language.
@@ -161,13 +172,16 @@ type Draft struct {
 
 // Workspace is what the student's editor page needs.
 type Workspace struct {
-	ProblemID     int64            `json:"problem_id"`
-	Title         string           `json:"title"`
-	StatementMD   string           `json:"statement_md"`
-	TimeLimitMS   int              `json:"time_limit_ms"`
-	MemoryLimitMB int              `json:"memory_limit_mb"`
-	Languages     []Language       `json:"languages"`
-	Samples       []Sample         `json:"samples"`
+	ProblemID     int64      `json:"problem_id"`
+	Title         string     `json:"title"`
+	StatementMD   string     `json:"statement_md"`
+	TimeLimitMS   int        `json:"time_limit_ms"`
+	MemoryLimitMB int        `json:"memory_limit_mb"`
+	Languages     []Language `json:"languages"`
+	Samples       []Sample   `json:"samples"`
+	// OpenTestCount is how many open tests a Run checks after the
+	// samples (D115); their inputs are never listed.
+	OpenTestCount int              `json:"open_test_count"`
 	Draft         *Draft           `json:"draft"`
 	Submissions   []SubmissionView `json:"submissions"`
 	ServerNow     int64            `json:"server_now"`
@@ -184,7 +198,9 @@ var languages = []Language{{"cpp17", "C++17"}, {"java21", "Java 21"}, {"python3"
 
 // Workspace loads a problem for the editor. Organisers may try a problem
 // before it is validated; students reach problems only through contests,
-// which accept validated problems only (M4).
+// which accept validated problems only (M4). In a contest it serves the
+// pinned revision (sc.RevisionID), never the bank's working copy, and
+// records the first time a student is served it.
 func (s *Service) Workspace(ctx context.Context, problemID, userID int64, sc Scope) (*Workspace, error) {
 	p, err := s.Problems.Get(ctx, problemID)
 	if errors.Is(err, problems.ErrNotFound) {
@@ -195,14 +211,46 @@ func (s *Service) Workspace(ctx context.Context, problemID, userID int64, sc Sco
 	}
 	w := &Workspace{ProblemID: p.ID, Title: p.Title, StatementMD: p.Statement, TimeLimitMS: p.TimeLimitMS,
 		MemoryLimitMB: p.MemoryLimitMB, Languages: []Language{}, Samples: []Sample{}, Submissions: []SubmissionView{},
-		ServerNow: s.now().UnixMilli()}
+		ServerNow: s.now().UnixMilli(), OpenTestCount: len(p.Open)}
 	for _, l := range languages {
 		if sc.allows(l.ID) {
 			w.Languages = append(w.Languages, l)
 		}
 	}
+	tests := make([]problems.RevisionTest, 0, len(p.Tests))
 	for _, t := range p.Tests {
-		if !p.IsSample(t.Idx) || t.OutputSHA == "" {
+		tests = append(tests, problems.RevisionTest{Idx: t.Idx, Kind: p.TestKind(t.Idx), InputSHA: t.InputSHA, OutputSHA: t.OutputSHA})
+	}
+	if sc.RevisionID > 0 {
+		rev, err := s.Problems.RevisionByID(ctx, sc.RevisionID)
+		if err != nil {
+			return nil, err
+		}
+		// A revision reconstructed at the upgrade has no statement; the
+		// working copy is what v1.1.0 served for it.
+		if !rev.Reconstructed && rev.ProblemID == p.ID {
+			w.Title, w.StatementMD = rev.Title, rev.Statement
+			if rev.TimeLimitMS != nil && rev.MemoryLimitMB != nil {
+				w.TimeLimitMS, w.MemoryLimitMB = *rev.TimeLimitMS, *rev.MemoryLimitMB
+			}
+			if tests, err = s.Problems.RevisionTests(ctx, rev.ID); err != nil {
+				return nil, err
+			}
+			w.OpenTestCount = 0
+			for _, t := range tests {
+				if t.Kind == problems.KindOpen {
+					w.OpenTestCount++
+				}
+			}
+		}
+		if sc.LogView {
+			if err := s.logView(ctx, userID, sc.ContestID, sc.RevisionID); err != nil {
+				return nil, err
+			}
+		}
+	}
+	for _, t := range tests {
+		if t.Kind != problems.KindSample || t.OutputSHA == "" {
 			continue
 		}
 		in, _ := s.Problems.Blobs.Read(t.InputSHA, maxSampleTxt+1)
@@ -220,6 +268,24 @@ func (s *Service) Workspace(ctx context.Context, problemID, userID int64, sc Sco
 	}
 	w.Submissions, err = s.listMine(ctx, userID, problemID, sc.ContestID, sc.View)
 	return w, err
+}
+
+// logView records the first time a student is served a revision in a
+// contest (B2.4). The read comes first, so a page load that was served
+// before costs no write.
+func (s *Service) logView(ctx context.Context, userID, contestID, revisionID int64) error {
+	var one int
+	err := s.DB.QueryRowContext(ctx, "SELECT 1 FROM revision_views WHERE user_id = ? AND contest_id = ? AND revision_id = ?",
+		userID, contestID, revisionID).Scan(&one)
+	if err == nil {
+		return nil
+	}
+	if !errors.Is(err, sql.ErrNoRows) {
+		return err
+	}
+	_, err = s.DB.ExecContext(ctx, `INSERT OR IGNORE INTO revision_views (user_id, contest_id, revision_id, first_seen_at) VALUES (?, ?, ?, ?)`,
+		userID, contestID, revisionID, s.now().UnixMilli())
+	return err
 }
 
 func clipText(b []byte, n int) string {
@@ -377,15 +443,16 @@ func (s *Service) Submit(ctx context.Context, r SubmitRequest) (v *SubmissionVie
 	}
 	var id int64
 	err = tx.QueryRowContext(ctx, `INSERT INTO submissions (problem_id, contest_id, user_id, kind, language, source, source_sha,
-		max_score, client_key, typed_chars, pasted_chars, focus_losses, client_hash, practice, created_at)
-		VALUES (?, ?, ?, 'submit', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
+		max_score, client_key, typed_chars, pasted_chars, focus_losses, client_hash, practice, created_at, revision_id)
+		VALUES (?, ?, ?, 'submit', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
 		r.ProblemID, contest, r.UserID, r.Language, r.Source, srcSHA, maxScore, r.ClientKey,
-		clamp(r.Typed), clamp(r.Pasted), clamp(r.Blur), r.ClientHash, r.Scope.Practice, now.UnixMilli()).Scan(&id)
+		clamp(r.Typed), clamp(r.Pasted), clamp(r.Blur), r.ClientHash, r.Scope.Practice, now.UnixMilli(), nullID(r.Scope.RevisionID)).Scan(&id)
 	if err != nil {
 		return nil, false, err
 	}
 	pl := submitPayload(p, id, judgeapi.Program{Language: r.Language, SourceSHA: srcSHA})
 	pl.StopOnSampleFail = !r.Scope.NoStopOnSample
+	pl.Reveal = r.Scope.Reveal
 	if p.Checker == problems.CheckerCustom {
 		if pl.Checker.SourceSHA, err = s.Problems.Blobs.Put(ctx, tx, []byte(p.CheckerSource)); err != nil {
 			return nil, false, err
@@ -404,10 +471,8 @@ func (s *Service) Submit(ctx context.Context, r SubmitRequest) (v *SubmissionVie
 	if _, err := tx.ExecContext(ctx, "UPDATE submissions SET job_id = ? WHERE id = ?", jobID, id); err != nil {
 		return nil, false, err
 	}
-	if r.Scope.ContestID > 0 {
-		if _, err := tx.ExecContext(ctx, "UPDATE jobs SET contest_id = ? WHERE id = ?", r.Scope.ContestID, jobID); err != nil {
-			return nil, false, err
-		}
+	if err := tagJob(ctx, tx, jobID, r.Scope); err != nil {
+		return nil, false, err
 	}
 	if err := tx.Commit(); err != nil {
 		return nil, false, err
@@ -417,6 +482,24 @@ func (s *Service) Submit(ctx context.Context, r SubmitRequest) (v *SubmissionVie
 }
 
 func clamp(n int) int { return max(0, min(n, 10_000_000)) }
+
+// nullID stores a missing id as NULL.
+func nullID(id int64) any {
+	if id > 0 {
+		return id
+	}
+	return nil
+}
+
+// tagJob records a job's contest (so a paused contest's jobs wait) and the
+// revision it judges against (B2.10).
+func tagJob(ctx context.Context, tx *sql.Tx, jobID int64, sc Scope) error {
+	if sc.ContestID <= 0 && sc.RevisionID <= 0 {
+		return nil
+	}
+	_, err := tx.ExecContext(ctx, "UPDATE jobs SET contest_id = ?, revision_id = ? WHERE id = ?", nullID(sc.ContestID), nullID(sc.RevisionID), jobID)
+	return err
+}
 
 // NotReadyError says why nobody can submit to a problem yet.
 type NotReadyError struct{ Problems []string }
@@ -443,7 +526,7 @@ func (s *Service) problemForJudging(ctx context.Context, id int64) (*problems.Pr
 }
 
 // submitPayload lists tests samples first, then each subtask's tests in
-// subtask order.
+// subtask order. Open tests are Run's, never Submit's (D115).
 func submitPayload(p *problems.Problem, submissionID int64, prog judgeapi.Program) judgeapi.SubmitPayload {
 	pl := judgeapi.SubmitPayload{SubmissionID: submissionID, Program: prog, TimeLimitMS: p.TimeLimitMS,
 		MemoryLimitMB: p.MemoryLimitMB, Checker: judgeapi.Checker{Type: p.Checker, Epsilon: p.Epsilon},
@@ -469,7 +552,8 @@ func submitPayload(p *problems.Problem, submissionID int64, prog judgeapi.Progra
 	return pl
 }
 
-// RunRequest is one press of Run: on the samples, or on a custom input.
+// RunRequest is one press of Run: on the samples and open tests, or on a
+// custom input.
 type RunRequest struct {
 	ProblemID, UserID int64
 	Scope             Scope
@@ -531,9 +615,16 @@ func (s *Service) Run(ctx context.Context, r RunRequest) (*RunView, error) {
 		}
 		pl.Inputs = []judgeapi.RunInput{{Idx: 0, InputSHA: sha}}
 	} else {
+		// The samples, then the open tests in order (D115): the judge runs
+		// an open test only while everything before it passed.
 		for _, t := range p.Tests {
 			if p.IsSample(t.Idx) {
 				pl.Inputs = append(pl.Inputs, judgeapi.RunInput{Idx: t.Idx, InputSHA: t.InputSHA, ExpectedSHA: t.OutputSHA})
+			}
+		}
+		for _, t := range p.Tests {
+			if p.IsOpen(t.Idx) {
+				pl.Inputs = append(pl.Inputs, judgeapi.RunInput{Idx: t.Idx, InputSHA: t.InputSHA, ExpectedSHA: t.OutputSHA, Open: true})
 			}
 		}
 		if len(pl.Inputs) == 0 {
@@ -554,9 +645,9 @@ func (s *Service) Run(ctx context.Context, r RunRequest) (*RunView, error) {
 	// later scan of the table walk overflow pages. The custom input is
 	// likewise kept only as a blob (in the job payload).
 	var id int64
-	if err := tx.QueryRowContext(ctx, `INSERT INTO submissions (problem_id, contest_id, user_id, kind, language, source, source_sha, input, created_at)
-		VALUES (?, ?, ?, 'run', ?, '', ?, '', ?) RETURNING id`, r.ProblemID, contest, r.UserID, r.Language, srcSHA,
-		s.now().UnixMilli()).Scan(&id); err != nil {
+	if err := tx.QueryRowContext(ctx, `INSERT INTO submissions (problem_id, contest_id, user_id, kind, language, source, source_sha, input, created_at, revision_id)
+		VALUES (?, ?, ?, 'run', ?, '', ?, '', ?, ?) RETURNING id`, r.ProblemID, contest, r.UserID, r.Language, srcSHA,
+		s.now().UnixMilli(), nullID(r.Scope.RevisionID)).Scan(&id); err != nil {
 		return nil, err
 	}
 	pl.SubmissionID = id
@@ -567,10 +658,8 @@ func (s *Service) Run(ctx context.Context, r RunRequest) (*RunView, error) {
 	if _, err := tx.ExecContext(ctx, "UPDATE submissions SET job_id = ? WHERE id = ?", jobID, id); err != nil {
 		return nil, err
 	}
-	if r.Scope.ContestID > 0 {
-		if _, err := tx.ExecContext(ctx, "UPDATE jobs SET contest_id = ? WHERE id = ?", r.Scope.ContestID, jobID); err != nil {
-			return nil, err
-		}
+	if err := tagJob(ctx, tx, jobID, r.Scope); err != nil {
+		return nil, err
 	}
 	if err := tx.Commit(); err != nil {
 		return nil, err

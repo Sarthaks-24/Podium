@@ -145,7 +145,7 @@ func (w *Worker) runSubmit(ctx context.Context, box int, lease Lease, rep *repor
 		}
 	}
 	limit := time.Duration(pl.TimeLimitMS) * time.Millisecond
-	stopAll := false
+	stopAll, revealed := false, false
 	failed := map[int]bool{}
 	for i, t := range pl.Tests {
 		tr := judgeapi.TestResult{Idx: t.Idx, Role: judgeapi.RoleProgram, Verdict: string(judge.Skipped)}
@@ -170,6 +170,11 @@ func (w *Worker) runSubmit(ctx context.Context, box int, lease Lease, rep *repor
 				}
 			}
 			tr.OutputSHA = fileSHA(out)
+			// A submission that never counts shows its first failing
+			// hidden test (D115): only then is output sent.
+			if pl.Reveal && !t.Sample && !revealed && revealable(tr.Verdict) {
+				tr.Output, revealed = readExcerpt(out, judgeapi.MaxRunOutput), true
+			}
 			os.Remove(out)
 			if !t.Sample {
 				tr.Message = ""
@@ -188,6 +193,16 @@ func (w *Worker) runSubmit(ctx context.Context, box int, lease Lease, rep *repor
 		}
 	}
 	return nil
+}
+
+// revealable reports whether a hidden test's verdict is one the program
+// caused, so its output may be revealed (D115).
+func revealable(v string) bool {
+	switch judge.Verdict(v) {
+	case judge.WrongAnswer, judge.TimeLimit, judge.MemoryLimit, judge.RuntimeError, judge.OutputLimit:
+		return true
+	}
+	return false
 }
 
 // fileSHA hashes a program's output for integrity checks, or "" when the
@@ -234,7 +249,17 @@ func (w *Worker) runRun(ctx context.Context, box int, lease Lease, rep *reporter
 		}
 	}
 	limit := time.Duration(pl.TimeLimitMS) * time.Millisecond
+	// Open tests run only while every sample and open test before them
+	// passed (D115); the rest are reported as skipped.
+	stopOpen := false
 	for i, input := range pl.Inputs {
+		if input.Open && stopOpen {
+			if err := rep.send(ctx, judgeapi.Report{Results: []judgeapi.TestResult{
+				{Idx: input.Idx, Role: judgeapi.RoleProgram, Verdict: string(judge.Skipped)}}}); err != nil {
+				return err
+			}
+			continue
+		}
 		in, err := w.Cache.Path(ctx, lease, input.InputSHA)
 		if err != nil {
 			return err
@@ -256,6 +281,9 @@ func (w *Worker) runRun(ctx context.Context, box int, lease Lease, rep *reporter
 		}
 		tr.Output = readExcerpt(out, judgeapi.MaxRunOutput)
 		os.Remove(out)
+		if input.ExpectedSHA != "" && tr.Verdict != string(judge.Accepted) {
+			stopOpen = true
+		}
 		if err := rep.send(ctx, judgeapi.Report{Results: []judgeapi.TestResult{tr}}); err != nil {
 			return err
 		}

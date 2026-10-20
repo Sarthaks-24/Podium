@@ -127,7 +127,7 @@ func (d Deps) submitCode(w http.ResponseWriter, r *http.Request) {
 	}
 	u := userFrom(r.Context())
 	v, dup, err := d.Submissions.Submit(r.Context(), submissions.SubmitRequest{ProblemID: id, UserID: u.ID,
-		Scope:    submissions.Scope{MinGap: organiserGap},
+		Scope:    submissions.Scope{MinGap: organiserGap, Reveal: true},
 		Language: req.Language, Source: req.Source, ClientKey: req.ClientKey,
 		Typed: req.TypedChars, Pasted: req.PastedChars, Blur: req.FocusLosses,
 		ClientHash: d.Submissions.ClientHash(clientIP(r), r.UserAgent())})
@@ -204,7 +204,10 @@ func (d Deps) mayRead(w http.ResponseWriter, r *http.Request, wantKind string) (
 			return 0, submissions.ViewOptions{}, false
 		}
 		if ok && wantKind == "submit" {
-			return id, d.Contests.CoOrganiserView(r.Context(), info.ContestID, id), true
+			// Nor with a student's revealed hidden test (D115).
+			o := d.Contests.CoOrganiserView(r.Context(), info.ContestID, id)
+			o.NoReveal = true
+			return id, o, true
 		}
 		if ok {
 			return id, submissions.StudentView, true

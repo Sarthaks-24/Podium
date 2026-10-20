@@ -12,7 +12,11 @@ import (
 	"errors"
 	"net/http"
 	"strconv"
+	"strings"
+	"time"
 
+	"github.com/Sarthaks-24/podium/internal/auth"
+	"github.com/Sarthaks-24/podium/internal/contests"
 	"github.com/Sarthaks-24/podium/internal/problems"
 )
 
@@ -235,4 +239,162 @@ func (d Deps) diffProblemRevisions(w http.ResponseWriter, r *http.Request) {
 		StatementOnly bool     `json:"statement_only"`
 		statementDiffJSON
 	}{from.Rev, to.Rev, changed, statementOnly, statementDiff(from, to)})
+}
+
+// updatePin is "Update contest to revision N" (C4). Owners and admins
+// only: choosing what a contest judges with is choosing its problems.
+func (d Deps) updatePin(w http.ResponseWriter, r *http.Request) {
+	c, ok := d.organisedContest(w, r)
+	if !ok || !requireAdmin(w, r) {
+		return
+	}
+	var req struct {
+		RevisionID int64 `json:"revision_id"`
+	}
+	if !decodeJSON(w, r, &req) {
+		return
+	}
+	label := r.PathValue("label")
+	u, err := d.Contests.UpdatePin(r.Context(), c.ID, label, req.RevisionID, actor(r))
+	switch {
+	case errors.Is(err, contests.ErrNotFound):
+		WriteError(w, http.StatusNotFound, "not_found", "There is no such problem in this contest, or the revision is not one of its problem's.")
+		return
+	case errors.Is(err, contests.ErrSamePin):
+		WriteError(w, http.StatusConflict, "conflict", "The contest already uses this revision.")
+		return
+	case errors.Is(err, contests.ErrRevisionNotReady):
+		WriteError(w, http.StatusConflict, "not_ready", "This revision is not the validated version of the problem. Validate the problem, then update the contest.")
+		return
+	case err != nil:
+		d.contestError(w, r, err)
+		return
+	}
+	d.Log.Info("contest pin updated", "by", userFrom(r.Context()).ID, "contest_id", c.ID, "label", label, "revision_id", u.To.ID)
+	fresh, err := d.Contests.Get(r.Context(), c.ID)
+	if err != nil {
+		d.contestError(w, r, err)
+		return
+	}
+	out, err := d.adminContestOut(r.Context(), fresh)
+	if err != nil {
+		d.internalError(w, r, err)
+		return
+	}
+	WriteJSON(w, http.StatusOK, map[string]any{"contest": out, "announcement_md": u.AnnouncementMD,
+		"statement_changed": u.StatementChanged, "rejudge_needed": u.JudgingChanged, "server_now": d.Contests.Clock().UnixMilli()})
+}
+
+// statementHistory is C3: the revisions pinned to a contest problem, with
+// a line diff of their statements. Never a test, an output or a hash.
+func (d Deps) statementHistory(w http.ResponseWriter, r *http.Request) {
+	t, ok := d.contestProblem(w, r)
+	if !ok {
+		return
+	}
+	entries, err := d.Contests.StatementHistory(r.Context(), t.c, t.problem.Label, t.organiser)
+	if err != nil {
+		d.internalError(w, r, err)
+		return
+	}
+	updates, err := d.Contests.StatementUpdates(r.Context(), t.c)
+	if err != nil {
+		d.internalError(w, r, err)
+		return
+	}
+	type diffJSON struct {
+		FromRevisionID int64 `json:"from_revision_id"`
+		ToRevisionID   int64 `json:"to_revision_id"`
+		FromRev        int   `json:"from_rev"`
+		ToRev          int   `json:"to_rev"`
+		statementDiffJSON
+	}
+	out := struct {
+		Label              string                    `json:"label"`
+		CurrentRevisionID  int64                     `json:"current_revision_id"`
+		StatementUpdatedAt *int64                    `json:"statement_updated_at"`
+		Revisions          []contests.StatementEntry `json:"revisions"`
+		Diff               *diffJSON                 `json:"diff"`
+		ServerNow          int64                     `json:"server_now"`
+	}{Label: t.problem.Label, CurrentRevisionID: t.problem.RevisionID, Revisions: entries, ServerNow: d.Contests.Clock().UnixMilli()}
+	if at, ok := updates[t.problem.Label]; ok {
+		out.StatementUpdatedAt = &at
+	}
+	pick := func(raw string, def int) (int, bool) {
+		if raw == "" {
+			return def, def >= 0
+		}
+		id, err := strconv.ParseInt(raw, 10, 64)
+		if err != nil {
+			return 0, false
+		}
+		for i, e := range entries {
+			if e.RevisionID == id {
+				return i, true
+			}
+		}
+		return 0, false
+	}
+	q := r.URL.Query()
+	if len(entries) > 1 || q.Get("from") != "" || q.Get("to") != "" {
+		to, okTo := pick(q.Get("to"), 0)
+		from, okFrom := pick(q.Get("from"), min(1, len(entries)-1))
+		if !okTo || !okFrom || len(entries) < 2 {
+			WriteError(w, http.StatusNotFound, "not_found", "Choose two revisions of this problem that the contest used.")
+			return
+		}
+		a, b := entries[from].Revision(), entries[to].Revision()
+		out.Diff = &diffJSON{FromRevisionID: a.ID, ToRevisionID: b.ID, FromRev: a.Rev, ToRev: b.Rev, statementDiffJSON: statementDiff(a, b)}
+	}
+	WriteJSON(w, http.StatusOK, out)
+}
+
+// siteAudit is the People page's History (B2.8), owners only.
+func (d Deps) siteAudit(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query()
+	page, _ := strconv.Atoi(q.Get("page"))
+	since, _ := strconv.ParseInt(q.Get("since"), 10, 64)
+	until, _ := strconv.ParseInt(q.Get("until"), 10, 64)
+	list, more, err := d.Auth.SiteAudit(r.Context(), auth.SiteAuditFilter{Action: q.Get("action"), Q: q.Get("q"), Since: since, Until: until, Page: page})
+	if err != nil {
+		d.internalError(w, r, err)
+		return
+	}
+	WriteJSON(w, http.StatusOK, map[string]any{"entries": list, "page": max(page, 1), "has_more": more, "server_now": time.Now().UnixMilli()})
+}
+
+// renamedContest answers 301 for a GET of a renamed contest's old slug,
+// on the web app's /contests/<old>/... paths and the API's
+// /api/contests/<old>/... (B2.9). Anything else goes on to next.
+func (d Deps) renamedContest(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if (r.Method == http.MethodGet || r.Method == http.MethodHead) && d.Contests != nil {
+			for _, prefix := range []string{"/contests/", "/api/contests/"} {
+				rest, ok := strings.CutPrefix(r.URL.Path, prefix)
+				if !ok {
+					continue
+				}
+				slug, tail, _ := strings.Cut(rest, "/")
+				if slug == "" {
+					break
+				}
+				if _, err := d.Contests.GetBySlug(r.Context(), slug); err == nil || !errors.Is(err, contests.ErrNotFound) {
+					break
+				}
+				current, err := d.Contests.RenamedTo(r.Context(), slug)
+				if err != nil || current == "" {
+					break
+				}
+				u := *r.URL
+				u.Path = prefix + current
+				if tail != "" || strings.HasSuffix(rest, "/") {
+					u.Path += "/" + tail
+				}
+				w.Header().Set("Cache-Control", "no-store")
+				http.Redirect(w, r, u.RequestURI(), http.StatusMovedPermanently)
+				return
+			}
+		}
+		next.ServeHTTP(w, r)
+	})
 }

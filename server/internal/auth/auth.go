@@ -267,7 +267,12 @@ func (s *Service) ResetGoogleAccount(ctx context.Context, email string) error {
 	if err != nil {
 		return err
 	}
-	if _, err := tx.ExecContext(ctx, "DELETE FROM sessions WHERE user_id = ?", id); err != nil {
+	res, err := tx.ExecContext(ctx, "DELETE FROM sessions WHERE user_id = ?", id)
+	if err != nil {
+		return err
+	}
+	ended, _ := res.RowsAffected()
+	if err := s.recordSite(ctx, tx, AuditGoogleReset, email, map[string]any{"sessions_ended": ended}); err != nil {
 		return err
 	}
 	return tx.Commit()
@@ -380,6 +385,15 @@ func (s *Service) GrantRole(ctx context.Context, email string, role Role) (Perso
 	if err != nil {
 		return Person{}, err
 	}
+	if current != role {
+		from := string(current)
+		if from == "" {
+			from = "none"
+		}
+		if err := s.recordSite(ctx, tx, AuditRoleGranted, email, map[string]any{"role": string(role), "from_role": from}); err != nil {
+			return Person{}, err
+		}
+	}
 	return p, tx.Commit()
 }
 
@@ -425,7 +439,12 @@ func (s *Service) RevokeRole(ctx context.Context, id int64) error {
 	if _, err := tx.ExecContext(ctx, "UPDATE users SET role = 'student' WHERE id = ?", id); err != nil {
 		return err
 	}
-	if _, err := tx.ExecContext(ctx, "DELETE FROM sessions WHERE user_id = ?", id); err != nil {
+	res, err := tx.ExecContext(ctx, "DELETE FROM sessions WHERE user_id = ?", id)
+	if err != nil {
+		return err
+	}
+	ended, _ := res.RowsAffected()
+	if err := s.recordSite(ctx, tx, AuditRoleRevoked, email, map[string]any{"from_role": string(role), "sessions_ended": ended}); err != nil {
 		return err
 	}
 	return tx.Commit()
@@ -438,14 +457,26 @@ func (s *Service) AddDomain(ctx context.Context, domain string) (Domain, bool, e
 	if !ok {
 		return Domain{}, false, invalid("Enter a domain such as college.edu.")
 	}
-	res, err := s.DB.ExecContext(ctx, "INSERT OR IGNORE INTO allowed_domains (domain, created_at) VALUES (?, ?)", d, s.now().UnixMilli())
+	tx, err := s.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return Domain{}, false, err
+	}
+	defer tx.Rollback()
+	res, err := tx.ExecContext(ctx, "INSERT OR IGNORE INTO allowed_domains (domain, created_at) VALUES (?, ?)", d, s.now().UnixMilli())
 	if err != nil {
 		return Domain{}, false, err
 	}
 	created, _ := res.RowsAffected()
+	if created == 1 {
+		if err := s.recordSite(ctx, tx, AuditDomainAdded, "", map[string]any{"domain": d}); err != nil {
+			return Domain{}, false, err
+		}
+	}
 	var out Domain
-	err = s.DB.QueryRowContext(ctx, "SELECT domain, created_at FROM allowed_domains WHERE domain = ?", d).Scan(&out.Domain, &out.CreatedAt)
-	return out, created == 1, err
+	if err := tx.QueryRowContext(ctx, "SELECT domain, created_at FROM allowed_domains WHERE domain = ?", d).Scan(&out.Domain, &out.CreatedAt); err != nil {
+		return Domain{}, false, err
+	}
+	return out, created == 1, tx.Commit()
 }
 
 // RemoveDomain stops sign-ins from a domain and ends the sessions of
@@ -466,9 +497,14 @@ func (s *Service) RemoveDomain(ctx context.Context, domain string) error {
 		return notFound("That domain is not on the allowed list.")
 	}
 	// Compare the email's suffix exactly; LIKE would treat _ as a wildcard.
-	if _, err := tx.ExecContext(ctx, `DELETE FROM sessions WHERE user_id IN (
+	res, err = tx.ExecContext(ctx, `DELETE FROM sessions WHERE user_id IN (
 		SELECT id FROM users WHERE role = 'student' AND email <> ? AND substr(lower(email), -length(?) - 1) = '@' || ?)`,
-		s.OwnerEmail, d, d); err != nil {
+		s.OwnerEmail, d, d)
+	if err != nil {
+		return err
+	}
+	ended, _ := res.RowsAffected()
+	if err := s.recordSite(ctx, tx, AuditDomainRemoved, "", map[string]any{"domain": d, "sessions_ended": ended}); err != nil {
 		return err
 	}
 	return tx.Commit()
