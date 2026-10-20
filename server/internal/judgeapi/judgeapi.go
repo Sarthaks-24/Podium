@@ -5,9 +5,23 @@
 package judgeapi
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"regexp"
+	"unicode/utf8"
 )
+
+// ProtocolVersion is the version of this API. The judge sends it with
+// every claim and toolchain report; the server answers 426 to any other
+// version, and the judge stops with the server's message instead of
+// retrying, because only installing the same release on both fixes it.
+// A claim without the field is protocol 1, the v1.0.0 judge.
+//
+// Version 2 (v1.1.0) added the toolchain report and the toolchain hash on
+// each claim. Bump it whenever a request or payload changes shape.
+const ProtocolVersion = 2
 
 // Job kinds. M2 has only validation; M3 adds submissions and runs.
 const KindValidate = "validate"
@@ -53,6 +67,56 @@ type ClaimRequest struct {
 	Worker  string   `json:"worker"`
 	Version string   `json:"version"`
 	Isolate string   `json:"isolate"`
+	// Protocol is ProtocolVersion of the judge's build; 0 means 1.
+	Protocol int `json:"protocol,omitempty"`
+	// Toolchain is the hash the server returned for the judge's
+	// toolchain report; the job records it.
+	Toolchain string `json:"toolchain,omitempty"`
+}
+
+// Toolchain is what a judge host compiles and runs with: the first line
+// of each tool's version output and the kernel release. It is reported
+// once at start (POST /api/judge/toolchain) and stored once per distinct
+// value, so a job and a validation can say which compilers produced them.
+type Toolchain struct {
+	GCC     string `json:"gcc"`
+	Java    string `json:"java"`
+	Python  string `json:"python"`
+	Node    string `json:"node"`
+	Isolate string `json:"isolate"`
+	Kernel  string `json:"kernel"`
+}
+
+// MaxToolchainField bounds each field of a Toolchain.
+const MaxToolchainField = 200
+
+// Check refuses a report the server should not store.
+func (t Toolchain) Check() error {
+	for _, f := range []string{t.GCC, t.Java, t.Python, t.Node, t.Isolate, t.Kernel} {
+		if len(f) > MaxToolchainField || !utf8.ValidString(f) {
+			return errors.New("each toolchain field is valid UTF-8 of at most 200 bytes")
+		}
+	}
+	return nil
+}
+
+// Hash is the toolchain's identity: the SHA-256 of its JSON encoding,
+// whose field order is fixed by the struct.
+func (t Toolchain) Hash() string {
+	b, _ := json.Marshal(t)
+	sum := sha256.Sum256(b)
+	return hex.EncodeToString(sum[:])
+}
+
+// ToolchainReport is the body of POST /api/judge/toolchain.
+type ToolchainReport struct {
+	Protocol  int       `json:"protocol"`
+	Toolchain Toolchain `json:"toolchain"`
+}
+
+// ToolchainReply names the stored toolchain.
+type ToolchainReply struct {
+	Hash string `json:"hash"`
 }
 
 // Claim is a job leased to one worker. Lease is a secret the worker sends

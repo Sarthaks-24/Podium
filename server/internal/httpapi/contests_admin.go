@@ -24,6 +24,8 @@ import (
 
 	"github.com/Sarthaks-24/podium/internal/auth"
 	"github.com/Sarthaks-24/podium/internal/contests"
+	"github.com/Sarthaks-24/podium/internal/jobs"
+	"github.com/Sarthaks-24/podium/internal/judgeapi"
 	"github.com/Sarthaks-24/podium/internal/submissions"
 )
 
@@ -35,6 +37,24 @@ type adminProblemJSON struct {
 	PinnedHash string `json:"pinned_hash"`
 	Ready      bool   `json:"ready"`
 	MaxScore   int    `json:"max_score"`
+	// ValidatedToolchain is the toolchain of the validation of the pinned
+	// version; ToolchainDrift is true when it differs from the judge's
+	// current one. Both are null when either is unknown (B1.5).
+	ValidatedToolchain *toolchainJSON `json:"validated_toolchain"`
+	ToolchainDrift     *bool          `json:"toolchain_drift"`
+}
+
+// toolchainJSON is a stored judge toolchain as the console shows it.
+type toolchainJSON struct {
+	judgeapi.Toolchain
+	FirstSeen int64 `json:"first_seen"`
+}
+
+func toolchainOut(t *jobs.Toolchain) *toolchainJSON {
+	if t == nil {
+		return nil
+	}
+	return &toolchainJSON{Toolchain: t.Details, FirstSeen: t.FirstSeen.UnixMilli()}
 }
 
 // adminContestJSON is AdminContest in docs/API.md: every setting, the
@@ -74,9 +94,12 @@ type adminContestJSON struct {
 	Admins             []contests.Person    `json:"admins"`
 	Extensions         []contests.Extension `json:"extensions"`
 	RosterCount        int                  `json:"roster_count"`
-	CreatedAt          int64                `json:"created_at"`
-	UpdatedAt          int64                `json:"updated_at"`
-	ServerNow          int64                `json:"server_now"`
+	// JudgeToolchain is what the judge reported last; null before any
+	// judge of v1.1.0 or later has started.
+	JudgeToolchain *toolchainJSON `json:"judge_toolchain"`
+	CreatedAt      int64          `json:"created_at"`
+	UpdatedAt      int64          `json:"updated_at"`
+	ServerNow      int64          `json:"server_now"`
 	// LockedAfterStart names the settings only owners and admins may change
 	// once the contest has started.
 	LockedAfterStart []string `json:"locked_after_start"`
@@ -95,11 +118,30 @@ func (d Deps) adminContestOut(ctx context.Context, c *contests.Contest) (*adminC
 		State: c.Schedule.State(now, c.PracticeAfterEnd), Problems: []adminProblemJSON{},
 		CreatedAt: c.CreatedAt.UnixMilli(), UpdatedAt: c.UpdatedAt.UnixMilli(), ServerNow: now.UnixMilli(),
 		LockedAfterStart: contests.LockedAfterStart}
-	for _, p := range c.Problems {
-		out.Problems = append(out.Problems, adminProblemJSON{Label: p.Label, ProblemID: p.ProblemID, Title: p.Title,
-			PinnedHash: p.PinnedHash, Ready: p.Ready, MaxScore: p.MaxScore()})
-	}
+	var current *jobs.Toolchain
 	var err error
+	if d.Problems != nil && d.Problems.Jobs != nil {
+		if current, err = d.Problems.Jobs.CurrentToolchain(ctx); err != nil {
+			return nil, err
+		}
+		out.JudgeToolchain = toolchainOut(current)
+	}
+	for _, p := range c.Problems {
+		ap := adminProblemJSON{Label: p.Label, ProblemID: p.ProblemID, Title: p.Title,
+			PinnedHash: p.PinnedHash, Ready: p.Ready, MaxScore: p.MaxScore()}
+		if d.Problems != nil && d.Problems.Jobs != nil {
+			validated, err := d.Problems.Jobs.ValidatedToolchain(ctx, p.ProblemID, p.PinnedHash)
+			if err != nil {
+				return nil, err
+			}
+			ap.ValidatedToolchain = toolchainOut(validated)
+			if validated != nil && current != nil {
+				drift := validated.Hash != current.Hash
+				ap.ToolchainDrift = &drift
+			}
+		}
+		out.Problems = append(out.Problems, ap)
+	}
 	if out.Admins, err = d.Contests.Admins(ctx, c.ID); err != nil {
 		return nil, err
 	}

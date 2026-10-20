@@ -8,21 +8,19 @@ package db
 import (
 	"context"
 	"database/sql"
-	"embed"
 	"fmt"
-	"io/fs"
 	"os"
 	"path"
 	"path/filepath"
-	"sort"
 	"strings"
 	"time"
 
+	"github.com/Sarthaks-24/podium/internal/db/migrations"
 	"modernc.org/sqlite" // also registers the "sqlite" driver, used read-only by "podium-server check"
 )
 
-//go:embed migrations/*.sql
-var migrationFS embed.FS
+// migrationFS holds the schema files (package migrations).
+var migrationFS = migrations.FS
 
 // MaxConns is the size of the connection pool.
 const MaxConns = 8
@@ -105,9 +103,7 @@ func Migrate(ctx context.Context, d *sql.DB) ([]string, error) {
 }
 
 func migrationNames() ([]string, error) {
-	names, err := fs.Glob(migrationFS, "migrations/*.sql")
-	sort.Strings(names)
-	return names, err
+	return migrations.Files(), nil
 }
 
 // refuseUnknown fails when the database records a migration this binary

@@ -14,6 +14,10 @@ EnvironmentFile=/etc/podium/judge.env
 ExecStart=/usr/local/bin/podium-judge work
 Restart=always
 RestartSec=2
+# Exit 3: the server speaks another judge protocol (an upgrade put a
+# different release on one side). Restarting cannot fix it, so the judge
+# stays stopped with the message in its log until install.sh starts it.
+RestartPreventExitStatus=3
 # SIGTERM stops claiming; each lane finishes and reports the job it holds,
 # then the worker exits (graceful stop, used by install.sh upgrade). Real
 # jobs take seconds; 20 minutes covers a long validation. A job still

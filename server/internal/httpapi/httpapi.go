@@ -10,12 +10,14 @@ import (
 	"database/sql"
 	"encoding/json"
 	"log/slog"
+	"net"
 	"net/http"
 	"runtime/debug"
 	"time"
 
 	"github.com/Sarthaks-24/podium/internal/auth"
 	"github.com/Sarthaks-24/podium/internal/contests"
+	"github.com/Sarthaks-24/podium/internal/db/migrations"
 	"github.com/Sarthaks-24/podium/internal/events"
 	"github.com/Sarthaks-24/podium/internal/integrity"
 	"github.com/Sarthaks-24/podium/internal/problems"
@@ -195,7 +197,34 @@ func (d Deps) healthz(w http.ResponseWriter, r *http.Request) {
 		WriteJSON(w, http.StatusServiceUnavailable, map[string]string{"status": "degraded", "db": "unreachable"})
 		return
 	}
-	WriteJSON(w, http.StatusOK, map[string]string{"status": "ok", "db": "ok"})
+	out := map[string]string{"status": "ok", "db": "ok"}
+	if loopbackRequest(r) {
+		// Only a caller on this machine learns the release (install.sh
+		// verify, the deploy scripts): through Caddy the version stays
+		// private, so a scanner cannot match it against known bugs.
+		out["version"], out["schema"] = d.Version, migrations.Latest()
+	}
+	WriteJSON(w, http.StatusOK, out)
+}
+
+// loopbackRequest reports whether the request came straight from this
+// machine: a loopback peer and none of a proxy's forwarding headers
+// (Caddy on the same host connects from loopback and always adds
+// X-Forwarded-For).
+func loopbackRequest(r *http.Request) bool {
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		host = r.RemoteAddr
+	}
+	if ip := net.ParseIP(host); ip == nil || !ip.IsLoopback() {
+		return false
+	}
+	for _, h := range forwardedHeaders {
+		if r.Header.Get(h) != "" {
+			return false
+		}
+	}
+	return true
 }
 
 // WriteJSON writes v as a JSON response with the given status.

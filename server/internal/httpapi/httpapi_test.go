@@ -62,3 +62,38 @@ func TestPanicIsRecoveredAndLogged(t *testing.T) {
 		t.Errorf("want the panic and the 500 request line logged, got:\n%s", l)
 	}
 }
+
+// TestHealthzVersionLoopbackOnly: the release is in /healthz only for a
+// caller on this machine, never through a proxy (B1.1).
+func TestHealthzVersionLoopbackOnly(t *testing.T) {
+	d, err := db.Open(context.Background(), filepath.Join(t.TempDir(), "t.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { d.Close() })
+	h := New(Deps{DB: d, Log: slog.New(slog.NewJSONHandler(&bytes.Buffer{}, nil)), WebApp: http.NotFoundHandler(), Version: "v9.9.9"})
+	get := func(remote string, header ...string) map[string]string {
+		req := httptest.NewRequest("GET", "/healthz", nil)
+		req.RemoteAddr = remote
+		for i := 0; i+1 < len(header); i += 2 {
+			req.Header.Set(header[i], header[i+1])
+		}
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
+		var out map[string]string
+		json.Unmarshal(rec.Body.Bytes(), &out)
+		return out
+	}
+	if out := get("127.0.0.1:5000"); out["version"] != "v9.9.9" || !strings.HasPrefix(out["schema"], "00") {
+		t.Errorf("loopback: %v", out)
+	}
+	if out := get("[::1]:5000"); out["version"] != "v9.9.9" {
+		t.Errorf("loopback v6: %v", out)
+	}
+	if out := get("127.0.0.1:5000", "X-Forwarded-For", "203.0.113.9"); out["version"] != "" || out["schema"] != "" || out["status"] != "ok" {
+		t.Errorf("through the proxy: %v", out)
+	}
+	if out := get("203.0.113.9:5000"); out["version"] != "" {
+		t.Errorf("remote: %v", out)
+	}
+}

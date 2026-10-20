@@ -5,6 +5,7 @@ import (
 	"crypto/subtle"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
@@ -37,6 +38,7 @@ type JudgeDeps struct {
 func NewJudge(d JudgeDeps) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /api/judge/claim", d.claim)
+	mux.HandleFunc("POST /api/judge/toolchain", d.toolchain)
 	mux.HandleFunc("GET /api/judge/blob/{sha}", d.blob)
 	mux.HandleFunc("PUT /api/judge/blob/{sha}", d.uploadBlob)
 	mux.HandleFunc("POST /api/judge/report", d.report)
@@ -72,9 +74,27 @@ func decodeJudge(w http.ResponseWriter, r *http.Request, v any, limit int64) boo
 	return true
 }
 
+// protocolOK answers 426 to a judge of another protocol version (B1.3).
+// The judge stops on it with this message rather than retrying.
+func (d JudgeDeps) protocolOK(w http.ResponseWriter, got int) bool {
+	if got == 0 {
+		got = 1
+	}
+	if got == judgeapi.ProtocolVersion {
+		return true
+	}
+	d.Log.Warn("judge refused: protocol version differs", "judge_protocol", got, "server_protocol", judgeapi.ProtocolVersion)
+	WriteError(w, http.StatusUpgradeRequired, "protocol",
+		fmt.Sprintf("judge protocol %d needed, this judge speaks %d: install the same release on both", judgeapi.ProtocolVersion, got))
+	return false
+}
+
 func (d JudgeDeps) claim(w http.ResponseWriter, r *http.Request) {
 	var req judgeapi.ClaimRequest
 	if !decodeJudge(w, r, &req, maxClaimBody) {
+		return
+	}
+	if !d.protocolOK(w, req.Protocol) {
 		return
 	}
 	c, err := d.Jobs.Claim(r.Context(), req)
@@ -90,6 +110,33 @@ func (d JudgeDeps) claim(w http.ResponseWriter, r *http.Request) {
 	d.Log.Info("job leased", "job_id", c.JobID, "kind", c.Kind, "worker", jobs.Clip(req.Worker),
 		"version", jobs.Clip(req.Version), "isolate", jobs.Clip(req.Isolate))
 	WriteJSON(w, http.StatusOK, c)
+}
+
+// toolchain stores the judge's toolchain report (B1.4) and answers with
+// the hash its claims carry.
+func (d JudgeDeps) toolchain(w http.ResponseWriter, r *http.Request) {
+	var req judgeapi.ToolchainReport
+	if !decodeJudge(w, r, &req, maxClaimBody) {
+		return
+	}
+	if !d.protocolOK(w, req.Protocol) {
+		return
+	}
+	hash, err := d.Jobs.RegisterToolchain(r.Context(), req.Toolchain)
+	var bad *jobs.ReportError
+	switch {
+	case errors.As(err, &bad):
+		WriteError(w, http.StatusBadRequest, "bad_report", bad.Reason)
+		return
+	case err != nil:
+		d.Log.Error("toolchain report failed", "err", err)
+		WriteError(w, http.StatusInternalServerError, "internal", "The server could not record the toolchain.")
+		return
+	}
+	t := req.Toolchain
+	d.Log.Info("judge toolchain", "hash", hash, "gcc", jobs.Clip(t.GCC), "java", jobs.Clip(t.Java), "python", jobs.Clip(t.Python),
+		"node", jobs.Clip(t.Node), "isolate", jobs.Clip(t.Isolate), "kernel", jobs.Clip(t.Kernel))
+	WriteJSON(w, http.StatusOK, judgeapi.ToolchainReply{Hash: hash})
 }
 
 // blob serves a file only to the worker holding a lease on a job that
