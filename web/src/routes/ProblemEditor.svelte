@@ -1,40 +1,16 @@
 <!--
-  ProblemEditor: one problem at /admin/problems/{id} (design.md 5.6, with
-  the M2 UI review applied). The header has a link back to the bank, the
-  title and a "Try as a student" link. Under it a sticky bar keeps the
-  status in words ("Validated 16 Oct 19:42", "Validation failed, 2
-  problems", "Validating, 3rd in queue", "Not validated", each a link to
-  the report), "Unsaved changes", the count of fields that need attention,
-  jump links to each section, Save changes and Validate ("Save and
-  validate" when there are unsaved changes, "Validating" with the queue
-  position while the judge has it); the button that matters now is the
-  primary one. Ctrl+S (Cmd+S) saves.
-
-  Below: the details form (title, slug, Markdown statement that grows with
-  its text, limits, checker, tags, difficulty) beside a live preview; under
-  1024 px the preview follows the form, and under 768 px the statement has
-  Write and Preview tabs instead. Then the tests: sample numbers, subtask
-  rows, a one-line summary of the stored tests computed from the subtasks
-  as typed, tests in no subtask and tests without an expected output named
-  outside the table, the table itself in a disclosure, "Upload tests" (or
-  "Replace tests") from a .zip, and "Generate outputs" for missing outputs
-  or "Regenerate all outputs" after a confirmation, with the result shown
-  in place. Then the solutions (reference and brute force side by side
-  from 1440 px), the warnings, Download pack and Archive problem, and the
-  validation report, polled every 2 s while the judge has the job. Server
-  field errors appear next to their fields and as a list of links above
-  the actions. Leaving with unsaved changes asks first.
-
-  From M5 (when the server sends a "generator" key) there is a Generator
-  section between the tests and the solutions: the generator program, its
-  arguments per subtask, and the plan as a compact table of test, subtask,
-  seed and arguments with rows to add and remove, then "Generate inputs"
-  with its result in place (failures name the test, subtask and seed); good
-  inputs chain into output generation and validation, each shown where it
-  already is. A problem the wizard made carries an "AI draft" tag in the
-  bar and a note until a person saves it. Last, "Can a model solve this?"
-  (components/problem/ModelSolve). Props: `id`, the problem id from the
-  address.
+  ProblemEditor: one problem at /admin/problems/{id} (design.md 5.6). The
+  route loads the problem, keeps the working copy and its unsaved-changes
+  guard, saves (Ctrl+S or Cmd+S), and runs validation, output generation
+  and input generation, polling each every 2 s while the judge has it. The
+  sections are components in components/problem/: EditorBar (the sticky
+  status and actions), StatementSection, TestsSection, GeneratorPanel
+  (from M5, when the server sends a "generator" key), SolutionsSection
+  with JudgingSection, EditorFooter, then the validation report,
+  RevisionHistory and ModelSolve. Their shared classes are in
+  components/problem/editor.css. A live contest that pins the problem asks
+  for a reason with each save; an AI draft carries a note until a person
+  saves it. Props: `id`, the problem id from the address.
 -->
 <script lang="ts">
   import PageState from '../components/PageState.svelte';
@@ -46,6 +22,7 @@
   import { ApiError, getJSON, sendBody, sendJSON } from '../lib/api';
   import EditorFooter from '../components/problem/EditorFooter.svelte';
   import GeneratorPanel from '../components/problem/GeneratorPanel.svelte';
+  import EditorBar from '../components/problem/EditorBar.svelte';
   import ModelSolve from '../components/problem/ModelSolve.svelte';
   import SolutionsSection from '../components/problem/SolutionsSection.svelte';
   import StatementSection from '../components/problem/StatementSection.svelte';
@@ -525,43 +502,18 @@
   {:else if loadState === 'error'}
     <PageState kind="error" message={loadError} onretry={load} />
   {:else if problem && draft}
-    <div class="action-bar">
-      <div class="bar-status">
-        {#if status}
-          <a class="status tone-{status.tone}" href="#validation-heading">
-            {#if status.tone === 'ok'}<span class="dot" aria-hidden="true"></span>{/if}{status.text}
-          </a>
-        {/if}
-        {#if aiDraft}<span class="ai-draft">AI draft</span>{/if}
-        {#if dirty}<span class="unsaved">Unsaved changes</span>{/if}
-        {#if fieldList.length > 0}
-          <a class="error-count" href="#field-errors">
-            {fieldList.length} {fieldList.length === 1 ? 'field needs' : 'fields need'} attention
-          </a>
-        {/if}
-      </div>
-      <nav class="jumps" aria-label="Sections">
-        <a href="#details-heading">Details</a>
-        <a href="#tests-heading">Tests</a>
-        {#if hasGenerator}<a href="#generator-heading">Generator</a>{/if}
-        <a href="#solutions-heading">Solutions</a>
-        <a href="#validation-heading">Validation</a>
-        <a href="#history-heading">History</a>
-      </nav>
-      <div class="bar-actions">
-        <button type="submit" form="problem-form" class="btn {dirty ? 'btn-primary' : 'btn-secondary'}" disabled={saving}>
-          Save changes
-        </button>
-        <button
-          type="button"
-          class="btn {validatePrimary ? 'btn-primary' : 'btn-secondary'}"
-          disabled={requesting || saving || validating}
-          onclick={validate}
-        >
-          {validateLabel}
-        </button>
-      </div>
-    </div>
+    <EditorBar
+      {status}
+      {aiDraft}
+      {dirty}
+      fieldCount={fieldList.length}
+      {hasGenerator}
+      {saving}
+      busy={requesting || saving || validating}
+      {validateLabel}
+      {validatePrimary}
+      onvalidate={validate}
+    />
 
     {#if problem.archived}
       <div class="banner banner-info lead">
@@ -724,98 +676,6 @@
     white-space: nowrap;
   }
 
-  /* The sticky bar keeps status and the two main actions in reach. */
-  .action-bar {
-    position: sticky;
-    top: 0;
-    z-index: 10;
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: var(--space-2) var(--space-5);
-    margin-top: var(--space-4);
-    padding-block: var(--space-2);
-    border-block: var(--rule) solid var(--line);
-    background: var(--paper);
-  }
-
-  .bar-status {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: var(--space-1) var(--space-4);
-    min-width: 0;
-  }
-
-  .status {
-    display: inline-flex;
-    align-items: center;
-    gap: var(--space-2);
-    border-radius: var(--radius);
-    font-weight: 500;
-    text-decoration: none;
-  }
-
-  .status:hover {
-    text-decoration: underline;
-  }
-
-  .tone-ok {
-    color: var(--ok);
-  }
-
-  .tone-bad {
-    color: var(--bad);
-  }
-
-  .tone-wait,
-  .tone-note {
-    color: var(--ink-muted);
-  }
-
-  .dot {
-    width: var(--space-2);
-    height: var(--space-2);
-    border-radius: 50%;
-    background: currentColor;
-  }
-
-  .unsaved {
-    color: var(--part);
-    font-size: var(--fs-0);
-    font-weight: 500;
-  }
-
-  .error-count {
-    border-radius: var(--radius);
-    color: var(--bad);
-    font-size: var(--fs-0);
-    font-weight: 500;
-  }
-
-  .jumps {
-    display: flex;
-    flex-wrap: wrap;
-    gap: var(--space-1) var(--space-3);
-    font-size: var(--fs-0);
-  }
-
-  .jumps a {
-    border-radius: var(--radius);
-    color: var(--ink-muted);
-  }
-
-  .jumps a:hover {
-    color: var(--ink);
-  }
-
-  .bar-actions {
-    display: flex;
-    flex-wrap: wrap;
-    gap: var(--space-2);
-    margin-left: auto;
-  }
-
   .reason-field {
     max-width: var(--measure-form);
     margin-top: var(--space-3);
@@ -824,10 +684,6 @@
   .lead {
     margin-top: var(--space-4);
     max-width: 48rem;
-  }
-
-  .retry {
-    margin-top: var(--space-4);
   }
 
   .validation.block {
@@ -839,28 +695,4 @@
     max-width: 64rem;
   }
 
-  .ai-draft {
-    padding: 0 var(--space-1);
-    border: var(--rule) solid var(--part);
-    border-radius: var(--radius);
-    color: var(--part);
-    font-size: var(--fs-0);
-    font-weight: 500;
-    white-space: nowrap;
-  }
-
-  @media (width < 768px) {
-    .jumps {
-      display: none;
-    }
-
-    .bar-actions {
-      margin-left: 0;
-      width: 100%;
-    }
-
-    .bar-actions .btn {
-      flex: 1 1 auto;
-    }
-  }
 </style>
