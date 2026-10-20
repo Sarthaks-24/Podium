@@ -1,7 +1,7 @@
 import { defineConfig } from 'vitest/config';
 import type { Plugin } from 'vite';
 import { svelte } from '@sveltejs/vite-plugin-svelte';
-import { routeManifest } from './src/lib/routing';
+import { routeManifest } from './src/lib/routing.ts';
 
 // The Go server listens here during development (`make dev`).
 const apiTarget = 'http://127.0.0.1:8080';
