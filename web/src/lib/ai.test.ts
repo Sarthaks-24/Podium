@@ -21,6 +21,7 @@ import {
   wizardRequest,
   wizardStatusText,
   wizardSteps,
+  draftChainSteps,
   withoutAIDraft,
   type InputGeneration,
   type KeyStatus,
@@ -204,14 +205,14 @@ describe('the key never stays in state', () => {
 });
 
 describe('screens that touch the key keep it out of storage, addresses and logs', () => {
-  const sources = import.meta.glob<string>(['/src/routes/AiSettings.svelte', '/src/routes/AiWizard.svelte', '/src/lib/ai.ts'], {
+  const sources = import.meta.glob<string>(['/src/routes/AiSettings.svelte', '/src/routes/AiWizard.svelte', '/src/components/ai/KeyForm.svelte', '/src/lib/ai.ts'], {
     query: '?raw',
     import: 'default',
     eager: true,
   });
 
   it('finds the files', () => {
-    expect(Object.keys(sources)).toHaveLength(3);
+    expect(Object.keys(sources)).toHaveLength(4);
   });
 
   it('uses no browser storage and no console', () => {
@@ -221,8 +222,9 @@ describe('screens that touch the key keep it out of storage, addresses and logs'
   });
 
   it('keeps the key field a password field with autocomplete off', () => {
-    const page = sources['/src/routes/AiSettings.svelte'];
-    const input = /<input\s+id="api-key"[\s\S]*?\/>/.exec(page)?.[0] ?? '';
+    // The key form is components/ai/KeyForm, shown on the settings page and inline in the wizard.
+    const page = sources['/src/components/ai/KeyForm.svelte'];
+    const input = /<input\s+id=\{fid\('api-key'\)\}[\s\S]*?\/>/.exec(page)?.[0] ?? '';
     expect(input).toContain('type="password"');
     expect(input).toContain('autocomplete="off"');
     // The key is never put in an address.
@@ -337,5 +339,27 @@ describe('AI drafts and the solve check', () => {
     expect(solveMeaning({ score: 100, max_score: 100 })).toMatch(/full marks/);
     expect(solveMeaning({ score: 40, max_score: 100 })).toMatch(/part of the marks/);
     expect(solveMeaning({ score: 0, max_score: 100 })).toMatch(/scored nothing/);
+  });
+});
+
+describe('draftChainSteps', () => {
+  const states = (r: ReturnType<typeof draftChainSteps>) => r.steps.map((s) => s.state);
+  const draft = { state: 'draft_created', problem_id: 20 };
+
+  it('follows the draft past its creation to a validated problem (audit O7)', () => {
+    expect(states(draftChainSteps({ state: 'thinking' }, null, null, null))).toEqual(['current', 'waiting', 'waiting', 'waiting']);
+    expect(states(draftChainSteps(draft, { state: 'running' }, null, null))).toEqual(['done', 'done', 'current', 'waiting']);
+    expect(states(draftChainSteps(draft, { state: 'done' }, { state: 'done' }, { state: 'queued' }))).toEqual(['done', 'done', 'done', 'current']);
+    const passed = draftChainSteps(draft, { state: 'done' }, { state: 'done' }, { state: 'passed' });
+    expect(states(passed)).toEqual(['done', 'done', 'done', 'done']);
+    expect(passed).toMatchObject({ done: true, outcome: 'passed' });
+  });
+
+  it('stops on a failure and says where', () => {
+    expect(draftChainSteps(draft, { state: 'error' }, null, null)).toMatchObject({ done: true, outcome: 'tests_failed' });
+    const failed = draftChainSteps(draft, { state: 'done' }, { state: 'done' }, { state: 'failed' });
+    expect(states(failed)).toEqual(['done', 'done', 'done', 'failed']);
+    expect(failed.outcome).toBe('failed');
+    expect(states(draftChainSteps({ state: 'error' }, null, null, null))).toEqual(['failed', 'waiting', 'waiting', 'waiting']);
   });
 });
