@@ -332,6 +332,21 @@ test('students cannot open the contest admin', async ({ page }) => {
   await expect(page.getByRole('main').getByRole('link', { name: 'priya@college.edu' })).toHaveAttribute('href', 'mailto:priya@college.edu');
 });
 
+test('the Console link counts unanswered questions on Settings (O4)', async ({ page }) => {
+  await mockApi(page, { who: 'admin', phase: 'during' });
+  const asked: string[] = [];
+  page.on('request', (r) => {
+    if (r.url().includes('/clarifications')) asked.push(new URL(r.url()).pathname);
+  });
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto('/admin/contests/4');
+  const nav = page.getByRole('navigation', { name: 'Contest' });
+  await expect(nav.getByRole('link', { name: /Console/ })).toContainText('1');
+  await expect(nav.getByRole('link', { name: /Console/ })).toContainText('unanswered question');
+  expect(asked).toContain('/api/admin/contests/4/clarifications');
+  expect(asked.filter((p) => !p.startsWith('/api/'))).toEqual([]);
+});
+
 test('the editor shows field errors, picks problems and previews a roster', async ({ page }) => {
   const api = await mockApi(page, { who: 'admin', phase: 'during' });
   await page.setViewportSize({ width: 1440, height: 900 });
