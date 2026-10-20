@@ -30,11 +30,15 @@ export const LANGUAGES: readonly { id: Language; label: string }[] = [
 export type Checker = 'tokens' | 'exact' | 'float' | 'custom';
 
 /** Checkers in the order the select lists them, with their labels. */
-export const CHECKERS: readonly { id: Checker; label: string }[] = [
-  { id: 'tokens', label: 'Tokens (ignores whitespace)' },
-  { id: 'exact', label: 'Exact' },
-  { id: 'float', label: 'Floating point' },
-  { id: 'custom', label: 'Custom (testlib)' },
+export const CHECKERS: readonly { id: Checker; label: string; help: string }[] = [
+  {
+    id: 'tokens',
+    label: 'Word by word, ignoring extra spaces',
+    help: 'The output matches when it has the same words and numbers as the expected output, whatever the spaces and line breaks between them.',
+  },
+  { id: 'exact', label: 'Exactly, character by character', help: 'The output must be the expected output exactly, spaces and line breaks included.' },
+  { id: 'float', label: 'Numbers within an allowed error', help: 'Like word by word, but numbers match when they are close enough to the expected ones.' },
+  { id: 'custom', label: 'Custom checker (testlib)', help: 'Your own program decides, for problems with more than one right answer.' },
 ];
 
 export type Difficulty = '' | 'easy' | 'medium' | 'hard';
@@ -177,6 +181,8 @@ export interface Problem extends ProblemSummary, ProblemHistory {
   tests: TestCase[];
   content_hash: string;
   validated_hash: string | null;
+  /** What stops validation and judging (a test in no subtask, a missing output); older servers leave it out. */
+  problems?: string[];
   warnings: string[];
 }
 
@@ -844,4 +850,97 @@ export function formatBytes(n: number): string {
 /** API paths for one problem. */
 export function problemPath(id: number | string, rest = ''): string {
   return `/api/admin/problems/${encodeURIComponent(String(id))}${rest}`;
+}
+
+/** A program as the content hash sees it: one with empty source counts as none. */
+function programKey(p: Program | null | undefined): string {
+  return p && p.source.trim() !== '' ? `${p.language}|${p.source}` : '';
+}
+
+/**
+ * The judged fields that differ between the saved copy and the working copy,
+ * in words, mirroring server/internal/problems/hash.go (ContentHash): limits,
+ * checker and its allowed error, the custom checker's source, the reference,
+ * brute force and validator, samples and subtask points and ranges. Title,
+ * slug, statement, tags, difficulty, subtask titles and the generator are
+ * not judged. An AI draft also loses its validation when a person changes
+ * its statement, reference or brute force (store.go Update), so for one the
+ * statement counts too. Empty when a save keeps the validation.
+ */
+export function judgedFieldsChanged(saved: Draft, now: Draft, aiDraft = false): string[] {
+  const out: string[] = [];
+  if (aiDraft && saved.statement_md !== now.statement_md) out.push('statement');
+  if (saved.time_limit_ms !== now.time_limit_ms || saved.memory_limit_mb !== now.memory_limit_mb) out.push('limits');
+  if (saved.checker !== now.checker || saved.epsilon !== now.epsilon) out.push('checker');
+  else if (now.checker === 'custom' && saved.checker_source !== now.checker_source) out.push('checker');
+  if (programKey(saved.reference) !== programKey(now.reference)) out.push('reference solution');
+  if (programKey(saved.brute) !== programKey(now.brute)) out.push('brute force');
+  if (programKey(saved.validator) !== programKey(now.validator)) out.push('validator');
+  const samples = (d: Draft) => {
+    const r = parseTestList(d.samples);
+    return r.ok ? r.tests.join(',') : d.samples;
+  };
+  if (samples(saved) !== samples(now)) out.push('samples');
+  const subtasks = (d: Draft) =>
+    d.subtasks
+      .map((s) => {
+        const r = parseTestList(s.tests);
+        return `${s.points ?? ''}:${r.ok ? r.tests.join(',') : s.tests}`;
+      })
+      .join('|');
+  if (subtasks(saved) !== subtasks(now)) out.push('subtasks');
+  return out;
+}
+
+/** Joins words as "a, b and c". */
+export function wordList(words: readonly string[]): string {
+  if (words.length <= 1) return words.join('');
+  return `${words.slice(0, -1).join(', ')} and ${words[words.length - 1]}`;
+}
+
+/**
+ * The validation's result in one line, for the sticky bar and the readiness
+ * panel: "Validation passed: 6 of 6 tests, slowest 11 ms." or "Validation
+ * failed on test 5." Null while the judge has it, or with no validation.
+ */
+export function validationResultLine(v: Validation | null): { tone: 'ok' | 'bad'; text: string } | null {
+  if (!v || isPending(v)) return null;
+  if (v.state === 'passed') {
+    const s = v.summary;
+    if (!s) return { tone: 'ok', text: 'Validation passed.' };
+    const n = s.reference_total;
+    return { tone: 'ok', text: `Validation passed: ${s.reference_passed} of ${n} ${n === 1 ? 'test' : 'tests'}, slowest ${s.max_time_ms} ms.` };
+  }
+  if (v.state === 'error') return { tone: 'bad', text: 'Validation could not finish.' };
+  const first = v.tests.filter((t) => isFailure(t.verdict)).sort((a, b) => a.idx - b.idx)[0];
+  if (first) return { tone: 'bad', text: `Validation failed on test ${first.idx}.` };
+  if (v.compile.some((c) => c.verdict === 'CE')) return { tone: 'bad', text: 'Validation failed: a program did not compile.' };
+  return { tone: 'bad', text: 'Validation failed.' };
+}
+
+/** How many images in a statement have no description (alt text). */
+export function imagesWithoutAlt(markdown: string): number {
+  return (markdown.match(/!\[\s*\]\([^)]*\)/g) ?? []).length;
+}
+
+type JobState = { state: string } | null;
+
+/**
+ * The chain after the AI wizard or Generate inputs in one line, while its
+ * inputs or outputs are being made: "Inputs generated, outputs generating,
+ * validation waiting". Empty otherwise, a validation on its own included.
+ */
+export function pipelineLine(inputs: JobState, outputs: JobState, validation: JobState): string {
+  const busy = (j: JobState) => j !== null && (j.state === 'queued' || j.state === 'running');
+  // A validation on its own is said by the status; the line is for the chain.
+  if (!busy(inputs) && !busy(outputs)) return '';
+  const word = (j: JobState, done: string, running: string) =>
+    j === null ? 'waiting' : j.state === 'queued' ? 'waiting' : j.state === 'running' ? running : done;
+  const parts: string[] = [];
+  if (inputs !== null) parts.push(`Inputs ${word(inputs, 'generated', 'generating')}`);
+  const outputsWord = busy(inputs) ? 'waiting' : word(outputs, 'generated', 'generating');
+  parts.push(`${parts.length === 0 ? 'Outputs' : 'outputs'} ${outputsWord}`);
+  const validationWord = busy(inputs) || busy(outputs) ? 'waiting' : word(validation, 'done', 'running');
+  parts.push(`validation ${validationWord}`);
+  return parts.join(', ');
 }

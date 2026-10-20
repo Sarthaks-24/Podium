@@ -15,7 +15,7 @@
   import { tick } from 'svelte';
   import ProgramField from '../ProgramField.svelte';
   import { describedBy, planErrors, programError } from '../../lib/problemFields';
-  import { nextPlanRow, type Draft } from '../../lib/problems';
+  import { nextPlanRow, type Draft, type Program } from '../../lib/problems';
 
   interface Props {
     draft: Draft;
@@ -45,6 +45,18 @@
 
   let addPlanButton: HTMLButtonElement | undefined = $state();
 
+  /** The generator just removed, kept so the removal can be undone until the next save (A6). */
+  let removed = $state<Program | null>(null);
+
+  // A save or a reload gives the editor a new working copy; the undo ends there.
+  $effect(() => {
+    void draft;
+    removed = null;
+  });
+
+  /** With no generator and no plan the section is one line (audit O2). */
+  const unused = $derived(!draft.generator && (draft.plan?.length ?? 0) === 0);
+
   const canGenerateInputs = $derived(!!draft.generator && (draft.plan?.length ?? 0) > 0);
 
   function err(key: string): string {
@@ -56,6 +68,7 @@
   }
 
   async function addGenerator() {
+    removed = null;
     draft.generator = {
       language: 'python3',
       source: 'import random\nimport sys\n\nseed = int(sys.argv[1])\nargs = dict(a.split("=", 1) for a in sys.argv[2:])\nrng = random.Random(seed)\n',
@@ -65,9 +78,17 @@
   }
 
   async function removeGenerator() {
+    removed = draft.generator && draft.generator.source.trim() !== '' ? draft.generator : null;
     draft.generator = null;
     await tick();
-    document.getElementById('add-generator')?.focus();
+    document.getElementById(removed ? 'undo-generator' : 'add-generator')?.focus();
+  }
+
+  async function undoRemove() {
+    draft.generator = removed;
+    removed = null;
+    await tick();
+    document.getElementById('generator-source')?.focus();
   }
 
   async function addPlanRow() {
@@ -89,6 +110,17 @@
 {#if draft.plan !== undefined}
   <section class="block" aria-labelledby="generator-heading">
     <h2 id="generator-heading" tabindex="-1">Generator</h2>
+    {#if unused}
+      <div class="optional one-line">
+        {#if removed}
+          <p class="field-help">Generator removed. It goes for good when you save.</p>
+          <button id="undo-generator" type="button" class="btn btn-secondary" onclick={undoRemove}>Undo remove</button>
+        {:else}
+          <p class="field-help">No generator. Add one to make test inputs from seeds instead of uploading them.</p>
+          <button id="add-generator" type="button" class="btn btn-secondary" onclick={addGenerator}>Add generator</button>
+        {/if}
+      </div>
+    {:else}
     <p class="field-help sub-help">
       A program that prints one test input. The judge runs it in the sandbox once per planned test, as generator.py with the seed,
       the subtask's arguments and the test's own arguments, and stores what it prints as that test's input.
@@ -272,6 +304,8 @@
       {/if}
     </div>
 
+    {/if}
+
     <div class="generation" aria-live="polite">
       {#if error}
         <div class="banner banner-error problems-list">
@@ -291,6 +325,10 @@
 {/if}
 
 <style>
+  .one-line {
+    margin-top: var(--space-2);
+  }
+
   .arg-rows {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(min(100%, 18rem), 1fr));

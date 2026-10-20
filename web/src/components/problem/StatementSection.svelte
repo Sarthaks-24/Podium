@@ -1,19 +1,28 @@
 <!--
-  StatementSection: the top of the problem editor (split out of
-  ProblemEditor in v2 P3 F5.1): the details form (title, slug, the
-  Markdown statement that grows with its text, limits, checker, tags,
-  difficulty) beside a live preview; under 1024 px the preview follows the
-  form, and under 768 px the statement has Write and Preview tabs instead.
-  Props: `draft` (bindable) and `fields`, the field errors by key.
+  StatementSection: the first section of the problem editor (v2 P3 F5.1;
+  "Statement" from F5.3 A3): title, slug, the Markdown statement that
+  grows with its text, limits, tags and difficulty, beside a live preview
+  from 1024 px; under 1024 px the preview follows the form, under 768 px
+  the statement has Write and Preview tabs instead, and from 1280 px the
+  editor shows the preview in its context column (`showPreview` false).
+  The checker is in JudgingSection. Props: `draft` (bindable), `fields`
+  (the field errors by key) and `showPreview`.
 -->
 <script lang="ts">
   import { onMount, tick } from 'svelte';
   import StatementPreview from '../StatementPreview.svelte';
   import { media } from '../../lib/breakpoints';
   import { describedBy } from '../../lib/problemFields';
-  import { CHECKERS, DIFFICULTIES, type Draft } from '../../lib/problems';
+  import { DIFFICULTIES, type Draft } from '../../lib/problems';
 
-  let { draft = $bindable(), fields }: { draft: Draft; fields: Record<string, string> } = $props();
+  interface Props {
+    draft: Draft;
+    fields: Record<string, string>;
+    /** False when the editor shows the preview in its context column instead (from 1280 px). */
+    showPreview?: boolean;
+  }
+
+  let { draft = $bindable(), fields, showPreview = true }: Props = $props();
 
   let phone = $state(!media('tablet').matches);
   let statementTab = $state<'write' | 'preview'>('write');
@@ -64,9 +73,9 @@
   }
 </script>
 
-<div class="top">
+<div class="top" class:with-preview={showPreview && !phone}>
   <section class="details" aria-labelledby="details-heading">
-    <h2 id="details-heading" tabindex="-1">Details</h2>
+    <h2 id="details-heading" tabindex="-1">Statement and limits</h2>
 
     <div class="field">
       <label for="title">Title</label>
@@ -189,40 +198,6 @@
     </div>
 
     <div class="row">
-      <div class="field">
-        <label for="checker">Checker</label>
-        <select
-          id="checker"
-          class="select"
-          bind:value={draft.checker}
-          aria-invalid={err('checker') ? 'true' : undefined}
-          aria-describedby={described('checker')}
-        >
-          {#each CHECKERS as c (c.id)}<option value={c.id}>{c.label}</option>{/each}
-        </select>
-        {#if err('checker')}<p id="checker-error" class="field-error">{err('checker')}</p>{/if}
-      </div>
-      {#if draft.checker === 'float'}
-        <div class="field">
-          <label for="epsilon">Allowed error</label>
-          <input
-            id="epsilon"
-            class="input mono"
-            type="number"
-            inputmode="decimal"
-            min="0"
-            step="any"
-            bind:value={draft.epsilon}
-            aria-invalid={err('epsilon') ? 'true' : undefined}
-            aria-describedby={described('epsilon', 'epsilon-help')}
-          />
-          <p id="epsilon-help" class="field-help">Absolute or relative, for example 0.000001.</p>
-          {#if err('epsilon')}<p id="epsilon-error" class="field-error">{err('epsilon')}</p>{/if}
-        </div>
-      {/if}
-    </div>
-
-    <div class="row">
       <div class="field grow">
         <label for="tags">Tags</label>
         <input
@@ -253,7 +228,7 @@
     </div>
   </section>
 
-  {#if !phone}
+  {#if showPreview && !phone}
     <section class="preview" aria-labelledby="preview-heading">
       <h2 id="preview-heading">Preview</h2>
       <div class="preview-body">
@@ -273,7 +248,7 @@
     display: grid;
     grid-template-columns: minmax(0, 1fr);
     gap: var(--space-6);
-    margin-top: var(--space-6);
+    margin-top: var(--space-5);
   }
 
   .details {
@@ -367,7 +342,7 @@
   }
 
   @media (min-width: 1024px) {
-    .top {
+    .top.with-preview {
       grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
     }
 

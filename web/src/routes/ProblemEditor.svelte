@@ -27,20 +27,28 @@
   import SolutionsSection from '../components/problem/SolutionsSection.svelte';
   import StatementSection from '../components/problem/StatementSection.svelte';
   import TestsSection from '../components/problem/TestsSection.svelte';
+  import JudgingSection from '../components/problem/JudgingSection.svelte';
+  import ReadinessPanel from '../components/problem/ReadinessPanel.svelte';
   import RevisionHistory from '../components/problem/RevisionHistory.svelte';
+  import StatementPreview from '../components/StatementPreview.svelte';
+  import { media } from '../lib/breakpoints';
   import '../components/problem/editor.css';
   import { setTitle } from '../lib/head';
   import { routeTitle } from '../lib/routing';
   import {
     editorStatus,
     fieldKey,
+    imagesWithoutAlt,
     isFailure,
     isPending,
+    judgedFieldsChanged,
     ordinal,
     problemPath,
     readPlan,
     toDraft,
     toEdit,
+    validationResultLine,
+    pipelineLine,
     verdictLabel,
     type Draft,
     type Problem,
@@ -65,6 +73,9 @@
   let draft = $state<Draft | null>(null);
   let baseline = $state('');
   const dirty = $derived(draft !== null && JSON.stringify(draft) !== baseline);
+  // A server from M5 on sends "generator" (null when there is none).
+  const hasGenerator = $derived(problem !== null && problem.generator !== undefined);
+  const aiDraft = $derived(problem !== null && isAIDraft(problem.tags));
 
   let fields = $state<Record<string, string>>({});
   let saveError = $state('');
@@ -107,7 +118,17 @@
     return dirty ? 'Save and validate' : 'Validate';
   });
   // The button that matters now is the primary one.
-  const validatePrimary = $derived(!dirty && !!problem && !(problem.validated && validation?.current !== false));
+  const blocked = $derived((problem?.problems ?? []).length > 0);
+  // While the server names what stops validation, Validate is not the next step.
+  const validatePrimary = $derived(!dirty && !!problem && !blocked && !(problem.validated && validation?.current !== false));
+  /** Judged fields changed and not saved (a save would need a new validation). */
+  const judged = $derived(draft && baseline ? judgedFieldsChanged(JSON.parse(baseline) as Draft, draft, aiDraft) : []);
+  const resultLine = $derived(validation && validation.current !== false ? validationResultLine(validation) : null);
+  const pipeline = $derived(pipelineLine(hasGenerator ? inputGen : null, generation, validation));
+  /** Set when a validation finishes while the editor is open: the bar then says how it went (audit O2). */
+  let justFinished = $state(false);
+  /** From 1280 px the preview sits in the context column beside the form. */
+  let desk = $state(media('desk').matches);
 
   const genPending = $derived(generation !== null && (generation.state === 'queued' || generation.state === 'running'));
   const genSummary = $derived.by(() => {
@@ -137,9 +158,6 @@
     return { tone: 'ok', text: `Generated ${n} ${n === 1 ? 'output' : 'outputs'}. Slowest run ${formatMs(slowest)}.`, lines: [] as string[] };
   });
 
-  // A server from M5 on sends "generator" (null when there is none).
-  const hasGenerator = $derived(problem !== null && problem.generator !== undefined);
-  const aiDraft = $derived(problem !== null && isAIDraft(problem.tags));
   const inputPending = $derived(inputGenPending(inputGen));
   const inputReport = $derived(inputGen && problem ? inputGenReport(inputGen, readPlan(problem.plan)) : null);
 
@@ -196,7 +214,10 @@
       const v = await getJSON<Validation>(problemPath(id, '/validation'));
       if (!alive) return;
       validation = v;
-      if (isPending(was) && !isPending(v)) refreshProblem();
+      if (isPending(was) && !isPending(v)) {
+        justFinished = true;
+        refreshProblem();
+      }
     } catch (e) {
       if (handleSessionError(e)) return;
       // A failed poll is retried on the next tick.
@@ -308,6 +329,9 @@
     } else {
       loadState = 'forbidden';
     }
+    const deskQuery = media('desk');
+    const syncDesk = () => (desk = deskQuery.matches);
+    deskQuery.addEventListener('change', syncDesk);
     const removeGuard = setNavigationGuard((to) => {
       if (!dirty) return true;
       leaveTo = to;
@@ -319,6 +343,7 @@
       clearTimeout(genTimer);
       clearTimeout(inputTimer);
       removeGuard();
+      deskQuery.removeEventListener('change', syncDesk);
     };
   });
 
@@ -477,6 +502,32 @@
     navigate(to);
   }
 
+  /** Moves to the full validation report and puts focus on its heading. */
+  function showReport(event: MouseEvent) {
+    const el = document.getElementById('validation-heading');
+    if (!el) return;
+    event.preventDefault();
+    el.scrollIntoView({ block: 'start' });
+    el.focus({ preventScroll: true });
+  }
+
+  /** The jump links, each with a short state (A3). */
+  const jumps = $derived.by(() => {
+    if (!problem || !draft) return [];
+    const n = problem.tests.length;
+    const noOutput = problem.tests.filter((t) => t.output_missing).length;
+    const list = [
+      { id: 'details-heading', label: 'Statement', state: '' },
+      { id: 'solutions-heading', label: 'Solutions', state: draft.brute ? 'with brute force' : 'reference only' },
+      { id: 'tests-heading', label: 'Tests', state: n === 0 ? 'none' : noOutput > 0 ? `${noOutput} without output` : String(n) },
+    ];
+    if (hasGenerator) list.push({ id: 'generator-heading', label: 'Generator', state: draft.generator ? '' : 'none' });
+    list.push({ id: 'judging-heading', label: 'Judging', state: draft.validator ? '' : 'no validator' });
+    list.push({ id: 'validation-heading', label: 'Validation', state: '' });
+    list.push({ id: 'history-heading', label: 'History', state: '' });
+    return list;
+  });
+
   const pageTitle = $derived(
     loadState === 'missing' ? 'Problem not found' : problem ? (problem.title.trim() !== '' ? problem.title : problem.slug) : 'Problem',
   );
@@ -488,7 +539,7 @@
   <PageHeader title={pageTitle} crumbs={[{ label: 'Problem bank', href: '/admin/problems' }, { label: pageTitle }]}>
     {#snippet actions()}
       {#if problem && loadState === 'ready'}
-        <a class="try" href="/admin/problems/{problem.id}/try">Try as a student</a>
+        <a class="btn btn-quiet" href="/admin/problems/{problem.id}/try">Try as a student</a>
       {/if}
     {/snippet}
   </PageHeader>
@@ -507,12 +558,14 @@
       {aiDraft}
       {dirty}
       fieldCount={fieldList.length}
-      {hasGenerator}
+      {jumps}
       {saving}
       busy={requesting || saving || validating}
       {validateLabel}
       {validatePrimary}
+      result={justFinished && !dirty && !validating ? resultLine : null}
       onvalidate={validate}
+      onreport={showReport}
     />
 
     {#if problem.archived}
@@ -556,68 +609,98 @@
       </div>
     {/if}
 
-    <form id="problem-form" class="form" novalidate onsubmit={onSubmit}>
-      <StatementSection bind:draft {fields} />
-
-      <TestsSection
-        {id}
-        bind:draft
-        bind:fields
-        bind:fileInput={testsInput}
-        tests={problem.tests}
-        {replacing}
-        {replaceError}
-        {genBusy}
-        {genPending}
-        {genError}
-        {genSummary}
-        onupload={() => (problem && problem.tests.length > 0 ? (replaceOpen = true) : pickTests())}
-        ongenerate={() => generate(false)}
-        onregenerate={() => (regenOpen = true)}
-        onfile={replaceTests}
-      />
-
-      {#if hasGenerator}
-        <GeneratorPanel
-          bind:draft
-          bind:fields
-          testIdx={problem.tests.map((t) => t.idx)}
+    <div class="page-split editor-split">
+      <aside class="page-split-aside" aria-label="Readiness and preview">
+        <ReadinessPanel
+          {problem}
+          {status}
+          {judged}
           {dirty}
-          {saving}
-          busy={inputGenBusy}
-          pending={inputPending}
-          error={inputGenError}
-          report={inputReport}
-          ongenerate={generateInputs}
+          {pipeline}
+          result={resultLine}
+          altMissing={imagesWithoutAlt(draft.statement_md)}
+          onreport={showReport}
         />
-      {/if}
+        {#if desk}
+          <section class="panel aside-preview" aria-labelledby="preview-heading">
+            <h2 id="preview-heading">Preview</h2>
+            <StatementPreview
+              title={draft.title}
+              markdown={draft.statement_md}
+              timeLimitMs={draft.time_limit_ms}
+              memoryMb={draft.memory_limit_mb}
+            />
+          </section>
+        {/if}
+      </aside>
 
-      <SolutionsSection bind:draft {fields} />
+      <div class="page-split-main editor-main">
+        <form id="problem-form" class="form" novalidate onsubmit={onSubmit}>
+          <StatementSection bind:draft {fields} showPreview={!desk} />
 
-      <EditorFooter {id} warnings={problem.warnings} archived={!!problem.archived} {saveError} {fieldList} onarchive={() => (archiveOpen = true)} />
-    </form>
+          <SolutionsSection bind:draft {fields} />
 
-    <section class="block validation" aria-labelledby="validation-heading">
-      <h2 id="validation-heading" tabindex="-1">Validation</h2>
-      {#if validateError}
-        <div class="banner banner-error problems-list" role="alert">
-          <p>{validateError.message}</p>
-          {#if validateError.problems.length > 0}
-            <ul>{#each validateError.problems as line, i (i)}<li>{line}</li>{/each}</ul>
+          <TestsSection
+            {id}
+            bind:draft
+            bind:fields
+            bind:fileInput={testsInput}
+            tests={problem.tests}
+            {replacing}
+            {replaceError}
+            {genBusy}
+            {genPending}
+            {genError}
+            {genSummary}
+            onupload={() => (problem && problem.tests.length > 0 ? (replaceOpen = true) : pickTests())}
+            ongenerate={() => generate(false)}
+            onregenerate={() => (regenOpen = true)}
+            onfile={replaceTests}
+          />
+
+          {#if hasGenerator}
+            <GeneratorPanel
+              bind:draft
+              bind:fields
+              testIdx={problem.tests.map((t) => t.idx)}
+              {dirty}
+              {saving}
+              busy={inputGenBusy}
+              pending={inputPending}
+              error={inputGenError}
+              report={inputReport}
+              ongenerate={generateInputs}
+            />
           {/if}
-        </div>
-      {/if}
-      <ValidationReport {validation} />
-    </section>
 
-    <section class="block history" aria-labelledby="history-heading">
-      <h2 id="history-heading" tabindex="-1">History</h2>
-      <RevisionHistory problemId={problem.id} history={problem} />
-    </section>
+          <JudgingSection bind:draft {fields} />
 
-    {#if hasGenerator}
-      <ModelSolve {id} onsessionerror={handleSessionError} />
-    {/if}
+          <EditorFooter {id} archived={!!problem.archived} {saveError} {fieldList} onarchive={() => (archiveOpen = true)} />
+        </form>
+
+        <section class="block validation" aria-labelledby="validation-heading">
+          <h2 id="validation-heading" tabindex="-1">Validation</h2>
+          {#if validateError}
+            <div class="banner banner-error problems-list" role="alert">
+              <p>{validateError.message}</p>
+              {#if validateError.problems.length > 0}
+                <ul>{#each validateError.problems as line, i (i)}<li>{line}</li>{/each}</ul>
+              {/if}
+            </div>
+          {/if}
+          <ValidationReport {validation} />
+        </section>
+
+        <section class="block history" aria-labelledby="history-heading">
+          <h2 id="history-heading" tabindex="-1">History</h2>
+          <RevisionHistory problemId={problem.id} history={problem} />
+        </section>
+
+        {#if hasGenerator}
+          <ModelSolve {id} onsessionerror={handleSessionError} />
+        {/if}
+      </div>
+    </div>
   {/if}
 </div>
 
@@ -670,12 +753,6 @@
     min-width: 0;
   }
 
-  .try {
-    border-radius: var(--radius);
-    font-weight: 500;
-    white-space: nowrap;
-  }
-
   .reason-field {
     max-width: var(--measure-form);
     margin-top: var(--space-3);
@@ -684,6 +761,28 @@
   .lead {
     margin-top: var(--space-4);
     max-width: 48rem;
+  }
+
+  /* The context column sits under the sticky bar, not behind it. */
+  .editor-split {
+    margin-top: var(--space-5);
+  }
+
+  @media (min-width: 1280px) {
+    .editor-split > .page-split-aside {
+      top: calc(var(--control-h) + 2 * var(--space-2) + var(--space-4));
+      max-height: calc(100dvh - var(--control-h) - 2 * var(--space-2) - 2 * var(--space-4));
+    }
+  }
+
+  /* One column that never grows past the page: wide tables scroll inside it. */
+  .editor-main {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0;
+  }
+
+  .aside-preview h2 {
+    font-size: var(--fs-sub);
   }
 
   .validation.block {

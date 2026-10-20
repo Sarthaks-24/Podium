@@ -76,6 +76,7 @@ export function problemFixtures(): Record<number, Json> {
     checker_source: '',
     brute: null,
     validator: null,
+    problems: [],
     warnings: [],
   };
   return {
@@ -145,7 +146,8 @@ export function problemFixtures(): Record<number, Json> {
         test_(6, 2, LONG_INPUT, '18\n'),
         test_(7, null, LONG_INPUT, '19\n'),
       ],
-      warnings: ['Test 7 is in no subtask. Add it to a subtask or mark it as a sample.'],
+      problems: ['Test 7 is in no subtask. Add it to a subtask or mark it as a sample.'],
+      warnings: ['No brute force: validation cannot check the reference against a second solution.'],
       content_hash: 'h2',
     },
     3: {
@@ -206,7 +208,7 @@ export function problemFixtures(): Record<number, Json> {
         { ...test_(4, 1, '5 6\n1 2 3 4 5\n', ''), output_missing: true },
         { ...test_(5, 1, '1 1\n1\n', ''), output_missing: true },
       ],
-      warnings: ['Tests 4 and 5 have no expected output. Generate outputs.'],
+      problems: ['Tests 4 and 5 have no expected output. Generate outputs.'],
       content_hash: 'h5',
     },
   };
@@ -447,8 +449,8 @@ export async function mockApi(page: Page, who: 'admin' | 'student' = 'admin') {
           return v ? json(route, 200, { ...v, current: v.content_hash === p.content_hash }) : apiError(route, 404, 'not_found', 'This problem has not been validated yet.');
         }
         if (rest === '/validate' && method === 'POST') {
-          if ((p.warnings as string[]).length > 0) {
-            return apiError(route, 400, 'bad_request', 'This problem cannot be validated yet.', { problems: p.warnings });
+          if ((p.problems as string[]).length > 0) {
+            return apiError(route, 400, 'bad_request', 'This problem cannot be validated yet.', { problems: p.problems });
           }
           const hash = p.content_hash as string;
           state.validations[id] = validationOf('queued', hash, { queue_position: 2 });
@@ -490,7 +492,7 @@ export async function mockApi(page: Page, who: 'admin' | 'student' = 'admin') {
               for (const t of p.tests as Json[]) {
                 if (t.output_missing) Object.assign(t, { output_missing: false, output_size: 2, output_preview: '2\n' });
               }
-              p.warnings = [];
+              p.problems = [];
             }
           }
           const g = state.generations[id];

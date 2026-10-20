@@ -1,30 +1,47 @@
 <!--
-  SolutionsSection: the problem editor's Solutions section (split out of
-  ProblemEditor in v2 P3 F5.1): the reference solution, the optional brute
-  force (reference and brute force side by side from 1440 px), then the
-  validator and custom checker (JudgingSection). Adding a program focuses
-  its source; removing one focuses its Add button. Props: `draft`
-  (bindable) and `fields`, the field errors by key.
+  SolutionsSection: the problem editor's Solutions section (v2 P3 F5.1):
+  the reference solution, which every test's expected output comes from,
+  and the optional brute force, a slow but simple solution validation
+  compares with it (side by side from 1440 px). Adding the brute force
+  focuses its source; removing it can be undone until the next save (A6).
+  Props: `draft` (bindable) and `fields`, the field errors by key.
 -->
 <script lang="ts">
   import { tick } from 'svelte';
   import ProgramField from '../ProgramField.svelte';
-  import JudgingSection from './JudgingSection.svelte';
   import { programError } from '../../lib/problemFields';
-  import type { Draft } from '../../lib/problems';
+  import type { Draft, Program } from '../../lib/problems';
 
   let { draft = $bindable(), fields }: { draft: Draft; fields: Record<string, string> } = $props();
 
-  async function addProgram(role: 'brute' | 'validator') {
-    draft[role] = { language: 'python3', source: '' };
+  /** The brute force just removed, kept so the removal can be undone until the next save. */
+  let removed = $state<Program | null>(null);
+
+  // A save or a reload gives the editor a new working copy; the undo ends there.
+  $effect(() => {
+    void draft;
+    removed = null;
+  });
+
+  async function add() {
+    draft.brute = { language: 'python3', source: '' };
+    removed = null;
     await tick();
-    document.getElementById(`${role}-source`)?.focus();
+    document.getElementById('brute-source')?.focus();
   }
 
-  async function removeProgram(role: 'brute' | 'validator') {
-    draft[role] = null;
+  async function remove() {
+    removed = draft.brute && draft.brute.source.trim() !== '' ? draft.brute : null;
+    draft.brute = null;
     await tick();
-    document.getElementById(`add-${role}`)?.focus();
+    document.getElementById(removed ? 'undo-brute' : 'add-brute')?.focus();
+  }
+
+  async function undo() {
+    draft.brute = removed;
+    removed = null;
+    await tick();
+    document.getElementById('brute-source')?.focus();
   }
 </script>
 
@@ -35,7 +52,7 @@
     <ProgramField
       id="reference"
       label="Reference solution"
-      help="Must pass every test in at most half the time limit."
+      help="Your correct solution. Expected outputs can be generated from it, and it must pass every test in at most half the time limit."
       bind:program={draft.reference}
       error={programError(fields, 'reference')}
     />
@@ -47,17 +64,20 @@
         help="A slow but simple solution. Validation checks that it agrees with the reference."
         bind:program={draft.brute}
         error={programError(fields, 'brute')}
-        onremove={() => removeProgram('brute')}
+        onremove={remove}
         removeLabel="Remove brute force"
       />
     {:else}
       <div class="optional">
         <h3 class="program-name">Brute force</h3>
-        <p class="field-help">No brute force. Add a slow but simple solution and validation compares it with the reference.</p>
-        <button id="add-brute" type="button" class="btn btn-secondary" onclick={() => addProgram('brute')}>Add brute force</button>
+        {#if removed}
+          <p class="field-help">Brute force removed. It goes for good when you save.</p>
+          <button id="undo-brute" type="button" class="btn btn-secondary" onclick={undo}>Undo remove</button>
+        {:else}
+          <p class="field-help">No brute force. Add a slow but simple solution and validation compares it with the reference.</p>
+          <button id="add-brute" type="button" class="btn btn-secondary" onclick={add}>Add brute force</button>
+        {/if}
       </div>
     {/if}
-
-    <JudgingSection bind:draft {fields} onadd={() => addProgram('validator')} onremove={() => removeProgram('validator')} />
   </div>
 </section>
