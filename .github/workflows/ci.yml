@@ -1,7 +1,11 @@
 # Runs on every push: gofmt, go vet, Go tests, svelte-check, ESLint, Vitest
-# (the `make check` target), plus a Linux release build. The isolate sandbox
-# suite needs a host with isolate.service and runs locally or on the VM with
-# `make sandbox-test`.
+# (the `make check` target), plus a Linux release build. A second job
+# installs isolate on the ubuntu-24.04 runner (cgroup v2) with the VM's own
+# install.sh steps and runs the hostile-program suite (`make
+# sandbox-test`) and `podium-judge selftest`, the check the VM runs after
+# an install or a compiler update (B1.9). If the runner ever cannot host
+# isolate, the sandbox job fails at its install step, not silently; the VM
+# check stays `sudo -u judge podium-judge selftest`.
 name: ci
 
 on:
@@ -28,3 +32,22 @@ jobs:
       - run: cd web && npm ci
       - run: make check
       - run: make build
+
+  sandbox:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: server/go.mod
+          cache-dependency-path: server/go.sum
+      # The VM's install steps: compilers and runtimes, isolate with its
+      # cgroup keeper and tmpfs box root, testlib.h, the judge user.
+      - run: sudo deploy/install.sh packages isolate testlib users
+      - run: make sandbox-test
+      - name: podium-judge selftest
+        run: |
+          cd server && GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -o bin/podium-judge ./cmd/podium-judge
+          sudo install -m 755 bin/podium-judge /usr/local/bin/podium-judge
+          cd /tmp && sudo -u judge env PODIUM_ISOLATE_PATH=/usr/bin/isolate PODIUM_JUDGE_CACHE_DIR=/tmp /usr/local/bin/podium-judge selftest

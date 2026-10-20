@@ -53,6 +53,11 @@ func (f *Fake) Solve(ctx context.Context, statement string) (string, error) {
 // Check implements Provider.
 func (f *Fake) Check(context.Context) error { return nil }
 
+// ListModels implements Provider: the one canned model.
+func (f *Fake) ListModels(context.Context) ([]Model, error) {
+	return []Model{{ID: FakeModel, Name: "Canned problems"}}, nil
+}
+
 // clonePack returns a deep copy, so callers may change what they get.
 func clonePack(p WizardPack) *WizardPack {
 	b, _ := json.Marshal(p)

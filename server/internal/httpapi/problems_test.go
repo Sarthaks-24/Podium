@@ -64,6 +64,11 @@ func (b *browser) raw(method, path, contentType string, body []byte, origin stri
 func (s *site) judgeCall(method, path, token string, body any, headers ...string) (*http.Response, []byte) {
 	s.t.Helper()
 	var r io.Reader
+	// A claim speaks this build's protocol, as podium-judge's client does.
+	if c, ok := body.(judgeapi.ClaimRequest); ok && c.Protocol == 0 {
+		c.Protocol = judgeapi.ProtocolVersion
+		body = c
+	}
 	if body != nil {
 		b, _ := json.Marshal(body)
 		r = bytes.NewReader(b)

@@ -32,17 +32,36 @@ type Worker struct {
 	WorkDir string
 	// Name, Version and Isolate identify this worker in the server's log.
 	Name, Version, Isolate string
+	// Toolchain is the hash the server returned for this host's
+	// toolchain report; each claim carries it.
+	Toolchain string
 
 	// handle replaces the job dispatch in tests; nil runs the real kinds.
 	handle func(ctx context.Context, box int, c *judgeapi.Claim) error
 
 	mu    sync.Mutex
 	holds map[int64]*[]func()
+	fatal error
+	halt  context.CancelFunc
+}
+
+// stopFor ends claiming on every lane for good: the server speaks another
+// protocol, which no retry fixes.
+func (w *Worker) stopFor(err error) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if w.fatal == nil {
+		w.fatal = err
+		w.Log.Error("stopping: the server and this judge differ", "err", err)
+	}
+	if w.halt != nil {
+		w.halt()
+	}
 }
 
 // Run claims and runs jobs on every lane until ctx ends. Ending ctx also
 // abandons the jobs that are running; use Drain to let them finish.
-func (w *Worker) Run(ctx context.Context) { w.Drain(ctx, ctx) }
+func (w *Worker) Run(ctx context.Context) error { return w.Drain(ctx, ctx) }
 
 // Drain claims and runs jobs on every lane until stop ends. Then each lane
 // finishes the job it holds, reports it, and Drain returns once every lane
@@ -53,7 +72,15 @@ func (w *Worker) Run(ctx context.Context) { w.Drain(ctx, ctx) }
 // does not kill isolate or the closing report. Ending jobs abandons the
 // running jobs without a final report: the server hands each out again
 // once its lease runs out, exactly as after a crash.
-func (w *Worker) Drain(stop, jobs context.Context) {
+//
+// Drain returns a *ProtocolError when the server refused this judge's
+// protocol; every lane then stopped claiming as if stop had ended.
+func (w *Worker) Drain(stop, jobs context.Context) error {
+	stop, halt := context.WithCancel(stop)
+	defer halt()
+	w.mu.Lock()
+	w.halt = halt
+	w.mu.Unlock()
 	var wg sync.WaitGroup
 	for lane := 0; lane < w.Lanes; lane++ {
 		// A box left behind by a killed worker would make Init fail.
@@ -69,6 +96,19 @@ func (w *Worker) Drain(stop, jobs context.Context) {
 		}()
 	}
 	wg.Wait()
+	// Leave no box behind: after a forced stop a lane's box may still hold
+	// a program's files (tmpfs, so memory) until the next start cleans it.
+	// Cleanup runs even when jobs was cancelled (a forced stop).
+	if w.Runner != nil {
+		for lane := 0; lane < w.Lanes; lane++ {
+			if err := w.Runner.Iso.Cleanup(jobs, lane); err != nil {
+				w.Log.Warn("box cleanup at stop failed", "box", lane, "err", err)
+			}
+		}
+	}
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return w.fatal
 }
 
 func (w *Worker) lane(stop, ctx context.Context, box int) {
@@ -79,9 +119,13 @@ func (w *Worker) lane(stop, ctx context.Context, box int) {
 		// has already leased to this lane.
 		claim, err := w.Client.Claim(ctx, judgeapi.ClaimRequest{
 			Kinds:  []string{judgeapi.KindRun, judgeapi.KindSubmit, judgeapi.KindGenerate, judgeapi.KindGenerateInputs, judgeapi.KindValidate},
-			Worker: w.Name, Version: w.Version, Isolate: w.Isolate,
+			Worker: w.Name, Version: w.Version, Isolate: w.Isolate, Toolchain: w.Toolchain,
 		})
+		var protocol *ProtocolError
 		switch {
+		case errors.As(err, &protocol):
+			w.stopFor(protocol)
+			return
 		case err != nil:
 			if ctx.Err() == nil {
 				w.Log.Warn("claim failed", "lane", box, "err", err, "retry_in", backoff)

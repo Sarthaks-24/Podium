@@ -228,6 +228,17 @@ func DecodePack(text string) (*WizardPack, error) {
 	return &p, nil
 }
 
+// decodeSolution reads the answer of a Solve call.
+func decodeSolution(text string) (string, error) {
+	var out struct {
+		Source string `json:"source"`
+	}
+	if err := json.Unmarshal([]byte(text), &out); err != nil {
+		return "", &Error{Code: CodeInvalidAnswer, Message: "The model's answer could not be used.", Reasons: []string{"The answer is not valid JSON."}}
+	}
+	return out.Source, nil
+}
+
 // Check lists everything wrong with a pack: the wizard's own rules, then
 // the editor's field rules on the draft it becomes. An empty list means
 // the pack can become a draft.

@@ -50,9 +50,12 @@ Source files must sit at the top of the pack, with a name of up to 40 letters, d
 
 ### problem.yaml
 
+**Pack format.** `format: 1` is the format this release reads and writes, and a pack without the line is format 1, so every pack written before v1.1.0 still imports. A later release that changes the pack raises the number; a pack of a newer format is refused with both numbers named ("problem.yaml is pack format 2, and this server reads format 1 and older. Upgrade Podium, or export the problem again from a server of this version."), rather than read with its new fields missing.
+
 Parsed strictly: an unknown key is an error, so a misspelt key never silently falls back to a default. Comments are allowed.
 
 ```yaml
+format: 1                       # pack format; leave it out or write 1 (exports write it)
 title: Pair with sum            # shown to students; up to 120 characters
 slug: pair-with-sum             # lowercase letters, digits and single hyphens; unique in the bank
 time_limit_ms: 1000             # for C++; 100 to 10000; default 1000
@@ -247,7 +250,9 @@ Generate inputs in the editor runs the generator for every planned test, in one 
 
 ## The AI wizard
 
-"New problem with AI" on the problem bank asks a model to write a whole problem: statement, samples, subtasks, a C++ reference, a Python brute force, a Python generator with its plan, a Python validator, the checker and limits. An owner or admin pastes their own provider key first (Anthropic; see `docs/OPERATIONS.md`, "AI wizard keys"). The key stays in the server's memory for 2 hours and is forgotten on sign-out.
+"New problem with AI" on the problem bank asks a model to write a whole problem: statement, samples, subtasks, a C++ reference, a Python brute force, a Python generator with its plan, a Python validator, the checker and limits. An owner or admin pastes their own provider key first: Anthropic, OpenAI or Google Gemini (`docs/OPERATIONS.md`, "AI wizard keys"). The server lists that provider's current models; choose one, or type the id of a model the list does not show. The key stays in the server's memory for 2 hours and is forgotten on sign-out. The wizard shows which provider and model wrote each draft.
+
+The three providers get the same instructions and the same answer schema, and every answer passes the same checks, so a draft from any of them is held to the same rules. Models differ in how often their first answer passes: when one keeps failing a check, try another model before rewriting the brief.
 
 ### From a brief
 

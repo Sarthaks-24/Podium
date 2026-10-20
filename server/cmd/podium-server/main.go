@@ -18,6 +18,7 @@ import (
 
 	"github.com/Sarthaks-24/podium/internal/ai"
 	"github.com/Sarthaks-24/podium/internal/auth"
+	"github.com/Sarthaks-24/podium/internal/buildinfo"
 	"github.com/Sarthaks-24/podium/internal/config"
 	"github.com/Sarthaks-24/podium/internal/contests"
 	"github.com/Sarthaks-24/podium/internal/db"
@@ -31,17 +32,23 @@ import (
 	"github.com/Sarthaks-24/podium/internal/webui"
 )
 
-// version is set at release time with -ldflags "-X main.version=...".
-var version = "dev"
+// version is the release, set at build time in package buildinfo.
+var version = buildinfo.Version
 
 func main() {
 	envFile := flag.String("env-file", "", "load variables from this file before reading the environment (local development)")
+	showVersion := flag.Bool("version", false, "print the version, commit, build date, schema and judge protocol, then exit")
 	flag.Usage = func() {
 		fmt.Fprintln(os.Stderr, "usage: podium-server [-env-file FILE]           run the server")
+		fmt.Fprintln(os.Stderr, "       podium-server -version                    print what this build is")
 		fmt.Fprintln(os.Stderr, "       podium-server check [-db F] [-tests D] [-hash]  check a database and its test files")
 		fmt.Fprintln(os.Stderr, "       podium-server deploy-check [-db F] [-force REASON -release TAG]  may a release be installed now?")
 	}
 	flag.Parse()
+	if *showVersion {
+		buildinfo.Write(os.Stdout)
+		return
+	}
 	if flag.Arg(0) == "check" {
 		os.Exit(checkCmd(flag.Args()[1:], os.Stdout))
 	}

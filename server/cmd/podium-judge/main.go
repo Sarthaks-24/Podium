@@ -3,14 +3,19 @@
 // inside isolate. Subcommands:
 //
 //	podium-judge work                  claim and run jobs from the server
+//	podium-judge selftest              run the hostile suite here; PASS or FAIL per program
 //	podium-judge calibrate [-reps N]   measure this host and print Markdown
+//	podium-judge -version              print what this build is
 //
 // Stop the podium-judge service before calibrating: calibrate is a separate
 // process with its own memory budget and would overlap the worker's boxes.
+// selftest uses box 80, clear of the lanes; on a busy judge it is still
+// better run with the service stopped, for the same memory reason.
 package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"log/slog"
@@ -24,21 +29,34 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/Sarthaks-24/podium/internal/buildinfo"
 	"github.com/Sarthaks-24/podium/internal/config"
 	"github.com/Sarthaks-24/podium/internal/judge"
 	"github.com/Sarthaks-24/podium/internal/judge/calib"
 	"github.com/Sarthaks-24/podium/internal/worker"
 )
 
-// version is set at release time with -ldflags "-X main.version=...".
-var version = "dev"
+// version is the release, set at build time in package buildinfo.
+var version = buildinfo.Version
+
+// exitProtocol is the exit status when the server speaks another judge
+// protocol. podium-judge.service does not restart on it
+// (RestartPreventExitStatus), so the judge stops with the message instead
+// of looping until both sides run the same release.
+const exitProtocol = 3
 
 func main() {
 	envFile := flag.String("env-file", "", "load variables from this file before reading the environment (local development)")
+	showVersion := flag.Bool("version", false, "print the version, commit, build date, schema and judge protocol, then exit")
 	flag.Usage = func() {
-		fmt.Fprintln(os.Stderr, "usage: podium-judge [-env-file FILE] work | calibrate [-reps N]")
+		fmt.Fprintln(os.Stderr, "usage: podium-judge [-env-file FILE] work | selftest | calibrate [-reps N]")
+		fmt.Fprintln(os.Stderr, "       podium-judge -version")
 	}
 	flag.Parse()
+	if *showVersion {
+		buildinfo.Write(os.Stdout)
+		return
+	}
 	if *envFile != "" {
 		if err := config.LoadEnvFile(*envFile); err != nil {
 			fail(err)
@@ -47,6 +65,8 @@ func main() {
 	switch flag.Arg(0) {
 	case "work":
 		fail(work())
+	case "selftest":
+		fail(selftest(flag.Args()[1:]))
 	case "calibrate":
 		fail(calibrate(flag.Args()[1:]))
 	default:
@@ -101,6 +121,33 @@ func calibrate(args []string) error {
 	return nil
 }
 
+// selftest runs the hostile suite and a hello world per language in one
+// box and prints PASS or FAIL for each (B1.9). It exits 1 when any
+// program was not contained.
+func selftest(args []string) error {
+	fs := flag.NewFlagSet("selftest", flag.ExitOnError)
+	box := fs.Int("box", 80, "isolate box id to use (keep clear of lane ids)")
+	fs.Parse(args)
+	cfg, err := config.LoadJudge(os.Getenv)
+	if err != nil {
+		return err
+	}
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	r := &judge.Runner{Iso: judge.Isolate{Path: cfg.IsolatePath}}
+	fmt.Printf("podium-judge %s selftest: %s, %s, box %d\n", version, hostDescription(), isolateVersion(ctx, cfg.IsolatePath), *box)
+	failed, err := calib.SelfTest(ctx, r, *box, os.Stdout)
+	if err != nil {
+		return err
+	}
+	total := len(calib.Hostile) + 4
+	if failed > 0 {
+		return fmt.Errorf("FAIL: %d of %d programs were not contained or did not run; do not judge on this host until fixed", failed, total)
+	}
+	fmt.Printf("PASS: all %d programs\n", total)
+	return nil
+}
+
 // work runs the worker loop. The first SIGINT or SIGTERM stops claiming:
 // every lane finishes and reports the job it holds, then the process exits
 // 0 (systemd's TimeoutStopSec on podium-judge.service bounds the wait). A
@@ -146,21 +193,55 @@ func work() error {
 	}
 	host, _ := os.Hostname()
 	client := &worker.Client{BaseURL: cfg.ServerURL, Token: cfg.Token, HTTP: &http.Client{Timeout: 5 * time.Minute}}
-	w := &worker.Worker{
-		Runner:   &judge.Runner{Iso: judge.Isolate{Path: cfg.IsolatePath}},
-		Client:   client,
-		Cache:    &worker.Cache{Dir: blobs, Client: client, MaxBytes: int64(cfg.BlobCacheMB) << 20},
-		Compiled: &worker.CompileCache{Dir: compiled, MaxBytes: worker.DefaultCompileCacheBytes},
-		Log:      log,
-		Lanes:    cfg.Lanes,
-		WorkDir:  jobs,
-		Name:     host,
-		Version:  version,
-		Isolate:  isolateVersion(ctx, cfg.IsolatePath),
+	toolchain, err := reportToolchain(stopCtx, client, cfg.IsolatePath, log)
+	if err != nil {
+		return err
 	}
-	w.Drain(stopCtx, ctx)
+	w := &worker.Worker{
+		Runner:    &judge.Runner{Iso: judge.Isolate{Path: cfg.IsolatePath}},
+		Client:    client,
+		Cache:     &worker.Cache{Dir: blobs, Client: client, MaxBytes: int64(cfg.BlobCacheMB) << 20},
+		Compiled:  &worker.CompileCache{Dir: compiled, MaxBytes: worker.DefaultCompileCacheBytes},
+		Log:       log,
+		Lanes:     cfg.Lanes,
+		WorkDir:   jobs,
+		Name:      host,
+		Version:   version,
+		Isolate:   isolateVersion(ctx, cfg.IsolatePath),
+		Toolchain: toolchain,
+	}
+	if err := w.Drain(stopCtx, ctx); err != nil {
+		return err
+	}
 	log.Info("stopped")
 	return nil
+}
+
+// reportToolchain sends this host's toolchain to the server (B1.4),
+// retrying while the server is away, and returns the hash claims carry.
+// A stop before the server answers returns "" and no error.
+func reportToolchain(ctx context.Context, client *worker.Client, isolatePath string, log *slog.Logger) (string, error) {
+	t := worker.DetectToolchain(ctx, isolatePath)
+	log.Info("toolchain", "gcc", t.GCC, "java", t.Java, "python", t.Python, "node", t.Node, "isolate", t.Isolate, "kernel", t.Kernel)
+	backoff := 2 * time.Second
+	for ctx.Err() == nil {
+		hash, err := client.ReportToolchain(ctx, t)
+		var protocol *worker.ProtocolError
+		switch {
+		case err == nil:
+			return hash, nil
+		case errors.As(err, &protocol):
+			return "", protocol
+		case ctx.Err() == nil:
+			log.Warn("toolchain report failed", "err", err, "retry_in", backoff)
+		}
+		select {
+		case <-ctx.Done():
+		case <-time.After(backoff):
+		}
+		backoff = min(2*backoff, 30*time.Second)
+	}
+	return "", nil
 }
 
 // isolateVersion is the first line of "isolate --version", for the log.
@@ -184,6 +265,10 @@ func fail(err error) {
 		os.Exit(0)
 	}
 	fmt.Fprintln(os.Stderr, err)
+	var protocol *worker.ProtocolError
+	if errors.As(err, &protocol) {
+		os.Exit(exitProtocol)
+	}
 	if config.IsProblems(err) {
 		os.Exit(2)
 	}

@@ -46,12 +46,15 @@ func (f *fakeAPI) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	io.WriteString(w, out)
 }
 
+// testModel is a model id written in the test; the server has none.
+const testModel = "claude-opus-5-5"
+
 func newFakeAPI(t *testing.T, status int, body string, sse bool) (*fakeAPI, *Anthropic) {
 	t.Helper()
 	f := &fakeAPI{status: status, body: body, sse: sse}
 	srv := httptest.NewServer(f)
 	t.Cleanup(srv.Close)
-	return f, &Anthropic{Key: NewSecret(testKey), Model: DefaultModel, BaseURL: srv.URL,
+	return f, &Anthropic{Key: NewSecret(testKey), Model: testModel, BaseURL: srv.URL,
 		HTTPClient: &http.Client{Timeout: 10 * time.Second}, MaxRetries: 0}
 }
 
@@ -68,7 +71,7 @@ func stream(text, stopReason, stopDetails string) string {
 		delta["stop_details"] = d
 	}
 	return ev("message_start", map[string]any{"type": "message_start", "message": map[string]any{
-		"id": "msg_test", "type": "message", "role": "assistant", "model": DefaultModel, "content": []any{},
+		"id": "msg_test", "type": "message", "role": "assistant", "model": testModel, "content": []any{},
 		"stop_reason": nil, "stop_sequence": nil, "usage": map[string]any{"input_tokens": 10, "output_tokens": 1}}}) +
 		ev("content_block_start", map[string]any{"type": "content_block_start", "index": 0, "content_block": map[string]any{"type": "text", "text": ""}}) +
 		ev("content_block_delta", map[string]any{"type": "content_block_delta", "index": 0, "delta": map[string]any{"type": "text_delta", "text": text}}) +
@@ -100,11 +103,24 @@ func TestAnthropicRequestShape(t *testing.T) {
 		t.Errorf("anthropic-beta %q", r.header.Get("Anthropic-Beta"))
 	}
 	b := r.body
-	if b["model"] != DefaultModel || b["max_tokens"] != float64(64000) || b["stream"] != true || b["fallbacks"] != "default" {
+	if b["model"] != testModel || b["max_tokens"] != float64(64000) || b["stream"] != true || b["fallbacks"] != "default" {
 		t.Errorf("body model %v max_tokens %v stream %v fallbacks %v", b["model"], b["max_tokens"], b["stream"], b["fallbacks"])
 	}
-	if _, ok := b["thinking"]; ok {
-		t.Error("thinking was sent; Opus 5.5 must leave it unset")
+	// R16: adaptive thinking is sent explicitly (some listed models run
+	// without thinking when it is left out), and no deprecated parameter.
+	if th, _ := b["thinking"].(map[string]any); th["type"] != "adaptive" || th["budget_tokens"] != nil {
+		t.Errorf("thinking %v", b["thinking"])
+	}
+	for _, gone := range []string{"temperature", "top_p", "top_k", "output_format"} {
+		if _, ok := b[gone]; ok {
+			t.Errorf("deprecated parameter %s sent", gone)
+		}
+	}
+	// The fixed system prompt carries the cache breakpoint.
+	sys, _ := b["system"].([]any)
+	if len(sys) != 1 || fmt.Sprint(sys[0].(map[string]any)["cache_control"]) != "map[type:ephemeral]" ||
+		!strings.Contains(fmt.Sprint(sys[0].(map[string]any)["text"]), "Answer with one JSON object") {
+		t.Errorf("system %v", b["system"])
 	}
 	oc, _ := b["output_config"].(map[string]any)
 	format, _ := oc["format"].(map[string]any)
@@ -168,6 +184,7 @@ func TestAnthropicErrorMapping(t *testing.T) {
 		says   string
 	}{
 		{401, "authentication_error", CodeKeyRefused, "refused the key"},
+		{402, "billing_error", CodeNoQuota, "no credit left"},
 		{403, "permission_error", CodeNoAccess, "cannot use claude-opus-5-5"},
 		{404, "not_found_error", CodeModelNotFound, "does not offer the model"},
 		{429, "rate_limit_error", CodeRateLimited, "Rate limited by the provider; try again in a minute."},
@@ -194,7 +211,7 @@ func TestAnthropicErrorMapping(t *testing.T) {
 	}
 
 	// A provider that is not there at all.
-	a := &Anthropic{Key: NewSecret(testKey), Model: DefaultModel, BaseURL: "http://127.0.0.1:1", MaxRetries: 0}
+	a := &Anthropic{Key: NewSecret(testKey), Model: testModel, BaseURL: "http://127.0.0.1:1", MaxRetries: 0}
 	if e, ok := a.Check(context.Background()).(*Error); !ok || e.Code != CodeUnavailable {
 		t.Errorf("network failure: %v", e)
 	}
@@ -211,5 +228,53 @@ func TestAnthropicErrorMapping(t *testing.T) {
 	defer cancel()
 	if _, err := a.Generate(ctx, Request{Pasted: "x"}); err == nil || err.(*Error).Code != CodeTimeout {
 		t.Errorf("deadline: %v", err)
+	}
+}
+
+func anthropicModel(id string, usable bool) map[string]any {
+	sup := func(b bool) map[string]any { return map[string]any{"supported": b} }
+	return map[string]any{"type": "model", "id": id, "display_name": "Claude " + id, "created_at": "2026-01-01T00:00:00Z",
+		"max_input_tokens": 1000000, "max_tokens": 128000,
+		"capabilities": map[string]any{"structured_outputs": sup(usable),
+			"thinking": map[string]any{"supported": true, "types": map[string]any{"adaptive": sup(usable), "enabled": sup(!usable)}},
+			"effort":   map[string]any{"supported": usable, "low": sup(usable), "medium": sup(usable), "high": sup(usable), "xhigh": sup(false), "max": sup(false)}}}
+}
+
+// TestAnthropicModelList: the raw list holds a model without adaptive
+// thinking or structured outputs; only the usable one is offered, and a
+// lookup of the unusable one is refused by name.
+func TestAnthropicModelList(t *testing.T) {
+	list, _ := json.Marshal(map[string]any{"data": []any{anthropicModel("claude-new-1", true), anthropicModel("claude-old-1", false)},
+		"has_more": false, "first_id": "claude-new-1", "last_id": "claude-old-1"})
+	f, a := newFakeAPI(t, 200, string(list), false)
+	models, err := a.ListModels(context.Background())
+	if err != nil || len(models) != 1 || models[0] != (Model{ID: "claude-new-1", Name: "Claude claude-new-1"}) {
+		t.Fatalf("models %v %v", models, err)
+	}
+	if f.reqs[0].path != "/v1/models" {
+		t.Errorf("path %s", f.reqs[0].path)
+	}
+	// Without a model, Check is a listing.
+	a.Model = ""
+	if err := a.Check(context.Background()); err != nil {
+		t.Errorf("check without a model: %v", err)
+	}
+	if _, err := a.Generate(context.Background(), Request{Pasted: "x"}); err == nil || err.(*Error).Code != CodeInput {
+		t.Errorf("generate without a model: %v", err)
+	}
+	one, _ := json.Marshal(anthropicModel("claude-old-1", false))
+	_, a = newFakeAPI(t, 200, string(one), false)
+	a.Model = "claude-old-1"
+	if e, ok := a.Check(context.Background()).(*Error); !ok || e.Code != CodeUnsupportedModel || !strings.Contains(e.Message, "claude-old-1 cannot write problems") {
+		t.Errorf("unusable model: %v", e)
+	}
+}
+
+// TestAnthropicCreditBalance: an exhausted balance answered as a 400 is
+// still the no-quota sentence.
+func TestAnthropicCreditBalance(t *testing.T) {
+	_, a := newFakeAPI(t, 400, `{"type":"error","error":{"type":"invalid_request_error","message":"Your credit balance is too low to access the Anthropic API."}}`, false)
+	if e, ok := a.Check(context.Background()).(*Error); !ok || e.Code != CodeNoQuota {
+		t.Errorf("credit balance: %v", e)
 	}
 }

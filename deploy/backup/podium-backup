@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Nightly backup of podium (podium-backup.timer runs it as user podium):
+# Nightly backup of podium (podium-backup.timer runs it as root, and it
+# does its work as two users, below):
 #
 #   /var/backups/podium/<UTC date and time>/podium.db   consistent copy
 #   /var/backups/podium/<UTC date and time>/tests/      test files, sources
@@ -14,6 +15,14 @@
 #
 # Everything is created readable by the podium user only (umask 077): the
 # backup holds every student's code and the session table.
+#
+# Two users (D116). The copy, the check, the pruning, tar and age run as
+# podium with an empty environment, so no process of user podium (the
+# server's) ever holds the B2 key or the heartbeat URL. Only rclone and
+# the heartbeat ping run as podium-backup with those variables, and
+# rclone reads the encrypted stream on stdin, never the backup folder.
+# Run as any other user (by hand, or the tests) it does everything as
+# that user.
 #
 # Off the VM, two optional copies (settings in /etc/podium/backup.env,
 # template deploy/backup.env.example):
@@ -33,6 +42,20 @@ umask 077
 
 env_file=/etc/podium/backup.env
 die() { printf 'podium-backup: %s\n' "$*" >&2; exit 1; }
+
+if (( EUID == 0 )); then
+  id podium >/dev/null 2>&1 || die "user podium missing; run: sudo ./install.sh users"
+  id podium-backup >/dev/null 2>&1 || die "user podium-backup missing; run: sudo ./install.sh users"
+  # as_podium: the local work, with an environment that holds nothing
+  # secret. as_offsite: rclone and the heartbeat, with the variables.
+  # env -i runs first, as root: the environment is empty before the uid
+  # changes, so no podium process ever holds the key, even for an exec.
+  as_podium() { env -i PATH="$PATH" HOME=/var/lib/podium LC_ALL=C.UTF-8 setpriv --reuid=podium --regid=podium --init-groups -- "$@"; }
+  as_offsite() { setpriv --reuid=podium-backup --regid=podium-backup --init-groups -- "$@"; }
+else
+  as_podium() { "$@"; }
+  as_offsite() { "$@"; }
+fi
 
 # Start-up check: each variable in the order read, as set, default or
 # missing. Never a value: the B2 key and the heartbeat URL are secrets.
@@ -94,46 +117,46 @@ fi
 stamp=$(date -u +%Y-%m-%dT%H%MZ)
 final=$dest/$stamp
 work=$dest/.partial-$stamp
-rm -rf "$work"
-trap 'rm -rf "$work"' EXIT
-mkdir -m 700 "$work"
+as_podium rm -rf "$work"
+trap 'as_podium rm -rf "$work"' EXIT
+as_podium mkdir -m 700 "$work"
 
 start=$(date +%s)
 # .backup holds a read transaction and copies page by page; the server keeps
 # writing meanwhile (WAL). The copy is a single file with no -wal.
-sqlite3 "$db" ".timeout 10000" ".backup '$work/podium.db'"
+as_podium sqlite3 "$db" ".timeout 10000" ".backup '$work/podium.db'"
 
 if [[ -d $tests ]]; then
   # Hard links when the backup is on the same filesystem; a real copy if not.
-  cp -al "$tests" "$work/tests" 2>/dev/null || { rm -rf "$work/tests"; cp -a "$tests" "$work/tests"; }
+  as_podium cp -al "$tests" "$work/tests" 2>/dev/null || { as_podium rm -rf "$work/tests"; as_podium cp -a "$tests" "$work/tests"; }
 else
-  mkdir "$work/tests"
+  as_podium mkdir "$work/tests"
 fi
 
 if [[ -x $server ]]; then
-  "$server" check -db "$work/podium.db" -tests "$work/tests" > "$work/check.txt" 2>&1 \
-    || { cat "$work/check.txt" >&2; die "the new backup failed its check; kept nothing"; }
+  as_podium sh -c '"$1" check -db "$2/podium.db" -tests "$2/tests" > "$2/check.txt" 2>&1' check "$server" "$work" \
+    || { as_podium cat "$work/check.txt" >&2; die "the new backup failed its check; kept nothing"; }
 else
-  [[ $(sqlite3 "$work/podium.db" "PRAGMA integrity_check") == ok ]] || die "integrity_check failed on the copy"
-  echo "integrity_check: ok ($server not found, so test files were not checked)" > "$work/check.txt"
+  [[ $(as_podium sqlite3 "$work/podium.db" "PRAGMA integrity_check") == ok ]] || die "integrity_check failed on the copy"
+  as_podium sh -c 'echo "integrity_check: ok ($1 not found, so test files were not checked)" > "$2/check.txt"' note "$server" "$work"
 fi
 
-mv "$work" "$final"
+as_podium mv "$work" "$final"
 trap - EXIT
-ln -sfn "$stamp" "$dest/latest"
+as_podium ln -sfn "$stamp" "$dest/latest"
 
 # Keep PODIUM_BACKUP_KEEP_DAYS days. Names sort by date; never touch the
 # newest, whatever the clock says.
 cutoff=$(date -u -d "-$keep days" +%Y-%m-%dT%H%MZ)
 for d in "$dest"/20*; do
   if [[ -d $d && $(basename "$d") < $cutoff && $d != "$final" ]]; then
-    rm -rf "$d"
+    as_podium rm -rf "$d"
   fi
 done
 
-size=$(du -sh "$final/podium.db" | cut -f1)
-files=$(find "$final/tests" -type f | wc -l)
-count=$(find "$dest" -maxdepth 1 -name '20*' -type d | wc -l)
+size=$(as_podium du -sh "$final/podium.db" | cut -f1)
+files=$(as_podium find "$final/tests" -type f | wc -l)
+count=$(as_podium find "$dest" -maxdepth 1 -name '20*' -type d | wc -l)
 echo "podium-backup: $final done in $(( $(date +%s) - start )) s: database $size, $files test files, $count backups kept"
 
 if [[ $encrypt == yes ]]; then
@@ -144,8 +167,8 @@ if [[ $encrypt == yes ]]; then
   # rclone off any config file: the remote "b2" is the RCLONE_CONFIG_B2_*
   # variables.
   object="b2:$b2path/podium-$stamp.tar.age"
-  rc=(rclone --config "" --transfers 1 --b2-chunk-size 16M --retries 3 --low-level-retries 5)
-  if ! tar -C "$final" -cf - podium.db tests check.txt | age -r "$recipient" | "${rc[@]}" rcat "$object"; then
+  rc=(as_offsite rclone --config "" --transfers 1 --b2-chunk-size 16M --retries 3 --low-level-retries 5)
+  if ! as_podium tar -C "$final" -cf - podium.db tests check.txt | as_podium age -r "$recipient" | "${rc[@]}" rcat "$object"; then
     # A failed pipe may still have stored a truncated object: remove it,
     # so the bucket never holds a copy that looks whole and is not.
     "${rc[@]}" deletefile --b2-hard-delete "$object" 2>/dev/null || true
@@ -162,7 +185,7 @@ if [[ -n $remote ]]; then
   # -H keeps the hard links between nights, so the remote copy is as small
   # as the local one; --delete mirrors the pruning. BatchMode makes a
   # missing or unaccepted key fail at once instead of asking.
-  rsync -aH --delete -e "ssh -o BatchMode=yes" -- "$dest/" "$remote/" \
+  as_podium rsync -aH --delete -e "ssh -o BatchMode=yes" -- "$dest/" "$remote/" \
     || die "the local backup is done, but copying it to $remote failed"
   echo "podium-backup: copied to $remote"
 fi
@@ -172,7 +195,7 @@ if [[ -n $heartbeat ]]; then
   # warns here.
   # On stdin, not as an argument: the process list is visible to every
   # user, and the URL alone is enough to fake a backup.
-  if printf 'url = "%s"\n' "$heartbeat" | curl -fsS -m 15 --retry 3 -o /dev/null -K - 2>/dev/null; then
+  if printf 'url = "%s"\n' "$heartbeat" | as_offsite curl -fsS -m 15 --retry 3 -o /dev/null -K - 2>/dev/null; then
     echo "podium-backup: heartbeat sent"
   else
     echo "podium-backup: warning: the heartbeat ping failed; the heartbeat service will report a missed backup" >&2

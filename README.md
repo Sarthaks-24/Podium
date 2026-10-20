@@ -77,6 +77,8 @@ Other targets: `make help`.
 
 `make release` runs the checks, builds the web app, embeds it, cross-compiles both binaries for Linux with `CGO_ENABLED=0`, and writes `release/podium-<version>.tar.gz` containing `bin/`, `env/` (the example env files), `install.sh`, the systemd units, the Caddyfile, `litestream.yml`, the example env files for Litestream, the nightly backup and alerts, and the backup, restore, alert and health-check scripts in `backup/`. It refuses to build when the web app's source carries placeholder copy (`tools/check-placeholders.sh`), and installs `web/node_modules` with `npm ci` first when it is missing. Building on Windows is fine: the tarball loses the execute bit on the Linux binaries, and `install.sh` sets it when it installs them.
 
+Since v1.1.0 the tarball also holds `MANIFEST` (version, commit, build date, schema, the migrations it carries, the judge protocol, and the oldest release it upgrades from, `UPGRADES_FROM` in the `Makefile`) and `SHA256SUMS`, and `release/podium-<version>.tar.gz.sha256` sits beside it. `podium-server -version` and `podium-judge -version` print the same facts. Pushing a `v*` tag runs the same build in GitHub Actions (`.github/workflows/release.yml`) and makes a draft release with those four files; the owner reviews and publishes it.
+
 ## Deploy to the VM
 
 The VM is Ubuntu 24.04 on **amd64 (x86_64)**: releases contain amd64 binaries only. On a fresh VM, in production mode (the default):

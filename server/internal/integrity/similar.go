@@ -55,23 +55,15 @@ type Settings struct {
 	// still dropped.
 	CommonShare float64
 	CommonFloor int
-	// ExtraBase holds more programs everyone may share, added to the
-	// reference and brute force: an organiser's template or starter code.
-	// Nothing fills it yet (a per-contest list of templates is a known gap,
-	// docs/INTEGRITY.md); the comparison is ready for it.
-	ExtraBase []Subject
 }
 
 // Defaults are the integrity plan's settings (cache/v1/integrity-plan.md).
 var Defaults = Settings{MinTokens: 40, MinFingerprints: 8, Threshold: 0.6, CommonShare: 0.1, CommonFloor: 5}
 
-// withDefaults takes the numeric settings from Defaults when none is set
-// and keeps ExtraBase, so a caller can set ExtraBase alone.
+// withDefaults takes the settings from Defaults when none is set.
 func (s Settings) withDefaults() Settings {
-	if s.MinTokens == 0 && s.MinFingerprints == 0 && s.Threshold == 0 && s.CommonShare == 0 && s.CommonFloor == 0 {
-		extra := s.ExtraBase
-		s = Defaults
-		s.ExtraBase = extra
+	if s == (Settings{}) {
+		return Defaults
 	}
 	return s
 }
@@ -103,14 +95,14 @@ func Strength(score float64, shared int) string {
 }
 
 // Compare finds similar pairs among one problem's subjects. base holds
-// programs everyone may legitimately share (reference, brute force), and
-// s.ExtraBase more of them (a template); their fingerprints never count. A
+// programs everyone may legitimately share (reference, brute force);
+// their fingerprints never count. A
 // pair of students appears once, with their most similar programs. Zero
 // numeric settings take the Defaults.
 func Compare(subjects []Subject, base []Subject, s Settings) []Pair {
 	s = s.withDefaults()
 	ignore := map[uint64]bool{}
-	for _, b := range append(append([]Subject{}, base...), s.ExtraBase...) {
+	for _, b := range base {
 		for h := range Prepare(b.Language, b.Source).Set {
 			ignore[h] = true
 		}

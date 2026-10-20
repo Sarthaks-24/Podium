@@ -234,9 +234,13 @@ func (s *Service) Claim(ctx context.Context, req judgeapi.ClaimRequest) (*judgea
 		deadline.Int64 = now.Add(kind.MaxDuration(json.RawMessage(payload))).UnixMilli()
 	}
 	version := limit(req.Version, 40) + " / isolate " + limit(req.Isolate, 40)
+	// The toolchain is looked up by the hash the judge reported; an
+	// unknown hash (or none) records NULL rather than refusing work.
 	if _, err := tx.ExecContext(ctx, `UPDATE jobs SET state = 'leased', lease_hash = ?, lease_expires_at = ?, deadline_at = ?,
-		attempts = attempts + 1, worker = ?, worker_version = ?, started_at = coalesce(started_at, ?) WHERE id = ?`,
-		hashLease(lease), now.Add(LeaseTTL).UnixMilli(), deadline.Int64, limit(req.Worker, 64), version, now.UnixMilli(), c.JobID); err != nil {
+		attempts = attempts + 1, worker = ?, worker_version = ?, started_at = coalesce(started_at, ?),
+		toolchain_id = (SELECT id FROM toolchains WHERE hash = ?) WHERE id = ?`,
+		hashLease(lease), now.Add(LeaseTTL).UnixMilli(), deadline.Int64, limit(req.Worker, 64), version, now.UnixMilli(),
+		req.Toolchain, c.JobID); err != nil {
 		return nil, err
 	}
 	if err := tx.Commit(); err != nil {

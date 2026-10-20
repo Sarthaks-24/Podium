@@ -70,8 +70,41 @@ func httpError(op string, resp *http.Response) error {
 	return fmt.Errorf("%s: server answered %d: %s", op, resp.StatusCode, bytes.TrimSpace(b))
 }
 
+// ProtocolError means the server and this judge come from different
+// releases (B1.3). Retrying cannot help, so the worker stops with the
+// message; podium-judge exits with status 3, which its unit does not
+// restart.
+type ProtocolError struct{ Message string }
+
+func (e *ProtocolError) Error() string { return e.Message }
+
+// protocolError reads the server's sentence from a 426, or describes a
+// refusal that means the server is older than this judge: a 400 to a
+// body it does not know, or a 404 for a route it does not have. A 400
+// that names a bad report (bad_report) is this release's own server
+// refusing the content: an ordinary error, retried, not a stop.
+func protocolError(op string, resp *http.Response) error {
+	var body struct {
+		Error struct {
+			Code    string `json:"code"`
+			Message string `json:"message"`
+		} `json:"error"`
+	}
+	json.NewDecoder(io.LimitReader(resp.Body, 4<<10)).Decode(&body)
+	switch {
+	case resp.StatusCode == http.StatusUpgradeRequired && body.Error.Message != "":
+		return &ProtocolError{Message: body.Error.Message}
+	case resp.StatusCode == http.StatusBadRequest && body.Error.Code == "bad_report":
+		return fmt.Errorf("%s: the server refused it: %s", op, body.Error.Message)
+	}
+	return &ProtocolError{Message: fmt.Sprintf("%s: the server answered %d, so it runs an older release than this judge (protocol %d): install the same release on both",
+		op, resp.StatusCode, judgeapi.ProtocolVersion)}
+}
+
 // Claim asks for one job of the given kinds; nil means none is waiting.
+// It sends this build's protocol version.
 func (c *Client) Claim(ctx context.Context, req judgeapi.ClaimRequest) (*judgeapi.Claim, error) {
+	req.Protocol = judgeapi.ProtocolVersion
 	resp, err := c.do(ctx, http.MethodPost, "/api/judge/claim", req)
 	if err != nil {
 		return nil, err
@@ -86,8 +119,31 @@ func (c *Client) Claim(ctx context.Context, req judgeapi.ClaimRequest) (*judgeap
 			return nil, fmt.Errorf("claim: %w", err)
 		}
 		return &claim, nil
+	case http.StatusUpgradeRequired, http.StatusBadRequest:
+		return nil, protocolError("claim", resp)
 	}
 	return nil, httpError("claim", resp)
+}
+
+// ReportToolchain sends the host's toolchain (B1.4) and returns the hash
+// to send with each claim.
+func (c *Client) ReportToolchain(ctx context.Context, t judgeapi.Toolchain) (string, error) {
+	resp, err := c.do(ctx, http.MethodPost, "/api/judge/toolchain", judgeapi.ToolchainReport{Protocol: judgeapi.ProtocolVersion, Toolchain: t})
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+	switch resp.StatusCode {
+	case http.StatusOK:
+		var reply judgeapi.ToolchainReply
+		if err := json.NewDecoder(io.LimitReader(resp.Body, 4<<10)).Decode(&reply); err != nil || !judgeapi.ValidSHA(reply.Hash) {
+			return "", fmt.Errorf("toolchain: the server's answer has no hash")
+		}
+		return reply.Hash, nil
+	case http.StatusUpgradeRequired, http.StatusBadRequest, http.StatusNotFound:
+		return "", protocolError("toolchain report", resp)
+	}
+	return "", httpError("toolchain report", resp)
 }
 
 // refusedError is a report the server rejected as malformed (400): sending
