@@ -4,6 +4,18 @@ Dated entries per release. Unreleased work is listed at the top.
 
 ## Unreleased
 
+Becomes `v1.0.0` when the v2 P0 gate is signed.
+
+### v2 P0, frontend (2026-10-20)
+
+- The console's "Waiting or judging" filter works, and a new "Judge error" filter lists submissions the judge could not finish: the feed's `verdict` parameter takes `pending` (queued or being judged) and `error` as states (B2).
+- On phones the standings header stays on screen while the rows scroll (B3).
+- The reveal enters full screen when it opens and leaves it on exit (B4); the row climbing to its new place is drawn above the rows it passes (B5).
+- The AI wizard shows its second step as done when the wizard is done (B6).
+- Unpublishing (or publishing) a live contest asks first, like any other change students see at once (B7).
+- Test suite: an axe-core accessibility pass over every route at 1440 and 320 px with forced-colours screenshots (`web/tests/a11y.spec.ts`, new dev dependency `@axe-core/playwright` 4.13.0), the student workspace and contest screens at more sizes and with touch emulation, pixel comparisons of the student screens (`web/tests/baseline.spec.ts`, references kept outside git), more contrast pairs in the theme test, and the specs' mocks moved to `web/tests/mocks/`.
+- Docs: the console feed's `verdict` values in `docs/API.md`; unmeasured judge capacity figures removed from `docs/RUNBOOK.md` until the VM is measured.
+
 ### Security council fixes (2026-10-18)
 
 - Co-organisers whose site role is student can no longer change a contest's schedule or rules once it starts, replace the roster, give extra time, extend, pause, resume or rejudge. They see results only when students do (no exam-mode verdicts, the frozen board during the freeze, no stats or exports until then), including on their own submissions. Extensions go only to students on the roster or taking part.
@@ -15,16 +27,24 @@ Dated entries per release. Unreleased work is listed at the top.
 
 ### Milestone M7: hardening (2026-10-18)
 
-- Load test in `tools/loadtest/`: a k6 script that plays a whole contest per student (testing-mode sign-in, an event stream held for the session, workspaces, drafts every 10 to 20 s, standings, integrity batches, runs and submissions with an end-of-contest spike, retries after 429), fixed and window start modes, per-route latency, 429 counts, event stream reconnects and the judge queue every 5 s; a seed script (imports and validates the example packs, creates the students) and a summary script (queue CSV, peak, throughput, drain time). Results in `cache/v1/m7-load.md`.
+- Load test in `tools/loadtest/`: a k6 script that plays a whole contest per student (testing-mode sign-in, an event stream held for the session, workspaces, drafts every 10 to 20 s, standings, integrity batches, runs and submissions with an end-of-contest spike, retries after 429), fixed and window start modes, per-route latency, 429 counts, event stream reconnects and the judge queue every 5 s; a seed script (imports and validates the example packs, creates the students) and a summary script (queue CSV, peak, throughput, drain time). Results: the M7 desktop numbers are in the next item; that note was not kept, and the VM rerun goes in `cache/v2-plan/drills/` (not shipped).
 - SQLite writes now take turns in Go before they reach SQLite (`server/internal/db/writegate.go`), and the pool has 8 connections instead of 4. At 700 students the busy handler's sleep-and-poll hand-off between writers had filled every connection: API p95 586 ms, judging stalled for 90 s and every event stream was dropped once. With the gate, the same load gives p95 10.3 ms and no dropped streams. A write that waits 10 s fails with "database is busy", as before.
 - `GET /api/admin/metrics` (owners and admins): queue depth and leased jobs by kind, the oldest waiting job, jobs closed in the last minute and five minutes, submission wait and verdict percentiles over ten minutes, failures, event streams, SQLite pool use and waits, server memory. Documented in `docs/OPERATIONS.md`, "Metrics", and `docs/API.md`.
 - Backups: Litestream 0.5.16 (pinned, checksum-verified by `install.sh litestream`) streams the database to an S3-compatible bucket, Backblaze B2 by default, uploading every 10 s and keeping 14 days; credentials and bucket in `/etc/podium/litestream.env` (template `deploy/litestream.env.example`), checked at start-up by the unit. A nightly `podium-backup.timer` copies the database with SQLite's online backup and hard-links the test files into `/var/backups/podium/<date>`, checks the copy, and keeps 14 days.
-- `podium-server check [-db F] [-tests D] [-hash]`: a read-only check of a database and its test files (integrity and foreign key checks, migrations against the binary, row counts, every recorded file present with its size or content). Used by the nightly backup and by `podium-restore` (`tools/restore.sh` in a checkout), which restores a nightly backup or the bucket (newest, or any moment in 14 days) into a scratch directory and checks it. Restore rehearsed in `cache/v1/m7-restore.md`.
+- `podium-server check [-db F] [-tests D] [-hash]`: a read-only check of a database and its test files (integrity and foreign key checks, migrations against the binary, row counts, every recorded file present with its size or content). Used by the nightly backup and by `podium-restore` (`tools/restore.sh` in a checkout), which restores a nightly backup or the bucket (newest, or any moment in 14 days) into a scratch directory and checks it. Restore rehearsed against a local replica in M7 (that note was not kept); the drill onto a blank VM goes in `cache/v2-plan/drills/` (not shipped).
 - The judge's blob cache is bounded: `PODIUM_JUDGE_BLOB_CACHE_MB` (new, optional, default 2048) caps `blobs/`; after each job the least recently used files no running job holds are removed down to 90 % of the cap. The compile cache keeps its 500 MB cap.
 - The server removes test files and sources nothing refers to any more in its 12-hourly retention pass: not a test, not a submission's or run's source, not named by a job that is waiting, running or under a week old, and not saved in the last day. Saving a blob now refreshes its row and checks the file inside the same transaction, so a removal and a save cannot leave a row without its file.
 - `docs/RUNBOOK.md`: contest-day checklists, what to watch in the metrics and when to act, pausing, extending, rejudging after a bad test, a dead judge, a server restart, locked-out students, restoring from a backup, and the dry run with real students with a template for the list of fixes.
 - Security council items S3, S7 and S8 (the parts outside the identity and contest code): backups are created with umask 077 in a 700 folder, and `/etc/podium/backup.env` (optional, template `deploy/backup.env.example`) can copy each night's backup off the VM with rsync over ssh (`PODIUM_BACKUP_RSYNC`, `PODIUM_BACKUP_KEEP_DAYS`). The server unit sets `GOMEMLIMIT=220MiB` under its 300 MB cap. A request must arrive whole within 15 s (was 120 s); pack import, test replacement and roster upload extend their own deadline to 120 s. Each browser session may hold 8 open API requests at once (event streams aside), then `429`. Caddy refuses bodies over 33 MB and its admin API is off (`install.sh caddy` restarts Caddy instead of reloading). New `install.sh firewall` step: ufw with only ssh, 80 and 443 inbound, and a warning while ssh accepts passwords. Production refuses a `PODIUM_LISTEN` that is not loopback. `docs/OPERATIONS.md` documents how `X-Forwarded-For` is trusted and how to restrict a remote judge's tunnel key to port 8081.
 - `tools/dev-stack.sh` takes `PODIUM_LISTEN`, `PODIUM_JUDGE_LISTEN`, `PODIUM_LOG_LEVEL` and `PODIUM_DEV_CPUS` (pins both services to some CPUs, to approximate the VM). `install.sh packages` adds `jq`.
+
+### Milestone M6: design pass (2026-10-18)
+
+- The web app was audited against the web interface guidelines, the accessibility rules and design.md, and fixed where it fell short.
+- Live regions announce from every layout; focus moves somewhere sensible when the focused button disables itself or disappears (the reveal's Next, Back and Start over among them); errors that appear without a field take focus; the editor's focus ring is drawn in the keyword colour so it meets 3:1 on every editor well.
+- Copy made consistent: "Standings" and "Problem bank" everywhere, plain words on student screens.
+- Keyboard shortcuts: `?` opens a list of every shortcut from anywhere except while typing; `[` and `]` open the previous and next problem in a contest, also not while typing (both are common in code). A "Keyboard shortcuts" link in the footer.
+- Keyboard-only run-throughs in Playwright: a student starts a contest, solves, submits, reads the verdict, asks a question and checks the standings; an organiser edits a contest, runs the console and walks the reveal (`web/tests/keyboard.ts`).
 
 ### Milestone M5: AI wizard (2026-10-18)
 
