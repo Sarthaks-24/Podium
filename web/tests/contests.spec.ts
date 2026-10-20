@@ -834,7 +834,7 @@ test('keyboard only: an organiser edits a contest, runs the console and walks th
   await expect(page.getByRole('button', { name: 'Remove A plus B' })).toBeFocused();
 
   // Console: the section links, and an error that takes focus.
-  await activate(page, page.getByRole('link', { name: 'Console', exact: true }));
+  await activate(page, page.getByRole('navigation', { name: 'Contest' }).getByRole('link', { name: /^Console/ }));
   await expect(page).toHaveURL('/admin/contests/4/console');
   await activate(page, page.getByRole('button', { name: 'Give extra time' }));
   await expect(page.locator('#ext-error')).toHaveText('Choose a student.');
