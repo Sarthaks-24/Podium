@@ -72,6 +72,7 @@
     type Problem,
     type Validation,
   } from '../lib/problems';
+  import { describedBy, fieldErrors, planErrors as planErrorsOf, programError as programErrorOf } from '../lib/problemFields';
   import { navigate, setNavigationGuard } from '../lib/router.svelte';
   import { session } from '../lib/session.svelte';
   import { showToast } from '../lib/toast.svelte';
@@ -190,76 +191,10 @@
   const inputReport = $derived(inputGen && problem ? inputGenReport(inputGen, readPlan(problem.plan)) : null);
   const canGenerateInputs = $derived(draft !== null && !!draft.generator && (draft.plan?.length ?? 0) > 0);
 
-  // Field errors, each with the control it belongs to where there is one.
-  const FIELD_LABELS: Record<string, string> = {
-    title: 'Title',
-    slug: 'Slug',
-    statement_md: 'Statement',
-    time_limit_ms: 'Time limit',
-    memory_limit_mb: 'Memory',
-    checker: 'Checker',
-    epsilon: 'Allowed error',
-    checker_source: 'Checker source',
-    tags: 'Tags',
-    difficulty: 'Difficulty',
-    samples: 'Sample tests',
-    subtasks: 'Subtasks',
-    reference: 'Reference solution',
-    brute: 'Brute force',
-    validator: 'Validator',
-    generator: 'Generator',
-    plan: 'Planned tests',
-  };
+  const fieldList = $derived(fieldErrors(fields, draft, hasGenerator));
 
-  const PLAN_PARTS: Record<string, string> = { idx: 'test', subtask: 'subtask', seed: 'seed', args: 'arguments' };
-
-  function fieldTarget(key: string): { id: string | null; label: string } {
-    const args = /^subtasks\.(\d+)\.generator_args$/.exec(key);
-    if (args) {
-      const i = Number(args[1]);
-      const ok = draft !== null && i < draft.subtasks.length && hasGenerator;
-      return { id: ok ? `subtask-${i}-args` : null, label: `Subtask ${i + 1} generator arguments` };
-    }
-    const planRow = /^plan\.(\d+)\.(idx|subtask|seed|args)$/.exec(key);
-    if (planRow) {
-      const i = Number(planRow[1]);
-      const ok = draft?.plan !== undefined && i < draft.plan.length;
-      return { id: ok ? `plan-${i}-${planRow[2]}` : null, label: `Planned test ${i + 1} ${PLAN_PARTS[planRow[2]]}` };
-    }
-    if (key === 'plan') return { id: hasGenerator ? 'add-plan-row' : null, label: FIELD_LABELS.plan };
-    const generator = /^generator(?:\.(\w+))?$/.exec(key);
-    if (generator) {
-      const part = generator[1] === 'language' ? 'language' : 'source';
-      return { id: draft?.generator ? `generator-${part}` : null, label: FIELD_LABELS.generator };
-    }
-    const row = /^subtasks\.(\d+)\.(points|title|tests)$/.exec(key);
-    if (row) {
-      const i = Number(row[1]);
-      const ok = draft !== null && i < draft.subtasks.length;
-      return { id: ok ? `subtask-${i}-${row[2]}` : null, label: `Subtask ${i + 1} ${row[2]}` };
-    }
-    const program = /^(reference|brute|validator)(?:\.(\w+))?$/.exec(key);
-    if (program) {
-      const role = program[1] as 'reference' | 'brute' | 'validator';
-      const present = role === 'reference' || (draft !== null && draft[role] !== null);
-      const part = program[2] === 'language' ? 'language' : 'source';
-      return { id: present ? `${role}-${part}` : null, label: FIELD_LABELS[role] };
-    }
-    if (key === 'subtasks') return { id: 'add-subtask', label: FIELD_LABELS.subtasks };
-    if (key === 'epsilon' && draft?.checker !== 'float') return { id: null, label: FIELD_LABELS.epsilon };
-    if (key === 'checker_source' && draft?.checker !== 'custom') return { id: null, label: FIELD_LABELS.checker_source };
-    if (FIELD_LABELS[key]) return { id: key, label: FIELD_LABELS[key] };
-    return { id: null, label: '' };
-  }
-
-  const fieldList = $derived(
-    Object.entries(fields).map(([key, message]) => ({ key, message, ...fieldTarget(key) })),
-  );
-
-  /** The error for a program, whichever of its keys the server used. */
   function programError(role: 'reference' | 'brute' | 'validator' | 'generator'): string {
-    const key = Object.keys(fields).find((k) => k === role || k.startsWith(`${role}.`));
-    return key ? fields[key] : '';
+    return programErrorOf(fields, role);
   }
 
   function err(key: string): string {
@@ -267,8 +202,7 @@
   }
 
   function described(key: string, help = ''): string | undefined {
-    const ids = [help, fields[key] ? `${key.replace(/\./g, '-')}-error` : ''].filter((s) => s !== '');
-    return ids.length > 0 ? ids.join(' ') : undefined;
+    return describedBy(fields, key, help);
   }
 
   function focusField(event: MouseEvent, target: string | null) {
@@ -605,11 +539,8 @@
     addPlanButton?.focus();
   }
 
-  /** The errors of one planned test row, in column order. */
   function planErrors(i: number): { key: string; message: string }[] {
-    return ['idx', 'subtask', 'seed', 'args']
-      .map((part) => ({ key: `plan.${i}.${part}`, message: err(`plan.${i}.${part}`) }))
-      .filter((e) => e.message !== '');
+    return planErrorsOf(fields, i);
   }
 
   async function generateInputs() {
