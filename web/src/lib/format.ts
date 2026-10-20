@@ -18,6 +18,12 @@ export function formatDateTime(ms: number): string {
   return `${d.getDate()} ${MONTHS[d.getMonth()]} ${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
+/** Formats Unix milliseconds as "21 Oct, 00:11" in local time, for a sentence. */
+export function formatDayTime(ms: number): string {
+  const d = new Date(ms);
+  return `${d.getDate()} ${MONTHS[d.getMonth()]}, ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
 /** A count with its noun: "1 minute", "3 minutes". The plural defaults to noun + "s". */
 export function countOf(n: number, noun: string, plural = `${noun}s`): string {
   return `${n} ${n === 1 ? noun : plural}`;

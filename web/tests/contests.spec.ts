@@ -215,16 +215,22 @@ test('exam mode shows only "Submitted"', async ({ page }) => {
 });
 
 test('after the contest: result, submissions, editorial and practice', async ({ page }) => {
-  await mockApi(page, { phase: 'practice' });
+  const api = await mockApi(page, { phase: 'practice' });
+  api.clarifications.push({ id: 9, problem_label: 'B', question: 'Can intervals touch?', answer: 'Yes, touching counts as covered.', public: false, created_at: Date.now() - 3 * 3_600_000, answered_at: Date.now() - 3 * 3_600_000 + 60_000 });
+  await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto('/contests/week-6');
+  const questions = page.getByRole('region', { name: 'Your questions' });
+  await expect(questions).toContainText('Can intervals touch?');
+  await expect(questions).toContainText('Yes, touching counts as covered.');
   await expect(page.getByRole('heading', { name: 'Your result' })).toBeVisible();
-  await expect(page.locator('.total')).toContainText('140');
-  await expect(page.locator('.total')).toContainText('of 300 points');
-  await expect(page.getByText(/^You are \d+(st|nd|rd|th) of 28 with \d+ points\.$/)).toBeVisible();
-  await expect(page.getByText('Practice is open.', { exact: false })).toBeVisible();
+  // S9: one lead, the place as the display figure, no repeated sentence.
+  await expect(page.locator('.result-lead')).toHaveText(/^Ended \d+ [A-Z][a-z]{2}, \d{2}:\d{2}\. You scored 140 of 300\.$/);
+  await expect(page.locator('.result .place-figure')).toHaveText(/^\s*\d+ of 28$/);
+  await expect(page.getByText(/You are \d+/)).toHaveCount(0);
+  await expect(page.getByText('Practice is open: new submissions do not count.')).toBeVisible();
   await expect(page.getByText('Use 64-bit integers.')).toBeVisible();
-
-  await page.getByText('Problem B: Interval covering').click();
+  // The problem with the newest submission opens by itself.
+  await expect(page.locator('details[open] summary')).toHaveText(['Problem B: Interval covering']);
   await expect(page.locator('details[open]').getByText('40 of 100').first()).toBeVisible();
 
   await page.getByRole('link', { name: 'Practise problem B' }).click();

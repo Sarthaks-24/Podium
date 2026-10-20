@@ -16,6 +16,7 @@
   says its version changed, at most once every 3 s. Props: `slug`.
 -->
 <script lang="ts">
+  import PlaceFigure from '../components/PlaceFigure.svelte';
   import PageState from '../components/PageState.svelte';
   import PageHeader from '../components/PageHeader.svelte';
   import { onDestroy, onMount } from 'svelte';
@@ -151,14 +152,7 @@
 {:else if standings}
   <p class="status" class:frozen={standings.variant === 'frozen'}>{statusLine(standings, ended)}</p>
   {#if place}
-    <p class="place">
-      <span class="place-label">{place.label}</span>
-      <span class="place-figure">
-        {#if place.tied}<span class="place-of">tied</span>{/if}
-        <span class="mono place-rank">{place.rank}</span>
-        <span class="place-of">of {place.of}</span>
-      </span>
-    </p>
+    <div class="place-wrap"><PlaceFigure {place} /></div>
   {/if}
   <p class="legend">
     The shaded part of a cell is the share of points earned. A number after a score, such as +2, counts submissions made after the
@@ -199,31 +193,8 @@
     font-size: var(--fs-0);
   }
 
-  /* The page's one display figure (D80): mono number, Grotesk words, a muted
-     label, no box. */
-  .place {
-    display: grid;
-    gap: var(--space-1);
+  .place-wrap {
     margin-bottom: var(--space-6);
-  }
-
-  .place-label {
-    color: var(--ink-muted);
-    font-size: var(--fs-0);
-  }
-
-  .place-figure {
-    line-height: var(--lh-tight);
-  }
-
-  /* Beats the inline mono step (base.css) on purpose: this is the display figure. */
-  .place-figure .place-rank {
-    font-size: var(--fs-6);
-    line-height: 1;
-  }
-
-  .place-of {
-    font-size: var(--fs-2);
   }
 
   .board {
