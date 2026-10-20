@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -77,8 +78,10 @@ type planJSON struct {
 }
 
 type testJSON struct {
-	Idx           int    `json:"idx"`
-	Sample        bool   `json:"sample"`
+	Idx    int  `json:"idx"`
+	Sample bool `json:"sample"`
+	// Open marks an open test (D115).
+	Open          bool   `json:"open"`
 	SubtaskIdx    *int   `json:"subtask_idx"`
 	InputSize     int64  `json:"input_size"`
 	OutputSize    int64  `json:"output_size"`
@@ -103,30 +106,43 @@ type problemJSON struct {
 	Generator     *sourceJSON   `json:"generator"`
 	Plan          []planJSON    `json:"plan"`
 	Samples       []int         `json:"samples"`
+	Open          []int         `json:"open"`
 	Subtasks      []subtaskJSON `json:"subtasks"`
 	Tests         []testJSON    `json:"tests"`
 	ContentHash   string        `json:"content_hash"`
 	ValidatedHash *string       `json:"validated_hash"`
 	Problems      []string      `json:"problems"`
 	Warnings      []string      `json:"warnings"`
+	// Revision is the revision the working copy is; Revisions the newest
+	// 50, newest first (C4). LiveContests are the running contests that
+	// pin the problem: while there are any, a save needs a reason.
+	Revision       *revisionRefJSON       `json:"revision"`
+	Revisions      []revisionJSON         `json:"revisions"`
+	RevisionsTotal int                    `json:"revisions_total"`
+	LiveContests   []problems.LiveContest `json:"live_contests"`
 }
 
 type problemEditJSON struct {
-	Title         string        `json:"title"`
-	Slug          string        `json:"slug"`
-	StatementMD   string        `json:"statement_md"`
-	TimeLimitMS   int           `json:"time_limit_ms"`
-	MemoryLimitMB int           `json:"memory_limit_mb"`
-	Checker       string        `json:"checker"`
-	Epsilon       float64       `json:"epsilon"`
-	CheckerSource string        `json:"checker_source"`
-	Reference     sourceJSON    `json:"reference"`
-	Brute         *sourceJSON   `json:"brute"`
-	Validator     *sourceJSON   `json:"validator"`
-	Tags          []string      `json:"tags"`
-	Difficulty    string        `json:"difficulty"`
-	Samples       []int         `json:"samples"`
-	Subtasks      []subtaskJSON `json:"subtasks"`
+	Title         string      `json:"title"`
+	Slug          string      `json:"slug"`
+	StatementMD   string      `json:"statement_md"`
+	TimeLimitMS   int         `json:"time_limit_ms"`
+	MemoryLimitMB int         `json:"memory_limit_mb"`
+	Checker       string      `json:"checker"`
+	Epsilon       float64     `json:"epsilon"`
+	CheckerSource string      `json:"checker_source"`
+	Reference     sourceJSON  `json:"reference"`
+	Brute         *sourceJSON `json:"brute"`
+	Validator     *sourceJSON `json:"validator"`
+	Tags          []string    `json:"tags"`
+	Difficulty    string      `json:"difficulty"`
+	Samples       []int       `json:"samples"`
+	// Open, left out, keeps the open tests (D115).
+	Open     *[]int        `json:"open"`
+	Subtasks []subtaskJSON `json:"subtasks"`
+	// Reason says why the problem changed; required while a live contest
+	// pins it (B2.2).
+	Reason string `json:"reason"`
 	// Generator and Plan are raw so a save can tell "left out" (keep the
 	// generator, the plan and each subtask's arguments) from null or [].
 	Generator json.RawMessage `json:"generator"`
@@ -203,7 +219,8 @@ func (d Deps) preview(sha string) string {
 	return string(b)
 }
 
-func (d Deps) problemJSON(p *problems.Problem) problemJSON {
+// problemJSON is Problem in docs/API.md, with its revisions.
+func (d Deps) problemJSON(ctx context.Context, p *problems.Problem) (problemJSON, error) {
 	points := 0
 	for _, st := range p.Subtasks {
 		points += st.Points
@@ -217,11 +234,14 @@ func (d Deps) problemJSON(p *problems.Problem) problemJSON {
 		Reference: sourceJSON{p.Reference.Language, p.Reference.Source},
 		Brute:     optSource(p.Brute), Validator: optSource(p.Validator), Generator: optSource(p.Generator),
 		Plan:    []planJSON{},
-		Samples: p.Samples, Subtasks: []subtaskJSON{}, Tests: []testJSON{},
+		Samples: p.Samples, Open: p.Open, Subtasks: []subtaskJSON{}, Tests: []testJSON{},
 		ContentHash: p.ContentHash, Problems: nonNil(p.Problems()), Warnings: nonNil(p.Warnings()),
 	}
 	if out.Samples == nil {
 		out.Samples = []int{}
+	}
+	if out.Open == nil {
+		out.Open = []int{}
 	}
 	if p.ValidatedHash != "" {
 		out.ValidatedHash = &p.ValidatedHash
@@ -233,7 +253,7 @@ func (d Deps) problemJSON(p *problems.Problem) problemJSON {
 		out.Plan = append(out.Plan, planJSON{t.Test, t.Subtask, t.Seed, nonNil(t.Args)})
 	}
 	for _, t := range p.Tests {
-		tj := testJSON{Idx: t.Idx, Sample: p.IsSample(t.Idx), InputSize: t.InputSize, OutputSize: t.OutputSize,
+		tj := testJSON{Idx: t.Idx, Sample: p.IsSample(t.Idx), Open: p.IsOpen(t.Idx), InputSize: t.InputSize, OutputSize: t.OutputSize,
 			InputPreview: d.preview(t.InputSHA), OutputMissing: t.OutputSHA == ""}
 		if t.OutputSHA != "" {
 			tj.OutputPreview = d.preview(t.OutputSHA)
@@ -243,7 +263,18 @@ func (d Deps) problemJSON(p *problems.Problem) problemJSON {
 		}
 		out.Tests = append(out.Tests, tj)
 	}
-	return out
+	return out, d.addRevisions(ctx, p, &out)
+}
+
+// writeProblem answers with Problem.
+func (d Deps) writeProblem(w http.ResponseWriter, r *http.Request, status int, p *problems.Problem, warnings ...string) {
+	out, err := d.problemJSON(r.Context(), p)
+	if err != nil {
+		d.internalError(w, r, err)
+		return
+	}
+	out.Warnings = append(out.Warnings, warnings...)
+	WriteJSON(w, status, out)
 }
 
 func validationOut(v *problems.Validation) validationJSON {
@@ -325,7 +356,7 @@ func (d Deps) createProblem(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	d.Log.Info("problem created", "by", userFrom(r.Context()).ID, "problem_id", p.ID)
-	WriteJSON(w, http.StatusCreated, d.problemJSON(p))
+	d.writeProblem(w, r, http.StatusCreated, p)
 }
 
 // readZipBody reads an application/zip request body up to the pack limit.
@@ -374,11 +405,11 @@ func (d Deps) importProblem(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	d.Log.Info("problem imported", "by", userFrom(r.Context()).ID, "problem_id", p.ID, "tests", len(p.Tests), "ignored", len(pk.Ignored))
-	out := d.problemJSON(p)
+	var ignored []string
 	for _, name := range pk.Ignored {
-		out.Warnings = append(out.Warnings, fmt.Sprintf("Ignored %s: podium does not use it yet.", name))
+		ignored = append(ignored, fmt.Sprintf("Ignored %s: podium does not use it yet.", name))
 	}
-	WriteJSON(w, http.StatusCreated, out)
+	d.writeProblem(w, r, http.StatusCreated, p, ignored...)
 }
 
 func (d Deps) getProblem(w http.ResponseWriter, r *http.Request) {
@@ -391,7 +422,7 @@ func (d Deps) getProblem(w http.ResponseWriter, r *http.Request) {
 		d.problemError(w, r, err)
 		return
 	}
-	WriteJSON(w, http.StatusOK, d.problemJSON(p))
+	d.writeProblem(w, r, http.StatusOK, p)
 }
 
 func (d Deps) updateProblem(w http.ResponseWriter, r *http.Request) {
@@ -408,7 +439,8 @@ func (d Deps) updateProblem(w http.ResponseWriter, r *http.Request) {
 		Checker: req.Checker, Epsilon: req.Epsilon, CheckerSource: req.CheckerSource,
 		Reference: problems.Source{Language: req.Reference.Language, Source: req.Reference.Source},
 		Brute:     fromSourceJSON(req.Brute), Validator: fromSourceJSON(req.Validator),
-		Tags: req.Tags, Difficulty: req.Difficulty, Samples: req.Samples}
+		Tags: req.Tags, Difficulty: req.Difficulty, Samples: req.Samples, Open: req.Open,
+		By: userFrom(r.Context()).ID, Reason: req.Reason}
 	for _, st := range req.Subtasks {
 		e.Subtasks = append(e.Subtasks, problems.Subtask{Points: st.Points, Title: st.Title, Tests: st.Tests, GeneratorArgs: st.GeneratorArgs})
 	}
@@ -425,7 +457,7 @@ func (d Deps) updateProblem(w http.ResponseWriter, r *http.Request) {
 		d.problemError(w, r, err)
 		return
 	}
-	WriteJSON(w, http.StatusOK, d.problemJSON(p))
+	d.writeProblem(w, r, http.StatusOK, p)
 }
 
 // generatorEdit builds the generator part of a save from the raw fields.
@@ -476,13 +508,14 @@ func (d Deps) replaceTests(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer release()
-	p, err := d.Problems.ReplaceTests(r.Context(), id, body)
+	note := problems.RevisionNote{By: userFrom(r.Context()).ID, Reason: r.URL.Query().Get("reason")}
+	p, err := d.Problems.ReplaceTests(r.Context(), id, body, note)
 	if err != nil {
 		d.problemError(w, r, err)
 		return
 	}
 	d.Log.Info("tests replaced", "by", userFrom(r.Context()).ID, "problem_id", id, "tests", len(p.Tests))
-	WriteJSON(w, http.StatusOK, d.problemJSON(p))
+	d.writeProblem(w, r, http.StatusOK, p)
 }
 
 func (d Deps) downloadTest(w http.ResponseWriter, r *http.Request) {

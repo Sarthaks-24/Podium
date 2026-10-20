@@ -48,11 +48,16 @@ type Pack struct {
 	Ignored []string
 }
 
-// PackFormat is the version of the pack format this server reads and
-// writes (B1.7). A problem.yaml without a format line is format 1; one
-// with a higher number was written by a newer Podium and is refused,
-// rather than read with fields silently ignored.
-const PackFormat = 1
+// PackFormat is the newest pack format this server reads and writes
+// (B1.7). A problem.yaml without a format line is format 1; one with a
+// higher number was written by a newer Podium and is refused, rather than
+// read with fields silently ignored. Format 2 (v1.2.0, D115) adds open
+// tests; exports write format 1 when a problem has none, so an older
+// server can still import them.
+const PackFormat = 2
+
+// packFormatOpen is the first format with open tests.
+const packFormatOpen = 2
 
 // packMeta is problem.yaml.
 type packMeta struct {
@@ -70,6 +75,7 @@ type packMeta struct {
 	Validator     string        `yaml:"validator,omitempty"`
 	Generator     string        `yaml:"generator,omitempty"`
 	Samples       []int         `yaml:"samples,flow"`
+	Open          []int         `yaml:"open,omitempty,flow"`
 	Subtasks      []packSubtask `yaml:"subtasks"`
 }
 
@@ -199,7 +205,10 @@ func parsePackFiles(files map[string][]byte) (*Pack, error) {
 		return nil, &PackError{[]string{"problem.yaml: " + yamlMessage(err)}}
 	}
 	if meta.Format < 0 {
-		return nil, &PackError{[]string{"problem.yaml: format must be 1 (or left out)."}}
+		return nil, &PackError{[]string{fmt.Sprintf("problem.yaml: format must be 1 or %d (or left out).", PackFormat)}}
+	}
+	if len(meta.Open) > 0 && meta.Format < packFormatOpen {
+		return nil, &PackError{[]string{fmt.Sprintf("problem.yaml lists open tests, which need format: %d. Add that line at the top.", packFormatOpen)}}
 	}
 
 	pk := &Pack{Inputs: map[int][]byte{}, Outputs: map[int][]byte{}}
@@ -218,6 +227,7 @@ func parsePackFiles(files map[string][]byte) (*Pack, error) {
 	p.Tags = meta.Tags
 	p.Difficulty = meta.Difficulty
 	p.Samples = meta.Samples
+	p.Open = nonNilInts(meta.Open)
 	for _, st := range meta.Subtasks {
 		p.Subtasks = append(p.Subtasks, Subtask{Points: st.Points, Title: st.Title, Tests: st.Tests, GeneratorArgs: st.GeneratorArgs})
 	}
@@ -435,10 +445,13 @@ func WritePack(w io.Writer, p *Problem, read func(sha string) ([]byte, error)) e
 		return err
 	}
 	meta := packMeta{
-		Format: PackFormat,
+		Format: 1,
 		Title:  p.Title, Slug: p.Slug, TimeLimitMS: p.TimeLimitMS, MemoryLimitMB: p.MemoryLimitMB,
 		Checker: p.Checker, Tags: p.Tags, Difficulty: p.Difficulty, Samples: p.Samples,
 		Reference: "solution" + ExtByLanguage[p.Reference.Language],
+	}
+	if len(p.Open) > 0 {
+		meta.Format, meta.Open = packFormatOpen, p.Open
 	}
 	if p.Checker == CheckerFloat {
 		meta.Epsilon = p.Epsilon

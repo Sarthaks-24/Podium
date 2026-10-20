@@ -9,6 +9,7 @@ package problems
 import (
 	"fmt"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -74,7 +75,10 @@ type Problem struct {
 	AuthorID   int64
 	Archived   bool
 	// Samples are test numbers shown in the statement; they carry no points.
-	Samples  []int
+	Samples []int
+	// Open are the open tests (D115): run by Run after the samples and
+	// revealed when they fail, in no subtask, carrying no points.
+	Open     []int
 	Subtasks []Subtask
 	Tests    []Test
 
@@ -256,6 +260,20 @@ func checkStructure(errs FieldErrors, p *Problem) {
 		}
 		seen[n] = true
 	}
+	sort.Ints(p.Open)
+	openSeen := map[int]bool{}
+	for _, n := range p.Open {
+		switch {
+		case n < 1 || n > MaxTests || openSeen[n]:
+			errs["open"] = "List each open test number once, from 1 to 999."
+		case seen[n]:
+			errs["open"] = fmt.Sprintf("Test %d is a sample and an open test. Put each test in one place.", n)
+		}
+		if errs["open"] != "" {
+			break
+		}
+		openSeen[n] = true
+	}
 	for i := range p.Subtasks {
 		st := &p.Subtasks[i]
 		st.Idx = i + 1
@@ -315,6 +333,16 @@ func (p *Problem) StructureProblems() []string {
 		}
 		owner[n] = "the samples"
 	}
+	for _, n := range p.Open {
+		switch {
+		case !exists[n]:
+			out = append(out, fmt.Sprintf("Open test %d does not exist. Remove it from the open tests.", n))
+		case owner[n] != "":
+			out = append(out, fmt.Sprintf("Test %d is an open test and in %s. Put each test in one place.", n, owner[n]))
+		default:
+			owner[n] = "the open tests"
+		}
+	}
 	if len(p.Subtasks) == 0 {
 		out = append(out, "Add at least one subtask.")
 	}
@@ -337,7 +365,7 @@ func (p *Problem) StructureProblems() []string {
 	}
 	for _, t := range p.Tests {
 		if owner[t.Idx] == "" {
-			out = append(out, fmt.Sprintf("Test %d is in no subtask. Add it to a subtask or mark it as a sample.", t.Idx))
+			out = append(out, fmt.Sprintf("Test %d is in no subtask. Add it to a subtask, or mark it as a sample or an open test.", t.Idx))
 		}
 	}
 	return out
@@ -359,7 +387,7 @@ func (p *Problem) Warnings() []string {
 	if p.Validator == nil {
 		out = append(out, "No input validator: validation cannot check inputs against the constraints.")
 	}
-	if n := len(p.Tests) - len(p.Samples); n > 10 {
+	if n := len(p.Tests) - len(p.Samples) - len(p.Open); n > 10 {
 		out = append(out, fmt.Sprintf("%d hidden tests. Keep it to about 10 so contests judge quickly.", n))
 	}
 	return append(out, p.planWarnings()...)
@@ -379,11 +407,26 @@ func (p *Problem) SubtaskOf(n int) int {
 }
 
 // IsSample reports whether test n is a sample.
-func (p *Problem) IsSample(n int) bool {
-	for _, s := range p.Samples {
-		if s == n {
-			return true
-		}
+func (p *Problem) IsSample(n int) bool { return slices.Contains(p.Samples, n) }
+
+// IsOpen reports whether test n is an open test (D115).
+func (p *Problem) IsOpen(n int) bool { return slices.Contains(p.Open, n) }
+
+// TestKind is "sample", "open" or "hidden" (a subtask's test, or one in
+// no subtask yet), as revision_tests records it.
+func (p *Problem) TestKind(n int) string {
+	switch {
+	case p.IsSample(n):
+		return KindSample
+	case p.IsOpen(n):
+		return KindOpen
 	}
-	return false
+	return KindHidden
 }
+
+// Test kinds (D115).
+const (
+	KindSample = "sample"
+	KindOpen   = "open"
+	KindHidden = "hidden"
+)

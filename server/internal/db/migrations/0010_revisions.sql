@@ -100,6 +100,10 @@ CREATE TABLE revision_views (
   PRIMARY KEY (user_id, contest_id, revision_id)
 ) STRICT;
 
+-- Open tests of the working copy (D115): test numbers, a JSON array like
+-- samples. Run executes them after the samples; they are in no subtask.
+ALTER TABLE problems ADD COLUMN open_tests TEXT NOT NULL DEFAULT '[]';
+
 -- Contests pin a revision; submissions and jobs record the revision they
 -- were judged against. NULL for rows from before this release.
 ALTER TABLE contest_problems ADD COLUMN revision_id INTEGER REFERENCES problem_revisions (id);
@@ -167,7 +171,7 @@ INSERT INTO problem_revisions (problem_id, rev, content_hash, statement_hash, ti
     CASE WHEN p.validator_source <> '' THEN podium_sha256(p.validator_source) ELSE '' END,
     CASE WHEN p.generator_source <> '' THEN p.generator_language ELSE '' END,
     CASE WHEN p.generator_source <> '' THEN podium_sha256(p.generator_source) ELSE '' END,
-    p.samples, '[]',
+    p.samples, p.open_tests,
     coalesce((SELECT json_group_array(json_object('idx', st.idx, 'points', st.points, 'title', st.title, 'tests', st.tests))
       FROM (SELECT idx, points, title, tests FROM subtasks WHERE problem_id = p.id ORDER BY idx) st), '[]'),
     0, NULL, p.updated_at, ''
@@ -175,7 +179,8 @@ INSERT INTO problem_revisions (problem_id, rev, content_hash, statement_hash, ti
 
 INSERT INTO revision_tests (revision_id, idx, kind, input_sha, output_sha, input_size, output_size)
   SELECT r.id, t.idx,
-    CASE WHEN EXISTS (SELECT 1 FROM json_each(p.samples) WHERE value = t.idx) THEN 'sample' ELSE 'hidden' END,
+    CASE WHEN EXISTS (SELECT 1 FROM json_each(p.samples) WHERE value = t.idx) THEN 'sample'
+      WHEN EXISTS (SELECT 1 FROM json_each(p.open_tests) WHERE value = t.idx) THEN 'open' ELSE 'hidden' END,
     t.input_sha, t.output_sha, t.input_size, t.output_size
   FROM problems p
   JOIN problem_revisions r ON r.problem_id = p.id AND r.reconstructed = 0 AND r.content_hash = p.content_hash

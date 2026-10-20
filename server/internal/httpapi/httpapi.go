@@ -103,6 +103,8 @@ func New(d Deps) http.Handler {
 	mux.HandleFunc("GET /api/admin/problems/{id}/generation", admin(d.getGeneration))
 	mux.HandleFunc("POST /api/admin/problems/{id}/generate-inputs", admin(d.generateInputs))
 	mux.HandleFunc("GET /api/admin/problems/{id}/input-generation", admin(d.getInputGeneration))
+	mux.HandleFunc("GET /api/admin/problems/{id}/revisions/diff", admin(d.diffProblemRevisions))
+	mux.HandleFunc("GET /api/admin/problems/{id}/revisions/{rev}", admin(d.getProblemRevision))
 	if d.AI != nil {
 		d.aiRoutes(mux)
 	}
