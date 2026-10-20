@@ -682,6 +682,8 @@ export const SCREENS: Screen[] = [
     title: 'B. Interval covering · Week 6 contest · podium',
     ready: async (page) => {
       await expect(page.locator('.cm-content')).toBeVisible();
+      // The language's highlighting is its own chunk (P5 F7.8); wait for it.
+      await expect(page.locator('.cm-content')).toHaveAttribute('data-language', /.+/);
       await expect(page.locator('.statement .katex').first()).toBeVisible();
     },
   },

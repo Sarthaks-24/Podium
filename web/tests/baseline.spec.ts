@@ -41,6 +41,7 @@ async function openWorkspace(page: Page, options: Options = { phase: 'during' })
   await page.goto('/contests/week-6/problems/A');
   // Under 1024 px the editor waits behind the Code tab.
   await expect(page.locator('.cm-content')).toBeAttached();
+  await expect(page.locator('.cm-content')).toHaveAttribute('data-language', /.+/);
   await expect(page.locator('.statement .katex').first()).toBeVisible();
   await settle(page);
 }

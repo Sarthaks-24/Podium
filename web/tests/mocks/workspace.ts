@@ -258,4 +258,5 @@ export async function openWorkspace(page: Page) {
   await page.goto('/admin/problems/1/try');
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('A plus B');
   await expect(page.locator('.cm-content')).toHaveCount(1);
+  await expect(page.locator('.cm-content')).toHaveAttribute('data-language', /.+/);
 }

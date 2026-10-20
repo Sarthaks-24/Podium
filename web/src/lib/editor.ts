@@ -2,11 +2,16 @@
  * The code editor: CodeMirror 6 set up for the workspace.
  *
  * Loaded with a dynamic import by components/CodeEditor.svelte only, so
- * CodeMirror and its four language modes stay out of the main bundle.
+ * CodeMirror stays out of the main bundle. Each language mode is its own
+ * chunk, fetched when that language is first chosen (P5 F7.8): the editor
+ * opens at once with plain text and the highlighting arrives with the
+ * mode. A later switch that lands first wins; a mode that fails to load
+ * leaves the code as plain text, which still edits and submits.
  *
  * - Colours come from CSS custom properties (the well and the --code-*
  *   tokens), so the editor follows every theme without being rebuilt.
- * - Font size is the --editor-font-size property on the host element.
+ * - Font size is the --editor-font-size-used property on the host element
+ *   (CodeEditor.svelte keeps it at 16 px or more on touch screens).
  * - Tab indents unless "Tab moves focus" is on. Either way, Escape then Tab
  *   leaves the editor (CodeMirror's tab-focus escape), so a keyboard user is
  *   never trapped.
@@ -14,12 +19,10 @@
  *   ahead of the default keymap, which would otherwise insert a line.
  * - Typed and pasted characters are reported from each transaction's
  *   userEvent ("input.type", "input.paste"), never with timing.
+ * - `describedBy` names the element holding the editor's keyboard hint, so
+ *   a screen reader hears how to leave the editor (X2).
  */
 import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirror/commands';
-import { cpp } from '@codemirror/lang-cpp';
-import { java } from '@codemirror/lang-java';
-import { javascript } from '@codemirror/lang-javascript';
-import { python } from '@codemirror/lang-python';
 import { bracketMatching, HighlightStyle, indentOnInput, indentUnit, syntaxHighlighting } from '@codemirror/language';
 import { Compartment, EditorState, type Extension } from '@codemirror/state';
 import {
@@ -34,17 +37,24 @@ import {
 import { tags as t } from '@lezer/highlight';
 import type { Language } from './workspace';
 
-function mode(language: Language): Extension {
-  switch (language) {
-    case 'cpp17':
-      return cpp();
-    case 'java21':
-      return java();
-    case 'python3':
-      return python();
-    case 'node22':
-      return javascript();
+const MODES: Record<Language, () => Promise<Extension>> = {
+  cpp17: () => import('@codemirror/lang-cpp').then((m) => m.cpp()),
+  java21: () => import('@codemirror/lang-java').then((m) => m.java()),
+  python3: () => import('@codemirror/lang-python').then((m) => m.python()),
+  node22: () => import('@codemirror/lang-javascript').then((m) => m.javascript()),
+};
+
+const loaded = new Map<Language, Promise<Extension>>();
+
+/** The language mode, fetched once per page; a failed fetch is tried again next time. */
+export function loadMode(language: Language): Promise<Extension> {
+  let p = loaded.get(language);
+  if (!p) {
+    p = MODES[language]();
+    loaded.set(language, p);
+    p.catch(() => loaded.delete(language));
   }
+  return p;
 }
 
 const highlight = HighlightStyle.define([
@@ -64,7 +74,7 @@ const theme = EditorView.theme(
       height: '100%',
       color: 'var(--well-ink)',
       backgroundColor: 'var(--well)',
-      fontSize: 'var(--editor-font-size, var(--fs-0))',
+      fontSize: 'var(--editor-font-size-used, var(--editor-font-size, var(--fs-0)))',
     },
     '&.cm-focused': { outline: 'none' },
     '.cm-scroller': { fontFamily: 'var(--font-mono)', lineHeight: '1.55', overflow: 'auto' },
@@ -98,6 +108,8 @@ export interface EditorOptions extends EditorCallbacks {
   doc: string;
   language: Language;
   label: string;
+  /** The id of the element that describes the editor (its keyboard hint). */
+  describedBy?: string;
   tabMovesFocus: boolean;
 }
 
@@ -134,7 +146,12 @@ export function createEditor(o: EditorOptions): EditorHandle {
   ]);
 
   const tabKeys = (on: boolean) => (on ? [] : keymap.of([indentWithTab]));
-  const labelAttrs = (label: string) => EditorView.contentAttributes.of({ 'aria-label': label, 'aria-multiline': 'true' });
+  const labelAttrs = (label: string) =>
+    EditorView.contentAttributes.of({
+      'aria-label': label,
+      'aria-multiline': 'true',
+      ...(o.describedBy ? { 'aria-describedby': o.describedBy } : {}),
+    });
 
   const view = new EditorView({
     parent: o.parent,
@@ -156,7 +173,7 @@ export function createEditor(o: EditorOptions): EditorHandle {
         keymap.of([...defaultKeymap, ...historyKeymap]),
         syntaxHighlighting(highlight),
         theme,
-        languageConf.of(mode(o.language)),
+        languageConf.of([]),
         labelConf.of(labelAttrs(o.label)),
         EditorView.updateListener.of((u) => {
           for (const tr of u.transactions) {
@@ -170,9 +187,23 @@ export function createEditor(o: EditorOptions): EditorHandle {
     }),
   });
 
+  // The newest request wins, so a slow first mode never replaces a later choice.
+  let wanted: Language = o.language;
+  let destroyed = false;
+  const applyMode = (language: Language) => {
+    wanted = language;
+    loadMode(language)
+      .then((ext) => {
+        if (!destroyed && wanted === language) view.dispatch({ effects: languageConf.reconfigure(ext) });
+      })
+      .catch(() => undefined);
+  };
+  applyMode(o.language);
+
   return {
     setLanguage(language, label) {
-      view.dispatch({ effects: [languageConf.reconfigure(mode(language)), labelConf.reconfigure(labelAttrs(label))] });
+      view.dispatch({ effects: labelConf.reconfigure(labelAttrs(label)) });
+      if (language !== wanted) applyMode(language);
     },
     setTabMovesFocus(on) {
       view.dispatch({ effects: tabConf.reconfigure(tabKeys(on)) });
@@ -195,6 +226,7 @@ export function createEditor(o: EditorOptions): EditorHandle {
       view.focus();
     },
     destroy() {
+      destroyed = true;
       view.destroy();
     },
   };
