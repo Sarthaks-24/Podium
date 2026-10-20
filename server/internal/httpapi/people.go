@@ -1,11 +1,13 @@
 package httpapi
 
 import (
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"io"
 	"mime"
 	"net/http"
+	"strings"
 
 	"github.com/Sarthaks-24/podium/internal/auth"
 )
@@ -85,9 +87,36 @@ func (d Deps) securityRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/admin/accounts/end-sessions", d.requireRole(auth.Owner, d.endSessions))
 	mux.HandleFunc("POST /api/admin/accounts/disable", d.requireRole(auth.Owner, d.setAccountDisabled(true)))
 	mux.HandleFunc("POST /api/admin/accounts/enable", d.requireRole(auth.Owner, d.setAccountDisabled(false)))
+	mux.HandleFunc("GET /api/admin/accounts", d.requireRole(auth.Admin, d.limitReads(d.lookupAccount)))
 	if d.Contests != nil {
 		mux.HandleFunc("GET /api/admin/contests/{id}/audit", d.requireRole(auth.Student, d.contestAudit))
 	}
+}
+
+// lookupAccount finds one account by its email, students included, so
+// People's Account help can say whose account an action is about before
+// it runs (audit 2026-10-20 O10). Owners and admins only: anyone else gets
+// the same 403 whether or not the address exists, so the route tells
+// nobody else which addresses have accounts. The address is matched as
+// sign-in stores it (trimmed, lower case) and is never logged.
+func (d Deps) lookupAccount(w http.ResponseWriter, r *http.Request) {
+	email := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("email")))
+	if email == "" || len(email) > 320 {
+		WriteError(w, http.StatusBadRequest, "bad_request", "Give an email address as ?email=.")
+		return
+	}
+	var a auth.Account
+	err := d.DB.QueryRowContext(r.Context(), "SELECT id, email, name, role, disabled, last_login_at FROM users WHERE email = ?", email).
+		Scan(&a.ID, &a.Email, &a.Name, &a.Role, &a.Disabled, &a.LastLoginAt)
+	if errors.Is(err, sql.ErrNoRows) {
+		WriteError(w, http.StatusNotFound, "not_found", "Nobody with that email has an account.")
+		return
+	}
+	if err != nil {
+		d.internalError(w, r, err)
+		return
+	}
+	WriteJSON(w, http.StatusOK, map[string]any{"account": a, "server_now": d.now().UnixMilli()})
 }
 
 // endSessions signs a person out everywhere, for a lost laptop or a shared

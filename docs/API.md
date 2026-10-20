@@ -216,6 +216,12 @@ Disable ends every session as above, and the account is refused at sign-in (`/si
 
 Request: `{"email":"asha@college.edu"}`. Response `200`: `{"account": Account, "ended": 1}` (`ended` is 0 for enable). Errors: `404 not_found`; `409 conflict` for `PODIUM_OWNER_EMAIL` (the recovery account) and for disabling yourself.
 
+### `GET /api/admin/accounts?email=` (owner, admin; v1.4.0)
+
+Finds one account by its email, students included, so People's Account help can say whose account an action is about before it runs. The address is matched as sign-in stores it (trimmed, lower case) and is never logged.
+
+Response `200`: `{"account": Account, "server_now": 1792300000000}`. Errors: `400 bad_request` without `email`; `404 not_found` "Nobody with that email has an account."; `403 forbidden` for anyone below admin, the same answer whether or not the address exists, so the route tells nobody else which addresses have accounts; `429 rate_limited` on the per-user read limit.
+
 `Account` is `{id, email, name, role, disabled, last_login_at}`.
 
 Every change on this page (roles, domains, disabling and enabling, ended sessions, Google link resets) is written to the site audit in the same transaction as the change (v1.2.0, see "Site audit: People History").
@@ -700,7 +706,7 @@ A submission that never counts carries `revealed` for its first failing hidden t
 - `output` is the start of what the program printed on that test (at most 4 KB). Each field is capped at 4 KB like the samples.
 - The setter checklist in `docs/AUTHORING.md` explains the consequence: a problem used in a practice-open or ungraded contest has its hidden tests readable one at a time.
 
-Until P5 (D115) the web app ignores `revealed` and `kind` and shows open test rows like sample rows; problems have no open tests until a setter adds them.
+The web app shows `revealed` from v2 P5 (D115, F7.13): a practice submission's first failing hidden test, and a run's first failing sample or open test, in one block that says why it is shown, with the input, the expected output, the program's output, the first difference and "Run on this input" (not offered when a text was cut at 4 KB). Passed samples and open tests show their verdict line only, and a skipped open test says why it did not run. A submission that counts in a contest never carries `revealed`, so it never shows one.
 
 ### `Submission`
 
