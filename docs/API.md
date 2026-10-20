@@ -429,7 +429,7 @@ Every route needs the admin or owner role and answers with `server_now`. Provide
 |---|---|---|---|---|
 | `anthropic` | `GET /v1/models`, every page | models whose `capabilities` support structured outputs, adaptive thinking and effort `high` | as listed (newest first) | `display_name` |
 | `openai` | `GET /v1/models` | ids starting `gpt-` or `o` followed by a digit, except `gpt-3.5*`, `gpt-4`, `gpt-4-*`, and ids containing `audio`, `realtime`, `tts`, `transcribe`, `image`, `search`, `embedding`, `moderation` or `instruct` | newest `created` first | the id |
-| `gemini` | `GET /v1beta/models`, following `nextPageToken` | `supportedGenerationMethods` contains `generateContent`, and the id is not an embedding, image, audio or text-to-speech model; the `models/` prefix is stripped | as listed | `displayName` |
+| `gemini` | `GET /v1beta/models`, following `nextPageToken` | `supportedGenerationMethods` contains `generateContent`, except ids containing `embedding`, `image`, `tts`, `audio`, `live`, `gemma` or `aqa`; the `models/` prefix is stripped | as listed | `displayName` |
 | `fake` (testing) | none | `canned` | | `Canned problems` |
 
 - The list is a hint. The key form takes any model id typed in; a model missing from the list (new, or filtered out) is still accepted when the provider's own model lookup finds it.
