@@ -94,6 +94,26 @@ func checkCmd(args []string, out io.Writer) int {
 		}
 		ok = ok && v.OK()
 	}
+	// From schema 0010: every problem's working copy is recorded by its
+	// newest revision, and every contest pin names a revision (B2.2).
+	var revisions int
+	if err := d.QueryRowContext(ctx, "SELECT count(*) FROM sqlite_master WHERE type = 'table' AND name = 'problem_revisions'").Scan(&revisions); err != nil {
+		fmt.Fprintf(out, "check: %v\n", err)
+		return 2
+	}
+	if revisions > 0 {
+		bad, err := problems.CheckRevisions(ctx, d)
+		if err != nil {
+			fmt.Fprintf(out, "check: revisions: %v\n", err)
+			return 2
+		}
+		if len(bad) == 0 {
+			fmt.Fprintln(out, "revisions: ok")
+		} else {
+			fmt.Fprintf(out, "revisions: %d problems: %s\n", len(bad), strings.Join(limitList(bad, 5), "; "))
+			ok = false
+		}
+	}
 	if ok {
 		fmt.Fprintln(out, "result: ok")
 		return 0

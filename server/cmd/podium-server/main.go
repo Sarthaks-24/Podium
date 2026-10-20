@@ -43,6 +43,8 @@ func main() {
 		fmt.Fprintln(os.Stderr, "       podium-server -version                    print what this build is")
 		fmt.Fprintln(os.Stderr, "       podium-server check [-db F] [-tests D] [-hash]  check a database and its test files")
 		fmt.Fprintln(os.Stderr, "       podium-server deploy-check [-db F] [-force REASON -release TAG]  may a release be installed now?")
+		fmt.Fprintln(os.Stderr, "       podium-server saw -contest SLUG -email E -label A [-at TIME]  what a student was shown of a problem")
+		fmt.Fprintln(os.Stderr, "       podium-server runs-report [-db F]          runs with a custom input, per contest")
 	}
 	flag.Parse()
 	if *showVersion {
@@ -54,6 +56,12 @@ func main() {
 	}
 	if flag.Arg(0) == "deploy-check" {
 		os.Exit(deployCheckCmd(flag.Args()[1:], os.Stdout))
+	}
+	if flag.Arg(0) == "saw" {
+		os.Exit(sawCmd(flag.Args()[1:], os.Stdout))
+	}
+	if flag.Arg(0) == "runs-report" {
+		os.Exit(runsReportCmd(flag.Args()[1:], os.Stdout))
 	}
 	if flag.NArg() > 0 {
 		flag.Usage()
