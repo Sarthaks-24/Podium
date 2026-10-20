@@ -316,6 +316,9 @@ Checked by the server before anything is queued. Every refusal is `429` with the
 | Open requests | 8 at once per browser session, event streams aside (`429` with `Retry-After: 1`) | every API route with a session cookie |
 | Time to send a request | headers within 10 s, the whole request within 15 s; 120 s for the routes that take an upload | every route; the long one for pack import, test replacement and roster upload |
 | Request body at the edge | 33 MB (Caddy refuses more with `413` before the server sees it) | everything through Caddy |
+| Before sign-in | 600 requests at once per client address, refilled at 10 a second; IPv6 addresses share one budget per /64; requests from the VM itself are not counted (v1.3.0) | `/healthz`, `GET /api/auth/config`, Google sign-in start and callback, test sign-in, sign-out |
+| Sign-in attempts | each attempt (its state cookie) finishes once; a replayed callback lands on `/signin?error=expired` without a call to Google | the Google callback |
+| Contact messages | 5 per person and 100 in total per 24 hours (`Retry-After: 3600`) | `POST /api/contact` |
 
 A retried Submit with the same `client_key` returns the first submission and is not counted again, so a flaky network does not trip these limits. Only the contest limits are configurable, per contest in its settings.
 
@@ -518,6 +521,34 @@ The daily job starts a minute after the server and then runs every 24 hours, in 
 - **Audit:** site audit and contest audit rows older than 4 years.
 
 The append-only tables accept a delete only of rows older than their `retention_cutoffs` row, which only this job writes, and a database trigger refuses a cutoff newer than 90 days (draft revisions) or a year (everything else), so no bug can open them wider (D69).
+
+## Site settings
+
+The organisation details the public pages show (v1.3.0): name, contact email, phone and privacy contact. An owner enters them on People (`PUT /api/admin/site-settings`); they are stored in the database's `settings` table, not in an environment variable, and every change writes a `settings_changed` row to the site audit. Until they are entered the pages show nothing for them: the footer and the sign-in page fall back to `PODIUM_OWNER_EMAIL` as the contact address, and `/signin` carries no Organization JSON-LD. Enter a role address (for example `podium@college.edu`) as the contact email so the owner's own address stops appearing on the public sign-in page (pre-auth review, observation 1).
+
+What a visitor can read without signing in is listed in `docs/API.md` (`GET /api/auth/config`): allowed domains, run mode, these settings and the retention periods. Nothing about contests.
+
+## Contact messages
+
+Signed-in people write to the organisers from `/contact` (v1.3.0). Owners and admins read the messages in the inbox and reply from their own mail with "Reply by email"; the server sends no mail. Limits: 5 messages per person and 100 in total per 24 hours; a message is at most 2,000 characters of plain text, never shown as HTML. Messages are deleted after 180 days (Retention), when an organiser deletes one (recorded in the site audit without its text), and when the sender is erased. Someone who cannot sign in writes to the contact email shown on `/signin` and in the footer.
+
+## Erasing a person
+
+A request to delete someone's data (a student who left, a privacy request through the contact form) is handled on the VM with `podium-server forget-user`. It is a dry run unless `-apply` is given:
+
+```sh
+sudo -u podium podium-server forget-user -db /var/lib/podium/db/podium.db asha@college.edu
+# read the counts, then:
+sudo -u podium podium-server forget-user -db /var/lib/podium/db/podium.db -apply asha@college.edu
+```
+
+It deletes the account's sessions, drafts, integrity events and contact messages, clears the browser hashes on its submissions and its co-organiser places, replaces the name and email with `Removed user N` and `removed-user-N@removed.invalid` (N is the account id) in the account and in every contest roster (roll number and section are emptied there), clears the Google link and disables the account. Submissions and scores stay, so past standings stay correct under the placeholder. The site audit gets one `user_forgotten` row as the owner account (`-owner`, default `PODIUM_OWNER_EMAIL`), naming the account by id only. Refused: `PODIUM_OWNER_EMAIL` itself, an account already forgotten, an unknown address.
+
+Not touched, by design: audit rows written before the erasure keep the address they recorded until the audit retention removes them (4 years), and backups keep the old data until they age out (14 days). If the person signs in again with the same Google account, a new, empty account is made.
+
+## Semester rollover
+
+At the end of a term an owner archives its contests and disables the student accounts nobody has used for 180 days, with `POST /api/admin/rollover` (an owner action; the People screen for it is the frontend's). Send it first without `"apply": true` and read the lists; then send it again with `"apply": true` and the same `label` (for example `2026 odd semester`). Contests are archived (nothing is deleted; each gets an `archive` row in its audit log), accounts are disabled and signed out (an owner can enable one again on People), and the site audit records the label, the counts and the emails. Organisers and `PODIUM_OWNER_EMAIL` are never disabled by it.
 
 ## Checking a database
 

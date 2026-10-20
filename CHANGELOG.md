@@ -4,6 +4,20 @@ Dated entries per release. Unreleased work is listed at the top.
 
 ## Unreleased
 
+### v2 P3, backend (2026-10-20)
+
+Becomes `v1.3.0` when the P3 gate is signed. Schema change (0012): deploys in slot S3 only; the head, manifest and robots work is live-safe on its own but ships in the same release. Upgrades from `v1.2.0` only.
+
+- Retention (D85, PLAN section 9): every period is one constant in `server/internal/retention/periods.go`, returned by `GET /api/auth/config` for the privacy page and listed in `docs/OPERATIONS.md`. A daily job empties run payloads after 30 days, deletes contact messages after 180 days, unused problem revisions after 90 days, and submissions and audit rows 4 years after the contest, keeping each expired contest's final standings in `contest_results`.
+- `podium-server forget-user EMAIL` erases one person on request (dry run unless `-apply`): sessions, drafts, integrity events and contact messages go, the name and email become "Removed user N", scores stay.
+- Semester rollover (`POST /api/admin/rollover`, owners): archives the term's contests and disables student accounts unseen for 180 days, after a preview.
+- Public pages (D100): the server reads the web build's route manifest, answers unknown paths with status 404, fills the head of public pages (title, description, canonical, Open Graph, Twitter card, `index`) and keeps every other page `noindex` with `X-Robots-Tag`. `/privacy` reads without JavaScript once the build carries the approved text. New `robots.txt`, `sitemap.xml`, and an Organization JSON-LD on `/signin` from the site settings.
+- Site settings (`PUT /api/admin/site-settings`, owners): organisation name, contact email, phone and privacy contact, returned by `GET /api/auth/config` as `organisation` (C5). The contact email replaces the owner's own address on public pages once entered. No contest data before sign-in.
+- Contact form (C6): `POST /api/contact` for signed-in people, 5 per person and 100 in total per 24 hours, and an inbox for owners and admins (`GET` and `DELETE /api/admin/contact`). No mail is sent.
+- Queue health on the organiser contest response (C10): waiting and judging jobs, the oldest wait, judge errors, unanswered clarifications and when a judge last asked for work.
+- Before sign-in, requests are limited per client address, and each Google sign-in attempt can finish only once (P0 security review, finding 4).
+- `contest_problems.pinned_hash` is gone (the contract step for v1.2.0); `pinned_hash` on the contest response is now the pinned revision's hash.
+
 ### v2 P2, backend (2026-10-20)
 
 Becomes `v1.2.0` when the P2 gate is signed. Schema change (0010, 0011): deploys in slot S2 only. Judge protocol 3: install on the server and the judge together.
