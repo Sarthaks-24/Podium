@@ -101,7 +101,7 @@
     position: absolute;
     inset-inline-end: 0;
     top: calc(100% + var(--space-2));
-    z-index: 20;
+    z-index: var(--z-bar);
     width: min(20rem, calc(100vw - 2 * var(--gutter)));
     max-height: min(75vh, 40rem);
     overflow-y: auto;

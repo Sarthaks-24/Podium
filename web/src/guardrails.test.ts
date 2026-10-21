@@ -56,6 +56,16 @@ describe('web source guardrails', () => {
     expect(offenders).toEqual([]);
   });
 
+  // Page-level stacking uses the --z-* tokens, so a toast never ties with
+  // the bar; small local orders (1 to 9) inside a component are fine (C1-034).
+  it('takes page-level z-index values from the tokens', () => {
+    const offenders = Object.entries(sources)
+      .filter(([path]) => path !== TOKENS && !isTest(path))
+      .filter(([, text]) => /z-index\s*:\s*\d{2,}/.test(text))
+      .map(([path]) => path);
+    expect(offenders).toEqual([]);
+  });
+
   it('contains no en dashes or em dashes', () => {
     const offenders = Object.entries(sources)
       .filter(([, text]) => DASHES.test(text))

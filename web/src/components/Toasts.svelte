@@ -40,7 +40,7 @@
     position: fixed;
     left: var(--gutter);
     bottom: var(--space-4);
-    z-index: 20;
+    z-index: var(--z-toast);
     display: grid;
     gap: var(--space-2);
     width: min(24rem, calc(100vw - 2 * var(--gutter)));
