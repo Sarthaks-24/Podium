@@ -35,6 +35,7 @@ Nothing below is tagged or deployed. The v2 phases were planned as the releases 
 - `make package` builds the release tarball without `make check`, for the upgrade drill's build with a never-committed migration.
 - The release workflow builds a tag only when `ci` passed on its commit, and `make release` refuses a `v1.5.0` or later release that still upgrades from the placeholder `v1.0.0`.
 - A semester rollover apply can name its preview's time (`as_of`), so it disables only the accounts the preview listed.
+- The organiser feed and the JSON export name the compilers that judged each submission (`toolchain`).
 - A reviewer who is a student of a case with a classmate can no longer write notes on the classmate's submissions in that contest, open a case from them (which copied the notes), read a manual case about them, see their note counts in the feed, or edit, confirm or decline their rating (D262 on every path). Notes and cases on one's own submission answer 404 instead of 400.
 - Opening a case (from signals or from a submission) is logged as a read of it, as every later read is (D97).
 - The bank's "hidden tests shown in practice" mark counts only published contests, and a problem whose hidden tests a published contest has shown can no longer be taken out of that contest, which used to make the mark disappear.

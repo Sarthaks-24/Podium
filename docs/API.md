@@ -1044,13 +1044,13 @@ Unknown actions may appear in later releases; show them by their name.
 
 - **Pause** stops the judge from taking the contest's submissions and runs; they still queue, and nothing is lost. **Resume** lets them through in order.
 - **Rejudge** queues every submission of a problem (or one submission) again at priority 50 with the problem's current tests; each goes back to `queued` and counts again once judged. Submissions still waiting for the judge, or being judged, on the old tests are included: their old job is cancelled and replaced. A submission already waiting on exactly the current tests is left alone, so pressing Rejudge twice adds nothing (`queued` counts only what was queued). The problem must still match its pin: after editing tests, validate the problem and add it to the contest again first (`409 not_ready` otherwise). A rejudge waiting in the queue never blocks the student from submitting.
-- **Feed** rows: `{id, user_id, name, email, problem_label, language, state, verdict, score, max_score, created_at, judged_at, practice, rejudged, typed_chars, pasted_chars, focus_losses}`, newest first, 50 per page.
+- **Feed** rows: `{id, user_id, name, email, problem_label, language, state, verdict, score, max_score, created_at, judged_at, practice, rejudged, typed_chars, pasted_chars, focus_losses, toolchain}`, newest first, 50 per page. `toolchain` is `{gcc, java, python, node}`, the versions the judge that ran the submission's latest job reported (plain text from the judge), or `null` while it waits, for a job from before the toolchain registry, and while results are hidden.
 - **Reveal** answers `409 too_early` "The reveal opens when every student's time is up." until the close plus the longest personal extension. The web app walks the frozen board from the bottom, moving each row to its place on the full board.
 
 ### Export and stats
 
 - CSV columns: `rank, name, email, roll_number, section, started` (UTC, RFC 3339), `total`, then one column per problem label. A cell starting with `=`, `+`, `-`, `@`, a tab or a carriage return gets a leading `'`, so a spreadsheet never runs a name as a formula.
-- JSON: `{contest: AdminContest, standings: [Standings row plus email, roll_number, section, started_at], submissions: [{id, user_id, problem_label, language, state, verdict, score, created_at, practice}], audit: [AuditEntry], exported_at}`. No code and no integrity data.
+- JSON: `{contest: AdminContest, standings: [Standings row plus email, roll_number, section, started_at], submissions: [{id, user_id, problem_label, language, state, verdict, score, created_at, practice, toolchain}], audit: [AuditEntry], exported_at}`. No code and no integrity data.
 - `ProblemStats`: `{label, title, max_score, attempted, solved` (full score)`, subtasks [{idx, points, earned}], histogram [{score, students}]` (highest score first)`, median_attempts}`, over students on the board and their non-practice submissions.
 
 ## History and audit (v1.2.0)

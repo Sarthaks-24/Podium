@@ -232,3 +232,52 @@ func TestInboxAndAppealsPageAt50(t *testing.T) {
 		t.Errorf("appeals page 2: %d %v", code, out)
 	}
 }
+
+// The organiser feed and the JSON export name the compilers that judged
+// each submission, through its job's toolchain (C2-028).
+func TestFeedAndExportNameTheToolchain(t *testing.T) {
+	w := newIntegrityWorld(t)
+	s := w.s
+	s.at(w.start, 121)
+	var sub, job int64
+	if err := s.db.QueryRow("SELECT id, job_id FROM submissions WHERE contest_id = ? AND user_id = ? ORDER BY id LIMIT 1", w.c1, w.asha.userID()).Scan(&sub, &job); err != nil {
+		t.Fatal(err)
+	}
+	res, err := s.db.Exec(`INSERT INTO toolchains (hash, details, first_seen, last_seen) VALUES ('h1', '{"gcc":"g++ 13.3.0","java":"21.0.8","python":"3.12.3","node":"v22.20.0","isolate":"2.0","kernel":"6.8"}', 1, 1)`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tid, _ := res.LastInsertId()
+	if _, err := s.db.Exec("UPDATE jobs SET toolchain_id = ? WHERE id = ?", tid, job); err != nil {
+		t.Fatal(err)
+	}
+	gccOf := func(items []any) map[float64]any {
+		got := map[float64]any{}
+		for _, x := range items {
+			it := x.(map[string]any)
+			tc, _ := it["toolchain"].(map[string]any)
+			got[it["id"].(float64)] = tc["gcc"]
+		}
+		return got
+	}
+	code, feed := w.owner.do("GET", fmt.Sprintf("/api/admin/contests/%d/submissions", w.c1), nil, "")
+	if code != 200 {
+		t.Fatalf("feed: %d %v", code, feed)
+	}
+	if got := gccOf(feed["submissions"].([]any)); got[float64(sub)] != "g++ 13.3.0" {
+		t.Errorf("feed toolchain of submission %d: %v", sub, got)
+	}
+	code, exp := w.owner.do("GET", fmt.Sprintf("/api/admin/contests/%d/export.json", w.c1), nil, "")
+	if code != 200 {
+		t.Fatalf("export: %d %v", code, exp)
+	}
+	got := gccOf(exp["submissions"].([]any))
+	if got[float64(sub)] != "g++ 13.3.0" {
+		t.Errorf("export toolchain of submission %d: %v", sub, got)
+	}
+	for id, g := range got {
+		if id != float64(sub) && g != nil {
+			t.Errorf("submission %v names a toolchain no job of it reported: %v", id, g)
+		}
+	}
+}
