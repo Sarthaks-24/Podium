@@ -292,6 +292,16 @@ test('after adding an organiser, the page says what to send them', async ({ page
   await expect(note).toHaveCount(0);
 });
 
+test('an organiser who signed in without a name is not shown as invited', async ({ page }) => {
+  const api = await mockApi(page, 'owner');
+  api.people.push({ id: 4, email: 'lab@college.edu', name: '', role: 'admin', last_login_at: 1792183192359, locked: false });
+  await page.goto('/admin/people');
+  const row = page.getByRole('row', { name: /lab@college\.edu/ });
+  await expect(row).toContainText('No name');
+  await expect(row).not.toContainText('Invited');
+  await expect(page.getByRole('row', { name: /^Invited ta@college/ })).toHaveCount(1);
+});
+
 test('a fresh install starts with a short checklist', async ({ page }) => {
   const api = await mockApi(page, 'owner');
   api.domains = [];

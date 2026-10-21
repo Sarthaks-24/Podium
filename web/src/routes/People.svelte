@@ -9,7 +9,8 @@
   - Organisers: a table of everyone with the admin or owner role (stacked
     rows on phones), a form to add one, and after an add an inline note
     with the address to send them and a Copy button. Someone who has not
-    signed in yet reads "Invited". A role is a select on each row that
+    signed in yet reads "Invited"; someone who has but gave no name (testing
+    sign-in) reads "No name". A role is a select on each row that
     asks before it changes (the same POST upserts the role).
   - Allowed email domains: the list and a form to add one.
   - Organisation details (council C1-011): the name, contact email, phone
@@ -708,7 +709,7 @@
           {#each people as person (person.id)}
             <tr>
               <th scope="row" class="name">
-                {#if person.name.trim() !== ''}{person.name}{:else}<span class="muted">Invited</span>{/if}
+                {#if person.name.trim() !== ''}{person.name}{:else if person.last_login_at === null}<span class="muted">Invited</span>{:else}<span class="muted">No name</span>{/if}
               </th>
               <td class="email">{person.email}</td>
               <td class="role">
