@@ -9,7 +9,9 @@
  *
  *   <!--podium:retention--> ... <!--/podium:retention-->
  *
- * Until it does, the block holds one sentence saying where the periods are.
+ * The server fills it with a table built from retention.Periods when it
+ * loads the build (server/internal/webui/head.go, council C1-052); the
+ * sentence below is what a build served by anything else shows.
  */
 const MARKER = '<!-- retention -->';
 

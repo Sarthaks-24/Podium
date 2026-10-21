@@ -7,8 +7,11 @@ package webui
 // /contact (signed in) as P3's frontend will.
 
 import (
+	"html"
+
 	"encoding/xml"
 	"errors"
+	"github.com/Sarthaks-24/podium/internal/retention"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -206,6 +209,19 @@ func TestPrivacyBody(t *testing.T) {
 	for _, p := range []string{"/privacy-body.html", "/routes.json"} {
 		if w := get(with, p); w.Code != 404 {
 			t.Errorf("%s served: %d", p, w.Code)
+		}
+	}
+	// The build's retention block is filled from retention.Periods, so
+	// a reader without JavaScript sees every period (C1-052).
+	withTable := handlerFor(buildFS(t, "routes-p3.json", fstest.MapFS{"privacy-body.html": {Data: []byte(
+		"<h1>Privacy</h1><!--podium:retention--><p>fallback</p><!--/podium:retention-->")}}), Options{BaseURL: testBase})
+	page := get(withTable, "/privacy").Body.String()
+	if strings.Contains(page, "fallback") || !strings.Contains(page, "<caption>How long podium keeps each kind of data</caption>") {
+		t.Errorf("retention block not filled: %s", page)
+	}
+	for _, p := range retention.Periods() {
+		if !strings.Contains(page, html.EscapeString(p.Kept)) || !strings.Contains(page, html.EscapeString(p.Data)) {
+			t.Errorf("period %s missing from the no-JavaScript table", p.ID)
 		}
 	}
 	// The checked-in manifest has /privacy but not public, because the

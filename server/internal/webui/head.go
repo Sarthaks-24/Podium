@@ -17,6 +17,8 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+
+	"github.com/Sarthaks-24/podium/internal/retention"
 )
 
 // Files of the web build the head reads.
@@ -144,12 +146,33 @@ func newSite(dist fs.FS, index string, o Options) *site {
 	// The privacy text is rendered at build time from the approved
 	// Markdown (FP.1); until the build makes it, the block stays empty.
 	if b, err := fs.ReadFile(dist, privacyBody); err == nil {
-		s.privacy = string(b)
+		s.privacy = replaceBlock(string(b), retentionOpen, retentionClose, retentionTable())
 	}
 	if st, err := fs.Stat(dist, ogImage); err == nil && !st.IsDir() {
 		s.hasOG = true
 	}
 	return s
+}
+
+// The marker pair the web build leaves in privacy-body.html for the
+// retention table (web/src/lib/privacyBody.ts, D187).
+const (
+	retentionOpen  = "<!--podium:retention-->"
+	retentionClose = "<!--/podium:retention-->"
+)
+
+// retentionTable is the privacy page's table of periods for a reader
+// without JavaScript, built from retention.Periods so it says what the
+// jobs do (council C1-052). Every cell is escaped.
+func retentionTable() string {
+	var b strings.Builder
+	b.WriteString(`<table><caption>How long podium keeps each kind of data</caption><thead><tr><th scope="col">Data</th>` +
+		`<th scope="col">Kept</th></tr></thead><tbody>`)
+	for _, p := range retention.Periods() {
+		fmt.Fprintf(&b, `<tr><th scope="row">%s</th><td>%s</td></tr>`, html.EscapeString(p.Data), html.EscapeString(p.Kept))
+	}
+	b.WriteString(`</tbody></table>`)
+	return b.String()
 }
 
 // replaceBlock replaces what lies between open and close in doc, if both
