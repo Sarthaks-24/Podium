@@ -698,3 +698,17 @@ test('open tests are their own kind: no subtask error, editable, saved (D115, C2
   await expect(page.locator('#open-error')).toHaveText('Test 1 is a sample and an open test. Put each test in one place.');
   await expect(open).toHaveAttribute('aria-invalid', 'true');
 });
+
+test('an organiser screen that fails to load says so and offers a reload (C2-069)', async ({ page }) => {
+  await mockApi(page);
+  let fail = true;
+  await page.route(
+    (url) => url.pathname.includes('/routes/ProblemBank.svelte'),
+    (route) => (fail ? route.abort() : route.fallback()),
+  );
+  await page.goto('/admin/problems');
+  await expect(page.getByRole('alert')).toHaveText('This page could not load. Reload to try again.');
+  fail = false;
+  await page.getByRole('button', { name: 'Try again' }).click();
+  await expect(page.getByRole('link', { name: 'Interval covering', exact: true })).toBeVisible();
+});

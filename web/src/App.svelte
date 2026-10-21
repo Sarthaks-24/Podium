@@ -45,6 +45,7 @@
   import ThemeDialog from './components/ThemeDialog.svelte';
   import ConfirmDialog from './components/ConfirmDialog.svelte';
   import Toasts from './components/Toasts.svelte';
+  import PageState from './components/PageState.svelte';
   import ThemeMenu from './components/ThemeMenu.svelte';
   import { regions } from './lib/announce.svelte';
   import { loadMode, runMode, telHref } from './lib/mode.svelte';
@@ -425,9 +426,10 @@
           <Screen {...lazyProps} />
         {/key}
       {:else if failedScreen === lazyName}
-        <p class="banner banner-error" role="alert">This page could not load. Reload to try again.</p>
+        <!-- A chunk that failed (often a new release) needs a full reload, not another import (C2-069). -->
+        <PageState kind="error" message="This page could not load. Reload to try again." onretry={() => location.reload()} />
       {:else}
-        <p class="visually-hidden" role="status">Loading</p>
+        <PageState kind="loading" message="Loading the page" />
       {/if}
     {:else if route.name === 'inbox'}
       <Inbox />
