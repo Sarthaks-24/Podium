@@ -18,7 +18,7 @@
 <script lang="ts">
   import MonoDigits from '../MonoDigits.svelte';
   import { formatDayTime, scoreParts } from '../../lib/format';
-  import { cellSentence, isFull, problemTone, rankText, zeroedProblems, type ProgressContest } from '../../lib/progress';
+  import { cellSentence, isFull, progressTone, rankText, zeroedProblems, type ProgressContest } from '../../lib/progress';
 
   let { contests, organiser = false }: { contests: ProgressContest[]; organiser?: boolean } = $props();
 
@@ -62,7 +62,7 @@
             {#if isFull(c)}
               <ul class="pcells">
                 {#each c.problems as p (p.label)}
-                  {@const tone = problemTone(p)}
+                  {@const tone = progressTone(p)}
                   <li class="pcell tone-{tone}" class:decided={p.zero_by_decision}>
                     <span class="letter" aria-hidden="true">{p.label}</span>
                     <span class="ctext mono" aria-hidden="true">{p.score ?? ''}</span>

@@ -317,7 +317,7 @@ export function cellSentence(p: ProgressProblem): string {
 }
 
 /** The tone of a problem's score: full, partial, zero, or none for totals only. */
-export function problemTone(p: Pick<ProgressProblem, 'score' | 'max_score'>): 'ok' | 'part' | 'zero' | 'none' {
+export function progressTone(p: Pick<ProgressProblem, 'score' | 'max_score'>): 'ok' | 'part' | 'zero' | 'none' {
   if (p.score === null) return 'none';
   if (p.max_score > 0 && p.score >= p.max_score) return 'ok';
   return p.score > 0 ? 'part' : 'zero';

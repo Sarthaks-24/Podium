@@ -319,7 +319,7 @@ function passedCount(list: readonly RunResult[]): number {
   return list.filter((r) => r.verdict === 'AC' || r.verdict === 'OK').length;
 }
 
-function countOf(n: number, one: string, many: string): string {
+function nounFor(n: number, one: string, many: string): string {
   return n === 1 ? one : many;
 }
 
@@ -339,12 +339,12 @@ export function runHeadline(run: Run): { text: string; tone: Tone } {
     const open = tests.filter((r) => r.kind === 'open');
     const ps = passedCount(samples);
     const po = passedCount(open);
-    let text = `Passed ${ps} of ${samples.length} ${countOf(samples.length, 'sample', 'samples')}`;
+    let text = `Passed ${ps} of ${samples.length} ${nounFor(samples.length, 'sample', 'samples')}`;
     if (open.length > 0) {
       text =
         samples.length > 0
-          ? `${text} and ${po} of ${open.length} ${countOf(open.length, 'open test', 'open tests')}`
-          : `Passed ${po} of ${open.length} ${countOf(open.length, 'open test', 'open tests')}`;
+          ? `${text} and ${po} of ${open.length} ${nounFor(open.length, 'open test', 'open tests')}`
+          : `Passed ${po} of ${open.length} ${nounFor(open.length, 'open test', 'open tests')}`;
     }
     return { text, tone: ps + po === tests.length ? 'ok' : 'bad' };
   }
