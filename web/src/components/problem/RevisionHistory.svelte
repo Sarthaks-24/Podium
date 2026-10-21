@@ -87,7 +87,11 @@
         <p>{revisionChangeText(r)}. {r.validated ? 'Validated.' : 'Not validated.'}</p>
         {#if r.reason}<p class="reason">Reason: {r.reason}</p>{/if}
         {#if r.pinned_in.length > 0}
-          <p class="muted">Pinned in {r.pinned_in.map((c) => `${c.slug} (problem ${c.label})`).join(', ')}</p>
+          <p class="muted">
+            Pinned in {#each r.pinned_in as c, i (c.contest_id)}{i > 0 ? ', ' : ''}<a href="/admin/contests/{c.contest_id}"
+                >{c.slug}</a
+              > (problem {c.label}){/each}
+          </p>
         {/if}
         {#if r.rev > 1 && !r.reconstructed}
           <button type="button" class="btn btn-quiet btn-compact compare" aria-expanded={open === r.rev} onclick={() => compare(r.rev)}>
