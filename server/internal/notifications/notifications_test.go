@@ -118,3 +118,25 @@ func TestMarkReadForeignIdsAndPaging(t *testing.T) {
 		t.Errorf("Ravi unread after Asha read all: %d", n)
 	}
 }
+
+// No notice is written for an erased account (P4 security fix, C1-026):
+// forget-user renamed it to @removed.invalid and deleted its notices.
+func TestNoNoticeForAnErasedAccount(t *testing.T) {
+	s, d := newInbox(t)
+	ctx := context.Background()
+	if _, err := d.Exec(`UPDATE users SET email = 'user-2@removed.invalid' WHERE id = 2`); err != nil {
+		t.Fatal(err)
+	}
+	now := s.now().UnixMilli()
+	for _, u := range []int64{1, 2} {
+		if err := InsertTx(ctx, d, Row{UserID: u, Kind: ResultsFinal, ContestID: 0, CreatedAt: now}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var mine, erased int
+	d.QueryRow("SELECT count(*) FROM notifications WHERE user_id = 1").Scan(&mine)
+	d.QueryRow("SELECT count(*) FROM notifications WHERE user_id = 2").Scan(&erased)
+	if mine != 1 || erased != 0 {
+		t.Errorf("notices: %d for the account, %d for the erased one", mine, erased)
+	}
+}

@@ -223,3 +223,24 @@ func TestP3UsedFlowsTable(t *testing.T) {
 		t.Fatalf("after expiry: %v %v %d", fresh, rec, len(u.seen))
 	}
 }
+
+// X-Forwarded-For counts only from Caddy on this host: a request from any
+// other peer is keyed by that peer, whatever it claims (C1-026).
+func TestP3PreAuthIgnoresForwardedForFromOtherPeers(t *testing.T) {
+	for _, c := range []struct {
+		remote, fwd, want string
+	}{
+		{"203.0.113.5:4100", "198.51.100.7", "203.0.113.5"},
+		{"203.0.113.5:4100", "127.0.0.1", "203.0.113.5"},
+		{"[2001:db8:1:2::9]:4100", "198.51.100.7", "2001:db8:1:2::/64"},
+		{"127.0.0.1:4100", "198.51.100.7", "198.51.100.7"},
+		{"127.0.0.1:4100", "10.0.0.1, 198.51.100.7", "198.51.100.7"},
+	} {
+		r := httptest.NewRequest("GET", "/api/auth/config", nil)
+		r.RemoteAddr = c.remote
+		r.Header.Set("X-Forwarded-For", c.fwd)
+		if got := addressKey(r); got != c.want {
+			t.Errorf("peer %s, X-Forwarded-For %q: key %q, want %q", c.remote, c.fwd, got, c.want)
+		}
+	}
+}

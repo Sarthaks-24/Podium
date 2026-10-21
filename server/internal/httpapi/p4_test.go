@@ -16,6 +16,25 @@ import (
 // timestamp such as 1793749560029.
 var standaloneNumber = regexp.MustCompile(`(^|[^0-9])95([^0-9]|$)`)
 
+// assertKeys fails unless m has exactly the keys given.
+func assertKeys(t *testing.T, what string, m map[string]any, keys ...string) {
+	t.Helper()
+	want := map[string]bool{}
+	for _, k := range keys {
+		want[k] = true
+	}
+	for k := range m {
+		if !want[k] {
+			t.Errorf("%s has an unexpected key %q: %v", what, k, m)
+		}
+	}
+	for _, k := range keys {
+		if _, ok := m[k]; !ok {
+			t.Errorf("%s lacks %q: %v", what, k, m)
+		}
+	}
+}
+
 func viewsOf(t *testing.T, s *site, kind string, subject int64) int {
 	t.Helper()
 	var n int
@@ -121,6 +140,12 @@ func TestStudentsAuthorisationMatrix(t *testing.T) {
 		strings.Contains(string(js), "rating") || standaloneNumber.MatchString(string(js)) {
 		t.Errorf("own standing: %d %s", code, js)
 	}
+	// Only these keys, so a rating that leaks as 9.5 or under a new field name fails too (C1-026).
+	assertKeys(t, "standing", st, "band", "band_name", "lines", "server_now")
+	for _, l := range st["lines"].([]any) {
+		assertKeys(t, "standing line", l.(map[string]any), "id", "kind", "at", "text", "reason", "case_id", "adjustment_id", "appeal",
+			"appeal_by", "can_appeal")
+	}
 	_, bst := w.bilal.do("GET", "/api/me/standing", nil, "")
 	if len(bst["lines"].([]any)) != 0 {
 		t.Errorf("bilal sees lines: %v", bst)
@@ -195,6 +220,14 @@ func TestStudentsAuthorisationMatrix(t *testing.T) {
 	}
 	w.owner.do("POST", "/api/admin/people", map[string]string{"email": "third@college.edu", "role": "admin"}, o)
 	third := s.signedIn("third@college.edu", "Third")
+	// Listing appeals reads the appellant's record: logged, once per appeal shown (C1-026).
+	appealViews := viewsOf(t, s, "case", asha)
+	if code, list := third.do("GET", "/api/admin/appeals", nil, ""); code != 200 || len(list["appeals"].([]any)) != 1 {
+		t.Errorf("appeals list: %d %v", code, list)
+	}
+	if viewsOf(t, s, "case", asha) != appealViews+1 {
+		t.Error("the appeals list read was not logged")
+	}
 	if code, out := third.do("POST", ruling, rule, o); code != 200 || out["state"] != "rejected" {
 		t.Errorf("uninvolved ruling: %d %v", code, out)
 	}

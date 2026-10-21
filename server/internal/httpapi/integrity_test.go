@@ -500,9 +500,14 @@ func TestIntegrityCasePairAndReviewerInCase(t *testing.T) {
 	if d := c["decisions"].([]any)[0].(map[string]any); d["by_name"] != "Owner" {
 		t.Errorf("decision log names %v, want Owner", d["by_name"])
 	}
+	viewsA, viewsB := viewsOf(t, s, "case", asha), viewsOf(t, s, "case", bilal)
 	code, pair := w.owner.do("GET", caseURL+"/evidence/0/pair", nil, "")
 	if code != 200 || pair["signal"].(map[string]any)["kind"] != "similar" || pair["server_now"] == nil {
 		t.Fatalf("case pair: %d %v", code, pair)
+	}
+	// The pair view is a case read for each student it shows (P4 security fix, C1-026).
+	if viewsOf(t, s, "case", asha) != viewsA+1 || viewsOf(t, s, "case", bilal) != viewsB+1 {
+		t.Error("the case pair read was not logged for both students")
 	}
 	_, live := w.owner.do("GET", w.url(w.c1, fmt.Sprintf("/signals/%d/pair", sig)), nil, "")
 	if fmt.Sprint(pair["a"], pair["b"]) != fmt.Sprint(live["a"], live["b"]) {
