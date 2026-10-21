@@ -90,7 +90,7 @@ func TestMigrateFromV110(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Join(applied, ",") != "0010_revisions,0011_site_audit,0012_contact,0013_students" {
+	if strings.Join(applied, ",") != "0010_revisions,0011_site_audit,0012_contact,0013_students,0014_results_notice" {
 		t.Fatalf("applied %v", applied)
 	}
 	rep, err := Check(ctx, d)

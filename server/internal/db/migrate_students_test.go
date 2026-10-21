@@ -3,8 +3,10 @@ package db
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"strings"
 	"testing"
+	"time"
 )
 
 // v130Schema is the newest migration of release v1.3.0.
@@ -43,7 +45,7 @@ func TestMigrateFromV130(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Join(applied, ",") != "0013_students" {
+	if strings.Join(applied, ",") != "0013_students,0014_results_notice" {
 		t.Fatalf("applied %v", applied)
 	}
 	rep, err := Check(ctx, d)
@@ -182,5 +184,37 @@ func TestMigrateFromV130(t *testing.T) {
 	d.QueryRowContext(ctx, "SELECT count(*) FROM sqlite_master WHERE type = 'index' AND name = 'submissions_by_user_kind'").Scan(&idx)
 	if idx != 1 {
 		t.Error("submissions_by_user_kind is missing")
+	}
+}
+
+// C1-049: a contest whose ends_at passed more than a day before the 0013
+// upgrade but which an extension kept live gets its "results are final"
+// mark cleared by 0014, so its students are told; one that was really over
+// keeps the mark.
+func TestMigration0014ClearsTheMarkOfAContestStillLive(t *testing.T) {
+	d, ctx := openV130(t)
+	now := time.Now().UnixMilli()
+	day := int64(86_400_000)
+	for _, q := range []string{
+		fmt.Sprintf(`INSERT INTO contests (id, slug, title, starts_at, ends_at, extended_minutes, created_at, updated_at)
+			VALUES (40, 'long', 'Extended', %d, %d, %d, 1, 1)`, now-3*day, now-2*day, 3*1440),
+		fmt.Sprintf(`INSERT INTO contests (id, slug, title, starts_at, ends_at, created_at, updated_at)
+			VALUES (41, 'over', 'Over', %d, %d, 1, 1)`, now-11*day, now-10*day),
+	} {
+		if _, err := d.ExecContext(ctx, q); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := Migrate(ctx, d); err != nil {
+		t.Fatal(err)
+	}
+	var live, over sql.NullInt64
+	d.QueryRowContext(ctx, "SELECT results_notified_at FROM contests WHERE id = 40").Scan(&live)
+	d.QueryRowContext(ctx, "SELECT results_notified_at FROM contests WHERE id = 41").Scan(&over)
+	if live.Valid {
+		t.Errorf("a contest live at the upgrade is still marked as told (%d)", live.Int64)
+	}
+	if !over.Valid {
+		t.Error("a contest over long before the upgrade lost its mark")
 	}
 }
