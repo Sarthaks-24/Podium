@@ -786,10 +786,12 @@ rclone runs with `--transfers 1 --b2-chunk-size 16M`, so the upload adds about 1
 
 Set it up once:
 
-1. On the VM, a key for the podium user: `sudo -u podium ssh-keygen -t ed25519 -N '' -f /var/lib/podium/.ssh/id_ed25519`, and print `/var/lib/podium/.ssh/id_ed25519.pub`.
+1. On the VM, a key that only root can read (the copy runs as root, so a server taken over as podium cannot use the key against the other machine; council C1-046): `sudo install -d -o root -g root -m 700 /etc/podium/backup-ssh`, then `sudo ssh-keygen -t ed25519 -N '' -f /etc/podium/backup-ssh/id_ed25519`, and print `/etc/podium/backup-ssh/id_ed25519.pub`.
 2. On the backup machine, an account whose `authorized_keys` holds that key limited to one folder, for example with rsync's `rrsync`: `command="rrsync /srv/podium",restrict ssh-ed25519 AAAA...` (then the target is `user@host:` with the path relative to that folder, so `PODIUM_BACKUP_RSYNC=podium-backup@backup.example.edu:`).
-3. Accept the host key once: `sudo -u podium ssh podium-backup@backup.example.edu true` (it will say rrsync needs a command; that is fine).
+3. Accept the host key once: `sudo ssh -i /etc/podium/backup-ssh/id_ed25519 -o UserKnownHostsFile=/etc/podium/backup-ssh/known_hosts podium-backup@backup.example.edu true` (it will say rrsync needs a command; that is fine).
 4. `sudoedit /etc/podium/backup.env`, set `PODIUM_BACKUP_RSYNC`, then `sudo systemctl start podium-backup` and check `journalctl -u podium-backup -n 5` ends with `copied to`.
+
+The copy mirrors the VM with `--delete`, so a server taken over as podium that deletes the local backups would have the deletion mirrored the next night. Keep snapshots of the folder on the backup machine (daily, for at least 14 days), or rely on the encrypted B2 copy, whose Object Lock no key on the VM can lift (D116). A key from before this release at `/var/lib/podium/.ssh/id_ed25519` is no longer used: remove it from the other machine's `authorized_keys` and delete it.
 
 Disk snapshots from your VM provider are a fine addition but not a replacement: they usually live in the same account as the VM.
 

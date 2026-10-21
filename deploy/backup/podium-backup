@@ -86,9 +86,17 @@ heartbeat=$(value PODIUM_HEARTBEAT_URL)
 [[ -d $dest ]] || die "$dest does not exist; run: sudo ./install.sh backup"
 command -v sqlite3 >/dev/null || die "sqlite3 is not installed; run: sudo ./install.sh packages"
 [[ $keep =~ ^[0-9]+$ && $keep -ge 1 ]] || die "PODIUM_BACKUP_KEEP_DAYS must be a whole number of days, 1 or more (in $env_file)"
+# The rsync copy's key and known hosts: root's only (council C1-046), so a
+# server taken over as podium cannot use the key to rewrite or wipe the
+# copy on the other machine.
+ssh_dir=/etc/podium/backup-ssh
 if [[ -n $remote ]]; then
   [[ $remote == *:* && $remote != -* ]] || die "PODIUM_BACKUP_RSYNC must look like user@host:/path (in $env_file)"
   command -v rsync >/dev/null || die "rsync is not installed; run: sudo ./install.sh packages"
+  if (( EUID == 0 )); then
+    [[ -f $ssh_dir/id_ed25519 ]] || die "no key at $ssh_dir/id_ed25519 for the rsync copy (docs/OPERATIONS.md, \"Copy the nightly backup off the VM\")"
+    [[ $(stat -c '%U %a' "$ssh_dir" 2>/dev/null) == "root 700" ]] || die "$ssh_dir must be owned by root, mode 700: sudo chown root:root $ssh_dir && sudo chmod 700 $ssh_dir"
+  fi
 fi
 
 # The encrypted copy needs all five of its variables, or none.
@@ -185,8 +193,17 @@ if [[ -n $remote ]]; then
   # -H keeps the hard links between nights, so the remote copy is as small
   # as the local one; --delete mirrors the pruning. BatchMode makes a
   # missing or unaccepted key fail at once instead of asking.
-  as_podium rsync -aH --delete -e "ssh -o BatchMode=yes" -- "$dest/" "$remote/" \
-    || die "the local backup is done, but copying it to $remote failed"
+  # As root, with root's key: podium can read neither. -a copies links as
+  # links and protected_hardlinks (install.sh isolate) keeps podium from
+  # linking to files it does not own, so nothing outside the backups goes.
+  if (( EUID == 0 )); then
+    env -i PATH="$PATH" HOME=/root LC_ALL=C.UTF-8 rsync -aH --delete \
+      -e "ssh -o BatchMode=yes -o IdentitiesOnly=yes -i $ssh_dir/id_ed25519 -o UserKnownHostsFile=$ssh_dir/known_hosts" \
+      -- "$dest/" "$remote/" || die "the local backup is done, but copying it to $remote failed"
+  else
+    rsync -aH --delete -e "ssh -o BatchMode=yes" -- "$dest/" "$remote/" \
+      || die "the local backup is done, but copying it to $remote failed"
+  fi
   echo "podium-backup: copied to $remote"
 fi
 

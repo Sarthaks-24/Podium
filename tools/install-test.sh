@@ -19,8 +19,12 @@ fn() { sed -n "/^$1() {/,/^}/p" "$script"; }
 # check_unfinished_upgrade (C1-005), run in a subshell because die exits.
 run_check() {
   (
+    # Read by the functions eval'd below.
+    # shellcheck disable=SC2034
     LIB=/usr/local/lib/podium
+    # shellcheck disable=SC2034
     PREVIOUS=$tmp/previous
+    # shellcheck disable=SC2034
     MANIFEST=$tmp/MANIFEST
     die() { printf '%s\n' "$*"; exit 1; }
     eval "$(grep '^manifest_get()' "$script")"
@@ -93,6 +97,16 @@ if grep -q 'install -d -o podium -g podium -m 2770 "$(dirname "$db")"' <<<"$rb";
   pass "rollback recreates the database folder with mode 2770"
 else
   fail "cmd_rollback must recreate the database folder with mode 2770"
+fi
+
+# The rsync copy runs as root with root's key, never as podium (C1-046).
+backup="$here/../deploy/backup/podium-backup"
+if grep -q 'as_podium rsync' "$backup"; then
+  fail "podium-backup runs rsync as podium, whose key a taken-over server could use"
+elif grep -q -- '-i $ssh_dir/id_ed25519' "$backup" && grep -q '^ssh_dir=/etc/podium/backup-ssh$' "$backup"; then
+  pass "podium-backup copies with the root-only key in /etc/podium/backup-ssh"
+else
+  fail "podium-backup must copy with /etc/podium/backup-ssh/id_ed25519"
 fi
 
 if (( fails > 0 )); then echo "$fails install.sh check(s) failed"; exit 1; fi
