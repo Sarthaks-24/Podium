@@ -182,6 +182,7 @@
     statementKey?: number;
     extraEvents?: readonly string[];
     onevent?: (type: string, data: unknown) => void;
+    onresync?: () => void;
   }
 
   let {
@@ -204,6 +205,7 @@
     statementKey = 0,
     extraEvents = [],
     onevent,
+    onresync,
   }: Props = $props();
 
   const exam = $derived(feedback === 'exam');
@@ -442,8 +444,16 @@
         if (type === 'submission' || type === 'run' || type === 'clock') onStreamEvent({ type, data } as StreamEvent);
         onevent?.(type, data);
       },
-      onReconnect: refetchOwn,
-      poll: pollPending,
+      // Events sent while the stream was down are lost: the page reads
+      // its own state again on reconnect and on each fallback poll.
+      onReconnect: () => {
+        onresync?.();
+        return refetchOwn();
+      },
+      poll: () => {
+        onresync?.();
+        return pollPending();
+      },
       onMode: (m) => (streamMode = m),
     });
     stream.start();

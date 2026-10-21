@@ -550,6 +550,7 @@
       {statementKey}
       extraEvents={CONTEST_EVENTS}
       onevent={onEvent}
+      onresync={() => refetchSoon(0)}
       clock={phase === 'during' ? clockSnippet : undefined}
       note={phase === 'during'
         ? ''

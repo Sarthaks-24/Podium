@@ -638,6 +638,20 @@ test('the console pauses, extends, judges again, announces and answers', async (
   await page.screenshot({ path: `${shots()}contest-console-1440-light.png`, fullPage: true });
 });
 
+test('a workspace whose stream is down still picks up announcements (walk 2026-10-21)', async ({ page }) => {
+  const api = await mockApi(page, { phase: 'during' });
+  // Every stream attempt fails, as while the server restarts: the page falls back to polling.
+  await page.route('**/api/events*', (route) => route.fulfill({ status: 503, body: '' }));
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.clock.install();
+  await page.goto('/contests/week-6/problems/A');
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('A. A plus B');
+  // Posted while the stream is down: no event will ever carry it.
+  api.announcements.push({ id: 9, body_md: 'Posted while your stream was down.', created_at: Date.now() });
+  await page.clock.runFor(20_000);
+  await expect(page.locator('.banner-slot .strip').filter({ hasText: 'Posted while your stream was down.' })).toBeVisible();
+});
+
 test('the console says partial scores as students read them and keeps rows when a refresh fails (P3 O3, C2)', async ({ page }) => {
   await mockApi(page, { who: 'admin', phase: 'during' });
   await page.setViewportSize({ width: 1440, height: 900 });
