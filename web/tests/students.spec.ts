@@ -83,9 +83,11 @@ test.describe('your progress', () => {
     await expect(losses.locator('dt').first()).toHaveText('Wrong answer');
     await expect(losses.getByText('Check edge cases')).toBeVisible();
 
-    // Practise next: a button when practice is open, a muted line when not.
+    // Practise next: a link button when practice is open, a muted line when not.
     const practise = page.getByRole('region', { name: 'Practise next' });
     await expect(practise.getByRole('link', { name: 'Practise' }).first()).toHaveAttribute('href', '/contests/week-6/problems/B');
+    // One treatment for the row action, as on the contest page (C1-039).
+    await expect(practise.getByRole('link', { name: 'Practise' }).first()).toHaveClass(/btn-link/);
     await expect(practise.getByText('Practice is not open for this contest').first()).toBeVisible();
 
     // No comparison with anyone (D94).

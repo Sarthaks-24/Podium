@@ -30,7 +30,7 @@
       </p>
       {#if !organiser}
         {#if r.practice_open}
-          <a class="btn btn-secondary btn-compact" href={problemHref(r.slug, r.label)} aria-describedby={id}>Practise</a>
+          <a class="btn btn-link btn-compact" href={problemHref(r.slug, r.label)} aria-describedby={id}>Practise</a>
         {:else}
           <p class="muted small">Practice is not open for this contest</p>
         {/if}
