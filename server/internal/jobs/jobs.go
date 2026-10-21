@@ -678,7 +678,11 @@ func (s *Service) Sweep(ctx context.Context) (requeued, failed int64, err error)
 		(SELECT id FROM jobs WHERE state = 'leased' AND lease_expires_at < ?)`, now.UnixMilli()); err != nil {
 		return 0, 0, err
 	}
-	res, err := tx.ExecContext(ctx, `UPDATE jobs SET state = 'queued', lease_hash = NULL, lease_expires_at = NULL
+	// The deadline is per attempt: a job requeued after a judge crash and
+	// then held in the queue (a paused contest, a backlog) gets a fresh one
+	// at its next claim, rather than failing at once with "took too long"
+	// (council C1-050).
+	res, err := tx.ExecContext(ctx, `UPDATE jobs SET state = 'queued', lease_hash = NULL, lease_expires_at = NULL, deadline_at = NULL
 		WHERE state = 'leased' AND lease_expires_at < ?`, now.UnixMilli())
 	if err != nil {
 		return 0, 0, err

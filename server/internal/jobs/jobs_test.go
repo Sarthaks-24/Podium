@@ -239,3 +239,33 @@ func TestDeadlineStopsAHeartbeatingJob(t *testing.T) {
 		t.Errorf("job %+v", job)
 	}
 }
+
+// A job requeued after its judge went away, then held past its first
+// deadline, runs on its next claim instead of failing at once (C1-050).
+func TestRequeuedJobGetsAFreshDeadline(t *testing.T) {
+	s, clk, _ := newService(t)
+	ctx := context.Background()
+	id := enqueue(t, s, 90)
+	if c, _ := s.Claim(ctx, claim("w1")); c == nil {
+		t.Fatal("no claim")
+	}
+	clk.t = clk.t.Add(LeaseTTL + time.Second)
+	if requeued, _, _ := s.Sweep(ctx); requeued != 1 {
+		t.Fatalf("requeued %d", requeued)
+	}
+	clk.t = clk.t.Add(time.Hour) // held in the queue past the first deadline
+	c, _ := s.Claim(ctx, claim("w2"))
+	if c == nil {
+		t.Fatal("not handed out again")
+	}
+	if _, failed, _ := s.Sweep(ctx); failed != 0 {
+		t.Errorf("failed %d at once on the new claim", failed)
+	}
+	if err := s.Report(ctx, judgeapi.Report{JobID: id, Lease: c.Lease, Final: true}); err != nil {
+		t.Errorf("report on the new claim: %v", err)
+	}
+	job, _ := s.Get(ctx, id)
+	if job.State == Failed {
+		t.Errorf("job failed: %s", job.Error)
+	}
+}
