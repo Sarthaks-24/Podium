@@ -67,7 +67,7 @@
   import StreamNotice from '../components/StreamNotice.svelte';
   import SubmissionList from '../components/SubmissionList.svelte';
   import Workspace from '../components/Workspace.svelte';
-  import { ApiError, getJSON, sendJSON } from '../lib/api';
+  import { ApiError, getJSON, sendJSON, errorText, PAGE_ERROR_MESSAGE } from '../lib/api';
   import { serverClock } from '../lib/clock';
   import {
     CONTEST_EVENTS,
@@ -230,7 +230,7 @@
         loadState = 'missing';
         setTitle('Contest not found');
       } else {
-        loadError = e instanceof ApiError ? e.message : 'Something went wrong. Try again in a moment.';
+        loadError = errorText(e);
         loadState = 'error';
         setTitle(routeTitle('contest'));
       }
@@ -279,7 +279,7 @@
       }
     } catch (e) {
       if (handleSessionError(e)) return;
-      startError = e instanceof ApiError ? (e.fields.accept_honour ?? e.message) : 'Something went wrong. Try again in a moment.';
+      startError = e instanceof ApiError ? (e.fields.accept_honour ?? e.message) : PAGE_ERROR_MESSAGE;
     } finally {
       startBusy = false;
     }

@@ -187,10 +187,6 @@
     return false;
   }
 
-  function messageOf(e: unknown): string {
-    return errorText(e);
-  }
-
   /** "14:02:10" in local time. */
   function clock(ms: number): string {
     const d = new Date(ms);
@@ -218,7 +214,7 @@
         setTitle('Contest not found');
         return;
       }
-      loadError = messageOf(e);
+      loadError = errorText(e);
       loadState = 'error';
     }
   }
@@ -244,7 +240,7 @@
         feedFailedAt = serverClock.serverNow();
         return;
       }
-      feedError = messageOf(e);
+      feedError = errorText(e);
       feedState = 'error';
     }
   }
@@ -356,7 +352,7 @@
       confirm = null;
     } catch (e) {
       confirm = null;
-      if (!handleAuth(e)) showToast(messageOf(e), 'error');
+      if (!handleAuth(e)) showToast(errorText(e), 'error');
     } finally {
       confirmBusy = false;
     }
@@ -392,7 +388,7 @@
       suggest('resumed');
       await loadContest(true);
     } catch (e) {
-      if (!handleAuth(e)) showToast(messageOf(e), 'error');
+      if (!handleAuth(e)) showToast(errorText(e), 'error');
     }
   }
 
@@ -498,7 +494,7 @@
       await loadContest(true);
     } catch (e) {
       if (handleAuth(e)) return;
-      extError = e instanceof ApiError ? (e.fields.minutes ?? e.message) : messageOf(e);
+      extError = e instanceof ApiError ? (e.fields.minutes ?? e.message) : errorText(e);
       extField = e instanceof ApiError && e.fields.minutes ? 'minutes' : 'user';
       document.getElementById(extField === 'minutes' ? 'ext-minutes' : 'ext-user')?.focus();
     }
@@ -510,7 +506,7 @@
       showToast(`Judging ${row.name}'s submission to ${row.problem_label ?? row.label ?? ''} again`);
       await Promise.all([loadFeed(), loadAudit()]);
     } catch (e) {
-      if (!handleAuth(e)) showToast(messageOf(e), 'error');
+      if (!handleAuth(e)) showToast(errorText(e), 'error');
     }
   }
 
@@ -561,7 +557,7 @@
       await loadSide();
     } catch (e) {
       if (handleAuth(e)) return;
-      annError = e instanceof ApiError ? (e.fields.body_md ?? e.message) : messageOf(e);
+      annError = e instanceof ApiError ? (e.fields.body_md ?? e.message) : errorText(e);
       document.getElementById('ann-body')?.focus();
     } finally {
       annBusy = false;
@@ -602,7 +598,7 @@
       await loadSide();
     } catch (e) {
       if (handleAuth(e)) return;
-      r.error = e instanceof ApiError ? (e.fields.answer ?? e.message) : messageOf(e);
+      r.error = e instanceof ApiError ? (e.fields.answer ?? e.message) : errorText(e);
       document.getElementById(`reply-${c.id}`)?.focus();
     } finally {
       r.busy = false;

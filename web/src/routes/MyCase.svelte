@@ -28,7 +28,7 @@
   import PageState from '../components/PageState.svelte';
   import AppealForm from '../components/standing/AppealForm.svelte';
   import { onMount } from 'svelte';
-  import { ApiError, getJSON, sendJSON } from '../lib/api';
+  import { ApiError, getJSON, sendJSON, errorText, PAGE_ERROR_MESSAGE } from '../lib/api';
   import { keepHeadingFocus } from '../lib/focus';
   import { formatDayTime } from '../lib/format';
   import { setTitle } from '../lib/head';
@@ -85,7 +85,7 @@
       void restore();
     } catch (e) {
       if (signedOut(e)) return;
-      loadError = e instanceof ApiError ? e.message : 'Something went wrong. Try again in a moment.';
+      loadError = errorText(e);
       loadState = 'error';
     }
   }
@@ -121,7 +121,7 @@
       void loadQuestions();
     } catch (e) {
       if (signedOut(e)) return;
-      error = e instanceof ApiError ? (e.fields.explanation ?? e.message) : 'Something went wrong. Try again in a moment.';
+      error = e instanceof ApiError ? (e.fields.explanation ?? e.message) : PAGE_ERROR_MESSAGE;
     } finally {
       saving = false;
     }

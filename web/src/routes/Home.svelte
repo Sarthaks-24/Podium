@@ -29,7 +29,7 @@
   import PageState from '../components/PageState.svelte';
   import PageHeader from '../components/PageHeader.svelte';
   import { onMount } from 'svelte';
-  import { ApiError, getJSON } from '../lib/api';
+  import { ApiError, getJSON, errorText } from '../lib/api';
   import { serverClock } from '../lib/clock';
   import {
     formatCountdown,
@@ -80,7 +80,7 @@
         session.status = 'signed-out';
         return;
       }
-      loadError = e instanceof ApiError ? e.message : 'Something went wrong. Try again in a moment.';
+      loadError = errorText(e);
       loadState = 'error';
     }
   }

@@ -15,7 +15,7 @@
 -->
 <script lang="ts">
   import { tick } from 'svelte';
-  import { ApiError, sendJSON } from '../lib/api';
+  import { ApiError, sendJSON, PAGE_ERROR_MESSAGE } from '../lib/api';
   import type { Clarification, Contest } from '../lib/contests';
   import Icon from './Icon.svelte';
   import MessageList from './MessageList.svelte';
@@ -80,7 +80,7 @@
       const c = made && typeof made === 'object' ? ('clarification' in made ? made.clarification : made) : undefined;
       onasked(c && typeof c === 'object' && 'id' in c ? c : null);
     } catch (e) {
-      error = e instanceof ApiError ? (e.fields.question ?? e.message) : 'Something went wrong. Try again in a moment.';
+      error = e instanceof ApiError ? (e.fields.question ?? e.message) : PAGE_ERROR_MESSAGE;
     } finally {
       busy = false;
     }

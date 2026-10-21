@@ -29,7 +29,7 @@
   import PageState from '../components/PageState.svelte';
   import AppealForm from '../components/standing/AppealForm.svelte';
   import { onMount } from 'svelte';
-  import { ApiError, getJSON } from '../lib/api';
+  import { ApiError, getJSON, errorText } from '../lib/api';
   import { keepHeadingFocus } from '../lib/focus';
   import { formatDayTime } from '../lib/format';
   import { setTitle } from '../lib/head';
@@ -70,10 +70,6 @@
     return false;
   }
 
-  function message(e: unknown): string {
-    return e instanceof ApiError ? e.message : 'Something went wrong. Try again in a moment.';
-  }
-
   async function loadStanding() {
     standingState = 'loading';
     try {
@@ -84,7 +80,7 @@
       void restore();
     } catch (e) {
       if (signedOut(e)) return;
-      standingError = message(e);
+      standingError = errorText(e);
       standingState = 'error';
     }
   }
@@ -99,7 +95,7 @@
       void restore();
     } catch (e) {
       if (signedOut(e)) return;
-      casesError = message(e);
+      casesError = errorText(e);
       casesState = 'error';
     }
   }

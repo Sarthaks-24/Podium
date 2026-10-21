@@ -36,7 +36,7 @@
   import ScoreLine from '../components/progress/ScoreLine.svelte';
   import { onMount } from 'svelte';
   import { saveHideProgress } from '../lib/account';
-  import { ApiError, getJSON } from '../lib/api';
+  import { ApiError, getJSON, errorText } from '../lib/api';
   import { keepHeadingFocus } from '../lib/focus';
   import { countOf } from '../lib/format';
   import { setTitle } from '../lib/head';
@@ -77,7 +77,7 @@
         loadState = 'missing';
         return;
       }
-      loadError = e instanceof ApiError ? e.message : 'Something went wrong. Try again in a moment.';
+      loadError = errorText(e);
       loadState = 'error';
     }
   }

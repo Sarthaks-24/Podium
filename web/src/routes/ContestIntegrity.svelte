@@ -103,10 +103,6 @@
     return false;
   }
 
-  function messageOf(e: unknown): string {
-    return errorText(e);
-  }
-
   async function load() {
     loadState = 'loading';
     try {
@@ -123,7 +119,7 @@
         setTitle('Contest not found');
         return;
       }
-      loadError = messageOf(e);
+      loadError = errorText(e);
       loadState = 'error';
       return;
     }
@@ -153,7 +149,7 @@
         runState = 'none';
         return null;
       }
-      runError = messageOf(e);
+      runError = errorText(e);
       runState = 'error';
       return null;
     }
@@ -166,7 +162,7 @@
       cases = data.cases ?? [];
     } catch (e) {
       if (handleAuth(e)) return;
-      casesError = messageOf(e);
+      casesError = errorText(e);
     }
   }
 
@@ -193,7 +189,7 @@
       await loadRun();
       schedulePoll();
     } catch (e) {
-      if (!handleAuth(e)) startError = messageOf(e);
+      if (!handleAuth(e)) startError = errorText(e);
     } finally {
       starting = false;
     }

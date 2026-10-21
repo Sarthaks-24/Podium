@@ -22,7 +22,7 @@
   import PageState from '../components/PageState.svelte';
   import PageHeader from '../components/PageHeader.svelte';
   import { onMount, tick } from 'svelte';
-  import { ApiError, getJSON, sendJSON } from '../lib/api';
+  import { ApiError, getJSON, sendJSON, errorText } from '../lib/api';
   import {
     defaultSettings,
     fromLocalInput,
@@ -107,7 +107,7 @@
         loadState = 'forbidden';
         return;
       }
-      loadError = e instanceof ApiError ? e.message : 'Something went wrong. Try again in a moment.';
+      loadError = errorText(e);
       loadState = 'error';
     }
   }
@@ -164,7 +164,7 @@
         fields = { ...e.fields };
         if (Object.keys(e.fields).some((k) => !['title', 'slug', 'starts_at', 'ends_at'].includes(k))) createError = e.message;
       } else {
-        createError = e instanceof ApiError ? e.message : 'Something went wrong. Try again in a moment.';
+        createError = errorText(e);
       }
     } finally {
       createBusy = false;

@@ -26,7 +26,7 @@
   import { onDestroy, onMount } from 'svelte';
   import StandingsTable from '../components/StandingsTable.svelte';
   import StreamNotice from '../components/StreamNotice.svelte';
-  import { ApiError, getJSON } from '../lib/api';
+  import { ApiError, getJSON, errorText } from '../lib/api';
   import { serverClock } from '../lib/clock';
   import { isForContest, type Contest } from '../lib/contests';
   import { setTitle } from '../lib/head';
@@ -89,7 +89,7 @@
         loadState = 'missing';
       } else {
         loadState = 'error';
-        message = e instanceof ApiError ? e.message : 'Something went wrong. Try again in a moment.';
+        message = errorText(e);
       }
     }
   }

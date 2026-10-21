@@ -95,10 +95,6 @@
     return false;
   }
 
-  function messageOf(e: unknown): string {
-    return errorText(e);
-  }
-
   async function load() {
     loadState = 'loading';
     try {
@@ -117,7 +113,7 @@
         setTitle('Contest not found');
         return;
       }
-      loadError = messageOf(e);
+      loadError = errorText(e);
       loadState = 'error';
       return;
     }
@@ -132,7 +128,7 @@
     } catch (e) {
       if (handleAuth(e)) return;
       board = null;
-      boardError = messageOf(e);
+      boardError = errorText(e);
     }
   }
 
@@ -142,7 +138,7 @@
       stats = data.problems ?? [];
     } catch (e) {
       if (handleAuth(e)) return;
-      statsError = messageOf(e);
+      statsError = errorText(e);
     }
   }
 
@@ -162,7 +158,7 @@
       revealData = await getJSON<{ frozen: Standings; full: Standings }>(`${base}/reveal`);
       revealOpen = true;
     } catch (e) {
-      if (!handleAuth(e)) revealError = messageOf(e);
+      if (!handleAuth(e)) revealError = errorText(e);
     }
   }
 
@@ -180,7 +176,7 @@
       showToast(done);
     } catch (e) {
       if (handleAuth(e)) return;
-      editorialError = e instanceof ApiError ? (e.fields.editorial_md ?? e.message) : messageOf(e);
+      editorialError = e instanceof ApiError ? (e.fields.editorial_md ?? e.message) : errorText(e);
     } finally {
       editorialBusy = false;
     }
@@ -206,7 +202,7 @@
       contest = await getJSON<AdminContest>(base);
     } catch (e) {
       releaseOpen = false;
-      if (!handleAuth(e)) revealError = messageOf(e);
+      if (!handleAuth(e)) revealError = errorText(e);
     } finally {
       releaseBusy = false;
     }

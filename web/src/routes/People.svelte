@@ -255,7 +255,7 @@
         await tick();
         document.querySelector<HTMLElement>('#org-form [aria-invalid="true"]')?.focus();
       } else {
-        orgError = messageOf(err);
+        orgError = errorText(err);
       }
     } finally {
       orgBusy = false;
@@ -285,7 +285,7 @@
     try {
       rollPlan = await sendJSON<RolloverPlan>('POST', '/api/admin/rollover', rolloverBody(false));
     } catch (err) {
-      if (!handleSessionError(err)) rollError = err instanceof ApiError ? (err.fields.label ?? err.message) : messageOf(err);
+      if (!handleSessionError(err)) rollError = err instanceof ApiError ? (err.fields.label ?? err.message) : errorText(err);
     } finally {
       rollBusy = false;
     }
@@ -305,7 +305,7 @@
       void loadHistory(1);
     } catch (err) {
       rollConfirm = false;
-      if (!handleSessionError(err)) rollError = messageOf(err);
+      if (!handleSessionError(err)) rollError = errorText(err);
     } finally {
       rollBusy = false;
     }
@@ -317,7 +317,7 @@
       const d = await getJSON<{ reviewers: ReviewerLoad[] }>('/api/admin/integrity/oversight');
       reviewers = d.reviewers ?? [];
     } catch (err) {
-      if (!handleSessionError(err)) reviewersError = messageOf(err);
+      if (!handleSessionError(err)) reviewersError = errorText(err);
     }
   }
 
@@ -332,7 +332,7 @@
       viewsState = 'ready';
     } catch (err) {
       if (handleSessionError(err)) return;
-      if (more) showToast(messageOf(err), 'error');
+      if (more) showToast(errorText(err), 'error');
       else viewsState = 'error';
     } finally {
       viewsBusy = false;
@@ -421,10 +421,6 @@
     return false;
   }
 
-  function messageOf(err: unknown): string {
-    return errorText(err);
-  }
-
   async function load() {
     loadState = 'loading';
     try {
@@ -439,7 +435,7 @@
       void loadViews();
     } catch (err) {
       if (handleSessionError(err)) return;
-      loadError = messageOf(err);
+      loadError = errorText(err);
       loadState = 'error';
     }
   }
@@ -458,7 +454,7 @@
     } catch (err) {
       if (handleSessionError(err)) return;
       if (page === 1) historyState = 'error';
-      else showToast(messageOf(err), 'error');
+      else showToast(errorText(err), 'error');
     } finally {
       historyBusy = false;
     }
@@ -497,7 +493,7 @@
       showToast(`Added ${person.email} as ${person.role}`);
       void loadHistory(1);
     } catch (err) {
-      if (!handleSessionError(err)) personError = messageOf(err);
+      if (!handleSessionError(err)) personError = errorText(err);
     } finally {
       addingPerson = false;
     }
@@ -529,7 +525,7 @@
       showToast(`${personLabel(person)} is now ${next === 'owner' ? 'an owner' : 'an admin'}`);
       void loadHistory(1);
     } catch (err) {
-      if (!handleSessionError(err)) showToast(messageOf(err), 'error');
+      if (!handleSessionError(err)) showToast(errorText(err), 'error');
     } finally {
       removing = false;
       pending = null;
@@ -557,7 +553,7 @@
         void loadHistory(1);
       }
     } catch (err) {
-      if (!handleSessionError(err)) domainError = messageOf(err);
+      if (!handleSessionError(err)) domainError = errorText(err);
     } finally {
       addingDomain = false;
     }
@@ -583,7 +579,7 @@
       showToast(`Reset the Google account link for ${target}`);
       void loadHistory(1);
     } catch (err) {
-      if (!handleSessionError(err)) accountError = messageOf(err);
+      if (!handleSessionError(err)) accountError = errorText(err);
     } finally {
       removing = false;
       pending = null;
@@ -608,8 +604,8 @@
       void loadHistory(1);
     } catch (err) {
       if (!handleSessionError(err)) {
-        if (kind === 'enable') showToast(messageOf(err), 'error');
-        else accountError = messageOf(err);
+        if (kind === 'enable') showToast(errorText(err), 'error');
+        else accountError = errorText(err);
       }
     } finally {
       removing = false;
@@ -640,7 +636,7 @@
       void loadHistory(1);
     } catch (err) {
       if (!handleSessionError(err)) {
-        showToast(messageOf(err), 'error');
+        showToast(errorText(err), 'error');
         if (err instanceof ApiError && err.status === 404) {
           if (target.kind === 'person') people = people.filter((p) => p.id !== target.person.id);
           else domains = domains.filter((d) => d.domain !== target.domain);

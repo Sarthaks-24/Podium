@@ -87,6 +87,16 @@ describe('web source guardrails', () => {
     expect(offenders).toEqual([]);
   });
 
+  // One error fallback, from lib/api.ts errorText (C1-032): no screen
+  // carries its own copy of the sentence.
+  it('words an unexpected error only in lib/api.ts', () => {
+    const offenders = Object.entries(sources)
+      .filter(([path]) => path !== '/src/lib/api.ts' && !isTest(path))
+      .filter(([, text]) => text.includes('Something went wrong. Try again in a moment.') || /function messageOf\(/.test(text))
+      .map(([path]) => path);
+    expect(offenders).toEqual([]);
+  });
+
   it('contains no en dashes or em dashes', () => {
     const offenders = Object.entries(sources)
       .filter(([, text]) => DASHES.test(text))

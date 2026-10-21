@@ -164,10 +164,6 @@
     return false;
   }
 
-  function messageOf(e: unknown): string {
-    return errorText(e);
-  }
-
   function setClock(serverNow: number | undefined) {
     if (serverNow) skew = serverNow - Date.now();
     now = Date.now() + skew;
@@ -192,7 +188,7 @@
         setTitle('Case not found');
         return;
       }
-      loadError = messageOf(e);
+      loadError = errorText(e);
       loadState = 'error';
     }
   }
@@ -233,7 +229,7 @@
       stale = false;
       actionError = '';
     } catch (e) {
-      if (!handleAuth(e)) actionError = messageOf(e);
+      if (!handleAuth(e)) actionError = errorText(e);
     }
   }
 
@@ -290,7 +286,7 @@
     } catch (e) {
       if (handleAuth(e)) return;
       if (e instanceof ApiError && e.fields.note) noteError = e.fields.note;
-      else actionError = messageOf(e);
+      else actionError = errorText(e);
       stale = e instanceof ApiError && e.code === 'explanation_changed';
     } finally {
       busy = false;

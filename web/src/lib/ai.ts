@@ -14,7 +14,7 @@
  * picker is filled from the provider's live list once a key is saved, and
  * any model id can be typed instead.
  */
-import { ApiError } from './api';
+import { ApiError, errorText } from './api';
 import { verdictLabel, type PlannedTest } from './problems';
 import type { Submission } from './workspace';
 
@@ -183,7 +183,7 @@ export async function saveKey(
     const status = await put({ provider: form.provider, model, key });
     return { ok: true, status, form: cleared };
   } catch (e) {
-    const message = e instanceof ApiError ? e.message : 'Something went wrong. Try again in a moment.';
+    const message = errorText(e);
     return {
       ok: false,
       message: redactKey(message, key),
