@@ -161,7 +161,7 @@
   }
 
   .statement :global(code) {
-    font-size: 0.9em;
+    font-size: var(--mono-optical);
   }
 
   .statement :global(:not(pre) > code) {

@@ -2,7 +2,8 @@
   ShortcutsDialog: the "Keyboard shortcuts" list (lib/shortcuts.ts), in a
   native modal dialog. The shell opens it when "?" is pressed outside a
   text field, or from the footer button. Escape and Close shut it, and the
-  browser returns focus to whatever had it before. Focus starts on the
+  browser returns focus to whatever had it before, or to the page heading
+  when that element was replaced while the list was open. Focus starts on the
   heading, so a screen reader reads the title first. Organisers also see
   the problem editor and reveal keys. Props: `open`, `organiser` and
   `onclose`.
@@ -31,6 +32,15 @@
       heading?.focus();
     } else if (!open && dialog.open) {
       dialog.close();
+      // "?" can open the list while a screen is still loading. The heading
+      // that had focus is then replaced behind the dialog, the browser has
+      // nothing to return focus to, and focus would fall to the body (it
+      // is still inside the closed dialog at this point): give it to the
+      // page heading instead.
+      const now = document.activeElement;
+      if (now === null || now === document.body || dialog.contains(now)) {
+        document.querySelector<HTMLElement>('main h1')?.focus();
+      }
     }
   });
 

@@ -77,6 +77,18 @@ func (r *rig) submitAndWait(t *testing.T, problemID int64, lang, src, key string
 func TestM3VerdictsInEveryLanguage(t *testing.T) {
 	r := newRig(t)
 	p := r.importPack(t, "a-plus-b", nil)
+	// The memory-limit programs run against a copy with a 4 s time limit.
+	// They still die at the same 256 MB, but filling it costs CPU (page
+	// faults, and V8 collecting garbage near its heap cap): node22 measured
+	// up to 1.6 s of its 2 s and cpp17 0.78 s of its 1 s, so on a loaded
+	// host they could cross the time limit first and be judged TLE (C2-011).
+	// The verdict under test is MLE, not the race between the two limits.
+	yaml := mustRead(t, filepath.Join(*examplesDir, "a-plus-b", "problem.yaml"))
+	if !strings.Contains(yaml, "time_limit_ms: 1000") {
+		t.Fatal("a-plus-b/problem.yaml no longer says time_limit_ms: 1000; update the MLE copy")
+	}
+	mle := r.importPack(t, "a-plus-b", map[string]string{"problem.yaml": strings.NewReplacer(
+		"slug: a-plus-b", "slug: a-plus-b-mle", "time_limit_ms: 1000", "time_limit_ms: 4000").Replace(yaml)})
 	want := map[string]struct {
 		verdict string
 		score   int
@@ -88,8 +100,12 @@ func TestM3VerdictsInEveryLanguage(t *testing.T) {
 			if src == "" {
 				continue // JavaScript has no compile step, so no compile error
 			}
+			id := p.ID
+			if kind == "MLE" {
+				id = mle.ID
+			}
 			start := time.Now()
-			v := r.submitAndWait(t, p.ID, lang, src, lang+"-"+kind)
+			v := r.submitAndWait(t, id, lang, src, lang+"-"+kind)
 			w := want[kind]
 			// A wrong answer that overflows only on large numbers passes
 			// the samples and subtask 1, and fails subtask 2: 40 points.

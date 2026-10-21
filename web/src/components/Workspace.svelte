@@ -1773,7 +1773,7 @@
   /* Three columns: rail, statement, code over verdict, filling the window. */
   @media (min-width: 1024px) {
     .ws {
-      grid-template-columns: 11rem minmax(0, 1fr) minmax(22.5rem, 1.15fr);
+      grid-template-columns: 10rem minmax(0, 1fr) minmax(22.5rem, 1.15fr);
       grid-template-rows: auto minmax(0, 1fr);
       grid-template-areas:
         'rail title code'

@@ -41,6 +41,12 @@ Found by walking the whole organiser and student path on the real server, judge 
 - `tools/dev-stack.sh` passes `PODIUM_BASE_URL`, Vite reads `PODIUM_DEV_API` and the live Playwright config `PODIUM_LIVE_PORT`, so a second stack runs on side ports (`docs/OPERATIONS.md`).
 - `web/tests-live/history.spec.ts` (C2-055): a mid-contest statement edit with its reason, "Update contest to revision N" and the student's banner and diff, against the real server.
 
+### Tidy-up (2026-10-21)
+
+- Closing the keyboard shortcuts list returns focus to the page heading when the element that opened it was replaced while it was open (for example "?" pressed while a problem loads); focus no longer falls to the page body.
+- Inline code in statements and Markdown uses the mono optical size token; small spacing and rail-width values now come from tokens (design drift found by re-deriving the design document).
+- Tests: the M3 memory-limit cases run with a 4 s time limit, as node22's took up to 2.5 s under load and was judged TLE (C2-011); pixel tests allow 20 pixels at threshold 0.1 and load every font face first (C2-046); two tests that failed only under parallel load wait for the state they need.
+
 ### Council run 2 fixes (2026-10-21)
 
 #### Backend and operations
