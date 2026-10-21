@@ -574,7 +574,7 @@
       <div class="banner banner-info lead live-note">
         <p>
           {live.map((c) => c.title).join(', ')}
-          {live.length === 1 ? 'is' : 'are'} running with this problem. A save makes a new revision; students keep the revision their
+          {live.length === 1 ? 'is' : 'are'} live with this problem. A save makes a new revision; students keep the revision their
           contest pinned until you update the contest on its console.
         </p>
         <div class="field reason-field">
@@ -589,7 +589,7 @@
             aria-invalid={fields.reason ? 'true' : undefined}
             aria-describedby="reason-help{fields.reason ? ' reason-error' : ''}"
           />
-          <p id="reason-help" class="field-help">Required while a contest is running. It is kept with the revision.</p>
+          <p id="reason-help" class="field-help">Required while a contest is live. It is kept with the revision.</p>
           {#if fields.reason}<p id="reason-error" class="field-error">{fields.reason}</p>{/if}
         </div>
       </div>

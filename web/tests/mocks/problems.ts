@@ -414,8 +414,8 @@ export async function mockApi(page: Page, who: 'admin' | 'student' = 'admin') {
           const body = req.postDataJSON() as Json;
           state.puts.push(body);
           if (((p.live_contests as unknown[] | undefined) ?? []).length > 0 && String(body.reason ?? '').trim() === '') {
-            return apiError(route, 400, 'bad_request', 'Say why you changed the problem while a contest is running.', {
-              fields: { reason: 'Say why you changed the problem while a contest is running.' },
+            return apiError(route, 400, 'bad_request', 'Say why you changed the problem while a contest is live.', {
+              fields: { reason: 'Say why you changed the problem while a contest is live.' },
             });
           }
           if (body.slug === 'taken') {

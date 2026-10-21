@@ -53,10 +53,12 @@ test('while a contest runs with the problem, a save asks for the reason and send
   (api.problems[1] as { live_contests?: unknown }).live_contests = live;
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto('/admin/problems/1');
-  await expect(page.locator('.live-note')).toContainText('Week 6 contest is running with this problem.');
+  await expect(page.locator('.live-note')).toContainText('Week 6 contest is live with this problem.');
+  // "Running" is for judging; a contest is live (design.md section 8, C1-038).
+  await expect(page.locator('.live-note')).not.toContainText('running');
   await page.locator('#title').fill('A plus B, edited');
   await page.getByRole('button', { name: 'Save changes' }).click();
-  await expect(page.locator('#reason-error')).toHaveText('Say why you changed the problem while a contest is running.');
+  await expect(page.locator('#reason-error')).toHaveText('Say why you changed the problem while a contest is live.');
   await expect(page.getByLabel('Reason for this change')).toBeFocused();
   await page.getByLabel('Reason for this change').fill('Fix a typo in the title.');
   await page.getByRole('button', { name: 'Save changes' }).click();
