@@ -11,7 +11,9 @@ package calib
 import (
 	"context"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -118,4 +120,50 @@ func mustOpen(t *testing.T, path string) *os.File {
 	}
 	t.Cleanup(func() { f.Close() })
 	return f
+}
+
+// A box another process is running in is waited for and only then
+// initialised: Init must not return while that run still holds the box
+// (walk 2026-10-21, D325).
+func TestBusyBoxIsWaitedFor(t *testing.T) {
+	const box = testBox + 1
+	r := runner(t)
+	ctx := context.Background()
+	path := r.Iso.Path
+	if err := r.Iso.Cleanup(ctx, box); err != nil {
+		t.Fatal(err)
+	}
+	if out, err := exec.Command(path, "--cg", "--box-id="+strconv.Itoa(box), "--init").CombinedOutput(); err != nil {
+		t.Fatalf("init the other process's box: %v %s", err, out)
+	}
+	other := exec.Command(path, "--cg", "--silent", "--box-id="+strconv.Itoa(box), "--time=5", "--wall-time=5", "--run", "--", "/bin/sleep", "1.5")
+	if err := other.Start(); err != nil {
+		t.Fatal(err)
+	}
+	ended := make(chan time.Time, 1)
+	go func() {
+		other.Wait()
+		ended <- time.Now()
+	}()
+	time.Sleep(300 * time.Millisecond)
+	start := time.Now()
+	dir, err := r.Iso.Init(ctx, box)
+	got := time.Now()
+	if err != nil {
+		t.Fatalf("Init of a box busy for about 1.2 s more: %v", err)
+	}
+	defer r.Iso.Cleanup(ctx, box)
+	select {
+	case at := <-ended:
+		// at is taken just after Wait returns, so it can only be late.
+		if got.Before(at.Add(-100 * time.Millisecond)) {
+			t.Errorf("Init returned %v before the other run ended", at.Sub(got))
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("Init returned while the other run still held the box")
+	}
+	if _, err := os.Stat(dir); err != nil {
+		t.Errorf("box dir: %v", err)
+	}
+	t.Logf("waited %v for the busy box", got.Sub(start).Round(time.Millisecond))
 }
