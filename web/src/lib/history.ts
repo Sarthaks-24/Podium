@@ -215,8 +215,10 @@ export function pinChangeText(p: PinChange): string {
 }
 
 /** The words for what a revision changed. */
-export function revisionChangeText(r: Pick<Revision, 'statement_changed' | 'judging_changed' | 'reconstructed'>): string {
+export function revisionChangeText(r: Pick<Revision, 'statement_changed' | 'judging_changed' | 'reconstructed'> & { rev?: number }): string {
   if (r.reconstructed) return 'Rebuilt at the upgrade from a contest pin; its statement was not recorded';
+  // Revision 1 has nothing before it to differ from.
+  if (r.rev === 1) return 'First recorded version';
   if (r.statement_changed && r.judging_changed) return 'Statement and judging changed';
   if (r.statement_changed) return 'Statement changed';
   if (r.judging_changed) return 'Judging changed';

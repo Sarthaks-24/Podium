@@ -64,6 +64,9 @@ describe('pins (C4)', () => {
     expect(revisionChangeText({ statement_changed: true, judging_changed: false, reconstructed: false })).toBe('Statement changed');
     expect(revisionChangeText({ statement_changed: true, judging_changed: true, reconstructed: false })).toBe('Statement and judging changed');
     expect(revisionChangeText({ statement_changed: false, judging_changed: false, reconstructed: true })).toMatch(/^Rebuilt at the upgrade/);
+    // A new or imported problem's first revision changed nothing because nothing came before it.
+    expect(revisionChangeText({ rev: 1, statement_changed: false, judging_changed: false, reconstructed: false })).toBe('First recorded version');
+    expect(revisionChangeText({ rev: 2, statement_changed: false, judging_changed: false, reconstructed: false })).toBe('No change to the statement or judging');
   });
 });
 
