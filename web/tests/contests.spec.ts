@@ -444,6 +444,22 @@ test('hidden tests shown in practice are named, and grading off after the start 
   await expect(page.getByRole('row', { name: /Unfinished draft/ }).getByText('Hidden tests shown in practice')).toHaveCount(0);
 });
 
+test('grading back on after an ungraded start asks first (C2-014)', async ({ page }) => {
+  const api = await mockApi(page, { who: 'admin', phase: 'during', ungraded: true });
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto('/admin/contests/4');
+  await page.getByText('Rules and scoring').click();
+  await page.getByRole('checkbox', { name: /^Graded:/ }).check();
+  await page.getByRole('button', { name: 'Save changes' }).click();
+  const ask = page.getByRole('dialog', { name: 'Turn grading on in a started contest?' });
+  await expect(ask).toContainText('Students have already seen hidden tests in this contest');
+  await ask.getByRole('button', { name: 'Cancel' }).click();
+  expect(api.settingsPuts).toHaveLength(0);
+  await page.getByRole('button', { name: 'Save changes' }).click();
+  await ask.getByRole('button', { name: 'Turn grading on' }).click();
+  await expect.poll(() => api.settingsPuts.at(-1)).toMatchObject({ graded: true, confirm_graded: true });
+});
+
 test('the editor shows field errors, picks problems and previews a roster', async ({ page }) => {
   const api = await mockApi(page, { who: 'admin', phase: 'during' });
   await page.setViewportSize({ width: 1440, height: 900 });

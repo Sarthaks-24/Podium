@@ -28,7 +28,7 @@
     unpublished one past its start says students cannot see it yet),
     saving a change to the times, start mode,
     scoring, feedback or freeze asks first, and so does turning grading
-    off once the contest has started. Leaving with unsaved settings asks
+    off or back on once the contest has started. Leaving with unsaved settings asks
     first.
   - More: the roster (a CSV file or pasted text with a preview of every
     line, then "Replace roster"), co-organisers, a clone, and archiving.
@@ -345,6 +345,17 @@
         label: 'Turn grading off',
         danger: true,
         run: () => putSettings({ ...body, confirm_ungraded: true }, 'Saved changes'),
+      };
+      return;
+    }
+    // Ungraded submissions showed hidden tests (D115), so grading again asks first (C2-014).
+    if (startedOrOver && !c.graded && body.graded) {
+      confirm = {
+        title: 'Turn grading on in a started contest?',
+        body: 'Students have already seen hidden tests in this contest: each ungraded submission showed the first hidden test it failed. A graded board would reward the students who saw them. Creating a new graded contest is fairer.',
+        label: 'Turn grading on',
+        danger: true,
+        run: () => putSettings({ ...body, confirm_graded: true }, 'Saved changes'),
       };
       return;
     }

@@ -569,6 +569,11 @@ export interface ContestSettings {
   hold_reveal?: boolean;
   /** Sent only to turn grading off after the start (the server asks for it; C1-015). */
   confirm_ungraded?: boolean;
+  /**
+   * Sent only to turn grading back on after an ungraded start (C2-014).
+   * Today's server ignores it; a server guard would ask for it.
+   */
+  confirm_graded?: boolean;
 }
 
 /** GET /api/admin/contests/{id}. */

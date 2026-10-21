@@ -55,6 +55,8 @@ export interface Options {
   published?: boolean;
   /** GET of a problem's workspace answers 403 with this code and Go's sentence (contests.go contestError, C2-017). */
   problemRefusal?: 'not_started' | 'not_on_roster' | 'contest_over';
+  /** The organiser's contest is ungraded (D115: submissions show the first failing hidden test). */
+  ungraded?: boolean;
   /** Bank problems whose hidden tests a contest showed in practice (D115, C1-015). */
   shownInPractice?: number[];
   /** A second live contest in the student's list, under the pinned one (C1-031). */
@@ -256,7 +258,7 @@ export async function mockApi(page: Page, options: Options = {}) {
       max_per_problem: 15,
       languages: ['cpp17', 'python3', 'java21'],
       freeze_minutes: 30,
-      graded: true,
+      graded: !options.ungraded,
     },
     honour_text:
       'This contest is graded. By starting you agree to these rules:\n\n- Work alone.\n- Do not use AI assistants.\n- Podium records your submissions, the characters you type and paste, and when you leave the page. It is deleted 180 days after the contest.',
@@ -333,7 +335,7 @@ export async function mockApi(page: Page, options: Options = {}) {
     scoring_mode: 'best_subtask',
     access: 'roster',
     feedback_mode: 'subtask',
-    graded: true,
+    graded: !options.ungraded,
     published: options.published ?? true,
     practice_after_end: true,
     stop_on_sample_fail: true,
