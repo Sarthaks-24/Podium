@@ -51,7 +51,7 @@ function apiError(route: Route, status: number, code: string, message: string, e
   return json(route, status, { error: { code, message, ...extra } });
 }
 
-async function mockApi(page: Page, who: Who, options: { contactMode?: 'ok' | 'rate'; config?: unknown; siteUpdatedAt?: number } = {}) {
+async function mockApi(page: Page, who: Who, options: { contactMode?: 'ok' | 'rate'; config?: unknown; siteUpdatedAt?: number; deleteFails?: boolean } = {}) {
   const state = {
     who,
     sent: [] as { topic: string; message: string }[],
@@ -96,6 +96,7 @@ async function mockApi(page: Page, who: Who, options: { contactMode?: 'ok' | 'ra
       }
       const del = path.match(/^\/api\/admin\/contact\/(\d+)$/);
       if (del && method === 'DELETE') {
+        if (options.deleteFails) return apiError(route, 500, 'internal', 'The message could not be deleted. Try again in a moment.');
         state.deleted.push(Number(del[1]));
         return json(route, 204);
       }
@@ -224,6 +225,26 @@ test('organisers read, reply to and delete messages (FP.2)', async ({ page }) =>
   await expect(page.locator('.message')).toHaveCount(2);
   expect(api.inboxQueries.at(-1)).toBe('?before=11');
   await expect(page.getByRole('button', { name: 'Show older messages' })).toHaveCount(0);
+});
+
+test('a failed delete says why inside the dialog, where it can be read (C1-008)', async ({ page }) => {
+  await mockApi(page, 'owner', { deleteFails: true });
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto('/admin/contact');
+  await page.locator('.message').first().getByRole('button', { name: 'Delete' }).click();
+  const ask = page.getByRole('dialog', { name: 'Delete this message?' });
+  await ask.getByRole('button', { name: 'Delete' }).click();
+  const error = ask.getByRole('alert');
+  await expect(error).toHaveText('The message could not be deleted. Try again in a moment.');
+  await expect(error).toBeVisible();
+  // Nothing behind the modal: no error toast, and the dialog keeps focus.
+  await expect(page.locator('.toast-error')).toHaveCount(0);
+  await expect(ask.getByRole('button', { name: 'Cancel' })).toBeEnabled();
+  await page.keyboard.press('Escape');
+  await expect(ask).toBeHidden();
+  await expect(page.locator('.message')).toHaveCount(2);
+  await page.locator('.message').first().getByRole('button', { name: 'Delete' }).click();
+  await expect(ask.getByRole('alert')).toHaveCount(0);
 });
 
 test('a student who opens the inbox is told why it is closed', async ({ page }) => {

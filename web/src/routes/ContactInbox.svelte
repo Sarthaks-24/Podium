@@ -31,6 +31,7 @@
   let olderBusy = $state(false);
   let deleting = $state<InboxMessage | null>(null);
   let deleteBusy = $state(false);
+  let deleteError = $state('');
 
   function signedOut(e: unknown): boolean {
     if (e instanceof ApiError && e.status === 401) {
@@ -80,6 +81,7 @@
     const m = deleting;
     if (!m) return;
     deleteBusy = true;
+    deleteError = '';
     try {
       await sendJSON('DELETE', `/api/admin/contact/${encodeURIComponent(String(m.id))}`);
       messages = messages.filter((x) => x.id !== m.id);
@@ -87,7 +89,8 @@
       deleting = null;
     } catch (e) {
       if (signedOut(e)) return;
-      showToast(e instanceof ApiError ? e.message : 'The message could not be deleted. Try again in a moment.', 'error');
+      // Inside the dialog: a toast would sit under the modal backdrop (C1-008).
+      deleteError = e instanceof ApiError ? e.message : 'The message could not be deleted. Try again in a moment.';
     } finally {
       deleteBusy = false;
     }
@@ -143,8 +146,12 @@
   confirmLabel="Delete"
   danger
   busy={deleteBusy}
+  error={deleteError}
   onconfirm={confirmDelete}
-  oncancel={() => (deleting = null)}
+  oncancel={() => {
+    deleting = null;
+    deleteError = '';
+  }}
 />
 
 <style>
