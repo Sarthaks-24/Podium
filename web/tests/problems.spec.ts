@@ -247,6 +247,14 @@ test('a failed validation names the test, program and verdict', async ({ page })
   await expect(page.getByText('Wrong answer on test 7')).toBeVisible();
 });
 
+test('once validated, the advice is no longer headed Before you validate (walk 2026-10-21)', async ({ page }) => {
+  const api = await mockApi(page);
+  (api.problems[1] as { warnings: string[] }).warnings = ['There is no validator.'];
+  await page.goto('/admin/problems/1');
+  await expect(page.getByRole('note', { name: 'Worth adding' })).toContainText('There is no validator.');
+  await expect(page.getByRole('note', { name: 'Before you validate' })).toHaveCount(0);
+});
+
 test('validation is refused while a test is in no subtask', async ({ page }) => {
   await mockApi(page);
   await page.goto('/admin/problems/2');

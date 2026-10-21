@@ -7,7 +7,7 @@
   judgedFieldsChanged); the chain after Generate inputs while it runs; the
   last result in one line with "See the report", which moves focus to the
   report; what stops validation (the server's `problems`); the warnings
-  ("Before you validate"), with a line for statement images that have no
+  ("Before you validate", "Worth adding" once validated), with a line for statement images that have no
   description; and once validated, "Choose a contest" ("Try as a student"
   is in the page header). A plain list, not tiles.
 
@@ -86,7 +86,7 @@
 
   {#if warnings.length > 0}
     <div class="group" role="note" aria-labelledby="warnings-title">
-      <h3 id="warnings-title" class="group-title">Before you validate</h3>
+      <h3 id="warnings-title" class="group-title">{ready ? 'Worth adding' : 'Before you validate'}</h3>
       <ul>{#each warnings as warning, i (i)}<li>{warning}</li>{/each}</ul>
     </div>
   {/if}
