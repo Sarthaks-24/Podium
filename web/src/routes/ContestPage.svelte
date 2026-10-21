@@ -62,6 +62,7 @@
   import ContestClock from '../components/ContestClock.svelte';
   import Markdown from '../components/Markdown.svelte';
   import MessagesDialog from '../components/MessagesDialog.svelte';
+  import MessageList from '../components/MessageList.svelte';
   import ProblemRail from '../components/ProblemRail.svelte';
   import StreamNotice from '../components/StreamNotice.svelte';
   import SubmissionList from '../components/SubmissionList.svelte';
@@ -761,34 +762,9 @@
         {/if}
       </div>
 
-      {#if (contest.announcements ?? []).length > 0 || (contest.my_clarifications ?? []).length > 0}
+      {#if (contest.announcements ?? []).length > 0 || (contest.my_clarifications ?? []).length > 0 || (contest.public_clarifications ?? []).length > 0}
         <aside class="page-split-aside" aria-label="Messages">
-          {#if (contest.announcements ?? []).length > 0}
-            <section class="panel" aria-labelledby="ann-title">
-              <h2 id="ann-title">Announcements</h2>
-              <ul class="announcements">
-                {#each [...contest.announcements].sort((a, b) => b.created_at - a.created_at) as a (a.id)}
-                  <li><p class="muted small"><MonoDigits text={formatDateTime(a.created_at)} /></p><Markdown source={a.body_md} compact /></li>
-                {/each}
-              </ul>
-            </section>
-          {/if}
-          {#if (contest.my_clarifications ?? []).length > 0}
-            <section class="panel" aria-labelledby="questions-title">
-              <h2 id="questions-title">Your questions</h2>
-              <ul class="announcements">
-                {#each [...contest.my_clarifications].sort((a, b) => b.created_at - a.created_at) as q (q.id)}
-                  <li>
-                    <p class="muted small">
-                      <MonoDigits text={formatDateTime(q.created_at)} />{q.problem_label ? `, problem ${q.problem_label}` : ''}
-                    </p>
-                    <p class="question">{q.question}</p>
-                    {#if q.answer}<p class="answer">{q.answer}</p>{:else}<p class="muted">Not answered.</p>{/if}
-                  </li>
-                {/each}
-              </ul>
-            </section>
-          {/if}
+          <MessageList {contest} level={2} idPrefix="page-msg" framed />
         </aside>
       {/if}
     </div>
@@ -962,16 +938,6 @@
     font-size: var(--fs-2);
   }
 
-  .question {
-    font-weight: 500;
-  }
-
-  .question,
-  .answer {
-    overflow-wrap: anywhere;
-    white-space: pre-line;
-  }
-
   .results {
     margin-top: var(--space-2);
   }
@@ -1011,12 +977,5 @@
 
   .subs[open] {
     padding-bottom: var(--space-3);
-  }
-
-  .announcements {
-    display: grid;
-    gap: var(--space-3);
-    padding: 0;
-    list-style: none;
   }
 </style>

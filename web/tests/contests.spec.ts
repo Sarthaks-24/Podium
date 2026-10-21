@@ -243,6 +243,20 @@ test('after the contest: result, submissions, editorial and practice', async ({ 
   await expect(page.getByRole('button', { name: 'Submit', exact: true })).toBeEnabled();
 });
 
+test('after the contest the page keeps answers for everyone, in the dialog copy (C1-010)', async ({ page }) => {
+  const api = await mockApi(page, { phase: 'after' });
+  api.clarifications.push({ id: 9, problem_label: 'B', question: 'Is n at most 10^5?', answer: null, public: false, created_at: Date.now() - 3 * 3_600_000 });
+  api.publicClarifications.push({ id: 10, problem_label: 'A', question: 'May the sum overflow?', answer: 'Use 64-bit integers for the sum.', public: true, created_at: Date.now() - 2 * 3_600_000, answered_at: Date.now() - 2 * 3_600_000 + 60_000 });
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto('/contests/week-6');
+  const everyone = page.getByRole('region', { name: 'Answers for everyone' });
+  await expect(everyone).toContainText('May the sum overflow?');
+  await expect(everyone).toContainText('Use 64-bit integers for the sum.');
+  const questions = page.getByRole('region', { name: 'Your questions' });
+  await expect(questions).toContainText('Waiting for an answer.');
+  await expect(page.getByText('Not answered.')).toHaveCount(0);
+});
+
 test('after a contest without practice, the problem is read only', async ({ page }) => {
   await mockApi(page, { phase: 'after' });
   await page.goto('/contests/week-6/problems/A');

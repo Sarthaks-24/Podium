@@ -1,9 +1,9 @@
 <!--
   MessagesDialog: everything organisers said during a contest, and the
   place to ask them something. A native modal dialog (Escape closes it,
-  focus returns to the opener) listing announcements newest first, the
-  student's own questions with their answers or "Waiting for an answer",
-  and answers made public for everyone. While the student's window is open
+  focus returns to the opener) with the MessageList: announcements newest
+  first, the student's own questions with their answers or "Waiting for an
+  answer", and answers made public for everyone. While the student's window is open
   a form asks a question about one problem or the contest in general
   (POST /api/contests/{slug}/clarifications); a refused question shows the
   server's sentence under the field, and a sent one is confirmed in a
@@ -14,13 +14,11 @@
   server returns it).
 -->
 <script lang="ts">
-  import MonoDigits from './MonoDigits.svelte';
   import { tick } from 'svelte';
   import { ApiError, sendJSON } from '../lib/api';
   import type { Clarification, Contest } from '../lib/contests';
-  import { formatWhen } from '../lib/workspace';
   import Icon from './Icon.svelte';
-  import Markdown from './Markdown.svelte';
+  import MessageList from './MessageList.svelte';
 
   interface Props {
     open: boolean;
@@ -41,12 +39,6 @@
   let error = $state('');
   let sent = $state('');
 
-  const announcements = $derived([...(contest.announcements ?? [])].sort((a, b) => b.created_at - a.created_at));
-  const mine = $derived([...(contest.my_clarifications ?? [])].sort((a, b) => b.created_at - a.created_at));
-  const everyone = $derived(
-    [...(contest.public_clarifications ?? [])].filter((c) => !mine.some((m) => m.id === c.id)).sort((a, b) => b.created_at - a.created_at),
-  );
-
   $effect(() => {
     if (!dialog) return;
     if (open && !dialog.open) {
@@ -62,10 +54,6 @@
   function onCancel(event: Event) {
     event.preventDefault();
     onclose();
-  }
-
-  function topicText(label: string | null): string {
-    return label ? `Problem ${label}` : 'General';
   }
 
   async function ask(event: SubmitEvent) {
@@ -137,64 +125,14 @@
     <p class="muted small closed">Questions close when your time in the contest ends.</p>
   {/if}
 
-  <section class="section" aria-labelledby="msg-ann">
-    <h3 id="msg-ann" class="section-title">Announcements</h3>
-    {#if announcements.length === 0}
-      <p class="muted small">No announcements yet.</p>
-    {:else}
-      <ul class="items">
-        {#each announcements as a (a.id)}
-          <li class="item">
-            <p class="when"><MonoDigits text={formatWhen(a.created_at)} /></p>
-            <Markdown source={a.body_md} compact />
-          </li>
-        {/each}
-      </ul>
-    {/if}
-  </section>
-
-  <section class="section" aria-labelledby="msg-mine">
-    <h3 id="msg-mine" class="section-title">Your questions</h3>
-    {#if mine.length === 0}
-      <p class="muted small">You have not asked anything.</p>
-    {:else}
-      <ul class="items">
-        {#each mine as c (c.id)}
-          <li class="item">
-            <p class="meta"><span class="when"><MonoDigits text={formatWhen(c.created_at)} /></span> {topicText(c.problem_label)}{c.public ? ', answered for everyone' : ''}</p>
-            <p class="q">{c.question}</p>
-            {#if c.answer}<p class="a">{c.answer}</p>{:else}<p class="muted small">Waiting for an answer.</p>{/if}
-          </li>
-        {/each}
-      </ul>
-    {/if}
-  </section>
-
-  {#if everyone.length > 0}
-    <section class="section" aria-labelledby="msg-public">
-      <h3 id="msg-public" class="section-title">Answers for everyone</h3>
-      <ul class="items">
-        {#each everyone as c (c.id)}
-          <li class="item">
-            <p class="meta"><span class="when"><MonoDigits text={formatWhen(c.answered_at ?? c.created_at)} /></span> {topicText(c.problem_label)}</p>
-            <p class="q">{c.question}</p>
-            <p class="a">{c.answer}</p>
-          </li>
-        {/each}
-      </ul>
-    </section>
-  {/if}
+  <MessageList {contest} level={3} idPrefix="msg" />
 </dialog>
 
 <style>
-  .section,
   .ask {
     display: grid;
     gap: var(--space-3);
     margin-top: var(--space-5);
-  }
-
-  .ask {
     justify-items: start;
     padding-bottom: var(--space-5);
     border-bottom: var(--rule) solid var(--line);
@@ -221,36 +159,6 @@
 
   .section-title {
     font-size: var(--fs-1);
-  }
-
-  .items {
-    display: grid;
-    padding: 0;
-    list-style: none;
-    border-top: var(--rule) solid var(--line);
-  }
-
-  .item {
-    display: grid;
-    gap: var(--space-1);
-    padding-block: var(--space-3);
-    border-bottom: var(--rule) solid var(--line);
-    font-size: var(--fs-0);
-  }
-
-  .when,
-  .meta {
-    color: var(--ink-muted);
-  }
-
-  .q {
-    font-weight: 500;
-    overflow-wrap: anywhere;
-  }
-
-  .a {
-    overflow-wrap: anywhere;
-    white-space: pre-wrap;
   }
 
   .small {
