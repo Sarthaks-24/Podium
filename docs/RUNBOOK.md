@@ -194,7 +194,7 @@ What can be lost: with the bucket, at most the last 10 s of changes; from a nigh
 
 When the VM is lost or cannot be trusted. **During a contest the rule is: the contest is extended or rerun, never recovered live** (D113). Announce that results are safe up to the recovery point, pause or end the contest, and restore calmly. The target is 60 minutes from the alert to a student signed in on the new VM; the P0 drill measures it. Not yet proven on the VM: the drill has not run, so the 60 minutes is a target, not a measurement.
 
-What you need at hand: the four env files from your password manager (`server.env`, `judge.env`, `litestream.env`, `backup.env`, plus `alert.env`), the `age` private key `podium-backup.key`, the release tarball that was running, access to the DNS records, and the Google Cloud console.
+What you need at hand: the five env files from your password manager (`server.env`, `judge.env`, `litestream.env`, `backup.env`, `alert.env`), the `age` private key `podium-backup.key`, the release tarball that was running, access to the DNS records, and the Google Cloud console.
 
 Write down the time at each step; the drill note records them.
 
@@ -273,7 +273,7 @@ Do each of these once and note what students saw and how long it took:
 
 ### List of fixes (template)
 
-Copy into `cache/v1/dry-run-<date>.md` (not shipped) and fill one row per issue. Severity: **blocker** (must be fixed before the 700-student contest), **major** (fix before then if at all possible), **minor** (backlog).
+Copy into your drill notes (not shipped) and fill one row per issue. Severity: **blocker** (must be fixed before the 700-student contest), **major** (fix before then if at all possible), **minor** (backlog).
 
 ```
 # Dry run <date>: list of fixes
