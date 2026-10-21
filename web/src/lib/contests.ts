@@ -641,7 +641,8 @@ export interface JobToolchain {
 /** "Judged with g++ 13.3.0": the compiler or runtime of the row's language, or '' when unknown. */
 export function judgedWith(language: string, t: JobToolchain | null | undefined): string {
   if (!t) return '';
-  const key = ({ cpp17: 'gcc', java21: 'java', python3: 'python', node22: 'node' } as const)[language as 'cpp17'];
+  const keys: Record<string, keyof JobToolchain> = { cpp17: 'gcc', java21: 'java', python3: 'python', node22: 'node' };
+  const key = keys[language];
   const version = key ? t[key] : '';
   if (!version) return '';
   // Node reports a bare "v22.20.0".

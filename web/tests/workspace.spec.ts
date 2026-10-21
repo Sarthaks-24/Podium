@@ -1116,3 +1116,16 @@ test.describe('P5 workspace', () => {
     }
   });
 });
+
+test('the event stream carries this browser\'s device id (C2-034)', async ({ page }) => {
+  await mockApi(page);
+  const streams: string[] = [];
+  page.on('request', (r) => {
+    if (new URL(r.url()).pathname === '/api/events') streams.push(r.url());
+  });
+  await openWorkspace(page);
+  await expect.poll(() => streams.length).toBeGreaterThan(0);
+  const id = await page.evaluate(() => localStorage.getItem('podium-device'));
+  expect(id).toMatch(/^[A-Za-z0-9]{32}$/);
+  expect(new URL(streams[0]).searchParams.get('device')).toBe(id);
+});

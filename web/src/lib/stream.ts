@@ -113,7 +113,7 @@ export class EventStream {
       stableMs: 30_000,
       maxErrors: 3,
       random: Math.random,
-      create: (url) => new EventSource(url, { withCredentials: true }) as unknown as EventSourceLike,
+      create: (url) => new EventSource(withDevice(url), { withCredentials: true }) as unknown as EventSourceLike,
       setTimer: (fn, ms) => setTimeout(fn, ms),
       clearTimer: (id) => clearTimeout(id as ReturnType<typeof setTimeout>),
       ...options,
@@ -265,4 +265,31 @@ export class EventStream {
     this.pollTimer = null;
     this.polls = 0;
   }
+}
+
+const DEVICE_KEY = 'podium-device';
+const DEVICE_ID = /^[A-Za-z0-9]{1,64}$/;
+
+/**
+ * This browser's random id, kept in localStorage (C2-034): the server tells
+ * two phones of one model apart by it for the second-session signal. Empty
+ * when the browser refuses storage; a new id is made when none is kept.
+ */
+export function deviceId(store: Pick<Storage, 'getItem' | 'setItem'> | null = typeof localStorage === 'undefined' ? null : localStorage): string {
+  try {
+    const kept = store?.getItem(DEVICE_KEY) ?? '';
+    if (DEVICE_ID.test(kept)) return kept;
+    const letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+    const id = Array.from(crypto.getRandomValues(new Uint8Array(32)), (b) => letters[b % letters.length]).join('');
+    store?.setItem(DEVICE_KEY, id);
+    return store ? id : '';
+  } catch {
+    return '';
+  }
+}
+
+/** The event stream's address with `?device=` (only /api/events takes it; docs/API.md). */
+export function withDevice(url: string, id = deviceId()): string {
+  if (id === '' || !url.startsWith('/api/events')) return url;
+  return `${url}${url.includes('?') ? '&' : '?'}device=${id}`;
 }

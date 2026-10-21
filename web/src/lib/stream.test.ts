@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { ApiError } from './api';
-import { EventStream, reconnectDelay, stopAllStreams, type EventSourceLike } from './stream';
+import { EventStream, deviceId, reconnectDelay, stopAllStreams, withDevice, type EventSourceLike } from './stream';
 
 class FakeSource implements EventSourceLike {
   onopen: ((ev: Event) => void) | null = null;
@@ -240,5 +240,33 @@ describe('after sign-out (C1-041)', () => {
     b.start();
     stopAllStreams();
     expect(closed.sort()).toEqual([1, 2]);
+  });
+});
+
+describe('the device id on the event stream (C2-034)', () => {
+  function memory() {
+    const m = new Map<string, string>();
+    return { getItem: (k: string) => m.get(k) ?? null, setItem: (k: string, v: string) => void m.set(k, v) };
+  }
+
+  it('makes one id of letters and digits and keeps it', () => {
+    const store = memory();
+    const id = deviceId(store);
+    expect(id).toMatch(/^[A-Za-z0-9]{32}$/);
+    expect(deviceId(store)).toBe(id);
+  });
+
+  it('replaces a kept id the server would refuse, and gives none without storage', () => {
+    const store = memory();
+    store.setItem('podium-device', 'not valid!');
+    expect(deviceId(store)).toMatch(/^[A-Za-z0-9]{32}$/);
+    expect(deviceId(null)).toBe('');
+  });
+
+  it('adds it to the event stream only', () => {
+    expect(withDevice('/api/events', 'abc123')).toBe('/api/events?device=abc123');
+    expect(withDevice('/api/events?x=1', 'abc123')).toBe('/api/events?x=1&device=abc123');
+    expect(withDevice('/api/contests', 'abc123')).toBe('/api/contests');
+    expect(withDevice('/api/events', '')).toBe('/api/events');
   });
 });
