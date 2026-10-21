@@ -22,6 +22,7 @@
 -->
 <script lang="ts">
   import { tick } from 'svelte';
+  import { dismissable } from '../lib/dismissable';
   import { saveHideProgress } from '../lib/account';
   import { ApiError } from '../lib/api';
   import { roleLabel } from '../lib/format';
@@ -40,37 +41,13 @@
   let { user, inline = false, onsignout }: Props = $props();
 
   let open = $state(false);
-  let root: HTMLDivElement | undefined = $state();
   let button: HTMLButtonElement | undefined = $state();
 
   const panelId = 'account-panel';
 
-  function inDialog(node: Node | null): boolean {
-    return node instanceof Element && node.closest('dialog') !== null;
-  }
-
   async function toggle() {
     open = !open;
     await tick();
-  }
-
-  function onWindowKeydown(event: KeyboardEvent) {
-    if (!open || event.key !== 'Escape' || event.defaultPrevented) return;
-    // A dialog opened from the panel takes its own Escape.
-    if (document.querySelector('dialog[open]')) return;
-    event.preventDefault();
-    open = false;
-    button?.focus();
-  }
-
-  function onWindowPointerdown(event: PointerEvent) {
-    const target = event.target as Node;
-    if (open && root && !root.contains(target) && !inDialog(target)) open = false;
-  }
-
-  function onFocusout(event: FocusEvent) {
-    const next = event.relatedTarget as Node | null;
-    if (open && next && root && !root.contains(next) && !inDialog(next)) open = false;
   }
 
   const showNotices = $derived(user.role === 'student' || notices.unread > 0);
@@ -97,8 +74,6 @@
     onsignout();
   }
 </script>
-
-<svelte:window onkeydown={onWindowKeydown} onpointerdown={onWindowPointerdown} />
 
 {#snippet items()}
   <p class="who">
@@ -132,7 +107,7 @@
 {#if inline}
   <div class="inline">{@render items()}</div>
 {:else}
-  <div class="account" bind:this={root} onfocusout={onFocusout}>
+  <div class="account" use:dismissable={{ open, onclose: () => (open = false), trigger: button }}>
     <button type="button" class="trigger" aria-expanded={open} aria-controls={panelId} bind:this={button} onclick={toggle}>
       <span class="name">{displayName(user)}</span><span class="word">Account</span>
       <Icon name="chevron-down" />

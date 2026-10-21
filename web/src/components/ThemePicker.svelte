@@ -1,6 +1,6 @@
 <!--
   ThemePicker: the theme and verdict-colour choices, shared by the
-  signed-out header popover (lib/ThemeMenu.svelte) and the "Theme and
+  signed-out header popover (components/ThemeMenu.svelte) and the "Theme and
   colours" dialog of the account menu (ThemeDialog.svelte). It names the
   current theme, then one radio group for the theme (System, then the
   Light, Dark and Accessible groups from lib/theme.ts, each option with a

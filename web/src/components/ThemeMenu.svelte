@@ -4,19 +4,19 @@
   (components/AccountMenu.svelte). A quiet button, the word Theme with a
   sun or moon icon for the family showing, opens a panel holding
   components/ThemePicker. Escape or a click outside closes the panel, as
-  does tabbing out of it; Escape returns focus to the button. Takes no
-  props.
+  does tabbing out of it; Escape returns focus to the button
+  (lib/dismissable). Takes no props.
 -->
 <script lang="ts">
   import { onMount, tick } from 'svelte';
-  import Icon from '../components/Icon.svelte';
-  import ThemePicker from '../components/ThemePicker.svelte';
-  import { preferences } from './preferences.svelte';
-  import { THEMES } from './theme';
+  import Icon from './Icon.svelte';
+  import ThemePicker from './ThemePicker.svelte';
+  import { dismissable } from '../lib/dismissable';
+  import { preferences } from '../lib/preferences.svelte';
+  import { THEMES } from '../lib/theme';
 
   let open = $state(false);
   let button: HTMLButtonElement | undefined = $state();
-  let root: HTMLDivElement | undefined = $state();
   let panel: HTMLDivElement | undefined = $state();
 
   const current = $derived(preferences.current);
@@ -55,29 +55,11 @@
     place();
   }
 
-  function onWindowKeydown(event: KeyboardEvent) {
-    if (open && event.key === 'Escape' && !event.defaultPrevented) {
-      event.preventDefault();
-      open = false;
-      button?.focus();
-    }
-  }
-
-  function onWindowPointerdown(event: PointerEvent) {
-    if (open && root && !root.contains(event.target as Node)) open = false;
-  }
-
-  // Tabbing past the last option leaves the menu, so the panel closes
-  // rather than staying open over the page.
-  function onFocusout(event: FocusEvent) {
-    const next = event.relatedTarget as Node | null;
-    if (open && next && root && !root.contains(next)) open = false;
-  }
 </script>
 
-<svelte:window onkeydown={onWindowKeydown} onpointerdown={onWindowPointerdown} onresize={place} />
+<svelte:window onresize={place} />
 
-<div class="theme-menu" bind:this={root} onfocusout={onFocusout}>
+<div class="theme-menu" use:dismissable={{ open, onclose: () => (open = false), trigger: button }}>
   <button type="button" class="trigger" aria-expanded={open} aria-controls={panelId} bind:this={button} onclick={toggle}>
     <Icon name={dark ? 'moon' : 'sun'} />
     Theme

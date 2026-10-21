@@ -14,6 +14,7 @@
 -->
 <script lang="ts">
   import Icon from './Icon.svelte';
+  import { dismissable } from '../lib/dismissable';
 
   interface Props {
     fontSize: number;
@@ -33,30 +34,11 @@
   }
 
   let open = $state(false);
-  let root: HTMLDivElement | undefined = $state();
   let button: HTMLButtonElement | undefined = $state();
 
-  function onWindowKeydown(event: KeyboardEvent) {
-    if (!open || event.key !== 'Escape' || event.defaultPrevented) return;
-    if (document.querySelector('dialog[open]')) return;
-    event.preventDefault();
-    open = false;
-    button?.focus();
-  }
-
-  function onWindowPointerdown(event: PointerEvent) {
-    if (open && root && !root.contains(event.target as Node)) open = false;
-  }
-
-  function onFocusout(event: FocusEvent) {
-    const next = event.relatedTarget as Node | null;
-    if (open && next && root && !root.contains(next)) open = false;
-  }
 </script>
 
-<svelte:window onkeydown={onWindowKeydown} onpointerdown={onWindowPointerdown} />
-
-<div class="settings" bind:this={root} onfocusout={onFocusout}>
+<div class="settings" use:dismissable={{ open, onclose: () => (open = false), trigger: button }}>
   <button
     type="button"
     class="btn btn-quiet btn-compact"

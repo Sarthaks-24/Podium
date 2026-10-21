@@ -43,7 +43,7 @@
   import ThemeDialog from './components/ThemeDialog.svelte';
   import ConfirmDialog from './components/ConfirmDialog.svelte';
   import Toasts from './components/Toasts.svelte';
-  import ThemeMenu from './lib/ThemeMenu.svelte';
+  import ThemeMenu from './components/ThemeMenu.svelte';
   import { regions } from './lib/announce.svelte';
   import { loadMode, runMode, telHref } from './lib/mode.svelte';
   import { installLinkInterception, matchRoute, navigate, router } from './lib/router.svelte';
