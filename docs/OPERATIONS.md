@@ -2,7 +2,7 @@
 
 How to install, configure, check, back up and upgrade podium on its VM, and how to run it on your own machine. What to do on a contest day, and the dry run with real students, are in `docs/RUNBOOK.md`.
 
-Status (2026-10-21): podium has not run on the VM yet. The install, upgrade, rollback, restore, alert and load procedures here are written from the code and tested in WSL2 and CI; the VM drills of the P0 gate have not run, so none of them is proven on the VM. Sections that depend on a drill say "not yet proven on the VM".
+Status (2026-10-21): podium has not run on the VM yet. The install, upgrade, rollback, restore, alert and load procedures here are written from the code and tested in WSL2 (CI has not run on GitHub yet); the VM drills of the P0 gate have not run, so none of them is proven on the VM. Sections that depend on a drill say "not yet proven on the VM".
 
 ## Install
 

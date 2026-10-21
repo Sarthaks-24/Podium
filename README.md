@@ -4,7 +4,7 @@ A self-hosted platform for weekly programming contests at a college. Students si
 
 Everything runs on one small Linux VM (Ubuntu 24.04, amd64 only, 2 GB RAM is the target) and is built to serve 700+ students in one contest.
 
-Status: v1 (milestones M0 to M7) and the v2 phases P0 to P5 are built and on `main`; no release is tagged or deployed yet. The judge sandbox, Google sign-in with the domain check, roles, the problem bank with pack import, export and revisions, output and input generation, validation on the real judge, the student workspace with live verdicts and revealed tests in practice, contests with standings, freeze and reveal, integrity checks with review cases, appeals and the rating, student progress and notices, the public pages, retention, and the bring-your-own-key AI wizard exist. See `CHANGELOG.md`.
+Status (2026-10-21): v1 (milestones M0 to M7) and the code of the v2 phases P0 to P6 are on `main`, and the unit suites pass there. v2 is code complete, not verified and not released: the VM drills have not run, CI has not run on GitHub yet, and no release is tagged or deployed. The judge sandbox, Google sign-in with the domain check, roles, the problem bank with pack import, export and revisions, output and input generation, validation on the real judge, the student workspace with live verdicts and revealed tests in practice, contests with standings, freeze and reveal, integrity checks with review cases, appeals and the rating, student progress and notices, the public pages, retention, and the bring-your-own-key AI wizard exist. See `CHANGELOG.md`.
 
 ## How it fits together
 
