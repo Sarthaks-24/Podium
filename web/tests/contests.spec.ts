@@ -1141,6 +1141,13 @@ test('the console feed links names to progress, keeps private notes and opens a 
   await expect(dialog).toContainText('The student is never told about a note');
   await expect(dialog.getByRole('list', { name: 'Notes, oldest first' })).toContainText('Ravi Kumar, lines 8 to 10');
   await expect(dialog).toContainText('unless a case is opened');
+  // The program is shown as text, and the typed lines are highlighted in it.
+  const program = dialog.getByRole('region', { name: /^Asha Rao's program for problem B/ });
+  await expect(program).toContainText('// <b>sum</b>');
+  await expect(program.locator('b')).toHaveCount(0);
+  await dialog.getByLabel('Lines in question (optional)').fill('3-4');
+  await expect(program.locator('.line.hit')).toHaveCount(2);
+  await dialog.getByLabel('Lines in question (optional)').fill('');
 
   await dialog.getByRole('button', { name: 'Save note' }).click();
   await expect(dialog.getByText('Write the note first.')).toBeVisible();

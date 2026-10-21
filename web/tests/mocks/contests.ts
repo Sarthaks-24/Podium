@@ -152,6 +152,9 @@ export function boardRows(count: number, meIndex: number, frozen: boolean) {
   return rows;
 }
 
+/** The program the notes route sends with submission 301; one line holds a tag, which must show as text. */
+export const NOTES_SOURCE = '#include <cstdio>\nint main() {\n  long long a, b;\n  scanf("%lld %lld", &a, &b);\n  printf("%lld\\n", a + b); // <b>sum</b>\n}\n';
+
 export async function mockApi(page: Page, options: Options = {}) {
   await longLivedEvents(page);
   const now = nowMs();
@@ -683,7 +686,7 @@ export async function mockApi(page: Page, options: Options = {}) {
       const notes = path.match(/^\/api\/admin\/submissions\/(\d+)\/notes$/);
       if (notes && method === 'GET') {
         if (notes[1] !== '301') return json(route, 200, { submission: { id: Number(notes[1]) }, notes: [], case_id: null, server_now: nowMs() });
-        return json(route, 200, { submission: { id: 301, contest_id: 4, user_id: 7, problem_label: 'B', language: 'cpp17', practice: false, created_at: now - 2 * MIN }, notes: state.notes, case_id: state.manualCase, server_now: nowMs() });
+        return json(route, 200, { submission: { id: 301, contest_id: 4, user_id: 7, problem_label: 'B', language: 'cpp17', practice: false, created_at: now - 2 * MIN }, source: NOTES_SOURCE, notes: state.notes, case_id: state.manualCase, server_now: nowMs() });
       }
       if (notes && method === 'POST') {
         const body = req.postDataJSON() as { text: string; lines: { from: number; to: number }[] };

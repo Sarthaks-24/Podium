@@ -85,7 +85,15 @@ func (d Deps) listNotes(w http.ResponseWriter, r *http.Request) {
 	if caseID != 0 {
 		cid = &caseID
 	}
-	WriteJSON(w, http.StatusOK, map[string]any{"submission": sub, "notes": notes, "case_id": cid, "server_now": d.serverNow()})
+	// The program itself, so the reviewer reads it and picks lines in the
+	// dialog (P4 organiser request). Only reviewers reach this point, and
+	// the read is logged above.
+	source, err := d.Integrity.SubmissionSource(r.Context(), sub.ID)
+	if err != nil {
+		d.internalError(w, r, err)
+		return
+	}
+	WriteJSON(w, http.StatusOK, map[string]any{"submission": sub, "source": source, "notes": notes, "case_id": cid, "server_now": d.serverNow()})
 }
 
 func (d Deps) addNote(w http.ResponseWriter, r *http.Request) {

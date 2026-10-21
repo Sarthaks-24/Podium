@@ -184,6 +184,8 @@ export interface RatingAnswer {
 /** GET /api/admin/submissions/{id}/notes. */
 export interface Notes {
   submission: { id: number; contest_id: number; user_id: number; problem_label: string; language: string; practice: boolean; created_at: number };
+  /** The program, as plain text (shown in CodeView, never as HTML). */
+  source?: string;
   notes: Note[];
   case_id: number | null;
   server_now?: number;

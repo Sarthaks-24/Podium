@@ -1508,7 +1508,7 @@ The server writes the sentences from fixed templates with the contest's title, a
 
 | Route | Who | Request | Success |
 |---|---|---|---|
-| `GET /api/admin/submissions/{id}/notes` | reviewers of the submission's contest (owners and admins; a co-organiser whose role is not student is an admin) | | 200 `{submission: SubmissionRef, notes: [Note], case_id, server_now}`; logged; `404` on one's own submission |
+| `GET /api/admin/submissions/{id}/notes` | reviewers of the submission's contest (owners and admins; a co-organiser whose role is not student is an admin) | | 200 `{submission: SubmissionRef, source, notes: [Note], case_id, server_now}`, where `source` is the submission's program as plain text, so the reviewer reads it and picks lines; logged; `404` on one's own submission |
 | `POST /api/admin/submissions/{id}/notes` | same | `{"text": "...", "lines": [{"from": 12, "to": 18}]}` | 201 `Note` |
 | `POST /api/admin/submissions/{id}/case` | same | `{"title": "...", "note": "..."}` | 201 `Case` |
 

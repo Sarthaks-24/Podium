@@ -70,6 +70,17 @@ func (s *Service) Submission(ctx context.Context, id int64) (*SubmissionRef, err
 	return &r, err
 }
 
+// SubmissionSource is the program of a contest submission, for a
+// reviewer's notes dialog.
+func (s *Service) SubmissionSource(ctx context.Context, id int64) (string, error) {
+	var src string
+	err := s.DB.QueryRowContext(ctx, "SELECT source FROM submissions WHERE id = ?", id).Scan(&src)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", ErrNotFound
+	}
+	return src, err
+}
+
 func checkLines(lines []LineRange) error {
 	if len(lines) > 20 {
 		return &InputError{"Highlight at most 20 ranges of lines."}

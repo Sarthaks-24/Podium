@@ -12,16 +12,20 @@
   says so. Below the form, "Open a case" hands over to OpenCaseDialog
   (through `onopencase`), or, when a case already exists, a link to it.
   Opening the dialog is logged for the owner; a reviewer's own submission
-  answers 404 and the dialog says why. The API does not send the
-  submission's code, so the lines are typed as numbers. Props: `open`,
+  answers 404 and the dialog says why. The program is shown read only in
+  CodeView (as text, never HTML), and the lines typed in "Lines in
+  question" are highlighted in it as they are typed, so the reviewer picks
+  them against the code. Props: `open`,
   `submission` ({ id, name, label }), `onclose`, `onopencase`, and
   `onchange` (gets the new note count and case id, for the feed row).
 -->
 <script lang="ts">
   import { tick } from 'svelte';
+  import CodeView from './CodeView.svelte';
   import MonoDigits from './MonoDigits.svelte';
   import { ApiError, errorText, getJSON, sendJSON } from '../lib/api';
   import { formatDateTime } from '../lib/format';
+  import { lineSpans } from '../lib/standing';
   import { linesText, parseLines, type Note, type Notes } from '../lib/students';
   import { showToast } from '../lib/toast.svelte';
 
@@ -41,6 +45,7 @@
   let refusal = $state('');
   let notes = $state<Note[]>([]);
   let caseId = $state<number | null>(null);
+  let source = $state('');
   let text = $state('');
   let lines = $state('');
   let textError = $state('');
@@ -49,6 +54,12 @@
   let busy = $state(false);
 
   const MAX_NOTE = 2000;
+
+  // The typed lines, highlighted in the program while they parse.
+  const picked = $derived.by(() => {
+    const parsed = parseLines(lines);
+    return 'lines' in parsed ? lineSpans(source, parsed.lines) : [];
+  });
 
   $effect(() => {
     if (!dialog) return;
@@ -73,6 +84,7 @@
       const d = await getJSON<Notes>(`/api/admin/submissions/${submission.id}/notes`);
       notes = d.notes ?? [];
       caseId = d.case_id ?? null;
+      source = d.source ?? '';
       view = 'ready';
     } catch (e) {
       if (e instanceof ApiError && e.status === 404) {
@@ -158,6 +170,13 @@
       </ul>
     {/if}
 
+    {#if source !== ''}
+      <div class="program">
+        <CodeView {source} spans={picked} label="{submission?.name ?? 'The student'}'s program for problem {submission?.label ?? ''}" />
+        <p class="muted small">The lines you type under "Lines in question" are highlighted here.</p>
+      </div>
+    {/if}
+
     <form class="form" novalidate onsubmit={add}>
       <div class="field">
         <label for="note-text">New note</label>
@@ -226,6 +245,12 @@
   .text {
     white-space: pre-wrap;
     overflow-wrap: anywhere;
+  }
+
+  .program {
+    display: grid;
+    gap: var(--space-2);
+    margin-top: var(--space-4);
   }
 
   .form {

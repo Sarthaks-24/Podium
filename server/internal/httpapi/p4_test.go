@@ -79,8 +79,15 @@ func TestStudentsAuthorisationMatrix(t *testing.T) {
 	if code, out := w.asha.do("POST", notes, note, o); code != 404 {
 		t.Errorf("the author notes their own: %d %v", code, out)
 	}
-	if code, out := w.owner.do("GET", notes, nil, ""); code != 200 || len(out["notes"].([]any)) != 1 {
-		t.Fatalf("owner notes: %d %v", code, out)
+	code, nout := w.owner.do("GET", notes, nil, "")
+	if code != 200 || len(nout["notes"].([]any)) != 1 {
+		t.Fatalf("owner notes: %d %v", code, nout)
+	}
+	// The program comes with the notes, so the reviewer can read it and pick lines.
+	var src string
+	s.db.QueryRow("SELECT source FROM submissions WHERE id = ?", sub).Scan(&src)
+	if src == "" || nout["source"] != src {
+		t.Errorf("notes source %q, want the submission's %q", nout["source"], src)
 	}
 	if viewsOf(t, s, "notes", asha) != 1 {
 		t.Error("the notes read was not logged")
