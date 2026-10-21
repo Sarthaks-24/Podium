@@ -13,7 +13,7 @@
   import { onMount } from 'svelte';
   import ConfirmDialog from '../ConfirmDialog.svelte';
   import { aiPaths, isKeyProblem, modelLabel, solveLine, solveMeaning, wizardPending, type KeyStatus, type Wizard } from '../../lib/ai';
-  import { ApiError, getJSON, sendJSON } from '../../lib/api';
+  import { ApiError, errorText, getJSON, sendJSON } from '../../lib/api';
   import { problemPath } from '../../lib/problems';
   import { EventStream, type StreamMode } from '../../lib/stream';
   import type { Submission } from '../../lib/workspace';
@@ -61,10 +61,6 @@
   let alive = true;
   let solveTimer: ReturnType<typeof setTimeout> | undefined;
   let solveStream: EventStream | null = null;
-
-  function messageOf(e: unknown): string {
-    return e instanceof ApiError ? e.message : 'Something went wrong. Try again in a moment.';
-  }
 
   onMount(() => {
     getJSON<KeyStatus>(aiPaths.key)
@@ -172,7 +168,7 @@
       solveOpen = false;
       if (onsessionerror(e)) return;
       solveError = {
-        message: messageOf(e),
+        message: errorText(e),
         code: e instanceof ApiError ? e.code : 'unexpected',
         reasons: e instanceof ApiError ? e.problems : [],
       };

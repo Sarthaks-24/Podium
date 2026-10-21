@@ -23,7 +23,7 @@
   import KeyForm from '../components/ai/KeyForm.svelte';
   import { onMount, tick } from 'svelte';
   import { aiPaths, heldKeys, KEY_HOURS, keyExpired, keyLine, modelLabel, needsKey, type KeyStatus, type ProviderOption } from '../lib/ai';
-  import { ApiError, getJSON, sendJSON } from '../lib/api';
+  import { ApiError, errorText, getJSON, sendJSON } from '../lib/api';
   import { setTitle } from '../lib/head';
   import { routeTitle } from '../lib/routing';
   import { session } from '../lib/session.svelte';
@@ -55,10 +55,6 @@
     return false;
   }
 
-  function messageOf(e: unknown): string {
-    return e instanceof ApiError ? e.message : 'Something went wrong. Try again in a moment.';
-  }
-
   async function load() {
     loadState = 'loading';
     try {
@@ -67,7 +63,7 @@
       loadState = 'ready';
     } catch (e) {
       if (handleSessionError(e)) return;
-      loadError = messageOf(e);
+      loadError = errorText(e);
       loadState = 'error';
     }
   }
@@ -89,7 +85,7 @@
       await tick();
       document.getElementById('provider')?.focus();
     } catch (e) {
-      if (!handleSessionError(e)) showToast(messageOf(e), 'error');
+      if (!handleSessionError(e)) showToast(errorText(e), 'error');
     } finally {
       forgetting = '';
     }

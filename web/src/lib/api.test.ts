@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { ApiError, NETWORK_MESSAGE, UNEXPECTED_MESSAGE, getJSON, sendBody, sendJSON } from './api';
+import { ApiError, NETWORK_MESSAGE, PAGE_ERROR_MESSAGE, UNEXPECTED_MESSAGE, errorText, getJSON, sendBody, sendJSON } from './api';
 
 function respond(status: number, body?: unknown): Response {
   const text = body === undefined ? null : typeof body === 'string' ? body : JSON.stringify(body);
@@ -162,5 +162,13 @@ describe('sendBody', () => {
     expect(init?.body).toBe(zip);
     expect((init?.headers as Record<string, string>)['Content-Type']).toBe('application/zip');
     expect((init?.headers as Record<string, string>).Accept).toBe('application/json');
+  });
+});
+
+describe('errorText (C1-032)', () => {
+  it('shows the server sentence for an ApiError and says the page failed otherwise', () => {
+    expect(errorText(new ApiError(409, 'conflict', 'The problem changed since you opened it.'))).toBe('The problem changed since you opened it.');
+    expect(errorText(new TypeError('x is undefined'))).toBe(PAGE_ERROR_MESSAGE);
+    expect(errorText('nothing')).toBe(PAGE_ERROR_MESSAGE);
   });
 });

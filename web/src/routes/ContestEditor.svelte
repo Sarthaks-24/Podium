@@ -41,7 +41,7 @@
   import PageHeader from '../components/PageHeader.svelte';
   import Icon from '../components/Icon.svelte';
   import MonoDigits from '../components/MonoDigits.svelte';
-  import { ApiError, getJSON, sendBody, sendJSON } from '../lib/api';
+  import { ApiError, errorText, getJSON, sendBody, sendJSON } from '../lib/api';
   import {
     fromLocalInput,
     labelFor,
@@ -226,10 +226,6 @@
     return false;
   }
 
-  function messageOf(e: unknown): string {
-    return e instanceof ApiError ? e.message : 'Something went wrong. Try again in a moment.';
-  }
-
   async function load() {
     loadState = 'loading';
     try {
@@ -245,7 +241,7 @@
         setTitle('Contest not found');
         return;
       }
-      loadError = messageOf(e);
+      loadError = errorText(e);
       loadState = 'error';
     }
     try {
@@ -373,7 +369,7 @@
         const known = Object.keys(rest).filter((k) => document.getElementById(`f-${k}`));
         if (!publishError && (known.length < Object.keys(rest).length || known.length === 0)) formError = e.message;
       } else {
-        formError = messageOf(e);
+        formError = errorText(e);
       }
       if (Object.keys(fields).length > 0) await focusFirstInvalid();
       else if (publishError) {
@@ -560,7 +556,7 @@
         document.getElementById('ai-reason')?.focus();
         return false;
       }
-      problemsError = e instanceof ApiError && e.problems.length > 0 ? `${e.message} ${e.problems.join(' ')}` : messageOf(e);
+      problemsError = e instanceof ApiError && e.problems.length > 0 ? `${e.message} ${e.problems.join(' ')}` : errorText(e);
       picked = (contest?.problems ?? []).map((p) => ({ ...p }));
       return false;
     } finally {
@@ -620,7 +616,7 @@
       currentRoster = null;
     } catch (e) {
       if (handleAuth(e)) return;
-      rosterError = e instanceof ApiError && e.problems.length > 0 ? `${e.message} ${e.problems.join(' ')}` : messageOf(e);
+      rosterError = e instanceof ApiError && e.problems.length > 0 ? `${e.message} ${e.problems.join(' ')}` : errorText(e);
     } finally {
       rosterBusy = false;
     }
@@ -647,7 +643,7 @@
       adminEmail = '';
     } catch (e) {
       if (handleAuth(e)) return;
-      adminError = e instanceof ApiError ? (e.fields.email ?? e.message) : messageOf(e);
+      adminError = e instanceof ApiError ? (e.fields.email ?? e.message) : errorText(e);
       document.getElementById('admin-email')?.focus();
     }
   }
@@ -673,7 +669,7 @@
       confirm = null;
     } catch (e) {
       confirm = null;
-      if (!handleAuth(e)) showToast(messageOf(e), 'error');
+      if (!handleAuth(e)) showToast(errorText(e), 'error');
     } finally {
       confirmBusy = false;
     }
@@ -696,7 +692,7 @@
       navigate(`/admin/contests/${made.id}`);
     } catch (e) {
       if (handleAuth(e)) return;
-      cloneError = e instanceof ApiError ? (Object.values(e.fields)[0] ?? e.message) : messageOf(e);
+      cloneError = e instanceof ApiError ? (Object.values(e.fields)[0] ?? e.message) : errorText(e);
     }
   }
 

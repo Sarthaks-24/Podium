@@ -30,7 +30,7 @@
   import { onDestroy, onMount, tick, untrack } from 'svelte';
   import { problemTone } from '../lib/badges';
   import { isAIDraft, withoutAIDraft } from '../lib/ai';
-  import { ApiError, getJSON, sendBody, sendJSON } from '../lib/api';
+  import { ApiError, errorText, getJSON, sendBody, sendJSON } from '../lib/api';
   import { formatDateTime } from '../lib/format';
   import { setTitle } from '../lib/head';
   import { routeTitle } from '../lib/routing';
@@ -101,10 +101,6 @@
     return false;
   }
 
-  function messageOf(err: unknown): string {
-    return err instanceof ApiError ? err.message : 'Something went wrong. Try again in a moment.';
-  }
-
   async function load(archived: boolean, quiet = false) {
     if (!quiet) loadState = 'loading';
     try {
@@ -113,7 +109,7 @@
       loadState = 'ready';
     } catch (err) {
       if (handleSessionError(err)) return;
-      loadError = messageOf(err);
+      loadError = errorText(err);
       loadState = 'error';
     }
   }
@@ -186,7 +182,7 @@
         const known = ['title', 'slug'];
         if (Object.keys(err.fields).some((k) => !known.includes(k))) createError = err.message;
       } else {
-        createError = messageOf(err);
+        createError = errorText(err);
       }
     } finally {
       createBusy = false;
@@ -213,7 +209,7 @@
       return true;
     } catch (err) {
       if (handleSessionError(err)) return false;
-      const why = err instanceof ApiError && err.problems.length > 0 ? err.problems[0] : messageOf(err);
+      const why = err instanceof ApiError && err.problems.length > 0 ? err.problems[0] : errorText(err);
       showToast(`${name} cannot be validated yet: ${why} Open it to fix that.`, 'error');
       return false;
     }
@@ -257,7 +253,7 @@
         } catch (err) {
           if (handleSessionError(err)) return;
           importError = {
-            message: files.length > 1 ? `${file.name}: ${messageOf(err)}` : messageOf(err),
+            message: files.length > 1 ? `${file.name}: ${errorText(err)}` : errorText(err),
             problems: err instanceof ApiError ? err.problems : [],
           };
           break;

@@ -46,6 +46,18 @@ export const NETWORK_MESSAGE = 'Could not reach the server. Check your connectio
 /** Shown when the server answered with something that is not the API's JSON. */
 export const UNEXPECTED_MESSAGE = 'The server sent an unexpected response. Try again in a moment.';
 
+/** Shown for an error that did not come from a request: a fault in the page itself. */
+export const PAGE_ERROR_MESSAGE = 'Something on this page failed. Reload the page and try again.';
+
+/**
+ * The sentence to show for a caught error: the server's own (or the
+ * network one) for an ApiError, PAGE_ERROR_MESSAGE otherwise. One helper,
+ * so the screens never drift apart (council C1-032).
+ */
+export function errorText(e: unknown): string {
+  return e instanceof ApiError ? e.message : PAGE_ERROR_MESSAGE;
+}
+
 function stringMap(value: unknown): Record<string, string> {
   const out: Record<string, string> = {};
   if (typeof value !== 'object' || value === null || Array.isArray(value)) return out;

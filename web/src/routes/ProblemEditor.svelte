@@ -19,7 +19,7 @@
   import ConfirmDialog from '../components/ConfirmDialog.svelte';
   import ValidationReport from '../components/ValidationReport.svelte';
   import { inputGenPending, inputGenReport, isAIDraft, type InputGeneration } from '../lib/ai';
-  import { ApiError, getJSON, sendBody, sendJSON } from '../lib/api';
+  import { ApiError, errorText, getJSON, sendBody, sendJSON } from '../lib/api';
   import EditorFooter from '../components/problem/EditorFooter.svelte';
   import GeneratorPanel from '../components/problem/GeneratorPanel.svelte';
   import EditorBar from '../components/problem/EditorBar.svelte';
@@ -179,10 +179,6 @@
     return false;
   }
 
-  function messageOf(e: unknown): string {
-    return e instanceof ApiError ? e.message : 'Something went wrong. Try again in a moment.';
-  }
-
   /**
    * Takes a fresh copy of the problem from the server. The working copy is
    * replaced only when it has no unsaved changes, or when `replace` is set
@@ -293,7 +289,7 @@
         setTitle('Problem not found');
         return;
       }
-      loadError = messageOf(e);
+      loadError = errorText(e);
       loadState = 'error';
       return;
     }
@@ -394,7 +390,7 @@
       const next: Record<string, string> = {};
       for (const [key, message] of Object.entries(raw)) next[fieldKey(key)] = message;
       fields = next;
-      saveError = messageOf(e);
+      saveError = errorText(e);
       if (Object.keys(next).length > 0) await focusFirstInvalid();
       return false;
     } finally {
@@ -416,7 +412,7 @@
       schedulePoll();
     } catch (e) {
       if (handleSessionError(e)) return;
-      validateError = { message: messageOf(e), problems: e instanceof ApiError ? e.problems : [] };
+      validateError = { message: errorText(e), problems: e instanceof ApiError ? e.problems : [] };
     } finally {
       requesting = false;
     }
@@ -432,7 +428,7 @@
       scheduleGenPoll();
     } catch (e) {
       if (handleSessionError(e)) return;
-      genError = { message: messageOf(e), problems: e instanceof ApiError ? e.problems : [] };
+      genError = { message: errorText(e), problems: e instanceof ApiError ? e.problems : [] };
     } finally {
       genBusy = false;
     }
@@ -449,7 +445,7 @@
       scheduleInputPoll();
     } catch (e) {
       if (handleSessionError(e)) return;
-      inputGenError = { message: messageOf(e), problems: e instanceof ApiError ? e.problems : [] };
+      inputGenError = { message: errorText(e), problems: e instanceof ApiError ? e.problems : [] };
     } finally {
       inputGenBusy = false;
     }
@@ -473,7 +469,7 @@
       showToast(first ? `Uploaded tests. ${count}` : `Replaced tests. ${count}`);
     } catch (e) {
       if (handleSessionError(e)) return;
-      replaceError = { message: messageOf(e), problems: e instanceof ApiError ? e.problems : [] };
+      replaceError = { message: errorText(e), problems: e instanceof ApiError ? e.problems : [] };
     } finally {
       replacing = false;
     }
@@ -489,7 +485,7 @@
       navigate('/admin/problems');
     } catch (e) {
       archiveOpen = false;
-      if (!handleSessionError(e)) showToast(messageOf(e), 'error');
+      if (!handleSessionError(e)) showToast(errorText(e), 'error');
     } finally {
       archiving = false;
     }

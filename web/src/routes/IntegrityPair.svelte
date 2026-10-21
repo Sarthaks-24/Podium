@@ -28,7 +28,7 @@
   import CodeView from '../components/CodeView.svelte';
   import IntegrityNote from '../components/IntegrityNote.svelte';
   import OpenCaseDialog from '../components/OpenCaseDialog.svelte';
-  import { ApiError, getJSON } from '../lib/api';
+  import { ApiError, errorText, getJSON } from '../lib/api';
   import { keepHeadingFocus } from '../lib/focus';
   import { formatDateTime } from '../lib/format';
   import { setTitle } from '../lib/head';
@@ -112,10 +112,6 @@
     return false;
   }
 
-  function messageOf(e: unknown): string {
-    return e instanceof ApiError ? e.message : 'Something went wrong. Try again in a moment.';
-  }
-
   function show(found: Signal) {
     setTitle(signalStudents(found, users), kindWord(found.kind));
     loadState = 'ready';
@@ -136,7 +132,7 @@
         setTitle('Signal not found');
         return;
       }
-      loadError = messageOf(e);
+      loadError = errorText(e);
       loadState = 'error';
       return;
     }
@@ -167,7 +163,7 @@
         setTitle('Evidence not found');
         return;
       }
-      loadError = messageOf(e);
+      loadError = errorText(e);
       loadState = 'error';
       return;
     }
@@ -195,7 +191,7 @@
     try {
       pair = await getJSON<Pair>(url);
     } catch (e) {
-      if (!handleAuth(e)) pairError = messageOf(e);
+      if (!handleAuth(e)) pairError = errorText(e);
     }
   }
 
@@ -205,7 +201,7 @@
       const data = await getJSON<{ moments: Moment[] }>(`/api/admin/contests/${contest}/integrity/timeline/${user}`);
       timelines = { ...timelines, [user]: data.moments ?? [] };
     } catch (e) {
-      if (!handleAuth(e)) timelines = { ...timelines, [user]: messageOf(e) };
+      if (!handleAuth(e)) timelines = { ...timelines, [user]: errorText(e) };
     }
   }
 

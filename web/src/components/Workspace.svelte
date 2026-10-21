@@ -101,7 +101,7 @@
   import { media } from '../lib/breakpoints';
   import PageState from './PageState.svelte';
   import { onMount, tick, type Snippet } from 'svelte';
-  import { ApiError, getJSON, sendJSON } from '../lib/api';
+  import { ApiError, errorText, getJSON, sendJSON } from '../lib/api';
   import { serverClock } from '../lib/clock';
   import {
     DEFAULT_FONT_SIZE,
@@ -362,10 +362,6 @@
     return false;
   }
 
-  function messageOf(e: unknown): string {
-    return e instanceof ApiError ? e.message : 'Something went wrong. Try again in a moment.';
-  }
-
   /** Runs a request and feeds its server_now to the clock. */
   async function timed<T extends { server_now?: number }>(fn: () => Promise<T>): Promise<T> {
     const sent = Date.now();
@@ -390,7 +386,7 @@
         setTitle('Problem not found');
         return;
       }
-      loadError = messageOf(e);
+      loadError = errorText(e);
       loadState = 'error';
       return;
     }
@@ -691,7 +687,7 @@
           waitUntil = Date.now() + e.retryAfter * 1000;
           nowTick = Date.now();
         }
-        notice = { action: 'submit', text: messageOf(e), retry: false, kind: pace ? 'pace' : 'error' };
+        notice = { action: 'submit', text: errorText(e), retry: false, kind: pace ? 'pace' : 'error' };
       }
       // A pacing line belongs beside Submit, and the announcer says it; only a failure opens the result.
       if (notice?.kind === 'error') await revealResult();
@@ -720,7 +716,7 @@
         notice = { action: 'run', text: offlineText(), retry: true, kind: 'error' };
       } else {
         pendingRun = null;
-        notice = { action: 'run', text: messageOf(e), retry: false, kind: e instanceof ApiError && e.status === 429 ? 'pace' : 'error' };
+        notice = { action: 'run', text: errorText(e), retry: false, kind: e instanceof ApiError && e.status === 429 ? 'pace' : 'error' };
       }
       if (notice?.kind === 'error') await revealResult();
     } finally {

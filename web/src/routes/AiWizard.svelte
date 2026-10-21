@@ -46,7 +46,7 @@
     type KeyStatus,
     type Wizard,
   } from '../lib/ai';
-  import { ApiError, getJSON, sendJSON } from '../lib/api';
+  import { ApiError, errorText, getJSON, sendJSON } from '../lib/api';
   import { problemPath, type Validation } from '../lib/problems';
   import type { Generation } from '../lib/workspace';
   import { setTitle } from '../lib/head';
@@ -107,10 +107,6 @@
       return true;
     }
     return false;
-  }
-
-  function messageOf(e: unknown): string {
-    return e instanceof ApiError ? e.message : 'Something went wrong. Try again in a moment.';
   }
 
   // Watching one wizard: the live stream, and polling as the fallback.
@@ -222,7 +218,7 @@
       keyStatus = await getJSON<KeyStatus>(aiPaths.key);
     } catch (e) {
       if (handleSessionError(e)) return;
-      keyError = messageOf(e);
+      keyError = errorText(e);
     }
   }
 
@@ -277,7 +273,7 @@
       for (const [k, v] of Object.entries(raw)) next[k.replace(/^brief\./, '')] = v;
       fields = next;
       requestError = {
-        message: messageOf(e),
+        message: errorText(e),
         problems: e instanceof ApiError ? e.problems : [],
         code: e instanceof ApiError ? e.code : 'unexpected',
       };

@@ -18,7 +18,7 @@
 <script lang="ts">
   import { onMount, tick } from 'svelte';
   import { aiPaths, checkKeyForm, initialForm, isListed, keyExpired, needsKey, saveKey, type KeyForm, type KeyStatus, type ModelList, type ProviderOption } from '../../lib/ai';
-  import { ApiError, getJSON, sendJSON } from '../../lib/api';
+  import { errorText, getJSON, sendJSON } from '../../lib/api';
   import { session } from '../../lib/session.svelte';
   import { showToast } from '../../lib/toast.svelte';
 
@@ -60,10 +60,6 @@
   const saveLabel = $derived(!keyNeeded ? 'Use fake provider' : holdsKey && form.key.trim() === '' ? 'Save model' : 'Save key');
   const title = $derived(heading ?? (holdsKey ? `Change the ${provider?.name ?? ''} key or model` : 'Add a key'));
 
-  function messageOf(e: unknown): string {
-    return e instanceof ApiError ? e.message : 'Something went wrong. Try again in a moment.';
-  }
-
   /** Puts the form on a provider: its saved model, typed when the list does not have it. */
   function choose(pid: string) {
     const p = status.providers.find((x) => x.id === pid);
@@ -92,7 +88,7 @@
       status = { ...status, providers: status.providers.map((p) => (p.id === pid ? { ...p, models: list.models } : p)) };
       if (refresh) showToast('Model list updated');
     } catch (e) {
-      if (!onsessionerror(e)) listError = messageOf(e);
+      if (!onsessionerror(e)) listError = errorText(e);
     } finally {
       listing = false;
     }
