@@ -159,11 +159,16 @@ test('the editor stacks at 375 px with Write and Preview tabs for the statement'
 
   const write = page.getByRole('tab', { name: 'Write' });
   await expect(write).toHaveAttribute('aria-selected', 'true');
+  // Every aria-controls names a panel that is in the page (C1-037).
+  const dangling = () =>
+    page.evaluate(() => [...document.querySelectorAll('[role="tab"][aria-controls]')].filter((t) => !document.getElementById(t.getAttribute('aria-controls') ?? '')).length);
+  expect(await dangling()).toBe(0);
   await write.focus();
   await page.keyboard.press('ArrowRight');
   await expect(page.getByRole('tab', { name: 'Preview' })).toHaveAttribute('aria-selected', 'true');
   await expect(page.getByRole('tabpanel', { name: 'Preview' }).locator('.katex').first()).toBeVisible();
   await expect(page.locator('#statement_md')).toBeHidden();
+  expect(await dangling()).toBe(0);
   await page.screenshot({ path: `${shots()}problem-editor-preview-tab-375-light.png`, fullPage: true });
   await page.getByRole('tab', { name: 'Write' }).click();
   await expect(page.locator('#statement_md')).toBeVisible();

@@ -126,7 +126,7 @@
                 id="statement-tab-{t.id}"
                 class="mini-tab"
                 aria-selected={statementTab === t.id}
-                aria-controls="statement-panel-{t.id}"
+                aria-controls={t.id === 'write' || statementTab === 'preview' ? `statement-panel-${t.id}` : undefined}
                 tabindex={statementTab === t.id ? 0 : -1}
                 onclick={() => (statementTab = t.id as 'write' | 'preview')}
                 onkeydown={onStatementTabKey}
