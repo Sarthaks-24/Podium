@@ -250,6 +250,7 @@ test('a wizard from a brief follows the live event to the draft', async ({ page 
     `event: wizard\ndata: ${JSON.stringify({ id: WIZARD_ID, kind: 'generate', state: 'draft_created', problem_id: 20, provider: 'anthropic', model: 'claude-opus-5-5' })}\n\n`,
   );
   await expect(page.locator('.step-current')).toHaveText(/Generating the tests/);
+  await expect(page.locator('.step-done').first().locator('.mark-icon.done svg')).toHaveCount(1);
   // C11: the run names the provider and model that made the draft.
   await expect(page.getByText('Drafted by Anthropic with Claude Opus 5.5.', { exact: false })).toBeVisible();
   await expect(page.getByRole('status').filter({ hasText: 'Generating the tests' })).toHaveCount(1);
@@ -286,6 +287,8 @@ test('a wizard failure shows the reasons and keeps the request', async ({ page }
   await expect(alert).toContainText("The model's answer could not be used.", { timeout: 10_000 });
   await expect(alert.getByRole('listitem')).toHaveText(['subtasks: points add up to 90, not 100.', 'reference: the C++ source is empty.']);
   await expect(page.locator('.step-failed')).toHaveText(/Writing the problem/);
+  // State is a shape: a cross for failed, never only a red dot (C1-029).
+  await expect(page.locator('.step-failed .mark-icon.failed svg')).toHaveCount(1);
   await expect(page.getByLabel('Topic', { exact: true })).toHaveValue('Interval scheduling');
   await page.screenshot({ path: `${shots()}ai-wizard-error-1440-light.png`, fullPage: true });
 });

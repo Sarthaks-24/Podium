@@ -23,6 +23,7 @@
 <script lang="ts">
   import PageState from '../components/PageState.svelte';
   import PageHeader from '../components/PageHeader.svelte';
+  import Icon from '../components/Icon.svelte';
   import KeyForm from '../components/ai/KeyForm.svelte';
   import { onMount, tick } from 'svelte';
   import {
@@ -358,7 +359,13 @@
         <ol class="steps">
           {#each steps as step (step.text)}
             <li class="step step-{step.state}">
-              <span class="mark" aria-hidden="true"></span>
+              {#if step.state === 'done'}
+                <span class="mark-icon done" aria-hidden="true"><Icon name="circle-check" /></span>
+              {:else if step.state === 'failed'}
+                <span class="mark-icon failed" aria-hidden="true"><Icon name="circle-x" /></span>
+              {:else}
+                <span class="mark" aria-hidden="true"></span>
+              {/if}
               <span>{step.text}</span>
               <span class="visually-hidden">
                 {step.state === 'done' ? ', done' : step.state === 'current' ? ', in progress' : step.state === 'failed' ? ', failed' : ', not started'}
@@ -585,9 +592,18 @@
     background: var(--act-tint);
   }
 
-  .step-done .mark {
-    border-color: var(--ok);
-    background: var(--ok);
+  /* Done and failed are shapes (a tick, a cross), not only colours. */
+  .mark-icon {
+    display: inline-flex;
+    flex: none;
+  }
+
+  .mark-icon.done {
+    color: var(--ok);
+  }
+
+  .mark-icon.failed {
+    color: var(--bad);
   }
 
   .step-failed {
@@ -595,9 +611,18 @@
     font-weight: 500;
   }
 
-  .step-failed .mark {
-    border-color: var(--bad);
-    background: var(--bad);
+  @media (forced-colors: active) {
+    .mark {
+      border-color: CanvasText;
+    }
+
+    .step-current .mark {
+      background: Highlight;
+    }
+
+    .mark-icon {
+      color: CanvasText;
+    }
   }
 
   .hint {
