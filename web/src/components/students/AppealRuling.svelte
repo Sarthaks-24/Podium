@@ -118,7 +118,10 @@
       <p class="text">{appeal.ruling.reason}</p>
     </div>
   {:else if mayRule === false}
-    <p class="muted small">You took part in this decision, so another owner or admin rules on the appeal.</p>
+    <p class="muted small">
+      You took part in this decision, so another owner or admin rules on the appeal. When everyone took part, an owner adds one on
+      <a href="/admin/people">People</a>.
+    </p>
   {:else}
     <form class="form" novalidate onsubmit={submit}>
       <fieldset class="choice-set" data-invalid={errors.upheld ? 'true' : undefined} aria-describedby={errors.upheld ? `${uid}-upheld-error` : undefined}>

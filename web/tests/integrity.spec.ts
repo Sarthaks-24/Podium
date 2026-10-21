@@ -319,7 +319,9 @@ test('an appeal on a case is ruled on by a reviewer who took no part', async ({ 
 test('a reviewer who took part cannot rule on the appeal', async ({ page }) => {
   await mockApi(page, { appealed: true, involved: true });
   await page.goto('/admin/integrity/cases/3');
-  await expect(page.getByText('You took part in this decision, so another owner or admin rules on the appeal.')).toBeVisible();
+  await expect(page.getByText('You took part in this decision, so another owner or admin rules on the appeal.', { exact: false })).toBeVisible();
+  // Two organisers who both took part leave nobody to rule: say where to add one (walk 2026-10-21).
+  await expect(page.getByRole('link', { name: 'People', exact: true }).last()).toHaveAttribute('href', '/admin/people');
   await expect(page.getByRole('button', { name: 'Rule on the appeal' })).toHaveCount(0);
 });
 
