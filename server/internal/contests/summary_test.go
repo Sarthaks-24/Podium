@@ -242,6 +242,33 @@ func TestSummariesRebuildAfterABoardAdjustmentOrSettings(t *testing.T) {
 	}
 }
 
+// A contest past retention (its standings kept in contest_results, its
+// submissions and summaries gone) is never summarised again, even after a
+// settings edit, which would give every participant a zero.
+func TestNoSummariesAfterRetention(t *testing.T) {
+	r := newSvc(t)
+	ctx := context.Background()
+	c := r.contest(t, nil)
+	seedBoard(t, r, c, 3, 1)
+	*r.now = at(121)
+	if n, err := r.svc.SweepSummaries(ctx); err != nil || n != 1 {
+		t.Fatalf("first sweep: %d %v", n, err)
+	}
+	execNoFK(t, r, "INSERT INTO contest_results (contest_id, exported_at, standings) VALUES ("+strconv.FormatInt(c.ID, 10)+", 1, '[]')",
+		"DELETE FROM student_contest_summary WHERE contest_id = "+strconv.FormatInt(c.ID, 10))
+	*r.now = at(130)
+	auditAt(t, r, c.ID, AuditSettings, at(130).UnixMilli())
+	if n, err := r.svc.SweepSummaries(ctx); err != nil || n != 0 {
+		t.Errorf("sweep after retention: %d %v", n, err)
+	}
+	if n, err := r.svc.BuildSummaries(ctx, c); err != nil || n != 0 {
+		t.Errorf("build after retention: %d %v", n, err)
+	}
+	if count(t, r, "SELECT count(*) FROM student_contest_summary WHERE contest_id = ?", c.ID) != 0 {
+		t.Error("summaries written for an expired contest")
+	}
+}
+
 // ClassMedian reads the percent column alone and agrees with
 // MedianPercent over the decoded summaries (C1-043).
 func TestClassMedianMatchesTheSummaries(t *testing.T) {

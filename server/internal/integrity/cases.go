@@ -777,14 +777,14 @@ type StudentSignal struct {
 
 // MyCases lists the cases shared with a student whose notice is
 // available: a case shared while they were in a live contest shows once
-// that contest ends for them.
+// that contest ends for them, whatever its state by then (a case cleared
+// during the contest stays hidden too, D170).
 func (s *Service) MyCases(ctx context.Context, userID int64) ([]StudentCase, error) {
 	now := s.now().UnixMilli()
 	rows, err := s.DB.QueryContext(ctx, `SELECT c.id, c.contest_id, c.state, ct.title, c.evidence, cu.explanation, cu.shared_at,
 		cu.asked_at, cu.notice_available_at, cu.first_opened_at
 		FROM integrity_cases c JOIN integrity_case_users cu ON cu.case_id = c.id JOIN contests ct ON ct.id = c.contest_id
-		WHERE cu.user_id = ? AND cu.shared_at IS NOT NULL AND (cu.notice_available_at IS NULL OR cu.notice_available_at <= ?
-			OR c.state NOT IN ('open', 'awaiting_student'))
+		WHERE cu.user_id = ? AND cu.shared_at IS NOT NULL AND (cu.notice_available_at IS NULL OR cu.notice_available_at <= ?)
 		ORDER BY c.id DESC`, userID, now)
 	if err != nil {
 		return nil, err

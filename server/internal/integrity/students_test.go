@@ -752,3 +752,30 @@ func count(t *testing.T, d *sql.DB, q string, args ...any) int {
 	}
 	return n
 }
+
+// A case shared during the student's live contest and cleared before it
+// ends stays hidden until the end, like an open one (D170).
+func TestCaseClearedDuringALiveContestStaysHidden(t *testing.T) {
+	r := newStudentsRig(t)
+	ctx := context.Background()
+	now := r.clock.UnixMilli()
+	res := mustExec(t, r.db, `INSERT INTO contests (slug, title, starts_at, ends_at, published, created_at, updated_at)
+		VALUES ('live', 'Live one', ?, ?, 1, 0, 0)`, now-3600000, now+3600000)
+	live, _ := res.LastInsertId()
+	mustExec(t, r.db, "INSERT INTO contest_starts (contest_id, user_id, started_at, honour_accepted_at) VALUES (?, 1, ?, ?)", live, now-60000, now-60000)
+	ref, _ := r.svc.Submission(ctx, r.sub(t, 1, "A", 100, 10))
+	c, _ := r.svc.OpenManualCase(ctx, ref, 100, "Problem A, a question", reason)
+	if _, err := r.svc.Decide(ctx, c.ID, 100, AwaitingStudent, reason, nil); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := r.svc.Decide(ctx, c.ID, 100, Cleared, reason, nil); err != nil {
+		t.Fatal(err)
+	}
+	if mine, _ := r.svc.MyCases(ctx, 1); len(mine) != 0 {
+		t.Errorf("cleared case visible during the contest: %+v", mine)
+	}
+	*r.clock = r.clock.Add(time.Hour + time.Minute)
+	if mine, _ := r.svc.MyCases(ctx, 1); len(mine) != 1 || mine[0].State != Cleared {
+		t.Errorf("case after the contest: %+v", mine)
+	}
+}
