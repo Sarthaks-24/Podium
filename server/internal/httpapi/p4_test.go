@@ -131,6 +131,35 @@ func TestStudentsAuthorisationMatrix(t *testing.T) {
 		t.Fatalf("propose: %d %v", code, got)
 	}
 	pid := int64(got["proposals"].([]any)[0].(map[string]any)["id"].(float64))
+	// The contest's case list says whose confirmation the proposal waits for (D321).
+	for _, v := range []struct {
+		who  string
+		b    *browser
+		want bool
+	}{{"the proposer", w.owner, false}, {"a second reviewer", w.admin, true}} {
+		_, list := v.b.do("GET", fmt.Sprintf("/api/admin/contests/%d/integrity/cases", w.c1), nil, "")
+		var row map[string]any
+		for _, c := range list["cases"].([]any) {
+			if int64(c.(map[string]any)["id"].(float64)) == caseID {
+				row = c.(map[string]any)
+			}
+		}
+		if row == nil || row["may_confirm"] != v.want {
+			t.Errorf("%s's case list: may_confirm %v, want %v", v.who, row["may_confirm"], v.want)
+		}
+		// The console's count: no names, so not a record read.
+		before := viewsOf(t, s, "case", asha)
+		code, got := v.b.do("GET", fmt.Sprintf("/api/admin/contests/%d/integrity/waiting", w.c1), nil, "")
+		if want := map[bool]float64{false: 0, true: 1}[v.want]; code != 200 || got["waiting_for_you"] != want {
+			t.Errorf("%s waiting: %d %v, want %v", v.who, code, got, want)
+		}
+		if viewsOf(t, s, "case", asha) != before {
+			t.Errorf("%s's waiting count was logged as a case read", v.who)
+		}
+	}
+	if code, _ := w.ta.do("GET", fmt.Sprintf("/api/admin/contests/%d/integrity/waiting", w.c1), nil, ""); code != 403 {
+		t.Errorf("the TA read the waiting count: %d", code)
+	}
 	confirm := map[string]any{"note": "Confirmed after reading the code.", "seen_explanations": seen}
 	confirmURL := fmt.Sprintf("%s/proposals/%d/confirm", caseURL, pid)
 	if code, out := w.owner.do("POST", confirmURL, confirm, o); code != 403 || errCode(out) != "two_person_rule" {
@@ -138,6 +167,9 @@ func TestStudentsAuthorisationMatrix(t *testing.T) {
 	}
 	if code, out := w.admin.do("POST", confirmURL, confirm, o); code != 200 || out["state"] != "actioned" {
 		t.Fatalf("second reviewer: %d %v", code, out)
+	}
+	if _, got := w.admin.do("GET", fmt.Sprintf("/api/admin/contests/%d/integrity/waiting", w.c1), nil, ""); got["waiting_for_you"] != float64(0) {
+		t.Errorf("waiting after the confirm: %v", got)
 	}
 
 	// Standing: the student's own, a band and lines, never the number.

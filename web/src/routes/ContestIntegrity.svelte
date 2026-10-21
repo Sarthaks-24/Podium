@@ -10,8 +10,10 @@
   the groups of similar code on each problem listed as names. Signals are
   chosen with checkboxes to open a case (OpenCaseDialog); the contest's
   cases are listed below, newest first, each with its state, whether it
-  was opened from a submission, and "Overdue" or "Waiting for a second
-  reviewer" when that applies (v1.4.0). Window-mode contests get a note
+  was opened from a submission, and "Overdue", "Waiting for your
+  confirmation" (the viewer may confirm the pending proposal, D321, with
+  a count above the table) or "Waiting for a second reviewer" when that
+  applies (v1.4.0). Window-mode contests get a note
   that they leak by design. Every view carries IntegrityNote. Props: `id`.
 -->
 <script lang="ts">
@@ -29,7 +31,7 @@
   import { ApiError, errorText, getJSON, sendJSON } from '../lib/api';
   import { type AdminContest } from '../lib/contests';
   import { keepHeadingFocus } from '../lib/focus';
-  import { formatDateTime } from '../lib/format';
+  import { countOf, formatDateTime } from '../lib/format';
   import { setTitle } from '../lib/head';
   import { routeTitle } from '../lib/routing';
   import {
@@ -43,6 +45,7 @@
     problemName,
     statsLine,
     userName,
+    waitingForMe,
     type Case,
     type Run,
   } from '../lib/review';
@@ -365,6 +368,8 @@
     {:else if cases.length === 0}
       <p class="muted">No cases yet. Choose signals above and open a case when one deserves a closer look.</p>
     {:else}
+      {@const mine = waitingForMe(cases)}
+      {#if mine > 0}<p class="waiting">Waiting for your confirmation: <MonoDigits text={countOf(mine, 'case')} /></p>{/if}
       <div class="table-wrap case-list">
         <table class="table table-stack">
           <caption class="visually-hidden">Cases for {contest.title}</caption>
@@ -383,7 +388,7 @@
                 <td class="case-who">{caseStudents(c)}</td>
                 <td class="case-state">
                   {caseStateWord(c.state)}{#if c.source === 'manual'}<span class="muted case-src">, from a submission</span>{/if}
-                  {#if c.overdue}<Badge tone="bad" text="Overdue" />{:else if (c.proposals ?? []).some((p) => p.state === 'pending')}<Badge tone="wait" text="Waiting for a second reviewer" />{/if}
+                  {#if c.overdue}<Badge tone="bad" text="Overdue" />{:else if waitingForMe([c]) > 0}<Badge tone="act" text="Waiting for your confirmation" />{:else if (c.proposals ?? []).some((p) => p.state === 'pending')}<Badge tone="wait" text="Waiting for a second reviewer" />{/if}
                 </td>
                 <td class="case-when"><MonoDigits text={formatDateTime(c.updated_at)} /></td>
               </tr>
@@ -490,6 +495,10 @@
 
   .case-title {
     font-weight: 500;
+  }
+
+  .waiting {
+    margin-block-end: var(--space-3);
   }
 
   .case-state {

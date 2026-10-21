@@ -66,6 +66,15 @@ describe('attentionItems', () => {
     expect(attentionItems({ ...base, close_at: T + 100 * MIN }, T + 95 * MIN, 0)[0].text).toBe('Ends in 00:05:00');
     expect(attentionItems(base, T + 91 * MIN, 0)[0].text).toBe('Ended');
   });
+
+  it('links cases waiting for this reviewer to the integrity page, also after the close (D321)', () => {
+    const href = '/admin/contests/4/integrity#cases-title';
+    expect(attentionItems(base, T, 0, { count: 0, href }).some((i) => i.key === 'confirm')).toBe(false);
+    const one = attentionItems(base, T, 0, { count: 1, href }).find((i) => i.key === 'confirm');
+    expect(one).toEqual({ key: 'confirm', text: '1 case waiting for your confirmation', tone: 'part', href });
+    const after = attentionItems(base, T + 200 * MIN, 0, { count: 2, href }).find((i) => i.key === 'confirm');
+    expect(after?.text).toBe('2 cases waiting for your confirmation');
+  });
 });
 
 describe('feed wording', () => {

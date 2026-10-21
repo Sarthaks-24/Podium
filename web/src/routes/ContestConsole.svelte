@@ -7,7 +7,9 @@
     attentionItems): time to the end, when the board freezes, judging on
     or paused with Pause or Resume, the queue and its oldest wait, judge
     errors, whether a judge is asking for work, unanswered questions,
-    problems validated on another toolchain, and when the page last
+    problems validated on another toolchain, cases whose proposal waits
+    for this reviewer's confirmation (linked to the integrity page's case
+    list, D321), and when the page last
     refreshed. An item is coloured only when it needs action. A failed
     refresh keeps the last rows and says so.
   - Beside the work from 1280 px, and first below that: Questions, each
@@ -164,7 +166,11 @@
     [...clarifications].sort((a, b) => Number(Boolean(a.answer)) - Number(Boolean(b.answer)) || b.created_at - a.created_at),
   );
   const unanswered = $derived(clarifications.filter((c) => !c.answer).length);
-  const attention = $derived(contest ? attentionItems(contest, ticker.now, unanswered) : []);
+  /** Cases whose proposal waits for this reviewer's confirmation (D321); 0 when the count cannot be read. */
+  let waitingForYou = $state(0);
+  const attention = $derived(
+    contest ? attentionItems(contest, ticker.now, unanswered, { count: waitingForYou, href: `/admin/contests/${encodeURIComponent(id)}/integrity#cases-title` }) : [],
+  );
   const running = $derived(contest !== null && ticker.now >= contest.starts_at && ticker.now < closeAt);
   const updateWaiting = $derived((contest?.problems ?? []).some((p) => p.update_available || p.toolchain_drift));
   /** Problem revisions stay folded until an update or a toolchain change needs them; they never fold by themselves. */
@@ -244,6 +250,16 @@
       }
       feedError = errorText(e);
       feedState = 'error';
+    }
+  }
+
+  /** The waiting count; a co-organiser who may not review gets 403, which leaves it at 0. */
+  async function loadWaiting() {
+    try {
+      const data = await getJSON<{ waiting_for_you: number }>(`${base}/integrity/waiting`);
+      waitingForYou = data.waiting_for_you ?? 0;
+    } catch {
+      waitingForYou = 0;
     }
   }
 
@@ -629,11 +645,13 @@
       void loadFeed();
       void loadSide();
       void loadStudents();
+      void loadWaiting();
     });
     timer = setInterval(() => {
       if (!autoRefresh || loadState !== 'ready' || document.visibilityState === 'hidden') return;
       void loadFeed();
       void loadSide();
+      void loadWaiting();
       // The contest carries the queue health (C10); loading it also refreshes the changes.
       void loadContest(true);
     }, 10_000);

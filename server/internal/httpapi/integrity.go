@@ -36,6 +36,7 @@ func (d Deps) integrityRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/admin/contests/{id}/integrity/signals/{signal}/pair", signedIn(d.limitReads(d.getIntegrityPair)))
 	mux.HandleFunc("GET /api/admin/contests/{id}/integrity/timeline/{user}", signedIn(d.limitReads(d.getIntegrityTimeline)))
 	mux.HandleFunc("GET /api/admin/contests/{id}/integrity/cases", signedIn(d.limitReads(d.listIntegrityCases)))
+	mux.HandleFunc("GET /api/admin/contests/{id}/integrity/waiting", signedIn(d.limitReads(d.integrityWaiting)))
 	mux.HandleFunc("POST /api/admin/contests/{id}/integrity/cases", signedIn(d.openIntegrityCase))
 	mux.HandleFunc("GET /api/admin/integrity/cases/{case}", signedIn(d.limitReads(d.getIntegrityCase)))
 	mux.HandleFunc("GET /api/admin/integrity/cases/{case}/evidence/{index}/pair", signedIn(d.limitReads(d.getIntegrityCasePair)))
@@ -317,14 +318,37 @@ func (d Deps) listIntegrityCases(w http.ResponseWriter, r *http.Request) {
 	me := userFrom(r.Context()).ID
 	list := []integrity.Case{}
 	for _, cs := range all {
-		if !cs.Involves(me) {
-			list = append(list, cs)
+		if cs.Involves(me) {
+			continue
 		}
+		// may_confirm per row, so the list and the console can say which
+		// proposals wait for this reviewer (walk 2026-10-21, D321).
+		if err := d.Integrity.ForViewer(r.Context(), &cs, me); err != nil {
+			d.internalError(w, r, err)
+			return
+		}
+		list = append(list, cs)
 	}
 	if !d.logCase(w, r, list...) {
 		return
 	}
 	WriteJSON(w, http.StatusOK, map[string]any{"cases": list, "server_now": d.serverNow()})
+}
+
+// integrityWaiting is the count of the contest's cases whose proposal
+// waits for this reviewer's confirmation, for the console's attention
+// strip. It names no student and no case, so it is not a record read.
+func (d Deps) integrityWaiting(w http.ResponseWriter, r *http.Request) {
+	c, ok := d.reviewedContest(w, r)
+	if !ok {
+		return
+	}
+	n, err := d.Integrity.WaitingFor(r.Context(), c.ID, userFrom(r.Context()).ID)
+	if err != nil {
+		d.internalError(w, r, err)
+		return
+	}
+	WriteJSON(w, http.StatusOK, map[string]any{"waiting_for_you": n})
 }
 
 func (d Deps) openIntegrityCase(w http.ResponseWriter, r *http.Request) {

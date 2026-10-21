@@ -673,13 +673,15 @@ test('the console says partial scores as students read them and keeps rows when 
 });
 
 test('the attention strip shows queue health, a silent judge and toolchain drift (P3 F6.1, C10)', async ({ page }) => {
-  const api = await mockApi(page, { who: 'admin', phase: 'during', queueHealth: 'trouble' });
+  const api = await mockApi(page, { who: 'admin', phase: 'during', queueHealth: 'trouble', waitingForYou: 1 });
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto('/admin/contests/4/console');
   const strip = page.getByRole('region', { name: 'Needs attention' });
   await expect(strip.getByRole('link', { name: '14 waiting, 2 judging, oldest 1 min' })).toBeVisible();
   await expect(strip.locator('.tone-bad')).toContainText(['1 judge error', 'No judge for 3 min', '1 unanswered question']);
-  await expect(strip.locator('.tone-part')).toContainText(['14 waiting', 'Problem A was validated on another judge toolchain']);
+  await expect(strip.locator('.tone-part')).toContainText(['14 waiting', 'Problem A was validated on another judge toolchain', '1 case waiting for your confirmation']);
+  // A proposal waiting for this reviewer leads to the integrity page's cases (D321).
+  await expect(strip.getByRole('link', { name: '1 case waiting for your confirmation' })).toHaveAttribute('href', '/admin/contests/4/integrity#cases-title');
   // The judge error link filters the feed to judge errors.
   await strip.getByRole('link', { name: '1 judge error' }).click();
   await expect.poll(() => api.feedQueries.at(-1)).toBe('?verdict=error&page=1');

@@ -65,6 +65,8 @@ export interface Options {
   publishOk?: boolean;
   /** Queue health on the contest response (C10): calm by default, or a slow queue, a silent judge and toolchain drift. */
   queueHealth?: 'calm' | 'trouble';
+  /** Cases whose proposal waits for this reviewer (GET .../integrity/waiting, D321). */
+  waitingForYou?: number;
   /** Problem B moved to a new revision after the start, changing its statement (C3). */
   statementUpdated?: boolean;
   /** Problem A has a newer validated revision to update the contest to (C4). */
@@ -676,6 +678,9 @@ export async function mockApi(page: Page, options: Options = {}) {
       if (path === '/api/admin/contests/4/announcements' && method === 'POST') {
         state.posted.push(req.postDataJSON() as Json);
         return json(route, 201, { id: state.posted.length, body_md: 'x', created_at: now });
+      }
+      if (path === '/api/admin/contests/4/integrity/waiting' && method === 'GET') {
+        return json(route, 200, { waiting_for_you: options.waitingForYou ?? 0 });
       }
       if (path === '/api/admin/contests/4/clarifications' && method === 'GET') {
         return json(route, 200, {

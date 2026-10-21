@@ -1262,7 +1262,8 @@ Checks for copying after a contest, and the review of what they find (decisions 
 | `GET /api/admin/contests/{id}/integrity` | | 200 `Run` plus `users`, `problems` and `server_now`; `404 not_found` "This contest has not been checked yet." |
 | `GET /api/admin/contests/{id}/integrity/signals/{signal}/pair` | | 200 `{a: Side, b: Side, server_now}` for a `similar` signal; any other kind is a `404`, and so is a signal that names the viewer |
 | `GET /api/admin/contests/{id}/integrity/timeline/{user}` | | 200 `{moments: [Moment], server_now}`; `404` when the user neither accepted the rules nor submitted in this contest, and for the viewer's own timeline. The run (`GET .../integrity`) leaves out every signal that names the viewer (a student since made an admin) |
-| `GET /api/admin/contests/{id}/integrity/cases` | | 200 `{cases: [Case], server_now}`, newest first |
+| `GET /api/admin/contests/{id}/integrity/cases` | | 200 `{cases: [Case], server_now}`, newest first; each case carries the viewer's `may_confirm`, `may_rule` and `sole_organiser` as `GET /api/admin/integrity/cases/{case}` does (D321) |
+| `GET /api/admin/contests/{id}/integrity/waiting` | | 200 `{waiting_for_you: n}`: cases whose pending proposal this reviewer may confirm, leaving out cases about them; names nothing, so not logged as a read (D321). `403` to a co-organiser who may not review |
 | `POST /api/admin/contests/{id}/integrity/cases` | `{title, note, signal_ids: [n]}` | 201 `Case`, logged as a read of the case (D97) |
 | `GET /api/admin/integrity/cases/{case}` | | 200 `Case`; `404` to a student of the case and, for a manual case, to a reviewer who is a student of another case with its student in that contest (D262) |
 | `PUT /api/admin/integrity/cases/{case}` | `{state, note}` | 200 `Case`; appends a decision |

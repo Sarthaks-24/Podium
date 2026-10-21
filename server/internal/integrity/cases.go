@@ -680,6 +680,47 @@ func (s *Service) ForViewer(ctx context.Context, c *Case, viewer int64) error {
 	return nil
 }
 
+// WaitingFor counts a contest's cases whose pending proposal the viewer
+// may confirm, leaving out cases about the viewer. It reads only cases
+// that have a proposal at all, so the console can ask often (D321).
+func (s *Service) WaitingFor(ctx context.Context, contestID, viewer int64) (int, error) {
+	rows, err := s.DB.QueryContext(ctx, `SELECT DISTINCT c.id FROM integrity_cases c JOIN integrity_proposals p ON p.case_id = c.id
+		WHERE c.contest_id = ?`, contestID)
+	if err != nil {
+		return 0, err
+	}
+	var ids []int64
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			rows.Close()
+			return 0, err
+		}
+		ids = append(ids, id)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return 0, err
+	}
+	n := 0
+	for _, id := range ids {
+		c, err := s.GetCase(ctx, id)
+		if err != nil {
+			return 0, err
+		}
+		if c.Involves(viewer) {
+			continue
+		}
+		if err := s.ForViewer(ctx, c, viewer); err != nil {
+			return 0, err
+		}
+		if c.MayConfirm {
+			n++
+		}
+	}
+	return n, nil
+}
+
 // Cases lists a contest's cases, newest first.
 func (s *Service) Cases(ctx context.Context, contestID int64) ([]Case, error) {
 	rows, err := s.DB.QueryContext(ctx, "SELECT id FROM integrity_cases WHERE contest_id = ? ORDER BY id DESC", contestID)

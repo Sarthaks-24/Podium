@@ -875,7 +875,7 @@ export interface QueueHealth {
 
 /** One item of the console's attention strip; only "part" and "bad" ask for action. */
 export interface AttentionItem {
-  key: 'time' | 'freeze' | 'judging' | 'queue' | 'errors' | 'judge' | 'questions' | 'drift' | 'update';
+  key: 'time' | 'freeze' | 'judging' | 'queue' | 'errors' | 'judge' | 'questions' | 'drift' | 'update' | 'confirm';
   text: string;
   tone: 'note' | 'part' | 'bad';
   href: string;
@@ -891,7 +891,9 @@ export const SLOW_WAIT_S = 60;
  * The console's attention strip (F6.1, C1 with the C10 fields): time to
  * the start or end, when the board freezes, judging on or paused, the
  * queue, judge errors, whether a judge is asking for work, unanswered
- * questions and problems validated on another judge toolchain. Each item
+ * questions, problems validated on another judge toolchain, a newer
+ * revision waiting for students, and cases whose proposal waits for this
+ * reviewer's confirmation (`confirm`, from the case list). Each item
  * links to where it is handled; an item turns "part" or "bad" only when it
  * needs action. Older servers without the C10 fields simply give fewer
  * items.
@@ -904,6 +906,7 @@ export function attentionItems(
   },
   now: number,
   unanswered: number,
+  confirm?: { count: number; href: string },
 ): AttentionItem[] {
   const out: AttentionItem[] = [];
   const close = c.close_at ?? c.ends_at;
@@ -961,6 +964,12 @@ export function attentionItems(
       tone: 'part',
       href: '#versions-title',
     });
+  }
+
+  // A proposal that only this reviewer can confirm (D321); shown after the
+  // close too, as reviews happen then.
+  if (confirm && confirm.count > 0) {
+    out.push({ key: 'confirm', text: `${countOf(confirm.count, 'case')} waiting for your confirmation`, tone: 'part', href: confirm.href });
   }
   return out;
 }

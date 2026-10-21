@@ -289,6 +289,15 @@ test('a second reviewer confirms a proposal, and the log records the outcome', a
   expect(api.confirms).toEqual([{ id: 4, note: 'Agreed: the loop matches line for line, renamed.', seen_explanations: { '7': expect.any(Number), '8': expect.any(Number) } }]);
 });
 
+test('the case list says which proposal waits for your confirmation (walk 2026-10-21, D321)', async ({ page }) => {
+  await mockApi(page, { proposed: true });
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto('/admin/contests/4/integrity');
+  const cases = page.getByRole('region', { name: 'Cases' });
+  await expect(cases.getByText('Waiting for your confirmation: 1 case')).toBeVisible();
+  await expect(cases.getByRole('table').locator('.badge')).toHaveText('Waiting for your confirmation');
+});
+
 test('a reviewer who loses the race to propose sees the other proposal at once (C2-025)', async ({ page }) => {
   await mockApi(page, { raceProposal: true });
   await page.setViewportSize({ width: 1440, height: 900 });

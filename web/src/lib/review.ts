@@ -232,6 +232,16 @@ export interface Case {
   sole_organiser?: boolean;
 }
 
+/**
+ * How many cases have a pending proposal that waits for this viewer's
+ * confirmation (may_confirm, set per viewer by the server). Without this
+ * the second reviewer had to be sent the case's address (walk 2026-10-21,
+ * D321).
+ */
+export function waitingForMe(cases: readonly Pick<Case, 'may_confirm' | 'proposals'>[]): number {
+  return cases.filter((c) => c.may_confirm && (c.proposals ?? []).some((p) => p.state === 'pending')).length;
+}
+
 /** One piece of evidence worded for the student it concerns. */
 export interface StudentEvidence {
   problem_id: number;

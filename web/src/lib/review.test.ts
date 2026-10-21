@@ -21,6 +21,7 @@ import {
   casesStanding,
   studentLead,
   type Signal,
+  waitingForMe,
 } from './review';
 
 const utf8 = (s: string) => new TextEncoder().encode(s).length;
@@ -261,5 +262,20 @@ describe("the students' turn", () => {
   it('sends the latest explanation version of each student', () => {
     const versions = { explanations: [{ text: 'One.', created_at: 5 }, { text: 'Two.', created_at: 9 }], explained_at: 9 };
     expect(seenExplanations({ users: [user(versions), user({ user_id: 8 })] })).toEqual({ '7': 9 });
+  });
+});
+
+describe('waitingForMe', () => {
+  it('counts pending proposals this viewer may confirm (D321)', () => {
+    const pending = [{ state: 'pending' as const }];
+    const done = [{ state: 'confirmed' as const }];
+    expect(
+      waitingForMe([
+        { may_confirm: true, proposals: pending },
+        { may_confirm: false, proposals: pending },
+        { may_confirm: true, proposals: done },
+        { may_confirm: true },
+      ] as never),
+    ).toBe(1);
   });
 });
