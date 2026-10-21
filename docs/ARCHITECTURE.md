@@ -817,6 +817,14 @@ What each decision of the v2 plan means for the people who use podium, as built.
 | D231 | A board a decision changed says so on every results view, with no mark on any cell |
 | Council run 1 | A phone that changes network is not a second session; problems whose hidden tests practice has shown are marked in the bank and named in the publish confirmation |
 | D259 No contract migration in P6 | None for users: the schema stays at 0014 |
+| D276 Involvement rule on every path | A reviewer who is a student of a case with a classmate cannot read, write or copy the classmate's notes in that contest, read a manual case about them, or change their rating |
+| D277 Drill builds and deploys | Drills use builds `v1.4.90` to `v1.4.92`; a deploy names its `vX.Y.Z` release before it builds; the VM is reset before the real release installs fresh |
+| D278 Backups first | A broken copy off the VM never costs the nightly local backup or blocks an upgrade; backup folders follow `PODIUM_BACKUP_DIR` |
+| D279 Shown problems stay | A problem whose hidden tests a published contest has shown stays in that contest, so the bank keeps warning before a graded exam |
+| D281 Rollover as previewed | Applying a term rollover can disable only the accounts its preview listed |
+| D282 Toolchain per submission | Organisers see which compiler versions judged each submission, in the feed and the JSON export |
+| D283 Phone device id | Two phones of one model on one account count as two devices |
+| D284 Tags only on green CI | A release tag builds only a commit whose CI passed, and never with the placeholder upgrade path |
 
 ## Why these choices
 
