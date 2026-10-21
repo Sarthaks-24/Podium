@@ -50,7 +50,7 @@ Source files must sit at the top of the pack, with a name of up to 40 letters, d
 
 ### problem.yaml
 
-**Pack format.** This release (v1.2.0) reads formats 1 and 2. Format 2 adds `open`, the open tests (see "Samples, open tests and subtasks"); everything else is format 1, and a pack without the line is format 1, so every pack written before still imports. A format 1 pack that lists `open` is refused ("problem.yaml lists open tests, which need format: 2."). Exports write `format: 2` only for a problem with open tests and `format: 1` otherwise, so a problem without them still imports into a v1.1.0 server. A pack of a newer format is refused with both numbers named ("problem.yaml is pack format 3, and this server reads format 2 and older. Upgrade Podium, or export the problem again from a server of this version."), rather than read with its new fields missing.
+**Pack format.** Podium reads formats 1 and 2 (format 2 since v1.2.0, phase P2). Format 2 adds `open`, the open tests (see "Samples, open tests and subtasks"); everything else is format 1, and a pack without the line is format 1, so every pack written before still imports. A format 1 pack that lists `open` is refused ("problem.yaml lists open tests, which need format: 2."). Exports write `format: 2` only for a problem with open tests and `format: 1` otherwise, so a problem without them still imports into a v1.1.0 server. A pack of a newer format is refused with both numbers named ("problem.yaml is pack format 3, and this server reads format 2 and older. Upgrade Podium, or export the problem again from a server of this version."), rather than read with its new fields missing.
 
 Parsed strictly: an unknown key is an error, so a misspelt key never silently falls back to a default. Comments are allowed.
 
@@ -99,6 +99,8 @@ Quote every `tests` value, so YAML reads it as text.
 - Raw HTML is shown as text, never rendered. Inline styles are removed, and links open in the same tab.
 - Packs cannot carry image files yet, and the page's security policy blocks images from other sites.
 - At most 64 KB. Put large data in tests, not in the statement.
+- Tags are shown to students on their progress page, where results are grouped by tag, so write them as plain words a student would recognise ("two pointers", "prefix sums"), not internal shorthand.
+- When an image is used (a later pack format may carry them), give it a description in its alt text, `![a 3 by 3 grid with the start in the top left](grid.png)`, so a student who cannot see it still has the problem; the editor's readiness panel lists images without one.
 
 Statement, title, tags, difficulty and subtask titles can change at any time without affecting validation.
 

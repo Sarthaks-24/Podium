@@ -4,9 +4,23 @@ Dated entries per release. Unreleased work is listed at the top.
 
 ## Unreleased
 
-### v2 P5, frontend: workspace (2026-10-21)
+Nothing below is tagged or deployed. The v2 phases were planned as the releases v1.0.0 (P0) to v1.5.0 (P5); they reached `main` together, so they are proposed to ship as one release once the P0 drills on the VM pass (the owner decides the version and the upgrade path). The phase labels below say where each change came from.
 
-Becomes `v1.5.0` when the P5 gate is signed. Student-facing: deploys only in slot S5, announced in the next contest's description. Each item is its own commit.
+### Council run 1 fixes (2026-10-21)
+
+- Rollback keeps the database group-writable for Litestream; an upgrade that stopped half-way is refused instead of overwriting the release kept for rollback; a rollback says which forget-user erasures it undoes and writes them down to apply again; old pre-rollback database folders age out with the backups.
+- The rsync copy off the VM runs as root with a root-only key; `podium-check` alerts on a stalled judge, and the judge stops (exit 4) after five refused tokens in a row.
+- Student summaries are rebuilt after a rejudge during a build, a review decision or a settings change; a requeued job gets a fresh deadline; a submit, run or rejudge whose pinned revision moved after the Ready check is refused; migration 0014 lets students of a contest still live at the 0013 upgrade get their "results are final" notice.
+- The bank marks problems whose hidden tests practice or an ungraded contest showed, and turning grading off after the start needs a confirm.
+- A phone that changes network no longer counts as a second session. The appeals list is paged and logs its reads in one commit; the students pages read the summary columns in SQL; the notes dialog shows the program.
+- Error toasts are never evicted by newer info toasts; a failed inbox delete shows inside its dialog; focus rings in the workspace are drawn; the contest page after the end keeps the answers for everyone; the Submit countdown keeps text contrast; the workspace toolbar is one row from 1100 px; the student link row stays out of the phone workspace; every event stream stops at sign-out.
+- The no-JavaScript privacy page has its retention table, and `/contact` names the address to write to.
+
+### v2 P5 (planned as `v1.5.0`)
+
+#### Frontend: workspace (2026-10-21)
+
+Student-facing: it goes live in a slot the deploy guard allows, announced in that contest's description. Each item is its own commit.
 
 - Under 1024 px one strip sticks to the top: the time, the previous and next problem, the Problem, Code and Result tabs and Submit, which is always one tap away. The limits open the Problem tab (F7.2, audit S7).
 - The workspace fills the window with no minimum height; short laptops (1366 by 768 at 125 percent) get a tighter title row, a narrower rail and a one-row toolbar (F7.3).
@@ -19,9 +33,11 @@ Becomes `v1.5.0` when the P5 gate is signed. Student-facing: deploys only in slo
 - "Reset to starter" in Editor settings asks first and saves at once, so a reload keeps the starter (F7.12).
 - A practice submission shows its first failing hidden test in full, and every run its first failing sample or open test, with "Run on this input"; a contest submission never does. Runs count open tests in their headline (F7.13, D115).
 
-### v2 P4, backend (2026-10-20)
+### v2 P4 (planned as `v1.4.0`)
 
-Becomes `v1.4.0` when the P4 gate is signed and the owner has re-approved the privacy page (input 29). Schema change (0013, expand only): deploys in slot S4. Upgrades from `v1.3.0` only; rolling back is a restore.
+#### Backend (2026-10-20)
+
+Schema change (0013, expand only; 0014 corrects one of its back-fills): rolling back across it is a restore. The privacy page waits for the owner's re-approval (input 29).
 
 - Manual review: private notes on a contest submission for reviewers (deleted after 30 days unless a case is opened), and cases opened from a submission with its notes as evidence.
 - Outcomes (warning, zero for a problem, referral) are proposed by one reviewer and confirmed by a second who did not open the case; the owner alone only as the sole organiser, with a reason. Zero for a problem changes the final board for every later computation, and the results page and organiser exports say so (D77 amended).
@@ -34,20 +50,9 @@ Becomes `v1.4.0` when the P4 gate is signed and the owner has re-approved the pr
 - Retention rows for notes, notices, record views, the rating history, summaries and standing entries; erasure also removes notices and summaries.
 - The contest audit's `extension` rows record `reason_given` instead of the reason text.
 
-### v2 P4, frontend: student screens (2026-10-21)
+#### Frontend: organiser screens (2026-10-21)
 
-Becomes `v1.4.0` with the rest of P4. The privacy text changed and waits for the owner's re-approval (input 29); it stays unlinked until then.
-
-- "Your progress" at `/progress`, a new item in the student nav: the figures row, score over time (inline SVG with "Show as table"), each contest's problems drawn like standings cells, topics weakest first, difficulty, where points were lost with one line of guidance, and what to practise next. Only final results; the place is small and muted, and there is no comparison with anyone (D94, D95). Owners and admins open the same page at `/admin/users/{id}/progress`.
-- Your contests sums up the final results in one line with a link to progress (D92). A final result links to progress and names the problem to practise next; nothing is asked while a board is frozen or held.
-- Notices at `/notices`, with the unread count beside the account button and in the account menu: what happened, what to do, by when, and on a question the line "Nothing affects your marks until a person decides". Notices wait while the student is in a contest.
-- `/integrity` is now "Questions and standing": the standing band and its dated lines with reasons, never a number, with an appeal for each line, then the questions. Each question has its own page, `/integrity/cases/{case}`, with the evidence (a manual case's lines highlighted), the explanation, the decision with its reason and the appeal form.
-- "Hide my progress" in the account menu. A problem a review decision set to zero says so on the student's own result, with a link to the case.
-- The privacy notice lists the P4 data: contest summaries, notices, private notes, questions, decisions and appeals, the standing, the organisers' rating, the record view log and the hide-progress choice, with who sees each.
-
-### v2 P4, frontend: organiser screens (2026-10-21)
-
-Becomes `v1.4.0` with the rest of P4. Organiser screens only, plus one line on the student standings and result; needs the P4 backend routes (C8, C9, C12) and the new `GET /api/admin/accounts`.
+Organiser screens only, plus one line on the student standings and result; needs the P4 backend routes (C8, C9, C12) and the new `GET /api/admin/accounts`.
 
 - Students at `/admin/students`, a new item in the organiser nav: every student sorted by name, never by score, with graded contests, the latest graded percent, the last submission and the rating; sort by rating on request; filters "Missed the last 2 graded contests" and "10 or more submissions, nothing accepted", each naming the contests it used; rows stack on phones.
 - A student's page at `/admin/students/{id}`: score over time beside the class median (with "Show as table") and each contest's score, median, place, problems solved and accepted submissions; links to the record and to the progress page as the student sees it.
@@ -60,24 +65,34 @@ Becomes `v1.4.0` with the rest of P4. Organiser screens only, plus one line on t
 - Shared: a danger secondary button style, split columns that never widen a phone page, MonoDigits keeps its spaces inside a badge, one `errorText` helper for failed requests on organiser screens, and focus reaches the heading of a lazily loaded screen.
 - Backend: `GET /api/admin/accounts?email=` for owners and admins.
 
-### v2 P3, frontend: student and styles (2026-10-21)
+#### Frontend: student screens (2026-10-21)
 
-Becomes `v1.3.0` with the rest of P3. The workspace items (S2, S4) are student-facing and ship only in a calendar slot; each is its own commit so it can be held.
+The privacy text changed and waits for the owner's re-approval (input 29); it stays unlinked until then.
 
-- A shared layout and control system (usability audit 2026-10-20): a two-column working layout from 1280 px with a sticky context column (`.page-split`), surface panels for task areas, badges for state and verdict words, one button system (32 px, one primary per view, quiet row and bar actions with no underline) and mono only for digits (`MonoDigits`). The editor well has a visible edge in dark themes.
-- Messages that arrived while a student was away (a reload, coming back from the contest page) now show in the banner and as the count on Messages, until read on that device (S1).
-- The Console count of unanswered questions shows on every organiser contest screen again (O4: the request missed the API).
-- Before the start the countdown is the display figure, then the honour code with the start button; the rules and the workspace guide sit beside it (S3).
-- After the end the place is the display figure, one line names the end and the score, the newest submission opens by itself, and the answers to the student's own questions are on the page (S9).
-- Your contests pins the live or next contest on top with its countdown and one button (S10).
-- Standings cells draw the earned share as a bar along the bottom, a tried zero reads as a zero, the legend is one line with a disclosure, and Jump to you steps aside while the own row is in view (S8).
-- The workspace toolbar is one row; font size and Tab moves focus moved into Editor settings; Custom input opens in the result pane; the workspace fills the window under the header (S2). The submit gap counts down inside the button, and a submit after a run that did not compile asks once (S4).
-- Sign-in and the footer show the organisation's name, email and phone (C5); `/signin?error=rate_limited` explains itself; signed-in people can write to the organisers at `/contact`, and owners and admins read the messages at `/admin/contact` (C6).
-- The privacy notice is drafted and built for the no-JavaScript page; it stays unlinked and non-public until the owner approves it (D85).
-- A social card, `favicon.ico`, a touch icon and a web manifest; a Playwright crawl of every link and button.
-- "The site was updated at 14:02" for students after an emergency deploy, once per update (D112).
+- "Your progress" at `/progress`, a new item in the student nav: the figures row, score over time (inline SVG with "Show as table"), each contest's problems drawn like standings cells, topics weakest first, difficulty, where points were lost with one line of guidance, and what to practise next. Only final results; the place is small and muted, and there is no comparison with anyone (D94, D95). Owners and admins open the same page at `/admin/users/{id}/progress`.
+- Your contests sums up the final results in one line with a link to progress (D92). A final result links to progress and names the problem to practise next; nothing is asked while a board is frozen or held.
+- Notices at `/notices`, with the unread count beside the account button and in the account menu: what happened, what to do, by when, and on a question the line "Nothing affects your marks until a person decides". Notices wait while the student is in a contest.
+- `/integrity` is now "Questions and standing": the standing band and its dated lines with reasons, never a number, with an appeal for each line, then the questions. Each question has its own page, `/integrity/cases/{case}`, with the evidence (a manual case's lines highlighted), the explanation, the decision with its reason and the appeal form.
+- "Hide my progress" in the account menu. A problem a review decision set to zero says so on the student's own result, with a link to the case.
+- The privacy notice lists the P4 data: contest summaries, notices, private notes, questions, decisions and appeals, the standing, the organisers' rating, the record view log and the hide-progress choice, with who sees each.
 
-### v2 P3, frontend: organiser (2026-10-21)
+### v2 P3 (planned as `v1.3.0`)
+
+#### Backend (2026-10-20)
+
+Schema change (0012); the head, manifest and robots work is live-safe on its own.
+
+- Retention (D85, PLAN section 9): every period is one constant in `server/internal/retention/periods.go`, returned by `GET /api/auth/config` for the privacy page and listed in `docs/OPERATIONS.md`. A daily job empties run payloads after 30 days, deletes contact messages after 180 days, unused problem revisions after 90 days, and submissions and audit rows 4 years after the contest, keeping each expired contest's final standings in `contest_results`.
+- `podium-server forget-user EMAIL` erases one person on request (dry run unless `-apply`): sessions, drafts, integrity events and contact messages go, the name and email become "Removed user N", scores stay.
+- Semester rollover (`POST /api/admin/rollover`, owners): archives the term's contests and disables student accounts unseen for 180 days, after a preview.
+- Public pages (D100): the server reads the web build's route manifest, answers unknown paths with status 404, fills the head of public pages (title, description, canonical, Open Graph, Twitter card, `index`) and keeps every other page `noindex` with `X-Robots-Tag`. `/privacy` reads without JavaScript once the build carries the approved text. New `robots.txt`, `sitemap.xml`, and an Organization JSON-LD on `/signin` from the site settings.
+- Site settings (`PUT /api/admin/site-settings`, owners): organisation name, contact email, phone and privacy contact, returned by `GET /api/auth/config` as `organisation` (C5). The contact email replaces the owner's own address on public pages once entered. No contest data before sign-in.
+- Contact form (C6): `POST /api/contact` for signed-in people, 5 per person and 100 in total per 24 hours, and an inbox for owners and admins (`GET` and `DELETE /api/admin/contact`). No mail is sent.
+- Queue health on the organiser contest response (C10): waiting and judging jobs, the oldest wait, judge errors, unanswered clarifications and when a judge last asked for work.
+- Before sign-in, requests are limited per client address with budgets sized for a class behind one NAT, a refused sign-in lands on `/signin?error=rate_limited`, and each Google sign-in attempt can finish only once (P0 security review, finding 4).
+- `contest_problems.pinned_hash` is gone (the contract step for v1.2.0); `pinned_hash` on the contest response is now the pinned revision's hash. A v1.2.0 binary cannot read the new schema, so rolling back is a restore (`install.sh rollback` offers it).
+
+#### Frontend: organiser (2026-10-21)
 
 Ships with `v1.3.0`. Live-safe: organiser screens only; no student screen changes. Needs the C10 queue health fields of the P3 backend for the console's attention strip (older servers show fewer items).
 
@@ -92,23 +107,28 @@ Ships with `v1.3.0`. Live-safe: organiser screens only; no student screen change
 - Integrity (F6.2, C3, C7): checking again asks first; Open a case comes after the timelines. (The Take action button described here was replaced in P4 by propose and confirm; council C1-003.)
 - Dates on organiser screens set only their digits in mono (audit O9).
 
-### v2 P3, backend (2026-10-20)
+#### Frontend: student and styles (2026-10-21)
 
-Becomes `v1.3.0` when the P3 gate is signed. Schema change (0012): deploys in slot S3 only; the head, manifest and robots work is live-safe on its own but ships in the same release. Upgrades from `v1.2.0` only.
+The workspace items (S2, S4) are student-facing; each is its own commit.
 
-- Retention (D85, PLAN section 9): every period is one constant in `server/internal/retention/periods.go`, returned by `GET /api/auth/config` for the privacy page and listed in `docs/OPERATIONS.md`. A daily job empties run payloads after 30 days, deletes contact messages after 180 days, unused problem revisions after 90 days, and submissions and audit rows 4 years after the contest, keeping each expired contest's final standings in `contest_results`.
-- `podium-server forget-user EMAIL` erases one person on request (dry run unless `-apply`): sessions, drafts, integrity events and contact messages go, the name and email become "Removed user N", scores stay.
-- Semester rollover (`POST /api/admin/rollover`, owners): archives the term's contests and disables student accounts unseen for 180 days, after a preview.
-- Public pages (D100): the server reads the web build's route manifest, answers unknown paths with status 404, fills the head of public pages (title, description, canonical, Open Graph, Twitter card, `index`) and keeps every other page `noindex` with `X-Robots-Tag`. `/privacy` reads without JavaScript once the build carries the approved text. New `robots.txt`, `sitemap.xml`, and an Organization JSON-LD on `/signin` from the site settings.
-- Site settings (`PUT /api/admin/site-settings`, owners): organisation name, contact email, phone and privacy contact, returned by `GET /api/auth/config` as `organisation` (C5). The contact email replaces the owner's own address on public pages once entered. No contest data before sign-in.
-- Contact form (C6): `POST /api/contact` for signed-in people, 5 per person and 100 in total per 24 hours, and an inbox for owners and admins (`GET` and `DELETE /api/admin/contact`). No mail is sent.
-- Queue health on the organiser contest response (C10): waiting and judging jobs, the oldest wait, judge errors, unanswered clarifications and when a judge last asked for work.
-- Before sign-in, requests are limited per client address with budgets sized for a class behind one NAT, a refused sign-in lands on `/signin?error=rate_limited`, and each Google sign-in attempt can finish only once (P0 security review, finding 4).
-- `contest_problems.pinned_hash` is gone (the contract step for v1.2.0); `pinned_hash` on the contest response is now the pinned revision's hash. A v1.2.0 binary cannot read the new schema, so rolling back is a restore (`install.sh rollback` offers it).
+- A shared layout and control system (usability audit 2026-10-20): a two-column working layout from 1280 px with a sticky context column (`.page-split`), surface panels for task areas, badges for state and verdict words, one button system (32 px, one primary per view, quiet row and bar actions with no underline) and mono only for digits (`MonoDigits`). The editor well has a visible edge in dark themes.
+- Messages that arrived while a student was away (a reload, coming back from the contest page) now show in the banner and as the count on Messages, until read on that device (S1).
+- The Console count of unanswered questions shows on every organiser contest screen again (O4: the request missed the API).
+- Before the start the countdown is the display figure, then the honour code with the start button; the rules and the workspace guide sit beside it (S3).
+- After the end the place is the display figure, one line names the end and the score, the newest submission opens by itself, and the answers to the student's own questions are on the page (S9).
+- Your contests pins the live or next contest on top with its countdown and one button (S10).
+- Standings cells draw the earned share as a bar along the bottom, a tried zero reads as a zero, the legend is one line with a disclosure, and Jump to you steps aside while the own row is in view (S8).
+- The workspace toolbar is one row; font size and Tab moves focus moved into Editor settings; Custom input opens in the result pane; the workspace fills the window under the header (S2). The submit gap counts down inside the button, and a submit after a run that did not compile asks once (S4).
+- Sign-in and the footer show the organisation's name, email and phone (C5); `/signin?error=rate_limited` explains itself; signed-in people can write to the organisers at `/contact`, and owners and admins read the messages at `/admin/contact` (C6).
+- The privacy notice is drafted and built for the no-JavaScript page; it stays unlinked and non-public until the owner approves it (D85).
+- A social card, `favicon.ico`, a touch icon and a web manifest; a Playwright crawl of every link and button.
+- "The site was updated at 14:02" for students after an emergency deploy, once per update (D112).
 
-### v2 P2, backend (2026-10-20)
+### v2 P2 (planned as `v1.2.0`)
 
-Becomes `v1.2.0` when the P2 gate is signed. Schema change (0010, 0011): deploys in slot S2 only. Judge protocol 3: install on the server and the judge together.
+#### Backend (2026-10-20)
+
+Schema change (0010, 0011). Judge protocol 3: install on the server and the judge together.
 
 - Problem revisions (D61): every save that changes a problem makes a numbered, immutable revision with its statement, limits, solutions by hash and tests by kind; saves that change nothing make none. Revision 1 is back-filled for every problem; a contest pin older than its problem becomes a "reconstructed" revision (tests only). While a live contest pins a problem, a change needs a reason.
 - Contests pin a revision. Students are served the pinned revision's statement and samples, never the bank's working copy. "Update contest to revision N" (`PUT /api/admin/contests/{id}/problems/{label}/revision`) moves the pin with a prefilled announcement; the pin history is on the contest response; submissions, runs and rejudges record the revision they were judged against.
@@ -121,9 +141,9 @@ Becomes `v1.2.0` when the P2 gate is signed. Schema change (0010, 0011): deploys
 - `podium-server migrate -db COPY` rehearses an upgrade on a copy; `check` reports any problem whose working copy skipped its revision; `runs-report` gives the P2 calibration row of runs with a custom input per contest.
 - Append-only tables honour a retention cutoff row (D69), which the P3 retention job will write.
 
-### v2 P2, frontend (2026-10-20)
+#### Frontend (2026-10-20)
 
-Becomes `v1.2.0` with the backend's P2 work when the P2 gate is signed (slot S2: the backend's schema changes). The history screens need the backend's C3 and C4 routes.
+The history screens need the backend's C3 and C4 routes.
 
 - Organisers get their own navigation, named by job: Contests, Problem bank and People. Signing in lands them on their contest list, with the live or next contest first, its countdown, its unanswered questions and Console first in its links. Live and frozen contests stay at the top, also when extended.
 - One account menu: who is signed in and as what, Theme and colours (now a dialog), Keyboard shortcuts and Sign out. The header fits one row from 768 px. Students on phones keep their links in the header with no Menu button. Signing out saves the code being written first.
@@ -141,9 +161,9 @@ Becomes `v1.2.0` with the backend's P2 work when the P2 gate is signed (slot S2:
 - The Nordic slate theme's action colour is a calmer blue.
 - `/privacy` exists for the drafted notice; nothing links it until the owner approves the text (D85).
 
-### v2 P1, backend (2026-10-20)
+### v2 P1 (planned as `v1.1.0`)
 
-Becomes `v1.1.0` when the P1 gate is signed.
+#### Backend (2026-10-20)
 
 - AI wizard with three providers (D111): Anthropic, OpenAI and Google Gemini. The key form lists each provider's current models from its own models endpoint, filtered to models that can write a problem, and takes a typed model id too; no model id is written in the server. One key per provider per session, still memory-only. New routes `GET /api/admin/ai/providers` and `GET /api/admin/ai/models`; each provider's refused key, used-up quota and unknown model say what to do in one sentence.
 - The Anthropic client sends adaptive thinking explicitly and puts a cache breakpoint on its fixed system prompt; billing errors read as "no credit left".
@@ -155,9 +175,9 @@ Becomes `v1.1.0` when the P1 gate is signed.
 - `podium-judge selftest` runs the hostile-program suite on the host and prints PASS or FAIL per program; CI runs the suite on GitHub's ubuntu-24.04 runner.
 - Litestream and the B2 upload run as a new `podium-backup` user, so a compromised server cannot read the bucket keys (D116). The judge cleans every lane's sandbox when it stops. The unused `Settings.ExtraBase` hook is gone.
 
-### v2 P1, frontend (2026-10-20)
+#### Frontend (2026-10-20)
 
-Becomes `v1.1.0` with the backend's P1 work when the P1 gate is signed. Live-safe: the token pass is one commit, so reverting it restores the v1 look.
+Live-safe: the token pass is one commit, so reverting it restores the v1 look.
 
 - A calmer, more even look (Direction A with one display figure kept for standings, D80): small text is 14 px, every page title, section and subsection has one size on every screen, links have a thinner underline that fills on hover, buttons show hover and pressed states, table headers recede, rows you can open show a quiet hover, and mono digits sit one optical step smaller beside the text.
 - Every screen has the same header: organiser screens show where you are as a breadcrumb trail ("Contest admin, Week 6 contest, Console"), student screens keep one back link.
@@ -169,9 +189,9 @@ Becomes `v1.1.0` with the backend's P1 work when the P1 gate is signed. Live-saf
 - Contrast fixes: comments stay readable on a selection in the code editor in every theme, control borders reach 3:1 in Overcast, OLED black and Nordic slate, and the error toast's Dismiss keeps its contrast on hover.
 - For the server: the build writes `routes.json` (each route's title, description and whether it is public), and `index.html` has the `podium:head` and `podium:body` blocks the server will fill in P3.
 
-Becomes `v1.0.0` when the v2 P0 gate is signed.
+### v2 P0 (planned as `v1.0.0`)
 
-### v2 P0, backend (2026-10-20)
+#### Backend (2026-10-20)
 
 - `install.sh upgrade [--force "<reason>"]`: asks the deploy guard, checks that every variable the new release's examples name exists in `/etc/podium/*.env` (names only), drains the judge, takes a backup, keeps the running release in `/usr/local/lib/podium/previous/`, installs, starts the server and waits for `/healthz`, starts the judge, verifies, and prints the backup folder and the rollback command.
 - `install.sh rollback`: puts the previous binaries back; when the upgrade applied a migration, restores the pre-upgrade backup after a typed confirmation that names what is lost.
@@ -186,7 +206,7 @@ Becomes `v1.0.0` when the v2 P0 gate is signed.
 - New variables (all optional, in `/etc/podium/backup.env` and `/etc/podium/alert.env`): `PODIUM_BACKUP_AGE_RECIPIENT`, `PODIUM_BACKUP_B2_PATH`, `RCLONE_CONFIG_B2_TYPE`, `RCLONE_CONFIG_B2_ACCOUNT`, `RCLONE_CONFIG_B2_KEY`, `PODIUM_HEARTBEAT_URL`, `PODIUM_ALERT_WEBHOOK`.
 - amd64 only, stated in the README and OPERATIONS, and enforced by `install.sh`.
 
-### v2 P0, frontend (2026-10-20)
+#### Frontend (2026-10-20)
 
 - The console's "Waiting or judging" filter works, and a new "Judge error" filter lists submissions the judge could not finish: the feed's `verdict` parameter takes `pending` (queued or being judged) and `error` as states (B2).
 - On phones the standings header stays on screen while the rows scroll (B3).
