@@ -51,7 +51,7 @@ function apiError(route: Route, status: number, code: string, message: string, e
   return json(route, status, { error: { code, message, ...extra } });
 }
 
-async function mockApi(page: Page, who: Who, options: { contactMode?: 'ok' | 'rate'; config?: unknown; siteUpdatedAt?: number; deleteFails?: boolean } = {}) {
+async function mockApi(page: Page, who: Who, options: { contactMode?: 'ok' | 'rate'; config?: unknown; siteUpdatedAt?: number; deleteFails?: boolean; live?: boolean } = {}) {
   const state = {
     who,
     sent: [] as { topic: string; message: string }[],
@@ -75,7 +75,12 @@ async function mockApi(page: Page, who: Who, options: { contactMode?: 'ok' | 'ra
       if (path === '/api/me') return me ? json(route, 200, { ...me, site_updated_at: options.siteUpdatedAt ?? null }) : apiError(route, 401, 'signed_out', 'Sign in to continue.');
       if (path === '/api/events') return route.abort();
       if (!me) return apiError(route, 401, 'signed_out', 'Sign in to continue.');
-      if (path === '/api/contests') return json(route, 200, { live: [], upcoming: [], past: [] });
+      if (path === '/api/contests') {
+        const live = options.live
+          ? [{ id: 4, slug: 'week-6', title: 'Week 6 contest', state: 'live', start_mode: 'fixed', starts_at: NOW - 3_600_000, ends_at: NOW + 3_600_000, close_at: NOW + 3_600_000, duration_minutes: 0, problem_count: 3, my_score: null, my_window: null }]
+          : [];
+        return json(route, 200, { live, upcoming: [], past: [], server_now: NOW });
+      }
       if (path === '/api/integrity/cases') return json(route, 200, { cases: [], contests: {}, problems: {} });
       if (path === '/api/admin/contests') return json(route, 200, { contests: [], server_now: NOW });
       if (path === '/api/contact' && method === 'POST') {
@@ -200,13 +205,29 @@ test('a refused message keeps its text and says what to do', async ({ page }) =>
   await expect(page.getByLabel('Message')).toHaveValue('Problem C has no samples.');
 });
 
+test('during a live contest the form sends contest questions to the contest (C2-023)', async ({ page }) => {
+  await mockApi(page, 'student', { live: true });
+  await page.goto('/contact');
+  const note = page.getByRole('note').filter({ hasText: 'Asking about a contest that is running now?' });
+  await expect(note).toContainText('Ask in the contest under Messages, so the organisers answer you during it.');
+  await expect(note.getByRole('link', { name: 'Go to Week 6 contest' })).toHaveAttribute('href', '/contests/week-6');
+
+  await page.unrouteAll({ behavior: 'ignoreErrors' });
+  await mockApi(page, 'student');
+  await page.goto('/contact');
+  await expect(page.getByLabel('Message')).toBeVisible();
+  await expect(page.getByText('Asking about a contest that is running now?')).toHaveCount(0);
+});
+
 test('organisers read, reply to and delete messages (FP.2)', async ({ page }) => {
   const api = await mockApi(page, 'owner');
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto('/admin/contests');
   await page.getByRole('navigation', { name: 'Main' }).getByRole('link', { name: 'Inbox' }).click();
   await expect(page).toHaveURL('/admin/contact');
-  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Messages to the organisers');
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Inbox');
+  // Organisers read this inbox; the footer does not offer them a form to themselves (C2-023).
+  await expect(page.locator('footer').getByRole('link', { name: 'Write to the organisers' })).toHaveCount(0);
   const first = page.locator('.message').first();
   await expect(first).toContainText('Asha Rao');
   await expect(first).toContainText('A contest or a problem');

@@ -102,7 +102,7 @@
   });
 </script>
 
-<PageHeader title="Messages to the organisers" lead="What people sent through Write to the organisers. Reply by email; messages are deleted 180 days after they arrive." />
+<PageHeader title="Inbox" lead="What people sent through Write to the organisers. Reply by email; messages are deleted 180 days after they arrive." />
 
 {#if loadState === 'loading'}
   <PageState kind="loading" message="Loading messages" />

@@ -450,7 +450,8 @@
       </p>
     {/if}
     <ul class="foot-links">
-      {#if signedIn}<li><a href="/contact">Write to the organisers</a></li>{/if}
+      <!-- Inside a contest, questions go to Messages there; organisers read this inbox themselves (C2-023). -->
+      {#if signedIn && !isOrganiser && !shell.workspace}<li><a href="/contact">Write to the organisers</a></li>{/if}
       {#if PRIVACY_LINKED}<li><a href="/privacy">Privacy</a></li>{/if}
       <li class="keys">
         <button type="button" class="btn btn-quiet btn-compact" aria-keyshortcuts="?" onclick={() => (shell.shortcuts = true)}>

@@ -9,13 +9,17 @@
   the server's rate-limit sentence, being signed out, or an unreachable
   server. Beside the form from 1280 px (page-split), below it on smaller
   screens: the organisers' email and phone for anyone who would rather
-  write directly. Signed-out visitors are sent to sign in by the shell.
+  write directly. While the student has a live contest, a note above the
+  form sends contest questions to Messages inside the contest, where the
+  organisers answer during it (C2-023). Signed-out visitors are sent to
+  sign in by the shell.
   Takes no props.
 -->
 <script lang="ts">
   import { onMount, tick } from 'svelte';
   import PageHeader from '../components/PageHeader.svelte';
-  import { ApiError, sendJSON } from '../lib/api';
+  import { ApiError, getJSON, sendJSON } from '../lib/api';
+  import type { ContestList, ContestSummary } from '../lib/contests';
   import { MAX_MESSAGE, SENT, TOPICS, messageProblem, sendError, type ContactTopic } from '../lib/contact';
   import { setTitle } from '../lib/head';
   import { loadMode, runMode, telHref } from '../lib/mode.svelte';
@@ -32,10 +36,17 @@
   let sentLine: HTMLParagraphElement | undefined = $state();
 
   const length = $derived([...message.trim()].length);
+  // A contest running now: its questions belong in the contest, not in this inbox.
+  let liveContest = $state<ContestSummary | null>(null);
 
   onMount(() => {
     setTitle(routeTitle('contact'));
     void loadMode();
+    if (session.user?.role === 'student') {
+      getJSON<ContestList>('/api/contests')
+        .then((list) => (liveContest = list.live[0] ?? null))
+        .catch(() => {});
+    }
   });
 
   async function send(event: SubmitEvent) {
@@ -84,6 +95,14 @@
 
 <div class="page-split contact">
   <div class="page-split-main">
+    {#if liveContest}
+      <div class="banner banner-info" role="note">
+        <p>
+          Asking about a contest that is running now? Ask in the contest under Messages, so the organisers answer you during it.
+          <a href="/contests/{encodeURIComponent(liveContest.slug)}">Go to {liveContest.title}</a>
+        </p>
+      </div>
+    {/if}
     {#if sent}
       <div class="panel" role="status">
         <p class="sent" tabindex="-1" bind:this={sentLine}>{SENT}</p>

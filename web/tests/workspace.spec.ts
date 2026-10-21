@@ -539,6 +539,8 @@ test.describe('in a contest', () => {
     // The sentence for screen readers is unchanged.
     await expect(rail.getByRole('link', { name: 'Problem B, Interval covering, 40 of 100 points' })).toHaveAttribute('aria-current', 'page');
     await expect(rail.locator('.tried')).toHaveText('2 of 3 tried');
+    // Questions during a contest go to Messages in the rail, not to the contact form (C2-023).
+    await expect(page.getByRole('link', { name: 'Write to the organisers' })).toHaveCount(0);
     // The open problem is marked by a border, not only a tint.
     const border = await rail.locator('[aria-current="page"]').evaluate((el) => getComputedStyle(el).borderInlineStartWidth);
     expect(parseFloat(border)).toBeGreaterThanOrEqual(2);
