@@ -2,7 +2,10 @@ import { describe, expect, it } from 'vitest';
 import source from '../content/privacy.md?raw';
 import { RETENTION_FALLBACK, privacyBodyHtml } from './privacyBody';
 
-describe('the no-JavaScript privacy body (FP.1)', () => {
+// The first call loads the Markdown renderer and DOMPurify's DOM, which took
+// over the 5 s default once under a full parallel run (C2-049); alone it is
+// well under a second.
+describe('the no-JavaScript privacy body (FP.1)', { timeout: 15_000 }, () => {
   it('renders the notice with a block for the retention table', async () => {
     const html = await privacyBodyHtml(source);
     expect(html.startsWith('<h1>Privacy</h1>')).toBe(true);
