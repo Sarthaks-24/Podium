@@ -66,6 +66,14 @@ func TestStudentViewIsCoarse(t *testing.T) {
 	if coarse.MaxMemoryKB%memoryStepKB != 0 {
 		t.Errorf("coarse max memory %d not in 16 MB steps", coarse.MaxMemoryKB)
 	}
+	// The step travels with the times, so a 0 can say "under 50 ms" (D322).
+	if full.TimeStepMS != 10 || coarse.TimeStepMS != 100 {
+		t.Errorf("time steps %d and %d, want 10 and 100", full.TimeStepMS, coarse.TimeStepMS)
+	}
+	hidden, _ := r.svc.GetWith(ctx, v.ID, ViewOptions{Coarse: true, RoundMS: 100, Hide: true})
+	if hidden.TimeStepMS != 100 {
+		t.Errorf("hidden time step %d", hidden.TimeStepMS)
+	}
 }
 
 func TestSignatureIgnoresSingleHiddenTests(t *testing.T) {

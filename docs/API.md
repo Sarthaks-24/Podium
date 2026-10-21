@@ -673,7 +673,7 @@ The workspace is the page where code is written, run and submitted. Under `/api/
 
 A run older than 30 days keeps its row and verdict but no longer its inputs or output (v1.3.0, the `run_payloads` retention period): `results` is `[]` and `compile_output` is `""`.
 
-Times are rounded to 10 ms (100 ms for a student in a graded contest). A run uses the problem's limits and checker. Running the samples on a problem without samples is `400 bad_request` ("Run it on your own input instead").
+Times are rounded to the nearest 10 ms (100 ms for a student in a graded contest); `time_step_ms` (10 or 100, D322) says which, so a client shows a 0 as "under 5 ms" or "under 50 ms". A run uses the problem's limits and checker. Running the samples on a problem without samples is `400 bad_request` ("Run it on your own input instead").
 
 **v1.2.0, open tests and the revealed test (D115, contract row "Run").** A Run without `input` runs every sample, then the problem's open tests in order; the open tests run only while everything before them passed, and stop at the first failure. Every Run reveals its first failing test, in practice and during a contest alike.
 
@@ -734,7 +734,7 @@ The web app shows `revealed` from v2 P5 (D115, F7.13): a practice submission's f
 | test verdicts | `AC`, `WA`, `TLE`, `MLE`, `RE`, `OLE`, `SK` (not run: an earlier test failed), `IE` (the judge never reported it), `""` while pending |
 | `compile_output` | the compiler's output for the submitted code |
 
-A submission that counts never carries the input, output or checker comment of any test (decision D47); a practice submission may carry `revealed` (D115, below). Times are rounded to 10 ms. How scoring works: `docs/ARCHITECTURE.md`, "Submissions and scoring".
+A submission that counts never carries the input, output or checker comment of any test (decision D47); a practice submission may carry `revealed` (D115, below). Times are rounded to the nearest 10 ms; `time_step_ms` gives the step used for this viewer (10, or 100 for a student in a graded contest, D322), also on a hidden exam-mode submission. How scoring works: `docs/ARCHITECTURE.md`, "Submissions and scoring".
 
 **What a student sees of their own submission.** The same view on every path (`GET /api/submissions/{id}`, the workspace list, the answer to a submit or a repeated `client_key`, and live events). Owners and admins see every figure. A contest's co-organisers whose site role is student see the student view, both of their own submissions and of the contest's submissions they read: they are not trusted with what exact figures reveal about hidden tests. For them "the student's window" is the last student's: in exam mode nothing shows until every window is over, and a submission made from the freeze is hidden while students see the frozen board.
 

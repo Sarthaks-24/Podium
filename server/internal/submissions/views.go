@@ -37,8 +37,11 @@ type SubmissionView struct {
 	// Revealed is the first failing hidden test of a submission that never
 	// counts (practice, an ungraded contest, the organisers' workspace),
 	// once judged; absent on every submission that counts (D115).
-	Revealed  *RevealedTest `json:"revealed,omitempty"`
-	ServerNow int64         `json:"server_now"`
+	Revealed *RevealedTest `json:"revealed,omitempty"`
+	// TimeStepMS is the step the times were rounded to (to the nearest),
+	// so a 0 can be shown as "under step/2 ms" (D322).
+	TimeStepMS int   `json:"time_step_ms"`
+	ServerNow  int64 `json:"server_now"`
 }
 
 // RevealedTest is a failing test shown with its input, the expected output
@@ -91,9 +94,11 @@ type RunView struct {
 	CompileOutput string      `json:"compile_output"`
 	Results       []RunResult `json:"results"`
 	// Revealed is the first sample or open test that failed (D115).
-	Revealed  *RevealedRunTest `json:"revealed,omitempty"`
-	Error     string           `json:"error,omitempty"`
-	ServerNow int64            `json:"server_now"`
+	Revealed *RevealedRunTest `json:"revealed,omitempty"`
+	Error    string           `json:"error,omitempty"`
+	// TimeStepMS is the step the times were rounded to (D322).
+	TimeStepMS int   `json:"time_step_ms"`
+	ServerNow  int64 `json:"server_now"`
 }
 
 // roundTo rounds a displayed time to step ms (10 by default, 100 in graded
@@ -130,11 +135,16 @@ var StudentView = ViewOptions{Coarse: true}
 
 const memoryStepKB = 16 << 10
 
-func applyView(s *Score, o ViewOptions) {
-	step := o.RoundMS
-	if step == 0 {
-		step = 10
+// timeStep is the step times are rounded to: RoundMS, or 10.
+func (o ViewOptions) timeStep() int {
+	if o.RoundMS == 0 {
+		return 10
 	}
+	return o.RoundMS
+}
+
+func applyView(s *Score, o ViewOptions) {
+	step := o.timeStep()
 	s.MaxTimeMS = roundTo(s.MaxTimeMS, step)
 	for i := range s.Samples {
 		s.Samples[i].TimeMS = roundTo(s.Samples[i].TimeMS, step)
@@ -200,7 +210,7 @@ func (s *Service) GetWith(ctx context.Context, id int64, o ViewOptions) (*Submis
 	if o.Hide {
 		v := &SubmissionView{ID: r.id, ProblemID: r.problemID, Language: r.language, State: "submitted",
 			MaxScore: r.maxScore, CreatedAt: r.createdAt, Subtasks: []SubtaskResult{}, Samples: []TestOutcome{},
-			Hidden: true, ServerNow: s.now().UnixMilli()}
+			Hidden: true, TimeStepMS: o.timeStep(), ServerNow: s.now().UnixMilli()}
 		// A submission the judge could not finish is not counted, and the
 		// student must know to submit again. The failure is the judge's or
 		// the checker's, never something the program chose, so it tells
@@ -212,7 +222,7 @@ func (s *Service) GetWith(ctx context.Context, id int64, o ViewOptions) (*Submis
 	}
 	v := &SubmissionView{ID: r.id, ProblemID: r.problemID, Language: r.language, State: r.state, Verdict: r.verdict,
 		Score: r.score, MaxScore: r.maxScore, MaxTimeMS: r.maxTime, MaxMemoryKB: r.maxMem, CreatedAt: r.createdAt,
-		Error: r.errorMsg, Subtasks: []SubtaskResult{}, Samples: []TestOutcome{}, ServerNow: s.now().UnixMilli()}
+		Error: r.errorMsg, Subtasks: []SubtaskResult{}, Samples: []TestOutcome{}, TimeStepMS: o.timeStep(), ServerNow: s.now().UnixMilli()}
 	if r.judgedAt.Valid {
 		v.JudgedAt = &r.judgedAt.Int64
 	}
@@ -334,10 +344,7 @@ func (s *Service) GetRun(ctx context.Context, id int64) (*RunView, error) {
 // GetRunWith returns a run with times rounded as the options say. A run
 // uses the samples or the student's own input, so nothing else is hidden.
 func (s *Service) GetRunWith(ctx context.Context, id int64, o ViewOptions) (*RunView, error) {
-	step := o.RoundMS
-	if step == 0 {
-		step = 10
-	}
+	step := o.timeStep()
 	r, err := s.loadRow(ctx, id)
 	if err != nil {
 		return nil, err
@@ -345,7 +352,7 @@ func (s *Service) GetRunWith(ctx context.Context, id int64, o ViewOptions) (*Run
 	if r.kind != "run" {
 		return nil, ErrNotFound
 	}
-	v := &RunView{ID: r.id, State: r.state, Results: []RunResult{}, Error: r.errorMsg, ServerNow: s.now().UnixMilli()}
+	v := &RunView{ID: r.id, State: r.state, Results: []RunResult{}, Error: r.errorMsg, TimeStepMS: step, ServerNow: s.now().UnixMilli()}
 	if r.state == "error" {
 		return v, nil
 	}

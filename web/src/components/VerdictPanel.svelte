@@ -156,7 +156,7 @@
         <tr>
           <th scope="row" class="mono idx">{t.idx}</th>
           <td class:bad={isBad(t.verdict)} class:muted={t.verdict === '' || t.verdict === 'SK'}>{word(t)}</td>
-          <td class="mono num">{t.verdict === '' || t.verdict === 'SK' ? '' : formatMs(t.time_ms)}</td>
+          <td class="mono num">{t.verdict === '' || t.verdict === 'SK' ? '' : formatMs(t.time_ms, submission.time_step_ms)}</td>
           <td class="mono num">{t.verdict === '' || t.verdict === 'SK' ? '' : formatKb(t.memory_kb)}</td>
         </tr>
       {/each}

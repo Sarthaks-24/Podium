@@ -77,6 +77,12 @@ func TestRunChecksOpenTestsAndRevealsTheFirstFailure(t *testing.T) {
 	if len(got.Results) != 3 || got.Results[2].Kind != RunOpen || got.Results[2].Label != "Open test 1" || got.Results[0].Kind != RunSample {
 		t.Fatalf("results %+v", got.Results)
 	}
+	if got.TimeStepMS != 10 {
+		t.Errorf("run time step %d, want 10", got.TimeStepMS)
+	}
+	if graded, _ := r.svc.GetRunWith(ctx, run.ID, ViewOptions{Coarse: true, RoundMS: 100}); graded.TimeStepMS != 100 {
+		t.Errorf("graded run time step %d, want 100", graded.TimeStepMS)
+	}
 	in3, _ := r.bank.Blobs.Read(p.Tests[2].InputSHA, maxSampleTxt+1)
 	out3, _ := r.bank.Blobs.Read(p.Tests[2].OutputSHA, maxSampleTxt+1)
 	rv := got.Revealed

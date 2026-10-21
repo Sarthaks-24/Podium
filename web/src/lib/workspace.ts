@@ -101,6 +101,8 @@ export interface Submission {
   hidden?: boolean;
   /** The first failing hidden test, on a submission that never counts (D115). */
   revealed?: SubmissionRevealed | null;
+  /** The step the times were rounded to: 100 for a student in a graded contest, else 10 (D322). */
+  time_step_ms?: number;
 }
 
 /** A hidden test a practice submission shows in full (D115). Each text is at most 4 KB. */
@@ -145,6 +147,8 @@ export interface Run {
   results: RunResult[];
   /** The first failing sample or open test; absent for a custom input and when all passed (D115). */
   revealed?: RunRevealed | null;
+  /** The step the times were rounded to (D322). */
+  time_step_ms?: number;
   server_now?: number;
 }
 
@@ -186,9 +190,16 @@ export function languageLabel(id: string): string {
   return LANGUAGES.find((l) => l.id === id)?.label ?? id;
 }
 
-/** Time as shown: rounded to 10 ms. */
-export function formatMs(ms: number): string {
-  return `${Math.round(ms / 10) * 10} ms`;
+/**
+ * Time as shown, rounded to the nearest `step` ms: the server's
+ * `time_step_ms` (100 for a student in a graded contest, else 10), never
+ * finer than 10. The server rounds to the nearest step, so a 0 reads
+ * "under 50 ms" or "under 5 ms" rather than "0 ms" (walk 2026-10-21, D322).
+ */
+export function formatMs(ms: number, step = 10): string {
+  const s = Math.max(step, 10);
+  const shown = Math.round(ms / s) * s;
+  return shown === 0 ? `under ${s / 2} ms` : `${shown} ms`;
 }
 
 /** Memory as shown: "512 KB" or "3.1 MB". */

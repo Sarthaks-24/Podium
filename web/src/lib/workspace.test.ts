@@ -121,6 +121,12 @@ describe('headlines and announcements', () => {
     expect(failureText('RE', 2)).toBe('Runtime error on test 2');
     expect(formatMs(14)).toBe('10 ms');
     expect(formatMs(15)).toBe('20 ms');
+    // The server rounds to the nearest step, so a 0 is under half of it (D322).
+    expect(formatMs(0)).toBe('under 5 ms');
+    expect(formatMs(4)).toBe('under 5 ms');
+    expect(formatMs(0, 100)).toBe('under 50 ms');
+    expect(formatMs(100, 100)).toBe('100 ms');
+    expect(formatMs(120)).toBe('120 ms');
     expect(formatKb(512)).toBe('512 KB');
     // A hidden test's memory is withheld from students as 0 (walk 2026-10-21).
     expect(formatKb(0)).toBe('');

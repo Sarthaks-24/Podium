@@ -78,7 +78,7 @@
         <h3 class="name">{r.label}</h3>
         <span class="verdict" class:bad={isBad(r.verdict)} class:ok={!isBad(r.verdict) && r.verdict !== 'SK'}>{runVerdictLabel(r.verdict)}</span>
         {#if r.verdict !== 'SK' && r.verdict !== ''}
-          <span class="mono meta">{formatMs(r.time_ms)}</span>
+          <span class="mono meta">{formatMs(r.time_ms, run.time_step_ms)}</span>
           <span class="mono meta">{formatKb(r.memory_kb)}</span>
         {/if}
       </div>

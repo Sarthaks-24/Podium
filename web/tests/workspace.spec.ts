@@ -155,8 +155,9 @@ test('running on samples shows the first difference', async ({ page }) => {
       id: 51,
       state: 'done',
       compile_output: '',
+      time_step_ms: 100,
       results: [
-        { label: 'Sample 1', verdict: 'AC', time_ms: 4, memory_kb: 3200, output: '3\n', expected: '3\n', message: '' },
+        { label: 'Sample 1', verdict: 'AC', time_ms: 0, memory_kb: 3200, output: '3\n', expected: '3\n', message: '' },
         { label: 'Sample 2', verdict: 'WA', time_ms: 6, memory_kb: 3200, output: '12 \n', expected: '2\n', message: 'Expected 2, found 12' },
       ],
     },
@@ -167,6 +168,8 @@ test('running on samples shows the first difference', async ({ page }) => {
   await expect(panel.locator('.diff dd').nth(0)).toHaveText('2');
   await expect(panel.locator('.diff dd').nth(1)).toHaveText('12·');
   await expect(panel.getByText('Expected 2, found 12')).toBeVisible();
+  // A graded contest's 100 ms rounding: a 0 is under 50 ms, never "0 ms" (D322).
+  await expect(panel.getByText('under 50 ms')).toHaveCount(2);
   await expect(page.locator('[data-announcer="polite"]')).toHaveText('Passed 1 of 2 samples.');
   await page.screenshot({ path: `${shots()}workspace-run-1440-light.png` });
 
