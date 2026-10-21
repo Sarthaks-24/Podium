@@ -56,6 +56,9 @@ describe('attentionItems', () => {
     const items = attentionItems({ ...base, problems: [{ ...base.problems[0], update_available: true }, { ...base.problems[1] }] }, T, 0);
     expect(items.find((i) => i.key === 'update')).toMatchObject({ text: 'Problem A has a newer revision for students', tone: 'part', href: '#versions-title' });
     expect(attentionItems(base, T, 0).find((i) => i.key === 'update')).toBeUndefined();
+    // Once the contest has closed it is not a call to act.
+    const after = attentionItems({ ...base, problems: [{ ...base.problems[0], update_available: true }] }, T + 91 * MIN, 0);
+    expect(after.find((i) => i.key === 'update')).toBeUndefined();
   });
 
   it('counts down to the start before it and says Ended after the close', () => {

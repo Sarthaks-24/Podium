@@ -951,9 +951,10 @@ export function attentionItems(
     });
   }
 
-  // A saved edit reaches students only through the console (walk 2026-10-21).
+  // A saved edit reaches students only through the console (walk 2026-10-21);
+  // after the close it no longer needs anyone's attention.
   const waiting = c.problems.filter((p) => p.update_available).map((p) => p.label);
-  if (waiting.length > 0) {
+  if (waiting.length > 0 && now < close) {
     out.push({
       key: 'update',
       text: `${waiting.length === 1 ? `Problem ${waiting[0]} has` : `Problems ${waiting.join(', ')} have`} a newer revision for students`,
