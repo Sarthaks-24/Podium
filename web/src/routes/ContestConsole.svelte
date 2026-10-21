@@ -1004,7 +1004,9 @@
           </div>
           <div class="field grow">
             <label for="audit-actor">Made by</label>
-            <input id="audit-actor" class="input" type="search" autocomplete="off" spellcheck="false" placeholder="ta@college.edu" bind:value={auditActor} />
+            <!-- An example, not a placeholder that reads as a value already there (C2-068). -->
+            <p id="audit-actor-help" class="field-help">An email, for example ta@college.edu</p>
+            <input id="audit-actor" class="input" type="search" autocomplete="off" spellcheck="false" aria-describedby="audit-actor-help" bind:value={auditActor} />
           </div>
           <button type="submit" class="btn btn-secondary">Search</button>
         </form>

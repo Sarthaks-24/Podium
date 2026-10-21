@@ -814,6 +814,8 @@
     <form class="form" novalidate onsubmit={addDomain}>
       <div class="field grow">
         <label for="domain-input">Domain</label>
+        <!-- An example, not a placeholder that reads as a value already there (C2-068). -->
+        <p id="domain-help" class="field-help">For example college.edu</p>
         <input
           id="domain-input"
           aria-required="true"
@@ -823,10 +825,9 @@
           autocomplete="off"
           autocapitalize="none"
           spellcheck="false"
-          placeholder="college.edu"
           bind:value={domainInput}
           aria-invalid={domainError !== '' ? 'true' : undefined}
-          aria-describedby={domainError !== '' ? 'domain-error' : undefined}
+          aria-describedby="domain-help{domainError !== '' ? ' domain-error' : ''}"
         />
       </div>
       <button type="submit" class="btn btn-secondary submit" disabled={addingDomain}>Add domain</button>
@@ -955,7 +956,8 @@
     <form class="form" novalidate onsubmit={previewRollover}>
       <div class="field grow">
         <label for="roll-label">Term</label>
-        <input id="roll-label" aria-required="true" class="input" type="text" autocomplete="off" placeholder="2026 odd semester" bind:value={rollLabel} aria-invalid={rollError ? 'true' : undefined} aria-describedby={rollError ? 'roll-error' : undefined} />
+        <p id="roll-label-help" class="field-help">For example 2026 odd semester</p>
+        <input id="roll-label" aria-required="true" class="input" type="text" autocomplete="off" bind:value={rollLabel} aria-invalid={rollError ? 'true' : undefined} aria-describedby="roll-label-help{rollError ? ' roll-error' : ''}" />
       </div>
       <div class="field">
         <label for="roll-before">Contests that ended before (optional)</label>
