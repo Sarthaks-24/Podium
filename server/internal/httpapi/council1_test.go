@@ -4,7 +4,9 @@ package httpapi
 // run-1-2026-10-21/FINDINGS.md), one test per finding id.
 
 import (
+	"context"
 	"fmt"
+	"math"
 	"testing"
 	"time"
 )
@@ -114,5 +116,53 @@ func TestC1022NoticesHeldInALiveContestOverHTTP(t *testing.T) {
 	}
 	if code, inbox := asha.do("GET", "/api/me/notifications", nil, ""); code != 200 || inbox["held"] != false || len(inbox["notifications"].([]any)) != 1 {
 		t.Errorf("inbox after the contest: %d %v", code, inbox)
+	}
+}
+
+// C1-043: the students list and the student page read the summary
+// columns in SQL; their figures stay what the summaries say.
+func TestC1043StudentsFromSummaryColumns(t *testing.T) {
+	s := newSite(t)
+	owner := s.signedIn("owner@college.edu", "Owner")
+	asha := s.signedIn("asha@college.edu", "Asha")
+	bilal := s.signedIn("bilal@college.edu", "Bilal")
+	o := s.srv.URL
+	start := time.Now().Add(time.Hour).Truncate(time.Minute)
+	pa := s.importProblem(owner, "c1043-a")
+	s.createContest(owner, "c1043", start, map[string]int64{"A": pa}, nil)
+	s.at(start, 5)
+	for _, b := range []*browser{asha, bilal} {
+		b.do("POST", "/api/contests/c1043/start", map[string]any{"accept_honour": true}, o)
+	}
+	s.submit(asha, "c1043", "A", "correct")
+	s.submit(bilal, "c1043", "A", "first")
+	s.judgeAll()
+	s.at(start, 121)
+	if _, err := s.contests.SweepSummaries(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	code, list := owner.do("GET", "/api/admin/students", nil, "")
+	if code != 200 {
+		t.Fatalf("students: %d %v", code, list)
+	}
+	percent := map[string]float64{}
+	for _, row := range list["students"].([]any) {
+		m := row.(map[string]any)
+		if m["graded_contests"] != float64(1) || m["last_graded_slug"] != "c1043" {
+			t.Errorf("row %v", m)
+		}
+		percent[m["email"].(string)] = m["last_graded_percent"].(float64)
+	}
+	if percent["asha@college.edu"] != 100 || percent["bilal@college.edu"] >= 100 {
+		t.Errorf("percents %v", percent)
+	}
+	code, page := owner.do("GET", fmt.Sprintf("/api/admin/students/%d", asha.userID()), nil, "")
+	if code != 200 {
+		t.Fatalf("student page: %d %v", code, page)
+	}
+	cs := page["contests"].([]any)[0].(map[string]any)
+	want := (percent["asha@college.edu"] + percent["bilal@college.edu"]) / 2
+	if cs["class_median_percent"].(float64) != math.Round(want*10)/10 || cs["percent"] != float64(100) {
+		t.Errorf("student page contest %v, want median %v", cs, want)
 	}
 }

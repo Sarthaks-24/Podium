@@ -241,3 +241,27 @@ func TestSummariesRebuildAfterABoardAdjustmentOrSettings(t *testing.T) {
 		})
 	}
 }
+
+// ClassMedian reads the percent column alone and agrees with
+// MedianPercent over the decoded summaries (C1-043).
+func TestClassMedianMatchesTheSummaries(t *testing.T) {
+	r := newSvc(t)
+	ctx := context.Background()
+	c := r.contest(t, nil)
+	seedBoard(t, r, c, 6, 2)
+	*r.now = at(121)
+	if _, err := r.svc.BuildSummaries(ctx, c); err != nil {
+		t.Fatal(err)
+	}
+	sums, err := r.svc.ContestSummaries(ctx, c.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := r.svc.ClassMedian(ctx, c.ID)
+	if err != nil || got != MedianPercent(sums) {
+		t.Errorf("ClassMedian %v %v, MedianPercent %v", got, err, MedianPercent(sums))
+	}
+	if m, err := r.svc.ClassMedian(ctx, 999); err != nil || m != 0 {
+		t.Errorf("a contest without summaries: %v %v", m, err)
+	}
+}

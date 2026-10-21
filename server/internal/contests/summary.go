@@ -454,12 +454,40 @@ func (s *Service) querySummaries(ctx context.Context, q string, args ...any) ([]
 
 // MedianPercent is the median of the summaries' percents (0 for none).
 func MedianPercent(list []Summary) float64 {
-	if len(list) == 0 {
-		return 0
-	}
 	p := make([]float64, len(list))
 	for i, sm := range list {
 		p[i] = sm.Percent
+	}
+	return medianOf(p)
+}
+
+// ClassMedian is MedianPercent of a contest's summaries, read from the
+// percent column alone: the problems JSON is never decoded for it
+// (council C1-043).
+func (s *Service) ClassMedian(ctx context.Context, contestID int64) (float64, error) {
+	rows, err := s.DB.QueryContext(ctx, "SELECT percent FROM student_contest_summary WHERE contest_id = ?", contestID)
+	if err != nil {
+		return 0, err
+	}
+	defer rows.Close()
+	var p []float64
+	for rows.Next() {
+		var v float64
+		if err := rows.Scan(&v); err != nil {
+			return 0, err
+		}
+		p = append(p, v)
+	}
+	if err := rows.Err(); err != nil {
+		return 0, err
+	}
+	return medianOf(p), nil
+}
+
+// medianOf sorts p in place and returns its median, rounded to 0.1.
+func medianOf(p []float64) float64 {
+	if len(p) == 0 {
+		return 0
 	}
 	sort.Float64s(p)
 	if len(p)%2 == 1 {

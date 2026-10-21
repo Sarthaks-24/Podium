@@ -117,17 +117,34 @@ func (d Deps) listStudents(w http.ResponseWriter, r *http.Request) {
 		submissions int
 		accepted    int
 	}
+	// The columns alone, in one query: the problems JSON is never decoded
+	// for this list (council C1-043).
 	in := map[int64]map[int64]took{} // contest, user
 	for _, c := range graded {
-		sums, err := d.Contests.ContestSummaries(ctx, c.ID)
-		if err != nil {
+		in[c.ID] = map[int64]took{}
+	}
+	srows, err := d.DB.QueryContext(ctx, `SELECT s.contest_id, s.user_id, s.percent, s.submissions, s.accepted
+		FROM student_contest_summary s JOIN contests c ON c.id = s.contest_id WHERE c.graded = 1 AND c.summarised_at IS NOT NULL`)
+	if err != nil {
+		d.internalError(w, r, err)
+		return
+	}
+	for srows.Next() {
+		var cid, uid int64
+		var t took
+		if err := srows.Scan(&cid, &uid, &t.percent, &t.submissions, &t.accepted); err != nil {
+			srows.Close()
 			d.internalError(w, r, err)
 			return
 		}
-		in[c.ID] = map[int64]took{}
-		for _, sm := range sums {
-			in[c.ID][sm.UserID] = took{sm.Percent, sm.Submissions, sm.Accepted}
+		if m, ok := in[cid]; ok {
+			m[uid] = t
 		}
+	}
+	srows.Close()
+	if err := srows.Err(); err != nil {
+		d.internalError(w, r, err)
+		return
 	}
 	ratings, err := d.Integrity.Ratings(ctx)
 	if err != nil {
@@ -275,13 +292,13 @@ func (d Deps) studentPage(w http.ResponseWriter, r *http.Request) {
 			d.internalError(w, r, err)
 			return
 		}
-		all, err := d.Contests.ContestSummaries(r.Context(), c.ID)
+		median, err := d.Contests.ClassMedian(r.Context(), c.ID)
 		if err != nil {
 			d.internalError(w, r, err)
 			return
 		}
 		out = append(out, StudentContest{ContestID: c.ID, Slug: c.Slug, Title: c.Title, Graded: sm.Graded, EndedAt: c.Final().UnixMilli(),
-			Score: sm.Score, MaxScore: sm.MaxScore, Percent: sm.Percent, ClassMedianPercent: contests.MedianPercent(all), Rank: sm.Rank,
+			Score: sm.Score, MaxScore: sm.MaxScore, Percent: sm.Percent, ClassMedianPercent: median, Rank: sm.Rank,
 			RankedCount: sm.RankedCount, ProblemsAttempted: sm.ProblemsAttempted, ProblemsFull: sm.ProblemsFull, Submissions: sm.Submissions,
 			Accepted: sm.Accepted})
 	}
