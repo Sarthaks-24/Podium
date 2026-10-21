@@ -313,7 +313,7 @@ Each row keeps the actor's email and role as they were. The actor rides on the r
 
 ### Slug history
 
-`slug_history` (0011, D65): renaming a published contest records its old slug (a draft has no links to keep). `GET /contests/<old>/...` and `GET /api/contests/<old>/...` answer `301` to the same path under the current slug, checked only after no contest has the slug; other methods are not redirected. No other contest may take a slug in the history, so an old link never lands on a different contest; a contest may take back its own.
+`slug_history` (0011, D65): renaming a published contest records its old slug (a draft has no links to keep). `GET /contests/<old>/...` and `GET /api/contests/<old>/...` answer `301` to the same path under the current slug, checked only after no contest has the slug and only for a signed-in visitor (a contest's current slug is contest data, and nothing before sign-in shows any); other methods are not redirected. A signed-out visitor gets the app, signs in, and the API path redirects. No other contest may take a slug in the history, so an old link never lands on a different contest; a contest may take back its own.
 
 ## Integrity
 

@@ -1201,7 +1201,7 @@ Show an unknown action by its name.
 
 ### Renamed contests
 
-Renaming a contest (its `slug`) records the old slug. `GET /contests/<old>` and every path under it answer `301` to the same path under the new slug, keeping the query; so do `GET` requests under `/api/contests/<old>` (other methods answer `404`). Only a published contest records its old slug (a draft has no links out there), and only a published, unarchived contest is redirected to. A slug in the history cannot be given to another contest: `400 bad_request` with `fields.slug` "This slug belonged to another contest. Choose another so its old links keep working." A contest may take back its own old slug.
+Renaming a contest (its `slug`) records the old slug. For a signed-in visitor, `GET /contests/<old>` and every path under it answer `301` to the same path under the new slug, keeping the query; so do `GET` requests under `/api/contests/<old>` (other methods answer `404`). A signed-out visitor gets the web app at the old path, with no redirect (the current slug is contest data). Only a published contest records its old slug (a draft has no links out there), and only a published, unarchived contest is redirected to. A slug in the history cannot be given to another contest: `400 bad_request` with `fields.slug` "This slug belonged to another contest. Choose another so its old links keep working." A contest may take back its own old slug.
 
 ## Contact (v1.3.0, contract C6)
 
@@ -1848,7 +1848,7 @@ Rules:
 | missing files with an extension | `404` |
 | any other path | `index.html`, `no-cache` |
 
-A renamed contest's old `/contests/<slug>` paths answer `301` first (see "Renamed contests").
+A renamed contest's old `/contests/<slug>` paths answer `301` first for a signed-in visitor (see "Renamed contests").
 
 ### The route manifest and the page markers (contract C2, from v1.1.0)
 

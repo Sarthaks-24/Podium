@@ -314,6 +314,17 @@ func TestP2RenamedContestRedirectsAndKeepsItsSlug(t *testing.T) {
 			t.Errorf("%s: %d %s, want 301 %s", path, resp.StatusCode, resp.Header.Get("Location"), want)
 		}
 	}
+	// Signed out, the old web path is not redirected: the current slug is
+	// contest data, shown only after sign-in (P6 security review).
+	anon := &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+	if resp, err := anon.Get(s.srv.URL + "/contests/week-9"); err != nil {
+		t.Fatal(err)
+	} else {
+		resp.Body.Close()
+		if resp.StatusCode == http.StatusMovedPermanently {
+			t.Errorf("signed-out visitor redirected to %s", resp.Header.Get("Location"))
+		}
+	}
 	// A POST to the old slug is not redirected.
 	if code, _ := owner.do("POST", "/api/contests/week-9/start", map[string]any{"accept_honour": true}, s.srv.URL); code != 404 {
 		t.Errorf("POST to the old slug: %d", code)

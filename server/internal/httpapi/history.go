@@ -370,16 +370,30 @@ func (d Deps) siteAudit(w http.ResponseWriter, r *http.Request) {
 // the web app's /contests/<old>/... paths (B2.9); the API's
 // /api/contests/<old>/... are redirected by studentContest, only when the
 // slug is not found, so the hot API paths pay nothing. Anything else goes
-// on to next.
+// on to next. Only a signed-in visitor is redirected: a contest's current
+// slug is contest data, which nothing before sign-in shows (owner,
+// 2026-10-19), and the lookup would be an unlimited query for anyone. A
+// signed-out visitor gets the app, signs in, and the API redirects.
 func (d Deps) renamedContest(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if (r.Method == http.MethodGet || r.Method == http.MethodHead) && d.Contests != nil {
+		if (r.Method == http.MethodGet || r.Method == http.MethodHead) && d.Contests != nil && strings.HasPrefix(r.URL.Path, "/contests/") &&
+			d.signedInRequest(r) {
 			if rest, ok := strings.CutPrefix(r.URL.Path, "/contests/"); ok && d.redirectRenamed(w, r, "/contests/", rest) {
 				return
 			}
 		}
 		next.ServeHTTP(w, r)
 	})
+}
+
+// signedInRequest reports whether the request carries a live session.
+func (d Deps) signedInRequest(r *http.Request) bool {
+	c, err := r.Cookie(d.sessionCookieName())
+	if err != nil || d.Auth == nil {
+		return false
+	}
+	_, _, err = d.Auth.Authenticate(r.Context(), c.Value)
+	return err == nil
 }
 
 // redirectRenamed answers 301 when the first segment of rest is a slug
