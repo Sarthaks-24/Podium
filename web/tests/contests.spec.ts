@@ -1167,6 +1167,17 @@ test('an unpublished contest reads Draft, and holding the board needs a freeze (
   await expect(page).toHaveURL('/admin/contests/4');
 });
 
+test('a draft as the next contest says publish it, with Settings first (C2-024)', async ({ page }) => {
+  await mockApi(page, { who: 'admin', phase: 'after' });
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto('/admin/contests');
+  const featured = page.getByRole('region', { name: 'Week 7 contest' });
+  await expect(featured).toContainText('Not published. Add problems and publish it in Settings.');
+  await expect(featured).not.toContainText('Starts in');
+  await expect(featured.getByRole('link', { name: 'Settings' })).toHaveClass(/btn-primary/);
+  await expect(featured.getByRole('link', { name: 'Console' })).toHaveClass(/btn-quiet/);
+});
+
 test('the contest list stacks below 1024 px and points to the bank when empty (P3 R1, O6)', async ({ page }) => {
   await mockApi(page, { who: 'admin', phase: 'during' });
   await page.setViewportSize({ width: 900, height: 900 });

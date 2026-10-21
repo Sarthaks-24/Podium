@@ -104,6 +104,8 @@ export async function mockApi(page: Page, who: Who) {
         );
         return json(route, 200, { entries, page: Number(q.get('page') ?? 1), has_more: false, server_now: Date.now() });
       }
+      // The organiser home's first-run list asks whether a validated problem exists (C2-024).
+      if (path === '/api/admin/problems' && method === 'GET') return json(route, 200, { problems: [] });
       if (path === '/api/admin/people' && method === 'GET') {
         return json(route, 200, { people: state.people, domains: state.domains, disabled: state.disabled, organisation: state.organisation });
       }

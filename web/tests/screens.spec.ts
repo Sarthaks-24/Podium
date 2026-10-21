@@ -620,3 +620,18 @@ test('the semester rollover previews, asks with the counts, then archives and di
   await section.getByLabel('Term').fill('2026 even semester');
   await expect(plan).toHaveCount(0);
 });
+
+test('a first-run owner sees the steps to a first contest, with what is done (C2-024)', async ({ page }) => {
+  await mockApi(page, 'owner');
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto('/');
+  const steps = page.getByRole('region', { name: 'Your first contest' }).getByRole('listitem');
+  await expect(steps).toHaveCount(4);
+  // Domains exist in the mock, validated problems do not.
+  await expect(steps.nth(0)).toContainText("Allow your college's email domain on People, so students can sign in.");
+  await expect(steps.nth(0)).toContainText('Done');
+  await expect(steps.nth(0).getByRole('link', { name: 'People' })).toHaveAttribute('href', '/admin/people');
+  await expect(steps.nth(1)).toContainText('To do');
+  await expect(steps.nth(1).getByRole('link', { name: 'problem bank' })).toHaveAttribute('href', '/admin/problems');
+  await expect(steps.nth(3)).toContainText('Share the address with your students: http://127.0.0.1:5179');
+});

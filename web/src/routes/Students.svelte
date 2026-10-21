@@ -104,7 +104,7 @@
   const emptyText = $derived.by(() => {
     if (shownFor.q !== '') return `No student matches "${shownFor.q}". Check the spelling, or clear the search.`;
     if (shownFor.filter !== '') return 'Nobody matches this filter.';
-    return 'No students yet. They appear here once they sign in.';
+    return '';
   });
 
   onMount(() => {
@@ -149,7 +149,16 @@
         <p class="muted small" id="filter-help">{help}</p>
 
         {#if rows.length === 0}
-          <p class="muted empty">{emptyText}</p>
+          {#if emptyText !== ''}
+            <p class="muted empty">{emptyText}</p>
+          {:else}
+            <!-- The page-state rule: say what is missing, then how it fills (C2-024). -->
+            <p class="muted empty">
+              No students yet. A student appears here after signing in with an allowed email domain (an owner sets these on
+              <a href="/admin/people">People</a>), or once on a contest roster (in each contest's settings, under
+              <a href="/admin/contests">Contests</a>).
+            </p>
+          {/if}
         {:else}
           <div class="table-wrap">
             <table class="table table-stack list" aria-describedby="filter-help">

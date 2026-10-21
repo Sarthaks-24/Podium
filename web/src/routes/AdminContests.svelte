@@ -12,13 +12,18 @@
   while students cannot see it, lib/contests organiserState) and its
   Console and Results. Under 1024 px each row reads as title and state,
   then the start and the links (R1). With no contests yet it points to
-  the problem bank (audit O6). "New contest"
+  the problem bank, and lists the steps to a first published contest
+  with a Done mark on those already taken: an allowed email domain
+  (owners), a validated problem, a published contest, sharing the address
+  (C2-024). A featured contest that is not published says so and puts
+  Settings first instead of a countdown. "New contest"
   opens a small form for a title, a slug (suggested from the title until it
   is edited) and the start and end, creates the contest unpublished with
   the default settings (graded, fixed start, subtask feedback) and goes to
   its settings. Students see a short explanation instead. Takes no props.
 -->
 <script lang="ts">
+  import Badge from '../components/Badge.svelte';
   import PageState from '../components/PageState.svelte';
   import PageHeader from '../components/PageHeader.svelte';
   import { onMount, tick } from 'svelte';
@@ -65,6 +70,27 @@
   let newButton: HTMLButtonElement | undefined = $state();
 
   const isOrganiser = $derived(session.user?.role === 'admin' || session.user?.role === 'owner');
+  const isOwner = $derived(session.user?.role === 'owner');
+  // First run (no contests): what is already done on the way to a published contest; null while unknown.
+  let domainCount = $state<number | null>(null);
+  let validatedCount = $state<number | null>(null);
+  const origin = typeof location === 'undefined' ? '' : location.origin;
+
+  async function loadFirstRun() {
+    try {
+      const data = await getJSON<{ problems: { validated: boolean; archived: boolean }[] }>('/api/admin/problems');
+      validatedCount = (data.problems ?? []).filter((p) => p.validated && !p.archived).length;
+    } catch {
+      validatedCount = null;
+    }
+    if (!isOwner) return;
+    try {
+      const data = await getJSON<{ domains: unknown[] }>('/api/admin/people');
+      domainCount = (data.domains ?? []).length;
+    } catch {
+      domainCount = null;
+    }
+  }
   const sorted = $derived(organiserOrder(contests));
   // The contest an organiser most likely came for: the live one, else the next.
   const featured = $derived(sorted.find((c) => isLive(c)) ?? sorted.find((c) => c.state === 'upcoming') ?? null);
@@ -98,6 +124,7 @@
       refreshTicker();
       contests = data.contests ?? [];
       loadState = 'ready';
+      if (contests.length === 0) void loadFirstRun();
     } catch (e) {
       if (e instanceof ApiError && e.status === 401) {
         session.user = undefined;
@@ -196,7 +223,9 @@
         <span class="state-word" data-state={fs.kind}>{fs.word}</span>
       </div>
       <p class="featured-line">
-        {#if left > 0}
+        {#if !f.published}
+          Not published. Add problems and publish it in Settings.
+        {:else if left > 0}
           {isLive(f) ? 'Ends in' : 'Starts in'} <MonoDigits parts={numberParts(left >= 86_400_000 ? formatSpan(left) : formatCountdown(left))} />{#if f.paused}, judging paused{/if}
         {:else}
           <MonoDigits text={formatDateTime(f.starts_at)} />
@@ -208,8 +237,13 @@
         </p>
       {/if}
       <p class="featured-links action-row">
-        <a class="btn btn-primary" href="{fbase}/console">Console</a>
-        <a class="btn btn-quiet" href={fbase}>Settings</a>
+        {#if f.published}
+          <a class="btn btn-primary" href="{fbase}/console">Console</a>
+          <a class="btn btn-quiet" href={fbase}>Settings</a>
+        {:else}
+          <a class="btn btn-primary" href={fbase}>Settings</a>
+          <a class="btn btn-quiet" href="{fbase}/console">Console</a>
+        {/if}
         <a class="btn btn-quiet" href="{fbase}/results">Results</a>
         <a class="btn btn-quiet" href="/contests/{encodeURIComponent(f.slug)}">Student view</a>
       </p>
@@ -311,6 +345,28 @@
     <PageState kind="empty" message="No contests yet. Contests use validated problems from the problem bank.">
       {#snippet action()}<a class="btn btn-secondary" href="/admin/problems">Go to the problem bank</a>{/snippet}
     </PageState>
+    <section class="first-run" aria-labelledby="first-run-heading">
+      <h2 id="first-run-heading">Your first contest</h2>
+      <ul class="steps">
+        {#if isOwner}
+          <li>
+            <span class="step">Allow your college's email domain on <a href="/admin/people">People</a>, so students can sign in.</span>
+            {#if domainCount !== null}<Badge tone={domainCount > 0 ? 'ok' : 'neutral'} text={domainCount > 0 ? 'Done' : 'To do'} />{/if}
+          </li>
+        {/if}
+        <li>
+          <span class="step">Add or import a problem in the <a href="/admin/problems">problem bank</a>, then validate it.</span>
+          {#if validatedCount !== null}<Badge tone={validatedCount > 0 ? 'ok' : 'neutral'} text={validatedCount > 0 ? 'Done' : 'To do'} />{/if}
+        </li>
+        <li>
+          <span class="step">Create a contest with New contest, add problems, then publish it from its settings.</span>
+          <Badge tone="neutral" text="To do" />
+        </li>
+        <li>
+          <span class="step">Share the address with your students: <span class="address">{origin}</span></span>
+        </li>
+      </ul>
+    </section>
   {:else}
     <div class="table-wrap list">
       <table class="table table-stack">
@@ -348,6 +404,44 @@
 {/if}
 
 <style>
+  .first-run {
+    max-width: var(--measure-form);
+    margin-top: var(--section-gap);
+  }
+
+  .first-run h2 {
+    font-size: var(--fs-section);
+  }
+
+  .steps {
+    display: grid;
+    margin-top: var(--space-4);
+    padding: 0;
+    list-style: none;
+    border-top: var(--rule) solid var(--line);
+  }
+
+  .steps li {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-2) var(--space-4);
+    min-height: var(--control-h-touch);
+    padding-block: var(--space-2);
+    border-bottom: var(--rule) solid var(--line);
+  }
+
+  .step {
+    flex: 1 1 20rem;
+    min-width: 0;
+  }
+
+  .address {
+    overflow-wrap: anywhere;
+    font-weight: 500;
+  }
+
   .featured {
     display: grid;
     gap: var(--space-2);

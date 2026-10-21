@@ -607,3 +607,16 @@ test.describe('the record page', () => {
     await expect(page.getByText('Nobody opens their own record. Another owner or admin can.')).toBeVisible();
   });
 });
+
+test('with no students yet, the list says how students arrive (C2-024)', async ({ page }) => {
+  await org.mockApi(page, {});
+  await page.route(
+    (url) => url.pathname === '/api/admin/students',
+    (route) => route.fulfill({ json: { students: [], filter: '', last_graded: [], server_now: Date.now() } }),
+  );
+  await page.goto('/admin/students');
+  const empty = page.locator('p.empty');
+  await expect(empty).toContainText('No students yet. A student appears here after signing in with an allowed email domain');
+  await expect(empty.getByRole('link', { name: 'People' })).toHaveAttribute('href', '/admin/people');
+  await expect(empty.getByRole('link', { name: 'Contests' })).toHaveAttribute('href', '/admin/contests');
+});
