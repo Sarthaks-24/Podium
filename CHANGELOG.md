@@ -41,6 +41,17 @@ Found by walking the whole organiser and student path on the real server, judge 
 - `tools/dev-stack.sh` passes `PODIUM_BASE_URL`, Vite reads `PODIUM_DEV_API` and the live Playwright config `PODIUM_LIVE_PORT`, so a second stack runs on side ports (`docs/OPERATIONS.md`).
 - `web/tests-live/history.spec.ts` (C2-055): a mid-contest statement edit with its reason, "Update contest to revision N" and the student's banner and diff, against the real server.
 
+### Walkthrough follow-ups (2026-10-21)
+
+The "still awkward" items of the real-stack walk that needed no owner decision.
+
+- A proposal waiting for a second reviewer shows where they look: the contest's case list carries each viewer's `may_confirm` and marks such cases "Waiting for your confirmation" with a count above the table, and the console's attention strip links "1 case waiting for your confirmation" to it, from a new count route that names nobody (`GET /api/admin/contests/{id}/integrity/waiting`). The notices are student-only, so no organiser notice (D321).
+- A run time the server rounded to 0 reads "under 50 ms" in a graded contest and "under 5 ms" elsewhere, not "0 ms"; submissions and runs carry `time_step_ms` (D322).
+- The workspace's limits line gives the time the selected language gets, with the reason ("Time limit 2 s in Java 21 (twice the problem's 1 s, as it runs slower than C++)"); each language carries the judge's `time_factor`. The validation report says "of the 2000 ms Java 21 gets (twice the problem's 1000 ms)"; the summary carries `reference_language` and `time_factor` (D323).
+- The student home features a live or upcoming contest, or the newest past one the student took part in, never a contest they missed (D324).
+- The judge waits for an isolate box another process is using (five tries over about 4 s) instead of failing the submission at once, then fails it with a judge error that names the likely cause; it never re-initialises a box it already holds (D325).
+- The live Playwright specs follow the current screens: the "Problem bank" nav, adding problems that save at once, "Publish contest" with its confirm, the proposal-based case page and "Send explanation"; m4 ends its contest afterwards (D326).
+
 ### Tidy-up (2026-10-21)
 
 - Closing the keyboard shortcuts list returns focus to the page heading when the element that opened it was replaced while it was open (for example "?" pressed while a problem loads); focus no longer falls to the page body.
