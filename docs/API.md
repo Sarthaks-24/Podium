@@ -1262,7 +1262,7 @@ Checks for copying after a contest, and the review of what they find (decisions 
 | `GET /api/admin/contests/{id}/integrity/signals/{signal}/pair` | | 200 `{a: Side, b: Side, server_now}` for a `similar` signal; any other kind is a `404`, and so is a signal that names the viewer |
 | `GET /api/admin/contests/{id}/integrity/timeline/{user}` | | 200 `{moments: [Moment], server_now}`; `404` when the user neither accepted the rules nor submitted in this contest, and for the viewer's own timeline. The run (`GET .../integrity`) leaves out every signal that names the viewer (a student since made an admin) |
 | `GET /api/admin/contests/{id}/integrity/cases` | | 200 `{cases: [Case], server_now}`, newest first |
-| `POST /api/admin/contests/{id}/integrity/cases` | `{title, note, signal_ids: [n]}` | 201 `Case` |
+| `POST /api/admin/contests/{id}/integrity/cases` | `{title, note, signal_ids: [n]}` | 201 `Case`, logged as a read of the case (D97) |
 | `GET /api/admin/integrity/cases/{case}` | | 200 `Case`; `404` to a student of the case and, for a manual case, to a reviewer who is a student of another case with its student in that contest (D262) |
 | `PUT /api/admin/integrity/cases/{case}` | `{state, note}` | 200 `Case`; appends a decision |
 
@@ -1510,7 +1510,7 @@ The server writes the sentences from fixed templates with the contest's title, a
 |---|---|---|---|
 | `GET /api/admin/submissions/{id}/notes` | reviewers of the submission's contest (owners and admins; a co-organiser whose role is not student is an admin) | | 200 `{submission: SubmissionRef, source, notes: [Note], case_id, server_now}`, where `source` is the submission's program as plain text, so the reviewer reads it and picks lines; logged; `404` on one's own submission and on a classmate's when the two are students of one case in that contest (D262) |
 | `POST /api/admin/submissions/{id}/notes` | same | `{"text": "...", "lines": [{"from": 12, "to": 18}]}` | 201 `Note`; `404` as for GET |
-| `POST /api/admin/submissions/{id}/case` | same | `{"title": "...", "note": "..."}` | 201 `Case`; `404` as for GET |
+| `POST /api/admin/submissions/{id}/case` | same | `{"title": "...", "note": "..."}` | 201 `Case`, logged as a read of the case (it carries the copied notes); `404` as for GET |
 
 - A note or a manual case is possible on a Submit (not a Run) of a contest, practice after the contest included. A submission outside a contest is `404`.
 - `text` is 1 to 2,000 characters, plain text, never rendered as HTML. `lines` are 1-based line ranges of the submission's code to highlight, at most 20, each `from <= to`.

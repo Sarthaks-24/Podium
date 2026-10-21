@@ -314,3 +314,32 @@ func TestStudentCoOrganiserNeitherReasonsNorHeldBoard(t *testing.T) {
 		t.Errorf("owner's reveal: %d", code)
 	}
 }
+
+// Opening a case answers with the case (a manual one with copies of the
+// notes), so it is logged as a read of it, as every GET is (C2-036, D97).
+func TestOpeningACaseLogsItsRead(t *testing.T) {
+	w := newIntegrityWorld(t)
+	s := w.s
+	s.at(w.start, 121)
+	run := w.check(w.c1)
+	asha, bilal := w.asha.userID(), w.bilal.userID()
+	sig := similarSignal(t, run, asha, bilal)
+	if code, out := w.owner.do("POST", w.url(w.c1, "/cases"),
+		map[string]any{"title": "Problem A, similar code", "note": "The two programs match token for token.", "signal_ids": []int64{sig}}, s.srv.URL); code != 201 {
+		t.Fatalf("open case: %d %v", code, out)
+	}
+	if a, b := viewsOf(t, s, "case", asha), viewsOf(t, s, "case", bilal); a != 1 || b != 1 {
+		t.Errorf("case views after opening from signals: asha %d, bilal %d, want 1 each", a, b)
+	}
+	var sub int64
+	if err := s.db.QueryRow("SELECT id FROM submissions WHERE user_id = ? AND contest_id = ? ORDER BY id LIMIT 1", w.chen.userID(), w.c1).Scan(&sub); err != nil {
+		t.Fatal(err)
+	}
+	if code, out := w.owner.do("POST", fmt.Sprintf("/api/admin/submissions/%d/case", sub),
+		map[string]any{"title": "Chen, problem A", "note": "Opened to ask about the loop shape."}, s.srv.URL); code != 201 {
+		t.Fatalf("manual case: %d %v", code, out)
+	}
+	if n := viewsOf(t, s, "case", w.chen.userID()); n != 1 {
+		t.Errorf("case views after opening a manual case: %d, want 1", n)
+	}
+}

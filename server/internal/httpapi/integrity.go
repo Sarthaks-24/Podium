@@ -347,7 +347,9 @@ func (d Deps) openIntegrityCase(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	d.Log.Info("integrity case opened", "by", u.ID, "contest_id", c.ID, "case_id", cs.ID, "signals", len(req.SignalIDs))
-	WriteJSON(w, http.StatusCreated, caseJSON{Case: cs, ServerNow: d.serverNow()})
+	if d.logCase(w, r, *cs) {
+		WriteJSON(w, http.StatusCreated, caseJSON{Case: cs, ServerNow: d.serverNow()})
+	}
 }
 
 func (d Deps) getIntegrityCase(w http.ResponseWriter, r *http.Request) {

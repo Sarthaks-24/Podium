@@ -147,7 +147,10 @@ func (d Deps) openManualCase(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	d.Log.Info("integrity case opened", "by", u.ID, "contest_id", cs.ContestID, "case_id", cs.ID, "source", "manual")
-	d.writeCase(w, r, cs, http.StatusCreated)
+	// The answer carries the copied notes: a read of the case (D97).
+	if d.logCase(w, r, *cs) {
+		d.writeCase(w, r, cs, http.StatusCreated)
+	}
 }
 
 func (d Deps) proposeOutcome(w http.ResponseWriter, r *http.Request) {

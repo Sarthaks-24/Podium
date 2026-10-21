@@ -34,6 +34,7 @@ Nothing below is tagged or deployed. The v2 phases were planned as the releases 
 - `tools/deploy.sh` names the release before it asks the guard or builds: the commit's `vX.Y.Z` tag, or `VERSION=vX.Y.Z` for a drill build; anything else, or uncommitted changes, stops at once instead of after the build. `tools/deploy-test.sh` covers it in `make check`.
 - `make package` builds the release tarball without `make check`, for the upgrade drill's build with a never-committed migration.
 - A reviewer who is a student of a case with a classmate can no longer write notes on the classmate's submissions in that contest, open a case from them (which copied the notes), read a manual case about them, see their note counts in the feed, or edit, confirm or decline their rating (D262 on every path). Notes and cases on one's own submission answer 404 instead of 400.
+- Opening a case (from signals or from a submission) is logged as a read of it, as every later read is (D97).
 
 ### Council run 1 fixes (2026-10-21)
 
