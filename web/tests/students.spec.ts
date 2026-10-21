@@ -328,6 +328,8 @@ test.describe('standing and cases', () => {
     await page.getByLabel('Why do you think the decision is wrong?').fill('The fixed answer was a leftover debug line; the real solution runs below it.');
     await page.getByRole('button', { name: 'Send appeal' }).click();
     await expect(page.getByRole('region', { name: 'Decision' }).getByText('Under appeal')).toBeVisible();
+    // The student reads back what they sent (walk 2026-10-21).
+    await expect(page.getByRole('region', { name: 'Decision' })).toContainText('The fixed answer was a leftover debug line; the real solution runs below it.');
     expect(api.appeals[0]).toMatchObject({ case_id: 8 });
   });
 

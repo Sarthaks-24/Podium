@@ -191,6 +191,10 @@
               <h3 class="sub">Your appeal</h3>
               <p><Badge tone={st.tone} text={st.word} /></p>
               <p>{appealSentence(c.appeal)}</p>
+              {#if c.appeal.text}
+                <p class="muted small">You wrote, <MonoDigits text={formatDayTime(c.appeal.created_at)} />:</p>
+                <p class="prose">{c.appeal.text}</p>
+              {/if}
               {#if c.appeal.ruling?.reason}<p class="prose">{c.appeal.ruling.reason}</p>{/if}
             </div>
           {:else if c.can_appeal}
