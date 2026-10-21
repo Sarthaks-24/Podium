@@ -4,7 +4,7 @@
   guard, saves (Ctrl+S or Cmd+S), and runs validation, output generation
   and input generation, polling each every 2 s while the judge has it. The
   sections are components in components/problem/: EditorBar (the sticky
-  status and actions), StatementSection, TestsSection, GeneratorPanel
+  status and actions), EditorNotes, StatementSection, TestsSection, GeneratorPanel
   (from M5, when the server sends a "generator" key), SolutionsSection
   with JudgingSection, EditorFooter, then the validation report,
   RevisionHistory and ModelSolve. Their shared classes are in
@@ -24,6 +24,7 @@
   import EditorFooter from '../components/problem/EditorFooter.svelte';
   import GeneratorPanel from '../components/problem/GeneratorPanel.svelte';
   import EditorBar from '../components/problem/EditorBar.svelte';
+  import EditorNotes from '../components/problem/EditorNotes.svelte';
   import ModelSolve from '../components/problem/ModelSolve.svelte';
   import SolutionsSection from '../components/problem/SolutionsSection.svelte';
   import StatementSection from '../components/problem/StatementSection.svelte';
@@ -40,7 +41,6 @@
     editorStatus,
     fieldKey,
     imagesWithoutAlt,
-    isFailure,
     isPending,
     judgedFieldsChanged,
     previewSamples,
@@ -51,7 +51,6 @@
     toEdit,
     validationResultLine,
     pipelineLine,
-    verdictLabel,
     type Draft,
     type Problem,
     type Validation,
@@ -60,7 +59,8 @@
   import { navigate, setNavigationGuard } from '../lib/router.svelte';
   import { session } from '../lib/session.svelte';
   import { showToast } from '../lib/toast.svelte';
-  import { formatMs, type Generation } from '../lib/workspace';
+  import { type Generation } from '../lib/workspace';
+  import { editorJumps, generationSummary } from '../lib/problemEditor';
 
   let { id }: { id: string } = $props();
 
@@ -132,32 +132,7 @@
   let desk = $state(media('desk').matches);
 
   const genPending = $derived(generation !== null && (generation.state === 'queued' || generation.state === 'running'));
-  const genSummary = $derived.by(() => {
-    const g = generation;
-    if (!g) return null;
-    if (g.state === 'queued' || g.state === 'running') return { tone: 'wait', text: 'Generating outputs', lines: [] as string[] };
-    if (g.error) return { tone: 'bad', text: g.error, lines: [] as string[] };
-    if (g.results.length === 0 && g.compile_output) {
-      return {
-        tone: 'bad',
-        text: 'The reference solution did not compile, so no outputs were generated.',
-        lines: g.compile_output.split('\n').filter((l) => l.trim() !== '').slice(0, 8),
-      };
-    }
-    const problems = g.summary?.problems ?? [];
-    if (problems.length > 0) return { tone: 'bad', text: 'Some outputs were not applied.', lines: problems };
-    const failed = g.results.filter((r) => isFailure(r.verdict));
-    if (failed.length > 0) {
-      return {
-        tone: 'bad',
-        text: `The reference solution failed on ${failed.length} ${failed.length === 1 ? 'test' : 'tests'}, so those outputs are still missing.`,
-        lines: failed.map((r) => `${verdictLabel(r.verdict)} on test ${r.idx}`),
-      };
-    }
-    const slowest = g.results.reduce((m, r) => Math.max(m, r.time_ms), 0);
-    const n = g.summary?.applied ?? g.results.length;
-    return { tone: 'ok', text: `Generated ${n} ${n === 1 ? 'output' : 'outputs'}. Slowest run ${formatMs(slowest)}.`, lines: [] as string[] };
-  });
+  const genSummary = $derived(generationSummary(generation));
 
   const inputPending = $derived(inputGenPending(inputGen));
   const inputReport = $derived(inputGen && problem ? inputGenReport(inputGen, readPlan(problem.plan)) : null);
@@ -196,75 +171,54 @@
 
   // Polling stops for good when the editor goes away.
   let alive = true;
-  let pollTimer: ReturnType<typeof setTimeout> | undefined;
-  let genTimer: ReturnType<typeof setTimeout> | undefined;
-  let inputTimer: ReturnType<typeof setTimeout> | undefined;
 
-  function schedulePoll() {
-    clearTimeout(pollTimer);
-    if (alive && isPending(validation)) pollTimer = setTimeout(poll, POLL_MS);
+  /** Polls one job of the problem every 2 s while `pending` holds; `take` gets each answer. */
+  function poller<T>(path: string, pending: () => boolean, take: (value: T) => void) {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    async function tick() {
+      try {
+        const value = await getJSON<T>(problemPath(id, path));
+        if (!alive) return;
+        take(value);
+      } catch (e) {
+        if (handleSessionError(e)) return;
+        // A failed poll is retried on the next tick.
+      }
+      schedule();
+    }
+    function schedule() {
+      clearTimeout(timer);
+      if (alive && pending()) timer = setTimeout(tick, POLL_MS);
+    }
+    return { tick, schedule, stop: () => clearTimeout(timer) };
   }
 
-  async function poll() {
+  const validationPoll = poller<Validation>('/validation', () => isPending(validation), (v) => {
     const was = validation;
-    try {
-      const v = await getJSON<Validation>(problemPath(id, '/validation'));
-      if (!alive) return;
-      validation = v;
-      if (isPending(was) && !isPending(v)) {
-        justFinished = true;
-        refreshProblem();
-      }
-    } catch (e) {
-      if (handleSessionError(e)) return;
-      // A failed poll is retried on the next tick.
+    validation = v;
+    if (isPending(was) && !isPending(v)) {
+      justFinished = true;
+      refreshProblem();
     }
-    schedulePoll();
-  }
-
-  function scheduleGenPoll() {
-    clearTimeout(genTimer);
-    if (alive && genPending) genTimer = setTimeout(pollGeneration, POLL_MS);
-  }
-
-  async function pollGeneration() {
+  });
+  const genPoll = poller<Generation>('/generation', () => genPending, (g) => {
     const wasPending = genPending;
-    try {
-      const g = await getJSON<Generation>(problemPath(id, '/generation'));
-      if (!alive) return;
-      generation = g;
-      if (wasPending && !(g.state === 'queued' || g.state === 'running')) {
-        refreshProblem();
-        // After generated inputs, the server queues validation next.
-        if (hasGenerator && !isPending(validation)) void poll();
-      }
-    } catch (e) {
-      if (handleSessionError(e)) return;
+    generation = g;
+    if (wasPending && !(g.state === 'queued' || g.state === 'running')) {
+      refreshProblem();
+      // After generated inputs, the server queues validation next.
+      if (hasGenerator && !isPending(validation)) void validationPoll.tick();
     }
-    scheduleGenPoll();
-  }
-
-  function scheduleInputPoll() {
-    clearTimeout(inputTimer);
-    if (alive && inputPending) inputTimer = setTimeout(pollInputGen, POLL_MS);
-  }
-
-  async function pollInputGen() {
+  });
+  const inputPoll = poller<InputGeneration>('/input-generation', () => inputPending, (g) => {
     const wasPending = inputPending;
-    try {
-      const g = await getJSON<InputGeneration>(problemPath(id, '/input-generation'));
-      if (!alive) return;
-      inputGen = g;
-      if (wasPending && !inputGenPending(g)) {
-        refreshProblem();
-        // Output generation follows good inputs; show it and poll it.
-        if (g.summary?.generating_outputs) void pollGeneration();
-      }
-    } catch (e) {
-      if (handleSessionError(e)) return;
+    inputGen = g;
+    if (wasPending && !inputGenPending(g)) {
+      refreshProblem();
+      // Output generation follows good inputs; show it and poll it.
+      if (g.summary?.generating_outputs) void genPoll.tick();
     }
-    scheduleInputPoll();
-  }
+  });
 
   async function refreshProblem() {
     try {
@@ -296,14 +250,14 @@
     try {
       validation = await getJSON<Validation>(problemPath(id, '/validation'));
       if (problem) validation = { ...validation, current: validation.content_hash === problem.content_hash };
-      schedulePoll();
+      validationPoll.schedule();
     } catch (e) {
       if (handleSessionError(e)) return;
       validation = null;
     }
     try {
       generation = await getJSON<Generation>(problemPath(id, '/generation'));
-      scheduleGenPoll();
+      genPoll.schedule();
     } catch (e) {
       if (handleSessionError(e)) return;
       generation = null;
@@ -311,7 +265,7 @@
     if (!hasGenerator) return;
     try {
       inputGen = await getJSON<InputGeneration>(problemPath(id, '/input-generation'));
-      scheduleInputPoll();
+      inputPoll.schedule();
     } catch (e) {
       if (handleSessionError(e)) return;
       inputGen = null;
@@ -336,9 +290,9 @@
     });
     return () => {
       alive = false;
-      clearTimeout(pollTimer);
-      clearTimeout(genTimer);
-      clearTimeout(inputTimer);
+      validationPoll.stop();
+      genPoll.stop();
+      inputPoll.stop();
       removeGuard();
       deskQuery.removeEventListener('change', syncDesk);
     };
@@ -404,7 +358,7 @@
     requesting = true;
     try {
       validation = await sendJSON<Validation>('POST', problemPath(id, '/validate'));
-      schedulePoll();
+      validationPoll.schedule();
     } catch (e) {
       if (handleSessionError(e)) return;
       validateError = { message: errorText(e), problems: e instanceof ApiError ? e.problems : [] };
@@ -420,7 +374,7 @@
     genBusy = true;
     try {
       generation = await sendJSON<Generation>('POST', problemPath(id, '/generate'), { all });
-      scheduleGenPoll();
+      genPoll.schedule();
     } catch (e) {
       if (handleSessionError(e)) return;
       genError = { message: errorText(e), problems: e instanceof ApiError ? e.problems : [] };
@@ -436,7 +390,7 @@
     inputGenBusy = true;
     try {
       inputGen = await sendJSON<InputGeneration>('POST', problemPath(id, '/generate-inputs'));
-      scheduleInputPoll();
+      inputPoll.schedule();
     } catch (e) {
       if (handleSessionError(e)) return;
       inputGenError = { message: errorText(e), problems: e instanceof ApiError ? e.problems : [] };
@@ -502,22 +456,7 @@
     el.focus({ preventScroll: true });
   }
 
-  /** The jump links, each with a short state (A3). */
-  const jumps = $derived.by(() => {
-    if (!problem || !draft) return [];
-    const n = problem.tests.length;
-    const noOutput = problem.tests.filter((t) => t.output_missing).length;
-    const list = [
-      { id: 'details-heading', label: 'Statement', state: '' },
-      { id: 'solutions-heading', label: 'Solutions', state: draft.brute ? 'with brute force' : 'reference only' },
-      { id: 'tests-heading', label: 'Tests', state: n === 0 ? 'none' : noOutput > 0 ? `${noOutput} without output` : String(n) },
-    ];
-    if (hasGenerator) list.push({ id: 'generator-heading', label: 'Generator', state: draft.generator ? '' : 'none' });
-    list.push({ id: 'judging-heading', label: 'Judging', state: draft.validator ? '' : 'no validator' });
-    list.push({ id: 'validation-heading', label: 'Validation', state: '' });
-    list.push({ id: 'history-heading', label: 'History', state: '' });
-    return list;
-  });
+  const jumps = $derived(editorJumps(problem, draft, hasGenerator));
 
   const pageTitle = $derived(
     loadState === 'missing' ? 'Problem not found' : problem ? (problem.title.trim() !== '' ? problem.title : problem.slug) : 'Problem',
@@ -559,46 +498,7 @@
       onreport={showReport}
     />
 
-    {#if problem.archived}
-      <div class="banner banner-info lead">
-        <p>This problem is archived. It is hidden from the bank and kept for the contests that used it.</p>
-      </div>
-    {/if}
-
-    {#if (problem.live_contests ?? []).length > 0}
-      {@const live = problem.live_contests ?? []}
-      <div class="banner banner-info lead live-note">
-        <p>
-          {live.map((c) => c.title).join(', ')}
-          {live.length === 1 ? 'is' : 'are'} live with this problem. A save makes a new revision; students keep the revision their
-          contest pinned until you update the contest on its console.
-        </p>
-        <div class="field reason-field">
-          <label for="reason">Reason for this change</label>
-          <input
-            id="reason"
-            class="input"
-            type="text"
-            maxlength="500"
-            autocomplete="off"
-            bind:value={reason}
-            aria-invalid={fields.reason ? 'true' : undefined}
-            aria-describedby="reason-help{fields.reason ? ' reason-error' : ''}"
-          />
-          <p id="reason-help" class="field-help">Required while a contest is live. It is kept with the revision.</p>
-          {#if fields.reason}<p id="reason-error" class="field-error">{fields.reason}</p>{/if}
-        </div>
-      </div>
-    {/if}
-
-    {#if aiDraft}
-      <div class="banner banner-info lead">
-        <p>
-          The AI assistant wrote this draft. Read the statement, the solutions and the tests before you use it; students see nothing until it
-          is validated and added to a contest. The AI draft tag goes when you save.
-        </p>
-      </div>
-    {/if}
+    <EditorNotes {problem} {aiDraft} bind:reason {fields} />
 
     <div class="page-split editor-split">
       <aside class="page-split-aside" aria-label="Readiness and preview">
@@ -744,16 +644,6 @@
 <style>
   .editor {
     min-width: 0;
-  }
-
-  .reason-field {
-    max-width: var(--measure-form);
-    margin-top: var(--space-3);
-  }
-
-  .lead {
-    margin-top: var(--space-4);
-    max-width: var(--measure-form);
   }
 
   /* The context column sits under the sticky bar, not behind it. */
