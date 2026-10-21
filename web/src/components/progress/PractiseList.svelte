@@ -39,7 +39,7 @@
   {/each}
 </ul>
 {#if rows.length > MAX}
-  <p class="muted small more">{rows.length - MAX} more below full score. They are in the table above.</p>
+  <p class="muted small more">{rows.length - MAX} more below full score. They are under Contests and problems.</p>
 {/if}
 
 <style>

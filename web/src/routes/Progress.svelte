@@ -138,7 +138,12 @@
       };
     }),
   );
-  const topLoss = $derived(data && data.losses.length > 0 ? lossGuidance(data.losses[0].verdict) : '');
+  // The guidance names the verdict it is about (C2-062).
+  const topLoss = $derived.by(() => {
+    const first = data?.losses[0];
+    const advice = first ? lossGuidance(first.verdict) : '';
+    return first && advice ? `Most points went on ${verdictWords(first.verdict)}. ${advice}` : '';
+  });
 
   const hidden = $derived(!organiser && data?.hide_progress === true);
 

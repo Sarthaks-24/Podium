@@ -81,7 +81,8 @@ test.describe('your progress', () => {
     // Losses: words, not verdict colours, and one line of guidance under the largest.
     const losses = page.getByRole('region', { name: 'Where points were lost' });
     await expect(losses.locator('dt').first()).toHaveText('Wrong answer');
-    await expect(losses.getByText('Check edge cases')).toBeVisible();
+    await expect(losses.locator('.guidance')).toHaveText(/^Most points went on wrong answer. Your output differs/);
+    await expect(losses.getByText('Check edge cases', { exact: false })).toBeVisible();
 
     // Practise next: a link button when practice is open, a muted line when not.
     const practise = page.getByRole('region', { name: 'Practise next' });
