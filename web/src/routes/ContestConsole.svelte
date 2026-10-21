@@ -26,7 +26,7 @@
   - Time: extend the contest for everyone (the confirmation names the new
     end), extra minutes for one student with a reason, and "End the
     contest now", which says its effect before it sets the end to now.
-  - Problem versions, folded unless an update is available (C4, F10.1),
+  - Problem revisions, folded unless an update is available (C4, F10.1),
     and Changes, every action that can change results (extra time says
     whether a reason was written, v1.4.0; a review decision that changed
     the board is listed too).
@@ -137,7 +137,7 @@
   let auditActor = $state('');
   const AUDIT_SHOWN = 10;
 
-  // Problem versions.
+  // Problem revisions.
   let pinNote = $state('');
 
   // Private notes and manual cases (F9.3).
@@ -166,7 +166,7 @@
   const attention = $derived(contest ? attentionItems(contest, ticker.now, unanswered) : []);
   const running = $derived(contest !== null && ticker.now >= contest.starts_at && ticker.now < closeAt);
   const updateWaiting = $derived((contest?.problems ?? []).some((p) => p.update_available || p.toolchain_drift));
-  /** Problem versions stay folded until an update or a toolchain change needs them; they never fold by themselves. */
+  /** Problem revisions stay folded until an update or a toolchain change needs them; they never fold by themselves. */
   let versionsOpen = $state(false);
   $effect(() => {
     if (updateWaiting) versionsOpen = true;
@@ -954,7 +954,7 @@
       <section class="panel" aria-labelledby="versions-title">
         <details class="versions-box" bind:open={versionsOpen}>
           <summary>
-            <h2 id="versions-title" class="summary-title">Problem versions <Icon name="chevron-down" /></h2>
+            <h2 id="versions-title" class="summary-title">Problem revisions <Icon name="chevron-down" /></h2>
             <span class="muted small">{updateWaiting ? 'An update is available.' : 'Every problem is on its pinned revision.'}</span>
           </summary>
           <p class="muted small">Students are served the revision each problem is pinned to. An edit in the problem bank reaches them only when you update the contest here.</p>

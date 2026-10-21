@@ -30,6 +30,8 @@ test('the problem editor lists revisions and compares one with the one before', 
   await expect(rows.nth(0)).toContainText('Statement changed. Validated.');
   await expect(rows.nth(0)).toContainText('Reason: Fix the bound on n in the statement.');
   await expect(rows.nth(1)).toContainText('Pinned in week-6 (problem A)');
+  // The contest it is pinned in is a link (C2-065).
+  await expect(rows.nth(1).getByRole('link', { name: 'week-6' })).toHaveAttribute('href', '/admin/contests/4');
   await expect(rows.nth(2)).toContainText('made by the server');
   await expect(rows.nth(2).getByRole('button')).toHaveCount(0);
 
@@ -69,7 +71,7 @@ test('the console moves a problem to a new revision and offers the announcement'
   const api = await contests.mockApi(page, { who: 'admin', phase: 'during', updateAvailable: true });
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto('/admin/contests/4/console');
-  const versions = page.getByRole('region', { name: 'Problem versions' });
+  const versions = page.getByRole('region', { name: 'Problem revisions' });
   await expect(versions).toContainText('A plus B, revision 2');
   await expect(versions).toContainText('Revision 3 is validated and changes only the statement.');
   await versions.getByRole('button', { name: 'Update contest to revision 3' }).click();
