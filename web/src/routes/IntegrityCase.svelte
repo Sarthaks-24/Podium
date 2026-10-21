@@ -310,7 +310,9 @@
   async function openProposal() {
     proposing = true;
     outcome = '';
-    problemLabel = '';
+    // Evidence on one problem names it already (walk 2026-10-21).
+    const evidenceLabels = [...new Set((kase?.evidence ?? []).map((e) => run?.problems?.[String(e.problem_id)]?.label).filter((l): l is string => !!l))];
+    problemLabel = evidenceLabels.length === 1 ? evidenceLabels[0] : '';
     forUsers = (kase?.users ?? []).map((u) => u.user_id);
     studentReason = '';
     proposalErrors = { outcome: '', problem: '', users: '', reason: '' };

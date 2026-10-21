@@ -238,6 +238,9 @@ test("a case is shared with a note, an outcome waits for the students' turn, and
   await expect(form.getByText('Choose an outcome.')).toBeVisible();
   await expect(form.getByText('Write the reason the student reads first.')).toBeVisible();
   await form.getByLabel(/Zero for one problem/).check();
+  // The evidence is all on B, so B is already chosen (walk 2026-10-21); clearing it is refused.
+  await expect(form.getByLabel('Problem', { exact: true })).toHaveValue('B');
+  await form.getByLabel('Problem', { exact: true }).selectOption('');
   await form.getByRole('button', { name: 'Propose the outcome' }).click();
   await expect(form.getByText('Choose the problem that scores zero.')).toBeVisible();
   await form.getByLabel('Problem', { exact: true }).selectOption('B');
