@@ -5,7 +5,8 @@
   not a live region of its own; each
   error toast has role="alert" and a Dismiss button, because errors do not
   go away on their own, and sits outside the polite region so it is
-  announced once. At most three show (lib/toast.svelte.ts).
+  announced once. Errors stay however many there are; info toasts fill the
+  rest of three (lib/toast.svelte.ts).
   The stack lets clicks through to the page; only an error toast, which has
   a button, takes them. Toasts appear at --dur with a short rise, and
   without motion when reduced motion is requested. Takes no props.

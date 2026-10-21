@@ -4,9 +4,10 @@
  * Info toasts dismiss themselves after TOAST_MS and are spoken through the
  * app's polite announcer (lib/announce.svelte.ts, X1), which is always in
  * the page, so the first toast is read too. Error toasts stay until the
- * person dismisses them, so an error is never missed. At most MAX_TOASTS
- * show at once: a new toast replaces the oldest, so a busy console never
- * stacks them over its controls.
+ * person dismisses them, so an error is never missed: the cap never
+ * removes one. Info toasts fill what is left of MAX_TOASTS (at least one),
+ * a new one replacing the oldest, so a busy console never stacks them over
+ * its controls.
  */
 
 import { polite } from './announce.svelte';
@@ -39,10 +40,22 @@ export function dismissToast(id: number): void {
   toasts.items = toasts.items.filter((t) => t.id !== id);
 }
 
+/** Every error toast, and the newest info toasts that fit beside them. */
+function capped(items: Toast[]): Toast[] {
+  const errors = items.filter((t) => t.kind === 'error').length;
+  const keep = new Set(
+    items
+      .filter((t) => t.kind !== 'error')
+      .slice(-Math.max(1, MAX_TOASTS - errors))
+      .map((t) => t.id),
+  );
+  return items.filter((t) => t.kind === 'error' || keep.has(t.id));
+}
+
 /** Shows a toast and returns its id. */
 export function showToast(message: string, kind: ToastKind = 'info'): number {
   const id = nextId++;
-  toasts.items = [...toasts.items, { id, kind, message }].slice(-MAX_TOASTS);
+  toasts.items = capped([...toasts.items, { id, kind, message }]);
   if (kind === 'info') {
     polite(message);
     setTimeout(() => dismissToast(id), TOAST_MS);
