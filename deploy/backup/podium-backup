@@ -162,6 +162,14 @@ for d in "$dest"/20*; do
   fi
 done
 
+# A schema rollback keeps the database it replaced beside the live one
+# (install.sh rollback); those age out like backups (council C1-047).
+dbdir=$(dirname "$db")
+while IFS= read -r old; do
+  as_podium rm -rf "$old"
+  echo "podium-backup: removed $old, kept from a rollback more than $keep days ago"
+done < <(as_podium find "$(dirname "$dbdir")" -maxdepth 1 -type d -name "$(basename "$dbdir").before-rollback-*" -mtime +"$keep" 2>/dev/null)
+
 size=$(as_podium du -sh "$final/podium.db" | cut -f1)
 files=$(as_podium find "$final/tests" -type f | wc -l)
 count=$(as_podium find "$dest" -maxdepth 1 -name '20*' -type d | wc -l)

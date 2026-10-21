@@ -99,6 +99,19 @@ else
   fail "cmd_rollback must recreate the database folder with mode 2770"
 fi
 
+# A schema rollback says which erasures it undoes and writes them down
+# again (C1-047); the nightly backup prunes old pre-rollback folders.
+if grep -q "action = 'user_forgotten' AND at >= \$upgraded_ms" <<<"$rb" && grep -q 'podium-rollback-forget-' <<<"$rb"; then
+  pass "rollback lists the forget-user erasures it undoes"
+else
+  fail "cmd_rollback must list user_forgotten rows newer than the backup"
+fi
+if grep -q 'before-rollback-\*" -mtime +"\$keep"' "$here/../deploy/backup/podium-backup"; then
+  pass "podium-backup prunes db.before-rollback-* after the keep days"
+else
+  fail "podium-backup must prune db.before-rollback-* folders"
+fi
+
 # The rsync copy runs as root with root's key, never as podium (C1-046).
 backup="$here/../deploy/backup/podium-backup"
 if grep -q 'as_podium rsync' "$backup"; then

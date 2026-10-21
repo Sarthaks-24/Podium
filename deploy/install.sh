@@ -746,9 +746,12 @@ cmd_rollback() {
   else
     log "rollback to $prev_release: the upgrade applied migrations$newer, which the previous server refuses"
     [[ -n $backup && -f $backup/podium.db ]] || die "the pre-upgrade backup $backup is gone; restore by hand (docs/RUNBOOK.md, Restoring from a backup)"
-    local subs="unknown"
+    local subs="unknown" forgotten=""
     if [[ -n $upgraded_ms ]]; then
       subs=$(runuser -u podium -- sqlite3 -readonly "$db" "SELECT count(*) FROM submissions WHERE created_at >= $upgraded_ms" 2>/dev/null || echo unknown)
+      # Erasures since the backup come back with it (council C1-047).
+      forgotten=$(runuser -u podium -- sqlite3 -readonly "$db" "SELECT coalesce(json_extract(details, '\$.user_id'), 0) FROM site_audit
+        WHERE action = 'user_forgotten' AND at >= $upgraded_ms" 2>/dev/null || true)
     fi
     cat <<EOF
 
@@ -759,6 +762,14 @@ Everything written since that backup started is lost, the upgrade included:
   announcement and setting change made since then.
 The current database is kept as $(dirname "$db").before-rollback-<time>.
 EOF
+    if [[ -n $forgotten ]]; then
+      cat <<EOF
+$(wc -l <<<"$forgotten") account erasures (podium-server forget-user) were made since that backup.
+The restore brings those people's data back. After the rollback, this
+script writes the forget-user commands to run again to a file only root
+can read, and prints its name.
+EOF
+    fi
     local answer
     read -r -p "Type ROLLBACK to restore that backup and the previous release: " answer
     [[ $answer == ROLLBACK ]] || die "nothing changed"
@@ -792,6 +803,25 @@ EOF
     systemctl start podium-litestream.service || true
     rm -rf "$work"
     echo "restored $backup; Litestream starts a new history from it"
+    if [[ -n $forgotten ]]; then
+      local redo=/var/tmp/podium-rollback-forget-$stamp.txt ids owner
+      ids=$(grep -E '^[1-9][0-9]*$' <<<"$forgotten" | paste -sd, - || true)
+      owner=$(envval /etc/podium/server.env PODIUM_OWNER_EMAIL)
+      (
+        umask 077
+        {
+          echo "# Erasures undone by the rollback of $stamp. Run each line again (it is a dry run without -apply)."
+          if [[ -n $ids ]]; then
+            runuser -u podium -- sqlite3 -readonly "$db" "SELECT email FROM users WHERE id IN ($ids)" 2>/dev/null \
+              | while read -r e; do printf 'sudo -u podium podium-server forget-user -db %q -owner %q -apply %q\n' "$db" "$owner" "$e"; done
+          fi
+          if grep -qx 0 <<<"$forgotten"; then
+            echo "# Some erasures were of roster entries only (no account): find them in your records and erase them again."
+          fi
+        } > "$redo"
+      )
+      echo "erasures to apply again: $redo (root only; it holds email addresses)"
+    fi
   fi
   # The previous release is now the current one; there is nothing further
   # back to roll to.
