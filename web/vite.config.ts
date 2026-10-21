@@ -9,7 +9,9 @@ import { privacyBodyHtml } from './src/lib/privacyBody.ts';
 declare const process: { env: Record<string, string | undefined> };
 
 // The Go server listens here during development (`make dev`).
-const apiTarget = 'http://127.0.0.1:8080';
+// PODIUM_DEV_API points Vite at a second stack on other ports (tools/dev-stack.sh
+// with PODIUM_LISTEN), for example http://127.0.0.1:8097.
+const apiTarget = process.env.PODIUM_DEV_API || 'http://127.0.0.1:8080';
 
 /**
  * Writes dist/routes.json from the route table in src/lib/routing.ts

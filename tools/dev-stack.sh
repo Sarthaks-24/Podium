@@ -17,6 +17,9 @@
 # tests:
 #   PODIUM_LISTEN        server address (default 127.0.0.1:8080)
 #   PODIUM_JUDGE_LISTEN  judge API address (default 127.0.0.1:8081)
+#   PODIUM_BASE_URL      the web app's address (default http://localhost:5173);
+#                        set it when Vite runs on another port, since the
+#                        server refuses requests from any other origin
 #   PODIUM_LOG_LEVEL     both services (default info)
 #   PODIUM_DEV_CPUS      pin both services to these CPUs (taskset list such
 #                        as 0-1), to approximate a small VM
@@ -27,6 +30,7 @@ state=${PODIUM_DEV_STATE:-/var/tmp/podium-dev}
 listen=${PODIUM_LISTEN:-127.0.0.1:8080}
 judge_listen=${PODIUM_JUDGE_LISTEN:-127.0.0.1:8081}
 level=${PODIUM_LOG_LEVEL:-info}
+base_url=${PODIUM_BASE_URL:-http://localhost:5173}
 die() { printf 'dev-stack.sh: %s\n' "$*" >&2; exit 1; }
 [[ $EUID -eq 0 ]] || die "run as root (it drops to the podium and judge users)"
 id judge >/dev/null 2>&1 || die "user judge missing; run: sudo deploy/install.sh packages isolate users"
@@ -45,7 +49,7 @@ install -m 755 "$bin/podium-judge" "$state/podium-judge"
 
 trap 'kill 0 2>/dev/null' EXIT INT TERM
 "${pin[@]}" runuser -u "$server_user" -- env -i PATH=/usr/bin:/bin PODIUM_MODE=testing \
-  PODIUM_LISTEN="$listen" PODIUM_JUDGE_LISTEN="$judge_listen" PODIUM_LOG_LEVEL="$level" \
+  PODIUM_BASE_URL="$base_url" PODIUM_LISTEN="$listen" PODIUM_JUDGE_LISTEN="$judge_listen" PODIUM_LOG_LEVEL="$level" \
   PODIUM_DB_PATH="$state/server/podium.db" PODIUM_TESTS_DIR="$state/server/tests" \
   "$state/podium-server" &
 sleep 1
@@ -54,5 +58,5 @@ sleep 1
   PODIUM_JUDGE_CACHE_DIR="$state/judge/cache" PODIUM_JUDGE_LANES=2 \
   "$state/podium-judge" work &
 printf '\npodium testing stack: server on %s, judge API on %s, state in %s\n' "$listen" "$judge_listen" "$state"
-printf 'Open http://localhost:5173 and sign in with any email. Ctrl+C stops everything.\n\n'
+printf 'Open %s and sign in with any email. Ctrl+C stops everything.\n\n' "$base_url"
 wait

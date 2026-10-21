@@ -5,10 +5,15 @@
 // Run with: npm run test:live
 import { defineConfig, devices } from '@playwright/test';
 
+// Node's process, declared here as in vite.config.ts.
+declare const process: { env: Record<string, string | undefined> };
+
 // The server's testing-mode base URL is http://localhost:5173, and its
 // cross-site check refuses any other origin, so the live run uses that port
-// (reusing the Vite that `make dev-test` started, if any).
-const port = 5173;
+// (reusing the Vite that `make dev-test` started, if any). A second stack on
+// side ports sets PODIUM_LIVE_PORT to its PODIUM_BASE_URL port and
+// PODIUM_DEV_API to its server (tools/dev-stack.sh).
+const port = Number(process.env.PODIUM_LIVE_PORT || 5173);
 
 export default defineConfig({
   testDir: './tests-live',
