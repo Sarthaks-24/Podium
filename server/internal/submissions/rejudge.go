@@ -112,6 +112,9 @@ func (s *Service) Rejudge(ctx context.Context, r RejudgeRequest) (int, error) {
 		if p == nil {
 			continue
 		}
+		if err := checkPin(ctx, tx, p, t.revision); err != nil {
+			return 0, err
+		}
 		pl := submitPayload(p, t.id, judgeapi.Program{Language: t.language, SourceSHA: t.source})
 		pl.StopOnSampleFail = !r.NoStopOnSample
 		// The reveal was decided when the submission was made, by who made

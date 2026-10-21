@@ -357,3 +357,41 @@ func TestEventsAreBounded(t *testing.T) {
 		t.Errorf("events stored: %d", n)
 	}
 }
+
+// A save between the contest's Ready check and the load: the loaded copy
+// is no longer the pinned revision, so submit, run and rejudge refuse
+// instead of judging new tests under the old revision's name (C1-045).
+func TestPinMovedAfterTheReadyCheck(t *testing.T) {
+	r := newRig(t)
+	ctx := context.Background()
+	p := r.importPack(t, nil)
+	var rev int64
+	if err := r.svc.DB.QueryRow("SELECT id FROM problem_revisions WHERE problem_id = ? AND content_hash = ?", p.ID, p.ContentHash).Scan(&rev); err != nil {
+		t.Fatalf("pinned revision: %v", err)
+	}
+	if _, err := r.svc.DB.Exec(`INSERT INTO contests (id, slug, title, starts_at, ends_at, created_at, updated_at) VALUES (1, 'c', 'C', 0, 1, 0, 0)`); err != nil {
+		t.Fatal(err)
+	}
+	sc := Scope{ContestID: 1, RevisionID: rev}
+	req := SubmitRequest{ProblemID: p.ID, UserID: 2, Scope: sc, Language: "cpp17", Source: "int main(){}", ClientKey: "k1"}
+	if _, _, err := r.svc.Submit(ctx, req); err != nil {
+		t.Fatalf("submit on the pinned copy: %v", err)
+	}
+	// The working copy moves on (as a save would).
+	if _, err := r.svc.DB.Exec("UPDATE problems SET content_hash = 'saved-after-ready' WHERE id = ?", p.ID); err != nil {
+		t.Fatal(err)
+	}
+	req.ClientKey = "k2"
+	if _, _, err := r.svc.Submit(ctx, req); !errors.Is(err, ErrPinMoved) {
+		t.Errorf("submit after the save: %v, want ErrPinMoved", err)
+	}
+	if _, err := r.svc.Run(ctx, RunRequest{ProblemID: p.ID, UserID: 2, Scope: sc, Language: "cpp17", Source: "int main(){}"}); !errors.Is(err, ErrPinMoved) {
+		t.Errorf("run after the save: %v, want ErrPinMoved", err)
+	}
+	if _, err := r.svc.DB.Exec(`INSERT INTO contest_problems (contest_id, problem_id, label, ord, revision_id) VALUES (1, ?, 'A', 0, ?)`, p.ID, rev); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := r.svc.Rejudge(ctx, RejudgeRequest{ContestID: 1, ProblemID: p.ID, By: 1}); !errors.Is(err, ErrPinMoved) {
+		t.Errorf("rejudge after the save: %v, want ErrPinMoved", err)
+	}
+}

@@ -40,6 +40,8 @@ func (d Deps) submissionError(w http.ResponseWriter, r *http.Request, err error)
 	switch {
 	case errors.Is(err, submissions.ErrNotFound):
 		WriteError(w, http.StatusNotFound, "not_found", "There is no such problem or submission.")
+	case errors.Is(err, submissions.ErrPinMoved):
+		WriteError(w, http.StatusConflict, "not_ready", err.Error())
 	case errors.As(err, &notReady):
 		WriteJSON(w, http.StatusConflict, map[string]APIError{"error": {Code: "not_ready",
 			Message: "This problem cannot be judged yet. An organiser needs to fix these first.", Problems: notReady.Problems}})

@@ -45,6 +45,11 @@ const (
 // Errors the API maps to status codes.
 var (
 	ErrNotFound = errors.New("not found")
+	// ErrPinMoved refuses a submit, run or rejudge whose problem changed
+	// after the contest's Ready check, so the judged tests would not be
+	// the pinned revision's (council C1-045). The words are contests'
+	// ErrNotReady's, for a student.
+	ErrPinMoved = errors.New("This problem is being updated by the organisers. Try again in a few minutes.")
 )
 
 // InputError is a request the student can fix (400).
@@ -375,6 +380,9 @@ func (s *Service) Submit(ctx context.Context, r SubmitRequest) (v *SubmissionVie
 		return nil, false, err
 	}
 	defer tx.Rollback()
+	if err := checkPin(ctx, tx, p, r.Scope.RevisionID); err != nil {
+		return nil, false, err
+	}
 	if r.ClientKey != "" {
 		var id int64
 		err := tx.QueryRowContext(ctx, `SELECT id FROM submissions WHERE user_id = ? AND problem_id = ? AND coalesce(contest_id, 0) = ?
@@ -507,6 +515,27 @@ type NotReadyError struct{ Problems []string }
 // Error joins the reasons.
 func (e *NotReadyError) Error() string { return strings.Join(e.Problems, " ") }
 
+// checkPin refuses, inside the transaction, a problem whose loaded copy
+// is not the revision the contest pins: a save between the Ready check
+// and the load would otherwise judge new tests under the old revision's
+// name. Outside a contest pin (revision 0) there is nothing to check.
+func checkPin(ctx context.Context, tx *sql.Tx, p *problems.Problem, revisionID int64) error {
+	if revisionID <= 0 {
+		return nil
+	}
+	var hash string
+	if err := tx.QueryRowContext(ctx, "SELECT content_hash FROM problem_revisions WHERE id = ?", revisionID).Scan(&hash); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return ErrPinMoved
+		}
+		return err
+	}
+	if hash != p.ContentHash {
+		return ErrPinMoved
+	}
+	return nil
+}
+
 // problemForJudging loads a problem that can be judged: tests, samples
 // and subtasks fit together and every test has its expected output.
 // (Contests also require validation, M4; organisers may try an
@@ -585,6 +614,9 @@ func (s *Service) Run(ctx context.Context, r RunRequest) (*RunView, error) {
 		return nil, err
 	}
 	defer tx.Rollback()
+	if err := checkPin(ctx, tx, p, r.Scope.RevisionID); err != nil {
+		return nil, err
+	}
 	var pending int
 	if err := tx.QueryRowContext(ctx, `SELECT count(*) FROM submissions WHERE user_id = ? AND kind = 'run' AND state IN ('queued', 'running')`,
 		r.UserID).Scan(&pending); err != nil {
