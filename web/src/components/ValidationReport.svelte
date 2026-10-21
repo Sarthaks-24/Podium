@@ -83,7 +83,7 @@
           {#each section.lines as line, i (i)}
             <li class="line tone-{line.tone}">
               <span>{line.text}</span>
-              {#if line.detail}<pre class="detail">{line.detail}</pre>{/if}
+              {#if line.detail}<pre class="detail" translate="no">{line.detail}</pre>{/if}
               {#if line.guidance}<p class="guidance">{line.guidance}</p>{/if}
             </li>
           {/each}

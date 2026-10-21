@@ -112,6 +112,25 @@ test('submitting fills the subtask strip as results stream in', async ({ page })
   await expect(rows.nth(1)).toHaveAttribute('aria-expanded', 'true');
 });
 
+test('the subtask fill grows by transform, and reduced motion stills it (M4)', async ({ page }) => {
+  await mockApi(page, { submissions: [submission(7, 'partial')] });
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await openWorkspace(page);
+  const fill = page.locator('.strip .fill').first();
+  await expect(fill).toHaveClass(/tone-ok/);
+  const moving = await fill.evaluate((el) => {
+    const st = getComputedStyle(el);
+    return { property: st.transitionProperty, transform: st.transform };
+  });
+  expect(moving.property).toContain('transform');
+  expect(moving.property).not.toContain('width');
+  expect(moving.transform).toMatch(/^matrix\(/);
+
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  expect(Number.parseFloat(await fill.evaluate((el) => getComputedStyle(el).transitionDuration))).toBeLessThan(0.001);
+  await page.screenshot({ path: `${shots()}workspace-reduced-motion-1440-light.png` });
+});
+
 test('running on samples shows the first difference', async ({ page }) => {
   const api = await mockApi(page);
   await page.setViewportSize({ width: 1440, height: 900 });

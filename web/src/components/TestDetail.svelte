@@ -45,7 +45,7 @@
   {#if input !== null}
     <div class="out">
       <p class="label">Input</p>
-      <pre>{input}</pre>
+      <pre translate="no">{input}</pre>
     </div>
   {/if}
 
@@ -66,12 +66,12 @@
     {#if expected !== null}
       <div class="out">
         <p class="label">Expected</p>
-        <pre>{expected}</pre>
+        <pre translate="no">{expected}</pre>
       </div>
     {/if}
     <div class="out">
       <p class="label">Your output</p>
-      <pre>{output}</pre>
+      <pre translate="no">{output}</pre>
       {#if outputCut && !cut}<p class="hint">Only the first 4 KB is shown.</p>{/if}
     </div>
   </div>

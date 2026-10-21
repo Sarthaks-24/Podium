@@ -91,7 +91,7 @@
                     {copied === key ? 'Copied' : 'Copy'}
                   </button>
                 </div>
-                <pre>{part.text}</pre>
+                <pre translate="no">{part.text}</pre>
               </div>
             {/each}
           </div>

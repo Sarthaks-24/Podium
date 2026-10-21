@@ -123,6 +123,7 @@
       <input
         id="case-title"
         aria-required="true"
+        autocomplete="off"
         class="input"
         maxlength={MAX_TITLE}
         bind:value={title}

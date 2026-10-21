@@ -150,6 +150,8 @@ export function createEditor(o: EditorOptions): EditorHandle {
     EditorView.contentAttributes.of({
       'aria-label': label,
       'aria-multiline': 'true',
+      // Browser translation must never rewrite code (final audit 2026-10-21).
+      translate: 'no',
       ...(o.describedBy ? { 'aria-describedby': o.describedBy } : {}),
     });
 

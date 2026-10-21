@@ -27,7 +27,7 @@
 
 <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
 <div class="well" role="region" aria-label="{label}, {lines.length} {lines.length === 1 ? 'line' : 'lines'}, {passages} shared {passages === 1 ? 'passage' : 'passages'}" tabindex="0">
-  <pre class="code"><code>{#each lines as line (line.number)}<span class="line" class:hit={line.matched}><span class="ln" aria-hidden="true">{line.number}</span><span class="src">{#each line.segments as seg, i (i)}{#if seg.mark}{#if seg.opens}<span class="visually-hidden">Shared passage starts. </span>{/if}<mark>{seg.text}</mark>{#if seg.closes}<span class="visually-hidden"> Shared passage ends.</span>{/if}{:else}{seg.text}{/if}{/each}</span></span>{/each}</code></pre>
+  <pre class="code" translate="no"><code>{#each lines as line (line.number)}<span class="line" class:hit={line.matched}><span class="ln" aria-hidden="true">{line.number}</span><span class="src">{#each line.segments as seg, i (i)}{#if seg.mark}{#if seg.opens}<span class="visually-hidden">Shared passage starts. </span>{/if}<mark>{seg.text}</mark>{#if seg.closes}<span class="visually-hidden"> Shared passage ends.</span>{/if}{:else}{seg.text}{/if}{/each}</span></span>{/each}</code></pre>
 </div>
 
 <style>

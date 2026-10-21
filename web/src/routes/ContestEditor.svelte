@@ -834,12 +834,12 @@
           <div class="grid">
             <div class="field">
               <label for="f-title">Title</label>
-              <input id="f-title" aria-required="true" class="input" type="text" bind:value={form.title} aria-invalid={fields.title ? 'true' : undefined} aria-describedby={fields.title ? 'f-title-error' : undefined} />
+              <input id="f-title" aria-required="true" class="input" type="text" autocomplete="off" bind:value={form.title} aria-invalid={fields.title ? 'true' : undefined} aria-describedby={fields.title ? 'f-title-error' : undefined} />
               {@render err('title')}
             </div>
             <div class="field">
               <label for="f-slug">Slug</label>
-              <input id="f-slug" aria-required="true" class="input mono" type="text" spellcheck="false" bind:value={form.slug} aria-invalid={fields.slug ? 'true' : undefined} aria-describedby={fields.slug ? 'f-slug-error' : undefined} />
+              <input id="f-slug" aria-required="true" class="input mono" type="text" autocomplete="off" spellcheck="false" bind:value={form.slug} aria-invalid={fields.slug ? 'true' : undefined} aria-describedby={fields.slug ? 'f-slug-error' : undefined} />
               {@render err('slug')}
             </div>
           </div>
@@ -1149,7 +1149,7 @@
           <form class="row" novalidate onsubmit={addAdmin}>
             <div class="field grow">
               <label for="admin-email">Email</label>
-              <input id="admin-email" aria-required="true" class="input" type="email" autocomplete="off" bind:value={adminEmail} aria-invalid={adminError ? 'true' : undefined} aria-describedby={adminError ? 'admin-error' : undefined} />
+              <input id="admin-email" aria-required="true" class="input" type="email" autocomplete="off" spellcheck="false" bind:value={adminEmail} aria-invalid={adminError ? 'true' : undefined} aria-describedby={adminError ? 'admin-error' : undefined} />
               {#if adminError}<p id="admin-error" class="field-error">{adminError}</p>{/if}
             </div>
             <button type="submit" class="btn btn-secondary">Add co-organiser</button>
@@ -1163,7 +1163,7 @@
           <form id="clone-form" class="grid" novalidate onsubmit={cloneContest}>
             <div class="field">
               <label for="clone-slug">New slug</label>
-              <input id="clone-slug" aria-required="true" class="input mono" type="text" bind:value={cloneSlug} aria-invalid={cloneField === 'slug' ? 'true' : undefined} aria-describedby={cloneField === 'slug' ? 'clone-error' : undefined} />
+              <input id="clone-slug" aria-required="true" class="input mono" type="text" autocomplete="off" spellcheck="false" bind:value={cloneSlug} aria-invalid={cloneField === 'slug' ? 'true' : undefined} aria-describedby={cloneField === 'slug' ? 'clone-error' : undefined} />
             </div>
             <div class="field">
               <label for="clone-start">Starts</label>

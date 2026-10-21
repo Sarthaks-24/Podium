@@ -285,7 +285,7 @@ export const SCREENS: Screen[] = [
     who: 'owner',
     title: 'People · podium',
     ready: async (page) => {
-      await expect(page.getByRole('table')).toBeVisible();
+      await expect(page.getByRole('table').first()).toBeVisible();
       await expect(page.getByText('Made ta@college.edu an admin')).toBeVisible();
     },
   },

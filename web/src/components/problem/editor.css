@@ -124,7 +124,8 @@
   }
 }
 
-/* Fields scrolled to from the error list clear the sticky bar. */
+/* Fields scrolled to from the error list keep their label in view; the
+   sticky bar's own height is the page's scroll padding (EditorBar). */
 .editor :is(input, select, textarea) {
-  scroll-margin-top: 10rem;
+  scroll-margin-top: var(--space-7);
 }

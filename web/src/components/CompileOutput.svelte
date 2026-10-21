@@ -22,7 +22,7 @@
   const parts = $derived(segments(output, language));
 </script>
 
-<pre class="output">{#each parts as part, i (i)}{#if typeof part === 'string'}{part}{:else if onjump}<button
+<pre class="output" translate="no">{#each parts as part, i (i)}{#if typeof part === 'string'}{part}{:else if onjump}<button
         type="button"
         class="jump"
         aria-label="{part.text}, go to line {part.line}{part.col !== null ? `, column ${part.col}` : ''} in the editor"

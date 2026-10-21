@@ -292,7 +292,7 @@
                 <td class="file-cell">
                   <span class="cell-label">Input</span>
                   <span class="size">{formatBytes(t.input_size)}</span>
-                  <pre class="peek">{t.input_preview}</pre>
+                  <pre class="peek" translate="no">{t.input_preview}</pre>
                 </td>
                 <td class="file-cell">
                   <span class="cell-label">Output</span>
@@ -300,7 +300,7 @@
                     <span class="missing-word">Output missing</span>
                   {:else}
                     <span class="size">{formatBytes(t.output_size)}</span>
-                    <pre class="peek">{t.output_preview}</pre>
+                    <pre class="peek" translate="no">{t.output_preview}</pre>
                   {/if}
                 </td>
                 <td class="downloads">
