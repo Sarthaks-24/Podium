@@ -52,6 +52,12 @@ describe('attentionItems', () => {
     expect(old.map((i) => i.key)).toEqual(['time', 'freeze', 'judging', 'questions']);
   });
 
+  it('names a problem whose newer revision students do not have yet (walk 2026-10-21)', () => {
+    const items = attentionItems({ ...base, problems: [{ ...base.problems[0], update_available: true }, { ...base.problems[1] }] }, T, 0);
+    expect(items.find((i) => i.key === 'update')).toMatchObject({ text: 'Problem A has a newer revision for students', tone: 'part', href: '#versions-title' });
+    expect(attentionItems(base, T, 0).find((i) => i.key === 'update')).toBeUndefined();
+  });
+
   it('counts down to the start before it and says Ended after the close', () => {
     expect(attentionItems(base, T - 40 * MIN, 0)[0].text).toBe('Starts in 00:10:00');
     expect(attentionItems({ ...base, close_at: T + 100 * MIN }, T + 95 * MIN, 0)[0].text).toBe('Ends in 00:05:00');

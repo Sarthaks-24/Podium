@@ -950,6 +950,17 @@ export function attentionItems(
       href: '#versions-title',
     });
   }
+
+  // A saved edit reaches students only through the console (walk 2026-10-21).
+  const waiting = c.problems.filter((p) => p.update_available).map((p) => p.label);
+  if (waiting.length > 0) {
+    out.push({
+      key: 'update',
+      text: `${waiting.length === 1 ? `Problem ${waiting[0]} has` : `Problems ${waiting.join(', ')} have`} a newer revision for students`,
+      tone: 'part',
+      href: '#versions-title',
+    });
+  }
   return out;
 }
 

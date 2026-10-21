@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { NOT_FOUND, internalHref, matchRoute, type ClickLike, type RouteDef } from './routing';
+import { NOT_FOUND, internalHref, matchRoute, revealHash, type ClickLike, type RouteDef } from './routing';
 
 describe('matchRoute', () => {
   it('matches the known screens', () => {
@@ -110,5 +110,38 @@ describe('internalHref', () => {
     const here = { path: '/admin/people', search: '' };
     expect(internalHref(plain, link('#main'), origin, here)).toBeNull();
     expect(internalHref(plain, link('/#main'), origin, here)).toBe('/#main');
+  });
+});
+
+describe('revealHash', () => {
+  it('waits for a screen that draws the target after it loads, then scrolls to it', () => {
+    const timers: (() => void)[] = [];
+    let drawn = false;
+    const scrolled: unknown[] = [];
+    const el = { scrollIntoView: (o?: ScrollIntoViewOptions) => scrolled.push(o) };
+    revealHash('#versions-title', (id) => (drawn && id === 'versions-title' ? el : null), (fn) => timers.push(fn));
+    expect(scrolled).toEqual([]);
+    timers.shift()!();
+    drawn = true;
+    timers.shift()!();
+    expect(scrolled).toEqual([{ block: 'start' }]);
+    expect(timers).toEqual([]);
+  });
+
+  it('gives up after the wait and ignores an empty or broken hash', () => {
+    const timers: (() => void)[] = [];
+    revealHash('#nowhere', () => null, (fn) => timers.push(fn), 300);
+    let rounds = 0;
+    while (timers.length > 0 && rounds < 10) {
+      timers.shift()!();
+      rounds++;
+    }
+    expect(rounds).toBe(3);
+    revealHash('#', () => {
+      throw new Error('not looked up');
+    });
+    revealHash('#%E0%A4%A', () => {
+      throw new Error('not looked up');
+    });
   });
 });

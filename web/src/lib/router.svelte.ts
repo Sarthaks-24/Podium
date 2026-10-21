@@ -15,7 +15,7 @@
  * The route table, matching and interception rules live in routing.ts and
  * are re-exported here.
  */
-import { internalHref, resolveTarget } from './routing';
+import { internalHref, resolveTarget, revealHash } from './routing';
 
 export * from './routing';
 
@@ -82,6 +82,7 @@ export function navigate(to: string, options: { replace?: boolean } = {}): void 
   }
   syncFromWindow();
   if (!hasHash) window.scrollTo(0, 0);
+  else revealHash(window.location.hash, (id) => document.getElementById(id));
 }
 
 /**

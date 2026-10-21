@@ -58,6 +58,8 @@ test('while a contest runs with the problem, a save asks for the reason and send
   await expect(page.locator('.live-note')).toContainText('Week 6 contest is live with this problem.');
   // "Running" is for judging; a contest is live (design.md section 8, C1-038).
   await expect(page.locator('.live-note')).not.toContainText('running');
+  // The new revision reaches students from the console, one link away (walk 2026-10-21).
+  await expect(page.locator('.live-note').getByRole('link', { name: 'Open the console of Week 6 contest' })).toHaveAttribute('href', '/admin/contests/4/console#versions-title');
   await page.locator('#title').fill('A plus B, edited');
   await page.getByRole('button', { name: 'Save changes' }).click();
   await expect(page.locator('#reason-error')).toHaveText('Say why you changed the problem while a contest is live.');

@@ -1,8 +1,9 @@
 <!--
   EditorNotes: the problem editor's notes under the sticky bar (split out of
   ProblemEditor for the P3 gate's size, council run 2 C2-053): that the
-  problem is archived; that live contests pin it, with the "Reason for this
-  change" field a save then needs; and that the AI assistant wrote the
+  problem is archived; that live contests pin it, with a link to each
+  one's console (where the new revision reaches students) and the "Reason
+  for this change" field a save then needs; and that the AI assistant wrote the
   draft. Props: `problem`, `aiDraft`, `reason` (bindable) and `fields`
   (the save's field errors, for `reason`).
 -->
@@ -33,6 +34,11 @@
       {live.length === 1 ? 'is' : 'are'} live with this problem. A save makes a new revision; students keep the revision their
       contest pinned until you update the contest on its console.
     </p>
+    <ul class="consoles">
+      {#each live as c (c.contest_id)}
+        <li><a href="/admin/contests/{c.contest_id}/console#versions-title">Open the console of {c.title}</a> (problem {c.label})</li>
+      {/each}
+    </ul>
     <div class="field reason-field">
       <label for="reason">Reason for this change</label>
       <input
@@ -64,6 +70,11 @@
   .reason-field {
     max-width: var(--measure-form);
     margin-top: var(--space-3);
+  }
+
+  .consoles {
+    margin: var(--space-2) 0 0;
+    padding-left: var(--space-5);
   }
 
   .lead {

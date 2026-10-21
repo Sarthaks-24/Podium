@@ -235,3 +235,32 @@ export function resolveTarget(to: string, origin: string): { target: string; has
   const url = new URL(to, origin);
   return { target: url.pathname + url.search + url.hash, hasHash: url.hash !== '' };
 }
+
+/**
+ * Scrolls to the element a navigation's hash names (walk 2026-10-21): a
+ * link such as /admin/contests/4/console#versions-title lands on a screen
+ * that draws the element only after its data loads, so the browser's own
+ * jump finds nothing. Looks again every 100 ms for up to `waitMs`, then
+ * gives up quietly.
+ */
+export function revealHash(
+  hash: string,
+  find: (id: string) => { scrollIntoView(options?: ScrollIntoViewOptions): void } | null,
+  setTimer: (fn: () => void, ms: number) => unknown = (fn, ms) => setTimeout(fn, ms),
+  waitMs = 3000,
+): void {
+  if (hash.length < 2) return;
+  let id: string;
+  try {
+    id = decodeURIComponent(hash.slice(1));
+  } catch {
+    return;
+  }
+  let left = Math.ceil(waitMs / 100);
+  const tick = () => {
+    const el = find(id);
+    if (el) el.scrollIntoView({ block: 'start' });
+    else if (left-- > 0) setTimer(tick, 100);
+  };
+  tick();
+}
