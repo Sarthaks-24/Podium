@@ -51,7 +51,7 @@
   import { installLinkInterception, matchRoute, navigate, router } from './lib/router.svelte';
   import { loadSession, refreshSiteUpdated, session, signOut, signOutGuard } from './lib/session.svelte';
   import { isNewUpdate, markUpdateSeen, seenUpdate, updateLine } from './lib/siteUpdate';
-  import { onStreamReconnect } from './lib/stream';
+  import { onStreamReconnect, stopAllStreams } from './lib/stream';
   import { loadQuestions, shell } from './lib/shell.svelte';
   import { adoptUnread, notices, refreshUnread } from './lib/notices.svelte';
   import { noticesLabel } from './lib/notifications';
@@ -118,6 +118,11 @@
   const match = $derived(matchRoute(router.path));
   const route = $derived(match.route);
   const signedIn = $derived(session.status === 'signed-in');
+  // An EventSource cannot see a 401: once the session ends, stop every
+  // stream so a signed-out page neither polls nor reconnects (C1-041).
+  $effect(() => {
+    if (session.status === 'signed-out') stopAllStreams();
+  });
   const isOwner = $derived(session.user?.role === 'owner');
   const isOrganiser = $derived(session.user?.role === 'admin' || session.user?.role === 'owner');
   const needsSignIn = $derived(route.auth && session.status === 'signed-out');

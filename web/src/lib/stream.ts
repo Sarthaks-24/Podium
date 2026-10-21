@@ -19,10 +19,26 @@
  * stops for good, with no reconnect and no polling, so five open tabs do
  * not evict each other in a loop; the page says so and offers resume(),
  * which connects again (and replaces the other tab in turn).
+ *
+ * After sign-out every stream stops: the shell calls stopAllStreams(), and
+ * a poll that fails with 401 stops its own stream (C1-041).
  */
+
+import { ApiError } from './api';
 
 // Not reactive state: nothing renders from it.
 const reconnectListeners = new Set<() => void>();
+// Every started stream, so a sign-out can stop them all (C1-041).
+const started = new Set<EventStream>();
+
+/**
+ * Stops every stream in this tab. The shell calls it when the session ends:
+ * an EventSource cannot see a 401, so without it a signed-out page would
+ * keep polling and retrying the stream.
+ */
+export function stopAllStreams(): void {
+  for (const s of [...started]) s.stop();
+}
 
 /**
  * Calls `fn` whenever any live stream in this tab comes back after a
@@ -63,8 +79,8 @@ export interface StreamOptions {
   onEvent: (type: string, data: unknown) => void;
   /** Called when the stream opens again after a failure. */
   onReconnect: () => void;
-  /** Called every pollMs while the stream is down. */
-  poll: () => void;
+  /** Called every pollMs while the stream is down. A promise that rejects with a 401 stops the stream. */
+  poll: () => void | Promise<unknown>;
   /** Called when the mode changes, for a quiet status line. */
   onMode?: (mode: StreamMode) => void;
   pollMs?: number;
@@ -107,12 +123,14 @@ export class EventStream {
   /** Opens the stream. */
   start(): void {
     this.stopped = false;
+    started.add(this);
     this.connect();
   }
 
   /** Closes the stream and stops every timer. */
   stop(): void {
     this.stopped = true;
+    started.delete(this);
     this.es?.close();
     this.es = null;
     this.clearTimers();
@@ -138,6 +156,7 @@ export class EventStream {
   /** The server dropped this stream for a newer one: stop without retrying. */
   private replaced() {
     this.stopped = true;
+    started.delete(this);
     this.es?.close();
     this.es = null;
     this.clearTimers();
@@ -221,13 +240,24 @@ export class EventStream {
     const tick = () => {
       if (this.stopped) return;
       this.polls++;
-      this.o.poll();
+      this.callPoll();
       // Try the stream again now and then; a successful open stops polling.
       if (this.polls % 4 === 0 && this.es === null) this.connect();
       this.pollTimer = this.o.setTimer(tick, this.o.pollMs);
     };
-    this.o.poll();
+    this.callPoll();
     this.pollTimer = this.o.setTimer(tick, this.o.pollMs);
+  }
+
+  /** Runs the caller's poll; a 401 from it means signed out, so the stream stops. */
+  private callPoll() {
+    const r = this.o.poll();
+    if (r instanceof Promise) {
+      r.catch((e: unknown) => {
+        if (e instanceof ApiError && e.status === 401) this.stop();
+        else throw e;
+      });
+    }
   }
 
   private stopPolling() {

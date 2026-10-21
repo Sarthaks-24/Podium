@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { EventStream, reconnectDelay, type EventSourceLike } from './stream';
+import { ApiError } from './api';
+import { EventStream, reconnectDelay, stopAllStreams, type EventSourceLike } from './stream';
 
 class FakeSource implements EventSourceLike {
   onopen: ((ev: Event) => void) | null = null;
@@ -36,7 +37,9 @@ function harness() {
     events: ['submission', 'clock'],
     onEvent: (t, d) => events.push([t, d]),
     onReconnect: () => reconnects++,
-    poll: () => polls++,
+    poll: () => {
+      polls++;
+    },
     onMode: (m) => modes.push(m),
     random: () => 0.5,
     create: () => {
@@ -179,5 +182,63 @@ describe('event stream', () => {
     expect(h.timers).toHaveLength(0);
     h.sources[0].open();
     expect(h.modes).not.toContain('live');
+  });
+});
+
+describe('after sign-out (C1-041)', () => {
+  it('stops polling and retrying when a poll answers 401', async () => {
+    const timers: { fn: () => void; id: number }[] = [];
+    let id = 1;
+    let polls = 0;
+    const stream = new EventStream({
+      url: '/api/events',
+      events: [],
+      onEvent: () => undefined,
+      onReconnect: () => undefined,
+      poll: () => {
+        polls++;
+        return Promise.reject(new ApiError(401, 'signed_out', 'Sign in to continue.'));
+      },
+      maxErrors: 1,
+      random: () => 0.5,
+      create: () => {
+        throw new Error('no stream');
+      },
+      setTimer: (fn) => {
+        timers.push({ fn, id });
+        return id++;
+      },
+      clearTimer: (t) => {
+        const i = timers.findIndex((x) => x.id === t);
+        if (i >= 0) timers.splice(i, 1);
+      },
+    });
+    stream.start();
+    expect(stream.mode).toBe('polling');
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(polls).toBe(1);
+    expect(timers).toHaveLength(0);
+  });
+
+  it('stopAllStreams stops every started stream', () => {
+    const closed: number[] = [];
+    const make = (n: number) =>
+      new EventStream({
+        url: '/api/events',
+        events: [],
+        onEvent: () => undefined,
+        onReconnect: () => undefined,
+        poll: () => undefined,
+        create: () => ({ onopen: null, onerror: null, addEventListener: () => undefined, close: () => closed.push(n) }),
+        setTimer: () => 0,
+        clearTimer: () => undefined,
+      });
+    const a = make(1);
+    const b = make(2);
+    a.start();
+    b.start();
+    stopAllStreams();
+    expect(closed.sort()).toEqual([1, 2]);
   });
 });
