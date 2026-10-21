@@ -765,6 +765,10 @@
     .editor-split > .page-split-aside {
       top: calc(var(--sticky-bar-h, var(--space-7)) + var(--space-4));
       max-height: calc(100dvh - var(--sticky-bar-h, var(--space-7)) - 2 * var(--space-4));
+      /* A preview taller than the window scrolls in the column; without this
+         its end (the sample copy buttons) could never be reached. */
+      overflow-y: auto;
+      overscroll-behavior: contain;
     }
   }
 
