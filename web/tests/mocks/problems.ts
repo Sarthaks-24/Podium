@@ -385,7 +385,10 @@ export async function mockApi(page: Page, who: 'admin' | 'student' = 'admin') {
           });
         }
         const id = state.nextId++;
-        const p = { ...problemFixtures()[1], id, title: 'Pair with sum', slug: 'pair-with-sum', validated: false, validated_at: null, content_hash: 'imp' };
+        // "good pack 2" makes "Pair with sum 2", so several packs in one pick have different names (C1-025).
+        const n = text.match(/^good pack (\d+)$/)?.[1];
+        const title = n ? `Pair with sum ${n}` : 'Pair with sum';
+        const p = { ...problemFixtures()[1], id, title, slug: n ? `pair-with-sum-${n}` : 'pair-with-sum', validated: false, validated_at: null, content_hash: 'imp' };
         state.problems[id] = p;
         return json(route, 201, p);
       }

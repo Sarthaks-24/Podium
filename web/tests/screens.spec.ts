@@ -223,13 +223,13 @@ test('an owner ends sessions, disables and enables an account, each asked first'
   const disable = page.getByRole('dialog', { name: 'Disable asha@college.edu?' });
   await expect(disable).toContainText('cannot sign in until an owner enables the account again');
   await disable.getByRole('button', { name: 'Disable account' }).click();
-  await expect(page.getByText('Disabled asha@college.edu', { exact: true }).first()).toBeVisible();
+  await expect(page.locator('.toasts').getByText('Disabled asha@college.edu', { exact: true })).toBeVisible();
   await expect(section.getByRole('listitem')).toContainText(['asha@college.edu']);
   await page.screenshot({ path: `${shots()}people-access-1280-light.png`, fullPage: true });
 
   await section.getByRole('button', { name: 'Enable asha@college.edu' }).click();
   await page.getByRole('dialog', { name: 'Enable asha@college.edu?' }).getByRole('button', { name: 'Enable account' }).click();
-  await expect(page.getByText('Enabled asha@college.edu', { exact: true }).first()).toBeVisible();
+  await expect(page.locator('.toasts').getByText('Enabled asha@college.edu', { exact: true })).toBeVisible();
   await expect(section).toContainText('No account is disabled.');
   expect(state.accountCalls).toEqual(['end-sessions asha@college.edu', 'disable asha@college.edu', 'enable asha@college.edu']);
 });

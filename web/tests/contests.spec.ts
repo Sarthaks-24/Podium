@@ -473,7 +473,7 @@ test('the editor shows field errors, picks problems and previews a roster', asyn
     { problem_id: 11, label: 'A' },
     { problem_id: 12, label: 'B' },
   ]);
-  await expect(page.getByText('Added Interval covering as B', { exact: true }).first()).toBeVisible();
+  await expect(page.locator('.toasts').getByText('Added Interval covering as B', { exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Save problems' })).toHaveCount(0);
   await page.getByRole('button', { name: 'Move Interval covering up' }).click();
   await expect(page.getByLabel('Letter for Interval covering')).toHaveValue('A');
@@ -644,7 +644,7 @@ test('End the contest now says what happens and sets the end to now (P3 O5)', as
   // Every other setting is sent as it was; only the end moves to now.
   expect(body).toMatchObject({ slug: 'week-6', freeze_minutes: 30, languages: ['cpp17', 'python3'], published: false });
   expect(Math.abs(Number(body.ends_at) - before)).toBeLessThan(15_000);
-  await expect(page.getByText('Ended the contest', { exact: true }).first()).toBeVisible();
+  await expect(page.locator('.toasts').getByText('Ended the contest', { exact: true })).toBeVisible();
 });
 
 test('unpublishing a live contest asks first', async ({ page }) => {
@@ -699,7 +699,7 @@ test('a graded contest asks for a reason before it takes an AI problem nobody so
     { problem_id: 11, label: 'A' },
     { problem_id: 12, label: 'B', ai_reason: 'Checked the reference by hand against the statement.' },
   ]);
-  await expect(page.getByText('Saved problems with your reason', { exact: true }).first()).toBeVisible();
+  await expect(page.locator('.toasts').getByText('Saved problems with your reason', { exact: true })).toBeVisible();
   await expect(reason).toHaveCount(0);
 });
 
