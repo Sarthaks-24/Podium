@@ -29,7 +29,8 @@ export interface StudentRow {
   email: string;
   graded_contests: number;
   last_graded_percent: number | null;
-  last_graded_slug: string;
+  /** null when the student took no graded contest (Go *string). */
+  last_graded_slug: string | null;
   last_submission_at: number | null;
   rating_tenths: number;
 }
@@ -39,7 +40,8 @@ export type StudentFilter = '' | 'missed_last_two' | 'no_accepted';
 /** GET /api/admin/students. */
 export interface StudentsList {
   students: StudentRow[];
-  filter: StudentFilter | null;
+  /** The filter as asked, "" for none (Go echoes the query). */
+  filter: StudentFilter;
   last_graded: { contest_id: number; slug: string; title: string }[];
   server_now?: number;
 }
@@ -145,7 +147,8 @@ export interface RecordCase {
   contest_title: string;
   state: string;
   source: 'signals' | 'manual';
-  outcome: string | null;
+  /** "" while undecided or cleared (Go string). */
+  outcome: string;
   created_at: number;
   decided_at: number | null;
 }
@@ -210,7 +213,8 @@ export interface RecordView {
   id: number;
   at: number;
   kind: string;
-  ref_id: number | null;
+  /** The case or submission read, 0 for a whole record (Go int64). */
+  ref_id: number;
   viewer: { id: number; name: string; email: string };
   subject: { id: number; name: string };
 }

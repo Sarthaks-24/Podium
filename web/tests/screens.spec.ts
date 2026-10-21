@@ -349,7 +349,7 @@ test('signed-in organisers at /signin land on their contests, and sign out retur
   await expect(nav.getByRole('link', { name: 'Contests' })).toHaveAttribute('aria-current', 'page');
   await expect(nav.getByRole('link')).toHaveText(['Contests', 'Problem bank', 'Students', 'People', 'Inbox']);
 
-  await page.getByRole('link', { name: 'People' }).click();
+  await page.getByRole('navigation', { name: 'Main' }).getByRole('link', { name: 'People' }).click();
   await expect(page).toHaveURL('/admin/people');
   await expect(page.getByRole('link', { name: 'People' })).toHaveAttribute('aria-current', 'page');
   await expect(page.getByRole('heading', { level: 1 })).toBeFocused();

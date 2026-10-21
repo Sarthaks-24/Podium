@@ -136,7 +136,7 @@ export async function mockApi(page: Page, who: Who) {
         if (before) return json(route, 200, { views: [{ id: 1, at: 1791900000000, kind: 'notes', ref_id: 80, viewer: { id: 2, name: 'Arjun Mehta', email: 'arjun.mehta@college.edu' }, subject: { id: 7, name: 'Asha Rao' } }], has_more: false, server_now: Date.now() });
         return json(route, 200, {
           views: [
-            { id: 3, at: 1792183000000, kind: 'record', ref_id: null, viewer: { id: 2, name: 'Arjun Mehta', email: 'arjun.mehta@college.edu' }, subject: { id: 7, name: 'Asha Rao' } },
+            { id: 3, at: 1792183000000, kind: 'record', ref_id: 0, viewer: { id: 2, name: 'Arjun Mehta', email: 'arjun.mehta@college.edu' }, subject: { id: 7, name: 'Asha Rao' } },
             { id: 2, at: 1792100000000, kind: 'case', ref_id: 12, viewer: { id: 1, name: 'Priya Raman', email: 'priya@college.edu' }, subject: { id: 7, name: 'Asha Rao' } },
           ],
           has_more: true,

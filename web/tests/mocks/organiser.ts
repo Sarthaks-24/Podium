@@ -35,7 +35,7 @@ export function studentRows(now = Date.now()): Json[] {
     email,
     graded_contests: graded,
     last_graded_percent: pct,
-    last_graded_slug: pct === null ? '' : 'week-6',
+    last_graded_slug: pct === null ? null : 'week-6',
     last_submission_at: last,
     rating_tenths: rating,
   });
@@ -221,7 +221,7 @@ export async function mockApi(page: Page, options: Options = {}) {
     pending_rating: state.pending,
     cases: [
       { id: 12, contest_id: 3, contest_title: 'Week 3 contest', state: 'actioned', source: 'manual', outcome: 'zero_problem', created_at: now - 12 * DAY, decided_at: now - 8 * DAY },
-      { id: 8, contest_id: 2, contest_title: 'Week 2 contest', state: 'cleared', source: 'signals', outcome: null, created_at: now - 40 * DAY, decided_at: now - 35 * DAY },
+      { id: 8, contest_id: 2, contest_title: 'Week 2 contest', state: 'cleared', source: 'signals', outcome: '', created_at: now - 40 * DAY, decided_at: now - 35 * DAY },
     ],
     notes: [
       {
@@ -265,7 +265,7 @@ export async function mockApi(page: Page, options: Options = {}) {
         if (filter === 'no_accepted') rows = rows.filter((r) => r.id === 9);
         if (q) rows = rows.filter((r) => String(r.name).toLowerCase().includes(q) || String(r.email).includes(q));
         rows = rows.map((r) => (r.id === 7 ? { ...r, rating_tenths: state.rating } : r));
-        return json(route, 200, { students: rows, filter: filter || null, last_graded: filter === 'no_accepted' ? LAST_GRADED.slice(0, 1) : LAST_GRADED, server_now: Date.now() });
+        return json(route, 200, { students: rows, filter, last_graded: filter === 'no_accepted' ? LAST_GRADED.slice(0, 1) : LAST_GRADED, server_now: Date.now() });
       }
       if (path === '/api/admin/students/7' && method === 'GET') return json(route, 200, studentDetail(now));
       if (path === '/api/admin/students/7/record' && method === 'GET') {
@@ -278,7 +278,7 @@ export async function mockApi(page: Page, options: Options = {}) {
       if (path === '/api/admin/students/7/rating' && method === 'PUT') {
         const body = req.postDataJSON() as { value_tenths: number; reason: string };
         state.ratingPuts.push(body);
-        if ([...String(body.reason ?? '').trim()].length < 20) return apiError(route, 400, 'bad_request', 'Check the highlighted fields.', { fields: { reason: 'Write a reason of at least 20 characters.' } });
+        if ([...String(body.reason ?? '').trim()].length < 20) return apiError(route, 400, 'bad_request', 'Write the reason the student will read: at least 20 characters (at most 1,000).');
         const from = state.rating;
         const order: Record<string, number> = { good: 2, on_record: 1, repeated: 0 };
         if (order[band(body.value_tenths)] < order[band(from)]) {

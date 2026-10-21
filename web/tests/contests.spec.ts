@@ -393,7 +393,7 @@ test('a new contest marks its required fields, and a field error from the server
   const slug = form.getByLabel('Slug', { exact: true });
   await expect(slug).toBeFocused();
   await expect(slug).toHaveAttribute('aria-invalid', 'true');
-  await expect(page.locator('#new-slug-error')).toHaveText('Another contest uses this slug. Choose another.');
+  await expect(page.locator('#new-slug-error')).toHaveText('Another contest already uses this slug.');
 });
 
 test('students cannot open the contest admin', async ({ page }) => {

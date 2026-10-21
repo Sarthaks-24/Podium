@@ -569,14 +569,15 @@ export async function mockApi(page: Page, options: Options = {}) {
       }
       if (path === '/api/admin/contests' && method === 'POST') {
         const body = req.postDataJSON() as Json;
-        if (body.slug === 'week-6') return apiError(route, 409, 'conflict', 'Check the highlighted fields.', { fields: { slug: 'Another contest uses this slug. Choose another.' } });
+        // Go: contestError answers FieldErrors with 400 and the fields' own sentence.
+        if (body.slug === 'week-6') return apiError(route, 400, 'bad_request', 'Another contest already uses this slug.', { fields: { slug: 'Another contest already uses this slug.' } });
         return json(route, 201, { ...adminContest(), id: 9, title: body.title, slug: body.slug });
       }
       if (path === '/api/admin/contests/4' && method === 'GET') return json(route, 200, adminContest());
       if (path === '/api/admin/contests/4' && method === 'PUT') {
         const body = req.postDataJSON() as Json;
         state.settingsPuts.push(body);
-        if (body.slug === 'Week 6') return apiError(route, 400, 'bad_request', 'Check the highlighted fields.', { fields: { slug: 'Use lowercase letters, digits and single hyphens, like week-6.' } });
+        if (body.slug === 'Week 6') return apiError(route, 400, 'bad_request', 'Use lowercase letters, digits and single hyphens, like week-6.', { fields: { slug: 'Use lowercase letters, digits and single hyphens, like week-6.' } });
         // Go refuses publishing (not saving an already published contest) with 400 and fields (contests.go contestError).
         const stale = 'Problem B changed or lost its validation since it was added. Validate it and add it again.';
         if (body.published === true && options.published === false && !options.publishOk) return apiError(route, 400, 'bad_request', stale, { fields: { published: stale } });
@@ -619,16 +620,17 @@ export async function mockApi(page: Page, options: Options = {}) {
       if (path === '/api/admin/contests/4/pause' && method === 'POST') {
         state.pauses++;
         state.paused = true;
-        return json(route, 204);
+        // Go answers 200 with the contest (docs/API.md), not 204.
+        return json(route, 200, adminContest());
       }
       if (path === '/api/admin/contests/4/resume' && method === 'POST') {
         state.resumes++;
         state.paused = false;
-        return json(route, 204);
+        return json(route, 200, adminContest());
       }
       if (path === '/api/admin/contests/4/extend' && method === 'POST') {
         state.extends.push(req.postDataJSON() as Json);
-        return json(route, 204);
+        return json(route, 200, adminContest());
       }
       const ext = path.match(/^\/api\/admin\/contests\/4\/extensions\/(\d+)$/);
       if (ext && method === 'PUT') {
@@ -752,8 +754,9 @@ export async function mockApi(page: Page, options: Options = {}) {
         return json(route, 200, { entries: shown.reverse(), page: 1, has_more: false, server_now: nowMs() });
       }
       if (path === '/api/admin/contests/4/editorial' && method === 'PUT') {
-        state.editorials.push(req.postDataJSON() as Json);
-        return json(route, 204);
+        const body = req.postDataJSON() as Json;
+        state.editorials.push(body);
+        return json(route, 200, { ...adminContest(), editorial_md: body.editorial_md, editorial_published: body.published });
       }
       return apiError(route, 404, 'not_found', 'This API route does not exist.');
     },

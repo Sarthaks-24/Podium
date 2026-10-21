@@ -200,12 +200,12 @@ test('server field errors appear next to their fields', async ({ page }) => {
   await slug.fill('taken');
   await page.getByRole('button', { name: 'Save changes' }).click();
 
-  await expect(page.locator('#slug-error')).toHaveText('Another problem already uses this slug.');
+  await expect(page.locator('#slug-error')).toHaveText('Another problem already uses the slug taken.');
   await expect(slug).toHaveAttribute('aria-invalid', 'true');
   await expect(slug).toHaveAttribute('aria-describedby', 'slug-help slug-error');
   await expect(slug).toBeFocused();
   await expect(page.locator('#subtasks-1-points-error')).toHaveText('Points run from 1 to 1000.');
-  await expect(page.getByRole('alert').filter({ hasText: 'Some fields need attention.' })).toBeVisible();
+  await expect(page.getByRole('alert').filter({ hasText: 'Some fields need fixing.' })).toBeVisible();
 
   await slug.fill('a-plus-b');
   await page.locator('#samples').fill('1, x');
@@ -343,7 +343,7 @@ test('the bank shows status words, archived problems on request, and creates pro
   await title.fill('Interval Covering');
   await expect(page.getByLabel('Slug', { exact: true })).toHaveValue('interval-covering');
   await page.getByRole('button', { name: 'Create problem' }).click();
-  await expect(page.locator('#new-slug-error')).toHaveText('Another problem already uses this slug.');
+  await expect(page.locator('#new-slug-error')).toHaveText('Another problem already uses the slug interval-covering.');
 
   await page.getByLabel('Slug', { exact: true }).fill('interval-covering-2');
   await title.fill('Interval Covering II');
@@ -532,7 +532,7 @@ test('the sticky bar keeps status, field errors and the main actions in reach', 
   const list = page.locator('#field-errors');
   await list.getByRole('link', { name: 'Subtask 2 points: Points run from 1 to 1000.' }).click();
   await expect(page.locator('#subtask-1-points')).toBeFocused();
-  await list.getByRole('link', { name: 'Slug: Another problem already uses this slug.' }).click();
+  await list.getByRole('link', { name: 'Slug: Another problem already uses the slug taken.' }).click();
   await expect(page.locator('#slug')).toBeFocused();
 });
 

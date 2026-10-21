@@ -356,8 +356,9 @@ export async function mockApi(page: Page, who: 'admin' | 'student' = 'admin') {
       if (path === '/api/admin/problems' && method === 'POST') {
         const body = req.postDataJSON() as { title: string; slug: string };
         if (Object.values(state.problems).some((p) => p.slug === body.slug)) {
-          return apiError(route, 409, 'conflict', 'Another problem already uses this slug.', {
-            fields: { slug: 'Another problem already uses this slug.' },
+          // Go: problemError answers FieldErrors with 400 and its own sentence (httpapi/problems.go).
+          return apiError(route, 400, 'bad_request', 'Some fields need fixing.', {
+            fields: { slug: `Another problem already uses the slug ${body.slug}.` },
           });
         }
         const id = state.nextId++;
@@ -423,14 +424,14 @@ export async function mockApi(page: Page, who: 'admin' | 'student' = 'admin') {
             });
           }
           if (body.slug === 'taken') {
-            return apiError(route, 400, 'bad_request', 'Some fields need attention.', {
-              fields: { slug: 'Another problem already uses this slug.', 'subtasks[1].points': 'Points run from 1 to 1000.' },
+            return apiError(route, 400, 'bad_request', 'Some fields need fixing.', {
+              fields: { slug: 'Another problem already uses the slug taken.', 'subtasks[1].points': 'Points run from 1 to 1000.' },
             });
           }
           // problems/model.go: a test is a sample or an open test, never both.
           const both = ((body.open as number[] | undefined) ?? []).find((n) => ((body.samples as number[]) ?? []).includes(n));
           if (both !== undefined) {
-            return apiError(route, 400, 'bad_request', 'Some fields need attention.', {
+            return apiError(route, 400, 'bad_request', 'Some fields need fixing.', {
               fields: { open: `Test ${both} is a sample and an open test. Put each test in one place.` },
             });
           }

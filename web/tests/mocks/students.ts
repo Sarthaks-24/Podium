@@ -403,7 +403,7 @@ export async function mockApi(page: Page, options: Options = {}) {
         const body = req.postDataJSON() as Json;
         state.appeals.push(body);
         const text = String(body.text ?? '');
-        if (text.length < 20) return apiError(route, 400, 'bad_request', 'Check the highlighted fields.', { fields: { text: 'Write at least 20 characters.' } });
+        if (text.length < 20) return apiError(route, 400, 'bad_request', 'Write your appeal in at least 20 characters (at most 4,000).');
         return json(route, 201, { id: 70, case_id: body.case_id ?? null, adjustment_id: body.adjustment_id ?? null, text, created_at: Date.now(), decide_by: Date.now() + 14 * DAY, overdue: false, state: 'open', ruling: null });
       }
       return apiError(route, 404, 'not_found', 'This API route does not exist.');
