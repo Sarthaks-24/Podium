@@ -292,3 +292,37 @@ func TestClassMedianMatchesTheSummaries(t *testing.T) {
 		t.Errorf("a contest without summaries: %v %v", m, err)
 	}
 }
+
+// The sweep takes a build's start time before it reads the contest: a
+// settings change committed after the read but stamped before the start
+// would otherwise be missing from the build and older than its
+// summarised_at, so no later sweep would build again (C2-035).
+func TestSweepReadsTheContestAfterTheBuildStarts(t *testing.T) {
+	r := newSvc(t)
+	ctx := context.Background()
+	c := r.contest(t, nil)
+	seedBoard(t, r, c, 3, 1)
+	base := at(121)
+	calls := 0
+	// Read 1 is the sweep's query time; read 2 is the build's start. The
+	// change lands there, stamped 5 ms before it.
+	r.svc.Now = func() time.Time {
+		calls++
+		now := base.Add(time.Duration(calls-1) * 10 * time.Millisecond)
+		if calls == 2 {
+			if _, err := r.svc.DB.Exec("UPDATE contests SET graded = 0 WHERE id = ?", c.ID); err != nil {
+				t.Fatal(err)
+			}
+			auditAt(t, r, c.ID, AuditSettings, now.Add(-5*time.Millisecond).UnixMilli())
+		}
+		return now
+	}
+	for i := 0; i < 2; i++ {
+		if _, err := r.svc.SweepSummaries(ctx); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if n := count(t, r, "SELECT count(*) FROM student_contest_summary WHERE contest_id = ? AND graded = 1", c.ID); n != 0 {
+		t.Errorf("%d summaries still say graded after two sweeps", n)
+	}
+}

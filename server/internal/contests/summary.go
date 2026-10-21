@@ -95,7 +95,12 @@ func (s *Service) BuildSummaries(ctx context.Context, c *Contest) (int, error) {
 	// summarised_at is the time before the final check and the compute:
 	// a rejudge or a decision recorded while they run is newer than it,
 	// so the next sweep builds again (council C1-006).
-	start := s.now().UnixMilli()
+	return s.buildSummaries(ctx, c, s.now().UnixMilli())
+}
+
+// buildSummaries is BuildSummaries with the start time given: c must have
+// been read at or after start, so every change older than start is in it.
+func (s *Service) buildSummaries(ctx context.Context, c *Contest, start int64) (int, error) {
 	// A contest past retention has lost its submissions and summaries;
 	// building again would give every participant a zero.
 	var expired int
@@ -251,6 +256,10 @@ func (s *Service) SweepSummaries(ctx context.Context) (int, error) {
 	built := 0
 	var errs []error
 	for _, id := range ids {
+		// The build's start is taken before the contest is read, so a
+		// change committed in between is in the build or newer than its
+		// summarised_at, never lost (C2-035).
+		start := s.now().UnixMilli()
 		c, err := s.Get(ctx, id)
 		if err != nil {
 			errs = append(errs, err)
@@ -265,7 +274,7 @@ func (s *Service) SweepSummaries(ctx context.Context) (int, error) {
 			}
 		}
 		if c.SummarisedAt.IsZero() || stale {
-			if _, err := s.BuildSummaries(ctx, c); err == nil {
+			if _, err := s.buildSummaries(ctx, c, start); err == nil {
 				built++
 			} else if !errors.Is(err, ErrNotFinal) {
 				errs = append(errs, err)
