@@ -315,3 +315,28 @@ func TestStreamTagUsesAPhonesDeviceID(t *testing.T) {
 		t.Error("a desktop's tag used the device id instead of its address")
 	}
 }
+
+// A problem opened before the contest starts says so, not "accept the
+// rules", which is refused until the start (C2-017); after the start,
+// before pressing Start, it says to accept the rules.
+func TestNotStartedSaysWhy(t *testing.T) {
+	s := newSite(t)
+	owner := s.signedIn("owner@college.edu", "Owner")
+	asha := s.signedIn("asha@college.edu", "Asha")
+	start := time.Now().Add(time.Hour).Truncate(time.Minute)
+	pa := s.importProblem(owner, "c2017-a")
+	s.createContest(owner, "c2017", start, map[string]int64{"A": pa}, nil)
+	msg := func() (int, string, string) {
+		code, out := asha.do("GET", "/api/contests/c2017/problems/A", nil, "")
+		e, _ := out["error"].(map[string]any)
+		m, _ := e["message"].(string)
+		return code, errCode(out), m
+	}
+	if code, c, m := msg(); code != 403 || c != "not_started" || !strings.Contains(m, "has not started yet") {
+		t.Errorf("before the start: %d %s %q", code, c, m)
+	}
+	s.at(start, 5)
+	if code, c, m := msg(); code != 403 || c != "not_started" || !strings.Contains(m, "Accept the rules") {
+		t.Errorf("after the start, before Start: %d %s %q", code, c, m)
+	}
+}

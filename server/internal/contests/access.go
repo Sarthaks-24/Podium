@@ -10,8 +10,11 @@ import (
 
 // Refusals the API turns into 403 or 409 with the message as written.
 var (
-	ErrBoardClosed  = errors.New("The board opens when your window closes.")
-	ErrNotStarted   = errors.New("Accept the rules on the contest page to start.")
+	ErrBoardClosed = errors.New("The board opens when your window closes.")
+	ErrNotStarted  = errors.New("Accept the rules on the contest page to start.")
+	// ErrBeforeStart is ErrNotStarted before the contest's start time,
+	// when accepting the rules is refused too (C2-017).
+	ErrBeforeStart  = errors.New("The contest has not started yet. The contest page shows when it starts.")
 	ErrContestOver  = errors.New("The contest has ended.")
 	ErrPracticeWait = errors.New("Your time is up. Practice opens when every student's time is up.")
 	ErrNotReady     = errors.New("This problem is being updated by the organisers. Try again in a few minutes.")

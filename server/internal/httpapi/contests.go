@@ -99,7 +99,7 @@ func (d Deps) contestError(w http.ResponseWriter, r *http.Request, err error) {
 		WriteJSON(w, http.StatusBadRequest, map[string]APIError{"error": {Code: "bad_request", Message: fields.Error(), Fields: fields}})
 	case errors.Is(err, contests.ErrBoardClosed):
 		WriteError(w, http.StatusForbidden, "board_closed", err.Error())
-	case errors.Is(err, contests.ErrNotStarted):
+	case errors.Is(err, contests.ErrNotStarted), errors.Is(err, contests.ErrBeforeStart):
 		WriteError(w, http.StatusForbidden, "not_started", err.Error())
 	case errors.Is(err, contests.ErrContestOver), errors.Is(err, contests.ErrPracticeWait):
 		WriteError(w, http.StatusForbidden, "contest_over", err.Error())
@@ -369,7 +369,11 @@ func (d Deps) contestProblem(w http.ResponseWriter, r *http.Request) (*contestTa
 	}
 	now := d.Contests.Clock()
 	if !c.ProblemsVisible(st, now) {
-		d.contestError(w, r, contests.ErrNotStarted)
+		if now.Before(c.Schedule.StartsAt) {
+			d.contestError(w, r, contests.ErrBeforeStart)
+		} else {
+			d.contestError(w, r, contests.ErrNotStarted)
+		}
 		return nil, false
 	}
 	t.scope.MinGap, t.scope.MaxPerProblem, t.scope.View = c.MinGap, c.MaxPerProblem, c.ViewOptions(st)

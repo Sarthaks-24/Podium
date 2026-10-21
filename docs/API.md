@@ -903,7 +903,8 @@ The M3 `Workspace` plus:
 
 | Refusal | When |
 |---|---|
-| `403 not_started` "Accept the rules on the contest page to start." | before the student's window opens (also for reading the problem) |
+| `403 not_started` "The contest has not started yet. The contest page shows when it starts." | before the contest's start time, when accepting the rules is refused too (also for reading the problem) |
+| `403 not_started` "Accept the rules on the contest page to start." | after the start, before the student's window opens: the rules are not accepted yet (also for reading the problem) |
 | `403 contest_over` "The contest has ended." | the window is over and practice is off |
 | `403 contest_over` "Your time is up. Practice opens when every student's time is up." | the student's time is up but others are still in their windows (window mode, or a personal extension) |
 | `409 not_ready` | the problem changed since it was added to the contest (organisers must validate it and add it again) |
