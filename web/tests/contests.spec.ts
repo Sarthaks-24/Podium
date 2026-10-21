@@ -1285,6 +1285,8 @@ test('results link names to progress, say a decision changed the board, mark no 
   await expect(klass.getByRole('row', { name: /Interval covering/ })).toContainText('19 of 30');
   await expect(klass.getByRole('row', { name: /A plus B/ })).toContainText('Most often the first failure: test 3 of subtask 2, for 5 students.');
   await expect(klass.getByRole('row', { name: /Interval covering/ })).toContainText('13.3%');
+  // One student is "1 student" to a screen reader too (walk 2026-10-21).
+  await expect(klass.getByRole('row', { name: /Interval covering/ })).toContainText(/of participants, 1 student(?!s)/);
   await expect(klass).not.toContainText('Asha');
   await page.screenshot({ path: `${shots()}results-p4-1440-light.png`, fullPage: true });
 });

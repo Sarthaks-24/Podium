@@ -701,7 +701,7 @@ export async function mockApi(page: Page, options: Options = {}) {
           participants: 30,
           problems: [
             { label: 'A', title: 'A plus B', max_score: 100, attempted: 27, full: 21, median_score: 100, subtasks: [{ idx: 0, points: 40, solved: 24, solve_rate: 80 }, { idx: 1, points: 60, solved: 21, solve_rate: 70 }], most_failed_test: { subtask_idx: 1, test: 3, failed: 5 } },
-            { label: 'B', title: 'Interval covering', max_score: 100, attempted: 19, full: 4, median_score: 40, subtasks: [{ idx: 0, points: 40, solved: 12, solve_rate: 40 }, { idx: 1, points: 60, solved: 4, solve_rate: 13.3 }], most_failed_test: null },
+            { label: 'B', title: 'Interval covering', max_score: 100, attempted: 19, full: 4, median_score: 40, subtasks: [{ idx: 0, points: 40, solved: 12, solve_rate: 40 }, { idx: 1, points: 60, solved: 1, solve_rate: 13.3 }], most_failed_test: null },
           ],
           server_now: nowMs(),
         });

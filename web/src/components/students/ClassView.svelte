@@ -18,7 +18,7 @@
   import { onMount } from 'svelte';
   import MonoDigits from '../MonoDigits.svelte';
   import { ApiError, errorText, getJSON } from '../../lib/api';
-  import { scoreParts } from '../../lib/format';
+  import { countOf, scoreParts } from '../../lib/format';
   import { percentText, type ClassView } from '../../lib/students';
 
   let { contestId }: { contestId: string } = $props();
@@ -83,7 +83,7 @@
                       <li>
                         <span class="meter-label">Subtask <span class="mono">{st.idx + 1}</span>, <span class="mono">{st.points}</span> pt</span>
                         <span class="track" aria-hidden="true"><span class="fill" style:width="{Math.min(100, Math.max(0, st.solve_rate))}%"></span></span>
-                        <span class="meter-value"><span class="mono">{percentText(st.solve_rate)}</span>%<span class="visually-hidden"> of participants, {st.solved} students</span></span>
+                        <span class="meter-value"><span class="mono">{percentText(st.solve_rate)}</span>%<span class="visually-hidden"> of participants, {countOf(st.solved, 'student')}</span></span>
                       </li>
                     {/each}
                   </ul>
