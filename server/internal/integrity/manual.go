@@ -129,8 +129,6 @@ func (s *Service) Notes(ctx context.Context, submissionID int64) ([]Note, error)
 	return s.notesWhere(ctx, "n.submission_id = ?", submissionID)
 }
 
-// NotesAbout lists every kept note on a student's submissions, newest
-// first, for the record page.
 // SharesCase reports whether two people are both students of one case in
 // a contest: then neither reviews the other's notes from it.
 func (s *Service) SharesCase(ctx context.Context, a, b, contestID int64) (bool, error) {
@@ -142,6 +140,8 @@ func (s *Service) SharesCase(ctx context.Context, a, b, contestID int64) (bool, 
 	return n > 0, err
 }
 
+// NotesAbout lists every kept note on a student's submissions, newest
+// first, for the record page.
 func (s *Service) NotesAbout(ctx context.Context, userID int64) ([]Note, error) {
 	list, err := s.notesWhere(ctx, "n.user_id = ?", userID)
 	for i, j := 0, len(list)-1; i < j; i, j = i+1, j-1 {
