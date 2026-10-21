@@ -27,6 +27,20 @@ Nothing below is tagged or deployed. The v2 phases were planned as the releases 
 - Admin and reviewer forms mark required fields, say which are optional, and move focus to a field error the server returns (X7).
 - Final web audit: date and time inputs show a focus ring on their calendar button, disclosure summaries are 24 px tall, and code, test data and compiler output are never machine-translated.
 
+### Real-stack walkthrough fixes (2026-10-21)
+
+Found by walking the whole organiser and student path on the real server, judge and web app (testing mode, side ports), not on mocks.
+
+- Ending a contest early no longer moves the board's frozen moment into the past: results students had seen on the live board vanished behind "pending" when the freeze was counted back from the new end. Ending before the freeze drops it; ending during it keeps the frozen moment. The confirm says which.
+- A student's open workspace reads the contest again when its event stream comes back after a server restart, and on every fallback poll: announcements, public answers, statement updates and time changes sent while it was down used to be lost until a reload.
+- The console's student pickers (extra time, feed filter) name students by email beside the name; accounts without a name read "Student 3". The organisers' board carries each student's email for site admins only.
+- After editing a problem a live contest pins, the editor links each contest's console, the console's attention strip names the problem with a newer revision until the contest closes, and a link's `#section` scrolls once the screen has drawn it.
+- A question's page shows the 7-day reply deadline its first open starts, not the 21-day cap from before it.
+- Students read back the appeal they sent; a reviewer who took part is told an owner adds an uninvolved one on People; proposing "Zero for one problem" preselects the problem the evidence is on.
+- Tests without outputs or a subtask are named in one line ("Tests 1-6 have no expected output") in the editor and the server's list; a validated problem's advice is headed "Worth adding"; revision 1 reads "First recorded version"; a hidden test's withheld memory is blank instead of "0 KB"; People shows "No name" for an organiser who signed in without one; the class view's screen-reader words say "1 student".
+- `tools/dev-stack.sh` passes `PODIUM_BASE_URL`, Vite reads `PODIUM_DEV_API` and the live Playwright config `PODIUM_LIVE_PORT`, so a second stack runs on side ports (`docs/OPERATIONS.md`).
+- `web/tests-live/history.spec.ts` (C2-055): a mid-contest statement edit with its reason, "Update contest to revision N" and the student's banner and diff, against the real server.
+
 ### Council run 2 fixes (2026-10-21)
 
 #### Backend and operations
