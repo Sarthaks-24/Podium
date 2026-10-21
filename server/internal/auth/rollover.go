@@ -54,6 +54,13 @@ func (s *Service) DisableIdle(ctx context.Context, seenBefore time.Time, label s
 	if err != nil {
 		return RolloverReport{}, err
 	}
+	return s.disableListed(ctx, list, seenBefore, label, archived)
+}
+
+// disableListed is DisableIdle after its read: each listed account is
+// disabled only if it is still an idle, enabled student inside the
+// transaction.
+func (s *Service) disableListed(ctx context.Context, list []Account, seenBefore time.Time, label string, archived []map[string]any) (RolloverReport, error) {
 	tx, err := s.DB.BeginTx(ctx, nil)
 	if err != nil {
 		return RolloverReport{}, err
