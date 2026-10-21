@@ -626,6 +626,26 @@ export interface FeedRow {
   note_count?: number;
   /** v1.4.0, reviewers only: the case opened from this submission. */
   case_id?: number | null;
+  /** The judge versions of the row's latest job (C2-028). */
+  toolchain?: JobToolchain | null;
+}
+
+/** The judge versions behind a feed row (C2-028), or null while it waits or is hidden. */
+export interface JobToolchain {
+  gcc: string;
+  java: string;
+  python: string;
+  node: string;
+}
+
+/** "Judged with g++ 13.3.0": the compiler or runtime of the row's language, or '' when unknown. */
+export function judgedWith(language: string, t: JobToolchain | null | undefined): string {
+  if (!t) return '';
+  const key = ({ cpp17: 'gcc', java21: 'java', python3: 'python', node22: 'node' } as const)[language as 'cpp17'];
+  const version = key ? t[key] : '';
+  if (!version) return '';
+  // Node reports a bare "v22.20.0".
+  return `Judged with ${key === 'node' && /^v\d/.test(version) ? `Node ${version}` : version}`;
 }
 
 export interface FeedPage {

@@ -66,6 +66,7 @@
     type ContestSettings,
     type FeedPage,
     type FeedRow,
+    judgedWith,
   } from '../lib/contests';
   import { keepHeadingFocus } from '../lib/focus';
   import { feedQuery, pinChangeText, pinPath, updateEffect, updateLabel, type PinUpdate } from '../lib/history';
@@ -849,7 +850,7 @@
                       {#if row.case_id}<a class="case-link" href="/admin/integrity/cases/{row.case_id}">Case {row.case_id}</a>{/if}
                     </th>
                     <td class="mono plabel">{row.problem_label ?? row.label}</td>
-                    <td class="lang">{languageLabel(row.language)}</td>
+                    <td class="lang" title={judgedWith(row.language, row.toolchain) || undefined}>{languageLabel(row.language)}</td>
                     <td class="verdict"><Badge tone={out.tone}><MonoDigits text={out.text} /></Badge></td>
                     <td class="act">
                       {#if row.note_count !== undefined}

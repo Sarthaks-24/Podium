@@ -34,6 +34,7 @@ import {
   toLocalInput,
   type Contest,
   type ContestSummary,
+  judgedWith,
 } from './contests';
 
 const MIN = 60_000;
@@ -446,5 +447,20 @@ describe('auditSummary', () => {
       'Deployed release v1.0.1 during the contest: Fix the judge crash',
     );
     expect(auditSummary({ action: 'something_new', details: {} })).toBe('something_new');
+  });
+});
+
+describe('judgedWith (C2-028)', () => {
+  const t = { gcc: 'g++ 13.3.0', java: 'javac 21.0.8', python: 'Python 3.12.3', node: 'v22.20.0' };
+  it("names the row language's compiler or runtime", () => {
+    expect(judgedWith('cpp17', t)).toBe('Judged with g++ 13.3.0');
+    expect(judgedWith('java21', t)).toBe('Judged with javac 21.0.8');
+    expect(judgedWith('python3', t)).toBe('Judged with Python 3.12.3');
+    expect(judgedWith('node22', t)).toBe('Judged with Node v22.20.0');
+  });
+  it('says nothing when unknown', () => {
+    expect(judgedWith('cpp17', null)).toBe('');
+    expect(judgedWith('rust', t)).toBe('');
+    expect(judgedWith('cpp17', { ...t, gcc: '' })).toBe('');
   });
 });
