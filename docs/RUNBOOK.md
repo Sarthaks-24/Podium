@@ -171,8 +171,8 @@ Use this when the database is damaged, a mistake must be undone, or the VM was l
    ```sh
    sudo systemctl stop podium-litestream podium-server podium-judge
    sudo mv /var/lib/podium/db /var/lib/podium/db.before-restore
-   sudo install -d -o podium -g podium -m 750 /var/lib/podium/db
-   sudo install -o podium -g podium -m 640 /var/tmp/restore/podium.db /var/lib/podium/db/podium.db
+   sudo install -d -o podium -g podium -m 2770 /var/lib/podium/db      # group podium writes, for Litestream
+   sudo install -o podium -g podium -m 660 /var/tmp/restore/podium.db /var/lib/podium/db/podium.db
    sudo cp -an /var/tmp/restore/tests/. /var/lib/podium/tests/       # adds missing files, keeps existing ones
    sudo chown -R podium:podium /var/lib/podium/tests
    sudo -u podium podium-server check -db /var/lib/podium/db/podium.db -tests /var/lib/podium/tests

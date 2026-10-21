@@ -96,6 +96,7 @@ check: ## Everything CI runs: formatting, vet, svelte-check, ESLint, tests
 	cd server && go vet ./... && $(GOFLAGS_LINUX) go vet -tags sandbox ./...
 	@test -d web/node_modules || (cd web && npm ci)
 	cd web && npm run check && npm run lint
+	bash tools/install-test.sh
 	$(MAKE) test
 
 .PHONY: sandbox-test

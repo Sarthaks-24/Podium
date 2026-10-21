@@ -322,6 +322,26 @@ check_upgrade_path() {
   echo "upgrade path: $have to $to (this release upgrades from $from or later)"
 }
 
+# check_unfinished_upgrade RELEASE SERVER_BIN: refuse an upgrade that
+# would overwrite the rollback target. After an upgrade stopped at step 7
+# the new binaries are installed but MANIFEST still names the old
+# release, so a rerun would keep the new binaries as "previous" and record
+# the migrated schema as the one before the upgrade (council C1-005). A
+# second run of a finished upgrade to the same release would do the same.
+check_unfinished_upgrade() {
+  local release=$1 bin=$2 want have prev_to
+  prev_to=$(manifest_get "$PREVIOUS/MANIFEST" upgraded_to)
+  want=$(manifest_get "$MANIFEST" podium_server_sha256)
+  if [[ -n $want && -f $bin ]]; then
+    have=$(sha256sum "$bin" | cut -d' ' -f1)
+    [[ $have == "$want" ]] || die "an upgrade${prev_to:+ to $prev_to} did not finish: $bin is not the binary $MANIFEST names. Nothing changed; run: sudo $LIB/install.sh rollback"
+  fi
+  if [[ -n $prev_to && $prev_to == "$release" ]]; then
+    die "$release is already installed by an upgrade; running it again would replace the release kept for rollback in $PREVIOUS. Nothing changed; to go back run: sudo $LIB/install.sh rollback"
+  fi
+  return 0
+}
+
 # db_group_rw: the database files writable by group podium, so
 # Litestream (user podium-backup) can checkpoint. SQLite gives the -wal
 # and -shm files the database file's mode, so this holds once set.
@@ -609,6 +629,7 @@ cmd_upgrade() {
   log "upgrade to $release: 1/8 release files, upgrade path, deploy guard"
   verify_release
   check_upgrade_path
+  check_unfinished_upgrade "$release" /usr/local/bin/podium-server
   guard=$(guard_binary)
   out=$(runuser -u podium -- "$guard" deploy-check -db "$db") || code=$?
   echo "$out"
@@ -754,8 +775,12 @@ EOF
     systemctl stop podium-judge.service
     systemctl stop podium-litestream.service podium-server.service
     mv "$(dirname "$db")" "$(dirname "$db").before-rollback-$stamp"
-    install -d -o podium -g podium -m 750 "$(dirname "$db")"
-    install -o podium -g podium -m 640 "$scratch/podium.db" "$db"
+    # The modes the dirs step gives a fresh install: group podium may
+    # write, so Litestream (podium-backup, D116) can make its state folder
+    # and checkpoint in the restored folder.
+    install -d -o podium -g podium -m 2770 "$(dirname "$db")"
+    install -o podium -g podium -m 660 "$scratch/podium.db" "$db"
+    db_group_rw
     # Adds files the backup has and the live folder lost; keeps the rest.
     local tests
     tests=$(envval /etc/podium/server.env PODIUM_TESTS_DIR); tests=${tests:-/var/lib/podium/tests}
