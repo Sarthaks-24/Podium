@@ -37,7 +37,9 @@ func buildFS(t *testing.T, manifest string, extra fstest.MapFS) fstest.MapFS {
 		"favicon.svg":                       {Data: []byte("<svg/>")},
 		"theme-init.js":                     {Data: []byte("1")},
 		"fonts/schibsted-grotesk-400.woff2": {Data: []byte("f")},
+		"fonts/schibsted-grotesk-500.woff2": {Data: []byte("f")},
 		"fonts/schibsted-grotesk-600.woff2": {Data: []byte("f")},
+		"fonts/fragment-mono-400.woff2":     {Data: []byte("f")},
 		"src/main.ts":                       {Data: []byte("1")},
 	}
 	if manifest != "" {
@@ -331,7 +333,7 @@ func TestLinkCrawl(t *testing.T) {
 			queue = append(queue, u.Path)
 		}
 	}
-	for _, want := range []string{"/favicon.svg", "/favicon.ico", "/apple-touch-icon.png", "/site.webmanifest", "/og.png", "/theme-init.js", "/fonts/schibsted-grotesk-600.woff2"} {
+	for _, want := range []string{"/favicon.svg", "/favicon.ico", "/apple-touch-icon.png", "/site.webmanifest", "/og.png", "/theme-init.js", "/fonts/schibsted-grotesk-500.woff2", "/fonts/fragment-mono-400.woff2"} {
 		if !seen[want] {
 			t.Errorf("crawl never reached %s (seen %v)", want, seen)
 		}
