@@ -80,6 +80,7 @@ A reviewer who reads a submission and wants to look closer does not need a signa
 - **Private note.** On any Submit of a contest (practice after the contest included), a reviewer writes a note of up to 2,000 characters and may highlight line ranges. Notes are for reviewers only: the student is never told about one, because a hunch is not a case. A note is deleted 30 days after it was written unless a case is opened from its submission.
 - **Open a case from a submission.** Title and a reason of at least 20 characters, as for a case from signals. The case's student is the submission's author; its evidence is the submission and its notes, copied into the case. The student, once the case is shared, sees their own code with the highlighted lines and "An organiser asked you to explain this submission", never the notes' text.
 - Who may: the owner, admins, and co-organisers of that contest whose own role is not student. Student co-organisers (TAs) cannot write notes, open cases or see them.
+- A reviewer who is themselves a student of a case (a student later made an admin) never sees it: not the case, its standing and rating lines or appeals, nor the signals that name them, nor the notes on a classmate's submissions in that contest.
 
 ## Outcomes and the two-person rule (v1.4.0)
 
