@@ -78,6 +78,15 @@ test('three columns at 1024 px, tabs below', async ({ page }) => {
   await expect(page.getByText('You are trying this problem as a student.')).toBeVisible();
 });
 
+test('the empty result names the open tests a Run checks (D115, C2-016)', async ({ page }) => {
+  await mockApi(page, { openTests: 2 });
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await openWorkspace(page);
+  await expect(page.locator('p.empty[data-result-focus]')).toHaveText(
+    'Run on samples checks your code on the samples and 2 open tests. It never counts. Submit grades it on the hidden tests. Results appear here.',
+  );
+});
+
 test('submitting fills the subtask strip as results stream in', async ({ page }) => {
   const api = await mockApi(page, { submissions: [submission(7, 'partial')] });
   await page.setViewportSize({ width: 1440, height: 900 });
@@ -546,7 +555,7 @@ test.describe('in a contest', () => {
     await page.goto('/contests/week-6');
     const before = await page.locator('section', { has: page.getByRole('heading', { name: 'Rules' }) }).getByRole('listitem').allTextContents();
     expect(before.slice(1, 4)).toEqual([
-      'Run on samples tries your code on the examples in the statement. It never counts.',
+      'Run on samples tries your code on the examples in the statement and on any open tests the problem has. It never counts.',
       'Submit grades your code on hidden tests, in parts called subtasks.',
       'A later, worse submission never lowers your score.',
     ]);

@@ -424,9 +424,13 @@ export function allowedLanguages(ids: readonly string[] | undefined): { id: Lang
   return LANGUAGES.filter((l) => ids.includes(l.id));
 }
 
-/** The three sentences that teach the two buttons (v2 S3, audit 01-4). True in both scoring modes. */
+/**
+ * The three sentences that teach the two buttons (v2 S3, audit 01-4). True in
+ * both scoring modes. The rules are per contest, so the Run sentence names
+ * open tests (D115) without knowing which problems have them.
+ */
 export const WORKSPACE_SENTENCES: readonly string[] = [
-  'Run on samples tries your code on the examples in the statement. It never counts.',
+  'Run on samples tries your code on the examples in the statement and on any open tests the problem has. It never counts.',
   'Submit grades your code on hidden tests, in parts called subtasks.',
   'A later, worse submission never lowers your score.',
 ];
@@ -449,10 +453,13 @@ export function rulesSentences(c: Pick<Contest, 'start_mode' | 'duration_minutes
       ? 'Each problem scores your best single submission.'
       : 'Each problem adds up your best result on every subtask across your submissions.',
   );
+  // An ungraded contest is practice: a submission shows the first hidden test it fails (D115).
   out.push(
     r.feedback_mode === 'exam'
       ? 'This is an exam: a submission only says "Submitted". Scores appear after the end.'
-      : 'Each submission shows which subtasks passed and a verdict for every test, never the hidden inputs or outputs.',
+      : r.graded === false
+        ? 'Each submission shows which subtasks passed and, in full, the first hidden test it fails. It never counts.'
+        : 'Each submission shows which subtasks passed and a verdict for every test, never the hidden inputs or outputs.',
   );
   out.push(`You can submit up to ${r.max_per_problem} times per problem, at least ${r.min_gap_s} s apart.`);
   const langs = allowedLanguages(r.languages).map((l) => l.label);

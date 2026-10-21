@@ -1238,7 +1238,14 @@
             {/if}
           </div>
         {:else}
-          <p class="muted empty" tabindex="-1" data-result-focus>Run on samples to check your code, then submit it. Results appear here.</p>
+          <p class="muted empty" tabindex="-1" data-result-focus>
+            {#if (ws.open_test_count ?? 0) > 0}
+              Run on samples checks your code on the samples and {ws.open_test_count} open {ws.open_test_count === 1 ? 'test' : 'tests'}. It never
+              counts. Submit grades it on the hidden tests. Results appear here.
+            {:else}
+              Run on samples to check your code, then submit it. Results appear here.
+            {/if}
+          </p>
         {/if}
 
         <div class="block">

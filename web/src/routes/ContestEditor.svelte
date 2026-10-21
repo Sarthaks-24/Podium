@@ -1030,8 +1030,8 @@
 
               <fieldset class="group">
                 <legend>Options</legend>
-                <label class="choice"><input type="checkbox" bind:checked={form.graded} /> Graded: times shown to 0.1 s, honour code recorded</label>
-                <label class="choice"><input type="checkbox" bind:checked={form.practice_after_end} /> Open the problems for practice after the end</label>
+                <label class="choice"><input type="checkbox" bind:checked={form.graded} /> Graded: hidden tests stay hidden, times shown to 0.1 s, honour code recorded</label>
+                <label class="choice"><input type="checkbox" bind:checked={form.practice_after_end} /> Open the problems for practice after the end. Practice shows students the first hidden test they fail.</label>
                 <label class="choice"><input type="checkbox" bind:checked={form.stop_on_sample_fail} /> Stop judging at a failed sample</label>
                 <label class="choice" class:off={freezeOff && !form.hold_reveal}>
                   <input type="checkbox" bind:checked={form.hold_reveal} disabled={freezeOff && !form.hold_reveal} aria-describedby="f-hold-help" />

@@ -300,10 +300,21 @@ describe('student phase and window maths', () => {
   it('teaches Run and Submit right after the timing (S3)', () => {
     const lines = rulesSentences(contest());
     expect(lines.slice(1, 4)).toEqual([
-      'Run on samples tries your code on the examples in the statement. It never counts.',
+      'Run on samples tries your code on the examples in the statement and on any open tests the problem has. It never counts.',
       'Submit grades your code on hidden tests, in parts called subtasks.',
       'A later, worse submission never lowers your score.',
     ]);
+  });
+
+  it('says an ungraded contest shows the first failing hidden test (D115, C2-016)', () => {
+    const graded = rulesSentences(contest()).join(' ');
+    expect(graded).toContain('never the hidden inputs or outputs');
+    const ungraded = rulesSentences(contest({ rules: { ...contest().rules, graded: false } })).join(' ');
+    expect(ungraded).toContain('Each submission shows which subtasks passed and, in full, the first hidden test it fails. It never counts.');
+    expect(ungraded).not.toContain('never the hidden inputs');
+    // Exam feedback shows nothing, graded or not.
+    const exam = rulesSentences(contest({ rules: { ...contest().rules, graded: false, feedback_mode: 'exam' } })).join(' ');
+    expect(exam).toContain('only says "Submitted"');
   });
 
   it('says the time of a late arrival is already running', () => {

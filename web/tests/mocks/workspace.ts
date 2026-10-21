@@ -130,6 +130,8 @@ export interface MockOptions {
   draft?: { language: string; source: string } | null;
   submissions?: Json[];
   failDrafts?: boolean;
+  /** How many open tests a Run checks after the samples (D115); Go always sends the count. */
+  openTests?: number;
 }
 
 /** Installs the API mock for one page and returns its mutable state. */
@@ -192,6 +194,7 @@ export async function mockApi(page: Page, options: MockOptions = {}) {
           draft: state.draft,
           submissions: [...state.submissions].sort((a, b) => Number(b.id) - Number(a.id)),
           server_now: T0,
+          open_test_count: options.openTests ?? 0,
         });
       }
       if (path === '/api/workspace/404' && method === 'GET') {
