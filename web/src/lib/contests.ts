@@ -875,7 +875,7 @@ export interface QueueHealth {
 
 /** One item of the console's attention strip; only "part" and "bad" ask for action. */
 export interface AttentionItem {
-  key: 'time' | 'freeze' | 'judging' | 'queue' | 'errors' | 'judge' | 'questions' | 'drift';
+  key: 'time' | 'freeze' | 'judging' | 'queue' | 'errors' | 'judge' | 'questions' | 'drift' | 'update';
   text: string;
   tone: 'note' | 'part' | 'bad';
   href: string;
