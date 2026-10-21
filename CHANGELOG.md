@@ -6,6 +6,16 @@ Dated entries per release. Unreleased work is listed at the top.
 
 Nothing below is tagged or deployed. The v2 phases were planned as the releases v1.0.0 (P0) to v1.5.0 (P5); they reached `main` together, so they are proposed to ship as one release once the P0 drills on the VM pass (the owner decides the version and the upgrade path). The phase labels below say where each change came from.
 
+### v2 P6, frontend (2026-10-21)
+
+- A student's first load no longer carries the organiser screens: every admin route loads on first visit. The entry script and its preloads fell from 675 kB to 332 kB (211 kB to 112 kB gzipped); CI fails when they pass 120 kB gzipped or the stylesheets 16 kB (F8.1, F8.3).
+- KaTeX and its stylesheet load only when a text holds maths; until then a formula reads as its TeX source. Statement images load lazily. The 500 face and Fragment Mono are preloaded with 400 and 600 (F8.2, D91).
+- Toasts fade out at the short duration; the subtask strip fills by transform; both stay still under reduced motion. "Grade as the AI wrote it" names what is graded (F8.4).
+- The problem editor's preview and context column sit under the sticky bar at any height, and fields reached from the error list clear it (F8.5, R3).
+- Compile-error jump buttons start their name with the location they show (X6).
+- Admin and reviewer forms mark required fields, say which are optional, and move focus to a field error the server returns (X7).
+- Final web audit: date and time inputs show a focus ring on their calendar button, disclosure summaries are 24 px tall, and code, test data and compiler output are never machine-translated.
+
 ### Council run 1 fixes (2026-10-21)
 
 - Rollback keeps the database group-writable for Litestream; an upgrade that stopped half-way is refused instead of overwriting the release kept for rollback; a rollback says which forget-user erasures it undoes and writes them down to apply again; old pre-rollback database folders age out with the backups.

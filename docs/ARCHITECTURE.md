@@ -578,6 +578,7 @@ The web app is one Svelte single-page app with no component library. Since v2 P1
 | Announcer | `web/src/lib/announce.svelte.ts` | Two always-present live regions in `App.svelte`, polite and assertive. Each message clears its region first, so the same sentence said twice is spoken twice. Widgets with a running text (the contest clock) keep their own region |
 | Breakpoints | `web/src/lib/breakpoints.ts` | Tiers at 768, 1024, 1280 (`desk`, the page split, D181) and 1440 px plus a short height tier. CSS writes `(min-width: 768px)` or its exact complement `(width < 768px)`, never `max-width: 767px`, so no zoomed width falls between two layouts; a guardrail test fails on any other width |
 | Icons | `web/src/lib/icons.ts`, `web/src/components/Icon.svelte` | Lucide shapes as data, 20 px beside words and never instead of them |
+| Errors and forms | `web/src/lib/api.ts` `errorText`, `web/src/lib/focus.ts` | `errorText(e)` is the one fallback: the server's sentence, or "Something on this page failed. Reload the page and try again." (a guardrail test forbids a second copy). Required controls carry `aria-required` and the form says "All fields are required." where true; after a field error, from the page or from the server, `focusFirstInvalid()` moves focus to the first marked field (X7) |
 | Route table | `web/src/lib/routing.ts` | Each route's pattern, sign-in need, `public`, `title` and `description`. Page titles read it, and the build writes it to `dist/routes.json` for the server's head, 404 and robots (contract C2) |
 
 ### Organiser screens (v2 P3)
@@ -652,6 +653,20 @@ The editor well gets a `--well-edge` border, the well's own colour in light them
 | Verdict | VerdictPanel's headline and subtask strip stick to the top of the result pane while the tests scroll | The verdict landed below the fold (S5) |
 | Revealed test (D115) | `TestDetail` shows a revealed test's input, expected output, output, first difference and "Run on this input", with the line "This test is shown because this is practice." or "because this was a run."; the run headline counts samples and open tests | The server decides what is revealed; the screen only shows what the response carries (D217) |
 | Editor | Each CodeMirror language mode is its own chunk, loaded when chosen; the editor's keyboard hint is linked by `aria-describedby`; "Reset to starter" in Editor settings confirms and saves at once | 34 percent less editor code for a C++ student (`calibration.md`); X2; F7.12 |
+
+### What a page loads, and the size budget (v2 P6, D249 to D251)
+
+Contest start is several hundred students on campus Wi-Fi in the same minute, so the first load carries only what a student needs:
+
+| Loaded | What | How |
+|---|---|---|
+| Every page | The shell and the student screens (Home, a contest and its workspace, standings, notices, questions, contact, privacy, sign-in) | The entry script and the chunks `dist/index.html` preloads: 332 kB, 112 kB gzipped (calibration.md, 2026-10-21) |
+| First visit to an organiser screen | Every admin route, and Progress | `import()` from a table in `App.svelte`; a loaded module renders at once on the next visit. While one loads, the shell waits for its `h1` and focuses it if focus is still on the pressed link |
+| A statement or Markdown text | marked and DOMPurify (`lib/markdown.ts`) | `import()` from the components that render Markdown |
+| Maths in that text | KaTeX, its stylesheet and fonts (`lib/katex.ts`) | `import()` only when a placeholder exists; the TeX source is the placeholder's text until KaTeX draws it |
+| The editor | CodeMirror core, then the chosen language mode | `import()` (P5) |
+
+`web/scripts/size-budget.mjs` (`npm run size`, run in CI after `make build`) gzips the entry script, its preloads and the stylesheets and fails above 120 kB of JS or 16 kB of CSS. A budget is raised only with a measurement and a reason in `calibration.md`. Fonts: all four faces (Schibsted Grotesk 400, 500, 600 and Fragment Mono 400) are preloaded, because the first screen uses each (D91); a guardrail test keeps the preloads equal to the `@font-face` list.
 
 ### Announcements to screen readers (X1)
 
