@@ -47,7 +47,7 @@
     try {
       const page = await getJSON<InboxPage>('/api/admin/contact');
       messages = page.messages ?? [];
-      more = page.more === true;
+      more = page.has_more === true;
       loadState = 'ready';
     } catch (e) {
       if (signedOut(e)) return;
@@ -68,7 +68,7 @@
     try {
       const page = await getJSON<InboxPage>(`/api/admin/contact?before=${encodeURIComponent(String(last.id))}`);
       messages = [...messages, ...(page.messages ?? [])];
-      more = page.more === true;
+      more = page.has_more === true;
     } catch (e) {
       if (signedOut(e)) return;
       showToast(e instanceof ApiError ? e.message : 'Older messages could not load. Try again in a moment.', 'error');

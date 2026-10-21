@@ -161,7 +161,7 @@ func TestP3ContactFormAndInbox(t *testing.T) {
 	owner := s.signedIn("owner@college.edu", "Owner")
 	code, out = owner.do("GET", "/api/admin/contact", nil, "")
 	list := out["messages"].([]any)
-	if code != 200 || len(list) != 5 || out["more"] != false {
+	if code != 200 || len(list) != 5 || out["has_more"] != false {
 		t.Fatalf("inbox: %d %v", code, out)
 	}
 	first := list[0].(map[string]any)

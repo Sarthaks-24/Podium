@@ -112,6 +112,7 @@ Testing mode refuses any request whose `Host` is not localhost, 127.0.0.1 or [::
 | `podium-judge work` | 2 lanes, pulling from the judge API with the testing token |
 | Vite dev server | http://localhost:5173, proxies `/api` and `/healthz` to the server |
 | State (database, tests, judge cache) | `/var/tmp/podium-dev` in Linux (WSL2 on Windows); set `PODIUM_DEV_STATE` to move it |
+| CPUs | all; `PODIUM_DEV_CPUS` (a `taskset` list such as `0-1`) pins both services, to measure as on the 2-vCPU VM. A development override only, never set on the VM |
 
 How it runs:
 
@@ -239,7 +240,7 @@ The five encrypted-copy variables go together: all five or none. With none, each
 
 ### Alerts (`/etc/podium/alert.env`)
 
-Read by `podium-alert@.service` and `podium-check.service`; template `deploy/alert.env.example`.
+Read by `podium-alert@.service` and `podium-check.service`; template `deploy/alert.env.example`. `podium-check` also honours `PODIUM_ALERT_BIN` (the alert script to call, default `/usr/local/lib/podium/podium-alert`), an internal override for testing the checker on another machine; never set it on the VM.
 
 | Variable | Default | Purpose |
 |---|---|---|

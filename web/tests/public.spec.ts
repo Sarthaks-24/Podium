@@ -90,9 +90,9 @@ async function mockApi(page: Page, who: Who, options: { contactMode?: 'ok' | 'ra
         if (me.role === 'student') return apiError(route, 403, 'forbidden', 'Only organisers can read these messages.');
         state.inboxQueries.push(url.search);
         if (url.searchParams.get('before') === '11') {
-          return json(route, 200, { messages: [{ id: 3, topic: 'other', message: 'An old note.', created_at: NOW - 30 * 86_400_000, sender: { user_id: 4, email: 'neha@college.edu', name: 'Neha Gupta', role: 'student' } }], more: false, server_now: NOW });
+          return json(route, 200, { messages: [{ id: 3, topic: 'other', message: 'An old note.', created_at: NOW - 30 * 86_400_000, sender: { user_id: 4, email: 'neha@college.edu', name: 'Neha Gupta', role: 'student' } }], has_more: false, server_now: NOW });
         }
-        return json(route, 200, { messages: state.messages.filter((m) => !state.deleted.includes(m.id)), more: true, server_now: NOW });
+        return json(route, 200, { messages: state.messages.filter((m) => !state.deleted.includes(m.id)), has_more: true, server_now: NOW });
       }
       const del = path.match(/^\/api\/admin\/contact\/(\d+)$/);
       if (del && method === 'DELETE') {

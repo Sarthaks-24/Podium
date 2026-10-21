@@ -62,7 +62,7 @@ export interface InboxMessage {
 
 export interface InboxPage {
   messages: InboxMessage[];
-  more: boolean;
+  has_more: boolean;
   server_now?: number;
 }
 

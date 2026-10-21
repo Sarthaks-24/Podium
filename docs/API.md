@@ -1240,7 +1240,7 @@ The inbox, newest first, 50 per page. `before` is a message id: the page holds m
 { "messages": [ { "id": 12, "topic": "contest", "message": "The statement of problem B says ...",
                   "created_at": 1792311120000,
                   "sender": { "user_id": 7, "email": "asha@college.edu", "name": "Asha Rao", "role": "student" } } ],
-  "more": false, "server_now": 1792311200000 }
+  "has_more": false, "server_now": 1792311200000 }
 ```
 
 `sender` is the account as it is now. The inbox screen offers "Reply by email" as a `mailto:` link to `sender.email`. Co-organisers whose site role is student get `403 forbidden`.
@@ -1560,7 +1560,7 @@ Every route that returns a `Case` adds:
 | Route | Request | Success |
 |---|---|---|
 | `POST /api/admin/integrity/cases/{case}/proposals` | `{"outcome": "zero_problem", "problem_label": "B", "user_ids": [7], "note": "...", "reason": "...", "seen_explanations": {"7": 1792300500000}}` | 201 `Case` |
-| `POST /api/admin/integrity/cases/{case}/proposals/{id}/confirm` | `{"note": "...", "seen_explanations": {...}, "sole_organiser_reason": "..."}` | 200 `Case` |
+| `POST /api/admin/integrity/cases/{case}/proposals/{proposal}/confirm` | `{"note": "...", "seen_explanations": {...}, "sole_organiser_reason": "..."}` | 200 `Case` |
 
 - `outcome` is `warning`, `zero_problem` (needs `problem_label`, a label of the case's contest) or `referred`. `user_ids` are the students of the case the outcome is for (all of them when left out); the others are cleared by it. `note` (20 to 4,000) is for reviewers; `reason` (20 to 2,000) is the sentence the student reads on their standing.
 - A proposal needs a shared case where every student replied after the latest share or ran out of time (the same rule as before for action), the contest over for everyone, and no other pending proposal (`409 proposal_pending`). A seen explanation that is out of date is `409 explanation_changed`.

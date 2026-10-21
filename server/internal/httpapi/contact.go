@@ -70,7 +70,7 @@ func (d Deps) listContact(w http.ResponseWriter, r *http.Request) {
 		d.internalError(w, r, err)
 		return
 	}
-	WriteJSON(w, http.StatusOK, map[string]any{"messages": list, "more": more, "server_now": d.now().UnixMilli()})
+	WriteJSON(w, http.StatusOK, map[string]any{"messages": list, "has_more": more, "server_now": d.now().UnixMilli()})
 }
 
 func (d Deps) deleteContact(w http.ResponseWriter, r *http.Request) {
