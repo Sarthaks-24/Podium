@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Checks for tools/deploy.sh that need no VM: the script runs from a copy in
 # a temporary folder with git, make, ssh and scp replaced by stubs on PATH
-# that record how they were called. Runs in Git Bash and on Linux; `make
+# that record how they were called; plus release-manifest.sh's refusal of
+# the placeholder UPGRADES_FROM. Runs in Git Bash and on Linux; `make
 # check` calls it.
 set -euo pipefail
 
@@ -138,6 +139,23 @@ elif [[ $out == *"at least 10 characters"* && ! -s $log ]]; then
 else
   fail "short reason: $out"
 fi
+
+# release-manifest.sh refuses a real release that still upgrades from the
+# placeholder v1.0.0 (C2-040), before it looks at the folder; a drill
+# build below v1.5.0 may keep it.
+manifest() { bash "$here/release-manifest.sh" "$tmp/no-such-release" "$1" abc now "$2" 2>&1; }
+if out=$(manifest v2.0.0 v1.0.0); then
+  fail "a v2.0.0 release upgrading from the placeholder went on"
+elif [[ $out == *"placeholder v1.0.0"* ]]; then
+  pass "release-manifest refuses v2.0.0 with UPGRADES_FROM v1.0.0"
+else
+  fail "release-manifest placeholder: $out"
+fi
+for pair in "v1.4.90 v1.0.0" "v2.0.0 v2.0.0"; do
+  # shellcheck disable=SC2086
+  out=$(manifest $pair || true)
+  if [[ $out == *"has no bin/"* ]]; then pass "release-manifest accepts version and upgrades_from $pair"; else fail "release-manifest $pair: $out"; fi
+done
 
 if (( fails > 0 )); then echo "$fails deploy.sh check(s) failed"; exit 1; fi
 echo "deploy.sh checks passed"

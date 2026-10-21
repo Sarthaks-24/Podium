@@ -19,6 +19,13 @@ dir=$1 version=$2 commit=$3 built=$4 upgrades_from=$5
 semver='^v[0-9]+\.[0-9]+\.[0-9]+$'
 [[ $version =~ $semver ]] || { echo "release-manifest: version '$version' is not vX.Y.Z; tag the commit or run make release VERSION=vX.Y.Z" >&2; exit 1; }
 [[ $upgrades_from =~ $semver ]] || { echo "release-manifest: UPGRADES_FROM '$upgrades_from' is not vX.Y.Z" >&2; exit 1; }
+# v1.0.0 is the Makefile's placeholder until the owner decides D236; a
+# real release (v1.5.0 or later) built with it would accept an upgrade
+# from releases that were never tagged (C2-040).
+if [[ $upgrades_from == v1.0.0 ]] && [[ $(printf '%s\n%s\n' 1.5.0 "${version#v}" | sort -V | head -n1) == 1.5.0 ]]; then
+  echo "release-manifest: $version still upgrades from the placeholder v1.0.0; set UPGRADES_FROM in the Makefile (D236)" >&2
+  exit 1
+fi
 repo="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 [[ -d $dir/bin ]] || { echo "release-manifest: $dir has no bin/" >&2; exit 1; }
 
