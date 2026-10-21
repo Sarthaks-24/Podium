@@ -363,3 +363,102 @@ func TestOneFailingContestDoesNotStopThePass(t *testing.T) {
 		t.Errorf("result %+v", res)
 	}
 }
+
+// TestPrivateNotes: notes older than 30 days go, except on a submission a
+// manual case was opened from, which is case evidence (C1-014).
+func TestPrivateNotes(t *testing.T) {
+	f := newFixture(t)
+	f.problemWithRevisions(day)
+	f.contest(1, 40*day)
+	for id := 1; id <= 3; id++ {
+		f.exec(`INSERT INTO submissions (id, problem_id, contest_id, user_id, kind, language, source, source_sha, state, created_at)
+			VALUES (?, 1, 1, 2, 'submit', 'cpp17', 'x', 's', 'done', ?)`, id, f.ago(41*day))
+	}
+	// 1: old, goes. 2: inside 30 days, stays. 3: old, but a manual case
+	// was opened from it, stays. 4: old, on submission 3 too, stays.
+	// 5: old, a signals case on submission 1 does not protect it.
+	f.exec(`INSERT INTO integrity_cases (id, contest_id, state, title, created_at, updated_at, source, submission_id)
+		VALUES (1, 1, 'open', 'Manual', 1, 1, 'manual', 3), (2, 1, 'open', 'Signals', 1, 1, 'signals', 1)`)
+	for i, n := range []struct {
+		sub int
+		age time.Duration
+	}{{1, 31 * day}, {2, 29 * day}, {3, 31 * day}, {3, 60 * day}, {1, 45 * day}} {
+		f.exec(`INSERT INTO submission_notes (id, submission_id, contest_id, user_id, by_user, text, created_at) VALUES (?, ?, 1, 2, 1, 'note', ?)`,
+			i+1, n.sub, f.ago(n.age))
+	}
+	res, err := f.job().Run(f.ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.NotesDeleted != 2 {
+		t.Errorf("deleted %d notes, want 2", res.NotesDeleted)
+	}
+	for id, kept := range map[int]bool{1: false, 2: true, 3: true, 4: true, 5: false} {
+		if got := f.count("SELECT count(*) FROM submission_notes WHERE id = ?", id) == 1; got != kept {
+			t.Errorf("note %d kept %v, want %v", id, got, kept)
+		}
+	}
+}
+
+// TestNotices: notices older than 180 days go (C1-014).
+func TestNotices(t *testing.T) {
+	f := newFixture(t)
+	f.exec(`INSERT INTO notifications (id, user_id, kind, created_at, available_at) VALUES (1, 2, 'reminder', ?, ?), (2, 2, 'reminder', ?, ?)`,
+		f.ago(181*day), f.ago(181*day), f.ago(179*day), f.ago(179*day))
+	res, err := f.job().Run(f.ctx)
+	if err != nil || res.NoticesDeleted != 1 || f.count("SELECT count(*) FROM notifications WHERE id = 2") != 1 ||
+		f.count("SELECT count(*) FROM notifications") != 1 {
+		t.Fatalf("%+v %v", res, err)
+	}
+}
+
+// TestRecordViewsAndRatingHistory: record views go after 2 years, rating
+// history after 4, each through its cutoff row (C1-014).
+func TestRecordViewsAndRatingHistory(t *testing.T) {
+	f := newFixture(t)
+	f.exec(`INSERT INTO record_views (at, viewer_id, subject_id, kind) VALUES (?, 1, 2, 'record'), (?, 1, 2, 'record')`,
+		f.ago(retention.RecordViews+day), f.ago(retention.RecordViews-day))
+	f.exec(`INSERT INTO rating_history (user_id, at, delta_tenths, new_value_tenths, cause) VALUES (2, ?, -10, 90, 'manual'), (2, ?, -10, 80, 'manual')`,
+		f.ago(retention.RatingHistory+day), f.ago(retention.RatingHistory-day))
+	res, err := f.job().Run(f.ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.ViewsDeleted != 1 || f.count("SELECT count(*) FROM record_views") != 1 ||
+		f.count("SELECT count(*) FROM record_views WHERE at = ?", f.ago(retention.RecordViews-day)) != 1 {
+		t.Errorf("record views: %+v, %d left", res, f.count("SELECT count(*) FROM record_views"))
+	}
+	if res.RatingRowsDeleted != 1 || f.count("SELECT count(*) FROM rating_history") != 1 ||
+		f.count("SELECT count(*) FROM rating_history WHERE new_value_tenths = 80") != 1 {
+		t.Errorf("rating history: %+v, %d left", res, f.count("SELECT count(*) FROM rating_history"))
+	}
+}
+
+// TestRatingProposals: proposals and their closures go as long after as
+// the rating history; a closure newer than the cutoff keeps its old
+// proposal (C1-014).
+func TestRatingProposals(t *testing.T) {
+	f := newFixture(t)
+	old, recent := f.ago(retention.RatingHistory+day), f.ago(retention.RatingHistory-day)
+	// 1: old, closed long ago, goes with its closure. 2: old, never
+	// closed, goes. 3: old, closed recently, stays. 4: recent, stays.
+	f.exec(`INSERT INTO rating_proposals (id, user_id, from_tenths, to_tenths, reason, by_user, created_at) VALUES
+		(1, 2, 90, 80, 'r', 1, ?), (2, 2, 90, 80, 'r', 1, ?), (3, 2, 90, 80, 'r', 1, ?), (4, 2, 90, 80, 'r', 1, ?)`, old, old, old, recent)
+	f.exec(`INSERT INTO rating_proposal_closures (proposal_id, state, by_user, at) VALUES (1, 'declined', 1, ?), (3, 'declined', 1, ?)`, old, recent)
+	res, err := f.job().Run(f.ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.RatingRowsDeleted != 2 {
+		t.Errorf("deleted %d proposals, want 2", res.RatingRowsDeleted)
+	}
+	for id, kept := range map[int]bool{1: false, 2: false, 3: true, 4: true} {
+		if got := f.count("SELECT count(*) FROM rating_proposals WHERE id = ?", id) == 1; got != kept {
+			t.Errorf("proposal %d kept %v, want %v", id, got, kept)
+		}
+	}
+	if f.count("SELECT count(*) FROM rating_proposal_closures WHERE proposal_id = 1") != 0 ||
+		f.count("SELECT count(*) FROM rating_proposal_closures WHERE proposal_id = 3") != 1 {
+		t.Error("closures")
+	}
+}
