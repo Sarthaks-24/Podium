@@ -18,12 +18,18 @@
     pages, and a refresh every 10 s. Outcomes read as students read them
     ("Partial, 40 of 100" apart from a zero); the time is minutes from the
     start, with the clock time on hover; "Judge again" is a quiet button
-    per row, and judging a whole problem again says what it does.
+    per row, and judging a whole problem again says what it does. Each
+    student's name opens their progress page (web-quality #16). For
+    reviewers each row also has "Notes" (private notes on the submission,
+    components/SubmissionNotes, with "Open a case" through OpenCaseDialog;
+    v2 P4 F9.3) and a link to the case opened from it.
   - Time: extend the contest for everyone (the confirmation names the new
     end), extra minutes for one student with a reason, and "End the
     contest now", which says its effect before it sets the end to now.
   - Problem versions, folded unless an update is available (C4, F10.1),
-    and Changes, every action that can change results.
+    and Changes, every action that can change results (extra time says
+    whether a reason was written, v1.4.0; a review decision that changed
+    the board is listed too).
 
   After Pause, Resume, Extend and Judge again the announcement box is
   filled from a template; it is never posted by itself. Students see a
@@ -39,6 +45,8 @@
   import Icon from '../components/Icon.svelte';
   import Markdown from '../components/Markdown.svelte';
   import MonoDigits from '../components/MonoDigits.svelte';
+  import OpenCaseDialog from '../components/OpenCaseDialog.svelte';
+  import SubmissionNotes from '../components/SubmissionNotes.svelte';
   import { ApiError, getJSON, sendJSON } from '../lib/api';
   import { serverClock } from '../lib/clock';
   import {
@@ -130,6 +138,17 @@
 
   // Problem versions.
   let pinNote = $state('');
+
+  // Private notes and manual cases (F9.3).
+  let notesFor = $state<{ id: number; name: string; label: string } | null>(null);
+  let caseFor = $state<{ id: number; name: string; label: string } | null>(null);
+
+  /** Keeps the feed row in step with the notes dialog. */
+  function notesChanged(count: number, caseId: number | null) {
+    const target = notesFor;
+    if (!target) return;
+    feed = feed.map((r) => (r.id === target.id ? { ...r, note_count: count, case_id: caseId } : r));
+  }
 
   // Clarifications.
   let clarifications = $state<Clarification[]>([]);
@@ -829,11 +848,23 @@
                   {@const since = sinceStart(row.created_at, contest.starts_at)}
                   <tr>
                     <td class="when" title={formatWhen(row.created_at, ticker.now)}><MonoDigits text={since ?? formatWhen(row.created_at, ticker.now)} /></td>
-                    <th scope="row" class="who">{row.name}{#if row.practice}<span class="muted"> (practice)</span>{/if}</th>
+                    <th scope="row" class="who">
+                      <a href="/admin/users/{row.user_id}/progress">{row.name}</a>{#if row.practice}<span class="muted"> (practice)</span>{/if}
+                      {#if row.case_id}<a class="case-link" href="/admin/integrity/cases/{row.case_id}">Case {row.case_id}</a>{/if}
+                    </th>
                     <td class="mono plabel">{row.problem_label ?? row.label}</td>
                     <td class="lang">{languageLabel(row.language)}</td>
                     <td class="verdict"><Badge tone={out.tone}><MonoDigits text={out.text} /></Badge></td>
                     <td class="act">
+                      {#if row.note_count !== undefined}
+                        <button
+                          type="button"
+                          class="btn btn-quiet btn-compact again"
+                          aria-label="Notes on {row.name}'s submission to problem {row.problem_label ?? row.label}, {formatWhen(row.created_at, ticker.now)}{row.note_count > 0 ? `, ${countOf(row.note_count, 'note')}` : ''}"
+                          onclick={() => (notesFor = { id: row.id, name: row.name, label: row.problem_label ?? row.label ?? '' })}
+                          >{row.note_count > 0 ? countOf(row.note_count, 'note') : 'Notes'}</button
+                        >
+                      {/if}
                       <button
                         type="button"
                         class="btn btn-quiet btn-compact again"
@@ -1007,6 +1038,32 @@
     </div>
   </div>
 
+  <SubmissionNotes
+    open={notesFor !== null}
+    submission={notesFor}
+    onclose={() => (notesFor = null)}
+    onchange={notesChanged}
+    onopencase={() => {
+      caseFor = notesFor;
+      notesFor = null;
+    }}
+  />
+  <OpenCaseDialog
+    open={caseFor !== null}
+    contestId={id}
+    signals={[]}
+    users={undefined}
+    problems={undefined}
+    submission={caseFor}
+    onclose={() => (caseFor = null)}
+    oncreated={(c) => {
+      const target = caseFor;
+      caseFor = null;
+      if (target) feed = feed.map((r) => (r.id === target.id ? { ...r, case_id: c.id } : r));
+      showToast('Opened the case. Share it with the student when you are ready.');
+    }}
+  />
+
   <ConfirmDialog
     open={confirm !== null}
     title={confirm?.title ?? ''}
@@ -1173,6 +1230,21 @@
 
   .who {
     font-weight: 500;
+    white-space: nowrap;
+  }
+
+  .who a {
+    color: var(--ink);
+  }
+
+  .who .case-link {
+    color: var(--act);
+    margin-inline-start: var(--space-2);
+    font-size: var(--fs-0);
+    font-weight: 400;
+  }
+
+  .act {
     white-space: nowrap;
   }
 

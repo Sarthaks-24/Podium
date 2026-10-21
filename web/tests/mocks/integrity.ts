@@ -95,6 +95,15 @@ export interface Options {
   noCases?: boolean;
   /** A re-run after the case opened: live signal 31 now names other students. */
   rerun?: boolean;
+  /**
+   * v1.4.0 case page: both students replied and Priya proposed a zero for
+   * B, which the viewer (Arjun, who opened nothing) may confirm; or the
+   * case closed with that outcome and Asha appealed it.
+   */
+  proposed?: boolean;
+  appealed?: boolean;
+  /** The viewer took part in the decision, so they may not rule on the appeal. */
+  involved?: boolean;
 }
 
 export type CaseUserJson = Json & { user_id: number; shared_at: number | null; asked_at: number | null; respond_by: number | null; explanations: { text: string; created_at: number }[] };
@@ -123,6 +132,9 @@ export async function mockApi(page: Page, options: Options = {}) {
     kase: null as Json | null,
     livePairGets: 0,
     casePairGets: 0,
+    proposals: [] as Json[],
+    confirms: [] as Json[],
+    rulings: [] as Json[],
     /** A student in the case saves an explanation (a new version). */
     explain(userId: number, text: string) {
       const k = (state.kase ??= baseCase());
@@ -178,8 +190,56 @@ export async function mockApi(page: Page, options: Options = {}) {
       { user_id: 8, name: 'Ravi Kumar', shared_at: null, asked_at: null, respond_by: null, explanation: '', explained_at: null, explanations: [] },
     ],
     decisions: [{ by: 5, by_name: 'Priya Nair', state: 'open', note: 'Both programs share the whole greedy loop, renamed.', created_at: now - 20 * MIN, explanations_seen: {} }],
+    source: 'signals',
+    submission_id: null,
+    created_by: 5,
+    ready_at: null,
+    decide_by: null,
+    overdue: false,
+    policy: null,
+    proposals: [],
+    appeals: [],
+    may_confirm: false,
+    may_rule: false,
+    sole_organiser: false,
     server_now: Date.now(),
   });
+
+  // Shared eight days ago; both students replied; ready since then.
+  const sharedAt = now - 8 * DAY;
+  const repliedUsers = () => [
+    { user_id: 7, name: 'Asha Rao', shared_at: sharedAt, asked_at: sharedAt, respond_by: sharedAt + 7 * DAY, notice_available_at: sharedAt, first_opened_at: sharedAt + 3_600_000, prior_outcomes: 1, explanation: 'I wrote it in the lab from the lecture notes.', explained_at: sharedAt + DAY, explanations: [{ text: 'I wrote it in the lab from the lecture notes.', created_at: sharedAt + DAY }] },
+    { user_id: 8, name: 'Ravi Kumar', shared_at: sharedAt, asked_at: sharedAt, respond_by: sharedAt + 7 * DAY, notice_available_at: sharedAt, first_opened_at: sharedAt + 7_200_000, prior_outcomes: 0, explanation: 'A friend shared notes with me.', explained_at: sharedAt + DAY, explanations: [{ text: 'A friend shared notes with me.', created_at: sharedAt + DAY }] },
+  ];
+  const zeroProposal = { id: 4, by: 5, by_name: 'Priya Nair', outcome: 'zero_problem', problem_label: 'B', user_ids: [7], note: 'Asha copied the loop; Ravi wrote his own and shared his notes.', reason: 'Your program for problem B shares its whole loop with another submission.', created_at: now - 2 * DAY, state: 'pending' };
+  if (options.proposed) {
+    state.kase = {
+      ...baseCase(),
+      state: 'awaiting_student',
+      users: repliedUsers(),
+      ready_at: sharedAt + DAY,
+      decide_by: sharedAt + 15 * DAY,
+      policy: 'referral_suggested',
+      proposals: [zeroProposal],
+      may_confirm: true,
+    };
+  }
+  if (options.appealed) {
+    state.kase = {
+      ...baseCase(),
+      state: 'actioned',
+      users: repliedUsers(),
+      ready_at: sharedAt + DAY,
+      decide_by: sharedAt + 15 * DAY,
+      proposals: [{ ...zeroProposal, state: 'confirmed' }],
+      decisions: [
+        ...(baseCase().decisions as Json[]),
+        { by: 3, by_name: 'Ravi K', state: 'actioned', note: 'Confirmed: the loop is copied line for line.', created_at: now - DAY, outcome: 'zero_problem', outcome_problem_label: 'B', outcome_users: [7], proposal_id: 4, sole_organiser: '' },
+      ],
+      appeals: [{ id: 66, case_id: 3, adjustment_id: null, user_id: 7, text: 'The loop is the one from the lecture slides, which everyone was given.', created_at: now - 3_600_000, decide_by: now + 14 * DAY, overdue: false, state: 'open', ruling: null, user: { name: 'Asha Rao', email: 'asha@college.edu', roll_number: '' } }],
+      may_rule: !options.involved,
+    };
+  }
 
   const studentCase = (): Json => ({
     id: 3,
@@ -307,9 +367,44 @@ export async function mockApi(page: Page, options: Options = {}) {
         state.kase ??= baseCase();
         return json(route, 200, state.kase);
       }
+      if (path === '/api/admin/integrity/cases/3/proposals' && method === 'POST') {
+        const body = req.postDataJSON() as Json;
+        state.proposals.push(body);
+        const k = (state.kase ??= baseCase());
+        k.proposals = [{ id: 9, by: 2, by_name: 'Arjun Mehta', outcome: body.outcome, problem_label: body.problem_label ?? '', user_ids: body.user_ids, note: body.note, reason: body.reason, created_at: Date.now(), state: 'pending' }];
+        k.may_confirm = false;
+        return json(route, 201, { ...k, server_now: Date.now() });
+      }
+      const confirm = path.match(/^\/api\/admin\/integrity\/cases\/3\/proposals\/(\d+)\/confirm$/);
+      if (confirm && method === 'POST') {
+        const body = req.postDataJSON() as Json;
+        state.confirms.push({ id: Number(confirm[1]), ...body });
+        const k = (state.kase ??= baseCase());
+        if (!k.may_confirm) return apiError(route, 403, 'two_person_rule', 'A second reviewer who did not open the case or propose this outcome confirms it.');
+        const p = (k.proposals as Json[]).find((x) => x.id === Number(confirm[1]))!;
+        state.kase = {
+          ...k,
+          state: 'actioned',
+          proposals: [{ ...p, state: 'confirmed' }],
+          decisions: [...(k.decisions as Json[]), { by: 2, by_name: 'Arjun Mehta', state: 'actioned', note: body.note, created_at: Date.now(), outcome: p.outcome, outcome_problem_label: p.problem_label, outcome_users: p.user_ids, proposal_id: p.id, sole_organiser: '' }],
+          may_confirm: false,
+        };
+        return json(route, 200, { ...state.kase, server_now: Date.now() });
+      }
+      const ruling = path.match(/^\/api\/admin\/appeals\/(\d+)\/ruling$/);
+      if (ruling && method === 'POST') {
+        const body = req.postDataJSON() as { upheld: boolean; reason: string };
+        state.rulings.push({ id: Number(ruling[1]), ...body });
+        const k = state.kase!;
+        const a = (k.appeals as Json[])[0];
+        const ruled = { ...a, state: body.upheld ? 'upheld' : 'rejected', ruling: { by: 2, by_name: 'Arjun Mehta', upheld: body.upheld, reason: body.reason, created_at: Date.now() } };
+        state.kase = { ...k, appeals: [ruled], may_rule: false };
+        return json(route, 200, ruled);
+      }
       if (path === '/api/admin/integrity/cases/3' && method === 'PUT') {
         const body = req.postDataJSON() as { state: string; note: string; seen_explanations?: Record<string, number> };
         state.puts.push(body);
+        if (body.state === 'actioned') return apiError(route, 400, 'proposal_needed', 'Propose the outcome instead: a second reviewer confirms it.');
         const k = (state.kase ??= baseCase());
         const users = k.users as CaseUserJson[];
         const at = Date.now();

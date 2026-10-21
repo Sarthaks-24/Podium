@@ -10,6 +10,7 @@
 import { expect, test, type Page } from '@playwright/test';
 import { activate, tabTo } from './keyboard';
 import * as contests from './mocks/contests';
+import * as org from './mocks/organiser';
 import { LEAKED_RATING, mockApi, settle, shots, SCREENS, THEMES, WIDTHS } from './mocks/students';
 
 function screen(name: string) {
@@ -388,4 +389,214 @@ test('keyboard only: notices to the case, an explanation, and an appeal on a dec
   await page.keyboard.press('Enter');
   await expect(page.getByRole('region', { name: 'Decision' }).getByText('Under appeal')).toBeVisible();
   expect(api.appeals).toHaveLength(1);
+});
+
+// v2 P4 organiser screens (F9.2b, F9.4) on tests/mocks/organiser.ts: the
+// students table, a student's page with the trend beside the class
+// median, and the record page with the rating, its history, the edit
+// form and the two-person rule. Screenshots go to
+// cache/screenshots-p4-organiser/.
+for (const theme of org.THEMES) {
+  test.describe(`organiser, ${theme} theme`, () => {
+    test.use({ colorScheme: theme });
+
+    for (const s of org.SCREENS) {
+      test(`${s.name} at four widths`, async ({ page }) => {
+        await org.mockApi(page, s.options);
+        await page.setViewportSize({ width: 1440, height: 900 });
+        await page.goto(s.path);
+        await s.ready(page);
+        await expect(page).toHaveTitle(s.title);
+        await expect(page.locator('h1')).toHaveCount(1);
+        for (const width of org.WIDTHS) {
+          await page.setViewportSize({ width, height: width < 768 ? 812 : 900 });
+          await org.settle(page);
+          await noOverflow(page, `${s.name} at ${width}px`);
+          await page.screenshot({ path: `${org.shots()}${s.name}-${width}-${theme}.png`, fullPage: true });
+        }
+      });
+    }
+  });
+}
+
+test.describe('the students table', () => {
+  test('is sorted by name, sorts by rating on request, and filters say which contests they used', async ({ page }) => {
+    const api = await org.mockApi(page);
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto('/admin/students');
+    const nav = page.getByRole('navigation', { name: 'Main' });
+    await expect(nav.getByRole('link', { name: 'Students' })).toHaveAttribute('aria-current', 'page');
+    const table = page.getByRole('table', { name: /^Students, sorted by name, ascending/ });
+    const names = page.locator('tbody th a');
+    // Case and accents do not change the order.
+    await expect(names).toHaveText(['Asha Rao', 'bilal Khan', 'Kabir Shah', 'Meera Iyer', 'Zoë Fernandes']);
+    await expect(table.getByRole('columnheader', { name: /^Name/ })).toHaveAttribute('aria-sort', 'ascending');
+    await expect(table.locator('tbody tr').first()).toContainText('7.5');
+    await expect(table.locator('tbody tr').first()).toContainText('Outcomes on record');
+
+    await table.getByRole('button', { name: /^Rating/ }).click();
+    const sorted = page.getByRole('table', { name: /^Students, sorted by rating/ });
+    await expect(sorted.getByRole('columnheader', { name: /^Rating/ })).toHaveAttribute('aria-sort', 'ascending');
+    await expect(names.first()).toHaveText('Zoë Fernandes');
+    await sorted.getByRole('button', { name: /^Rating/ }).click();
+    await expect(sorted.getByRole('columnheader', { name: /^Rating/ })).toHaveAttribute('aria-sort', 'descending');
+    await expect(names.first()).toHaveText('bilal Khan');
+
+    await page.getByLabel('Show').selectOption('missed_last_two');
+    await expect(page.getByRole('heading', { level: 2, name: 'Missed the last 2 graded contests' })).toBeVisible();
+    await expect(names).toHaveText(['Meera Iyer']);
+    await expect(page.locator('#filter-help')).toHaveText('Students who could enter Week 6 contest and Week 5 contest and are on neither board. Practice does not count.');
+    await page.getByLabel('Show').selectOption('no_accepted');
+    await expect(names).toHaveText(['Zoë Fernandes']);
+    await page.getByLabel('Show').selectOption('');
+    await expect(names).toHaveCount(5);
+    await page.getByLabel('Name or email').fill('nobody');
+    await page.getByRole('button', { name: 'Search' }).click();
+    await expect(page.getByText('No student matches "nobody". Check the spelling, or clear the search.')).toBeVisible();
+    expect(api.studentQueries).toEqual(['', '?filter=missed_last_two', '?filter=no_accepted', '', '?q=nobody']);
+  });
+
+  test('stacks on a phone and opens a student', async ({ page }) => {
+    await org.mockApi(page);
+    await page.setViewportSize({ width: 375, height: 812 });
+    await page.goto('/admin/students');
+    const row = page.locator('tbody tr').first();
+    await expect(row).toHaveCSS('display', 'grid');
+    await expect(row).toContainText('Graded contests');
+    await row.getByRole('link', { name: 'Asha Rao' }).click();
+    await expect(page.getByRole('heading', { level: 1, name: 'Asha Rao' })).toBeFocused();
+  });
+});
+
+test.describe('a student page', () => {
+  test('shows the trend beside the class median, as a table on request, and links to the record', async ({ page }) => {
+    await org.mockApi(page);
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto('/admin/students/7');
+    const chart = page.getByRole('img', { name: /^Score as a percentage over 4 graded contests/ });
+    // The ungraded warm-up is left out; the latest is compared with the median.
+    await expect(chart).toHaveAccessibleName('Score as a percentage over 4 graded contests. Latest, Week 6 contest: 80 percent, above the class median of 62.5 percent.');
+    await expect(page.getByRole('list', { name: 'Legend' }).getByRole('listitem')).toHaveText(['This student', 'Class median']);
+    await page.getByRole('button', { name: 'Show as table' }).click();
+    const table = page.getByRole('table', { name: 'Score in each graded contest beside the class median, oldest first' });
+    await expect(table.locator('tbody tr')).toHaveCount(4);
+    await expect(table.locator('tbody tr').last()).toContainText('62.5%');
+    const contests = page.getByRole('table', { name: 'Contests Asha Rao took part in, newest first' });
+    await expect(contests.locator('tbody tr').first()).toContainText('240 of 300');
+    await expect(contests.locator('tbody tr').filter({ hasText: 'Warm-up practice' })).toContainText('not graded');
+    await expect(page.getByRole('link', { name: 'See their progress page' })).toHaveAttribute('href', '/admin/users/7/progress');
+    await page.getByRole('link', { name: 'Open the record' }).click();
+    await expect(page.getByRole('heading', { level: 1, name: 'Asha Rao: record' })).toBeFocused();
+  });
+
+  test('an unknown student reads as missing', async ({ page }) => {
+    await org.mockApi(page);
+    await page.goto('/admin/students/99');
+    await expect(page.getByText('There is no student with that number, or their account was erased.')).toBeVisible();
+  });
+});
+
+test.describe('the record page', () => {
+  test('shows the rating, marks the line that crossed a band, and says the visit is logged', async ({ page }) => {
+    await org.mockApi(page);
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto('/admin/students/7/record');
+    await expect(page.getByText('Each visit to this page is logged for the owner.', { exact: false })).toBeVisible();
+    const rating = page.getByRole('region', { name: 'Rating', exact: true });
+    await expect(rating.locator('.figure')).toHaveText('7.5 of 10');
+    await expect(rating).toContainText('Outcomes on record');
+    const lines = page.locator('section[aria-labelledby="history-title"] li');
+    await expect(lines).toHaveCount(4);
+    // Only the zero that took Asha out of Good standing carries the crossing.
+    await expect(page.getByText('Dropped from Good standing to Outcomes on record')).toHaveCount(1);
+    await expect(lines.nth(2)).toContainText('Dropped from Good standing to Outcomes on record');
+    await expect(lines.nth(2)).toContainText('By Ravi Kumar, confirmed by Arjun Mehta');
+    await expect(lines.nth(1)).toContainText('semester 2026 monsoon');
+    await expect(page.getByRole('link', { name: 'Week 3 contest, case 12' })).toHaveAttribute('href', '/admin/integrity/cases/12');
+    await expect(page.getByText('Deleted on', { exact: false })).toBeVisible();
+  });
+
+  test('the edit form refuses an empty or short reason before sending anything', async ({ page }) => {
+    const api = await org.mockApi(page);
+    await page.goto('/admin/students/7/record');
+    await page.getByLabel('New rating, 0 to 10').fill('7');
+    await page.getByRole('button', { name: 'Change rating' }).click();
+    await expect(page.getByText('Write the reason first. The student reads it on their standing.')).toBeVisible();
+    await expect(page.getByLabel('Reason, for the student')).toBeFocused();
+    await expect(page.getByLabel('Reason, for the student')).toHaveAttribute('aria-invalid', 'true');
+    await page.getByLabel('Reason, for the student').fill('Too short');
+    await page.getByRole('button', { name: 'Change rating' }).click();
+    await expect(page.getByText('Write at least 20 characters, so the student can understand the change.')).toBeVisible();
+    await page.getByLabel('New rating, 0 to 10').fill('7.5');
+    await page.getByRole('button', { name: 'Change rating' }).click();
+    await expect(page.getByText('The rating is already 7.5. Enter a different value.')).toBeVisible();
+    await expect(page.getByLabel('New rating, 0 to 10')).toBeFocused();
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+    expect(api.ratingPuts).toEqual([]);
+  });
+
+  test('an edit inside the band applies at once; one that drops the band waits for a second organiser', async ({ page }) => {
+    const api = await org.mockApi(page);
+    await page.goto('/admin/students/7/record');
+    const value = page.getByLabel('New rating, 0 to 10');
+    const reason = page.getByLabel('Reason, for the student');
+    await value.fill('7');
+    await reason.fill('A late extension request was granted after the fact, so the warning is lighter.');
+    await page.getByRole('button', { name: 'Change rating' }).click();
+    const same = page.getByRole('dialog', { name: "Change Asha Rao's rating from 7.5 to 7?" });
+    await expect(same).toContainText('The band stays Outcomes on record.');
+    await expect(same).toContainText('The change applies at once.');
+    await same.getByRole('button', { name: 'Change the rating' }).click();
+    await expect(page.getByText('Changed the rating to 7').first()).toBeVisible();
+    await expect(page.locator('.figure')).toHaveText('7 of 10');
+
+    await value.fill('5.5');
+    await reason.fill('A second outcome this semester was confirmed in Week 6, so the standing drops a band.');
+    await page.getByRole('button', { name: 'Change rating' }).click();
+    const down = page.getByRole('dialog', { name: "Change Asha Rao's rating from 7 to 5.5?" });
+    await expect(down).toContainText('The band goes from Outcomes on record to Repeated outcomes.');
+    await expect(down).toContainText('waits until a second owner or admin confirms it');
+    await down.getByRole('button', { name: 'Propose the change' }).click();
+    await expect(page.getByRole('heading', { level: 3, name: 'Waiting for a second organiser' })).toBeFocused();
+    await expect(page.locator('.figure')).toHaveText('7 of 10');
+    await expect(page.getByText('A band that drops needs a second owner or admin, who did not propose it, to confirm.')).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Confirm the change' })).toHaveCount(0);
+    expect(api.ratingPuts.map((b) => b.value_tenths)).toEqual([70, 55]);
+  });
+
+  test('a second organiser confirms a waiting change', async ({ page }) => {
+    const api = await org.mockApi(page, { pending: 'theirs' });
+    await page.goto('/admin/students/7/record');
+    const box = page.getByRole('group', { name: 'Waiting for a second organiser' });
+    await expect(box).toContainText('Ravi Kumar proposed 7.5 to 5.5');
+    await expect(box).toContainText('Outcomes on record to Repeated outcomes');
+    await box.getByRole('button', { name: 'Confirm the change' }).click();
+    await expect(page.getByText('Confirmed: the rating is now 5.5').first()).toBeVisible();
+    await expect(page.locator('.figure')).toHaveText('5.5 of 10');
+    await expect(page.getByText('Dropped from Outcomes on record to Repeated outcomes')).toBeVisible();
+    expect(api.confirms).toEqual([{ pid: 5, kind: 'confirm', body: {} }]);
+  });
+
+  test('an appeal against an adjustment is ruled on here, and an outcome appeal points to its case', async ({ page }) => {
+    const api = await org.mockApi(page);
+    await page.goto('/admin/students/7/record');
+    const appeal = page.getByRole('article', { name: 'Appeal by Asha Rao against a manual adjustment of the standing' });
+    await appeal.getByRole('button', { name: 'Rule on the appeal' }).click();
+    await expect(appeal.getByText('Choose whether the appeal is upheld.')).toBeVisible();
+    await appeal.getByLabel(/Uphold the appeal/).check();
+    await appeal.getByLabel('Reason for the ruling, for the student').fill('The group messages are timestamped after the contest closed.');
+    await appeal.getByRole('button', { name: 'Rule on the appeal' }).click();
+    const sure = page.getByRole('dialog', { name: 'Uphold the appeal?' });
+    await sure.getByRole('button', { name: 'Uphold the appeal' }).click();
+    await expect(page.getByText('Upheld the appeal').first()).toBeVisible();
+    expect(api.rulings).toEqual([{ id: 70, upheld: true, reason: 'The group messages are timestamped after the contest closed.' }]);
+    await expect(page.getByRole('link', { name: 'Rule on it on the case page' })).toHaveAttribute('href', '/admin/integrity/cases/12#appeals-title');
+    await expect(page.getByText('Overdue').first()).toBeVisible();
+  });
+
+  test('nobody opens their own record', async ({ page }) => {
+    await org.mockApi(page, { own: true });
+    await page.goto('/admin/students/7/record');
+    await expect(page.getByText('Nobody opens their own record. Another owner or admin can.')).toBeVisible();
+  });
 });

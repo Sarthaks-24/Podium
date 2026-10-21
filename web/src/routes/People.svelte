@@ -13,11 +13,17 @@
     asks before it changes (the same POST upserts the role).
   - Allowed email domains: the list and a form to add one.
   - Account help: one email field for "Reset Google link", "End sessions"
-    and "Disable account", then the disabled accounts with Enable. The
-    field says whose account it is when the page knows the address (an
-    organiser or a disabled account), and that students are not listed
-    otherwise; the confirmation names the person (audit 2026-10-20 O10;
-    a lookup of any account waits on an API route).
+    and "Disable account", then the disabled accounts with Enable. As an
+    address is typed the field looks the account up (GET
+    /api/admin/accounts?email=, students included) and says whose it is
+    ("Asha Rao, student, last signed in ..."); for an address with no
+    account it says so and the three actions stay disabled. The
+    confirmation names the person (audit 2026-10-20 O10).
+  - Integrity reviewers (v2 P4 F9.5, D97): per reviewer, the cases they
+    opened by hand, cleared and closed with an outcome, their proposals,
+    confirmations and appeal rulings, and how many of their cases are
+    overdue; then the record view log, newest first: who read whose
+    record page, case or notes, and when, with "Show older views".
   - History: every change to people, domains and the site, newest first,
     with a filter by kind and a search by email, and "Show older changes".
 
@@ -30,7 +36,7 @@
 <script lang="ts">
   import PageState from '../components/PageState.svelte';
   import PageHeader from '../components/PageHeader.svelte';
-  import { onMount, tick } from 'svelte';
+  import { onMount, tick, untrack } from 'svelte';
   import ConfirmDialog from '../components/ConfirmDialog.svelte';
   import MonoDigits from '../components/MonoDigits.svelte';
   import { polite } from '../lib/announce.svelte';
@@ -38,6 +44,7 @@
   import { countOf, formatDateTime, roleLabel } from '../lib/format';
   import { setTitle } from '../lib/head';
   import { SITE_ACTIONS, actorText, feedQuery, siteAuditSummary, type SiteAuditEntry, type SiteAuditPage } from '../lib/history';
+  import { viewKindWord, type RecordView, type ReviewerLoad } from '../lib/students';
   import { routeTitle } from '../lib/routing';
   import { session } from '../lib/session.svelte';
   import { showToast } from '../lib/toast.svelte';
@@ -110,25 +117,98 @@
   let historySearch = $state('');
   let historyBusy = $state(false);
 
+  // Integrity reviewers and the record view log (F9.5).
+  let reviewers = $state<ReviewerLoad[] | null>(null);
+  let reviewersError = $state('');
+  let views = $state<RecordView[]>([]);
+  let viewsMore = $state(false);
+  let viewsState = $state<'loading' | 'ready' | 'error'>('loading');
+  let viewsBusy = $state(false);
+
+  // The account the help field names, looked up as the address is typed (O10).
+  let lookup = $state<{ email: string; status: 'loading' | 'found' | 'none' | 'error'; account?: Account } | null>(null);
+  let lookupTimer: ReturnType<typeof setTimeout> | undefined;
+
   let organisersHeading: HTMLHeadingElement | undefined = $state();
   let domainsHeading: HTMLHeadingElement | undefined = $state();
 
   const isOwner = $derived(session.user?.role === 'owner');
+  const EMAIL = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
   const origin = typeof window !== 'undefined' ? window.location.origin : '';
   // Organisers other than the configured owner and the person signed in (audit O10).
   const coTeachers = $derived(people.filter((p) => !p.locked && p.id !== session.user?.id).length);
 
-  /** The account the help field names, when this page already knows it. */
+  /** The account the help field names: looked up, or already on this page. */
   const accountMatch = $derived.by(() => {
     const e = accountEmail.trim().toLowerCase();
     if (e === '') return null;
+    if (lookup && lookup.email === e && lookup.status === 'found' && lookup.account) {
+      const a = lookup.account;
+      return { name: a.name.trim() || a.email, role: roleWord(a.role), last: a.last_login_at, disabled: a.disabled };
+    }
     const person = people.find((x) => x.email.toLowerCase() === e);
     if (person) return { name: personLabel(person), role: roleLabel(person.role).toLowerCase(), last: person.last_login_at, disabled: !!person.disabled };
     const account = disabled.find((x) => x.email.toLowerCase() === e);
     if (account) return { name: account.name.trim() || account.email, role: account.role, last: account.last_login_at, disabled: true };
     return null;
   });
-  const accountLooksLikeEmail = $derived(/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(accountEmail.trim()));
+  const accountLooksLikeEmail = $derived(EMAIL.test(accountEmail.trim()));
+  /** The lookup found no account for the address typed: the actions would only be refused. */
+  const noAccount = $derived(lookup !== null && lookup.email === accountEmail.trim().toLowerCase() && lookup.status === 'none');
+
+  function roleWord(role: string): string {
+    return role === 'owner' || role === 'admin' || role === 'student' ? roleLabel(role).toLowerCase() : role;
+  }
+
+  $effect(() => {
+    const e = accountEmail.trim().toLowerCase();
+    clearTimeout(lookupTimer);
+    if (!EMAIL.test(e)) {
+      lookup = null;
+      return;
+    }
+    if (untrack(() => lookup?.email) === e) return;
+    lookupTimer = setTimeout(() => void lookUp(e), 250);
+  });
+
+  async function lookUp(e: string) {
+    lookup = { email: e, status: 'loading' };
+    try {
+      const d = await getJSON<{ account: Account }>(`/api/admin/accounts?email=${encodeURIComponent(e)}`);
+      if (lookup?.email === e) lookup = { email: e, status: 'found', account: d.account };
+    } catch (err) {
+      if (handleSessionError(err) || lookup?.email !== e) return;
+      lookup = { email: e, status: err instanceof ApiError && err.status === 404 ? 'none' : 'error' };
+    }
+  }
+
+  async function loadReviewers() {
+    reviewersError = '';
+    try {
+      const d = await getJSON<{ reviewers: ReviewerLoad[] }>('/api/admin/integrity/oversight');
+      reviewers = d.reviewers ?? [];
+    } catch (err) {
+      if (!handleSessionError(err)) reviewersError = messageOf(err);
+    }
+  }
+
+  async function loadViews(more = false) {
+    viewsBusy = true;
+    if (!more) viewsState = 'loading';
+    try {
+      const before = more && views.length > 0 ? `?before=${views[views.length - 1].id}` : '';
+      const d = await getJSON<{ views: RecordView[]; has_more?: boolean }>(`/api/admin/record-views${before}`);
+      views = more ? [...views, ...(d.views ?? [])] : (d.views ?? []);
+      viewsMore = d.has_more === true;
+      viewsState = 'ready';
+    } catch (err) {
+      if (handleSessionError(err)) return;
+      if (more) showToast(messageOf(err), 'error');
+      else viewsState = 'error';
+    } finally {
+      viewsBusy = false;
+    }
+  }
 
   /** "Asha Verma (asha@college.edu)" when the page knows the name, else the address. */
   function accountName(target: string): string {
@@ -225,6 +305,8 @@
       disabled = data.disabled ?? [];
       loadState = 'ready';
       void loadHistory(1);
+      void loadReviewers();
+      void loadViews();
     } catch (err) {
       if (handleSessionError(err)) return;
       loadError = messageOf(err);
@@ -644,18 +726,34 @@
             <MonoDigits
               text={`${accountMatch.name}, ${accountMatch.role}${accountMatch.disabled ? ', disabled' : ''}, ${accountMatch.last !== null ? `last signed in ${formatDateTime(accountMatch.last)}` : 'never signed in'}.`}
             />
+          {:else if accountLooksLikeEmail && noAccount}
+            Nobody with that email has an account. Check the address.
+          {:else if accountLooksLikeEmail && lookup?.status === 'error'}
+            Could not look the account up. Check the address before you act.
           {:else if accountLooksLikeEmail}
-            Not an organiser or a disabled account. Students are not listed on this page yet, so check the address before you act.
+            Looking up the account.
           {:else}
             The account's email address, as they sign in with it.
           {/if}
         </p>
       </div>
-      <button type="submit" class="btn btn-secondary submit" disabled={removing && pending?.kind === 'reset'}>Reset Google link</button>
-      <button type="button" class="btn btn-secondary submit" disabled={removing && pending?.kind === 'end-sessions'} onclick={() => askAccount('end-sessions')}>
+      <button type="submit" class="btn btn-secondary submit" disabled={noAccount || (removing && pending?.kind === 'reset')} aria-describedby={noAccount ? 'account-who' : undefined}>Reset Google link</button>
+      <button
+        type="button"
+        class="btn btn-secondary submit"
+        disabled={noAccount || (removing && pending?.kind === 'end-sessions')}
+        aria-describedby={noAccount ? 'account-who' : undefined}
+        onclick={() => askAccount('end-sessions')}
+      >
         End sessions
       </button>
-      <button type="button" class="btn btn-secondary btn-danger-secondary submit" disabled={removing && pending?.kind === 'disable'} onclick={() => askAccount('disable')}>
+      <button
+        type="button"
+        class="btn btn-secondary btn-danger-secondary submit"
+        disabled={noAccount || (removing && pending?.kind === 'disable')}
+        aria-describedby={noAccount ? 'account-who' : undefined}
+        onclick={() => askAccount('disable')}
+      >
         Disable account
       </button>
     </form>
@@ -682,6 +780,73 @@
       </ul>
     {:else}
       <p class="empty muted">No account is disabled.</p>
+    {/if}
+  </section>
+
+  <section class="section" aria-labelledby="reviewers-heading">
+    <h2 id="reviewers-heading">Integrity reviewers</h2>
+    <p class="intro muted">What each owner and admin has done in integrity review, so the work is shared and nothing waits too long. Only you see this.</p>
+    {#if reviewersError}
+      <p class="muted small history-state">{reviewersError} <button type="button" class="btn btn-quiet btn-compact" onclick={loadReviewers}>Try again</button></p>
+    {:else if reviewers === null}
+      <p class="muted small history-state" role="status">Loading the reviewers</p>
+    {:else if reviewers.length === 0}
+      <p class="muted small history-state">Nobody has reviewed a case yet.</p>
+    {:else}
+      <div class="table-wrap reviewers">
+        <table class="table table-dense table-stack">
+          <caption class="visually-hidden">Integrity work by reviewer</caption>
+          <thead>
+            <tr>
+              <th scope="col">Reviewer</th>
+              <th scope="col" class="right">Opened by hand</th>
+              <th scope="col" class="right">Cleared</th>
+              <th scope="col" class="right">Outcomes</th>
+              <th scope="col" class="right">Proposals</th>
+              <th scope="col" class="right">Confirmations</th>
+              <th scope="col" class="right">Appeal rulings</th>
+              <th scope="col" class="right">Overdue</th>
+            </tr>
+          </thead>
+          <tbody>
+            {#each reviewers as r (r.user_id)}
+              <tr>
+                <th scope="row" class="r-name">{r.name || r.email}{#if r.name}<span class="r-email muted">{r.email}</span>{/if}</th>
+                <td class="num right"><span class="cell-label">Opened by hand</span>{r.manual_opened}</td>
+                <td class="num right"><span class="cell-label">Cleared</span>{r.cleared}</td>
+                <td class="num right"><span class="cell-label">Outcomes</span>{r.actioned}</td>
+                <td class="num right"><span class="cell-label">Proposals</span>{r.proposals}</td>
+                <td class="num right"><span class="cell-label">Confirmations</span>{r.confirmations}</td>
+                <td class="num right"><span class="cell-label">Appeal rulings</span>{r.rulings}</td>
+                <td class="num right" class:late={r.overdue > 0}><span class="cell-label">Overdue</span>{r.overdue}</td>
+              </tr>
+            {/each}
+          </tbody>
+        </table>
+      </div>
+    {/if}
+
+    <h3 class="subhead">Record views</h3>
+    <p class="intro muted">Every time an organiser read a student's record page, a case or the notes on a submission, newest first.</p>
+    {#if viewsState === 'loading'}
+      <p class="muted small history-state" role="status">Loading the record views</p>
+    {:else if viewsState === 'error'}
+      <p class="muted small history-state">The record views could not be loaded. <button type="button" class="btn btn-quiet btn-compact" onclick={() => loadViews()}>Try again</button></p>
+    {:else if views.length === 0}
+      <p class="muted small history-state">Nobody has read a record yet.</p>
+    {:else}
+      <ul class="history" aria-label="Record views, newest first">
+        {#each views as v (v.id)}
+          <li>
+            <span class="when"><MonoDigits text={formatDateTime(v.at)} /></span>
+            <span class="what">{v.viewer.name || v.viewer.email} read {v.subject.name ? `${v.subject.name}'s` : "a student's"} {viewKindWord(v.kind).toLowerCase()}</span>
+            <span class="who muted">{v.viewer.email}</span>
+          </li>
+        {/each}
+      </ul>
+      {#if viewsMore}
+        <button type="button" class="btn btn-secondary btn-compact more" disabled={viewsBusy} onclick={() => loadViews(true)}>Show older views</button>
+      {/if}
     {/if}
   </section>
 
@@ -942,6 +1107,30 @@
     margin-top: var(--space-3);
   }
 
+  .reviewers {
+    margin-top: var(--space-4);
+  }
+
+  .right,
+  .table .right {
+    text-align: right;
+  }
+
+  .r-name {
+    font-weight: 500;
+  }
+
+  .r-email {
+    display: block;
+    font-size: var(--fs-0);
+    font-weight: 400;
+  }
+
+  .late {
+    color: var(--bad);
+    font-weight: 600;
+  }
+
   /* Tablets: the sign-in time and the locked note wrap, so the table fits 720 px. */
   @media (768px <= width < 1024px) {
     .organisers .last {
@@ -1017,6 +1206,12 @@
     .history li {
       grid-template-columns: minmax(0, 1fr);
       gap: 0;
+    }
+
+    .reviewers tbody td {
+      color: var(--ink-muted);
+      font-size: var(--fs-0);
+      text-align: left;
     }
   }
 </style>

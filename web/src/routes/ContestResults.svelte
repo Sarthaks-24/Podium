@@ -13,7 +13,17 @@
   Markdown with a preview, saved as a draft or published with
   PUT .../editorial. Students see a short
   explanation instead. A last section links to the integrity check.
-  Props: `id`.
+
+  v2 P4: the page uses the working layout. The board, the class view
+  (components/students/ClassView: per problem how many tried and reached
+  full marks, the median and each subtask's solve rate, totals only), the
+  problem statistics and the editorial are the work; beside them from
+  1280 px (first below that) the reveal, the downloads (owners and
+  admins: both files carry a "zero by decision" column that the board
+  never shows) and the integrity check. Each name on the board opens that
+  student's progress page (web-quality #16). A board that a review
+  decision changed says so in one line, "Board updated on <date> after a
+  review decision", without saying whose; no cell carries a mark.
 -->
 <script lang="ts">
   import PageState from '../components/PageState.svelte';
@@ -25,13 +35,16 @@
   import Markdown from '../components/Markdown.svelte';
   import RevealBoard from '../components/RevealBoard.svelte';
   import StandingsTable from '../components/StandingsTable.svelte';
+  import MonoDigits from '../components/MonoDigits.svelte';
+  import ClassView from '../components/students/ClassView.svelte';
+  import { formatDateTime } from '../lib/format';
   import { ApiError, getJSON, sendJSON } from '../lib/api';
   import { type AdminContest, type ProblemStats } from '../lib/contests';
   import { keepHeadingFocus } from '../lib/focus';
   import { setTitle } from '../lib/head';
   import { routeTitle } from '../lib/routing';
   import { session } from '../lib/session.svelte';
-  import { boardLabels, statusLine, type Standings } from '../lib/standings';
+  import { boardLabels, boardUpdatedLine, statusLine, type Standings } from '../lib/standings';
   import { ticker, useTicker } from '../lib/ticker.svelte';
   import { showToast } from '../lib/toast.svelte';
 
@@ -225,45 +238,76 @@
 {:else}
   <ContestAdminNav {id} slug={contest.slug} title={contest.title} state={contest.state} published={contest.published} current="results" />
 
-  <section class="section" aria-labelledby="board-title">
-    <div class="section-head">
-      <h2 id="board-title">Standings</h2>
-      <div class="tools">
-        <fieldset class="variant">
-          <legend class="visually-hidden">Board</legend>
-          <label class="choice"><input type="radio" name="variant" checked={variant === 'full'} onchange={() => setVariant('full')} /> Full</label>
-          <label class="choice"><input type="radio" name="variant" checked={variant === 'frozen'} onchange={() => setVariant('frozen')} /> As students saw it frozen</label>
-        </fieldset>
+  <div class="page-split results-split">
+    <aside class="page-split-aside" aria-label="Reveal, downloads and integrity">
+      <section class="panel" aria-labelledby="reveal-panel-title">
+        <h2 id="reveal-panel-title">Reveal</h2>
+        <p class="muted small">The board on the projector, resolved row by row from the frozen standings.</p>
         <button
           type="button"
-          class="btn btn-primary"
+          class="btn btn-primary reveal-btn"
           bind:this={revealButton}
           disabled={!revealReady}
           aria-describedby={revealReady ? undefined : 'reveal-help'}
           onclick={startReveal}><Icon name="maximize" /> {revealData ? 'Resume the reveal' : 'Start the reveal'}</button
         >
-      </div>
+        {#if !revealReady}<p id="reveal-help" class="muted small">The reveal opens when every student's time is up.</p>{/if}
+        {#if revealError}<p class="field-error" role="alert">{revealError}</p>{/if}
+        {#if contest.hold_reveal && !contest.revealed_at}
+          <div class="hold">
+            <p class="small">Students still see the frozen board. Release the full board when the reveal is over.</p>
+            <button type="button" class="btn btn-secondary btn-compact" onclick={() => (releaseOpen = true)}>Release the full board</button>
+          </div>
+        {/if}
+      </section>
+
+      <section class="panel" aria-labelledby="downloads-title">
+        <h2 id="downloads-title">Downloads</h2>
+        <p class="exports">
+          <a class="btn btn-secondary" href="{base}/export.csv" download><Icon name="download" /> Download CSV</a>
+          <a class="btn btn-secondary" href="{base}/export.json" download><Icon name="download" /> Download JSON</a>
+        </p>
+        <p class="muted small">Both files have a "zero by decision" column naming any problem a review decision set to zero for a student. The board itself never shows it.</p>
+      </section>
+
+      <section class="panel" aria-labelledby="integrity-title">
+        <h2 id="integrity-title">Integrity</h2>
+        <p class="muted small">Look for copied code, shared wrong outputs, hard-coded answers and probing once the contest has ended for everyone. Signals are reasons to look, not proof.</p>
+        <p><a class="btn btn-secondary" href="/admin/contests/{encodeURIComponent(id)}/integrity">Check integrity</a></p>
+      </section>
+    </aside>
+
+    <div class="page-split-main">
+  <section class="section" aria-labelledby="board-title">
+    <div class="section-head">
+      <h2 id="board-title">Standings</h2>
+      <fieldset class="variant">
+        <legend class="visually-hidden">Board</legend>
+        <label class="choice"><input type="radio" name="variant" checked={variant === 'full'} onchange={() => setVariant('full')} /> Full</label>
+        <label class="choice"><input type="radio" name="variant" checked={variant === 'frozen'} onchange={() => setVariant('frozen')} /> As students saw it frozen</label>
+      </fieldset>
     </div>
-    {#if !revealReady}<p id="reveal-help" class="muted small">The reveal opens when every student's time is up.</p>{/if}
-    {#if revealError}<p class="field-error" role="alert">{revealError}</p>{/if}
-    {#if contest.hold_reveal && !contest.revealed_at}
-      <div class="banner hold">
-        <p>Students still see the frozen board. Release the full board when the reveal is over.</p>
-        <button type="button" class="btn btn-secondary btn-compact" onclick={() => (releaseOpen = true)}>Release the full board</button>
-      </div>
-    {/if}
     {#if boardError}
       <div class="banner banner-error" role="alert"><p>{boardError}</p></div>
     {:else if board}
       <p class="muted">{statusLine(board, contest.state === 'ended' || contest.state === 'practice')}</p>
-      <StandingsTable standings={board} {labels} caption="Standings for {contest.title}, {variant === 'full' ? 'full' : 'frozen'}" />
+      {#if boardUpdatedLine(board, formatDateTime)}
+        <p class="muted small board-updated"><MonoDigits text={boardUpdatedLine(board, formatDateTime)} /></p>
+      {/if}
+      <StandingsTable
+        standings={board}
+        {labels}
+        caption="Standings for {contest.title}, {variant === 'full' ? 'full' : 'frozen'}"
+        nameHref={(uid) => `/admin/users/${uid}/progress`}
+      />
     {:else}
       <p class="muted" role="status">Loading the standings</p>
     {/if}
-    <p class="exports">
-      <a class="btn btn-secondary" href="{base}/export.csv" download><Icon name="download" /> Download CSV</a>
-      <a class="btn btn-secondary" href="{base}/export.json" download><Icon name="download" /> Download JSON</a>
-    </p>
+  </section>
+
+  <section class="section" aria-labelledby="class-title">
+    <h2 id="class-title">Class view</h2>
+    <ClassView contestId={id} />
   </section>
 
   <section class="section" aria-labelledby="stats-title">
@@ -349,11 +393,8 @@
     {/if}
   </section>
 
-  <section class="section" aria-labelledby="integrity-title">
-    <h2 id="integrity-title">Integrity</h2>
-    <p class="muted">Look for copied code, shared wrong outputs, hard-coded answers and probing once the contest has ended for everyone. Signals are reasons to look, not proof.</p>
-    <p><a class="btn btn-secondary" href="/admin/contests/{encodeURIComponent(id)}/integrity">Check integrity</a></p>
-  </section>
+    </div>
+  </div>
 
   <ConfirmDialog
     open={releaseOpen}
@@ -381,11 +422,33 @@
 {/if}
 
 <style>
+  .results-split {
+    margin-top: var(--space-6);
+  }
+
+  /* The board needs the room: the work column takes what the aside leaves. */
+  @media (min-width: 1280px) {
+    .results-split {
+      grid-template-columns: minmax(0, 1fr) minmax(0, var(--measure-aside));
+    }
+  }
+
+  .panel h2 {
+    font-size: var(--fs-sub);
+  }
+
+  .panel {
+    justify-items: start;
+  }
+
   .section {
     display: grid;
     gap: var(--space-3);
-    margin-top: var(--space-6);
     min-width: 0;
+  }
+
+  .section + .section {
+    margin-top: var(--space-6);
   }
 
   .section h2 {
@@ -397,13 +460,6 @@
     flex-wrap: wrap;
     align-items: center;
     justify-content: space-between;
-    gap: var(--space-3) var(--space-5);
-  }
-
-  .tools {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
     gap: var(--space-3) var(--space-5);
   }
 
@@ -487,11 +543,12 @@
   }
 
   .hold {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    justify-content: space-between;
-    gap: var(--space-2) var(--space-3);
+    display: grid;
+    gap: var(--space-2);
+    justify-items: start;
+    padding: var(--space-3);
+    border: var(--rule) solid var(--part);
+    background: var(--part-tint);
   }
 
   .exports {

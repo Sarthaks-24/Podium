@@ -63,6 +63,8 @@ export interface Options {
   updateAvailable?: boolean;
   /** A review decision set Asha's problem B to zero (C9, D77). */
   zeroB?: boolean;
+  /** The contest's results are not final yet: the class view answers 409 not_final. */
+  notFinal?: boolean;
 }
 
 /** When B's statement changed, minutes before the page loads (the C3 fixture). */
@@ -191,6 +193,12 @@ export async function mockApi(page: Page, options: Options = {}) {
     pinPuts: [] as { label: string; body: Json }[],
     pinnedRev: { A: options.updateAvailable ? 2 : 3 } as Record<string, number>,
     auditQueries: [] as string[],
+    notes: [
+      { id: 19, submission_id: 301, by: 3, by_name: 'Ravi Kumar', text: 'The loop matches the editorial draft closely.', lines: [{ from: 8, to: 10 }], created_at: Date.now() - 3_600_000, expires_at: Date.now() + 29 * 86_400_000 },
+    ] as Json[],
+    notePosts: [] as Json[],
+    casePosts: [] as Json[],
+    manualCase: null as number | null,
   };
 
   state.holdReveal = options.holdReveal ?? false;
@@ -607,8 +615,8 @@ export async function mockApi(page: Page, options: Options = {}) {
       if (path === '/api/admin/contests/4/submissions' && method === 'GET') {
         state.feedQueries.push(url.search);
         const rows = [
-          { id: 301, user_id: 7, name: 'Asha Rao', email: 'asha@college.edu', problem_label: 'B', language: 'cpp17', state: 'done', verdict: 'WA', score: 40, max_score: 100, created_at: now - 2 * MIN, practice: false, rejudged: false },
-          { id: 300, user_id: 101, name: 'Arjun Mehta', email: 'arjun@college.edu', problem_label: 'A', language: 'python3', state: 'done', verdict: 'AC', score: 100, max_score: 100, created_at: now - 5 * MIN, practice: false, rejudged: false },
+          { id: 301, user_id: 7, name: 'Asha Rao', email: 'asha@college.edu', problem_label: 'B', language: 'cpp17', state: 'done', verdict: 'WA', score: 40, max_score: 100, created_at: now - 2 * MIN, practice: false, rejudged: false, note_count: state.notes.length, case_id: state.manualCase },
+          { id: 300, user_id: 101, name: 'Arjun Mehta', email: 'arjun@college.edu', problem_label: 'A', language: 'python3', state: 'done', verdict: 'AC', score: 100, max_score: 100, created_at: now - 5 * MIN, practice: false, rejudged: false, note_count: 0, case_id: null },
           { id: 299, user_id: 102, name: 'Ravi Kumar', email: 'ravi@college.edu', problem_label: 'C', language: 'java21', state: 'running', verdict: '', score: 0, max_score: 100, created_at: now - 6 * MIN, practice: false, rejudged: false },
           { id: 298, user_id: 103, name: 'Meera Iyer', email: 'meera@college.edu', problem_label: 'B', language: 'cpp17', state: 'error', verdict: '', score: 0, max_score: 100, created_at: now - 7 * MIN, practice: false, rejudged: false },
           { id: 297, user_id: 104, name: 'Kiran Das', email: 'kiran@college.edu', problem_label: 'C', language: 'cpp17', state: 'done', verdict: 'WA', score: 0, max_score: 100, created_at: now - 9 * MIN, practice: false, rejudged: false },
@@ -641,7 +649,41 @@ export async function mockApi(page: Page, options: Options = {}) {
         return json(route, 200, {});
       }
       if (path === '/api/admin/contests/4/standings' && method === 'GET') {
-        return json(route, 200, url.searchParams.get('variant') === 'frozen' ? { ...frozenBoard(), me: null } : { ...fullBoard(), me: null, final: true });
+        const updated = options.zeroB ? { board_updated_at: now - 3_600_000, board_update_reason: 'review_decision' } : { board_updated_at: null, board_update_reason: null };
+        return json(route, 200, url.searchParams.get('variant') === 'frozen' ? { ...frozenBoard(), me: null, ...updated } : { ...fullBoard(), me: null, final: true, ...updated });
+      }
+      if (path === '/api/admin/contests/4/class' && method === 'GET') {
+        if (options.notFinal) return apiError(route, 409, 'not_final', 'The class view opens when the results are final.');
+        return json(route, 200, {
+          contest_id: 4,
+          participants: 30,
+          problems: [
+            { label: 'A', title: 'A plus B', max_score: 100, attempted: 27, full: 21, median_score: 100, subtasks: [{ idx: 0, points: 40, solved: 24, solve_rate: 80 }, { idx: 1, points: 60, solved: 21, solve_rate: 70 }], most_failed_test: { subtask_idx: 1, test: 3, failed: 5 } },
+            { label: 'B', title: 'Interval covering', max_score: 100, attempted: 19, full: 4, median_score: 40, subtasks: [{ idx: 0, points: 40, solved: 12, solve_rate: 40 }, { idx: 1, points: 60, solved: 4, solve_rate: 13.3 }], most_failed_test: null },
+          ],
+          server_now: nowMs(),
+        });
+      }
+      const notes = path.match(/^\/api\/admin\/submissions\/(\d+)\/notes$/);
+      if (notes && method === 'GET') {
+        if (notes[1] !== '301') return json(route, 200, { submission: { id: Number(notes[1]) }, notes: [], case_id: null, server_now: nowMs() });
+        return json(route, 200, { submission: { id: 301, contest_id: 4, user_id: 7, problem_label: 'B', language: 'cpp17', practice: false, created_at: now - 2 * MIN }, notes: state.notes, case_id: state.manualCase, server_now: nowMs() });
+      }
+      if (notes && method === 'POST') {
+        const body = req.postDataJSON() as { text: string; lines: { from: number; to: number }[] };
+        state.notePosts.push(body);
+        const note = { id: 20 + state.notes.length, submission_id: Number(notes[1]), by: 2, by_name: 'Arjun Mehta', text: body.text, lines: body.lines, created_at: Date.now(), expires_at: Date.now() + 30 * 86_400_000 };
+        state.notes.push(note);
+        return json(route, 201, note);
+      }
+      const manual = path.match(/^\/api\/admin\/submissions\/(\d+)\/case$/);
+      if (manual && method === 'POST') {
+        const body = req.postDataJSON() as { title: string; note: string };
+        state.casePosts.push(body);
+        if ([...body.note.trim()].length < 20) return apiError(route, 400, 'bad_request', 'Write a reason of at least 20 characters (at most 4,000).');
+        state.manualCase = 14;
+        state.notes = state.notes.map((n) => ({ ...n, expires_at: null }));
+        return json(route, 201, { id: 14, contest_id: 4, state: 'open', title: body.title, source: 'manual', submission_id: Number(manual[1]), evidence: [], users: [], decisions: [], created_at: Date.now(), updated_at: Date.now() });
       }
       if (path === '/api/admin/contests/4/reveal' && method === 'GET') return json(route, 200, revealBoards());
       if (path === '/api/admin/contests/4/stats' && method === 'GET') {
@@ -658,7 +700,9 @@ export async function mockApi(page: Page, options: Options = {}) {
         const entries = [
           ...Array.from({ length: state.pauses }, () => ({ action: 'pause', details: {} })),
           ...state.extends.map((e) => ({ action: 'extend', details: e })),
-          ...state.extensions.map((x) => ({ action: 'extension', details: { email: 'asha@college.edu', ...x.body } })),
+          // v1.4.0: the row names the student by id and says only whether a reason was written.
+          ...state.extensions.map((x) => ({ action: 'extension', details: { user_id: Number(x.user), minutes: x.body.minutes, reason_given: String(x.body.reason ?? '').trim() !== '' } })),
+          ...(options.zeroB ? [{ action: 'board_adjusted', details: { decision_id: 31, problem_label: 'B', user_id: 7, rank_before: 2, total_before: 240, score_before: 40, reversed: false } }] : []),
           ...state.rejudges.map((r) => ({ action: 'rejudge', details: { ...r, queued: 1 } })),
           ...state.pinPuts.map((x) => ({ action: 'revision', details: { label: x.label, from_rev: 2, to_rev: 3, statement_changed: true, judging_changed: false } })),
         ].map((e, i) => ({ id: i + 1, actor, created_at: now, ...e }));

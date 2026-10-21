@@ -31,6 +31,9 @@ export type RouteName =
   | 'my-case'
   | 'progress'
   | 'admin-progress'
+  | 'students'
+  | 'student'
+  | 'student-record'
   | 'inbox'
   | 'privacy'
   | 'contact'
@@ -88,6 +91,9 @@ export const ROUTES: readonly RouteDef[] = [
   { pattern: '/integrity/cases/:case', name: 'my-case', auth: true, public: false, title: 'Question about your submission', description: 'One question from the organisers about your submission, your reply and any decision.' },
   { pattern: '/progress', name: 'progress', auth: true, public: false, title: 'Your progress', description: 'Your final results across contests, where points were lost and what to practise next.' },
   { pattern: '/admin/users/:id/progress', name: 'admin-progress', auth: true, public: false, title: 'Student progress', description: 'The final results of one student across contests, as they see them.' },
+  { pattern: '/admin/students', name: 'students', auth: true, public: false, title: 'Students', description: 'Every student with their graded contests, latest result and rating, with filters for who may need help.' },
+  { pattern: '/admin/students/:id', name: 'student', auth: true, public: false, title: 'Student', description: 'One student across graded contests, beside the class median.' },
+  { pattern: '/admin/students/:id/record', name: 'student-record', auth: true, public: false, title: 'Record', description: "One student's standing, rating, cases, notes and appeals, for organisers. Every visit is logged." },
   { pattern: '/notices', name: 'inbox', auth: true, public: false, title: 'Notices', description: 'Notices about your results and about questions from the organisers.' },
 ];
 
