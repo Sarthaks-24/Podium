@@ -444,7 +444,8 @@ test('on small screens the tabs follow the arrow keys, and Submit opens the resu
   await expect(page.getByRole('tab')).toHaveCount(2);
   await tab('Problem').click();
   await page.locator('main h1').focus();
-  await page.waitForTimeout(1100);
+  // The first submit has finished: Submit is ready again (C1-024, no fixed sleep).
+  await expect(page.locator('button.submit:visible')).not.toHaveAttribute('aria-disabled', 'true');
   await page.keyboard.press('Control+Enter');
   await expect(tab('Code')).toHaveAttribute('aria-selected', 'true');
 });
@@ -737,7 +738,6 @@ test.describe('P5 workspace', () => {
     await page.setViewportSize({ width: 800, height: 900 });
     await page.getByRole('tab', { name: 'Problem' }).click();
     await page.locator('main h1').focus();
-    await page.waitForTimeout(1100);
     await page.keyboard.press("Control+'");
     await expect(page.getByRole('tab', { name: 'Code' })).toHaveAttribute('aria-selected', 'true');
     await expect(page.getByRole('heading', { name: 'Run on samples' })).toBeFocused();
@@ -883,7 +883,8 @@ test.describe('P5 workspace', () => {
   });
 
   test('reset to starter asks, saves at once, and survives the next save and a reload (F7.10, F7.12)', async ({ page }) => {
-    test.slow();
+    // A controllable clock, flowing as usual, so the 10 s save tick is skipped rather than waited for (C1-024).
+    await page.clock.install();
     const api = await mockApi(page);
     await page.setViewportSize({ width: 1440, height: 900 });
     await openWorkspace(page);
@@ -914,7 +915,10 @@ test.describe('P5 workspace', () => {
     await expect(page.locator('[data-announcer="polite"]')).toHaveText('Reset to the starter.');
 
     // Past one 10 s save tick, then a reload: the starter is still there.
-    await page.waitForTimeout(10_500);
+    const puts = api.draftPuts.length;
+    await page.clock.fastForward(10_500);
+    await page.evaluate(() => new Promise((resolve) => setTimeout(resolve, 0)));
+    expect(api.draftPuts.length).toBeGreaterThanOrEqual(puts);
     expect(api.draftPuts.at(-1)?.source).not.toContain('// mine');
     await page.reload();
     await expect(page.locator('.cm-content')).toHaveAttribute('data-language', /.+/);

@@ -60,7 +60,9 @@
   // The row sliding to its new place, drawn above the rows it passes.
   let moving = $state<number | null>(null);
   let said = $state('');
-  let busy = false;
+  // A step is running (its slide and count); keys wait. Shown as
+  // data-stepping on the board, so tests wait on it instead of a timer.
+  let busy = $state(false);
 
   const done = $derived(isDone(reveal));
   const nextRow = $derived.by(() => {
@@ -267,7 +269,7 @@
   </header>
   <p class="visually-hidden" aria-live="polite">{said}</p>
 
-  <div class="board">
+  <div class="board" data-stepping={busy ? 'true' : undefined}>
     <div class="row head" aria-hidden="true">
       <span class="rank">#</span>
       <span class="name">Name</span>

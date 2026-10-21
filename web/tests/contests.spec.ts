@@ -773,7 +773,7 @@ for (const motion of ['no-preference', 'reduce'] as const) {
     else expect(await seen()).toEqual([]);
     await expect(reveal.locator('.row.moving')).toHaveCount(0);
     if (motion === 'reduce') await expect(reveal.locator('.row.flash .name')).toHaveText('Asha Rao');
-    await page.waitForTimeout(400);
+    await expect(reveal.locator('.board[data-stepping]')).toHaveCount(0);
     await expect(reveal.locator('.row').filter({ hasText: 'Asha Rao' }).locator('.rank')).toHaveText('2');
     await expect(reveal.locator('.row.just-moved .name')).toHaveText('Asha Rao');
     await page.screenshot({ path: `${shots()}reveal-step-1440-${motion}.png` });
@@ -783,7 +783,7 @@ for (const motion of ['no-preference', 'reduce'] as const) {
     await expect.poll(names).toEqual(['Priya Raman', 'Arjun Mehta', 'Asha Rao', 'Ravi Kumar']);
     await page.keyboard.press('ArrowRight');
     await expect.poll(names).toEqual(['Priya Raman', 'Asha Rao', 'Arjun Mehta', 'Ravi Kumar']);
-    await page.waitForTimeout(400);
+    await expect(reveal.locator('.board[data-stepping]')).toHaveCount(0);
 
     // Leaving keeps the place; opening again resumes.
     await page.keyboard.press('Escape');
@@ -821,7 +821,9 @@ test('the reveal skips to the top 10 and releases a held board from its end (P3 
   await expect(reveal.locator('.row.next-row .rank')).toHaveText('10');
   for (let i = 0; i < 10; i++) {
     await page.keyboard.press('Space');
-    await page.waitForTimeout(380);
+    const n = 9 - i;
+    await expect(reveal.getByText(n === 0 ? 'Every result is shown.' : n === 1 ? '1 row left.' : `${n} rows left.`, { exact: false })).toBeVisible();
+    await expect(reveal.locator('.board[data-stepping]')).toHaveCount(0);
   }
   await expect(reveal.getByText('Every result is shown.', { exact: false })).toBeVisible();
   await reveal.getByRole('button', { name: 'Release the full board' }).click();
@@ -1047,12 +1049,12 @@ test('keyboard only: an organiser edits a contest, runs the console and walks th
   const reveal = page.getByRole('dialog', { name: 'Week 6 contest' });
   await expect(reveal).toBeVisible();
   await page.keyboard.press('Space');
-  await page.waitForTimeout(400);
+  await expect(reveal.locator('.board[data-stepping]')).toHaveCount(0);
   await page.keyboard.press('Space');
   await expect(reveal.getByText('Every result is shown.', { exact: false })).toBeVisible();
   // Next is now off; focus stayed in the dialog, so the keys still work.
   await expect.poll(() => hasFocus(reveal)).toBe(true);
-  await page.waitForTimeout(400);
+  await expect(reveal.locator('.board[data-stepping]')).toHaveCount(0);
   await page.keyboard.press('ArrowLeft');
   await expect(reveal.getByText('1 row left.', { exact: false })).toBeVisible();
   await page.keyboard.press('Escape');
