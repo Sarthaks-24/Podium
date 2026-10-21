@@ -434,7 +434,7 @@
 <style>
   .lead {
     margin-top: var(--space-4);
-    max-width: 40rem;
+    max-width: var(--measure-narrow);
   }
 
   .toolbar {
@@ -487,7 +487,7 @@
   }
 
   .import-error {
-    max-width: 48rem;
+    max-width: var(--measure-form);
     margin-top: var(--space-4);
   }
 
@@ -498,7 +498,7 @@
   }
 
   .create {
-    max-width: 48rem;
+    max-width: var(--measure-form);
     margin-top: var(--space-5);
     padding: var(--space-4);
     border: var(--rule) solid var(--line);

@@ -386,7 +386,7 @@
   }
 
   .create {
-    max-width: 48rem;
+    max-width: var(--measure-form);
     margin-top: var(--space-5);
     padding: var(--space-4);
     border: var(--rule) solid var(--line);

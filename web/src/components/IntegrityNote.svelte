@@ -16,7 +16,7 @@
   .note {
     display: grid;
     gap: var(--space-2);
-    max-width: 48rem;
+    max-width: var(--measure-form);
     padding: var(--space-1) 0 var(--space-1) var(--space-4);
     border-left: calc(2 * var(--rule)) solid var(--line-strong);
     color: var(--ink-muted);

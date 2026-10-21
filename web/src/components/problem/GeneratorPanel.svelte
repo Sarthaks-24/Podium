@@ -333,12 +333,12 @@
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(min(100%, 18rem), 1fr));
     gap: var(--space-3) var(--space-4);
-    max-width: 64rem;
+    max-width: var(--measure-wide);
     margin-top: var(--space-3);
   }
 
   .plan {
-    max-width: 64rem;
+    max-width: var(--measure-wide);
     margin-top: var(--space-3);
   }
 
@@ -375,7 +375,7 @@
     flex-wrap: wrap;
     align-items: center;
     gap: var(--space-2) var(--space-3);
-    max-width: 64rem;
+    max-width: var(--measure-wide);
     margin-top: var(--space-4);
   }
 

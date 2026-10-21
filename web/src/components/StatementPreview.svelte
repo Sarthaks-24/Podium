@@ -125,7 +125,7 @@
   }
 
   .statement {
-    max-width: 72ch;
+    max-width: var(--measure-prose);
     margin-top: var(--space-4);
     overflow-wrap: break-word;
   }

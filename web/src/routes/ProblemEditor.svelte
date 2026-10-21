@@ -759,7 +759,7 @@
 
   .lead {
     margin-top: var(--space-4);
-    max-width: 48rem;
+    max-width: var(--measure-form);
   }
 
   /* The context column sits under the sticky bar, not behind it. */
@@ -790,7 +790,7 @@
     margin-top: var(--space-6);
     padding-top: 0;
     border-top: 0;
-    max-width: 64rem;
+    max-width: var(--measure-wide);
   }
 
 </style>

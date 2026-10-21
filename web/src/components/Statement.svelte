@@ -110,7 +110,7 @@
   }
 
   .statement {
-    max-width: 72ch;
+    max-width: var(--measure-prose);
     overflow-wrap: break-word;
   }
 
@@ -205,7 +205,7 @@
   .samples {
     display: grid;
     gap: var(--space-5);
-    max-width: 72ch;
+    max-width: var(--measure-prose);
     margin-top: var(--space-6);
   }
 

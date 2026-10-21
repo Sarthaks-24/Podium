@@ -775,12 +775,12 @@
   .page {
     display: grid;
     gap: var(--space-2);
-    max-width: 48rem;
+    max-width: var(--measure-form);
   }
 
   .lead {
     margin-top: var(--space-4);
-    max-width: 40rem;
+    max-width: var(--measure-narrow);
   }
 
   .meta {

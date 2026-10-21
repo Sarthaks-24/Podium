@@ -73,7 +73,7 @@
     flex-wrap: wrap;
     align-items: center;
     gap: var(--space-3);
-    max-width: 64rem;
+    max-width: var(--measure-wide);
   }
 
   .archive {

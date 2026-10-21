@@ -1304,7 +1304,7 @@
   .state {
     display: grid;
     gap: var(--space-3);
-    max-width: 48rem;
+    max-width: var(--measure-form);
   }
 
   .ws {

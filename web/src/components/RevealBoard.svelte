@@ -481,8 +481,8 @@
     position: absolute;
     inset: 0;
     z-index: 3;
-    outline: 3px solid var(--act);
-    outline-offset: -3px;
+    outline: calc(3 * var(--rule)) solid var(--act);
+    outline-offset: calc(-3 * var(--rule));
     content: '';
     pointer-events: none;
   }

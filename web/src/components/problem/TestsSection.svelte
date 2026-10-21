@@ -327,7 +327,7 @@
   .subtasks {
     display: grid;
     gap: var(--space-3);
-    max-width: 64rem;
+    max-width: var(--measure-wide);
     margin-top: var(--space-4);
     padding: 0;
     list-style: none;
@@ -363,7 +363,7 @@
     align-items: center;
     justify-content: space-between;
     gap: var(--space-3);
-    max-width: 64rem;
+    max-width: var(--measure-wide);
     margin-top: var(--space-6);
   }
 
@@ -383,7 +383,7 @@
 
   .files-head + .field-help {
     margin-top: var(--space-1);
-    max-width: 72ch;
+    max-width: var(--measure-prose);
   }
 
   .tests-summary {
@@ -402,7 +402,7 @@
   }
 
   .all-tests {
-    max-width: 64rem;
+    max-width: var(--measure-wide);
     margin-top: var(--space-3);
   }
 

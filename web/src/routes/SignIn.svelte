@@ -72,7 +72,7 @@
 
 <style>
   .signin {
-    max-width: 40rem;
+    max-width: var(--measure-narrow);
     padding-top: var(--space-7);
   }
 

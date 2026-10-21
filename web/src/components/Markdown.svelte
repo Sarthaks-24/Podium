@@ -60,7 +60,7 @@
   }
 
   .md {
-    max-width: 72ch;
+    max-width: var(--measure-prose);
     overflow-wrap: break-word;
   }
 

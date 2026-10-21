@@ -335,7 +335,7 @@
 <style>
   .lead {
     margin-top: var(--space-4);
-    max-width: 40rem;
+    max-width: var(--measure-narrow);
   }
 
   .retry {

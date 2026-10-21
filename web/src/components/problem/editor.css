@@ -17,7 +17,7 @@
 }
 
 .editor .problems-list {
-  max-width: 48rem;
+  max-width: var(--measure-form);
   margin-top: var(--space-3);
 }
 
@@ -41,7 +41,7 @@
 
 .editor .sub-help {
   margin-top: var(--space-1);
-  max-width: 72ch;
+  max-width: var(--measure-prose);
 }
 
 .editor .empty {
@@ -55,7 +55,7 @@
 }
 
 .editor .generation {
-  max-width: 64rem;
+  max-width: var(--measure-wide);
   margin-top: var(--space-3);
 }
 
@@ -88,7 +88,7 @@
 .editor .programs {
   display: grid;
   gap: var(--space-6);
-  max-width: 64rem;
+  max-width: var(--measure-wide);
   margin-top: var(--space-4);
 }
 

@@ -174,12 +174,12 @@
 <style>
   .lead {
     margin-top: var(--space-4);
-    max-width: 40rem;
+    max-width: var(--measure-narrow);
   }
 
   .small {
     margin-top: var(--space-2);
-    max-width: 40rem;
+    max-width: var(--measure-narrow);
     font-size: var(--fs-0);
   }
 

@@ -253,18 +253,18 @@
   .solve {
     display: grid;
     gap: var(--space-3);
-    max-width: 64rem;
+    max-width: var(--measure-wide);
   }
 
   .solve-help {
-    max-width: 72ch;
+    max-width: var(--measure-prose);
     color: var(--ink-muted);
   }
 
   .solve-result {
     display: grid;
     gap: var(--space-2);
-    max-width: 48rem;
+    max-width: var(--measure-form);
     padding: var(--space-3) var(--space-4);
     border: var(--rule) solid var(--line-strong);
     background: var(--surface);

@@ -223,7 +223,7 @@
     margin-top: var(--space-1);
     color: var(--ink-muted);
     font-size: var(--fs-0);
-    max-width: 72ch;
+    max-width: var(--measure-prose);
   }
 
   .detail {

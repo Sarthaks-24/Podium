@@ -527,7 +527,7 @@
   }
 
   .wizard {
-    max-width: 48rem;
+    max-width: var(--measure-form);
   }
 
   .key-state {
@@ -541,7 +541,7 @@
 
   .lead {
     margin-top: var(--space-4);
-    max-width: 72ch;
+    max-width: var(--measure-prose);
   }
 
   h2 {
@@ -574,7 +574,7 @@
     flex: none;
     width: var(--space-3);
     height: var(--space-3);
-    border: 2px solid var(--line-strong);
+    border: calc(2 * var(--rule)) solid var(--line-strong);
     border-radius: 50%;
   }
 

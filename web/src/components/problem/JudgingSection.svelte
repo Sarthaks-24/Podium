@@ -142,7 +142,7 @@
   }
 
   .custom {
-    max-width: 64rem;
+    max-width: var(--measure-wide);
     margin-top: var(--space-4);
   }
 </style>

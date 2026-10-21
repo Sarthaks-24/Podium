@@ -53,6 +53,6 @@
   }
 
   .jump:hover {
-    text-decoration-thickness: 2px;
+    text-decoration-thickness: calc(2 * var(--rule));
   }
 </style>

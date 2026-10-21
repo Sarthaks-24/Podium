@@ -632,7 +632,7 @@
     color: var(--ink);
     text-decoration: underline;
     text-decoration-color: var(--act);
-    text-decoration-thickness: 2px;
+    text-decoration-thickness: calc(2 * var(--rule));
     text-underline-offset: 0.45em;
   }
 
