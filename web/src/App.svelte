@@ -190,11 +190,14 @@
     }
     const main = document.getElementById('main');
     if (!main || typeof MutationObserver === 'undefined') return;
+    // The link that was pressed still holds focus; anything else means the person moved on.
+    const before = document.activeElement;
     const observer = new MutationObserver(() => {
       const h1 = main.querySelector<HTMLElement>('h1');
       if (!h1) return;
       observer.disconnect();
-      if (document.activeElement === null || document.activeElement === document.body) h1.focus();
+      const now = document.activeElement;
+      if (now === null || now === document.body || now === before) h1.focus();
     });
     observer.observe(main, { childList: true, subtree: true });
     setTimeout(() => observer.disconnect(), 3000);
