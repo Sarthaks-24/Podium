@@ -1032,6 +1032,22 @@ test.describe('P5 workspace', () => {
     await page.screenshot({ path: `${shots()}workspace-rail-1024-light.png` });
   });
 
+  // From 1100 px the toolbar is one row at any height; 1024 to 1099 px may wrap to two (decision of fixer 1, C1-042).
+  test('from 1100 px the toolbar is one row at any height (audit S2, C1-042)', async ({ page }) => {
+    await contests.mockApi(page, { phase: 'during' });
+    for (const size of [
+      { width: 1100, height: 900 },
+      { width: 1180, height: 900 },
+      { width: 1279, height: 1000 },
+    ]) {
+      await page.setViewportSize(size);
+      await page.goto('/contests/week-6/problems/A');
+      await expect(page.locator('.cm-content')).toHaveAttribute('data-language', /.+/);
+      const top = async (sel: string) => (await page.locator(sel).first().boundingBox())!.y;
+      expect(Math.abs((await top('#ws-language')) - (await top('button.submit'))), `one row at ${size.width}`).toBeLessThan(8);
+    }
+  });
+
   test('a short laptop keeps the toolbar on one row and the page still (F7.3)', async ({ page }) => {
     await contests.mockApi(page, { phase: 'during' });
     for (const size of [

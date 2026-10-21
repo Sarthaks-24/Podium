@@ -14,8 +14,9 @@
   workspace is sized from the shell's measured header (--shell-head), so
   the page does not scroll; a laptop at most 45rem tall (the `short` tier,
   such as 1366 by 768 at 125 percent) gets a tighter title row, a smaller
-  first result share and, under 1280 px, a narrower rail, so the toolbar
-  keeps one row (F7.3). From 768 to 1023 px, Problem and Code tabs, the
+  first result share. From 1024 to 1279 px, at any height, the rail is
+  narrower and the code column wider, so the toolbar keeps one row from
+  1100 px (F7.3, council C1-042; 1024 to 1099 px may wrap it). From 768 to 1023 px, Problem and Code tabs, the
   result under the editor; under 768 px, Problem, Code and Result tabs.
   Under 1024 px one strip sticks to the top of the window (F7.2, audit
   S7): the contest clock with the previous and next problem, then the
@@ -1878,10 +1879,10 @@
     }
   }
 
-  /* The short tier under 1280 px (1366 by 768 at 125 percent is 1093 px
-     wide): a narrower rail and a wider code column, so the toolbar keeps
-     one row and the editor its height. */
-  @media (1024px <= width < 1280px) and (max-height: 45rem) {
+  /* Under 1280 px, at any height (1366 by 768 at 125 percent is 1093 px
+     wide; audit S2 and council C1-042 at 1024 by 900): a narrower rail and
+     a wider code column, so the toolbar keeps one row. */
+  @media (1024px <= width < 1280px) {
     .ws {
       grid-template-columns: 10rem minmax(0, 1fr) minmax(22.5rem, 1.4fr);
     }
