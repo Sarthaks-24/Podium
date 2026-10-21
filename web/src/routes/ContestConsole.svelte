@@ -47,7 +47,7 @@
   import MonoDigits from '../components/MonoDigits.svelte';
   import OpenCaseDialog from '../components/OpenCaseDialog.svelte';
   import SubmissionNotes from '../components/SubmissionNotes.svelte';
-  import { ApiError, getJSON, sendJSON } from '../lib/api';
+  import { ApiError, errorText, getJSON, sendJSON } from '../lib/api';
   import { serverClock } from '../lib/clock';
   import {
     ANNOUNCEMENT_TEMPLATES,
@@ -188,7 +188,7 @@
   }
 
   function messageOf(e: unknown): string {
-    return e instanceof ApiError ? e.message : 'Something went wrong. Try again in a moment.';
+    return errorText(e);
   }
 
   /** "14:02:10" in local time. */
@@ -745,7 +745,7 @@
                     {#if r.error}<p id="reply-{c.id}-error" class="field-error">{r.error}</p>{/if}
                   </div>
                   <label class="choice"><input type="checkbox" bind:checked={r.public} /> Answer for everyone</label>
-                  <button type="button" class="btn btn-primary btn-compact" disabled={r.busy} onclick={() => answer(c)}>
+                  <button type="button" class="btn btn-secondary btn-compact" disabled={r.busy} onclick={() => answer(c)}>
                     {r.public ? 'Send to everyone' : 'Send answer'}
                   </button>
                 {/if}

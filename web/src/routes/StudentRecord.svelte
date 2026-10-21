@@ -33,7 +33,7 @@
   import PageState from '../components/PageState.svelte';
   import AppealRuling from '../components/students/AppealRuling.svelte';
   import { onMount, tick } from 'svelte';
-  import { ApiError, getJSON, sendJSON } from '../lib/api';
+  import { ApiError, errorText, getJSON, sendJSON } from '../lib/api';
   import { keepHeadingFocus } from '../lib/focus';
   import { formatDateTime } from '../lib/format';
   import { setTitle } from '../lib/head';
@@ -116,7 +116,7 @@
         setTitle('Record not found');
         return;
       }
-      loadError = e instanceof ApiError ? e.message : 'Something went wrong. Try again in a moment.';
+      loadError = errorText(e);
       loadState = 'error';
     }
   }
@@ -160,7 +160,7 @@
       if (e instanceof ApiError && (e.fields.reason || e.fields.value_tenths)) {
         errors = { value: e.fields.value_tenths ?? '', reason: e.fields.reason ?? '' };
       } else {
-        editError = e instanceof ApiError ? e.message : 'Something went wrong. Try again in a moment.';
+        editError = errorText(e);
       }
     } finally {
       editBusy = false;
@@ -191,7 +191,7 @@
       document.getElementById('rating-title')?.focus();
     } catch (e) {
       if (handle(e)) return;
-      pendingError = e instanceof ApiError ? e.message : 'Something went wrong. Try again in a moment.';
+      pendingError = errorText(e);
       if (e instanceof ApiError && e.code === 'rating_changed') void load();
     } finally {
       pendingBusy = false;

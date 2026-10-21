@@ -21,7 +21,7 @@
   import PageState from '../components/PageState.svelte';
   import TrendLine from '../components/students/TrendLine.svelte';
   import { onMount } from 'svelte';
-  import { ApiError, getJSON } from '../lib/api';
+  import { ApiError, errorText, getJSON } from '../lib/api';
   import { keepHeadingFocus } from '../lib/focus';
   import { formatDateTime, scoreParts } from '../lib/format';
   import { setTitle } from '../lib/head';
@@ -63,7 +63,7 @@
         setTitle('Student not found');
         return;
       }
-      loadError = e instanceof ApiError ? e.message : 'Something went wrong. Try again in a moment.';
+      loadError = errorText(e);
       loadState = 'error';
     }
   }

@@ -46,7 +46,7 @@
   import IntegrityNote from '../components/IntegrityNote.svelte';
   import SignalTable from '../components/SignalTable.svelte';
   import AppealRuling from '../components/students/AppealRuling.svelte';
-  import { ApiError, getJSON, sendJSON } from '../lib/api';
+  import { ApiError, errorText, getJSON, sendJSON } from '../lib/api';
   import type { AdminContest } from '../lib/contests';
   import { keepHeadingFocus } from '../lib/focus';
   import { formatDateTime } from '../lib/format';
@@ -165,7 +165,7 @@
   }
 
   function messageOf(e: unknown): string {
-    return e instanceof ApiError ? e.message : 'Something went wrong. Try again in a moment.';
+    return errorText(e);
   }
 
   function setClock(serverNow: number | undefined) {

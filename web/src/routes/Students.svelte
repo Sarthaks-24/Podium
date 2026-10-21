@@ -25,7 +25,7 @@
   import PageHeader from '../components/PageHeader.svelte';
   import PageState from '../components/PageState.svelte';
   import { onMount } from 'svelte';
-  import { ApiError, getJSON } from '../lib/api';
+  import { ApiError, errorText, getJSON } from '../lib/api';
   import { keepHeadingFocus } from '../lib/focus';
   import { formatDateTime } from '../lib/format';
   import { setTitle } from '../lib/head';
@@ -72,7 +72,7 @@
         loadState = 'forbidden';
         return;
       }
-      loadError = e instanceof ApiError ? e.message : 'Something went wrong. Try again in a moment.';
+      loadError = errorText(e);
       loadState = 'error';
     } finally {
       busy = false;

@@ -1137,3 +1137,18 @@ test('the class view waits for final results', async ({ page }) => {
   await page.goto('/admin/contests/4/results');
   await expect(page.getByText('The class view opens when the results are final.')).toBeVisible();
 });
+
+test('the shared standings say a decision changed the board, and no cell carries a mark (D77, C1-040)', async ({ page }) => {
+  await mockApi(page, { phase: 'after', zeroB: true });
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto('/contests/week-6/standings');
+  await expect(page.getByText(/^Board updated on .+ after a review decision\.$/)).toBeVisible();
+  const board = page.getByRole('region', { name: /^Standings for Week 6 contest/ });
+  await expect(board.getByRole('row').nth(1)).toBeVisible();
+  // The board snapshot: no word, class or attribute marks an adjusted cell, and no name links anywhere.
+  const html = await board.innerHTML();
+  expect(html).not.toMatch(/decision|adjust|zero_by|zeroed|review/i);
+  await expect(board.getByRole('link')).toHaveCount(0);
+  await page.goto('/contests/week-6');
+  await expect(page.getByText(/^Board updated on .+ after a review decision\.$/)).toBeVisible();
+});

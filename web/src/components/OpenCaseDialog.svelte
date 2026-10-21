@@ -15,7 +15,7 @@
 -->
 <script lang="ts">
   import { tick } from 'svelte';
-  import { ApiError, sendJSON } from '../lib/api';
+  import { ApiError, errorText, sendJSON } from '../lib/api';
   import {
     MAX_TITLE,
     MIN_NOTE,
@@ -106,7 +106,7 @@
         if (!titleError && !noteError) error = e.message;
         else void focusInvalid();
       } else {
-        error = 'Something went wrong. Try again in a moment.';
+        error = errorText(e);
       }
     } finally {
       busy = false;

@@ -211,8 +211,8 @@
   }
 
   .board tr.me:focus-visible {
-    outline: 2px solid var(--act);
-    outline-offset: -2px;
+    outline: calc(2 * var(--rule)) solid var(--act);
+    outline-offset: calc(-2 * var(--rule));
   }
 
   .rank {

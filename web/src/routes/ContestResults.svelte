@@ -38,7 +38,7 @@
   import MonoDigits from '../components/MonoDigits.svelte';
   import ClassView from '../components/students/ClassView.svelte';
   import { formatDateTime } from '../lib/format';
-  import { ApiError, getJSON, sendJSON } from '../lib/api';
+  import { ApiError, errorText, getJSON, sendJSON } from '../lib/api';
   import { type AdminContest, type ProblemStats } from '../lib/contests';
   import { keepHeadingFocus } from '../lib/focus';
   import { setTitle } from '../lib/head';
@@ -96,7 +96,7 @@
   }
 
   function messageOf(e: unknown): string {
-    return e instanceof ApiError ? e.message : 'Something went wrong. Try again in a moment.';
+    return errorText(e);
   }
 
   async function load() {
@@ -375,10 +375,10 @@
       <p class="muted small">{editorialPublished ? 'Published: students see it after the contest.' : 'Not published: students do not see it yet.'}</p>
       <div class="actions">
         {#if editorialPublished}
-          <button type="submit" class="btn btn-primary" disabled={editorialBusy}>Save editorial</button>
+          <button type="submit" class="btn btn-secondary" disabled={editorialBusy}>Save editorial</button>
           <button type="button" class="btn btn-secondary" disabled={editorialBusy} onclick={() => saveEditorial(false, 'Unpublished the editorial')}>Unpublish editorial</button>
         {:else}
-          <button type="button" class="btn btn-primary" disabled={editorialBusy} onclick={() => saveEditorial(true, 'Published the editorial')}>Publish editorial</button>
+          <button type="button" class="btn btn-secondary" disabled={editorialBusy} onclick={() => saveEditorial(true, 'Published the editorial')}>Publish editorial</button>
           <button type="submit" class="btn btn-secondary" disabled={editorialBusy}>Save draft</button>
         {/if}
         <button type="button" class="btn btn-quiet" aria-expanded={preview} aria-controls="editorial-preview" onclick={() => (preview = !preview)}>

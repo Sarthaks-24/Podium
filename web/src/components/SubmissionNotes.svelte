@@ -20,7 +20,7 @@
 <script lang="ts">
   import { tick } from 'svelte';
   import MonoDigits from './MonoDigits.svelte';
-  import { ApiError, getJSON, sendJSON } from '../lib/api';
+  import { ApiError, errorText, getJSON, sendJSON } from '../lib/api';
   import { formatDateTime } from '../lib/format';
   import { linesText, parseLines, type Note, type Notes } from '../lib/students';
   import { showToast } from '../lib/toast.svelte';
@@ -82,7 +82,7 @@
         refusal = 'Only reviewers of this contest can read or write notes.';
         view = 'refused';
       } else {
-        refusal = e instanceof ApiError ? e.message : 'Something went wrong. Try again in a moment.';
+        refusal = errorText(e);
         view = 'error';
       }
     }
@@ -122,7 +122,7 @@
         textError = e.fields.text ?? '';
         linesError = e.fields.lines ?? '';
       } else {
-        sendError = e instanceof ApiError ? e.message : 'Something went wrong. Try again in a moment.';
+        sendError = errorText(e);
       }
     } finally {
       busy = false;

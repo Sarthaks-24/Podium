@@ -455,7 +455,8 @@ export async function mockApi(page: Page, options: Options = {}) {
       }
       if (path === '/api/contests/week-6/standings' && method === 'GET') {
         if (options.boardClosed) return apiError(route, 403, 'board_closed', 'The board opens when the window closes.');
-        return json(route, 200, phase === 'during' || phase === 'ready' || options.studentFrozen ? frozenBoard() : fullBoard());
+        const updated = options.zeroB ? { board_updated_at: now - 3_600_000, board_update_reason: 'review_decision' } : {};
+        return json(route, 200, { ...(phase === 'during' || phase === 'ready' || options.studentFrozen ? frozenBoard() : fullBoard()), ...updated });
       }
       if (path === '/api/contests/week-6/clarifications' && method === 'POST') {
         const body = req.postDataJSON() as Json;

@@ -18,7 +18,7 @@
   import Badge from '../Badge.svelte';
   import ConfirmDialog from '../ConfirmDialog.svelte';
   import MonoDigits from '../MonoDigits.svelte';
-  import { ApiError, sendJSON } from '../../lib/api';
+  import { ApiError, errorText, sendJSON } from '../../lib/api';
   import { formatDateTime } from '../../lib/format';
   import { MIN_REASON, noteCounter, noteLength, type CaseAppeal } from '../../lib/review';
   import { appealState } from '../../lib/standing';
@@ -84,7 +84,7 @@
       if (e instanceof ApiError && (e.fields.reason || e.fields.sole_organiser_reason)) {
         errors = { ...errors, reason: e.fields.reason ?? '', sole: e.fields.sole_organiser_reason ?? '' };
       } else {
-        refusal = e instanceof ApiError ? e.message : 'Something went wrong. Try again in a moment.';
+        refusal = errorText(e);
       }
     } finally {
       busy = false;

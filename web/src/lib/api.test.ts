@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { ApiError, NETWORK_MESSAGE, UNEXPECTED_MESSAGE, getJSON, sendBody, sendJSON } from './api';
+import { ApiError, NETWORK_MESSAGE, UNEXPECTED_MESSAGE, errorText, getJSON, sendBody, sendJSON } from './api';
 
 function respond(status: number, body?: unknown): Response {
   const text = body === undefined ? null : typeof body === 'string' ? body : JSON.stringify(body);
@@ -162,5 +162,12 @@ describe('sendBody', () => {
     expect(init?.body).toBe(zip);
     expect((init?.headers as Record<string, string>)['Content-Type']).toBe('application/zip');
     expect((init?.headers as Record<string, string>).Accept).toBe('application/json');
+  });
+});
+
+describe('errorText', () => {
+  it("gives the server's sentence, or the unexpected-response one", () => {
+    expect(errorText(new ApiError(409, 'busy', 'A check is already running.'))).toBe('A check is already running.');
+    expect(errorText(new Error('boom'))).toBe(UNEXPECTED_MESSAGE);
   });
 });

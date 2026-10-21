@@ -17,7 +17,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import MonoDigits from '../MonoDigits.svelte';
-  import { ApiError, getJSON } from '../../lib/api';
+  import { ApiError, errorText, getJSON } from '../../lib/api';
   import { scoreParts } from '../../lib/format';
   import { percentText, type ClassView } from '../../lib/students';
 
@@ -38,7 +38,7 @@
         view = 'not-final';
         return;
       }
-      message = e instanceof ApiError ? e.message : 'Something went wrong. Try again in a moment.';
+      message = errorText(e);
       view = 'error';
     }
   }
