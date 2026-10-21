@@ -4,7 +4,7 @@ A self-hosted platform for weekly programming contests at a college. Students si
 
 Everything runs on one small Linux VM (Ubuntu 24.04, amd64 only, 2 GB RAM is the target) and is built to serve 700+ students in one contest.
 
-Status: milestone M5 (AI wizard). The judge sandbox, Google sign-in with the domain check, roles, the problem bank with pack import and export, output and input generation, validation on the real judge, the student workspace with live verdicts, contests with standings, freeze and reveal, integrity checks with review cases, and the bring-your-own-key AI wizard exist. See `CHANGELOG.md`.
+Status: v1 (milestones M0 to M7) and the v2 phases P0 to P5 are built and on `main`; no release is tagged or deployed yet. The judge sandbox, Google sign-in with the domain check, roles, the problem bank with pack import, export and revisions, output and input generation, validation on the real judge, the student workspace with live verdicts and revealed tests in practice, contests with standings, freeze and reveal, integrity checks with review cases, appeals and the rating, student progress and notices, the public pages, retention, and the bring-your-own-key AI wizard exist. See `CHANGELOG.md`.
 
 ## How it fits together
 
@@ -118,5 +118,6 @@ Full operations guide, configuration reference, backups, alerts, upgrades and ro
 | `docs/OPERATIONS.md` | Install, run modes, configuration variables, metrics, upgrades, backups and restore, validation troubleshooting |
 | `docs/RUNBOOK.md` | Contest day: checklists, what to watch, what to do when something goes wrong, restoring, the dry run with real students |
 | `docs/AUTHORING.md` | Writing problems: the pack format, statements, subtasks, checkers, validation |
+| `docs/INTEGRITY.md` | For organisers and reviewers: what is recorded during a contest, what the checks find, how a case is reviewed and decided, and a policy template |
 | `docs/API.md` | HTTP routes, the judge worker API, and their request and response shapes |
 | `CHANGELOG.md` | Dated changes per release |
