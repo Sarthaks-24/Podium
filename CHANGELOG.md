@@ -19,7 +19,7 @@ Nothing below is tagged or deployed. The v2 phases were planned as the releases 
 
 #### Frontend (2026-10-21)
 
-- A student's first load no longer carries the organiser screens: every admin route loads on first visit. The entry script and its preloads fell from 675 kB to 332 kB (211 kB to 112 kB gzipped); CI fails when they pass 120 kB gzipped or the stylesheets 16 kB (F8.1, F8.3).
+- A student's first load no longer carries the organiser screens: every admin route loads on first visit. The entry script and its preloads fell from 675 kB to 332 kB (211 kB to 112 kB gzipped); a CI step fails when they pass 120 kB gzipped or the stylesheets 16 kB (F8.1, F8.3; the step has not run on GitHub yet).
 - KaTeX and its stylesheet load only when a text holds maths; until then a formula reads as its TeX source. Statement images load lazily. The 500 face and Fragment Mono are preloaded with 400 and 600 (F8.2, D91).
 - Toasts fade out at the short duration; the subtask strip fills by transform; both stay still under reduced motion. "Grade as the AI wrote it" names what is graded (F8.4).
 - The problem editor's preview and context column sit under the sticky bar at any height, and fields reached from the error list clear it (F8.5, R3).
