@@ -651,6 +651,27 @@ test.describe('in a contest', () => {
 // resizable result panel, the sign-out guard, the editor hint, lazy
 // language packs, reset to starter and the revealed test (D115).
 test.describe('P5 workspace', () => {
+  test('on a phone the student link row stays out of the workspace (audit S7)', async ({ page }) => {
+    await contests.mockApi(page, { phase: 'during' });
+    await page.setViewportSize({ width: 375, height: 812 });
+    await page.goto('/contests/week-6/problems/B');
+    await expect(page.locator('.cm-content')).toHaveAttribute('data-language', /.+/);
+    const nav = page.getByRole('navigation', { name: 'Main' });
+    await expect(nav).toBeHidden();
+    // One header row: the word-mark, Notices and Account.
+    const wordmark = (await page.locator('.wordmark').boundingBox())!;
+    const header = (await page.locator('header.bar').boundingBox())!;
+    expect(header.height).toBeLessThan(wordmark.height * 2 + 24);
+    await expect(page.getByRole('link', { name: 'podium' })).toBeVisible();
+    // Outside the workspace, and from 768 px, the links show.
+    await page.setViewportSize({ width: 800, height: 900 });
+    await expect(nav).toBeVisible();
+    await page.setViewportSize({ width: 375, height: 812 });
+    await page.getByRole('link', { name: 'podium' }).click();
+    await expect(page).toHaveURL('/');
+    await expect(nav.getByRole('link', { name: 'Your progress' })).toBeVisible();
+  });
+
   test('under 1024 px one strip holds the clock, previous and next, the tabs and Submit (F7.2)', async ({ page }) => {
     await contests.mockApi(page, { phase: 'during' });
     await page.setViewportSize({ width: 375, height: 812 });

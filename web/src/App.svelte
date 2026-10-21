@@ -14,7 +14,9 @@
   button a "Notices" link with the unread count from /api/me (F9.1,
   lib/notices.svelte.ts), read again when a live stream reconnects and
   when the tab comes back; under 768 px their nav links take a second row
-  so the word-mark, Notices and Account keep the first. From 768 px everything fits one row; under 768 px an
+  so the word-mark, Notices and Account keep the first, except in the
+  contest workspace, where the workspace strip takes that space (audit
+  S7). From 768 px everything fits one row; under 768 px an
   organiser's nav and account items collapse behind a Menu button that
   opens a panel (Escape closes it), while a student keeps the links and the
   account button in the row. Signed out, only the theme control shows.
@@ -118,6 +120,9 @@
   const isOrganiser = $derived(session.user?.role === 'admin' || session.user?.role === 'owner');
   const needsSignIn = $derived(route.auth && session.status === 'signed-out');
   const leaveSignIn = $derived(route.name === 'signin' && signedIn);
+  // A contest problem in the workspace: on a phone the student's link row
+  // gives way to the workspace strip (usability audit S7).
+  const inWorkspace = $derived(shell.workspace && route.name.startsWith('contest'));
   // Organisers land on their own contest list; "/" is the student list (N1).
   const organiserHome = $derived(route.name === 'home' && isOrganiser);
 
@@ -298,7 +303,14 @@
           </button>
         {/if}
 
-        <div id="site-menu" class="menu" class:collapsible={isOrganiser} class:student-menu={!isOrganiser} class:open={menuOpen}>
+        <div
+          id="site-menu"
+          class="menu"
+          class:collapsible={isOrganiser}
+          class:student-menu={!isOrganiser}
+          class:in-workspace={inWorkspace}
+          class:open={menuOpen}
+        >
           <nav class="nav" aria-label="Main">
             <ul>
               {#each navLinks as l (l.href)}
@@ -327,7 +339,7 @@
   <main
     id="main"
     class="inner main"
-    class:main-workspace={route.name === 'problem-try' || (shell.workspace && route.name.startsWith('contest'))}
+    class:main-workspace={route.name === 'problem-try' || inWorkspace}
     tabindex="-1"
   >
     {#if session.status === 'loading' || needsSignIn || leaveSignIn || organiserHome}
@@ -740,6 +752,12 @@
     .menu.student-menu {
       flex-basis: 100%;
       order: 1;
+    }
+
+    /* In the contest workspace that row would push the problem down; the
+       strip has previous, next and the clock, and the word-mark goes home. */
+    .menu.student-menu.in-workspace {
+      display: none;
     }
 
     .student-menu .nav ul {
