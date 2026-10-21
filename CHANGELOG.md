@@ -35,6 +35,9 @@ Nothing below is tagged or deployed. The v2 phases were planned as the releases 
 - `make package` builds the release tarball without `make check`, for the upgrade drill's build with a never-committed migration.
 - A reviewer who is a student of a case with a classmate can no longer write notes on the classmate's submissions in that contest, open a case from them (which copied the notes), read a manual case about them, see their note counts in the feed, or edit, confirm or decline their rating (D262 on every path). Notes and cases on one's own submission answer 404 instead of 400.
 - Opening a case (from signals or from a submission) is logged as a read of it, as every later read is (D97).
+- The bank's "hidden tests shown in practice" mark counts only published contests, and a problem whose hidden tests a published contest has shown can no longer be taken out of that contest, which used to make the mark disappear.
+- `install.sh` reads the backup folder from `PODIUM_BACKUP_DIR` (upgrade, rollback record and verify), and nightly backups are named to the second.
+- The rsync and encrypted copies never stop the local backup: a problem with their settings warns before it and fails the unit after it; `install.sh verify` checks the rsync copy's root key.
 
 ### Council run 1 fixes (2026-10-21)
 
