@@ -632,7 +632,7 @@ test('a finished validation says its result in the bar and the report link takes
   await page.goto('/admin/problems/1');
   const readiness = page.getByRole('region', { name: /^Readiness/ });
   await expect(readiness).toContainText('Validated on this version.');
-  await expect(readiness.getByRole('link', { name: 'Add to a contest' })).toHaveAttribute('href', '/admin/contests');
+  await expect(readiness.getByRole('link', { name: 'Choose a contest' })).toHaveAttribute('href', '/admin/contests');
 
   // An unsaved judged change says it will need a new validation; a title change does not.
   await page.locator('#title').fill('A plus B again');

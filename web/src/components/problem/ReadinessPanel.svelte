@@ -8,7 +8,7 @@
   last result in one line with "See the report", which moves focus to the
   report; what stops validation (the server's `problems`); the warnings
   ("Before you validate"), with a line for statement images that have no
-  description; and once validated, "Add to a contest" ("Try as a student"
+  description; and once validated, "Choose a contest" ("Try as a student"
   is in the page header). A plain list, not tiles.
 
   Props: `problem`, `status` (lib/problems editorStatus), `judged` (the
@@ -93,7 +93,7 @@
 
   {#if ready}
     <div class="action-row">
-      <a class="btn btn-secondary" href="/admin/contests">Add to a contest</a>
+      <a class="btn btn-secondary" href="/admin/contests">Choose a contest</a>
     </div>
   {:else if !problem.validated && blockers.length === 0 && !pipeline && !result}
     <p class="line muted">Validate runs the reference solution, brute force and validator on every test. A contest takes the problem once it passes.</p>
