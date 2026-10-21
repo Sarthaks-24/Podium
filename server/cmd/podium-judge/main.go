@@ -167,21 +167,7 @@ func work() error {
 	sigs := make(chan os.Signal, 2)
 	signal.Notify(sigs, os.Interrupt, syscall.SIGTERM)
 	defer signal.Stop(sigs)
-	go func() {
-		select {
-		case <-sigs:
-		case <-ctx.Done():
-			return
-		}
-		log.Info("stopping: no new jobs; finishing the running ones (a second signal abandons them)")
-		stopClaims()
-		select {
-		case <-sigs:
-			log.Warn("second signal: abandoning running jobs; the server requeues them after their leases")
-			abandon()
-		case <-ctx.Done():
-		}
-	}()
+	go stopOnSignals(sigs, ctx.Done(), stopClaims, abandon, log)
 
 	blobs := filepath.Join(cfg.CacheDir, "blobs")
 	jobs := filepath.Join(cfg.CacheDir, "jobs")
@@ -215,6 +201,25 @@ func work() error {
 	}
 	log.Info("stopped")
 	return nil
+}
+
+// stopOnSignals is work's signal policy: the first signal stops claiming
+// (drain), a second abandons the running jobs. It returns when done
+// closes or after the second signal.
+func stopOnSignals(sigs <-chan os.Signal, done <-chan struct{}, stopClaims, abandon func(), log *slog.Logger) {
+	select {
+	case <-sigs:
+	case <-done:
+		return
+	}
+	log.Info("stopping: no new jobs; finishing the running ones (a second signal abandons them)")
+	stopClaims()
+	select {
+	case <-sigs:
+		log.Warn("second signal: abandoning running jobs; the server requeues them after their leases")
+		abandon()
+	case <-done:
+	}
 }
 
 // reportToolchain sends this host's toolchain to the server (B1.4),
