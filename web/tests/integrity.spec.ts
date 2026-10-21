@@ -367,11 +367,11 @@ test('a student sees a quiet notice, their own evidence, and saves an explanatio
   await expect(code.locator('mark')).toHaveCount(5);
   await expect(code.locator('mark').first()).toHaveText('vector<pair<int,int>> v(n);');
 
-  await page.getByRole('button', { name: 'Save explanation' }).click();
+  await page.getByRole('button', { name: 'Send explanation' }).click();
   await expect(page.getByText('Write your explanation first.')).toBeVisible();
   await page.getByLabel('Explain how you wrote this, in your own words').fill('I wrote it in the lab after the lecture on greedy algorithms.');
-  await page.getByRole('button', { name: 'Save explanation' }).click();
-  await expect(page.getByRole('status').filter({ hasText: 'Saved. You can change it until a decision is made.' })).toBeVisible();
+  await page.getByRole('button', { name: 'Send explanation' }).click();
+  await expect(page.getByRole('status').filter({ hasText: 'Sent to the organisers. You can change it until a decision is made.' })).toBeVisible();
   expect(api.explanations).toEqual([{ explanation: 'I wrote it in the lab after the lecture on greedy algorithms.' }]);
   await expect(page.getByText('Your explanation is saved.', { exact: false })).toBeVisible();
 });
@@ -383,7 +383,7 @@ test('a decided case reads only for the student', async ({ page }) => {
   await page.getByRole('link', { name: 'Open the question' }).click();
   await expect(page.getByText('Decided: cleared. No action will be taken.')).toBeVisible();
   await expect(page.getByText('I wrote it in the lab from the lecture notes.')).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Save explanation' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Send explanation' })).toHaveCount(0);
   await expect(page.getByText('An organiser has decided, so you can no longer change your explanation.')).toBeVisible();
 });
 
@@ -454,12 +454,12 @@ test('keyboard only: a student reads the integrity question and saves an explana
   await expect(page.getByRole('heading', { level: 1, name: 'Question about Week 6 contest' })).toBeFocused();
 
   const field = page.getByLabel('Explain how you wrote this, in your own words');
-  await activate(page, page.getByRole('button', { name: 'Save explanation' }));
+  await activate(page, page.getByRole('button', { name: 'Send explanation' }));
   await expect(page.getByRole('alert').filter({ hasText: 'Write your explanation first.' })).toBeVisible();
   await tabTo(page, field, { back: true });
   await page.keyboard.type('I wrote it in the lab after the lecture on greedy algorithms.');
-  await activate(page, page.getByRole('button', { name: 'Save explanation' }));
-  await expect(page.getByRole('status').filter({ hasText: 'Saved. You can change it until a decision is made.' })).toBeVisible();
+  await activate(page, page.getByRole('button', { name: 'Send explanation' }));
+  await expect(page.getByRole('status').filter({ hasText: 'Sent to the organisers. You can change it until a decision is made.' })).toBeVisible();
   expect(api.explanations).toHaveLength(1);
 });
 

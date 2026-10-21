@@ -117,7 +117,7 @@
     try {
       await sendJSON<void>('PUT', `/api/integrity/cases/${c.id}/explanation`, { explanation: text });
       c = { ...c, explanation: text };
-      saved = 'Saved. You can change it until a decision is made.';
+      saved = 'Sent to the organisers. You can change it until a decision is made.';
       void loadQuestions();
     } catch (e) {
       if (signedOut(e)) return;
@@ -246,7 +246,7 @@
               {#if error}<p id="explain-{c.id}-error" class="field-error" role="alert">{error}</p>{/if}
             </div>
             <div class="action-row">
-              <button type="submit" class="btn btn-primary" disabled={saving}>Save explanation</button>
+              <button type="submit" class="btn btn-primary" disabled={saving}>Send explanation</button>
               <p class="muted small" role="status">{saved}</p>
             </div>
           </form>

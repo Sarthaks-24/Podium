@@ -312,8 +312,8 @@ test.describe('standing and cases', () => {
     await expect(page.locator('.well .line.hit')).toHaveCount(1);
     await expect(page.locator('.well .line.hit')).toContainText('if (a == 3 && b == 4)');
     await page.getByLabel('Explain how you wrote this, in your own words').fill('The special case was a test I forgot to remove.');
-    await page.getByRole('button', { name: 'Save explanation' }).click();
-    await expect(page.getByText('Saved. You can change it until a decision is made.')).toBeVisible();
+    await page.getByRole('button', { name: 'Send explanation' }).click();
+    await expect(page.getByText('Sent to the organisers. You can change it until a decision is made.')).toBeVisible();
     expect(api.explanations).toEqual([{ id: 12, body: { explanation: 'The special case was a test I forgot to remove.' } }]);
   });
 
@@ -380,10 +380,10 @@ test('keyboard only: notices to the case, an explanation, and an appeal on a dec
   await activate(page, page.getByRole('link', { name: 'Reply on the case page' }).first());
   await expect(page.getByRole('heading', { level: 1, name: 'Question about Week 6 contest' })).toBeFocused();
   const field = page.getByLabel('Explain how you wrote this, in your own words');
-  await activate(page, page.getByRole('button', { name: 'Save explanation' }));
+  await activate(page, page.getByRole('button', { name: 'Send explanation' }));
   await expect(field).toBeFocused();
   await page.keyboard.type('I wrote the special case to test the sample and forgot it.');
-  await activate(page, page.getByRole('button', { name: 'Save explanation' }));
+  await activate(page, page.getByRole('button', { name: 'Send explanation' }));
   await expect(page.getByRole('status').filter({ hasText: 'Saved.' })).toBeVisible();
   expect(api.explanations).toHaveLength(1);
 
