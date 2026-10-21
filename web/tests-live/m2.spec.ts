@@ -10,7 +10,7 @@ test('a setter signs in and reads a validation report', async ({ page }) => {
   await page.getByLabel('Role').selectOption('admin');
   await page.getByRole('button', { name: 'Sign in for testing' }).click();
 
-  await page.getByRole('link', { name: 'Problems' }).click();
+  await page.getByRole('navigation', { name: 'Main' }).getByRole('link', { name: 'Problem bank', exact: true }).click();
   await expect(page.getByRole('heading', { level: 1, name: 'Problem bank' })).toBeVisible();
   const row = page.getByRole('row', { name: /A plus B/ });
   await expect(row).toContainText('Validated');

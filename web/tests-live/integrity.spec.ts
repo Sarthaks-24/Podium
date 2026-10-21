@@ -5,9 +5,10 @@
 // multibyte comment, so the spans cross UTF-8 characters); after the end
 // the organiser runs the integrity check, finds the similar-code signal,
 // compares the code, opens a case and shares it (action stays closed while
-// the students have their turn); the first student sees the notice, their
-// own evidence and saves an explanation; the organiser opens the case's own
-// pair view, sees the explanation and clears the case. Takes about six minutes, most of it waiting
+// the students have their turn); the first student sees the notice, opens
+// the question, sees their own evidence and sends an explanation; the
+// organiser opens the case's own pair view, sees the explanation and clears
+// the case. Takes about six minutes, most of it waiting
 // for the contest to end.
 import { expect, test, type Browser, type Page } from '@playwright/test';
 
@@ -52,7 +53,8 @@ async function signIn(browser: Browser, email: string, role: 'admin' | 'student'
   await page.getByLabel('Email').fill(email);
   await page.getByLabel('Role').selectOption(role);
   await page.getByRole('button', { name: 'Sign in for testing' }).click();
-  await expect(page.getByRole('heading', { level: 1, name: 'Your contests' })).toBeVisible();
+  // Students land on "Your contests", organisers on "Contests".
+  await expect(page.getByRole('heading', { level: 1, name: role === 'admin' ? 'Contests' : 'Your contests' })).toBeVisible();
   return page;
 }
 
@@ -76,7 +78,7 @@ test('an organiser checks a finished contest, opens a case and a student explain
   const shots = `${test.info().project.testDir}/../../cache/screenshots-integrity/`;
 
   const admin = await signIn(browser, 'live-reviewer@college.edu', 'admin');
-  await admin.getByRole('navigation', { name: 'Main' }).getByRole('link', { name: 'Contest admin' }).click();
+  await admin.getByRole('navigation', { name: 'Main' }).getByRole('link', { name: 'Contests', exact: true }).click();
   await admin.getByRole('button', { name: 'New contest' }).click();
   await admin.getByLabel('Title').fill(title);
   const endsAt = Date.now() + 4 * 60_000;
@@ -87,12 +89,12 @@ test('an organiser checks a finished contest, opens a case and a student explain
   const add = admin.getByLabel('Add a validated problem');
   const aPlusB = add.locator('option', { hasText: 'A plus B' });
   await add.selectOption({ label: (await aPlusB.first().textContent())!.trim() });
+  // Adding a problem saves it at once; publishing asks first.
   await admin.getByRole('button', { name: 'Add problem' }).click();
-  await admin.getByRole('button', { name: 'Save problems' }).click();
-  await expect(admin.getByText('Saved problems')).toBeVisible();
-  await admin.getByLabel('Published: students can see the contest').check();
-  await admin.getByRole('button', { name: 'Save changes' }).click();
-  await expect(admin.getByText('Published', { exact: true })).toBeVisible();
+  await expect(admin.getByLabel(/^Letter for /)).toHaveCount(1);
+  await admin.getByRole('button', { name: 'Publish contest' }).click();
+  await admin.getByRole('dialog').getByRole('button', { name: 'Publish contest' }).click();
+  await expect(admin.getByRole('button', { name: 'Unpublish contest' })).toBeVisible();
 
   const first = await signIn(browser, `live-int-a-${stamp}@college.edu`, 'student');
   const second = await signIn(browser, `live-int-b-${stamp}@college.edu`, 'student');
@@ -102,7 +104,7 @@ test('an organiser checks a finished contest, opens a case and a student explain
   // While the contest runs the check stays closed.
   await admin.getByRole('link', { name: 'Integrity', exact: true }).click();
   await expect(admin.getByRole('button', { name: 'Check integrity' })).toBeDisabled();
-  await expect(admin.getByText('Check integrity after the contest ends for everyone.')).toBeVisible();
+  await expect(admin.getByRole('button', { name: 'Check integrity' })).toHaveAccessibleDescription('Check integrity after the contest ends for everyone.');
 
   // Wait for the end (the minute picker rounds down, so up to a minute early).
   await expect
@@ -134,19 +136,21 @@ test('an organiser checks a finished contest, opens a case and a student explain
   await admin.getByLabel('Note for the log').fill('Asking both students to explain, live run.');
   await admin.getByRole('button', { name: 'Share with the students' }).click();
   await admin.getByRole('dialog', { name: 'Share with the students?' }).getByRole('button', { name: 'Share with the students' }).click();
-  // Shared is not enough: action waits for the students' turn.
-  await expect(admin.locator('.head .state')).toHaveText('Shared with the students');
-  await expect(admin.getByRole('button', { name: 'Take action' })).toBeDisabled();
+  // Shared is not enough: an outcome waits for the students' turn.
+  await expect(admin.locator('.page-header .state-word')).toHaveText('Shared with the students');
+  await expect(admin.getByRole('button', { name: 'Propose an outcome' })).toBeDisabled();
 
-  // The student sees the notice and only their own work.
+  // The student sees the notice, opens the question and sees only their own work.
   await first.goto('/');
   await first.getByRole('link', { name: 'Write your explanation' }).click();
   await expect(first.getByText('Waiting for your explanation.', { exact: false })).toBeVisible();
+  await first.getByRole('link', { name: 'Open the question' }).click();
+  await expect(first).toHaveURL(/\/integrity\/cases\/\d+$/);
   await expect(first.locator('mark').first()).toBeVisible();
   await expect(first.locator('main')).not.toContainText('live-int-b');
   await first.getByLabel('Explain how you wrote this, in your own words').fill('I wrote it myself during the contest, live run.');
-  await first.getByRole('button', { name: 'Save explanation' }).click();
-  await expect(first.getByText('Saved. You can change it until a decision is made.')).toBeVisible();
+  await first.getByRole('button', { name: 'Send explanation' }).click();
+  await expect(first.getByRole('status').filter({ hasText: 'Sent to the organisers. You can change it until a decision is made.' })).toBeVisible();
   await first.screenshot({ path: `${shots}live-student-1440.png`, fullPage: true });
 
   // The case's own pair view, from its copy of the evidence.
@@ -157,8 +161,8 @@ test('an organiser checks a finished contest, opens a case and a student explain
   await admin.goBack();
   await expect(admin.getByText('I wrote it myself during the contest, live run.')).toBeVisible();
   // One student explained; the other still has days left.
-  await expect(admin.getByRole('button', { name: 'Take action' })).toBeDisabled();
+  await expect(admin.getByRole('button', { name: 'Propose an outcome' })).toBeDisabled();
   await admin.getByLabel('Note for the log').fill('Explanation accepted after a short talk, live run.');
-  await admin.getByRole('button', { name: 'Clear' }).click();
+  await admin.getByRole('button', { name: 'Clear the case' }).click();
   await expect(admin.getByRole('button', { name: 'Reopen the case' })).toBeVisible();
 });

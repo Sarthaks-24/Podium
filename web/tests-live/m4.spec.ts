@@ -3,7 +3,8 @@
 // organiser creates a contest that has already started with two problems
 // and publishes it; a student, in a second browser context, opens it from
 // "Your contests", agrees to the honour code, solves A in Python and finds
-// their own row on the standings.
+// their own row on the standings. The contest is ended at the end, so no
+// later edit of A plus B needs a reason.
 import { expect, test, type Browser, type Page } from '@playwright/test';
 
 const AC = [
@@ -27,7 +28,8 @@ async function signIn(browser: Browser, email: string, role: 'admin' | 'student'
   await page.getByLabel('Email').fill(email);
   await page.getByLabel('Role').selectOption(role);
   await page.getByRole('button', { name: 'Sign in for testing' }).click();
-  await expect(page.getByRole('heading', { level: 1, name: 'Your contests' })).toBeVisible();
+  // Students land on "Your contests", organisers on "Contests".
+  await expect(page.getByRole('heading', { level: 1, name: role === 'admin' ? 'Contests' : 'Your contests' })).toBeVisible();
   return page;
 }
 
@@ -46,14 +48,16 @@ test('an organiser runs a contest that a student takes', async ({ browser }) => 
 
   // The organiser creates, fills and publishes the contest.
   const admin = await signIn(browser, 'live-setter@college.edu', 'admin');
-  await admin.getByRole('navigation', { name: 'Main' }).getByRole('link', { name: 'Contest admin' }).click();
+  await admin.getByRole('navigation', { name: 'Main' }).getByRole('link', { name: 'Contests', exact: true }).click();
   await admin.getByRole('button', { name: 'New contest' }).click();
   await admin.getByLabel('Title').fill(title);
   await admin.getByLabel('Starts').fill(localInput(Date.now() - 2 * 60_000));
   await admin.getByLabel('Ends').fill(localInput(Date.now() + 2 * 3_600_000));
   await admin.getByRole('button', { name: 'Create contest' }).click();
   await expect(admin.getByRole('heading', { level: 1, name: title })).toBeVisible();
+  const contestPath = new URL(admin.url()).pathname;
 
+  // Adding a problem saves it at once; publishing asks first and lists the checks.
   const add = admin.getByLabel('Add a validated problem');
   const aPlusB = add.locator('option', { hasText: 'A plus B' });
   await add.selectOption({ label: (await aPlusB.first().textContent())!.trim() });
@@ -61,39 +65,44 @@ test('an organiser runs a contest that a student takes', async ({ browser }) => 
   await add.selectOption({ index: 1 });
   await admin.getByRole('button', { name: 'Add problem' }).click();
   await expect(admin.getByLabel(/^Letter for /)).toHaveCount(2);
-  await admin.getByRole('button', { name: 'Save problems' }).click();
-  await expect(admin.getByText('Saved problems')).toBeVisible();
-
-  await admin.getByLabel('Published: students can see the contest').check();
-  await admin.getByRole('button', { name: 'Save changes' }).click();
-  await expect(admin.getByText('Published', { exact: true })).toBeVisible();
+  await admin.getByRole('button', { name: 'Publish contest' }).click();
+  await admin.getByRole('dialog').getByRole('button', { name: 'Publish contest' }).click();
+  await expect(admin.getByRole('button', { name: 'Unpublish contest' })).toBeVisible();
   await admin.screenshot({ path: `${test.info().project.testDir}/../../cache/screenshots-m4/live-editor-1440.png`, fullPage: true });
 
-  // The student takes it.
-  const student = await signIn(browser, `live-student-${stamp}@college.edu`, 'student');
-  await student.getByRole('link', { name: title }).click();
-  await expect(student.getByRole('heading', { name: 'Honour code' })).toBeVisible();
-  await student.getByRole('button', { name: 'I agree, start the contest' }).click();
-  const rail = student.getByRole('navigation', { name: 'Problems' });
-  await expect(rail.locator('.problems').getByRole('link')).toHaveCount(2);
-  await expect(student.getByRole('timer')).toBeVisible();
+  try {
+    // The student takes it.
+    const student = await signIn(browser, `live-student-${stamp}@college.edu`, 'student');
+    await student.getByRole('link', { name: title }).click();
+    await expect(student.getByRole('heading', { name: 'Honour code' })).toBeVisible();
+    await student.getByRole('button', { name: 'I agree, start the contest' }).click();
+    const rail = student.getByRole('navigation', { name: 'Problems' });
+    await expect(rail.locator('.problems').getByRole('link')).toHaveCount(2);
+    await expect(student.getByRole('timer')).toBeVisible();
 
-  await student.getByLabel('Language').selectOption('python3');
-  await typeCode(student, AC);
-  await student.getByRole('button', { name: 'Submit', exact: true }).click();
-  const result = student.getByRole('region', { name: 'Result' });
-  await expect(result.locator('p.headline')).toHaveText('Accepted', { timeout: 120_000 });
-  await expect(rail.getByRole('link', { name: /Problem A, A plus B, 100 of 100 points/ })).toBeVisible({ timeout: 30_000 });
-  await student.screenshot({ path: `${test.info().project.testDir}/../../cache/screenshots-m4/live-workspace-1440.png` });
+    await student.getByLabel('Language').selectOption('python3');
+    await typeCode(student, AC);
+    await student.getByRole('button', { name: 'Submit', exact: true }).click();
+    const result = student.getByRole('region', { name: 'Result' });
+    await expect(result.locator('p.headline')).toHaveText('Accepted', { timeout: 120_000 });
+    await expect(rail.getByRole('link', { name: /Problem A, A plus B, 100 of 100 points/ })).toBeVisible({ timeout: 30_000 });
+    await student.screenshot({ path: `${test.info().project.testDir}/../../cache/screenshots-m4/live-workspace-1440.png` });
 
-  await rail.getByRole('link', { name: 'Standings' }).click();
-  await expect(student.getByRole('heading', { level: 1, name: 'Standings' })).toBeVisible();
-  const mine = student.locator('tr.me');
-  await expect(mine).toContainText('(you)', { timeout: 30_000 });
-  await expect(mine.locator('td.total')).toContainText('100');
-  await student.screenshot({ path: `${test.info().project.testDir}/../../cache/screenshots-m4/live-standings-1440.png` });
+    await rail.getByRole('link', { name: 'Standings' }).click();
+    await expect(student.getByRole('heading', { level: 1, name: 'Standings' })).toBeVisible();
+    const mine = student.locator('tr.me');
+    await expect(mine).toContainText('(you)', { timeout: 30_000 });
+    await expect(mine.locator('td.total')).toContainText('100');
+    await student.screenshot({ path: `${test.info().project.testDir}/../../cache/screenshots-m4/live-standings-1440.png` });
 
-  // The organiser sees the submission in the console feed.
-  await admin.getByRole('link', { name: 'Console', exact: true }).click();
-  await expect(admin.locator('.feed')).toContainText('Accepted', { timeout: 30_000 });
+    // The organiser sees the submission in the console feed.
+    await admin.getByRole('link', { name: 'Console', exact: true }).click();
+    await expect(admin.locator('.feed')).toContainText('Accepted', { timeout: 30_000 });
+  } finally {
+    // Leave nothing live with A plus B, pass or fail.
+    await admin.goto(`${contestPath}/console`);
+    await admin.getByRole('button', { name: 'End the contest now' }).click();
+    await admin.getByRole('dialog', { name: 'End the contest now?' }).getByRole('button', { name: 'End the contest' }).click();
+    await expect(admin.getByText('Ended the contest', { exact: true })).toBeVisible();
+  }
 });

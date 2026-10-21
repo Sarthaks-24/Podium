@@ -1,7 +1,8 @@
 // Against a live testing-mode server with A plus B imported and validated
 // (the M2 and M3 end-to-end runs do this): an organiser opens "Try as a
-// student", runs a Python solution on the samples, submits a wrong one and
-// reads the partial score, then submits a correct one and reads "Accepted".
+// student", runs a Python solution on the samples and reads that they all
+// passed, submits a wrong one and reads the partial score, then submits a
+// correct one and reads "Accepted".
 import { expect, test, type Page } from '@playwright/test';
 
 const AC = [
@@ -36,7 +37,7 @@ test('an organiser tries a problem as a student', async ({ page }) => {
   await page.getByLabel('Role').selectOption('admin');
   await page.getByRole('button', { name: 'Sign in for testing' }).click();
 
-  await page.getByRole('link', { name: 'Problems' }).click();
+  await page.getByRole('navigation', { name: 'Main' }).getByRole('link', { name: 'Problem bank', exact: true }).click();
   await page.getByRole('row', { name: /A plus B/ }).getByRole('link', { name: 'A plus B', exact: true }).click();
   await page.getByRole('link', { name: 'Try as a student' }).click();
 
@@ -44,7 +45,8 @@ test('an organiser tries a problem as a student', async ({ page }) => {
   await typeCode(page, AC);
   await page.getByRole('button', { name: 'Run on samples' }).first().click();
   const result = page.getByRole('region', { name: 'Result' });
-  await expect(result).toContainText('3\n7', { timeout: 60_000 });
+  // A passed sample shows its verdict line only (P5), so read the headline.
+  await expect(result.locator('p.headline')).toHaveText(/^Passed (\d+) of \1 samples?/, { timeout: 60_000 });
 
   await typeCode(page, WA);
   await page.getByRole('button', { name: 'Submit', exact: true }).click();

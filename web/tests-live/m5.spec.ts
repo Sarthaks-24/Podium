@@ -14,7 +14,8 @@ async function signIn(page: Page) {
   await page.getByLabel('Email').fill('live-ai-setter@college.edu');
   await page.getByLabel('Role').selectOption('admin');
   await page.getByRole('button', { name: 'Sign in for testing' }).click();
-  await expect(page.getByRole('heading', { level: 1, name: 'Your contests' })).toBeVisible();
+  // Organisers land on "Contests".
+  await expect(page.getByRole('heading', { level: 1, name: 'Contests' })).toBeVisible();
 }
 
 async function useFakeProvider(page: Page) {
@@ -48,7 +49,7 @@ test('the fake provider drafts problems that reach Validated', async ({ page }) 
   await page.goto('/admin/ai/new');
   await page.getByLabel('Topic', { exact: true }).fill('Sum of two integers');
   await page.getByLabel('Difficulty').selectOption('easy');
-  await page.getByRole('button', { name: 'Generate' }).click();
+  await page.getByRole('button', { name: 'Generate draft' }).click();
   await followDraftToValidated(page, 'live-brief-validated-1440.png');
   const briefDraft = page.url();
 
@@ -58,7 +59,7 @@ test('the fake provider drafts problems that reach Validated', async ({ page }) 
   await page
     .getByLabel('Problem text')
     .fill('Given n integers, print the largest sum of a non-empty contiguous subarray. 1 <= n <= 200000, |a_i| <= 10^9.');
-  await page.getByRole('button', { name: 'Generate' }).click();
+  await page.getByRole('button', { name: 'Generate draft' }).click();
   await followDraftToValidated(page, 'live-paste-validated-1440.png');
 
   // Can a model solve the first draft?
@@ -75,5 +76,5 @@ test('forgetting the key turns the wizard off', async ({ page }) => {
   await page.getByRole('button', { name: 'Forget key' }).click();
   await expect(page.getByText('No key yet. Add one below to draft problems with AI.')).toBeVisible();
   await page.goto('/admin/ai/new');
-  await expect(page.getByRole('button', { name: 'Generate' })).toBeDisabled();
+  await expect(page.getByRole('button', { name: 'Generate draft' })).toBeDisabled();
 });
