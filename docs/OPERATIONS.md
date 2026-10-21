@@ -127,6 +127,17 @@ Signing in: open http://localhost:5173, enter any email, an optional name and a 
 
 Live browser tests: with `make dev-test` running and the three example packs imported and validated (zip each folder in `problems/` and use "Import pack"), run `npm run test:live` in `web/`. It signs in from the form, opens the problem bank and reads a real validation report through Vite's proxy, with nothing mocked. It reuses the Vite server on port 5173, because the testing-mode base URL is `http://localhost:5173` and the cross-site check refuses any other origin.
 
+A second stack beside your own, for example for a walkthrough or a live run that must not touch yours, uses other ports and its own state. These are development overrides, never set on the VM:
+
+| Variable | Read by | Example |
+|---|---|---|
+| `PODIUM_DEV_STATE`, `PODIUM_LISTEN`, `PODIUM_JUDGE_LISTEN` | `tools/dev-stack.sh` | `/var/tmp/podium-walk`, `127.0.0.1:8097`, `127.0.0.1:8098` |
+| `PODIUM_BASE_URL` | `tools/dev-stack.sh`, passed to the server | `http://localhost:5187` |
+| `PODIUM_DEV_API` | `web/vite.config.ts`, the proxy target | `http://127.0.0.1:8097` |
+| `PODIUM_LIVE_PORT` | `web/playwright.live.config.ts` | `5187` |
+
+Start the stack with those variables (in WSL2: `PODIUM_DEV_STATE=... PODIUM_LISTEN=... PODIUM_JUDGE_LISTEN=... PODIUM_BASE_URL=... bash tools/dev-stack.sh server/bin/linux` as root), Vite with `PODIUM_DEV_API=... npx vite --port 5187 --strictPort`, and the live tests with `PODIUM_LIVE_PORT=5187 npm run test:live`. Both stacks share isolate's boxes 0 and 1, so judge on one at a time: a box in use by the other judge fails the submission with a judge error, and "Judge again" on the console repeats it.
+
 ## Configuration
 
 All configuration comes from environment variables. On the VM they live in `/etc/podium/server.env` and `/etc/podium/judge.env` (root-owned, mode 600), read by systemd through `EnvironmentFile=`. Locally they live in `server/.env` and `judge/.env`, which git ignores. Each service checks every variable before opening a port and exits with a message naming what is missing and which file to fix. Logs show each variable as `set`, `default` or `missing`, never its value.

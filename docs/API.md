@@ -974,7 +974,7 @@ Every change that can affect results is recorded in the contest's audit log (bel
 | `GET`, `POST /api/admin/contests/{id}/announcements` | `{"body_md":"..."}` (at most 4,000 characters) | 200 `{announcements, server_now}`; 201 `Announcement` |
 | `GET /api/admin/contests/{id}/clarifications` | | 200 `{clarifications, server_now}`, each with `asked_by {user_id, email, name}` |
 | `PUT /api/admin/contests/{id}/clarifications/{cid}` | `{"answer":"...","public":false}` | 200 `Clarification` |
-| `GET /api/admin/contests/{id}/standings` (`?variant=frozen`) | | 200 `Standings` (full unless asked) |
+| `GET /api/admin/contests/{id}/standings` (`?variant=frozen`) | | 200 `Standings` (full unless asked); for a site admin each row also carries the student's `email`, so the console can tell students apart. The public board never carries it |
 | `GET /api/admin/contests/{id}/reveal` | | 200 `{frozen: Standings, full: Standings, revealed_at, server_now}`; a co-organiser whose site role is student gets `403 results_hidden` while students would not see the full board (a held reveal not yet made) |
 | `POST /api/admin/contests/{id}/reveal` | | 200 `AdminContest`; students held on the frozen board see the full one |
 | `GET /api/admin/contests/{id}/export.csv` | | 200 `text/csv` attachment |
