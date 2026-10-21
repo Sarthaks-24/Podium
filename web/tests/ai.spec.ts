@@ -311,11 +311,11 @@ test('the editor edits the generator and plan, and generates inputs', async ({ p
   // Add a row: the next free test number, the last row's subtask and the next seed.
   await section.getByRole('button', { name: 'Add planned test' }).click();
   await expect(page.getByLabel('Row 5, seed')).toBeFocused();
-  await expect(page.getByLabel('Row 5, test number')).toHaveValue('6');
+  await expect(page.getByLabel('Row 5, test number')).toHaveValue('7');
   await expect(page.getByLabel('Row 5, subtask')).toHaveValue('2');
   await expect(page.getByLabel('Row 5, seed')).toHaveValue('5');
   await page.getByLabel('Row 5, arguments').fill('n=200000 {bad}');
-  await page.getByRole('button', { name: 'Remove planned test 2' }).click();
+  await page.getByRole('button', { name: 'Remove planned test 3' }).click();
   await expect(section.getByRole('button', { name: 'Add planned test' })).toBeFocused();
 
   // A bad argument is caught before saving and tied to its field.
@@ -334,10 +334,10 @@ test('the editor edits the generator and plan, and generates inputs', async ({ p
   const put = state.puts.at(-1)!;
   expect(put.tags).toEqual(['arrays']);
   expect(put.plan).toEqual([
-    { idx: 3, subtask: 1, seed: 2, args: ['neg=1'] },
-    { idx: 4, subtask: 2, seed: 3, args: [] },
-    { idx: 5, subtask: 2, seed: 4, args: ['max=1'] },
-    { idx: 6, subtask: 2, seed: 5, args: ['n=200000', 'edge=1'] },
+    { idx: 4, subtask: 1, seed: 2, args: ['neg=1'] },
+    { idx: 5, subtask: 2, seed: 3, args: [] },
+    { idx: 6, subtask: 2, seed: 4, args: ['max=1'] },
+    { idx: 7, subtask: 2, seed: 5, args: ['n=200000', 'edge=1'] },
   ]);
   expect((put.subtasks as Json[]).map((s) => s.generator_args)).toEqual([['n=1000'], ['n=200000', 'neg=0']]);
   expect((put.generator as Json).language).toBe('python3');
@@ -347,7 +347,7 @@ test('the editor edits the generator and plan, and generates inputs', async ({ p
   // The first run names the failing test; the second succeeds and outputs follow.
   await section.getByRole('button', { name: 'Generate inputs' }).click();
   await expect(section.getByText('Generating inputs', { exact: false }).first()).toBeVisible();
-  await expect(section.getByText('The generator failed on test 5 (subtask 2, seed 4): Runtime error')).toBeVisible({ timeout: 10_000 });
+  await expect(section.getByText('The generator failed on test 6 (subtask 2, seed 4): Runtime error')).toBeVisible({ timeout: 10_000 });
   await expect(section.getByText('Some inputs could not be generated, so none were applied.')).toBeVisible();
   await page.screenshot({ path: `${shots()}ai-editor-inputs-failed-1440-light.png`, fullPage: true });
   await section.getByRole('button', { name: 'Generate inputs' }).click();
@@ -371,7 +371,7 @@ test('the generator section is reachable from the keyboard on a phone', async ({
     reached.push(name);
     if (name === 'add-plan-row') break;
   }
-  for (const name of ['generator-language', 'generator-source', 'subtask-0-args', 'subtask-1-args', 'Row 1, test number', 'Row 1, subtask', 'Row 1, seed', 'Row 1, arguments', 'Remove planned test 2', 'add-plan-row']) {
+  for (const name of ['generator-language', 'generator-source', 'subtask-0-args', 'subtask-1-args', 'Row 1, test number', 'Row 1, subtask', 'Row 1, seed', 'Row 1, arguments', 'Remove planned test 3', 'add-plan-row']) {
     expect(reached, `Tab did not reach "${name}"`).toContain(name);
   }
   // Rows stack: seed sits under the test number.

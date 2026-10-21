@@ -1,6 +1,7 @@
 <!--
   TestsSection: the problem editor's Tests section (split out of
-  ProblemEditor in v2 P3 F5.1): the sample numbers, subtask rows with
+  ProblemEditor in v2 P3 F5.1): the sample numbers, the open test numbers
+  (D115: Run checks them after the samples; no points, no subtask), subtask rows with
   points that should add up to 100, a one-line summary of the stored tests
   computed from the subtasks as typed, tests in no subtask and tests
   without an expected output named outside the table, the table itself in
@@ -66,9 +67,11 @@
     if (tests.length === 0) return '';
     const n = tests.length;
     const samples = tests.filter((t) => groups.get(t.idx) === 'Sample').length;
+    const open = tests.filter((t) => groups.get(t.idx) === 'Open test').length;
     const named = new Set([...groups.values()].filter((g) => g.startsWith('Subtask ')));
     const inSubtasks = tests.filter((t) => groups.get(t.idx)?.startsWith('Subtask ')).length;
     const parts = [`${samples} ${samples === 1 ? 'sample' : 'samples'}`];
+    if (open > 0) parts.push(`${open} ${open === 1 ? 'open test' : 'open tests'}`);
     if (inSubtasks > 0) parts.push(`${inSubtasks} in ${named.size} ${named.size === 1 ? 'subtask' : 'subtasks'}`);
     if (unassigned.length > 0) parts.push(`${unassigned.length} in no subtask`);
     return `${n} ${n === 1 ? 'test' : 'tests'}: ${parts.join(', ')}.`;
@@ -119,9 +122,28 @@
     {#if err('samples')}<p id="samples-error" class="field-error">{err('samples')}</p>{/if}
   </div>
 
+  <div class="field samples">
+    <label for="open">Open tests (optional)</label>
+    <input
+      id="open"
+      class="input mono"
+      type="text"
+      autocomplete="off"
+      spellcheck="false"
+      placeholder="7, 8"
+      bind:value={draft.open}
+      aria-invalid={err('open') ? 'true' : undefined}
+      aria-describedby={described('open', 'open-help')}
+    />
+    <p id="open-help" class="field-help">
+      Run checks these after the samples and shows a failing one in full. They give no points and belong to no subtask.
+    </p>
+    {#if err('open')}<p id="open-error" class="field-error">{err('open')}</p>{/if}
+  </div>
+
   <h3 class="sub">Subtasks</h3>
   <p class="field-help sub-help">
-    Every test that is not a sample belongs to exactly one subtask. Points add up to {pointsTotal}{pointsTotal !== 100 && draft.subtasks.length > 0 ? '; contests expect 100' : ''}.
+    Every test that is not a sample or an open test belongs to exactly one subtask. Points add up to {pointsTotal}{pointsTotal !== 100 && draft.subtasks.length > 0 ? '; contests expect 100' : ''}.
   </p>
   {#if err('subtasks')}<p id="subtasks-error" class="field-error">{err('subtasks')}</p>{/if}
 
@@ -262,7 +284,7 @@
   {:else}
     <p class="tests-summary">{testsSummary}</p>
     {#each unassigned as idx (idx)}
-      <p class="field-error">Test {idx} is in no subtask. Add it to a subtask range or to the samples.</p>
+      <p class="field-error">Test {idx} is in no subtask. Add it to a subtask range, to the samples or to the open tests.</p>
     {/each}
     {#if missing.length > 0}
       <p class="missing-note">

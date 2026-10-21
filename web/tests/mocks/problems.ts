@@ -48,10 +48,11 @@ export function zipFile(name: string, text: string) {
   return { name, mimeType: 'application/zip', buffer: NodeBuffer.from(text) };
 }
 
-export function test_(idx: number, group: number | 'sample' | null, input: string, output: string): Json {
+export function test_(idx: number, group: number | 'sample' | 'open' | null, input: string, output: string): Json {
   return {
     idx,
     sample: group === 'sample',
+    open: group === 'open',
     subtask_idx: typeof group === 'number' ? group : null,
     input_size: input.length,
     output_size: output.length,
@@ -78,6 +79,7 @@ export function problemFixtures(): Record<number, Json> {
     validator: null,
     problems: [],
     warnings: [],
+    open: [],
   };
   return {
     1: {
@@ -146,7 +148,7 @@ export function problemFixtures(): Record<number, Json> {
         test_(6, 2, LONG_INPUT, '18\n'),
         test_(7, null, LONG_INPUT, '19\n'),
       ],
-      problems: ['Test 7 is in no subtask. Add it to a subtask or mark it as a sample.'],
+      problems: ['Test 7 is in no subtask. Add it to a subtask, or mark it as a sample or an open test.'],
       warnings: ['No brute force: validation cannot check the reference against a second solution.'],
       content_hash: 'h2',
     },
@@ -183,8 +185,10 @@ export function problemFixtures(): Record<number, Json> {
       reference: { language: 'java21', source: 'class Main {}\n' },
       brute: { language: 'python3', source: 'print(2.5\n' },
       samples: [1],
-      subtasks: [{ idx: 1, points: 100, title: 'All', tests: '2-15' }],
-      tests: Array.from({ length: 15 }, (_, i) => test_(i + 1, i === 0 ? 'sample' : 1, '2\n10 4\n', '2.500000\n')),
+      // The shipped pack has an open test 7 (problems/average-speed, D115).
+      open: [7],
+      subtasks: [{ idx: 1, points: 100, title: 'All', tests: '2-6, 8-15' }],
+      tests: Array.from({ length: 15 }, (_, i) => test_(i + 1, i === 0 ? 'sample' : i === 6 ? 'open' : 1, '2\n10 4\n', '2.500000\n')),
       content_hash: 'h4',
     },
     5: {
@@ -421,6 +425,13 @@ export async function mockApi(page: Page, who: 'admin' | 'student' = 'admin') {
           if (body.slug === 'taken') {
             return apiError(route, 400, 'bad_request', 'Some fields need attention.', {
               fields: { slug: 'Another problem already uses this slug.', 'subtasks[1].points': 'Points run from 1 to 1000.' },
+            });
+          }
+          // problems/model.go: a test is a sample or an open test, never both.
+          const both = ((body.open as number[] | undefined) ?? []).find((n) => ((body.samples as number[]) ?? []).includes(n));
+          if (both !== undefined) {
+            return apiError(route, 400, 'bad_request', 'Some fields need attention.', {
+              fields: { open: `Test ${both} is a sample and an open test. Put each test in one place.` },
             });
           }
           const subtasks: Json[] = (body.subtasks as Json[]).map((s, i) => ({ ...s, idx: i + 1 }));

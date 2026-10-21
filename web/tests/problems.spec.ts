@@ -252,21 +252,27 @@ test('validation is refused while a test is in no subtask', async ({ page }) => 
   await page.goto('/admin/problems/2');
   // The readiness panel names what blocks validation first, then the advice (P3 A1).
   const blockers = page.getByRole('group', { name: 'Fix this before you validate' });
-  await expect(blockers).toContainText('Test 7 is in no subtask. Add it to a subtask or mark it as a sample.');
+  await expect(blockers).toContainText('Test 7 is in no subtask. Add it to a subtask, or mark it as a sample or an open test.');
   await expect(page.getByRole('note', { name: 'Before you validate' })).toContainText('No brute force');
   // While something blocks validation, Validate is not the primary action.
   await expect(page.getByRole('button', { name: 'Validate' })).toHaveClass(/btn-secondary/);
   // Named outside the table, which stays closed until asked for.
   await expect(page.getByText('7 tests: 1 sample, 5 in 2 subtasks, 1 in no subtask.')).toBeVisible();
-  await expect(page.getByText('Test 7 is in no subtask. Add it to a subtask range or to the samples.')).toBeVisible();
+  await expect(page.getByText('Test 7 is in no subtask. Add it to a subtask range, to the samples or to the open tests.')).toBeVisible();
   await page.getByText('Show all 7 tests').click();
   await expect(page.getByRole('row', { name: /^7 Not in a subtask/ })).toBeVisible();
 
   // Groups follow the subtasks as typed, before saving.
   await page.locator('#subtask-1-tests').fill('5-7');
   await expect(page.getByRole('row', { name: /^7 Subtask 2/ })).toBeVisible();
-  await expect(page.getByText('Test 7 is in no subtask. Add it to a subtask range or to the samples.')).toHaveCount(0);
+  await expect(page.getByText('Test 7 is in no subtask. Add it to a subtask range, to the samples or to the open tests.')).toHaveCount(0);
   await page.locator('#subtask-1-tests').fill('5-6');
+  // An open test belongs to no subtask and is not an error (D115).
+  await page.locator('#open').fill('7');
+  await expect(page.getByRole('row', { name: /^7 Open test/ })).toBeVisible();
+  await expect(page.locator('#tests-heading ~ .field-error')).toHaveCount(0);
+  await expect(page.getByText('7 tests: 1 sample, 1 open test, 5 in 2 subtasks.')).toBeVisible();
+  await page.locator('#open').fill('');
   await expect(page.getByLabel('Allowed error')).toBeVisible();
 
   await page.getByRole('button', { name: 'Validate' }).click();
@@ -665,4 +671,30 @@ test('the preview shows the samples as students see them (P3 A5)', async ({ page
   // The samples follow the field as typed.
   await page.locator('#samples').fill('1');
   await expect(preview.getByRole('heading', { name: 'Sample 2' })).toHaveCount(0);
+});
+
+test('open tests are their own kind: no subtask error, editable, saved (D115, C2-001)', async ({ page }) => {
+  const state = await mockApi(page);
+  await page.goto('/admin/problems/4');
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Average speed');
+  const open = page.getByLabel('Open tests (optional)');
+  await expect(open).toHaveValue('7');
+  await expect(page.getByText('15 tests: 1 sample, 1 open test, 13 in 1 subtask.')).toBeVisible();
+  await expect(page.getByText('in no subtask', { exact: false })).toHaveCount(0);
+  await page.getByText('Show all 15 tests').click();
+  await expect(page.getByRole('row', { name: /^7 Open test/ })).toBeVisible();
+
+  // Changing them is a judged change, like the samples.
+  await open.fill('7, 8');
+  await page.locator('#subtask-0-tests').fill('2-6, 9-15');
+  await expect(page.getByRole('region', { name: 'Readiness' })).toContainText('open tests and subtasks');
+  await page.getByRole('button', { name: 'Save changes' }).click();
+  await expect(page.getByText('Saved', { exact: true })).toBeVisible();
+  expect(state.puts.at(-1)?.open).toEqual([7, 8]);
+
+  // The server's refusal lands on the field.
+  await open.fill('1, 7');
+  await page.getByRole('button', { name: 'Save changes' }).click();
+  await expect(page.locator('#open-error')).toHaveText('Test 1 is a sample and an open test. Put each test in one place.');
+  await expect(open).toHaveAttribute('aria-invalid', 'true');
 });

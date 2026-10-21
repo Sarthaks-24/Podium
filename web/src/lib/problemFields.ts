@@ -19,6 +19,7 @@ export const FIELD_LABELS: Record<string, string> = {
   tags: 'Tags',
   difficulty: 'Difficulty',
   samples: 'Sample tests',
+  open: 'Open tests',
   subtasks: 'Subtasks',
   reference: 'Reference solution',
   brute: 'Brute force',
