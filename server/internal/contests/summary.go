@@ -92,6 +92,10 @@ func (c *Contest) StudentsSeeFinal() bool { return !(c.HoldReveal && c.RevealedA
 // told yet, each participant gets a results_final notice. It returns how
 // many rows it wrote, or ErrNotFinal.
 func (s *Service) BuildSummaries(ctx context.Context, c *Contest) (int, error) {
+	// summarised_at is the time before the final check and the compute:
+	// a rejudge or a decision recorded while they run is newer than it,
+	// so the next sweep builds again (council C1-006).
+	start := s.now().UnixMilli()
 	final, err := s.IsFinal(ctx, c)
 	if err != nil {
 		return 0, err
@@ -126,7 +130,7 @@ func (s *Service) BuildSummaries(ctx context.Context, c *Contest) (int, error) {
 			return 0, err
 		}
 	}
-	if _, err := tx.ExecContext(ctx, "UPDATE contests SET summarised_at = ? WHERE id = ?", now, c.ID); err != nil {
+	if _, err := tx.ExecContext(ctx, "UPDATE contests SET summarised_at = ? WHERE id = ?", start, c.ID); err != nil {
 		return 0, err
 	}
 	if err := s.notifyResultsTx(ctx, tx, c, now); err != nil {
@@ -192,9 +196,11 @@ func (s *Service) RebuildSummaries(ctx context.Context, contestID int64) error {
 
 // summaryTriggers are the audit actions after which a final contest's
 // summaries are written again: a rejudge, a pin moved to a new revision,
-// a change of problems, and extra time (which can make a final contest
-// live again until it ends).
-var summaryTriggers = []string{AuditRejudge, "revision", AuditProblems, AuditExtension, AuditExtend}
+// a change of problems, extra time (which can make a final contest live
+// again until it ends), a review decision or appeal that changed the
+// board, and a settings change (graded, scoring and feedback are stored
+// in each summary).
+var summaryTriggers = []string{AuditRejudge, "revision", AuditProblems, AuditExtension, AuditExtend, AuditBoardAdjusted, AuditSettings}
 
 // SweepSummaries writes the summaries of every contest that turned final
 // since the last pass, or was rejudged or changed after its summaries

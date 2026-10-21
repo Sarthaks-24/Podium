@@ -581,13 +581,15 @@ func (s *Service) Confirm(ctx context.Context, caseID, proposalID, by int64, not
 }
 
 // boardChanged refreshes a board a decision or a ruling changed and
-// rewrites its summaries.
+// rewrites its summaries. The decision is committed already, so the
+// rebuild does not stop when the request ends; if it fails, the
+// board_adjusted audit row makes the next summary sweep build again.
 func (s *Service) boardChanged(ctx context.Context, contestID int64) {
 	if s.Contests == nil {
 		return
 	}
 	s.Contests.Invalidate(contestID)
-	if err := s.Contests.RebuildSummaries(ctx, contestID); err != nil && s.Log != nil {
+	if err := s.Contests.RebuildSummaries(context.WithoutCancel(ctx), contestID); err != nil && s.Log != nil {
 		s.Log.Warn("contest summaries after a review decision", "contest_id", contestID, "err", err)
 	}
 }

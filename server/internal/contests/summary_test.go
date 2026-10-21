@@ -176,3 +176,68 @@ func TestSummaryBuildFor700Students(t *testing.T) {
 		t.Errorf("the build took %v", took)
 	}
 }
+
+// auditAt writes one audit row at a fixed time without the service's
+// clock, so a test clock can stand in for another request (C1-006).
+func auditAt(t testing.TB, r *svcRig, contestID int64, action string, ms int64) {
+	t.Helper()
+	if _, err := r.svc.DB.Exec(`INSERT INTO contest_audit (contest_id, actor_id, actor_email, actor_role, action, details, created_at)
+		VALUES (?, 1, 'owner@college.edu', 'owner', ?, '{}', ?)`, contestID, action, ms); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// A rejudge recorded while a build runs is newer than the build's
+// summarised_at, so the next sweep builds again (C1-006 a).
+func TestSummariesRebuildAfterARejudgeDuringTheBuild(t *testing.T) {
+	r := newSvc(t)
+	ctx := context.Background()
+	c := r.contest(t, nil)
+	seedBoard(t, r, c, 3, 1)
+	base := at(121)
+	calls := 0
+	// Every read of the clock moves it 10 ms; the second read (inside the
+	// build, after it started) stands for a rejudge landing at +5 ms.
+	r.svc.Now = func() time.Time {
+		calls++
+		now := base.Add(time.Duration(calls-1) * 10 * time.Millisecond)
+		if calls == 2 {
+			auditAt(t, r, c.ID, AuditRejudge, base.Add(5*time.Millisecond).UnixMilli())
+		}
+		return now
+	}
+	if _, err := r.svc.BuildSummaries(ctx, c); err != nil {
+		t.Fatal(err)
+	}
+	if got := count(t, r, "SELECT summarised_at FROM contests WHERE id = ?", c.ID); int64(got) != base.UnixMilli() {
+		t.Errorf("summarised_at %d, want the time the build started (%d)", got, base.UnixMilli())
+	}
+	if n, err := r.svc.SweepSummaries(ctx); err != nil || n != 1 {
+		t.Errorf("sweep after a rejudge during the build: %d %v", n, err)
+	}
+}
+
+// A review decision that changed the board and a settings change after
+// the contest is final each make the sweep build again (C1-006 b, c).
+func TestSummariesRebuildAfterABoardAdjustmentOrSettings(t *testing.T) {
+	for _, action := range []string{AuditBoardAdjusted, AuditSettings} {
+		t.Run(action, func(t *testing.T) {
+			r := newSvc(t)
+			ctx := context.Background()
+			c := r.contest(t, nil)
+			seedBoard(t, r, c, 3, 1)
+			*r.now = at(121)
+			if n, err := r.svc.SweepSummaries(ctx); err != nil || n != 1 {
+				t.Fatalf("first sweep: %d %v", n, err)
+			}
+			if n, _ := r.svc.SweepSummaries(ctx); n != 0 {
+				t.Fatalf("sweep rebuilt an unchanged contest: %d", n)
+			}
+			*r.now = at(130)
+			auditAt(t, r, c.ID, action, at(130).UnixMilli())
+			if n, err := r.svc.SweepSummaries(ctx); err != nil || n != 1 {
+				t.Errorf("sweep after %s: %d %v", action, n, err)
+			}
+		})
+	}
+}
