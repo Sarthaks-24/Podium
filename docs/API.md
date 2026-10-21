@@ -24,7 +24,7 @@ All API routes live under `/api/` and speak JSON. Every other path serves the we
 { "error": { "code": "bad_request", "message": "Some fields need fixing.", "fields": { "slug": "Use lowercase letters, digits and single hyphens, like two-sum." } } }
 ```
 
-Common error codes: `bad_request`, `rate_limited` (before sign-in, v1.3.0), `signed_out`, `forbidden`, `not_found`, `cross_site`, `conflict`, `internal`, and in testing mode `testing_mode_local`. Test sign-in adds `disabled`. The problem routes add `bad_pack`, `not_ready`, `too_large` and `busy`; the AI wizard adds `no_key`, `no_model`, `bad_key`, `provider_error` and `busy`; the workspace routes add `not_ready` and `rate_limited`; the contest routes add `not_on_roster`, `not_started`, `contest_over`, `board_closed` and `too_early`; the organiser contest routes add `locked_after_start`, `results_hidden`, `not_participant` and `ai_unconfirmed`; the event stream adds `busy` and `unsupported`; the students routes (v1.4.0) add `proposal_needed`, `proposal_pending`, `two_person_rule`, `uninvolved_reviewer`, `rating_changed` and `not_final`; the judge API adds `unauthorized`, `protocol` (426), `lease`, `bad_report`, `bad_upload` and `too_large`.
+Common error codes: `bad_request`, `rate_limited` (before sign-in, v1.3.0), `signed_out`, `forbidden`, `not_found`, `cross_site`, `conflict`, `internal`, and in testing mode `testing_mode_local`. Test sign-in adds `disabled`. The problem routes add `bad_pack`, `not_ready`, `too_large` and `busy`; the AI wizard adds `no_key`, `no_model`, `bad_key`, `provider_error` and `busy`; the workspace routes add `not_ready` and `rate_limited`; the contest routes add `not_on_roster`, `not_started`, `contest_over`, `board_closed` and `too_early`; the organiser contest routes add `locked_after_start`, `confirm_ungraded`, `results_hidden`, `not_participant` and `ai_unconfirmed`; the event stream adds `busy` and `unsupported`; the students routes (v1.4.0) add `proposal_needed`, `proposal_pending`, `two_person_rule`, `uninvolved_reviewer`, `rating_changed` and `not_final`; the judge API adds `unauthorized`, `protocol` (426), `lease`, `bad_report`, `bad_upload` and `too_large`.
 
 ## Health
 
@@ -298,11 +298,13 @@ An `{id}` that is not a problem gives `404 not_found` on every route.
 ```json
 { "id": 3, "slug": "a-plus-b", "title": "A plus B", "difficulty": "easy", "tags": ["math"],
   "origin": "import", "archived": false, "test_count": 6, "points": 100,
-  "validated": true, "validated_at": 1792183192359, "updated_at": 1792183100000 }
+  "validated": true, "validated_at": 1792183192359, "updated_at": 1792183100000,
+  "shown_in_practice": false }
 ```
 
 - `difficulty` is `easy`, `medium`, `hard` or `""`. `origin` is `manual`, `import` or `ai` (made by the AI wizard). A wizard draft carries the tag `ai draft` until a person changes its statement, reference or brute force.
 - `validated` is true when the last passing validation covers the problem as it is now (its content hash equals the problem's). `validated_at` is `null` whenever `validated` is false.
+- `shown_in_practice` is true when a contest that pins the problem has shown students its hidden tests (D115): it is ungraded and has started, or it has practice after the end and its end has passed. Its hidden tests may be known, so the web app marks it in the bank and the contest editor, and names it when a graded contest with it is published.
 - Times are Unix milliseconds.
 
 `Problem` is `ProblemSummary` plus:
@@ -938,6 +940,8 @@ Owners and admins organise every contest; a co-organiser organises only the cont
 - cannot replace the roster, set extensions, extend, pause, resume or rejudge (`403 forbidden`);
 - before the start may edit every setting except publishing; once the contest has started, a change to any of `locked_after_start` (`slug`, `starts_at`, `ends_at`, `start_mode`, `duration_minutes`, `freeze_minutes`, `scoring_mode`, `access`, `feedback_mode`, `graded`, `practice_after_end`, `stop_on_sample_fail`, `min_gap_s`, `max_per_problem`, `languages`, `hold_reveal`) is `403 locked_after_start`, with the fields in `problems`. Admins may still change them (the web app asks first);
 - sees results only as a student whose window closes last would: in exam mode, until every window is over, feed rows are `"hidden": true`, `"state": "submitted"` with no verdict or score, a `verdict` filter is `403 results_hidden`, and the boards are `403 board_closed`; while students see the frozen board, the boards are frozen (whatever `variant` asks) and feed rows made from the freeze are hidden. The stats and both exports are `403 results_hidden` until students see the full board. Integrity counts are never shown to them.
+
+Turning `graded` from true to false after the start, by anyone, also needs `"confirm_ungraded": true` in the same request: without grading every student still in their window sees the first hidden test each later submission fails (D115). Without it the answer is `400 confirm_ungraded` with `fields.graded`; the field is never stored.
 
 Every change that can affect results is recorded in the contest's audit log (below), and an extension must name a student on the roster or one who started or submitted (`409 not_participant` otherwise; removing one with 0 minutes always works).
 

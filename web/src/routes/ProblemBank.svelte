@@ -12,7 +12,9 @@
   slug is edited, and goes to the new problem's editor. "New problem with
   AI" opens the wizard at /admin/ai/new, and "AI assistant settings" the
   key screen; a problem the wizard made carries an "AI draft" mark beside
-  its title until a person saves it. "Import pack" picks one or more .zip
+  its title until a person saves it, and one whose hidden tests an
+  ungraded contest or practice showed carries "Hidden tests shown in
+  practice" (D115). "Import pack" picks one or more .zip
   files and sends each as is (application/zip), then starts validating
   each imported problem and stays on the list, so three packs need no
   page visits (audit O6); a refused pack shows the server's message and
@@ -408,7 +410,7 @@
               {@const word = statusOf(p)}
               <tr>
                 <th scope="row" class="title">
-                  <a class="row-link" href="/admin/problems/{p.id}">{name}</a>{#if isAIDraft(p.tags)}<span class="ai-draft"><Badge tone="wait" text="AI draft" /></span>{/if}
+                  <a class="row-link" href="/admin/problems/{p.id}">{name}</a>{#if isAIDraft(p.tags)}<span class="ai-draft"><Badge tone="wait" text="AI draft" /></span>{/if}{#if p.shown_in_practice}<span class="ai-draft"><Badge text="Hidden tests shown in practice" /></span>{/if}
                 </th>
                 <td class="difficulty">{difficultyLabel(p.difficulty)}</td>
                 <td class="tags">{withoutAIDraft(p.tags).join(', ')}</td>

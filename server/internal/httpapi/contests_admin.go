@@ -332,6 +332,10 @@ type contestEdit struct {
 	Languages        []string `json:"languages"`
 	HonourText       string   `json:"honour_text"`
 	HoldReveal       bool     `json:"hold_reveal"`
+	// ConfirmUngraded confirms turning grading off after the start, which
+	// shows every student still in their window the first failed hidden
+	// test of each later submit (D115, council C1-015). Never stored.
+	ConfirmUngraded bool `json:"confirm_ungraded"`
 }
 
 func (e contestEdit) edit() contests.Edit {
@@ -401,6 +405,13 @@ func (d Deps) updateContest(w http.ResponseWriter, r *http.Request) {
 				Problems: locked}})
 			return
 		}
+	}
+	if c.Graded && !req.Graded && c.Started(d.Contests.Clock()) && !req.ConfirmUngraded {
+		WriteJSON(w, http.StatusBadRequest, map[string]APIError{"error": {Code: "confirm_ungraded",
+			Message: "The contest has started. Without grading, every student still in their window sees the first hidden test " +
+				"each later submission fails. Send confirm_ungraded to go on.",
+			Fields: map[string]string{"graded": "The contest has started: confirm before turning grading off."}}})
+		return
 	}
 	if _, err := d.Contests.Update(r.Context(), c.ID, req.edit(), actor(r)); err != nil {
 		d.contestError(w, r, err)

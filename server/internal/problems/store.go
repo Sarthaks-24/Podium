@@ -54,15 +54,25 @@ type BankEntry struct {
 	Validated   bool
 	ValidatedAt time.Time
 	UpdatedAt   time.Time
+	// ShownInPractice: a contest that pins the problem has shown students
+	// its hidden tests, being ungraded and started, or open for practice
+	// after its end (D115). Its hidden tests may be known.
+	ShownInPractice bool
 }
+
+// shownInPractice is the SQL for BankEntry.ShownInPractice of problem p
+// at the time given twice as arguments. Practice opens at the latest
+// final time, so ends_at marks it a little early, never late.
+const shownInPractice = `EXISTS (SELECT 1 FROM contest_problems cp JOIN contests c ON c.id = cp.contest_id
+		WHERE cp.problem_id = p.id AND ((c.graded = 0 AND c.starts_at <= ?) OR (c.practice_after_end = 1 AND c.ends_at <= ?)))`
 
 // List returns the bank, newest change first.
 func (s *Service) List(ctx context.Context, archived bool) ([]BankEntry, error) {
 	rows, err := s.DB.QueryContext(ctx, `SELECT p.id, p.slug, p.title, p.difficulty, p.tags, p.origin, p.archived,
 		p.content_hash, coalesce(p.validated_hash, ''), coalesce(p.validated_at, 0), p.updated_at,
 		(SELECT count(*) FROM testcases t WHERE t.problem_id = p.id),
-		(SELECT coalesce(sum(points), 0) FROM subtasks st WHERE st.problem_id = p.id)
-		FROM problems p WHERE p.archived = 0 OR ? ORDER BY p.updated_at DESC, p.id DESC`, archived)
+		(SELECT coalesce(sum(points), 0) FROM subtasks st WHERE st.problem_id = p.id), `+shownInPractice+`
+		FROM problems p WHERE p.archived = 0 OR ? ORDER BY p.updated_at DESC, p.id DESC`, s.now().UnixMilli(), s.now().UnixMilli(), archived)
 	if err != nil {
 		return nil, err
 	}
@@ -73,7 +83,7 @@ func (s *Service) List(ctx context.Context, archived bool) ([]BankEntry, error) 
 		var tags, hash, vhash string
 		var vat, upd int64
 		if err := rows.Scan(&sm.ID, &sm.Slug, &sm.Title, &sm.Difficulty, &tags, &sm.Origin, &sm.Archived,
-			&hash, &vhash, &vat, &upd, &sm.TestCount, &sm.Points); err != nil {
+			&hash, &vhash, &vat, &upd, &sm.TestCount, &sm.Points, &sm.ShownInPractice); err != nil {
 			return nil, err
 		}
 		json.Unmarshal([]byte(tags), &sm.Tags)

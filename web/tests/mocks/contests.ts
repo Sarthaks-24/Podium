@@ -53,6 +53,8 @@ export interface Options {
   endsInMs?: number;
   /** The organiser's contest starts out published. */
   published?: boolean;
+  /** Bank problems whose hidden tests a contest showed in practice (D115, C1-015). */
+  shownInPractice?: number[];
   /** PUT settings may publish (by default it refuses with a changed problem, P3). */
   publishOk?: boolean;
   /** Queue health on the contest response (C10): calm by default, or a slow queue, a silent judge and toolchain drift. */
@@ -518,12 +520,13 @@ export async function mockApi(page: Page, options: Options = {}) {
       // Organiser routes.
       if (path.startsWith('/api/admin/') && me.role === 'student') return apiError(route, 403, 'forbidden', 'Only admins can do that.');
       if (path === '/api/admin/problems' && method === 'GET') {
+        const shown = (p: Json) => ({ ...p, shown_in_practice: (options.shownInPractice ?? []).includes(Number(p.id)) });
         return json(route, 200, {
-          problems: [
+          problems: ([
             { id: 11, slug: 'a-plus-b', title: 'A plus B', difficulty: 'easy', tags: [], origin: 'import', archived: false, test_count: 6, points: 100, validated: true, validated_at: now, updated_at: now },
             { id: 12, slug: 'interval-covering', title: 'Interval covering', difficulty: 'medium', tags: [], origin: 'import', archived: false, test_count: 15, points: 100, validated: true, validated_at: now, updated_at: now },
             { id: 14, slug: 'draft-problem', title: 'Unfinished draft', difficulty: '', tags: [], origin: 'manual', archived: false, test_count: 0, points: 0, validated: false, validated_at: null, updated_at: now },
-          ],
+          ] as Json[]).map(shown),
         });
       }
       if (path === '/api/admin/contests' && method === 'GET') {

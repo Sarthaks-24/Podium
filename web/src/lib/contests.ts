@@ -560,6 +560,8 @@ export interface ContestSettings {
   honour_text: string;
   /** Keep students on the frozen board after the end until an organiser reveals. */
   hold_reveal?: boolean;
+  /** Sent only to turn grading off after the start (the server asks for it; C1-015). */
+  confirm_ungraded?: boolean;
 }
 
 /** GET /api/admin/contests/{id}. */

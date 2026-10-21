@@ -17,13 +17,17 @@
     letters follow the order. A graded contest refuses a problem the AI
     wizard made when no person has written a solution for it; the section
     then asks for a reason, and "Grade as written" saves again with it.
+    A problem whose hidden tests an ungraded contest or practice showed
+    says so in the picker, and publishing a graded contest with one
+    names it in the confirm (D115).
   - "Rules and scoring", folded: start mode, freeze, scoring, feedback,
     who can take part, pacing, languages and the options. Holding the
     board for a reveal needs a freeze.
   - Description and honour code, then Save changes for everything above.
     While the contest is live, saving a change to the times, start mode,
-    scoring, feedback or freeze asks first. Leaving with unsaved settings
-    asks first.
+    scoring, feedback or freeze asks first, and so does turning grading
+    off once the contest has started. Leaving with unsaved settings asks
+    first.
   - More: the roster (a CSV file or pasted text with a preview of every
     line, then "Replace roster"), co-organisers, a clone, and archiving.
 
@@ -330,6 +334,16 @@
       body.scoring_mode !== c.scoring_mode ||
       body.feedback_mode !== c.feedback_mode ||
       body.freeze_minutes !== c.freeze_minutes;
+    if (startedOrOver && c.graded && !body.graded) {
+      confirm = {
+        title: 'Turn grading off in a started contest?',
+        body: 'Without grading, every student still in their window sees the first hidden test each later submission fails, and the problems are marked in the bank as shown in practice.',
+        label: 'Turn grading off',
+        danger: true,
+        run: () => putSettings({ ...body, confirm_ungraded: true }, 'Saved changes'),
+      };
+      return;
+    }
     if (live && liveChange) {
       confirm = {
         title: 'Change a live contest?',
@@ -371,6 +385,16 @@
     }
   }
 
+  /** The picked problems whose hidden tests a contest already showed (D115, C1-015). */
+  const shownLabels = $derived(picked.filter((p) => bank.find((b) => b.id === p.problem_id)?.shown_in_practice).map((p) => p.label));
+
+  /** The publish confirm's line for those problems, in a graded contest. */
+  function shownWarning(graded: boolean): string[] {
+    if (!graded || shownLabels.length === 0) return [];
+    const which = shownLabels.length === 1 ? `Problem ${shownLabels[0]} was` : `Problems ${shownLabels.join(', ')} were`;
+    return [`${which} in an ungraded contest or in practice, so students may know the hidden tests.`];
+  }
+
   /** Publishing and unpublishing ask first and say what students will see (C5, audit O1). */
   async function togglePublish() {
     if (!contest) return;
@@ -383,7 +407,7 @@
       confirm = {
         title: `Publish ${title}?`,
         body: `${form?.access === 'roster' ? 'Students on the roster' : 'Students from the allowed domains'} see it in their contest list at once${dirty ? ', with your unsaved settings saved' : ''}.`,
-        items: checks.map((c) => c.text),
+        items: [...checks.map((c) => c.text), ...shownWarning(body.graded)],
         label: 'Publish contest',
         danger: false,
         run: () => putSettings(body, 'Published'),
@@ -874,7 +898,7 @@
               <label for="add-problem">Add a validated problem</label>
               <select id="add-problem" class="select" bind:value={addId}>
                 <option value="">Choose a problem</option>
-                {#each available as p (p.id)}<option value={String(p.id)}>{p.title || p.slug} ({p.points} points)</option>{/each}
+                {#each available as p (p.id)}<option value={String(p.id)}>{p.title || p.slug} ({p.points} points){p.shown_in_practice ? ', hidden tests shown in practice' : ''}</option>{/each}
               </select>
             </div>
             <button type="button" class="btn btn-secondary" disabled={addId === '' || problemsBusy} onclick={addProblem}>Add problem</button>

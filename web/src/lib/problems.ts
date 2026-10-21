@@ -65,6 +65,8 @@ export interface ProblemSummary {
   validated: boolean;
   validated_at: number | null;
   updated_at: number;
+  /** A contest pinning it showed students its hidden tests (ungraded, or practice after the end; D115). */
+  shown_in_practice?: boolean;
 }
 
 /** A program's language and source. */

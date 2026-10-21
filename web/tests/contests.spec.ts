@@ -391,6 +391,34 @@ test('the Console link counts unanswered questions on Settings (O4)', async ({ p
   expect(asked.filter((p) => !p.startsWith('/api/'))).toEqual([]);
 });
 
+test('hidden tests shown in practice are named, and grading off after the start asks first (C1-015)', async ({ page }) => {
+  const api = await mockApi(page, { who: 'admin', phase: 'during', shownInPractice: [11, 12], publishOk: true });
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto('/admin/contests/4');
+  await expect(page.getByLabel('Title', { exact: true })).toHaveValue('Week 6 contest');
+  await expect(page.getByLabel('Add a validated problem').locator('option', { hasText: 'Interval covering' })).toHaveText(
+    'Interval covering (100 points), hidden tests shown in practice',
+  );
+  await page.getByRole('button', { name: 'Publish contest' }).click();
+  const publish = page.getByRole('dialog', { name: 'Publish Week 6 contest?' });
+  await expect(publish).toContainText('in an ungraded contest or in practice, so students may know the hidden tests.');
+  await publish.getByRole('button', { name: 'Cancel' }).click();
+
+  await page.getByText('Rules and scoring').click();
+  await page.getByRole('checkbox', { name: /^Graded:/ }).uncheck();
+  await page.getByRole('button', { name: 'Save changes' }).click();
+  const ask = page.getByRole('dialog', { name: 'Turn grading off in a started contest?' });
+  await expect(ask).toContainText('sees the first hidden test each later submission fails');
+  await ask.getByRole('button', { name: 'Turn grading off' }).click();
+  await expect.poll(() => api.settingsPuts.at(-1)).toMatchObject({ graded: false, confirm_ungraded: true });
+
+  // The bank marks the same problems.
+  await page.goto('/admin/problems');
+  const row = page.getByRole('row', { name: /Interval covering/ });
+  await expect(row.getByText('Hidden tests shown in practice')).toBeVisible();
+  await expect(page.getByRole('row', { name: /Unfinished draft/ }).getByText('Hidden tests shown in practice')).toHaveCount(0);
+});
+
 test('the editor shows field errors, picks problems and previews a roster', async ({ page }) => {
   const api = await mockApi(page, { who: 'admin', phase: 'during' });
   await page.setViewportSize({ width: 1440, height: 900 });

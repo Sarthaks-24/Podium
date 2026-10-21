@@ -52,6 +52,9 @@ type problemSummaryJSON struct {
 	Validated   bool     `json:"validated"`
 	ValidatedAt *int64   `json:"validated_at"`
 	UpdatedAt   int64    `json:"updated_at"`
+	// ShownInPractice: an ungraded contest, or practice after one, has
+	// shown students its hidden tests (D115).
+	ShownInPractice bool `json:"shown_in_practice"`
 }
 
 type sourceJSON struct {
@@ -174,7 +177,7 @@ func millis(t time.Time) *int64 {
 func summaryJSON(e problems.BankEntry) problemSummaryJSON {
 	return problemSummaryJSON{ID: e.ID, Slug: e.Slug, Title: e.Title, Difficulty: e.Difficulty, Tags: nonNil(e.Tags),
 		Origin: e.Origin, Archived: e.Archived, TestCount: e.TestCount, Points: e.Points, Validated: e.Validated,
-		ValidatedAt: validatedAt(e.Validated, e.ValidatedAt), UpdatedAt: e.UpdatedAt.UnixMilli()}
+		ValidatedAt: validatedAt(e.Validated, e.ValidatedAt), UpdatedAt: e.UpdatedAt.UnixMilli(), ShownInPractice: e.ShownInPractice}
 }
 
 // validatedAt hides the time of a validation that no longer covers the
