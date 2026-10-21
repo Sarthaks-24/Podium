@@ -379,11 +379,21 @@ func TestM4ContestEvents(t *testing.T) {
 	// recorded for the live contest, once.
 	_, stop2 := openStream(t, asha, "another-browser")
 	defer stop2()
-	time.Sleep(100 * time.Millisecond)
-	var n int
-	s.db.QueryRow("SELECT count(*) FROM integrity_events WHERE kind = 'second_session' AND contest_id = ?", id).Scan(&n)
-	if n != 1 {
-		t.Errorf("second sessions recorded: %d", n)
+	// Wait for the row (up to 2 s), then check it stays one (C2-044).
+	count := func() int {
+		var n int
+		s.db.QueryRow("SELECT count(*) FROM integrity_events WHERE kind = 'second_session' AND contest_id = ?", id).Scan(&n)
+		return n
+	}
+	for deadline := time.Now().Add(2 * time.Second); count() == 0 && time.Now().Before(deadline); {
+		time.Sleep(10 * time.Millisecond)
+	}
+	if n := count(); n != 1 {
+		t.Fatalf("second sessions recorded: %d, want 1", n)
+	}
+	time.Sleep(200 * time.Millisecond)
+	if n := count(); n != 1 {
+		t.Errorf("second sessions recorded later: %d, want still 1", n)
 	}
 }
 
