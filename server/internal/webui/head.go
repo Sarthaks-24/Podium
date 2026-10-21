@@ -240,6 +240,11 @@ func (s *site) page(w http.ResponseWriter, r *http.Request) {
 	if route.Public && route.Pattern == "/privacy" {
 		doc = replaceBlock(doc, bodyOpen, bodyClose, s.privacy)
 	}
+	// The contact form needs JavaScript; without it the page still names
+	// the address to write to (reconciliation R3, council C1-053).
+	if route.Pattern == "/contact" && status == http.StatusOK {
+		doc = replaceBlock(doc, bodyOpen, bodyClose, s.contactFallback(r))
+	}
 	w.WriteHeader(status)
 	w.Write([]byte(doc))
 }
@@ -294,6 +299,23 @@ func (s *site) publicHead(r *http.Request, route *Route) string {
 	}
 	b.WriteString("\n    ")
 	return b.String()
+}
+
+// contactFallback is /contact's body for a reader without JavaScript.
+func (s *site) contactFallback(r *http.Request) string {
+	const head = "<h1>Write to the organisers</h1>"
+	if s.org == nil {
+		return head + "<p>This form needs JavaScript. Ask the organisers in person or by email.</p>"
+	}
+	o, err := s.org(r)
+	if err != nil || strings.TrimSpace(o.Contact) == "" {
+		if err != nil {
+			s.log.Warn("contact page: site settings unreadable, address left out", "err", err)
+		}
+		return head + "<p>This form needs JavaScript. Ask the organisers in person or by email.</p>"
+	}
+	addr := html.EscapeString(strings.TrimSpace(o.Contact))
+	return head + `<p>This form needs JavaScript. Write to the organisers by email instead: <a href="mailto:` + addr + `">` + addr + `</a>.</p>`
 }
 
 // organisationLD is the Organization JSON-LD of /signin, from the site

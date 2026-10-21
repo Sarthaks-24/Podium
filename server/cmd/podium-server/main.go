@@ -217,7 +217,11 @@ func run(envFile string) error {
 	handler := httpapi.New(httpapi.Deps{
 		DB: database, Log: log, WebApp: webui.Handler(webui.Options{BaseURL: cfg.BaseURL, Log: log, Organisation: func(r *http.Request) (webui.Organisation, error) {
 			o, err := authSvc.Organisation(r.Context())
-			return webui.Organisation{Name: o.Name, Email: o.ContactEmail, Phone: o.Phone}, err
+			contact := o.ContactEmail
+			if contact == "" {
+				contact = authSvc.OwnerEmail
+			}
+			return webui.Organisation{Name: o.Name, Email: o.ContactEmail, Phone: o.Phone, Contact: contact}, err
 		}}),
 		Auth: authSvc, IdP: provider, BaseURL: cfg.BaseURL, SessionSecret: cfg.SessionSecret,
 		Problems: problemSvc, Submissions: submissionSvc, Hub: hub, Contests: contestSvc, Integrity: integritySvc,

@@ -50,6 +50,9 @@ type Options struct {
 // Organisation is the part of the site settings the JSON-LD uses.
 type Organisation struct {
 	Name, Email, Phone string
+	// Contact is the address people write to: Email, or the owner's
+	// when no organisation address is set (the sign-in page's rule).
+	Contact string
 }
 
 // Handler returns the SPA handler over the embedded build.

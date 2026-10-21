@@ -342,3 +342,24 @@ func TestLinkCrawl(t *testing.T) {
 		}
 	}
 }
+
+// TestContactFallback: /contact names the address to write to for a
+// reader without JavaScript, escaped (C1-053).
+func TestContactFallback(t *testing.T) {
+	block := regexp.MustCompile(`<!--podium:body-->(.*?)<!--/podium:body-->`)
+	org := func(*http.Request) (Organisation, error) {
+		return Organisation{Contact: `podium@college.edu"><b>`}, nil
+	}
+	h := handlerFor(buildFS(t, "routes-p3.json", nil), Options{BaseURL: testBase, Organisation: org})
+	got := block.FindStringSubmatch(get(h, "/contact").Body.String())
+	if got == nil || !strings.Contains(got[1], `href="mailto:podium@college.edu&#34;&gt;&lt;b&gt;"`) || strings.Contains(got[1], "<b>") {
+		t.Errorf("contact fallback: %v", got)
+	}
+	if got := block.FindStringSubmatch(get(h, "/signin").Body.String()); got == nil || got[1] != "" {
+		t.Errorf("fallback outside /contact: %v", got)
+	}
+	none := handlerFor(buildFS(t, "routes-p3.json", nil), Options{BaseURL: testBase})
+	if got := block.FindStringSubmatch(get(none, "/contact").Body.String()); got == nil || !strings.Contains(got[1], "needs JavaScript") || strings.Contains(got[1], "mailto") {
+		t.Errorf("without an address: %v", got)
+	}
+}
