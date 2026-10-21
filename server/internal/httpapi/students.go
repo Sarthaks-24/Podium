@@ -345,14 +345,10 @@ func (d Deps) studentRecord(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// A reviewer never sees a case they are a student of.
-	mine, err := d.Integrity.CasesAbout(ctx, viewer)
+	involved, err := d.involvedCases(ctx, viewer)
 	if err != nil {
 		d.internalError(w, r, err)
 		return
-	}
-	involved := map[int64]bool{}
-	for _, m := range mine {
-		involved[m.ID] = true
 	}
 	kept := []integrity.CaseSummary{}
 	sharedContest := map[int64]bool{}
@@ -374,13 +370,7 @@ func (d Deps) studentRecord(w http.ResponseWriter, r *http.Request) {
 	// Nor the rating lines of such a case (they name its reviewers), nor
 	// the notes on the student's submissions in a contest where the two
 	// share a case.
-	history := []integrity.RatingLine{}
-	for _, l := range rating.History {
-		if l.CaseID == nil || !involved[*l.CaseID] {
-			history = append(history, l)
-		}
-	}
-	rating.History = history
+	dropInvolvedLines(rating, involved)
 	allNotes, err := d.Integrity.NotesAbout(ctx, st.ID)
 	if err != nil {
 		d.internalError(w, r, err)
@@ -407,13 +397,62 @@ func (d Deps) studentRecord(w http.ResponseWriter, r *http.Request) {
 		"cases": kept, "notes": notes, "appeals": appeals, "server_now": d.serverNow()})
 }
 
-// ratingOut answers a rating write with the rating and any waiting change.
+// dropInvolvedLines removes the rating lines of the cases in involved,
+// the cases the viewer is a student of (D262): they name the case's
+// reviewers, which a student of the case never learns.
+func dropInvolvedLines(rating *integrity.RatingView, involved map[int64]bool) {
+	history := []integrity.RatingLine{}
+	for _, l := range rating.History {
+		if l.CaseID == nil || !involved[*l.CaseID] {
+			history = append(history, l)
+		}
+	}
+	rating.History = history
+}
+
+// involvedCases is the set of cases the user is a student of.
+func (d Deps) involvedCases(ctx context.Context, userID int64) (map[int64]bool, error) {
+	mine, err := d.Integrity.CasesAbout(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+	involved := map[int64]bool{}
+	for _, m := range mine {
+		involved[m.ID] = true
+	}
+	return involved, nil
+}
+
+// ratingCaseMate answers 404 when the viewer and the student are students
+// of one case (D262): such a viewer neither changes nor rules on the
+// classmate's rating. It reports whether it answered.
+func (d Deps) ratingCaseMate(w http.ResponseWriter, r *http.Request, studentID int64) bool {
+	shared, err := d.Integrity.SharesAnyCase(r.Context(), userFrom(r.Context()).ID, studentID)
+	if err != nil {
+		d.internalError(w, r, err)
+		return true
+	}
+	if shared {
+		WriteError(w, http.StatusNotFound, "not_found", "There is no such student.")
+		return true
+	}
+	return false
+}
+
+// ratingOut answers a rating write with the rating, without the lines of
+// cases the viewer is a student of, and any waiting change.
 func (d Deps) ratingOut(w http.ResponseWriter, r *http.Request, studentID int64, status int) {
 	rating, err := d.Integrity.RatingOf(r.Context(), studentID)
 	if err != nil {
 		d.internalError(w, r, err)
 		return
 	}
+	involved, err := d.involvedCases(r.Context(), userFrom(r.Context()).ID)
+	if err != nil {
+		d.internalError(w, r, err)
+		return
+	}
+	dropInvolvedLines(rating, involved)
 	pending, err := d.Integrity.Pending(r.Context(), studentID, userFrom(r.Context()).ID)
 	if err != nil {
 		d.internalError(w, r, err)
@@ -436,6 +475,9 @@ func (d Deps) editRating(w http.ResponseWriter, r *http.Request) {
 	}
 	if req.ValueTenths == nil {
 		WriteError(w, http.StatusBadRequest, "bad_request", "Give a rating from 0 to 10, in steps of 0.1.")
+		return
+	}
+	if d.ratingCaseMate(w, r, st.ID) {
 		return
 	}
 	u := userFrom(r.Context())
@@ -464,6 +506,9 @@ func (d Deps) confirmRating(w http.ResponseWriter, r *http.Request) {
 	if r.ContentLength != 0 && !decodeJSON(w, r, &req) {
 		return
 	}
+	if d.ratingCaseMate(w, r, st.ID) {
+		return
+	}
 	u := userFrom(r.Context())
 	if err := d.Integrity.ConfirmRating(r.Context(), st.ID, pid, u.ID, req.SoleOrganiserReason); err != nil {
 		if errors.Is(err, integrity.ErrTwoPersonRule) {
@@ -483,6 +528,9 @@ func (d Deps) declineRating(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	pid, _ := parseID(r.PathValue("pid"))
+	if d.ratingCaseMate(w, r, st.ID) {
+		return
+	}
 	if err := d.Integrity.DeclineRating(r.Context(), st.ID, pid, userFrom(r.Context()).ID); err != nil {
 		d.integrityError(w, r, err, "There is no such change waiting.")
 		return

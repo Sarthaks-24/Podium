@@ -17,7 +17,10 @@ import (
 
 // reviewedSubmission loads the contest submission named by {id} for a
 // reviewer of its contest. Anyone who does not organise the contest gets
-// 404; a co-organiser who may not review gets 403.
+// 404; a co-organiser who may not review gets 403. A reviewer's own
+// submission, and one by a classmate they are a student of a case with in
+// that contest, are 404 too (D262): notes and cases are about the author,
+// and such a reviewer neither reads, writes nor copies them.
 func (d Deps) reviewedSubmission(w http.ResponseWriter, r *http.Request) (*integrity.SubmissionRef, bool) {
 	const missing = "There is no such contest submission."
 	id, ok := parseID(r.PathValue("id"))
@@ -53,28 +56,25 @@ func (d Deps) reviewedSubmission(w http.ResponseWriter, r *http.Request) (*integ
 		}
 		return nil, false
 	}
+	if sub.UserID == u.ID {
+		WriteError(w, http.StatusNotFound, "not_found", missing)
+		return nil, false
+	}
+	shared, err := d.Integrity.SharesCase(r.Context(), u.ID, sub.UserID, sub.ContestID)
+	if err != nil {
+		d.internalError(w, r, err)
+		return nil, false
+	}
+	if shared {
+		WriteError(w, http.StatusNotFound, "not_found", missing)
+		return nil, false
+	}
 	return sub, true
 }
 
 func (d Deps) listNotes(w http.ResponseWriter, r *http.Request) {
 	sub, ok := d.reviewedSubmission(w, r)
 	if !ok {
-		return
-	}
-	// Notes are about the author; an organiser never reads those on
-	// their own submissions.
-	if sub.UserID == userFrom(r.Context()).ID {
-		WriteError(w, http.StatusNotFound, "not_found", "There is no such contest submission.")
-		return
-	}
-	// Nor those of a classmate they share a case with in this contest.
-	shared, err := d.Integrity.SharesCase(r.Context(), userFrom(r.Context()).ID, sub.UserID, sub.ContestID)
-	if err != nil {
-		d.internalError(w, r, err)
-		return
-	}
-	if shared {
-		WriteError(w, http.StatusNotFound, "not_found", "There is no such contest submission.")
 		return
 	}
 	if err := d.Integrity.LogView(r.Context(), userFrom(r.Context()).ID, sub.UserID, integrity.ViewNotes, sub.ID); err != nil {

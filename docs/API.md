@@ -1263,7 +1263,7 @@ Checks for copying after a contest, and the review of what they find (decisions 
 | `GET /api/admin/contests/{id}/integrity/timeline/{user}` | | 200 `{moments: [Moment], server_now}`; `404` when the user neither accepted the rules nor submitted in this contest, and for the viewer's own timeline. The run (`GET .../integrity`) leaves out every signal that names the viewer (a student since made an admin) |
 | `GET /api/admin/contests/{id}/integrity/cases` | | 200 `{cases: [Case], server_now}`, newest first |
 | `POST /api/admin/contests/{id}/integrity/cases` | `{title, note, signal_ids: [n]}` | 201 `Case` |
-| `GET /api/admin/integrity/cases/{case}` | | 200 `Case` |
+| `GET /api/admin/integrity/cases/{case}` | | 200 `Case`; `404` to a student of the case and, for a manual case, to a reviewer who is a student of another case with its student in that contest (D262) |
 | `PUT /api/admin/integrity/cases/{case}` | `{state, note}` | 200 `Case`; appends a decision |
 
 Students (any signed-in user):
@@ -1508,9 +1508,9 @@ The server writes the sentences from fixed templates with the contest's title, a
 
 | Route | Who | Request | Success |
 |---|---|---|---|
-| `GET /api/admin/submissions/{id}/notes` | reviewers of the submission's contest (owners and admins; a co-organiser whose role is not student is an admin) | | 200 `{submission: SubmissionRef, source, notes: [Note], case_id, server_now}`, where `source` is the submission's program as plain text, so the reviewer reads it and picks lines; logged; `404` on one's own submission |
-| `POST /api/admin/submissions/{id}/notes` | same | `{"text": "...", "lines": [{"from": 12, "to": 18}]}` | 201 `Note` |
-| `POST /api/admin/submissions/{id}/case` | same | `{"title": "...", "note": "..."}` | 201 `Case` |
+| `GET /api/admin/submissions/{id}/notes` | reviewers of the submission's contest (owners and admins; a co-organiser whose role is not student is an admin) | | 200 `{submission: SubmissionRef, source, notes: [Note], case_id, server_now}`, where `source` is the submission's program as plain text, so the reviewer reads it and picks lines; logged; `404` on one's own submission and on a classmate's when the two are students of one case in that contest (D262) |
+| `POST /api/admin/submissions/{id}/notes` | same | `{"text": "...", "lines": [{"from": 12, "to": 18}]}` | 201 `Note`; `404` as for GET |
+| `POST /api/admin/submissions/{id}/case` | same | `{"title": "...", "note": "..."}` | 201 `Case`; `404` as for GET |
 
 - A note or a manual case is possible on a Submit (not a Run) of a contest, practice after the contest included. A submission outside a contest is `404`.
 - `text` is 1 to 2,000 characters, plain text, never rendered as HTML. `lines` are 1-based line ranges of the submission's code to highlight, at most 20, each `from <= to`.
@@ -1518,8 +1518,9 @@ The server writes the sentences from fixed templates with the contest's title, a
 - `Note`: `{id, submission_id, by, by_name, text, lines, created_at, expires_at}`. `expires_at` is when the note is deleted (30 days after it was written), `null` once a case has been opened from the submission: then it is kept with the case. Notes are append only: they cannot be edited or deleted by hand. The student is never told about a note.
 - `case_id` is the manual case opened from the submission, `null` if none.
 - The student sees a manual case's evidence as `kind: "manual"`, the sentence "An organiser asked you to explain this submission. The lines in question are highlighted.", their own `source` and `lines` (the notes' ranges); never the notes' text.
-- Opening a case: `title` at most 120 characters, `note` (the reason, for reviewers) 20 to 4,000; the case's student is the submission's author, its `source` is `manual`, its evidence is the submission and its notes, copied. The reviewer may not be the author (`400`). The case starts `open`, as one from signals does, and is shared with `PUT /api/admin/integrity/cases/{case}` as before.
-- The console feed (`GET /api/admin/contests/{id}/submissions`) gains `note_count` and `case_id` on each item for reviewers; others never see them.
+- Opening a case: `title` at most 120 characters, `note` (the reason, for reviewers) 20 to 4,000; the case's student is the submission's author, its `source` is `manual`, its evidence is the submission and its notes, copied. The reviewer may not be the author (`404`, "There is no such contest submission.", since 2026-10-21; it was `400`). The case starts `open`, as one from signals does, and is shared with `PUT /api/admin/integrity/cases/{case}` as before.
+- The console feed (`GET /api/admin/contests/{id}/submissions`) gains `note_count` and `case_id` on each item for reviewers; others never see them, and a reviewer never sees them on their own submissions or on those of a classmate they are a student of a case with in that contest.
+- The involvement rule (D262, every path since 2026-10-21): a reviewer who is a student of a case with a classmate gets `404 not_found` on the three routes above for the classmate's submissions in that contest, `404` "There is no such case." on a manual case about that classmate, and `404` "There is no such student." on the classmate's rating routes (edit, confirm, decline).
 
 ### C9: cases, outcomes and the two-person rule
 
@@ -1667,6 +1668,7 @@ The student's `GET /api/integrity/cases` lists a case only once its notice is av
 - An edit that lowers the student's band is a proposal: `202`, until a second owner or admin confirms it (`403 two_person_rule` "A second owner or admin who did not propose this change confirms it." for the proposer, except as sole organiser). A new edit replaces a pending one. A confirm after the rating moved is `409 rating_changed`, "The rating changed since this was proposed. Propose it again."
 - Every applied edit writes a dated line on the student's standing ("Standing adjusted by an organiser" with the reason), sends `standing_adjusted`, and can be appealed.
 - Writes to one student's rating go one at a time; every write keeps the value within 0 to 10.
+- An owner or admin who is a student of a case together with this student gets `404 not_found` on all three routes (D262). Every answer leaves out the rating lines of cases the caller is a student of.
 
 **Semester rollover of the rating.** `podium-server semester-rollover [-db F] [-dry-run] LABEL` (on the VM, by the owner, when a term ends) adds 0.5 to every student with no confirmed outcome since the previous rollover, up to 10, with cause `rollover` and the label. A label runs once; running it again changes nothing. This is separate from `POST /api/admin/rollover`, which archives contests and disables old accounts.
 

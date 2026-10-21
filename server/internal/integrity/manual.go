@@ -140,6 +140,39 @@ func (s *Service) SharesCase(ctx context.Context, a, b, contestID int64) (bool, 
 	return n > 0, err
 }
 
+// CaseMates lists the people who are students of a case in a contest
+// together with the viewer (D262): the viewer reviews none of their notes
+// there. The viewer is not in the set.
+func (s *Service) CaseMates(ctx context.Context, viewer, contestID int64) (map[int64]bool, error) {
+	rows, err := s.DB.QueryContext(ctx, `SELECT DISTINCT y.user_id FROM integrity_cases c
+		JOIN integrity_case_users x ON x.case_id = c.id AND x.user_id = ?
+		JOIN integrity_case_users y ON y.case_id = c.id AND y.user_id <> x.user_id
+		WHERE c.contest_id = ?`, viewer, contestID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[int64]bool{}
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		out[id] = true
+	}
+	return out, rows.Err()
+}
+
+// SharesAnyCase reports whether two people are both students of one case
+// in any contest: then neither changes the other's rating (D262).
+func (s *Service) SharesAnyCase(ctx context.Context, a, b int64) (bool, error) {
+	var n int
+	err := s.DB.QueryRowContext(ctx, `SELECT count(*) FROM integrity_case_users x
+		JOIN integrity_case_users y ON y.case_id = x.case_id AND y.user_id = ?
+		WHERE x.user_id = ?`, b, a).Scan(&n)
+	return n > 0, err
+}
+
 // NotesAbout lists every kept note on a student's submissions, newest
 // first, for the record page.
 func (s *Service) NotesAbout(ctx context.Context, userID int64) ([]Note, error) {

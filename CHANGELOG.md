@@ -27,6 +27,14 @@ Nothing below is tagged or deployed. The v2 phases were planned as the releases 
 - Admin and reviewer forms mark required fields, say which are optional, and move focus to a field error the server returns (X7).
 - Final web audit: date and time inputs show a focus ring on their calendar button, disclosure summaries are 24 px tall, and code, test data and compiler output are never machine-translated.
 
+### Council run 2 fixes (2026-10-21)
+
+#### Backend and operations
+
+- `tools/deploy.sh` names the release before it asks the guard or builds: the commit's `vX.Y.Z` tag, or `VERSION=vX.Y.Z` for a drill build; anything else, or uncommitted changes, stops at once instead of after the build. `tools/deploy-test.sh` covers it in `make check`.
+- `make package` builds the release tarball without `make check`, for the upgrade drill's build with a never-committed migration.
+- A reviewer who is a student of a case with a classmate can no longer write notes on the classmate's submissions in that contest, open a case from them (which copied the notes), read a manual case about them, see their note counts in the feed, or edit, confirm or decline their rating (D262 on every path). Notes and cases on one's own submission answer 404 instead of 400.
+
 ### Council run 1 fixes (2026-10-21)
 
 - Rollback keeps the database group-writable for Litestream; an upgrade that stopped half-way is refused instead of overwriting the release kept for rollback; a rollback says which forget-user erasures it undoes and writes them down to apply again; old pre-rollback database folders age out with the backups.

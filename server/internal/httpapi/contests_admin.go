@@ -1124,8 +1124,14 @@ func (d Deps) annotateFeed(ctx context.Context, contestID, viewer int64, items [
 		cases[sub] = id
 	}
 	rows.Close()
+	// Neither the viewer's own submissions nor those of a classmate they
+	// are a student of a case with carry notes for them (D262).
+	mates, err := d.Integrity.CaseMates(ctx, viewer, contestID)
+	if err != nil {
+		return err
+	}
 	for i := range items {
-		if items[i].UserID == viewer {
+		if items[i].UserID == viewer || mates[items[i].UserID] {
 			continue
 		}
 		n := notes[items[i].ID]
