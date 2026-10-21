@@ -191,6 +191,27 @@ test('resetting a Google account link asks first and reports errors inline', asy
   expect(state.resets).toEqual(['asha@college.edu']);
 });
 
+test('the account actions wait until the lookup names the account (C2-031)', async ({ page }) => {
+  await mockApi(page, 'owner');
+  let release: () => void = () => {};
+  const held = new Promise<void>((resolve) => (release = resolve));
+  await page.route(
+    (url) => url.pathname === '/api/admin/accounts',
+    async (route) => {
+      await held;
+      await route.fallback();
+    },
+  );
+  await page.goto('/admin/people');
+  const section = page.getByRole('region', { name: 'Account help' });
+  await section.getByLabel('Email', { exact: true }).fill('asha@college.edu');
+  await expect(section.locator('#account-who')).toHaveText('Looking up the account.');
+  for (const name of ['Reset Google link', 'End sessions', 'Disable account']) await expect(section.getByRole('button', { name })).toBeDisabled();
+  release();
+  await expect(section.locator('#account-who')).toContainText('Asha Rao, student');
+  for (const name of ['Reset Google link', 'End sessions', 'Disable account']) await expect(section.getByRole('button', { name })).toBeEnabled();
+});
+
 test('an owner ends sessions, disables and enables an account, each asked first', async ({ page }) => {
   const state = await mockApi(page, 'owner');
   await page.goto('/admin/people');

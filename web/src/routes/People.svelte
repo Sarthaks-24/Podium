@@ -196,6 +196,8 @@
   const accountLooksLikeEmail = $derived(EMAIL.test(accountEmail.trim()));
   /** The lookup found no account for the address typed: the actions would only be refused. */
   const noAccount = $derived(lookup !== null && lookup.email === accountEmail.trim().toLowerCase() && lookup.status === 'none');
+  /** An address typed but not yet named above (lookup running, failed or found nothing): never act on it (O10, D232, C2-031). */
+  const unseen = $derived(accountEmail.trim() !== '' && accountMatch === null);
 
   function roleWord(role: string): string {
     return role === 'owner' || role === 'admin' || role === 'student' ? roleLabel(role).toLowerCase() : role;
@@ -568,6 +570,7 @@
       document.getElementById('account-email')?.focus();
       return;
     }
+    if (unseen) return;
     pending = { kind, email: value };
   }
 
@@ -894,12 +897,12 @@
           {/if}
         </p>
       </div>
-      <button type="submit" class="btn btn-secondary submit" disabled={noAccount || (removing && pending?.kind === 'reset')} aria-describedby={noAccount ? 'account-who' : undefined}>Reset Google link</button>
+      <button type="submit" class="btn btn-secondary submit" disabled={unseen || (removing && pending?.kind === 'reset')} aria-describedby={unseen ? 'account-who' : undefined}>Reset Google link</button>
       <button
         type="button"
         class="btn btn-secondary submit"
-        disabled={noAccount || (removing && pending?.kind === 'end-sessions')}
-        aria-describedby={noAccount ? 'account-who' : undefined}
+        disabled={unseen || (removing && pending?.kind === 'end-sessions')}
+        aria-describedby={unseen ? 'account-who' : undefined}
         onclick={() => askAccount('end-sessions')}
       >
         End sessions
@@ -907,8 +910,8 @@
       <button
         type="button"
         class="btn btn-secondary btn-danger-secondary submit"
-        disabled={noAccount || (removing && pending?.kind === 'disable')}
-        aria-describedby={noAccount ? 'account-who' : undefined}
+        disabled={unseen || (removing && pending?.kind === 'disable')}
+        aria-describedby={unseen ? 'account-who' : undefined}
         onclick={() => askAccount('disable')}
       >
         Disable account
