@@ -2,6 +2,8 @@
 
 What to check before a contest, what to watch and do during it, and what to finish afterwards, with the commands. Installation, configuration and backups are in `docs/OPERATIONS.md`; the routes behind every button are in `docs/API.md`. The last two sections are the restore procedure and the dry run with real students that should come before the first large contest.
 
+Status (2026-10-21): no contest has run on the VM and none of the drills in "Proving the safety net" has run. The checklists come from the code, the WSL2 tests and the v1 load test on a desktop. Sections that depend on a drill are marked "not yet proven on the VM"; tick a box here only from a real contest or a drill note.
+
 Two people make contest day easy: one at the contest's live console in the browser (clarifications, announcements, the board), one with an SSH session on the VM (the metrics, the logs, the services). One person can do both for a small class.
 
 ## A week before
@@ -106,6 +108,8 @@ sudo systemctl restart podium-judge
 
 ### Emergency deploy
 
+Not yet proven on the VM (the upgrade and rollback drill has not run).
+
 The deploy guard refuses any upgrade from 48 hours before a contest until its queue is empty. When a fix cannot wait (a crash that recurs, a security fix):
 
 1. Pause judging of the contest if the fix touches judging, and announce the restart: "The site restarts for a minute at 14:02. Your code and drafts are kept; the page reconnects by itself."
@@ -153,6 +157,8 @@ If the server does not come back: `systemctl status podium-server` and its log s
 
 ## Restoring from a backup
 
+Not yet proven on the VM: the nightly and Litestream restores pass in WSL2 and CI, and the restore drill on the VM has not run.
+
 Use this when the database is damaged, a mistake must be undone, or the VM was lost. First restore into a scratch directory and check it; only then put it in place.
 
 1. Pick the source: the bucket for the newest state, a moment in the last 14 days for undoing a mistake, or a nightly backup.
@@ -186,7 +192,7 @@ What can be lost: with the bucket, at most the last 10 s of changes; from a nigh
 
 ## Restoring onto a new VM
 
-When the VM is lost or cannot be trusted. **During a contest the rule is: the contest is extended or rerun, never recovered live** (D113). Announce that results are safe up to the recovery point, pause or end the contest, and restore calmly. The target is 60 minutes from the alert to a student signed in on the new VM; the P0 drill measures it.
+When the VM is lost or cannot be trusted. **During a contest the rule is: the contest is extended or rerun, never recovered live** (D113). Announce that results are safe up to the recovery point, pause or end the contest, and restore calmly. The target is 60 minutes from the alert to a student signed in on the new VM; the P0 drill measures it. Not yet proven on the VM: the drill has not run, so the 60 minutes is a target, not a measurement.
 
 What you need at hand: the four env files from your password manager (`server.env`, `judge.env`, `litestream.env`, `backup.env`, plus `alert.env`), the `age` private key `podium-backup.key`, the release tarball that was running, access to the DNS records, and the Google Cloud console.
 
@@ -220,7 +226,7 @@ Once the go-live gate is signed, take a snapshot of the configured VM in the pro
 
 ## Proving the safety net
 
-These drills prove that the backups, alerts and upgrades work on the real VM. Each runs once before go-live and again after any change to the part it proves; each leaves a dated note.
+These drills prove that the backups, alerts and upgrades work on the real VM. Each runs once before go-live and again after any change to the part it proves; each leaves a dated note. As of 2026-10-21 none has run: every row below is not yet proven on the VM.
 
 | Drill | How | Proof |
 |---|---|---|
@@ -235,7 +241,7 @@ These drills prove that the backups, alerts and upgrades work on the real VM. Ea
 
 ## Dry run with real students
 
-PLAN.md requires one real contest with a small group before the first 700-student contest. The load test checks capacity; only people find confusing copy, a broken flow on a phone, or a problem statement everyone misreads. The written list of fixes is the milestone's deliverable.
+PLAN.md requires one real contest with a small group before the first 700-student contest. Not run yet. The load test checks capacity; only people find confusing copy, a broken flow on a phone, or a problem statement everyone misreads. The written list of fixes is the milestone's deliverable.
 
 ### Plan it
 

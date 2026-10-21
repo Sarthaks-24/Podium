@@ -2,6 +2,8 @@
 
 How to install, configure, check, back up and upgrade podium on its VM, and how to run it on your own machine. What to do on a contest day, and the dry run with real students, are in `docs/RUNBOOK.md`.
 
+Status (2026-10-21): podium has not run on the VM yet. The install, upgrade, rollback, restore, alert and load procedures here are written from the code and tested in WSL2 and CI; the VM drills of the P0 gate have not run, so none of them is proven on the VM. Sections that depend on a drill say "not yet proven on the VM".
+
 ## Install
 
 Target: Ubuntu 24.04 LTS on **amd64 (x86_64) only**, cgroup v2 (the default), 2 GB RAM or more. Releases contain amd64 binaries; `install.sh` refuses any other architecture.
@@ -654,7 +656,7 @@ sudo ./install.sh upgrade
 
 **What a release is (v1.1.0).** `make release` (and the release workflow, on a pushed `v*` tag) puts two files in the tarball: `MANIFEST`, one `key=value` per line (`release`, `version`, `commit`, `built`, `schema`, `migrations`, `protocol`, `upgrades_from`), and `SHA256SUMS`, the checksum of every other file. `podium-server -version` and `podium-judge -version` print the same version, commit, build date, schema and protocol, so you can match a binary to its release; `curl -s 127.0.0.1:8080/healthz` on the VM shows the running version and schema (through Caddy it does not).
 
-**The release workflow.** Push a tag (`git tag v1.1.0 && git push origin v1.1.0`); `.github/workflows/release.yml` runs `make release` and makes a draft GitHub release with the tarball, its `.sha256`, `MANIFEST` and `SHA256SUMS`. Review the draft and publish it by hand. `UPGRADES_FROM` in the `Makefile` is the release this one upgrades from; raise it in a release that drops something older releases still need (a contract migration).
+**The release workflow.** Push a tag (`git tag v1.1.0 && git push origin v1.1.0`); `.github/workflows/release.yml` runs `make release` and makes a draft GitHub release with the tarball, its `.sha256`, `MANIFEST` and `SHA256SUMS`. Review the draft and publish it by hand. `UPGRADES_FROM` in the `Makefile` is the release this one upgrades from; raise it in a release that drops something older releases still need (a contract migration). No release is tagged yet: until the owner chooses the first one (D236), `UPGRADES_FROM` is the placeholder `v1.0.0`. One release `v1.5.0` installed fresh sets it to `v1.5.0`; tagging `v1.0.0` to `v1.2.0` as markers first sets it to `v1.2.0`.
 
 From Windows, `tools/deploy.sh HOST` (or `make deploy HOST=user@vm`) does all of it: it asks the guard over ssh, runs `make release`, shows the tarball and its SHA-256 and waits for you to type the host name before anything leaves the machine, copies it to `/tmp` with `scp`, and runs `install.sh upgrade` there. It also asks for a confirmation when the commit is not exactly a tag (every deploy is a tag, D105).
 
@@ -692,7 +694,7 @@ After an update of any of them: `sudo systemctl restart podium-judge` (it report
 | Same schema (the upgrade applied no migration) | stop the judge (gracefully) and the server, put the previous binaries and units back, start, wait for `/healthz`, verify |
 | Newer schema (the upgrade applied a migration the previous server does not know, so it would refuse to start) | it names the backup taken just before the upgrade and what is lost: everything written since that backup, with the count of submissions and runs, plus sign-ins, drafts, clarifications and settings. It also counts the accounts erased with `podium-server forget-user` since that backup: the restore brings their data back, so after the rollback it writes the forget-user commands to run again to `/var/tmp/podium-rollback-forget-<time>.txt` (root only, since it holds addresses) and prints the name. You type `ROLLBACK` to go on. The backup is restored into a scratch folder and checked by the previous binary; the current database folder is kept as `db.before-rollback-<time>` (the nightly backup deletes it after `PODIUM_BACKUP_KEEP_DAYS`, 14 by default); the backup goes in place (folder group podium, mode 2770, files 660, so Litestream can write), missing test files are copied back, the previous binaries start, Litestream starts a new history |
 
-Both cases are rehearsed on the VM once in P0 and once before each schema-changing release (`docs/RUNBOOK.md`, "Proving the safety net").
+Both cases are rehearsed on the VM once in P0 and once before each schema-changing release (`docs/RUNBOOK.md`, "Proving the safety net"). Not yet proven on the VM: the P0 drill has not run.
 
 ### Older upgrade notes
 
@@ -842,4 +844,4 @@ sudo $R litestream /var/tmp/restore                             # newest from th
 sudo $R litestream-at 2026-10-18T14:30:00Z /var/tmp/restore     # the bucket, at a moment
 ```
 
-The Litestream forms take the test files from `/var/backups/podium/latest/tests` unless a third argument names another folder. Putting a restored copy in place of the live data is in `docs/RUNBOOK.md`, "Restoring from a backup".
+The Litestream forms take the test files from `/var/backups/podium/latest/tests` unless a third argument names another folder. `LITESTREAM_CONFIG` and `LITESTREAM_ENV` name another Litestream configuration and environment file than `/etc/litestream.yml` and `/etc/podium/litestream.env`, for a restore on a machine laid out differently; never set them on the VM. Putting a restored copy in place of the live data is in `docs/RUNBOOK.md`, "Restoring from a backup".

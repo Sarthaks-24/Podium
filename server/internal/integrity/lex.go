@@ -2,7 +2,13 @@
 // (cache/v1/integrity-plan.md, decision D49): similar code by winnowing
 // normalised tokens, identical wrong answers, hard-coded expected outputs,
 // and probing. It produces evidence for a person to review, never a
-// verdict: no AI-likelihood score, no automatic penalty.
+// verdict: no AI-likelihood score, no automatic penalty. It also runs the
+// review itself: cases from signals or from one submission (manual review
+// and private notes), the reply and decision clocks, outcomes proposed by
+// one reviewer and confirmed by a second, appeals, the record view log,
+// and the organisers' rating with the Standing band students see (D110).
+// Nothing here changes a score except a confirmed zero for a problem,
+// which contests applies to the board.
 package integrity
 
 import (

@@ -150,5 +150,53 @@ else
   echo "skip: jq not installed, podium-check's judge rule not run"
 fi
 
+# The upgrade path (B6.2): the new MANIFEST's upgrades_from refuses an
+# older or unversioned install and a downgrade. Run in a subshell because
+# die exits.
+path_check() { # INSTALLED_MANIFEST_LINES NEW_VERSION UPGRADES_FROM
+  (
+    # Read by the functions eval'd below.
+    # shellcheck disable=SC2034
+    LIB=/usr/local/lib/podium
+    # shellcheck disable=SC2034
+    MANIFEST=$tmp/installed/MANIFEST
+    # shellcheck disable=SC2034
+    HERE=$tmp/new
+    rm -rf "$tmp/installed" "$tmp/new"
+    mkdir -p "$tmp/installed" "$tmp/new"
+    [[ -z $1 ]] || printf '%b' "$1" > "$tmp/installed/MANIFEST"
+    printf 'version=%s\nupgrades_from=%s\n' "$2" "$3" > "$tmp/new/MANIFEST"
+    die() { printf '%s\n' "$*"; exit 1; }
+    eval "$(grep '^manifest_get()' "$script")"
+    eval "$(grep -E '^(version_ge|is_release_version)\(\)' "$script")"
+    eval "$(fn installed_version)"
+    eval "$(fn check_upgrade_path)"
+    check_upgrade_path
+  )
+}
+if out=$(path_check 'release=podium-v1.3.0\nversion=v1.3.0\n' v2.0.0 v1.4.0); then
+  fail "an upgrade from v1.3.0 to a release that upgrades from v1.4.0 went on"
+elif [[ $out == *"runs v1.3.0"*"only from v1.4.0"* ]]; then
+  pass "an upgrade from v1.3.0 is refused when the release upgrades from v1.4.0"
+else
+  fail "unexpected refusal: $out"
+fi
+if out=$(path_check 'release=podium-v1.4.0\nversion=v1.4.0\n' v2.0.0 v1.4.0); then pass "an upgrade from the oldest allowed release goes on"; else fail "an allowed upgrade was refused: $out"; fi
+if out=$(path_check 'release=podium-v1.0.0\n' v1.1.0 v1.0.0); then pass "a hand-built v1.0.0 (no version line) is read from its folder name"; else fail "v1.0.0 by folder name was refused: $out"; fi
+if out=$(path_check '' v1.5.0 v1.5.0); then
+  fail "an upgrade over an unversioned install went on"
+elif [[ $out == *"cannot tell which release is installed"* ]]; then
+  pass "an upgrade over an unversioned install is refused"
+else
+  fail "unexpected refusal: $out"
+fi
+if out=$(path_check 'version=v1.5.1\n' v1.5.0 v1.5.0); then
+  fail "a downgrade went on"
+elif [[ $out == *"older than the installed"*"rollback"* ]]; then
+  pass "a downgrade is refused and names rollback"
+else
+  fail "unexpected refusal: $out"
+fi
+
 if (( fails > 0 )); then echo "$fails install.sh check(s) failed"; exit 1; fi
 echo "install.sh checks passed"
