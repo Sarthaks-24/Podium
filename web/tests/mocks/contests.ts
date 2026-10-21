@@ -585,6 +585,12 @@ export async function mockApi(page: Page, options: Options = {}) {
       if (path === '/api/admin/contests/4/problems' && method === 'PUT') {
         const body = req.postDataJSON() as { problem_id: number; label: string; ai_reason?: string }[];
         state.problemPuts.push(body);
+        // contests/store.go (C2-014): a published contest that showed hidden tests keeps its problems.
+        const dropped = state.adminProblems.find((p) => !body.some((b) => b.problem_id === p.problem_id));
+        if (options.ungraded && options.published !== false && phase !== 'upcoming' && dropped) {
+          const why = `Problem ${dropped.label} stays in this contest: students have seen its hidden tests here, in practice or while the contest was ungraded, and the problem bank shows that from this contest.`;
+          return apiError(route, 400, 'bad_request', why, { fields: { problems: why } });
+        }
         const unconfirmed = body.filter((b) => state.aiGate && b.problem_id === 12 && (b.ai_reason ?? '').length < 10);
         if (unconfirmed.length > 0) {
           return apiError(route, 409, 'ai_unconfirmed', `Problem ${unconfirmed[0].label} came from the AI wizard and no person has written a solution for it.`, {

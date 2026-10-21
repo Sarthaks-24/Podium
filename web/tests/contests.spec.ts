@@ -463,6 +463,18 @@ test('grading back on after an ungraded start asks first (C2-014)', async ({ pag
   await expect.poll(() => api.settingsPuts.at(-1)).toMatchObject({ graded: true, confirm_graded: true });
 });
 
+test("a problem whose hidden tests were shown stays, and the editor says why (C2-014)", async ({ page }) => {
+  const api = await mockApi(page, { who: 'admin', phase: 'during', ungraded: true });
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto('/admin/contests/4');
+  await page.getByRole('button', { name: 'Remove A plus B' }).click();
+  await page.getByRole('dialog', { name: /^Remove problem A\?$/ }).getByRole('button', { name: 'Remove problem' }).click();
+  await expect(page.getByRole('alert').filter({ hasText: 'Problem A stays in this contest' })).toContainText('students have seen its hidden tests here');
+  await expect.poll(() => api.problemPuts.length).toBe(1);
+  // The list goes back to what the server holds.
+  await expect(page.getByLabel('Letter for A plus B')).toHaveValue('A');
+});
+
 test('the editor shows field errors, picks problems and previews a roster', async ({ page }) => {
   const api = await mockApi(page, { who: 'admin', phase: 'during' });
   await page.setViewportSize({ width: 1440, height: 900 });
