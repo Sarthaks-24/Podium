@@ -17,7 +17,7 @@ Nothing below is tagged or deployed. The v2 phases were planned as the releases 
 - A case shared during a student's live contest stays hidden until it ends, even when cleared first. A reviewer never sees signals, notes or rating lines of a case they are a student of. A co-organiser whose site role is student no longer reads extension reasons or the held reveal's full board. A renamed contest's old web path redirects only when signed in.
 - Proposals, pin updates, the rating rollover and the results notice re-check what they read inside their write; the class view's most failed test ignores skipped tests; the feed shows no note count on a reviewer's own submissions; the term rollover label refuses tabs and hidden characters; new `extension` rows in the contest audit name the student by id only, without the email.
 
-### v2 P6, frontend (2026-10-21)
+#### Frontend (2026-10-21)
 
 - A student's first load no longer carries the organiser screens: every admin route loads on first visit. The entry script and its preloads fell from 675 kB to 332 kB (211 kB to 112 kB gzipped); CI fails when they pass 120 kB gzipped or the stylesheets 16 kB (F8.1, F8.3).
 - KaTeX and its stylesheet load only when a text holds maths; until then a formula reads as its TeX source. Statement images load lazily. The 500 face and Fragment Mono are preloaded with 400 and 600 (F8.2, D91).

@@ -784,7 +784,7 @@ What each decision of the v2 plan means for the people who use podium, as built.
 | D88 Workspace changes between contests | Workspace behaviour changes go live in a gap between contests, announced in the next contest's description (for the whole release, under D236) |
 | D89 v1 bugs first | Public clarification answers reach every student; the console filters "Waiting or judging" and "Judge error" |
 | D90 Frontend only, except progress | None for users |
-| D91 Preload the 500 weight | Buttons and links keep their weight from the first paint once the 500 face is preloaded (P6 item F8.2, frontend track) |
+| D91 Preload the 500 weight | Buttons and links keep their weight from the first paint: the 500 face and Fragment Mono are preloaded with 400 and 600 (P6 F8.2) |
 | D92 One progress line on Your contests | After a contest ends, Home shows one line with the points so far and a link to "Your progress" |
 | D93 Who sees progress | A student sees their own; owners and admins see any student's; co-organisers and the public see none |
 | D94 No comparison on the progress page | No class median, percentile or classmates on a student's own progress (the organisers' student page has the median) |
