@@ -392,31 +392,32 @@ test("a draft another account left on this device is never shown or saved", asyn
   const left = await page.evaluate(() => Object.keys(localStorage).filter((k) => k.startsWith('podium-draft:')));
   expect(left.every((k) => k.startsWith('podium-draft:2:'))).toBe(true);
   await page.getByRole('heading', { level: 1 }).click();
-  await page.waitForTimeout(500);
-  expect(api.draftPuts.filter((b) => String(b.source).includes('student nine') || String(b.source).includes('old shape'))).toEqual([]);
 
   // Signing out removes this account's mirror as well.
   await page.locator('.cm-content').click();
   await page.keyboard.type('// mine');
-  await page.waitForTimeout(600);
-  expect(await page.evaluate(() => Object.keys(localStorage).some((k) => k.startsWith('podium-draft:2:')))).toBe(true);
+  await expect.poll(() => page.evaluate(() => Object.keys(localStorage).some((k) => k.startsWith('podium-draft:2:')))).toBe(true);
   await page.getByRole('button', { name: 'Arjun Mehta' }).click();
   await page.getByRole('button', { name: 'Sign out' }).click();
   await expect(page).toHaveURL(/\/signin/);
   expect(await page.evaluate(() => Object.keys(localStorage).filter((k) => k.startsWith('podium-draft:')))).toEqual([]);
   // Sign out waited for the draft save first (N2, audit 01-9).
   expect(api.draftPuts.some((b) => String(b.source).includes('// mine'))).toBe(true);
+  // Saves happened, and none carried the other student's code.
+  expect(api.draftPuts.filter((b) => String(b.source).includes('student nine') || String(b.source).includes('old shape'))).toEqual([]);
 });
 
 test('a page whose live updates moved to another tab stops and can resume', async ({ page }) => {
   const api = await mockApi(page);
+  // Fake timers, so "no reconnect" is checked over a minute of page time, not a guessed real wait.
+  await page.clock.install();
   await page.setViewportSize({ width: 1440, height: 900 });
   await openWorkspace(page);
   api.stream.push({ type: 'replaced', data: {} });
   const notice = page.getByText('This page stopped live updates because Podium is open in another tab or window.');
   await expect(notice).toBeVisible();
   const after = api.connections;
-  await page.waitForTimeout(1500);
+  await page.clock.fastForward(60_000);
   expect(api.connections, 'no reconnect after replaced').toBe(after);
   await page.screenshot({ path: `${shots()}workspace-replaced-1440-light.png` });
 

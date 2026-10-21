@@ -215,7 +215,9 @@ test('exam mode shows only "Submitted"', async ({ page }) => {
   // Even if a full result slipped through, exam mode shows nothing more.
   api.stream.push({ type: 'submission', data: hidden(id, 11) });
   api.stream.push({ type: 'submission', data: submission(id, 11, 'done', 40) });
-  await page.waitForTimeout(1500);
+  // Both events were delivered (the mock sends one per connection) before checking that nothing more shows.
+  await expect.poll(() => api.stream.length, { timeout: 15_000 }).toBe(0);
+  await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => resolve(null))));
   await expect(result.getByText(/Partial|Wrong answer|Accepted|40 of 100/)).toHaveCount(0);
   await expect(result.locator('.strip')).toHaveCount(0);
   await expect(page.locator('[data-announcer="polite"]')).toHaveText('Submitted.');
