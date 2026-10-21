@@ -150,8 +150,13 @@ test.describe('your progress', () => {
     await expect(page.getByText('The page the student sees')).toBeVisible();
     await expect(page.getByRole('link', { name: 'Week 6 contest' })).toHaveAttribute('href', '/admin/contests/6/results');
     await expect(page.getByRole('region', { name: 'Practise next' }).getByRole('link', { name: 'Practise' })).toHaveCount(0);
+    // The trail of the sibling Student and Record pages (C2-058).
+    const trail = page.getByRole('navigation', { name: 'Breadcrumb' });
+    await expect(trail.getByRole('link', { name: 'Students' })).toHaveAttribute('href', '/admin/students');
+    await expect(trail.getByRole('link', { name: 'Asha Rao' })).toHaveAttribute('href', '/admin/students/7');
     await page.goto('/admin/users/99/progress');
     await expect(page.getByText('There is no account with that number.')).toBeVisible();
+    await expect(page.getByRole('link', { name: 'Go to the students.' })).toHaveAttribute('href', '/admin/students');
   });
 
   test('a student is forbidden from the organiser route', async ({ page }) => {

@@ -152,6 +152,13 @@
   <PageHeader
     {title}
     back={organiser ? null : { href: '/', label: 'Your contests' }}
+    crumbs={organiser
+      ? [
+          { label: 'Students', href: '/admin/students' },
+          ...(data ? [{ label: data.user.name || 'Student', href: `/admin/students/${encodeURIComponent(userId)}` }] : []),
+          { label: 'Progress' },
+        ]
+      : undefined}
     lead={organiser
       ? 'The page the student sees, with their final results. Only owners and admins can open it.'
       : 'Your final results across the contests you took part in. Only you and the organisers see this page.'}
@@ -164,7 +171,7 @@
   {:else if loadState === 'forbidden'}
     <PageState kind="forbidden" message="Only owners and admins can see a student's progress." />
   {:else if loadState === 'missing'}
-    <PageState kind="missing" message="There is no account with that number." parent={{ href: '/admin/contests', label: 'Contests' }} />
+    <PageState kind="missing" message="There is no account with that number." parent={{ href: '/admin/students', label: 'Go to the students.' }} />
   {:else if data && hidden}
     <section class="panel hidden-note" aria-labelledby="hidden-title">
       <h2 id="hidden-title">Your progress is hidden</h2>
