@@ -106,7 +106,7 @@ describe('web source guardrails', () => {
     const px = components
       .filter(([, text]) => /(outline(-offset)?|border(-[a-z-]+)?|text-decoration-thickness|text-underline-offset)\s*:[^;]*\d+px/.test(text))
       .map(([p]) => p);
-    const small = components.filter(([, text]) => /\n  \.small \{\n    font-size: var\(--fs-0\);\n  \}/.test(text)).map(([p]) => p);
+    const small = components.filter(([, text]) => /\n {2}\.small \{\n {4}font-size: var\(--fs-0\);\n {2}\}/.test(text)).map(([p]) => p);
     expect({ measure, px, small }).toEqual({ measure: [], px: [], small: [] });
   });
 
