@@ -66,7 +66,7 @@
     event.preventDefault();
     refusal = '';
     if (!check()) {
-      document.querySelector<HTMLElement>(`#${uid} :is([aria-invalid="true"], [data-invalid="true"] input)`)?.focus();
+      void focusFirstInvalid(`#${uid}`);
       return;
     }
     if (upheld === 'yes') confirming = true;

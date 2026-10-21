@@ -1,6 +1,7 @@
 /**
- * Keeps focus on the page heading when a screen swaps its loading view for
- * the loaded one.
+ * Focus helpers. keepHeadingFocus() keeps focus on the page heading when a
+ * screen swaps its loading view for the loaded one; focusFirstInvalid()
+ * takes focus to the first field with an error.
  *
  * After a client-side navigation the shell moves focus to the new page's
  * h1 (App.svelte). A screen that loads data first shows a loading h1, then
@@ -25,12 +26,14 @@ export function keepHeadingFocus(): () => Promise<void> {
 }
 
 /**
- * After the next render, focuses the first control under `scope` (a CSS
- * selector) that is marked invalid, so an error the server returned moves
- * focus the way a check in the page does (X7). A group marked with
- * data-invalid="true" gives focus to its first input.
+ * After the next render, focuses the first control marked invalid inside
+ * `scope` (a selector for a form, or the element itself, such as a
+ * dialog), so an error the server returned moves focus the way a check in
+ * the page does (X7). A group marked data-invalid="true" gives focus to its
+ * first input.
  */
-export async function focusFirstInvalid(scope: string): Promise<void> {
+export async function focusFirstInvalid(scope: string | ParentNode | null | undefined): Promise<void> {
   await tick();
-  document.querySelector<HTMLElement>(`${scope} :is([aria-invalid="true"], [data-invalid="true"] input)`)?.focus();
+  const root = typeof scope === 'string' ? document.querySelector(scope) : scope;
+  root?.querySelector<HTMLElement>(':is([aria-invalid="true"], [data-invalid="true"] input)')?.focus();
 }

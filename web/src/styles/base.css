@@ -158,7 +158,10 @@ a:hover {
 /* Focus is always visible; the ring is a shadow so it follows the radius.
    The transparent outline becomes visible in forced-colors mode, where
    shadows are removed. */
-:focus-visible {
+:focus-visible,
+/* Tab reaches the calendar button inside a date or time input, where the
+   input matches neither :focus nor :focus-visible (final audit). */
+.input:is([type='date'], [type='datetime-local'], [type='time']):focus-within {
   outline: 2px solid transparent;
   outline-offset: 2px;
   box-shadow: var(--focus);

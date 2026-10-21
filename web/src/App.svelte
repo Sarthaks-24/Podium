@@ -57,6 +57,7 @@
   import { noticesLabel } from './lib/notifications';
   import { isPlainKey, isTypingTarget } from './lib/shortcuts';
   import { safeNext } from './lib/signin';
+  import { publishHeight } from './lib/publishHeight';
   import { PRIVACY_LINKED } from './lib/site';
   import { showToast } from './lib/toast.svelte';
   import ContestPage from './routes/ContestPage.svelte';
@@ -74,7 +75,6 @@
 
   let menuOpen = $state(false);
   let menuButton: HTMLButtonElement | undefined = $state();
-  let header: HTMLElement | undefined = $state();
 
   // D112: "The site was updated at 14:02", once per update, for students.
   let siteUpdate = $state<number | null>(null);
@@ -85,20 +85,6 @@
       siteUpdate = at;
       markUpdateSeen(at);
     }
-  });
-
-  // The header's real height (testing banner and wrapped rows included), so
-  // the workspace can fill the rest of the window (audit 2026-10-20 S2).
-  $effect(() => {
-    const el = header;
-    if (!el || typeof ResizeObserver === 'undefined') return;
-    const root = document.documentElement;
-    const ro = new ResizeObserver(() => root.style.setProperty('--shell-head', `${el.offsetHeight}px`));
-    ro.observe(el);
-    return () => {
-      ro.disconnect();
-      root.style.removeProperty('--shell-head');
-    };
   });
 
   const match = $derived(matchRoute(router.path));
@@ -260,13 +246,13 @@
   const loadedScreens = $state<Record<string, Screen>>({});
   let failedScreen = $state<string | null>(null);
   const lazyName = $derived(Object.hasOwn(lazyScreens, route.name) ? route.name : null);
-  /** The lazily loaded screen's props, and the key that remounts it when they change. */
-  const lazyView = $derived.by((): { props: ScreenProps; key: string } => {
+  /** The lazily loaded screen's props; a change of any remounts it. */
+  const lazyProps = $derived.by((): ScreenProps => {
     const p = match.params;
-    if (route.name === 'integrity-pair') return { props: { id: p.id, signal: p.signal }, key: `${p.id}/${p.signal}` };
-    if (route.name === 'integrity-case') return { props: { id: p.case }, key: p.case ?? '' };
-    if (route.name === 'progress' || route.name === 'admin-progress') return { props: { userId: p.id ?? '' }, key: p.id ?? '' };
-    return { props: p.id === undefined ? {} : { id: p.id }, key: p.id ?? '' };
+    if (route.name === 'integrity-pair') return { id: p.id, signal: p.signal };
+    if (route.name === 'integrity-case') return { id: p.case };
+    if (route.name === 'progress' || route.name === 'admin-progress') return { userId: p.id ?? '' };
+    return p.id === undefined ? {} : { id: p.id };
   });
   $effect(() => {
     const name = lazyName;
@@ -343,7 +329,8 @@
 <div class="page">
   <a class="skip" href="#main">Skip to content</a>
 
-  <header class="bar" bind:this={header}>
+  <!-- Its real height, testing banner and wrapped rows included, lets the workspace fill the rest of the window (audit 2026-10-20 S2). -->
+  <header class="bar" use:publishHeight={'--shell-head'}>
     {#if runMode.mode === 'testing'}
       <p class="mode-banner" role="note">
         Testing mode: sign-in is off and anyone at this machine can sign in as anyone. Do not use it for a real contest.
@@ -434,8 +421,8 @@
     {:else if lazyName !== null}
       {@const Screen = loadedScreens[lazyName]}
       {#if Screen}
-        {#key `${lazyName}/${lazyView.key}`}
-          <Screen {...lazyView.props} />
+        {#key `${lazyName}/${Object.values(lazyProps).join('/')}`}
+          <Screen {...lazyProps} />
         {/key}
       {:else if failedScreen === lazyName}
         <p class="banner banner-error" role="alert">This page could not load. Reload to try again.</p>

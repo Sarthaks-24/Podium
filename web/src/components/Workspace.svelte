@@ -122,6 +122,7 @@
   } from '../lib/drafts';
   import { polite } from '../lib/announce.svelte';
   import { keepHeadingFocus } from '../lib/focus';
+  import { publishHeight } from '../lib/publishHeight';
   import { setTitle } from '../lib/head';
   import { FLUSH_MS, IntegrityRecorder } from '../lib/integrity';
   import { beforeSignOut, guardSignOut, session } from '../lib/session.svelte';
@@ -256,8 +257,6 @@
   // Layout.
   let layout = $state<'wide' | 'tablet' | 'phone'>('wide');
   let tab = $state<'problem' | 'code' | 'result'>('problem');
-  /** The sticky strip under 1024 px (F7.2); its height sets the page's scroll padding (X3). */
-  let strip: HTMLDivElement | undefined = $state();
 
   // The result panel under the editor from 1024 px (F7.5, D87): its share of
   // the code column and whether it is hidden, kept on this device.
@@ -903,19 +902,6 @@
     return guardSignOut('Your draft is saved first. Your time keeps running while you are signed out.');
   });
 
-  // X3: while the strip sticks to the top, focusing or jumping to anything leaves room for it (base.css).
-  $effect(() => {
-    const el = strip;
-    if (!el || typeof ResizeObserver === 'undefined') return;
-    const root = document.documentElement;
-    const ro = new ResizeObserver(() => root.style.setProperty('--sticky-bar-h', `${el.offsetHeight}px`));
-    ro.observe(el);
-    return () => {
-      ro.disconnect();
-      root.style.removeProperty('--sticky-bar-h');
-    };
-  });
-
   onMount(() => {
     const wide = media('laptop');
     const tablet = media('tablet');
@@ -1018,8 +1004,9 @@
 
     {#if layout !== 'wide'}
       <!-- F7.2 (audit S7): under 1024 px one strip sticks to the top of the window: the clock and
-           the previous and next problem, then the tabs and Submit, so Submit is never a tab away. -->
-      <div class="strip" bind:this={strip} data-sticky-bar>
+           the previous and next problem, then the tabs and Submit, so Submit is never a tab away.
+           Its height sets the page's scroll padding while it sticks (X3, base.css). -->
+      <div class="strip" data-sticky-bar use:publishHeight={'--sticky-bar-h'}>
         {#if clock || rail}
           <div class="strip-top">
             {#if clock}<div class="strip-clock">{@render clock(true)}</div>{/if}

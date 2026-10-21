@@ -17,6 +17,7 @@
 -->
 <script lang="ts">
   import { onMount, tick } from 'svelte';
+  import { focusFirstInvalid } from '../../lib/focus';
   import { aiPaths, checkKeyForm, initialForm, isListed, keyExpired, needsKey, saveKey, type KeyForm, type KeyStatus, type ModelList, type ProviderOption } from '../../lib/ai';
   import { errorText, getJSON, sendJSON } from '../../lib/api';
   import { session } from '../../lib/session.svelte';
@@ -111,8 +112,7 @@
     fields = checkKeyForm(form, holdsKey ? { has_key: true } : undefined);
     formError = '';
     if (Object.keys(fields).length > 0) {
-      await tick();
-      document.getElementById(fid('key-form'))?.querySelector<HTMLElement>('[aria-invalid="true"]')?.focus();
+      await focusFirstInvalid(document.getElementById(fid('key-form')));
       return;
     }
     const savingModelOnly = saveLabel === 'Save model';

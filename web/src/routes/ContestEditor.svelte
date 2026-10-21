@@ -54,7 +54,7 @@
     type ContestSettings,
     type RosterRow,
   } from '../lib/contests';
-  import { focusFirstInvalid as focusInvalidIn, keepHeadingFocus } from '../lib/focus';
+  import { focusFirstInvalid, keepHeadingFocus } from '../lib/focus';
   import { countOf, formatDateTime } from '../lib/format';
   import { setTitle } from '../lib/head';
   import { routeTitle } from '../lib/routing';
@@ -290,7 +290,7 @@
     }
     if (Object.keys(local).length > 0) {
       fields = local;
-      await focusFirstInvalid();
+      await revealFirstInvalid();
       return null;
     }
     return {
@@ -307,7 +307,7 @@
   }
 
   /** Opens the folded rules when the error is in them, then focuses the first marked field. */
-  async function focusFirstInvalid() {
+  async function revealFirstInvalid() {
     const rules = document.getElementById('rules') as HTMLDetailsElement | null;
     if (rules && Object.keys(fields).some((k) => document.getElementById(`f-${k}`)?.closest('#rules') || k === 'languages')) rules.open = true;
     await tick();
@@ -373,7 +373,7 @@
       } else {
         formError = errorText(e);
       }
-      if (Object.keys(fields).length > 0) await focusFirstInvalid();
+      if (Object.keys(fields).length > 0) await revealFirstInvalid();
       else if (publishError) {
         await tick();
         document.getElementById('publish-error')?.focus();
@@ -689,7 +689,7 @@
     else if (starts === null) [cloneField, cloneError] = ['start', 'Enter the start date and time.'];
     else if (ends === null || ends <= starts) [cloneField, cloneError] = ['end', 'Enter an end after the start.'];
     if (cloneField !== null) {
-      await focusInvalidIn('#clone-form');
+      await focusFirstInvalid('#clone-form');
       return;
     }
     try {
@@ -702,7 +702,7 @@
       cloneError = e instanceof ApiError ? (Object.values(e.fields)[0] ?? e.message) : errorText(e);
       const key = e instanceof ApiError ? Object.keys(e.fields)[0] : undefined;
       cloneField = key === 'slug' ? 'slug' : key === 'starts_at' ? 'start' : key === 'ends_at' ? 'end' : null;
-      if (cloneField !== null) await focusInvalidIn('#clone-form');
+      if (cloneField !== null) await focusFirstInvalid('#clone-form');
     }
   }
 

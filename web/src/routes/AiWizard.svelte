@@ -253,8 +253,7 @@
     const built = wizardRequest(mode, brief, text);
     if (!built.ok) {
       fields = built.fields;
-      await tick();
-      document.querySelector<HTMLElement>('.wizard-form [aria-invalid="true"]')?.focus();
+      await focusFirstInvalid('.wizard-form');
       return;
     }
     fields = {};

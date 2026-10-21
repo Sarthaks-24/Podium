@@ -191,6 +191,8 @@ export async function renderMath(root: ParentNode): Promise<void> {
     return;
   }
   for (const el of placeholders) {
+    // A newer render while KaTeX loaded replaced this one.
+    if (!root.contains(el)) continue;
     const tex = el.getAttribute('data-tex') ?? '';
     const displayMode = el.classList.contains('math-block') || el.classList.contains('math-display');
     katex.render(tex, el, { throwOnError: false, trust: false, displayMode, output: 'htmlAndMathml' });

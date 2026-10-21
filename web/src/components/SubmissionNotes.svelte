@@ -21,6 +21,7 @@
 -->
 <script lang="ts">
   import { tick } from 'svelte';
+  import { focusFirstInvalid } from '../lib/focus';
   import CodeView from './CodeView.svelte';
   import MonoDigits from './MonoDigits.svelte';
   import { ApiError, errorText, getJSON, sendJSON } from '../lib/api';
@@ -114,8 +115,7 @@
     const parsed = parseLines(lines);
     linesError = 'error' in parsed ? parsed.error : '';
     if (textError || linesError) {
-      await tick();
-      dialog?.querySelector<HTMLElement>('[aria-invalid="true"]')?.focus();
+      await focusFirstInvalid(dialog);
       return;
     }
     busy = true;
@@ -133,8 +133,7 @@
       if (e instanceof ApiError && (e.fields.text || e.fields.lines)) {
         textError = e.fields.text ?? '';
         linesError = e.fields.lines ?? '';
-        await tick();
-        dialog?.querySelector<HTMLElement>('[aria-invalid="true"]')?.focus();
+        await focusFirstInvalid(dialog);
       } else {
         sendError = errorText(e);
       }

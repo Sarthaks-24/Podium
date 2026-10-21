@@ -188,15 +188,6 @@
   border-color: var(--bad);
 }
 
-/* Tab reaches the calendar button inside a date or time input, where the
-   input itself matches neither :focus nor :focus-visible, so the ring
-   follows :focus-within (final audit 2026-10-21). */
-.input:is([type='date'], [type='datetime-local'], [type='time']):focus-within {
-  outline: 2px solid transparent;
-  outline-offset: 2px;
-  box-shadow: var(--focus);
-}
-
 /* A disclosure's summary is a control: at least 24 px tall (WCAG 2.5.8). */
 summary {
   min-height: var(--space-5);

@@ -48,7 +48,7 @@
   import AppealRuling from '../components/students/AppealRuling.svelte';
   import { ApiError, errorText, getJSON, sendJSON } from '../lib/api';
   import type { AdminContest } from '../lib/contests';
-  import { keepHeadingFocus } from '../lib/focus';
+  import { focusFirstInvalid, keepHeadingFocus } from '../lib/focus';
   import { formatDateTime } from '../lib/format';
   import { setTitle } from '../lib/head';
   import { routeTitle } from '../lib/routing';
@@ -325,8 +325,7 @@
     };
     const noteOk = await checkNote();
     if (Object.values(proposalErrors).some((x) => x !== '')) {
-      await tick();
-      document.querySelector<HTMLElement>('#proposal-form :is([aria-invalid="true"], [data-invalid="true"] input)')?.focus();
+      await focusFirstInvalid('#proposal-form');
       return;
     }
     if (!noteOk) return;

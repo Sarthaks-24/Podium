@@ -13,14 +13,14 @@
   motion is requested. Takes no props.
 -->
 <script lang="ts">
-  import type { TransitionConfig } from 'svelte/transition';
+  import { prefersReducedMotion } from 'svelte/motion';
+  import { fade } from 'svelte/transition';
   import { dismissToast, toasts } from '../lib/toast.svelte';
 
-  /** The exit: an opacity fade at --dur-fast, none under reduced motion. */
-  function leave(node: HTMLElement): TransitionConfig {
-    const reduced = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
+  /** The exit: a fade at --dur-fast (a value in ms in tokens.css), none under reduced motion. */
+  function leave(node: HTMLElement) {
     const ms = Number.parseFloat(getComputedStyle(node).getPropertyValue('--dur-fast'));
-    return { duration: reduced || !Number.isFinite(ms) ? 0 : ms, css: (t) => `opacity: ${t}` };
+    return fade(node, { duration: prefersReducedMotion.current || !Number.isFinite(ms) ? 0 : ms });
   }
 </script>
 

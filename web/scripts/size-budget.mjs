@@ -35,9 +35,10 @@ for (const kind of ['js', 'css']) {
   let gz = 0;
   for (const p of paths) {
     const bytes = readFileSync(new URL(p.slice(1), dist));
+    const size = gzipSync(bytes).length;
     raw += bytes.length;
-    gz += gzipSync(bytes).length;
-    console.log(`  ${p}  ${(bytes.length / 1000).toFixed(2)} kB`);
+    gz += size;
+    console.log(`  ${p}  ${(size / 1000).toFixed(2)} kB gzip`);
   }
   const over = gz / 1000 > BUDGET_KB[kind];
   failed ||= over;

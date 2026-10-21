@@ -21,6 +21,7 @@
 -->
 <script lang="ts">
   import Badge from '../Badge.svelte';
+  import { publishHeight } from '../../lib/publishHeight';
 
   interface Props {
     status: { tone: string; text: string } | null;
@@ -38,22 +39,9 @@
   }
 
   let { status, aiDraft, dirty, fieldCount, jumps, saving, busy, validateLabel, validatePrimary, result, onvalidate, onreport }: Props = $props();
-
-  let bar: HTMLDivElement | undefined = $state();
-  $effect(() => {
-    const el = bar;
-    if (!el || typeof ResizeObserver === 'undefined') return;
-    const root = document.documentElement;
-    const ro = new ResizeObserver(() => root.style.setProperty('--sticky-bar-h', `${el.offsetHeight}px`));
-    ro.observe(el);
-    return () => {
-      ro.disconnect();
-      root.style.removeProperty('--sticky-bar-h');
-    };
-  });
 </script>
 
-<div class="action-bar" data-sticky-bar bind:this={bar}>
+<div class="action-bar" data-sticky-bar use:publishHeight={'--sticky-bar-h'}>
   <div class="bar-row">
     <div class="bar-status">
       {#if status}

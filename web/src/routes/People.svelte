@@ -51,6 +51,7 @@
   import PageState from '../components/PageState.svelte';
   import PageHeader from '../components/PageHeader.svelte';
   import { onMount, tick, untrack } from 'svelte';
+  import { focusFirstInvalid } from '../lib/focus';
   import ConfirmDialog from '../components/ConfirmDialog.svelte';
   import MonoDigits from '../components/MonoDigits.svelte';
   import Badge from '../components/Badge.svelte';
@@ -252,8 +253,7 @@
       if (handleSessionError(err)) return;
       if (err instanceof ApiError && Object.keys(err.fields).length > 0) {
         orgErrors = { ...err.fields };
-        await tick();
-        document.querySelector<HTMLElement>('#org-form [aria-invalid="true"]')?.focus();
+        await focusFirstInvalid('#org-form');
       } else {
         orgError = errorText(err);
       }

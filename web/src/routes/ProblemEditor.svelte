@@ -15,7 +15,8 @@
 <script lang="ts">
   import PageState from '../components/PageState.svelte';
   import PageHeader from '../components/PageHeader.svelte';
-  import { onMount, tick } from 'svelte';
+  import { onMount } from 'svelte';
+  import { focusFirstInvalid } from '../lib/focus';
   import ConfirmDialog from '../components/ConfirmDialog.svelte';
   import ValidationReport from '../components/ValidationReport.svelte';
   import { inputGenPending, inputGenReport, isAIDraft, type InputGeneration } from '../lib/ai';
@@ -357,11 +358,6 @@
     }
   }
 
-  async function focusFirstInvalid() {
-    await tick();
-    document.querySelector<HTMLElement>('.editor [aria-invalid="true"]')?.focus();
-  }
-
   /** Saves the working copy. Resolves to true when the server took it. */
   async function save(): Promise<boolean> {
     if (!draft) return false;
@@ -371,7 +367,7 @@
     if (!result.ok) {
       fields = result.fields;
       saveError = 'Some fields need attention. They are marked above.';
-      await focusFirstInvalid();
+      await focusFirstInvalid('.editor');
       return false;
     }
     saving = true;
@@ -390,7 +386,7 @@
       for (const [key, message] of Object.entries(raw)) next[fieldKey(key)] = message;
       fields = next;
       saveError = errorText(e);
-      if (Object.keys(next).length > 0) await focusFirstInvalid();
+      if (Object.keys(next).length > 0) await focusFirstInvalid('.editor');
       return false;
     } finally {
       saving = false;

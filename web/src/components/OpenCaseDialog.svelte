@@ -15,6 +15,7 @@
 -->
 <script lang="ts">
   import { tick } from 'svelte';
+  import { focusFirstInvalid } from '../lib/focus';
   import { ApiError, errorText, sendJSON } from '../lib/api';
   import {
     MAX_TITLE,
@@ -75,10 +76,6 @@
     if (!busy) onclose();
   }
 
-  async function focusInvalid() {
-    await tick();
-    dialog?.querySelector<HTMLElement>('[aria-invalid="true"]')?.focus();
-  }
 
   async function submit(event: SubmitEvent) {
     event.preventDefault();
@@ -86,7 +83,7 @@
     titleError = title.trim() === '' ? 'Give the case a title.' : [...title.trim()].length > MAX_TITLE ? `Keep the title to ${MAX_TITLE} characters.` : '';
     noteError = noteLength(note) < MIN_NOTE ? `Write a reason of at least ${MIN_NOTE} characters.` : '';
     if (titleError || noteError) {
-      await focusInvalid();
+      await focusFirstInvalid(dialog);
       return;
     }
     busy = true;
@@ -104,7 +101,7 @@
         titleError = e.fields.title ?? '';
         noteError = e.fields.note ?? '';
         if (!titleError && !noteError) error = e.message;
-        else void focusInvalid();
+        else void focusFirstInvalid(dialog);
       } else {
         error = errorText(e);
       }
