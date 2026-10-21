@@ -18,8 +18,8 @@ sudo ./install.sh
 | `packages` | g++, OpenJDK 21, Python 3, Node 22 (NodeSource repository), sqlite3, jq, rsync |
 | `isolate` | isolate from its upstream apt repository; mounts its box root `/var/lib/isolate` on a 1200 MB tmpfs (so files a program writes count against its memory limit); caps all sandboxes at 1100 MB through `isolate.slice`; enables `isolate.service`; makes the tuning below survive a reboot; runs `isolate-check-environment` |
 | `testlib` | `testlib.h` (release 0.9.41) into `/usr/local/include` for custom checkers. Downloaded from GitHub at a pinned commit and refused unless its SHA-256 matches the one in the script. Skipped when the installed file already matches. |
-| `users` | system users `podium` and `judge`; adds `judge` to group `isolate` (the isolate binary is executable only by that group) |
-| `dirs` | `/var/lib/podium/{db,tests}` (podium, 750), `/var/cache/podium-judge` (judge, 750), `/etc/podium`; creates `server.env` and `judge.env` from the examples if missing (root, 600), with the absolute VM paths for the database and tests |
+| `users` | system users `podium`, `judge` and `podium-backup` (Litestream, the B2 upload and the heartbeat, in group podium; D116); adds `judge` to group `isolate` (the isolate binary is executable only by that group) |
+| `dirs` | `/var/lib/podium` and `/var/lib/podium/tests` (podium, 750), `/var/lib/podium/db` (podium, group podium, 2770, so Litestream can write; the database files are 660), `/var/cache/podium-judge` (judge, 750), `/etc/podium`; creates `server.env` and `judge.env` from the examples if missing (root, 600), with the absolute VM paths for the database and tests |
 | `firewall` | `ufw`: inbound only ssh (the port sshd uses), 80 and 443 (TCP, and UDP for HTTP/3); ssh is allowed before the firewall is switched on. Warns when ssh still accepts passwords (see "Firewall and ssh") |
 | `app` | installs both binaries, their systemd units and the alert unit; starts the services only once `server.env` and `judge.env` have no placeholder values left (it names the ones that remain), then waits for `/healthz` and writes `/usr/local/lib/podium/MANIFEST` |
 | `swap` | 1 GB swap file, `vm.swappiness=10` |
@@ -724,18 +724,26 @@ Upgrading to M5 (AI wizard):
 3. Migration `0007_wizard.sql` adds the generator columns and the `input_generations` table, and widens the allowed job kinds by rewriting the `CREATE TABLE jobs` text with SQLite's `writable_schema` procedure (decision D52): a table rebuild would cascade-delete every job result, because foreign keys stay on during migrations. No row changes. To check afterwards: `sqlite3 /var/lib/podium/db/podium.db "PRAGMA integrity_check"` prints `ok`.
 4. To use the wizard, an admin adds a key in the web app (see "AI wizard keys"). Nothing goes in `server.env`.
 
-Upgrading to v1.2.0 (P2, schema change: slot S2 only):
-
-1. The judge protocol is now 3: install the release on the server and the judge together (`install.sh upgrade` does both). A v1.1.0 judge left running is refused with "judge protocol 3 needed, this judge speaks 2" and stops.
-2. Migrations `0010_revisions.sql` and `0011_site_audit.sql` only add tables and columns, and back-fill revision 1 of every problem and the pin of every contest. Before the slot, rehearse them on a copy: copy the newest nightly backup's `podium.db` (a consistent copy; never `cp` the live file) into a scratch folder, then run the new release's `podium-server migrate -db /tmp/p2/podium.db`, which applies the migrations to that file and runs `check` on it: it must end `revisions: ok` and `result: ok`. `migrate` refuses the file `PODIUM_DB_PATH` names. Rollback across these migrations is a restore (D68), rehearsed once on a copy.
-3. No new variables. A pin older than its problem's working copy becomes a "reconstructed" revision (tests only, statement not recorded); the console marks it.
-
 Upgrading to M7 (hardening):
 
 1. `sudo ./install.sh packages firewall app caddy litestream backup`, then `sudo systemctl restart podium-server podium-judge`. No migration. The `firewall` step closes every inbound port but ssh, 80 and 443; the `caddy` step rewrites the Caddyfile (admin API off, body limit). The server unit now sets `GOMEMLIMIT=220MiB`, and production refuses a `PODIUM_LISTEN` that is not loopback. The judge reads one new optional variable, `PODIUM_JUDGE_BLOB_CACHE_MB` (default 2048); add it to `judge.env` only to change the cap.
 2. Fill in `/etc/podium/litestream.env` (see "Litestream" and "Backups"), then `sudo systemctl restart podium-litestream`.
 3. Take the first nightly backup by hand: `sudo systemctl start podium-backup`.
 4. On the first start the server removes test files nothing refers to (see "Running a contest", "Unused test files"); the log says how many.
+
+Upgrading to v1.2.0 (P2, schema change: slot S2 only):
+
+1. The judge protocol is now 3: install the release on the server and the judge together (`install.sh upgrade` does both). A v1.1.0 judge left running is refused with "judge protocol 3 needed, this judge speaks 2" and stops.
+2. Migrations `0010_revisions.sql` and `0011_site_audit.sql` only add tables and columns, and back-fill revision 1 of every problem and the pin of every contest. Before the slot, rehearse them on a copy: copy the newest nightly backup's `podium.db` (a consistent copy; never `cp` the live file) into a scratch folder, then run the new release's `podium-server migrate -db /tmp/p2/podium.db`, which applies the migrations to that file and runs `check` on it: it must end `revisions: ok` and `result: ok`. `migrate` refuses the file `PODIUM_DB_PATH` names. Rollback across these migrations is a restore (D68), rehearsed once on a copy.
+3. No new variables. A pin older than its problem's working copy becomes a "reconstructed" revision (tests only, statement not recorded); the console marks it.
+
+Upgrading to the v2 release with P3 to P5 (migrations 0012, 0013 and 0014):
+
+1. Rehearse on a copy first ("Rehearsing a migration on a copy"): copy the newest nightly backup's `podium.db` into a podium-owned folder and run the new release's `podium-server migrate -db` on it; it must end `result: ok`.
+2. `0012_contact.sql` adds the contact messages, the kept standings and queue-health indexes, and drops `contest_problems.pinned_hash` (the contract step for 0010). It refuses with "contest_problems has pins without a revision" if any pin lost its revision; send that output to whoever maintains podium before going on.
+3. `0013_students.sql` adds cases from submissions, notes, notices, record views, the rating and its proposals, and the per-student contest summaries, and marks contests that ended more than a day before as already told their results are final.
+4. `0014_results_notice.sql` clears that mark for a contest an extension kept live past the upgrade, so its students are told once its results are final (council C1-049). It changes no columns.
+5. All three only add (0012 drops one column nobody reads since 0010). Rollback across them is a restore of the pre-upgrade backup, which `install.sh rollback` does (see "Rollback").
 
 ## Backups
 
@@ -808,7 +816,7 @@ Before the P0 restore drill Litestream had only been rehearsed against a local f
 
 ### Nightly backup
 
-`podium-backup.timer` runs `/usr/local/lib/podium/podium-backup` as user podium. Each run writes `/var/backups/podium/<UTC date and time>/` with:
+`podium-backup.timer` runs `/usr/local/lib/podium/podium-backup` as root, which splits the work between users podium and podium-backup (see "The bucket keys are out of the server's reach" above; the rsync copy runs as root). Each run writes `/var/backups/podium/<UTC date and time>/` with:
 
 - `podium.db`: an online copy (SQLite's backup API, safe while the server writes);
 - `tests/`: hard links to every test file and source (a real copy if `/var/backups` is on another filesystem);
