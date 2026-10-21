@@ -16,6 +16,8 @@ students and admins (browser)
 
 The design target is 700+ students in one contest on a VM with 2 GB of RAM. That constraint drives most choices below.
 
+Version labels in this file (v1.1.0 to v1.5.0) name the v2 phases P1 to P5 they were planned as; nothing is tagged yet, and the phases are proposed to ship as one release (D236, the owner's decision). "Decisions of the v2 plan" near the end lists what each v2 decision means for the people who use podium.
+
 ## Services
 
 | Service | Runs as | Responsibility |
@@ -32,9 +34,9 @@ Server packages (`server/internal`):
 | `config` | environment variables, run modes and the start-up validator |
 | `db` | SQLite and migrations |
 | `httpapi` | public routes and middleware, and the judge API handler on its own listener |
-| `webui` | the embedded web app |
-| `auth` | Google sign-in, sessions, roles, testing-mode sign-in |
-| `problems` | problem bank, pack format, content hash, validation rules and summary, output generation, generators and the generate inputs chain, AI drafts |
+| `webui` | the embedded web app, and the head, body blocks, 404 status, robots, sitemap and JSON-LD of public pages |
+| `auth` | Google sign-in, sessions, roles, testing-mode sign-in; the site audit, site settings, account lookup, the account side of the rollover and erasure |
+| `problems` | problem bank, pack format, content hash, validation rules and summary, output generation, generators and the generate inputs chain, AI drafts, revisions and their line diff |
 | `submissions` | runs, submissions, drafts, rate limits, scoring, what each viewer may see, integrity counts |
 | `events` | the server-sent event hub: streams per user, fan-out, slow clients dropped |
 | `jobs` | the one queue of judge work: leases, results, uploads, sweeps, change notifications |
@@ -42,8 +44,11 @@ Server packages (`server/internal`):
 | `judge` | sandbox driver, verdicts, built-in and testlib checkers |
 | `judge/calib` | host calibration and the hostile-program suite |
 | `worker` | the judge's claim loop, blob cache, compile cache, and the validate, run, submit, generate and generate_inputs jobs |
-| `contests` | schedules, windows, access, standings, clarifications, export, integrity retention |
-| `integrity` | integrity checks after a contest (lexers, winnowing, signals), the review cases and their retention |
+| `contests` | schedules, windows, access, standings, clarifications, export, integrity retention; the contest audit, slug history, pins by revision, queue health, board adjustments, per-student summaries and the term archive |
+| `integrity` | integrity checks after a contest (lexers, winnowing, signals), the review cases and their retention; manual review and notes, outcomes and the two-person rule, appeals, clocks, record views, the rating and Standing band |
+| `notifications` | each person's inbox: notices stored as a kind and ids, written as sentences at read time, held during the reader's live contest |
+| `retention` | how long each kind of data is kept (`periods.go`) and the daily job that deletes what is older |
+| `contact` | the signed-in contact form's messages and the organisers' inbox |
 | `ai` | the AI wizard's model side: the in-memory key store, the Anthropic, OpenAI and Gemini clients and the testing-mode fake, the problem schema and prompts, answer checks |
 | `buildinfo` | what a build is: version, commit, date (set by `make release`), schema and judge protocol, for `-version` and the release `MANIFEST` |
 
@@ -161,7 +166,7 @@ The wizard's schema is written once as JSON schema (`PackSchema`) and translated
 
 **One structured call.** Each provider makes one call per attempt; the Anthropic one streams (`Messages.NewStreaming`, accumulated). The answer's shape is enforced with structured outputs: `output_config.format` carries a JSON schema for the whole pack (statement, samples, subtasks with generator arguments and test counts, C++ reference, Python brute force, generator and validator, checker, limits, tags, difficulty) with `additionalProperties: false` everywhere. Lengths and ranges are not expressible there, so the server decodes strictly and then checks the wizard's rules (one to five samples, points adding up to 100, at most 30 planned tests) and the editor's own field rules on the draft the answer would become. A failing answer is sent back once with the list of reasons; a cut-off answer (`stop_reason` `max_tokens`) is retried once with a request for a shorter answer; a refusal (`stop_reason` `refusal`) is reported with its category and not retried.
 
-**Refusal fallbacks (D54).** For the models that accept it (Fable 5.1, Opus 5.5, Opus 5, Sonnet 5.5; a table of a feature, not a choice of model) requests carry the beta `server-side-fallback-2026-07-01` with `fallbacks: "default"`, so a request refused by the safety classifier for a reason that does not apply to a fallback model is answered by that model instead of failing (contest problems about "attacks" on a grid or "exploiting" a recurrence are ordinary). A mid-stream fallback restarts the text, and the client keeps only the fallback's answer. Haiku 5.5 has no fallback. The default model is Opus 5.5; the admin may choose Sonnet 5.5 or Haiku 5.5.
+**Refusal fallbacks (D54).** For the models that accept it (Fable 5.1, Opus 5.5, Opus 5, Sonnet 5.5; a table of a feature, not a choice of model) requests carry the beta `server-side-fallback-2026-07-01` with `fallbacks: "default"`, so a request refused by the safety classifier for a reason that does not apply to a fallback model is answered by that model instead of failing (contest problems about "attacks" on a grid or "exploiting" a recurrence are ordinary). A mid-stream fallback restarts the text, and the client keeps only the fallback's answer. Haiku 5.5 has no fallback. There is no default model: the admin picks one from the live list or types its id (D111).
 
 **Prompt injection.** The system prompt is fixed text. The brief or pasted text goes into the user message inside one `<brief>` or `<problem_text>` block, the system prompt says that everything inside it is data, and any tag in the data that could close the block early is defused. The worst a hostile text can do is make the model write a bad problem, which the checks, the judge and the admin's review catch: the model's code is never run on the server, only on the judge in isolate, like any setter's code.
 
@@ -308,7 +313,7 @@ Each row keeps the actor's email and role as they were. The actor rides on the r
 
 ### Slug history
 
-`slug_history` (0011, D65): renaming a published contest records its old slug (a draft has no links to keep). `GET /contests/<old>/...` and `GET /api/contests/<old>/...` answer `301` to the same path under the current slug, checked only after no contest has the slug; other methods are not redirected. No other contest may take a slug in the history, so an old link never lands on a different contest; a contest may take back its own.
+`slug_history` (0011, D65): renaming a published contest records its old slug (a draft has no links to keep). `GET /contests/<old>/...` and `GET /api/contests/<old>/...` answer `301` to the same path under the current slug, checked only after no contest has the slug and only for a signed-in visitor (a contest's current slug is contest data, and nothing before sign-in shows any); other methods are not redirected. A signed-out visitor gets the app, signs in, and the API path redirects. No other contest may take a slug in the history, so an old link never lands on a different contest; a contest may take back its own.
 
 ## Integrity
 
@@ -362,7 +367,7 @@ Migration `0013_students.sql` (expand only) adds the tables of the v2 students m
 - **Rating and Standing band (D110).** `student_rating` holds tenths (0 to 100, 100 when absent); every change goes through one function that clamps and writes `rating_history` (append only, 4 years) inside the caller's write transaction, so the write gate serialises concurrent changes. Causes: a confirmed outcome (5, 15, 25), a manual edit (a band-lowering one waits in `rating_proposals` for a second owner or admin), an upheld appeal (adds back the recorded change), and the semester rollover (`podium-server semester-rollover LABEL`, 5 per student with no outcome since the previous rollover, once per label in `rating_rollovers`). Students see only the band and the dated lines. A test parses the standings, export, summary, notices and progress code and fails if any names `rating.go` or queries a rating table: the rating is shown, never used.
 - **Record views (D97).** Every read of a record page, a case or a submission's notes by someone other than the student adds a `record_views` row (append only, 2 years); the owner reads it with the per-reviewer oversight counts.
 - **The student screens (web, v1.4.0 frontend).** "Your progress" (`/progress`, loaded on first visit only so it never weighs on the contest bundle) draws from the progress response alone: the web app recomputes the topic, difficulty, loss and retry lists only when the server leaves one out (`lib/progress.ts`), and it never asks for progress about a contest whose board is still frozen or held. The chart is inline SVG drawn at the measured width with a table view as the keyboard path; no chart library. Notices (`/notices`) and the unread count come from `GET /api/me` and the inbox list, read again after a stream reconnect. Standing shows the band and its lines; no student type in the web app has a field for the rating, and a Playwright test feeds a stray rating into the mocks and checks no student page prints it. A case has its own student page, which posts `opened` when it shows the case, because the reply clock starts there.
-- **The organiser screens (web, v1.4.0 frontend).** Students (`/admin/students`), a student's page and the record page are loaded on first visit, like progress. The rating number lives only in `web/src/lib/students.ts`, and a guardrail test fails if a student screen imports it (D222). The case page decides by proposal and confirmation, never by a single "Take action" (D226); appeals are ruled where the decision lives, the case page for an outcome and the record page for an adjustment (D227). Notes and manual cases start from the console feed; the notes route does not send the submission's code, so line ranges are typed as numbers (D228). A board a decision changed says so in one line on every results view, and no cell carries a mark (D231). People looks any account up by email with `GET /api/admin/accounts` before an account action, which answers the same 403 to anyone below admin whatever the address (D232, D235).
+- **The organiser screens (web, v1.4.0 frontend).** Students (`/admin/students`), a student's page and the record page are loaded on first visit, like progress. The rating number lives only in `web/src/lib/students.ts`, and a guardrail test fails if a student screen imports it (D222). The case page decides by proposal and confirmation, never by a single "Take action" (D226); appeals are ruled where the decision lives, the case page for an outcome and the record page for an adjustment (D227). Notes and manual cases start from the console feed; the notes dialog shows the submission's program beside the line ranges, since the notes route sends its source (D228 as changed by council run 1). A board a decision changed says so in one line on every results view, and no cell carries a mark (D231). People looks any account up by email with `GET /api/admin/accounts` before an account action, which answers the same 403 to anyone below admin whatever the address (D232, D235).
 - **Summaries and progress.** `student_contest_summary` holds one row per student on a final board (score, percent, rank, per-problem score, attempts, first full-score minute, best verdict, subtask points, the zero mark). It is written when the contest turns final (every window closed, judging drained), again after a rejudge, a pin change or extra time, and after a review decision; never during a live contest. Results-final notices go once students see the final board (after the reveal when it is held). Progress, the students table and the class view read summaries, so nothing recomputes a board per request; 700 students build in about half a second on the desktop (calibration.md). Progress leaves out held contests, shows exam-mode contests as totals only, and never shows a test.
 
 ## What students can see
@@ -410,7 +415,7 @@ Sign-in is Google OpenID Connect, run entirely by the server (`server/internal/a
 1. `/api/auth/google/start` creates a random state, a nonce and a PKCE verifier, keeps them in a 10-minute HttpOnly cookie signed with `PODIUM_SESSION_SECRET` (named `__Host-podium_signin` on https, so a sibling subdomain or a plain http response cannot plant one and finish an attacker's sign-in in a victim's browser), and redirects to Google. When exactly one domain is allowed it is passed as Google's `hd` hint, which only filters the account picker.
 2. Google redirects to `/api/auth/google/callback`. The server checks the state against the cookie (and deletes the cookie), exchanges the code with the PKCE verifier and client secret, and verifies the ID token itself: RS256 signature against Google's published keys (cached, refetched for an unknown key id at most once a minute), issuer, audience, expiry, and the nonce.
 3. The verified email must have `email_verified`. It may sign in when its domain is on the allowed list, when the account already holds the admin or owner role, or when it is `PODIUM_OWNER_EMAIL`. The domain check never trusts Google's `hd` claim. Each account is bound to the Google subject id (`sub`) that first signed in with it, and a different subject with the same address is refused: addresses get reassigned (a graduate's address given to someone new, or recreated as a consumer Google account), subject ids do not. An owner can reset the link from the People page.
-4. The server creates or updates the user and starts a session: 32 random bytes in the cookie, only the SHA-256 in the `sessions` table. The cookie is HttpOnly and `SameSite=Lax`; with an `https` base URL it is also `Secure` and `__Host-` prefixed (host-only, whole site). Sessions last 30 days and renew on use, at most one database write per day; an hourly sweep deletes expired ones.
+4. The server creates or updates the user and starts a session: 32 random bytes in the cookie, only the SHA-256 in the `sessions` table. The cookie is HttpOnly and `SameSite=Lax`; with an `https` base URL it is also `Secure` and `__Host-` prefixed (host-only, whole site). A session ends 12 hours after sign-in however much it is used (`retention.Sessions`, since the security council fixes below); an hourly sweep deletes expired ones.
 
 Every authenticated request reads the user and role from the database, so disabling an account takes effect on the next request. Removing an organiser's role ends their sessions, and removing a domain ends the sessions of students on it, so nobody keeps access that the current rules would not grant. State-changing API requests must come from the site's own origin (`Origin` equal to `PODIUM_BASE_URL`), on top of the `SameSite` cookie.
 
@@ -523,7 +528,7 @@ From v1.4.0 (P4) it also applies: private notes after 30 days, unless a manual c
 
 **Erasure** is a command on the VM, not a route: `podium-server forget-user` deletes what identifies a person (sessions, drafts, integrity events, contact messages, browser hashes, extension reasons, clarification questions), replaces the name and email with `Removed user N` in the account and the rosters (a roster entry with no account is erased too), and keeps scores so past standings stay correct. It is a dry run by default and writes a site audit row naming the account by id only. Audit rows written earlier keep the address until the audit retention removes them: append-only means nothing, not even erasure, rewrites history.
 
-**The rollover** is an owner route that archives the term's contests and disables student accounts unseen for 180 days, after a preview. Disabled, never deleted.
+**The rollover** is an owner action on People (the route `POST /api/admin/rollover`) that archives the term's contests and disables student accounts unseen for 180 days, after a preview with the counts. Disabled, never deleted. The rating's own rollover is the separate command `podium-server semester-rollover` (v1.4.0).
 
 ## Site settings and the contact form
 
@@ -548,6 +553,8 @@ Before the first release, M3 edited `0003_problems.sql` in place instead of addi
 `0010_revisions.sql` and `0011_site_audit.sql` (v1.2.0) only add: revisions, the pin history, the served log, the site audit and the slug history, with their append-only triggers, and a back-filled revision for every problem (see "Problem revisions and pins"). A test builds the v1.1.0 schema (`db.MigrateTo` up to 0009), adds problems, contests, a pin older than its problem and a judged submission, migrates, and checks every revision, pin and trigger, and `db.Check`. Rollback across them is a restore (D68).
 
 `0012_contact.sql` (v1.3.0) adds `contact_messages`, `contest_results` and the indexes the queue health and the retention job read, and is the contract step for v1.2.0: it drops `contest_problems.pinned_hash`, refusing to run if any pin lacks a revision. A test builds the v1.2.0 schema with fixtures, migrates and checks that every pin keeps its hash through its revision.
+
+`0013_students.sql` (v1.4.0) only adds: the review, notice, rating, record view and summary tables and columns of "Students" above. P3 kept no column for a release, so it contracts nothing. `0014_results_notice.sql` changes data only: it clears the "results are final" mark 0013's back-fill set on contests that were still live at the upgrade, so their students get the notice once (council C1-049). P4 kept no column either, so the close (P6) has no contract migration and the schema stays at 0014 (D259). Two v1 columns are written by nothing and read by nothing, `users.added_by` and `problems.source_note`; dropping them would be a schema change with no gain for anyone, so they stay.
 
 Times are Unix milliseconds. Sessions are stored by the SHA-256 of the cookie value, so a copy of the database cannot be replayed as logins.
 
@@ -705,7 +712,7 @@ The themes are curated versions of palettes from the owner's AdminPanelManager p
 
 ## Safe to run: deploys, backups and alerts
 
-**Deploy guard (D112).** A deploy restarts the server, so none starts in the 48 hours before a published contest, while one runs, or while its submissions are still being judged. `podium-server deploy-check` reads the published contests straight from the database rather than asking the running server, because the question must be answerable when the server is down, and `/healthz` is public. `install.sh upgrade` runs the new release's own guard, so even the first upgrade from an older build is guarded. A fix that cannot wait uses `--force "<reason>"`; the reason goes in the audit log of each contest that refused, under the owner's account, before anything is installed. The other direction of D112 (warning when a contest is published soon after a deploy) and the student banner arrive in later releases.
+**Deploy guard (D112).** A deploy restarts the server, so none starts in the 48 hours before a published contest, while one runs, or while its submissions are still being judged. `podium-server deploy-check` reads the published contests straight from the database rather than asking the running server, because the question must be answerable when the server is down, and `/healthz` is public. `install.sh upgrade` runs the new release's own guard, so even the first upgrade from an older build is guarded. A fix that cannot wait uses `--force "<reason>"`; the reason goes in the audit log of each contest that refused, under the owner's account, before anything is installed. After a forced deploy every signed-in student sees "The site was updated at 14:02" once. The other direction of D112, a warning when a contest is published or moved within 48 hours of a deploy and the release recorded on the contest, is not built: the owner decides whether it is (council C1-016).
 
 **Upgrade and rollback.** An upgrade drains the judge, backs up, keeps the running binaries and units, installs, and verifies. Rollback across a migration is a restore, because an older server refuses a database a newer one migrated (`db.Migrate`); it names what is lost and needs a typed confirmation. Configuration files are never written by the scripts: an upgrade stops when the new release needs a variable the VM's files do not name.
 
@@ -726,6 +733,90 @@ The themes are curated versions of palettes from the owner's AdminPanelManager p
 | Two sandbox lanes plus one JVM (all boxes together capped at 1100 MB on `isolate.slice`, 1024 MB budget in the runner) | up to about 1 GB |
 
 isolate places every box under `isolate.service`, not under the `podium-judge` unit, which is why the sandbox cap sits on `isolate.slice`. A 1 GB swap file protects the server from a transient spike; boxes cannot swap (isolate sets `memory.swap.max=0` on every box with a memory limit).
+
+## Decisions of the v2 plan
+
+What each decision of the v2 plan means for the people who use podium, as built. The records with their alternatives are in the planning notes, not in this repository; the reasons that matter are repeated in the sections above. "None for users" marks a decision about how the work was done.
+
+### Backend and platform (D60 to D73)
+
+| Decision | What it means for users |
+|---|---|
+| D60 SQLite stays | Nothing changes: one database file, one process, Litestream copies. Postgres comes back only if measured writes or size call for it |
+| D61 Immutable revisions | What a student was shown is on record. A bank edit reaches a running contest only through "Update contest to revision N", and students see "Statement updated" with a diff of the statement |
+| D62 Site audit | Owners see who changed a role, a domain, an account or a site setting, or erased a person, on People, "History" |
+| D63 Hidden tests leave the VM only encrypted | A stolen bucket key or VM disk yields no readable tests; restoring needs the owner's private key, kept off the VM |
+| D64 Protocol and toolchain per verdict | A half-upgraded install stops with a clear message instead of failing jobs; the console flags problems validated on an older compiler |
+| D65 Renamed slugs redirect | Old contest links pasted in class chats keep working |
+| D66 Server-filled head for public pages (as amended) | Sign-in, privacy, contact and the 404 page have real titles, previews and status codes; private pages are never indexed |
+| D67 Tagged, checksummed releases | Organisers can ask the VM what it runs (`-version`); a damaged tarball installs nothing. No tag exists yet (D236) |
+| D68 Expand, then contract | A release only adds; the next removes. Rolling back across a schema change is a restore, and the rollback says so before it starts |
+| D69 One deletion path for history | The retention periods on the privacy page are kept, and nothing else can delete history |
+| D70 Monitoring without a resident process | The owner gets a phone alert for a failed unit, a full disk, a stale backup or a stalled judge, at no memory cost |
+| D71 Contact form without a mail server (as amended) | Signed-in people write to the organisers from `/contact`; replies come from the organisers' own mail. Signed-out visitors use the address on the sign-in page |
+| D72 Deploy windows | No deploy in the 48 hours before a contest, during one, or while its queue drains (enforced by D112) |
+| D73 Not in v2 | No public standings, profiles or archives; no email; no `/v1` API prefix |
+
+### Students (D74 to D79, D97)
+
+| Decision | What it means for users |
+|---|---|
+| D74 Standing, not a trust score (amended by D110) | Students see a band ("Good standing" and the dated lines behind it), never a number; organisers see a rating out of 10 |
+| D75 Manual review from a submission | A reviewer can write a private note on a submission or open a case from it; the student only ever hears of a case, never of a note |
+| D76 Time limits and held notices | A student has 7 days from first opening a notice to reply (21 at most), with a reminder on day 5; reviewers have 14 days. No notice arrives during the student's live contest |
+| D77 Outcomes, two people, appeals (amended) | An outcome needs a second reviewer; a zero for a problem changes the final board, and the results page says the board was updated; an appeal goes to someone who took no part |
+| D78 In-app notices | An inbox with an unread count; no email, no push; no names, code or test data in any notice |
+| D79 Progress from summaries | Students see their own progress after each final board; organisers see a name-sorted students table, a student page and a class view. Nothing is computed during a live contest |
+| D97 Record view log | Every read of a student's record, case or notes by someone else is logged, and the owner sees per reviewer what they opened and decided |
+
+### Frontend (D80 to D96)
+
+| Decision | What it means for users |
+|---|---|
+| D80 Visual direction | Direction A (one page header, one type scale, calmer links) with one display figure: the student's own place on standings |
+| D81 Organiser nav by job | Organisers see Contests, Problem bank, People (owner) and Inbox, and land on the contest list |
+| D82 Token changes | Small text is 14 px; reveal rows are sized for a projector |
+| D83 Ten themes, picker in a dialog | Every theme stays, under "Theme and colours" in the account menu; Nordic slate has a calmer blue |
+| D84 "Live, standings frozen" | Students no longer read "Frozen" as "the contest stopped"; organisers keep "Frozen" |
+| D85 Privacy page drafted from the code | `/privacy` exists and lists what is stored and for how long, but nothing links it until the owner approves the text |
+| D86 Typographic word-mark | "podium" in the interface face; no logo |
+| D87 Resizable verdict panel | On a laptop the result pane can be resized or folded to one line; phone standings pin rank and name |
+| D88 Workspace changes between contests | Workspace behaviour changes go live in a gap between contests, announced in the next contest's description (for the whole release, under D236) |
+| D89 v1 bugs first | Public clarification answers reach every student; the console filters "Waiting or judging" and "Judge error" |
+| D90 Frontend only, except progress | None for users |
+| D91 Preload the 500 weight | Buttons and links keep their weight from the first paint once the 500 face is preloaded (P6 item F8.2, frontend track) |
+| D92 One progress line on Your contests | After a contest ends, Home shows one line with the points so far and a link to "Your progress" |
+| D93 Who sees progress | A student sees their own; owners and admins see any student's; co-organisers and the public see none |
+| D94 No comparison on the progress page | No class median, percentile or classmates on a student's own progress (the organisers' student page has the median) |
+| D95 Rank only in the table | Points and problems lead; rank is small text in the contests table |
+| D96 Tags after the contest | Topic tags show on "Your progress" for ended contests only, without "ai draft" |
+
+### The unified plan (D98 to D106)
+
+| Decision | What it means for users |
+|---|---|
+| D98, D99, D101, D102 | None for users: phases, tracks, ownership, numbering, calibration notes |
+| D100 Crawlers read what the server writes | Search engines and chat previews see only the public pages, each with one title, description and canonical address |
+| D103 Queue health (the next-contest field was dropped) | The console shows waiting and judging jobs, the oldest wait, judge errors and unanswered questions. Nothing about contests is shown before sign-in (owner, 2026-10-19) |
+| D104 Workspace polish in P2 | "Submitted, 3rd in queue", pacing as a status line and "Submit again" arrived before the behaviour changes |
+| D105 Every deploy a tag | Not yet in force: nothing is tagged until the P0 drills pass (D236) |
+| D106 Councils | None for users |
+
+### Later v2 decisions that changed what users see
+
+| Decision | What it means for users |
+|---|---|
+| D110 Rating and band | Organisers see and may edit a rating out of 10 with a reason; a band-lowering edit needs a second organiser; students see the band and dated lines and may appeal an edit. `podium-server semester-rollover` adds 0.5 a term to every student with no outcome |
+| D111 Three AI providers | The wizard works with an Anthropic, OpenAI or Gemini key, with the provider's live model list or a typed model id |
+| D112 Deploy guard and emergency override | Deploys wait for a gap between contests; a forced fix shows students "The site was updated at 14:02". The warning when publishing soon after a deploy is not built (council C1-016) |
+| D114 What enters v2 from the college platform | A Rules link in the workspace rail, status words in its score cell, "N of M tried", and "Run on this input" on a failing sample |
+| D115 Open tests | Run executes the samples and open tests and shows the first failing one in full; practice submissions show their first failing hidden test; a contest submission never does |
+| D163 Term rollover on People | The owner archives a term's contests and disables accounts unseen for 180 days, after a preview |
+| D167 Two people for every outcome | No single reviewer can action a case, whatever opened it |
+| D226 to D228 | Cases are decided by proposal and confirmation; appeals are ruled where the decision lives; notes start from the console feed |
+| D231 | A board a decision changed says so on every results view, with no mark on any cell |
+| Council run 1 | A phone that changes network is not a second session; problems whose hidden tests practice has shown are marked in the bank and named in the publish confirmation |
+| D259 No contract migration in P6 | None for users: the schema stays at 0014 |
 
 ## Why these choices
 

@@ -1,8 +1,11 @@
 // Package auth owns identity: Google sign-in (OpenID Connect with PKCE and
 // a verified ID token), the server-side email-domain check, sessions stored
 // by token hash, the owner/admin/student roles, the owner bootstrapped from
-// configuration, and the allowed-domain list. HTTP handlers live in
-// httpapi; this package holds the rules.
+// configuration, and the allowed-domain list. Since v2 it also keeps the
+// site audit log, the organisation's site settings, the run-mode record,
+// account lookup and the account side of the semester rollover, and erases
+// a person (forget-user). HTTP handlers live in httpapi; this package
+// holds the rules.
 package auth
 
 import (

@@ -564,7 +564,7 @@ What each provider's failures say (also the `message` of a wizard run's `error`,
 | `model_not_found` | "Anthropic does not offer the model X to this key. Choose another model." | "OpenAI does not offer the model X to this key. Choose another model." | "Gemini does not offer the model X to this key. Choose another model." |
 | `no_access` | "Anthropic says this key cannot use X. Choose another model or key." | "OpenAI says this key cannot use X. Choose another model or key." | "Google says this key cannot use X. Choose another model or key." |
 | `unsupported_model` | "X cannot write problems here: it lacks structured outputs, adaptive thinking or effort. Choose another model." | | |
-| `rate_limited` | "Rate limited by the provider; try again in a minute." | same | same |
+| `rate_limited` | "Rate limited by the provider; try again in a minute." | same | not used: Gemini answers every 429 (`RESOURCE_EXHAUSTED`) as `no_quota` |
 | `unavailable` | "The provider is unavailable. Try again in a few minutes." | same | same |
 | `bad_request` | "Anthropic could not accept the request. Try a shorter text or another model." | "OpenAI could not accept the request. Try a shorter text or another model." | "Gemini could not accept the request. Try a shorter text or another model." |
 
@@ -963,7 +963,7 @@ Every change that can affect results is recorded in the contest's audit log (bel
 | `GET /api/admin/contests/{id}/roster` | | 200 `{roster:[{email,name,roll_number,section}], count}` |
 | `PUT /api/admin/contests/{id}/roster` (admin) | `text/csv` (header row naming `email`, and optionally `name`, `roll_number`, `section`) or a JSON array of the same objects; at most 2 MB and 5,000 students | 200 `{added, removed, roster_count}`. A full replace: on a roster contest, anyone left out loses access at once, so show the counts before and after |
 | `POST`, `DELETE /api/admin/contests/{id}/admins` | `{"email":"ta@college.edu"}` (they must have signed in once) | 200 `AdminContest` |
-| `PUT /api/admin/contests/{id}/extensions/{user}` (admin) | `{"minutes":15,"reason":"..."}` (0 to 1440; 0 removes) | 200 `AdminContest`; the student gets a `contest` event. `409 not_participant` unless the student is on the roster or started or submitted |
+| `PUT /api/admin/contests/{id}/extensions/{user}` (admin) | `{"minutes":15,"reason":"..."}` (0 to 1440; 0 removes) | 200 `AdminContest`; the student gets a `contest` event. `409 not_participant` unless the student is on the roster or started or submitted. The reason can be health data: `AdminContest.extensions[].reason`, the JSON export and old `extension` audit rows give it to owners and admins only, and `""` (or `reason_given: true`) to a co-organiser whose site role is student |
 | `POST /api/admin/contests/{id}/extend` (admin) | `{"minutes":10}` (1 to 240, adds to earlier extensions) | 200 `AdminContest`; members get a `contest` event |
 | `POST /api/admin/contests/{id}/pause`, `/resume` (admin) | | 200 `AdminContest` |
 | `GET /api/admin/contests/{id}/submissions?problem=A&user=7&verdict=WA&page=1` | | 200 `{submissions:[...], page, has_more, results_hidden, server_now}`; `results_hidden` is true when some rows are hidden from this viewer. `verdict` is a verdict code (`AC`, `WA`, `TLE`, `MLE`, `RE`, `CE`), `pending` (state `queued` or `running`) or `error` (state `error`, a judge error); case does not matter |
@@ -974,7 +974,7 @@ Every change that can affect results is recorded in the contest's audit log (bel
 | `GET /api/admin/contests/{id}/clarifications` | | 200 `{clarifications, server_now}`, each with `asked_by {user_id, email, name}` |
 | `PUT /api/admin/contests/{id}/clarifications/{cid}` | `{"answer":"...","public":false}` | 200 `Clarification` |
 | `GET /api/admin/contests/{id}/standings` (`?variant=frozen`) | | 200 `Standings` (full unless asked) |
-| `GET /api/admin/contests/{id}/reveal` | | 200 `{frozen: Standings, full: Standings, revealed_at, server_now}` |
+| `GET /api/admin/contests/{id}/reveal` | | 200 `{frozen: Standings, full: Standings, revealed_at, server_now}`; a co-organiser whose site role is student gets `403 results_hidden` while students would not see the full board (a held reveal not yet made) |
 | `POST /api/admin/contests/{id}/reveal` | | 200 `AdminContest`; students held on the frozen board see the full one |
 | `GET /api/admin/contests/{id}/export.csv` | | 200 `text/csv` attachment |
 | `GET /api/admin/contests/{id}/export.json` | | 200 JSON attachment |
@@ -1029,7 +1029,7 @@ The counts come from one query on the jobs, submissions and clarifications index
 | `problems` | `{"from": [{label, problem_id, pinned_hash, revision_id, rev}], "to": [...]}` (`revision_id` and `rev` from v1.2.0) |
 | `ai_problem` | `{label, problem_id, reason}`: an admin's reason to grade an AI problem as written |
 | `roster` | `{count, added, removed, emails_added, emails_removed}`; the two email lists (sorted, from v1.2.0) name who gained and lost access |
-| `extension` | `{user_id, email, from_minutes, minutes, reason}` |
+| `extension` | `{user_id, from_minutes, minutes, reason_given}`; rows written before P6 also carry `email`, and before v1.4.0 `reason` instead of `reason_given` |
 | `extend` | `{minutes, extended_minutes}` |
 | `pause`, `resume`, `reveal`, `archive` | `{}` |
 | `rejudge` | `{problem_label}` or `{submission_id}`, with `queued` |
@@ -1156,8 +1156,8 @@ Only titles and statements: never a test, an output, a limit or a hash. A studen
   "statement_changed": true, "rejudge_needed": false, "server_now": 1792311120000 }
 ```
 
-- The revision must belong to the label's problem (`404 not_found` otherwise) and be the validated content of the problem now: its content hash equals the problem's, and a passing validation covers it (`409 not_ready` "Revision 3 is not validated. Validate the problem, then update the contest."). Pinning the revision already pinned is `409 conflict`.
-- The pin, its subtask points and `pinned_hash` change in one transaction with a `contest_pin_history` row and a `revision` row in the contest audit. Students get a `statement` event; their next workspace load serves the new statement.
+- The revision must belong to the label's problem (`404 not_found` otherwise) and be the validated content of the problem now: its content hash equals the problem's, and a passing validation covers it (`409 not_ready` "This revision is not the validated version of the problem. Validate the problem, then update the contest."). Pinning the revision already pinned is `409 conflict`, and so is an update that another organiser's update of the same label overtook ("Someone else changed this problem's revision a moment ago. Reload the console and check it again.").
+- The pin and its subtask points change in one transaction with a `contest_pin_history` row and a `revision` row in the contest audit. Students get a `statement` event; their next workspace load serves the new statement.
 - `announcement_md` is a prefilled announcement for the console to offer (it is not posted). With `rejudge_needed` (the tests, limits or checker changed) it says submissions will be judged again, and the console should offer Rejudge; with only a statement change it points students to "See what changed".
 
 ### The served log and "what X saw at T"
@@ -1201,7 +1201,7 @@ Show an unknown action by its name.
 
 ### Renamed contests
 
-Renaming a contest (its `slug`) records the old slug. `GET /contests/<old>` and every path under it answer `301` to the same path under the new slug, keeping the query; so do `GET` requests under `/api/contests/<old>` (other methods answer `404`). Only a published contest records its old slug (a draft has no links out there), and only a published, unarchived contest is redirected to. A slug in the history cannot be given to another contest: `400 bad_request` with `fields.slug` "This slug belonged to another contest. Choose another so its old links keep working." A contest may take back its own old slug.
+Renaming a contest (its `slug`) records the old slug. For a signed-in visitor, `GET /contests/<old>` and every path under it answer `301` to the same path under the new slug, keeping the query; so do `GET` requests under `/api/contests/<old>` (other methods answer `404`). A signed-out visitor gets the web app at the old path, with no redirect (the current slug is contest data). Only a published contest records its old slug (a draft has no links out there), and only a published, unarchived contest is redirected to. A slug in the history cannot be given to another contest: `400 bad_request` with `fields.slug` "This slug belonged to another contest. Choose another so its old links keep working." A contest may take back its own old slug.
 
 ## Contact (v1.3.0, contract C6)
 
@@ -1218,7 +1218,7 @@ Any signed-in role. The sender is the session's account; the body names no sende
 | Field | Rule |
 |---|---|
 | `topic` | `contest` (a contest or a problem), `account` (sign-in or the account), `privacy` (a copy or removal of personal data) or `other` |
-| `message` | 1 to 2,000 characters after trimming; newlines are kept; other control characters are refused |
+| `message` | 1 to 2,000 characters after trimming; newlines, carriage returns and tabs are kept; other control characters and hidden format characters are refused |
 
 | Status | Body |
 |---|---|
@@ -1259,8 +1259,8 @@ Checks for copying after a contest, and the review of what they find (decisions 
 |---|---|---|
 | `POST /api/admin/contests/{id}/integrity/run` | none | 202 `{run_id, server_now}`; the check runs in the background |
 | `GET /api/admin/contests/{id}/integrity` | | 200 `Run` plus `users`, `problems` and `server_now`; `404 not_found` "This contest has not been checked yet." |
-| `GET /api/admin/contests/{id}/integrity/signals/{signal}/pair` | | 200 `{a: Side, b: Side, server_now}` for a `similar` signal; any other kind is a `404` |
-| `GET /api/admin/contests/{id}/integrity/timeline/{user}` | | 200 `{moments: [Moment], server_now}`; `404` when the user neither accepted the rules nor submitted in this contest |
+| `GET /api/admin/contests/{id}/integrity/signals/{signal}/pair` | | 200 `{a: Side, b: Side, server_now}` for a `similar` signal; any other kind is a `404`, and so is a signal that names the viewer |
+| `GET /api/admin/contests/{id}/integrity/timeline/{user}` | | 200 `{moments: [Moment], server_now}`; `404` when the user neither accepted the rules nor submitted in this contest, and for the viewer's own timeline. The run (`GET .../integrity`) leaves out every signal that names the viewer (a student since made an admin) |
 | `GET /api/admin/contests/{id}/integrity/cases` | | 200 `{cases: [Case], server_now}`, newest first |
 | `POST /api/admin/contests/{id}/integrity/cases` | `{title, note, signal_ids: [n]}` | 201 `Case` |
 | `GET /api/admin/integrity/cases/{case}` | | 200 `Case` |
@@ -1391,7 +1391,7 @@ Nothing in this section ever returns another student's name to a student, code t
 | Open a manual case | 404 | 404 | 403 on their contest, 404 elsewhere | yes | yes |
 | Propose an outcome | - | - | 404 | yes | yes |
 | Confirm an outcome | - | - | 404 | yes, if they did not open the case or propose | yes, same; alone only as sole organiser |
-| Rule on an appeal | - | - | 404 | yes, if they took no part | yes, same; alone only as sole organiser |
+| Rule on an appeal | - | - | 403 | yes, if they took no part | yes, same; alone only as sole organiser |
 | Record page, rating, rating edit | 403 | 403 | 403 | yes | yes |
 | Students table, student page | 403 | 403 | 403 | yes | yes |
 | Class view of a contest | 404 | 404 | when results are not hidden from them | yes | yes |
@@ -1449,7 +1449,7 @@ Every read of a student's record page, of a case, and of the notes on a submissi
 | Field | Meaning |
 |---|---|
 | `contests` | only contests the person took part in (on the final board), newest first, and only once the results are final for students: every window closed, judging done, and with `hold_reveal` only after the reveal. A contest still frozen or held is absent. A contest past retention (4 years) drops out |
-| `detail` | `full`, or `totals` for an exam-mode contest: then each problem's `score`, `attempts`, `full_at_minutes`, `best_verdict` and `subtasks` are `null`, and the contest counts only in `totals.points`, `max_points` and `contests_taken`, never in `by_tag`, `by_difficulty`, `losses`, the problem counts or `retry` |
+| `detail` | `full`, or `totals` for an exam-mode contest: then each problem's `score`, `attempts`, `full_at_minutes`, `best_verdict` and `subtasks` are `null`, and the contest counts only in `totals.points`, `max_points`, `contests_taken`, `graded_taken` and `personal_best_percent` (totals, which exam mode shows after the window), never in `by_tag`, `by_difficulty`, `losses`, the problem counts or `retry` |
 | `percent` | `score` of `max_score`, one decimal; `personal_best_percent` is the highest over graded contests, `null` without one |
 | `rank`, `ranked_count` | the final board's rank and how many were on it; equal totals and times share a rank |
 | `full_at_minutes` | minutes from the person's own start to the first submission that reached full score; `null` if never |
@@ -1479,7 +1479,7 @@ Practice never changes a contest's score, rank or the counts; it shows only as `
 | Route | Request | Success |
 |---|---|---|
 | `GET /api/me/notifications` (`?before=ID`) | | 200 `{notifications: [Notice], unread, held, has_more, server_now}`, newest first, 50 per page |
-| `POST /api/me/notifications/read` | `{"ids": [12, 14]}` or `{"all": true}` | 204; ids that are not the person's are ignored |
+| `POST /api/me/notifications/read` | `{"ids": [12, 14]}` (at most 50) or `{"all": true}` | 204; ids that are not the person's are ignored; more than 50 ids is `400 bad_request` "Mark at most 50 notices at once, or all of them." |
 
 While the person is in a live contest the list is empty, `unread` is `0` and `held` is `true`; everything shows once their window closes. A notice made for a case shared during a contest becomes available when that contest ends for the student.
 
@@ -1564,7 +1564,7 @@ Every route that returns a `Case` adds:
 
 - `outcome` is `warning`, `zero_problem` (needs `problem_label`, a label of the case's contest) or `referred`. `user_ids` are the students of the case the outcome is for (all of them when left out); the others are cleared by it. `note` (20 to 4,000) is for reviewers; `reason` (20 to 2,000) is the sentence the student reads on their standing.
 - A proposal needs a shared case where every student replied after the latest share or ran out of time (the same rule as before for action), the contest over for everyone, and no other pending proposal (`409 proposal_pending`). A seen explanation that is out of date is `409 explanation_changed`.
-- Confirming needs a reviewer who neither opened the case nor made the proposal, and who is not one of its students; anyone else is `403 two_person_rule`, "A second reviewer who did not open the case or propose this outcome confirms it." The exception: when no other owner or admin account exists, the owner may confirm with `sole_organiser_reason` (20 to 1,000 characters), recorded on the decision as `sole_organiser`.
+- Confirming needs a reviewer who neither opened the case nor made the proposal, and who is not one of its students. The opener or proposer gets `403 two_person_rule`, "A second reviewer who did not open the case or propose this outcome confirms it."; one of the case's students gets `404 not_found`, as for every route of a case they are in. A proposal on a case that was reopened or decided while it was being made is `400 bad_request` "The case changed while you were proposing: it is no longer waiting for the students. Reload the case." The exception: when no other owner or admin account exists, the owner may confirm with `sole_organiser_reason` (20 to 1,000 characters), recorded on the decision as `sole_organiser`.
 - Confirming writes the decision (state `actioned`, with `outcome`, `outcome_problem_label`, `outcome_users`, `proposal_id`), closes the case, lowers each student's rating (warning 0.5, zero for problem 1.5, referred 2.5; never below 0), sends `case_decided`, and for `zero_problem` changes the board (below).
 - `PUT /api/admin/integrity/cases/{case}` with `state: "actioned"` is now `400 proposal_needed`, "Propose the outcome instead: a second reviewer confirms it." Clearing, sharing and reopening are unchanged, except that a case closed with a confirmed outcome cannot be reopened (`400`, "An outcome is changed only through an appeal."). Clearing sends `case_decided`; sharing sends `case_shared`.
 
@@ -1637,7 +1637,7 @@ The student's `GET /api/integrity/cases` lists a case only once its notice is av
 **Record page (C12).** `GET /api/admin/students/{id}/record` (owner, admin; logged):
 
 ```json
-{ "student": { "id": 7, "name": "Asha Rao", "email": "asha@college.edu", "disabled": false },
+{ "student": { "id": 7, "name": "Asha Rao", "email": "asha@college.edu" },
   "standing": { "band": "on_record", "band_name": "Outcomes on record", "lines": [ StandingLine ] },
   "rating": { "value_tenths": 85, "band": "on_record",
               "history": [ { "id": 40, "at": 1792500000000, "delta_tenths": -15, "value_tenths": 85, "cause": "outcome",
@@ -1654,7 +1654,7 @@ The student's `GET /api/integrity/cases` lists a case only once its notice is av
 ```
 
 - `value_tenths` is the rating in tenths, 0 to 100 (show 85 as 8.5); a student never rated yet is 100. `history` is newest first, kept 4 years; `cause` is `outcome`, `manual`, `appeal` or `rollover`; `band_before` and `band_after` differ on the line that crossed a band. `pending_rating` is `null` when nothing waits.
-- `cases` are every case the student is in, for reviewers; `notes` every note on the student's submissions still kept. A viewer who is a student of a case never gets it here, nor its standing lines and appeals. Nobody opens their own record page (`403`), and an erased account is `404` on every students route.
+- `student.disabled` is present, as `true`, only for a disabled account. `cases` are every case the student is in, for reviewers; `notes` every note on the student's submissions still kept. A viewer who is a student of a case never gets it here, nor its standing lines, appeals and rating lines, nor the notes on the student's submissions in that case's contest (the notes route answers `404` for them too). Nobody opens their own record page (`403`), and an erased account is `404` on every students route.
 - Every read of a case is logged: the case page, the contest's case list and the pair view, one row per student of the case; so is every appeal returned by `GET /api/admin/appeals`.
 
 | Route | Who | Request | Success |
@@ -1664,7 +1664,7 @@ The student's `GET /api/integrity/cases` lists a case only once its notice is av
 | `POST /api/admin/students/{id}/rating/proposals/{pid}/decline` | owner, admin | | 200 `{rating, pending_rating: null}` |
 
 - `value_tenths` 0 to 100 and different from the current value; `reason` 20 to 1,000 characters, shown to the student on their standing. A co-organiser is `403 forbidden`.
-- An edit that lowers the student's band is a proposal: `202`, until a second owner or admin confirms it (`403 two_person_rule` for the proposer, except as sole organiser). A new edit replaces a pending one. A confirm after the rating moved is `409 rating_changed`, "The rating changed since this was proposed. Propose it again."
+- An edit that lowers the student's band is a proposal: `202`, until a second owner or admin confirms it (`403 two_person_rule` "A second owner or admin who did not propose this change confirms it." for the proposer, except as sole organiser). A new edit replaces a pending one. A confirm after the rating moved is `409 rating_changed`, "The rating changed since this was proposed. Propose it again."
 - Every applied edit writes a dated line on the student's standing ("Standing adjusted by an organiser" with the reason), sends `standing_adjusted`, and can be appealed.
 - Writes to one student's rating go one at a time; every write keeps the value within 0 to 10.
 
@@ -1848,7 +1848,7 @@ Rules:
 | missing files with an extension | `404` |
 | any other path | `index.html`, `no-cache` |
 
-A renamed contest's old `/contests/<slug>` paths answer `301` first (see "Renamed contests").
+A renamed contest's old `/contests/<slug>` paths answer `301` first for a signed-in visitor (see "Renamed contests").
 
 ### The route manifest and the page markers (contract C2, from v1.1.0)
 

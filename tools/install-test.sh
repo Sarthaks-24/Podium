@@ -83,6 +83,16 @@ else
   fail "cmd_upgrade must call check_unfinished_upgrade before it stops the judge"
 fi
 
+# The configuration check runs before the guard, which may record a forced
+# deploy and tell students the site was updated.
+names=$(grep -n 'env_names_check' <<<"$up" | head -n1 | cut -d: -f1 || true)
+guardrun=$(grep -n 'deploy-check -db' <<<"$up" | head -n1 | cut -d: -f1 || true)
+if [[ -n $names && -n $guardrun && $names -lt $guardrun ]]; then
+  pass "upgrade checks the configuration names before the deploy guard"
+else
+  fail "cmd_upgrade must run env_names_check before deploy-check"
+fi
+
 # The schema rollback gives the restored folder group write (C1-004).
 rb=$(fn cmd_rollback)
 restore=$(grep -n 'scratch/podium.db" "\$db"' <<<"$rb" | head -n1 | cut -d: -f1 || true)
@@ -93,11 +103,37 @@ if [[ -n $restore && -n $group && $restore -lt $group && $group -lt $start ]]; t
 else
   fail "cmd_rollback must call db_group_rw after restoring the database and before starting the services"
 fi
-if grep -q 'install -d -o podium -g podium -m 2770 "$(dirname "$db")"' <<<"$rb"; then
-  pass "rollback recreates the database folder with mode 2770"
+if grep -q 'as_podium_install -d -m 2770 "$(dirname "$db")"' <<<"$rb"; then
+  pass "rollback recreates the database folder as podium with mode 2770"
 else
-  fail "cmd_rollback must recreate the database folder with mode 2770"
+  fail "cmd_rollback must recreate the database folder as podium with mode 2770"
 fi
+
+# An unreadable database stops the script instead of reading as "no
+# migrations", which would send a rollback down the same-schema branch.
+mig() { # RUNUSER_EXIT FILE
+  (
+    die() { printf '%s\n' "$*"; exit 1; }
+    runuser() { [[ $RC == 0 ]] && echo "0001_identity,0002_preferences"; return "$RC"; }
+    RC=$1
+    eval "$(fn migrations)"
+    migrations "$2"
+  )
+}
+: > "$tmp/podium.db"
+if out=$(mig 0 "$tmp/podium.db") && [[ $out == "0001_identity,0002_preferences" ]]; then pass "migrations lists the applied versions"; else fail "migrations: $out"; fi
+if out=$(mig 0 "$tmp/missing.db") && [[ -z $out ]]; then pass "migrations of a missing database is empty"; else fail "migrations of a missing database: $out"; fi
+if out=$(mig 1 "$tmp/podium.db"); then fail "an unreadable database read as '$out'"; elif [[ $out == *"cannot read the applied migrations"* ]]; then pass "an unreadable database stops the script"; else fail "unexpected: $out"; fi
+if grep -q 'is missing.*before-rollback' <<<"$rb"; then pass "rollback refuses to run without a database"; else fail "cmd_rollback must refuse when the database is missing"; fi
+
+# Root never runs install on a path podium could have swapped for a link.
+for f in step_dirs cmd_rollback; do
+  if fn "$f" | grep -E '^ *install .*(/var/lib/podium/|\$\(dirname "\$db"\)|"\$db")' >/dev/null; then
+    fail "$f runs install as root inside a podium folder"
+  else
+    pass "$f creates podium's folders as podium"
+  fi
+done
 
 # A schema rollback says which erasures it undoes and writes them down
 # again (C1-047); the nightly backup prunes old pre-rollback folders.
@@ -146,8 +182,65 @@ if command -v jq >/dev/null; then
   if [[ $out == "ok judge" ]]; then pass "podium-check stays quiet while a judge claims (a paused contest holds jobs)"; else fail "false alarm: $out"; fi
   out=$(judge_check '{"status":"ok","jobs_queued":0,"oldest_queued_s":0,"judge_last_claim_s":null}')
   if [[ $out == "ok judge" ]]; then pass "podium-check stays quiet with an empty queue"; else fail "false alarm on an empty queue: $out"; fi
+  marker=$tmp/ran
+  out=$(judge_check "{\"status\":\"ok\",\"jobs_queued\":\"a[\$(touch $marker)]\",\"oldest_queued_s\":900,\"judge_last_claim_s\":\"b[\$(touch $marker)]\"}")
+  if [[ -e $marker ]]; then
+    fail "podium-check ran a command from /healthz"
+  elif [[ $out == "PROBLEM judge state unreadable" ]]; then
+    pass "podium-check refuses a queue state that is not whole numbers"
+  else
+    fail "unexpected answer to a non-numeric queue state: $out"
+  fi
 else
   echo "skip: jq not installed, podium-check's judge rule not run"
+fi
+
+# The upgrade path (B6.2): the new MANIFEST's upgrades_from refuses an
+# older or unversioned install and a downgrade. Run in a subshell because
+# die exits.
+path_check() { # INSTALLED_MANIFEST_LINES NEW_VERSION UPGRADES_FROM
+  (
+    # Read by the functions eval'd below.
+    # shellcheck disable=SC2034
+    LIB=/usr/local/lib/podium
+    # shellcheck disable=SC2034
+    MANIFEST=$tmp/installed/MANIFEST
+    # shellcheck disable=SC2034
+    HERE=$tmp/new
+    rm -rf "$tmp/installed" "$tmp/new"
+    mkdir -p "$tmp/installed" "$tmp/new"
+    [[ -z $1 ]] || printf '%b' "$1" > "$tmp/installed/MANIFEST"
+    printf 'version=%s\nupgrades_from=%s\n' "$2" "$3" > "$tmp/new/MANIFEST"
+    die() { printf '%s\n' "$*"; exit 1; }
+    eval "$(grep '^manifest_get()' "$script")"
+    eval "$(grep -E '^(version_ge|is_release_version)\(\)' "$script")"
+    eval "$(fn installed_version)"
+    eval "$(fn check_upgrade_path)"
+    check_upgrade_path
+  )
+}
+if out=$(path_check 'release=podium-v1.3.0\nversion=v1.3.0\n' v2.0.0 v1.4.0); then
+  fail "an upgrade from v1.3.0 to a release that upgrades from v1.4.0 went on"
+elif [[ $out == *"runs v1.3.0"*"only from v1.4.0"* ]]; then
+  pass "an upgrade from v1.3.0 is refused when the release upgrades from v1.4.0"
+else
+  fail "unexpected refusal: $out"
+fi
+if out=$(path_check 'release=podium-v1.4.0\nversion=v1.4.0\n' v2.0.0 v1.4.0); then pass "an upgrade from the oldest allowed release goes on"; else fail "an allowed upgrade was refused: $out"; fi
+if out=$(path_check 'release=podium-v1.0.0\n' v1.1.0 v1.0.0); then pass "a hand-built v1.0.0 (no version line) is read from its folder name"; else fail "v1.0.0 by folder name was refused: $out"; fi
+if out=$(path_check '' v1.5.0 v1.5.0); then
+  fail "an upgrade over an unversioned install went on"
+elif [[ $out == *"cannot tell which release is installed"* ]]; then
+  pass "an upgrade over an unversioned install is refused"
+else
+  fail "unexpected refusal: $out"
+fi
+if out=$(path_check 'version=v1.5.1\n' v1.5.0 v1.5.0); then
+  fail "a downgrade went on"
+elif [[ $out == *"older than the installed"*"rollback"* ]]; then
+  pass "a downgrade is refused and names rollback"
+else
+  fail "unexpected refusal: $out"
 fi
 
 if (( fails > 0 )); then echo "$fails install.sh check(s) failed"; exit 1; fi

@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/Sarthaks-24/podium/internal/db"
+	"github.com/Sarthaks-24/podium/internal/problems"
 	"github.com/Sarthaks-24/podium/internal/retention"
 )
 
@@ -270,6 +271,14 @@ func TestSubmissionsAfterFourYears(t *testing.T) {
 	}
 	if f.count("SELECT count(*) FROM contest_problems WHERE contest_id = 1 AND revision_id IS NULL") != 1 {
 		t.Error("old contest still pins its revision")
+	}
+	// The released pin is retention's own doing, so the database check
+	// (run on every nightly backup) still passes.
+	// (The fixture's problem rows are not a real working copy, so only the
+	// pin line is looked at.)
+	faults, err := problems.CheckRevisions(f.ctx, f.db)
+	if err != nil || strings.Contains(strings.Join(faults, " | "), "contest pins have no revision") {
+		t.Errorf("CheckRevisions after the pin release: %v %v", faults, err)
 	}
 	// An old contest still open for practice keeps its pins and its fresh
 	// practice; one with an open integrity case waits whole.

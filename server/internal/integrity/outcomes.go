@@ -308,11 +308,14 @@ func (s *Service) priorOutcomes(ctx context.Context, userID, exceptCase, now int
 func (s *Service) SoleOrganiser(ctx context.Context, userID int64) (bool, error) {
 	var role string
 	err := s.DB.QueryRowContext(ctx, "SELECT role FROM users WHERE id = ?", userID).Scan(&role)
-	if errors.Is(err, sql.ErrNoRows) || role != "owner" {
+	if errors.Is(err, sql.ErrNoRows) {
 		return false, nil
 	}
 	if err != nil {
 		return false, err
+	}
+	if role != "owner" {
+		return false, nil
 	}
 	var others int
 	err = s.DB.QueryRowContext(ctx, `SELECT count(*) FROM users WHERE id <> ? AND role IN ('owner', 'admin') AND disabled = 0
@@ -415,6 +418,14 @@ func (s *Service) Propose(ctx context.Context, caseID, by int64, in ProposeInput
 		return nil, err
 	}
 	defer tx.Rollback()
+	// The case may have been reopened or decided since it was read.
+	var state string
+	if err := tx.QueryRowContext(ctx, "SELECT state FROM integrity_cases WHERE id = ?", caseID).Scan(&state); err != nil {
+		return nil, err
+	}
+	if state != AwaitingStudent {
+		return nil, &InputError{"The case changed while you were proposing: it is no longer waiting for the students. Reload the case."}
+	}
 	latest, err := latestExplanations(ctx, tx, caseID)
 	if err != nil {
 		return nil, err

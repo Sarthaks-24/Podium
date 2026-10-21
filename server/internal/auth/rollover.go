@@ -62,7 +62,10 @@ func (s *Service) DisableIdle(ctx context.Context, seenBefore time.Time, label s
 	var r RolloverReport
 	emails := []string{}
 	for _, a := range list {
-		res, err := tx.ExecContext(ctx, "UPDATE users SET disabled = 1 WHERE id = ? AND disabled = 0 AND role = 'student'", a.ID)
+		// Still idle now: a student who signed in after the list was read
+		// keeps their account.
+		res, err := tx.ExecContext(ctx, `UPDATE users SET disabled = 1 WHERE id = ? AND disabled = 0 AND role = 'student'
+			AND coalesce(last_login_at, created_at) < ?`, a.ID, seenBefore.UnixMilli())
 		if err != nil {
 			return RolloverReport{}, err
 		}

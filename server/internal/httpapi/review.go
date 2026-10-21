@@ -67,6 +67,16 @@ func (d Deps) listNotes(w http.ResponseWriter, r *http.Request) {
 		WriteError(w, http.StatusNotFound, "not_found", "There is no such contest submission.")
 		return
 	}
+	// Nor those of a classmate they share a case with in this contest.
+	shared, err := d.Integrity.SharesCase(r.Context(), userFrom(r.Context()).ID, sub.UserID, sub.ContestID)
+	if err != nil {
+		d.internalError(w, r, err)
+		return
+	}
+	if shared {
+		WriteError(w, http.StatusNotFound, "not_found", "There is no such contest submission.")
+		return
+	}
 	if err := d.Integrity.LogView(r.Context(), userFrom(r.Context()).ID, sub.UserID, integrity.ViewNotes, sub.ID); err != nil {
 		d.internalError(w, r, err)
 		return

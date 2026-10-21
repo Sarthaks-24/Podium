@@ -2,8 +2,10 @@
 // limits, checkers, solutions and tests; the problem pack format for import
 // and export; the content hash that decides whether a problem is
 // validated; and the validation gate, which runs on the real judge through
-// the jobs queue (decisions D44 to D46). Docs: docs/AUTHORING.md for the
-// pack format and rules, docs/API.md for the routes.
+// the jobs queue (decisions D44 to D46). Since v2 every write also makes
+// an immutable revision (D61) with its line diff, and open tests sit
+// beside the samples and hidden tests (D115). Docs: docs/AUTHORING.md for
+// the pack format and rules, docs/API.md for the routes.
 package problems
 
 import (

@@ -1,6 +1,13 @@
 // Command podium-server is the contest platform's web server: the JSON API,
 // server-sent events, the embedded web app, and the judge queue. All
 // configuration comes from environment variables (docs/OPERATIONS.md).
+//
+// With no argument it runs the server. The subcommands are operator tools
+// that open the database themselves (usage in flag.Usage below, details in
+// docs/OPERATIONS.md): check, deploy-check, saw, runs-report, migrate,
+// forget-user and semester-rollover. forget-user is a dry run unless given
+// -apply; semester-rollover applies unless given -dry-run, and a second run
+// for the same label changes nothing.
 package main
 
 import (

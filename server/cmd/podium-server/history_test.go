@@ -91,4 +91,20 @@ func TestMigrateACopy(t *testing.T) {
 	if code := migrateCmd([]string{"-db", path}, &out); code != 2 || !strings.Contains(out.String(), "live database") {
 		t.Errorf("the live database: exit %d %s", code, out.String())
 	}
+
+	// A database another process has open (its -wal file exists) is
+	// refused even without PODIUM_DB_PATH, as under sudo -u podium.
+	t.Setenv("PODIUM_DB_PATH", "")
+	held, err := db.Open(ctx, path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer held.Close()
+	if _, err := held.ExecContext(ctx, "CREATE TABLE IF NOT EXISTS probe (x)"); err != nil {
+		t.Fatal(err)
+	}
+	out.Reset()
+	if code := migrateCmd([]string{"-db", path}, &out); code != 2 || !strings.Contains(out.String(), "-wal exists") {
+		t.Errorf("a database in use: exit %d %s", code, out.String())
+	}
 }

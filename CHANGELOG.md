@@ -4,7 +4,18 @@ Dated entries per release. Unreleased work is listed at the top.
 
 ## Unreleased
 
-Nothing below is tagged or deployed. The v2 phases were planned as the releases v1.0.0 (P0) to v1.5.0 (P5); they reached `main` together, so they are proposed to ship as one release once the P0 drills on the VM pass (the owner decides the version and the upgrade path). The phase labels below say where each change came from.
+Nothing below is tagged or deployed. The v2 phases were planned as the releases v1.0.0 (P0) to v1.5.0 (P5) and v2.0.0 (P6); they reached `main` together, so they are proposed to ship as one release once the P0 drills on the VM pass. The owner decides the version and the upgrade path (D236): either one release `v1.5.0`, installed fresh, with `UPGRADES_FROM` set to `v1.5.0`, or `v1.0.0` to `v1.2.0` tagged as markers and the rest as `v1.5.0` with `UPGRADES_FROM` set to `v1.2.0`. Until then the `Makefile` keeps the placeholder `v1.0.0`. The phase labels below say where each change came from.
+
+### v2 P6 (close)
+
+#### Backend (2026-10-21)
+
+- No contract migration: P4's migrations 0013 and 0014 kept no column for a release, so the schema stays at 0014 (D259).
+- `tools/install-test.sh` checks the upgrade-path refusals: an older release than `upgrades_from`, an unversioned install and a downgrade are refused before anything changes. A release must be named `vX.Y.Z` (`make release VERSION=v1.5.0` on an untagged commit), so every install can be upgraded later.
+- Final security and code review of the whole v2 diff: `podium-check` no longer evaluates the server's `/healthz` numbers as shell code as root; `install.sh` makes podium's folders as podium, so a planted symlink cannot make root chown another folder; a rollback refuses to run on a missing or unreadable database; the configuration check runs before the deploy guard, so a forced deploy is recorded only for an upgrade that goes on; temporary files and the deploy folder on the VM get random names; `podium-server migrate` refuses a database in use; a failed prune no longer stops the copy off the VM; `check-secrets` knows age, PGP and fine-grained GitHub keys, alert URLs and key and database file names.
+- The nightly check no longer fails on the pins retention releases, which would have refused every backup from the first contest's fourth anniversary; an expired contest is never summarised again as all zeros.
+- A case shared during a student's live contest stays hidden until it ends, even when cleared first. A reviewer never sees signals, notes or rating lines of a case they are a student of. A co-organiser whose site role is student no longer reads extension reasons or the held reveal's full board. A renamed contest's old web path redirects only when signed in.
+- Proposals, pin updates, the rating rollover and the results notice re-check what they read inside their write; the class view's most failed test ignores skipped tests; the feed shows no note count on a reviewer's own submissions; the term rollover label refuses tabs and hidden characters; new `extension` rows in the contest audit name the student by id only, without the email.
 
 ### v2 P6, frontend (2026-10-21)
 

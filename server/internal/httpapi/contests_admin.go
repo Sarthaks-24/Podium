@@ -173,6 +173,13 @@ func (d Deps) adminContestOut(ctx context.Context, c *contests.Contest) (*adminC
 	if out.Extensions, err = d.Contests.Extensions(ctx, c.ID); err != nil {
 		return nil, err
 	}
+	// The reason for a classmate's extra time can be health data: a
+	// co-organiser whose site role is student sees the minutes only.
+	if !userFrom(ctx).Role.AtLeast(auth.Admin) {
+		for i := range out.Extensions {
+			out.Extensions[i].Reason = ""
+		}
+	}
 	if out.RosterCount, err = d.Contests.RosterCount(ctx, c.ID); err != nil {
 		return nil, err
 	}
@@ -616,16 +623,10 @@ func (d Deps) setExtension(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
-	if before.Email == "" {
-		if list, err := d.Contests.Extensions(r.Context(), c.ID); err == nil {
-			for _, e := range list {
-				if e.UserID == userID {
-					before.Email = e.Email
-				}
-			}
-		}
-	}
-	d.audit(r, c.ID, contests.AuditExtension, map[string]any{"user_id": userID, "email": before.Email,
+	// The student is named by id only: the audit log outlives an erasure
+	// (forget-user rewrites no audit row), and the feed shows the name
+	// from the contest's people (agent backlog, P3 security review).
+	d.audit(r, c.ID, contests.AuditExtension, map[string]any{"user_id": userID,
 		"from_minutes": before.Minutes, "minutes": req.Minutes, "reason_given": strings.TrimSpace(req.Reason) != ""})
 	d.Log.Info("contest extension set", "by", userFrom(r.Context()).ID, "contest_id", c.ID, "user_id", userID, "minutes", req.Minutes)
 	d.writeAdminContest(w, r, c.ID, http.StatusOK)
@@ -716,7 +717,7 @@ func (d Deps) contestFeed(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if siteAdmin(r) {
-		if err := d.annotateFeed(r.Context(), c.ID, items); err != nil {
+		if err := d.annotateFeed(r.Context(), c.ID, userFrom(r.Context()).ID, items); err != nil {
 			d.internalError(w, r, err)
 			return
 		}
@@ -916,6 +917,11 @@ func (d Deps) getReveal(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	// A co-organiser whose site role is student sees the full board when
+	// students do: with a held reveal, after it.
+	if d.resultsHidden(w, r, c) {
+		return
+	}
 	final, err := d.Contests.FinalAt(r.Context(), c)
 	if err != nil {
 		d.internalError(w, r, err)
@@ -1092,8 +1098,9 @@ func (d Deps) contestAudit(w http.ResponseWriter, r *http.Request) {
 }
 
 // annotateFeed adds each item's note count and manual case, for reviewers
-// (owners and admins) only.
-func (d Deps) annotateFeed(ctx context.Context, contestID int64, items []contests.FeedItem) error {
+// (owners and admins) only, and never on the viewer's own submissions,
+// whose notes they may not read.
+func (d Deps) annotateFeed(ctx context.Context, contestID, viewer int64, items []contests.FeedItem) error {
 	notes, cases := map[int64]int{}, map[int64]int64{}
 	rows, err := d.DB.QueryContext(ctx, "SELECT submission_id, count(*) FROM submission_notes WHERE contest_id = ? GROUP BY submission_id", contestID)
 	if err != nil {
@@ -1118,6 +1125,9 @@ func (d Deps) annotateFeed(ctx context.Context, contestID int64, items []contest
 	}
 	rows.Close()
 	for i := range items {
+		if items[i].UserID == viewer {
+			continue
+		}
 		n := notes[items[i].ID]
 		items[i].NoteCount = &n
 		if id, ok := cases[items[i].ID]; ok {

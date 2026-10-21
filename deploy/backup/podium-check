@@ -106,6 +106,12 @@ check_judge() {
     fine judge "judge" "this server does not report its queue (an older release)"
     return
   fi
+  # Digits only before any arithmetic: bash evaluates a variable's text in
+  # (( )) and -gt, so an answer such as "a[$(cmd)]" would run cmd as root.
+  if ! [[ $queued =~ ^[0-9]+$ && $oldest =~ ^[0-9]+$ && ( $last == never || $last =~ ^[0-9]+$ ) ]]; then
+    problem judge "judge state unreadable" "/healthz on $listen gave a queue state that is not whole numbers; journalctl -u podium-server -n 50"
+    return
+  fi
   state=$(systemctl is-active podium-judge 2>/dev/null || true)
   if (( queued > 0 && oldest > 300 )) && [[ $last == never || $last -gt 120 ]]; then
     problem judge "judge stalled" "$queued jobs waiting, the oldest for $oldest s, and no judge has asked for work $( [[ $last == never ]] && echo "since the server started" || echo "for $last s") (podium-judge is $state). journalctl -u podium-judge -n 50; a token mismatch says 401: PODIUM_JUDGE_TOKEN must match in server.env and judge.env"

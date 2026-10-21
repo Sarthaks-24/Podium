@@ -260,6 +260,13 @@ func TestP3SemesterRollover(t *testing.T) {
 	if code, _ := owner.do("POST", "/api/admin/rollover", map[string]any{"label": ""}, s.srv.URL); code != 400 {
 		t.Errorf("no label: %d", code)
 	}
+	// One line means no tab, separator or hidden format character either
+	// (the label lands in the audit logs).
+	for _, bad := range []string{"2026\todd", "2026\u2028odd", "2026 \u202eddo"} {
+		if code, _ := owner.do("POST", "/api/admin/rollover", map[string]any{"label": bad}, s.srv.URL); code != 400 {
+			t.Errorf("label %q: %d, want 400", bad, code)
+		}
+	}
 	if code, _ := old.do("POST", "/api/admin/rollover", map[string]any{"label": "2026 odd"}, s.srv.URL); code != 403 {
 		t.Errorf("student: %d", code)
 	}

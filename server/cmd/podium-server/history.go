@@ -187,8 +187,17 @@ func migrateCmd(args []string, out io.Writer) int {
 		fmt.Fprintln(out, "migrate: give -db with the path of a copy")
 		return 2
 	}
-	if live := os.Getenv("PODIUM_DB_PATH"); live != "" && sameFile(live, *dbPath) {
-		fmt.Fprintln(out, "migrate: that is the live database (PODIUM_DB_PATH); copy it to a scratch folder first")
+	// sudo -u podium carries no server environment, so the VM's own path
+	// is refused too, and so is any database with a -wal file beside it:
+	// a copy made for a rehearsal has none, a database in use does.
+	for _, live := range []string{os.Getenv("PODIUM_DB_PATH"), liveDBPath} {
+		if live != "" && sameFile(live, *dbPath) {
+			fmt.Fprintln(out, "migrate: that is the live database; copy it to a scratch folder first")
+			return 2
+		}
+	}
+	if _, err := os.Stat(*dbPath + "-wal"); err == nil {
+		fmt.Fprintln(out, "migrate: "+*dbPath+"-wal exists, so the database may be in use; copy it with sqlite3 .backup to a scratch folder first")
 		return 2
 	}
 	if _, err := os.Stat(*dbPath); err != nil {
@@ -211,6 +220,9 @@ func migrateCmd(args []string, out io.Writer) int {
 	fmt.Fprintf(out, "applied %d migrations: %v\n", len(applied), applied)
 	return checkCmd([]string{"-db", *dbPath, "-tests", envOr("PODIUM_TESTS_DIR", "data/tests")}, out)
 }
+
+// liveDBPath is where install.sh puts the database on the VM.
+const liveDBPath = "/var/lib/podium/db/podium.db"
 
 func sameFile(a, b string) bool {
 	fa, errA := os.Stat(a)

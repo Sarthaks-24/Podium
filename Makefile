@@ -34,6 +34,10 @@ RELEASE    := release/podium-$(VERSION)
 # The oldest installed release this one upgrades from; install.sh upgrade
 # refuses an older one. Raise it in the release that drops something an
 # older release still needs (a contract migration, PLAN.md section 8).
+# Pending the owner's release decision (D236): nothing is tagged yet, so
+# v1.0.0 is a placeholder. Option A (one release v1.5.0, installed fresh)
+# sets v1.5.0 here; option B (v1.0.0 to v1.2.0 as markers, then v1.5.0)
+# sets v1.2.0. The CHANGELOG's Unreleased section says the same.
 UPGRADES_FROM ?= v1.0.0
 
 # Run a root command inside WSL2 when on Windows, directly otherwise.

@@ -85,10 +85,16 @@ db_path() { local v; v=$(envval /etc/podium/server.env PODIUM_DB_PATH); echo "${
 listen_addr() { local v; v=$(envval /etc/podium/server.env PODIUM_LISTEN); echo "${v:-127.0.0.1:8080}"; }
 judge_addr() { local v; v=$(envval /etc/podium/server.env PODIUM_JUDGE_LISTEN); echo "${v:-127.0.0.1:8081}"; }
 
-# migrations DB: the applied migration versions, comma-separated.
+# migrations DB: the applied migration versions, comma-separated; nothing
+# for a database that does not exist yet. A database that exists but
+# cannot be read stops the script: an empty answer would make a rollback
+# take the same-schema branch over a migrated database.
 migrations() {
   [[ -f $1 ]] || return 0
-  runuser -u podium -- sqlite3 -readonly "$1" "SELECT group_concat(version, ',') FROM (SELECT version FROM schema_migrations ORDER BY version)" 2>/dev/null || true
+  local out
+  out=$(runuser -u podium -- sqlite3 -readonly -cmd '.timeout 5000' "$1" "SELECT group_concat(version, ',') FROM (SELECT version FROM schema_migrations ORDER BY version)") \
+    && [[ -n $out ]] || die "cannot read the applied migrations of $1 (above); nothing changed"
+  echo "$out"
 }
 
 release_name() { basename "$HERE"; }
@@ -206,13 +212,23 @@ example_for() {
   echo "$example"
 }
 
+# as_podium_install ARGS: install(1) as the podium user, for folders and
+# files inside /var/lib/podium. podium owns that folder, so a taken-over
+# server could put a symlink where a folder is expected, and root's
+# install -d follows it and chowns the target (say /usr/local/lib/podium).
+# As podium the same call can only change what podium already owns.
+as_podium_install() { setpriv --reuid=podium --regid=podium --init-groups -- install "$@"; }
+
 step_dirs() {
   log "dirs: data, tests, judge cache, config"
-  install -d -o podium -g podium -m 750 /var/lib/podium /var/lib/podium/tests
+  install -d -o podium -g podium -m 750 /var/lib/podium
+  [[ -L /var/lib/podium/tests || -L /var/lib/podium/db ]] && die "/var/lib/podium/tests or /var/lib/podium/db is a symlink; move it aside and run the dirs step again"
+  as_podium_install -d -m 750 /var/lib/podium/tests \
+    || die "cannot make /var/lib/podium/tests as podium (it must be a folder podium owns)"
   # Group podium (podium-backup's Litestream) may write the database
   # directory; setgid keeps new files in the group.
-  [[ -L /var/lib/podium/db ]] && die "/var/lib/podium/db is a symlink; move it aside and run the dirs step again"
-  install -d -o podium -g podium -m 2770 /var/lib/podium/db
+  as_podium_install -d -m 2770 /var/lib/podium/db \
+    || die "cannot make /var/lib/podium/db as podium (it must be a folder podium owns)"
   install -d -o judge  -g judge  -m 750 /var/cache/podium-judge
   install -d -o root   -g root   -m 755 /etc/podium
   local svc
@@ -255,6 +271,8 @@ install_app_files() {
 # when it was installed, the installed binaries' hashes and the
 # migrations the database has.
 write_manifest() {
+  local applied
+  applied=$(migrations "$(db_path)")
   {
     if [[ -f $HERE/MANIFEST ]]; then
       cat "$HERE/MANIFEST"
@@ -265,7 +283,7 @@ write_manifest() {
     echo "installed_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
     echo "podium_server_sha256=$(sha256sum /usr/local/bin/podium-server | cut -d' ' -f1)"
     echo "podium_judge_sha256=$(sha256sum /usr/local/bin/podium-judge | cut -d' ' -f1)"
-    echo "migrations_applied=$(migrations "$(db_path)")"
+    echo "migrations_applied=$applied"
   } > "$MANIFEST"
 }
 
@@ -313,10 +331,12 @@ check_upgrade_path() {
   if ! is_release_version "$have"; then
     die "cannot tell which release is installed (MANIFEST says '${have:-nothing}'); $to upgrades from $from or later. Install $from first, or ask before forcing anything"
   fi
-  if is_release_version "$from" && ! version_ge "$have" "$from"; then
+  is_release_version "$from" && is_release_version "$to" \
+    || die "$HERE/MANIFEST names version '$to' and upgrades_from '$from'; both must be vX.Y.Z (build the release again with make release VERSION=vX.Y.Z)"
+  if ! version_ge "$have" "$from"; then
     die "this VM runs $have, and $to upgrades only from $from or later. Upgrade to $from first, then to $to"
   fi
-  if is_release_version "$to" && ! version_ge "$to" "$have"; then
+  if ! version_ge "$to" "$have"; then
     die "$to is older than the installed $have; to go back use: sudo $LIB/install.sh rollback"
   fi
   echo "upgrade path: $have to $to (this release upgrades from $from or later)"
@@ -626,11 +646,19 @@ cmd_upgrade() {
   release=$(release_name)
   [[ -f $db ]] || die "no database at $db; nothing to upgrade (start the server once, or run a fresh install)"
 
-  log "upgrade to $release: 1/8 release files, upgrade path, deploy guard"
+  log "upgrade to $release: 1/8 release files, upgrade path, configuration names"
   verify_release
   check_upgrade_path
   check_unfinished_upgrade "$release" /usr/local/bin/podium-server
+  # Before the guard: a forced guard writes the deploy record and the
+  # students' banner, which must not happen for an upgrade that then stops
+  # over a missing variable.
+  env_names_check
+
+  log "2/8 deploy guard"
   guard=$(guard_binary)
+  # shellcheck disable=SC2064 # the folder is known now
+  trap "rm -rf '$(dirname "$guard")'" EXIT
   out=$(runuser -u podium -- "$guard" deploy-check -db "$db") || code=$?
   echo "$out"
   case $code in
@@ -642,14 +670,12 @@ cmd_upgrade() {
         -owner "$(envval /etc/podium/server.env PODIUM_OWNER_EMAIL)") || code=$?
       echo "$out"
       (( code == 0 )) || die "recording the forced deploy failed (above); nothing was changed"
-      echo "forced: the reason is in each contest's audit log. The student banner arrives in a later release; announce the restart in the contest meanwhile."
+      echo "forced: the reason is in each contest's audit log, and signed-in students see that the site was updated. Announce the restart in the contest too."
       ;;
     *) die "the deploy guard could not run (above); nothing was changed" ;;
   esac
   rm -rf "$(dirname "$guard")"
-
-  log "2/8 configuration: variable names in the new examples against /etc/podium"
-  env_names_check
+  trap - EXIT
 
   log "3/8 judge: stop claiming, finish and report the running jobs (up to 20 minutes)"
   local t0=$SECONDS
@@ -680,8 +706,10 @@ cmd_upgrade() {
   if [[ -f $MANIFEST ]]; then cp "$MANIFEST" "$PREVIOUS.new/MANIFEST"; else
     echo "release=unknown (installed before MANIFEST existed)" > "$PREVIOUS.new/MANIFEST"
   fi
+  local applied
+  applied=$(migrations "$db") || { systemctl start podium-judge.service; die "the judge is running again and nothing else changed"; }
   {
-    echo "migrations_before_upgrade=$(migrations "$db")"
+    echo "migrations_before_upgrade=$applied"
     echo "backup_before_upgrade=$backup"
     echo "backup_started_ms=$backup_ms"
     echo "upgraded_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
@@ -725,6 +753,12 @@ cmd_rollback() {
     || die "no previous release in $PREVIOUS (rollback works once, after an upgrade)"
   local db before now_list backup upgraded_ms prev_release
   db=$(db_path)
+  # A rollback that stopped after moving the database away must not start
+  # the previous server on an empty one, which would answer /healthz.
+  if [[ ! -f $db ]]; then
+    die "$db is missing$(ls -d "$(dirname "$db")".before-rollback-* 2>/dev/null | sed 's/^/; a moved copy: /' | tr -d '
+'); put the right database back (docs/RUNBOOK.md, Restoring from a backup), then run rollback again"
+  fi
   before=$(sed -n 's/^migrations_before_upgrade=//p' "$PREVIOUS/MANIFEST")
   backup=$(sed -n 's/^backup_before_upgrade=//p' "$PREVIOUS/MANIFEST")
   upgraded_ms=$(sed -n "s/^backup_started_ms=//p" "$PREVIOUS/MANIFEST")
@@ -789,8 +823,8 @@ EOF
     # The modes the dirs step gives a fresh install: group podium may
     # write, so Litestream (podium-backup, D116) can make its state folder
     # and checkpoint in the restored folder.
-    install -d -o podium -g podium -m 2770 "$(dirname "$db")"
-    install -o podium -g podium -m 660 "$scratch/podium.db" "$db"
+    as_podium_install -d -m 2770 "$(dirname "$db")"
+    as_podium_install -m 660 "$scratch/podium.db" "$db"
     db_group_rw
     # Adds files the backup has and the live folder lost; keeps the rest.
     local tests
@@ -804,7 +838,10 @@ EOF
     rm -rf "$work"
     echo "restored $backup; Litestream starts a new history from it"
     if [[ -n $forgotten ]]; then
-      local redo=/var/tmp/podium-rollback-forget-$stamp.txt ids owner
+      # mktemp: a random name made with O_EXCL, root's and mode 600, so the
+      # podium user cannot plant the file or a link to it in /var/tmp first.
+      local redo ids owner
+      redo=$(mktemp "/var/tmp/podium-rollback-forget-$stamp.XXXXXX.txt")
       ids=$(grep -E '^[1-9][0-9]*$' <<<"$forgotten" | paste -sd, - || true)
       owner=$(envval /etc/podium/server.env PODIUM_OWNER_EMAIL)
       (

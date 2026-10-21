@@ -96,6 +96,15 @@ func (s *Service) BuildSummaries(ctx context.Context, c *Contest) (int, error) {
 	// a rejudge or a decision recorded while they run is newer than it,
 	// so the next sweep builds again (council C1-006).
 	start := s.now().UnixMilli()
+	// A contest past retention has lost its submissions and summaries;
+	// building again would give every participant a zero.
+	var expired int
+	if err := s.DB.QueryRowContext(ctx, "SELECT count(*) FROM contest_results WHERE contest_id = ?", c.ID).Scan(&expired); err != nil {
+		return 0, err
+	}
+	if expired > 0 {
+		return 0, nil
+	}
 	final, err := s.IsFinal(ctx, c)
 	if err != nil {
 		return 0, err
@@ -166,6 +175,10 @@ func (s *Service) notifyResultsTx(ctx context.Context, tx *sql.Tx, c *Contest, n
 		users = append(users, u)
 	}
 	rows.Close()
+	// A short list would still mark the contest as told.
+	if err := rows.Err(); err != nil {
+		return err
+	}
 	for _, u := range users {
 		if err := notifications.InsertTx(ctx, tx, notifications.Row{UserID: u, Kind: notifications.ResultsFinal, ContestID: c.ID,
 			CreatedAt: now}); err != nil {
@@ -217,6 +230,7 @@ func (s *Service) SweepSummaries(ctx context.Context) (int, error) {
 		OR EXISTS (SELECT 1 FROM contest_audit a WHERE a.contest_id = c.id AND a.created_at >= c.summarised_at AND a.action IN (`+marks+`))
 		OR (c.results_notified_at IS NULL AND (c.hold_reveal = 0 OR c.revealed_at IS NOT NULL)))
 		AND (EXISTS (SELECT 1 FROM contest_starts cs WHERE cs.contest_id = c.id) OR c.summarised_at IS NOT NULL)
+		AND NOT EXISTS (SELECT 1 FROM contest_results r WHERE r.contest_id = c.id)
 		ORDER BY c.id`, args...)
 	if err != nil {
 		return 0, err

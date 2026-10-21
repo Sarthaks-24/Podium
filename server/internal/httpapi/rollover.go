@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"strings"
 	"time"
+	"unicode"
 	"unicode/utf8"
 
 	"github.com/Sarthaks-24/podium/internal/auth"
@@ -24,7 +25,7 @@ func (d Deps) semesterRollover(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	label := strings.TrimSpace(req.Label)
-	if label == "" || utf8.RuneCountInString(label) > 80 || strings.ContainsAny(label, "\r\n") {
+	if label == "" || utf8.RuneCountInString(label) > 80 || strings.IndexFunc(label, notOneLine) >= 0 {
 		WriteJSON(w, http.StatusBadRequest, map[string]APIError{"error": {Code: "bad_request",
 			Message: "Name the term in one line of at most 80 characters, such as 2026 odd semester.",
 			Fields:  map[string]string{"label": "Name the term, such as 2026 odd semester."}}})
@@ -73,4 +74,11 @@ func (d Deps) semesterRollover(w http.ResponseWriter, r *http.Request) {
 	}
 	WriteJSON(w, http.StatusOK, map[string]any{"applied": req.Apply, "label": label, "ended_before": before.UnixMilli(),
 		"contests": list, "accounts": idle, "idle_days": int(auth.IdleStudentPeriod / (24 * time.Hour)), "server_now": now.UnixMilli()})
+}
+
+// notOneLine reports a character a one-line label may not hold: a control
+// character, a line or paragraph separator, or a hidden format character
+// that could make the audit row read differently from what it says.
+func notOneLine(r rune) bool {
+	return unicode.IsControl(r) || r == '\u2028' || r == '\u2029' || auth.Hidden(r)
 }

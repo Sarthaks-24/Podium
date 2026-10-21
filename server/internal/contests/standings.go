@@ -3,9 +3,14 @@
 // scoring and the standings with freeze and reveal, rejudges, extensions,
 // clarifications and announcements, the contest events sent to connected
 // members, and the integrity rules of decision D47 (second sessions,
-// retention). This file holds the scoring itself, a pure function of the
-// contest, its problems and its submissions, so the rules can be tested
-// against hand-computed boards.
+// retention). Since v2 it also keeps the contest audit log and the slug
+// history, pins problems by revision, reports queue health, applies the
+// board adjustments of review outcomes (zero for a problem), writes the
+// per-student contest summaries behind progress and the students pages,
+// and archives a term in the semester rollover. This file holds the
+// scoring itself, a pure function of the contest, its problems, its
+// submissions and its adjustments, so the rules can be tested against
+// hand-computed boards.
 package contests
 
 import (
