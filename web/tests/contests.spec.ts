@@ -153,6 +153,7 @@ test('a student agrees to the honour code, solves, reads an announcement and ask
   await dialog.getByLabel('About').selectOption('B');
   await dialog.getByRole('button', { name: 'Send question' }).click();
   await expect(dialog.getByText('Write your question first.')).toBeVisible();
+  await expect(dialog.getByLabel('Question', { exact: true })).toBeFocused();
   await dialog.getByLabel('Question', { exact: true }).fill('Can intervals overlap at one point?');
   await dialog.getByRole('button', { name: 'Send question' }).click();
   await expect.poll(() => api.asked).toEqual([{ problem_label: 'B', question: 'Can intervals overlap at one point?' }]);

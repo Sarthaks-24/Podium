@@ -15,7 +15,7 @@
 -->
 <script lang="ts">
   import { tick } from 'svelte';
-  import { ApiError, sendJSON, PAGE_ERROR_MESSAGE } from '../lib/api';
+  import { ApiError, sendJSON } from '../lib/api';
   import type { Clarification, Contest } from '../lib/contests';
   import Icon from './Icon.svelte';
   import MessageList from './MessageList.svelte';
@@ -65,6 +65,9 @@
     const text = question.trim();
     if (text === '') {
       error = 'Write your question first.';
+      // Every other form moves focus to the field it names (C2-060).
+      await tick();
+      document.getElementById('ask-question')?.focus();
       return;
     }
     busy = true;
@@ -80,7 +83,8 @@
       const c = made && typeof made === 'object' ? ('clarification' in made ? made.clarification : made) : undefined;
       onasked(c && typeof c === 'object' && 'id' in c ? c : null);
     } catch (e) {
-      error = e instanceof ApiError ? (e.fields.question ?? e.message) : PAGE_ERROR_MESSAGE;
+      // Reloading mid-contest would lose the typed question, so the fallback keeps it.
+      error = e instanceof ApiError ? (e.fields.question ?? e.message) : 'Not sent. Your question is still here: try again in a moment.';
     } finally {
       busy = false;
     }
