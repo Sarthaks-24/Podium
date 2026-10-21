@@ -171,3 +171,64 @@ func TestRolloverApplyAsOfThePreview(t *testing.T) {
 		t.Errorf("apply with a preview two hours old: %d %v, want 400", code, out)
 	}
 }
+
+// The contact inbox and the appeals list page at 50 and say when more
+// follow (C2-043); the appeals list leaves out the reader's own appeal and
+// logs each listed one as a read of the student's record (C2-048, D97).
+func TestInboxAndAppealsPageAt50(t *testing.T) {
+	s := newSite(t)
+	owner := s.signedIn("owner@college.edu", "Owner")
+	asha := s.signedIn("asha@college.edu", "Asha")
+	ownerID, ashaID := owner.userID(), asha.userID()
+	ctx := context.Background()
+	conn, err := s.db.Conn(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+	conn.ExecContext(ctx, "PRAGMA foreign_keys = OFF")
+	for i := 1; i <= 51; i++ {
+		if _, err := conn.ExecContext(ctx, `INSERT INTO contact_messages (user_id, topic, message, created_at) VALUES (?, 'contest', ?, ?)`,
+			ashaID, fmt.Sprintf("Message %d", i), int64(i)); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := conn.ExecContext(ctx, `INSERT INTO integrity_appeals (user_id, rating_history_id, text, created_at) VALUES (?, ?, ?, ?)`,
+			ashaID, i, fmt.Sprintf("Appeal %d", i), int64(i)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// The owner's own appeal, the newest: never listed to the owner.
+	if _, err := conn.ExecContext(ctx, `INSERT INTO integrity_appeals (user_id, rating_history_id, text, created_at) VALUES (?, 52, 'Mine', 52)`, ownerID); err != nil {
+		t.Fatal(err)
+	}
+	conn.ExecContext(ctx, "PRAGMA foreign_keys = ON")
+
+	code, out := owner.do("GET", "/api/admin/contact", nil, "")
+	msgs, _ := out["messages"].([]any)
+	if code != 200 || len(msgs) != 50 || out["has_more"] != true {
+		t.Fatalf("inbox page 1: %d, %d messages, has_more %v", code, len(msgs), out["has_more"])
+	}
+	oldest := int64(msgs[49].(map[string]any)["id"].(float64))
+	code, out = owner.do("GET", fmt.Sprintf("/api/admin/contact?before=%d", oldest), nil, "")
+	if msgs, _ := out["messages"].([]any); code != 200 || len(msgs) != 1 || out["has_more"] != false {
+		t.Errorf("inbox page 2: %d %v", code, out)
+	}
+
+	code, out = owner.do("GET", "/api/admin/appeals", nil, "")
+	list, _ := out["appeals"].([]any)
+	if code != 200 || len(list) != 49 || out["has_more"] != true {
+		t.Fatalf("appeals page 1: %d, %d appeals, has_more %v; want 49 (own left out) and more", code, len(list), out["has_more"])
+	}
+	for _, x := range list {
+		if x.(map[string]any)["text"] == "Mine" {
+			t.Error("the owner's own appeal is listed to the owner")
+		}
+	}
+	if n := viewsOf(t, s, "record", ashaID); n != 49 {
+		t.Errorf("%d record views logged for page 1, want 49", n)
+	}
+	code, out = owner.do("GET", "/api/admin/appeals?page=2", nil, "")
+	if list, _ := out["appeals"].([]any); code != 200 || len(list) != 2 || out["has_more"] != false {
+		t.Errorf("appeals page 2: %d %v", code, out)
+	}
+}
