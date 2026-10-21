@@ -166,7 +166,7 @@
       "name": "contact-inbox",
       "auth": true,
       "public": false,
-      "title": "Messages to the organisers",
+      "title": "Inbox",
       "description": "Messages people sent to the organisers, with a reply link."
     },
     {
