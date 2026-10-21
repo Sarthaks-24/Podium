@@ -802,7 +802,9 @@ Set it up once:
 3. Accept the host key once: `sudo ssh -i /etc/podium/backup-ssh/id_ed25519 -o UserKnownHostsFile=/etc/podium/backup-ssh/known_hosts podium-backup@backup.example.edu true` (it will say rrsync needs a command; that is fine).
 4. `sudoedit /etc/podium/backup.env`, set `PODIUM_BACKUP_RSYNC`, then `sudo systemctl start podium-backup` and check `journalctl -u podium-backup -n 5` ends with `copied to`.
 
-The copy mirrors the VM with `--delete`, so a server taken over as podium that deletes the local backups would have the deletion mirrored the next night. Keep snapshots of the folder on the backup machine (daily, for at least 14 days), or rely on the encrypted B2 copy, whose Object Lock no key on the VM can lift (D116). A key from before this release at `/var/lib/podium/.ssh/id_ed25519` is no longer used: remove it from the other machine's `authorized_keys` and delete it.
+The copy mirrors the VM with `--delete`, so a server taken over as podium that deletes the local backups would have the deletion mirrored the next night. Keep snapshots of the folder on the backup machine (daily, for at least 14 days), or rely on the encrypted B2 copy, whose Object Lock no key on the VM can lift (D116). A key from before this release at `/var/lib/podium/.ssh/id_ed25519` is no longer used: remove it from the other machine's `authorized_keys` and delete it. If `PODIUM_BACKUP_RSYNC` is set, make the root key (steps 1 to 3) before upgrading to this release: without it the local backup is still made, but every nightly run fails after it and alerts, and `install.sh verify` fails on the missing key.
+
+A copy off the VM (rsync or the encrypted B2 copy) never stops the local backup. A problem with its settings is printed as a warning before the backup, and the unit fails after the local backup is made ("the local backup is done, but ..."), so `install.sh upgrade` still finds the backup it waits for.
 
 Disk snapshots from your VM provider are a fine addition but not a replacement: they usually live in the same account as the VM.
 

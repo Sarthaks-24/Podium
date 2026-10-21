@@ -960,6 +960,17 @@ cmd_verify() {
   [[ -n $(envval /etc/podium/alert.env PODIUM_ALERT_WEBHOOK) ]] && ok "PODIUM_ALERT_WEBHOOK set" || fail "PODIUM_ALERT_WEBHOOK missing in /etc/podium/alert.env: no alert reaches anyone"
   [[ -n $(envval /etc/podium/backup.env PODIUM_BACKUP_AGE_RECIPIENT) ]] && ok "encrypted copy configured" || warn "encrypted copy off the VM not configured in /etc/podium/backup.env: test files are lost with the disk"
   [[ -n $(envval /etc/podium/backup.env PODIUM_HEARTBEAT_URL) ]] && ok "PODIUM_HEARTBEAT_URL set" || warn "PODIUM_HEARTBEAT_URL missing: a missed backup goes unnoticed"
+  # The rsync copy needs root's own key (C1-046); without it every nightly
+  # run fails after the local backup (C2-010).
+  if [[ -n $(envval /etc/podium/backup.env PODIUM_BACKUP_RSYNC) ]]; then
+    if [[ ! -f /etc/podium/backup-ssh/id_ed25519 ]]; then
+      fail "PODIUM_BACKUP_RSYNC is set but /etc/podium/backup-ssh/id_ed25519 is missing (docs/OPERATIONS.md, \"Copy the nightly backup off the VM\")"
+    elif [[ $(stat -c '%U %a' /etc/podium/backup-ssh 2>/dev/null) != "root 700" ]]; then
+      fail "/etc/podium/backup-ssh is $(stat -c '%U %a' /etc/podium/backup-ssh), want root 700"
+    else
+      ok "rsync copy key in /etc/podium/backup-ssh"
+    fi
+  fi
   local bdir
   bdir=$(backup_dir)
   if [[ $(stat -c '%U %a' "$bdir" 2>/dev/null) == "podium 700" ]]; then ok "$bdir podium 700"; else fail "$bdir is $(stat -c '%U %a' "$bdir" 2>/dev/null || echo missing), want podium 700"; fi
