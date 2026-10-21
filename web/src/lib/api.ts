@@ -46,6 +46,15 @@ export const NETWORK_MESSAGE = 'Could not reach the server. Check your connectio
 /** Shown when the server answered with something that is not the API's JSON. */
 export const UNEXPECTED_MESSAGE = 'The server sent an unexpected response. Try again in a moment.';
 
+/**
+ * The sentence for a failed request: the server's own message, or the
+ * unexpected-response sentence for anything else (council C1-032). Use it
+ * instead of a local copy, so every screen words a failure the same way.
+ */
+export function errorText(e: unknown): string {
+  return e instanceof ApiError ? e.message : UNEXPECTED_MESSAGE;
+}
+
 function stringMap(value: unknown): Record<string, string> {
   const out: Record<string, string> = {};
   if (typeof value !== 'object' || value === null || Array.isArray(value)) return out;

@@ -410,6 +410,19 @@ describe('auditSummary', () => {
     expect(auditSummary({ action: 'extension', details: { email: 'asha@college.edu', minutes: 0 } })).toBe(
       'Removed the extension for asha@college.edu',
     );
+    // v1.4.0: the row says whether a reason was written, never the reason.
+    expect(auditSummary({ action: 'extension', details: { user_id: 7, minutes: 15, reason_given: true } }, new Map([[7, 'Asha Rao']]))).toBe(
+      'Gave Asha Rao 15 extra minutes, with a reason (see Time)',
+    );
+    expect(auditSummary({ action: 'extension', details: { user_id: 7, minutes: 15, reason_given: false } }, new Map([[7, 'Asha Rao']]))).toBe(
+      'Gave Asha Rao 15 extra minutes, without a reason',
+    );
+    expect(auditSummary({ action: 'board_adjusted', details: { decision_id: 3, problem_label: 'B', user_id: 7, rank_before: 2, total_before: 240, score_before: 40, reversed: false } }, new Map([[7, 'Asha Rao']]))).toBe(
+      'A review decision set problem B to zero for Asha Rao (before: rank 2, 240 points)',
+    );
+    expect(auditSummary({ action: 'board_adjusted', details: { problem_label: 'B', user_id: 7, reversed: true } }, new Map([[7, 'Asha Rao']]))).toBe(
+      'An upheld appeal restored problem B on the board for Asha Rao',
+    );
     expect(auditSummary({ action: 'rejudge', details: { problem_label: 'B', queued: 1 } })).toBe('Judged problem B again (1 submission)');
     expect(auditSummary({ action: 'rejudge', details: { submission_id: 42, queued: 1 } })).toBe('Judged submission 42 again');
     expect(auditSummary({ action: 'problems', details: { from: [], to: [{ label: 'A' }, { label: 'B' }] } })).toBe('Set the problems to A, B');

@@ -18,8 +18,10 @@
   content (names stop at 16rem), so scores sit beside names (audit 01-10);
   on phones a long name wraps to two lines instead of being cut (audit
   07-9). Props: `standings`, `labels` (the problem
-  letters, in order), `caption` (the table's accessible name) and `large`
-  (bigger type, for a projector).
+  letters, in order), `caption` (the table's accessible name), `large`
+  (bigger type, for a projector) and `nameHref` (organiser views only:
+  each name links to that student's page, web-quality #16; the board
+  itself carries no mark of any review decision).
 -->
 <script lang="ts">
   import { onMount, tick } from 'svelte';
@@ -30,9 +32,10 @@
     labels: string[];
     caption: string;
     large?: boolean;
+    nameHref?: (userId: number) => string;
   }
 
-  let { standings, labels, caption, large = false }: Props = $props();
+  let { standings, labels, caption, large = false, nameHref }: Props = $props();
 
   let wrap: HTMLDivElement | undefined = $state();
   const mine = $derived(myRow(standings));
@@ -114,7 +117,11 @@
           <tr class:me data-user={r.user_id} tabindex={me ? -1 : undefined}>
             <td class="rank mono">{r.rank}</td>
             <th scope="row" class="name">
-              <span class="name-text" title={r.name}>{r.name}{#if me}<span class="you">&nbsp;(you)</span>{/if}</span>
+              {#if nameHref}
+                <a class="name-text name-link" href={nameHref(r.user_id)} title={r.name}>{r.name}</a>
+              {:else}
+                <span class="name-text" title={r.name}>{r.name}{#if me}<span class="you">&nbsp;(you)</span>{/if}</span>
+              {/if}
             </th>
             <td class="total mono">
               {r.total}<span class="visually-hidden">, reached after</span>
@@ -204,8 +211,8 @@
   }
 
   .board tr.me:focus-visible {
-    outline: 2px solid var(--act);
-    outline-offset: -2px;
+    outline: calc(2 * var(--rule)) solid var(--act);
+    outline-offset: calc(-2 * var(--rule));
   }
 
   .rank {
@@ -236,6 +243,10 @@
   .board thead .rank,
   .board thead .name {
     z-index: 3;
+  }
+
+  .name-link {
+    color: var(--ink);
   }
 
   .you {

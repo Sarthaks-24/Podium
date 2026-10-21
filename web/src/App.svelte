@@ -8,8 +8,10 @@
   get "Contests" (Your contests) and, once an organiser has shared an
   integrity case with them, "Questions"; admins and owners get "Contests"
   (the organiser list at /admin/contests, where "/" sends them),
-  "Problem bank" (also current on the AI assistant screens), for owners
-  "People", and "Inbox" (messages sent through /contact, FP.2). Students
+  "Problem bank" (also current on the AI assistant screens), "Students"
+  (the students table, a student's page, record and progress; v2 P4
+  F9.4), for owners "People", and "Inbox" (messages sent through
+  /contact, FP.2). Students
   also get "Your progress" (/progress, v2 P4), and beside the account
   button a "Notices" link with the unread count from /api/me (F9.1,
   lib/notices.svelte.ts), read again when a live stream reconnects and
@@ -139,6 +141,7 @@
         current: ['admin-contests', 'admin-contest', 'contest-console', 'contest-results', 'contest-integrity', 'integrity-pair', 'integrity-case'].includes(name),
       },
       { href: '/admin/problems', label: 'Problem bank', current: ['problems', 'problem', 'problem-try', 'ai-settings', 'ai-new'].includes(name) },
+      { href: '/admin/students', label: 'Students', current: ['students', 'student', 'student-record', 'admin-progress'].includes(name) },
     ];
     if (isOwner) links.push({ href: '/admin/people', label: 'People', current: name === 'people' });
     links.push({ href: '/admin/contact', label: 'Inbox', current: name === 'contact-inbox' });
@@ -173,10 +176,33 @@
     redirectedTo = null;
     if (lastPath !== null && lastPath !== path) {
       menuOpen = false;
-      if (!wasRedirect) tick().then(() => document.querySelector<HTMLElement>('main h1')?.focus());
+      if (!wasRedirect) tick().then(focusHeading);
     }
     lastPath = path;
   });
+
+  /**
+   * Moves focus to the new page's heading. A lazily loaded screen has no
+   * heading yet, so it waits a moment for one, and takes focus only if
+   * nothing else has it by then.
+   */
+  function focusHeading() {
+    const heading = document.querySelector<HTMLElement>('main h1');
+    if (heading) {
+      heading.focus();
+      return;
+    }
+    const main = document.getElementById('main');
+    if (!main || typeof MutationObserver === 'undefined') return;
+    const observer = new MutationObserver(() => {
+      const h1 = main.querySelector<HTMLElement>('h1');
+      if (!h1) return;
+      observer.disconnect();
+      if (document.activeElement === null || document.activeElement === document.body) h1.focus();
+    });
+    observer.observe(main, { childList: true, subtree: true });
+    setTimeout(() => observer.disconnect(), 3000);
+  }
 
   // A student's "Questions" link, loaded once per sign-in (S7).
   let questionsFor: number | null = null;
@@ -203,6 +229,10 @@
 
   // Loaded on first visit only; the page is not needed during a contest.
   const loadProgress = () => import('./routes/Progress.svelte');
+  // The organisers' students pages, also loaded on first visit only.
+  const loadStudents = () => import('./routes/Students.svelte');
+  const loadStudent = () => import('./routes/Student.svelte');
+  const loadRecord = () => import('./routes/StudentRecord.svelte');
 
   onMount(() => {
     const removeInterception = installLinkInterception();
@@ -398,6 +428,24 @@
       {:then mod}
         {#key match.params.id ?? ''}
           <mod.default userId={route.name === 'admin-progress' ? match.params.id : ''} />
+        {/key}
+      {:catch}
+        <p class="banner banner-error" role="alert">This page could not load. Reload to try again.</p>
+      {/await}
+    {:else if route.name === 'students'}
+      {#await loadStudents()}
+        <p class="visually-hidden" role="status">Loading</p>
+      {:then mod}
+        <mod.default />
+      {:catch}
+        <p class="banner banner-error" role="alert">This page could not load. Reload to try again.</p>
+      {/await}
+    {:else if route.name === 'student' || route.name === 'student-record'}
+      {#await route.name === 'student' ? loadStudent() : loadRecord()}
+        <p class="visually-hidden" role="status">Loading</p>
+      {:then mod}
+        {#key `${route.name}/${match.params.id}`}
+          <mod.default id={match.params.id} />
         {/key}
       {:catch}
         <p class="banner banner-error" role="alert">This page could not load. Reload to try again.</p>

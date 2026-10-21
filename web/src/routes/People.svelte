@@ -12,12 +12,32 @@
     signed in yet reads "Invited". A role is a select on each row that
     asks before it changes (the same POST upserts the role).
   - Allowed email domains: the list and a form to add one.
+  - Organisation details (council C1-011): the name, contact email, phone
+    and privacy contact the public pages show, saved with PUT
+    /api/admin/site-settings ("Save organisation details"); each refused
+    field says what to fix under itself, and the footer and sign-in page
+    pick the new values up at once.
   - Account help: one email field for "Reset Google link", "End sessions"
-    and "Disable account", then the disabled accounts with Enable. The
-    field says whose account it is when the page knows the address (an
-    organiser or a disabled account), and that students are not listed
-    otherwise; the confirmation names the person (audit 2026-10-20 O10;
-    a lookup of any account waits on an API route).
+    and "Disable account", then the disabled accounts with Enable. As an
+    address is typed the field looks the account up (GET
+    /api/admin/accounts?email=, students included) and says whose it is
+    ("Asha Rao, student, last signed in ..."); for an address with no
+    account it says so and the three actions stay disabled. The
+    confirmation names the person (audit 2026-10-20 O10).
+  - Semester rollover (council C1-012, D163): a term label and an
+    optional "contests that ended before" date, "Preview rollover" (POST
+    /api/admin/rollover without apply) lists the contests it would archive
+    and the student accounts unseen for 180 days it would disable; then
+    "Archive and disable" asks first, repeating the counts, and sends the
+    same request with apply. Changing the label or the date drops the
+    preview, so what is applied is what was read.
+  - Integrity reviewers (v2 P4 F9.5, D97): per reviewer, the cases they
+    opened by hand, cleared and closed with an outcome, their proposals,
+    confirmations and appeal rulings, and how many of their cases are
+    overdue; then the record view log, newest first: who read whose
+    record page, case or notes, and when, with "Show older views".
+  - From 1280 px a sticky "On this page" list beside the sections jumps
+    to each one (the page is long; below 1280 px it reads top to bottom).
   - History: every change to people, domains and the site, newest first,
     with a filter by kind and a search by email, and "Show older changes".
 
@@ -30,14 +50,17 @@
 <script lang="ts">
   import PageState from '../components/PageState.svelte';
   import PageHeader from '../components/PageHeader.svelte';
-  import { onMount, tick } from 'svelte';
+  import { onMount, tick, untrack } from 'svelte';
   import ConfirmDialog from '../components/ConfirmDialog.svelte';
   import MonoDigits from '../components/MonoDigits.svelte';
+  import Badge from '../components/Badge.svelte';
   import { polite } from '../lib/announce.svelte';
-  import { ApiError, getJSON, sendJSON } from '../lib/api';
+  import { runMode, type Organisation } from '../lib/mode.svelte';
+  import { ApiError, errorText, getJSON, sendJSON } from '../lib/api';
   import { countOf, formatDateTime, roleLabel } from '../lib/format';
   import { setTitle } from '../lib/head';
   import { SITE_ACTIONS, actorText, feedQuery, siteAuditSummary, type SiteAuditEntry, type SiteAuditPage } from '../lib/history';
+  import { viewKindWord, type RecordView, type ReviewerLoad } from '../lib/students';
   import { routeTitle } from '../lib/routing';
   import { session } from '../lib/session.svelte';
   import { showToast } from '../lib/toast.svelte';
@@ -110,25 +133,211 @@
   let historySearch = $state('');
   let historyBusy = $state(false);
 
+  // Organisation details (C1-011).
+  const EMPTY_ORG: Organisation = { name: '', contact_email: '', phone: '', privacy_contact: '' };
+  let org = $state<Organisation>({ ...EMPTY_ORG });
+  let orgErrors = $state<Record<string, string>>({});
+  let orgError = $state('');
+  let orgBusy = $state(false);
+
+  // Semester rollover (C1-012).
+  interface RolloverPlan {
+    applied: boolean;
+    label: string;
+    ended_before: number;
+    idle_days: number;
+    contests: { id: number; slug: string; title: string; ends_at: number }[];
+    accounts: Account[];
+  }
+  let rollLabel = $state('');
+  let rollBefore = $state('');
+  let rollError = $state('');
+  let rollBusy = $state(false);
+  let rollPlan = $state.raw<RolloverPlan | null>(null);
+  let rollDone = $state.raw<RolloverPlan | null>(null);
+  let rollConfirm = $state(false);
+
+  // Integrity reviewers and the record view log (F9.5).
+  let reviewers = $state<ReviewerLoad[] | null>(null);
+  let reviewersError = $state('');
+  let views = $state<RecordView[]>([]);
+  let viewsMore = $state(false);
+  let viewsState = $state<'loading' | 'ready' | 'error'>('loading');
+  let viewsBusy = $state(false);
+
+  // The account the help field names, looked up as the address is typed (O10).
+  let lookup = $state<{ email: string; status: 'loading' | 'found' | 'none' | 'error'; account?: Account } | null>(null);
+  let lookupTimer: ReturnType<typeof setTimeout> | undefined;
+
   let organisersHeading: HTMLHeadingElement | undefined = $state();
   let domainsHeading: HTMLHeadingElement | undefined = $state();
 
   const isOwner = $derived(session.user?.role === 'owner');
+  const EMAIL = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
   const origin = typeof window !== 'undefined' ? window.location.origin : '';
   // Organisers other than the configured owner and the person signed in (audit O10).
   const coTeachers = $derived(people.filter((p) => !p.locked && p.id !== session.user?.id).length);
 
-  /** The account the help field names, when this page already knows it. */
+  /** The account the help field names: looked up, or already on this page. */
   const accountMatch = $derived.by(() => {
     const e = accountEmail.trim().toLowerCase();
     if (e === '') return null;
+    if (lookup && lookup.email === e && lookup.status === 'found' && lookup.account) {
+      const a = lookup.account;
+      return { name: a.name.trim() || a.email, role: roleWord(a.role), last: a.last_login_at, disabled: a.disabled };
+    }
     const person = people.find((x) => x.email.toLowerCase() === e);
     if (person) return { name: personLabel(person), role: roleLabel(person.role).toLowerCase(), last: person.last_login_at, disabled: !!person.disabled };
     const account = disabled.find((x) => x.email.toLowerCase() === e);
     if (account) return { name: account.name.trim() || account.email, role: account.role, last: account.last_login_at, disabled: true };
     return null;
   });
-  const accountLooksLikeEmail = $derived(/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(accountEmail.trim()));
+  const accountLooksLikeEmail = $derived(EMAIL.test(accountEmail.trim()));
+  /** The lookup found no account for the address typed: the actions would only be refused. */
+  const noAccount = $derived(lookup !== null && lookup.email === accountEmail.trim().toLowerCase() && lookup.status === 'none');
+
+  function roleWord(role: string): string {
+    return role === 'owner' || role === 'admin' || role === 'student' ? roleLabel(role).toLowerCase() : role;
+  }
+
+  // A changed label or date drops the preview, so what is applied is what was read.
+  $effect(() => {
+    void rollLabel;
+    void rollBefore;
+    untrack(() => {
+      rollPlan = null;
+    });
+  });
+
+  $effect(() => {
+    const e = accountEmail.trim().toLowerCase();
+    clearTimeout(lookupTimer);
+    if (!EMAIL.test(e)) {
+      lookup = null;
+      return;
+    }
+    if (untrack(() => lookup?.email) === e) return;
+    lookupTimer = setTimeout(() => void lookUp(e), 250);
+  });
+
+  async function lookUp(e: string) {
+    lookup = { email: e, status: 'loading' };
+    try {
+      const d = await getJSON<{ account: Account }>(`/api/admin/accounts?email=${encodeURIComponent(e)}`);
+      if (lookup?.email === e) lookup = { email: e, status: 'found', account: d.account };
+    } catch (err) {
+      if (handleSessionError(err) || lookup?.email !== e) return;
+      lookup = { email: e, status: err instanceof ApiError && err.status === 404 ? 'none' : 'error' };
+    }
+  }
+
+  async function saveOrganisation(event: SubmitEvent) {
+    event.preventDefault();
+    orgErrors = {};
+    orgError = '';
+    orgBusy = true;
+    try {
+      const saved = await sendJSON<Organisation>('PUT', '/api/admin/site-settings', {
+        name: org.name.trim(),
+        contact_email: org.contact_email.trim(),
+        phone: org.phone.trim(),
+        privacy_contact: org.privacy_contact.trim(),
+      });
+      org = { ...saved };
+      runMode.organisation = { ...saved };
+      if (saved.contact_email !== '') runMode.contactEmail = saved.contact_email;
+      showToast('Saved the organisation details');
+      void loadHistory(1);
+    } catch (err) {
+      if (handleSessionError(err)) return;
+      if (err instanceof ApiError && Object.keys(err.fields).length > 0) {
+        orgErrors = { ...err.fields };
+        await tick();
+        document.querySelector<HTMLElement>('#org-form [aria-invalid="true"]')?.focus();
+      } else {
+        orgError = messageOf(err);
+      }
+    } finally {
+      orgBusy = false;
+    }
+  }
+
+  /** The rollover request: the label, the optional date as the start of that day, and whether to apply it. */
+  function rolloverBody(apply: boolean): Record<string, unknown> {
+    const body: Record<string, unknown> = { label: rollLabel.trim(), apply };
+    if (rollBefore !== '') {
+      const [y, m, d] = rollBefore.split('-').map(Number);
+      body.ended_before = new Date(y, m - 1, d).getTime();
+    }
+    return body;
+  }
+
+  async function previewRollover(event: SubmitEvent) {
+    event.preventDefault();
+    rollError = '';
+    rollDone = null;
+    if (rollLabel.trim() === '') {
+      rollError = 'Name the term first, for example 2026 odd semester.';
+      document.getElementById('roll-label')?.focus();
+      return;
+    }
+    rollBusy = true;
+    try {
+      rollPlan = await sendJSON<RolloverPlan>('POST', '/api/admin/rollover', rolloverBody(false));
+    } catch (err) {
+      if (!handleSessionError(err)) rollError = err instanceof ApiError ? (err.fields.label ?? err.message) : messageOf(err);
+    } finally {
+      rollBusy = false;
+    }
+  }
+
+  async function applyRollover() {
+    rollBusy = true;
+    try {
+      const done = await sendJSON<RolloverPlan>('POST', '/api/admin/rollover', rolloverBody(true));
+      rollDone = done;
+      rollPlan = null;
+      rollConfirm = false;
+      disabled = [...disabled.filter((a) => !done.accounts.some((x) => x.id === a.id)), ...done.accounts.map((a) => ({ ...a, disabled: true }))].sort((a, b) =>
+        a.email.localeCompare(b.email),
+      );
+      showToast(`Archived ${countOf(done.contests.length, 'contest')} and disabled ${countOf(done.accounts.length, 'account')}`);
+      void loadHistory(1);
+    } catch (err) {
+      rollConfirm = false;
+      if (!handleSessionError(err)) rollError = messageOf(err);
+    } finally {
+      rollBusy = false;
+    }
+  }
+
+  async function loadReviewers() {
+    reviewersError = '';
+    try {
+      const d = await getJSON<{ reviewers: ReviewerLoad[] }>('/api/admin/integrity/oversight');
+      reviewers = d.reviewers ?? [];
+    } catch (err) {
+      if (!handleSessionError(err)) reviewersError = messageOf(err);
+    }
+  }
+
+  async function loadViews(more = false) {
+    viewsBusy = true;
+    if (!more) viewsState = 'loading';
+    try {
+      const before = more && views.length > 0 ? `?before=${views[views.length - 1].id}` : '';
+      const d = await getJSON<{ views: RecordView[]; has_more?: boolean }>(`/api/admin/record-views${before}`);
+      views = more ? [...views, ...(d.views ?? [])] : (d.views ?? []);
+      viewsMore = d.has_more === true;
+      viewsState = 'ready';
+    } catch (err) {
+      if (handleSessionError(err)) return;
+      if (more) showToast(messageOf(err), 'error');
+      else viewsState = 'error';
+    } finally {
+      viewsBusy = false;
+    }
+  }
 
   /** "Asha Verma (asha@college.edu)" when the page knows the name, else the address. */
   function accountName(target: string): string {
@@ -213,18 +422,21 @@
   }
 
   function messageOf(err: unknown): string {
-    return err instanceof ApiError ? err.message : 'Something went wrong. Try again in a moment.';
+    return errorText(err);
   }
 
   async function load() {
     loadState = 'loading';
     try {
-      const data = await getJSON<{ people: Person[]; domains: Domain[]; disabled?: Account[] }>('/api/admin/people');
+      const data = await getJSON<{ people: Person[]; domains: Domain[]; disabled?: Account[]; organisation?: Organisation }>('/api/admin/people');
       people = data.people ?? [];
+      if (data.organisation) org = { ...EMPTY_ORG, ...data.organisation };
       domains = data.domains ?? [];
       disabled = data.disabled ?? [];
       loadState = 'ready';
       void loadHistory(1);
+      void loadReviewers();
+      void loadViews();
     } catch (err) {
       if (handleSessionError(err)) return;
       loadError = messageOf(err);
@@ -453,17 +665,19 @@
 {:else if loadState === 'error'}
   <PageState kind="error" message={loadError} onretry={load} />
 {:else}
+  <div class="page-split people-split">
+    <div class="page-split-main">
   {#if fresh}
     <section class="section start" aria-labelledby="start-heading">
       <h2 id="start-heading">Getting started</h2>
       <ul class="steps">
         <li>
           <span class="step">Add your college's email domain, so students can sign in.</span>
-          <span class="state-word" data-state={domains.length > 0 ? 'ended' : 'upcoming'}>{domains.length > 0 ? 'Done' : 'To do'}</span>
+          <Badge tone={domains.length > 0 ? 'ok' : 'neutral'} text={domains.length > 0 ? 'Done' : 'To do'} />
         </li>
         <li>
           <span class="step">Add a co-teacher as an admin, so someone else can run a contest.</span>
-          <span class="state-word" data-state={coTeachers > 0 ? 'ended' : 'upcoming'}>{coTeachers > 0 ? 'Done' : 'To do'}</span>
+          <Badge tone={coTeachers > 0 ? 'ok' : 'neutral'} text={coTeachers > 0 ? 'Done' : 'To do'} />
         </li>
         <li>
           <span class="step">Share the address with your students: <span class="address">{origin}</span></span>
@@ -618,6 +832,32 @@
     {/if}
   </section>
 
+  <section class="section" aria-labelledby="org-heading">
+    <h2 id="org-heading">Organisation details</h2>
+    <p class="intro muted">Shown on the sign-in page, in the footer and on the privacy page. Use a role address as the contact email, so your own address stops appearing on public pages.</p>
+    <form id="org-form" class="org" novalidate onsubmit={saveOrganisation}>
+      {#each [{ key: 'name', label: 'Organisation name', type: 'text', help: 'For example Example College of Engineering.' }, { key: 'contact_email', label: 'Contact email', type: 'email', help: 'Shown to everyone, signed in or not.' }, { key: 'phone', label: 'Phone', type: 'tel', help: 'Optional. Digits, spaces and + - ( ) only.' }, { key: 'privacy_contact', label: 'Privacy contact', type: 'text', help: 'Who to ask about personal data: a name or an address.' }] as f (f.key)}
+        <div class="field">
+          <label for="org-{f.key}">{f.label}</label>
+          <input
+            id="org-{f.key}"
+            class="input"
+            type={f.type}
+            autocomplete="off"
+            spellcheck="false"
+            bind:value={org[f.key as keyof Organisation]}
+            aria-invalid={orgErrors[f.key] ? 'true' : undefined}
+            aria-describedby="org-{f.key}-help{orgErrors[f.key] ? ` org-${f.key}-error` : ''}"
+          />
+          <p id="org-{f.key}-help" class="field-help">{f.help}</p>
+          {#if orgErrors[f.key]}<p id="org-{f.key}-error" class="field-error">{orgErrors[f.key]}</p>{/if}
+        </div>
+      {/each}
+      {#if orgError}<p class="field-error" role="alert">{orgError}</p>{/if}
+      <button type="submit" class="btn btn-secondary" disabled={orgBusy}>Save organisation details</button>
+    </form>
+  </section>
+
   <section class="section" aria-labelledby="help-heading">
     <h2 id="help-heading">Account help</h2>
     <p class="intro muted">
@@ -644,18 +884,34 @@
             <MonoDigits
               text={`${accountMatch.name}, ${accountMatch.role}${accountMatch.disabled ? ', disabled' : ''}, ${accountMatch.last !== null ? `last signed in ${formatDateTime(accountMatch.last)}` : 'never signed in'}.`}
             />
+          {:else if accountLooksLikeEmail && noAccount}
+            Nobody with that email has an account. Check the address.
+          {:else if accountLooksLikeEmail && lookup?.status === 'error'}
+            Could not look the account up. Check the address before you act.
           {:else if accountLooksLikeEmail}
-            Not an organiser or a disabled account. Students are not listed on this page yet, so check the address before you act.
+            Looking up the account.
           {:else}
             The account's email address, as they sign in with it.
           {/if}
         </p>
       </div>
-      <button type="submit" class="btn btn-secondary submit" disabled={removing && pending?.kind === 'reset'}>Reset Google link</button>
-      <button type="button" class="btn btn-secondary submit" disabled={removing && pending?.kind === 'end-sessions'} onclick={() => askAccount('end-sessions')}>
+      <button type="submit" class="btn btn-secondary submit" disabled={noAccount || (removing && pending?.kind === 'reset')} aria-describedby={noAccount ? 'account-who' : undefined}>Reset Google link</button>
+      <button
+        type="button"
+        class="btn btn-secondary submit"
+        disabled={noAccount || (removing && pending?.kind === 'end-sessions')}
+        aria-describedby={noAccount ? 'account-who' : undefined}
+        onclick={() => askAccount('end-sessions')}
+      >
         End sessions
       </button>
-      <button type="button" class="btn btn-secondary danger-secondary submit" disabled={removing && pending?.kind === 'disable'} onclick={() => askAccount('disable')}>
+      <button
+        type="button"
+        class="btn btn-secondary btn-danger-secondary submit"
+        disabled={noAccount || (removing && pending?.kind === 'disable')}
+        aria-describedby={noAccount ? 'account-who' : undefined}
+        onclick={() => askAccount('disable')}
+      >
         Disable account
       </button>
     </form>
@@ -682,6 +938,122 @@
       </ul>
     {:else}
       <p class="empty muted">No account is disabled.</p>
+    {/if}
+  </section>
+
+  <section class="section" aria-labelledby="rollover-heading">
+    <h2 id="rollover-heading">Semester rollover</h2>
+    <p class="intro muted">
+      At the end of a term: archive the contests that have ended and disable the student accounts nobody has used for 180 days. Nothing is
+      deleted, and you can enable any account again above. Preview first; nothing changes until you confirm.
+    </p>
+    <form class="form" novalidate onsubmit={previewRollover}>
+      <div class="field grow">
+        <label for="roll-label">Term</label>
+        <input id="roll-label" class="input" type="text" autocomplete="off" placeholder="2026 odd semester" bind:value={rollLabel} aria-invalid={rollError ? 'true' : undefined} aria-describedby={rollError ? 'roll-error' : undefined} />
+      </div>
+      <div class="field">
+        <label for="roll-before">Contests that ended before (optional)</label>
+        <input id="roll-before" class="input" type="date" bind:value={rollBefore} />
+      </div>
+      <button type="submit" class="btn btn-secondary submit" disabled={rollBusy}>Preview rollover</button>
+    </form>
+    {#if rollError}<p id="roll-error" class="field-error form-error" role="alert">{rollError}</p>{/if}
+    {#if rollPlan}
+      <div class="plan" role="region" aria-label="Rollover preview">
+        <p><strong>{countOf(rollPlan.contests.length, 'contest')}</strong> to archive and <strong>{countOf(rollPlan.accounts.length, 'student account')}</strong> to disable for {rollPlan.label}.</p>
+        {#if rollPlan.contests.length > 0}
+          <details>
+            <summary>Contests</summary>
+            <ul class="plan-list small">{#each rollPlan.contests as c (c.id)}<li>{c.title}, ended <MonoDigits text={formatDateTime(c.ends_at)} /></li>{/each}</ul>
+          </details>
+        {/if}
+        {#if rollPlan.accounts.length > 0}
+          <details>
+            <summary>Accounts</summary>
+            <ul class="plan-list small">
+              {#each rollPlan.accounts as a (a.id)}<li>{a.email}{a.name ? ` (${a.name})` : ''}, {#if a.last_login_at !== null}last signed in <MonoDigits text={formatDateTime(a.last_login_at)} />{:else}never signed in{/if}</li>{/each}
+            </ul>
+          </details>
+        {/if}
+        {#if rollPlan.contests.length + rollPlan.accounts.length > 0}
+          <button type="button" class="btn btn-secondary btn-danger-secondary" disabled={rollBusy} onclick={() => (rollConfirm = true)}>Archive and disable</button>
+        {:else}
+          <p class="muted small">Nothing to do for this term.</p>
+        {/if}
+      </div>
+    {/if}
+    {#if rollDone}
+      <p class="muted small history-state" role="status">
+        {rollDone.label}: archived {countOf(rollDone.contests.length, 'contest')} and disabled {countOf(rollDone.accounts.length, 'account')}.
+      </p>
+    {/if}
+  </section>
+
+  <section class="section" aria-labelledby="reviewers-heading">
+    <h2 id="reviewers-heading">Integrity reviewers</h2>
+    <p class="intro muted">What each owner and admin has done in integrity review, so the work is shared and nothing waits too long. Only you see this.</p>
+    {#if reviewersError}
+      <p class="muted small history-state">{reviewersError} <button type="button" class="btn btn-quiet btn-compact" onclick={loadReviewers}>Try again</button></p>
+    {:else if reviewers === null}
+      <p class="muted small history-state" role="status">Loading the reviewers</p>
+    {:else if reviewers.length === 0}
+      <p class="muted small history-state">Nobody has reviewed a case yet.</p>
+    {:else}
+      <div class="table-wrap reviewers">
+        <table class="table table-dense table-stack">
+          <caption class="visually-hidden">Integrity work by reviewer</caption>
+          <thead>
+            <tr>
+              <th scope="col">Reviewer</th>
+              <th scope="col" class="right">Opened by hand</th>
+              <th scope="col" class="right">Cleared</th>
+              <th scope="col" class="right">Outcomes</th>
+              <th scope="col" class="right">Proposals</th>
+              <th scope="col" class="right">Confirmations</th>
+              <th scope="col" class="right">Appeal rulings</th>
+              <th scope="col" class="right">Overdue</th>
+            </tr>
+          </thead>
+          <tbody>
+            {#each reviewers as r (r.user_id)}
+              <tr>
+                <th scope="row" class="r-name">{r.name || r.email}{#if r.name}<span class="r-email muted">{r.email}</span>{/if}</th>
+                <td class="num right"><span class="cell-label">Opened by hand</span>{r.manual_opened}</td>
+                <td class="num right"><span class="cell-label">Cleared</span>{r.cleared}</td>
+                <td class="num right"><span class="cell-label">Outcomes</span>{r.actioned}</td>
+                <td class="num right"><span class="cell-label">Proposals</span>{r.proposals}</td>
+                <td class="num right"><span class="cell-label">Confirmations</span>{r.confirmations}</td>
+                <td class="num right"><span class="cell-label">Appeal rulings</span>{r.rulings}</td>
+                <td class="num right" class:late={r.overdue > 0}><span class="cell-label">Overdue</span>{r.overdue}</td>
+              </tr>
+            {/each}
+          </tbody>
+        </table>
+      </div>
+    {/if}
+
+    <h3 class="subhead">Record views</h3>
+    <p class="intro muted">Every time an organiser read a student's record page, a case or the notes on a submission, newest first.</p>
+    {#if viewsState === 'loading'}
+      <p class="muted small history-state" role="status">Loading the record views</p>
+    {:else if viewsState === 'error'}
+      <p class="muted small history-state">The record views could not be loaded. <button type="button" class="btn btn-quiet btn-compact" onclick={() => loadViews()}>Try again</button></p>
+    {:else if views.length === 0}
+      <p class="muted small history-state">Nobody has read a record yet.</p>
+    {:else}
+      <ul class="history" aria-label="Record views, newest first">
+        {#each views as v (v.id)}
+          <li>
+            <span class="when"><MonoDigits text={formatDateTime(v.at)} /></span>
+            <span class="what">{v.viewer.name || v.viewer.email} read {v.subject.name ? `${v.subject.name}'s` : "a student's"} {viewKindWord(v.kind).toLowerCase()}</span>
+            <span class="who muted">{v.viewer.email}</span>
+          </li>
+        {/each}
+      </ul>
+      {#if viewsMore}
+        <button type="button" class="btn btn-secondary btn-compact more" disabled={viewsBusy} onclick={() => loadViews(true)}>Show older views</button>
+      {/if}
     {/if}
   </section>
 
@@ -731,7 +1103,35 @@
       {/if}
     {/if}
   </section>
+    </div>
+    <aside class="page-split-aside people-aside" aria-label="On this page">
+      <nav class="panel" aria-labelledby="toc-title">
+        <h2 id="toc-title" class="toc-title">On this page</h2>
+        <ul class="toc">
+          <li><a href="#organisers-heading">Organisers</a></li>
+          <li><a href="#domains-heading">Allowed email domains</a></li>
+          <li><a href="#org-heading">Organisation details</a></li>
+          <li><a href="#help-heading">Account help</a></li>
+          <li><a href="#rollover-heading">Semester rollover</a></li>
+          <li><a href="#reviewers-heading">Integrity reviewers</a></li>
+          <li><a href="#history-heading">History</a></li>
+        </ul>
+      </nav>
+    </aside>
+  </div>
 {/if}
+
+<ConfirmDialog
+  open={rollConfirm}
+  title="Archive {countOf(rollPlan?.contests.length ?? 0, 'contest')} and disable {countOf(rollPlan?.accounts.length ?? 0, 'account')}?"
+  body="For {rollPlan?.label ?? 'this term'}. Archived contests leave the lists; disabled students cannot sign in until an owner enables them again."
+  items={['Nothing is deleted.', 'Organisers and the configured owner are never disabled.']}
+  confirmLabel="Archive and disable"
+  danger
+  busy={rollBusy}
+  onconfirm={applyRollover}
+  oncancel={() => (rollConfirm = false)}
+/>
 
 <ConfirmDialog
   open={pending !== null}
@@ -745,9 +1145,47 @@
 />
 
 <style>
+  .people-split {
+    margin-top: var(--space-7);
+  }
+
+  /* Tables need the room: the work column takes what the jump list leaves. */
+  @media (min-width: 1280px) {
+    .people-split {
+      grid-template-columns: minmax(0, var(--measure-wide)) minmax(0, 16rem);
+    }
+  }
+
+  /* The jump list is a convenience beside a long page; below 1280 px the page reads top to bottom. */
+  @media (width < 1280px) {
+    .people-aside {
+      display: none;
+    }
+  }
+
+  .toc-title {
+    font-size: var(--fs-sub);
+  }
+
+  .toc {
+    display: grid;
+    gap: var(--space-1);
+    padding: 0;
+    list-style: none;
+  }
+
+  .toc a {
+    display: inline-flex;
+    align-items: center;
+    min-height: var(--control-h);
+  }
+
   .section {
     max-width: var(--measure-wide);
-    margin-top: var(--space-7);
+  }
+
+  .section:first-child {
+    margin-top: 0;
   }
 
   .section + .section {
@@ -884,16 +1322,6 @@
     margin-top: var(--space-4);
   }
 
-  /* Danger as a secondary button: the danger colour on its border and words, not a fill (no such class in controls.css). */
-  .danger-secondary {
-    border-color: var(--bad);
-    color: var(--bad);
-  }
-
-  .danger-secondary:hover {
-    background: var(--bad-tint);
-  }
-
   .who {
     max-width: var(--measure-form);
   }
@@ -950,6 +1378,66 @@
 
   .more {
     margin-top: var(--space-3);
+  }
+
+  .reviewers {
+    margin-top: var(--space-4);
+  }
+
+  .org {
+    display: grid;
+    gap: var(--space-4);
+    justify-items: start;
+    max-width: var(--measure-form);
+    margin-top: var(--space-5);
+  }
+
+  .org .field {
+    width: 100%;
+  }
+
+  .plan {
+    display: grid;
+    gap: var(--space-3);
+    justify-items: start;
+    max-width: var(--measure-form);
+    margin-top: var(--space-4);
+    padding: var(--space-4);
+    border: var(--rule) solid var(--line-strong);
+    background: var(--surface);
+  }
+
+  .plan summary {
+    border-radius: var(--radius);
+    font-weight: 500;
+    cursor: pointer;
+  }
+
+  .plan-list {
+    display: grid;
+    gap: var(--space-1);
+    margin-top: var(--space-2);
+    padding-left: var(--space-5);
+  }
+
+  .right,
+  .table .right {
+    text-align: right;
+  }
+
+  .r-name {
+    font-weight: 500;
+  }
+
+  .r-email {
+    display: block;
+    font-size: var(--fs-0);
+    font-weight: 400;
+  }
+
+  .late {
+    color: var(--bad);
+    font-weight: 600;
   }
 
   /* Tablets: the sign-in time and the locked note wrap, so the table fits 720 px. */
@@ -1027,6 +1515,12 @@
     .history li {
       grid-template-columns: minmax(0, 1fr);
       gap: 0;
+    }
+
+    .reviewers tbody td {
+      color: var(--ink-muted);
+      font-size: var(--fs-0);
+      text-align: left;
     }
   }
 </style>

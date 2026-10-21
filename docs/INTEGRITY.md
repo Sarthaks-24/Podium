@@ -83,7 +83,7 @@ A reviewer who reads a submission and wants to look closer does not need a signa
 
 ## Outcomes and the two-person rule (v1.4.0)
 
-"Take action" now means a named outcome, proposed by one reviewer and confirmed by another.
+There is no single "Take action" any more: an outcome is named, proposed by one reviewer and confirmed by another. On the case page the decision panel beside the evidence shows the deadlines and the policy line; "Propose an outcome" opens once every student has had their turn, and a second reviewer sees "Confirm the outcome", which says what will change before it does. Notes and "Open a case" from a submission are in the console's submission feed ("Notes" on each row).
 
 | Outcome | What it does |
 |---|---|
