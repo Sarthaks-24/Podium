@@ -55,6 +55,8 @@ export interface Options {
   published?: boolean;
   /** Bank problems whose hidden tests a contest showed in practice (D115, C1-015). */
   shownInPractice?: number[];
+  /** A second live contest in the student's list, under the pinned one (C1-031). */
+  secondLive?: boolean;
   /** PUT settings may publish (by default it refuses with a changed problem, P3). */
   publishOk?: boolean;
   /** Queue health on the contest response (C10): calm by default, or a slow queue, a silent judge and toolchain drift. */
@@ -427,7 +429,10 @@ export async function mockApi(page: Page, options: Options = {}) {
       // Student routes.
       if (path === '/api/contests' && method === 'GET') {
         return json(route, 200, {
-          live: phase === 'ready' || phase === 'during' ? [summary()] : [],
+          live:
+            phase === 'ready' || phase === 'during'
+              ? [summary(), ...(options.secondLive ? [{ ...summary(), slug: 'lab-2', title: 'Lab 2' }] : [])]
+              : [],
           upcoming: [
             { ...summary(), slug: 'week-7', title: 'Week 7 contest', state: 'upcoming', starts_at: now + 3 * 86_400_000, ends_at: now + 3 * 86_400_000 + 2 * 3_600_000, my_window: null, my_score: null },
             ...(phase === 'upcoming' ? [summary()] : []),

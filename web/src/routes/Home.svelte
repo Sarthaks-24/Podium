@@ -181,7 +181,7 @@
                 <span class="countdown">{cd.lead} <MonoDigits parts={numberParts(cd.ms >= 86_400_000 ? formatSpan(cd.ms) : formatCountdown(cd.ms))} />{cd.after}</span>
               {/if}
               {#if isLive(c)}
-                <a class="btn btn-primary btn-compact open" {href} aria-describedby="contest-{c.slug}">Open contest</a>
+                <a class="btn btn-secondary btn-compact open" {href} aria-describedby="contest-{c.slug}">Open contest</a>
               {/if}
             </th>
             <td class="when"><MonoDigits text={formatDateTime(c.starts_at)} /></td>

@@ -40,6 +40,14 @@ for (const theme of THEMES) {
   });
 }
 
+test('a second live contest opens from a secondary button: one primary per view (C1-031)', async ({ page }) => {
+  await mockApi(page, { phase: 'during', secondLive: true });
+  await page.goto('/');
+  const row = page.locator('tbody tr').filter({ hasText: 'Lab 2' });
+  await expect(row.getByRole('link', { name: 'Open contest' })).toHaveClass(/btn-secondary/);
+  await expect(page.locator('.btn-primary')).toHaveCount(1);
+});
+
 test('the contest list puts the live contest first with a countdown', async ({ page }) => {
   await mockApi(page, { phase: 'during' });
   await page.goto('/');
