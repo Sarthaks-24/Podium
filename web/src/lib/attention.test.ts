@@ -1,6 +1,6 @@
 // The console's attention strip and feed wording (v2 P3 F6.1, F6.2; audit O3).
 import { describe, expect, it } from 'vitest';
-import { attentionItems, feedOutcome, organiserState, publishChecks, sinceStart } from './contests';
+import { attentionItems, endNowFreeze, feedOutcome, organiserState, publishChecks, sinceStart } from './contests';
 
 const MIN = 60_000;
 const T = 1_792_300_000_000;
@@ -104,5 +104,22 @@ describe('publishChecks', () => {
       text: 'Problem B has changed since it was added. Validate, then add again.',
     });
     expect(publishChecks({ ...c, problems: [] }, true, T)[0].text).toBe('Add at least one validated problem.');
+  });
+});
+
+describe('endNowFreeze (walk 2026-10-21)', () => {
+  const c = { start_mode: 'fixed' as const, freeze_minutes: 10, ends_at: T + 60 * MIN, extended_minutes: 0 };
+  it('drops a freeze that has not begun, so the board students saw stays', () => {
+    expect(endNowFreeze(c, T, T)).toBe(0);
+  });
+  it('keeps the frozen moment once the board is frozen, rounding so nothing shown is hidden', () => {
+    // Frozen at T + 50 min; ended at T + 55 min 30 s: 5 whole minutes keep the frozen moment within a minute.
+    expect(endNowFreeze(c, T + 55.5 * MIN, T + 55.5 * MIN)).toBe(5);
+    // Time added for everyone moves the frozen moment too.
+    expect(endNowFreeze({ ...c, extended_minutes: 5 }, T + 52 * MIN, T + 57 * MIN)).toBe(2);
+  });
+  it('leaves window mode and contests without a freeze alone', () => {
+    expect(endNowFreeze({ ...c, start_mode: 'window' }, T, T)).toBe(10);
+    expect(endNowFreeze({ ...c, freeze_minutes: 0 }, T, T)).toBe(0);
   });
 });

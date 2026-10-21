@@ -1175,3 +1175,24 @@ export const CANNED_REPLIES: readonly string[] = [
 export function fillTemplate(text: string, values: { label?: string; minutes?: number }): string {
   return text.replace(/\{label\}/g, values.label ?? 'A').replace(/\{minutes\}/g, String(values.minutes ?? 10));
 }
+
+/**
+ * The freeze "End the contest now" sends with the new end (walk 2026-10-21).
+ * The frozen moment is the close minus the freeze, so moving the end earlier
+ * moves it into the past and hides results students already saw on the live
+ * board. Before the freeze has begun the freeze is dropped (0): the board at
+ * the end is the one everyone saw. Once the board is frozen, the freeze
+ * shrinks so the frozen moment stays put, rounded down to whole minutes so
+ * nothing already shown is hidden again.
+ */
+export function endNowFreeze(
+  c: Pick<AdminContest, 'start_mode' | 'freeze_minutes' | 'ends_at'> & { extended_minutes?: number },
+  newEndsAt: number,
+  now: number,
+): number {
+  if (c.start_mode !== 'fixed' || c.freeze_minutes <= 0) return c.freeze_minutes;
+  const added = (c.extended_minutes ?? 0) * 60_000;
+  const frozenAt = c.ends_at + added - c.freeze_minutes * 60_000;
+  if (now < frozenAt) return 0;
+  return Math.max(0, Math.floor((newEndsAt + added - frozenAt) / 60_000));
+}

@@ -56,6 +56,7 @@
     attentionItems,
     AUDIT_ACTIONS,
     auditSummary,
+    endNowFreeze,
     feedOutcome,
     fillTemplate,
     sinceStart,
@@ -452,6 +453,15 @@
       c.practice_after_end ? 'Students see Ended, and practice opens.' : 'Students see Ended.',
     ];
     if (personal > 0) items.push(`${countOf(personal, 'student')} with extra time keep${personal === 1 ? 's' : ''} it.`);
+    // The freeze is counted back from the end: say what happens to the board (walk 2026-10-21).
+    const frozenAt = c.start_mode === 'fixed' && c.freeze_minutes > 0 ? closeAt - c.freeze_minutes * 60_000 : null;
+    if (frozenAt !== null) {
+      items.push(
+        serverClock.serverNow() < frozenAt
+          ? 'The board was not frozen yet, so it stays as students see it now: the freeze and any held reveal are dropped.'
+          : `The board stays frozen as it was at ${formatWhen(frozenAt, ticker.now)}.`,
+      );
+    }
     ask(
       'End the contest now?',
       "Everyone's time ends now: the problems close for new contest submissions at once.",
@@ -461,7 +471,7 @@
         const now = Math.ceil(serverClock.serverNow() / 1000) * 1000;
         const ends = now - (c.extended_minutes ?? 0) * 60_000;
         if (ends <= c.starts_at) throw new ApiError(400, 'bad_request', 'The time added for everyone is longer than the time run so far, so the end cannot move before the start. Remove the extension first.');
-        const updated = await sendJSON<AdminContest>('PUT', base, { ...settingsOf(c), ends_at: ends });
+        const updated = await sendJSON<AdminContest>('PUT', base, { ...settingsOf(c), ends_at: ends, freeze_minutes: endNowFreeze(c, ends, now) });
         if (updated && typeof updated === 'object' && 'id' in updated) contest = updated;
         showToast('Ended the contest');
         await loadContest(true);

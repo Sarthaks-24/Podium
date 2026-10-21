@@ -696,6 +696,8 @@ test('End the contest now says what happens and sets the end to now (P3 O5)', as
   await expect(end).toContainText("Everyone's time ends now");
   await expect(end).toContainText('Queued submissions are still judged.');
   await expect(end).toContainText('Students see Ended, and practice opens.');
+  // The freeze counts back from the end; ended before it, the board must not jump back in time (walk 2026-10-21).
+  await expect(end).toContainText('The board was not frozen yet, so it stays as students see it now: the freeze and any held reveal are dropped.');
   await expect(end.getByRole('button', { name: 'Cancel' })).toBeFocused();
   await end.getByRole('button', { name: 'Cancel' }).click();
   expect(api.settingsPuts).toHaveLength(0);
@@ -704,8 +706,8 @@ test('End the contest now says what happens and sets the end to now (P3 O5)', as
   await end.getByRole('button', { name: 'End the contest' }).click();
   await expect.poll(() => api.settingsPuts.length).toBe(1);
   const body = api.settingsPuts[0];
-  // Every other setting is sent as it was; only the end moves to now.
-  expect(body).toMatchObject({ slug: 'week-6', freeze_minutes: 30, languages: ['cpp17', 'python3'], published: true });
+  // Every other setting is sent as it was; the end moves to now and the unstarted freeze goes.
+  expect(body).toMatchObject({ slug: 'week-6', freeze_minutes: 0, languages: ['cpp17', 'python3'], published: true });
   expect(Math.abs(Number(body.ends_at) - before)).toBeLessThan(15_000);
   await expect(page.locator('.toasts').getByText('Ended the contest', { exact: true })).toBeVisible();
 });
