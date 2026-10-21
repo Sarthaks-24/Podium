@@ -6,9 +6,12 @@ package httpapi
 import (
 	"context"
 	"fmt"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/Sarthaks-24/podium/internal/submissions"
 )
 
 // C2-014: an unpublished draft past its start shows students nothing, so
@@ -279,5 +282,36 @@ func TestFeedAndExportNameTheToolchain(t *testing.T) {
 		if id != float64(sub) && g != nil {
 			t.Errorf("submission %v names a toolchain no job of it reported: %v", id, g)
 		}
+	}
+}
+
+// Two phones of one model on one account are two devices when each sends
+// its own ?device= id; one phone keeps its tag across networks; a desktop
+// ignores the id, and a malformed id counts as none (C2-034).
+func TestStreamTagUsesAPhonesDeviceID(t *testing.T) {
+	d := Deps{Submissions: &submissions.Service{HashKey: []byte("k")}}
+	tag := func(addr, ua, device string) string {
+		target := "/api/events"
+		if device != "" {
+			target += "?device=" + device
+		}
+		r := httptest.NewRequest("GET", target, nil)
+		r.RemoteAddr = addr
+		r.Header.Set("User-Agent", ua)
+		return d.streamTag(r)
+	}
+	phone := "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 Version/18.0 Mobile/15E148 Safari/604.1"
+	desk := "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/130.0 Safari/537.36"
+	if tag("10.0.0.1:1", phone, "aaaa1111") == tag("10.0.0.2:1", phone, "bbbb2222") {
+		t.Error("two phones with their own ids counted as one device")
+	}
+	if tag("10.0.0.1:1", phone, "aaaa1111") != tag("100.64.0.9:1", phone, "aaaa1111") {
+		t.Error("one phone on a new network counted as another device")
+	}
+	if tag("10.0.0.1:1", phone, "") != tag("10.0.0.1:1", phone, "bad-id!") {
+		t.Error("a malformed id was not ignored")
+	}
+	if tag("10.0.0.1:1", desk, "aaaa1111") != tag("10.0.0.1:1", desk, "") || tag("10.0.0.1:1", desk, "aaaa1111") == tag("10.0.0.2:1", desk, "aaaa1111") {
+		t.Error("a desktop's tag used the device id instead of its address")
 	}
 }

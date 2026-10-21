@@ -791,7 +791,7 @@ Kinds, the rate and the 5,000 cap are checked before anything is written.
 
 ### `GET /api/events` (signed in)
 
-A `text/event-stream` for the signed-in user, read with `EventSource`. Not JSON: `Cache-Control: no-store` and `X-Accel-Buffering: no`, and the connection stays open.
+A `text/event-stream` for the signed-in user, read with `EventSource`. Not JSON: `Cache-Control: no-store` and `X-Accel-Buffering: no`, and the connection stays open. Optional `?device=<id>`: a random id of 1 to 64 letters and digits the browser keeps. On a phone or tablet it tells two devices of one model apart for the second-session signal (C2-034, amending D273); a desktop is told apart by its address and ignores it; a malformed id is ignored.
 
 | Event | Data | When |
 |---|---|---|
