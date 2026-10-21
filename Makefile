@@ -56,10 +56,14 @@ endif
 help: ## List the targets
 	@grep -E '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | sed 's/:.*## /\t/' | expand -t 18
 
+# npm ci rewrites node_modules/.package-lock.json, so a lockfile newer than it
+# means a pull added or changed a package and the install is stale.
+web/node_modules/.package-lock.json: web/package-lock.json
+	cd web && npm ci
+
 .PHONY: dev
-dev: ## Run the server and the Vite dev server together (needs server/.env)
+dev: web/node_modules/.package-lock.json ## Run the server and the Vite dev server together (needs server/.env)
 	@test -f server/.env || { echo "server/.env is missing. Copy server/.env.example to server/.env and set PODIUM_BASE_URL=http://localhost:5173"; exit 1; }
-	@test -d web/node_modules || (cd web && npm ci)
 	cd server && go build -o bin/podium-server-dev$(EXE) ./cmd/podium-server
 	@trap 'kill 0' EXIT; \
 	  (cd server && exec ./bin/podium-server-dev$(EXE) -env-file .env) & \
@@ -67,9 +71,8 @@ dev: ## Run the server and the Vite dev server together (needs server/.env)
 	  wait
 
 .PHONY: dev-test
-dev-test: ## Run server, judge and web app in testing mode: no keys needed (judge in WSL2 on Windows)
+dev-test: web/node_modules/.package-lock.json ## Run server, judge and web app in testing mode: no keys needed (judge in WSL2 on Windows)
 	cd server && $(GOFLAGS_LINUX) go build -o bin/linux/ ./cmd/...
-	@test -d web/node_modules || (cd web && npm ci)
 	@trap 'kill 0' EXIT; \
 	  $(LINUX) bash tools/dev-stack.sh server/bin/linux & \
 	  (cd web && exec npm run dev) & \
@@ -94,11 +97,10 @@ test: ## Unit tests: Go and web
 	cd web && npm test
 
 .PHONY: check
-check: ## Everything CI runs: formatting, vet, svelte-check, ESLint, tests
+check: web/node_modules/.package-lock.json ## Everything CI runs: formatting, vet, svelte-check, ESLint, tests
 	@out=$$(cd server && gofmt -l .); test -z "$$out" || { echo "gofmt needed:"; echo "$$out"; exit 1; }
 	cd server && go mod tidy -diff
 	cd server && go vet ./... && $(GOFLAGS_LINUX) go vet -tags sandbox ./...
-	@test -d web/node_modules || (cd web && npm ci)
 	cd web && npm run check && npm run lint
 	bash tools/install-test.sh
 	bash tools/deploy-test.sh
