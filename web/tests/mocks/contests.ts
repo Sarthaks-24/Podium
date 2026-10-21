@@ -618,9 +618,9 @@ export async function mockApi(page: Page, options: Options = {}) {
         const rows = [
           { id: 301, user_id: 7, name: 'Asha Rao', email: 'asha@college.edu', problem_label: 'B', language: 'cpp17', state: 'done', verdict: 'WA', score: 40, max_score: 100, created_at: now - 2 * MIN, practice: false, rejudged: false, note_count: state.notes.length, case_id: state.manualCase },
           { id: 300, user_id: 101, name: 'Arjun Mehta', email: 'arjun@college.edu', problem_label: 'A', language: 'python3', state: 'done', verdict: 'AC', score: 100, max_score: 100, created_at: now - 5 * MIN, practice: false, rejudged: false, note_count: 0, case_id: null },
-          { id: 299, user_id: 102, name: 'Ravi Kumar', email: 'ravi@college.edu', problem_label: 'C', language: 'java21', state: 'running', verdict: '', score: 0, max_score: 100, created_at: now - 6 * MIN, practice: false, rejudged: false },
-          { id: 298, user_id: 103, name: 'Meera Iyer', email: 'meera@college.edu', problem_label: 'B', language: 'cpp17', state: 'error', verdict: '', score: 0, max_score: 100, created_at: now - 7 * MIN, practice: false, rejudged: false },
-          { id: 297, user_id: 104, name: 'Kiran Das', email: 'kiran@college.edu', problem_label: 'C', language: 'cpp17', state: 'done', verdict: 'WA', score: 0, max_score: 100, created_at: now - 9 * MIN, practice: false, rejudged: false },
+          { id: 299, user_id: 102, name: 'Ravi Kumar', email: 'ravi@college.edu', problem_label: 'C', language: 'java21', state: 'running', verdict: '', score: 0, max_score: 100, created_at: now - 6 * MIN, practice: false, rejudged: false, note_count: 0, case_id: null },
+          { id: 298, user_id: 103, name: 'Meera Iyer', email: 'meera@college.edu', problem_label: 'B', language: 'cpp17', state: 'error', verdict: '', score: 0, max_score: 100, created_at: now - 7 * MIN, practice: false, rejudged: false, note_count: 0, case_id: null },
+          { id: 297, user_id: 104, name: 'Kiran Das', email: 'kiran@college.edu', problem_label: 'C', language: 'cpp17', state: 'done', verdict: 'WA', score: 0, max_score: 100, created_at: now - 9 * MIN, practice: false, rejudged: false, note_count: 0, case_id: null },
         ];
         const problem = url.searchParams.get('problem');
         const user = url.searchParams.get('user');

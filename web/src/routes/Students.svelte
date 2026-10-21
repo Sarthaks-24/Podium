@@ -12,7 +12,8 @@
   the latest graded percent, the last submission, and the rating (owners
   and admins only, never shown to a student). Name and rating sort with a
   button in their header (aria-sort says the order); the default stays
-  by name. Under 768 px each row stacks (.table-stack): name and rating,
+  by name. The filter and the search are kept in the address (?filter=,
+  ?q=). Under 768 px each row stacks (.table-stack): name and rating,
   with the email, then the figures with their labels.
 
   Beside the table from 1280 px, below it on smaller screens: what the
@@ -29,6 +30,7 @@
   import { keepHeadingFocus } from '../lib/focus';
   import { formatDateTime } from '../lib/format';
   import { setTitle } from '../lib/head';
+  import { navigate, router } from '../lib/router.svelte';
   import { routeTitle } from '../lib/routing';
   import { session } from '../lib/session.svelte';
   import { bandOf, bandWord, FILTERS, filterHelp, percentText, ratingText, sortStudents, type SortKey, type StudentFilter, type StudentsList } from '../lib/students';
@@ -60,6 +62,8 @@
       const restore = first ? keepHeadingFocus() : null;
       data = d;
       shownFor = { filter, q: query.trim() };
+      // The address keeps the filter and the search, so a reload or a shared link shows the same rows.
+      navigate(`/admin/students${q ? `?${q}` : ''}`, { replace: true });
       loadState = 'ready';
       void restore?.();
     } catch (e) {
@@ -105,6 +109,9 @@
 
   onMount(() => {
     setTitle(routeTitle('students'));
+    const f = router.query.get('filter') ?? '';
+    if (FILTERS.some((x) => x.id === f)) filter = f as StudentFilter;
+    query = router.query.get('q') ?? '';
     if (!isOrganiser) loadState = 'forbidden';
     else void load(true);
   });

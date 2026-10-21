@@ -195,12 +195,13 @@
 
   @media (width < 768px) {
     .klass tbody tr {
-      grid-template-columns: repeat(3, minmax(0, auto));
+      grid-template-columns: minmax(0, 1fr);
       grid-template-areas:
-        'pname pname pname'
-        'tried full median'
-        'subs subs subs';
-      justify-content: start;
+        'pname'
+        'tried'
+        'full'
+        'median'
+        'subs';
       gap: var(--space-2) var(--space-4);
     }
 
@@ -230,7 +231,11 @@
     }
 
     .meters li {
-      grid-template-columns: 7.5rem minmax(3rem, 1fr) 3.5rem;
+      grid-template-columns: auto minmax(2rem, 1fr) auto;
+    }
+
+    .fail {
+      overflow-wrap: anywhere;
     }
 
     .cell-label {

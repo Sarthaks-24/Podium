@@ -454,6 +454,11 @@ test.describe('the students table', () => {
     await page.getByRole('button', { name: 'Search' }).click();
     await expect(page.getByText('No student matches "nobody". Check the spelling, or clear the search.')).toBeVisible();
     expect(api.studentQueries).toEqual(['', '?filter=missed_last_two', '?filter=no_accepted', '', '?q=nobody']);
+    // The address keeps the search, so a reload shows the same rows.
+    await expect(page).toHaveURL(/\/admin\/students\?q=nobody$/);
+    await page.goto('/admin/students?filter=no_accepted');
+    await expect(page.getByLabel('Show')).toHaveValue('no_accepted');
+    await expect(names).toHaveText(['Zoë Fernandes']);
   });
 
   test('stacks on a phone and opens a student', async ({ page }) => {

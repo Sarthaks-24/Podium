@@ -619,7 +619,7 @@ test('unpublishing a live contest asks first', async ({ page }) => {
   await page.getByRole('button', { name: 'Unpublish contest' }).click();
   await unpublish.getByRole('button', { name: 'Unpublish contest' }).click();
   await expect.poll(() => api.settingsPuts.at(-1)?.published).toBe(false);
-  await expect(page.getByText('Unpublished', { exact: true })).toBeVisible();
+  await expect(page.getByText('Unpublished', { exact: true }).first()).toBeVisible();
 });
 
 test('the console feed filters waiting or judging and judge errors', async ({ page }) => {
