@@ -200,8 +200,7 @@ fi
 # pre-upgrade backup, and rollback must record that folder.
 bdir_of() { # VALUE
   (
-    envval() { [[ $1 == /etc/podium/backup.env && $2 == PODIUM_BACKUP_DIR ]] && printf '%s
-' "$BDIR"; true; }
+    envval() { [[ $1 == /etc/podium/backup.env && $2 == PODIUM_BACKUP_DIR ]] && echo "$BDIR"; true; }
     BDIR=$1
     eval "$(grep '^backup_dir()' "$script")"
     backup_dir
