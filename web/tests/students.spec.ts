@@ -384,7 +384,7 @@ test('keyboard only: notices to the case, an explanation, and an appeal on a dec
   await expect(field).toBeFocused();
   await page.keyboard.type('I wrote the special case to test the sample and forgot it.');
   await activate(page, page.getByRole('button', { name: 'Send explanation' }));
-  await expect(page.getByRole('status').filter({ hasText: 'Saved.' })).toBeVisible();
+  await expect(page.getByRole('status').filter({ hasText: 'Sent to the organisers.' })).toBeVisible();
   expect(api.explanations).toHaveLength(1);
 
   await page.goto('/integrity/cases/8');
