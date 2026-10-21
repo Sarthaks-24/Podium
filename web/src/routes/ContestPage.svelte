@@ -5,7 +5,7 @@
   clock (lib/contests.ts studentPhase):
 
   - Before the start, and before they agree (audit 2026-10-20 S3): the
-    countdown as the page's display figure, then the honour code in a
+    countdown as the page's lead figure, then the honour code in a
     panel (what is recorded and for how long, D47) holding "I agree, start
     the contest" (POST /api/contests/{slug}/start). Beside it from 1280 px
     (page-split), below it on smaller screens: the description, the rules
@@ -584,7 +584,7 @@
 
     <div class="page-split before">
       <div class="page-split-main">
-        <!-- S3: the countdown is the page's display figure, then what the student agrees to, then the button. -->
+        <!-- S3: the countdown is the page's lead figure, then what the student agrees to, then the button. -->
         {#if phase === 'upcoming' || startNow.kind === 'before'}
           <p class="countdown"><span class="count-lead">Starts in</span> <span class="mono figure" role="timer">{startNow.ms >= 86_400_000 ? formatSpan(startNow.ms) : formatCountdown(startNow.ms)}</span></p>
         {:else if startNow.kind === 'window'}
@@ -802,7 +802,7 @@
     margin-top: var(--space-5);
   }
 
-  /* S3: the countdown is the page's display figure, digits in mono, words in Grotesk. */
+  /* S3: the countdown is the page's lead figure, digits in mono, words in Grotesk. */
   .countdown {
     display: grid;
     gap: var(--space-1);

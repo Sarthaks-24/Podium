@@ -294,7 +294,7 @@
     overflow-wrap: break-word;
   }
 
-  /* The rail is 11rem or less under 1280 px: the status goes under the title, which keeps the width. */
+  /* The rail is 10rem under 1280 px: the status goes under the title, which keeps the width. */
   @media (width < 1280px) {
     .wide .problem {
       grid-template-columns: auto minmax(0, 1fr);

@@ -94,7 +94,7 @@
   }
 
   .md :global(code) {
-    font-size: 0.92em;
+    font-size: var(--mono-optical);
   }
 
   .md :global(pre) {

@@ -250,7 +250,7 @@
   }
 
   .you {
-    margin-left: 0.3em;
+    margin-left: var(--space-1);
     color: var(--ink-muted);
     font-weight: 400;
   }
