@@ -80,7 +80,7 @@
       if (found) {
         const t = d.contests?.[String(found.contest_id)]?.title;
         setTitle(routeTitle('my-case'), ...(t ? [t] : []));
-        markOpened(found.id);
+        void markOpened(found.id);
       }
       void restore();
     } catch (e) {
@@ -90,11 +90,22 @@
     }
   }
 
-  /** The student saw the case: starts their 7 days on the first open after a share. */
-  function markOpened(caseId: number) {
+  /**
+   * The student saw the case: starts their 7 days on the first open after a
+   * share. The deadline shown came from before the open (the 21-day cap),
+   * so it is read again once the open is recorded (walk 2026-10-21).
+   */
+  async function markOpened(caseId: number) {
     if (opened) return;
     opened = true;
-    void sendJSON<void>('POST', `/api/integrity/cases/${caseId}/opened`).catch(() => undefined);
+    try {
+      await sendJSON<void>('POST', `/api/integrity/cases/${caseId}/opened`);
+      const d = await getJSON<StudentCaseListV14>('/api/integrity/cases');
+      const fresh = (d.cases ?? []).find((x) => x.id === caseId);
+      if (fresh && c?.id === caseId && fresh.respond_by !== c.respond_by) c = { ...c, respond_by: fresh.respond_by };
+    } catch {
+      // The page keeps the deadline it has; the next visit reads the new one.
+    }
   }
 
   async function save(event: SubmitEvent) {

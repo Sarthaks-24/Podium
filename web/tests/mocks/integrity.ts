@@ -132,6 +132,8 @@ export async function mockApi(page: Page, options: Options = {}) {
     runGets: 0,
     runPosts: 0,
     caseBodies: [] as Json[],
+    /** The student opened case 3 (POST .../opened). */
+    opened: false,
     puts: [] as Json[],
     explanations: [] as Json[],
     kase: null as Json | null,
@@ -276,6 +278,8 @@ export async function mockApi(page: Page, options: Options = {}) {
     explanation: options.decided ? 'I wrote it in the lab from the lecture notes.' : '',
     shared_at: now - 10 * MIN,
     decided: options.decided ?? false,
+    // The 21-day cap until the first open, then 7 days from it (deadlines.go).
+    ...(options.decided ? {} : { respond_by: state.opened ? Date.UTC(2026, 9, 28, 8, 45) : Date.UTC(2026, 10, 11, 8, 44) }),
   });
 
   await page.route(
@@ -294,7 +298,10 @@ export async function mockApi(page: Page, options: Options = {}) {
 
       // Student routes.
       if (path === '/api/me/standing' && method === 'GET') return json(route, 200, { band: 'good', band_name: 'Good standing', lines: [], server_now: Date.now() });
-      if (path === '/api/integrity/cases/3/opened' && method === 'POST') return json(route, 204);
+      if (path === '/api/integrity/cases/3/opened' && method === 'POST') {
+        state.opened = true;
+        return json(route, 204);
+      }
       if (path === '/api/integrity/cases' && method === 'GET') {
         return json(route, 200, {
           cases: options.noCases || me.role !== 'student' ? [] : [studentCase()],

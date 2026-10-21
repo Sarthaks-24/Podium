@@ -387,6 +387,17 @@ test('a decided case reads only for the student', async ({ page }) => {
   await expect(page.getByText('An organiser has decided, so you can no longer change your explanation.')).toBeVisible();
 });
 
+test('opening a question shows the 7-day deadline the open started (walk 2026-10-21)', async ({ page }) => {
+  await mockApi(page, { who: 'student' });
+  await page.goto('/integrity');
+  // Before the first open only the 21-day cap applies.
+  await expect(page.getByText('Reply by 11 Nov', { exact: false })).toBeVisible();
+  await page.getByRole('link', { name: 'Open the question' }).click();
+  await expect(page).toHaveURL(/\/integrity\/cases\/3$/);
+  await expect(page.getByText('Reply by 28 Oct', { exact: false })).toBeVisible();
+  await expect(page.getByText('Reply by 11 Nov', { exact: false })).toHaveCount(0);
+});
+
 test('a student with no cases gets no notice', async ({ page }) => {
   await mockApi(page, { who: 'student', noCases: true });
   await page.goto('/');
