@@ -162,8 +162,9 @@ const AuditPage = 200
 // actors whose email contains Actor (case insensitive).
 type AuditFilter struct {
 	Action, Actor string
-	// NoIntegrity leaves out board_adjusted rows, for a co-organiser
-	// whose site role is student.
+	// NoIntegrity leaves out board_adjusted rows, and the reason of an
+	// extension row written before v1.4.0 (it can be health data), for a
+	// co-organiser whose site role is student.
 	NoIntegrity bool
 }
 
@@ -199,6 +200,18 @@ func (s *Service) AuditLog(ctx context.Context, contestID int64, page int, f Aud
 			return nil, false, err
 		}
 		e.Details = json.RawMessage(details)
+		if f.NoIntegrity && e.Action == AuditExtension {
+			var m map[string]any
+			if json.Unmarshal([]byte(details), &m) == nil {
+				if _, ok := m["reason"]; ok {
+					delete(m, "reason")
+					m["reason_given"] = true
+					if b, err := json.Marshal(m); err == nil {
+						e.Details = b
+					}
+				}
+			}
+		}
 		out = append(out, e)
 	}
 	more := len(out) > AuditPage

@@ -466,6 +466,10 @@ func (d Deps) confirmRating(w http.ResponseWriter, r *http.Request) {
 	}
 	u := userFrom(r.Context())
 	if err := d.Integrity.ConfirmRating(r.Context(), st.ID, pid, u.ID, req.SoleOrganiserReason); err != nil {
+		if errors.Is(err, integrity.ErrTwoPersonRule) {
+			WriteError(w, http.StatusForbidden, "two_person_rule", "A second owner or admin who did not propose this change confirms it.")
+			return
+		}
 		d.integrityError(w, r, err, "There is no such change waiting.")
 		return
 	}
@@ -616,7 +620,10 @@ func (d Deps) mostFailed(ctx context.Context, contestID, problemID int64) (*Most
 	found:
 		for si, st := range res.Subtasks {
 			for ti, t := range st.Tests {
-				if t.Verdict != "" && t.Verdict != "AC" {
+				// SK is a test not run (after a compile error, a failed
+				// sample or an earlier failure in the subtask), IE the
+				// judge's fault: neither is where the program failed.
+				if t.Verdict != "" && t.Verdict != "AC" && t.Verdict != "SK" && t.Verdict != "IE" {
 					counts[key{si, ti + 1}]++
 					break found
 				}

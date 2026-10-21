@@ -1,8 +1,12 @@
 package httpapi
 
 import (
+	"context"
 	"fmt"
+	"path/filepath"
 	"testing"
+
+	"github.com/Sarthaks-24/podium/internal/db"
 )
 
 // Fixes from the final security and code review of v2 (P6, S6.2).
@@ -102,5 +106,81 @@ func TestNotesHiddenFromAReviewerWhoSharesTheCase(t *testing.T) {
 	// The admin who shares no case still reads them.
 	if code, out := w.admin.do("GET", fmt.Sprintf("/api/admin/students/%d/record", bilal), nil, ""); code != 200 || len(out["notes"].([]any)) != 1 {
 		t.Errorf("uninvolved admin's record view: %d %v", code, out["notes"])
+	}
+}
+
+// The class view's most failed test is the first test that failed, never
+// one skipped after a compile error or a failed sample.
+func TestMostFailedSkipsSkippedTests(t *testing.T) {
+	ctx := context.Background()
+	d, err := db.Open(ctx, filepath.Join(t.TempDir(), "p.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer d.Close()
+	if _, err := db.Migrate(ctx, d); err != nil {
+		t.Fatal(err)
+	}
+	conn, err := d.Conn(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	conn.ExecContext(ctx, "PRAGMA foreign_keys = OFF")
+	ce := `{"subtasks":[{"idx":0,"tests":[{"verdict":"SK"},{"verdict":"SK"}]},{"idx":1,"tests":[{"verdict":"SK"}]}]}`
+	wa := `{"subtasks":[{"idx":0,"tests":[{"verdict":"AC"},{"verdict":"AC"}]},{"idx":1,"tests":[{"verdict":"WA"}]}]}`
+	for i, res := range []string{ce, ce, ce, wa} {
+		if _, err := conn.ExecContext(ctx, `INSERT INTO submissions (problem_id, contest_id, user_id, kind, language, source, source_sha, state, score, result, created_at)
+			VALUES (1, 1, ?, 'submit', 'cpp17', 'x', 's', 'done', 0, ?, 1)`, i+1, res); err != nil {
+			t.Fatal(err)
+		}
+	}
+	conn.ExecContext(ctx, "PRAGMA foreign_keys = ON")
+	conn.Close()
+	got, err := Deps{DB: d}.mostFailed(ctx, 1, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got == nil || got.SubtaskIdx != 1 || got.Test != 1 || got.Failed != 1 {
+		t.Errorf("most failed: %+v, want subtask 1 test 1 failed once", got)
+	}
+}
+
+// A co-organiser whose site role is student sees a classmate's extra
+// minutes but not the reason (it can be health data), and the reveal's
+// full board only once students see it.
+func TestStudentCoOrganiserNeitherReasonsNorHeldBoard(t *testing.T) {
+	w := newIntegrityWorld(t)
+	s := w.s
+	if code, out := w.owner.do("PUT", fmt.Sprintf("/api/admin/contests/%d/extensions/%d", w.c1, w.chen.userID()),
+		map[string]any{"minutes": 30, "reason": "Medical appointment"}, s.srv.URL); code != 200 {
+		t.Fatalf("extension: %d %v", code, out)
+	}
+	reason := func(b *browser) any {
+		code, out := b.do("GET", fmt.Sprintf("/api/admin/contests/%d", w.c1), nil, "")
+		if code != 200 {
+			t.Fatalf("contest: %d %v", code, out)
+		}
+		ext := out["extensions"].([]any)
+		if len(ext) != 1 {
+			t.Fatalf("extensions: %v", ext)
+		}
+		return ext[0].(map[string]any)["reason"]
+	}
+	if got := reason(w.owner); got != "Medical appointment" {
+		t.Errorf("owner reads the reason: %v", got)
+	}
+	if got := reason(w.ta); got != "" {
+		t.Errorf("student co-organiser reads the reason: %v", got)
+	}
+	if _, err := s.db.Exec("UPDATE contests SET hold_reveal = 1, freeze_minutes = 60 WHERE id = ?", w.c1); err != nil {
+		t.Fatal(err)
+	}
+	s.at(w.start, 200)
+	path := fmt.Sprintf("/api/admin/contests/%d/reveal", w.c1)
+	if code, out := w.ta.do("GET", path, nil, ""); code != 403 || out["error"].(map[string]any)["code"] != "results_hidden" {
+		t.Errorf("student co-organiser reads the held board: %d %v", code, out)
+	}
+	if code, _ := w.owner.do("GET", path, nil, ""); code != 200 {
+		t.Errorf("owner's reveal: %d", code)
 	}
 }

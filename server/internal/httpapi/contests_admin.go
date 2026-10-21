@@ -173,6 +173,13 @@ func (d Deps) adminContestOut(ctx context.Context, c *contests.Contest) (*adminC
 	if out.Extensions, err = d.Contests.Extensions(ctx, c.ID); err != nil {
 		return nil, err
 	}
+	// The reason for a classmate's extra time can be health data: a
+	// co-organiser whose site role is student sees the minutes only.
+	if !userFrom(ctx).Role.AtLeast(auth.Admin) {
+		for i := range out.Extensions {
+			out.Extensions[i].Reason = ""
+		}
+	}
 	if out.RosterCount, err = d.Contests.RosterCount(ctx, c.ID); err != nil {
 		return nil, err
 	}
@@ -716,7 +723,7 @@ func (d Deps) contestFeed(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if siteAdmin(r) {
-		if err := d.annotateFeed(r.Context(), c.ID, items); err != nil {
+		if err := d.annotateFeed(r.Context(), c.ID, userFrom(r.Context()).ID, items); err != nil {
 			d.internalError(w, r, err)
 			return
 		}
@@ -916,6 +923,11 @@ func (d Deps) getReveal(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	// A co-organiser whose site role is student sees the full board when
+	// students do: with a held reveal, after it.
+	if d.resultsHidden(w, r, c) {
+		return
+	}
 	final, err := d.Contests.FinalAt(r.Context(), c)
 	if err != nil {
 		d.internalError(w, r, err)
@@ -1092,8 +1104,9 @@ func (d Deps) contestAudit(w http.ResponseWriter, r *http.Request) {
 }
 
 // annotateFeed adds each item's note count and manual case, for reviewers
-// (owners and admins) only.
-func (d Deps) annotateFeed(ctx context.Context, contestID int64, items []contests.FeedItem) error {
+// (owners and admins) only, and never on the viewer's own submissions,
+// whose notes they may not read.
+func (d Deps) annotateFeed(ctx context.Context, contestID, viewer int64, items []contests.FeedItem) error {
 	notes, cases := map[int64]int{}, map[int64]int64{}
 	rows, err := d.DB.QueryContext(ctx, "SELECT submission_id, count(*) FROM submission_notes WHERE contest_id = ? GROUP BY submission_id", contestID)
 	if err != nil {
@@ -1118,6 +1131,9 @@ func (d Deps) annotateFeed(ctx context.Context, contestID int64, items []contest
 	}
 	rows.Close()
 	for i := range items {
+		if items[i].UserID == viewer {
+			continue
+		}
 		n := notes[items[i].ID]
 		items[i].NoteCount = &n
 		if id, ok := cases[items[i].ID]; ok {
