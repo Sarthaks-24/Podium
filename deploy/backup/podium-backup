@@ -138,8 +138,11 @@ if [[ -n $heartbeat && ( $heartbeat != https://* || $heartbeat == *[[:space:]]* 
   die "PODIUM_HEARTBEAT_URL must start with https:// and hold no spaces or quotes (in $env_file)"
 fi
 
-stamp=$(date -u +%Y-%m-%dT%H%MZ)
+# To the second: a backup started in the same minute as the last one (an
+# upgrade right after the timer) needs a folder of its own (C2-039).
+stamp=$(date -u +%Y-%m-%dT%H%M%SZ)
 final=$dest/$stamp
+[[ ! -e $final ]] || die "$final already exists; wait a second and start the backup again"
 work=$dest/.partial-$stamp
 as_podium rm -rf "$work"
 trap 'as_podium rm -rf "$work"' EXIT
@@ -171,7 +174,7 @@ as_podium ln -sfn "$stamp" "$dest/latest"
 
 # Keep PODIUM_BACKUP_KEEP_DAYS days. Names sort by date; never touch the
 # newest, whatever the clock says.
-cutoff=$(date -u -d "-$keep days" +%Y-%m-%dT%H%MZ)
+cutoff=$(date -u -d "-$keep days" +%Y-%m-%dT%H%M%SZ)
 for d in "$dest"/20*; do
   if [[ -d $d && $(basename "$d") < $cutoff && $d != "$final" ]]; then
     as_podium rm -rf "$d"

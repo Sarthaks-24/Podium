@@ -171,6 +171,11 @@ if [[ -n $mvline && -z $early && -n $late_off && -n $late_rs && -n $beat && $lat
 else
   fail "podium-backup: an off-VM check can stop the local backup: ${early:-order of the late checks}"
 fi
+if grep -q '^stamp=$(date -u +%Y-%m-%dT%H%M%SZ)$' "$backup" && grep -q '\[\[ ! -e $final \]\] || die' "$backup"; then
+  pass "podium-backup names each backup to the second and never reuses a folder"
+else
+  fail "podium-backup must name backups to the second and refuse an existing folder (C2-039)"
+fi
 if fn cmd_verify | grep -q 'PODIUM_BACKUP_RSYNC is set but /etc/podium/backup-ssh/id_ed25519 is missing'; then
   pass "verify checks the rsync copy's root key"
 else
