@@ -270,7 +270,7 @@ Request: `{"label": "2026 odd semester", "ended_before": 1798761600000, "apply":
   "server_now": 1798700000000 }
 ```
 
-`accounts` are enabled student accounts whose last sign-in (or creation, when they never signed in) is more than `idle_days` ago; organisers and `PODIUM_OWNER_EMAIL` are never included. With `apply: true` the same lists come back as done: each contest is archived with an `archive` row in its audit log (`{"rollover": label}`), each account is disabled with its sessions ended, and one `semester_rollover` row goes to the site audit. Errors: `400 bad_request` with `fields.label`, `403 forbidden` for anyone but an owner.
+`accounts` are enabled student accounts whose last sign-in (or creation, when they never signed in) is more than `idle_days` ago; organisers and `PODIUM_OWNER_EMAIL` are never included. With `apply: true` the same lists come back as done: each contest is archived with an `archive` row in its audit log (`{"rollover": label}`), each account is disabled with its sessions ended, and one `semester_rollover` row goes to the site audit. An apply may send `as_of`, the preview's `server_now`: then only accounts idle at that moment are disabled, so an account that crossed the 180 days between the preview and the apply keeps its access (C2-033); an `as_of` in the future or more than an hour old is `400 bad_request`, "This preview is more than an hour old. Preview the rollover again, then apply it." Without `as_of` the idle list is read again at the apply, as before. Errors: `400 bad_request` with `fields.label`, `403 forbidden` for anyone but an owner.
 
 ## Problems (admin)
 

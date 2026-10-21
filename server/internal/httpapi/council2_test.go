@@ -138,3 +138,36 @@ func TestStudentsFilters(t *testing.T) {
 		t.Errorf("no_accepted: %v, want [amy]", got)
 	}
 }
+
+// An apply that names its preview's time disables only the accounts the
+// preview listed: one that crossed 180 days in between keeps its account
+// (C2-033). A preview older than an hour is refused.
+func TestRolloverApplyAsOfThePreview(t *testing.T) {
+	s := newSite(t)
+	owner := s.signedIn("owner@college.edu", "Owner")
+	s.signedIn("edge@college.edu", "Edge")
+	o := s.srv.URL
+	start := time.Now()
+	s.clock.set(start)
+	// Idle for 180 days less ten minutes at the preview.
+	s.db.Exec("UPDATE users SET last_login_at = ? WHERE email = 'edge@college.edu'", start.Add(-180*24*time.Hour+10*time.Minute).UnixMilli())
+	code, pre := owner.do("POST", "/api/admin/rollover", map[string]any{"label": "2026 odd semester"}, o)
+	if code != 200 || len(pre["accounts"].([]any)) != 0 {
+		t.Fatalf("preview: %d %v", code, pre)
+	}
+	asOf := int64(pre["server_now"].(float64))
+	s.clock.set(start.Add(30 * time.Minute))
+	code, out := owner.do("POST", "/api/admin/rollover", map[string]any{"label": "2026 odd semester", "apply": true, "as_of": asOf}, o)
+	if code != 200 || len(out["accounts"].([]any)) != 0 {
+		t.Errorf("apply as of the preview: %d %v, want no account", code, out)
+	}
+	var disabled int
+	s.db.QueryRow("SELECT disabled FROM users WHERE email = 'edge@college.edu'").Scan(&disabled)
+	if disabled != 0 {
+		t.Error("an account not in the preview was disabled")
+	}
+	s.clock.set(start.Add(2 * time.Hour))
+	if code, out := owner.do("POST", "/api/admin/rollover", map[string]any{"label": "2026 odd semester", "apply": true, "as_of": asOf}, o); code != 400 {
+		t.Errorf("apply with a preview two hours old: %d %v, want 400", code, out)
+	}
+}

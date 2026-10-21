@@ -20,6 +20,10 @@ func (d Deps) semesterRollover(w http.ResponseWriter, r *http.Request) {
 		Label       string `json:"label"`
 		EndedBefore *int64 `json:"ended_before"`
 		Apply       bool   `json:"apply"`
+		// AsOf is the preview's server_now: an apply with it disables only
+		// accounts that were idle at the preview, so nobody who crossed
+		// the 180 days in between is disabled unseen (C2-033).
+		AsOf *int64 `json:"as_of"`
 	}
 	if !decodeJSON(w, r, &req) {
 		return
@@ -46,6 +50,14 @@ func (d Deps) semesterRollover(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	seenBefore := now.Add(-auth.IdleStudentPeriod)
+	if req.AsOf != nil {
+		asOf := time.UnixMilli(*req.AsOf)
+		if asOf.After(now) || now.Sub(asOf) > time.Hour {
+			WriteError(w, http.StatusBadRequest, "bad_request", "This preview is more than an hour old. Preview the rollover again, then apply it.")
+			return
+		}
+		seenBefore = asOf.Add(-auth.IdleStudentPeriod)
+	}
 	idle, err := d.Auth.IdleStudents(ctx, seenBefore)
 	if err != nil {
 		d.internalError(w, r, err)
