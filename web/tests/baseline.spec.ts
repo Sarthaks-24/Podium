@@ -153,6 +153,11 @@ const FROZEN = Date.UTC(2026, 9, 20, 4, 30);
  * C1-020); waiting for stillness removes the race instead of hiding it.
  */
 async function stillLayout(page: Page) {
+  // document.fonts.ready settles as soon as no face is loading, which is
+  // also true before layout has asked for one: under load a shot was taken
+  // in the fallback fonts and the next one in the real ones (C2-046). Load
+  // every declared face first.
+  await page.evaluate(() => Promise.all([...document.fonts].map((f) => f.load())));
   await page.evaluate(() => document.fonts.ready);
   await page.evaluate(
     () =>
