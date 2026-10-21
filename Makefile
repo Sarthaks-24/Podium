@@ -101,6 +101,7 @@ check: ## Everything CI runs: formatting, vet, svelte-check, ESLint, tests
 	@test -d web/node_modules || (cd web && npm ci)
 	cd web && npm run check && npm run lint
 	bash tools/install-test.sh
+	bash tools/deploy-test.sh
 	$(MAKE) test
 
 .PHONY: sandbox-test
