@@ -554,7 +554,7 @@ test.describe('the record page', () => {
     await expect(same).toContainText('The band stays Outcomes on record.');
     await expect(same).toContainText('The change applies at once.');
     await same.getByRole('button', { name: 'Change the rating' }).click();
-    await expect(page.getByText('Changed the rating to 7').first()).toBeVisible();
+    await expect(page.locator('.toasts').getByText('Changed the rating to 7')).toBeVisible();
     await expect(page.locator('.figure')).toHaveText('7 of 10');
     // The edit wrote a standing line too, so the record is read again (C2-032).
     await expect.poll(() => api.recordGets).toBe(2);
@@ -580,7 +580,7 @@ test.describe('the record page', () => {
     await expect(box).toContainText('Ravi Kumar proposed 7.5 to 5.5');
     await expect(box).toContainText('Outcomes on record to Repeated outcomes');
     await box.getByRole('button', { name: 'Confirm the change' }).click();
-    await expect(page.getByText('Confirmed: the rating is now 5.5').first()).toBeVisible();
+    await expect(page.locator('.toasts').getByText('Confirmed: the rating is now 5.5')).toBeVisible();
     await expect(page.locator('.figure')).toHaveText('5.5 of 10');
     await expect(page.getByText('Dropped from Outcomes on record to Repeated outcomes')).toBeVisible();
     expect(api.confirms).toEqual([{ pid: 5, kind: 'confirm', body: {} }]);
@@ -597,7 +597,7 @@ test.describe('the record page', () => {
     await appeal.getByRole('button', { name: 'Rule on the appeal' }).click();
     const sure = page.getByRole('dialog', { name: 'Uphold the appeal?' });
     await sure.getByRole('button', { name: 'Uphold the appeal' }).click();
-    await expect(page.getByText('Upheld the appeal').first()).toBeVisible();
+    await expect(page.locator('.toasts').getByText('Upheld the appeal')).toBeVisible();
     expect(api.rulings).toEqual([{ id: 70, upheld: true, reason: 'The group messages are timestamped after the contest closed.' }]);
     await expect(page.getByRole('link', { name: 'Rule on it on the case page' })).toHaveAttribute('href', '/admin/integrity/cases/12#appeals-title');
     await expect(page.getByText('Overdue').first()).toBeVisible();

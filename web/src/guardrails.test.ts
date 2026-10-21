@@ -204,3 +204,47 @@ describe('first load', () => {
     expect(preloads.sort()).toEqual(faces.sort());
   });
 });
+
+// C2-042 (C1-019): a toast's words are also in the visually hidden polite
+// announcer, so `getByText(...).first()` finds them even when no toast is
+// drawn. Playwright specs check toasts inside `.toasts`.
+describe('toast checks in the Playwright specs', () => {
+  const specs = import.meta.glob<string>('/tests/**/*.spec.ts', { query: '?raw', import: 'default', eager: true });
+
+  /**
+   * The fixed words that start each toast: every literal on a line that
+   * calls showToast, or a template's text before its first ${. Toasts
+   * passed in a variable are not seen; the cited specs were fixed by hand.
+   */
+  function toastStarts(): string[] {
+    const out: string[] = [];
+    for (const text of Object.values(sources)) {
+      for (const line of text.split('\n').filter((l) => l.includes('showToast('))) {
+        for (const m of line.matchAll(/'([^']*)'|"([^"]*)"|`([^`$]*)/g)) {
+          const words = m[1] ?? m[2] ?? m[3] ?? '';
+          if (words.trim().length >= 8) out.push(words);
+        }
+      }
+    }
+    return out;
+  }
+
+  it('finds the specs and the toasts', () => {
+    expect(Object.keys(specs).length).toBeGreaterThan(5);
+    expect(toastStarts().length).toBeGreaterThan(10);
+  });
+
+  it('never checks a toast with getByText(...).first() outside .toasts', () => {
+    const starts = toastStarts();
+    const offenders: string[] = [];
+    for (const [path, text] of Object.entries(specs)) {
+      text.split('\n').forEach((line, i) => {
+        for (const m of line.matchAll(/getByText\('([^']+)'[^)]*\)\.first\(\)/g)) {
+          if (line.includes(".toasts')")) continue;
+          if (starts.some((s) => m[1].startsWith(s) || s.startsWith(m[1]))) offenders.push(`${path}:${i + 1} ${m[1]}`);
+        }
+      });
+    }
+    expect(offenders).toEqual([]);
+  });
+});

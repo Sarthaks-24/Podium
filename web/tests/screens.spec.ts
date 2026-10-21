@@ -611,7 +611,7 @@ test('the owner saves the organisation details, and a bad field says what to fix
   await expect(section.getByLabel('Contact email')).toBeFocused();
   await section.getByLabel('Contact email').fill('podium@college.edu');
   await section.getByRole('button', { name: 'Save organisation details' }).click();
-  await expect(page.getByText('Saved the organisation details').first()).toBeVisible();
+  await expect(page.locator('.toasts').getByText('Saved the organisation details')).toBeVisible();
   expect(state.settingsPuts.at(-1)).toEqual({ name: 'Example College of Engineering', contact_email: 'podium@college.edu', phone: '', privacy_contact: '' });
   // The footer reads the new contact address without a reload.
   await expect(page.locator('footer')).toContainText('podium@college.edu');
@@ -632,7 +632,7 @@ test('the semester rollover previews, asks with the counts, then archives and di
   const sure = page.getByRole('dialog', { name: 'Archive 2 contests and disable 1 account?' });
   await expect(sure.getByRole('button', { name: 'Cancel' })).toBeFocused();
   await sure.getByRole('button', { name: 'Archive and disable' }).click();
-  await expect(page.getByText('Archived 2 contests and disabled 1 account').first()).toBeVisible();
+  await expect(page.locator('.toasts').getByText('Archived 2 contests and disabled 1 account')).toBeVisible();
   expect(state.rollovers.at(-1)).toEqual({ label: '2026 odd semester', apply: true });
   await expect(page.getByRole('region', { name: 'Account help' })).toContainText('old@college.edu');
   // Changing the label drops a preview, so what is applied is what was read.

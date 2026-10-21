@@ -694,7 +694,7 @@ test('unpublishing a live contest asks first', async ({ page }) => {
   await page.getByRole('button', { name: 'Unpublish contest' }).click();
   await unpublish.getByRole('button', { name: 'Unpublish contest' }).click();
   await expect.poll(() => api.settingsPuts.at(-1)?.published).toBe(false);
-  await expect(page.getByText('Unpublished', { exact: true }).first()).toBeVisible();
+  await expect(page.locator('.toasts').getByText('Unpublished', { exact: true })).toBeVisible();
 });
 
 test('the console feed filters waiting or judging and judge errors', async ({ page }) => {
@@ -1232,7 +1232,7 @@ test('the console feed links names to progress, keeps private notes and opens a 
   await expect(open).toContainText("From Asha Rao's submission to problem B. The submission and its private notes are copied into the case");
   await open.getByLabel('Reason').fill('The notes point at three passages that match the draft.');
   await open.getByRole('button', { name: 'Open the case' }).click();
-  await expect(page.getByText('Opened the case. Share it with the student when you are ready.').first()).toBeVisible();
+  await expect(page.locator('.toasts').getByText('Opened the case. Share it with the student when you are ready.')).toBeVisible();
   await expect(asha.getByRole('link', { name: 'Case 14' })).toHaveAttribute('href', '/admin/integrity/cases/14');
   expect(api.casePosts).toEqual([{ title: 'Submission to problem B', note: 'The notes point at three passages that match the draft.' }]);
   await expect(asha.getByRole('button', { name: /^Notes on Asha Rao/ })).toHaveText('2 notes');
