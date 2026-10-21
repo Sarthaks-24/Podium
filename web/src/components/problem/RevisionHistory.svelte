@@ -10,6 +10,7 @@
   revision fields of the problem).
 -->
 <script lang="ts">
+  import Badge from '../Badge.svelte';
   import MonoDigits from '../MonoDigits.svelte';
   import { ApiError, getJSON } from '../../lib/api';
   import { formatDateTime } from '../../lib/format';
@@ -80,7 +81,7 @@
       <li>
         <div class="head">
           <span class="rev">Revision <span class="mono">{r.rev}</span></span>
-          {#if history.revision?.id === r.id}<span class="state-word" data-state="live">Current</span>{/if}
+          {#if history.revision?.id === r.id}<Badge text="Current" />{/if}
           <span class="muted when"><MonoDigits text={formatDateTime(r.created_at)} />{r.created_by ? `, ${r.created_by.email}` : ', made by the server'}</span>
         </div>
         <p>{revisionChangeText(r)}. {r.validated ? 'Validated.' : 'Not validated.'}</p>

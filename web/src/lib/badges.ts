@@ -2,31 +2,13 @@
  * The tone of a badge (styles/controls.css "Badges", audit 2026-10-20
  * change 3). A badge carries a verdict or a state word, never anything
  * else; these helpers pick its tint so every screen colours the same word
- * the same way.
+ * the same way. Contest states are drawn by `.state-word` with
+ * data-state (styles/controls.css), not by a Badge tone, so there is one
+ * system for them (council C1-030).
  */
 import type { Tone as VerdictTone } from './workspace';
 
 export type BadgeTone = VerdictTone | 'act' | 'muted' | 'neutral';
-
-/**
- * A contest state as a tone: Live and Frozen in the action colour, Ended
- * and Archived muted, the rest (Upcoming, Practice, Draft) neutral.
- */
-export function contestTone(state: string): BadgeTone {
-  if (state === 'live' || state === 'frozen') return 'act';
-  if (state === 'ended' || state === 'archived') return 'muted';
-  return 'neutral';
-}
-
-/**
- * A score as a tone: full marks ok, some points partial, none bad, and no
- * score yet waiting.
- */
-export function scoreTone(score: number | null | undefined, max: number): BadgeTone {
-  if (score === null || score === undefined) return 'wait';
-  if (max > 0 && score >= max) return 'ok';
-  return score > 0 ? 'part' : 'bad';
-}
 
 /**
  * A problem's bank status as a tone (audit O6): Validated ok, Not

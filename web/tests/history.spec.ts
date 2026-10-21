@@ -24,6 +24,9 @@ test('the problem editor lists revisions and compares one with the one before', 
   await expect(rows).toHaveCount(3);
   await expect(rows.nth(0)).toContainText('Revision 3');
   await expect(rows.nth(0)).toContainText('Current');
+  // "Current" is a neutral badge, not the contest state Live (C1-030).
+  await expect(rows.nth(0).locator('.badge[data-tone="neutral"]')).toHaveText('Current');
+  await expect(rows.nth(0).locator('.state-word')).toHaveCount(0);
   await expect(rows.nth(0)).toContainText('Statement changed. Validated.');
   await expect(rows.nth(0)).toContainText('Reason: Fix the bound on n in the statement.');
   await expect(rows.nth(1)).toContainText('Pinned in week-6 (problem A)');
