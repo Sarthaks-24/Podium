@@ -118,7 +118,13 @@ calibrate: ## Measure this judge host and print the calibration tables
 	$(LINUX) bash tools/sandbox-test.sh server/bin/podium-judge calibrate -reps 5
 
 .PHONY: release
-release: check build ## Build the release tarball in release/
+release: check package ## Build the release tarball in release/ (runs check first)
+
+# package is release without check, for the upgrade drill's rehearsal
+# build with an extra, never committed migration: the migration tests list
+# the real migrations, so check fails on that tree by design.
+.PHONY: package
+package: build ## Release tarball without check (drill rehearsal builds only)
 	bash tools/check-placeholders.sh
 	rm -rf $(RELEASE) && mkdir -p $(RELEASE)/bin $(RELEASE)/env
 	cp server/bin/podium-server server/bin/podium-judge $(RELEASE)/bin/
