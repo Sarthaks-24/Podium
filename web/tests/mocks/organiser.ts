@@ -254,7 +254,7 @@ export async function mockApi(page: Page, options: Options = {}) {
       if (path === '/api/integrity/cases' && method === 'GET') return json(route, 200, { cases: [], contests: {}, problems: {}, server_now: Date.now() });
       if (path === '/api/admin/contests' && method === 'GET') return json(route, 200, { contests: [], server_now: Date.now() });
 
-      if (path.startsWith('/api/admin/') && me.role === 'student') return apiError(route, 403, 'forbidden', 'Only owners and admins can do this.');
+      if (path.startsWith('/api/admin/') && me.role === 'student') return apiError(route, 403, 'forbidden', 'You do not have access to this. Ask an owner if you need it.');
 
       if (path === '/api/admin/students' && method === 'GET') {
         state.studentQueries.push(url.search);

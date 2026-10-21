@@ -466,7 +466,7 @@ export async function mockApi(page: Page, options: Options = {}) {
       if (path === '/api/contests/week-6/start' && method === 'POST') {
         state.starts++;
         const body = req.postDataJSON() as Json;
-        if (body.accept_honour !== true) return apiError(route, 400, 'bad_request', 'Read the rules.', { fields: { accept_honour: 'Read the rules and agree to them to start.' } });
+        if (body.accept_honour !== true) return apiError(route, 400, 'bad_request', 'Read the rules and agree to them to start.', { fields: { accept_honour: 'Read the rules and agree to them to start.' } });
         state.accepted = true;
         return json(route, 200, contest());
       }
@@ -547,7 +547,7 @@ export async function mockApi(page: Page, options: Options = {}) {
       }
 
       // Organiser routes.
-      if (path.startsWith('/api/admin/') && me.role === 'student') return apiError(route, 403, 'forbidden', 'Only owners and admins can do this.');
+      if (path.startsWith('/api/admin/') && me.role === 'student') return apiError(route, 403, 'forbidden', 'You do not have access to this. Ask an owner if you need it.');
       if (path === '/api/admin/problems' && method === 'GET') {
         const shown = (p: Json) => ({ ...p, shown_in_practice: (options.shownInPractice ?? []).includes(Number(p.id)) });
         return json(route, 200, {

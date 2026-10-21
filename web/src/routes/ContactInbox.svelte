@@ -52,7 +52,8 @@
     } catch (e) {
       if (signedOut(e)) return;
       if (e instanceof ApiError && e.status === 403) {
-        loadError = e.message;
+        // The server's 403 is its generic role sentence; say what this page is (as the other organiser screens do).
+        loadError = 'Only organisers can read these messages.';
         loadState = 'forbidden';
       } else {
         loadError = e instanceof ApiError ? e.message : 'The messages could not load. Try again in a moment.';
