@@ -67,7 +67,10 @@ jobs:
       # The VM's install steps: compilers and runtimes, isolate with its
       # cgroup keeper and tmpfs box root, testlib.h, the judge user.
       - run: sudo deploy/install.sh packages isolate testlib users
-      - run: make sandbox-test
+      # The tests run as user judge, which cannot read the checkout under
+      # /home/runner when that is not world-readable: judge a copy (C2-012).
+      - run: cp -r problems /tmp/podium-problems && chmod -R a+rX /tmp/podium-problems
+      - run: make sandbox-test SANDBOX_EXAMPLES=/tmp/podium-problems
       - name: podium-judge selftest
         run: |
           cd server && GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -o bin/podium-judge ./cmd/podium-judge

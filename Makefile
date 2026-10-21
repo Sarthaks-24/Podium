@@ -104,13 +104,17 @@ check: ## Everything CI runs: formatting, vet, svelte-check, ESLint, tests
 	bash tools/deploy-test.sh
 	$(MAKE) test
 
+# The problem packs the M2 and M3 acceptance tests judge, as the judge user
+# reads them; CI passes a world-readable copy (C2-012).
+SANDBOX_EXAMPLES ?= $(LINUX_CURDIR)/problems
+
 .PHONY: sandbox-test
 sandbox-test: ## Hostile-program suite and M2 and M3 acceptance in isolate (Linux, or WSL2 on Windows)
 	cd server && $(GOFLAGS_LINUX) go test -c -tags sandbox -o bin/calib.test ./internal/judge/calib
 	cd server && $(GOFLAGS_LINUX) go test -c -tags sandbox -o bin/worker.test ./internal/worker
 	$(LINUX) bash tools/sandbox-test.sh server/bin/calib.test -test.v -test.timeout 10m
 	@# MSYS_NO_PATHCONV: Git Bash would turn the /mnt path into a Windows one.
-	MSYS_NO_PATHCONV=1 $(LINUX) bash tools/sandbox-test.sh server/bin/worker.test -test.v -test.timeout 20m -examples "$(LINUX_CURDIR)/problems"
+	MSYS_NO_PATHCONV=1 $(LINUX) bash tools/sandbox-test.sh server/bin/worker.test -test.v -test.timeout 20m -examples "$(SANDBOX_EXAMPLES)"
 
 .PHONY: calibrate
 calibrate: ## Measure this judge host and print the calibration tables
