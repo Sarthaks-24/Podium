@@ -633,7 +633,8 @@ test('the semester rollover previews, asks with the counts, then archives and di
   await expect(sure.getByRole('button', { name: 'Cancel' })).toBeFocused();
   await sure.getByRole('button', { name: 'Archive and disable' }).click();
   await expect(page.locator('.toasts').getByText('Archived 2 contests and disabled 1 account')).toBeVisible();
-  expect(state.rollovers.at(-1)).toEqual({ label: '2026 odd semester', apply: true });
+  // Applied as of the preview it confirms (C2-033).
+  expect(state.rollovers.at(-1)).toEqual({ label: '2026 odd semester', apply: true, as_of: state.rolloverNows[0] });
   await expect(page.getByRole('region', { name: 'Account help' })).toContainText('old@college.edu');
   // Changing the label drops a preview, so what is applied is what was read.
   await section.getByRole('button', { name: 'Preview rollover' }).click();

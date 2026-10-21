@@ -149,6 +149,7 @@
     idle_days: number;
     contests: { id: number; slug: string; title: string; ends_at: number }[];
     accounts: Account[];
+    server_now?: number;
   }
   let rollLabel = $state('');
   let rollBefore = $state('');
@@ -296,7 +297,9 @@
   async function applyRollover() {
     rollBusy = true;
     try {
-      const done = await sendJSON<RolloverPlan>('POST', '/api/admin/rollover', rolloverBody(true));
+      // As of the preview, so an account that crossed 180 days since is not disabled unseen (C2-033).
+      const asOf = rollPlan?.server_now;
+      const done = await sendJSON<RolloverPlan>('POST', '/api/admin/rollover', { ...rolloverBody(true), ...(asOf ? { as_of: asOf } : {}) });
       rollDone = done;
       rollPlan = null;
       rollConfirm = false;

@@ -63,6 +63,8 @@ export async function mockApi(page: Page, who: Who) {
     organisation: { name: '', contact_email: '', phone: '', privacy_contact: '' },
     settingsPuts: [] as Record<string, string>[],
     rollovers: [] as Record<string, unknown>[],
+    /** The server_now of each rollover answer, in order. */
+    rolloverNows: [] as number[],
   };
 
   await page.route(
@@ -153,6 +155,8 @@ export async function mockApi(page: Page, who: Who) {
       if (path === '/api/admin/rollover' && method === 'POST') {
         const body = req.postDataJSON() as { label: string; apply?: boolean; ended_before?: number };
         state.rollovers.push(body);
+        const serverNow = Date.now();
+        state.rolloverNows.push(serverNow);
         const accounts = [{ id: 41, email: 'old@college.edu', name: 'Old Student', role: 'student', disabled: false, last_login_at: 1770000000000 }];
         if (body.apply) state.disabled.push({ ...accounts[0], disabled: true });
         return json(route, 200, {
@@ -162,7 +166,7 @@ export async function mockApi(page: Page, who: Who) {
           idle_days: 180,
           contests: [{ id: 12, slug: 'week-12', title: 'Week 12', ends_at: 1791000000000 }, { id: 13, slug: 'week-13', title: 'Week 13', ends_at: 1791600000000 }],
           accounts,
-          server_now: Date.now(),
+          server_now: serverNow,
         });
       }
       const accountMatch = path.match(/^\/api\/admin\/accounts\/(end-sessions|disable|enable)$/);
