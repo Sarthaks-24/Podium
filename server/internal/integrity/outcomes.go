@@ -215,26 +215,62 @@ func (s *Service) appealOf(ctx context.Context, where string, args ...any) (*App
 // Appeals lists appeals for reviewers, open ones first, then newest, with
 // the student's name.
 func (s *Service) Appeals(ctx context.Context, openOnly bool) ([]Appeal, error) {
+	list, _, err := s.AppealsPage(ctx, openOnly, 0, 500)
+	return list, err
+}
+
+// AppealsPage is one page of Appeals: limit rows after skipping offset,
+// and whether more follow. The appellants' names come in one query, not
+// one per row (council C1-044).
+func (s *Service) AppealsPage(ctx context.Context, openOnly bool, offset, limit int) ([]Appeal, bool, error) {
 	q := "SELECT " + appealColumns + " FROM " + appealJoins
 	if openOnly {
 		q += " WHERE r.id IS NULL"
 	}
-	rows, err := s.DB.QueryContext(ctx, q+" ORDER BY (r.id IS NULL) DESC, a.id DESC LIMIT 500")
+	rows, err := s.DB.QueryContext(ctx, q+" ORDER BY (r.id IS NULL) DESC, a.id DESC LIMIT ? OFFSET ?", limit+1, offset)
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	list, err := s.scanAppeals(rows)
 	if err != nil {
-		return nil, err
+		return nil, false, err
+	}
+	more := len(list) > limit
+	if more {
+		list = list[:limit]
+	}
+	if len(list) == 0 {
+		return list, more, nil
+	}
+	ids := make([]any, 0, len(list))
+	for _, a := range list {
+		ids = append(ids, a.UserID)
+	}
+	urows, err := s.DB.QueryContext(ctx, "SELECT id, coalesce(nullif(name, ''), email), email FROM users WHERE id IN ("+
+		strings.TrimSuffix(strings.Repeat("?,", len(ids)), ",")+")", ids...)
+	if err != nil {
+		return nil, false, err
+	}
+	people := map[int64]Person{}
+	for urows.Next() {
+		var id int64
+		var p Person
+		if err := urows.Scan(&id, &p.Name, &p.Email); err != nil {
+			urows.Close()
+			return nil, false, err
+		}
+		people[id] = p
+	}
+	urows.Close()
+	if err := urows.Err(); err != nil {
+		return nil, false, err
 	}
 	for i := range list {
-		var p Person
-		if err := s.DB.QueryRowContext(ctx, "SELECT coalesce(nullif(name, ''), email), email FROM users WHERE id = ?", list[i].UserID).
-			Scan(&p.Name, &p.Email); err == nil {
+		if p, ok := people[list[i].UserID]; ok {
 			list[i].User = &p
 		}
 	}
-	return list, nil
+	return list, more, nil
 }
 
 // MyAppeals lists a student's own appeals, as they may read them.

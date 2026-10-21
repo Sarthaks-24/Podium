@@ -229,8 +229,20 @@ func (d Deps) fileAppeal(w http.ResponseWriter, r *http.Request) {
 	WriteJSON(w, http.StatusCreated, a)
 }
 
+// appealsPage is how many appeals one GET /api/admin/appeals returns.
+const appealsPage = 50
+
 func (d Deps) listAppeals(w http.ResponseWriter, r *http.Request) {
-	list, err := d.Integrity.Appeals(r.Context(), r.URL.Query().Get("state") == "open")
+	page := 1
+	if v := r.URL.Query().Get("page"); v != "" {
+		n, err := strconv.Atoi(v)
+		if err != nil || n < 1 || n > 1000 {
+			WriteError(w, http.StatusBadRequest, "bad_request", "page is a number from 1.")
+			return
+		}
+		page = n
+	}
+	list, more, err := d.Integrity.AppealsPage(r.Context(), r.URL.Query().Get("state") == "open", (page-1)*appealsPage, appealsPage)
 	if err != nil {
 		d.internalError(w, r, err)
 		return
@@ -248,21 +260,24 @@ func (d Deps) listAppeals(w http.ResponseWriter, r *http.Request) {
 		involved[c.ID] = true
 	}
 	out := []integrity.Appeal{}
+	var views []integrity.View
 	for _, a := range list {
 		if a.UserID != me && (a.CaseID == nil || !involved[*a.CaseID]) {
-			// An appeal's text is the student's record: logged (D97).
-			kind, ref := integrity.ViewRecord, int64(0)
+			// An appeal's text is the student's record: logged (D97), all
+			// of the page's reads in one commit.
+			v := integrity.View{Subject: a.UserID, Kind: integrity.ViewRecord}
 			if a.CaseID != nil {
-				kind, ref = integrity.ViewCase, *a.CaseID
+				v.Kind, v.Ref = integrity.ViewCase, *a.CaseID
 			}
-			if err := d.Integrity.LogView(r.Context(), me, a.UserID, kind, ref); err != nil {
-				d.internalError(w, r, err)
-				return
-			}
+			views = append(views, v)
 			out = append(out, a)
 		}
 	}
-	WriteJSON(w, http.StatusOK, map[string]any{"appeals": out, "server_now": d.serverNow()})
+	if err := d.Integrity.LogViews(r.Context(), me, views); err != nil {
+		d.internalError(w, r, err)
+		return
+	}
+	WriteJSON(w, http.StatusOK, map[string]any{"appeals": out, "has_more": more, "page": page, "server_now": d.serverNow()})
 }
 
 func (d Deps) ruleAppeal(w http.ResponseWriter, r *http.Request) {

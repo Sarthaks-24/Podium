@@ -2,6 +2,7 @@ package integrity
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"strings"
@@ -593,6 +594,34 @@ func TestDeadlinesWithAFixedClock(t *testing.T) {
 	if len(list) != 1 || !list[0].Overdue {
 		t.Errorf("open appeals %+v", list)
 	}
+	// Paged, with the appellant named from one query (C1-044).
+	page, more, err := r.svc.AppealsPage(ctx, false, 0, 1)
+	if err != nil || len(page) != 1 || more || page[0].User == nil || page[0].User.Email == "" {
+		t.Errorf("first page %+v more %v %v", page, more, err)
+	}
+	if page, more, _ := r.svc.AppealsPage(ctx, false, 1, 1); len(page) != 0 || more {
+		t.Errorf("second page %+v more %v", page, more)
+	}
+}
+
+// LogViews writes a page of reads in one statement and leaves out the
+// viewer's own record (C1-044).
+func TestLogViewsInOneCommit(t *testing.T) {
+	r := newStudentsRig(t)
+	ctx := context.Background()
+	before := count(t, r.db, "SELECT count(*) FROM record_views")
+	if err := r.svc.LogViews(ctx, 100, []View{{Subject: 1, Kind: ViewCase, Ref: 7}, {Subject: 2, Kind: ViewRecord}, {Subject: 100, Kind: ViewRecord}}); err != nil {
+		t.Fatal(err)
+	}
+	if got := count(t, r.db, "SELECT count(*) FROM record_views") - before; got != 2 {
+		t.Errorf("%d rows, want 2 (the viewer's own read is not logged)", got)
+	}
+	if got := count(t, r.db, "SELECT count(*) FROM record_views WHERE viewer_id = 100 AND subject_id = 1 AND kind = 'case' AND ref_id = 7"); got != 1 {
+		t.Errorf("case read rows %d", got)
+	}
+	if err := r.svc.LogViews(ctx, 100, nil); err != nil {
+		t.Errorf("an empty page: %v", err)
+	}
 }
 
 // A case shared while the student is in a live contest: the notice and
@@ -713,4 +742,13 @@ func TestPairCaseOutcomeForOneStudent(t *testing.T) {
 	if sd, _ := r.svc.StandingOf(ctx, 2); len(sd.Lines) != 0 {
 		t.Errorf("the cleared student has lines: %+v", sd.Lines)
 	}
+}
+
+func count(t *testing.T, d *sql.DB, q string, args ...any) int {
+	t.Helper()
+	var n int
+	if err := d.QueryRow(q, args...).Scan(&n); err != nil {
+		t.Fatal(err)
+	}
+	return n
 }

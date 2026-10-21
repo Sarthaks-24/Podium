@@ -166,3 +166,18 @@ func TestC1043StudentsFromSummaryColumns(t *testing.T) {
 		t.Errorf("student page contest %v, want median %v", cs, want)
 	}
 }
+
+// C1-044: the appeals list pages at 50 and says whether more follow.
+func TestC1044AppealsListPages(t *testing.T) {
+	s := newSite(t)
+	owner := s.signedIn("owner@college.edu", "Owner")
+	code, out := owner.do("GET", "/api/admin/appeals?page=2", nil, "")
+	if code != 200 || out["has_more"] != false || out["page"] != float64(2) || len(out["appeals"].([]any)) != 0 {
+		t.Errorf("page 2: %d %v", code, out)
+	}
+	for _, bad := range []string{"0", "x", "-1"} {
+		if code, out := owner.do("GET", "/api/admin/appeals?page="+bad, nil, ""); code != 400 {
+			t.Errorf("page %s: %d %v", bad, code, out)
+		}
+	}
+}

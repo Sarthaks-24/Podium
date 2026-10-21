@@ -45,7 +45,7 @@ func (d Deps) integrityRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/admin/submissions/{id}/notes", signedIn(d.limitReads(d.listNotes)))
 	mux.HandleFunc("POST /api/admin/submissions/{id}/notes", signedIn(d.addNote))
 	mux.HandleFunc("POST /api/admin/submissions/{id}/case", signedIn(d.openManualCase))
-	mux.HandleFunc("GET /api/admin/appeals", d.requireRole(auth.Admin, d.listAppeals))
+	mux.HandleFunc("GET /api/admin/appeals", d.requireRole(auth.Admin, d.limitReads(d.listAppeals)))
 	mux.HandleFunc("POST /api/admin/appeals/{id}/ruling", d.requireRole(auth.Admin, d.ruleAppeal))
 	mux.HandleFunc("GET /api/admin/integrity/oversight", d.requireRole(auth.Owner, d.oversight))
 	mux.HandleFunc("GET /api/admin/record-views", d.requireRole(auth.Owner, d.recordViews))

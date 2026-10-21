@@ -252,6 +252,41 @@ func (s *Service) LogView(ctx context.Context, viewer, subject int64, kind strin
 	return err
 }
 
+// View is one read for LogViews.
+type View struct {
+	Subject int64
+	Kind    string
+	Ref     int64
+}
+
+// LogViews appends several record views by one viewer in one transaction
+// and one statement, so a long list costs one commit (council C1-044).
+// Reads of the viewer's own record are left out, as in LogView.
+func (s *Service) LogViews(ctx context.Context, viewer int64, views []View) error {
+	now := s.now().UnixMilli()
+	var marks []string
+	var args []any
+	for _, v := range views {
+		if v.Subject == viewer {
+			continue
+		}
+		marks = append(marks, "(?, ?, ?, ?, ?)")
+		args = append(args, now, viewer, v.Subject, v.Kind, v.Ref)
+	}
+	if len(marks) == 0 {
+		return nil
+	}
+	tx, err := s.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if _, err := tx.ExecContext(ctx, "INSERT INTO record_views (at, viewer_id, subject_id, kind, ref_id) VALUES "+strings.Join(marks, ", "), args...); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
 // RecordView is one row of the record view log.
 type RecordView struct {
 	ID      int64  `json:"id"`

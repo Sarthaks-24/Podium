@@ -1581,7 +1581,7 @@ both `null` until a decision changed the board, so the results page can say "Boa
 | Route | Who | Request | Success |
 |---|---|---|---|
 | `POST /api/me/appeals` | the student the outcome or adjustment is about | `{"case_id": 12, "text": "..."}` or `{"adjustment_id": 40, "text": "..."}` | 201 `Appeal` |
-| `GET /api/admin/appeals` (`?state=open`) | owner, admin | | 200 `{appeals: [Appeal], server_now}`, open first, then newest |
+| `GET /api/admin/appeals` (`?state=open`, `?page=2`) | owner, admin | | 200 `{appeals: [Appeal], has_more, page, server_now}`, open first, then newest, 50 a page; every appeal listed is logged as a read of that student's record or case, the page's reads in one commit; per-user read limit (`429 rate_limited`) |
 | `POST /api/admin/appeals/{id}/ruling` | owner, admin who took no part | `{"upheld": true, "reason": "...", "sole_organiser_reason": "..."}` | 200 `Appeal` |
 
 `Appeal`: `{id, case_id, adjustment_id, user_id, text, created_at, decide_by, overdue, state, ruling}`; `state` is `open`, `upheld` or `rejected`; `ruling` is `{by, by_name, upheld, reason, created_at}` or `null`. Students get their own appeals without `by` and `by_name`; reviewers also get `user {name, email, roll_number}` (roll number empty here).
