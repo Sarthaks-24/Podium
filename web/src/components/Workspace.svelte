@@ -1270,6 +1270,7 @@
   <button
     type="button"
     class="btn btn-primary btn-compact submit"
+    class:btn-wait={submitBusy || waitLeft > 0}
     disabled={lockText !== ''}
     aria-disabled={submitBusy || waitLeft > 0 ? 'true' : undefined}
     aria-describedby={lockText ? 'ws-locked' : paceText || usedNow ? 'ws-submit-status' : undefined}

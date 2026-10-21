@@ -139,6 +139,13 @@
   color: var(--ink-faint);
 }
 
+/* A button that is waiting, not off: its words ("Submitting", "Submit in
+   24 s") are state the person reads, so they keep text contrast
+   (--ink-muted on --surface-2 is at least 4.5:1 in every theme). */
+.btn.btn-wait[aria-disabled='true'] {
+  color: var(--ink-muted);
+}
+
 /* Inputs and selects */
 .input,
 .select {

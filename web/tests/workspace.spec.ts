@@ -573,6 +573,16 @@ test.describe('in a contest', () => {
     await oneRow();
     await expect(counting).toBeFocused();
     await expect(counting).toHaveAttribute('aria-disabled', 'true');
+    // The countdown is read, so it keeps text contrast: --ink-muted, not --ink-faint (C1-028).
+    const muted = await page.evaluate(() => {
+      const probe = document.createElement('span');
+      probe.style.color = 'var(--ink-muted)';
+      document.body.append(probe);
+      const c = getComputedStyle(probe).color;
+      probe.remove();
+      return c;
+    });
+    await expect(counting).toHaveCSS('color', muted);
     await expect(page.locator('#ws-submit-status')).toHaveText('1 of 15 submissions used');
     await expect(counting.locator('svg')).toHaveCount(1);
     await expect(page.getByRole('button', { name: 'Run on samples' }).locator('svg')).toHaveCount(1);
