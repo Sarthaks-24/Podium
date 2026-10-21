@@ -193,6 +193,9 @@ export function formatMs(ms: number): string {
 
 /** Memory as shown: "512 KB" or "3.1 MB". */
 export function formatKb(kb: number): string {
+  // Students never get a hidden test's memory (D47): the server sends 0,
+  // which no real run uses, so it shows as nothing rather than "0 KB".
+  if (kb <= 0) return '';
   if (kb < 1024) return `${Math.round(kb)} KB`;
   return `${(kb / 1024).toFixed(1)} MB`;
 }

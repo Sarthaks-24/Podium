@@ -122,6 +122,8 @@ describe('headlines and announcements', () => {
     expect(formatMs(14)).toBe('10 ms');
     expect(formatMs(15)).toBe('20 ms');
     expect(formatKb(512)).toBe('512 KB');
+    // A hidden test's memory is withheld from students as 0 (walk 2026-10-21).
+    expect(formatKb(0)).toBe('');
     expect(formatKb(3300)).toBe('3.2 MB');
     expect(limitsText(1000, 256)).toBe('Time limit 1 s, memory 256 MB');
     expect(limitsText(1500, 64)).toBe('Time limit 1500 ms, memory 64 MB');
