@@ -60,12 +60,17 @@ func TestStopOnSignals(t *testing.T) {
 	wait(ret, "the return on a normal end")
 }
 
-// fail exits 3 on a protocol mismatch, so systemd's
-// RestartPreventExitStatus=3 keeps a judge of the wrong release down
-// (C1-027). The exit is checked in a child process.
+// fail exits 3 on a protocol mismatch and 4 on a refused token, so
+// systemd's RestartPreventExitStatus=3 4 keeps such a judge down and its
+// unit fails and alerts (C1-027, C1-048). The exit is checked in a child
+// process.
 func TestFailExitsThreeOnProtocolMismatch(t *testing.T) {
 	if os.Getenv("PODIUM_JUDGE_TEST_CHILD") == "protocol" {
 		fail(&worker.ProtocolError{Message: "judge protocol 4 needed, this judge speaks 3"})
+		return
+	}
+	if os.Getenv("PODIUM_JUDGE_TEST_CHILD") == "auth" {
+		fail(&worker.AuthError{Op: "claim"})
 		return
 	}
 	if os.Getenv("PODIUM_JUDGE_TEST_CHILD") == "other" {
@@ -75,7 +80,7 @@ func TestFailExitsThreeOnProtocolMismatch(t *testing.T) {
 	for _, c := range []struct {
 		child string
 		want  int
-	}{{"protocol", exitProtocol}, {"other", 1}} {
+	}{{"protocol", exitProtocol}, {"auth", exitAuth}, {"other", 1}} {
 		cmd := exec.Command(os.Args[0], "-test.run=^TestFailExitsThreeOnProtocolMismatch$")
 		cmd.Env = append(os.Environ(), "PODIUM_JUDGE_TEST_CHILD="+c.child)
 		err := cmd.Run()

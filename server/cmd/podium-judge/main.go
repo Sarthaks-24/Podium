@@ -45,6 +45,11 @@ var version = buildinfo.Version
 // of looping until both sides run the same release.
 const exitProtocol = 3
 
+// exitAuth is the exit status when the server keeps refusing the judge
+// token (401): fixing judge.env or server.env, not a restart, helps
+// (council C1-048). The unit does not restart on it, so OnFailure alerts.
+const exitAuth = 4
+
 func main() {
 	envFile := flag.String("env-file", "", "load variables from this file before reading the environment (local development)")
 	showVersion := flag.Bool("version", false, "print the version, commit, build date, schema and judge protocol, then exit")
@@ -229,14 +234,21 @@ func reportToolchain(ctx context.Context, client *worker.Client, isolatePath str
 	t := worker.DetectToolchain(ctx, isolatePath)
 	log.Info("toolchain", "gcc", t.GCC, "java", t.Java, "python", t.Python, "node", t.Node, "isolate", t.Isolate, "kernel", t.Kernel)
 	backoff := 2 * time.Second
+	refused := 0
 	for ctx.Err() == nil {
 		hash, err := client.ReportToolchain(ctx, t)
 		var protocol *worker.ProtocolError
+		var auth *worker.AuthError
 		switch {
 		case err == nil:
 			return hash, nil
 		case errors.As(err, &protocol):
 			return "", protocol
+		case errors.As(err, &auth):
+			if refused++; refused >= worker.DefaultAuthRetries {
+				return "", auth
+			}
+			log.Warn("toolchain report refused: the judge token does not match", "retry_in", backoff)
 		case ctx.Err() == nil:
 			log.Warn("toolchain report failed", "err", err, "retry_in", backoff)
 		}
@@ -273,6 +285,10 @@ func fail(err error) {
 	var protocol *worker.ProtocolError
 	if errors.As(err, &protocol) {
 		os.Exit(exitProtocol)
+	}
+	var auth *worker.AuthError
+	if errors.As(err, &auth) {
+		os.Exit(exitAuth)
 	}
 	if config.IsProblems(err) {
 		os.Exit(2)

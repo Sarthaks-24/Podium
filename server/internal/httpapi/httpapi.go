@@ -255,12 +255,31 @@ func (d Deps) healthz(w http.ResponseWriter, r *http.Request) {
 		WriteJSON(w, http.StatusServiceUnavailable, map[string]string{"status": "degraded", "db": "unreachable"})
 		return
 	}
-	out := map[string]string{"status": "ok", "db": "ok"}
+	out := map[string]any{"status": "ok", "db": "ok"}
 	if loopbackRequest(r) {
 		// Only a caller on this machine learns the release (install.sh
 		// verify, the deploy scripts): through Caddy the version stays
 		// private, so a scanner cannot match it against known bugs.
 		out["version"], out["schema"] = d.Version, migrations.Latest()
+		// The judge queue, for podium-check's stalled-judge alert (council
+		// C1-048): jobs waiting, the oldest one's age, and how long since
+		// a judge last asked for work (null when none has since start).
+		var queued, oldest int64
+		if err := d.DB.QueryRowContext(ctx, "SELECT count(*), coalesce(min(created_at), 0) FROM jobs WHERE state = 'queued'").
+			Scan(&queued, &oldest); err == nil {
+			now := time.Now()
+			out["jobs_queued"] = queued
+			out["oldest_queued_s"] = int64(0)
+			if queued > 0 {
+				out["oldest_queued_s"] = max(0, int64(now.Sub(time.UnixMilli(oldest)).Seconds()))
+			}
+			out["judge_last_claim_s"] = nil
+			if d.Problems != nil && d.Problems.Jobs != nil {
+				if at, ok := d.Problems.Jobs.LastClaimAt(); ok {
+					out["judge_last_claim_s"] = max(0, int64(now.Sub(at).Seconds()))
+				}
+			}
+		}
 	}
 	WriteJSON(w, http.StatusOK, out)
 }

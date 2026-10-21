@@ -4,6 +4,7 @@ package httpapi
 // run-1-2026-10-21/FINDINGS.md), one test per finding id.
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 
@@ -207,5 +208,45 @@ func TestC1051StreamTagIgnoresAPhoneChangingNetworks(t *testing.T) {
 	}
 	if d.streamTag(req("10.1.2.3:5000", desk)) == d.streamTag(req("10.1.2.3:5000", phone)) {
 		t.Error("two browsers counted as one device")
+	}
+}
+
+// C1-048: /healthz on loopback tells podium-check how long jobs have
+// waited and when a judge last asked for work.
+func TestC1048HealthzReportsTheJudgeQueue(t *testing.T) {
+	s := newSite(t)
+	owner := s.signedIn("owner@college.edu", "Owner")
+	asha := s.signedIn("asha@college.edu", "Asha")
+	start := time.Now().Add(time.Hour).Truncate(time.Minute)
+	pa := s.importProblem(owner, "c1048-a")
+	s.judgeAll()
+	s.createContest(owner, "c1048", start, map[string]int64{"A": pa}, nil)
+	s.at(start, 5)
+	asha.do("POST", "/api/contests/c1048/start", map[string]any{"accept_honour": true}, s.srv.URL)
+	// Not s.submit, which judges at once: this one waits in the queue.
+	if code, out := asha.do("POST", "/api/contests/c1048/problems/A/submit",
+		map[string]any{"language": "cpp17", "source": "correct", "client_key": "c1048"}, s.srv.URL); code != 202 {
+		t.Fatalf("submit: %d %v", code, out)
+	}
+	health := func() map[string]any {
+		resp, err := http.Get(s.srv.URL + "/healthz")
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer resp.Body.Close()
+		var out map[string]any
+		json.NewDecoder(resp.Body).Decode(&out)
+		return out
+	}
+	out := health()
+	if out["jobs_queued"] != float64(1) || out["oldest_queued_s"] == nil {
+		t.Errorf("with a submission waiting: %v", out)
+	}
+	if _, ok := out["judge_last_claim_s"].(float64); !ok {
+		t.Errorf("a judge claimed while importing, so the last claim is known: %v", out)
+	}
+	s.judgeAll()
+	if out := health(); out["jobs_queued"] != float64(0) || out["oldest_queued_s"] != float64(0) {
+		t.Errorf("after judging: %v", out)
 	}
 }

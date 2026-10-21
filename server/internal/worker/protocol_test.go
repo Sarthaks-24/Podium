@@ -181,3 +181,37 @@ func TestToolchainsArePruned(t *testing.T) {
 		t.Errorf("current %+v", cur)
 	}
 }
+
+// A refused token (401) is the same on every retry: after AuthRetries in
+// a row the judge stops with the reason, so its unit fails and alerts
+// instead of retrying forever (C1-048).
+func TestJudgeStopsAfterRepeatedTokenRefusals(t *testing.T) {
+	var claims atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		claims.Add(1)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusUnauthorized)
+		io.WriteString(w, `{"error":{"code":"unauthorized","message":"Unknown judge token."}}`)
+	}))
+	defer srv.Close()
+	var logs bytes.Buffer
+	w := &Worker{Client: &Client{BaseURL: srv.URL, Token: "wrong", HTTP: srv.Client()}, Lanes: 1, AuthRetries: 2,
+		Log: slog.New(slog.NewTextHandler(&logs, nil))}
+	done := make(chan error, 1)
+	go func() { done <- w.Drain(context.Background(), context.Background()) }()
+	select {
+	case err := <-done:
+		var ae *AuthError
+		if !errors.As(err, &ae) || !strings.Contains(err.Error(), "PODIUM_JUDGE_TOKEN") || strings.Contains(err.Error(), "wrong") {
+			t.Errorf("drain returned %v", err)
+		}
+	case <-time.After(20 * time.Second):
+		t.Fatal("the judge kept retrying a refused token")
+	}
+	if n := claims.Load(); n != 2 {
+		t.Errorf("%d claims, want 2", n)
+	}
+	if strings.Contains(logs.String(), "wrong") {
+		t.Error("the token reached the log")
+	}
+}

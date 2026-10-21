@@ -35,7 +35,7 @@ Common error codes: `bad_request`, `rate_limited` (before sign-in, v1.3.0), `sig
 | 200 | `{"status":"ok","db":"ok"}` |
 | 503 | `{"status":"degraded","db":"unreachable"}` |
 
-A request from the VM itself (a loopback peer with no `X-Forwarded-For`, `Forwarded`, `X-Real-IP` or `X-Forwarded-Host`) also gets the release: `{"status":"ok","db":"ok","version":"v1.1.0","schema":"0009_toolchains"}`. Through Caddy the answer never carries them (v1.1.0, B1.1).
+A request from the VM itself (a loopback peer with no `X-Forwarded-For`, `Forwarded`, `X-Real-IP` or `X-Forwarded-Host`) also gets the release and the judge queue: `{"status":"ok","db":"ok","version":"v1.1.0","schema":"0014_results_notice","jobs_queued":2,"oldest_queued_s":40,"judge_last_claim_s":1}` (`judge_last_claim_s` is `null` when no judge has asked for work since the server started; `podium-check` alerts on it, council C1-048). Through Caddy the answer never carries them (v1.1.0, B1.1).
 
 ### `GET /api/admin/metrics` (admin)
 
@@ -1708,7 +1708,7 @@ Request: `{"kinds":["run","submit","generate","validate"],"worker":"vm-1","versi
 |---|---|
 | 204 | no queued job of those kinds (unknown kinds are ignored) |
 | 200 | `{"job_id":41,"kind":"validate","lease":"<secret>","lease_seconds":60,"payload":{...}}` |
-| 426 `protocol` | the judge speaks another protocol: `{"error":{"code":"protocol","message":"judge protocol 3 needed, this judge speaks 2: install the same release on both"}}`. The judge stops with this message (exit status 3, which `podium-judge.service` does not restart) instead of retrying |
+| 426 `protocol` | the judge speaks another protocol: `{"error":{"code":"protocol","message":"judge protocol 3 needed, this judge speaks 2: install the same release on both"}}`. The judge stops with this message (exit status 3, which `podium-judge.service` does not restart) instead of retrying. A 401 to a claim or toolchain report, five times in a row, stops it with exit status 4 the same way |
 
 ### `POST /api/judge/toolchain`
 

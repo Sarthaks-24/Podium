@@ -17,7 +17,10 @@ RestartSec=2
 # Exit 3: the server speaks another judge protocol (an upgrade put a
 # different release on one side). Restarting cannot fix it, so the judge
 # stays stopped with the message in its log until install.sh starts it.
-RestartPreventExitStatus=3
+# Exit 4: the server kept refusing the judge token (401); fix
+# PODIUM_JUDGE_TOKEN so both env files match, then start the judge. Either
+# exit leaves the unit failed, so OnFailure alerts.
+RestartPreventExitStatus=3 4
 # SIGTERM stops claiming; each lane finishes and reports the job it holds,
 # then the worker exits (graceful stop, used by install.sh upgrade). Real
 # jobs take seconds; 20 minutes covers a long validation. A job still

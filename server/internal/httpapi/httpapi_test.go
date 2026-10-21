@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -72,7 +73,7 @@ func TestHealthzVersionLoopbackOnly(t *testing.T) {
 	}
 	t.Cleanup(func() { d.Close() })
 	h := New(Deps{DB: d, Log: slog.New(slog.NewJSONHandler(&bytes.Buffer{}, nil)), WebApp: http.NotFoundHandler(), Version: "v9.9.9"})
-	get := func(remote string, header ...string) map[string]string {
+	get := func(remote string, header ...string) map[string]any {
 		req := httptest.NewRequest("GET", "/healthz", nil)
 		req.RemoteAddr = remote
 		for i := 0; i+1 < len(header); i += 2 {
@@ -80,20 +81,20 @@ func TestHealthzVersionLoopbackOnly(t *testing.T) {
 		}
 		rec := httptest.NewRecorder()
 		h.ServeHTTP(rec, req)
-		var out map[string]string
+		var out map[string]any
 		json.Unmarshal(rec.Body.Bytes(), &out)
 		return out
 	}
-	if out := get("127.0.0.1:5000"); out["version"] != "v9.9.9" || !strings.HasPrefix(out["schema"], "00") {
+	if out := get("127.0.0.1:5000"); out["version"] != "v9.9.9" || !strings.HasPrefix(fmt.Sprint(out["schema"]), "00") {
 		t.Errorf("loopback: %v", out)
 	}
 	if out := get("[::1]:5000"); out["version"] != "v9.9.9" {
 		t.Errorf("loopback v6: %v", out)
 	}
-	if out := get("127.0.0.1:5000", "X-Forwarded-For", "203.0.113.9"); out["version"] != "" || out["schema"] != "" || out["status"] != "ok" {
+	if out := get("127.0.0.1:5000", "X-Forwarded-For", "203.0.113.9"); out["version"] != nil || out["schema"] != nil || out["jobs_queued"] != nil || out["status"] != "ok" {
 		t.Errorf("through the proxy: %v", out)
 	}
-	if out := get("203.0.113.9:5000"); out["version"] != "" {
+	if out := get("203.0.113.9:5000"); out["version"] != nil {
 		t.Errorf("remote: %v", out)
 	}
 }

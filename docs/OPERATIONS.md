@@ -445,7 +445,7 @@ If clock lines arrive in bursts or only when the request ends, something between
 - The judge API has no health route. `curl -s -o /dev/null -w '%{http_code}\n' -X POST http://127.0.0.1:8081/api/judge/claim` prints `401` when the listener is up (it asks for the token).
 - Logs: `journalctl -u podium-server -u podium-judge -f`. They are JSON lines. The worker logs `job started` and `job finished` per job; the server logs `job leased` and `job closed`.
 - `podium-server check` checks a database and its test files without changing them (see "Checking a database").
-- `sudo /usr/local/lib/podium/podium-check status` prints the 15-minute health checks (free space, WAL, Litestream) without alerting; `sudo ./install.sh verify` checks the whole installation.
+- `sudo /usr/local/lib/podium/podium-check status` prints the 15-minute health checks (free space, WAL, the judge queue, Litestream) without alerting; `sudo ./install.sh verify` checks the whole installation.
 
 ## Alerts
 
@@ -456,6 +456,7 @@ Nothing extra stays in memory: systemd starts a small unit when something fails,
 | A unit failed | `OnFailure=podium-alert@%n.service` on `podium-server`, `podium-judge`, `podium-litestream`, `podium-backup` and `podium-check`. A crash, an OOM kill, a failed backup or a stop that timed out posts "podium-judge.service failed on <host>" with where to look. The unit still restarts | at most one per unit every 10 minutes; the next says how many were held back |
 | Free space | below 2 x the database (with its WAL) plus 2 GB on the database's filesystem | every 6 hours while it lasts, then "resolved" |
 | WAL size | `podium.db-wal` above 256 MB | as above |
+| Judge stalled | jobs waiting more than 5 minutes while no judge has asked for work for 2 minutes, read from the server's `/healthz` on loopback (`jobs_queued`, `oldest_queued_s`, `judge_last_claim_s`). The judge itself stops after 5 refused tokens in a row (exit status 4, not restarted, so the unit failed alert fires too): `PODIUM_JUDGE_TOKEN` must be the same in `server.env` and `judge.env` | as above |
 | Litestream | the unit is not running, the bucket cannot be listed, or the database changed more than 10 minutes after the bucket's newest upload | as above |
 | Encrypted copy | the newest `podium-*.tar.age` in B2 is older than 30 hours (checked every 6 hours, when configured) | as above |
 | Weekly restore proof (D113) | once a week the checker restores the bucket's newest database into a scratch folder with `litestream restore` and runs `podium-server check -hash` on it against the live test files. Failure alerts; it retries after a day | as above |

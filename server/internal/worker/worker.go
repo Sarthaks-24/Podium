@@ -18,6 +18,11 @@ const (
 	maxBackoff = 30 * time.Second
 )
 
+// DefaultAuthRetries: five refused tokens in a row, about a minute with
+// the claim backoff, ride out a server restarted with a new token while
+// judge.env is being edited, and no more.
+const DefaultAuthRetries = 5
+
 // Worker runs judge lanes. Each lane is one isolate box (box id = lane
 // number) and handles one job at a time.
 type Worker struct {
@@ -35,6 +40,9 @@ type Worker struct {
 	// Toolchain is the hash the server returned for this host's
 	// toolchain report; each claim carries it.
 	Toolchain string
+	// AuthRetries is how many refused tokens in a row a lane accepts
+	// before the worker stops (DefaultAuthRetries when zero).
+	AuthRetries int
 
 	// handle replaces the job dispatch in tests; nil runs the real kinds.
 	handle func(ctx context.Context, box int, c *judgeapi.Claim) error
@@ -46,13 +54,13 @@ type Worker struct {
 }
 
 // stopFor ends claiming on every lane for good: the server speaks another
-// protocol, which no retry fixes.
+// protocol, or keeps refusing the token, which no retry fixes.
 func (w *Worker) stopFor(err error) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	if w.fatal == nil {
 		w.fatal = err
-		w.Log.Error("stopping: the server and this judge differ", "err", err)
+		w.Log.Error("stopping: retrying cannot fix this", "err", err)
 	}
 	if w.halt != nil {
 		w.halt()
@@ -113,6 +121,10 @@ func (w *Worker) Drain(stop, jobs context.Context) error {
 
 func (w *Worker) lane(stop, ctx context.Context, box int) {
 	backoff := idlePoll
+	refused, maxRefused := 0, w.AuthRetries
+	if maxRefused <= 0 {
+		maxRefused = DefaultAuthRetries
+	}
 	for stop.Err() == nil && ctx.Err() == nil {
 		// The claim itself runs under the job context: a stop that lands
 		// while the request is in flight must not drop a job the server
@@ -122,10 +134,23 @@ func (w *Worker) lane(stop, ctx context.Context, box int) {
 			Worker: w.Name, Version: w.Version, Isolate: w.Isolate, Toolchain: w.Toolchain,
 		})
 		var protocol *ProtocolError
+		var auth *AuthError
+		if !errors.As(err, &auth) {
+			refused = 0
+		}
 		switch {
 		case errors.As(err, &protocol):
 			w.stopFor(protocol)
 			return
+		case auth != nil:
+			if refused++; refused >= maxRefused {
+				w.stopFor(auth)
+				return
+			}
+			w.Log.Warn("claim refused: the judge token does not match", "lane", box, "retry_in", backoff)
+			sleep(stop, backoff)
+			backoff = min(backoff*2, maxBackoff)
+			continue
 		case err != nil:
 			if ctx.Err() == nil {
 				w.Log.Warn("claim failed", "lane", box, "err", err, "retry_in", backoff)

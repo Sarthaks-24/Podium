@@ -122,5 +122,33 @@ else
   fail "podium-backup must copy with /etc/podium/backup-ssh/id_ed25519"
 fi
 
+# podium-check's stalled-judge rule (C1-048), with the server's answer and
+# systemctl stubbed. Needs jq, as on the VM; skipped without it.
+check="$here/../deploy/backup/podium-check"
+judge_check() { # HEALTHZ_JSON
+  (
+    envget() { printf '%s' "$3"; }
+    curl() { printf '%s' "$HEALTH"; }
+    systemctl() { echo failed; }
+    problem() { echo "PROBLEM $2"; }
+    fine() { echo "ok $2"; }
+    HEALTH=$1
+    eval "$(sed -n '/^check_judge() {/,/^}/p' "$check")"
+    check_judge
+  )
+}
+if command -v jq >/dev/null; then
+  out=$(judge_check '{"status":"ok","jobs_queued":3,"oldest_queued_s":900,"judge_last_claim_s":600}')
+  if [[ $out == "PROBLEM judge stalled" ]]; then pass "podium-check alerts on jobs waiting with no judge claiming"; else fail "stalled judge not reported: $out"; fi
+  out=$(judge_check '{"status":"ok","jobs_queued":3,"oldest_queued_s":900,"judge_last_claim_s":null}')
+  if [[ $out == "PROBLEM judge stalled" ]]; then pass "podium-check alerts when no judge claimed since the start"; else fail "never-claimed judge not reported: $out"; fi
+  out=$(judge_check '{"status":"ok","jobs_queued":3,"oldest_queued_s":900,"judge_last_claim_s":2}')
+  if [[ $out == "ok judge" ]]; then pass "podium-check stays quiet while a judge claims (a paused contest holds jobs)"; else fail "false alarm: $out"; fi
+  out=$(judge_check '{"status":"ok","jobs_queued":0,"oldest_queued_s":0,"judge_last_claim_s":null}')
+  if [[ $out == "ok judge" ]]; then pass "podium-check stays quiet with an empty queue"; else fail "false alarm on an empty queue: $out"; fi
+else
+  echo "skip: jq not installed, podium-check's judge rule not run"
+fi
+
 if (( fails > 0 )); then echo "$fails install.sh check(s) failed"; exit 1; fi
 echo "install.sh checks passed"

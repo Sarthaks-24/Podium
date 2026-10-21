@@ -78,6 +78,17 @@ type ProtocolError struct{ Message string }
 
 func (e *ProtocolError) Error() string { return e.Message }
 
+// AuthError means the server refused this judge's token (401). It is the
+// same on every retry until PODIUM_JUDGE_TOKEN matches on both sides, so
+// the worker stops after a few in a row (AuthRetries) and podium-judge
+// exits with status 4, which its unit does not restart: the unit fails
+// and its OnFailure alert fires (council C1-048).
+type AuthError struct{ Op string }
+
+func (e *AuthError) Error() string {
+	return e.Op + ": the server refused this judge's token (401): PODIUM_JUDGE_TOKEN in /etc/podium/judge.env must equal the one in /etc/podium/server.env"
+}
+
 // protocolError reads the server's sentence from a 426, or describes a
 // refusal that means the server is older than this judge: a 400 to a
 // body it does not know, or a 404 for a route it does not have. A 400
@@ -121,6 +132,8 @@ func (c *Client) Claim(ctx context.Context, req judgeapi.ClaimRequest) (*judgeap
 		return &claim, nil
 	case http.StatusUpgradeRequired, http.StatusBadRequest:
 		return nil, protocolError("claim", resp)
+	case http.StatusUnauthorized:
+		return nil, &AuthError{Op: "claim"}
 	}
 	return nil, httpError("claim", resp)
 }
@@ -142,6 +155,8 @@ func (c *Client) ReportToolchain(ctx context.Context, t judgeapi.Toolchain) (str
 		return reply.Hash, nil
 	case http.StatusUpgradeRequired, http.StatusBadRequest, http.StatusNotFound:
 		return "", protocolError("toolchain report", resp)
+	case http.StatusUnauthorized:
+		return "", &AuthError{Op: "toolchain report"}
 	}
 	return "", httpError("toolchain report", resp)
 }

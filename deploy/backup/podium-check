@@ -13,6 +13,10 @@
 #       encrypted    (every 6 hours, when configured in backup.env) the
 #       copy         newest podium-*.tar.age in B2 older than 30 hours
 #       restore      (once a week) the restore proof below
+#       judge        jobs waiting more than 5 minutes while no judge has
+#                    asked for work for 2 minutes (a stopped judge, a
+#                    token mismatch): from the server's /healthz on
+#                    loopback
 #   podium-check restore-proof [--corrupt]
 #       restore the bucket's newest database into a scratch folder now and
 #       check it with "podium-server check -hash" against the live test
@@ -83,6 +87,30 @@ check_disk() {
     problem wal "database WAL large" "podium.db-wal is $(mib "$wal") MB (above 256 MB): checkpoints are not keeping up. A long read may be holding them; restart podium-litestream, then podium-server at a quiet moment"
   else
     fine wal "WAL" "$(mib "$wal") MB"
+  fi
+}
+
+# check_judge: jobs that wait while no judge claims (council C1-048). The
+# server tells a loopback caller the queue's state in /healthz.
+check_judge() {
+  local listen out queued oldest last state
+  listen=${PODIUM_LISTEN:-$(envget /etc/podium/server.env PODIUM_LISTEN 127.0.0.1:8080)}
+  if ! out=$(curl -fsS -m 5 "http://$listen/healthz" 2>/dev/null); then
+    problem judge "server not answering" "podium-server does not answer /healthz on $listen: journalctl -u podium-server -n 50"
+    return
+  fi
+  queued=$(jq -r '.jobs_queued // empty' <<<"$out")
+  oldest=$(jq -r '.oldest_queued_s // 0' <<<"$out")
+  last=$(jq -r '.judge_last_claim_s // "never"' <<<"$out")
+  if [[ -z $queued ]]; then
+    fine judge "judge" "this server does not report its queue (an older release)"
+    return
+  fi
+  state=$(systemctl is-active podium-judge 2>/dev/null || true)
+  if (( queued > 0 && oldest > 300 )) && [[ $last == never || $last -gt 120 ]]; then
+    problem judge "judge stalled" "$queued jobs waiting, the oldest for $oldest s, and no judge has asked for work $( [[ $last == never ]] && echo "since the server started" || echo "for $last s") (podium-judge is $state). journalctl -u podium-judge -n 50; a token mismatch says 401: PODIUM_JUDGE_TOKEN must match in server.env and judge.env"
+  else
+    fine judge "judge" "$queued jobs waiting, last claim $last s ago"
   fi
 }
 
@@ -198,6 +226,7 @@ restore_proof() {
 case ${1:-} in
   "")
     check_disk
+    check_judge
     check_litestream
     check_encrypted_copy
     if due restore $(( 7 * 86400 )); then
@@ -218,11 +247,12 @@ case ${1:-} in
   status)
     quiet=yes
     check_disk
+    check_judge
     check_litestream
     check_encrypted_copy
     ;;
   *)
-    sed -n '2,24p' "$0" | sed 's/^# \{0,1\}//' >&2
+    sed -n '2,26p' "$0" | sed 's/^# \{0,1\}//' >&2
     exit 2
     ;;
 esac
