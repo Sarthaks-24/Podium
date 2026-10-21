@@ -344,7 +344,7 @@
 
   .summary {
     margin-top: var(--space-3);
-    max-width: 56rem;
+    max-width: var(--measure-wide);
   }
 
   .actions {
@@ -354,7 +354,7 @@
   .meaning,
   .from-case {
     margin-top: var(--space-2);
-    max-width: 56rem;
+    max-width: var(--measure-wide);
     font-size: var(--fs-0);
   }
 

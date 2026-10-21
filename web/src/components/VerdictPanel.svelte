@@ -223,7 +223,7 @@
   .advice {
     color: var(--ink-muted);
     font-size: var(--fs-0);
-    max-width: 60ch;
+    max-width: var(--measure-prose);
   }
 
   .compile {

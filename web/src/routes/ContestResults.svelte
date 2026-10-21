@@ -598,7 +598,7 @@
   .editorial {
     display: grid;
     gap: var(--space-3);
-    max-width: 56rem;
+    max-width: var(--measure-wide);
   }
 
   .actions {
@@ -608,7 +608,7 @@
   }
 
   .preview {
-    max-width: 56rem;
+    max-width: var(--measure-wide);
     padding: var(--space-4);
     border: var(--rule) solid var(--line);
     background: var(--surface);

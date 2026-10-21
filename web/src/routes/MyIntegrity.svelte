@@ -246,7 +246,7 @@
   }
 
   .prose {
-    max-width: 60ch;
+    max-width: var(--measure-prose);
     white-space: pre-wrap;
     overflow-wrap: anywhere;
   }
@@ -259,7 +259,7 @@
   }
 
   .lead {
-    max-width: 44rem;
+    max-width: var(--measure-form);
   }
 
   .cases {

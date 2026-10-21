@@ -443,7 +443,7 @@
   }
 
   .stats {
-    max-width: 56rem;
+    max-width: var(--measure-wide);
   }
 
   .filters {

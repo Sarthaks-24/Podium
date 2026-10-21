@@ -279,7 +279,7 @@
   }
 
   .note {
-    max-width: 60ch;
+    max-width: var(--measure-prose);
     padding: var(--space-3) var(--space-4);
     border: var(--rule) solid var(--line-strong);
     background: var(--surface);

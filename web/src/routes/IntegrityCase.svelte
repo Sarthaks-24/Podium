@@ -774,7 +774,7 @@
   }
 
   .prose {
-    max-width: 60ch;
+    max-width: var(--measure-prose);
     white-space: pre-wrap;
     overflow-wrap: anywhere;
   }

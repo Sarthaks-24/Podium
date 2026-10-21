@@ -202,7 +202,7 @@
 <style>
   .asked {
     margin-top: var(--space-4);
-    max-width: 44rem;
+    max-width: var(--measure-form);
   }
 
   .summary {

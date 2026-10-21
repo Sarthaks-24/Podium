@@ -30,6 +30,20 @@ describe('web source guardrails', () => {
     expect(Object.keys(sources).length).toBeGreaterThan(5);
   });
 
+  // C2-071 (C1-035): a text or page measure is a --measure-* token. Any ch
+  // width, or a rem width of 40 or more, is a measure; smaller rem widths
+  // size a single control and may stay literal.
+  it('keeps page measures in tokens', () => {
+    const offenders: string[] = [];
+    for (const [path, text] of Object.entries(sources)) {
+      if (path === TOKENS || isTest(path)) continue;
+      for (const m of text.matchAll(/(?<![-\w])max-width:\s*([\d.]+)(rem|ch)\b/g)) {
+        if (m[2] === 'ch' || Number(m[1]) >= 40) offenders.push(`${path} ${m[0]}`);
+      }
+    }
+    expect(offenders).toEqual([]);
+  });
+
   it('keeps hex colours inside tokens.css', () => {
     const offenders = Object.entries(sources)
       .filter(([path]) => path !== TOKENS && !MIRRORS_TOKENS.includes(path) && !isTest(path))
