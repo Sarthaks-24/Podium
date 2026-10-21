@@ -16,7 +16,10 @@ const baseURL = `http://127.0.0.1:${port}`;
 export default defineConfig({
   testDir: './tests',
   snapshotPathTemplate: '{testDir}/../../cache/v2-planning-files/v2-frontend/baseline/{testFileName}/{arg}-{platform}{ext}',
-  expect: { toHaveScreenshot: { maxDiffPixelRatio: 0.01 } },
+  // A few hundred pixels at most: enough for anti-aliasing noise, too few to
+  // hide a changed word (1 percent of a full 1440 px page was tens of
+  // thousands; council C1-020).
+  expect: { toHaveScreenshot: { maxDiffPixels: 200 } },
   fullyParallel: true,
   forbidOnly: true,
   retries: 0,

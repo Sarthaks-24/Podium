@@ -145,11 +145,42 @@ test.describe('touch', () => {
 // 2026-10-20 10:00 in Asia/Kolkata, the config's time zone.
 const FROZEN = Date.UTC(2026, 9, 20, 4, 30);
 
+/**
+ * Waits until the page has stopped moving: fonts loaded, then the same
+ * layout (page size and every top-level box) for three frames in a row.
+ * The pixel tests used to retry instead, because under a parallel run a
+ * shot was now and then taken mid-layout after the viewport changed (council
+ * C1-020); waiting for stillness removes the race instead of hiding it.
+ */
+async function stillLayout(page: Page) {
+  await page.evaluate(() => document.fonts.ready);
+  await page.evaluate(
+    () =>
+      new Promise<void>((resolve) => {
+        const sig = () => {
+          const d = document.documentElement;
+          const boxes = [...document.querySelectorAll('header, main, footer, main > *')].map((el) => {
+            const r = el.getBoundingClientRect();
+            return `${r.x},${r.y},${r.width},${r.height}`;
+          });
+          return `${d.scrollWidth}x${d.scrollHeight}|${boxes.join(';')}`;
+        };
+        let last = '';
+        let same = 0;
+        let frames = 0;
+        const step = () => {
+          const now = sig();
+          same = now === last ? same + 1 : 0;
+          last = now;
+          if (same >= 3 || ++frames > 120) resolve();
+          else requestAnimationFrame(step);
+        };
+        requestAnimationFrame(step);
+      }),
+  );
+}
+
 test.describe('pixel baselines', () => {
-  // Under a full parallel run a frame is now and then taken mid-layout (the
-  // whole page one pixel off); one at a time they always match. A real change
-  // fails every retry.
-  test.describe.configure({ retries: 2 });
   test.beforeEach(async ({ page }) => {
     freezeClock(FROZEN);
     await page.clock.setFixedTime(FROZEN);
@@ -168,6 +199,7 @@ test.describe('pixel baselines', () => {
         for (const width of [1440, 375]) {
           await page.setViewportSize({ width, height: width < 768 ? 812 : 900 });
           await settle(page);
+          await stillLayout(page);
           await expect(page).toHaveScreenshot(`${name}-${width}-${theme}.png`, { fullPage: true });
         }
       });
