@@ -623,16 +623,10 @@ func (d Deps) setExtension(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
-	if before.Email == "" {
-		if list, err := d.Contests.Extensions(r.Context(), c.ID); err == nil {
-			for _, e := range list {
-				if e.UserID == userID {
-					before.Email = e.Email
-				}
-			}
-		}
-	}
-	d.audit(r, c.ID, contests.AuditExtension, map[string]any{"user_id": userID, "email": before.Email,
+	// The student is named by id only: the audit log outlives an erasure
+	// (forget-user rewrites no audit row), and the feed shows the name
+	// from the contest's people (agent backlog, P3 security review).
+	d.audit(r, c.ID, contests.AuditExtension, map[string]any{"user_id": userID,
 		"from_minutes": before.Minutes, "minutes": req.Minutes, "reason_given": strings.TrimSpace(req.Reason) != ""})
 	d.Log.Info("contest extension set", "by", userFrom(r.Context()).ID, "contest_id", c.ID, "user_id", userID, "minutes", req.Minutes)
 	d.writeAdminContest(w, r, c.ID, http.StatusOK)

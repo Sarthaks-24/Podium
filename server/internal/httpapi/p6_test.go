@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/Sarthaks-24/podium/internal/db"
@@ -165,6 +166,12 @@ func TestStudentCoOrganiserNeitherReasonsNorHeldBoard(t *testing.T) {
 			t.Fatalf("extensions: %v", ext)
 		}
 		return ext[0].(map[string]any)["reason"]
+	}
+	// The audit row names the student by id only, and never the reason.
+	var details string
+	s.db.QueryRow("SELECT details FROM contest_audit WHERE contest_id = ? AND action = 'extension'", w.c1).Scan(&details)
+	if details == "" || strings.Contains(details, "chen@") || strings.Contains(details, "Medical") || !strings.Contains(details, `"reason_given":true`) {
+		t.Errorf("extension audit row: %s", details)
 	}
 	if got := reason(w.owner); got != "Medical appointment" {
 		t.Errorf("owner reads the reason: %v", got)

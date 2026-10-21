@@ -1029,7 +1029,7 @@ The counts come from one query on the jobs, submissions and clarifications index
 | `problems` | `{"from": [{label, problem_id, pinned_hash, revision_id, rev}], "to": [...]}` (`revision_id` and `rev` from v1.2.0) |
 | `ai_problem` | `{label, problem_id, reason}`: an admin's reason to grade an AI problem as written |
 | `roster` | `{count, added, removed, emails_added, emails_removed}`; the two email lists (sorted, from v1.2.0) name who gained and lost access |
-| `extension` | `{user_id, email, from_minutes, minutes, reason}` |
+| `extension` | `{user_id, from_minutes, minutes, reason_given}`; rows written before P6 also carry `email`, and before v1.4.0 `reason` instead of `reason_given` |
 | `extend` | `{minutes, extended_minutes}` |
 | `pause`, `resume`, `reveal`, `archive` | `{}` |
 | `rejudge` | `{problem_label}` or `{submission_id}`, with `queued` |

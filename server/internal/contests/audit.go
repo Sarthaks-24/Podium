@@ -22,7 +22,7 @@ const (
 	AuditProblems   = "problems"   // problems and pins: {"from": [...], "to": [...]}
 	AuditAIProblem  = "ai_problem" // an admin's reason to grade an AI problem
 	AuditRoster     = "roster"     // {"count", "added", "removed"}
-	AuditExtension  = "extension"  // {"user_id", "email", "minutes", "from_minutes", "reason_given"} (v1.4.0; "reason" before)
+	AuditExtension  = "extension"  // {"user_id", "minutes", "from_minutes", "reason_given"} (v2 P6; "email" until P6, "reason" before v1.4.0)
 	AuditExtend     = "extend"     // {"minutes", "extended_minutes"}
 	AuditPause      = "pause"
 	AuditResume     = "resume"
