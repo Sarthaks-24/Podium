@@ -59,6 +59,10 @@ export async function mockApi(page: Page, who: Who) {
     auditQueries: [] as string[],
     audit: structuredClone(SITE_AUDIT) as typeof SITE_AUDIT,
     cases: [] as { id: number; decided: boolean }[],
+    lookups: [] as string[],
+    organisation: { name: '', contact_email: '', phone: '', privacy_contact: '' },
+    settingsPuts: [] as Record<string, string>[],
+    rollovers: [] as Record<string, unknown>[],
   };
 
   await page.route(
@@ -101,7 +105,63 @@ export async function mockApi(page: Page, who: Who) {
         return json(route, 200, { entries, page: Number(q.get('page') ?? 1), has_more: false, server_now: Date.now() });
       }
       if (path === '/api/admin/people' && method === 'GET') {
-        return json(route, 200, { people: state.people, domains: state.domains, disabled: state.disabled });
+        return json(route, 200, { people: state.people, domains: state.domains, disabled: state.disabled, organisation: state.organisation });
+      }
+      if (path === '/api/admin/accounts' && method === 'GET') {
+        const email = (new URL(req.url()).searchParams.get('email') ?? '').trim().toLowerCase();
+        state.lookups.push(email);
+        const person = state.people.find((x) => x.email === email);
+        if (person) return json(route, 200, { account: { id: person.id, email: person.email, name: person.name, role: person.role, disabled: false, last_login_at: person.last_login_at }, server_now: Date.now() });
+        if (email === STUDENT.email) {
+          const off = state.disabled.some((a) => a.email === email);
+          return json(route, 200, { account: { id: STUDENT.id, email, name: STUDENT.name, role: 'student', disabled: off, last_login_at: 1792100000000 }, server_now: Date.now() });
+        }
+        return apiError(route, 404, 'not_found', 'Nobody with that email has an account.');
+      }
+      if (path === '/api/admin/integrity/oversight' && method === 'GET') {
+        return json(route, 200, {
+          reviewers: [
+            { user_id: 1, name: 'Priya Raman', email: 'priya@college.edu', manual_opened: 2, cleared: 5, actioned: 1, overdue: 0, proposals: 2, confirmations: 1, rulings: 0 },
+            { user_id: 2, name: 'Arjun Mehta', email: 'arjun.mehta@college.edu', manual_opened: 0, cleared: 1, actioned: 0, overdue: 1, proposals: 0, confirmations: 2, rulings: 1 },
+          ],
+          server_now: Date.now(),
+        });
+      }
+      if (path === '/api/admin/record-views' && method === 'GET') {
+        const before = new URL(req.url()).searchParams.get('before');
+        if (before) return json(route, 200, { views: [{ id: 1, at: 1791900000000, kind: 'notes', ref_id: 80, viewer: { id: 2, name: 'Arjun Mehta', email: 'arjun.mehta@college.edu' }, subject: { id: 7, name: 'Asha Rao' } }], has_more: false, server_now: Date.now() });
+        return json(route, 200, {
+          views: [
+            { id: 3, at: 1792183000000, kind: 'record', ref_id: null, viewer: { id: 2, name: 'Arjun Mehta', email: 'arjun.mehta@college.edu' }, subject: { id: 7, name: 'Asha Rao' } },
+            { id: 2, at: 1792100000000, kind: 'case', ref_id: 12, viewer: { id: 1, name: 'Priya Raman', email: 'priya@college.edu' }, subject: { id: 7, name: 'Asha Rao' } },
+          ],
+          has_more: true,
+          server_now: Date.now(),
+        });
+      }
+      if (path === '/api/admin/site-settings' && method === 'PUT') {
+        const body = req.postDataJSON() as Record<string, string>;
+        state.settingsPuts.push(body);
+        if (body.contact_email !== '' && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(body.contact_email)) {
+          return json(route, 400, { error: { code: 'bad_request', message: 'Check the highlighted fields.', fields: { contact_email: 'Enter an email address, for example podium@college.edu.' } } });
+        }
+        state.organisation = { name: body.name, contact_email: body.contact_email, phone: body.phone, privacy_contact: body.privacy_contact };
+        return json(route, 200, state.organisation);
+      }
+      if (path === '/api/admin/rollover' && method === 'POST') {
+        const body = req.postDataJSON() as { label: string; apply?: boolean; ended_before?: number };
+        state.rollovers.push(body);
+        const accounts = [{ id: 41, email: 'old@college.edu', name: 'Old Student', role: 'student', disabled: false, last_login_at: 1770000000000 }];
+        if (body.apply) state.disabled.push({ ...accounts[0], disabled: true });
+        return json(route, 200, {
+          applied: !!body.apply,
+          label: body.label,
+          ended_before: body.ended_before ?? Date.now(),
+          idle_days: 180,
+          contests: [{ id: 12, slug: 'week-12', title: 'Week 12', ends_at: 1791000000000 }, { id: 13, slug: 'week-13', title: 'Week 13', ends_at: 1791600000000 }],
+          accounts,
+          server_now: Date.now(),
+        });
       }
       const accountMatch = path.match(/^\/api\/admin\/accounts\/(end-sessions|disable|enable)$/);
       if (accountMatch && method === 'POST') {

@@ -610,6 +610,10 @@ export interface FeedRow {
   practice?: boolean;
   rejudged?: boolean;
   hidden?: boolean;
+  /** v1.4.0, reviewers only: private notes on the submission. */
+  note_count?: number;
+  /** v1.4.0, reviewers only: the case opened from this submission. */
+  case_id?: number | null;
 }
 
 export interface FeedPage {
@@ -648,6 +652,7 @@ export const AUDIT_ACTIONS: readonly { id: string; label: string }[] = [
   { id: 'ai_problem', label: 'AI problems graded as written' },
   { id: 'archive', label: 'Archived' },
   { id: 'deploy_forced', label: 'Emergency deploy' },
+  { id: 'board_adjusted', label: 'Board changed by a review decision' },
 ];
 
 /** The contest form's fields as the audit log names them. */
@@ -722,8 +727,16 @@ export function auditSummary(e: Pick<AuditEntry, 'action' | 'details'>, names?: 
     case 'extension': {
       const who = str('email') || names?.get(num('user_id')) || `user ${num('user_id')}`;
       if (num('minutes') === 0) return `Removed the extension for ${who}`;
+      const gave = `Gave ${who} ${countOf(num('minutes'), 'extra minute')}`;
+      // From v1.4.0 the row says only whether a reason was written; the reason stays on the extension.
+      if (typeof d.reason_given === 'boolean') return d.reason_given ? `${gave}, with a reason (see Time)` : `${gave}, without a reason`;
       const reason = str('reason');
-      return `Gave ${who} ${countOf(num('minutes'), 'extra minute')}${reason ? ` (${reason})` : ''}`;
+      return `${gave}${reason ? ` (${reason})` : ''}`;
+    }
+    case 'board_adjusted': {
+      const who = names?.get(num('user_id')) || `user ${num('user_id')}`;
+      if (d.reversed === true) return `An upheld appeal restored problem ${str('problem_label')} on the board for ${who}`;
+      return `A review decision set problem ${str('problem_label')} to zero for ${who} (before: rank ${num('rank_before')}, ${countOf(num('total_before'), 'point')})`;
     }
     case 'extend':
       return `Extended the contest by ${countOf(num('minutes'), 'minute')}`;

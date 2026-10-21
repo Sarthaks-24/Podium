@@ -152,3 +152,50 @@ func TestS9AuditRoute(t *testing.T) {
 		t.Errorf("audit log of a missing contest: %d", code)
 	}
 }
+
+// GET /api/admin/accounts?email= finds any account, students included, for
+// owners and admins (People's Account help, audit O10). Everyone else gets
+// the same 403 for an address that exists and one that does not, so the
+// route reveals nothing about which addresses have accounts.
+func TestAccountLookup(t *testing.T) {
+	s := newSite(t)
+	o := s.srv.URL
+	owner := s.signedIn("owner@college.edu", "Owner")
+	asha := s.signedIn("asha@college.edu", "Asha Rao")
+	admin := s.signedIn("prof@college.edu", "Prof")
+	owner.do("POST", "/api/admin/people", map[string]string{"email": "prof@college.edu", "role": "admin"}, o)
+
+	for who, b := range map[string]*browser{"owner": owner, "admin": admin} {
+		code, out := b.do("GET", "/api/admin/accounts?email=%20Asha@College.EDU%20", nil, "")
+		if code != 200 {
+			t.Fatalf("%s lookup: %d %v", who, code, out)
+		}
+		a, _ := out["account"].(map[string]any)
+		if a["email"] != "asha@college.edu" || a["name"] != "Asha Rao" || a["role"] != "student" || a["disabled"] != false || a["last_login_at"] == nil {
+			t.Errorf("%s lookup: %v", who, out)
+		}
+		if _, ok := out["server_now"]; !ok {
+			t.Errorf("%s lookup has no server_now: %v", who, out)
+		}
+		if code, out := b.do("GET", "/api/admin/accounts?email=nobody@college.edu", nil, ""); code != 404 {
+			t.Errorf("%s unknown address: %d %v", who, code, out)
+		}
+		if code, _ := b.do("GET", "/api/admin/accounts", nil, ""); code != 400 {
+			t.Errorf("%s without an address: %d", who, code)
+		}
+	}
+
+	// A student, signed in or not, learns nothing: one answer for both.
+	for _, email := range []string{"prof@college.edu", "nobody@college.edu"} {
+		code, out := asha.do("GET", "/api/admin/accounts?email="+email, nil, "")
+		if code != 403 {
+			t.Errorf("student looks up %s: %d %v", email, code, out)
+		}
+		if _, ok := out["account"]; ok {
+			t.Errorf("student got an account for %s: %v", email, out)
+		}
+		if code, _ := s.browser().do("GET", "/api/admin/accounts?email="+email, nil, ""); code != 401 {
+			t.Errorf("signed-out lookup of %s: %d", email, code)
+		}
+	}
+}

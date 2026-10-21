@@ -45,6 +45,21 @@ Becomes `v1.4.0` with the rest of P4. The privacy text changed and waits for the
 - "Hide my progress" in the account menu. A problem a review decision set to zero says so on the student's own result, with a link to the case.
 - The privacy notice lists the P4 data: contest summaries, notices, private notes, questions, decisions and appeals, the standing, the organisers' rating, the record view log and the hide-progress choice, with who sees each.
 
+### v2 P4, frontend: organiser screens (2026-10-21)
+
+Becomes `v1.4.0` with the rest of P4. Organiser screens only, plus one line on the student standings and result; needs the P4 backend routes (C8, C9, C12) and the new `GET /api/admin/accounts`.
+
+- Students at `/admin/students`, a new item in the organiser nav: every student sorted by name, never by score, with graded contests, the latest graded percent, the last submission and the rating; sort by rating on request; filters "Missed the last 2 graded contests" and "10 or more submissions, nothing accepted", each naming the contests it used; rows stack on phones.
+- A student's page at `/admin/students/{id}`: score over time beside the class median (with "Show as table") and each contest's score, median, place, problems solved and accepted submissions; links to the record and to the progress page as the student sees it.
+- The record page at `/admin/students/{id}/record` (every visit logged for the owner): the rating out of 10 and its band, its history with the line that crossed a band marked, "Edit rating" with a required reason and a confirmation naming the old and new band, "Waiting for a second organiser" when the band would drop, the standing as the student sees it, cases, private notes and appeals; an appeal against an adjustment is ruled on here.
+- Cases are decided by proposal: "Take action" is replaced by "Propose an outcome" (warning, zero for one problem or referral, with the reason the student reads), a second reviewer who did not open the case confirms it, and the page shows the deadlines, "Overdue", the policy line and the two-person rule as it applies to you. Appeals on an outcome are ruled on the case page by a reviewer who took no part. The case list marks overdue cases and proposals waiting for a second reviewer.
+- Private notes and "Open a case" from a submission, from the console feed; feed names, board names and result names open the student's progress page.
+- Results: the class view (per problem and subtask, totals only), the line "Board updated on <date> after a review decision" (also on the student standings and result; the board carries no mark), the reveal, downloads and integrity beside the board. The exports' "zero by decision" column is explained beside the downloads.
+- People: Account help looks any account up by email, students included, and disables its actions for an address with no account; new sections for the organisation details shown on public pages, the semester rollover (preview, then archive and disable), and, for the owner, integrity reviewers and the record view log; a jump list from 1280 px.
+- The console's Changes say whether extra time came with a reason (`reason_given`), and list review decisions that changed the board.
+- Shared: a danger secondary button style, split columns that never widen a phone page, MonoDigits keeps its spaces inside a badge, one `errorText` helper for failed requests on organiser screens, and focus reaches the heading of a lazily loaded screen.
+- Backend: `GET /api/admin/accounts?email=` for owners and admins.
+
 ### v2 P3, frontend: student and styles (2026-10-21)
 
 Becomes `v1.3.0` with the rest of P3. The workspace items (S2, S4) are student-facing and ship only in a calendar slot; each is its own commit so it can be held.
@@ -74,7 +89,7 @@ Ships with `v1.3.0`. Live-safe: organiser screens only; no student screen change
 - Reveal (F6.4): room-scale rows, the action colour only on the row that just moved, Skip to the top 10, Release the full board at the end, a board that was never frozen says there is nothing to reveal, plain labels, and a FLIP loop that reads before it writes.
 - AI (audit O7, A7): the key form is shown inline in the wizard when no key or model is active; the wizard follows the draft until it is validated; two copy defects fixed; Generate draft.
 - People (audit O10): Account help says whose account it acts on when the page knows it, each confirmation names the person, Disable account is a danger-coloured secondary button, and Getting started counts organisers other than the configured owner.
-- Integrity (F6.2, C3, C7): checking again asks first; Take action says what students see; Open a case comes after the timelines.
+- Integrity (F6.2, C3, C7): checking again asks first; Open a case comes after the timelines. (The Take action button described here was replaced in P4 by propose and confirm; council C1-003.)
 - Dates on organiser screens set only their digits in mono (audit O9).
 
 ### v2 P3, backend (2026-10-20)

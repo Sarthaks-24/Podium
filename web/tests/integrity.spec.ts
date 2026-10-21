@@ -174,7 +174,7 @@ test('the pair view tints the shared passages, marks them for screen readers and
   await expect(page.getByRole('button', { name: 'Open a case' })).toBeFocused();
 });
 
-test("a case is shared with a note, action waits for the students' turn, and the log grows", async ({ page }) => {
+test("a case is shared with a note, an outcome waits for the students' turn, and a proposal waits for a second reviewer", async ({ page }) => {
   const api = await mockApi(page);
   await page.goto('/admin/integrity/cases/3');
   await expect(page.getByRole('heading', { level: 1, name: 'Similar code on B: Asha Rao and Ravi Kumar' })).toBeVisible();
@@ -185,9 +185,9 @@ test("a case is shared with a note, action waits for the students' turn, and the
   await expect(students.getByRole('row').filter({ hasText: 'Asha Rao' })).toContainText('Not shared yet');
   await expect(page.getByRole('table', { name: 'Evidence in this case' })).toContainText('B. Interval covering');
 
-  const action = page.getByRole('button', { name: 'Take action' });
+  const action = page.getByRole('button', { name: 'Propose an outcome' });
   await expect(action).toBeDisabled();
-  await expect(action).toHaveAccessibleDescription('Take action opens once the case is shared with every student, so they can explain first.');
+  await expect(action).toHaveAccessibleDescription('An outcome can be proposed once the case is shared with every student, so they can explain first.');
 
   // A note is required before anything changes.
   await page.getByRole('button', { name: 'Share with the students' }).click();
@@ -209,7 +209,7 @@ test("a case is shared with a note, action waits for the students' turn, and the
 
   // Shared is not enough: each student explains first, or their 7 days run out.
   await expect(action).toBeDisabled();
-  await expect(action).toHaveAccessibleDescription(/^Take action opens when every student has explained since the case was shared, or when their 7 days to explain end on /);
+  await expect(action).toHaveAccessibleDescription(/^An outcome can be proposed when every student has explained since the case was shared, or when their 7 days to explain end on /);
 
   // Both students explain while the page is open; Asha writes twice.
   api.explain(7, 'I wrote it in the lab from the lecture notes.');
@@ -229,29 +229,79 @@ test("a case is shared with a note, action waits for the students' turn, and the
   await expect(versions).toContainText('then fixed the loop.');
   await expect(page.getByLabel('Note for the log')).toHaveValue('Both explanations describe the same shared notes from a friend.');
 
+  // Every student has now replied: an outcome can be proposed, never set by one person.
   await expect(action).toBeEnabled();
   await action.click();
-  const confirmAction = page.getByRole('dialog', { name: 'Take action?' });
-  await confirmAction.getByRole('button', { name: 'Take action' }).click();
-  await expect(page.locator('.page-header .state-word')).toHaveText('Action taken');
-  await expect(page.getByRole('button', { name: 'Reopen the case' })).toBeVisible();
-  const decision = api.puts[api.puts.length - 1] as { state: string; seen_explanations: Record<string, number> };
-  expect(decision.state).toBe('actioned');
-  expect(Object.keys(decision.seen_explanations).sort()).toEqual(['7', '8']);
-  const log = page.locator('.log li');
-  await expect(log).toHaveCount(3);
-  // The reviewer's name comes from the server.
-  await expect(log.nth(0)).toContainText('Open, by Priya Nair');
-  await expect(log.nth(2)).toContainText('Action taken, by you');
-  await expect(log.nth(2)).toContainText('Both explanations describe the same shared notes from a friend.');
-  await page.screenshot({ path: `${shots()}integrity-case-decided-1440-light.png`, fullPage: true });
+  const form = page.getByRole('form', { name: 'Propose an outcome' });
+  await expect(form.getByRole('heading', { name: 'Propose an outcome' })).toBeFocused();
+  await form.getByRole('button', { name: 'Propose the outcome' }).click();
+  await expect(form.getByText('Choose an outcome.')).toBeVisible();
+  await expect(form.getByText('Write the reason the student reads first.')).toBeVisible();
+  await form.getByLabel(/Zero for one problem/).check();
+  await form.getByRole('button', { name: 'Propose the outcome' }).click();
+  await expect(form.getByText('Choose the problem that scores zero.')).toBeVisible();
+  await form.getByLabel('Problem', { exact: true }).selectOption('B');
+  await form.getByLabel('Ravi Kumar').uncheck();
+  await form.getByLabel('Reason, for the student').fill('Your program for problem B shares its whole loop with another submission.');
+  expect(api.proposals).toEqual([]);
+  await form.getByRole('button', { name: 'Propose the outcome' }).click();
+  await expect(page.getByRole('group', { name: 'Waiting for a second reviewer' })).toContainText('You proposed zero for problem B for Asha Rao');
+  await expect(page.getByText('You proposed this. A second reviewer who did not open the case confirms it.')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Confirm the outcome' })).toHaveCount(0);
+  expect(api.proposals).toHaveLength(1);
+  const proposal = api.proposals[0] as { outcome: string; problem_label: string; user_ids: number[]; note: string; seen_explanations: Record<string, number> };
+  expect(proposal).toMatchObject({ outcome: 'zero_problem', problem_label: 'B', user_ids: [7], note: 'Both explanations describe the same shared notes from a friend.' });
+  expect(Object.keys(proposal.seen_explanations).sort()).toEqual(['7', '8']);
+  // The old one-person action is gone: no PUT with actioned was sent.
+  expect(api.puts.some((b) => b.state === 'actioned')).toBe(false);
+  await page.screenshot({ path: `${shots()}integrity-case-proposed-1440-light.png`, fullPage: true });
+});
 
-  // A reopen ends the turn: the case needs a new share before any action.
-  await page.getByLabel('Note for the log').fill('Reopening: a new submission came to light after the decision.');
-  await page.getByRole('button', { name: 'Reopen the case' }).click();
-  await expect(page.locator('.page-header .state-word')).toHaveText('Open');
-  await expect(action).toBeDisabled();
-  await expect(students.getByRole('row').filter({ hasText: 'Asha Rao' })).toContainText('Reopened: share again for a new turn');
+test('a second reviewer confirms a proposal, and the log records the outcome', async ({ page }) => {
+  const api = await mockApi(page, { proposed: true });
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto('/admin/integrity/cases/3');
+  const decide = page.getByRole('complementary', { name: 'Decision' });
+  await expect(decide).toContainText('Policy: referral suggested.');
+  await expect(decide).toContainText('Asha Rao replies by');
+  await expect(decide).toContainText('Decide by');
+  const pending = page.getByRole('group', { name: 'Waiting for a second reviewer' });
+  await expect(pending).toContainText('Priya Nair proposed zero for problem B for Asha Rao');
+  await expect(pending).toContainText('You did not open this case or propose this outcome, so you can confirm it.');
+  await expect(page.getByRole('table', { name: 'Students in this case' }).getByRole('row').filter({ hasText: 'Asha Rao' })).toContainText('1 earlier outcome');
+  await page.screenshot({ path: `${shots()}integrity-case-confirm-1440-light.png`, fullPage: true });
+
+  await page.getByRole('button', { name: 'Confirm the outcome' }).click();
+  await expect(page.getByText('Write a note of at least 20 characters for the log first.')).toBeVisible();
+  await page.getByLabel('Note for the log').fill('Agreed: the loop matches line for line, renamed.');
+  await page.getByRole('button', { name: 'Confirm the outcome' }).click();
+  const sure = page.getByRole('dialog', { name: 'Confirm zero for problem B for Asha Rao?' });
+  await expect(sure).toContainText('Problem B scores zero on the board from now on, and the ranks follow.');
+  await expect(sure).toContainText('The other students in the case are cleared.');
+  await sure.getByRole('button', { name: 'Confirm the outcome' }).click();
+  await expect(page.locator('.page-header .state-word')).toHaveText('Action taken');
+  await expect(page.getByText('This case closed with a confirmed outcome. An outcome is changed only through an appeal.')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Reopen the case' })).toHaveCount(0);
+  await expect(page.locator('.log li').last()).toContainText('Outcome confirmed: Zero for problem B for Asha Rao, by you');
+  expect(api.confirms).toEqual([{ id: 4, note: 'Agreed: the loop matches line for line, renamed.', seen_explanations: { '7': expect.any(Number), '8': expect.any(Number) } }]);
+});
+
+test('an appeal on a case is ruled on by a reviewer who took no part', async ({ page }) => {
+  const api = await mockApi(page, { appealed: true });
+  await page.goto('/admin/integrity/cases/3');
+  const appeal = page.getByRole('article', { name: 'Appeal by Asha Rao against zero for problem B' });
+  await appeal.getByLabel(/The decision stands/).check();
+  await appeal.getByLabel('Reason for the ruling, for the student').fill('The slides give a different loop; yours matches another submission.');
+  await appeal.getByRole('button', { name: 'Rule on the appeal' }).click();
+  await expect(appeal).toContainText('The decision stands, by Arjun Mehta');
+  expect(api.rulings).toEqual([{ id: 66, upheld: false, reason: 'The slides give a different loop; yours matches another submission.' }]);
+});
+
+test('a reviewer who took part cannot rule on the appeal', async ({ page }) => {
+  await mockApi(page, { appealed: true, involved: true });
+  await page.goto('/admin/integrity/cases/3');
+  await expect(page.getByText('You took part in this decision, so another owner or admin rules on the appeal.')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Rule on the appeal' })).toHaveCount(0);
 });
 
 test("a case's evidence opens the case's own copy, whatever a re-run changed", async ({ page }) => {

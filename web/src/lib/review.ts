@@ -18,6 +18,7 @@
  * groups of students linked by similar-code signals on one problem,
  * worked out here with union-find (the API reports only their number).
  */
+import { formatDateTime } from './format';
 import { languageLabel } from './workspace';
 
 export type SignalKind = 'similar' | 'wrong_output' | 'hardcoded' | 'probing';
@@ -141,6 +142,12 @@ export interface CaseUser {
   explained_at: number | null;
   /** Every version, oldest first. */
   explanations?: ExplanationVersion[];
+  /** v1.4.0: when the student could first see the latest share. */
+  notice_available_at?: number | null;
+  /** v1.4.0: when the student first opened the case after the latest share; their 7 days start here. */
+  first_opened_at?: number | null;
+  /** v1.4.0: confirmed outcomes above a warning in the last 2 years, in other cases. */
+  prior_outcomes?: number;
 }
 
 export interface Decision {
@@ -152,6 +159,47 @@ export interface Decision {
   created_at: number;
   /** The explanation version of each student the reviewer had read. */
   explanations_seen?: Record<string, number>;
+  /** v1.4.0: the confirmed outcome, on an actioned decision. */
+  outcome?: Outcome | '';
+  outcome_problem_label?: string;
+  outcome_users?: number[];
+  proposal_id?: number | null;
+  /** The sole organiser's written reason, when they confirmed alone. */
+  sole_organiser?: string;
+}
+
+/** The three outcomes a confirmed decision can have (D74 as amended). */
+export type Outcome = 'warning' | 'zero_problem' | 'referred';
+
+/** An outcome proposed by one reviewer and confirmed by a second (two-person rule). */
+export interface Proposal {
+  id: number;
+  by: number;
+  by_name: string;
+  outcome: Outcome;
+  problem_label: string;
+  user_ids: number[];
+  /** For reviewers. */
+  note: string;
+  /** The sentence the student reads on their standing. */
+  reason: string;
+  created_at: number;
+  state: 'pending' | 'confirmed' | 'superseded';
+}
+
+/** An appeal on a case, as reviewers see it. */
+export interface CaseAppeal {
+  id: number;
+  case_id: number | null;
+  adjustment_id: number | null;
+  user_id: number;
+  text: string;
+  created_at: number;
+  decide_by: number;
+  overdue: boolean;
+  state: 'open' | 'upheld' | 'rejected';
+  ruling: { by: number; by_name: string; upheld: boolean; reason: string; created_at: number } | null;
+  user?: { name: string; email: string; roll_number: string };
 }
 
 /** A case as organisers see it. */
@@ -165,6 +213,23 @@ export interface Case {
   updated_at: number;
   users: CaseUser[];
   decisions: Decision[];
+  /** v1.4.0: opened from a check ("signals") or from a submission ("manual"). */
+  source?: 'signals' | 'manual';
+  submission_id?: number | null;
+  created_by?: number;
+  /** When every student had replied or run out of time; 14 days later is decide_by. */
+  ready_at?: number | null;
+  decide_by?: number | null;
+  overdue?: boolean;
+  policy?: 'referral_suggested' | null;
+  proposals?: Proposal[];
+  appeals?: CaseAppeal[];
+  /** The viewer may confirm the pending proposal. */
+  may_confirm?: boolean;
+  /** The viewer may rule on an open appeal. */
+  may_rule?: boolean;
+  /** The viewer is the owner and no other owner or admin exists. */
+  sole_organiser?: boolean;
 }
 
 /** One piece of evidence worded for the student it concerns. */
@@ -324,6 +389,53 @@ export function caseStateWord(state: string): string {
     default:
       return state;
   }
+}
+
+/** The outcomes in the order the decision form lists them, mildest first, with their words. */
+export const OUTCOMES: readonly { id: Outcome; label: string; help: string }[] = [
+  { id: 'warning', label: 'Warning', help: 'Recorded on the standing. Scores do not change. Lowers the rating by 0.5.' },
+  { id: 'zero_problem', label: 'Zero for one problem', help: 'The problem scores 0 on the board from now on, and the ranks follow. Lowers the rating by 1.5.' },
+  { id: 'referred', label: 'Referred to the college', help: 'Recorded on the standing and passed to the college process. Lowers the rating by 2.5.' },
+];
+
+/** An outcome in words: "Warning", "Zero for problem B", "Referred to the college". */
+export function outcomeWord(outcome: string, label?: string): string {
+  if (outcome === 'zero_problem') return label ? `Zero for problem ${label}` : 'Zero for one problem';
+  return OUTCOMES.find((o) => o.id === outcome)?.label ?? outcome;
+}
+
+/** An outcome inside a sentence: "a warning", "zero for problem B", "referral to the college". */
+export function outcomePhrase(outcome: string, label?: string): string {
+  if (outcome === 'warning') return 'a warning';
+  if (outcome === 'referred') return 'referral to the college';
+  if (outcome === 'zero_problem') return label ? `zero for problem ${label}` : 'zero for one problem';
+  return outcome;
+}
+
+/** The pending proposal of a case, or null. */
+export function pendingProposal(c: Pick<Case, 'proposals'>): Proposal | null {
+  return (c.proposals ?? []).find((p) => p.state === 'pending') ?? null;
+}
+
+/** The shortest and longest texts the outcome routes accept. */
+export const MIN_REASON = 20;
+export const MAX_STUDENT_REASON = 2000;
+export const MAX_SOLE_REASON = 1000;
+
+/**
+ * Who may confirm, in one sentence for the case page: the two-person rule
+ * as it applies to the viewer.
+ */
+export function confirmRule(c: Pick<Case, 'may_confirm' | 'sole_organiser'>, p: Pick<Proposal, 'by'>, viewerId: number | undefined): string {
+  if (c.may_confirm) return 'You did not open this case or propose this outcome, so you can confirm it.';
+  if (c.sole_organiser) return 'You are the only organiser, so you may confirm your own proposal with a written reason.';
+  if (viewerId !== undefined && p.by === viewerId) return 'You proposed this. A second reviewer who did not open the case confirms it.';
+  return 'You opened this case, so a second reviewer who did not open it or propose the outcome confirms it.';
+}
+
+/** A deadline as a short phrase: "Due 28 Oct 2026 14:00" or "Overdue since 28 Oct 2026 14:00". */
+export function dueText(at: number, now: number, word = 'Due'): string {
+  return `${now >= at ? 'Overdue since' : word} ${formatDateTime(at)}`;
 }
 
 /** The days each student has to explain, mirrored from the server's ResponseWindow. */

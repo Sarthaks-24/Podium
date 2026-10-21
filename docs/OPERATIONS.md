@@ -560,7 +560,7 @@ Not touched, by design, and listed by the command: submissions, scores and code 
 
 ## Semester rollover
 
-At the end of a term an owner archives its contests and disables the student accounts nobody has used for 180 days, with `POST /api/admin/rollover` (an owner action; the People screen for it is the frontend's). Send it first without `"apply": true` and read the lists; then send it again with `"apply": true` and the same `label` (for example `2026 odd semester`). Contests are archived (nothing is deleted; each gets an `archive` row in its audit log), accounts are disabled and signed out (an owner can enable one again on People), and the site audit records the label, the counts and the emails. Organisers and `PODIUM_OWNER_EMAIL` are never disabled by it.
+At the end of a term an owner archives its contests and disables the student accounts nobody has used for 180 days, on People, under "Semester rollover" (`POST /api/admin/rollover`, owners only). Enter the term (for example `2026 odd semester`) and, if needed, the date the term's contests ended before, then "Preview rollover" lists the contests and accounts without changing anything; "Archive and disable" asks once more with the counts and applies the same request. Contests are archived (nothing is deleted; each gets an `archive` row in its audit log), accounts are disabled and signed out (an owner can enable one again on People), and the site audit records the label, the counts and the emails. Organisers and `PODIUM_OWNER_EMAIL` are never disabled by it.
 
 ## Semester rollover of the rating (v1.4.0)
 

@@ -98,7 +98,7 @@
   import { adjacentLabel, isPlainKey, isTypingTarget } from '../lib/shortcuts';
   import { session } from '../lib/session.svelte';
   import { shell } from '../lib/shell.svelte';
-  import { placeFigure, placeSentence, type Standings } from '../lib/standings';
+  import { boardUpdatedLine, placeFigure, placeSentence, type Standings } from '../lib/standings';
   import { contestEntry, practiseNextIn, problemHref, type Progress, type ProgressContest } from '../lib/progress';
   import { EventStream, type StreamMode } from '../lib/stream';
   import { refreshTicker, ticker, useTicker } from '../lib/ticker.svelte';
@@ -688,6 +688,7 @@
               Ended <MonoDigits text={formatDayTime(endedAt)} />. You scored <MonoDigits parts={scoreParts(totalScore, totalMax)} />.
             </p>
             {#if standings && standings.variant === 'frozen'}<p>{placeSentence(standings, true)}</p>{/if}
+            {#if standings && boardUpdatedLine(standings, formatDateTime)}<p class="muted"><MonoDigits text={boardUpdatedLine(standings, formatDateTime)} /></p>{/if}
             {#if practice}<p class="muted">Practice is open: new submissions do not count.</p>{/if}
             {#if practiseNext}
               <p>

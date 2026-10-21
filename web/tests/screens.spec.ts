@@ -71,7 +71,7 @@ for (const width of [1440, 375]) {
     await mockApi(page, 'owner');
     await page.setViewportSize({ width, height: 900 });
     await page.goto('/admin/people');
-    await expect(page.getByRole('table')).toBeVisible();
+    await expect(page.getByRole('table').first()).toBeVisible();
 
     const reached: string[] = [];
     for (let i = 0; i < 40; i++) {
@@ -165,26 +165,26 @@ test('resetting a Google account link asks first and reports errors inline', asy
   await expect(page.locator('#account-error')).toHaveText('Enter an email address.');
   await expect(email).toHaveAttribute('aria-describedby', 'account-who account-error');
 
+  // The address is looked up first (O10): with no account the actions stay off.
   await email.fill('nobody@college.edu');
+  await expect(section.locator('#account-who')).toHaveText('Nobody with that email has an account. Check the address.');
+  await expect(submit).toBeDisabled();
+  await expect(section.getByRole('button', { name: 'Disable account' })).toBeDisabled();
+  expect(state.lookups).toContain('nobody@college.edu');
+
+  // A student is found by the lookup too, and the confirmation names them.
+  await email.fill('asha@college.edu');
+  await expect(section.locator('#account-who')).toContainText('Asha Rao, student, last signed in');
   await submit.click();
-  const dialog = page.getByRole('dialog', { name: 'Reset the Google account link for nobody@college.edu?' });
+  const dialog = page.getByRole('dialog', { name: 'Reset the Google account link for Asha Rao (asha@college.edu)?' });
   await expect(dialog).toContainText(
     'Their current sessions end. The next Google account that signs in with this address is linked to it.',
   );
   await dialog.getByRole('button', { name: 'Cancel' }).click();
   await expect(dialog).toBeHidden();
   expect(state.resets).toEqual([]);
-
   await submit.click();
   await dialog.getByRole('button', { name: 'Reset Google link' }).click();
-  await expect(page.locator('#account-error')).toHaveText('Nobody with that email has an account.');
-  await expect(email).toHaveAttribute('aria-invalid', 'true');
-
-  await email.fill('asha@college.edu');
-  await submit.click();
-  await page.getByRole('dialog', { name: 'Reset the Google account link for asha@college.edu?' })
-    .getByRole('button', { name: 'Reset Google link' })
-    .click();
   await expect(page.getByText('Reset the Google account link for asha@college.edu', { exact: true })).toBeVisible();
   await expect(page.locator('#account-error')).toHaveCount(0);
   await expect(email).toHaveValue('');
@@ -203,8 +203,9 @@ test('an owner ends sessions, disables and enables an account, each asked first'
   await expect(email).toHaveAttribute('aria-invalid', 'true');
 
   await email.fill('asha@college.edu');
+  await expect(section.locator('#account-who')).toContainText('Asha Rao, student');
   await section.getByRole('button', { name: 'End sessions' }).click();
-  const end = page.getByRole('dialog', { name: 'End every session of asha@college.edu?' });
+  const end = page.getByRole('dialog', { name: 'End every session of Asha Rao (asha@college.edu)?' });
   await expect(end).toContainText('They are signed out on every device at once');
   await expect(end.getByRole('button', { name: 'Cancel' })).toBeFocused();
   await end.getByRole('button', { name: 'End sessions' }).click();
@@ -218,9 +219,9 @@ test('an owner ends sessions, disables and enables an account, each asked first'
   await expect(page.locator('#account-error')).toHaveText('This owner is set in the server configuration and cannot be disabled.');
 
   await email.fill('asha@college.edu');
-  await expect(section.locator('#account-who')).toContainText('Students are not listed on this page yet');
+  await expect(section.locator('#account-who')).toContainText('Asha Rao, student');
   await section.getByRole('button', { name: 'Disable account' }).click();
-  const disable = page.getByRole('dialog', { name: 'Disable asha@college.edu?' });
+  const disable = page.getByRole('dialog', { name: 'Disable Asha Rao (asha@college.edu)?' });
   await expect(disable).toContainText('cannot sign in until an owner enables the account again');
   await disable.getByRole('button', { name: 'Disable account' }).click();
   await expect(page.locator('.toasts').getByText('Disabled asha@college.edu', { exact: true })).toBeVisible();
@@ -325,7 +326,7 @@ test('signed-in organisers at /signin land on their contests, and sign out retur
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('Contests');
   const nav = page.getByRole('navigation', { name: 'Main' });
   await expect(nav.getByRole('link', { name: 'Contests' })).toHaveAttribute('aria-current', 'page');
-  await expect(nav.getByRole('link')).toHaveText(['Contests', 'Problem bank', 'People', 'Inbox']);
+  await expect(nav.getByRole('link')).toHaveText(['Contests', 'Problem bank', 'Students', 'People', 'Inbox']);
 
   await page.getByRole('link', { name: 'People' }).click();
   await expect(page).toHaveURL('/admin/people');
@@ -408,7 +409,7 @@ test('keyboard only: the account menu opens, its items work, and Escape returns 
   await mockApi(page, 'owner');
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto('/admin/people');
-  await expect(page.getByRole('table')).toBeVisible();
+  await expect(page.getByRole('table').first()).toBeVisible();
   const account = page.getByRole('button', { name: 'Priya Raman' });
   await account.focus();
   await page.keyboard.press('Enter');
@@ -460,7 +461,7 @@ test('from 768 px the organiser header fits one row', async ({ page }) => {
   for (const width of [768, 1024]) {
     await page.setViewportSize({ width, height: 900 });
     await page.goto('/admin/people');
-    await expect(page.getByRole('table')).toBeVisible();
+    await expect(page.getByRole('table').first()).toBeVisible();
     const top = async (sel: string) => {
       const box = await page.locator(sel).first().boundingBox();
       return box ? box.y + box.height / 2 : -1;
@@ -560,4 +561,62 @@ test('a network failure on start-up is reported', async ({ page }) => {
   await expect(page.getByRole('alert')).toContainText('Could not reach the server.');
   await page.getByRole('button', { name: 'Dismiss' }).click();
   await expect(page.getByRole('button', { name: 'Dismiss' })).toHaveCount(0);
+});
+
+test('the owner sees integrity reviewers and the record view log on People (F9.5)', async ({ page }) => {
+  await mockApi(page, 'owner');
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto('/admin/people');
+  const table = page.getByRole('table', { name: 'Integrity work by reviewer' });
+  await expect(table.getByRole('row', { name: /Arjun Mehta/ })).toContainText('1');
+  await expect(table.getByRole('columnheader')).toHaveText(['Reviewer', 'Opened by hand', 'Cleared', 'Outcomes', 'Proposals', 'Confirmations', 'Appeal rulings', 'Overdue']);
+  await expect(table.locator('.late')).toHaveCount(1);
+  const views = page.getByRole('list', { name: 'Record views, newest first' });
+  await expect(views.getByRole('listitem').first()).toContainText("Arjun Mehta read Asha Rao's record page");
+  await page.getByRole('button', { name: 'Show older views' }).click();
+  await expect(views.getByRole('listitem')).toHaveCount(3);
+  await expect(views.getByRole('listitem').last()).toContainText('notes on a submission');
+  await page.screenshot({ path: `${shots()}people-p4-1440-light.png`, fullPage: true });
+});
+
+test('the owner saves the organisation details, and a bad field says what to fix (C1-011)', async ({ page }) => {
+  const state = await mockApi(page, 'owner');
+  await page.goto('/admin/people');
+  const section = page.getByRole('region', { name: 'Organisation details' });
+  await section.getByLabel('Organisation name').fill('Example College of Engineering');
+  await section.getByLabel('Contact email').fill('not-an-address');
+  await section.getByRole('button', { name: 'Save organisation details' }).click();
+  await expect(section.getByText('Enter an email address, for example podium@college.edu.')).toBeVisible();
+  await expect(section.getByLabel('Contact email')).toBeFocused();
+  await section.getByLabel('Contact email').fill('podium@college.edu');
+  await section.getByRole('button', { name: 'Save organisation details' }).click();
+  await expect(page.getByText('Saved the organisation details').first()).toBeVisible();
+  expect(state.settingsPuts.at(-1)).toEqual({ name: 'Example College of Engineering', contact_email: 'podium@college.edu', phone: '', privacy_contact: '' });
+  // The footer reads the new contact address without a reload.
+  await expect(page.locator('footer')).toContainText('podium@college.edu');
+});
+
+test('the semester rollover previews, asks with the counts, then archives and disables (C1-012)', async ({ page }) => {
+  const state = await mockApi(page, 'owner');
+  await page.goto('/admin/people');
+  const section = page.getByRole('region', { name: 'Semester rollover' });
+  await section.getByRole('button', { name: 'Preview rollover' }).click();
+  await expect(section.getByText('Name the term first, for example 2026 odd semester.')).toBeVisible();
+  await section.getByLabel('Term').fill('2026 odd semester');
+  await section.getByRole('button', { name: 'Preview rollover' }).click();
+  const plan = section.getByRole('region', { name: 'Rollover preview' });
+  await expect(plan).toContainText('2 contests to archive and 1 student account to disable for 2026 odd semester.');
+  expect(state.rollovers).toEqual([{ label: '2026 odd semester', apply: false }]);
+  await plan.getByRole('button', { name: 'Archive and disable' }).click();
+  const sure = page.getByRole('dialog', { name: 'Archive 2 contests and disable 1 account?' });
+  await expect(sure.getByRole('button', { name: 'Cancel' })).toBeFocused();
+  await sure.getByRole('button', { name: 'Archive and disable' }).click();
+  await expect(page.getByText('Archived 2 contests and disabled 1 account').first()).toBeVisible();
+  expect(state.rollovers.at(-1)).toEqual({ label: '2026 odd semester', apply: true });
+  await expect(page.getByRole('region', { name: 'Account help' })).toContainText('old@college.edu');
+  // Changing the label drops a preview, so what is applied is what was read.
+  await section.getByRole('button', { name: 'Preview rollover' }).click();
+  await expect(plan).toBeVisible();
+  await section.getByLabel('Term').fill('2026 even semester');
+  await expect(plan).toHaveCount(0);
 });

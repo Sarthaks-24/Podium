@@ -6,12 +6,16 @@
   signals listed in words. A refused case shows the server's sentence
   inside the dialog; a created one is handed to `oncreated`. Escape and
   Cancel call `onclose`, and the browser returns focus to the opener.
-  Props: `open`, `contestId`, `signals` (the chosen ones), `users` and
-  `problems` (the run's maps, for names), `onclose`, `oncreated`.
+  With `submission` set it opens a manual case from that submission
+  instead (POST /api/admin/submissions/{id}/case, v2 P4 F9.3): the title
+  is suggested from the problem, and the dialog says the submission and
+  its private notes are copied into the case. Props: `open`, `contestId`,
+  `signals` (the chosen ones), `users` and `problems` (the run's maps, for
+  names), `submission` ({ id, name, label }), `onclose`, `oncreated`.
 -->
 <script lang="ts">
   import { tick } from 'svelte';
-  import { ApiError, sendJSON } from '../lib/api';
+  import { ApiError, errorText, sendJSON } from '../lib/api';
   import {
     MAX_TITLE,
     MIN_NOTE,
@@ -35,11 +39,12 @@
     signals: Signal[];
     users: Record<string, ReviewUser> | undefined;
     problems: Record<string, ReviewProblem> | undefined;
+    submission?: { id: number; name: string; label: string } | null;
     onclose: () => void;
     oncreated: (c: Case) => void;
   }
 
-  let { open, contestId, signals, users, problems, onclose, oncreated }: Props = $props();
+  let { open, contestId, signals, users, problems, submission = null, onclose, oncreated }: Props = $props();
 
   let dialog: HTMLDialogElement | undefined = $state();
   let heading: HTMLHeadingElement | undefined = $state();
@@ -53,7 +58,7 @@
   $effect(() => {
     if (!dialog) return;
     if (open && !dialog.open) {
-      title = defaultTitle(signals, users, problems);
+      title = submission ? `Submission to problem ${submission.label}` : defaultTitle(signals, users, problems);
       note = '';
       error = '';
       titleError = '';
@@ -86,11 +91,13 @@
     }
     busy = true;
     try {
-      const created = await sendJSON<Case>('POST', `/api/admin/contests/${encodeURIComponent(String(contestId))}/integrity/cases`, {
-        title: title.trim(),
-        note: note.trim(),
-        signal_ids: signals.map((s) => s.id),
-      });
+      const created = submission
+        ? await sendJSON<Case>('POST', `/api/admin/submissions/${submission.id}/case`, { title: title.trim(), note: note.trim() })
+        : await sendJSON<Case>('POST', `/api/admin/contests/${encodeURIComponent(String(contestId))}/integrity/cases`, {
+            title: title.trim(),
+            note: note.trim(),
+            signal_ids: signals.map((s) => s.id),
+          });
       oncreated(created);
     } catch (e) {
       if (e instanceof ApiError) {
@@ -99,7 +106,7 @@
         if (!titleError && !noteError) error = e.message;
         else void focusInvalid();
       } else {
-        error = 'Something went wrong. Try again in a moment.';
+        error = errorText(e);
       }
     } finally {
       busy = false;
@@ -136,6 +143,12 @@
       <p id="case-note-count" class="field-help">{noteCounter(note)}</p>
       {#if noteError}<p id="case-note-error" class="field-error">{noteError}</p>{/if}
     </div>
+    {#if submission}
+      <p class="chosen small">
+        From {submission.name}'s submission to problem {submission.label}. The submission and its private notes are copied into the case, so the notes are kept
+        with it.
+      </p>
+    {:else}
     <div class="chosen">
       <h3 id="case-signals">{signals.length === 1 ? 'Signal' : `${signals.length} signals`}</h3>
       <ul aria-labelledby="case-signals">
@@ -147,6 +160,7 @@
         {/each}
       </ul>
     </div>
+    {/if}
     {#if error}<p class="field-error" role="alert">{error}</p>{/if}
     <div class="actions">
       <button type="submit" class="btn btn-primary" disabled={busy}>Open the case</button>
@@ -165,6 +179,10 @@
     display: grid;
     gap: var(--space-4);
     margin-top: var(--space-4);
+  }
+
+  .small {
+    font-size: var(--fs-0);
   }
 
   .chosen h3 {

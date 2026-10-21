@@ -14,7 +14,10 @@
   score, the announcer says so as a sentence (S6, X1). A window-mode contest answers
   403 until the student's window closes; the page then says "The board
   opens when the window closes." The board refetches when the event stream
-  says its version changed, at most once every 3 s. Props: `slug`.
+  says its version changed, at most once every 3 s. When a review
+  decision changed the board, one muted line under the status says
+  "Board updated on <date> after a review decision", naming nobody
+  (D77 amended); no cell carries a mark. Props: `slug`.
 -->
 <script lang="ts">
   import PlaceFigure from '../components/PlaceFigure.svelte';
@@ -30,7 +33,9 @@
   import { routeTitle } from '../lib/routing';
   import { session } from '../lib/session.svelte';
   import { polite } from '../lib/announce.svelte';
-  import { boardLabels, placeFigure, rankAnnouncement, statusLine, type Standings } from '../lib/standings';
+  import { boardLabels, boardUpdatedLine, placeFigure, rankAnnouncement, statusLine, type Standings } from '../lib/standings';
+  import MonoDigits from '../components/MonoDigits.svelte';
+  import { formatDateTime } from '../lib/format';
   import { EventStream, type StreamMode } from '../lib/stream';
 
   let { slug }: { slug: string } = $props();
@@ -152,6 +157,10 @@
   <PageState kind="error" message={message} onretry={() => loadBoard()} />
 {:else if standings}
   <p class="status" class:frozen={standings.variant === 'frozen'}>{statusLine(standings, ended)}</p>
+  {#if boardUpdatedLine(standings, formatDateTime)}
+    <!-- D77 amended: a review decision changed the board; it says when, never whose. -->
+    <p class="updated"><MonoDigits text={boardUpdatedLine(standings, formatDateTime)} /></p>
+  {/if}
   {#if place}
     <div class="place-wrap"><PlaceFigure {place} /></div>
   {/if}
@@ -186,6 +195,12 @@
   .status {
     margin-block: var(--space-3) var(--space-4);
     color: var(--ink-muted);
+  }
+
+  .updated {
+    margin-block: calc(-1 * var(--space-2)) var(--space-4);
+    color: var(--ink-muted);
+    font-size: var(--fs-0);
   }
 
   .status.frozen {

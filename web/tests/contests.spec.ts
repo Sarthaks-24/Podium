@@ -362,7 +362,7 @@ test('admins land on their contest list, named by job', async ({ page }) => {
   await page.goto('/');
   await expect(page).toHaveURL('/admin/contests');
   const nav = page.getByRole('navigation', { name: 'Main' });
-  await expect(nav.getByRole('link')).toHaveText(['Contests', 'Problem bank', 'Inbox']);
+  await expect(nav.getByRole('link')).toHaveText(['Contests', 'Problem bank', 'Students', 'Inbox']);
   await expect(nav.getByRole('link', { name: 'Contests' })).toHaveAttribute('aria-current', 'page');
   await expect(page.getByText('To create a contest or follow one live')).toHaveCount(0);
   await expect(page.getByRole('row', { name: /Week 7 contest/ })).toContainText('Draft');
@@ -550,7 +550,7 @@ test('the console pauses, extends, judges again, announces and answers', async (
 
   await page.locator('#ext-user').selectOption({ label: 'Asha Rao' });
   await page.getByLabel('Extra minutes').fill('10');
-  await page.getByLabel('Reason').fill('Laptop crashed');
+  await page.getByRole('textbox', { name: 'Reason' }).fill('Laptop crashed');
   await page.getByRole('button', { name: 'Give extra time' }).click();
   await expect.poll(() => api.extensions).toEqual([{ user: '7', body: { minutes: 10, reason: 'Laptop crashed' } }]);
   await expect(page.locator('.extensions')).toContainText('Asha Rao: 10 min, Laptop crashed');
@@ -590,7 +590,8 @@ test('the console pauses, extends, judges again, announces and answers', async (
   // The audit log follows every action, newest first, with who did it.
   const audit = page.getByRole('region', { name: 'Changes' });
   await expect(audit.getByRole('listitem').first()).toContainText('Judged problem A again (1 submission)');
-  await expect(audit).toContainText('Gave asha@college.edu 10 extra minutes (Laptop crashed)');
+  // v1.4.0 rows carry reason_given, never the reason; the reason stays in Time.
+  await expect(audit).toContainText('Gave Asha Rao 10 extra minutes, with a reason (see Time)');
   await expect(audit).toContainText('Extended the contest by 15 minutes');
   await expect(audit).toContainText('Paused judging');
   await expect(audit).toContainText('priya@college.edu');
@@ -668,7 +669,7 @@ test('unpublishing a live contest asks first', async ({ page }) => {
   await page.getByRole('button', { name: 'Unpublish contest' }).click();
   await unpublish.getByRole('button', { name: 'Unpublish contest' }).click();
   await expect.poll(() => api.settingsPuts.at(-1)?.published).toBe(false);
-  await expect(page.getByText('Unpublished', { exact: true })).toBeVisible();
+  await expect(page.getByText('Unpublished', { exact: true }).first()).toBeVisible();
 });
 
 test('the console feed filters waiting or judging and judge errors', async ({ page }) => {
@@ -1126,4 +1127,81 @@ test('the contest list stacks below 1024 px and points to the bank when empty (P
   await page.reload();
   await expect(page.getByText('No contests yet. Contests use validated problems from the problem bank.')).toBeVisible();
   await expect(page.getByRole('link', { name: 'Go to the problem bank' })).toHaveAttribute('href', '/admin/problems');
+});
+
+test('the console feed links names to progress, keeps private notes and opens a case from a submission (F9.3)', async ({ page }) => {
+  const api = await mockApi(page, { who: 'admin', phase: 'during' });
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto('/admin/contests/4/console');
+  const feed = page.locator('.feed tbody');
+  const asha = feed.getByRole('row', { name: /Asha Rao/ });
+  await expect(asha.getByRole('link', { name: 'Asha Rao' })).toHaveAttribute('href', '/admin/users/7/progress');
+  await asha.getByRole('button', { name: /^Notes on Asha Rao's submission to problem B/ }).click();
+  const dialog = page.getByRole('dialog', { name: "Notes on Asha Rao's submission to problem B" });
+  await expect(dialog).toContainText('The student is never told about a note');
+  await expect(dialog.getByRole('list', { name: 'Notes, oldest first' })).toContainText('Ravi Kumar, lines 8 to 10');
+  await expect(dialog).toContainText('unless a case is opened');
+
+  await dialog.getByRole('button', { name: 'Save note' }).click();
+  await expect(dialog.getByText('Write the note first.')).toBeVisible();
+  await dialog.getByLabel('New note').fill('Same variable names as the editorial draft.');
+  await dialog.getByLabel('Lines in question (optional)').fill('10-8');
+  await dialog.getByRole('button', { name: 'Save note' }).click();
+  await expect(dialog.getByText('In 10-8, the first line comes first.')).toBeVisible();
+  await dialog.getByLabel('Lines in question (optional)').fill('3-5, 12');
+  await dialog.getByRole('button', { name: 'Save note' }).click();
+  await expect(dialog.getByRole('list', { name: 'Notes, oldest first' }).getByRole('listitem')).toHaveCount(2);
+  expect(api.notePosts).toEqual([{ text: 'Same variable names as the editorial draft.', lines: [{ from: 3, to: 5 }, { from: 12, to: 12 }] }]);
+
+  await dialog.getByRole('button', { name: 'Open a case' }).click();
+  const open = page.getByRole('dialog', { name: 'Open a case' });
+  await expect(open.getByLabel('Title')).toHaveValue('Submission to problem B');
+  await expect(open).toContainText("From Asha Rao's submission to problem B. The submission and its private notes are copied into the case");
+  await open.getByLabel('Reason').fill('The notes point at three passages that match the draft.');
+  await open.getByRole('button', { name: 'Open the case' }).click();
+  await expect(page.getByText('Opened the case. Share it with the student when you are ready.').first()).toBeVisible();
+  await expect(asha.getByRole('link', { name: 'Case 14' })).toHaveAttribute('href', '/admin/integrity/cases/14');
+  expect(api.casePosts).toEqual([{ title: 'Submission to problem B', note: 'The notes point at three passages that match the draft.' }]);
+  await expect(asha.getByRole('button', { name: /^Notes on Asha Rao/ })).toHaveText('2 notes');
+  await page.screenshot({ path: `${shots()}console-notes-1440-light.png`, fullPage: true });
+});
+
+test('results link names to progress, say a decision changed the board, mark no cell, and show the class view (F9.2b, F9.4)', async ({ page }) => {
+  await mockApi(page, { who: 'admin', phase: 'after', zeroB: true });
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto('/admin/contests/4/results');
+  await expect(page.getByText(/^Board updated on .+ after a review decision\.$/)).toBeVisible();
+  const board = page.getByRole('region', { name: /^Standings for Week 6 contest/ });
+  await expect(board.getByRole('link', { name: 'Asha Rao' })).toHaveAttribute('href', '/admin/users/7/progress');
+  // The board itself carries no adjustment mark: no word, no class, no data attribute.
+  const html = await board.innerHTML();
+  expect(html).not.toMatch(/decision|adjust|zero_by|zeroed/i);
+  await expect(page.getByText('Both files have a "zero by decision" column', { exact: false })).toBeVisible();
+  const klass = page.getByRole('table', { name: 'How the class did on each problem' });
+  await expect(klass.getByRole('row', { name: /Interval covering/ })).toContainText('19 of 30');
+  await expect(klass.getByRole('row', { name: /A plus B/ })).toContainText('Most often the first failure: test 3 of subtask 2, for 5 students.');
+  await expect(klass.getByRole('row', { name: /Interval covering/ })).toContainText('13.3%');
+  await expect(klass).not.toContainText('Asha');
+  await page.screenshot({ path: `${shots()}results-p4-1440-light.png`, fullPage: true });
+});
+
+test('the class view waits for final results', async ({ page }) => {
+  await mockApi(page, { who: 'admin', phase: 'after', notFinal: true });
+  await page.goto('/admin/contests/4/results');
+  await expect(page.getByText('The class view opens when the results are final.')).toBeVisible();
+});
+
+test('the shared standings say a decision changed the board, and no cell carries a mark (D77, C1-040)', async ({ page }) => {
+  await mockApi(page, { phase: 'after', zeroB: true });
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto('/contests/week-6/standings');
+  await expect(page.getByText(/^Board updated on .+ after a review decision\.$/)).toBeVisible();
+  const board = page.getByRole('region', { name: /^Standings for Week 6 contest/ });
+  await expect(board.getByRole('row').nth(1)).toBeVisible();
+  // The board snapshot: no word, class or attribute marks an adjusted cell, and no name links anywhere.
+  const html = await board.innerHTML();
+  expect(html).not.toMatch(/decision|adjust|zero_by|zeroed|review/i);
+  await expect(board.getByRole('link')).toHaveCount(0);
+  await page.goto('/contests/week-6');
+  await expect(page.getByText(/^Board updated on .+ after a review decision\.$/)).toBeVisible();
 });

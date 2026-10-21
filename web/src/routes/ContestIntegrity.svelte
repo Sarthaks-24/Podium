@@ -9,10 +9,13 @@
   problem in tables (strength in words with the number beside it), with
   the groups of similar code on each problem listed as names. Signals are
   chosen with checkboxes to open a case (OpenCaseDialog); the contest's
-  cases are listed below, newest first. Window-mode contests get a note
+  cases are listed below, newest first, each with its state, whether it
+  was opened from a submission, and "Overdue" or "Waiting for a second
+  reviewer" when that applies (v1.4.0). Window-mode contests get a note
   that they leak by design. Every view carries IntegrityNote. Props: `id`.
 -->
 <script lang="ts">
+  import Badge from '../components/Badge.svelte';
   import MonoDigits from '../components/MonoDigits.svelte';
   import PageState from '../components/PageState.svelte';
   import ConfirmDialog from '../components/ConfirmDialog.svelte';
@@ -23,7 +26,7 @@
   import IntegrityNote from '../components/IntegrityNote.svelte';
   import OpenCaseDialog from '../components/OpenCaseDialog.svelte';
   import SignalTable from '../components/SignalTable.svelte';
-  import { ApiError, getJSON, sendJSON } from '../lib/api';
+  import { ApiError, errorText, getJSON, sendJSON } from '../lib/api';
   import { type AdminContest } from '../lib/contests';
   import { keepHeadingFocus } from '../lib/focus';
   import { formatDateTime } from '../lib/format';
@@ -101,7 +104,7 @@
   }
 
   function messageOf(e: unknown): string {
-    return e instanceof ApiError ? e.message : 'Something went wrong. Try again in a moment.';
+    return errorText(e);
   }
 
   async function load() {
@@ -382,7 +385,10 @@
               <tr>
                 <th scope="row" class="case-title"><a class="row-link" href="/admin/integrity/cases/{c.id}">{c.title}</a></th>
                 <td class="case-who">{caseStudents(c)}</td>
-                <td class="case-state">{caseStateWord(c.state)}</td>
+                <td class="case-state">
+                  {caseStateWord(c.state)}{#if c.source === 'manual'}<span class="muted case-src">, from a submission</span>{/if}
+                  {#if c.overdue}<Badge tone="bad" text="Overdue" />{:else if (c.proposals ?? []).some((p) => p.state === 'pending')}<Badge tone="wait" text="Waiting for a second reviewer" />{/if}
+                </td>
                 <td class="case-when"><MonoDigits text={formatDateTime(c.updated_at)} /></td>
               </tr>
             {/each}
