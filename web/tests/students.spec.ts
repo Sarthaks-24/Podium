@@ -556,6 +556,8 @@ test.describe('the record page', () => {
     await same.getByRole('button', { name: 'Change the rating' }).click();
     await expect(page.getByText('Changed the rating to 7').first()).toBeVisible();
     await expect(page.locator('.figure')).toHaveText('7 of 10');
+    // The edit wrote a standing line too, so the record is read again (C2-032).
+    await expect.poll(() => api.recordGets).toBe(2);
 
     await value.fill('5.5');
     await reason.fill('A second outcome this semester was confirmed in Week 6, so the standing drops a band.');
@@ -619,4 +621,28 @@ test('with no students yet, the list says how students arrive (C2-024)', async (
   await expect(empty).toContainText('No students yet. A student appears here after signing in with an allowed email domain');
   await expect(empty.getByRole('link', { name: 'People' })).toHaveAttribute('href', '/admin/people');
   await expect(empty.getByRole('link', { name: 'Contests' })).toHaveAttribute('href', '/admin/contests');
+});
+
+test('a slow older answer never shows under a newer filter (C2-032)', async ({ page }) => {
+  await org.mockApi(page, {});
+  let release: () => void = () => {};
+  const held = new Promise<void>((resolve) => (release = resolve));
+  await page.route(
+    (url) => url.pathname === '/api/admin/students' && url.searchParams.get('filter') === 'missed_last_two',
+    async (route) => {
+      await held;
+      await route.fallback();
+    },
+  );
+  await page.goto('/admin/students');
+  const names = page.locator('tbody th a');
+  await expect(names).toHaveCount(5);
+  await page.getByLabel('Show').selectOption('missed_last_two');
+  await page.getByLabel('Show').selectOption('no_accepted');
+  await expect(page.getByRole('heading', { level: 2, name: '10 or more submissions, nothing accepted' })).toBeVisible();
+  release();
+  await page.waitForResponse((r) => r.url().includes('filter=missed_last_two'));
+  await expect(page.getByRole('heading', { level: 2, name: '10 or more submissions, nothing accepted' })).toBeVisible();
+  await expect(page.getByRole('heading', { level: 2, name: 'Missed the last 2 graded contests' })).toHaveCount(0);
+  await expect(names).toHaveText(['Zoë Fernandes']);
 });

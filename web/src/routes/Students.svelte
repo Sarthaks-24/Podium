@@ -50,23 +50,30 @@
   const rows = $derived(data ? sortStudents(data.students, sortKey, sortDir) : []);
   const help = $derived(filterHelp(shownFor.filter, data?.last_graded ?? []));
 
+  // Only the newest request is shown: a slow older answer must not land under a newer filter (C2-032).
+  let loadSeq = 0;
+
   async function load(first = false) {
     if (first) loadState = 'loading';
     busy = true;
+    const seq = ++loadSeq;
+    const asked = { filter, q: query.trim() };
     const params: string[] = [];
     if (filter !== '') params.push(`filter=${encodeURIComponent(filter)}`);
     if (query.trim() !== '') params.push(`q=${encodeURIComponent(query.trim())}`);
     const q = params.join('&');
     try {
       const d = await getJSON<StudentsList>(`/api/admin/students${q ? `?${q}` : ''}`);
+      if (seq !== loadSeq) return;
       const restore = first ? keepHeadingFocus() : null;
       data = d;
-      shownFor = { filter, q: query.trim() };
+      shownFor = asked;
       // The address keeps the filter and the search, so a reload or a shared link shows the same rows.
       navigate(`/admin/students${q ? `?${q}` : ''}`, { replace: true });
       loadState = 'ready';
       void restore?.();
     } catch (e) {
+      if (seq !== loadSeq) return;
       if (e instanceof ApiError && e.status === 401) {
         session.user = undefined;
         session.status = 'signed-out';
@@ -79,7 +86,7 @@
       loadError = errorText(e);
       loadState = 'error';
     } finally {
-      busy = false;
+      if (seq === loadSeq) busy = false;
     }
   }
 

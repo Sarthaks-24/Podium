@@ -124,6 +124,17 @@
   function adopt(out: RatingAnswer) {
     if (!rec) return;
     rec = { ...rec, rating: out.rating, pending_rating: out.pending_rating };
+    // An applied change also writes a standing line, which the answer does not carry (C2-032).
+    if (!out.pending_rating) void refresh();
+  }
+
+  /** Reads the record again in place, without the loading state. */
+  async function refresh() {
+    try {
+      rec = await getJSON<StudentRecord>(`${api}/record`);
+    } catch (e) {
+      handle(e);
+    }
   }
 
   async function askEdit(event: SubmitEvent) {
