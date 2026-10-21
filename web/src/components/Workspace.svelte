@@ -1643,7 +1643,7 @@
   }
 
   .block-title:focus-visible {
-    outline: calc(2 * var(--rule)) solid var(--focus);
+    outline: calc(2 * var(--rule)) solid var(--act);
     outline-offset: var(--space-1);
   }
 
@@ -1840,7 +1840,7 @@
     }
 
     .grip:focus-visible {
-      outline: calc(2 * var(--rule)) solid var(--focus);
+      outline: calc(2 * var(--rule)) solid var(--act);
       outline-offset: calc(-2 * var(--rule));
     }
 

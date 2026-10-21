@@ -46,6 +46,16 @@ describe('web source guardrails', () => {
     }
   });
 
+  // --focus is a box-shadow list; inside an outline it makes the whole
+  // declaration invalid, so the ring silently disappears (C1-009).
+  it('never uses the --focus shadow as an outline colour', () => {
+    const offenders = Object.entries(sources)
+      .filter(([path]) => !isTest(path))
+      .filter(([, text]) => /outline(-color)?\s*:[^;]*var\(--focus\)/.test(text))
+      .map(([path]) => path);
+    expect(offenders).toEqual([]);
+  });
+
   it('contains no en dashes or em dashes', () => {
     const offenders = Object.entries(sources)
       .filter(([, text]) => DASHES.test(text))
