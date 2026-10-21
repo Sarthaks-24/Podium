@@ -1043,6 +1043,32 @@ test('keyboard only: a student starts, solves, submits, reads the verdict, asks 
   await tabTo(page, page.getByRole('region', { name: /^Standings for/ }));
 });
 
+test('closing the shortcuts list gives focus to the heading when the page loaded behind it', async ({ page }) => {
+  await mockApi(page, { phase: 'during' });
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto('/contests/week-6/problems/A');
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('A. A plus B');
+
+  // Problem B answers only when the test says so, so "?" lands mid-load.
+  let release = () => {};
+  const held = new Promise<void>((resolve) => (release = resolve));
+  await page.route('**/api/contests/week-6/problems/B', async (route) => {
+    await held;
+    await route.fallback();
+  });
+  await page.locator('main h1').focus();
+  await page.keyboard.press(']');
+  await expect(page).toHaveURL('/contests/week-6/problems/B');
+  await page.keyboard.press('?');
+  const keys = page.getByRole('dialog', { name: 'Keyboard shortcuts' });
+  await expect(keys).toBeVisible();
+  release();
+  await expect(page.locator('main h1')).toHaveText('B. Interval covering');
+  await page.keyboard.press('Escape');
+  await expect(keys).toBeHidden();
+  await expect(page.getByRole('heading', { level: 1 })).toBeFocused();
+});
+
 test('keyboard only: an organiser edits a contest, runs the console and walks the reveal', async ({ page }) => {
   const api = await mockApi(page, { who: 'admin', phase: 'after' });
   await page.setViewportSize({ width: 1440, height: 900 });
