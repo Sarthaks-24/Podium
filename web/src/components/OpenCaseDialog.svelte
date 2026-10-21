@@ -122,6 +122,7 @@
       <label for="case-title">Title</label>
       <input
         id="case-title"
+        aria-required="true"
         class="input"
         maxlength={MAX_TITLE}
         bind:value={title}
@@ -134,6 +135,7 @@
       <label for="case-note">Reason</label>
       <textarea
         id="case-note"
+        aria-required="true"
         class="input"
         rows="4"
         bind:value={note}

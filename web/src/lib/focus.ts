@@ -23,3 +23,14 @@ export function keepHeadingFocus(): () => Promise<void> {
     document.querySelector<HTMLElement>('main h1')?.focus();
   };
 }
+
+/**
+ * After the next render, focuses the first control under `scope` (a CSS
+ * selector) that is marked invalid, so an error the server returned moves
+ * focus the way a check in the page does (X7). A group marked with
+ * data-invalid="true" gives focus to its first input.
+ */
+export async function focusFirstInvalid(scope: string): Promise<void> {
+  await tick();
+  document.querySelector<HTMLElement>(`${scope} :is([aria-invalid="true"], [data-invalid="true"] input)`)?.focus();
+}

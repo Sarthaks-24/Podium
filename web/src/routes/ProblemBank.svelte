@@ -28,6 +28,7 @@
   import Badge from '../components/Badge.svelte';
   import MonoDigits from '../components/MonoDigits.svelte';
   import { onDestroy, onMount, tick, untrack } from 'svelte';
+  import { focusFirstInvalid } from '../lib/focus';
   import { problemTone } from '../lib/badges';
   import { isAIDraft, withoutAIDraft } from '../lib/ai';
   import { ApiError, errorText, getJSON, sendBody, sendJSON } from '../lib/api';
@@ -166,8 +167,7 @@
     if (title === '') createFields.title = 'Enter a title.';
     if (slug === '') createFields.slug = 'Enter a slug, for example interval-covering.';
     if (Object.keys(createFields).length > 0) {
-      await tick();
-      document.querySelector<HTMLElement>('.create [aria-invalid="true"]')?.focus();
+      await focusFirstInvalid('.create');
       return;
     }
     createBusy = true;
@@ -181,6 +181,7 @@
         createFields = { ...err.fields };
         const known = ['title', 'slug'];
         if (Object.keys(err.fields).some((k) => !known.includes(k))) createError = err.message;
+        await focusFirstInvalid('.create');
       } else {
         createError = errorText(err);
       }
@@ -328,11 +329,13 @@
   {#if creating}
     <form id="create-problem" class="create" novalidate onsubmit={create} aria-labelledby="create-heading">
       <h2 id="create-heading" class="create-heading">New problem</h2>
+      <p class="field-help">All fields are required.</p>
       <div class="create-fields">
         <div class="field grow">
           <label for="new-title">Title</label>
           <input
             id="new-title"
+            aria-required="true"
             class="input"
             type="text"
             autocomplete="off"
@@ -348,6 +351,7 @@
           <label for="new-slug">Slug</label>
           <input
             id="new-slug"
+            aria-required="true"
             class="input mono"
             type="text"
             autocomplete="off"

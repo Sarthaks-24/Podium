@@ -195,6 +195,7 @@
         <label for={fid('model-id')}>Model id</label>
         <input
           id={fid('model-id')}
+          aria-required="true"
           class="input mono"
           autocomplete="off"
           autocapitalize="off"
@@ -217,6 +218,7 @@
       <label for={fid('api-key')}>API key</label>
       <input
         id={fid('api-key')}
+        aria-required="true"
         class="input mono"
         type="password"
         autocomplete="off"

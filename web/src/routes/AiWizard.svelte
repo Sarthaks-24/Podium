@@ -26,6 +26,7 @@
   import Icon from '../components/Icon.svelte';
   import KeyForm from '../components/ai/KeyForm.svelte';
   import { onMount, tick } from 'svelte';
+  import { focusFirstInvalid } from '../lib/focus';
   import {
     aiPaths,
     draftChainSteps,
@@ -277,6 +278,7 @@
         problems: e instanceof ApiError ? e.problems : [],
         code: e instanceof ApiError ? e.code : 'unexpected',
       };
+      if (Object.keys(next).length > 0) await focusFirstInvalid('.wizard-form');
       if (e instanceof ApiError && e.code === 'no_key' && keyStatus) keyStatus = { ...keyStatus, active: false };
       if (e instanceof ApiError && e.code === 'no_model' && keyStatus) keyStatus = { ...keyStatus, model: '' };
     } finally {
@@ -433,6 +435,7 @@
             <label for="topic">Topic</label>
             <input
               id="topic"
+              aria-required="true"
               class="input"
               type="text"
               autocomplete="off"
@@ -484,6 +487,7 @@
             <label for="paste-text">Problem text</label>
             <textarea
               id="paste-text"
+              aria-required="true"
               class="input paste"
               rows="14"
               bind:value={text}

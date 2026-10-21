@@ -737,7 +737,7 @@
                   </div>
                   <div class="field">
                     <label for="reply-{c.id}">Answer</label>
-                    <textarea id="reply-{c.id}" class="input" rows="2" bind:value={r.text} aria-invalid={r.error ? 'true' : undefined} aria-describedby={r.error ? `reply-${c.id}-error` : undefined}></textarea>
+                    <textarea id="reply-{c.id}" aria-required="true" class="input" rows="2" bind:value={r.text} aria-invalid={r.error ? 'true' : undefined} aria-describedby={r.error ? `reply-${c.id}-error` : undefined}></textarea>
                     {#if r.error}<p id="reply-{c.id}-error" class="field-error">{r.error}</p>{/if}
                   </div>
                   <label class="choice"><input type="checkbox" bind:checked={r.public} /> Answer for everyone</label>
@@ -763,7 +763,7 @@
           </div>
           <div class="field">
             <label for="ann-body">Announcement (Markdown)</label>
-            <textarea id="ann-body" class="input" rows="3" bind:value={annBody} aria-invalid={annError ? 'true' : undefined} aria-describedby="ann-help{annError ? ' ann-error' : ''}"></textarea>
+            <textarea id="ann-body" aria-required="true" class="input" rows="3" bind:value={annBody} aria-invalid={annError ? 'true' : undefined} aria-describedby="ann-help{annError ? ' ann-error' : ''}"></textarea>
             <p id="ann-help" class="field-help">Every student sees it at once as a banner over their workspace.</p>
             {#if annError}<p id="ann-error" class="field-error">{annError}</p>{/if}
           </div>
@@ -902,6 +902,7 @@
             <label for="extend-minutes">Minutes for everyone</label>
             <input
               id="extend-minutes"
+              aria-required="true"
               class="input mono"
               type="number"
               min="1"
@@ -918,17 +919,17 @@
         <form class="row" novalidate onsubmit={extendOne}>
           <div class="field grow">
             <label for="ext-user">Student</label>
-            <select id="ext-user" class="select" bind:value={extUser} aria-invalid={extError && extField === 'user' ? 'true' : undefined} aria-describedby={extError && extField === 'user' ? 'ext-error' : undefined}>
+            <select id="ext-user" aria-required="true" class="select" bind:value={extUser} aria-invalid={extError && extField === 'user' ? 'true' : undefined} aria-describedby={extError && extField === 'user' ? 'ext-error' : undefined}>
               <option value="">Choose a student</option>
               {#each students as s (s.user_id)}<option value={String(s.user_id)}>{s.name}</option>{/each}
             </select>
           </div>
           <div class="field small-field">
             <label for="ext-minutes">Extra minutes</label>
-            <input id="ext-minutes" class="input mono" type="number" min="0" inputmode="numeric" bind:value={extMinutes} aria-invalid={extError && extField === 'minutes' ? 'true' : undefined} aria-describedby={extError && extField === 'minutes' ? 'ext-error' : undefined} />
+            <input id="ext-minutes" aria-required="true" class="input mono" type="number" min="0" inputmode="numeric" bind:value={extMinutes} aria-invalid={extError && extField === 'minutes' ? 'true' : undefined} aria-describedby={extError && extField === 'minutes' ? 'ext-error' : undefined} />
           </div>
           <div class="field grow">
-            <label for="ext-reason">Reason</label>
+            <label for="ext-reason">Reason (optional)</label>
             <input id="ext-reason" class="input" type="text" autocomplete="off" placeholder="Laptop crashed" bind:value={extReason} />
           </div>
           <button type="submit" class="btn btn-secondary">Give extra time</button>

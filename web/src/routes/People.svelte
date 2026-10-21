@@ -748,6 +748,7 @@
         <label for="person-email">Email</label>
         <input
           id="person-email"
+          aria-required="true"
           class="input"
           type="email"
           autocomplete="off"
@@ -809,6 +810,7 @@
         <label for="domain-input">Domain</label>
         <input
           id="domain-input"
+          aria-required="true"
           class="input"
           type="text"
           inputmode="url"
@@ -867,6 +869,7 @@
         <label for="account-email">Email</label>
         <input
           id="account-email"
+          aria-required="true"
           class="input"
           type="email"
           autocomplete="off"
@@ -946,7 +949,7 @@
     <form class="form" novalidate onsubmit={previewRollover}>
       <div class="field grow">
         <label for="roll-label">Term</label>
-        <input id="roll-label" class="input" type="text" autocomplete="off" placeholder="2026 odd semester" bind:value={rollLabel} aria-invalid={rollError ? 'true' : undefined} aria-describedby={rollError ? 'roll-error' : undefined} />
+        <input id="roll-label" aria-required="true" class="input" type="text" autocomplete="off" placeholder="2026 odd semester" bind:value={rollLabel} aria-invalid={rollError ? 'true' : undefined} aria-describedby={rollError ? 'roll-error' : undefined} />
       </div>
       <div class="field">
         <label for="roll-before">Contests that ended before (optional)</label>

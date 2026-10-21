@@ -22,6 +22,7 @@
   import PageState from '../components/PageState.svelte';
   import PageHeader from '../components/PageHeader.svelte';
   import { onMount, tick } from 'svelte';
+  import { focusFirstInvalid } from '../lib/focus';
   import { ApiError, getJSON, sendJSON, errorText } from '../lib/api';
   import {
     defaultSettings,
@@ -143,8 +144,7 @@
     if (ends === null) fields.ends_at = 'Enter the end date and time.';
     else if (starts !== null && ends <= starts) fields.ends_at = 'The contest must end after it starts.';
     if (Object.keys(fields).length > 0) {
-      await tick();
-      document.querySelector<HTMLElement>('.create [aria-invalid="true"]')?.focus();
+      await focusFirstInvalid('.create');
       return;
     }
     createBusy = true;
@@ -163,6 +163,7 @@
       if (e instanceof ApiError && Object.keys(e.fields).length > 0) {
         fields = { ...e.fields };
         if (Object.keys(e.fields).some((k) => !['title', 'slug', 'starts_at', 'ends_at'].includes(k))) createError = e.message;
+        await focusFirstInvalid('.create');
       } else {
         createError = errorText(e);
       }
@@ -229,11 +230,13 @@
   {#if creating}
     <form id="create-contest" class="create" novalidate onsubmit={create} aria-labelledby="create-heading">
       <h2 id="create-heading" class="create-heading">New contest</h2>
+      <p class="field-help">All fields are required.</p>
       <div class="grid">
         <div class="field">
           <label for="new-title">Title</label>
           <input
             id="new-title"
+            aria-required="true"
             class="input"
             type="text"
             autocomplete="off"
@@ -251,6 +254,7 @@
           <label for="new-slug">Slug</label>
           <input
             id="new-slug"
+            aria-required="true"
             class="input mono"
             type="text"
             autocomplete="off"
@@ -267,6 +271,7 @@
           <label for="new-start">Starts</label>
           <input
             id="new-start"
+            aria-required="true"
             class="input"
             type="datetime-local"
             bind:value={newStart}
@@ -279,6 +284,7 @@
           <label for="new-end">Ends</label>
           <input
             id="new-end"
+            aria-required="true"
             class="input"
             type="datetime-local"
             bind:value={newEnd}

@@ -87,6 +87,7 @@
       <label for="title">Title</label>
       <input
         id="title"
+        aria-required="true"
         class="input"
         type="text"
         autocomplete="off"
@@ -101,6 +102,7 @@
       <label for="slug">Slug</label>
       <input
         id="slug"
+        aria-required="true"
         class="input mono"
         type="text"
         autocomplete="off"
@@ -146,6 +148,7 @@
       >
         <textarea
           id="statement_md"
+          aria-required="true"
           class="input textarea-code statement-input"
           rows="12"
           spellcheck="true"
@@ -176,6 +179,7 @@
         <label for="time_limit_ms">Time limit (ms)</label>
         <input
           id="time_limit_ms"
+          aria-required="true"
           class="input mono"
           type="number"
           inputmode="numeric"
@@ -192,6 +196,7 @@
         <label for="memory_limit_mb">Memory (MB)</label>
         <input
           id="memory_limit_mb"
+          aria-required="true"
           class="input mono"
           type="number"
           inputmode="numeric"
@@ -207,7 +212,7 @@
 
     <div class="row">
       <div class="field grow">
-        <label for="tags">Tags</label>
+        <label for="tags">Tags (optional)</label>
         <input
           id="tags"
           class="input"

@@ -54,7 +54,7 @@
     type ContestSettings,
     type RosterRow,
   } from '../lib/contests';
-  import { keepHeadingFocus } from '../lib/focus';
+  import { focusFirstInvalid as focusInvalidIn, keepHeadingFocus } from '../lib/focus';
   import { countOf, formatDateTime } from '../lib/format';
   import { setTitle } from '../lib/head';
   import { routeTitle } from '../lib/routing';
@@ -110,6 +110,8 @@
   let cloneStart = $state('');
   let cloneEnd = $state('');
   let cloneError = $state('');
+  /** The clone field the error is about, so it is marked and takes focus. */
+  let cloneField = $state<'slug' | 'start' | 'end' | null>(null);
 
   // One confirmation dialog for every action that asks first.
   let confirm = $state<null | { title: string; body: string; items?: string[]; label: string; danger: boolean; run: () => Promise<void> }>(null);
@@ -680,10 +682,14 @@
   async function cloneContest(event: SubmitEvent) {
     event.preventDefault();
     cloneError = '';
+    cloneField = null;
     const starts = fromLocalInput(cloneStart);
     const ends = fromLocalInput(cloneEnd);
-    if (cloneSlug.trim() === '' || starts === null || ends === null || ends <= starts) {
-      cloneError = 'Enter a new slug, and a start before the end.';
+    if (cloneSlug.trim() === '') [cloneField, cloneError] = ['slug', 'Enter a new slug, for example week-7.'];
+    else if (starts === null) [cloneField, cloneError] = ['start', 'Enter the start date and time.'];
+    else if (ends === null || ends <= starts) [cloneField, cloneError] = ['end', 'Enter an end after the start.'];
+    if (cloneField !== null) {
+      await focusInvalidIn('#clone-form');
       return;
     }
     try {
@@ -694,6 +700,9 @@
     } catch (e) {
       if (handleAuth(e)) return;
       cloneError = e instanceof ApiError ? (Object.values(e.fields)[0] ?? e.message) : errorText(e);
+      const key = e instanceof ApiError ? Object.keys(e.fields)[0] : undefined;
+      cloneField = key === 'slug' ? 'slug' : key === 'starts_at' ? 'start' : key === 'ends_at' ? 'end' : null;
+      if (cloneField !== null) await focusInvalidIn('#clone-form');
     }
   }
 
@@ -821,27 +830,28 @@
       <form class="settings" novalidate onsubmit={save} aria-label="Contest settings">
         <section class="section" aria-labelledby="basics-title">
           <h2 id="basics-title">Basics</h2>
+          <p class="field-help">All four are required.</p>
           <div class="grid">
             <div class="field">
               <label for="f-title">Title</label>
-              <input id="f-title" class="input" type="text" bind:value={form.title} aria-invalid={fields.title ? 'true' : undefined} aria-describedby={fields.title ? 'f-title-error' : undefined} />
+              <input id="f-title" aria-required="true" class="input" type="text" bind:value={form.title} aria-invalid={fields.title ? 'true' : undefined} aria-describedby={fields.title ? 'f-title-error' : undefined} />
               {@render err('title')}
             </div>
             <div class="field">
               <label for="f-slug">Slug</label>
-              <input id="f-slug" class="input mono" type="text" spellcheck="false" bind:value={form.slug} aria-invalid={fields.slug ? 'true' : undefined} aria-describedby={fields.slug ? 'f-slug-error' : undefined} />
+              <input id="f-slug" aria-required="true" class="input mono" type="text" spellcheck="false" bind:value={form.slug} aria-invalid={fields.slug ? 'true' : undefined} aria-describedby={fields.slug ? 'f-slug-error' : undefined} />
               {@render err('slug')}
             </div>
           </div>
           <div class="times">
             <div class="field">
               <label for="f-starts_at">Starts</label>
-              <input id="f-starts_at" class="input" type="datetime-local" bind:value={form.starts_at} aria-invalid={fields.starts_at ? 'true' : undefined} aria-describedby={fields.starts_at ? 'f-starts_at-error' : undefined} />
+              <input id="f-starts_at" aria-required="true" class="input" type="datetime-local" bind:value={form.starts_at} aria-invalid={fields.starts_at ? 'true' : undefined} aria-describedby={fields.starts_at ? 'f-starts_at-error' : undefined} />
               {@render err('starts_at')}
             </div>
             <div class="field">
               <label for="f-ends_at">Ends</label>
-              <input id="f-ends_at" class="input" type="datetime-local" bind:value={form.ends_at} aria-invalid={fields.ends_at ? 'true' : undefined} aria-describedby={fields.ends_at ? 'f-ends_at-error' : undefined} />
+              <input id="f-ends_at" aria-required="true" class="input" type="datetime-local" bind:value={form.ends_at} aria-invalid={fields.ends_at ? 'true' : undefined} aria-describedby={fields.ends_at ? 'f-ends_at-error' : undefined} />
               {@render err('ends_at')}
             </div>
           </div>
@@ -1139,7 +1149,7 @@
           <form class="row" novalidate onsubmit={addAdmin}>
             <div class="field grow">
               <label for="admin-email">Email</label>
-              <input id="admin-email" class="input" type="email" autocomplete="off" bind:value={adminEmail} aria-invalid={adminError ? 'true' : undefined} aria-describedby={adminError ? 'admin-error' : undefined} />
+              <input id="admin-email" aria-required="true" class="input" type="email" autocomplete="off" bind:value={adminEmail} aria-invalid={adminError ? 'true' : undefined} aria-describedby={adminError ? 'admin-error' : undefined} />
               {#if adminError}<p id="admin-error" class="field-error">{adminError}</p>{/if}
             </div>
             <button type="submit" class="btn btn-secondary">Add co-organiser</button>
@@ -1149,22 +1159,23 @@
         <div class="sub" role="group" aria-labelledby="clone-title">
           <h3 id="clone-title">Clone</h3>
           <p class="muted small">Copies the settings and problems into a new, unpublished contest.</p>
-          <form class="grid" novalidate onsubmit={cloneContest}>
+          <p class="field-help">All three are required.</p>
+          <form id="clone-form" class="grid" novalidate onsubmit={cloneContest}>
             <div class="field">
               <label for="clone-slug">New slug</label>
-              <input id="clone-slug" class="input mono" type="text" bind:value={cloneSlug} />
+              <input id="clone-slug" aria-required="true" class="input mono" type="text" bind:value={cloneSlug} aria-invalid={cloneField === 'slug' ? 'true' : undefined} aria-describedby={cloneField === 'slug' ? 'clone-error' : undefined} />
             </div>
             <div class="field">
               <label for="clone-start">Starts</label>
-              <input id="clone-start" class="input" type="datetime-local" bind:value={cloneStart} />
+              <input id="clone-start" aria-required="true" class="input" type="datetime-local" bind:value={cloneStart} aria-invalid={cloneField === 'start' ? 'true' : undefined} aria-describedby={cloneField === 'start' ? 'clone-error' : undefined} />
             </div>
             <div class="field">
               <label for="clone-end">Ends</label>
-              <input id="clone-end" class="input" type="datetime-local" bind:value={cloneEnd} />
+              <input id="clone-end" aria-required="true" class="input" type="datetime-local" bind:value={cloneEnd} aria-invalid={cloneField === 'end' ? 'true' : undefined} aria-describedby={cloneField === 'end' ? 'clone-error' : undefined} />
             </div>
             <div class="actions span">
               <button type="submit" class="btn btn-secondary">Clone contest</button>
-              {#if cloneError}<p class="field-error" role="alert">{cloneError}</p>{/if}
+              {#if cloneError}<p id="clone-error" class="field-error" role="alert">{cloneError}</p>{/if}
             </div>
           </form>
         </div>

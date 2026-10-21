@@ -21,6 +21,7 @@
   import { ApiError, errorText, sendJSON } from '../../lib/api';
   import { formatDateTime } from '../../lib/format';
   import { MIN_REASON, noteCounter, noteLength, type CaseAppeal } from '../../lib/review';
+  import { focusFirstInvalid } from '../../lib/focus';
   import { appealState } from '../../lib/standing';
   import { showToast } from '../../lib/toast.svelte';
 
@@ -83,6 +84,8 @@
     } catch (e) {
       if (e instanceof ApiError && (e.fields.reason || e.fields.sole_organiser_reason)) {
         errors = { ...errors, reason: e.fields.reason ?? '', sole: e.fields.sole_organiser_reason ?? '' };
+        confirming = false;
+        await focusFirstInvalid(`#${uid}`);
       } else {
         refusal = errorText(e);
       }
@@ -128,6 +131,7 @@
         <label for="{uid}-reason">Reason for the ruling, for the student</label>
         <textarea
           id="{uid}-reason"
+          aria-required="true"
           class="input"
           rows="3"
           bind:value={reason}
@@ -144,6 +148,7 @@
             <label for="{uid}-sole">Why you rule alone</label>
             <textarea
               id="{uid}-sole"
+              aria-required="true"
               class="input"
               rows="2"
               bind:value={soleReason}

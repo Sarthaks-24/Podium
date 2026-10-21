@@ -34,7 +34,7 @@
   import AppealRuling from '../components/students/AppealRuling.svelte';
   import { onMount, tick } from 'svelte';
   import { ApiError, errorText, getJSON, sendJSON } from '../lib/api';
-  import { keepHeadingFocus } from '../lib/focus';
+  import { focusFirstInvalid, keepHeadingFocus } from '../lib/focus';
   import { formatDateTime } from '../lib/format';
   import { setTitle } from '../lib/head';
   import { caseStateWord, MIN_REASON, noteCounter, noteLength, outcomePhrase, outcomeWord, type CaseAppeal } from '../lib/review';
@@ -132,8 +132,7 @@
     if (!rec) return;
     errors = ratingEditProblems(valueText, reason, rec.rating.value_tenths);
     if (errors.value || errors.reason) {
-      await tick();
-      document.querySelector<HTMLElement>('#rating-form [aria-invalid="true"]')?.focus();
+      await focusFirstInvalid('#rating-form');
       return;
     }
     const parsed = parseRating(valueText);
@@ -159,6 +158,8 @@
       if (handle(e)) return;
       if (e instanceof ApiError && (e.fields.reason || e.fields.value_tenths)) {
         errors = { value: e.fields.value_tenths ?? '', reason: e.fields.reason ?? '' };
+        confirm = null;
+        await focusFirstInvalid('#rating-form');
       } else {
         editError = errorText(e);
       }
@@ -292,10 +293,12 @@
       <section class="panel" aria-labelledby="edit-title">
         <h2 id="edit-title">Edit rating</h2>
         <form id="rating-form" class="form" novalidate onsubmit={askEdit}>
+          <p class="field-help">Both fields are required.</p>
           <div class="field value-field">
             <label for="rating-value">New rating, 0 to 10</label>
             <input
               id="rating-value"
+              aria-required="true"
               class="input mono"
               inputmode="decimal"
               autocomplete="off"
@@ -316,7 +319,7 @@
               aria-invalid={errors.reason ? 'true' : undefined}
               aria-describedby="rating-reason-help rating-reason-count{errors.reason ? ' rating-reason-error' : ''}"
             ></textarea>
-            <p id="rating-reason-help" class="field-help">Required. The student reads it on their standing as "Standing adjusted by an organiser", and can appeal.</p>
+            <p id="rating-reason-help" class="field-help">The student reads it on their standing as "Standing adjusted by an organiser", and can appeal.</p>
             <p id="rating-reason-count" class="field-help">{noteCounter(reason)}</p>
             {#if errors.reason}<p id="rating-reason-error" class="field-error">{errors.reason}</p>{/if}
           </div>

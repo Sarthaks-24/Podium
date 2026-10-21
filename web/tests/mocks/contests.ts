@@ -557,6 +557,7 @@ export async function mockApi(page: Page, options: Options = {}) {
       }
       if (path === '/api/admin/contests' && method === 'POST') {
         const body = req.postDataJSON() as Json;
+        if (body.slug === 'week-6') return apiError(route, 409, 'conflict', 'Check the highlighted fields.', { fields: { slug: 'Another contest uses this slug. Choose another.' } });
         return json(route, 201, { ...adminContest(), id: 9, title: body.title, slug: body.slug });
       }
       if (path === '/api/admin/contests/4' && method === 'GET') return json(route, 200, adminContest());

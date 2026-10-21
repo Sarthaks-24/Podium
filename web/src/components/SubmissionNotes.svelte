@@ -133,6 +133,8 @@
       if (e instanceof ApiError && (e.fields.text || e.fields.lines)) {
         textError = e.fields.text ?? '';
         linesError = e.fields.lines ?? '';
+        await tick();
+        dialog?.querySelector<HTMLElement>('[aria-invalid="true"]')?.focus();
       } else {
         sendError = errorText(e);
       }
@@ -182,6 +184,7 @@
         <label for="note-text">New note</label>
         <textarea
           id="note-text"
+          aria-required="true"
           class="input"
           rows="3"
           maxlength={MAX_NOTE}

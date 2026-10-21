@@ -285,8 +285,12 @@
       document.getElementById('decide-title')?.focus();
     } catch (e) {
       if (handleAuth(e)) return;
-      if (e instanceof ApiError && e.fields.note) noteError = e.fields.note;
-      else actionError = errorText(e);
+      if (e instanceof ApiError && e.fields.note) {
+        noteError = e.fields.note;
+        confirm = null;
+        await tick();
+        noteField?.focus();
+      } else actionError = errorText(e);
       stale = e instanceof ApiError && e.code === 'explanation_changed';
     } finally {
       busy = false;
@@ -477,6 +481,7 @@
               <label for="case-decision-note">Note for the log</label>
               <textarea
                 id="case-decision-note"
+                aria-required="true"
                 class="input"
                 rows="3"
                 bind:this={noteField}
@@ -493,7 +498,7 @@
               {#if !kase.may_confirm && kase.sole_organiser}
                 <div class="field">
                   <label for="sole-reason">Why you confirm alone</label>
-                  <textarea id="sole-reason" class="input" rows="2" bind:value={soleReason} aria-invalid={soleError ? 'true' : undefined} aria-describedby={soleError ? 'sole-error' : undefined}></textarea>
+                  <textarea id="sole-reason" aria-required="true" class="input" rows="2" bind:value={soleReason} aria-invalid={soleError ? 'true' : undefined} aria-describedby={soleError ? 'sole-error' : undefined}></textarea>
                   {#if soleError}<p id="sole-error" class="field-error">{soleError}</p>{/if}
                 </div>
               {/if}
@@ -573,6 +578,7 @@
                 <label for="student-reason">Reason, for the student</label>
                 <textarea
                   id="student-reason"
+                  aria-required="true"
                   class="input"
                   rows="3"
                   bind:value={studentReason}

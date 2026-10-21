@@ -376,6 +376,23 @@ test('admins land on their contest list, named by job', async ({ page }) => {
   await expect(page).toHaveURL('/admin/contests/9');
 });
 
+test('a new contest marks its required fields, and a field error from the server takes focus (X7)', async ({ page }) => {
+  await mockApi(page, { who: 'admin', phase: 'upcoming' });
+  await page.goto('/admin/contests');
+  await page.getByRole('button', { name: 'New contest' }).click();
+  const form = page.locator('#create-contest');
+  await expect(form.getByText('All fields are required.')).toBeVisible();
+  for (const name of ['Title', 'Slug', 'Starts', 'Ends']) await expect(form.getByLabel(name, { exact: true })).toHaveAttribute('aria-required', 'true');
+  await form.getByLabel('Title', { exact: true }).fill('Week 6');
+  await form.getByLabel('Starts', { exact: true }).fill('2026-11-01T18:00');
+  await form.getByLabel('Ends', { exact: true }).fill('2026-11-01T20:00');
+  await page.getByRole('button', { name: 'Create contest' }).click();
+  const slug = form.getByLabel('Slug', { exact: true });
+  await expect(slug).toBeFocused();
+  await expect(slug).toHaveAttribute('aria-invalid', 'true');
+  await expect(page.locator('#new-slug-error')).toHaveText('Another contest uses this slug. Choose another.');
+});
+
 test('students cannot open the contest admin', async ({ page }) => {
   await mockApi(page, { phase: 'during' });
   await page.goto('/admin/contests');
