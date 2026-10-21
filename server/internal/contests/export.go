@@ -141,7 +141,36 @@ type ExportSubmission struct {
 	Score        int    `json:"score"`
 	CreatedAt    int64  `json:"created_at"`
 	Practice     bool   `json:"practice"`
+	// Toolchain is the compilers of the judge that ran its latest job.
+	Toolchain *Toolchain `json:"toolchain"`
 }
+
+// Toolchain is the compiler and runtime versions a judge reported for the
+// job that judged a submission (PLAN "which compiler judged this",
+// C2-028), or nil when the job ran before the registry or on a judge that
+// sent no report. The versions are the judge's own strings: shown as
+// text, never as HTML.
+type Toolchain struct {
+	GCC    string `json:"gcc"`
+	Java   string `json:"java"`
+	Python string `json:"python"`
+	Node   string `json:"node"`
+}
+
+// toolchainOf decodes toolchains.details as read through a LEFT JOIN.
+func toolchainOf(details *string) *Toolchain {
+	if details == nil {
+		return nil
+	}
+	var t Toolchain
+	if json.Unmarshal([]byte(*details), &t) != nil {
+		return nil
+	}
+	return &t
+}
+
+// toolchainJoin reaches a submission's toolchain through its job.
+const toolchainJoin = " LEFT JOIN jobs j ON j.id = s.job_id LEFT JOIN toolchains t ON t.id = j.toolchain_id"
 
 // ExportSubmissions lists every submission of the contest, oldest first,
 // without code or integrity data.
@@ -150,8 +179,8 @@ func (s *Service) ExportSubmissions(ctx context.Context, c *Contest) ([]ExportSu
 	for _, p := range c.Problems {
 		labels[p.ProblemID] = p.Label
 	}
-	rows, err := s.DB.QueryContext(ctx, `SELECT id, user_id, problem_id, language, state, verdict, score, created_at, practice
-		FROM submissions WHERE contest_id = ? AND kind = 'submit' ORDER BY id`, c.ID)
+	rows, err := s.DB.QueryContext(ctx, `SELECT s.id, s.user_id, s.problem_id, s.language, s.state, s.verdict, s.score, s.created_at, s.practice,
+		t.details FROM submissions s`+toolchainJoin+` WHERE s.contest_id = ? AND s.kind = 'submit' ORDER BY s.id`, c.ID)
 	if err != nil {
 		return nil, err
 	}
@@ -160,10 +189,12 @@ func (s *Service) ExportSubmissions(ctx context.Context, c *Contest) ([]ExportSu
 	for rows.Next() {
 		var e ExportSubmission
 		var pid int64
-		if err := rows.Scan(&e.ID, &e.UserID, &pid, &e.Language, &e.State, &e.Verdict, &e.Score, &e.CreatedAt, &e.Practice); err != nil {
+		var tc *string
+		if err := rows.Scan(&e.ID, &e.UserID, &pid, &e.Language, &e.State, &e.Verdict, &e.Score, &e.CreatedAt, &e.Practice, &tc); err != nil {
 			return nil, err
 		}
 		e.ProblemLabel = labels[pid]
+		e.Toolchain = toolchainOf(tc)
 		out = append(out, e)
 	}
 	return out, rows.Err()
@@ -337,6 +368,8 @@ type FeedItem struct {
 	// submission and the manual case opened from it, for reviewers only.
 	NoteCount *int   `json:"note_count,omitempty"`
 	CaseID    *int64 `json:"case_id,omitempty"`
+	// Toolchain is the compilers that judged it; nil while it waits.
+	Toolchain *Toolchain `json:"toolchain"`
 }
 
 // Feed lists the contest's submissions, newest first, a page at a time,
@@ -350,8 +383,8 @@ func (s *Service) Feed(ctx context.Context, c *Contest, f FeedFilter) ([]FeedIte
 		f.Page = 1
 	}
 	q := `SELECT s.id, s.user_id, coalesce(nullif(u.name, ''), u.email), u.email, s.problem_id, s.language, s.state, s.verdict, s.score,
-		s.max_score, s.created_at, s.judged_at, s.practice, s.rejudged_at IS NOT NULL, s.typed_chars, s.pasted_chars, s.focus_losses
-		FROM submissions s JOIN users u ON u.id = s.user_id WHERE s.contest_id = ? AND s.kind = 'submit'`
+		s.max_score, s.created_at, s.judged_at, s.practice, s.rejudged_at IS NOT NULL, s.typed_chars, s.pasted_chars, s.focus_losses, t.details
+		FROM submissions s JOIN users u ON u.id = s.user_id` + toolchainJoin + ` WHERE s.contest_id = ? AND s.kind = 'submit'`
 	args := []any{c.ID}
 	if f.ProblemID > 0 {
 		q += " AND s.problem_id = ?"
@@ -386,10 +419,12 @@ func (s *Service) Feed(ctx context.Context, c *Contest, f FeedFilter) ([]FeedIte
 		var pid int64
 		var judged *int64
 		var typed, pasted, losses int
+		var tc *string
 		if err := rows.Scan(&it.ID, &it.UserID, &it.Name, &it.Email, &pid, &it.Language, &it.State, &it.Verdict, &it.Score,
-			&it.MaxScore, &it.CreatedAt, &judged, &it.Practice, &it.Rejudged, &typed, &pasted, &losses); err != nil {
+			&it.MaxScore, &it.CreatedAt, &judged, &it.Practice, &it.Rejudged, &typed, &pasted, &losses, &tc); err != nil {
 			return nil, false, err
 		}
+		it.Toolchain = toolchainOf(tc)
 		if f.IntegrityCounts {
 			it.TypedChars, it.PastedChars, it.FocusLosses = &typed, &pasted, &losses
 		}
@@ -397,6 +432,7 @@ func (s *Service) Feed(ctx context.Context, c *Contest, f FeedFilter) ([]FeedIte
 		it.ProblemLabel = labels[pid]
 		if f.Hide.Covers(time.UnixMilli(it.CreatedAt)) && it.State != "error" {
 			it.State, it.Verdict, it.Score, it.JudgedAt, it.Rejudged, it.Hidden = "submitted", "", 0, nil, false, true
+			it.Toolchain = nil
 		}
 		out = append(out, it)
 	}

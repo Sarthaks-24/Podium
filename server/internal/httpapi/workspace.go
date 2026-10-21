@@ -251,12 +251,33 @@ func (d Deps) getRun(w http.ResponseWriter, r *http.Request) {
 // gives up, so for a phone or tablet browser the address is left out and
 // the same browser on a new network is the same device (council C1-051).
 // A desktop keeps the address: identical lab machines differ only by it.
+// A phone or tablet that sends ?device= (a random id its browser keeps)
+// is told apart by it, so two phones of one model on one account are two
+// devices (C2-034); the id never replaces a desktop's address, where a
+// shared id would hide two machines.
 func (d Deps) streamTag(r *http.Request) string {
 	ua := r.UserAgent()
 	if mobileAgent(ua) {
+		if dev := r.URL.Query().Get("device"); deviceID(dev) {
+			return d.Submissions.ClientHash("device:"+dev, ua)
+		}
 		return d.Submissions.ClientHash("", ua)
 	}
 	return d.Submissions.ClientHash(clientIP(r), ua)
+}
+
+// deviceID reports a well-formed ?device= value: 1 to 64 letters and
+// digits. Anything else is ignored, as if it were absent.
+func deviceID(s string) bool {
+	if len(s) < 1 || len(s) > 64 {
+		return false
+	}
+	for _, c := range s {
+		if !(c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9') {
+			return false
+		}
+	}
+	return true
 }
 
 // mobileAgent reports a phone or tablet browser by its user agent.

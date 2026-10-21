@@ -34,10 +34,10 @@ RELEASE    := release/podium-$(VERSION)
 # The oldest installed release this one upgrades from; install.sh upgrade
 # refuses an older one. Raise it in the release that drops something an
 # older release still needs (a contract migration, PLAN.md section 8).
-# Pending the owner's release decision (D236): nothing is tagged yet, so
-# v1.0.0 is a placeholder. Option A (one release v1.5.0, installed fresh)
-# sets v1.5.0 here; option B (v1.0.0 to v1.2.0 as markers, then v1.5.0)
-# sets v1.2.0. The CHANGELOG's Unreleased section says the same.
+# Pending the owner's release decision (D236): nothing is tagged, so v1.0.0
+# is a placeholder. Option A (one release for P0 to P6, installed fresh, as
+# v1.5.0 or v2.0.0) sets that version here; option B (v1.0.0 to v1.2.0 as
+# markers, then one release) sets v1.2.0. The CHANGELOG says the same.
 UPGRADES_FROM ?= v1.0.0
 
 # Run a root command inside WSL2 when on Windows, directly otherwise.
@@ -101,7 +101,12 @@ check: ## Everything CI runs: formatting, vet, svelte-check, ESLint, tests
 	@test -d web/node_modules || (cd web && npm ci)
 	cd web && npm run check && npm run lint
 	bash tools/install-test.sh
+	bash tools/deploy-test.sh
 	$(MAKE) test
+
+# The problem packs the M2 and M3 acceptance tests judge, as the judge user
+# reads them; CI passes a world-readable copy (C2-012).
+SANDBOX_EXAMPLES ?= $(LINUX_CURDIR)/problems
 
 .PHONY: sandbox-test
 sandbox-test: ## Hostile-program suite and M2 and M3 acceptance in isolate (Linux, or WSL2 on Windows)
@@ -109,7 +114,7 @@ sandbox-test: ## Hostile-program suite and M2 and M3 acceptance in isolate (Linu
 	cd server && $(GOFLAGS_LINUX) go test -c -tags sandbox -o bin/worker.test ./internal/worker
 	$(LINUX) bash tools/sandbox-test.sh server/bin/calib.test -test.v -test.timeout 10m
 	@# MSYS_NO_PATHCONV: Git Bash would turn the /mnt path into a Windows one.
-	MSYS_NO_PATHCONV=1 $(LINUX) bash tools/sandbox-test.sh server/bin/worker.test -test.v -test.timeout 20m -examples "$(LINUX_CURDIR)/problems"
+	MSYS_NO_PATHCONV=1 $(LINUX) bash tools/sandbox-test.sh server/bin/worker.test -test.v -test.timeout 20m -examples "$(SANDBOX_EXAMPLES)"
 
 .PHONY: calibrate
 calibrate: ## Measure this judge host and print the calibration tables
@@ -117,7 +122,13 @@ calibrate: ## Measure this judge host and print the calibration tables
 	$(LINUX) bash tools/sandbox-test.sh server/bin/podium-judge calibrate -reps 5
 
 .PHONY: release
-release: check build ## Build the release tarball in release/
+release: check package ## Build the release tarball in release/ (runs check first)
+
+# package is release without check, for the upgrade drill's rehearsal
+# build with an extra, never committed migration: the migration tests list
+# the real migrations, so check fails on that tree by design.
+.PHONY: package
+package: build ## Release tarball without check (drill rehearsal builds only)
 	bash tools/check-placeholders.sh
 	rm -rf $(RELEASE) && mkdir -p $(RELEASE)/bin $(RELEASE)/env
 	cp server/bin/podium-server server/bin/podium-judge $(RELEASE)/bin/

@@ -576,14 +576,22 @@ func (s *Service) SetProblems(ctx context.Context, id int64, choices []ProblemCh
 		return nil, err
 	}
 	defer tx.Rollback()
-	var graded bool
-	err = tx.QueryRowContext(ctx, "SELECT graded FROM contests WHERE id = ?", id).Scan(&graded)
+	var graded, published, practice bool
+	var startsAt, endsAt int64
+	err = tx.QueryRowContext(ctx, "SELECT graded, published, practice_after_end, starts_at, ends_at FROM contests WHERE id = ?", id).
+		Scan(&graded, &published, &practice, &startsAt, &endsAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
 	if err != nil {
 		return nil, err
 	}
+	// Once students could see hidden tests here (an ungraded contest that
+	// started, or practice after the end, D115), its problems stay: the
+	// bank marks a problem as shown from the contests that hold it
+	// (C2-014), and taking it out would hide that before a graded exam.
+	nowMs := s.now().UnixMilli()
+	shown := published && ((!graded && startsAt <= nowMs) || (practice && endsAt <= nowMs))
 	var before []pin
 	rows, err := tx.QueryContext(ctx, `SELECT cp.label, cp.problem_id, coalesce(r.content_hash, ''), coalesce(cp.revision_id, 0), coalesce(r.rev, 0)
 		FROM contest_problems cp LEFT JOIN problem_revisions r ON r.id = cp.revision_id WHERE cp.contest_id = ? ORDER BY cp.ord`, id)
@@ -601,6 +609,17 @@ func (s *Service) SetProblems(ctx context.Context, id int64, choices []ProblemCh
 	rows.Close()
 	if err := rows.Err(); err != nil {
 		return nil, err
+	}
+	if shown {
+		kept := map[int64]bool{}
+		for _, ch := range choices {
+			kept[ch.ProblemID] = true
+		}
+		for _, p := range before {
+			if !kept[p.ProblemID] {
+				return nil, FieldErrors{"problems": fmt.Sprintf("Problem %s stays in this contest: students have seen its hidden tests here, in practice or while the contest was ungraded, and the problem bank shows that from this contest.", p.Label)}
+			}
+		}
 	}
 	if _, err := tx.ExecContext(ctx, "DELETE FROM contest_problems WHERE contest_id = ?", id); err != nil {
 		return nil, err

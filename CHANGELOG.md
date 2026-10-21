@@ -4,14 +4,14 @@ Dated entries per release. Unreleased work is listed at the top.
 
 ## Unreleased
 
-Nothing below is tagged or deployed. The v2 phases were planned as the releases v1.0.0 (P0) to v1.5.0 (P5) and v2.0.0 (P6); they reached `main` together, so they are proposed to ship as one release once the P0 drills on the VM pass. The owner decides the version and the upgrade path (D236): either one release `v1.5.0`, installed fresh, with `UPGRADES_FROM` set to `v1.5.0`, or `v1.0.0` to `v1.2.0` tagged as markers and the rest as `v1.5.0` with `UPGRADES_FROM` set to `v1.2.0`. Until then the `Makefile` keeps the placeholder `v1.0.0`. The phase labels below say where each change came from.
+Nothing below is tagged or deployed. The v2 phases were planned as the releases v1.0.0 (P0) to v1.5.0 (P5) and v2.0.0 (P6); they reached `main` together, so they are proposed to ship as one release once the P0 drills on the VM pass. The owner decides the version and the upgrade path (D236): either one release for P0 to P6, installed fresh, named `v1.5.0` or `v2.0.0`, with `UPGRADES_FROM` set to that version, or `v1.0.0` to `v1.2.0` tagged as markers and the rest as one release with `UPGRADES_FROM` set to `v1.2.0`. Until then the `Makefile` keeps the placeholder `v1.0.0`. The phase labels below say where each change came from.
 
 ### v2 P6 (close)
 
 #### Backend (2026-10-21)
 
 - No contract migration: P4's migrations 0013 and 0014 kept no column for a release, so the schema stays at 0014 (D259).
-- `tools/install-test.sh` checks the upgrade-path refusals: an older release than `upgrades_from`, an unversioned install and a downgrade are refused before anything changes. A release must be named `vX.Y.Z` (`make release VERSION=v1.5.0` on an untagged commit), so every install can be upgraded later.
+- `tools/install-test.sh` checks the upgrade-path refusals: an older release than `upgrades_from`, an unversioned install and a downgrade are refused before anything changes. A release must be named `vX.Y.Z` (`make release VERSION=vX.Y.Z` on an untagged commit), so every install can be upgraded later.
 - Final security and code review of the whole v2 diff: `podium-check` no longer evaluates the server's `/healthz` numbers as shell code as root; `install.sh` makes podium's folders as podium, so a planted symlink cannot make root chown another folder; a rollback refuses to run on a missing or unreadable database; the configuration check runs before the deploy guard, so a forced deploy is recorded only for an upgrade that goes on; temporary files and the deploy folder on the VM get random names; `podium-server migrate` refuses a database in use; a failed prune no longer stops the copy off the VM; `check-secrets` knows age, PGP and fine-grained GitHub keys, alert URLs and key and database file names.
 - The nightly check no longer fails on the pins retention releases, which would have refused every backup from the first contest's fourth anniversary; an expired contest is never summarised again as all zeros.
 - A case shared during a student's live contest stays hidden until it ends, even when cleared first. A reviewer never sees signals, notes or rating lines of a case they are a student of. A co-organiser whose site role is student no longer reads extension reasons or the held reveal's full board. A renamed contest's old web path redirects only when signed in.
@@ -19,13 +19,30 @@ Nothing below is tagged or deployed. The v2 phases were planned as the releases 
 
 #### Frontend (2026-10-21)
 
-- A student's first load no longer carries the organiser screens: every admin route loads on first visit. The entry script and its preloads fell from 675 kB to 332 kB (211 kB to 112 kB gzipped); CI fails when they pass 120 kB gzipped or the stylesheets 16 kB (F8.1, F8.3).
+- A student's first load no longer carries the organiser screens: every admin route loads on first visit. The entry script and its preloads fell from 675 kB to 332 kB (211 kB to 112 kB gzipped); a CI step fails when they pass 120 kB gzipped or the stylesheets 16 kB (F8.1, F8.3; the step has not run on GitHub yet).
 - KaTeX and its stylesheet load only when a text holds maths; until then a formula reads as its TeX source. Statement images load lazily. The 500 face and Fragment Mono are preloaded with 400 and 600 (F8.2, D91).
 - Toasts fade out at the short duration; the subtask strip fills by transform; both stay still under reduced motion. "Grade as the AI wrote it" names what is graded (F8.4).
 - The problem editor's preview and context column sit under the sticky bar at any height, and fields reached from the error list clear it (F8.5, R3).
 - Compile-error jump buttons start their name with the location they show (X6).
 - Admin and reviewer forms mark required fields, say which are optional, and move focus to a field error the server returns (X7).
 - Final web audit: date and time inputs show a focus ring on their calendar button, disclosure summaries are 24 px tall, and code, test data and compiler output are never machine-translated.
+
+### Council run 2 fixes (2026-10-21)
+
+#### Backend and operations
+
+- `tools/deploy.sh` names the release before it asks the guard or builds: the commit's `vX.Y.Z` tag, or `VERSION=vX.Y.Z` for a drill build; anything else, or uncommitted changes, stops at once instead of after the build. `tools/deploy-test.sh` covers it in `make check`.
+- `make package` builds the release tarball without `make check`, for the upgrade drill's build with a never-committed migration.
+- The release workflow builds a tag only when `ci` passed on its commit, and `make release` refuses a `v1.5.0` or later release that still upgrades from the placeholder `v1.0.0`.
+- A semester rollover apply can name its preview's time (`as_of`), so it disables only the accounts the preview listed.
+- The organiser feed and the JSON export name the compilers that judged each submission (`toolchain`).
+- `GET /api/events` accepts a browser's `?device=` id, so two phones of one model on one account count as two devices.
+- A problem opened before its contest starts says the contest has not started yet, instead of asking to accept rules that cannot be accepted until the start.
+- A reviewer who is a student of a case with a classmate can no longer write notes on the classmate's submissions in that contest, open a case from them (which copied the notes), read a manual case about them, see their note counts in the feed, or edit, confirm or decline their rating (D262 on every path). Notes and cases on one's own submission answer 404 instead of 400.
+- Opening a case (from signals or from a submission) is logged as a read of it, as every later read is (D97).
+- The bank's "hidden tests shown in practice" mark counts only published contests, and a problem whose hidden tests a published contest has shown can no longer be taken out of that contest, which used to make the mark disappear.
+- `install.sh` reads the backup folder from `PODIUM_BACKUP_DIR` (upgrade, rollback record and verify), and nightly backups are named to the second.
+- The rsync and encrypted copies never stop the local backup: a problem with their settings warns before it and fails the unit after it; `install.sh verify` checks the rsync copy's root key.
 
 ### Council run 1 fixes (2026-10-21)
 

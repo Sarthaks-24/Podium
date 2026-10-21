@@ -3,12 +3,17 @@
 # Git Bash on Windows (or any bash with make, ssh and scp).
 #
 #   tools/deploy.sh HOST [--force "<reason>"]
+#   VERSION=vX.Y.Z tools/deploy.sh HOST [--force "<reason>"]
 #
 # HOST is what you type after ssh, for example owner@contest.example.edu
-# (your own account with sudo, never the podium service user) or an alias from ~/.ssh/config. In order:
+# (your own account with sudo, never the podium service user) or an alias
+# from ~/.ssh/config. The release is named by VERSION when it is set (a
+# drill build, C2-002), otherwise by the vX.Y.Z tag on this commit; with
+# neither, or with uncommitted changes, it stops before anything else. In
+# order:
 #   1. asks the running server's deploy guard (podium-server deploy-check)
 #      over ssh, before anything is built or copied (D112);
-#   2. make release;
+#   2. make release VERSION=<that version>;
 #   3. shows the tarball, its SHA-256 and the destination, and asks you to
 #      type the host name before anything leaves this machine;
 #   4. scp to /tmp on the VM, unpack, and sudo ./install.sh upgrade there,
@@ -29,12 +34,17 @@ fi
 [[ $host != -* ]] || die "HOST must not start with -"
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
-# Every deploy is a tag (D105): say so when this commit is not one.
-version=$(git describe --tags --always --dirty 2>/dev/null || echo dev)
-if ! git describe --tags --exact-match >/dev/null 2>&1 || [[ $version == *-dirty ]]; then
-  echo "This commit is not exactly a tag (version would be $version). Every deploy should be a tag (D105)."
-  read -r -p "Deploy it anyway? Type yes: " answer
-  [[ $answer == yes ]] || die "stopped; tag the commit (the owner pushes tags) and run again"
+# A release must be named vX.Y.Z (D260), so decide the name before the
+# guard and the build: VERSION when given (a drill build), otherwise the
+# tag on this commit. make release would refuse any other name, but only
+# after minutes of building.
+version=${VERSION:-$(git describe --tags --exact-match 2>/dev/null || true)}
+[[ $version =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] \
+  || die "this commit is not a vX.Y.Z tag${version:+ ($version)}: tag it, or run VERSION=vX.Y.Z tools/deploy.sh HOST"
+git diff --quiet HEAD -- 2>/dev/null \
+  || die "the working tree has uncommitted changes; commit or stash them, so the release is what the commit says"
+if [[ -n ${VERSION:-} ]]; then
+  echo "Building $version from VERSION, not from a tag: for drill builds only (D105)."
 fi
 
 echo "== 1/4 deploy guard on $host"
@@ -47,8 +57,8 @@ case $code in
   *) echo "The guard could not answer (exit $code): an older server without deploy-check, or no database yet. install.sh upgrade runs the new release's guard before installing." ;;
 esac
 
-echo "== 2/4 make release"
-make release
+echo "== 2/4 make release VERSION=$version"
+make release VERSION="$version"
 tarball=release/podium-$version.tar.gz
 [[ -f $tarball ]] || die "make release did not write $tarball"
 

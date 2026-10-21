@@ -86,17 +86,26 @@ heartbeat=$(value PODIUM_HEARTBEAT_URL)
 [[ -d $dest ]] || die "$dest does not exist; run: sudo ./install.sh backup"
 command -v sqlite3 >/dev/null || die "sqlite3 is not installed; run: sudo ./install.sh packages"
 [[ $keep =~ ^[0-9]+$ && $keep -ge 1 ]] || die "PODIUM_BACKUP_KEEP_DAYS must be a whole number of days, 1 or more (in $env_file)"
+# The copies off the VM are checked here but never stop the local backup
+# (C2-010): a problem is printed now, and the script fails after the
+# local backup is made, so the alert still fires and the upgrade still
+# finds its pre-upgrade backup.
 # The rsync copy's key and known hosts: root's only (council C1-046), so a
 # server taken over as podium cannot use the key to rewrite or wipe the
 # copy on the other machine.
 ssh_dir=/etc/podium/backup-ssh
+rsync_bad=""
 if [[ -n $remote ]]; then
-  [[ $remote == *:* && $remote != -* ]] || die "PODIUM_BACKUP_RSYNC must look like user@host:/path (in $env_file)"
-  command -v rsync >/dev/null || die "rsync is not installed; run: sudo ./install.sh packages"
-  if (( EUID == 0 )); then
-    [[ -f $ssh_dir/id_ed25519 ]] || die "no key at $ssh_dir/id_ed25519 for the rsync copy (docs/OPERATIONS.md, \"Copy the nightly backup off the VM\")"
-    [[ $(stat -c '%U %a' "$ssh_dir" 2>/dev/null) == "root 700" ]] || die "$ssh_dir must be owned by root, mode 700: sudo chown root:root $ssh_dir && sudo chmod 700 $ssh_dir"
+  if [[ $remote != *:* || $remote == -* ]]; then
+    rsync_bad="PODIUM_BACKUP_RSYNC must look like user@host:/path (in $env_file)"
+  elif ! command -v rsync >/dev/null; then
+    rsync_bad="rsync is not installed; run: sudo ./install.sh packages"
+  elif (( EUID == 0 )) && [[ ! -f $ssh_dir/id_ed25519 ]]; then
+    rsync_bad="no key at $ssh_dir/id_ed25519 for the rsync copy (docs/OPERATIONS.md, \"Copy the nightly backup off the VM\")"
+  elif (( EUID == 0 )) && [[ $(stat -c '%U %a' "$ssh_dir" 2>/dev/null) != "root 700" ]]; then
+    rsync_bad="$ssh_dir must be owned by root, mode 700: sudo chown root:root $ssh_dir && sudo chmod 700 $ssh_dir"
   fi
+  [[ -z $rsync_bad ]] || echo "podium-backup: warning: the copy to $remote will not run: $rsync_bad" >&2
 fi
 
 # The encrypted copy needs all five of its variables, or none.
@@ -105,25 +114,35 @@ for v in PODIUM_BACKUP_AGE_RECIPIENT PODIUM_BACKUP_B2_PATH RCLONE_CONFIG_B2_TYPE
   [[ -n $(value "$v") ]] || offsite+=("$v")
 done
 encrypt=no
+offsite_bad=""
 if (( ${#offsite[@]} == 0 )); then
   encrypt=yes
-  [[ $recipient == age1* ]] || die "PODIUM_BACKUP_AGE_RECIPIENT must be an age public key starting with age1 (in $env_file)"
-  [[ $(value RCLONE_CONFIG_B2_TYPE) == b2 ]] || die "RCLONE_CONFIG_B2_TYPE must be b2 (in $env_file)"
-  [[ $b2path != /* && $b2path != *:* ]] \
-    || die "PODIUM_BACKUP_B2_PATH must be bucket/folder, without b2: or a leading / (in $env_file)"
-  command -v age >/dev/null || die "age is not installed; run: sudo ./install.sh backup"
-  command -v rclone >/dev/null || die "rclone is not installed; run: sudo ./install.sh backup"
+  if [[ $recipient != age1* ]]; then
+    offsite_bad="PODIUM_BACKUP_AGE_RECIPIENT must be an age public key starting with age1 (in $env_file)"
+  elif [[ $(value RCLONE_CONFIG_B2_TYPE) != b2 ]]; then
+    offsite_bad="RCLONE_CONFIG_B2_TYPE must be b2 (in $env_file)"
+  elif [[ $b2path == /* || $b2path == *:* ]]; then
+    offsite_bad="PODIUM_BACKUP_B2_PATH must be bucket/folder, without b2: or a leading / (in $env_file)"
+  elif ! command -v age >/dev/null; then
+    offsite_bad="age is not installed; run: sudo ./install.sh backup"
+  elif ! command -v rclone >/dev/null; then
+    offsite_bad="rclone is not installed; run: sudo ./install.sh backup"
+  fi
 elif (( ${#offsite[@]} < 5 )); then
-  die "the encrypted off-VM copy is half configured: set ${offsite[*]} in $env_file (docs/OPERATIONS.md, \"Encrypted copy off the VM\")"
+  offsite_bad="the encrypted off-VM copy is half configured: set ${offsite[*]} in $env_file (docs/OPERATIONS.md, \"Encrypted copy off the VM\")"
 else
   echo "podium-backup: warning: no encrypted copy off the VM; test files are lost with the VM's disk until PODIUM_BACKUP_AGE_RECIPIENT and the B2 settings are set in $env_file"
 fi
+[[ -z $offsite_bad ]] || echo "podium-backup: warning: no encrypted copy tonight: $offsite_bad" >&2
 if [[ -n $heartbeat && ( $heartbeat != https://* || $heartbeat == *[[:space:]]* || $heartbeat == *'"'* || $heartbeat == *'\'* ) ]]; then
   die "PODIUM_HEARTBEAT_URL must start with https:// and hold no spaces or quotes (in $env_file)"
 fi
 
-stamp=$(date -u +%Y-%m-%dT%H%MZ)
+# To the second: a backup started in the same minute as the last one (an
+# upgrade right after the timer) needs a folder of its own (C2-039).
+stamp=$(date -u +%Y-%m-%dT%H%M%SZ)
 final=$dest/$stamp
+[[ ! -e $final ]] || die "$final already exists; wait a second and start the backup again"
 work=$dest/.partial-$stamp
 as_podium rm -rf "$work"
 trap 'as_podium rm -rf "$work"' EXIT
@@ -155,7 +174,7 @@ as_podium ln -sfn "$stamp" "$dest/latest"
 
 # Keep PODIUM_BACKUP_KEEP_DAYS days. Names sort by date; never touch the
 # newest, whatever the clock says.
-cutoff=$(date -u -d "-$keep days" +%Y-%m-%dT%H%MZ)
+cutoff=$(date -u -d "-$keep days" +%Y-%m-%dT%H%M%SZ)
 for d in "$dest"/20*; do
   if [[ -d $d && $(basename "$d") < $cutoff && $d != "$final" ]]; then
     as_podium rm -rf "$d"
@@ -180,7 +199,7 @@ files=$(as_podium find "$final/tests" -type f | wc -l)
 count=$(as_podium find "$dest" -maxdepth 1 -name '20*' -type d | wc -l)
 echo "podium-backup: $final done in $(( $(date +%s) - start )) s: database $size, $files test files, $count backups kept"
 
-if [[ $encrypt == yes ]]; then
+if [[ $encrypt == yes && -z $offsite_bad ]]; then
   # One object per night: podium-<stamp>.tar.age, the database copy, the
   # test files and the check report. tar | age | rclone streams it, so
   # nothing unencrypted is written twice. Small chunks and one transfer
@@ -202,7 +221,7 @@ if [[ $encrypt == yes ]]; then
   echo "podium-backup: encrypted copy uploaded as podium-$stamp.tar.age"
 fi
 
-if [[ -n $remote ]]; then
+if [[ -n $remote && -z $rsync_bad ]]; then
   # -H keeps the hard links between nights, so the remote copy is as small
   # as the local one; --delete mirrors the pruning. BatchMode makes a
   # missing or unaccepted key fail at once instead of asking.
@@ -219,6 +238,11 @@ if [[ -n $remote ]]; then
   fi
   echo "podium-backup: copied to $remote"
 fi
+
+# A copy that could not run fails the unit now, after the local backup,
+# and before the heartbeat says all went well.
+[[ -z $offsite_bad ]] || die "the local backup is done, but there is no encrypted copy: $offsite_bad"
+[[ -z $rsync_bad ]] || die "the local backup is done, but the copy to $remote did not run: $rsync_bad"
 
 if [[ -n $heartbeat ]]; then
   # Silence at the heartbeat service is the alert, so a failed ping only

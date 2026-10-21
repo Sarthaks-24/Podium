@@ -138,6 +138,15 @@ func (s *Service) UpdatePin(ctx context.Context, contestID int64, label string, 
 			return nil, err
 		}
 	}
+	return s.applyPin(ctx, c, *cp, label, from, to, by)
+}
+
+// applyPin writes the update UpdatePin read and checked, in one
+// transaction that first re-reads the label's pin: one moved since cp was
+// read is ErrPinMoved, so two organisers never both update from the same
+// revision.
+func (s *Service) applyPin(ctx context.Context, c *Contest, cp ContestProblem, label string, from, to *problems.Revision, by Actor) (*PinUpdate, error) {
+	contestID := c.ID
 	tx, err := s.DB.BeginTx(ctx, nil)
 	if err != nil {
 		return nil, err

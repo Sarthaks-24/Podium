@@ -62,9 +62,13 @@ type BankEntry struct {
 
 // shownInPractice is the SQL for BankEntry.ShownInPractice of problem p
 // at the time given twice as arguments. Practice opens at the latest
-// final time, so ends_at marks it a little early, never late.
+// final time, so ends_at marks it a little early, never late. Only a
+// published contest shows anything to students (C2-014). It reads the
+// contests as they are now; contests.SetProblems keeps such a problem in
+// its contest, so the mark does not disappear when it is taken out.
 const shownInPractice = `EXISTS (SELECT 1 FROM contest_problems cp JOIN contests c ON c.id = cp.contest_id
-		WHERE cp.problem_id = p.id AND ((c.graded = 0 AND c.starts_at <= ?) OR (c.practice_after_end = 1 AND c.ends_at <= ?)))`
+		WHERE cp.problem_id = p.id AND c.published = 1
+		AND ((c.graded = 0 AND c.starts_at <= ?) OR (c.practice_after_end = 1 AND c.ends_at <= ?)))`
 
 // List returns the bank, newest change first.
 func (s *Service) List(ctx context.Context, archived bool) ([]BankEntry, error) {

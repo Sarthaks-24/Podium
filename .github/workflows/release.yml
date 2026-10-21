@@ -11,6 +11,8 @@ on:
 
 permissions:
   contents: write
+  # Read the ci workflow's runs: a tag builds only a commit ci passed.
+  actions: read
 
 jobs:
   release:
@@ -32,6 +34,16 @@ jobs:
           node-version: 22
           cache: npm
           cache-dependency-path: web/package-lock.json
+      - name: the ci run of this commit passed
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          conclusion=$(gh run list --repo "$GITHUB_REPOSITORY" --commit "$GITHUB_SHA" --workflow ci.yml \
+            --json status,conclusion -q '[.[] | select(.status == "completed")][0].conclusion')
+          if [ "$conclusion" != success ]; then
+            echo "ci has not passed on $GITHUB_SHA (latest finished run: ${conclusion:-none}). Push the commit, wait for ci to pass, then push the tag again."
+            exit 1
+          fi
       - run: make release VERSION="$TAG"
       - name: check the release names this tag
         run: |

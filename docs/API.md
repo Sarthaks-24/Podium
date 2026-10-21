@@ -270,7 +270,7 @@ Request: `{"label": "2026 odd semester", "ended_before": 1798761600000, "apply":
   "server_now": 1798700000000 }
 ```
 
-`accounts` are enabled student accounts whose last sign-in (or creation, when they never signed in) is more than `idle_days` ago; organisers and `PODIUM_OWNER_EMAIL` are never included. With `apply: true` the same lists come back as done: each contest is archived with an `archive` row in its audit log (`{"rollover": label}`), each account is disabled with its sessions ended, and one `semester_rollover` row goes to the site audit. Errors: `400 bad_request` with `fields.label`, `403 forbidden` for anyone but an owner.
+`accounts` are enabled student accounts whose last sign-in (or creation, when they never signed in) is more than `idle_days` ago; organisers and `PODIUM_OWNER_EMAIL` are never included. With `apply: true` the same lists come back as done: each contest is archived with an `archive` row in its audit log (`{"rollover": label}`), each account is disabled with its sessions ended, and one `semester_rollover` row goes to the site audit. An apply may send `as_of`, the preview's `server_now`: then only accounts idle at that moment are disabled, so an account that crossed the 180 days between the preview and the apply keeps its access (C2-033); an `as_of` in the future or more than an hour old is `400 bad_request`, "This preview is more than an hour old. Preview the rollover again, then apply it." Without `as_of` the idle list is read again at the apply, as before. Errors: `400 bad_request` with `fields.label`, `403 forbidden` for anyone but an owner.
 
 ## Problems (admin)
 
@@ -310,7 +310,7 @@ An `{id}` that is not a problem gives `404 not_found` on every route.
 
 - `difficulty` is `easy`, `medium`, `hard` or `""`. `origin` is `manual`, `import` or `ai` (made by the AI wizard). A wizard draft carries the tag `ai draft` until a person changes its statement, reference or brute force.
 - `validated` is true when the last passing validation covers the problem as it is now (its content hash equals the problem's). `validated_at` is `null` whenever `validated` is false.
-- `shown_in_practice` is true when a contest that pins the problem has shown students its hidden tests (D115): it is ungraded and has started, or it has practice after the end and its end has passed. Its hidden tests may be known, so the web app marks it in the bank and the contest editor, and names it when a graded contest with it is published.
+- `shown_in_practice` is true when a published contest that pins the problem has shown students its hidden tests (D115): it is ungraded and has started, or it has practice after the end and its end has passed. Such a contest keeps the problem (`PUT .../problems` refuses to drop it), so the mark does not disappear. Its hidden tests may be known, so the web app marks it in the bank and the contest editor, and names it when a graded contest with it is published.
 - Times are Unix milliseconds.
 
 `Problem` is `ProblemSummary` plus:
@@ -791,7 +791,7 @@ Kinds, the rate and the 5,000 cap are checked before anything is written.
 
 ### `GET /api/events` (signed in)
 
-A `text/event-stream` for the signed-in user, read with `EventSource`. Not JSON: `Cache-Control: no-store` and `X-Accel-Buffering: no`, and the connection stays open.
+A `text/event-stream` for the signed-in user, read with `EventSource`. Not JSON: `Cache-Control: no-store` and `X-Accel-Buffering: no`, and the connection stays open. Optional `?device=<id>`: a random id of 1 to 64 letters and digits the browser keeps. On a phone or tablet it tells two devices of one model apart for the second-session signal (C2-034, amending D273); a desktop is told apart by its address and ignores it; a malformed id is ignored.
 
 | Event | Data | When |
 |---|---|---|
@@ -903,7 +903,8 @@ The M3 `Workspace` plus:
 
 | Refusal | When |
 |---|---|
-| `403 not_started` "Accept the rules on the contest page to start." | before the student's window opens (also for reading the problem) |
+| `403 not_started` "The contest has not started yet. The contest page shows when it starts." | before the contest's start time, when accepting the rules is refused too (also for reading the problem) |
+| `403 not_started` "Accept the rules on the contest page to start." | after the start, before the student's window opens: the rules are not accepted yet (also for reading the problem) |
 | `403 contest_over` "The contest has ended." | the window is over and practice is off |
 | `403 contest_over` "Your time is up. Practice opens when every student's time is up." | the student's time is up but others are still in their windows (window mode, or a personal extension) |
 | `409 not_ready` | the problem changed since it was added to the contest (organisers must validate it and add it again) |
@@ -959,7 +960,7 @@ Every change that can affect results is recorded in the contest's audit log (bel
 | `PUT /api/admin/contests/{id}` | `ContestEdit` (fields left out keep their value) | 200 `AdminContest` |
 | `DELETE /api/admin/contests/{id}` | | 204 (archived; nothing deleted) |
 | `POST /api/admin/contests/{id}/clone` | `{slug, title, starts_at, ends_at}` | 201 `AdminContest`: settings and problems copied, not the roster, co-organisers, extensions or editorial |
-| `PUT /api/admin/contests/{id}/problems` (admin) | `[{"problem_id":3,"label":"A","ai_reason":"..."}]` (`ai_reason` optional) | 200 `AdminContest`; each problem must be validated and not tagged `ai draft` (a person edits AI drafts first); its content hash and subtask points are pinned. In a graded contest a problem whose origin is `ai` and for which no person has written a solution (no editor save has changed its reference or brute force) is `409 ai_unconfirmed` with the labels in `problems`, unless `ai_reason` (at least 10 characters) gives the admin's reason to grade it as written; the reason goes to the audit log, and once recorded for this contest it is not asked again. Errors name the label, never the problem's title |
+| `PUT /api/admin/contests/{id}/problems` (admin) | `[{"problem_id":3,"label":"A","ai_reason":"..."}]` (`ai_reason` optional) | 200 `AdminContest`; each problem must be validated and not tagged `ai draft` (a person edits AI drafts first); its content hash and subtask points are pinned. In a graded contest a problem whose origin is `ai` and for which no person has written a solution (no editor save has changed its reference or brute force) is `409 ai_unconfirmed` with the labels in `problems`, unless `ai_reason` (at least 10 characters) gives the admin's reason to grade it as written; the reason goes to the audit log, and once recorded for this contest it is not asked again. Once a published contest has shown students its hidden tests (ungraded and started, or practice after the end has opened), a change that drops one of its problems is `400` with `fields.problems` ("Problem A stays in this contest: ..."), so the bank's mark stays; adding problems is unchanged. Errors name the label, never the problem's title |
 | `GET /api/admin/contests/{id}/roster` | | 200 `{roster:[{email,name,roll_number,section}], count}` |
 | `PUT /api/admin/contests/{id}/roster` (admin) | `text/csv` (header row naming `email`, and optionally `name`, `roll_number`, `section`) or a JSON array of the same objects; at most 2 MB and 5,000 students | 200 `{added, removed, roster_count}`. A full replace: on a roster contest, anyone left out loses access at once, so show the counts before and after |
 | `POST`, `DELETE /api/admin/contests/{id}/admins` | `{"email":"ta@college.edu"}` (they must have signed in once) | 200 `AdminContest` |
@@ -1044,13 +1045,13 @@ Unknown actions may appear in later releases; show them by their name.
 
 - **Pause** stops the judge from taking the contest's submissions and runs; they still queue, and nothing is lost. **Resume** lets them through in order.
 - **Rejudge** queues every submission of a problem (or one submission) again at priority 50 with the problem's current tests; each goes back to `queued` and counts again once judged. Submissions still waiting for the judge, or being judged, on the old tests are included: their old job is cancelled and replaced. A submission already waiting on exactly the current tests is left alone, so pressing Rejudge twice adds nothing (`queued` counts only what was queued). The problem must still match its pin: after editing tests, validate the problem and add it to the contest again first (`409 not_ready` otherwise). A rejudge waiting in the queue never blocks the student from submitting.
-- **Feed** rows: `{id, user_id, name, email, problem_label, language, state, verdict, score, max_score, created_at, judged_at, practice, rejudged, typed_chars, pasted_chars, focus_losses}`, newest first, 50 per page.
+- **Feed** rows: `{id, user_id, name, email, problem_label, language, state, verdict, score, max_score, created_at, judged_at, practice, rejudged, typed_chars, pasted_chars, focus_losses, toolchain}`, newest first, 50 per page. `toolchain` is `{gcc, java, python, node}`, the versions the judge that ran the submission's latest job reported (plain text from the judge), or `null` while it waits, for a job from before the toolchain registry, and while results are hidden.
 - **Reveal** answers `409 too_early` "The reveal opens when every student's time is up." until the close plus the longest personal extension. The web app walks the frozen board from the bottom, moving each row to its place on the full board.
 
 ### Export and stats
 
 - CSV columns: `rank, name, email, roll_number, section, started` (UTC, RFC 3339), `total`, then one column per problem label. A cell starting with `=`, `+`, `-`, `@`, a tab or a carriage return gets a leading `'`, so a spreadsheet never runs a name as a formula.
-- JSON: `{contest: AdminContest, standings: [Standings row plus email, roll_number, section, started_at], submissions: [{id, user_id, problem_label, language, state, verdict, score, created_at, practice}], audit: [AuditEntry], exported_at}`. No code and no integrity data.
+- JSON: `{contest: AdminContest, standings: [Standings row plus email, roll_number, section, started_at], submissions: [{id, user_id, problem_label, language, state, verdict, score, created_at, practice, toolchain}], audit: [AuditEntry], exported_at}`. No code and no integrity data.
 - `ProblemStats`: `{label, title, max_score, attempted, solved` (full score)`, subtasks [{idx, points, earned}], histogram [{score, students}]` (highest score first)`, median_attempts}`, over students on the board and their non-practice submissions.
 
 ## History and audit (v1.2.0)
@@ -1262,8 +1263,8 @@ Checks for copying after a contest, and the review of what they find (decisions 
 | `GET /api/admin/contests/{id}/integrity/signals/{signal}/pair` | | 200 `{a: Side, b: Side, server_now}` for a `similar` signal; any other kind is a `404`, and so is a signal that names the viewer |
 | `GET /api/admin/contests/{id}/integrity/timeline/{user}` | | 200 `{moments: [Moment], server_now}`; `404` when the user neither accepted the rules nor submitted in this contest, and for the viewer's own timeline. The run (`GET .../integrity`) leaves out every signal that names the viewer (a student since made an admin) |
 | `GET /api/admin/contests/{id}/integrity/cases` | | 200 `{cases: [Case], server_now}`, newest first |
-| `POST /api/admin/contests/{id}/integrity/cases` | `{title, note, signal_ids: [n]}` | 201 `Case` |
-| `GET /api/admin/integrity/cases/{case}` | | 200 `Case` |
+| `POST /api/admin/contests/{id}/integrity/cases` | `{title, note, signal_ids: [n]}` | 201 `Case`, logged as a read of the case (D97) |
+| `GET /api/admin/integrity/cases/{case}` | | 200 `Case`; `404` to a student of the case and, for a manual case, to a reviewer who is a student of another case with its student in that contest (D262) |
 | `PUT /api/admin/integrity/cases/{case}` | `{state, note}` | 200 `Case`; appends a decision |
 
 Students (any signed-in user):
@@ -1508,9 +1509,9 @@ The server writes the sentences from fixed templates with the contest's title, a
 
 | Route | Who | Request | Success |
 |---|---|---|---|
-| `GET /api/admin/submissions/{id}/notes` | reviewers of the submission's contest (owners and admins; a co-organiser whose role is not student is an admin) | | 200 `{submission: SubmissionRef, source, notes: [Note], case_id, server_now}`, where `source` is the submission's program as plain text, so the reviewer reads it and picks lines; logged; `404` on one's own submission |
-| `POST /api/admin/submissions/{id}/notes` | same | `{"text": "...", "lines": [{"from": 12, "to": 18}]}` | 201 `Note` |
-| `POST /api/admin/submissions/{id}/case` | same | `{"title": "...", "note": "..."}` | 201 `Case` |
+| `GET /api/admin/submissions/{id}/notes` | reviewers of the submission's contest (owners and admins; a co-organiser whose role is not student is an admin) | | 200 `{submission: SubmissionRef, source, notes: [Note], case_id, server_now}`, where `source` is the submission's program as plain text, so the reviewer reads it and picks lines; logged; `404` on one's own submission and on a classmate's when the two are students of one case in that contest (D262) |
+| `POST /api/admin/submissions/{id}/notes` | same | `{"text": "...", "lines": [{"from": 12, "to": 18}]}` | 201 `Note`; `404` as for GET |
+| `POST /api/admin/submissions/{id}/case` | same | `{"title": "...", "note": "..."}` | 201 `Case`, logged as a read of the case (it carries the copied notes); `404` as for GET |
 
 - A note or a manual case is possible on a Submit (not a Run) of a contest, practice after the contest included. A submission outside a contest is `404`.
 - `text` is 1 to 2,000 characters, plain text, never rendered as HTML. `lines` are 1-based line ranges of the submission's code to highlight, at most 20, each `from <= to`.
@@ -1518,8 +1519,9 @@ The server writes the sentences from fixed templates with the contest's title, a
 - `Note`: `{id, submission_id, by, by_name, text, lines, created_at, expires_at}`. `expires_at` is when the note is deleted (30 days after it was written), `null` once a case has been opened from the submission: then it is kept with the case. Notes are append only: they cannot be edited or deleted by hand. The student is never told about a note.
 - `case_id` is the manual case opened from the submission, `null` if none.
 - The student sees a manual case's evidence as `kind: "manual"`, the sentence "An organiser asked you to explain this submission. The lines in question are highlighted.", their own `source` and `lines` (the notes' ranges); never the notes' text.
-- Opening a case: `title` at most 120 characters, `note` (the reason, for reviewers) 20 to 4,000; the case's student is the submission's author, its `source` is `manual`, its evidence is the submission and its notes, copied. The reviewer may not be the author (`400`). The case starts `open`, as one from signals does, and is shared with `PUT /api/admin/integrity/cases/{case}` as before.
-- The console feed (`GET /api/admin/contests/{id}/submissions`) gains `note_count` and `case_id` on each item for reviewers; others never see them.
+- Opening a case: `title` at most 120 characters, `note` (the reason, for reviewers) 20 to 4,000; the case's student is the submission's author, its `source` is `manual`, its evidence is the submission and its notes, copied. The reviewer may not be the author (`404`, "There is no such contest submission.", since 2026-10-21; it was `400`). The case starts `open`, as one from signals does, and is shared with `PUT /api/admin/integrity/cases/{case}` as before.
+- The console feed (`GET /api/admin/contests/{id}/submissions`) gains `note_count` and `case_id` on each item for reviewers; others never see them, and a reviewer never sees them on their own submissions or on those of a classmate they are a student of a case with in that contest.
+- The involvement rule (D262, every path since 2026-10-21): a reviewer who is a student of a case with a classmate gets `404 not_found` on the three routes above for the classmate's submissions in that contest, `404` "There is no such case." on a manual case about that classmate, and `404` "There is no such student." on the classmate's rating routes (edit, confirm, decline).
 
 ### C9: cases, outcomes and the two-person rule
 
@@ -1667,6 +1669,7 @@ The student's `GET /api/integrity/cases` lists a case only once its notice is av
 - An edit that lowers the student's band is a proposal: `202`, until a second owner or admin confirms it (`403 two_person_rule` "A second owner or admin who did not propose this change confirms it." for the proposer, except as sole organiser). A new edit replaces a pending one. A confirm after the rating moved is `409 rating_changed`, "The rating changed since this was proposed. Propose it again."
 - Every applied edit writes a dated line on the student's standing ("Standing adjusted by an organiser" with the reason), sends `standing_adjusted`, and can be appealed.
 - Writes to one student's rating go one at a time; every write keeps the value within 0 to 10.
+- An owner or admin who is a student of a case together with this student gets `404 not_found` on all three routes (D262). Every answer leaves out the rating lines of cases the caller is a student of.
 
 **Semester rollover of the rating.** `podium-server semester-rollover [-db F] [-dry-run] LABEL` (on the VM, by the owner, when a term ends) adds 0.5 to every student with no confirmed outcome since the previous rollover, up to 10, with cause `rollover` and the label. A label runs once; running it again changes nothing. This is separate from `POST /api/admin/rollover`, which archives contests and disables old accounts.
 

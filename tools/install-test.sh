@@ -158,6 +158,30 @@ else
   fail "podium-backup must copy with /etc/podium/backup-ssh/id_ed25519"
 fi
 
+# A copy off the VM never stops the local backup (C2-010): no die about
+# rsync or the encrypted copy comes before the local backup is in place,
+# and both problems fail the unit after it, before the heartbeat.
+mvline=$(grep -n 'as_podium mv "$work" "$final"' "$backup" | head -n1 | cut -d: -f1 || true)
+early=$(awk -v m="${mvline:-0}" 'NR < m && /die / && /rsync|RSYNC|(^|[^a-z])age([^a-z]|$)|rclone|B2|encrypted|backup-ssh/' "$backup")
+late_off=$(grep -n 'die "the local backup is done, but there is no encrypted copy' "$backup" | cut -d: -f1 || true)
+late_rs=$(grep -n 'die "the local backup is done, but the copy to $remote did not run' "$backup" | cut -d: -f1 || true)
+beat=$(grep -n '^if \[\[ -n $heartbeat \]\]; then' "$backup" | cut -d: -f1 || true)
+if [[ -n $mvline && -z $early && -n $late_off && -n $late_rs && -n $beat && $late_off -gt $mvline && $late_rs -lt $beat ]]; then
+  pass "podium-backup makes the local backup before any off-VM check can fail it"
+else
+  fail "podium-backup: an off-VM check can stop the local backup: ${early:-order of the late checks}"
+fi
+if grep -q '^stamp=$(date -u +%Y-%m-%dT%H%M%SZ)$' "$backup" && grep -q '\[\[ ! -e $final \]\] || die' "$backup"; then
+  pass "podium-backup names each backup to the second and never reuses a folder"
+else
+  fail "podium-backup must name backups to the second and refuse an existing folder (C2-039)"
+fi
+if fn cmd_verify | grep -q 'PODIUM_BACKUP_RSYNC is set but /etc/podium/backup-ssh/id_ed25519 is missing'; then
+  pass "verify checks the rsync copy's root key"
+else
+  fail "cmd_verify must check /etc/podium/backup-ssh when PODIUM_BACKUP_RSYNC is set"
+fi
+
 # podium-check's stalled-judge rule (C1-048), with the server's answer and
 # systemctl stubbed. Needs jq, as on the VM; skipped without it.
 check="$here/../deploy/backup/podium-check"
@@ -194,6 +218,32 @@ if command -v jq >/dev/null; then
 else
   echo "skip: jq not installed, podium-check's judge rule not run"
 fi
+
+# The backup folder comes from backup.env, as podium-backup reads it
+# (C2-009): an upgrade under a moved PODIUM_BACKUP_DIR must find its
+# pre-upgrade backup, and rollback must record that folder.
+bdir_of() { # VALUE
+  (
+    envval() { [[ $1 == /etc/podium/backup.env && $2 == PODIUM_BACKUP_DIR ]] && echo "$BDIR"; true; }
+    BDIR=$1
+    eval "$(grep '^backup_dir()' "$script")"
+    backup_dir
+  )
+}
+if [[ $(bdir_of /srv/podium-backups) == /srv/podium-backups && $(bdir_of "") == /var/backups/podium ]]; then
+  pass "backup_dir reads PODIUM_BACKUP_DIR and defaults to /var/backups/podium"
+else
+  fail "backup_dir: '$(bdir_of /srv/podium-backups)' and '$(bdir_of "")'"
+fi
+for f in cmd_upgrade cmd_verify step_backup; do
+  if fn "$f" | grep -q '/var/backups/podium'; then
+    fail "$f names /var/backups/podium instead of backup_dir"
+  elif fn "$f" | grep -q 'backup_dir'; then
+    pass "$f uses the configured backup folder"
+  else
+    fail "$f does not read backup_dir"
+  fi
+done
 
 # The upgrade path (B6.2): the new MANIFEST's upgrades_from refuses an
 # older or unversioned install and a downgrade. Run in a subshell because

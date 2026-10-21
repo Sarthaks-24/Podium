@@ -90,7 +90,10 @@ func (d Deps) reviewedContest(w http.ResponseWriter, r *http.Request) (*contests
 }
 
 // reviewedCase loads the case named by {case} for someone who may review
-// its contest; anyone else gets the same 404 as a missing case.
+// its contest; anyone else gets the same 404 as a missing case. So does a
+// reviewer who is a student of the case, and, for a manual case (whose
+// evidence copies the notes), one who shares another case in that contest
+// with its student (D262).
 func (d Deps) reviewedCase(w http.ResponseWriter, r *http.Request) (*integrity.Case, bool) {
 	id, ok := parseID(r.PathValue("case"))
 	if !ok {
@@ -115,6 +118,19 @@ func (d Deps) reviewedCase(w http.ResponseWriter, r *http.Request) (*integrity.C
 	if !may || c.Involves(u.ID) {
 		writeNoCase(w)
 		return nil, false
+	}
+	if c.Source == "manual" {
+		mates, err := d.Integrity.CaseMates(r.Context(), u.ID, c.ContestID)
+		if err != nil {
+			d.internalError(w, r, err)
+			return nil, false
+		}
+		for _, cu := range c.Users {
+			if mates[cu.UserID] {
+				writeNoCase(w)
+				return nil, false
+			}
+		}
 	}
 	return c, true
 }
@@ -331,7 +347,9 @@ func (d Deps) openIntegrityCase(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	d.Log.Info("integrity case opened", "by", u.ID, "contest_id", c.ID, "case_id", cs.ID, "signals", len(req.SignalIDs))
-	WriteJSON(w, http.StatusCreated, caseJSON{Case: cs, ServerNow: d.serverNow()})
+	if d.logCase(w, r, *cs) {
+		WriteJSON(w, http.StatusCreated, caseJSON{Case: cs, ServerNow: d.serverNow()})
+	}
 }
 
 func (d Deps) getIntegrityCase(w http.ResponseWriter, r *http.Request) {
