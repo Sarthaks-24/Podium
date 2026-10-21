@@ -921,7 +921,9 @@ test.describe('P5 workspace', () => {
     await expect.poll(() => editorText(page)).toBe(starterText);
   });
 
-  test('a practice submission shows its first failing hidden test, and a counting one never does (F7.13, D115)', async ({ page }) => {
+  // The server decides what is revealed (TestP2RejudgeNeverWidensTheReveal and the D115 tests in
+  // server/internal/httpapi); this test only checks what the web app draws from each answer (C1-023).
+  test('a revealed hidden test is drawn when the server sends one, and nothing when it does not (F7.13, D115)', async ({ page }) => {
     const api = await contests.mockApi(page, { phase: 'practice' });
     api.submissions.push({
       ...contests.submission(50, 11, 'done', 40, Date.now() - 60_000),
@@ -943,7 +945,7 @@ test.describe('P5 workspace', () => {
     await expect.poll(() => api.runs.length).toBe(1);
     expect(api.runs[0].input).toBe('4 4\n');
 
-    // During the window the server sends no revealed test, and nothing shows.
+    // During the window the server sends no revealed test, and nothing shows: a rendering check only.
     await page.goto('about:blank');
     await page.unrouteAll({ behavior: 'ignoreErrors' });
     const live = await contests.mockApi(page, { phase: 'during' });

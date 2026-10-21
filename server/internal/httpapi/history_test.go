@@ -406,6 +406,26 @@ func TestP2RejudgeNeverWidensTheReveal(t *testing.T) {
 	if _, v := ta.do("GET", fmt.Sprintf("/api/submissions/%v", theirs["id"]), nil, ""); v["revealed"] != nil {
 		t.Errorf("a rejudge gave a co-organiser a revealed hidden test: %v", v["revealed"])
 	}
+	// The co-organiser view hides a reveal anyway (NoReveal), so read the
+	// rejudged jobs' payloads themselves (C1-023).
+	for _, c := range []struct {
+		sub  any
+		want bool
+	}{{mine["id"], true}, {theirs["id"], false}} {
+		var payload string
+		if err := s.db.QueryRow(`SELECT j.payload FROM submissions s JOIN jobs j ON j.id = s.job_id WHERE s.id = ?`, c.sub).Scan(&payload); err != nil {
+			t.Fatal(err)
+		}
+		var pl struct {
+			Reveal bool `json:"reveal"`
+		}
+		if err := json.Unmarshal([]byte(payload), &pl); err != nil {
+			t.Fatal(err)
+		}
+		if pl.Reveal != c.want {
+			t.Errorf("submission %v: rejudged payload reveal %v, want %v", c.sub, pl.Reveal, c.want)
+		}
+	}
 }
 
 // Security review F3 and F4: renaming a draft reserves no slug, and an
