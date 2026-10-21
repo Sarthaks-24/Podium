@@ -107,8 +107,4 @@
     gap: var(--space-3);
     max-width: var(--measure-form);
   }
-
-  .small {
-    font-size: var(--fs-0);
-  }
 </style>

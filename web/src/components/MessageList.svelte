@@ -130,8 +130,4 @@
     overflow-wrap: anywhere;
     white-space: pre-wrap;
   }
-
-  .small {
-    font-size: var(--fs-0);
-  }
 </style>

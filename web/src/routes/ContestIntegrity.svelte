@@ -425,12 +425,8 @@
     font-size: var(--fs-3);
   }
 
-  .small {
-    font-size: var(--fs-0);
-  }
-
   .window {
-    max-width: 48rem;
+    max-width: var(--measure-form);
   }
 
   .run {

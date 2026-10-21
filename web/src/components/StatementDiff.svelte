@@ -125,8 +125,4 @@
     margin-top: var(--space-3);
     max-width: 24rem;
   }
-
-  .small {
-    font-size: var(--fs-0);
-  }
 </style>

@@ -215,10 +215,6 @@
     font-size: var(--fs-2);
   }
 
-  .small {
-    font-size: var(--fs-0);
-  }
-
   .lines,
   .cases {
     display: grid;

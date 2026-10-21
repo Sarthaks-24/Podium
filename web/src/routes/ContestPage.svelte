@@ -792,7 +792,6 @@
     color: var(--ink-muted);
   }
 
-
   /* The before-start page fills the width; its split holds the measure. */
   .page-wide {
     max-width: none;
@@ -895,10 +894,6 @@
     margin-top: var(--space-2);
     padding-top: var(--space-4);
     border-top: var(--rule) solid var(--line);
-  }
-
-  .small {
-    font-size: var(--fs-0);
   }
 
   .time-up {

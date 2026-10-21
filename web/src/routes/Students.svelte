@@ -237,10 +237,6 @@
     font-size: var(--fs-sub);
   }
 
-  .small {
-    font-size: var(--fs-0);
-  }
-
   .tools {
     display: flex;
     flex-wrap: wrap;

@@ -749,10 +749,6 @@
     }
   }
 
-  .small {
-    font-size: var(--fs-0);
-  }
-
   .panel h2 {
     font-size: var(--fs-section);
   }

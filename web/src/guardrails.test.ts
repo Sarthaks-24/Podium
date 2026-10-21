@@ -97,6 +97,19 @@ describe('web source guardrails', () => {
     expect(offenders).toEqual([]);
   });
 
+  // Widths and rules come from the tokens (CLAUDE.md section 8, C1-035):
+  // a component names --measure-* instead of its value, draws outlines,
+  // borders and underlines in --rule multiples, and uses the shared .small.
+  it('names the measure and rule tokens in components instead of their values', () => {
+    const components = Object.entries(sources).filter(([path]) => path.endsWith('.svelte'));
+    const measure = components.filter(([, text]) => /max-width:\s*(40rem|48rem|64rem|72ch|26rem)\s*;/.test(text)).map(([p]) => p);
+    const px = components
+      .filter(([, text]) => /(outline(-offset)?|border(-[a-z-]+)?|text-decoration-thickness|text-underline-offset)\s*:[^;]*\d+px/.test(text))
+      .map(([p]) => p);
+    const small = components.filter(([, text]) => /\n  \.small \{\n    font-size: var\(--fs-0\);\n  \}/.test(text)).map(([p]) => p);
+    expect({ measure, px, small }).toEqual({ measure: [], px: [], small: [] });
+  });
+
   it('contains no en dashes or em dashes', () => {
     const offenders = Object.entries(sources)
       .filter(([, text]) => DASHES.test(text))

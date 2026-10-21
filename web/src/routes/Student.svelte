@@ -180,10 +180,6 @@
     font-size: var(--fs-sub);
   }
 
-  .small {
-    font-size: var(--fs-0);
-  }
-
   .links {
     display: grid;
     gap: var(--space-4);

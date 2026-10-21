@@ -373,10 +373,6 @@
     font-size: var(--fs-3);
   }
 
-  .small {
-    font-size: var(--fs-0);
-  }
-
   .legend {
     display: flex;
     align-items: center;

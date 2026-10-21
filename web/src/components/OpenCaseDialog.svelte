@@ -181,10 +181,6 @@
     margin-top: var(--space-4);
   }
 
-  .small {
-    font-size: var(--fs-0);
-  }
-
   .chosen h3 {
     font-size: var(--fs-0);
     font-weight: 600;

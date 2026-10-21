@@ -204,10 +204,6 @@
     font-size: var(--fs-sub);
   }
 
-  .small {
-    font-size: var(--fs-0);
-  }
-
   .lead {
     margin-top: var(--space-2);
   }

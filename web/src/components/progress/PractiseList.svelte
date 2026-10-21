@@ -87,10 +87,6 @@
     justify-self: start;
   }
 
-  .small {
-    font-size: var(--fs-0);
-  }
-
   .more {
     margin-top: var(--space-3);
   }

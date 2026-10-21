@@ -129,10 +129,6 @@
     display: none;
   }
 
-  .small {
-    font-size: var(--fs-0);
-  }
-
   .pcells {
     display: flex;
     flex-wrap: wrap;

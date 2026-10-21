@@ -181,10 +181,6 @@
     margin-top: var(--space-1);
   }
 
-  .small {
-    font-size: var(--fs-0);
-  }
-
   .more {
     margin-top: var(--space-4);
   }

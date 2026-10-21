@@ -1284,10 +1284,6 @@
     gap: var(--space-3);
   }
 
-  .small {
-    font-size: var(--fs-0);
-  }
-
   .ann {
     display: grid;
     gap: var(--space-3);

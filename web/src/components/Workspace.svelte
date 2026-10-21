@@ -1591,7 +1591,6 @@
     font-size: var(--fs-0);
   }
 
-
   .under .submit-status {
     margin-left: auto;
   }
@@ -1650,10 +1649,6 @@
     align-items: center;
     justify-content: space-between;
     gap: var(--space-2) var(--space-3);
-  }
-
-  .small {
-    font-size: var(--fs-0);
   }
 
   .empty {

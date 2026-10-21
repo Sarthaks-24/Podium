@@ -341,6 +341,12 @@ textarea.input {
   color: var(--ink-muted);
 }
 
+/* Secondary text one step down (council C1-035: was redefined in 30
+   components). */
+.small {
+  font-size: var(--fs-0);
+}
+
 /* One back link above a page title (T13), tall enough to tap (X4). */
 .back {
   display: inline-flex;

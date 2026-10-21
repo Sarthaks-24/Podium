@@ -235,10 +235,6 @@
     background: var(--ink-muted);
   }
 
-  .small {
-    font-size: var(--fs-0);
-  }
-
   .plot {
     position: relative;
     min-width: 0;

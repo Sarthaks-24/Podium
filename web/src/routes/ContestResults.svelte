@@ -482,10 +482,6 @@
     accent-color: var(--act);
   }
 
-  .small {
-    font-size: var(--fs-0);
-  }
-
   .cell-label {
     display: none;
   }

@@ -1339,10 +1339,6 @@
     margin-top: var(--space-2);
   }
 
-  .small {
-    font-size: var(--fs-0);
-  }
-
   .history-state {
     margin-top: var(--space-4);
   }

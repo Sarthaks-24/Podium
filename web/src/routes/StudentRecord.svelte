@@ -468,10 +468,6 @@
     font-size: var(--fs-sub);
   }
 
-  .small {
-    font-size: var(--fs-0);
-  }
-
   .figure {
     display: flex;
     align-items: baseline;

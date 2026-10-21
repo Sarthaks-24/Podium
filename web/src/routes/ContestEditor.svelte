@@ -1421,10 +1421,6 @@
     color: var(--ink);
   }
 
-  .small {
-    font-size: var(--fs-0);
-  }
-
   .ai-confirm {
     display: grid;
     gap: var(--space-3);

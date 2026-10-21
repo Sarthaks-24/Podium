@@ -107,7 +107,6 @@
   let inputGenError = $state<{ message: string; problems: readonly string[] } | null>(null);
   let inputGenBusy = $state(false);
 
-
   const status = $derived(problem ? editorStatus(problem, validation) : null);
   const validating = $derived(isPending(validation));
   const validateLabel = $derived.by(() => {
@@ -433,7 +432,6 @@
       genBusy = false;
     }
   }
-
 
 
   async function generateInputs() {
@@ -792,5 +790,4 @@
     border-top: 0;
     max-width: var(--measure-wide);
   }
-
 </style>

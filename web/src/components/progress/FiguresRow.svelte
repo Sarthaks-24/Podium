@@ -101,10 +101,6 @@
     }
   }
 
-  .small {
-    font-size: var(--fs-0);
-  }
-
   .aside {
     margin-top: var(--space-2);
   }

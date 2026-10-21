@@ -168,10 +168,6 @@
     gap: var(--space-2) var(--space-4);
   }
 
-  .small {
-    font-size: var(--fs-0);
-  }
-
   .plot {
     position: relative;
     min-width: 0;

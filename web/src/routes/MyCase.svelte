@@ -285,10 +285,6 @@
     font-weight: 600;
   }
 
-  .small {
-    font-size: var(--fs-0);
-  }
-
   .prose {
     max-width: 60ch;
     white-space: pre-wrap;

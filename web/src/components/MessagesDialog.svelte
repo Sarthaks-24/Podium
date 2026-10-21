@@ -160,8 +160,4 @@
   .section-title {
     font-size: var(--fs-1);
   }
-
-  .small {
-    font-size: var(--fs-0);
-  }
 </style>

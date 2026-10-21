@@ -107,9 +107,6 @@
 {/if}
 
 <style>
-  .small {
-    font-size: var(--fs-0);
-  }
 
   .right,
   .table .right {
