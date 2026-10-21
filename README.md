@@ -71,7 +71,7 @@ Other targets: `make help`.
 
 ## Checks
 
-`make check` runs everything CI runs: `gofmt`, `go vet`, Go tests, `svelte-check`, ESLint and Vitest. Run `make check-secrets` (or install it as a hook with `make hooks`) before committing.
+`make check` runs what the CI `check` job runs: `gofmt`, `go vet`, Go tests, `svelte-check`, ESLint, Vitest and the `install.sh` unit checks (`tools/install-test.sh`). CI also runs the mocked Playwright suite (`cd web && npx playwright test --grep-invert "pixel baselines"`) and the sandbox suite. The pixel baselines run only on the owner's machine, because their references live in the git-ignored `cache/`. Run `make check-secrets` (or install it as a hook with `make hooks`) before committing.
 
 ## Build a release
 

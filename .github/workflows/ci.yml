@@ -1,5 +1,8 @@
 # Runs on every push: gofmt, go vet, Go tests, svelte-check, ESLint, Vitest
-# (the `make check` target), plus a Linux release build. A second job
+# (the `make check` target), plus a Linux release build. The e2e job runs
+# the mocked Playwright suite against the Vite dev server, without the
+# pixel baselines: their references are Windows renders kept in the
+# git-ignored cache/, so they run only on the owner's machine. A third job
 # installs isolate on the ubuntu-24.04 runner (cgroup v2) with the VM's own
 # install.sh steps and runs the hostile-program suite (`make
 # sandbox-test`) and `podium-judge selftest`, the check the VM runs after
@@ -32,6 +35,20 @@ jobs:
       - run: cd web && npm ci
       - run: make check
       - run: make build
+
+  e2e:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: cd web && npm ci
+      - run: cd web && npx playwright install --with-deps chromium
+      - run: cd web && npx playwright test --grep-invert "pixel baselines"
 
   sandbox:
     runs-on: ubuntu-24.04
