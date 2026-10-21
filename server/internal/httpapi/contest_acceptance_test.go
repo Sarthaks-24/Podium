@@ -14,6 +14,7 @@ package httpapi
 
 import (
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 )
@@ -103,6 +104,17 @@ func TestM4MiniContest(t *testing.T) {
 	code, live := owner.do("GET", fmt.Sprintf("/api/admin/contests/%d/standings", id), nil, "")
 	if code != 200 || live["variant"] != "full" {
 		t.Fatalf("organiser board %d %v", code, live)
+	}
+	// The organisers' board names each student's email; the public one never does.
+	for _, row := range live["rows"].([]any) {
+		if e, _ := row.(map[string]any)["email"].(string); !strings.Contains(e, "@") {
+			t.Errorf("organiser board row without an email: %v", row)
+		}
+	}
+	for _, row := range frozen["rows"].([]any) {
+		if _, has := row.(map[string]any)["email"]; has {
+			t.Errorf("public board row with an email: %v", row)
+		}
 	}
 	// The reveal waits for the end.
 	if code, _ := owner.do("GET", fmt.Sprintf("/api/admin/contests/%d/reveal", id), nil, ""); code != 409 {

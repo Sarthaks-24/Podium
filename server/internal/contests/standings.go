@@ -87,7 +87,11 @@ type Row struct {
 	Rank   int    `json:"rank"`
 	UserID int64  `json:"user_id"`
 	Name   string `json:"name"`
-	Total  int    `json:"total"`
+	// Email is set only on the organisers' board (GET
+	// /api/admin/contests/{id}/standings for a site admin), so the console
+	// can tell students apart; the public board never carries it.
+	Email string `json:"email,omitempty"`
+	Total int    `json:"total"`
 	// LastImprovementS is when the student reached their total, in seconds
 	// from their start; the tie-break.
 	LastImprovementS int64  `json:"last_improvement_s"`

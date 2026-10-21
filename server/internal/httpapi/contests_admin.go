@@ -907,7 +907,58 @@ func (d Deps) adminStandings(w http.ResponseWriter, r *http.Request) {
 		d.internalError(w, r, err)
 		return
 	}
+	if siteAdmin(r) {
+		if out.Rows, err = d.withEmails(r.Context(), out.Rows); err != nil {
+			d.internalError(w, r, err)
+			return
+		}
+	}
 	WriteJSON(w, http.StatusOK, out)
+}
+
+// withEmails copies the board's rows with each student's email, for the
+// organisers' board: two students may share a name, and a testing-mode or
+// roster-less account has only "Student 12". The copy leaves the cached
+// board untouched.
+func (d Deps) withEmails(ctx context.Context, rows []contests.Row) ([]contests.Row, error) {
+	if len(rows) == 0 {
+		return rows, nil
+	}
+	out := append([]contests.Row(nil), rows...)
+	at := make(map[int64][]int, len(out))
+	for i, row := range out {
+		at[row.UserID] = append(at[row.UserID], i)
+	}
+	q, err := d.DB.QueryContext(ctx, `SELECT u.id, u.email FROM users u
+		WHERE u.id IN (SELECT value FROM json_each(?))`, idList(out))
+	if err != nil {
+		return nil, err
+	}
+	defer q.Close()
+	for q.Next() {
+		var id int64
+		var email string
+		if err := q.Scan(&id, &email); err != nil {
+			return nil, err
+		}
+		for _, i := range at[id] {
+			out[i].Email = email
+		}
+	}
+	return out, q.Err()
+}
+
+// idList is the rows' user ids as a JSON array, for json_each.
+func idList(rows []contests.Row) string {
+	b := make([]byte, 0, len(rows)*6)
+	b = append(b, '[')
+	for i, row := range rows {
+		if i > 0 {
+			b = append(b, ',')
+		}
+		b = strconv.AppendInt(b, row.UserID, 10)
+	}
+	return string(append(b, ']'))
 }
 
 // getReveal returns the frozen and full boards for the projector walk,

@@ -75,7 +75,7 @@
   import { routeTitle } from '../lib/routing';
   import { verdictLabel } from '../lib/problems';
   import { session } from '../lib/session.svelte';
-  import type { Standings } from '../lib/standings';
+  import { studentChoice, type Standings } from '../lib/standings';
   import { EventStream } from '../lib/stream';
   import { refreshTicker, ticker, useTicker } from '../lib/ticker.svelte';
   import { showToast } from '../lib/toast.svelte';
@@ -320,7 +320,7 @@
   async function loadStudents() {
     try {
       const s = await getJSON<Standings>(`${base}/standings`);
-      students = s.rows.map((r) => ({ user_id: r.user_id, name: r.name })).sort((a, b) => a.name.localeCompare(b.name));
+      students = s.rows.map((r) => ({ user_id: r.user_id, name: studentChoice(r) })).sort((a, b) => a.name.localeCompare(b.name));
     } catch {
       students = [];
     }

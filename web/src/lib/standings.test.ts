@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { boardLabels, boardUpdatedLine, cellView, formatElapsed, myRow, ordinalWord, placeFigure, placeSentence, rankAnnouncement, statusLine, type Standings } from './standings';
+import { boardLabels, boardUpdatedLine, cellView, formatElapsed, myRow, ordinalWord, placeFigure, placeSentence, rankAnnouncement, statusLine, studentChoice, type Standings } from './standings';
 
 function board(over: Partial<Standings> = {}): Standings {
   return {
@@ -117,5 +117,14 @@ describe('board updated by a review decision (D77 amended)', () => {
     expect(boardUpdatedLine({ board_updated_at: 1792400000000, board_update_reason: 'review_decision' }, fmt)).toBe('Board updated on 21 Oct 2026 after a review decision.');
     expect(boardUpdatedLine({ board_updated_at: null, board_update_reason: null }, fmt)).toBe('');
     expect(boardUpdatedLine({}, fmt)).toBe('');
+  });
+});
+
+describe('studentChoice (console pickers)', () => {
+  it('puts the email beside the name, and uses the email alone for a placeholder name', () => {
+    expect(studentChoice({ name: 'Asha Rao', email: 'asha@college.edu' })).toBe('Asha Rao, asha@college.edu');
+    expect(studentChoice({ name: 'Student 12', email: 's12@college.edu' })).toBe('s12@college.edu');
+    expect(studentChoice({ name: '', email: 'x@college.edu' })).toBe('x@college.edu');
+    expect(studentChoice({ name: 'Asha Rao' })).toBe('Asha Rao');
   });
 });

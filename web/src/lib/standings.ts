@@ -22,6 +22,8 @@ export interface StandingsRow {
   rank: number;
   user_id: number;
   name: string;
+  /** Only on the organisers' board for a site admin: the console tells students apart by it. */
+  email?: string;
   total: number;
   /** Seconds from the start (or the student's own start) to the final total. */
   last_improvement_s: number;
@@ -209,4 +211,17 @@ export function ordinalWord(n: number): string {
     default:
       return `${n}th`;
   }
+}
+
+/**
+ * How the console names a student in its pickers: the board's name with the
+ * email beside it, since two students may share a name and an account with
+ * no name or roster entry is only "Student 12". Without an email (an older
+ * server, a co-organiser) the name alone.
+ */
+export function studentChoice(row: Pick<StandingsRow, 'name' | 'email'>): string {
+  const email = row.email?.trim() ?? '';
+  if (email === '') return row.name;
+  if (row.name.trim() === '' || row.name === email || /^Student \d+$/.test(row.name)) return email;
+  return `${row.name}, ${email}`;
 }
