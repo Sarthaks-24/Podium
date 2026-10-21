@@ -771,7 +771,7 @@
           <option value="owner">Owner</option>
         </select>
       </div>
-      <button type="submit" class="btn btn-primary submit" disabled={addingPerson}>Add organiser</button>
+      <button type="submit" class="btn btn-secondary submit" disabled={addingPerson}>Add organiser</button>
     </form>
     {#if personError !== ''}
       <p id="person-error" class="field-error form-error" role="alert">{personError}</p>
@@ -829,7 +829,7 @@
           aria-describedby={domainError !== '' ? 'domain-error' : undefined}
         />
       </div>
-      <button type="submit" class="btn btn-primary submit" disabled={addingDomain}>Add domain</button>
+      <button type="submit" class="btn btn-secondary submit" disabled={addingDomain}>Add domain</button>
     </form>
     {#if domainError !== ''}
       <p id="domain-error" class="field-error form-error" role="alert">{domainError}</p>
