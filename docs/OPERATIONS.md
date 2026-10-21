@@ -367,9 +367,8 @@ The server logs `integrity check started`, `integrity case opened`, `integrity c
 
 ### After the integrity review
 
-- Retention: the 12-hour retention pass (`integrity.Service.Retain`, already called by main) now also deletes integrity runs and signals of contests that ended for everyone more than 180 days ago (same cutoff as `contests.Retain`), and deletes the explanation versions of cases closed more than 2 years ago along with the evidence. Cases keep their own copy of signals, so open cases are unaffected. A run still in state `running` is left for the next pass. Deletions are logged at info as "integrity checks past retention removed" with counts when the service has a logger. `integrity.Service.RetainSignals` is exported if main should log it separately.
-- The response window (7 days) is a constant, `ResponseWindow` in `server/internal/integrity/cases.go`; changing it needs a rebuild (and `RESPONSE_DAYS` in `web/src/lib/review.ts` for the help text).
-- Migration note: `0006_integrity.sql` was edited in place (unreleased). A development database that already ran 0006 must be recreated (or the integrity tables dropped and the `0006_integrity` row removed from `schema_migrations`) to pick up the new columns, table and triggers.
+- Retention: the 12-hour integrity retention pass also deletes integrity runs and signals of contests that ended for everyone more than 180 days ago (the same cutoff as the contest data), and the explanation versions of cases closed more than 2 years ago along with the evidence. Cases keep their own copy of signals, so open cases are unaffected; a run still `running` is left for the next pass. The server logs "integrity checks past retention removed" with counts.
+- The response window (7 days) is a constant, `ResponseWindow` in `server/internal/integrity/cases.go`; changing it needs a new release.
 
 ## AI wizard keys
 

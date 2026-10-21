@@ -349,7 +349,6 @@ The timeline (submissions with typed and pasted counts, pastes, focus changes, s
   - Similar code: strength needs an amount of shared fingerprints as well as the score; the common-fingerprint limit is counted per language. The shared base is the reference and the brute force only; the unused `Settings.ExtraBase` hook for organiser templates was removed in v1.1.0 (B1.11), since nothing could fill it.
   - Same wrong output: the common-mistake limit is max(3, 2% of the students).
 - **The lexer reads hidden code**: the body of a C++ `#define` (only `#include` lines are dropped; line continuations join lines) and a Python string literal passed straight to `exec` or `eval`.
-- `integrity` now imports `contests` for `RetentionPeriod`.
 
 ## Students: manual review, outcomes, Standing and progress (v1.4.0)
 
@@ -519,6 +518,8 @@ The server reads the manifest once at start and matches paths the way `routing.t
 v1.3.0 (P3). How long each kind of data is kept is one Go file, `server/internal/retention/periods.go`; the session lifetime, the integrity retention, the daily retention job and `GET /api/auth/config` read it, and the privacy page renders its table from that response. `docs/OPERATIONS.md` ("Retention") holds the same table and a test compares the two, so the privacy page, the docs and the code cannot say different things.
 
 The daily job (`retention.Job`, started by the server a minute after start-up) applies the periods no older job applies: run payloads (30 days), contact messages (180 days), unused problem revisions (90 days), submissions (4 years after the contest) and the audit logs (4 years). It works in batches of 2,000 rows per transaction, so a pass never holds the single write gate for long while a contest runs. Before a contest's submissions go, its final standings (rank, user id, totals, no names) are kept in `contest_results`. The append-only tables accept a delete only below the cutoff row the job writes, and their triggers refuse a cutoff newer than 90 days or a year, every period being at least that long (a test checks it), so a bug in the job cannot reach recent history.
+
+From v1.4.0 (P4) it also applies: private notes after 30 days, unless a manual case was opened from their submission (then they go with the case's evidence, 2 years after its decision); notices after 180 days; record views after 2 years; the rating history and band-lowering rating proposals after 4 years, through their cutoff rows, without changing any current rating; and the per-student contest summaries with their contest's submissions, 4 years after the contest. The full table, with how each period ends, is in `docs/OPERATIONS.md`, "Retention", and a test keeps it equal to `periods.go`.
 
 **Erasure** is a command on the VM, not a route: `podium-server forget-user` deletes what identifies a person (sessions, drafts, integrity events, contact messages, browser hashes, extension reasons, clarification questions), replaces the name and email with `Removed user N` in the account and the rosters (a roster entry with no account is erased too), and keeps scores so past standings stay correct. It is a dry run by default and writes a site audit row naming the account by id only. Audit rows written earlier keep the address until the audit retention removes them: append-only means nothing, not even erasure, rewrites history.
 
