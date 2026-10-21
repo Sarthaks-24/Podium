@@ -26,6 +26,7 @@ import {
   bannerLead,
   markMessagesRead,
   pinnedAction,
+  pinnedContest,
   messagesReadAt,
   railStatus,
   triedLine,
@@ -168,6 +169,16 @@ describe('the pinned contest on Your contests (S10)', () => {
     expect(pinnedAction({ state: 'live', my_window: { started_at: T - 2 * MIN, ends_at: T - MIN } }, T)).toBe('See your result');
     expect(pinnedAction({ state: 'practice', my_window: null }, T)).toBe('See your result');
     expect(pinnedAction({ state: 'ended', my_window: null }, T)).toBe('See your result');
+  });
+
+  it('features a contest the student can enter or took part in, never one they missed (D324)', () => {
+    const missed = { slug: 'week-8', state: 'ended' as const, my_score: null };
+    const mine = { slug: 'week-7', state: 'practice' as const, my_score: 140 };
+    const next = { slug: 'week-9', state: 'upcoming' as const, my_score: null };
+    expect(pinnedContest([missed, mine])?.slug).toBe('week-7');
+    expect(pinnedContest([next, missed, mine])?.slug).toBe('week-9');
+    expect(pinnedContest([{ slug: 'now', state: 'live' as const, my_score: null }, mine])?.slug).toBe('now');
+    expect(pinnedContest([missed])).toBeNull();
   });
 });
 

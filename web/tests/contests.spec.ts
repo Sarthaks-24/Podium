@@ -48,6 +48,17 @@ test('a second live contest opens from a secondary button: one primary per view 
   await expect(page.locator('.btn-primary')).toHaveCount(1);
 });
 
+test('the home features the contest the student took part in, not a newer one they missed (D324)', async ({ page }) => {
+  await mockApi(page, { phase: 'after', missedNewest: true });
+  await page.goto('/');
+  const pinned = page.getByRole('region', { name: 'Week 5 contest' });
+  await expect(pinned).toContainText('240 of 300');
+  await expect(pinned.getByRole('link', { name: 'See your result' })).toHaveAttribute('href', '/contests/week-5');
+  await expect(page.getByRole('heading', { name: 'Other contests' })).toBeVisible();
+  await expect(page.locator('tbody tr')).toHaveCount(1);
+  await expect(page.locator('tbody tr')).toContainText('Week 8 contest');
+});
+
 test('the contest list puts the live contest first with a countdown', async ({ page }) => {
   await mockApi(page, { phase: 'during' });
   await page.goto('/');

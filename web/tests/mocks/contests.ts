@@ -65,6 +65,8 @@ export interface Options {
   publishOk?: boolean;
   /** Queue health on the contest response (C10): calm by default, or a slow queue, a silent judge and toolchain drift. */
   queueHealth?: 'calm' | 'trouble';
+  /** GET /api/contests lists past contests only, the newest one the student never entered (D324). */
+  missedNewest?: boolean;
   /** Cases whose proposal waits for this reviewer (GET .../integrity/waiting, D321). */
   waitingForYou?: number;
   /** Problem B moved to a new revision after the start, changing its statement (C3). */
@@ -445,6 +447,17 @@ export async function mockApi(page: Page, options: Options = {}) {
 
       // Student routes.
       if (path === '/api/contests' && method === 'GET') {
+        if (options.missedNewest) {
+          return json(route, 200, {
+            live: [],
+            upcoming: [],
+            past: [
+              { ...summary(), slug: 'week-8', title: 'Week 8 contest', state: 'practice', starts_at: now - 86_400_000, ends_at: now - 86_400_000 + 2 * 3_600_000, my_score: null, my_window: null },
+              { ...summary(), slug: 'week-5', title: 'Week 5 contest', state: 'ended', starts_at: now - 7 * 86_400_000, ends_at: now - 7 * 86_400_000 + 2 * 3_600_000, my_score: 240, my_window: null },
+            ],
+            server_now: nowMs(),
+          });
+        }
         return json(route, 200, {
           live:
             phase === 'ready' || phase === 'during'

@@ -275,6 +275,19 @@ export function orderedContests(list: ContestList): ContestSummary[] {
   return [...live, ...upcoming, ...past];
 }
 
+/**
+ * The contest the student home features: the first in list order (live,
+ * upcoming, then past newest first) that the student can still enter or
+ * took part in. A past or practice contest counts only when it has the student's score
+ * (`my_score` is null until they accept the rules), so a contest they never
+ * entered is not offered as "See your result" above their own (walk
+ * 2026-10-21, D324). Null when every contest is a past one they missed.
+ */
+export function pinnedContest<T extends Pick<ContestSummary, 'state' | 'my_score'>>(ordered: readonly T[]): T | null {
+  const open = (c: T) => c.state === 'live' || c.state === 'frozen' || c.state === 'upcoming';
+  return ordered.find((c) => open(c) || c.my_score !== null) ?? null;
+}
+
 /** True once the student agreed to the honour code. */
 export function hasAccepted(c: Pick<Contest, 'accepted' | 'honour_accepted_at' | 'problems' | 'my_window'>): boolean {
   if (typeof c.accepted === 'boolean') return c.accepted;

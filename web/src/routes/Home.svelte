@@ -6,11 +6,12 @@
   gives the title (a link to the contest; on phones the whole row is the
   link), when it runs, how long it lasts, the problem count, the student's
   score once they have one ("240 of 300", digits in mono) and the state
-  word. The first contest (live, else the next, else the latest) is
-  pinned above the table in a panel with its countdown as mono digits and
+  word. The first contest (live, else the next, else the latest one the
+  student took part in, never one they missed: D324) is pinned above the
+  table in a panel with its countdown as mono digits and
   one primary button: "Open the contest", "Continue" or "See your result"
   (audit 2026-10-20 S10); the table lists the rest under "Other
-  contests". A live row in the table adds an "Open contest" button. A
+  contests" ("Contests" when nothing is pinned). A live row in the table adds an "Open contest" button. A
   frozen contest reads "Live" with "standings frozen" in its countdown
   (D84). Under 768 px each row reads as title and state, then the start,
   then the length and problem count in one muted line beside the score. A
@@ -38,6 +39,7 @@
     listCountdown,
     orderedContests,
     pinnedAction,
+    pinnedContest,
     studentState,
     studentStateWord,
     type ContestList,
@@ -133,10 +135,12 @@
 {:else if contests.length === 0}
   <PageState kind="empty" message="No contests yet. When an organiser schedules one, it appears here." />
 {:else}
-  {@const pin = contests[0]}
+  {@const pin = pinnedContest(contests)}
+  {@const others = contests.filter((c) => c !== pin)}
+  <!-- S10: the live or next contest on top, with its countdown and one button; never one the student missed (D324). -->
+  {#if pin}
   {@const pcd = listCountdown(pin, ticker.now)}
   {@const pinHref = `/contests/${encodeURIComponent(pin.slug)}`}
-  <!-- S10: the live or next contest on top, with its countdown and one button. -->
   <section class="panel pinned" aria-labelledby="pinned-title">
     <div class="pinned-head">
       <h2 id="pinned-title"><a href={pinHref} id="contest-{pin.slug}">{pin.title}</a></h2>
@@ -155,9 +159,10 @@
       <a class="btn btn-primary" href={pinHref} aria-describedby="pinned-title">{pinnedAction(pin, ticker.now)}</a>
     </div>
   </section>
+  {/if}
 
-  {#if contests.length > 1}
-  <h2 class="others">Other contests</h2>
+  {#if others.length > 0}
+  <h2 class="others">{pin ? 'Other contests' : 'Contests'}</h2>
   <div class="table-wrap list">
     <table class="table table-stack">
       <thead>
@@ -171,7 +176,7 @@
         </tr>
       </thead>
       <tbody>
-        {#each contests.slice(1) as c (c.slug)}
+        {#each others as c (c.slug)}
           {@const cd = listCountdown(c, ticker.now)}
           {@const href = `/contests/${encodeURIComponent(c.slug)}`}
           <tr class:live={isLive(c)}>
