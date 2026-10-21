@@ -46,16 +46,16 @@ describe('PageState', () => {
 
   it('names the contact email as a mailto link when a screen is closed', () => {
     runMode.contactEmail = 'priya@college.edu';
-    const el = render({ kind: 'forbidden', message: 'Only admins can manage contests.' });
+    const el = render({ kind: 'forbidden', message: 'Only organisers can manage contests.' });
     const link = el.querySelector('a');
     expect(link?.getAttribute('href')).toBe('mailto:priya@college.edu');
-    expect(el.textContent?.replace(/\s+/g, ' ').trim()).toBe('Only admins can manage contests. Write to priya@college.edu if you need access.');
+    expect(el.textContent?.replace(/\s+/g, ' ').trim()).toBe('Only organisers can manage contests. Write to priya@college.edu if you need access.');
   });
 
   it('falls back to the ask sentence without a contact email', () => {
-    const el = render({ kind: 'forbidden', message: 'Only admins can manage contests.' });
+    const el = render({ kind: 'forbidden', message: 'Only organisers can manage contests.' });
     expect(el.querySelector('a')).toBeNull();
-    expect(el.textContent?.replace(/\s+/g, ' ').trim()).toBe('Only admins can manage contests. Ask an owner if you need access.');
+    expect(el.textContent?.replace(/\s+/g, ' ').trim()).toBe('Only organisers can manage contests. Ask an owner if you need access.');
   });
 
   it('links a missing thing to its parent', () => {

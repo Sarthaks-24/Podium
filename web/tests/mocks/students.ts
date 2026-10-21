@@ -357,7 +357,7 @@ export async function mockApi(page: Page, options: Options = {}) {
       const adminProgress = path.match(/^\/api\/admin\/users\/(\d+)\/progress$/);
       if (adminProgress && method === 'GET') {
         state.progressRequests.push(path);
-        if (me.role === 'student') return apiError(route, 403, 'forbidden', 'Only owners and admins can do that.');
+        if (me.role === 'student') return apiError(route, 403, 'forbidden', 'Only owners and admins can do this.');
         if (adminProgress[1] !== '7') return apiError(route, 404, 'not_found', 'There is no such account.');
         const p = progressFor(semester(now));
         delete p.hide_progress;
@@ -462,7 +462,7 @@ export const SCREENS: Screen[] = [
     path: '/admin/users/7/progress',
     options: { who: 'student' },
     title: 'Student progress · podium',
-    ready: (page) => expect(page.getByText("Only owners and admins can see a student's progress.")).toBeVisible(),
+    ready: (page) => expect(page.getByText("Only organisers can see a student's progress.")).toBeVisible(),
   },
   {
     name: 'notices',

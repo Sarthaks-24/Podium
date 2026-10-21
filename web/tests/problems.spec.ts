@@ -433,7 +433,7 @@ test('statements are sanitised and maths is rendered', async ({ page }) => {
 test('students see an explanation instead of the bank and no Problems link', async ({ page }) => {
   await mockApi(page, 'student');
   await page.goto('/admin/problems');
-  await expect(page.getByText('Only admins can manage problems.')).toBeVisible();
+  await expect(page.getByText('Only organisers can manage problems.')).toBeVisible();
   await expect(page.getByRole('link', { name: 'Problem bank', exact: true })).toHaveCount(0);
 });
 

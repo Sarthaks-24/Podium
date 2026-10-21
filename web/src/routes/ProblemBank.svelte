@@ -275,7 +275,7 @@
 <PageHeader title="Problem bank" />
 
 {#if loadState === 'forbidden'}
-  <PageState kind="forbidden" message="Only admins can manage problems." />
+  <PageState kind="forbidden" message="Only organisers can manage problems." />
 {:else}
   <div class="toolbar">
     <div class="buttons">

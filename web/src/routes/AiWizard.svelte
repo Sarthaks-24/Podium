@@ -309,7 +309,7 @@
   <PageHeader title="New problem with AI" crumbs={[{ label: 'Problem bank', href: '/admin/problems' }, { label: 'New problem with AI' }]} />
 
   {#if loadState === 'forbidden'}
-    <PageState kind="forbidden" message="Only admins can use the AI assistant." />
+    <PageState kind="forbidden" message="Only organisers can use the AI assistant." />
   {:else if loadState === 'ready'}
     <p class="key-state">
       {#if keyStatus && keyStatus.active && blocker !== ''}

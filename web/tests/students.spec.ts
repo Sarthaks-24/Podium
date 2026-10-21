@@ -162,7 +162,7 @@ test.describe('your progress', () => {
   test('a student is forbidden from the organiser route', async ({ page }) => {
     await mockApi(page, { who: 'student' });
     await page.goto('/admin/users/7/progress');
-    await expect(page.getByText("Only owners and admins can see a student's progress.")).toBeVisible();
+    await expect(page.getByText("Only organisers can see a student's progress.")).toBeVisible();
     await expect(page.getByRole('link', { name: 'priya@college.edu' }).first()).toBeVisible();
   });
 

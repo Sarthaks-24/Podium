@@ -399,9 +399,9 @@ test('a student with no cases gets no notice', async ({ page }) => {
 test('students cannot open the organiser screens', async ({ page }) => {
   await mockApi(page, { who: 'student' });
   await page.goto('/admin/contests/4/integrity');
-  await expect(page.getByText('Only owners and admins can review integrity.', { exact: false })).toBeVisible();
+  await expect(page.getByText('Only organisers can review integrity.', { exact: false })).toBeVisible();
   await page.goto('/admin/integrity/cases/3');
-  await expect(page.getByText('Only owners and admins can review integrity.', { exact: false })).toBeVisible();
+  await expect(page.getByText('Only organisers can review integrity.', { exact: false })).toBeVisible();
 });
 
 test('results and the contest nav lead to the integrity page', async ({ page }) => {

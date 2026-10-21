@@ -62,7 +62,7 @@
 
   let loadState = $state<'loading' | 'ready' | 'forbidden' | 'missing' | 'error'>('loading');
   let loadError = $state('');
-  let forbiddenText = $state('Only owners and admins can see a record.');
+  let forbiddenText = $state('Only organisers can see a record.');
   let rec = $state.raw<StudentRecord | null>(null);
 
   // Edit rating.

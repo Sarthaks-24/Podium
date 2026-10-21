@@ -210,7 +210,7 @@
 <PageHeader title="Contests" />
 
 {#if loadState === 'forbidden'}
-  <PageState kind="forbidden" message="Only admins can manage contests." />
+  <PageState kind="forbidden" message="Only organisers can manage contests." />
 {:else}
   {#if loadState === 'ready' && featured}
     {@const f = featured}

@@ -231,7 +231,7 @@
 
 {#if loadState === 'forbidden'}
   <PageHeader title="Signal" />
-  <PageState kind="forbidden" message="Only owners and admins can review integrity." />
+  <PageState kind="forbidden" message="Only organisers can review integrity." />
 {:else if loadState !== 'ready' || !sig}
   <PageHeader
     title={loadState === 'missing' || loadState === 'gone' ? (fromCase ? 'Evidence not found' : 'Signal not found') : 'Signal'}

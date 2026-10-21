@@ -4,8 +4,8 @@
   /api/admin/domains, /api/admin/accounts/* and /api/admin/site-audit).
 
   - On a fresh install (no domain yet, or nobody but the configured owner),
-    a short checklist comes first: add the college's domain, add a
-    co-teacher, share the address.
+    a short checklist comes first: add the college's domain, add another
+    organiser, share the address.
   - Organisers: a table of everyone with the admin or owner role (stacked
     rows on phones), a form to add one, and after an add an inline note
     with the address to send them and a Copy button. Someone who has not
@@ -675,7 +675,7 @@
           <Badge tone={domains.length > 0 ? 'ok' : 'neutral'} text={domains.length > 0 ? 'Done' : 'To do'} />
         </li>
         <li>
-          <span class="step">Add a co-teacher as an admin, so someone else can run a contest.</span>
+          <span class="step">Add another organiser, so someone else can run a contest.</span>
           <Badge tone={coTeachers > 0 ? 'ok' : 'neutral'} text={coTeachers > 0 ? 'Done' : 'To do'} />
         </li>
         <li>

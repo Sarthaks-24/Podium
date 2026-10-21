@@ -405,7 +405,7 @@
 
 {#if loadState === 'forbidden'}
   <PageHeader title="Case" />
-  <PageState kind="forbidden" message="Only owners and admins can review integrity." />
+  <PageState kind="forbidden" message="Only organisers can review integrity." />
 {:else if loadState !== 'ready' || !kase}
   <PageHeader
     title={loadState === 'missing' ? 'Case not found' : 'Case'}

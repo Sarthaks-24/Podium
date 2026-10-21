@@ -96,7 +96,7 @@
   <PageHeader title="AI assistant" crumbs={[{ label: 'Problem bank', href: '/admin/problems' }, { label: 'AI assistant' }]} />
 
   {#if loadState === 'forbidden'}
-    <PageState kind="forbidden" message="Only admins can use the AI assistant." />
+    <PageState kind="forbidden" message="Only organisers can use the AI assistant." />
   {:else if loadState === 'loading'}
     <PageState kind="loading" message="Loading" />
   {:else if loadState === 'error'}

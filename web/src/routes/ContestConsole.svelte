@@ -656,7 +656,7 @@
 
 {#if loadState === 'forbidden'}
   <PageHeader title="Console" />
-  <PageState kind="forbidden" message="Only admins can run contests." />
+  <PageState kind="forbidden" message="Only organisers can run contests." />
 {:else if loadState !== 'ready' || !contest}
   <PageHeader
     title={loadState === 'missing' ? 'Contest not found' : 'Console'}

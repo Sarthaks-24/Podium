@@ -475,7 +475,7 @@
   </PageHeader>
 
   {#if loadState === 'forbidden'}
-    <PageState kind="forbidden" message="Only admins can manage problems." />
+    <PageState kind="forbidden" message="Only organisers can manage problems." />
   {:else if loadState === 'missing'}
     <PageState kind="missing" message="There is no problem with that number." parent={{ href: '/admin/problems', label: 'Go to the problem bank.' }} />
   {:else if loadState === 'loading'}

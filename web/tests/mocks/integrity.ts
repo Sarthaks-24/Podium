@@ -310,7 +310,7 @@ export async function mockApi(page: Page, options: Options = {}) {
       }
 
       // Organiser routes.
-      if (path.startsWith('/api/admin/') && me.role === 'student') return apiError(route, 403, 'forbidden', 'Only admins can do that.');
+      if (path.startsWith('/api/admin/') && me.role === 'student') return apiError(route, 403, 'forbidden', 'Only owners and admins can do this.');
       if (path === '/api/admin/contests/4' && method === 'GET') return json(route, 200, contest());
       if (path === '/api/admin/contests/4/integrity' && method === 'GET') {
         state.runGets++;

@@ -160,7 +160,7 @@
         ]
       : undefined}
     lead={organiser
-      ? 'The page the student sees, with their final results. Only owners and admins can open it.'
+      ? 'The page the student sees, with their final results. Only organisers can open it.'
       : 'Your final results across the contests you took part in. Only you and the organisers see this page.'}
   />
 
@@ -169,7 +169,7 @@
   {:else if loadState === 'error'}
     <PageState kind="error" message={loadError} onretry={load} />
   {:else if loadState === 'forbidden'}
-    <PageState kind="forbidden" message="Only owners and admins can see a student's progress." />
+    <PageState kind="forbidden" message="Only organisers can see a student's progress." />
   {:else if loadState === 'missing'}
     <PageState kind="missing" message="There is no account with that number." parent={{ href: '/admin/students', label: 'Go to the students.' }} />
   {:else if data && hidden}

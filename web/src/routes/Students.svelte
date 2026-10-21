@@ -127,7 +127,7 @@
 <PageHeader title="Students" lead="Everyone who has signed in as a student, sorted by name. Open a student for their contests and record." />
 
 {#if loadState === 'forbidden'}
-  <PageState kind="forbidden" message="Only owners and admins can see the students." />
+  <PageState kind="forbidden" message="Only organisers can see the students." />
 {:else if loadState === 'loading'}
   <PageState kind="loading" message="Loading the students" />
 {:else if loadState === 'error'}

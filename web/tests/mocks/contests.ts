@@ -547,7 +547,7 @@ export async function mockApi(page: Page, options: Options = {}) {
       }
 
       // Organiser routes.
-      if (path.startsWith('/api/admin/') && me.role === 'student') return apiError(route, 403, 'forbidden', 'Only admins can do that.');
+      if (path.startsWith('/api/admin/') && me.role === 'student') return apiError(route, 403, 'forbidden', 'Only owners and admins can do this.');
       if (path === '/api/admin/problems' && method === 'GET') {
         const shown = (p: Json) => ({ ...p, shown_in_practice: (options.shownInPractice ?? []).includes(Number(p.id)) });
         return json(route, 200, {

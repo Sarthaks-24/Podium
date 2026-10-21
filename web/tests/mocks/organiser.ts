@@ -254,7 +254,7 @@ export async function mockApi(page: Page, options: Options = {}) {
       if (path === '/api/integrity/cases' && method === 'GET') return json(route, 200, { cases: [], contests: {}, problems: {}, server_now: Date.now() });
       if (path === '/api/admin/contests' && method === 'GET') return json(route, 200, { contests: [], server_now: Date.now() });
 
-      if (path.startsWith('/api/admin/') && me.role === 'student') return apiError(route, 403, 'forbidden', 'Only owners and admins can do that.');
+      if (path.startsWith('/api/admin/') && me.role === 'student') return apiError(route, 403, 'forbidden', 'Only owners and admins can do this.');
 
       if (path === '/api/admin/students' && method === 'GET') {
         state.studentQueries.push(url.search);
@@ -381,6 +381,6 @@ export const SCREENS: Screen[] = [
     path: '/admin/students',
     options: { who: 'student' },
     title: 'Students · podium',
-    ready: (page) => expect(page.getByText('Only owners and admins can see the students.')).toBeVisible(),
+    ready: (page) => expect(page.getByText('Only organisers can see the students.')).toBeVisible(),
   },
 ];

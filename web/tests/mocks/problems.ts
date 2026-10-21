@@ -345,7 +345,7 @@ export async function mockApi(page: Page, who: 'admin' | 'student' = 'admin') {
 
       if (path === '/api/me' && method === 'GET') return json(route, 200, me);
       if (path.startsWith('/api/admin/') && me.role === 'student') {
-        return apiError(route, 403, 'forbidden', 'Only admins can do that.');
+        return apiError(route, 403, 'forbidden', 'Only owners and admins can do this.');
       }
 
       if (path === '/api/admin/problems' && method === 'GET') {

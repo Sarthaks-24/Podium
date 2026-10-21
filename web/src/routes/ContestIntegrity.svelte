@@ -225,7 +225,7 @@
 
 {#if loadState === 'forbidden'}
   <PageHeader title="Integrity" />
-  <PageState kind="forbidden" message="Only owners and admins can review integrity." />
+  <PageState kind="forbidden" message="Only organisers can review integrity." />
 {:else if loadState !== 'ready' || !contest}
   <PageHeader
     title={loadState === 'missing' ? 'Contest not found' : 'Integrity'}

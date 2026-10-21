@@ -77,7 +77,7 @@
 
 {#if loadState === 'forbidden'}
   <PageHeader title="Student" />
-  <PageState kind="forbidden" message="Only owners and admins can see a student's page." />
+  <PageState kind="forbidden" message="Only organisers can see a student's page." />
 {:else if loadState !== 'ready' || !data}
   <PageHeader
     title={loadState === 'missing' ? 'Student not found' : 'Student'}

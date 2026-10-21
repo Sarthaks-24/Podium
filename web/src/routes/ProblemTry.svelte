@@ -34,7 +34,7 @@
   />
 {:else}
   <PageHeader title="Problems" />
-  <PageState kind="forbidden" message="Only admins can manage problems." />
+  <PageState kind="forbidden" message="Only organisers can manage problems." />
 {/if}
 
 <style>

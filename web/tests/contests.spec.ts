@@ -398,7 +398,7 @@ test('a new contest marks its required fields, and a field error from the server
 test('students cannot open the contest admin', async ({ page }) => {
   await mockApi(page, { phase: 'during' });
   await page.goto('/admin/contests');
-  await expect(page.getByText('Only admins can manage contests.')).toBeVisible();
+  await expect(page.getByText('Only organisers can manage contests.')).toBeVisible();
   // F3: a closed screen names where to ask, as a mailto link.
   await expect(page.getByRole('main').getByRole('link', { name: 'priya@college.edu' })).toHaveAttribute('href', 'mailto:priya@college.edu');
 });

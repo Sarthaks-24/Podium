@@ -218,7 +218,7 @@
 
 {#if loadState === 'forbidden'}
   <PageHeader title="Results" />
-  <PageState kind="forbidden" message="Only admins can see full results." />
+  <PageState kind="forbidden" message="Only organisers can see full results." />
 {:else if loadState !== 'ready' || !contest}
   <PageHeader
     title={loadState === 'missing' ? 'Contest not found' : 'Results'}
