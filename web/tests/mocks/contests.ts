@@ -51,7 +51,7 @@ export interface Options {
   studentFrozen?: boolean;
   /** The student's window ends this many ms after the page loads. */
   endsInMs?: number;
-  /** The organiser's contest starts out published. */
+  /** Whether the organiser's contest starts out published (default true: an unpublished contest past its start is a draft, C2-015). */
   published?: boolean;
   /** Bank problems whose hidden tests a contest showed in practice (D115, C1-015). */
   shownInPractice?: number[];
@@ -332,7 +332,7 @@ export async function mockApi(page: Page, options: Options = {}) {
     access: 'roster',
     feedback_mode: 'subtask',
     graded: true,
-    published: options.published ?? false,
+    published: options.published ?? true,
     practice_after_end: true,
     stop_on_sample_fail: true,
     min_gap_s: 30,
@@ -565,7 +565,9 @@ export async function mockApi(page: Page, options: Options = {}) {
         const body = req.postDataJSON() as Json;
         state.settingsPuts.push(body);
         if (body.slug === 'Week 6') return apiError(route, 400, 'bad_request', 'Check the highlighted fields.', { fields: { slug: 'Use lowercase letters, digits and single hyphens, like week-6.' } });
-        if (body.published === true && !options.publishOk) return apiError(route, 409, 'conflict', 'The contest cannot be published yet.', { fields: { published: 'Problem B changed since it was added; validate it and add it again.' } });
+        // Go refuses publishing (not saving an already published contest) with 400 and fields (contests.go contestError).
+        const stale = 'Problem B changed or lost its validation since it was added. Validate it and add it again.';
+        if (body.published === true && options.published === false && !options.publishOk) return apiError(route, 400, 'bad_request', stale, { fields: { published: stale } });
         return json(route, 200, { ...adminContest(), ...body });
       }
       if (path === '/api/admin/contests/4/problems' && method === 'PUT') {

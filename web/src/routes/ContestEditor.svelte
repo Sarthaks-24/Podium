@@ -24,7 +24,9 @@
     who can take part, pacing, languages and the options. Holding the
     board for a reveal needs a freeze.
   - Description and honour code, then Save changes for everything above.
-    While the contest is live, saving a change to the times, start mode,
+    While the contest is live (published and past its start; an
+    unpublished one past its start says students cannot see it yet),
+    saving a change to the times, start mode,
     scoring, feedback or freeze asks first, and so does turning grading
     off once the contest has started. Leaving with unsaved settings asks
     first.
@@ -120,8 +122,12 @@
   const isOrganiser = $derived(session.user?.role === 'admin' || session.user?.role === 'owner');
   const base = $derived(`/api/admin/contests/${encodeURIComponent(id)}`);
   const roster = $derived(rosterText.trim() === '' ? null : parseRoster(rosterText));
-  const live = $derived(contest?.state === 'live' || contest?.state === 'frozen');
-  const startedOrOver = $derived(live || contest?.state === 'ended' || contest?.state === 'practice');
+  // The server's state ignores `published`, so an unpublished contest past
+  // its start reads "live" there; students cannot see it (C2-015).
+  const running = $derived(contest?.state === 'live' || contest?.state === 'frozen');
+  const live = $derived(!!contest?.published && running);
+  const startedOrOver = $derived(running || contest?.state === 'ended' || contest?.state === 'practice');
+  const pastStartUnpublished = $derived(!!contest && !contest.published && startedOrOver);
   const dirty = $derived(form !== null && JSON.stringify(form) !== formBaseline);
   // What the file would change: students added and removed against the current roster.
   const rosterDiff = $derived.by(() => {
@@ -155,7 +161,7 @@
         freeze_minutes: num(form.freeze_minutes),
         hold_reveal: form.hold_reveal,
       },
-      startedOrOver,
+      startedOrOver && !!contest.published,
       contest.server_now ?? Date.now(),
     );
   });
@@ -807,6 +813,10 @@
         This contest is live. Changes here reach students at once. To give more time or to end it now, use the
         <a href="/admin/contests/{encodeURIComponent(id)}/console">console</a>.
       </p>
+    </div>
+  {:else if pastStartUnpublished}
+    <div class="banner banner-info live-note" role="note">
+      <p>The start time has passed. Students cannot see this contest until you publish it, so move the start or publish now.</p>
     </div>
   {/if}
 

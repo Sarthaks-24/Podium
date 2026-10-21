@@ -417,7 +417,7 @@ test('the Console link counts unanswered questions on Settings (O4)', async ({ p
 });
 
 test('hidden tests shown in practice are named, and grading off after the start asks first (C1-015)', async ({ page }) => {
-  const api = await mockApi(page, { who: 'admin', phase: 'during', shownInPractice: [11, 12], publishOk: true });
+  const api = await mockApi(page, { who: 'admin', phase: 'during', published: false, shownInPractice: [11, 12], publishOk: true });
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto('/admin/contests/4');
   await expect(page.getByLabel('Title', { exact: true })).toHaveValue('Week 6 contest');
@@ -460,20 +460,12 @@ test('the editor shows field errors, picks problems and previews a roster', asyn
   await expect(slug).toHaveAttribute('aria-invalid', 'true');
   await expect(slug).toBeFocused();
 
-  // Publishing is in the title row (P3 O1): it asks first, listing the checks, and a refusal names the reason.
   await slug.fill('week-6');
-  await expect(page.locator('.publish-line')).toContainText('Not published. 1 problem, starts');
-  await page.getByRole('button', { name: 'Publish contest' }).click();
-  const publish = page.getByRole('dialog', { name: 'Publish Week 6 contest?' });
-  await expect(publish).toContainText('Students on the roster see it in their contest list at once.');
-  await expect(publish).toContainText('1 problem, all validated.');
-  await publish.getByRole('button', { name: 'Publish contest' }).click();
-  await expect(page.locator('#publish-error')).toHaveText('Problem B changed since it was added; validate it and add it again.');
   await page.getByText('Rules and scoring').click();
   await page.getByLabel('Python 3').uncheck();
   await page.getByRole('button', { name: 'Save changes' }).click();
   await expect(page.getByText('Saved changes', { exact: true })).toBeVisible();
-  expect(api.settingsPuts.at(-1)).toMatchObject({ slug: 'week-6', languages: ['cpp17'], published: false, freeze_minutes: 30 });
+  expect(api.settingsPuts.at(-1)).toMatchObject({ slug: 'week-6', languages: ['cpp17'], published: true, freeze_minutes: 30 });
 
   // Changing the freeze of a live contest asks first.
   const puts = api.settingsPuts.length;
@@ -668,7 +660,7 @@ test('End the contest now says what happens and sets the end to now (P3 O5)', as
   await expect.poll(() => api.settingsPuts.length).toBe(1);
   const body = api.settingsPuts[0];
   // Every other setting is sent as it was; only the end moves to now.
-  expect(body).toMatchObject({ slug: 'week-6', freeze_minutes: 30, languages: ['cpp17', 'python3'], published: false });
+  expect(body).toMatchObject({ slug: 'week-6', freeze_minutes: 30, languages: ['cpp17', 'python3'], published: true });
   expect(Math.abs(Number(body.ends_at) - before)).toBeLessThan(15_000);
   await expect(page.locator('.toasts').getByText('Ended the contest', { exact: true })).toBeVisible();
 });
@@ -1110,8 +1102,38 @@ test('stacked rows stay table rows and the whole row is the link', async ({ page
   await expect(page).toHaveURL(new RegExp(`${href}$`));
 });
 
+test('publishing a draft asks first, listing the checks, and a refusal names the reason (P3 O1)', async ({ page }) => {
+  await mockApi(page, { who: 'admin', phase: 'upcoming', published: false });
+  await page.goto('/admin/contests/4');
+  await expect(page.locator('.publish-line')).toContainText('Not published. 1 problem, starts');
+  await page.getByRole('button', { name: 'Publish contest' }).click();
+  const publish = page.getByRole('dialog', { name: 'Publish Week 6 contest?' });
+  await expect(publish).toContainText('Students on the roster see it in their contest list at once.');
+  await expect(publish).toContainText('1 problem, all validated.');
+  await publish.getByRole('button', { name: 'Publish contest' }).click();
+  await expect(page.locator('#publish-error')).toHaveText('Problem B changed or lost its validation since it was added. Validate it and add it again.');
+});
+
+test('an unpublished contest past its start is a draft, not live (C2-015)', async ({ page }) => {
+  const api = await mockApi(page, { who: 'admin', phase: 'during', published: false });
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto('/admin/contests/4');
+  await expect(page.locator('.title-row .state-word')).toHaveText('Draft');
+  await expect(page.getByText('This contest is live.', { exact: false })).toHaveCount(0);
+  await expect(page.getByRole('note').filter({ hasText: 'The start time has passed.' })).toHaveText(
+    'The start time has passed. Students cannot see this contest until you publish it, so move the start or publish now.',
+  );
+  await expect(page.getByRole('region', { name: 'Before you publish' })).toContainText('The start time has passed. Move it ahead, or students start at once.');
+  // Nobody can see it, so a time change saves without the live warning.
+  await page.locator('#rules summary').click();
+  await page.getByLabel('Freeze the board, minutes before the end').fill('20');
+  await page.getByRole('button', { name: 'Save changes' }).click();
+  await expect(page.getByRole('dialog', { name: 'Change a live contest?' })).toHaveCount(0);
+  await expect.poll(() => api.settingsPuts.at(-1)?.freeze_minutes).toBe(20);
+});
+
 test('an unpublished contest reads Draft, and holding the board needs a freeze (P3 O1, O8)', async ({ page }) => {
-  await mockApi(page, { who: 'admin', phase: 'upcoming' });
+  await mockApi(page, { who: 'admin', phase: 'upcoming', published: false });
   await page.goto('/admin/contests/4');
   await expect(page.locator('.title-row .state-word')).toHaveText('Draft');
   await expect(page.getByRole('region', { name: 'Before you publish' })).toContainText('1 problem, all validated.');
