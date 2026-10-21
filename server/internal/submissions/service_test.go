@@ -288,7 +288,7 @@ func TestGenerateFillsMissingOutputs(t *testing.T) {
 	r := newRig(t)
 	ctx := context.Background()
 	p := r.importPack(t, func(name string) bool { return strings.HasSuffix(name, ".out") })
-	if !strings.Contains(strings.Join(p.Problems(), " "), "has no expected output") {
+	if !strings.Contains(strings.Join(p.Problems(), " "), "no expected output") {
 		t.Fatalf("missing outputs not reported: %v", p.Problems())
 	}
 	var notReady *NotReadyError

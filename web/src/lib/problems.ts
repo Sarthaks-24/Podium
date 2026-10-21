@@ -979,3 +979,16 @@ export function previewSamples(tests: readonly TestCase[], samplesText: string):
     cut: chosen.some((t) => t.input_size > t.input_preview.length || t.output_size > t.output_preview.length),
   };
 }
+
+/** Sorted test numbers in range form, as subtask ranges are written: "1-3, 5". */
+export function rangeText(nums: readonly number[]): string {
+  const sorted = [...nums].sort((a, b) => a - b);
+  const parts: string[] = [];
+  for (let i = 0; i < sorted.length; ) {
+    let j = i;
+    while (j + 1 < sorted.length && sorted[j + 1] === sorted[j] + 1) j++;
+    parts.push(j === i ? String(sorted[i]) : `${sorted[i]}-${sorted[j]}`);
+    i = j + 1;
+  }
+  return parts.join(', ');
+}

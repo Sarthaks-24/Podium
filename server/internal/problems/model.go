@@ -305,15 +305,23 @@ func (p *Problem) Problems() []string {
 	return append(p.StructureProblems(), p.missingOutputs()...)
 }
 
-// missingOutputs lists tests still waiting for their expected output.
+// missingOutputs names the tests still waiting for their expected output,
+// in one line however many there are (a fresh zip of inputs read as one
+// line per test, walk 2026-10-21).
 func (p *Problem) missingOutputs() []string {
-	var out []string
+	var nums []int
 	for _, t := range p.Tests {
 		if t.OutputSHA == "" {
-			out = append(out, fmt.Sprintf("Test %d has no expected output. Generate outputs from the reference solution.", t.Idx))
+			nums = append(nums, t.Idx)
 		}
 	}
-	return out
+	switch len(nums) {
+	case 0:
+		return nil
+	case 1:
+		return []string{fmt.Sprintf("Test %d has no expected output. Generate outputs from the reference solution.", nums[0])}
+	}
+	return []string{fmt.Sprintf("Tests %s have no expected output. Generate outputs from the reference solution.", FormatRanges(nums))}
 }
 
 // StructureProblems is Problems without missing outputs: tests, samples and
@@ -365,10 +373,18 @@ func (p *Problem) StructureProblems() []string {
 			}
 		}
 	}
+	var loose []int
 	for _, t := range p.Tests {
 		if owner[t.Idx] == "" {
-			out = append(out, fmt.Sprintf("Test %d is in no subtask. Add it to a subtask, or mark it as a sample or an open test.", t.Idx))
+			loose = append(loose, t.Idx)
 		}
+	}
+	switch len(loose) {
+	case 0:
+	case 1:
+		out = append(out, fmt.Sprintf("Test %d is in no subtask. Add it to a subtask, or mark it as a sample or an open test.", loose[0]))
+	default:
+		out = append(out, fmt.Sprintf("Tests %s are in no subtask. Add them to a subtask, or mark them as samples or open tests.", FormatRanges(loose)))
 	}
 	return out
 }

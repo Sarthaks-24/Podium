@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   checkArgs,
+  rangeText,
   failureSentence,
   nextPlanRow,
   readPlan,
@@ -346,5 +347,13 @@ describe('reportLines', () => {
     const running = reportLines({ ...v, state: 'running', summary: null });
     expect(running.at(-1)).toEqual({ text: 'Test 7: reference solution got wrong answer', tone: 'bad', detail: 'expected 3, found 4' });
     expect(running.filter((l) => l.text.startsWith('Test 7: brute'))).toEqual([]);
+  });
+});
+
+describe('rangeText', () => {
+  it('writes test numbers as ranges, so six loose tests read as one line (walk 2026-10-21)', () => {
+    expect(rangeText([3, 4, 5, 6])).toBe('3-6');
+    expect(rangeText([7, 1, 2, 3, 5])).toBe('1-3, 5, 7');
+    expect(rangeText([4])).toBe('4');
   });
 });

@@ -17,7 +17,7 @@
 <script lang="ts">
   import { tick } from 'svelte';
   import { describedBy } from '../../lib/problemFields';
-  import { draftGroups, formatBytes, problemPath, type Draft, type Problem } from '../../lib/problems';
+  import { draftGroups, formatBytes, problemPath, rangeText, type Draft, type Problem } from '../../lib/problems';
 
   type Report = { message: string; problems: readonly string[] } | null;
 
@@ -143,7 +143,9 @@
 
   <h3 class="sub">Subtasks</h3>
   <p class="field-help sub-help">
-    Every test that is not a sample or an open test belongs to exactly one subtask. Points add up to {pointsTotal}{pointsTotal !== 100 && draft.subtasks.length > 0 ? '; contests expect 100' : ''}.
+    Every test that is not a sample or an open test belongs to exactly one subtask. {draft.subtasks.length === 0
+      ? 'Contests expect the points to add up to 100.'
+      : `Points add up to ${pointsTotal}${pointsTotal !== 100 ? '; contests expect 100' : ''}.`}
   </p>
   {#if err('subtasks')}<p id="subtasks-error" class="field-error">{err('subtasks')}</p>{/if}
 
@@ -283,9 +285,11 @@
     <p class="muted empty">No tests yet. Upload a .zip of numbered input and output files to add them.</p>
   {:else}
     <p class="tests-summary">{testsSummary}</p>
-    {#each unassigned as idx (idx)}
-      <p class="field-error">Test {idx} is in no subtask. Add it to a subtask range, to the samples or to the open tests.</p>
-    {/each}
+    {#if unassigned.length === 1}
+      <p class="field-error">Test {unassigned[0]} is in no subtask. Add it to a subtask range, to the samples or to the open tests.</p>
+    {:else if unassigned.length > 1}
+      <p class="field-error">Tests {rangeText(unassigned)} are in no subtask. Add them to a subtask range, to the samples or to the open tests.</p>
+    {/if}
     {#if missing.length > 0}
       <p class="missing-note">
         {missing.length === 1 ? `Test ${missing[0]} has` : `${missing.length} tests have`} no expected output. Generate outputs to fill
