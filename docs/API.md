@@ -819,7 +819,7 @@ data: {"id":80,"state":"running","verdict":"",...}
 - Contest events go to the contest's members who have a stream open: organisers, and for a published contest the students who may enter it (anyone signed in for domain access, the roster otherwise). Membership is checked when each event is sent, so a student taken off the roster stops receiving them at once.
 - On every `clock` tick the server checks the session again; a stream whose session has ended (signed out, expired, account disabled) is closed.
 - Each user may hold 4 streams (tabs); a fifth replaces the oldest, which gets a `replaced` event and is closed. The web app then stops reconnecting that tab and offers to continue in the newer one.
-- In a live contest, opening a stream from another browser or machine while one is open is recorded for the organisers as a "second session" (decision D47). Nothing is shown to the student.
+- In a live contest, opening a stream from another browser or machine while one is open is recorded for the organisers as a "second session" (decision D47). A phone or tablet browser that changes network is the same device (docs/ARCHITECTURE.md, "Integrity (D47)"). Nothing is shown to the student.
 - The server holds at most 5,000 streams. Beyond that: `503 busy` with `Retry-After: 30`, and the page polls instead.
 - A stream that falls 16 events behind, or does not accept a write within 10 s, is closed; the browser reconnects.
 - `501 unsupported` if the server cannot stream; the page polls instead.

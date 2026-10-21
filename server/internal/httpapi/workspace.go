@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/Sarthaks-24/podium/internal/auth"
@@ -244,6 +245,30 @@ func (d Deps) getRun(w http.ResponseWriter, r *http.Request) {
 	WriteJSON(w, http.StatusOK, v)
 }
 
+// streamTag names the device a stream comes from, for the second-session
+// signal (D47): the address and the browser. A phone changes address when
+// it moves from wifi to cellular, and its old stream lingers until TCP
+// gives up, so for a phone or tablet browser the address is left out and
+// the same browser on a new network is the same device (council C1-051).
+// A desktop keeps the address: identical lab machines differ only by it.
+func (d Deps) streamTag(r *http.Request) string {
+	ua := r.UserAgent()
+	if mobileAgent(ua) {
+		return d.Submissions.ClientHash("", ua)
+	}
+	return d.Submissions.ClientHash(clientIP(r), ua)
+}
+
+// mobileAgent reports a phone or tablet browser by its user agent.
+func mobileAgent(ua string) bool {
+	for _, m := range []string{"Mobile", "Android", "iPhone", "iPad"} {
+		if strings.Contains(ua, m) {
+			return true
+		}
+	}
+	return false
+}
+
 // eventStream is the signed-in user's server-sent event stream: run and
 // submission updates as they happen, contest events, and the server's
 // clock every 25 s. On each clock tick the session is checked again, so a
@@ -258,7 +283,7 @@ func (d Deps) eventStream(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	u := userFrom(r.Context())
-	tag := d.Submissions.ClientHash(clientIP(r), r.UserAgent())
+	tag := d.streamTag(r)
 	if d.Contests != nil && u.Role == auth.Student {
 		for _, other := range d.Hub.Tags(u.ID) {
 			if other != tag {

@@ -4,8 +4,12 @@ package httpapi
 // run-1-2026-10-21/FINDINGS.md), one test per finding id.
 
 import (
+	"net/http"
+	"net/http/httptest"
+
 	"context"
 	"fmt"
+	"github.com/Sarthaks-24/podium/internal/submissions"
 	"math"
 	"testing"
 	"time"
@@ -179,5 +183,29 @@ func TestC1044AppealsListPages(t *testing.T) {
 		if code, out := owner.do("GET", "/api/admin/appeals?page="+bad, nil, ""); code != 400 {
 			t.Errorf("page %s: %d %v", bad, code, out)
 		}
+	}
+}
+
+// C1-051: a phone that moves from wifi to cellular keeps its stream tag,
+// so it records no second session; a desktop on another address, or
+// another browser, is another device.
+func TestC1051StreamTagIgnoresAPhoneChangingNetworks(t *testing.T) {
+	d := Deps{Submissions: &submissions.Service{HashKey: []byte("k")}}
+	req := func(addr, ua string) *http.Request {
+		r := httptest.NewRequest("GET", "/api/events", nil)
+		r.RemoteAddr = addr
+		r.Header.Set("User-Agent", ua)
+		return r
+	}
+	phone := "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 Chrome/130.0 Mobile Safari/537.36"
+	desk := "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/130.0 Safari/537.36"
+	if d.streamTag(req("10.1.2.3:5000", phone)) != d.streamTag(req("100.64.9.9:6000", phone)) {
+		t.Error("a phone on a new network counted as another device")
+	}
+	if d.streamTag(req("10.1.2.3:5000", desk)) == d.streamTag(req("10.1.2.4:5000", desk)) {
+		t.Error("two desktops with one browser version counted as one device")
+	}
+	if d.streamTag(req("10.1.2.3:5000", desk)) == d.streamTag(req("10.1.2.3:5000", phone)) {
+		t.Error("two browsers counted as one device")
 	}
 }
