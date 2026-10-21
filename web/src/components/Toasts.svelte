@@ -8,17 +8,26 @@
   announced once. Errors stay however many there are; info toasts fill the
   rest of three (lib/toast.svelte.ts).
   The stack lets clicks through to the page; only an error toast, which has
-  a button, takes them. Toasts appear at --dur with a short rise, and
-  without motion when reduced motion is requested. Takes no props.
+  a button, takes them. Toasts appear at --dur with a short rise and leave
+  with a fade at --dur-fast (design.md 7), both without motion when reduced
+  motion is requested. Takes no props.
 -->
 <script lang="ts">
+  import type { TransitionConfig } from 'svelte/transition';
   import { dismissToast, toasts } from '../lib/toast.svelte';
+
+  /** The exit: an opacity fade at --dur-fast, none under reduced motion. */
+  function leave(node: HTMLElement): TransitionConfig {
+    const reduced = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const ms = Number.parseFloat(getComputedStyle(node).getPropertyValue('--dur-fast'));
+    return { duration: reduced || !Number.isFinite(ms) ? 0 : ms, css: (t) => `opacity: ${t}` };
+  }
 </script>
 
 <div class="toasts">
   <div class="stack">
     {#each toasts.items.filter((t) => t.kind === 'error') as item (item.id)}
-      <div class="toast toast-error" role="alert">
+      <div class="toast toast-error" role="alert" out:leave>
         <p>{item.message}</p>
         <button type="button" class="btn btn-quiet btn-compact dismiss" onclick={() => dismissToast(item.id)}>
           Dismiss
@@ -28,7 +37,7 @@
   </div>
   <div class="stack">
     {#each toasts.items.filter((t) => t.kind !== 'error') as item (item.id)}
-      <div class="toast">
+      <div class="toast" out:leave>
         <p>{item.message}</p>
       </div>
     {/each}

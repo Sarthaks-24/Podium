@@ -358,9 +358,9 @@
 
     .preview {
       position: sticky;
-      top: calc(var(--space-7) + var(--space-4));
+      top: calc(var(--sticky-offset, var(--space-7)) + var(--space-4));
       align-self: start;
-      max-height: calc(100vh - var(--space-7) - 2 * var(--space-4));
+      max-height: calc(100dvh - var(--sticky-offset, var(--space-7)) - 2 * var(--space-4));
       overflow-y: auto;
     }
   }

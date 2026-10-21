@@ -16,7 +16,7 @@
     Adding, removing and reordering save at once, one request each; the
     letters follow the order. A graded contest refuses a problem the AI
     wizard made when no person has written a solution for it; the section
-    then asks for a reason, and "Grade as written" saves again with it.
+    then asks for a reason, and "Grade as the AI wrote it" saves again with it.
     A problem whose hidden tests an ungraded contest or practice showed
     says so in the picker, and publishing a graded contest with one
     names it in the confirm (D115).
@@ -506,7 +506,8 @@
       document.getElementById('ai-reason')?.focus();
       return;
     }
-    await putProblems(aiReason.trim(), 'Saved problems with your reason');
+    const which = aiLabels.length === 1 ? `Problem ${aiLabels[0]} is` : `Problems ${aiLabels.join(', ')} are`;
+    await putProblems(aiReason.trim(), `Saved problems. ${which} graded as the AI wrote ${aiLabels.length === 1 ? 'it' : 'them'}.`);
   }
 
   function cancelAi() {
@@ -904,7 +905,7 @@
           {/if}
           {#if problemsError}<p class="field-error" role="alert">{problemsError}</p>{/if}
           {#if aiLabels.length > 0}
-            <div class="ai-confirm" role="group" aria-label="Grade as written">
+            <div class="ai-confirm" role="group" aria-label="Grade as the AI wrote it">
               <div class="field">
                 <label for="ai-reason">Reason to grade {aiLabels.length === 1 ? `problem ${aiLabels[0]}` : `problems ${aiLabels.join(', ')}`} as the AI wrote it</label>
                 <textarea
@@ -921,7 +922,7 @@
                 {#if aiError}<p id="ai-reason-error" class="field-error">{aiError}</p>{/if}
               </div>
               <div class="row">
-                <button type="button" class="btn btn-danger" disabled={problemsBusy} onclick={gradeAsWritten}>Grade as written</button>
+                <button type="button" class="btn btn-danger" disabled={problemsBusy} onclick={gradeAsWritten}>Grade as the AI wrote it</button>
                 <button type="button" class="btn btn-secondary" onclick={cancelAi}>Cancel</button>
               </div>
             </div>

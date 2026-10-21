@@ -2,10 +2,11 @@
   CompileOutput: compiler output shown verbatim in mono, with every source
   location it names (lib/compileErrors.ts: "main.cpp:12:5",
   "Main.java:12", 'line 12', "main.js:12") turned into a button that moves
-  the editor's cursor there. The text is never rendered as HTML. Props:
-  `output` (the compiler's text), `language` (which compiler's shapes to
-  look for) and `onjump` (called with the line and column, or null when
-  there is no editor to jump to).
+  the editor's cursor there; its name starts with the text it shows, so
+  a voice user can say what they see (X6). The text is never rendered as
+  HTML. Props: `output` (the compiler's text), `language` (which
+  compiler's shapes to look for) and `onjump` (called with the line and
+  column, or null when there is no editor to jump to).
 -->
 <script lang="ts">
   import { segments } from '../lib/compileErrors';
@@ -24,7 +25,7 @@
 <pre class="output">{#each parts as part, i (i)}{#if typeof part === 'string'}{part}{:else if onjump}<button
         type="button"
         class="jump"
-        aria-label="Go to line {part.line}{part.col !== null ? `, column ${part.col}` : ''} in the editor"
+        aria-label="{part.text}, go to line {part.line}{part.col !== null ? `, column ${part.col}` : ''} in the editor"
         onclick={() => onjump?.(part.line, part.col)}>{part.text}</button
       >{:else}{part.text}{/if}{/each}</pre>
 

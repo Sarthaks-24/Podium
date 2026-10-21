@@ -48,7 +48,7 @@ export function sendError(e: unknown): { field: 'topic' | 'message' | null; text
     if (e.status === 401) return { field: null, text: 'Not sent: you are signed out. Sign in again; your message is still here.' };
     return { field: null, text: e.message };
   }
-  return { field: null, text: 'Not sent: something went wrong. Try again in a moment.' };
+  return { field: null, text: 'Not sent: this page failed. Your message is still here: copy it, reload the page and send it again.' };
 }
 
 /** One message in the inbox. */

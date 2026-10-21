@@ -767,8 +767,8 @@
 
   @media (min-width: 1280px) {
     .editor-split > .page-split-aside {
-      top: calc(var(--control-h) + 2 * var(--space-2) + var(--space-4));
-      max-height: calc(100dvh - var(--control-h) - 2 * var(--space-2) - 2 * var(--space-4));
+      top: calc(var(--sticky-offset, var(--space-7)) + var(--space-4));
+      max-height: calc(100dvh - var(--sticky-offset, var(--space-7)) - 2 * var(--space-4));
     }
   }
 

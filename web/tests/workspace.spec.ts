@@ -203,7 +203,7 @@ test('a compile error line jumps to the editor', async ({ page }) => {
   await expect(page.getByRole('tab', { name: /Result/ })).toHaveAttribute('aria-selected', 'true');
   api.stream.push({ type: 'submission', data: submission(20, 'ce') });
 
-  const jump = page.getByRole('button', { name: 'Go to line 3, column 5 in the editor' });
+  const jump = page.getByRole('button', { name: 'main.cpp:3:5, go to line 3, column 5 in the editor', exact: true });
   await expect(jump).toBeVisible({ timeout: 10_000 });
   await expect(page.getByText('Compile error', { exact: true }).first()).toBeVisible();
   await page.screenshot({ path: `${shots()}workspace-compile-error-375-light.png`, fullPage: true });

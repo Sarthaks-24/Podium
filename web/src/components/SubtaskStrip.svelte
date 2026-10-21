@@ -2,8 +2,9 @@
   SubtaskStrip: one bar per subtask, as wide as its points, filling as the
   judge reports tests (design.md 5.3 and 7). A subtask fills in --wait while
   it is being judged, then turns --ok when it passed or --bad when it
-  failed. The fill grows over --dur-slow: this is one of the product's two
-  orchestrated motions, and it is instant under prefers-reduced-motion.
+  failed. The fill grows over --dur-slow as a scaleX transform, so it runs
+  on the compositor: this is one of the product's two orchestrated
+  motions, and it is instant under prefers-reduced-motion.
   The score sits at the end in mono. The bars are drawn for sighted users;
   screen readers get the same facts from the image's label. Props:
   `submission`.
@@ -45,7 +46,7 @@
   <div class="strip" role="img" aria-label={label}>
     {#each cells as cell (cell.idx)}
       <span class="cell" style:flex-grow={Math.max(1, cell.points)}>
-        <span class="fill tone-{cell.tone}" style:width="{Math.round(cell.fill * 100)}%"></span>
+        <span class="fill tone-{cell.tone}" style:transform="scaleX({Math.round(cell.fill * 100) / 100})"></span>
       </span>
     {/each}
   </div>
@@ -77,9 +78,11 @@
 
   .fill {
     display: block;
+    width: 100%;
     height: 100%;
+    transform-origin: left;
     transition:
-      width var(--dur-slow) var(--ease),
+      transform var(--dur-slow) var(--ease),
       background-color var(--dur) var(--ease);
   }
 

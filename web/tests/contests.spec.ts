@@ -698,17 +698,17 @@ test('a graded contest asks for a reason before it takes an AI problem nobody so
   const reason = page.getByLabel('Reason to grade problem B as the AI wrote it');
   await expect(reason).toBeFocused();
   await expect(page.getByText('Problem B came from the AI wizard', { exact: false })).toBeVisible();
-  await page.getByRole('button', { name: 'Grade as written' }).click();
+  await page.getByRole('button', { name: 'Grade as the AI wrote it' }).click();
   await expect(page.locator('#ai-reason-error')).toHaveText('Write a reason of at least 10 characters.');
   await expect(reason).toHaveAttribute('aria-invalid', 'true');
 
   await reason.fill('Checked the reference by hand against the statement.');
-  await page.getByRole('button', { name: 'Grade as written' }).click();
+  await page.getByRole('button', { name: 'Grade as the AI wrote it' }).click();
   await expect.poll(() => api.problemPuts.at(-1)).toEqual([
     { problem_id: 11, label: 'A' },
     { problem_id: 12, label: 'B', ai_reason: 'Checked the reference by hand against the statement.' },
   ]);
-  await expect(page.locator('.toasts').getByText('Saved problems with your reason', { exact: true })).toBeVisible();
+  await expect(page.locator('.toasts').getByText('Saved problems. Problem B is graded as the AI wrote it.', { exact: true })).toBeVisible();
   await expect(reason).toHaveCount(0);
 });
 

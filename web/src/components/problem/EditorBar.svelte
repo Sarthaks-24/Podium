@@ -9,7 +9,9 @@
   report", which moves focus to the report (audit 2026-10-20 O2). Under it
   the jump links name each section with a short state (A3); on phones they
   are one row that scrolls sideways. Save changes submits the editor's
-  form. Props: `status` (lib/problems editorStatus), `aiDraft`, `dirty`,
+  form. While it is on screen the bar publishes its real height, wrapped
+  rows and touch-sized controls included, as --sticky-offset on the root,
+  so the sticky preview and context column sit under it (R3). Props: `status` (lib/problems editorStatus), `aiDraft`, `dirty`,
   `fieldCount`, `jumps` ({id, label, state}), `saving`, `busy` (Validate is
   disabled), `validateLabel`, `validatePrimary`, `result`
   (validationResultLine, or null to show none), `onvalidate` and
@@ -34,9 +36,22 @@
   }
 
   let { status, aiDraft, dirty, fieldCount, jumps, saving, busy, validateLabel, validatePrimary, result, onvalidate, onreport }: Props = $props();
+
+  let bar: HTMLDivElement | undefined = $state();
+  $effect(() => {
+    const el = bar;
+    if (!el || typeof ResizeObserver === 'undefined') return;
+    const root = document.documentElement;
+    const ro = new ResizeObserver(() => root.style.setProperty('--sticky-offset', `${el.offsetHeight}px`));
+    ro.observe(el);
+    return () => {
+      ro.disconnect();
+      root.style.removeProperty('--sticky-offset');
+    };
+  });
 </script>
 
-<div class="action-bar">
+<div class="action-bar" bind:this={bar}>
   <div class="bar-row">
     <div class="bar-status">
       {#if status}
