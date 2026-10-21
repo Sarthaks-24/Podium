@@ -220,14 +220,14 @@
     return caseStateWord(d.state);
   }
 
-  // Reloads the case after a refused decision, keeping the note.
-  async function reload() {
+  // Reloads the case after a refused decision, keeping the note (and the refusal, when asked).
+  async function reload(keepError = false) {
     try {
       const c = await getJSON<Case & { server_now?: number }>(api);
       setClock(c.server_now);
       kase = c;
       stale = false;
-      actionError = '';
+      if (!keepError) actionError = '';
     } catch (e) {
       if (!handleAuth(e)) actionError = errorText(e);
     }
@@ -292,6 +292,11 @@
         noteField?.focus();
       } else actionError = errorText(e);
       stale = e instanceof ApiError && e.code === 'explanation_changed';
+      // Another reviewer got there first (the case moved on, or a proposal is now
+      // waiting): read the case again so the right buttons show (C2-025). A changed
+      // explanation keeps its Reload button, so the reviewer reads it before deciding.
+      const raced = e instanceof ApiError && !stale && (e.status === 409 || e.status === 400) && Object.keys(e.fields).length === 0;
+      if (raced) await reload(true);
     } finally {
       busy = false;
       confirm = null;
@@ -534,7 +539,7 @@
             {#if actionError}
               <div class="refused" role="alert">
                 <p class="field-error">{actionError}</p>
-                {#if stale}<button type="button" class="btn btn-secondary" onclick={reload}>Reload the case</button>{/if}
+                {#if stale}<button type="button" class="btn btn-secondary" onclick={() => reload()}>Reload the case</button>{/if}
               </div>
             {/if}
           </form>

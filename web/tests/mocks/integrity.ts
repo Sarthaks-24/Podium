@@ -104,6 +104,11 @@ export interface Options {
   appealed?: boolean;
   /** The viewer took part in the decision, so they may not rule on the appeal. */
   involved?: boolean;
+  /**
+   * Both students replied and nothing is proposed yet, but Priya proposes
+   * first: the viewer's proposal answers 409 proposal_pending (C2-025).
+   */
+  raceProposal?: boolean;
 }
 
 export type CaseUserJson = Json & { user_id: number; shared_at: number | null; asked_at: number | null; respond_by: number | null; explanations: { text: string; created_at: number }[] };
@@ -222,6 +227,18 @@ export async function mockApi(page: Page, options: Options = {}) {
       policy: 'referral_suggested',
       proposals: [zeroProposal],
       may_confirm: true,
+    };
+  }
+  if (options.raceProposal) {
+    state.kase = {
+      ...baseCase(),
+      state: 'awaiting_student',
+      users: repliedUsers(),
+      ready_at: sharedAt + DAY,
+      decide_by: sharedAt + 15 * DAY,
+      policy: 'referral_suggested',
+      proposals: [],
+      may_confirm: false,
     };
   }
   if (options.appealed) {
@@ -370,6 +387,10 @@ export async function mockApi(page: Page, options: Options = {}) {
       if (path === '/api/admin/integrity/cases/3/proposals' && method === 'POST') {
         const body = req.postDataJSON() as Json;
         state.proposals.push(body);
+        if (options.raceProposal) {
+          state.kase = { ...state.kase!, proposals: [zeroProposal], may_confirm: true };
+          return apiError(route, 409, 'proposal_pending', 'A proposal is waiting for a second reviewer. Confirm it, or clear or reopen the case first.');
+        }
         const k = (state.kase ??= baseCase());
         k.proposals = [{ id: 9, by: 2, by_name: 'Arjun Mehta', outcome: body.outcome, problem_label: body.problem_label ?? '', user_ids: body.user_ids, note: body.note, reason: body.reason, created_at: Date.now(), state: 'pending' }];
         k.may_confirm = false;

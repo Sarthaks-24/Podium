@@ -286,6 +286,25 @@ test('a second reviewer confirms a proposal, and the log records the outcome', a
   expect(api.confirms).toEqual([{ id: 4, note: 'Agreed: the loop matches line for line, renamed.', seen_explanations: { '7': expect.any(Number), '8': expect.any(Number) } }]);
 });
 
+test('a reviewer who loses the race to propose sees the other proposal at once (C2-025)', async ({ page }) => {
+  await mockApi(page, { raceProposal: true });
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto('/admin/integrity/cases/3');
+  await page.getByRole('button', { name: 'Propose an outcome' }).click();
+  const form = page.getByRole('form', { name: 'Propose an outcome' });
+  await form.getByLabel(/Zero for one problem/).check();
+  await form.getByLabel('Problem', { exact: true }).selectOption('B');
+  await form.getByLabel('Reason, for the student').fill('Your program for problem B shares its whole loop with another submission.');
+  await page.getByLabel('Note for the log').fill('The loops match line for line in both programs.');
+  await form.getByRole('button', { name: 'Propose the outcome' }).click();
+  // The refusal stays, the case is read again: the other proposal and its Confirm button show, the form goes.
+  await expect(page.getByText('A proposal is waiting for a second reviewer. Confirm it, or clear or reopen the case first.')).toBeVisible();
+  await expect(page.getByRole('group', { name: 'Waiting for a second reviewer' })).toContainText('Priya Nair proposed zero for problem B for Asha Rao');
+  await expect(page.getByRole('button', { name: 'Confirm the outcome' })).toBeVisible();
+  await expect(page.getByRole('form', { name: 'Propose an outcome' })).toHaveCount(0);
+  await expect(page.getByLabel('Note for the log')).toHaveValue('The loops match line for line in both programs.');
+});
+
 test('an appeal on a case is ruled on by a reviewer who took no part', async ({ page }) => {
   const api = await mockApi(page, { appealed: true });
   await page.goto('/admin/integrity/cases/3');
