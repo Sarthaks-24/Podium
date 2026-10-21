@@ -2,27 +2,29 @@
  * Statement rendering: Markdown with TeX maths, as students will see it.
  *
  * Loaded with a dynamic import only by the screens that show statements, so
- * marked, DOMPurify and KaTeX (and KaTeX's self-hosted fonts) stay out of
- * the main bundle.
+ * marked and DOMPurify stay out of the main bundle. KaTeX, its stylesheet
+ * and its self-hosted fonts are one more import (lib/katex.ts), made only
+ * when a text holds maths (F8.2).
  *
  * The pipeline, in order:
  * 1. marked turns Markdown into HTML. Raw HTML in the source is escaped and
  *    shown as text, never passed through. A marked extension turns $...$
  *    into <span class="math" data-tex="..."> and a $$...$$ block into
  *    <div class="math math-block" data-tex="...">, with the TeX escaped, so
- *    maths survives sanitising as plain data. Statement headings are moved
- *    down so "#" becomes the level the page asks for.
+ *    maths survives sanitising as plain data. The TeX is also the
+ *    placeholder's text, so a formula reads as its source until KaTeX
+ *    arrives, or if it never does. Statement headings are moved down so
+ *    "#" becomes the level the page asks for.
  * 2. DOMPurify sanitises that HTML: inline style attributes are forbidden,
  *    as are script, style, iframe, object, embed and form controls; links
- *    get rel="noopener noreferrer" and open in the same tab.
- * 3. After the sanitised HTML is in the page, renderMath() asks KaTeX to
- *    fill each placeholder from its data-tex text, with trust off and errors
- *    shown inline instead of thrown. KaTeX's output is generated from text,
- *    so it is trusted.
+ *    get rel="noopener noreferrer" and open in the same tab; images load
+ *    lazily and decode off the main thread.
+ * 3. After the sanitised HTML is in the page, renderMath() loads KaTeX when
+ *    there is a placeholder and asks it to fill each one from its data-tex
+ *    text, with trust off and errors shown inline instead of thrown.
+ *    KaTeX's output is generated from text, so it is trusted.
  */
 import DOMPurify from 'dompurify';
-import katex from 'katex';
-import 'katex/dist/katex.min.css';
 import { Marked, type TokenizerAndRendererExtension, type Tokens } from 'marked';
 
 /** Escapes text for use inside HTML text or a double-quoted attribute. */
@@ -64,7 +66,8 @@ const mathBlock: TokenizerAndRendererExtension = {
     return { type: 'mathBlock', raw: m[0], tex: m[1].trim() };
   },
   renderer(token) {
-    return `<div class="math math-block" data-tex="${escapeHtml((token as MathToken).tex)}"></div>\n`;
+    const tex = escapeHtml((token as MathToken).tex);
+    return `<div class="math math-block" data-tex="${tex}">${tex}</div>\n`;
   },
 };
 
@@ -85,7 +88,8 @@ const mathInline: TokenizerAndRendererExtension = {
   renderer(token) {
     const t = token as MathToken;
     const cls = t.display ? 'math math-display' : 'math';
-    return `<span class="${cls}" data-tex="${escapeHtml(t.tex)}"></span>`;
+    const tex = escapeHtml(t.tex);
+    return `<span class="${cls}" data-tex="${tex}">${tex}</span>`;
   },
 };
 
@@ -119,6 +123,9 @@ function purifier() {
       if (node.tagName === 'A') {
         node.removeAttribute('target');
         if (node.hasAttribute('href')) node.setAttribute('rel', 'noopener noreferrer');
+      } else if (node.tagName === 'IMG') {
+        node.setAttribute('loading', 'lazy');
+        node.setAttribute('decoding', 'async');
       }
     });
     hooked = true;
@@ -154,17 +161,44 @@ export function statementHtml(markdown: string, options: StatementOptions = {}):
   return sanitizeHtml(html);
 }
 
-/** Renders every maths placeholder under `root` with KaTeX. */
-export function renderMath(root: ParentNode): void {
-  for (const el of root.querySelectorAll<HTMLElement>('.math[data-tex]')) {
+type Katex = typeof import('./katex').default;
+let katexLoad: Promise<Katex> | null = null;
+
+/** KaTeX, imported once; a failed import is tried again on the next render. */
+function loadKatex(): Promise<Katex> {
+  katexLoad ??= import('./katex').then(
+    (mod) => mod.default,
+    (err: unknown) => {
+      katexLoad = null;
+      throw err;
+    },
+  );
+  return katexLoad;
+}
+
+/**
+ * Renders every maths placeholder under `root` with KaTeX, importing it
+ * first. Resolves at once when there is no placeholder; when KaTeX cannot
+ * load, the placeholders keep their TeX text.
+ */
+export async function renderMath(root: ParentNode): Promise<void> {
+  const placeholders = [...root.querySelectorAll<HTMLElement>('.math[data-tex]')];
+  if (placeholders.length === 0) return;
+  let katex: Katex;
+  try {
+    katex = await loadKatex();
+  } catch {
+    return;
+  }
+  for (const el of placeholders) {
     const tex = el.getAttribute('data-tex') ?? '';
     const displayMode = el.classList.contains('math-block') || el.classList.contains('math-display');
     katex.render(tex, el, { throwOnError: false, trust: false, displayMode, output: 'htmlAndMathml' });
   }
 }
 
-/** Replaces the content of `target` with the rendered statement. */
-export function renderStatement(target: HTMLElement, markdown: string, options: StatementOptions = {}): void {
+/** Replaces the content of `target` with the rendered statement; resolves once its maths is drawn. */
+export function renderStatement(target: HTMLElement, markdown: string, options: StatementOptions = {}): Promise<void> {
   target.innerHTML = statementHtml(markdown, options);
-  renderMath(target);
+  return renderMath(target);
 }

@@ -38,7 +38,7 @@
   props.
 -->
 <script lang="ts">
-  import { onMount, tick } from 'svelte';
+  import { onMount, tick, type Component } from 'svelte';
   import AccountMenu from './components/AccountMenu.svelte';
   import Icon from './components/Icon.svelte';
   import ShortcutsDialog from './components/ShortcutsDialog.svelte';
@@ -59,28 +59,14 @@
   import { safeNext } from './lib/signin';
   import { PRIVACY_LINKED } from './lib/site';
   import { showToast } from './lib/toast.svelte';
-  import AdminContests from './routes/AdminContests.svelte';
-  import AiSettings from './routes/AiSettings.svelte';
-  import AiWizard from './routes/AiWizard.svelte';
-  import ContestConsole from './routes/ContestConsole.svelte';
-  import ContestEditor from './routes/ContestEditor.svelte';
-  import ContestIntegrity from './routes/ContestIntegrity.svelte';
   import ContestPage from './routes/ContestPage.svelte';
-  import ContestResults from './routes/ContestResults.svelte';
   import Contact from './routes/Contact.svelte';
-  import ContactInbox from './routes/ContactInbox.svelte';
   import Home from './routes/Home.svelte';
-  import IntegrityCase from './routes/IntegrityCase.svelte';
   import Inbox from './routes/Inbox.svelte';
-  import IntegrityPair from './routes/IntegrityPair.svelte';
   import MyCase from './routes/MyCase.svelte';
   import MyIntegrity from './routes/MyIntegrity.svelte';
   import NotFound from './routes/NotFound.svelte';
-  import People from './routes/People.svelte';
   import Privacy from './routes/Privacy.svelte';
-  import ProblemBank from './routes/ProblemBank.svelte';
-  import ProblemEditor from './routes/ProblemEditor.svelte';
-  import ProblemTry from './routes/ProblemTry.svelte';
   import SignIn from './routes/SignIn.svelte';
   import StandingsPage from './routes/StandingsPage.svelte';
 
@@ -237,12 +223,57 @@
     if (document.visibilityState === 'visible') void refreshUnread();
   }
 
-  // Loaded on first visit only; the page is not needed during a contest.
-  const loadProgress = () => import('./routes/Progress.svelte');
-  // The organisers' students pages, also loaded on first visit only.
-  const loadStudents = () => import('./routes/Students.svelte');
-  const loadStudent = () => import('./routes/Student.svelte');
-  const loadRecord = () => import('./routes/StudentRecord.svelte');
+  /**
+   * Screens loaded with import() on first visit (F8.1): every organiser
+   * screen, so a student's first load carries none of them, and Progress,
+   * which nobody needs during a contest. The student contest screens stay
+   * in the entry chunk. A loaded module renders at once on the next visit,
+   * so returning to a screen never shows the loading line again.
+   */
+  type ScreenProps = { id?: string; signal?: string; userId?: string };
+  type Screen = Component<ScreenProps>;
+  const screen = (load: () => Promise<{ default: unknown }>) => async () => (await load()).default as Screen;
+  const lazyScreens: Record<string, () => Promise<Screen>> = {
+    people: screen(() => import('./routes/People.svelte')),
+    problems: screen(() => import('./routes/ProblemBank.svelte')),
+    problem: screen(() => import('./routes/ProblemEditor.svelte')),
+    'problem-try': screen(() => import('./routes/ProblemTry.svelte')),
+    'ai-settings': screen(() => import('./routes/AiSettings.svelte')),
+    'ai-new': screen(() => import('./routes/AiWizard.svelte')),
+    'admin-contests': screen(() => import('./routes/AdminContests.svelte')),
+    'admin-contest': screen(() => import('./routes/ContestEditor.svelte')),
+    'contest-console': screen(() => import('./routes/ContestConsole.svelte')),
+    'contest-results': screen(() => import('./routes/ContestResults.svelte')),
+    'contest-integrity': screen(() => import('./routes/ContestIntegrity.svelte')),
+    'integrity-pair': screen(() => import('./routes/IntegrityPair.svelte')),
+    'integrity-case': screen(() => import('./routes/IntegrityCase.svelte')),
+    'contact-inbox': screen(() => import('./routes/ContactInbox.svelte')),
+    students: screen(() => import('./routes/Students.svelte')),
+    student: screen(() => import('./routes/Student.svelte')),
+    'student-record': screen(() => import('./routes/StudentRecord.svelte')),
+    progress: screen(() => import('./routes/Progress.svelte')),
+    'admin-progress': screen(() => import('./routes/Progress.svelte')),
+  };
+  const loadedScreens = $state<Record<string, Screen>>({});
+  let failedScreen = $state<string | null>(null);
+  const lazyName = $derived(Object.hasOwn(lazyScreens, route.name) ? route.name : null);
+  /** The lazily loaded screen's props, and the key that remounts it when they change. */
+  const lazyView = $derived.by((): { props: ScreenProps; key: string } => {
+    const p = match.params;
+    if (route.name === 'integrity-pair') return { props: { id: p.id, signal: p.signal }, key: `${p.id}/${p.signal}` };
+    if (route.name === 'integrity-case') return { props: { id: p.case }, key: p.case ?? '' };
+    if (route.name === 'progress' || route.name === 'admin-progress') return { props: { userId: p.id ?? '' }, key: p.id ?? '' };
+    return { props: p.id === undefined ? {} : { id: p.id }, key: p.id ?? '' };
+  });
+  $effect(() => {
+    const name = lazyName;
+    if (name === null || loadedScreens[name]) return;
+    failedScreen = null;
+    lazyScreens[name]().then(
+      (s) => (loadedScreens[name] = s),
+      () => (failedScreen = name),
+    );
+  });
 
   onMount(() => {
     const removeInterception = installLinkInterception();
@@ -383,22 +414,6 @@
       <SignIn />
     {:else if route.name === 'home'}
       <Home />
-    {:else if route.name === 'people'}
-      <People />
-    {:else if route.name === 'problems'}
-      <ProblemBank />
-    {:else if route.name === 'problem'}
-      {#key match.params.id}
-        <ProblemEditor id={match.params.id} />
-      {/key}
-    {:else if route.name === 'problem-try'}
-      {#key match.params.id}
-        <ProblemTry id={match.params.id} />
-      {/key}
-    {:else if route.name === 'ai-settings'}
-      <AiSettings />
-    {:else if route.name === 'ai-new'}
-      <AiWizard />
     {:else if route.name === 'contest' || route.name === 'contest-problem'}
       {#key match.params.slug}
         <ContestPage slug={match.params.slug} label={match.params.label ?? ''} />
@@ -407,74 +422,29 @@
       {#key match.params.slug}
         <StandingsPage slug={match.params.slug} />
       {/key}
-    {:else if route.name === 'admin-contests'}
-      <AdminContests />
-    {:else if route.name === 'admin-contest'}
-      {#key match.params.id}
-        <ContestEditor id={match.params.id} />
-      {/key}
-    {:else if route.name === 'contest-console'}
-      {#key match.params.id}
-        <ContestConsole id={match.params.id} />
-      {/key}
-    {:else if route.name === 'contest-results'}
-      {#key match.params.id}
-        <ContestResults id={match.params.id} />
-      {/key}
-    {:else if route.name === 'contest-integrity'}
-      {#key match.params.id}
-        <ContestIntegrity id={match.params.id} />
-      {/key}
-    {:else if route.name === 'integrity-pair'}
-      {#key `${match.params.id}/${match.params.signal}`}
-        <IntegrityPair id={match.params.id} signal={match.params.signal} />
-      {/key}
-    {:else if route.name === 'integrity-case'}
-      {#key match.params.case}
-        <IntegrityCase id={match.params.case} />
-      {/key}
     {:else if route.name === 'my-integrity'}
       <MyIntegrity />
     {:else if route.name === 'my-case'}
       {#key match.params.case}
         <MyCase id={match.params.case} />
       {/key}
-    {:else if route.name === 'progress' || route.name === 'admin-progress'}
-      {#await loadProgress()}
-        <p class="visually-hidden" role="status">Loading</p>
-      {:then mod}
-        {#key match.params.id ?? ''}
-          <mod.default userId={route.name === 'admin-progress' ? match.params.id : ''} />
+    {:else if lazyName !== null}
+      {@const Screen = loadedScreens[lazyName]}
+      {#if Screen}
+        {#key `${lazyName}/${lazyView.key}`}
+          <Screen {...lazyView.props} />
         {/key}
-      {:catch}
+      {:else if failedScreen === lazyName}
         <p class="banner banner-error" role="alert">This page could not load. Reload to try again.</p>
-      {/await}
-    {:else if route.name === 'students'}
-      {#await loadStudents()}
+      {:else}
         <p class="visually-hidden" role="status">Loading</p>
-      {:then mod}
-        <mod.default />
-      {:catch}
-        <p class="banner banner-error" role="alert">This page could not load. Reload to try again.</p>
-      {/await}
-    {:else if route.name === 'student' || route.name === 'student-record'}
-      {#await route.name === 'student' ? loadStudent() : loadRecord()}
-        <p class="visually-hidden" role="status">Loading</p>
-      {:then mod}
-        {#key `${route.name}/${match.params.id}`}
-          <mod.default id={match.params.id} />
-        {/key}
-      {:catch}
-        <p class="banner banner-error" role="alert">This page could not load. Reload to try again.</p>
-      {/await}
+      {/if}
     {:else if route.name === 'inbox'}
       <Inbox />
     {:else if route.name === 'privacy'}
       <Privacy />
     {:else if route.name === 'contact'}
       <Contact />
-    {:else if route.name === 'contact-inbox'}
-      <ContactInbox />
     {:else}
       <NotFound />
     {/if}

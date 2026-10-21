@@ -46,7 +46,7 @@
   });
 
   $effect(() => {
-    if (renderer && target) renderer.renderStatement(target, markdown, { headingBase });
+    if (renderer && target) void renderer.renderStatement(target, markdown, { headingBase });
   });
 
   async function copy(text: string, key: string, what: string) {

@@ -44,7 +44,7 @@
   });
 
   $effect(() => {
-    if (renderer && target) renderer.renderStatement(target, source, { headingBase });
+    if (renderer && target) void renderer.renderStatement(target, source, { headingBase });
   });
 </script>
 

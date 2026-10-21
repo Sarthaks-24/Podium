@@ -181,3 +181,26 @@ describe('breakpoints', () => {
     expect(widthAllowed('(768px <= width < 1024px)')).toBe(true);
   });
 });
+
+// F8.1 and F8.2: what a student's first load carries.
+describe('first load', () => {
+  // The screens a student can open; every other route is an organiser's and
+  // is loaded with import() from App.svelte.
+  const STUDENT_SCREENS = ['ContestPage', 'Contact', 'Home', 'Inbox', 'MyCase', 'MyIntegrity', 'NotFound', 'Privacy', 'SignIn', 'StandingsPage'];
+
+  it('imports only student screens statically in App.svelte', () => {
+    const app = sources['/src/App.svelte'];
+    const statics = [...app.matchAll(/^\s*import (\w+) from '\.\/routes\/(\w+)\.svelte';/gm)].map((m) => m[2]);
+    expect(statics.sort()).toEqual([...STUDENT_SCREENS].sort());
+    const routeFiles = Object.keys(sources).filter((p) => /^\/src\/routes\/\w+\.svelte$/.test(p)).map((p) => p.slice('/src/routes/'.length, -'.svelte'.length));
+    const lazy = routeFiles.filter((r) => !STUDENT_SCREENS.includes(r));
+    expect(lazy.filter((r) => !app.includes(`import('./routes/${r}.svelte')`))).toEqual([]);
+  });
+
+  it('preloads every font face the stylesheet declares (D91)', () => {
+    const faces = [...sources['/src/styles/base.css'].matchAll(/url\("(\/fonts\/[\w-]+\.woff2)"\)/g)].map((m) => m[1]);
+    const preloads = [...sources['/index.html'].matchAll(/<link rel="preload" href="([^"]+)" as="font"/g)].map((m) => m[1]);
+    expect(faces.length).toBe(4);
+    expect(preloads.sort()).toEqual(faces.sort());
+  });
+});

@@ -112,15 +112,40 @@ describe('statementHtml', () => {
 });
 
 describe('renderStatement', () => {
-  it('renders maths with KaTeX after sanitising', () => {
+  it('renders maths with KaTeX after sanitising', async () => {
     const target = document.createElement('div');
-    renderStatement(target, 'Let $x^2$ be.\n\n$$y$$');
+    const done = renderStatement(target, 'Let $x^2$ be.\n\n$$y$$');
+    // The TeX source stands in until KaTeX has loaded.
+    expect(target.querySelector('span.math')?.textContent).toBe('x^2');
+    await done;
     expect(target.querySelector('span.math .katex')).not.toBeNull();
     expect(target.querySelector('div.math-block .katex-display')).not.toBeNull();
   });
 
-  it('shows bad TeX as an inline error instead of throwing', () => {
+  it('shows bad TeX as an inline error instead of throwing', async () => {
     const target = document.createElement('div');
-    expect(() => renderStatement(target, 'Broken $\\frac{1}{$ here')).not.toThrow();
+    await expect(renderStatement(target, 'Broken $\\frac{1}{$ here')).resolves.toBeUndefined();
+  });
+
+  it('marks statement images lazy and async', () => {
+    const el = dom(statementHtml('![graph](/img/graph.png)'));
+    const img = el.querySelector('img');
+    expect(img?.getAttribute('loading')).toBe('lazy');
+    expect(img?.getAttribute('decoding')).toBe('async');
+  });
+});
+
+describe('KaTeX loading (F8.2)', () => {
+  const source = import.meta.glob<string>('./markdown.ts', { query: '?raw', import: 'default', eager: true })['./markdown.ts'];
+
+  it('imports KaTeX and its stylesheet only through lib/katex.ts', () => {
+    expect(source).not.toMatch(/^import .*katex/m);
+    expect(source).toContain("import('./katex')");
+  });
+
+  it('leaves text without maths alone', async () => {
+    const target = document.createElement('div');
+    await renderStatement(target, 'No formula here, it costs $5.');
+    expect(target.querySelector('.katex, .math')).toBeNull();
   });
 });

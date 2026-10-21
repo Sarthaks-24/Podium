@@ -69,7 +69,7 @@
     const el = target;
     if (!mod || !el) return;
     const run = () => {
-      mod.renderStatement(el, source, { headingBase: base });
+      void mod.renderStatement(el, source, { headingBase: base });
       rendered = true;
     };
     if (!rendered) {
