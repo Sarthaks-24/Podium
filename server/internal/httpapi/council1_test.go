@@ -81,3 +81,38 @@ func TestC1015HiddenTestsShownInPracticeAndUngradedConfirm(t *testing.T) {
 		t.Error("a graded contest without practice marked its problem")
 	}
 }
+
+// C1-022: through the server as built (the notifications service wired by
+// New, not by hand), a notice waits while the student is in a live
+// contest and shows once their window closes.
+func TestC1022NoticesHeldInALiveContestOverHTTP(t *testing.T) {
+	s := newSite(t)
+	owner := s.signedIn("owner@college.edu", "Owner")
+	asha := s.signedIn("asha@college.edu", "Asha")
+	o := s.srv.URL
+	start := time.Now().Add(time.Hour).Truncate(time.Minute)
+	pa := s.importProblem(owner, "c1022-a")
+	s.createContest(owner, "c1022", start, map[string]int64{"A": pa}, nil)
+	s.at(start, 5)
+	if code, out := asha.do("POST", "/api/contests/c1022/start", map[string]any{"accept_honour": true}, o); code != 200 {
+		t.Fatalf("start: %d %v", code, out)
+	}
+	now := s.clock.now().UnixMilli()
+	if _, err := s.db.Exec(`INSERT INTO notifications (user_id, kind, created_at, available_at) VALUES (?, 'results_final', ?, ?)`,
+		asha.userID(), now, now); err != nil {
+		t.Fatal(err)
+	}
+	if _, me := asha.do("GET", "/api/me", nil, ""); me["notifications_unread"] != float64(0) {
+		t.Errorf("unread during the contest: %v", me["notifications_unread"])
+	}
+	if code, inbox := asha.do("GET", "/api/me/notifications", nil, ""); code != 200 || inbox["held"] != true || len(inbox["notifications"].([]any)) != 0 {
+		t.Errorf("inbox during the contest: %d %v", code, inbox)
+	}
+	s.at(start, 121)
+	if _, me := asha.do("GET", "/api/me", nil, ""); me["notifications_unread"] != float64(1) {
+		t.Errorf("unread after the contest: %v", me["notifications_unread"])
+	}
+	if code, inbox := asha.do("GET", "/api/me/notifications", nil, ""); code != 200 || inbox["held"] != false || len(inbox["notifications"].([]any)) != 1 {
+		t.Errorf("inbox after the contest: %d %v", code, inbox)
+	}
+}
