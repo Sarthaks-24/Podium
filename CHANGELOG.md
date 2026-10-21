@@ -27,6 +27,12 @@ Nothing below is tagged or deployed. The v2 phases were planned as the releases 
 - Admin and reviewer forms mark required fields, say which are optional, and move focus to a field error the server returns (X7).
 - Final web audit: date and time inputs show a focus ring on their calendar button, disclosure summaries are 24 px tall, and code, test data and compiler output are never machine-translated.
 
+### Tidy-up (2026-10-21)
+
+- Closing the keyboard shortcuts list returns focus to the page heading when the element that opened it was replaced while it was open (for example "?" pressed while a problem loads); focus no longer falls to the page body.
+- Inline code in statements and Markdown uses the mono optical size token; small spacing and rail-width values now come from tokens (design drift found by re-deriving the design document).
+- Tests: the M3 memory-limit cases run with a 4 s time limit, as node22's took up to 2.5 s under load and was judged TLE (C2-011); pixel tests allow 20 pixels at threshold 0.1 and load every font face first (C2-046); two tests that failed only under parallel load wait for the state they need.
+
 ### Council run 2 fixes (2026-10-21)
 
 #### Backend and operations
