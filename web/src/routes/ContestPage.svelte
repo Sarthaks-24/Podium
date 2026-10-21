@@ -538,6 +538,7 @@
       base="{api}/problems/{encodeURIComponent(current)}"
       backHref={phase === 'during' ? '/' : `/contests/${encodeURIComponent(slug)}`}
       backLabel={phase === 'during' ? 'Your contests' : contest.title}
+      contestHref="/contests/{encodeURIComponent(slug)}"
       label={current}
       context={contest.title}
       feedback={contest.rules.feedback_mode}

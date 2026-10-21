@@ -509,6 +509,21 @@ test('selected tabs and fills survive forced colours', async ({ page }) => {
 // status words and Rules dialog (D114), the statement diff (C3) and the
 // public answer banner (B1).
 test.describe('in a contest', () => {
+  test("a refused problem shows the server's reason, and where to go (C2-017)", async ({ page }) => {
+    await contests.mockApi(page, { phase: 'during', problemRefusal: 'not_started' });
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto('/contests/week-6/problems/B');
+    await expect(page.getByText('Accept the rules on the contest page to start.')).toBeVisible();
+    await expect(page.getByRole('link', { name: 'Go to the contest page.' })).toHaveAttribute('href', '/contests/week-6');
+    await expect(page.getByText('Ask an organiser if you think you should.')).toHaveCount(0);
+
+    await page.unrouteAll();
+    await contests.mockApi(page, { phase: 'during', problemRefusal: 'not_on_roster' });
+    await page.goto('/contests/week-6/problems/B');
+    await expect(page.getByText('This contest is for the students on its list. Ask the organiser if you should be on it.', { exact: false })).toBeVisible();
+    await expect(page.getByRole('link', { name: 'Go to the contest page.' })).toHaveCount(0);
+  });
+
   test('the rail says where each problem stands, and the tried line shows only during the window', async ({ page }) => {
     const api = await contests.mockApi(page, { phase: 'during' });
     api.scores.A = 100;

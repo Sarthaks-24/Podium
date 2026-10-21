@@ -53,6 +53,8 @@ export interface Options {
   endsInMs?: number;
   /** Whether the organiser's contest starts out published (default true: an unpublished contest past its start is a draft, C2-015). */
   published?: boolean;
+  /** GET of a problem's workspace answers 403 with this code and Go's sentence (contests.go contestError, C2-017). */
+  problemRefusal?: 'not_started' | 'not_on_roster' | 'contest_over';
   /** Bank problems whose hidden tests a contest showed in practice (D115, C1-015). */
   shownInPractice?: number[];
   /** A second live contest in the student's list, under the pinned one (C1-031). */
@@ -513,6 +515,14 @@ export async function mockApi(page: Page, options: Options = {}) {
         const label = prob[1];
         const p = PROBLEMS.find((x) => x.label === label);
         if (!p) return apiError(route, 404, 'not_found', 'No such problem.');
+        if (!prob[2] && method === 'GET' && options.problemRefusal) {
+          const refusals = {
+            not_started: 'Accept the rules on the contest page to start.',
+            not_on_roster: 'This contest is for the students on its list. Ask the organiser if you should be on it.',
+            contest_over: "Your time is up. Practice opens when every student's time is up.",
+          };
+          return apiError(route, 403, options.problemRefusal, refusals[options.problemRefusal]);
+        }
         if (!prob[2] && method === 'GET') return json(route, 200, workspace(label));
         if (prob[3] === 'draft' && method === 'PUT') state.draftPuts.push(req.postDataJSON() as Json);
         if (prob[3] === 'draft' || prob[3] === 'events') return json(route, 204);

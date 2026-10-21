@@ -76,7 +76,9 @@
     (beforeSignOut).
 
   Props: `base` (the API base, such as "/api/workspace/12"), `backHref` and
-  `backLabel` (the link above the title), `note` (one line in the clock
+  `backLabel` (the link above the title), `contestHref` (the contest page,
+  where a refused "not started" or "time is up" load points; optional),
+  `note` (one line in the clock
   slot when there is no clock, optional) and `clock` (a snippet for a
   contest clock, given true when it should be one compact line, optional).
   For contests (M4): `banner` (a snippet drawn above the title, so from
@@ -164,6 +166,7 @@
     base: string;
     backHref: string;
     backLabel: string;
+    contestHref?: string;
     note?: string;
     clock?: Snippet<[boolean]>;
     banner?: Snippet;
@@ -185,6 +188,7 @@
     base,
     backHref,
     backLabel,
+    contestHref = '',
     note = '',
     clock,
     banner,
@@ -216,6 +220,8 @@
 
   let loadState = $state<'loading' | 'ready' | 'missing' | 'forbidden' | 'error'>('loading');
   let loadError = $state('');
+  // The server's 403 code: not_started and contest_over point back to the contest page (C2-017).
+  let forbiddenCode = $state('');
   let ws = $state.raw<Workspace | null>(null);
 
   // The code.
@@ -378,6 +384,8 @@
     } catch (e) {
       if (handleSessionError(e)) return;
       if (e instanceof ApiError && e.status === 403) {
+        loadError = e.message || 'You cannot open this problem.';
+        forbiddenCode = e.code;
         loadState = 'forbidden';
         return;
       }
@@ -948,8 +956,10 @@
     <PageHeader compact title={loadState === 'missing' ? 'Problem not found' : 'Problem'} back={{ href: backHref, label: backLabel }} />
     {#if loadState === 'loading'}
       <PageState kind="loading" message="Loading the problem" />
+    {:else if loadState === 'forbidden' && (forbiddenCode === 'not_started' || forbiddenCode === 'contest_over')}
+      <PageState kind="missing" message={loadError} parent={{ href: contestHref || backHref, label: 'Go to the contest page.' }} />
     {:else if loadState === 'forbidden'}
-      <PageState kind="forbidden" message="You cannot open this problem." ask="Ask an organiser if you think you should." />
+      <PageState kind="forbidden" message={loadError} ask="Ask an organiser if you think you should." />
     {:else if loadState === 'missing'}
       <PageState kind="missing" message="This problem does not exist." parent={{ href: backHref, label: 'Go back.' }} />
     {:else if loadState === 'error'}
