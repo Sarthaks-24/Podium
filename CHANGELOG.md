@@ -44,6 +44,19 @@ Nothing below is tagged or deployed. The v2 phases were planned as the releases 
 - `install.sh` reads the backup folder from `PODIUM_BACKUP_DIR` (upgrade, rollback record and verify), and nightly backups are named to the second.
 - The rsync and encrypted copies never stop the local backup: a problem with their settings warns before it and fails the unit after it; `install.sh verify` checks the rsync copy's root key.
 
+#### Frontend
+
+- The problem editor knows open tests: an "Open tests (optional)" field under the samples, an "Open test" group instead of a red "in no subtask", and a judged change when they change. The AI drafts and the average-speed pack open clean.
+- An unpublished contest past its start is a draft, not live: it says students cannot see it until it is published. Turning grading back on after an ungraded start asks first, and a problem the server keeps in its contest says why.
+- The rules say that Run also checks open tests, and that an ungraded contest shows the first failing hidden test; the workspace names its open tests; the editor's grading and practice options say what they reveal.
+- A refused problem shows the server's reason, with a link to the contest page when the rules are not accepted yet or the time is up.
+- "Write to the organisers" is gone from the contest workspace and for organisers, and the contact page sends live contest questions to Messages; the organiser inbox is "Inbox" everywhere.
+- A first-time organiser sees the steps to a first contest with what is done, a draft as the next contest says to publish it, and the empty Students list says how students arrive.
+- A reviewer who loses a race on an integrity case sees the case as it now is; account actions on People wait until the account is named; the student record and the Students filter show the latest answer; the rollover applies as of its preview; the console names the compiler that judged each submission; the event stream carries the browser's device id.
+- The problem editor's context column scrolls, so a long preview's last buttons can be reached; lazy organiser screens show a loading line and a reload button.
+- Copy: "Choose a contest", "Send explanation", "Only organisers can ...", examples as help text instead of placeholders, "Problem revisions", the slug's help in the editor.
+- Tests: the every-button test can fail (and covers organiser screens), toast checks look inside the toast region, fixed waits became signals, the mocks answer what Go answers, and the size budget counts the preloaded fonts (99.97 kB of 108).
+
 ### Council run 1 fixes (2026-10-21)
 
 - Rollback keeps the database group-writable for Litestream; an upgrade that stopped half-way is refused instead of overwriting the release kept for rollback; a rollback says which forget-user erasures it undoes and writes them down to apply again; old pre-rollback database folders age out with the backups.
