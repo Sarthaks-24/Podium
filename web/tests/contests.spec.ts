@@ -1280,3 +1280,14 @@ test('the shared standings say a decision changed the board, and no cell carries
   await page.goto('/contests/week-6');
   await expect(page.getByText(/^Board updated on .+ after a review decision\.$/)).toBeVisible();
 });
+
+test('the contest nav opens the student view of the contest (F3.3, C2-056)', async ({ page }) => {
+  await mockApi(page, { who: 'admin', phase: 'during' });
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto('/admin/contests/4/console');
+  const link = page.getByRole('navigation', { name: 'Contest' }).getByRole('link', { name: 'Student view' });
+  await expect(link).toHaveAttribute('href', '/contests/week-6');
+  await link.click();
+  await expect(page).toHaveURL('/contests/week-6');
+  await expect(page.locator('.cm-content')).toBeVisible();
+});
