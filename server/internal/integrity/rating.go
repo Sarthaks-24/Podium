@@ -465,6 +465,10 @@ func (s *Service) Rollover(ctx context.Context, label string, apply bool) (Rollo
 		ids = append(ids, id)
 	}
 	urows.Close()
+	// A short list would still mark the label done for good.
+	if err := urows.Err(); err != nil {
+		return r, err
+	}
 	at := now.UnixMilli()
 	for _, u := range ids {
 		var blocked bool

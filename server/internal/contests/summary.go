@@ -175,6 +175,10 @@ func (s *Service) notifyResultsTx(ctx context.Context, tx *sql.Tx, c *Contest, n
 		users = append(users, u)
 	}
 	rows.Close()
+	// A short list would still mark the contest as told.
+	if err := rows.Err(); err != nil {
+		return err
+	}
 	for _, u := range users {
 		if err := notifications.InsertTx(ctx, tx, notifications.Row{UserID: u, Kind: notifications.ResultsFinal, ContestID: c.ID,
 			CreatedAt: now}); err != nil {

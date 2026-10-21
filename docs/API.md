@@ -1156,8 +1156,8 @@ Only titles and statements: never a test, an output, a limit or a hash. A studen
   "statement_changed": true, "rejudge_needed": false, "server_now": 1792311120000 }
 ```
 
-- The revision must belong to the label's problem (`404 not_found` otherwise) and be the validated content of the problem now: its content hash equals the problem's, and a passing validation covers it (`409 not_ready` "Revision 3 is not validated. Validate the problem, then update the contest."). Pinning the revision already pinned is `409 conflict`.
-- The pin, its subtask points and `pinned_hash` change in one transaction with a `contest_pin_history` row and a `revision` row in the contest audit. Students get a `statement` event; their next workspace load serves the new statement.
+- The revision must belong to the label's problem (`404 not_found` otherwise) and be the validated content of the problem now: its content hash equals the problem's, and a passing validation covers it (`409 not_ready` "This revision is not the validated version of the problem. Validate the problem, then update the contest."). Pinning the revision already pinned is `409 conflict`, and so is an update that another organiser's update of the same label overtook ("Someone else changed this problem's revision a moment ago. Reload the console and check it again.").
+- The pin and its subtask points change in one transaction with a `contest_pin_history` row and a `revision` row in the contest audit. Students get a `statement` event; their next workspace load serves the new statement.
 - `announcement_md` is a prefilled announcement for the console to offer (it is not posted). With `rejudge_needed` (the tests, limits or checker changed) it says submissions will be judged again, and the console should offer Rejudge; with only a statement change it points students to "See what changed".
 
 ### The served log and "what X saw at T"

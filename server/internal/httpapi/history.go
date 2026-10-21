@@ -263,6 +263,9 @@ func (d Deps) updatePin(w http.ResponseWriter, r *http.Request) {
 	case errors.Is(err, contests.ErrSamePin):
 		WriteError(w, http.StatusConflict, "conflict", "The contest already uses this revision.")
 		return
+	case errors.Is(err, contests.ErrPinMoved):
+		WriteError(w, http.StatusConflict, "conflict", "Someone else changed this problem's revision a moment ago. Reload the console and check it again.")
+		return
 	case errors.Is(err, contests.ErrRevisionNotReady):
 		WriteError(w, http.StatusConflict, "not_ready", "This revision is not the validated version of the problem. Validate the problem, then update the contest.")
 		return

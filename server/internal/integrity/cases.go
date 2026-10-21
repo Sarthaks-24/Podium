@@ -361,10 +361,16 @@ func (s *Service) Decide(ctx context.Context, caseID, by int64, state, note stri
 		var ids []int64
 		for rows.Next() {
 			var u int64
-			rows.Scan(&u)
+			if err := rows.Scan(&u); err != nil {
+				rows.Close()
+				return nil, err
+			}
 			ids = append(ids, u)
 		}
 		rows.Close()
+		if err := rows.Err(); err != nil {
+			return nil, err
+		}
 		for _, u := range ids {
 			avail[u] = now
 			if s.Contests != nil {

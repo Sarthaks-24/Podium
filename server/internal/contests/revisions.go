@@ -26,6 +26,11 @@ var ErrRevisionNotReady = errors.New("revision not validated")
 // ErrSamePin refuses pinning the revision already pinned.
 var ErrSamePin = errors.New("revision already pinned")
 
+// ErrPinMoved refuses an update when another one moved the same label's
+// pin after this one read it: the "from" side of the record would be
+// wrong.
+var ErrPinMoved = errors.New("the pin changed since it was read")
+
 // EventStatement tells a contest's members that a label now pins another
 // revision (C3).
 const EventStatement = "statement"
@@ -138,6 +143,14 @@ func (s *Service) UpdatePin(ctx context.Context, contestID int64, label string, 
 		return nil, err
 	}
 	defer tx.Rollback()
+	var current sql.NullInt64
+	if err := tx.QueryRowContext(ctx, "SELECT revision_id FROM contest_problems WHERE contest_id = ? AND label = ?",
+		contestID, label).Scan(&current); err != nil {
+		return nil, err
+	}
+	if current.Int64 != cp.RevisionID {
+		return nil, ErrPinMoved
+	}
 	var hash string
 	var validated sql.NullString
 	if err := tx.QueryRowContext(ctx, "SELECT content_hash, validated_hash FROM problems WHERE id = ?", cp.ProblemID).Scan(&hash, &validated); err != nil {
