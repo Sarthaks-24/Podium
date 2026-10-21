@@ -1109,7 +1109,8 @@ test.describe('P5 workspace', () => {
       // The workspace fills the window under the header; only the footer lies below it.
       const ws = (await page.locator('.ws').boundingBox())!;
       expect(ws.y + ws.height, `workspace inside the window at ${size.width}`).toBeLessThanOrEqual(size.height);
-      expect(scroll).toBeGreaterThanOrEqual(0);
+      const foot = await page.locator('footer').boundingBox();
+      expect(scroll, `only the footer scrolls at ${size.width}`).toBeLessThanOrEqual(Math.ceil(foot?.height ?? 0) + 1);
       // A new viewer on a short laptop starts with the smaller result.
       await expect(page.getByRole('separator', { name: 'Result panel size' })).toHaveAttribute('aria-valuenow', '30');
     }
