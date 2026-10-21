@@ -84,6 +84,8 @@ placeholders() {
 db_path() { local v; v=$(envval /etc/podium/server.env PODIUM_DB_PATH); echo "${v:-/var/lib/podium/db/podium.db}"; }
 listen_addr() { local v; v=$(envval /etc/podium/server.env PODIUM_LISTEN); echo "${v:-127.0.0.1:8080}"; }
 judge_addr() { local v; v=$(envval /etc/podium/server.env PODIUM_JUDGE_LISTEN); echo "${v:-127.0.0.1:8081}"; }
+# The nightly backups' folder, as podium-backup reads it (C2-009).
+backup_dir() { local v; v=$(envval /etc/podium/backup.env PODIUM_BACKUP_DIR); echo "${v:-/var/backups/podium}"; }
 
 # migrations DB: the applied migration versions, comma-separated; nothing
 # for a database that does not exist yet. A database that exists but
@@ -556,13 +558,15 @@ step_backup() {
   install -m 755 "$HERE/backup/podium-backup" "$LIB/podium-backup"
   install -m 755 "$HERE/backup/podium-restore" "$LIB/podium-restore"
   id podium-backup >/dev/null 2>&1 || die "user podium-backup missing; run the users step first"
-  install -d -o podium -g podium -m 700 /var/backups/podium
-  chmod 700 /var/backups/podium
   install -d -o root -g root -m 755 /etc/podium
   if [[ ! -e /etc/podium/backup.env ]]; then
     install -o root -g root -m 600 "$HERE/backup.env.example" /etc/podium/backup.env
     echo "created /etc/podium/backup.env from the example; set the age public key and the B2 key for the encrypted copy"
   fi
+  local bdir
+  bdir=$(backup_dir)
+  install -d -o podium -g podium -m 700 "$bdir"
+  chmod 700 "$bdir"
   install -m 644 "$HERE/systemd/podium-backup.service" "$HERE/systemd/podium-backup.timer" /etc/systemd/system/
   systemctl daemon-reload
   systemctl enable --now podium-backup.timer
@@ -683,16 +687,17 @@ cmd_upgrade() {
   echo "judge stopped after $(( SECONDS - t0 )) s"
 
   log "4/8 backup before the upgrade"
-  local before after
+  local before after bdir
   local backup_ms=$(( $(date +%s) * 1000 ))
-  before=$(readlink /var/backups/podium/latest 2>/dev/null || true)
+  bdir=$(backup_dir)
+  before=$(readlink "$bdir/latest" 2>/dev/null || true)
   systemctl start podium-backup.service || echo "podium-backup reported a failure; checking whether the local backup was made"
-  after=$(readlink /var/backups/podium/latest 2>/dev/null || true)
+  after=$(readlink "$bdir/latest" 2>/dev/null || true)
   if [[ -z $after || $after == "$before" ]]; then
     systemctl start podium-judge.service
-    die "no new local backup was made (journalctl -u podium-backup -n 30); the judge is running again and nothing else changed"
+    die "no new local backup was made in $bdir (journalctl -u podium-backup -n 30); the judge is running again and nothing else changed"
   fi
-  local backup=/var/backups/podium/$after
+  local backup=$bdir/$after
   echo "backup: $backup"
 
   log "5/8 keep the running release in $PREVIOUS"
@@ -955,7 +960,9 @@ cmd_verify() {
   [[ -n $(envval /etc/podium/alert.env PODIUM_ALERT_WEBHOOK) ]] && ok "PODIUM_ALERT_WEBHOOK set" || fail "PODIUM_ALERT_WEBHOOK missing in /etc/podium/alert.env: no alert reaches anyone"
   [[ -n $(envval /etc/podium/backup.env PODIUM_BACKUP_AGE_RECIPIENT) ]] && ok "encrypted copy configured" || warn "encrypted copy off the VM not configured in /etc/podium/backup.env: test files are lost with the disk"
   [[ -n $(envval /etc/podium/backup.env PODIUM_HEARTBEAT_URL) ]] && ok "PODIUM_HEARTBEAT_URL set" || warn "PODIUM_HEARTBEAT_URL missing: a missed backup goes unnoticed"
-  if [[ $(stat -c '%U %a' /var/backups/podium 2>/dev/null) == "podium 700" ]]; then ok "/var/backups/podium podium 700"; else fail "/var/backups/podium is $(stat -c '%U %a' /var/backups/podium 2>/dev/null || echo missing), want podium 700"; fi
+  local bdir
+  bdir=$(backup_dir)
+  if [[ $(stat -c '%U %a' "$bdir" 2>/dev/null) == "podium 700" ]]; then ok "$bdir podium 700"; else fail "$bdir is $(stat -c '%U %a' "$bdir" 2>/dev/null || echo missing), want podium 700"; fi
 
   log "verify: clock"
   # Every freeze, end and extension is a clock comparison.

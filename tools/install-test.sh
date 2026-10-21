@@ -195,6 +195,33 @@ else
   echo "skip: jq not installed, podium-check's judge rule not run"
 fi
 
+# The backup folder comes from backup.env, as podium-backup reads it
+# (C2-009): an upgrade under a moved PODIUM_BACKUP_DIR must find its
+# pre-upgrade backup, and rollback must record that folder.
+bdir_of() { # VALUE
+  (
+    envval() { [[ $1 == /etc/podium/backup.env && $2 == PODIUM_BACKUP_DIR ]] && printf '%s
+' "$BDIR"; true; }
+    BDIR=$1
+    eval "$(grep '^backup_dir()' "$script")"
+    backup_dir
+  )
+}
+if [[ $(bdir_of /srv/podium-backups) == /srv/podium-backups && $(bdir_of "") == /var/backups/podium ]]; then
+  pass "backup_dir reads PODIUM_BACKUP_DIR and defaults to /var/backups/podium"
+else
+  fail "backup_dir: '$(bdir_of /srv/podium-backups)' and '$(bdir_of "")'"
+fi
+for f in cmd_upgrade cmd_verify step_backup; do
+  if fn "$f" | grep -q '/var/backups/podium'; then
+    fail "$f names /var/backups/podium instead of backup_dir"
+  elif fn "$f" | grep -q 'backup_dir'; then
+    pass "$f uses the configured backup folder"
+  else
+    fail "$f does not read backup_dir"
+  fi
+done
+
 # The upgrade path (B6.2): the new MANIFEST's upgrades_from refuses an
 # older or unversioned install and a downgrade. Run in a subshell because
 # die exits.
