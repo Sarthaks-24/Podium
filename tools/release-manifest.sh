@@ -13,6 +13,12 @@
 set -euo pipefail
 
 dir=$1 version=$2 commit=$3 built=$4 upgrades_from=$5
+# install.sh compares versions to refuse an older or unversioned install
+# and a downgrade; a release named by a commit hash could never be
+# upgraded from, so only vX.Y.Z is accepted for both values.
+semver='^v[0-9]+\.[0-9]+\.[0-9]+$'
+[[ $version =~ $semver ]] || { echo "release-manifest: version '$version' is not vX.Y.Z; tag the commit or run make release VERSION=vX.Y.Z" >&2; exit 1; }
+[[ $upgrades_from =~ $semver ]] || { echo "release-manifest: UPGRADES_FROM '$upgrades_from' is not vX.Y.Z" >&2; exit 1; }
 repo="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 [[ -d $dir/bin ]] || { echo "release-manifest: $dir has no bin/" >&2; exit 1; }
 

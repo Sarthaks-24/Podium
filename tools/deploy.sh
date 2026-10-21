@@ -4,8 +4,8 @@
 #
 #   tools/deploy.sh HOST [--force "<reason>"]
 #
-# HOST is what you type after ssh, for example podium@contest.example.edu
-# or an alias from ~/.ssh/config. In order:
+# HOST is what you type after ssh, for example owner@contest.example.edu
+# (your own account with sudo, never the podium service user) or an alias from ~/.ssh/config. In order:
 #   1. asks the running server's deploy guard (podium-server deploy-check)
 #      over ssh, before anything is built or copied (D112);
 #   2. make release;
@@ -61,8 +61,12 @@ read -r -p "Type the host ($host) to copy the release there: " answer
 [[ $answer == "$host" ]] || die "stopped; nothing left this machine"
 
 echo "== 4/4 copy and upgrade"
-scp "$tarball" "$host:/tmp/"
-remote="set -e; cd /tmp; rm -rf podium-$version; tar xzf podium-$version.tar.gz; cd podium-$version; sudo ./install.sh upgrade"
+# A private folder made by mktemp on the VM: a fixed name under /tmp could
+# be made first by another local user.
+dir=$(ssh "$host" 'mktemp -d /tmp/podium-deploy.XXXXXX') || die "could not make a folder on $host"
+[[ $dir =~ ^/tmp/podium-deploy\.[A-Za-z0-9]+$ ]] || die "unexpected folder name from $host: $dir"
+scp "$tarball" "$host:$dir/"
+remote="set -e; cd $dir; tar xzf podium-$version.tar.gz; cd podium-$version; sudo ./install.sh upgrade"
 if [[ -n $force ]]; then
   remote+=" --force $(printf '%q' "$force")"
 fi

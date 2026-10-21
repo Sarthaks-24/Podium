@@ -10,7 +10,7 @@ status=0
 while IFS= read -r f; do
   case "$f" in
     *.env.example) ;;
-    .env|*/.env|*.env|.env.*|*/.env.*|*.pem|*.key|*server.env|*judge.env)
+    .env|*/.env|*.env|.env.*|*/.env.*|*.pem|*.key|*id_ed25519*|*id_rsa*|*id_ecdsa*|*known_hosts|*.age|*.db|*.db-wal|*.db-shm|*.sqlite)
       echo "check-secrets: staged file looks like a secret: $f" >&2
       status=1 ;;
   esac
@@ -24,8 +24,11 @@ patterns=(
   'Google OAuth client secret|GOCSPX-[A-Za-z0-9_-]{20,}'
   'Google API key|AIza[0-9A-Za-z_-]{35}'
   'GitHub token|gh[pousr]_[A-Za-z0-9]{36}'
+  'GitHub fine-grained token|github_pat_[A-Za-z0-9_]{60,}'
+  'age private key (it decrypts every backup)|AGE-SECRET-KEY-1[0-9A-Z]{50,}'
   'Slack token|xox[baprs]-[A-Za-z0-9-]{10,}'
-  'private key|-----BEGIN ([A-Z]+ )?PRIVATE KEY-----'
+  'private key|-----BEGIN ([A-Z]+ )?PRIVATE KEY( BLOCK)?-----'
+  'alert topic or heartbeat URL|(ntfy\.sh/[A-Za-z0-9_-]{16,}|hc-ping\.com/[0-9a-f-]{36})'
   # Bounded so it does not match inside base64 hashes (package-lock.json).
   'Backblaze B2 application key|(^|[^A-Za-z0-9/+])K[0-9]{3}[A-Za-z0-9/+]{27}([^A-Za-z0-9/+=]|$)'
 )
