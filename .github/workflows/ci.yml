@@ -1,5 +1,6 @@
 # Runs on every push: gofmt, go vet, Go tests, svelte-check, ESLint, Vitest
-# (the `make check` target), plus a Linux release build. The e2e job runs
+# (the `make check` target), plus a Linux release build and the size
+# budget of a student's first load (web/scripts/size-budget.mjs). The e2e job runs
 # the mocked Playwright suite against the Vite dev server, without the
 # pixel baselines: their references are Windows renders kept in the
 # git-ignored cache/, so they run only on the owner's machine. A third job
@@ -35,6 +36,10 @@ jobs:
       - run: cd web && npm ci
       - run: make check
       - run: make build
+      # A student's first load (entry script, its preloads, the stylesheets)
+      # against the gzip budget in web/scripts/size-budget.mjs (v2 P6 F8.3).
+      - name: web size budget
+        run: cd web && npm run size
 
   e2e:
     runs-on: ubuntu-24.04
