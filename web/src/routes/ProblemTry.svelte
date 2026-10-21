@@ -36,6 +36,3 @@
   <PageHeader title="Problems" />
   <PageState kind="forbidden" message="Only organisers can manage problems." />
 {/if}
-
-<style>
-</style>
