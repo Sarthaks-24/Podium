@@ -196,10 +196,21 @@ type Workspace struct {
 type Language struct {
 	ID   string `json:"id"`
 	Name string `json:"name"`
+	// TimeFactor multiplies the problem's time limit for this language
+	// (the judge's table), so the editor can show the limit a program
+	// really gets (walk 2026-10-21, D323).
+	TimeFactor float64 `json:"time_factor"`
 }
 
-// languages is the editor's list, in display order.
-var languages = []Language{{"cpp17", "C++17"}, {"java21", "Java 21"}, {"python3", "Python 3"}, {"node22", "JavaScript (Node 22)"}}
+// languages is the editor's list, in display order, with the judge's
+// time factors.
+var languages = func() []Language {
+	out := []Language{{ID: "cpp17", Name: "C++17"}, {ID: "java21", Name: "Java 21"}, {ID: "python3", Name: "Python 3"}, {ID: "node22", Name: "JavaScript (Node 22)"}}
+	for i := range out {
+		out[i].TimeFactor = judge.Languages[out[i].ID].TimeFactor
+	}
+	return out
+}()
 
 // Workspace loads a problem for the editor. Organisers may try a problem
 // before it is validated; students reach problems only through contests,

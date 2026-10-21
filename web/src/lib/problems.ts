@@ -279,7 +279,11 @@ export interface Validation {
     validator_passed: number;
     validator_total: number;
     max_time_ms: number;
+    /** The problem's limit times the reference language's factor. */
     time_limit_ms: number;
+    /** The reference's language and its time factor (D323); absent on summaries stored before. */
+    reference_language?: string;
+    time_factor?: number;
     problems: string[];
     warnings: string[];
   } | null;
@@ -566,6 +570,29 @@ export function progressText(v: Pick<Validation, 'state' | 'queue_position'>): s
   return 'Waiting for the judge';
 }
 
+/** "twice", "3 times", "1.5 times": a language's time factor in words. */
+export function factorWords(factor: number): string {
+  return factor === 2 ? 'twice' : `${factor} times`;
+}
+
+/** "1 s" for whole seconds, else "1500 ms". */
+export function limitTime(ms: number): string {
+  return ms % 1000 === 0 ? `${ms / 1000} s` : `${ms} ms`;
+}
+
+/**
+ * The reference's slowest run against its limit. When the reference's
+ * language gets more than the problem's limit, the line says so: "of 2000
+ * ms" on a 1000 ms problem read as a mistake (walk 2026-10-21, D323).
+ */
+export function slowestReferenceText(s: Pick<NonNullable<Validation['summary']>, 'max_time_ms' | 'time_limit_ms' | 'reference_language' | 'time_factor'>): string {
+  const head = `Slowest reference run ${s.max_time_ms} ms of`;
+  const f = s.time_factor;
+  if (!f || f === 1 || !s.reference_language) return `${head} ${s.time_limit_ms} ms`;
+  const label = LANGUAGES.find((l) => l.id === s.reference_language)?.label ?? s.reference_language;
+  return `${head} the ${s.time_limit_ms} ms ${label} gets (${factorWords(f)} the problem's ${Math.round(s.time_limit_ms / f)} ms)`;
+}
+
 /** One line of the validation report. */
 /**
  * The tests the brute force did not finish, so nothing cross-checked their
@@ -627,7 +654,7 @@ export function reportLines(v: Validation): ReportLine[] {
     }
     if (s.reference_total > 0) {
       lines.push({
-        text: `Slowest reference run ${s.max_time_ms} ms of ${s.time_limit_ms} ms`,
+        text: slowestReferenceText(s),
         tone: s.max_time_ms * 2 <= s.time_limit_ms ? 'ok' : 'bad',
       });
     }
@@ -744,7 +771,7 @@ export function buildReport(v: Validation): Report {
           tone: s.reference_passed === s.reference_total ? 'ok' : 'bad',
         },
         {
-          text: `Slowest reference run ${s.max_time_ms} ms of ${s.time_limit_ms} ms`,
+          text: slowestReferenceText(s),
           tone: s.max_time_ms * 2 <= s.time_limit_ms ? 'ok' : 'bad',
         },
       );

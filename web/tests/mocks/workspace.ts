@@ -182,10 +182,10 @@ export async function mockApi(page: Page, options: MockOptions = {}) {
           time_limit_ms: 1000,
           memory_limit_mb: 256,
           languages: [
-            { id: 'cpp17', name: 'C++17' },
-            { id: 'java21', name: 'Java 21' },
-            { id: 'python3', name: 'Python 3' },
-            { id: 'node22', name: 'JavaScript (Node 22)' },
+            { id: 'cpp17', name: 'C++17', time_factor: 1 },
+            { id: 'java21', name: 'Java 21', time_factor: 2 },
+            { id: 'python3', name: 'Python 3', time_factor: 3 },
+            { id: 'node22', name: 'JavaScript (Node 22)', time_factor: 2 },
           ],
           samples: [
             { idx: 1, input: '1 2\n', output: '3\n', truncated: false },

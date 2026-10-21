@@ -284,6 +284,12 @@
     return ids.length > 0 ? LANGUAGES.filter((l) => ids.includes(l.id)) : [...LANGUAGES];
   });
 
+  /** The selected language and the judge's time factor for it, for the limits line (D323). */
+  const languageLimit = $derived({
+    label: languages.find((l) => l.id === language)?.label ?? language,
+    factor: ws?.languages?.find((l) => l.id === language)?.time_factor,
+  });
+
   // The server says why Run and Submit are off when they are (its sentence is
   // the precise one, such as practice opening later); `locked` is the fallback.
   const lockText = $derived(ws?.refusal ? ws.refusal : locked);
@@ -1012,7 +1018,7 @@
         <PageHeader compact back={layout === 'wide' ? null : { href: backHref, label: backLabel }}>
           {#snippet heading()}{#if label}<span class="mono letter">{label}</span><span class="visually-hidden">.&nbsp;</span>{/if}{ws?.title ?? ''}{/snippet}
         </PageHeader>
-        {#if layout === 'wide'}<p class="limits">{limitsText(ws.time_limit_ms, ws.memory_limit_mb)}</p>{/if}
+        {#if layout === 'wide'}<p class="limits">{limitsText(ws.time_limit_ms, ws.memory_limit_mb, languageLimit)}</p>{/if}
       </div>
       {#if layout !== 'wide' && !clock && note}
         <div class="clock-slot clock-inline"><p class="note">{note}</p></div>
@@ -1068,7 +1074,7 @@
       aria-label={layout === 'wide' ? 'Statement' : undefined}
     >
       <!-- Under 1024 px the limits open the Problem tab, so the statement starts higher (audit S7). -->
-      {#if layout !== 'wide'}<p class="limits limits-tab">{limitsText(ws.time_limit_ms, ws.memory_limit_mb)}</p>{/if}
+      {#if layout !== 'wide'}<p class="limits limits-tab">{limitsText(ws.time_limit_ms, ws.memory_limit_mb, languageLimit)}</p>{/if}
       <Statement markdown={ws.statement_md} samples={ws.samples} />
     </section>
 

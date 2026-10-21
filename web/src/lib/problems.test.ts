@@ -21,6 +21,7 @@ import {
   verdictLabel,
   type Problem,
   type Validation,
+  slowestReferenceText,
 } from './problems';
 
 const PROBLEM: Problem = {
@@ -347,6 +348,18 @@ describe('reportLines', () => {
     const running = reportLines({ ...v, state: 'running', summary: null });
     expect(running.at(-1)).toEqual({ text: 'Test 7: reference solution got wrong answer', tone: 'bad', detail: 'expected 3, found 4' });
     expect(running.filter((l) => l.text.startsWith('Test 7: brute'))).toEqual([]);
+  });
+});
+
+describe('slowestReferenceText', () => {
+  it("says when the reference's language gets more than the problem's limit (D323)", () => {
+    const s = { max_time_ms: 129, time_limit_ms: 2000 };
+    expect(slowestReferenceText({ ...s, reference_language: 'java21', time_factor: 2 })).toBe(
+      "Slowest reference run 129 ms of the 2000 ms Java 21 gets (twice the problem's 1000 ms)",
+    );
+    expect(slowestReferenceText({ max_time_ms: 62, time_limit_ms: 1000, reference_language: 'cpp17', time_factor: 1 })).toBe('Slowest reference run 62 ms of 1000 ms');
+    // Summaries stored before the factor was recorded.
+    expect(slowestReferenceText(s)).toBe('Slowest reference run 129 ms of 2000 ms');
   });
 });
 

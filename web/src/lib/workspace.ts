@@ -12,7 +12,7 @@
  * reader hears when it finishes, one line of guidance per failing verdict
  * with a language hint where one is safe, and times and memory as shown.
  */
-import { LANGUAGES, ordinal, verdictLabel, type Language } from './problems';
+import { LANGUAGES, factorWords, limitTime, ordinal, verdictLabel, type Language } from './problems';
 
 export { LANGUAGES, type Language };
 
@@ -38,7 +38,8 @@ export interface Workspace {
   statement_md: string;
   time_limit_ms: number;
   memory_limit_mb: number;
-  languages: { id: Language; name: string }[];
+  /** `time_factor` multiplies the time limit for that language (D323); absent from older servers. */
+  languages: { id: Language; name: string; time_factor?: number }[];
   samples: Sample[];
   draft: Draft | null;
   /** Own submissions, newest first, at most 20. */
@@ -211,10 +212,18 @@ export function formatKb(kb: number): string {
   return `${(kb / 1024).toFixed(1)} MB`;
 }
 
-/** The limits line under the title: "Time limit 1 s, memory 256 MB". */
-export function limitsText(timeMs: number, memoryMb: number): string {
-  const time = timeMs % 1000 === 0 ? `${timeMs / 1000} s` : `${timeMs} ms`;
-  return `Time limit ${time}, memory ${memoryMb} MB`;
+/**
+ * The limits line under the title: "Time limit 1 s, memory 256 MB". For a
+ * language the judge gives more time (its `time_factor`), the limit is the
+ * one that language gets, with the reason: "Time limit 2 s in Java 21
+ * (twice the problem's 1 s, as it runs slower than C++), memory 256 MB"
+ * (walk 2026-10-21, D323).
+ */
+export function limitsText(timeMs: number, memoryMb: number, lang?: { label: string; factor?: number }): string {
+  const f = lang?.factor;
+  if (!lang || !f || f === 1) return `Time limit ${limitTime(timeMs)}, memory ${memoryMb} MB`;
+  const own = limitTime(Math.round(timeMs * f));
+  return `Time limit ${own} in ${lang.label} (${factorWords(f)} the problem's ${limitTime(timeMs)}, as it runs slower than C++), memory ${memoryMb} MB`;
 }
 
 /** True for a verdict that ends a test badly. Accepted, OK and skipped are not. */

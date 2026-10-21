@@ -59,14 +59,19 @@ type Summary struct {
 	// BruteUnchecked counts tests the brute force did not finish (time
 	// limit exceeded or skipped), so nothing cross-checked their expected
 	// output; BruteUncheckedTests names them.
-	BruteUnchecked      int      `json:"brute_unchecked"`
-	BruteUncheckedTests []int    `json:"brute_unchecked_tests"`
-	ValidatorPassed     int      `json:"validator_passed"`
-	ValidatorTotal      int      `json:"validator_total"`
-	MaxTimeMS           int      `json:"max_time_ms"`
-	TimeLimitMS         int      `json:"time_limit_ms"`
-	Problems            []string `json:"problems"`
-	Warnings            []string `json:"warnings"`
+	BruteUnchecked      int   `json:"brute_unchecked"`
+	BruteUncheckedTests []int `json:"brute_unchecked_tests"`
+	ValidatorPassed     int   `json:"validator_passed"`
+	ValidatorTotal      int   `json:"validator_total"`
+	MaxTimeMS           int   `json:"max_time_ms"`
+	TimeLimitMS         int   `json:"time_limit_ms"`
+	// ReferenceLanguage and TimeFactor say why TimeLimitMS can differ
+	// from the problem's limit: it is that limit times the reference
+	// language's factor (D323). Summaries stored before D323 lack both.
+	ReferenceLanguage string   `json:"reference_language,omitempty"`
+	TimeFactor        float64  `json:"time_factor,omitempty"`
+	Problems          []string `json:"problems"`
+	Warnings          []string `json:"warnings"`
 }
 
 // RequestValidation queues a validation of the problem as it is now.
@@ -386,8 +391,9 @@ func summarise(pl judgeapi.ValidatePayload, res jobs.Result) Summary {
 	bruteWrong := 0
 	refLang := judge.Languages[pl.Programs.Reference.Language]
 	sm.TimeLimitMS = int(float64(pl.TimeLimitMS) * refLang.TimeFactor)
+	sm.ReferenceLanguage, sm.TimeFactor = refLang.ID, refLang.TimeFactor
 	if sm.TimeLimitMS == 0 {
-		sm.TimeLimitMS = pl.TimeLimitMS
+		sm.TimeLimitMS, sm.TimeFactor = pl.TimeLimitMS, 1
 	}
 
 	compiled := map[string]bool{}

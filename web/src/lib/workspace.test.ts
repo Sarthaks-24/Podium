@@ -133,6 +133,15 @@ describe('headlines and announcements', () => {
     expect(formatKb(3300)).toBe('3.2 MB');
     expect(limitsText(1000, 256)).toBe('Time limit 1 s, memory 256 MB');
     expect(limitsText(1500, 64)).toBe('Time limit 1500 ms, memory 64 MB');
+    // The limit a slower language really gets, with the reason (D323).
+    expect(limitsText(1000, 256, { label: 'C++17', factor: 1 })).toBe('Time limit 1 s, memory 256 MB');
+    expect(limitsText(1000, 256, { label: 'Java 21', factor: 2 })).toBe(
+      "Time limit 2 s in Java 21 (twice the problem's 1 s, as it runs slower than C++), memory 256 MB",
+    );
+    expect(limitsText(1500, 256, { label: 'Python 3', factor: 3 })).toBe(
+      "Time limit 4500 ms in Python 3 (3 times the problem's 1500 ms, as it runs slower than C++), memory 256 MB",
+    );
+    expect(limitsText(1000, 256, { label: 'Java 21' })).toBe('Time limit 1 s, memory 256 MB');
     expect(runVerdictLabel('OK')).toBe('Finished');
     expect(runVerdictLabel('WA')).toBe('Wrong answer');
   });

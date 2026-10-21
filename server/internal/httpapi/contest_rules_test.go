@@ -232,6 +232,11 @@ func TestM4LimitsAndPractice(t *testing.T) {
 	if langs := ws["languages"].([]any); len(langs) != 2 || ws["label"] != "A" || ws["can_submit"] != true {
 		t.Errorf("workspace %v", ws)
 	}
+	// Each language carries the judge's time factor, so the editor can say
+	// the limit a program really gets (D323).
+	if langs := ws["languages"].([]any); langs[0].(map[string]any)["time_factor"] != 1.0 || langs[1].(map[string]any)["time_factor"] != 3.0 {
+		t.Errorf("time factors %v", langs)
+	}
 	if code, _ := s.submit(asha, "lim", "A", "int32"); code != 202 {
 		t.Fatalf("first submit %d", code)
 	}

@@ -379,7 +379,7 @@ A `brute` or `validator` with empty source counts as none. Subtasks are numbered
 - `state`: `queued` (waiting for a worker; `queue_position` counts from 1), `running` (a worker holds it), `passed`, `failed`, or `error` (the run could not finish; `error` says why and `summary` is `null`).
 - `current` is false when the problem has changed since this validation was requested.
 - `role` is `reference`, `brute`, `validator` or `checker` (the checker appears only in `compile`). Compile verdicts are `OK` or `CE`; test verdicts are `AC`, `WA`, `TLE`, `MLE`, `RE`, `OLE`, `IE` or `SK` (a brute force that ran out of time). `message` is a checker comment or the end of a validator's error output, at most 256 bytes.
-- `summary` is computed by the server from the recorded results once the job closes. `time_limit_ms` there is the problem's limit times the reference language's time factor. `passed` is true when `problems` is empty.
+- `summary` is computed by the server from the recorded results once the job closes. `time_limit_ms` there is the problem's limit times the reference language's time factor; `reference_language` and `time_factor` name both (D323; absent from summaries stored before). `passed` is true when `problems` is empty.
 - `brute_unchecked` counts the tests the brute force did not finish (`TLE` or `SK`), so nothing cross-checked their expected output, and `brute_unchecked_tests` names them; a warning says so. When a problem has a brute force, fewer than half of its tests cross-checked (brute force `AC` or `WA`) is a problem, so validation fails.
 
 ### Errors
@@ -646,6 +646,7 @@ The workspace is the page where code is written, run and submitted. Under `/api/
 - `samples` holds each sample's input and output text, at most 4 KB each, cut at a whole UTF-8 character; `truncated` is true when either was cut. A sample whose output is not generated yet is left out.
 - `draft` is `null` when nothing was saved. `submissions` is the viewer's newest 20 on this problem, newest first, as `Submission` objects.
 - Starter code per language lives in the web app, not here.
+- Each language carries `time_factor`, the judge's multiplier of `time_limit_ms` for it (C++17 1, Java 21 2, Python 3 3, JavaScript 2), so the editor shows the limit a program really gets (D323).
 - **v1.2.0:** `open_test_count` is how many open tests a Run checks after the samples (D115); their inputs are never listed here.
 
 ### Drafts

@@ -934,8 +934,12 @@ test.describe('P5 workspace', () => {
     await expect(content).toHaveAttribute('data-language', 'cpp');
     expect([...new Set(chunks)]).toEqual(['cpp']);
 
+    const limits = page.locator('.limits');
+    await expect(limits).toHaveText('Time limit 1 s, memory 256 MB');
     await page.getByLabel('Language').selectOption('python3');
     await expect(content).toHaveAttribute('data-language', 'python');
+    // The limit the selected language really gets, with the reason (D323).
+    await expect(limits).toHaveText("Time limit 3 s in Python 3 (3 times the problem's 1 s, as it runs slower than C++), memory 256 MB");
     await page.getByLabel('Language').selectOption('node22');
     await expect(content).toHaveAttribute('data-language', 'javascript');
     expect([...new Set(chunks)].sort()).toEqual(['cpp', 'javascript', 'python']);

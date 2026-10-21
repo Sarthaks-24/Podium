@@ -62,3 +62,14 @@ func TestBruteForceTimeoutsAreNotCrossChecks(t *testing.T) {
 		t.Errorf("no brute force: %+v", sm)
 	}
 }
+
+// The summary names the reference language and its factor, so the report
+// can say why the limit it shows is not the problem's (D323).
+func TestSummaryNamesTheReferenceTimeFactor(t *testing.T) {
+	pl, res := bruteRun("AC")
+	pl.Programs.Reference.Language = "java21"
+	sm := summarise(pl, res)
+	if sm.TimeLimitMS != 2000 || sm.ReferenceLanguage != "java21" || sm.TimeFactor != 2 {
+		t.Errorf("java reference: limit %d, language %q, factor %v", sm.TimeLimitMS, sm.ReferenceLanguage, sm.TimeFactor)
+	}
+}
