@@ -44,13 +44,15 @@ type SubmissionRef struct {
 
 // Note is a private note on a submission.
 type Note struct {
-	ID           int64       `json:"id"`
-	SubmissionID int64       `json:"submission_id"`
-	By           int64       `json:"by"`
-	ByName       string      `json:"by_name"`
-	Text         string      `json:"text"`
-	Lines        []LineRange `json:"lines"`
-	CreatedAt    int64       `json:"created_at"`
+	ID           int64 `json:"id"`
+	SubmissionID int64 `json:"submission_id"`
+	// ContestID is the submission's contest, for the involvement filter.
+	ContestID int64       `json:"-"`
+	By        int64       `json:"by"`
+	ByName    string      `json:"by_name"`
+	Text      string      `json:"text"`
+	Lines     []LineRange `json:"lines"`
+	CreatedAt int64       `json:"created_at"`
 	// ExpiresAt is when the retention job deletes the note; nil once a
 	// case was opened from its submission.
 	ExpiresAt *int64 `json:"expires_at"`
@@ -129,6 +131,17 @@ func (s *Service) Notes(ctx context.Context, submissionID int64) ([]Note, error)
 
 // NotesAbout lists every kept note on a student's submissions, newest
 // first, for the record page.
+// SharesCase reports whether two people are both students of one case in
+// a contest: then neither reviews the other's notes from it.
+func (s *Service) SharesCase(ctx context.Context, a, b, contestID int64) (bool, error) {
+	var n int
+	err := s.DB.QueryRowContext(ctx, `SELECT count(*) FROM integrity_cases c
+		JOIN integrity_case_users x ON x.case_id = c.id AND x.user_id = ?
+		JOIN integrity_case_users y ON y.case_id = c.id AND y.user_id = ?
+		WHERE c.contest_id = ?`, a, b, contestID).Scan(&n)
+	return n > 0, err
+}
+
 func (s *Service) NotesAbout(ctx context.Context, userID int64) ([]Note, error) {
 	list, err := s.notesWhere(ctx, "n.user_id = ?", userID)
 	for i, j := 0, len(list)-1; i < j; i, j = i+1, j-1 {
@@ -138,7 +151,7 @@ func (s *Service) NotesAbout(ctx context.Context, userID int64) ([]Note, error) 
 }
 
 func (s *Service) notesWhere(ctx context.Context, where string, args ...any) ([]Note, error) {
-	rows, err := s.DB.QueryContext(ctx, `SELECT n.id, n.submission_id, n.by_user, coalesce(nullif(u.name, ''), u.email), n.text, n.lines, n.created_at,
+	rows, err := s.DB.QueryContext(ctx, `SELECT n.id, n.submission_id, n.contest_id, n.by_user, coalesce(nullif(u.name, ''), u.email), n.text, n.lines, n.created_at,
 		EXISTS (SELECT 1 FROM integrity_cases c WHERE c.submission_id = n.submission_id AND c.source = 'manual')
 		FROM submission_notes n JOIN users u ON u.id = n.by_user WHERE `+where+` ORDER BY n.id`, args...)
 	if err != nil {
@@ -150,7 +163,7 @@ func (s *Service) notesWhere(ctx context.Context, where string, args ...any) ([]
 		var n Note
 		var lines string
 		var linked bool
-		if err := rows.Scan(&n.ID, &n.SubmissionID, &n.By, &n.ByName, &n.Text, &lines, &n.CreatedAt, &linked); err != nil {
+		if err := rows.Scan(&n.ID, &n.SubmissionID, &n.ContestID, &n.By, &n.ByName, &n.Text, &lines, &n.CreatedAt, &linked); err != nil {
 			return nil, err
 		}
 		n.Lines = []LineRange{}

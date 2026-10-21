@@ -209,6 +209,16 @@ func (d Deps) getIntegrity(w http.ResponseWriter, r *http.Request) {
 		d.integrityError(w, r, err, "This contest has not been checked yet.")
 		return
 	}
+	// A reviewer named in a signal (a student since made an admin) never
+	// sees it, as they never see a case they are in.
+	me := userFrom(r.Context()).ID
+	kept := run.Signals[:0:0]
+	for _, sg := range run.Signals {
+		if sg.UserA != me && sg.UserB != me {
+			kept = append(kept, sg)
+		}
+	}
+	run.Signals = kept
 	var ids []int64
 	for _, sg := range run.Signals {
 		ids = append(ids, sg.UserA, sg.UserB)
@@ -237,6 +247,10 @@ func (d Deps) getIntegrityPair(w http.ResponseWriter, r *http.Request) {
 		d.integrityError(w, r, err, missing)
 		return
 	}
+	if me := userFrom(r.Context()).ID; a.UserID == me || b.UserID == me {
+		WriteError(w, http.StatusNotFound, "not_found", missing)
+		return
+	}
 	WriteJSON(w, http.StatusOK, map[string]any{"a": a, "b": b, "server_now": d.serverNow()})
 }
 
@@ -247,7 +261,7 @@ func (d Deps) getIntegrityTimeline(w http.ResponseWriter, r *http.Request) {
 	}
 	const missing = "There is no such student in this contest."
 	userID, ok := parseID(r.PathValue("user"))
-	if !ok {
+	if !ok || userID == userFrom(r.Context()).ID {
 		WriteError(w, http.StatusNotFound, "not_found", missing)
 		return
 	}
@@ -288,11 +302,11 @@ func (d Deps) listIntegrityCases(w http.ResponseWriter, r *http.Request) {
 	list := []integrity.Case{}
 	for _, cs := range all {
 		if !cs.Involves(me) {
-			if !d.logCase(w, r, &cs) {
-				return
-			}
 			list = append(list, cs)
 		}
+	}
+	if !d.logCase(w, r, list...) {
+		return
 	}
 	WriteJSON(w, http.StatusOK, map[string]any{"cases": list, "server_now": d.serverNow()})
 }
@@ -325,20 +339,25 @@ func (d Deps) getIntegrityCase(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if d.logCase(w, r, cs) {
+	if d.logCase(w, r, *cs) {
 		d.writeCase(w, r, cs, http.StatusOK)
 	}
 }
 
-// logCase records a read of a case, one record view per student it is
+// logCase records a read of cases, one record view per student each is
 // about (D97): the case page, the case list and the pair view all count.
-func (d Deps) logCase(w http.ResponseWriter, r *http.Request, cs *integrity.Case) bool {
-	viewer := userFrom(r.Context()).ID
-	for _, u := range cs.Users {
-		if err := d.Integrity.LogView(r.Context(), viewer, u.UserID, integrity.ViewCase, cs.ID); err != nil {
-			d.internalError(w, r, err)
-			return false
+// The views go in one statement, so a long case list costs one commit
+// beside contest judging (as the appeals list, C1-044).
+func (d Deps) logCase(w http.ResponseWriter, r *http.Request, cases ...integrity.Case) bool {
+	var views []integrity.View
+	for _, cs := range cases {
+		for _, u := range cs.Users {
+			views = append(views, integrity.View{Subject: u.UserID, Kind: integrity.ViewCase, Ref: cs.ID})
 		}
+	}
+	if err := d.Integrity.LogViews(r.Context(), userFrom(r.Context()).ID, views); err != nil {
+		d.internalError(w, r, err)
+		return false
 	}
 	return true
 }
@@ -374,7 +393,7 @@ func (d Deps) getIntegrityCasePair(w http.ResponseWriter, r *http.Request) {
 		d.integrityError(w, r, err, missing)
 		return
 	}
-	if !d.logCase(w, r, cs) {
+	if !d.logCase(w, r, *cs) {
 		return
 	}
 	WriteJSON(w, http.StatusOK, map[string]any{"a": a, "b": b, "signal": sg, "server_now": d.serverNow()})

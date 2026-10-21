@@ -355,9 +355,12 @@ func (d Deps) studentRecord(w http.ResponseWriter, r *http.Request) {
 		involved[m.ID] = true
 	}
 	kept := []integrity.CaseSummary{}
+	sharedContest := map[int64]bool{}
 	for _, c := range cases {
 		if !involved[c.ID] {
 			kept = append(kept, c)
+		} else {
+			sharedContest[c.ContestID] = true
 		}
 	}
 	// Nor the lines and appeals of such a case.
@@ -368,10 +371,26 @@ func (d Deps) studentRecord(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	standing.Lines = lines
-	notes, err := d.Integrity.NotesAbout(ctx, st.ID)
+	// Nor the rating lines of such a case (they name its reviewers), nor
+	// the notes on the student's submissions in a contest where the two
+	// share a case.
+	history := []integrity.RatingLine{}
+	for _, l := range rating.History {
+		if l.CaseID == nil || !involved[*l.CaseID] {
+			history = append(history, l)
+		}
+	}
+	rating.History = history
+	allNotes, err := d.Integrity.NotesAbout(ctx, st.ID)
 	if err != nil {
 		d.internalError(w, r, err)
 		return
+	}
+	notes := []integrity.Note{}
+	for _, n := range allNotes {
+		if !sharedContest[n.ContestID] {
+			notes = append(notes, n)
+		}
 	}
 	all, err := d.Integrity.AppealsOf(ctx, st.ID)
 	if err != nil {
