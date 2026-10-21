@@ -741,7 +741,7 @@
                     {#if r.error}<p id="reply-{c.id}-error" class="field-error">{r.error}</p>{/if}
                   </div>
                   <label class="choice"><input type="checkbox" bind:checked={r.public} /> Answer for everyone</label>
-                  <button type="button" class="btn btn-secondary btn-compact" disabled={r.busy} onclick={() => answer(c)}>
+                  <button type="button" class="btn btn-secondary" disabled={r.busy} onclick={() => answer(c)}>
                     {r.public ? 'Send to everyone' : 'Send answer'}
                   </button>
                 {/if}
@@ -874,9 +874,9 @@
             </table>
           </div>
           <div class="pager">
-            <button type="button" class="btn btn-secondary btn-compact" disabled={page <= 1} onclick={() => { page -= 1; void loadFeed(); }}>Newer</button>
+            <button type="button" class="btn btn-secondary" disabled={page <= 1} onclick={() => { page -= 1; void loadFeed(); }}>Newer</button>
             <span class="muted small">Page <span class="mono">{page}</span></span>
-            <button type="button" class="btn btn-secondary btn-compact" disabled={!hasMore} onclick={() => { page += 1; void loadFeed(); }}>Older</button>
+            <button type="button" class="btn btn-secondary" disabled={!hasMore} onclick={() => { page += 1; void loadFeed(); }}>Older</button>
           </div>
         {/if}
 

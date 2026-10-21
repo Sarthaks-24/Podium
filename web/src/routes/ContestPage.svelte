@@ -489,7 +489,7 @@
           ? 'This contest is also open in another tab or window on this device. Keep to one, so your code stays in one place.'
           : 'Your account is in this contest from another session as well. Organisers can see both sessions.'}
       </p>
-      <button type="button" class="btn btn-quiet btn-compact" onclick={() => (sessionNoticeHidden = true)}>Dismiss</button>
+      <button type="button" class="btn btn-quiet" onclick={() => (sessionNoticeHidden = true)}>Dismiss</button>
     </div>
   {/if}
   {#if phase === 'during'}
@@ -500,7 +500,7 @@
           {n.label === current ? statementUpdatedText(n.at) : `Problem ${n.label}: s${statementUpdatedText(n.at).slice(1)}`}
           <button type="button" class="link-button" onclick={() => (diffLabel = n.label)}>See what changed</button>
         </p>
-        <button type="button" class="btn btn-quiet btn-compact" onclick={() => dismiss(statementBannerKey(n.label, n.at))}>Dismiss</button>
+        <button type="button" class="btn btn-quiet" onclick={() => dismiss(statementBannerKey(n.label, n.at))}>Dismiss</button>
       </div>
     {/if}
     <ContestBanner items={banner} ondismiss={dismiss} onopen={openMessages} />

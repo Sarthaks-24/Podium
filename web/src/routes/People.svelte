@@ -680,7 +680,7 @@
         </li>
         <li>
           <span class="step">Share the address with your students: <span class="address">{origin}</span></span>
-          <button type="button" class="btn btn-secondary btn-compact" onclick={copyAddress}>Copy address</button>
+          <button type="button" class="btn btn-secondary" onclick={copyAddress}>Copy address</button>
         </li>
       </ul>
     </section>
@@ -777,7 +777,7 @@
       <div class="invite" role="status">
         <p>Send {invited} this address: <span class="address">{origin}</span>. They sign in with Google using that email.</p>
         <div class="invite-actions">
-          <button type="button" class="btn btn-secondary btn-compact" onclick={copyAddress}>Copy address</button>
+          <button type="button" class="btn btn-secondary" onclick={copyAddress}>Copy address</button>
           <button type="button" class="btn btn-quiet btn-compact" onclick={() => (invited = null)}>Dismiss</button>
         </div>
       </div>
@@ -1054,7 +1054,7 @@
         {/each}
       </ul>
       {#if viewsMore}
-        <button type="button" class="btn btn-secondary btn-compact more" disabled={viewsBusy} onclick={() => loadViews(true)}>Show older views</button>
+        <button type="button" class="btn btn-secondary more" disabled={viewsBusy} onclick={() => loadViews(true)}>Show older views</button>
       {/if}
     {/if}
   </section>
@@ -1099,7 +1099,7 @@
         {/each}
       </ul>
       {#if historyMore}
-        <button type="button" class="btn btn-secondary btn-compact more" disabled={historyBusy} onclick={() => loadHistory(historyPage + 1)}>
+        <button type="button" class="btn btn-secondary more" disabled={historyBusy} onclick={() => loadHistory(historyPage + 1)}>
           Show older changes
         </button>
       {/if}

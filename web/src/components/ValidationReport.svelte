@@ -15,6 +15,7 @@
 -->
 <script lang="ts">
   import { formatDateTime } from '../lib/format';
+  import MonoDigits from './MonoDigits.svelte';
   import { buildReport, isPending, programFieldId, progressText, roleName, verdictLabel, type Role, type Validation } from '../lib/problems';
 
   let { validation }: { validation: Validation | null } = $props();
@@ -100,9 +101,9 @@
     {/if}
 
     {#if !isPending(validation) && validation.finished_at !== null}
-      <p class="when muted">Finished {formatDateTime(validation.finished_at)}</p>
+      <p class="when muted">Finished <MonoDigits text={formatDateTime(validation.finished_at)} /></p>
     {:else if isPending(validation)}
-      <p class="when muted">Asked for {formatDateTime(validation.queued_at)}</p>
+      <p class="when muted">Asked for <MonoDigits text={formatDateTime(validation.queued_at)} /></p>
     {/if}
 
     {#if validation.tests.length > 0}
