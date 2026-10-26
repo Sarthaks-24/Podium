@@ -52,6 +52,8 @@
 
   // Only the newest request is shown: a slow older answer must not land under a newer filter (C2-032).
   let loadSeq = 0;
+  // A late answer must not navigate back here after the organiser left.
+  let alive = true;
 
   async function load(first = false) {
     if (first) loadState = 'loading';
@@ -64,7 +66,7 @@
     const q = params.join('&');
     try {
       const d = await getJSON<StudentsList>(`/api/admin/students${q ? `?${q}` : ''}`);
-      if (seq !== loadSeq) return;
+      if (seq !== loadSeq || !alive) return;
       const restore = first ? keepHeadingFocus() : null;
       data = d;
       shownFor = asked;
@@ -121,6 +123,9 @@
     query = router.query.get('q') ?? '';
     if (!isOrganiser) loadState = 'forbidden';
     else void load(true);
+    return () => {
+      alive = false;
+    };
   });
 </script>
 

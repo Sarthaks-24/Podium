@@ -261,6 +261,7 @@
     try {
       const answer = await sendJSON<{ wizard_id: string | number }>('POST', aiPaths.wizard, built.body);
       wizard = { id: String(answer.wizard_id), state: 'thinking' };
+      if (!alive) return;
       navigate(`/admin/ai/new?wizard=${encodeURIComponent(String(answer.wizard_id))}`, { replace: true });
       startWatch();
       // The form goes away, so focus moves to what replaced it.

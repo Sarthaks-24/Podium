@@ -227,7 +227,11 @@
     }
   }
 
+  // Only the newest feed request is shown, so a slow answer for an old filter cannot land under a new one.
+  let feedSeq = 0;
+
   async function loadFeed() {
+    const seq = ++feedSeq;
     const params: [string, string][] = [];
     if (fProblem) params.push(['problem', fProblem]);
     if (fUser !== '') params.push(['user', fUser]);
@@ -236,12 +240,14 @@
     const q = params.map(([k, v]) => `${k}=${encodeURIComponent(v)}`).join('&');
     try {
       const data = await getJSON<FeedPage>(`${base}/submissions?${q}`);
+      if (seq !== feedSeq) return;
       feed = data.submissions ?? [];
       hasMore = data.has_more ?? false;
       feedState = 'ready';
       feedAt = serverClock.serverNow();
       feedFailedAt = 0;
     } catch (e) {
+      if (seq !== feedSeq) return;
       if (handleAuth(e)) return;
       // A failed refresh keeps the rows already shown (C2).
       if (feedState === 'ready') {
