@@ -159,10 +159,12 @@ func New(d Deps) http.Handler {
 	return d.logRequests(d.recoverer(securityHeaders(d.localOnlyAll(newInFlight().limit(d.sessionCookieName(), d.sameOrigin(mux))))))
 }
 
-// contestRoutes mounts the contest API (milestone M4). Every route needs a
-// signed-in user; the handlers apply the contest's own access rules.
+// contestRoutes mounts the contest API (milestone M4). Student routes need
+// a signed-in user and apply the contest's own access rules; organiser
+// routes need the admin or owner role.
 func (d Deps) contestRoutes(mux *http.ServeMux) {
 	signedIn := func(h http.HandlerFunc) http.HandlerFunc { return d.requireRole(auth.Student, h) }
+	organiser := func(h http.HandlerFunc) http.HandlerFunc { return d.requireRole(auth.Admin, h) }
 	mux.HandleFunc("GET /api/contests", signedIn(d.limitReads(d.listContests)))
 	mux.HandleFunc("GET /api/contests/{slug}", signedIn(d.limitReads(d.getContest)))
 	mux.HandleFunc("POST /api/contests/{slug}/start", signedIn(d.startContest))
@@ -174,35 +176,33 @@ func (d Deps) contestRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/contests/{slug}/standings", signedIn(d.limitReads(d.getStandings)))
 	mux.HandleFunc("POST /api/contests/{slug}/clarifications", signedIn(d.askClarification))
 
-	mux.HandleFunc("GET /api/admin/contests", signedIn(d.listAdminContests))
-	mux.HandleFunc("POST /api/admin/contests", signedIn(d.createContest))
-	mux.HandleFunc("GET /api/admin/contests/{id}", signedIn(d.getAdminContest))
-	mux.HandleFunc("PUT /api/admin/contests/{id}", signedIn(d.updateContest))
-	mux.HandleFunc("DELETE /api/admin/contests/{id}", signedIn(d.archiveContest))
-	mux.HandleFunc("POST /api/admin/contests/{id}/clone", signedIn(d.cloneContest))
-	mux.HandleFunc("PUT /api/admin/contests/{id}/problems", signedIn(d.setContestProblems))
-	mux.HandleFunc("PUT /api/admin/contests/{id}/problems/{label}/revision", signedIn(d.updatePin))
-	mux.HandleFunc("GET /api/admin/contests/{id}/roster", signedIn(d.getRoster))
-	mux.HandleFunc("PUT /api/admin/contests/{id}/roster", signedIn(slowBody(d.setRoster)))
-	mux.HandleFunc("POST /api/admin/contests/{id}/admins", signedIn(d.changeContestAdmin(true)))
-	mux.HandleFunc("DELETE /api/admin/contests/{id}/admins", signedIn(d.changeContestAdmin(false)))
-	mux.HandleFunc("PUT /api/admin/contests/{id}/extensions/{user}", signedIn(d.setExtension))
-	mux.HandleFunc("POST /api/admin/contests/{id}/extend", signedIn(d.extendContest))
-	mux.HandleFunc("POST /api/admin/contests/{id}/pause", signedIn(d.pauseContest(true)))
-	mux.HandleFunc("POST /api/admin/contests/{id}/resume", signedIn(d.pauseContest(false)))
-	mux.HandleFunc("GET /api/admin/contests/{id}/submissions", signedIn(d.contestFeed))
-	mux.HandleFunc("POST /api/admin/contests/{id}/rejudge", signedIn(d.rejudge))
-	mux.HandleFunc("GET /api/admin/contests/{id}/announcements", signedIn(d.listAnnouncements))
-	mux.HandleFunc("POST /api/admin/contests/{id}/announcements", signedIn(d.postAnnouncement))
-	mux.HandleFunc("GET /api/admin/contests/{id}/clarifications", signedIn(d.listClarifications))
-	mux.HandleFunc("PUT /api/admin/contests/{id}/clarifications/{cid}", signedIn(d.answerClarification))
-	mux.HandleFunc("GET /api/admin/contests/{id}/standings", signedIn(d.adminStandings))
-	mux.HandleFunc("GET /api/admin/contests/{id}/reveal", signedIn(d.getReveal))
-	mux.HandleFunc("POST /api/admin/contests/{id}/reveal", signedIn(d.postReveal))
-	mux.HandleFunc("GET /api/admin/contests/{id}/export.csv", signedIn(d.exportCSV))
-	mux.HandleFunc("GET /api/admin/contests/{id}/export.json", signedIn(d.exportJSON))
-	mux.HandleFunc("GET /api/admin/contests/{id}/stats", signedIn(d.contestStats))
-	mux.HandleFunc("PUT /api/admin/contests/{id}/editorial", signedIn(d.setEditorial))
+	mux.HandleFunc("GET /api/admin/contests", organiser(d.listAdminContests))
+	mux.HandleFunc("POST /api/admin/contests", organiser(d.createContest))
+	mux.HandleFunc("GET /api/admin/contests/{id}", organiser(d.getAdminContest))
+	mux.HandleFunc("PUT /api/admin/contests/{id}", organiser(d.updateContest))
+	mux.HandleFunc("DELETE /api/admin/contests/{id}", organiser(d.archiveContest))
+	mux.HandleFunc("POST /api/admin/contests/{id}/clone", organiser(d.cloneContest))
+	mux.HandleFunc("PUT /api/admin/contests/{id}/problems", organiser(d.setContestProblems))
+	mux.HandleFunc("PUT /api/admin/contests/{id}/problems/{label}/revision", organiser(d.updatePin))
+	mux.HandleFunc("GET /api/admin/contests/{id}/roster", organiser(d.getRoster))
+	mux.HandleFunc("PUT /api/admin/contests/{id}/roster", organiser(slowBody(d.setRoster)))
+	mux.HandleFunc("PUT /api/admin/contests/{id}/extensions/{user}", organiser(d.setExtension))
+	mux.HandleFunc("POST /api/admin/contests/{id}/extend", organiser(d.extendContest))
+	mux.HandleFunc("POST /api/admin/contests/{id}/pause", organiser(d.pauseContest(true)))
+	mux.HandleFunc("POST /api/admin/contests/{id}/resume", organiser(d.pauseContest(false)))
+	mux.HandleFunc("GET /api/admin/contests/{id}/submissions", organiser(d.contestFeed))
+	mux.HandleFunc("POST /api/admin/contests/{id}/rejudge", organiser(d.rejudge))
+	mux.HandleFunc("GET /api/admin/contests/{id}/announcements", organiser(d.listAnnouncements))
+	mux.HandleFunc("POST /api/admin/contests/{id}/announcements", organiser(d.postAnnouncement))
+	mux.HandleFunc("GET /api/admin/contests/{id}/clarifications", organiser(d.listClarifications))
+	mux.HandleFunc("PUT /api/admin/contests/{id}/clarifications/{cid}", organiser(d.answerClarification))
+	mux.HandleFunc("GET /api/admin/contests/{id}/standings", organiser(d.adminStandings))
+	mux.HandleFunc("GET /api/admin/contests/{id}/reveal", organiser(d.getReveal))
+	mux.HandleFunc("POST /api/admin/contests/{id}/reveal", organiser(d.postReveal))
+	mux.HandleFunc("GET /api/admin/contests/{id}/export.csv", organiser(d.exportCSV))
+	mux.HandleFunc("GET /api/admin/contests/{id}/export.json", organiser(d.exportJSON))
+	mux.HandleFunc("GET /api/admin/contests/{id}/stats", organiser(d.contestStats))
+	mux.HandleFunc("PUT /api/admin/contests/{id}/editorial", organiser(d.setEditorial))
 }
 
 // now is the server's clock: the contests service's, which tests replace.

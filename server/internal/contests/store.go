@@ -887,32 +887,6 @@ func limitStr(s string, n int) string {
 	return strings.ToValidUTF8(s[:n], "")
 }
 
-// IsContestAdmin reports whether a user co-organises a contest.
-func (s *Service) IsContestAdmin(ctx context.Context, id, userID int64) (bool, error) {
-	var n int
-	err := s.DB.QueryRowContext(ctx, "SELECT count(*) FROM contest_admins WHERE contest_id = ? AND user_id = ?", id, userID).Scan(&n)
-	return n > 0, err
-}
-
-// SetAdmin adds or removes a co-organiser by email; the person must have
-// signed in once.
-func (s *Service) SetAdmin(ctx context.Context, id int64, email string, add bool) error {
-	var userID int64
-	err := s.DB.QueryRowContext(ctx, "SELECT id FROM users WHERE email = ?", strings.ToLower(strings.TrimSpace(email))).Scan(&userID)
-	if errors.Is(err, sql.ErrNoRows) {
-		return FieldErrors{"email": "Nobody with that email has signed in yet. Ask them to sign in once first."}
-	}
-	if err != nil {
-		return err
-	}
-	if add {
-		_, err = s.DB.ExecContext(ctx, "INSERT OR IGNORE INTO contest_admins (contest_id, user_id) VALUES (?, ?)", id, userID)
-	} else {
-		_, err = s.DB.ExecContext(ctx, "DELETE FROM contest_admins WHERE contest_id = ? AND user_id = ?", id, userID)
-	}
-	return err
-}
-
 // SetExtension gives one student extra time (0 removes it).
 func (s *Service) SetExtension(ctx context.Context, id, userID int64, minutes int, reason string) error {
 	if minutes < 0 || minutes > 1440 {
@@ -982,9 +956,6 @@ type Viewer struct {
 func (s *Service) MayEnter(ctx context.Context, c *Contest, v Viewer) (organiser bool, err error) {
 	if v.Organiser {
 		return true, nil
-	}
-	if ok, err := s.IsContestAdmin(ctx, c.ID, v.UserID); err != nil || ok {
-		return ok, err
 	}
 	if !c.Published || c.Archived {
 		return false, ErrNotFound

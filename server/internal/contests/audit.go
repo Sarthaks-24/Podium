@@ -29,7 +29,6 @@ const (
 	AuditRejudge    = "rejudge" // {"problem_label" or "submission_id", "queued"}
 	AuditReveal     = "reveal"
 	AuditEditorial  = "editorial"  // {"published", "was_published", "changed", "bytes"}
-	AuditOrganisers = "organisers" // {"email", "added"}
 	AuditArchive    = "archive"
 	// AuditDecision is an integrity decision about one student:
 	// {"user_id", "decision"}; the reason stays in integrity_cases.
@@ -146,10 +145,10 @@ func nonNilStrings(s []string) []string {
 
 // AuditAll lists every audit row of the contest, oldest first, for the
 // JSON export. noIntegrity leaves out the integrity rows, as AuditFilter.
-func (s *Service) AuditAll(ctx context.Context, contestID int64, noIntegrity bool) ([]AuditEntry, error) {
+func (s *Service) AuditAll(ctx context.Context, contestID int64) ([]AuditEntry, error) {
 	var out []AuditEntry
 	for page := 1; ; page++ {
-		list, more, err := s.AuditLog(ctx, contestID, page, AuditFilter{NoIntegrity: noIntegrity})
+		list, more, err := s.AuditLog(ctx, contestID, page, AuditFilter{})
 		if err != nil {
 			return nil, err
 		}

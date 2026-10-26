@@ -7,56 +7,9 @@ package httpapi
 
 import (
 	"fmt"
-	"strconv"
-	"strings"
 	"testing"
 	"time"
 )
-
-func TestM4CoOrganiserCannotOpenTheBank(t *testing.T) {
-	s := newSite(t)
-	owner := s.signedIn("owner@college.edu", "Owner")
-	pa := s.importProblem(owner, "plus-a")
-	pb := s.importProblem(owner, "secret-b")
-	start := time.Now().Add(time.Hour).Truncate(time.Minute)
-	c1 := s.createContest(owner, "c1", start, map[string]int64{"A": pa}, nil)
-	ta := s.signedIn("ta@college.edu", "TA")
-	owner.do("POST", fmt.Sprintf("/api/admin/contests/%d/admins", c1), map[string]string{"email": "ta@college.edu"}, s.srv.URL)
-
-	// Choosing problems opens the bank: admins only.
-	if code, _ := ta.do("PUT", fmt.Sprintf("/api/admin/contests/%d/problems", c1), []map[string]any{{"problem_id": pb, "label": "A"}}, s.srv.URL); code != 403 {
-		t.Errorf("co-organiser setting problems: %d", code)
-	}
-	// Publishing hands problems to students: admins only.
-	if code, _ := ta.do("PUT", fmt.Sprintf("/api/admin/contests/%d", c1), map[string]any{"published": false}, s.srv.URL); code != 403 {
-		t.Errorf("co-organiser unpublishing: %d", code)
-	}
-	if code, _ := ta.do("PUT", fmt.Sprintf("/api/admin/contests/%d", c1), map[string]any{"title": "Week 1 (renamed)"}, s.srv.URL); code != 200 {
-		t.Errorf("co-organiser editing other settings: %d", code)
-	}
-	// An unvalidated problem is refused without its title in the message.
-	code, created := owner.raw("POST", "/api/admin/problems/import", "application/zip", packZip(t, "draft-c", nil, false), s.srv.URL)
-	if code != 201 {
-		t.Fatalf("import %d", code)
-	}
-	code, out := owner.do("PUT", fmt.Sprintf("/api/admin/contests/%d/problems", c1), []map[string]any{{"problem_id": created["id"], "label": "C"}}, s.srv.URL)
-	if code != 400 || strings.Contains(fmt.Sprint(out), "draft-c") || !strings.Contains(fmt.Sprint(out), "label C") {
-		t.Errorf("unvalidated problem: %d %v", code, out)
-	}
-	// The co-organiser's own submissions get the student view and the
-	// contest's limits (no organiser gap of 5 s, 15 per problem).
-	s.at(start, -30)
-	code, sub := ta.do("POST", "/api/contests/c1/problems/A/submit", map[string]any{"language": "cpp17", "source": "int32", "client_key": "x1"}, s.srv.URL)
-	if code != 202 {
-		t.Fatalf("co-organiser submit %d %v", code, sub)
-	}
-	s.judgeAll()
-	_, got := ta.do("GET", "/api/submissions/"+strconv.Itoa(int(sub["id"].(float64))), nil, "")
-	test := got["subtasks"].([]any)[0].(map[string]any)["tests"].([]any)[0].(map[string]any)
-	if got["max_memory_kb"] != float64(16384) || got["max_time_ms"] != float64(100) || test["memory_kb"] != float64(0) {
-		t.Errorf("co-organiser sees exact figures: %v", got)
-	}
-}
 
 func TestM4ExamModeHasNoJudgingOracle(t *testing.T) {
 	s := newSite(t)

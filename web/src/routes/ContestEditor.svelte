@@ -31,7 +31,7 @@
     off or back on once the contest has started. Leaving with unsaved settings asks
     first.
   - More: the roster (a CSV file or pasted text with a preview of every
-    line, then "Replace roster"), co-organisers, a clone, and archiving.
+    line, then "Replace roster"), a clone, and archiving.
 
   Students see a short explanation instead. Props: `id`.
 -->
@@ -105,8 +105,6 @@
   let currentRoster = $state<RosterRow[] | null>(null);
   const rosterCount = $derived(contest ? (contest.roster_count ?? contest.roster?.length ?? 0) : 0);
 
-  let adminEmail = $state('');
-  let adminError = $state('');
 
   let cloneSlug = $state('');
   let cloneStart = $state('');
@@ -647,40 +645,6 @@
     await fetchRoster();
   }
 
-  // Co-organisers.
-  async function addAdmin(event: SubmitEvent) {
-    event.preventDefault();
-    adminError = '';
-    const email = adminEmail.trim();
-    if (email === '') {
-      adminError = 'Enter an email address.';
-      document.getElementById('admin-email')?.focus();
-      return;
-    }
-    try {
-      await settle(await sendJSON<unknown>('POST', `${base}/admins`, { email }));
-      showToast(`Added ${email}`);
-      adminEmail = '';
-    } catch (e) {
-      if (handleAuth(e)) return;
-      adminError = e instanceof ApiError ? (e.fields.email ?? e.message) : errorText(e);
-      document.getElementById('admin-email')?.focus();
-    }
-  }
-
-  function removeAdmin(email: string, who: string) {
-    confirm = {
-      title: `Remove ${who}?`,
-      body: 'They can no longer change this contest or run its console.',
-      label: `Remove ${who}`,
-      danger: true,
-      run: async () => {
-        await settle(await sendJSON<unknown>('DELETE', `${base}/admins`, { email }));
-        showToast(`Removed ${who}`);
-      },
-    };
-  }
-
   async function runConfirm() {
     if (!confirm) return;
     confirmBusy = true;
@@ -1159,29 +1123,6 @@
           {/if}
         </div>
 
-        <div class="sub" role="group" aria-labelledby="admins-title">
-          <h3 id="admins-title">Co-organisers</h3>
-          <p class="muted small">They can change this contest and run its console, but no other contest.</p>
-          {#if (contest.admins ?? []).length > 0}
-            <ul class="plain admins">
-              {#each contest.admins as a (a.user_id)}
-                <li>
-                  <span>{a.name || a.email}</span> <span class="muted small">{a.email}</span>
-                  <button type="button" class="btn btn-danger-quiet btn-compact" onclick={() => removeAdmin(a.email, a.name || a.email)}>Remove {a.name || a.email}</button>
-                </li>
-              {/each}
-            </ul>
-          {/if}
-          <form class="row" novalidate onsubmit={addAdmin}>
-            <div class="field grow">
-              <label for="admin-email">Email</label>
-              <input id="admin-email" aria-required="true" class="input" type="email" autocomplete="off" spellcheck="false" bind:value={adminEmail} aria-invalid={adminError ? 'true' : undefined} aria-describedby={adminError ? 'admin-error' : undefined} />
-              {#if adminError}<p id="admin-error" class="field-error">{adminError}</p>{/if}
-            </div>
-            <button type="submit" class="btn btn-secondary">Add co-organiser</button>
-          </form>
-        </div>
-
         <div class="sub" role="group" aria-labelledby="clone-title">
           <h3 id="clone-title">Clone</h3>
           <p class="muted small">Copies the settings and problems into a new, unpublished contest.</p>
@@ -1575,13 +1516,6 @@
     padding: 0;
     list-style: none;
     font-size: var(--fs-0);
-  }
-
-  .admins li {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: var(--space-2) var(--space-3);
   }
 
   @media (min-width: 768px) {

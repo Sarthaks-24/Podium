@@ -83,10 +83,6 @@ func TestM4AccessAndCrossContestIDs(t *testing.T) {
 	}
 	asha := s.signedIn("asha@college.edu", "")
 	bilal := s.signedIn("bilal@college.edu", "Bilal")
-	ta := s.signedIn("ta@college.edu", "TA")
-	if code, _ := owner.do("POST", fmt.Sprintf("/api/admin/contests/%d/admins", c1), map[string]string{"email": "ta@college.edu"}, s.srv.URL); code != 200 {
-		t.Fatalf("add co-organiser %d", code)
-	}
 
 	// Roster: on the list may enter, others may not; the list hides
 	// contests the student cannot enter.
@@ -104,22 +100,8 @@ func TestM4AccessAndCrossContestIDs(t *testing.T) {
 	if code, _ := bilal.do("GET", "/api/contests/c2", nil, ""); code != 200 {
 		t.Errorf("domain contest: %d", code)
 	}
-	// Co-organiser: their contest only, and no say over co-organisers.
-	if code, _ := ta.do("GET", fmt.Sprintf("/api/admin/contests/%d", c1), nil, ""); code != 200 {
-		t.Errorf("co-organiser on their contest: %d", code)
-	}
-	if code, _ := ta.do("GET", fmt.Sprintf("/api/admin/contests/%d", c2), nil, ""); code != 404 {
-		t.Errorf("co-organiser on another contest: %d", code)
-	}
-	if code, _ := ta.do("POST", fmt.Sprintf("/api/admin/contests/%d/admins", c1), map[string]string{"email": "bilal@college.edu"}, s.srv.URL); code != 403 {
-		t.Errorf("co-organiser adding co-organisers: %d", code)
-	}
-	if code, _ := bilal.do("GET", fmt.Sprintf("/api/admin/contests/%d/standings", c2), nil, ""); code != 404 {
+	if code, _ := bilal.do("GET", fmt.Sprintf("/api/admin/contests/%d/standings", c2), nil, ""); code != 403 {
 		t.Errorf("student on the admin board: %d", code)
-	}
-	_, mine := ta.do("GET", "/api/admin/contests", nil, "")
-	if n := len(mine["contests"].([]any)); n != 1 {
-		t.Errorf("co-organiser list has %d contests", n)
 	}
 
 	s.at(start, 5)
@@ -136,9 +118,6 @@ func TestM4AccessAndCrossContestIDs(t *testing.T) {
 	if code, _ := owner.do("POST", fmt.Sprintf("/api/admin/contests/%d/rejudge", c2), map[string]any{"submission_id": subID}, s.srv.URL); code != 404 {
 		t.Errorf("rejudge a c1 submission through c2: %d", code)
 	}
-	if code, _ := ta.do("GET", fmt.Sprintf("/api/submissions/%d", subID), nil, ""); code != 200 {
-		t.Errorf("co-organiser reading a submission of their contest: %d", code)
-	}
 	if code, _ := bilal.do("GET", fmt.Sprintf("/api/submissions/%d", subID), nil, ""); code != 404 {
 		t.Errorf("another student's submission: %d", code)
 	}
@@ -147,7 +126,7 @@ func TestM4AccessAndCrossContestIDs(t *testing.T) {
 		t.Fatalf("ask %d %v", code, cl)
 	}
 	cid := int64(cl["clarification"].(map[string]any)["id"].(float64))
-	if code, _ := ta.do("PUT", fmt.Sprintf("/api/admin/contests/%d/clarifications/%d", c1, cid), map[string]any{"answer": "Yes"}, s.srv.URL); code != 404 {
+	if code, _ := owner.do("PUT", fmt.Sprintf("/api/admin/contests/%d/clarifications/%d", c1, cid), map[string]any{"answer": "Yes"}, s.srv.URL); code != 404 {
 		t.Errorf("answer a c2 question through c1: %d", code)
 	}
 	if code, _ := asha.do("GET", "/api/contests/c1/problems/Z", nil, ""); code != 404 {

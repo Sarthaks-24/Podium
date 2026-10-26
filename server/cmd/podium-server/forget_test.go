@@ -20,7 +20,6 @@ func TestForgetUser(t *testing.T) {
 		`INSERT INTO contests (id, slug, title, starts_at, ends_at, access, created_at, updated_at) VALUES (1, 'week-1', 'Week 1', 1, 2, 'roster', 0, 0)`,
 		`INSERT INTO contest_roster (contest_id, email, display_name, roll_number, section) VALUES
 			(1, 'asha@college.edu', 'Asha Rao', '21CS001', 'A'), (1, 'ravi@college.edu', 'Ravi', '21CS002', 'A')`,
-		`INSERT INTO contest_admins (contest_id, user_id) VALUES (1, 7)`,
 		`INSERT INTO contest_extensions (contest_id, user_id, minutes, reason) VALUES (1, 7, 20, 'Medical accommodation')`,
 		`INSERT INTO clarifications (contest_id, asked_by, question, answer, created_at) VALUES (1, 7, 'Is n positive? Asha', 'Yes.', 0)`,
 		`INSERT INTO users (id, email, role, created_at) VALUES (9, 'co@college.edu', 'owner', 0)`,
@@ -68,7 +67,6 @@ func TestForgetUser(t *testing.T) {
 		"SELECT count(*) FROM drafts WHERE user_id = 8":                                           1,
 		"SELECT count(*) FROM integrity_events WHERE user_id = 7":                                 0,
 		"SELECT count(*) FROM contact_messages WHERE user_id = 7":                                 0,
-		"SELECT count(*) FROM contest_admins WHERE user_id = 7":                                   0,
 		"SELECT count(*) FROM submissions WHERE user_id = 7 AND score = 100 AND client_hash = ''": 1,
 		`SELECT count(*) FROM users WHERE id = 7 AND name = 'Removed user 7' AND email = 'removed-user-7@removed.invalid'
 			AND avatar_url = '' AND google_sub IS NULL AND disabled = 1 AND role = 'student'`: 1,

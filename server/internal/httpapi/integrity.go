@@ -19,34 +19,21 @@ import (
 
 // integrityRoutes mounts the integrity API. It needs Contests as well.
 func (d Deps) integrityRoutes(mux *http.ServeMux) {
-	signedIn := func(h http.HandlerFunc) http.HandlerFunc { return d.requireRole(auth.Student, h) }
-	mux.HandleFunc("POST /api/admin/contests/{id}/integrity/run", signedIn(d.runIntegrity))
-	mux.HandleFunc("GET /api/admin/contests/{id}/integrity", signedIn(d.limitReads(d.getIntegrity)))
-	mux.HandleFunc("GET /api/admin/contests/{id}/integrity/pairs.csv", signedIn(d.limitReads(d.exportPairs)))
-	mux.HandleFunc("GET /api/admin/contests/{id}/integrity/signals/{signal}/pair", signedIn(d.limitReads(d.getIntegrityPair)))
-	mux.HandleFunc("GET /api/admin/contests/{id}/integrity/timeline/{user}", signedIn(d.limitReads(d.getIntegrityTimeline)))
-	mux.HandleFunc("GET /api/admin/contests/{id}/integrity/cases", signedIn(d.limitReads(d.listIntegrityCases)))
-	mux.HandleFunc("PUT /api/admin/contests/{id}/integrity/cases/{user}", signedIn(d.decideIntegrityCase))
+	organiser := func(h http.HandlerFunc) http.HandlerFunc { return d.requireRole(auth.Admin, h) }
+	mux.HandleFunc("POST /api/admin/contests/{id}/integrity/run", organiser(d.runIntegrity))
+	mux.HandleFunc("GET /api/admin/contests/{id}/integrity", organiser(d.limitReads(d.getIntegrity)))
+	mux.HandleFunc("GET /api/admin/contests/{id}/integrity/pairs.csv", organiser(d.limitReads(d.exportPairs)))
+	mux.HandleFunc("GET /api/admin/contests/{id}/integrity/signals/{signal}/pair", organiser(d.limitReads(d.getIntegrityPair)))
+	mux.HandleFunc("GET /api/admin/contests/{id}/integrity/timeline/{user}", organiser(d.limitReads(d.getIntegrityTimeline)))
+	mux.HandleFunc("GET /api/admin/contests/{id}/integrity/cases", organiser(d.limitReads(d.listIntegrityCases)))
+	mux.HandleFunc("PUT /api/admin/contests/{id}/integrity/cases/{user}", organiser(d.decideIntegrityCase))
 	d.studentsRoutes(mux)
 }
 
-// mayReview reports whether u may review a contest's integrity results:
-// owners and admins only.
-func (d Deps) mayReview(u auth.User) bool { return u.Role.AtLeast(auth.Admin) }
-
-// reviewedContest loads the contest named by {id} for a reviewer. People
-// who do not organise it get a 404; co-organisers who may not review get
-// a 403, since they already know the contest exists.
+// reviewedContest loads the contest named by {id}; the routes already
+// need the admin role.
 func (d Deps) reviewedContest(w http.ResponseWriter, r *http.Request) (*contests.Contest, bool) {
-	c, ok := d.organisedContest(w, r)
-	if !ok {
-		return nil, false
-	}
-	if !d.mayReview(userFrom(r.Context())) {
-		WriteError(w, http.StatusForbidden, "forbidden", "Only owners and admins review integrity checks.")
-		return nil, false
-	}
-	return c, true
+	return d.organisedContest(w, r)
 }
 
 // integrityError maps the integrity package's errors to responses.

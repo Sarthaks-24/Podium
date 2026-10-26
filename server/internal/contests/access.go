@@ -123,20 +123,11 @@ func (c *Contest) ViewOptions(st StudentState) submissions.ViewOptions {
 
 // ViewFor is ViewOptions for a contest and student by id, for the live
 // event stream and the author's own reads (submissions.Service.ContestView).
-// A co-organiser (whose site role is student, or this would not be asked)
-// gets CoOrganiserViewOptions: their window counts as closing last. On any
-// error it hides everything rather than show too much.
+// On any error it hides everything rather than show too much.
 func (s *Service) ViewFor(ctx context.Context, contestID, userID int64) submissions.ViewOptions {
 	c, err := s.Get(ctx, contestID)
 	if err != nil {
 		return submissions.ViewOptions{Coarse: true, RoundMS: 100, Hide: true}
-	}
-	co, err := s.IsContestAdmin(ctx, contestID, userID)
-	if err != nil {
-		return submissions.ViewOptions{Coarse: true, RoundMS: 100, Hide: true}
-	}
-	if co {
-		return s.CoOrganiserViewOptions(c)
 	}
 	st, err := s.State(ctx, c, userID)
 	if err != nil {

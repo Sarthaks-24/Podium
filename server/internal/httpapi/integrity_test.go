@@ -93,10 +93,6 @@ func newIntegrityWorld(t *testing.T) *integrityWorld {
 	w.c1 = s.createContest(w.owner, "c1", w.start, map[string]int64{"A": w.pa}, nil)
 	w.c2 = s.createContest(w.owner, "c2", w.start, map[string]int64{"A": w.pa}, nil)
 	w.ta = s.signedIn("ta@college.edu", "Tara TA")
-	w.owner.do("POST", fmt.Sprintf("/api/admin/contests/%d/admins", w.c1), map[string]string{"email": "ta@college.edu"}, s.srv.URL)
-	// The admin also co-organises c1: a contest admin whose role is not
-	// student.
-	w.owner.do("POST", fmt.Sprintf("/api/admin/contests/%d/admins", w.c1), map[string]string{"email": "admin@college.edu"}, s.srv.URL)
 	roster := []map[string]string{{"email": "asha@college.edu", "name": "Asha Rao", "roll_number": "21CS001"}}
 	if code, out := w.owner.do("PUT", fmt.Sprintf("/api/admin/contests/%d/roster", w.c1), roster, s.srv.URL); code != 200 {
 		t.Fatalf("roster: %d %v", code, out)
@@ -240,8 +236,8 @@ func TestIntegrityPermissionsAndForeignIDs(t *testing.T) {
 	// A student sees none of it; a co-organiser who is a student is refused
 	// on the contest's routes and does not learn the case exists.
 	for _, path := range reads {
-		if code, _ := w.chen.do("GET", path, nil, ""); code != 404 {
-			t.Errorf("student GET %s: %d, want 404", path, code)
+		if code, _ := w.chen.do("GET", path, nil, ""); code != 403 {
+			t.Errorf("student GET %s: %d, want 403", path, code)
 		}
 		if code, _ := w.ta.do("GET", path, nil, ""); code != 403 {
 			t.Errorf("student co-organiser GET %s: %d, want 403", path, code)
@@ -291,31 +287,5 @@ func TestIntegrityPermissionsAndForeignIDs(t *testing.T) {
 	_, tl := w.owner.do("GET", w.url(w.c1, fmt.Sprintf("/timeline/%d", asha)), nil, "")
 	if ms := tl["moments"].([]any); len(ms) == 0 || ms[0].(map[string]any)["kind"] != "submission" {
 		t.Errorf("timeline: %v", tl)
-	}
-}
-
-// The console feed carries typed, pasted and focus counts for owners and
-// admins only, never for a co-organiser whose site role is student.
-func TestConsoleFeedHidesIntegrityCountsFromStudentCoOrganisers(t *testing.T) {
-	w := newIntegrityWorld(t)
-	path := fmt.Sprintf("/api/admin/contests/%d/submissions", w.c1)
-	for name, b := range map[string]*browser{"owner": w.owner, "admin": w.admin, "student co-organiser": w.ta} {
-		code, out := b.do("GET", path, nil, "")
-		items, _ := out["submissions"].([]any)
-		if code != 200 || len(items) == 0 {
-			t.Fatalf("%s feed: %d %v", name, code, out)
-		}
-		for _, x := range items {
-			it := x.(map[string]any)
-			_, typed := it["typed_chars"]
-			_, pasted := it["pasted_chars"]
-			_, losses := it["focus_losses"]
-			if want := b != w.ta; typed != want || pasted != want || losses != want {
-				t.Errorf("%s sees integrity counts %v %v %v, want %v: %v", name, typed, pasted, losses, want, it)
-			}
-			if b == w.owner && it["typed_chars"] != float64(400) {
-				t.Errorf("owner's typed count: %v", it["typed_chars"])
-			}
-		}
 	}
 }

@@ -101,7 +101,6 @@ func TestP2SiteAuditRecordsPeopleChangesAndNoSecret(t *testing.T) {
 		{"PUT", fmt.Sprintf("/api/admin/contests/%d/roster", cid), []map[string]string{{"email": "asha@college.edu", "name": "Asha"}, {"email": "ravi@college.edu"}}, 200},
 		{"PUT", fmt.Sprintf("/api/admin/contests/%d/roster", cid), []map[string]string{{"email": "ravi@college.edu"}}, 200},
 		{"PUT", fmt.Sprintf("/api/admin/contests/%d", cid), map[string]any{"title": "Week one"}, 200},
-		{"POST", fmt.Sprintf("/api/admin/contests/%d/admins", cid), map[string]string{"email": "ta@college.edu"}, 200},
 	}
 	for _, st := range steps {
 		if code, out := leakyDo(t, owner, st.method, st.path, st.body); code != st.want {

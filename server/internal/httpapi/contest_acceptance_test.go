@@ -144,7 +144,7 @@ func TestM4MiniContest(t *testing.T) {
 	}
 	checkBoard(t, "reveal frozen", reveal["frozen"].(map[string]any), wantFrozen)
 	checkBoard(t, "reveal full", reveal["full"].(map[string]any), wantFull)
-	if code, _ := students[1].do("GET", fmt.Sprintf("/api/admin/contests/%d/reveal", id), nil, ""); code != 404 {
+	if code, _ := students[1].do("GET", fmt.Sprintf("/api/admin/contests/%d/reveal", id), nil, ""); code != 403 {
 		t.Errorf("a student opening the reveal: %d", code)
 	}
 

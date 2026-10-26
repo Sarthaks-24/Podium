@@ -122,7 +122,6 @@ func (s *Service) Forget(ctx context.Context, email string, apply, allowOwner bo
 			{"drafts", "DELETE FROM drafts WHERE user_id = ?", []any{r.UserID}},
 			{"integrity events", "DELETE FROM integrity_events WHERE user_id = ?", []any{r.UserID}},
 			{"contact messages", "DELETE FROM contact_messages WHERE user_id = ?", []any{r.UserID}},
-			{"co-organiser places", "DELETE FROM contest_admins WHERE user_id = ?", []any{r.UserID}},
 			{"browser hashes on submissions", "UPDATE submissions SET client_hash = '' WHERE user_id = ? AND client_hash <> ''", []any{r.UserID}},
 			// An extension's reason can be an accommodation, which is
 			// health data (security review 2026-10-20, finding 4).

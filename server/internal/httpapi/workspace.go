@@ -195,27 +195,6 @@ func (d Deps) mayRead(w http.ResponseWriter, r *http.Request, wantKind string) (
 	if info.UserID == u.ID {
 		return id, d.Submissions.ViewFor(r.Context(), info.ContestID, u.ID, true), true
 	}
-	// A co-organiser reads the submissions of their contest with the
-	// coarse figures a student sees: they are not trusted with what exact
-	// figures reveal about hidden tests. Nor with results students cannot
-	// see yet: exam mode until every window is over, and the freeze
-	// (security council S1).
-	if info.ContestID > 0 && d.Contests != nil {
-		ok, err := d.Contests.IsContestAdmin(r.Context(), info.ContestID, u.ID)
-		if err != nil {
-			d.internalError(w, r, err)
-			return 0, submissions.ViewOptions{}, false
-		}
-		if ok && wantKind == "submit" {
-			// Nor with a student's revealed hidden test (D115).
-			o := d.Contests.CoOrganiserView(r.Context(), info.ContestID, id)
-			o.NoReveal = true
-			return id, o, true
-		}
-		if ok {
-			return id, submissions.StudentView, true
-		}
-	}
 	return notFound()
 }
 

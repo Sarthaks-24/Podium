@@ -22,11 +22,8 @@ func TestIntegrityDecisionsOverHTTP(t *testing.T) {
 
 	decide := w.url(w.c1, fmt.Sprintf("/cases/%d", asha))
 	excluded := map[string]any{"decision": "excluded", "reason": "Matches another student's program line for line."}
-	if code, _ := w.asha.do("PUT", decide, excluded, o); code != 404 {
-		t.Errorf("a student decides: %d, want 404", code)
-	}
-	if code, _ := w.ta.do("PUT", decide, excluded, o); code != 403 {
-		t.Errorf("a student co-organiser decides: %d, want 403", code)
+	if code, _ := w.asha.do("PUT", decide, excluded, o); code != 403 {
+		t.Errorf("a student decides: %d, want 403", code)
 	}
 	if code, out := w.owner.do("PUT", decide, map[string]any{"decision": "excluded", "reason": "short"}, o); code != 400 {
 		t.Errorf("a short reason: %d %v", code, out)

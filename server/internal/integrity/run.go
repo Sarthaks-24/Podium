@@ -341,8 +341,8 @@ func (s *Service) submissions(ctx context.Context, contestID, problemID int64) (
 	rows, err := s.DB.QueryContext(ctx, `SELECT s.id, s.user_id, coalesce(s.job_id, 0), s.language, s.source, s.score, s.max_score, s.created_at
 		FROM submissions s JOIN users u ON u.id = s.user_id
 		WHERE s.contest_id = ? AND s.problem_id = ? AND s.kind = 'submit' AND s.practice = 0 AND s.state = 'done'
-		AND u.role = 'student' AND s.user_id NOT IN (SELECT user_id FROM contest_admins WHERE contest_id = ?)
-		ORDER BY s.id`, contestID, problemID, contestID)
+		AND u.role = 'student'
+		ORDER BY s.id`, contestID, problemID)
 	if err != nil {
 		return nil, err
 	}

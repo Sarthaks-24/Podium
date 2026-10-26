@@ -551,12 +551,6 @@ export interface RosterRow {
   section: string;
 }
 
-export interface CoOrganiser {
-  user_id: number;
-  email: string;
-  name: string;
-}
-
 /** The settings form; also the body of POST and PUT /api/admin/contests. */
 export interface ContestSettings {
   slug: string;
@@ -602,7 +596,6 @@ export interface AdminContest extends ContestSettings {
   /** The roster comes from GET .../roster; older shapes inlined it. */
   roster?: RosterRow[];
   roster_count?: number;
-  admins: CoOrganiser[];
   extensions?: { user_id: number; email: string; name: string; minutes: number; reason: string }[];
   /** ends_at plus the contest-wide extension. */
   close_at?: number;
@@ -624,7 +617,7 @@ export interface FeedRow {
   /** Older shape of problem_label. */
   label?: string;
   language: string;
-  /** "submitted" when the result is hidden from this viewer (a co-organiser in exam mode or the freeze). */
+  /** "submitted" while exam mode hides the result. */
   state: 'queued' | 'running' | 'done' | 'error' | 'submitted';
   verdict: string;
   score: number;
@@ -665,8 +658,6 @@ export interface FeedPage {
   page?: number;
   has_more?: boolean;
   total?: number;
-  /** Some results are hidden from this viewer until students can see them. */
-  results_hidden?: boolean;
 }
 
 /** One row of GET /api/admin/contests/{id}/audit: an organiser action that can change results. */
@@ -692,11 +683,9 @@ export const AUDIT_ACTIONS: readonly { id: string; label: string }[] = [
   { id: 'rejudge', label: 'Judged again' },
   { id: 'reveal', label: 'Reveal' },
   { id: 'editorial', label: 'Editorial' },
-  { id: 'organisers', label: 'Co-organisers' },
   { id: 'ai_problem', label: 'AI problems graded as written' },
   { id: 'archive', label: 'Archived' },
-  { id: 'deploy_forced', label: 'Emergency deploy' },
-  { id: 'board_adjusted', label: 'Board changed by a review decision' },
+  { id: 'integrity_decision', label: 'Integrity decisions' },
 ];
 
 /** The contest form's fields as the audit log names them. */
@@ -777,10 +766,10 @@ export function auditSummary(e: Pick<AuditEntry, 'action' | 'details'>, names?: 
       const reason = str('reason');
       return `${gave}${reason ? ` (${reason})` : ''}`;
     }
-    case 'board_adjusted': {
+    case 'integrity_decision': {
       const who = names?.get(num('user_id')) || `user ${num('user_id')}`;
-      if (d.reversed === true) return `An upheld appeal restored problem ${str('problem_label')} on the board for ${who}`;
-      return `A review decision set problem ${str('problem_label')} to zero for ${who} (before: rank ${num('rank_before')}, ${countOf(num('total_before'), 'point')})`;
+      const word = str('decision') === 'excluded' ? 'excluded from this contest' : str('decision') === 'warning' ? 'warning' : 'no action';
+      return `Recorded an integrity decision about ${who}: ${word}`;
     }
     case 'extend':
       return `Extended the contest by ${countOf(num('minutes'), 'minute')}`;
@@ -797,15 +786,8 @@ export function auditSummary(e: Pick<AuditEntry, 'action' | 'details'>, names?: 
     case 'editorial':
       if (d.published !== true) return 'Unpublished the editorial';
       return d.was_published === true ? 'Edited the published editorial' : 'Published the editorial';
-    case 'organisers':
-      return d.added === true ? `Added co-organiser ${str('email')}` : `Removed co-organiser ${str('email')}`;
     case 'archive':
       return 'Archived the contest';
-    case 'deploy_forced': {
-      // Written by podium-server deploy-check -force (P0 backend), not by an organiser.
-      const release = str('release');
-      return `Deployed ${release ? `release ${release}` : 'a new release'} during the contest: ${str('reason')}`;
-    }
   }
   return e.action;
 }

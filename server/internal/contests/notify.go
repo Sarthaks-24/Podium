@@ -58,9 +58,8 @@ func (s *Service) publish(ctx context.Context, c *Contest, organisersOnly bool, 
 	students := !organisersOnly && c.Published && !c.Archived
 	rows, err := s.DB.QueryContext(ctx, `SELECT u.id FROM users u WHERE u.id IN (SELECT value FROM json_each(?)) AND u.disabled = 0 AND (
 		u.role IN ('admin', 'owner')
-		OR EXISTS (SELECT 1 FROM contest_admins a WHERE a.contest_id = ? AND a.user_id = u.id)
 		OR (? AND (? = 'domain' OR EXISTS (SELECT 1 FROM contest_roster r WHERE r.contest_id = ? AND r.email = u.email))))`,
-		string(ids), c.ID, students, c.Access, c.ID)
+		string(ids), students, c.Access, c.ID)
 	if err != nil {
 		return
 	}

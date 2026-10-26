@@ -130,25 +130,6 @@ type Person struct {
 	Name   string `json:"name"`
 }
 
-// Admins lists a contest's co-organisers.
-func (s *Service) Admins(ctx context.Context, id int64) ([]Person, error) {
-	rows, err := s.DB.QueryContext(ctx, `SELECT u.id, u.email, u.name FROM contest_admins a JOIN users u ON u.id = a.user_id
-		WHERE a.contest_id = ? ORDER BY u.email`, id)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	out := []Person{}
-	for rows.Next() {
-		var p Person
-		if err := rows.Scan(&p.UserID, &p.Email, &p.Name); err != nil {
-			return nil, err
-		}
-		out = append(out, p)
-	}
-	return out, rows.Err()
-}
-
 // Extension is one student's extra time.
 type Extension struct {
 	Person

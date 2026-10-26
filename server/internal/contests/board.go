@@ -243,9 +243,8 @@ func (s *Service) participants(ctx context.Context, c *Contest) ([]Participant, 
 		LEFT JOIN contest_roster r ON r.contest_id = ? AND r.email = u.email
 		WHERE u.id IN (SELECT user_id FROM contest_starts WHERE contest_id = ?
 			UNION SELECT user_id FROM submissions WHERE contest_id = ? AND kind = 'submit' AND practice = 0)
-		AND u.id NOT IN (SELECT user_id FROM contest_admins WHERE contest_id = ?)
 		AND u.id NOT IN (SELECT user_id FROM integrity_cases WHERE contest_id = ? AND decision = 'excluded')
-		AND u.role = 'student'`, c.ID, c.ID, c.ID, c.ID, c.ID, c.ID, c.ID)
+		AND u.role = 'student'`, c.ID, c.ID, c.ID, c.ID, c.ID, c.ID)
 	if err != nil {
 		return nil, err
 	}

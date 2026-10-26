@@ -36,11 +36,11 @@ func (d Deps) addRevisions(ctx context.Context, p *problems.Problem, out *proble
 	return err
 }
 
-// updatePin is "Update contest to revision N" (C4). Owners and admins
-// only: choosing what a contest judges with is choosing its problems.
+// updatePin is "Update students now": the contest's pin of a label moves
+// to the problem's newest validated revision.
 func (d Deps) updatePin(w http.ResponseWriter, r *http.Request) {
 	c, ok := d.organisedContest(w, r)
-	if !ok || !requireAdmin(w, r) {
+	if !ok {
 		return
 	}
 	var req struct {

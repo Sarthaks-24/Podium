@@ -101,35 +101,13 @@ func TestS6OwnerEndsSessionsAndDisablesAccounts(t *testing.T) {
 	}
 }
 
-// A co-organiser reading a classmate's submission gets the student rules
-// too (the workspace.go part of the patch): nothing in exam mode until
-// every window is over.
-func TestS1CoOrganiserReadsSubmissionsAsAStudent(t *testing.T) {
-	c := newCoOrgSite(t, "s1r", map[string]any{"feedback_mode": "exam"})
-	o := c.srv.URL
-	c.at(c.start, 5)
-	c.asha.do("POST", "/api/contests/s1r/start", map[string]any{"accept_honour": true}, o)
-	_, sub := c.submit(c.asha, "s1r", "A", "correct")
-	path := fmt.Sprintf("/api/submissions/%d", int64(sub["id"].(float64)))
-	if code, got := c.ta.do("GET", path, nil, ""); code != 200 || got["state"] != "submitted" {
-		t.Errorf("co-organiser reading an exam-mode submission: %d %v", code, got)
-	}
-	if _, got := c.owner.do("GET", path, nil, ""); got["verdict"] != "AC" {
-		t.Errorf("owner reading it: %v", got)
-	}
-	c.at(c.start, 125)
-	if _, got := c.ta.do("GET", path, nil, ""); got["verdict"] != "AC" || got["max_memory_kb"] != float64(16384) {
-		t.Errorf("co-organiser after the end (coarse figures): %v", got)
-	}
-}
-
 func TestS9AuditRoute(t *testing.T) {
 	c := newCoOrgSite(t, "s9r", nil)
 	o := c.srv.URL
 	c.owner.do("PUT", c.admin(""), map[string]any{"min_gap_s": 60}, o)
 	c.owner.do("POST", c.admin("/pause"), nil, o)
 
-	for _, b := range []*browser{c.owner, c.ta} {
+	for _, b := range []*browser{c.owner} {
 		code, out := b.do("GET", c.admin("/audit"), nil, "")
 		if code != 200 || out["has_more"] != false {
 			t.Fatalf("audit log: %d %v", code, out)
@@ -140,12 +118,12 @@ func TestS9AuditRoute(t *testing.T) {
 		if first["action"] != "pause" || actor["email"] != "owner@college.edu" || actor["role"] != "owner" || first["created_at"] == nil {
 			t.Errorf("newest audit row: %v", first)
 		}
-		if len(entries) != 5 { // problems, published, organisers, min_gap_s, pause
+		if len(entries) != 4 { // problems, published, min_gap_s, pause
 			t.Errorf("%d audit rows: %v", len(entries), entries)
 		}
 	}
-	// Students, even of the contest, get the same 404 as a missing contest.
-	if code, _ := c.asha.do("GET", c.admin("/audit"), nil, ""); code != 404 {
+	// Students, even of the contest, are refused before the contest is read.
+	if code, _ := c.asha.do("GET", c.admin("/audit"), nil, ""); code != 403 {
 		t.Errorf("student reading the audit log: %d", code)
 	}
 	if code, _ := c.owner.do("GET", fmt.Sprintf("/api/admin/contests/%d/audit", c.id+100), nil, ""); code != 404 {

@@ -89,7 +89,7 @@ func (d Deps) securityRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/admin/accounts/enable", d.requireRole(auth.Owner, d.setAccountDisabled(false)))
 	mux.HandleFunc("GET /api/admin/accounts", d.requireRole(auth.Admin, d.limitReads(d.lookupAccount)))
 	if d.Contests != nil {
-		mux.HandleFunc("GET /api/admin/contests/{id}/audit", d.requireRole(auth.Student, d.contestAudit))
+		mux.HandleFunc("GET /api/admin/contests/{id}/audit", d.requireRole(auth.Admin, d.contestAudit))
 	}
 }
 

@@ -308,14 +308,6 @@ type FeedFilter struct {
 	// running, or "error" for a judge error; case does not matter.
 	Verdict string
 	Page    int // from 1
-	// IntegrityCounts includes each submission's typed, pasted and focus
-	// counts. Only owners and admins get them: a co-organiser whose site
-	// role is student (a TA) never sees a classmate's integrity data.
-	IntegrityCounts bool
-	// Hide blanks the results a co-organiser without the admin role may not
-	// see yet (CoOrganiserHide). A verdict filter must not be combined
-	// with it: the handler refuses one while anything is hidden.
-	Hide Hide
 }
 
 // FeedPage is how many submissions one page of the feed holds.
@@ -340,7 +332,6 @@ type FeedItem struct {
 	// Hidden marks a submission whose result the viewer may not see yet:
 	// state "submitted", no verdict, score, judging time or rejudge mark.
 	Hidden bool `json:"hidden,omitempty"`
-	// The integrity counts are left out unless FeedFilter.IntegrityCounts.
 	TypedChars  *int `json:"typed_chars,omitempty"`
 	PastedChars *int `json:"pasted_chars,omitempty"`
 	FocusLosses *int `json:"focus_losses,omitempty"`
@@ -401,15 +392,9 @@ func (s *Service) Feed(ctx context.Context, c *Contest, f FeedFilter) ([]FeedIte
 			return nil, false, err
 		}
 		it.Toolchain = toolchainOf(tc)
-		if f.IntegrityCounts {
-			it.TypedChars, it.PastedChars, it.FocusLosses = &typed, &pasted, &losses
-		}
+		it.TypedChars, it.PastedChars, it.FocusLosses = &typed, &pasted, &losses
 		it.JudgedAt = judged
 		it.ProblemLabel = labels[pid]
-		if f.Hide.Covers(time.UnixMilli(it.CreatedAt)) && it.State != "error" {
-			it.State, it.Verdict, it.Score, it.JudgedAt, it.Rejudged, it.Hidden = "submitted", "", 0, nil, false, true
-			it.Toolchain = nil
-		}
 		out = append(out, it)
 	}
 	more := len(out) > FeedPage
