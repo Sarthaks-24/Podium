@@ -1,73 +1,21 @@
 import { describe, expect, it } from 'vitest';
 import {
   actorText,
-  diffCounts,
-  diffRuns,
-  diffSummary,
   feedQuery,
-  pinChangeText,
   pinPath,
-  revisionChangeText,
   siteAuditSummary,
-  statementBannerKey,
-  statementHistoryPath,
-  statementUpdatedText,
   updateEffect,
-  updateLabel,
-  type DiffLine,
 } from './history';
-
-const lines: DiffLine[] = [
-  { op: 'same', text: 'Read two integers.' },
-  { op: 'same', text: '' },
-  { op: 'del', text: 'Print their sum.' },
-  { op: 'add', text: 'Print their sum modulo 7.' },
-  { op: 'add', text: 'One line.' },
-];
-
-describe('statement history (C3)', () => {
-  it('builds the route and the banner words', () => {
-    expect(statementHistoryPath('week 6', 'A')).toBe('/api/contests/week%206/problems/A/revisions');
-    const at = new Date(2026, 9, 20, 14, 32).getTime();
-    expect(statementUpdatedText(at)).toBe('Statement updated 14:32.');
-    expect(statementBannerKey('B', at)).toBe(`sB:${at}`);
-  });
-
-  it('groups a line diff into runs and counts it', () => {
-    expect(diffRuns(lines).map((r) => [r.op, r.lines.length])).toEqual([
-      ['same', 2],
-      ['del', 1],
-      ['add', 2],
-    ]);
-    expect(diffCounts(lines)).toEqual({ added: 2, removed: 1 });
-    expect(diffSummary(lines)).toBe('2 lines added and 1 removed.');
-    expect(diffSummary([{ op: 'same', text: 'x' }])).toBe('The text is the same.');
-  });
-});
 
 describe('pins (C4)', () => {
   it('names the update and says what it does', () => {
     expect(pinPath(4, 'A')).toBe('/api/admin/contests/4/problems/A/revision');
-    expect(updateLabel(3)).toBe('Update contest to revision 3');
     expect(updateEffect({ label: 'A', rev: 2, latest_rev: 3, update_statement_only: true })).toBe(
       'Students get revision 3 of problem A instead of revision 2 the next time they open it. Only the statement changed, so no submission is judged again.',
     );
     expect(updateEffect({ label: 'B', rev: 1, latest_rev: 4, update_statement_only: false })).toMatch(/judge the problem again afterwards/);
   });
 
-  it('writes pin history and revision changes', () => {
-    const at = new Date(2026, 9, 20, 14, 32).getTime();
-    expect(pinChangeText({ label: 'A', problem_id: 3, revision_id: 12, rev: 2, from_at: at, actor: { user_id: 1, email: 'priya@college.edu', role: 'owner' } })).toBe(
-      'Problem A pinned to revision 2, 20 Oct 2026 14:32 by priya@college.edu',
-    );
-    expect(pinChangeText({ label: 'A', problem_id: 3, revision_id: 12, rev: 1, from_at: at, actor: null })).toMatch(/mapped at the upgrade$/);
-    expect(revisionChangeText({ statement_changed: true, judging_changed: false, reconstructed: false })).toBe('Statement changed');
-    expect(revisionChangeText({ statement_changed: true, judging_changed: true, reconstructed: false })).toBe('Statement and judging changed');
-    expect(revisionChangeText({ statement_changed: false, judging_changed: false, reconstructed: true })).toMatch(/^Rebuilt at the upgrade/);
-    // A new or imported problem's first revision changed nothing because nothing came before it.
-    expect(revisionChangeText({ rev: 1, statement_changed: false, judging_changed: false, reconstructed: false })).toBe('First recorded version');
-    expect(revisionChangeText({ rev: 2, statement_changed: false, judging_changed: false, reconstructed: false })).toBe('No change to the statement or judging');
-  });
 });
 
 describe('site audit (People History)', () => {

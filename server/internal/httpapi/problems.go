@@ -116,12 +116,10 @@ type problemJSON struct {
 	ValidatedHash *string       `json:"validated_hash"`
 	Problems      []string      `json:"problems"`
 	Warnings      []string      `json:"warnings"`
-	// Revision is the revision the working copy is; Revisions the newest
-	// 50, newest first (C4). LiveContests are the running contests that
-	// pin the problem: while there are any, a save needs a reason.
+	// Revision is the revision the working copy is. LiveContests are the
+	// running contests that pin the problem: while there are any, a save
+	// needs a reason.
 	Revision       *revisionRefJSON       `json:"revision"`
-	Revisions      []revisionJSON         `json:"revisions"`
-	RevisionsTotal int                    `json:"revisions_total"`
 	LiveContests   []problems.LiveContest `json:"live_contests"`
 }
 

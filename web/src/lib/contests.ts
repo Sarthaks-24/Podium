@@ -15,7 +15,7 @@
  * replies the console offers.
  */
 import { countOf, formatDateTime } from './format';
-import type { PinChange, ProblemPin, StatementStamp } from './history';
+import type { ProblemPin } from './history';
 import { LANGUAGES, type Language } from './problems';
 
 export type ContestState = 'upcoming' | 'live' | 'frozen' | 'ended' | 'practice';
@@ -131,7 +131,7 @@ export interface Contest extends ContestSummary {
   rules: ContestRules;
   honour_text: string;
   /** Only once the student's window started or ended. */
-  problems: (ContestProblem & StatementStamp)[] | null;
+  problems: ContestProblem[] | null;
   announcements: Announcement[];
   my_clarifications: Clarification[];
   public_clarifications: Clarification[];
@@ -607,8 +607,6 @@ export interface AdminContest extends ContestSettings {
   /** ends_at plus the contest-wide extension. */
   close_at?: number;
   default_honour_text?: string;
-  /** Every pin change, newest first (C4, v1.2.0). */
-  pin_history?: PinChange[];
   /** Queue health, the judge's last request for work and the unanswered count (C10, v1.3.0). */
   queue?: QueueHealth;
   judge_last_claim_at?: number | null;

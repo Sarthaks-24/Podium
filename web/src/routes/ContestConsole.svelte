@@ -67,7 +67,7 @@
     judgedWith,
   } from '../lib/contests';
   import { keepHeadingFocus } from '../lib/focus';
-  import { feedQuery, pinChangeText, pinPath, updateEffect, updateLabel, type PinUpdate } from '../lib/history';
+  import { feedQuery, pinPath, updateEffect, type PinUpdate } from '../lib/history';
   import { countOf } from '../lib/format';
   import { setTitle } from '../lib/head';
   import { routeTitle } from '../lib/routing';
@@ -298,10 +298,10 @@
     if (!p || p.latest_revision_id === undefined || p.latest_rev === undefined) return;
     const target = { id: p.latest_revision_id, rev: p.latest_rev };
     const effect = updateEffect({ label, rev: p.rev, latest_rev: p.latest_rev, update_statement_only: p.update_statement_only });
-    ask(`Update problem ${label} to revision ${target.rev}?`, effect, updateLabel(target.rev), false, async () => {
+    ask(`Update students now to the new version of problem ${label}?`, effect, 'Update students now', false, async () => {
       const out = await sendJSON<PinUpdate<AdminContest>>('PUT', pinPath(id, label), { revision_id: target.id });
       if (out.contest && typeof out.contest === 'object') contest = out.contest;
-      showToast(`Problem ${label} now uses revision ${target.rev}`);
+      showToast(`Students now get the new version of problem ${label}`);
       // The server words an announcement; posting it stays the organiser's choice.
       annTemplate = '';
       annBody = out.announcement_md ?? '';
@@ -973,7 +973,7 @@
                   <p class="muted small">
                     Revision <span class="mono">{p.latest_rev}</span> is validated{p.update_statement_only ? ' and changes only the statement' : ' and changes the tests or limits'}.
                   </p>
-                  <button type="button" class="btn btn-secondary btn-compact" onclick={() => updatePin(p.label)}>{updateLabel(p.latest_rev)}</button>
+                  <button type="button" class="btn btn-secondary btn-compact" onclick={() => updatePin(p.label)}>Update students now<span class="visually-hidden"> for problem {p.label}</span></button>
                 {:else if p.latest_rev !== undefined && p.rev !== undefined && p.latest_rev > p.rev}
                   <p class="muted small">Revision <span class="mono">{p.latest_rev}</span> is not validated yet. Validate it in the problem bank to offer it here.</p>
                 {/if}
@@ -981,14 +981,6 @@
             {/each}
           </ul>
           {#if pinNote}<p class="banner banner-info pin-note">{pinNote}</p>{/if}
-          {#if (contest.pin_history ?? []).length > 0}
-            <details class="pins">
-              <summary>Pin history</summary>
-              <ul class="items small">
-                {#each contest.pin_history ?? [] as h, i (i)}<li>{pinChangeText(h)}</li>{/each}
-              </ul>
-            </details>
-          {/if}
         </details>
       </section>
 
@@ -1141,14 +1133,6 @@
 
   .pins {
     margin-top: var(--space-3);
-  }
-
-  .pins summary {
-    width: fit-content;
-    border-radius: var(--radius);
-    font-size: var(--fs-0);
-    font-weight: 500;
-    cursor: pointer;
   }
 
   .versions-box > summary {

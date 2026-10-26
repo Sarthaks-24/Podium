@@ -114,9 +114,6 @@ type Scope struct {
 	// workspace serves its title, statement and samples, and submissions
 	// and runs record it. 0 outside contests.
 	RevisionID int64
-	// LogView records the first time this viewer is served RevisionID
-	// (the served log, B2.4): set for students, not for organisers.
-	LogView bool
 	// Reveal marks submissions that never count (practice after the
 	// window, an ungraded contest, the organisers' workspace): their
 	// first failing hidden test is revealed to the author (D115).
@@ -259,11 +256,6 @@ func (s *Service) Workspace(ctx context.Context, problemID, userID int64, sc Sco
 				}
 			}
 		}
-		if sc.LogView {
-			if err := s.logView(ctx, userID, sc.ContestID, sc.RevisionID); err != nil {
-				return nil, err
-			}
-		}
 	}
 	for _, t := range tests {
 		if t.Kind != problems.KindSample || t.OutputSHA == "" {
@@ -284,24 +276,6 @@ func (s *Service) Workspace(ctx context.Context, problemID, userID int64, sc Sco
 	}
 	w.Submissions, err = s.listMine(ctx, userID, problemID, sc.ContestID, sc.View)
 	return w, err
-}
-
-// logView records the first time a student is served a revision in a
-// contest (B2.4). The read comes first, so a page load that was served
-// before costs no write.
-func (s *Service) logView(ctx context.Context, userID, contestID, revisionID int64) error {
-	var one int
-	err := s.DB.QueryRowContext(ctx, "SELECT 1 FROM revision_views WHERE user_id = ? AND contest_id = ? AND revision_id = ?",
-		userID, contestID, revisionID).Scan(&one)
-	if err == nil {
-		return nil
-	}
-	if !errors.Is(err, sql.ErrNoRows) {
-		return err
-	}
-	_, err = s.DB.ExecContext(ctx, `INSERT OR IGNORE INTO revision_views (user_id, contest_id, revision_id, first_seen_at) VALUES (?, ?, ?, ?)`,
-		userID, contestID, revisionID, s.now().UnixMilli())
-	return err
 }
 
 func clipText(b []byte, n int) string {

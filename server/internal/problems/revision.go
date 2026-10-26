@@ -113,13 +113,6 @@ func sameRevision(a, b Revision) bool {
 		slices.Equal(a.Subtasks, b.Subtasks)
 }
 
-// StatementOnly reports whether b differs from a in its title or
-// statement only: moving a contest from a to b needs no validation and
-// no rejudge.
-func StatementOnly(a, b *Revision) bool {
-	return a.ContentHash == b.ContentHash
-}
-
 // StatementChanged reports whether the title or statement differ.
 func StatementChanged(a, b *Revision) bool {
 	return a.Title != b.Title || a.StatementHash != b.StatementHash || a.StatementRecorded != b.StatementRecorded
@@ -302,20 +295,6 @@ func (s *Service) requireReason(ctx context.Context, tx *sql.Tx, p *Problem, not
 		live[0].Label, live[0].Title)}
 }
 
-// CurrentRevision returns the problem's newest revision.
-func (s *Service) CurrentRevision(ctx context.Context, problemID int64) (*Revision, error) {
-	r, err := latestRevision(ctx, s.DB, problemID)
-	if err == nil && r == nil {
-		return nil, ErrNotFound
-	}
-	return r, err
-}
-
-// RevisionByNumber returns revision rev of a problem.
-func (s *Service) RevisionByNumber(ctx context.Context, problemID int64, rev int) (*Revision, error) {
-	return scanRevision(s.DB.QueryRowContext(ctx, "SELECT "+revisionColumns+" FROM problem_revisions WHERE problem_id = ? AND rev = ?", problemID, rev))
-}
-
 // RevisionByID returns a revision by its id.
 func (s *Service) RevisionByID(ctx context.Context, id int64) (*Revision, error) {
 	return scanRevision(s.DB.QueryRowContext(ctx, "SELECT "+revisionColumns+" FROM problem_revisions WHERE id = ?", id))
@@ -372,34 +351,6 @@ func (s *Service) RevisionTests(ctx context.Context, revisionID int64) ([]Revisi
 		out = append(out, t)
 	}
 	return out, rows.Err()
-}
-
-// RevisionChanges names what differs between two revisions, from title,
-// statement, limits, checker, solutions, samples, open, subtasks and tests.
-func RevisionChanges(a, b *Revision) []string {
-	out := []string{}
-	add := func(name string, differ bool) {
-		if differ {
-			out = append(out, name)
-		}
-	}
-	eqInt := func(x, y *int) bool { return (x == nil) == (y == nil) && (x == nil || *x == *y) }
-	eqStr := func(x, y *string) bool { return (x == nil) == (y == nil) && (x == nil || *x == *y) }
-	eqF := func(x, y *float64) bool { return (x == nil) == (y == nil) && (x == nil || *x == *y) }
-	add("title", a.Title != b.Title)
-	add("statement", a.StatementHash != b.StatementHash || a.StatementRecorded != b.StatementRecorded)
-	add("limits", !eqInt(a.TimeLimitMS, b.TimeLimitMS) || !eqInt(a.MemoryLimitMB, b.MemoryLimitMB))
-	add("checker", !eqStr(a.Checker, b.Checker) || !eqF(a.Epsilon, b.Epsilon) || a.CheckerSHA != b.CheckerSHA)
-	add("solutions", a.Reference != b.Reference || a.Brute != b.Brute || a.Validator != b.Validator)
-	add("samples", !slices.Equal(a.Samples, b.Samples))
-	add("open", !slices.Equal(a.Open, b.Open))
-	add("subtasks", !slices.Equal(a.Subtasks, b.Subtasks))
-	// The tests themselves: the content hash covers them with everything
-	// above, so a hash change nothing above explains is a test change.
-	judged := []string{"limits", "checker", "solutions", "samples", "open", "subtasks"}
-	explained := slices.ContainsFunc(out, func(s string) bool { return slices.Contains(judged, s) })
-	add("tests", a.ContentHash != b.ContentHash && !explained)
-	return out
 }
 
 // CheckRevisions lists every problem whose working copy is not recorded by

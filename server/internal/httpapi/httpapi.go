@@ -123,8 +123,6 @@ func New(d Deps) http.Handler {
 	mux.HandleFunc("GET /api/admin/problems/{id}/generation", admin(d.getGeneration))
 	mux.HandleFunc("POST /api/admin/problems/{id}/generate-inputs", admin(d.generateInputs))
 	mux.HandleFunc("GET /api/admin/problems/{id}/input-generation", admin(d.getInputGeneration))
-	mux.HandleFunc("GET /api/admin/problems/{id}/revisions/diff", admin(d.diffProblemRevisions))
-	mux.HandleFunc("GET /api/admin/problems/{id}/revisions/{rev}", admin(d.getProblemRevision))
 	if d.AI != nil {
 		d.aiRoutes(mux)
 	}
@@ -158,7 +156,7 @@ func New(d Deps) http.Handler {
 	// recoverer sits inside logRequests so a request that panics is still
 	// logged with its 500. In testing mode localOnlyAll refuses anything
 	// that did not come from this machine's own browser (S2).
-	return d.logRequests(d.recoverer(securityHeaders(d.localOnlyAll(newInFlight().limit(d.sessionCookieName(), d.sameOrigin(d.renamedContest(mux)))))))
+	return d.logRequests(d.recoverer(securityHeaders(d.localOnlyAll(newInFlight().limit(d.sessionCookieName(), d.sameOrigin(mux))))))
 }
 
 // contestRoutes mounts the contest API (milestone M4). Every route needs a
@@ -173,7 +171,6 @@ func (d Deps) contestRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/contests/{slug}/problems/{label}/run", signedIn(d.runContestCode))
 	mux.HandleFunc("POST /api/contests/{slug}/problems/{label}/submit", signedIn(d.submitContestCode))
 	mux.HandleFunc("POST /api/contests/{slug}/problems/{label}/events", signedIn(d.recordContestEvents))
-	mux.HandleFunc("GET /api/contests/{slug}/problems/{label}/revisions", signedIn(d.limitReads(d.statementHistory)))
 	mux.HandleFunc("GET /api/contests/{slug}/standings", signedIn(d.limitReads(d.getStandings)))
 	mux.HandleFunc("POST /api/contests/{slug}/clarifications", signedIn(d.askClarification))
 

@@ -13,7 +13,6 @@
  * predates M5: the draft then has no generator part and toEdit() sends
  * none, so older servers and fixtures see the same body as before.
  */
-import type { ProblemHistory } from './history';
 
 /** Program languages, as the API names them. */
 export type Language = 'cpp17' | 'java21' | 'python3' | 'node22';
@@ -164,9 +163,19 @@ export interface TestCase {
   output_missing?: boolean;
 }
 
+/** A running contest that pins the problem: while there is one, a save needs a reason. */
+export interface LiveContest {
+  contest_id: number;
+  slug: string;
+  title: string;
+  label: string;
+}
+
 /** GET /api/admin/problems/{id}. */
-/** GET /api/admin/problems/{id}; the revision fields are C4 (v1.2.0, lib/history.ts). */
-export interface Problem extends ProblemSummary, ProblemHistory {
+export interface Problem extends ProblemSummary {
+  /** The revision the working copy is. */
+  revision?: { id: number; rev: number };
+  live_contests?: LiveContest[];
   statement_md: string;
   time_limit_ms: number;
   memory_limit_mb: number;

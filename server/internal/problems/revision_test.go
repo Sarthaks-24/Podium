@@ -12,7 +12,6 @@ import (
 	"io/fs"
 	"path/filepath"
 	"regexp"
-	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -94,12 +93,8 @@ func TestEverySaveThatChangesAProblemWritesOneRevision(t *testing.T) {
 		t.Fatalf("revision 2 %+v %v", r2, err)
 	}
 	r1, _ := s.RevisionByNumber(ctx, p.ID, 1)
-	if !StatementChanged(r1, r2) || !StatementOnly(r1, r2) {
+	if !StatementChanged(r1, r2) {
 		t.Error("revision 2 changed the statement only")
-	}
-	r4, _ := s.RevisionByNumber(ctx, p.ID, 4)
-	if ch := RevisionChanges(r2, r4); strings.Join(ch, ",") != "limits,subtasks" {
-		t.Errorf("changes from 2 to 4: %v", ch)
 	}
 
 	// Replacing tests makes one, with the tests listed by kind.
@@ -215,28 +210,6 @@ func TestOpenTests(t *testing.T) {
 		t.Error("an empty open list changed the content hash")
 	}
 	assertRevisions(t, s)
-}
-
-func TestLineDiff(t *testing.T) {
-	lines, coarse := LineDiff("a\nb\nc\nd\n", "a\nB\nc\nd\ne\n")
-	var got []string
-	for _, l := range lines {
-		got = append(got, l.Op+":"+l.Text)
-	}
-	if coarse || strings.Join(got, " ") != "same:a del:b add:B same:c same:d add:e" {
-		t.Fatalf("diff %v coarse %v", got, coarse)
-	}
-	if lines, _ := LineDiff("", ""); len(lines) != 0 {
-		t.Errorf("empty diff %v", lines)
-	}
-	var big1, big2 strings.Builder
-	for i := range 1100 {
-		big1.WriteString("x" + strconv.Itoa(i) + "\n")
-		big2.WriteString("y" + strconv.Itoa(i) + "\n")
-	}
-	if lines, coarse := LineDiff(big1.String(), big2.String()); !coarse || len(lines) != 2200 || lines[0].Op != "del" || lines[2199].Op != "add" {
-		t.Errorf("a large rewrite: coarse %v, %d lines", coarse, len(lines))
-	}
 }
 
 // writeSQL matches a statement that writes a table a revision records.

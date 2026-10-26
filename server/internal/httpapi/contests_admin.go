@@ -111,8 +111,6 @@ type adminContestJSON struct {
 	// LockedAfterStart names the settings only owners and admins may change
 	// once the contest has started.
 	LockedAfterStart []string `json:"locked_after_start"`
-	// PinHistory is every pin change, newest first (C4).
-	PinHistory []contests.PinChange `json:"pin_history"`
 	// Queue health for the console's attention strip (C10, D103).
 	Queue            queueJSON `json:"queue"`
 	JudgeLastClaimAt *int64    `json:"judge_last_claim_at"`
@@ -183,9 +181,7 @@ func (d Deps) adminContestOut(ctx context.Context, c *contests.Contest) (*adminC
 	if out.RosterCount, err = d.Contests.RosterCount(ctx, c.ID); err != nil {
 		return nil, err
 	}
-	if out.PinHistory, err = d.Contests.PinHistory(ctx, c.ID); err != nil {
-		return nil, err
-	}
+
 	q, err := d.Contests.QueueHealth(ctx, c.ID)
 	if err != nil {
 		return nil, err

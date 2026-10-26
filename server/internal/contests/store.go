@@ -254,9 +254,6 @@ func (s *Service) Create(ctx context.Context, e Edit, by int64) (*Contest, error
 	if errs := e.check(); errs != nil {
 		return nil, errs
 	}
-	if err := s.checkSlugFree(ctx, s.DB, e.Slug, 0); err != nil {
-		return nil, err
-	}
 	now := s.now().UnixMilli()
 	langs, _ := json.Marshal(e.Languages)
 	var id int64
@@ -318,19 +315,9 @@ func (s *Service) Update(ctx context.Context, id int64, e Edit, by Actor) (*Cont
 			return nil, &AIProblemError{Labels: labels, Grading: true}
 		}
 	}
-	if e.Slug != c.Slug {
-		if err := s.checkSlugFree(ctx, tx, e.Slug, id); err != nil {
-			return nil, err
-		}
-		// The old slug keeps answering with a redirect (B2.9). Only a
-		// contest that was published can have links out there, so renaming
-		// a draft reserves nothing.
-		if c.Published {
-			if _, err := tx.ExecContext(ctx, `INSERT OR IGNORE INTO slug_history (entity, old_slug, entity_id, changed_at) VALUES ('contest', ?, ?, ?)`,
-				c.Slug, id, s.now().UnixMilli()); err != nil {
-				return nil, err
-			}
-		}
+	// Links to a published contest are out there, so its slug stays.
+	if e.Slug != c.Slug && c.Published {
+		return nil, FieldErrors{"slug": "A published contest keeps its slug, so links to it keep working."}
 	}
 	langs, _ := json.Marshal(e.Languages)
 	_, err = tx.ExecContext(ctx, `UPDATE contests SET slug = ?, title = ?, description_md = ?, starts_at = ?, ends_at = ?, start_mode = ?,
@@ -363,38 +350,6 @@ func nullID(id int64) any {
 		return id
 	}
 	return nil
-}
-
-// checkSlugFree refuses a slug another contest used before a rename, so
-// that contest's old links keep working (B2.9). A contest may take back
-// its own old slug.
-func (s *Service) checkSlugFree(ctx context.Context, q interface {
-	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
-}, slug string, self int64) error {
-	var owner int64
-	err := q.QueryRowContext(ctx, "SELECT entity_id FROM slug_history WHERE entity = 'contest' AND old_slug = ?", slug).Scan(&owner)
-	if errors.Is(err, sql.ErrNoRows) || (err == nil && owner == self) {
-		return nil
-	}
-	if err != nil {
-		return err
-	}
-	return FieldErrors{"slug": "This slug belonged to another contest. Choose another so its old links keep working."}
-}
-
-// RenamedTo returns the current slug of the contest that once had slug,
-// or "" when no contest did, a contest has that slug now, or the renamed
-// contest is unpublished or archived (its new slug is not told to anyone
-// who asks with the old one).
-func (s *Service) RenamedTo(ctx context.Context, slug string) (string, error) {
-	var current string
-	err := s.DB.QueryRowContext(ctx, `SELECT c.slug FROM slug_history h JOIN contests c ON c.id = h.entity_id
-		WHERE h.entity = 'contest' AND h.old_slug = ? AND c.published = 1 AND c.archived = 0
-		AND NOT EXISTS (SELECT 1 FROM contests n WHERE n.slug = ?)`, slug, slug).Scan(&current)
-	if errors.Is(err, sql.ErrNoRows) {
-		return "", nil
-	}
-	return current, err
 }
 
 func isUniqueSlug(err error) bool {
@@ -687,17 +642,6 @@ func (s *Service) SetProblems(ctx context.Context, id int64, choices []ProblemCh
 			return nil, err
 		}
 		after = append(after, pin{ch.Label, ch.ProblemID, hash, revID, rev})
-	}
-	now := s.now()
-	for _, a := range after {
-		unchanged := slices.ContainsFunc(before, func(b pin) bool {
-			return b.Label == a.Label && b.ProblemID == a.ProblemID && b.RevisionID == a.RevisionID
-		})
-		if !unchanged {
-			if err := s.recordPinTx(ctx, tx, id, a.Label, a.ProblemID, a.RevisionID, by, now); err != nil {
-				return nil, err
-			}
-		}
 	}
 	if len(unconfirmed) > 0 {
 		return nil, &AIProblemError{Labels: unconfirmed}

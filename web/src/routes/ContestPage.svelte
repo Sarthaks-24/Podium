@@ -26,10 +26,9 @@
     editor never moves); a second open tab or a second session reported
     by the server shows a notice there too. Exam mode marks submitted
     problems "submitted" on the rail. "Rules" in the rail opens the same
-    rules (D114). When an organiser moves a problem to a new revision
-    (statement_updated_at, or the `statement` event), a line says
-    "Statement updated 14:32. See what changed", which opens the line diff
-    (StatementDiff, contract C3), and the open problem's statement reloads.
+    rules (D114). When an organiser moves a problem to a new revision (the
+    `statement` event), the open problem's statement reloads; the
+    organisers announce the change.
     A frozen contest reads "Live" to students (D84). "[" and "]" open the previous and
     next problem when focus is not in a text field (lib/shortcuts.ts).
   - After it (audit 2026-10-20 S9): the place as the display figure
@@ -52,7 +51,6 @@
   import { onDestroy, onMount, tick, untrack } from 'svelte';
   import ContestBanner from '../components/ContestBanner.svelte';
   import RulesDialog from '../components/RulesDialog.svelte';
-  import StatementDiff from '../components/StatementDiff.svelte';
   import VerdictPanel from '../components/VerdictPanel.svelte';
   import ContestClock from '../components/ContestClock.svelte';
   import Markdown from '../components/Markdown.svelte';
@@ -85,7 +83,6 @@
   } from '../lib/contests';
   import { polite } from '../lib/announce.svelte';
   import { keepHeadingFocus } from '../lib/focus';
-  import { statementBannerKey, statementUpdatedText, type StatementEvent } from '../lib/history';
   import { formatDateTime, formatDayTime, scoreParts } from '../lib/format';
   import { setTitle } from '../lib/head';
   import { routeTitle } from '../lib/routing';
@@ -115,7 +112,6 @@
   let streamMode = $state<StreamMode>('connecting');
   let timeUp = $state(false);
   let rulesOpen = $state(false);
-  let diffLabel = $state<string | null>(null);
   /** Raised when the open problem moved to a new revision, so its statement reloads. */
   let statementKey = $state(0);
   let workspaceSeen = $state(false);
@@ -140,16 +136,6 @@
   const totalScore = $derived(problems.reduce((n, p) => n + (p.my_score ?? 0), 0));
   const totalMax = $derived(problems.reduce((n, p) => n + p.max_score, 0));
   const secondSession = $derived(!sessionNoticeHidden && (otherTab || contest?.second_session === true));
-  // The newest statement change after the start that the student has not dismissed (C3).
-  const statementNotice = $derived.by(() => {
-    let best: { label: string; at: number } | null = null;
-    for (const p of problems) {
-      const at = p.statement_updated_at;
-      if (typeof at !== 'number' || dismissed.has(statementBannerKey(p.label, at))) continue;
-      if (!best || at > best.at || (at === best.at && p.label === current)) best = { label: p.label, at };
-    }
-    return best;
-  });
   const startNow = $derived(contest ? startLine(contest, ticker.now) : { kind: 'before' as const, ms: 0 });
   const used = $derived(
     contest && currentProblem && phase === 'during' ? { count: currentProblem.my_submission_count ?? 0, max: contest.rules.max_per_problem } : null,
@@ -248,9 +234,9 @@
     }
     if (!isForContest(data, contest)) return;
     if (type === 'statement') {
-      const ev = data as Partial<StatementEvent>;
+      const ev = data as { label?: string; statement_changed?: boolean };
       if (ev.label === current) statementKey++;
-      if (ev.statement_changed) polite(`The statement of problem ${ev.label} was updated. See what changed is above the problem.`);
+      if (ev.statement_changed) polite(`The statement of problem ${ev.label} was updated.`);
       refetchSoon(0);
       return;
     }
@@ -462,16 +448,6 @@
     </div>
   {/if}
   {#if phase === 'during'}
-    {#if statementNotice}
-      {@const n = statementNotice}
-      <div class="banner banner-info statement-notice">
-        <p>
-          {n.label === current ? statementUpdatedText(n.at) : `Problem ${n.label}: s${statementUpdatedText(n.at).slice(1)}`}
-          <button type="button" class="link-button" onclick={() => (diffLabel = n.label)}>See what changed</button>
-        </p>
-        <button type="button" class="btn btn-quiet" onclick={() => dismiss(statementBannerKey(n.label, n.at))}>Dismiss</button>
-      </div>
-    {/if}
     <ContestBanner items={banner} ondismiss={dismiss} onopen={openMessages} />
   {/if}
 {/snippet}
@@ -541,7 +517,6 @@
     onasked={onAsked}
   />
   <RulesDialog open={rulesOpen} {contest} onclose={() => (rulesOpen = false)} />
-  <StatementDiff open={diffLabel !== null} {slug} label={diffLabel ?? current} onclose={() => (diffLabel = null)} />
 {:else if phase === 'upcoming' || phase === 'ready'}
   <div class="page page-wide">
     <PageHeader title={contest.title} back={{ href: '/', label: 'Your contests' }}>
@@ -819,31 +794,6 @@
     padding: var(--space-4);
     border: var(--rule) solid var(--line);
     background: var(--surface);
-  }
-
-  .statement-notice {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    justify-content: space-between;
-    gap: var(--space-2) var(--space-3);
-    margin-bottom: var(--space-3);
-    padding-block: var(--space-2);
-    font-size: var(--fs-0);
-  }
-
-  .link-button {
-    padding: 0;
-    border: 0;
-    border-radius: var(--radius);
-    background: none;
-    color: var(--act);
-    font: inherit;
-    font-weight: 500;
-    text-decoration: underline;
-    text-decoration-thickness: var(--rule);
-    text-underline-offset: 0.2em;
-    cursor: pointer;
   }
 
   .start {

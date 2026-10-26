@@ -7,7 +7,7 @@
   status and actions), EditorNotes, StatementSection, TestsSection, GeneratorPanel
   (from M5, when the server sends a "generator" key), SolutionsSection
   with JudgingSection, EditorFooter, then the validation report,
-  RevisionHistory and ModelSolve. Their shared classes are in
+  and ModelSolve. Their shared classes are in
   components/problem/editor.css. A live contest that pins the problem asks
   for a reason with each save; an AI draft carries a note until a person
   saves it. Props: `id`, the problem id from the address.
@@ -31,7 +31,6 @@
   import TestsSection from '../components/problem/TestsSection.svelte';
   import JudgingSection from '../components/problem/JudgingSection.svelte';
   import ReadinessPanel from '../components/problem/ReadinessPanel.svelte';
-  import RevisionHistory from '../components/problem/RevisionHistory.svelte';
   import StatementPreview from '../components/StatementPreview.svelte';
   import { media } from '../lib/breakpoints';
   import '../components/problem/editor.css';
@@ -584,10 +583,6 @@
           <ValidationReport {validation} />
         </section>
 
-        <section class="block history" aria-labelledby="history-heading">
-          <h2 id="history-heading" tabindex="-1">History</h2>
-          <RevisionHistory problemId={problem.id} history={problem} />
-        </section>
 
         {#if hasGenerator}
           <ModelSolve {id} onsessionerror={handleSessionError} />
