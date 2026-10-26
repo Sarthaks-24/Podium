@@ -18,18 +18,18 @@ import (
 
 // Audit actions.
 const (
-	AuditSettings   = "settings"   // the contest form: {"changes": {field: {"from", "to"}}}
-	AuditProblems   = "problems"   // problems and pins: {"from": [...], "to": [...]}
-	AuditAIProblem  = "ai_problem" // an admin's reason to grade an AI problem
-	AuditRoster     = "roster"     // {"count", "added", "removed"}
-	AuditExtension  = "extension"  // {"user_id", "minutes", "from_minutes", "reason_given"} (v2 P6; "email" until P6, "reason" before v1.4.0)
-	AuditExtend     = "extend"     // {"minutes", "extended_minutes"}
-	AuditPause      = "pause"
-	AuditResume     = "resume"
-	AuditRejudge    = "rejudge" // {"problem_label" or "submission_id", "queued"}
-	AuditReveal     = "reveal"
-	AuditEditorial  = "editorial"  // {"published", "was_published", "changed", "bytes"}
-	AuditArchive    = "archive"
+	AuditSettings  = "settings"   // the contest form: {"changes": {field: {"from", "to"}}}
+	AuditProblems  = "problems"   // problems and pins: {"from": [...], "to": [...]}
+	AuditAIProblem = "ai_problem" // an admin's reason to grade an AI problem
+	AuditRoster    = "roster"     // {"count", "added", "removed"}
+	AuditExtension = "extension"  // {"user_id", "minutes", "from_minutes", "reason_given"} (v2 P6; "email" until P6, "reason" before v1.4.0)
+	AuditExtend    = "extend"     // {"minutes", "extended_minutes"}
+	AuditPause     = "pause"
+	AuditResume    = "resume"
+	AuditRejudge   = "rejudge" // {"problem_label" or "submission_id", "queued"}
+	AuditReveal    = "reveal"
+	AuditEditorial = "editorial" // {"published", "was_published", "changed", "bytes"}
+	AuditArchive   = "archive"
 	// AuditDecision is an integrity decision about one student:
 	// {"user_id", "decision"}; the reason stays in integrity_cases.
 	AuditDecision = "integrity_decision"

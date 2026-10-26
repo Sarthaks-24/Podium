@@ -331,7 +331,7 @@ type FeedItem struct {
 	Rejudged     bool   `json:"rejudged"`
 	// Hidden marks a submission whose result the viewer may not see yet:
 	// state "submitted", no verdict, score, judging time or rejudge mark.
-	Hidden bool `json:"hidden,omitempty"`
+	Hidden      bool `json:"hidden,omitempty"`
 	TypedChars  *int `json:"typed_chars,omitempty"`
 	PastedChars *int `json:"pasted_chars,omitempty"`
 	FocusLosses *int `json:"focus_losses,omitempty"`
