@@ -8,10 +8,11 @@
 #                                  run only the named steps (used for local
 #                                  WSL2 judge setup, where caddy and swap are
 #                                  not wanted)
-#   sudo ./install.sh upgrade [--force "<reason>"]
-#                                  install this release over the running one
-#                                  (deploy guard, drain, backup, keep the
-#                                  previous binaries, install, verify)
+#   sudo ./install.sh upgrade      install this release over the running one
+#                                  (drain, backup, keep the previous
+#                                  binaries, install, verify). No deploy
+#                                  within 48 hours of a contest: that rule
+#                                  is in docs/RUNBOOK.md, not in code.
 #   sudo ./install.sh rollback     put the previous release back
 #   sudo ./install.sh verify       check the installed system, names only
 #   sudo ./install.sh hold         keep apt from upgrading the compilers,
@@ -625,27 +626,11 @@ env_names_check() {
   [[ -z $missing_req ]] || die "this release needs variables the VM does not have:$missing_req. Add each with sudoedit (docs/OPERATIONS.md, Configuration), then run the upgrade again"
 }
 
-# guard_binary: the new release's podium-server, runnable by the podium
-# user (a tarball built on Windows has no execute bit).
-guard_binary() {
-  local tmp
-  tmp=$(mktemp -d /tmp/podium-guard.XXXXXX)
-  chmod 755 "$tmp"
-  install -m 755 "$HERE/bin/podium-server" "$tmp/podium-server"
-  echo "$tmp/podium-server"
-}
-
 cmd_upgrade() {
-  local force=""
-  while [[ $# -gt 0 ]]; do
-    case $1 in
-      --force) [[ $# -ge 2 ]] || die "--force needs a reason in quotes"; force=$2; shift 2 ;;
-      *) die "upgrade: unknown argument '$1' (usage: sudo ./install.sh upgrade [--force \"<reason>\"])" ;;
-    esac
-  done
+  [[ $# -eq 0 ]] || die "upgrade: unknown argument '$1' (usage: sudo ./install.sh upgrade)"
   [[ -x /usr/local/bin/podium-server ]] || die "no podium installed here; run sudo ./install.sh for a fresh install"
   [[ -f $HERE/bin/podium-server && -f $HERE/bin/podium-judge ]] || die "missing $HERE/bin; unpack a release built with make release"
-  local db release guard code=0 out
+  local db release
   db=$(db_path)
   release=$(release_name)
   [[ -f $db ]] || die "no database at $db; nothing to upgrade (start the server once, or run a fresh install)"
@@ -654,39 +639,14 @@ cmd_upgrade() {
   verify_release
   check_upgrade_path
   check_unfinished_upgrade "$release" /usr/local/bin/podium-server
-  # Before the guard: a forced guard writes the deploy record and the
-  # students' banner, which must not happen for an upgrade that then stops
-  # over a missing variable.
   env_names_check
 
-  log "2/8 deploy guard"
-  guard=$(guard_binary)
-  # shellcheck disable=SC2064 # the folder is known now
-  trap "rm -rf '$(dirname "$guard")'" EXIT
-  out=$(runuser -u podium -- "$guard" deploy-check -db "$db") || code=$?
-  echo "$out"
-  case $code in
-    0) ;;
-    1)
-      [[ -n $force ]] || die "the deploy guard refused (above). A fix that cannot wait: sudo ./install.sh upgrade --force \"<reason>\""
-      code=0
-      out=$(runuser -u podium -- "$guard" deploy-check -db "$db" -force "$force" -release "$release" \
-        -owner "$(envval /etc/podium/server.env PODIUM_OWNER_EMAIL)") || code=$?
-      echo "$out"
-      (( code == 0 )) || die "recording the forced deploy failed (above); nothing was changed"
-      echo "forced: the reason is in each contest's audit log, and signed-in students see that the site was updated. Announce the restart in the contest too."
-      ;;
-    *) die "the deploy guard could not run (above); nothing was changed" ;;
-  esac
-  rm -rf "$(dirname "$guard")"
-  trap - EXIT
-
-  log "3/8 judge: stop claiming, finish and report the running jobs (up to 20 minutes)"
+  log "2/7 judge: stop claiming, finish and report the running jobs (up to 20 minutes)"
   local t0=$SECONDS
   systemctl stop podium-judge.service
   echo "judge stopped after $(( SECONDS - t0 )) s"
 
-  log "4/8 backup before the upgrade"
+  log "3/7 backup before the upgrade"
   local before after bdir
   local backup_ms=$(( $(date +%s) * 1000 ))
   bdir=$(backup_dir)
@@ -700,7 +660,7 @@ cmd_upgrade() {
   local backup=$bdir/$after
   echo "backup: $backup"
 
-  log "5/8 keep the running release in $PREVIOUS"
+  log "4/7 keep the running release in $PREVIOUS"
   rm -rf "$PREVIOUS.new"
   install -d -m 755 "$PREVIOUS.new/bin" "$PREVIOUS.new/systemd"
   cp -a /usr/local/bin/podium-server /usr/local/bin/podium-judge "$PREVIOUS.new/bin/"
@@ -724,14 +684,14 @@ cmd_upgrade() {
   rm -rf "$PREVIOUS"
   mv "$PREVIOUS.new" "$PREVIOUS"
 
-  log "6/8 install $release"
+  log "5/7 install $release"
   install_app_files
   step_users
   step_litestream
   step_backup
   step_alerts
 
-  log "7/8 start: server (migrations run now), then the judge"
+  log "6/7 start: server (migrations run now), then the judge"
   systemctl restart podium-server.service
   if ! wait_healthz; then
     die "podium-server did not answer /healthz within 60 s (journalctl -u podium-server -n 50). Roll back with: sudo $LIB/install.sh rollback"
@@ -740,7 +700,7 @@ cmd_upgrade() {
   db_group_rw
   write_manifest
 
-  log "8/8 verify"
+  log "7/7 verify"
   local vcode=0
   cmd_verify || vcode=$?
   cat <<EOF

@@ -13,10 +13,8 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"strings"
-	"time"
 )
 
 // Site audit actions (docs/API.md, "Site audit: People History").
@@ -30,8 +28,6 @@ const (
 	AuditSessionsEnded   = "sessions_ended"
 	AuditGoogleReset     = "google_reset"
 	AuditModeChanged     = "mode_changed"
-	// AuditDeployForced is written by podium-server deploy-check -force.
-	AuditDeployForced = "deploy_forced"
 )
 
 // Actor is the person an audit row names, as they were when they acted.
@@ -153,20 +149,4 @@ func (s *Service) SiteAudit(ctx context.Context, f SiteAuditFilter) ([]SiteAudit
 		out = out[:SiteAuditPage]
 	}
 	return out, more, rows.Err()
-}
-
-// SiteUpdatedWithin is how long after a forced deploy signed-in students
-// are told the site was updated (D112): a session's whole life.
-const SiteUpdatedWithin = SessionTTL
-
-// LastForcedDeploy returns when the last forced deploy was, if it was
-// within SiteUpdatedWithin of now.
-func (s *Service) LastForcedDeploy(ctx context.Context) (time.Time, bool, error) {
-	var at sql.NullInt64
-	err := s.DB.QueryRowContext(ctx, "SELECT max(at) FROM site_audit WHERE action = ? AND at >= ?",
-		AuditDeployForced, s.now().Add(-SiteUpdatedWithin).UnixMilli()).Scan(&at)
-	if errors.Is(err, sql.ErrNoRows) || !at.Valid {
-		return time.Time{}, false, err
-	}
-	return time.UnixMilli(at.Int64), err == nil, err
 }

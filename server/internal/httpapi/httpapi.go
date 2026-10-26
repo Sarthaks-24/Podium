@@ -16,7 +16,6 @@ import (
 	"time"
 
 	"github.com/Sarthaks-24/podium/internal/auth"
-	"github.com/Sarthaks-24/podium/internal/contact"
 	"github.com/Sarthaks-24/podium/internal/contests"
 	"github.com/Sarthaks-24/podium/internal/db/migrations"
 	"github.com/Sarthaks-24/podium/internal/events"
@@ -52,9 +51,6 @@ type Deps struct {
 	// AI is the wizard's in-memory state (M5): pasted keys, one call per
 	// admin, wizard runs. Its routes are mounted only when it is set.
 	AI *AI
-	// Contact keeps the contact form's messages (C6). New makes one from
-	// DB and Auth when it is not set.
-	Contact *contact.Service
 
 	// reads limits heavy reads per user; New sets it.
 	reads *readLimiter
@@ -86,12 +82,7 @@ func New(d Deps) http.Handler {
 		d.authFailLimit = newIPLimiter(AuthFailBurst, AuthFailRate, nil)
 	}
 	d.flows = newUsedFlows()
-	if d.Contact == nil {
-		d.Contact = &contact.Service{DB: d.DB, Auth: d.Auth}
-		if d.Contests != nil {
-			d.Contact.Now = d.Contests.Clock
-		}
-	}
+
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", d.preAuth(d.healthz))
 
@@ -115,9 +106,6 @@ func New(d Deps) http.Handler {
 	mux.HandleFunc("DELETE /api/admin/domains/{domain}", d.requireRole(auth.Owner, d.removeDomain))
 	mux.HandleFunc("GET /api/admin/site-audit", d.requireRole(auth.Owner, d.siteAudit))
 	mux.HandleFunc("PUT /api/admin/site-settings", d.requireRole(auth.Owner, d.setSiteSettings))
-	mux.HandleFunc("POST /api/contact", d.requireRole(auth.Student, d.sendContact))
-	mux.HandleFunc("GET /api/admin/contact", d.requireRole(auth.Admin, d.listContact))
-	mux.HandleFunc("DELETE /api/admin/contact/{id}", d.requireRole(auth.Admin, d.deleteContact))
 
 	admin := func(h http.HandlerFunc) http.HandlerFunc { return d.requireRole(auth.Admin, h) }
 	mux.HandleFunc("GET /api/admin/problems", admin(d.listProblems))

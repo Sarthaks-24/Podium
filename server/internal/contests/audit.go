@@ -31,8 +31,6 @@ const (
 	AuditEditorial  = "editorial"  // {"published", "was_published", "changed", "bytes"}
 	AuditOrganisers = "organisers" // {"email", "added"}
 	AuditArchive    = "archive"
-	// AuditDeployForced is written by podium-server deploy-check -force.
-	AuditDeployForced = "deploy_forced" // {"reason", "release", "refused"}
 	// AuditDecision is an integrity decision about one student:
 	// {"user_id", "decision"}; the reason stays in integrity_cases.
 	AuditDecision = "integrity_decision"

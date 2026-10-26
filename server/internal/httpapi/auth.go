@@ -285,24 +285,9 @@ func (d Deps) logout(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// meJSON is GET /api/me: the user, and when the site was last updated by
-// an emergency deploy (D112), for the student banner.
-type meJSON struct {
-	auth.User
-	SiteUpdatedAt *int64 `json:"site_updated_at"`
-}
-
+// me is GET /api/me: the signed-in user.
 func (d Deps) me(w http.ResponseWriter, r *http.Request) {
-	out := meJSON{User: userFrom(r.Context())}
-	at, ok, err := d.Auth.LastForcedDeploy(r.Context())
-	if err != nil {
-		d.internalError(w, r, err)
-		return
-	}
-	if ok {
-		out.SiteUpdatedAt = millis(at)
-	}
-	WriteJSON(w, http.StatusOK, out)
+	WriteJSON(w, http.StatusOK, userFrom(r.Context()))
 }
 
 func (d Deps) setPreferences(w http.ResponseWriter, r *http.Request) {

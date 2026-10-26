@@ -188,24 +188,3 @@ func TestP2SiteAuditRecordsPeopleChangesAndNoSecret(t *testing.T) {
 		}
 	}
 }
-
-// GET /api/me carries the time of a forced deploy in the last 12 hours,
-// for the "The site was updated at 14:02" banner (D112).
-func TestP2MeCarriesTheLastForcedDeploy(t *testing.T) {
-	s := newSite(t)
-	student := s.signedIn("asha@college.edu", "Asha")
-	if _, me := student.do("GET", "/api/me", nil, ""); me["site_updated_at"] != nil {
-		t.Fatalf("no forced deploy yet: %v", me["site_updated_at"])
-	}
-	old := time.Now().Add(-13 * time.Hour).UnixMilli()
-	recent := time.Now().Add(-time.Hour).UnixMilli()
-	for _, at := range []int64{old, recent} {
-		if _, err := s.db.Exec(`INSERT INTO site_audit (at, action, details) VALUES (?, 'deploy_forced', '{}')`, at); err != nil {
-			t.Fatal(err)
-		}
-	}
-	_, me := student.do("GET", "/api/me", nil, "")
-	if v, ok := me["site_updated_at"].(float64); !ok || int64(v) != recent || me["email"] != "asha@college.edu" {
-		t.Fatalf("me %v", me)
-	}
-}

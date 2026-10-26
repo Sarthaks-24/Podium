@@ -83,16 +83,6 @@ else
   fail "cmd_upgrade must call check_unfinished_upgrade before it stops the judge"
 fi
 
-# The configuration check runs before the guard, which may record a forced
-# deploy and tell students the site was updated.
-names=$(grep -n 'env_names_check' <<<"$up" | head -n1 | cut -d: -f1 || true)
-guardrun=$(grep -n 'deploy-check -db' <<<"$up" | head -n1 | cut -d: -f1 || true)
-if [[ -n $names && -n $guardrun && $names -lt $guardrun ]]; then
-  pass "upgrade checks the configuration names before the deploy guard"
-else
-  fail "cmd_upgrade must run env_names_check before deploy-check"
-fi
-
 # The schema rollback gives the restored folder group write (C1-004).
 rb=$(fn cmd_rollback)
 restore=$(grep -n 'scratch/podium.db" "\$db"' <<<"$rb" | head -n1 | cut -d: -f1 || true)

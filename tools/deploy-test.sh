@@ -36,12 +36,11 @@ for a in "$@"; do
   if [[ $a == VERSION=* ]]; then mkdir -p release && echo tarball > "release/podium-${a#VERSION=}.tar.gz"; fi
 done
 EOF
-# ssh: the guard answers FAKE_GUARD; mktemp answers a folder name.
+# ssh: mktemp answers a folder name.
 cat > "$tmp/stub/ssh" <<'EOF'
 #!/usr/bin/env bash
 echo "ssh $*" >> "$CALLS"
 case "$*" in
-  *deploy-check*) exit "${FAKE_GUARD:-0}" ;;
   *mktemp*) echo /tmp/podium-deploy.abc123 ;;
 esac
 EOF
@@ -70,7 +69,7 @@ run() {
 if out=$(run vm -- vm); then
   fail "an untagged commit without VERSION went on"
 elif [[ $out == *"not a vX.Y.Z tag"*"VERSION=vX.Y.Z tools/deploy.sh"* && ! -s $log ]]; then
-  pass "an untagged commit without VERSION stops before the guard and the build"
+  pass "an untagged commit without VERSION stops before the build"
 else
   fail "untagged commit: $out / $(cat "$log")"
 fi
@@ -109,35 +108,12 @@ else
   fail "dirty tree: $out"
 fi
 
-if out=$(run vm FAKE_TAG=v1.5.0 FAKE_GUARD=1 -- vm); then
-  fail "a refusing guard was ignored"
-elif [[ $out == *"guard refused"* ]] && ! grep -q '^make' "$log"; then
-  pass "a refusing guard stops before the build"
-else
-  fail "guard refusal: $out / $(cat "$log")"
-fi
-
-if out=$(run vm FAKE_TAG=v1.5.0 FAKE_GUARD=1 -- vm --force "Rehearsal of the emergency override") \
-  && grep -q "sudo ./install.sh upgrade --force Rehearsal\\\\ of\\\\ the" "$log"; then
-  pass "--force goes on past a refusing guard and passes the reason quoted"
-else
-  fail "--force: $out / $(cat "$log")"
-fi
-
 if out=$(run other FAKE_TAG=v1.5.0 -- vm); then
   fail "a wrong host answer went on"
 elif [[ $out == *"nothing left this machine"* ]] && ! grep -q '^scp' "$log"; then
   pass "a wrong host answer stops before the copy"
 else
   fail "wrong host answer: $out / $(cat "$log")"
-fi
-
-if out=$(run vm -- vm --force short); then
-  fail "a short --force reason went on"
-elif [[ $out == *"at least 10 characters"* && ! -s $log ]]; then
-  pass "a short --force reason is refused"
-else
-  fail "short reason: $out"
 fi
 
 # release-manifest.sh refuses a real release that still upgrades from the
