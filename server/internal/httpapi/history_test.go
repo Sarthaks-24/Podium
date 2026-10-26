@@ -13,7 +13,6 @@ import (
 	"strings"
 	"testing"
 	"time"
-
 )
 
 // editBody turns a Problem answer into a ProblemEdit with the statement

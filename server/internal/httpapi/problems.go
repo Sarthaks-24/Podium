@@ -119,8 +119,8 @@ type problemJSON struct {
 	// Revision is the revision the working copy is. LiveContests are the
 	// running contests that pin the problem: while there are any, a save
 	// needs a reason.
-	Revision       *revisionRefJSON       `json:"revision"`
-	LiveContests   []problems.LiveContest `json:"live_contests"`
+	Revision     *revisionRefJSON       `json:"revision"`
+	LiveContests []problems.LiveContest `json:"live_contests"`
 }
 
 type problemEditJSON struct {
