@@ -62,10 +62,8 @@ var ErrAlreadyForgotten = errors.New("this account was already forgotten")
 // ForgetKept lists what an erasure leaves on purpose, for the report.
 var ForgetKept = []string{
 	"submissions, scores and code, under the placeholder (past standings stay correct)",
-	"integrity cases, explanations, appeals and decisions: kept until the case retention (2 years after the decision)",
-	"private notes on their submissions: kept until the note retention (30 days, or with a case)",
-	"the rating and its history: kept until the rating retention (4 years)",
-	"audit rows written before today, with the address and text they recorded: kept until the audit retention (4 years)",
+	"integrity decisions about them and their reasons",
+	"audit rows written before today, with the address and text they recorded",
 	"backups: until they age out (14 days)",
 }
 
@@ -124,10 +122,6 @@ func (s *Service) Forget(ctx context.Context, email string, apply, allowOwner bo
 			{"drafts", "DELETE FROM drafts WHERE user_id = ?", []any{r.UserID}},
 			{"integrity events", "DELETE FROM integrity_events WHERE user_id = ?", []any{r.UserID}},
 			{"contact messages", "DELETE FROM contact_messages WHERE user_id = ?", []any{r.UserID}},
-			// v1.4.0: their notices and contest summaries; progress for
-			// the account is empty from then on.
-			{"notices", "DELETE FROM notifications WHERE user_id = ?", []any{r.UserID}},
-			{"contest summaries", "DELETE FROM student_contest_summary WHERE user_id = ?", []any{r.UserID}},
 			{"co-organiser places", "DELETE FROM contest_admins WHERE user_id = ?", []any{r.UserID}},
 			{"browser hashes on submissions", "UPDATE submissions SET client_hash = '' WHERE user_id = ? AND client_hash <> ''", []any{r.UserID}},
 			// An extension's reason can be an accommodation, which is
@@ -152,7 +146,7 @@ func (s *Service) Forget(ctx context.Context, email string, apply, allowOwner bo
 	}
 	if r.UserID > 0 {
 		if _, err := tx.ExecContext(ctx, `UPDATE users SET email = ?, name = ?, avatar_url = '', google_sub = NULL, disabled = 1,
-			role = 'student', hide_progress = 0 WHERE id = ?`, r.PlaceholderEmail, r.Placeholder, r.UserID); err != nil {
+			role = 'student' WHERE id = ?`, r.PlaceholderEmail, r.Placeholder, r.UserID); err != nil {
 			return ForgetReport{}, err
 		}
 	}

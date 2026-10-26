@@ -33,9 +33,7 @@
   import { routeTitle } from '../lib/routing';
   import { session } from '../lib/session.svelte';
   import { polite } from '../lib/announce.svelte';
-  import { boardLabels, boardUpdatedLine, placeFigure, rankAnnouncement, statusLine, type Standings } from '../lib/standings';
-  import MonoDigits from '../components/MonoDigits.svelte';
-  import { formatDateTime } from '../lib/format';
+  import { boardLabels, placeFigure, rankAnnouncement, statusLine, type Standings } from '../lib/standings';
   import { EventStream, type StreamMode } from '../lib/stream';
 
   let { slug }: { slug: string } = $props();
@@ -157,10 +155,6 @@
   <PageState kind="error" message={message} onretry={() => loadBoard()} />
 {:else if standings}
   <p class="status" class:frozen={standings.variant === 'frozen'}>{statusLine(standings, ended)}</p>
-  {#if boardUpdatedLine(standings, formatDateTime)}
-    <!-- D77 amended: a review decision changed the board; it says when, never whose. -->
-    <p class="updated"><MonoDigits text={boardUpdatedLine(standings, formatDateTime)} /></p>
-  {/if}
   {#if place}
     <div class="place-wrap"><PlaceFigure {place} /></div>
   {/if}
@@ -195,12 +189,6 @@
   .status {
     margin-block: var(--space-3) var(--space-4);
     color: var(--ink-muted);
-  }
-
-  .updated {
-    margin-block: calc(-1 * var(--space-2)) var(--space-4);
-    color: var(--ink-muted);
-    font-size: var(--fs-0);
   }
 
   .status.frozen {

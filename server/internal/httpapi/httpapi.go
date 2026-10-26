@@ -21,7 +21,6 @@ import (
 	"github.com/Sarthaks-24/podium/internal/db/migrations"
 	"github.com/Sarthaks-24/podium/internal/events"
 	"github.com/Sarthaks-24/podium/internal/integrity"
-	"github.com/Sarthaks-24/podium/internal/notifications"
 	"github.com/Sarthaks-24/podium/internal/problems"
 	"github.com/Sarthaks-24/podium/internal/submissions"
 )
@@ -56,9 +55,6 @@ type Deps struct {
 	// Contact keeps the contact form's messages (C6). New makes one from
 	// DB and Auth when it is not set.
 	Contact *contact.Service
-	// Notifications is the inbox (C9). New makes one from DB, Contests and
-	// Integrity when it is not set.
-	Notifications *notifications.Service
 
 	// reads limits heavy reads per user; New sets it.
 	reads *readLimiter
@@ -96,15 +92,6 @@ func New(d Deps) http.Handler {
 			d.Contact.Now = d.Contests.Clock
 		}
 	}
-	if d.Notifications == nil && d.DB != nil {
-		d.Notifications = &notifications.Service{DB: d.DB}
-		if d.Contests != nil {
-			d.Notifications.Now, d.Notifications.Live = d.Contests.Clock, d.Contests.InLiveContest
-		}
-		if d.Integrity != nil {
-			d.Notifications.Due = d.Integrity.NoticeDue
-		}
-	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", d.preAuth(d.healthz))
 
@@ -128,7 +115,6 @@ func New(d Deps) http.Handler {
 	mux.HandleFunc("DELETE /api/admin/domains/{domain}", d.requireRole(auth.Owner, d.removeDomain))
 	mux.HandleFunc("GET /api/admin/site-audit", d.requireRole(auth.Owner, d.siteAudit))
 	mux.HandleFunc("PUT /api/admin/site-settings", d.requireRole(auth.Owner, d.setSiteSettings))
-	mux.HandleFunc("POST /api/admin/rollover", d.requireRole(auth.Owner, d.semesterRollover))
 	mux.HandleFunc("POST /api/contact", d.requireRole(auth.Student, d.sendContact))
 	mux.HandleFunc("GET /api/admin/contact", d.requireRole(auth.Admin, d.listContact))
 	mux.HandleFunc("DELETE /api/admin/contact/{id}", d.requireRole(auth.Admin, d.deleteContact))
@@ -233,9 +219,6 @@ func (d Deps) contestRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/admin/contests/{id}/stats", signedIn(d.contestStats))
 	mux.HandleFunc("PUT /api/admin/contests/{id}/editorial", signedIn(d.setEditorial))
 }
-
-// notices is the inbox service, nil without a database.
-func (d Deps) notices() *notifications.Service { return d.Notifications }
 
 // now is the server's clock: the contests service's, which tests replace.
 func (d Deps) now() time.Time {

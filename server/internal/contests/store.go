@@ -78,16 +78,10 @@ type Contest struct {
 	// contest: every window is over at the close plus this.
 	MaxExtension time.Duration
 	Archived     bool
-	// SummarisedAt is when the per-student summaries were last written
-	// (summary.go); zero before the contest turned final.
-	SummarisedAt time.Time
-	// BoardAdjustedAt is when a review decision last changed the board
-	// (D77 amended); zero if none ever did.
-	BoardAdjustedAt time.Time
-	CreatedBy       int64
-	CreatedAt       time.Time
-	UpdatedAt       time.Time
-	Problems        []ContestProblem
+	CreatedBy    int64
+	CreatedAt    time.Time
+	UpdatedAt    time.Time
+	Problems     []ContestProblem
 }
 
 // Honour returns the contest's honour code, or the default.
@@ -411,18 +405,17 @@ const contestColumns = `id, slug, title, description_md, starts_at, ends_at, sta
 	scoring_mode, access, feedback_mode, graded, published, practice_after_end, stop_on_sample_fail, min_gap_s, max_per_problem,
 	languages, honour_text, editorial_md, editorial_published, paused, extended_minutes, hold_reveal, coalesce(revealed_at, 0), archived,
 	coalesce(created_by, 0), created_at, updated_at,
-	(SELECT coalesce(max(minutes), 0) FROM contest_extensions e WHERE e.contest_id = contests.id),
-	coalesce(summarised_at, 0), coalesce(board_adjusted_at, 0)`
+	(SELECT coalesce(max(minutes), 0) FROM contest_extensions e WHERE e.contest_id = contests.id)`
 
 func scanContest(sc interface{ Scan(...any) error }) (*Contest, error) {
 	var c Contest
-	var starts, ends, revealed, created, updated, summarised, adjusted int64
+	var starts, ends, revealed, created, updated int64
 	var duration, freeze, gap, extended, maxExt int
 	var langs string
 	err := sc.Scan(&c.ID, &c.Slug, &c.Title, &c.Description, &starts, &ends, &c.Schedule.Mode, &duration, &freeze,
 		&c.Scoring, &c.Access, &c.Feedback, &c.Graded, &c.Published, &c.PracticeAfterEnd, &c.StopOnSampleFail, &gap,
 		&c.MaxPerProblem, &langs, &c.HonourText, &c.Editorial, &c.EditorialPublished, &c.Paused, &extended, &c.HoldReveal, &revealed,
-		&c.Archived, &c.CreatedBy, &created, &updated, &maxExt, &summarised, &adjusted)
+		&c.Archived, &c.CreatedBy, &created, &updated, &maxExt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
@@ -440,12 +433,6 @@ func scanContest(sc interface{ Scan(...any) error }) (*Contest, error) {
 		c.RevealedAt = time.UnixMilli(revealed)
 	}
 	c.CreatedAt, c.UpdatedAt = time.UnixMilli(created), time.UnixMilli(updated)
-	if summarised > 0 {
-		c.SummarisedAt = time.UnixMilli(summarised)
-	}
-	if adjusted > 0 {
-		c.BoardAdjustedAt = time.UnixMilli(adjusted)
-	}
 	return &c, nil
 }
 

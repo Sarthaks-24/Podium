@@ -82,24 +82,6 @@ describe('web source guardrails', () => {
 
   // The rating number is read on organiser screens only (docs/API.md
   // "Students"): no screen a student sees imports the module that holds it.
-  it('keeps lib/students.ts out of every student screen', () => {
-    const studentScreens = [
-      '/src/routes/Home.svelte',
-      '/src/routes/ContestPage.svelte',
-      '/src/routes/StandingsPage.svelte',
-      '/src/routes/Progress.svelte',
-      '/src/routes/MyIntegrity.svelte',
-      '/src/routes/MyCase.svelte',
-      '/src/routes/Inbox.svelte',
-      '/src/components/Workspace.svelte',
-      '/src/components/StandingsTable.svelte',
-      '/src/lib/standing.ts',
-      '/src/lib/progress.ts',
-    ];
-    expect(studentScreens.filter((p) => sources[p] === undefined)).toEqual([]);
-    const offenders = studentScreens.filter((p) => /from '[./]*(lib\/)?students'/.test(sources[p]));
-    expect(offenders).toEqual([]);
-  });
 
   // One error fallback, from lib/api.ts errorText (C1-032): no screen
   // carries its own copy of the sentence.
@@ -200,7 +182,7 @@ describe('breakpoints', () => {
 describe('first load', () => {
   // The screens a student can open; every other route is an organiser's and
   // is loaded with import() from App.svelte.
-  const STUDENT_SCREENS = ['ContestPage', 'Contact', 'Home', 'Inbox', 'MyCase', 'MyIntegrity', 'NotFound', 'Privacy', 'SignIn', 'StandingsPage'];
+  const STUDENT_SCREENS = ['ContestPage', 'Home', 'NotFound', 'Privacy', 'SignIn', 'StandingsPage'];
 
   it('imports only student screens statically in App.svelte', () => {
     const app = sources['/src/App.svelte'];

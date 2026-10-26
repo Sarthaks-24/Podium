@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { boardLabels, boardUpdatedLine, cellView, formatElapsed, myRow, ordinalWord, placeFigure, placeSentence, rankAnnouncement, statusLine, studentChoice, type Standings } from './standings';
+import { boardLabels, cellView, formatElapsed, myRow, ordinalWord, placeFigure, placeSentence, rankAnnouncement, statusLine, studentChoice, type Standings } from './standings';
 
 function board(over: Partial<Standings> = {}): Standings {
   return {
@@ -108,15 +108,6 @@ describe('own place (S6)', () => {
     expect(rankAnnouncement(before, board([row(7, 1, 340), row(1, 2, 300)]))).toBe('You are now 1st with 340 points.');
     expect(rankAnnouncement(before, board([row(1, 1, 300), row(7, 2, 240)]))).toBe('You are now 2nd with 240 points.');
     expect(rankAnnouncement(board([row(7, 2, 0)], 'frozen'), board([row(7, 3, 0)], 'frozen'))).toBe('You are now 3rd in the frozen standings.');
-  });
-});
-
-describe('board updated by a review decision (D77 amended)', () => {
-  it('says when without naming anyone, and nothing otherwise', () => {
-    const fmt = () => '21 Oct 2026';
-    expect(boardUpdatedLine({ board_updated_at: 1792400000000, board_update_reason: 'review_decision' }, fmt)).toBe('Board updated on 21 Oct 2026 after a review decision.');
-    expect(boardUpdatedLine({ board_updated_at: null, board_update_reason: null }, fmt)).toBe('');
-    expect(boardUpdatedLine({}, fmt)).toBe('');
   });
 });
 

@@ -5,11 +5,10 @@
 // members, and the integrity rules of decision D47 (second sessions,
 // retention). Since v2 it also keeps the contest audit log and the slug
 // history, pins problems by revision, reports queue health, applies the
-// board adjustments of review outcomes (zero for a problem), writes the
-// per-student contest summaries behind progress and the students pages,
-// and archives a term in the semester rollover. This file holds the
-// scoring itself, a pure function of the contest, its problems, its
-// submissions and its adjustments, so the rules can be tested against
+// board without the students an integrity decision excluded, and archives
+// a term in the semester rollover. This file holds the scoring itself, a
+// pure function of the contest, its problems and its submissions, so the
+// rules can be tested against
 // hand-computed boards.
 package contests
 
@@ -36,16 +35,6 @@ type Board struct {
 	// student freezes at their own end minus Freeze (window mode).
 	FreezeAt time.Time
 	Problems []BoardProblem
-	// Zeroed are the problems a review decision set to zero for one
-	// student (D77 amended, outcome_adjustments): Compute drops those
-	// submissions before scoring, on every call, so no rejudge can bring
-	// the score back. The cell still shows that the student tried.
-	Zeroed map[ZeroKey]bool
-}
-
-// ZeroKey names one student's problem on the board.
-type ZeroKey struct {
-	UserID, ProblemID int64
 }
 
 // BoardProblem is one contest problem with its subtasks' points.
@@ -96,10 +85,6 @@ type Row struct {
 	// from their start; the tie-break.
 	LastImprovementS int64  `json:"last_improvement_s"`
 	Cells            []Cell `json:"cells"`
-	// Zeroed lists the labels a review decision set to zero. It is never
-	// in the public standings (no mark on a cell, D77 amended); the
-	// organisers' exports and the student's own views read it.
-	Zeroed []string `json:"-"`
 }
 
 // Compute scores the board. With frozen set, a submission made at or after
@@ -127,18 +112,11 @@ func Compute(b Board, people []Participant, entries []Entry, frozen bool) []Row 
 			}
 			best := make([]int, len(prob.Points))
 			var reached time.Duration
-			zeroed := b.Zeroed[ZeroKey{p.UserID, prob.ProblemID}]
-			if zeroed {
-				row.Zeroed = append(row.Zeroed, prob.Label)
-			}
 			for _, e := range mine {
 				if e.ProblemID != prob.ProblemID {
 					continue
 				}
 				cell.Tried = true
-				if zeroed {
-					continue
-				}
 				if frozen && b.Freeze > 0 && !e.At.Before(freezeAt) {
 					cell.Pending++
 					continue

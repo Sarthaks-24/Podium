@@ -3,25 +3,16 @@ import {
   byteSpansToText,
   clusters,
   codeLines,
-  actionState,
-  defaultTitle,
   evidenceSize,
   filterSignals,
   formatScore,
-  seenExplanations,
-  turnOver,
-  type CaseUser,
   groupByProblem,
   noteCounter,
   noteLength,
   signalDetail,
   signalStudents,
   statsLine,
-  studentStateText,
-  casesStanding,
-  studentLead,
   type Signal,
-  waitingForMe,
 } from './review';
 
 const utf8 = (s: string) => new TextEncoder().encode(s).length;
@@ -161,7 +152,7 @@ describe('wording', () => {
 
   it('counts a reason the way the server does', () => {
     expect(noteLength('  héllo 😀  ')).toBe(7);
-    expect(noteCounter('short')).toBe('5 of at least 20 characters');
+    expect(noteCounter('short')).toBe('5 of at least 10 characters');
     expect(noteCounter('a'.repeat(25))).toBe('25 characters');
   });
 
@@ -170,26 +161,6 @@ describe('wording', () => {
       'Checked 30 students, 84 submissions and 2 problems. 4 signals: 3 similar code and 1 probing. 1 group of similar code.',
     );
     expect(statsLine({ students: 1, submissions: 1, problems: 1, signals: {}, clusters: 0 })).toBe('Checked 1 student, 1 submission and 1 problem. No signals.');
-  });
-
-  it('tells the student where their case stands', () => {
-    expect(studentStateText({ state: 'awaiting_student', explanation: '', decided: false })).toMatch(/^Waiting for your explanation/);
-    expect(studentStateText({ state: 'awaiting_student', explanation: 'I wrote it.', decided: false })).toMatch(/^Your explanation is saved/);
-    expect(studentStateText({ state: 'cleared', explanation: '', decided: true })).toMatch(/^Decided: cleared/);
-  });
-
-  it('says where all the cases of a student stand, for the nav and Home', () => {
-    expect(casesStanding(undefined)).toBe('none');
-    expect(casesStanding([])).toBe('none');
-    expect(casesStanding([{ decided: true }, { decided: false }])).toBe('asked');
-    expect(casesStanding([{ decided: true }])).toBe('decided');
-    expect(studentLead('decided')).toMatch(/where each one ended/);
-    expect(studentLead('asked')).toMatch(/^An organiser looked over a contest/);
-  });
-
-  it('suggests a title from the chosen signals', () => {
-    expect(defaultTitle([signal(1, {})], users, problems)).toBe('Similar code on B');
-    expect(defaultTitle([signal(1, {}), signal(2, { kind: 'probing', user_a: 9, user_b: undefined, problem_id: 11 })], users, problems)).toBe('Several signals');
   });
 });
 
@@ -222,60 +193,5 @@ describe('grouping', () => {
       [7, 8],
       [9, 10],
     ]);
-  });
-});
-
-describe("the students' turn", () => {
-  const day = 86_400_000;
-  const asked = 1_000 * day;
-  const user = (over: Partial<CaseUser>): CaseUser => ({
-    user_id: 7,
-    name: 'Asha Rao',
-    shared_at: asked,
-    asked_at: asked,
-    respond_by: asked + 7 * day,
-    explanation: '',
-    explained_at: null,
-    explanations: [],
-    ...over,
-  });
-  const explained = (at: number): Partial<CaseUser> => ({ explanation: 'Mine.', explained_at: at, explanations: [{ text: 'Mine.', created_at: at }] });
-
-  it('ends with an explanation after the latest share or when the days run out', () => {
-    expect(turnOver(user({}), asked + day)).toBe(false);
-    expect(turnOver(user({}), asked + 7 * day)).toBe(true);
-    expect(turnOver(user(explained(asked + 5)), asked + 10)).toBe(true);
-    // An explanation from before a new share does not count.
-    expect(turnOver(user(explained(asked - 5)), asked + 10)).toBe(false);
-    // After a reopen no turn is open.
-    expect(turnOver(user({ asked_at: null, respond_by: null, ...explained(asked + 5) }), asked + 10 * day)).toBe(false);
-  });
-
-  it('opens Take action only on a shared case where every turn is over', () => {
-    const a = user(explained(asked + 5));
-    const b = user({ user_id: 8, name: 'Ravi Kumar', respond_by: asked + 7 * day });
-    expect(actionState({ state: 'open', users: [a, b] }, asked + 8 * day)).toEqual({ open: false, opensAt: null });
-    expect(actionState({ state: 'awaiting_student', users: [a, b] }, asked + day)).toEqual({ open: false, opensAt: asked + 7 * day });
-    expect(actionState({ state: 'awaiting_student', users: [a, b] }, asked + 7 * day)).toEqual({ open: true, opensAt: null });
-  });
-
-  it('sends the latest explanation version of each student', () => {
-    const versions = { explanations: [{ text: 'One.', created_at: 5 }, { text: 'Two.', created_at: 9 }], explained_at: 9 };
-    expect(seenExplanations({ users: [user(versions), user({ user_id: 8 })] })).toEqual({ '7': 9 });
-  });
-});
-
-describe('waitingForMe', () => {
-  it('counts pending proposals this viewer may confirm (D321)', () => {
-    const pending = [{ state: 'pending' as const }];
-    const done = [{ state: 'confirmed' as const }];
-    expect(
-      waitingForMe([
-        { may_confirm: true, proposals: pending },
-        { may_confirm: false, proposals: pending },
-        { may_confirm: true, proposals: done },
-        { may_confirm: true },
-      ] as never),
-    ).toBe(1);
   });
 });

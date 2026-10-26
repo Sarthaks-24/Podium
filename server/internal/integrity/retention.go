@@ -4,91 +4,12 @@ import (
 	"context"
 
 	"github.com/Sarthaks-24/podium/internal/contests"
-	"github.com/Sarthaks-24/podium/internal/retention"
 )
-
-// CaseRetention is how long a closed case keeps its evidence and the
-// students' explanations (integrity plan section 3). After it both are
-// emptied, every explanation version included; the case row and its
-// decision log stay, so the outcome and the reasons for it remain on
-// record.
-const CaseRetention = retention.CaseEvidence
-
-// Retain applies both integrity retention rules and returns how many
-// cases it emptied:
-//
-//   - RetainSignals: a contest's checks and signals go once its integrity
-//     records pass contests.RetentionPeriod.
-//   - Cases closed more than CaseRetention ago lose their evidence,
-//     explanations, appeal texts and, for a manual case, the notes it was
-//     opened with. Open and awaiting_student cases are never touched.
-//
-// It is idempotent. Signal and run deletions are logged when Log is set.
-func (s *Service) Retain(ctx context.Context) (int64, error) {
-	signals, runs, err := s.RetainSignals(ctx)
-	if err != nil {
-		return 0, err
-	}
-	if (signals > 0 || runs > 0) && s.Log != nil {
-		s.Log.Info("integrity checks past retention removed", "signals", signals, "runs", runs)
-	}
-	cutoff := s.now().Add(-CaseRetention).UnixMilli()
-	tx, err := s.DB.BeginTx(ctx, nil)
-	if err != nil {
-		return 0, err
-	}
-	defer tx.Rollback()
-	const old = `SELECT id FROM integrity_cases WHERE state IN ('cleared', 'actioned') AND closed_at IS NOT NULL AND closed_at < ?`
-	if _, err := tx.ExecContext(ctx, `UPDATE integrity_case_users SET explanation = '' WHERE explanation <> '' AND case_id IN (`+old+`)`,
-		cutoff); err != nil {
-		return 0, err
-	}
-	if _, err := tx.ExecContext(ctx, `DELETE FROM integrity_explanations WHERE case_id IN (`+old+`)`, cutoff); err != nil {
-		return 0, err
-	}
-	// Appeals are explanations too: their text goes; the ruling stays. An
-	// appeal of a manual adjustment has no case: its text goes as long
-	// after it was written.
-	if _, err := tx.ExecContext(ctx, `UPDATE integrity_appeals SET text = '' WHERE text <> '' AND case_id IN (`+old+`)`, cutoff); err != nil {
-		return 0, err
-	}
-	if _, err := tx.ExecContext(ctx, `UPDATE integrity_appeals SET text = '' WHERE text <> '' AND case_id IS NULL AND created_at < ?`, cutoff); err != nil {
-		return 0, err
-	}
-	// The reviewers' note and the student's reason on each proposal.
-	if _, err := tx.ExecContext(ctx, `UPDATE integrity_proposals SET note = '', reason = '' WHERE (note <> '' OR reason <> '')
-		AND case_id IN (`+old+`)`, cutoff); err != nil {
-		return 0, err
-	}
-	// The notes a manual case was opened with were kept for it; they go
-	// with its evidence. Their trigger accepts deletes older than the
-	// notes' cutoff (30 days), which only ever moves forward.
-	// The cutoff never runs ahead of the database's own clock (the
-	// trigger floor reads it).
-	if _, err := tx.ExecContext(ctx, `INSERT INTO retention_cutoffs (tbl, before_ms)
-		VALUES ('submission_notes', min(?, CAST((julianday('now') - 2440587.5) * 86400000 AS INTEGER) - 30 * 86400000))
-		ON CONFLICT (tbl) DO UPDATE SET before_ms = excluded.before_ms WHERE excluded.before_ms > retention_cutoffs.before_ms`,
-		s.now().Add(-NoteRetention).UnixMilli()); err != nil {
-		return 0, err
-	}
-	if _, err := tx.ExecContext(ctx, `DELETE FROM submission_notes WHERE created_at < ? AND submission_id IN
-		(SELECT submission_id FROM integrity_cases WHERE source = 'manual' AND submission_id IS NOT NULL AND id IN (`+old+`))`,
-		s.now().Add(-NoteRetention).UnixMilli(), cutoff); err != nil {
-		return 0, err
-	}
-	res, err := tx.ExecContext(ctx, `UPDATE integrity_cases SET evidence = '[]' WHERE evidence <> '[]' AND id IN (`+old+`)`, cutoff)
-	if err != nil {
-		return 0, err
-	}
-	n, _ := res.RowsAffected()
-	return n, tx.Commit()
-}
 
 // RetainSignals deletes the integrity checks (runs) and their signals of
 // every contest that ended for everyone more than contests.RetentionPeriod
 // ago, the same cutoff contests.Retain uses for the integrity records.
-// Cases are not touched: each keeps its own copy of the signals it was
-// opened from, so an open case still has its evidence. It is idempotent
+// Decisions are not touched: their reason says what they rested on. It is idempotent
 // and returns how many signals and runs it deleted.
 func (s *Service) RetainSignals(ctx context.Context) (signals, runs int64, err error) {
 	cutoff := s.now().Add(-contests.RetentionPeriod).UnixMilli()

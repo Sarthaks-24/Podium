@@ -33,12 +33,9 @@ const (
 	AuditArchive    = "archive"
 	// AuditDeployForced is written by podium-server deploy-check -force.
 	AuditDeployForced = "deploy_forced" // {"reason", "release", "refused"}
-	// AuditBoardAdjusted is a review decision zeroing a student's problem
-	// on the board, or an upheld appeal removing that zero (D77 amended):
-	// {"decision_id", "problem_label", "user_id", "rank_before",
-	// "total_before", "score_before", "reversed"}. Integrity data: never
-	// shown to a co-organiser whose site role is student.
-	AuditBoardAdjusted = "board_adjusted"
+	// AuditDecision is an integrity decision about one student:
+	// {"user_id", "decision"}; the reason stays in integrity_cases.
+	AuditDecision = "integrity_decision"
 )
 
 // Actor is the person an audit row names.
@@ -66,6 +63,21 @@ type execer interface {
 // JSON (nil records an empty object).
 func (s *Service) Record(ctx context.Context, contestID int64, a Actor, action string, details any) error {
 	return s.recordTx(ctx, s.DB, contestID, a, action, details)
+}
+
+// RecordTx is Record inside the caller's transaction, stamped now (Unix
+// milliseconds), so the audit row commits or rolls back with the change.
+func RecordTx(ctx context.Context, tx *sql.Tx, contestID int64, a Actor, action string, details any, now int64) error {
+	b, err := json.Marshal(details)
+	if err != nil {
+		return fmt.Errorf("audit details: %w", err)
+	}
+	_, err = tx.ExecContext(ctx, `INSERT INTO contest_audit (contest_id, actor_id, actor_email, actor_role, action, details, created_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?)`, contestID, a.ID, a.Email, a.Role, action, string(b), now)
+	if err != nil {
+		return fmt.Errorf("record %s in the audit log: %w", action, err)
+	}
+	return nil
 }
 
 func (s *Service) recordTx(ctx context.Context, ex execer, contestID int64, a Actor, action string, details any) error {
@@ -162,7 +174,7 @@ const AuditPage = 200
 // actors whose email contains Actor (case insensitive).
 type AuditFilter struct {
 	Action, Actor string
-	// NoIntegrity leaves out board_adjusted rows, and the reason of an
+	// NoIntegrity leaves out integrity decision rows, and the reason of an
 	// extension row written before v1.4.0 (it can be health data), for a
 	// co-organiser whose site role is student.
 	NoIntegrity bool
@@ -185,7 +197,7 @@ func (s *Service) AuditLog(ctx context.Context, contestID int64, page int, f Aud
 		args = append(args, strings.ToLower(f.Actor))
 	}
 	if f.NoIntegrity {
-		q += " AND action <> '" + AuditBoardAdjusted + "'"
+		q += " AND action <> '" + AuditDecision + "'"
 	}
 	rows, err := s.DB.QueryContext(ctx, q+" ORDER BY id DESC LIMIT ? OFFSET ?", append(args, AuditPage+1, (page-1)*AuditPage)...)
 	if err != nil {

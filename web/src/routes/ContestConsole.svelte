@@ -7,9 +7,7 @@
     attentionItems): time to the end, when the board freezes, judging on
     or paused with Pause or Resume, the queue and its oldest wait, judge
     errors, whether a judge is asking for work, unanswered questions,
-    problems validated on another toolchain, cases whose proposal waits
-    for this reviewer's confirmation (linked to the integrity page's case
-    list, D321), and when the page last
+    problems validated on another toolchain, and when the page last
     refreshed. An item is coloured only when it needs action. A failed
     refresh keeps the last rows and says so.
   - Beside the work from 1280 px, and first below that: Questions, each
@@ -20,11 +18,9 @@
     pages, and a refresh every 10 s. Outcomes read as students read them
     ("Partial, 40 of 100" apart from a zero); the time is minutes from the
     start, with the clock time on hover; "Judge again" is a quiet button
-    per row, and judging a whole problem again says what it does. Each
-    student's name opens their progress page (web-quality #16). For
-    reviewers each row also has "Notes" (private notes on the submission,
-    components/SubmissionNotes, with "Open a case" through OpenCaseDialog;
-    v2 P4 F9.3) and a link to the case opened from it.
+    per row, and judging a whole problem again says what it does. For
+    owners and admins each row also has "Record a decision"
+    (DecisionDialog), the integrity decision about that student.
   - Time: extend the contest for everyone (the confirmation names the new
     end), extra minutes for one student with a reason, and "End the
     contest now", which says its effect before it sets the end to now.
@@ -47,8 +43,7 @@
   import Icon from '../components/Icon.svelte';
   import Markdown from '../components/Markdown.svelte';
   import MonoDigits from '../components/MonoDigits.svelte';
-  import OpenCaseDialog from '../components/OpenCaseDialog.svelte';
-  import SubmissionNotes from '../components/SubmissionNotes.svelte';
+  import DecisionDialog from '../components/DecisionDialog.svelte';
   import { ApiError, errorText, getJSON, sendJSON } from '../lib/api';
   import { serverClock } from '../lib/clock';
   import {
@@ -143,16 +138,8 @@
   // Problem revisions.
   let pinNote = $state('');
 
-  // Private notes and manual cases (F9.3).
-  let notesFor = $state<{ id: number; name: string; label: string } | null>(null);
-  let caseFor = $state<{ id: number; name: string; label: string } | null>(null);
-
-  /** Keeps the feed row in step with the notes dialog. */
-  function notesChanged(count: number, caseId: number | null) {
-    const target = notesFor;
-    if (!target) return;
-    feed = feed.map((r) => (r.id === target.id ? { ...r, note_count: count, case_id: caseId } : r));
-  }
+  // The integrity decision about one student, from a feed row.
+  let deciding = $state<{ id: number; name: string } | null>(null);
 
   // Clarifications.
   let clarifications = $state<Clarification[]>([]);
@@ -166,11 +153,7 @@
     [...clarifications].sort((a, b) => Number(Boolean(a.answer)) - Number(Boolean(b.answer)) || b.created_at - a.created_at),
   );
   const unanswered = $derived(clarifications.filter((c) => !c.answer).length);
-  /** Cases whose proposal waits for this reviewer's confirmation (D321); 0 when the count cannot be read. */
-  let waitingForYou = $state(0);
-  const attention = $derived(
-    contest ? attentionItems(contest, ticker.now, unanswered, { count: waitingForYou, href: `/admin/contests/${encodeURIComponent(id)}/integrity#cases-title` }) : [],
-  );
+  const attention = $derived(contest ? attentionItems(contest, ticker.now, unanswered) : []);
   const running = $derived(contest !== null && ticker.now >= contest.starts_at && ticker.now < closeAt);
   const updateWaiting = $derived((contest?.problems ?? []).some((p) => p.update_available || p.toolchain_drift));
   /** Problem revisions stay folded until an update or a toolchain change needs them; they never fold by themselves. */
@@ -256,16 +239,6 @@
       }
       feedError = errorText(e);
       feedState = 'error';
-    }
-  }
-
-  /** The waiting count; a co-organiser who may not review gets 403, which leaves it at 0. */
-  async function loadWaiting() {
-    try {
-      const data = await getJSON<{ waiting_for_you: number }>(`${base}/integrity/waiting`);
-      waitingForYou = data.waiting_for_you ?? 0;
-    } catch {
-      waitingForYou = 0;
     }
   }
 
@@ -651,13 +624,11 @@
       void loadFeed();
       void loadSide();
       void loadStudents();
-      void loadWaiting();
     });
     timer = setInterval(() => {
       if (!autoRefresh || loadState !== 'ready' || document.visibilityState === 'hidden') return;
       void loadFeed();
       void loadSide();
-      void loadWaiting();
       // The contest carries the queue health (C10); loading it also refreshes the changes.
       void loadContest(true);
     }, 10_000);
@@ -880,22 +851,18 @@
                   <tr>
                     <td class="when" title={formatWhen(row.created_at, ticker.now)}><MonoDigits text={since ?? formatWhen(row.created_at, ticker.now)} /></td>
                     <th scope="row" class="who">
-                      <a href="/admin/users/{row.user_id}/progress">{row.name}</a>{#if row.practice}<span class="muted"> (practice)</span>{/if}
-                      {#if row.case_id}<a class="case-link" href="/admin/integrity/cases/{row.case_id}">Case {row.case_id}</a>{/if}
+                      {row.name}{#if row.practice}<span class="muted"> (practice)</span>{/if}
                     </th>
                     <td class="mono plabel">{row.problem_label ?? row.label}</td>
                     <td class="lang" title={judgedWith(row.language, row.toolchain) || undefined}>{languageLabel(row.language)}</td>
                     <td class="verdict"><Badge tone={out.tone}><MonoDigits text={out.text} /></Badge></td>
                     <td class="act">
-                      {#if row.note_count !== undefined}
-                        <button
-                          type="button"
-                          class="btn btn-quiet btn-compact again"
-                          aria-label="Notes on {row.name}'s submission to problem {row.problem_label ?? row.label}, {formatWhen(row.created_at, ticker.now)}{row.note_count > 0 ? `, ${countOf(row.note_count, 'note')}` : ''}"
-                          onclick={() => (notesFor = { id: row.id, name: row.name, label: row.problem_label ?? row.label ?? '' })}
-                          >{row.note_count > 0 ? countOf(row.note_count, 'note') : 'Notes'}</button
-                        >
-                      {/if}
+                      <button
+                        type="button"
+                        class="btn btn-quiet btn-compact again"
+                        aria-label="Record a decision about {row.name}"
+                        onclick={() => (deciding = { id: row.user_id, name: row.name })}>Record a decision</button
+                      >
                       <button
                         type="button"
                         class="btn btn-quiet btn-compact again"
@@ -1072,29 +1039,14 @@
     </div>
   </div>
 
-  <SubmissionNotes
-    open={notesFor !== null}
-    submission={notesFor}
-    onclose={() => (notesFor = null)}
-    onchange={notesChanged}
-    onopencase={() => {
-      caseFor = notesFor;
-      notesFor = null;
-    }}
-  />
-  <OpenCaseDialog
-    open={caseFor !== null}
+  <DecisionDialog
+    open={deciding !== null}
     contestId={id}
-    signals={[]}
-    users={undefined}
-    problems={undefined}
-    submission={caseFor}
-    onclose={() => (caseFor = null)}
-    oncreated={(c) => {
-      const target = caseFor;
-      caseFor = null;
-      if (target) feed = feed.map((r) => (r.id === target.id ? { ...r, case_id: c.id } : r));
-      showToast('Opened the case. Share it with the student when you are ready.');
+    student={deciding}
+    onclose={() => (deciding = null)}
+    ondecided={() => {
+      deciding = null;
+      showToast('Recorded the decision');
     }}
   />
 
@@ -1269,13 +1221,6 @@
 
   .who a {
     color: var(--ink);
-  }
-
-  .who .case-link {
-    color: var(--act);
-    margin-inline-start: var(--space-2);
-    font-size: var(--fs-0);
-    font-weight: 400;
   }
 
   .act {

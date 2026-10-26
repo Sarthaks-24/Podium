@@ -154,9 +154,6 @@ func (s *Service) MyScore(ctx context.Context, c *Contest, st StudentState, user
 		return 0, nil, err
 	}
 	b := s.scoringBoard(c)
-	if b.Zeroed, err = s.Adjustments(ctx, c.ID); err != nil {
-		return 0, nil, err
-	}
 	p := Participant{UserID: userID, Started: st.Window.Opens, Ends: st.Window.Ends}
 	rows := Compute(b, []Participant{p}, entries, false)
 	cells := map[string]Cell{}

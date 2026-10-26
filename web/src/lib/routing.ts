@@ -26,18 +26,8 @@ export type RouteName =
   | 'contest-results'
   | 'contest-integrity'
   | 'integrity-pair'
-  | 'integrity-case'
-  | 'my-integrity'
-  | 'my-case'
-  | 'progress'
-  | 'admin-progress'
   | 'students'
-  | 'student'
-  | 'student-record'
-  | 'inbox'
   | 'privacy'
-  | 'contact'
-  | 'contact-inbox'
   | 'not-found';
 
 /** One row of the route table. */
@@ -81,20 +71,10 @@ export const ROUTES: readonly RouteDef[] = [
   { pattern: '/admin/contests/:id', name: 'admin-contest', auth: true, public: false, title: 'Contest settings', description: 'Edit a contest: times, problems, rules and publishing.' },
   { pattern: '/admin/contests/:id/console', name: 'contest-console', auth: true, public: false, title: 'Console', description: 'Run a live contest: submissions, questions, announcements and time.' },
   { pattern: '/admin/contests/:id/results', name: 'contest-results', auth: true, public: false, title: 'Results', description: 'Final scores and problem statistics for a contest.' },
-  { pattern: '/admin/contests/:id/integrity', name: 'contest-integrity', auth: true, public: false, title: 'Integrity', description: 'Signals worth a look and open cases for a contest.' },
+  { pattern: '/admin/contests/:id/integrity', name: 'contest-integrity', auth: true, public: false, title: 'Integrity', description: 'Similar code and other signals for a contest, and the decisions recorded.' },
   { pattern: '/admin/contests/:id/integrity/signals/:signal', name: 'integrity-pair', auth: true, public: false, title: 'Signal', description: 'One integrity signal with its evidence.' },
-  { pattern: '/admin/integrity/cases/:case', name: 'integrity-case', auth: true, public: false, title: 'Case', description: 'One integrity case: evidence, notes and the decision.' },
   { pattern: '/privacy', name: 'privacy', auth: false, public: false, title: 'Privacy', description: 'What podium records about you, who can see it and how long it is kept.' },
-  { pattern: '/contact', name: 'contact', auth: true, public: false, title: 'Write to the organisers', description: 'Send the organisers a message about a contest, your account or your data.' },
-  { pattern: '/admin/contact', name: 'contact-inbox', auth: true, public: false, title: 'Inbox', description: 'Messages people sent to the organisers, with a reply link.' },
-  { pattern: '/integrity', name: 'my-integrity', auth: true, public: false, title: 'Questions and standing', description: 'Your standing, and the questions the organisers asked about your submissions with your replies.' },
-  { pattern: '/integrity/cases/:case', name: 'my-case', auth: true, public: false, title: 'Question about your submission', description: 'One question from the organisers about your submission, your reply and any decision.' },
-  { pattern: '/progress', name: 'progress', auth: true, public: false, title: 'Your progress', description: 'Your final results across contests, where points were lost and what to practise next.' },
-  { pattern: '/admin/users/:id/progress', name: 'admin-progress', auth: true, public: false, title: 'Student progress', description: 'The final results of one student across contests, as they see them.' },
-  { pattern: '/admin/students', name: 'students', auth: true, public: false, title: 'Students', description: 'Every student with their graded contests, latest result and rating, with filters for who may need help.' },
-  { pattern: '/admin/students/:id', name: 'student', auth: true, public: false, title: 'Student', description: 'One student across graded contests, beside the class median.' },
-  { pattern: '/admin/students/:id/record', name: 'student-record', auth: true, public: false, title: 'Record', description: "One student's standing, rating, cases, notes and appeals, for organisers. Every visit is logged." },
-  { pattern: '/notices', name: 'inbox', auth: true, public: false, title: 'Notices', description: 'Notices about your results and about questions from the organisers.' },
+  { pattern: '/admin/students', name: 'students', auth: true, public: false, title: 'Students', description: 'Every student who signed in, with the contests they took part in.' },
 ];
 
 /** Shown for any path that matches nothing in ROUTES. */

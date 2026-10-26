@@ -4,10 +4,8 @@
 //
 // With no argument it runs the server. The subcommands are operator tools
 // that open the database themselves (usage in flag.Usage below, details in
-// docs/OPERATIONS.md): check, deploy-check, saw, runs-report, migrate,
-// forget-user and semester-rollover. forget-user is a dry run unless given
-// -apply; semester-rollover applies unless given -dry-run, and a second run
-// for the same label changes nothing.
+// docs/OPERATIONS.md): check, runs-report, migrate and forget-user.
+// forget-user is a dry run unless given -apply.
 package main
 
 import (
@@ -50,12 +48,9 @@ func main() {
 		fmt.Fprintln(os.Stderr, "usage: podium-server [-env-file FILE]           run the server")
 		fmt.Fprintln(os.Stderr, "       podium-server -version                    print what this build is")
 		fmt.Fprintln(os.Stderr, "       podium-server check [-db F] [-tests D] [-hash]  check a database and its test files")
-		fmt.Fprintln(os.Stderr, "       podium-server deploy-check [-db F] [-force REASON -release TAG]  may a release be installed now?")
-		fmt.Fprintln(os.Stderr, "       podium-server saw -contest SLUG -email E -label A [-at TIME]  what a student was shown of a problem")
 		fmt.Fprintln(os.Stderr, "       podium-server runs-report [-db F]          runs with a custom input, per contest")
 		fmt.Fprintln(os.Stderr, "       podium-server migrate -db COPY             rehearse an upgrade on a copy of the database")
 		fmt.Fprintln(os.Stderr, "       podium-server forget-user [-db F] [-apply] EMAIL  erase one person (a dry run without -apply)")
-		fmt.Fprintln(os.Stderr, "       podium-server semester-rollover [-db F] [-dry-run] LABEL  add 0.5 to every rating with no outcome this term")
 	}
 	flag.Parse()
 	if *showVersion {
@@ -65,20 +60,11 @@ func main() {
 	if flag.Arg(0) == "check" {
 		os.Exit(checkCmd(flag.Args()[1:], os.Stdout))
 	}
-	if flag.Arg(0) == "deploy-check" {
-		os.Exit(deployCheckCmd(flag.Args()[1:], os.Stdout))
-	}
-	if flag.Arg(0) == "saw" {
-		os.Exit(sawCmd(flag.Args()[1:], os.Stdout))
-	}
 	if flag.Arg(0) == "migrate" {
 		os.Exit(migrateCmd(flag.Args()[1:], os.Stdout))
 	}
 	if flag.Arg(0) == "forget-user" {
 		os.Exit(forgetCmd(flag.Args()[1:], os.Stdout))
-	}
-	if flag.Arg(0) == "semester-rollover" {
-		os.Exit(rolloverCmd(flag.Args()[1:], os.Stdout))
 	}
 	if flag.Arg(0) == "runs-report" {
 		os.Exit(runsReportCmd(flag.Args()[1:], os.Stdout))
@@ -203,7 +189,6 @@ func run(envFile string) error {
 		log.Warn("integrity checks interrupted by the last shutdown marked as failed", "count", n)
 	}
 	go sweepJobs(ctx, jobSvc, log)
-	go sweepStudents(ctx, contestSvc, integritySvc, log)
 	go retainIntegrity(ctx, contestSvc, integritySvc, log, func(ctx context.Context) {
 		start := time.Now()
 		res, err := blobs.GC(ctx, database, start)
@@ -215,12 +200,8 @@ func run(envFile string) error {
 				"ms", time.Since(start).Milliseconds())
 		}
 	})
-	// The retention periods of internal/retention that no other job
-	// applies: run payloads, contact messages, unused revisions,
-	// submissions with their summaries, audit rows (B3.1), notes, notices,
-	// record views and rating history (B4.1). Once a day.
-	go retainDaily(ctx, &retention.Job{DB: database, Log: log, ExportStandings: contestSvc.FinalStandings,
-		Expired: contestSvc.Invalidate}, log)
+	// Run payloads past retention.RunPayloads are emptied once a day.
+	go retainDaily(ctx, &retention.Job{DB: database, Log: log}, log)
 	handler := httpapi.New(httpapi.Deps{
 		DB: database, Log: log, WebApp: webui.Handler(webui.Options{BaseURL: cfg.BaseURL, Log: log, Organisation: func(r *http.Request) (webui.Organisation, error) {
 			o, err := authSvc.Organisation(r.Context())
@@ -312,37 +293,11 @@ func sweepJobs(ctx context.Context, j *jobs.Service, log *slog.Logger) {
 	}
 }
 
-// sweepStudents writes the per-student summaries of contests that turned
-// final (or were rejudged since), tells students of a revealed contest,
-// and sends the day-5 reply reminders, once a minute (B4.4, B4.7).
-func sweepStudents(ctx context.Context, c *contests.Service, cases *integrity.Service, log *slog.Logger) {
-	t := time.NewTicker(time.Minute)
-	defer t.Stop()
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-t.C:
-		}
-		if n, err := c.SweepSummaries(ctx); err != nil && ctx.Err() == nil {
-			log.Warn("contest summaries failed", "err", err)
-		} else if n > 0 {
-			log.Info("contest summaries written", "contests", n)
-		}
-		if n, err := cases.SweepReminders(ctx); err != nil && ctx.Err() == nil {
-			log.Warn("case reminders failed", "err", err)
-		} else if n > 0 {
-			log.Info("case reminders sent", "count", n)
-		}
-	}
-}
-
-// retainIntegrity applies the integrity retention rules at start-up and
-// every 12 hours: contest records are deleted 180 days after a contest
-// ends, except for students in an open case (D47), and a closed case's
-// evidence and explanations are emptied 2 years after its decision. The
-// same pass then removes test files and sources nothing refers to any more
-// (gcBlobs, problems.Blobs.GC).
+// retainIntegrity applies the integrity retention rule at start-up and
+// every 12 hours: a contest's integrity events and its similarity checks
+// are deleted 180 days after it ends (D47). The same pass then removes
+// test files and sources nothing refers to any more (gcBlobs,
+// problems.Blobs.GC).
 func retainIntegrity(ctx context.Context, c *contests.Service, cases *integrity.Service, log *slog.Logger, gcBlobs func(context.Context)) {
 	t := time.NewTicker(12 * time.Hour)
 	defer t.Stop()
@@ -352,10 +307,10 @@ func retainIntegrity(ctx context.Context, c *contests.Service, cases *integrity.
 		} else if events > 0 || subs > 0 {
 			log.Info("integrity data past retention removed", "events", events, "submissions", subs)
 		}
-		if n, err := cases.Retain(ctx); err != nil && ctx.Err() == nil {
-			log.Warn("integrity case retention failed", "err", err)
-		} else if n > 0 {
-			log.Info("integrity case evidence past retention removed", "cases", n)
+		if signals, runs, err := cases.RetainSignals(ctx); err != nil && ctx.Err() == nil {
+			log.Warn("integrity check retention failed", "err", err)
+		} else if signals > 0 || runs > 0 {
+			log.Info("integrity checks past retention removed", "signals", signals, "runs", runs)
 		}
 		gcBlobs(ctx)
 		select {
@@ -384,10 +339,7 @@ func retainDaily(ctx context.Context, j *retention.Job, log *slog.Logger) {
 		case err != nil && ctx.Err() == nil:
 			log.Warn("retention job failed; it runs again tomorrow", "err", err)
 		case res != (retention.Result{}):
-			log.Info("data past retention removed", "runs_emptied", res.RunsEmptied, "contact_messages", res.ContactDeleted,
-				"revisions", res.RevisionsDeleted, "contests", res.ContestsExpired, "submissions", res.SubmissionsDeleted,
-				"audit_rows", res.AuditDeleted, "notes", res.NotesDeleted, "notices", res.NoticesDeleted, "record_views", res.ViewsDeleted,
-				"rating_rows", res.RatingRowsDeleted, "ms", time.Since(start).Milliseconds())
+			log.Info("data past retention removed", "runs_emptied", res.RunsEmptied, "ms", time.Since(start).Milliseconds())
 		}
 	}
 }

@@ -290,9 +290,6 @@ func (d Deps) logout(w http.ResponseWriter, r *http.Request) {
 type meJSON struct {
 	auth.User
 	SiteUpdatedAt *int64 `json:"site_updated_at"`
-	// NotificationsUnread is 0 while the person is in a live contest
-	// (C9: notices are held).
-	NotificationsUnread int `json:"notifications_unread"`
 }
 
 func (d Deps) me(w http.ResponseWriter, r *http.Request) {
@@ -305,12 +302,6 @@ func (d Deps) me(w http.ResponseWriter, r *http.Request) {
 	if ok {
 		out.SiteUpdatedAt = millis(at)
 	}
-	if n := d.notices(); n != nil {
-		if out.NotificationsUnread, err = n.Unread(r.Context(), out.ID); err != nil {
-			d.internalError(w, r, err)
-			return
-		}
-	}
 	WriteJSON(w, http.StatusOK, out)
 }
 
@@ -322,10 +313,6 @@ func (d Deps) setPreferences(w http.ResponseWriter, r *http.Request) {
 	if err := d.Auth.SetPreferences(r.Context(), userFrom(r.Context()).ID, p); err != nil {
 		d.changeError(w, r, err)
 		return
-	}
-	if p.HideProgress == nil {
-		hide := userFrom(r.Context()).HideProgress
-		p.HideProgress = &hide
 	}
 	WriteJSON(w, http.StatusOK, p)
 }

@@ -40,12 +40,7 @@
     towards the standings). Announcements and "Your questions" with their
     answers sit beside it from 1280 px. A board still frozen after the end
     gives the place only, never a frozen total beside the live score; when
-    the clock ran out on this page, "Time is up" stays on screen. Once the
-    board is final (full and every window closed, never while frozen or
-    held), "Your result" reads GET /api/me/progress for the one problem
-    to practise next and links "See your progress" (v2 P4 F4b.3); a
-    problem a review decision set to zero says so, with a link to the
-    case (D77, F9.2).
+    the clock ran out on this page, "Time is up" stays on screen.
 
   Props: `slug`, and `label` (the problem letter from the address, or "").
 -->
@@ -98,8 +93,7 @@
   import { adjacentLabel, isPlainKey, isTypingTarget } from '../lib/shortcuts';
   import { session } from '../lib/session.svelte';
   import { shell } from '../lib/shell.svelte';
-  import { boardUpdatedLine, placeFigure, placeSentence, type Standings } from '../lib/standings';
-  import { contestEntry, practiseNextIn, problemHref, type Progress, type ProgressContest } from '../lib/progress';
+  import { placeFigure, placeSentence, type Standings } from '../lib/standings';
   import { EventStream, type StreamMode } from '../lib/stream';
   import { refreshTicker, ticker, useTicker } from '../lib/ticker.svelte';
   import { EXAMPLE_SUBMISSION, type Submission, type Workspace as WorkspaceData } from '../lib/workspace';
@@ -340,31 +334,6 @@
       }
     });
   });
-
-  // Once the board is final, this contest's entry in "Your progress" (F4b.3).
-  // Never asked while the board is frozen or held: those results are not final.
-  let progressEntry = $state.raw<ProgressContest | null>(null);
-  let progressAsked = false;
-  $effect(() => {
-    const s = standings;
-    if (!s || s.variant !== 'full' || !s.final || progressAsked) return;
-    progressAsked = true;
-    untrack(async () => {
-      try {
-        progressEntry = contestEntry(await getJSON<Progress>('/api/me/progress'), slug);
-      } catch {
-        progressEntry = null;
-      }
-    });
-  });
-  const practiseNext = $derived(practiseNextIn(progressEntry));
-
-  /** The student's own mark on a problem a review decision set to zero (contract C9). */
-  function zeroCase(p: object): number | null {
-    const own = p as { zero_by_decision?: boolean; zero_case_id?: number | null };
-    if (own.zero_by_decision !== true) return null;
-    return typeof own.zero_case_id === 'number' ? own.zero_case_id : 0;
-  }
 
   async function loadHistory(l: string) {
     if (history[l] && history[l] !== 'error') return;
@@ -690,17 +659,9 @@
               Ended <MonoDigits text={formatDayTime(endedAt)} />. You scored <MonoDigits parts={scoreParts(totalScore, totalMax)} />.
             </p>
             {#if standings && standings.variant === 'frozen'}<p>{placeSentence(standings, true)}</p>{/if}
-            {#if standings && boardUpdatedLine(standings, formatDateTime)}<p class="muted"><MonoDigits text={boardUpdatedLine(standings, formatDateTime)} /></p>{/if}
             {#if practice}<p class="muted">Practice is open: new submissions do not count.</p>{/if}
-            {#if practiseNext}
-              <p>
-                To practise next: problem <span class="mono">{practiseNext.label}</span>, {practiseNext.title}, where you scored <MonoDigits parts={scoreParts(practiseNext.score ?? 0, practiseNext.max_score)} />.
-                {#if practiseNext.practice_open}<a href={problemHref(slug, practiseNext.label)}>Practise problem {practiseNext.label}</a>{/if}
-              </p>
-            {/if}
             <div class="action-row">
               <a class="btn btn-secondary" href="/contests/{encodeURIComponent(slug)}/standings">See the standings</a>
-              {#if progressEntry}<a class="btn btn-quiet" href="/progress">See your progress</a>{/if}
             </div>
             <div class="table-wrap results">
               <table class="table">
@@ -714,13 +675,9 @@
                 </thead>
                 <tbody>
                   {#each problems as p (p.label)}
-                    {@const zeroed = zeroCase(p)}
                     <tr>
                       <th scope="row">
                         <span class="mono letter">{p.label}</span>{p.title}
-                        {#if zeroed !== null}
-                          <span class="zeroed">Zero on this problem by decision. <a href={zeroed > 0 ? `/integrity/cases/${zeroed}` : '/integrity'}>See your case</a></span>
-                        {/if}
                       </th>
                       <td class="right score"><MonoDigits parts={scoreParts(p.my_score ?? 0, p.max_score)} /></td>
                       <td class="open">
@@ -923,13 +880,6 @@
   .result {
     display: grid;
     gap: var(--space-3);
-  }
-
-  .zeroed {
-    display: block;
-    color: var(--ink-muted);
-    font-size: var(--fs-0);
-    font-weight: 400;
   }
 
   .result-lead {

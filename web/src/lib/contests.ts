@@ -919,7 +919,6 @@ export function attentionItems(
   },
   now: number,
   unanswered: number,
-  confirm?: { count: number; href: string },
 ): AttentionItem[] {
   const out: AttentionItem[] = [];
   const close = c.close_at ?? c.ends_at;
@@ -979,11 +978,6 @@ export function attentionItems(
     });
   }
 
-  // A proposal that only this reviewer can confirm (D321); shown after the
-  // close too, as reviews happen then.
-  if (confirm && confirm.count > 0) {
-    out.push({ key: 'confirm', text: `${countOf(confirm.count, 'case')} waiting for your confirmation`, tone: 'part', href: confirm.href });
-  }
   return out;
 }
 

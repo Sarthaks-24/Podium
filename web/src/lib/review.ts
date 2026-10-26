@@ -3,11 +3,10 @@
  * sections 5 and 7, docs/INTEGRITY.md).
  *
  * The shapes mirror the API: Run from GET /api/admin/contests/{id}/integrity,
- * PairSide from .../signals/{signal}/pair (and from a case's own copy at
- * /api/admin/integrity/cases/{case}/evidence/{index}/pair), Moment from
- * .../timeline/{user}, Case from the case routes, and StudentCase from
- * GET /api/integrity/cases. A similarity score is the share of the shorter
- * program found in the other, shown with how much code is behind it.
+ * PairSide from .../signals/{signal}/pair, Moment from .../timeline/{user}
+ * and Case (one decision about one student) from .../integrity/cases. A
+ * similarity score is the share of the shorter program found in the
+ * other, shown with how much code is behind it.
  *
  * The rest is pure wording and maths. Signals are reasons to look, never
  * proof, so they are worded as strength ("Strong", "Moderate", "Weak") with
@@ -18,13 +17,11 @@
  * groups of students linked by similar-code signals on one problem,
  * worked out here with union-find (the API reports only their number).
  */
-import { formatDateTime } from './format';
 import { languageLabel } from './workspace';
 
 export type SignalKind = 'similar' | 'wrong_output' | 'hardcoded' | 'probing';
 export type Strength = 'strong' | 'moderate' | 'weak';
 export type RunState = 'running' | 'done' | 'error';
-export type CaseState = 'open' | 'awaiting_student' | 'cleared' | 'actioned';
 
 /** A byte range in a UTF-8 source: start inclusive, end exclusive. */
 export interface Span {
@@ -122,160 +119,9 @@ export interface Moment {
   text: string;
 }
 
-/** One saved version of a student's explanation; created_at names it. */
-export interface ExplanationVersion {
-  text: string;
-  created_at: number;
-}
-
-export interface CaseUser {
-  user_id: number;
-  name: string;
-  /** The first share: from then on the student sees the case. */
-  shared_at: number | null;
-  /** The latest share, which starts the student's turn; null while no turn is open. */
-  asked_at?: number | null;
-  /** The end of the student's response window. */
-  respond_by?: number | null;
-  /** The latest version. */
-  explanation: string;
-  explained_at: number | null;
-  /** Every version, oldest first. */
-  explanations?: ExplanationVersion[];
-  /** v1.4.0: when the student could first see the latest share. */
-  notice_available_at?: number | null;
-  /** v1.4.0: when the student first opened the case after the latest share; their 7 days start here. */
-  first_opened_at?: number | null;
-  /** v1.4.0: confirmed outcomes above a warning in the last 2 years, in other cases. */
-  prior_outcomes?: number;
-}
-
-export interface Decision {
-  by: number;
-  /** The reviewer's name; empty when the account is gone. */
-  by_name?: string;
-  state: CaseState;
-  note: string;
-  created_at: number;
-  /** The explanation version of each student the reviewer had read. */
-  explanations_seen?: Record<string, number>;
-  /** v1.4.0: the confirmed outcome, on an actioned decision. */
-  outcome?: Outcome | '';
-  outcome_problem_label?: string;
-  outcome_users?: number[];
-  proposal_id?: number | null;
-  /** The sole organiser's written reason, when they confirmed alone. */
-  sole_organiser?: string;
-}
-
-/** The three outcomes a confirmed decision can have (D74 as amended). */
-export type Outcome = 'warning' | 'zero_problem' | 'referred';
-
-/** An outcome proposed by one reviewer and confirmed by a second (two-person rule). */
-export interface Proposal {
-  id: number;
-  by: number;
-  by_name: string;
-  outcome: Outcome;
-  problem_label: string;
-  user_ids: number[];
-  /** For reviewers. */
-  note: string;
-  /** The sentence the student reads on their standing. */
-  reason: string;
-  created_at: number;
-  state: 'pending' | 'confirmed' | 'superseded';
-}
-
-/** An appeal on a case, as reviewers see it. */
-export interface CaseAppeal {
-  id: number;
-  case_id: number | null;
-  adjustment_id: number | null;
-  user_id: number;
-  text: string;
-  created_at: number;
-  decide_by: number;
-  overdue: boolean;
-  state: 'open' | 'upheld' | 'rejected';
-  ruling: { by: number; by_name: string; upheld: boolean; reason: string; created_at: number } | null;
-  user?: { name: string; email: string; roll_number: string };
-}
-
-/** A case as organisers see it. */
-export interface Case {
-  id: number;
-  contest_id: number;
-  state: CaseState;
-  title: string;
-  evidence: Signal[];
-  created_at: number;
-  updated_at: number;
-  users: CaseUser[];
-  decisions: Decision[];
-  /** v1.4.0: opened from a check ("signals") or from a submission ("manual"). */
-  source?: 'signals' | 'manual';
-  submission_id?: number | null;
-  created_by?: number;
-  /** When every student had replied or run out of time; 14 days later is decide_by. */
-  ready_at?: number | null;
-  decide_by?: number | null;
-  overdue?: boolean;
-  policy?: 'referral_suggested' | null;
-  proposals?: Proposal[];
-  appeals?: CaseAppeal[];
-  /** The viewer may confirm the pending proposal. */
-  may_confirm?: boolean;
-  /** The viewer may rule on an open appeal. */
-  may_rule?: boolean;
-  /** The viewer is the owner and no other owner or admin exists. */
-  sole_organiser?: boolean;
-}
-
-/**
- * How many cases have a pending proposal that waits for this viewer's
- * confirmation (may_confirm, set per viewer by the server). Without this
- * the second reviewer had to be sent the case's address (walk 2026-10-21,
- * D321).
- */
-export function waitingForMe(cases: readonly Pick<Case, 'may_confirm' | 'proposals'>[]): number {
-  return cases.filter((c) => c.may_confirm && (c.proposals ?? []).some((p) => p.state === 'pending')).length;
-}
-
-/** One piece of evidence worded for the student it concerns. */
-export interface StudentEvidence {
-  problem_id: number;
-  kind: SignalKind;
-  text: string;
-  submission_id?: number;
-  source?: string;
-  spans?: Span[];
-}
-
-/** A case shared with the signed-in student. */
-export interface StudentCase {
-  id: number;
-  contest_id: number;
-  state: CaseState;
-  title: string;
-  evidence: StudentEvidence[];
-  explanation: string;
-  shared_at: number;
-  decided: boolean;
-}
-
-/** GET /api/integrity/cases. */
-export interface StudentCaseList {
-  cases: StudentCase[];
-  contests?: Record<string, { slug: string; title: string }>;
-  problems?: Record<string, ReviewProblem>;
-}
-
 /** The shortest reason the server accepts for a case or a decision. */
-export const MIN_NOTE = 20;
 
 /** The longest case title the server accepts. */
-export const MAX_TITLE = 120;
 
 /** The kinds in the order the filters list them, with their words. */
 export const KINDS: readonly { id: SignalKind; label: string }[] = [
@@ -385,139 +231,36 @@ export function signalDetail(s: Pick<Signal, 'kind' | 'evidence'>): string {
   }
 }
 
-/** The organiser's word for a case state. */
-export function caseStateWord(state: string): string {
-  switch (state) {
-    case 'open':
-      return 'Open';
-    case 'awaiting_student':
-      return 'Shared with the students';
-    case 'cleared':
-      return 'Cleared';
-    case 'actioned':
-      return 'Action taken';
-    default:
-      return state;
-  }
+/** An organiser's decision about one student in one contest. */
+export type DecisionKind = 'no_action' | 'warning' | 'excluded';
+
+/** A case: the latest decision about one student, with its reason. */
+export interface Case {
+  id: number;
+  contest_id: number;
+  user_id: number;
+  name: string;
+  email: string;
+  decision: DecisionKind;
+  reason: string;
+  decided_by: string;
+  decided_at: number;
 }
 
-/** The outcomes in the order the decision form lists them, mildest first, with their words. */
-export const OUTCOMES: readonly { id: Outcome; label: string; help: string }[] = [
-  { id: 'warning', label: 'Warning', help: 'Recorded on the standing. Scores do not change. Lowers the rating by 0.5.' },
-  { id: 'zero_problem', label: 'Zero for one problem', help: 'The problem scores 0 on the board from now on, and the ranks follow. Lowers the rating by 1.5.' },
-  { id: 'referred', label: 'Referred to the college', help: 'Recorded on the standing and passed to the college process. Lowers the rating by 2.5.' },
+/** The decisions in the order the form lists them, with their words. */
+export const DECISIONS: readonly { id: DecisionKind; label: string; help: string }[] = [
+  { id: 'no_action', label: 'No action', help: 'Recorded with the reason. Nothing changes for the student.' },
+  { id: 'warning', label: 'Warning', help: 'Recorded with the reason. Scores do not change.' },
+  { id: 'excluded', label: 'Exclude from this contest', help: 'The student no longer appears in the standings or the results export.' },
 ];
 
-/** An outcome in words: "Warning", "Zero for problem B", "Referred to the college". */
-export function outcomeWord(outcome: string, label?: string): string {
-  if (outcome === 'zero_problem') return label ? `Zero for problem ${label}` : 'Zero for one problem';
-  return OUTCOMES.find((o) => o.id === outcome)?.label ?? outcome;
+/** A decision in words. */
+export function decisionWord(d: string): string {
+  return DECISIONS.find((x) => x.id === d)?.label ?? d;
 }
 
-/** An outcome inside a sentence: "a warning", "zero for problem B", "referral to the college". */
-export function outcomePhrase(outcome: string, label?: string): string {
-  if (outcome === 'warning') return 'a warning';
-  if (outcome === 'referred') return 'referral to the college';
-  if (outcome === 'zero_problem') return label ? `zero for problem ${label}` : 'zero for one problem';
-  return outcome;
-}
-
-/** The pending proposal of a case, or null. */
-export function pendingProposal(c: Pick<Case, 'proposals'>): Proposal | null {
-  return (c.proposals ?? []).find((p) => p.state === 'pending') ?? null;
-}
-
-/** The shortest and longest texts the outcome routes accept. */
-export const MIN_REASON = 20;
-export const MAX_STUDENT_REASON = 2000;
-export const MAX_SOLE_REASON = 1000;
-
-/**
- * Who may confirm, in one sentence for the case page: the two-person rule
- * as it applies to the viewer.
- */
-export function confirmRule(c: Pick<Case, 'may_confirm' | 'sole_organiser'>, p: Pick<Proposal, 'by'>, viewerId: number | undefined): string {
-  if (c.may_confirm) return 'You did not open this case or propose this outcome, so you can confirm it.';
-  if (c.sole_organiser) return 'You are the only organiser, so you may confirm your own proposal with a written reason.';
-  if (viewerId !== undefined && p.by === viewerId) return 'You proposed this. A second reviewer who did not open the case confirms it.';
-  return 'You opened this case, so a second reviewer who did not open it or propose the outcome confirms it.';
-}
-
-/** A deadline as a short phrase: "Due 28 Oct 2026 14:00" or "Overdue since 28 Oct 2026 14:00". */
-export function dueText(at: number, now: number, word = 'Due'): string {
-  return `${now >= at ? 'Overdue since' : word} ${formatDateTime(at)}`;
-}
-
-/** The days each student has to explain, mirrored from the server's ResponseWindow. */
-export const RESPONSE_DAYS = 7;
-
-/** When a student last saved an explanation, or null. */
-export function latestExplanationAt(u: Pick<CaseUser, 'explanations' | 'explained_at'>): number | null {
-  const vs = u.explanations ?? [];
-  return vs.length > 0 ? vs[vs.length - 1].created_at : (u.explained_at ?? null);
-}
-
-/**
- * The explanation version of each student the reviewer has in front of
- * them, sent with a decision as seen_explanations. The server refuses the
- * decision when a student saved a newer one.
- */
-export function seenExplanations(c: Pick<Case, 'users'>): Record<string, number> {
-  const out: Record<string, number> = {};
-  for (const u of c.users) {
-    const at = latestExplanationAt(u);
-    if (at !== null) out[String(u.user_id)] = at;
-  }
-  return out;
-}
-
-/** Whether a student's turn is over: they explained after the latest share, or their window ended. */
-export function turnOver(u: CaseUser, now: number): boolean {
-  if (u.asked_at === null || u.asked_at === undefined) return false;
-  const at = latestExplanationAt(u);
-  if (at !== null && at >= u.asked_at) return true;
-  return u.respond_by !== null && u.respond_by !== undefined && now >= u.respond_by;
-}
-
-/**
- * Whether "Take action" is open and, when it is not, why. The server
- * applies the same rule: the case is shared, and every student explained
- * after the latest share or had their days to explain run out. `opensAt`
- * is when the last window ends, for the help text.
- */
-export function actionState(c: Pick<Case, 'state' | 'users'>, now: number): { open: boolean; opensAt: number | null } {
-  if (c.state !== 'awaiting_student' || c.users.length === 0) return { open: false, opensAt: null };
-  const waiting = c.users.filter((u) => !turnOver(u, now));
-  if (waiting.length === 0) return { open: true, opensAt: null };
-  const ends = waiting.map((u) => u.respond_by ?? 0);
-  return { open: false, opensAt: Math.max(...ends) || null };
-}
-
-/** The student's sentence for a case state. */
-export function studentStateText(c: Pick<StudentCase, 'state' | 'explanation' | 'decided'>): string {
-  if (c.state === 'cleared') return 'Decided: cleared. No action will be taken.';
-  if (c.state === 'actioned') return 'Decided: an organiser took action. They will tell you what it means for you.';
-  if (c.explanation.trim() !== '') return 'Your explanation is saved. An organiser reads it before deciding anything.';
-  return 'Waiting for your explanation. Nothing has been decided.';
-}
-
-/**
- * Where a student's shared cases stand, for the shell's "Questions" link and
- * the line on Your contests (v2 S7, audit 01-12): "none" without a case,
- * "asked" while any case waits for a decision, "decided" once all are.
- */
-export type CasesStanding = 'none' | 'asked' | 'decided';
-
-export function casesStanding(cases: readonly Pick<StudentCase, 'decided'>[] | undefined): CasesStanding {
-  if (!cases || cases.length === 0) return 'none';
-  return cases.some((c) => !c.decided) ? 'asked' : 'decided';
-}
-
-/** The lead line of /integrity, chosen by where the cases stand (audit 01-13). */
-export function studentLead(standing: CasesStanding): string {
-  if (standing === 'decided') return 'These are questions an organiser asked about your submissions, and where each one ended.';
-  return 'An organiser looked over a contest and would like you to explain some of your work. This is not a finding: a person reads your explanation before deciding anything, and only you and the organisers see it.';
-}
+/** The shortest reason the decision route accepts. */
+export const MIN_REASON = 10;
 
 /** Characters as the server counts them: code points of the trimmed text. */
 export function noteLength(text: string): number {
@@ -525,7 +268,7 @@ export function noteLength(text: string): number {
 }
 
 /** The live counter under a reason field. */
-export function noteCounter(text: string, min = MIN_NOTE): string {
+export function noteCounter(text: string, min = MIN_REASON): string {
   const n = noteLength(text);
   return n >= min ? `${n} characters` : `${n} of at least ${min} characters`;
 }
@@ -596,24 +339,6 @@ export function statsLine(stats: RunStats): string {
   const found = total === 0 ? 'No signals.' : `${n(total, 'signal', 'signals')}: ${joinWords(parts)}.`;
   const groups = stats.clusters > 0 ? ` ${n(stats.clusters, 'group', 'groups')} of similar code.` : '';
   return `${checked} ${found}${groups}`;
-}
-
-/**
- * A default title for a case opened from these signals. It names the kind
- * and the problem, never the students: a case is shared with each student
- * in it, and one must not learn who the other is.
- */
-export function defaultTitle(
-  signals: readonly Signal[],
-  _users: Record<string, ReviewUser> | undefined,
-  problems: Record<string, ReviewProblem> | undefined,
-): string {
-  if (signals.length === 0) return '';
-  const kinds = [...new Set(signals.map((s) => s.kind))];
-  const probs = [...new Set(signals.map((s) => s.problem_id))];
-  const what = kinds.length === 1 ? kindWord(kinds[0]) : 'Several signals';
-  const where = probs.length === 1 && probs[0] ? ` on ${problems?.[String(probs[0])]?.label ?? `problem ${probs[0]}`}` : '';
-  return `${what}${where}`.slice(0, MAX_TITLE);
 }
 
 // Spans and source lines.

@@ -1,22 +1,15 @@
 <!--
   IntegrityPair: one signal up close at
-  /admin/contests/{id}/integrity/signals/{signal} (integrity-plan.md
-  section 5). The signal comes from the latest check
-  (GET .../integrity); for similar code the two programs come from
-  GET .../signals/{signal}/pair and sit side by side from 1024 px, stacked
-  below, each with its student, language and time, line numbers and the
-  shared passages tinted (CodeView), with how much code is behind the
-  score and what the score means. Below are the timelines of the students
-  named (GET .../timeline/{user}), which are context and never a signal on
-  their own. "Open a case" opens OpenCaseDialog with this signal. A signal
-  that a newer check replaced says so.
-
-  With ?case={case}&evidence={index} it shows a case's evidence instead:
-  the signal as copied into the case (GET /api/admin/integrity/cases/{case})
-  and its programs from GET .../cases/{case}/evidence/{index}/pair, so a
-  later check can never put other students' code under the case. It links
-  back to the case and offers no "Open a case". Props: `id` (the contest),
-  `signal`.
+  /admin/contests/{id}/integrity/signals/{signal}. The signal comes from
+  the latest check (GET .../integrity); for similar code the two programs
+  come from GET .../signals/{signal}/pair and sit side by side from
+  1024 px, stacked below, each with its student, language and time, line
+  numbers and the shared passages tinted (CodeView), with how much code is
+  behind the score and what the score means. Below are the timelines of the
+  students named (GET .../timeline/{user}), which are context and never a
+  signal on their own, then one "Record a decision" button per student
+  (DecisionDialog). A signal that a newer check replaced says so. Props:
+  `id` (the contest), `signal`.
 -->
 <script lang="ts">
   import MonoDigits from '../components/MonoDigits.svelte';
@@ -27,7 +20,7 @@
   import { onMount } from 'svelte';
   import CodeView from '../components/CodeView.svelte';
   import IntegrityNote from '../components/IntegrityNote.svelte';
-  import OpenCaseDialog from '../components/OpenCaseDialog.svelte';
+  import DecisionDialog from '../components/DecisionDialog.svelte';
   import { ApiError, errorText, getJSON } from '../lib/api';
   import { keepHeadingFocus } from '../lib/focus';
   import { formatDateTime } from '../lib/format';
@@ -42,6 +35,7 @@
     signalStudents,
     strengthWord,
     userName,
+    decisionWord,
     type Case,
     type Moment,
     type Pair,
@@ -49,7 +43,6 @@
     type Run,
     type Signal,
   } from '../lib/review';
-  import { navigate, router } from '../lib/router.svelte';
   import { session } from '../lib/session.svelte';
   import { showToast } from '../lib/toast.svelte';
   import { languageLabel } from '../lib/workspace';
@@ -59,24 +52,19 @@
   let loadState = $state<'loading' | 'ready' | 'forbidden' | 'missing' | 'gone' | 'error'>('loading');
   let loadError = $state('');
   let run = $state.raw<Run | null>(null);
-  let kase = $state.raw<Case | null>(null);
   let sig = $state.raw<Signal | null>(null);
   let pair = $state.raw<Pair | null>(null);
   let pairError = $state('');
   let timelines = $state<Record<number, Moment[] | string>>({});
-  let dialogOpen = $state(false);
-
-  // Read once: the page reloads when the address changes.
-  const caseId = router.query.get('case') ?? '';
-  const evidence = router.query.get('evidence') ?? '';
-  const fromCase = /^\d+$/.test(caseId) && /^\d+$/.test(evidence);
+  let deciding = $state<{ id: number; name: string } | null>(null);
+  let cases = $state.raw<Case[]>([]);
 
   const isOrganiser = $derived(session.user?.role === 'admin' || session.user?.role === 'owner');
   const base = $derived(`/api/admin/contests/${encodeURIComponent(id)}/integrity`);
-  const back = $derived(fromCase ? `/admin/integrity/cases/${caseId}` : `/admin/contests/${encodeURIComponent(id)}/integrity`);
+  const back = $derived(`/admin/contests/${encodeURIComponent(id)}/integrity`);
   let contestTitle = $state('');
 
-  /** Contests, the contest, Integrity, the case when the evidence came from one, then this page. */
+  /** Contests, the contest, Integrity, then this page. */
   function trail(here: string): Crumb[] {
     const contest = `/admin/contests/${encodeURIComponent(id)}`;
     const out: Crumb[] = [
@@ -84,16 +72,10 @@
       { label: contestTitle || 'Contest', href: contest },
       { label: 'Integrity', href: `${contest}/integrity` },
     ];
-    if (fromCase) out.push({ label: kase ? kase.title : 'Case', href: back });
     return [...out, { label: here }];
   }
   const students = $derived(sig ? [sig.user_a, sig.user_b].filter((u): u is number => !!u) : []);
-  // Names: the case's own students first, then the check's map.
-  const users = $derived.by(() => {
-    const out: Record<string, ReviewUser> = { ...(run?.users ?? {}) };
-    for (const u of kase?.users ?? []) out[String(u.user_id)] = { name: u.name, email: out[String(u.user_id)]?.email ?? '' };
-    return out;
-  });
+  const users = $derived<Record<string, ReviewUser>>(run?.users ?? {});
   const problems = $derived(run?.problems);
   const problem = $derived(sig && sig.problem_id ? problems?.[String(sig.problem_id)] : undefined);
   const size = $derived(sig?.kind === 'similar' ? evidenceSize(sig.evidence) : '');
@@ -121,7 +103,6 @@
 
   async function load() {
     loadState = 'loading';
-    if (fromCase) return loadFromCase();
     let r: Run;
     try {
       r = await getJSON<Run>(base);
@@ -150,53 +131,16 @@
     void restore();
   }
 
-  // A case's evidence: the case's copy of the signal, names from the case
-  // (and from the latest check when there is one).
-  async function loadFromCase() {
-    let c: Case;
-    try {
-      c = await getJSON<Case>(`/api/admin/integrity/cases/${caseId}`);
-    } catch (e) {
-      if (handleAuth(e)) return;
-      if (e instanceof ApiError && e.status === 404) {
-        loadState = 'missing';
-        setTitle('Evidence not found');
-        return;
-      }
-      loadError = errorText(e);
-      loadState = 'error';
-      return;
-    }
-    const found = c.evidence[Number(evidence)] ?? null;
-    const restore = keepHeadingFocus();
-    kase = c;
-    sig = found;
-    if (!found) {
-      loadState = 'missing';
-      setTitle('Evidence not found');
-      void restore();
-      return;
-    }
-    try {
-      run = await getJSON<Run>(`/api/admin/contests/${c.contest_id}/integrity`);
-    } catch {
-      // Names and labels are a convenience; the case reads without them.
-    }
-    show(found);
-    void restore();
-  }
-
   async function loadPair() {
-    const url = fromCase ? `/api/admin/integrity/cases/${caseId}/evidence/${evidence}/pair` : `${base}/signals/${encodeURIComponent(signal)}/pair`;
     try {
-      pair = await getJSON<Pair>(url);
+      pair = await getJSON<Pair>(`${base}/signals/${encodeURIComponent(signal)}/pair`);
     } catch (e) {
       if (!handleAuth(e)) pairError = errorText(e);
     }
   }
 
   async function loadTimeline(user: number) {
-    const contest = kase ? String(kase.contest_id) : encodeURIComponent(id);
+    const contest = encodeURIComponent(id);
     try {
       const data = await getJSON<{ moments: Moment[] }>(`/api/admin/contests/${contest}/integrity/timeline/${user}`);
       timelines = { ...timelines, [user]: data.moments ?? [] };
@@ -210,17 +154,28 @@
     return problems?.[String(problemId)]?.label ?? '';
   }
 
-  function created(c: Case) {
-    dialogOpen = false;
-    showToast('Opened the case');
-    navigate(`/admin/integrity/cases/${c.id}`);
+  async function loadCases() {
+    try {
+      cases = (await getJSON<{ cases: Case[] }>(`${base}/cases`)).cases ?? [];
+    } catch (e) {
+      handleAuth(e);
+    }
   }
+
+  function decided(c: Case) {
+    deciding = null;
+    showToast('Recorded the decision');
+    cases = [c, ...cases.filter((x) => x.user_id !== c.user_id)];
+  }
+
+  const caseOf = (u: number) => cases.find((c) => c.user_id === u) ?? null;
 
   onMount(() => {
     setTitle(routeTitle('integrity-pair'));
     if (!isOrganiser) loadState = 'forbidden';
     else {
       void load();
+      void loadCases();
       // The contest title is only for the trail; the page reads without it.
       getJSON<AdminContest>(`/api/admin/contests/${encodeURIComponent(id)}`)
         .then((c) => (contestTitle = c.title))
@@ -234,17 +189,15 @@
   <PageState kind="forbidden" message="Only organisers can review integrity." />
 {:else if loadState !== 'ready' || !sig}
   <PageHeader
-    title={loadState === 'missing' || loadState === 'gone' ? (fromCase ? 'Evidence not found' : 'Signal not found') : 'Signal'}
-    crumbs={trail(loadState === 'missing' || loadState === 'gone' ? (fromCase ? 'Evidence not found' : 'Signal not found') : 'Signal')}
+    title={loadState === 'missing' || loadState === 'gone' ? 'Signal not found' : 'Signal'}
+    crumbs={trail(loadState === 'missing' || loadState === 'gone' ? 'Signal not found' : 'Signal')}
   />
   {#if loadState === 'loading'}
     <PageState kind="loading" message="Loading the signal" />
-  {:else if loadState === 'missing' && fromCase}
-    <PageState kind="missing" message="There is no such evidence in this case, or you cannot review it." parent={{ href: '/admin/contests', label: 'Go to the contest list.' }} />
   {:else if loadState === 'missing'}
     <PageState kind="missing" message="This contest has not been checked yet." parent={{ href: back, label: 'Go to the integrity check.' }} />
   {:else if loadState === 'gone'}
-    <PageState kind="missing" message="This signal is not in the latest check: a newer check replaced it. Cases keep their own copy." parent={{ href: back, label: 'See the latest signals.' }} />
+    <PageState kind="missing" message="This signal is not in the latest check: a newer check replaced it." parent={{ href: back, label: 'See the latest signals.' }} />
   {:else}
     <PageState kind="error" message={loadError} onretry={load} />
   {/if}
@@ -256,9 +209,6 @@
   </p>
   {#if sig.kind === 'similar'}
     <p class="meaning muted">{size ? `${size}. ` : ''}{SCORE_MEANING}</p>
-  {/if}
-  {#if fromCase}
-    <p class="from-case muted">Evidence as it was when the case opened; a later check does not change it.</p>
   {/if}
 
   <div class="note"><IntegrityNote /></div>
@@ -315,21 +265,29 @@
     </div>
   </section>
 
-  {#if !fromCase}
-    <!-- After the code and the timelines it asks you to read first (C7). -->
-    <p class="actions">
-      <button type="button" class="btn btn-primary" onclick={() => (dialogOpen = true)}>Open a case</button>
-    </p>
-    <OpenCaseDialog
-      open={dialogOpen}
-      contestId={id}
-      signals={[sig]}
-      {users}
-      {problems}
-      onclose={() => (dialogOpen = false)}
-      oncreated={created}
-    />
-  {/if}
+  <!-- After the code and the timelines it asks you to read first (C7). -->
+  <section class="section" aria-labelledby="decide-title">
+    <h2 id="decide-title">Decisions</h2>
+    <ul class="decide">
+      {#each students as u (u)}
+        {@const c = caseOf(u)}
+        <li>
+          <span>{userName(users, u)}: {c ? `${decisionWord(c.decision)}. ${c.reason}` : 'no decision recorded.'}</span>
+          <button type="button" class="btn btn-secondary btn-compact" onclick={() => (deciding = { id: u, name: userName(users, u) })}
+            >{c ? 'Change' : 'Record a decision'}<span class="visually-hidden"> about {userName(users, u)}</span></button
+          >
+        </li>
+      {/each}
+    </ul>
+  </section>
+  <DecisionDialog
+    open={deciding !== null}
+    contestId={id}
+    student={deciding}
+    current={deciding ? caseOf(deciding.id) : null}
+    onclose={() => (deciding = null)}
+    ondecided={decided}
+  />
 {/if}
 
 <style>
@@ -352,6 +310,20 @@
   }
 
   .meaning,
+  .decide {
+    display: grid;
+    gap: var(--space-2);
+    padding: 0;
+    list-style: none;
+  }
+
+  .decide li {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-2) var(--space-3);
+  }
+
   .from-case {
     margin-top: var(--space-2);
     max-width: var(--measure-wide);

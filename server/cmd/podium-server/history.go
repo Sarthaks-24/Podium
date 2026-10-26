@@ -9,9 +9,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/Sarthaks-24/podium/internal/contests"
 	"github.com/Sarthaks-24/podium/internal/db"
-	"github.com/Sarthaks-24/podium/internal/problems"
 )
 
 // openReadOnly opens the database at path without changing it.
@@ -25,81 +23,6 @@ func openReadOnly(path string) (*sql.DB, error) {
 	}
 	d.SetMaxOpenConns(1)
 	return d, nil
-}
-
-// sawCmd runs "podium-server saw": what a student had been shown of a
-// contest problem at a moment, from the pin history and the served log
-// (B2.3, B2.4). It only reads, so it is safe on the live database.
-func sawCmd(args []string, out io.Writer) int {
-	fs := flag.NewFlagSet("saw", flag.ContinueOnError)
-	fs.SetOutput(out)
-	dbPath := fs.String("db", envOr("PODIUM_DB_PATH", "data/podium.db"), "SQLite database")
-	slug := fs.String("contest", "", "the contest's slug")
-	email := fs.String("email", "", "the student's email")
-	label := fs.String("label", "", "the problem's label, like A")
-	at := fs.String("at", "", "the moment, RFC 3339 (for example 2026-11-10T14:35:00+05:30); default now")
-	if err := fs.Parse(args); err != nil {
-		return 2
-	}
-	if *slug == "" || *email == "" || *label == "" {
-		fmt.Fprintln(out, "saw: give -contest, -email and -label")
-		return 2
-	}
-	when := time.Now()
-	if *at != "" {
-		t, err := time.Parse(time.RFC3339, *at)
-		if err != nil {
-			fmt.Fprintf(out, "saw: -at: %v\n", err)
-			return 2
-		}
-		when = t
-	}
-	d, err := openReadOnly(*dbPath)
-	if err != nil {
-		fmt.Fprintf(out, "saw: %v\n", err)
-		return 2
-	}
-	defer d.Close()
-	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
-	defer cancel()
-	svc := &contests.Service{DB: d, Problems: &problems.Service{DB: d}}
-	c, err := svc.GetBySlug(ctx, *slug)
-	if err != nil {
-		fmt.Fprintf(out, "saw: contest %q: %v\n", *slug, err)
-		return 2
-	}
-	var userID int64
-	if err := d.QueryRowContext(ctx, "SELECT id FROM users WHERE email = ?", *email).Scan(&userID); err != nil {
-		fmt.Fprintf(out, "saw: no account %q\n", *email)
-		return 2
-	}
-	seen, err := svc.SeenAt(ctx, c.ID, userID, *label, when)
-	if err != nil {
-		fmt.Fprintf(out, "saw: %v\n", err)
-		return 2
-	}
-	fmt.Fprintf(out, "contest %s, problem %s, %s, at %s\n", c.Slug, *label, *email, stamp(when))
-	if seen.PinnedRev == nil {
-		fmt.Fprintln(out, "  no revision was pinned to this label yet")
-		return 0
-	}
-	fmt.Fprintf(out, "  pinned: revision %d since %s%s\n", seen.PinnedRev.Rev, stamp(seen.PinnedSince), reconstructedNote(seen.PinnedRev))
-	if seen.FirstSeenAt.IsZero() {
-		fmt.Fprintln(out, "  served: not yet (the student had not opened this revision)")
-	} else {
-		fmt.Fprintf(out, "  served: first at %s\n", stamp(seen.FirstSeenAt))
-	}
-	for _, s := range seen.Served {
-		fmt.Fprintf(out, "  served log: revision %d first at %s\n", s.Rev, stamp(s.FirstSeenAt))
-	}
-	return 0
-}
-
-func reconstructedNote(r *problems.Revision) string {
-	if r.Reconstructed {
-		return " (reconstructed at the upgrade: tests only, statement not recorded)"
-	}
-	return ""
 }
 
 // runsReportCmd runs "podium-server runs-report": per contest, how many
@@ -229,3 +152,6 @@ func sameFile(a, b string) bool {
 	fb, errB := os.Stat(b)
 	return errA == nil && errB == nil && os.SameFile(fa, fb)
 }
+
+// stamp formats a time for the operator tools.
+func stamp(t time.Time) string { return t.UTC().Format("2006-01-02 15:04 UTC") }

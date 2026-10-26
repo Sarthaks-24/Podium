@@ -15,15 +15,8 @@
   frozen contest reads "Live" with "standings frozen" in its countdown
   (D84). Under 768 px each row reads as title and state, then the start,
   then the length and problem count in one muted line beside the score. A
-  countdown over a day reads as a span ("Starts in 2 d 23 h"). When an
-  organiser has shared an integrity case with the student (shell.questions,
-  loaded by the shell), a quiet line links to /integrity, worded by where
-  the cases stand. Once a contest the student took part in has final
-  results, one line under the heading sums them up (D92, from
-  GET /api/me/progress): "Across 5 contests: 820 of 1500 points. See your
-  progress"; it is left out when the student hid their progress or the
-  request fails. The app shell sends signed-out visitors to /signin
-  first. Takes no props.
+  countdown over a day reads as a span ("Starts in 2 d 23 h"). The app
+  shell sends signed-out visitors to /signin first. Takes no props.
 -->
 <script lang="ts">
   import MonoDigits from '../components/MonoDigits.svelte';
@@ -46,26 +39,14 @@
     type ContestSummary,
   } from '../lib/contests';
   import { countOf, formatDateTime, numberParts, scoreParts } from '../lib/format';
-  import { homeLine, type Progress } from '../lib/progress';
   import { setTitle } from '../lib/head';
   import { routeTitle } from '../lib/routing';
   import { session } from '../lib/session.svelte';
-  import { shell } from '../lib/shell.svelte';
   import { refreshTicker, ticker, useTicker } from '../lib/ticker.svelte';
 
   let loadState = $state<'loading' | 'ready' | 'error'>('loading');
   let loadError = $state('');
   let contests = $state<ContestSummary[]>([]);
-  let summary = $state<ReturnType<typeof homeLine>>(null);
-
-  // D92: one line from "Your progress"; quiet when it cannot load.
-  async function loadSummary() {
-    try {
-      summary = homeLine(await getJSON<Progress>('/api/me/progress'));
-    } catch {
-      summary = null;
-    }
-  }
 
   async function load() {
     loadState = 'loading';
@@ -108,25 +89,11 @@
   onMount(() => {
     setTitle(routeTitle('home'));
     void load();
-    if (session.user?.role === 'student') void loadSummary();
     return useTicker();
   });
 </script>
 
 <PageHeader title="Your contests" />
-
-{#if shell.questions === 'asked'}
-  <p class="banner asked">An organiser asked you to explain a submission. <a href="/integrity">Write your explanation</a></p>
-{:else if shell.questions === 'decided'}
-  <p class="banner asked">An organiser decided on a question about your submission. <a href="/integrity">Read the decision</a></p>
-{/if}
-
-{#if summary}
-  <p class="summary">
-    Across <MonoDigits text={countOf(summary.contests, 'contest')} />: <MonoDigits parts={scoreParts(summary.points, summary.max)} /> points.
-    <a href="/progress">See your progress</a>
-  </p>
-{/if}
 
 {#if loadState === 'loading'}
   <PageState kind="loading" message="Loading contests" />
@@ -205,16 +172,6 @@
 {/if}
 
 <style>
-  .asked {
-    margin-top: var(--space-4);
-    max-width: var(--measure-form);
-  }
-
-  .summary {
-    margin-top: var(--space-3);
-    color: var(--ink-muted);
-  }
-
   .pinned {
     max-width: var(--measure-form);
     margin-top: var(--space-5);

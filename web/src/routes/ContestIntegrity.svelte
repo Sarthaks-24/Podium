@@ -1,55 +1,47 @@
 <!--
   ContestIntegrity: the organiser's integrity check for one contest at
-  /admin/contests/{id}/integrity (cache/v1/integrity-plan.md sections 5
-  and 7, docs/INTEGRITY.md). "Check integrity" starts a check
-  (POST .../integrity/run); it is disabled with the reason until every
-  student's time is up, and while a check runs the page says so and polls
-  GET .../integrity every two seconds until it is done. Under the stats
-  line come the signals, filtered by kind and strength and grouped by
-  problem in tables (strength in words with the number beside it), with
-  the groups of similar code on each problem listed as names. Signals are
-  chosen with checkboxes to open a case (OpenCaseDialog); the contest's
-  cases are listed below, newest first, each with its state, whether it
-  was opened from a submission, and "Overdue", "Waiting for your
-  confirmation" (the viewer may confirm the pending proposal, D321, with
-  a count above the table) or "Waiting for a second reviewer" when that
-  applies (v1.4.0). Window-mode contests get a note
-  that they leak by design. Every view carries IntegrityNote. Props: `id`.
+  /admin/contests/{id}/integrity (docs/INTEGRITY.md). "Check integrity"
+  starts a check (POST .../integrity/run); it is disabled with the reason
+  until every student's time is up, and while a check runs the page says
+  so and polls GET .../integrity every two seconds until it is done. Under
+  the stats line come the signals, filtered by kind and strength and
+  grouped by problem in tables (strength in words with the number beside
+  it), with the groups of similar code on each problem listed as names,
+  and "Download similar pairs (CSV)" for the college's own process. The
+  decisions recorded for this contest are listed below, newest first; each
+  can be changed (DecisionDialog). Window-mode contests get a note that
+  they leak by design. Every view carries IntegrityNote. Props: `id`.
 -->
 <script lang="ts">
-  import Badge from '../components/Badge.svelte';
   import MonoDigits from '../components/MonoDigits.svelte';
   import PageState from '../components/PageState.svelte';
   import ConfirmDialog from '../components/ConfirmDialog.svelte';
   import { onMount } from 'svelte';
-  import { SvelteSet } from 'svelte/reactivity';
   import ContestAdminNav from '../components/ContestAdminNav.svelte';
   import PageHeader from '../components/PageHeader.svelte';
   import IntegrityNote from '../components/IntegrityNote.svelte';
-  import OpenCaseDialog from '../components/OpenCaseDialog.svelte';
+  import DecisionDialog from '../components/DecisionDialog.svelte';
   import SignalTable from '../components/SignalTable.svelte';
   import { ApiError, errorText, getJSON, sendJSON } from '../lib/api';
   import { type AdminContest } from '../lib/contests';
   import { keepHeadingFocus } from '../lib/focus';
-  import { countOf, formatDateTime } from '../lib/format';
+  import { formatDateTime } from '../lib/format';
   import { setTitle } from '../lib/head';
   import { routeTitle } from '../lib/routing';
   import {
     KINDS,
     STRENGTHS,
-    caseStateWord,
     clusters,
+    decisionWord,
     filterSignals,
     groupByProblem,
     joinWords,
     problemName,
     statsLine,
     userName,
-    waitingForMe,
     type Case,
     type Run,
   } from '../lib/review';
-  import { navigate } from '../lib/router.svelte';
   import { session } from '../lib/session.svelte';
   import { ticker, useTicker } from '../lib/ticker.svelte';
   import { showToast } from '../lib/toast.svelte';
@@ -72,8 +64,7 @@
 
   let kind = $state('');
   let strength = $state('');
-  const selected = new SvelteSet<number>();
-  let dialogOpen = $state(false);
+  let deciding = $state<Case | { user_id: number; name: string } | null>(null);
 
   let pollTimer: ReturnType<typeof setTimeout> | null = null;
   let destroyed = false;
@@ -90,7 +81,6 @@
   const running = $derived(starting || run?.state === 'running');
   const shown = $derived(run && run.state === 'done' ? filterSignals(run.signals ?? [], kind, strength) : []);
   const groups = $derived(groupByProblem(shown, run?.problems));
-  const chosen = $derived((run?.signals ?? []).filter((s) => selected.has(s.id)));
 
   function handleAuth(e: unknown): boolean {
     if (!(e instanceof ApiError)) return false;
@@ -135,9 +125,6 @@
       const r = await getJSON<Run>(`${base}/integrity`);
       run = r;
       runState = 'ready';
-      // Choices from an earlier check no longer exist.
-      const ids = new Set((r.signals ?? []).map((s) => s.id));
-      for (const s of [...selected]) if (!ids.has(s)) selected.delete(s);
       if (r.state === 'running') schedulePoll();
       return r;
     } catch (e) {
@@ -188,7 +175,6 @@
     starting = true;
     try {
       await sendJSON<{ run_id: number }>('POST', `${base}/integrity/run`);
-      selected.clear();
       await loadRun();
       schedulePoll();
     } catch (e) {
@@ -198,19 +184,10 @@
     }
   }
 
-  function toggle(signalId: number, on: boolean) {
-    if (on) selected.add(signalId);
-    else selected.delete(signalId);
-  }
-
-  function created(c: Case) {
-    dialogOpen = false;
-    showToast('Opened the case');
-    navigate(`/admin/integrity/cases/${c.id}`);
-  }
-
-  function caseStudents(c: Case): string {
-    return joinWords((c.users ?? []).map((u) => u.name));
+  function decided() {
+    deciding = null;
+    showToast('Recorded the decision');
+    void loadCases();
   }
 
   onMount(() => {
@@ -265,7 +242,7 @@
         {#if !over}
           <p id="check-help" class="muted small">Check integrity after the contest ends for everyone.</p>
         {:else if run?.state === 'done' && !running}
-          <p class="muted small">Checking again replaces these signals. Cases keep their own copy of the evidence.</p>
+          <p class="muted small">Checking again replaces these signals. Decisions stay.</p>
         {/if}
       </div>
     </div>
@@ -292,6 +269,9 @@
     {:else}
       <p class="stats">{statsLine(run.stats)} <span class="muted">Finished <MonoDigits text={formatDateTime(run.finished_at ?? run.started_at)} />.</span></p>
 
+      {#if (run.signals ?? []).some((x) => x.kind === 'similar')}
+        <p><a class="btn btn-secondary" href="{base}/integrity/pairs.csv" download>Download similar pairs (CSV)</a></p>
+      {/if}
       {#if (run.signals ?? []).length > 0}
         <div class="filters">
           <div class="field">
@@ -307,18 +287,6 @@
               <option value="">Any strength</option>
               {#each STRENGTHS as s (s.id)}<option value={s.id}>{s.label}</option>{/each}
             </select>
-          </div>
-          <div class="open">
-            <button
-              type="button"
-              class="btn btn-secondary"
-              disabled={chosen.length === 0}
-              aria-describedby="open-help"
-              onclick={() => (dialogOpen = true)}>Open a case</button
-            >
-            <p id="open-help" class="muted small" aria-live="polite">
-              {chosen.length === 0 ? 'Choose one or more signals first.' : `${chosen.length} ${chosen.length === 1 ? 'signal' : 'signals'} chosen.`}
-            </p>
           </div>
         </div>
       {/if}
@@ -339,9 +307,6 @@
               problems={run.problems}
               contestId={id}
               caption="Signals on {name}"
-              selectable
-              {selected}
-              ontoggle={toggle}
             />
             {#if groupsOf.length > 0}
               <div class="clusters">
@@ -360,37 +325,34 @@
   </section>
 
   <section class="section" aria-labelledby="cases-title">
-    <h2 id="cases-title">Cases</h2>
+    <h2 id="cases-title">Decisions</h2>
     {#if casesError}
       <p class="field-error">{casesError}</p>
     {:else if cases === null}
-      <p class="muted" role="status">Loading the cases</p>
+      <p class="muted" role="status">Loading the decisions</p>
     {:else if cases.length === 0}
-      <p class="muted">No cases yet. Choose signals above and open a case when one deserves a closer look.</p>
+      <p class="muted">No decisions yet. Open a signal and record a decision about a student when one deserves it.</p>
     {:else}
-      {@const mine = waitingForMe(cases)}
-      {#if mine > 0}<p class="waiting">Waiting for your confirmation: <MonoDigits text={countOf(mine, 'case')} /></p>{/if}
       <div class="table-wrap case-list">
         <table class="table table-stack">
-          <caption class="visually-hidden">Cases for {contest.title}</caption>
+          <caption class="visually-hidden">Decisions for {contest.title}</caption>
           <thead>
             <tr>
-              <th scope="col">Case</th>
-              <th scope="col">Students</th>
-              <th scope="col">State</th>
-              <th scope="col">Updated</th>
+              <th scope="col">Student</th>
+              <th scope="col">Decision</th>
+              <th scope="col">Reason</th>
+              <th scope="col">Recorded</th>
+              <th scope="col"><span class="visually-hidden">Change</span></th>
             </tr>
           </thead>
           <tbody>
             {#each cases as c (c.id)}
               <tr>
-                <th scope="row" class="case-title"><a class="row-link" href="/admin/integrity/cases/{c.id}">{c.title}</a></th>
-                <td class="case-who">{caseStudents(c)}</td>
-                <td class="case-state">
-                  {caseStateWord(c.state)}{#if c.source === 'manual'}<span class="muted case-src">, from a submission</span>{/if}
-                  {#if c.overdue}<Badge tone="bad" text="Overdue" />{:else if waitingForMe([c]) > 0}<Badge tone="act" text="Waiting for your confirmation" />{:else if (c.proposals ?? []).some((p) => p.state === 'pending')}<Badge tone="wait" text="Waiting for a second reviewer" />{/if}
-                </td>
-                <td class="case-when"><MonoDigits text={formatDateTime(c.updated_at)} /></td>
+                <th scope="row" class="case-who">{c.name}</th>
+                <td class="case-state">{decisionWord(c.decision)}</td>
+                <td class="case-reason">{c.reason}</td>
+                <td class="case-when"><MonoDigits text={formatDateTime(c.decided_at)} /><span class="muted small"> by {c.decided_by || 'a removed account'}</span></td>
+                <td class="case-act"><button type="button" class="btn btn-quiet btn-compact" onclick={() => (deciding = c)}>Change<span class="visually-hidden"> the decision about {c.name}</span></button></td>
               </tr>
             {/each}
           </tbody>
@@ -399,19 +361,18 @@
     {/if}
   </section>
 
-  <OpenCaseDialog
-    open={dialogOpen}
+  <DecisionDialog
+    open={deciding !== null}
     contestId={id}
-    signals={chosen}
-    users={run?.users}
-    problems={run?.problems}
-    onclose={() => (dialogOpen = false)}
-    oncreated={created}
+    student={deciding ? { id: deciding.user_id, name: deciding.name } : null}
+    current={deciding && 'decision' in deciding ? deciding : null}
+    onclose={() => (deciding = null)}
+    ondecided={decided}
   />
   <ConfirmDialog
     open={recheckOpen}
     title="Check again?"
-    body="The new check replaces the signals listed here. Cases already open keep their own copy of the evidence."
+    body="The new check replaces the signals listed here. Decisions already recorded stay."
     confirmLabel="Check again"
     onconfirm={startCheck}
     oncancel={() => (recheckOpen = false)}
@@ -462,13 +423,6 @@
     width: min(14rem, 100%);
   }
 
-  .open {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: var(--space-2) var(--space-3);
-  }
-
   .problem {
     display: grid;
     gap: var(--space-2);
@@ -493,45 +447,12 @@
     font-size: var(--fs-0);
   }
 
-  .case-title {
-    font-weight: 500;
-  }
-
-  .waiting {
-    margin-block-end: var(--space-3);
-  }
-
   .case-state {
     white-space: nowrap;
   }
 
-  /* Phones: the case title, then the students, then state and time. */
-  @media (width < 768px) {
-    .case-list tbody tr {
-      grid-template-columns: minmax(0, 1fr) auto;
-      grid-template-areas:
-        'title title'
-        'who who'
-        'state when';
-    }
-
-    .case-title {
-      grid-area: title;
-    }
-
-    .case-who {
-      grid-area: who;
-    }
-
-    .case-state {
-      grid-area: state;
-    }
-
-    .case-when {
-      grid-area: when;
-      color: var(--ink-muted);
-      font-size: var(--fs-0);
-      text-align: right;
-    }
+  .case-reason {
+    max-width: var(--measure-form);
+    overflow-wrap: anywhere;
   }
 </style>

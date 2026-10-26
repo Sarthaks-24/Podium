@@ -21,9 +21,6 @@ var themeID = regexp.MustCompile(`^[a-z0-9-]{1,32}$`)
 type Preferences struct {
 	Theme    string `json:"theme"`
 	Verdicts string `json:"verdicts"`
-	// HideProgress hides the person's own progress (v1.4.0); nil keeps
-	// the saved value.
-	HideProgress *bool `json:"hide_progress,omitempty"`
 }
 
 // SetPreferences saves p for the user. It refuses a malformed theme id or
@@ -35,8 +32,8 @@ func (s *Service) SetPreferences(ctx context.Context, userID int64, p Preference
 	if p.Verdicts != VerdictsStandard && p.Verdicts != VerdictsSignal {
 		return invalid("Choose standard or colour-blind safe verdict colours.")
 	}
-	res, err := s.DB.ExecContext(ctx, "UPDATE users SET theme = ?, verdicts = ?, hide_progress = coalesce(?, hide_progress) WHERE id = ?",
-		p.Theme, p.Verdicts, p.HideProgress, userID)
+	res, err := s.DB.ExecContext(ctx, "UPDATE users SET theme = ?, verdicts = ? WHERE id = ?",
+		p.Theme, p.Verdicts, userID)
 	if err != nil {
 		return err
 	}

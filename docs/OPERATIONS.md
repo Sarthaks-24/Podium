@@ -514,37 +514,18 @@ With an `http` base URL (testing mode, local development) the cookie is named `p
 
 ## Retention
 
-How long the server keeps each kind of data (v1.3.0). The periods are constants in `server/internal/retention/periods.go`; `GET /api/auth/config` returns them as `retention`, and the privacy page renders its table from that response. A test fails when this table and the code differ, so change both together.
+How long the server keeps each kind of data. The periods are constants in `server/internal/retention/periods.go`; `GET /api/auth/config` returns them as `retention`, and the privacy page renders its table from that response. A test fails when this table and the code differ, so change both together.
 
 | Id | Data | Kept | How it ends |
 |---|---|---|---|
 | `sessions` | Sign-in sessions | 12 hours after sign-in | hourly sweep |
-| `integrity_events` | Paste and focus events during contests, and their counts | 180 days after the contest | integrity retention every 12 hours; kept while the student is in an open case |
-| `case_evidence` | Evidence, explanations and appeals in a closed integrity case | 2 years after the decision | integrity retention every 12 hours; the case, its decisions and rulings stay; a manual case's notes go with it |
-| `standing_entries` | Outcomes and adjustments shown on your standing | 2 years after the decision | read time: a line older than 2 years is no longer shown; the decision record stays with the case |
-| `private_notes` | Organisers' private notes on a submission, unless a case is opened from it | 30 days | daily retention job, through the `retention_cutoffs` row (floor 30 days); a note whose submission has a manual case goes with that case's evidence |
-| `notifications` | Notices in your inbox | 180 days | daily retention job; erasure deletes them at once |
-| `record_views` | Records of who read a student's record, cases or notes | 2 years | daily retention job, through the `retention_cutoffs` row |
-| `rating_history` | The organisers' rating of a student and its changes | 4 years | daily retention job, through the `retention_cutoffs` rows, with the band-lowering proposals and how they ended; the current value stays |
-| `contest_summaries` | Your result summary for each contest | 4 years after the contest | daily retention job, with the contest's submissions; erasure deletes them at once |
+| `integrity_events` | Paste and focus events during contests, their counts and similar-code checks | 180 days after the contest | integrity retention every 12 hours |
 | `run_payloads` | Custom input and program output of a Run | 30 days | daily retention job; the run's verdict row stays |
-| `contact_messages` | Messages sent to the organisers | 180 days | daily retention job |
-| `draft_revisions` | Problem versions no contest or submission used | 90 days | daily retention job, through the `retention_cutoffs` row; never a problem's newest revision |
-| `submissions` | Submissions, their verdicts and what each contest showed | 4 years after the contest | daily retention job; the final standings are kept in `contest_results` first |
-| `audit` | Records of organiser actions | 4 years | daily retention job, through the `retention_cutoffs` rows |
 | `backups` | Backups | 14 days | `podium-backup` (`PODIUM_BACKUP_KEEP_DAYS`) and the bucket's lifecycle rule |
 
-The daily job starts a minute after the server and then runs every 24 hours, in batches of 2,000 rows per transaction, and logs one line with what it removed (`data past retention removed`). What it does, per row:
+Everything else (submissions, scores, code, problems and their versions, audit logs, integrity decisions with their reasons) is kept until an owner erases a person with `forget-user` or deletes the database. v3 has no multi-year deletion; add one when a college policy asks for it.
 
-- **Run payloads:** a run job's payload (the code and custom input it named) becomes `{}` and its output excerpts are emptied; the next blob collection then removes the custom input files. A run older than 30 days shows its verdicts and no output.
-- **Draft revisions:** a revision older than 90 days goes when it is not its problem's newest, no contest pins or pinned it, no submission or job names it and no student was served it. Its tests go with it.
-- **Submissions:** 4 years after a contest's last moment (its end plus every extension), unless one of its integrity cases is still open, its final standings (rank, user id, total, per-problem scores, no names) are written to `contest_results`, then its submissions made before the cutoff and their jobs, its pin history and served log are deleted, and, once the contest is archived or closed to practice, its pins stop naming a revision; the revisions themselves then go by the rule above. Practice made later stays until it is 4 years old itself. One contest that fails (its export, say) is skipped and the rest of the pass still runs; the journal line names it. Submissions outside contests (an organiser trying a problem) go 4 years after they were made. Contest settings, problems, clarifications and announcements stay.
-- **Audit:** site audit and contest audit rows older than 4 years.
-- **Private notes (v1.4.0):** notes older than 30 days whose submission has no manual case. A manual case keeps its notes until its evidence is emptied, 2 years after the decision.
-- **Notices, record views, rating history (v1.4.0):** older than 180 days, 2 years and 4 years. Pruning the rating history never changes a rating: the current value is stored on its own.
-- **Contest summaries (v1.4.0):** deleted with the contest's submissions.
-
-The append-only tables accept a delete only of rows older than their `retention_cutoffs` row, which only this job writes, and a database trigger refuses a cutoff newer than 90 days (draft revisions), 30 days (private notes, v1.4.0) or a year (everything else), so no bug can open them wider (D69).
+The daily job starts a minute after the server and then runs every 24 hours, in batches of 2,000 rows per transaction, and logs one line (`data past retention removed`). A run job's payload (the code and custom input it named) becomes `{}` and its output excerpts are emptied; the next blob collection then removes the custom input files. A run older than 30 days shows its verdicts and no output.
 
 ## Site settings
 

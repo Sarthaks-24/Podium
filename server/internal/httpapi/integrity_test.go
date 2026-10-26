@@ -8,7 +8,6 @@ package httpapi
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"strings"
 	"testing"
@@ -228,15 +227,8 @@ func TestIntegrityPermissionsAndForeignIDs(t *testing.T) {
 	asha, bilal, dana, eve := w.asha.userID(), w.bilal.userID(), w.dana.userID(), w.eve.userID()
 	sig1 := similarSignal(t, run1, asha, bilal)
 	sig2 := similarSignal(t, run2, dana, eve)
-	code, created := w.owner.do("POST", w.url(w.c1, "/cases"),
-		map[string]any{"title": "Problem A, similar code", "note": "The two programs match token for token.", "signal_ids": []int64{sig1}}, s.srv.URL)
-	if code != 201 {
-		t.Fatalf("open case: %d %v", code, created)
-	}
-	case1 := int64(created["id"].(float64))
-
 	reads := []string{w.url(w.c1, ""), w.url(w.c1, fmt.Sprintf("/signals/%d/pair", sig1)), w.url(w.c1, fmt.Sprintf("/timeline/%d", asha)),
-		w.url(w.c1, "/cases"), fmt.Sprintf("/api/admin/integrity/cases/%d", case1), fmt.Sprintf("/api/admin/integrity/cases/%d/evidence/0/pair", case1)}
+		w.url(w.c1, "/cases")}
 	// Owners, admins and an admin who co-organises the contest may review.
 	for name, b := range map[string]*browser{"owner": w.owner, "admin": w.admin} {
 		for _, path := range reads {
@@ -251,25 +243,17 @@ func TestIntegrityPermissionsAndForeignIDs(t *testing.T) {
 		if code, _ := w.chen.do("GET", path, nil, ""); code != 404 {
 			t.Errorf("student GET %s: %d, want 404", path, code)
 		}
-		want := 403
-		if strings.HasPrefix(path, "/api/admin/integrity/") {
-			want = 404
-		}
-		if code, _ := w.ta.do("GET", path, nil, ""); code != want {
-			t.Errorf("student co-organiser GET %s: %d, want %d", path, code, want)
+		if code, _ := w.ta.do("GET", path, nil, ""); code != 403 {
+			t.Errorf("student co-organiser GET %s: %d, want 403", path, code)
 		}
 	}
 	for name, b := range map[string]*browser{"student": w.chen, "co-organiser": w.ta} {
 		if code, _ := b.do("POST", w.url(w.c1, "/run"), nil, s.srv.URL); code != 404 && code != 403 {
 			t.Errorf("%s starting a check: %d", name, code)
 		}
-		if code, _ := b.do("PUT", fmt.Sprintf("/api/admin/integrity/cases/%d", case1),
-			map[string]any{"state": "cleared", "note": "Nothing to see here at all, cleared."}, s.srv.URL); code != 404 {
-			t.Errorf("%s deciding a case: %d", name, code)
-		}
-		if code, _ := b.do("POST", w.url(w.c1, "/cases"),
-			map[string]any{"title": "Mine", "note": "A long enough reason to open it.", "signal_ids": []int64{sig1}}, s.srv.URL); code != 404 && code != 403 {
-			t.Errorf("%s opening a case: %d", name, code)
+		if code, _ := b.do("PUT", w.url(w.c1, fmt.Sprintf("/cases/%d", asha)),
+			map[string]any{"decision": "warning", "reason": "Nothing to see here at all, cleared."}, s.srv.URL); code != 404 && code != 403 {
+			t.Errorf("%s deciding: %d", name, code)
 		}
 	}
 	// Ids from the other contest are 404 under this one, and its signals
@@ -280,12 +264,9 @@ func TestIntegrityPermissionsAndForeignIDs(t *testing.T) {
 	if code, _ := w.owner.do("GET", w.url(w.c1, fmt.Sprintf("/timeline/%d", dana)), nil, ""); code != 404 {
 		t.Errorf("timeline of a student of another contest: %d", code)
 	}
-	if code, out := w.owner.do("POST", w.url(w.c1, "/cases"),
-		map[string]any{"title": "Mixed", "note": "A long enough reason to open it.", "signal_ids": []int64{sig2}}, s.srv.URL); code != 400 {
-		t.Errorf("case from another contest's signal: %d %v", code, out)
-	}
-	if code, _ := w.owner.do("GET", "/api/admin/integrity/cases/999", nil, ""); code != 404 {
-		t.Errorf("missing case: %d", code)
+	if code, out := w.owner.do("PUT", w.url(w.c1, fmt.Sprintf("/cases/%d", dana)),
+		map[string]any{"decision": "warning", "reason": "A long enough reason to decide."}, s.srv.URL); code != 404 {
+		t.Errorf("decision about a student of another contest: %d %v", code, out)
 	}
 	// The run answer names the people and problems it lists; the roster's
 	// name and roll number win over the account's.
@@ -310,240 +291,6 @@ func TestIntegrityPermissionsAndForeignIDs(t *testing.T) {
 	_, tl := w.owner.do("GET", w.url(w.c1, fmt.Sprintf("/timeline/%d", asha)), nil, "")
 	if ms := tl["moments"].([]any); len(ms) == 0 || ms[0].(map[string]any)["kind"] != "submission" {
 		t.Errorf("timeline: %v", tl)
-	}
-}
-
-func TestIntegrityCaseFlowOverHTTP(t *testing.T) {
-	w := newIntegrityWorld(t)
-	s := w.s
-	s.at(w.start, 121)
-	run := w.check(w.c1)
-	asha, bilal := w.asha.userID(), w.bilal.userID()
-	sig := similarSignal(t, run, asha, bilal)
-	caseBody := func(note string) map[string]any {
-		return map[string]any{"title": "Problem A, similar code", "note": note, "signal_ids": []int64{sig}}
-	}
-	if code, out := w.owner.do("POST", w.url(w.c1, "/cases"), caseBody("too short"), s.srv.URL); code != 400 ||
-		!strings.Contains(out["error"].(map[string]any)["message"].(string), "20 characters") {
-		t.Errorf("short reason: %d %v", code, out)
-	}
-	code, c := w.owner.do("POST", w.url(w.c1, "/cases"), caseBody("The two programs match token for token."), s.srv.URL)
-	if code != 201 || c["state"] != "open" || len(c["users"].([]any)) != 2 || len(c["decisions"].([]any)) != 1 || len(c["evidence"].([]any)) != 1 {
-		t.Fatalf("open case: %d %v", code, c)
-	}
-	caseURL := fmt.Sprintf("/api/admin/integrity/cases/%v", c["id"])
-	explainURL := fmt.Sprintf("/api/integrity/cases/%v/explanation", c["id"])
-	// seen is what the case page sends: each student's latest explanation
-	// version as the reviewer loaded it.
-	seen := func() map[string]any {
-		_, got := w.owner.do("GET", caseURL, nil, "")
-		out := map[string]any{}
-		for _, u := range got["users"].([]any) {
-			u := u.(map[string]any)
-			if vs := u["explanations"].([]any); len(vs) > 0 {
-				out[fmt.Sprint(int64(u["user_id"].(float64)))] = vs[len(vs)-1].(map[string]any)["created_at"]
-			}
-		}
-		return out
-	}
-	decide := func(state, note string) (int, map[string]any) {
-		return w.owner.do("PUT", caseURL, map[string]any{"state": state, "note": note, "seen_explanations": seen()}, s.srv.URL)
-	}
-	if code, out := decide("actioned", "Copying is clear from the matched code."); code != 400 ||
-		out["error"].(map[string]any)["message"] != "Share the case with the students before taking action. They explain first." {
-		t.Errorf("action before sharing: %d %v", code, out)
-	}
-	// Before sharing the students see nothing and cannot explain.
-	if _, mine := w.asha.do("GET", "/api/integrity/cases", nil, ""); len(mine["cases"].([]any)) != 0 {
-		t.Errorf("unshared case visible: %v", mine)
-	}
-	if code, _ := w.asha.do("PUT", explainURL, map[string]any{"explanation": "Mine."}, s.srv.URL); code != 404 {
-		t.Errorf("explained an unshared case: %d", code)
-	}
-	if code, out := decide("awaiting_student", "Please explain how you wrote this solution."); code != 200 || out["state"] != "awaiting_student" {
-		t.Fatalf("share: %d %v", code, out)
-	}
-	// Action is never one step: an outcome is proposed and confirmed.
-	if code, out := decide("actioned", "Copying is clear from the matched code."); code != 400 ||
-		out["error"].(map[string]any)["code"] != "proposal_needed" {
-		t.Errorf("action in one step: %d %v", code, out)
-	}
-
-	// Retention 200 days later keeps the data of the students in the open
-	// case and clears Chen's.
-	s.clock.set(w.start.Add(200 * 24 * time.Hour))
-	if _, _, err := s.contests.Retain(context.Background()); err != nil {
-		t.Fatal(err)
-	}
-	for user, want := range map[int64]bool{asha: true, bilal: true, w.chen.userID(): false} {
-		var kept int
-		s.db.QueryRow("SELECT count(*) FROM submissions WHERE contest_id = ? AND user_id = ? AND client_hash <> ''", w.c1, user).Scan(&kept)
-		if (kept > 0) != want {
-			t.Errorf("user %d keeps integrity data: %v, want %v", user, kept > 0, want)
-		}
-	}
-
-	code, mine := w.asha.do("GET", "/api/integrity/cases", nil, "")
-	cases := mine["cases"].([]any)
-	if code != 200 || len(cases) != 1 || mine["server_now"] == nil {
-		t.Fatalf("student cases: %d %v", code, mine)
-	}
-	sc := cases[0].(map[string]any)
-	ev := sc["evidence"].([]any)
-	if len(ev) != 1 || ev[0].(map[string]any)["source"] != progAsha || len(ev[0].(map[string]any)["spans"].([]any)) == 0 || sc["decided"] != false {
-		t.Errorf("student evidence: %v", sc)
-	}
-	if mine["contests"].(map[string]any)[fmt.Sprint(w.c1)].(map[string]any)["slug"] != "c1" ||
-		mine["problems"].(map[string]any)[fmt.Sprint(w.pa)].(map[string]any)["label"] != "A" {
-		t.Errorf("student maps: %v %v", mine["contests"], mine["problems"])
-	}
-	js, _ := json.Marshal(mine)
-	for _, leak := range []string{"Bilal", "bilal@", "my own solution", "addUp", "Please explain", "token for token"} {
-		if strings.Contains(string(js), leak) {
-			t.Errorf("student answer contains %q: %s", leak, js)
-		}
-	}
-	if code, _ := w.chen.do("PUT", explainURL, map[string]any{"explanation": "Not mine."}, s.srv.URL); code != 404 {
-		t.Errorf("outsider explained: %d", code)
-	}
-	if code, _ := w.asha.do("PUT", explainURL, map[string]any{"explanation": "  "}, s.srv.URL); code != 400 {
-		t.Errorf("empty explanation: %d", code)
-	}
-	if code, _ := w.asha.do("PUT", explainURL, map[string]any{"explanation": "We revised together and I used the same approach."}, s.srv.URL); code != 204 {
-		t.Fatalf("explain: %d", code)
-	}
-	_, got := w.owner.do("GET", caseURL, nil, "")
-	explained := false
-	for _, u := range got["users"].([]any) {
-		u := u.(map[string]any)
-		if int64(u["user_id"].(float64)) == asha && u["explanation"] != "" && u["explained_at"] != nil && u["shared_at"] != nil {
-			explained = true
-		}
-	}
-	if !explained {
-		t.Errorf("reviewer does not see the explanation: %v", got)
-	}
-	// Asha rewrites her explanation after the reviewer loaded the page: the
-	// decision is refused until the reviewer reloads, and both versions stay.
-	stale := seen()
-	if code, _ := w.asha.do("PUT", explainURL, map[string]any{"explanation": "We revised together; here is the longer account."}, s.srv.URL); code != 204 {
-		t.Fatalf("second explanation: %d", code)
-	}
-	code, out := w.owner.do("PUT", caseURL, map[string]any{"state": "cleared", "note": "The explanation is consistent with the timeline.",
-		"seen_explanations": stale}, s.srv.URL)
-	if e, _ := out["error"].(map[string]any); code != 409 || e["code"] != "explanation_changed" ||
-		e["message"] != "A student changed their explanation. Reload before deciding." {
-		t.Errorf("decision against an old explanation: %d %v", code, out)
-	}
-	_, got = w.owner.do("GET", caseURL, nil, "")
-	for _, u := range got["users"].([]any) {
-		u := u.(map[string]any)
-		if int64(u["user_id"].(float64)) == asha && len(u["explanations"].([]any)) != 2 {
-			t.Errorf("explanation versions: %v", u["explanations"])
-		}
-	}
-	code, out = decide("cleared", "The explanation is consistent with the timeline.")
-	if code != 200 || out["state"] != "cleared" || len(out["decisions"].([]any)) != 3 {
-		t.Fatalf("clear: %d %v", code, out)
-	}
-	if code, _ := w.asha.do("PUT", explainURL, map[string]any{"explanation": "Changed my mind."}, s.srv.URL); code != 404 {
-		t.Errorf("explanation changed after the decision: %d", code)
-	}
-	_, mine = w.asha.do("GET", "/api/integrity/cases", nil, "")
-	if sc := mine["cases"].([]any)[0].(map[string]any); sc["decided"] != true {
-		t.Errorf("decided case: %v", sc)
-	}
-	// The decision log is append only: every change is still there.
-	var n int
-	s.db.QueryRow("SELECT count(*) FROM integrity_decisions WHERE case_id = ?", c["id"]).Scan(&n)
-	if n != 3 {
-		t.Errorf("%d decisions stored, want 3", n)
-	}
-	// The server log records opens and decisions by id, never the notes,
-	// explanations or code.
-	logs := s.logs.String()
-	if !strings.Contains(logs, `"msg":"integrity case opened"`) || strings.Count(logs, `"msg":"integrity case decided"`) != 2 {
-		t.Errorf("audit lines missing:\n%s", logs)
-	}
-	for _, secret := range []string{"token for token", "consistent with the timeline", "revised together", "scanf"} {
-		if strings.Contains(logs, secret) {
-			t.Errorf("the log contains %q", secret)
-		}
-	}
-	// A re-run replaces the signals but not the case's evidence.
-	w.check(w.c1)
-	_, again := w.owner.do("GET", caseURL, nil, "")
-	if fmt.Sprint(again["evidence"]) != fmt.Sprint(out["evidence"]) {
-		t.Error("a re-run changed the case's evidence")
-	}
-	if _, list := w.owner.do("GET", w.url(w.c1, "/cases"), nil, ""); len(list["cases"].([]any)) != 1 {
-		t.Errorf("case list: %v", list)
-	}
-}
-
-// A case's pair view serves the case's own copy of the evidence: a re-run
-// does not change it. A student in the case who later became an admin
-// cannot read, list or decide it, and the decision log names reviewers.
-func TestIntegrityCasePairAndReviewerInCase(t *testing.T) {
-	w := newIntegrityWorld(t)
-	s := w.s
-	s.at(w.start, 121)
-	run := w.check(w.c1)
-	asha, bilal := w.asha.userID(), w.bilal.userID()
-	sig := similarSignal(t, run, asha, bilal)
-	code, c := w.owner.do("POST", w.url(w.c1, "/cases"),
-		map[string]any{"title": "Problem A, similar code", "note": "The two programs match token for token.", "signal_ids": []int64{sig}}, s.srv.URL)
-	if code != 201 {
-		t.Fatalf("open case: %d %v", code, c)
-	}
-	caseURL := fmt.Sprintf("/api/admin/integrity/cases/%v", c["id"])
-	if d := c["decisions"].([]any)[0].(map[string]any); d["by_name"] != "Owner" {
-		t.Errorf("decision log names %v, want Owner", d["by_name"])
-	}
-	viewsA, viewsB := viewsOf(t, s, "case", asha), viewsOf(t, s, "case", bilal)
-	code, pair := w.owner.do("GET", caseURL+"/evidence/0/pair", nil, "")
-	if code != 200 || pair["signal"].(map[string]any)["kind"] != "similar" || pair["server_now"] == nil {
-		t.Fatalf("case pair: %d %v", code, pair)
-	}
-	// The pair view is a case read for each student it shows (P4 security fix, C1-026).
-	if viewsOf(t, s, "case", asha) != viewsA+1 || viewsOf(t, s, "case", bilal) != viewsB+1 {
-		t.Error("the case pair read was not logged for both students")
-	}
-	_, live := w.owner.do("GET", w.url(w.c1, fmt.Sprintf("/signals/%d/pair", sig)), nil, "")
-	if fmt.Sprint(pair["a"], pair["b"]) != fmt.Sprint(live["a"], live["b"]) {
-		t.Errorf("case pair %v differs from the live pair %v", pair, live)
-	}
-	sources := []string{pair["a"].(map[string]any)["source"].(string), pair["b"].(map[string]any)["source"].(string)}
-	if !(sources[0] == progAsha && sources[1] == progBilal) && !(sources[0] == progBilal && sources[1] == progAsha) {
-		t.Errorf("case pair sources: %v", sources)
-	}
-	w.check(w.c1)
-	if _, again := w.owner.do("GET", caseURL+"/evidence/0/pair", nil, ""); fmt.Sprint(again["a"], again["b"]) != fmt.Sprint(pair["a"], pair["b"]) {
-		t.Error("a re-run changed the case's pair view")
-	}
-	for _, bad := range []string{"/evidence/1/pair", "/evidence/-1/pair", "/evidence/x/pair"} {
-		if code, _ := w.owner.do("GET", caseURL+bad, nil, ""); code != 404 {
-			t.Errorf("GET %s: %d, want 404", bad, code)
-		}
-	}
-
-	// Asha becomes an admin: her own case is still out of her reach.
-	if code, out := w.owner.do("POST", "/api/admin/people", map[string]string{"email": "asha@college.edu", "role": "admin"}, s.srv.URL); code != 200 {
-		t.Fatalf("grant admin: %d %v", code, out)
-	}
-	for _, path := range []string{caseURL, caseURL + "/evidence/0/pair"} {
-		if code, _ := w.asha.do("GET", path, nil, ""); code != 404 {
-			t.Errorf("Asha GET %s: %d, want 404", path, code)
-		}
-	}
-	if code, _ := w.asha.do("PUT", caseURL, map[string]any{"state": "cleared", "note": "Nothing to see here at all, cleared."}, s.srv.URL); code != 404 {
-		t.Errorf("Asha decided her own case: %d", code)
-	}
-	if code, list := w.asha.do("GET", w.url(w.c1, "/cases"), nil, ""); code != 200 || len(list["cases"].([]any)) != 0 {
-		t.Errorf("Asha's case list: %d %v", code, list)
-	}
-	if _, list := w.owner.do("GET", w.url(w.c1, "/cases"), nil, ""); len(list["cases"].([]any)) != 1 {
-		t.Errorf("owner's case list: %v", list)
 	}
 }
 

@@ -164,20 +164,6 @@ func (s *Service) Board(ctx context.Context, c *Contest, variant string) (*Stand
 func (s *Service) computeBoard(ctx context.Context, c *Contest, variant string, version int64) (*Standings, error) {
 	s.board.computes.Add(1)
 	b := s.scoringBoard(c)
-	// The full board applies every review decision. The frozen board
-	// applies those made after the contest closed (the routes allow no
-	// other), so an extension granted later, which keeps students on the
-	// frozen board until it ends, cannot bring a zeroed score back; a
-	// change made during the contest would wait for its end.
-	since := int64(0)
-	if variant == VariantFrozen && s.now().Before(c.Final()) {
-		since = c.Schedule.Close().UnixMilli()
-	}
-	z, err := s.adjustmentsSince(ctx, c.ID, since)
-	if err != nil {
-		return nil, err
-	}
-	b.Zeroed = z
 	labels := make([]string, 0, len(c.Problems))
 	for _, p := range c.Problems {
 		labels = append(labels, p.Label)
@@ -258,7 +244,8 @@ func (s *Service) participants(ctx context.Context, c *Contest) ([]Participant, 
 		WHERE u.id IN (SELECT user_id FROM contest_starts WHERE contest_id = ?
 			UNION SELECT user_id FROM submissions WHERE contest_id = ? AND kind = 'submit' AND practice = 0)
 		AND u.id NOT IN (SELECT user_id FROM contest_admins WHERE contest_id = ?)
-		AND u.role = 'student'`, c.ID, c.ID, c.ID, c.ID, c.ID, c.ID)
+		AND u.id NOT IN (SELECT user_id FROM integrity_cases WHERE contest_id = ? AND decision = 'excluded')
+		AND u.role = 'student'`, c.ID, c.ID, c.ID, c.ID, c.ID, c.ID, c.ID)
 	if err != nil {
 		return nil, err
 	}

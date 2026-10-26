@@ -1,11 +1,7 @@
 <!--
   AccountMenu: the one account control in the header (v2 N2, audit 04-4 and
   04-17). It says who is signed in ("Signed in as {email}" and the role
-  word), then "Notices" with the unread count (lib/notices.svelte.ts; for
-  an organiser only while one is unread) and,
-  for a student, "Your standing" and the "Hide my progress" switch
-  (hide_progress, lib/account.ts: their own progress page and the Home
-  line go empty; organisers still see the results), then "Theme and
+  word), then "Theme and
   colours" and "Keyboard shortcuts" (dialogs the shell owns, opened
   through lib/shell.svelte.ts; the shortcuts item is left out on
   touch-only screens) and, after a rule, "Sign out".
@@ -23,11 +19,7 @@
 <script lang="ts">
   import { tick } from 'svelte';
   import { dismissable } from '../lib/dismissable';
-  import { saveHideProgress } from '../lib/account';
-  import { ApiError } from '../lib/api';
   import { roleLabel } from '../lib/format';
-  import { notices } from '../lib/notices.svelte';
-  import { showToast } from '../lib/toast.svelte';
   import { displayName, type User } from '../lib/session.svelte';
   import { shell } from '../lib/shell.svelte';
   import Icon from './Icon.svelte';
@@ -50,25 +42,6 @@
     await tick();
   }
 
-  const showNotices = $derived(user.role === 'student' || notices.unread > 0);
-
-  let hideBusy = $state(false);
-
-  async function setHide(event: Event) {
-    const box = event.currentTarget as HTMLInputElement;
-    const hide = box.checked;
-    hideBusy = true;
-    try {
-      await saveHideProgress(hide);
-      showToast(hide ? 'Your progress page is hidden. Your results are kept.' : 'Your progress page is shown again.');
-    } catch (e) {
-      box.checked = !hide;
-      showToast(e instanceof ApiError ? e.message : 'Your choice could not be saved. Try again in a moment.', 'error');
-    } finally {
-      hideBusy = false;
-    }
-  }
-
   function signOut() {
     open = false;
     onsignout();
@@ -81,24 +54,7 @@
     <span class="role">{roleLabel(user.role)}</span>
   </p>
   <ul class="items">
-    {#if showNotices}
-      <li>
-        <a class="item" href="/notices" onclick={() => (open = false)}>
-          Notices{#if notices.unread > 0}<span class="unread">, <span class="mono">{notices.unread}</span> unread</span>{/if}
-        </a>
-      </li>
-    {/if}
-    {#if user.role === 'student'}
-      <li><a class="item" href="/integrity" onclick={() => (open = false)}>Your standing</a></li>
-      <li class="hide">
-        <label class="item check">
-          <input type="checkbox" checked={user.hide_progress === true} disabled={hideBusy} onchange={setHide} aria-describedby="hide-progress-help" />
-          Hide my progress
-        </label>
-        <p id="hide-progress-help" class="help">Empties your progress page. Organisers still see your results.</p>
-      </li>
-    {/if}
-    <li class:rule={showNotices}><button type="button" class="item" onclick={() => (shell.theme = true)}>Theme and colours</button></li>
+    <li><button type="button" class="item" onclick={() => (shell.theme = true)}>Theme and colours</button></li>
     <li class="keys"><button type="button" class="item" aria-keyshortcuts="?" onclick={() => (shell.shortcuts = true)}>Keyboard shortcuts</button></li>
     <li class="rule"><button type="button" class="item" onclick={signOut}>Sign out</button></li>
   </ul>
@@ -215,26 +171,6 @@
     border-top: var(--rule) solid var(--line);
   }
 
-  .unread {
-    margin-left: 0;
-    color: var(--ink-muted);
-  }
-
-  a.item {
-    text-decoration: none;
-  }
-
-  .check {
-    gap: var(--space-2);
-    cursor: pointer;
-  }
-
-  .help {
-    padding: 0 var(--space-2) var(--space-1) calc(var(--space-2) + 1.5em);
-    color: var(--ink-muted);
-    font-size: var(--fs-0);
-  }
-
   .item {
     display: flex;
     align-items: center;
@@ -261,10 +197,6 @@
 
   .inline .item {
     padding-inline: 0;
-  }
-
-  .inline .help {
-    padding-left: 1.5em;
   }
 
   .inline .item:hover {

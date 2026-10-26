@@ -57,18 +57,6 @@ func TestRunsReport(t *testing.T) {
 	}
 }
 
-func TestSawNeedsItsFlags(t *testing.T) {
-	path, _ := historyDB(t)
-	var out bytes.Buffer
-	if code := sawCmd([]string{"-db", path, "-contest", "x"}, &out); code != 2 {
-		t.Errorf("missing flags: exit %d", code)
-	}
-	out.Reset()
-	if code := sawCmd([]string{"-db", path, "-contest", "nope", "-email", "a@b.c", "-label", "A"}, &out); code != 2 || !strings.Contains(out.String(), "nope") {
-		t.Errorf("unknown contest: exit %d %s", code, out.String())
-	}
-}
-
 func TestMigrateACopy(t *testing.T) {
 	ctx := context.Background()
 	path := filepath.Join(t.TempDir(), "copy.db")

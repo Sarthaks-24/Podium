@@ -1,31 +1,16 @@
 <!--
-  Students: the organisers' table of students at /admin/students (v2 P4
-  F9.4, F9.2b; GET /api/admin/students, docs/API.md "C9: organisers'
-  students pages"). The shell loads it lazily.
-
-  One question: who may need a word from an organiser. The table is
-  sorted by name and never by score; the two filters ("Missed the last 2
-  graded contests", "10 or more submissions, nothing accepted") come from
-  the server over final graded contests only, and the line under them
-  names the contests they looked at. A search matches a name or an email.
-  Columns: the name (opens the student page) with the email under it, graded contests,
-  the latest graded percent, the last submission, and the rating (owners
-  and admins only, never shown to a student). Name and rating sort with a
-  button in their header (aria-sort says the order); the default stays
-  by name. The filter and the search are kept in the address (?filter=,
-  ?q=). Under 768 px each row stacks (.table-stack): name and rating,
-  with the email, then the figures with their labels.
-
-  Beside the table from 1280 px, below it on smaller screens: what the
-  filters and the rating mean. States: loading, error, forbidden (anyone
-  who is not an owner or admin), and an empty table that says why.
+  Students: the organisers' table of everyone who signed in as a student
+  (GET /api/admin/students), sorted by name, with how many contests each
+  took part in and their last submission. A search by name or email
+  narrows it; the address keeps the search, so a reload shows the same
+  rows. Results per contest are in each contest's standings and export.
   Takes no props.
 -->
 <script lang="ts">
+  import { onMount } from 'svelte';
   import MonoDigits from '../components/MonoDigits.svelte';
   import PageHeader from '../components/PageHeader.svelte';
   import PageState from '../components/PageState.svelte';
-  import { onMount } from 'svelte';
   import { ApiError, errorText, getJSON } from '../lib/api';
   import { keepHeadingFocus } from '../lib/focus';
   import { formatDateTime } from '../lib/format';
@@ -33,56 +18,49 @@
   import { navigate, router } from '../lib/router.svelte';
   import { routeTitle } from '../lib/routing';
   import { session } from '../lib/session.svelte';
-  import { bandOf, bandWord, FILTERS, filterHelp, percentText, ratingText, sortStudents, type SortKey, type StudentFilter, type StudentsList } from '../lib/students';
+
+  interface StudentRow {
+    id: number;
+    name: string;
+    email: string;
+    contests: number;
+    last_submission_at: number | null;
+    disabled?: boolean;
+  }
 
   let loadState = $state<'loading' | 'ready' | 'forbidden' | 'error'>('loading');
   let loadError = $state('');
-  let data = $state.raw<StudentsList | null>(null);
-  let filter = $state<StudentFilter>('');
+  let rows = $state.raw<StudentRow[]>([]);
   let query = $state('');
-  /** The search and filter the shown rows answer, for the empty line. */
-  let shownFor = $state({ filter: '' as StudentFilter, q: '' });
+  let shownFor = $state('');
   let busy = $state(false);
-  let sortKey = $state<SortKey>('name');
-  let sortDir = $state<'asc' | 'desc'>('asc');
 
   const isOrganiser = $derived(session.user?.role === 'admin' || session.user?.role === 'owner');
-  const rows = $derived(data ? sortStudents(data.students, sortKey, sortDir) : []);
-  const help = $derived(filterHelp(shownFor.filter, data?.last_graded ?? []));
 
-  // Only the newest request is shown: a slow older answer must not land under a newer filter (C2-032).
+  // Only the newest request is shown, and a late answer never navigates back here.
   let loadSeq = 0;
-  // A late answer must not navigate back here after the organiser left.
   let alive = true;
 
   async function load(first = false) {
     if (first) loadState = 'loading';
     busy = true;
     const seq = ++loadSeq;
-    const asked = { filter, q: query.trim() };
-    const params: string[] = [];
-    if (filter !== '') params.push(`filter=${encodeURIComponent(filter)}`);
-    if (query.trim() !== '') params.push(`q=${encodeURIComponent(query.trim())}`);
-    const q = params.join('&');
+    const q = query.trim();
+    const params = q ? `?q=${encodeURIComponent(q)}` : '';
     try {
-      const d = await getJSON<StudentsList>(`/api/admin/students${q ? `?${q}` : ''}`);
+      const d = await getJSON<{ students: StudentRow[] }>(`/api/admin/students${params}`);
       if (seq !== loadSeq || !alive) return;
       const restore = first ? keepHeadingFocus() : null;
-      data = d;
-      shownFor = asked;
-      // The address keeps the filter and the search, so a reload or a shared link shows the same rows.
-      navigate(`/admin/students${q ? `?${q}` : ''}`, { replace: true });
+      rows = d.students ?? [];
+      shownFor = q;
+      navigate(`/admin/students${params}`, { replace: true });
       loadState = 'ready';
       void restore?.();
     } catch (e) {
-      if (seq !== loadSeq) return;
+      if (seq !== loadSeq || !alive) return;
       if (e instanceof ApiError && e.status === 401) {
         session.user = undefined;
         session.status = 'signed-out';
-        return;
-      }
-      if (e instanceof ApiError && e.status === 403) {
-        loadState = 'forbidden';
         return;
       }
       loadError = errorText(e);
@@ -97,29 +75,8 @@
     void load();
   }
 
-  function sortBy(key: SortKey) {
-    if (sortKey === key) sortDir = sortDir === 'asc' ? 'desc' : 'asc';
-    else {
-      sortKey = key;
-      sortDir = 'asc';
-    }
-  }
-
-  function ariaSort(key: SortKey): 'ascending' | 'descending' | undefined {
-    if (sortKey !== key) return undefined;
-    return sortDir === 'asc' ? 'ascending' : 'descending';
-  }
-
-  const emptyText = $derived.by(() => {
-    if (shownFor.q !== '') return `No student matches "${shownFor.q}". Check the spelling, or clear the search.`;
-    if (shownFor.filter !== '') return 'Nobody matches this filter.';
-    return '';
-  });
-
   onMount(() => {
     setTitle(routeTitle('students'));
-    const f = router.query.get('filter') ?? '';
-    if (FILTERS.some((x) => x.id === f)) filter = f as StudentFilter;
     query = router.query.get('q') ?? '';
     if (!isOrganiser) loadState = 'forbidden';
     else void load(true);
@@ -129,7 +86,7 @@
   });
 </script>
 
-<PageHeader title="Students" lead="Everyone who has signed in as a student, sorted by name. Open a student for their contests and record." />
+<PageHeader title="Students" lead="Everyone who has signed in as a student, sorted by name." />
 
 {#if loadState === 'forbidden'}
   <PageState kind="forbidden" message="Only organisers can see the students." />
@@ -137,121 +94,64 @@
   <PageState kind="loading" message="Loading the students" />
 {:else if loadState === 'error'}
   <PageState kind="error" message={loadError} onretry={() => load(true)} />
-{:else if data}
-  <div class="page-split students-split">
-    <div class="page-split-main">
-      <section class="panel" aria-labelledby="table-title">
-        <div class="panel-head">
-          <h2 id="table-title">{shownFor.filter === '' ? 'Every student' : (FILTERS.find((f) => f.id === shownFor.filter)?.label ?? 'Students')}</h2>
-          <span class="muted small" aria-live="polite">{rows.length === 1 ? '1 student' : `${rows.length} students`}</span>
-        </div>
-        <form class="tools" novalidate onsubmit={search}>
-          <div class="field">
-            <label for="students-filter">Show</label>
-            <select id="students-filter" class="select" bind:value={filter} onchange={() => load()}>
-              {#each FILTERS as f (f.id)}<option value={f.id}>{f.label}</option>{/each}
-            </select>
-          </div>
-          <div class="field grow">
-            <label for="students-q">Name or email</label>
-            <input id="students-q" class="input" type="search" autocomplete="off" spellcheck="false" bind:value={query} />
-          </div>
-          <button type="submit" class="btn btn-secondary" disabled={busy}>Search</button>
-        </form>
-        <p class="muted small" id="filter-help">{help}</p>
-
-        {#if rows.length === 0}
-          {#if emptyText !== ''}
-            <p class="muted empty">{emptyText}</p>
-          {:else}
-            <!-- The page-state rule: say what is missing, then how it fills (C2-024). -->
-            <p class="muted empty">
-              No students yet. A student appears here after signing in with an allowed email domain (an owner sets these on
-              <a href="/admin/people">People</a>), or once on a contest roster (in each contest's settings, under
-              <a href="/admin/contests">Contests</a>).
-            </p>
-          {/if}
-        {:else}
-          <div class="table-wrap">
-            <table class="table table-stack list" aria-describedby="filter-help">
-              <caption class="visually-hidden">Students, sorted by {sortKey === 'name' ? 'name' : 'rating'}, {sortDir === 'asc' ? 'ascending' : 'descending'}</caption>
-              <thead>
-                <tr>
-                  <th scope="col" aria-sort={ariaSort('name')}>
-                    <button type="button" class="sort" onclick={() => sortBy('name')}>Name<span class="arrow" aria-hidden="true">{sortKey === 'name' ? (sortDir === 'asc' ? 'A to Z' : 'Z to A') : ''}</span></button>
-                  </th>
-                  <th scope="col" class="right">Graded contests</th>
-                  <th scope="col" class="right">Latest graded</th>
-                  <th scope="col">Last submission</th>
-                  <th scope="col" class="right" aria-sort={ariaSort('rating')}>
-                    <button type="button" class="sort" onclick={() => sortBy('rating')}>Rating<span class="arrow" aria-hidden="true">{sortKey === 'rating' ? (sortDir === 'asc' ? 'low first' : 'high first') : ''}</span></button>
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {#each rows as r (r.id)}
-                  {@const band = bandOf(r.rating_tenths)}
-                  <tr>
-                    <th scope="row" class="name">
-                      <a class="row-link" href="/admin/students/{r.id}">{r.name || r.email}</a>
-                      {#if r.name}<span class="email">{r.email}</span>{/if}
-                    </th>
-                    <td class="num right graded"><span class="cell-label">Graded contests</span>{r.graded_contests}</td>
-                    <td class="num right latest">
-                      <span class="cell-label">Latest graded</span>{#if r.last_graded_percent !== null}{percentText(r.last_graded_percent)}%{:else}<span class="muted word">None yet</span>{/if}
-                    </td>
-                    <td class="last"><span class="cell-label">Last submission</span>{#if r.last_submission_at !== null}<MonoDigits text={formatDateTime(r.last_submission_at)} />{:else}<span class="muted">Never</span>{/if}</td>
-                    <td class="right rating">
-                      <span class="num">{ratingText(r.rating_tenths)}</span>{#if band !== 'good'}<span class="band small">{bandWord(band)}</span>{/if}
-                    </td>
-                  </tr>
-                {/each}
-              </tbody>
-            </table>
-          </div>
-        {/if}
-      </section>
+{:else}
+  <section class="panel list-panel" aria-labelledby="table-title">
+    <div class="panel-head">
+      <h2 id="table-title">Every student</h2>
+      <span class="muted small" aria-live="polite">{rows.length === 1 ? '1 student' : `${rows.length} students`}</span>
     </div>
+    <form class="tools" novalidate onsubmit={search}>
+      <div class="field grow">
+        <label for="students-q">Name or email</label>
+        <input id="students-q" class="input" type="search" autocomplete="off" spellcheck="false" bind:value={query} />
+      </div>
+      <button type="submit" class="btn btn-secondary" disabled={busy}>Search</button>
+    </form>
 
-    <aside class="page-split-aside" aria-label="About this table">
-      <section class="panel" aria-labelledby="about-title">
-        <h2 id="about-title">What the columns mean</h2>
-        <dl class="defs">
-          <dt>Graded contests</dt>
-          <dd>Final graded contests the student took part in. Practice and ungraded contests do not count.</dd>
-          <dt>Latest graded</dt>
-          <dd>Their score as a percentage in the most recent of those.</dd>
-          <dt>Rating</dt>
-          <dd>
-            From 0 to 10, for owners and admins only. Students see their band, never the number: 9 to 10 is Good standing, 6 to 8.9
-            Outcomes on record, below 6 Repeated outcomes.
-          </dd>
-        </dl>
-      </section>
-      {#if data.last_graded.length > 0}
-        <section class="panel" aria-labelledby="last-title">
-          <h2 id="last-title">Contests the filters use</h2>
-          <ul class="contests">
-            {#each data.last_graded as c (c.contest_id)}
-              <li><a href="/admin/contests/{c.contest_id}/results">{c.title}</a></li>
-            {/each}
-          </ul>
-        </section>
+    {#if rows.length === 0}
+      {#if shownFor !== ''}
+        <p class="muted empty">No student matches "{shownFor}". Check the spelling, or clear the search.</p>
+      {:else}
+        <p class="muted empty">
+          No students yet. A student appears here after signing in with an allowed email domain (an owner sets these on
+          <a href="/admin/people">People</a>).
+        </p>
       {/if}
-    </aside>
-  </div>
+    {:else}
+      <div class="table-wrap">
+        <table class="table table-stack list">
+          <caption class="visually-hidden">Students, sorted by name</caption>
+          <thead>
+            <tr>
+              <th scope="col">Name</th>
+              <th scope="col" class="right">Contests</th>
+              <th scope="col">Last submission</th>
+            </tr>
+          </thead>
+          <tbody>
+            {#each rows as r (r.id)}
+              <tr>
+                <th scope="row" class="name">
+                  {r.name || r.email}
+                  {#if r.name && r.name !== r.email}<span class="email">{r.email}</span>{/if}
+                  {#if r.disabled}<span class="email">Account disabled</span>{/if}
+                </th>
+                <td class="num right taken"><span class="cell-label">Contests</span>{r.contests}</td>
+                <td class="last">
+                  <span class="cell-label">Last submission</span>{#if r.last_submission_at !== null}<MonoDigits text={formatDateTime(r.last_submission_at)} />{:else}<span class="muted">Never</span>{/if}
+                </td>
+              </tr>
+            {/each}
+          </tbody>
+        </table>
+      </div>
+    {/if}
+  </section>
 {/if}
 
 <style>
-  .students-split {
+  .list-panel {
     margin-top: var(--space-6);
-  }
-
-  /* The table needs more room than a form: the work column takes what the aside leaves. */
-  @media (min-width: 1280px) {
-    .students-split {
-      grid-template-columns: minmax(0, 1fr) minmax(0, var(--measure-aside));
-    }
   }
 
   .panel h2 {
@@ -278,34 +178,8 @@
     text-align: right;
   }
 
-  .sort {
-    display: inline-flex;
-    align-items: baseline;
-    gap: var(--space-2);
-    min-height: var(--control-h);
-    padding: 0;
-    border: 0;
-    background: none;
-    color: inherit;
-    font: inherit;
-    cursor: pointer;
-  }
-
-  .sort:hover {
-    color: var(--ink);
-  }
-
-  .arrow {
-    color: var(--act);
-    font-weight: 500;
-  }
-
   .name {
     font-weight: 500;
-  }
-
-  .name a {
-    color: var(--ink);
   }
 
   .email {
@@ -320,74 +194,26 @@
     white-space: nowrap;
   }
 
-  .rating {
-    white-space: nowrap;
-  }
-
-  .band {
-    display: block;
-    color: var(--ink-muted);
-  }
-
   .cell-label {
     display: none;
   }
 
-  .word {
-    font-family: var(--font-ui);
-  }
-
-  .defs {
-    display: grid;
-    gap: var(--space-1);
-    font-size: var(--fs-0);
-  }
-
-  .defs dt {
-    margin-top: var(--space-2);
-    font-weight: 600;
-  }
-
-  .defs dt:first-child {
-    margin-top: 0;
-  }
-
-  .defs dd {
-    margin: 0;
-    color: var(--ink-muted);
-  }
-
-  .contests {
-    display: grid;
-    gap: var(--space-1);
-    padding-left: var(--space-5);
-  }
-
-  /* Phones: name, email and rating, then the figures with their labels. */
+  /* Phones: the name, then the figures with their labels. */
   @media (width < 768px) {
     .list tbody tr {
-      grid-template-columns: minmax(0, 1fr) auto;
+      grid-template-columns: minmax(0, 1fr);
       grid-template-areas:
-        'name rating'
-        'graded graded'
-        'latest latest'
-        'last last';
+        'name'
+        'taken'
+        'last';
     }
 
     .name {
       grid-area: name;
     }
 
-    .rating {
-      grid-area: rating;
-    }
-
-    .graded {
-      grid-area: graded;
-    }
-
-    .latest {
-      grid-area: latest;
+    .taken {
+      grid-area: taken;
     }
 
     .last {
@@ -395,8 +221,7 @@
       white-space: normal;
     }
 
-    .list .graded,
-    .list .latest,
+    .list .taken,
     .list .last {
       color: var(--ink-muted);
       font-size: var(--fs-0);

@@ -26,8 +26,6 @@ describe('matchRoute', () => {
   it('matches the integrity screens', () => {
     expect(matchRoute('/admin/contests/4/integrity')).toEqual({ route: expect.objectContaining({ name: 'contest-integrity' }), params: { id: '4' } });
     expect(matchRoute('/admin/contests/4/integrity/signals/31').params).toEqual({ id: '4', signal: '31' });
-    expect(matchRoute('/admin/integrity/cases/3')).toEqual({ route: expect.objectContaining({ name: 'integrity-case' }), params: { case: '3' } });
-    expect(matchRoute('/integrity').route).toMatchObject({ name: 'my-integrity', auth: true });
   });
 
   it('ignores trailing slashes', () => {

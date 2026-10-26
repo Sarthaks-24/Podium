@@ -41,15 +41,6 @@ export interface Standings {
   me: number | null;
   labels?: string[];
   server_now?: number;
-  /** v1.4.0: when a review decision last changed the board, and why; both null until one did. No row or cell says whose. */
-  board_updated_at?: number | null;
-  board_update_reason?: 'review_decision' | null;
-}
-
-/** "Board updated on 21 Oct 2026 after a review decision.", or "" when no decision changed it. */
-export function boardUpdatedLine(s: Pick<Standings, 'board_updated_at' | 'board_update_reason'>, format: (ms: number) => string): string {
-  if (!s.board_updated_at || s.board_update_reason !== 'review_decision') return '';
-  return `Board updated on ${format(s.board_updated_at)} after a review decision.`;
 }
 
 /** The problem labels for the header: the board's own, else the first row's cells, else the fallback. */

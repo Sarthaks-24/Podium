@@ -5,7 +5,6 @@ import (
 	"bytes"
 	"context"
 	"database/sql"
-	"encoding/json"
 	"errors"
 	"io/fs"
 	"os"
@@ -14,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Sarthaks-24/podium/internal/contests"
 	"github.com/Sarthaks-24/podium/internal/db"
 	"github.com/Sarthaks-24/podium/internal/problems"
 )
@@ -227,135 +227,35 @@ func TestCheckFindsEachKindOfSignal(t *testing.T) {
 	}
 }
 
-func TestCaseLifecycle(t *testing.T) {
+func TestDecideRecordsOneDecisionPerStudent(t *testing.T) {
 	r := newRig(t)
 	ctx := context.Background()
-	for id, c := range copies {
-		r.submit(t, id, c.sub.Language, c.sub.Source, 100, nil)
-		s := independent[c.of]
-		r.submit(t, c.of, s.Language, s.Source, 100, nil)
-	}
-	if err := r.svc.Check(ctx, insertRun(t, r), r.contest); err != nil {
-		t.Fatal(err)
-	}
-	run, _ := r.svc.Latest(ctx, r.contest)
-	var sg Signal
-	for _, s := range run.Signals {
-		if s.Kind == "similar" && (s.UserA == 7 || s.UserB == 7) {
-			sg = s
-		}
-	}
-	if sg.ID == 0 {
-		t.Fatalf("no signal for student 7: %+v", run.Signals)
-	}
-	if _, err := r.svc.OpenCase(ctx, r.contest, 100, "Problem A, students 2 and 7", "too short", []int64{sg.ID}); err == nil {
+	r.submit(t, 7, "cpp17", "int main(){}", 100, nil)
+	by := contests.Actor{ID: 100, Email: "o@college.edu", Role: "admin"}
+	if _, err := r.svc.Decide(ctx, r.contest, 7, by, "excluded", "short"); err == nil {
 		t.Error("a short reason was accepted")
 	}
-	c, err := r.svc.OpenCase(ctx, r.contest, 100, "Problem A, students 2 and 7", "The two programs match almost line for line.", []int64{sg.ID})
-	if err != nil {
+	if _, err := r.svc.Decide(ctx, r.contest, 7, by, "zero", "The two programs match line for line."); err == nil {
+		t.Error("an unknown decision was accepted")
+	}
+	if _, err := r.svc.Decide(ctx, r.contest, 3, by, "warning", "Student 3 never took part in it."); !errors.Is(err, ErrNotFound) {
+		t.Errorf("decision about a non-participant: %v", err)
+	}
+	c, err := r.svc.Decide(ctx, r.contest, 7, by, "excluded", "The two programs match line for line.")
+	if err != nil || c.Decision != "excluded" || c.DecidedBy != "o@college.edu" || c.Name != "Student 7" {
+		t.Fatalf("decide: %+v %v", c, err)
+	}
+	if _, err := r.svc.Decide(ctx, r.contest, 7, by, "no_action", "The student showed their earlier drafts."); err != nil {
 		t.Fatal(err)
 	}
-	if len(c.Users) != 2 || c.State != Open || len(c.Decisions) != 1 {
-		t.Fatalf("case %+v", c)
+	cases, err := r.svc.Cases(ctx, r.contest)
+	if err != nil || len(cases) != 1 || cases[0].Decision != "no_action" {
+		t.Fatalf("one case per student, the latest decision: %+v %v", cases, err)
 	}
-	// Action before the students could explain is refused.
-	if _, err := r.svc.Decide(ctx, c.ID, 100, Actioned, "Copying is clear from the matched code.", nil); err == nil {
-		t.Error("actioned before sharing")
-	}
-	// Nothing is visible to the student until the case is shared.
-	if mine, _ := r.svc.MyCases(ctx, 7); len(mine) != 0 {
-		t.Errorf("unshared case visible: %+v", mine)
-	}
-	if err := r.svc.Explain(ctx, c.ID, 7, "I wrote it myself."); !errors.Is(err, ErrNotFound) {
-		t.Errorf("explained an unshared case: %v", err)
-	}
-	if _, err := r.svc.Decide(ctx, c.ID, 100, AwaitingStudent, "Please explain how you wrote this solution.", nil); err != nil {
-		t.Fatal(err)
-	}
-	mine, err := r.svc.MyCases(ctx, 7)
-	if err != nil || len(mine) != 1 || len(mine[0].Evidence) != 1 {
-		t.Fatalf("student view %+v %v", mine, err)
-	}
-	// The reviewer's title names the students; the student sees the
-	// contest's title instead.
-	if mine[0].Title != "C" {
-		t.Errorf("student sees title %q, want the contest's", mine[0].Title)
-	}
-	ev := mine[0].Evidence[0]
-	js, _ := json.Marshal(mine)
-	if strings.Contains(string(js), "students 2 and 7") {
-		t.Errorf("the case title reached the student: %s", js)
-	}
-	if ev.Source == "" || len(ev.Spans) == 0 || strings.Contains(string(js), "Student 2") || strings.Contains(string(js), "s2@") {
-		t.Errorf("student view leaks or lacks evidence: %s", js)
-	}
-	// The other student's code never reaches student 7.
-	if strings.Contains(ev.Source, "MAXN") {
-		t.Error("student 7 sees student 2's program")
-	}
-	if err := r.svc.Explain(ctx, c.ID, 7, "We studied together and I used the same approach."); err != nil {
-		t.Fatal(err)
-	}
-	// Someone not in the case cannot explain it.
-	if err := r.svc.Explain(ctx, c.ID, 3, "Not mine."); !errors.Is(err, ErrNotFound) {
-		t.Errorf("outsider explained: %v", err)
-	}
-	c, err = r.svc.Decide(ctx, c.ID, 100, Cleared, "The explanation is consistent with the timeline.", seenAll(t, r, c.ID))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if c.State != Cleared || len(c.Decisions) != 3 || c.Users[1].Explanation == "" {
-		t.Errorf("decided case %+v", c)
-	}
-	// After the decision the explanation is final.
-	if err := r.svc.Explain(ctx, c.ID, 7, "Changed my mind."); !errors.Is(err, ErrNotFound) {
-		t.Errorf("explanation changed after the decision: %v", err)
-	}
-	// A re-run replaces signals but the case keeps its evidence.
-	if err := r.svc.Check(ctx, insertRun(t, r), r.contest); err != nil {
-		t.Fatal(err)
-	}
-	again, _ := r.svc.GetCase(ctx, c.ID)
-	if string(again.Evidence) != string(c.Evidence) {
-		t.Error("a re-run changed the case's evidence")
-	}
-}
-
-// Two years after a case closes its evidence and explanations are
-// emptied; the decision log stays. Open cases are never touched.
-func TestRetainEmptiesOldClosedCases(t *testing.T) {
-	r := newRig(t)
-	ctx := context.Background()
-	day := int64(24 * time.Hour / time.Millisecond)
-	now := r.svc.now().UnixMilli()
-	for _, c := range []struct {
-		id     int64
-		state  string
-		closed any
-	}{{1, Cleared, now - 800*day}, {2, Actioned, now - 100*day}, {3, AwaitingStudent, nil}} {
-		mustExec(t, r.db, `INSERT INTO integrity_cases (id, contest_id, state, title, evidence, created_at, updated_at, closed_at)
-			VALUES (?, ?, ?, 'Case', '[{"id":1}]', 0, 0, ?)`, c.id, r.contest, c.state, c.closed)
-		mustExec(t, r.db, `INSERT INTO integrity_case_users (case_id, user_id, shared_at, explanation) VALUES (?, 1, 0, 'Mine.')`, c.id)
-		mustExec(t, r.db, `INSERT INTO integrity_explanations (case_id, user_id, text, created_at) VALUES (?, 1, 'Mine.', 0)`, c.id)
-		mustExec(t, r.db, `INSERT INTO integrity_decisions (case_id, by_user, state, note, created_at) VALUES (?, 100, ?, 'A reason of enough length.', 0)`,
-			c.id, c.state)
-	}
-	n, err := r.svc.Retain(ctx)
-	if err != nil || n != 1 {
-		t.Fatalf("retain: %d %v", n, err)
-	}
-	old, _ := r.svc.GetCase(ctx, 1)
-	if string(old.Evidence) != "[]" || old.Users[0].Explanation != "" || len(old.Users[0].Explanations) != 0 || len(old.Decisions) != 1 {
-		t.Errorf("old case after retention: %+v", old)
-	}
-	for _, id := range []int64{2, 3} {
-		c, _ := r.svc.GetCase(ctx, id)
-		if string(c.Evidence) == "[]" || c.Users[0].Explanation == "" || len(c.Users[0].Explanations) != 1 {
-			t.Errorf("case %d emptied too early", id)
-		}
-	}
-	if n, _ := r.svc.Retain(ctx); n != 0 {
-		t.Errorf("second run emptied %d", n)
+	var audits int
+	r.db.QueryRow("SELECT count(*) FROM contest_audit WHERE contest_id = ? AND action = 'integrity_decision'", r.contest).Scan(&audits)
+	if audits != 2 {
+		t.Errorf("%d audit rows, want one per decision", audits)
 	}
 }
 

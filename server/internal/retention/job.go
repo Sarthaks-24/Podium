@@ -1,16 +1,13 @@
 package retention
 
-// The daily retention job (B3.1): it applies the periods of periods.go
-// that no other job applies. Sessions (auth), integrity events and case
-// evidence (contests and integrity) and backups (podium-backup) have their
-// own. Each rule runs in its own transactions, in batches, so one pass
-// never holds the write lock for long while a contest runs.
+// The daily retention job: it empties run payloads older than RunPayloads
+// in batches, so one pass never holds the write lock for long while a
+// contest runs. Sessions (auth), integrity events (contests and
+// integrity) and backups (podium-backup) have their own.
 
 import (
 	"context"
 	"database/sql"
-	"errors"
-	"fmt"
 	"log/slog"
 	"time"
 )
@@ -18,35 +15,17 @@ import (
 // batch is how many rows one transaction changes.
 const batch = 2000
 
-// Job deletes what is older than its period.
+// Job empties what is older than its period.
 type Job struct {
 	DB *sql.DB
-	// Now is the clock; tests replace it. It must not run ahead of the
-	// database's own clock: the append-only triggers compare cutoffs with
-	// SQLite's now.
+	// Now is the clock; tests replace it.
 	Now func() time.Time
 	Log *slog.Logger
-	// ExportStandings returns a contest's final standings as JSON. The job
-	// keeps them in contest_results before the contest's submissions go;
-	// without it no submission is deleted.
-	ExportStandings func(ctx context.Context, contestID int64) ([]byte, error)
-	// Expired is told about each contest whose submissions were deleted,
-	// so cached boards can be dropped. Optional.
-	Expired func(contestID int64)
 }
 
 // Result counts what one pass changed.
 type Result struct {
-	RunsEmptied        int64 // run jobs whose payload and output were cleared
-	ContactDeleted     int64
-	RevisionsDeleted   int64
-	ContestsExpired    int64 // contests whose submissions passed retention
-	SubmissionsDeleted int64 // in those contests, and outside contests
-	AuditDeleted       int64 // site and contest audit rows
-	NotesDeleted       int64 // private notes no case was opened from
-	NoticesDeleted     int64
-	ViewsDeleted       int64 // record view log rows
-	RatingRowsDeleted  int64 // rating history rows
+	RunsEmptied int64 // run jobs whose payload and output were cleared
 }
 
 func (j *Job) now() time.Time {
@@ -56,47 +35,12 @@ func (j *Job) now() time.Time {
 	return time.Now()
 }
 
-// Run applies every rule once and returns what it changed. A rule that
-// fails does not stop the others; the errors come back joined, and the
-// next pass tries again, since every rule is idempotent (security review
-// 2026-10-20, finding 8).
+// Run applies the rule once and returns what it changed. It is
+// idempotent, so a failed pass is retried by the next.
 func (j *Job) Run(ctx context.Context) (Result, error) {
 	var r Result
-	now := j.now()
-	steps := []struct {
-		name string
-		do   func(context.Context, time.Time, *Result) error
-	}{
-		{"run payloads", j.runs},
-		{"contact messages", j.contact},
-		{"submissions", j.submissions},
-		{"draft revisions", j.revisions},
-		{"audit", j.audit},
-		{"private notes", j.notes},
-		{"notices", j.notices},
-		{"record views and rating history", j.records},
-		{"rating proposals", j.ratingProposals},
-	}
-	var errs []error
-	for _, s := range steps {
-		if err := s.do(ctx, now, &r); err != nil {
-			errs = append(errs, fmt.Errorf("retention, %s: %w", s.name, err))
-		}
-		if ctx.Err() != nil {
-			break
-		}
-	}
-	return r, errors.Join(errs...)
-}
-
-// exec runs one statement in its own transaction and returns the rows it
-// changed.
-func (j *Job) exec(ctx context.Context, q string, args ...any) (int64, error) {
-	res, err := j.DB.ExecContext(ctx, q, args...)
-	if err != nil {
-		return 0, err
-	}
-	return res.RowsAffected()
+	err := j.runs(ctx, j.now(), &r)
+	return r, err
 }
 
 // batches repeats one transaction until it changes fewer than batch rows.
@@ -122,15 +66,6 @@ func (j *Job) batches(ctx context.Context, step func(tx *sql.Tx) (int64, error))
 	}
 }
 
-// setCutoff moves a table's retention cutoff forward (never back), which
-// lets its append-only trigger allow deleting older rows.
-func setCutoff(ctx context.Context, tx *sql.Tx, table string, before int64) error {
-	_, err := tx.ExecContext(ctx, `INSERT INTO retention_cutoffs (tbl, before_ms) VALUES (?, ?)
-		ON CONFLICT (tbl) DO UPDATE SET before_ms = excluded.before_ms WHERE excluded.before_ms > retention_cutoffs.before_ms`,
-		table, before)
-	return err
-}
-
 // runs empties run jobs older than RunPayloads: the payload (code and
 // custom input references, so their files can be collected) and the
 // output excerpts. The job row and its verdicts stay.
@@ -151,327 +86,4 @@ func (j *Job) runs(ctx context.Context, now time.Time, r *Result) error {
 	})
 	r.RunsEmptied = n
 	return err
-}
-
-func (j *Job) contact(ctx context.Context, now time.Time, r *Result) error {
-	n, err := j.exec(ctx, "DELETE FROM contact_messages WHERE created_at < ?", now.Add(-ContactMessages).UnixMilli())
-	r.ContactDeleted = n
-	return err
-}
-
-// revisions deletes problem revisions older than DraftRevisions that
-// nothing names: not the problem's newest, no contest pins or pinned it,
-// no submission or job was judged against it, no student was served it.
-func (j *Job) revisions(ctx context.Context, now time.Time, r *Result) error {
-	cut := now.Add(-DraftRevisions).UnixMilli()
-	n, err := j.batches(ctx, func(tx *sql.Tx) (int64, error) {
-		if err := setCutoff(ctx, tx, "problem_revisions", cut); err != nil {
-			return 0, err
-		}
-		const unused = `SELECT r.id FROM problem_revisions r WHERE r.created_at < ?
-			AND r.rev < (SELECT max(m.rev) FROM problem_revisions m WHERE m.problem_id = r.problem_id)
-			AND NOT EXISTS (SELECT 1 FROM contest_problems WHERE revision_id = r.id)
-			AND NOT EXISTS (SELECT 1 FROM contest_pin_history WHERE revision_id = r.id)
-			AND NOT EXISTS (SELECT 1 FROM submissions WHERE revision_id = r.id)
-			AND NOT EXISTS (SELECT 1 FROM jobs WHERE revision_id = r.id)
-			AND NOT EXISTS (SELECT 1 FROM revision_views WHERE revision_id = r.id)
-			ORDER BY r.id LIMIT ?`
-		if _, err := tx.ExecContext(ctx, "CREATE TEMP TABLE IF NOT EXISTS retention_ids (id INTEGER PRIMARY KEY)"); err != nil {
-			return 0, err
-		}
-		if _, err := tx.ExecContext(ctx, "DELETE FROM temp.retention_ids"); err != nil {
-			return 0, err
-		}
-		if _, err := tx.ExecContext(ctx, "INSERT INTO temp.retention_ids "+unused, cut, batch); err != nil {
-			return 0, err
-		}
-		if _, err := tx.ExecContext(ctx, "DELETE FROM revision_tests WHERE revision_id IN (SELECT id FROM temp.retention_ids)"); err != nil {
-			return 0, err
-		}
-		res, err := tx.ExecContext(ctx, "DELETE FROM problem_revisions WHERE id IN (SELECT id FROM temp.retention_ids)")
-		if err != nil {
-			return 0, err
-		}
-		return res.RowsAffected()
-	})
-	r.RevisionsDeleted = n
-	return err
-}
-
-// submissions deletes, Submissions after a contest ended for everyone, its
-// submissions and their jobs, its pin history, what each student was
-// served, and its pins' references to revisions (so the revision rule can
-// collect them), after keeping the final standings in contest_results.
-// Submissions outside contests go Submissions after they were made.
-func (j *Job) submissions(ctx context.Context, now time.Time, r *Result) error {
-	if j.ExportStandings == nil {
-		return nil
-	}
-	cut := now.Add(-Submissions).UnixMilli()
-	// A contest's final moment: its end plus the contest-wide and the
-	// longest personal extension, as contests.Retain reads it.
-	rows, err := j.DB.QueryContext(ctx, `SELECT c.id FROM contests c WHERE c.ends_at + 60000 * (c.extended_minutes +
-		coalesce((SELECT max(minutes) FROM contest_extensions e WHERE e.contest_id = c.id), 0)) < ?
-		AND (EXISTS (SELECT 1 FROM submissions s WHERE s.contest_id = c.id)
-		  OR EXISTS (SELECT 1 FROM contest_problems p WHERE p.contest_id = c.id AND p.revision_id IS NOT NULL)
-		  OR EXISTS (SELECT 1 FROM revision_views v WHERE v.contest_id = c.id AND v.first_seen_at < ?)
-		  OR EXISTS (SELECT 1 FROM contest_pin_history h WHERE h.contest_id = c.id AND h.from_at < ?))
-		AND NOT EXISTS (SELECT 1 FROM integrity_cases ic WHERE ic.contest_id = c.id AND ic.state IN ('open', 'awaiting_student'))
-		ORDER BY c.id`, cut, cut, cut)
-	if err != nil {
-		return err
-	}
-	var ids []int64
-	for rows.Next() {
-		var id int64
-		if err := rows.Scan(&id); err != nil {
-			rows.Close()
-			return err
-		}
-		ids = append(ids, id)
-	}
-	rows.Close()
-	if err := rows.Err(); err != nil {
-		return err
-	}
-	// One contest that fails (its export, say) is skipped, not the rest.
-	var errs []error
-	for _, id := range ids {
-		if err := j.expireContest(ctx, id, cut, r); err != nil {
-			errs = append(errs, fmt.Errorf("contest %d: %w", id, err))
-		}
-	}
-	// Outside contests (an organiser trying a problem): by their own age.
-	n, err := j.deleteSubmissions(ctx, "contest_id IS NULL AND created_at < ?", cut)
-	r.SubmissionsDeleted += n
-	return errors.Join(append(errs, err)...)
-}
-
-func (j *Job) expireContest(ctx context.Context, id, cut int64, r *Result) error {
-	var kept int
-	if err := j.DB.QueryRowContext(ctx, "SELECT count(*) FROM contest_results WHERE contest_id = ?", id).Scan(&kept); err != nil {
-		return err
-	}
-	if kept == 0 {
-		st, err := j.ExportStandings(ctx, id)
-		if err != nil {
-			return fmt.Errorf("export standings: %w", err)
-		}
-		if _, err := j.DB.ExecContext(ctx, "INSERT INTO contest_results (contest_id, exported_at, standings) VALUES (?, ?, ?)",
-			id, j.now().UnixMilli(), string(st)); err != nil {
-			return err
-		}
-	}
-	// Practice made since the cutoff stays until it is old enough itself
-	// (security review 2026-10-20, finding 7).
-	n, err := j.deleteSubmissions(ctx, "contest_id = ? AND created_at < ?", id, cut)
-	if err != nil {
-		return err
-	}
-	r.SubmissionsDeleted += n
-	tx, err := j.DB.BeginTx(ctx, nil)
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback()
-	// The summaries come from the submissions just deleted.
-	if _, err := tx.ExecContext(ctx, "DELETE FROM student_contest_summary WHERE contest_id = ?", id); err != nil {
-		return err
-	}
-	for _, t := range []string{"contest_pin_history", "revision_views"} {
-		if err := setCutoff(ctx, tx, t, cut); err != nil {
-			return err
-		}
-	}
-	// Rows newer than the cutoff (a pin moved, or a practice view, long
-	// after the end) wait for a later pass.
-	for _, q := range []string{
-		"DELETE FROM contest_pin_history WHERE contest_id = ? AND from_at < ?",
-		"DELETE FROM revision_views WHERE contest_id = ? AND first_seen_at < ?",
-	} {
-		if _, err := tx.ExecContext(ctx, q, id, cut); err != nil {
-			return err
-		}
-	}
-	// Pins stay while students can still practise on the contest, so the
-	// workspace keeps serving the pinned statement.
-	if _, err := tx.ExecContext(ctx, `UPDATE contest_problems SET revision_id = NULL WHERE contest_id = ?
-		AND (SELECT archived = 1 OR practice_after_end = 0 FROM contests WHERE id = ?)`, id, id); err != nil {
-		return err
-	}
-	if err := tx.Commit(); err != nil {
-		return err
-	}
-	// A contest seen again only for a late pin or view is not counted.
-	if kept == 0 || n > 0 {
-		r.ContestsExpired++
-		if j.Expired != nil {
-			j.Expired(id)
-		}
-		if j.Log != nil {
-			j.Log.Info("contest submissions past retention removed; standings kept", "contest_id", id, "submissions", n)
-		}
-	}
-	return nil
-}
-
-// deleteSubmissions deletes submissions matching where, in batches, with
-// the jobs that judged them (their results go by cascade).
-func (j *Job) deleteSubmissions(ctx context.Context, where string, args ...any) (int64, error) {
-	return j.batches(ctx, func(tx *sql.Tx) (int64, error) {
-		if _, err := tx.ExecContext(ctx, "CREATE TEMP TABLE IF NOT EXISTS retention_subs (id INTEGER PRIMARY KEY, job_id INTEGER)"); err != nil {
-			return 0, err
-		}
-		if _, err := tx.ExecContext(ctx, "DELETE FROM temp.retention_subs"); err != nil {
-			return 0, err
-		}
-		if _, err := tx.ExecContext(ctx, "INSERT INTO temp.retention_subs SELECT id, job_id FROM submissions WHERE "+where+
-			" AND state IN ('done', 'error') ORDER BY id LIMIT ?", append(args, batch)...); err != nil {
-			return 0, err
-		}
-		res, err := tx.ExecContext(ctx, "DELETE FROM submissions WHERE id IN (SELECT id FROM temp.retention_subs)")
-		if err != nil {
-			return 0, err
-		}
-		n, _ := res.RowsAffected()
-		// A job no remaining submission names (a rejudge leaves the old one).
-		if _, err := tx.ExecContext(ctx, `DELETE FROM jobs WHERE state IN ('done', 'failed')
-			AND id IN (SELECT job_id FROM temp.retention_subs WHERE job_id IS NOT NULL)
-			AND NOT EXISTS (SELECT 1 FROM submissions s WHERE s.job_id = jobs.id)`); err != nil {
-			return 0, err
-		}
-		return n, nil
-	})
-}
-
-// audit deletes site and contest audit rows older than Audit, in
-// batches like the other rules (security review 2026-10-20, finding 13).
-func (j *Job) audit(ctx context.Context, now time.Time, r *Result) error {
-	cut := now.Add(-Audit).UnixMilli()
-	for _, t := range []struct{ table, col string }{{"site_audit", "at"}, {"contest_audit", "created_at"}} {
-		n, err := j.batches(ctx, func(tx *sql.Tx) (int64, error) {
-			if err := setCutoff(ctx, tx, t.table, cut); err != nil {
-				return 0, err
-			}
-			res, err := tx.ExecContext(ctx, "DELETE FROM "+t.table+" WHERE id IN (SELECT id FROM "+t.table+" WHERE "+t.col+
-				" < ? ORDER BY id LIMIT ?)", cut, batch)
-			if err != nil {
-				return 0, err
-			}
-			return res.RowsAffected()
-		})
-		r.AuditDeleted += n
-		if err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-// notes deletes private notes older than PrivateNotes whose submission no
-// manual case was opened from (those go with the case's evidence).
-func (j *Job) notes(ctx context.Context, now time.Time, r *Result) error {
-	cut := now.Add(-PrivateNotes).UnixMilli()
-	n, err := j.batches(ctx, func(tx *sql.Tx) (int64, error) {
-		if err := setCutoff(ctx, tx, "submission_notes", cut); err != nil {
-			return 0, err
-		}
-		res, err := tx.ExecContext(ctx, `DELETE FROM submission_notes WHERE id IN (SELECT n.id FROM submission_notes n WHERE n.created_at < ?
-			AND NOT EXISTS (SELECT 1 FROM integrity_cases c WHERE c.submission_id = n.submission_id AND c.source = 'manual')
-			ORDER BY n.id LIMIT ?)`, cut, batch)
-		if err != nil {
-			return 0, err
-		}
-		return res.RowsAffected()
-	})
-	r.NotesDeleted = n
-	return err
-}
-
-func (j *Job) notices(ctx context.Context, now time.Time, r *Result) error {
-	n, err := j.batches(ctx, func(tx *sql.Tx) (int64, error) {
-		res, err := tx.ExecContext(ctx, "DELETE FROM notifications WHERE id IN (SELECT id FROM notifications WHERE created_at < ? ORDER BY id LIMIT ?)",
-			now.Add(-Notifications).UnixMilli(), batch)
-		if err != nil {
-			return 0, err
-		}
-		return res.RowsAffected()
-	})
-	r.NoticesDeleted = n
-	return err
-}
-
-// records deletes record view rows older than RecordViews and rating
-// history rows older than RatingHistory, through their cutoff rows.
-func (j *Job) records(ctx context.Context, now time.Time, r *Result) error {
-	for _, t := range []struct {
-		table string
-		keep  time.Duration
-		count *int64
-	}{{"record_views", RecordViews, &r.ViewsDeleted}, {"rating_history", RatingHistory, &r.RatingRowsDeleted}} {
-		cut := now.Add(-t.keep).UnixMilli()
-		n, err := j.batches(ctx, func(tx *sql.Tx) (int64, error) {
-			if err := setCutoff(ctx, tx, t.table, cut); err != nil {
-				return 0, err
-			}
-			res, err := tx.ExecContext(ctx, "DELETE FROM "+t.table+" WHERE id IN (SELECT id FROM "+t.table+" WHERE at < ? ORDER BY id LIMIT ?)",
-				cut, batch)
-			if err != nil {
-				return 0, err
-			}
-			return res.RowsAffected()
-		})
-		*t.count += n
-		if err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-// ratingProposals deletes band-lowering rating proposals, and how they
-// ended, as long after as the rating history.
-func (j *Job) ratingProposals(ctx context.Context, now time.Time, r *Result) error {
-	cut := now.Add(-RatingHistory).UnixMilli()
-	n, err := j.batches(ctx, func(tx *sql.Tx) (int64, error) {
-		for _, t := range []string{"rating_proposals", "rating_proposal_closures"} {
-			if err := setCutoff(ctx, tx, t, cut); err != nil {
-				return 0, err
-			}
-		}
-		if _, err := tx.ExecContext(ctx, `DELETE FROM rating_proposal_closures WHERE at < ?
-			AND proposal_id IN (SELECT id FROM rating_proposals WHERE created_at < ?)`, cut, cut); err != nil {
-			return 0, err
-		}
-		res, err := tx.ExecContext(ctx, `DELETE FROM rating_proposals WHERE id IN (SELECT p.id FROM rating_proposals p WHERE p.created_at < ?
-			AND NOT EXISTS (SELECT 1 FROM rating_proposal_closures c WHERE c.proposal_id = p.id) ORDER BY p.id LIMIT ?)`, cut, batch)
-		if err != nil {
-			return 0, err
-		}
-		return res.RowsAffected()
-	})
-	r.RatingRowsDeleted += n
-	return err
-}
-
-// ErrFloor is returned by CheckFloors for a period shorter than the
-// trigger floor of a table it opens.
-var ErrFloor = errors.New("retention period below the trigger floor")
-
-// CheckFloors reports a period that the append-only triggers would refuse
-// as a cutoff. The tests call it; it documents the rule.
-func CheckFloors() error {
-	if DraftRevisions < FloorDraftRevisions {
-		return fmt.Errorf("%w: draft revisions %v < %v", ErrFloor, DraftRevisions, FloorDraftRevisions)
-	}
-	if PrivateNotes < FloorNotes {
-		return fmt.Errorf("%w: private notes %v < %v", ErrFloor, PrivateNotes, FloorNotes)
-	}
-	for name, p := range map[string]time.Duration{"submissions": Submissions, "audit": Audit, "record views": RecordViews,
-		"rating history": RatingHistory} {
-		if p < FloorOther {
-			return fmt.Errorf("%w: %s %v < %v", ErrFloor, name, p, FloorOther)
-		}
-	}
-	return nil
 }

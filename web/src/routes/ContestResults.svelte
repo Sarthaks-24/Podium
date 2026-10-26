@@ -14,16 +14,10 @@
   PUT .../editorial. Students see a short
   explanation instead. A last section links to the integrity check.
 
-  v2 P4: the page uses the working layout. The board, the class view
-  (components/students/ClassView: per problem how many tried and reached
-  full marks, the median and each subtask's solve rate, totals only), the
-  problem statistics and the editorial are the work; beside them from
-  1280 px (first below that) the reveal, the downloads (owners and
-  admins: both files carry a "zero by decision" column that the board
-  never shows) and the integrity check. Each name on the board opens that
-  student's progress page (web-quality #16). A board that a review
-  decision changed says so in one line, "Board updated on <date> after a
-  review decision", without saying whose; no cell carries a mark.
+  The page uses the working layout. The board, the problem statistics and
+  the editorial are the work; beside them from 1280 px (first below that)
+  the reveal, the downloads and the integrity check. A student an
+  integrity decision excluded is not on the board or in the downloads.
 -->
 <script lang="ts">
   import PageState from '../components/PageState.svelte';
@@ -35,16 +29,13 @@
   import Markdown from '../components/Markdown.svelte';
   import RevealBoard from '../components/RevealBoard.svelte';
   import StandingsTable from '../components/StandingsTable.svelte';
-  import MonoDigits from '../components/MonoDigits.svelte';
-  import ClassView from '../components/students/ClassView.svelte';
-  import { formatDateTime } from '../lib/format';
   import { ApiError, errorText, getJSON, sendJSON } from '../lib/api';
   import { type AdminContest, type ProblemStats } from '../lib/contests';
   import { keepHeadingFocus } from '../lib/focus';
   import { setTitle } from '../lib/head';
   import { routeTitle } from '../lib/routing';
   import { session } from '../lib/session.svelte';
-  import { boardLabels, boardUpdatedLine, statusLine, type Standings } from '../lib/standings';
+  import { boardLabels, statusLine, type Standings } from '../lib/standings';
   import { ticker, useTicker } from '../lib/ticker.svelte';
   import { showToast } from '../lib/toast.svelte';
 
@@ -263,7 +254,6 @@
           <a class="btn btn-secondary" href="{base}/export.csv" download><Icon name="download" /> Download CSV</a>
           <a class="btn btn-secondary" href="{base}/export.json" download><Icon name="download" /> Download JSON</a>
         </p>
-        <p class="muted small">Both files have a "zero by decision" column naming any problem a review decision set to zero for a student. The board itself never shows it.</p>
       </section>
 
       <section class="panel" aria-labelledby="integrity-title">
@@ -287,23 +277,14 @@
       <div class="banner banner-error" role="alert"><p>{boardError}</p></div>
     {:else if board}
       <p class="muted">{statusLine(board, contest.state === 'ended' || contest.state === 'practice')}</p>
-      {#if boardUpdatedLine(board, formatDateTime)}
-        <p class="muted small board-updated"><MonoDigits text={boardUpdatedLine(board, formatDateTime)} /></p>
-      {/if}
       <StandingsTable
         standings={board}
         {labels}
         caption="Standings for {contest.title}, {variant === 'full' ? 'full' : 'frozen'}"
-        nameHref={(uid) => `/admin/users/${uid}/progress`}
       />
     {:else}
       <p class="muted" role="status">Loading the standings</p>
     {/if}
-  </section>
-
-  <section class="section" aria-labelledby="class-title">
-    <h2 id="class-title">Class view</h2>
-    <ClassView contestId={id} />
   </section>
 
   <section class="section" aria-labelledby="stats-title">
