@@ -4,24 +4,17 @@
     <meta charset="utf-8" />
     <!-- interactive-widget: the on-screen keyboard shrinks the layout, so the sticky workspace strip stays in view (P5 F7.4). -->
     <meta name="viewport" content="width=device-width, initial-scale=1, interactive-widget=resizes-content" />
-    <!--
-      The server replaces everything between the two podium:head markers per
-      route (D100, P3): public routes get their title, description, canonical
-      and robots index; every other route keeps this default-closed noindex.
-    -->
-    <!--podium:head-->
+    <!-- A college tool behind sign-in: never indexed (v3). -->
     <meta name="robots" content="noindex" />
-    <!--/podium:head-->
     <meta name="color-scheme" content="light dark" />
     <!-- Browser chrome colour: matches --paper in src/styles/tokens.css (light and dark). -->
     <meta name="theme-color" content="#F3F4F1" media="(prefers-color-scheme: light)" />
     <meta name="theme-color" content="#121513" media="(prefers-color-scheme: dark)" />
     <title>podium</title>
-    <!-- Icons and the app manifest (P3 FP.4): the SVG for browsers that take it, the ICO for the rest, the touch icon for iOS. -->
+    <!-- Icons: the SVG for browsers that take it, the ICO for the rest, the touch icon for iOS. -->
     <link rel="icon" href="/favicon.ico" sizes="16x16 32x32 48x48" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
-    <link rel="manifest" href="/site.webmanifest" />
     <!-- Every face the first screen draws (D91): body 400, buttons and links 500, headings 600, the countdown and scores in Fragment Mono. -->
     <link rel="preload" href="/fonts/schibsted-grotesk-400.woff2" as="font" type="font/woff2" crossorigin />
     <link rel="preload" href="/fonts/schibsted-grotesk-500.woff2" as="font" type="font/woff2" crossorigin />
@@ -32,8 +25,8 @@
   </head>
   <body>
     <div id="app">
-      <!-- Fallback until the app starts (main.ts clears it). The server fills the podium:body block for pages that must read without JavaScript. -->
-      <main><!--podium:body--><!--/podium:body--></main>
+      <!-- Fallback until the app starts (main.ts clears it). -->
+      <main><noscript>Podium needs JavaScript.</noscript></main>
     </div>
     <script type="module" src="/src/main.ts"></script>
   </body>

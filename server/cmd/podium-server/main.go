@@ -203,14 +203,7 @@ func run(envFile string) error {
 	// Run payloads past retention.RunPayloads are emptied once a day.
 	go retainDaily(ctx, &retention.Job{DB: database, Log: log}, log)
 	handler := httpapi.New(httpapi.Deps{
-		DB: database, Log: log, WebApp: webui.Handler(webui.Options{BaseURL: cfg.BaseURL, Log: log, Organisation: func(r *http.Request) (webui.Organisation, error) {
-			o, err := authSvc.Organisation(r.Context())
-			contact := o.ContactEmail
-			if contact == "" {
-				contact = authSvc.OwnerEmail
-			}
-			return webui.Organisation{Name: o.Name, Email: o.ContactEmail, Phone: o.Phone, Contact: contact}, err
-		}}),
+		DB: database, Log: log, WebApp: webui.Handler(),
 		Auth: authSvc, IdP: provider, BaseURL: cfg.BaseURL, SessionSecret: cfg.SessionSecret,
 		Problems: problemSvc, Submissions: submissionSvc, Hub: hub, Contests: contestSvc, Integrity: integritySvc,
 		AI:   &httpapi.AI{Keys: aiKeys, Slots: &ai.Slots{}},

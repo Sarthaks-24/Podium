@@ -14,7 +14,7 @@ func TestHandler(t *testing.T) {
 		"favicon.svg":        {Data: []byte("<svg/>")},
 		".keep":              {Data: nil},
 		"assets/.hidden.txt": {Data: []byte("x")},
-	}, Options{})
+	})
 	cases := []struct {
 		method, path string
 		status       int
@@ -30,12 +30,16 @@ func TestHandler(t *testing.T) {
 		{"GET", "/.keep", 404, ""},
 		{"GET", "/assets/.hidden.txt", 404, ""},
 		{"POST", "/", 405, ""},
+		{"GET", "/robots.txt", 200, "public, max-age=3600"},
 	}
 	for _, c := range cases {
 		rec := httptest.NewRecorder()
 		h.ServeHTTP(rec, httptest.NewRequest(c.method, c.path, nil))
 		if rec.Code != c.status {
 			t.Errorf("%s %s: status %d, want %d", c.method, c.path, rec.Code, c.status)
+		}
+		if c.status == 200 && c.cache == "no-cache" && rec.Header().Get("X-Robots-Tag") != "noindex" {
+			t.Errorf("%s %s: no noindex header", c.method, c.path)
 		}
 		if c.cache != "" && rec.Header().Get("Cache-Control") != c.cache {
 			t.Errorf("%s %s: Cache-Control %q, want %q", c.method, c.path, rec.Header().Get("Cache-Control"), c.cache)
@@ -45,7 +49,7 @@ func TestHandler(t *testing.T) {
 
 func TestHandlerNotBuilt(t *testing.T) {
 	rec := httptest.NewRecorder()
-	handlerFor(fstest.MapFS{}, Options{}).ServeHTTP(rec, httptest.NewRequest("GET", "/", nil))
+	handlerFor(fstest.MapFS{}).ServeHTTP(rec, httptest.NewRequest("GET", "/", nil))
 	if rec.Code != http.StatusServiceUnavailable {
 		t.Errorf("status %d, want 503", rec.Code)
 	}

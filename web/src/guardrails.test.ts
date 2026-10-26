@@ -15,7 +15,7 @@ const HEX_COLOUR = /#[0-9a-fA-F]{3,8}\b/;
 const TOKENS = '/src/styles/tokens.css';
 // Browser chrome metas and the favicon cannot use CSS variables, so they
 // carry copies of token values; the test below keeps the copies exact.
-const MIRRORS_TOKENS = ['/index.html', '/public/favicon.svg', '/public/site.webmanifest'];
+const MIRRORS_TOKENS = ['/index.html', '/public/favicon.svg'];
 // Tests may name colours to check the contrast maths.
 const isTest = (path: string) => path.endsWith('.test.ts');
 

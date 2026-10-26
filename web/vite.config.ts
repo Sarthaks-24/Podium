@@ -1,9 +1,5 @@
 import { defineConfig } from 'vitest/config';
-import type { Plugin } from 'vite';
 import { svelte } from '@sveltejs/vite-plugin-svelte';
-import { readFileSync } from 'node:fs';
-import { routeManifest } from './src/lib/routing.ts';
-import { privacyBodyHtml } from './src/lib/privacyBody.ts';
 
 // Node's process, declared here so the web app needs no @types/node.
 declare const process: { env: Record<string, string | undefined> };
@@ -13,44 +9,8 @@ declare const process: { env: Record<string, string | undefined> };
 // with PODIUM_LISTEN), for example http://127.0.0.1:8097.
 const apiTarget = process.env.PODIUM_DEV_API || 'http://127.0.0.1:8080';
 
-/**
- * Writes dist/routes.json from the route table in src/lib/routing.ts
- * (contract C2). The server reads it from the embedded build for the real
- * 404, the public head and robots; a copy is checked in at
- * server/internal/webui/testdata/routes.json and lib/routing.test.ts fails
- * when the two differ.
- */
-function routesManifest(): Plugin {
-  return {
-    name: 'podium-routes-manifest',
-    apply: 'build',
-    generateBundle() {
-      this.emitFile({ type: 'asset', fileName: 'routes.json', source: `${JSON.stringify(routeManifest(), null, 2)}
-` });
-    },
-  };
-}
-
-/**
- * Writes dist/privacy-body.html from src/content/privacy.md (P3 FP.1,
- * D100): the notice rendered with marked and sanitised with DOMPurify at
- * build time, for the server's <!--podium:body--> block on /privacy, so
- * the page reads without JavaScript. The server serves it only once
- * routing.ts marks /privacy public, which waits for the owner (D85).
- */
-function privacyBody(): Plugin {
-  return {
-    name: 'podium-privacy-body',
-    apply: 'build',
-    async generateBundle() {
-      const markdown = readFileSync(new URL('./src/content/privacy.md', import.meta.url), 'utf8');
-      this.emitFile({ type: 'asset', fileName: 'privacy-body.html', source: await privacyBodyHtml(markdown) });
-    },
-  };
-}
-
 export default defineConfig({
-  plugins: [svelte(), routesManifest(), privacyBody()],
+  plugins: [svelte()],
   // Component tests mount Svelte in jsdom, which needs the client build of
   // svelte rather than the server one Node would pick.
   resolve: process.env.VITEST ? { conditions: ['browser'] } : undefined,

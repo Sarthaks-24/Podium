@@ -38,43 +38,34 @@ export interface RouteDef {
   /** True when the screen needs a signed-in user. */
   auth: boolean;
   /**
-   * True when the page may be indexed and gets a full head (title,
-   * description, canonical, Open Graph) from the server (D100, contract C2).
-   * Every other route keeps the default-closed noindex block of index.html.
-   */
-  public: boolean;
-  /**
    * The page's own title: the whole tab title for a fixed screen, and the
    * fixed part for a screen that adds a contest or problem name. setTitle
-   * callers read it through routeTitle(), and the server's head reads it
-   * from routes.json, so the two never drift.
+   * callers read it through routeTitle().
    */
   title: string;
-  /** One sentence for the description meta. Shown to search engines on public routes only. */
-  description: string;
 }
 
 /** The route table. Order matters: the first match wins. */
 export const ROUTES: readonly RouteDef[] = [
-  { pattern: '/', name: 'home', auth: true, public: false, title: 'Your contests', description: 'The contests you can enter, with their times and your scores.' },
-  { pattern: '/signin', name: 'signin', auth: false, public: true, title: 'Sign in', description: 'Sign in to podium with your college Google account to enter the weekly programming contests.' },
-  { pattern: '/admin/people', name: 'people', auth: true, public: false, title: 'People', description: 'Organisers, allowed email domains and testing mode.' },
-  { pattern: '/admin/problems', name: 'problems', auth: true, public: false, title: 'Problem bank', description: 'Every problem, its validation state and where it is used.' },
-  { pattern: '/admin/problems/:id', name: 'problem', auth: true, public: false, title: 'Problem', description: 'Edit a problem: statement, tests, checker and validation.' },
-  { pattern: '/admin/problems/:id/try', name: 'problem-try', auth: true, public: false, title: 'Problem bank', description: 'Try a problem as a student would see it.' },
-  { pattern: '/admin/ai', name: 'ai-settings', auth: true, public: false, title: 'AI assistant', description: 'The AI provider key and model for this session.' },
-  { pattern: '/admin/ai/new', name: 'ai-new', auth: true, public: false, title: 'New problem with AI', description: 'Draft a new problem with the AI assistant.' },
-  { pattern: '/contests/:slug', name: 'contest', auth: true, public: false, title: 'Contest', description: 'A contest: its problems, time left and your submissions.' },
-  { pattern: '/contests/:slug/standings', name: 'standings', auth: true, public: false, title: 'Standings', description: 'The standings of a contest.' },
-  { pattern: '/contests/:slug/problems/:label', name: 'contest-problem', auth: true, public: false, title: 'Contest', description: 'One problem of a contest, with the editor and your results.' },
-  { pattern: '/admin/contests', name: 'admin-contests', auth: true, public: false, title: 'Contests', description: 'Every contest, its state and its settings.' },
-  { pattern: '/admin/contests/:id', name: 'admin-contest', auth: true, public: false, title: 'Contest settings', description: 'Edit a contest: times, problems, rules and publishing.' },
-  { pattern: '/admin/contests/:id/console', name: 'contest-console', auth: true, public: false, title: 'Console', description: 'Run a live contest: submissions, questions, announcements and time.' },
-  { pattern: '/admin/contests/:id/results', name: 'contest-results', auth: true, public: false, title: 'Results', description: 'Final scores and problem statistics for a contest.' },
-  { pattern: '/admin/contests/:id/integrity', name: 'contest-integrity', auth: true, public: false, title: 'Integrity', description: 'Similar code and other signals for a contest, and the decisions recorded.' },
-  { pattern: '/admin/contests/:id/integrity/signals/:signal', name: 'integrity-pair', auth: true, public: false, title: 'Signal', description: 'One integrity signal with its evidence.' },
-  { pattern: '/privacy', name: 'privacy', auth: false, public: false, title: 'Privacy', description: 'What podium records about you, who can see it and how long it is kept.' },
-  { pattern: '/admin/students', name: 'students', auth: true, public: false, title: 'Students', description: 'Every student who signed in, with the contests they took part in.' },
+  { pattern: '/', name: 'home', auth: true, title: 'Your contests' },
+  { pattern: '/signin', name: 'signin', auth: false, title: 'Sign in' },
+  { pattern: '/admin/people', name: 'people', auth: true, title: 'People' },
+  { pattern: '/admin/problems', name: 'problems', auth: true, title: 'Problem bank' },
+  { pattern: '/admin/problems/:id', name: 'problem', auth: true, title: 'Problem' },
+  { pattern: '/admin/problems/:id/try', name: 'problem-try', auth: true, title: 'Problem bank' },
+  { pattern: '/admin/ai', name: 'ai-settings', auth: true, title: 'AI assistant' },
+  { pattern: '/admin/ai/new', name: 'ai-new', auth: true, title: 'New problem with AI' },
+  { pattern: '/contests/:slug', name: 'contest', auth: true, title: 'Contest' },
+  { pattern: '/contests/:slug/standings', name: 'standings', auth: true, title: 'Standings' },
+  { pattern: '/contests/:slug/problems/:label', name: 'contest-problem', auth: true, title: 'Contest' },
+  { pattern: '/admin/contests', name: 'admin-contests', auth: true, title: 'Contests' },
+  { pattern: '/admin/contests/:id', name: 'admin-contest', auth: true, title: 'Contest settings' },
+  { pattern: '/admin/contests/:id/console', name: 'contest-console', auth: true, title: 'Console' },
+  { pattern: '/admin/contests/:id/results', name: 'contest-results', auth: true, title: 'Results' },
+  { pattern: '/admin/contests/:id/integrity', name: 'contest-integrity', auth: true, title: 'Integrity' },
+  { pattern: '/admin/contests/:id/integrity/signals/:signal', name: 'integrity-pair', auth: true, title: 'Signal' },
+  { pattern: '/privacy', name: 'privacy', auth: false, title: 'Privacy' },
+  { pattern: '/admin/students', name: 'students', auth: true, title: 'Students' },
 ];
 
 /** Shown for any path that matches nothing in ROUTES. */
@@ -82,37 +73,12 @@ export const NOT_FOUND: RouteDef = {
   pattern: '*',
   name: 'not-found',
   auth: false,
-  public: true,
   title: 'Page not found',
-  description: 'That page does not exist on podium.',
 };
 
 /** The title of a route by name, from the route table. */
 export function routeTitle(name: RouteName): string {
   return (ROUTES.find((r) => r.name === name) ?? NOT_FOUND).title;
-}
-
-/** The shape of routes.json, written by the Vite build (contract C2). */
-export interface RouteManifest {
-  /** Bumped when a field changes meaning, so the server can refuse a manifest it does not understand. */
-  version: 1;
-  /** Every route in match order. */
-  routes: RouteDef[];
-  /** The page shown for any other path; the server answers it with status 404. */
-  notFound: RouteDef;
-}
-
-/** Builds routes.json from the route table. The Vite build writes it into dist/. */
-export function routeManifest(): RouteManifest {
-  const row = (r: RouteDef): RouteDef => ({
-    pattern: r.pattern,
-    name: r.name,
-    auth: r.auth,
-    public: r.public,
-    title: r.title,
-    description: r.description,
-  });
-  return { version: 1, routes: ROUTES.map(row), notFound: row(NOT_FOUND) };
 }
 
 /** The result of matching a path against ROUTES. */
