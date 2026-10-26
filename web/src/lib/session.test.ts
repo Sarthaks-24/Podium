@@ -86,6 +86,17 @@ describe('loadSession', () => {
     expect(session.user).toBeUndefined();
   });
 
+  it('removes every draft mirror when /api/me answers 401', async () => {
+    const store = fakeStorage();
+    vi.stubGlobal('localStorage', store);
+    store.setItem('podium-last-user', '2');
+    store.setItem('podium-draft:2:/api/workspace/1', '{"source":"secret"}');
+    stubFetch(() => json(401, { error: { code: 'signed_out', message: 'Sign in to continue.' } }));
+    await loadSession();
+    expect(store.getItem('podium-draft:2:/api/workspace/1')).toBeNull();
+    expect(store.getItem('podium-last-user')).toBeNull();
+  });
+
   it('is signed out and returns the error when the server cannot answer', async () => {
     stubFetch(() => {
       throw new TypeError('Failed to fetch');

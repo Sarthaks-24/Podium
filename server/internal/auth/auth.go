@@ -199,11 +199,21 @@ func (s *Service) SignIn(ctx context.Context, id Identity, ip, userAgent string)
 		return User{}, "", time.Time{}, err
 	}
 	if !(email == s.OwnerEmail || (exists && role.AtLeast(Admin))) {
-		var n int
-		if err := tx.QueryRowContext(ctx, "SELECT count(*) FROM allowed_domains WHERE domain = ?", email[at+1:]).Scan(&n); err != nil {
+		domain := email[at+1:]
+		var workspace bool
+		err := tx.QueryRowContext(ctx, "SELECT workspace FROM allowed_domains WHERE domain = ?", domain).Scan(&workspace)
+		if errors.Is(err, sql.ErrNoRows) {
+			return User{}, "", time.Time{}, ErrDomain
+		}
+		if err != nil {
 			return User{}, "", time.Time{}, err
 		}
-		if n == 0 {
+		switch {
+		case id.HostedDomain == domain && !workspace:
+			if _, err := tx.ExecContext(ctx, "UPDATE allowed_domains SET workspace = 1 WHERE domain = ?", domain); err != nil {
+				return User{}, "", time.Time{}, err
+			}
+		case id.HostedDomain != domain && workspace:
 			return User{}, "", time.Time{}, ErrDomain
 		}
 	}

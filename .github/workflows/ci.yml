@@ -24,6 +24,8 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
       - uses: actions/setup-go@v6
         with:
           go-version-file: server/go.mod
@@ -35,6 +37,8 @@ jobs:
           cache-dependency-path: web/package-lock.json
       - run: cd web && npm ci
       - run: make check
+      # The race detector needs cgo, which the Ubuntu runner has (gcc).
+      - run: cd server && go test -race ./...
       - run: make build
       # A student's first load (entry script, its preloads, the stylesheets)
       # against the gzip budget in web/scripts/size-budget.mjs (v2 P6 F8.3).
@@ -46,6 +50,8 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
       - uses: actions/setup-node@v5
         with:
           node-version: 22
@@ -60,6 +66,8 @@ jobs:
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
       - uses: actions/setup-go@v6
         with:
           go-version-file: server/go.mod

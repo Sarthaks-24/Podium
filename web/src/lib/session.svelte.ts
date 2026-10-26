@@ -72,7 +72,11 @@ export async function loadSession(): Promise<ApiError | null> {
   } catch (err) {
     session.user = undefined;
     session.status = 'signed-out';
-    if (err instanceof ApiError && err.status === 401) return null;
+    if (err instanceof ApiError && err.status === 401) {
+      // No session: wipe the last student's mirrors on a shared lab PC.
+      forgetDraftsAtSignOut();
+      return null;
+    }
     return err instanceof ApiError ? err : new ApiError(0, 'unexpected', String(err));
   }
 }

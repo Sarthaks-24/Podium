@@ -25,6 +25,9 @@ type Identity struct {
 	EmailVerified bool
 	Name          string
 	Picture       string
+	// HostedDomain is Google's hd claim: the Workspace domain of the
+	// account, empty for a consumer account.
+	HostedDomain string
 }
 
 // errToken covers every reason an ID token is rejected. The detail is for
@@ -181,6 +184,7 @@ func verifyIDToken(ctx context.Context, keys *keySet, raw string, rules tokenRul
 		EmailVerified any             `json:"email_verified"`
 		Name          string          `json:"name"`
 		Picture       string          `json:"picture"`
+		Hd            string          `json:"hd"`
 	}
 	if err := decodeSegment(parts[1], &c); err != nil {
 		return Identity{}, err
@@ -202,7 +206,7 @@ func verifyIDToken(ctx context.Context, keys *keySet, raw string, rules tokenRul
 		return Identity{}, fmt.Errorf("%w: missing subject or email", errToken)
 	}
 	verified := c.EmailVerified == true || c.EmailVerified == "true"
-	return Identity{Subject: c.Sub, Email: strings.ToLower(c.Email), EmailVerified: verified, Name: c.Name, Picture: c.Picture}, nil
+	return Identity{Subject: c.Sub, Email: strings.ToLower(c.Email), EmailVerified: verified, Name: c.Name, Picture: c.Picture, HostedDomain: strings.ToLower(c.Hd)}, nil
 }
 
 func decodeSegment(seg string, v any) error {

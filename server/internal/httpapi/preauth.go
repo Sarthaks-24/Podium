@@ -23,8 +23,13 @@ import (
 // 2026-10-20, finding 1).
 const (
 	// The cheap routes: the config, the health check, sign-out.
-	PreAuthBurst = 5000
+	PreAuthBurst = 2500
 	PreAuthRate  = 50
+	// Session cookies the database did not know, per address: real
+	// students hit this once when a session ends, a script sending
+	// random cookies hits it on every request.
+	AuthFailBurst = 1000
+	AuthFailRate  = 10
 	// The sign-in routes: Google start and callback, test sign-in. Each
 	// callback is an outbound call to Google.
 	SignInBurst = 2000
@@ -85,6 +90,15 @@ func (l *ipLimiter) allow(key string) (bool, time.Duration) {
 	}
 	b.tokens--
 	return true, 0
+}
+
+// exhausted reports whether key's bucket is empty, without taking a token.
+func (l *ipLimiter) exhausted(key string) bool {
+	now := l.now()
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	b := l.buckets[key]
+	return b != nil && b.tokens+now.Sub(b.at).Seconds()*l.rate < 1
 }
 
 // sweep drops buckets that have refilled: they hold nothing to remember.

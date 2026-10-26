@@ -45,6 +45,23 @@ func id(email string) auth.Identity {
 	return auth.Identity{Subject: "s-" + strings.ToLower(email), Email: email, EmailVerified: true, Name: "N " + email}
 }
 
+func TestWorkspaceDomainRequiresHostedDomain(t *testing.T) {
+	s, _ := newService(t, "college.edu")
+	ctx := context.Background()
+	consumer := id("old@college.edu")
+	if _, _, _, err := s.SignIn(ctx, consumer, "", ""); err != nil {
+		t.Fatalf("before any Workspace sign-in the email suffix is enough: %v", err)
+	}
+	staff := id("staff@college.edu")
+	staff.HostedDomain = "college.edu"
+	if _, _, _, err := s.SignIn(ctx, staff, "", ""); err != nil {
+		t.Fatalf("Workspace sign-in: %v", err)
+	}
+	if _, _, _, err := s.SignIn(ctx, consumer, "", ""); !errors.Is(err, auth.ErrDomain) {
+		t.Errorf("token without hd for a Workspace domain: %v, want ErrDomain", err)
+	}
+}
+
 func TestBootstrapSeedsDomainsOnlyOnFreshInstall(t *testing.T) {
 	s, _ := newService(t, "college.edu")
 	ctx := context.Background()

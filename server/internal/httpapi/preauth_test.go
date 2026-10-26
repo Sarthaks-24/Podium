@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"path/filepath"
+	"strconv"
 	"testing"
 	"time"
 
@@ -15,6 +16,35 @@ import (
 	"github.com/Sarthaks-24/podium/internal/auth/authtest"
 	"github.com/Sarthaks-24/podium/internal/db"
 )
+
+func TestForgedCookiesAreRateLimited(t *testing.T) {
+	ctx := context.Background()
+	d, err := db.Open(ctx, filepath.Join(t.TempDir(), "f.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { d.Close() })
+	if _, err := db.Migrate(ctx, d); err != nil {
+		t.Fatal(err)
+	}
+	svc := &auth.Service{DB: d, OwnerEmail: "owner@college.edu"}
+	h := New(Deps{DB: d, Log: slog.New(slog.NewJSONHandler(&bytes.Buffer{}, nil)), WebApp: http.NotFoundHandler(), Auth: svc,
+		BaseURL: "https://podium.example", authFailLimit: newIPLimiter(20, 0.01, nil)})
+	limited := 0
+	for i := 0; i < 100; i++ {
+		r := httptest.NewRequest("GET", "/api/me", nil)
+		r.RemoteAddr = "203.0.113.5:4000"
+		r.AddCookie(&http.Cookie{Name: "__Host-podium_session", Value: "forged" + strconv.Itoa(i)})
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, r)
+		if w.Code == http.StatusTooManyRequests {
+			limited++
+		}
+	}
+	if limited != 80 {
+		t.Errorf("%d of 100 forged cookies got 429, want 80", limited)
+	}
+}
 
 func TestP3PreAuthLimitPerAddress(t *testing.T) {
 	ctx := context.Background()

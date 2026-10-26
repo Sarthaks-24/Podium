@@ -23,6 +23,7 @@ jobs:
     steps:
       - uses: actions/checkout@v5
         with:
+          persist-credentials: false
           # git describe in the Makefile needs the tags.
           fetch-depth: 0
       - uses: actions/setup-go@v6

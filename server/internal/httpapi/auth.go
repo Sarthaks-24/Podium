@@ -349,8 +349,19 @@ func (d Deps) requireRole(min auth.Role, h http.HandlerFunc) http.HandlerFunc {
 			WriteError(w, http.StatusUnauthorized, "signed_out", "Sign in to continue.")
 			return
 		}
+		// Unknown cookies cost a database read each, so an address that
+		// sent too many waits before the next read (security audit L3).
+		addr := addressKey(r)
+		if !loopbackRequest(r) && d.authFailLimit.exhausted(addr) {
+			w.Header().Set("Retry-After", "5")
+			WriteError(w, http.StatusTooManyRequests, "rate_limited", "Too many requests from your network. Wait a few seconds and try again.")
+			return
+		}
 		u, _, err := d.Auth.Authenticate(r.Context(), c.Value)
 		if errors.Is(err, auth.ErrNoSession) {
+			if !loopbackRequest(r) {
+				d.authFailLimit.allow(addr)
+			}
 			d.clearCookie(w, d.sessionCookieName(), "/")
 			WriteError(w, http.StatusUnauthorized, "signed_out", "Your session has ended. Sign in again.")
 			return

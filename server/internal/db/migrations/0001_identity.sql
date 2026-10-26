@@ -20,6 +20,10 @@ CREATE TABLE users (
 CREATE TABLE allowed_domains (
   domain     TEXT    PRIMARY KEY COLLATE NOCASE,
   added_by   INTEGER REFERENCES users (id) ON DELETE SET NULL,
+  -- 1 once a Google token carried hd = domain: from then on every
+  -- sign-in must carry it, so a consumer Google account on a college
+  -- address (an alumnus) no longer gets in.
+  workspace  INTEGER NOT NULL DEFAULT 0 CHECK (workspace IN (0, 1)),
   created_at INTEGER NOT NULL
 ) STRICT;
 

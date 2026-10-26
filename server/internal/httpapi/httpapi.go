@@ -67,6 +67,7 @@ type Deps struct {
 	// tests may set preAuthLimit first.
 	preAuthLimit  *ipLimiter
 	signInLimiter *ipLimiter
+	authFailLimit *ipLimiter
 	flows         *usedFlows
 	// Mode is the run mode (testing, dev or production). Testing mode has
 	// no Google sign-in; instead anyone at this machine signs in with a
@@ -84,6 +85,9 @@ func New(d Deps) http.Handler {
 	}
 	if d.signInLimiter == nil {
 		d.signInLimiter = newIPLimiter(SignInBurst, SignInRate, nil)
+	}
+	if d.authFailLimit == nil {
+		d.authFailLimit = newIPLimiter(AuthFailBurst, AuthFailRate, nil)
 	}
 	d.flows = newUsedFlows()
 	if d.Contact == nil {

@@ -18,6 +18,10 @@ PODIUM_HOST {
 		max_size 33MB
 	}
 
+	# Browsers go straight to https after the first visit, so a rogue
+	# campus access point cannot answer the plain http request.
+	header Strict-Transport-Security "max-age=31536000"
+
 	# Server-sent events must not be buffered by compression.
 	@compressible not path /api/events*
 	encode @compressible zstd gzip
