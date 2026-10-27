@@ -519,7 +519,7 @@ test.describe('in a contest', () => {
     await expect(page.getByRole('link', { name: 'Go to the contest page.' })).toHaveCount(0);
   });
 
-  test('the rail says where each problem stands, and the tried line shows only during the window', async ({ page }) => {
+  test('the rail shows each score, or not tried, and nothing else (S1-09)', async ({ page }) => {
     const api = await contests.mockApi(page, { phase: 'during' });
     api.scores.A = 100;
     api.scores.B = 40;
@@ -527,13 +527,13 @@ test.describe('in a contest', () => {
     await page.setViewportSize({ width: 1440, height: 900 });
     await page.goto('/contests/week-6/problems/B');
     const rail = page.getByRole('navigation', { name: 'Problems' });
-    await expect(rail.getByRole('link', { name: /^Problem A/ })).toContainText('solved');
+    await expect(rail.getByRole('link', { name: /^Problem A/ })).toContainText('100/100');
     await expect(rail.getByRole('link', { name: /^Problem B/ })).toContainText('40/100');
-    await expect(rail.getByRole('link', { name: /^Problem B/ })).toContainText('tried');
+    await expect(rail.getByRole('link', { name: /^Problem B/ })).not.toContainText('tried');
     await expect(rail.getByRole('link', { name: /^Problem C/ })).toContainText('not tried');
     // The sentence for screen readers is unchanged.
     await expect(rail.getByRole('link', { name: 'Problem B, Interval covering, 40 of 100 points' })).toHaveAttribute('aria-current', 'page');
-    await expect(rail.locator('.tried')).toHaveText('2 of 3 tried');
+    await expect(rail.getByText(/of 3 tried/)).toHaveCount(0);
     // Questions during a contest go to Messages in the rail, not to the contact form (C2-023).
     await expect(page.getByRole('link', { name: 'Write to the organisers' })).toHaveCount(0);
     // The open problem is marked by a border, not only a tint.

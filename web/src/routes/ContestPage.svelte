@@ -460,7 +460,6 @@
     {layout}
     {exam}
     unread={banner.length}
-    during={phase === 'during'}
     onmessages={openMessages}
     onrules={() => (rulesOpen = true)}
   />

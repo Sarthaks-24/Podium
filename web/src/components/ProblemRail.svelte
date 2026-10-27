@@ -4,13 +4,12 @@
   then cut, whole on hover; R4, audit S6), the score cell in mono and a 2 px bar of earned over
   total, in the partial colour for a partial score; the open problem is
   marked by a border on its inline start (a shape, not only a tint, audit
-  06-7). The score cell carries the status word (D114, design.md 8): "not
-  tried" with no submission, the score with "tried" or "solved" under it,
-  and in exam mode "not submitted" or "submitted" until scores are out.
+  06-7). The score cell shows the score, or "not tried" without one
+  (S1-09), and in exam mode "not submitted" or "submitted" until scores
+  are out.
   Below 1024 px the same links sit in one row of letters with their scores
   ("-" for none), which scrolls sideways when there are many. Under the
-  problems, during the window only, "2 of 5 tried" ("submitted" in exam
-  mode); then the standings link, "Rules" (opens the rules dialog) and the
+  problems come the standings link, "Rules" (opens the rules dialog) and the
   Messages button with its unread count, all quiet buttons with no
   underline (the control system in styles/controls.css). Each link keeps one sentence for
   screen readers (sentence()).
@@ -20,11 +19,11 @@
   px, built with the same adjacentLabel() as the "[" and "]" keys.
   Props: `problems`, `slug`, `current` (the open label), `layout` ("wide",
   "tablet", "phone" or "strip"), `exam`, `unread` (messages not yet seen),
-  `during` (the student's window is open), `onmessages` (opens the
+  `onmessages` (opens the
   messages dialog) and `onrules` (optional; opens the rules dialog).
 -->
 <script lang="ts">
-  import { railStatus, triedLine, type ContestProblem } from '../lib/contests';
+  import { railStatus, type ContestProblem } from '../lib/contests';
   import { adjacentLabel } from '../lib/shortcuts';
   import Icon from './Icon.svelte';
 
@@ -35,13 +34,11 @@
     layout: string;
     exam?: boolean;
     unread?: number;
-    during?: boolean;
     onmessages: () => void;
     onrules?: () => void;
   }
 
-  let { problems, slug, current, layout, exam = false, unread = 0, during = false, onmessages, onrules }: Props = $props();
-  const tried = $derived(during ? triedLine(problems, exam) : '');
+  let { problems, slug, current, layout, exam = false, unread = 0, onmessages, onrules }: Props = $props();
 
   const base = $derived(`/contests/${encodeURIComponent(slug)}`);
   const labels = $derived(problems.map((p) => p.label));
@@ -126,9 +123,8 @@
       </li>
     {/each}
   </ul>
-  {#if tried}<p class="tried">{tried}</p>{/if}
   <div class="links">
-    <a class="btn btn-link btn-compact" href="{base}/standings">Standings</a>
+    <a class="btn btn-link btn-compact" href="{base}/standings{current ? `?from=${encodeURIComponent(current)}` : ''}">Standings</a>
     {#if onrules}<button type="button" class="btn btn-link btn-compact" onclick={onrules}>Rules</button>{/if}
     <button type="button" class="btn btn-link btn-compact messages" onclick={onmessages}>
       <Icon name="message-square" />
@@ -239,10 +235,6 @@
     font-size: calc(var(--fs-0) * 0.9);
   }
 
-  .tried {
-    color: var(--ink-muted);
-    font-size: var(--fs-0);
-  }
 
   .links {
     display: flex;

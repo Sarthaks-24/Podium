@@ -35,8 +35,14 @@
   import { polite } from '../lib/announce.svelte';
   import { boardLabels, placeFigure, rankAnnouncement, statusLine, type Standings } from '../lib/standings';
   import { EventStream, type StreamMode } from '../lib/stream';
+  import { router } from '../lib/router.svelte';
 
   let { slug }: { slug: string } = $props();
+
+  // Back returns to the problem the student came from (S1-09), when the
+  // rail's link named one; a label is one or two capital letters.
+  const from = router.query.get('from') ?? '';
+  const backHref = $derived(`/contests/${encodeURIComponent(slug)}${/^[A-Z]{1,2}$/.test(from) ? `/problems/${from}` : ''}`);
 
   const CLOSED = 'The standings open when the contest closes.';
 
@@ -140,7 +146,7 @@
   });
 </script>
 
-<PageHeader title="Standings" back={{ href: `/contests/${encodeURIComponent(slug)}`, label: contest?.title ?? 'Contest' }} />
+<PageHeader title="Standings" back={{ href: backHref, label: contest?.title ?? 'Contest' }} />
 
 {#if loadState === 'loading'}
   <PageState kind="loading" message="Loading the standings" />

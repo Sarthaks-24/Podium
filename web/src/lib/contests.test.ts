@@ -29,7 +29,6 @@ import {
   pinnedContest,
   messagesReadAt,
   railStatus,
-  triedLine,
   startLine,
   studentPhase,
   toLocalInput,
@@ -225,22 +224,16 @@ describe('messages read time (audit S1)', () => {
   });
 });
 
-describe('rail status words (D114)', () => {
+describe('rail status (S1-09)', () => {
   const p = (my_score: number | null, my_submission_count: number, max_score = 100) => ({ my_score, max_score, my_submission_count });
-  it('puts a word in the score cell', () => {
+  it('shows the score and nothing else, or "not tried"', () => {
     expect(railStatus(p(null, 0), false)).toEqual({ score: '', word: 'not tried' });
     expect(railStatus(p(null, 2), false)).toEqual({ score: '', word: 'tried' });
-    expect(railStatus(p(40, 2), false)).toEqual({ score: '40/100', word: 'tried' });
-    expect(railStatus(p(0, 1), false)).toEqual({ score: '0/100', word: 'tried' });
-    expect(railStatus(p(100, 3), false)).toEqual({ score: '100/100', word: 'solved' });
+    expect(railStatus(p(40, 2), false)).toEqual({ score: '40/100', word: '' });
+    expect(railStatus(p(0, 1), false)).toEqual({ score: '0/100', word: '' });
+    expect(railStatus(p(100, 3), false)).toEqual({ score: '100/100', word: '' });
     expect(railStatus(p(null, 0), true)).toEqual({ score: '', word: 'not submitted' });
     expect(railStatus(p(null, 1), true)).toEqual({ score: '', word: 'submitted' });
-  });
-
-  it('counts the problems tried', () => {
-    expect(triedLine([p(100, 1), p(null, 0), p(null, 2)], false)).toBe('2 of 3 tried');
-    expect(triedLine([p(null, 1), p(null, 0)], true)).toBe('1 of 2 submitted');
-    expect(triedLine([], false)).toBe('');
   });
 });
 

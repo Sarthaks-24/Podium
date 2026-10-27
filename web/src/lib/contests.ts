@@ -93,11 +93,10 @@ export interface Clarification {
 }
 
 /**
- * The rail's score cell in the wide layout (D114, design.md 8): the score
- * where one exists, with the status word under it; the word alone where
- * there is no score. "not tried", "tried" (submitted, not full marks),
- * "solved" (full marks); in exam mode, until scores are out, "not
- * submitted" and "submitted".
+ * The rail's score cell in the wide layout (S1-09): the score where one
+ * exists and nothing else; "not tried" without a submission, "tried"
+ * while one waits for its score; in exam mode, until scores are out,
+ * "not submitted" and "submitted".
  */
 export function railStatus(p: Pick<ContestProblem, 'my_score' | 'max_score' | 'my_submission_count'>, exam: boolean): { score: string; word: string } {
   const count = p.my_submission_count ?? 0;
@@ -105,16 +104,7 @@ export function railStatus(p: Pick<ContestProblem, 'my_score' | 'max_score' | 'm
     if (exam) return { score: '', word: count > 0 ? 'submitted' : 'not submitted' };
     return { score: '', word: count > 0 ? 'tried' : 'not tried' };
   }
-  const score = `${p.my_score}/${p.max_score}`;
-  if (p.max_score > 0 && p.my_score >= p.max_score) return { score, word: 'solved' };
-  return { score, word: count > 0 || p.my_score > 0 ? 'tried' : 'not tried' };
-}
-
-/** "2 of 5 tried" under the rail during the window ("submitted" in exam mode, D114). */
-export function triedLine(problems: readonly Pick<ContestProblem, 'my_score' | 'my_submission_count'>[], exam: boolean): string {
-  if (problems.length === 0) return '';
-  const n = problems.filter((p) => (p.my_submission_count ?? 0) > 0 || (p.my_score ?? 0) > 0).length;
-  return `${n} of ${problems.length} ${exam ? 'submitted' : 'tried'}`;
+  return { score: `${p.my_score}/${p.max_score}`, word: '' };
 }
 
 /** Who asked, for the organiser inbox. */
