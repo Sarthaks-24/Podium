@@ -637,7 +637,11 @@ func (s *Service) Sweep(ctx context.Context) (requeued, failed int64, err error)
 		}
 		doomed = append(doomed, d)
 	}
+	err = rows.Err()
 	rows.Close()
+	if err != nil {
+		return 0, 0, err
+	}
 	for _, d := range doomed {
 		job, err := s.load(ctx, tx, d.id)
 		if err != nil {

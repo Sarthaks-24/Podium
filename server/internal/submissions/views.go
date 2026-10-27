@@ -434,7 +434,11 @@ func (s *Service) listMine(ctx context.Context, userID, problemID, contestID int
 		}
 		ids = append(ids, id)
 	}
+	err = rows.Err()
 	rows.Close()
+	if err != nil {
+		return nil, err
+	}
 	out := []SubmissionView{}
 	for _, id := range ids {
 		v, err := s.GetWith(ctx, id, o)

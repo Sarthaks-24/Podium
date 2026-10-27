@@ -366,7 +366,9 @@ func scanContest(sc interface{ Scan(...any) error }) (*Contest, error) {
 	c.Schedule.Extended = time.Duration(extended) * time.Minute
 	c.MinGap = time.Duration(gap) * time.Second
 	c.MaxExtension = time.Duration(maxExt) * time.Minute
-	json.Unmarshal([]byte(langs), &c.Languages)
+	if err := json.Unmarshal([]byte(langs), &c.Languages); err != nil {
+		return nil, fmt.Errorf("contest %d: languages: %w", c.ID, err)
+	}
 	if revealed > 0 {
 		c.RevealedAt = time.UnixMilli(revealed)
 	}
@@ -433,7 +435,9 @@ func (s *Service) loadProblemsOf(ctx context.Context, list []*Contest) error {
 			&p.RevisionID, &p.Rev, &p.Reconstructed, &p.LatestRevisionID, &p.LatestRev, &p.LatestReady, &p.LatestStatementOnly); err != nil {
 			return err
 		}
-		json.Unmarshal([]byte(points), &p.Points)
+		if err := json.Unmarshal([]byte(points), &p.Points); err != nil {
+			return fmt.Errorf("contest %d problem %s: points: %w", cid, p.Label, err)
+		}
 		if c := byID[cid]; c != nil {
 			c.Problems = append(c.Problems, p)
 		}
@@ -785,7 +789,11 @@ func (s *Service) SetRoster(ctx context.Context, id int64, entries []RosterEntry
 		}
 		old[e] = true
 	}
+	err = rows.Err()
 	rows.Close()
+	if err != nil {
+		return RosterChange{}, err
+	}
 	if _, err := tx.ExecContext(ctx, "DELETE FROM contest_roster WHERE contest_id = ?", id); err != nil {
 		return RosterChange{}, err
 	}

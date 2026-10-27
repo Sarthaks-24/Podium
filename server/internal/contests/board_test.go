@@ -194,3 +194,25 @@ func TestClarificationCapHoldsUnderParallelRequests(t *testing.T) {
 		t.Errorf("%d open questions stored, want %d", n, maxOpenQuestions)
 	}
 }
+
+// A stored score the board cannot read is an error, never a silent 0
+// (S1-08). The schema refuses invalid JSON, so the corrupt value here is
+// valid JSON of the wrong shape.
+func TestBoardRefusesAnUnreadableScore(t *testing.T) {
+	r := newSvc(t)
+	ctx := context.Background()
+	c := r.contest(t, nil)
+	seedBoard(t, r, c, 1, 1)
+	if _, err := r.svc.BoardNow(ctx, c); err != nil {
+		t.Fatalf("a readable board: %v", err)
+	}
+	if _, err := r.svc.DB.Exec(`UPDATE submissions SET earned = '"twenty"' WHERE contest_id = ?`, c.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := r.svc.BoardNow(ctx, c); err == nil || !strings.Contains(err.Error(), "earned") {
+		t.Errorf("a corrupt earned value gave %v, want an error naming it", err)
+	}
+	if _, err := r.svc.DB.Exec(`UPDATE submissions SET earned = 'not json' WHERE contest_id = ?`, c.ID); err == nil {
+		t.Error("the schema took invalid JSON in submissions.earned")
+	}
+}

@@ -34,7 +34,11 @@ func (s *Service) RecordSecondSession(ctx context.Context, userID int64) error {
 		}
 		ids = append(ids, id)
 	}
+	err = rows.Err()
 	rows.Close()
+	if err != nil {
+		return err
+	}
 	now := s.now()
 	for _, id := range ids {
 		c, err := s.Get(ctx, id)

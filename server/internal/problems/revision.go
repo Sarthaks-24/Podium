@@ -369,7 +369,11 @@ func CheckRevisions(ctx context.Context, db *sql.DB) ([]string, error) {
 		}
 		ids = append(ids, id)
 	}
+	err = rows.Err()
 	rows.Close()
+	if err != nil {
+		return nil, err
+	}
 	var out []string
 	for _, id := range ids {
 		p, err := load(ctx, db, id)

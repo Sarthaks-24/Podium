@@ -71,6 +71,9 @@ func (s *Service) publish(ctx context.Context, c *Contest, organisersOnly bool, 
 			to = append(to, id)
 		}
 	}
+	// A failed read still sends to everyone read so far: events are a
+	// hint, and the page reloads the truth on its next poll.
+	_ = rows.Err()
 	s.Hub.PublishMany(to, typ, v)
 }
 

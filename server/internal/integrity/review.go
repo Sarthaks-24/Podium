@@ -184,7 +184,11 @@ func (s *Service) Timeline(ctx context.Context, contestID, userID int64) ([]Mome
 		}
 		out = append(out, Moment{At: at, Kind: "shared_device", Text: "Same browser and network as " + name + "."})
 	}
+	err = rows.Err()
 	rows.Close()
+	if err != nil {
+		return nil, err
+	}
 	sortMoments(out)
 	return out, nil
 }

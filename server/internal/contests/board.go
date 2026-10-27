@@ -3,6 +3,7 @@ package contests
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -301,8 +302,11 @@ func (s *Service) entries(ctx context.Context, c *Contest, userID int64) ([]Entr
 		if !e.Done {
 			remaining++
 		}
+		// A score that cannot be read is an error, never a silent 0 (S1-08).
 		if e.Done && earned != "" {
-			json.Unmarshal([]byte(earned), &e.Earned)
+			if err := json.Unmarshal([]byte(earned), &e.Earned); err != nil {
+				return nil, 0, fmt.Errorf("contest %d: earned of user %d on problem %d: %w", c.ID, e.UserID, e.ProblemID, err)
+			}
 		}
 		out = append(out, e)
 	}
