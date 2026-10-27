@@ -683,14 +683,14 @@ test('the console says partial scores as students read them and keeps rows when 
   await expect(feed.getByRole('row')).toHaveCount(5);
 });
 
-test('the attention strip shows queue health, a silent judge and toolchain drift (P3 F6.1, C10)', async ({ page }) => {
+test('the attention strip shows queue health, and a silent judge (P3 F6.1, C10)', async ({ page }) => {
   const api = await mockApi(page, { who: 'admin', phase: 'during', queueHealth: 'trouble', waitingForYou: 1 });
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto('/admin/contests/4/console');
   const strip = page.getByRole('region', { name: 'Needs attention' });
   await expect(strip.getByRole('link', { name: '14 waiting, 2 judging, oldest 1 min' })).toBeVisible();
   await expect(strip.locator('.tone-bad')).toContainText(['1 judge error', 'No judge for 3 min', '1 unanswered question']);
-  await expect(strip.locator('.tone-part')).toContainText(['14 waiting', 'Problem A was validated on another judge toolchain', '1 case waiting for your confirmation']);
+  await expect(strip.locator('.tone-part')).toContainText(['14 waiting', '1 case waiting for your confirmation']);
   // A proposal waiting for this reviewer leads to the integrity page's cases (D321).
   await expect(strip.getByRole('link', { name: '1 case waiting for your confirmation' })).toHaveAttribute('href', '/admin/contests/4/integrity#cases-title');
   // The judge error link filters the feed to judge errors.
@@ -1360,14 +1360,4 @@ test('the contest nav opens the student view of the contest (F3.3, C2-056)', asy
   await link.click();
   await expect(page).toHaveURL('/contests/week-6');
   await expect(page.locator('.cm-content')).toBeVisible();
-});
-
-test('the console names the compiler that judged a submission (C2-028)', async ({ page }) => {
-  await mockApi(page, { who: 'admin', phase: 'during' });
-  await page.setViewportSize({ width: 1440, height: 900 });
-  await page.goto('/admin/contests/4/console');
-  const asha = page.getByRole('row', { name: /Asha Rao/ }).first();
-  await expect(asha.locator('td.lang')).toHaveAttribute('title', 'Judged with g++ 13.3.0');
-  // Still waiting: no judge yet, so no title.
-  await expect(page.getByRole('row', { name: /Ravi Kumar/ }).first().locator('td.lang')).not.toHaveAttribute('title');
 });

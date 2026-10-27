@@ -25,11 +25,10 @@ describe('attentionItems', () => {
     expect(items.every((i) => i.tone === 'note')).toBe(true);
   });
 
-  it('marks what needs action: a slow queue, judge errors, a silent judge, questions, drift', () => {
+  it('marks what needs action: a slow queue, judge errors, a silent judge, questions', () => {
     const items = attentionItems(
       {
         ...base,
-        problems: [{ ...base.problems[0] }, { ...base.problems[1], toolchain_drift: true }],
         queue: { waiting: 14, judging: 2, errors: 1, oldest_wait_s: 95 },
         judge_last_claim_at: T - 3 * MIN,
       },
@@ -41,7 +40,6 @@ describe('attentionItems', () => {
     expect(by.errors).toMatchObject({ text: '1 judge error', tone: 'bad' });
     expect(by.judge).toMatchObject({ text: 'No judge for 3 min', tone: 'bad' });
     expect(by.questions).toMatchObject({ text: '2 unanswered questions', tone: 'bad', href: '#clar-title' });
-    expect(by.drift).toMatchObject({ text: 'Problem B was validated on another judge toolchain', tone: 'part' });
   });
 
   it('says paused judging and never-seen judges, and leaves out what an older server does not send', () => {

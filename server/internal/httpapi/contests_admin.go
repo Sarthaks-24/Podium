@@ -24,8 +24,6 @@ import (
 
 	"github.com/Sarthaks-24/podium/internal/auth"
 	"github.com/Sarthaks-24/podium/internal/contests"
-	"github.com/Sarthaks-24/podium/internal/jobs"
-	"github.com/Sarthaks-24/podium/internal/judgeapi"
 	"github.com/Sarthaks-24/podium/internal/submissions"
 )
 
@@ -37,11 +35,6 @@ type adminProblemJSON struct {
 	PinnedHash string `json:"pinned_hash"`
 	Ready      bool   `json:"ready"`
 	MaxScore   int    `json:"max_score"`
-	// ValidatedToolchain is the toolchain of the validation of the pinned
-	// version; ToolchainDrift is true when it differs from the judge's
-	// current one. Both are null when either is unknown (B1.5).
-	ValidatedToolchain *toolchainJSON `json:"validated_toolchain"`
-	ToolchainDrift     *bool          `json:"toolchain_drift"`
 	// The pinned revision and the problem's newest one (C4).
 	RevisionID          int64 `json:"revision_id"`
 	Rev                 int   `json:"rev"`
@@ -50,19 +43,6 @@ type adminProblemJSON struct {
 	UpdateAvailable     bool  `json:"update_available"`
 	UpdateStatementOnly bool  `json:"update_statement_only"`
 	Reconstructed       bool  `json:"reconstructed"`
-}
-
-// toolchainJSON is a stored judge toolchain as the console shows it.
-type toolchainJSON struct {
-	judgeapi.Toolchain
-	FirstSeen int64 `json:"first_seen"`
-}
-
-func toolchainOut(t *jobs.Toolchain) *toolchainJSON {
-	if t == nil {
-		return nil
-	}
-	return &toolchainJSON{Toolchain: t.Details, FirstSeen: t.FirstSeen.UnixMilli()}
 }
 
 // adminContestJSON is AdminContest in docs/API.md: every setting, the
@@ -101,12 +81,9 @@ type adminContestJSON struct {
 	Problems           []adminProblemJSON   `json:"problems"`
 	Extensions         []contests.Extension `json:"extensions"`
 	RosterCount        int                  `json:"roster_count"`
-	// JudgeToolchain is what the judge reported last; null before any
-	// judge of v1.1.0 or later has started.
-	JudgeToolchain *toolchainJSON `json:"judge_toolchain"`
-	CreatedAt      int64          `json:"created_at"`
-	UpdatedAt      int64          `json:"updated_at"`
-	ServerNow      int64          `json:"server_now"`
+	CreatedAt          int64                `json:"created_at"`
+	UpdatedAt          int64                `json:"updated_at"`
+	ServerNow          int64                `json:"server_now"`
 	// Queue health for the console's attention strip (C10, D103).
 	Queue            queueJSON `json:"queue"`
 	JudgeLastClaimAt *int64    `json:"judge_last_claim_at"`
@@ -133,31 +110,13 @@ func (d Deps) adminContestOut(ctx context.Context, c *contests.Contest) (*adminC
 		ExtendedMinutes: int(c.Schedule.Extended / time.Minute), RevealedAt: millis(c.RevealedAt), Archived: c.Archived,
 		State: c.Schedule.State(now, c.PracticeAfterEnd), Problems: []adminProblemJSON{},
 		CreatedAt: c.CreatedAt.UnixMilli(), UpdatedAt: c.UpdatedAt.UnixMilli(), ServerNow: now.UnixMilli()}
-	var current *jobs.Toolchain
 	var err error
-	if d.Problems != nil && d.Problems.Jobs != nil {
-		if current, err = d.Problems.Jobs.CurrentToolchain(ctx); err != nil {
-			return nil, err
-		}
-		out.JudgeToolchain = toolchainOut(current)
-	}
 	for _, p := range c.Problems {
 		ap := adminProblemJSON{Label: p.Label, ProblemID: p.ProblemID, Title: p.Title,
 			PinnedHash: p.PinnedHash, Ready: p.Ready, MaxScore: p.MaxScore(),
 			RevisionID: p.RevisionID, Rev: p.Rev, LatestRevisionID: p.LatestRevisionID, LatestRev: p.LatestRev,
 			UpdateAvailable:     p.LatestRevisionID != p.RevisionID && p.LatestReady,
 			UpdateStatementOnly: p.LatestRevisionID != p.RevisionID && p.LatestStatementOnly, Reconstructed: p.Reconstructed}
-		if d.Problems != nil && d.Problems.Jobs != nil {
-			validated, err := d.Problems.Jobs.ValidatedToolchain(ctx, p.ProblemID, p.PinnedHash)
-			if err != nil {
-				return nil, err
-			}
-			ap.ValidatedToolchain = toolchainOut(validated)
-			if validated != nil && current != nil {
-				drift := validated.Hash != current.Hash
-				ap.ToolchainDrift = &drift
-			}
-		}
 		out.Problems = append(out.Problems, ap)
 	}
 	if out.Extensions, err = d.Contests.Extensions(ctx, c.ID); err != nil {

@@ -995,7 +995,7 @@ cmd_unhold() {
   (( ${#pkgs[@]} > 0 )) || die "none of the held packages is installed"
   log "unhold: apt may upgrade the compilers, runtimes and isolate again"
   apt-mark unhold "${pkgs[@]}"
-  echo "After an upgrade of any of them: sudo systemctl restart podium-judge. The contest console then flags each problem validated on the old toolchain."
+  echo "After an upgrade of any of them: sudo systemctl restart podium-judge, then validate the next contest's problems again."
 }
 
 checklist() {

@@ -63,7 +63,7 @@ export interface Options {
   secondLive?: boolean;
   /** PUT settings may publish (by default it refuses with a changed problem, P3). */
   publishOk?: boolean;
-  /** Queue health on the contest response (C10): calm by default, or a slow queue, a silent judge and toolchain drift. */
+  /** Queue health on the contest response (C10): calm by default, or a slow queue, and a silent judge. */
   queueHealth?: 'calm' | 'trouble';
   /** GET /api/contests lists past contests only, the newest one the student never entered (D324). */
   missedNewest?: boolean;
@@ -382,7 +382,6 @@ export async function mockApi(page: Page, options: Options = {}) {
       update_available: latest > rev,
       update_statement_only: true,
       reconstructed: false,
-      toolchain_drift: options.queueHealth === 'trouble' && String(p.label) === 'A',
     };
   }
 
@@ -672,11 +671,11 @@ export async function mockApi(page: Page, options: Options = {}) {
       if (path === '/api/admin/contests/4/submissions' && method === 'GET') {
         state.feedQueries.push(url.search);
         const rows = [
-          { id: 301, user_id: 7, name: 'Asha Rao', email: 'asha@college.edu', problem_label: 'B', language: 'cpp17', state: 'done', verdict: 'WA', score: 40, max_score: 100, created_at: now - 2 * MIN, practice: false, rejudged: false, note_count: state.notes.length, case_id: state.manualCase, toolchain: { gcc: 'g++ 13.3.0', java: 'javac 21.0.8', python: 'Python 3.12.3', node: 'v22.20.0' } },
-          { id: 300, user_id: 101, name: 'Arjun Mehta', email: 'arjun@college.edu', problem_label: 'A', language: 'python3', state: 'done', verdict: 'AC', score: 100, max_score: 100, created_at: now - 5 * MIN, practice: false, rejudged: false, note_count: 0, case_id: null, toolchain: { gcc: 'g++ 13.3.0', java: 'javac 21.0.8', python: 'Python 3.12.3', node: 'v22.20.0' } },
-          { id: 299, user_id: 102, name: 'Ravi Kumar', email: 'ravi@college.edu', problem_label: 'C', language: 'java21', state: 'running', verdict: '', score: 0, max_score: 100, created_at: now - 6 * MIN, practice: false, rejudged: false, note_count: 0, case_id: null, toolchain: null },
-          { id: 298, user_id: 103, name: 'Meera Iyer', email: 'meera@college.edu', problem_label: 'B', language: 'cpp17', state: 'error', verdict: '', score: 0, max_score: 100, created_at: now - 7 * MIN, practice: false, rejudged: false, note_count: 0, case_id: null, toolchain: null },
-          { id: 297, user_id: 104, name: 'Kiran Das', email: 'kiran@college.edu', problem_label: 'C', language: 'cpp17', state: 'done', verdict: 'WA', score: 0, max_score: 100, created_at: now - 9 * MIN, practice: false, rejudged: false, note_count: 0, case_id: null, toolchain: { gcc: 'g++ 13.3.0', java: 'javac 21.0.8', python: 'Python 3.12.3', node: 'v22.20.0' } },
+          { id: 301, user_id: 7, name: 'Asha Rao', email: 'asha@college.edu', problem_label: 'B', language: 'cpp17', state: 'done', verdict: 'WA', score: 40, max_score: 100, created_at: now - 2 * MIN, practice: false, rejudged: false, note_count: state.notes.length, case_id: state.manualCase },
+          { id: 300, user_id: 101, name: 'Arjun Mehta', email: 'arjun@college.edu', problem_label: 'A', language: 'python3', state: 'done', verdict: 'AC', score: 100, max_score: 100, created_at: now - 5 * MIN, practice: false, rejudged: false, note_count: 0, case_id: null },
+          { id: 299, user_id: 102, name: 'Ravi Kumar', email: 'ravi@college.edu', problem_label: 'C', language: 'java21', state: 'running', verdict: '', score: 0, max_score: 100, created_at: now - 6 * MIN, practice: false, rejudged: false, note_count: 0, case_id: null },
+          { id: 298, user_id: 103, name: 'Meera Iyer', email: 'meera@college.edu', problem_label: 'B', language: 'cpp17', state: 'error', verdict: '', score: 0, max_score: 100, created_at: now - 7 * MIN, practice: false, rejudged: false, note_count: 0, case_id: null },
+          { id: 297, user_id: 104, name: 'Kiran Das', email: 'kiran@college.edu', problem_label: 'C', language: 'cpp17', state: 'done', verdict: 'WA', score: 0, max_score: 100, created_at: now - 9 * MIN, practice: false, rejudged: false, note_count: 0, case_id: null },
         ];
         const problem = url.searchParams.get('problem');
         const user = url.searchParams.get('user');

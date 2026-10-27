@@ -987,18 +987,7 @@ Every change that can affect results is recorded in the contest's audit log (bel
 
 `ContestEdit` holds the form's fields: `slug`, `title`, `description_md`, `starts_at`, `ends_at`, `start_mode` (`fixed` or `window`), `duration_minutes` (window mode, at least 10 and at most the whole window), `freeze_minutes`, `scoring_mode` (`best_subtask` or `best_submission`), `access` (`domain` or `roster`), `feedback_mode` (`subtask` or `exam`), `graded`, `published`, `practice_after_end`, `stop_on_sample_fail`, `min_gap_s` (0 to 3600), `max_per_problem` (1 to 1000), `languages`, `honour_text` (empty for the default), `hold_reveal`. Defaults on create: fixed start, best per subtask, domain access, subtask feedback, graded, practice after the end, stop on a failing sample, 30 s gap, 15 per problem, all four languages. Unknown fields are refused. Publishing checks that every problem is still the validated version that was added ("Problem B changed or lost its validation since it was added. Validate it and add it again."). Invalid fields: `400 bad_request` with `fields`.
 
-`AdminContest` is every `ContestEdit` field plus `id`, `close_at` (end plus contest-wide extension), `default_honour_text`, `editorial_md`, `editorial_published`, `paused`, `extended_minutes`, `revealed_at`, `archived`, `state`, `problems [{label, problem_id, title, pinned_hash, ready, max_score, validated_toolchain, toolchain_drift}]` (`ready` is false when the problem changed since it was added; from v1.3.0 `pinned_hash` is the pinned revision's content hash, the database column having gone), `admins [{user_id, email, name}]`, `extensions [{user_id, email, name, minutes, reason}]`, `roster_count`, `judge_toolchain`, `created_at`, `updated_at`, `server_now`, `locked_after_start` (the field names above that only admins may change once the contest has started).
-
-**Toolchain drift (v1.1.0, B1.5; shown by the console strip C1 in P3).** `judge_toolchain` is what the judge reported last, `null` before any v1.1.0 judge has started; `validated_toolchain` is the toolchain of the newest finished validation of the pinned version, `null` when that validation ran before v1.1.0. `toolchain_drift` is `true` when the two differ, `false` when they match, and `null` when either is unknown. A toolchain is `{gcc, java, python, node, isolate, kernel, first_seen}` (strings, and `first_seen` in ms). Drift is a warning, not a block: the problem stays validated (D45); revalidating it on the current toolchain clears the flag.
-
-```json
-{ "problems": [ { "label": "A", "problem_id": 3, "title": "A plus B", "pinned_hash": "9f2c...", "ready": true, "max_score": 100,
-                  "validated_toolchain": { "gcc": "g++ 13.3.0", "java": "javac 21.0.8", "python": "Python 3.12.3", "node": "v22.20.0",
-                                           "isolate": "The process isolator 2.7", "kernel": "6.8.0-85-generic", "first_seen": 1792100000000 },
-                  "toolchain_drift": true } ],
-  "judge_toolchain": { "gcc": "g++ 13.3.1", "java": "javac 21.0.8", "python": "Python 3.12.3", "node": "v22.20.0",
-                       "isolate": "The process isolator 2.7", "kernel": "6.8.0-86-generic", "first_seen": 1792180000000 } }
-```
+`AdminContest` is every `ContestEdit` field plus `id`, `close_at` (end plus contest-wide extension), `default_honour_text`, `editorial_md`, `editorial_published`, `paused`, `extended_minutes`, `revealed_at`, `archived`, `state`, `problems [{label, problem_id, title, pinned_hash, ready, max_score}]` (`ready` is false when the problem changed since it was added; from v1.3.0 `pinned_hash` is the pinned revision's content hash, the database column having gone), `admins [{user_id, email, name}]`, `extensions [{user_id, email, name, minutes, reason}]`, `roster_count`, `created_at`, `updated_at`, `server_now`, `locked_after_start` (the field names above that only admins may change once the contest has started).
 
 Turning `graded` on is `409 ai_unconfirmed` while the contest holds an AI problem no person has written a solution for and no admin has confirmed for this contest.
 
@@ -1046,13 +1035,13 @@ Unknown actions may appear in later releases; show them by their name.
 
 - **Pause** stops the judge from taking the contest's submissions and runs; they still queue, and nothing is lost. **Resume** lets them through in order.
 - **Rejudge** queues every submission of a problem (or one submission) again at priority 50 with the problem's current tests; each goes back to `queued` and counts again once judged. Submissions still waiting for the judge, or being judged, on the old tests are included: their old job is cancelled and replaced. A submission already waiting on exactly the current tests is left alone, so pressing Rejudge twice adds nothing (`queued` counts only what was queued). The problem must still match its pin: after editing tests, validate the problem and add it to the contest again first (`409 not_ready` otherwise). A rejudge waiting in the queue never blocks the student from submitting.
-- **Feed** rows: `{id, user_id, name, email, problem_label, language, state, verdict, score, max_score, created_at, judged_at, practice, rejudged, typed_chars, pasted_chars, focus_losses, toolchain}`, newest first, 50 per page. `toolchain` is `{gcc, java, python, node}`, the versions the judge that ran the submission's latest job reported (plain text from the judge), or `null` while it waits, for a job from before the toolchain registry, and while results are hidden.
+- **Feed** rows: `{id, user_id, name, email, problem_label, language, state, verdict, score, max_score, created_at, judged_at, practice, rejudged, typed_chars, pasted_chars, focus_losses}`, newest first, 50 per page.
 - **Reveal** answers `409 too_early` "The reveal opens when every student's time is up." until the close plus the longest personal extension. The web app walks the frozen board from the bottom, moving each row to its place on the full board.
 
 ### Export and stats
 
 - CSV columns: `rank, name, email, roll_number, section, started` (UTC, RFC 3339), `total`, then one column per problem label. A cell starting with `=`, `+`, `-`, `@`, a tab or a carriage return gets a leading `'`, so a spreadsheet never runs a name as a formula.
-- JSON: `{contest: AdminContest, standings: [Standings row plus email, roll_number, section, started_at], submissions: [{id, user_id, problem_label, language, state, verdict, score, created_at, practice, toolchain}], audit: [AuditEntry], exported_at}`. No code and no integrity data.
+- JSON: `{contest: AdminContest, standings: [Standings row plus email, roll_number, section, started_at], submissions: [{id, user_id, problem_label, language, state, verdict, score, created_at, practice}], audit: [AuditEntry], exported_at}`. No code and no integrity data.
 - `ProblemStats`: `{label, title, max_score, attempted, solved` (full score)`, subtasks [{idx, points, earned}], histogram [{score, students}]` (highest score first)`, median_attempts}`, over students on the board and their non-practice submissions.
 
 ## History and audit (v1.2.0)
@@ -1707,7 +1696,7 @@ Used only by `podium-judge work` (decision D44). It is served on its own listene
 
 ### `POST /api/judge/claim`
 
-Request: `{"kinds":["run","submit","generate","validate"],"worker":"vm-1","version":"v1.1.0","isolate":"2.7","protocol":3,"toolchain":"<sha256>"}`. `worker`, `version` and `isolate` are logged and stored with the job. `protocol` is the judge's `judgeapi.ProtocolVersion`; left out, it means 1 (the v1.0.0 judge). `toolchain` is the hash `POST /api/judge/toolchain` returned; the job records that toolchain (`jobs.toolchain_id`), or none when the hash is unknown or missing.
+Request: `{"kinds":["run","submit","generate","validate"],"worker":"vm-1","version":"v1.1.0","isolate":"2.7","protocol":3,"toolchain":"<sha256>"}`. `worker`, `version` and `isolate` are logged and stored with the job. `protocol` is the judge's `judgeapi.ProtocolVersion`; left out, it means 1 (the v1.0.0 judge). `toolchain` is the hash `POST /api/judge/toolchain` returned; the server accepts it and stores nothing (v3).
 
 | Status | Body |
 |---|---|
@@ -1721,7 +1710,7 @@ Sent once when the judge starts (B1.4). Request: `{"protocol":3,"toolchain":{"gc
 
 | Status | Body |
 |---|---|
-| 200 | `{"hash":"<sha256>"}`, the SHA-256 of the toolchain's JSON; the same report always gives the same hash and is stored once |
+| 200 | `{"hash":"<sha256>"}`, the SHA-256 of the toolchain's JSON; the same report always gives the same hash. The server logs the versions and stores nothing (v3 removed the registry) |
 | 400 `bad_report` | a field over 200 bytes or not UTF-8 |
 | 426 `protocol` | as for a claim |
 

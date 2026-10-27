@@ -112,8 +112,8 @@ func (d JudgeDeps) claim(w http.ResponseWriter, r *http.Request) {
 	WriteJSON(w, http.StatusOK, c)
 }
 
-// toolchain stores the judge's toolchain report (B1.4) and answers with
-// the hash its claims carry.
+// toolchain checks and logs the judge's toolchain report (B1.4) and
+// answers with the hash its claims carry.
 func (d JudgeDeps) toolchain(w http.ResponseWriter, r *http.Request) {
 	var req judgeapi.ToolchainReport
 	if !decodeJudge(w, r, &req, maxClaimBody) {
@@ -122,15 +122,10 @@ func (d JudgeDeps) toolchain(w http.ResponseWriter, r *http.Request) {
 	if !d.protocolOK(w, req.Protocol) {
 		return
 	}
-	hash, err := d.Jobs.RegisterToolchain(r.Context(), req.Toolchain)
+	hash, err := d.Jobs.RegisterToolchain(req.Toolchain)
 	var bad *jobs.ReportError
-	switch {
-	case errors.As(err, &bad):
+	if errors.As(err, &bad) {
 		WriteError(w, http.StatusBadRequest, "bad_report", bad.Reason)
-		return
-	case err != nil:
-		d.Log.Error("toolchain report failed", "err", err)
-		WriteError(w, http.StatusInternalServerError, "internal", "The server could not record the toolchain.")
 		return
 	}
 	t := req.Toolchain

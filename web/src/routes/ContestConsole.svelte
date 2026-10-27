@@ -7,7 +7,7 @@
     attentionItems): time to the end, when the board freezes, judging on
     or paused with Pause or Resume, the queue and its oldest wait, judge
     errors, whether a judge is asking for work, unanswered questions,
-    problems validated on another toolchain, and when the page last
+    a newer revision waiting for students, and when the page last
     refreshed. An item is coloured only when it needs action. A failed
     refresh keeps the last rows and says so.
   - Beside the work from 1280 px, and first below that: Questions, each
@@ -64,7 +64,6 @@
     type ContestSettings,
     type FeedPage,
     type FeedRow,
-    judgedWith,
   } from '../lib/contests';
   import { keepHeadingFocus } from '../lib/focus';
   import { feedQuery, pinPath, updateEffect, type PinUpdate } from '../lib/history';
@@ -155,8 +154,8 @@
   const unanswered = $derived(clarifications.filter((c) => !c.answer).length);
   const attention = $derived(contest ? attentionItems(contest, ticker.now, unanswered) : []);
   const running = $derived(contest !== null && ticker.now >= contest.starts_at && ticker.now < closeAt);
-  const updateWaiting = $derived((contest?.problems ?? []).some((p) => p.update_available || p.toolchain_drift));
-  /** Problem revisions stay folded until an update or a toolchain change needs them; they never fold by themselves. */
+  const updateWaiting = $derived((contest?.problems ?? []).some((p) => p.update_available));
+  /** Problem revisions stay folded until an update needs them; they never fold by themselves. */
   let versionsOpen = $state(false);
   $effect(() => {
     if (updateWaiting) versionsOpen = true;
@@ -854,7 +853,7 @@
                       {row.name}{#if row.practice}<span class="muted"> (practice)</span>{/if}
                     </th>
                     <td class="mono plabel">{row.problem_label ?? row.label}</td>
-                    <td class="lang" title={judgedWith(row.language, row.toolchain) || undefined}>{languageLabel(row.language)}</td>
+                    <td class="lang">{languageLabel(row.language)}</td>
                     <td class="verdict"><Badge tone={out.tone}><MonoDigits text={out.text} /></Badge></td>
                     <td class="act">
                       <button
@@ -966,9 +965,6 @@
                   <span class="mono plabel">{p.label}</span>
                   {p.title}{#if p.rev !== undefined}, revision <span class="mono">{p.rev}</span>{/if}{#if p.reconstructed}<span class="muted"> (rebuilt at the upgrade)</span>{/if}
                 </p>
-                {#if p.toolchain_drift}
-                  <p class="drift small">Validated on another judge toolchain. Validate it again in the problem bank before you judge it again.</p>
-                {/if}
                 {#if p.update_available && p.latest_rev !== undefined}
                   <p class="muted small">
                     Revision <span class="mono">{p.latest_rev}</span> is validated{p.update_statement_only ? ' and changes only the statement' : ' and changes the tests or limits'}.
@@ -1119,11 +1115,6 @@
     display: grid;
     gap: var(--space-1);
     justify-items: start;
-  }
-
-  .drift {
-    color: var(--part);
-    font-weight: 500;
   }
 
   .pin-note {

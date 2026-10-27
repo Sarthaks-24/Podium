@@ -531,8 +531,6 @@ export interface AdminContestProblem extends Partial<Omit<ProblemPin, 'label' | 
   title: string;
   max_score?: number;
   ready?: boolean;
-  /** The judge's toolchain differs from the one this problem was validated on (B1.5). */
-  toolchain_drift?: boolean;
 }
 
 export interface RosterEntry {
@@ -630,27 +628,6 @@ export interface FeedRow {
   note_count?: number;
   /** v1.4.0, reviewers only: the case opened from this submission. */
   case_id?: number | null;
-  /** The judge versions of the row's latest job (C2-028). */
-  toolchain?: JobToolchain | null;
-}
-
-/** The judge versions behind a feed row (C2-028), or null while it waits or is hidden. */
-export interface JobToolchain {
-  gcc: string;
-  java: string;
-  python: string;
-  node: string;
-}
-
-/** "Judged with g++ 13.3.0": the compiler or runtime of the row's language, or '' when unknown. */
-export function judgedWith(language: string, t: JobToolchain | null | undefined): string {
-  if (!t) return '';
-  const keys: Record<string, keyof JobToolchain> = { cpp17: 'gcc', java21: 'java', python3: 'python', node22: 'node' };
-  const key = keys[language];
-  const version = key ? t[key] : '';
-  if (!version) return '';
-  // Node reports a bare "v22.20.0".
-  return `Judged with ${key === 'node' && /^v\d/.test(version) ? `Node ${version}` : version}`;
 }
 
 export interface FeedPage {
@@ -868,7 +845,7 @@ export interface QueueHealth {
 
 /** One item of the console's attention strip; only "part" and "bad" ask for action. */
 export interface AttentionItem {
-  key: 'time' | 'freeze' | 'judging' | 'queue' | 'errors' | 'judge' | 'questions' | 'drift' | 'update' | 'confirm';
+  key: 'time' | 'freeze' | 'judging' | 'queue' | 'errors' | 'judge' | 'questions' | 'update' | 'confirm';
   text: string;
   tone: 'note' | 'part' | 'bad';
   href: string;
@@ -884,8 +861,7 @@ export const SLOW_WAIT_S = 60;
  * The console's attention strip (F6.1, C1 with the C10 fields): time to
  * the start or end, when the board freezes, judging on or paused, the
  * queue, judge errors, whether a judge is asking for work, unanswered
- * questions, problems validated on another judge toolchain, a newer
- * revision waiting for students, and cases whose proposal waits for this
+ * questions, a newer revision waiting for students, and cases whose proposal waits for this
  * reviewer's confirmation (`confirm`, from the case list). Each item
  * links to where it is handled; an item turns "part" or "bad" only when it
  * needs action. Older servers without the C10 fields simply give fewer
@@ -935,16 +911,6 @@ export function attentionItems(
       ? { key: 'questions', text: countOf(unanswered, 'unanswered question'), tone: 'bad', href: '#clar-title' }
       : { key: 'questions', text: 'No unanswered questions', tone: 'note', href: '#clar-title' },
   );
-
-  const drift = c.problems.filter((p) => p.toolchain_drift).map((p) => p.label);
-  if (drift.length > 0) {
-    out.push({
-      key: 'drift',
-      text: `${drift.length === 1 ? `Problem ${drift[0]} was` : `Problems ${drift.join(', ')} were`} validated on another judge toolchain`,
-      tone: 'part',
-      href: '#versions-title',
-    });
-  }
 
   // A saved edit reaches students only through the console (walk 2026-10-21);
   // after the close it no longer needs anyone's attention.

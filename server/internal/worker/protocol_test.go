@@ -9,7 +9,6 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
-	"strconv"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -107,9 +106,9 @@ func TestJudgeStopsOnAnOlderServer(t *testing.T) {
 	}
 }
 
-// The toolchain report: distinct reports are stored once, and a claimed
-// job carries the toolchain of the judge that claimed it (B1.4).
-func TestToolchainStoredOnceAndOnEachJob(t *testing.T) {
+// The toolchain report: the server answers each report with its hash and
+// refuses an oversized one (B1.4; v3 stores nothing).
+func TestToolchainReportAnswersItsHash(t *testing.T) {
 	r := newDrainRig(t)
 	ctx := context.Background()
 	a := judgeapi.Toolchain{GCC: "g++ (Ubuntu 13.3.0-6ubuntu2~24.04) 13.3.0", Java: "javac 21.0.8", Python: "Python 3.12.3",
@@ -123,30 +122,13 @@ func TestToolchainStoredOnceAndOnEachJob(t *testing.T) {
 	if h, _ := r.w.Client.ReportToolchain(ctx, a); h != h1 {
 		t.Errorf("same toolchain, new hash %q", h)
 	}
-	h2, _ := r.w.Client.ReportToolchain(ctx, b)
-	var n int
-	r.jobs.DB.QueryRow("SELECT count(*) FROM toolchains").Scan(&n)
-	if n != 2 || h2 == h1 {
-		t.Errorf("%d toolchains stored, hashes %s %s", n, h1, h2)
-	}
-	if cur, err := r.jobs.CurrentToolchain(ctx); err != nil || cur == nil || cur.Hash != h2 || cur.Details.GCC != b.GCC {
-		t.Errorf("current %+v %v", cur, err)
+	if h2, _ := r.w.Client.ReportToolchain(ctx, b); h2 == h1 || h2 != b.Hash() {
+		t.Errorf("a changed toolchain, hashes %s %s", h1, h2)
 	}
 	if _, err := r.w.Client.ReportToolchain(ctx, judgeapi.Toolchain{GCC: strings.Repeat("x", 300)}); err == nil {
 		t.Error("an oversized report was stored")
 	}
 
-	id := r.enqueue(t)
-	r.w.Toolchain = h1
-	stop, stopClaims := context.WithCancel(ctx)
-	done, _ := r.start(t, stop, ctx)
-	stopClaims()
-	close(r.release)
-	<-done
-	var hash string
-	if err := r.jobs.DB.QueryRow("SELECT t.hash FROM jobs j JOIN toolchains t ON t.id = j.toolchain_id WHERE j.id = ?", id).Scan(&hash); err != nil || hash != h1 {
-		t.Errorf("job toolchain %q %v", hash, err)
-	}
 }
 
 // A 400 bad_report to a toolchain report is a refused report, retried,
@@ -161,24 +143,6 @@ func TestBadReportIsNotAProtocolStop(t *testing.T) {
 	var pe *ProtocolError
 	if err == nil || errors.As(err, &pe) {
 		t.Errorf("got %v", err)
-	}
-}
-
-// The toolchains table keeps the 20 latest plus those jobs ran on.
-func TestToolchainsArePruned(t *testing.T) {
-	r := newDrainRig(t)
-	for i := 0; i < 30; i++ {
-		if _, err := r.jobs.RegisterToolchain(context.Background(), judgeapi.Toolchain{GCC: "g++ " + strconv.Itoa(i)}); err != nil {
-			t.Fatal(err)
-		}
-	}
-	var n int
-	r.jobs.DB.QueryRow("SELECT count(*) FROM toolchains").Scan(&n)
-	if n != 20 {
-		t.Errorf("%d toolchains kept", n)
-	}
-	if cur, _ := r.jobs.CurrentToolchain(context.Background()); cur == nil || cur.Details.GCC != "g++ 29" {
-		t.Errorf("current %+v", cur)
 	}
 }
 
