@@ -95,7 +95,7 @@ Still out of reach:
 
 No tool reliably tells AI-written code from a student's own: detectors are wrong often enough to accuse honest students, and easy to fool. Podium handles it in three other ways:
 
-- **Prevention:** graded contests default to a fixed start; run them in a lab with an invigilator for anything that counts. The honour code states the rule. When the AI wizard (M5) is available, "Can a model solve this?" shows whether a model solves a problem zero-shot, so a setter can make graded problems harder to hand off.
+- **Prevention:** graded contests default to a fixed start; run them in a lab with an invigilator for anything that counts. The honour code states the rule.
 - **Indirect evidence:** large pastes, a full score far faster than the class, and clusters of near-identical code (students who asked the same model often submit the same program).
 - **Verification:** the reliable check is a conversation. Ask the student to explain their program, or to change it in front of you.
 

@@ -2,7 +2,7 @@ package httpapi
 
 // The AI wizard over HTTP (M5, cache/v1/m5-plan.md section 7): the key
 // routes, a wizard run from a brief and from pasted text with the testing
-// mode's fake provider, "Can a model solve this?", generate inputs, and a
+// mode's fake provider, generate inputs, and a
 // run with a real-looking key against a stand-in for the Claude API after
 // which the key must not appear in any log line, the SQLite files or the
 // blob store. Signing out forgets the key.
@@ -210,23 +210,11 @@ func TestM5WizardWithFakeProvider(t *testing.T) {
 		t.Errorf("paste draft %v", pasted["slug"])
 	}
 
-	// "Can a model solve this?": refused before any call while the
-	// problem cannot be judged, then judged as the admin's submission.
-	if code, body := admin.do("POST", "/api/admin/problems/"+pid+"/solve", nil, s.srv.URL); code != 409 || errCode(body) != "not_ready" {
-		t.Errorf("solve an unjudgeable problem: %d %v", code, body)
+	// The model-solve route went in v3 (V3-4).
+	if code, _ := admin.do("POST", "/api/admin/problems/"+pid+"/solve", nil, s.srv.URL); code != 404 && code != 405 {
+		t.Errorf("solve route still mounted: %d", code)
 	}
 	solid := s.importProblem(admin, "pairs")
-	code, started = admin.do("POST", fmt.Sprintf("/api/admin/problems/%d/solve", solid), nil, s.srv.URL)
-	if code != 202 {
-		t.Fatalf("solve: %d %v", code, started)
-	}
-	w = pollWizard(t, admin, started["wizard_id"].(string))
-	if w["state"] != "submitted" || w["submission_id"] == nil || w["kind"] != "solve" {
-		t.Fatalf("solve wizard: %v", w)
-	}
-	if code, sub := admin.do("GET", "/api/submissions/"+idOf(w["submission_id"]), nil, ""); code != 200 || sub["language"] != "cpp17" {
-		t.Errorf("solve submission: %d %v", code, sub)
-	}
 
 	// The chain may validate a draft on its own, but no AI draft joins a
 	// contest until a person has saved it.

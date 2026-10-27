@@ -293,7 +293,6 @@ Every route here needs the admin or owner role. Pack format and rules: `docs/AUT
 | `GET /api/admin/problems/{id}/generation` | | 200 `Generation`, the latest one |
 | `POST /api/admin/problems/{id}/generate-inputs` | no body | 202 `InputGeneration` (see "Input generation") |
 | `GET /api/admin/problems/{id}/input-generation` | | 200 `InputGeneration`, the latest one |
-| `POST /api/admin/problems/{id}/solve` | no body | 202 `{"wizard_id","server_now"}` (see "AI wizard") |
 
 An `{id}` that is not a problem gives `404 not_found` on every route.
 
@@ -482,7 +481,6 @@ Every route needs the admin or owner role and answers with `server_now`. Provide
 | `DELETE /api/admin/ai/key` | `?provider=openai` forgets that provider's key; without it, every key of the session | 204 |
 | `POST /api/admin/ai/wizard` | `WizardRequest` (at most 256 KB) | 202 `{"wizard_id":"3f9c...","server_now":...}` |
 | `GET /api/admin/ai/wizard/{id}` | | 200 `Wizard` |
-| `POST /api/admin/problems/{id}/solve` | no body | 202 `{"wizard_id":"...","server_now":...}` |
 
 ### Providers and models (contract C11)
 
@@ -499,7 +497,7 @@ Every route needs the admin or owner role and answers with `server_now`. Provide
 
 - The order is fixed: `anthropic`, `openai`, `gemini`. In testing mode a fourth entry follows, `{"id":"fake","name":"Test provider (canned problems)",...}`: it needs no key and answers with one of two canned problems (a maximum subarray problem when the brief or text mentions "subarray" or "stretch", a pair sums problem otherwise).
 - `has_key`: this session holds an unexpired key for the provider. `model` is the model id saved with it, `""` when none was chosen yet. `active_until` is `null` without a key.
-- `active_provider` is the provider the wizard and "Can a model solve this?" use: the one whose key or model was saved last. `null` when the session holds no key.
+- `active_provider` is the provider the wizard uses: the one whose key or model was saved last. `null` when the session holds no key.
 
 `Models`, the provider's own list, filtered to models that can write a problem:
 
@@ -605,12 +603,10 @@ The call runs in the background, at most 3 minutes with its one retry. When the 
              "reasons": ["Subtask points add up to 90; make them add up to 100."] } }
 ```
 
-- `state`: `thinking`, then `draft_created` (generate), `submitted` (solve) or `error`. `problem_id` is the draft (generate) or the problem solved (solve); a solve adds `submission_id`. `provider` and `model` name what made the draft or the solution (C11).
+- `state`: `thinking`, then `draft_created` or `error`. `kind` is always `generate`. `problem_id` is the draft. `provider` and `model` name what made the draft (C11).
 - `error.code`: `key_refused`, `no_quota`, `no_access`, `model_not_found`, `unsupported_model`, `rate_limited`, `unavailable`, `bad_request`, `refused` (the model declined; the message names the category), `cut_off` (too long, after one shorter retry), `invalid_answer` (with `reasons`, after one retry with them), `timeout`, `canceled`, `input`, `not_ready` (solve: the problem cannot be judged), `not_found`, `internal`. `reasons` is always an array.
 - `404 not_found` for another admin's run, an unknown id, or a run that ended over an hour ago or before a restart.
 - The same object is sent as a `wizard` event to the admin who started it when the run ends.
-
-`POST /api/admin/problems/{id}/solve` ("Can a model solve this?") sends the statement alone and asks for a C++17 solution, which is judged on the problem's tests as the admin's own submission (`client_key` `ai-solve-{wizard_id}`, listed with the admin's other submissions). The editor reads the score from `GET /api/submissions/{submission_id}`. It uses the `active_provider`. Refusals: `404 not_found`, `409 no_key`, `409 no_model`, `409 not_ready` with `problems` before any call when the problem cannot be judged (its structure, or missing outputs), `429 busy`. The one-pending-submission rule still applies: the run then ends in `error` with `rate_limited`.
 
 ## Workspace, runs and submissions
 

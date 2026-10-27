@@ -222,12 +222,3 @@ func (o *OpenAI) Generate(ctx context.Context, req Request) (*WizardPack, error)
 	}
 	return DecodePack(text)
 }
-
-// Solve implements Provider.
-func (o *OpenAI) Solve(ctx context.Context, statement string) (string, error) {
-	text, err := o.call(ctx, solveSystemPrompt, []openAIMessage{{Role: "user", Content: SolvePrompt(statement)}}, "solution", SolveSchema())
-	if err != nil {
-		return "", err
-	}
-	return decodeSolution(text)
-}

@@ -165,10 +165,6 @@ func TestAnthropicStopReasons(t *testing.T) {
 	if e, ok := err.(*Error); !ok || e.Code != CodeInvalidAnswer || e.answer != "not json" {
 		t.Errorf("bad json: %v", err)
 	}
-	_, a = newFakeAPI(t, 200, stream(`{"source":"int main(){return 0;}"}`, "end_turn", ""), true)
-	if src, err := a.Solve(context.Background(), "Sum two numbers."); err != nil || src != "int main(){return 0;}" {
-		t.Errorf("solve %q %v", src, err)
-	}
 }
 
 func TestAnthropicErrorMapping(t *testing.T) {

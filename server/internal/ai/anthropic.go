@@ -144,16 +144,6 @@ func (a *Anthropic) Generate(ctx context.Context, req Request) (*WizardPack, err
 	return DecodePack(text)
 }
 
-// Solve implements Provider.
-func (a *Anthropic) Solve(ctx context.Context, statement string) (string, error) {
-	msgs := []anthropic.BetaMessageParam{anthropic.NewBetaUserMessage(anthropic.NewBetaTextBlock(SolvePrompt(statement)))}
-	text, err := a.call(ctx, solveSystemPrompt, msgs, SolveSchema())
-	if err != nil {
-		return "", err
-	}
-	return decodeSolution(text)
-}
-
 // Check implements Provider with a model lookup: it costs no tokens and
 // proves the key, the model name and that the model has what the wizard
 // sends (structured outputs, adaptive thinking, effort high). Without a

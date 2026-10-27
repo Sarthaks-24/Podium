@@ -19,9 +19,6 @@ type Provider interface {
 	// Generate asks for a problem. A refused, cut off or unusable answer
 	// comes back as *Error.
 	Generate(ctx context.Context, req Request) (*WizardPack, error)
-	// Solve asks for a C++17 solution to a statement ("Can a model solve
-	// this?") and returns the source.
-	Solve(ctx context.Context, statement string) (string, error)
 	// Check makes the cheapest call that proves the key works: a lookup
 	// of the model, or a model listing when no model is chosen yet.
 	Check(ctx context.Context) error
@@ -203,7 +200,7 @@ func NewProvider(c Config, testing bool) (Provider, error) {
 	return &Anthropic{Key: c.Key, Model: model, BaseURL: c.BaseURL, MaxRetries: 2}, nil
 }
 
-// needModel is the error of a Generate or Solve on a client built without
+// needModel is the error of a Generate on a client built without
 // a model; the routes refuse earlier with 409 no_model.
 func needModel(provider string) error {
 	return &Error{Code: CodeInput, Message: "Choose a model for " + ProviderName(provider) + " in AI assistant first."}

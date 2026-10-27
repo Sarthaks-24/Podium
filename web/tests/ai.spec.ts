@@ -1,6 +1,6 @@
 // Screen sweep and flows for the M5 AI wizard screens: the AI assistant
 // settings at /admin/ai, "New problem with AI" at /admin/ai/new, and the
-// editor's Generator section and "Can a model solve this?". Every /api/
+// editor's Generator section. Every /api/
 // call is answered by an in-test mock of cache/v1/m5-plan.md section 7, one
 // per page, so each test starts from the same fixtures: an admin with no
 // key, a validated problem, and an AI draft with a generator and a plan.
@@ -12,7 +12,7 @@
 // the key flow (the key never reaches the page's state, storage or address
 // after saving), the fake provider, the wizard from a brief over the live
 // stream and from pasted text over polling, a wizard failure with reasons,
-// the editor's generator section and input generation, and the solve check.
+// the editor's generator section and input generation.
 import { expect, test } from '@playwright/test';
 import { activate, tabTo } from './keyboard';
 import { shots, WIDTHS, THEMES, T0, WIZARD_ID, FAKE_KEY, OPENAI_KEY, GEMINI_KEY, type Json, json, mockApi, expectKeyGone, SCREENS } from './mocks/ai';
@@ -378,36 +378,6 @@ test('the generator section is reachable from the keyboard on a phone', async ({
   const idx = await page.getByLabel('Row 1, test number').boundingBox();
   const seed = await page.getByLabel('Row 1, seed').boundingBox();
   expect(seed!.y).toBeGreaterThan(idx!.y + idx!.height - 1);
-});
-
-test('asking a model to solve a problem confirms first and shows the score', async ({ page }) => {
-  await mockApi(page, { key: 'active' });
-  await page.goto('/admin/problems/21');
-  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Two sum');
-  const ask = page.getByRole('button', { name: 'Ask a model to solve it' });
-  await ask.click();
-  const dialog = page.getByRole('dialog', { name: 'Ask a model to solve this problem?' });
-  await expect(dialog).toContainText('The statement goes to Claude Opus 5.5 with your key');
-  await dialog.getByRole('button', { name: 'Cancel' }).click();
-  await expect(dialog).toBeHidden();
-  await expect(ask).toBeFocused();
-
-  await ask.click();
-  await dialog.getByRole('button', { name: 'Ask a model' }).click();
-  await expect(page.getByText('Waiting for the model to answer').first()).toBeVisible();
-  await expect(page.getByText("Judging the model's solution").first()).toBeVisible({ timeout: 10_000 });
-  await expect(page.getByText('A model solved this on its first try: 100 of 100').first()).toBeVisible({ timeout: 10_000 });
-  await expect(page.getByText('Anyone who pastes the statement into a model gets full marks.', { exact: false })).toBeVisible();
-  await expect(page.getByRole('link', { name: "See the model's submission" })).toHaveAttribute('href', '/admin/problems/21/try');
-  await expect(page.getByRole('button', { name: 'Ask a model again' })).toBeEnabled();
-});
-
-test('without a key the solve check says where to add one', async ({ page }) => {
-  await mockApi(page);
-  await page.goto('/admin/problems/21');
-  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Two sum');
-  await expect(page.getByRole('button', { name: 'Ask a model to solve it' })).toBeDisabled();
-  await expect(page.getByRole('link', { name: 'Add a key in AI assistant' })).toHaveAttribute('href', '/admin/ai');
 });
 
 test('keyboard only: a brief goes from the form to the draft', async ({ page }) => {

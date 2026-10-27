@@ -25,7 +25,6 @@ export const UNTIL = Date.UTC(2026, 9, 18, 9, 2);
 // A made-up value: only its absence from the page after saving matters.
 // Wizard ids are 32 hex characters (cache/v1/m5-api-deviations.md).
 export const WIZARD_ID = '0f3a9c2e7b1d4e8fa6c5b2d1e0f9a8b7';
-export const SOLVE_ID = '9b8a7f6e5d4c3b2a19087f6e5d4c3b2a';
 // Split so tools/check-secrets.sh does not read the fake as a credential.
 export const FAKE_KEY = 'sk-' + 'ant-api03-PLAYWRIGHT-ONLY-not-a-real-key-42';
 export const OPENAI_KEY = 'sk-' + 'proj-PLAYWRIGHT-ONLY-not-a-real-key-7';
@@ -207,8 +206,6 @@ export async function mockApi(page: Page, opts: MockOptions = {}) {
     inputGen: null as Json | null,
     inputScript: [] as Json[],
     generation: null as Json | null,
-    solveGets: 0,
-    submissionGets: 0,
     requestedUrls: [] as string[],
   };
   const ids = opts.testing ? ['anthropic', 'openai', 'gemini', 'fake'] : ['anthropic', 'openai', 'gemini'];
@@ -335,33 +332,6 @@ export async function mockApi(page: Page, opts: MockOptions = {}) {
         }
         return json(route, 200, state.wizard);
       }
-      if (path === `/api/admin/ai/wizard/${SOLVE_ID}` && method === 'GET') {
-        state.solveGets++;
-        return json(route, 200, state.solveGets >= 2 ? { id: SOLVE_ID, kind: 'solve', state: 'submitted', submission_id: 81, problem_id: 21 } : { id: SOLVE_ID, kind: 'solve', state: 'thinking' });
-      }
-      if (path === '/api/submissions/81' && method === 'GET') {
-        state.submissionGets++;
-        const done = state.submissionGets >= 3;
-        return json(route, 200, {
-          id: 81,
-          problem_id: 21,
-          language: 'cpp17',
-          state: done ? 'done' : 'running',
-          verdict: done ? 'AC' : '',
-          score: done ? 100 : 0,
-          max_score: 100,
-          max_time_ms: 40,
-          max_memory_kb: 3200,
-          created_at: T0,
-          judged_at: done ? T0 + 4000 : null,
-          queue_position: null,
-          compile_output: '',
-          samples: [],
-          subtasks: [],
-          server_now: T0,
-        });
-      }
-
       const m = path.match(/^\/api\/admin\/problems\/(\d+)(\/.*)?$/);
       if (m) {
         const id = Number(m[1]);
@@ -446,12 +416,6 @@ export async function mockApi(page: Page, opts: MockOptions = {}) {
             state.generation = { id: 1, state: 'done', results: idxs.map((idx) => ({ idx, verdict: 'OK', time_ms: 30 })), summary: { applied: planned, problems: [] }, error: null };
           }
           return json(route, 202, state.inputGen);
-        }
-        if (rest === '/solve' && method === 'POST') {
-          if (state.active === null) return apiError(route, 409, 'no_key', 'Add a key in AI assistant first.');
-          state.solveGets = 0;
-          state.submissionGets = 0;
-          return json(route, 202, { wizard_id: SOLVE_ID });
         }
       }
       return apiError(route, 404, 'not_found', 'This API route does not exist.');
@@ -550,16 +514,5 @@ export const SCREENS: Screen[] = [
     title: 'Maximum subarray · Problem bank · podium',
     opts: { key: 'active' },
     ready: (page) => expect(page.getByRole('region', { name: 'Generator', exact: true })).toBeVisible(),
-  },
-  {
-    name: 'ai-editor-solved',
-    path: '/admin/problems/21',
-    title: 'Two sum · Problem bank · podium',
-    opts: { key: 'active' },
-    ready: async (page) => {
-      await page.getByRole('button', { name: 'Ask a model to solve it' }).click();
-      await page.getByRole('dialog').getByRole('button', { name: 'Ask a model' }).click();
-      await expect(page.locator('.solve-line')).toBeVisible({ timeout: 10_000 });
-    },
   },
 ];

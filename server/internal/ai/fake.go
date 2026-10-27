@@ -41,15 +41,6 @@ func (f *Fake) Generate(ctx context.Context, req Request) (*WizardPack, error) {
 	return FakePairSums(), nil
 }
 
-// Solve implements Provider: the reference of the matching pack.
-func (f *Fake) Solve(ctx context.Context, statement string) (string, error) {
-	f.calls.Add(1)
-	if wantsSubarray(statement) {
-		return FakeMaxSubarray().Reference, nil
-	}
-	return FakePairSums().Reference, nil
-}
-
 // Check implements Provider.
 func (f *Fake) Check(context.Context) error { return nil }
 

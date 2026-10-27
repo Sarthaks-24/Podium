@@ -14,7 +14,6 @@ import (
 	"github.com/Sarthaks-24/podium/internal/ai"
 	"github.com/Sarthaks-24/podium/internal/auth"
 	"github.com/Sarthaks-24/podium/internal/problems"
-	"github.com/Sarthaks-24/podium/internal/submissions"
 )
 
 // AI wizard routes (M5, cache/v1/m5-plan.md section 7). The provider key
@@ -24,10 +23,9 @@ import (
 
 // Wizard states.
 const (
-	wizardThinking  = "thinking"
-	wizardDraft     = "draft_created"
-	wizardSubmitted = "submitted"
-	wizardFailed    = "error"
+	wizardThinking = "thinking"
+	wizardDraft    = "draft_created"
+	wizardFailed   = "error"
 )
 
 const (
@@ -56,20 +54,19 @@ type AI struct {
 	runs map[string]*wizardRun
 }
 
-// wizardRun is one Generate or Solve, readable by the admin who started
+// wizardRun is one Generate, readable by the admin who started
 // it until wizardKeep after it ends.
 type wizardRun struct {
-	id           string
-	kind         string // generate or solve
-	userID       int64
-	provider     string
-	model        string
-	state        string
-	err          *wizardErrorJSON
-	problemID    int64
-	submissionID int64
-	startedAt    time.Time
-	finishedAt   time.Time
+	id         string
+	kind       string // always generate since v3 removed model solve
+	userID     int64
+	provider   string
+	model      string
+	state      string
+	err        *wizardErrorJSON
+	problemID  int64
+	startedAt  time.Time
+	finishedAt time.Time
 }
 
 type wizardErrorJSON struct {
@@ -79,16 +76,15 @@ type wizardErrorJSON struct {
 }
 
 type wizardJSON struct {
-	ID           string           `json:"id"`
-	Kind         string           `json:"kind"`
-	State        string           `json:"state"`
-	Error        *wizardErrorJSON `json:"error,omitempty"`
-	ProblemID    *int64           `json:"problem_id,omitempty"`
-	SubmissionID *int64           `json:"submission_id,omitempty"`
-	Provider     string           `json:"provider"`
-	Model        string           `json:"model"`
-	StartedAt    int64            `json:"started_at"`
-	ServerNow    int64            `json:"server_now"`
+	ID        string           `json:"id"`
+	Kind      string           `json:"kind"`
+	State     string           `json:"state"`
+	Error     *wizardErrorJSON `json:"error,omitempty"`
+	ProblemID *int64           `json:"problem_id,omitempty"`
+	Provider  string           `json:"provider"`
+	Model     string           `json:"model"`
+	StartedAt int64            `json:"started_at"`
+	ServerNow int64            `json:"server_now"`
 }
 
 func optID(id int64) *int64 {
@@ -134,7 +130,7 @@ func (a *AI) view(id string, userID int64) (wizardJSON, bool) {
 // json must be called with a.mu held.
 func (r *wizardRun) json() wizardJSON {
 	return wizardJSON{ID: r.id, Kind: r.kind, State: r.state, Error: r.err, ProblemID: optID(r.problemID),
-		SubmissionID: optID(r.submissionID), Provider: r.provider, Model: r.model,
+		Provider: r.provider, Model: r.model,
 		StartedAt: r.startedAt.UnixMilli(), ServerNow: time.Now().UnixMilli()}
 }
 
@@ -168,7 +164,6 @@ func (d Deps) aiRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("DELETE /api/admin/ai/key", admin(d.deleteAIKey))
 	mux.HandleFunc("POST /api/admin/ai/wizard", admin(d.startWizard))
 	mux.HandleFunc("GET /api/admin/ai/wizard/{id}", admin(d.getWizard))
-	mux.HandleFunc("POST /api/admin/problems/{id}/solve", admin(d.solveProblem))
 }
 
 // sessionToken is the request's session cookie; requireRole has already
@@ -570,73 +565,4 @@ func (d Deps) getWizard(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	WriteJSON(w, http.StatusOK, v)
-}
-
-// solveProblem sends the statement alone to the model ("Can a model
-// solve this?") and judges its answer as the admin's own submission.
-func (d Deps) solveProblem(w http.ResponseWriter, r *http.Request) {
-	id, ok := problemID(w, r)
-	if !ok {
-		return
-	}
-	p, err := d.Problems.Get(r.Context(), id)
-	if err != nil {
-		d.problemError(w, r, err)
-		return
-	}
-	u := userFrom(r.Context())
-	prov, entry, ok := d.provider(w, r, "")
-	if !ok {
-		return
-	}
-	// Refused before the call, so no tokens are spent on a problem that
-	// cannot be judged.
-	if probs := p.Problems(); len(probs) > 0 {
-		d.problemError(w, r, &problems.NotReadyError{Problems: probs})
-		return
-	}
-	release, ok := d.takeSlot(w, u.ID)
-	if !ok {
-		return
-	}
-	run := d.AI.start("solve", u.ID, id, entry)
-	d.Log.Info("ai solve started", "user_id", u.ID, "wizard_id", run.id, "problem_id", id, "provider", entry.Provider, "model", entry.Model)
-	statement := p.Statement
-	go func() {
-		defer release()
-		d.publishWizard(u.ID, d.runSolve(run, prov, statement, id, u.ID))
-	}()
-	WriteJSON(w, http.StatusAccepted, map[string]any{"wizard_id": run.id, "server_now": time.Now().UnixMilli()})
-}
-
-// runSolve is the background half of solveProblem.
-func (d Deps) runSolve(run *wizardRun, prov ai.Provider, statement string, problemID, userID int64) wizardJSON {
-	ctx, cancel := context.WithTimeout(context.Background(), ai.CallTimeout)
-	src, err := ai.Solve(ctx, prov, statement)
-	cancel()
-	if err != nil {
-		return d.failWizard(run, err)
-	}
-	ctx, cancel = context.WithTimeout(context.Background(), draftTimeout)
-	defer cancel()
-	v, _, err := d.Submissions.Submit(ctx, submissions.SubmitRequest{ProblemID: problemID, UserID: userID,
-		Language: "cpp17", Source: src, ClientKey: "ai-solve-" + run.id})
-	var input *submissions.InputError
-	var rate *submissions.RateError
-	var notReady *submissions.NotReadyError
-	switch {
-	case errors.As(err, &notReady):
-		err = &ai.Error{Code: "not_ready", Message: "The problem cannot be judged yet. Fix these first.", Reasons: notReady.Problems}
-	case errors.As(err, &rate):
-		err = &ai.Error{Code: ai.CodeRateLimited, Message: rate.Message}
-	case errors.As(err, &input):
-		err = &ai.Error{Code: ai.CodeInvalidAnswer, Message: "The model's answer could not be used.", Reasons: []string{input.Message}}
-	case errors.Is(err, submissions.ErrNotFound):
-		err = &ai.Error{Code: "not_found", Message: "The problem no longer exists."}
-	}
-	if err != nil {
-		return d.failWizard(run, err)
-	}
-	d.Log.Info("ai solution submitted", "user_id", userID, "wizard_id", run.id, "problem_id", problemID, "submission_id", v.ID)
-	return d.AI.finish(run, func(r *wizardRun) { r.state, r.submissionID = wizardSubmitted, v.ID })
 }

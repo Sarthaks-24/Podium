@@ -6,8 +6,8 @@
   sections are components in components/problem/: EditorBar (the sticky
   status and actions), EditorNotes, StatementSection, TestsSection, GeneratorPanel
   (from M5, when the server sends a "generator" key), SolutionsSection
-  with JudgingSection, EditorFooter, then the validation report,
-  and ModelSolve. Their shared classes are in
+  with JudgingSection, EditorFooter, then the validation report.
+  Their shared classes are in
   components/problem/editor.css. A live contest that pins the problem asks
   for a reason with each save; an AI draft carries a note until a person
   saves it. Props: `id`, the problem id from the address.
@@ -25,7 +25,6 @@
   import GeneratorPanel from '../components/problem/GeneratorPanel.svelte';
   import EditorBar from '../components/problem/EditorBar.svelte';
   import EditorNotes from '../components/problem/EditorNotes.svelte';
-  import ModelSolve from '../components/problem/ModelSolve.svelte';
   import SolutionsSection from '../components/problem/SolutionsSection.svelte';
   import StatementSection from '../components/problem/StatementSection.svelte';
   import TestsSection from '../components/problem/TestsSection.svelte';
@@ -583,10 +582,6 @@
           <ValidationReport {validation} />
         </section>
 
-
-        {#if hasGenerator}
-          <ModelSolve {id} onsessionerror={handleSessionError} />
-        {/if}
       </div>
     </div>
   {/if}

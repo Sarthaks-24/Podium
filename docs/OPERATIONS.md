@@ -317,7 +317,7 @@ Checked by the server before anything is queued. Every refusal is `429` with the
 | Request body | 160 KB | Run, Submit, drafts |
 | Integrity events | one batch per user every 5 s, 100 per request; after 5,000 per user per problem, more are dropped | the editor's paste, blur and focus events |
 | Clarifications | 5 unanswered questions per student per contest (`400`) | Ask |
-| AI requests | one running per admin, at most 3 minutes (`429 busy` without `retry_after_s`: try again when it ends) | the AI wizard, Can a model solve this? |
+| AI requests | one running per admin, at most 3 minutes (`429 busy` without `retry_after_s`: try again when it ends) | the AI wizard |
 | Event streams | 4 per user (a fifth replaces the oldest, which is told and stops reconnecting), 5,000 in total (then `503`, and the page polls) | `GET /api/events` |
 | Open requests | 8 at once per browser session, event streams aside (`429` with `Retry-After: 1`) | every API route with a session cookie |
 | Time to send a request | headers within 10 s, the whole request within 15 s; 120 s for the routes that take an upload | every route; the long one for pack import, test replacement and roster upload |
@@ -378,7 +378,7 @@ The server logs `integrity check started`, `integrity case opened`, `integrity c
 
 ## AI wizard keys
 
-The AI wizard ("New problem with AI" and "Can a model solve this?", `docs/AUTHORING.md`) uses the organiser's own key for Anthropic, OpenAI or Google Gemini (D111). There is no variable for any of them and nothing to configure on the VM (decision D50).
+The AI wizard ("New problem with AI", `docs/AUTHORING.md`) uses the organiser's own key for Anthropic, OpenAI or Google Gemini (D111). There is no variable for any of them and nothing to configure on the VM (decision D50).
 
 | Provider | Where to get a key | The server calls |
 |---|---|---|

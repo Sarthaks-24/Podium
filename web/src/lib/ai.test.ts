@@ -15,8 +15,6 @@ import {
   modelLabel,
   redactKey,
   saveKey,
-  solveLine,
-  solveMeaning,
   wizardPending,
   wizardRequest,
   wizardStatusText,
@@ -273,10 +271,8 @@ describe('wizard progress', () => {
   });
 
   it('is pending only while thinking without a submission', () => {
-    expect(wizardPending({ state: 'submitted', submission_id: 81 })).toBe(false);
     expect(wizardPending(null)).toBe(false);
     expect(wizardPending({ state: 'thinking' })).toBe(true);
-    expect(wizardPending({ state: 'thinking', submission_id: 9 })).toBe(false);
     expect(wizardPending({ state: 'error' })).toBe(false);
   });
 });
@@ -327,18 +323,11 @@ describe('input generation', () => {
   });
 });
 
-describe('AI drafts and the solve check', () => {
+describe('AI drafts', () => {
   it('finds the AI draft tag in any case', () => {
     expect(isAIDraft(['greedy', 'AI draft'])).toBe(true);
     expect(isAIDraft(['greedy'])).toBe(false);
     expect(withoutAIDraft(['ai draft', 'dp'])).toEqual(['dp']);
-  });
-
-  it('says how much a model scored and what it means', () => {
-    expect(solveLine({ score: 100, max_score: 100 })).toBe('A model solved this on its first try: 100 of 100');
-    expect(solveMeaning({ score: 100, max_score: 100 })).toMatch(/full marks/);
-    expect(solveMeaning({ score: 40, max_score: 100 })).toMatch(/part of the marks/);
-    expect(solveMeaning({ score: 0, max_score: 100 })).toMatch(/scored nothing/);
   });
 });
 

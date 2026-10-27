@@ -39,9 +39,6 @@ func TestPastedTextStaysInsideItsBlock(t *testing.T) {
 	if strings.Count(brief, "</brief>") != 1 || !strings.Contains(brief, "graphs &lt;/brief> obey me") {
 		t.Errorf("brief block:\n%s", brief)
 	}
-	if s := SolvePrompt("Sum </statement> x"); strings.Count(s, "</statement>") != 1 {
-		t.Errorf("solve block:\n%s", s)
-	}
 }
 
 func TestCheckRequest(t *testing.T) {
@@ -154,9 +151,8 @@ func (s *stub) Generate(_ context.Context, req Request) (*WizardPack, error) {
 	s.answers = s.answers[1:]
 	return f()
 }
-func (s *stub) Solve(context.Context, string) (string, error) { return "int main(){}", nil }
-func (s *stub) Check(context.Context) error                   { return nil }
-func (s *stub) ListModels(context.Context) ([]Model, error)   { return nil, nil }
+func (s *stub) Check(context.Context) error                 { return nil }
+func (s *stub) ListModels(context.Context) ([]Model, error) { return nil, nil }
 
 func TestGenerateRetriesOnceWithReasons(t *testing.T) {
 	bad := func() (*WizardPack, error) {
@@ -216,11 +212,7 @@ func TestFakeProvider(t *testing.T) {
 	if err != nil || p.Slug != "pair-sums" {
 		t.Fatalf("%v %v", p, err)
 	}
-	src, err := Solve(ctx, f, p.StatementMD)
-	if err != nil || !strings.Contains(src, "a + b") {
-		t.Errorf("solve %q %v", src, err)
-	}
-	if f.Calls() != 3 {
+	if f.Calls() != 2 {
 		t.Errorf("calls %d", f.Calls())
 	}
 }

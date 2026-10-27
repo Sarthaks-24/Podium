@@ -87,13 +87,9 @@ func TestM5FakeWizardDraftsReachValidated(t *testing.T) {
 			time.Since(start).Round(time.Second), v.Summary.ReferencePassed, v.Summary.ReferenceTotal, v.Summary.BruteAgreed,
 			v.Summary.BruteTotal, v.Summary.ValidatorPassed, v.Summary.ValidatorTotal, v.Summary.MaxTimeMS)
 
-		src, err := ai.Solve(ctx, fake, got.Statement)
-		if err != nil {
-			t.Fatal(err)
-		}
-		sub := r.submitAndWait(t, p.ID, "cpp17", src, "model-"+name)
+		sub := r.submitAndWait(t, p.ID, "cpp17", pack.Reference, "reference-"+name)
 		if sub.Verdict != "AC" || sub.Score != 100 {
-			t.Errorf("%s: the model's solution got %s %d/100 (%s)", name, sub.Verdict, sub.Score, sub.Error)
+			t.Errorf("%s: the reference got %s %d/100 (%s)", name, sub.Verdict, sub.Score, sub.Error)
 		}
 	}
 }

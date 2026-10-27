@@ -300,11 +300,6 @@ The model's code is never run on the server: it goes to the judge, in isolate, l
 
 One AI request per admin runs at a time, for at most 3 minutes. A refusal by the model, a cut-off answer, a rate limit or a provider outage is shown in words; nothing is created.
 
-### Can a model solve this?
-
-In the editor, "Can a model solve this?" sends the statement alone (no tests, no reference) to the same provider and asks for a C++ solution. The answer is judged on the problem's tests as your own submission, and the editor shows "A model solved this zero-shot: N of 100". A high score is a warning for graded contests: students with an AI assistant can likely solve it too. It runs only when you press it, and only on a problem that can be judged (every test has an output).
-
-
 ## Validation
 
 Validation runs the problem on the real judge, in isolate, exactly as a contest would. Choose Validate in the editor; the report updates every 2 seconds while the job waits and runs. Validation has the lowest priority, behind all contest work.
@@ -432,7 +427,6 @@ Only one pack import, test replacement or pack download runs at a time; a second
 | Generate outputs | Fills missing outputs from the reference solution; "Regenerate all outputs" replaces them all after a confirmation (see "Generating outputs"). |
 | Generate inputs | Runs the generator for every planned test, then generates outputs and validates (see "Tests from a generator"). |
 | New problem with AI | On the problem bank: the AI wizard writes a draft from a brief or from pasted text (see "The AI wizard"). |
-| Can a model solve this? | Sends the statement to the AI provider and judges its answer (see "The AI wizard"). |
 | Validate | Saves unsaved changes first, then queues the run. When it finishes, the sticky bar says how it went ("Validation passed: 6 of 6 tests, slowest 11 ms" or "Validation failed on test 5") with a link to the report. |
 | Readiness | The panel beside the form lists what stops validation (a test in no subtask, a missing output), the warnings ("Before you validate"), statement images without a description, and whether the validation covers this version. An unsaved change to a judged field (limits, checker, solutions, validator, samples, open tests, subtask points and ranges) says that saving needs a new validation; a change to the title, statement, tags or subtask titles does not, except on an AI draft, whose statement counts. Once validated it offers Choose a contest, which opens the contest list. |
 | Try as a student | Opens the problem in the student workspace (see "Trying a problem as a student"). |

@@ -172,7 +172,7 @@ The wizard's schema is written once as JSON schema (`PackSchema`) and translated
 
 **Nothing AI-made reaches students unreviewed.** A draft carries the tag `ai draft` until a person saves it. The chain may validate the draft on its own, but a contest refuses a problem still tagged `ai draft`, and only validated problems can join a contest at all.
 
-**Can a model solve this?** sends the statement alone and asks for a C++17 solution, then judges the answer as the admin's own submission (client key `ai-solve-{wizard_id}`), so the editor reads the score from the ordinary submission view.
+**Model solve was removed in v3 (V3-4).** It sent the statement to a model and judged the answer; v3 keeps the wizard to drafting problems only.
 
 **Limits.** One AI request per admin at a time (a second is refused, not queued, so a double click cannot spend twice), 3 minutes per request with its retry, 20,000 characters of pasted text. Wizard runs live in memory for an hour after they end. In testing mode a `fake` provider answers with two canned packs whose programs really work on the judge, so the whole pipeline is tested without a network or a key.
 
@@ -338,7 +338,7 @@ The timeline (submissions with typed and pasted counts, pastes, focus changes, s
 
 **Retention.** Contest records follow the 180-day rule above, skipping students in an open case until it is decided. A closed case keeps its evidence and explanations for 2 years after the decision; then both are emptied and the case row with its decision log stays, so the outcome and its reasons remain on record. Submissions themselves are not deleted by either rule.
 
-**Why there is no AI score.** No tool reliably tells AI-written code from a student's own: detectors are wrong often enough to accuse honest students, and a number on a screen gets quoted as proof. Podium relies on prevention (fixed-start contests in a lab, the honour code, and in M5 a "Can a model solve this?" check for setters), indirect evidence (large pastes, a full score far faster than the class, clusters of near-identical code) and verification (the student explains or changes the code in front of an organiser). Signals are worded as strength, with the raw number beside them, and nothing happens without a person.
+**Why there is no AI score.** No tool reliably tells AI-written code from a student's own: detectors are wrong often enough to accuse honest students, and a number on a screen gets quoted as proof. Podium relies on prevention (fixed-start contests in a lab, the honour code), indirect evidence (large pastes, a full score far faster than the class, clusters of near-identical code) and verification (the student explains or changes the code in front of an organiser). Signals are worded as strength, with the raw number beside them, and nothing happens without a person.
 
 **Why on the server (D49).** The check runs in one bounded background goroutine in `podium-server`, not as a judge job: its inputs are trusted text (sources, verdicts, output hashes) and nothing is executed, so the sandbox adds nothing, while sending every source to the judge would widen what the judge holds. One check runs at a time per server (`409 busy` otherwise), with a 10-minute limit; the request returns at once with the run's id and the page polls. A check left running by a restart is marked failed at start-up. Revisit if a large contest's check takes long enough to hurt request latency.
 

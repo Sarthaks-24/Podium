@@ -8,8 +8,8 @@ import (
 // CallTimeout bounds one wizard call, retry included (m5-plan section 2).
 const CallTimeout = 3 * time.Minute
 
-// Slots allows one wizard call per admin at a time: a second Generate or
-// Solve while one runs is refused rather than queued, so a double click
+// Slots allows one wizard call per admin at a time: a second Generate
+// while one runs is refused rather than queued, so a double click
 // cannot spend twice.
 type Slots struct {
 	mu   sync.Mutex

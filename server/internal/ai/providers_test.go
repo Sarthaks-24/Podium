@@ -138,11 +138,6 @@ func TestOpenAIAnswers(t *testing.T) {
 			t.Errorf("%s: %v", c.body, err)
 		}
 	}
-	_, base := newStandIn(t, ok(openAIAnswer(`{"source":"int main(){}"}`)))
-	o := &OpenAI{Key: NewSecret(testKey), Model: "gpt-x", BaseURL: base}
-	if src, err := o.Solve(context.Background(), "Sum."); err != nil || src != "int main(){}" {
-		t.Errorf("solve %q %v", src, err)
-	}
 }
 
 func TestOpenAIModelsAndErrors(t *testing.T) {
@@ -275,12 +270,6 @@ func TestGeminiAnswers(t *testing.T) {
 		if e, ok := err.(*Error); !ok || e.Code != c.code || e.Category != c.cat {
 			t.Errorf("%s: %v", c.body, err)
 		}
-	}
-	// The thought part is not part of the answer.
-	_, base := newStandIn(t, ok(geminiAnswer(`{"source":"int main(){}"}`, "STOP")))
-	g := &Gemini{Key: NewSecret(testKey), Model: "gemini-x", BaseURL: base}
-	if src, err := g.Solve(context.Background(), "Sum."); err != nil || src != "int main(){}" {
-		t.Errorf("solve %q %v", src, err)
 	}
 }
 

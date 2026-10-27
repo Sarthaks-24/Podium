@@ -276,12 +276,3 @@ func (g *Gemini) Generate(ctx context.Context, req Request) (*WizardPack, error)
 	}
 	return DecodePack(text)
 }
-
-// Solve implements Provider.
-func (g *Gemini) Solve(ctx context.Context, statement string) (string, error) {
-	text, err := g.call(ctx, solveSystemPrompt, []geminiContent{{Role: "user", Parts: []geminiPart{{Text: SolvePrompt(statement)}}}}, SolveSchema())
-	if err != nil {
-		return "", err
-	}
-	return decodeSolution(text)
-}

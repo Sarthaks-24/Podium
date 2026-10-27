@@ -16,7 +16,6 @@
  */
 import { ApiError, errorText } from './api';
 import { verdictLabel, type PlannedTest } from './problems';
-import type { Submission } from './workspace';
 
 /** One model a provider offers, from the provider's own list (contract C11). */
 export interface ModelOption {
@@ -259,8 +258,6 @@ export interface Wizard {
   state: WizardState | string;
   error?: { code: string; message: string; reasons?: string[] } | null;
   problem_id?: number | null;
-  /** Set on a solve request once the model's answer was submitted. */
-  submission_id?: number | null;
   /** The provider and model that made the draft or the solution (C11). */
   provider?: string;
   model?: string;
@@ -280,8 +277,8 @@ export function isKeyProblem(code: string | undefined): boolean {
 }
 
 /** True while the model is still writing. */
-export function wizardPending(w: Pick<Wizard, 'state' | 'submission_id'> | null): boolean {
-  return w !== null && w.state === 'thinking' && (w.submission_id ?? null) === null;
+export function wizardPending(w: Pick<Wizard, 'state'> | null): boolean {
+  return w !== null && w.state === 'thinking';
 }
 
 /** One step of the wizard's progress list. */
@@ -430,20 +427,4 @@ export function isAIDraft(tags: readonly string[]): boolean {
 /** Tags without the AI draft tag, which the editor shows apart. */
 export function withoutAIDraft(tags: readonly string[]): string[] {
   return tags.filter((t) => t.trim().toLowerCase() !== 'ai draft');
-}
-
-/** "A model solved this on its first try: 100 of 100". */
-export function solveLine(s: Pick<Submission, 'score' | 'max_score'>): string {
-  return `A model solved this on its first try: ${s.score} of ${s.max_score}`;
-}
-
-/** What a model's score means for a graded contest, in one or two sentences. */
-export function solveMeaning(s: Pick<Submission, 'score' | 'max_score'>): string {
-  if (s.max_score > 0 && s.score >= s.max_score) {
-    return 'Anyone who pastes the statement into a model gets full marks. Keep this problem for practice, or change it before using it in a graded contest.';
-  }
-  if (s.score > 0) {
-    return 'A model gets part of the marks without help. In a graded contest, expect some students to reach at least this score that way.';
-  }
-  return 'The model scored nothing, so pasting the statement into one does not give the answer today. Models improve, so check again before each graded contest.';
 }
