@@ -10,14 +10,12 @@
 #       WAL          podium.db-wal above 256 MB (checkpoints are stuck)
 #       Litestream   podium-litestream not running, or changes made more
 #                    than 10 minutes after its last upload to the bucket
-#       encrypted    (every 6 hours, when configured in backup.env) the
-#       copy         newest podium-*.tar.age in B2 older than 30 hours
-#       restore      (once a week) the restore proof below
 #       judge        jobs waiting more than 5 minutes while no judge has
 #                    asked for work for 2 minutes (a stopped judge, a
 #                    token mismatch): from the server's /healthz on
 #                    loopback
 #   podium-check restore-proof [--corrupt]
+#       run by hand once a term (V3-10, docs/OPERATIONS.md "Restore"):
 #       restore the bucket's newest database into a scratch folder now and
 #       check it with "podium-server check -hash" against the live test
 #       files; alert on failure. --corrupt damages the scratch copy first,
@@ -63,10 +61,6 @@ fine() {
     rm -f "$state/open/$1"
   fi
 }
-
-# due NAME SECONDS: true when NAME last ran at least SECONDS ago.
-due() { local f="$state/last-$1" last=0; [[ -f $f ]] && last=$(cat "$f"); (( now - last >= $2 )); }
-ran() { echo "${2:-$now}" > "$state/last-$1"; }
 
 mib() { echo $(( $1 / 1048576 )); }
 
@@ -170,29 +164,6 @@ check_litestream() {
   fi
 }
 
-check_encrypted_copy() {
-  local f=/etc/podium/backup.env path newest
-  path=$(envget "$f" PODIUM_BACKUP_B2_PATH "")
-  if [[ -z $path ]]; then
-    fine offsite "encrypted copy" "not configured in $f (warning only; see docs/OPERATIONS.md)"
-    return
-  fi
-  [[ $quiet == yes ]] || due offsite 21600 || return 0
-  newest=$(
-    RCLONE_CONFIG_B2_TYPE=b2
-    RCLONE_CONFIG_B2_ACCOUNT=$(envget "$f" RCLONE_CONFIG_B2_ACCOUNT "")
-    RCLONE_CONFIG_B2_KEY=$(envget "$f" RCLONE_CONFIG_B2_KEY "")
-    export RCLONE_CONFIG_B2_TYPE RCLONE_CONFIG_B2_ACCOUNT RCLONE_CONFIG_B2_KEY
-    newest_remote "b2:$path" --include 'podium-*.tar.age' --max-age 7d
-  ) || { problem offsite "B2 unreachable" "listing $path in B2 failed: the key or network is wrong"; return; }
-  ran offsite
-  if (( now - newest > 30 * 3600 )); then
-    problem offsite "encrypted copy missing" "no encrypted backup in B2 for $(( (now - newest) / 3600 )) hours: journalctl -u podium-backup -n 30"
-  else
-    fine offsite "encrypted copy" "newest $(( (now - newest) / 3600 )) h old"
-  fi
-}
-
 restore_proof() {
   local corrupt=$1 scratch start code=0 out
   if ! litestream_ready; then
@@ -234,13 +205,6 @@ case ${1:-} in
     check_disk
     check_judge
     check_litestream
-    check_encrypted_copy
-    if due restore $(( 7 * 86400 )); then
-      # A failure retries after a day, not every 15 minutes.
-      ran restore $(( now - 6 * 86400 ))
-      restore_proof no
-      [[ -f $state/open/restore ]] || ran restore
-    fi
     ;;
   restore-proof)
     corrupt=no
@@ -248,17 +212,15 @@ case ${1:-} in
     # A drill always alerts, whatever an earlier finding said.
     [[ $corrupt == yes ]] && rm -f "$state/open/restore"
     restore_proof "$corrupt"
-    [[ $corrupt == yes || -f $state/open/restore ]] || ran restore
     ;;
   status)
     quiet=yes
     check_disk
     check_judge
     check_litestream
-    check_encrypted_copy
     ;;
   *)
-    sed -n '2,26p' "$0" | sed 's/^# \{0,1\}//' >&2
+    sed -n '2,24p' "$0" | sed 's/^# \{0,1\}//' >&2
     exit 2
     ;;
 esac

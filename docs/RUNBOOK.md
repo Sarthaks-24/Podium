@@ -14,8 +14,8 @@ Two people make contest day easy: one at the contest's live console in the brows
 - [ ] The contest is set up: schedule, start mode, freeze, scoring and feedback modes, languages, rate limits (30 s gap and 15 per problem unless the class is small), access (domain or roster), co-organisers.
 - [ ] For a large class, prefer the flexible window (for example 2 hours inside a 3 hour window): it spreads the end-of-contest rush and leaves almost no judging tail. Say so in the announcement.
 - [ ] A practice contest with two easy problems is open, so first-timers learn the editor, Run and Submit before it counts.
-- [ ] Backups are healthy: `systemctl status podium-litestream` is active and `journalctl -u podium-litestream -n 20` shows recent syncs; `sudo ls -l /var/backups/podium` shows last night's backup, and `journalctl -u podium-backup -n 20` shows `encrypted copy uploaded as podium-<time>.tar.age` (the copy that carries the test files off the VM). `sudo /usr/local/lib/podium/install.sh verify` ends with "everything checked is in order", and no alert is open on your phone.
-- [ ] Before the first graded contest, and after any change to the backup setup: the timed restore onto a second VM in "Restoring onto a new VM" below. The weekly restore proof (`podium-check`) covers the database every week in between.
+- [ ] Backups are healthy: `systemctl status podium-litestream` is active and `journalctl -u podium-litestream -n 20` shows recent syncs; `sudo ls -l /var/backups/podium` shows last night's backup, and `journalctl -u podium-backup -n 20` ends with `done in`. `sudo /usr/local/lib/podium/install.sh verify` ends with "everything checked is in order", and no alert is open on your phone.
+- [ ] Before the first graded contest, and after any change to the backup setup: the timed restore onto a second VM in "Restoring onto a new VM" below. In between, run `sudo /usr/local/lib/podium/podium-check restore-proof` once a term and write down how long it took (V3-10).
 - [ ] No deploy is planned inside the 48 hours before the contest: `sudo -u podium podium-server deploy-check -db /var/lib/podium/db/podium.db` says until when deploys are allowed. Publishing or moving the contest is what starts that window.
 - [ ] Every problem passes a live-judge check: submit its reference solution and one known-wrong solution from "Try as a student" and confirm AC and the expected failure. For every problem that came from the AI wizard (`origin` ai), add a solution written by a person that passes all tests.
 - [ ] Labs: if students use shared lab PCs, ask the lab to use guest or kiosk browser profiles, and tell students to sign out of podium and of Google when they leave. A browser left signed in hands the next student the previous one's session.
@@ -188,13 +188,13 @@ Use this when the database is damaged, a mistake must be undone, or the VM was l
 4. After a restore from the bucket to an earlier moment, Litestream starts a new history from the restored state. Keep `/var/lib/podium/db.before-restore` until the next nightly backup has run, then delete it.
 5. On a new VM: follow "Restoring onto a new VM" below.
 
-What can be lost: with the bucket, at most the last 10 s of changes; from a nightly backup, everything since that night. Test files are not in the Litestream bucket: they come from the encrypted copy of the last nightly backup, so test files added since that night (a problem imported or edited today) are lost and must be imported again from their pack zips.
+What can be lost: with the bucket, at most the last 10 s of changes; from a nightly backup, everything since that night. Test files are not in the Litestream bucket and stay on the VM (V3-10): if the VM's disk is lost, they come back only by importing each problem's pack zip again, so keep every pack zip off the VM.
 
 ## Restoring onto a new VM
 
 When the VM is lost or cannot be trusted. **During a contest the rule is: the contest is extended or rerun, never recovered live** (D113). Announce that results are safe up to the recovery point, pause or end the contest, and restore calmly. The target is 60 minutes from the alert to a student signed in on the new VM; the P0 drill measures it. Not yet proven on the VM: the drill has not run, so the 60 minutes is a target, not a measurement.
 
-What you need at hand: the five env files from your password manager (`server.env`, `judge.env`, `litestream.env`, `backup.env`, `alert.env`), the `age` private key `podium-backup.key`, the release tarball that was running, access to the DNS records, and the Google Cloud console.
+What you need at hand: the five env files from your password manager (`server.env`, `judge.env`, `litestream.env`, `backup.env`, `alert.env`), every problem's pack zip, the release tarball that was running, access to the DNS records, and the Google Cloud console.
 
 Write down the time at each step; the drill note records them.
 
@@ -202,21 +202,14 @@ Write down the time at each step; the drill note records them.
 2. **New VM.** Create it (Ubuntu 24.04, amd64, 2 GB). If a provider snapshot of the configured VM exists (see "After the gate: provider snapshot"), create the VM from it and skip to step 5 with the newest data.
 3. **Install.** Copy the release tarball over, then `tar xzf podium-<version>.tar.gz && cd podium-<version> && sudo ./install.sh`. With nothing filled in yet it ends at the checklist.
 4. **Env files.** `sudoedit` each of `/etc/podium/server.env`, `judge.env`, `litestream.env`, `backup.env`, `alert.env` and paste the saved contents. The same `PODIUM_SESSION_SECRET` keeps integrity hashes comparable.
-5. **Test files**, on your own machine: download the newest `podium-<time>.tar.age` from the B2 bucket of the encrypted copy (web console, Browse Files), decrypt and pack only the tests, copy them over:
-
-   ```sh
-   age -d -i podium-backup.key podium-<time>.tar.age | tar -x -C restored/
-   tar -C restored -czf tests.tgz tests && scp tests.tgz <new-vm>:/tmp/
-   ```
-
-   On the new VM: `sudo mkdir -p /var/tmp/tests-restore && sudo tar -xzf /tmp/tests.tgz -C /var/tmp/tests-restore`.
-6. **Database** from the bucket, with those test files, checked: `sudo /usr/local/lib/podium/podium-restore litestream /var/tmp/restore /var/tmp/tests-restore/tests`. `result: ok` is required.
+5. **Test files.** If the old VM's disk can still be read, copy its `/var/backups/podium/latest/tests` to `/var/tmp/tests-restore/tests` on the new VM. If not, skip this step and import each problem's pack zip again after step 7.
+6. **Database** from the bucket, checked: `sudo /usr/local/lib/podium/podium-restore litestream /var/tmp/restore /var/tmp/tests-restore/tests` (leave out the last path when step 5 was skipped). `result: ok` is required.
 7. **Put it in place**: step 3 of "Restoring from a backup" above, then `sudo ./install.sh app` (starts the services now that the env files are real).
 8. **DNS.** Point the A record (and `www` if used) at the new VM's address; with a low TTL (300 s) this takes minutes. Check from your machine: `nslookup <host>` shows the new address.
 9. **Certificate.** `sudo ./install.sh caddy` once DNS answers with the new address: the step checks that first and skips with a message if the record still points elsewhere, then Caddy gets the certificate. `curl -fsS https://<host>/healthz`.
 10. **Sign-in.** The OAuth redirect URI is the same (`https://<host>/api/auth/google/callback`) when the host name did not change. If it did, add the new one in the Google Cloud console first. Sign in as a student account and open the contest.
 11. **Litestream and the rest**: `sudo systemctl restart podium-litestream`, `sudo systemctl start podium-backup`, `sudo /usr/local/lib/podium/install.sh verify`.
-12. Delete `restored/` and `tests.tgz` on your machine: they hold every student's code.
+12. Delete `/var/tmp/tests-restore` on the new VM once the services run.
 
 Then extend or reschedule the contest and announce it.
 
@@ -231,8 +224,7 @@ These drills prove that the backups, alerts and upgrades work on the real VM. Ea
 | Drill | How | Proof |
 |---|---|---|
 | Alerts | `sudo /usr/local/lib/podium/podium-alert test`; `sudo systemctl kill -s KILL podium-judge`; `sudo systemctl stop podium-litestream` then `sudo /usr/local/lib/podium/podium-check`; fill the disk with `fallocate` until the 2 x database plus 2 GB rule trips; `sudo /usr/local/lib/podium/podium-check restore-proof --corrupt` | one phone notification each, then "resolved" |
-| Weekly restore proof | `sudo /usr/local/lib/podium/podium-check restore-proof` | "restore proof" ok in the journal, no alert |
-| Encrypted copy | decrypt last night's object on your machine (OPERATIONS.md, "Encrypted copy off the VM") | `podium.db` and `tests/` come out |
+| Restore proof (once a term) | `sudo /usr/local/lib/podium/podium-check restore-proof` | "restore proof" ok in the journal, no alert |
 | Upgrade and rollback | `sudo ./install.sh upgrade` of a test release, then `sudo /usr/local/lib/podium/install.sh rollback`, once with the same schema and once with a newer one | both end with verify in order |
 | Deploy during practice | a test student in a practice session while `install.sh upgrade` reinstalls the same release | the page reconnects, the draft is kept, a submit pressed during the restart counts once |
 | Restore onto a new VM | "Restoring onto a new VM" on a second, temporary VM, timed | under 60 minutes, recovery point noted |

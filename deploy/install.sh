@@ -105,7 +105,7 @@ release_name() { basename "$HERE"; }
 step_packages() {
   log "packages: compilers, runtimes, tools"
   apt-get update -q
-  apt-get install -y -q ca-certificates curl gnupg sqlite3 jq rsync
+  apt-get install -y -q ca-certificates curl gnupg sqlite3 jq
   add_repo nodesource https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key \
     "deb [signed-by=/etc/apt/keyrings/nodesource.asc] https://deb.nodesource.com/node_${NODE_MAJOR}.x nodistro main"
   apt-get update -q
@@ -191,7 +191,7 @@ step_testlib() {
 }
 
 step_users() {
-  log "users: podium (server), judge (worker), podium-backup (Litestream and the B2 upload)"
+  log "users: podium (server), judge (worker), podium-backup (Litestream and the heartbeat)"
   id podium >/dev/null 2>&1 || useradd --system --home-dir /var/lib/podium --shell /usr/sbin/nologin podium
   id judge  >/dev/null 2>&1 || useradd --system --home-dir /var/cache/podium-judge --shell /usr/sbin/nologin judge
   # The bucket keys live in processes of this user only, so a compromised
@@ -546,15 +546,12 @@ step_litestream() {
 }
 
 step_backup() {
-  log "backup: nightly copy of the database and test files, encrypted copy off the VM"
+  log "backup: nightly copy of the database and test files on the VM"
   command -v sqlite3 >/dev/null || die "sqlite3 missing; run the packages step first"
   id podium >/dev/null 2>&1 || die "user podium missing; run the users step first"
-  # age encrypts the nightly copy to the owner's public key; rclone carries
-  # it to B2. Both from Ubuntu's signed archive (universe), with security
-  # updates through apt.
-  if ! command -v age >/dev/null || ! command -v rclone >/dev/null; then
-    apt-get install -y -q age rclone
-  fi
+  # rclone lets podium-check list the Litestream bucket to see how far
+  # behind replication is. From Ubuntu's signed archive (universe).
+  command -v rclone >/dev/null || apt-get install -y -q rclone
   install -d -m 755 "$LIB"
   install -m 755 "$HERE/backup/podium-backup" "$LIB/podium-backup"
   install -m 755 "$HERE/backup/podium-restore" "$LIB/podium-restore"
@@ -562,7 +559,7 @@ step_backup() {
   install -d -o root -g root -m 755 /etc/podium
   if [[ ! -e /etc/podium/backup.env ]]; then
     install -o root -g root -m 600 "$HERE/backup.env.example" /etc/podium/backup.env
-    echo "created /etc/podium/backup.env from the example; set the age public key and the B2 key for the encrypted copy"
+    echo "created /etc/podium/backup.env from the example; set the heartbeat URL"
   fi
   local bdir
   bdir=$(backup_dir)
@@ -575,7 +572,7 @@ step_backup() {
 }
 
 step_alerts() {
-  log "alerts: a failed unit, disk, WAL, replication and the weekly restore proof post to the webhook"
+  log "alerts: a failed unit, disk, WAL, and replication post to the webhook"
   install -d -m 755 "$LIB"
   install -m 755 "$HERE/backup/podium-alert" "$LIB/podium-alert"
   install -m 755 "$HERE/backup/podium-check" "$LIB/podium-check"
@@ -918,19 +915,7 @@ cmd_verify() {
     if [[ -n $bad ]]; then fail "$p has placeholders: $bad"; else ok "$p has no placeholders"; fi
   done
   [[ -n $(envval /etc/podium/alert.env PODIUM_ALERT_WEBHOOK) ]] && ok "PODIUM_ALERT_WEBHOOK set" || fail "PODIUM_ALERT_WEBHOOK missing in /etc/podium/alert.env: no alert reaches anyone"
-  [[ -n $(envval /etc/podium/backup.env PODIUM_BACKUP_AGE_RECIPIENT) ]] && ok "encrypted copy configured" || warn "encrypted copy off the VM not configured in /etc/podium/backup.env: test files are lost with the disk"
   [[ -n $(envval /etc/podium/backup.env PODIUM_HEARTBEAT_URL) ]] && ok "PODIUM_HEARTBEAT_URL set" || warn "PODIUM_HEARTBEAT_URL missing: a missed backup goes unnoticed"
-  # The rsync copy needs root's own key (C1-046); without it every nightly
-  # run fails after the local backup (C2-010).
-  if [[ -n $(envval /etc/podium/backup.env PODIUM_BACKUP_RSYNC) ]]; then
-    if [[ ! -f /etc/podium/backup-ssh/id_ed25519 ]]; then
-      fail "PODIUM_BACKUP_RSYNC is set but /etc/podium/backup-ssh/id_ed25519 is missing (docs/OPERATIONS.md, \"Copy the nightly backup off the VM\")"
-    elif [[ $(stat -c '%U %a' /etc/podium/backup-ssh 2>/dev/null) != "root 700" ]]; then
-      fail "/etc/podium/backup-ssh is $(stat -c '%U %a' /etc/podium/backup-ssh), want root 700"
-    else
-      ok "rsync copy key in /etc/podium/backup-ssh"
-    fi
-  fi
   local bdir
   bdir=$(backup_dir)
   if [[ $(stat -c '%U %a' "$bdir" 2>/dev/null) == "podium 700" ]]; then ok "$bdir podium 700"; else fail "$bdir is $(stat -c '%U %a' "$bdir" 2>/dev/null || echo missing), want podium 700"; fi
@@ -1005,7 +990,7 @@ First-run checklist (docs/OPERATIONS.md, "Install")
   1. Fill in /etc/podium/server.env and /etc/podium/judge.env (the same
      PODIUM_JUDGE_TOKEN in both), then: sudo ./install.sh app
   2. Fill in /etc/podium/litestream.env, then: sudo systemctl restart podium-litestream
-  3. Fill in /etc/podium/backup.env (age public key, B2 key, heartbeat URL),
+  3. Fill in /etc/podium/backup.env (heartbeat URL),
      then: sudo systemctl start podium-backup
   4. Fill in /etc/podium/alert.env, then: sudo /usr/local/lib/podium/podium-alert test
   5. Point DNS at this VM, then: sudo ./install.sh caddy

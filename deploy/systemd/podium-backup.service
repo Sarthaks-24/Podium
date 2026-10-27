@@ -7,11 +7,10 @@ OnFailure=podium-alert@%n.service
 
 [Service]
 Type=oneshot
-# Root, so the B2 key never sits in a process of user podium (D116): the
-# script makes the copy as podium with an empty environment, and only
-# rclone, run as podium-backup, gets the key; it reads the encrypted
-# stream on stdin, never the backup folder.
-# Optional settings (off-host copy, days kept); the leading "-" means the
+# Root, so the heartbeat URL never sits in a process of user podium
+# (D116): the script makes the copy as podium with an empty environment,
+# and only the heartbeat ping, run as podium-backup, gets the URL.
+# Optional settings (days kept, heartbeat); the leading "-" means the
 # file may be absent.
 EnvironmentFile=-/etc/podium/backup.env
 # Backups hold every student's code: readable by podium only.

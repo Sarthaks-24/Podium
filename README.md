@@ -92,7 +92,7 @@ sudoedit /etc/podium/judge.env    # PODIUM_JUDGE_TOKEN
 sudo ./install.sh app             # starts the server and the judge once no placeholder is left
 sudoedit /etc/podium/litestream.env   # the database bucket and its key
 sudo systemctl restart podium-litestream
-sudoedit /etc/podium/backup.env   # age public key, B2 key for the encrypted copy, heartbeat URL
+sudoedit /etc/podium/backup.env   # heartbeat URL
 sudo systemctl start podium-backup
 sudoedit /etc/podium/alert.env    # the ntfy topic URL
 sudo /usr/local/lib/podium/podium-alert test

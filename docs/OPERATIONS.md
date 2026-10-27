@@ -17,16 +17,16 @@ sudo ./install.sh
 
 | Step | What it does |
 |---|---|
-| `packages` | g++, OpenJDK 21, Python 3, Node 22 (NodeSource repository), sqlite3, jq, rsync |
+| `packages` | g++, OpenJDK 21, Python 3, Node 22 (NodeSource repository), sqlite3, jq |
 | `isolate` | isolate from its upstream apt repository; mounts its box root `/var/lib/isolate` on a 1200 MB tmpfs (so files a program writes count against its memory limit); caps all sandboxes at 1100 MB through `isolate.slice`; enables `isolate.service`; makes the tuning below survive a reboot; runs `isolate-check-environment` |
 | `testlib` | `testlib.h` (release 0.9.41) into `/usr/local/include` for custom checkers. Downloaded from GitHub at a pinned commit and refused unless its SHA-256 matches the one in the script. Skipped when the installed file already matches. |
-| `users` | system users `podium`, `judge` and `podium-backup` (Litestream, the B2 upload and the heartbeat, in group podium; D116); adds `judge` to group `isolate` (the isolate binary is executable only by that group) |
+| `users` | system users `podium`, `judge` and `podium-backup` (Litestream and the heartbeat, in group podium; D116); adds `judge` to group `isolate` (the isolate binary is executable only by that group) |
 | `dirs` | `/var/lib/podium` and `/var/lib/podium/tests` (podium, 750), `/var/lib/podium/db` (podium, group podium, 2770, so Litestream can write; the database files are 660), `/var/cache/podium-judge` (judge, 750), `/etc/podium`; creates `server.env` and `judge.env` from the examples if missing (root, 600), with the absolute VM paths for the database and tests |
 | `firewall` | `ufw`: inbound only ssh (the port sshd uses), 80 and 443 (TCP, and UDP for HTTP/3); ssh is allowed before the firewall is switched on. Warns when ssh still accepts passwords (see "Firewall and ssh") |
 | `app` | installs both binaries, their systemd units and the alert unit; starts the services only once `server.env` and `judge.env` have no placeholder values left (it names the ones that remain), then waits for `/healthz` and writes `/usr/local/lib/podium/MANIFEST` |
 | `swap` | 1 GB swap file, `vm.swappiness=10` |
 | `litestream` | Litestream 0.5.16 into `/usr/local/bin`, downloaded from its GitHub release and refused unless its SHA-256 matches the one in the script; `/etc/litestream.yml`; creates `/etc/podium/litestream.env` from the example if missing (root, 600); the `podium-litestream` unit, started only once that file has no placeholder values (see "Backups") |
-| `backup` | `age` and `rclone` from Ubuntu's archive (for the encrypted copy); the nightly backup and restore scripts in `/usr/local/lib/podium`; `/var/backups/podium` (podium, 700); creates `/etc/podium/backup.env` from the example if missing (root, 600); `podium-backup.timer` (about 03:15 UTC) |
+| `backup` | `rclone` from Ubuntu's archive (podium-check lists the Litestream bucket with it); the nightly backup and restore scripts in `/usr/local/lib/podium`; `/var/backups/podium` (podium, 700); creates `/etc/podium/backup.env` from the example if missing (root, 600); `podium-backup.timer` (about 03:15 UTC) |
 | `alerts` | `podium-alert` and `podium-check` in `/usr/local/lib/podium`, the `podium-alert@.service` template, `podium-check.timer` (every 15 minutes); creates `/etc/podium/alert.env` from the example if missing (root, 600). See "Alerts" |
 | `caddy` | last on purpose. Skips with a message while `PODIUM_BASE_URL` is a placeholder. Then checks that the host name resolves to this VM (a local address, or the public address the provider's NAT shows, asked once from `checkip.amazonaws.com`) and skips with what to fix when it does not, because Let's Encrypt allows only a few failed attempts an hour. Otherwise installs Caddy and writes `/etc/caddy/Caddyfile` for that host: admin API off, request bodies capped at 33 MB, then restarts Caddy |
 
@@ -51,7 +51,7 @@ The `app` step and every upgrade also install a copy of `install.sh` as `/usr/lo
 | Services | `podium-server`, `podium-judge`, `isolate`, the isolate tmpfs, `podium-backup.timer`, `podium-check.timer` active; `podium-litestream` configured and active; `caddy` active once `PODIUM_BASE_URL` is real |
 | Endpoints | `/healthz` answers ok; the judge API answers `401` without a token |
 | Network | `ufw` active and allowing only ssh, 80 and 443; ports 8080 and 8081 listen on loopback only |
-| Configuration | `PODIUM_MODE` is production in both service files; every `/etc/podium/*.env` exists, is root 600 and has no placeholder value (names listed); `PODIUM_ALERT_WEBHOOK` set; `/var/backups/podium` podium 700. Warnings: no encrypted copy, no heartbeat URL |
+| Configuration | `PODIUM_MODE` is production in both service files; every `/etc/podium/*.env` exists, is root 600 and has no placeholder value (names listed); `PODIUM_ALERT_WEBHOOK` set; `/var/backups/podium` podium 700. Warning: no heartbeat URL |
 | Clock | `chrony` or `systemd-timesyncd` active and the clock synchronised: every freeze, end and extension is a clock comparison, so verify fails without it |
 | Sandbox host | transparent huge pages off (warning), the installed release from `MANIFEST`, compilers and runtimes held (warning when not, see "Holding the compilers") |
 | Backup keys | `podium-litestream` runs as `podium-backup`; the database folder is group podium, mode 2770 |
@@ -232,24 +232,16 @@ Any S3-compatible store works the same way (Cloudflare R2, Wasabi, AWS S3): set 
 
 ### Nightly backup (`/etc/podium/backup.env`)
 
-Read by `podium-backup.service`; template `deploy/backup.env.example`. Every variable is optional. At start the script prints each one as `set`, `default` or `missing`, never a value, and stops with a message naming the variable and this file when one is wrong (a bad number of days, an rsync target without `:`, half of the encrypted-copy settings).
+Read by `podium-backup.service`; template `deploy/backup.env.example`. Every variable is optional. At start the script prints each one as `set`, `default` or `missing`, never a value, and stops with a message naming the variable and this file when one is wrong (a bad number of days, a heartbeat URL that is not `https://`).
 
 | Variable | Default | Purpose |
 |---|---|---|
 | `PODIUM_DB_PATH` | `/var/lib/podium/db/podium.db` | the live database to copy |
 | `PODIUM_TESTS_DIR` | `/var/lib/podium/tests` | the live test files and sources |
 | `PODIUM_BACKUP_DIR` | `/var/backups/podium` | where each night's folder goes |
-| `PODIUM_BACKUP_KEEP_DAYS` | `14` | nights kept here, in the B2 folder and on the rsync copy |
+| `PODIUM_BACKUP_KEEP_DAYS` | `14` | nights kept |
 | `PODIUM_SERVER_BIN` | `/usr/local/bin/podium-server` | the binary whose `check` verifies each backup |
-| `PODIUM_BACKUP_RSYNC` | empty: no rsync copy | `user@host:/path` for a copy over ssh (see "Copy the nightly backup off the VM") |
-| `PODIUM_BACKUP_AGE_RECIPIENT` | empty: no encrypted copy | the `age` public key (`age1...`) each night's copy is encrypted to. Made with `age-keygen` on your own machine; the private key never goes on the VM |
-| `PODIUM_BACKUP_B2_PATH` | empty | `bucket/folder` in B2 for the encrypted copies, without `b2:`; a private bucket of its own |
-| `RCLONE_CONFIG_B2_TYPE` | empty | always `b2`: rclone reads its remote named `b2` from these three variables, no config file |
-| `RCLONE_CONFIG_B2_ACCOUNT` | empty | keyID of a B2 application key limited to that bucket, read and write |
-| `RCLONE_CONFIG_B2_KEY` | empty | that key's applicationKey. Secret |
 | `PODIUM_HEARTBEAT_URL` | empty: no ping | an `https://` URL pinged after every fully successful run, for a dead-man check. Secret |
-
-The five encrypted-copy variables go together: all five or none. With none, each run warns that test files have no copy off the VM.
 
 ### Alerts (`/etc/podium/alert.env`)
 
@@ -471,8 +463,6 @@ Nothing extra stays in memory: systemd starts a small unit when something fails,
 | WAL size | `podium.db-wal` above 256 MB | as above |
 | Judge stalled | jobs waiting more than 5 minutes while no judge has asked for work for 2 minutes, read from the server's `/healthz` on loopback (`jobs_queued`, `oldest_queued_s`, `judge_last_claim_s`). The judge itself stops after 5 refused tokens in a row (exit status 4, not restarted, so the unit failed alert fires too): `PODIUM_JUDGE_TOKEN` must be the same in `server.env` and `judge.env` | as above |
 | Litestream | the unit is not running, the bucket cannot be listed, or the database changed more than 10 minutes after the bucket's newest upload | as above |
-| Encrypted copy | the newest `podium-*.tar.age` in B2 is older than 30 hours (checked every 6 hours, when configured) | as above |
-| Weekly restore proof (D113) | once a week the checker restores the bucket's newest database into a scratch folder with `litestream restore` and runs `podium-server check -hash` on it against the live test files. Failure alerts; it retries after a day | as above |
 | Backup missed | the nightly backup pings `PODIUM_HEARTBEAT_URL` after a fully good run; the heartbeat service alerts on silence | the service's own rule |
 | Site down | an external uptime check on `https://<host>/healthz` every 5 minutes, from a free hosted checker in your own account | the checker's own rule |
 
@@ -482,7 +472,7 @@ Set up and prove it once:
 2. `sudo /usr/local/lib/podium/podium-alert test`: the phone shows "podium: test alert".
 3. Fire each alert on purpose (the drill list is in `docs/RUNBOOK.md`, "Proving the safety net"): kill a unit with `sudo systemctl kill -s KILL podium-judge`, run the restore proof against a damaged copy with `sudo /usr/local/lib/podium/podium-check restore-proof --corrupt`, stop Litestream, fill a scratch file until the disk rule trips.
 
-`podium-check restore-proof` runs the proof at once; `--corrupt` overwrites the scratch copy's schema page before the check, so it must alert.
+`podium-check restore-proof` restores the bucket's newest database into a scratch folder with `litestream restore` and runs `podium-server check -hash` on it against the live test files. Run it by hand once a term and write down how long it took (V3-10); `--corrupt` overwrites the scratch copy's schema page before the check, so it must alert.
 
 ## Metrics
 
@@ -746,57 +736,17 @@ Two layers, both installed by `install.sh` (steps `litestream` and `backup`):
 | | Litestream | Nightly backup |
 |---|---|---|
 | What | the database | the database and the test files |
-| Where | the bucket in `/etc/podium/litestream.env` (off the VM) | `/var/backups/podium/<date>` on the VM (podium only, 700); each night also packed, encrypted with `age` and uploaded to its own B2 bucket (the encrypted copy), and copied by rsync when `PODIUM_BACKUP_RSYNC` is set |
+| Where | the bucket in `/etc/podium/litestream.env` (off the VM) | `/var/backups/podium/<date>` on the VM (podium only, 700) |
 | How often | every change, uploaded every 10 s | every night about 03:15 UTC, and on demand |
 | Kept | 14 days of history (a daily snapshot plus every change since) | 14 days |
 | Restores | the newest state, or any moment in the 14 days | that night's state |
 | Protects against | losing the VM or its disk | a bad change (a wrong rejudge, a deleted contest), a damaged database |
 
-Test files and program sources are not in the bucket: they live in `/var/lib/podium/tests`, named by SHA-256, and the database only refers to them. The nightly backup copies them as hard links, so 14 nights cost little more than one, and the encrypted copy carries them off the VM (below). Set it up before the first graded contest: without it, losing the VM's disk loses every test file, and only the pack zips you kept would bring the problems back. Submitted code is safe either way, since the database holds every submission's source.
+Test files and program sources are not in the bucket: they live in `/var/lib/podium/tests`, named by SHA-256, and the database only refers to them. The nightly backup copies them as hard links, so 14 nights cost little more than one. They stay on the VM (V3-10): losing the VM's disk loses every test file, so keep each problem's pack zip off the VM; importing it again brings the problem back. Submitted code is safe either way, since the database holds every submission's source.
 
 Backups hold every student's code and the session table, so they are private: the backup runs with umask 077 (`UMask=0077` in the unit, `umask 077` in the script), `/var/backups/podium` is mode 700, and the files are readable by the podium user only. The judge cannot read them.
 
-**The bucket keys are out of the server's reach (v1.1.0, D116).** A process can read the environment of any other process of its own user from `/proc`, so a server taken over as user podium could read keys from a backup process running as podium. Litestream therefore runs as its own user, `podium-backup` (in group podium, so it can write the database folder, which is mode 2770; the server keeps the database files mode 660). The nightly backup unit runs as root and splits the work: the copy, the check, `tar` and `age` run as podium with an empty environment, and only `rclone` (reading the encrypted stream on its stdin) and the heartbeat ping run as `podium-backup` with the B2 key and the heartbeat URL. `install.sh upgrade` creates the user and moves Litestream's state to it. A rollback to a release before v1.1.0 gives it back to podium, and with it the old exposure: the bucket key is again in a process of the server's user until you upgrade again.
-
-### Encrypted copy off the VM
-
-Each night, after the local backup passed its check, `podium-backup` packs that night's folder (`podium.db`, `tests/`, `check.txt`) with `tar`, encrypts it with `age` to `PODIUM_BACKUP_AGE_RECIPIENT`, and streams it to B2 with `rclone` as `podium-<UTC date and time>.tar.age` in `PODIUM_BACKUP_B2_PATH`. Nothing unencrypted is written twice, and a failed upload removes the partial object. Copies older than `PODIUM_BACKUP_KEEP_DAYS` (14) are deleted from the folder. The VM holds only the public key: if the VM is taken over, the copies stay unreadable; to read one you need the private key, which stays with you.
-
-Set it up once:
-
-1. On your own machine (not the VM): install `age` (`winget install FiloSottile.age` on Windows), then `age-keygen -o podium-backup.key`. It prints `Public key: age1...`. Store `podium-backup.key` in your password manager and one offline place; losing it makes every copy unreadable.
-2. B2 web console: Buckets, Create a Bucket, private, named for example `podium-tests` (its own bucket, not Litestream's), with **Object Lock enabled and a default retention of 13 days** (governance mode). Then nothing on the VM can delete a copy younger than 13 days, not even with the bucket's key: if the server were ever taken over, the attacker could empty the Litestream bucket but not these copies, so at most a day of data is lost. The nightly prune deletes copies older than 14 days, after their lock ran out. Application Keys, Add a New Application Key, allow access to that bucket only, Read and Write. Note the keyID and the applicationKey (shown once).
-3. `sudoedit /etc/podium/backup.env`: `PODIUM_BACKUP_AGE_RECIPIENT=age1...`, `PODIUM_BACKUP_B2_PATH=podium-tests/nightly`, `RCLONE_CONFIG_B2_TYPE=b2`, `RCLONE_CONFIG_B2_ACCOUNT=<keyID>`, `RCLONE_CONFIG_B2_KEY=<applicationKey>`.
-4. `sudo systemctl start podium-backup`, then `journalctl -u podium-backup -n 20` ends with `encrypted copy uploaded as podium-<time>.tar.age`.
-5. Prove you can read it, on your own machine: download that object from the B2 web console (Browse Files), then
-
-   ```sh
-   age -d -i podium-backup.key podium-<time>.tar.age | tar -x -C restored/
-   ```
-
-   `restored/` holds `podium.db`, `tests/` and `check.txt`. Delete the folder afterwards: it holds every student's code.
-
-rclone runs with `--transfers 1 --b2-chunk-size 16M`, so the upload adds about 16 MB of memory at 03:15. B2 bills storage per GB and the listing calls of `podium-check` stay inside the free daily allowance.
-
-### Copy the nightly backup off the VM
-
-`/etc/podium/backup.env` (root, 600; template `deploy/backup.env.example`) is optional and read by `podium-backup.service`:
-
-| Variable | Default | Purpose |
-|---|---|---|
-| `PODIUM_BACKUP_RSYNC` | empty: no copy | `user@host:/path` on another machine; after each nightly run the whole backup folder goes there with `rsync -aH --delete` over ssh, hard links kept. A failed copy fails the unit, so it shows in `systemctl --failed` |
-| `PODIUM_BACKUP_KEEP_DAYS` | 14 | nights to keep, here and (through `--delete`) on the copy |
-
-Set it up once:
-
-1. On the VM, a key that only root can read (the copy runs as root, so a server taken over as podium cannot use the key against the other machine; council C1-046): `sudo install -d -o root -g root -m 700 /etc/podium/backup-ssh`, then `sudo ssh-keygen -t ed25519 -N '' -f /etc/podium/backup-ssh/id_ed25519`, and print `/etc/podium/backup-ssh/id_ed25519.pub`.
-2. On the backup machine, an account whose `authorized_keys` holds that key limited to one folder, for example with rsync's `rrsync`: `command="rrsync /srv/podium",restrict ssh-ed25519 AAAA...` (then the target is `user@host:` with the path relative to that folder, so `PODIUM_BACKUP_RSYNC=podium-backup@backup.example.edu:`).
-3. Accept the host key once: `sudo ssh -i /etc/podium/backup-ssh/id_ed25519 -o UserKnownHostsFile=/etc/podium/backup-ssh/known_hosts podium-backup@backup.example.edu true` (it will say rrsync needs a command; that is fine).
-4. `sudoedit /etc/podium/backup.env`, set `PODIUM_BACKUP_RSYNC`, then `sudo systemctl start podium-backup` and check `journalctl -u podium-backup -n 5` ends with `copied to`.
-
-The copy mirrors the VM with `--delete`, so a server taken over as podium that deletes the local backups would have the deletion mirrored the next night. Keep snapshots of the folder on the backup machine (daily, for at least 14 days), or rely on the encrypted B2 copy, whose Object Lock no key on the VM can lift (D116). A key from before this release at `/var/lib/podium/.ssh/id_ed25519` is no longer used: remove it from the other machine's `authorized_keys` and delete it. If `PODIUM_BACKUP_RSYNC` is set, make the root key (steps 1 to 3) before upgrading to this release: without it the local backup is still made, but every nightly run fails after it and alerts, and `install.sh verify` fails on the missing key.
-
-A copy off the VM (rsync or the encrypted B2 copy) never stops the local backup. A problem with its settings is printed as a warning before the backup, and the unit fails after the local backup is made ("the local backup is done, but ..."), so `install.sh upgrade` still finds the backup it waits for.
+**The bucket keys are out of the server's reach (v1.1.0, D116).** A process can read the environment of any other process of its own user from `/proc`, so a server taken over as user podium could read keys from a backup process running as podium. Litestream therefore runs as its own user, `podium-backup` (in group podium, so it can write the database folder, which is mode 2770; the server keeps the database files mode 660). The nightly backup unit runs as root and splits the work: the copy and the check run as podium with an empty environment, and only the heartbeat ping runs as `podium-backup` with the heartbeat URL. `install.sh upgrade` creates the user and moves Litestream's state to it. A rollback to a release before v1.1.0 gives it back to podium, and with it the old exposure: the bucket key is again in a process of the server's user until you upgrade again.
 
 Disk snapshots from your VM provider are a fine addition but not a replacement: they usually live in the same account as the VM.
 
@@ -808,17 +758,17 @@ Disk snapshots from your VM provider are a fine addition but not a replacement: 
 4. `sudo systemctl restart podium-litestream`, then `journalctl -u podium-litestream -n 30`: the start-up check lists every variable as `set`, and Litestream logs its first snapshot and then a sync every 10 s while the database changes.
 5. Prove it: `sudo /usr/local/lib/podium/podium-restore litestream /var/tmp/restore-check` restores the newest copy from the bucket and checks it; then `sudo rm -rf /var/tmp/restore-check`.
 
-Before the P0 restore drill Litestream had only been rehearsed against a local file replica; the first restore from your bucket in step 5 is the real test, and the weekly restore proof (see "Alerts") repeats it every week. If the first sync fails with an error about checksums or a header the provider does not support, note the exact message: Litestream 0.5 has per-provider options (`sign-payload`, `require-content-md5`) under the replica in `/etc/litestream.yml`.
+Before the P0 restore drill Litestream had only been rehearsed against a local file replica; the first restore from your bucket in step 5 is the real test; repeat it once a term with `podium-check restore-proof` (see "Alerts"). If the first sync fails with an error about checksums or a header the provider does not support, note the exact message: Litestream 0.5 has per-provider options (`sign-payload`, `require-content-md5`) under the replica in `/etc/litestream.yml`.
 
 ### Nightly backup
 
-`podium-backup.timer` runs `/usr/local/lib/podium/podium-backup` as root, which splits the work between users podium and podium-backup (see "The bucket keys are out of the server's reach" above; the rsync copy runs as root). Each run writes `/var/backups/podium/<UTC date and time>/` with:
+`podium-backup.timer` runs `/usr/local/lib/podium/podium-backup` as root, which splits the work between users podium and podium-backup (see "The bucket keys are out of the server's reach" above). Each run writes `/var/backups/podium/<UTC date and time>/` with:
 
 - `podium.db`: an online copy (SQLite's backup API, safe while the server writes);
 - `tests/`: hard links to every test file and source (a real copy if `/var/backups` is on another filesystem);
 - `check.txt`: the output of `podium-server check` on the copy. A copy that fails its check is discarded and the unit fails.
 
-It then points `latest` at the new backup and deletes those older than 14 days (`PODIUM_BACKUP_KEEP_DAYS` in `/etc/podium/backup.env` changes that), and copies the folder off the VM if `PODIUM_BACKUP_RSYNC` is set.
+It then points `latest` at the new backup and deletes those older than 14 days (`PODIUM_BACKUP_KEEP_DAYS` in `/etc/podium/backup.env` changes that).
 
 | Task | Command |
 |---|---|

@@ -722,7 +722,7 @@ The themes are curated versions of palettes from the owner's AdminPanelManager p
 
 **Backups off the VM.** Litestream streams the database to a bucket every 10 seconds. The test files only exist on the VM, so each night's backup is packed, encrypted with `age` to a public key whose private half never leaves the owner's machine, and uploaded to a separate B2 bucket. A stolen VM or B2 key therefore yields no readable test files or student code.
 
-**Alerts without a monitoring stack (D70, D113).** Nothing stays resident: systemd's `OnFailure=` starts a one-shot unit that posts the failed unit's name to an ntfy topic, and a 15-minute timer checks free space, WAL size, Litestream's last upload and the encrypted copy's age. Once a week the same timer restores the bucket's newest database into a scratch folder and runs `podium-server check -hash` on it, so the backups are proved, not assumed. A dead-man heartbeat after each good backup and an external uptime check on `/healthz` cover the cases where the VM cannot report itself.
+**Alerts without a monitoring stack (D70, D113).** Nothing stays resident: systemd's `OnFailure=` starts a one-shot unit that posts the failed unit's name to an ntfy topic, and a 15-minute timer checks free space, WAL size, Litestream's last upload and a stalled judge. `podium-check restore-proof` restores the bucket's newest database into a scratch folder and runs `podium-server check -hash` on it; v3 runs it by hand once a term instead of weekly (V3-10). A dead-man heartbeat after each good backup and an external uptime check on `/healthz` cover the cases where the VM cannot report itself.
 
 ## Memory budget on the 2 GB VM
 

@@ -138,40 +138,12 @@ else
   fail "podium-backup must prune db.before-rollback-* folders"
 fi
 
-# The rsync copy runs as root with root's key, never as podium (C1-046).
 backup="$here/../deploy/backup/podium-backup"
-if grep -q 'as_podium rsync' "$backup"; then
-  fail "podium-backup runs rsync as podium, whose key a taken-over server could use"
-elif grep -q -- '-i $ssh_dir/id_ed25519' "$backup" && grep -q '^ssh_dir=/etc/podium/backup-ssh$' "$backup"; then
-  pass "podium-backup copies with the root-only key in /etc/podium/backup-ssh"
-else
-  fail "podium-backup must copy with /etc/podium/backup-ssh/id_ed25519"
-fi
-
-# A copy off the VM never stops the local backup (C2-010): no die about
-# rsync or the encrypted copy comes before the local backup is in place,
-# and both problems fail the unit after it, before the heartbeat.
-mvline=$(grep -n 'as_podium mv "$work" "$final"' "$backup" | head -n1 | cut -d: -f1 || true)
-early=$(awk -v m="${mvline:-0}" 'NR < m && /die / && /rsync|RSYNC|(^|[^a-z])age([^a-z]|$)|rclone|B2|encrypted|backup-ssh/' "$backup")
-late_off=$(grep -n 'die "the local backup is done, but there is no encrypted copy' "$backup" | cut -d: -f1 || true)
-late_rs=$(grep -n 'die "the local backup is done, but the copy to $remote did not run' "$backup" | cut -d: -f1 || true)
-beat=$(grep -n '^if \[\[ -n $heartbeat \]\]; then' "$backup" | cut -d: -f1 || true)
-if [[ -n $mvline && -z $early && -n $late_off && -n $late_rs && -n $beat && $late_off -gt $mvline && $late_rs -lt $beat ]]; then
-  pass "podium-backup makes the local backup before any off-VM check can fail it"
-else
-  fail "podium-backup: an off-VM check can stop the local backup: ${early:-order of the late checks}"
-fi
 if grep -q '^stamp=$(date -u +%Y-%m-%dT%H%M%SZ)$' "$backup" && grep -q '\[\[ ! -e $final \]\] || die' "$backup"; then
   pass "podium-backup names each backup to the second and never reuses a folder"
 else
   fail "podium-backup must name backups to the second and refuse an existing folder (C2-039)"
 fi
-if fn cmd_verify | grep -q 'PODIUM_BACKUP_RSYNC is set but /etc/podium/backup-ssh/id_ed25519 is missing'; then
-  pass "verify checks the rsync copy's root key"
-else
-  fail "cmd_verify must check /etc/podium/backup-ssh when PODIUM_BACKUP_RSYNC is set"
-fi
-
 # podium-check's stalled-judge rule (C1-048), with the server's answer and
 # systemctl stubbed. Needs jq, as on the VM; skipped without it.
 check="$here/../deploy/backup/podium-check"

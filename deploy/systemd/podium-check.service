@@ -14,7 +14,7 @@ EnvironmentFile=-/etc/podium/alert.env
 ExecStart=/usr/local/lib/podium/podium-check
 # Root: it reads the Litestream credentials (/etc/podium/litestream.env,
 # root only) and the podium database. It writes only its state folder and
-# the private /tmp of the weekly restore.
+# the private /tmp of a restore proof run by hand.
 StateDirectory=podium-check
 NoNewPrivileges=yes
 ProtectSystem=strict
