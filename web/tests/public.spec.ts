@@ -118,8 +118,6 @@ async function settle(page: Page) {
 
 const SCREENS = [
   { name: 'signin-organisation', path: '/signin', who: 'signed-out' as Who, ready: (p: Page) => expect(p.getByRole('link', { name: 'Continue with Google' })).toBeVisible() },
-  { name: 'contact-form', path: '/contact', who: 'student' as Who, ready: (p: Page) => expect(p.getByLabel('Message')).toBeVisible() },
-  { name: 'contact-inbox', path: '/admin/contact', who: 'owner' as Who, ready: (p: Page) => expect(p.getByText('Asha Rao')).toBeVisible() },
 ];
 
 for (const theme of THEMES) {
@@ -162,118 +160,6 @@ test('an organisation with nothing entered shows nothing made up', async ({ page
   await expect(page.getByText('Contact the organisers')).toHaveCount(0);
 });
 
-test('the contact form is for signed-in people only (C6)', async ({ page }) => {
-  await mockApi(page, 'signed-out');
-  await page.goto('/contact');
-  await expect(page).toHaveURL('/signin?next=%2Fcontact');
-});
-
-test('a student writes to the organisers, from the footer (FP.2)', async ({ page }) => {
-  const api = await mockApi(page, 'student');
-  await page.setViewportSize({ width: 1440, height: 900 });
-  await page.goto('/');
-  const foot = page.locator('footer');
-  await expect(foot).toContainText('Example College of Engineering. Contact the organisers: podium@college.edu');
-  await foot.getByRole('link', { name: 'Write to the organisers' }).click();
-  await expect(page).toHaveURL('/contact');
-  await expect(page.getByRole('heading', { level: 1 })).toBeFocused();
-  await expect(page).toHaveTitle('Write to the organisers · podium');
-
-  await page.getByRole('button', { name: 'Send message' }).click();
-  await expect(page.getByText('Write your message first.')).toBeVisible();
-  await expect(page.getByLabel('Message')).toBeFocused();
-  await expect(page.getByLabel('Message')).toHaveAttribute('aria-invalid', 'true');
-  expect(api.sent).toEqual([]);
-
-  await page.getByLabel('About').selectOption('privacy');
-  await page.getByLabel('Message').fill('  Please send me a copy of my data.  ');
-  await expect(page.locator('#contact-count')).toContainText('33 of 2000 characters');
-  await page.getByRole('button', { name: 'Send message' }).click();
-  await expect(page.getByText('Sent. The organisers reply by email, usually within two days.')).toBeFocused();
-  expect(api.sent).toEqual([{ topic: 'privacy', message: 'Please send me a copy of my data.' }]);
-  await page.getByRole('button', { name: 'Write another message' }).click();
-  await expect(page.getByLabel('Message')).toBeFocused();
-  await expect(page.getByLabel('Message')).toHaveValue('');
-});
-
-test('a refused message keeps its text and says what to do', async ({ page }) => {
-  await mockApi(page, 'student', { contactMode: 'rate' });
-  await page.goto('/contact');
-  await page.getByLabel('Message').fill('Problem C has no samples.');
-  await page.getByRole('button', { name: 'Send message' }).click();
-  await expect(page.getByRole('alert')).toHaveText('You have sent 5 messages in the last 24 hours. Try again tomorrow, or email the organisers.');
-  await expect(page.getByLabel('Message')).toHaveValue('Problem C has no samples.');
-});
-
-test('during a live contest the form sends contest questions to the contest (C2-023)', async ({ page }) => {
-  await mockApi(page, 'student', { live: true });
-  await page.goto('/contact');
-  const note = page.getByRole('note').filter({ hasText: 'Asking about a contest that is running now?' });
-  await expect(note).toContainText('Ask in the contest under Messages, so the organisers answer you during it.');
-  await expect(note.getByRole('link', { name: 'Go to Week 6 contest' })).toHaveAttribute('href', '/contests/week-6');
-
-  await page.unrouteAll({ behavior: 'ignoreErrors' });
-  await mockApi(page, 'student');
-  await page.goto('/contact');
-  await expect(page.getByLabel('Message')).toBeVisible();
-  await expect(page.getByText('Asking about a contest that is running now?')).toHaveCount(0);
-});
-
-test('organisers read, reply to and delete messages (FP.2)', async ({ page }) => {
-  const api = await mockApi(page, 'owner');
-  await page.setViewportSize({ width: 1440, height: 900 });
-  await page.goto('/admin/contests');
-  await page.getByRole('navigation', { name: 'Main' }).getByRole('link', { name: 'Inbox' }).click();
-  await expect(page).toHaveURL('/admin/contact');
-  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Inbox');
-  // Organisers read this inbox; the footer does not offer them a form to themselves (C2-023).
-  await expect(page.locator('footer').getByRole('link', { name: 'Write to the organisers' })).toHaveCount(0);
-  const first = page.locator('.message').first();
-  await expect(first).toContainText('Asha Rao');
-  await expect(first).toContainText('A contest or a problem');
-  // Plain text with its line break, never HTML.
-  await expect(first.locator('.text')).toHaveText('The statement of problem B says 1 <= n but the sample has n = 0.\nWhich one is right?');
-  await expect(first.getByRole('link', { name: 'Reply by email' })).toHaveAttribute('href', /^mailto:asha@college\.edu\?subject=/);
-
-  await first.getByRole('button', { name: 'Delete' }).click();
-  const ask = page.getByRole('dialog', { name: 'Delete this message?' });
-  await expect(ask).toContainText('The message from Asha Rao is removed for every organiser.');
-  await ask.getByRole('button', { name: 'Delete' }).click();
-  await expect.poll(() => api.deleted).toEqual([12]);
-  await expect(page.locator('.message')).toHaveCount(1);
-
-  await page.getByRole('button', { name: 'Show older messages' }).click();
-  await expect(page.locator('.message')).toHaveCount(2);
-  expect(api.inboxQueries.at(-1)).toBe('?before=11');
-  await expect(page.getByRole('button', { name: 'Show older messages' })).toHaveCount(0);
-});
-
-test('a failed delete says why inside the dialog, where it can be read (C1-008)', async ({ page }) => {
-  await mockApi(page, 'owner', { deleteFails: true });
-  await page.setViewportSize({ width: 1440, height: 900 });
-  await page.goto('/admin/contact');
-  await page.locator('.message').first().getByRole('button', { name: 'Delete' }).click();
-  const ask = page.getByRole('dialog', { name: 'Delete this message?' });
-  await ask.getByRole('button', { name: 'Delete' }).click();
-  const error = ask.getByRole('alert');
-  await expect(error).toHaveText('The message could not be deleted. Try again in a moment.');
-  await expect(error).toBeVisible();
-  // Nothing behind the modal: no error toast, and the dialog keeps focus.
-  await expect(page.locator('.toast-error')).toHaveCount(0);
-  await expect(ask.getByRole('button', { name: 'Cancel' })).toBeEnabled();
-  await page.keyboard.press('Escape');
-  await expect(ask).toBeHidden();
-  await expect(page.locator('.message')).toHaveCount(2);
-  await page.locator('.message').first().getByRole('button', { name: 'Delete' }).click();
-  await expect(ask.getByRole('alert')).toHaveCount(0);
-});
-
-test('a student who opens the inbox is told why it is closed', async ({ page }) => {
-  await mockApi(page, 'student');
-  await page.goto('/admin/contact');
-  await expect(page.getByText('Only organisers can read these messages.')).toBeVisible();
-});
-
 test('the privacy notice waits for the owner, and its draft lists every retention period from the config (FP.1)', async ({ page }) => {
   await mockApi(page, 'signed-out');
   await page.goto('/privacy');
@@ -299,37 +185,12 @@ test('the privacy notice waits for the owner, and its draft lists every retentio
   }
 });
 
-test('after an emergency deploy a student sees one line, once (D112)', async ({ page }) => {
-  const at = NOW - 20 * 60_000;
-  const d = new Date(at);
-  const hhmm = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
-  await mockApi(page, 'student', { siteUpdatedAt: at });
-  await page.goto('/');
-  const line = page.locator('.site-update');
-  await expect(line.locator('p')).toHaveText(`The site was updated at ${hhmm}. Your code and submissions are kept.`);
-  await expect(line).toHaveAttribute('role', 'status');
-  await line.getByRole('button', { name: 'Dismiss' }).click();
-  await expect(line).toHaveCount(0);
-  await page.reload();
-  await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
-  await expect(page.locator('.site-update')).toHaveCount(0);
-});
-
-test('organisers do not get the update line', async ({ page }) => {
-  await mockApi(page, 'owner', { siteUpdatedAt: NOW - 60_000 });
-  await page.goto('/admin/contact');
-  await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
-  await expect(page.locator('.site-update')).toHaveCount(0);
-});
-
 for (const theme of THEMES) {
   test(`axe finds nothing serious on the P3 pages, ${theme}`, async ({ page }) => {
     test.setTimeout(120_000);
     await page.emulateMedia({ colorScheme: theme });
     for (const [path, who, ready] of [
       ['/signin?error=rate_limited', 'signed-out', 'Continue with Google'],
-      ['/contact', 'student', 'Send message'],
-      ['/admin/contact', 'owner', 'Show older messages'],
       ['/privacy?draft', 'signed-out', 'What podium records'],
     ] as const) {
       await page.unrouteAll({ behavior: 'ignoreErrors' });

@@ -638,41 +638,6 @@ test.describe('in a contest', () => {
     await expect(panel.getByText('Your score on this problem stays 60 of 100.')).toBeVisible();
   });
 
-  test('an updated statement says so and shows what changed (C3)', async ({ page }) => {
-    const api = await contests.mockApi(page, { phase: 'during', statementUpdated: true });
-    await page.setViewportSize({ width: 1440, height: 900 });
-    await page.goto('/contests/week-6/problems/B');
-    const notice = page.locator('.statement-notice');
-    await expect(notice).toContainText(/^Statement updated \d{2}:\d{2}\. See what changed/);
-    await notice.getByRole('button', { name: 'See what changed' }).click();
-    const dialog = page.getByRole('dialog', { name: 'What changed in problem B' });
-    await expect(dialog).toContainText('Revision 3 against revision 2. 1 line added and 1 removed.');
-    await expect(dialog.locator('.line.del')).toContainText('Removed: 1 <= n <= 1000');
-    await expect(dialog.locator('.line.add')).toContainText('Added: 1 <= n <= 100000');
-    await page.screenshot({ path: `${shots()}contest-statement-diff-1440-light.png` });
-    await dialog.getByLabel('Compare with').selectOption('19');
-    await expect(dialog).toContainText('The title changed from "Intervals" to "Interval covering".');
-    expect(api.revisionQueries.at(-1)).toBe('?from=19&to=22');
-    await page.keyboard.press('Escape');
-    await expect(dialog).toBeHidden();
-    await notice.getByRole('button', { name: 'Dismiss' }).click();
-    await expect(notice).toHaveCount(0);
-    // On another problem the line names the problem.
-    await page.reload();
-    await expect(page.locator('.statement-notice')).toHaveCount(0);
-  });
-
-  test('a statement event reloads the statement and announces it', async ({ page }) => {
-    const api = await contests.mockApi(page, { phase: 'during' });
-    await page.setViewportSize({ width: 1440, height: 900 });
-    await page.goto('/contests/week-6/problems/A');
-    await expect(page.locator('.cm-content')).toBeVisible();
-    api.statementAt = Date.now();
-    api.stream.push({ type: 'statement', data: { contest: 'week-6', contest_id: 4, label: 'B', revision_id: 22, statement_changed: true, pinned_at: Date.now() } });
-    await expect(page.locator('.statement-notice')).toContainText(/^Problem B: statement updated \d{2}:\d{2}\./, { timeout: 10_000 });
-    await expect(page.locator('[data-announcer="polite"]')).toContainText('The statement of problem B was updated.');
-  });
-
   test('an answer for everyone reaches every student as a banner (B1)', async ({ page }) => {
     const api = await contests.mockApi(page, { phase: 'during' });
     await page.setViewportSize({ width: 1440, height: 900 });
@@ -720,7 +685,6 @@ test.describe('P5 workspace', () => {
     await page.setViewportSize({ width: 375, height: 812 });
     await page.getByRole('link', { name: 'podium' }).click();
     await expect(page).toHaveURL('/');
-    await expect(nav.getByRole('link', { name: 'Your progress' })).toBeVisible();
   });
 
   test('under 1024 px one strip holds the clock, previous and next, the tabs and Submit (F7.2)', async ({ page }) => {

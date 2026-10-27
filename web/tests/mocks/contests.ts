@@ -67,8 +67,6 @@ export interface Options {
   queueHealth?: 'calm' | 'trouble';
   /** GET /api/contests lists past contests only, the newest one the student never entered (D324). */
   missedNewest?: boolean;
-  /** Cases whose proposal waits for this reviewer (GET .../integrity/waiting, D321). */
-  waitingForYou?: number;
   /** Problem B moved to a new revision after the start, changing its statement (C3). */
   statementUpdated?: boolean;
   /** Problem A has a newer validated revision to update the contest to (C4). */
@@ -689,9 +687,6 @@ export async function mockApi(page: Page, options: Options = {}) {
         state.posted.push(req.postDataJSON() as Json);
         return json(route, 201, { id: state.posted.length, body_md: 'x', created_at: now });
       }
-      if (path === '/api/admin/contests/4/integrity/waiting' && method === 'GET') {
-        return json(route, 200, { waiting_for_you: options.waitingForYou ?? 0 });
-      }
       if (path === '/api/admin/contests/4/clarifications' && method === 'GET') {
         return json(route, 200, {
           clarifications: [
@@ -860,7 +855,7 @@ export const SCREENS: Screen[] = [
     path: '/admin/contests/4',
     options: { who: 'admin', phase: 'during' },
     title: 'Contest settings · Week 6 contest · podium',
-    ready: (page) => expect(page.getByRole('heading', { name: 'Co-organisers' })).toBeVisible(),
+    ready: (page) => expect(page.getByRole('heading', { name: 'Roster' })).toBeVisible(),
   },
   {
     name: 'contest-console',

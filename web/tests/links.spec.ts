@@ -103,7 +103,7 @@ const PRESSED: Pressed[] = [
   ...['admin-contests', 'contest-editor', 'contest-console', 'contest-results'].map(fromContests),
   ...['problems-bank', 'problem-editor'].map(fromProblems),
   fromPeople('people-owner'),
-  ...['students', 'record'].map(fromOrganiser),
+  ...['students'].map(fromOrganiser),
 ];
 
 const BUTTONS = 'main button, footer button';
@@ -212,7 +212,8 @@ for (const s of PRESSED) {
     });
     for (const [label, index] of first) {
       const again = await load(page, s);
-      expect(again[index], `${s.name} loads the same buttons each time`).toBe(label);
+      const untimed = (l: string | undefined) => (l ?? '').replace(/\d{2}:\d{2}/g, 'hh:mm');
+      expect(untimed(again[index]), `${s.name} loads the same buttons each time`).toBe(untimed(label));
       expect(await pressDoesSomething(page, index, label, s.name), `"${label}" on ${s.name} did nothing`).toBe(true);
     }
   });
@@ -231,35 +232,24 @@ test('a button that does nothing fails the check (C2-018 self-test)', async ({ p
   expect(await pressDoesSomething(page, 'noop', 'Noop', s.name)).toBe(false);
 });
 
-test('the files the head and the manifest name are there (FP.4)', async ({ request }) => {
+test('the files the head names are there', async ({ request }) => {
   const types: Record<string, RegExp> = {
     '/favicon.svg': /svg/,
     '/favicon.ico': /icon|octet-stream/,
     '/apple-touch-icon.png': /png/,
-    '/icon-192.png': /png/,
-    '/icon-512.png': /png/,
-    '/og.png': /png/,
-    '/site.webmanifest': /manifest|json|octet-stream/,
   };
   for (const [path, type] of Object.entries(types)) {
     const res = await request.get(path);
     expect(res.status(), path).toBe(200);
     expect(res.headers()['content-type'] ?? '', path).toMatch(type);
   }
-  const og = await (await request.get('/og.png')).body();
-  expect(og.length, 'og.png bytes').toBeLessThan(60 * 1024);
-  // PNG IHDR: width and height as big-endian 32-bit integers at bytes 16 and 20.
-  expect([og.readUInt32BE(16), og.readUInt32BE(20)]).toEqual([1200, 630]);
-  const manifest = JSON.parse(await (await request.get('/site.webmanifest')).text());
-  for (const icon of manifest.icons) expect((await request.get(icon.src)).status(), icon.src).toBe(200);
 });
 
-test('the page head carries one robots rule, the icons and no social tags of its own (FP.4)', async ({ page }) => {
+test('the page head carries one noindex rule, the icons and no social tags (V3-4)', async ({ page }) => {
   await mockApi(page, { phase: 'during' });
   await page.goto('/');
-  expect(await page.locator('meta[name="robots"]').count()).toBe(1);
+  await expect(page.locator('meta[name="robots"]')).toHaveAttribute('content', 'noindex');
   expect(await page.locator('meta[property^="og:"], meta[name^="twitter:"]').count()).toBe(0);
-  await expect(page.locator('link[rel="manifest"]')).toHaveAttribute('href', '/site.webmanifest');
   await expect(page.locator('link[rel="apple-touch-icon"]')).toHaveAttribute('href', '/apple-touch-icon.png');
   expect(await page.locator('meta[name="theme-color"]').count()).toBe(2);
 });

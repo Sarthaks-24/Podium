@@ -131,6 +131,11 @@ export async function mockApi(page: Page, options: Options = {}) {
     run: options.unchecked ? null : ({ state: 'done' } as { state: string } | null),
     runGets: 0,
     runPosts: 0,
+    decisionPuts: [] as Json[],
+    decisions: [
+      { id: 2, contest_id: 4, user_id: 10, name: 'Meera Iyer', email: 'meera@college.edu', decision: 'warning',
+        reason: 'Same wrong output as Kabir on A; both said they used the same textbook.', decided_by: 'Priya Nair', decided_at: now - 9 * MIN },
+    ] as (Json & { user_id: number })[],
     caseBodies: [] as Json[],
     /** The student opened case 3 (POST .../opened). */
     opened: false,
@@ -378,7 +383,17 @@ export async function mockApi(page: Page, options: Options = {}) {
         return json(route, 200, { moments, server_now: Date.now() });
       }
       if (path === '/api/admin/contests/4/integrity/cases' && method === 'GET') {
-        return json(route, 200, { cases: state.kase ? [state.kase] : [{ ...baseCase(), id: 2, title: 'Same wrong output on A', state: 'cleared', users: [{ user_id: 10, name: 'Meera Iyer', shared_at: now - 9 * MIN, explanation: 'Same textbook.', explained_at: now - 8 * MIN }, { user_id: 11, name: 'Kabir Shah', shared_at: now - 9 * MIN, explanation: '', explained_at: null }] }], server_now: Date.now() });
+        return json(route, 200, { cases: state.decisions, server_now: Date.now() });
+      }
+      const decide = path.match(/^\/api\/admin\/contests\/4\/integrity\/cases\/(\d+)$/);
+      if (decide && method === 'PUT') {
+        const body = req.postDataJSON() as { decision: string; reason: string };
+        state.decisionPuts.push({ user_id: Number(decide[1]), ...body });
+        const user = USERS[decide[1]];
+        const c = { id: 50 + state.decisionPuts.length, contest_id: 4, user_id: Number(decide[1]), name: user.name, email: user.email,
+          decision: body.decision, reason: body.reason, decided_by: ADMIN.name, decided_at: Date.now() };
+        state.decisions = [c, ...state.decisions.filter((d) => d.user_id !== c.user_id)];
+        return json(route, 200, { case: c });
       }
       if (path === '/api/admin/contests/4/integrity/cases' && method === 'POST') {
         const body = req.postDataJSON() as Json;
@@ -488,7 +503,7 @@ export const SCREENS: Screen[] = [
     title: 'Integrity · Week 6 contest · podium',
     ready: async (page) => {
       await expect(page.getByRole('table', { name: 'Signals on B. Interval covering' })).toBeVisible();
-      await expect(page.getByRole('link', { name: 'Same wrong output on A' })).toBeVisible();
+      await expect(page.getByRole('region', { name: 'Decisions' }).getByRole('row', { name: /Meera Iyer/ })).toBeVisible();
     },
   },
   {
@@ -507,36 +522,5 @@ export const SCREENS: Screen[] = [
       await expect(page.locator('mark').first()).toBeVisible();
       await expect(page.getByText('Same browser and network as Ravi Kumar.')).toBeVisible();
     },
-  },
-  {
-    name: 'integrity-case-pair',
-    path: '/admin/contests/4/integrity/signals/31?case=3&evidence=0',
-    options: {},
-    title: 'Asha Rao and Ravi Kumar · Similar code · podium',
-    ready: async (page) => {
-      await expect(page.locator('mark').first()).toBeVisible();
-      await expect(page.getByText('Same browser and network as Ravi Kumar.')).toBeVisible();
-    },
-  },
-  {
-    name: 'integrity-case',
-    path: '/admin/integrity/cases/3',
-    options: {},
-    title: 'Similar code on B: Asha Rao and Ravi Kumar · Case · podium',
-    ready: (page) => expect(page.getByRole('heading', { name: 'Decision log' })).toBeVisible(),
-  },
-  {
-    name: 'home-asked',
-    path: '/',
-    options: { who: 'student' },
-    title: 'Your contests · podium',
-    ready: (page) => expect(page.getByText('An organiser asked you to explain a submission.')).toBeVisible(),
-  },
-  {
-    name: 'student-integrity',
-    path: '/integrity/cases/3',
-    options: { who: 'student' },
-    title: 'Question about your submission · Week 6 contest · podium',
-    ready: (page) => expect(page.locator('mark').first()).toBeVisible(),
   },
 ];

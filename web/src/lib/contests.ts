@@ -831,7 +831,7 @@ export interface QueueHealth {
 
 /** One item of the console's attention strip; only "part" and "bad" ask for action. */
 export interface AttentionItem {
-  key: 'time' | 'freeze' | 'judging' | 'queue' | 'errors' | 'judge' | 'questions' | 'update' | 'confirm';
+  key: 'time' | 'freeze' | 'judging' | 'queue' | 'errors' | 'judge' | 'questions' | 'update';
   text: string;
   tone: 'note' | 'part' | 'bad';
   href: string;
@@ -847,8 +847,7 @@ export const SLOW_WAIT_S = 60;
  * The console's attention strip (F6.1, C1 with the C10 fields): time to
  * the start or end, when the board freezes, judging on or paused, the
  * queue, judge errors, whether a judge is asking for work, unanswered
- * questions, a newer revision waiting for students, and cases whose proposal waits for this
- * reviewer's confirmation (`confirm`, from the case list). Each item
+ * questions and a newer revision waiting for students. Each item
  * links to where it is handled; an item turns "part" or "bad" only when it
  * needs action. Older servers without the C10 fields simply give fewer
  * items.
