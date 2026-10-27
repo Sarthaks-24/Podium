@@ -26,7 +26,6 @@ func TestForgetUser(t *testing.T) {
 		`INSERT INTO contest_roster (contest_id, email, display_name, roll_number) VALUES (1, 'ghost@college.edu', 'Ghost', '21CS099')`,
 		`INSERT INTO drafts (user_id, problem_id, contest_id, language, source, updated_at) VALUES (7, 1, 1, 'cpp17', 'x', 0), (8, 1, 1, 'cpp17', 'y', 0)`,
 		`INSERT INTO integrity_events (user_id, problem_id, contest_id, kind, created_at) VALUES (7, 1, 1, 'paste', 0), (7, 1, 1, 'blur', 0)`,
-		`INSERT INTO contact_messages (user_id, topic, message, created_at) VALUES (7, 'privacy', 'Please remove my data.', 0)`,
 		`INSERT INTO submissions (problem_id, contest_id, user_id, kind, language, source, source_sha, state, score, client_hash, created_at)
 			VALUES (1, 1, 7, 'submit', 'cpp17', 'x', 's', 'done', 100, 'hash-of-ip', 0)`,
 	} {
@@ -66,7 +65,6 @@ func TestForgetUser(t *testing.T) {
 		"SELECT count(*) FROM drafts WHERE user_id = 7":                                           0,
 		"SELECT count(*) FROM drafts WHERE user_id = 8":                                           1,
 		"SELECT count(*) FROM integrity_events WHERE user_id = 7":                                 0,
-		"SELECT count(*) FROM contact_messages WHERE user_id = 7":                                 0,
 		"SELECT count(*) FROM submissions WHERE user_id = 7 AND score = 100 AND client_hash = ''": 1,
 		`SELECT count(*) FROM users WHERE id = 7 AND name = 'Removed user 7' AND email = 'removed-user-7@removed.invalid'
 			AND avatar_url = '' AND google_sub IS NULL AND disabled = 1 AND role = 'student'`: 1,
@@ -87,10 +85,10 @@ func TestForgetUser(t *testing.T) {
 	if actor != "owner@college.edu" || subject != "" || strings.Contains(details, "asha") || !strings.Contains(details, `"user_id":7`) {
 		t.Errorf("audit row %q %q %s", actor, subject, details)
 	}
-	for _, tbl := range []string{"users", "contest_roster", "contact_messages", "drafts", "sessions"} {
+	for _, tbl := range []string{"users", "contest_roster", "drafts", "sessions"} {
 		var n int
 		d.QueryRow("SELECT count(*) FROM " + tbl + " WHERE CAST(" + map[string]string{"users": "email || name", "contest_roster": "email || display_name",
-			"contact_messages": "message", "drafts": "source", "sessions": "id"}[tbl] + " AS TEXT) LIKE '%asha%'").Scan(&n)
+			"drafts": "source", "sessions": "id"}[tbl] + " AS TEXT) LIKE '%asha%'").Scan(&n)
 		if n != 0 {
 			t.Errorf("%s still names her", tbl)
 		}

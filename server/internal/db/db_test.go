@@ -58,7 +58,7 @@ func TestOpenAndMigrate(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(applied) == 0 || applied[0] != "0001_identity" {
+	if len(applied) == 0 || applied[0] != "0001_v3" {
 		t.Fatalf("applied = %v", applied)
 	}
 	again, err := Migrate(ctx, d)
@@ -81,73 +81,40 @@ func TestOpenAndMigrate(t *testing.T) {
 	}
 }
 
-// TestWizardMigrationWidensJobKinds upgrades a database holding jobs and
-// their results from 0006 to 0007 (D52): the jobs.kind CHECK is widened in
-// place, existing rows and their results survive, every pooled connection
-// sees the new constraint, and the file passes integrity and foreign key
-// checks.
-func TestWizardMigrationWidensJobKinds(t *testing.T) {
+// The v3 schema holds exactly these tables (S1-07). A new table is a new
+// numbered migration and a new row here.
+func TestSchemaTables(t *testing.T) {
 	ctx := context.Background()
-	d, err := Open(ctx, filepath.Join(t.TempDir(), "upgrade.db"))
+	d, err := Open(ctx, filepath.Join(t.TempDir(), "podium.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer d.Close()
-	if _, err := d.ExecContext(ctx, `CREATE TABLE IF NOT EXISTS schema_migrations (version TEXT PRIMARY KEY, applied_at INTEGER NOT NULL) STRICT`); err != nil {
+	if _, err := Migrate(ctx, d); err != nil {
 		t.Fatal(err)
 	}
-	names, _ := migrationNames()
-	run := func(before bool) {
-		t.Helper()
-		for _, name := range names {
-			if (path.Base(name) < "0007") != before {
-				continue
-			}
-			body, _ := migrationFS.ReadFile(name)
-			if _, err := apply(ctx, d, strings.TrimSuffix(path.Base(name), ".sql"), string(body)); err != nil {
-				t.Fatalf("%s: %v", name, err)
-			}
-		}
-	}
-	insertJob := func(kind string) error {
-		_, err := d.ExecContext(ctx, "INSERT INTO jobs (kind, priority, payload, created_at) VALUES (?, 1, '{}', 1)", kind)
-		return err
-	}
-	run(true)
-	if err := insertJob("generate"); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := d.ExecContext(ctx, "INSERT INTO job_results (job_id, seq, kind, role, verdict) VALUES (1, 1, 'test', 'program', 'AC')"); err != nil {
-		t.Fatal(err)
-	}
-	if err := insertJob("generate_inputs"); err == nil {
-		t.Fatal("0006 accepted generate_inputs")
-	}
-	run(false)
-	// Connections opened before the upgrade must see the new constraint.
-	for i := 0; i < 8; i++ {
-		if err := insertJob("generate_inputs"); err != nil {
-			t.Fatalf("insert %d after 0007: %v", i, err)
-		}
-	}
-	if err := insertJob("bogus"); err == nil {
-		t.Error("the widened CHECK accepts any kind")
-	}
-	var results int
-	d.QueryRowContext(ctx, "SELECT count(*) FROM job_results WHERE job_id = 1").Scan(&results)
-	if results != 1 {
-		t.Errorf("job_results lost rows: %d", results)
-	}
-	var check string
-	if err := d.QueryRowContext(ctx, "PRAGMA integrity_check").Scan(&check); err != nil || check != "ok" {
-		t.Errorf("integrity_check: %q %v", check, err)
-	}
-	rows, err := d.QueryContext(ctx, "PRAGMA foreign_key_check")
+	rows, err := d.QueryContext(ctx, "SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if rows.Next() {
-		t.Error("foreign_key_check found violations")
+	defer rows.Close()
+	var got []string
+	for rows.Next() {
+		var n string
+		if err := rows.Scan(&n); err != nil {
+			t.Fatal(err)
+		}
+		got = append(got, n)
 	}
-	rows.Close()
+	if err := rows.Err(); err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"allowed_domains", "announcements", "blobs", "clarifications", "contest_audit", "contest_extensions",
+		"contest_problems", "contest_roster", "contest_starts", "contests", "drafts", "generations", "input_generations",
+		"integrity_cases", "integrity_events", "integrity_runs", "integrity_signals", "job_results", "jobs",
+		"problem_revisions", "problems", "revision_tests", "schema_migrations", "sessions", "settings", "site_audit",
+		"submissions", "subtasks", "testcases", "users", "validations"}
+	if strings.Join(got, " ") != strings.Join(want, " ") {
+		t.Errorf("tables:\n got %v\nwant %v", got, want)
+	}
 }

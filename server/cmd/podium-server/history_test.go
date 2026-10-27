@@ -64,14 +64,10 @@ func TestMigrateACopy(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.MigrateTo(ctx, d, "0009_toolchains"); err != nil {
-		t.Fatal(err)
-	}
 	d.Close()
 	t.Setenv("PODIUM_TESTS_DIR", t.TempDir())
 	var out bytes.Buffer
-	if code := migrateCmd([]string{"-db", path}, &out); code != 0 || !strings.Contains(out.String(), "0011_site_audit") ||
-		!strings.Contains(out.String(), "revisions: ok") || !strings.Contains(out.String(), "result: ok") {
+	if code := migrateCmd([]string{"-db", path}, &out); code != 0 || !strings.Contains(out.String(), "0001_v3") || !strings.Contains(out.String(), "result: ok") {
 		t.Fatalf("exit %d\n%s", code, out.String())
 	}
 	t.Setenv("PODIUM_DB_PATH", path)

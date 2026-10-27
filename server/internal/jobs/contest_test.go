@@ -46,11 +46,11 @@ func claimKinds(t *testing.T, s *Service, kinds ...string) *judgeapi.Claim {
 	return c
 }
 
-func contest(t *testing.T, s *Service, c *clock, paused, graded bool) int64 {
+func contest(t *testing.T, s *Service, c *clock, paused bool) int64 {
 	t.Helper()
 	now := c.t.UnixMilli()
-	res, err := s.DB.Exec(`INSERT INTO contests (slug, title, starts_at, ends_at, graded, published, paused, created_at, updated_at)
-		VALUES (?, 'C', ?, ?, ?, 1, ?, ?, ?)`, "c"+time.Now().Format("150405.000000000"), now-60_000, now+3_600_000, graded, paused, now, now)
+	res, err := s.DB.Exec(`INSERT INTO contests (slug, title, starts_at, ends_at, published, paused, created_at, updated_at)
+		VALUES (?, 'C', ?, ?, 1, ?, ?, ?)`, "c"+time.Now().Format("150405.000000000"), now-60_000, now+3_600_000, paused, now, now)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -60,7 +60,7 @@ func contest(t *testing.T, s *Service, c *clock, paused, graded bool) int64 {
 
 func TestPausedContestJobsWaitAtClaim(t *testing.T) {
 	s, c := newMixed(t)
-	paused := contest(t, s, c, true, false)
+	paused := contest(t, s, c, true)
 	held := add(t, s, judgeapi.KindSubmit, 20, paused)
 	other := add(t, s, judgeapi.KindSubmit, 25, 0)
 	if got := claimKinds(t, s, judgeapi.KindSubmit); got == nil || got.JobID != other {
@@ -75,19 +75,19 @@ func TestPausedContestJobsWaitAtClaim(t *testing.T) {
 	}
 }
 
-func TestOneSetterJobAtATimeDuringAGradedContest(t *testing.T) {
+func TestOneSetterJobAtATimeDuringALiveContest(t *testing.T) {
 	s, _ := newMixed(t)
 	add(t, s, judgeapi.KindValidate, 90, 0)
 	add(t, s, judgeapi.KindGenerate, 85, 0)
 	if claimKinds(t, s, judgeapi.KindValidate, judgeapi.KindGenerate) == nil {
 		t.Fatal("no first setter job")
 	}
-	// No live graded contest: a second lane may take the other one.
+	// No live contest: a second lane may take the other one.
 	if claimKinds(t, s, judgeapi.KindValidate, judgeapi.KindGenerate) == nil {
 		t.Fatal("second setter job refused without a contest")
 	}
 	s2, c2 := newMixed(t)
-	contest(t, s2, c2, false, true)
+	contest(t, s2, c2, false)
 	add(t, s2, judgeapi.KindValidate, 90, 0)
 	add(t, s2, judgeapi.KindGenerate, 85, 0)
 	sub := add(t, s2, judgeapi.KindSubmit, 20, 0)
@@ -95,7 +95,7 @@ func TestOneSetterJobAtATimeDuringAGradedContest(t *testing.T) {
 		t.Fatal("no first setter job during the contest")
 	}
 	if got := claimKinds(t, s2, judgeapi.KindValidate, judgeapi.KindGenerate); got != nil {
-		t.Fatalf("second setter job %d leased during a graded contest", got.JobID)
+		t.Fatalf("second setter job %d leased during a live contest", got.JobID)
 	}
 	if got := claimKinds(t, s2, judgeapi.KindValidate, judgeapi.KindGenerate, judgeapi.KindSubmit); got == nil || got.JobID != sub {
 		t.Fatalf("submissions must still flow: %+v", got)
@@ -105,7 +105,7 @@ func TestOneSetterJobAtATimeDuringAGradedContest(t *testing.T) {
 func TestInputGenerationCountsAsASetterJob(t *testing.T) {
 	s, c := newMixed(t)
 	s.Kinds[judgeapi.KindGenerateInputs] = &uploadKind{}
-	contest(t, s, c, false, true)
+	contest(t, s, c, false)
 	add(t, s, judgeapi.KindGenerateInputs, 85, 0)
 	add(t, s, judgeapi.KindValidate, 90, 0)
 	all := []string{judgeapi.KindGenerateInputs, judgeapi.KindValidate, judgeapi.KindGenerate}
@@ -113,7 +113,7 @@ func TestInputGenerationCountsAsASetterJob(t *testing.T) {
 		t.Fatalf("first setter job %+v", got)
 	}
 	if got := claimKinds(t, s, all...); got != nil {
-		t.Fatalf("validation leased beside an input generation during a graded contest: %+v", got)
+		t.Fatalf("validation leased beside an input generation during a live contest: %+v", got)
 	}
 }
 

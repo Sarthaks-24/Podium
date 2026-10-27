@@ -395,13 +395,10 @@ func CheckRevisions(ctx context.Context, db *sql.DB) ([]string, error) {
 			}
 		}
 	}
-	// The retention job releases the pins of a contest past retention once
-	// it has kept its standings in contest_results; only other unpinned
-	// labels are a fault (otherwise every backup after the first expiry
-	// would fail its check).
+	// Every contest label is pinned to a revision (v3 has no retention job
+	// that releases pins).
 	var pins int
-	if err := db.QueryRowContext(ctx, `SELECT count(*) FROM contest_problems cp WHERE cp.revision_id IS NULL
-		AND NOT EXISTS (SELECT 1 FROM contest_results r WHERE r.contest_id = cp.contest_id)`).Scan(&pins); err != nil {
+	if err := db.QueryRowContext(ctx, `SELECT count(*) FROM contest_problems cp WHERE cp.revision_id IS NULL`).Scan(&pins); err != nil {
 		return nil, err
 	}
 	if pins > 0 {
