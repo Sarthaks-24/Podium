@@ -1,9 +1,9 @@
 package submissions
 
-// Open tests and the revealed test (D115): Run executes the samples, then
-// the open tests, and reveals the first failure; a submission that never
-// counts reveals its first failing hidden test; a submission that counts
-// never does, in either feedback mode.
+// The revealed test (D115): Run executes the samples and reveals the first
+// failure; a submission that never counts reveals its first failing hidden
+// test; a submission that counts never does, in either feedback mode.
+// v3 has no open tests (V3-5).
 
 import (
 	"context"
@@ -17,14 +17,13 @@ import (
 	"github.com/Sarthaks-24/podium/internal/problems"
 )
 
-// withOpenTest makes test 3 of a-plus-b an open test (out of subtask 1).
-func (r *rig) withOpenTest(t *testing.T) *problems.Problem {
+// withThirdSample makes test 3 of a-plus-b a sample (out of subtask 1).
+func (r *rig) withThirdSample(t *testing.T) *problems.Problem {
 	t.Helper()
 	p := r.importPack(t, nil)
 	e := editOf(p)
 	e.Subtasks[0].Tests = "4"
-	open := []int{3}
-	e.Open = &open
+	e.Samples = append(e.Samples, 3)
 	p, err := r.bank.Update(context.Background(), p.ID, e)
 	if err != nil {
 		t.Fatal(err)
@@ -47,13 +46,13 @@ func (r *rig) report(t *testing.T, kind string, results func(c *judgeapi.Claim) 
 		Compile: []judgeapi.CompileResult{{Role: judgeapi.RoleProgram, Verdict: "OK"}}, Results: results(c)})
 }
 
-func TestRunChecksOpenTestsAndRevealsTheFirstFailure(t *testing.T) {
+func TestRunRevealsTheFirstFailingSample(t *testing.T) {
 	r := newRig(t)
 	ctx := context.Background()
-	p := r.withOpenTest(t)
+	p := r.withThirdSample(t)
 	ws, err := r.svc.Workspace(ctx, p.ID, 1, Scope{})
-	if err != nil || ws.OpenTestCount != 1 || len(ws.Samples) != 2 {
-		t.Fatalf("workspace open count %d samples %d %v", ws.OpenTestCount, len(ws.Samples), err)
+	if err != nil || len(ws.Samples) != 3 {
+		t.Fatalf("workspace samples %d %v", len(ws.Samples), err)
 	}
 	run, err := r.svc.Run(ctx, RunRequest{ProblemID: p.ID, UserID: 1, Language: "python3", Source: "print(3)"})
 	if err != nil {
@@ -70,11 +69,11 @@ func TestRunChecksOpenTestsAndRevealsTheFirstFailure(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if len(pl.Inputs) != 3 || pl.Inputs[2].Idx != 3 || !pl.Inputs[2].Open || pl.Inputs[0].Open || pl.Inputs[2].ExpectedSHA == "" {
+	if len(pl.Inputs) != 3 || pl.Inputs[2].Idx != 3 || pl.Inputs[2].Open || pl.Inputs[2].ExpectedSHA == "" {
 		t.Fatalf("run payload %+v", pl.Inputs)
 	}
 	got, _ := r.svc.GetRunWith(ctx, run.ID, StudentView)
-	if len(got.Results) != 3 || got.Results[2].Kind != RunOpen || got.Results[2].Label != "Open test 1" || got.Results[0].Kind != RunSample {
+	if len(got.Results) != 3 || got.Results[2].Kind != RunSample || got.Results[2].Label != "Sample 3" || got.Results[0].Kind != RunSample {
 		t.Fatalf("results %+v", got.Results)
 	}
 	if got.TimeStepMS != 10 {
@@ -86,24 +85,23 @@ func TestRunChecksOpenTestsAndRevealsTheFirstFailure(t *testing.T) {
 	in3, _ := r.bank.Blobs.Read(p.Tests[2].InputSHA, maxSampleTxt+1)
 	out3, _ := r.bank.Blobs.Read(p.Tests[2].OutputSHA, maxSampleTxt+1)
 	rv := got.Revealed
-	if rv == nil || rv.Idx != 3 || rv.Kind != RunOpen || rv.Input != clipText(in3, maxSampleTxt) || rv.Expected != clipText(out3, maxSampleTxt) ||
+	if rv == nil || rv.Idx != 3 || rv.Kind != RunSample || rv.Input != clipText(in3, maxSampleTxt) || rv.Expected != clipText(out3, maxSampleTxt) ||
 		rv.Output != "41\n" || got.Results[2].Output != "41\n" || got.Results[2].Expected == nil {
 		t.Fatalf("revealed %+v", rv)
 	}
 
-	// A failing sample: the open tests are skipped and the sample revealed.
+	// The first failing sample is the one revealed.
 	*r.clock = r.clock.Add(3e9)
 	run, _ = r.svc.Run(ctx, RunRequest{ProblemID: p.ID, UserID: 1, Language: "python3", Source: "print(4)"})
 	r.report(t, judgeapi.KindRun, func(*judgeapi.Claim) []judgeapi.TestResult {
 		return []judgeapi.TestResult{
 			{Idx: 1, Role: judgeapi.RoleProgram, Verdict: "WA", Output: "4\n"},
 			{Idx: 2, Role: judgeapi.RoleProgram, Verdict: "AC", Output: "7\n"},
-			{Idx: 3, Role: judgeapi.RoleProgram, Verdict: "SK"},
+			{Idx: 3, Role: judgeapi.RoleProgram, Verdict: "WA", Output: "4\n"},
 		}
 	})
 	got, _ = r.svc.GetRunWith(ctx, run.ID, StudentView)
-	if got.Revealed == nil || got.Revealed.Idx != 1 || got.Revealed.Kind != RunSample || got.Results[2].Verdict != "SK" ||
-		got.Results[2].Output != "" || got.Results[2].Expected != nil {
+	if got.Revealed == nil || got.Revealed.Idx != 1 || got.Revealed.Kind != RunSample || got.Results[2].Verdict != "WA" {
 		t.Fatalf("after a failing sample: revealed %+v results %+v", got.Revealed, got.Results)
 	}
 
@@ -120,7 +118,7 @@ func TestRunChecksOpenTestsAndRevealsTheFirstFailure(t *testing.T) {
 func TestPracticeRevealsAndContestNever(t *testing.T) {
 	r := newRig(t)
 	ctx := context.Background()
-	p := r.withOpenTest(t)
+	p := r.withThirdSample(t)
 	failing := func(withOutput bool) func(c *judgeapi.Claim) []judgeapi.TestResult {
 		return func(c *judgeapi.Claim) []judgeapi.TestResult {
 			var pl judgeapi.SubmitPayload

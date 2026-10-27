@@ -11,6 +11,7 @@ Dated entries per release. Unreleased work is listed at the top.
 - Backups are Litestream plus the nightly copy on the VM (V3-10). Removed the age-encrypted B2 copy, the rsync copy and the weekly automatic restore proof; `podium-check restore-proof` stays, run by hand once a term.
 - Removed "Can a model solve this?" from the problem editor and `POST /api/admin/problems/{id}/solve` (V3-4). The AI wizard keeps drafting problems with all three providers.
 - Themes: light, dark, high contrast light and high contrast dark, plus System (V3-8). A saved choice of a removed theme falls back to System.
+- Two test kinds: examples and hidden tests (V3-5). Open tests are gone; a format 2 pack's open tests import as samples, exports write format 1, the shipped average-speed pack lists test 7 as a sample. The judge protocol is unchanged. The run headline reads "All 3 examples passed" or "2 of 3 examples failed" (S1-09).
 
 Nothing below is tagged or deployed. The v2 phases were planned as the releases v1.0.0 (P0) to v1.5.0 (P5) and v2.0.0 (P6); they reached `main` together, so they are proposed to ship as one release once the P0 drills on the VM pass. The owner decides the version and the upgrade path (D236): either one release for P0 to P6, installed fresh, named `v1.5.0` or `v2.0.0`, with `UPGRADES_FROM` set to that version, or `v1.0.0` to `v1.2.0` tagged as markers and the rest as one release with `UPGRADES_FROM` set to `v1.2.0`. Until then the `Makefile` keeps the placeholder `v1.0.0`. The phase labels below say where each change came from.
 

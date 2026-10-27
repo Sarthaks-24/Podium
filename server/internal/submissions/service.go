@@ -174,16 +174,13 @@ type Draft struct {
 
 // Workspace is what the student's editor page needs.
 type Workspace struct {
-	ProblemID     int64      `json:"problem_id"`
-	Title         string     `json:"title"`
-	StatementMD   string     `json:"statement_md"`
-	TimeLimitMS   int        `json:"time_limit_ms"`
-	MemoryLimitMB int        `json:"memory_limit_mb"`
-	Languages     []Language `json:"languages"`
-	Samples       []Sample   `json:"samples"`
-	// OpenTestCount is how many open tests a Run checks after the
-	// samples (D115); their inputs are never listed.
-	OpenTestCount int              `json:"open_test_count"`
+	ProblemID     int64            `json:"problem_id"`
+	Title         string           `json:"title"`
+	StatementMD   string           `json:"statement_md"`
+	TimeLimitMS   int              `json:"time_limit_ms"`
+	MemoryLimitMB int              `json:"memory_limit_mb"`
+	Languages     []Language       `json:"languages"`
+	Samples       []Sample         `json:"samples"`
 	Draft         *Draft           `json:"draft"`
 	Submissions   []SubmissionView `json:"submissions"`
 	ServerNow     int64            `json:"server_now"`
@@ -224,7 +221,7 @@ func (s *Service) Workspace(ctx context.Context, problemID, userID int64, sc Sco
 	}
 	w := &Workspace{ProblemID: p.ID, Title: p.Title, StatementMD: p.Statement, TimeLimitMS: p.TimeLimitMS,
 		MemoryLimitMB: p.MemoryLimitMB, Languages: []Language{}, Samples: []Sample{}, Submissions: []SubmissionView{},
-		ServerNow: s.now().UnixMilli(), OpenTestCount: len(p.Open)}
+		ServerNow: s.now().UnixMilli()}
 	for _, l := range languages {
 		if sc.allows(l.ID) {
 			w.Languages = append(w.Languages, l)
@@ -248,12 +245,6 @@ func (s *Service) Workspace(ctx context.Context, problemID, userID int64, sc Sco
 			}
 			if tests, err = s.Problems.RevisionTests(ctx, rev.ID); err != nil {
 				return nil, err
-			}
-			w.OpenTestCount = 0
-			for _, t := range tests {
-				if t.Kind == problems.KindOpen {
-					w.OpenTestCount++
-				}
 			}
 		}
 	}
@@ -632,16 +623,9 @@ func (s *Service) Run(ctx context.Context, r RunRequest) (*RunView, error) {
 		}
 		pl.Inputs = []judgeapi.RunInput{{Idx: 0, InputSHA: sha}}
 	} else {
-		// The samples, then the open tests in order (D115): the judge runs
-		// an open test only while everything before it passed.
 		for _, t := range p.Tests {
 			if p.IsSample(t.Idx) {
 				pl.Inputs = append(pl.Inputs, judgeapi.RunInput{Idx: t.Idx, InputSHA: t.InputSHA, ExpectedSHA: t.OutputSHA})
-			}
-		}
-		for _, t := range p.Tests {
-			if p.IsOpen(t.Idx) {
-				pl.Inputs = append(pl.Inputs, judgeapi.RunInput{Idx: t.Idx, InputSHA: t.InputSHA, ExpectedSHA: t.OutputSHA, Open: true})
 			}
 		}
 		if len(pl.Inputs) == 0 {

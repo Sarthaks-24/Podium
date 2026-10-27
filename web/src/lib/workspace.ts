@@ -45,8 +45,6 @@ export interface Workspace {
   /** Own submissions, newest first, at most 20. */
   submissions: Submission[];
   server_now: number;
-  /** How many open tests a Run checks after the samples (D115); their inputs are never listed. */
-  open_test_count?: number;
   /** Contest workspaces (M4): why Run and Submit are off, or null. */
   refusal?: string | null;
   can_submit?: boolean;
@@ -117,16 +115,16 @@ export interface SubmissionRevealed {
   truncated: boolean;
 }
 
-/** The first failing sample or open test of a Run, in full (D115). */
+/** The first failing sample of a Run, in full (D115). */
 export interface RunRevealed extends SubmissionRevealed {
-  kind: 'sample' | 'open';
+  kind: 'sample';
   label: string;
 }
 
-/** One input of a run: a sample, an open test (D115), or the custom input. */
+/** One input of a run: a sample or the custom input. */
 export interface RunResult {
   /** Missing from servers before v1.2.0, which ran samples and custom input only. */
-  kind?: 'sample' | 'open' | 'custom';
+  kind?: 'sample' | 'custom';
   label: string;
   /** "OK" when a custom input ran without error, else the verdict. */
   verdict: string;
@@ -146,7 +144,7 @@ export interface Run {
   compile_output: string;
   queue_position?: number | null;
   results: RunResult[];
-  /** The first failing sample or open test; absent for a custom input and when all passed (D115). */
+  /** The first failing sample; absent for a custom input and when all passed (D115). */
   revealed?: RunRevealed | null;
   /** The step the times were rounded to (D322). */
   time_step_ms?: number;
@@ -342,15 +340,10 @@ function passedCount(list: readonly RunResult[]): number {
   return list.filter((r) => r.verdict === 'AC' || r.verdict === 'OK').length;
 }
 
-function nounFor(n: number, one: string, many: string): string {
-  return n === 1 ? one : many;
-}
-
 /**
  * The headline and tone of a run (RunResults shows it; the announcer
- * speaks it): "Passed 2 of 2 samples", and with open tests (D115) "Passed
- * 2 of 2 samples and 0 of 3 open tests". An open test that was not run
- * because an earlier one failed counts as not passed.
+ * speaks it), in the words of design/student.md: "All 3 examples passed"
+ * or "2 of 3 examples failed".
  */
 export function runHeadline(run: Run): { text: string; tone: Tone } {
   if (isWaiting(run)) return { text: run.state === 'running' ? 'Running' : waitingText(run), tone: 'wait' };
@@ -358,18 +351,10 @@ export function runHeadline(run: Run): { text: string; tone: Tone } {
   if (run.results.every((r) => r.verdict === '') && run.compile_output) return { text: 'Compile error', tone: 'bad' };
   const tests = run.results.filter((r) => !isCustomResult(r));
   if (tests.length > 0) {
-    const samples = tests.filter((r) => r.kind !== 'open');
-    const open = tests.filter((r) => r.kind === 'open');
-    const ps = passedCount(samples);
-    const po = passedCount(open);
-    let text = `Passed ${ps} of ${samples.length} ${nounFor(samples.length, 'sample', 'samples')}`;
-    if (open.length > 0) {
-      text =
-        samples.length > 0
-          ? `${text} and ${po} of ${open.length} ${nounFor(open.length, 'open test', 'open tests')}`
-          : `Passed ${po} of ${open.length} ${nounFor(open.length, 'open test', 'open tests')}`;
-    }
-    return { text, tone: ps + po === tests.length ? 'ok' : 'bad' };
+    const failed = tests.length - passedCount(tests);
+    if (tests.length === 1) return failed ? { text: 'The example failed', tone: 'bad' } : { text: 'The example passed', tone: 'ok' };
+    if (failed === 0) return { text: `All ${tests.length} examples passed`, tone: 'ok' };
+    return { text: `${failed} of ${tests.length} examples failed`, tone: 'bad' };
   }
   const r = run.results[0];
   return r ? { text: runVerdictLabel(r.verdict), tone: isBad(r.verdict) ? 'bad' : 'ok' } : { text: 'Finished', tone: 'ok' };

@@ -81,10 +81,8 @@ type planJSON struct {
 }
 
 type testJSON struct {
-	Idx    int  `json:"idx"`
-	Sample bool `json:"sample"`
-	// Open marks an open test (D115).
-	Open          bool   `json:"open"`
+	Idx           int    `json:"idx"`
+	Sample        bool   `json:"sample"`
 	SubtaskIdx    *int   `json:"subtask_idx"`
 	InputSize     int64  `json:"input_size"`
 	OutputSize    int64  `json:"output_size"`
@@ -109,7 +107,6 @@ type problemJSON struct {
 	Generator     *sourceJSON   `json:"generator"`
 	Plan          []planJSON    `json:"plan"`
 	Samples       []int         `json:"samples"`
-	Open          []int         `json:"open"`
 	Subtasks      []subtaskJSON `json:"subtasks"`
 	Tests         []testJSON    `json:"tests"`
 	ContentHash   string        `json:"content_hash"`
@@ -124,23 +121,21 @@ type problemJSON struct {
 }
 
 type problemEditJSON struct {
-	Title         string      `json:"title"`
-	Slug          string      `json:"slug"`
-	StatementMD   string      `json:"statement_md"`
-	TimeLimitMS   int         `json:"time_limit_ms"`
-	MemoryLimitMB int         `json:"memory_limit_mb"`
-	Checker       string      `json:"checker"`
-	Epsilon       float64     `json:"epsilon"`
-	CheckerSource string      `json:"checker_source"`
-	Reference     sourceJSON  `json:"reference"`
-	Brute         *sourceJSON `json:"brute"`
-	Validator     *sourceJSON `json:"validator"`
-	Tags          []string    `json:"tags"`
-	Difficulty    string      `json:"difficulty"`
-	Samples       []int       `json:"samples"`
-	// Open, left out, keeps the open tests (D115).
-	Open     *[]int        `json:"open"`
-	Subtasks []subtaskJSON `json:"subtasks"`
+	Title         string        `json:"title"`
+	Slug          string        `json:"slug"`
+	StatementMD   string        `json:"statement_md"`
+	TimeLimitMS   int           `json:"time_limit_ms"`
+	MemoryLimitMB int           `json:"memory_limit_mb"`
+	Checker       string        `json:"checker"`
+	Epsilon       float64       `json:"epsilon"`
+	CheckerSource string        `json:"checker_source"`
+	Reference     sourceJSON    `json:"reference"`
+	Brute         *sourceJSON   `json:"brute"`
+	Validator     *sourceJSON   `json:"validator"`
+	Tags          []string      `json:"tags"`
+	Difficulty    string        `json:"difficulty"`
+	Samples       []int         `json:"samples"`
+	Subtasks      []subtaskJSON `json:"subtasks"`
 	// Reason says why the problem changed; required while a live contest
 	// pins it (B2.2).
 	Reason string `json:"reason"`
@@ -235,14 +230,11 @@ func (d Deps) problemJSON(ctx context.Context, p *problems.Problem) (problemJSON
 		Reference: sourceJSON{p.Reference.Language, p.Reference.Source},
 		Brute:     optSource(p.Brute), Validator: optSource(p.Validator), Generator: optSource(p.Generator),
 		Plan:    []planJSON{},
-		Samples: p.Samples, Open: p.Open, Subtasks: []subtaskJSON{}, Tests: []testJSON{},
+		Samples: p.Samples, Subtasks: []subtaskJSON{}, Tests: []testJSON{},
 		ContentHash: p.ContentHash, Problems: nonNil(p.Problems()), Warnings: nonNil(p.Warnings()),
 	}
 	if out.Samples == nil {
 		out.Samples = []int{}
-	}
-	if out.Open == nil {
-		out.Open = []int{}
 	}
 	if p.ValidatedHash != "" {
 		out.ValidatedHash = &p.ValidatedHash
@@ -254,7 +246,7 @@ func (d Deps) problemJSON(ctx context.Context, p *problems.Problem) (problemJSON
 		out.Plan = append(out.Plan, planJSON{t.Test, t.Subtask, t.Seed, nonNil(t.Args)})
 	}
 	for _, t := range p.Tests {
-		tj := testJSON{Idx: t.Idx, Sample: p.IsSample(t.Idx), Open: p.IsOpen(t.Idx), InputSize: t.InputSize, OutputSize: t.OutputSize,
+		tj := testJSON{Idx: t.Idx, Sample: p.IsSample(t.Idx), InputSize: t.InputSize, OutputSize: t.OutputSize,
 			InputPreview: d.preview(t.InputSHA), OutputMissing: t.OutputSHA == ""}
 		if t.OutputSHA != "" {
 			tj.OutputPreview = d.preview(t.OutputSHA)
@@ -440,7 +432,7 @@ func (d Deps) updateProblem(w http.ResponseWriter, r *http.Request) {
 		Checker: req.Checker, Epsilon: req.Epsilon, CheckerSource: req.CheckerSource,
 		Reference: problems.Source{Language: req.Reference.Language, Source: req.Reference.Source},
 		Brute:     fromSourceJSON(req.Brute), Validator: fromSourceJSON(req.Validator),
-		Tags: req.Tags, Difficulty: req.Difficulty, Samples: req.Samples, Open: req.Open,
+		Tags: req.Tags, Difficulty: req.Difficulty, Samples: req.Samples,
 		By: userFrom(r.Context()).ID, Reason: req.Reason}
 	for _, st := range req.Subtasks {
 		e.Subtasks = append(e.Subtasks, problems.Subtask{Points: st.Points, Title: st.Title, Tests: st.Tests, GeneratorArgs: st.GeneratorArgs})

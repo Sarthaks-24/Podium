@@ -78,15 +78,6 @@ test('three columns at 1024 px, tabs below', async ({ page }) => {
   await expect(page.getByText('You are trying this problem as a student.')).toBeVisible();
 });
 
-test('the empty result names the open tests a Run checks (D115, C2-016)', async ({ page }) => {
-  await mockApi(page, { openTests: 2 });
-  await page.setViewportSize({ width: 1440, height: 900 });
-  await openWorkspace(page);
-  await expect(page.locator('p.empty[data-result-focus]')).toHaveText(
-    'Run on samples checks your code on the samples and 2 open tests. It never counts. Submit grades it on the hidden tests. Results appear here.',
-  );
-});
-
 test('submitting fills the subtask strip as results stream in', async ({ page }) => {
   const api = await mockApi(page, { submissions: [submission(7, 'partial')] });
   await page.setViewportSize({ width: 1440, height: 900 });
@@ -163,14 +154,14 @@ test('running on samples shows the first difference', async ({ page }) => {
     },
   });
   const panel = page.getByRole('region', { name: 'Result' });
-  await expect(panel.getByText('Passed 1 of 2 samples')).toBeVisible({ timeout: 10_000 });
+  await expect(panel.getByText('1 of 2 examples failed')).toBeVisible({ timeout: 10_000 });
   await expect(panel.getByText('First difference on line 1')).toBeVisible();
   await expect(panel.locator('.diff dd').nth(0)).toHaveText('2');
   await expect(panel.locator('.diff dd').nth(1)).toHaveText('12·');
   await expect(panel.getByText('Expected 2, found 12')).toBeVisible();
   // A graded contest's 100 ms rounding: a 0 is under 50 ms, never "0 ms" (D322).
   await expect(panel.getByText('under 50 ms')).toHaveCount(2);
-  await expect(page.locator('[data-announcer="polite"]')).toHaveText('Passed 1 of 2 samples.');
+  await expect(page.locator('[data-announcer="polite"]')).toHaveText('1 of 2 examples failed.');
   await page.screenshot({ path: `${shots()}workspace-run-1440-light.png` });
 
   // D114: "Run on this input" on the failing sample fills the custom box, opens it and runs it.
@@ -576,7 +567,7 @@ test.describe('in a contest', () => {
     await page.goto('/contests/week-6');
     const before = await page.locator('section', { has: page.getByRole('heading', { name: 'Rules' }) }).getByRole('listitem').allTextContents();
     expect(before.slice(1, 4)).toEqual([
-      'Run on samples tries your code on the examples in the statement and on any open tests the problem has. It never counts.',
+      'Run on samples tries your code on the examples in the statement. It never counts.',
       'Submit grades your code on hidden tests, in parts called subtasks.',
       'A later, worse submission never lowers your score.',
     ]);
@@ -1022,7 +1013,7 @@ test.describe('P5 workspace', () => {
     await expect(page.getByText(/This test is shown because/)).toHaveCount(0);
   });
 
-  test('a run shows its first failing open test, and an input over 4 KB cannot be rerun (F7.13, D115)', async ({ page }) => {
+  test('a run shows its first failing sample, and an input over 4 KB cannot be rerun (F7.13, D115)', async ({ page }) => {
     const api = await mockApi(page);
     await page.setViewportSize({ width: 1440, height: 900 });
     await openWorkspace(page);
@@ -1040,19 +1031,17 @@ test.describe('P5 workspace', () => {
         results: [
           row('sample', 'Sample 1', 'AC', '3\n', '3\n'),
           row('sample', 'Sample 2', 'AC', '2\n', '2\n'),
-          row('open', 'Open test 1', 'WA', '7\n', '8\n'),
-          row('open', 'Open test 2', 'SK'),
+          row('sample', 'Sample 3', 'WA', '7\n', '8\n'),
         ],
-        revealed: { idx: 3, kind: 'open', label: 'Open test 1', input: '4 4\n', expected: '8\n', output: '7\n', truncated: false },
+        revealed: { idx: 3, kind: 'sample', label: 'Sample 3', input: '4 4\n', expected: '8\n', output: '7\n', truncated: false },
       },
     });
     const panel = page.getByRole('region', { name: 'Result' });
-    await expect(panel.getByText('Passed 2 of 2 samples and 0 of 2 open tests')).toBeVisible({ timeout: 10_000 });
+    await expect(panel.getByText('1 of 3 examples failed')).toBeVisible({ timeout: 10_000 });
     const block = panel.locator('.revealed');
     await expect(block).toContainText('This test is shown because this was a run.');
     await expect(block.locator('pre').nth(0)).toHaveText('4 4');
-    await expect(panel.getByText('An earlier test failed, so this one was not run.')).toBeVisible();
-    await expect(page.locator('[data-announcer="polite"]')).toHaveText('Passed 2 of 2 samples and 0 of 2 open tests.');
+    await expect(page.locator('[data-announcer="polite"]')).toHaveText('1 of 3 examples failed.');
     await page.screenshot({ path: `${shots()}workspace-revealed-run-1440-light.png` });
     await block.getByRole('button', { name: 'Run on this input' }).click();
     await expect.poll(() => api.runs.length).toBe(2);
@@ -1065,8 +1054,8 @@ test.describe('P5 workspace', () => {
         id: 52,
         state: 'done',
         compile_output: '',
-        results: [row('sample', 'Sample 1', 'AC', '3\n', '3\n'), row('open', 'Open test 1', 'TLE', '', null)],
-        revealed: { idx: 2, kind: 'open', label: 'Open test 1', input: '100000\n1 2 3', expected: '5000050000\n', output: '', truncated: true },
+        results: [row('sample', 'Sample 1', 'AC', '3\n', '3\n'), row('sample', 'Sample 2', 'TLE', '', null)],
+        revealed: { idx: 2, kind: 'sample', label: 'Sample 2', input: '100000\n1 2 3', expected: '5000050000\n', output: '', truncated: true },
       },
     });
     await expect(panel.getByText('This test is longer than 4 KB', { exact: false })).toBeVisible({ timeout: 10_000 });

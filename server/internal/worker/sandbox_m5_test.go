@@ -79,8 +79,8 @@ func TestM5FakeWizardDraftsReachValidated(t *testing.T) {
 			t.Fatalf("%s (%s) validation:\n%s", name, p.Slug, describe(v))
 		}
 		got, _ := r.bank.Get(ctx, p.ID)
-		// Samples, open tests (D115), then four generated tests.
-		if !got.Validated() || len(got.Tests) != len(got.Samples)+len(got.Open)+4 {
+		// Samples, then four generated tests.
+		if !got.Validated() || len(got.Tests) != len(got.Samples)+4 {
 			t.Fatalf("%s: validated=%v tests=%d", name, got.Validated(), len(got.Tests))
 		}
 		t.Logf("%s: %s validated in %s (reference %d/%d, brute agreed %d/%d, validator %d/%d, slowest %d ms)", name, p.Slug,

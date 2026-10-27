@@ -505,8 +505,6 @@ type SampleCase struct {
 type Draft struct {
 	Problem Problem
 	Samples []SampleCase
-	// Open become the open tests that follow the samples (D115).
-	Open []SampleCase
 }
 
 // CreateDraft adds a wizard draft to the bank with origin ai and the AI
@@ -582,8 +580,8 @@ func prepareDraft(d Draft) (*Problem, map[int][]byte, map[int][]byte, error) {
 		p.Epsilon = judge.DefaultEpsilon
 	}
 	ins, outs := map[int][]byte{}, map[int][]byte{}
-	p.Tests, p.Samples, p.Open = nil, []int{}, []int{}
-	for i, sc := range append(append([]SampleCase{}, d.Samples...), d.Open...) {
+	p.Tests, p.Samples = nil, []int{}
+	for i, sc := range d.Samples {
 		n := i + 1
 		in, out := withNewline(sc.Input), withNewline(sc.Output)
 		if len(in) > MaxPackFile || len(out) > MaxPackFile {
@@ -591,11 +589,7 @@ func prepareDraft(d Draft) (*Problem, map[int][]byte, map[int][]byte, error) {
 		}
 		ins[n], outs[n] = []byte(in), []byte(out)
 		p.Tests = append(p.Tests, Test{Idx: n})
-		if i < len(d.Samples) {
-			p.Samples = append(p.Samples, n)
-		} else {
-			p.Open = append(p.Open, n)
-		}
+		p.Samples = append(p.Samples, n)
 	}
 	if errs := checkFields(&p); errs != nil {
 		return nil, nil, nil, errs

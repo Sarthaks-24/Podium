@@ -186,7 +186,7 @@ describe('S4 wording and the run announcement (X1)', () => {
     expect(runAnnouncement(run({ state: 'queued' }))).toBe('');
     expect(runAnnouncement(run({ state: 'running', results: [{ ...sample('') }] }))).toBe('Running on samples.');
     expect(runAnnouncement(run({ state: 'running', results: [{ ...sample(''), label: 'Custom input', expected: null }] }))).toBe('Running on your input.');
-    expect(runAnnouncement(run({ results: [sample('AC'), { ...sample('WA'), label: 'Sample 2' }] }))).toBe('Passed 1 of 2 samples.');
+    expect(runAnnouncement(run({ results: [sample('AC'), { ...sample('WA'), label: 'Sample 2' }] }))).toBe('1 of 2 examples failed.');
     expect(runAnnouncement(run({ compile_output: 'main.cpp:3: error', results: [sample('')] }))).toBe('Compile error.');
     expect(runHeadline(run({ state: 'error' })).tone).toBe('bad');
   });
@@ -196,27 +196,25 @@ describe('S4 wording and the run announcement (X1)', () => {
   });
 });
 
-describe('open tests and the revealed test (P5 F7.13, D115)', () => {
+describe('the run headline and the revealed test (P5 F7.13, D115)', () => {
   const run = (results: Run['results']): Run => ({ id: 1, state: 'done', compile_output: '', results });
-  const row = (kind: 'sample' | 'open' | 'custom', verdict: string, expected: string | null = '3\n') => ({
+  const row = (kind: 'sample' | 'custom', verdict: string, expected: string | null = '3\n') => ({
     kind, label: kind === 'custom' ? 'Custom input' : 'x', verdict, time_ms: 10, memory_kb: 3000, output: '3\n', expected,
   });
 
-  it('counts samples and open tests apart, a skipped open test as not passed', () => {
-    expect(runHeadline(run([row('sample', 'AC'), row('sample', 'AC'), row('open', 'WA'), row('open', 'SK', null)]))).toEqual({
-      text: 'Passed 2 of 2 samples and 0 of 2 open tests',
-      tone: 'bad',
-    });
-    expect(runHeadline(run([row('sample', 'AC'), row('open', 'AC', null)]))).toEqual({ text: 'Passed 1 of 1 sample and 1 of 1 open test', tone: 'ok' });
-    expect(runHeadline(run([row('sample', 'WA'), row('sample', 'AC')])).text).toBe('Passed 1 of 2 samples');
+  it('says how many examples failed, in design/student.md words', () => {
+    expect(runHeadline(run([row('sample', 'AC'), row('sample', 'AC'), row('sample', 'WA')]))).toEqual({ text: '1 of 3 examples failed', tone: 'bad' });
+    expect(runHeadline(run([row('sample', 'AC'), row('sample', 'AC')]))).toEqual({ text: 'All 2 examples passed', tone: 'ok' });
+    expect(runHeadline(run([row('sample', 'WA')]))).toEqual({ text: 'The example failed', tone: 'bad' });
+    expect(runHeadline(run([row('sample', 'AC')]))).toEqual({ text: 'The example passed', tone: 'ok' });
   });
 
   it('tells a custom input by its kind, and by a missing expected output from older servers', () => {
-    expect(isCustomResult({ kind: 'open', expected: null })).toBe(false);
+    expect(isCustomResult({ kind: 'sample', expected: null })).toBe(false);
     expect(isCustomResult({ kind: 'custom', expected: null })).toBe(true);
     expect(isCustomResult({ expected: null })).toBe(true);
     expect(isCustomResult({ expected: '3\n' })).toBe(false);
-    expect(runAnnouncement({ ...run([row('open', '', null)]), state: 'running' })).toBe('Running on samples.');
+    expect(runAnnouncement({ ...run([row('sample', '', null)]), state: 'running' })).toBe('Running on samples.');
   });
 
   it('says why a test is shown, and names it', () => {

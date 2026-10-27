@@ -151,9 +151,7 @@ export function nextPlanRow(
 export interface TestCase {
   idx: number;
   sample: boolean;
-  /** An open test (D115): Run checks it after the samples; no points, no subtask. */
-  open: boolean;
-  /** The subtask whose range holds the test, or null (a sample, an open test, or unassigned). */
+  /** The subtask whose range holds the test, or null (a sample, or unassigned). */
   subtask_idx: number | null;
   input_size: number;
   output_size: number;
@@ -190,8 +188,6 @@ export interface Problem extends ProblemSummary {
   /** The tests the generator makes (M5). */
   plan?: PlannedTest[];
   samples: number[];
-  /** The open tests (D115), test numbers like `samples`. */
-  open: number[];
   subtasks: Subtask[];
   tests: TestCase[];
   content_hash: string;
@@ -217,8 +213,6 @@ export interface ProblemEdit {
   tags: string[];
   difficulty: Difficulty;
   samples: number[];
-  /** The open tests (D115); the server keeps the stored list when this is left out. */
-  open: number[];
   subtasks: { points: number; title: string; tests: string; generator_args?: string[] }[];
   generator?: Program | null;
   plan?: PlannedTest[];
@@ -251,8 +245,6 @@ export interface Draft {
   difficulty: Difficulty;
   /** Test numbers and ranges, as typed, for example "1, 2". */
   samples: string;
-  /** The open tests as typed, like `samples`. */
-  open: string;
   /** `args`: generator arguments separated by spaces, present from M5. */
   subtasks: { points: number | null; title: string; tests: string; args?: string }[];
   /** Present only when the server knows about generators (M5). */
@@ -375,7 +367,6 @@ export function toDraft(p: Problem): Draft {
     tags: p.tags.filter((t) => t.trim().toLowerCase() !== 'ai draft').join(', '),
     difficulty: p.difficulty,
     samples: formatTestList(p.samples),
-    open: formatTestList(p.open),
     subtasks: p.subtasks.map((s) =>
       gen
         ? { points: s.points, title: s.title, tests: s.tests, args: (s.generator_args ?? []).join(' ') }
@@ -413,8 +404,6 @@ export function toEdit(d: Draft): EditResult {
 
   const samples = parseTestList(d.samples);
   if (!samples.ok) fields.samples = samples.error;
-  const open = parseTestList(d.open);
-  if (!open.ok) fields.open = open.error;
 
   const subtasks = d.subtasks.map((s, i) => {
     const points = need(`subtasks.${i}.points`, s.points, 'the points for this subtask');
@@ -472,7 +461,6 @@ export function toEdit(d: Draft): EditResult {
         .filter((t) => t !== ''),
       difficulty: d.difficulty,
       samples: samples.ok ? samples.tests : [],
-      open: open.ok ? open.tests : [],
       subtasks,
       ...(d.generator !== undefined ? { generator: d.generator ? { ...d.generator } : null } : {}),
       ...(plan !== undefined ? { plan } : {}),
@@ -867,26 +855,21 @@ export function formatShort(ms: number): string {
 
 /**
  * Where each test belongs according to the draft as typed: "Sample",
- * "Open test" (D115), "Subtask 2" or "Not in a subtask". A list that cannot
+ * "Subtask 2" or "Not in a subtask". A list that cannot
  * be read yet falls back to what the server last saved for that test.
  */
-export function draftGroups(tests: readonly TestCase[], d: Pick<Draft, 'samples' | 'open' | 'subtasks'>): Map<number, string> {
+export function draftGroups(tests: readonly TestCase[], d: Pick<Draft, 'samples' | 'subtasks'>): Map<number, string> {
   const out = new Map<number, string>();
   const samples = parseTestList(d.samples);
-  const open = parseTestList(d.open);
   const ranges = d.subtasks.map((s) => parseTestList(s.tests));
   for (const t of tests) {
-    const saved = t.sample ? 'Sample' : t.open ? 'Open test' : t.subtask_idx !== null ? `Subtask ${t.subtask_idx}` : 'Not in a subtask';
-    if (!samples.ok || !open.ok || ranges.some((r) => !r.ok)) {
+    const saved = t.sample ? 'Sample' : t.subtask_idx !== null ? `Subtask ${t.subtask_idx}` : 'Not in a subtask';
+    if (!samples.ok || ranges.some((r) => !r.ok)) {
       out.set(t.idx, saved);
       continue;
     }
     if (samples.tests.includes(t.idx)) {
       out.set(t.idx, 'Sample');
-      continue;
-    }
-    if (open.tests.includes(t.idx)) {
-      out.set(t.idx, 'Open test');
       continue;
     }
     const i = ranges.findIndex((r) => r.ok && r.tests.includes(t.idx));
@@ -916,7 +899,7 @@ function programKey(p: Program | null | undefined): string {
  * The judged fields that differ between the saved copy and the working copy,
  * in words, mirroring server/internal/problems/hash.go (ContentHash): limits,
  * checker and its allowed error, the custom checker's source, the reference,
- * brute force and validator, samples, open tests and subtask points and ranges. Title,
+ * brute force and validator, samples and subtask points and ranges. Title,
  * slug, statement, tags, difficulty, subtask titles and the generator are
  * not judged. An AI draft also loses its validation when a person changes
  * its statement, reference or brute force (store.go Update), so for one the
@@ -936,7 +919,6 @@ export function judgedFieldsChanged(saved: Draft, now: Draft, aiDraft = false): 
     return r.ok ? r.tests.join(',') : text;
   };
   if (list(saved.samples) !== list(now.samples)) out.push('samples');
-  if (list(saved.open) !== list(now.open)) out.push('open tests');
   const subtasks = (d: Draft) =>
     d.subtasks
       .map((s) => {

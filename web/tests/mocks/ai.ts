@@ -78,11 +78,10 @@ export interface Held {
 
 const none = (): Held => ({ has_key: false, model: '', active_until: null, models: [] });
 
-export function test_(idx: number, group: number | 'sample' | 'open', input: string, output: string): Json {
+export function test_(idx: number, group: number | 'sample', input: string, output: string): Json {
   return {
     idx,
     sample: group === 'sample',
-    open: group === 'open',
     subtask_idx: typeof group === 'number' ? group : null,
     input_size: input.length,
     output_size: output.length,
@@ -121,20 +120,19 @@ export function aiDraft(): Json {
       language: 'python3',
       source: 'import random\nimport sys\n\nseed = int(sys.argv[1])\nargs = dict(a.split("=", 1) for a in sys.argv[2:])\nrng = random.Random(seed)\nn = int(args["n"])\nprint(n)\nprint(*[rng.randint(-10**9, 10**9) for _ in range(n)])\n',
     },
-    // As the wizard numbers them (ai/wizard.go): samples, then open tests, then the subtasks.
+    // As the wizard numbers them (ai/wizard.go): samples, then the subtasks.
     plan: [
       { idx: 3, subtask: 1, seed: 1, args: [] },
       { idx: 4, subtask: 1, seed: 2, args: ['neg=1'] },
       { idx: 5, subtask: 2, seed: 3, args: [] },
       { idx: 6, subtask: 2, seed: 4, args: ['max=1'] },
     ],
-    samples: [1],
-    open: [2],
+    samples: [1, 2],
     subtasks: [
       { idx: 1, points: 30, title: 'n up to 1000', tests: '3-4', generator_args: ['n=1000'] },
       { idx: 2, points: 70, title: 'Full range', tests: '5-6', generator_args: ['n=200000'] },
     ],
-    tests: [test_(1, 'sample', '5\n-2 1 -3 4 -1\n', '4\n'), test_(2, 'open', '3\n-1 -2 -3\n', '-1\n')],
+    tests: [test_(1, 'sample', '5\n-2 1 -3 4 -1\n', '4\n'), test_(2, 'sample', '3\n-1 -2 -3\n', '-1\n')],
     content_hash: 'h20',
     warnings: ['4 planned tests have no input yet. Use Generate inputs.'],
   };
@@ -153,7 +151,7 @@ export function validated(): Json {
     validated_hash: 'h21',
     content_hash: 'h21',
     warnings: [],
-    tests: [1, 2, 3, 4, 5, 6].map((i) => test_(i, i === 1 ? 'sample' : i === 2 ? 'open' : i < 5 ? 1 : 2, '3\n1 2 3\n', '6\n')),
+    tests: [1, 2, 3, 4, 5, 6].map((i) => test_(i, i <= 2 ? 'sample' : i < 5 ? 1 : 2, '3\n1 2 3\n', '6\n')),
   };
 }
 

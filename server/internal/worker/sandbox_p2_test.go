@@ -1,7 +1,7 @@
 //go:build sandbox
 
-// P2 on the real judge (D115, judge protocol 3): a Run checks the samples,
-// then the open tests, stopping at the first failure and revealing it; a
+// P2 on the real judge (D115, judge protocol 3): a Run checks the samples
+// and reveals the first failure; a
 // practice submission reveals its first failing hidden test with the
 // program's output; a counting submission sends no output at all.
 package worker
@@ -30,16 +30,16 @@ func (r *rig) runAndWait(t *testing.T, problemID int64, src string) *submissions
 	return run
 }
 
-func TestP2RunStopsAtTheFirstOpenTestFailure(t *testing.T) {
+func TestP2RunRevealsTheFirstFailingSample(t *testing.T) {
 	r := newRig(t)
 	p := r.importPack(t, "average-speed", nil)
-	if len(p.Open) != 1 || p.Open[0] != 7 {
-		t.Fatalf("open tests %v", p.Open)
+	if len(p.Samples) != 2 || p.Samples[1] != 7 {
+		t.Fatalf("samples %v", p.Samples)
 	}
-	// Right on the sample, wrong on the open test (whose first distance is 6).
+	// Right on sample 1, wrong on sample 7 (whose first distance is 6).
 	wrongOnOpen := "import sys\nd=list(map(int,sys.stdin.read().split()))\nn=d[0]\ns=d[1::2][:n]\nh=d[2::2][:n]\nprint(0 if s[0]==6 else sum(s)/sum(h))\n"
 	run := r.runAndWait(t, p.ID, wrongOnOpen)
-	if run.State != "done" || len(run.Results) != 2 || run.Results[0].Verdict != "AC" || run.Results[1].Kind != submissions.RunOpen ||
+	if run.State != "done" || len(run.Results) != 2 || run.Results[0].Verdict != "AC" || run.Results[1].Kind != submissions.RunSample ||
 		run.Results[1].Verdict != "WA" {
 		t.Fatalf("run %+v", run)
 	}
@@ -47,10 +47,10 @@ func TestP2RunStopsAtTheFirstOpenTestFailure(t *testing.T) {
 		strings.TrimSpace(rv.Output) != "0" {
 		t.Fatalf("revealed %+v", run.Revealed)
 	}
-	// Wrong on the sample: the open test is not run.
+	// Wrong on both: the first is the one revealed.
 	time.Sleep(2100 * time.Millisecond)
 	run = r.runAndWait(t, p.ID, "print(0)\n")
-	if run.State != "done" || run.Results[0].Verdict != "WA" || run.Results[1].Verdict != "SK" || run.Revealed == nil || run.Revealed.Idx != 1 {
+	if run.State != "done" || run.Results[0].Verdict != "WA" || run.Revealed == nil || run.Revealed.Idx != 1 {
 		t.Fatalf("run with a failing sample %+v %+v", run.Results, run.Revealed)
 	}
 }

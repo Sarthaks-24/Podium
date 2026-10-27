@@ -439,11 +439,10 @@ export function allowedLanguages(ids: readonly string[] | undefined): { id: Lang
 
 /**
  * The three sentences that teach the two buttons (v2 S3, audit 01-4). True in
- * both scoring modes. The rules are per contest, so the Run sentence names
- * open tests (D115) without knowing which problems have them.
+ * both scoring modes.
  */
 export const WORKSPACE_SENTENCES: readonly string[] = [
-  'Run on samples tries your code on the examples in the statement and on any open tests the problem has. It never counts.',
+  'Run on samples tries your code on the examples in the statement. It never counts.',
   'Submit grades your code on hidden tests, in parts called subtasks.',
   'A later, worse submission never lowers your score.',
 ];

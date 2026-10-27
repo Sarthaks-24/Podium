@@ -50,12 +50,12 @@ Source files must sit at the top of the pack, with a name of up to 40 letters, d
 
 ### problem.yaml
 
-**Pack format.** Podium reads formats 1 and 2 (format 2 since phase P2). Format 2 adds `open`, the open tests (see "Samples, open tests and subtasks"); everything else is format 1, and a pack without the line is format 1, so every pack written before still imports. A format 1 pack that lists `open` is refused ("problem.yaml lists open tests, which need format: 2."). Exports write `format: 2` only for a problem with open tests and `format: 1` otherwise, so a problem without them still imports into a server that reads format 1 only. A pack of a newer format is refused with both numbers named ("problem.yaml is pack format 3, and this server reads format 2 and older. Upgrade Podium, or export the problem again from a server of this version."), rather than read with its new fields missing.
+**Pack format.** Podium reads formats 1 and 2. Format 2 added `open`, the open tests; v3 has none (V3-5) and imports them as samples. Exports write format 1, and a pack without a `format` line is format 1.
 
 Parsed strictly: an unknown key is an error, so a misspelt key never silently falls back to a default. Comments are allowed.
 
 ```yaml
-format: 1                       # pack format: 1, or 2 when the pack lists open tests (exports write it)
+format: 1                       # pack format; exports write 1
 title: Pair with sum            # shown to students; up to 120 characters
 slug: pair-with-sum             # lowercase letters, digits and single hyphens; unique in the bank
 time_limit_ms: 1000             # for C++; 100 to 10000; default 1000
@@ -69,7 +69,6 @@ brute: brute.js                 # optional: a slow, obviously correct solution
 validator: validator.py         # optional: checks every input against the constraints
 generator: generator.py         # optional: makes the inputs planned in tests.yaml
 samples: [1, 2]                 # test numbers shown with the statement; they carry no points
-# open: [3]                     # format 2 only: open tests, run by Run after the samples; no points
 subtasks:                       # at least one; scored all or nothing
   - points: 30                  # 1 to 1000; the subtasks should add up to 100
     title: Small n              # optional
@@ -106,30 +105,28 @@ Statement, title, tags, difficulty and subtask titles can change at any time wit
 
 **During a live contest** (one that pins the problem and is between its start and its close plus the longest personal extension), a save that changes the problem needs a reason: the editor asks for one, and "Replace tests" takes it too. The reason is kept with the new revision. Students keep seeing the revision the contest pins until an organiser chooses "Update contest to revision N" on the console; see "Revisions" below.
 
-## Samples, open tests and subtasks
+## Samples and subtasks
 
-Every test is exactly one of three kinds (D115):
+Every test is exactly one of two kinds (V3-5):
 
 | Kind | Who sees it | Rules |
 |---|---|---|
 | Sample (`samples`) | Everyone, with the statement | Test numbers, each once; no points. Run checks every sample; a Submit judges them first and, with "Stop on a failing sample", stops there. |
-| Open test (`open`, pack format 2) | A student whose Run fails it: its input, the expected output and their output | Test numbers, each once; in no subtask; no points. Run checks them after the samples, in order, only while everything before passed, and stops at the first failure. Make them easier than the hidden set: they are a learning aid, not a second samples list. |
 | Hidden test (in a subtask) | Nobody, during a contest | See the subtasks below. Only Submit judges them. |
 
 | Item | Rules |
 |---|---|
 | `samples` | Test numbers, each once. Shown with the statement; no points. |
-| `open` | Test numbers, each once, none of them a sample. Not shown in advance; revealed when they fail a Run. |
 | `subtasks` | Up to 50. Each gets 1 to 1000 points and a `tests` range list. A student scores a subtask's points only by passing all of its tests. |
 | Range list | Comma-separated test numbers and ranges: `"3-5"`, `"3-5, 8"`, `"7"`. Ranges run upwards, numbers are 1 to 999, and no test may appear twice. It is stored in its shortest form (`"3, 4, 5"` becomes `"3-5"`). |
 
-Validation refuses to start while a test is in no subtask (and is neither a sample nor an open test), in two places, or a range names a test that does not exist. Points that do not add up to 100 are a warning, not an error. Validation runs the reference, the brute force and the validator over open tests like every other test, and they need expected outputs the same way.
+Validation refuses to start while a test is in no subtask (and is not a sample), in two places, or a range names a test that does not exist. Points that do not add up to 100 are a warning, not an error. Validation runs the reference, the brute force and the validator over open tests like every other test, and they need expected outputs the same way.
 
 **When hidden tests are shown.** A submission that never counts shows its first failing hidden test (input, expected output, the program's output, at most 4 KB each): practice after the window when "practice after the end" is on, every submission in an ungraded contest, and your own tries in the workspace. A submission that counts in a graded contest never shows one. Name subtasks by purpose ("Correctness", "Time complexity"), since their titles are shown.
 
 ## Revisions
 
-Every save that changes a problem (its statement, title, tests, limits, checker, solutions, samples, open tests, subtasks or generator) makes a new numbered revision; a save that changes nothing makes none. Tags, slug, difficulty and the generator plan are bank details and make none. Generated inputs and outputs make revisions too, without an author.
+Every save that changes a problem (its statement, title, tests, limits, checker, solutions, samples, subtasks or generator) makes a new numbered revision; a save that changes nothing makes none. Tags, slug, difficulty and the generator plan are bank details and make none. Generated inputs and outputs make revisions too, without an author.
 
 - A contest pins one revision per problem when the problem is added. Students are served that revision's title, statement and samples, never the bank's working copy, so an edit in the bank changes nothing in a contest until you choose "Update contest to revision N" on the console.
 - The update is accepted when the revision is the validated content of the problem. When only the statement or title changed, no rejudge is needed; students see "Statement updated 14:32. See what changed" with a line diff, and the console offers an announcement to post. When the tests, limits or checker changed, validate first, update, then rejudge.
@@ -273,7 +270,7 @@ Generate inputs in the editor runs the generator for every planned test, in one 
 
 ## The AI wizard
 
-"New problem with AI" on the problem bank asks a model to write a whole problem: statement, samples, up to three open tests, subtasks, a C++ reference, a Python brute force, a Python generator with its plan, a Python validator, the checker and limits. An owner or admin pastes their own provider key first: Anthropic, OpenAI or Google Gemini (`docs/OPERATIONS.md`, "AI wizard keys"). The server lists that provider's current models; choose one, or type the id of a model the list does not show. The key stays in the server's memory for 2 hours and is forgotten on sign-out. The wizard shows which provider and model wrote each draft.
+"New problem with AI" on the problem bank asks a model to write a whole problem: statement, samples, subtasks, a C++ reference, a Python brute force, a Python generator with its plan, a Python validator, the checker and limits. An owner or admin pastes their own provider key first: Anthropic, OpenAI or Google Gemini (`docs/OPERATIONS.md`, "AI wizard keys"). The server lists that provider's current models; choose one, or type the id of a model the list does not show. The key stays in the server's memory for 2 hours and is forgotten on sign-out. The wizard shows which provider and model wrote each draft.
 
 The three providers get the same instructions and the same answer schema, and every answer passes the same checks, so a draft from any of them is held to the same rules. Models differ in how often their first answer passes: when one keeps failing a check, try another model before rewriting the brief.
 
@@ -290,7 +287,7 @@ Problem statements on LeetCode, Codeforces and similar sites are copyrighted. Th
 ### What happens next
 
 1. The answer is checked: every field, the sample count, subtask points adding up to 100, the planned tests, and the editor's own rules. An answer that fails is sent back once with the reasons; if the second one fails too, the wizard says "The model's answer could not be used." and lists them.
-2. A draft problem is created with origin `ai` and the tag "ai draft". Its samples are tests 1 to k, its open tests the ones after them, then the generated tests. The tag stays until a person changes the statement, the reference or the brute force and saves. A save that changes none of them keeps the tag, and the change that ends it also withdraws the validation, so the problem must pass again as the person left it.
+2. A draft problem is created with origin `ai` and the tag "ai draft". Its samples are tests 1 to k, then the generated tests. The tag stays until a person changes the statement, the reference or the brute force and saves. A save that changes none of them keeps the tag, and the change that ends it also withdraws the validation, so the problem must pass again as the person left it.
 3. Generate inputs is queued at once, which chains Generate outputs and Validate (see "Tests from a generator"). The wizard page follows each step to the end ("Generating the tests", "Validating the draft", then "Validation passed" and Open the draft); the editor shows them too. Without a key or a model, the key form appears on the wizard itself, above the brief.
 4. You read every part of the draft, fix what needs fixing, save it and validate it. The aim is a draft that needs at most one manual edit.
 
@@ -440,5 +437,5 @@ Only one pack import, test replacement or pack download runs at a time; a second
 | Pack | Shows |
 |---|---|
 | `a-plus-b` | `tokens` checker, C++ reference, Python brute force and validator, 2 samples, 2 subtasks |
-| `average-speed` | `float` checker with `epsilon`, Java reference, Python brute force and validator, and one open test (pack format 2) |
+| `average-speed` | `float` checker with `epsilon`, Java reference, Python brute force and validator, and two samples |
 | `pair-with-sum` | `custom` testlib checker accepting any valid pair, C++ reference, JavaScript brute force |

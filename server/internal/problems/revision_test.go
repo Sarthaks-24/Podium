@@ -171,47 +171,6 @@ func TestReasonRequiredWhileALiveContestPinsTheProblem(t *testing.T) {
 	}
 }
 
-func TestOpenTests(t *testing.T) {
-	s := newBank(t)
-	ctx := context.Background()
-	p := importExample(t, s, "a-plus-b")
-	e := editOf(p)
-	hash := p.ContentHash
-	// Test 2 is a sample in the example; make test 3 open, out of its subtask.
-	open := []int{3}
-	e.Open = &open
-	var fields FieldErrors
-	if _, err := s.Update(ctx, p.ID, e); err != nil {
-		t.Fatal(err)
-	}
-	got, _ := s.Get(ctx, p.ID)
-	if !got.IsOpen(3) || got.TestKind(3) != KindOpen || got.ContentHash == hash {
-		t.Fatalf("open tests %v, hash changed %v", got.Open, got.ContentHash != hash)
-	}
-	// Test 3 is still in its subtask's range.
-	if probs := strings.Join(got.StructureProblems(), " "); !strings.Contains(probs, "Test 3 is in subtask 1 and in the open tests") {
-		t.Errorf("structure problems: %s", probs)
-	}
-	// Leaving open out keeps it.
-	e.Open = nil
-	got, _ = s.Update(ctx, p.ID, e)
-	if !got.IsOpen(3) {
-		t.Error("a save without open erased the open tests")
-	}
-	both := []int{1}
-	e.Open = &both
-	if _, err := s.Update(ctx, p.ID, e); !errors.As(err, &fields) || !strings.Contains(fields["open"], "sample and an open test") {
-		t.Errorf("a sample that is also open: %v", err)
-	}
-	// The hash of a problem without open tests is what it was before D115.
-	q := *p
-	q.Open = []int{}
-	if ContentHash(&q) != hash {
-		t.Error("an empty open list changed the content hash")
-	}
-	assertRevisions(t, s)
-}
-
 // writeSQL matches a statement that writes a table a revision records.
 var writeSQL = regexp.MustCompile(`(?is)\b(INSERT\s+(OR\s+\w+\s+)?INTO|UPDATE|DELETE\s+FROM)\s+(problems|subtasks|testcases)\b(.*)`)
 
@@ -271,7 +230,7 @@ func TestNoWritePathSkipsTheRevision(t *testing.T) {
 						set = set[:i]
 					}
 					for _, col := range []string{"title", "statement_md", "time_limit_ms", "memory_limit_mb", "checker", "epsilon",
-						"samples", "open_tests", "reference_", "brute_", "validator_", "generator_", "content_hash"} {
+						"samples", "reference_", "brute_", "validator_", "generator_", "content_hash"} {
 						if strings.Contains(set, col) {
 							t.Errorf("%s: %s updates %s, which a revision records, outside save", where, fn.Name.Name, col)
 						}
@@ -287,48 +246,37 @@ func TestNoWritePathSkipsTheRevision(t *testing.T) {
 	}
 }
 
-// Pack format 2 carries open tests; format 1 packs still import, and an
-// export writes format 1 unless the problem has open tests.
-func TestPackFormatTwoOpenTests(t *testing.T) {
-	withOpen := func(head string) []entry {
-		entries := minimalPack(entry{name: "tests/03.in", body: "3"}, entry{name: "tests/03.out", body: "3"})
-		for i := range entries {
-			if entries[i].name == "problem.yaml" {
-				entries[i].body = head + entries[i].body + "open: [3]\n"
-			}
+// A format 2 pack's open tests import as samples (V3-5), and an export
+// writes format 1.
+func TestPackOpenTestsBecomeSamples(t *testing.T) {
+	entries := minimalPack(entry{name: "tests/03.in", body: "3"}, entry{name: "tests/03.out", body: "3"})
+	for i := range entries {
+		if entries[i].name == "problem.yaml" {
+			entries[i].body = "format: 2\n" + entries[i].body + "open: [3]\n"
 		}
-		return entries
 	}
-	pk, err := ReadPack(zipEntries(t, withOpen("format: 2\n")...))
+	pk, err := ReadPack(zipEntries(t, entries...))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(pk.Problem.Open) != 1 || pk.Problem.Open[0] != 3 || len(pk.Problem.StructureProblems()) != 0 {
-		t.Fatalf("open %v problems %v", pk.Problem.Open, pk.Problem.StructureProblems())
+	if !pk.Problem.IsSample(3) || len(pk.Problem.StructureProblems()) != 0 {
+		t.Fatalf("samples %v problems %v", pk.Problem.Samples, pk.Problem.StructureProblems())
 	}
-	if _, err := ReadPack(zipEntries(t, withOpen("")...)); err == nil || !strings.Contains(err.Error(), "need format: 2") {
-		t.Errorf("open tests in a format 1 pack: %v", err)
+	var out bytes.Buffer
+	if err := WritePack(&out, &pk.Problem, func(string) ([]byte, error) { return []byte("1"), nil }); err != nil {
+		t.Fatal(err)
 	}
-	for _, tc := range []struct {
-		p    *Problem
-		want string
-	}{{&pk.Problem, "format: 2\n"}, {&Problem{Title: "x", Slug: "x", Reference: Source{"cpp17", "x"}}, "format: 1\n"}} {
-		var out bytes.Buffer
-		if err := WritePack(&out, tc.p, func(string) ([]byte, error) { return []byte("1"), nil }); err != nil {
-			t.Fatal(err)
-		}
-		zr, err := zip.NewReader(bytes.NewReader(out.Bytes()), int64(out.Len()))
-		if err != nil {
-			t.Fatal(err)
-		}
-		for _, f := range zr.File {
-			if f.Name == "problem.yaml" {
-				rc, _ := f.Open()
-				b, _ := io.ReadAll(rc)
-				rc.Close()
-				if !strings.HasPrefix(string(b), tc.want) {
-					t.Errorf("export of %s starts %q, want %q", tc.p.Slug, clip(string(b)), tc.want)
-				}
+	zr, err := zip.NewReader(bytes.NewReader(out.Bytes()), int64(out.Len()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, f := range zr.File {
+		if f.Name == "problem.yaml" {
+			rc, _ := f.Open()
+			b, _ := io.ReadAll(rc)
+			rc.Close()
+			if !strings.HasPrefix(string(b), "format: 1\n") || strings.Contains(string(b), "open:") {
+				t.Errorf("export starts %q", clip(string(b)))
 			}
 		}
 	}

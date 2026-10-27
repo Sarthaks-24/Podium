@@ -8,9 +8,7 @@
   top.
   Compiler output comes first, verbatim, with clickable line jumps; when
   the code did not compile, the empty input rows are left out (audit
-  2026-10-20 S4). After the samples come the problem's open tests (D115),
-  "Open test 1" and on: a passed one shows its verdict only, one not run
-  says why. The run's first failing sample or open test is revealed
+  2026-10-20 S4). The run's first failing sample is revealed
   (`run.revealed`): its row becomes a block with "This test is shown
   because this was a run.", the input, the expected output, the program's
   output and "Run on this input". A failing sample without that offers the
@@ -98,7 +96,7 @@
           runInput={rv.input}
           {onruninput}
         />
-      {:else if isCustomResult(r) || (r.kind !== 'open' && isBad(r.verdict))}
+      {:else if isCustomResult(r) || isBad(r.verdict)}
         <TestDetail
           expected={r.expected}
           output={r.output}

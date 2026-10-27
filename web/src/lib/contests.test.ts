@@ -311,7 +311,7 @@ describe('student phase and window maths', () => {
   it('teaches Run and Submit right after the timing (S3)', () => {
     const lines = rulesSentences(contest());
     expect(lines.slice(1, 4)).toEqual([
-      'Run on samples tries your code on the examples in the statement and on any open tests the problem has. It never counts.',
+      'Run on samples tries your code on the examples in the statement. It never counts.',
       'Submit grades your code on hidden tests, in parts called subtasks.',
       'A later, worse submission never lowers your score.',
     ]);

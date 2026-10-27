@@ -5,7 +5,7 @@ import (
 )
 
 // ContentHash is the SHA-256 of everything validation depends on
-// (decision D45): limits, checker, solutions, samples, open tests,
+// (decision D45): limits, checker, solutions, samples,
 // subtasks and tests.
 // Title, slug, statement, tags and subtask titles are left out, so fixing
 // a typo in the statement keeps a problem validated. The judge build is
@@ -33,26 +33,23 @@ func ContentHash(p *Problem) string {
 		return &src{s.Language, SHA([]byte(s.Source))}
 	}
 	m := struct {
-		V          int     `json:"v"`
-		TimeLimit  int     `json:"time_limit_ms"`
-		Memory     int     `json:"memory_limit_mb"`
-		Checker    string  `json:"checker"`
-		Epsilon    float64 `json:"epsilon"`
-		CheckerSHA string  `json:"checker_sha"`
-		Reference  src     `json:"reference"`
-		Brute      *src    `json:"brute"`
-		Validator  *src    `json:"validator"`
-		Samples    []int   `json:"samples"`
-		// Open is left out when empty, so the hash of every problem
-		// without open tests is what it was before D115.
-		Open     []int     `json:"open,omitempty"`
-		Subtasks []subtask `json:"subtasks"`
-		Tests    []test    `json:"tests"`
+		V          int       `json:"v"`
+		TimeLimit  int       `json:"time_limit_ms"`
+		Memory     int       `json:"memory_limit_mb"`
+		Checker    string    `json:"checker"`
+		Epsilon    float64   `json:"epsilon"`
+		CheckerSHA string    `json:"checker_sha"`
+		Reference  src       `json:"reference"`
+		Brute      *src      `json:"brute"`
+		Validator  *src      `json:"validator"`
+		Samples    []int     `json:"samples"`
+		Subtasks   []subtask `json:"subtasks"`
+		Tests      []test    `json:"tests"`
 	}{
 		V: 1, TimeLimit: p.TimeLimitMS, Memory: p.MemoryLimitMB, Checker: p.Checker, Epsilon: p.Epsilon,
 		Reference: src{p.Reference.Language, SHA([]byte(p.Reference.Source))},
 		Brute:     opt(p.Brute), Validator: opt(p.Validator),
-		Samples: append([]int{}, p.Samples...), Open: append([]int(nil), p.Open...), Subtasks: []subtask{}, Tests: []test{},
+		Samples: append([]int{}, p.Samples...), Subtasks: []subtask{}, Tests: []test{},
 	}
 	if p.Checker == CheckerCustom {
 		m.CheckerSHA = SHA([]byte(p.CheckerSource))

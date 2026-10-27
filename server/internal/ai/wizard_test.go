@@ -67,9 +67,9 @@ func TestFakePacksPassChecks(t *testing.T) {
 		if len(d.Samples) != 2 || len(d.Problem.Plan) != 4 || d.Problem.Generator == nil || d.Problem.Generator.Language != "python3" {
 			t.Fatalf("%s draft %+v", p.Slug, d)
 		}
-		// Samples, then open tests, then the generated tests.
-		first := len(p.Samples) + len(p.OpenTests) + 1
-		if len(d.Open) != len(p.OpenTests) || d.Problem.Subtasks[0].Tests != fmt.Sprintf("%d-%d", first, first+1) ||
+		// Samples, then the generated tests.
+		first := len(p.Samples) + 1
+		if d.Problem.Subtasks[0].Tests != fmt.Sprintf("%d-%d", first, first+1) ||
 			d.Problem.Subtasks[1].Tests != fmt.Sprintf("%d-%d", first+2, first+3) {
 			t.Errorf("%s ranges %+v", p.Slug, d.Problem.Subtasks)
 		}

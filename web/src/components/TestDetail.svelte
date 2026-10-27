@@ -4,7 +4,7 @@
   starts with the first differing line, whitespace made visible
   (lib/diff.ts), then the program's output beside the expected one. When
   the test is revealed (D115: a practice submission's first failing hidden
-  test, or a run's first failing sample or open test) it is a bordered
+  test, or a run's first failing sample) it is a bordered
   block that says why it is shown and adds the input; "Run on this input"
   puts that input in the custom input box and runs it (D114), unless the
   input was cut at 4 KB, when running it would not be the same test.

@@ -47,7 +47,6 @@ const PROBLEM: Problem = {
   brute: { language: 'python3', source: 'print(1)' },
   validator: null,
   samples: [1, 2],
-  open: [6],
   subtasks: [
     { idx: 1, points: 40, title: 'Small', tests: '3-4' },
     { idx: 2, points: 60, title: 'Large', tests: '5' },
@@ -118,7 +117,6 @@ describe('toDraft and toEdit', () => {
         tags: ['math', 'intro'],
         difficulty: 'easy',
         samples: [1, 2],
-        open: [6],
         subtasks: [
           { points: 40, title: 'Small', tests: '3-4' },
           { points: 60, title: 'Large', tests: '5' },

@@ -25,7 +25,6 @@ const PROBLEM: Problem = {
   brute: null,
   validator: null,
   samples: [1, 2],
-  open: [],
   subtasks: [{ idx: 1, points: 100, title: 'All', tests: '3-5' }],
   tests: [],
   content_hash: 'abc',
@@ -55,9 +54,8 @@ describe('judgedFieldsChanged mirrors hash.go', () => {
     now.brute = { language: 'python3', source: 'print(3)' };
     now.validator = { language: 'python3', source: 'pass' };
     now.samples = '1';
-    now.open = '2';
     now.subtasks[0].points = 90;
-    expect(judgedFieldsChanged(saved, now)).toEqual(['limits', 'checker', 'reference solution', 'brute force', 'validator', 'samples', 'open tests', 'subtasks']);
+    expect(judgedFieldsChanged(saved, now)).toEqual(['limits', 'checker', 'reference solution', 'brute force', 'validator', 'samples', 'subtasks']);
   });
 
   it('treats a program with empty source as none and reads lists as numbers', () => {

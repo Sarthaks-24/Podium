@@ -118,19 +118,19 @@ type queryer interface {
 
 func load(ctx context.Context, q queryer, id int64) (*Problem, error) {
 	p := &Problem{ID: id}
-	var tags, samples, open, bruteLang, bruteSrc, valLang, valSrc, genLang, genSrc, plan string
+	var tags, samples, bruteLang, bruteSrc, valLang, valSrc, genLang, genSrc, plan string
 	var vhash sql.NullString
 	var vat, author sql.NullInt64
 	var created, updated int64
 	err := q.QueryRowContext(ctx, `SELECT slug, title, statement_md, time_limit_ms, memory_limit_mb, checker, epsilon,
 		checker_source, reference_language, reference_source, brute_language, brute_source, validator_language,
 		validator_source, tags, difficulty, samples, origin, author_id, archived, created_at, updated_at,
-		content_hash, validated_hash, validated_at, generator_language, generator_source, generator_plan, open_tests
+		content_hash, validated_hash, validated_at, generator_language, generator_source, generator_plan
 		FROM problems WHERE id = ?`, id).Scan(
 		&p.Slug, &p.Title, &p.Statement, &p.TimeLimitMS, &p.MemoryLimitMB, &p.Checker, &p.Epsilon,
 		&p.CheckerSource, &p.Reference.Language, &p.Reference.Source, &bruteLang, &bruteSrc, &valLang,
 		&valSrc, &tags, &p.Difficulty, &samples, &p.Origin, &author, &p.Archived, &created, &updated,
-		&p.ContentHash, &vhash, &vat, &genLang, &genSrc, &plan, &open)
+		&p.ContentHash, &vhash, &vat, &genLang, &genSrc, &plan)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
@@ -149,10 +149,6 @@ func load(ctx context.Context, q queryer, id int64) (*Problem, error) {
 	json.Unmarshal([]byte(plan), &p.Plan)
 	json.Unmarshal([]byte(tags), &p.Tags)
 	json.Unmarshal([]byte(samples), &p.Samples)
-	json.Unmarshal([]byte(open), &p.Open)
-	if p.Open == nil {
-		p.Open = []int{}
-	}
 	if p.Tags == nil {
 		p.Tags = []string{}
 	}
@@ -226,7 +222,7 @@ func (s *Service) Create(ctx context.Context, title, slug string, authorID int64
 		TimeLimitMS: defaultTimeLimit, MemoryLimitMB: defaultMemoryMB,
 		Checker: CheckerTokens, Epsilon: judge.DefaultEpsilon,
 		Reference: Source{"cpp17", starterSolution},
-		Tags:      []string{}, Samples: []int{}, Open: []int{}, Origin: OriginManual, AuthorID: authorID,
+		Tags:      []string{}, Samples: []int{}, Origin: OriginManual, AuthorID: authorID,
 	}
 	if errs := checkFields(p); errs != nil {
 		return nil, onlyFields(errs, "title", "slug")
@@ -342,8 +338,8 @@ func (s *Service) insert(ctx context.Context, tx *sql.Tx, p *Problem, note Revis
 	err := tx.QueryRowContext(ctx, `INSERT INTO problems (slug, title, statement_md, time_limit_ms, memory_limit_mb,
 		checker, epsilon, checker_source, reference_language, reference_source, brute_language, brute_source,
 		validator_language, validator_source, tags, difficulty, samples, generator_language, generator_source,
-		generator_plan, open_tests, content_hash, origin, author_id, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
+		generator_plan, content_hash, origin, author_id, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
 		append(cols, p.Origin, author, now.UnixMilli(), now.UnixMilli())...).Scan(&p.ID)
 	if isUnique(err) {
 		return FieldErrors{"slug": fmt.Sprintf("Another problem already uses the slug %s.", p.Slug)}
@@ -373,10 +369,9 @@ func rowValues(p *Problem) []any {
 	tags, _ := json.Marshal(nonNil(p.Tags))
 	samples, _ := json.Marshal(nonNilInts(p.Samples))
 	plan, _ := json.Marshal(nonNilPlan(p.Plan))
-	open, _ := json.Marshal(nonNilInts(p.Open))
 	return []any{p.Slug, p.Title, p.Statement, p.TimeLimitMS, p.MemoryLimitMB, p.Checker, p.Epsilon,
 		p.CheckerSource, p.Reference.Language, p.Reference.Source, bl, bs, vl, vs,
-		string(tags), p.Difficulty, string(samples), gl, gs, string(plan), string(open), p.ContentHash}
+		string(tags), p.Difficulty, string(samples), gl, gs, string(plan), p.ContentHash}
 }
 
 func (s *Service) writeChildren(ctx context.Context, tx *sql.Tx, p *Problem) error {
@@ -414,10 +409,7 @@ type Edit struct {
 	Tags                       []string
 	Difficulty                 string
 	Samples                    []int
-	// Open, when not nil, replaces the open tests (D115); nil keeps them,
-	// so an editor that does not know about open tests cannot erase them.
-	Open     *[]int
-	Subtasks []Subtask
+	Subtasks                   []Subtask
 	// By is the person saving; Reason is why, required while a live
 	// contest pins the problem and the save changes it (B2.2).
 	By     int64
@@ -467,9 +459,6 @@ func (s *Service) Update(ctx context.Context, id int64, e Edit) (*Problem, error
 		oldArgs[st.Idx] = st.GeneratorArgs
 	}
 	p.Samples, p.Subtasks = nonNilInts(e.Samples), e.Subtasks
-	if e.Open != nil {
-		p.Open = nonNilInts(*e.Open)
-	}
 	if e.Generator != nil {
 		p.Generator, p.Plan = emptyToNil(e.Generator.Source), e.Generator.Plan
 	} else {
@@ -536,7 +525,7 @@ func (s *Service) save(ctx context.Context, tx *sql.Tx, p *Problem, note Revisio
 	_, err := tx.ExecContext(ctx, `UPDATE problems SET slug = ?, title = ?, statement_md = ?, time_limit_ms = ?,
 		memory_limit_mb = ?, checker = ?, epsilon = ?, checker_source = ?, reference_language = ?, reference_source = ?,
 		brute_language = ?, brute_source = ?, validator_language = ?, validator_source = ?, tags = ?, difficulty = ?,
-		samples = ?, generator_language = ?, generator_source = ?, generator_plan = ?, open_tests = ?, content_hash = ?, updated_at = ? WHERE id = ?`,
+		samples = ?, generator_language = ?, generator_source = ?, generator_plan = ?, content_hash = ?, updated_at = ? WHERE id = ?`,
 		append(rowValues(p), p.UpdatedAt.UnixMilli(), p.ID)...)
 	if isUnique(err) {
 		return FieldErrors{"slug": fmt.Sprintf("Another problem already uses the slug %s.", p.Slug)}

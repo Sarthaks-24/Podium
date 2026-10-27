@@ -99,41 +99,36 @@ describe('editor status', () => {
 });
 
 describe('groups from the draft', () => {
-  const t = (idx: number, sample: boolean, subtask_idx: number | null, open = false): TestCase => ({
+  const t = (idx: number, sample: boolean, subtask_idx: number | null): TestCase => ({
     idx,
     sample,
-    open,
     subtask_idx,
     input_size: 1,
     output_size: 1,
     input_preview: '',
     output_preview: '',
   });
-  const tests = [t(1, true, null), t(2, false, 1), t(3, false, 1), t(4, false, null), t(5, false, null, true)];
+  const tests = [t(1, true, null), t(2, false, 1), t(3, false, 1), t(4, false, null), t(5, false, null)];
 
   it('follows the subtasks as typed', () => {
-    const g = draftGroups(tests, { samples: '1', open: '5', subtasks: [{ points: 50, title: '', tests: '2' }, { points: 50, title: '', tests: '3-4' }] });
+    const g = draftGroups(tests, { samples: '1', subtasks: [{ points: 50, title: '', tests: '2' }, { points: 50, title: '', tests: '3-4' }] });
     expect([...g.entries()]).toEqual([
       [1, 'Sample'],
       [2, 'Subtask 1'],
       [3, 'Subtask 2'],
       [4, 'Subtask 2'],
-      [5, 'Open test'],
+      [5, 'Not in a subtask'],
     ]);
   });
 
-  it('names tests in no subtask, and open tests as their own kind (D115)', () => {
-    const g = draftGroups(tests, { samples: '1', open: '5', subtasks: [{ points: 100, title: '', tests: '2-3' }] });
+  it('names tests in no subtask', () => {
+    const g = draftGroups(tests, { samples: '1', subtasks: [{ points: 100, title: '', tests: '2-3' }] });
     expect(g.get(4)).toBe('Not in a subtask');
-    expect(g.get(5)).toBe('Open test');
-    // Typed into the open tests, an unassigned test is no longer an error.
-    expect(draftGroups(tests, { samples: '1', open: '4-5', subtasks: [{ points: 100, title: '', tests: '2-3' }] }).get(4)).toBe('Open test');
   });
 
   it('falls back to the saved groups while a list cannot be read', () => {
-    const g = draftGroups(tests, { samples: '1', open: '5, x', subtasks: [] });
+    const g = draftGroups(tests, { samples: '1, x', subtasks: [] });
     expect(g.get(2)).toBe('Subtask 1');
     expect(g.get(4)).toBe('Not in a subtask');
-    expect(g.get(5)).toBe('Open test');
   });
 });

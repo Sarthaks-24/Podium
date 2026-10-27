@@ -17,7 +17,6 @@ const DRAFT: Draft = {
   tags: '',
   difficulty: '',
   samples: '1',
-  open: '',
   subtasks: [{ points: 100, title: 'All', tests: '2-5', args: '' }],
   generator: null,
   plan: [{ idx: 6, subtask: 1, seed: 1, args: '' }],

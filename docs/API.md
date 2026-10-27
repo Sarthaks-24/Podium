@@ -335,7 +335,7 @@ An `{id}` that is not a problem gives `404 not_found` on every route.
 - `checker` is `tokens`, `exact`, `float` or `custom`. `epsilon` matters only for `float`; `checker_source` is the testlib checker for `custom` and `""` otherwise.
 - `tests[].subtask_idx` is `null` for a sample. Previews are the first 200 bytes of each file, cut at a whole UTF-8 character.
 - `tests[].output_missing` is true while a test has no expected output (a pack or test zip without its `.out` file); `output_preview` is then `""`. "Generate outputs" fills it.
-- **v1.2.0 open tests (D115):** `open` lists the open tests (test numbers, always an array): not scored, in no subtask, run by Run after the samples, and revealed when they fail. `tests[].open` is true for one; its `subtask_idx` is `null` like a sample's. A test is a sample, an open test or in exactly one subtask. Revision fields (`revision`, `revisions`, `revisions_total`, `live_contests`) are under "History and audit".
+- **v3:** there are no open tests (V3-5); `open` and `tests[].open` are gone. A format 2 pack's open tests import as samples.
 - `problems` lists what stops validation and judging (a test in no subtask, a range naming a missing test, "Test 3 has no expected output. Generate outputs from the reference solution."); `warnings` is advice that does not (points not adding up to 100, no brute force, no validator, more than 10 hidden tests). After an import, `warnings` also names files the pack carried that podium ignores.
 
 `ProblemEdit` replaces every editable field at once (at most 512 KB of JSON):
@@ -355,7 +355,7 @@ A `brute` or `validator` with empty source counts as none. Subtasks are numbered
 - Leave out both `generator` and `plan` to keep the generator, the plan and each subtask's `generator_args` (an editor that does not know about generators cannot erase one).
 - Send either to replace them: the one left out keeps its stored value, and each subtask's `generator_args` then comes from the body (left out means none). `null`, or a generator with empty source, removes the generator; the plan must then be empty.
 - Field errors: `generator`, `plan` (one sentence for the first wrong entry) and `subtasks.N.generator_args`.
-- **v1.2.0:** `ProblemEdit` may carry `open` (test numbers, like `samples`; left out keeps the stored list) and `reason` (at most 500 characters). `reason` is required, `400 bad_request` with `fields.reason`, when the save changes the problem while a live contest pins it (`live_contests` in `Problem` is not empty); it is recorded on the new revision. `PUT .../tests` takes it as `?reason=`.
+- **v1.2.0:** `ProblemEdit` may carry `reason` (at most 500 characters). `reason` is required, `400 bad_request` with `fields.reason`, when the save changes the problem while a live contest pins it (`live_contests` in `Problem` is not empty); it is recorded on the new revision. `PUT .../tests` takes it as `?reason=`.
 - A save that changes the statement, the reference or the brute force removes the `ai draft` tag and withdraws "validated" (the person's version must pass again); a save that changes none of them keeps the tag, even when `tags` leaves it out. A save that changes the reference or the brute force also marks the problem as having a person's solution, which graded contests need for problems whose origin is `ai`. The generator and the plan are not part of the content hash, so changing them does not withdraw "validated" (D53).
 
 `Validation`:
@@ -643,7 +643,6 @@ The workspace is the page where code is written, run and submitted. Under `/api/
 - `draft` is `null` when nothing was saved. `submissions` is the viewer's newest 20 on this problem, newest first, as `Submission` objects.
 - Starter code per language lives in the web app, not here.
 - Each language carries `time_factor`, the judge's multiplier of `time_limit_ms` for it (C++17 1, Java 21 2, Python 3 3, JavaScript 2), so the editor shows the limit a program really gets (D323).
-- **v1.2.0:** `open_test_count` is how many open tests a Run checks after the samples (D115); their inputs are never listed here.
 
 ### Drafts
 
@@ -672,25 +671,19 @@ A run older than 30 days keeps its row and verdict but no longer its inputs or o
 
 Times are rounded to the nearest 10 ms (100 ms for a student in a graded contest); `time_step_ms` (10 or 100, D322) says which, so a client shows a 0 as "under 5 ms" or "under 50 ms". A run uses the problem's limits and checker. Running the samples on a problem without samples is `400 bad_request` ("Run it on your own input instead").
 
-**v1.2.0, open tests and the revealed test (D115, contract row "Run").** A Run without `input` runs every sample, then the problem's open tests in order; the open tests run only while everything before them passed, and stop at the first failure. Every Run reveals its first failing test, in practice and during a contest alike.
+**The revealed test (D115, contract row "Run").** A Run without `input` runs every sample. The first failing sample is revealed in full. v3 has no open tests (V3-5).
 
 ```json
 { "id": 78, "state": "done", "compile_output": "",
   "results": [ { "kind": "sample", "label": "Sample 1", "verdict": "AC", "time_ms": 10, "memory_kb": 3120,
-                 "output": "3\n", "output_truncated": false, "expected": "3\n", "message": "" },
-               { "kind": "open", "label": "Open test 1", "verdict": "WA", "time_ms": 10, "memory_kb": 3100,
-                 "output": "7\n", "output_truncated": false, "expected": "8\n", "message": "" },
-               { "kind": "open", "label": "Open test 2", "verdict": "SK", "time_ms": 0, "memory_kb": 0,
-                 "output": "", "output_truncated": false, "expected": null, "message": "" } ],
-  "revealed": { "idx": 3, "kind": "open", "label": "Open test 1", "input": "4 4\n", "expected": "8\n", "output": "7\n", "truncated": false },
+                 "output": "3\n", "output_truncated": false, "expected": "3\n", "message": "" } ],
   "server_now": 1792183192400 }
 ```
 
 | Field | Meaning |
 |---|---|
-| `results[].kind` | `sample`, `open` or `custom` |
-| open test rows | labelled "Open test 1", "Open test 2", ... in order; `SK` when not run because an earlier sample or open test failed; `output` is `""` and `expected` `null` except on the failing one |
-| `revealed` | present only when a sample or open test failed: the first one, with its test number `idx`, `kind`, `label`, its `input`, the `expected` output and the program's `output`, each at most 4 KB cut at a whole UTF-8 character (`truncated` says one was cut). Absent for a custom input and when every test passed |
+| `results[].kind` | `sample` or `custom` |
+| `revealed` | present only when a sample failed: the first one, with its test number `idx`, `kind`, `label`, its `input`, the `expected` output and the program's `output`, each at most 4 KB cut at a whole UTF-8 character (`truncated` says one was cut). Absent for a custom input and when every test passed |
 
 ### `Submission`: the revealed hidden test (v1.2.0, D115)
 
@@ -705,7 +698,7 @@ A submission that never counts carries `revealed` for its first failing hidden t
 - `output` is the start of what the program printed on that test (at most 4 KB). Each field is capped at 4 KB like the samples.
 - The setter checklist in `docs/AUTHORING.md` explains the consequence: a problem used in a practice-open or ungraded contest has its hidden tests readable one at a time.
 
-The web app shows `revealed` from v2 P5 (D115, F7.13): a practice submission's first failing hidden test, and a run's first failing sample or open test, in one block that says why it is shown, with the input, the expected output, the program's output, the first difference and "Run on this input" (not offered when a text was cut at 4 KB). Passed samples and open tests show their verdict line only, and a skipped open test says why it did not run. A submission that counts in a contest never carries `revealed`, so it never shows one.
+The web app shows `revealed` from v2 P5 (D115, F7.13): a practice submission's first failing hidden test, and a run's first failing sample, in one block that says why it is shown, with the input, the expected output, the program's output, the first difference and "Run on this input" (not offered when a text was cut at 4 KB). Passed samples and open tests show their verdict line only, and a skipped open test says why it did not run. A submission that counts in a contest never carries `revealed`, so it never shows one.
 
 ### `Submission`
 
@@ -1068,7 +1061,7 @@ A problem's revisions, as `Problem` lists them for owners and admins (`GET /api/
 | `created_by` | `null` for revisions the server made (revision 1 at the upgrade, generated outputs, generated inputs) |
 | `reason` | the setter's reason, required while `live_contests` is not empty; `""` otherwise |
 | `statement_changed` | the title or statement differs from the revision before |
-| `judging_changed` | anything validation depends on differs (tests, limits, checker, solutions, samples, open tests, subtasks): its `content_hash` differs from the revision before |
+| `judging_changed` | anything validation depends on differs (tests, limits, checker, solutions, samples, subtasks): its `content_hash` differs from the revision before |
 | `reconstructed` | made by the upgrade to v1.2.0 for a contest pin older than the working copy: its tests and limits come from the contest's judging jobs, its statement was not recorded |
 | `validated` | the problem's last passing validation covers this revision's content |
 | `pinned_in` | the contests that pin this revision now |
@@ -1084,7 +1077,7 @@ A problem's revisions, as `Problem` lists them for owners and admins (`GET /api/
   "lines": [ { "op": "same", "text": "Read two integers." }, { "op": "del", "text": "1 <= n <= 10" }, { "op": "add", "text": "1 <= n <= 100" } ] }
 ```
 
-- `changed` lists what differs, from `title`, `statement`, `limits`, `checker`, `solutions`, `samples`, `open`, `subtasks`, `tests`. `statement_only` is true when only `title` and `statement` changed: moving a contest to `to_rev` then needs no validation and no rejudge.
+- `changed` lists what differs, from `title`, `statement`, `limits`, `checker`, `solutions`, `samples`, `subtasks`, `tests`. `statement_only` is true when only `title` and `statement` changed: moving a contest to `to_rev` then needs no validation and no rejudge.
 - `lines` is a line diff of the statements: `op` is `same`, `del` (only in `from`) or `add` (only in `to`). A statement pair too large to compare line by line (more than a million line pairs after the common start and end) comes back `coarse`: every old line deleted, then every new line added.
 
 ### `StatementHistory` (C3, students)

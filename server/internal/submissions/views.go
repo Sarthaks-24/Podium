@@ -69,13 +69,12 @@ type RevealedRunTest struct {
 // Run result kinds.
 const (
 	RunSample = "sample"
-	RunOpen   = "open"
 	RunCustom = "custom"
 )
 
 // RunResult is one input of a run.
 type RunResult struct {
-	// Kind is sample, open or custom (D115).
+	// Kind is sample or custom.
 	Kind            string  `json:"kind"`
 	Label           string  `json:"label"`
 	Verdict         string  `json:"verdict"`
@@ -375,14 +374,10 @@ func (s *Service) GetRunWith(ctx context.Context, id int64, o ViewOptions) (*Run
 	for _, t := range job.Result.Tests {
 		got[t.Idx] = t
 	}
-	samples, opens := 0, 0
+	samples := 0
 	for _, in := range pl.Inputs {
 		res := RunResult{Kind: RunCustom, Label: "Custom input"}
-		switch {
-		case in.Open:
-			opens++
-			res.Kind, res.Label = RunOpen, fmt.Sprintf("Open test %d", opens)
-		case in.Idx > 0:
+		if in.Idx > 0 {
 			samples++
 			res.Kind, res.Label = RunSample, fmt.Sprintf("Sample %d", samples)
 		}
@@ -390,31 +385,22 @@ func (s *Service) GetRunWith(ctx context.Context, id int64, o ViewOptions) (*Run
 		if in.ExpectedSHA != "" {
 			exp, _ := s.Problems.Blobs.Read(in.ExpectedSHA, maxSampleTxt+1)
 			expected = clipText(exp, maxSampleTxt)
-			if !in.Open {
-				res.Expected = &expected
-			}
+			res.Expected = &expected
 		}
 		t, ok := got[in.Idx]
 		if ok {
 			res.Verdict, res.TimeMS, res.MemoryKB, res.Message = t.Verdict, roundTo(t.TimeMS, step), t.MemoryKB, t.Message
-			if !in.Open {
-				res.Output = t.Output
-				// The worker cuts at MaxRunOutput and drops a split rune (at
-				// most 3 bytes), so anything that close to the cap was cut.
-				res.OutputTruncated = len(t.Output) >= judgeapi.MaxRunOutput-3
-			}
+			res.Output = t.Output
+			// The worker cuts at MaxRunOutput and drops a split rune (at
+			// most 3 bytes), so anything that close to the cap was cut.
+			res.OutputTruncated = len(t.Output) >= judgeapi.MaxRunOutput-3
 		}
-		// The first failing sample or open test is revealed (D115): an
-		// open test's input, expected and actual output show only then.
+		// The first failing sample is shown in full.
 		if ok && in.ExpectedSHA != "" && v.Revealed == nil && failed(t.Verdict) {
 			raw, _ := s.Problems.Blobs.Read(in.InputSHA, maxSampleTxt+1)
 			v.Revealed = &RevealedRunTest{Idx: in.Idx, Kind: res.Kind, Label: res.Label, Input: clipText(raw, maxSampleTxt),
 				Expected: expected, Output: t.Output,
 				Truncated: len(raw) > maxSampleTxt || len(expected) >= maxSampleTxt || len(t.Output) >= judgeapi.MaxRunOutput-3}
-			if in.Open {
-				res.Output, res.Expected = t.Output, &expected
-				res.OutputTruncated = len(t.Output) >= judgeapi.MaxRunOutput-3
-			}
 		}
 		v.Results = append(v.Results, res)
 	}
