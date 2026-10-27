@@ -943,7 +943,7 @@ Every change that can affect results is recorded in the contest's audit log (bel
 
 | Route | Request | Success |
 |---|---|---|
-| `GET /api/admin/contests` (`?archived=1`) | | 200 `{contests:[AdminContest], server_now}` (a co-organiser sees their own) |
+| `GET /api/admin/contests` (`?archived=1`) | | 200 `{contests:[AdminContest], server_now}`; list rows leave out `extensions` and `queue` and send `roster_count` and `unanswered` as 0, so the list costs two queries however many contests there are (v3) |
 | `POST /api/admin/contests` | `ContestEdit` | 201 `AdminContest` (unpublished) |
 | `GET /api/admin/contests/{id}` | | 200 `AdminContest` |
 | `PUT /api/admin/contests/{id}` | `ContestEdit` (fields left out keep their value) | 200 `AdminContest` |

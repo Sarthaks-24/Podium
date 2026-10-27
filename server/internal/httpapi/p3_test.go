@@ -151,3 +151,30 @@ func TestP3QueueHealthOnTheContestResponse(t *testing.T) {
 		t.Errorf("errors %v", q)
 	}
 }
+
+// The organiser list builds each row from the two list queries alone
+// (S1-08, no query per contest): rows carry no extensions and no queue,
+// which only GET /api/admin/contests/{id} reads.
+func TestAdminContestListHasNoPerContestLookups(t *testing.T) {
+	s := newSite(t)
+	owner := s.signedIn("owner@college.edu", "Owner")
+	pid := s.importProblem(owner, "sum")
+	start := time.Now().Add(time.Hour)
+	for i := 0; i < 20; i++ {
+		s.createContest(owner, fmt.Sprintf("list-%02d", i), start, map[string]int64{"A": pid}, nil)
+	}
+	code, out := owner.do("GET", "/api/admin/contests", nil, "")
+	list, _ := out["contests"].([]any)
+	if code != 200 || len(list) != 20 {
+		t.Fatalf("list: %d, %d rows", code, len(list))
+	}
+	for _, row := range list {
+		c := row.(map[string]any)
+		if _, ok := c["queue"]; ok {
+			t.Fatalf("a list row carries the queue: %v", c["slug"])
+		}
+		if _, ok := c["extensions"]; ok {
+			t.Fatalf("a list row carries extensions: %v", c["slug"])
+		}
+	}
+}

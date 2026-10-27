@@ -79,15 +79,15 @@ type adminContestJSON struct {
 	Archived           bool                 `json:"archived"`
 	State              string               `json:"state"`
 	Problems           []adminProblemJSON   `json:"problems"`
-	Extensions         []contests.Extension `json:"extensions"`
+	Extensions         []contests.Extension `json:"extensions,omitempty"`
 	RosterCount        int                  `json:"roster_count"`
 	CreatedAt          int64                `json:"created_at"`
 	UpdatedAt          int64                `json:"updated_at"`
 	ServerNow          int64                `json:"server_now"`
 	// Queue health for the console's attention strip (C10, D103).
-	Queue            queueJSON `json:"queue"`
-	JudgeLastClaimAt *int64    `json:"judge_last_claim_at"`
-	Unanswered       int       `json:"unanswered"`
+	Queue            *queueJSON `json:"queue,omitempty"`
+	JudgeLastClaimAt *int64     `json:"judge_last_claim_at"`
+	Unanswered       int        `json:"unanswered"`
 }
 
 // queueJSON is the contest's share of the judge queue (C10).
@@ -98,7 +98,9 @@ type queueJSON struct {
 	OldestWaitS float64 `json:"oldest_wait_s"`
 }
 
-func (d Deps) adminContestOut(ctx context.Context, c *contests.Contest) (*adminContestJSON, error) {
+// adminContestBase is AdminContest from the loaded contest alone, with no
+// query: what the contest list shows (S1-08, no query per contest).
+func (d Deps) adminContestBase(c *contests.Contest) *adminContestJSON {
 	now := d.Contests.Clock()
 	out := &adminContestJSON{ID: c.ID, Slug: c.Slug, Title: c.Title, DescriptionMD: c.Description,
 		StartsAt: c.Schedule.StartsAt.UnixMilli(), EndsAt: c.Schedule.EndsAt.UnixMilli(), CloseAt: c.Schedule.Close().UnixMilli(),
@@ -110,7 +112,6 @@ func (d Deps) adminContestOut(ctx context.Context, c *contests.Contest) (*adminC
 		ExtendedMinutes: int(c.Schedule.Extended / time.Minute), RevealedAt: millis(c.RevealedAt), Archived: c.Archived,
 		State: c.Schedule.State(now, c.PracticeAfterEnd), Problems: []adminProblemJSON{},
 		CreatedAt: c.CreatedAt.UnixMilli(), UpdatedAt: c.UpdatedAt.UnixMilli(), ServerNow: now.UnixMilli()}
-	var err error
 	for _, p := range c.Problems {
 		ap := adminProblemJSON{Label: p.Label, ProblemID: p.ProblemID, Title: p.Title,
 			PinnedHash: p.PinnedHash, Ready: p.Ready, MaxScore: p.MaxScore(),
@@ -119,6 +120,14 @@ func (d Deps) adminContestOut(ctx context.Context, c *contests.Contest) (*adminC
 			UpdateStatementOnly: p.LatestRevisionID != p.RevisionID && p.LatestStatementOnly, Reconstructed: p.Reconstructed}
 		out.Problems = append(out.Problems, ap)
 	}
+	return out
+}
+
+// adminContestOut is the whole AdminContest: the base plus extensions,
+// the roster count and the queue's health.
+func (d Deps) adminContestOut(ctx context.Context, c *contests.Contest) (*adminContestJSON, error) {
+	out := d.adminContestBase(c)
+	var err error
 	if out.Extensions, err = d.Contests.Extensions(ctx, c.ID); err != nil {
 		return nil, err
 	}
@@ -137,7 +146,7 @@ func (d Deps) adminContestOut(ctx context.Context, c *contests.Contest) (*adminC
 	if err != nil {
 		return nil, err
 	}
-	out.Queue = queueJSON{Waiting: q.Waiting, Judging: q.Judging, Errors: q.Errors, OldestWaitS: q.OldestWait.Seconds()}
+	out.Queue = &queueJSON{Waiting: q.Waiting, Judging: q.Judging, Errors: q.Errors, OldestWaitS: q.OldestWait.Seconds()}
 	out.Unanswered = q.Unanswered
 	if d.Problems != nil && d.Problems.Jobs != nil {
 		if at, ok := d.Problems.Jobs.LastClaimAt(); ok {
@@ -192,12 +201,7 @@ func (d Deps) listAdminContests(w http.ResponseWriter, r *http.Request) {
 	}
 	out := []*adminContestJSON{}
 	for _, c := range all {
-		a, err := d.adminContestOut(r.Context(), c)
-		if err != nil {
-			d.internalError(w, r, err)
-			return
-		}
-		out = append(out, a)
+		out = append(out, d.adminContestBase(c))
 	}
 	WriteJSON(w, http.StatusOK, map[string]any{"contests": out, "server_now": d.Contests.Clock().UnixMilli()})
 }
