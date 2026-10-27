@@ -118,3 +118,42 @@ func TestSchemaTables(t *testing.T) {
 		t.Errorf("tables:\n got %v\nwant %v", got, want)
 	}
 }
+
+// contest_final is the end, plus the contest-wide extension, plus the
+// longest personal extension (S1-08): the one SQL copy of Contest.Final.
+func TestContestFinalView(t *testing.T) {
+	ctx := context.Background()
+	d, err := Open(ctx, filepath.Join(t.TempDir(), "podium.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer d.Close()
+	if _, err := Migrate(ctx, d); err != nil {
+		t.Fatal(err)
+	}
+	for _, q := range []string{
+		"INSERT INTO users (id, email, created_at) VALUES (1, 'a@x.edu', 0), (2, 'b@x.edu', 0)",
+		"INSERT INTO contests (id, slug, title, starts_at, ends_at, extended_minutes, created_at, updated_at) VALUES (1, 'c', 'C', 0, 600000, 5, 0, 0)",
+	} {
+		if _, err := d.ExecContext(ctx, q); err != nil {
+			t.Fatal(err)
+		}
+	}
+	final := func() int64 {
+		t.Helper()
+		var at int64
+		if err := d.QueryRowContext(ctx, "SELECT final_at FROM contest_final WHERE contest_id = 1").Scan(&at); err != nil {
+			t.Fatal(err)
+		}
+		return at
+	}
+	if got := final(); got != 600000+5*60000 {
+		t.Errorf("without personal extensions: %d", got)
+	}
+	if _, err := d.ExecContext(ctx, "INSERT INTO contest_extensions (contest_id, user_id, minutes) VALUES (1, 1, 10), (1, 2, 25)"); err != nil {
+		t.Fatal(err)
+	}
+	if got := final(); got != 600000+(5+25)*60000 {
+		t.Errorf("with the longest personal extension of 25 min: %d", got)
+	}
+}

@@ -13,10 +13,9 @@ import (
 // and returns how many signals and runs it deleted.
 func (s *Service) RetainSignals(ctx context.Context) (signals, runs int64, err error) {
 	cutoff := s.now().Add(-contests.RetentionPeriod).UnixMilli()
-	// The contest's final moment: its close plus the longest extension, as
-	// in contests.Retain.
-	const old = `SELECT c.id FROM contests c WHERE c.ends_at + 60000 * (c.extended_minutes +
-		coalesce((SELECT max(minutes) FROM contest_extensions e WHERE e.contest_id = c.id), 0)) < ?`
+	// The contest's final moment (the contest_final view), as in
+	// contests.Retain.
+	const old = `SELECT contest_id FROM contest_final WHERE final_at < ?`
 	tx, err := s.DB.BeginTx(ctx, nil)
 	if err != nil {
 		return 0, 0, err

@@ -13,9 +13,8 @@ import (
 // cheap enough for every page load.
 func (s *Service) LiveUntil(ctx context.Context, userID int64) (until time.Time, live bool, err error) {
 	now := s.now()
-	rows, err := s.DB.QueryContext(ctx, `SELECT c.id FROM contests c
-		WHERE c.starts_at <= ? AND c.ends_at + 60000 * (c.extended_minutes +
-			coalesce((SELECT max(minutes) FROM contest_extensions e WHERE e.contest_id = c.id), 0)) > ?
+	rows, err := s.DB.QueryContext(ctx, `SELECT c.id FROM contests c JOIN contest_final f ON f.contest_id = c.id
+		WHERE c.starts_at <= ? AND f.final_at > ?
 		AND EXISTS (SELECT 1 FROM contest_starts cs WHERE cs.contest_id = c.id AND cs.user_id = ?)`,
 		now.UnixMilli(), now.UnixMilli(), userID)
 	if err != nil {

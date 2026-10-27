@@ -298,8 +298,8 @@ func (s *Service) contestGate(ctx context.Context, tx *sql.Tx, kinds []any, now 
 	var live, leased int
 	ms := now.UnixMilli()
 	if err := tx.QueryRowContext(ctx, `SELECT
-		EXISTS (SELECT 1 FROM contests c WHERE c.published = 1 AND c.archived = 0 AND c.starts_at <= ?
-			AND c.ends_at + 60000 * (c.extended_minutes + coalesce((SELECT max(minutes) FROM contest_extensions e WHERE e.contest_id = c.id), 0)) > ?),
+		EXISTS (SELECT 1 FROM contests c JOIN contest_final f ON f.contest_id = c.id
+			WHERE c.published = 1 AND c.archived = 0 AND c.starts_at <= ? AND f.final_at > ?),
 		(SELECT count(*) FROM jobs WHERE state = 'leased' AND kind IN (?, ?, ?))`,
 		ms, ms, judgeapi.KindValidate, judgeapi.KindGenerate, judgeapi.KindGenerateInputs).Scan(&live, &leased); err != nil {
 		return nil, err

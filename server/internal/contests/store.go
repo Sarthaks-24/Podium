@@ -1039,8 +1039,8 @@ func (s *Service) Start(ctx context.Context, c *Contest, userID int64, accept bo
 func (s *Service) PinnedInOpenContest(ctx context.Context, problemID, except int64) (bool, error) {
 	var pending bool
 	err := s.DB.QueryRowContext(ctx, `SELECT EXISTS (SELECT 1 FROM contest_problems cp JOIN contests c ON c.id = cp.contest_id
-		WHERE cp.problem_id = ? AND c.id != ? AND c.archived = 0
-		AND c.ends_at + 60000 * (c.extended_minutes + coalesce((SELECT max(minutes) FROM contest_extensions e WHERE e.contest_id = c.id), 0)) > ?)`,
+		JOIN contest_final f ON f.contest_id = c.id
+		WHERE cp.problem_id = ? AND c.id != ? AND c.archived = 0 AND f.final_at > ?)`,
 		problemID, except, s.now().UnixMilli()).Scan(&pending)
 	return pending, err
 }

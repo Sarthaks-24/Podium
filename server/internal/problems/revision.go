@@ -244,8 +244,8 @@ type LiveContest struct {
 // the longest personal extension.
 func liveContestsOf(ctx context.Context, q queryer, problemID int64, now time.Time) ([]LiveContest, error) {
 	rows, err := q.QueryContext(ctx, `SELECT c.id, c.slug, c.title, cp.label FROM contest_problems cp JOIN contests c ON c.id = cp.contest_id
-		WHERE cp.problem_id = ? AND c.published = 1 AND c.archived = 0 AND c.starts_at <= ?
-		AND ? < c.ends_at + (c.extended_minutes + (SELECT coalesce(max(e.minutes), 0) FROM contest_extensions e WHERE e.contest_id = c.id)) * 60000
+		JOIN contest_final f ON f.contest_id = c.id
+		WHERE cp.problem_id = ? AND c.published = 1 AND c.archived = 0 AND c.starts_at <= ? AND ? < f.final_at
 		ORDER BY c.starts_at, c.id`, problemID, now.UnixMilli(), now.UnixMilli())
 	if err != nil {
 		return nil, err
