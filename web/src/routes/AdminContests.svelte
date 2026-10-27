@@ -19,7 +19,7 @@
   Settings first instead of a countdown. "New contest"
   opens a small form for a title, a slug (suggested from the title until it
   is edited) and the start and end, creates the contest unpublished with
-  the default settings (graded, fixed start, subtask feedback) and goes to
+  the default settings (fixed start, subtask feedback) and goes to
   its settings. Students see a short explanation instead. Takes no props.
 -->
 <script lang="ts">

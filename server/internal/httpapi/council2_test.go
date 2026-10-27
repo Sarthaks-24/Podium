@@ -24,20 +24,20 @@ func TestC2014ShownMarkNeedsPublishAndStays(t *testing.T) {
 	pa := s.importProblem(owner, "c2014-a")
 	pb := s.importProblem(owner, "c2014-b")
 	pc := s.importProblem(owner, "c2014-c")
-	draft := s.createContest(owner, "c2014-draft", start, map[string]int64{"A": pa}, map[string]any{"graded": false})
+	draft := s.createContest(owner, "c2014-draft", start, map[string]int64{"A": pa}, map[string]any{"practice_after_end": true})
 	if code, out := owner.do("PUT", fmt.Sprintf("/api/admin/contests/%d", draft), map[string]any{"published": false}, o); code != 200 {
 		t.Fatalf("unpublish: %d %v", code, out)
 	}
-	ungraded := s.createContest(owner, "c2014-ungraded", start, map[string]int64{"A": pb}, map[string]any{"graded": false})
+	practice := s.createContest(owner, "c2014-practice", start, map[string]int64{"A": pb}, map[string]any{"practice_after_end": true})
 
-	s.at(start, 5)
+	s.at(start, 121)
 	if s.shownInPractice(owner, pa) {
-		t.Error("an unpublished draft past its start marked its problem")
+		t.Error("an unpublished draft past its end marked its problem")
 	}
 	if !s.shownInPractice(owner, pb) {
-		t.Fatal("a published ungraded contest past its start did not mark its problem")
+		t.Fatal("a published contest open for practice did not mark its problem")
 	}
-	problems := fmt.Sprintf("/api/admin/contests/%d/problems", ungraded)
+	problems := fmt.Sprintf("/api/admin/contests/%d/problems", practice)
 	code, out := owner.do("PUT", problems, []map[string]any{{"problem_id": pc, "label": "A"}}, o)
 	if code != 400 || fieldErr(out, "problems") == "" {
 		t.Errorf("removing a shown problem: %d %v, want 400 with fields.problems", code, out)

@@ -115,7 +115,7 @@ type Scope struct {
 	// and runs record it. 0 outside contests.
 	RevisionID int64
 	// Reveal marks submissions that never count (practice after the
-	// window, an ungraded contest, the organisers' workspace): their
+	// window, the organisers' workspace): their
 	// first failing hidden test is revealed to the author (D115).
 	Reveal bool
 }

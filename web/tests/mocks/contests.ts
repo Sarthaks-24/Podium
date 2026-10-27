@@ -37,7 +37,7 @@ export type Phase = 'upcoming' | 'ready' | 'during' | 'after' | 'practice';
 
 export interface Options {
   who?: 'student' | 'admin';
-  /** Interval covering came from the AI wizard: the graded contest asks for a reason. */
+  /** Interval covering came from the AI wizard: the contest asks for a reason. */
   aiGate?: boolean;
   phase?: Phase;
   feedback?: 'subtask' | 'exam';
@@ -55,8 +55,8 @@ export interface Options {
   published?: boolean;
   /** GET of a problem's workspace answers 403 with this code and Go's sentence (contests.go contestError, C2-017). */
   problemRefusal?: 'not_started' | 'not_on_roster' | 'contest_over';
-  /** The organiser's contest is ungraded (D115: submissions show the first failing hidden test). */
-  ungraded?: boolean;
+  /** Students saw this contest's hidden tests in practice (D115), so its problems stay. */
+  shownHere?: boolean;
   /** Bank problems whose hidden tests a contest showed in practice (D115, C1-015). */
   shownInPractice?: number[];
   /** A second live contest in the student's list, under the pinned one (C1-031). */
@@ -262,7 +262,6 @@ export async function mockApi(page: Page, options: Options = {}) {
       max_per_problem: 15,
       languages: ['cpp17', 'python3', 'java21'],
       freeze_minutes: 30,
-      graded: !options.ungraded,
     },
     honour_text:
       'This contest is graded. By starting you agree to these rules:\n\n- Work alone.\n- Do not use AI assistants.\n- Podium records your submissions, the characters you type and paste, and when you leave the page. It is deleted 180 days after the contest.',
@@ -339,7 +338,6 @@ export async function mockApi(page: Page, options: Options = {}) {
     scoring_mode: 'best_subtask',
     access: 'roster',
     feedback_mode: 'subtask',
-    graded: !options.ungraded,
     published: options.published ?? true,
     practice_after_end: true,
     stop_on_sample_fail: true,
@@ -602,8 +600,8 @@ export async function mockApi(page: Page, options: Options = {}) {
         state.problemPuts.push(body);
         // contests/store.go (C2-014): a published contest that showed hidden tests keeps its problems.
         const dropped = state.adminProblems.find((p) => !body.some((b) => b.problem_id === p.problem_id));
-        if (options.ungraded && options.published !== false && phase !== 'upcoming' && dropped) {
-          const why = `Problem ${dropped.label} stays in this contest: students have seen its hidden tests here, in practice or while the contest was ungraded, and the problem bank shows that from this contest.`;
+        if (options.shownHere && options.published !== false && phase !== 'upcoming' && dropped) {
+          const why = `Problem ${dropped.label} stays in this contest: students have seen its hidden tests here in practice, and the problem bank shows that from this contest.`;
           return apiError(route, 400, 'bad_request', why, { fields: { problems: why } });
         }
         const unconfirmed = body.filter((b) => state.aiGate && b.problem_id === 12 && (b.ai_reason ?? '').length < 10);

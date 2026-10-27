@@ -110,6 +110,38 @@ func TestP2PracticeRevealsAndContestSubmitNever(t *testing.T) {
 	}
 }
 
+// M2 (V3-6): practice after one contest never reveals a hidden test of a
+// problem that another contest still pins and has not closed, drafts and
+// upcoming contests included. Once that one closes, practice reveals again.
+func TestPracticeRevealWaitsForEveryContestOfTheProblem(t *testing.T) {
+	s := newSite(t)
+	owner := s.signedIn("owner@college.edu", "Owner")
+	pid := s.importProblem(owner, "sum")
+	start := time.Now().Add(time.Hour)
+	s.createContest(owner, "m2-first", start, map[string]int64{"A": pid}, map[string]any{"practice_after_end": true})
+	later := start.Add(6 * time.Hour)
+	s.createContest(owner, "m2-exam", later, map[string]int64{"A": pid}, nil)
+	student := s.signedIn("asha@college.edu", "Asha")
+	s.at(start, 1)
+	student.do("POST", "/api/contests/m2-first/start", map[string]any{"accept_honour": true}, s.srv.URL)
+
+	s.at(start, 200)
+	code, sub := s.submit(student, "m2-first", "A", "int32")
+	if code != 202 {
+		t.Fatalf("practice submit: %d %v", code, sub)
+	}
+	if _, got := student.do("GET", fmt.Sprintf("/api/submissions/%v", sub["id"]), nil, ""); got["revealed"] != nil {
+		t.Fatalf("practice revealed a hidden test the upcoming m2-exam still uses: %v", got["revealed"])
+	}
+
+	s.at(later, 130)
+	_, sub = s.submit(student, "m2-first", "A", "int32")
+	_, got := student.do("GET", fmt.Sprintf("/api/submissions/%v", sub["id"]), nil, "")
+	if rv, ok := got["revealed"].(map[string]any); !ok || rv["input"] == "" {
+		t.Fatalf("practice after every contest closed: revealed %v", got["revealed"])
+	}
+}
+
 // A draft may change its slug; a published contest keeps it, so links to
 // it keep working (v3, no redirects).
 func TestPublishedContestKeepsItsSlug(t *testing.T) {

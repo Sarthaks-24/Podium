@@ -61,7 +61,6 @@ export interface ContestRules {
   max_per_problem: number;
   languages: string[];
   freeze_minutes: number;
-  graded: boolean;
 }
 
 /** A problem as a student sees it in the contest. */
@@ -465,13 +464,10 @@ export function rulesSentences(c: Pick<Contest, 'start_mode' | 'duration_minutes
       ? 'Each problem scores your best single submission.'
       : 'Each problem adds up your best result on every subtask across your submissions.',
   );
-  // An ungraded contest is practice: a submission shows the first hidden test it fails (D115).
   out.push(
     r.feedback_mode === 'exam'
       ? 'This is an exam: a submission only says "Submitted". Scores appear after the end.'
-      : r.graded === false
-        ? 'Each submission shows which subtasks passed and, in full, the first hidden test it fails. It never counts.'
-        : 'Each submission shows which subtasks passed and a verdict for every test, never the hidden inputs or outputs.',
+      : 'Each submission shows which subtasks passed and a verdict for every test, never the hidden inputs or outputs.',
   );
   out.push(`You can submit up to ${r.max_per_problem} times per problem, at least ${r.min_gap_s} s apart.`);
   const langs = allowedLanguages(r.languages).map((l) => l.label);
@@ -561,7 +557,6 @@ export interface ContestSettings {
   scoring_mode: ScoringMode;
   access: Access;
   feedback_mode: FeedbackMode;
-  graded: boolean;
   published: boolean;
   practice_after_end: boolean;
   stop_on_sample_fail: boolean;
@@ -571,13 +566,6 @@ export interface ContestSettings {
   honour_text: string;
   /** Keep students on the frozen board after the end until an organiser reveals. */
   hold_reveal?: boolean;
-  /** Sent only to turn grading off after the start (the server asks for it; C1-015). */
-  confirm_ungraded?: boolean;
-  /**
-   * Sent only to turn grading back on after an ungraded start (C2-014).
-   * Today's server ignores it; a server guard would ask for it.
-   */
-  confirm_graded?: boolean;
 }
 
 /** GET /api/admin/contests/{id}. */
@@ -678,7 +666,6 @@ const AUDIT_FIELDS: Record<string, string> = {
   scoring_mode: 'scoring',
   access: 'access',
   feedback_mode: 'feedback',
-  graded: 'graded',
   published: 'published',
   practice_after_end: 'practice after the end',
   stop_on_sample_fail: 'stop on a failed sample',
@@ -961,7 +948,7 @@ export function sinceStart(at: number, startsAt: number): string | null {
   return `+${Math.floor((at - startsAt) / 60_000)} min`;
 }
 
-/** Defaults for a new contest: tomorrow at 18:00 local, two hours, graded. */
+/** Defaults for a new contest: tomorrow at 18:00 local, two hours. */
 export function defaultSettings(now: number): ContestSettings {
   const d = new Date(now + 86_400_000);
   d.setHours(18, 0, 0, 0);
@@ -978,7 +965,6 @@ export function defaultSettings(now: number): ContestSettings {
     scoring_mode: 'best_subtask',
     access: 'domain',
     feedback_mode: 'subtask',
-    graded: true,
     published: false,
     practice_after_end: true,
     stop_on_sample_fail: true,

@@ -40,7 +40,7 @@ func newSvc(t testing.TB) *svcRig {
 func (r *svcRig) contest(t testing.TB, mutate func(*Edit)) *Contest {
 	t.Helper()
 	e := Edit{Slug: "week-1", Title: "Week 1", StartsAt: t0, EndsAt: at(120), StartMode: FixedStart, Scoring: BestSubtask,
-		Access: "domain", Feedback: "subtask", Graded: true, PracticeAfterEnd: true, StopOnSampleFail: true, MinGapS: 30,
+		Access: "domain", Feedback: "subtask", PracticeAfterEnd: true, StopOnSampleFail: true, MinGapS: 30,
 		MaxPerProblem: 15, Languages: []string{"cpp17"}, FreezeMinutes: 30}
 	if mutate != nil {
 		mutate(&e)

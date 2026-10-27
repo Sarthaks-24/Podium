@@ -55,20 +55,20 @@ type BankEntry struct {
 	ValidatedAt time.Time
 	UpdatedAt   time.Time
 	// ShownInPractice: a contest that pins the problem has shown students
-	// its hidden tests, being ungraded and started, or open for practice
-	// after its end (D115). Its hidden tests may be known.
+	// its hidden tests, being open for practice after its end (D115). Its
+	// hidden tests may be known.
 	ShownInPractice bool
 }
 
 // shownInPractice is the SQL for BankEntry.ShownInPractice of problem p
-// at the time given twice as arguments. Practice opens at the latest
+// at the time given as an argument. Practice opens at the latest
 // final time, so ends_at marks it a little early, never late. Only a
 // published contest shows anything to students (C2-014). It reads the
 // contests as they are now; contests.SetProblems keeps such a problem in
 // its contest, so the mark does not disappear when it is taken out.
 const shownInPractice = `EXISTS (SELECT 1 FROM contest_problems cp JOIN contests c ON c.id = cp.contest_id
 		WHERE cp.problem_id = p.id AND c.published = 1
-		AND ((c.graded = 0 AND c.starts_at <= ?) OR (c.practice_after_end = 1 AND c.ends_at <= ?)))`
+		AND c.practice_after_end = 1 AND c.ends_at <= ?)`
 
 // List returns the bank, newest change first.
 func (s *Service) List(ctx context.Context, archived bool) ([]BankEntry, error) {
@@ -76,7 +76,7 @@ func (s *Service) List(ctx context.Context, archived bool) ([]BankEntry, error) 
 		p.content_hash, coalesce(p.validated_hash, ''), coalesce(p.validated_at, 0), p.updated_at,
 		(SELECT count(*) FROM testcases t WHERE t.problem_id = p.id),
 		(SELECT coalesce(sum(points), 0) FROM subtasks st WHERE st.problem_id = p.id), `+shownInPractice+`
-		FROM problems p WHERE p.archived = 0 OR ? ORDER BY p.updated_at DESC, p.id DESC`, s.now().UnixMilli(), s.now().UnixMilli(), archived)
+		FROM problems p WHERE p.archived = 0 OR ? ORDER BY p.updated_at DESC, p.id DESC`, s.now().UnixMilli(), archived)
 	if err != nil {
 		return nil, err
 	}
@@ -484,7 +484,7 @@ func (s *Service) Update(ctx context.Context, id int64, e Edit) (*Problem, error
 		}
 		p.ValidatedHash, p.ValidatedAt = "", time.Time{}
 	}
-	// A reference or brute force a person wrote is what lets a graded
+	// A reference or brute force a person wrote is what lets a
 	// contest take a problem the AI wizard made (contests.SetProblems).
 	if solutionEdited {
 		if _, err := tx.ExecContext(ctx, "UPDATE problems SET solution_by_person = 1 WHERE id = ?", p.ID); err != nil {

@@ -1,9 +1,9 @@
 package contests
 
-// AI problems in graded contests (security council S10). The wizard's
+// AI problems in contests (security council S10). The wizard's
 // reference solution is the model's code: tests generated from it agree
 // with it by construction, so validation cannot catch a wrong reference.
-// A graded contest takes such a problem only once a person has written a
+// A contest takes such a problem only once a person has written a
 // solution (problems.solution_by_person, set when an editor save changes
 // the reference or the brute force) or an admin has given a reason, which
 // the audit log keeps.
@@ -19,21 +19,16 @@ import (
 // as it is.
 const minAIReason = 10
 
-// AIProblemError refuses AI problems no person has checked in a graded
-// contest. Labels are the problems concerned. Grading is set when the
-// refused change was turning grading on, rather than adding problems.
+// AIProblemError refuses AI problems no person has checked in a contest.
+// Labels are the problems concerned.
 type AIProblemError struct {
-	Labels  []string
-	Grading bool
+	Labels []string
 }
 
 func (e *AIProblemError) Error() string {
 	which := "Problem " + e.Labels[0]
 	if len(e.Labels) > 1 {
 		which = "Problems " + strings.Join(e.Labels, ", ")
-	}
-	if e.Grading {
-		return fmt.Sprintf("%s came from the AI wizard and no person has written a solution for it. Write a solution of your own and validate it, or remove the problem, turn grading on, and add it again with a reason.", which)
 	}
 	return fmt.Sprintf("%s came from the AI wizard and no person has written a solution for it. Write a solution of your own and validate it, or give a reason of at least %d characters to grade it as it is.", which, minAIReason)
 }

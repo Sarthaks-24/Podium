@@ -50,7 +50,7 @@ func (s *Service) Clone(ctx context.Context, id int64, slug, title string, start
 	e := Edit{Slug: slug, Title: title, Description: src.Description, StartsAt: startsAt, EndsAt: endsAt,
 		StartMode: src.Schedule.Mode, DurationMinutes: int(src.Schedule.Duration / time.Minute),
 		FreezeMinutes: int(src.Schedule.Freeze / time.Minute), Scoring: src.Scoring, Access: src.Access, Feedback: src.Feedback,
-		Graded: src.Graded, PracticeAfterEnd: src.PracticeAfterEnd, StopOnSampleFail: src.StopOnSampleFail,
+		PracticeAfterEnd: src.PracticeAfterEnd, StopOnSampleFail: src.StopOnSampleFail,
 		MinGapS: int(src.MinGap / time.Second), MaxPerProblem: src.MaxPerProblem, Languages: src.Languages,
 		HonourText: src.HonourText, HoldReveal: src.HoldReveal}
 	choices := make([]ProblemChoice, 0, len(src.Problems))

@@ -109,14 +109,11 @@ func (c *Contest) FrozenAt() time.Time {
 }
 
 // ViewOptions says how a student sees their own submissions in the
-// contest: coarse figures always (D47), times to 100 ms in graded contests
-// and 10 ms otherwise, and in exam mode nothing but "Submitted" until their
+// contest: coarse figures always (D47), times to 100 ms (every contest
+// counts, V3-6), and in exam mode nothing but "Submitted" until their
 // window closes.
 func (c *Contest) ViewOptions(st StudentState) submissions.ViewOptions {
-	o := submissions.ViewOptions{Coarse: true, RoundMS: 10}
-	if c.Graded {
-		o.RoundMS = 100
-	}
+	o := submissions.ViewOptions{Coarse: true, RoundMS: 100}
 	o.Hide = c.Feedback == "exam" && !st.Over
 	return o
 }

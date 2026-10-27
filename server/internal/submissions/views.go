@@ -35,7 +35,7 @@ type SubmissionView struct {
 	// submission was received, and nothing about its result is shown.
 	Hidden bool `json:"hidden"`
 	// Revealed is the first failing hidden test of a submission that never
-	// counts (practice, an ungraded contest, the organisers' workspace),
+	// counts (practice, the organisers' workspace),
 	// once judged; absent on every submission that counts (D115).
 	Revealed *RevealedTest `json:"revealed,omitempty"`
 	// TimeStepMS is the step the times were rounded to (to the nearest),

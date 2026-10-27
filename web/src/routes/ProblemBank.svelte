@@ -12,8 +12,8 @@
   slug is edited, and goes to the new problem's editor. "New problem with
   AI" opens the wizard at /admin/ai/new, and "AI assistant settings" the
   key screen; a problem the wizard made carries an "AI draft" mark beside
-  its title until a person saves it, and one whose hidden tests an
-  ungraded contest or practice showed carries "Hidden tests shown in
+  its title until a person saves it, and one whose hidden tests
+  practice after a contest showed carries "Hidden tests shown in
   practice" (D115). "Import pack" picks one or more .zip
   files and sends each as is (application/zip), then starts validating
   each imported problem and stays on the list, so three packs need no

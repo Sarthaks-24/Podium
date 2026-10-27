@@ -14,11 +14,11 @@
   - Problems: the contest's problems with their letters, points and the
     revision students get, picked from validated problems in the bank.
     Adding, removing and reordering save at once, one request each; the
-    letters follow the order. A graded contest refuses a problem the AI
+    letters follow the order. A contest refuses a problem the AI
     wizard made when no person has written a solution for it; the section
     then asks for a reason, and "Grade as the AI wrote it" saves again with it.
-    A problem whose hidden tests an ungraded contest or practice showed
-    says so in the picker, and publishing a graded contest with one
+    A problem whose hidden tests practice showed
+    says so in the picker, and publishing a contest with one
     names it in the confirm (D115).
   - "Rules and scoring", folded: start mode, freeze, scoring, feedback,
     who can take part, pacing, languages and the options. Holding the
@@ -93,7 +93,7 @@
   let addId = $state('');
   let problemsError = $state('');
   let problemsBusy = $state(false);
-  // AI problems the server refused for a graded contest, and the reason to grade them as written.
+  // AI problems the server refused for a contest, and the reason to grade them as written.
   let aiLabels = $state<string[]>([]);
   let aiReason = $state('');
   let aiError = $state('');
@@ -190,7 +190,6 @@
       scoring_mode: c.scoring_mode,
       access: c.access,
       feedback_mode: c.feedback_mode,
-      graded: c.graded,
       published: c.published,
       practice_after_end: c.practice_after_end,
       stop_on_sample_fail: c.stop_on_sample_fail,
@@ -336,27 +335,6 @@
       body.scoring_mode !== c.scoring_mode ||
       body.feedback_mode !== c.feedback_mode ||
       body.freeze_minutes !== c.freeze_minutes;
-    if (startedOrOver && c.graded && !body.graded) {
-      confirm = {
-        title: 'Turn grading off in a started contest?',
-        body: 'Without grading, every student still in their window sees the first hidden test each later submission fails, and the problems are marked in the bank as shown in practice.',
-        label: 'Turn grading off',
-        danger: true,
-        run: () => putSettings({ ...body, confirm_ungraded: true }, 'Saved changes'),
-      };
-      return;
-    }
-    // Ungraded submissions showed hidden tests (D115), so grading again asks first (C2-014).
-    if (startedOrOver && !c.graded && body.graded) {
-      confirm = {
-        title: 'Turn grading on in a started contest?',
-        body: 'Students have already seen hidden tests in this contest: each ungraded submission showed the first hidden test it failed. A graded board would reward the students who saw them. Creating a new graded contest is fairer.',
-        label: 'Turn grading on',
-        danger: true,
-        run: () => putSettings({ ...body, confirm_graded: true }, 'Saved changes'),
-      };
-      return;
-    }
     if (live && liveChange) {
       confirm = {
         title: 'Change a live contest?',
@@ -401,11 +379,11 @@
   /** The picked problems whose hidden tests a contest already showed (D115, C1-015). */
   const shownLabels = $derived(picked.filter((p) => bank.find((b) => b.id === p.problem_id)?.shown_in_practice).map((p) => p.label));
 
-  /** The publish confirm's line for those problems, in a graded contest. */
-  function shownWarning(graded: boolean): string[] {
-    if (!graded || shownLabels.length === 0) return [];
+  /** The publish confirm's line for those problems. */
+  function shownWarning(): string[] {
+    if (shownLabels.length === 0) return [];
     const which = shownLabels.length === 1 ? `Problem ${shownLabels[0]} was` : `Problems ${shownLabels.join(', ')} were`;
-    return [`${which} in an ungraded contest or in practice, so students may know the hidden tests.`];
+    return [`${which} open for practice after a contest, so students may know the hidden tests.`];
   }
 
   /** Publishing and unpublishing ask first and say what students will see (C5, audit O1). */
@@ -420,7 +398,7 @@
       confirm = {
         title: `Publish ${title}?`,
         body: `${form?.access === 'roster' ? 'Students on the roster' : 'Students from the allowed domains'} see it in their contest list at once${dirty ? ', with your unsaved settings saved' : ''}.`,
-        items: [...checks.map((c) => c.text), ...shownWarning(body.graded)],
+        items: [...checks.map((c) => c.text), ...shownWarning()],
         label: 'Publish contest',
         danger: false,
         run: () => putSettings(body, 'Published'),
@@ -1010,7 +988,6 @@
 
               <fieldset class="group">
                 <legend>Options</legend>
-                <label class="choice"><input type="checkbox" bind:checked={form.graded} /> Graded: hidden tests stay hidden, times shown to 0.1 s, honour code recorded</label>
                 <label class="choice"><input type="checkbox" bind:checked={form.practice_after_end} /> Open the problems for practice after the end. Practice shows students the first hidden test they fail.</label>
                 <label class="choice"><input type="checkbox" bind:checked={form.stop_on_sample_fail} /> Stop judging at a failed sample</label>
                 <label class="choice" class:off={freezeOff && !form.hold_reveal}>

@@ -43,7 +43,6 @@ type rulesJSON struct {
 	MaxPerProblem int      `json:"max_per_problem"`
 	Languages     []string `json:"languages"`
 	FreezeMinutes int      `json:"freeze_minutes"`
-	Graded        bool     `json:"graded"`
 	Practice      bool     `json:"practice_after_end"`
 }
 
@@ -203,7 +202,7 @@ func (d Deps) contestDetail(ctx context.Context, c *contests.Contest, u auth.Use
 		Organiser: organiser, Problems: []contestProblemJSON{},
 		Rules: rulesJSON{FeedbackMode: c.Feedback, ScoringMode: c.Scoring, MinGapS: int(c.MinGap / time.Second),
 			MaxPerProblem: c.MaxPerProblem, Languages: c.Languages, FreezeMinutes: int(c.Schedule.Freeze / time.Minute),
-			Graded: c.Graded, Practice: c.PracticeAfterEnd},
+			Practice: c.PracticeAfterEnd},
 		ServerNow: now.UnixMilli()}
 	if organiser || c.ProblemsVisible(st, now) {
 		var cells map[string]contests.Cell
@@ -341,10 +340,16 @@ func (d Deps) contestProblem(w http.ResponseWriter, r *http.Request) (*contestTa
 	case !t.problem.Ready:
 		t.refusal = contests.ErrNotReady
 	case st.Open:
-		// An ungraded contest never counts, so it reveals like practice.
-		t.open, t.scope.Reveal = true, !c.Graded
+		t.open = true
 	case st.Over && c.PracticeOpen(st, now):
-		t.open, t.scope.Practice, t.scope.MaxPerProblem, t.scope.Reveal = true, true, 0, true
+		// Practice shows the first failing hidden test, except while
+		// another contest that pins the problem has not closed (V3-6, M2).
+		pending, err := d.Contests.PinnedInOpenContest(r.Context(), t.problem.ProblemID, c.ID)
+		if err != nil {
+			d.contestError(w, r, err)
+			return nil, false
+		}
+		t.open, t.scope.Practice, t.scope.MaxPerProblem, t.scope.Reveal = true, true, 0, !pending
 	case st.Over && c.PracticeAfterEnd:
 		t.refusal = contests.ErrPracticeWait
 	case st.Over:

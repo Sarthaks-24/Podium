@@ -8,7 +8,7 @@
 // returns the job to the queue and the third expiry fails it; a job still
 // running at its deadline fails even if its worker keeps renewing. Two
 // contest rules apply at claim (M4): jobs of a paused contest wait, and
-// while a graded contest is live at most one validation or generation job
+// while a contest is live at most one validation or generation job
 // is leased at a time.
 package jobs
 
@@ -281,7 +281,7 @@ func withoutKind(kinds []any, drop string) []any {
 var heavyKinds = map[string]bool{judgeapi.KindValidate: true, judgeapi.KindGenerate: true, judgeapi.KindGenerateInputs: true}
 
 // contestGate drops validation and generation from the kinds a worker may
-// claim while a graded contest is live and one such job is already leased,
+// claim while a contest is live and one such job is already leased,
 // so setters' work never takes more than one lane from students' judging
 // during a contest (m4-plan section 2). A contest is live from its start
 // to its close plus the longest personal extension.
@@ -298,7 +298,7 @@ func (s *Service) contestGate(ctx context.Context, tx *sql.Tx, kinds []any, now 
 	var live, leased int
 	ms := now.UnixMilli()
 	if err := tx.QueryRowContext(ctx, `SELECT
-		EXISTS (SELECT 1 FROM contests c WHERE c.graded = 1 AND c.published = 1 AND c.archived = 0 AND c.starts_at <= ?
+		EXISTS (SELECT 1 FROM contests c WHERE c.published = 1 AND c.archived = 0 AND c.starts_at <= ?
 			AND c.ends_at + 60000 * (c.extended_minutes + coalesce((SELECT max(minutes) FROM contest_extensions e WHERE e.contest_id = c.id), 0)) > ?),
 		(SELECT count(*) FROM jobs WHERE state = 'leased' AND kind IN (?, ?, ?))`,
 		ms, ms, judgeapi.KindValidate, judgeapi.KindGenerate, judgeapi.KindGenerateInputs).Scan(&live, &leased); err != nil {

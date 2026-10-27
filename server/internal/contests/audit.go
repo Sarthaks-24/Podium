@@ -125,7 +125,6 @@ func settingChanges(c *Contest, e Edit) map[string]change {
 	add("scoring_mode", c.Scoring, e.Scoring)
 	add("access", c.Access, e.Access)
 	add("feedback_mode", c.Feedback, e.Feedback)
-	add("graded", c.Graded, e.Graded)
 	add("published", c.Published, e.Published)
 	add("practice_after_end", c.PracticeAfterEnd, e.PracticeAfterEnd)
 	add("stop_on_sample_fail", c.StopOnSampleFail, e.StopOnSampleFail)

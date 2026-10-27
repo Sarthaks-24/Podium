@@ -44,8 +44,8 @@ type SubmitPayload struct {
 	Tests            []SubmitTest `json:"tests"`
 	Subtasks         []Subtask    `json:"subtasks"`
 	StopOnSampleFail bool         `json:"stop_on_sample_fail"`
-	// Reveal is set for a submission that never counts (practice, an
-	// ungraded contest, the organisers' workspace): the worker reports the
+	// Reveal is set for a submission that never counts (practice, the
+	// organisers' workspace): the worker reports the
 	// program's output (at most MaxRunOutput) on the first hidden test
 	// that fails, so the author can see it (D115, protocol 3).
 	Reveal bool `json:"reveal,omitempty"`

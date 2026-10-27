@@ -59,7 +59,6 @@ type Contest struct {
 	Scoring            string
 	Access             string
 	Feedback           string
-	Graded             bool
 	Published          bool
 	PracticeAfterEnd   bool
 	StopOnSampleFail   bool
@@ -138,7 +137,7 @@ type Edit struct {
 	FreezeMinutes            int
 	Scoring, Access          string
 	Feedback                 string
-	Graded, Published        bool
+	Published                bool
 	PracticeAfterEnd         bool
 	StopOnSampleFail         bool
 	HoldReveal               bool
@@ -258,11 +257,11 @@ func (s *Service) Create(ctx context.Context, e Edit, by int64) (*Contest, error
 	langs, _ := json.Marshal(e.Languages)
 	var id int64
 	err := s.DB.QueryRowContext(ctx, `INSERT INTO contests (slug, title, description_md, starts_at, ends_at, start_mode, duration_minutes,
-		freeze_minutes, scoring_mode, access, feedback_mode, graded, published, practice_after_end, stop_on_sample_fail,
+		freeze_minutes, scoring_mode, access, feedback_mode, published, practice_after_end, stop_on_sample_fail,
 		min_gap_s, max_per_problem, languages, honour_text, hold_reveal, created_by, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
 		e.Slug, e.Title, e.Description, e.StartsAt.UnixMilli(), e.EndsAt.UnixMilli(), e.StartMode, e.DurationMinutes,
-		e.FreezeMinutes, e.Scoring, e.Access, e.Feedback, e.Graded, e.PracticeAfterEnd, e.StopOnSampleFail,
+		e.FreezeMinutes, e.Scoring, e.Access, e.Feedback, e.PracticeAfterEnd, e.StopOnSampleFail,
 		e.MinGapS, e.MaxPerProblem, string(langs), e.HonourText, e.HoldReveal, nullID(by), now, now).Scan(&id)
 	if isUniqueSlug(err) {
 		return nil, FieldErrors{"slug": "Another contest already uses this slug."}
@@ -274,8 +273,7 @@ func (s *Service) Create(ctx context.Context, e Edit, by int64) (*Contest, error
 }
 
 // Update saves the contest form for by. Publishing checks every problem is
-// still the validated version that was added; turning grading on checks
-// no AI problem is left unconfirmed (AIProblemError). The settings that
+// still the validated version that was added. The settings that
 // changed are recorded in the audit log in the same transaction.
 func (s *Service) Update(ctx context.Context, id int64, e Edit, by Actor) (*Contest, error) {
 	if errs := e.check(); errs != nil {
@@ -300,32 +298,17 @@ func (s *Service) Update(ctx context.Context, id int64, e Edit, by Actor) (*Cont
 		return nil, err
 	}
 	defer tx.Rollback()
-	if e.Graded && !c.Graded {
-		var labels []string
-		for _, p := range c.Problems {
-			unconfirmed, err := unconfirmedAI(ctx, tx, id, p.ProblemID)
-			if err != nil {
-				return nil, err
-			}
-			if unconfirmed {
-				labels = append(labels, p.Label)
-			}
-		}
-		if len(labels) > 0 {
-			return nil, &AIProblemError{Labels: labels, Grading: true}
-		}
-	}
 	// Links to a published contest are out there, so its slug stays.
 	if e.Slug != c.Slug && c.Published {
 		return nil, FieldErrors{"slug": "A published contest keeps its slug, so links to it keep working."}
 	}
 	langs, _ := json.Marshal(e.Languages)
 	_, err = tx.ExecContext(ctx, `UPDATE contests SET slug = ?, title = ?, description_md = ?, starts_at = ?, ends_at = ?, start_mode = ?,
-		duration_minutes = ?, freeze_minutes = ?, scoring_mode = ?, access = ?, feedback_mode = ?, graded = ?, published = ?,
+		duration_minutes = ?, freeze_minutes = ?, scoring_mode = ?, access = ?, feedback_mode = ?, published = ?,
 		practice_after_end = ?, stop_on_sample_fail = ?, min_gap_s = ?, max_per_problem = ?, languages = ?, honour_text = ?,
 		hold_reveal = ?, updated_at = ? WHERE id = ?`,
 		e.Slug, e.Title, e.Description, e.StartsAt.UnixMilli(), e.EndsAt.UnixMilli(), e.StartMode, e.DurationMinutes,
-		e.FreezeMinutes, e.Scoring, e.Access, e.Feedback, e.Graded, e.Published, e.PracticeAfterEnd, e.StopOnSampleFail,
+		e.FreezeMinutes, e.Scoring, e.Access, e.Feedback, e.Published, e.PracticeAfterEnd, e.StopOnSampleFail,
 		e.MinGapS, e.MaxPerProblem, string(langs), e.HonourText, e.HoldReveal, s.now().UnixMilli(), id)
 	if isUniqueSlug(err) {
 		return nil, FieldErrors{"slug": "Another contest already uses this slug."}
@@ -357,7 +340,7 @@ func isUniqueSlug(err error) bool {
 }
 
 const contestColumns = `id, slug, title, description_md, starts_at, ends_at, start_mode, duration_minutes, freeze_minutes,
-	scoring_mode, access, feedback_mode, graded, published, practice_after_end, stop_on_sample_fail, min_gap_s, max_per_problem,
+	scoring_mode, access, feedback_mode, published, practice_after_end, stop_on_sample_fail, min_gap_s, max_per_problem,
 	languages, honour_text, editorial_md, editorial_published, paused, extended_minutes, hold_reveal, coalesce(revealed_at, 0), archived,
 	coalesce(created_by, 0), created_at, updated_at,
 	(SELECT coalesce(max(minutes), 0) FROM contest_extensions e WHERE e.contest_id = contests.id)`
@@ -368,7 +351,7 @@ func scanContest(sc interface{ Scan(...any) error }) (*Contest, error) {
 	var duration, freeze, gap, extended, maxExt int
 	var langs string
 	err := sc.Scan(&c.ID, &c.Slug, &c.Title, &c.Description, &starts, &ends, &c.Schedule.Mode, &duration, &freeze,
-		&c.Scoring, &c.Access, &c.Feedback, &c.Graded, &c.Published, &c.PracticeAfterEnd, &c.StopOnSampleFail, &gap,
+		&c.Scoring, &c.Access, &c.Feedback, &c.Published, &c.PracticeAfterEnd, &c.StopOnSampleFail, &gap,
 		&c.MaxPerProblem, &langs, &c.HonourText, &c.Editorial, &c.EditorialPublished, &c.Paused, &extended, &c.HoldReveal, &revealed,
 		&c.Archived, &c.CreatedBy, &created, &updated, &maxExt)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -504,7 +487,7 @@ type pin struct {
 
 // SetProblems replaces the contest's problems for by. Each must be
 // validated; its current content hash and newest revision are pinned, and
-// every label whose problem or revision changed gets a pin history row. In a graded contest a
+// every label whose problem or revision changed gets a pin history row. A
 // problem the AI wizard made needs a person's solution (problems saved with
 // a changed reference or brute force) or an admin's reason (AIReason),
 // else the whole change is refused with AIProblemError. The change, and
@@ -518,22 +501,22 @@ func (s *Service) SetProblems(ctx context.Context, id int64, choices []ProblemCh
 		return nil, err
 	}
 	defer tx.Rollback()
-	var graded, published, practice bool
+	var published, practice bool
 	var startsAt, endsAt int64
-	err = tx.QueryRowContext(ctx, "SELECT graded, published, practice_after_end, starts_at, ends_at FROM contests WHERE id = ?", id).
-		Scan(&graded, &published, &practice, &startsAt, &endsAt)
+	err = tx.QueryRowContext(ctx, "SELECT published, practice_after_end, starts_at, ends_at FROM contests WHERE id = ?", id).
+		Scan(&published, &practice, &startsAt, &endsAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
 	if err != nil {
 		return nil, err
 	}
-	// Once students could see hidden tests here (an ungraded contest that
-	// started, or practice after the end, D115), its problems stay: the
-	// bank marks a problem as shown from the contests that hold it
-	// (C2-014), and taking it out would hide that before a graded exam.
+	// Once students could see hidden tests here (practice after the end,
+	// D115), its problems stay: the bank marks a problem as shown from the
+	// contests that hold it (C2-014), and taking it out would hide that
+	// before an exam.
 	nowMs := s.now().UnixMilli()
-	shown := published && ((!graded && startsAt <= nowMs) || (practice && endsAt <= nowMs))
+	shown := published && practice && endsAt <= nowMs
 	var before []pin
 	rows, err := tx.QueryContext(ctx, `SELECT cp.label, cp.problem_id, coalesce(r.content_hash, ''), coalesce(cp.revision_id, 0), coalesce(r.rev, 0)
 		FROM contest_problems cp LEFT JOIN problem_revisions r ON r.id = cp.revision_id WHERE cp.contest_id = ? ORDER BY cp.ord`, id)
@@ -559,7 +542,7 @@ func (s *Service) SetProblems(ctx context.Context, id int64, choices []ProblemCh
 		}
 		for _, p := range before {
 			if !kept[p.ProblemID] {
-				return nil, FieldErrors{"problems": fmt.Sprintf("Problem %s stays in this contest: students have seen its hidden tests here, in practice or while the contest was ungraded, and the problem bank shows that from this contest.", p.Label)}
+				return nil, FieldErrors{"problems": fmt.Sprintf("Problem %s stays in this contest: students have seen its hidden tests here in practice, and the problem bank shows that from this contest.", p.Label)}
 			}
 		}
 	}
@@ -607,19 +590,17 @@ func (s *Service) SetProblems(ctx context.Context, id int64, choices []ProblemCh
 				return nil, FieldErrors{"problems": fmt.Sprintf("The problem for label %s is an AI draft. Read it and save it in the editor before adding it to a contest.", ch.Label)}
 			}
 		}
-		if graded {
-			needs, err := unconfirmedAI(ctx, tx, id, ch.ProblemID)
-			if err != nil {
-				return nil, err
-			}
-			reason := strings.TrimSpace(ch.AIReason)
-			switch {
-			case !needs:
-			case utf8.RuneCountInString(reason) >= minAIReason:
-				confirmations = append(confirmations, confirmation{ch.Label, ch.ProblemID, limitStr(reason, 1000)})
-			default:
-				unconfirmed = append(unconfirmed, ch.Label)
-			}
+		needs, err := unconfirmedAI(ctx, tx, id, ch.ProblemID)
+		if err != nil {
+			return nil, err
+		}
+		reason := strings.TrimSpace(ch.AIReason)
+		switch {
+		case !needs:
+		case utf8.RuneCountInString(reason) >= minAIReason:
+			confirmations = append(confirmations, confirmation{ch.Label, ch.ProblemID, limitStr(reason, 1000)})
+		default:
+			unconfirmed = append(unconfirmed, ch.Label)
 		}
 		points, err := subtaskPoints(ctx, tx, ch.ProblemID)
 		if err != nil {
@@ -1049,4 +1030,17 @@ func (s *Service) Start(ctx context.Context, c *Contest, userID int64, accept bo
 		s.changed(c.ID) // a new participant on the board
 	}
 	return nil
+}
+
+// PinnedInOpenContest reports whether a contest other than except pins
+// the problem and has not closed for everyone yet (personal extensions
+// included), drafts and upcoming contests too. Practice then keeps the
+// problem's hidden tests to itself (V3-6, security finding M2).
+func (s *Service) PinnedInOpenContest(ctx context.Context, problemID, except int64) (bool, error) {
+	var pending bool
+	err := s.DB.QueryRowContext(ctx, `SELECT EXISTS (SELECT 1 FROM contest_problems cp JOIN contests c ON c.id = cp.contest_id
+		WHERE cp.problem_id = ? AND c.id != ? AND c.archived = 0
+		AND c.ends_at + 60000 * (c.extended_minutes + coalesce((SELECT max(minutes) FROM contest_extensions e WHERE e.contest_id = c.id), 0)) > ?)`,
+		problemID, except, s.now().UnixMilli()).Scan(&pending)
+	return pending, err
 }

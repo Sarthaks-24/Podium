@@ -425,7 +425,6 @@
       scoring_mode: c.scoring_mode,
       access: c.access,
       feedback_mode: c.feedback_mode,
-      graded: c.graded,
       published: c.published,
       practice_after_end: c.practice_after_end,
       stop_on_sample_fail: c.stop_on_sample_fail,

@@ -67,7 +67,6 @@ function contest(over: Partial<Contest> = {}): Contest {
       max_per_problem: 15,
       languages: ['cpp17', 'python3'],
       freeze_minutes: 30,
-      graded: true,
     },
     honour_text: '',
     problems: null,
@@ -317,14 +316,9 @@ describe('student phase and window maths', () => {
     ]);
   });
 
-  it('says an ungraded contest shows the first failing hidden test (D115, C2-016)', () => {
-    const graded = rulesSentences(contest()).join(' ');
-    expect(graded).toContain('never the hidden inputs or outputs');
-    const ungraded = rulesSentences(contest({ rules: { ...contest().rules, graded: false } })).join(' ');
-    expect(ungraded).toContain('Each submission shows which subtasks passed and, in full, the first hidden test it fails. It never counts.');
-    expect(ungraded).not.toContain('never the hidden inputs');
-    // Exam feedback shows nothing, graded or not.
-    const exam = rulesSentences(contest({ rules: { ...contest().rules, graded: false, feedback_mode: 'exam' } })).join(' ');
+  it('never promises hidden tests during a contest, and says nothing in exam mode (V3-6)', () => {
+    expect(rulesSentences(contest()).join(' ')).toContain('never the hidden inputs or outputs');
+    const exam = rulesSentences(contest({ rules: { ...contest().rules, feedback_mode: 'exam' } })).join(' ');
     expect(exam).toContain('only says "Submitted"');
   });
 

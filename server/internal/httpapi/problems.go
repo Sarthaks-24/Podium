@@ -52,7 +52,7 @@ type problemSummaryJSON struct {
 	Validated   bool     `json:"validated"`
 	ValidatedAt *int64   `json:"validated_at"`
 	UpdatedAt   int64    `json:"updated_at"`
-	// ShownInPractice: an ungraded contest, or practice after one, has
+	// ShownInPractice: practice after a contest has
 	// shown students its hidden tests (D115).
 	ShownInPractice bool `json:"shown_in_practice"`
 }

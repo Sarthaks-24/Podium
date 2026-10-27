@@ -61,7 +61,6 @@ type adminContestJSON struct {
 	ScoringMode        string               `json:"scoring_mode"`
 	Access             string               `json:"access"`
 	FeedbackMode       string               `json:"feedback_mode"`
-	Graded             bool                 `json:"graded"`
 	Published          bool                 `json:"published"`
 	PracticeAfterEnd   bool                 `json:"practice_after_end"`
 	StopOnSampleFail   bool                 `json:"stop_on_sample_fail"`
@@ -103,7 +102,7 @@ func (d Deps) adminContestOut(ctx context.Context, c *contests.Contest) (*adminC
 	out := &adminContestJSON{ID: c.ID, Slug: c.Slug, Title: c.Title, DescriptionMD: c.Description,
 		StartsAt: c.Schedule.StartsAt.UnixMilli(), EndsAt: c.Schedule.EndsAt.UnixMilli(), CloseAt: c.Schedule.Close().UnixMilli(),
 		StartMode: c.Schedule.Mode, DurationMinutes: int(c.Schedule.Duration / time.Minute), FreezeMinutes: int(c.Schedule.Freeze / time.Minute),
-		ScoringMode: c.Scoring, Access: c.Access, FeedbackMode: c.Feedback, Graded: c.Graded, Published: c.Published,
+		ScoringMode: c.Scoring, Access: c.Access, FeedbackMode: c.Feedback, Published: c.Published,
 		PracticeAfterEnd: c.PracticeAfterEnd, StopOnSampleFail: c.StopOnSampleFail, MinGapS: int(c.MinGap / time.Second),
 		MaxPerProblem: c.MaxPerProblem, Languages: c.Languages, HonourText: c.HonourText, DefaultHonourText: contests.DefaultHonour,
 		HoldReveal: c.HoldReveal, EditorialMD: c.Editorial, EditorialPublished: c.EditorialPublished, Paused: c.Paused,
@@ -225,7 +224,6 @@ type contestEdit struct {
 	ScoringMode      string   `json:"scoring_mode"`
 	Access           string   `json:"access"`
 	FeedbackMode     string   `json:"feedback_mode"`
-	Graded           bool     `json:"graded"`
 	Published        bool     `json:"published"`
 	PracticeAfterEnd bool     `json:"practice_after_end"`
 	StopOnSampleFail bool     `json:"stop_on_sample_fail"`
@@ -234,17 +232,13 @@ type contestEdit struct {
 	Languages        []string `json:"languages"`
 	HonourText       string   `json:"honour_text"`
 	HoldReveal       bool     `json:"hold_reveal"`
-	// ConfirmUngraded confirms turning grading off after the start, which
-	// shows every student still in their window the first failed hidden
-	// test of each later submit (D115, council C1-015). Never stored.
-	ConfirmUngraded bool `json:"confirm_ungraded"`
 }
 
 func (e contestEdit) edit() contests.Edit {
 	return contests.Edit{Slug: strings.TrimSpace(e.Slug), Title: e.Title, Description: e.DescriptionMD,
 		StartsAt: time.UnixMilli(e.StartsAt), EndsAt: time.UnixMilli(e.EndsAt), StartMode: e.StartMode,
 		DurationMinutes: e.DurationMinutes, FreezeMinutes: e.FreezeMinutes, Scoring: e.ScoringMode, Access: e.Access,
-		Feedback: e.FeedbackMode, Graded: e.Graded, Published: e.Published, PracticeAfterEnd: e.PracticeAfterEnd,
+		Feedback: e.FeedbackMode, Published: e.Published, PracticeAfterEnd: e.PracticeAfterEnd,
 		StopOnSampleFail: e.StopOnSampleFail, MinGapS: e.MinGapS, MaxPerProblem: e.MaxPerProblem, Languages: e.Languages,
 		HonourText: e.HonourText, HoldReveal: e.HoldReveal}
 }
@@ -253,14 +247,14 @@ func editOf(c *contests.Contest) contestEdit {
 	return contestEdit{Slug: c.Slug, Title: c.Title, DescriptionMD: c.Description, StartsAt: c.Schedule.StartsAt.UnixMilli(),
 		EndsAt: c.Schedule.EndsAt.UnixMilli(), StartMode: c.Schedule.Mode, DurationMinutes: int(c.Schedule.Duration / time.Minute),
 		FreezeMinutes: int(c.Schedule.Freeze / time.Minute), ScoringMode: c.Scoring, Access: c.Access, FeedbackMode: c.Feedback,
-		Graded: c.Graded, Published: c.Published, PracticeAfterEnd: c.PracticeAfterEnd, StopOnSampleFail: c.StopOnSampleFail,
+		Published: c.Published, PracticeAfterEnd: c.PracticeAfterEnd, StopOnSampleFail: c.StopOnSampleFail,
 		MinGapS: int(c.MinGap / time.Second), MaxPerProblem: c.MaxPerProblem, Languages: c.Languages, HonourText: c.HonourText,
 		HoldReveal: c.HoldReveal}
 }
 
 func (d Deps) createContest(w http.ResponseWriter, r *http.Request) {
 	req := contestEdit{StartMode: contests.FixedStart, ScoringMode: contests.BestSubtask, Access: "domain", FeedbackMode: "subtask",
-		Graded: true, PracticeAfterEnd: true, StopOnSampleFail: true, MinGapS: 30, MaxPerProblem: 15,
+		PracticeAfterEnd: true, StopOnSampleFail: true, MinGapS: 30, MaxPerProblem: 15,
 		Languages: []string{"cpp17", "java21", "python3", "node22"}}
 	if !decodeJSON(w, r, &req) {
 		return
@@ -288,13 +282,6 @@ func (d Deps) updateContest(w http.ResponseWriter, r *http.Request) {
 	}
 	req := editOf(c)
 	if !decodeJSON(w, r, &req) {
-		return
-	}
-	if c.Graded && !req.Graded && c.Started(d.Contests.Clock()) && !req.ConfirmUngraded {
-		WriteJSON(w, http.StatusBadRequest, map[string]APIError{"error": {Code: "confirm_ungraded",
-			Message: "The contest has started. Without grading, every student still in their window sees the first hidden test " +
-				"each later submission fails. Send confirm_ungraded to go on.",
-			Fields: map[string]string{"graded": "The contest has started: confirm before turning grading off."}}})
 		return
 	}
 	if _, err := d.Contests.Update(r.Context(), c.ID, req.edit(), actor(r)); err != nil {
