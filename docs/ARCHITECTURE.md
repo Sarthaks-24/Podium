@@ -694,12 +694,12 @@ Diffs are drawn by `DiffLines`, which marks lines with "+" and "-" and hidden wo
 
 ## Themes
 
-The web app ships ten colour themes plus "System", which follows the device's light or dark setting:
+The web app ships four colour themes plus "System", which follows the device's light or dark setting (v3 cut ten to four, V3-8):
 
 | Group | Themes |
 |---|---|
-| Light | Light, Nordic frost, Soft lavender |
-| Dark | Dark, Overcast, OLED black, Nordic slate, Cosmic violet |
+| Light | Light |
+| Dark | Dark |
 | Accessible | High contrast light, High contrast dark (all text at 7:1 or more) |
 
 All colours live in `web/src/styles/tokens.css`. A theme changes surfaces, ink, rules and the one action colour; it never changes what a verdict colour means. Light themes share one set of verdict colours and dark themes another. A separate setting, "Colour-blind safe verdict colours", replaces green and red with teal, purple and orange in any theme; the three stay apart under simulated protanopia and deuteranopia. The editor well stays dark in every theme.
@@ -708,9 +708,7 @@ The choice belongs to the account (`users.theme`, `users.verdicts`; `PUT /api/me
 
 Every theme is checked by tests rather than by eye: text at 4.5:1 (7:1 in the high-contrast themes) on every surface, control borders at 3:1, verdicts at 4.5:1 on their tints, and a minimum OKLab distance between the action colour and each verdict and between the verdicts themselves. A browser test confirms the CSS cascade produces exactly the values checked.
 
-Nordic slate's action colour is a mid-saturation blue since v2 P2 (D83): the bright sky-cyan it had sat close to the banned slate-plus-neon look.
-
-The themes are curated versions of palettes from the owner's AdminPanelManager project. Palettes were left out where they break the design brief's bans (dark slate with neon, cream with terracotta, glows), where their accent is a verdict colour (green or amber accents read as "accepted" or "partial"), or where they depend on two competing accents. Projector reveal mode (M4) ignores personal themes and uses High contrast light.
+Projector reveal mode (M4) ignores personal themes and uses High contrast light.
 
 ## Safe to run: deploys, backups and alerts
 
@@ -778,7 +776,7 @@ What each decision of the v2 plan means for the people who use podium, as built.
 | D80 Visual direction | Direction A (one page header, one type scale, calmer links) with one display figure: the student's own place on standings |
 | D81 Organiser nav by job | Organisers see Contests, Problem bank, People (owner) and Inbox, and land on the contest list |
 | D82 Token changes | Small text is 14 px; reveal rows are sized for a projector |
-| D83 Ten themes, picker in a dialog | Every theme stays, under "Theme and colours" in the account menu; Nordic slate has a calmer blue |
+| D83 Theme picker in a dialog | The themes sit under "Theme and colours" in the account menu; v3 keeps four (V3-8) |
 | D84 "Live, standings frozen" | Students no longer read "Frozen" as "the contest stopped"; organisers keep "Frozen" |
 | D85 Privacy page drafted from the code | `/privacy` exists and lists what is stored and for how long, but nothing links it until the owner approves the text |
 | D86 Typographic word-mark | "podium" in the interface face; no logo |

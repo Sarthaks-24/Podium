@@ -1,6 +1,7 @@
 /*
   Design tokens for podium. Values come from cache/v1/design.md section 3,
-  and the extra themes from decisions D39 to D41. This is the only file in
+  and the high-contrast themes from decisions D39 to D41 (v3 keeps light, dark
+  and high contrast only, V3-8). This is the only file in
   the web app allowed to contain colour literals; components read
   everything through these custom properties.
 
@@ -144,8 +145,6 @@
 /* Light family: the Light theme's values, also the default. */
 :root,
 [data-theme="light"],
-[data-theme="nordic-frost"],
-[data-theme="soft-lavender"],
 [data-theme="hc-light"] {
   color-scheme: light;
 
@@ -184,10 +183,6 @@
 
 /* Dark family: the Dark theme's values. */
 [data-theme="dark"],
-[data-theme="overcast"],
-[data-theme="oled-black"],
-[data-theme="nordic-slate"],
-[data-theme="cosmic-violet"],
 [data-theme="hc-dark"] {
   color-scheme: dark;
 
@@ -212,114 +207,6 @@
   --shadow-menu: 0 8px 24px rgba(0, 0, 0, 0.5);
   /* Dark themes dim with black too: an ink-coloured scrim would lighten the page. */
   --scrim: rgba(0, 0, 0, 0.6);
-}
-
-/* Light themes. */
-
-/* Nordic frost: pale mist slate with an ocean-blue action colour. */
-[data-theme="nordic-frost"] {
-  --paper: #F1F5F9;
-  --surface: #FFFFFF;
-  --surface-2: #E2E8F0;
-  --well: #0F1A26;
-  --well-ink: #E6EEF5;
-  --ink: #081726;
-  --ink-muted: #3E5670;
-  --ink-faint: #74859B;
-  --line: #CBD5E1;
-  --line-strong: #6F869D;
-  --act: #0369A1;
-  --act-ink: #FFFFFF;
-  --act-tint: #E0EEF6;
-}
-
-/* Soft lavender: pale lilac with an amethyst action colour. */
-[data-theme="soft-lavender"] {
-  --paper: #F5F3F9;
-  --surface: #FFFFFF;
-  --surface-2: #EAE5F5;
-  --well: #1A1526;
-  --well-ink: #ECE8F4;
-  --ink: #140B24;
-  --ink-muted: #5B497A;
-  --ink-faint: #8B7EA3;
-  --line: #DCD3EA;
-  --line-strong: #8B7AAD;
-  --act: #6D28D9;
-  --act-ink: #FFFFFF;
-  --act-tint: #EEE6FB;
-}
-
-/* Dark themes. */
-
-/* Overcast: a dimmer mid-grey dark, easier in a bright room. */
-[data-theme="overcast"] {
-  --paper: #22272E;
-  --surface: #2A2F37;
-  --surface-2: #32373F;
-  --well: #1C2128;
-  --well-ink: #E6EDF3;
-  --ink: #EDF2FA;
-  --ink-muted: #B4B9C1;
-  --ink-faint: #8B9097;
-  --line: #3E434B;
-  --line-strong: #7C8189;   /* 3:1 on surface-2 too (X5) */
-  --act: #6CB6FF;
-  --act-ink: #0D1117;
-  --act-tint: #2B3D52;
-}
-
-/* OLED black: true black for OLED screens. */
-[data-theme="oled-black"] {
-  --paper: #000000;
-  --surface: #0A0A0A;
-  --surface-2: #141414;
-  --well: #0A0A0A;
-  --well-ink: #E6E8E3;
-  --ink: #F2F2F2;
-  --ink-muted: #ADADAD;
-  --ink-faint: #767676;
-  --line: #262626;
-  --line-strong: #636363;   /* 3:1 on surface-2 too (X5) */
-  --act: #8A97FF;
-  --act-ink: #000000;
-  --act-tint: #1A1C33;
-}
-
-/* Nordic slate: deep navy with a calm mid-blue action colour. */
-[data-theme="nordic-slate"] {
-  --paper: #0B1320;
-  --surface: #132034;
-  --surface-2: #1D2E49;
-  --well: #08101B;
-  --well-ink: #E6EEF8;
-  --ink: #F0F8FF;
-  --ink-muted: #88A5C4;
-  --ink-faint: #6A85A3;
-  --line: #283E60;
-  --line-strong: #5B79A3;   /* 3:1 on surface-2 too (X5) */
-  /* A mid-saturation blue, retuned in v2 P2 (D83, audit 05-18): the bright
-     sky-cyan it replaced sat close to the banned slate-plus-neon look. */
-  --act: #82A9DE;
-  --act-ink: #041426;
-  --act-tint: #1E3250;
-}
-
-/* Cosmic violet: night violet with a soft violet action colour. */
-[data-theme="cosmic-violet"] {
-  --paper: #0C0A14;
-  --surface: #151222;
-  --surface-2: #1F1A32;
-  --well: #09070F;
-  --well-ink: #ECE8F7;
-  --ink: #F5F3FF;
-  --ink-muted: #A69CC6;
-  --ink-faint: #7A7199;
-  --line: #2E274A;
-  --line-strong: #6C60A1;
-  --act: #B49DFB;
-  --act-ink: #0C0A14;
-  --act-tint: #2B2448;
 }
 
 /* Accessible themes: all text at 7:1 or more, verdicts included. */
@@ -403,13 +290,7 @@
   --bad: #A73C00;  --bad-tint: #F4E8E0;
 }
 
-[data-verdicts="signal"]:is(
-  [data-theme="dark"],
-  [data-theme="overcast"],
-  [data-theme="oled-black"],
-  [data-theme="nordic-slate"],
-  [data-theme="cosmic-violet"]
-) {
+[data-verdicts="signal"][data-theme="dark"] {
   --ok: #00DEB6;   --ok-tint: #163D34;
   --part: #F098F7; --part-tint: #3C323E;
   --bad: #FF9766;  --bad-tint: #3F3127;

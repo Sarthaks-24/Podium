@@ -157,7 +157,7 @@ Ends the current session on the server (the session row is deleted, so a copy of
 
 Saves the signed-in person's display preferences, so they follow the account to another machine.
 
-Request: `{"theme":"nordic-frost","verdicts":"signal"}`. `theme` is `""` (follow the system) or an id of 1 to 32 characters from `a-z`, `0-9` and `-`; the server checks only the shape, and the web app treats ids it does not know as `""`. `verdicts` is `standard` or `signal`; both fields are required.
+Request: `{"theme":"hc-dark","verdicts":"signal"}`. `theme` is `""` (follow the system) or an id of 1 to 32 characters from `a-z`, `0-9` and `-`; the server checks only the shape, and the web app treats ids it does not know as `""`. `verdicts` is `standard` or `signal`; both fields are required.
 
 | Status | Body |
 |---|---|

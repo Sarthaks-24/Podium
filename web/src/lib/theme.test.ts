@@ -76,7 +76,7 @@ describe('the theme list', () => {
 
 describe('parsing', () => {
   it('accepts known theme ids and falls back to system', () => {
-    expect(parseChoice('nordic-frost')).toBe('nordic-frost');
+    expect(parseChoice('hc-dark')).toBe('hc-dark');
     for (const value of [null, undefined, '', 'system', 'Dark', 'neon', 1]) {
       expect(parseChoice(value)).toBe('system');
     }
@@ -97,12 +97,12 @@ describe('parsing', () => {
 describe('account round trip', () => {
   it('stores the system theme as an empty string', () => {
     expect(toAccount({ theme: 'system', verdicts: 'standard' })).toEqual({ theme: '', verdicts: 'standard' });
-    expect(toAccount({ theme: 'overcast', verdicts: 'signal' })).toEqual({ theme: 'overcast', verdicts: 'signal' });
+    expect(toAccount({ theme: 'dark', verdicts: 'signal' })).toEqual({ theme: 'dark', verdicts: 'signal' });
   });
 
   it('reads the account back, ignoring ids this build does not know', () => {
     expect(fromAccount('', 'standard')).toEqual(DEFAULT_PREFERENCES);
-    expect(fromAccount('overcast', 'signal')).toEqual({ theme: 'overcast', verdicts: 'signal' });
+    expect(fromAccount('dark', 'signal')).toEqual({ theme: 'dark', verdicts: 'signal' });
     expect(fromAccount('retired', undefined)).toEqual(DEFAULT_PREFERENCES);
   });
 });
@@ -136,8 +136,8 @@ describe('the pre-paint cache', () => {
 describe('applyPreferences', () => {
   it('sets and clears data-theme and data-verdicts', () => {
     const root = fakeRoot();
-    applyPreferences(root, { theme: 'cosmic-violet', verdicts: 'signal' });
-    expect(root.attrs.get('data-theme')).toBe('cosmic-violet');
+    applyPreferences(root, { theme: 'hc-light', verdicts: 'signal' });
+    expect(root.attrs.get('data-theme')).toBe('hc-light');
     expect(root.attrs.get('data-verdicts')).toBe('signal');
     applyPreferences(root, DEFAULT_PREFERENCES);
     expect(root.attrs.size).toBe(0);

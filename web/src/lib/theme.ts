@@ -28,16 +28,10 @@ export type ThemeGroup = 'Light' | 'Dark' | 'Accessible';
 /** Group order in the picker. */
 export const GROUPS: readonly ThemeGroup[] = ['Light', 'Dark', 'Accessible'];
 
-/** Every theme in tokens.css (decision D39). */
+/** Every theme in tokens.css: light, dark and high contrast in both (V3-8, replacing D39's ten). */
 export const THEMES: readonly ThemeInfo[] = [
   { id: 'light', label: 'Light', group: 'Light', family: 'light' },
-  { id: 'nordic-frost', label: 'Nordic frost', group: 'Light', family: 'light' },
-  { id: 'soft-lavender', label: 'Soft lavender', group: 'Light', family: 'light' },
   { id: 'dark', label: 'Dark', group: 'Dark', family: 'dark' },
-  { id: 'overcast', label: 'Overcast', group: 'Dark', family: 'dark' },
-  { id: 'oled-black', label: 'OLED black', group: 'Dark', family: 'dark' },
-  { id: 'nordic-slate', label: 'Nordic slate', group: 'Dark', family: 'dark' },
-  { id: 'cosmic-violet', label: 'Cosmic violet', group: 'Dark', family: 'dark' },
   { id: 'hc-light', label: 'High contrast light', group: 'Accessible', family: 'light' },
   { id: 'hc-dark', label: 'High contrast dark', group: 'Accessible', family: 'dark' },
 ];

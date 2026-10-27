@@ -32,7 +32,7 @@ const OWNER = {
   name: 'Priya Raman',
   avatar_url: '',
   role: 'owner',
-  theme: 'overcast',
+  theme: 'hc-light',
   verdicts: 'standard',
 };
 const PEOPLE = [
@@ -131,7 +131,7 @@ test('applies, saves and clears preferences', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto('/');
   const html = page.locator('html');
-  await expect(html).toHaveAttribute('data-theme', 'overcast');
+  await expect(html).toHaveAttribute('data-theme', 'hc-light');
 
   // Signed in, the picker is the account menu's "Theme and colours" dialog (N2).
   const account = page.getByRole('button', { name: 'Priya Raman' });
@@ -142,33 +142,33 @@ test('applies, saves and clears preferences', async ({ page }) => {
   await page.keyboard.press('Enter');
   const dialog = page.getByRole('dialog', { name: 'Theme and colours' });
   await expect(dialog).toBeVisible();
-  const overcast = page.getByRole('radio', { name: 'Overcast' });
-  await expect(overcast).toBeChecked();
+  const start = page.getByRole('radio', { name: 'High contrast light' });
+  await expect(start).toBeChecked();
 
   // Arrow keys move within the radio group and choose as they go.
-  await overcast.focus();
+  await start.focus();
   await page.keyboard.press('ArrowDown');
-  await expect(page.getByRole('radio', { name: 'OLED black' })).toBeChecked();
-  await expect(html).toHaveAttribute('data-theme', 'oled-black');
-  await expect.poll(() => api.saved.at(-1)).toEqual({ theme: 'oled-black', verdicts: 'standard' });
+  await expect(page.getByRole('radio', { name: 'High contrast dark' })).toBeChecked();
+  await expect(html).toHaveAttribute('data-theme', 'hc-dark');
+  await expect.poll(() => api.saved.at(-1)).toEqual({ theme: 'hc-dark', verdicts: 'standard' });
 
   await page.getByRole('checkbox', { name: /Colour-blind safe verdict colours/ }).check();
   await expect(html).toHaveAttribute('data-verdicts', 'signal');
-  await expect.poll(() => api.saved.at(-1)).toEqual({ theme: 'oled-black', verdicts: 'signal' });
+  await expect.poll(() => api.saved.at(-1)).toEqual({ theme: 'hc-dark', verdicts: 'signal' });
   expect(await page.evaluate(() => [localStorage.getItem('podium-theme'), localStorage.getItem('podium-verdicts')])).toEqual([
-    'oled-black',
+    'hc-dark',
     'signal',
   ]);
 
   // The dialog says which theme is on; Escape closes it and focus returns to the item.
-  await expect(dialog).toContainText('Current theme: OLED black');
+  await expect(dialog).toContainText('Current theme: High contrast dark');
   await page.keyboard.press('Escape');
   await expect(dialog).toBeHidden();
   await expect(item).toBeFocused();
 
   // Reload: the pre-paint cache and the account agree.
   await page.reload();
-  await expect(html).toHaveAttribute('data-theme', 'oled-black');
+  await expect(html).toHaveAttribute('data-theme', 'hc-dark');
   await expect(html).toHaveAttribute('data-verdicts', 'signal');
 
   // System clears the attribute and is saved as an empty theme.
@@ -195,9 +195,9 @@ test('a click outside closes the menu', async ({ page }) => {
   await page.goto('/signin');
   const trigger = page.getByRole('button', { name: 'Theme', exact: true });
   await trigger.click();
-  await expect(page.getByRole('radio', { name: 'Nordic frost' })).toBeVisible();
+  await expect(page.getByRole('radio', { name: 'High contrast light' })).toBeVisible();
   await page.locator('h1').click();
-  await expect(page.getByRole('radio', { name: 'Nordic frost' })).toBeHidden();
+  await expect(page.getByRole('radio', { name: 'High contrast light' })).toBeHidden();
   await expect(trigger).toHaveAttribute('aria-expanded', 'false');
 });
 
@@ -214,8 +214,8 @@ test('signed out, a choice applies on this device without saving', async ({ page
   const api = await mockApi(page, false);
   await page.goto('/signin');
   await page.getByRole('button', { name: 'Theme', exact: true }).click();
-  await page.getByRole('radio', { name: 'Soft lavender' }).check();
-  await expect(page.locator('html')).toHaveAttribute('data-theme', 'soft-lavender');
+  await page.getByRole('radio', { name: 'Dark', exact: true }).check();
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
   expect(api.saved).toEqual([]);
 });
 

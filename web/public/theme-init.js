@@ -5,7 +5,7 @@
 // them in step. The account's preferences replace these once the session
 // loads.
 try {
-  const themes = ['light', 'nordic-frost', 'soft-lavender', 'dark', 'overcast', 'oled-black', 'nordic-slate', 'cosmic-violet', 'hc-light', 'hc-dark'];
+  const themes = ['light', 'dark', 'hc-light', 'hc-dark'];
   const root = document.documentElement;
   const theme = localStorage.getItem('podium-theme');
   if (themes.indexOf(theme) >= 0) {
