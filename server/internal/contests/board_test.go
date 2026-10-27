@@ -137,8 +137,8 @@ func TestPracticeAndEditorialWaitForEveryWindow(t *testing.T) {
 	r := newSvc(t)
 	ctx := context.Background()
 	c := r.contest(t, nil)
-	r.svc.SetEditorial(ctx, c.ID, "Use a 64-bit sum.", true)
-	r.svc.SetExtension(ctx, c.ID, 3, 30, "accommodation")
+	r.svc.SetEditorial(ctx, c.ID, "Use a 64-bit sum.", true, owner)
+	r.svc.SetExtension(ctx, c.ID, 3, 30, "accommodation", owner)
 	*r.now = at(125) // after the close, inside Bilal's extension
 	c, _ = r.svc.Get(ctx, c.ID)
 	st, _ := r.svc.State(ctx, c, 2)

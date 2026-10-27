@@ -39,7 +39,7 @@ func TestLiveUntilWindowModeAndExtensions(t *testing.T) {
 				t.Fatal(err)
 			}
 		}
-		if err := r.svc.SetExtension(ctx, c.ID, 2, 30, "a documented accommodation"); err != nil {
+		if err := r.svc.SetExtension(ctx, c.ID, 2, 30, "a documented accommodation", owner); err != nil {
 			t.Fatal(err)
 		}
 		*r.now = at(130)

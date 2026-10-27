@@ -66,7 +66,7 @@ func TestWindowModeWithExtensions(t *testing.T) {
 		t.Errorf("capped window %+v", st)
 	}
 	// A personal extension moves both the cap and the end.
-	if err := r.svc.SetExtension(ctx, c.ID, 2, 15, "accommodation"); err != nil {
+	if err := r.svc.SetExtension(ctx, c.ID, 2, 15, "accommodation", owner); err != nil {
 		t.Fatal(err)
 	}
 	st, _ = r.svc.State(ctx, c, 2)
@@ -119,7 +119,7 @@ func TestStudentBoardVariants(t *testing.T) {
 	if v := variant(at(130)); v != VariantFrozen {
 		t.Errorf("held after the end: %s", v)
 	}
-	if err := r.svc.Reveal(ctx, c); err != nil {
+	if err := r.svc.Reveal(ctx, c, owner); err != nil {
 		t.Fatal(err)
 	}
 	if v := variant(at(131)); v != VariantFull {
@@ -136,13 +136,13 @@ func TestRevealWaitsForEveryWindow(t *testing.T) {
 	r := newSvc(t)
 	ctx := context.Background()
 	c := r.contest(t, nil)
-	r.svc.SetExtension(ctx, c.ID, 2, 10, "")
+	r.svc.SetExtension(ctx, c.ID, 2, 10, "", owner)
 	*r.now = at(125)
-	if err := r.svc.Reveal(ctx, c); err != ErrRevealEarly {
+	if err := r.svc.Reveal(ctx, c, owner); err != ErrRevealEarly {
 		t.Errorf("reveal while a student still has time: %v", err)
 	}
 	*r.now = at(131)
-	if err := r.svc.Reveal(ctx, c); err != nil {
+	if err := r.svc.Reveal(ctx, c, owner); err != nil {
 		t.Errorf("reveal after every window: %v", err)
 	}
 }
@@ -280,4 +280,45 @@ func count(t testing.TB, r *svcRig, q string, args ...any) int {
 		t.Fatal(err)
 	}
 	return n
+}
+
+// owner is user 1 of newSvc, as the audit log names an organiser.
+var owner = Actor{ID: 1, Email: "owner@college.edu", Role: "owner"}
+
+// An audit row that cannot be written rolls its change back (S1-08): an
+// actor who is not a user fails the audit insert on its foreign key.
+func TestFailedAuditRollsTheChangeBack(t *testing.T) {
+	r := newSvc(t)
+	ctx := context.Background()
+	c := r.contest(t, nil)
+	ghost := Actor{ID: 999, Email: "ghost@college.edu", Role: "admin"}
+	if err := r.svc.SetPaused(ctx, c.ID, true, ghost); err == nil {
+		t.Error("pause with a failing audit row succeeded")
+	}
+	if err := r.svc.Extend(ctx, c.ID, 10, ghost); err == nil {
+		t.Error("extend with a failing audit row succeeded")
+	}
+	if err := r.svc.SetExtension(ctx, c.ID, 2, 15, "", ghost); err == nil {
+		t.Error("extension with a failing audit row succeeded")
+	}
+	if err := r.svc.Archive(ctx, c.ID, ghost); err == nil {
+		t.Error("archive with a failing audit row succeeded")
+	}
+	got, err := r.svc.Get(ctx, c.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Paused || got.Schedule.Extended != 0 || got.MaxExtension != 0 || got.Archived {
+		t.Errorf("changes kept without their audit rows: paused %v, extended %v, personal %v, archived %v",
+			got.Paused, got.Schedule.Extended, got.MaxExtension, got.Archived)
+	}
+	// The same changes by a real organiser go through, each with its row.
+	if err := r.svc.SetPaused(ctx, c.ID, true, owner); err != nil {
+		t.Fatal(err)
+	}
+	var n int
+	r.svc.DB.QueryRow("SELECT count(*) FROM contest_audit WHERE contest_id = ? AND action = ?", c.ID, AuditPause).Scan(&n)
+	if n != 1 {
+		t.Errorf("%d pause rows, want 1", n)
+	}
 }

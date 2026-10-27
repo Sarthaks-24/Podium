@@ -2,6 +2,7 @@ package submissions
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 
@@ -18,6 +19,9 @@ type RejudgeRequest struct {
 	By           int64
 	// NoStopOnSample matches the contest's setting.
 	NoStopOnSample bool
+	// Audit, when set, writes the audit row inside the rejudge's
+	// transaction, so it commits or rolls back with the new jobs (S1-08).
+	Audit func(ctx context.Context, tx *sql.Tx, queued int) error
 }
 
 // rejudgeReason is the error a replaced job is closed with.
@@ -157,6 +161,11 @@ func (s *Service) Rejudge(ctx context.Context, r RejudgeRequest) (int, error) {
 			return 0, fmt.Errorf("rejudge submission %d: %w", t.id, err)
 		}
 		queued++
+	}
+	if r.Audit != nil {
+		if err := r.Audit(ctx, tx, queued); err != nil {
+			return 0, err
+		}
 	}
 	if err := tx.Commit(); err != nil {
 		return 0, err

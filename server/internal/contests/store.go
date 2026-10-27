@@ -770,7 +770,7 @@ type RosterChange struct {
 // SetRoster replaces the contest's roster with entries: anyone left out
 // loses access to a roster contest. It reports how many emails were added
 // and removed, so the organiser sees the effect of the replacement.
-func (s *Service) SetRoster(ctx context.Context, id int64, entries []RosterEntry) (RosterChange, error) {
+func (s *Service) SetRoster(ctx context.Context, id int64, entries []RosterEntry, by Actor) (RosterChange, error) {
 	tx, err := s.DB.BeginTx(ctx, nil)
 	if err != nil {
 		return RosterChange{}, err
@@ -825,6 +825,10 @@ func (s *Service) SetRoster(ctx context.Context, id int64, entries []RosterEntry
 	if ch.EmailsRemoved == nil {
 		ch.EmailsRemoved = []string{}
 	}
+	if err := s.recordTx(ctx, tx, id, by, AuditRoster, map[string]any{"count": ch.Count, "added": ch.Added, "removed": ch.Removed,
+		"emails_added": ch.EmailsAdded, "emails_removed": ch.EmailsRemoved}); err != nil {
+		return RosterChange{}, err
+	}
 	return ch, tx.Commit()
 }
 
@@ -876,51 +880,72 @@ func limitStr(s string, n int) string {
 	return strings.ToValidUTF8(s[:n], "")
 }
 
-// SetExtension gives one student extra time (0 removes it).
-func (s *Service) SetExtension(ctx context.Context, id, userID int64, minutes int, reason string) error {
+// SetExtension gives one student extra time (0 removes it), audited for
+// by. The student is named by id only: the audit log outlives an erasure
+// (forget-user rewrites no audit row).
+func (s *Service) SetExtension(ctx context.Context, id, userID int64, minutes int, reason string, by Actor) error {
 	if minutes < 0 || minutes > 1440 {
 		return FieldErrors{"minutes": "Give from 0 to 1440 extra minutes."}
 	}
-	var err error
-	if minutes == 0 {
-		_, err = s.DB.ExecContext(ctx, "DELETE FROM contest_extensions WHERE contest_id = ? AND user_id = ?", id, userID)
-	} else {
-		_, err = s.DB.ExecContext(ctx, `INSERT INTO contest_extensions (contest_id, user_id, minutes, reason) VALUES (?, ?, ?, ?)
-			ON CONFLICT (contest_id, user_id) DO UPDATE SET minutes = excluded.minutes, reason = excluded.reason`,
-			id, userID, minutes, limitStr(reason, 200))
-	}
+	err := s.audited(ctx, id, by, AuditExtension, func(tx *sql.Tx) (any, bool, error) {
+		var from int
+		if err := tx.QueryRowContext(ctx, "SELECT coalesce((SELECT minutes FROM contest_extensions WHERE contest_id = ? AND user_id = ?), 0)",
+			id, userID).Scan(&from); err != nil {
+			return nil, false, err
+		}
+		var err error
+		if minutes == 0 {
+			_, err = tx.ExecContext(ctx, "DELETE FROM contest_extensions WHERE contest_id = ? AND user_id = ?", id, userID)
+		} else {
+			_, err = tx.ExecContext(ctx, `INSERT INTO contest_extensions (contest_id, user_id, minutes, reason) VALUES (?, ?, ?, ?)
+				ON CONFLICT (contest_id, user_id) DO UPDATE SET minutes = excluded.minutes, reason = excluded.reason`,
+				id, userID, minutes, limitStr(reason, 200))
+		}
+		return map[string]any{"user_id": userID, "from_minutes": from, "minutes": minutes, "reason_given": strings.TrimSpace(reason) != ""}, true, err
+	})
 	if err == nil {
 		s.changed(id)
 	}
 	return err
 }
 
-// Extend adds minutes to everyone's end.
-func (s *Service) Extend(ctx context.Context, id int64, minutes int) error {
+// Extend adds minutes to everyone's end, audited for by.
+func (s *Service) Extend(ctx context.Context, id int64, minutes int, by Actor) error {
 	if minutes < 1 || minutes > 240 {
 		return FieldErrors{"minutes": "Extend by 1 to 240 minutes."}
 	}
-	res, err := s.DB.ExecContext(ctx, "UPDATE contests SET extended_minutes = extended_minutes + ?, updated_at = ? WHERE id = ?", minutes, s.now().UnixMilli(), id)
-	if err != nil {
-		return err
+	err := s.audited(ctx, id, by, AuditExtend, func(tx *sql.Tx) (any, bool, error) {
+		var total int
+		err := tx.QueryRowContext(ctx, "UPDATE contests SET extended_minutes = extended_minutes + ?, updated_at = ? WHERE id = ? RETURNING extended_minutes",
+			minutes, s.now().UnixMilli(), id).Scan(&total)
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, false, ErrNotFound
+		}
+		return map[string]int{"minutes": minutes, "extended_minutes": total}, true, err
+	})
+	if err == nil {
+		s.changed(id)
 	}
-	if n, _ := res.RowsAffected(); n == 0 {
-		return ErrNotFound
-	}
-	s.changed(id)
-	return nil
+	return err
 }
 
-// SetPaused pauses or resumes judging of the contest's submissions.
-func (s *Service) SetPaused(ctx context.Context, id int64, paused bool) error {
-	res, err := s.DB.ExecContext(ctx, "UPDATE contests SET paused = ?, updated_at = ? WHERE id = ?", paused, s.now().UnixMilli(), id)
-	if err != nil {
-		return err
+// SetPaused pauses or resumes judging of the contest's submissions,
+// audited for by.
+func (s *Service) SetPaused(ctx context.Context, id int64, paused bool, by Actor) error {
+	action := AuditResume
+	if paused {
+		action = AuditPause
 	}
-	if n, _ := res.RowsAffected(); n == 0 {
-		return ErrNotFound
-	}
-	return nil
+	return s.audited(ctx, id, by, action, func(tx *sql.Tx) (any, bool, error) {
+		res, err := tx.ExecContext(ctx, "UPDATE contests SET paused = ?, updated_at = ? WHERE id = ?", paused, s.now().UnixMilli(), id)
+		if err != nil {
+			return nil, false, err
+		}
+		if n, _ := res.RowsAffected(); n == 0 {
+			return nil, false, ErrNotFound
+		}
+		return nil, true, nil
+	})
 }
 
 // extension returns a student's own extra time.

@@ -22,17 +22,22 @@ const (
 )
 
 // Archive hides a contest from students and the default list. Nothing is
-// deleted: submissions and results stay for the record.
-func (s *Service) Archive(ctx context.Context, id int64) error {
-	res, err := s.DB.ExecContext(ctx, "UPDATE contests SET archived = 1, updated_at = ? WHERE id = ?", s.now().UnixMilli(), id)
-	if err != nil {
-		return err
+// deleted: submissions and results stay for the record. by is audited.
+func (s *Service) Archive(ctx context.Context, id int64, by Actor) error {
+	err := s.audited(ctx, id, by, AuditArchive, func(tx *sql.Tx) (any, bool, error) {
+		res, err := tx.ExecContext(ctx, "UPDATE contests SET archived = 1, updated_at = ? WHERE id = ?", s.now().UnixMilli(), id)
+		if err != nil {
+			return nil, false, err
+		}
+		if n, _ := res.RowsAffected(); n == 0 {
+			return nil, false, ErrNotFound
+		}
+		return nil, true, nil
+	})
+	if err == nil {
+		s.changed(id)
 	}
-	if n, _ := res.RowsAffected(); n == 0 {
-		return ErrNotFound
-	}
-	s.changed(id)
-	return nil
+	return err
 }
 
 // Clone copies a contest's settings and problems into a new, unpublished
@@ -81,20 +86,31 @@ func (s *Service) Clone(ctx context.Context, id int64, slug, title string, start
 }
 
 // SetEditorial saves the editorial. Students see it only when it is
-// published and the contest has ended for them.
-func (s *Service) SetEditorial(ctx context.Context, id int64, md string, published bool) error {
+// published and the contest has ended for them. Publishing hands students
+// the solutions, so publishing, unpublishing and a change while published
+// are audited for by.
+func (s *Service) SetEditorial(ctx context.Context, id int64, md string, published bool, by Actor) error {
 	if len(md) > maxEditorial || !utf8.ValidString(md) {
 		return FieldErrors{"editorial_md": "The editorial is longer than 64 KB."}
 	}
-	res, err := s.DB.ExecContext(ctx, "UPDATE contests SET editorial_md = ?, editorial_published = ?, updated_at = ? WHERE id = ?",
-		md, published, s.now().UnixMilli(), id)
-	if err != nil {
-		return err
-	}
-	if n, _ := res.RowsAffected(); n == 0 {
-		return ErrNotFound
-	}
-	return nil
+	return s.audited(ctx, id, by, AuditEditorial, func(tx *sql.Tx) (any, bool, error) {
+		var oldMD string
+		var was bool
+		err := tx.QueryRowContext(ctx, "SELECT editorial_md, editorial_published FROM contests WHERE id = ?", id).Scan(&oldMD, &was)
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, false, ErrNotFound
+		}
+		if err != nil {
+			return nil, false, err
+		}
+		if _, err := tx.ExecContext(ctx, "UPDATE contests SET editorial_md = ?, editorial_published = ?, updated_at = ? WHERE id = ?",
+			md, published, s.now().UnixMilli(), id); err != nil {
+			return nil, false, err
+		}
+		changed := md != oldMD
+		return map[string]any{"published": published, "was_published": was, "changed": changed, "bytes": len(md)},
+			published != was || (published && changed), nil
+	})
 }
 
 // EditorialVisible reports whether a student may read the editorial: it
@@ -106,8 +122,8 @@ func (c *Contest) EditorialVisible(st StudentState, now time.Time) bool {
 
 // Reveal records that the organisers revealed the final board: students
 // held on the frozen board (HoldReveal) now see the full one. It is refused
-// until every student's time is up.
-func (s *Service) Reveal(ctx context.Context, c *Contest) error {
+// until every student's time is up. The first reveal is audited for by.
+func (s *Service) Reveal(ctx context.Context, c *Contest, by Actor) error {
 	c, err := s.Get(ctx, c.ID) // the latest extensions
 	if err != nil {
 		return err
@@ -115,12 +131,19 @@ func (s *Service) Reveal(ctx context.Context, c *Contest) error {
 	if s.now().Before(c.Final()) {
 		return ErrRevealEarly
 	}
-	if _, err := s.DB.ExecContext(ctx, "UPDATE contests SET revealed_at = coalesce(revealed_at, ?), updated_at = ? WHERE id = ?",
-		s.now().UnixMilli(), s.now().UnixMilli(), c.ID); err != nil {
-		return err
+	err = s.audited(ctx, c.ID, by, AuditReveal, func(tx *sql.Tx) (any, bool, error) {
+		res, err := tx.ExecContext(ctx, "UPDATE contests SET revealed_at = ?, updated_at = ? WHERE id = ? AND revealed_at IS NULL",
+			s.now().UnixMilli(), s.now().UnixMilli(), c.ID)
+		if err != nil {
+			return nil, false, err
+		}
+		n, _ := res.RowsAffected()
+		return nil, n == 1, nil
+	})
+	if err == nil {
+		s.changed(c.ID)
 	}
-	s.changed(c.ID)
-	return nil
+	return err
 }
 
 // Person is someone named in an organiser's view.
@@ -165,8 +188,8 @@ func (s *Service) RosterCount(ctx context.Context, id int64) (int, error) {
 
 // ExtendFor gives one student extra time and tells them their new end. The
 // student must be on the roster or taking part (IsParticipant); removing
-// an extension (0 minutes) works for anyone who has one.
-func (s *Service) ExtendFor(ctx context.Context, c *Contest, userID int64, minutes int, reason string) error {
+// an extension (0 minutes) works for anyone who has one. by is audited.
+func (s *Service) ExtendFor(ctx context.Context, c *Contest, userID int64, minutes int, reason string, by Actor) error {
 	var n int
 	if err := s.DB.QueryRowContext(ctx, "SELECT count(*) FROM users WHERE id = ?", userID).Scan(&n); err != nil {
 		return err
@@ -183,7 +206,7 @@ func (s *Service) ExtendFor(ctx context.Context, c *Contest, userID int64, minut
 			return ErrNotParticipant
 		}
 	}
-	if err := s.SetExtension(ctx, c.ID, userID, minutes, strings.TrimSpace(reason)); err != nil {
+	if err := s.SetExtension(ctx, c.ID, userID, minutes, strings.TrimSpace(reason), by); err != nil {
 		return err
 	}
 	st, err := s.State(ctx, c, userID)
@@ -198,9 +221,10 @@ func (s *Service) ExtendFor(ctx context.Context, c *Contest, userID int64, minut
 	return nil
 }
 
-// ExtendAll adds minutes to everyone's end and tells the contest.
-func (s *Service) ExtendAll(ctx context.Context, id int64, minutes int) (*Contest, error) {
-	if err := s.Extend(ctx, id, minutes); err != nil {
+// ExtendAll adds minutes to everyone's end and tells the contest. by is
+// audited.
+func (s *Service) ExtendAll(ctx context.Context, id int64, minutes int, by Actor) (*Contest, error) {
+	if err := s.Extend(ctx, id, minutes, by); err != nil {
 		return nil, err
 	}
 	c, err := s.Get(ctx, id)

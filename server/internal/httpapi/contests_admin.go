@@ -14,6 +14,7 @@ package httpapi
 import (
 	"bytes"
 	"context"
+	"database/sql"
 	"errors"
 	"io"
 	"mime"
@@ -183,15 +184,6 @@ func actor(r *http.Request) contests.Actor {
 	return contests.Actor{ID: u.ID, Email: u.Email, Role: string(u.Role)}
 }
 
-// audit appends to a contest's audit log after a change that already
-// happened. A failure cannot undo the change, so it is logged loudly for
-// the operator instead of failing the request.
-func (d Deps) audit(r *http.Request, contestID int64, action string, details any) {
-	if err := d.Contests.Record(r.Context(), contestID, actor(r), action, details); err != nil {
-		d.Log.Error("audit log write failed", "contest_id", contestID, "action", action, "by", userFrom(r.Context()).ID, "err", err)
-	}
-}
-
 func (d Deps) listAdminContests(w http.ResponseWriter, r *http.Request) {
 	all, err := d.Contests.List(r.Context(), r.URL.Query().Get("archived") == "1")
 	if err != nil {
@@ -296,11 +288,10 @@ func (d Deps) archiveContest(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if err := d.Contests.Archive(r.Context(), c.ID); err != nil {
+	if err := d.Contests.Archive(r.Context(), c.ID, actor(r)); err != nil {
 		d.contestError(w, r, err)
 		return
 	}
-	d.audit(r, c.ID, contests.AuditArchive, nil)
 	d.Log.Info("contest archived", "by", userFrom(r.Context()).ID, "contest_id", c.ID)
 	w.WriteHeader(http.StatusNoContent)
 }
@@ -398,13 +389,11 @@ func (d Deps) setRoster(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	ch, err := d.Contests.SetRoster(r.Context(), c.ID, entries)
+	ch, err := d.Contests.SetRoster(r.Context(), c.ID, entries, actor(r))
 	if err != nil {
 		d.contestError(w, r, err)
 		return
 	}
-	d.audit(r, c.ID, contests.AuditRoster, map[string]any{"count": ch.Count, "added": ch.Added, "removed": ch.Removed,
-		"emails_added": ch.EmailsAdded, "emails_removed": ch.EmailsRemoved})
 	d.Log.Info("contest roster replaced", "by", userFrom(r.Context()).ID, "contest_id", c.ID,
 		"count", ch.Count, "added", ch.Added, "removed", ch.Removed)
 	WriteJSON(w, http.StatusOK, map[string]any{"added": ch.Added, "removed": ch.Removed, "roster_count": ch.Count})
@@ -446,15 +435,7 @@ func (d Deps) setExtension(w http.ResponseWriter, r *http.Request) {
 	if !decodeJSON(w, r, &req) {
 		return
 	}
-	before := contests.Extension{}
-	if list, err := d.Contests.Extensions(r.Context(), c.ID); err == nil {
-		for _, e := range list {
-			if e.UserID == userID {
-				before = e
-			}
-		}
-	}
-	if err := d.Contests.ExtendFor(r.Context(), c, userID, req.Minutes, req.Reason); err != nil {
+	if err := d.Contests.ExtendFor(r.Context(), c, userID, req.Minutes, req.Reason, actor(r)); err != nil {
 		switch {
 		case errors.Is(err, contests.ErrNotFound):
 			WriteError(w, http.StatusNotFound, "not_found", "There is no such person.")
@@ -465,11 +446,6 @@ func (d Deps) setExtension(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
-	// The student is named by id only: the audit log outlives an erasure
-	// (forget-user rewrites no audit row), and the feed shows the name
-	// from the contest's people (agent backlog, P3 security review).
-	d.audit(r, c.ID, contests.AuditExtension, map[string]any{"user_id": userID,
-		"from_minutes": before.Minutes, "minutes": req.Minutes, "reason_given": strings.TrimSpace(req.Reason) != ""})
 	d.Log.Info("contest extension set", "by", userFrom(r.Context()).ID, "contest_id", c.ID, "user_id", userID, "minutes", req.Minutes)
 	d.writeAdminContest(w, r, c.ID, http.StatusOK)
 }
@@ -485,12 +461,10 @@ func (d Deps) extendContest(w http.ResponseWriter, r *http.Request) {
 	if !decodeJSON(w, r, &req) {
 		return
 	}
-	out, err := d.Contests.ExtendAll(r.Context(), c.ID, req.Minutes)
-	if err != nil {
+	if _, err := d.Contests.ExtendAll(r.Context(), c.ID, req.Minutes, actor(r)); err != nil {
 		d.contestError(w, r, err)
 		return
 	}
-	d.audit(r, c.ID, contests.AuditExtend, map[string]int{"minutes": req.Minutes, "extended_minutes": int(out.Schedule.Extended / time.Minute)})
 	d.Log.Info("contest extended", "by", userFrom(r.Context()).ID, "contest_id", c.ID, "minutes", req.Minutes)
 	d.writeAdminContest(w, r, c.ID, http.StatusOK)
 }
@@ -501,15 +475,10 @@ func (d Deps) pauseContest(paused bool) http.HandlerFunc {
 		if !ok {
 			return
 		}
-		if err := d.Contests.SetPaused(r.Context(), c.ID, paused); err != nil {
+		if err := d.Contests.SetPaused(r.Context(), c.ID, paused, actor(r)); err != nil {
 			d.contestError(w, r, err)
 			return
 		}
-		action := contests.AuditResume
-		if paused {
-			action = contests.AuditPause
-		}
-		d.audit(r, c.ID, action, nil)
 		d.Log.Info("contest judging paused or resumed", "by", userFrom(r.Context()).ID, "contest_id", c.ID, "paused", paused)
 		d.writeAdminContest(w, r, c.ID, http.StatusOK)
 	}
@@ -608,18 +577,6 @@ func (d Deps) rejudge(w http.ResponseWriter, r *http.Request) {
 		WriteError(w, http.StatusBadRequest, "bad_request", "Choose a problem or one submission to rejudge.")
 		return
 	}
-	n, err := d.Submissions.Rejudge(r.Context(), rr)
-	if err != nil {
-		d.submissionError(w, r, err)
-		return
-	}
-	d.Contests.Invalidate(c.ID)
-	what := map[string]any{"queued": n}
-	if req.ProblemLabel != "" {
-		what["problem_label"] = req.ProblemLabel
-	} else {
-		what["submission_id"] = req.SubmissionID
-	}
 	// The revisions the new jobs judge against and record (B2.10).
 	revs := []map[string]any{}
 	for _, p := range c.Problems {
@@ -627,8 +584,22 @@ func (d Deps) rejudge(w http.ResponseWriter, r *http.Request) {
 			revs = append(revs, map[string]any{"label": p.Label, "revision_id": p.RevisionID, "rev": p.Rev})
 		}
 	}
-	what["revisions"] = revs
-	d.audit(r, c.ID, contests.AuditRejudge, what)
+	// The audit row commits with the new jobs (S1-08).
+	rr.Audit = func(ctx context.Context, tx *sql.Tx, queued int) error {
+		what := map[string]any{"queued": queued, "revisions": revs}
+		if req.ProblemLabel != "" {
+			what["problem_label"] = req.ProblemLabel
+		} else {
+			what["submission_id"] = req.SubmissionID
+		}
+		return contests.RecordTx(ctx, tx, c.ID, actor(r), contests.AuditRejudge, what, d.Contests.Clock().UnixMilli())
+	}
+	n, err := d.Submissions.Rejudge(r.Context(), rr)
+	if err != nil {
+		d.submissionError(w, r, err)
+		return
+	}
+	d.Contests.Invalidate(c.ID)
 	d.Log.Info("rejudge queued", "by", userFrom(r.Context()).ID, "contest_id", c.ID, "count", n)
 	WriteJSON(w, http.StatusAccepted, map[string]any{"queued": n, "revisions": revs, "server_now": d.Contests.Clock().UnixMilli()})
 }
@@ -812,12 +783,9 @@ func (d Deps) postReveal(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if err := d.Contests.Reveal(r.Context(), c); err != nil {
+	if err := d.Contests.Reveal(r.Context(), c, actor(r)); err != nil {
 		d.contestError(w, r, err)
 		return
-	}
-	if c.RevealedAt.IsZero() {
-		d.audit(r, c.ID, contests.AuditReveal, nil)
 	}
 	d.Log.Info("contest revealed", "by", userFrom(r.Context()).ID, "contest_id", c.ID)
 	d.writeAdminContest(w, r, c.ID, http.StatusOK)
@@ -910,16 +878,9 @@ func (d Deps) setEditorial(w http.ResponseWriter, r *http.Request) {
 	if !decodeJSONLimit(w, r, &req, 80<<10) {
 		return
 	}
-	if err := d.Contests.SetEditorial(r.Context(), c.ID, req.EditorialMD, req.Published); err != nil {
+	if err := d.Contests.SetEditorial(r.Context(), c.ID, req.EditorialMD, req.Published, actor(r)); err != nil {
 		d.contestError(w, r, err)
 		return
-	}
-	// Publishing the editorial hands students the solutions: recorded when
-	// it is published, unpublished, or changed while published.
-	changed := req.EditorialMD != c.Editorial
-	if req.Published != c.EditorialPublished || (req.Published && changed) {
-		d.audit(r, c.ID, contests.AuditEditorial, map[string]any{"published": req.Published, "was_published": c.EditorialPublished,
-			"changed": changed, "bytes": len(req.EditorialMD)})
 	}
 	d.writeAdminContest(w, r, c.ID, http.StatusOK)
 }

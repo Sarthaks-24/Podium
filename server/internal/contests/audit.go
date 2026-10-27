@@ -56,12 +56,6 @@ type execer interface {
 	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
 }
 
-// Record appends a row to the contest's audit log. details is encoded as
-// JSON (nil records an empty object).
-func (s *Service) Record(ctx context.Context, contestID int64, a Actor, action string, details any) error {
-	return s.recordTx(ctx, s.DB, contestID, a, action, details)
-}
-
 // RecordTx is Record inside the caller's transaction, stamped now (Unix
 // milliseconds), so the audit row commits or rolls back with the change.
 func RecordTx(ctx context.Context, tx *sql.Tx, contestID int64, a Actor, action string, details any, now int64) error {
@@ -75,6 +69,27 @@ func RecordTx(ctx context.Context, tx *sql.Tx, contestID int64, a Actor, action 
 		return fmt.Errorf("record %s in the audit log: %w", action, err)
 	}
 	return nil
+}
+
+// audited runs change and its audit row in one transaction, so the row
+// commits or rolls back with the change (S1-08). change returns the row's
+// details and whether to write one at all.
+func (s *Service) audited(ctx context.Context, contestID int64, by Actor, action string, change func(tx *sql.Tx) (details any, record bool, err error)) error {
+	tx, err := s.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	details, record, err := change(tx)
+	if err != nil {
+		return err
+	}
+	if record {
+		if err := s.recordTx(ctx, tx, contestID, by, action, details); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
 }
 
 func (s *Service) recordTx(ctx context.Context, ex execer, contestID int64, a Actor, action string, details any) error {
