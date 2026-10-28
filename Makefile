@@ -92,8 +92,8 @@ build: embed ## Build Linux binaries (with the embedded web app) into server/bin
 	cd server && $(GOFLAGS_LINUX) go build -trimpath -ldflags "$(LDFLAGS)" -o bin/ ./cmd/...
 
 .PHONY: test
-test: ## Unit tests: Go and web
-	cd server && go test ./...
+test: ## Unit tests: Go and web (never from the cache)
+	cd server && go test -count=1 ./...
 	cd web && npm test
 
 .PHONY: check

@@ -60,5 +60,7 @@ export default defineConfig({
     environment: 'node',
     // Process CSS so the guardrail test can read stylesheets with ?raw.
     css: true,
+    // One worker per CPU reused across files: about 40 s to about 10 s (stage A7).
+    isolate: false,
   },
 });
