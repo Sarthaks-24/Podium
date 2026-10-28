@@ -9,6 +9,7 @@ Dated entries per release. Unreleased work is listed at the top.
 - End the contest now during the freeze keeps the board frozen (V3-18). The remaining freeze is rounded up to whole minutes and never to zero, so the frozen moment moves at most 59 s earlier; before, an end inside the first minute of the freeze stored no freeze and released a held board at once. The confirm names the moment the board stays frozen at.
 - The gap between submissions is per problem (V3-17). A student who submits A can submit B at once; before, B was refused for the rest of A's 30 s.
 - Security: a flood of forged session cookies from one address no longer locks out real students behind the same address, such as a campus NAT (V3-19, security audit 2026-10-28 H1). A session the server issued or accepted in the last minute skips the per-address refusal and is checked against the database as before.
+- A database from before v3 makes the server stop with "this database predates v3" and what to do (move it away or restore a v3 backup), instead of saying it was written by a newer release (walk bug B7).
 
 ### v3 stage 1 (2026-10-26)
 

@@ -45,6 +45,30 @@ func TestRefusesUnknownMigration(t *testing.T) {
 	}
 }
 
+// A database from v2 meets the v3 binary: the refusal says what is true
+// (walk bug B7), not "written by a newer podium-server", and changes nothing.
+func TestOldDatabaseIsNamed(t *testing.T) {
+	ctx := context.Background()
+	d, err := Open(ctx, filepath.Join(t.TempDir(), "v2.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer d.Close()
+	if _, err := d.ExecContext(ctx, `CREATE TABLE schema_migrations (version TEXT PRIMARY KEY, applied_at INTEGER NOT NULL) STRICT;
+		INSERT INTO schema_migrations VALUES ('0001_identity', 0), ('0002_problems', 0), ('0015_rating', 0)`); err != nil {
+		t.Fatal(err)
+	}
+	_, err = Migrate(ctx, d)
+	if err == nil || !strings.Contains(err.Error(), "predates v3 (it has migration 0001_identity)") ||
+		!strings.Contains(err.Error(), "restore a v3 backup") || strings.Contains(err.Error(), "newer") {
+		t.Fatalf("refusal for a v2 database: %v", err)
+	}
+	var n int
+	if err := d.QueryRowContext(ctx, "SELECT count(*) FROM schema_migrations WHERE version = '0001_v3'").Scan(&n); err != nil || n != 0 {
+		t.Errorf("the v3 schema ran on a v2 database: %d %v", n, err)
+	}
+}
+
 func TestOpenAndMigrate(t *testing.T) {
 	ctx := context.Background()
 	path := filepath.Join(t.TempDir(), "nested", "podium.db")

@@ -157,9 +157,13 @@ func migrationNames() ([]string, error) {
 	return migrations.Files(), nil
 }
 
+// v2FirstMigration is the first migration of every database made before
+// v3 squashed the schema into one file. v3 does not upgrade those.
+const v2FirstMigration = "0001_identity"
+
 // refuseUnknown fails when the database records a migration this binary
-// does not have, which means an older binary is running against a newer
-// schema.
+// does not have: either a database from before v3, or an older binary
+// running against a newer schema.
 func refuseUnknown(ctx context.Context, d *sql.DB, names []string) error {
 	known := make(map[string]bool, len(names))
 	for _, n := range names {
@@ -174,6 +178,9 @@ func refuseUnknown(ctx context.Context, d *sql.DB, names []string) error {
 		var v string
 		if err := rows.Scan(&v); err != nil {
 			return err
+		}
+		if v == v2FirstMigration && !known[v] {
+			return fmt.Errorf("this database predates v3 (it has migration %s); v3 installs fresh and does not upgrade it. Move the database file away to start empty, or restore a v3 backup", v)
 		}
 		if !known[v] {
 			return fmt.Errorf("database has migration %s, which this binary does not know; it was written by a newer podium-server, so upgrade instead of rolling back", v)
