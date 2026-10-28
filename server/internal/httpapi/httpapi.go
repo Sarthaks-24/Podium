@@ -60,6 +60,7 @@ type Deps struct {
 	preAuthLimit  *ipLimiter
 	signInLimiter *ipLimiter
 	authFailLimit *ipLimiter
+	known         *knownSessions
 	flows         *usedFlows
 	// Mode is the run mode (testing, dev or production). Testing mode has
 	// no Google sign-in; instead anyone at this machine signs in with a
@@ -80,6 +81,9 @@ func New(d Deps) http.Handler {
 	}
 	if d.authFailLimit == nil {
 		d.authFailLimit = newIPLimiter(AuthFailBurst, AuthFailRate, nil)
+	}
+	if d.known == nil {
+		d.known = newKnownSessions(nil)
 	}
 	d.flows = newUsedFlows()
 

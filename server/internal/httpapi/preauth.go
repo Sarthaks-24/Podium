@@ -7,6 +7,7 @@ package httpapi
 // callback into many outbound calls to Google.
 
 import (
+	"crypto/sha256"
 	"net"
 	"net/http"
 	"strconv"
@@ -155,6 +156,81 @@ func (d Deps) limited(l *ipLimiter, redirect bool, h http.HandlerFunc) http.Hand
 		}
 		h(w, r)
 	}
+}
+
+// knownSessions remembers, for knownSessionTTL, the session tokens the
+// server issued or authenticated. When an address has spent its budget of
+// unknown cookies (a campus NAT someone is flooding with forged ones), a
+// cookie seen here still goes to the database, so students behind the
+// same address keep working (V3-19, security audit 2026-10-28 H1). It
+// grants nothing: the database still decides. Only hashes are kept.
+type knownSessions struct {
+	now  func() time.Time
+	mu   sync.Mutex
+	seen map[[sha256.Size]byte]time.Time
+}
+
+// An open tab re-checks its session every 25 s on the event stream, which
+// keeps its entry fresh. The table holds only tokens that were valid, so
+// the bound is the number of students, not what an attacker sends.
+const (
+	knownSessionTTL = time.Minute
+	knownSessionMax = 20000
+)
+
+func newKnownSessions(now func() time.Time) *knownSessions {
+	if now == nil {
+		now = time.Now
+	}
+	return &knownSessions{now: now, seen: map[[sha256.Size]byte]time.Time{}}
+}
+
+// add records token as valid now.
+func (k *knownSessions) add(token string) {
+	if k == nil {
+		return
+	}
+	now := k.now()
+	h := sha256.Sum256([]byte(token))
+	k.mu.Lock()
+	defer k.mu.Unlock()
+	if _, ok := k.seen[h]; !ok && len(k.seen) >= knownSessionMax {
+		for key, at := range k.seen {
+			if now.Sub(at) > knownSessionTTL {
+				delete(k.seen, key)
+			}
+		}
+		if len(k.seen) >= knownSessionMax {
+			for key := range k.seen {
+				delete(k.seen, key)
+				break
+			}
+		}
+	}
+	k.seen[h] = now
+}
+
+// has reports whether token was valid within the last knownSessionTTL.
+func (k *knownSessions) has(token string) bool {
+	if k == nil {
+		return false
+	}
+	h := sha256.Sum256([]byte(token))
+	k.mu.Lock()
+	defer k.mu.Unlock()
+	at, ok := k.seen[h]
+	return ok && k.now().Sub(at) <= knownSessionTTL
+}
+
+// forget drops token, once the database says it has ended.
+func (k *knownSessions) forget(token string) {
+	if k == nil {
+		return
+	}
+	h := sha256.Sum256([]byte(token))
+	k.mu.Lock()
+	defer k.mu.Unlock()
+	delete(k.seen, h)
 }
 
 // usedFlows remembers the state of every sign-in attempt the callback has

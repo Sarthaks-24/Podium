@@ -46,6 +46,83 @@ func TestForgedCookiesAreRateLimited(t *testing.T) {
 	}
 }
 
+// A real session from an address that spent its forged-cookie budget is
+// still served: the address is a campus NAT, and refusing it would let one
+// script lock every student out (V3-19, security audit 2026-10-28 H1).
+func TestValidSessionSurvivesAnExhaustedAddress(t *testing.T) {
+	ctx := context.Background()
+	d, err := db.Open(ctx, filepath.Join(t.TempDir(), "v.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { d.Close() })
+	if _, err := db.Migrate(ctx, d); err != nil {
+		t.Fatal(err)
+	}
+	svc := &auth.Service{DB: d, OwnerEmail: "owner@college.edu"}
+	if err := svc.Bootstrap(ctx, []string{"college.edu"}); err != nil {
+		t.Fatal(err)
+	}
+	h := New(Deps{DB: d, Log: slog.New(slog.NewJSONHandler(&bytes.Buffer{}, nil)), WebApp: http.NotFoundHandler(), Auth: svc,
+		BaseURL: "https://podium.example", authFailLimit: newIPLimiter(20, 0.01, nil)})
+	const campus = "203.0.113.5:4000"
+	call := func(cookie string) int {
+		r := httptest.NewRequest("GET", "/api/me", nil)
+		r.RemoteAddr = campus
+		r.AddCookie(&http.Cookie{Name: "__Host-podium_session", Value: cookie})
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, r)
+		return w.Code
+	}
+	_, token, _, err := svc.TestSignIn(ctx, "asha@college.edu", "Asha", "student", "203.0.113.5", "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Asha is working before the flood starts.
+	if code := call(token); code != http.StatusOK {
+		t.Fatalf("Asha before the flood: %d", code)
+	}
+	for i := 0; i < 100; i++ {
+		call("forged" + strconv.Itoa(i))
+	}
+	if code := call("forged-after"); code != http.StatusTooManyRequests {
+		t.Fatalf("the address is not exhausted: forged cookie got %d", code)
+	}
+	if code := call(token); code != http.StatusOK {
+		t.Errorf("Asha's real session from the exhausted address: %d, want 200", code)
+	}
+	// Still exhausted for strangers after her request went through.
+	if code := call("forged-again"); code != http.StatusTooManyRequests {
+		t.Errorf("forged cookie after a real one: %d, want 429", code)
+	}
+}
+
+// The cache forgets a session a minute after it was last seen valid, and at
+// once when the database says it ended.
+func TestKnownSessionsExpire(t *testing.T) {
+	now := time.Unix(1_800_000_000, 0)
+	k := newKnownSessions(func() time.Time { return now })
+	k.add("a")
+	k.add("b")
+	now = now.Add(knownSessionTTL)
+	if !k.has("a") {
+		t.Error("forgot a session inside its minute")
+	}
+	k.forget("b")
+	if k.has("b") {
+		t.Error("kept an ended session")
+	}
+	now = now.Add(time.Second)
+	if k.has("a") {
+		t.Error("kept a session past its minute")
+	}
+	var none *knownSessions
+	none.add("x")
+	if none.has("x") {
+		t.Error("a nil cache knows a session")
+	}
+}
+
 func TestP3PreAuthLimitPerAddress(t *testing.T) {
 	ctx := context.Background()
 	d, err := db.Open(ctx, filepath.Join(t.TempDir(), "p.db"))

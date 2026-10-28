@@ -47,6 +47,7 @@ func (d Deps) secure() bool { return strings.HasPrefix(d.BaseURL, "https://") }
 // so closing the browser forgets it (a shared lab PC, security council
 // S5). The server ends the session itself auth.SessionTTL after sign-in.
 func (d Deps) setSessionCookie(w http.ResponseWriter, token string) {
+	d.known.add(token)
 	http.SetCookie(w, &http.Cookie{
 		Name: d.sessionCookieName(), Value: token, Path: "/",
 		HttpOnly: true, Secure: d.secure(), SameSite: http.SameSiteLaxMode,
@@ -302,6 +303,19 @@ func (d Deps) setPreferences(w http.ResponseWriter, r *http.Request) {
 	WriteJSON(w, http.StatusOK, p)
 }
 
+// authenticate looks the session up and keeps knownSessions in step with
+// the answer.
+func (d Deps) authenticate(ctx context.Context, token string) (auth.User, error) {
+	u, _, err := d.Auth.Authenticate(ctx, token)
+	switch {
+	case err == nil:
+		d.known.add(token)
+	case errors.Is(err, auth.ErrNoSession):
+		d.known.forget(token)
+	}
+	return u, err
+}
+
 type userKey struct{}
 
 func userFrom(ctx context.Context) auth.User {
@@ -323,13 +337,15 @@ func (d Deps) requireRole(min auth.Role, h http.HandlerFunc) http.HandlerFunc {
 		}
 		// Unknown cookies cost a database read each, so an address that
 		// sent too many waits before the next read (security audit L3).
+		// A session seen valid in the last minute is never refused here:
+		// the address is often a whole campus behind one NAT (V3-19).
 		addr := addressKey(r)
-		if !loopbackRequest(r) && d.authFailLimit.exhausted(addr) {
+		if !loopbackRequest(r) && d.authFailLimit.exhausted(addr) && !d.known.has(c.Value) {
 			w.Header().Set("Retry-After", "5")
 			WriteError(w, http.StatusTooManyRequests, "rate_limited", "Too many requests from your network. Wait a few seconds and try again.")
 			return
 		}
-		u, _, err := d.Auth.Authenticate(r.Context(), c.Value)
+		u, err := d.authenticate(r.Context(), c.Value)
 		if errors.Is(err, auth.ErrNoSession) {
 			if !loopbackRequest(r) {
 				d.authFailLimit.allow(addr)
