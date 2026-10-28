@@ -163,6 +163,44 @@ func TestWorkspaceAndDraft(t *testing.T) {
 	}
 }
 
+// The 30 s gap is per problem (V3-17): a student who finishes A can submit
+// B at once; a second A inside the gap is refused (walk bug B2).
+func TestSubmitGapIsPerProblem(t *testing.T) {
+	r := newRig(t)
+	ctx := context.Background()
+	a := r.importPack(t, nil)
+	pk, err := problems.ReadPack(zipPack(t, "../../../problems/a-plus-b", nil))
+	if err != nil {
+		t.Fatal(err)
+	}
+	pk.Problem.Slug = "a-plus-b-again"
+	b, err := r.bank.Import(ctx, pk, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sc := Scope{MinGap: 30 * time.Second}
+	submit := func(p *problems.Problem, key string) error {
+		_, _, err := r.svc.Submit(ctx, SubmitRequest{ProblemID: p.ID, UserID: 1, Scope: sc, Language: "cpp17", Source: "int main(){}", ClientKey: key})
+		return err
+	}
+	if err := submit(a, "a1"); err != nil {
+		t.Fatal(err)
+	}
+	r.judgeNext(t, judgeapi.KindSubmit, nil)
+	*r.clock = r.clock.Add(5 * time.Second)
+	if err := submit(b, "b1"); err != nil {
+		t.Errorf("B 5 s after A: %v", err)
+	}
+	var rate *RateError
+	if err := submit(a, "a2"); !errors.As(err, &rate) || !strings.Contains(rate.Error(), "one every 30 seconds") {
+		t.Errorf("A again inside its gap: %v", err)
+	}
+	*r.clock = r.clock.Add(26 * time.Second)
+	if err := submit(a, "a3"); err != nil {
+		t.Errorf("A after its gap: %v", err)
+	}
+}
+
 func TestSubmitScoresAndStreams(t *testing.T) {
 	r := newRig(t)
 	ctx := context.Background()

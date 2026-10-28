@@ -627,6 +627,21 @@ test.describe('in a contest', () => {
     await expect(page.getByRole('button', { name: 'Run on samples' }).locator('svg')).toHaveCount(1);
   });
 
+  test('the gap between submissions is per problem: B is free right after A (V3-17, walk bug B2)', async ({ page }) => {
+    await contests.mockApi(page, { phase: 'during' });
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto('/contests/week-6/problems/A');
+    await expect(page.locator('.cm-content')).toBeVisible();
+    await page.getByRole('button', { name: 'Submit', exact: true }).click();
+    await expect(page.locator('button.submit')).toHaveText(/^Submit in \d+ s$/);
+    await page.getByRole('navigation', { name: 'Problems' }).getByRole('link', { name: /^Problem B/ }).click();
+    await expect(page).toHaveURL(/\/problems\/B$/);
+    await expect(page.locator('.cm-content')).toBeVisible();
+    const submitB = page.locator('button.submit');
+    await expect(submitB).toHaveText('Submit');
+    await expect(submitB).not.toHaveAttribute('aria-disabled', 'true');
+  });
+
   test('a lower score says the problem score stays', async ({ page }) => {
     const api = await contests.mockApi(page, { phase: 'during' });
     api.scores.B = 60;

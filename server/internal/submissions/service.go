@@ -97,7 +97,7 @@ func (s *Service) now() time.Time {
 // problem in M3) or inside one (M4).
 type Scope struct {
 	ContestID int64
-	// MinGap is the shortest time between two submits by one user.
+	// MinGap is the shortest time between two submits by one user to one problem.
 	MinGap time.Duration
 	// MaxPerProblem caps submits per problem; 0 means no cap.
 	MaxPerProblem int
@@ -399,10 +399,10 @@ func (s *Service) Submit(ctx context.Context, r SubmitRequest) (v *SubmissionVie
 	if pending > 0 && !r.Scope.View.Hide {
 		return nil, false, &RateError{"Your last submission for this problem is still being judged. Wait for its result.", 5 * time.Second}
 	}
-	// The gap is per person, across problems (PLAN.md 7.5).
+	// The gap is per person and problem (V3-17): finishing A never holds up B.
 	var last sql.NullInt64
-	if err := tx.QueryRowContext(ctx, `SELECT max(created_at) FROM submissions WHERE user_id = ? AND coalesce(contest_id, 0) = ? AND kind = 'submit'`,
-		r.UserID, r.Scope.ContestID).Scan(&last); err != nil {
+	if err := tx.QueryRowContext(ctx, `SELECT max(created_at) FROM submissions WHERE user_id = ? AND problem_id = ? AND coalesce(contest_id, 0) = ? AND kind = 'submit'`,
+		r.UserID, r.ProblemID, r.Scope.ContestID).Scan(&last); err != nil {
 		return nil, false, err
 	}
 	if last.Valid && r.Scope.MinGap > 0 {

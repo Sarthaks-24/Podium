@@ -7,6 +7,7 @@ Dated entries per release. Unreleased work is listed at the top.
 ### v3 stage A (2026-10-28)
 
 - End the contest now during the freeze keeps the board frozen (V3-18). The remaining freeze is rounded up to whole minutes and never to zero, so the frozen moment moves at most 59 s earlier; before, an end inside the first minute of the freeze stored no freeze and released a held board at once. The confirm names the moment the board stays frozen at.
+- The gap between submissions is per problem (V3-17). A student who submits A can submit B at once; before, B was refused for the rest of A's 30 s.
 
 ### v3 stage 1 (2026-10-26)
 
