@@ -81,11 +81,11 @@ test('a statement edited mid-contest reaches the student with its diff', async (
     await expect(admin).toHaveURL(new RegExp(`${contestPath}/console#versions-title$`));
     await expect(admin.getByRole('region', { name: 'Needs attention' })).toContainText('Problem A has a newer revision for students');
     const versions = admin.getByRole('region', { name: 'Problem revisions' });
-    await versions.getByRole('button', { name: `Update contest to revision ${rev}` }).click();
-    const confirm = admin.getByRole('dialog', { name: `Update problem A to revision ${rev}?` });
+    await versions.getByRole('button', { name: 'Update students now for problem A' }).click();
+    const confirm = admin.getByRole('dialog', { name: 'Update students now to the new version of problem A?' });
     await expect(confirm).toContainText('Only the statement changed, so no submission is judged again.');
-    await confirm.getByRole('button', { name: `Update contest to revision ${rev}` }).click();
-    await expect(admin.getByText(`Problem A now uses revision ${rev}`, { exact: true })).toBeVisible();
+    await confirm.getByRole('button', { name: 'Update students now' }).click();
+    await expect(admin.getByText('Students now get the new version of problem A', { exact: true })).toBeVisible();
     await expect(versions).toContainText(`A plus B, revision ${rev}`);
 
     // The student's open workspace shows the update and the diff, without a reload.

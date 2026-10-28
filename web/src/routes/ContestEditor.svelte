@@ -803,11 +803,7 @@
             <div class="field">
               <label for="f-slug">Slug</label>
               <input id="f-slug" aria-required="true" class="input mono" type="text" autocomplete="off" spellcheck="false" bind:value={form.slug} aria-invalid={fields.slug ? 'true' : undefined} aria-describedby="f-slug-help{fields.slug ? ' f-slug-error' : ''}" />
-              <!-- The create form's help; a published rename keeps old links working (C2-064, API "Renamed contests"). -->
-              <p id="f-slug-help" class="field-help">
-                Part of the contest address, like /contests/week-6.{#if contest.published}
-                  Links you already shared keep working: the old address forwards here.{/if}
-              </p>
+              <p id="f-slug-help" class="field-help">Part of the contest address, like /contests/week-6.</p>
               {@render err('slug')}
             </div>
           </div>

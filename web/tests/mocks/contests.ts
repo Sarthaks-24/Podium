@@ -262,7 +262,7 @@ export async function mockApi(page: Page, options: Options = {}) {
       freeze_minutes: 30,
     },
     honour_text:
-      'This contest is graded. By starting you agree to these rules:\n\n- Work alone.\n- Do not use AI assistants.\n- Podium records your submissions, the characters you type and paste, and when you leave the page. It is deleted 180 days after the contest.',
+      'This contest counts. By starting you agree to these rules:\n\n- Work alone.\n- Do not use AI assistants.\n- Podium records your submissions, the characters you type and paste, and when you leave the page. It is deleted 180 days after the contest.',
     problems:
       state.accepted || phase === 'after' || phase === 'practice'
         ? PROBLEMS.map((p) => ({
@@ -357,7 +357,7 @@ export async function mockApi(page: Page, options: Options = {}) {
     judge_last_claim_at: options.queueHealth === 'trouble' ? nowMs() - 3 * MIN : nowMs() - 4000,
     unanswered: state.answers.length ? 0 : 1,
     close_at: endsAt,
-    default_honour_text: 'This contest is graded. By starting you agree to these rules.',
+    default_honour_text: 'This contest counts. By starting you agree to these rules.',
     hold_reveal: state.holdReveal,
     revealed_at: state.revealedAt,
     extensions: state.extensions.map((x) => ({ user_id: Number(x.user), email: 'asha@college.edu', name: 'Asha Rao', minutes: x.body.minutes, reason: x.body.reason })),

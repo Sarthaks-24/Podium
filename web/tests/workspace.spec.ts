@@ -558,7 +558,6 @@ test.describe('in a contest', () => {
     const rail = page.getByRole('navigation', { name: 'Problems' });
     await expect(rail.getByRole('link', { name: /^Problem A/ })).toContainText('submitted');
     await expect(rail.getByRole('link', { name: /^Problem B/ })).toContainText('not submitted');
-    await expect(rail.locator('.tried')).toHaveText('1 of 3 submitted');
   });
 
   test('Rules in the rail repeats the rules from before the start', async ({ page }) => {

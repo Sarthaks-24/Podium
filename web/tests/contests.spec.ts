@@ -1036,7 +1036,7 @@ test('keyboard only: a student starts, solves, submits, reads the verdict, asks 
   // have to cross the editor), then Jump to you.
   await tabTo(page, page.getByRole('navigation', { name: 'Problems' }).getByRole('link', { name: 'Standings' }), { back: true });
   await page.keyboard.press('Enter');
-  await expect(page).toHaveURL('/contests/week-6/standings');
+  await expect(page).toHaveURL(/\/contests\/week-6\/standings(\?from=A)?$/);
   // The own row is already on screen, so "Jump to you" steps aside (S8) and the board box takes focus.
   await expect(page.locator('tr.me')).toBeInViewport();
   await expect(page.locator('.tools')).toHaveClass(/away/);

@@ -80,7 +80,6 @@ export const SITE_ACTIONS: readonly { id: string; label: string }[] = [
   { id: 'sessions_ended', label: 'Sessions ended' },
   { id: 'google_reset', label: 'Google link reset' },
   { id: 'mode_changed', label: 'Run mode changed' },
-  { id: 'deploy_forced', label: 'Emergency deploy' },
 ];
 
 function roleWord(v: unknown): string {
@@ -117,10 +116,6 @@ export function siteAuditSummary(e: Pick<SiteAuditEntry, 'action' | 'subject_ema
       return `Reset the Google account link of ${who}${ended(d.sessions_ended)}`;
     case 'mode_changed':
       return `The server started in ${str('to') || 'another'} mode${str('from') ? ` (was ${str('from')})` : ''}${ended(d.sessions_ended)}`;
-    case 'deploy_forced': {
-      const release = str('release');
-      return `Deployed ${release ? `release ${release}` : 'a new release'} inside a contest window: ${str('reason')}`;
-    }
   }
   return e.action;
 }

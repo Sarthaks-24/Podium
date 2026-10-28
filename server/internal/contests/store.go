@@ -41,7 +41,7 @@ func (f FieldErrors) Error() string {
 
 // DefaultHonour is the honour code shown when a contest has none of its
 // own (decision D47 defaults; the owner may change it per contest).
-const DefaultHonour = `This contest is graded. By starting you agree to these rules:
+const DefaultHonour = `This contest counts. By starting you agree to these rules:
 
 - Work alone. Do not share code or ideas with anyone until the contest ends.
 - You may use your own templates and the documentation of your language.

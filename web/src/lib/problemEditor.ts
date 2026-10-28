@@ -46,6 +46,5 @@ export function editorJumps(problem: Problem | null, draft: Draft | null, hasGen
   if (hasGenerator) list.push({ id: 'generator-heading', label: 'Generator', state: draft.generator ? '' : 'none' });
   list.push({ id: 'judging-heading', label: 'Judging', state: draft.validator ? '' : 'no validator' });
   list.push({ id: 'validation-heading', label: 'Validation', state: '' });
-  list.push({ id: 'history-heading', label: 'History', state: '' });
   return list;
 }

@@ -34,9 +34,6 @@ describe('site audit (People History)', () => {
     expect(siteAuditSummary(row('mode_changed', { from: 'testing', to: 'production', sessions_ended: 4 }, ''))).toBe(
       'The server started in production mode (was testing); 4 sessions ended',
     );
-    expect(siteAuditSummary(row('deploy_forced', { reason: 'Fix the clock', release: 'v1.2.1' }, ''))).toBe(
-      'Deployed release v1.2.1 inside a contest window: Fix the clock',
-    );
     // A later release may add actions; they show by name.
     expect(siteAuditSummary(row('settings_changed', {}, ''))).toBe('settings_changed');
   });
