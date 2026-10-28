@@ -711,8 +711,11 @@ test('End now in the first minute of the freeze keeps the board frozen (V3-18, w
     await page.getByRole('button', { name: 'End the contest now' }).click();
     const end = page.getByRole('dialog', { name: 'End the contest now?' });
     // Rounded up to a whole minute: the frozen moment moves 8 s earlier, never later.
-    const kept = new Date(inFreeze - 60_000);
-    const hhmm = `${String(kept.getHours()).padStart(2, '0')}:${String(kept.getMinutes()).padStart(2, '0')}`;
+    // Formatted in the browser: its timezone is the config's (Asia/Kolkata), not the runner's.
+    const hhmm = await page.evaluate((at) => {
+      const d = new Date(at);
+      return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+    }, inFreeze - 60_000);
     await expect(end).toContainText(`The board stays frozen as it was at ${hhmm}.`);
     await end.getByRole('button', { name: 'End the contest' }).click();
     await expect.poll(() => api.settingsPuts.length).toBe(1);
