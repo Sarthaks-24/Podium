@@ -13,6 +13,7 @@
 import { expect, test } from '@playwright/test';
 import { activate, hasFocus, tabTo } from './keyboard';
 import { shots, WIDTHS, THEMES, submission, hidden, mockApi, settle, SCREENS, freezeClock } from './mocks/contests';
+import { codeEditor, toasts } from './locators';
 
 for (const theme of THEMES) {
   test.describe(`${theme} theme`, () => {
@@ -217,7 +218,7 @@ test('exam mode shows only "Submitted"', async ({ page }) => {
   const api = await mockApi(page, { phase: 'during', feedback: 'exam' });
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto('/contests/week-6/problems/A');
-  await expect(page.locator('.cm-content')).toBeVisible();
+  await expect(codeEditor(page)).toBeVisible();
   await page.getByRole('button', { name: 'Submit', exact: true }).click();
   await expect.poll(() => api.submits.length).toBe(1);
   const result = page.getByRole('region', { name: 'Result' });
@@ -354,7 +355,7 @@ test('a window-mode board stays closed until the window closes', async ({ page }
 test('a second tab with the same contest shows a notice, as does a second session', async ({ page, context, browser }) => {
   await mockApi(page, { phase: 'during' });
   await page.goto('/contests/week-6/problems/A');
-  await expect(page.locator('.cm-content')).toBeVisible();
+  await expect(codeEditor(page)).toBeVisible();
   const second = await context.newPage();
   await mockApi(second, { phase: 'during' });
   await second.goto('/contests/week-6/problems/A');
@@ -509,7 +510,7 @@ test('the editor shows field errors, picks problems and previews a roster', asyn
     { problem_id: 11, label: 'A' },
     { problem_id: 12, label: 'B' },
   ]);
-  await expect(page.locator('.toasts').getByText('Added Interval covering as B', { exact: true })).toBeVisible();
+  await expect(toasts(page).getByText('Added Interval covering as B', { exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Save problems' })).toHaveCount(0);
   await page.getByRole('button', { name: 'Move Interval covering up' }).click();
   await expect(page.getByLabel('Letter for Interval covering')).toHaveValue('A');
@@ -693,7 +694,7 @@ test('End the contest now says what happens and sets the end to now (P3 O5)', as
   // Every other setting is sent as it was; the end moves to now and the unstarted freeze goes.
   expect(body).toMatchObject({ slug: 'week-6', freeze_minutes: 0, languages: ['cpp17', 'python3'], published: true });
   expect(Math.abs(Number(body.ends_at) - before)).toBeLessThan(15_000);
-  await expect(page.locator('.toasts').getByText('Ended the contest', { exact: true })).toBeVisible();
+  await expect(toasts(page).getByText('Ended the contest', { exact: true })).toBeVisible();
 });
 
 test('End now in the first minute of the freeze keeps the board frozen (V3-18, walk bug B1)', async ({ page }) => {
@@ -735,7 +736,7 @@ test('unpublishing a live contest asks first', async ({ page }) => {
   await page.getByRole('button', { name: 'Unpublish contest' }).click();
   await unpublish.getByRole('button', { name: 'Unpublish contest' }).click();
   await expect.poll(() => api.settingsPuts.at(-1)?.published).toBe(false);
-  await expect(page.locator('.toasts').getByText('Unpublished', { exact: true })).toBeVisible();
+  await expect(toasts(page).getByText('Unpublished', { exact: true })).toBeVisible();
 });
 
 test('the console feed filters waiting or judging and judge errors', async ({ page }) => {
@@ -774,7 +775,7 @@ test('a contest asks for a reason before it takes an AI problem nobody solved', 
     { problem_id: 11, label: 'A' },
     { problem_id: 12, label: 'B', ai_reason: 'Checked the reference by hand against the statement.' },
   ]);
-  await expect(page.locator('.toasts').getByText('Saved problems. Problem B is graded as the AI wrote it.', { exact: true })).toBeVisible();
+  await expect(toasts(page).getByText('Saved problems. Problem B is graded as the AI wrote it.', { exact: true })).toBeVisible();
   await expect(reason).toHaveCount(0);
 });
 
@@ -1008,7 +1009,7 @@ test('keyboard only: a student starts, solves, submits, reads the verdict, asks 
 
   // Write code: Tab reaches the editor, typing "]" stays in the code, and
   // Escape then Tab leaves it.
-  const code = page.locator('.cm-content');
+  const code = codeEditor(page);
   await tabTo(page, code);
   await page.keyboard.press('Control+End');
   await page.keyboard.type('// a[i]?');
@@ -1270,5 +1271,5 @@ test('the contest nav opens the student view of the contest (F3.3, C2-056)', asy
   await expect(link).toHaveAttribute('href', '/contests/week-6');
   await link.click();
   await expect(page).toHaveURL('/contests/week-6');
-  await expect(page.locator('.cm-content')).toBeVisible();
+  await expect(codeEditor(page)).toBeVisible();
 });

@@ -180,6 +180,8 @@ export async function mockApi(page: Page, options: Options = {}) {
     submits: [] as Json[],
     /** Draft saves on the contest's workspace routes (P5 sign-out guard). */
     draftPuts: [] as Json[],
+    /** The last draft saved per problem label, served back like the server does. */
+    drafts: {} as Record<string, Json>,
     runs: [] as Json[],
     asked: [] as Json[],
     nextId: 40,
@@ -300,7 +302,7 @@ export async function mockApi(page: Page, options: Options = {}) {
         { id: 'python3', name: 'Python 3' },
       ],
       samples: [{ idx: 1, input: '1 2\n', output: '3\n', truncated: false }],
-      draft: null,
+      draft: state.drafts[label] ?? null,
       submissions: state.submissions.filter((s) => s.problem_id === p.id).sort((a, b) => Number(b.id) - Number(a.id)),
       server_now: nowMs(),
     };
@@ -536,7 +538,11 @@ export async function mockApi(page: Page, options: Options = {}) {
           return apiError(route, 403, options.problemRefusal, refusals[options.problemRefusal]);
         }
         if (!prob[2] && method === 'GET') return json(route, 200, workspace(label));
-        if (prob[3] === 'draft' && method === 'PUT') state.draftPuts.push(req.postDataJSON() as Json);
+        if (prob[3] === 'draft' && method === 'PUT') {
+          const body = req.postDataJSON() as Json;
+          state.draftPuts.push(body);
+          state.drafts[label] = { language: body.language, source: body.source, updated_at: nowMs() };
+        }
         if (prob[3] === 'draft' || prob[3] === 'events') return json(route, 204);
         if (prob[3] === 'run') {
           state.runs.push({ ...(req.postDataJSON() as Json), label });

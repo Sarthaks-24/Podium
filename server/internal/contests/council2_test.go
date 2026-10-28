@@ -82,3 +82,72 @@ func TestUnreadableTagsRefuseTheProblem(t *testing.T) {
 		t.Errorf("%d problems in the contest after the refusal", n)
 	}
 }
+
+// End now with a personal extension: everyone else's time ends at once and
+// the student with extra time keeps it from the new end, as the console's
+// confirm says; the contest is over for everyone when that runs out (the
+// contest_final view, S1-08).
+func TestEndNowKeepsAPersonalExtension(t *testing.T) {
+	r := newSvc(t)
+	ctx := context.Background()
+	var e Edit
+	c := r.contest(t, func(x *Edit) { e = *x })
+	if err := r.svc.SetExtension(ctx, c.ID, 2, 15, "accommodation", owner); err != nil {
+		t.Fatal(err)
+	}
+	*r.now = at(60)
+	e.EndsAt, e.FreezeMinutes = at(60), 0
+	c, err := r.svc.Update(ctx, c.ID, e, owner)
+	if err != nil {
+		t.Fatal(err)
+	}
+	*r.now = at(61)
+	asha, _ := r.svc.State(ctx, c, 2)
+	bilal, _ := r.svc.State(ctx, c, 3)
+	if asha.Over || !bilal.Over {
+		t.Errorf("a minute after End now: Asha (15 extra) over %v, Bilal over %v", asha.Over, bilal.Over)
+	}
+	if n := count(t, r, "SELECT final_at FROM contest_final WHERE contest_id = ?", c.ID); int64(n) != at(75).UnixMilli() {
+		t.Errorf("final_at %d, want the new end plus 15 minutes", n)
+	}
+	*r.now = at(76)
+	if asha, _ = r.svc.State(ctx, c, 2); !asha.Over {
+		t.Error("Asha's extra time did not end")
+	}
+}
+
+// "Exclude from this contest" hides the student from the board and from
+// the organiser's CSV export (V3-2).
+func TestExcludedStudentIsAbsentFromBoardAndCSV(t *testing.T) {
+	r := newSvc(t)
+	ctx := context.Background()
+	c := r.contest(t, nil)
+	seedBoard(t, r, c, 3, 1)
+	if _, err := r.svc.DB.Exec(`INSERT INTO integrity_cases (contest_id, user_id, decision, reason, decided_by, decided_at)
+		VALUES (?, 1001, 'excluded', 'Copied.', 1, 0)`, c.ID); err != nil {
+		t.Fatal(err)
+	}
+	board, err := r.svc.BoardNow(ctx, c)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rows, _, err := r.svc.Export(ctx, c)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var csv strings.Builder
+	if err := WriteCSV(&csv, c, rows); err != nil {
+		t.Fatal(err)
+	}
+	if len(board.Rows) != 2 || len(rows) != 2 {
+		t.Fatalf("board %d rows, export %d rows, want 2 each", len(board.Rows), len(rows))
+	}
+	for _, row := range board.Rows {
+		if row.UserID == 1001 {
+			t.Error("the excluded student is on the board")
+		}
+	}
+	if strings.Contains(csv.String(), "s1@college.edu") || !strings.Contains(csv.String(), "s0@college.edu") {
+		t.Errorf("CSV:\n%s", csv.String())
+	}
+}

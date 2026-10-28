@@ -15,6 +15,7 @@
 import { expect, test, type Page } from '@playwright/test';
 import { activate, hasFocus, tabTo } from './keyboard';
 import { shots, WIDTHS, THEMES, T0, watchFileChoosers, zipFile, mockApi, SCREENS } from './mocks/problems';
+import { toasts } from './locators';
 
 test('each problem route has its own title', () => {
   const titles = SCREENS.map((s) => s.title);
@@ -126,7 +127,7 @@ test('subtasks, saving and validating work from the keyboard', async ({ page }) 
   await page.locator('#subtask-1-points').fill('50');
   await page.getByRole('button', { name: 'Save changes' }).focus();
   await page.keyboard.press('Enter');
-  await expect(page.locator('.toasts').getByText('Saved', { exact: true })).toBeVisible();
+  await expect(toasts(page).getByText('Saved', { exact: true })).toBeVisible();
   // The polite announcer says the same words, apart from the visible toast (C1-019).
   await expect(page.locator('[data-announcer="polite"]')).toHaveText('Saved');
   expect(state.puts.at(-1)?.subtasks).toEqual([
@@ -305,7 +306,7 @@ test('importing a pack shows its problems, then validates the new problem in pla
 
   // A good pack stays on the list and starts validating at once: no visit to the editor needed.
   await page.locator('input[type="file"]').setInputFiles(zipFile('pair.zip', 'good pack'));
-  await expect(page.locator('.toasts').getByText('Imported Pair with sum. Validating.', { exact: true })).toBeVisible();
+  await expect(toasts(page).getByText('Imported Pair with sum. Validating.', { exact: true })).toBeVisible();
   await expect(page).toHaveURL('/admin/problems');
   const row = page.getByRole('row', { name: /Pair with sum/ });
   await expect(row.locator('.badge')).toHaveText('Validating');
@@ -321,7 +322,7 @@ test('several packs import in one pick, and a row offers Validate when it is not
   await expect(page.getByRole('row', { name: /Interval covering/ }).locator('.badge')).toHaveText('Not validated');
   await page.locator('input[type="file"]').setInputFiles([zipFile('one.zip', 'good pack 1'), zipFile('two.zip', 'good pack 2')]);
   await expect.poll(() => state.imports).toEqual(['good pack 1', 'good pack 2']);
-  await expect(page.locator('.toasts').getByText('Imported Pair with sum 1. Validating. Imported Pair with sum 2. Validating.', { exact: true })).toBeVisible();
+  await expect(toasts(page).getByText('Imported Pair with sum 1. Validating. Imported Pair with sum 2. Validating.', { exact: true })).toBeVisible();
   await expect(page.getByRole('row', { name: /Pair with sum 1/ })).toHaveCount(1);
   await expect(page.getByRole('row', { name: /Pair with sum 2/ })).toHaveCount(1);
   // Interval covering has a test in no subtask, so validating it is refused with the reason.
@@ -524,7 +525,7 @@ test('the sticky bar keeps status, field errors and the main actions in reach', 
 
   // Ctrl+S saves.
   await page.keyboard.press('Control+s');
-  await expect(page.locator('.toasts').getByText('Saved', { exact: true })).toBeVisible();
+  await expect(toasts(page).getByText('Saved', { exact: true })).toBeVisible();
   expect(state.puts).toHaveLength(1);
 
   // Field errors: a count in the bar and a list of links that focus each field.
@@ -613,7 +614,7 @@ test('keyboard only: an organiser opens a problem, edits it, saves with Ctrl+S a
 
   await statement.focus();
   await page.keyboard.press('Control+s');
-  await expect(page.locator('.toasts').getByText('Saved', { exact: true })).toBeVisible();
+  await expect(toasts(page).getByText('Saved', { exact: true })).toBeVisible();
   expect(String(state.puts.at(-1)?.statement_md)).toContain('All numbers fit in 64 bits.');
 
   await activate(page, page.getByRole('button', { name: 'Validate' }));

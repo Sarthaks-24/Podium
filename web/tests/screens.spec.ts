@@ -12,6 +12,7 @@
 import { expect, test, type Page } from '@playwright/test';
 import { activate } from './keyboard';
 import { shots, WIDTHS, THEMES, mockApi, SCREENS } from './mocks/screens';
+import { toasts } from './locators';
 
 test('each route has its own title', () => {
   const byPath = new Map<string, string>();
@@ -245,13 +246,13 @@ test('an owner ends sessions, disables and enables an account, each asked first'
   const disable = page.getByRole('dialog', { name: 'Disable Asha Rao (asha@college.edu)?' });
   await expect(disable).toContainText('cannot sign in until an owner enables the account again');
   await disable.getByRole('button', { name: 'Disable account' }).click();
-  await expect(page.locator('.toasts').getByText('Disabled asha@college.edu', { exact: true })).toBeVisible();
+  await expect(toasts(page).getByText('Disabled asha@college.edu', { exact: true })).toBeVisible();
   await expect(section.getByRole('listitem')).toContainText(['asha@college.edu']);
   await page.screenshot({ path: `${shots()}people-access-1280-light.png`, fullPage: true });
 
   await section.getByRole('button', { name: 'Enable asha@college.edu' }).click();
   await page.getByRole('dialog', { name: 'Enable asha@college.edu?' }).getByRole('button', { name: 'Enable account' }).click();
-  await expect(page.locator('.toasts').getByText('Enabled asha@college.edu', { exact: true })).toBeVisible();
+  await expect(toasts(page).getByText('Enabled asha@college.edu', { exact: true })).toBeVisible();
   await expect(section).toContainText('No account is disabled.');
   expect(state.accountCalls).toEqual(['end-sessions asha@college.edu', 'disable asha@college.edu', 'enable asha@college.edu']);
 });
@@ -590,7 +591,7 @@ test('the owner saves the organisation details, and a bad field says what to fix
   await expect(section.getByLabel('Contact email')).toBeFocused();
   await section.getByLabel('Contact email').fill('podium@college.edu');
   await section.getByRole('button', { name: 'Save organisation details' }).click();
-  await expect(page.locator('.toasts').getByText('Saved the organisation details')).toBeVisible();
+  await expect(toasts(page).getByText('Saved the organisation details')).toBeVisible();
   expect(state.settingsPuts.at(-1)).toEqual({ name: 'Example College of Engineering', contact_email: 'podium@college.edu', phone: '', privacy_contact: '' });
   // The footer reads the new contact address without a reload.
   await expect(page.locator('footer')).toContainText('podium@college.edu');

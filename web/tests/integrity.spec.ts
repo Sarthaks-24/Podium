@@ -13,6 +13,7 @@
 // reason).
 import { expect, test } from '@playwright/test';
 import { shots, WIDTHS, THEMES, mockApi, settle, SCREENS } from './mocks/integrity';
+import { toasts } from './locators';
 
 for (const theme of THEMES) {
   test.describe(`${theme} theme`, () => {
@@ -186,7 +187,7 @@ test('checking again asks first, and the pair view puts the decision after the t
   await expect.poll(() => api.runPosts).toBe(1);
   // Wait for the new check to finish before leaving: while it runs it has no
   // signals, so going to a signal too early lands on "Signal not found".
-  await expect(page.locator('.toasts').getByText('The check finished', { exact: true })).toBeVisible();
+  await expect(toasts(page).getByText('The check finished', { exact: true })).toBeVisible();
 
   await page.goto('/admin/contests/4/integrity/signals/31');
   const timelines = await page.getByRole('heading', { name: 'Timelines' }).boundingBox();

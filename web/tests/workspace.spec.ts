@@ -16,6 +16,7 @@ import AxeBuilder from '@axe-core/playwright';
 import { expect, test } from '@playwright/test';
 import * as contests from './mocks/contests';
 import { shots, WIDTHS, THEMES, type Json, submission, mockApi, HISTORY, editorText, openWorkspace } from './mocks/workspace';
+import { codeEditor } from './locators';
 
 for (const theme of THEMES) {
   test.describe(`${theme} theme`, () => {
@@ -40,7 +41,7 @@ for (const theme of THEMES) {
 
         if (width < 1024) {
           await page.getByRole('tab', { name: 'Code' }).click();
-          await expect(page.locator('.cm-content')).toBeVisible();
+          await expect(codeEditor(page)).toBeVisible();
           await page.screenshot({ path: `${shots()}workspace-code-${width}-${theme}.png`, fullPage: true });
           if (width < 768) {
             await page.getByRole('tab', { name: 'Result' }).click();
@@ -231,7 +232,7 @@ test('a compile error line jumps to the editor', async ({ page }) => {
   await page.screenshot({ path: `${shots()}workspace-compile-error-375-light.png`, fullPage: true });
   await jump.click();
   await expect(page.getByRole('tab', { name: 'Code' })).toHaveAttribute('aria-selected', 'true');
-  await expect(page.locator('.cm-content')).toBeFocused();
+  await expect(codeEditor(page)).toBeFocused();
   await expect(page.locator('.cm-activeLine')).toHaveText('    return 0;');
 });
 
@@ -241,7 +242,7 @@ test('the draft comes back after a reload, from this device when the server miss
   await openWorkspace(page);
   expect(await editorText(page)).toContain('ios::sync_with_stdio(false);');
 
-  await page.locator('.cm-content').click();
+  await codeEditor(page).click();
   await page.keyboard.press('Control+End');
   await page.keyboard.type('// kept locally');
   await page.getByRole('heading', { level: 1 }).click();
@@ -249,7 +250,7 @@ test('the draft comes back after a reload, from this device when the server miss
   await expect(page.locator('p.save')).toContainText('Draft not saved to the server.');
 
   await page.reload();
-  await expect(page.locator('.cm-content')).toBeVisible();
+  await expect(codeEditor(page)).toBeVisible();
   await expect.poll(() => editorText(page)).toContain('// kept locally');
 });
 
@@ -317,10 +318,10 @@ test('keyboard shortcuts submit and run, and integrity counts go with the submit
   const api = await mockApi(page, { draft: { language: 'cpp17', source: 'int main() {}\n' } });
   await page.setViewportSize({ width: 1440, height: 900 });
   await openWorkspace(page);
-  await page.locator('.cm-content').click();
+  await codeEditor(page).click();
   await page.keyboard.press('Control+End');
   await page.keyboard.type('// hi');
-  await page.locator('.cm-content').evaluate((el) => {
+  await codeEditor(page).evaluate((el) => {
     const data = new DataTransfer();
     data.setData('text/plain', 'pasted!');
     el.dispatchEvent(new ClipboardEvent('paste', { clipboardData: data, bubbles: true, cancelable: true }));
@@ -342,10 +343,10 @@ test('keyboard shortcuts submit and run, and integrity counts go with the submit
   await settings.click();
   await page.getByLabel('Tab moves focus').check();
   // Into the editor beside the open panel (it now ends with "Reset to starter").
-  await page.locator('.cm-content').click({ position: { x: 24, y: 8 } });
+  await codeEditor(page).click({ position: { x: 24, y: 8 } });
   await expect(page.getByLabel('Tab moves focus')).toBeHidden();
   await page.keyboard.press('Tab');
-  await expect(page.locator('.cm-content')).not.toBeFocused();
+  await expect(codeEditor(page)).not.toBeFocused();
   await settings.click();
   await page.getByLabel('Font size').selectOption('18');
   await page.keyboard.press('Escape');
@@ -355,19 +356,19 @@ test('keyboard shortcuts submit and run, and integrity counts go with the submit
   await page.getByRole('button', { name: 'Editor settings' }).click();
   await expect(page.getByLabel('Font size')).toHaveValue('18');
   await expect(page.getByLabel('Tab moves focus')).toBeChecked();
-  await expect(page.locator('.cm-content')).toHaveAttribute('aria-label', 'Code for A plus B, C++17');
+  await expect(codeEditor(page)).toHaveAttribute('aria-label', 'Code for A plus B, C++17');
 });
 
 test('Escape then Tab leaves the editor while Tab indents', async ({ page }) => {
   await mockApi(page, { draft: { language: 'python3', source: 'x = 1\n' } });
   await page.setViewportSize({ width: 1440, height: 900 });
   await openWorkspace(page);
-  await page.locator('.cm-content').click();
+  await codeEditor(page).click();
   await page.keyboard.press('Tab');
-  await expect(page.locator('.cm-content')).toBeFocused();
+  await expect(codeEditor(page)).toBeFocused();
   await page.keyboard.press('Escape');
   await page.keyboard.press('Tab');
-  await expect(page.locator('.cm-content')).not.toBeFocused();
+  await expect(codeEditor(page)).not.toBeFocused();
 });
 
 test("a draft another account left on this device is never shown or saved", async ({ page }) => {
@@ -388,7 +389,7 @@ test("a draft another account left on this device is never shown or saved", asyn
   await page.getByRole('heading', { level: 1 }).click();
 
   // Signing out removes this account's mirror as well.
-  await page.locator('.cm-content').click();
+  await codeEditor(page).click();
   await page.keyboard.type('// mine');
   await expect.poll(() => page.evaluate(() => Object.keys(localStorage).some((k) => k.startsWith('podium-draft:2:')))).toBe(true);
   await page.getByRole('button', { name: 'Arjun Mehta' }).click();
@@ -450,7 +451,7 @@ test('on small screens the tabs follow the arrow keys, and Submit opens the resu
 
   // Submitting from the Code tab opens the Result tab.
   await tab('Code').click();
-  await page.locator('.cm-content').click();
+  await codeEditor(page).click();
   await page.keyboard.press('Control+Enter');
   await expect.poll(() => api.submits.length).toBe(1);
   await expect(tab('Result')).toHaveAttribute('aria-selected', 'true');
@@ -546,7 +547,7 @@ test.describe('in a contest', () => {
     await page.unrouteAll();
     await contests.mockApi(page, { phase: 'practice' });
     await page.goto('/contests/week-6/problems/B');
-    await expect(page.locator('.cm-content')).toBeVisible();
+    await expect(codeEditor(page)).toBeVisible();
     await expect(page.locator('.tried')).toHaveCount(0);
   });
 
@@ -571,7 +572,7 @@ test.describe('in a contest', () => {
       'A later, worse submission never lowers your score.',
     ]);
     await page.getByRole('button', { name: 'I agree, start the contest' }).click();
-    await expect(page.locator('.cm-content')).toBeVisible();
+    await expect(codeEditor(page)).toBeVisible();
 
     const open = page.getByRole('navigation', { name: 'Problems' }).getByRole('button', { name: 'Rules' });
     await open.click();
@@ -591,7 +592,7 @@ test.describe('in a contest', () => {
     await contests.mockApi(page, { phase: 'during' });
     await page.setViewportSize({ width: 1440, height: 900 });
     await page.goto('/contests/week-6/problems/A');
-    await expect(page.locator('.cm-content')).toBeVisible();
+    await expect(codeEditor(page)).toBeVisible();
     // S2: at 1440 by 900 the toolbar is one row, and it stays one row while Submit counts down.
     const oneRow = async () => {
       const top = async (sel: string) => (await page.locator(sel).first().boundingBox())!.y;
@@ -631,12 +632,12 @@ test.describe('in a contest', () => {
     await contests.mockApi(page, { phase: 'during' });
     await page.setViewportSize({ width: 1440, height: 900 });
     await page.goto('/contests/week-6/problems/A');
-    await expect(page.locator('.cm-content')).toBeVisible();
+    await expect(codeEditor(page)).toBeVisible();
     await page.getByRole('button', { name: 'Submit', exact: true }).click();
     await expect(page.locator('button.submit')).toHaveText(/^Submit in \d+ s$/);
     await page.getByRole('navigation', { name: 'Problems' }).getByRole('link', { name: /^Problem B/ }).click();
     await expect(page).toHaveURL(/\/problems\/B$/);
-    await expect(page.locator('.cm-content')).toBeVisible();
+    await expect(codeEditor(page)).toBeVisible();
     const submitB = page.locator('button.submit');
     await expect(submitB).toHaveText('Submit');
     await expect(submitB).not.toHaveAttribute('aria-disabled', 'true');
@@ -656,7 +657,7 @@ test.describe('in a contest', () => {
     const api = await contests.mockApi(page, { phase: 'during' });
     await page.setViewportSize({ width: 1440, height: 900 });
     await page.goto('/contests/week-6/problems/A');
-    await expect(page.locator('.cm-content')).toBeVisible();
+    await expect(codeEditor(page)).toBeVisible();
     api.publicClarifications.push({ id: 50, problem_label: null, question: 'Is Java allowed?', answer: 'Yes, Java 21.', public: true, created_at: Date.now() - 60_000, answered_at: Date.now() + 1000 });
     api.stream.push({ type: 'clarification', data: { contest: 'week-6', contest_id: 4, id: 50 } });
     const banner = page.locator('.banner-slot .strip');
@@ -685,7 +686,7 @@ test.describe('P5 workspace', () => {
     await contests.mockApi(page, { phase: 'during' });
     await page.setViewportSize({ width: 375, height: 812 });
     await page.goto('/contests/week-6/problems/B');
-    await expect(page.locator('.cm-content')).toHaveAttribute('data-language', /.+/);
+    await expect(codeEditor(page)).toHaveAttribute('data-language', /.+/);
     const nav = page.getByRole('navigation', { name: 'Main' });
     await expect(nav).toBeHidden();
     // One header row: the word-mark, Notices and Account.
@@ -705,7 +706,7 @@ test.describe('P5 workspace', () => {
     await contests.mockApi(page, { phase: 'during' });
     await page.setViewportSize({ width: 375, height: 812 });
     await page.goto('/contests/week-6/problems/B');
-    await expect(page.locator('.cm-content')).toHaveAttribute('data-language', /.+/);
+    await expect(codeEditor(page)).toHaveAttribute('data-language', /.+/);
     const strip = page.locator('[data-sticky-bar]');
     await expect(strip.getByRole('timer')).toBeVisible();
     await expect(strip.getByRole('link', { name: /^Previous A\s*, A plus B$/ })).toBeVisible();
@@ -730,9 +731,9 @@ test.describe('P5 workspace', () => {
     expect(padding).toBeGreaterThanOrEqual((await strip.boundingBox())!.height);
 
     // The on-screen keyboard open (a shorter window): Submit is still on screen.
-    await page.locator('.cm-content').click();
+    await codeEditor(page).click();
     await page.setViewportSize({ width: 375, height: 476 });
-    await expect(page.locator('.cm-content')).toBeFocused();
+    await expect(codeEditor(page)).toBeFocused();
     const kb = (await submit.boundingBox())!;
     expect(kb.y).toBeGreaterThanOrEqual(0);
     expect(kb.y + kb.height).toBeLessThanOrEqual(476);
@@ -782,8 +783,8 @@ test.describe('P5 workspace', () => {
     await page.goto('/contests/week-6/problems/A');
     // Still in the window: the clock runs and the editor takes focus.
     await expect(page.getByRole('timer')).toBeVisible();
-    await page.locator('.cm-content').click();
-    await expect(page.locator('.cm-content')).toBeFocused();
+    await codeEditor(page).click();
+    await expect(codeEditor(page)).toBeFocused();
     await expect(page.locator('main h1')).toBeFocused({ timeout: 20_000 });
     await expect(page.locator('#ws-locked')).toHaveText('The contest has ended. Submissions are closed.');
     await expect(page.getByText('Time is up. Your submissions are saved.').first()).toBeVisible();
@@ -858,8 +859,8 @@ test.describe('P5 workspace', () => {
     const api = await contests.mockApi(page, { phase: 'during' });
     await page.setViewportSize({ width: 1440, height: 900 });
     await page.goto('/contests/week-6/problems/A');
-    await expect(page.locator('.cm-content')).toHaveAttribute('data-language', /.+/);
-    await page.locator('.cm-content').click({ position: { x: 24, y: 8 } });
+    await expect(codeEditor(page)).toHaveAttribute('data-language', /.+/);
+    await codeEditor(page).click({ position: { x: 24, y: 8 } });
     await page.keyboard.press('Control+End');
     await page.keyboard.type('// before sign out');
     await page.getByRole('button', { name: 'Asha Rao' }).click();
@@ -896,7 +897,7 @@ test.describe('P5 workspace', () => {
     await mockApi(page);
     await page.setViewportSize({ width: 1440, height: 900 });
     await openWorkspace(page);
-    const content = page.locator('.cm-content');
+    const content = codeEditor(page);
     const hint = await content.getAttribute('aria-describedby');
     expect(hint).toMatch(/^editor-hint-/);
     await expect(page.locator(`#${hint}`)).toHaveText(/Tab indents\. Press Escape, then Tab, to leave the editor\.\s+Ctrl\+Enter submits and Ctrl\+' runs on samples\./);
@@ -921,7 +922,7 @@ test.describe('P5 workspace', () => {
     await page.setViewportSize({ width: 1440, height: 900 });
     await openWorkspace(page);
     const starterText = await editorText(page);
-    await page.locator('.cm-content').click({ position: { x: 24, y: 8 } });
+    await codeEditor(page).click({ position: { x: 24, y: 8 } });
     await page.keyboard.press('Control+End');
     await page.keyboard.type('// mine');
     await page.getByRole('heading', { level: 1 }).click();
@@ -943,7 +944,7 @@ test.describe('P5 workspace', () => {
     await ask.getByRole('button', { name: 'Reset to starter' }).click();
     await expect.poll(() => editorText(page)).toBe(starterText);
     await expect.poll(() => String(api.draftPuts.at(-1)?.source)).not.toContain('// mine');
-    await expect(page.locator('.cm-content')).toBeFocused();
+    await expect(codeEditor(page)).toBeFocused();
     await expect(page.locator('[data-announcer="polite"]')).toHaveText('Reset to the starter.');
 
     // Past one 10 s save tick, then a reload: the starter is still there.
@@ -953,7 +954,7 @@ test.describe('P5 workspace', () => {
     expect(api.draftPuts.length).toBeGreaterThanOrEqual(puts);
     expect(api.draftPuts.at(-1)?.source).not.toContain('// mine');
     await page.reload();
-    await expect(page.locator('.cm-content')).toHaveAttribute('data-language', /.+/);
+    await expect(codeEditor(page)).toHaveAttribute('data-language', /.+/);
     await expect.poll(() => editorText(page)).toBe(starterText);
   });
 
@@ -1062,7 +1063,7 @@ test.describe('P5 workspace', () => {
     ]) {
       await page.setViewportSize(size);
       await page.goto('/contests/week-6/problems/A');
-      await expect(page.locator('.cm-content')).toHaveAttribute('data-language', /.+/);
+      await expect(codeEditor(page)).toHaveAttribute('data-language', /.+/);
       const top = async (sel: string) => (await page.locator(sel).first().boundingBox())!.y;
       expect(Math.abs((await top('#ws-language')) - (await top('button.submit'))), `one row at ${size.width}`).toBeLessThan(8);
     }
@@ -1076,7 +1077,7 @@ test.describe('P5 workspace', () => {
     ]) {
       await page.setViewportSize(size);
       await page.goto('/contests/week-6/problems/A');
-      await expect(page.locator('.cm-content')).toHaveAttribute('data-language', /.+/);
+      await expect(codeEditor(page)).toHaveAttribute('data-language', /.+/);
       const top = async (sel: string) => (await page.locator(sel).first().boundingBox())!.y;
       expect(Math.abs((await top('#ws-language')) - (await top('button.submit'))), `one row at ${size.width}`).toBeLessThan(8);
       const scroll = await page.evaluate(() => document.documentElement.scrollHeight - document.documentElement.clientHeight);

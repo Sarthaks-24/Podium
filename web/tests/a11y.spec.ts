@@ -18,6 +18,7 @@ import * as integrity from './mocks/integrity';
 import * as problems from './mocks/problems';
 import * as screens from './mocks/screens';
 import * as workspace from './mocks/workspace';
+import { codeEditor } from './locators';
 
 interface Target {
   name: string;
@@ -38,7 +39,7 @@ const TARGETS: Target[] = [
     mock: (p: Page) => workspace.mockApi(p, { submissions: workspace.HISTORY }),
     ready: async (p: Page) => {
       await expect(p.getByRole('heading', { level: 1 })).toHaveText('A plus B');
-      await expect(p.locator('.cm-content')).toHaveCount(1);
+      await expect(codeEditor(p)).toHaveCount(1);
     },
   },
 ];

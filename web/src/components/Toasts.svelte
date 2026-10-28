@@ -2,7 +2,8 @@
   Toasts: the stack of notifications in the bottom-left corner. It renders
   the shared state in lib/toast.svelte.ts. Info toasts are spoken by the
   app's polite announcer (lib/toast.svelte.ts calls it), so their stack is
-  not a live region of its own; each
+  not a live region of its own (a named group, so it can be found, but
+  never a status region, which would say each toast twice); each
   error toast has role="alert" and a Dismiss button, because errors do not
   go away on their own, and sits outside the polite region so it is
   announced once. Errors stay however many there are; info toasts fill the
@@ -24,7 +25,7 @@
   }
 </script>
 
-<div class="toasts">
+<div class="toasts" role="group" aria-label="Notifications">
   <div class="stack">
     {#each toasts.items.filter((t) => t.kind === 'error') as item (item.id)}
       <div class="toast toast-error" role="alert" out:leave>
