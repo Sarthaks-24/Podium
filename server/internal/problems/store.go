@@ -90,7 +90,9 @@ func (s *Service) List(ctx context.Context, archived bool) ([]BankEntry, error) 
 			&hash, &vhash, &vat, &upd, &sm.TestCount, &sm.Points, &sm.ShownInPractice); err != nil {
 			return nil, err
 		}
-		json.Unmarshal([]byte(tags), &sm.Tags)
+		if err := json.Unmarshal([]byte(tags), &sm.Tags); err != nil {
+			return nil, fmt.Errorf("problem %d tags: %w", sm.ID, err)
+		}
 		sm.Validated = vhash != "" && vhash == hash
 		if vat > 0 {
 			sm.ValidatedAt = time.UnixMilli(vat)
@@ -147,8 +149,14 @@ func load(ctx context.Context, q queryer, id int64) (*Problem, error) {
 		p.Generator = &Source{genLang, genSrc}
 	}
 	json.Unmarshal([]byte(plan), &p.Plan)
-	json.Unmarshal([]byte(tags), &p.Tags)
-	json.Unmarshal([]byte(samples), &p.Samples)
+	// The AI-draft tag gates contests and practice: unreadable tags or
+	// samples are an error, never an empty list.
+	if err := json.Unmarshal([]byte(tags), &p.Tags); err != nil {
+		return nil, fmt.Errorf("problem %d tags: %w", id, err)
+	}
+	if err := json.Unmarshal([]byte(samples), &p.Samples); err != nil {
+		return nil, fmt.Errorf("problem %d samples: %w", id, err)
+	}
 	if p.Tags == nil {
 		p.Tags = []string{}
 	}
@@ -173,10 +181,16 @@ func load(ctx context.Context, q queryer, id int64) (*Problem, error) {
 			rows.Close()
 			return nil, err
 		}
-		json.Unmarshal([]byte(args), &st.GeneratorArgs)
+		if err := json.Unmarshal([]byte(args), &st.GeneratorArgs); err != nil {
+			rows.Close()
+			return nil, fmt.Errorf("subtask %d generator_args: %w", st.Idx, err)
+		}
 		p.Subtasks = append(p.Subtasks, st)
 	}
 	rows.Close()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
 	rows, err = q.QueryContext(ctx, `SELECT idx, input_sha, output_sha, input_size, output_size FROM testcases
 		WHERE problem_id = ? ORDER BY idx`, id)
 	if err != nil {

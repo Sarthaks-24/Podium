@@ -222,6 +222,33 @@ func TestRetentionClearsOldIntegrityData(t *testing.T) {
 	}
 }
 
+// Retention counts from the moment the contest ended for everyone (the
+// contest_final view, S1-08): a contest past the cutoff by its end but not
+// by a student's extra time keeps its integrity records.
+func TestRetentionWaitsForExtraTime(t *testing.T) {
+	r := newSvc(t)
+	ctx := context.Background()
+	c := r.contest(t, nil)
+	end := t0.Add(-RetentionPeriod - time.Hour)
+	if _, err := r.svc.DB.Exec("UPDATE contests SET starts_at = ?, ends_at = ? WHERE id = ?", end.Add(-time.Hour).UnixMilli(), end.UnixMilli(), c.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := r.svc.SetExtension(ctx, c.ID, 2, 120, "", owner); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := r.svc.DB.Exec(`INSERT INTO integrity_events (user_id, problem_id, contest_id, kind, size, created_at) VALUES (2, 1, ?, 'paste', 50, 0)`, c.ID); err != nil {
+		t.Fatal(err)
+	}
+	*r.now = t0
+	if events, _, err := r.svc.Retain(ctx); err != nil || events != 0 {
+		t.Fatalf("retain inside a student's extra time: %d events, %v", events, err)
+	}
+	*r.now = t0.Add(61 * time.Minute)
+	if events, _, err := r.svc.Retain(ctx); err != nil || events != 1 {
+		t.Fatalf("retain after the extra time: %d events, %v", events, err)
+	}
+}
+
 func TestSecondSessionRecordedOncePerQuietPeriod(t *testing.T) {
 	r := newSvc(t)
 	ctx := context.Background()

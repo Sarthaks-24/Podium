@@ -10,6 +10,7 @@ Dated entries per release. Unreleased work is listed at the top.
 - The gap between submissions is per problem (V3-17). A student who submits A can submit B at once; before, B was refused for the rest of A's 30 s.
 - Security: a flood of forged session cookies from one address no longer locks out real students behind the same address, such as a campus NAT (V3-19, security audit 2026-10-28 H1). A session the server issued or accepted in the last minute skips the per-address refusal and is checked against the database as before.
 - A database from before v3 makes the server stop with "this database predates v3" and what to do (move it away or restore a v3 backup), instead of saying it was written by a newer release (walk bug B7).
+- Grading correctness (stage A5, closing S1-08): a problem revision, its tags, samples or generator arguments that cannot be read are an error, never an empty list, so a pin update can no longer store no points and the AI-draft guard no longer fails open. The schema checks `json_valid` on revision samples and subtasks, problem tags and samples, subtask generator arguments and contest audit details, and revision tests are only examples or hidden. Four more `rows.Next` loops check `rows.Err`; the guard test now counts per loop and per variable. Tests prove a student's extra time keeps a contest live for the setter lane gate, the edit reason and both integrity retention passes.
 
 ### v3 stage 1 (2026-10-26)
 

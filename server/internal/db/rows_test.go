@@ -12,7 +12,7 @@ import (
 
 // TestRowsAreChecked reads the server's production Go files (S1-08): no
 // Scan result is thrown away, and every function that loops on rows.Next()
-// also reads rows.Err(), so a read cut short is an error and never a
+// reads rows.Err() once per loop, so a read cut short is an error and never a
 // silently shorter list or a zero score.
 func TestRowsAreChecked(t *testing.T) {
 	root, err := filepath.Abs(filepath.Join("..", ".."))
@@ -40,29 +40,25 @@ func TestRowsAreChecked(t *testing.T) {
 			if !ok || fd.Body == nil {
 				return true
 			}
-			next, checked := map[string]token.Pos{}, map[string]bool{}
+			// Per variable: every "for x.Next()" loop needs its own x.Err(),
+			// whatever the variable is called and however often it is reused.
+			loops, errs := map[string][]token.Pos{}, map[string]int{}
 			ast.Inspect(fd.Body, func(m ast.Node) bool {
-				c, ok := m.(*ast.CallExpr)
-				if !ok {
-					return true
+				if fs, ok := m.(*ast.ForStmt); ok {
+					if name, ok := noArgCall(fs.Cond, "Next"); ok {
+						loops[name] = append(loops[name], fs.Pos())
+					}
 				}
-				s, ok := c.Fun.(*ast.SelectorExpr)
-				if !ok {
-					return true
-				}
-				if id, ok := s.X.(*ast.Ident); ok && id.Name == "rows" {
-					switch s.Sel.Name {
-					case "Next":
-						next[id.Name] = c.Pos()
-					case "Err":
-						checked[id.Name] = true
+				if e, ok := m.(ast.Expr); ok {
+					if name, ok := noArgCall(e, "Err"); ok {
+						errs[name]++
 					}
 				}
 				return true
 			})
-			for name, pos := range next {
-				if !checked[name] {
-					t.Errorf("%s: %s loops on %s.Next() without reading %s.Err()", fset.Position(pos), fd.Name.Name, name, name)
+			for name, at := range loops {
+				if errs[name] < len(at) {
+					t.Errorf("%s: %s has %d %s.Next() loops but reads %s.Err() %d times", fset.Position(at[0]), fd.Name.Name, len(at), name, name, errs[name])
 				}
 			}
 			return true
@@ -72,4 +68,21 @@ func TestRowsAreChecked(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+}
+
+// noArgCall reports the variable x when e is the call x.method().
+func noArgCall(e ast.Expr, method string) (string, bool) {
+	c, ok := e.(*ast.CallExpr)
+	if !ok || len(c.Args) > 0 {
+		return "", false
+	}
+	s, ok := c.Fun.(*ast.SelectorExpr)
+	if !ok || s.Sel.Name != method {
+		return "", false
+	}
+	id, ok := s.X.(*ast.Ident)
+	if !ok {
+		return "", false
+	}
+	return id.Name, true
 }

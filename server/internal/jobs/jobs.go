@@ -675,6 +675,9 @@ func (s *Service) Sweep(ctx context.Context) (requeued, failed int64, err error)
 		touched = append(touched, [2]any{id, kind})
 	}
 	expired.Close()
+	if err := expired.Err(); err != nil {
+		return 0, 0, err
+	}
 	if _, err := tx.ExecContext(ctx, `DELETE FROM job_results WHERE job_id IN
 		(SELECT id FROM jobs WHERE state = 'leased' AND lease_expires_at < ?)`, now.UnixMilli()); err != nil {
 		return 0, 0, err

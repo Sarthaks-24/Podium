@@ -163,3 +163,28 @@ func TestUploadSlotsAreReservedAtomically(t *testing.T) {
 		t.Fatal("budget spent, yet another upload was allowed")
 	}
 }
+
+// A contest past its end is still live while a student has extra time
+// (the contest_final view, S1-08): the setter gate still holds.
+func TestSetterGateHoldsWhileAStudentHasExtraTime(t *testing.T) {
+	s, c := newMixed(t)
+	id := contest(t, s, c, false)
+	now := c.t.UnixMilli()
+	if _, err := s.DB.Exec("UPDATE contests SET starts_at = ?, ends_at = ? WHERE id = ?", now-3_600_000, now-5*60_000, id); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.DB.Exec(`INSERT INTO users (id, email, role, created_at) VALUES (50, 'x@college.edu', 'student', 0)`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.DB.Exec("INSERT INTO contest_extensions (contest_id, user_id, minutes) VALUES (?, 50, 15)", id); err != nil {
+		t.Fatal(err)
+	}
+	add(t, s, judgeapi.KindValidate, 90, 0)
+	add(t, s, judgeapi.KindGenerate, 85, 0)
+	if claimKinds(t, s, judgeapi.KindValidate, judgeapi.KindGenerate) == nil {
+		t.Fatal("no first setter job")
+	}
+	if got := claimKinds(t, s, judgeapi.KindValidate, judgeapi.KindGenerate); got != nil {
+		t.Fatalf("second setter job %d leased while a student still has 10 minutes", got.JobID)
+	}
+}

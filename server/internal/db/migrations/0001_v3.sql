@@ -49,7 +49,7 @@ CREATE TABLE contest_audit (
   actor_email TEXT   NOT NULL,
   actor_role  TEXT   NOT NULL,
   action     TEXT    NOT NULL,
-  details    TEXT    NOT NULL DEFAULT '{}',
+  details    TEXT    NOT NULL DEFAULT '{}' CHECK (json_valid(details)),
   created_at INTEGER NOT NULL
 ) STRICT;
 
@@ -274,8 +274,8 @@ CREATE TABLE problem_revisions (
   generator_language TEXT    NOT NULL DEFAULT '',
   generator_sha      TEXT    NOT NULL DEFAULT '',
   -- test numbers (JSON arrays) and [{idx, points, title, tests}]
-  samples            TEXT    NOT NULL DEFAULT '[]',
-  subtasks           TEXT    NOT NULL DEFAULT '[]',
+  samples            TEXT    NOT NULL DEFAULT '[]' CHECK (json_valid(samples)),
+  subtasks           TEXT    NOT NULL DEFAULT '[]' CHECK (json_valid(subtasks)),
   -- made at this upgrade for a contest pin older than the working copy:
   -- tests and limits from the contest's newest judging job, no statement
   reconstructed      INTEGER NOT NULL DEFAULT 0 CHECK (reconstructed IN (0, 1)),
@@ -304,10 +304,10 @@ CREATE TABLE problems (
   brute_source       TEXT    NOT NULL DEFAULT '',
   validator_language TEXT    NOT NULL DEFAULT '',
   validator_source   TEXT    NOT NULL DEFAULT '',
-  tags               TEXT    NOT NULL DEFAULT '[]',
+  tags               TEXT    NOT NULL DEFAULT '[]' CHECK (json_valid(tags)),
   difficulty         TEXT    NOT NULL DEFAULT '' CHECK (difficulty IN ('', 'easy', 'medium', 'hard')),
   -- Test numbers shown as samples (a JSON array). Samples carry no points.
-  samples            TEXT    NOT NULL DEFAULT '[]',
+  samples            TEXT    NOT NULL DEFAULT '[]' CHECK (json_valid(samples)),
   origin             TEXT    NOT NULL DEFAULT 'manual' CHECK (origin IN ('manual', 'import', 'ai')),
   author_id          INTEGER REFERENCES users (id) ON DELETE SET NULL,
   archived           INTEGER NOT NULL DEFAULT 0 CHECK (archived IN (0, 1)),
@@ -324,7 +324,7 @@ CREATE TABLE problems (
 CREATE TABLE revision_tests (
   revision_id INTEGER NOT NULL REFERENCES problem_revisions (id),
   idx         INTEGER NOT NULL CHECK (idx >= 1),
-  kind        TEXT    NOT NULL CHECK (kind IN ('sample', 'open', 'hidden')),
+  kind        TEXT    NOT NULL CHECK (kind IN ('sample', 'hidden')),
   input_sha   TEXT    NOT NULL,
   output_sha  TEXT,
   input_size  INTEGER NOT NULL DEFAULT 0,
@@ -404,7 +404,7 @@ CREATE TABLE subtasks (
   -- The test numbers in this subtask as the setter wrote them ("3-5,8").
   -- Kept as written so replacing the tests does not lose the grouping; a
   -- range that no longer matches the tests blocks validation instead.
-  tests      TEXT    NOT NULL DEFAULT '', generator_args TEXT NOT NULL DEFAULT '[]',
+  tests      TEXT    NOT NULL DEFAULT '', generator_args TEXT NOT NULL DEFAULT '[]' CHECK (json_valid(generator_args)),
   UNIQUE (problem_id, idx)
 ) STRICT;
 

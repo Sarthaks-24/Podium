@@ -587,8 +587,11 @@ func (s *Service) SetProblems(ctx context.Context, id int64, choices []ProblemCh
 		}
 		// The wizard's chain can validate a draft on its own; a person
 		// must still read and save it before students can see it (M5).
+		// Unreadable tags are an error, so the guard never fails open.
 		var tagList []string
-		json.Unmarshal([]byte(tags), &tagList)
+		if err := json.Unmarshal([]byte(tags), &tagList); err != nil {
+			return nil, fmt.Errorf("problem %d tags: %w", ch.ProblemID, err)
+		}
 		for _, t := range tagList {
 			if t == problems.AIDraftTag {
 				return nil, FieldErrors{"problems": fmt.Sprintf("The problem for label %s is an AI draft. Read it and save it in the editor before adding it to a contest.", ch.Label)}

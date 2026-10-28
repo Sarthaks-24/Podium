@@ -142,6 +142,9 @@ func (s *Service) Timeline(ctx context.Context, contestID, userID int64) ([]Mome
 		out = append(out, m)
 	}
 	rows.Close()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
 	rows, err = s.DB.QueryContext(ctx, `SELECT created_at, problem_id, kind, size FROM integrity_events
 		WHERE contest_id = ? AND user_id = ? ORDER BY created_at, id`, contestID, userID)
 	if err != nil {
@@ -167,6 +170,9 @@ func (s *Service) Timeline(ctx context.Context, contestID, userID int64) ([]Mome
 		out = append(out, m)
 	}
 	rows.Close()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
 	rows, err = s.DB.QueryContext(ctx, `SELECT DISTINCT o.user_id, coalesce(nullif(u.name, ''), u.email), min(o.created_at)
 		FROM submissions me JOIN submissions o ON o.contest_id = me.contest_id AND o.client_hash = me.client_hash AND o.user_id <> me.user_id
 		JOIN users u ON u.id = o.user_id

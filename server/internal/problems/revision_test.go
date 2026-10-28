@@ -171,6 +171,37 @@ func TestReasonRequiredWhileALiveContestPinsTheProblem(t *testing.T) {
 	}
 }
 
+// A contest past its end still pins the problem while a student has extra
+// time (the contest_final view, S1-08): an edit still needs a reason.
+func TestReasonRequiredWhileAStudentHasExtraTime(t *testing.T) {
+	s := newBank(t)
+	ctx := context.Background()
+	now := time.UnixMilli(1_800_000_000_000)
+	s.Now = func() time.Time { return now }
+	p := importExample(t, s, "a-plus-b")
+	// Ended 10 minutes ago; one student has 30 minutes more.
+	if _, err := s.DB.ExecContext(ctx, `INSERT INTO users (id, email, role, created_at) VALUES (50, 'x@college.edu', 'student', 0);
+		INSERT INTO contests (id, slug, title, starts_at, ends_at, published, created_at, updated_at) VALUES (1, 'week-1', 'Week 1', ?, ?, 1, 0, 0);
+		INSERT INTO contest_extensions (contest_id, user_id, minutes) VALUES (1, 50, 30)`,
+		now.Add(-2*time.Hour).UnixMilli(), now.Add(-10*time.Minute).UnixMilli()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.DB.ExecContext(ctx, `INSERT INTO contest_problems (contest_id, problem_id, label, ord, revision_id)
+		VALUES (1, ?, 'A', 0, (SELECT max(id) FROM problem_revisions WHERE problem_id = ?))`, p.ID, p.ID); err != nil {
+		t.Fatal(err)
+	}
+	e := editOf(p)
+	e.Statement = "Changed."
+	var fields FieldErrors
+	if _, err := s.Update(ctx, p.ID, e); !errors.As(err, &fields) || !strings.Contains(fields["reason"], "Week 1") {
+		t.Fatalf("change 10 minutes after the end, a student with 20 left, no reason: %v", err)
+	}
+	now = now.Add(21 * time.Minute)
+	if _, err := s.Update(ctx, p.ID, e); err != nil {
+		t.Fatalf("change after the extra time: %v", err)
+	}
+}
+
 // writeSQL matches a statement that writes a table a revision records.
 var writeSQL = regexp.MustCompile(`(?is)\b(INSERT\s+(OR\s+\w+\s+)?INTO|UPDATE|DELETE\s+FROM)\s+(problems|subtasks|testcases)\b(.*)`)
 

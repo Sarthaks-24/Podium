@@ -159,8 +159,14 @@ func scanRevision(sc interface{ Scan(...any) error }) (*Revision, error) {
 	if eps.Valid {
 		r.Epsilon = &eps.Float64
 	}
-	json.Unmarshal([]byte(samples), &r.Samples)
-	json.Unmarshal([]byte(subtasks), &r.Subtasks)
+	// An unreadable list is an error, never an empty one: a pin update
+	// would store no points and score the problem at 0 for everyone.
+	if err := json.Unmarshal([]byte(samples), &r.Samples); err != nil {
+		return nil, fmt.Errorf("revision %d samples: %w", r.ID, err)
+	}
+	if err := json.Unmarshal([]byte(subtasks), &r.Subtasks); err != nil {
+		return nil, fmt.Errorf("revision %d subtasks: %w", r.ID, err)
+	}
 	r.Samples = nonNilInts(r.Samples)
 	if r.Subtasks == nil {
 		r.Subtasks = []RevisionSubtask{}
