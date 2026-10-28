@@ -114,11 +114,16 @@ describe('endNowFreeze (walk 2026-10-21)', () => {
   it('drops a freeze that has not begun, so the board students saw stays', () => {
     expect(endNowFreeze(c, T, T)).toBe(0);
   });
-  it('keeps the frozen moment once the board is frozen, rounding so nothing shown is hidden', () => {
-    // Frozen at T + 50 min; ended at T + 55 min 30 s: 5 whole minutes keep the frozen moment within a minute.
-    expect(endNowFreeze(c, T + 55.5 * MIN, T + 55.5 * MIN)).toBe(5);
+  it('keeps the frozen moment once the board is frozen, rounding up so it never moves later', () => {
+    // Frozen at T + 50 min; ended at T + 55 min 30 s: 6 whole minutes put the frozen moment 30 s earlier.
+    expect(endNowFreeze(c, T + 55.5 * MIN, T + 55.5 * MIN)).toBe(6);
     // Time added for everyone moves the frozen moment too.
     expect(endNowFreeze({ ...c, extended_minutes: 5 }, T + 52 * MIN, T + 57 * MIN)).toBe(2);
+  });
+  it('never drops a freeze that has begun, even in its first minute (V3-18, walk bug B1)', () => {
+    // Frozen at T + 50 min; ended 52 s later. Rounding down stored 0 and released the held board.
+    expect(endNowFreeze(c, T + 50 * MIN + 52_000, T + 50 * MIN + 52_000)).toBe(1);
+    expect(endNowFreeze(c, T + 50 * MIN, T + 50 * MIN)).toBe(1);
   });
   it('leaves window mode and contests without a freeze alone', () => {
     expect(endNowFreeze({ ...c, start_mode: 'window' }, T, T)).toBe(10);

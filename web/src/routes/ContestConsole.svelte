@@ -449,10 +449,13 @@
     // The freeze is counted back from the end: say what happens to the board (walk 2026-10-21).
     const frozenAt = c.start_mode === 'fixed' && c.freeze_minutes > 0 ? closeAt - c.freeze_minutes * 60_000 : null;
     if (frozenAt !== null) {
+      // Name the instant that will be stored: the freeze is kept in whole minutes (V3-18).
+      const now = serverClock.serverNow();
+      const keptAt = now - endNowFreeze(c, now - (c.extended_minutes ?? 0) * 60_000, now) * 60_000;
       items.push(
-        serverClock.serverNow() < frozenAt
+        now < frozenAt
           ? 'The board was not frozen yet, so it stays as students see it now: the freeze and any held reveal are dropped.'
-          : `The board stays frozen as it was at ${formatWhen(frozenAt, ticker.now)}.`,
+          : `The board stays frozen as it was at ${formatWhen(keptAt, ticker.now)}.`,
       );
     }
     ask(

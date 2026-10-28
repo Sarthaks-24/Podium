@@ -12,7 +12,7 @@
 // the editor, the console and the reveal.
 import { expect, test } from '@playwright/test';
 import { activate, hasFocus, tabTo } from './keyboard';
-import { shots, WIDTHS, THEMES, submission, hidden, mockApi, settle, SCREENS } from './mocks/contests';
+import { shots, WIDTHS, THEMES, submission, hidden, mockApi, settle, SCREENS, freezeClock } from './mocks/contests';
 
 for (const theme of THEMES) {
   test.describe(`${theme} theme`, () => {
@@ -694,6 +694,32 @@ test('End the contest now says what happens and sets the end to now (P3 O5)', as
   expect(body).toMatchObject({ slug: 'week-6', freeze_minutes: 0, languages: ['cpp17', 'python3'], published: true });
   expect(Math.abs(Number(body.ends_at) - before)).toBeLessThan(15_000);
   await expect(page.locator('.toasts').getByText('Ended the contest', { exact: true })).toBeVisible();
+});
+
+test('End now in the first minute of the freeze keeps the board frozen (V3-18, walk bug B1)', async ({ page }) => {
+  // The mock contest closes 90 min after its creation with a 30 min freeze, so it froze 60 min in; end 52 s after that.
+  const base = Math.floor(Date.now() / 1000) * 1000; // the console ends on a whole second
+  const inFreeze = base + 60 * 60_000 + 52_000;
+  freezeClock(base);
+  try {
+    const api = await mockApi(page, { who: 'admin', phase: 'during' });
+    freezeClock(inFreeze);
+    await page.clock.setFixedTime(inFreeze);
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto('/admin/contests/4/console');
+    await page.getByRole('button', { name: 'End the contest now' }).click();
+    const end = page.getByRole('dialog', { name: 'End the contest now?' });
+    // Rounded up to a whole minute: the frozen moment moves 8 s earlier, never later.
+    const kept = new Date(inFreeze - 60_000);
+    const hhmm = `${String(kept.getHours()).padStart(2, '0')}:${String(kept.getMinutes()).padStart(2, '0')}`;
+    await expect(end).toContainText(`The board stays frozen as it was at ${hhmm}.`);
+    await end.getByRole('button', { name: 'End the contest' }).click();
+    await expect.poll(() => api.settingsPuts.length).toBe(1);
+    // Rounding down sent 0 here, which released the held board at once.
+    expect(api.settingsPuts[0]).toMatchObject({ freeze_minutes: 1, ends_at: inFreeze });
+  } finally {
+    freezeClock(null);
+  }
 });
 
 test('unpublishing a live contest asks first', async ({ page }) => {

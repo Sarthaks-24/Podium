@@ -1119,8 +1119,9 @@ export function fillTemplate(text: string, values: { label?: string; minutes?: n
  * moves it into the past and hides results students already saw on the live
  * board. Before the freeze has begun the freeze is dropped (0): the board at
  * the end is the one everyone saw. Once the board is frozen, the freeze
- * shrinks so the frozen moment stays put, rounded down to whole minutes so
- * nothing already shown is hidden again.
+ * shrinks so the frozen moment stays put, rounded up to whole minutes and
+ * never below 1 (V3-18): the frozen moment moves at most 59 s earlier, never
+ * later, so a held board is never released by ending early.
  */
 export function endNowFreeze(
   c: Pick<AdminContest, 'start_mode' | 'freeze_minutes' | 'ends_at'> & { extended_minutes?: number },
@@ -1131,5 +1132,5 @@ export function endNowFreeze(
   const added = (c.extended_minutes ?? 0) * 60_000;
   const frozenAt = c.ends_at + added - c.freeze_minutes * 60_000;
   if (now < frozenAt) return 0;
-  return Math.max(0, Math.floor((newEndsAt + added - frozenAt) / 60_000));
+  return Math.max(1, Math.ceil((newEndsAt + added - frozenAt) / 60_000));
 }

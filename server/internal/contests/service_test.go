@@ -132,6 +132,42 @@ func TestStudentBoardVariants(t *testing.T) {
 	}
 }
 
+// End now 30 s into the freeze, with the freeze the console sends (the
+// remaining freeze rounded up to 1 minute, V3-18): the held board stays
+// frozen for students until the reveal. Rounding down sent 0, which
+// released it at once (walk bug B1).
+func TestEndNowKeepsTheHeldBoard(t *testing.T) {
+	r := newSvc(t)
+	ctx := context.Background()
+	var e Edit
+	c := r.contest(t, func(x *Edit) { x.HoldReveal = true; e = *x })
+	variant := func() string {
+		c, _ = r.svc.Get(ctx, c.ID)
+		st, _ := r.svc.State(ctx, c, 2)
+		v, err := r.svc.StudentVariant(ctx, c, st)
+		if err != nil {
+			return err.Error()
+		}
+		return v
+	}
+	ended := at(90).Add(30 * time.Second) // the freeze began at 90
+	*r.now = ended
+	for _, tc := range []struct {
+		freeze int
+		want   string
+	}{{0, VariantFull}, {1, VariantFrozen}} {
+		e.EndsAt, e.FreezeMinutes = ended, tc.freeze
+		if _, err := r.svc.Update(ctx, c.ID, e, owner); err != nil {
+			t.Fatal(err)
+		}
+		*r.now = ended.Add(5 * time.Minute)
+		if v := variant(); v != tc.want {
+			t.Errorf("ended with freeze %d: student board %s, want %s", tc.freeze, v, tc.want)
+		}
+		*r.now = ended
+	}
+}
+
 func TestRevealWaitsForEveryWindow(t *testing.T) {
 	r := newSvc(t)
 	ctx := context.Background()

@@ -4,6 +4,10 @@ Dated entries per release. Unreleased work is listed at the top.
 
 ## Unreleased
 
+### v3 stage A (2026-10-28)
+
+- End the contest now during the freeze keeps the board frozen (V3-18). The remaining freeze is rounded up to whole minutes and never to zero, so the frozen moment moves at most 59 s earlier; before, an end inside the first minute of the freeze stored no freeze and released a held board at once. The confirm names the moment the board stays frozen at.
+
 ### v3 stage 1 (2026-10-26)
 
 - Security: opening Podium without a session removes every draft left in the browser, so a lab PC does not keep the last student's code. Caddy sends HSTS. The server unit drops capabilities, devices and kernel access. A college domain that has signed in through Google Workspace once refuses Google accounts without the matching `hd` claim. Unknown session cookies count against a per-address budget before the database is read; the pre-auth burst falls from 5000 to 2500. CI checks out without a stored token, runs `go test -race`, and npm never runs install scripts.
