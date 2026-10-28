@@ -120,9 +120,9 @@ func TestM5BrokenGeneratorIsNamed(t *testing.T) {
 		t.Fatalf("input generation %+v", ig)
 	}
 	probs := strings.Join(ig.Summary.Problems, " | ")
-	// Two samples and one open test come first, so subtask 2's tests are 6 and 7.
-	for _, want := range []string{"The generator failed on test 6 (subtask 2, seed 6): Runtime error.", "v too large",
-		"The generator failed on test 7 (subtask 2, seed 7)"} {
+	// Two samples and subtask 1's two tests come first, so subtask 2's tests are 5 and 6.
+	for _, want := range []string{"The generator failed on test 5 (subtask 2, seed 5): Runtime error.", "v too large",
+		"The generator failed on test 6 (subtask 2, seed 6)"} {
 		if !strings.Contains(probs, want) {
 			t.Errorf("missing %q in %s", want, probs)
 		}
