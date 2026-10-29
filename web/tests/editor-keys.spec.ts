@@ -320,6 +320,8 @@ const CHECKS: Record<string, Check> = {
   'Scroll a page without moving the cursor': async (page) => {
     await setCode(page, Array.from({ length: 200 }, (_, i) => `line ${i}`).join('\n'), 1);
     const scroller = page.locator('.cm-scroller');
+    // A page is the scroller's height, so wait for the layout to give it one.
+    await expect.poll(() => scroller.evaluate((el) => el.clientHeight)).toBeGreaterThan(150);
     await page.keyboard.press('Alt+PageDown');
     await expect.poll(() => scroller.evaluate((el) => el.scrollTop)).toBeGreaterThan(100);
     await at(page).toEqual({ line: 1, col: 1 });
