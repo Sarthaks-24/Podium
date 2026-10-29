@@ -390,7 +390,7 @@ const GUIDANCE: Record<string, string> = {
   WA: 'Your output differs from the expected answer. Check edge cases such as the smallest and largest inputs, and the output format in the examples.',
   TLE: 'Your program ran past the time limit. Look for an algorithm that fits the largest constraints.',
   MLE: 'Your program used more memory than allowed. Avoid storing what you can compute as you go.',
-  RE: 'Your program crashed or exited with an error. Check array bounds, division by zero and very deep recursion.',
+  RE: 'Your program crashed or exited with an error. Check array bounds, division by zero, very deep recursion, and numbers too big for their type.',
   OLE: 'Your program printed far more than expected. Remove debugging output.',
   CE: 'Fix the first error below; later errors often follow from it.',
   IE: 'Something went wrong in the judge, not in your code. Submit again, and tell an organiser if it repeats.',
@@ -404,10 +404,10 @@ const HINTS: Partial<Record<string, Partial<Record<Language, string>>>> = {
     node22: 'Read all input at once with fs.readFileSync(0) instead of line by line.',
   },
   CE: {
-    java21: 'Name your public class Main.',
+    java21: 'If the error names a class, the public class must be called Main.',
   },
   RE: {
-    java21: 'Name your public class Main, and read input that may span several lines.',
+    java21: 'Use long for numbers past 2147483647 (a NumberFormatException means one did not fit), and read input that may span several lines.',
     python3: 'Read input with sys.stdin and split it, so extra spaces and blank lines do not break parsing.',
   },
 };

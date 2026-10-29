@@ -127,7 +127,26 @@
   const api = $derived(`/api/contests/${encodeURIComponent(slug)}`);
   const phase = $derived(contest ? studentPhase(contest, ticker.now) : null);
   const problems = $derived(contest?.problems ?? []);
-  const current = $derived(label !== '' ? label : (problems[0]?.label ?? ''));
+  // Pilot P2: without a letter in the address, the problem open last on this device, else A.
+  const lastKey = $derived(`podium-last-problem:${slug}`);
+  const lastOpen = $derived.by(() => {
+    try {
+      return localStorage.getItem(lastKey) ?? '';
+    } catch {
+      return '';
+    }
+  });
+  const current = $derived(
+    label !== '' ? label : problems.some((p) => p.label === lastOpen) ? lastOpen : (problems[0]?.label ?? ''),
+  );
+  $effect(() => {
+    if (!showWorkspace || current === '') return;
+    try {
+      localStorage.setItem(lastKey, current);
+    } catch {
+      // Opens on A next time.
+    }
+  });
   const currentProblem = $derived(problems.find((p) => p.label === current) ?? null);
   const exam = $derived(contest?.rules.feedback_mode === 'exam');
   const practice = $derived(contest?.state === 'practice');

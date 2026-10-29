@@ -60,7 +60,11 @@ describe('guidance lines', () => {
   });
 
   it('adds the language hints where they are safe', () => {
-    expect(guidance('CE', 'java21')).toContain('Name your public class Main.');
+    // Pilot P5: the class hint applies only when the error names a class.
+    expect(guidance('CE', 'java21')).toContain('If the error names a class, the public class must be called Main.');
+    // Pilot P4: a number too big for its type is named for a runtime error.
+    expect(guidance('RE', 'cpp17')[0]).toContain('numbers too big for their type');
+    expect(guidance('RE', 'java21')[1]).toContain('Use long for numbers past 2147483647');
     expect(guidance('CE', 'cpp17')).toHaveLength(1);
     expect(guidance('TLE', 'python3')[1]).toMatch(/^Read input with sys\.stdin/);
     expect(guidance('TLE', 'cpp17')[1]).toContain('ios::sync_with_stdio(false)');

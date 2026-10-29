@@ -549,6 +549,7 @@
         {problemScore}
         locked={lockText}
         sticky={layout === 'wide'}
+        narrow={layout !== 'wide'}
         onjump={jump}
         onruninput={runOnInput}
       />

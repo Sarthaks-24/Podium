@@ -4,6 +4,16 @@ Dated entries per release. Unreleased work is listed at the top.
 
 ## Unreleased
 
+### v3 stage B: what the agent pilot found (2026-10-29)
+
+- A save waiting to reach the server reads "Saved on this device"; only a failed save is a warning.
+- Opening a contest again opens the problem left open last on this device.
+- Under 1024 px the result area is the submissions alone, without Run and Your input tabs.
+- The runtime error line names numbers too big for their type; the Java hints say when the class must be called Main and when to use long.
+- A passing example still shows what the program printed to stderr.
+- "You have problem X open" shows only while the question's topic is general.
+- C++ and Java suggest their keywords as well as words already in the file.
+
 ### v3 stage B6: the contest bar (2026-10-29)
 
 - From 1024 px a contest problem replaces the site header and the left rail with one bar: Leave, the contest's title, the letters with their scores (scrolling sideways past six, the open one kept in view, a dot on a letter whose statement changed), the clock, Messages with its count, Standings and Help.

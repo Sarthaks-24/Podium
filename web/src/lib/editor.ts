@@ -26,7 +26,7 @@
  * - `describedBy` names the element holding the editor's keyboard hint, so
  *   a screen reader hears how to leave the editor (X2).
  */
-import { autocompletion, closeBrackets, closeBracketsKeymap, closeCompletion, completeAnyWord, currentCompletions } from '@codemirror/autocomplete';
+import { autocompletion, closeBrackets, closeBracketsKeymap, closeCompletion, completeAnyWord, completeFromList, currentCompletions } from '@codemirror/autocomplete';
 import { defaultKeymap, history, historyKeymap, indentMore, indentWithTab, selectParentSyntax } from '@codemirror/commands';
 import { bracketMatching, HighlightStyle, indentOnInput, indentUnit, syntaxHighlighting } from '@codemirror/language';
 import {
@@ -255,8 +255,30 @@ const closeShownCompletion: Command = (view) => currentCompletions(view.state).l
 const vscodeKeys = vscodeKeymap.filter((b) => !(b.key === 'Tab' && b.run === indentMore) && b.run !== closeCompletion);
 
 /** C++ and Java have no completion source of their own, so they complete words from the file. */
-const completion = (language: Language) =>
-  autocompletion({ defaultKeymap: false, ...(language === 'cpp17' || language === 'java21' ? { override: [completeAnyWord] } : {}) });
+// C++ and Java modes bring no completion of their own: words from the file
+// plus the names a contest solution reaches for (pilot P8; no language
+// server, V3-13).
+const KEYWORDS: Partial<Record<Language, string[]>> = {
+  cpp17: [
+    'auto', 'bool', 'break', 'char', 'const', 'continue', 'double', 'else', 'false', 'for', 'if', 'int', 'long', 'return',
+    'size_t', 'sizeof', 'static', 'struct', 'true', 'unsigned', 'void', 'while', 'using', 'namespace', 'include',
+    'std', 'cin', 'cout', 'endl', 'string', 'vector', 'pair', 'map', 'set', 'unordered_map', 'unordered_set', 'queue',
+    'priority_queue', 'stack', 'deque', 'sort', 'reverse', 'min', 'max', 'swap', 'abs', 'push_back', 'emplace_back',
+    'begin', 'end', 'size', 'empty', 'lower_bound', 'upper_bound', 'make_pair', 'first', 'second',
+  ],
+  java21: [
+    'public', 'private', 'static', 'final', 'class', 'void', 'int', 'long', 'double', 'boolean', 'char', 'String',
+    'return', 'if', 'else', 'for', 'while', 'break', 'continue', 'new', 'true', 'false', 'null', 'import', 'throws',
+    'IOException', 'BufferedReader', 'InputStreamReader', 'StringTokenizer', 'PrintWriter', 'Scanner', 'System',
+    'Integer', 'Long', 'Math', 'Arrays', 'ArrayList', 'HashMap', 'HashSet', 'List', 'Map', 'Set', 'parseInt',
+    'parseLong', 'println', 'nextInt', 'nextLong', 'readLine', 'length', 'size', 'sort',
+  ],
+};
+
+const completion = (language: Language) => {
+  const words = KEYWORDS[language];
+  return autocompletion({ defaultKeymap: false, ...(words ? { override: [completeAnyWord, completeFromList(words)] } : {}) });
+};
 
 // The find and go-to-line panels' words, in sentence case (design.md section 8).
 const phrases = EditorState.phrases.of({

@@ -92,11 +92,11 @@
       <div class="ask-fields">
         <div class="field">
           <label for="ask-topic">About</label>
-          <select id="ask-topic" class="select" bind:value={topic} aria-describedby={current ? 'ask-topic-help' : undefined}>
+          <select id="ask-topic" class="select" bind:value={topic} aria-describedby={current && topic === '' ? 'ask-topic-help' : undefined}>
             <option value="">The contest in general</option>
             {#each contest.problems ?? [] as p (p.label)}<option value={p.label}>Problem {p.label}: {p.title}</option>{/each}
           </select>
-          {#if current}<p id="ask-topic-help" class="field-help">You have problem {current} open. Choose it above if the question is about it.</p>{/if}
+          {#if current && topic === ''}<p id="ask-topic-help" class="field-help">You have problem {current} open. Choose it above if the question is about it.</p>{/if}
         </div>
         <div class="field">
           <label for="ask-question">Question</label>

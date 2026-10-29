@@ -39,11 +39,13 @@
     problemScore: { score: number | null; max: number } | null;
     locked: string;
     sticky: boolean;
+    /** Under 1024 px nothing runs (V3-14): only Submissions shows, without tabs (pilot P3). */
+    narrow?: boolean;
     onjump: (line: number, col: number | null) => void;
     onruninput: (input: string) => void;
   }
 
-  let { judging, samples, language, exam, showScores, problemScore, locked, sticky, onjump, onruninput }: Props = $props();
+  let { judging, samples, language, exam, showScores, problemScore, locked, sticky, narrow = false, onjump, onruninput }: Props = $props();
 
   const run = $derived(judging.state.run);
   const current = $derived(judging.current);
@@ -65,9 +67,11 @@
 {/if}
 <StreamNotice mode={judging.streamMode} onresume={() => judging.resume()} />
 
-<Tabs {tabs} selected={judging.tab} onselect={(t) => (judging.tab = t)} label="Result" idPrefix="ws-rtab" controls={(t) => `ws-rpanel-${t}`} />
+{#if !narrow}
+  <Tabs {tabs} selected={judging.tab} onselect={(t) => (judging.tab = t)} label="Result" idPrefix="ws-rtab" controls={(t) => `ws-rpanel-${t}`} />
+{/if}
 
-<div class="panel" role="tabpanel" id="ws-rpanel-run" aria-labelledby="ws-rtab-run" hidden={judging.tab !== 'run'}>
+<div class="panel" role="tabpanel" id="ws-rpanel-run" aria-labelledby="ws-rtab-run" hidden={narrow || judging.tab !== 'run'}>
   {#if run && !judging.customRun}
     <h2 class="block-title" tabindex="-1" data-result-focus>Run on the examples</h2>
     <RunResults {run} {language} {onjump} {samples} onruninput={runInput} />
@@ -76,7 +80,7 @@
   {/if}
 </div>
 
-<div class="panel" role="tabpanel" id="ws-rpanel-submissions" aria-labelledby="ws-rtab-submissions" hidden={judging.tab !== 'submissions'}>
+<div class="panel" role={narrow ? undefined : 'tabpanel'} id="ws-rpanel-submissions" aria-labelledby={narrow ? undefined : 'ws-rtab-submissions'} hidden={!narrow && judging.tab !== 'submissions'}>
   {#if current && (exam || current.hidden)}
     <h2 class="block-title" tabindex="-1" data-result-focus>Latest submission</h2>
     <p class="headline-exam">Submitted</p>
@@ -102,7 +106,7 @@
   {/if}
 </div>
 
-<div class="panel" role="tabpanel" id="ws-rpanel-input" aria-labelledby="ws-rtab-input" hidden={judging.tab !== 'input'}>
+<div class="panel" role="tabpanel" id="ws-rpanel-input" aria-labelledby="ws-rtab-input" hidden={narrow || judging.tab !== 'input'}>
   <label class="block-title" for="ws-custom" data-result-focus tabindex="-1">Your input</label>
   <textarea id="ws-custom" class="input textarea-code" rows="4" spellcheck="false" bind:value={judging.customInput}></textarea>
   <button type="button" class="btn btn-secondary btn-compact run" disabled={locked !== ''} aria-disabled={judging.runBusy ? 'true' : undefined} onclick={() => judging.runCustom()}>

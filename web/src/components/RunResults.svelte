@@ -107,6 +107,12 @@
           runInput={isBad(r.verdict) ? sampleInput(r.label) : null}
           {onruninput}
         />
+      {:else if r.stderr}
+        <!-- Pilot P6: debugging output printed to stderr shows even when the example passed. -->
+        <div class="stderr">
+          <p class="meta">Error output (stderr), the last lines</p>
+          <pre translate="no">{r.stderr}</pre>
+        </div>
       {/if}
     </section>
   {/each}
@@ -180,5 +186,16 @@
 
   .message {
     font-size: var(--fs-0);
+  }
+
+  .stderr pre {
+    max-height: calc(8 * var(--lh-body) * var(--fs-0));
+    padding: var(--space-2) var(--space-3);
+    overflow: auto;
+    border: var(--rule) solid var(--line);
+    background: var(--surface-2);
+    font-size: var(--fs-0);
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
   }
 </style>
