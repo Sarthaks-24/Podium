@@ -1,17 +1,19 @@
 <!--
-  ContestIntegrity: the organiser's integrity check for one contest at
-  /admin/contests/{id}/integrity (docs/INTEGRITY.md). "Check integrity"
+  ContestIntegrity: the organiser's similar-code report for one contest
+  at /admin/contests/{id}/integrity (docs/INTEGRITY.md), titled and
+  trailed "Similar code" like the button that opens it. "Check integrity"
   starts a check (POST .../integrity/run); it is disabled with the reason
   until every student's time is up, and while a check runs the page says
   so and polls GET .../integrity every two seconds until it is done. Under
   the stats line come the signals, filtered by kind and strength and
-  grouped by problem in tables (strength in words with the number beside
-  it), with the groups of similar code on each problem listed as names,
+  grouped by problem in tables (strength in words, with the reason for
+  similar code), with the groups of similar code on each problem listed as names,
   and "Download similar pairs (CSV)" for the college's own process. The
   decisions recorded for this contest are listed below, newest first; each
   can be changed (DecisionDialog). Every view carries IntegrityNote. The
   page has no tab of its own: Results links here with "Similar code" once
-  the contest has ended. Props: `id`.
+  the contest has ended. The contest loads through lib/loader, so an
+  answer after the page has gone is dropped. Props: `id`.
 -->
 <script lang="ts">
   import MonoDigits from '../components/MonoDigits.svelte';
@@ -23,11 +25,12 @@
   import IntegrityNote from '../components/IntegrityNote.svelte';
   import DecisionDialog from '../components/DecisionDialog.svelte';
   import SignalTable from '../components/SignalTable.svelte';
-  import { ApiError, errorText, getJSON, sendJSON } from '../lib/api';
+  import { ApiError, errorText, getJSON, isSignedOut, sendJSON } from '../lib/api';
   import { type AdminContest } from '../lib/contests';
   import { keepHeadingFocus } from '../lib/focus';
   import { formatDateTime } from '../lib/format';
   import { setTitle } from '../lib/head';
+  import { loader } from '../lib/loader.svelte';
   import { routeTitle } from '../lib/routing';
   import {
     KINDS,
@@ -52,8 +55,6 @@
   /** How often a running check is polled, in ms. */
   const POLL_MS = 2000;
 
-  let loadState = $state<'loading' | 'ready' | 'forbidden' | 'missing' | 'error'>('loading');
-  let loadError = $state('');
   let contest = $state.raw<AdminContest | null>(null);
   let run = $state.raw<Run | null>(null);
   let runState = $state<'loading' | 'none' | 'ready' | 'error'>('loading');
@@ -68,10 +69,19 @@
   let deciding = $state<Case | { user_id: number; name: string } | null>(null);
 
   let pollTimer: ReturnType<typeof setTimeout> | null = null;
-  let destroyed = false;
+  // Taken as the data arrives, just before the loading view gives way, so the heading keeps focus.
+  let restoreFocus: () => Promise<void> = async () => undefined;
 
   const isOrganiser = $derived(session.user?.role === 'admin' || session.user?.role === 'owner');
   const base = $derived(`/api/admin/contests/${encodeURIComponent(id)}`);
+  const page = loader(
+    () => getJSON<AdminContest>(base),
+    (c) => {
+      restoreFocus = keepHeadingFocus();
+      contest = c;
+      setTitle(routeTitle('contest-integrity'), c.title);
+    },
+  );
   // A check may run once every student's time is up: the close plus the longest personal extension.
   const closesAt = $derived.by(() => {
     if (!contest) return 0;
@@ -83,36 +93,16 @@
   const shown = $derived(run && run.state === 'done' ? filterSignals(run.signals ?? [], kind, strength) : []);
   const groups = $derived(groupByProblem(shown, run?.problems));
 
-  function handleAuth(e: unknown): boolean {
-    if (!(e instanceof ApiError)) return false;
-    if (e.status === 401) return true;
-    if (e.status === 403 && e.code === 'forbidden') {
-      loadState = 'forbidden';
-      return true;
-    }
-    return false;
+  /** A side request that failed because the page is gone or signed out says nothing. */
+  function quiet(e: unknown): boolean {
+    return isSignedOut(e) || !page.live;
   }
 
   async function load() {
-    loadState = 'loading';
-    try {
-      const c = await getJSON<AdminContest>(base);
-      const restore = keepHeadingFocus();
-      contest = c;
-      setTitle(routeTitle('contest-integrity'), c.title);
-      loadState = 'ready';
-      void restore();
-    } catch (e) {
-      if (handleAuth(e)) return;
-      if (e instanceof ApiError && e.status === 404) {
-        loadState = 'missing';
-        setTitle('Contest not found');
-        return;
-      }
-      loadError = errorText(e);
-      loadState = 'error';
-      return;
-    }
+    await page.load();
+    void restoreFocus();
+    if (page.state === 'missing') setTitle('Contest not found');
+    if (page.state !== 'ready') return;
     void loadRun();
     void loadCases();
   }
@@ -120,12 +110,13 @@
   async function loadRun(): Promise<Run | null> {
     try {
       const r = await getJSON<Run>(`${base}/integrity`);
+      if (!page.live) return null;
       run = r;
       runState = 'ready';
       if (r.state === 'running') schedulePoll();
       return r;
     } catch (e) {
-      if (handleAuth(e)) return null;
+      if (quiet(e)) return null;
       // A refused poll while a check runs just waits for the next one.
       if (e instanceof ApiError && e.status === 429 && run?.state === 'running') {
         schedulePoll();
@@ -146,15 +137,15 @@
     casesError = '';
     try {
       const data = await getJSON<{ cases: Case[] }>(`${base}/integrity/cases`);
-      cases = data.cases ?? [];
+      if (page.live) cases = data.cases ?? [];
     } catch (e) {
-      if (handleAuth(e)) return;
+      if (quiet(e)) return;
       casesError = errorText(e);
     }
   }
 
   function schedulePoll() {
-    if (pollTimer !== null || destroyed) return;
+    if (pollTimer !== null || !page.live) return;
     pollTimer = setTimeout(async () => {
       pollTimer = null;
       const r = await loadRun();
@@ -175,7 +166,7 @@
       await loadRun();
       schedulePoll();
     } catch (e) {
-      if (!handleAuth(e)) startError = errorText(e);
+      if (!quiet(e)) startError = errorText(e);
     } finally {
       starting = false;
     }
@@ -189,31 +180,31 @@
 
   onMount(() => {
     setTitle(routeTitle('contest-integrity'));
-    if (!isOrganiser) loadState = 'forbidden';
+    if (!isOrganiser) page.forbid();
     else void load();
     const stop = useTicker();
     return () => {
-      destroyed = true;
+      page.stop();
       if (pollTimer !== null) clearTimeout(pollTimer);
       stop();
     };
   });
 </script>
 
-{#if loadState === 'forbidden'}
-  <PageHeader title="Integrity" />
-  <PageState kind="forbidden" message="Only organisers can review integrity." />
-{:else if loadState !== 'ready' || !contest}
+{#if page.state === 'forbidden'}
+  <PageHeader title="Similar code" />
+  <PageState kind="forbidden" message="Only organisers can review similar code." />
+{:else if page.state !== 'ready' || !contest}
   <PageHeader
-    title={loadState === 'missing' ? 'Contest not found' : 'Integrity'}
-    crumbs={[{ label: 'Contests', href: '/admin/contests' }, { label: loadState === 'missing' ? 'Contest not found' : 'Integrity' }]}
+    title={page.state === 'missing' ? 'Contest not found' : 'Similar code'}
+    crumbs={[{ label: 'Contests', href: '/admin/contests' }, { label: page.state === 'missing' ? 'Contest not found' : 'Similar code' }]}
   />
-  {#if loadState === 'loading'}
+  {#if page.state === 'loading'}
     <PageState kind="loading" message="Loading the contest" />
-  {:else if loadState === 'missing'}
+  {:else if page.state === 'missing'}
     <PageState kind="missing" message="There is no contest with that number." parent={{ href: '/admin/contests', label: 'Go back to the list.' }} />
   {:else}
-    <PageState kind="error" message={loadError} onretry={load} />
+    <PageState kind="error" message={page.error} onretry={load} />
   {/if}
 {:else}
   <ContestAdminNav {id} slug={contest.slug} title={contest.title} state={contest.state} published={contest.published} current="integrity" />

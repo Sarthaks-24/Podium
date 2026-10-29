@@ -4,12 +4,15 @@
   the latest check (GET .../integrity); for similar code the two programs
   come from GET .../signals/{signal}/pair and sit side by side from
   1024 px, stacked below, each with its student, language and time, line
-  numbers and the shared passages tinted (CodeView), with how much code is
-  behind the score and what the score means. Below are the timelines of the
+  numbers and the shared passages tinted (CodeView), with the strength in
+  words and its reason ("Short programs, identical"), the numbers behind it
+  and what the score means. Below are the timelines of the
   students named (GET .../timeline/{user}), which are context and never a
   signal on their own, then one "Record a decision" button per student
-  (DecisionDialog). A signal that a newer check replaced says so. Props:
-  `id` (the contest), `signal`.
+  (DecisionDialog). A signal that a newer check replaced says so. The trail
+  runs Contests, the contest, Similar code, this pair. The check loads
+  through lib/loader, so an answer after the page has gone is dropped.
+  Props: `id` (the contest), `signal`.
 -->
 <script lang="ts">
   import MonoDigits from '../components/MonoDigits.svelte';
@@ -21,18 +24,19 @@
   import CodeView from '../components/CodeView.svelte';
   import IntegrityNote from '../components/IntegrityNote.svelte';
   import DecisionDialog from '../components/DecisionDialog.svelte';
-  import { ApiError, errorText, getJSON } from '../lib/api';
+  import { errorText, getJSON, isSignedOut } from '../lib/api';
   import { keepHeadingFocus } from '../lib/focus';
   import { formatDateTime } from '../lib/format';
   import { setTitle } from '../lib/head';
+  import { loader } from '../lib/loader.svelte';
   import { routeTitle } from '../lib/routing';
   import {
     SCORE_MEANING,
-    evidenceSize,
-    formatScore,
     kindWord,
     signalDetail,
     signalStudents,
+    similarNumbers,
+    similarReason,
     strengthWord,
     userName,
     decisionWord,
@@ -49,8 +53,6 @@
 
   let { id, signal }: { id: string; signal: string } = $props();
 
-  let loadState = $state<'loading' | 'ready' | 'forbidden' | 'missing' | 'gone' | 'error'>('loading');
-  let loadError = $state('');
   let run = $state.raw<Run | null>(null);
   let sig = $state.raw<Signal | null>(null);
   let pair = $state.raw<Pair | null>(null);
@@ -63,14 +65,27 @@
   const base = $derived(`/api/admin/contests/${encodeURIComponent(id)}/integrity`);
   const back = $derived(`/admin/contests/${encodeURIComponent(id)}/integrity`);
   let contestTitle = $state('');
+  // Taken as the data arrives, just before the loading view gives way, so the heading keeps focus.
+  let restoreFocus: () => Promise<void> = async () => undefined;
 
-  /** Contests, the contest, Integrity, then this page. */
+  // The check, and in it this signal; a check without it is "gone" (a newer check replaced it).
+  const page = loader(
+    () => getJSON<Run>(base),
+    (r) => {
+      restoreFocus = keepHeadingFocus();
+      run = r;
+      sig = (r.signals ?? []).find((s) => String(s.id) === signal) ?? null;
+    },
+  );
+  const gone = $derived(page.state === 'ready' && !sig);
+
+  /** Contests, the contest, Similar code, then this page. */
   function trail(here: string): Crumb[] {
     const contest = `/admin/contests/${encodeURIComponent(id)}`;
     const out: Crumb[] = [
       { label: 'Contests', href: '/admin/contests' },
       { label: contestTitle || 'Contest', href: contest },
-      { label: 'Integrity', href: `${contest}/integrity` },
+      { label: 'Similar code', href: `${contest}/integrity` },
     ];
     return [...out, { label: here }];
   }
@@ -78,60 +93,32 @@
   const users = $derived<Record<string, ReviewUser>>(run?.users ?? {});
   const problems = $derived(run?.problems);
   const problem = $derived(sig && sig.problem_id ? problems?.[String(sig.problem_id)] : undefined);
-  const size = $derived(sig?.kind === 'similar' ? evidenceSize(sig.evidence) : '');
 
-  function handleAuth(e: unknown): boolean {
-    if (!(e instanceof ApiError)) return false;
-    if (e.status === 401) return true;
-    if (e.status === 403 && e.code === 'forbidden') {
-      loadState = 'forbidden';
-      return true;
-    }
-    return false;
+  /** A side request that failed because the page is gone or signed out says nothing. */
+  function quiet(e: unknown): boolean {
+    return isSignedOut(e) || !page.live;
+  }
+
+  async function load() {
+    await page.load();
+    void restoreFocus();
+    if (page.state === 'missing' || gone) setTitle('Signal not found');
+    if (page.state !== 'ready' || !sig) return;
+    show(sig);
   }
 
   function show(found: Signal) {
     setTitle(signalStudents(found, users), kindWord(found.kind));
-    loadState = 'ready';
     if (found.kind === 'similar') void loadPair();
     for (const u of [found.user_a, found.user_b]) if (u) void loadTimeline(u);
   }
 
-  async function load() {
-    loadState = 'loading';
-    let r: Run;
-    try {
-      r = await getJSON<Run>(base);
-    } catch (e) {
-      if (handleAuth(e)) return;
-      if (e instanceof ApiError && e.status === 404) {
-        loadState = 'missing';
-        setTitle('Signal not found');
-        return;
-      }
-      loadError = errorText(e);
-      loadState = 'error';
-      return;
-    }
-    const found = (r.signals ?? []).find((s) => String(s.id) === signal) ?? null;
-    const restore = keepHeadingFocus();
-    run = r;
-    sig = found;
-    if (!found) {
-      loadState = 'gone';
-      setTitle('Signal not found');
-      void restore();
-      return;
-    }
-    show(found);
-    void restore();
-  }
-
   async function loadPair() {
     try {
-      pair = await getJSON<Pair>(`${base}/signals/${encodeURIComponent(signal)}/pair`);
+      const p = await getJSON<Pair>(`${base}/signals/${encodeURIComponent(signal)}/pair`);
+      if (page.live) pair = p;
     } catch (e) {
-      if (!handleAuth(e)) pairError = errorText(e);
+      if (!quiet(e)) pairError = errorText(e);
     }
   }
 
@@ -139,9 +126,9 @@
     const contest = encodeURIComponent(id);
     try {
       const data = await getJSON<{ moments: Moment[] }>(`/api/admin/contests/${contest}/integrity/timeline/${user}`);
-      timelines = { ...timelines, [user]: data.moments ?? [] };
+      if (page.live) timelines = { ...timelines, [user]: data.moments ?? [] };
     } catch (e) {
-      if (!handleAuth(e)) timelines = { ...timelines, [user]: errorText(e) };
+      if (!quiet(e)) timelines = { ...timelines, [user]: errorText(e) };
     }
   }
 
@@ -152,9 +139,10 @@
 
   async function loadCases() {
     try {
-      cases = (await getJSON<{ cases: Case[] }>(`${base}/cases`)).cases ?? [];
-    } catch (e) {
-      handleAuth(e);
+      const list = (await getJSON<{ cases: Case[] }>(`${base}/cases`)).cases ?? [];
+      if (page.live) cases = list;
+    } catch {
+      // The decisions are added to the page when they load; without them each student reads "no decision recorded".
     }
   }
 
@@ -168,43 +156,46 @@
 
   onMount(() => {
     setTitle(routeTitle('integrity-pair'));
-    if (!isOrganiser) loadState = 'forbidden';
+    if (!isOrganiser) page.forbid();
     else {
       void load();
       void loadCases();
       // The contest title is only for the trail; the page reads without it.
       getJSON<AdminContest>(`/api/admin/contests/${encodeURIComponent(id)}`)
-        .then((c) => (contestTitle = c.title))
+        .then((c) => {
+          if (page.live) contestTitle = c.title;
+        })
         .catch(() => {});
     }
+    return () => page.stop();
   });
 </script>
 
-{#if loadState === 'forbidden'}
+{#if page.state === 'forbidden'}
   <PageHeader title="Signal" />
-  <PageState kind="forbidden" message="Only organisers can review integrity." />
-{:else if loadState !== 'ready' || !sig}
+  <PageState kind="forbidden" message="Only organisers can review similar code." />
+{:else if page.state !== 'ready' || !sig}
   <PageHeader
-    title={loadState === 'missing' || loadState === 'gone' ? 'Signal not found' : 'Signal'}
-    crumbs={trail(loadState === 'missing' || loadState === 'gone' ? 'Signal not found' : 'Signal')}
+    title={page.state === 'missing' || gone ? 'Signal not found' : 'Signal'}
+    crumbs={trail(page.state === 'missing' || gone ? 'Signal not found' : 'Signal')}
   />
-  {#if loadState === 'loading'}
+  {#if page.state === 'loading'}
     <PageState kind="loading" message="Loading the signal" />
-  {:else if loadState === 'missing'}
-    <PageState kind="missing" message="This contest has not been checked yet." parent={{ href: back, label: 'Go to the integrity check.' }} />
-  {:else if loadState === 'gone'}
+  {:else if page.state === 'missing'}
+    <PageState kind="missing" message="This contest has not been checked yet." parent={{ href: back, label: 'Go to similar code.' }} />
+  {:else if gone}
     <PageState kind="missing" message="This signal is not in the latest check: a newer check replaced it." parent={{ href: back, label: 'See the latest signals.' }} />
   {:else}
-    <PageState kind="error" message={loadError} onretry={load} />
+    <PageState kind="error" message={page.error} onretry={load} />
   {/if}
 {:else}
   <PageHeader title={signalStudents(sig, users)} crumbs={trail(signalStudents(sig, users))} />
   <p class="summary">
     {kindWord(sig.kind)} on {problem ? `problem ${problem.label}, ${problem.title}` : sig.problem_id ? 'this problem' : 'the whole contest'}. Strength:
-    {strengthWord(sig.strength).toLowerCase()} <span class="mono">({formatScore(sig.score, sig.kind)})</span>. {signalDetail(sig)}.
+    {strengthWord(sig.strength).toLowerCase()}{sig.kind === 'similar' ? `, ${similarReason(sig.score, sig.evidence).toLowerCase()}` : ''}. {signalDetail(sig)}.
   </p>
   {#if sig.kind === 'similar'}
-    <p class="meaning muted">{size ? `${size}. ` : ''}{SCORE_MEANING}</p>
+    <p class="meaning muted">{similarNumbers(sig.score, sig.evidence)}. {SCORE_MEANING}</p>
   {/if}
 
   <div class="note"><IntegrityNote /></div>

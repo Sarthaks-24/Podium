@@ -9,8 +9,9 @@
  * other, shown with how much code is behind it.
  *
  * The rest is pure wording and maths. Signals are reasons to look, never
- * proof, so they are worded as strength ("Strong", "Moderate", "Weak") with
- * the raw number beside it, and their kind in words. Matched spans arrive
+ * proof, so they are worded as strength ("Strong", "Moderate", "Weak"),
+ * for similar code with its reason in words ("Short programs, identical")
+ * and the numbers in the details, and their kind in words. Matched spans arrive
  * as byte offsets into the UTF-8 source; codeLines() turns them into
  * per-line segments of the JavaScript string (UTF-16), so a multibyte
  * character before a span does not shift the highlight. Clusters are
@@ -158,6 +159,31 @@ export function formatScore(score: number, kind: string): string {
 
 /** What a similarity score means, shown wherever one is. */
 export const SCORE_MEANING = 'The score is the share of the shorter program found in the other, not a probability.';
+
+/** What the strength of similar code weighs, under a table that words it. */
+export const STRENGTH_MEANING = 'Strength weighs how much code is shared as well as how alike it is: short programs often match without any copying.';
+
+/**
+ * Why similar code has its strength, in words: how much code the two
+ * programs share, then how much of the shorter one matched. The cut-offs
+ * are the server's (integrity.Strength: 40 and 25 shared fingerprints,
+ * scores 0.9 and 0.75), so "Short programs, identical" is always weak
+ * however high the score (pilot P11: "Weak 1.00" told the organiser
+ * nothing). Without the counts (signals stored before them) only the
+ * likeness is said.
+ */
+export function similarReason(score: number, ev: SignalEvidence | null | undefined): string {
+  const shared = ev?.shared;
+  const amount = shared === undefined ? '' : shared >= 40 ? 'Long programs' : shared >= 25 ? 'Medium-length programs' : 'Short programs';
+  const alike = score >= 0.995 ? 'identical' : score >= 0.9 ? 'nearly identical' : score >= 0.75 ? 'mostly the same' : 'partly the same';
+  return amount ? `${amount}, ${alike}` : alike.charAt(0).toUpperCase() + alike.slice(1);
+}
+
+/** The numbers behind similar code: "41 of 44 fingerprints shared, shorter program 212 tokens, score 0.94". */
+export function similarNumbers(score: number, ev: SignalEvidence | null | undefined): string {
+  const size = evidenceSize(ev);
+  return size ? `${size}, score ${formatScore(score, 'similar')}` : `Score ${formatScore(score, 'similar')}`;
+}
 
 /**
  * How much code is behind a similarity score, or "" when the evidence does

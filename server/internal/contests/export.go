@@ -78,11 +78,38 @@ func CSVCell(v string) string {
 	return v
 }
 
-// WriteCSV writes the results as CSV: rank, name, email, started (UTC,
-// RFC 3339), total, then one column per problem.
-func WriteCSV(w io.Writer, c *Contest, rows []ExportRow) error {
+// ExportLocation is the time zone the CSV writes times in: the IANA name
+// the browser sends (?tz=Asia/Kolkata), so the file reads like the
+// screens, or the server's own zone when the name is missing or unknown.
+func ExportLocation(name string) *time.Location {
+	if name != "" && len(name) <= 64 {
+		if loc, err := time.LoadLocation(name); err == nil {
+			return loc
+		}
+	}
+	return time.Local
+}
+
+// zoneName names a zone for the CSV header: its IANA name, or for the
+// server's own zone the abbreviation it has now ("IST", or "+0530").
+func zoneName(loc *time.Location) string {
+	if n := loc.String(); n != "Local" {
+		return n
+	}
+	n, _ := time.Now().In(loc).Zone()
+	return n
+}
+
+// WriteCSV writes the results as CSV: rank, name, email, started (local
+// time in loc, which the header names), total, then one column per
+// problem with a dash for a problem the student did not try, as on the
+// board. A nil loc is the server's own zone.
+func WriteCSV(w io.Writer, c *Contest, rows []ExportRow, loc *time.Location) error {
+	if loc == nil {
+		loc = time.Local
+	}
 	cw := csv.NewWriter(w)
-	head := []string{"rank", "name", "email", "started", "total"}
+	head := []string{"rank", "name", "email", "started (" + zoneName(loc) + ")", "total"}
 	for _, p := range c.Problems {
 		head = append(head, p.Label)
 	}
@@ -92,11 +119,15 @@ func WriteCSV(w io.Writer, c *Contest, rows []ExportRow) error {
 	for _, r := range rows {
 		started := ""
 		if r.StartedAt != nil {
-			started = time.UnixMilli(*r.StartedAt).UTC().Format(time.RFC3339)
+			started = time.UnixMilli(*r.StartedAt).In(loc).Format(time.DateTime)
 		}
 		rec := []string{strconv.Itoa(r.Rank), CSVCell(r.Name), CSVCell(r.Email), started, strconv.Itoa(r.Total)}
 		for _, cell := range r.Cells {
-			rec = append(rec, strconv.Itoa(cell.Score))
+			if cell.Tried {
+				rec = append(rec, strconv.Itoa(cell.Score))
+			} else {
+				rec = append(rec, "-")
+			}
 		}
 		if err := cw.Write(rec); err != nil {
 			return err

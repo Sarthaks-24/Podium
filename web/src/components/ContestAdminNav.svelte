@@ -16,8 +16,9 @@
   ContestState, or "" for none), `published` (false reads "Draft", and an
   ended contest with practice open reads "Ended, practice open":
   lib/contests organiserState), `current` ("settings", "console",
-  "results", or "integrity" for the integrity page, which has no tab and
-  is reached from Results with "Similar code"), `unanswered` (optional), and an optional
+  "results", or "integrity" for the similar-code page, which has no tab,
+  is reached from Results with "Similar code" and is named so in the
+  trail), `unanswered` (optional), and an optional
   `actions` snippet for the title row.
 -->
 <script lang="ts">
@@ -49,7 +50,7 @@
     { id: 'console', label: 'Live', href: `${base}/console` },
     { id: 'results', label: 'Results', href: `${base}/results` },
   ] as const);
-  const here = $derived(current === 'integrity' ? 'Integrity' : (links.find((l) => l.id === current)?.label ?? ''));
+  const here = $derived(current === 'integrity' ? 'Similar code' : (links.find((l) => l.id === current)?.label ?? ''));
 
   $effect(() => {
     if (unanswered !== undefined) return;

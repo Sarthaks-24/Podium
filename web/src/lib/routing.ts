@@ -75,7 +75,7 @@ export const ROUTES: readonly RouteDef[] = [
   { pattern: '/admin/contests/:id', name: 'admin-contest', auth: true, title: 'Setup', role: 'organiser', section: 'contests' },
   { pattern: '/admin/contests/:id/console', name: 'contest-console', auth: true, title: 'Live', role: 'organiser', section: 'contests' },
   { pattern: '/admin/contests/:id/results', name: 'contest-results', auth: true, title: 'Results', role: 'organiser', section: 'contests' },
-  { pattern: '/admin/contests/:id/integrity', name: 'contest-integrity', auth: true, title: 'Integrity', role: 'organiser', section: 'contests' },
+  { pattern: '/admin/contests/:id/integrity', name: 'contest-integrity', auth: true, title: 'Similar code', role: 'organiser', section: 'contests' },
   {
     pattern: '/admin/contests/:id/integrity/signals/:signal',
     name: 'integrity-pair',

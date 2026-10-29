@@ -9,7 +9,7 @@
   when that element was replaced while it was open (components/Dialog).
   Focus starts on the
   heading, so a screen reader reads the title first. Organisers also see
-  the problem editor and reveal keys. Props: `open`, `organiser` and
+  the problem editor keys. Props: `open`, `organiser` and
   `onclose`.
 -->
 <script lang="ts">

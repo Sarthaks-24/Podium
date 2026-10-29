@@ -19,7 +19,8 @@
   on phones a long name wraps to two lines instead of being cut (audit
   07-9). Props: `standings`, `labels` (the problem
   letters, in order), `caption` (the table's accessible name), `large`
-  (bigger type, for a projector) and `nameHref` (organiser views only:
+  (bigger type, for a projector), `wide` (the box and the table take the
+  full width, for the organiser's results) and `nameHref` (organiser views only:
   each name links to that student's page, web-quality #16; the board
   itself carries no mark of any review decision).
 -->
@@ -32,10 +33,11 @@
     labels: string[];
     caption: string;
     large?: boolean;
+    wide?: boolean;
     nameHref?: (userId: number) => string;
   }
 
-  let { standings, labels, caption, large = false, nameHref }: Props = $props();
+  let { standings, labels, caption, large = false, wide = false, nameHref }: Props = $props();
 
   let wrap: HTMLDivElement | undefined = $state();
   const mine = $derived(myRow(standings));
@@ -100,7 +102,7 @@
   <p class="muted empty">Nobody is in the standings yet. Rows appear as students submit.</p>
 {:else}
   <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
-  <div class="board-wrap" class:large bind:this={wrap} tabindex="0" role="region" aria-label={caption} onscroll={measure}>
+  <div class="board-wrap" class:large class:wide bind:this={wrap} tabindex="0" role="region" aria-label={caption} onscroll={measure}>
     <table class="board">
       <caption class="visually-hidden">{caption}</caption>
       <thead>
@@ -181,6 +183,20 @@
     border-collapse: separate;
     border-spacing: 0;
     font-size: var(--fs-0);
+  }
+
+  .wide,
+  .wide .board {
+    width: 100%;
+  }
+
+  /* Wide, the name column stops at its cap and the problem columns share the room. */
+  .wide .name {
+    width: 16rem;
+  }
+
+  .wide .pcell {
+    width: auto;
   }
 
   .board th,

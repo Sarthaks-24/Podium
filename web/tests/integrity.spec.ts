@@ -70,8 +70,15 @@ test('a check runs, polls until done, and its signals filter by kind and strengt
   await expect(b.getByRole('rowheader', { name: 'Asha Rao and Ravi Kumar' })).toBeVisible();
   const strong = b.getByRole('row').filter({ hasText: 'Asha Rao and Ravi Kumar' });
   await expect(strong).toContainText('Similar code');
-  await expect(strong).toContainText('Strong 0.94');
+  // Strength in words with its reason; the numbers sit in the details (pilot P11).
+  await expect(strong.getByRole('cell').nth(1)).toHaveText('Strong: Long programs, nearly identical');
   await expect(strong).toContainText('2 shared passages, both in C++17');
+  await expect(strong).toContainText('41 of 44 fingerprints shared, shorter program 212 tokens, score 0.94');
+  const short = a.getByRole('row').filter({ hasText: 'Kabir Shah and Neha Gupta' });
+  await expect(short.getByRole('cell').nth(1)).toHaveText('Weak: Short programs, identical');
+  await expect(short).toContainText('15 of 15 fingerprints shared, shorter program 48 tokens, score 1.00');
+  await expect(page.getByText(/Weak \d/)).toHaveCount(0);
+  await expect(page.getByText('Strength weighs how much code is shared as well as how alike it is', { exact: false }).first()).toBeVisible();
   await expect(b.getByRole('row').filter({ hasText: 'Neha Gupta' })).toContainText('Contains the expected output of tests 7 and 9');
   await expect(a.getByRole('row').filter({ hasText: 'Rohan Das' })).toContainText('8 different results from near-identical code over 14 attempts');
 
@@ -84,7 +91,7 @@ test('a check runs, polls until done, and its signals filter by kind and strengt
   await expect(page.getByRole('table', { name: 'Signals on B. Interval covering' })).toHaveCount(0);
   await page.getByLabel('Kind').selectOption({ label: 'All kinds' });
   await page.getByLabel('Strength').selectOption({ label: 'Weak' });
-  await expect(page.getByRole('table', { name: 'Signals on A. A plus B' }).getByRole('row')).toHaveCount(2);
+  await expect(page.getByRole('table', { name: 'Signals on A. A plus B' }).getByRole('row')).toHaveCount(3);
   await page.getByLabel('Strength').selectOption({ label: 'Strong' });
   await page.getByLabel('Kind').selectOption({ label: 'Probing' });
   await expect(page.getByText('No signals match these filters.')).toBeVisible();
@@ -99,9 +106,11 @@ test('the pair view tints the shared passages, marks them for screen readers and
   await expect(page.getByText('Similar code on problem B, Interval covering.', { exact: false })).toBeVisible();
   // F4: the trail names the contest and ends on this page.
   const trail = page.getByRole('navigation', { name: 'Breadcrumb' });
-  await expect(trail.getByRole('listitem')).toHaveText(['Contests', 'Week 6 contest', 'Integrity', 'Asha Rao and Ravi Kumar']);
+  await expect(trail.getByRole('listitem')).toHaveText(['Contests', 'Week 6 contest', 'Similar code', 'Asha Rao and Ravi Kumar']);
   await expect(trail.locator('[aria-current="page"]')).toHaveText('Asha Rao and Ravi Kumar');
-  await expect(trail.getByRole('link', { name: 'Integrity' })).toHaveAttribute('href', '/admin/contests/4/integrity');
+  await expect(trail.getByRole('link', { name: 'Similar code' })).toHaveAttribute('href', '/admin/contests/4/integrity');
+  await expect(page.getByText('Strength: strong, long programs, nearly identical.', { exact: false })).toBeVisible();
+  await expect(page.getByText('41 of 44 fingerprints shared, shorter program 212 tokens, score 0.94. The score is the share', { exact: false })).toBeVisible();
 
   const asha = page.getByRole('region', { name: /^Asha Rao's program, 12 lines, 2 shared passages$/ });
   const ravi = page.getByRole('region', { name: /^Ravi Kumar's program, 12 lines, 2 shared passages$/ });
@@ -165,7 +174,8 @@ test('Similar code on Results leads to the integrity page, which has no tab of i
   const nav = page.getByRole('navigation', { name: 'Contest' });
   await expect(nav.getByRole('link', { name: 'Integrity' })).toHaveCount(0);
   await expect(nav.locator('[aria-current="page"]')).toHaveCount(0);
-  await expect(page.getByRole('navigation', { name: 'Breadcrumb' }).locator('[aria-current="page"]')).toHaveText('Integrity');
+  await expect(page.getByRole('navigation', { name: 'Breadcrumb' }).locator('[aria-current="page"]')).toHaveText('Similar code');
+  await expect(page).toHaveTitle('Similar code · Week 6 contest · podium');
   await expect(nav.getByRole('link', { name: 'Results' })).toHaveAttribute('href', '/admin/contests/4/results');
   await expect(page.getByRole('navigation', { name: 'Main' }).getByRole('link', { name: 'Contests' })).toHaveAttribute('aria-current', 'page');
   await nav.getByRole('link', { name: 'Results' }).click();

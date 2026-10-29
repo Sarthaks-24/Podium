@@ -81,11 +81,11 @@ describe('shortcutGroups', () => {
     for (const k of ['?', 'Ctrl+Enter', "Ctrl+'", 'Ctrl+S', '[', ']', 'Esc', 'Tab']) expect(keys).toContain(k);
   });
 
-  it('shows the problem editor and reveal keys to organisers only', () => {
+  it('shows the problem editor keys to organisers only', () => {
     const titles = (organiser: boolean) => shortcutGroups({ mac: false, organiser }).map((g) => g.title);
     const editor = ['Editing', 'Selection and cursors', 'Moving around', 'Find and replace', NOT_AVAILABLE];
     expect(titles(false)).toEqual(['Anywhere', 'Solving a problem', ...editor]);
-    expect(titles(true)).toEqual(['Anywhere', 'Solving a problem', ...editor, 'Problem editor', 'Reveal']);
+    expect(titles(true)).toEqual(['Anywhere', 'Solving a problem', ...editor, 'Problem editor']);
   });
 
   it('lists the VS Code editing keys students asked for (P6)', () => {

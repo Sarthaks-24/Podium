@@ -1,23 +1,22 @@
 <!--
   ContestResults: the organiser's results for one contest at
-  /admin/contests/{id}/results (cache/v1/m4-plan.md sections 3 and 4).
-  The board, full or as students saw it frozen
-  (GET .../standings?variant=frozen), with one line saying whether it is
-  the live board while students see results hidden, or the board students
-  see (lib/standings organiserBoardLine, pilot P10); for a contest that holds its board,
-  "Reveal" shows students the full board (POST .../reveal) once every
-  student's time is up, after a confirmation, because it cannot be
-  undone; links download the results as CSV or JSON; and per-problem
-  statistics (solved, attempted, median attempts and how many students
-  reached each score, as a second line on phones). Once the contest has
-  ended, "Similar code" opens the integrity check. Students see a short
-  explanation instead. The editorial and the animated reveal walk
-  (RevealBoard) are not offered for now (V3-16); the server keeps both.
-
-  The page uses the working layout. The board and the problem statistics
-  are the work; beside them from 1280 px (first below that) the reveal,
-  the downloads and the integrity check. A student an integrity decision
-  excluded is not on the board or in the downloads.
+  /admin/contests/{id}/results. Under the contest's tabs, one line says
+  where the reveal stands, and only for a contest that keeps hidden
+  results hidden after the end: before every student's time is up it says
+  when the reveal opens and offers no button; then "Reveal" shows students
+  the full board (POST .../reveal) after one confirmation, because it
+  cannot be undone; after it the line says when it happened (pilot P2).
+  Beside it sit "Similar code" (once the contest has ended; it opens the
+  integrity page), "Download CSV" and "Download JSON", and a download
+  leaves a line naming the file (pilot P3). Below, across the page width
+  (the walk measured the board at 560 px of 1440): the standings, full or
+  as students saw them (GET .../standings?variant=frozen) when results
+  were hidden, with one line saying which board this is
+  (lib/standings organiserBoardLine), then the one statistics table:
+  solved, attempted, median attempts and how many students reached each
+  score, per problem. The animated reveal walk and the editorial are not
+  offered (V3-16). A student an integrity decision excluded is not on the
+  board or in the downloads. Students see a short explanation instead.
 -->
 <script lang="ts">
   import PageState from '../components/PageState.svelte';
@@ -27,10 +26,12 @@
   import PageHeader from '../components/PageHeader.svelte';
   import Icon from '../components/Icon.svelte';
   import StandingsTable from '../components/StandingsTable.svelte';
-  import { ApiError, errorText, getJSON, sendJSON } from '../lib/api';
+  import { errorText, getJSON, isSignedOut, sendJSON } from '../lib/api';
   import { type AdminContest, type ProblemStats } from '../lib/contests';
   import { keepHeadingFocus } from '../lib/focus';
+  import { formatDayTime } from '../lib/format';
   import { setTitle } from '../lib/head';
+  import { loader } from '../lib/loader.svelte';
   import { routeTitle } from '../lib/routing';
   import { session } from '../lib/session.svelte';
   import { boardLabels, organiserBoardLine, type Standings } from '../lib/standings';
@@ -39,19 +40,27 @@
 
   let { id }: { id: string } = $props();
 
-  let loadState = $state<'loading' | 'ready' | 'forbidden' | 'missing' | 'error'>('loading');
-  let loadError = $state('');
   let contest = $state.raw<AdminContest | null>(null);
   let variant = $state<'full' | 'frozen'>('full');
   let board = $state.raw<Standings | null>(null);
   let boardError = $state('');
   let stats = $state<ProblemStats[] | null>(null);
   let statsError = $state('');
-
   let revealError = $state('');
+  let downloadLine = $state('');
+  // Taken as the data arrives, just before the loading view gives way, so the heading keeps focus.
+  let restoreFocus: () => Promise<void> = async () => undefined;
 
   const isOrganiser = $derived(session.user?.role === 'admin' || session.user?.role === 'owner');
   const base = $derived(`/api/admin/contests/${encodeURIComponent(id)}`);
+  const page = loader(
+    () => getJSON<AdminContest>(base),
+    (c) => {
+      restoreFocus = keepHeadingFocus();
+      contest = c;
+      setTitle(routeTitle('contest-results'), c.title);
+    },
+  );
   // The reveal opens once every student's time is up: the close plus the longest personal extension.
   const revealOpensAt = $derived.by(() => {
     if (!contest) return 0;
@@ -65,38 +74,40 @@
   const hiding = $derived(
     contest !== null && hiddenFrom !== null && ticker.now >= hiddenFrom && (ticker.now < revealOpensAt || (contest.hold_reveal === true && !contest.revealed_at)),
   );
-  const labels = $derived(board ? boardLabels(board, (contest?.problems ?? []).map((p) => p.label)) : []);
-
-  function handleAuth(e: unknown): boolean {
-    if (!(e instanceof ApiError)) return false;
-    if (e.status === 401) return true;
-    if (e.status === 403 && e.code === 'forbidden') {
-      loadState = 'forbidden';
-      return true;
+  // There is something to reveal only when results are hidden and kept hidden after the end.
+  const held = $derived(!!contest?.hold_reveal && hiddenFrom !== null);
+  const offerReveal = $derived(held && !contest?.revealed_at && revealReady);
+  /** The reveal line follows the state: before it opens, when it is open, after it (pilot P2). */
+  const revealLine = $derived.by(() => {
+    if (!contest || !held || hiddenFrom === null) return '';
+    if (contest.revealed_at) return `Revealed ${formatDayTime(contest.revealed_at)}. Students see the full board.`;
+    if (!revealReady) {
+      return `Results from ${clock(hiddenFrom)} stay hidden from students until you reveal them. The reveal opens at ${clock(revealOpensAt)}, when every student's time is up.`;
     }
-    return false;
+    return `Students see the board without the results from ${clock(hiddenFrom)}. Reveal shows them the full board.`;
+  });
+  const labels = $derived(board ? boardLabels(board, (contest?.problems ?? []).map((p) => p.label)) : []);
+  const slug = $derived(contest?.slug ?? 'contest');
+  // The browser's zone, so the times in the file read as they do here.
+  const tz = (() => {
+    try {
+      return Intl.DateTimeFormat().resolvedOptions().timeZone ?? '';
+    } catch {
+      return '';
+    }
+  })();
+
+  /** "14:32" in local time. */
+  function clock(ms: number): string {
+    const d = new Date(ms);
+    return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
   }
 
   async function load() {
-    loadState = 'loading';
-    try {
-      const c = await getJSON<AdminContest>(base);
-      const restore = keepHeadingFocus();
-      contest = c;
-      setTitle(routeTitle('contest-results'), c.title);
-      loadState = 'ready';
-      void restore();
-    } catch (e) {
-      if (handleAuth(e)) return;
-      if (e instanceof ApiError && e.status === 404) {
-        loadState = 'missing';
-        setTitle('Contest not found');
-        return;
-      }
-      loadError = errorText(e);
-      loadState = 'error';
-      return;
-    }
+    await page.load();
+    void restoreFocus();
+    if (page.state === 'missing') setTitle('Contest not found');
+    if (page.state !== 'ready') return;
     void loadBoard();
     void loadStats();
   }
@@ -104,9 +115,10 @@
   async function loadBoard() {
     boardError = '';
     try {
-      board = await getJSON<Standings>(`${base}/standings${variant === 'frozen' ? '?variant=frozen' : ''}`);
+      const b = await getJSON<Standings>(`${base}/standings${variant === 'frozen' ? '?variant=frozen' : ''}`);
+      if (page.live) board = b;
     } catch (e) {
-      if (handleAuth(e)) return;
+      if (isSignedOut(e) || !page.live) return;
       board = null;
       boardError = errorText(e);
     }
@@ -115,10 +127,9 @@
   async function loadStats() {
     try {
       const data = await getJSON<{ problems: ProblemStats[] }>(`${base}/stats`);
-      stats = data.problems ?? [];
+      if (page.live) stats = data.problems ?? [];
     } catch (e) {
-      if (handleAuth(e)) return;
-      statsError = errorText(e);
+      if (!isSignedOut(e) && page.live) statsError = errorText(e);
     }
   }
 
@@ -146,11 +157,13 @@
       await sendJSON<unknown>('POST', `${base}/reveal`);
       revealOpen = false;
       showToast('Revealed the full board');
-      contest = await getJSON<AdminContest>(base);
+      const c = await getJSON<AdminContest>(base);
+      if (!page.live) return;
+      contest = c;
       setVariant('full');
     } catch (e) {
       revealOpen = false;
-      if (!handleAuth(e)) revealError = errorText(e);
+      if (!isSignedOut(e) && page.live) revealError = errorText(e);
     } finally {
       revealBusy = false;
     }
@@ -158,78 +171,72 @@
 
   onMount(() => {
     setTitle(routeTitle('contest-results'));
-    if (!isOrganiser) loadState = 'forbidden';
+    if (!isOrganiser) page.forbid();
     else void load();
-    return useTicker();
+    const stop = useTicker();
+    return () => {
+      page.stop();
+      stop();
+    };
   });
 </script>
 
-{#if loadState === 'forbidden'}
+{#if page.state === 'forbidden'}
   <PageHeader title="Results" />
   <PageState kind="forbidden" message="Only organisers can see full results." />
-{:else if loadState !== 'ready' || !contest}
+{:else if page.state !== 'ready' || !contest}
   <PageHeader
-    title={loadState === 'missing' ? 'Contest not found' : 'Results'}
-    crumbs={[{ label: 'Contests', href: '/admin/contests' }, { label: loadState === 'missing' ? 'Contest not found' : 'Results' }]}
+    title={page.state === 'missing' ? 'Contest not found' : 'Results'}
+    crumbs={[{ label: 'Contests', href: '/admin/contests' }, { label: page.state === 'missing' ? 'Contest not found' : 'Results' }]}
   />
-  {#if loadState === 'loading'}
+  {#if page.state === 'loading'}
     <PageState kind="loading" message="Loading the contest" />
-  {:else if loadState === 'missing'}
+  {:else if page.state === 'missing'}
     <PageState kind="missing" message="There is no contest with that number." parent={{ href: '/admin/contests', label: 'Go back to the list.' }} />
   {:else}
-    <PageState kind="error" message={loadError} onretry={load} />
+    <PageState kind="error" message={page.error} onretry={load} />
   {/if}
 {:else}
   <ContestAdminNav {id} slug={contest.slug} title={contest.title} state={contest.state} published={contest.published} current="results" />
 
-  <div class="page-split results-split">
-    <aside class="page-split-aside" aria-label="Reveal, downloads and integrity">
-      {#if contest.hold_reveal}
-        <section class="panel" aria-labelledby="reveal-panel-title">
-          <h2 id="reveal-panel-title">Reveal</h2>
-          {#if contest.revealed_at}
-            <p class="muted small">Revealed. Students see the full board.</p>
-          {:else}
-            <p class="small">Students still see the frozen board. Reveal shows them the full board.</p>
-            <button
-              type="button"
-              class="btn btn-primary"
-              disabled={!revealReady}
-              aria-describedby={revealReady ? undefined : 'reveal-help'}
-              onclick={() => (revealOpen = true)}>Reveal</button
-            >
-            {#if !revealReady}<p id="reveal-help" class="muted small">The reveal opens when every student's time is up.</p>{/if}
-          {/if}
-          {#if revealError}<p class="field-error" role="alert">{revealError}</p>{/if}
-        </section>
+  <div class="bar">
+    {#if revealLine}<p class="reveal-line">{revealLine}</p>{/if}
+    <div class="results-actions">
+      {#if offerReveal}
+        <button type="button" class="btn btn-primary" onclick={() => (revealOpen = true)}>Reveal</button>
       {/if}
-
-      <section class="panel" aria-labelledby="downloads-title">
-        <h2 id="downloads-title">Downloads</h2>
-        <p class="exports">
-          <a class="btn btn-secondary" href="{base}/export.csv" download><Icon name="download" /> Download CSV</a>
-          <a class="btn btn-secondary" href="{base}/export.json" download><Icon name="download" /> Download JSON</a>
-        </p>
-      </section>
-
       {#if ended}
-        <section class="panel" aria-labelledby="integrity-title">
-          <h2 id="integrity-title">Integrity</h2>
-          <p class="muted small">Look for copied code, shared wrong outputs, hard-coded answers and probing. Signals are reasons to look, not proof.</p>
-          <p><a class="btn btn-secondary" href="/admin/contests/{encodeURIComponent(id)}/integrity">Similar code</a></p>
-        </section>
+        <a class="btn btn-secondary" href="/admin/contests/{encodeURIComponent(id)}/integrity">Similar code</a>
       {/if}
-    </aside>
+      <a
+        class="btn btn-secondary"
+        href="{base}/export.csv{tz ? `?tz=${encodeURIComponent(tz)}` : ''}"
+        download="{slug}-results.csv"
+        onclick={() => (downloadLine = `Downloading ${slug}-results.csv to your browser's downloads.`)}><Icon name="download" /> Download CSV</a
+      >
+      <a
+        class="btn btn-secondary"
+        href="{base}/export.json"
+        download="{slug}-results.json"
+        onclick={() => (downloadLine = `Downloading ${slug}-results.json to your browser's downloads.`)}><Icon name="download" /> Download JSON</a
+      >
+    </div>
+    <p class="muted small download-line" role="status">{downloadLine}</p>
+    {#if revealError}<p class="field-error" role="alert">{revealError}</p>{/if}
+  </div>
 
-    <div class="page-split-main">
   <section class="section" aria-labelledby="board-title">
     <div class="section-head">
       <h2 id="board-title">Standings</h2>
-      <fieldset class="variant">
-        <legend class="visually-hidden">Board</legend>
-        <label class="choice"><input type="radio" name="variant" checked={variant === 'full'} onchange={() => setVariant('full')} /> Full</label>
-        <label class="choice"><input type="radio" name="variant" checked={variant === 'frozen'} onchange={() => setVariant('frozen')} /> As students saw it frozen</label>
-      </fieldset>
+      {#if hiddenFrom !== null}
+        <fieldset class="variant">
+          <legend class="visually-hidden">Board</legend>
+          <label class="choice"><input type="radio" name="variant" checked={variant === 'full'} onchange={() => setVariant('full')} /> Full</label>
+          <label class="choice"
+            ><input type="radio" name="variant" checked={variant === 'frozen'} onchange={() => setVariant('frozen')} /> As students {hiding ? 'see' : 'saw'} it</label
+          >
+        </fieldset>
+      {/if}
     </div>
     {#if boardError}
       <div class="banner banner-error" role="alert"><p>{boardError}</p></div>
@@ -238,7 +245,8 @@
       <StandingsTable
         standings={board}
         {labels}
-        caption="Standings for {contest.title}, {variant === 'full' ? 'full' : 'frozen'}"
+        wide
+        caption="Standings for {contest.title}, {variant === 'full' ? 'full board' : 'as students saw it'}"
       />
     {:else}
       <p class="muted" role="status">Loading the standings</p>
@@ -246,7 +254,7 @@
   </section>
 
   <section class="section" aria-labelledby="stats-title">
-    <h2 id="stats-title">Problems</h2>
+    <h2 id="stats-title">Statistics</h2>
     {#if statsError}
       <p class="field-error">{statsError}</p>
     {:else if stats === null}
@@ -256,6 +264,7 @@
     {:else}
       <div class="table-wrap">
         <table class="table table-dense table-stack stats">
+          <caption class="visually-hidden">Statistics for each problem</caption>
           <thead>
             <tr>
               <th scope="col">Problem</th>
@@ -292,9 +301,6 @@
     {/if}
   </section>
 
-    </div>
-  </div>
-
   <ConfirmDialog
     open={revealOpen}
     title="Reveal the full board?"
@@ -308,32 +314,32 @@
 {/if}
 
 <style>
-  .results-split {
-    margin-top: var(--space-6);
-  }
-
-  /* The board needs the room: the work column takes what the aside leaves. */
-  @media (min-width: 1280px) {
-    .results-split {
-      grid-template-columns: minmax(0, 1fr) minmax(0, var(--measure-aside));
-    }
-  }
-
-  .panel h2 {
-    font-size: var(--fs-sub);
-  }
-
-  .panel {
+  .bar {
+    display: grid;
+    gap: var(--space-3);
+    margin-top: var(--space-5);
     justify-items: start;
+  }
+
+  .reveal-line {
+    max-width: var(--measure-wide);
+  }
+
+  .results-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-3);
+  }
+
+  /* Out of the flow while empty, but still rendered so it announces. */
+  .download-line:empty {
+    position: absolute;
   }
 
   .section {
     display: grid;
     gap: var(--space-3);
     min-width: 0;
-  }
-
-  .section + .section {
     margin-top: var(--space-6);
   }
 
@@ -422,12 +428,6 @@
       color: var(--ink-muted);
       font-family: var(--font-ui);
     }
-  }
-
-  .exports {
-    display: flex;
-    flex-wrap: wrap;
-    gap: var(--space-3);
   }
 
   .letter {

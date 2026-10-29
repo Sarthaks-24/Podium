@@ -655,7 +655,7 @@ test('the console says partial scores as students read them and keeps rows when 
   await expect(feed.getByRole('row', { name: /Arjun Mehta/ })).toContainText('Accepted');
   // Minutes from the start, with the clock time on hover.
   await expect(feed.getByRole('row', { name: /Asha Rao/ }).locator('.when')).toHaveText(/^\+\d+ min$/);
-  await expect(feed.getByRole('row', { name: /Asha Rao/ }).locator('.when')).toHaveAttribute('title', /^\d\d:\d\d$/);
+  await expect(feed.getByRole('row', { name: /Asha Rao/ }).locator('.when')).toHaveAttribute('title', /^(\d{1,2} [A-Z][a-z]{2} )?\d\d:\d\d$/); // a date too, after midnight
 
   await page.route('**/api/admin/contests/4/submissions*', (route) => route.fulfill({ status: 503, json: { error: { code: 'unavailable', message: 'Down.' } } }));
   await page.clock.runFor(10_500);
@@ -871,31 +871,70 @@ test('a contest asks for a reason before it takes an AI problem nobody solved', 
   await expect(reason).toHaveCount(0);
 });
 
-test('results switch boards, link the exports, reveal a held board and open similar code', async ({ page }) => {
+test('results switch boards, reveal a held board once, download the CSV and open similar code', async ({ page }) => {
   const api = await mockApi(page, { who: 'admin', phase: 'after', holdReveal: true });
+  await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto('/admin/contests/4/results');
   await expect(page.getByText('Final standings.')).toBeVisible();
-  await page.getByLabel('As students saw it frozen').check();
+  // The board spans the page (the walk measured 560 px of 1440).
+  const board = await page.locator('.board-wrap').boundingBox();
+  const column = await page.locator('section[aria-labelledby="board-title"]').boundingBox();
+  expect(board!.width).toBeGreaterThanOrEqual(column!.width - 1);
+  await page.getByLabel('As students see it').check();
   await expect(page.getByText(/^Results from \d{2}:\d{2} are hidden/)).toBeVisible();
-  await expect(page.getByRole('link', { name: 'Download CSV' })).toHaveAttribute('href', '/api/admin/contests/4/export.csv');
-  await expect(page.getByRole('link', { name: 'Download JSON' })).toHaveAttribute('href', '/api/admin/contests/4/export.json');
   await expect(page.getByText('8 students scored 40')).toBeAttached();
-  await expect(page.getByText('Students still see the frozen board.', { exact: false })).toBeVisible();
-  // The animated walk and the editorial are not offered (V3-16): Reveal is one button.
+  await expect(page.getByRole('heading', { name: 'Statistics' })).toBeVisible();
+  await expect(page.getByRole('table', { name: 'Statistics for each problem' })).toHaveCount(1);
+  // One row of actions: Reveal, then Similar code beside Download CSV.
+  await expect(page.locator('.results-actions > *')).toHaveText(['Reveal', 'Similar code', /Download CSV/, /Download JSON/]);
+  await expect(page.getByRole('link', { name: 'Download CSV' })).toHaveAttribute('href', /^\/api\/admin\/contests\/4\/export\.csv\?tz=Asia%2F(Kolkata|Calcutta)$/);
+  await expect(page.getByRole('link', { name: 'Download JSON' })).toHaveAttribute('href', '/api/admin/contests/4/export.json');
+  await expect(page.getByText(/^Students see the board without the results from \d{2}:\d{2}\. Reveal shows them the full board\.$/)).toBeVisible();
+  // The animated walk and the editorial are not offered (V3-16): Reveal is one term and one button.
   await expect(page.getByRole('button', { name: 'Start the reveal' })).toHaveCount(0);
   await expect(page.getByRole('heading', { name: 'Editorial' })).toHaveCount(0);
+  await expect(page.getByText(/release/i)).toHaveCount(0);
+
+  // The download says which file it is (pilot P3), in the browser's zone.
+  const waiting = page.waitForEvent('download');
+  await page.getByRole('link', { name: 'Download CSV' }).click();
+  const download = await waiting;
+  expect(download.suggestedFilename()).toBe('week-6-results.csv');
+  // Chromium names India's zone by its old alias; Go's zone data knows both.
+  expect(new URL(download.url()).searchParams.get('tz')).toMatch(/^Asia\/(Kolkata|Calcutta)$/);
+  await expect(page.getByRole('status').filter({ hasText: "Downloading week-6-results.csv to your browser's downloads." })).toBeVisible();
+
+  // It asks once, then the line follows the state (pilot P2).
   await page.getByRole('button', { name: 'Reveal', exact: true }).click();
   const confirmReveal = page.getByRole('dialog', { name: 'Reveal the full board?' });
   await expect(confirmReveal).toContainText('This cannot be undone.');
   await expect(confirmReveal.getByRole('button', { name: 'Cancel' })).toBeFocused();
   await confirmReveal.getByRole('button', { name: 'Reveal', exact: true }).click();
-  await expect(page.getByText('Students still see the frozen board.', { exact: false })).toBeHidden();
-  await expect.poll(() => api.releases).toBe(1);
-  await expect(page.getByText('Revealed. Students see the full board.')).toBeVisible();
+  await expect.poll(() => api.reveals).toBe(1);
+  await expect(page.getByText(/^Revealed \d+ \w{3}, \d{2}:\d{2}\. Students see the full board\.$/)).toBeVisible();
+  await expect(page.getByText('Reveal shows them the full board.', { exact: false })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Reveal', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('dialog')).toHaveCount(0);
   await expect(page.getByLabel('Full', { exact: true })).toBeChecked();
   await expect(page.getByText('Final standings.')).toBeVisible();
+
+  // Similar code opens the integrity page, titled and trailed so.
   await page.getByRole('link', { name: 'Similar code' }).click();
   await expect(page).toHaveURL('/admin/contests/4/integrity');
+  await expect(page).toHaveTitle(/^Similar code · Week 6 contest/);
+  await expect(page.getByRole('navigation', { name: 'Breadcrumb' }).locator('[aria-current="page"]')).toHaveText('Similar code');
+});
+
+test('the reveal is not offered before every student\'s time is up, and nothing says release (pilot P2)', async ({ page }) => {
+  const api = await mockApi(page, { who: 'admin', phase: 'during', holdReveal: true });
+  await page.goto('/admin/contests/4/results');
+  await expect(
+    page.getByText(/^Results from \d{2}:\d{2} stay hidden from students until you reveal them\. The reveal opens at \d{2}:\d{2}, when every student's time is up\.$/),
+  ).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Reveal', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: /release|show the full board/i })).toHaveCount(0);
+  await expect(page.getByText(/release/i)).toHaveCount(0);
+  expect(api.reveals).toBe(0);
 });
 
 test('similar code waits for the end, and no contest has an Integrity tab (V3-16)', async ({ page }) => {
@@ -1153,8 +1192,8 @@ test('keyboard only: an organiser edits a contest, runs the console and reveals 
   await expect(confirmReveal.getByRole('button', { name: 'Cancel' })).toBeFocused();
   await expect.poll(() => hasFocus(confirmReveal)).toBe(true);
   await activate(page, confirmReveal.getByRole('button', { name: 'Reveal', exact: true }));
-  await expect.poll(() => api.releases).toBe(1);
-  await expect(page.getByText('Revealed. Students see the full board.')).toBeVisible();
+  await expect.poll(() => api.reveals).toBe(1);
+  await expect(page.getByText(/^Revealed .+\. Students see the full board\.$/)).toBeVisible();
   await activate(page, page.getByRole('link', { name: 'Similar code' }));
   await expect(page).toHaveURL('/admin/contests/4/integrity');
 });

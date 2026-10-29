@@ -196,7 +196,7 @@ export async function mockApi(page: Page, options: Options = {}) {
     adminProblems: [{ label: 'A', problem_id: 11, title: 'A plus B', ready: true, max_score: 100 }] as Json[],
     holdReveal: false,
     revealedAt: null as number | null,
-    releases: 0,
+    reveals: 0,
     adminDeletes: [] as Json[],
     feedQueries: [] as string[],
     creates: [] as Json[],
@@ -588,7 +588,7 @@ export async function mockApi(page: Page, options: Options = {}) {
         return json(route, 200, adminContest());
       }
       if (path === '/api/admin/contests/4/reveal' && method === 'POST') {
-        state.releases++;
+        state.reveals++;
         state.revealedAt = nowMs();
         return json(route, 200, adminContest());
       }

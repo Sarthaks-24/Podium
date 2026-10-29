@@ -11,6 +11,8 @@ import {
   noteLength,
   signalDetail,
   signalStudents,
+  similarNumbers,
+  similarReason,
   statsLine,
   type Signal,
 } from './review';
@@ -138,6 +140,18 @@ describe('wording', () => {
     expect(evidenceSize({ shared: 12 })).toBe('12 fingerprints shared');
     expect(evidenceSize({ spans_a: [] })).toBe('');
     expect(evidenceSize(null)).toBe('');
+  });
+
+  it('words the strength of similar code with its reason, never a bare number (pilot P11)', () => {
+    // The pilot's "Weak 1.00": 15 of 15 fingerprints shared.
+    expect(similarReason(1, { shared: 15, fingerprints: 15 })).toBe('Short programs, identical');
+    expect(similarReason(0.94, { shared: 41 })).toBe('Long programs, nearly identical');
+    expect(similarReason(0.78, { shared: 30 })).toBe('Medium-length programs, mostly the same');
+    expect(similarReason(0.62, { shared: 60 })).toBe('Long programs, partly the same');
+    // Signals stored before the counts say only how alike the code is.
+    expect(similarReason(0.81, null)).toBe('Mostly the same');
+    expect(similarNumbers(1, { shared: 15, fingerprints: 15, tokens: 48 })).toBe('15 of 15 fingerprints shared, shorter program 48 tokens, score 1.00');
+    expect(similarNumbers(0.8, null)).toBe('Score 0.80');
   });
 
   it('says what each kind found', () => {

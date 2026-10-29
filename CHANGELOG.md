@@ -4,6 +4,13 @@ Dated entries per release. Unreleased work is listed at the top.
 
 ## Unreleased
 
+### v3 stage C5: Results (2026-10-30)
+
+- Results lead with one line on where the reveal stands, then Reveal (only once there is something to reveal), Similar code, Download CSV and Download JSON. Reveal asks once; nothing says "release" any more. The step-by-step reveal overlay is deleted.
+- The board spans the page and one statistics table follows.
+- The CSV writes the browser's local time (`?tz=`, the server's zone otherwise) and a dash for a problem not tried; the download shows a line with the file name.
+- Similar code is the page's name, and strength reads in words with the reason under it ("Weak", "Short programs, identical"), the numbers in the details.
+
 ### v3 stage C4: Settings (2026-10-29)
 
 - People is now Settings, for owners, with three tabs: People, Sign-in and Organisation. The tab is in the address, so a reload keeps it. At 1440 px each tab is under 1,000 px of content (the page was 2,611).

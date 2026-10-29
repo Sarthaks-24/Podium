@@ -6,7 +6,7 @@
  * - "?" opens the list from anywhere, unless the person is typing.
  * - "[" and "]" open the previous and next problem in a contest, also only
  *   when the person is not typing: both are common characters in code.
- * - The rest (Ctrl+Enter, Ctrl+', Ctrl+S, the reveal keys) are bound where
+ * - The rest (Ctrl+Enter, Ctrl+', Ctrl+S) are bound where
  *   they work; this file only describes them, so the list and the
  *   behaviour are kept side by side in the tests.
  */
@@ -71,8 +71,8 @@ export const NOT_AVAILABLE = 'Not available, and why';
  * cache/v3/design/editor.md section 3. Every row outside "Anywhere",
  * "Solving a problem" and "Not available" is pressed by
  * web/tests/editor-keys.spec.ts, which fails on a row it has no check for.
- * Organisers also see the problem editor and the reveal; students never
- * see admin screens, so they do not see those keys either.
+ * Organisers also see the problem editor's key; students never see admin
+ * screens, so they do not see it either.
  */
 export function shortcutGroups(opts: { mac: boolean; organiser: boolean }): ShortcutGroup[] {
   const mod = opts.mac ? 'Cmd' : 'Ctrl';
@@ -173,20 +173,10 @@ export function shortcutGroups(opts: { mac: boolean; organiser: boolean }): Shor
     },
   ];
   if (opts.organiser) {
-    groups.push(
-      {
-        title: 'Problem editor',
-        items: [{ keys: [`${mod}+S`], action: 'Save changes' }],
-      },
-      {
-        title: 'Reveal',
-        items: [
-          { keys: ['Space', 'Right arrow'], joiner: 'or', action: 'Resolve the next row' },
-          { keys: ['Left arrow'], action: 'Go back one row' },
-          { keys: ['Esc'], action: 'Leave the reveal' },
-        ],
-      },
-    );
+    groups.push({
+      title: 'Problem editor',
+      items: [{ keys: [`${mod}+S`], action: 'Save changes' }],
+    });
   }
   return groups;
 }

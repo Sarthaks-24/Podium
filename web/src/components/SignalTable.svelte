@@ -1,10 +1,11 @@
 <!--
   SignalTable: integrity signals as a table (docs/INTEGRITY.md): the
-  students named, the kind in words, the strength in words with the raw
-  number beside it (a similarity to two places), what was found, and for
-  similar code how much code is behind the score and a link to the
+  students named, the kind in words, the strength in words, for similar
+  code with its reason under it ("Short programs, identical", never a bare
+  "Weak 1.00", pilot P11), what was found, and for similar code the
+  numbers behind it (fingerprints, tokens, score) and a link to the
   side-by-side view. Under a table with similar code, one line says what
-  the score means. With `selectable` each row starts with a checkbox for
+  the strength weighs. With `selectable` each row starts with a checkbox for
   choosing signals to open a case from. Under 768 px each row reads as the
   students, then the kind and strength, then the details. Props: `signals`,
   `users` and `problems` (the run's maps), `contestId`, `caption`,
@@ -15,13 +16,13 @@
 -->
 <script lang="ts">
   import {
-    SCORE_MEANING,
-    evidenceSize,
-    formatScore,
+    STRENGTH_MEANING,
     kindWord,
     problemName,
     signalDetail,
     signalStudents,
+    similarNumbers,
+    similarReason,
     strengthWord,
     type ReviewProblem,
     type ReviewUser,
@@ -68,7 +69,7 @@
     <tbody>
       {#each signals as s, row (s.id)}
         {@const who = signalStudents(s, users)}
-        {@const size = s.kind === 'similar' ? evidenceSize(s.evidence) : ''}
+        {@const size = s.kind === 'similar' ? similarNumbers(s.score, s.evidence) : ''}
         <tr class:chosen={selected.has(s.id)}>
           {#if selectable}
             <td class="pick">
@@ -85,7 +86,11 @@
           <th scope="row" class="who">{who}</th>
           {#if showProblem}<td class="prob">{problemName(problems, s.problem_id)}</td>{/if}
           <td class="kind">{kindWord(s.kind)}</td>
-          <td class="strength"><span class="word word-{s.strength}">{strengthWord(s.strength)}</span> <span class="mono">{formatScore(s.score, s.kind)}</span></td>
+          <td class="strength"
+            ><span class="word word-{s.strength}">{strengthWord(s.strength)}</span>{#if s.kind === 'similar'}<span class="reason"
+                ><span class="visually-hidden">:</span> {similarReason(s.score, s.evidence)}</span
+              >{/if}</td
+          >
           <td class="detail">{signalDetail(s)}{#if size}<span class="size"><span class="visually-hidden">. </span>{size}</span>{/if}</td>
           <td class="link">
             {#if s.kind === 'similar'}
@@ -100,7 +105,7 @@
   </table>
 </div>
 {#if anySimilar}
-  <p class="meaning">{SCORE_MEANING}</p>
+  <p class="meaning">{STRENGTH_MEANING}</p>
 {/if}
 
 <style>
@@ -133,8 +138,9 @@
     font-weight: 500;
   }
 
-  .strength {
-    white-space: nowrap;
+  .reason {
+    display: block;
+    color: var(--ink-muted);
   }
 
   .word-strong {
@@ -163,7 +169,7 @@
   /* Fixed shares, so the tables of every problem line up. */
   @media (min-width: 768px) {
     .c-who {
-      width: 24%;
+      width: 20%;
     }
 
     .c-prob {
@@ -171,11 +177,11 @@
     }
 
     .c-kind {
-      width: 15%;
+      width: 13%;
     }
 
     .c-strength {
-      width: 11%;
+      width: 20%;
     }
   }
 

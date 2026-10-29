@@ -230,9 +230,40 @@ func TestCSVInjectionIsNeutralised(t *testing.T) {
 	}
 	c := &Contest{Problems: []ContestProblem{{Label: "A"}}}
 	var buf bytes.Buffer
-	WriteCSV(&buf, c, []ExportRow{{Row: Row{Rank: 1, Name: "=1+1", Total: 40, Cells: []Cell{{Label: "A", Score: 40}}}, Email: "a@b.c"}})
+	WriteCSV(&buf, c, []ExportRow{{Row: Row{Rank: 1, Name: "=1+1", Total: 40, Cells: []Cell{{Label: "A", Score: 40, Tried: true}}}, Email: "a@b.c"}}, time.UTC)
 	if lines := strings.Split(strings.TrimSpace(buf.String()), "\n"); lines[1] != "1,'=1+1,a@b.c,,40,40" {
 		t.Errorf("csv %q", buf.String())
+	}
+}
+
+// The CSV reads like the screens (pilot P3): the start time in the
+// organiser's zone, named in the header, and a dash for a problem the
+// student did not try, while a tried zero stays 0.
+func TestCSVWritesLocalTimeAndADashForNotTried(t *testing.T) {
+	ist := time.FixedZone("IST", 5*3600+1800)
+	started := time.Date(2026, 10, 28, 14, 42, 5, 0, time.UTC).UnixMilli()
+	c := &Contest{Problems: []ContestProblem{{Label: "A"}, {Label: "B"}, {Label: "C"}}}
+	rows := []ExportRow{{
+		Row:       Row{Rank: 1, Name: "Asha", Total: 40, Cells: []Cell{{Label: "A", Score: 40, Tried: true}, {Label: "B", Score: 0, Tried: true}, {Label: "C"}}},
+		Email:     "asha@college.edu",
+		StartedAt: &started,
+	}}
+	var buf bytes.Buffer
+	if err := WriteCSV(&buf, c, rows, ist); err != nil {
+		t.Fatal(err)
+	}
+	lines := strings.Split(strings.TrimSpace(buf.String()), "\n")
+	if want := "rank,name,email,started (IST),total,A,B,C"; lines[0] != want {
+		t.Errorf("header %q, want %q", lines[0], want)
+	}
+	if want := "1,Asha,asha@college.edu,2026-10-28 20:12:05,40,40,0,-"; lines[1] != want {
+		t.Errorf("row %q, want %q", lines[1], want)
+	}
+	if loc := ExportLocation("Not/AZone"); loc != time.Local {
+		t.Errorf("an unknown zone gave %v, want the server's own", loc)
+	}
+	if loc := ExportLocation("UTC"); loc.String() != "UTC" {
+		t.Errorf("UTC gave %v", loc)
 	}
 }
 

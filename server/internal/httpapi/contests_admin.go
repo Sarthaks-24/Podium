@@ -718,7 +718,8 @@ func (d Deps) exportCSV(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var buf bytes.Buffer
-	if err := contests.WriteCSV(&buf, c, rows); err != nil {
+	// The browser's zone, so the start times read as they do on the screens (pilot P3).
+	if err := contests.WriteCSV(&buf, c, rows, contests.ExportLocation(r.URL.Query().Get("tz"))); err != nil {
 		d.internalError(w, r, err)
 		return
 	}

@@ -291,7 +291,7 @@ func TestM4ExportEscapesAndStats(t *testing.T) {
 	s.at(start, 1)
 	asha.do("POST", "/api/contests/exp/start", map[string]any{"accept_honour": true}, s.srv.URL)
 	s.submit(asha, "exp", "A", "int32")
-	req, _ := http.NewRequest("GET", fmt.Sprintf("%s/api/admin/contests/%d/export.csv", s.srv.URL, id), nil)
+	req, _ := http.NewRequest("GET", fmt.Sprintf("%s/api/admin/contests/%d/export.csv?tz=UTC", s.srv.URL, id), nil)
 	resp, err := owner.client.Do(req)
 	if err != nil {
 		t.Fatal(err)
@@ -300,7 +300,7 @@ func TestM4ExportEscapesAndStats(t *testing.T) {
 	resp.Body.Close()
 	lines := strings.Split(strings.TrimSpace(string(body)), "\n")
 	if resp.Header.Get("Content-Type") != "text/csv; charset=utf-8" || len(lines) != 2 ||
-		lines[0] != "rank,name,email,started,total,A" {
+		lines[0] != "rank,name,email,started (UTC),total,A" {
 		t.Fatalf("csv %q", body)
 	}
 	if !strings.HasPrefix(lines[1], `1,"'=HYPERLINK(""x"")",asha@college.edu,`) || !strings.HasSuffix(lines[1], ",40,40") {

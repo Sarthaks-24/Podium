@@ -78,6 +78,8 @@ export function signals(): Json[] {
     { id: 33, problem_id: 11, kind: 'wrong_output', strength: 'moderate', score: 3, user_a: 10, user_b: 11, evidence: { tests: [3, 5, 7] } },
     { id: 35, problem_id: 11, kind: 'probing', strength: 'moderate', score: 8, user_a: 13, evidence: { distinct: 8, attempts: 14 } },
     { id: 36, problem_id: 11, kind: 'similar', strength: 'weak', score: 0.62, user_a: 10, user_b: 14, submission_a: 320, submission_b: 321, evidence: { shared: 12, spans_a: [], spans_b: [], language_a: 'python3', language_b: 'python3' } },
+    // Pilot P11: two short programs that match completely, weak however high the score.
+    { id: 37, problem_id: 11, kind: 'similar', strength: 'weak', score: 1, user_a: 11, user_b: 12, submission_a: 322, submission_b: 323, evidence: { shared: 15, fingerprints: 15, tokens: 48, spans_a: [], spans_b: [], language_a: 'python3', language_b: 'python3' } },
   ];
 }
 
@@ -163,7 +165,7 @@ export async function mockApi(page: Page, options: Options = {}) {
     state: state.run?.state ?? 'done',
     started_at: now - 3 * MIN,
     finished_at: state.run?.state === 'running' ? null : now - 2 * MIN,
-    stats: { students: 30, submissions: 84, problems: 2, signals: { similar: 3, wrong_output: 1, hardcoded: 1, probing: 1 }, clusters: 2 },
+    stats: { students: 30, submissions: 84, problems: 2, signals: { similar: 4, wrong_output: 1, hardcoded: 1, probing: 1 }, clusters: 3 },
     signals: state.run?.state === 'running' ? [] : liveSignals(),
     users: USERS,
     problems: PROBLEMS,
@@ -496,7 +498,7 @@ export const SCREENS: Screen[] = [
     name: 'integrity',
     path: '/admin/contests/4/integrity',
     options: {},
-    title: 'Integrity · Week 6 contest · podium',
+    title: 'Similar code · Week 6 contest · podium',
     ready: async (page) => {
       await expect(page.getByRole('table', { name: 'Signals on B. Interval covering' })).toBeVisible();
       await expect(page.getByRole('region', { name: 'Decisions' }).getByRole('row', { name: /Meera Iyer/ })).toBeVisible();
@@ -506,7 +508,7 @@ export const SCREENS: Screen[] = [
     name: 'integrity-live',
     path: '/admin/contests/4/integrity',
     options: { live: true, unchecked: true },
-    title: 'Integrity · Week 6 contest · podium',
+    title: 'Similar code · Week 6 contest · podium',
     ready: (page) => expect(page.getByText('Not checked yet.', { exact: false })).toBeVisible(),
   },
   {

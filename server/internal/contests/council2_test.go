@@ -136,7 +136,7 @@ func TestExcludedStudentIsAbsentFromBoardAndCSV(t *testing.T) {
 		t.Fatal(err)
 	}
 	var csv strings.Builder
-	if err := WriteCSV(&csv, c, rows); err != nil {
+	if err := WriteCSV(&csv, c, rows, nil); err != nil {
 		t.Fatal(err)
 	}
 	if len(board.Rows) != 2 || len(rows) != 2 {
