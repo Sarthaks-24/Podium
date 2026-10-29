@@ -7,8 +7,9 @@
 // sweep checks there is no horizontal page overflow, exactly one h1 and the
 // expected title, then saves a full-page screenshot to
 // cache/screenshots-m1/<screen>-<width>-<theme>.png. Further tests cover the
-// keyboard path through /admin/people, the confirm and add flows, the
-// sign-in redirects and the small-screen menu.
+// keyboard path through the Settings tabs at /admin/people, the confirm and
+// add flows, each tab's height, the one first-run checklist, the sign-in
+// redirects and the small-screen menu.
 import { expect, test, type Page } from '@playwright/test';
 import { activate } from './keyboard';
 import { shots, WIDTHS, THEMES, mockApi, SCREENS } from './mocks/screens';
@@ -67,27 +68,52 @@ function focusInfo(page: Page) {
   });
 }
 
+/** Presses Tab until `last` has focus (or 40 times), checking each focus shows; answers the names reached. */
+async function tabThrough(page: Page, last: string): Promise<string[]> {
+  const reached: string[] = [];
+  for (let i = 0; i < 40; i++) {
+    await page.keyboard.press('Tab');
+    const info = await focusInfo(page);
+    if (info === null) break;
+    expect(info.visible, `no visible focus on ${info.tag} "${info.name}"`).toBe(true);
+    reached.push(info.name);
+    if (info.name === last) break;
+  }
+  return reached;
+}
+
 for (const width of [1440, 375]) {
-  test(`keyboard reaches every control on /admin/people at ${width}px`, async ({ page }) => {
+  test(`keyboard reaches every control on each Settings tab at ${width}px`, async ({ page }) => {
     await mockApi(page, 'owner');
     await page.setViewportSize({ width, height: 900 });
     await page.goto('/admin/people');
     await expect(page.getByRole('table').first()).toBeVisible();
 
-    const reached: string[] = [];
-    for (let i = 0; i < 40; i++) {
-      await page.keyboard.press('Tab');
-      const info = await focusInfo(page);
-      if (info === null) break;
-      expect(info.visible, `no visible focus on ${info.tag} "${info.name}"`).toBe(true);
-      reached.push(info.name);
-      if (info.name === 'Reset Google link') break;
+    const people = await tabThrough(page, 'Add organiser');
+    for (const name of ['People', 'Remove Arjun Mehta', 'Remove ta@college.edu', 'Add organiser']) {
+      expect(people, `Tab did not reach "${name}"`).toContain(name);
+    }
+    expect(people).not.toContain('Remove Priya Raman');
+    // One tab stop for the row of tabs; the arrows move between them and show each one.
+    expect(people).not.toContain('Sign-in');
+
+    await page.getByRole('tab', { name: 'People' }).focus();
+    await page.keyboard.press('ArrowRight');
+    await expect(page.getByRole('tab', { name: 'Sign-in' })).toBeFocused();
+    await expect(page.getByRole('tab', { name: 'Sign-in' })).toHaveAttribute('aria-selected', 'true');
+    await expect(page).toHaveURL('/admin/people?tab=sign-in');
+    const signIn = await tabThrough(page, 'Reset Google link');
+    for (const name of ['Remove @college.edu', 'Remove @cs.college.edu', 'Add domain', 'Reset Google link']) {
+      expect(signIn, `Tab did not reach "${name}"`).toContain(name);
     }
 
-    for (const name of ['Add organiser', 'Remove Arjun Mehta', 'Remove ta@college.edu', 'Remove @college.edu', 'Remove @cs.college.edu', 'Add domain', 'Reset Google link']) {
-      expect(reached, `Tab did not reach "${name}"`).toContain(name);
+    await page.getByRole('tab', { name: 'Sign-in' }).focus();
+    await page.keyboard.press('End');
+    await expect(page.getByRole('tab', { name: 'Organisation' })).toBeFocused();
+    const organisation = await tabThrough(page, 'History of changes');
+    for (const name of ['Save organisation details', 'History of changes']) {
+      expect(organisation, `Tab did not reach "${name}"`).toContain(name);
     }
-    expect(reached).not.toContain('Remove Priya Raman');
   });
 }
 
@@ -96,11 +122,11 @@ test('removing an organiser asks first and confirms with a toast', async ({ page
   await page.goto('/admin/people');
   await page.getByRole('button', { name: 'Remove Arjun Mehta' }).click();
 
-  const dialog = page.getByRole('dialog', { name: 'Remove Arjun Mehta as admin?' });
+  const dialog = page.getByRole('dialog', { name: 'Remove Arjun Mehta as organiser?' });
   await expect(dialog).toBeVisible();
   await expect(dialog).toContainText('They keep their account and become a student.');
   await expect(dialog.getByRole('button', { name: 'Cancel' })).toBeFocused();
-  await page.screenshot({ path: `${shots()}people-owner-confirm-1280-light.png` });
+  await page.screenshot({ path: `${shots()}settings-people-confirm-1280-light.png` });
 
   await page.keyboard.press('Escape');
   await expect(dialog).toBeHidden();
@@ -138,7 +164,7 @@ test('adding an organiser shows server errors inline and success as a toast', as
 
 test('domains can be added and removed', async ({ page }) => {
   await mockApi(page, 'owner');
-  await page.goto('/admin/people');
+  await page.goto('/admin/people?tab=sign-in');
 
   await page.getByLabel('Domain', { exact: true }).fill('@Alumni.College.edu');
   await page.getByRole('button', { name: 'Add domain' }).click();
@@ -156,7 +182,7 @@ test('domains can be added and removed', async ({ page }) => {
 
 test('resetting a Google account link asks first and reports errors inline', async ({ page }) => {
   const state = await mockApi(page, 'owner');
-  await page.goto('/admin/people');
+  await page.goto('/admin/people?tab=sign-in');
   const section = page.getByRole('region', { name: 'Account help' });
   await expect(section).toContainText("Reset Google link when someone's address moved to a new Google account, so their next sign-in is accepted.");
   const email = section.getByLabel('Email', { exact: true });
@@ -203,7 +229,7 @@ test('the account actions wait until the lookup names the account (C2-031)', asy
       await route.fallback();
     },
   );
-  await page.goto('/admin/people');
+  await page.goto('/admin/people?tab=sign-in');
   const section = page.getByRole('region', { name: 'Account help' });
   await section.getByLabel('Email', { exact: true }).fill('asha@college.edu');
   await expect(section.locator('#account-who')).toHaveText('Looking up the account.');
@@ -215,7 +241,7 @@ test('the account actions wait until the lookup names the account (C2-031)', asy
 
 test('an owner ends sessions, disables and enables an account, each asked first', async ({ page }) => {
   const state = await mockApi(page, 'owner');
-  await page.goto('/admin/people');
+  await page.goto('/admin/people?tab=sign-in');
   const section = page.getByRole('region', { name: 'Account help' });
   const email = section.getByLabel('Email', { exact: true });
   await expect(section).toContainText('No account is disabled.');
@@ -248,7 +274,7 @@ test('an owner ends sessions, disables and enables an account, each asked first'
   await disable.getByRole('button', { name: 'Disable account' }).click();
   await expect(toasts(page).getByText('Disabled asha@college.edu', { exact: true })).toBeVisible();
   await expect(section.getByRole('listitem')).toContainText(['asha@college.edu']);
-  await page.screenshot({ path: `${shots()}people-access-1280-light.png`, fullPage: true });
+  await page.screenshot({ path: `${shots()}settings-sign-in-access-1280-light.png`, fullPage: true });
 
   await section.getByRole('button', { name: 'Enable asha@college.edu' }).click();
   await page.getByRole('dialog', { name: 'Enable asha@college.edu?' }).getByRole('button', { name: 'Enable account' }).click();
@@ -263,7 +289,7 @@ test('a role changes only after the owner confirms it', async ({ page }) => {
   const select = page.getByRole('combobox', { name: 'Role for Arjun Mehta' });
   await select.selectOption('owner');
   const dialog = page.getByRole('dialog', { name: 'Make Arjun Mehta an owner?' });
-  await expect(dialog).toContainText('Owners can also manage people, domains and accounts on this page.');
+  await expect(dialog).toContainText('Owners can also change the settings: people, sign-in and the organisation.');
   // Until confirmed, the row still says what is true.
   await expect(select).toHaveValue('admin');
   await dialog.getByRole('button', { name: 'Cancel' }).click();
@@ -303,28 +329,16 @@ test('an organiser who signed in without a name is not shown as invited', async 
   await expect(page.getByRole('row', { name: /^Invited ta@college/ })).toHaveCount(1);
 });
 
-test('a fresh install starts with a short checklist', async ({ page }) => {
-  const api = await mockApi(page, 'owner');
-  api.domains = [];
-  api.people = api.people.filter((p) => p.locked);
-  await page.goto('/admin/people');
-  const start = page.getByRole('region', { name: 'Getting started' });
-  await expect(start.getByRole('listitem')).toHaveCount(3);
-  await expect(start.getByRole('listitem').nth(0)).toContainText('To do');
-  await expect(start).toContainText(`Share the address with your students: ${new URL(page.url()).origin}`);
-  await page.screenshot({ path: `${shots()}people-fresh-1280-light.png`, fullPage: true });
-
-  await page.getByLabel('Domain', { exact: true }).fill('college.edu');
-  await page.getByRole('button', { name: 'Add domain' }).click();
-  await expect(start.getByRole('listitem').nth(0)).toContainText('Done');
-});
-
-test('History lists the site changes and filters them', async ({ page }) => {
+test('History of changes sits behind the Organisation tab, and lists and filters the site changes', async ({ page }) => {
   const api = await mockApi(page, 'owner');
   await page.goto('/admin/people');
-  const history = page.getByRole('region', { name: 'History' });
+  await expect(page.getByRole('table').first()).toBeVisible();
+  expect(api.auditQueries).toEqual([]);
+  await page.getByRole('tab', { name: 'Organisation' }).click();
+  await page.getByRole('button', { name: 'History of changes' }).click();
+  const history = page.getByRole('dialog', { name: 'History of changes' });
   await expect(history.getByRole('listitem')).toHaveCount(3);
-  await expect(history.getByRole('listitem').first()).toContainText('Made ta@college.edu an admin');
+  await expect(history.getByRole('listitem').first()).toContainText('Made ta@college.edu an organiser');
   await expect(history.getByRole('listitem').first()).toContainText('priya@college.edu (Owner)');
   await expect(history.getByRole('listitem').last()).toContainText('The server');
 
@@ -337,6 +351,61 @@ test('History lists the site changes and filters them', async ({ page }) => {
   await expect(history).toContainText('No change matches. Clear the filter to see everything.');
   expect(api.auditQueries).toContain('page=1&action=domain_added');
   expect(api.auditQueries).toContain('page=1&q=nobody');
+  await page.keyboard.press('Escape');
+  await expect(history).toBeHidden();
+  await expect(page.getByRole('button', { name: 'History of changes' })).toBeFocused();
+});
+
+test('each Settings tab at 1440 px is under 1,000 px tall, and shows one tab at a time', async ({ page }) => {
+  await mockApi(page, 'owner');
+  // A short window, so the page's height is its content's, not the window's (the page fills at least the window).
+  await page.setViewportSize({ width: 1440, height: 400 });
+  await page.goto('/admin/people');
+  await expect(page.getByRole('table').first()).toBeVisible();
+  await page.evaluate(() => document.fonts.ready);
+  for (const [name, path] of [['People', '/admin/people'], ['Sign-in', '/admin/people?tab=sign-in'], ['Organisation', '/admin/people?tab=organisation']] as const) {
+    await page.getByRole('tab', { name }).click();
+    await expect(page).toHaveURL(path);
+    await expect(page.getByRole('tabpanel')).toHaveCount(1);
+    const height = await page.evaluate(() => document.documentElement.scrollHeight);
+    test.info().annotations.push({ type: 'height', description: `${name} tab at 1440 px: ${height} px` });
+    expect(height, `${name} tab height`).toBeLessThan(1000);
+    await page.screenshot({ path: `${shots()}settings-${name.toLowerCase()}-1440-light.png`, fullPage: true });
+  }
+  // A reload keeps the tab.
+  await page.reload();
+  await expect(page.getByRole('tab', { name: 'Organisation' })).toHaveAttribute('aria-selected', 'true');
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Settings');
+});
+
+test('the first-contest checklist appears once: on the contests home, never in Settings', async ({ page }) => {
+  const api = await mockApi(page, 'owner');
+  api.domains = [];
+  api.people = api.people.filter((p) => p.locked);
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto('/');
+  const checklist = page.getByRole('region', { name: 'Your first contest' });
+  await expect(checklist).toHaveCount(1);
+  await expect(checklist.getByRole('listitem').nth(0)).toContainText('To do');
+  await expect(checklist.getByRole('listitem').nth(1)).toContainText('Add another organiser in Settings, so someone else can run a contest.');
+  await expect(checklist.getByRole('listitem').nth(1)).toContainText('To do');
+
+  await checklist.getByRole('listitem').nth(0).getByRole('link', { name: 'Settings' }).click();
+  await expect(page).toHaveURL('/admin/people?tab=sign-in');
+  await expect(page.getByRole('tab', { name: 'Sign-in' })).toHaveAttribute('aria-selected', 'true');
+  for (const tab of ['People', 'Sign-in', 'Organisation']) {
+    await page.getByRole('tab', { name: tab }).click();
+    await expect(page.getByRole('tabpanel')).toBeVisible();
+    await expect(page.getByText('Your first contest')).toHaveCount(0);
+    await expect(page.getByText('Getting started')).toHaveCount(0);
+    await expect(page.getByText('To do', { exact: true })).toHaveCount(0);
+  }
+  await page.getByRole('tab', { name: 'Sign-in' }).click();
+  await page.getByLabel('Domain', { exact: true }).fill('college.edu');
+  await page.getByRole('button', { name: 'Add domain' }).click();
+  await expect(toasts(page).getByText('Added @college.edu')).toBeVisible();
+  await page.getByRole('navigation', { name: 'Main' }).getByRole('link', { name: 'Contests' }).click();
+  await expect(page.getByRole('region', { name: 'Your first contest' }).getByRole('listitem').nth(0)).toContainText('Done');
 });
 
 test('signed-out visitors are sent to sign in and back', async ({ page }) => {
@@ -358,11 +427,12 @@ test('signed-in organisers at /signin land on their contests, and sign out retur
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('Contests');
   const nav = page.getByRole('navigation', { name: 'Main' });
   await expect(nav.getByRole('link', { name: 'Contests' })).toHaveAttribute('aria-current', 'page');
-  await expect(nav.getByRole('link')).toHaveText(['Contests', 'Problem bank', 'People']);
+  await expect(nav.getByRole('link')).toHaveText(['Contests', 'Problem bank', 'Settings']);
 
-  await page.getByRole('navigation', { name: 'Main' }).getByRole('link', { name: 'People' }).click();
+  await page.getByRole('navigation', { name: 'Main' }).getByRole('link', { name: 'Settings' }).click();
   await expect(page).toHaveURL('/admin/people');
-  await expect(page.getByRole('link', { name: 'People' })).toHaveAttribute('aria-current', 'page');
+  await expect(nav.getByRole('link', { name: 'Settings' })).toHaveAttribute('aria-current', 'page');
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Settings');
   await expect(page.getByRole('heading', { level: 1 })).toBeFocused();
 
   await page.getByRole('button', { name: 'Priya Raman' }).click();
@@ -390,11 +460,11 @@ test('the small-screen menu opens, and Escape closes it', async ({ page }) => {
   await page.goto('/admin/people');
   const menu = page.getByRole('button', { name: 'Menu' });
   await expect(menu).toHaveAttribute('aria-expanded', 'false');
-  await expect(page.getByRole('link', { name: 'People' })).toBeHidden();
+  await expect(page.getByRole('link', { name: 'Settings' })).toBeHidden();
 
   await menu.click();
   await expect(menu).toHaveAttribute('aria-expanded', 'true');
-  await expect(page.getByRole('link', { name: 'People' })).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Settings' })).toBeVisible();
   // The account items sit in the panel itself, not in a second popover.
   await expect(page.locator('#site-menu').getByText('Signed in as priya@college.edu')).toBeVisible();
   await page.screenshot({ path: `${shots()}home-owner-menu-open-375-light.png`, fullPage: true });
@@ -484,7 +554,7 @@ test('from 768 px the organiser header fits one row', async ({ page }) => {
     expect(Math.abs((await top('.nav a')) - mark), `nav on the word-mark's row at ${width}`).toBeLessThan(8);
     expect(Math.abs((await top('.account-popover .trigger')) - mark), `account on the word-mark's row at ${width}`).toBeLessThan(8);
     await expect(page.getByRole('button', { name: width < 1024 ? 'Account' : 'Priya Raman', exact: true })).toBeVisible();
-    await page.screenshot({ path: `${shots()}people-owner-header-${width}-light.png` });
+    await page.screenshot({ path: `${shots()}settings-header-${width}-light.png` });
   }
 });
 
@@ -579,7 +649,7 @@ test('a network failure on start-up is reported', async ({ page }) => {
 
 test('the owner saves the organisation details, and a bad field says what to fix (C1-011)', async ({ page }) => {
   const state = await mockApi(page, 'owner');
-  await page.goto('/admin/people');
+  await page.goto('/admin/people?tab=organisation');
   const section = page.getByRole('region', { name: 'Organisation details' });
   await section.getByLabel('Organisation name').fill('Example College of Engineering');
   await section.getByLabel('Contact email').fill('not-an-address');
@@ -599,12 +669,23 @@ test('a first-run owner sees the steps to a first contest, with what is done (C2
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto('/');
   const steps = page.getByRole('region', { name: 'Your first contest' }).getByRole('listitem');
-  await expect(steps).toHaveCount(4);
-  // Domains exist in the mock, validated problems do not.
-  await expect(steps.nth(0)).toContainText("Allow your college's email domain on People, so students can sign in.");
+  await expect(steps).toHaveCount(5);
+  // Domains and other organisers exist in the mock, validated problems do not.
+  await expect(steps.nth(0)).toContainText("Allow your college's email domain in Settings, so students can sign in.");
   await expect(steps.nth(0)).toContainText('Done');
-  await expect(steps.nth(0).getByRole('link', { name: 'People' })).toHaveAttribute('href', '/admin/people');
-  await expect(steps.nth(1)).toContainText('To do');
-  await expect(steps.nth(1).getByRole('link', { name: 'problem bank' })).toHaveAttribute('href', '/admin/problems');
-  await expect(steps.nth(3)).toContainText('Share the address with your students: http://127.0.0.1:5179');
+  await expect(steps.nth(0).getByRole('link', { name: 'Settings' })).toHaveAttribute('href', '/admin/people?tab=sign-in');
+  await expect(steps.nth(1)).toContainText('Done');
+  await expect(steps.nth(1).getByRole('link', { name: 'Settings' })).toHaveAttribute('href', '/admin/people');
+  await expect(steps.nth(2)).toContainText('To do');
+  await expect(steps.nth(2).getByRole('link', { name: 'problem bank' })).toHaveAttribute('href', '/admin/problems');
+  await expect(steps.nth(4)).toContainText('Share the address with your students: http://127.0.0.1:5179');
+});
+
+test('a student who opens Settings sees who may, under the page title', async ({ page }) => {
+  await mockApi(page, 'student');
+  await page.goto('/admin/people');
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Settings');
+  await expect(page.getByRole('main')).toContainText('Only owners can change the settings.');
+  await expect(page.getByRole('tab')).toHaveCount(0);
+  await expect(page).toHaveTitle('Settings · podium');
 });

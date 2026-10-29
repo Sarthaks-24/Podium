@@ -156,7 +156,7 @@ test('a decision about one student is recorded with a reason and listed on the i
 test('students cannot open the organiser screens', async ({ page }) => {
   await mockApi(page, { who: 'student' });
   await page.goto('/admin/contests/4/integrity');
-  await expect(page.getByText('Only organisers can review integrity.', { exact: false })).toBeVisible();
+  await expect(page.getByText('Only organisers can manage contests.', { exact: false })).toBeVisible();
 });
 
 test('Similar code on Results leads to the integrity page, which has no tab of its own (V3-16)', async ({ page }) => {

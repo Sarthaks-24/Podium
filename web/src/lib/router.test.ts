@@ -7,7 +7,7 @@ describe('matchRoute', () => {
   it('matches the known screens', () => {
     expect(matchRoute('/').route.name).toBe('home');
     expect(matchRoute('/signin').route.name).toBe('signin');
-    expect(matchRoute('/admin/people').route.name).toBe('people');
+    expect(matchRoute('/admin/people').route.name).toBe('settings');
     expect(matchRoute('/admin/problems').route.name).toBe('problems');
     expect(matchRoute('/admin/ai').route.name).toBe('not-found');
     expect(matchRoute('/admin/ai/new').route.name).toBe('ai-new');
@@ -32,7 +32,7 @@ describe('matchRoute', () => {
 
   it('ignores trailing slashes', () => {
     expect(matchRoute('/signin/').route.name).toBe('signin');
-    expect(matchRoute('/admin/people/').route.name).toBe('people');
+    expect(matchRoute('/admin/people/').route.name).toBe('settings');
   });
 
   it('returns not-found for unknown or partial paths', () => {

@@ -1,17 +1,22 @@
 /**
- * Route matching and link-interception rules for the router in
- * router.svelte.ts, kept as pure functions so they can be tested without a
- * browser.
+ * The route table, and the matching and link-interception rules of the
+ * router in router.svelte.ts, kept as pure functions so they can be tested
+ * without a browser. Each row names its screen, who may open it and the part
+ * of the main navigation it belongs to; the shell (App.svelte) reads all of
+ * that from here. The component for each row is in screens.ts, typed by
+ * route name so no row can lack one, and kept apart so this file imports no
+ * component.
  *
  * Links under /api/ are never intercepted: /api/auth/google/start is a server
  * redirect to Google and needs a full page load.
  */
+import type { Role } from './session.svelte';
 
 /** Names of the screens the app can show. */
 export type RouteName =
   | 'home'
   | 'signin'
-  | 'people'
+  | 'settings'
   | 'problems'
   | 'problem'
   | 'problem-try'
@@ -28,6 +33,12 @@ export type RouteName =
   | 'privacy'
   | 'not-found';
 
+/** The parts of the main navigation; the link of a screen's own part is marked current. */
+export type Section = 'student' | 'contests' | 'problems' | 'settings';
+
+/** Who may open a screen: organisers (admins and owners), or owners only. */
+export type Access = 'organiser' | 'owner';
+
 /** One row of the route table. */
 export interface RouteDef {
   /** Path pattern; a segment starting with ":" captures a parameter. */
@@ -41,26 +52,38 @@ export interface RouteDef {
    * callers read it through routeTitle().
    */
   title: string;
+  /** Who may open the screen; anyone signed in when left out. */
+  role?: Access;
+  /** The part of the main navigation the screen belongs to. */
+  section?: Section;
 }
 
 /** The route table. Order matters: the first match wins. */
 export const ROUTES: readonly RouteDef[] = [
-  { pattern: '/', name: 'home', auth: true, title: 'Your contests' },
+  { pattern: '/', name: 'home', auth: true, title: 'Your contests', section: 'student' },
   { pattern: '/signin', name: 'signin', auth: false, title: 'Sign in' },
-  { pattern: '/admin/people', name: 'people', auth: true, title: 'People' },
-  { pattern: '/admin/problems', name: 'problems', auth: true, title: 'Problem bank' },
-  { pattern: '/admin/problems/:id', name: 'problem', auth: true, title: 'Problem' },
-  { pattern: '/admin/problems/:id/try', name: 'problem-try', auth: true, title: 'Problem bank' },
-  { pattern: '/admin/ai/new', name: 'ai-new', auth: true, title: 'New problem with AI' },
-  { pattern: '/contests/:slug', name: 'contest', auth: true, title: 'Contest' },
-  { pattern: '/contests/:slug/standings', name: 'standings', auth: true, title: 'Standings' },
-  { pattern: '/contests/:slug/problems/:label', name: 'contest-problem', auth: true, title: 'Contest' },
-  { pattern: '/admin/contests', name: 'admin-contests', auth: true, title: 'Contests' },
-  { pattern: '/admin/contests/:id', name: 'admin-contest', auth: true, title: 'Setup' },
-  { pattern: '/admin/contests/:id/console', name: 'contest-console', auth: true, title: 'Live' },
-  { pattern: '/admin/contests/:id/results', name: 'contest-results', auth: true, title: 'Results' },
-  { pattern: '/admin/contests/:id/integrity', name: 'contest-integrity', auth: true, title: 'Integrity' },
-  { pattern: '/admin/contests/:id/integrity/signals/:signal', name: 'integrity-pair', auth: true, title: 'Signal' },
+  // Settings kept the People page's address, so old links and bookmarks still open it.
+  { pattern: '/admin/people', name: 'settings', auth: true, title: 'Settings', role: 'owner', section: 'settings' },
+  { pattern: '/admin/problems', name: 'problems', auth: true, title: 'Problem bank', role: 'organiser', section: 'problems' },
+  { pattern: '/admin/problems/:id', name: 'problem', auth: true, title: 'Problem', role: 'organiser', section: 'problems' },
+  { pattern: '/admin/problems/:id/try', name: 'problem-try', auth: true, title: 'Problem bank', role: 'organiser', section: 'problems' },
+  { pattern: '/admin/ai/new', name: 'ai-new', auth: true, title: 'New problem with AI', role: 'organiser', section: 'problems' },
+  { pattern: '/contests/:slug', name: 'contest', auth: true, title: 'Contest', section: 'student' },
+  { pattern: '/contests/:slug/standings', name: 'standings', auth: true, title: 'Standings', section: 'student' },
+  { pattern: '/contests/:slug/problems/:label', name: 'contest-problem', auth: true, title: 'Contest', section: 'student' },
+  { pattern: '/admin/contests', name: 'admin-contests', auth: true, title: 'Contests', role: 'organiser', section: 'contests' },
+  { pattern: '/admin/contests/:id', name: 'admin-contest', auth: true, title: 'Setup', role: 'organiser', section: 'contests' },
+  { pattern: '/admin/contests/:id/console', name: 'contest-console', auth: true, title: 'Live', role: 'organiser', section: 'contests' },
+  { pattern: '/admin/contests/:id/results', name: 'contest-results', auth: true, title: 'Results', role: 'organiser', section: 'contests' },
+  { pattern: '/admin/contests/:id/integrity', name: 'contest-integrity', auth: true, title: 'Integrity', role: 'organiser', section: 'contests' },
+  {
+    pattern: '/admin/contests/:id/integrity/signals/:signal',
+    name: 'integrity-pair',
+    auth: true,
+    title: 'Signal',
+    role: 'organiser',
+    section: 'contests',
+  },
   { pattern: '/privacy', name: 'privacy', auth: false, title: 'Privacy' },
 ];
 
@@ -75,6 +98,37 @@ export const NOT_FOUND: RouteDef = {
 /** The title of a route by name, from the route table. */
 export function routeTitle(name: RouteName): string {
   return (ROUTES.find((r) => r.name === name) ?? NOT_FOUND).title;
+}
+
+/** True when someone signed in with `role` may open the route's screen. */
+export function mayOpen(route: Pick<RouteDef, 'role'>, role: Role | undefined): boolean {
+  if (route.role === 'owner') return role === 'owner';
+  if (route.role === 'organiser') return role === 'admin' || role === 'owner';
+  return true;
+}
+
+/** The one sentence the shell shows, under the page's title, to someone a row does not let in. */
+export function forbiddenText(route: Pick<RouteDef, 'role' | 'section'>): string {
+  if (route.role === 'owner') return 'Only owners can change the settings.';
+  return route.section === 'problems' ? 'Only organisers can manage problems.' : 'Only organisers can manage contests.';
+}
+
+/** One link of the main navigation. */
+export interface NavItem {
+  section: Section;
+  href: string;
+  label: string;
+}
+
+/** The main navigation by role: a student's contests; an organiser's contests and problems, and Settings for owners. */
+export function mainNav(role: Role): NavItem[] {
+  if (role === 'student') return [{ section: 'student', href: '/', label: 'Contests' }];
+  const items: NavItem[] = [
+    { section: 'contests', href: '/admin/contests', label: 'Contests' },
+    { section: 'problems', href: '/admin/problems', label: 'Problem bank' },
+  ];
+  if (role === 'owner') items.push({ section: 'settings', href: '/admin/people', label: 'Settings' });
+  return items;
 }
 
 /** The result of matching a path against ROUTES. */

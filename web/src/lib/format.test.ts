@@ -17,7 +17,7 @@ describe('formatDateTime', () => {
 describe('roleLabel', () => {
   it('uses sentence case', () => {
     expect(roleLabel('owner')).toBe('Owner');
-    expect(roleLabel('admin')).toBe('Admin');
+    expect(roleLabel('admin')).toBe('Organiser');
     expect(roleLabel('student')).toBe('Student');
   });
 });

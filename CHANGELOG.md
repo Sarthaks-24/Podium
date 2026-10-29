@@ -4,6 +4,13 @@ Dated entries per release. Unreleased work is listed at the top.
 
 ## Unreleased
 
+### v3 stage C4: Settings (2026-10-29)
+
+- People is now Settings, for owners, with three tabs: People, Sign-in and Organisation. The tab is in the address, so a reload keeps it. At 1440 px each tab is under 1,000 px of content (the page was 2,611).
+- Two roles show in words: organiser and owner. The history of changes opens from the Organisation tab.
+- The first-contest checklist appears once, on the contests home, with a step to add another organiser for owners.
+- The route table owns each screen's role and section; anyone a route turns away sees one forbidden page.
+
 ### v3 stage C3: contest setup (2026-10-29)
 
 - Setup saves every field as it changes, with one "Saved" line in the title row and no Save button; a refused field is marked and the rest still save.

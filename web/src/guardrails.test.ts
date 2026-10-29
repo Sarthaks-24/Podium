@@ -181,16 +181,17 @@ describe('breakpoints', () => {
 // F8.1 and F8.2: what a student's first load carries.
 describe('first load', () => {
   // The screens a student can open; every other route is an organiser's and
-  // is loaded with import() from App.svelte.
+  // is loaded with import() from screens.ts.
   const STUDENT_SCREENS = ['ContestPage', 'Home', 'NotFound', 'Privacy', 'SignIn', 'StandingsPage'];
 
-  it('imports only student screens statically in App.svelte', () => {
-    const app = sources['/src/App.svelte'];
-    const statics = [...app.matchAll(/^\s*import (\w+) from '\.\/routes\/(\w+)\.svelte';/gm)].map((m) => m[2]);
+  it('imports only student screens statically in screens.ts, and no screen in App.svelte', () => {
+    const table = sources['/src/screens.ts'];
+    const statics = [...table.matchAll(/^\s*import (\w+) from '\.\/routes\/(\w+)\.svelte';/gm)].map((m) => m[2]);
     expect(statics.sort()).toEqual([...STUDENT_SCREENS].sort());
     const routeFiles = Object.keys(sources).filter((p) => /^\/src\/routes\/\w+\.svelte$/.test(p)).map((p) => p.slice('/src/routes/'.length, -'.svelte'.length));
     const lazy = routeFiles.filter((r) => !STUDENT_SCREENS.includes(r));
-    expect(lazy.filter((r) => !app.includes(`import('./routes/${r}.svelte')`))).toEqual([]);
+    expect(lazy.filter((r) => !table.includes(`import('./routes/${r}.svelte')`))).toEqual([]);
+    expect(sources['/src/App.svelte']).not.toMatch(/from '\.\/routes\//);
   });
 
   it('preloads every font face the stylesheet declares (D91)', () => {

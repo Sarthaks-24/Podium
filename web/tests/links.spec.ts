@@ -5,7 +5,7 @@
 // not found"; mailto: and tel: links must carry an address. Links under
 // /api/ (exports, Google sign-in) are full page loads by design and are
 // left to the server's own tests. Then, on the student screens and the
-// organiser screens (contests, problems, People), every visible,
+// organiser screens (contests, problems, the Settings tabs), every visible,
 // enabled button is pressed on a fresh load and must do something a person
 // can see or the server can hear: a change in the page, a navigation, a
 // dialog, focus moved somewhere other than the pressed button, or an /api/
@@ -74,7 +74,7 @@ const fromProblems = (name: string): Pressed => ({
     await settle(page);
   },
 });
-const fromPeople = (name: string): Pressed => ({
+const fromSettings = (name: string): Pressed => ({
   name,
   load: async (page) => {
     const s = people.SCREENS.find((x) => x.name === name)!;
@@ -90,7 +90,7 @@ const PRESSED: Pressed[] = [
   ...['home-student', 'contest-before', 'contest-during', 'contest-after', 'standings-frozen'].map(fromContests),
   ...['admin-contests', 'contest-editor', 'contest-console', 'contest-results'].map(fromContests),
   ...['problems-bank', 'problem-editor'].map(fromProblems),
-  fromPeople('people-owner'),
+  ...['settings-people', 'settings-sign-in', 'settings-organisation'].map(fromSettings),
 ];
 
 const BUTTONS = 'main button, footer button';

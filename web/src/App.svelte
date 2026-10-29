@@ -1,20 +1,25 @@
 <!--
   App: the shell around every screen. The header holds the podium
   word-mark (a link home), the main navigation and one account control
-  (components/AccountMenu). Navigation is named by job: students get
-  "Contests"; admins and owners get "Contests" (the organiser list at
-  /admin/contests, where "/" sends them), "Problem bank" (also current on
-  the AI wizard), and for owners "People". From
+  (components/AccountMenu). Navigation is named by job (lib/routing
+  mainNav): students get "Contests"; organisers get "Contests" (the
+  organiser list at /admin/contests, where "/" sends them), "Problem bank"
+  (also current on the AI wizard), and for owners "Settings"; a link is
+  current when the screen's row names its section. From
   768 px everything fits one row; under 768 px an organiser's nav and
   account items collapse behind a Menu button that opens a panel (Escape
   closes it), while a student keeps the links and the account button in
   the row, except in the contest workspace, where the workspace strip
   takes that space. Signed out, only the theme control shows.
 
-  The main area shows the screen for the current path from
-  lib/router.svelte.ts, after the session from GET /api/me has loaded:
-  signed-out visitors to a protected path are sent to /signin with a
-  ?next= back, and signed-in visitors to /signin are sent on. After each
+  The main area shows the screen for the current path, after the session
+  from GET /api/me has loaded: the route table (lib/routing.ts) says which
+  screen and who may open it, and screens.ts gives the component, loaded
+  on first visit for an organiser screen. Signed-out visitors to a
+  protected path are sent to /signin with a ?next= back, and signed-in
+  visitors to /signin are sent on. Someone the row does not let in sees
+  the page's title and one sentence saying who may open it, the same
+  forbidden state on every screen. After each
   client-side navigation focus moves to the new page's heading. The footer
   carries the organisation's name and "Contact the organisers: {email}"
   (and its phone as a tel: link) when the server names them, the Privacy
@@ -24,17 +29,19 @@
   regions of lib/announce.svelte.ts live at the end. Takes no props.
 -->
 <script lang="ts">
-  import { onMount, tick, type Component } from 'svelte';
+  import { onMount, tick } from 'svelte';
   import AccountMenu from './components/AccountMenu.svelte';
   import HelpDialog from './components/HelpDialog.svelte';
   import ThemeDialog from './components/ThemeDialog.svelte';
   import ConfirmDialog from './components/ConfirmDialog.svelte';
   import Toasts from './components/Toasts.svelte';
+  import PageHeader from './components/PageHeader.svelte';
   import PageState from './components/PageState.svelte';
   import ThemeMenu from './components/ThemeMenu.svelte';
   import { regions } from './lib/announce.svelte';
+  import { setTitle } from './lib/head';
   import { loadMode, runMode, telHref } from './lib/mode.svelte';
-  import { installLinkInterception, matchRoute, navigate, router } from './lib/router.svelte';
+  import { forbiddenText, installLinkInterception, mainNav, matchRoute, mayOpen, navigate, router, type RouteName } from './lib/router.svelte';
   import { loadSession, session, signOut, signOutGuard } from './lib/session.svelte';
   import { stopAllStreams } from './lib/stream';
   import { shell } from './lib/shell.svelte';
@@ -43,12 +50,7 @@
   import { publishHeight } from './lib/publishHeight';
   import { PRIVACY_LINKED } from './lib/site';
   import { showToast } from './lib/toast.svelte';
-  import ContestPage from './routes/ContestPage.svelte';
-  import Home from './routes/Home.svelte';
-  import NotFound from './routes/NotFound.svelte';
-  import Privacy from './routes/Privacy.svelte';
-  import SignIn from './routes/SignIn.svelte';
-  import StandingsPage from './routes/StandingsPage.svelte';
+  import { SCREENS, screenKey, type Screen } from './screens';
 
   const year = __BUILD_YEAR__;
 
@@ -63,7 +65,6 @@
   $effect(() => {
     if (session.status === 'signed-out') stopAllStreams();
   });
-  const isOwner = $derived(session.user?.role === 'owner');
   const isOrganiser = $derived(session.user?.role === 'admin' || session.user?.role === 'owner');
   const needsSignIn = $derived(route.auth && session.status === 'signed-out');
   const leaveSignIn = $derived(route.name === 'signin' && signedIn);
@@ -72,23 +73,13 @@
   const inWorkspace = $derived(shell.workspace && route.name.startsWith('contest'));
   // Organisers land on their own contest list; "/" is the student list (N1).
   const organiserHome = $derived(route.name === 'home' && isOrganiser);
+  /** False when the row names a role the person signed in does not have. */
+  const allowed = $derived(mayOpen(route, session.user?.role));
+  const nav = $derived(session.user ? mainNav(session.user.role) : []);
 
-  /** The main navigation for the signed-in role, by job (N1). */
-  const navLinks = $derived.by(() => {
-    const name = route.name;
-    if (!isOrganiser) {
-      return [{ href: '/', label: 'Contests', current: ['home', 'contest', 'contest-problem', 'standings'].includes(name) }];
-    }
-    const links = [
-      {
-        href: '/admin/contests',
-        label: 'Contests',
-        current: ['admin-contests', 'admin-contest', 'contest-console', 'contest-results', 'contest-integrity', 'integrity-pair'].includes(name),
-      },
-      { href: '/admin/problems', label: 'Problem bank', current: ['problems', 'problem', 'problem-try', 'ai-new'].includes(name) },
-    ];
-    if (isOwner) links.push({ href: '/admin/people', label: 'People', current: name === 'people' });
-    return links;
+  // A screen sets its own title; the forbidden state stands in for it.
+  $effect(() => {
+    if (signedIn && !allowed) setTitle(route.title);
   });
 
   // Redirects are not navigations the person chose, so they keep focus where
@@ -151,42 +142,23 @@
   }
 
   /**
-   * Screens loaded with import() on first visit (F8.1): every organiser
-   * screen, so a student's first load carries none of them. The student contest screens stay
-   * in the entry chunk. A loaded module renders at once on the next visit,
-   * so returning to a screen never shows the loading line again.
+   * The current row's screen. One loaded with import() renders at once on
+   * the next visit, so returning to a screen never shows the loading line
+   * again. The path's parameters are its props.
    */
-  type ScreenProps = { id?: string; signal?: string };
-  type Screen = Component<ScreenProps>;
-  const screen = (load: () => Promise<{ default: unknown }>) => async () => (await load()).default as Screen;
-  const lazyScreens: Record<string, () => Promise<Screen>> = {
-    people: screen(() => import('./routes/People.svelte')),
-    problems: screen(() => import('./routes/ProblemBank.svelte')),
-    problem: screen(() => import('./routes/ProblemEditor.svelte')),
-    'problem-try': screen(() => import('./routes/ProblemTry.svelte')),
-    'ai-new': screen(() => import('./routes/AiWizard.svelte')),
-    'admin-contests': screen(() => import('./routes/AdminContests.svelte')),
-    'admin-contest': screen(() => import('./routes/ContestEditor.svelte')),
-    'contest-console': screen(() => import('./routes/ContestConsole.svelte')),
-    'contest-results': screen(() => import('./routes/ContestResults.svelte')),
-    'contest-integrity': screen(() => import('./routes/ContestIntegrity.svelte')),
-    'integrity-pair': screen(() => import('./routes/IntegrityPair.svelte')),
-  };
-  const loadedScreens = $state<Record<string, Screen>>({});
-  let failedScreen = $state<string | null>(null);
-  const lazyName = $derived(Object.hasOwn(lazyScreens, route.name) ? route.name : null);
-  /** The lazily loaded screen's props; a change of any remounts it. */
-  const lazyProps = $derived.by((): ScreenProps => {
-    const p = match.params;
-    if (route.name === 'integrity-pair') return { id: p.id, signal: p.signal };
-    return p.id === undefined ? {} : { id: p.id };
-  });
+  const screenDef = $derived(SCREENS[route.name]);
+  const loaded = $state<Partial<Record<RouteName, Screen>>>({});
+  let failedScreen = $state<RouteName | null>(null);
+  const Current = $derived(screenDef.component ?? loaded[route.name]);
+  const currentKey = $derived(screenKey(screenDef, match.params));
   $effect(() => {
-    const name = lazyName;
-    if (name === null || loadedScreens[name]) return;
+    const name = route.name;
+    const def = SCREENS[name];
+    // It loads beside GET /api/me, and never for someone the row turns away.
+    if (!def.load || loaded[name] || (session.status !== 'loading' && !allowed)) return;
     failedScreen = null;
-    lazyScreens[name]().then(
-      (s) => (loadedScreens[name] = s),
+    def.load().then(
+      (s) => (loaded[name] = s),
       () => (failedScreen = name),
     );
   });
@@ -282,8 +254,8 @@
         >
           <nav class="nav" aria-label="Main">
             <ul>
-              {#each navLinks as l (l.href)}
-                <li><a href={l.href} aria-current={l.current ? 'page' : undefined}>{l.label}</a></li>
+              {#each nav as l (l.href)}
+                <li><a href={l.href} aria-current={l.section === route.section ? 'page' : undefined}>{l.label}</a></li>
               {/each}
             </ul>
           </nav>
@@ -308,34 +280,18 @@
   >
     {#if session.status === 'loading' || needsSignIn || leaveSignIn || organiserHome}
       <p class="visually-hidden" role="status">Loading</p>
-    {:else if route.name === 'signin'}
-      <SignIn />
-    {:else if route.name === 'home'}
-      <Home />
-    {:else if route.name === 'contest' || route.name === 'contest-problem'}
-      {#key match.params.slug}
-        <ContestPage slug={match.params.slug} label={match.params.label ?? ''} />
+    {:else if !allowed}
+      <PageHeader title={route.title} />
+      <PageState kind="forbidden" message={forbiddenText(route)} />
+    {:else if Current}
+      {#key currentKey}
+        <Current {...match.params} />
       {/key}
-    {:else if route.name === 'standings'}
-      {#key match.params.slug}
-        <StandingsPage slug={match.params.slug} />
-      {/key}
-    {:else if lazyName !== null}
-      {@const Screen = loadedScreens[lazyName]}
-      {#if Screen}
-        {#key `${lazyName}/${Object.values(lazyProps).join('/')}`}
-          <Screen {...lazyProps} />
-        {/key}
-      {:else if failedScreen === lazyName}
-        <!-- A chunk that failed (often a new release) needs a full reload, not another import (C2-069). -->
-        <PageState kind="error" message="This page could not load. Reload to try again." onretry={() => location.reload()} />
-      {:else}
-        <PageState kind="loading" message="Loading the page" />
-      {/if}
-    {:else if route.name === 'privacy'}
-      <Privacy />
+    {:else if failedScreen === route.name}
+      <!-- A chunk that failed (often a new release) needs a full reload, not another import (C2-069). -->
+      <PageState kind="error" message="This page could not load. Reload to try again." onretry={() => location.reload()} />
     {:else}
-      <NotFound />
+      <PageState kind="loading" message="Loading the page" />
     {/if}
   </main>
 

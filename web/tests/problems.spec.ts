@@ -450,7 +450,7 @@ test('admins see the Problem bank link and it marks the current page', async ({ 
   await expect(page.getByRole('heading', { level: 1 })).toBeFocused();
   await page.getByRole('link', { name: 'A plus B', exact: true }).click();
   await expect(nav.getByRole('link', { name: 'Problem bank', exact: true })).toHaveAttribute('aria-current', 'page');
-  await expect(page.getByRole('link', { name: 'People' })).toHaveCount(0);
+  await expect(page.getByRole('link', { name: 'Settings' })).toHaveCount(0);
 });
 
 test('missing outputs are named and generated from the reference', async ({ page }) => {

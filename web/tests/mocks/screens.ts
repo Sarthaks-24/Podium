@@ -27,7 +27,7 @@ export const DOMAINS = [
 
 export const CONFIG = { allowed_domains: ['college.edu'], contact_email: 'priya@college.edu' };
 
-/** The site audit the People "History" shows (contract C4), newest first. */
+/** The site audit that "History of changes" on Settings shows (contract C4), newest first. */
 export const SITE_AUDIT = [
   { id: 3, at: 1792183192359, action: 'role_granted', actor: { user_id: 1, email: 'priya@college.edu', role: 'owner' }, subject_email: 'ta@college.edu', details: { role: 'admin', from_role: 'student' } },
   { id: 2, at: 1792096792359, action: 'domain_added', actor: { user_id: 1, email: 'priya@college.edu', role: 'owner' }, subject_email: '', details: { domain: 'cs.college.edu' } },
@@ -58,13 +58,9 @@ export async function mockApi(page: Page, who: Who) {
     accountCalls: [] as string[],
     auditQueries: [] as string[],
     audit: structuredClone(SITE_AUDIT) as typeof SITE_AUDIT,
-    cases: [] as { id: number; decided: boolean }[],
     lookups: [] as string[],
     organisation: { name: '', contact_email: '', phone: '', privacy_contact: '' },
     settingsPuts: [] as Record<string, string>[],
-    rollovers: [] as Record<string, unknown>[],
-    /** The server_now of each rollover answer, in order. */
-    rolloverNows: [] as number[],
   };
 
   await page.route(
@@ -89,9 +85,6 @@ export async function mockApi(page: Page, who: Who) {
       if (path.startsWith('/api/admin/')) {
         if (!me) return apiError(route, 401, 'signed_out', 'Sign in to continue.');
         if (me.role !== 'owner') return apiError(route, 403, 'forbidden', 'Only owners can do that.');
-      }
-      if (path === '/api/integrity/cases' && method === 'GET') {
-        return me ? json(route, 200, { cases: state.cases, contests: {}, problems: {} }) : apiError(route, 401, 'signed_out', 'Sign in to continue.');
       }
       if (path.startsWith('/api/admin/') && me?.role === 'owner' && path === '/api/admin/contests' && method === 'GET') {
         return json(route, 200, { contests: [], server_now: Date.now() });
@@ -122,27 +115,6 @@ export async function mockApi(page: Page, who: Who) {
         }
         return apiError(route, 404, 'not_found', 'Nobody with that email has an account.');
       }
-      if (path === '/api/admin/integrity/oversight' && method === 'GET') {
-        return json(route, 200, {
-          reviewers: [
-            { user_id: 1, name: 'Priya Raman', email: 'priya@college.edu', manual_opened: 2, cleared: 5, actioned: 1, overdue: 0, proposals: 2, confirmations: 1, rulings: 0 },
-            { user_id: 2, name: 'Arjun Mehta', email: 'arjun.mehta@college.edu', manual_opened: 0, cleared: 1, actioned: 0, overdue: 1, proposals: 0, confirmations: 2, rulings: 1 },
-          ],
-          server_now: Date.now(),
-        });
-      }
-      if (path === '/api/admin/record-views' && method === 'GET') {
-        const before = new URL(req.url()).searchParams.get('before');
-        if (before) return json(route, 200, { views: [{ id: 1, at: 1791900000000, kind: 'notes', ref_id: 80, viewer: { id: 2, name: 'Arjun Mehta', email: 'arjun.mehta@college.edu' }, subject: { id: 7, name: 'Asha Rao' } }], has_more: false, server_now: Date.now() });
-        return json(route, 200, {
-          views: [
-            { id: 3, at: 1792183000000, kind: 'record', ref_id: 0, viewer: { id: 2, name: 'Arjun Mehta', email: 'arjun.mehta@college.edu' }, subject: { id: 7, name: 'Asha Rao' } },
-            { id: 2, at: 1792100000000, kind: 'case', ref_id: 12, viewer: { id: 1, name: 'Priya Raman', email: 'priya@college.edu' }, subject: { id: 7, name: 'Asha Rao' } },
-          ],
-          has_more: true,
-          server_now: Date.now(),
-        });
-      }
       if (path === '/api/admin/site-settings' && method === 'PUT') {
         const body = req.postDataJSON() as Record<string, string>;
         state.settingsPuts.push(body);
@@ -151,23 +123,6 @@ export async function mockApi(page: Page, who: Who) {
         }
         state.organisation = { name: body.name, contact_email: body.contact_email, phone: body.phone, privacy_contact: body.privacy_contact };
         return json(route, 200, state.organisation);
-      }
-      if (path === '/api/admin/rollover' && method === 'POST') {
-        const body = req.postDataJSON() as { label: string; apply?: boolean; ended_before?: number };
-        state.rollovers.push(body);
-        const serverNow = Date.now();
-        state.rolloverNows.push(serverNow);
-        const accounts = [{ id: 41, email: 'old@college.edu', name: 'Old Student', role: 'student', disabled: false, last_login_at: 1770000000000 }];
-        if (body.apply) state.disabled.push({ ...accounts[0], disabled: true });
-        return json(route, 200, {
-          applied: !!body.apply,
-          label: body.label,
-          ended_before: body.ended_before ?? Date.now(),
-          idle_days: 180,
-          contests: [{ id: 12, slug: 'week-12', title: 'Week 12', ends_at: 1791000000000 }, { id: 13, slug: 'week-13', title: 'Week 13', ends_at: 1791600000000 }],
-          accounts,
-          server_now: serverNow,
-        });
       }
       const accountMatch = path.match(/^\/api\/admin\/accounts\/(end-sessions|disable|enable)$/);
       if (accountMatch && method === 'POST') {
@@ -286,21 +241,32 @@ export const SCREENS: Screen[] = [
     ready: (page) => expect(page.getByText('No contests yet. Contests use validated problems')).toBeVisible(),
   },
   {
-    name: 'people-owner',
+    name: 'settings-people',
     path: '/admin/people',
     who: 'owner',
-    title: 'People · podium',
-    ready: async (page) => {
-      await expect(page.getByRole('table').first()).toBeVisible();
-      await expect(page.getByText('Made ta@college.edu an admin')).toBeVisible();
-    },
+    title: 'Settings · podium',
+    ready: (page) => expect(page.getByRole('table').first()).toBeVisible(),
   },
   {
-    name: 'people-student',
+    name: 'settings-sign-in',
+    path: '/admin/people?tab=sign-in',
+    who: 'owner',
+    title: 'Settings · podium',
+    ready: (page) => expect(page.getByRole('button', { name: 'Remove @cs.college.edu' })).toBeVisible(),
+  },
+  {
+    name: 'settings-organisation',
+    path: '/admin/people?tab=organisation',
+    who: 'owner',
+    title: 'Settings · podium',
+    ready: (page) => expect(page.getByRole('button', { name: 'Save organisation details' })).toBeVisible(),
+  },
+  {
+    name: 'settings-student',
     path: '/admin/people',
     who: 'student',
-    title: 'People · podium',
-    ready: (page) => expect(page.getByText('Only owners can manage people.')).toBeVisible(),
+    title: 'Settings · podium',
+    ready: (page) => expect(page.getByText('Only owners can change the settings.')).toBeVisible(),
   },
   {
     name: 'privacy',

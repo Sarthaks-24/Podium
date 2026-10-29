@@ -22,9 +22,10 @@
 
   With no contests yet it points to the problem bank and lists the steps to
   a first published contest, with a Done mark on those already taken: an
-  allowed email domain (owners), a validated problem, a published contest,
-  sharing the address. Students see a short explanation instead. Takes no
-  props.
+  allowed email domain and another organiser (owners, each a link to
+  Settings), a validated problem, a published contest, sharing the
+  address. This is the app's one first-run checklist; Settings has none.
+  Students see a short explanation instead. Takes no props.
 -->
 <script lang="ts">
   import Badge from '../components/Badge.svelte';
@@ -75,6 +76,8 @@
   const isOwner = $derived(session.user?.role === 'owner');
   // First run (no contests): what is already done on the way to a published contest; null while unknown.
   let domainCount = $state<number | null>(null);
+  /** Organisers other than the configured owner and the person signed in. */
+  let otherOrganisers = $state<number | null>(null);
   let validatedCount = $state<number | null>(null);
   const origin = typeof location === 'undefined' ? '' : location.origin;
 
@@ -100,10 +103,13 @@
     }
     if (!isOwner) return;
     try {
-      const data = await getJSON<{ domains: unknown[] }>('/api/admin/people');
-      if (page.live) domainCount = (data.domains ?? []).length;
+      const data = await getJSON<{ domains: unknown[]; people: { id: number; locked: boolean }[] }>('/api/admin/people');
+      if (!page.live) return;
+      domainCount = (data.domains ?? []).length;
+      otherOrganisers = (data.people ?? []).filter((p) => !p.locked && p.id !== session.user?.id).length;
     } catch {
       domainCount = null;
+      otherOrganisers = null;
     }
   }
 
@@ -344,8 +350,12 @@
       <ul class="steps">
         {#if isOwner}
           <li>
-            <span class="step">Allow your college's email domain on <a href="/admin/people">People</a>, so students can sign in.</span>
+            <span class="step">Allow your college's email domain in <a href="/admin/people?tab=sign-in">Settings</a>, so students can sign in.</span>
             {#if domainCount !== null}<Badge tone={domainCount > 0 ? 'ok' : 'neutral'} text={domainCount > 0 ? 'Done' : 'To do'} />{/if}
+          </li>
+          <li>
+            <span class="step">Add another organiser in <a href="/admin/people">Settings</a>, so someone else can run a contest.</span>
+            {#if otherOrganisers !== null}<Badge tone={otherOrganisers > 0 ? 'ok' : 'neutral'} text={otherOrganisers > 0 ? 'Done' : 'To do'} />{/if}
           </li>
         {/if}
         <li>

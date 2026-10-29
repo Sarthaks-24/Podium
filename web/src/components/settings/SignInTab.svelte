@@ -1,0 +1,399 @@
+<!--
+  SignInTab: the Sign-in tab of Settings, who can sign in and help for one
+  account. Allowed email domains: the list, Remove on each (it asks
+  first), and a form to add one. Account help: one email field for "Reset
+  Google link", "End sessions" and "Disable account", then the disabled
+  accounts with Enable. As an address is typed the field looks the account
+  up (GET /api/admin/accounts?email=, students included) and says whose it
+  is ("Asha Rao, student, last signed in ..."); until it has named one, or
+  when there is none, the three actions stay disabled, and each
+  confirmation names the person. Successes are toasts; form errors sit
+  under their form, tied to the inputs. Props: `domains`, `disabled` and
+  `people` (all bindable; a disable or enable marks the organiser's row
+  too) and `onforbidden` (the person is no longer an owner).
+-->
+<script lang="ts">
+  import { tick, untrack } from 'svelte';
+  import ConfirmDialog from '../ConfirmDialog.svelte';
+  import MonoDigits from '../MonoDigits.svelte';
+  import { ApiError, errorText, getJSON, sendJSON } from '../../lib/api';
+  import { countOf, formatDateTime } from '../../lib/format';
+  import { EMAIL, personLabel, roleWord, settingsRefused, type Account, type Domain, type Person } from '../../lib/people';
+  import { showToast } from '../../lib/toast.svelte';
+
+  interface Props {
+    domains: Domain[];
+    disabled: Account[];
+    people: Person[];
+    onforbidden: () => void;
+  }
+
+  let { domains = $bindable(), disabled = $bindable(), people = $bindable(), onforbidden }: Props = $props();
+
+  type AccountAction = 'reset' | 'end-sessions' | 'disable' | 'enable';
+  type Pending = { kind: 'domain'; domain: string } | { kind: AccountAction; email: string } | null;
+
+  let domainInput = $state('');
+  let addingDomain = $state(false);
+  let domainError = $state('');
+  let domainsHeading: HTMLHeadingElement | undefined = $state();
+
+  let accountEmail = $state('');
+  let accountError = $state('');
+  let pending = $state<Pending>(null);
+  let busy = $state(false);
+
+  // The account the help field names, looked up as the address is typed (O10).
+  let lookup = $state<{ email: string; status: 'loading' | 'found' | 'none' | 'error'; account?: Account } | null>(null);
+  let lookupTimer: ReturnType<typeof setTimeout> | undefined;
+
+  /** The account the help field names: looked up, or already on this page. */
+  const accountMatch = $derived.by(() => {
+    const e = accountEmail.trim().toLowerCase();
+    if (e === '') return null;
+    if (lookup && lookup.email === e && lookup.status === 'found' && lookup.account) {
+      const a = lookup.account;
+      return { name: a.name.trim() || a.email, role: roleWord(a.role), last: a.last_login_at, disabled: a.disabled };
+    }
+    const person = people.find((x) => x.email.toLowerCase() === e);
+    if (person) return { name: personLabel(person), role: roleWord(person.role), last: person.last_login_at, disabled: !!person.disabled };
+    const account = disabled.find((x) => x.email.toLowerCase() === e);
+    if (account) return { name: account.name.trim() || account.email, role: roleWord(account.role), last: account.last_login_at, disabled: true };
+    return null;
+  });
+  const accountLooksLikeEmail = $derived(EMAIL.test(accountEmail.trim()));
+  /** The lookup found no account for the address typed: the actions would only be refused. */
+  const noAccount = $derived(lookup !== null && lookup.email === accountEmail.trim().toLowerCase() && lookup.status === 'none');
+  /** An address typed but not yet named above (lookup running, failed or found nothing): never act on it (O10, D232, C2-031). */
+  const unseen = $derived(accountEmail.trim() !== '' && accountMatch === null);
+
+  $effect(() => {
+    const e = accountEmail.trim().toLowerCase();
+    clearTimeout(lookupTimer);
+    if (!EMAIL.test(e)) {
+      lookup = null;
+      return;
+    }
+    if (untrack(() => lookup?.email) === e) return;
+    lookupTimer = setTimeout(() => void lookUp(e), 250);
+  });
+
+  async function lookUp(e: string) {
+    lookup = { email: e, status: 'loading' };
+    try {
+      const d = await getJSON<{ account: Account }>(`/api/admin/accounts?email=${encodeURIComponent(e)}`);
+      if (lookup?.email === e) lookup = { email: e, status: 'found', account: d.account };
+    } catch (err) {
+      if (settingsRefused(err, onforbidden) || lookup?.email !== e) return;
+      lookup = { email: e, status: err instanceof ApiError && err.status === 404 ? 'none' : 'error' };
+    }
+  }
+
+  /** "Asha Verma (asha@college.edu)" when the page knows the name, else the address. */
+  function accountName(target: string): string {
+    const m = accountMatch;
+    return m && m.name !== target ? `${m.name} (${target})` : target;
+  }
+
+  const confirmCopy = $derived.by(() => {
+    switch (pending?.kind) {
+      case 'domain':
+        return {
+          title: `Remove @${pending.domain} from the allowed list?`,
+          body: `People with @${pending.domain} addresses will no longer be able to sign in. Existing organisers are not affected.`,
+          label: 'Remove',
+        };
+      case 'reset':
+        return {
+          title: `Reset the Google account link for ${accountName(pending.email)}?`,
+          body: 'Their current sessions end. The next Google account that signs in with this address is linked to it.',
+          label: 'Reset Google link',
+        };
+      case 'end-sessions':
+        return {
+          title: `End every session of ${accountName(pending.email)}?`,
+          body: 'They are signed out on every device at once, open contest pages included. They can sign in again.',
+          label: 'End sessions',
+        };
+      case 'disable':
+        return {
+          title: `Disable ${accountName(pending.email)}?`,
+          body: 'They are signed out on every device at once and cannot sign in until an owner enables the account again.',
+          label: 'Disable account',
+        };
+      case 'enable':
+        return { title: `Enable ${pending.email}?`, body: 'They can sign in again with their Google account.', label: 'Enable account' };
+    }
+    return { title: '', body: '', label: 'Remove' };
+  });
+
+  async function addDomain(event: SubmitEvent) {
+    event.preventDefault();
+    domainError = '';
+    const value = domainInput.trim();
+    if (value === '' || value === '@') {
+      domainError = 'Enter a domain, for example college.edu.';
+      document.getElementById('domain-input')?.focus();
+      return;
+    }
+    addingDomain = true;
+    try {
+      const added = await sendJSON<Domain>('POST', '/api/admin/domains', { domain: value });
+      domainInput = '';
+      if (domains.some((d) => d.domain === added.domain)) {
+        showToast(`@${added.domain} is already on the list`);
+      } else {
+        domains = [...domains, added];
+        showToast(`Added @${added.domain}`);
+      }
+    } catch (err) {
+      if (!settingsRefused(err, onforbidden)) domainError = errorText(err);
+    } finally {
+      addingDomain = false;
+    }
+  }
+
+  async function removeDomain(domain: string) {
+    try {
+      await sendJSON<void>('DELETE', `/api/admin/domains/${encodeURIComponent(domain)}`);
+      domains = domains.filter((d) => d.domain !== domain);
+      showToast(`Removed @${domain}`);
+    } catch (err) {
+      if (settingsRefused(err, onforbidden)) return;
+      showToast(errorText(err), 'error');
+      if (err instanceof ApiError && err.status === 404) domains = domains.filter((d) => d.domain !== domain);
+    }
+    // The Remove button is gone; start again from the heading.
+    await tick();
+    domainsHeading?.focus();
+  }
+
+  /** Checks the account email and asks before a reset, sign-out or disable. */
+  function askAccount(kind: 'reset' | 'end-sessions' | 'disable') {
+    accountError = '';
+    const value = accountEmail.trim();
+    if (value === '') {
+      accountError = 'Enter an email address.';
+      document.getElementById('account-email')?.focus();
+      return;
+    }
+    if (unseen) return;
+    pending = { kind, email: value };
+  }
+
+  async function runAccount(kind: AccountAction, target: string) {
+    try {
+      if (kind === 'reset') {
+        await sendJSON<void>('POST', '/api/admin/accounts/reset-google', { email: target });
+        accountEmail = '';
+        showToast(`Reset the Google account link for ${target}`);
+        return;
+      }
+      const out = await sendJSON<{ account: Account; ended: number }>('POST', `/api/admin/accounts/${kind}`, { email: target });
+      if (kind === 'end-sessions') {
+        showToast(out.ended === 0 ? `${target} had no open sessions` : `Ended ${countOf(out.ended, 'session')} of ${target}`);
+      } else if (kind === 'disable') {
+        disabled = [...disabled.filter((a) => a.id !== out.account.id), out.account].sort((a, b) => a.email.localeCompare(b.email));
+        showToast(`Disabled ${target}`);
+      } else {
+        disabled = disabled.filter((a) => a.id !== out.account.id);
+        showToast(`Enabled ${target}`);
+      }
+      if (kind !== 'enable') accountEmail = '';
+      people = people.map((p) => (p.id === out.account.id ? { ...p, disabled: out.account.disabled } : p));
+    } catch (err) {
+      if (settingsRefused(err, onforbidden)) return;
+      if (kind === 'enable') showToast(errorText(err), 'error');
+      else accountError = errorText(err);
+    }
+  }
+
+  async function confirm() {
+    const target = pending;
+    if (!target) return;
+    busy = true;
+    try {
+      if (target.kind === 'domain') await removeDomain(target.domain);
+      else await runAccount(target.kind, target.email);
+    } finally {
+      busy = false;
+      pending = null;
+    }
+  }
+</script>
+
+<section class="section" aria-labelledby="domains-heading">
+  <h2 id="domains-heading" tabindex="-1" bind:this={domainsHeading}>Allowed email domains</h2>
+  <p class="intro muted">Anyone with a Google account on these domains can sign in as a student.</p>
+
+  {#if domains.length > 0}
+    <ul class="list">
+      {#each domains as d (d.domain)}
+        <li>
+          <span class="item">@{d.domain}</span>
+          <button
+            type="button"
+            class="btn btn-quiet btn-danger-quiet btn-compact"
+            aria-label="Remove @{d.domain}"
+            onclick={() => (pending = { kind: 'domain', domain: d.domain })}
+          >
+            Remove
+          </button>
+        </li>
+      {/each}
+    </ul>
+  {:else}
+    <p class="empty muted">No domains yet. Until you add one, only organisers can sign in.</p>
+  {/if}
+
+  <form class="form" novalidate onsubmit={addDomain}>
+    <div class="field grow">
+      <label for="domain-input">Domain</label>
+      <!-- An example, not a placeholder that reads as a value already there (C2-068). -->
+      <p id="domain-help" class="field-help">For example college.edu</p>
+      <input
+        id="domain-input"
+        aria-required="true"
+        class="input"
+        type="text"
+        inputmode="url"
+        autocomplete="off"
+        autocapitalize="none"
+        spellcheck="false"
+        bind:value={domainInput}
+        aria-invalid={domainError !== '' ? 'true' : undefined}
+        aria-describedby="domain-help{domainError !== '' ? ' domain-error' : ''}"
+      />
+    </div>
+    <button type="submit" class="btn btn-secondary submit" disabled={addingDomain}>Add domain</button>
+  </form>
+  {#if domainError !== ''}
+    <p id="domain-error" class="field-error form-error" role="alert">{domainError}</p>
+  {/if}
+</section>
+
+<section class="section" aria-labelledby="help-heading">
+  <h2 id="help-heading">Account help</h2>
+  <p class="intro muted">
+    Reset Google link when someone's address moved to a new Google account, so their next sign-in is accepted. End sessions signs
+    someone out on every device, for a lost laptop or a lab PC left signed in. Disable account also stops them signing in until you
+    enable it again.
+  </p>
+
+  <form class="form" novalidate onsubmit={(e) => { e.preventDefault(); askAccount('reset'); }}>
+    <div class="field grow">
+      <label for="account-email">Email</label>
+      <input
+        id="account-email"
+        aria-required="true"
+        class="input"
+        type="email"
+        autocomplete="off"
+        spellcheck="false"
+        bind:value={accountEmail}
+        aria-invalid={accountError !== '' ? 'true' : undefined}
+        aria-describedby="account-who{accountError !== '' ? ' account-error' : ''}"
+      />
+      <p id="account-who" class="field-help who" aria-live="polite">
+        {#if accountMatch}
+          <MonoDigits
+            text={`${accountMatch.name}, ${accountMatch.role}${accountMatch.disabled ? ', disabled' : ''}, ${accountMatch.last !== null ? `last signed in ${formatDateTime(accountMatch.last)}` : 'never signed in'}.`}
+          />
+        {:else if accountLooksLikeEmail && noAccount}
+          Nobody with that email has an account. Check the address.
+        {:else if accountLooksLikeEmail && lookup?.status === 'error'}
+          Could not look the account up. Check the address before you act.
+        {:else if accountLooksLikeEmail}
+          Looking up the account.
+        {:else}
+          The account's email address, as they sign in with it.
+        {/if}
+      </p>
+    </div>
+    <button type="submit" class="btn btn-secondary submit" disabled={unseen || (busy && pending?.kind === 'reset')} aria-describedby={unseen ? 'account-who' : undefined}>Reset Google link</button>
+    <button
+      type="button"
+      class="btn btn-secondary submit"
+      disabled={unseen || (busy && pending?.kind === 'end-sessions')}
+      aria-describedby={unseen ? 'account-who' : undefined}
+      onclick={() => askAccount('end-sessions')}
+    >
+      End sessions
+    </button>
+    <button
+      type="button"
+      class="btn btn-secondary btn-danger-secondary submit"
+      disabled={unseen || (busy && pending?.kind === 'disable')}
+      aria-describedby={unseen ? 'account-who' : undefined}
+      onclick={() => askAccount('disable')}
+    >
+      Disable account
+    </button>
+  </form>
+  {#if accountError !== ''}
+    <p id="account-error" class="field-error form-error" role="alert">{accountError}</p>
+  {/if}
+
+  <h3 class="subhead">Disabled accounts</h3>
+  {#if disabled.length > 0}
+    <ul class="list">
+      {#each disabled as a (a.id)}
+        <li>
+          <span class="item">{a.email}{#if a.name.trim() !== ''}<span class="muted"> ({a.name})</span>{/if}</span>
+          <button type="button" class="btn btn-quiet btn-compact" aria-label="Enable {a.email}" onclick={() => (pending = { kind: 'enable', email: a.email })}>
+            Enable
+          </button>
+        </li>
+      {/each}
+    </ul>
+  {:else}
+    <p class="empty muted">No account is disabled.</p>
+  {/if}
+</section>
+
+<ConfirmDialog
+  open={pending !== null}
+  title={confirmCopy.title}
+  body={confirmCopy.body}
+  confirmLabel={confirmCopy.label}
+  danger={pending?.kind !== 'enable'}
+  {busy}
+  onconfirm={confirm}
+  oncancel={() => (pending = null)}
+/>
+
+<style>
+  .list {
+    max-width: 32rem;
+    margin-top: var(--space-3);
+    padding: 0;
+    list-style: none;
+    border-top: var(--rule) solid var(--line);
+  }
+
+  .list li {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-3);
+    padding-block: var(--space-1);
+    border-bottom: var(--rule) solid var(--line);
+  }
+
+  .item {
+    overflow-wrap: anywhere;
+  }
+
+  .empty {
+    margin-top: var(--space-3);
+  }
+
+  .who {
+    max-width: var(--measure-form);
+  }
+
+  .subhead {
+    margin-top: var(--space-5);
+    font-size: var(--fs-sub);
+  }
+</style>

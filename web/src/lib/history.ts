@@ -100,7 +100,7 @@ export function siteAuditSummary(e: Pick<SiteAuditEntry, 'action' | 'subject_ema
     case 'role_granted':
       return d.from_role && d.from_role !== 'student'
         ? `Changed ${who} from ${roleWord(d.from_role)} to ${roleWord(d.role)}`
-        : `Made ${who} ${d.role === 'owner' ? 'an owner' : 'an admin'}`;
+        : `Made ${who} ${d.role === 'owner' ? 'an owner' : 'an organiser'}`;
     case 'role_revoked':
       return `Removed ${who} as ${roleWord(d.from_role)}${ended(d.sessions_ended)}`;
     case 'domain_added':
