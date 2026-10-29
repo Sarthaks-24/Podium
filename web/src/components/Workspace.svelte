@@ -222,6 +222,11 @@
     const restore = keepHeadingFocus();
     loadState = 'ready';
     void restore();
+    // After Start the pressed button is gone: focus goes to the problem's heading, never the body (P8).
+    void tick().then(() => {
+      const a = document.activeElement;
+      if (!a || a === document.body) document.querySelector<HTMLElement>('main h1')?.focus();
+    });
     judging.startStream(extraEvents, onevent, onresync);
   }
 

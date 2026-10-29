@@ -56,13 +56,13 @@ describe('standings cells', () => {
 describe('standings wording', () => {
   it('says whether the board is frozen, final or live, and what still judges', () => {
     const frozenAt = new Date(2026, 9, 18, 20, 30).getTime();
-    expect(statusLine(board({ variant: 'frozen', frozen_at: frozenAt }))).toBe('Frozen at 20:30. Updates when the contest ends.');
+    expect(statusLine(board({ variant: 'frozen', frozen_at: frozenAt }))).toBe('Results from 20:30 are hidden until the end.');
     expect(statusLine(board({ final: true }))).toBe('Final standings.');
     expect(statusLine(board({ judging_remaining: 1 }))).toBe('Live. Updates as submissions are judged. 1 submission is still being judged.');
     expect(statusLine(board({ final: true, judging_remaining: 3 }))).toBe('Final standings. 3 submissions are still being judged.');
     // After the end a frozen board is held for the reveal: no promise that has already passed.
     expect(statusLine(board({ variant: 'frozen', frozen_at: frozenAt }), true)).toBe(
-      'Frozen at 20:30. The final standings appear when the organisers release them.',
+      'Results from 20:30 are hidden until the organisers reveal them.',
     );
   });
 
@@ -74,9 +74,9 @@ describe('standings wording', () => {
   });
 
   it('never prints a frozen total beside the live score', () => {
-    expect(placeSentence(board({ variant: 'frozen' }))).toBe('In the frozen standings you are tied 2nd of 3.');
+    expect(placeSentence(board({ variant: 'frozen' }))).toBe('You are tied 2nd of 3 so far.');
     expect(placeSentence(board({ variant: 'frozen' }), true)).toBe(
-      'In the frozen standings you are tied 2nd of 3. Your final place shows when the organisers release the results.',
+      'You are tied 2nd of 3 so far. Your final place shows after the reveal.',
     );
     expect(placeSentence(board({ variant: 'frozen' }), true)).not.toMatch(/points/);
   });
@@ -98,7 +98,7 @@ describe('own place (S6)', () => {
   it('gives the figure for the own row', () => {
     expect(placeFigure(board([row(1, 1, 300), row(7, 2, 200), row(8, 2, 200)]))).toEqual({ rank: 2, of: 3, tied: true, label: 'Your place' });
     expect(placeFigure(board([row(1, 1, 300)]))).toBeNull();
-    expect(placeFigure(board([row(7, 1, 300)], 'frozen'))?.label).toBe('Your place on the frozen board');
+    expect(placeFigure(board([row(7, 1, 300)], 'frozen'))?.label).toBe('Your place so far');
   });
 
   it('announces a change of place or score as a sentence', () => {
@@ -107,7 +107,7 @@ describe('own place (S6)', () => {
     expect(rankAnnouncement(before, before)).toBe('');
     expect(rankAnnouncement(before, board([row(7, 1, 340), row(1, 2, 300)]))).toBe('You are now 1st with 340 points.');
     expect(rankAnnouncement(before, board([row(1, 1, 300), row(7, 2, 240)]))).toBe('You are now 2nd with 240 points.');
-    expect(rankAnnouncement(board([row(7, 2, 0)], 'frozen'), board([row(7, 3, 0)], 'frozen'))).toBe('You are now 3rd in the frozen standings.');
+    expect(rankAnnouncement(board([row(7, 2, 0)], 'frozen'), board([row(7, 3, 0)], 'frozen'))).toBe('You are now 3rd so far.');
   });
 });
 

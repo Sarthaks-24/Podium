@@ -41,7 +41,9 @@
   Props: `slug`, and `label` (the problem letter from the address, or "").
 -->
 <script lang="ts">
+  import Dialog from '../components/Dialog.svelte';
   import MonoDigits from '../components/MonoDigits.svelte';
+  import StandingsView from '../components/StandingsView.svelte';
   import PageState from '../components/PageState.svelte';
   import PlaceFigure from '../components/PlaceFigure.svelte';
   import PageHeader from '../components/PageHeader.svelte';
@@ -99,6 +101,8 @@
   let startBusy = $state(false);
   let startError = $state('');
   let messagesOpen = $state(false);
+  // B3: during the contest the board opens over the editor; Escape closes it and the problem stays.
+  let standingsOpen = $state(false);
   let dismissed = $state<Set<string>>(new Set());
   /** The last time the student read this contest's messages on this device (S1). */
   let lastRead = $state(0);
@@ -441,7 +445,8 @@
     {exam}
     unread={banner.length}
     onmessages={openMessages}
-    onrules={() => (shell.help = true)}
+    onhelp={() => (shell.help = true)}
+    onstandings={phase === 'during' ? () => (standingsOpen = true) : undefined}
   />
 {/snippet}
 
@@ -491,10 +496,13 @@
     open={messagesOpen}
     {contest}
     {current}
-    canAsk={phase === 'during'}
+    canAsk={phase === 'during' || practice}
     onclose={() => (messagesOpen = false)}
     onasked={onAsked}
   />
+  <Dialog open={standingsOpen} onclose={() => (standingsOpen = false)} title="Standings" kind="sheet">
+    {#if standingsOpen}<StandingsView {slug} />{/if}
+  </Dialog>
 {:else if phase === 'upcoming' || phase === 'ready'}
   <div class="page page-wide">
     <PageHeader title={contest.title} back={{ href: '/', label: 'Your contests' }}>

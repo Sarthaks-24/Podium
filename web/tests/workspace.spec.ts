@@ -579,7 +579,7 @@ test.describe('in a contest', () => {
     await page.getByRole('button', { name: 'I agree, start the contest' }).click();
     await expect(codeEditor(page)).toBeVisible();
 
-    const open = page.getByRole('navigation', { name: 'Problems' }).getByRole('button', { name: 'Rules' });
+    const open = page.getByRole('navigation', { name: 'Problems' }).getByRole('button', { name: 'Help' });
     await open.click();
     // Rules opens Help, which lists the rules first.
     const dialog = page.getByRole('dialog', { name: 'Help' });

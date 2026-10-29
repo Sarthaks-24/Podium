@@ -127,7 +127,7 @@ describe('countdowns', () => {
     expect(studentStateWord('frozen')).toBe('Live');
     expect(studentStateWord('practice')).toBe('Practice');
     expect(studentState('frozen')).toBe('live');
-    expect(listCountdown(summary({ state: 'frozen' }), T + 100 * MIN)).toEqual({ lead: 'Ends in', ms: 20 * MIN, after: ', standings frozen' });
+    expect(listCountdown(summary({ state: 'frozen' }), T + 100 * MIN)).toEqual({ lead: 'Ends in', ms: 20 * MIN, after: ', newest results hidden' });
   });
 });
 

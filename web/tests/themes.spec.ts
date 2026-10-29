@@ -160,11 +160,11 @@ test('applies, saves and clears preferences', async ({ page }) => {
     'signal',
   ]);
 
-  // The dialog says which theme is on; Escape closes it and focus returns to the item.
+  // The dialog says which theme is on; Escape closes it and focus returns to the account button (P8).
   await expect(dialog).toContainText('Current theme: High contrast dark');
   await page.keyboard.press('Escape');
   await expect(dialog).toBeHidden();
-  await expect(item).toBeFocused();
+  await expect(account).toBeFocused();
 
   // Reload: the pre-paint cache and the account agree.
   await page.reload();
@@ -181,6 +181,8 @@ test('applies, saves and clears preferences', async ({ page }) => {
   // Sign out: the next person at this machine starts from the defaults.
   await page.keyboard.press('Escape');
   await expect(dialog).toBeHidden();
+  // The menu closed with the dialog (P8): open it again to sign out.
+  await account.click();
   await page.getByRole('button', { name: 'Sign out' }).click();
   await expect(page).toHaveURL(/\/signin/);
   await expect(html).not.toHaveAttribute('data-verdicts', /.*/);

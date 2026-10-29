@@ -9,8 +9,9 @@
   are out.
   Below 1024 px the same links sit in one row of letters with their scores
   ("-" for none), which scrolls sideways when there are many. Under the
-  problems come the standings link, "Rules" (opens the rules dialog) and the
-  Messages button with its unread count, all quiet buttons with no
+  problems come Standings (a panel over the editor during the contest, B3,
+  else the standings page), Help (the rules, Run and Submit, the keys) and
+  the Messages button with its unread count, all quiet buttons with no
   underline (the control system in styles/controls.css). Each link keeps one sentence for
   screen readers (sentence()).
   With `layout` "strip" it draws only the workspace's sticky strip part
@@ -19,8 +20,9 @@
   px, built with the same adjacentLabel() as the "[" and "]" keys.
   Props: `problems`, `slug`, `current` (the open label), `layout` ("wide",
   "tablet", "phone" or "strip"), `exam`, `unread` (messages not yet seen),
-  `onmessages` (opens the
-  messages dialog) and `onrules` (optional; opens the rules dialog).
+  `onmessages` (opens the messages panel), `onhelp` (optional; opens Help)
+  and `onstandings` (optional; opens the standings panel instead of the
+  page).
 -->
 <script lang="ts">
   import { railStatus, type ContestProblem } from '../lib/contests';
@@ -35,10 +37,11 @@
     exam?: boolean;
     unread?: number;
     onmessages: () => void;
-    onrules?: () => void;
+    onhelp?: () => void;
+    onstandings?: () => void;
   }
 
-  let { problems, slug, current, layout, exam = false, unread = 0, onmessages, onrules }: Props = $props();
+  let { problems, slug, current, layout, exam = false, unread = 0, onmessages, onhelp, onstandings }: Props = $props();
 
   const base = $derived(`/contests/${encodeURIComponent(slug)}`);
   const labels = $derived(problems.map((p) => p.label));
@@ -124,8 +127,12 @@
     {/each}
   </ul>
   <div class="links">
-    <a class="btn btn-link btn-compact" href="{base}/standings{current ? `?from=${encodeURIComponent(current)}` : ''}">Standings</a>
-    {#if onrules}<button type="button" class="btn btn-link btn-compact" onclick={onrules}>Rules</button>{/if}
+    {#if onstandings}
+      <button type="button" class="btn btn-link btn-compact" onclick={onstandings}>Standings</button>
+    {:else}
+      <a class="btn btn-link btn-compact" href="{base}/standings{current ? `?from=${encodeURIComponent(current)}` : ''}">Standings</a>
+    {/if}
+    {#if onhelp}<button type="button" class="btn btn-link btn-compact" onclick={onhelp}>Help</button>{/if}
     <button type="button" class="btn btn-link btn-compact messages" onclick={onmessages}>
       <Icon name="message-square" />
       Messages{#if unread > 0}<span class="mono count">{unread}</span><span class="visually-hidden">&nbsp;unread</span>{/if}

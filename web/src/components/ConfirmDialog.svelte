@@ -1,5 +1,5 @@
 <!--
-  ConfirmDialog: a native modal <dialog> that asks before a destructive
+  ConfirmDialog: a native modal dialog that asks before a destructive
   action. Props: `open` (shows the dialog with showModal when true), `title`
   (the question, used as the dialog's accessible name), `body` (one line of
   consequence), `confirmLabel` (the action word, reused from the button that
@@ -9,10 +9,12 @@
   the action failed, shown inside the dialog with role="alert"; a toast
   would sit under the modal backdrop, out of reach), `onconfirm` and
   `oncancel`. Escape and Cancel both call `oncancel`. Focus starts on Cancel
-  so a stray Enter never confirms, and the browser returns focus to the
-  opener when the dialog closes.
+  so a stray Enter never confirms, and returns to the opener when the
+  dialog closes (components/Dialog).
 -->
 <script lang="ts">
+  import Dialog from './Dialog.svelte';
+
   interface Props {
     open: boolean;
     title: string;
@@ -28,33 +30,11 @@
 
   let { open, title, body, confirmLabel, items = [], danger = false, busy = false, error = '', onconfirm, oncancel }: Props = $props();
 
-  let dialog: HTMLDialogElement | undefined = $state();
   let cancelButton: HTMLButtonElement | undefined = $state();
   const id = `confirm-${Math.random().toString(36).slice(2, 9)}`;
-
-  $effect(() => {
-    if (!dialog) return;
-    if (open && !dialog.open) {
-      dialog.showModal();
-      cancelButton?.focus();
-    } else if (!open && dialog.open) {
-      dialog.close();
-    }
-  });
-
-  function onCancelEvent(event: Event) {
-    event.preventDefault();
-    if (!busy) oncancel();
-  }
 </script>
 
-<dialog
-  bind:this={dialog}
-  class="dialog dialog-small"
-  aria-labelledby="{id}-title"
-  aria-describedby="{id}-body"
-  oncancel={onCancelEvent}
->
+<Dialog {open} onclose={oncancel} kind="small" labelledby="{id}-title" describedby="{id}-body" {busy} initialFocus={() => cancelButton}>
   <h2 id="{id}-title" class="title">{title}</h2>
   <div id="{id}-body">
     <p class="body">{body}</p>
@@ -74,7 +54,7 @@
       Cancel
     </button>
   </div>
-</dialog>
+</Dialog>
 
 <style>
   .items {

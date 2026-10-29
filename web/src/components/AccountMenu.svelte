@@ -46,6 +46,13 @@
     open = false;
     onsignout();
   }
+
+  /** Closes the menu first (P8), so the dialog it opens returns focus to the trigger. */
+  function openDialog(which: 'theme' | 'help') {
+    open = false;
+    button?.focus();
+    shell[which] = true;
+  }
 </script>
 
 {#snippet items()}
@@ -54,8 +61,8 @@
     <span class="role">{roleLabel(user.role)}</span>
   </p>
   <ul class="items">
-    <li><button type="button" class="item" onclick={() => (shell.theme = true)}>Theme and colours</button></li>
-    <li class="keys"><button type="button" class="item" aria-keyshortcuts="?" onclick={() => (shell.help = true)}>Help</button></li>
+    <li><button type="button" class="item" onclick={() => openDialog('theme')}>Theme and colours</button></li>
+    <li class="keys"><button type="button" class="item" aria-keyshortcuts="?" onclick={() => openDialog('help')}>Help</button></li>
     <li class="rule"><button type="button" class="item" onclick={signOut}>Sign out</button></li>
   </ul>
 {/snippet}

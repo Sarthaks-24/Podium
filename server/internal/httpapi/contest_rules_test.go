@@ -145,6 +145,30 @@ func TestM4AccessAndCrossContestIDs(t *testing.T) {
 	}
 }
 
+// TestQuestionsStayOpenInPractice: after the end Messages stays usable
+// while practice is open (walk bug B4, B3); without practice the end
+// closes questions.
+func TestQuestionsStayOpenInPractice(t *testing.T) {
+	s := newSite(t)
+	owner := s.signedIn("owner@college.edu", "Owner")
+	pa := s.importProblem(owner, "plus-a")
+	start := time.Now().Add(time.Hour).Truncate(time.Minute)
+	s.createContest(owner, "prac", start, map[string]int64{"A": pa}, map[string]any{"practice_after_end": true})
+	s.createContest(owner, "shut", start, map[string]int64{"A": pa}, map[string]any{"practice_after_end": false})
+	asha := s.signedIn("asha@college.edu", "Asha")
+	s.at(start, 5)
+	for _, slug := range []string{"prac", "shut"} {
+		asha.do("POST", "/api/contests/"+slug+"/start", map[string]any{"accept_honour": true}, s.srv.URL)
+	}
+	s.at(start, 24*60)
+	if code, out := asha.do("POST", "/api/contests/prac/clarifications", map[string]any{"question": "Why does B time out?"}, s.srv.URL); code != 201 {
+		t.Errorf("question in practice: %d %v", code, out)
+	}
+	if code, out := asha.do("POST", "/api/contests/shut/clarifications", map[string]any{"question": "Why does B time out?"}, s.srv.URL); code != 403 || out["error"].(map[string]any)["code"] != "contest_over" {
+		t.Errorf("question after an end without practice: %d %v", code, out)
+	}
+}
+
 func TestM4WindowModeExtensionsAndBoard(t *testing.T) {
 	s := newSite(t)
 	owner := s.signedIn("owner@college.edu", "Owner")

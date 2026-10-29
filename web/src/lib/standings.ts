@@ -122,8 +122,9 @@ export function statusLine(
 ): string {
   let line: string;
   if (s.variant === 'frozen') {
-    const at = s.frozen_at ? `Frozen at ${clock(s.frozen_at)}.` : 'Frozen.';
-    line = ended ? `${at} The final standings appear when the organisers release them.` : `${at} Updates when the contest ends.`;
+    // design/words.md: say what happens, once, never "freeze" (B3).
+    const from = s.frozen_at ? `Results from ${clock(s.frozen_at)}` : 'The newest results';
+    line = ended ? `${from} are hidden until the organisers reveal them.` : `${from} are hidden until the end.`;
   } else if (s.final) {
     line = 'Final standings.';
   } else {
@@ -153,8 +154,8 @@ export function placeSentence(s: Pick<Standings, 'rows' | 'me'> & Partial<Pick<S
   const place = `${tied ? 'tied ' : ''}${ordinalWord(row.rank)} of ${s.rows.length}`;
   if (s.variant === 'frozen') {
     return ended
-      ? `In the frozen standings you are ${place}. Your final place shows when the organisers release the results.`
-      : `In the frozen standings you are ${place}.`;
+      ? `You are ${place} so far. Your final place shows after the reveal.`
+      : `You are ${place} so far.`;
   }
   return `You are ${place} with ${row.total} points.`;
 }
@@ -168,7 +169,7 @@ export function placeFigure(s: Pick<Standings, 'rows' | 'me'> & Partial<Pick<Sta
   const row = myRow(s);
   if (!row) return null;
   const tied = s.rows.filter((r) => r.rank === row.rank).length > 1;
-  return { rank: row.rank, of: s.rows.length, tied, label: s.variant === 'frozen' ? 'Your place on the frozen board' : 'Your place' };
+  return { rank: row.rank, of: s.rows.length, tied, label: s.variant === 'frozen' ? 'Your place so far' : 'Your place' };
 }
 
 /**
@@ -184,7 +185,7 @@ export function rankAnnouncement(prev: Pick<Standings, 'rows' | 'me' | 'variant'
   if (!a || !b) return '';
   if (a.rank === b.rank && (next.variant === 'frozen' || a.total === b.total)) return '';
   const tied = next.rows.filter((r) => r.rank === b.rank).length > 1 ? 'tied ' : '';
-  if (next.variant === 'frozen') return `You are now ${tied}${ordinalWord(b.rank)} in the frozen standings.`;
+  if (next.variant === 'frozen') return `You are now ${tied}${ordinalWord(b.rank)} so far.`;
   return `You are now ${tied}${ordinalWord(b.rank)} with ${b.total} points.`;
 }
 

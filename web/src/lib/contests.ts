@@ -245,7 +245,7 @@ export function stateWord(state: ContestState): string {
 /**
  * The state word a student reads (decision D84): a frozen contest is still
  * running for them, so it reads 'Live' and the countdown line adds
- * "standings frozen". Organiser screens keep stateWord.
+ * "newest results hidden". Organiser screens keep stateWord.
  */
 export function studentStateWord(state: ContestState): string {
   return state === 'frozen' ? 'Live' : stateWord(state);
@@ -351,12 +351,12 @@ export function lengthText(c: Pick<ContestSummary, 'start_mode' | 'duration_minu
 
 /**
  * The countdown line for a row of the contest list, or null for none.
- * `after` follows the time: ", standings frozen" during the freeze (D84).
+ * `after` follows the time: ", newest results hidden" in the last minutes (D84).
  */
 export function listCountdown(c: ContestSummary, now: number): { lead: string; ms: number; after: string } | null {
   if (c.state === 'upcoming') return { lead: 'Starts in', ms: c.starts_at - now, after: '' };
   if (c.state === 'live' || c.state === 'frozen') {
-    const after = c.state === 'frozen' ? ', standings frozen' : '';
+    const after = c.state === 'frozen' ? ', newest results hidden' : '';
     if (c.start_mode === 'window') {
       if (!c.my_window) return { lead: 'Open for', ms: c.ends_at - now, after };
       if (now < c.my_window.ends_at) return { lead: 'Your time left', ms: c.my_window.ends_at - now, after };

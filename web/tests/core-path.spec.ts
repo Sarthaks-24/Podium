@@ -2,6 +2,7 @@
 // always be able to do, written with role and name locators only so the
 // stage 4 redesign can move things without breaking it. No CSS classes,
 // no full sentences: a test fails only when a job stops working.
+import AxeBuilder from '@axe-core/playwright';
 import { expect, test } from '@playwright/test';
 import * as contests from './mocks/contests';
 import * as problems from './mocks/problems';
@@ -47,9 +48,13 @@ test('student: open the contest, start, run, submit, see a verdict, open standin
   await expect(result.getByText('Subtask 2', { exact: true })).toBeVisible();
   await expect(result.getByText('0 of 60', { exact: true })).toBeVisible();
 
-  await page.getByRole('link', { name: 'Standings' }).first().click();
-  await expect(page.getByRole('heading', { level: 1 })).toHaveText(/Standings/);
-  await expect(page.getByRole('table')).toBeVisible();
+  // B3: the board opens over the editor; the problem stays.
+  await page.getByRole('button', { name: 'Standings' }).first().click();
+  const board = page.getByRole('dialog', { name: 'Standings' });
+  await expect(board.getByRole('table')).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(board).toBeHidden();
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText(/A plus B/);
 });
 
 test('student: code typed in A stays in A when switching to B and back, and after a reload', async ({ page }) => {
@@ -164,6 +169,40 @@ test('student: running selects the Run tab and submitting selects Submissions; t
   await tab('Your input').click();
   await expect(result.getByRole('textbox', { name: 'Your input' })).toBeVisible();
   await expect(result.getByRole('tabpanel', { name: 'Your input' }).getByRole('button', { name: 'Run', exact: true })).toBeVisible();
+});
+
+test('student: standings open over problem B, Escape closes them, and B is still there (B3)', async ({ page }) => {
+  await contests.mockApi(page, { phase: 'during' });
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto('/contests/week-6/problems/B');
+  await expect(codeEditor(page)).toHaveAttribute('data-language', /.+/);
+  const open = page.getByRole('navigation', { name: 'Problems' }).getByRole('button', { name: 'Standings' });
+  await open.click();
+  const board = page.getByRole('dialog', { name: 'Standings' });
+  await expect(board.getByRole('table')).toBeVisible();
+  await expect(board.getByText(/are hidden until the end|Live\.|Final standings\./)).toBeVisible();
+  const results = await new AxeBuilder({ page }).include('dialog[open]').withTags(['wcag2a', 'wcag2aa', 'wcag21aa', 'wcag22aa']).analyze();
+  expect(results.violations.filter((v) => v.impact === 'serious' || v.impact === 'critical').map((v) => v.id)).toEqual([]);
+  await page.keyboard.press('Escape');
+  await expect(board).toBeHidden();
+  await expect(page).toHaveURL(/\/problems\/B$/);
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText(/Interval covering/);
+  await expect(open).toBeFocused();
+});
+
+test('student: a question can be sent in practice after the end (B3)', async ({ page }) => {
+  const api = await contests.mockApi(page, { phase: 'practice' });
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto('/contests/week-6/problems/B');
+  await expect(codeEditor(page)).toHaveAttribute('data-language', /.+/);
+  const open = page.getByRole('navigation', { name: 'Problems' }).getByRole('button', { name: /Messages/ });
+  await open.click();
+  const messages = page.getByRole('dialog', { name: 'Messages' });
+  await messages.getByRole('textbox', { name: 'Question' }).fill('Why does my B time out?');
+  await messages.getByRole('button', { name: 'Send question' }).click();
+  await expect.poll(() => api.asked.length).toBe(1);
+  await page.keyboard.press('Escape');
+  await expect(open).toBeFocused();
 });
 
 test('student: an autosaved draft comes back from the server after a reload', async ({ page }) => {

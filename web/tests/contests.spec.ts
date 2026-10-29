@@ -165,7 +165,9 @@ test('a student agrees to the honour code, solves, reads an announcement and ask
   const dialog = page.getByRole('dialog', { name: 'Messages' });
   await expect(dialog).toBeVisible();
   await expect(dialog.getByText('Problem B: the statement has been corrected.')).toBeVisible();
-  await expect(dialog.getByLabel('About')).toHaveValue('A');
+  // P7: the topic starts on the contest in general and says which problem is open.
+  await expect(dialog.getByLabel('About')).toHaveValue('');
+  await expect(dialog.getByText('You have problem A open.', { exact: false })).toBeVisible();
   await dialog.getByLabel('About').selectOption('B');
   await dialog.getByRole('button', { name: 'Send question' }).click();
   await expect(dialog.getByText('Write your question first.')).toBeVisible();
@@ -306,7 +308,7 @@ test('the frozen board shows pending cells, tints the own row and jumps to it', 
   await mockApi(page, { phase: 'during' });
   await page.setViewportSize({ width: 1440, height: 700 });
   await page.goto('/contests/week-6/standings');
-  await expect(page.getByText(/^Frozen at \d{2}:\d{2}\. Updates when the contest ends\. 2 submissions are still being judged\.$/)).toBeVisible();
+  await expect(page.getByText(/^Results from \d{2}:\d{2} are hidden until the end\. 2 submissions are still being judged\.$/)).toBeVisible();
   const mine = page.locator('tr.me');
   await expect(mine).toContainText('Asha Rao');
   await expect(mine).toContainText('(you)');
@@ -802,7 +804,7 @@ test('results switch boards, link the exports, release a held board and save the
   await page.goto('/admin/contests/4/results');
   await expect(page.getByText('Final standings.')).toBeVisible();
   await page.getByLabel('As students saw it frozen').check();
-  await expect(page.getByText(/^Frozen at/)).toBeVisible();
+  await expect(page.getByText(/^Results from \d{2}:\d{2} are hidden/)).toBeVisible();
   await expect(page.getByRole('link', { name: 'Download CSV' })).toHaveAttribute('href', '/api/admin/contests/4/export.csv');
   await expect(page.getByRole('link', { name: 'Download JSON' })).toHaveAttribute('href', '/api/admin/contests/4/export.json');
   await expect(page.getByText('8 students scored 40')).toBeAttached();
@@ -943,16 +945,18 @@ test('after the end, a held board gives the place only and says when it updates'
   await mockApi(page, { phase: 'after', studentFrozen: true });
   await page.goto('/contests/week-6');
   await expect(
-    page.getByText(/^In the frozen standings you are \d+(st|nd|rd|th) of 28\. Your final place shows when the organisers release the results\.$/),
+    page.getByText(/^You are \d+(st|nd|rd|th) of 28 so far\. Your final place shows after the reveal\.$/),
   ).toBeVisible();
   await expect(page.getByText(/points\.$/)).toHaveCount(0);
   await page.getByRole('link', { name: 'See the standings' }).click();
-  await expect(page.getByText(/^Frozen at \d{2}:\d{2}\. The final standings appear when the organisers release them\./)).toBeVisible();
-  await expect(page.locator('.legend')).toHaveText('The bar under a score is the share of points earned. A dash means not tried.');
+  await expect(page.getByText(/^Results from \d{2}:\d{2} are hidden until the organisers reveal them\./)).toBeVisible();
+  await expect(page.locator('.legend')).toHaveText(
+    'The bar under a score is the share of points earned; a dash means not tried. Time is when the total was reached, from the start.',
+  );
   await page.getByText('How to read the board').click();
-  await expect(page.getByText('counts submissions made after the freeze', { exact: false })).toBeVisible();
-  // S6: the own place is the page's one display figure, labelled for the frozen board.
-  await expect(page.locator('.place')).toContainText('Your place on the frozen board');
+  await expect(page.getByText('counts submissions made while the newest results are hidden', { exact: false })).toBeVisible();
+  // S6: the own place is the page's one display figure, labelled "so far" while results are hidden.
+  await expect(page.locator('.place')).toContainText('Your place so far');
   await expect(page.locator(".place-figure")).toHaveText(/^\s*\d+ of 28$/);
   expect(await page.locator('.place-rank').evaluate((el) => getComputedStyle(el).fontSize)).toBe('44px');
   await expect(page.locator('tr.me th.name')).toContainText('Asha Rao (you)');
@@ -1078,15 +1082,19 @@ test('keyboard only: a student starts, solves, submits, reads the verdict, asks 
   await expect(dialog).toBeHidden();
   await expect(messages).toBeFocused();
 
-  // Standings: the link just before Messages in the rail (forward, Tab would
-  // have to cross the editor), then Jump to you.
-  await tabTo(page, page.getByRole('navigation', { name: 'Problems' }).getByRole('link', { name: 'Standings' }), { back: true });
+  // Standings: the button before Messages in the rail (forward, Tab would
+  // have to cross the editor) opens the board over the editor (B3).
+  const standingsButton = page.getByRole('navigation', { name: 'Problems' }).getByRole('button', { name: 'Standings' });
+  await tabTo(page, standingsButton, { back: true });
   await page.keyboard.press('Enter');
-  await expect(page).toHaveURL(/\/contests\/week-6\/standings(\?from=A)?$/);
-  // The own row is already on screen, so "Jump to you" steps aside (S8) and the board box takes focus.
-  await expect(page.locator('tr.me')).toBeInViewport();
-  await expect(page.locator('.tools')).toHaveClass(/away/);
-  await tabTo(page, page.getByRole('region', { name: /^Standings for/ }));
+  const board = page.getByRole('dialog', { name: 'Standings' });
+  await expect(board.locator('tr.me')).toBeVisible();
+  await tabTo(page, board.getByRole('region', { name: /^Standings for/ }));
+  // Escape closes it: the same problem, focus back on the button.
+  await page.keyboard.press('Escape');
+  await expect(board).toBeHidden();
+  await expect(page).toHaveURL('/contests/week-6/problems/A');
+  await expect(standingsButton).toBeFocused();
 });
 
 test('closing the shortcuts list gives focus to the heading when the page loaded behind it', async ({ page }) => {

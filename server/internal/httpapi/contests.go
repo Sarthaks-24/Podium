@@ -584,7 +584,8 @@ func (d Deps) askClarification(w http.ResponseWriter, r *http.Request) {
 			d.internalError(w, r, err)
 			return
 		}
-		if st.Over {
+		// Practice after the end keeps Messages open (walk bug B4); otherwise the end closes questions.
+		if st.Over && !c.PracticeOpen(st, d.Contests.Clock()) {
 			WriteError(w, http.StatusForbidden, "contest_over", "The contest has ended, so questions are closed.")
 			return
 		}

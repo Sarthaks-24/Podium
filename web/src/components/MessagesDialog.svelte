@@ -1,23 +1,26 @@
 <!--
   MessagesDialog: everything organisers said during a contest, and the
-  place to ask them something. A native modal dialog (Escape closes it,
-  focus returns to the opener) with the MessageList: announcements newest
+  place to ask them something, in a panel down the right edge over the
+  editor column (components/Dialog, B3; Escape closes it, focus returns to
+  the opener). The MessageList comes first (S6): announcements newest
   first, the student's own questions with their answers or "Waiting for an
-  answer", and answers made public for everyone. While the student's window is open
-  a form asks a question about one problem or the contest in general
+  answer", and answers made public for everyone. Then, while the student
+  may still ask (during their window and in practice, B4 of the walk),
+  "Ask a question" about the contest in general or one problem
   (POST /api/contests/{slug}/clarifications); a refused question shows the
   server's sentence under the field, and a sent one is confirmed in a
   status line inside the dialog (a toast would sit behind the modal).
-  "About" starts on the open problem. Props: `open`, `contest`, `current`
+  "About" starts on "The contest in general" and says which problem is
+  open (P7). Props: `open`, `contest`, `current`
   (the open problem's letter, or ""), `canAsk`, `onclose` and `onasked`
   (called after a question was sent, with the new clarification when the
   server returns it).
 -->
 <script lang="ts">
   import { tick } from 'svelte';
+  import Dialog from './Dialog.svelte';
   import { ApiError, sendJSON } from '../lib/api';
   import type { Clarification, Contest } from '../lib/contests';
-  import Icon from './Icon.svelte';
   import MessageList from './MessageList.svelte';
 
   interface Props {
@@ -31,30 +34,19 @@
 
   let { open, contest, current = '', canAsk, onclose, onasked }: Props = $props();
 
-  let dialog: HTMLDialogElement | undefined = $state();
-  let heading: HTMLHeadingElement | undefined = $state();
   let topic = $state('');
   let question = $state('');
   let busy = $state(false);
   let error = $state('');
   let sent = $state('');
 
+  // Each opening starts clean on the general topic (P7).
   $effect(() => {
-    if (!dialog) return;
-    if (open && !dialog.open) {
-      topic = current;
+    if (open) {
+      topic = '';
       sent = '';
-      dialog.showModal();
-      tick().then(() => heading?.focus());
-    } else if (!open && dialog.open) {
-      dialog.close();
     }
   });
-
-  function onCancel(event: Event) {
-    event.preventDefault();
-    onclose();
-  }
 
   async function ask(event: SubmitEvent) {
     event.preventDefault();
@@ -91,22 +83,20 @@
   }
 </script>
 
-<dialog bind:this={dialog} class="dialog" aria-labelledby="messages-title" oncancel={onCancel}>
-  <div class="dialog-head">
-    <h2 id="messages-title" tabindex="-1" bind:this={heading}>Messages</h2>
-    <button type="button" class="btn btn-quiet btn-compact" aria-label="Close messages" title="Close" onclick={onclose}><Icon name="x" /></button>
-  </div>
+<Dialog {open} {onclose} title="Messages" kind="sheet">
+  <MessageList {contest} level={3} idPrefix="msg" />
 
   {#if canAsk}
     <form class="ask" novalidate onsubmit={ask}>
-      <h3 class="section-title">Ask the organisers</h3>
+      <h3 class="section-title">Ask a question</h3>
       <div class="ask-fields">
         <div class="field">
           <label for="ask-topic">About</label>
-          <select id="ask-topic" class="select" bind:value={topic}>
+          <select id="ask-topic" class="select" bind:value={topic} aria-describedby={current ? 'ask-topic-help' : undefined}>
             <option value="">The contest in general</option>
             {#each contest.problems ?? [] as p (p.label)}<option value={p.label}>Problem {p.label}: {p.title}</option>{/each}
           </select>
+          {#if current}<p id="ask-topic-help" class="field-help">You have problem {current} open. Choose it above if the question is about it.</p>{/if}
         </div>
         <div class="field">
           <label for="ask-question">Question</label>
@@ -128,18 +118,16 @@
   {:else}
     <p class="muted small closed">Questions close when your time in the contest ends.</p>
   {/if}
-
-  <MessageList {contest} level={3} idPrefix="msg" />
-</dialog>
+</Dialog>
 
 <style>
   .ask {
     display: grid;
     gap: var(--space-3);
-    margin-top: var(--space-5);
+    margin-top: var(--space-6);
     justify-items: start;
-    padding-bottom: var(--space-5);
-    border-bottom: var(--rule) solid var(--line);
+    padding-top: var(--space-5);
+    border-top: var(--rule) solid var(--line);
   }
 
   .ask-fields {

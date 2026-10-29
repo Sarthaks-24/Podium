@@ -9,7 +9,7 @@
   any), `onclose`, `ondecided`.
 -->
 <script lang="ts">
-  import { tick } from 'svelte';
+  import Dialog from './Dialog.svelte';
   import { focusFirstInvalid } from '../lib/focus';
   import { ApiError, errorText, sendJSON } from '../lib/api';
   import { DECISIONS, MIN_REASON, noteCounter, noteLength, type Case, type DecisionKind } from '../lib/review';
@@ -26,31 +26,20 @@
   let { open, contestId, student, current = null, onclose, ondecided }: Props = $props();
 
   let dialog: HTMLDialogElement | undefined = $state();
-  let heading: HTMLHeadingElement | undefined = $state();
   let decision = $state<DecisionKind>('warning');
   let reason = $state('');
   let busy = $state(false);
   let error = $state('');
   let reasonError = $state('');
 
+  // Each opening starts from the decision recorded now.
   $effect(() => {
-    if (!dialog) return;
-    if (open && !dialog.open) {
-      decision = current?.decision ?? 'warning';
-      reason = '';
-      error = '';
-      reasonError = '';
-      dialog.showModal();
-      tick().then(() => heading?.focus());
-    } else if (!open && dialog.open) {
-      dialog.close();
-    }
+    if (!open) return;
+    decision = current?.decision ?? 'warning';
+    reason = '';
+    error = '';
+    reasonError = '';
   });
-
-  function onCancelEvent(event: Event) {
-    event.preventDefault();
-    if (!busy) onclose();
-  }
 
   async function submit(event: SubmitEvent) {
     event.preventDefault();
@@ -77,8 +66,8 @@
   }
 </script>
 
-<dialog bind:this={dialog} class="dialog" aria-labelledby="decision-title" oncancel={onCancelEvent}>
-  <h2 id="decision-title" tabindex="-1" bind:this={heading}>Record a decision about {student?.name ?? 'this student'}</h2>
+<Dialog {open} {onclose} {busy} labelledby="decision-title" bind:dialog>
+  <h2 id="decision-title" tabindex="-1">Record a decision about {student?.name ?? 'this student'}</h2>
   {#if current}
     <p class="muted lead">This replaces the decision recorded now: {DECISIONS.find((d) => d.id === current.decision)?.label}.</p>
   {/if}
@@ -112,7 +101,7 @@
       <button type="button" class="btn btn-secondary" disabled={busy} onclick={onclose}>Cancel</button>
     </div>
   </form>
-</dialog>
+</Dialog>
 
 <style>
   .lead {

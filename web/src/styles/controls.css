@@ -470,6 +470,17 @@ textarea.input {
   }
 }
 
+/* A panel down the right edge (B3): Standings and Messages open over the
+   editor column, and the statement stays in view beside them. */
+.dialog.dialog-sheet {
+  width: min(44rem, 100vw);
+  height: 100dvh;
+  max-height: none;
+  margin: 0 0 0 auto;
+  border-width: 0 0 0 var(--rule);
+  border-radius: 0;
+}
+
 /* Stacked rows on phones (F7): add .table-stack to a .table, then give its
    cells grid areas in the component. Under 768 px the header is hidden
    (kept for screen readers), each row becomes a padded grid and the cells

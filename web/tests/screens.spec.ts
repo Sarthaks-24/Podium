@@ -460,10 +460,7 @@ test('keyboard only: the account menu opens, its items work, and Escape returns 
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.keyboard.press('Escape');
   await expect(dialog).toBeHidden();
-  await expect(page.getByRole('button', { name: 'Theme and colours' })).toBeFocused();
-
-  // Escape closes the menu and returns focus to the account button.
-  await page.keyboard.press('Escape');
+  // P8: the menu closed with the dialog, so focus returns to the account button.
   await expect(account).toHaveAttribute('aria-expanded', 'false');
   await expect(account).toBeFocused();
 

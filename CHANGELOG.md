@@ -4,6 +4,13 @@ Dated entries per release. Unreleased work is listed at the top.
 
 ## Unreleased
 
+### v3 stage B3: standings and messages as panels (2026-10-29)
+
+- During a contest Standings opens as a panel over the editor column; Escape closes it and the problem stays. The standings page remains for after the end.
+- Messages opens as the same kind of panel, the messages first and "Ask a question" last. The topic starts on "The contest in general" and says which problem is open. Questions stay open in practice after the end (the server now accepts them while practice is open).
+- Students read "Results from 13:51 are hidden until the end." and "You are 7th of 28 so far", never "frozen"; the legend says the time is when the total was reached, from the start. The rail's Rules is Help.
+- Every dialog is built on one `Dialog` component: focus returns to the control that opened it, or to the page heading when that control is gone. The account menu closes when it opens Theme or Help. After Start, focus lands on the problem's heading.
+
 ### v3 stage B2: the result tabs and the one Workspace split (2026-10-29)
 
 - The result area is three fixed tabs: Run, Submissions (with a count) and Your input. Run on the examples selects Run, Submit selects Submissions, a run on your own input stays on Your input; nothing swaps silently and Run and Submit keep focus. Your input holds the box with its own Run and that run's result; "Run on this input" on a failing example fills it and switches there. A submission that failed on an example offers "Run to see your output".

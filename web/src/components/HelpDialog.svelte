@@ -6,7 +6,8 @@
   pressed outside a text field, or from the footer and the account menu;
   the contest's "Rules" opens it too. Escape and Close shut it, and the
   browser returns focus to whatever had it before, or to the page heading
-  when that element was replaced while it was open. Focus starts on the
+  when that element was replaced while it was open (components/Dialog).
+  Focus starts on the
   heading, so a screen reader reads the title first. Organisers also see
   the problem editor and reveal keys. Props: `open`, `organiser` and
   `onclose`.
@@ -14,7 +15,7 @@
 <script lang="ts">
   import { shell } from '../lib/shell.svelte';
   import { isMacPlatform, shortcutGroups } from '../lib/shortcuts';
-  import Icon from './Icon.svelte';
+  import Dialog from './Dialog.svelte';
 
   interface Props {
     open: boolean;
@@ -24,43 +25,10 @@
 
   let { open, organiser, onclose }: Props = $props();
 
-  let dialog: HTMLDialogElement | undefined = $state();
-  let heading: HTMLHeadingElement | undefined = $state();
-
   const groups = $derived(shortcutGroups({ mac: isMacPlatform(), organiser }));
-
-  $effect(() => {
-    if (!dialog) return;
-    if (open && !dialog.open) {
-      dialog.showModal();
-      heading?.focus();
-    } else if (!open && dialog.open) {
-      dialog.close();
-      // "?" can open the list while a screen is still loading. The heading
-      // that had focus is then replaced behind the dialog, the browser has
-      // nothing to return focus to, and focus would fall to the body (it
-      // is still inside the closed dialog at this point): give it to the
-      // page heading instead.
-      const now = document.activeElement;
-      if (now === null || now === document.body || dialog.contains(now)) {
-        document.querySelector<HTMLElement>('main h1')?.focus();
-      }
-    }
-  });
-
-  function onCancel(event: Event) {
-    event.preventDefault();
-    onclose();
-  }
 </script>
 
-<dialog bind:this={dialog} class="dialog" aria-labelledby="help-title" oncancel={onCancel}>
-  <div class="dialog-head">
-    <h2 id="help-title" tabindex="-1" bind:this={heading}>Help</h2>
-    <button type="button" class="btn btn-quiet btn-compact" aria-label="Close help" title="Close" onclick={onclose}>
-      <Icon name="x" />
-    </button>
-  </div>
+<Dialog {open} {onclose} title="Help">
   {#if shell.rules}
     <section class="group" aria-labelledby="help-rules">
       <h3 id="help-rules">Rules</h3>
@@ -92,7 +60,7 @@
       </dl>
     </section>
   {/each}
-</dialog>
+</Dialog>
 
 <style>
   .group {
