@@ -93,7 +93,6 @@ test('messages posted while the student was away still show, until read (S1)', a
   api.clarifications.push({ id: 9, problem_label: 'A', question: 'Can a be negative?', answer: 'No, a is at least 0.', public: false, created_at: before - 60_000, answered_at: before + 60_000 });
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto('/contests/week-6/problems/A');
-  const rail = page.getByRole('navigation', { name: 'Problems' });
   await expect(page.locator('.banner-slot .strip')).toContainText('No, a is at least 0.');
   await expect(page.locator('.banner-slot .strip')).toContainText('1 more message waiting.');
   await expect(page.getByRole('button', { name: /Messages/ })).toContainText('2');
