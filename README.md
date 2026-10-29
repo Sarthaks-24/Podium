@@ -81,7 +81,7 @@ Since v1.1.0 the tarball also holds `MANIFEST` (version, commit, build date, sch
 
 ## Deploy to the VM
 
-The VM is Ubuntu 24.04 on **amd64 (x86_64)**: releases contain amd64 binaries only. On a fresh VM, in production mode (the default):
+The VM is Ubuntu 24.04 on **amd64 or arm64**. `make release` builds for amd64; `make release ARCH=arm64` builds `podium-<version>-arm64.tar.gz` for an ARM VM such as Oracle's free Ampere A1 (docs/OPERATIONS.md, "Oracle Always Free", which also covers the watchdog and the offsite backup bucket). On a fresh VM, in production mode (the default):
 
 ```sh
 tar xzf podium-<version>.tar.gz && cd podium-<version>

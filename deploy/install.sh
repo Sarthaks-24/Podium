@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Install, upgrade, roll back and verify podium on an Ubuntu 24.04 VM
-# (amd64). Every step is idempotent: safe to re-run.
+# (amd64, or arm64 such as Oracle's free Ampere A1). Every step is
+# idempotent: safe to re-run.
 #
 # Usage:
 #   sudo ./install.sh              run every step in order, then the checklist
@@ -53,7 +54,27 @@ die() { printf 'install.sh: %s\n' "$*" >&2; exit 1; }
 [[ $EUID -eq 0 ]] || die "run as root (sudo ./install.sh)"
 . /etc/os-release
 [[ "${ID:-}" == "ubuntu" ]] || die "this script targets Ubuntu 24.04; found ${PRETTY_NAME:-unknown}"
-[[ $(uname -m) == x86_64 ]] || die "podium releases are built for amd64 (x86_64) only; this machine is $(uname -m)"
+# release_arch MANIFEST: the processor a release was built for. Releases
+# from before arch= was written are amd64; a repository checkout (no
+# MANIFEST) prints nothing and is built on the machine itself.
+release_arch() {
+  [[ -f $1 ]] || return 0
+  local a
+  a=$(sed -n 's/^arch=//p' "$1" | head -n1)
+  echo "${a:-amd64}"
+}
+
+# check_arch MANIFEST MACHINE_ARCH: refuse binaries built for another
+# processor before anything is installed (V3-28: amd64 and arm64 builds).
+check_arch() {
+  local want
+  want=$(release_arch "$1")
+  [[ -z $want || $want == "$2" ]] \
+    || die "this release is built for $want but this machine is $2; build it with make release ARCH=$2"
+}
+check_arch "$HERE/MANIFEST" "$(dpkg --print-architecture)"
+[[ $(dpkg --print-architecture) == amd64 || $(dpkg --print-architecture) == arm64 ]] \
+  || die "podium releases are built for amd64 and arm64 only; this machine is $(dpkg --print-architecture)"
 
 export DEBIAN_FRONTEND=noninteractive
 
@@ -117,14 +138,47 @@ step_packages() {
   node --version
 }
 
+# isolate for arm64, which the upstream apt repository does not publish
+# (checked 2026-10-29: "Architectures: amd64"). Built from the upstream
+# commit of the release the amd64 package carries, with that package's
+# paths, so /usr/bin/isolate, /etc/isolate, /var/lib/isolate and
+# isolate.service are where every later step and check expects them.
+# Pinned by commit: git checks the fetched tree against the hash.
+ISOLATE_VERSION=2.2.1
+ISOLATE_COMMIT=9c84554464d2aa9161a424e70af67f4210a12c45
+isolate_from_source() {
+  if command -v isolate >/dev/null && isolate --version 2>/dev/null | head -n1 | grep -qx "The process isolator $ISOLATE_VERSION"; then
+    echo "isolate $ISOLATE_VERSION already built"
+    return
+  fi
+  command -v make >/dev/null && command -v gcc >/dev/null || die "make and gcc missing; run the packages step first"
+  apt-get install -y -q git pkg-config libcap-dev libsystemd-dev
+  local tmp
+  tmp=$(mktemp -d)
+  git -C "$tmp" init -q
+  git -C "$tmp" fetch -q --depth 1 https://github.com/ioi/isolate.git "$ISOLATE_COMMIT"
+  git -C "$tmp" checkout -q FETCH_HEAD
+  [[ $(git -C "$tmp" rev-parse HEAD) == "$ISOLATE_COMMIT" ]] || die "isolate source is not commit $ISOLATE_COMMIT"
+  # Programs and configuration only: the manual pages need asciidoc.
+  local paths=(PREFIX=/usr VARPREFIX=/var CONFIGDIR=/etc UNITDIR=/usr/lib/systemd/system)
+  make -C "$tmp" -s "${paths[@]}" isolate isolate-check-environment isolate-cg-keeper default.cf systemd/isolate.service
+  make -C "$tmp" -s "${paths[@]}" install
+  rm -rf "$tmp"
+}
+
 step_isolate() {
-  log "isolate: sandbox from the upstream apt repository"
-  # Upstream packages are signed and receive security fixes through apt
-  # (decision D21). The suite follows the Ubuntu codename.
-  add_repo isolate https://www.ucw.cz/isolate/debian/signing-key.asc \
-    "deb [arch=amd64 signed-by=/etc/apt/keyrings/isolate.asc] http://www.ucw.cz/isolate/debian/ ${VERSION_CODENAME}-isolate main"
-  apt-get update -q
-  apt-get install -y -q isolate
+  if [[ $(dpkg --print-architecture) == amd64 ]]; then
+    log "isolate: sandbox from the upstream apt repository"
+    # Upstream packages are signed and receive security fixes through apt
+    # (decision D21). The suite follows the Ubuntu codename.
+    add_repo isolate https://www.ucw.cz/isolate/debian/signing-key.asc \
+      "deb [arch=amd64 signed-by=/etc/apt/keyrings/isolate.asc] http://www.ucw.cz/isolate/debian/ ${VERSION_CODENAME}-isolate main"
+    apt-get update -q
+    apt-get install -y -q isolate
+  else
+    log "isolate: sandbox built from upstream $ISOLATE_VERSION (no arm64 package exists)"
+    isolate_from_source
+  fi
   grep -Eq '^box_root *= */var/lib/isolate$' /etc/isolate \
     || die "/etc/isolate box_root is not /var/lib/isolate; the tmpfs mount below would not cover it"
   # Cap every sandbox together. Boxes live in isolate.slice, not in the
@@ -474,8 +528,49 @@ step_caddy() {
 # including the server's own ports, which listen on loopback anyway. ssh is
 # allowed before the firewall is switched on, so an ssh session survives.
 ssh_port() { local p; p=$(sshd -T 2>/dev/null | sed -n 's/^port //p' | head -n1); echo "${p:-22}"; }
+# Oracle Cloud's Ubuntu images load their own rules at boot
+# (netfilter-persistent, /etc/iptables/rules.v4): established traffic,
+# ssh, then a bare REJECT in INPUT and FORWARD. ufw's chains are appended
+# after that REJECT and never see a packet, so http and https stay closed
+# however ufw is set. Installing ufw removes netfilter-persistent (ufw
+# declares Breaks on it), so from the next boot only ufw's rules load, as
+# on any VM. image_rejects prints the bare REJECT rules still loaded now
+# (from iptables -S), which image_rejects_drop deletes; ufw's own rules
+# all jump to ufw chains and are never matched.
+image_rejects() {
+  grep -E '^-A (INPUT|FORWARD) -j REJECT( |$)' <<<"$1" || true
+}
+
+image_rejects_drop() {
+  local tool rule
+  for tool in iptables ip6tables; do
+    command -v "$tool" >/dev/null || continue
+    while IFS= read -r rule; do
+      [[ -n $rule ]] || continue
+      # shellcheck disable=SC2086 # the rule is iptables words, split on purpose
+      "$tool" -D ${rule#-A }
+      echo "$tool: removed the image's '$rule' (ufw now filters inbound)"
+    done < <(image_rejects "$("$tool" -S 2>/dev/null)")
+  done
+}
+
+# input_order_ok RULES: true when the INPUT rules (iptables -S INPUT) have
+# no REJECT, or accept 80/tcp, 443/tcp and 443/udp before the first one.
+input_order_ok() {
+  local reject at pat
+  reject=$(grep -n -m1 -e '-j REJECT' <<<"$1" | cut -d: -f1)
+  [[ -z $reject ]] && return 0
+  for pat in '-p tcp .*--dport 80 .*-j ACCEPT' '-p tcp .*--dport 443 .*-j ACCEPT' '-p udp .*--dport 443 .*-j ACCEPT'; do
+    at=$(grep -n -m1 -E -e "$pat" <<<"$1" | cut -d: -f1)
+    [[ -n $at && $at -lt $reject ]] || return 1
+  done
+}
+
 step_firewall() {
   log "firewall: only ssh, http and https inbound"
+  if dpkg-query -W -f='${Status}' netfilter-persistent 2>/dev/null | grep -q 'ok installed'; then
+    echo "netfilter-persistent is installed (a cloud image's own rules, such as Oracle's); ufw replaces it"
+  fi
   apt-get install -y -q ufw
   ufw default deny incoming
   ufw default allow outgoing
@@ -484,6 +579,7 @@ step_firewall() {
   ufw allow 443/tcp comment 'https'
   ufw allow 443/udp comment 'https (HTTP/3)'
   ufw --force enable
+  image_rejects_drop
   ufw status verbose
   if sshd -T 2>/dev/null | grep -qx 'passwordauthentication yes'; then
     echo "warning: ssh still accepts passwords. Once your key works, set PasswordAuthentication no in /etc/ssh/sshd_config.d/ and restart ssh (docs/OPERATIONS.md, Firewall and ssh)."
@@ -507,16 +603,23 @@ step_swap() {
 # release and refused unless the tarball's SHA-256 matches the one here
 # (taken from the release's checksums.txt and checked against it).
 LITESTREAM_VERSION=0.5.16
-LITESTREAM_SHA256=9e29112380a942e4a62ee07773684396cb8b308dc4d67e130bef41f75e937f0a
+# Read through ${!sum} below, by the machine's architecture.
+# shellcheck disable=SC2034
+LITESTREAM_SHA256_amd64=9e29112380a942e4a62ee07773684396cb8b308dc4d67e130bef41f75e937f0a
+# shellcheck disable=SC2034
+LITESTREAM_SHA256_arm64=678022e4103145302598e35d37f8718392d42e153feeb1e2d4a64dd0cd3aaf10
 step_litestream() {
   log "litestream: database replication to a bucket"
   if [[ -x /usr/local/bin/litestream ]] && [[ $(/usr/local/bin/litestream version 2>/dev/null) == "$LITESTREAM_VERSION" ]]; then
     echo "litestream $LITESTREAM_VERSION already installed"
   else
-    local tmp tarball=litestream-$LITESTREAM_VERSION-linux-x86_64.tar.gz
+    local tmp arch sum tarball
+    arch=$(dpkg --print-architecture)
+    sum=LITESTREAM_SHA256_$arch
+    tarball=litestream-$LITESTREAM_VERSION-linux-$([[ $arch == amd64 ]] && echo x86_64 || echo "$arch").tar.gz
     tmp=$(mktemp -d)
     curl -fsSL -o "$tmp/$tarball" "https://github.com/benbjohnson/litestream/releases/download/v$LITESTREAM_VERSION/$tarball"
-    echo "$LITESTREAM_SHA256  $tmp/$tarball" | sha256sum -c --quiet || die "litestream tarball checksum mismatch"
+    echo "${!sum}  $tmp/$tarball" | sha256sum -c --quiet || die "litestream tarball checksum mismatch"
     tar -xzf "$tmp/$tarball" -C "$tmp" litestream
     install -m 755 "$tmp/litestream" /usr/local/bin/litestream
     rm -rf "$tmp"
@@ -888,6 +991,9 @@ cmd_verify() {
   else
     fail "ufw is not active: sudo ./install.sh firewall"
   fi
+  # A REJECT ahead of ufw (Oracle's image) closes 80 and 443 whatever ufw says.
+  if input_order_ok "$(iptables -S INPUT 2>/dev/null)"; then ok "no REJECT ahead of http and https in iptables INPUT"
+  else fail "iptables INPUT rejects before accepting http and https (a cloud image's own rules): sudo ./install.sh firewall"; fi
   local addr port
   for addr in "$(listen_addr)" "$(judge_addr)"; do
     port=${addr##*:}
@@ -916,6 +1022,9 @@ cmd_verify() {
   done
   [[ -n $(envval /etc/podium/alert.env PODIUM_ALERT_WEBHOOK) ]] && ok "PODIUM_ALERT_WEBHOOK set" || fail "PODIUM_ALERT_WEBHOOK missing in /etc/podium/alert.env: no alert reaches anyone"
   [[ -n $(envval /etc/podium/backup.env PODIUM_HEARTBEAT_URL) ]] && ok "PODIUM_HEARTBEAT_URL set" || warn "PODIUM_HEARTBEAT_URL missing: a missed backup goes unnoticed"
+  # Litestream copies the database only; the test files leave the VM only
+  # with the offsite nightly archive (V3-30).
+  [[ -n $(envval /etc/podium/backup.env PODIUM_OFFSITE_BUCKET) ]] && ok "PODIUM_OFFSITE_BUCKET set" || warn "PODIUM_OFFSITE_BUCKET missing: the test files have no copy off the VM"
   local bdir
   bdir=$(backup_dir)
   if [[ $(stat -c '%U %a' "$bdir" 2>/dev/null) == "podium 700" ]]; then ok "$bdir podium 700"; else fail "$bdir is $(stat -c '%U %a' "$bdir" 2>/dev/null || echo missing), want podium 700"; fi

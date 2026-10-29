@@ -2,7 +2,10 @@
 # Writes MANIFEST and SHA256SUMS into a release folder (B1.2), called by
 # make release before the folder is packed:
 #
-#   tools/release-manifest.sh DIR VERSION COMMIT BUILT UPGRADES_FROM
+#   tools/release-manifest.sh DIR VERSION COMMIT BUILT UPGRADES_FROM [ARCH]
+#
+# ARCH is the processor the binaries are built for (amd64, the default, or
+# arm64); install.sh refuses a release built for another processor.
 #
 # MANIFEST is what the release is, one key=value per line, read by
 # install.sh upgrade (the version check and the "oldest it upgrades from"
@@ -12,7 +15,8 @@
 # the folder; install.sh checks it before installing anything.
 set -euo pipefail
 
-dir=$1 version=$2 commit=$3 built=$4 upgrades_from=$5
+dir=$1 version=$2 commit=$3 built=$4 upgrades_from=$5 arch=${6:-amd64}
+[[ $arch == amd64 || $arch == arm64 ]] || { echo "release-manifest: arch '$arch' is not amd64 or arm64" >&2; exit 1; }
 # install.sh compares versions to refuse an older or unversioned install
 # and a downgrade; a release named by a commit hash could never be
 # upgraded from, so only vX.Y.Z is accepted for both values.
@@ -41,6 +45,7 @@ migrations=$(cd "$repo/server/internal/db/migrations" && ls -1 [0-9]*.sql | sed 
 cat > "$dir/MANIFEST" <<EOF
 release=$(basename "$dir")
 version=$version
+arch=$arch
 commit=$commit
 built=$built
 schema=$schema
@@ -50,4 +55,4 @@ upgrades_from=$upgrades_from
 EOF
 
 (cd "$dir" && find . -type f ! -name SHA256SUMS -print | sed 's|^\./||' | LC_ALL=C sort | xargs sha256sum > SHA256SUMS)
-echo "MANIFEST: $version, schema $schema, protocol $protocol, upgrades from $upgrades_from; SHA256SUMS: $(wc -l < "$dir/SHA256SUMS") files"
+echo "MANIFEST: $version ($arch), schema $schema, protocol $protocol, upgrades from $upgrades_from; SHA256SUMS: $(wc -l < "$dir/SHA256SUMS") files"

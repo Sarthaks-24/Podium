@@ -14,6 +14,9 @@
 #                    asked for work for 2 minutes (a stopped judge, a
 #                    token mismatch): from the server's /healthz on
 #                    loopback
+#       offsite      PODIUM_OFFSITE_BUCKET set in backup.env but the
+#                    newest nightly archive there is over 36 hours old
+#                    (V3-30)
 #   podium-check restore-proof [--corrupt]
 #       run by hand once a term (V3-10, docs/OPERATIONS.md "Restore"):
 #       restore the bucket's newest database into a scratch folder now and
@@ -136,6 +139,28 @@ newest_remote() {
   [[ -n $t ]] && date -u -d "$t" +%s || echo 0
 }
 
+# check_offsite: the offsite copy of the nightly backup (V3-30), when
+# configured. One listing of the folder per run.
+check_offsite() {
+  local f=/etc/podium/backup.env bucket newest
+  bucket=$(envget "$f" PODIUM_OFFSITE_BUCKET "")
+  [[ -n $bucket ]] || return 0
+  newest=$(
+    export RCLONE_CONFIG_OFF_TYPE=s3 RCLONE_CONFIG_OFF_PROVIDER=Other RCLONE_CONFIG_OFF_FORCE_PATH_STYLE=true
+    RCLONE_CONFIG_OFF_ACCESS_KEY_ID=$(envget "$f" PODIUM_OFFSITE_ACCESS_KEY_ID "")
+    RCLONE_CONFIG_OFF_SECRET_ACCESS_KEY=$(envget "$f" PODIUM_OFFSITE_SECRET_ACCESS_KEY "")
+    RCLONE_CONFIG_OFF_ENDPOINT=$(envget "$f" PODIUM_OFFSITE_ENDPOINT "")
+    RCLONE_CONFIG_OFF_REGION=$(envget "$f" PODIUM_OFFSITE_REGION "")
+    export RCLONE_CONFIG_OFF_ACCESS_KEY_ID RCLONE_CONFIG_OFF_SECRET_ACCESS_KEY RCLONE_CONFIG_OFF_ENDPOINT RCLONE_CONFIG_OFF_REGION
+    newest_remote "off:$bucket/$(envget "$f" PODIUM_OFFSITE_PATH podium-nightly)" --s3-no-check-bucket --include '20*.tar.gz' --max-age 7d
+  ) || { problem offsite "offsite bucket unreachable" "listing the offsite bucket failed: the key, endpoint or network in /etc/podium/backup.env is wrong"; return; }
+  if (( now - newest > 36 * 3600 )); then
+    problem offsite "offsite copy behind" "the newest nightly archive in the offsite bucket is from $( (( newest > 0 )) && date -u -d "@$newest" '+%Y-%m-%d %H:%M UTC' || echo 'over 7 days ago'). journalctl -u podium-backup -n 30"
+  else
+    fine offsite "offsite copy" "newest nightly archive $(( (now - newest) / 3600 )) h old"
+  fi
+}
+
 check_litestream() {
   if ! litestream_ready; then
     problem litestream "replication not configured" "/etc/podium/litestream.env still has placeholders: the database has no copy off the VM (docs/OPERATIONS.md, Backups)"
@@ -205,6 +230,7 @@ case ${1:-} in
     check_disk
     check_judge
     check_litestream
+    check_offsite
     ;;
   restore-proof)
     corrupt=no
@@ -218,9 +244,10 @@ case ${1:-} in
     check_disk
     check_judge
     check_litestream
+    check_offsite
     ;;
   *)
-    sed -n '2,24p' "$0" | sed 's/^# \{0,1\}//' >&2
+    sed -n '2,27p' "$0" | sed 's/^# \{0,1\}//' >&2
     exit 2
     ;;
 esac

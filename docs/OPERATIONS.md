@@ -6,7 +6,7 @@ Status (2026-10-21): podium has not run on the VM yet. The install, upgrade, rol
 
 ## Install
 
-Target: Ubuntu 24.04 LTS on **amd64 (x86_64) only**, cgroup v2 (the default), 2 GB RAM or more. Releases contain amd64 binaries; `install.sh` refuses any other architecture.
+Target: Ubuntu 24.04 LTS on **amd64 or arm64**, cgroup v2 (the default), 2 GB RAM or more. A release holds binaries for one of them: `make release` builds amd64 (`podium-<version>.tar.gz`), `make release ARCH=arm64` builds arm64 (`podium-<version>-arm64.tar.gz`), and `install.sh` refuses a release built for another processor than the machine's (the `arch=` line of its `MANIFEST`). On arm64 isolate is built from source, since upstream publishes no arm64 package. For Oracle's free Ampere VM see "Oracle Always Free".
 
 ```sh
 tar xzf podium-<version>.tar.gz && cd podium-<version>
@@ -59,6 +59,77 @@ The `app` step and every upgrade also install a copy of `install.sh` as `/usr/lo
 Run it after a fresh install, after every upgrade (the upgrade runs it itself) and before a contest.
 
 The judge unit runs `podium-judge work`, which pulls jobs from the server's judge API. It needs `PODIUM_JUDGE_TOKEN` in both `server.env` and `judge.env` (see "Judge token" below).
+
+## Oracle Always Free
+
+Podium's chosen host (V3-28): one Oracle Cloud VM at no cost. Written from the code and from Oracle's pages as read on 2026-10-29; not yet proven on the VM.
+
+| Piece | Setting |
+|---|---|
+| Shape | `VM.Standard.A1.Flex`, 2 OCPU and 12 GB (the whole Always Free ARM allowance), in the account's home region |
+| Image | Canonical Ubuntu 24.04, aarch64, not Minimal; boot volume 100 GB, attachment paravirtualized (the default) |
+| Release | `make release VERSION=vX.Y.Z ARCH=arm64`, then copy `release/podium-vX.Y.Z-arm64.tar.gz` and its `.sha256` |
+| Sandbox suite | `make sandbox-binaries ARCH=arm64` builds `server/bin/calib.test` and `worker.test` for the VM ("Verify the sandbox on the VM") |
+| Network | the subnet's security list: ingress 80/tcp, 443/tcp and 443/udp from `0.0.0.0/0`, beside the default 22/tcp; the image's own iptables rules are handled by `install.sh firewall` ("Firewall and ssh") |
+| Name | a DuckDNS subdomain with an A record to the VM's public IP; `PODIUM_BASE_URL=https://<name>.duckdns.org` |
+
+Replacing the image's iptables rules with ufw also drops Oracle's rules for its iSCSI boot volumes. They matter only for an iSCSI attachment; keep the boot volume paravirtualized.
+
+### Idle reclaim and the watchdog
+
+Oracle may reclaim an Always Free VM that is idle for 7 days: CPU at the 95th percentile under 20 percent, network under 20 percent and, on ARM, memory under 20 percent. Its page does not say whether reclaim stops or deletes the VM. Podium is idle between contests, so it qualifies. A Pay As You Go account is not reclaimed (and costs nothing inside the free limits); without one, the watchdog and the backups cover both cases:
+
+| Case | What notices | What happens |
+|---|---|---|
+| Oracle stops the VM | `.github/workflows/watchdog.yml`, every 30 minutes | `tools/oci-watchdog.sh` starts it through Oracle's API and posts to ntfy |
+| The site stops answering | the same run checks `/healthz` | the heartbeat service alerts |
+| Oracle deletes the VM | the same run gets "not found" | ntfy and the heartbeat alert; rebuild below |
+| The watchdog stops running | the heartbeat service hears nothing | it alerts. GitHub pauses schedules in a repository with no activity for 60 days: push something, or re-enable the workflow under Actions |
+
+The watchdog signs its requests with curl and openssl, no third-party action. It needs, under the repository's Settings, Secrets and variables, Actions:
+
+| Secret | Value |
+|---|---|
+| `OCI_TENANCY_OCID`, `OCI_USER_OCID`, `OCI_FINGERPRINT`, `OCI_REGION` | the watchdog user's API key details (Identity, Users, the user, API keys) and the region, such as `ap-hyderabad-1` |
+| `OCI_INSTANCE_OCID` | the VM's OCID |
+| `OCI_PRIVATE_KEY` | the API key's private PEM, whole |
+| `WATCHDOG_PING_URL` | a healthchecks.io check: period 30 minutes, grace 1 hour, with email and ntfy integrations |
+| `WATCHDOG_NTFY_URL` | optional: the ntfy topic URL for "started the VM" |
+| Variable `PODIUM_URL` | `https://<name>.duckdns.org`. Set it last: the job is skipped while it is empty |
+
+The watchdog user belongs to a group of its own with only these policy statements (in the VM's compartment):
+
+```
+Allow group podium-watchdog to read instances in compartment <compartment>
+Allow group podium-watchdog to use instances in compartment <compartment> where request.permission = 'INSTANCE_POWER_ACTIONS'
+```
+
+`tools/oci-watchdog-test.sh` checks the script against a local stand-in for Oracle's API that verifies every signature (`tools/fake-oci.py`); the first manual run of the workflow (Actions, watchdog, Run workflow) is the check against Oracle itself.
+
+### Buckets
+
+| Copy | Provider | Settings |
+|---|---|---|
+| Litestream | Backblaze B2 ("Set up the bucket") | as below, with the lifecycle setting "Keep prior versions for this number of days: 7", so a replica deleted from a taken-over VM can still be brought back for a week |
+| Offsite nightly | Oracle Object Storage | a private bucket in the root compartment (the S3 compatibility API's default), lifecycle rule "delete objects older than 30 days"; a user of its own whose group may only write and read objects in that bucket; a customer secret key of that user as `PODIUM_OFFSITE_ACCESS_KEY_ID` and `PODIUM_OFFSITE_SECRET_ACCESS_KEY`; endpoint `https://<namespace>.compat.objectstorage.<region>.oraclecloud.com` |
+
+The offsite user's policy, so a taken-over VM can add archives but not delete them:
+
+```
+Allow group podium-offsite to read buckets in tenancy where target.bucket.name = 'podium-nightly'
+Allow group podium-offsite to manage objects in tenancy where all {target.bucket.name = 'podium-nightly', any {request.permission = 'OBJECT_CREATE', request.permission = 'OBJECT_INSPECT', request.permission = 'OBJECT_READ'}}
+```
+
+Oracle's free tier allows 20 GB and 50,000 requests a month; one archive a night uses a few requests. Watch the bucket's size against 20 GB: 30 archives of the database and test files must fit.
+
+### Rebuild after the VM is gone
+
+1. Create the VM again (table above) and point the DuckDNS name at its new IP.
+2. Copy the release and install: `sudo ./install.sh`.
+3. Put the five env files back in `/etc/podium/` (root, mode 600) from the owner's copy.
+4. `sudo systemctl stop podium-server podium-litestream`, then restore the test files and last night's database from the offsite bucket: `sudo /usr/local/lib/podium/podium-restore offsite /var/tmp/night`. For a newer database (up to 10 s before the VM went), restore it from Litestream with those test files: `sudo /usr/local/lib/podium/podium-restore litestream /var/tmp/restore /var/tmp/night/tests`. Put the result in place as in `docs/RUNBOOK.md`, "Restoring from a backup".
+5. `sudo ./install.sh app caddy`, then `sudo ./install.sh verify`.
+6. Update `OCI_INSTANCE_OCID` in the repository's secrets for the watchdog.
 
 ## Verify the sandbox on the VM
 
@@ -242,6 +313,13 @@ Read by `podium-backup.service`; template `deploy/backup.env.example`. Every var
 | `PODIUM_BACKUP_KEEP_DAYS` | `14` | nights kept |
 | `PODIUM_SERVER_BIN` | `/usr/local/bin/podium-server` | the binary whose `check` verifies each backup |
 | `PODIUM_HEARTBEAT_URL` | empty: no ping | an `https://` URL pinged after every fully successful run, for a dead-man check. Secret |
+| `PODIUM_OFFSITE_BUCKET` | empty: no offsite copy | a second S3-compatible bucket, at another provider than Litestream's, that receives each checked night as `<stamp>.tar.gz` (database and test files, V3-30). Set it and the four below, or none |
+| `PODIUM_OFFSITE_PATH` | `podium-nightly` | folder inside that bucket |
+| `PODIUM_OFFSITE_ENDPOINT` | none | the bucket's `https://` S3 endpoint |
+| `PODIUM_OFFSITE_REGION` | none | the bucket's region |
+| `PODIUM_OFFSITE_ACCESS_KEY_ID`, `PODIUM_OFFSITE_SECRET_ACCESS_KEY` | none | a key that may read and write objects in that bucket and nothing else, no delete. Secret |
+
+With the offsite bucket set, a night whose upload fails keeps its local folder, sends no heartbeat and fails the unit (so the failed-unit alert fires). A bucket named without its key, or a key without a bucket, is the same failure. Nothing offsite is deleted by the script: a lifecycle rule on the bucket ages archives out (see "Oracle Always Free").
 
 ### Alerts (`/etc/podium/alert.env`)
 
@@ -429,6 +507,8 @@ sudo sshd -t && sudo systemctl restart ssh
 ```
 
 Your provider's own firewall, if it has one, should allow the same three ports.
+
+Some cloud images load their own iptables rules at boot. Oracle's Ubuntu images do (netfilter-persistent): ssh, then a bare `REJECT` in INPUT and FORWARD, ahead of where ufw adds its rules, so 80 and 443 stay closed whatever ufw says. Installing ufw removes netfilter-persistent (ufw declares that it breaks it), so from the next boot only ufw's rules load; `install.sh firewall` also deletes the image's two `REJECT` rules from the running system, so the site answers without a reboot. `install.sh verify` fails when a `REJECT` sits ahead of http and https in `iptables -S INPUT`.
 
 ## Event stream behind Caddy
 
@@ -731,18 +811,20 @@ Upgrading to the v2 release with P3 to P5 (migrations 0012, 0013 and 0014):
 
 ## Backups
 
-Two layers, both installed by `install.sh` (steps `litestream` and `backup`):
+Three copies, all installed by `install.sh` (steps `litestream` and `backup`). The two buckets belong at two different providers, so one account problem never takes both:
 
-| | Litestream | Nightly backup |
-|---|---|---|
-| What | the database | the database and the test files |
-| Where | the bucket in `/etc/podium/litestream.env` (off the VM) | `/var/backups/podium/<date>` on the VM (podium only, 700) |
-| How often | every change, uploaded every 10 s | every night about 03:15 UTC, and on demand |
-| Kept | 14 days of history (a daily snapshot plus every change since) | 14 days |
-| Restores | the newest state, or any moment in the 14 days | that night's state |
-| Protects against | losing the VM or its disk | a bad change (a wrong rejudge, a deleted contest), a damaged database |
+| | Litestream | Nightly backup | Offsite nightly copy (V3-30) |
+|---|---|---|---|
+| What | the database | the database and the test files | the same night's folder, as one `<stamp>.tar.gz` |
+| Where | the bucket in `/etc/podium/litestream.env` (off the VM) | `/var/backups/podium/<date>` on the VM (podium only, 700) | the bucket in `PODIUM_OFFSITE_*` of `/etc/podium/backup.env` (off the VM) |
+| How often | every change, uploaded every 10 s | every night about 03:15 UTC, and on demand | right after each nightly backup passes its check |
+| Kept | 14 days of history (a daily snapshot plus every change since) | 14 days | the bucket's lifecycle rule (30 days on Oracle's free tier) |
+| Restores | the newest state, or any moment in the 14 days | that night's state | that night's state, with the test files |
+| Protects against | losing the VM or its disk | a bad change (a wrong rejudge, a deleted contest), a damaged database | losing the VM and its test files; losing the Litestream provider |
 
-Test files and program sources are not in the bucket: they live in `/var/lib/podium/tests`, named by SHA-256, and the database only refers to them. The nightly backup copies them as hard links, so 14 nights cost little more than one. They stay on the VM (V3-10): losing the VM's disk loses every test file, so keep each problem's pack zip off the VM; importing it again brings the problem back. Submitted code is safe either way, since the database holds every submission's source.
+Test files and program sources are not in the Litestream bucket: they live in `/var/lib/podium/tests`, named by SHA-256, and the database only refers to them. The nightly backup copies them as hard links, so 14 nights cost little more than one. Without the offsite copy they stay on the VM only (V3-10): losing the VM's disk loses every test file, and the problem packs have to be imported again. With it, `podium-restore offsite` brings back the database and the test files together. Submitted code is safe either way, since the database holds every submission's source.
+
+The offsite key works like the Litestream one: the archive is made by `tar` as podium with an empty environment and streamed to `rclone` running as `podium-backup`, which alone holds the key. The script never deletes in that bucket, so its key can be one without delete permission, and a VM taken over cannot erase the archives.
 
 Backups hold every student's code and the session table, so they are private: the backup runs with umask 077 (`UMask=0077` in the unit, `umask 077` in the script), `/var/backups/podium` is mode 700, and the files are readable by the podium user only. The judge cannot read them.
 
@@ -752,7 +834,7 @@ Disk snapshots from your VM provider are a fine addition but not a replacement: 
 
 ### Set up the bucket (Backblaze B2)
 
-1. Create a B2 account, then Buckets, Create a Bucket: private, default encryption on. In the bucket's lifecycle settings choose "Keep only the last version of the file" (Litestream keeps its own history and deletes what it no longer needs).
+1. Create a B2 account, then Buckets, Create a Bucket: private, default encryption on. In the bucket's lifecycle settings choose "Keep prior versions for this number of days" with 7 (Litestream keeps its own history and deletes what it no longer needs; the 7 days keep anything deleted from a taken-over VM recoverable for a week, at the cost of a week of old files).
 2. Application Keys, Add a New Application Key: access to that bucket only, Read and Write. Copy the keyID and the applicationKey (shown once).
 3. `sudoedit /etc/podium/litestream.env`: the key ID, the key, the bucket, a path such as `podium`, and the endpoint and region from the bucket's page.
 4. `sudo systemctl restart podium-litestream`, then `journalctl -u podium-litestream -n 30`: the start-up check lists every variable as `set`, and Litestream logs its first snapshot and then a sync every 10 s while the database changes.
@@ -786,6 +868,10 @@ R=/usr/local/lib/podium/podium-restore
 sudo $R nightly /var/backups/podium/latest /var/tmp/restore     # a nightly backup
 sudo $R litestream /var/tmp/restore                             # newest from the bucket
 sudo $R litestream-at 2026-10-18T14:30:00Z /var/tmp/restore     # the bucket, at a moment
+sudo $R offsite /var/tmp/restore                                # newest nightly archive offsite
+sudo $R offsite /var/tmp/restore 2026-10-29T031500Z.tar.gz      # a named one
 ```
+
+The offsite form reads `PODIUM_OFFSITE_*` from `/etc/podium/backup.env` (`PODIUM_BACKUP_ENV` names another file) and is the one to use when the VM is gone: on a new VM, install, copy `backup.env`, run it, then put the result in place. `tools/offsite-test.sh` rehearses the upload and this restore against a local stand-in bucket (`tools/fake-s3.py`), on Linux or WSL2, as a normal user.
 
 The Litestream forms take the test files from `/var/backups/podium/latest/tests` unless a third argument names another folder. `LITESTREAM_CONFIG` and `LITESTREAM_ENV` name another Litestream configuration and environment file than `/etc/litestream.yml` and `/etc/podium/litestream.env`, for a restore on a machine laid out differently; never set them on the VM. Putting a restored copy in place of the live data is in `docs/RUNBOOK.md`, "Restoring from a backup".

@@ -4,6 +4,13 @@ Dated entries per release. Unreleased work is listed at the top.
 
 ## Unreleased
 
+### Oracle Always Free hosting (2026-10-29)
+
+- Releases build for arm64 too (V3-28): `make release ARCH=arm64` writes `podium-<version>-arm64.tar.gz`, `MANIFEST` records `arch=`, and `install.sh` refuses a release built for another processor. On arm64 isolate 2.2.1 is built from its upstream commit with the apt package's paths, since upstream publishes no arm64 package; Litestream installs its arm64 build, pinned by SHA-256. `make sandbox-binaries ARCH=arm64` builds the sandbox suite for an ARM VM.
+- `install.sh firewall` opens http and https on cloud images that ship their own iptables `REJECT` (Oracle's Ubuntu): installing ufw replaces the image's loader at the next boot, and the step removes the image's loaded `REJECT` rules now. `install.sh verify` fails when a `REJECT` still sits ahead of 80 and 443.
+- Offsite nightly copy (V3-30): with `PODIUM_OFFSITE_*` set in `backup.env`, each checked nightly backup, database and test files, is streamed as `<stamp>.tar.gz` to a second bucket at another provider. The key stays in a `podium-backup` process, the script never deletes there, and a failed upload keeps the local copy and fails the unit. `podium-restore offsite` restores from it, `podium-check` alerts when its newest archive is over 36 hours old, and `tools/offsite-test.sh` rehearses both against a local stand-in bucket.
+- Watchdog (`.github/workflows/watchdog.yml`, `tools/oci-watchdog.sh`): every 30 minutes it asks Oracle's API for the VM's state, starts the VM if Oracle stopped it, checks `/healthz`, and pings a heartbeat that alerts on any change and on a missed run. Requests are signed with curl and openssl, no third-party action; `tools/oci-watchdog-test.sh` checks the signatures against a local stand-in. The job is skipped until the `PODIUM_URL` variable is set.
+
 ### v3 stage A (2026-10-28)
 
 - End the contest now during the freeze keeps the board frozen (V3-18). The remaining freeze is rounded up to whole minutes and never to zero, so the frozen moment moves at most 59 s earlier; before, an end inside the first minute of the freeze stored no freeze and released a held board at once. The confirm names the moment the board stays frozen at.

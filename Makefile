@@ -25,12 +25,23 @@ VERSION    ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo d
 # use, and a file saved during the build would rename the release halfway.
 VERSION    := $(VERSION)
 WSL_DISTRO ?= Ubuntu-24.04
-GOFLAGS_LINUX := GOOS=linux GOARCH=amd64 CGO_ENABLED=0
+# The VM's processor: amd64 (most VMs, and WSL2 for local work) or arm64
+# (Oracle's free Ampere A1 VM, V3-28). Only release, package and
+# sandbox-binaries are meant for arm64; the targets that run what they
+# build here (dev-test, sandbox-test, calibrate) need this machine's amd64.
+ARCH       ?= amd64
+ifeq ($(filter $(ARCH),amd64 arm64),)
+  $(error ARCH must be amd64 or arm64, not '$(ARCH)')
+endif
+GOFLAGS_LINUX := GOOS=linux GOARCH=$(ARCH) CGO_ENABLED=0
 COMMIT     := $(shell git rev-parse --short=12 HEAD 2>/dev/null || echo unknown)
 BUILD_DATE := $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
 BUILDINFO  := github.com/Sarthaks-24/podium/internal/buildinfo
 LDFLAGS    := -s -w -X $(BUILDINFO).Version=$(VERSION) -X $(BUILDINFO).Commit=$(COMMIT) -X $(BUILDINFO).Date=$(BUILD_DATE)
-RELEASE    := release/podium-$(VERSION)
+# amd64 keeps the plain name every script and workflow already expects;
+# arm64 releases carry the suffix, so both can sit in release/ together.
+RELEASE_NAME := podium-$(VERSION)$(if $(filter arm64,$(ARCH)),-arm64)
+RELEASE    := release/$(RELEASE_NAME)
 # The oldest installed release this one upgrades from; install.sh upgrade
 # refuses an older one. Raise it in the release that drops something an
 # older release still needs (a contract migration, PLAN.md section 8).
@@ -110,10 +121,13 @@ check: web/node_modules/.package-lock.json ## Everything CI runs: formatting, ve
 # reads them; CI passes a world-readable copy (C2-012).
 SANDBOX_EXAMPLES ?= $(LINUX_CURDIR)/problems
 
-.PHONY: sandbox-test
-sandbox-test: ## Hostile-program suite and M2 and M3 acceptance in isolate (Linux, or WSL2 on Windows)
+.PHONY: sandbox-binaries
+sandbox-binaries: ## Build the sandbox suite's test binaries into server/bin (ARCH=arm64 for an ARM VM)
 	cd server && $(GOFLAGS_LINUX) go test -c -tags sandbox -o bin/calib.test ./internal/judge/calib
 	cd server && $(GOFLAGS_LINUX) go test -c -tags sandbox -o bin/worker.test ./internal/worker
+
+.PHONY: sandbox-test
+sandbox-test: sandbox-binaries ## Hostile-program suite and M2 and M3 acceptance in isolate (Linux, or WSL2 on Windows)
 	$(LINUX) bash tools/sandbox-test.sh server/bin/calib.test -test.v -test.timeout 10m
 	@# MSYS_NO_PATHCONV: Git Bash would turn the /mnt path into a Windows one.
 	MSYS_NO_PATHCONV=1 $(LINUX) bash tools/sandbox-test.sh server/bin/worker.test -test.v -test.timeout 20m -examples "$(SANDBOX_EXAMPLES)"
@@ -137,9 +151,9 @@ package: build ## Release tarball without check (drill rehearsal builds only)
 	cp -r deploy/. $(RELEASE)/
 	cp server/.env.example $(RELEASE)/env/server.env.example
 	cp judge/.env.example $(RELEASE)/env/judge.env.example
-	bash tools/release-manifest.sh $(RELEASE) $(VERSION) $(COMMIT) $(BUILD_DATE) $(UPGRADES_FROM)
-	tar -C release -czf $(RELEASE).tar.gz podium-$(VERSION)
-	cd release && sha256sum podium-$(VERSION).tar.gz > podium-$(VERSION).tar.gz.sha256
+	bash tools/release-manifest.sh $(RELEASE) $(VERSION) $(COMMIT) $(BUILD_DATE) $(UPGRADES_FROM) $(ARCH)
+	tar -C release -czf $(RELEASE).tar.gz $(RELEASE_NAME)
+	cd release && sha256sum $(RELEASE_NAME).tar.gz > $(RELEASE_NAME).tar.gz.sha256
 	@echo "Built $(RELEASE).tar.gz (MANIFEST and SHA256SUMS inside, the tarball's checksum beside it)"
 
 .PHONY: deploy

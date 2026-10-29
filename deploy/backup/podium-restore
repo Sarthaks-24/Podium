@@ -15,14 +15,19 @@
 #   podium-restore litestream-at TIMESTAMP SCRATCH [TESTS_DIR]
 #       the database as it was at TIMESTAMP (RFC 3339, UTC, such as
 #       2026-10-18T14:30:00Z), within the 14 days the bucket keeps
+#   podium-restore offsite SCRATCH [ARCHIVE]
+#       a nightly backup from the offsite bucket (/etc/podium/backup.env,
+#       PODIUM_OFFSITE_*): the newest archive, or ARCHIVE such as
+#       2026-10-29T213000Z.tar.gz. The way back when the VM itself is gone
 #
+# Run as root: the bucket keys are in root-only files.
 # The result is SCRATCH/podium.db and SCRATCH/tests, checked with
 # "podium-server check -hash". It prints how to open it in a testing-mode
 # server and how to put it in place. SCRATCH must not exist yet.
 set -euo pipefail
 
 die() { printf 'podium-restore: %s\n' "$*" >&2; exit 1; }
-usage() { sed -n '2,21p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 2; }
+usage() { sed -n '2,26p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 2; }
 [[ $# -gt 0 ]] || usage
 server=${PODIUM_SERVER_BIN:-$(command -v podium-server || echo /usr/local/bin/podium-server)}
 [[ -x $server ]] || die "podium-server not found; set PODIUM_SERVER_BIN"
@@ -63,6 +68,40 @@ case $mode in
       echo "restore.sh: no test files at $tests; the check will list them as missing" >&2
       mkdir "$scratch/tests"
     fi
+    ;;
+  offsite)
+    [[ $# -ge 2 && $# -le 3 ]] || usage
+    scratch=$2 archive=${3:-}
+    [[ ! -e $scratch ]] || die "$scratch already exists"
+    command -v rclone >/dev/null || die "rclone is not installed (sudo ./install.sh backup)"
+    envfile=${PODIUM_BACKUP_ENV:-/etc/podium/backup.env}
+    [[ -r $envfile ]] || die "cannot read $envfile (run as root)"
+    set -a
+    # shellcheck source=/dev/null
+    . "$envfile"
+    set +a
+    [[ -n ${PODIUM_OFFSITE_BUCKET:-} ]] || die "PODIUM_OFFSITE_BUCKET is not set in $envfile"
+    export RCLONE_CONFIG_OFFSITE_TYPE=s3 RCLONE_CONFIG_OFFSITE_PROVIDER=Other RCLONE_CONFIG_OFFSITE_FORCE_PATH_STYLE=true
+    export RCLONE_CONFIG_OFFSITE_ENDPOINT=${PODIUM_OFFSITE_ENDPOINT:-} RCLONE_CONFIG_OFFSITE_REGION=${PODIUM_OFFSITE_REGION:-}
+    export RCLONE_CONFIG_OFFSITE_ACCESS_KEY_ID=${PODIUM_OFFSITE_ACCESS_KEY_ID:-} RCLONE_CONFIG_OFFSITE_SECRET_ACCESS_KEY=${PODIUM_OFFSITE_SECRET_ACCESS_KEY:-}
+    remote="offsite:$PODIUM_OFFSITE_BUCKET/${PODIUM_OFFSITE_PATH:-podium-nightly}"
+    rc=(rclone --config "" --cache-dir /tmp/rclone-offsite --s3-no-check-bucket)
+    if [[ -z $archive ]]; then
+      # Names are UTC stamps, so the last in sort order is the newest.
+      archive=$("${rc[@]}" lsf --files-only --include '20*.tar.gz' "$remote" | LC_ALL=C sort | tail -n1)
+      [[ -n $archive ]] || die "no archive in $remote"
+    fi
+    [[ $archive =~ ^20[0-9]{2}-[0-9]{2}-[0-9]{2}T[0-9]{6}Z\.tar\.gz$ ]] || die "'$archive' is not a nightly archive name (such as 2026-10-29T213000Z.tar.gz)"
+    echo "restoring $archive from the offsite bucket"
+    mkdir -p "$(dirname "$scratch")" && mkdir -m 700 "$scratch"   # atomic: fails if someone made it first
+    unpack=$scratch/.unpack
+    mkdir "$unpack"
+    "${rc[@]}" cat "$remote/$archive" | tar -xz --no-same-owner -C "$unpack"
+    src=$unpack/${archive%.tar.gz}
+    [[ -f $src/podium.db ]] || die "$archive holds no ${archive%.tar.gz}/podium.db"
+    mv "$src/podium.db" "$scratch/podium.db"
+    if [[ -d $src/tests ]]; then mv "$src/tests" "$scratch/tests"; else mkdir "$scratch/tests"; fi
+    rm -rf "$unpack"
     ;;
   *) usage ;;
 esac

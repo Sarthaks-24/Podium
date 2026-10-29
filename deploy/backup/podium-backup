@@ -22,12 +22,18 @@
 # podium-backup with that variable. Run as any other user (by hand, or
 # the tests) it does everything as that user.
 #
-# Off the VM, Litestream replicates the database (podium-litestream). The
-# nightly folder stays on the VM (V3-10: one backup system, one timed
-# restore per term by hand). After everything succeeded it pings
-# PODIUM_HEARTBEAT_URL (settings in /etc/podium/backup.env, template
+# Off the VM, Litestream replicates the database (podium-litestream), but
+# not the test files. When PODIUM_OFFSITE_BUCKET is set, the checked
+# nightly folder (database and test files) is also streamed as one
+# <stamp>.tar.gz to a second S3-compatible bucket at another provider
+# (V3-30): tar runs as podium, the upload as podium-backup, so the bucket
+# key never enters a podium process either. Nothing offsite is ever
+# deleted from here: the bucket's own lifecycle rule ages archives out,
+# so the key can be one that cannot delete. After everything succeeded it
+# pings PODIUM_HEARTBEAT_URL (settings in /etc/podium/backup.env, template
 # deploy/backup.env.example), so a dead-man service notices a night
-# without a backup.
+# without a backup. A failed upload keeps the local backup, skips the
+# heartbeat and exits 1, so the unit's OnFailure alert fires.
 #
 # Run by hand: sudo systemctl start podium-backup
 set -euo pipefail
@@ -63,6 +69,10 @@ value() { local v=${!1:-}; [[ $v == change-me ]] && v=; printf '%s' "$v"; }
 
 for v in PODIUM_DB_PATH PODIUM_TESTS_DIR PODIUM_BACKUP_DIR PODIUM_BACKUP_KEEP_DAYS PODIUM_SERVER_BIN; do report "$v" yes; done
 report PODIUM_HEARTBEAT_URL ""
+offsite_vars=(PODIUM_OFFSITE_BUCKET PODIUM_OFFSITE_PATH PODIUM_OFFSITE_ENDPOINT PODIUM_OFFSITE_REGION PODIUM_OFFSITE_ACCESS_KEY_ID PODIUM_OFFSITE_SECRET_ACCESS_KEY)
+for v in "${offsite_vars[@]}"; do
+  if [[ $v == PODIUM_OFFSITE_PATH ]]; then report "$v" yes; else report "$v" ""; fi
+done
 
 db=$(value PODIUM_DB_PATH); db=${db:-/var/lib/podium/db/podium.db}
 tests=$(value PODIUM_TESTS_DIR); tests=${tests:-/var/lib/podium/tests}
@@ -77,6 +87,28 @@ command -v sqlite3 >/dev/null || die "sqlite3 is not installed; run: sudo ./inst
 [[ $keep =~ ^[0-9]+$ && $keep -ge 1 ]] || die "PODIUM_BACKUP_KEEP_DAYS must be a whole number of days, 1 or more (in $env_file)"
 if [[ -n $heartbeat && ( $heartbeat != https://* || $heartbeat == *[[:space:]]* || $heartbeat == *'"'* || $heartbeat == *'\'* ) ]]; then
   die "PODIUM_HEARTBEAT_URL must start with https:// and hold no spaces or quotes (in $env_file)"
+fi
+
+# The offsite copy is all or nothing: a bucket with no key (or a key with
+# no bucket) is a mistake to report, not a reason to skip the local backup.
+offsite=$(value PODIUM_OFFSITE_BUCKET)
+offsite_path=$(value PODIUM_OFFSITE_PATH); offsite_path=${offsite_path:-podium-nightly}
+offsite_error=
+if [[ -n $offsite ]]; then
+  for v in PODIUM_OFFSITE_ENDPOINT PODIUM_OFFSITE_REGION PODIUM_OFFSITE_ACCESS_KEY_ID PODIUM_OFFSITE_SECRET_ACCESS_KEY; do
+    [[ -n $(value "$v") ]] || offsite_error+="$v "
+  done
+  [[ -z $offsite_error ]] || offsite_error="PODIUM_OFFSITE_BUCKET is set but these are missing in $env_file: $offsite_error"
+  command -v rclone >/dev/null || offsite_error="rclone is not installed; run: sudo ./install.sh backup"
+  # http only on loopback, for tools/offsite-test.sh.
+  case $(value PODIUM_OFFSITE_ENDPOINT) in
+    https://*|http://127.0.0.1:*) ;;
+    *) [[ -n $offsite_error ]] || offsite_error="PODIUM_OFFSITE_ENDPOINT must start with https:// (in $env_file)" ;;
+  esac
+else
+  for v in PODIUM_OFFSITE_ENDPOINT PODIUM_OFFSITE_REGION PODIUM_OFFSITE_ACCESS_KEY_ID PODIUM_OFFSITE_SECRET_ACCESS_KEY; do
+    [[ -z $(value "$v") ]] || offsite_error="$v is set but PODIUM_OFFSITE_BUCKET is empty (in $env_file)"
+  done
 fi
 
 # To the second: a backup started in the same minute as the last one (an
@@ -139,6 +171,40 @@ size=$(as_podium du -sh "$final/podium.db" | cut -f1)
 files=$(as_podium find "$final/tests" -type f | wc -l)
 count=$(as_podium find "$dest" -maxdepth 1 -name '20*' -type d | wc -l)
 echo "podium-backup: $final done in $(( $(date +%s) - start )) s: database $size, $files test files, $count backups kept"
+
+# offsite_upload: the checked folder as $stamp.tar.gz in the offsite
+# bucket. The rclone remote comes from RCLONE_CONFIG_OFFSITE_* in this
+# subshell's environment, which as_podium (env -i) never passes on.
+offsite_upload() {
+  (
+    export RCLONE_CONFIG_OFFSITE_TYPE=s3 RCLONE_CONFIG_OFFSITE_PROVIDER=Other
+    RCLONE_CONFIG_OFFSITE_ENDPOINT=$(value PODIUM_OFFSITE_ENDPOINT)
+    RCLONE_CONFIG_OFFSITE_REGION=$(value PODIUM_OFFSITE_REGION)
+    RCLONE_CONFIG_OFFSITE_ACCESS_KEY_ID=$(value PODIUM_OFFSITE_ACCESS_KEY_ID)
+    RCLONE_CONFIG_OFFSITE_SECRET_ACCESS_KEY=$(value PODIUM_OFFSITE_SECRET_ACCESS_KEY)
+    # Path-style requests: Oracle's S3 endpoint needs them, B2 and the
+    # others accept them.
+    export RCLONE_CONFIG_OFFSITE_FORCE_PATH_STYLE=true
+    export RCLONE_CONFIG_OFFSITE_ENDPOINT RCLONE_CONFIG_OFFSITE_REGION RCLONE_CONFIG_OFFSITE_ACCESS_KEY_ID RCLONE_CONFIG_OFFSITE_SECRET_ACCESS_KEY
+    local object="offsite:$offsite/$offsite_path/$stamp.tar.gz" size
+    as_podium tar -C "$dest" -czf - "$stamp" \
+      | as_offsite rclone --config "" --cache-dir /tmp/rclone-offsite --retries 3 --s3-no-check-bucket rcat "$object"
+    # The object must be there and not empty before the night counts.
+    size=$(as_offsite rclone --config "" --cache-dir /tmp/rclone-offsite --s3-no-check-bucket size --json "$object" | jq -r '.bytes // 0')
+    [[ ${size:-0} -gt 0 ]] || { echo "podium-backup: the uploaded archive is missing or empty" >&2; return 1; }
+    echo "podium-backup: offsite copy $offsite_path/$stamp.tar.gz uploaded ($(( size / 1024 )) KB)"
+  )
+}
+
+if [[ -n $offsite_error ]]; then
+  echo "podium-backup: offsite copy not made: $offsite_error" >&2
+  echo "podium-backup: the local backup $final is kept; no heartbeat tonight" >&2
+  exit 1
+fi
+if [[ -n $offsite ]] && ! offsite_upload; then
+  echo "podium-backup: the offsite upload failed; the local backup $final is kept; no heartbeat tonight" >&2
+  exit 1
+fi
 
 if [[ -n $heartbeat ]]; then
   # Silence at the heartbeat service is the alert, so a failed ping only

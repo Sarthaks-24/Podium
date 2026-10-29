@@ -1,0 +1,48 @@
+# Keeps the Oracle Always Free VM up (V3-28, cache/v3/oracle-deploy-plan.md
+# option B): every 30 minutes tools/oci-watchdog.sh asks Oracle for the
+# VM's state, starts it if Oracle stopped it, checks the site, and pings
+# the heartbeat (healthchecks.io), which alerts on a change and on a missed
+# run. The secrets are set in the repository's Settings, Secrets and
+# variables, Actions (docs/OPERATIONS.md, "Oracle Always Free"). Until they
+# are, every run stops at the first missing one. The logs are public: the
+# script prints states only.
+name: watchdog
+
+on:
+  schedule:
+    # Off the top of the hour, when GitHub's scheduler is busiest.
+    - cron: "17,47 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: watchdog
+  cancel-in-progress: false
+
+jobs:
+  watch:
+    # Skipped, not failed, until the setup is finished: PODIUM_URL is the
+    # last value set (oracle-deploy-plan.md step 2.10).
+    if: vars.PODIUM_URL != ''
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+          sparse-checkout: tools/oci-watchdog.sh
+          sparse-checkout-cone-mode: false
+      - name: check the VM
+        env:
+          OCI_TENANCY_OCID: ${{ secrets.OCI_TENANCY_OCID }}
+          OCI_USER_OCID: ${{ secrets.OCI_USER_OCID }}
+          OCI_FINGERPRINT: ${{ secrets.OCI_FINGERPRINT }}
+          OCI_REGION: ${{ secrets.OCI_REGION }}
+          OCI_INSTANCE_OCID: ${{ secrets.OCI_INSTANCE_OCID }}
+          OCI_PRIVATE_KEY: ${{ secrets.OCI_PRIVATE_KEY }}
+          PODIUM_URL: ${{ vars.PODIUM_URL }}
+          WATCHDOG_PING_URL: ${{ secrets.WATCHDOG_PING_URL }}
+          WATCHDOG_NTFY_URL: ${{ secrets.WATCHDOG_NTFY_URL }}
+        run: bash tools/oci-watchdog.sh

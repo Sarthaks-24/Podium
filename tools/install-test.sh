@@ -255,5 +255,61 @@ else
   fail "unexpected refusal: $out"
 fi
 
+# release_arch and check_arch (V3-28): a release built for one processor
+# is refused on another before anything is installed.
+arch_check() { # MANIFEST_LINES MACHINE_ARCH (empty lines: no MANIFEST)
+  (
+    die() { printf '%s\n' "$*"; exit 1; }
+    eval "$(fn release_arch)"
+    eval "$(fn check_arch)"
+    rm -f "$tmp/arch-MANIFEST"
+    [[ $1 == none ]] || printf '%b' "$1" > "$tmp/arch-MANIFEST"
+    check_arch "$tmp/arch-MANIFEST" "$2"
+  )
+}
+if out=$(arch_check 'version=v1.4.90\narch=arm64\n' arm64); then pass "an arm64 release installs on arm64"; else fail "an arm64 release was refused on arm64: $out"; fi
+if out=$(arch_check 'version=v1.4.90\narch=arm64\n' amd64); then
+  fail "an arm64 release went on on amd64"
+elif [[ $out == *"built for arm64 but this machine is amd64"*"ARCH=amd64"* ]]; then
+  pass "an arm64 release is refused on amd64 and names the build"
+else
+  fail "unexpected refusal: $out"
+fi
+if out=$(arch_check 'version=v1.4.0\n' arm64); then fail "a release without arch= went on on arm64"; else pass "a release without arch= counts as amd64"; fi
+if out=$(arch_check 'version=v1.4.0\n' amd64); then pass "a release without arch= installs on amd64"; else fail "a release without arch= was refused on amd64: $out"; fi
+if out=$(arch_check none arm64); then pass "a repository checkout (no MANIFEST) is not refused"; else fail "a checkout was refused: $out"; fi
+
+# image_rejects and input_order_ok: Oracle's image rejects everything
+# after ssh in INPUT, ahead of ufw's chains.
+eval "$(fn image_rejects)"
+eval "$(fn input_order_ok)"
+oracle='-P INPUT ACCEPT
+-A INPUT -m state --state RELATED,ESTABLISHED -j ACCEPT
+-A INPUT -p icmp -j ACCEPT
+-A INPUT -i lo -j ACCEPT
+-A INPUT -p udp -m udp --sport 123 -j ACCEPT
+-A INPUT -p tcp -m state --state NEW -m tcp --dport 22 -j ACCEPT
+-A INPUT -j REJECT --reject-with icmp-host-prohibited
+-A INPUT -j ufw-before-logging-input
+-A INPUT -j ufw-before-input
+-A FORWARD -j REJECT --reject-with icmp-host-prohibited
+-A FORWARD -j ufw-before-logging-forward
+-A OUTPUT -d 169.254.0.0/16 -j InstanceServices'
+want='-A INPUT -j REJECT --reject-with icmp-host-prohibited
+-A FORWARD -j REJECT --reject-with icmp-host-prohibited'
+if [[ $(image_rejects "$oracle") == "$want" ]]; then pass "the image's two bare REJECT rules are found"; else fail "image_rejects found: $(image_rejects "$oracle")"; fi
+ufwonly='-P INPUT DROP
+-A INPUT -j ufw-before-logging-input
+-A INPUT -j ufw-before-input
+-A INPUT -j ufw-reject-input'
+if [[ -z $(image_rejects "$ufwonly") ]]; then pass "ufw's own rules are never taken for the image's"; else fail "image_rejects matched ufw: $(image_rejects "$ufwonly")"; fi
+if input_order_ok "$(grep -- '-A INPUT\|-P INPUT' <<<"$oracle")"; then fail "Oracle's INPUT passed the order check"; else pass "a REJECT ahead of http and https fails the order check"; fi
+if input_order_ok "$ufwonly"; then pass "ufw alone passes the order check"; else fail "ufw alone failed the order check"; fi
+opened='-A INPUT -p tcp -m state --state NEW -m tcp --dport 80 -j ACCEPT
+-A INPUT -p tcp -m state --state NEW -m tcp --dport 443 -j ACCEPT
+-A INPUT -p udp -m udp --dport 443 -j ACCEPT
+-A INPUT -j REJECT --reject-with icmp-host-prohibited'
+if input_order_ok "$opened"; then pass "http and https accepted ahead of a REJECT pass"; else fail "accepts ahead of a REJECT failed the order check"; fi
+
 if (( fails > 0 )); then echo "$fails install.sh check(s) failed"; exit 1; fi
 echo "install.sh checks passed"
