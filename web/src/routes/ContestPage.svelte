@@ -86,7 +86,7 @@
   import { adjacentLabel, isPlainKey, isTypingTarget } from '../lib/shortcuts';
   import { shell } from '../lib/shell.svelte';
   import { placeFigure, placeSentence, type Standings } from '../lib/standings';
-  import { EventStream, type StreamMode } from '../lib/stream';
+  import { LiveSubscription, type StreamMode } from '../lib/stream';
   import { refreshTicker, ticker, useTicker } from '../lib/ticker.svelte';
   import { type Submission, type Workspace as WorkspaceData } from '../lib/workspace';
 
@@ -316,13 +316,12 @@
   });
 
   // Outside the workspace this page keeps its own stream for contest events.
-  let stream: EventStream | null = null;
+  let stream: LiveSubscription | null = null;
   $effect(() => {
     const needStream = loadState === 'ready' && !showWorkspace;
     untrack(() => {
       if (needStream && !stream) {
-        stream = new EventStream({
-          url: '/api/events',
+        stream = new LiveSubscription({
           events: ['submission', ...CONTEST_EVENTS],
           onEvent,
           onReconnect: () => refetchSoon(0),

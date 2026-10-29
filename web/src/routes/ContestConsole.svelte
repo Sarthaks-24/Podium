@@ -73,7 +73,7 @@
   import { verdictLabel } from '../lib/problems';
   import { session } from '../lib/session.svelte';
   import { studentChoice, type Standings } from '../lib/standings';
-  import { EventStream } from '../lib/stream';
+  import { LiveSubscription } from '../lib/stream';
   import { refreshTicker, ticker, useTicker } from '../lib/ticker.svelte';
   import { showToast } from '../lib/toast.svelte';
   import { formatWhen, languageLabel } from '../lib/workspace';
@@ -623,8 +623,7 @@
       void loadContest(true);
     }, 10_000);
     // New questions arrive at once over the stream; the refresh above is the fallback.
-    stream = new EventStream({
-      url: '/api/events',
+    stream = new LiveSubscription({
       events: ['clarification'],
       onEvent: () => {
         if (loadState === 'ready') void loadSide();
@@ -636,7 +635,7 @@
     return useTicker();
   });
 
-  let stream: EventStream | null = null;
+  let stream: LiveSubscription | null = null;
 
   // The tab title carries the unanswered count, so a waiting question shows from another tab.
   $effect(() => {

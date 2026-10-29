@@ -25,7 +25,7 @@ import { polite } from './announce.svelte';
 import { ApiError, errorText, getJSON, isSignedOut, sendJSON } from './api';
 import { serverClock } from './clock';
 import type { IntegrityRecorder } from './integrity';
-import { EventStream, type StreamMode } from './stream';
+import { LiveSubscription, type StreamMode } from './stream';
 import { mergeRun, mergeSubmission, mergeSubmissions, reduceEvent, type JudgingState, type StreamEvent } from './submissionState';
 import {
   announcement,
@@ -89,7 +89,7 @@ export class Judging {
   private pendingRun: RunBody | null = null;
   private announced = '';
   private announcedRun = '';
-  private stream: EventStream | null = null;
+  private stream: LiveSubscription | null = null;
   private alive = true;
   private readonly paths: ReturnType<typeof workspacePaths>;
 
@@ -163,8 +163,7 @@ export class Judging {
 
   startStream(extraEvents: readonly string[], onevent?: (type: string, data: unknown) => void, onresync?: () => void): void {
     this.stream?.stop();
-    this.stream = new EventStream({
-      url: '/api/events',
+    this.stream = new LiveSubscription({
       events: ['submission', 'run', 'clock', ...extraEvents],
       onEvent: (type, data) => {
         if (type === 'submission' || type === 'run' || type === 'clock') this.onStreamEvent({ type, data } as StreamEvent);

@@ -57,7 +57,7 @@
   import { routeTitle } from '../lib/routing';
   import { navigate, router } from '../lib/router.svelte';
   import { session } from '../lib/session.svelte';
-  import { EventStream, type StreamMode } from '../lib/stream';
+  import { LiveSubscription, type StreamMode } from '../lib/stream';
 
   /** How often the wizard is asked for while the live stream is down, and while it is up. */
   const POLL_DOWN_MS = 2000;
@@ -113,7 +113,7 @@
 
   // Watching one wizard: the live stream, and polling as the fallback.
   let alive = true;
-  let stream: EventStream | null = null;
+  let stream: LiveSubscription | null = null;
   let streamMode = $state<StreamMode>('connecting');
   let pollTimer: ReturnType<typeof setTimeout> | undefined;
 
@@ -199,8 +199,7 @@
   function startWatch() {
     stopWatch();
     streamMode = 'connecting';
-    stream = new EventStream({
-      url: '/api/events',
+    stream = new LiveSubscription({
       events: ['wizard'],
       onEvent: (_type, data) => {
         if (data && typeof data === 'object') adoptWizard(data as Wizard);

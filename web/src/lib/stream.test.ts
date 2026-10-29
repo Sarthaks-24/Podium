@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { ApiError } from './api';
-import { EventStream, deviceId, reconnectDelay, stopAllStreams, withDevice, type EventSourceLike } from './stream';
+import { EventStream, LiveSubscription, deviceId, reconnectDelay, stopAllStreams, withDevice, type EventSourceLike } from './stream';
 
 class FakeSource implements EventSourceLike {
   onopen: ((ev: Event) => void) | null = null;
@@ -240,6 +240,42 @@ describe('after sign-out (C1-041)', () => {
     b.start();
     stopAllStreams();
     expect(closed.sort()).toEqual([1, 2]);
+  });
+});
+
+describe('one shared stream per tab (F4)', () => {
+  it('opens one source for every subscriber, routes events by name and closes after the last', () => {
+    const sources: FakeSource[] = [];
+    const make = {
+      create: () => {
+        const s = new FakeSource();
+        sources.push(s);
+        return s;
+      },
+      setTimer: () => 0,
+      clearTimer: () => {},
+    };
+    const got: string[] = [];
+    const modes: string[] = [];
+    const sub = (name: string, events: string[]) =>
+      new LiveSubscription(
+        { events, onEvent: (t) => got.push(`${name}:${t}`), onReconnect: () => {}, poll: () => {}, onMode: (m) => modes.push(`${name}:${m}`) },
+        make,
+      );
+    const a = sub('a', ['submission']);
+    const b = sub('b', ['standings']);
+    a.start();
+    sources[0].open();
+    b.start();
+    expect(sources).toHaveLength(1);
+    expect(modes).toEqual(['a:live', 'b:live']);
+    sources[0].send('submission', {});
+    sources[0].send('standings', {});
+    expect(got).toEqual(['a:submission', 'b:standings']);
+    a.stop();
+    expect(sources[0].closed).toBe(false);
+    b.stop();
+    expect(sources[0].closed).toBe(true);
   });
 });
 

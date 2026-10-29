@@ -20,7 +20,7 @@
   import { serverClock } from '../lib/clock';
   import { isForContest, type Contest } from '../lib/contests';
   import { boardLabels, placeFigure, rankAnnouncement, statusLine, type Standings } from '../lib/standings';
-  import { EventStream, type StreamMode } from '../lib/stream';
+  import { LiveSubscription, type StreamMode } from '../lib/stream';
   import PageState from './PageState.svelte';
   import PlaceFigure from './PlaceFigure.svelte';
   import StandingsTable from './StandingsTable.svelte';
@@ -100,13 +100,12 @@
     }
   }
 
-  let stream: EventStream | null = null;
+  let stream: LiveSubscription | null = null;
 
   onMount(() => {
     void loadContest();
     void loadBoard();
-    stream = new EventStream({
-      url: '/api/events',
+    stream = new LiveSubscription({
       events: ['standings', 'contest'],
       onEvent,
       onReconnect: () => void loadBoard(true),

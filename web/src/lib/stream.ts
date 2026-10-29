@@ -22,6 +22,12 @@
  *
  * After sign-out every stream stops: the shell calls stopAllStreams(), and
  * a poll that fails with 401 stops its own stream (C1-041).
+ *
+ * Pages do not open streams themselves: each takes a LiveSubscription, and
+ * the tab keeps one shared stream for all of them (F4, stage C2), opened by
+ * the first and closed when the last one stops. Each event goes to the
+ * subscribers that named it; a reconnect, a poll and a mode change go to
+ * every subscriber.
  */
 
 import { ApiError } from './api';
@@ -103,6 +109,7 @@ export class EventStream {
   private stableTimer: unknown = null;
   private polls = 0;
   private stopped = false;
+  private readonly events: Set<string>;
   mode: StreamMode = 'connecting';
 
   private readonly o: Required<Omit<StreamOptions, 'onMode'>> & Pick<StreamOptions, 'onMode'>;
@@ -118,6 +125,19 @@ export class EventStream {
       clearTimer: (id) => clearTimeout(id as ReturnType<typeof setTimeout>),
       ...options,
     };
+    this.events = new Set(options.events);
+  }
+
+  /** True between start() and a stop, a 401 from a poll or a replacement. */
+  get running(): boolean {
+    return !this.stopped && started.has(this);
+  }
+
+  /** Listens for one more event name, on the open source too. */
+  listen(type: string): void {
+    if (this.events.has(type)) return;
+    this.events.add(type);
+    if (this.es) this.addListener(this.es, type);
   }
 
   /** Opens the stream. */
@@ -142,6 +162,7 @@ export class EventStream {
     this.errors = 0;
     this.hadError = true;
     this.stopped = false;
+    started.add(this);
     this.setMode('connecting');
     this.connect();
   }
@@ -208,18 +229,20 @@ export class EventStream {
     es.addEventListener(REPLACED_EVENT, () => {
       if (this.es === es) this.replaced();
     });
-    for (const type of this.o.events) {
-      es.addEventListener(type, (ev: MessageEvent) => {
-        if (this.es !== es) return;
-        let data: unknown;
-        try {
-          data = JSON.parse(String(ev.data));
-        } catch {
-          return;
-        }
-        this.o.onEvent(type, data);
-      });
-    }
+    for (const type of this.events) this.addListener(es, type);
+  }
+
+  private addListener(es: EventSourceLike, type: string) {
+    es.addEventListener(type, (ev: MessageEvent) => {
+      if (this.es !== es) return;
+      let data: unknown;
+      try {
+        data = JSON.parse(String(ev.data));
+      } catch {
+        return;
+      }
+      this.o.onEvent(type, data);
+    });
   }
 
   private fail() {
@@ -264,6 +287,68 @@ export class EventStream {
     if (this.pollTimer !== null) this.o.clearTimer(this.pollTimer);
     this.pollTimer = null;
     this.polls = 0;
+  }
+}
+
+/** What one page asks of the tab's shared stream. */
+export type LiveOptions = Pick<StreamOptions, 'events' | 'onEvent' | 'onReconnect' | 'poll' | 'onMode'>;
+
+const subscribers = new Set<LiveOptions>();
+let shared: EventStream | null = null;
+
+/** One page's share of the tab's single stream on GET /api/events. */
+export class LiveSubscription {
+  /** `make` sets the shared stream's other options when this one opens it (tests). */
+  constructor(
+    private readonly o: LiveOptions,
+    private readonly make: Partial<StreamOptions> = {},
+  ) {}
+
+  /** The shared stream's mode. */
+  get mode(): StreamMode {
+    return shared?.mode ?? 'connecting';
+  }
+
+  start(): void {
+    subscribers.add(this.o);
+    if (!shared?.running) {
+      shared = new EventStream({
+        url: '/api/events',
+        events: [],
+        onEvent: (type, data) => {
+          for (const s of [...subscribers]) if (s.events.includes(type)) s.onEvent(type, data);
+        },
+        onReconnect: () => {
+          for (const s of [...subscribers]) s.onReconnect();
+        },
+        poll: () => Promise.all([...subscribers].map((s) => s.poll())),
+        onMode: (m) => {
+          for (const s of [...subscribers]) s.onMode?.(m);
+        },
+        ...this.make,
+      });
+      for (const s of subscribers) for (const t of s.events) shared.listen(t);
+      shared.start();
+      return;
+    }
+    for (const t of this.o.events) shared.listen(t);
+    this.o.onMode?.(shared.mode);
+  }
+
+  /** Leaves the stream; the last subscriber to leave closes it. */
+  stop(): void {
+    subscribers.delete(this.o);
+    if (subscribers.size === 0 && shared) {
+      shared.stop();
+      shared = null;
+    }
+  }
+
+  /** Connects the shared stream again after another tab replaced it. */
+  resume(): void {
+    subscribers.add(this.o);
+    if (shared) shared.resume();
+    else this.start();
   }
 }
 
