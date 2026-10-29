@@ -1,41 +1,34 @@
 <!--
-  EditorSettings: the "Editor settings" button in the workspace toolbar and
-  the small panel it opens (audit 2026-10-20 S2), holding the editor's font
-  size and "Tab moves focus", which used to take a row of their own above
-  and below the editor. A disclosure, not a menu: the panel holds form
-  controls. Escape closes it and returns focus to the button, as do a click
-  outside and tabbing out (the same behaviour as AccountMenu). Under a
-  rule, "Reset to starter" (P5 F7.12, D211) closes the panel, puts focus
-  back on the button and asks the workspace to confirm, so the dialog
-  returns focus to a control that is still on screen. Props: `fontSize`,
-  `sizes` (the choices, in px), `tabMovesFocus`, `onfont` and `ontab` (the
-  change events of the select and the checkbox) and `onreset` (optional;
-  without it the reset button is left out).
+  EditorSettings: the "Settings" button in the workspace toolbar and the
+  small panel it opens (audit 2026-10-20 S2, cache/v3/design/editor.md
+  section 1): font size, tab size (2 or 4), word wrap and "Tab moves
+  focus". A disclosure, not a menu: the panel holds form controls. Escape
+  closes it and returns focus to the button, as do a click outside and
+  tabbing out (the same behaviour as AccountMenu). Reset is not here; it
+  sits beside the language in the toolbar. Props: `fontSize`, `sizes` (the
+  choices, in px), `tabSize`, `wrap`, `tabMovesFocus`, and `onchange`,
+  called with the changed setting.
 -->
 <script lang="ts">
   import Icon from './Icon.svelte';
   import { dismissable } from '../lib/dismissable';
 
-  interface Props {
+  interface Settings {
     fontSize: number;
-    sizes: readonly number[];
+    tabSize: 2 | 4;
+    wrap: boolean;
     tabMovesFocus: boolean;
-    onfont: (event: Event) => void;
-    ontab: (event: Event) => void;
-    onreset?: () => void;
   }
 
-  let { fontSize, sizes, tabMovesFocus, onfont, ontab, onreset }: Props = $props();
-
-  function reset() {
-    open = false;
-    button?.focus();
-    onreset?.();
+  interface Props extends Settings {
+    sizes: readonly number[];
+    onchange: (next: Partial<Settings>) => void;
   }
+
+  let { fontSize, sizes, tabSize, wrap, tabMovesFocus, onchange }: Props = $props();
 
   let open = $state(false);
   let button: HTMLButtonElement | undefined = $state();
-
 </script>
 
 <div class="settings" use:dismissable={{ open, onclose: () => (open = false), trigger: button }}>
@@ -47,25 +40,31 @@
     bind:this={button}
     onclick={() => (open = !open)}
   >
-    Editor settings<Icon name="chevron-down" />
+    Settings<Icon name="chevron-down" />
   </button>
   <div id="ws-editor-settings" class="panel" hidden={!open}>
     <div class="field">
       <label for="ws-font">Font size</label>
-      <select id="ws-font" class="select" value={fontSize} onchange={onfont}>
+      <select id="ws-font" class="select" value={fontSize} onchange={(e) => onchange({ fontSize: Number(e.currentTarget.value) })}>
         {#each sizes as size (size)}<option value={size}>{size} px</option>{/each}
       </select>
     </div>
+    <div class="field">
+      <label for="ws-tab-size">Tab size</label>
+      <select id="ws-tab-size" class="select" value={tabSize} onchange={(e) => onchange({ tabSize: e.currentTarget.value === '2' ? 2 : 4 })}>
+        <option value={2}>2 spaces</option>
+        <option value={4}>4 spaces</option>
+      </select>
+    </div>
     <label class="check">
-      <input type="checkbox" checked={tabMovesFocus} onchange={ontab} />
+      <input type="checkbox" checked={wrap} onchange={(e) => onchange({ wrap: e.currentTarget.checked })} />
+      Word wrap
+    </label>
+    <label class="check">
+      <input type="checkbox" checked={tabMovesFocus} onchange={(e) => onchange({ tabMovesFocus: e.currentTarget.checked })} />
       Tab moves focus
     </label>
     <p class="field-help">With it on, Tab leaves the editor instead of indenting. Esc then Tab always leaves it.</p>
-    {#if onreset}
-      <div class="reset">
-        <button type="button" class="btn btn-quiet btn-compact" onclick={reset}>Reset to starter</button>
-      </div>
-    {/if}
   </div>
 </div>
 
@@ -91,17 +90,6 @@
 
   .panel[hidden] {
     display: none;
-  }
-
-  .reset {
-    display: grid;
-    justify-items: start;
-    padding-top: var(--space-2);
-    border-top: var(--rule) solid var(--line);
-  }
-
-  .reset .btn {
-    margin-inline-start: calc(-1 * var(--space-3));
   }
 
   .check {

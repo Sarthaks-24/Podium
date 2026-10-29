@@ -7,7 +7,6 @@ import {
   formatMinutes,
   formatSpan,
   freezeAt,
-  freezeText,
   fromLocalInput,
   hasAccepted,
   isForContest,
@@ -25,7 +24,6 @@ import {
   bannerItems,
   bannerLead,
   markMessagesRead,
-  pinnedAction,
   pinnedContest,
   messagesReadAt,
   railStatus,
@@ -159,15 +157,6 @@ describe('the banner queue (B1)', () => {
 });
 
 describe('the pinned contest on Your contests (S10)', () => {
-  it('names the next step', () => {
-    expect(pinnedAction({ state: 'upcoming', my_window: null }, T)).toBe('Open the contest');
-    expect(pinnedAction({ state: 'live', my_window: { started_at: T, ends_at: T + MIN } }, T)).toBe('Continue');
-    expect(pinnedAction({ state: 'frozen', my_window: null }, T)).toBe('Continue');
-    expect(pinnedAction({ state: 'live', my_window: { started_at: T - 2 * MIN, ends_at: T - MIN } }, T)).toBe('See your result');
-    expect(pinnedAction({ state: 'practice', my_window: null }, T)).toBe('See your result');
-    expect(pinnedAction({ state: 'ended', my_window: null }, T)).toBe('See your result');
-  });
-
   it('features a contest the student can enter or took part in, never one they missed (D324)', () => {
     const missed = { slug: 'week-8', state: 'ended' as const, my_score: null };
     const mine = { slug: 'week-7', state: 'practice' as const, my_score: 140 };
@@ -284,9 +273,6 @@ describe('student phase and window maths', () => {
     expect(freezeAt(c)).toBe(T + 90 * MIN);
     expect(freezeAt({ ...c, start_mode: 'window' })).toBeNull();
     expect(freezeAt({ ...c, rules: { ...c.rules, freeze_minutes: 0 } })).toBeNull();
-    expect(freezeText(T + 90 * MIN, T + 58 * MIN)).toBe('Standings freeze in 32 min');
-    expect(freezeText(T + 90 * MIN, T + 90 * MIN)).toBe('Standings frozen');
-    expect(freezeText(null, T)).toBeNull();
   });
 
   it('writes the rules as sentences', () => {
@@ -303,7 +289,7 @@ describe('student phase and window maths', () => {
   it('teaches Run and Submit right after the timing (S3)', () => {
     const lines = rulesSentences(contest());
     expect(lines.slice(1, 4)).toEqual([
-      'Run on samples tries your code on the examples in the statement. It never counts.',
+      'Run tries your code on the examples in the statement. It never counts.',
       'Submit grades your code on hidden tests, in parts called subtasks.',
       'A later, worse submission never lowers your score.',
     ]);

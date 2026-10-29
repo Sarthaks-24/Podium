@@ -3,14 +3,16 @@
  *
  * A contest page sets `shell.workspace` while it shows the workspace, so the
  * shell trims its vertical padding the way it does for
- * /admin/problems/{id}/try, and clears it when it leaves. `shell.shortcuts`
- * opens the "Keyboard shortcuts" dialog the shell owns, so any screen can
- * offer a button for it; `shell.theme` opens the "Theme and colours"
+ * /admin/problems/{id}/try, and clears it when it leaves. `shell.help`
+ * opens the Help dialog the shell owns, so any screen can offer a button
+ * for it; a contest page puts its rules in `shell.rules` while it is shown,
+ * so Help lists them first. `shell.theme` opens the "Theme and colours"
  * dialog the same way.
  */
 class ShellState {
   workspace = $state(false);
-  shortcuts = $state(false);
+  help = $state(false);
+  rules = $state.raw<string[] | null>(null);
   theme = $state(false);
 }
 

@@ -652,7 +652,7 @@ The workspace is the page where code is written, run and submitted. Under `/api/
 
 ```json
 { "id": 77, "state": "done", "compile_output": "",
-  "results": [ { "label": "Sample 1", "verdict": "AC", "time_ms": 10, "memory_kb": 3120,
+  "results": [ { "label": "Example 1", "verdict": "AC", "time_ms": 10, "memory_kb": 3120,
                  "output": "3\n", "output_truncated": false, "expected": "3\n", "message": "" } ],
   "server_now": 1792183192400 }
 ```
@@ -660,9 +660,10 @@ The workspace is the page where code is written, run and submitted. Under `/api/
 | Field | Meaning |
 |---|---|
 | `state` | `queued`, `running`, `done` or `error`; on `error`, `error` holds a sentence ("The judge could not finish this run. Try again.", or the problem's checker does not compile) |
-| `results` | one row per input from the start: every sample in order (labelled "Sample 1", "Sample 2", ...), or one "Custom input". `verdict` is `""` until that input has run |
+| `results` | one row per input from the start: every example in order (labelled "Example 1", "Example 2", ...), or one "Your input". `verdict` is `""` until that input has run |
 | `verdict` | for a sample, the checker's verdict (`AC`, `WA`) or a limit verdict (`TLE`, `MLE`, `RE`, `OLE`); for a custom input, `OK` when the program ran without error, otherwise the limit verdict |
 | `output` | the start of what the program printed, at most 4 KB, valid UTF-8; `output_truncated` says it was cut |
+| `stderr` | the end of what the program printed to stderr, at most 4 KB, valid UTF-8; absent when it printed nothing there. Runs only: a submission never carries it, since a program can print a hidden input to stderr, and the server refuses a judge report that sends one |
 | `expected` | the sample's expected output (at most 4 KB); `null` for a custom input |
 | `message` | the checker's comment on a sample, `""` otherwise |
 | `compile_output` | the compiler's output; a compile error leaves every `verdict` empty |
@@ -675,7 +676,7 @@ Times are rounded to the nearest 10 ms (100 ms for a student in a contest); `tim
 
 ```json
 { "id": 78, "state": "done", "compile_output": "",
-  "results": [ { "kind": "sample", "label": "Sample 1", "verdict": "AC", "time_ms": 10, "memory_kb": 3120,
+  "results": [ { "kind": "sample", "label": "Example 1", "verdict": "AC", "time_ms": 10, "memory_kb": 3120,
                  "output": "3\n", "output_truncated": false, "expected": "3\n", "message": "" } ],
   "server_now": 1792183192400 }
 ```
@@ -683,7 +684,7 @@ Times are rounded to the nearest 10 ms (100 ms for a student in a contest); `tim
 | Field | Meaning |
 |---|---|
 | `results[].kind` | `sample` or `custom` |
-| `revealed` | present only when a sample failed: the first one, with its test number `idx`, `kind`, `label`, its `input`, the `expected` output and the program's `output`, each at most 4 KB cut at a whole UTF-8 character (`truncated` says one was cut). Absent for a custom input and when every test passed |
+| `revealed` | present only when a sample failed: the first one, with its test number `idx`, `kind`, `label`, its `input`, the `expected` output, the program's `output` and its `stderr` (when it printed any), each at most 4 KB cut at a whole UTF-8 character (`truncated` says one was cut). Absent for a custom input and when every test passed |
 
 ### `Submission`: the revealed hidden test (v1.2.0, D115)
 

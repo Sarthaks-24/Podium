@@ -17,9 +17,10 @@
  * the next student never sees, or saves as their own, the last student's
  * code.
  *
- * The editor's own settings (font size, Tab behaviour, last language) and
- * the size of the workspace's result panel (P5 F7.5) live here too, under
- * their own keys: they belong to this device, not to an account.
+ * The editor's own settings (font size, tab size, word wrap, Tab
+ * behaviour) and the size of the workspace's result panel (P5 F7.5) live
+ * here too, under their own keys: they belong to this device. The last
+ * language belongs to the account, so its key carries the user id.
  */
 import type { Draft, Language } from './workspace';
 
@@ -166,6 +167,8 @@ export const DEFAULT_FONT_SIZE = 14;
 const FONT_KEY = 'podium-editor-font';
 const TAB_KEY = 'podium-editor-tab-focus';
 const LANG_KEY = 'podium-editor-language';
+const TAB_SIZE_KEY = 'podium-editor-tab-size';
+const WRAP_KEY = 'podium-editor-wrap';
 const RESULT_KEY = 'podium-workspace-result';
 
 /** The result panel's share of the code column, in percent, while open (F7.5). */
@@ -189,11 +192,14 @@ function write(storage: DraftStorage | null, key: string, value: string): void {
   }
 }
 
-/** The editor settings remembered on this device. */
+/** The editor settings remembered on this device; the language per account. */
 export interface EditorPrefs {
   fontSize: number;
   tabMovesFocus: boolean;
-  language: Language;
+  tabSize: 2 | 4;
+  wrap: boolean;
+  /** The last language this account chose, or null before the first choice. */
+  language: Language | null;
 }
 
 /** The result panel under the editor from 1024 px: its share when open, and whether it is collapsed. */
@@ -227,20 +233,38 @@ export function writeResultPanel(storage: DraftStorage | null, prefs: ResultPane
   write(storage, RESULT_KEY, JSON.stringify({ share: clampShare(prefs.share), collapsed: prefs.collapsed }));
 }
 
-/** Reads the remembered editor settings, falling back to the defaults. */
-export function readEditorPrefs(storage: DraftStorage | null): EditorPrefs {
+/**
+ * Reads the remembered editor settings, falling back to the defaults. Word
+ * wrap starts on when `narrow` (under 768 px) until it is set; the
+ * language is the one `owner` chose last, on any problem or contest (P5).
+ */
+export function readEditorPrefs(storage: DraftStorage | null, owner: number, narrow = false): EditorPrefs {
   const size = Number(read(storage, FONT_KEY));
-  const lang = read(storage, LANG_KEY);
+  const lang = read(storage, `${LANG_KEY}:${owner}`);
+  const wrap = read(storage, WRAP_KEY);
   return {
     fontSize: (FONT_SIZES as readonly number[]).includes(size) ? size : DEFAULT_FONT_SIZE,
     tabMovesFocus: read(storage, TAB_KEY) === '1',
-    language: lang !== null && LANGS.includes(lang) ? (lang as Language) : 'cpp17',
+    tabSize: read(storage, TAB_SIZE_KEY) === '2' ? 2 : 4,
+    wrap: wrap === null ? narrow : wrap === '1',
+    language: lang !== null && LANGS.includes(lang) ? (lang as Language) : null,
   };
 }
 
-/** Remembers the editor settings on this device. */
-export function writeEditorPrefs(storage: DraftStorage | null, prefs: EditorPrefs): void {
+/** Remembers the editor settings on this device, and the language for `owner`. */
+export function writeEditorPrefs(storage: DraftStorage | null, prefs: EditorPrefs, owner: number): void {
   write(storage, FONT_KEY, String(prefs.fontSize));
   write(storage, TAB_KEY, prefs.tabMovesFocus ? '1' : '0');
-  write(storage, LANG_KEY, prefs.language);
+  write(storage, TAB_SIZE_KEY, String(prefs.tabSize));
+  write(storage, WRAP_KEY, prefs.wrap ? '1' : '0');
+  if (prefs.language) write(storage, `${LANG_KEY}:${owner}`, prefs.language);
+}
+
+/**
+ * The key of the code kept for one language of a workspace, so switching
+ * languages and back brings the code back. It shares the mirror prefix, so
+ * sign-out removes it with the rest.
+ */
+export function languageMirrorKey(owner: number, base: string, language: Language): string {
+  return `${mirrorKey(owner, base)}#${language}`;
 }

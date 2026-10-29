@@ -28,7 +28,7 @@ test('student: open the contest, start, run, submit, see a verdict, open standin
       id: 70,
       state: 'done',
       compile_output: '',
-      results: [{ kind: 'sample', label: 'Sample 1', verdict: 'AC', time_ms: 10, memory_kb: 3200, output: '3', expected: '3', message: '' }],
+      results: [{ kind: 'sample', label: 'Example 1', verdict: 'AC', time_ms: 10, memory_kb: 3200, output: '3', expected: '3', message: '' }],
     },
   });
   await expect(result.getByText(/example passed/i).first()).toBeVisible({ timeout: 10_000 });
@@ -87,6 +87,44 @@ test('student: code typed in A stays in A when switching to B and back, and afte
   await expect(editor).not.toContainText('// mark A');
 });
 
+test('student: the language chosen on A is still chosen on B, and typed code is kept per language (P5)', async ({ page }) => {
+  await contests.mockApi(page, { phase: 'during' });
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto('/contests/week-6/problems/A');
+  const editor = codeEditor(page);
+  const language = page.getByLabel('Language');
+  await expect(editor).toHaveAttribute('data-language', /.+/);
+
+  // Untouched starter: the switch swaps it without asking.
+  await language.selectOption('python3');
+  await expect(editor).toContainText('sys.stdin');
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await editor.click();
+  await page.keyboard.press('Control+End');
+  await page.keyboard.type('\n# mine in python');
+
+  // Typed code: the switch asks first; Cancel keeps the code under the new language.
+  await language.selectOption('cpp17');
+  const ask = page.getByRole('dialog', { name: 'Replace your code with the C++17 starter?' });
+  await expect(ask).toContainText('Your Python 3 code is kept and comes back when you switch back.');
+  await ask.getByRole('button', { name: 'Use the starter' }).click();
+  await expect(editor).not.toContainText('# mine in python');
+  await expect(language).toHaveValue('cpp17');
+  // Back to Python: its code comes back.
+  await language.selectOption('python3');
+  await expect(editor).toContainText('# mine in python');
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+
+  // Problem B opens in Python, the language chosen last.
+  await page.getByRole('navigation', { name: 'Problems' }).getByRole('link', { name: /^Problem B/ }).click();
+  await expect(page).toHaveURL(/\/problems\/B$/);
+  await expect(language).toHaveValue('python3');
+  await expect(editor).toContainText('sys.stdin');
+  // One word for the draft state, and the cursor under the editor.
+  await expect(page.getByText(/^(Saved|Saving|Not saved to the server, kept on this device)$/)).toBeVisible();
+  await expect(page.getByText(/^Ln \d+, Col \d+$/)).toBeVisible();
+});
+
 test('student: an autosaved draft comes back from the server after a reload', async ({ page }) => {
   const api = await contests.mockApi(page, { phase: 'during' });
   await page.setViewportSize({ width: 1440, height: 900 });
@@ -108,9 +146,9 @@ test('student: run on their own input', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto('/contests/week-6/problems/A');
   await expect(codeEditor(page)).toBeVisible();
-  await page.getByRole('button', { name: 'Custom input' }).click();
-  await page.getByLabel('Custom input').fill('5 7');
-  await page.getByRole('button', { name: 'Run on this input' }).click();
+  await page.getByRole('button', { name: 'Your input' }).click();
+  await page.getByLabel('Your input').fill('5 7');
+  await page.locator('#ws-custom-panel').getByRole('button', { name: 'Run', exact: true }).click();
   await expect.poll(() => api.runs.length).toBe(1);
   expect(api.runs[0]).toMatchObject({ input: '5 7' });
   api.stream.push({
@@ -119,7 +157,7 @@ test('student: run on their own input', async ({ page }) => {
       id: 70,
       state: 'done',
       compile_output: '',
-      results: [{ kind: 'custom', label: 'Custom input', verdict: 'OK', time_ms: 8, memory_kb: 3200, output: '12', expected: '', message: '' }],
+      results: [{ kind: 'custom', label: 'Your input', verdict: 'OK', time_ms: 8, memory_kb: 3200, output: '12', expected: '', message: '' }],
     },
   });
   const result = page.getByRole('region', { name: 'Result' });
@@ -144,6 +182,18 @@ test('student: announcements arrive as a banner, and Dismiss clears them one by 
   await expect(page.getByText(/more message/)).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Dismiss', exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Dismiss', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Show all messages' })).toHaveCount(0);
+
+  // Two more: "Dismiss all" clears both at once (S1-09.4).
+  for (const [id, body] of [
+    [3, 'Five minutes left.'],
+    [4, 'Submissions close at the end.'],
+  ] as const) {
+    api.announcements.push({ id, body_md: body, created_at: Date.now() + id * 1000 });
+    api.stream.push({ type: 'announcement', data: { contest: 4, id, body_md: body } });
+  }
+  await expect(page.getByText(/1 more message waiting/)).toBeVisible({ timeout: 10_000 });
+  await page.getByRole('button', { name: 'Dismiss all' }).click();
   await expect(page.getByRole('button', { name: 'Show all messages' })).toHaveCount(0);
 });
 

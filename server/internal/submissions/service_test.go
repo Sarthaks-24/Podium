@@ -127,7 +127,7 @@ func (r *rig) judgeNext(t *testing.T, kind string, verdicts map[int]string) judg
 		var pl judgeapi.RunPayload
 		json.Unmarshal(c.Payload, &pl)
 		for _, in := range pl.Inputs {
-			add(in.Idx, judgeapi.TestResult{Output: "3\n7\n"})
+			add(in.Idx, judgeapi.TestResult{Output: "3\n7\n", Stderr: "trace\n"})
 		}
 	}
 	if err := r.jobs.Report(ctx, rep); err != nil {
@@ -279,6 +279,8 @@ func TestSubmitReportsKeepHiddenTestsHidden(t *testing.T) {
 		"message on hidden":     {Idx: 5, Role: judgeapi.RoleProgram, Verdict: "WA", Message: "expected 1000000"},
 		"test the job lacks":    {Idx: 42, Role: judgeapi.RoleProgram, Verdict: "AC"},
 		"role other than prog.": {Idx: 1, Role: judgeapi.RoleReference, Verdict: "AC"},
+		// A program can print a hidden input to stderr, so a submission never carries it (B1).
+		"stderr": {Idx: 5, Role: judgeapi.RoleProgram, Verdict: "RE", Stderr: "1000000"},
 	} {
 		if err := r.jobs.Report(ctx, judgeapi.Report{JobID: c.JobID, Lease: c.Lease, Results: []judgeapi.TestResult{res}}); !errors.As(err, &bad) {
 			t.Errorf("%s: %v", name, err)
@@ -305,7 +307,7 @@ func TestRunOnSamplesAndCustomInput(t *testing.T) {
 	}
 	r.judgeNext(t, judgeapi.KindRun, map[int]string{2: "WA"})
 	run, _ = r.svc.GetRun(ctx, run.ID)
-	if run.State != "done" || len(run.Results) != 2 || run.Results[0].Label != "Sample 1" || run.Results[0].Output != "3\n7\n" ||
+	if run.State != "done" || len(run.Results) != 2 || run.Results[0].Label != "Example 1" || run.Results[0].Output != "3\n7\n" || run.Results[0].Stderr != "trace\n" ||
 		run.Results[0].Expected == nil || *run.Results[0].Expected != "3\n7\n" || run.Results[1].Verdict != "WA" {
 		t.Errorf("run %+v", run)
 	}
@@ -317,8 +319,28 @@ func TestRunOnSamplesAndCustomInput(t *testing.T) {
 	}
 	r.judgeNext(t, judgeapi.KindRun, map[int]string{0: "OK"})
 	custom, _ = r.svc.GetRun(ctx, custom.ID)
-	if len(custom.Results) != 1 || custom.Results[0].Label != "Custom input" || custom.Results[0].Expected != nil || custom.Results[0].Verdict != "OK" {
+	if len(custom.Results) != 1 || custom.Results[0].Label != "Your input" || custom.Results[0].Expected != nil || custom.Results[0].Verdict != "OK" {
 		t.Errorf("custom run %+v", custom)
+	}
+}
+
+// TestRunStderrIsCapped: the judge is not trusted, so a run's stderr over
+// 4 KB or not UTF-8 is refused.
+func TestRunStderrIsCapped(t *testing.T) {
+	r := newRig(t)
+	ctx := context.Background()
+	p := r.importPack(t, nil)
+	if _, err := r.svc.Run(ctx, RunRequest{ProblemID: p.ID, UserID: 1, Language: "python3", Source: "print(3)"}); err != nil {
+		t.Fatal(err)
+	}
+	c, _ := r.jobs.Claim(ctx, judgeapi.ClaimRequest{Kinds: []string{judgeapi.KindRun}})
+	var bad *jobs.ReportError
+	for name, stderr := range map[string]string{"too long": strings.Repeat("x", judgeapi.MaxRunOutput+1), "not UTF-8": "\xff\xfe"} {
+		err := r.jobs.Report(ctx, judgeapi.Report{JobID: c.JobID, Lease: c.Lease,
+			Results: []judgeapi.TestResult{{Idx: 1, Role: judgeapi.RoleProgram, Verdict: "RE", Stderr: stderr}}})
+		if !errors.As(err, &bad) {
+			t.Errorf("%s: %v", name, err)
+		}
 	}
 }
 

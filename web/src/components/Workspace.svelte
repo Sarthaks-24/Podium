@@ -55,22 +55,31 @@
   - Integrity counts (lib/integrity.ts): typed and pasted characters from
     the editor, window blur and focus, sent in batches; never in the way of
     a submit.
-  - The code column's toolbar is one row (audit 2026-10-20 S2): the
-    language, "Editor settings" (font size, "Tab moves focus" and "Reset to
-    starter", components/EditorSettings) and Run and Submit at the end; a
-    narrow column drops the icons to keep the row. Under the editor one
-    line holds "Custom input" (a quiet button that opens its box at the top
-    of the result pane), the submission count and the draft state.
-  - "Reset to starter" asks first ("Reset to starter?", the danger button
-    repeating the words) and saves the draft at once, so the next timed
+  - The code column's toolbar is one row (audit 2026-10-20 S2,
+    cache/v3/design/editor.md section 1): the language, Reset, Settings
+    (font size, tab size, word wrap, "Tab moves focus",
+    components/EditorSettings) and Run and Submit at the end; a narrow
+    column drops the icons to keep the row. Under the editor one line holds
+    "Your input" (a quiet button that opens its box at the top of the
+    result pane), the submission count, the draft state in one word per
+    state and the cursor as "Ln 2, Col 5".
+  - The language chosen last is remembered per account (lib/drafts.ts).
+    A switch keeps the code typed so far under the old language on this
+    device and brings back the new language's own code, or its starter
+    while the code is still a starter; over typed code it asks first, and
+    Cancel keeps the code under the new language (P5).
+  - Reset asks first ("Replace your code with the starter?", the danger
+    button saying Reset) and saves the draft at once, so the next timed
     save or a reload cannot bring the old code back (F7.12, D114).
+  - An editor key (Ctrl with /, D, L, H, G or U) pressed outside the
+    editor shows a toast saying to click in the editor first (P6).
   - A practice submission or any run may carry its first failing test in
     full (D115); VerdictPanel and RunResults show it with "Run on this
     input". A contest submission never carries one.
   - During a live contest (a `clock` is given) sign out asks first
     (App.svelte, lib/session.svelte.ts guardSignOut, F7.6).
-  - Ctrl+Enter submits and Ctrl+' runs on samples (Cmd on a Mac), listed
-    under "Keyboard shortcuts" in the footer; the app's announcer
+  - Ctrl+Enter submits and Ctrl+' runs (Cmd on a Mac), listed
+    in Help ("?" or the footer); the app's announcer
     (lib/announce.svelte.ts) speaks each submission and run result as a
     sentence, compile errors included. Sign out waits for the draft save
     (beforeSignOut).
@@ -112,6 +121,7 @@
     RESULT_SHARE,
     clampShare,
     draftStorage,
+    languageMirrorKey,
     mayMirror,
     mirrorKey,
     pickDraft,
@@ -123,6 +133,8 @@
     writeResultPanel,
   } from '../lib/drafts';
   import { polite } from '../lib/announce.svelte';
+  import { showToast } from '../lib/toast.svelte';
+  import { isTypingTarget } from '../lib/shortcuts';
   import { keepHeadingFocus } from '../lib/focus';
   import { publishHeight } from '../lib/publishHeight';
   import { setTitle } from '../lib/head';
@@ -217,7 +229,7 @@
   const storage = draftStorage();
   // The mirror is per account (lib/drafts.ts); the shell mounts this only when signed in.
   const owner = session.user?.id ?? 0;
-  const prefs = readEditorPrefs(storage);
+  const prefs = readEditorPrefs(storage, owner, typeof window !== 'undefined' && !media('tablet').matches);
   const isMac = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
 
   let loadState = $state<'loading' | 'ready' | 'missing' | 'forbidden' | 'error'>('loading');
@@ -227,7 +239,7 @@
   let ws = $state.raw<Workspace | null>(null);
 
   // The code.
-  let language = $state<Language>(prefs.language);
+  let language = $state<Language>(prefs.language ?? 'cpp17');
   let source = $state('');
   let initialDoc = $state('');
   let savedLanguage = '';
@@ -235,7 +247,12 @@
   let saveState = $state<'saved' | 'saving' | 'local' | 'failed'>('saved');
   let fontSize = $state(prefs.fontSize);
   let tabMovesFocus = $state(prefs.tabMovesFocus);
+  let tabSize = $state<2 | 4>(prefs.tabSize);
+  let wrap = $state(prefs.wrap);
+  let cursor = $state({ line: 1, col: 1 });
   let editor: CodeEditor | undefined = $state();
+  // A language change over typed code asks before the starter replaces it (P5).
+  let pendingLanguage = $state<Language | null>(null);
 
   // Judging.
   let judging = $state.raw<JudgingState>({ submissions: [], run: null, serverNow: null });
@@ -275,7 +292,7 @@
   let codeCol: HTMLDivElement | undefined = $state();
   let dragging = false;
 
-  // F7.12: "Reset to starter" asks first.
+  // F7.12: Reset asks first.
   let confirmReset = $state(false);
 
   // The contest may allow fewer languages than the judge knows.
@@ -593,6 +610,7 @@
   function mirror(draft: { language: Language; source: string; updated_at: number }) {
     if (!mayMirror(owner)) return;
     writeMirror(storage, mirrorKey(owner, base), draft, owner);
+    writeMirror(storage, languageMirrorKey(owner, base, draft.language), draft, owner);
   }
 
   function saveOnLeave() {
@@ -613,29 +631,41 @@
   }
 
   function savePrefs() {
-    writeEditorPrefs(storage, { fontSize, tabMovesFocus, language });
+    writeEditorPrefs(storage, { fontSize, tabMovesFocus, tabSize, wrap, language }, owner);
   }
 
+  /**
+   * A language change (P5): the code typed so far stays kept under the old
+   * language; the new one brings back its own kept code, or its starter
+   * when the code on screen is still a starter. Over typed code it asks
+   * first, and Cancel keeps the code under the new language.
+   */
   function onLanguageChange(event: Event) {
     const next = (event.currentTarget as HTMLSelectElement).value as Language;
-    const wasStarter = isStarterOrEmpty(source);
+    if (next === language) return;
+    if (mayMirror(owner)) writeMirror(storage, languageMirrorKey(owner, base, language), { language, source, updated_at: serverClock.serverNow() }, owner);
+    const kept = readMirror(storage, languageMirrorKey(owner, base, next), owner);
+    if (kept && !isStarterOrEmpty(kept.source)) switchLanguage(next, kept.source);
+    else if (isStarterOrEmpty(source)) switchLanguage(next, starter(next));
+    else pendingLanguage = next;
+  }
+
+  function switchLanguage(next: Language, code: string | null) {
+    pendingLanguage = null;
     language = next;
     savePrefs();
-    if (wasStarter) {
-      const code = starter(next);
+    if (code !== null) {
       source = code;
       editor?.setDoc(code);
     }
     queueMirror();
   }
 
-  function onFontChange(event: Event) {
-    fontSize = Number((event.currentTarget as HTMLSelectElement).value) || DEFAULT_FONT_SIZE;
-    savePrefs();
-  }
-
-  function onTabToggle(event: Event) {
-    tabMovesFocus = (event.currentTarget as HTMLInputElement).checked;
+  function onSettings(next: { fontSize?: number; tabSize?: 2 | 4; wrap?: boolean; tabMovesFocus?: boolean }) {
+    if (next.fontSize !== undefined) fontSize = next.fontSize || DEFAULT_FONT_SIZE;
+    if (next.tabSize !== undefined) tabSize = next.tabSize;
+    if (next.wrap !== undefined) wrap = next.wrap;
+    if (next.tabMovesFocus !== undefined) tabMovesFocus = next.tabMovesFocus;
     savePrefs();
   }
 
@@ -782,7 +812,7 @@
     source = code;
     editor?.setDoc(code);
     await saveDraft();
-    polite('Reset to the starter.');
+    polite('Reset. The starter is back.');
     editor?.focus();
   }
 
@@ -866,11 +896,25 @@
     editor?.jumpTo(line, col);
   }
 
+  // Editor keys pressed outside the editor say where they work (P6).
+  const EDITOR_KEYS = new Set(['/', 'd', 'l', 'h', 'g', 'u']);
+  let hinted = 0;
+
   // Keyboard: Ctrl or Cmd with Enter submits, with ' runs, with S saves.
   function onKeydown(event: KeyboardEvent) {
     if (event.defaultPrevented || loadState !== 'ready') return;
     const modKey = isMac ? event.metaKey : event.ctrlKey;
     if (!modKey || event.altKey) return;
+    const target = event.target as Element | null;
+    // Inside the editor's find panel, Mod+Enter belongs to the panel, never to Submit.
+    if (target?.closest?.('.cm-panel')) return;
+    if (EDITOR_KEYS.has(event.key.toLowerCase()) && !target?.closest?.('.cm-editor') && !isTypingTarget(target)) {
+      if (Date.now() - hinted > 4000) {
+        hinted = Date.now();
+        showToast('Click in the code editor first. Editor shortcuts work only there.');
+      }
+      return;
+    }
     if (event.key === 'Enter') {
       event.preventDefault();
       void submit();
@@ -984,7 +1028,7 @@
   </div>
 {:else}
   <div class="ws" data-layout={layout}>
-    <p class="visually-hidden" aria-live="polite">{saveState === 'failed' ? 'Draft not saved to the server. A copy is kept on this device.' : ''}</p>
+    <p class="visually-hidden" aria-live="polite">{saveState === 'failed' ? 'Not saved to the server, kept on this device.' : ''}</p>
     {#if layout === 'wide'}
       <aside class="rail" aria-label="Problem">
         <div class="rail-head">
@@ -1090,17 +1134,11 @@
         <!-- S2: one row. Language, the editor settings, then Run and, from 1024 px, Submit at the end. -->
         <div class="toolbar">
           <label class="visually-hidden" for="ws-language">Language</label>
-          <select id="ws-language" class="select lang" value={language} onchange={onLanguageChange}>
+          <select id="ws-language" class="select lang" value={pendingLanguage ?? language} onchange={onLanguageChange}>
             {#each languages as l (l.id)}<option value={l.id}>{l.label}</option>{/each}
           </select>
-          <EditorSettings
-            {fontSize}
-            sizes={FONT_SIZES}
-            {tabMovesFocus}
-            onfont={onFontChange}
-            ontab={onTabToggle}
-            onreset={() => (confirmReset = true)}
-          />
+          <button type="button" class="btn btn-quiet btn-compact" onclick={() => (confirmReset = true)}>Reset</button>
+          <EditorSettings {fontSize} sizes={FONT_SIZES} {tabSize} {wrap} {tabMovesFocus} onchange={onSettings} />
           <div class="run-actions">
             <button
               type="button"
@@ -1108,7 +1146,7 @@
               disabled={lockText !== ''}
               aria-disabled={runBusy ? 'true' : undefined}
               aria-describedby={lockText ? 'ws-locked' : undefined}
-              onclick={runSamples}><Icon name="play" />Run on samples</button
+              onclick={runSamples}><Icon name="play" />Run</button
             >
             {#if layout === 'wide'}{@render submitButton()}{/if}
           </div>
@@ -1123,6 +1161,9 @@
             label={editorLabel}
             {fontSize}
             {tabMovesFocus}
+            {tabSize}
+            {wrap}
+            oncursor={(line, col) => (cursor = { line, col })}
             onchange={onSourceChange}
             ontyped={(n) => integrity?.typedChars(n)}
             onpaste={(n) => integrity?.paste(n)}
@@ -1138,7 +1179,7 @@
             class="btn btn-link btn-compact custom-toggle"
             aria-expanded={customOpen}
             aria-controls="ws-custom-panel"
-            onclick={toggleCustom}>Custom input</button
+            onclick={toggleCustom}>Your input</button
           >
           <!-- Pacing and the submission count: muted, never an alert (S4). The announcer speaks the pacing line. -->
           {#if paceText || (usedNow && !lockText)}
@@ -1147,10 +1188,11 @@
               {#if usedNow && !lockText}<span class="used">{usedText(usedNow.count, usedNow.max)}</span>{/if}
             </p>
           {/if}
+          <!-- One word per state (design/words.md), then the cursor as LeetCode shows it. -->
           <p class="save" class:failed={saveState === 'failed'}>
-            {#if saveState === 'saved'}Draft saved{:else if saveState === 'saving'}Saving draft{:else if saveState === 'failed'}Draft not saved
-              to the server. A copy is kept on this device.{:else}Changes kept on this device{/if}
+            {#if saveState === 'saved'}Saved{:else if saveState === 'saving'}Saving{:else}Not saved to the server, kept on this device{/if}
           </p>
+          <p class="cursor mono" aria-hidden="true">Ln {cursor.line}, Col {cursor.col}</p>
         </div>
       </section>
 
@@ -1204,7 +1246,7 @@
         {#if customOpen}
           <div class="custom-panel" id="ws-custom-panel">
             <div class="custom-head">
-              <label for="ws-custom">Custom input</label>
+              <label for="ws-custom">Your input</label>
               <button type="button" class="btn btn-quiet btn-compact" onclick={() => (customOpen = false)}>Close</button>
             </div>
             <textarea
@@ -1216,7 +1258,7 @@
               bind:value={customInput}
             ></textarea>
             <button type="button" class="btn btn-secondary btn-compact" disabled={lockText !== ''} aria-disabled={runBusy ? 'true' : undefined} onclick={runCustom}>
-              <Icon name="play" />Run on this input
+              <Icon name="play" />Run
             </button>
           </div>
         {/if}
@@ -1225,7 +1267,7 @@
         {#if view === 'run' && judging.run}
           <div class="block">
             <div class="block-head">
-              <h2 class="block-title" tabindex="-1" data-result-focus>{judging.run.results.some((r) => r.label === 'Custom input') ? 'Run on your input' : 'Run on samples'}</h2>
+              <h2 class="block-title" tabindex="-1" data-result-focus>{judging.run.results.some((r) => r.kind === 'custom') ? 'Run on your input' : 'Run on the examples'}</h2>
               {#if current}
                 <button type="button" class="btn btn-quiet btn-compact" onclick={() => (view = 'submission')}>Show the latest submission</button>
               {/if}
@@ -1260,12 +1302,12 @@
               onruninput={lockText ? undefined : runOnInput}
             />
             {#if sampleFailure}
-              <button type="button" class="btn btn-secondary btn-compact" disabled={runBusy || lockText !== ''} onclick={runSamples}>Run on samples</button>
+              <button type="button" class="btn btn-secondary btn-compact" disabled={runBusy || lockText !== ''} onclick={runSamples}>Run</button>
             {/if}
           </div>
         {:else}
           <p class="muted empty" tabindex="-1" data-result-focus>
-            Run on samples to check your code, then submit it. Results appear here.
+            Run tries your code on the examples and never counts. Submit grades it on the hidden tests. Results appear here.
           </p>
         {/if}
 
@@ -1308,12 +1350,21 @@
 
 <ConfirmDialog
   open={confirmReset}
-  title="Reset to starter?"
-  body={`Your code for this problem is replaced with the ${languageLabel(language)} starter, and the draft is saved.`}
-  confirmLabel="Reset to starter"
+  title="Replace your code with the starter?"
+  body={`Your ${languageLabel(language)} code for this problem is replaced with the starter, and saved.`}
+  confirmLabel="Reset"
   danger
   onconfirm={() => void resetToStarter()}
   oncancel={() => (confirmReset = false)}
+/>
+
+<ConfirmDialog
+  open={pendingLanguage !== null}
+  title={`Replace your code with the ${languageLabel(pendingLanguage ?? language)} starter?`}
+  body={`Your ${languageLabel(language)} code is kept and comes back when you switch back. Cancel keeps the code you have now.`}
+  confirmLabel="Use the starter"
+  onconfirm={() => pendingLanguage && switchLanguage(pendingLanguage, starter(pendingLanguage))}
+  oncancel={() => pendingLanguage && switchLanguage(pendingLanguage, null)}
 />
 
 <style>
@@ -1634,6 +1685,10 @@
     color: var(--bad);
   }
 
+  .cursor {
+    color: var(--ink-muted);
+  }
+
   .result-pane {
     display: grid;
     align-content: start;
@@ -1804,6 +1859,8 @@
     }
 
     .statement-pane {
+      /* Positioned, so absolutely placed hidden text inside scrolls with it instead of stretching the page. */
+      position: relative;
       grid-area: statement;
       padding: var(--space-4) var(--space-5) var(--space-6);
       overflow-y: auto;

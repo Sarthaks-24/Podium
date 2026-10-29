@@ -16,16 +16,32 @@
  *   leaves the editor (CodeMirror's tab-focus escape), so a keyboard user is
  *   never trapped.
  * - Mod-Enter and Mod-' call the caller's submit and run; they are bound
- *   ahead of the default keymap, which would otherwise insert a line.
+ *   ahead of the VS Code keymap, which would otherwise insert a line.
+ * - Keys follow VS Code (`@replit/codemirror-vscode-keymap` plus the few it
+ *   leaves out, below); the full table is lib/shortcuts.ts. Find and
+ *   replace, auto-closed brackets, completion (words from the file for C++
+ *   and Java), multiple cursors, folding, word wrap and tab size 2 or 4.
  * - Typed and pasted characters are reported from each transaction's
  *   userEvent ("input.type", "input.paste"), never with timing.
  * - `describedBy` names the element holding the editor's keyboard hint, so
  *   a screen reader hears how to leave the editor (X2).
  */
-import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirror/commands';
+import { autocompletion, closeBrackets, closeBracketsKeymap, closeCompletion, completeAnyWord, currentCompletions } from '@codemirror/autocomplete';
+import { defaultKeymap, history, historyKeymap, indentMore, indentWithTab, selectParentSyntax } from '@codemirror/commands';
 import { bracketMatching, HighlightStyle, indentOnInput, indentUnit, syntaxHighlighting } from '@codemirror/language';
-import { Compartment, EditorState, type Extension } from '@codemirror/state';
 import {
+  findNext,
+  findPrevious,
+  getSearchQuery,
+  highlightSelectionMatches,
+  openSearchPanel,
+  search,
+  SearchQuery,
+  setSearchQuery,
+} from '@codemirror/search';
+import { Compartment, EditorSelection, EditorState, type Extension } from '@codemirror/state';
+import {
+  crosshairCursor,
   drawSelection,
   EditorView,
   highlightActiveLine,
@@ -33,8 +49,12 @@ import {
   highlightSpecialChars,
   keymap,
   lineNumbers,
+  rectangularSelection,
+  type Command,
+  type KeyBinding,
 } from '@codemirror/view';
 import { tags as t } from '@lezer/highlight';
+import { vscodeKeymap } from '@replit/codemirror-vscode-keymap';
 import type { Language } from './workspace';
 
 const MODES: Record<Language, () => Promise<Extension>> = {
@@ -89,6 +109,17 @@ const theme = EditorView.theme(
     '.cm-activeLineGutter': { backgroundColor: 'var(--code-active-line)', color: 'var(--well-ink)' },
     '&.cm-focused .cm-matchingBracket': { backgroundColor: 'var(--code-selection)', outline: 'var(--rule) solid var(--code-gutter)' },
     '.cm-specialChar': { color: 'var(--code-invalid)' },
+    '.cm-searchMatch': { backgroundColor: 'var(--code-match)', outline: 'var(--rule) solid var(--code-match-edge)' },
+    '.cm-searchMatch-selected, .cm-selectionMatch': { backgroundColor: 'var(--code-selection)' },
+    '.cm-panels': { backgroundColor: 'var(--well)', color: 'var(--well-ink)' },
+    '.cm-panels-top': { borderBottom: 'var(--rule) solid var(--well-edge)' },
+    '.cm-panel.cm-search': { padding: 'var(--space-2) var(--space-3)', fontFamily: 'var(--font-sans)', fontSize: 'var(--fs-0)' },
+    '.cm-panel.cm-search input, .cm-panel.cm-search button': { font: 'inherit', color: 'var(--well-ink)' },
+    '.cm-textfield': { backgroundColor: 'var(--well)', border: 'var(--rule) solid var(--code-gutter)', borderRadius: 'var(--radius)' },
+    '.cm-button': { backgroundImage: 'none', backgroundColor: 'var(--code-active-line)', border: 'var(--rule) solid var(--code-gutter)', borderRadius: 'var(--radius)' },
+    '.cm-tooltip': { backgroundColor: 'var(--well)', color: 'var(--well-ink)', border: 'var(--rule) solid var(--code-gutter)' },
+    '.cm-tooltip-autocomplete > ul': { fontFamily: 'var(--font-mono)' },
+    '.cm-tooltip-autocomplete > ul > li[aria-selected]': { backgroundColor: 'var(--code-selection)', color: 'var(--well-ink)' },
   },
   { dark: true },
 );
@@ -101,6 +132,8 @@ export interface EditorCallbacks {
   onBlur: () => void;
   onSubmit: () => void;
   onRun: () => void;
+  /** The main cursor moved: line and column, both from 1. */
+  onCursor?: (line: number, col: number) => void;
 }
 
 export interface EditorOptions extends EditorCallbacks {
@@ -111,12 +144,16 @@ export interface EditorOptions extends EditorCallbacks {
   /** The id of the element that describes the editor (its keyboard hint). */
   describedBy?: string;
   tabMovesFocus: boolean;
+  tabSize?: 2 | 4;
+  wrap?: boolean;
 }
 
 /** The handle the component keeps. */
 export interface EditorHandle {
   setLanguage(language: Language, label: string): void;
   setTabMovesFocus(on: boolean): void;
+  setTabSize(size: 2 | 4): void;
+  setWrap(on: boolean): void;
   /** Replaces the whole document; not counted as typing. */
   setDoc(doc: string): void;
   getDoc(): string;
@@ -134,12 +171,116 @@ function inserted(tr: { changes: { iterChanges: (fn: (a: number, b: number, c: n
   return n;
 }
 
+// The VS Code keys the replit keymap leaves out (cache/v3/design/editor.md section 3).
+
+/** Mod+Shift+Enter: a new line above each cursor, at the line's indent. */
+export const insertLineAbove: Command = (view) => {
+  if (view.state.readOnly) return false;
+  const tr = view.state.changeByRange((r) => {
+    const line = view.state.doc.lineAt(r.head);
+    const indent = /^\s*/.exec(line.text)?.[0] ?? '';
+    return { changes: { from: line.from, insert: indent + view.state.lineBreak }, range: EditorSelection.cursor(line.from + indent.length) };
+  });
+  view.dispatch(view.state.update(tr, { scrollIntoView: true, userEvent: 'input' }));
+  return true;
+};
+
+/** Scrolls by a line or a page without moving the cursor. */
+const scrollBy =
+  (page: boolean, dir: 1 | -1): Command =>
+  (view) => {
+    view.scrollDOM.scrollTop += dir * (page ? view.scrollDOM.clientHeight : view.defaultLineHeight);
+    return true;
+  };
+
+// Shift+Alt+Right grows the selection to the enclosing syntax; Shift+Alt+Left
+// walks back through the selections it grew from, as VS Code does.
+const grown = new WeakMap<EditorView, { stack: EditorSelection[]; last: EditorSelection }>();
+
+const expandSelection: Command = (view) => {
+  const before = view.state.selection;
+  const prev = grown.get(view);
+  const stack = prev && prev.last.eq(before) ? prev.stack : [];
+  if (!selectParentSyntax(view)) return false;
+  if (!view.state.selection.eq(before)) grown.set(view, { stack: [...stack, before], last: view.state.selection });
+  return true;
+};
+
+const shrinkSelection: Command = (view) => {
+  const prev = grown.get(view);
+  if (!prev || prev.stack.length === 0 || !prev.last.eq(view.state.selection)) return false;
+  const back = prev.stack[prev.stack.length - 1];
+  grown.set(view, { stack: prev.stack.slice(0, -1), last: back });
+  view.dispatch({ selection: back, scrollIntoView: true });
+  return true;
+};
+
+/** Alt+C, Alt+W, Alt+R in the find panel: match case, whole word, regular expression. */
+const toggleQuery =
+  (flag: 'caseSensitive' | 'wholeWord' | 'regexp'): Command =>
+  (view) => {
+    const q = getSearchQuery(view.state);
+    const next = { search: q.search, replace: q.replace, caseSensitive: q.caseSensitive, wholeWord: q.wholeWord, regexp: q.regexp, literal: q.literal };
+    next[flag] = !next[flag];
+    view.dispatch({ effects: setSearchQuery.of(new SearchQuery(next)) });
+    return true;
+  };
+
+const extraKeys: KeyBinding[] = [
+  { key: 'Mod-Shift-Enter', run: insertLineAbove, preventDefault: true },
+  { key: 'Mod-h', run: openSearchPanel, scope: 'editor search-panel', preventDefault: true },
+  { key: 'F3', run: findNext, shift: findPrevious, scope: 'editor search-panel', preventDefault: true },
+  { key: 'Alt-c', run: toggleQuery('caseSensitive'), scope: 'search-panel' },
+  { key: 'Alt-w', run: toggleQuery('wholeWord'), scope: 'search-panel' },
+  { key: 'Alt-r', run: toggleQuery('regexp'), scope: 'search-panel' },
+  { win: 'Ctrl-ArrowUp', linux: 'Ctrl-ArrowUp', run: scrollBy(false, -1) },
+  { win: 'Ctrl-ArrowDown', linux: 'Ctrl-ArrowDown', run: scrollBy(false, 1) },
+  { key: 'Alt-PageUp', run: scrollBy(true, -1), preventDefault: true },
+  { key: 'Alt-PageDown', run: scrollBy(true, 1), preventDefault: true },
+  { key: 'Shift-Alt-ArrowRight', run: expandSelection, preventDefault: true },
+  { key: 'Shift-Alt-ArrowLeft', run: shrinkSelection, preventDefault: true },
+];
+
+// Escape closes the completion list only while one is shown. CodeMirror's
+// own closeCompletion also takes Escape when a source answered with no
+// options, which would swallow the Escape of "Escape, then Tab" and trap a
+// keyboard user in the editor.
+const closeShownCompletion: Command = (view) => currentCompletions(view.state).length > 0 && closeCompletion(view);
+
+// Tab is bound by the tab compartment, so "Tab moves focus" can turn it off;
+// Escape for completion is the guarded one above.
+const vscodeKeys = vscodeKeymap.filter((b) => !(b.key === 'Tab' && b.run === indentMore) && b.run !== closeCompletion);
+
+/** C++ and Java have no completion source of their own, so they complete words from the file. */
+const completion = (language: Language) =>
+  autocompletion({ defaultKeymap: false, ...(language === 'cpp17' || language === 'java21' ? { override: [completeAnyWord] } : {}) });
+
+// The find and go-to-line panels' words, in sentence case (design.md section 8).
+const phrases = EditorState.phrases.of({
+  next: 'Next',
+  previous: 'Previous',
+  all: 'Select all',
+  'match case': 'Match case',
+  regexp: 'Regular expression',
+  'by word': 'Whole word',
+  replace: 'Replace',
+  'replace all': 'Replace all',
+  close: 'Close',
+  go: 'Go',
+});
+
+const tabSizeExt = (size: 2 | 4) => [EditorState.tabSize.of(size), indentUnit.of(' '.repeat(size))];
+
 /** Creates the editor inside `parent`. */
 export function createEditor(o: EditorOptions): EditorHandle {
   const languageConf = new Compartment();
+  const completionConf = new Compartment();
   const labelConf = new Compartment();
   const tabConf = new Compartment();
+  const tabSizeConf = new Compartment();
+  const wrapConf = new Compartment();
 
+  // Podium's own keys win over VS Code's (Mod-Enter would insert a line there).
   const own = keymap.of([
     { key: 'Mod-Enter', preventDefault: true, run: () => (o.onSubmit(), true) },
     { key: "Mod-'", preventDefault: true, run: () => (o.onRun(), true) },
@@ -165,14 +306,24 @@ export function createEditor(o: EditorOptions): EditorHandle {
         highlightSpecialChars(),
         history(),
         drawSelection(),
+        EditorState.allowMultipleSelections.of(true),
+        // VS Code: Alt+Click adds a cursor, Shift+Alt+drag selects a box.
+        EditorView.clickAddsSelectionRange.of((e) => e.altKey),
+        rectangularSelection({ eventFilter: (e) => e.altKey && e.shiftKey }),
+        crosshairCursor({ key: 'Alt' }),
         indentOnInput(),
         bracketMatching(),
+        closeBrackets(),
         highlightActiveLine(),
-        EditorState.tabSize.of(4),
-        indentUnit.of('    '),
+        highlightSelectionMatches(),
+        search({ top: true }),
+        phrases,
+        tabSizeConf.of(tabSizeExt(o.tabSize ?? 4)),
+        wrapConf.of(o.wrap ? EditorView.lineWrapping : []),
         own,
         tabConf.of(tabKeys(o.tabMovesFocus)),
-        keymap.of([...defaultKeymap, ...historyKeymap]),
+        keymap.of([{ key: 'Escape', run: closeShownCompletion }, ...closeBracketsKeymap, ...extraKeys, ...vscodeKeys, ...defaultKeymap, ...historyKeymap]),
+        completionConf.of(completion(o.language)),
         syntaxHighlighting(highlight),
         theme,
         languageConf.of([]),
@@ -184,16 +335,25 @@ export function createEditor(o: EditorOptions): EditorHandle {
           }
           if (u.docChanged) o.onChange(u.state.doc.toString());
           if (u.focusChanged && !u.view.hasFocus) o.onBlur();
+          if (u.selectionSet || u.docChanged) report(u.state);
         }),
       ],
     }),
   });
+
+  function report(state: EditorState) {
+    const head = state.selection.main.head;
+    const line = state.doc.lineAt(head);
+    o.onCursor?.(line.number, head - line.from + 1);
+  }
+  report(view.state);
 
   // The newest request wins, so a slow first mode never replaces a later choice.
   let wanted: Language = o.language;
   let destroyed = false;
   const applyMode = (language: Language) => {
     wanted = language;
+    view.dispatch({ effects: completionConf.reconfigure(completion(language)) });
     loadMode(language)
       .then((ext) => {
         if (!destroyed && wanted === language) view.dispatch({ effects: languageConf.reconfigure(ext) });
@@ -209,6 +369,12 @@ export function createEditor(o: EditorOptions): EditorHandle {
     },
     setTabMovesFocus(on) {
       view.dispatch({ effects: tabConf.reconfigure(tabKeys(on)) });
+    },
+    setTabSize(size) {
+      view.dispatch({ effects: tabSizeConf.reconfigure(tabSizeExt(size)) });
+    },
+    setWrap(on) {
+      view.dispatch({ effects: wrapConf.reconfigure(on ? EditorView.lineWrapping : []) });
     },
     setDoc(doc) {
       if (doc === view.state.doc.toString()) return;

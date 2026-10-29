@@ -54,7 +54,7 @@ test('the home features the contest the student took part in, not a newer one th
   await page.goto('/');
   const pinned = page.getByRole('region', { name: 'Week 5 contest' });
   await expect(pinned).toContainText('240 of 300');
-  await expect(pinned.getByRole('link', { name: 'See your result' })).toHaveAttribute('href', '/contests/week-5');
+  await expect(pinned.getByRole('link', { name: 'Open contest' })).toHaveAttribute('href', '/contests/week-5');
   await expect(page.getByRole('heading', { name: 'Other contests' })).toBeVisible();
   await expect(page.locator('tbody tr')).toHaveCount(1);
   await expect(page.locator('tbody tr')).toContainText('Week 8 contest');
@@ -67,8 +67,8 @@ test('the contest list puts the live contest first with a countdown', async ({ p
   const pinned = page.getByRole('region', { name: 'Week 6 contest' });
   await expect(pinned).toContainText('Live');
   await expect(pinned.locator('.pinned-count')).toHaveText(/^Ends in\s*\d{2}:\d{2}:\d{2}$/);
-  await expect(pinned.getByRole('link', { name: 'Continue' })).toHaveAttribute('href', '/contests/week-6');
-  await expect(pinned.getByRole('link', { name: 'Continue' })).toHaveClass(/btn-primary/);
+  await expect(pinned.getByRole('link', { name: 'Open contest' })).toHaveAttribute('href', '/contests/week-6');
+  await expect(pinned.getByRole('link', { name: 'Open contest' })).toHaveClass(/btn-primary/);
   await expect(page.locator('.btn-primary')).toHaveCount(1);
   const rows = page.locator('tbody tr');
   await expect(rows).toHaveCount(2);
@@ -113,15 +113,18 @@ test('a student agrees to the honour code, solves, reads an announcement and ask
   await page.getByRole('link', { name: 'Week 6 contest' }).click();
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('Week 6 contest');
   await expect(page.getByRole('heading', { level: 1 })).toBeFocused();
-  await expect(page.getByRole('heading', { name: 'Rules' })).toBeVisible();
-  await expect(page.getByText('You can submit up to 15 times per problem, at least 30 s apart.')).toBeVisible();
+  // B5: three facts, the honour code and the button; the full rules are in Help.
+  const facts = page.locator('dl.facts');
+  await expect(facts).toContainText('Length2 h');
+  await expect(facts).toContainText('LanguagesC++17, Java 21, Python 3');
+  await expect(facts).toContainText('Wait between submissions30 s');
   await expect(page.getByText('It is deleted 180 days after the contest.', { exact: false })).toBeVisible();
   await expect(page.getByText(/^The contest started at \d{2}:\d{2} and your time is running\. It ends in/)).toBeVisible();
-  // S3: the workspace is taught before the clock starts, with the real verdict pieces.
-  const how = page.getByRole('region', { name: 'How the workspace works' });
-  await expect(how.locator('details.how')).toHaveAttribute('open', '');
-  await expect(how.getByText('Partial, 40 of 100')).toBeVisible();
-  await expect(how.locator('.strip')).toHaveAttribute('aria-label', 'Subtask 1, 40 points, passed; Subtask 2, 60 points, failed');
+  await page.getByRole('button', { name: 'Read the rules and how Run and Submit work' }).click();
+  const help = page.getByRole('dialog', { name: 'Help' });
+  await expect(help.getByRole('region', { name: 'Rules' })).toContainText('You can submit up to 15 times per problem, at least 30 s apart.');
+  await expect(help.getByRole('region', { name: 'Run and Submit' })).toContainText('It never counts.');
+  await page.keyboard.press('Escape');
 
   await page.getByRole('button', { name: 'I agree, start the contest' }).click();
   await expect.poll(() => api.starts).toBe(1);
@@ -130,7 +133,8 @@ test('a student agrees to the honour code, solves, reads an announcement and ask
   await expect(rail.getByRole('link', { name: 'Problem A, A plus B, not tried' })).toHaveAttribute('aria-current', 'page');
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('A. A plus B');
   await expect(page.getByRole('timer')).toHaveText(/^\d{2}:\d{2}:\d{2}$/);
-  await expect(page.getByText(/^Standings freeze in/)).toBeVisible();
+  // The clock says nothing about the standings (S1-09.5).
+  await expect(page.locator('.clock')).not.toContainText(/freez/i);
   await expect(page.getByLabel('Language').locator('option')).toHaveText(['C++17', 'Java 21', 'Python 3']);
 
   // Submit, then the judged result comes in and the rail picks up the score.
@@ -199,14 +203,18 @@ test('an upcoming fixed-start contest counts down and keeps the start button clo
     return [at('[role="timer"]'), at('#honour-title'), at('#rules-title')];
   });
   expect(order[0]).toBeLessThan(order[1]);
-  expect(order[1]).toBeLessThan(order[2]);
+  // B5: the button is in the first screen on a phone; the rules moved to Help.
+  expect(order[2]).toBe(-1);
+  await expect(page.getByRole('button', { name: 'I agree, start the contest' })).toBeInViewport();
 });
 
 test('a window-mode contest starts the clock on agreement', async ({ page }) => {
   const api = await mockApi(page, { phase: 'ready', startMode: 'window' });
   await page.goto('/contests/week-6');
-  await expect(page.getByText('Your clock starts when you agree and start, and runs 1 h', { exact: false })).toBeVisible();
-  await expect(page.getByText('The standings open when the contest closes.')).toBeVisible();
+  await page.getByRole('button', { name: 'Read the rules and how Run and Submit work' }).click();
+  await expect(page.getByRole('dialog', { name: 'Help' })).toContainText('Your clock starts when you agree and start, and runs 1 h');
+  await expect(page.getByRole('dialog', { name: 'Help' })).toContainText('The standings open when the contest closes.');
+  await page.keyboard.press('Escape');
   await page.getByRole('button', { name: 'I agree, start the contest' }).click();
   await expect.poll(() => api.starts).toBe(1);
   await expect(page.getByRole('timer')).toHaveText(/^00:(39|40):\d{2}$/);
@@ -246,6 +254,8 @@ test('after the contest: result, submissions, editorial and practice', async ({ 
   api.clarifications.push({ id: 9, problem_label: 'B', question: 'Can intervals touch?', answer: 'Yes, touching counts as covered.', public: false, created_at: Date.now() - 3 * 3_600_000, answered_at: Date.now() - 3 * 3_600_000 + 60_000 });
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto('/contests/week-6');
+  // B5: the messages are folded under the result.
+  await page.getByText('Messages', { exact: true }).click();
   const questions = page.getByRole('region', { name: 'Your questions' });
   await expect(questions).toContainText('Can intervals touch?');
   await expect(questions).toContainText('Yes, touching counts as covered.');
@@ -257,12 +267,16 @@ test('after the contest: result, submissions, editorial and practice', async ({ 
   await expect(page.getByText('Practice is open: new submissions do not count.')).toBeVisible();
   await expect(page.getByText('Use 64-bit integers.')).toBeVisible();
   // The problem with the newest submission opens by itself.
-  await expect(page.locator('details[open] summary')).toHaveText(['Problem B: Interval covering']);
-  await expect(page.locator('details[open]').getByText('40 of 100').first()).toBeVisible();
+  // B5: one list of problems, each once, the newest one open with its submissions.
+  const list = page.getByRole('list', { name: 'Your problems' });
+  await expect(list.locator(':scope > li')).toHaveCount(3);
+  await expect(list.locator('details[open] summary')).toHaveText([/^B\s+Interval covering\s+40 of 100$/]);
+  await expect(list.locator('details[open]').getByText('40 of 100').first()).toBeVisible();
+  await expect(page.getByText('Your submissions', { exact: true })).toHaveCount(0);
 
-  await page.getByRole('link', { name: 'Practise problem B' }).click();
+  await page.getByRole('link', { name: 'Open problem B' }).click();
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('B. Interval covering');
-  await expect(page.getByText('Practice is open. Submissions you make now do not count towards the standings.')).toBeVisible();
+  await expect(page.getByText(/^Practice\. Your contest score is still \d+ of \d+\.$/)).toBeVisible();
   await expect(page.getByRole('button', { name: 'Submit', exact: true })).toBeEnabled();
 });
 
@@ -272,6 +286,7 @@ test('after the contest the page keeps answers for everyone, in the dialog copy 
   api.publicClarifications.push({ id: 10, problem_label: 'A', question: 'May the sum overflow?', answer: 'Use 64-bit integers for the sum.', public: true, created_at: Date.now() - 2 * 3_600_000, answered_at: Date.now() - 2 * 3_600_000 + 60_000 });
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto('/contests/week-6');
+  await page.getByText('Messages', { exact: true }).click();
   const everyone = page.getByRole('region', { name: 'Answers for everyone' });
   await expect(everyone).toContainText('May the sum overflow?');
   await expect(everyone).toContainText('Use 64-bit integers for the sum.');
@@ -997,9 +1012,9 @@ test('keyboard only: a student starts, solves, submits, reads the verdict, asks 
   await page.keyboard.press('[');
   await expect(page).toHaveURL('/contests/week-6/problems/A');
 
-  // "?" lists the shortcuts; Escape closes the list and focus comes back.
+  // "?" opens Help with the shortcuts; Escape closes it and focus comes back.
   await page.keyboard.press('?');
-  const keys = page.getByRole('dialog', { name: 'Keyboard shortcuts' });
+  const keys = page.getByRole('dialog', { name: 'Help' });
   await expect(keys).toBeVisible();
   await expect(keys.getByRole('heading', { name: 'Solving a problem' })).toBeVisible();
   await expect(keys.getByRole('heading', { name: 'Reveal' })).toHaveCount(0);
@@ -1008,7 +1023,7 @@ test('keyboard only: a student starts, solves, submits, reads the verdict, asks 
   await expect(page.getByRole('heading', { level: 1 })).toBeFocused();
 
   // Read the statement: the sample copy buttons are reachable.
-  await tabTo(page, page.getByRole('button', { name: /Copy sample 1 input/i }));
+  await tabTo(page, page.getByRole('button', { name: /Copy example 1 input/i }));
 
   // Write code: Tab reaches the editor, typing "]" stays in the code, and
   // Escape then Tab leaves it.
@@ -1017,7 +1032,7 @@ test('keyboard only: a student starts, solves, submits, reads the verdict, asks 
   await page.keyboard.press('Control+End');
   await page.keyboard.type('// a[i]?');
   await expect(code).toContainText('// a[i]?');
-  await expect(page.getByRole('dialog', { name: 'Keyboard shortcuts' })).toBeHidden();
+  await expect(page.getByRole('dialog', { name: 'Help' })).toBeHidden();
   await expect(page).toHaveURL('/contests/week-6/problems/A');
   await page.keyboard.press('Escape');
   await page.keyboard.press('Tab');
@@ -1026,7 +1041,7 @@ test('keyboard only: a student starts, solves, submits, reads the verdict, asks 
   // Run and submit from the keyboard.
   await code.focus();
   await page.keyboard.press("Control+'");
-  await expect(page.getByRole('heading', { name: 'Run on samples' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Run on the examples' })).toBeVisible();
   await page.keyboard.press('Control+Enter');
   await expect.poll(() => api.submits.length).toBe(1);
   const id = Number(api.submissions.at(-1)!.id);
@@ -1090,7 +1105,7 @@ test('closing the shortcuts list gives focus to the heading when the page loaded
   await page.keyboard.press(']');
   await expect(page).toHaveURL('/contests/week-6/problems/B');
   await page.keyboard.press('?');
-  const keys = page.getByRole('dialog', { name: 'Keyboard shortcuts' });
+  const keys = page.getByRole('dialog', { name: 'Help' });
   await expect(keys).toBeVisible();
   release();
   await expect(page.locator('main h1')).toHaveText('B. Interval covering');

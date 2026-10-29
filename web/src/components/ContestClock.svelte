@@ -1,34 +1,32 @@
 <!--
   ContestClock: the time a student has left (design.md 5.3), in mono on the
-  server's clock (lib/ticker.svelte.ts), with the freeze line under it
-  ("Board freezes in 32 min", then "Board frozen") for fixed-start contests
-  with a freeze. A polite live region speaks only at 30, 10, 5 and 1
+  server's clock (lib/ticker.svelte.ts). The clock says nothing about the
+  standings: what the board hides is said once, on the standings (S1-09.5).
+  A polite live region speaks only at 30, 10, 5 and 1
   minutes left and when time is up; the timer itself is never announced.
   In the last 5 minutes a sentence under the time says so ("Under 5
   minutes left. Submit what you have."), with no colour, to stay calm; the
   mono face has one weight, so the time is never set in a faked bold (S4,
   audit 01-8). At zero the clock says "Time is up. Your submissions are saved." on
-  screen too. Props: `endsAt` (Unix ms), `freeze` (Unix ms or null),
+  screen too. Props: `endsAt` (Unix ms),
   `onexpire` (called once when the time reaches zero) and `compact` (for
-  the sticky strip under 1024 px: the time over the freeze
-  line, the "Time left" label kept for screen readers only).
+  the sticky strip under 1024 px: the time alone, the "Time left"
+  label kept for screen readers only).
 -->
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { clockMilestone, formatCountdown, freezeText } from '../lib/contests';
+  import { clockMilestone, formatCountdown } from '../lib/contests';
   import { ticker, useTicker } from '../lib/ticker.svelte';
 
   interface Props {
     endsAt: number;
-    freeze: number | null;
     onexpire?: () => void;
     compact?: boolean;
   }
 
-  let { endsAt, freeze, onexpire, compact = false }: Props = $props();
+  let { endsAt, onexpire, compact = false }: Props = $props();
 
   const left = $derived(endsAt - ticker.now);
-  const freezeLine = $derived(freezeText(freeze, ticker.now));
 
   let spoken = $state('');
   let prev: number | null = null;
@@ -57,7 +55,6 @@
   <p class="mono time" role="timer" aria-labelledby="clock-label">{formatCountdown(left)}</p>
   {#if left > 0 && left <= 5 * 60_000}<p class="late">Under 5 minutes left. Submit what you have.</p>{/if}
   {#if left <= 0}<p class="up">Time is up. Your submissions are saved.</p>{/if}
-  {#if freezeLine}<p class="freeze" class:frozen={freeze !== null && ticker.now >= freeze}>{freezeLine}</p>{/if}
   <p class="visually-hidden" aria-live="polite">{spoken}</p>
 </div>
 
@@ -93,18 +90,7 @@
     font-weight: 600;
   }
 
-  .freeze {
-    color: var(--ink-muted);
-    font-size: var(--fs-0);
-  }
-
-  .freeze.frozen {
-    color: var(--ink);
-    font-weight: 500;
-  }
-
-  /* The workspace strip under 1024 px (F7.2): the time over the freeze
-     line, beside the previous and next problem; "Time left" stays for
+  /* The workspace strip under 1024 px (F7.2): the time beside the previous and next problem; "Time left" stays for
      screen readers as the timer's name. */
   .compact {
     gap: 0;

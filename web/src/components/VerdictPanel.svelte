@@ -91,6 +91,8 @@
     {#if head.detail}<p class="detail">{head.detail}</p>{/if}
     {#if submission.subtasks.length > 0 && submission.verdict !== 'CE'}
       <SubtaskStrip {submission} />
+      <!-- V3-27: the word's meaning where a student first meets it. -->
+      <p class="detail">A subtask's points count when every hidden test in it passes.</p>
     {/if}
   </div>
   {#if stays}<p class="stays">{stays}</p>{/if}
@@ -123,7 +125,7 @@
         {@const bad = submission.samples.some((t) => isBad(t.verdict))}
         <details class="group" open={bad}>
           <summary>
-            <span>Samples</span>
+            <span>Examples</span>
             <span class="group-word" class:bad>{groupWord(submission.samples, '')}</span>
           </summary>
           {@render rows(submission.samples)}

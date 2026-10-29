@@ -188,7 +188,10 @@ type CompileResult struct {
 // TestResult reports one program on one test. Output is set only by run
 // jobs (at most MaxRunOutput); OutputSHA by generate jobs (the uploaded
 // output) and by submit jobs (the hash of the program's output, for
-// integrity checks: the text itself is never sent).
+// integrity checks: the text itself is never sent). Stderr is set only by
+// run jobs: the tail of the program's stderr, at most MaxRunOutput. A
+// submission never carries it, since a program can print a hidden input
+// there.
 type TestResult struct {
 	Idx       int    `json:"idx"`
 	Role      string `json:"role"`
@@ -198,6 +201,7 @@ type TestResult struct {
 	Message   string `json:"message"`
 	Output    string `json:"output,omitempty"`
 	OutputSHA string `json:"output_sha,omitempty"`
+	Stderr    string `json:"stderr,omitempty"`
 }
 
 // Report adds results to a leased job. Final closes the job; Fatal closes

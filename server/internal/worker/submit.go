@@ -280,6 +280,8 @@ func (w *Worker) runRun(ctx context.Context, box int, lease Lease, rep *reporter
 			}
 		}
 		tr.Output = readExcerpt(out, judgeapi.MaxRunOutput)
+		// The student's own input or an example, so the student may see what the program printed to stderr.
+		tr.Stderr = tail(strings.ToValidUTF8(string(res.Stderr), ""), judgeapi.MaxRunOutput)
 		os.Remove(out)
 		if input.ExpectedSHA != "" && tr.Verdict != string(judge.Accepted) {
 			stopOpen = true

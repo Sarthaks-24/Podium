@@ -9,8 +9,8 @@
   word. The first contest (live, else the next, else the latest one the
   student took part in, never one they missed: D324) is pinned above the
   table in a panel with its countdown as mono digits and
-  one primary button: "Open the contest", "Continue" or "See your result"
-  (audit 2026-10-20 S10); the table lists the rest under "Other
+  one primary button, "Open contest" in every state (audit 2026-10-20 S10,
+  design/words.md); the table lists the rest under "Other
   contests" ("Contests" when nothing is pinned). A live row in the table adds an "Open contest" button. A
   frozen contest reads "Live" with "standings frozen" in its countdown
   (D84). Under 768 px each row reads as title and state, then the start,
@@ -31,7 +31,6 @@
     lengthText,
     listCountdown,
     orderedContests,
-    pinnedAction,
     pinnedContest,
     studentState,
     studentStateWord,
@@ -123,7 +122,7 @@
       <MonoDigits text={formatDateTime(pin.starts_at)} />, {lengthText(pin)}, {countOf(pin.problem_count, 'problem')}{#if pin.my_score !== null}. Your score <MonoDigits parts={scoreParts(pin.my_score, pin.max_score)} />{/if}.
     </p>
     <div class="action-row">
-      <a class="btn btn-primary" href={pinHref} aria-describedby="pinned-title">{pinnedAction(pin, ticker.now)}</a>
+      <a class="btn btn-primary" href={pinHref} aria-describedby="pinned-title">Open contest</a>
     </div>
   </section>
   {/if}

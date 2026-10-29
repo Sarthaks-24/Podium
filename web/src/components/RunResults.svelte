@@ -1,5 +1,5 @@
 <!--
-  RunResults: the outcome of "Run on samples" or "Run on this input". While
+  RunResults: the outcome of Run, on the examples or on your input. While
   the judge has it, it says where the run is in the queue. Then, for each
   input, the verdict in words with time and memory and, through
   TestDetail, the program's output and, for a sample, the expected output,
@@ -47,9 +47,9 @@
 
   const head = $derived(runHeadline(run));
 
-  /** The input of the sample a result row ran, by its "Sample N" label. */
+  /** The input of the example a result row ran, by its "Example N" label. */
   function sampleInput(label: string): string | null {
-    const m = /^Sample (\d+)$/.exec(label);
+    const m = /^Example (\d+)$/.exec(label);
     if (!m) return null;
     return samples.find((x) => x.idx === Number(m[1]))?.input ?? null;
   }
@@ -93,6 +93,7 @@
           output={rv.output}
           cut={rv.truncated}
           verdict={r.verdict}
+          stderr={rv.stderr ?? r.stderr}
           runInput={rv.input}
           {onruninput}
         />
@@ -102,6 +103,7 @@
           output={r.output}
           outputCut={r.output_truncated}
           verdict={r.verdict}
+          stderr={r.stderr}
           runInput={isBad(r.verdict) ? sampleInput(r.label) : null}
           {onruninput}
         />

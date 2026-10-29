@@ -1,6 +1,6 @@
 <!--
   Statement: a problem statement as students read it in the workspace,
-  followed by the samples. On mount it loads lib/markdown.ts with a dynamic
+  followed by the examples. On mount it loads lib/markdown.ts with a dynamic
   import (marked, DOMPurify and KaTeX stay out of the main bundle), renders
   the sanitised HTML and draws the maths. Each sample shows its input and
   output in mono with a Copy button for each; the button says "Copied" for
@@ -72,9 +72,11 @@
 
   {#if samples.length > 0}
     <div class="samples">
+      <!-- V3-27: the word's meaning where a student first meets it. -->
+      <p class="hint">Examples are tests you can see. Run tries your code on them and never counts.</p>
       {#each samples as s, i (s.idx)}
         <section class="sample" aria-labelledby="sample-{s.idx}">
-          <h2 id="sample-{s.idx}" class="sample-title">Sample {i + 1}</h2>
+          <h2 id="sample-{s.idx}" class="sample-title">Example {i + 1}</h2>
           <div class="io">
             {#each [{ kind: 'input', label: 'Input', text: s.input }, { kind: 'output', label: 'Output', text: s.output }] as part (part.kind)}
               {@const key = `${s.idx}-${part.kind}`}
@@ -84,8 +86,8 @@
                   <button
                     type="button"
                     class="btn btn-quiet btn-compact copy"
-                    aria-label="Copy sample {i + 1} {part.kind}"
-                    onclick={() => copy(part.text, key, `sample ${i + 1} ${part.kind}`)}
+                    aria-label="Copy example {i + 1} {part.kind}"
+                    onclick={() => copy(part.text, key, `example ${i + 1} ${part.kind}`)}
                   >
                     <Icon name={copied === key ? 'check' : 'copy'} />
                     {copied === key ? 'Copied' : 'Copy'}
@@ -95,7 +97,7 @@
               </div>
             {/each}
           </div>
-          {#if s.truncated}<p class="hint">This sample is long; only the first 4 KB is shown.</p>{/if}
+          {#if s.truncated}<p class="hint">This example is long; only the first 4 KB is shown.</p>{/if}
         </section>
       {/each}
     </div>

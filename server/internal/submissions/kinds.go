@@ -67,6 +67,8 @@ func checkNumbers(t judgeapi.TestResult) error {
 		return jobs.Badf("message too long or not UTF-8")
 	case t.OutputSHA != "" && !judgeapi.ValidSHA(t.OutputSHA):
 		return jobs.Badf("output hash on test %d", t.Idx)
+	case len(t.Stderr) > judgeapi.MaxRunOutput || !utf8.ValidString(t.Stderr):
+		return jobs.Badf("stderr too long or not UTF-8")
 	}
 	return nil
 }
@@ -111,6 +113,8 @@ func (k SubmitKind) CheckReport(raw json.RawMessage, r judgeapi.Report) error {
 			return jobs.Badf("revealed output too long or not UTF-8")
 		case t.Message != "" && !sample[t.Idx]:
 			return jobs.Badf("message on hidden test %d", t.Idx)
+		case t.Stderr != "":
+			return jobs.Badf("submit results carry no stderr")
 		case !testVerdicts[t.Verdict]:
 			return jobs.Badf("test verdict %q", jobs.Clip(t.Verdict))
 		}

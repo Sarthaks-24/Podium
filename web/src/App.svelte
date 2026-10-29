@@ -18,15 +18,15 @@
   client-side navigation focus moves to the new page's heading. The footer
   carries the organisation's name and "Contact the organisers: {email}"
   (and its phone as a tel: link) when the server names them, the Privacy
-  link once the owner approves the text (lib/site.ts), a "Keyboard
-  shortcuts" button and the build year; "?" anywhere outside a text field
-  opens the same list (components/ShortcutsDialog). The two announcer
+  link once the owner approves the text (lib/site.ts), a "Help"
+  button and the build year; "?" anywhere outside a text field
+  opens the same dialog (components/HelpDialog). The two announcer
   regions of lib/announce.svelte.ts live at the end. Takes no props.
 -->
 <script lang="ts">
   import { onMount, tick, type Component } from 'svelte';
   import AccountMenu from './components/AccountMenu.svelte';
-  import ShortcutsDialog from './components/ShortcutsDialog.svelte';
+  import HelpDialog from './components/HelpDialog.svelte';
   import ThemeDialog from './components/ThemeDialog.svelte';
   import ConfirmDialog from './components/ConfirmDialog.svelte';
   import Toasts from './components/Toasts.svelte';
@@ -212,7 +212,7 @@
     } else if (event.key === '?' && !event.defaultPrevented && isPlainKey(event) && !isTypingTarget(event.target) && !dialogOpen) {
       event.preventDefault();
       menuOpen = false;
-      shell.shortcuts = true;
+      shell.help = true;
     }
   }
 
@@ -353,8 +353,8 @@
     <ul class="foot-links">
       {#if PRIVACY_LINKED}<li><a href="/privacy">Privacy</a></li>{/if}
       <li class="keys">
-        <button type="button" class="btn btn-quiet btn-compact" aria-keyshortcuts="?" onclick={() => (shell.shortcuts = true)}>
-          Keyboard shortcuts
+        <button type="button" class="btn btn-quiet btn-compact" aria-keyshortcuts="?" onclick={() => (shell.help = true)}>
+          Help
         </button>
       </li>
       <li><span>&copy; {year} podium</span></li>
@@ -366,7 +366,7 @@
 <!-- The app's two announcer regions (lib/announce.svelte.ts). Always present, so the first message is spoken too. -->
 <div class="visually-hidden" aria-live="polite" data-announcer="polite">{regions.polite}</div>
 <div class="visually-hidden" aria-live="assertive" data-announcer="assertive">{regions.assertive}</div>
-<ShortcutsDialog open={shell.shortcuts} organiser={isOrganiser} onclose={() => (shell.shortcuts = false)} />
+<HelpDialog open={shell.help} organiser={isOrganiser} onclose={() => (shell.help = false)} />
 {#if signedIn}<ThemeDialog open={shell.theme} onclose={() => (shell.theme = false)} />{/if}
 <!-- Only a contest workspace asks before sign out (F7.6), so the dialog exists only beside one. -->
 {#if shell.workspace}

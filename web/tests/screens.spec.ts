@@ -442,7 +442,7 @@ test('keyboard only: the account menu opens, its items work, and Escape returns 
     expect(info?.visible, `no visible focus on ${info?.name}`).toBe(true);
     items.push(info?.name ?? '');
   }
-  expect(items).toEqual(['Theme and colours', 'Keyboard shortcuts', 'Sign out']);
+  expect(items).toEqual(['Theme and colours', 'Help', 'Sign out']);
 
   // Theme and colours opens the dialog; closing it lands back on the item.
   await page.keyboard.press('Shift+Tab');
@@ -538,9 +538,9 @@ test('keyboard only: sign in, the theme menu and the shortcut list are reachable
   await expect(page.getByRole('link', { name: 'Continue with Google' })).not.toBeFocused();
 
   // The footer button and "?" open the same list; Escape closes it and focus returns.
-  const footer = page.getByRole('button', { name: 'Keyboard shortcuts' });
+  const footer = page.getByRole('button', { name: 'Help', exact: true });
   await activate(page, footer);
-  const keys = page.getByRole('dialog', { name: 'Keyboard shortcuts' });
+  const keys = page.getByRole('dialog', { name: 'Help' });
   await expect(keys).toBeVisible();
   await expect(keys.getByRole('heading', { name: 'Problem editor' })).toHaveCount(0);
   await page.keyboard.press('Escape');
@@ -560,12 +560,12 @@ test('keyboard only: sign in, the theme menu and the shortcut list are reachable
   const box = await keys.boundingBox();
   expect(box?.y ?? 0).toBeLessThanOrEqual(24);
   await keys.evaluate((d) => d.scrollTo(0, d.scrollHeight));
-  const close = keys.getByRole('button', { name: 'Close keyboard shortcuts' });
+  const close = keys.getByRole('button', { name: 'Close help' });
   await expect(close).toBeInViewport();
   const closeBox = await close.boundingBox();
   expect(closeBox && box ? closeBox.y - box.y : 999).toBeLessThan(40);
   await page.screenshot({ path: `${shots()}shortcuts-375-scrolled.png` });
-  await activate(page, keys.getByRole('button', { name: 'Close keyboard shortcuts' }));
+  await activate(page, keys.getByRole('button', { name: 'Close help' }));
   await expect(keys).toBeHidden();
 });
 

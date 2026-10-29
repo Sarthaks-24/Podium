@@ -27,7 +27,7 @@
 </script>
 
 {#if submissions.length === 0}
-  <p class="muted empty">No submissions yet. Submit when your code passes the samples.</p>
+  <p class="muted empty">No submissions yet. Submit when your code passes the examples.</p>
 {:else}
   <ul class="list">
     {#each submissions as s (s.id)}

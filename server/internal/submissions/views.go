@@ -63,6 +63,7 @@ type RevealedRunTest struct {
 	Input     string `json:"input"`
 	Expected  string `json:"expected"`
 	Output    string `json:"output"`
+	Stderr    string `json:"stderr,omitempty"`
 	Truncated bool   `json:"truncated"`
 }
 
@@ -84,6 +85,8 @@ type RunResult struct {
 	OutputTruncated bool    `json:"output_truncated"`
 	Expected        *string `json:"expected"`
 	Message         string  `json:"message"`
+	// Stderr is the tail of what the program printed to stderr, at most 4 KB.
+	Stderr string `json:"stderr,omitempty"`
 }
 
 // RunView is a run as its author sees it.
@@ -376,10 +379,10 @@ func (s *Service) GetRunWith(ctx context.Context, id int64, o ViewOptions) (*Run
 	}
 	samples := 0
 	for _, in := range pl.Inputs {
-		res := RunResult{Kind: RunCustom, Label: "Custom input"}
+		res := RunResult{Kind: RunCustom, Label: "Your input"}
 		if in.Idx > 0 {
 			samples++
-			res.Kind, res.Label = RunSample, fmt.Sprintf("Sample %d", samples)
+			res.Kind, res.Label = RunSample, fmt.Sprintf("Example %d", samples)
 		}
 		var expected string
 		if in.ExpectedSHA != "" {
@@ -391,6 +394,7 @@ func (s *Service) GetRunWith(ctx context.Context, id int64, o ViewOptions) (*Run
 		if ok {
 			res.Verdict, res.TimeMS, res.MemoryKB, res.Message = t.Verdict, roundTo(t.TimeMS, step), t.MemoryKB, t.Message
 			res.Output = t.Output
+			res.Stderr = clipText([]byte(t.Stderr), judgeapi.MaxRunOutput)
 			// The worker cuts at MaxRunOutput and drops a split rune (at
 			// most 3 bytes), so anything that close to the cap was cut.
 			res.OutputTruncated = len(t.Output) >= judgeapi.MaxRunOutput-3
@@ -399,7 +403,7 @@ func (s *Service) GetRunWith(ctx context.Context, id int64, o ViewOptions) (*Run
 		if ok && in.ExpectedSHA != "" && v.Revealed == nil && failed(t.Verdict) {
 			raw, _ := s.Problems.Blobs.Read(in.InputSHA, maxSampleTxt+1)
 			v.Revealed = &RevealedRunTest{Idx: in.Idx, Kind: res.Kind, Label: res.Label, Input: clipText(raw, maxSampleTxt),
-				Expected: expected, Output: t.Output,
+				Expected: expected, Output: t.Output, Stderr: res.Stderr,
 				Truncated: len(raw) > maxSampleTxt || len(expected) >= maxSampleTxt || len(t.Output) >= judgeapi.MaxRunOutput-3}
 		}
 		v.Results = append(v.Results, res)

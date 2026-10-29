@@ -218,6 +218,9 @@ CREATE TABLE job_results (
   -- hidden, D47), except output_hash for integrity checks.
   output    TEXT    NOT NULL DEFAULT '',
   output_sha TEXT   NOT NULL DEFAULT '',
+  -- Run jobs only: the end of the program's stderr, at most 4 KB. Never
+  -- set for submissions (a program can print a hidden input there).
+  stderr    TEXT    NOT NULL DEFAULT '',
   PRIMARY KEY (job_id, seq),
   UNIQUE (job_id, kind, idx, role)
 ) STRICT;

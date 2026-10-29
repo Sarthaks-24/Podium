@@ -13,7 +13,6 @@ import {
   newKey,
   runVerdictLabel,
   waitingText,
-  EXAMPLE_SUBMISSION,
   problemScoreLine,
   runAnnouncement,
   runHeadline,
@@ -70,8 +69,8 @@ describe('guidance lines', () => {
     expect(guidance('WA', 'java21')).toHaveLength(1);
   });
 
-  it('points a wrong answer on a sample at Run on samples', () => {
-    expect(guidance('WA', 'cpp17', { sample: true })[0]).toContain('Run on samples');
+  it('points a wrong answer on an example at Run', () => {
+    expect(guidance('WA', 'cpp17', { sample: true })[0]).toBe('This test is an example. Run to see your output next to the expected one.');
   });
 
   it('uses no dashes or exclamation marks', () => {
@@ -167,7 +166,7 @@ describe('headlines and announcements', () => {
 
 describe('S4 wording and the run announcement (X1)', () => {
   const run = (over: Partial<Run>): Run => ({ id: 1, state: 'done', compile_output: '', results: [], ...over });
-  const sample = (verdict: string) => ({ label: 'Sample 1', verdict, time_ms: 10, memory_kb: 3000, output: '3\n', expected: '3\n' });
+  const sample = (verdict: string) => ({ label: 'Example 1', verdict, time_ms: 10, memory_kb: 3000, output: '3\n', expected: '3\n' });
 
   it('says when a lower score leaves the problem score as it was', () => {
     const done = { state: 'done' as const, score: 20, hidden: false };
@@ -184,22 +183,18 @@ describe('S4 wording and the run announcement (X1)', () => {
 
   it('announces each stage of a run once', () => {
     expect(runAnnouncement(run({ state: 'queued' }))).toBe('');
-    expect(runAnnouncement(run({ state: 'running', results: [{ ...sample('') }] }))).toBe('Running on samples.');
-    expect(runAnnouncement(run({ state: 'running', results: [{ ...sample(''), label: 'Custom input', expected: null }] }))).toBe('Running on your input.');
-    expect(runAnnouncement(run({ results: [sample('AC'), { ...sample('WA'), label: 'Sample 2' }] }))).toBe('1 of 2 examples failed.');
+    expect(runAnnouncement(run({ state: 'running', results: [{ ...sample('') }] }))).toBe('Running on the examples.');
+    expect(runAnnouncement(run({ state: 'running', results: [{ ...sample(''), label: 'Your input', expected: null }] }))).toBe('Running on your input.');
+    expect(runAnnouncement(run({ results: [sample('AC'), { ...sample('WA'), label: 'Example 2' }] }))).toBe('1 of 2 examples failed.');
     expect(runAnnouncement(run({ compile_output: 'main.cpp:3: error', results: [sample('')] }))).toBe('Compile error.');
     expect(runHeadline(run({ state: 'error' })).tone).toBe('bad');
-  });
-
-  it('keeps the example result partial, with one passed and one failed subtask', () => {
-    expect(headline(EXAMPLE_SUBMISSION)).toEqual({ text: 'Partial, 40 of 100', tone: 'part', detail: 'Wrong answer on test 5' });
   });
 });
 
 describe('the run headline and the revealed test (P5 F7.13, D115)', () => {
   const run = (results: Run['results']): Run => ({ id: 1, state: 'done', compile_output: '', results });
   const row = (kind: 'sample' | 'custom', verdict: string, expected: string | null = '3\n') => ({
-    kind, label: kind === 'custom' ? 'Custom input' : 'x', verdict, time_ms: 10, memory_kb: 3000, output: '3\n', expected,
+    kind, label: kind === 'custom' ? 'Your input' : 'x', verdict, time_ms: 10, memory_kb: 3000, output: '3\n', expected,
   });
 
   it('says how many examples failed, in design/student.md words', () => {
@@ -214,7 +209,7 @@ describe('the run headline and the revealed test (P5 F7.13, D115)', () => {
     expect(isCustomResult({ kind: 'custom', expected: null })).toBe(true);
     expect(isCustomResult({ expected: null })).toBe(true);
     expect(isCustomResult({ expected: '3\n' })).toBe(false);
-    expect(runAnnouncement({ ...run([row('sample', '', null)]), state: 'running' })).toBe('Running on samples.');
+    expect(runAnnouncement({ ...run([row('sample', '', null)]), state: 'running' })).toBe('Running on the examples.');
   });
 
   it('says why a test is shown, and names it', () => {

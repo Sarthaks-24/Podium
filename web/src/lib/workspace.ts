@@ -119,6 +119,8 @@ export interface SubmissionRevealed {
 export interface RunRevealed extends SubmissionRevealed {
   kind: 'sample';
   label: string;
+  /** The end of the program's stderr, at most 4 KB. */
+  stderr?: string;
 }
 
 /** One input of a run: a sample or the custom input. */
@@ -135,6 +137,8 @@ export interface RunResult {
   /** Expected output; samples only. */
   expected: string | null;
   message?: string;
+  /** The end of the program's stderr, at most 4 KB. */
+  stderr?: string;
 }
 
 /** A run on the samples or on a custom input. */
@@ -378,38 +382,12 @@ export function revealedTitle(r: Pick<SubmissionRevealed, 'idx' | 'subtask_idx'>
 export function runAnnouncement(run: Run): string {
   if (run.state === 'queued') return '';
   const custom = run.results.some(isCustomResult);
-  if (run.state === 'running') return custom ? 'Running on your input.' : 'Running on samples.';
+  if (run.state === 'running') return custom ? 'Running on your input.' : 'Running on the examples.';
   return `${runHeadline(run).text}.`;
 }
 
-/**
- * A fixed submission for the before-start page's "How the workspace
- * works" (S3): partial, the first subtask passed and the second failed on
- * test 5. Not anybody's result.
- */
-export const EXAMPLE_SUBMISSION: Submission = {
-  id: 0,
-  problem_id: 0,
-  language: 'cpp17',
-  state: 'done',
-  verdict: 'WA',
-  score: 40,
-  max_score: 100,
-  max_time_ms: 30,
-  max_memory_kb: 3300,
-  created_at: 0,
-  judged_at: 0,
-  queue_position: null,
-  compile_output: '',
-  samples: [{ idx: 1, verdict: 'AC', time_ms: 10, memory_kb: 3100 }],
-  subtasks: [
-    { idx: 1, points: 40, earned: 40, verdict: 'AC', tests: [{ idx: 2, verdict: 'AC', time_ms: 10, memory_kb: 3200 }, { idx: 3, verdict: 'AC', time_ms: 20, memory_kb: 3200 }] },
-    { idx: 2, points: 60, earned: 0, verdict: 'WA', tests: [{ idx: 4, verdict: 'AC', time_ms: 20, memory_kb: 3300 }, { idx: 5, verdict: 'WA', time_ms: 30, memory_kb: 3300 }, { idx: 6, verdict: 'SK', time_ms: 0, memory_kb: 0 }] },
-  ],
-};
-
 const GUIDANCE: Record<string, string> = {
-  WA: 'Your output differs from the expected answer. Check edge cases such as the smallest and largest inputs, and the output format in the samples.',
+  WA: 'Your output differs from the expected answer. Check edge cases such as the smallest and largest inputs, and the output format in the examples.',
   TLE: 'Your program ran past the time limit. Look for an algorithm that fits the largest constraints.',
   MLE: 'Your program used more memory than allowed. Avoid storing what you can compute as you go.',
   RE: 'Your program crashed or exited with an error. Check array bounds, division by zero and very deep recursion.',
@@ -442,7 +420,7 @@ export function guidance(verdict: string, language: string, opts: { sample?: boo
   const line = GUIDANCE[verdict];
   if (!line) return [];
   const out = [line];
-  if (verdict === 'WA' && opts.sample) out[0] = 'This test is a sample. Run on samples to see your output next to the expected one.';
+  if (verdict === 'WA' && opts.sample) out[0] = 'This test is an example. Run to see your output next to the expected one.';
   const hint = HINTS[verdict]?.[language as Language];
   if (hint) out.push(hint);
   return out;

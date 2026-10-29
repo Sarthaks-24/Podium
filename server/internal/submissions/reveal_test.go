@@ -73,7 +73,7 @@ func TestRunRevealsTheFirstFailingSample(t *testing.T) {
 		t.Fatalf("run payload %+v", pl.Inputs)
 	}
 	got, _ := r.svc.GetRunWith(ctx, run.ID, StudentView)
-	if len(got.Results) != 3 || got.Results[2].Kind != RunSample || got.Results[2].Label != "Sample 3" || got.Results[0].Kind != RunSample {
+	if len(got.Results) != 3 || got.Results[2].Kind != RunSample || got.Results[2].Label != "Example 3" || got.Results[0].Kind != RunSample {
 		t.Fatalf("results %+v", got.Results)
 	}
 	if got.TimeStepMS != 10 {

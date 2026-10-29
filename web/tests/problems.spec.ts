@@ -623,7 +623,7 @@ test('keyboard only: an organiser opens a problem, edits it, saves with Ctrl+S a
   // The shortcut list names the editor keys for organisers.
   await page.locator('main h1').focus();
   await page.keyboard.press('?');
-  const keys = page.getByRole('dialog', { name: 'Keyboard shortcuts' });
+  const keys = page.getByRole('dialog', { name: 'Help' });
   await expect(keys.getByRole('heading', { name: 'Problem editor' })).toBeVisible();
   await page.keyboard.press('Escape');
   await expect(keys).toBeHidden();
@@ -668,12 +668,12 @@ test('the preview shows the samples as students see them (P3 A5)', async ({ page
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto('/admin/problems/1');
   const preview = page.getByRole('region', { name: 'Preview' });
-  await expect(preview.getByRole('heading', { name: 'Sample 1' })).toBeVisible();
-  await expect(preview.getByRole('heading', { name: 'Sample 2' })).toBeVisible();
-  await expect(preview.getByRole('button', { name: 'Copy sample 1 input' })).toBeVisible();
+  await expect(preview.getByRole('heading', { name: 'Example 1' })).toBeVisible();
+  await expect(preview.getByRole('heading', { name: 'Example 2' })).toBeVisible();
+  await expect(preview.getByRole('button', { name: 'Copy example 1 input' })).toBeVisible();
   // The samples follow the field as typed.
   await page.locator('#samples').fill('1');
-  await expect(preview.getByRole('heading', { name: 'Sample 2' })).toHaveCount(0);
+  await expect(preview.getByRole('heading', { name: 'Example 2' })).toHaveCount(0);
 });
 
 test('an organiser screen that fails to load says so and offers a reload (C2-069)', async ({ page }) => {

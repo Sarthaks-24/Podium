@@ -4,6 +4,21 @@ Dated entries per release. Unreleased work is listed at the top.
 
 ## Unreleased
 
+### v3 stage B5: before the start and after the end (2026-10-29)
+
+- Before the start: the countdown, three facts (length, languages, wait between submissions), the honour code and "I agree, start the contest", all in the first screen on a phone. The full rules and how Run and Submit work moved to Help ("Read the rules and how Run and Submit work", or "?"); the example verdict and the "How the workspace works" panel are gone.
+- After the end: the place and score, then one list of problems, each with its score, opening to "Open" and the student's own submissions; the problem with the newest submission opens by itself. The separate score table, "Review" and "Practise" are gone. Messages are folded under the result.
+
+### v3 stage B1: the editor and its surroundings (2026-10-29)
+
+- The editor takes the VS Code keys (`@replit/codemirror-vscode-keymap`, V3-13) plus the few it leaves out: insert a line above, scroll without moving the cursor, grow and shrink the selection, F3 and Ctrl+H, and Alt+C, Alt+W, Alt+R in the find box. Find and replace, auto-closed brackets and quotes, completion (words from the file for C++ and Java), multiple cursors (Alt+Click, Ctrl+Alt+Up and Down, Shift+Alt+drag for a box), folding, word wrap and tab size 2 or 4. Podium's Ctrl+Enter and Ctrl+' still win. Escape closes a completion list only while one is shown, so Escape then Tab always leaves the editor.
+- One Help dialog, opened by "?", the footer, the account menu and the contest's Rules: the rules, Run and Submit in two lines, then every shortcut. The shortcut table in `web/src/lib/shortcuts.ts` is the contract; `web/tests/editor-keys.spec.ts` presses every editor row and fails on a row it has no check for. An editor key pressed outside the editor says where it works.
+- Reset sits beside the language and asks "Replace your code with the starter?". Settings holds font size, tab size, word wrap and Tab moves focus. Under the editor: Saved, Saving, or "Not saved to the server, kept on this device", then "Ln 2, Col 5".
+- The language chosen last is remembered per account, across problems and contests. Switching languages keeps the code typed so far for each language on this device and brings it back; over typed code the switch asks before loading the starter.
+- A run shows the end of what the program printed to stderr (at most 4 KB) for each input; a submission never carries stderr. The run labels are "Example 1" and "Your input".
+- Words: examples, not samples; Run, not "Run on samples"; "Your input"; "Open contest" is the one label on the pinned contest; practice reads "Practice. Your contest score is still 60 of 100."; the clock no longer carries a freeze line; the message strip offers "Dismiss all". Examples and subtasks carry their one-line meaning where a student first meets them (V3-27).
+- The statement column no longer stretches the page when a statement is long (an absolutely placed hidden line escaped the scrolling pane).
+
 ### Oracle Always Free hosting (2026-10-29)
 
 - Releases build for arm64 too (V3-28): `make release ARCH=arm64` writes `podium-<version>-arm64.tar.gz`, `MANIFEST` records `arch=`, and `install.sh` refuses a release built for another processor. On arm64 isolate 2.2.1 is built from its upstream commit with the apt package's paths, since upstream publishes no arm64 package; Litestream installs its arm64 build, pinned by SHA-256. `make sandbox-binaries ARCH=arm64` builds the sandbox suite for an ARM VM.

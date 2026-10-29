@@ -136,7 +136,7 @@ test('running on samples shows the first difference', async ({ page }) => {
   const api = await mockApi(page);
   await page.setViewportSize({ width: 1440, height: 900 });
   await openWorkspace(page);
-  await page.getByRole('button', { name: 'Run on samples' }).click();
+  await page.getByRole('button', { name: 'Run', exact: true }).click();
   await expect(page.getByText('1st in queue')).toBeVisible();
   expect(api.runs[0]).toMatchObject({ language: 'cpp17' });
   expect(api.runs[0].input).toBeUndefined();
@@ -149,8 +149,8 @@ test('running on samples shows the first difference', async ({ page }) => {
       compile_output: '',
       time_step_ms: 100,
       results: [
-        { label: 'Sample 1', verdict: 'AC', time_ms: 0, memory_kb: 3200, output: '3\n', expected: '3\n', message: '' },
-        { label: 'Sample 2', verdict: 'WA', time_ms: 6, memory_kb: 3200, output: '12 \n', expected: '2\n', message: 'Expected 2, found 12' },
+        { label: 'Example 1', verdict: 'AC', time_ms: 0, memory_kb: 3200, output: '3\n', expected: '3\n', message: '' },
+        { label: 'Example 2', verdict: 'WA', time_ms: 6, memory_kb: 3200, output: '12 \n', expected: '2\n', message: 'Expected 2, found 12' },
       ],
     },
   });
@@ -169,16 +169,16 @@ test('running on samples shows the first difference', async ({ page }) => {
   const fromSample = panel.getByRole('button', { name: 'Run on this input' });
   await expect(fromSample).toHaveCount(1);
   await fromSample.click();
-  await expect(page.getByLabel('Custom input')).toHaveValue('-5 7\n');
+  await expect(page.getByLabel('Your input')).toHaveValue('-5 7\n');
   await expect(page.locator('#ws-custom-panel')).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Custom input' })).toHaveAttribute('aria-expanded', 'true');
+  await expect(page.getByRole('button', { name: 'Your input' })).toHaveAttribute('aria-expanded', 'true');
   await expect.poll(() => api.runs.length).toBe(2);
   expect(api.runs[1].input).toBe('-5 7\n');
   api.runs.length = 1;
 
   // Custom input runs that input.
-  await page.getByLabel('Custom input').fill('4 5\n');
-  await page.locator('#ws-custom-panel').getByRole('button', { name: 'Run on this input' }).click();
+  await page.getByLabel('Your input').fill('4 5\n');
+  await page.locator('#ws-custom-panel').getByRole('button', { name: 'Run', exact: true }).click();
   await expect.poll(() => api.runs.length).toBe(2);
   expect(api.runs[1].input).toBe('4 5\n');
 });
@@ -187,7 +187,7 @@ test('after a run that did not compile, Submit asks once and the empty sample ro
   const api = await mockApi(page);
   await page.setViewportSize({ width: 1440, height: 900 });
   await openWorkspace(page);
-  await page.getByRole('button', { name: 'Run on samples' }).click();
+  await page.getByRole('button', { name: 'Run', exact: true }).click();
   await expect(page.getByText('1st in queue')).toBeVisible();
   api.stream.push({
     type: 'run',
@@ -196,14 +196,14 @@ test('after a run that did not compile, Submit asks once and the empty sample ro
       state: 'done',
       compile_output: "main.cpp:3:5: error: expected ';' before 'return'\n",
       results: [
-        { label: 'Sample 1', verdict: '', time_ms: 0, memory_kb: 0, output: '', expected: '3\n', message: '' },
-        { label: 'Sample 2', verdict: '', time_ms: 0, memory_kb: 0, output: '', expected: '2\n', message: '' },
+        { label: 'Example 1', verdict: '', time_ms: 0, memory_kb: 0, output: '', expected: '3\n', message: '' },
+        { label: 'Example 2', verdict: '', time_ms: 0, memory_kb: 0, output: '', expected: '2\n', message: '' },
       ],
     },
   });
   const panel = page.getByRole('region', { name: 'Result' });
   await expect(panel.getByText('Compile error', { exact: true })).toBeVisible({ timeout: 10_000 });
-  await expect(panel.getByRole('heading', { name: 'Sample 1' })).toHaveCount(0);
+  await expect(panel.getByRole('heading', { name: 'Example 1' })).toHaveCount(0);
 
   await page.getByRole('button', { name: 'Submit', exact: true }).click();
   const ask = page.getByRole('dialog', { name: 'Your last run did not compile. Submit anyway?' });
@@ -247,7 +247,7 @@ test('the draft comes back after a reload, from this device when the server miss
   await page.keyboard.type('// kept locally');
   await page.getByRole('heading', { level: 1 }).click();
   await expect.poll(() => api.draftPuts.length).toBeGreaterThan(0);
-  await expect(page.locator('p.save')).toContainText('Draft not saved to the server.');
+  await expect(page.locator('p.save')).toHaveText('Not saved to the server, kept on this device');
 
   await page.reload();
   await expect(codeEditor(page)).toBeVisible();
@@ -338,11 +338,11 @@ test('keyboard shortcuts submit and run, and integrity counts go with the submit
     expect.objectContaining({ kind: 'paste', size: 7 }),
   ]);
 
-  // The editor's settings (S2: behind "Editor settings"): Tab moves focus when asked, and the font size sticks.
-  const settings = page.getByRole('button', { name: 'Editor settings' });
+  // The editor's settings (S2: behind "Settings"): Tab moves focus when asked, and the font size sticks.
+  const settings = page.getByRole('button', { name: 'Settings', exact: true });
   await settings.click();
   await page.getByLabel('Tab moves focus').check();
-  // Into the editor beside the open panel (it now ends with "Reset to starter").
+  // Into the editor beside the open panel.
   await codeEditor(page).click({ position: { x: 24, y: 8 } });
   await expect(page.getByLabel('Tab moves focus')).toBeHidden();
   await page.keyboard.press('Tab');
@@ -353,7 +353,7 @@ test('keyboard shortcuts submit and run, and integrity counts go with the submit
   await expect(settings).toBeFocused();
   await expect(settings).toHaveAttribute('aria-expanded', 'false');
   await page.reload();
-  await page.getByRole('button', { name: 'Editor settings' }).click();
+  await page.getByRole('button', { name: 'Settings', exact: true }).click();
   await expect(page.getByLabel('Font size')).toHaveValue('18');
   await expect(page.getByLabel('Tab moves focus')).toBeChecked();
   await expect(codeEditor(page)).toHaveAttribute('aria-label', 'Code for A plus B, C++17');
@@ -565,9 +565,12 @@ test.describe('in a contest', () => {
     await contests.mockApi(page, { phase: 'ready' });
     await page.setViewportSize({ width: 1440, height: 900 });
     await page.goto('/contests/week-6');
-    const before = await page.locator('section', { has: page.getByRole('heading', { name: 'Rules' }) }).getByRole('listitem').allTextContents();
+    // Before the start the rules are in Help too (B5).
+    await page.getByRole('button', { name: 'Read the rules and how Run and Submit work' }).click();
+    const before = await page.getByRole('dialog', { name: 'Help' }).getByRole('region', { name: 'Rules' }).getByRole('listitem').allTextContents();
+    await page.keyboard.press('Escape');
     expect(before.slice(1, 4)).toEqual([
-      'Run on samples tries your code on the examples in the statement. It never counts.',
+      'Run tries your code on the examples in the statement. It never counts.',
       'Submit grades your code on hidden tests, in parts called subtasks.',
       'A later, worse submission never lowers your score.',
     ]);
@@ -576,10 +579,11 @@ test.describe('in a contest', () => {
 
     const open = page.getByRole('navigation', { name: 'Problems' }).getByRole('button', { name: 'Rules' });
     await open.click();
-    const dialog = page.getByRole('dialog', { name: 'Rules' });
+    // Rules opens Help, which lists the rules first.
+    const dialog = page.getByRole('dialog', { name: 'Help' });
     await expect(dialog).toBeVisible();
-    await expect(dialog.getByRole('heading', { name: 'Rules' })).toBeFocused();
-    await expect(dialog.getByRole('listitem')).toHaveText([...before, 'Podium records how many characters you paste and when you leave the page.']);
+    await expect(dialog.getByRole('heading', { name: 'Help' })).toBeFocused();
+    await expect(dialog.getByRole('region', { name: 'Rules' }).getByRole('listitem')).toHaveText(before);
     const results = await new AxeBuilder({ page }).include('dialog[open]').withTags(['wcag2a', 'wcag2aa', 'wcag21aa', 'wcag22aa']).analyze();
     expect(results.violations.filter((v) => v.impact === 'serious' || v.impact === 'critical').map((v) => v.id)).toEqual([]);
     await page.screenshot({ path: `${shots()}contest-rules-dialog-1440-light.png` });
@@ -625,7 +629,7 @@ test.describe('in a contest', () => {
     await expect(counting).toHaveCSS('color', muted);
     await expect(page.locator('#ws-submit-status')).toHaveText('1 of 15 submissions used');
     await expect(counting.locator('svg')).toHaveCount(1);
-    await expect(page.getByRole('button', { name: 'Run on samples' }).locator('svg')).toHaveCount(1);
+    await expect(page.getByRole('button', { name: 'Run', exact: true }).locator('svg')).toHaveCount(1);
   });
 
   test('the gap between submissions is per problem: B is free right after A (V3-17, walk bug B2)', async ({ page }) => {
@@ -769,12 +773,12 @@ test.describe('P5 workspace', () => {
     await page.locator('main h1').focus();
     await page.keyboard.press("Control+'");
     await expect(page.getByRole('tab', { name: 'Code' })).toHaveAttribute('aria-selected', 'true');
-    await expect(page.getByRole('heading', { name: 'Run on samples' })).toBeFocused();
+    await expect(page.getByRole('heading', { name: 'Run on the examples' })).toBeFocused();
 
     // From 1024 px nothing switches, so focus stays on the button pressed.
     await page.setViewportSize({ width: 1440, height: 900 });
-    await page.getByRole('button', { name: 'Run on samples' }).click();
-    await expect(page.getByRole('button', { name: 'Run on samples' })).toBeFocused();
+    await page.getByRole('button', { name: 'Run', exact: true }).click();
+    await expect(page.getByRole('button', { name: 'Run', exact: true })).toBeFocused();
   });
 
   test('when the time runs out, focus goes to the title (F7.4)', async ({ page }) => {
@@ -900,7 +904,7 @@ test.describe('P5 workspace', () => {
     const content = codeEditor(page);
     const hint = await content.getAttribute('aria-describedby');
     expect(hint).toMatch(/^editor-hint-/);
-    await expect(page.locator(`#${hint}`)).toHaveText(/Tab indents\. Press Escape, then Tab, to leave the editor\.\s+Ctrl\+Enter submits and Ctrl\+' runs on samples\./);
+    await expect(page.locator(`#${hint}`)).toHaveText(/Tab indents\. Press Escape, then Tab, to leave the editor\.\s+Ctrl\+Enter submits and Ctrl\+' runs\. Press \? outside the editor for every shortcut\./);
     await expect(content).toHaveAttribute('data-language', 'cpp');
     expect([...new Set(chunks)]).toEqual(['cpp']);
 
@@ -928,24 +932,23 @@ test.describe('P5 workspace', () => {
     await page.getByRole('heading', { level: 1 }).click();
     await expect.poll(() => api.draftPuts.some((b) => String(b.source).includes('// mine'))).toBe(true);
 
-    const settings = page.getByRole('button', { name: 'Editor settings' });
-    await settings.click();
-    await page.getByRole('button', { name: 'Reset to starter' }).click();
-    const ask = page.getByRole('dialog', { name: 'Reset to starter?' });
-    await expect(ask).toContainText('Your code for this problem is replaced with the C++17 starter, and the draft is saved.');
+    // Reset sits beside the language (audit N8), not inside Settings.
+    const reset = page.getByRole('button', { name: 'Reset', exact: true });
+    await reset.click();
+    const ask = page.getByRole('dialog', { name: 'Replace your code with the starter?' });
+    await expect(ask).toContainText('Your C++17 code for this problem is replaced with the starter, and saved.');
     await expect(ask.getByRole('button', { name: 'Cancel' })).toBeFocused();
     await page.screenshot({ path: `${shots()}workspace-reset-confirm-1440-light.png` });
     await ask.getByRole('button', { name: 'Cancel' }).click();
-    await expect(settings).toBeFocused();
+    await expect(reset).toBeFocused();
     expect(await editorText(page)).toContain('// mine');
 
-    await settings.click();
-    await page.getByRole('button', { name: 'Reset to starter' }).click();
-    await ask.getByRole('button', { name: 'Reset to starter' }).click();
+    await reset.click();
+    await ask.getByRole('button', { name: 'Reset', exact: true }).click();
     await expect.poll(() => editorText(page)).toBe(starterText);
     await expect.poll(() => String(api.draftPuts.at(-1)?.source)).not.toContain('// mine');
     await expect(codeEditor(page)).toBeFocused();
-    await expect(page.locator('[data-announcer="polite"]')).toHaveText('Reset to the starter.');
+    await expect(page.locator('[data-announcer="polite"]')).toHaveText('Reset. The starter is back.');
 
     // Past one 10 s save tick, then a reload: the starter is still there.
     const puts = api.draftPuts.length;
@@ -978,7 +981,7 @@ test.describe('P5 workspace', () => {
     await expect(block.locator('.diff dd').nth(1)).toHaveText('7');
     await page.screenshot({ path: `${shots()}workspace-revealed-practice-1440-light.png` });
     await block.getByRole('button', { name: 'Run on this input' }).click();
-    await expect(page.getByLabel('Custom input')).toHaveValue('4 4\n');
+    await expect(page.getByLabel('Your input')).toHaveValue('4 4\n');
     await expect.poll(() => api.runs.length).toBe(1);
     expect(api.runs[0].input).toBe('4 4\n');
 
@@ -996,7 +999,7 @@ test.describe('P5 workspace', () => {
     const api = await mockApi(page);
     await page.setViewportSize({ width: 1440, height: 900 });
     await openWorkspace(page);
-    await page.getByRole('button', { name: 'Run on samples' }).click();
+    await page.getByRole('button', { name: 'Run', exact: true }).click();
     await expect(page.getByText('1st in queue')).toBeVisible();
     const row = (kind: string, label: string, verdict: string, output = '', expected: string | null = null) => ({
       kind, label, verdict, time_ms: verdict === 'SK' ? 0 : 10, memory_kb: verdict === 'SK' ? 0 : 3100, output, output_truncated: false, expected, message: '',
@@ -1008,11 +1011,11 @@ test.describe('P5 workspace', () => {
         state: 'done',
         compile_output: '',
         results: [
-          row('sample', 'Sample 1', 'AC', '3\n', '3\n'),
-          row('sample', 'Sample 2', 'AC', '2\n', '2\n'),
-          row('sample', 'Sample 3', 'WA', '7\n', '8\n'),
+          row('sample', 'Example 1', 'AC', '3\n', '3\n'),
+          row('sample', 'Example 2', 'AC', '2\n', '2\n'),
+          row('sample', 'Example 3', 'WA', '7\n', '8\n'),
         ],
-        revealed: { idx: 3, kind: 'sample', label: 'Sample 3', input: '4 4\n', expected: '8\n', output: '7\n', truncated: false },
+        revealed: { idx: 3, kind: 'sample', label: 'Example 3', input: '4 4\n', expected: '8\n', output: '7\n', stderr: 'debug: a=4 b=4\n', truncated: false },
       },
     });
     const panel = page.getByRole('region', { name: 'Result' });
@@ -1020,6 +1023,9 @@ test.describe('P5 workspace', () => {
     const block = panel.locator('.revealed');
     await expect(block).toContainText('This test is shown because this was a run.');
     await expect(block.locator('pre').nth(0)).toHaveText('4 4');
+    // B1: the end of what the program printed to stderr.
+    await expect(block.getByText('Error output (stderr), the last lines')).toBeVisible();
+    await expect(block).toContainText('debug: a=4 b=4');
     await expect(page.locator('[data-announcer="polite"]')).toHaveText('1 of 3 examples failed.');
     await page.screenshot({ path: `${shots()}workspace-revealed-run-1440-light.png` });
     await block.getByRole('button', { name: 'Run on this input' }).click();
@@ -1033,8 +1039,8 @@ test.describe('P5 workspace', () => {
         id: 52,
         state: 'done',
         compile_output: '',
-        results: [row('sample', 'Sample 1', 'AC', '3\n', '3\n'), row('sample', 'Sample 2', 'TLE', '', null)],
-        revealed: { idx: 2, kind: 'sample', label: 'Sample 2', input: '100000\n1 2 3', expected: '5000050000\n', output: '', truncated: true },
+        results: [row('sample', 'Example 1', 'AC', '3\n', '3\n'), row('sample', 'Example 2', 'TLE', '', null)],
+        revealed: { idx: 2, kind: 'sample', label: 'Example 2', input: '100000\n1 2 3', expected: '5000050000\n', output: '', truncated: true },
       },
     });
     await expect(panel.getByText('This test is longer than 4 KB', { exact: false })).toBeVisible({ timeout: 10_000 });

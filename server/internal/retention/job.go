@@ -68,13 +68,13 @@ func (j *Job) batches(ctx context.Context, step func(tx *sql.Tx) (int64, error))
 
 // runs empties run jobs older than RunPayloads: the payload (code and
 // custom input references, so their files can be collected) and the
-// output excerpts. The job row and its verdicts stay.
+// output and stderr excerpts. The job row and its verdicts stay.
 func (j *Job) runs(ctx context.Context, now time.Time, r *Result) error {
 	cut := now.Add(-RunPayloads).UnixMilli()
 	n, err := j.batches(ctx, func(tx *sql.Tx) (int64, error) {
 		const pick = `SELECT id FROM jobs WHERE kind = 'run' AND payload <> '{}' AND created_at < ? AND state IN ('done', 'failed')
 			ORDER BY created_at LIMIT ?`
-		if _, err := tx.ExecContext(ctx, `UPDATE job_results SET output = '' WHERE output <> '' AND job_id IN (`+pick+`)`,
+		if _, err := tx.ExecContext(ctx, `UPDATE job_results SET output = '', stderr = '' WHERE (output <> '' OR stderr <> '') AND job_id IN (`+pick+`)`,
 			cut, batch); err != nil {
 			return 0, err
 		}

@@ -2,7 +2,7 @@
   AccountMenu: the one account control in the header (v2 N2, audit 04-4 and
   04-17). It says who is signed in ("Signed in as {email}" and the role
   word), then "Theme and
-  colours" and "Keyboard shortcuts" (dialogs the shell owns, opened
+  colours" and "Help" (dialogs the shell owns, opened
   through lib/shell.svelte.ts; the shortcuts item is left out on
   touch-only screens) and, after a rule, "Sign out".
 
@@ -55,7 +55,7 @@
   </p>
   <ul class="items">
     <li><button type="button" class="item" onclick={() => (shell.theme = true)}>Theme and colours</button></li>
-    <li class="keys"><button type="button" class="item" aria-keyshortcuts="?" onclick={() => (shell.shortcuts = true)}>Keyboard shortcuts</button></li>
+    <li class="keys"><button type="button" class="item" aria-keyshortcuts="?" onclick={() => (shell.help = true)}>Help</button></li>
     <li class="rule"><button type="button" class="item" onclick={signOut}>Sign out</button></li>
   </ul>
 {/snippet}

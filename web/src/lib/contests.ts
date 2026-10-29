@@ -369,17 +369,6 @@ export function listCountdown(c: ContestSummary, now: number): { lead: string; m
 }
 
 /**
- * The button on the contest pinned at the top of "Your contests" (audit
- * 2026-10-20 S10): "Open the contest" before the start, "Continue" while
- * it is live and the student's time runs, "See your result" afterwards.
- */
-export function pinnedAction(c: Pick<ContestSummary, 'state' | 'my_window'>, now: number): string {
-  if (c.state === 'upcoming') return 'Open the contest';
-  if (c.state === 'live' || c.state === 'frozen') return c.my_window && c.my_window.ends_at <= now ? 'See your result' : 'Continue';
-  return 'See your result';
-}
-
-/**
  * The line under the title before a student starts: a countdown before the
  * start, or, for a late arrival in a fixed-start contest, that their time
  * is already running (audit 01-17). `ms` is the countdown in the line.
@@ -406,13 +395,6 @@ export function clockMilestone(prevLeftMs: number, leftMs: number): string | nul
   return null;
 }
 
-/** The freeze line under the clock, or null when the contest has no freeze. */
-export function freezeText(freeze: number | null, now: number): string | null {
-  if (freeze === null) return null;
-  if (now >= freeze) return 'Standings frozen';
-  return `Standings freeze in ${formatSpan(freeze - now)}`;
-}
-
 /** Problem labels: A to Z, then AA, AB and on. */
 export function labelFor(index: number): string {
   const letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
@@ -431,7 +413,7 @@ export function allowedLanguages(ids: readonly string[] | undefined): { id: Lang
  * both scoring modes.
  */
 export const WORKSPACE_SENTENCES: readonly string[] = [
-  'Run on samples tries your code on the examples in the statement. It never counts.',
+  'Run tries your code on the examples in the statement. It never counts.',
   'Submit grades your code on hidden tests, in parts called subtasks.',
   'A later, worse submission never lowers your score.',
 ];

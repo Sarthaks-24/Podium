@@ -1,14 +1,18 @@
 <!--
-  ShortcutsDialog: the "Keyboard shortcuts" list (lib/shortcuts.ts), in a
-  native modal dialog. The shell opens it when "?" is pressed outside a
-  text field, or from the footer button. Escape and Close shut it, and the
+  HelpDialog: the one Help dialog (cache/v3/design/editor.md section 1), in
+  a native modal dialog. It holds the contest's rules when a contest page
+  has put them in `shell.rules`, then Run and Submit in two lines, then the
+  keyboard shortcuts (lib/shortcuts.ts). The shell opens it when "?" is
+  pressed outside a text field, or from the footer and the account menu;
+  the contest's "Rules" opens it too. Escape and Close shut it, and the
   browser returns focus to whatever had it before, or to the page heading
-  when that element was replaced while the list was open. Focus starts on the
+  when that element was replaced while it was open. Focus starts on the
   heading, so a screen reader reads the title first. Organisers also see
   the problem editor and reveal keys. Props: `open`, `organiser` and
   `onclose`.
 -->
 <script lang="ts">
+  import { shell } from '../lib/shell.svelte';
   import { isMacPlatform, shortcutGroups } from '../lib/shortcuts';
   import Icon from './Icon.svelte';
 
@@ -50,16 +54,32 @@
   }
 </script>
 
-<dialog bind:this={dialog} class="dialog" aria-labelledby="shortcuts-title" oncancel={onCancel}>
+<dialog bind:this={dialog} class="dialog" aria-labelledby="help-title" oncancel={onCancel}>
   <div class="dialog-head">
-    <h2 id="shortcuts-title" tabindex="-1" bind:this={heading}>Keyboard shortcuts</h2>
-    <button type="button" class="btn btn-quiet btn-compact" aria-label="Close keyboard shortcuts" title="Close" onclick={onclose}>
+    <h2 id="help-title" tabindex="-1" bind:this={heading}>Help</h2>
+    <button type="button" class="btn btn-quiet btn-compact" aria-label="Close help" title="Close" onclick={onclose}>
       <Icon name="x" />
     </button>
   </div>
+  {#if shell.rules}
+    <section class="group" aria-labelledby="help-rules">
+      <h3 id="help-rules">Rules</h3>
+      <ul class="rules">
+        {#each shell.rules as line, i (i)}<li>{line}</li>{/each}
+      </ul>
+    </section>
+  {/if}
+  <section class="group" aria-labelledby="help-run">
+    <h3 id="help-run">Run and Submit</h3>
+    <ul class="rules">
+      <li>Run tries your code on the examples, or on your own input. It never counts.</li>
+      <li>Submit grades your code on the hidden tests. Your score on a problem is the best result per subtask across your submissions.</li>
+    </ul>
+  </section>
+  <h3 class="keys-title">Keyboard shortcuts</h3>
   {#each groups as g (g.title)}
     <section class="group" aria-labelledby="shortcuts-{g.title.toLowerCase().replace(/\s+/g, '-')}">
-      <h3 id="shortcuts-{g.title.toLowerCase().replace(/\s+/g, '-')}">{g.title}</h3>
+      <h4 id="shortcuts-{g.title.toLowerCase().replace(/\s+/g, '-')}">{g.title}</h4>
       <dl>
         {#each g.items as item (item.action)}
           <div class="row">
@@ -81,6 +101,22 @@
 
   h3 {
     font-size: var(--fs-1);
+  }
+
+  .keys-title {
+    margin-top: var(--space-6);
+    font-size: var(--fs-2);
+  }
+
+  .group h4 {
+    font-size: var(--fs-1);
+  }
+
+  .rules {
+    display: grid;
+    gap: var(--space-2);
+    margin-top: var(--space-2);
+    padding-left: var(--space-5);
   }
 
   dl {

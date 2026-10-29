@@ -4,6 +4,7 @@ import {
   forgetDrafts,
   forgetDraftsAtSignOut,
   mayMirror,
+  languageMirrorKey,
   mirrorKey,
   noteSignedInUser,
   pickDraft,
@@ -132,13 +133,33 @@ describe('local mirror', () => {
 describe('editor settings', () => {
   it('defaults, remembers, and rejects sizes off the list', () => {
     const s = memory();
-    expect(readEditorPrefs(s)).toEqual({ fontSize: DEFAULT_FONT_SIZE, tabMovesFocus: false, language: 'cpp17' });
-    writeEditorPrefs(s, { fontSize: 20, tabMovesFocus: true, language: 'java21' });
-    expect(readEditorPrefs(s)).toEqual({ fontSize: 20, tabMovesFocus: true, language: 'java21' });
+    expect(readEditorPrefs(s, 7)).toEqual({ fontSize: DEFAULT_FONT_SIZE, tabMovesFocus: false, tabSize: 4, wrap: false, language: null });
+    writeEditorPrefs(s, { fontSize: 20, tabMovesFocus: true, tabSize: 2, wrap: true, language: 'java21' }, 7);
+    expect(readEditorPrefs(s, 7)).toEqual({ fontSize: 20, tabMovesFocus: true, tabSize: 2, wrap: true, language: 'java21' });
     s.setItem('podium-editor-font', '99');
-    expect(readEditorPrefs(s).fontSize).toBe(DEFAULT_FONT_SIZE);
-    expect(readEditorPrefs(broken).fontSize).toBe(DEFAULT_FONT_SIZE);
-    expect(() => writeEditorPrefs(broken, { fontSize: 12, tabMovesFocus: false, language: 'cpp17' })).not.toThrow();
+    expect(readEditorPrefs(s, 7).fontSize).toBe(DEFAULT_FONT_SIZE);
+    expect(readEditorPrefs(broken, 7).fontSize).toBe(DEFAULT_FONT_SIZE);
+    expect(() => writeEditorPrefs(broken, { fontSize: 12, tabMovesFocus: false, tabSize: 4, wrap: false, language: 'cpp17' }, 7)).not.toThrow();
+  });
+
+  it('remembers the language per account, across problems (P5)', () => {
+    const s = memory();
+    writeEditorPrefs(s, { fontSize: 14, tabMovesFocus: false, tabSize: 4, wrap: false, language: 'python3' }, 7);
+    expect(readEditorPrefs(s, 7).language).toBe('python3');
+    expect(readEditorPrefs(s, 8).language).toBeNull();
+  });
+
+  it('starts word wrap on for a narrow screen until it is set', () => {
+    const s = memory();
+    expect(readEditorPrefs(s, 7, true).wrap).toBe(true);
+    s.setItem('podium-editor-wrap', '0');
+    expect(readEditorPrefs(s, 7, true).wrap).toBe(false);
+  });
+
+  it('keeps code per language under the mirror prefix, so sign-out removes it', () => {
+    const key = languageMirrorKey(7, '/api/workspace/3', 'python3');
+    expect(key.startsWith(mirrorKey(7, '/api/workspace/3'))).toBe(true);
+    expect(key).not.toBe(languageMirrorKey(7, '/api/workspace/3', 'cpp17'));
   });
 });
 

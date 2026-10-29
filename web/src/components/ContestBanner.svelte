@@ -7,8 +7,9 @@
   announcer (X1, audit 06-5), never as an alert: it does not take focus or
   interrupt typing. Dismiss hides it;
   "Show all messages" opens the messages dialog. When several arrived, the
-  strip says how many more are waiting. Props: `items` (newest first),
-  `ondismiss` (with the item's key) and `onopen`.
+  strip says how many more are waiting and offers "Dismiss all" (S1-09.4).
+  Props: `items` (newest first), `ondismiss` (with the item's key),
+  `ondismissall` and `onopen`.
 -->
 <script lang="ts">
   import MonoDigits from './MonoDigits.svelte';
@@ -21,10 +22,11 @@
   interface Props {
     items: BannerItem[];
     ondismiss: (key: string) => void;
+    ondismissall: () => void;
     onopen: () => void;
   }
 
-  let { items, ondismiss, onopen }: Props = $props();
+  let { items, ondismiss, ondismissall, onopen }: Props = $props();
 
   const top = $derived(items[0] ?? null);
 
@@ -55,6 +57,7 @@
       <div class="actions">
         <button type="button" class="btn btn-quiet btn-compact" onclick={onopen}>Show all messages</button>
         <button type="button" class="btn btn-quiet btn-compact" onclick={() => ondismiss(top.key)}>Dismiss</button>
+        {#if items.length > 1}<button type="button" class="btn btn-quiet btn-compact" onclick={ondismissall}>Dismiss all</button>{/if}
       </div>
     </div>
   {/if}

@@ -4,7 +4,7 @@
   starts with the first differing line, whitespace made visible
   (lib/diff.ts), then the program's output beside the expected one. When
   the test is revealed (D115: a practice submission's first failing hidden
-  test, or a run's first failing sample) it is a bordered
+  test, or a run's first failing example) it is a bordered
   block that says why it is shown and adds the input; "Run on this input"
   puts that input in the custom input box and runs it (D114), unless the
   input was cut at 4 KB, when running it would not be the same test.
@@ -13,8 +13,10 @@
   (optional), `expected` (null for a custom input), `output`,
   `outputCut` (only the start of the output is shown), `cut` (any of the
   texts was cut at 4 KB), `verdict` (the test's verdict code, for the
-  difference), `runInput` (the input "Run on this input" uses, optional)
-  and `onruninput` (optional; without it the button is left out).
+  difference), `stderr` (the end of what the program printed to stderr, a
+  run only, optional), `runInput` (the input "Run on this input" uses,
+  optional) and `onruninput` (optional; without it the button is left
+  out).
 -->
 <script lang="ts">
   import { firstDifference, showWhitespace } from '../lib/diff';
@@ -28,11 +30,12 @@
     outputCut?: boolean;
     cut?: boolean;
     verdict: string;
+    stderr?: string;
     runInput?: string | null;
     onruninput?: (input: string) => void;
   }
 
-  let { heading = '', reason = '', input = null, expected, output, outputCut = false, cut = false, verdict, runInput = null, onruninput }: Props = $props();
+  let { heading = '', reason = '', input = null, expected, output, outputCut = false, cut = false, verdict, stderr = '', runInput = null, onruninput }: Props = $props();
 
   const diff = $derived(expected !== null && verdict === 'WA' ? firstDifference(expected, output) : null);
   const canRun = $derived(onruninput !== undefined && runInput !== null && !cut);
@@ -75,6 +78,12 @@
       {#if outputCut && !cut}<p class="hint">Only the first 4 KB is shown.</p>{/if}
     </div>
   </div>
+  {#if stderr}
+    <div class="out">
+      <p class="label">Error output (stderr), the last lines</p>
+      <pre translate="no">{stderr}</pre>
+    </div>
+  {/if}
   {#if cut}<p class="hint">This test is longer than 4 KB, so only the start of each part is shown and it cannot be run from here.</p>{/if}
 
   {#if canRun && onruninput}

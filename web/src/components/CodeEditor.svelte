@@ -12,8 +12,9 @@
   Callers reach jumpTo(), setDoc() and focus() through bind:this.
   Props: `initial` (the code to start with), `language`, `label` (the
   editor's accessible name, naming the problem and language), `fontSize`
-  (px), `tabMovesFocus`, and the callbacks `onchange`, `ontyped`, `onpaste`,
-  `onblur`, `onsubmit` and `onrun`.
+  (px), `tabSize` (2 or 4), `wrap`, `tabMovesFocus`, and the callbacks
+  `onchange`, `ontyped`, `onpaste`, `onblur`, `onsubmit`, `onrun` and
+  `oncursor` (line and column, for "Ln 2, Col 5").
 -->
 <script lang="ts">
   import { onMount } from 'svelte';
@@ -30,15 +31,18 @@
     label: string;
     fontSize: number;
     tabMovesFocus: boolean;
+    tabSize: 2 | 4;
+    wrap: boolean;
     onchange: (source: string) => void;
     ontyped: (chars: number) => void;
     onpaste: (chars: number) => void;
     onblur: () => void;
     onsubmit: () => void;
     onrun: () => void;
+    oncursor: (line: number, col: number) => void;
   }
 
-  let { initial, language, label, fontSize, tabMovesFocus, onchange, ontyped, onpaste, onblur, onsubmit, onrun }: Props =
+  let { initial, language, label, fontSize, tabMovesFocus, tabSize, wrap, onchange, ontyped, onpaste, onblur, onsubmit, onrun, oncursor }: Props =
     $props();
 
   let host: HTMLDivElement | undefined = $state();
@@ -61,12 +65,15 @@
           label,
           describedBy: hintId,
           tabMovesFocus,
+          tabSize,
+          wrap,
           onChange: (s) => onchange(s),
           onTyped: (n) => ontyped(n),
           onPaste: (n) => onpaste(n),
           onBlur: () => onblur(),
           onSubmit: () => onsubmit(),
           onRun: () => onrun(),
+          onCursor: (line, col) => oncursor(line, col),
         });
         handle = created;
         if (pendingJump) created.jumpTo(pendingJump.line, pendingJump.col);
@@ -88,6 +95,14 @@
 
   $effect(() => {
     handle?.setTabMovesFocus(tabMovesFocus);
+  });
+
+  $effect(() => {
+    handle?.setTabSize(tabSize);
+  });
+
+  $effect(() => {
+    handle?.setWrap(wrap);
   });
 
   /** Moves the cursor to a line and column and focuses the editor. */
@@ -112,7 +127,7 @@
   <div class="host" bind:this={host}></div>
   <p class="visually-hidden" id={hintId}>
     {tabMovesFocus ? 'Tab leaves the editor.' : 'Tab indents. Press Escape, then Tab, to leave the editor.'}
-    {mod}+Enter submits and {mod}+' runs on samples.
+    {mod}+Enter submits and {mod}+' runs. Press ? outside the editor for every shortcut.
   </p>
   {#if failed}
     <p class="note">The editor could not load. Reload the page to try again; your code is kept.</p>

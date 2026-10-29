@@ -570,22 +570,22 @@ func (s *Service) insertResults(ctx context.Context, tx *sql.Tx, r judgeapi.Repo
 	if err := tx.QueryRowContext(ctx, "SELECT coalesce(max(seq), 0) FROM job_results WHERE job_id = ?", r.JobID).Scan(&seq); err != nil {
 		return err
 	}
-	insert := func(kind string, idx int, role, verdict string, timeMS, memKB int, msg, output, outputSHA string) error {
+	insert := func(kind string, idx int, role, verdict string, timeMS, memKB int, msg, output, outputSHA, stderr string) error {
 		seq++
-		_, err := tx.ExecContext(ctx, `INSERT INTO job_results (job_id, seq, kind, idx, role, verdict, time_ms, memory_kb, message, output, output_sha)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, r.JobID, seq, kind, idx, role, verdict, timeMS, memKB, msg, output, outputSHA)
+		_, err := tx.ExecContext(ctx, `INSERT INTO job_results (job_id, seq, kind, idx, role, verdict, time_ms, memory_kb, message, output, output_sha, stderr)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, r.JobID, seq, kind, idx, role, verdict, timeMS, memKB, msg, output, outputSHA, stderr)
 		if err != nil && strings.Contains(err.Error(), "UNIQUE constraint failed") {
 			return Badf("second result for %s %s %d", kind, Clip(role), idx)
 		}
 		return err
 	}
 	for _, c := range r.Compile {
-		if err := insert("compile", 0, c.Role, c.Verdict, 0, 0, c.Output, "", ""); err != nil {
+		if err := insert("compile", 0, c.Role, c.Verdict, 0, 0, c.Output, "", "", ""); err != nil {
 			return err
 		}
 	}
 	for _, t := range r.Results {
-		if err := insert("test", t.Idx, t.Role, t.Verdict, t.TimeMS, t.MemoryKB, t.Message, t.Output, t.OutputSHA); err != nil {
+		if err := insert("test", t.Idx, t.Role, t.Verdict, t.TimeMS, t.MemoryKB, t.Message, t.Output, t.OutputSHA, t.Stderr); err != nil {
 			return err
 		}
 	}
@@ -763,23 +763,23 @@ func (s *Service) load(ctx context.Context, q queryer, id int64) (Job, error) {
 	if finished.Valid {
 		j.FinishedAt = time.UnixMilli(finished.Int64)
 	}
-	rows, err := q.QueryContext(ctx, `SELECT kind, idx, role, verdict, time_ms, memory_kb, message, output, output_sha FROM job_results
+	rows, err := q.QueryContext(ctx, `SELECT kind, idx, role, verdict, time_ms, memory_kb, message, output, output_sha, stderr FROM job_results
 		WHERE job_id = ? ORDER BY seq`, id)
 	if err != nil {
 		return Job{}, err
 	}
 	defer rows.Close()
 	for rows.Next() {
-		var kind, role, verdict, msg, output, outputSHA string
+		var kind, role, verdict, msg, output, outputSHA, stderr string
 		var idx, timeMS, memKB int
-		if err := rows.Scan(&kind, &idx, &role, &verdict, &timeMS, &memKB, &msg, &output, &outputSHA); err != nil {
+		if err := rows.Scan(&kind, &idx, &role, &verdict, &timeMS, &memKB, &msg, &output, &outputSHA, &stderr); err != nil {
 			return Job{}, err
 		}
 		if kind == "compile" {
 			j.Result.Compile = append(j.Result.Compile, judgeapi.CompileResult{Role: role, Verdict: verdict, Output: msg})
 		} else {
 			j.Result.Tests = append(j.Result.Tests, judgeapi.TestResult{Idx: idx, Role: role, Verdict: verdict,
-				TimeMS: timeMS, MemoryKB: memKB, Message: msg, Output: output, OutputSHA: outputSHA})
+				TimeMS: timeMS, MemoryKB: memKB, Message: msg, Output: output, OutputSHA: outputSHA, Stderr: stderr})
 		}
 	}
 	return j, rows.Err()

@@ -63,18 +63,25 @@ export interface ShortcutGroup {
   items: Shortcut[];
 }
 
+/** The group of editor keys the "Not available" rows belong to; the key test skips it. */
+export const NOT_AVAILABLE = 'Not available, and why';
+
 /**
- * The shortcuts shown in the dialog. Organisers also see the problem editor
- * and the reveal; students never see admin screens, so they do not see
- * those keys either.
+ * The shortcuts shown in the Help dialog: the contract of
+ * cache/v3/design/editor.md section 3. Every row outside "Anywhere",
+ * "Solving a problem" and "Not available" is pressed by
+ * web/tests/editor-keys.spec.ts, which fails on a row it has no check for.
+ * Organisers also see the problem editor and the reveal; students never
+ * see admin screens, so they do not see those keys either.
  */
 export function shortcutGroups(opts: { mac: boolean; organiser: boolean }): ShortcutGroup[] {
   const mod = opts.mac ? 'Cmd' : 'Ctrl';
+  const alt = opts.mac ? 'Option' : 'Alt';
   const groups: ShortcutGroup[] = [
     {
       title: 'Anywhere',
       items: [
-        { keys: ['?'], action: 'Show these shortcuts' },
+        { keys: ['?'], action: 'Show this help' },
         { keys: ['Esc'], action: 'Close a dialog or the menu' },
       ],
     },
@@ -82,11 +89,86 @@ export function shortcutGroups(opts: { mac: boolean; organiser: boolean }): Shor
       title: 'Solving a problem',
       items: [
         { keys: [`${mod}+Enter`], action: 'Submit' },
-        { keys: [`${mod}+'`], action: 'Run on samples, or on your input when the custom input box has focus' },
-        { keys: [`${mod}+S`], action: 'Save the draft now (it also saves every 10 seconds)' },
+        { keys: [`${mod}+'`], action: 'Run on the examples, or on your input when that box has focus' },
+        { keys: [`${mod}+S`], action: 'Save your code now (it also saves every 10 seconds)' },
         { keys: ['Esc', 'Tab'], joiner: 'then', action: 'Leave the code editor' },
         { keys: ['[', ']'], joiner: 'or', action: 'Open the previous or next problem in a contest, when you are not typing' },
         { keys: ['Left arrow', 'Right arrow'], joiner: 'or', action: 'Switch between the Problem, Code and Result tabs on a small screen' },
+      ],
+    },
+    {
+      title: 'Editing',
+      items: [
+        { keys: [`${mod}+Z`], action: 'Undo' },
+        { keys: [`${mod}+Y`, `${mod}+Shift+Z`], joiner: 'or', action: 'Redo' },
+        { keys: [`${mod}+X`], action: 'Cut the selection, or the whole line when nothing is selected' },
+        { keys: [`${mod}+/`], action: 'Comment or uncomment the line or selection' },
+        { keys: [`Shift+${alt}+A`], action: 'Block comment' },
+        { keys: ['Tab', 'Shift+Tab'], joiner: 'or', action: 'Indent or outdent the line or selection' },
+        { keys: [`${mod}+]`, `${mod}+[`], joiner: 'or', action: 'Indent or outdent' },
+        { keys: [`${alt}+Up`, `${alt}+Down`], joiner: 'or', action: 'Move the line up or down' },
+        { keys: [`Shift+${alt}+Up`, `Shift+${alt}+Down`], joiner: 'or', action: 'Copy the line up or down' },
+        { keys: [`${mod}+Shift+K`], action: 'Delete the line' },
+        { keys: [`${mod}+Shift+Enter`], action: 'Insert a line above' },
+        { keys: [opts.mac ? `${alt}+Backspace` : `${mod}+Backspace`], action: 'Delete the word before the cursor' },
+        { keys: [`${mod}+Shift+\\`], action: 'Jump to the matching bracket' },
+        { keys: ['Ctrl+Space'], action: 'Open completion' },
+        { keys: ['Enter', 'Tab'], joiner: 'or', action: 'Accept the completion' },
+        { keys: opts.mac ? [`${mod}+${alt}+[`, `${mod}+${alt}+]`] : [`${mod}+Shift+[`, `${mod}+Shift+]`], joiner: 'or', action: 'Fold or unfold the block' },
+        { keys: [`${mod}+K`, `${mod}+0`], joiner: 'then', action: 'Fold all' },
+        { keys: [`${mod}+K`, `${mod}+J`], joiner: 'then', action: 'Unfold all' },
+        { keys: ['(', '[', '{', '"'], joiner: 'or', action: 'Type the closing bracket or quote too' },
+      ],
+    },
+    {
+      title: 'Selection and cursors',
+      items: [
+        { keys: [`${mod}+A`], action: 'Select all' },
+        { keys: [`${mod}+L`], action: 'Select the line' },
+        { keys: [`${mod}+D`], action: 'Select the word, then the next match on each press' },
+        { keys: [`${mod}+Shift+L`], action: 'Select every match of the selection' },
+        { keys: [`${mod}+U`], action: 'Undo the last cursor move' },
+        { keys: [`${alt}+Click`], action: 'Add a cursor' },
+        { keys: [`${mod}+${alt}+Up`, `${mod}+${alt}+Down`], joiner: 'or', action: 'Add a cursor above or below' },
+        { keys: [`Shift+${alt}+drag`], action: 'Select a box of text' },
+        { keys: [`Shift+${alt}+Right`], action: 'Grow the selection to the enclosing block' },
+        { keys: [`Shift+${alt}+Left`], action: 'Shrink the selection back' },
+        { keys: [`${mod}+Shift+Home`, `${mod}+Shift+End`], joiner: 'or', action: 'Select to the start or the end of the file' },
+      ],
+    },
+    {
+      title: 'Moving around',
+      items: [
+        { keys: ['Ctrl+G'], action: 'Go to a line' },
+        { keys: [`${mod}+Home`, `${mod}+End`], joiner: 'or', action: 'Go to the start or the end of the file' },
+        { keys: ['Home'], action: 'Go to the first character of the line, then column 1' },
+        { keys: [opts.mac ? `${alt}+Right` : `${mod}+Right`], action: 'Go to the next word' },
+        ...(opts.mac ? [] : [{ keys: [`${mod}+Up`, `${mod}+Down`], joiner: 'or' as const, action: 'Scroll a line without moving the cursor' }]),
+        { keys: [`${alt}+Page Up`, `${alt}+Page Down`], joiner: 'or', action: 'Scroll a page without moving the cursor' },
+      ],
+    },
+    {
+      title: 'Find and replace',
+      items: [
+        { keys: [`${mod}+F`], action: 'Find' },
+        { keys: [`${mod}+H`], action: 'Replace' },
+        { keys: ['F3', 'Shift+F3'], joiner: 'or', action: 'Next or previous match' },
+        { keys: ['Enter', 'Shift+Enter'], joiner: 'or', action: 'Next or previous match, in the find box' },
+        { keys: [`${mod}+${alt}+Enter`], action: 'Replace all, in the replace box' },
+        { keys: [`${alt}+C`, `${alt}+W`, `${alt}+R`], joiner: 'or', action: 'Match case, whole word or regular expression, in the find box' },
+        { keys: ['Esc'], action: 'Close find' },
+      ],
+    },
+    {
+      title: NOT_AVAILABLE,
+      items: [
+        { keys: [`${mod}+Shift+P`, 'F1'], joiner: 'or', action: 'Command palette: there is none, the actions are the buttons and these keys' },
+        { keys: [`${mod}+P`], action: 'Quick open: the browser prints' },
+        { keys: [`${mod}+W`, `${mod}+T`, `${mod}+N`, `${mod}+Tab`], joiner: 'or', action: 'Close, open or switch tabs: the browser owns these keys' },
+        { keys: ['F5', `${mod}+R`], joiner: 'or', action: 'The browser reloads the page; your code is kept' },
+        { keys: ['F11'], action: 'Full screen: the browser owns it' },
+        { keys: [`${mod}+Shift+O`, 'F12'], joiner: 'or', action: 'Go to a symbol or a definition: there is no language server' },
+        { keys: [`${mod}+Shift+K`], action: 'In Firefox, Delete line opens the console instead; use Shift+Home then Delete' },
       ],
     },
   ];

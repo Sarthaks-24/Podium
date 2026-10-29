@@ -4,40 +4,37 @@
   design.md 5.3). The page follows the student's own phase on the server's
   clock (lib/contests.ts studentPhase):
 
-  - Before the start, and before they agree (audit 2026-10-20 S3): the
-    countdown as the page's lead figure, then the honour code in a
-    panel (what is recorded and for how long, D47) holding "I agree, start
-    the contest" (POST /api/contests/{slug}/start). Beside it from 1280 px
-    (page-split), below it on smaller screens: the description, the rules
-    as sentences (with the three that teach Run and Submit) and "How the
-    workspace works" with the real VerdictPanel (and its SubtaskStrip) on a
-    fixed example, both closed once the student has started a contest on
-    this device.
+  - Before the start, and before they agree (audit 2026-10-20 S3, B5): the
+    countdown as the page's lead figure, three facts (length, languages,
+    the wait between submissions), the honour code and "I agree, start
+    the contest" (POST /api/contests/{slug}/start), all in the first
+    screen at 375 px. The full rules and how Run and Submit work are in
+    Help (a link under the button, or "?"); the description follows.
     The button waits for the start in a fixed-start contest; when the start
     arrives the announcer says so. A late arrival reads that their time is
     already running.
   - During their window: the shared Workspace on the contest's routes with
-    the rail of problem letters (score and 2 px bar), the contest clock and
-    freeze line, the Standings link and Messages. Exam contests show only
+    the rail of problem letters (score and 2 px bar), the contest clock,
+    the Standings link and Messages. Exam contests show only
     "Submitted". Announcements and answered questions newer than the last
     time the student read the messages on this device (localStorage
     podium-messages-read:{slug}, audit S1) show in a quiet banner above the
     title and as the count on Messages (from 1024 px the
     editor never moves); a second open tab or a second session reported
     by the server shows a notice there too. Exam mode marks submitted
-    problems "submitted" on the rail. "Rules" in the rail opens the same
+    problems "submitted" on the rail. "Rules" in the rail opens Help, which lists the same
     rules (D114). When an organiser moves a problem to a new revision (the
     `statement` event), the open problem's statement reloads; the
     organisers announce the change.
     A frozen contest reads "Live" to students (D84). "[" and "]" open the previous and
     next problem when focus is not in a text field (lib/shortcuts.ts).
-  - After it (audit 2026-10-20 S9): the place as the display figure
+  - After it (audit 2026-10-20 S9, B5): the place as the display figure
     (PlaceFigure), one lead "Ended 21 Oct, 00:11. You scored 40 of 300.",
-    each problem's score, the student's own submissions with the problem
-    of the newest one open, the editorial once published, and practice
-    when the organisers left it open (submissions then do not count
-    towards the standings). Announcements and "Your questions" with their
-    answers sit beside it from 1280 px. A board still frozen after the end
+    then one list of problems, each with its score, opening to "Open" and
+    the student's own submissions, the problem of the newest one open; the
+    editorial once published, and practice when the organisers left it
+    open (submissions then do not count towards the standings). The
+    messages follow, folded. A board still frozen after the end
     gives the place only, never a frozen total beside the live score; when
     the clock ran out on this page, "Time is up" stays on screen.
 
@@ -50,8 +47,6 @@
   import PageHeader from '../components/PageHeader.svelte';
   import { onDestroy, onMount, tick, untrack } from 'svelte';
   import ContestBanner from '../components/ContestBanner.svelte';
-  import RulesDialog from '../components/RulesDialog.svelte';
-  import VerdictPanel from '../components/VerdictPanel.svelte';
   import ContestClock from '../components/ContestClock.svelte';
   import Markdown from '../components/Markdown.svelte';
   import MessagesDialog from '../components/MessagesDialog.svelte';
@@ -69,10 +64,11 @@
     messagesReadAt,
     formatCountdown,
     formatSpan,
-    freezeAt,
     hasAccepted,
     isForContest,
     lengthText,
+    RECORDED_SENTENCE,
+    allowedLanguages,
     rulesSentences,
     startLine,
     studentPhase,
@@ -93,7 +89,7 @@
   import { placeFigure, placeSentence, type Standings } from '../lib/standings';
   import { EventStream, type StreamMode } from '../lib/stream';
   import { refreshTicker, ticker, useTicker } from '../lib/ticker.svelte';
-  import { EXAMPLE_SUBMISSION, type Submission, type Workspace as WorkspaceData } from '../lib/workspace';
+  import { type Submission, type Workspace as WorkspaceData } from '../lib/workspace';
 
   let { slug, label = '' }: { slug: string; label?: string } = $props();
 
@@ -111,10 +107,8 @@
   let sessionNoticeHidden = $state(false);
   let streamMode = $state<StreamMode>('connecting');
   let timeUp = $state(false);
-  let rulesOpen = $state(false);
   /** Raised when the open problem moved to a new revision, so its statement reloads. */
   let statementKey = $state(0);
-  let workspaceSeen = $state(false);
 
   // After the end: the student's place and their submissions per problem.
   let standings = $state.raw<Standings | null>(null);
@@ -143,6 +137,8 @@
 
   $effect(() => {
     shell.workspace = showWorkspace;
+    // Help lists the rules first while a problem is open.
+    shell.rules = contest && phase !== 'after' ? [...rulesSentences(contest), RECORDED_SENTENCE] : null;
   });
 
   function dismissKey(): string {
@@ -164,6 +160,19 @@
     const waiting = banner.filter((i) => i.key !== key);
     if (banner.some((i) => i.key === key) && waiting.length === 0) lastRead = markMessagesRead(slug, Math.max(...banner.map((i) => i.at)));
     const next = new Set([...dismissed, key]);
+    dismissed = next;
+    try {
+      sessionStorage.setItem(dismissKey(), JSON.stringify([...next]));
+    } catch {
+      // Dismissed for this page only.
+    }
+  }
+
+  /** "Dismiss all": every message in the strip counts as read. */
+  function dismissAll() {
+    if (banner.length === 0) return;
+    lastRead = markMessagesRead(slug, Math.max(...banner.map((i) => i.at)));
+    const next = new Set([...dismissed, ...banner.map((i) => i.key)]);
     dismissed = next;
     try {
       sessionStorage.setItem(dismissKey(), JSON.stringify([...next]));
@@ -253,7 +262,6 @@
         serverClock.observe(data.server_now, sent, Date.now());
         refreshTicker();
         contest = { ...data, accepted: data.accepted ?? true };
-        markWorkspaceSeen();
       } else {
         await load(true);
       }
@@ -369,30 +377,12 @@
     navigate(`/contests/${encodeURIComponent(slug)}/problems/${encodeURIComponent(next)}`);
   }
 
-  // "How the workspace works" stays open until the student first starts a contest on this device.
-  function seenKey(): string {
-    return `podium-workspace-seen:${session.user?.id ?? 0}`;
-  }
-
-  function markWorkspaceSeen() {
-    try {
-      localStorage.setItem(seenKey(), '1');
-    } catch {
-      // Shown open again next time; nothing else depends on it.
-    }
-  }
-
   // A second tab with this contest open on this device.
   let channel: BroadcastChannel | null = null;
 
   onMount(() => {
     dismissed = readDismissed();
     lastRead = messagesReadAt(slug);
-    try {
-      workspaceSeen = localStorage.getItem(seenKey()) === '1';
-    } catch {
-      workspaceSeen = false;
-    }
     // Load the Markdown renderer now, so the rules never flash as raw text.
     import('../lib/markdown').catch(() => undefined);
     void load();
@@ -417,6 +407,7 @@
     stream?.stop();
     channel?.close();
     shell.workspace = false;
+    shell.rules = null;
   });
 </script>
 
@@ -426,7 +417,6 @@
   {#if contest?.my_window}
     <ContestClock
       endsAt={contest.my_window.ends_at}
-      freeze={freezeAt(contest)}
       {compact}
       onexpire={() => {
         timeUp = true;
@@ -448,7 +438,7 @@
     </div>
   {/if}
   {#if phase === 'during'}
-    <ContestBanner items={banner} ondismiss={dismiss} onopen={openMessages} />
+    <ContestBanner items={banner} ondismiss={dismiss} ondismissall={dismissAll} onopen={openMessages} />
   {/if}
 {/snippet}
 
@@ -461,7 +451,7 @@
     {exam}
     unread={banner.length}
     onmessages={openMessages}
-    onrules={() => (rulesOpen = true)}
+    onrules={() => (shell.help = true)}
   />
 {/snippet}
 
@@ -501,7 +491,7 @@
         : timeUp
           ? 'Time is up. Your submissions are saved.'
           : practice
-            ? 'Practice is open. Submissions you make now do not count towards the standings.'
+            ? `Practice. Your contest score is still ${currentProblem.my_score ?? 0} of ${currentProblem.max_score}.`
             : 'The contest has ended. You can read the problem and your submissions.'}
       banner={bannerSnippet}
       rail={railSnippet}
@@ -515,7 +505,6 @@
     onclose={() => (messagesOpen = false)}
     onasked={onAsked}
   />
-  <RulesDialog open={rulesOpen} {contest} onclose={() => (rulesOpen = false)} />
 {:else if phase === 'upcoming' || phase === 'ready'}
   <div class="page page-wide">
     <PageHeader title={contest.title} back={{ href: '/', label: 'Your contests' }}>
@@ -526,82 +515,56 @@
       </p>
     </PageHeader>
 
-    <div class="page-split before">
-      <div class="page-split-main">
-        <!-- S3: the countdown is the page's lead figure, then what the student agrees to, then the button. -->
-        {#if phase === 'upcoming' || startNow.kind === 'before'}
-          <p class="countdown"><span class="count-lead">Starts in</span> <span class="mono figure" role="timer">{startNow.ms >= 86_400_000 ? formatSpan(startNow.ms) : formatCountdown(startNow.ms)}</span></p>
-        {:else if startNow.kind === 'window'}
-          <p class="countdown">
-            <span class="count-lead">Start any time before <MonoDigits text={formatDateTime(contest.ends_at)} />. The contest closes in</span>
-            <span class="mono figure" role="timer">{formatCountdown(startNow.ms)}</span>
+    <!-- B5 (S4): the countdown, three facts, the honour code and the button fit one screen; the full rules are in Help. -->
+    <div class="before">
+      {#if phase === 'upcoming' || startNow.kind === 'before'}
+        <p class="countdown"><span class="count-lead">Starts in</span> <span class="mono figure" role="timer">{startNow.ms >= 86_400_000 ? formatSpan(startNow.ms) : formatCountdown(startNow.ms)}</span></p>
+      {:else if startNow.kind === 'window'}
+        <p class="countdown">
+          <span class="count-lead">Start any time before <MonoDigits text={formatDateTime(contest.ends_at)} />. The contest closes in</span>
+          <span class="mono figure" role="timer">{formatCountdown(startNow.ms)}</span>
+        </p>
+      {:else}
+        <p class="countdown">
+          <span class="count-lead">The contest started at <span class="mono">{formatDateTime(contest.starts_at).slice(-5)}</span> and your time is running. It ends in</span>
+          <span class="mono figure" role="timer">{formatCountdown(startNow.ms)}</span>
+        </p>
+      {/if}
+
+      <dl class="facts">
+        <div><dt>Length</dt><dd>{lengthText(contest)}</dd></div>
+        <div><dt>Languages</dt><dd>{allowedLanguages(contest.rules.languages).map((l) => l.label).join(', ')}</dd></div>
+        <div><dt>Wait between submissions</dt><dd><MonoDigits text={`${contest.rules.min_gap_s} s`} /></dd></div>
+      </dl>
+
+      <section class="honour-panel" aria-labelledby="honour-title">
+        <h2 id="honour-title">Honour code</h2>
+        <div class="honour">
+          <Markdown source={contest.honour_text.trim() !== '' ? contest.honour_text : 'Work alone, and do not share code or ideas until the contest ends.'} />
+        </div>
+        <div class="start">
+          <button type="button" class="btn btn-primary" disabled={phase === 'upcoming' || startBusy} aria-describedby="start-help" onclick={start}>
+            I agree, start the contest
+          </button>
+          <p id="start-help" class="muted small">
+            {#if phase === 'upcoming'}
+              You can start at <MonoDigits text={formatDateTime(contest.starts_at)} />.
+            {:else if contest.start_mode === 'window'}
+              Your clock starts when you press it and runs {lengthText(contest).replace(' each', '')}.
+            {:else}
+              Pressing it records that you agreed, then opens the problems.
+            {/if}
           </p>
-        {:else}
-          <p class="countdown">
-            <span class="count-lead">The contest started at <span class="mono">{formatDateTime(contest.starts_at).slice(-5)}</span> and your time is running. It ends in</span>
-            <span class="mono figure" role="timer">{formatCountdown(startNow.ms)}</span>
-          </p>
-        {/if}
-
-        <section class="panel honour-panel" aria-labelledby="honour-title">
-          <h2 id="honour-title">Honour code</h2>
-          <div class="honour">
-            <Markdown source={contest.honour_text.trim() !== '' ? contest.honour_text : 'Work alone, and do not share code or ideas until the contest ends.'} />
-          </div>
-          <div class="start">
-            <button type="button" class="btn btn-primary" disabled={phase === 'upcoming' || startBusy} aria-describedby="start-help" onclick={start}>
-              I agree, start the contest
-            </button>
-            <p id="start-help" class="muted small">
-              {#if phase === 'upcoming'}
-                You can start at <MonoDigits text={formatDateTime(contest.starts_at)} />.
-              {:else if contest.start_mode === 'window'}
-                Your clock starts when you press it and runs {lengthText(contest).replace(' each', '')}.
-              {:else}
-                Pressing it records that you agreed, then opens the problems.
-              {/if}
-            </p>
-            {#if startError}<p class="field-error" role="alert">{startError}</p>{/if}
-          </div>
-        </section>
-        <StreamNotice mode={streamMode} onresume={() => stream?.resume()} />
-      </div>
-
-      <aside class="page-split-aside" aria-label="About this contest">
-        {#if contest.description_md.trim() !== ''}
-          <div class="description"><Markdown source={contest.description_md} /></div>
-        {/if}
-
-        <section aria-labelledby="rules-title">
-          <details class="how" open={!workspaceSeen}>
-            <summary><h2 id="rules-title">Rules</h2></summary>
-            <ul class="rules">
-              {#each rulesSentences(contest) as rule, i (i)}<li>{rule}</li>{/each}
-            </ul>
-          </details>
-        </section>
-
-        <section aria-labelledby="how-title">
-          <details class="how" open={!workspaceSeen}>
-            <summary><h2 id="how-title">How the workspace works</h2></summary>
-            <div class="how-body">
-              <p>
-                Each problem opens with its statement beside the editor. <strong>Run on samples</strong> shows your output next to the
-                expected one. <strong>Submit</strong> sends your code to the judge, and the result appears under the editor.
-              </p>
-              {#if exam}
-                <p>This contest is an exam: after Submit you see only "Submitted". Your scores appear when the contest ends.</p>
-              {:else}
-                <p>After Submit, a result looks like the example below. Each bar is one subtask: it fills when every test in it passes, and its points count only then.</p>
-                <figure class="example" aria-labelledby="example-caption">
-                  <figcaption id="example-caption" class="muted small">An example result, not one of yours</figcaption>
-                  <div class="example-panel"><VerdictPanel submission={EXAMPLE_SUBMISSION} onjump={null} idPrefix="example" /></div>
-                </figure>
-              {/if}
-            </div>
-          </details>
-        </section>
-      </aside>
+          {#if startError}<p class="field-error" role="alert">{startError}</p>{/if}
+        </div>
+      </section>
+      <p class="muted small">
+        <button type="button" class="btn btn-link btn-compact help-link" onclick={() => (shell.help = true)}>Read the rules and how Run and Submit work</button>
+      </p>
+      <StreamNotice mode={streamMode} onresume={() => stream?.resume()} />
+      {#if contest.description_md.trim() !== ''}
+        <div class="description"><Markdown source={contest.description_md} /></div>
+      {/if}
     </div>
   </div>
 {:else}
@@ -622,7 +585,7 @@
 
     <div class="page-split after">
       <div class="page-split-main">
-        <!-- S9: one lead, the place as the display figure, then the problems. -->
+        <!-- S9 and B5 (S7): one lead, the place as the display figure, then one list of problems that open to their submissions. -->
         <section class="result" aria-labelledby="result-title">
           <h2 id="result-title">Your result</h2>
           {#if problems.length === 0}
@@ -637,56 +600,34 @@
             <div class="action-row">
               <a class="btn btn-secondary" href="/contests/{encodeURIComponent(slug)}/standings">See the standings</a>
             </div>
-            <div class="table-wrap results">
-              <table class="table">
-                <caption class="visually-hidden">Your score per problem</caption>
-                <thead>
-                  <tr>
-                    <th scope="col">Problem</th>
-                    <th scope="col" class="right">Score</th>
-                    <th scope="col"><span class="visually-hidden">Open</span></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {#each problems as p (p.label)}
-                    <tr>
-                      <th scope="row">
-                        <span class="mono letter">{p.label}</span>{p.title}
-                      </th>
-                      <td class="right score"><MonoDigits parts={scoreParts(p.my_score ?? 0, p.max_score)} /></td>
-                      <td class="open">
-                        <a class="btn btn-link btn-compact" href="/contests/{encodeURIComponent(slug)}/problems/{encodeURIComponent(p.label)}" aria-label="{practice ? 'Practise' : 'Review'} problem {p.label}">
-                          {practice ? 'Practise' : 'Review'}
-                        </a>
-                      </td>
-                    </tr>
-                  {/each}
-                </tbody>
-              </table>
-            </div>
-          {/if}
-        </section>
-
-        {#if problems.length > 0}
-          <section class="section" aria-labelledby="subs-title">
-            <h2 id="subs-title">Your submissions</h2>
-            <div>
+            <ul class="problem-list" aria-label="Your problems">
               {#each problems as p (p.label)}
                 {@const h = history[p.label]}
-                <details class="subs" open={latestLabel === p.label} ontoggle={(e) => onToggle(e, p.label)}>
-                  <summary>Problem {p.label}: {p.title}</summary>
-                  {#if h === 'loading' || h === undefined}
-                    <p class="muted small" role="status">Loading submissions</p>
-                  {:else if h === 'error'}
-                    <p class="field-error">Your submissions could not load. Close and open this again.</p>
-                  {:else}
-                    <SubmissionList submissions={h} onjump={null} exam={exam} showScores />
-                  {/if}
-                </details>
+                <li>
+                  <details class="subs" open={latestLabel === p.label} ontoggle={(e) => onToggle(e, p.label)}>
+                    <summary>
+                      <span class="mono letter">{p.label}</span>
+                      <span class="ptitle">{p.title}</span>
+                      <span class="score"><MonoDigits parts={scoreParts(p.my_score ?? 0, p.max_score)} /></span>
+                    </summary>
+                    <div class="subs-body">
+                      <a class="btn btn-secondary btn-compact" href="/contests/{encodeURIComponent(slug)}/problems/{encodeURIComponent(p.label)}" aria-label="Open problem {p.label}">Open</a>
+                      {#if (p.my_submission_count ?? 0) === 0}
+                        <p class="muted small">Not tried.</p>
+                      {:else if h === 'loading' || h === undefined}
+                        <p class="muted small" role="status">Loading submissions</p>
+                      {:else if h === 'error'}
+                        <p class="field-error">Your submissions could not load. Close and open this again.</p>
+                      {:else}
+                        <SubmissionList submissions={h} onjump={null} exam={exam} showScores />
+                      {/if}
+                    </div>
+                  </details>
+                </li>
               {/each}
-            </div>
-          </section>
-        {/if}
+            </ul>
+          {/if}
+        </section>
 
         {#if contest.editorial_md && contest.editorial_md.trim() !== ''}
           <section class="section" aria-labelledby="editorial-title">
@@ -694,13 +635,14 @@
             <Markdown source={contest.editorial_md} />
           </section>
         {/if}
-      </div>
 
-      {#if (contest.announcements ?? []).length > 0 || (contest.my_clarifications ?? []).length > 0 || (contest.public_clarifications ?? []).length > 0}
-        <aside class="page-split-aside" aria-label="Messages">
-          <MessageList {contest} level={2} idPrefix="page-msg" framed />
-        </aside>
-      {/if}
+        {#if (contest.announcements ?? []).length > 0 || (contest.my_clarifications ?? []).length > 0 || (contest.public_clarifications ?? []).length > 0}
+          <details class="section messages-fold">
+            <summary><h2 class="fold-title">Messages</h2></summary>
+            <MessageList {contest} level={3} idPrefix="page-msg" />
+          </details>
+        {/if}
+      </div>
     </div>
   </div>
 {/if}
@@ -731,7 +673,44 @@
   }
 
   .before {
-    margin-top: var(--space-5);
+    display: grid;
+    gap: var(--space-4);
+    min-width: 0;
+    max-width: var(--measure-form);
+    margin-top: var(--space-4);
+  }
+
+  /* B5: three facts in one row from 768 px, one per line on a phone. */
+  .facts {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2) var(--space-5);
+    margin: 0;
+  }
+
+  .facts div {
+    display: grid;
+    gap: 0;
+  }
+
+  .facts dt {
+    color: var(--ink-muted);
+    font-size: var(--fs-0);
+  }
+
+  .facts dd {
+    margin: 0;
+  }
+
+  .honour-panel h2 {
+    font-size: var(--fs-2);
+  }
+
+  .help-link {
+    height: auto;
+    margin-inline-start: calc(-1 * var(--space-3));
+    text-align: start;
+    white-space: normal;
   }
 
   /* S3: the countdown is the page's lead figure, digits in mono, words in Grotesk. */
@@ -764,44 +743,11 @@
     font-size: var(--fs-3);
   }
 
-  .rules {
-    display: grid;
-    gap: var(--space-2);
-    padding-left: var(--space-5);
-  }
-
-  .how summary {
-    width: fit-content;
-    border-radius: var(--radius);
-    cursor: pointer;
-  }
-
-  .how summary h2 {
-    display: inline;
-  }
-
-  .how-body {
-    display: grid;
-    gap: var(--space-3);
-    margin-top: var(--space-3);
-  }
-
-  .example {
-    display: grid;
-    gap: var(--space-2);
-    margin: 0;
-    padding: var(--space-4);
-    border: var(--rule) solid var(--line);
-    background: var(--surface);
-  }
-
   .start {
     display: grid;
     justify-items: start;
     gap: var(--space-2);
-    margin-top: var(--space-2);
-    padding-top: var(--space-4);
-    border-top: var(--rule) solid var(--line);
+    margin-top: var(--space-3);
   }
 
   .time-up {
@@ -835,8 +781,11 @@
     font-size: var(--fs-2);
   }
 
-  .results {
-    margin-top: var(--space-2);
+  .problem-list {
+    margin: var(--space-2) 0 0;
+    padding: 0;
+    list-style: none;
+    border-top: var(--rule) solid var(--line);
   }
 
   .letter {
@@ -845,17 +794,8 @@
     font-weight: 400;
   }
 
-  .right,
-  .table .right {
-    text-align: right;
-  }
-
   .score {
-    white-space: nowrap;
-  }
-
-  .open {
-    width: 1%;
+    margin-inline-start: auto;
     white-space: nowrap;
   }
 
@@ -864,6 +804,9 @@
   }
 
   .subs summary {
+    display: flex;
+    align-items: baseline;
+    gap: var(--space-2);
     min-height: var(--control-h-touch);
     padding-block: var(--space-2);
     border-radius: var(--radius);
@@ -872,7 +815,27 @@
     cursor: pointer;
   }
 
-  .subs[open] {
+  .ptitle {
+    min-width: 0;
+  }
+
+  .subs-body {
+    display: grid;
+    gap: var(--space-3);
     padding-bottom: var(--space-3);
+  }
+
+  .subs-body > .btn {
+    justify-self: start;
+  }
+
+  .messages-fold summary {
+    width: fit-content;
+    border-radius: var(--radius);
+    cursor: pointer;
+  }
+
+  .fold-title {
+    display: inline;
   }
 </style>
