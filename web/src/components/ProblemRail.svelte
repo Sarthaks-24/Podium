@@ -14,19 +14,22 @@
   the Messages button with its unread count, all quiet buttons with no
   underline (the control system in styles/controls.css). Each link keeps one sentence for
   screen readers (sentence()).
-  With `layout` "strip" it draws only the workspace's sticky strip part
-  under 1024 px (P5 F7.2, D114): links to the previous and next problem,
-  the chevron and the letter on phones, "Previous A" and "Next C" from 768
-  px, built with the same adjacentLabel() as the "[" and "]" keys.
-  Props: `problems`, `slug`, `current` (the open label), `layout` ("wide",
+  With `layout` "strip" it draws the one sticky row under 1024 px (B4,
+  V3-14): the problem letters with their scores (scrolling sideways when
+  there are many), the contest clock (`clock`), and a Menu holding
+  Standings, Messages with its count, Help and Leave, so the site header
+  and the link row can go and the statement starts at once.
+  Props: `problems`, `slug`, `current` (the open label), `clock` (a
+  snippet for the strip, optional), `layout` ("wide",
   "tablet", "phone" or "strip"), `exam`, `unread` (messages not yet seen),
   `onmessages` (opens the messages panel), `onhelp` (optional; opens Help)
   and `onstandings` (optional; opens the standings panel instead of the
   page).
 -->
 <script lang="ts">
+  import type { Snippet } from 'svelte';
   import { railStatus, type ContestProblem } from '../lib/contests';
-  import { adjacentLabel } from '../lib/shortcuts';
+  import { dismissable } from '../lib/dismissable';
   import Icon from './Icon.svelte';
 
   interface Props {
@@ -39,14 +42,21 @@
     onmessages: () => void;
     onhelp?: () => void;
     onstandings?: () => void;
+    clock?: Snippet;
   }
 
-  let { problems, slug, current, layout, exam = false, unread = 0, onmessages, onhelp, onstandings }: Props = $props();
+  let { problems, slug, current, layout, exam = false, unread = 0, onmessages, onhelp, onstandings, clock }: Props = $props();
 
   const base = $derived(`/contests/${encodeURIComponent(slug)}`);
-  const labels = $derived(problems.map((p) => p.label));
-  const prev = $derived(problems.find((p) => p.label === adjacentLabel(labels, current, -1)) ?? null);
-  const next = $derived(problems.find((p) => p.label === adjacentLabel(labels, current, 1)) ?? null);
+  let menuOpen = $state(false);
+  let menuButton: HTMLButtonElement | undefined = $state();
+
+  /** Closes the menu, gives focus back to its button, then runs the item (the dialog returns focus there, P8). */
+  function pick(fn: (() => void) | undefined) {
+    menuOpen = false;
+    menuButton?.focus();
+    fn?.();
+  }
 
   function href(label: string): string {
     return `${base}/problems/${encodeURIComponent(label)}`;
@@ -82,22 +92,39 @@
 </script>
 
 {#if layout === 'strip'}
-  <nav class="step-nav" aria-label="Previous and next problem">
-    {#if prev}
-      <a class="btn btn-quiet btn-compact step" href={href(prev.label)}
-        ><Icon name="chevron-left" /><span class="step-word">Previous </span><span class="mono">{prev.label}</span><span
-          class="visually-hidden">, {prev.title}</span
-        ></a
-      >
-    {/if}
-    {#if next}
-      <a class="btn btn-quiet btn-compact step" href={href(next.label)}
-        ><span class="step-word">Next </span><span class="mono">{next.label}</span><span class="visually-hidden">, {next.title}</span><Icon
-          name="chevron-right"
-        /></a
-      >
-    {/if}
-  </nav>
+  <div class="row">
+    <nav class="chips" aria-label="Problems">
+      <ul class="problems">
+        {#each problems as p (p.label)}
+          <li>
+            <a class="problem" href={href(p.label)} aria-current={p.label === current ? 'page' : undefined} aria-label={sentence(p)} title={p.title}>
+              <span class="mono letter">{p.label}</span>
+              <span class="mono score" class:sent={scoreText(p) === 'Submitted'}>{scoreText(p)}</span>
+              <span class="bar" aria-hidden="true"><span class="fill" class:part={partial(p)} style:width="{percent(p)}%"></span></span>
+            </a>
+          </li>
+        {/each}
+      </ul>
+    </nav>
+    {#if clock}<div class="row-clock">{@render clock()}</div>{/if}
+    <div class="menu" use:dismissable={{ open: menuOpen, onclose: () => (menuOpen = false), trigger: menuButton }}>
+      <button type="button" class="btn btn-quiet btn-compact" aria-expanded={menuOpen} aria-controls="strip-menu" bind:this={menuButton} onclick={() => (menuOpen = !menuOpen)}>
+        Menu{#if unread > 0}<span class="mono count">{unread}</span><span class="visually-hidden">&nbsp;unread messages</span>{/if}
+      </button>
+      <ul id="strip-menu" class="menu-panel" hidden={!menuOpen}>
+        <li>
+          {#if onstandings}<button type="button" class="item" onclick={() => pick(onstandings)}>Standings</button>{:else}<a class="item" href="{base}/standings?from={encodeURIComponent(current)}">Standings</a>{/if}
+        </li>
+        <li>
+          <button type="button" class="item" onclick={() => pick(onmessages)}>
+            Messages{#if unread > 0}<span class="mono count">{unread}</span><span class="visually-hidden">&nbsp;unread</span>{/if}
+          </button>
+        </li>
+        {#if onhelp}<li><button type="button" class="item" onclick={() => pick(onhelp)}>Help</button></li>{/if}
+        <li><a class="item" href="/">Leave</a></li>
+      </ul>
+    </div>
+  </div>
 {:else}
 <nav class="rail-nav" class:wide={layout === 'wide'} aria-label="Problems">
   <ul class="problems">
@@ -320,30 +347,71 @@
     margin-inline-start: calc(-1 * var(--space-3));
   }
 
-  /* The strip under 1024 px (F7.2): Previous and Next at touch height. */
-  .step-nav {
+  /* The one row under 1024 px (B4): the letters scroll, the clock and Menu stay. */
+  .row {
     display: flex;
     align-items: center;
-    gap: var(--space-1);
-    margin-inline-start: auto;
+    gap: var(--space-2);
+    min-width: 0;
+    width: 100%;
   }
 
-  .step {
+  .chips {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .row .problem {
+    padding-inline: var(--space-2);
+  }
+
+  .row-clock {
+    flex: none;
+  }
+
+  .menu {
+    position: relative;
+    flex: none;
+  }
+
+  .menu-panel {
+    position: absolute;
+    inset-inline-end: 0;
+    top: calc(100% + var(--space-1));
+    z-index: var(--z-bar);
+    display: grid;
+    min-width: 12rem;
+    margin: 0;
+    padding: var(--space-1);
+    list-style: none;
+    border: var(--rule) solid var(--line);
+    border-radius: var(--radius);
+    background: var(--surface);
+    box-shadow: var(--shadow-menu);
+  }
+
+  .menu-panel[hidden] {
+    display: none;
+  }
+
+  .item {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    width: 100%;
     min-height: var(--control-h-touch);
-    gap: var(--space-1);
+    padding-inline: var(--space-3);
+    border: 0;
+    border-radius: var(--radius);
+    background: none;
     color: var(--ink);
+    font: inherit;
+    text-align: start;
+    text-decoration: none;
   }
 
-  /* On phones the chevron and the letter carry it; the word stays for screen readers. */
-  @media (width < 768px) {
-    .step-word {
-      position: absolute;
-      width: 1px;
-      height: 1px;
-      overflow: hidden;
-      clip-path: inset(50%);
-      white-space: nowrap;
-    }
+  .item:hover {
+    background: var(--surface-2);
   }
 
   /* Forced colours drop the tint and the bar fills: the current problem

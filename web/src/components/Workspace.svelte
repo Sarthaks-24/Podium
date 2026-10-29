@@ -134,8 +134,6 @@
   let alive = true;
   let confirmReset = $state(false);
 
-  // The server says why Run and Submit are off when they are; `locked` is the fallback.
-  const lockText = $derived(ws?.refusal ? ws.refusal : locked);
   const exam = $derived(feedback === 'exam');
 
   const judging = new Judging({
@@ -154,6 +152,10 @@
   // Layout: from 1024 px three columns, from 768 px two tabs, under it three.
   let layout = $state<'wide' | 'tablet' | 'phone'>('wide');
   let tab = $state<'problem' | 'code' | 'result'>('problem');
+  // Under 1024 px code is read, not written (V3-14, owner answer 2).
+  const NARROW = 'Use a computer to edit, run or submit.';
+  // The server says why Run and Submit are off when they are; `locked` is the fallback.
+  const lockText = $derived(ws?.refusal ? ws.refusal : layout !== 'wide' ? NARROW : locked);
   // A short laptop starts with a smaller result, so the editor keeps its height (F7.3).
   const panel = readResultPanel(draftStorage(), typeof window !== 'undefined' && media('short').matches ? 30 : RESULT_SHARE.default);
   let resultShare = $state(panel.share);
@@ -437,7 +439,6 @@
         {tab}
         ontab={(t) => (tab = t)}
         judging={!!judging.current && isWaiting(judging.current)}
-        submit={submitButton}
       />
     {/snippet}
     {#snippet statement()}
@@ -445,6 +446,9 @@
       <Statement markdown={problem.statement_md} samples={problem.samples} />
     {/snippet}
     {#snippet code()}
+      {#if layout !== 'wide'}
+        <p class="narrow">{NARROW}</p>
+      {:else}
       <Toolbar
         {languages}
         language={draft.pendingLanguage ?? draft.language}
@@ -455,8 +459,9 @@
         locked={lockText}
         runBusy={judging.runBusy}
         onrun={() => judging.runExamples()}
-        submit={layout === 'wide' ? submitButton : undefined}
+        submit={submitButton}
       />
+      {/if}
       <div class="editor-box">
         <CodeEditor
           bind:this={editor}
@@ -467,6 +472,7 @@
           tabMovesFocus={draft.tabMovesFocus}
           tabSize={draft.tabSize}
           wrap={draft.wrap}
+          readOnly={layout !== 'wide'}
           oncursor={(line, col) => (draft.cursor = { line, col })}
           onchange={(s) => draft.change(s)}
           ontyped={(n) => integrity?.typedChars(n)}
@@ -550,6 +556,12 @@
     display: grid;
     gap: var(--space-3);
     max-width: var(--measure-form);
+  }
+
+  .narrow {
+    padding-bottom: var(--space-2);
+    color: var(--ink-muted);
+    font-size: var(--fs-0);
   }
 
   .limits {

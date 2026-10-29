@@ -4,6 +4,11 @@ Dated entries per release. Unreleased work is listed at the top.
 
 ## Unreleased
 
+### v3 stage B4: the phone row (2026-10-29)
+
+- Under 1024 px a contest problem drops the site header for one sticky row: each problem's letter and score, the clock, and a Menu with Standings, Messages, Help and Leave. The Problem, Code and Result tabs follow, then the title and the statement at once (the title sits about 110 px down at 375 px, was 450).
+- Phones and tablets read code but do not write it (V3-14, owner answer 2): the editor is read-only with no on-screen keyboard, the Code tab says "Use a computer to edit, run or submit.", and Run and Submit are not offered under 1024 px.
+
 ### v3 stage B3: standings and messages as panels (2026-10-29)
 
 - During a contest Standings opens as a panel over the editor column; Escape closes it and the problem stays. The standings page remains for after the end.

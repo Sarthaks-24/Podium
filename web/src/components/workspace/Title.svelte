@@ -2,8 +2,9 @@
   Title: the workspace's title row. A contest's banner sits above it (so
   from 1024 px it never moves the editor), then the problem letter and
   title as the page's h1, and from 1024 px the limits line under it. Under
-  1024 px the back link sits above the title, the note takes the clock's
-  place when there is no clock, and the contest's problems follow. Props:
+  1024 px the back link sits above the title outside a contest (a contest's
+  row has Leave), the letter is for screen readers only, and the note
+  takes the clock's place when there is no clock. Props:
   `layout`, `banner` and `rail` (snippets, optional), `label` (the problem
   letter, or ""), `title`, `limits`, `back` ({ href, label }), `note` and
   `hasClock`.
@@ -32,13 +33,13 @@
 <div class="title-area">
   {#if banner}<div class="banner-slot">{@render banner()}</div>{/if}
   <div class="title-main">
-    <PageHeader compact back={wide ? null : back}>
-      {#snippet heading()}{#if label}<span class="mono letter">{label}</span><span class="visually-hidden">.&nbsp;</span>{/if}{title}{/snippet}
+    <!-- Under 1024 px a contest's row carries the letter and Leave (B4): the title is the title. -->
+    <PageHeader compact back={wide || rail ? null : back}>
+      {#snippet heading()}{#if label}<span class="mono letter" class:hidden-narrow={!wide}>{label}</span><span class="visually-hidden">.&nbsp;</span>{/if}{title}{/snippet}
     </PageHeader>
     {#if wide}<p class="limits">{limits}</p>{/if}
   </div>
   {#if !wide && !hasClock && note}<p class="note">{note}</p>{/if}
-  {#if !wide && rail}<div class="rail-inline">{@render rail(layout)}</div>{/if}
 </div>
 
 <style>
@@ -73,10 +74,18 @@
     font-weight: 400;
   }
 
-  .banner-slot,
-  .rail-inline {
+  .banner-slot {
     flex-basis: 100%;
     min-width: 0;
+  }
+
+  .hidden-narrow {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
   }
 
   .banner-slot:empty {

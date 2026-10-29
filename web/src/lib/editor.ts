@@ -146,6 +146,8 @@ export interface EditorOptions extends EditorCallbacks {
   tabMovesFocus: boolean;
   tabSize?: 2 | 4;
   wrap?: boolean;
+  /** Under 1024 px code is read, not written (V3-14): no edits, and no on-screen keyboard. */
+  readOnly?: boolean;
 }
 
 /** The handle the component keeps. */
@@ -154,6 +156,7 @@ export interface EditorHandle {
   setTabMovesFocus(on: boolean): void;
   setTabSize(size: 2 | 4): void;
   setWrap(on: boolean): void;
+  setReadOnly(on: boolean): void;
   /** Replaces the whole document; not counted as typing. */
   setDoc(doc: string): void;
   getDoc(): string;
@@ -279,6 +282,8 @@ export function createEditor(o: EditorOptions): EditorHandle {
   const tabConf = new Compartment();
   const tabSizeConf = new Compartment();
   const wrapConf = new Compartment();
+  const readOnlyConf = new Compartment();
+  const readOnlyExt = (on: boolean) => (on ? [EditorState.readOnly.of(true), EditorView.editable.of(false)] : []);
 
   // Podium's own keys win over VS Code's (Mod-Enter would insert a line there).
   const own = keymap.of([
@@ -320,6 +325,7 @@ export function createEditor(o: EditorOptions): EditorHandle {
         phrases,
         tabSizeConf.of(tabSizeExt(o.tabSize ?? 4)),
         wrapConf.of(o.wrap ? EditorView.lineWrapping : []),
+        readOnlyConf.of(readOnlyExt(o.readOnly ?? false)),
         own,
         tabConf.of(tabKeys(o.tabMovesFocus)),
         keymap.of([{ key: 'Escape', run: closeShownCompletion }, ...closeBracketsKeymap, ...extraKeys, ...vscodeKeys, ...defaultKeymap, ...historyKeymap]),
@@ -375,6 +381,9 @@ export function createEditor(o: EditorOptions): EditorHandle {
     },
     setWrap(on) {
       view.dispatch({ effects: wrapConf.reconfigure(on ? EditorView.lineWrapping : []) });
+    },
+    setReadOnly(on) {
+      view.dispatch({ effects: readOnlyConf.reconfigure(readOnlyExt(on)) });
     },
     setDoc(doc) {
       if (doc === view.state.doc.toString()) return;

@@ -1,11 +1,12 @@
 <!--
   Strip: under 1024 px one strip sticks to the top of the window (F7.2,
-  audit S7): the contest clock with the previous and next problem, then
-  the Problem, Code (and under 768 px Result) tabs and Submit, so Submit
-  is never a tab away. Its height sets the page's scroll padding while it
-  sticks (X3, base.css). Props: `layout`, `clock` and `rail` (snippets,
-  optional), `tab`, `ontab`, `judging` (true while the shown submission is
-  being judged: the Result tab carries a dot) and `submit` (a snippet).
+  B4): a contest's one row (the problem letters, the clock and the Menu,
+  drawn by the contest's `rail` snippet) or, without one, the clock, then
+  the Problem, Code (and under 768 px Result) tabs. Run and Submit are not
+  offered under 1024 px (V3-14). Its height sets the page's scroll padding
+  while it sticks (X3, base.css). Props: `layout`, `clock` and `rail`
+  (snippets, optional), `tab`, `ontab` and `judging` (true while the shown
+  submission is being judged: the Result tab carries a dot).
 -->
 <script lang="ts">
   import type { Snippet } from 'svelte';
@@ -21,10 +22,9 @@
     tab: Tab;
     ontab: (tab: Tab) => void;
     judging: boolean;
-    submit: Snippet;
   }
 
-  let { layout, clock, rail, tab, ontab, judging, submit }: Props = $props();
+  let { layout, clock, rail, tab, ontab, judging }: Props = $props();
 
   const tabs = $derived(
     layout === 'phone'
@@ -43,16 +43,12 @@
 </script>
 
 <div class="strip" data-sticky-bar use:publishHeight={'--sticky-bar-h'}>
-  {#if clock || rail}
-    <div class="strip-top">
-      {#if clock}<div class="strip-clock">{@render clock(true)}</div>{/if}
-      {#if rail}{@render rail('strip')}{/if}
-    </div>
+  {#if rail}
+    <div class="strip-top">{@render rail('strip')}</div>
+  {:else if clock}
+    <div class="strip-top"><div class="strip-clock">{@render clock(true)}</div></div>
   {/if}
-  <div class="strip-tabs">
-    <Tabs {tabs} selected={tab} onselect={ontab} label="Workspace" idPrefix="ws-tab" {controls} compact={layout === 'phone'} />
-    {@render submit()}
-  </div>
+  <Tabs {tabs} selected={tab} onselect={ontab} label="Workspace" idPrefix="ws-tab" {controls} compact={layout === 'phone'} />
 </div>
 
 <style>
@@ -61,7 +57,7 @@
     top: 0;
     z-index: var(--z-sticky);
     display: grid;
-    margin-top: var(--space-3);
+    grid-template-columns: minmax(0, 1fr);
     margin-inline: calc(-1 * var(--gutter));
     padding-inline: var(--gutter);
     border-bottom: var(--rule) solid var(--line);
@@ -82,28 +78,4 @@
     padding-block: var(--space-1);
   }
 
-  .strip-tabs {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    justify-content: space-between;
-    gap: 0 var(--space-2);
-  }
-
-  .strip-tabs :global(.submit) {
-    margin-block: var(--space-1);
-  }
-
-  /* On a phone the row holds the three tabs and Submit: the word carries
-     Submit, and the button may grow while it counts down, since it ends
-     the row and moves nothing. */
-  @media (width < 768px) {
-    .strip-tabs :global(.submit) {
-      min-width: 0;
-    }
-
-    .strip-tabs :global(.submit svg) {
-      display: none;
-    }
-  }
 </style>

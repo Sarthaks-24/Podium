@@ -40,8 +40,9 @@
 
 <div class="ws" data-layout={layout}>
   {#if wide && side}<aside class="rail" aria-label="Problem">{@render side()}</aside>{/if}
-  <div class="title-cell">{@render title()}</div>
+  <!-- Under 1024 px the sticky row comes first, then the title and the statement at once (B4). -->
   {#if !wide && strip}{@render strip()}{/if}
+  <div class="title-cell">{@render title()}</div>
 
   <section
     id="ws-problem"

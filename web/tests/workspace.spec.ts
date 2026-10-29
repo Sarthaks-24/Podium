@@ -221,19 +221,16 @@ test('after a run that did not compile, Submit asks once and the empty sample ro
 test('a compile error line jumps to the editor', async ({ page }) => {
   const source = 'int main() {\n    int a\n    return 0;\n}\n';
   const api = await mockApi(page, { draft: { language: 'cpp17', source } });
-  await page.setViewportSize({ width: 375, height: 812 });
+  await page.setViewportSize({ width: 1440, height: 900 });
   await openWorkspace(page);
-  await page.getByRole('tab', { name: 'Code' }).click();
   await page.getByRole('button', { name: 'Submit', exact: true }).click();
-  await expect(page.getByRole('tab', { name: /Result/ })).toHaveAttribute('aria-selected', 'true');
+  await expect.poll(() => api.submits.length).toBe(1);
   api.stream.push({ type: 'submission', data: submission(20, 'ce') });
-
   const jump = page.getByRole('button', { name: 'main.cpp:3:5, go to line 3, column 5 in the editor', exact: true });
   await expect(jump).toBeVisible({ timeout: 10_000 });
   await expect(page.getByText('Compile error', { exact: true }).first()).toBeVisible();
-  await page.screenshot({ path: `${shots()}workspace-compile-error-375-light.png`, fullPage: true });
+  await page.screenshot({ path: `${shots()}workspace-compile-error-1440-light.png` });
   await jump.click();
-  await expect(page.getByRole('tab', { name: 'Code' })).toHaveAttribute('aria-selected', 'true');
   await expect(codeEditor(page)).toBeFocused();
   await expect(page.locator('.cm-activeLine')).toHaveText('    return 0;');
 });
@@ -430,7 +427,7 @@ test('a missing problem says so', async ({ page }) => {
   await expect(page.locator('h1')).toHaveCount(1);
 });
 
-test('on small screens the tabs follow the arrow keys, and Submit opens the result', async ({ page }) => {
+test('on small screens the tabs follow the arrow keys, and the code is read, not written (B4)', async ({ page }) => {
   const api = await mockApi(page);
   await page.setViewportSize({ width: 375, height: 812 });
   await openWorkspace(page);
@@ -451,29 +448,17 @@ test('on small screens the tabs follow the arrow keys, and Submit opens the resu
   await expect(tab('Problem')).toHaveAttribute('aria-selected', 'true');
   await expect(page.getByRole('tabpanel', { name: 'Problem' })).toBeVisible();
 
-  // Submitting from the Code tab opens the Result tab.
+  // V3-14: under 1024 px the code is read-only and Run and Submit are not offered.
   await tab('Code').click();
-  await codeEditor(page).click();
+  await expect(page.getByText('Use a computer to edit, run or submit.')).toBeVisible();
+  await expect(page.getByRole('button', { name: /^(Run|Submit)$/ })).toHaveCount(0);
+  await expect(codeEditor(page)).toHaveAttribute('contenteditable', 'false');
   await page.keyboard.press('Control+Enter');
-  await expect.poll(() => api.submits.length).toBe(1);
-  await expect(tab('Result')).toHaveAttribute('aria-selected', 'true');
-  await expect(page.getByRole('tabpanel', { name: 'Result' })).toBeVisible();
-
-  // The result is still announced while another tab is showing.
-  await tab('Problem').click();
-  const live = page.locator('[data-announcer="polite"]');
-  await expect(live).not.toHaveText('');
-  expect(await live.evaluate((el) => el.closest('[hidden]') === null)).toBe(true);
-
-  // On a tablet, a submit from the Problem tab opens the Code tab, where the result sits.
+  await page.waitForTimeout(300);
+  expect(api.submits).toHaveLength(0);
   await page.setViewportSize({ width: 800, height: 900 });
-  await expect(page.getByRole('tab')).toHaveCount(2);
-  await tab('Problem').click();
-  await page.locator('main h1').focus();
-  // The first submit has finished: Submit is ready again (C1-024, no fixed sleep).
-  await expect(page.locator('button.submit:visible')).not.toHaveAttribute('aria-disabled', 'true');
-  await page.keyboard.press('Control+Enter');
-  await expect(tab('Code')).toHaveAttribute('aria-selected', 'true');
+  await expect(page.getByRole('tablist', { name: 'Workspace' }).getByRole('tab')).toHaveCount(2);
+  await expect(page.getByText('Use a computer to edit, run or submit.')).toBeVisible();
 });
 
 // F9: state is a shape. In forced colours the selected tab keeps a solid
@@ -688,48 +673,57 @@ test.describe('in a contest', () => {
 // resizable result panel, the sign-out guard, the editor hint, lazy
 // language packs, reset to starter and the revealed test (D115).
 test.describe('P5 workspace', () => {
-  test('on a phone the student link row stays out of the workspace (audit S7)', async ({ page }) => {
+  test('under 1024 px a contest problem drops the site header for its own row (B4)', async ({ page }) => {
     await contests.mockApi(page, { phase: 'during' });
     await page.setViewportSize({ width: 375, height: 812 });
     await page.goto('/contests/week-6/problems/B');
     await expect(codeEditor(page)).toHaveAttribute('data-language', /.+/);
-    const nav = page.getByRole('navigation', { name: 'Main' });
-    await expect(nav).toBeHidden();
-    // One header row: the word-mark, Notices and Account.
-    const wordmark = (await page.locator('.wordmark').boundingBox())!;
-    const header = (await page.locator('header.bar').boundingBox())!;
-    expect(header.height).toBeLessThan(wordmark.height * 2 + 24);
-    await expect(page.getByRole('link', { name: 'podium' })).toBeVisible();
-    // Outside the workspace, and from 768 px, the links show.
+    await expect(page.locator('header.bar')).toBeHidden();
     await page.setViewportSize({ width: 800, height: 900 });
-    await expect(nav).toBeVisible();
+    await expect(page.locator('header.bar')).toBeHidden();
+    // From 1024 px the site header is back.
+    await page.setViewportSize({ width: 1024, height: 900 });
+    await expect(page.locator('header.bar')).toBeVisible();
+    // Outside the workspace the header shows on a phone too.
     await page.setViewportSize({ width: 375, height: 812 });
-    await page.getByRole('link', { name: 'podium' }).click();
+    await page.getByRole('button', { name: /^Menu/ }).click();
+    await page.getByRole('link', { name: 'Leave' }).click();
     await expect(page).toHaveURL('/');
+    await expect(page.locator('header.bar')).toBeVisible();
   });
 
-  test('under 1024 px one strip holds the clock, previous and next, the tabs and Submit (F7.2)', async ({ page }) => {
+  test('under 1024 px one row holds the problems, the clock and the menu, and the statement starts at once (B4)', async ({ page }) => {
     await contests.mockApi(page, { phase: 'during' });
+    for (const width of [375, 768]) {
+      await page.setViewportSize({ width, height: width < 768 ? 812 : 1024 });
+      await page.goto('/contests/week-6/problems/B');
+      await expect(codeEditor(page)).toHaveAttribute('data-language', /.+/);
+      // The proof (B4): the problem's heading is in the first screen, no scrolling.
+      await expect(page.getByRole('heading', { level: 1 })).toBeInViewport();
+      const top = (await page.getByRole('heading', { level: 1 }).boundingBox())!.y;
+      expect(top, `title y at ${width}`).toBeLessThan(200);
+    }
     await page.setViewportSize({ width: 375, height: 812 });
-    await page.goto('/contests/week-6/problems/B');
-    await expect(codeEditor(page)).toHaveAttribute('data-language', /.+/);
     const strip = page.locator('[data-sticky-bar]');
     await expect(strip.getByRole('timer')).toBeVisible();
-    await expect(strip.getByRole('link', { name: /^Previous A\s*, A plus B$/ })).toBeVisible();
-    await expect(strip.getByRole('link', { name: /^Next C\s*, Shortest detour$/ })).toBeVisible();
-    // On a phone the chevron and the letter show; the words are for screen readers.
-    await expect(strip.getByRole('link', { name: /^Previous A/ })).toHaveText(/Previous\s*A/);
+    const chips = strip.getByRole('navigation', { name: 'Problems' }).getByRole('link');
+    await expect(chips).toHaveCount(3);
+    await expect(chips.nth(1)).toHaveAttribute('aria-current', 'page');
     await expect(strip.getByRole('tab')).toHaveText(['Problem', 'Code', 'Result']);
-    // One Submit on the page, in the strip, on the same row as the tabs.
-    const submit = page.getByRole('button', { name: 'Submit', exact: true });
-    await expect(submit).toHaveCount(1);
-    await expect(strip.getByRole('button', { name: 'Submit', exact: true })).toBeVisible();
-    const tabBox = (await strip.getByRole('tab', { name: 'Result' }).boundingBox())!;
-    const submitBox = (await submit.boundingBox())!;
-    expect(Math.abs(tabBox.y + tabBox.height / 2 - (submitBox.y + submitBox.height / 2))).toBeLessThan(8);
+    await expect(page.getByRole('button', { name: 'Submit', exact: true })).toHaveCount(0);
+    // The letter is not repeated in the title on screen.
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText(/^B\.\s*Interval covering$/);
     await page.screenshot({ path: `${shots()}workspace-strip-375-light.png` });
 
-    // The strip sticks to the top, and the page leaves room for it when something takes focus (X3).
+    // The menu: Standings, Messages, Help, Leave.
+    await strip.getByRole('button', { name: /^Menu/ }).click();
+    await expect(strip.locator('#strip-menu > li')).toHaveText([/Standings/, /Messages/, 'Help', 'Leave']);
+    await strip.getByRole('button', { name: 'Standings' }).click();
+    await expect(page.getByRole('dialog', { name: 'Standings' })).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(strip.getByRole('button', { name: /^Menu/ })).toBeFocused();
+
+    // The row sticks to the top, and the page leaves room for it when something takes focus (X3).
     await page.setViewportSize({ width: 375, height: 600 });
     await strip.getByRole('tab', { name: 'Code' }).click();
     await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
@@ -737,51 +731,23 @@ test.describe('P5 workspace', () => {
     const padding = await page.evaluate(() => parseFloat(getComputedStyle(document.documentElement).scrollPaddingTop));
     expect(padding).toBeGreaterThanOrEqual((await strip.boundingBox())!.height);
 
-    // The on-screen keyboard open (a shorter window): Submit is still on screen.
-    await codeEditor(page).click();
-    await page.setViewportSize({ width: 375, height: 476 });
-    await expect(codeEditor(page)).toBeFocused();
-    const kb = (await submit.boundingBox())!;
-    expect(kb.y).toBeGreaterThanOrEqual(0);
-    expect(kb.y + kb.height).toBeLessThanOrEqual(476);
-    await page.screenshot({ path: `${shots()}workspace-strip-keyboard-375-light.png` });
-
-    // Next goes to the next problem, as "]" does.
-    await page.setViewportSize({ width: 375, height: 812 });
-    await strip.getByRole('link', { name: /^Next C/ }).click();
+    // A chip opens its problem, as "]" does.
+    await chips.nth(2).click();
     await expect(page).toHaveURL(/\/problems\/C$/);
     await expect(page.getByRole('heading', { level: 1 })).toContainText('Shortest detour');
-    await expect(strip.getByRole('link', { name: /^Next/ })).toHaveCount(0);
-    await expect(strip.getByRole('link', { name: /^Previous B\s*, Interval covering$/ })).toBeVisible();
-
-    // From 768 px the words show.
-    await page.setViewportSize({ width: 800, height: 900 });
-    await expect(strip.getByRole('link', { name: /^Previous B/ })).toContainText('Previous');
-    await expect(strip.getByRole('tab')).toHaveText(['Problem', 'Code']);
   });
 
-  test('when a tab switches by itself, focus moves to the result (F7.4)', async ({ page }) => {
+  test('Run and Submit keep focus on the button pressed (P8)', async ({ page }) => {
     const api = await mockApi(page);
-    await page.setViewportSize({ width: 375, height: 812 });
-    await openWorkspace(page);
-    await page.getByRole('tab', { name: 'Code' }).click();
-    await page.getByRole('button', { name: 'Submit', exact: true }).click();
-    await expect(page.getByRole('tab', { name: 'Result' })).toHaveAttribute('aria-selected', 'true');
-    await expect(page.getByRole('heading', { name: 'Latest submission' })).toBeFocused();
-    expect(api.submits).toHaveLength(1);
-
-    // Tablet: from the Problem tab the Code tab opens, and focus goes to the result under the editor.
-    await page.setViewportSize({ width: 800, height: 900 });
-    await page.getByRole('tab', { name: 'Problem' }).click();
-    await page.locator('main h1').focus();
-    await page.keyboard.press("Control+'");
-    await expect(page.getByRole('tab', { name: 'Code' })).toHaveAttribute('aria-selected', 'true');
-    await expect(page.getByRole('heading', { name: 'Run on the examples' })).toBeFocused();
-
-    // From 1024 px nothing switches, so focus stays on the button pressed.
     await page.setViewportSize({ width: 1440, height: 900 });
-    await page.getByRole('button', { name: 'Run', exact: true }).click();
-    await expect(page.getByRole('button', { name: 'Run', exact: true })).toBeFocused();
+    await openWorkspace(page);
+    const run = page.getByRole('button', { name: 'Run', exact: true });
+    await run.click();
+    await expect.poll(() => api.runs.length).toBe(1);
+    await expect(run).toBeFocused();
+    await page.getByRole('button', { name: 'Submit', exact: true }).click();
+    await expect.poll(() => api.submits.length).toBe(1);
+    await expect(page.getByRole('button', { name: /^Submit/ })).toBeFocused();
   });
 
   test('when the time runs out, focus goes to the title (F7.4)', async ({ page }) => {

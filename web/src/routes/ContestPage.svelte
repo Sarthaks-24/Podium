@@ -447,8 +447,11 @@
     onmessages={openMessages}
     onhelp={() => (shell.help = true)}
     onstandings={phase === 'during' ? () => (standingsOpen = true) : undefined}
+    clock={layout === 'strip' && phase === 'during' ? stripClock : undefined}
   />
 {/snippet}
+
+{#snippet stripClock()}{@render clockSnippet(true)}{/snippet}
 
 {#if loadState !== 'ready' || !contest}
   <PageHeader title={loadState === 'missing' ? 'Contest not found' : 'Contest'} back={{ href: '/', label: 'Your contests' }} />

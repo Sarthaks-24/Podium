@@ -12,7 +12,8 @@
   Callers reach jumpTo(), setDoc() and focus() through bind:this.
   Props: `initial` (the code to start with), `language`, `label` (the
   editor's accessible name, naming the problem and language), `fontSize`
-  (px), `tabSize` (2 or 4), `wrap`, `tabMovesFocus`, and the callbacks
+  (px), `tabSize` (2 or 4), `wrap`, `readOnly` (under 1024 px, V3-14),
+  `tabMovesFocus`, and the callbacks
   `onchange`, `ontyped`, `onpaste`, `onblur`, `onsubmit`, `onrun` and
   `oncursor` (line and column, for "Ln 2, Col 5").
 -->
@@ -33,6 +34,7 @@
     tabMovesFocus: boolean;
     tabSize: 2 | 4;
     wrap: boolean;
+    readOnly?: boolean;
     onchange: (source: string) => void;
     ontyped: (chars: number) => void;
     onpaste: (chars: number) => void;
@@ -42,7 +44,7 @@
     oncursor: (line: number, col: number) => void;
   }
 
-  let { initial, language, label, fontSize, tabMovesFocus, tabSize, wrap, onchange, ontyped, onpaste, onblur, onsubmit, onrun, oncursor }: Props =
+  let { initial, language, label, fontSize, tabMovesFocus, tabSize, wrap, readOnly = false, onchange, ontyped, onpaste, onblur, onsubmit, onrun, oncursor }: Props =
     $props();
 
   let host: HTMLDivElement | undefined = $state();
@@ -67,6 +69,7 @@
           tabMovesFocus,
           tabSize,
           wrap,
+          readOnly,
           onChange: (s) => onchange(s),
           onTyped: (n) => ontyped(n),
           onPaste: (n) => onpaste(n),
@@ -103,6 +106,10 @@
 
   $effect(() => {
     handle?.setWrap(wrap);
+  });
+
+  $effect(() => {
+    handle?.setReadOnly(readOnly);
   });
 
   /** Moves the cursor to a line and column and focuses the editor. */
