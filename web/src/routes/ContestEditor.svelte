@@ -1,48 +1,45 @@
 <!--
-  ContestEditor: an organiser's settings for one contest at
-  /admin/contests/{id} (cache/v1/m4-plan.md sections 1, 2 and 4; laid out
-  again in v2 P3 F6.3 and audit 2026-10-20 O1).
+  ContestEditor: Setup, an organiser's settings for one contest at
+  /admin/contests/{id}. Every field saves as it changes, with a PUT of only
+  the fields that changed (the server keeps the rest): typing saves after a
+  short pause or when the field loses focus, checkboxes save at once. One
+  line in the title row says "Saved", "Saving" or "Not saved" (with Try
+  again), and a field the server refuses shows its sentence under it.
+  Leaving the page, or going back, while a change waits or after a failed
+  save asks first. While the contest is live, a change to the start, the
+  length or the hidden minutes asks first, because students see it at once.
 
-  - Title row: the state word ("Draft" until students can see it), one
-    status line ("Not published. 3 problems, starts 21 Oct 2026 18:00")
-    and "Publish contest" or "Unpublish contest", which asks first and
-    names what students will see. Unsaved settings are saved with it.
+  - Title row: the state word, one line on what students see ("Not
+    published. 3 problems, starts 21 Oct 2026 18:00"), "Publish contest" or
+    "Unpublish contest", which asks first and names what students will see,
+    and a More menu with Duplicate (a copy as a new draft) and Archive.
   - From 1280 px a sticky column beside the form lists what the contest
     needs before it is published (lib/contests publishChecks); below that
     it comes first.
-  - Basics: title, the contest's address as a read-only line (the server
-    makes it from the title when the contest is created, V3-15), and
-    Starts and Ends on one row.
-  - Problems: the contest's problems with their letters, points and the
-    revision students get, picked from validated problems in the bank.
-    Adding, removing and reordering save at once, one request each; the
-    letters follow the order. A contest refuses a problem the AI
-    wizard made when no person has written a solution for it; the section
-    then asks for a reason, and "Grade as the AI wrote it" saves again with it.
-    A problem whose hidden tests practice showed
-    says so in the picker, and publishing a contest with one
-    names it in the confirm (D115).
-  - "Rules and scoring", folded: freeze, pacing, languages and the
-    options. Holding the board for a reveal needs a freeze.
-  - Description and honour code, then Save changes for everything above.
-    While the contest is live (published and past its start; an
-    unpublished one past its start says students cannot see it yet),
-    saving a change to the times or the freeze asks first. Leaving with
-    unsaved settings asks first.
-  - More: a clone (new times; the server names it from the title) and
-    archiving.
+  - Six inputs: the title; the problems, picked from validated problems in
+    the bank (adding, removing and reordering save at once and the letters
+    follow the order; a problem the AI wizard made that no person solved
+    asks for a reason first, "Grade as the AI wrote it"); the start; the
+    length in minutes (the server stores the end); the minutes at the end
+    whose results are hidden; the languages.
+  - Advanced, folded under a one-line summary: the address (made from the
+    title when the contest was created, read only), the wait between
+    submissions, submissions per problem, practice after the end, keeping
+    results hidden until the reveal, the description and the honour code.
 
   Students see a short explanation instead. Props: `id`.
 -->
 <script lang="ts">
   import PageState from '../components/PageState.svelte';
   import { onMount, tick } from 'svelte';
+  import ActionMenu from '../components/ActionMenu.svelte';
   import ConfirmDialog from '../components/ConfirmDialog.svelte';
   import ContestAdminNav from '../components/ContestAdminNav.svelte';
+  import DuplicateDialog from '../components/DuplicateDialog.svelte';
   import PageHeader from '../components/PageHeader.svelte';
   import Icon from '../components/Icon.svelte';
   import MonoDigits from '../components/MonoDigits.svelte';
-  import { ApiError, errorText, getJSON, sendJSON } from '../lib/api';
+  import { ApiError, errorText, getJSON, isSignedOut, sendJSON } from '../lib/api';
   import {
     fromLocalInput,
     labelFor,
@@ -55,6 +52,7 @@
   import { focusFirstInvalid, keepHeadingFocus } from '../lib/focus';
   import { countOf, formatDateTime } from '../lib/format';
   import { setTitle } from '../lib/head';
+  import { loader } from '../lib/loader.svelte';
   import { routeTitle } from '../lib/routing';
   import { LANGUAGES, type ProblemSummary } from '../lib/problems';
   import { navigate, setNavigationGuard } from '../lib/router.svelte';
@@ -63,23 +61,56 @@
 
   let { id }: { id: string } = $props();
 
-  type Form = Omit<ContestSettings, 'starts_at' | 'ends_at' | 'freeze_minutes' | 'min_gap_s' | 'max_per_problem'> & {
-    starts_at: string;
-    ends_at: string;
-    freeze_minutes: string;
-    min_gap_s: string;
-    max_per_problem: string;
-  };
+  /** A setting as the form holds it; `length` is minutes, sent as ends_at. */
+  type Key =
+    | 'title'
+    | 'starts_at'
+    | 'length'
+    | 'freeze_minutes'
+    | 'languages'
+    | 'min_gap_s'
+    | 'max_per_problem'
+    | 'practice_after_end'
+    | 'hold_reveal'
+    | 'description_md'
+    | 'honour_text';
 
-  let loadState = $state<'loading' | 'ready' | 'forbidden' | 'missing' | 'error'>('loading');
-  let loadError = $state('');
+  interface Form {
+    title: string;
+    starts_at: string;
+    // Number inputs bind numbers, or null when empty.
+    length: number | string | null;
+    freeze_minutes: number | string | null;
+    languages: string[];
+    min_gap_s: number | string | null;
+    max_per_problem: number | string | null;
+    practice_after_end: boolean;
+    hold_reveal: boolean;
+    description_md: string;
+    honour_text: string;
+  }
+
+  /** Typing saves after this pause. */
+  const PAUSE_MS = 800;
+  /** The settings under Advanced, so an error there opens it. */
+  const ADVANCED: readonly Key[] = ['min_gap_s', 'max_per_problem', 'practice_after_end', 'hold_reveal', 'description_md', 'honour_text'];
+  /** Changes a live contest's clock or board, so they ask first. */
+  const TIMING: readonly Key[] = ['starts_at', 'length', 'freeze_minutes'];
+
   let contest = $state.raw<AdminContest | null>(null);
   let form = $state<Form | null>(null);
-  let formBaseline = $state('');
-  let fields = $state<Record<string, string>>({});
-  let formError = $state('');
-  let formProblems = $state<readonly string[]>([]);
-  let saveBusy = $state(false);
+  let fields = $state<Partial<Record<Key, string>>>({});
+  let advancedOpen = $state(false);
+
+  // Autosave: the keys changed and not yet saved, an edit count per key so a
+  // save that raced a newer edit keeps the key pending, and the save running.
+  let pending = $state<Key[]>([]);
+  const edits: Partial<Record<Key, number>> = {};
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  let inflight: Promise<void> | null = null;
+  let saving = $state(false);
+  let saveState = $state<'' | 'failed' | 'invalid'>('');
+  let saveError = $state('');
   let publishError = $state('');
   let leaveTo = $state<string | null>(null);
 
@@ -93,25 +124,37 @@
   let aiReason = $state('');
   let aiError = $state('');
 
-  let cloneStart = $state('');
-  let cloneEnd = $state('');
-  let cloneError = $state('');
-  /** The clone field the error is about, so it is marked and takes focus. */
-  let cloneField = $state<'start' | 'end' | null>(null);
+  let duplicating = $state(false);
 
   // One confirmation dialog for every action that asks first.
-  let confirm = $state<null | { title: string; body: string; items?: string[]; label: string; danger: boolean; run: () => Promise<void> }>(null);
+  let confirm = $state<null | {
+    title: string;
+    body: string;
+    items?: string[];
+    label: string;
+    danger: boolean;
+    run: () => Promise<void>;
+    cancel?: () => void;
+  }>(null);
   let confirmBusy = $state(false);
 
   const isOrganiser = $derived(session.user?.role === 'admin' || session.user?.role === 'owner');
   const base = $derived(`/api/admin/contests/${encodeURIComponent(id)}`);
+  const page = loader(
+    () => getJSON<AdminContest>(base),
+    (c) => {
+      adopt(c);
+      form = toForm(c);
+    },
+  );
   // The server's state ignores `published`, so an unpublished contest past
   // its start reads "live" there; students cannot see it (C2-015).
   const running = $derived(contest?.state === 'live' || contest?.state === 'frozen');
   const live = $derived(!!contest?.published && running);
   const startedOrOver = $derived(running || contest?.state === 'ended' || contest?.state === 'practice');
   const pastStartUnpublished = $derived(!!contest && !contest.published && startedOrOver);
-  const dirty = $derived(form !== null && JSON.stringify(form) !== formBaseline);
+  /** A change waits for its save, or failed: leaving asks first. */
+  const dirty = $derived(pending.length > 0);
   const available = $derived(bank.filter((p) => p.validated && !p.archived && !picked.some((x) => x.problem_id === p.id)));
 
   /** The checklist, from the settings as typed and the problems as saved. */
@@ -122,7 +165,7 @@
         problems: contest.problems ?? [],
         languages: form.languages,
         starts_at: fromLocalInput(form.starts_at) ?? contest.starts_at,
-        freeze_minutes: num(form.freeze_minutes),
+        freeze_minutes: whole(form.freeze_minutes),
         hold_reveal: form.hold_reveal,
       },
       startedOrOver && !!contest.published,
@@ -130,199 +173,253 @@
     );
   });
   const blocked = $derived(checks.some((c) => c.tone === 'bad'));
-  const freezeOff = $derived(form !== null && !(num(form.freeze_minutes) > 0));
+  const hiddenOff = $derived(form !== null && !(whole(form.freeze_minutes) > 0));
 
   /** The title row's line: whether students can see it, then what and when. */
   const statusLine = $derived.by(() => {
     if (!contest) return '';
-    const n = (contest.problems ?? []).length;
-    const what = countOf(n, 'problem');
+    const what = countOf((contest.problems ?? []).length, 'problem');
     if (!contest.published) return `Not published. ${what}, starts ${formatDateTime(contest.starts_at)}.`;
     if (live) return `Published and live. Ends ${formatDateTime(contest.close_at ?? contest.ends_at)}.`;
     if (startedOrOver) return `Published. Ended ${formatDateTime(contest.close_at ?? contest.ends_at)}.`;
     return `Published. Students see it in their list. ${what}, starts ${formatDateTime(contest.starts_at)}.`;
   });
 
+  /** The one save line: settings and problems save through it alike. */
+  const saveText = $derived(
+    saveState === 'failed'
+      ? 'Not saved.'
+      : saveState === 'invalid'
+        ? 'Not saved. Fix the marked field.'
+        : saving || problemsBusy || pending.length > 0
+          ? 'Saving'
+          : 'Saved',
+  );
+
+  /** The end the length gives, for the line under it. */
+  const endsAt = $derived.by(() => {
+    if (!form) return null;
+    const start = fromLocalInput(form.starts_at);
+    const len = whole(form.length);
+    return start !== null && len > 0 ? start + len * 60_000 : null;
+  });
+
+  /** A whole number from an input, or NaN. */
+  function whole(v: unknown): number {
+    const text = String(v ?? '').trim();
+    const n = Number(text);
+    return text !== '' && Number.isInteger(n) ? n : NaN;
+  }
+
   function toForm(c: AdminContest): Form {
     return {
       title: c.title,
-      description_md: c.description_md ?? '',
       starts_at: toLocalInput(c.starts_at),
-      ends_at: toLocalInput(c.ends_at),
-      freeze_minutes: String(c.freeze_minutes ?? 0),
-      published: c.published,
-      practice_after_end: c.practice_after_end,
-      min_gap_s: String(c.min_gap_s),
-      max_per_problem: String(c.max_per_problem),
+      length: Math.round((c.ends_at - c.starts_at) / 60_000),
+      freeze_minutes: c.freeze_minutes ?? 0,
       languages: [...(c.languages ?? [])],
-      honour_text: c.honour_text ?? '',
+      min_gap_s: c.min_gap_s,
+      max_per_problem: c.max_per_problem,
+      practice_after_end: c.practice_after_end,
       hold_reveal: c.hold_reveal ?? false,
+      description_md: c.description_md ?? '',
+      honour_text: c.honour_text ?? '',
     };
   }
 
-  /** Takes a fresh copy of the contest; unsaved settings are kept unless `replace` is set. */
-  function adopt(c: AdminContest, replace = true) {
-    const keep = !replace && dirty && form !== null;
+  /** Takes the server's copy of the contest. The form is the organiser's and stays. */
+  function adopt(c: AdminContest) {
     contest = c;
-    const saved = toForm(c);
-    formBaseline = JSON.stringify(saved);
-    if (!keep) form = saved;
-    picked = (c.problems ?? []).map((p) => ({ ...p }));
+    // An AI problem waiting for its reason is not saved yet, so the list stays.
+    if (aiLabels.length === 0) picked = (c.problems ?? []).map((p) => ({ ...p }));
     setTitle(routeTitle('admin-contest'), c.title);
-    if (cloneStart === '') {
-      cloneStart = toLocalInput(c.starts_at + 7 * 86_400_000);
-      cloneEnd = toLocalInput(c.ends_at + 7 * 86_400_000);
-    }
-  }
-
-  function handleAuth(e: unknown): boolean {
-    if (!(e instanceof ApiError)) return false;
-    if (e.status === 401) return true;
-    if (e.status === 403 && e.code === 'forbidden') {
-      loadState = 'forbidden';
-      return true;
-    }
-    return false;
   }
 
   async function load() {
-    loadState = 'loading';
-    try {
-      const data = await getJSON<AdminContest>(base);
-      const restore = keepHeadingFocus();
-      adopt(data);
-      loadState = 'ready';
-      void restore();
-    } catch (e) {
-      if (handleAuth(e)) return;
-      if (e instanceof ApiError && e.status === 404) {
-        loadState = 'missing';
-        setTitle('Contest not found');
-        return;
-      }
-      loadError = errorText(e);
-      loadState = 'error';
-    }
+    const restore = keepHeadingFocus();
+    await page.load();
+    void restore();
+    if (page.state !== 'ready') return;
     try {
       const data = await getJSON<{ problems: ProblemSummary[] }>('/api/admin/problems');
-      bank = data.problems ?? [];
+      if (page.live) bank = data.problems ?? [];
     } catch {
       bank = [];
     }
   }
 
-  /** Takes a response that is the contest, or reloads it. Unsaved settings stay unless `replace`. */
-  async function settle(value: unknown, replace = false) {
-    if (value && typeof value === 'object' && 'id' in value && 'problems' in value) adopt(value as AdminContest, replace);
-    else {
-      try {
-        adopt(await getJSON<AdminContest>(base), replace);
-      } catch (e) {
-        handleAuth(e);
-      }
+  // Autosave.
+
+  /** Marks settings changed; they save after a pause, or at once with `now`. */
+  function change(keys: Key[], now = false) {
+    const next = { ...fields };
+    for (const k of keys) {
+      edits[k] = (edits[k] ?? 0) + 1;
+      delete next[k];
     }
+    fields = next;
+    pending = [...pending, ...keys.filter((k) => !pending.includes(k))];
+    if (saveState === 'failed') saveState = '';
+    clearTimeout(timer);
+    if (now) void flush();
+    else timer = setTimeout(() => void flush(), PAUSE_MS);
   }
 
-  function num(v: string): number {
-    const n = Number(v);
-    return Number.isFinite(n) ? Math.round(n) : NaN;
+  /** Saves what waits when a field loses focus, without the pause. */
+  function saveNow() {
+    if (timer !== undefined && pending.length > 0) void flush();
   }
 
-  /** The PUT body from the form, or null after marking the fields that cannot be sent. */
-  async function buildBody(): Promise<ContestSettings | null> {
-    if (!form) return null;
-    fields = {};
-    formError = '';
-    formProblems = [];
-    const starts = fromLocalInput(form.starts_at);
-    const ends = fromLocalInput(form.ends_at);
-    const local: Record<string, string> = {};
-    if (form.title.trim() === '') local.title = 'Enter a title.';
-    if (starts === null) local.starts_at = 'Enter the start date and time.';
-    if (ends === null) local.ends_at = 'Enter the end date and time.';
-    else if (starts !== null && ends <= starts) local.ends_at = 'The contest must end after it starts.';
-    if (form.languages.length === 0) local.languages = 'Allow at least one language.';
-    for (const k of ['freeze_minutes', 'min_gap_s', 'max_per_problem'] as const) {
-      if (Number.isNaN(num(form[k]))) local[k] = 'Enter a whole number.';
-    }
-    if (Object.keys(local).length > 0) {
-      fields = local;
-      await revealFirstInvalid();
-      return null;
-    }
-    return {
-      ...form,
-      title: form.title.trim(),
-      starts_at: starts as number,
-      ends_at: ends as number,
-      freeze_minutes: num(form.freeze_minutes),
-      min_gap_s: num(form.min_gap_s),
-      max_per_problem: num(form.max_per_problem),
+  /** The checks the server makes, so a bad field never holds up the good ones. */
+  function check(k: Key, f: Form): string {
+    const len = whole(f.length);
+    const n = (v: unknown, lo: number, hi: number) => {
+      const x = whole(v);
+      return x >= lo && x <= hi;
     };
+    switch (k) {
+      case 'title': {
+        const t = f.title.trim();
+        if (t === '') return 'Enter a title.';
+        return [...t].length > 120 ? 'Enter a title of at most 120 characters.' : '';
+      }
+      case 'starts_at':
+        return fromLocalInput(f.starts_at) === null ? 'Enter the start date and time.' : '';
+      case 'length':
+        if (!(len >= 1)) return 'Enter the length in whole minutes.';
+        return len > 14 * 24 * 60 ? 'A contest can last at most 14 days.' : '';
+      case 'freeze_minutes': {
+        const h = whole(f.freeze_minutes);
+        if (!(h >= 0)) return 'Enter whole minutes, 0 to hide nothing.';
+        const total = len >= 1 ? len : contest ? Math.round((contest.ends_at - contest.starts_at) / 60_000) : Infinity;
+        return h >= total ? 'Hide fewer minutes than the contest lasts.' : '';
+      }
+      case 'languages':
+        return f.languages.length === 0 ? 'Allow at least one language.' : '';
+      case 'min_gap_s':
+        return n(f.min_gap_s, 0, 3600) ? '' : 'Set a wait from 0 to 3600 seconds.';
+      case 'max_per_problem':
+        return n(f.max_per_problem, 1, 1000) ? '' : 'Allow from 1 to 1000 submissions per problem.';
+      default:
+        return '';
+    }
   }
 
-  /** Opens the folded rules when the error is in them, then focuses the first marked field. */
-  async function revealFirstInvalid() {
-    const rules = document.getElementById('rules') as HTMLDetailsElement | null;
-    if (rules && Object.keys(fields).some((k) => document.getElementById(`f-${k}`)?.closest('#rules') || k === 'languages')) rules.open = true;
-    await tick();
-    const first = document.querySelector<HTMLElement>('.settings [aria-invalid="true"]');
-    if (first) first.focus();
-    else if (fields.languages) document.querySelector<HTMLElement>('.settings .checks input')?.focus();
+  /** The PUT body for `keys`; the start and the length always travel together. */
+  function bodyFor(keys: Key[], f: Form): Partial<ContestSettings> {
+    const body: Partial<ContestSettings> = {};
+    for (const k of keys) {
+      if (k === 'starts_at' || k === 'length') {
+        const start = fromLocalInput(f.starts_at) as number;
+        body.starts_at = start;
+        body.ends_at = start + whole(f.length) * 60_000;
+      } else if (k === 'title') body.title = f.title.trim();
+      else if (k === 'freeze_minutes' || k === 'min_gap_s' || k === 'max_per_problem') body[k] = whole(f[k]);
+      else if (k === 'languages') body.languages = [...f.languages];
+      else body[k] = f[k] as never;
+    }
+    return body;
   }
 
-  async function save(event: SubmitEvent) {
-    event.preventDefault();
-    if (!contest) return;
-    const body = await buildBody();
-    if (!body) return;
+  /** Sends what is pending: one save at a time, and a refused field stays marked. */
+  function flush(): Promise<void> {
+    clearTimeout(timer);
+    timer = undefined;
+    if (inflight) return inflight.then(() => flush());
+    if (!contest || !form || pending.length === 0 || confirm !== null) return Promise.resolve();
+    // The start and the length make the end, so they are checked and sent as one.
+    let keys = [...pending];
+    if (keys.includes('starts_at') !== keys.includes('length')) keys = [...keys, keys.includes('starts_at') ? 'length' : 'starts_at'];
+    const local: Partial<Record<Key, string>> = {};
+    for (const k of keys) {
+      const why = check(k, form);
+      if (why) local[k] = why;
+    }
+    const bad = Object.keys(local) as Key[];
+    const tied = (k: Key) => (k === 'starts_at' || k === 'length') && (local.starts_at !== undefined || local.length !== undefined);
+    const good = keys.filter((k) => !bad.includes(k) && !tied(k));
+    if (bad.length > 0) {
+      fields = { ...fields, ...local };
+      saveState = 'invalid';
+      if (bad.some((k) => ADVANCED.includes(k))) advancedOpen = true;
+    }
+    if (good.length === 0) return Promise.resolve();
+    const body = bodyFor(good, form);
+    const sent = Object.fromEntries(good.map((k) => [k, edits[k] ?? 0])) as Partial<Record<Key, number>>;
     const c = contest;
-    // The form works in whole minutes, so times are compared to the minute.
     const minute = (ms: number) => Math.floor(ms / 60_000);
     const liveChange =
-      minute(body.starts_at) !== minute(c.starts_at) ||
-      minute(body.ends_at) !== minute(c.ends_at) ||
-      body.freeze_minutes !== c.freeze_minutes;
+      (body.starts_at !== undefined && (minute(body.starts_at) !== minute(c.starts_at) || minute(body.ends_at ?? 0) !== minute(c.ends_at))) ||
+      (body.freeze_minutes !== undefined && body.freeze_minutes !== c.freeze_minutes);
     if (live && liveChange) {
       confirm = {
         title: 'Change a live contest?',
-        body: 'Students see the change at once: new times or a new freeze can change their clocks and the board. To give more time, Extend in the console is safer; to stop now, use End now there.',
-        label: 'Save changes',
+        body: 'Students see the change at once: a new start, length or hidden minutes can change their clocks and the board. To give more time, Extend in the Live view is safer; to stop now, use End now there.',
+        label: 'Change the contest',
         danger: true,
-        run: () => putSettings(body, 'Saved changes'),
+        run: () => send(good, body, sent),
+        cancel: () => revert(good.filter((k) => TIMING.includes(k))),
       };
-      return;
+      return Promise.resolve();
     }
-    await putSettings(body, 'Saved changes');
+    return send(good, body, sent);
   }
 
-  async function putSettings(body: ContestSettings, done: string) {
-    if (!contest) return;
-    saveBusy = true;
-    try {
-      await settle(await sendJSON<AdminContest>('PUT', base, body), true);
-      showToast(done);
-    } catch (e) {
-      if (handleAuth(e)) return;
-      if (e instanceof ApiError) {
-        publishError = e.fields.published ?? '';
-        const rest = Object.fromEntries(Object.entries(e.fields).filter(([k]) => k !== 'published'));
-        fields = rest;
-        formProblems = e.problems;
-        const known = Object.keys(rest).filter((k) => document.getElementById(`f-${k}`));
-        if (!publishError && (known.length < Object.keys(rest).length || known.length === 0)) formError = e.message;
-      } else {
-        formError = errorText(e);
-      }
-      if (Object.keys(fields).length > 0) await revealFirstInvalid();
-      else if (publishError) {
-        await tick();
-        document.getElementById('publish-error')?.focus();
-      }
-    } finally {
-      saveBusy = false;
-    }
+  /** Puts settings back as the server has them, for a live change that was not confirmed. */
+  function revert(keys: Key[]) {
+    if (!contest || !form) return;
+    const saved = toForm(contest);
+    for (const k of keys) (form as Record<Key, unknown>)[k] = saved[k];
+    pending = pending.filter((k) => !keys.includes(k));
   }
+
+  function send(keys: Key[], body: Partial<ContestSettings>, sent: Partial<Record<Key, number>>): Promise<void> {
+    const run = async () => {
+      saving = true;
+      try {
+        adopt(await sendJSON<AdminContest>('PUT', base, body));
+        // A key edited again while this save ran stays pending for the next one.
+        pending = pending.filter((k) => !keys.includes(k) || (edits[k] ?? 0) !== sent[k]);
+        if (saveState === 'failed' || Object.keys(fields).length === 0) saveState = '';
+        saveError = '';
+      } catch (e) {
+        if (isSignedOut(e)) return;
+        const refused = e instanceof ApiError ? fieldErrors(e, keys) : {};
+        if (Object.keys(refused).length > 0) {
+          fields = { ...fields, ...refused };
+          saveState = 'invalid';
+          if (Object.keys(refused).some((k) => ADVANCED.includes(k as Key))) advancedOpen = true;
+        } else {
+          saveState = 'failed';
+          saveError = errorText(e);
+        }
+      } finally {
+        saving = false;
+      }
+    };
+    inflight = run().finally(() => {
+      inflight = null;
+    });
+    return inflight;
+  }
+
+  /** The server's field sentences on the form's fields; the end is the length's. */
+  function fieldErrors(e: ApiError, keys: Key[]): Partial<Record<Key, string>> {
+    const out: Partial<Record<Key, string>> = {};
+    for (const [name, text] of Object.entries(e.fields)) {
+      if (name === 'ends_at') out.length = text;
+      else if (name === 'description_md') out[keys.includes('description_md') ? 'description_md' : 'honour_text'] = text;
+      else if ((keys as string[]).includes(name)) out[name as Key] = text;
+    }
+    return out;
+  }
+
+  function retry() {
+    saveState = '';
+    void flush();
+  }
+
+  // Publishing.
 
   /** The picked problems whose hidden tests a contest already showed (D115, C1-015). */
   const shownLabels = $derived(picked.filter((p) => bank.find((b) => b.id === p.problem_id)?.shown_in_practice).map((p) => p.label));
@@ -334,26 +431,29 @@
     return [`${which} open for practice after a contest, so students may know the hidden tests.`];
   }
 
-  /** Publishing and unpublishing ask first and say what students will see (C5, audit O1). */
+  /** Publishing and unpublishing ask first and say what students will see; what waits saves first. */
   async function togglePublish() {
     if (!contest) return;
     publishError = '';
-    const body = await buildBody();
-    if (!body) return;
-    const title = body.title || contest.title;
+    if (pending.length > 0) await flush();
+    if (!contest) return;
+    if (pending.length > 0) {
+      // A field the server cannot take yet: publishing waits for it.
+      await focusFirstInvalid('.settings');
+      return;
+    }
+    const title = contest.title;
     if (!contest.published) {
-      body.published = true;
       confirm = {
         title: `Publish ${title}?`,
-        body: `Students from the allowed domains see it in their contest list at once${dirty ? ', with your unsaved settings saved' : ''}.`,
+        body: 'Students from the allowed domains see it in their contest list at once.',
         items: [...checks.map((c) => c.text), ...shownWarning()],
         label: 'Publish contest',
         danger: false,
-        run: () => putSettings(body, 'Published'),
+        run: () => setPublished(true, 'Published'),
       };
       return;
     }
-    body.published = false;
     confirm = {
       title: `Unpublish ${title}?`,
       body: live
@@ -361,13 +461,29 @@
         : 'Students no longer see it in their list. Nothing is deleted, and you can publish it again.',
       label: 'Unpublish contest',
       danger: live,
-      run: () => putSettings(body, 'Unpublished'),
+      run: () => setPublished(false, 'Unpublished'),
     };
+  }
+
+  async function setPublished(on: boolean, done: string) {
+    saving = true;
+    try {
+      adopt(await sendJSON<AdminContest>('PUT', base, { published: on }));
+      showToast(done);
+    } catch (e) {
+      if (isSignedOut(e)) return;
+      publishError = e instanceof ApiError ? (e.fields.published ?? e.message) : errorText(e);
+      await tick();
+      document.getElementById('publish-error')?.focus();
+    } finally {
+      saving = false;
+    }
   }
 
   function toggleLanguage(lang: string, on: boolean) {
     if (!form) return;
     form.languages = on ? [...form.languages, lang].filter((v, i, a) => a.indexOf(v) === i) : form.languages.filter((l) => l !== lang);
+    change(['languages'], true);
   }
 
   // Problems: every change is saved at once (audit O1).
@@ -475,7 +591,7 @@
     }
     problemsBusy = true;
     try {
-      const value = await sendJSON<unknown>(
+      const value = await sendJSON<AdminContest>(
         'PUT',
         `${base}/problems`,
         picked.map((p, i) =>
@@ -484,13 +600,13 @@
             : { problem_id: p.problem_id, label: labels[i] },
         ),
       );
-      await settle(value);
-      showToast(done);
       aiLabels = [];
       aiReason = '';
+      adopt(value);
+      showToast(done);
       return true;
     } catch (e) {
-      if (handleAuth(e)) return false;
+      if (isSignedOut(e)) return false;
       if (e instanceof ApiError && e.code === 'ai_unconfirmed') {
         // The new row stays until the reason is given or the step is cancelled.
         aiLabels = [...e.problems];
@@ -516,37 +632,22 @@
       confirm = null;
     } catch (e) {
       confirm = null;
-      if (!handleAuth(e)) showToast(errorText(e), 'error');
+      if (!isSignedOut(e)) showToast(errorText(e), 'error');
     } finally {
       confirmBusy = false;
     }
   }
 
-  // Clone and archive.
-  async function cloneContest(event: SubmitEvent) {
-    event.preventDefault();
-    cloneError = '';
-    cloneField = null;
-    const starts = fromLocalInput(cloneStart);
-    const ends = fromLocalInput(cloneEnd);
-    if (starts === null) [cloneField, cloneError] = ['start', 'Enter the start date and time.'];
-    else if (ends === null || ends <= starts) [cloneField, cloneError] = ['end', 'Enter an end after the start.'];
-    if (cloneField !== null) {
-      await focusFirstInvalid('#clone-form');
-      return;
-    }
-    try {
-      const made = await sendJSON<AdminContest>('POST', `${base}/clone`, { starts_at: starts, ends_at: ends });
-      showToast(`Cloned as ${made.slug}`);
-      formBaseline = JSON.stringify(form);
-      navigate(`/admin/contests/${made.id}`);
-    } catch (e) {
-      if (handleAuth(e)) return;
-      cloneError = e instanceof ApiError ? (Object.values(e.fields)[0] ?? e.message) : errorText(e);
-      const key = e instanceof ApiError ? Object.keys(e.fields)[0] : undefined;
-      cloneField = key === 'starts_at' ? 'start' : key === 'ends_at' ? 'end' : null;
-      if (cloneField !== null) await focusFirstInvalid('#clone-form');
-    }
+  function cancelConfirm() {
+    const cancel = confirm?.cancel;
+    confirm = null;
+    cancel?.();
+  }
+
+  function duplicated(made: AdminContest) {
+    duplicating = false;
+    showToast(`Duplicated ${made.title} as a draft`);
+    navigate(`/admin/contests/${made.id}`);
   }
 
   function archive() {
@@ -559,7 +660,7 @@
       run: async () => {
         await sendJSON<void>('DELETE', base);
         showToast('Archived');
-        formBaseline = JSON.stringify(form);
+        pending = [];
         navigate('/admin/contests');
       },
     };
@@ -569,7 +670,8 @@
     const to = leaveTo;
     leaveTo = null;
     if (to === null) return;
-    formBaseline = JSON.stringify(form);
+    clearTimeout(timer);
+    pending = [];
     navigate(to);
   }
 
@@ -579,64 +681,91 @@
     event.returnValue = '';
   }
 
-  /** A short reading of the folded rules, so they need not be opened to be checked. */
-  const rulesSummary = $derived.by(() => {
+  /** A short reading of Advanced, so it need not be opened to be checked. */
+  const advancedSummary = $derived.by(() => {
     if (!form) return '';
-    const freeze = num(form.freeze_minutes);
     const line = [
-      freeze > 0 ? `board freezes ${freeze} minutes before the end` : 'no freeze',
-      countOf(form.languages.length, 'language'),
+      `wait ${whole(form.min_gap_s) || 0} s between submissions`,
+      countOf(whole(form.max_per_problem) || 0, 'submission') + ' per problem',
+      form.practice_after_end ? 'practice after the end' : 'no practice after the end',
+      ...(form.hold_reveal ? ['results hidden until you reveal them'] : []),
     ].join(', ');
     return line.charAt(0).toUpperCase() + line.slice(1);
   });
 
+  /** The line under the hidden minutes: which results students will not see. */
+  const hiddenHelp = $derived.by(() => {
+    if (!form) return '';
+    const h = whole(form.freeze_minutes);
+    if (!(h > 0) || endsAt === null) return '0 hides nothing.';
+    const from = new Date(endsAt - h * 60_000);
+    const hhmm = `${String(from.getHours()).padStart(2, '0')}:${String(from.getMinutes()).padStart(2, '0')}`;
+    return `Results from ${hhmm} are hidden on the standings until the end.`;
+  });
+
   onMount(() => {
     setTitle(routeTitle('admin-contest'));
-    if (!isOrganiser) loadState = 'forbidden';
+    if (!isOrganiser) page.forbid();
     else void load();
-    return setNavigationGuard((to) => {
+    const unguard = setNavigationGuard((to) => {
       if (!dirty) return true;
       leaveTo = to;
       return false;
     });
+    return () => {
+      unguard();
+      page.stop();
+      clearTimeout(timer);
+    };
   });
 </script>
 
 <svelte:window onbeforeunload={onBeforeUnload} />
 
-{#snippet err(key: string)}
+{#snippet err(key: Key)}
   {#if fields[key]}<p id="f-{key}-error" class="field-error">{fields[key]}</p>{/if}
 {/snippet}
 
-{#if loadState === 'forbidden'}
-  <PageHeader title="Contest settings" />
+{#if page.state === 'forbidden'}
+  <PageHeader title={routeTitle('admin-contest')} />
   <PageState kind="forbidden" message="Only organisers can manage contests." />
-{:else if loadState !== 'ready' || !contest || !form}
+{:else if page.state !== 'ready' || !contest || !form}
   <PageHeader
-    title={loadState === 'missing' ? 'Contest not found' : 'Contest settings'}
-    crumbs={[{ label: 'Contests', href: '/admin/contests' }, { label: loadState === 'missing' ? 'Contest not found' : 'Contest settings' }]}
+    title={page.state === 'missing' ? 'Contest not found' : routeTitle('admin-contest')}
+    crumbs={[{ label: 'Contests', href: '/admin/contests' }, { label: page.state === 'missing' ? 'Contest not found' : routeTitle('admin-contest') }]}
   />
-  {#if loadState === 'loading'}
+  {#if page.state === 'loading'}
     <PageState kind="loading" message="Loading the contest" />
-  {:else if loadState === 'missing'}
+  {:else if page.state === 'missing'}
     <PageState kind="missing" message="There is no contest with that number." parent={{ href: '/admin/contests', label: 'Go back to the list.' }} />
   {:else}
-    <PageState kind="error" message={loadError} onretry={load} />
+    <PageState kind="error" message={page.error} onretry={load} />
   {/if}
 {:else}
   <ContestAdminNav {id} slug={contest.slug} title={contest.title} state={contest.state} published={contest.published} current="settings">
     {#snippet actions()}
       <div class="publish-row">
         <p class="publish-line"><MonoDigits text={statusLine} /></p>
+        <span class="save-line" class:bad={saveState !== ''}>
+          <span role="status">{saveText}</span>
+          {#if saveState === 'failed'}<button type="button" class="btn btn-quiet btn-compact" onclick={retry}>Try again</button>{/if}
+        </span>
         <button
           type="button"
           class="btn {contest?.published ? 'btn-secondary' : 'btn-primary'}"
-          disabled={saveBusy || (!contest?.published && blocked)}
+          disabled={saving || (!contest?.published && blocked)}
           aria-describedby={!contest?.published && blocked ? 'publish-checks' : undefined}
           onclick={togglePublish}
         >
-          {contest?.published ? 'Unpublish contest' : dirty ? 'Save and publish' : 'Publish contest'}
+          {contest?.published ? 'Unpublish contest' : 'Publish contest'}
         </button>
+        <ActionMenu
+          id="contest-menu"
+          items={[
+            { label: 'Duplicate', onselect: () => (duplicating = true) },
+            { label: 'Archive', onselect: archive, danger: true },
+          ]}
+        />
       </div>
     {/snippet}
   </ContestAdminNav>
@@ -645,13 +774,16 @@
     <div class="banner banner-info live-note" role="note">
       <p>
         This contest is live. Changes here reach students at once. To give more time or to end it now, use the
-        <a href="/admin/contests/{encodeURIComponent(id)}/console">console</a>.
+        <a href="/admin/contests/{encodeURIComponent(id)}/console">Live view</a>.
       </p>
     </div>
   {:else if pastStartUnpublished}
     <div class="banner banner-info live-note" role="note">
       <p>The start time has passed. Students cannot see this contest until you publish it, so move the start or publish now.</p>
     </div>
+  {/if}
+  {#if saveState === 'failed' && saveError}
+    <div class="banner banner-error live-note" role="alert"><p>{saveError}</p></div>
   {/if}
 
   <div class="page-split contest-split">
@@ -664,43 +796,30 @@
         {#if publishError}
           <p id="publish-error" class="field-error" tabindex="-1" role="alert">{publishError}</p>
         {/if}
-        {#if dirty}
-          <p class="unsaved">Unsaved changes. Save changes at the end of the form{contest.published ? '' : ', or publish to save them too'}.</p>
-        {/if}
       </section>
     </aside>
 
     <div class="page-split-main editor-main">
-      <form class="settings" novalidate onsubmit={save} aria-label="Contest settings">
-        <section class="section" aria-labelledby="basics-title">
-          <h2 id="basics-title">Basics</h2>
-          <p class="field-help">All three are required.</p>
-          <div class="field">
-            <label for="f-title">Title</label>
-            <input id="f-title" aria-required="true" class="input" type="text" autocomplete="off" bind:value={form.title} aria-invalid={fields.title ? 'true' : undefined} aria-describedby={fields.title ? 'f-title-error' : undefined} />
-            {@render err('title')}
-          </div>
-          <p class="muted small">Address <span class="mono">/contests/{contest.slug}</span>, made from the title when the contest was created. It does not change.</p>
-          <div class="times">
-            <div class="field">
-              <label for="f-starts_at">Starts</label>
-              <input id="f-starts_at" aria-required="true" class="input" type="datetime-local" bind:value={form.starts_at} aria-invalid={fields.starts_at ? 'true' : undefined} aria-describedby={fields.starts_at ? 'f-starts_at-error' : undefined} />
-              {@render err('starts_at')}
-            </div>
-            <div class="field">
-              <label for="f-ends_at">Ends</label>
-              <input id="f-ends_at" aria-required="true" class="input" type="datetime-local" bind:value={form.ends_at} aria-invalid={fields.ends_at ? 'true' : undefined} aria-describedby={fields.ends_at ? 'f-ends_at-error' : undefined} />
-              {@render err('ends_at')}
-            </div>
-          </div>
-        </section>
+      <form class="settings" novalidate onsubmit={(e) => e.preventDefault()} aria-label="Contest setup">
+        <div class="field">
+          <label for="f-title">Title</label>
+          <input
+            id="f-title"
+            aria-required="true"
+            class="input"
+            type="text"
+            autocomplete="off"
+            bind:value={form.title}
+            oninput={() => change(['title'])}
+            onchange={saveNow}
+            aria-invalid={fields.title ? 'true' : undefined}
+            aria-describedby={fields.title ? 'f-title-error' : undefined}
+          />
+          {@render err('title')}
+        </div>
 
         <section class="section" aria-labelledby="problems-title">
-          <div class="section-head">
-            <h2 id="problems-title">Problems</h2>
-            {#if problemsBusy}<span class="muted small" role="status">Saving</span>{/if}
-          </div>
-          <p class="muted small">Only validated problems can be added. Each change is saved at once and pins the revision students get.</p>
+          <h2 id="problems-title">Problems</h2>
           {#if picked.length === 0}
             <p class="muted">No problems yet. Add validated problems from the bank.</p>
           {:else}
@@ -724,8 +843,6 @@
                     <span class="pick-meta">
                       {#if p.max_score !== undefined}<MonoDigits text={countOf(p.max_score, 'point')} />{/if}{#if p.ready === false}
                         <span class="warn"><Icon name="alert-triangle" /> Changed since it was added. Validate it, then add it again.</span>
-                      {:else if p.rev}
-                        <span><MonoDigits text={`, validated on revision ${p.rev}`} /></span>
                       {/if}
                     </span>
                   </span>
@@ -777,127 +894,190 @@
           {/if}
         </section>
 
-        <section class="section" aria-labelledby="rules-title">
-          <details id="rules" class="rules">
-            <summary>
-              <h2 id="rules-title" class="summary-title">Rules and scoring <Icon name="chevron-down" /></h2>
-              <span class="muted small summary-line">{rulesSummary}</span>
-            </summary>
-            <div class="rules-body">
-              <div class="grid">
-                <div class="field">
-                  <label for="f-freeze_minutes">Freeze the board, minutes before the end</label>
-                  <input id="f-freeze_minutes" class="input mono" type="number" min="0" inputmode="numeric" bind:value={form.freeze_minutes} aria-invalid={fields.freeze_minutes ? 'true' : undefined} aria-describedby="f-freeze-help{fields.freeze_minutes ? ' f-freeze_minutes-error' : ''}" />
-                  <p id="f-freeze-help" class="field-help">0 for no freeze.</p>
-                  {@render err('freeze_minutes')}
-                </div>
-                <div class="field">
-                  <label for="f-min_gap_s">Seconds between submissions</label>
-                  <input id="f-min_gap_s" class="input mono" type="number" min="0" inputmode="numeric" bind:value={form.min_gap_s} aria-invalid={fields.min_gap_s ? 'true' : undefined} aria-describedby={fields.min_gap_s ? 'f-min_gap_s-error' : undefined} />
-                  {@render err('min_gap_s')}
-                </div>
-                <div class="field">
-                  <label for="f-max_per_problem">Submissions per problem</label>
-                  <input id="f-max_per_problem" class="input mono" type="number" min="1" inputmode="numeric" bind:value={form.max_per_problem} aria-invalid={fields.max_per_problem ? 'true' : undefined} aria-describedby={fields.max_per_problem ? 'f-max_per_problem-error' : undefined} />
-                  {@render err('max_per_problem')}
-                </div>
-              </div>
-
-              <fieldset class="group" aria-describedby={fields.languages ? 'f-languages-error' : undefined}>
-                <legend>Languages</legend>
-                <div class="checks">
-                  {#each LANGUAGES as l (l.id)}
-                    <label class="choice">
-                      <input type="checkbox" checked={form.languages.includes(l.id)} onchange={(e) => toggleLanguage(l.id, e.currentTarget.checked)} />
-                      {l.label}
-                    </label>
-                  {/each}
-                </div>
-                {@render err('languages')}
-              </fieldset>
-
-              <fieldset class="group">
-                <legend>Options</legend>
-                <label class="choice"><input type="checkbox" bind:checked={form.practice_after_end} /> Open the problems for practice after the end. Practice shows students the first hidden test they fail.</label>
-                <label class="choice" class:off={freezeOff && !form.hold_reveal}>
-                  <input type="checkbox" bind:checked={form.hold_reveal} disabled={freezeOff && !form.hold_reveal} aria-describedby="f-hold-help" />
-                  Hold the full board after the end until you reveal it
-                </label>
-                <p id="f-hold-help" class="field-help hold-help" class:warn-text={freezeOff && form.hold_reveal}>
-                  Needs a freeze; with no freeze there is nothing to reveal.
-                </p>
-              </fieldset>
-            </div>
-          </details>
-        </section>
-
-        <section class="section" aria-labelledby="texts-title">
-          <h2 id="texts-title">Description and honour code</h2>
+        <div class="times">
           <div class="field">
-            <label for="f-description_md">Description (Markdown)</label>
-            <textarea id="f-description_md" class="input" rows="4" bind:value={form.description_md} aria-invalid={fields.description_md ? 'true' : undefined} aria-describedby={fields.description_md ? 'f-description_md-error' : undefined}></textarea>
-            {@render err('description_md')}
-          </div>
-          <div class="field">
-            <label for="f-honour_text">Honour code (Markdown)</label>
-            <textarea
-              id="f-honour_text"
+            <label for="f-starts_at">Starts</label>
+            <input
+              id="f-starts_at"
+              aria-required="true"
               class="input"
-              rows="6"
-              placeholder={contest.default_honour_text ?? ''}
-              bind:value={form.honour_text}
-              aria-describedby="f-honour-help{fields.honour_text ? ' f-honour_text-error' : ''}"
-            ></textarea>
-            <p id="f-honour-help" class="field-help">Leave empty for the default, which lists what is recorded and for how long.</p>
-            {@render err('honour_text')}
+              type="datetime-local"
+              bind:value={form.starts_at}
+              oninput={() => change(['starts_at'])}
+              onchange={saveNow}
+              aria-invalid={fields.starts_at ? 'true' : undefined}
+              aria-describedby={fields.starts_at ? 'f-starts_at-error' : undefined}
+            />
+            {@render err('starts_at')}
           </div>
-        </section>
-
-        {#if formError}
-          <div class="banner banner-error" role="alert">
-            <p>{formError}</p>
-            {#if formProblems.length > 0}<ul>{#each formProblems as p, i (i)}<li>{p}</li>{/each}</ul>{/if}
+          <div class="field">
+            <label for="f-length">Length in minutes</label>
+            <input
+              id="f-length"
+              aria-required="true"
+              class="input mono"
+              type="number"
+              min="1"
+              inputmode="numeric"
+              bind:value={form.length}
+              oninput={() => change(['length'])}
+              onchange={saveNow}
+              aria-invalid={fields.length ? 'true' : undefined}
+              aria-describedby="f-length-help{fields.length ? ' f-length-error' : ''}"
+            />
+            <p id="f-length-help" class="field-help">{#if endsAt !== null}Ends <MonoDigits text={formatDateTime(endsAt)} />.{:else}Ends after this many minutes.{/if}</p>
+            {@render err('length')}
           </div>
-        {/if}
-        <div class="actions save-row">
-          <button type="submit" class="btn {dirty ? 'btn-primary' : 'btn-secondary'}" disabled={saveBusy}>Save changes</button>
-          {#if dirty}<span class="unsaved">Unsaved changes</span>{/if}
+          <div class="field">
+            <label for="f-freeze_minutes">Hidden minutes at the end</label>
+            <input
+              id="f-freeze_minutes"
+              class="input mono"
+              type="number"
+              min="0"
+              inputmode="numeric"
+              bind:value={form.freeze_minutes}
+              oninput={() => change(['freeze_minutes'])}
+              onchange={saveNow}
+              aria-invalid={fields.freeze_minutes ? 'true' : undefined}
+              aria-describedby="f-freeze-help{fields.freeze_minutes ? ' f-freeze_minutes-error' : ''}"
+            />
+            <p id="f-freeze-help" class="field-help"><MonoDigits text={hiddenHelp} /></p>
+            {@render err('freeze_minutes')}
+          </div>
         </div>
+
+        <fieldset class="group" aria-describedby={fields.languages ? 'f-languages-error' : undefined}>
+          <legend>Languages</legend>
+          <div class="checks">
+            {#each LANGUAGES as l (l.id)}
+              <label class="choice">
+                <input type="checkbox" checked={form.languages.includes(l.id)} onchange={(e) => toggleLanguage(l.id, e.currentTarget.checked)} />
+                {l.label}
+              </label>
+            {/each}
+          </div>
+          {@render err('languages')}
+        </fieldset>
+
+        <details id="advanced" class="advanced" bind:open={advancedOpen}>
+          <summary>
+            <h2 id="advanced-title" class="summary-title">Advanced <Icon name="chevron-down" /></h2>
+            <span class="muted small summary-line">{advancedSummary}</span>
+          </summary>
+          <div class="advanced-body">
+            <p class="muted small">Address <span class="mono">/contests/{contest.slug}</span>, made from the title when the contest was created. It does not change.</p>
+            <div class="grid">
+              <div class="field">
+                <label for="f-min_gap_s">Wait between submissions, seconds</label>
+                <input
+                  id="f-min_gap_s"
+                  class="input mono"
+                  type="number"
+                  min="0"
+                  inputmode="numeric"
+                  bind:value={form.min_gap_s}
+                  oninput={() => change(['min_gap_s'])}
+                  onchange={saveNow}
+                  aria-invalid={fields.min_gap_s ? 'true' : undefined}
+                  aria-describedby={fields.min_gap_s ? 'f-min_gap_s-error' : undefined}
+                />
+                {@render err('min_gap_s')}
+              </div>
+              <div class="field">
+                <label for="f-max_per_problem">Submissions per problem</label>
+                <input
+                  id="f-max_per_problem"
+                  class="input mono"
+                  type="number"
+                  min="1"
+                  inputmode="numeric"
+                  bind:value={form.max_per_problem}
+                  oninput={() => change(['max_per_problem'])}
+                  onchange={saveNow}
+                  aria-invalid={fields.max_per_problem ? 'true' : undefined}
+                  aria-describedby={fields.max_per_problem ? 'f-max_per_problem-error' : undefined}
+                />
+                {@render err('max_per_problem')}
+              </div>
+            </div>
+
+            <fieldset class="group">
+              <legend>After the end</legend>
+              <label class="choice">
+                <input
+                  type="checkbox"
+                  checked={form.practice_after_end}
+                  onchange={(e) => {
+                    if (form) form.practice_after_end = e.currentTarget.checked;
+                    change(['practice_after_end'], true);
+                  }}
+                />
+                Open the problems for practice after the end. Practice shows students the first hidden test they fail.
+              </label>
+              <label class="choice" class:off={hiddenOff && !form.hold_reveal}>
+                <input
+                  type="checkbox"
+                  checked={form.hold_reveal}
+                  disabled={hiddenOff && !form.hold_reveal}
+                  aria-describedby="f-hold-help"
+                  onchange={(e) => {
+                    if (form) form.hold_reveal = e.currentTarget.checked;
+                    change(['hold_reveal'], true);
+                  }}
+                />
+                Keep the hidden results hidden after the end until you reveal them
+              </label>
+              <p id="f-hold-help" class="field-help hold-help" class:warn-text={hiddenOff && form.hold_reveal}>
+                Needs hidden minutes at the end; with none there is nothing to reveal.
+              </p>
+            </fieldset>
+
+            <div class="field">
+              <label for="f-description_md">Description (Markdown)</label>
+              <textarea
+                id="f-description_md"
+                class="input"
+                rows="3"
+                bind:value={form.description_md}
+                oninput={() => change(['description_md'])}
+                onchange={saveNow}
+                aria-invalid={fields.description_md ? 'true' : undefined}
+                aria-describedby={fields.description_md ? 'f-description_md-error' : undefined}
+              ></textarea>
+              {@render err('description_md')}
+            </div>
+            <div class="field">
+              <label for="f-honour_text">Honour code (Markdown)</label>
+              <textarea
+                id="f-honour_text"
+                class="input"
+                rows="4"
+                placeholder={contest.default_honour_text ?? ''}
+                bind:value={form.honour_text}
+                oninput={() => change(['honour_text'])}
+                onchange={saveNow}
+                aria-invalid={fields.honour_text ? 'true' : undefined}
+                aria-describedby="f-honour-help{fields.honour_text ? ' f-honour_text-error' : ''}"
+              ></textarea>
+              <p id="f-honour-help" class="field-help">Leave empty for the default, which lists what is recorded and for how long.</p>
+              {@render err('honour_text')}
+            </div>
+          </div>
+        </details>
       </form>
-
-      <section class="section more" aria-labelledby="more-title">
-        <h2 id="more-title">More</h2>
-
-        <div class="sub" role="group" aria-labelledby="clone-title">
-          <h3 id="clone-title">Clone</h3>
-          <p class="muted small">Copies the settings and problems into a new, unpublished contest with the same title.</p>
-          <p class="field-help">Both are required.</p>
-          <form id="clone-form" class="grid" novalidate onsubmit={cloneContest}>
-            <div class="field">
-              <label for="clone-start">Starts</label>
-              <input id="clone-start" aria-required="true" class="input" type="datetime-local" bind:value={cloneStart} aria-invalid={cloneField === 'start' ? 'true' : undefined} aria-describedby={cloneField === 'start' ? 'clone-error' : undefined} />
-            </div>
-            <div class="field">
-              <label for="clone-end">Ends</label>
-              <input id="clone-end" aria-required="true" class="input" type="datetime-local" bind:value={cloneEnd} aria-invalid={cloneField === 'end' ? 'true' : undefined} aria-describedby={cloneField === 'end' ? 'clone-error' : undefined} />
-            </div>
-            <div class="actions span">
-              <button type="submit" class="btn btn-secondary">Clone contest</button>
-              {#if cloneError}<p id="clone-error" class="field-error" role="alert">{cloneError}</p>{/if}
-            </div>
-          </form>
-        </div>
-
-        <div class="sub" role="group" aria-labelledby="archive-title">
-          <h3 id="archive-title">Archive</h3>
-          <p class="muted small">Archived contests disappear from students' lists. Results and submissions are kept.</p>
-          <div class="actions">
-            <button type="button" class="btn btn-danger-quiet" onclick={archive}>Archive contest</button>
-          </div>
-        </div>
-      </section>
     </div>
   </div>
+
+  <DuplicateDialog
+    open={duplicating}
+    {base}
+    title={contest.title}
+    startsAt={contest.starts_at}
+    endsAt={contest.ends_at}
+    onclose={() => (duplicating = false)}
+    ondone={duplicated}
+  />
 
   <ConfirmDialog
     open={confirm !== null}
@@ -908,13 +1088,13 @@
     danger={confirm?.danger ?? false}
     busy={confirmBusy}
     onconfirm={runConfirm}
-    oncancel={() => (confirm = null)}
+    oncancel={cancelConfirm}
   />
 
   <ConfirmDialog
     open={leaveTo !== null}
     title="Leave without saving?"
-    body="Your changes to the settings will be lost. Problems are saved already."
+    body="Your last change to the setup is not saved. Problems are saved already."
     confirmLabel="Leave page"
     danger
     onconfirm={leave}
@@ -936,6 +1116,19 @@
     font-size: var(--fs-0);
   }
 
+  .save-line {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+    color: var(--ink-muted);
+    font-size: var(--fs-0);
+    font-weight: 500;
+  }
+
+  .save-line.bad {
+    color: var(--bad);
+  }
+
   .live-note {
     margin-top: var(--space-4);
     max-width: var(--measure-form);
@@ -949,6 +1142,11 @@
   .editor-main {
     grid-template-columns: minmax(0, 1fr);
     gap: 0;
+  }
+
+  .settings {
+    display: grid;
+    gap: var(--space-5);
   }
 
   .panel-title {
@@ -974,42 +1172,16 @@
     font-weight: 500;
   }
 
-  .unsaved {
-    color: var(--part);
-    font-size: var(--fs-0);
-    font-weight: 500;
-  }
-
   .section {
     display: grid;
-    gap: var(--space-4);
-    margin-top: var(--space-6);
-    padding-top: var(--space-6);
-    border-top: var(--rule) solid var(--line);
-  }
-
-  .settings > .section:first-child {
-    margin-top: 0;
-    padding-top: 0;
-    border-top: 0;
+    gap: var(--space-3);
   }
 
   .section h2,
   .summary-title {
-    font-size: var(--fs-section);
+    font-size: var(--fs-sub);
     font-weight: 600;
     line-height: var(--lh-tight);
-  }
-
-  .section h3 {
-    font-size: var(--fs-sub);
-  }
-
-  .section-head {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: baseline;
-    gap: var(--space-3);
   }
 
   .grid {
@@ -1018,18 +1190,19 @@
     gap: var(--space-4);
   }
 
-  /* Starts and Ends on one row from 768 px. */
+  /* Start, length and hidden minutes on one row from 768 px. */
   .times {
     display: grid;
     grid-template-columns: minmax(0, 1fr);
     gap: var(--space-4);
   }
 
-  .span {
-    grid-column: 1 / -1;
+  .advanced {
+    padding-top: var(--space-4);
+    border-top: var(--rule) solid var(--line);
   }
 
-  .rules summary {
+  .advanced summary {
     display: grid;
     gap: var(--space-1);
     width: fit-content;
@@ -1039,7 +1212,7 @@
     list-style: none;
   }
 
-  .rules summary::-webkit-details-marker {
+  .advanced summary::-webkit-details-marker {
     display: none;
   }
 
@@ -1053,11 +1226,11 @@
     transition: transform var(--dur-fast) var(--ease);
   }
 
-  .rules[open] .summary-title :global(svg) {
+  .advanced[open] .summary-title :global(svg) {
     transform: rotate(180deg);
   }
 
-  .rules-body {
+  .advanced-body {
     display: grid;
     gap: var(--space-5);
     margin-top: var(--space-4);
@@ -1115,25 +1288,8 @@
     font-weight: 500;
   }
 
-  .actions {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: var(--space-3);
-  }
-
-  .save-row {
-    margin-top: var(--space-6);
-  }
-
   .banner {
     margin-top: var(--space-5);
-  }
-
-  .banner ul {
-    margin-top: var(--space-2);
-    padding-left: var(--space-5);
-    color: var(--ink);
   }
 
   .ai-confirm {
@@ -1162,7 +1318,6 @@
 
   .letter {
     text-align: center;
-    text-transform: uppercase;
   }
 
   .pick-title {
@@ -1203,15 +1358,9 @@
     flex: 1 1 16rem;
   }
 
-  .more .sub {
-    display: grid;
-    gap: var(--space-3);
-    padding-top: var(--space-4);
-  }
-
   @media (min-width: 768px) {
     .times {
-      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+      grid-template-columns: repeat(3, minmax(0, 1fr));
     }
   }
 

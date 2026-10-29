@@ -554,7 +554,7 @@
 {:else if preview}
   <!-- P10: Student view for an organiser, the problems and the board as students see them, without the start page. -->
   <div class="page page-wide">
-    <PageHeader title={contest.title} back={{ href: contest.id ? `/admin/contests/${contest.id}/console` : '/admin/contests', label: 'Console' }}>
+    <PageHeader title={contest.title} back={{ href: contest.id ? `/admin/contests/${contest.id}/console` : '/admin/contests', label: 'Live view' }}>
       <p class="meta">
         <span><MonoDigits text={formatDateTime(contest.starts_at)} />, {lengthText(contest)}, {contest.problem_count}
           {contest.problem_count === 1 ? 'problem' : 'problems'}.</span>

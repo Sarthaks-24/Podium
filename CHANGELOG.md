@@ -4,6 +4,15 @@ Dated entries per release. Unreleased work is listed at the top.
 
 ## Unreleased
 
+### v3 stage C3: contest setup (2026-10-29)
+
+- Setup saves every field as it changes, with one "Saved" line in the title row and no Save button; a refused field is marked and the rest still save.
+- Six inputs show: title, problems, start, length in minutes, hidden minutes at the end, languages. The rest folds under Advanced with a one-line summary. At 1440 px the page is 922 px tall (was 2,326 with 25 inputs).
+- Publish stays in the title row; Duplicate and Archive sit in a More menu. Duplicate asks only for the new start.
+- A contest's tabs are Setup, Live and Results, and a contest opens on the tab that fits its state, from the list too.
+- The contests home shows live and next first, then one table; "Needs you" appears once a contest has run.
+- Back with an unsaved change asks first, like a link. Organiser screens load through one loader that keeps only the newest answer.
+
 ### v3 stage C2: the console for contest day (2026-10-29)
 
 - The console opens with one sentence on how it is going ("Live, 30 started, 1 question waiting, judge fine." or "Judge not seen for 3 minutes."), then Announce, Extend, Extra time, Pause judging, History of changes and If something goes wrong.

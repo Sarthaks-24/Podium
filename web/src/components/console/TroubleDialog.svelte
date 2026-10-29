@@ -37,7 +37,7 @@
       <h3 id="trouble-signin">Sign-in is down</h3>
       <p class="small muted">Students cannot sign in with Google. Those already signed in keep working.</p>
       <ol>
-        <li>If many students cannot get in, the contest moves: before the start, change the start in Settings; after it, end the contest now and run it again at a new time.</li>
+        <li>If many students cannot get in, the contest moves: before the start, change the start in Setup; after it, end the contest now and run it again at a new time.</li>
         <li>Tell students the new time by email.</li>
       </ol>
     </section>

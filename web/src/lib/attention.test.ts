@@ -90,7 +90,7 @@ describe('publishChecks', () => {
     const out = publishChecks(c, false, T);
     expect(out.filter((x) => x.tone === 'bad')).toEqual([]);
     expect(out).toContainEqual({ tone: 'ok', text: 'Anyone from the allowed domains can take part.' });
-    expect(out.at(-1)).toEqual({ tone: 'part', text: 'The board is held for a reveal, but with no freeze there is nothing to reveal.' });
+    expect(out.at(-1)).toEqual({ tone: 'part', text: 'Results stay hidden until you reveal them, but none are hidden at the end, so there is nothing to reveal.' });
   });
 
   it('blocks with no language allowed', () => {

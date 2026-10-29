@@ -74,7 +74,7 @@ The console carries the same three cases under "If something goes wrong". Keep t
 |---|---|---|
 | The judge stalled | "Judge not seen for N minutes", submissions waiting for minutes | 1. Pause judging in the console. 2. Restart the judge: `sudo systemctl restart podium-judge` (details in "The judge stopped" below). 3. Resume judging, then judge again any problem whose submissions ended in a judge error. 4. Announce what happened; nothing submitted is lost. |
 | The VM is gone | nobody can open the site; the provider's console shows the VM down or lost | 1. Restore onto a new VM ("Restoring onto a new VM" below); results are safe up to the last backup. 2. Extend the contest by the time lost, or end it and run it again. 3. Announce the new end, by email as well if students cannot reach the site. |
-| Sign-in is down | students cannot sign in with Google; those already signed in keep working | If many students cannot get in, the contest moves: before the start, change the start in Settings; after it, end the contest now and run it again at a new time. Tell students the new time by email. |
+| Sign-in is down | students cannot sign in with Google; those already signed in keep working | If many students cannot get in, the contest moves: before the start, change the start in Setup; after it, end the contest now and run it again at a new time. Tell students the new time by email. |
 
 ### The queue is too long
 

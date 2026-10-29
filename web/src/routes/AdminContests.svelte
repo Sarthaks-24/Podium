@@ -1,25 +1,30 @@
 <!--
   AdminContests: "Contests", the organiser landing page at /admin/contests
-  (GET /api/admin/contests; "/" sends organisers here, v2 N1 and N6). The
-  live contest, or else the next one, comes first on its own: its state
-  word, a countdown in mono, the unanswered questions of a live contest
-  (one request to its clarifications until the contest response carries
-  the count, C10 in P3), and its links with Console first. Then every
-  contest: live and frozen ones first (an extended contest stays among
-  them), upcoming ones soonest first, past ones newest first. A table
-  gives each contest's title (a link to its settings), when it starts, how
-  long it lasts, the problem count, the organiser state word ("Draft"
-  while students cannot see it, lib/contests organiserState) and its
-  Console and Results. Under 1024 px each row reads as title and state,
-  then the start and the links (R1). With no contests yet it points to
-  the problem bank, and lists the steps to a first published contest
-  with a Done mark on those already taken: an allowed email domain
-  (owners), a validated problem, a published contest, sharing the address
-  (C2-024). A featured contest that is not published says so and puts
-  Settings first instead of a countdown. "New contest"
-  opens a small form for a title and the start and end, creates the
-  contest unpublished with the default settings (the server derives its
-  address from the title) and goes to its settings. Students see a short explanation instead. Takes no props.
+  (GET /api/admin/contests; "/" sends organisers here). From the top:
+
+  - Needs you: unanswered questions in a live contest (one request to its
+    questions until the list carries the count) and contest problems that
+    changed since they were added, each a link to where it is fixed. It
+    waits until a contest has run, because before that there is nothing
+    to show, and it is left out when nothing needs action.
+  - Live and next: one block for each published live contest and for the
+    next published one, with its state word, a countdown in mono and
+    "Open live view".
+  - New contest: a small form for the title, the start and the length that
+    creates the contest unpublished with the default settings (the server
+    derives its address from the title) and opens its Setup.
+  - Every other contest in one table, drafts and later ones first, then
+    past ones newest first: the title (a link to the tab that fits its
+    state, lib/contests organiserHome), when it starts, how long it lasts,
+    the problem count and the organiser state word ("Draft" while students
+    cannot see it). Under 1024 px each row reads as title and state, then
+    the start, and the whole row is the link.
+
+  With no contests yet it points to the problem bank and lists the steps to
+  a first published contest, with a Done mark on those already taken: an
+  allowed email domain (owners), a validated problem, a published contest,
+  sharing the address. Students see a short explanation instead. Takes no
+  props.
 -->
 <script lang="ts">
   import Badge from '../components/Badge.svelte';
@@ -32,6 +37,7 @@
     defaultSettings,
     fromLocalInput,
     lengthText,
+    organiserHome,
     organiserOrder,
     organiserState,
     problemCount,
@@ -43,6 +49,7 @@
   import { serverClock } from '../lib/clock';
   import { countOf, formatDateTime, numberParts } from '../lib/format';
   import { formatCountdown, formatSpan, type Clarification } from '../lib/contests';
+  import { loader } from '../lib/loader.svelte';
   import { refreshTicker, ticker, useTicker } from '../lib/ticker.svelte';
   import { setTitle } from '../lib/head';
   import { routeTitle } from '../lib/routing';
@@ -50,15 +57,14 @@
   import { session } from '../lib/session.svelte';
   import { showToast } from '../lib/toast.svelte';
 
-  let loadState = $state<'loading' | 'ready' | 'forbidden' | 'error'>('loading');
-  let loadError = $state('');
   let contests = $state<AdminContestSummary[]>([]);
 
   const defaults = defaultSettings(Date.now());
   let creating = $state(false);
   let newTitle = $state('');
   let newStart = $state(toLocalInput(defaults.starts_at));
-  let newEnd = $state(toLocalInput(defaults.ends_at));
+  // A number input binds a number, or null when empty.
+  let newLength = $state<number | string | null>(Math.round((defaults.ends_at - defaults.starts_at) / 60_000));
   let createBusy = $state(false);
   let createError = $state('');
   let fields = $state<Record<string, string>>({});
@@ -72,64 +78,84 @@
   let validatedCount = $state<number | null>(null);
   const origin = typeof location === 'undefined' ? '' : location.origin;
 
+  const page = loader(
+    async () => {
+      const sent = Date.now();
+      const data = await getJSON<{ contests: AdminContestSummary[]; server_now?: number }>('/api/admin/contests');
+      return { data, sent, got: Date.now() };
+    },
+    ({ data, sent, got }) => {
+      if (typeof data.server_now === 'number') serverClock.observe(data.server_now, sent, got);
+      refreshTicker();
+      contests = data.contests ?? [];
+    },
+  );
+
   async function loadFirstRun() {
     try {
       const data = await getJSON<{ problems: { validated: boolean; archived: boolean }[] }>('/api/admin/problems');
-      validatedCount = (data.problems ?? []).filter((p) => p.validated && !p.archived).length;
+      if (page.live) validatedCount = (data.problems ?? []).filter((p) => p.validated && !p.archived).length;
     } catch {
       validatedCount = null;
     }
     if (!isOwner) return;
     try {
       const data = await getJSON<{ domains: unknown[] }>('/api/admin/people');
-      domainCount = (data.domains ?? []).length;
+      if (page.live) domainCount = (data.domains ?? []).length;
     } catch {
       domainCount = null;
     }
   }
-  const sorted = $derived(organiserOrder(contests));
-  // The contest an organiser most likely came for: the live one, else the next.
-  const featured = $derived(sorted.find((c) => isLive(c)) ?? sorted.find((c) => c.state === 'upcoming') ?? null);
-  let unanswered = $state<number | null>(null);
 
   function isLive(c: AdminContestSummary): boolean {
     return c.state === 'live' || c.state === 'frozen';
   }
 
+  const sorted = $derived(organiserOrder(contests));
+  /** Published live contests, then the next published one. */
+  const liveAndNext = $derived.by(() => {
+    const next = sorted.find((c) => c.published && c.state === 'upcoming');
+    return [...sorted.filter((c) => c.published && isLive(c)), ...(next ? [next] : [])];
+  });
+  const rest = $derived(sorted.filter((c) => !liveAndNext.includes(c)));
+  /** "Needs you" waits until a contest has run (V3-20): before that there is nothing to show. */
+  const hasRun = $derived(contests.some((c) => c.published && c.state !== 'upcoming'));
+
+  /** Unanswered questions per live contest, by id. */
+  let unanswered = $state<Record<number, number>>({});
+
   async function loadUnanswered(id: number) {
     try {
       const data = await getJSON<{ clarifications: Clarification[] }>(`/api/admin/contests/${id}/clarifications`);
-      unanswered = (data.clarifications ?? []).filter((q) => !q.answer).length;
+      if (page.live) unanswered = { ...unanswered, [id]: (data.clarifications ?? []).filter((q) => !q.answer).length };
     } catch {
-      unanswered = null;
+      // A contest whose questions did not load shows no count.
     }
   }
 
-  $effect(() => {
-    const f = featured;
-    if (f && isLive(f)) void loadUnanswered(f.id);
-    else unanswered = null;
+  /** What needs the organiser now, each with where it is fixed. */
+  const needs = $derived.by(() => {
+    const out: { text: string; href: string }[] = [];
+    for (const c of sorted) {
+      const n = unanswered[c.id] ?? 0;
+      if (c.published && isLive(c) && n > 0) out.push({ text: `${countOf(n, 'unanswered question')} in ${c.title}`, href: `/admin/contests/${c.id}/console#clar-title` });
+    }
+    for (const c of sorted) {
+      if (c.state === 'ended' || c.state === 'practice') continue;
+      const changed = (c.problems ?? []).filter((p) => p.ready === false).map((p) => p.label);
+      if (changed.length === 0) continue;
+      const which = changed.length === 1 ? `Problem ${changed[0]}` : `Problems ${changed.join(', ')}`;
+      const since = changed.length === 1 ? 'it was' : 'they were';
+      out.push({ text: `${which} in ${c.title} changed since ${since} added. Validate, then add again.`, href: `/admin/contests/${c.id}` });
+    }
+    return out;
   });
 
   async function load() {
-    loadState = 'loading';
-    try {
-      const sent = Date.now();
-      const data = await getJSON<{ contests: AdminContestSummary[]; server_now?: number }>('/api/admin/contests');
-      if (typeof data.server_now === 'number') serverClock.observe(data.server_now, sent, Date.now());
-      refreshTicker();
-      contests = data.contests ?? [];
-      loadState = 'ready';
-      if (contests.length === 0) void loadFirstRun();
-    } catch (e) {
-      if (e instanceof ApiError && e.status === 401) return;
-      if (e instanceof ApiError && e.status === 403) {
-        loadState = 'forbidden';
-        return;
-      }
-      loadError = errorText(e);
-      loadState = 'error';
-    }
+    await page.load();
+    if (page.state !== 'ready') return;
+    if (contests.length === 0) void loadFirstRun();
+    for (const c of contests) if (c.published && isLive(c)) void loadUnanswered(c.id);
   }
 
   async function openCreate() {
@@ -153,11 +179,11 @@
     fields = {};
     const title = newTitle.trim();
     const starts = fromLocalInput(newStart);
-    const ends = fromLocalInput(newEnd);
+    const text = String(newLength ?? '').trim();
+    const minutes = Number(text);
     if (title === '') fields.title = 'Enter a title.';
     if (starts === null) fields.starts_at = 'Enter the start date and time.';
-    if (ends === null) fields.ends_at = 'Enter the end date and time.';
-    else if (starts !== null && ends <= starts) fields.ends_at = 'The contest must end after it starts.';
+    if (text === '' || !Number.isInteger(minutes) || minutes < 1) fields.ends_at = 'Enter the length in whole minutes.';
     if (Object.keys(fields).length > 0) {
       await focusFirstInvalid('.create');
       return;
@@ -168,7 +194,7 @@
         ...defaults,
         title,
         starts_at: starts,
-        ends_at: ends,
+        ends_at: (starts as number) + minutes * 60_000,
       });
       showToast(`Created ${made.title}`);
       navigate(`/admin/contests/${made.id}`);
@@ -187,59 +213,59 @@
 
   onMount(() => {
     setTitle(routeTitle('admin-contests'));
-    if (!isOrganiser) loadState = 'forbidden';
+    if (!isOrganiser) page.forbid();
     else void load();
-    return useTicker();
+    const stopTicker = useTicker();
+    return () => {
+      stopTicker();
+      page.stop();
+    };
   });
 </script>
 
 <PageHeader title="Contests" />
 
-{#if loadState === 'forbidden'}
+{#if page.state === 'forbidden'}
   <PageState kind="forbidden" message="Only organisers can manage contests." />
 {:else}
-  {#if loadState === 'ready' && featured}
-    {@const f = featured}
-    {@const left = isLive(f) ? (f.close_at ?? f.ends_at) - ticker.now : f.starts_at - ticker.now}
-    {@const fbase = `/admin/contests/${f.id}`}
-    {@const fs = organiserState(f)}
-    <section class="featured" aria-labelledby="featured-title">
-      <div class="featured-head">
-        <h2 id="featured-title">{f.title}</h2>
-        <span class="state-word" data-state={fs.kind}>{fs.word}</span>
-      </div>
-      <p class="featured-line">
-        {#if !f.published}
-          Not published. Add problems and publish it in Settings.
-        {:else if left > 0}
-          {isLive(f) ? 'Ends in' : 'Starts in'} <MonoDigits parts={numberParts(left >= 86_400_000 ? formatSpan(left) : formatCountdown(left))} />{#if f.paused}, judging paused{/if}
-        {:else}
-          <MonoDigits text={formatDateTime(f.starts_at)} />
-        {/if}
-      </p>
-      {#if isLive(f) && unanswered !== null}
-        <p class="featured-line">
-          {#if unanswered > 0}<a href="{fbase}/console#clar-title">{countOf(unanswered, 'unanswered question')}</a>{:else}No unanswered questions{/if}
-        </p>
-      {/if}
-      <p class="featured-links action-row">
-        {#if f.published}
-          <a class="btn btn-primary" href="{fbase}/console">Console</a>
-          <a class="btn btn-quiet" href={fbase}>Settings</a>
-        {:else}
-          <a class="btn btn-primary" href={fbase}>Settings</a>
-          <a class="btn btn-quiet" href="{fbase}/console">Console</a>
-        {/if}
-        <a class="btn btn-quiet" href="{fbase}/results">Results</a>
-        <a class="btn btn-quiet" href="/contests/{encodeURIComponent(f.slug)}">Student view</a>
-      </p>
+  {#if page.state === 'ready' && hasRun && needs.length > 0}
+    <section class="needs" aria-labelledby="needs-title">
+      <h2 id="needs-title">Needs you</h2>
+      <ul class="needs-list">
+        {#each needs as n (n.text)}<li><a href={n.href}>{n.text}</a></li>{/each}
+      </ul>
     </section>
+  {/if}
+
+  {#if page.state === 'ready' && liveAndNext.length > 0}
+    <div class="next-list">
+      {#each liveAndNext as f, i (f.id)}
+        {@const left = isLive(f) ? (f.close_at ?? f.ends_at) - ticker.now : f.starts_at - ticker.now}
+        {@const fs = organiserState(f)}
+        <section class="next" aria-labelledby="next-{f.id}">
+          <div class="next-head">
+            <h2 id="next-{f.id}">{f.title}</h2>
+            <span class="state-word" data-state={fs.kind}>{fs.word}</span>
+          </div>
+          <p class="next-line">
+            {#if left > 0}
+              {isLive(f) ? 'Ends in' : 'Starts in'} <MonoDigits parts={numberParts(left >= 86_400_000 ? formatSpan(left) : formatCountdown(left))} />{#if f.paused}, judging paused{/if}
+            {:else}
+              <MonoDigits text={formatDateTime(f.starts_at)} />
+            {/if}
+          </p>
+          <p class="action-row">
+            <a class="btn {i === 0 ? 'btn-primary' : 'btn-secondary'}" href="/admin/contests/{f.id}/console">Open live view</a>
+          </p>
+        </section>
+      {/each}
+    </div>
   {/if}
 
   <div class="toolbar">
     <button
       type="button"
-      class="btn {featured ? 'btn-secondary' : 'btn-primary'}"
+      class="btn {liveAndNext.length > 0 ? 'btn-secondary' : 'btn-primary'}"
       aria-expanded={creating}
       aria-controls="create-contest"
       bind:this={newButton}
@@ -281,20 +307,22 @@
           {#if fields.starts_at}<p id="new-start-error" class="field-error">{fields.starts_at}</p>{/if}
         </div>
         <div class="field">
-          <label for="new-end">Ends</label>
+          <label for="new-length">Length in minutes</label>
           <input
-            id="new-end"
+            id="new-length"
             aria-required="true"
-            class="input"
-            type="datetime-local"
-            bind:value={newEnd}
+            class="input mono"
+            type="number"
+            min="1"
+            inputmode="numeric"
+            bind:value={newLength}
             aria-invalid={fields.ends_at ? 'true' : undefined}
-            aria-describedby={fields.ends_at ? 'new-end-error' : undefined}
+            aria-describedby={fields.ends_at ? 'new-length-error' : undefined}
           />
-          {#if fields.ends_at}<p id="new-end-error" class="field-error">{fields.ends_at}</p>{/if}
+          {#if fields.ends_at}<p id="new-length-error" class="field-error">{fields.ends_at}</p>{/if}
         </div>
       </div>
-      <p class="field-help">The contest starts unpublished. Add problems and check the settings before you publish it.</p>
+      <p class="field-help">The contest starts unpublished. Add problems in its Setup before you publish it.</p>
       <div class="actions">
         <button type="submit" class="btn btn-primary" disabled={createBusy}>Create contest</button>
         <button type="button" class="btn btn-quiet" onclick={closeCreate}>Cancel</button>
@@ -303,10 +331,10 @@
     </form>
   {/if}
 
-  {#if loadState === 'loading'}
+  {#if page.state === 'loading'}
     <PageState kind="loading" message="Loading contests" />
-  {:else if loadState === 'error'}
-    <PageState kind="error" message={loadError} onretry={load} />
+  {:else if page.state === 'error'}
+    <PageState kind="error" message={page.error} onretry={load} />
   {:else if contests.length === 0}
     <PageState kind="empty" message="No contests yet. Contests use validated problems from the problem bank.">
       {#snippet action()}<a class="btn btn-secondary" href="/admin/problems">Go to the problem bank</a>{/snippet}
@@ -325,7 +353,7 @@
           {#if validatedCount !== null}<Badge tone={validatedCount > 0 ? 'ok' : 'neutral'} text={validatedCount > 0 ? 'Done' : 'To do'} />{/if}
         </li>
         <li>
-          <span class="step">Create a contest with New contest, add problems, then publish it from its settings.</span>
+          <span class="step">Create a contest with New contest, add problems, then publish it from its Setup.</span>
           <Badge tone="neutral" text="To do" />
         </li>
         <li>
@@ -333,7 +361,7 @@
         </li>
       </ul>
     </section>
-  {:else}
+  {:else if rest.length > 0}
     <div class="table-wrap list">
       <table class="table table-stack">
         <thead>
@@ -343,24 +371,17 @@
             <th scope="col">Length</th>
             <th scope="col" class="right">Problems</th>
             <th scope="col">State</th>
-            <th scope="col"><span class="visually-hidden">Links</span></th>
           </tr>
         </thead>
         <tbody>
-          {#each sorted as c (c.id)}
+          {#each rest as c (c.id)}
             {@const st = organiserState(c)}
             <tr>
-              <th scope="row" class="title"><a class="row-link" href="/admin/contests/{c.id}">{c.title}</a></th>
+              <th scope="row" class="title"><a class="row-link" href={organiserHome(c)}>{c.title}</a></th>
               <td class="when"><MonoDigits text={formatDateTime(c.starts_at)} /></td>
               <td class="length">{lengthText(c)}</td>
               <td class="num right problems">{problemCount(c)}</td>
               <td class="state"><span class="state-word" data-state={st.kind}>{st.word}</span>{#if c.paused}<span class="paused">Judging paused</span>{/if}</td>
-              <td class="links">
-                <span class="link-row">
-                  <a class="btn btn-quiet btn-compact" href="/admin/contests/{c.id}/console" aria-label="Console for {c.title}">Console</a>
-                  <a class="btn btn-quiet btn-compact" href="/admin/contests/{c.id}/results" aria-label="Results for {c.title}">Results</a>
-                </span>
-              </td>
             </tr>
           {/each}
         </tbody>
@@ -375,7 +396,8 @@
     margin-top: var(--section-gap);
   }
 
-  .first-run h2 {
+  .first-run h2,
+  .needs h2 {
     font-size: var(--fs-section);
   }
 
@@ -408,43 +430,51 @@
     font-weight: 500;
   }
 
-  .featured {
+  .needs {
+    max-width: var(--measure-form);
+    margin-top: var(--space-5);
+  }
+
+  .needs-list {
+    display: grid;
+    gap: var(--space-2);
+    margin-top: var(--space-3);
+    padding-left: var(--space-5);
+  }
+
+  .needs-list a {
+    overflow-wrap: anywhere;
+  }
+
+  .next-list {
+    display: grid;
+    max-width: var(--measure-form);
+    margin-top: var(--space-5);
+    border-top: var(--rule) solid var(--line);
+  }
+
+  .next {
     display: grid;
     gap: var(--space-2);
     max-width: var(--measure-form);
-    margin-top: var(--space-5);
-    padding-bottom: var(--space-5);
+    padding-block: var(--space-4);
     border-bottom: var(--rule) solid var(--line);
   }
 
-  .featured-head {
+  .next-head {
     display: flex;
     flex-wrap: wrap;
     align-items: baseline;
     gap: var(--space-1) var(--space-3);
   }
 
-  .featured-head h2 {
+  .next-head h2 {
     font-size: var(--fs-section);
     overflow-wrap: anywhere;
   }
 
-  .featured-line {
+  .next-line {
     color: var(--ink-muted);
-  }
-
-  .featured-links {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: var(--space-2) var(--space-4);
-    margin-top: var(--space-1);
-  }
-
-  .featured-links a:not(.btn) {
-    display: inline-flex;
-    align-items: center;
-    min-height: var(--control-h);
   }
 
   .toolbar {
@@ -507,18 +537,9 @@
     font-weight: 500;
   }
 
-  .links {
-    white-space: nowrap;
-  }
-
-  .link-row {
-    display: inline-flex;
-    gap: var(--space-1);
-  }
-
   /* Rows stack below 1024 px here (R1), wider than the phone tier of
-     .table-stack in controls.css: title and state, then the start and the
-     links. */
+     .table-stack in controls.css: title and state, then the start; the
+     title link covers the row. */
   @media (width < 1024px) {
     .list thead {
       position: absolute;
@@ -534,7 +555,7 @@
       grid-template-columns: minmax(0, 1fr) auto;
       grid-template-areas:
         'title state'
-        'when links';
+        'when when';
       align-items: center;
       gap: var(--space-1) var(--space-3);
       padding: var(--space-3);
@@ -557,11 +578,6 @@
       inset: 0;
     }
 
-    .list .link-row a {
-      position: relative;
-      z-index: 1;
-    }
-
     .title {
       grid-area: title;
       min-width: 0;
@@ -581,24 +597,6 @@
     .length,
     .problems {
       display: none;
-    }
-
-    .links {
-      grid-area: links;
-      justify-self: end;
-    }
-  }
-
-  @media (width < 768px) {
-    .list tbody tr {
-      grid-template-areas:
-        'title state'
-        'when when'
-        'links links';
-    }
-
-    .links {
-      justify-self: start;
     }
   }
 </style>

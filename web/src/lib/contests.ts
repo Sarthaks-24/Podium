@@ -450,6 +450,18 @@ export function organiserOrder<T extends Pick<AdminContestSummary, 'state' | 'st
   return [...live, ...upcoming, ...rest];
 }
 
+/**
+ * The tab a contest opens on, by its state: a draft on Setup, an upcoming
+ * or live contest on Live, an ended one on Results. The contests list and
+ * the contest's own crumb link here, so a click lands where the work is.
+ */
+export function organiserHome(c: { id: number | string; state: ContestState; published?: boolean }): string {
+  const base = `/admin/contests/${encodeURIComponent(String(c.id))}`;
+  if (c.published === false) return base;
+  if (c.state === 'ended' || c.state === 'practice') return `${base}/results`;
+  return `${base}/console`;
+}
+
 /** How many problems an organiser's contest row has. */
 export function problemCount(c: Pick<AdminContestSummary, 'problem_count' | 'problems'>): number {
   return c.problem_count ?? c.problems?.length ?? 0;
@@ -717,7 +729,7 @@ export function publishChecks(
   }
   out.push({ tone: 'ok', text: 'Anyone from the allowed domains can take part.' });
   out.push(c.languages.length > 0 ? { tone: 'ok', text: `${c.languages.length} ${c.languages.length === 1 ? 'language' : 'languages'} allowed.` } : { tone: 'bad', text: 'Allow at least one language.' });
-  if (c.hold_reveal && c.freeze_minutes <= 0) out.push({ tone: 'part', text: 'The board is held for a reveal, but with no freeze there is nothing to reveal.' });
+  if (c.hold_reveal && c.freeze_minutes <= 0) out.push({ tone: 'part', text: 'Results stay hidden until you reveal them, but none are hidden at the end, so there is nothing to reveal.' });
   return out;
 }
 

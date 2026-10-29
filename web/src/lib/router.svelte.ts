@@ -9,8 +9,10 @@
  * load, because /api/auth/google/start is a server redirect.
  *
  * A screen with unsaved work can install a navigation guard with
- * setNavigationGuard(); intercepted link clicks ask it first and stay put
- * when it says no. The browser's back button is not guarded.
+ * setNavigationGuard(); intercepted link clicks and the browser's back and
+ * forward buttons ask it first and stay put when it says no. The browser
+ * has already moved by the time popstate fires, so a refused back puts the
+ * page's own address back with pushState.
  *
  * The route table, matching and interception rules live in routing.ts and
  * are re-exported here.
@@ -39,18 +41,32 @@ class RouterState {
 /** Reactive location state shared by the whole app. */
 export const router = new RouterState();
 
+/** The address the page last showed, hash included, to go back to when a guard refuses. */
+let shown = '';
+
 function syncFromWindow(): void {
   router.path = window.location.pathname;
   router.search = window.location.search;
+  shown = router.path + router.search + window.location.hash;
+}
+
+/** Back and forward: a move to another page asks the guard first; a hash move never does. */
+function onPopState(): void {
+  const page = window.location.pathname + window.location.search;
+  if (page !== router.path + router.search && guard !== null && !guard(page + window.location.hash)) {
+    window.history.pushState(null, '', shown);
+    return;
+  }
+  syncFromWindow();
 }
 
 if (typeof window !== 'undefined') {
   syncFromWindow();
-  window.addEventListener('popstate', syncFromWindow);
+  window.addEventListener('popstate', onPopState);
 }
 
 /**
- * Decides whether an in-app link may navigate to `to`. Returning false keeps
+ * Decides whether an in-app link, or back or forward, may navigate to `to`. Returning false keeps
  * the current screen; the guard is then responsible for asking the person
  * and calling navigate() itself if they agree.
  */
@@ -59,7 +75,7 @@ export type NavigationGuard = (to: string) => boolean;
 let guard: NavigationGuard | null = null;
 
 /**
- * Installs the guard consulted before intercepted link clicks navigate.
+ * Installs the guard consulted before intercepted link clicks and back or forward navigate.
  * There is one guard at a time; the returned function removes it if it is
  * still the installed one.
  */

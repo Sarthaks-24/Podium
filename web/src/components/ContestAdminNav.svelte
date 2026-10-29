@@ -1,10 +1,11 @@
 <!--
   ContestAdminNav: the PageHeader of the organiser screens for one
-  contest: the trail "Contests, the contest, the current screen", the
-  contest's title as the page heading with its state word, and the contest
-  sub-nav (v2 N3): Settings, Console with the count of unanswered
-  questions and Results, the current one marked with aria-current, then
-  "Student view" at the end, the contest as a student
+  contest: the trail "Contests, the contest, the current screen" (the
+  contest's step opens the tab that fits its state, lib/contests
+  organiserHome), the contest's title as the page heading with its state
+  word, and the contest tabs: Setup, Live (the console) with the count of
+  unanswered questions and Results, the current one marked with
+  aria-current, then "Student view" at the end, the contest as a student
   sees it. The count comes from the `unanswered` prop when the screen
   already has it (the console), otherwise from one request to the
   contest's clarifications (until the contest response carries it, C10 in
@@ -22,7 +23,7 @@
 <script lang="ts">
   import type { Snippet } from 'svelte';
   import { getJSON } from '../lib/api';
-  import { organiserState, type Clarification, type ContestState } from '../lib/contests';
+  import { organiserHome, organiserState, type Clarification, type ContestState } from '../lib/contests';
   import PageHeader from './PageHeader.svelte';
 
   interface Props {
@@ -44,8 +45,8 @@
 
   const base = $derived(`/admin/contests/${encodeURIComponent(String(id))}`);
   const links = $derived([
-    { id: 'settings', label: 'Settings', href: base },
-    { id: 'console', label: 'Console', href: `${base}/console` },
+    { id: 'settings', label: 'Setup', href: base },
+    { id: 'console', label: 'Live', href: `${base}/console` },
     { id: 'results', label: 'Results', href: `${base}/results` },
   ] as const);
   const here = $derived(current === 'integrity' ? 'Integrity' : (links.find((l) => l.id === current)?.label ?? ''));
@@ -70,7 +71,7 @@
 
 <PageHeader
   {title}
-  crumbs={[{ label: 'Contests', href: '/admin/contests' }, { label: title, href: base }, { label: here }]}
+  crumbs={[{ label: 'Contests', href: '/admin/contests' }, { label: title, href: contestState ? organiserHome({ id, state: contestState, published }) : base }, { label: here }]}
   state={contestState ? organiserState({ state: contestState, published }) : null}
   {actions}
 >

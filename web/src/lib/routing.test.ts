@@ -8,7 +8,7 @@ describe('route table', () => {
 
   it('reads titles from the table', () => {
     expect(routeTitle('people')).toBe('People');
-    expect(routeTitle('contest-console')).toBe('Console');
+    expect(routeTitle('contest-console')).toBe('Live');
     expect(routeTitle('not-found')).toBe('Page not found');
   });
 });

@@ -13,6 +13,7 @@ import {
   labelFor,
   lengthText,
   listCountdown,
+  organiserHome,
   organiserOrder,
   studentState,
   studentStateWord,
@@ -218,6 +219,17 @@ describe('organiser order (N6)', () => {
     const row = (id: number, state: string, starts: number, ends: number) => ({ id, state: state as 'live', starts_at: starts, ends_at: ends });
     const list = [row(1, 'ended', 10, 20), row(2, 'upcoming', 500, 600), row(3, 'frozen', 100, 400), row(4, 'upcoming', 300, 350), row(5, 'practice', 30, 40), row(6, 'live', 90, 200)];
     expect(organiserOrder(list).map((c) => c.id)).toEqual([6, 3, 4, 2, 5, 1]);
+  });
+});
+
+describe('organiserHome', () => {
+  it('opens a draft on Setup, an upcoming or live contest on Live and an ended one on Results', () => {
+    expect(organiserHome({ id: 4, state: 'upcoming', published: false })).toBe('/admin/contests/4');
+    expect(organiserHome({ id: 4, state: 'live', published: false })).toBe('/admin/contests/4');
+    expect(organiserHome({ id: 4, state: 'upcoming', published: true })).toBe('/admin/contests/4/console');
+    expect(organiserHome({ id: 4, state: 'frozen', published: true })).toBe('/admin/contests/4/console');
+    expect(organiserHome({ id: 4, state: 'ended', published: true })).toBe('/admin/contests/4/results');
+    expect(organiserHome({ id: '4', state: 'practice', published: true })).toBe('/admin/contests/4/results');
   });
 });
 

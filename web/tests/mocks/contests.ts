@@ -71,6 +71,8 @@ export interface Options {
   zeroB?: boolean;
   /** The contest's results are not final yet: the class view answers 409 not_final. */
   notFinal?: boolean;
+  /** Week 7, the draft in the organiser's list, has a problem that changed since it was added. */
+  staleDraft?: boolean;
 }
 
 /** When B's statement changed, minutes before the page loads (the C3 fixture). */
@@ -219,6 +221,8 @@ export async function mockApi(page: Page, options: Options = {}) {
     closed: phase === 'after' || phase === 'practice',
     /** Standings requests on the student route, with their query (Student view asks as=student, P10). */
     boardQueries: [] as string[],
+    /** Settings the organiser saved, served back on every later GET as the server keeps them (C3 autosave). */
+    settings: {} as Json,
   };
 
   state.holdReveal = options.holdReveal ?? false;
@@ -358,6 +362,7 @@ export async function mockApi(page: Page, options: Options = {}) {
     extensions: state.extensions.map((x) => ({ user_id: Number(x.user), email: 'asha@college.edu', name: 'Asha Rao', minutes: x.body.minutes, reason: x.body.reason })),
     admins: [{ user_id: 3, email: 'ta@college.edu', name: 'Meera Iyer' }],
     server_now: nowMs(),
+    ...state.settings,
   });
 
   /** C4 pin fields: A is pinned to revision 2 and, with updateAvailable, revision 3 is validated. */
@@ -527,8 +532,12 @@ export async function mockApi(page: Page, options: Options = {}) {
       if (path === '/api/admin/contests' && method === 'GET') {
         return json(route, 200, {
           contests: [
-            { ...adminContest(), published: true, problems: PROBLEMS.map((p) => ({ label: p.label, problem_id: p.id, title: p.title, ready: true, max_score: 100 })) },
-            { ...adminContest(), id: 5, slug: 'week-7', title: 'Week 7 contest', starts_at: now + 3 * 86_400_000, ends_at: now + 3 * 86_400_000 + 2 * 3_600_000, close_at: now + 3 * 86_400_000 + 2 * 3_600_000, state: 'upcoming', published: false, problems: [] },
+            { ...adminContest(), problems: PROBLEMS.map((p) => ({ label: p.label, problem_id: p.id, title: p.title, ready: true, max_score: 100 })) },
+            {
+              ...adminContest(), id: 5, slug: 'week-7', title: 'Week 7 contest', starts_at: now + 3 * 86_400_000, ends_at: now + 3 * 86_400_000 + 2 * 3_600_000,
+              close_at: now + 3 * 86_400_000 + 2 * 3_600_000, state: 'upcoming', published: false,
+              problems: options.staleDraft ? [{ label: 'A', problem_id: 12, title: 'Interval covering', ready: false, max_score: 100 }] : [],
+            },
           ],
           server_now: nowMs(),
         });
@@ -547,12 +556,14 @@ export async function mockApi(page: Page, options: Options = {}) {
       if (path === '/api/admin/contests/4' && method === 'PUT') {
         const body = req.postDataJSON() as Json;
         state.settingsPuts.push(body);
-        if (String(body.title).length > 120) return apiError(route, 400, 'bad_request', 'Enter a title of at most 120 characters.', { fields: { title: 'Enter a title of at most 120 characters.' } });
+        // Fields left out keep their value, as in Go's updateContest.
+        if ('title' in body && String(body.title).length > 120) return apiError(route, 400, 'bad_request', 'Enter a title of at most 120 characters.', { fields: { title: 'Enter a title of at most 120 characters.' } });
         // Go refuses publishing (not saving an already published contest) with 400 and fields (contests.go contestError).
         const stale = 'Problem B changed or lost its validation since it was added. Validate it and add it again.';
         if (body.published === true && options.published === false && !options.publishOk) return apiError(route, 400, 'bad_request', stale, { fields: { published: stale } });
         // Update keeps the slug (V3-15).
-        return json(route, 200, { ...adminContest(), ...body, slug: 'week-6' });
+        state.settings = { ...state.settings, ...body, slug: 'week-6' };
+        return json(route, 200, adminContest());
       }
       if (path === '/api/admin/contests/4/problems' && method === 'PUT') {
         const body = req.postDataJSON() as { problem_id: number; label: string; ai_reason?: string }[];
@@ -798,14 +809,14 @@ export const SCREENS: Screen[] = [
     name: 'contest-editor',
     path: '/admin/contests/4',
     options: { who: 'admin', phase: 'during' },
-    title: 'Contest settings · Week 6 contest · podium',
-    ready: (page) => expect(page.getByRole('heading', { name: 'Clone' })).toBeVisible(),
+    title: 'Setup · Week 6 contest · podium',
+    ready: (page) => expect(page.getByLabel('Title', { exact: true })).toHaveValue('Week 6 contest'),
   },
   {
     name: 'contest-console',
     path: '/admin/contests/4/console',
     options: { who: 'admin', phase: 'during' },
-    title: '(1) Console · Week 6 contest · podium',
+    title: '(1) Live · Week 6 contest · podium',
     ready: async (page) => {
       await expect(page.getByText('Can intervals have zero length?')).toBeVisible();
       await expect(page.getByRole('cell', { name: 'Partial, 40 of 100' })).toBeVisible();

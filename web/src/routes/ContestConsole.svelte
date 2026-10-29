@@ -485,12 +485,12 @@
 {/snippet}
 
 {#if loadState === 'forbidden'}
-  <PageHeader title="Console" />
+  <PageHeader title={routeTitle('contest-console')} />
   <PageState kind="forbidden" message="Only organisers can run contests." />
 {:else if loadState !== 'ready' || !contest}
   <PageHeader
-    title={loadState === 'missing' ? 'Contest not found' : 'Console'}
-    crumbs={[{ label: 'Contests', href: '/admin/contests' }, { label: loadState === 'missing' ? 'Contest not found' : 'Console' }]}
+    title={loadState === 'missing' ? 'Contest not found' : routeTitle('contest-console')}
+    crumbs={[{ label: 'Contests', href: '/admin/contests' }, { label: loadState === 'missing' ? 'Contest not found' : routeTitle('contest-console') }]}
   />
   {#if loadState === 'loading'}
     <PageState kind="loading" message="Loading the contest" />

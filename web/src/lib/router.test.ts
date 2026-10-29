@@ -1,4 +1,6 @@
+// @vitest-environment jsdom
 import { describe, expect, it } from 'vitest';
+import { navigate, router, setNavigationGuard } from './router.svelte';
 import { NOT_FOUND, internalHref, matchRoute, revealHash, type ClickLike, type RouteDef } from './routing';
 
 describe('matchRoute', () => {
@@ -141,5 +143,53 @@ describe('revealHash', () => {
     revealHash('#%E0%A4%A', () => {
       throw new Error('not looked up');
     });
+  });
+});
+
+describe('the navigation guard', () => {
+  /** Goes back one entry and waits until the router has seen it. */
+  function back(): Promise<void> {
+    return new Promise((resolve) => {
+      window.addEventListener('popstate', () => resolve(), { once: true });
+      window.history.back();
+    });
+  }
+
+  it('back with unsaved changes keeps the page', async () => {
+    window.scrollTo = () => {};
+    navigate('/admin/contests');
+    navigate('/admin/contests/4');
+    const asked: string[] = [];
+    const remove = setNavigationGuard((to) => {
+      asked.push(to);
+      return false;
+    });
+    await back();
+    expect(asked).toEqual(['/admin/contests']);
+    expect(router.path).toBe('/admin/contests/4');
+    expect(window.location.pathname).toBe('/admin/contests/4');
+
+    // With nothing unsaved, back goes back.
+    remove();
+    await back();
+    expect(router.path).toBe('/admin/contests');
+  });
+
+  it('lets back through when the guard agrees, and never asks about a hash on the same page', async () => {
+    window.scrollTo = () => {};
+    navigate('/admin/problems');
+    navigate('/admin/problems#bank');
+    const asked: string[] = [];
+    const remove = setNavigationGuard((to) => {
+      asked.push(to);
+      return true;
+    });
+    await back();
+    expect(asked).toEqual([]);
+    navigate('/admin/people');
+    await back();
+    expect(asked).toEqual(['/admin/problems']);
+    expect(router.path).toBe('/admin/problems');
+    remove();
   });
 });
