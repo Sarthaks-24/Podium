@@ -1,5 +1,19 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { ApiError, NETWORK_MESSAGE, PAGE_ERROR_MESSAGE, UNEXPECTED_MESSAGE, errorText, getJSON, sendBody, sendJSON } from './api';
+import { ApiError, NETWORK_MESSAGE, PAGE_ERROR_MESSAGE, UNEXPECTED_MESSAGE, errorText, getJSON, isSignedOut, sendBody, sendJSON, setUnauthorizedHandler } from './api';
+
+describe('a lost session (F1)', () => {
+  it('signs the page out in one place on any 401, and only on a 401', async () => {
+    const signedOut = vi.fn();
+    setUnauthorizedHandler(signedOut);
+    fakeFetch(respond(401, { error: { code: 'unauthorized', message: 'Sign in again.' } }));
+    const err = await caught(getJSON('/api/contests'));
+    expect(isSignedOut(err)).toBe(true);
+    expect(signedOut).toHaveBeenCalledTimes(1);
+    fakeFetch(respond(403, { error: { code: 'forbidden', message: 'No.' } }));
+    expect(isSignedOut(await caught(sendJSON('POST', '/api/x', {})))).toBe(false);
+    expect(signedOut).toHaveBeenCalledTimes(1);
+  });
+});
 
 function respond(status: number, body?: unknown): Response {
   const text = body === undefined ? null : typeof body === 'string' ? body : JSON.stringify(body);

@@ -121,3 +121,23 @@ export function locations(output: string, language?: string): Location[] {
     .filter((s): s is Exclude<Segment, string> => typeof s !== 'string')
     .map((s) => ({ line: s.line, col: s.col }));
 }
+
+/**
+ * The first error the compiler names, for the one line shown above its
+ * output (P4): where it is and what it says. g++ and javac put both on one
+ * line ("main.cpp:12:5: error: expected ';'"); Python and Node give the
+ * place first and the message on a later line ("SyntaxError: ..."). Null
+ * when the output names no place in the student's code.
+ */
+export function firstError(output: string, language?: string): (Location & { text: string }) | null {
+  const lines = output.split('\n');
+  for (const raw of lines) {
+    if (!/error/i.test(raw)) continue;
+    const loc = locations(raw, language)[0];
+    if (loc) return { ...loc, text: raw.replace(/^.*?\berror\b:?\s*/i, '').trim() || raw.trim() };
+  }
+  const loc = locations(output, language)[0];
+  if (!loc) return null;
+  const said = lines.find((l) => /error/i.test(l))?.trim() ?? '';
+  return { ...loc, text: said.replace(/^Sorry:\s*/, '') };
+}

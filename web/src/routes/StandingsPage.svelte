@@ -31,7 +31,6 @@
   import { isForContest, type Contest } from '../lib/contests';
   import { setTitle } from '../lib/head';
   import { routeTitle } from '../lib/routing';
-  import { session } from '../lib/session.svelte';
   import { polite } from '../lib/announce.svelte';
   import { boardLabels, placeFigure, rankAnnouncement, statusLine, type Standings } from '../lib/standings';
   import { EventStream, type StreamMode } from '../lib/stream';
@@ -79,11 +78,7 @@
       standings = s;
       loadState = 'ready';
     } catch (e) {
-      if (e instanceof ApiError && e.status === 401) {
-        session.user = undefined;
-        session.status = 'signed-out';
-        return;
-      }
+      if (e instanceof ApiError && e.status === 401) return;
       if (quiet && loadState === 'ready') return;
       if (e instanceof ApiError && e.status === 403) {
         const closed = e.code === 'board_closed' || e.message === CLOSED || /window closes|contest closes/i.test(e.message);

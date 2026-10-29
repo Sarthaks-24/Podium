@@ -125,6 +125,47 @@ test('student: the language chosen on A is still chosen on B, and typed code is 
   await expect(page.getByText(/^Ln \d+, Col \d+$/)).toBeVisible();
 });
 
+test('student: running selects the Run tab and submitting selects Submissions; the run stays under Run (B2)', async ({ page }) => {
+  const api = await contests.mockApi(page, { phase: 'during' });
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto('/contests/week-6/problems/A');
+  await expect(codeEditor(page)).toHaveAttribute('data-language', /.+/);
+  const result = page.getByRole('region', { name: 'Result' });
+  const tab = (name: string) => result.getByRole('tab', { name: new RegExp(`^${name}`) });
+  await expect(result.getByRole('tab')).toHaveText(['Run', /^Submissions/, 'Your input']);
+
+  const run = page.getByRole('button', { name: 'Run', exact: true }).first();
+  await run.click();
+  await expect.poll(() => api.runs.length).toBe(1);
+  await expect(tab('Run')).toHaveAttribute('aria-selected', 'true');
+  // Focus stays on the button pressed (P8).
+  await expect(run).toBeFocused();
+  api.stream.push({
+    type: 'run',
+    data: {
+      id: 70,
+      state: 'done',
+      compile_output: '',
+      results: [{ kind: 'sample', label: 'Example 1', verdict: 'WA', time_ms: 10, memory_kb: 3200, output: '4', expected: '3', message: '' }],
+    },
+  });
+  await expect(result.getByRole('tabpanel', { name: 'Run' })).toContainText('The example failed', { timeout: 10_000 });
+
+  const submit = page.getByRole('button', { name: 'Submit', exact: true });
+  await submit.click();
+  await expect.poll(() => api.submits.length).toBe(1);
+  await expect(tab('Submissions')).toHaveAttribute('aria-selected', 'true');
+  // The button now counts down ("Submit in 30 s") and keeps focus.
+  await expect(page.getByRole('button', { name: /^Submit/ })).toBeFocused();
+  // The run did not go anywhere: it is still under Run.
+  await tab('Run').click();
+  await expect(result.getByRole('tabpanel', { name: 'Run' })).toContainText('The example failed');
+  // Your input holds the box with its own Run.
+  await tab('Your input').click();
+  await expect(result.getByRole('textbox', { name: 'Your input' })).toBeVisible();
+  await expect(result.getByRole('tabpanel', { name: 'Your input' }).getByRole('button', { name: 'Run', exact: true })).toBeVisible();
+});
+
 test('student: an autosaved draft comes back from the server after a reload', async ({ page }) => {
   const api = await contests.mockApi(page, { phase: 'during' });
   await page.setViewportSize({ width: 1440, height: 900 });
@@ -146,9 +187,9 @@ test('student: run on their own input', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto('/contests/week-6/problems/A');
   await expect(codeEditor(page)).toBeVisible();
-  await page.getByRole('button', { name: 'Your input' }).click();
-  await page.getByLabel('Your input').fill('5 7');
-  await page.locator('#ws-custom-panel').getByRole('button', { name: 'Run', exact: true }).click();
+  await page.getByRole('tab', { name: 'Your input' }).click();
+  await page.getByRole('textbox', { name: 'Your input' }).fill('5 7');
+  await page.getByRole('tabpanel', { name: 'Your input' }).getByRole('button', { name: 'Run', exact: true }).click();
   await expect.poll(() => api.runs.length).toBe(1);
   expect(api.runs[0]).toMatchObject({ input: '5 7' });
   api.stream.push({

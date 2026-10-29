@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { locations, segments } from './compileErrors';
+import { firstError, locations, segments } from './compileErrors';
 
 const GPP = `main.cpp: In function 'int main()':
 main.cpp:12:5: error: expected ';' before 'return'
@@ -110,5 +110,21 @@ describe('compile error locations', () => {
   it('returns plain text when nothing matches', () => {
     expect(segments('Killed', 'cpp17')).toEqual(['Killed']);
     expect(segments('', 'cpp17')).toEqual([]);
+  });
+});
+
+describe('the first error, shown above the output (P4)', () => {
+  it('takes the place and the words from one g++ or javac line', () => {
+    expect(firstError(GPP, 'cpp17')).toEqual({ line: 12, col: 5, text: "expected ';' before 'return'" });
+    expect(firstError(JAVAC, 'java21')).toEqual({ line: 12, col: null, text: "';' expected" });
+  });
+
+  it('pairs the place with the later message for Python and Node', () => {
+    expect(firstError(PYTHON, 'python3')).toEqual({ line: 12, col: null, text: "SyntaxError: '(' was never closed" });
+    expect(firstError(NODE, 'node22')).toEqual({ line: 12, col: null, text: "SyntaxError: Unexpected token ';'" });
+  });
+
+  it('gives nothing when no place in the code is named', () => {
+    expect(firstError('Killed', 'cpp17')).toBeNull();
   });
 });

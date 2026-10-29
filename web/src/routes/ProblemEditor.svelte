@@ -138,13 +138,9 @@
   const fieldList = $derived(fieldErrors(fields, draft, hasGenerator));
 
   /** Handles errors every request can hit; returns true when it did. */
-  function handleSessionError(e: unknown): boolean {
+  function handleAuth(e: unknown): boolean {
     if (!(e instanceof ApiError)) return false;
-    if (e.status === 401) {
-      session.user = undefined;
-      session.status = 'signed-out';
-      return true;
-    }
+    if (e.status === 401) return true;
     if (e.status === 403 && e.code === 'forbidden') {
       loadState = 'forbidden';
       return true;
@@ -179,7 +175,7 @@
         if (!alive) return;
         take(value);
       } catch (e) {
-        if (handleSessionError(e)) return;
+        if (handleAuth(e)) return;
         // A failed poll is retried on the next tick.
       }
       schedule();
@@ -223,7 +219,7 @@
       const p = await getJSON<Problem>(problemPath(id));
       if (alive) adopt(p, false);
     } catch (e) {
-      handleSessionError(e);
+      handleAuth(e);
     }
   }
 
@@ -235,7 +231,7 @@
       adopt(p, true);
       loadState = 'ready';
     } catch (e) {
-      if (handleSessionError(e)) return;
+      if (handleAuth(e)) return;
       if (e instanceof ApiError && (e.status === 404 || e.status === 400)) {
         loadState = 'missing';
         setTitle('Problem not found');
@@ -250,14 +246,14 @@
       if (problem) validation = { ...validation, current: validation.content_hash === problem.content_hash };
       validationPoll.schedule();
     } catch (e) {
-      if (handleSessionError(e)) return;
+      if (handleAuth(e)) return;
       validation = null;
     }
     try {
       generation = await getJSON<Generation>(problemPath(id, '/generation'));
       genPoll.schedule();
     } catch (e) {
-      if (handleSessionError(e)) return;
+      if (handleAuth(e)) return;
       generation = null;
     }
     if (!hasGenerator) return;
@@ -265,7 +261,7 @@
       inputGen = await getJSON<InputGeneration>(problemPath(id, '/input-generation'));
       inputPoll.schedule();
     } catch (e) {
-      if (handleSessionError(e)) return;
+      if (handleAuth(e)) return;
       inputGen = null;
     }
   }
@@ -332,7 +328,7 @@
       showToast('Saved');
       return true;
     } catch (e) {
-      if (handleSessionError(e)) return false;
+      if (handleAuth(e)) return false;
       const raw = e instanceof ApiError ? e.fields : {};
       const next: Record<string, string> = {};
       for (const [key, message] of Object.entries(raw)) next[fieldKey(key)] = message;
@@ -358,7 +354,7 @@
       validation = await sendJSON<Validation>('POST', problemPath(id, '/validate'));
       validationPoll.schedule();
     } catch (e) {
-      if (handleSessionError(e)) return;
+      if (handleAuth(e)) return;
       validateError = { message: errorText(e), problems: e instanceof ApiError ? e.problems : [] };
     } finally {
       requesting = false;
@@ -374,7 +370,7 @@
       generation = await sendJSON<Generation>('POST', problemPath(id, '/generate'), { all });
       genPoll.schedule();
     } catch (e) {
-      if (handleSessionError(e)) return;
+      if (handleAuth(e)) return;
       genError = { message: errorText(e), problems: e instanceof ApiError ? e.problems : [] };
     } finally {
       genBusy = false;
@@ -390,7 +386,7 @@
       inputGen = await sendJSON<InputGeneration>('POST', problemPath(id, '/generate-inputs'));
       inputPoll.schedule();
     } catch (e) {
-      if (handleSessionError(e)) return;
+      if (handleAuth(e)) return;
       inputGenError = { message: errorText(e), problems: e instanceof ApiError ? e.problems : [] };
     } finally {
       inputGenBusy = false;
@@ -414,7 +410,7 @@
       const count = `${p.tests.length} ${p.tests.length === 1 ? 'test' : 'tests'} stored.`;
       showToast(first ? `Uploaded tests. ${count}` : `Replaced tests. ${count}`);
     } catch (e) {
-      if (handleSessionError(e)) return;
+      if (handleAuth(e)) return;
       replaceError = { message: errorText(e), problems: e instanceof ApiError ? e.problems : [] };
     } finally {
       replacing = false;
@@ -431,7 +427,7 @@
       navigate('/admin/problems');
     } catch (e) {
       archiveOpen = false;
-      if (!handleSessionError(e)) showToast(errorText(e), 'error');
+      if (!handleAuth(e)) showToast(errorText(e), 'error');
     } finally {
       archiving = false;
     }

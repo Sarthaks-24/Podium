@@ -115,6 +115,14 @@ const BUTTONS = 'main button, footer button';
 async function load(page: Page, s: Pressed): Promise<string[]> {
   await page.unrouteAll({ behavior: 'ignoreErrors' });
   await page.clock.setFixedTime(new Date());
+  // A press may leave a choice on this device (such as "Hide result"); each load starts clean.
+  await page.evaluate(() => {
+    try {
+      localStorage.clear();
+    } catch {
+      // about:blank has no storage.
+    }
+  });
   await s.load(page);
   return page.evaluate((sel) => {
     const out: string[] = [];
@@ -122,6 +130,8 @@ async function load(page: Page, s: Pressed): Promise<string[]> {
       // Disabled, inert (a "Jump to you" with the own row already in view) or not drawn: nothing to press.
       if (b.disabled || b.getAttribute('aria-disabled') === 'true' || b.closest('[inert]') !== null) continue;
       if (!b.checkVisibility({ opacityProperty: true, visibilityProperty: true })) continue;
+      // The selected tab is already shown; pressing it again rightly does nothing.
+      if (b.getAttribute('role') === 'tab' && b.getAttribute('aria-selected') === 'true') continue;
       b.dataset.press = String(out.length);
       out.push((b.getAttribute('aria-label') || b.textContent || '').replace(/\s+/g, ' ').trim());
     }

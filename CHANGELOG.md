@@ -4,6 +4,13 @@ Dated entries per release. Unreleased work is listed at the top.
 
 ## Unreleased
 
+### v3 stage B2: the result tabs and the one Workspace split (2026-10-29)
+
+- The result area is three fixed tabs: Run, Submissions (with a count) and Your input. Run on the examples selects Run, Submit selects Submissions, a run on your own input stays on Your input; nothing swaps silently and Run and Submit keep focus. Your input holds the box with its own Run and that run's result; "Run on this input" on a failing example fills it and switches there. A submission that failed on an example offers "Run to see your output".
+- The compiler output starts with one line naming the first error and its line ("Line 12: expected ';' before 'return'"), a button to jump there.
+- `Workspace.svelte` went from about 2,000 lines to 566: the code and its saving in `lib/draft.svelte.ts`, submitting, running and the tabs in `lib/judging.svelte.ts`, and the grid, rail, title, sticky strip, toolbar, status line and result pane in `components/workspace/`; `Tabs` and `Splitter` are shared components.
+- A 401 from any request signs the page out in one place (`lib/api.ts`); the 19 copies of that code in the screens are gone.
+
 ### v3 stage B5: before the start and after the end (2026-10-29)
 
 - Before the start: the countdown, three facts (length, languages, wait between submissions), the honour code and "I agree, start the contest", all in the first screen on a phone. The full rules and how Run and Submit work moved to Help ("Read the rules and how Run and Submit work", or "?"); the example verdict and the "How the workspace works" panel are gone.

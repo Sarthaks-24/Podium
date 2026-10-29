@@ -96,13 +96,9 @@
   const textLength = $derived(text.trim().length);
 
   /** Handles errors every request can hit; returns true when it did. */
-  function handleSessionError(e: unknown): boolean {
+  function handleAuth(e: unknown): boolean {
     if (!(e instanceof ApiError)) return false;
-    if (e.status === 401) {
-      session.user = undefined;
-      session.status = 'signed-out';
-      return true;
-    }
+    if (e.status === 401) return true;
     if (e.status === 403 && e.code === 'forbidden') {
       loadState = 'forbidden';
       return true;
@@ -163,7 +159,7 @@
       chainOutputs = o;
       chainValidation = v;
     } catch (e) {
-      if (handleSessionError(e)) return;
+      if (handleAuth(e)) return;
       // A failed poll is tried again on the next tick.
     }
     clearTimeout(chainTimer);
@@ -183,7 +179,7 @@
       const next = await getJSON<Wizard>(aiPaths.wizardOne(w.id));
       if (alive) adoptWizard(next);
     } catch (e) {
-      if (handleSessionError(e)) return;
+      if (handleAuth(e)) return;
       if (e instanceof ApiError && e.status === 404) {
         lostWizard = true;
         wizard = null;
@@ -218,7 +214,7 @@
     try {
       keyStatus = await getJSON<KeyStatus>(aiPaths.key);
     } catch (e) {
-      if (handleSessionError(e)) return;
+      if (handleAuth(e)) return;
       keyError = errorText(e);
     }
   }
@@ -268,7 +264,7 @@
       await tick();
       document.getElementById('progress-heading')?.focus();
     } catch (e) {
-      if (handleSessionError(e)) return;
+      if (handleAuth(e)) return;
       const raw = e instanceof ApiError ? e.fields : {};
       const next: Record<string, string> = {};
       for (const [k, v] of Object.entries(raw)) next[k.replace(/^brief\./, '')] = v;
@@ -345,7 +341,7 @@
           bind:status={keyStatus}
           id="wiz"
           heading={keyStatus.active ? 'Choose a model to start' : 'Add a key to start'}
-          onsessionerror={handleSessionError}
+          onsessionerror={handleAuth}
           onsaved={() => void tick().then(() => document.getElementById(mode === 'brief' ? 'topic' : 'paste-text')?.focus())}
         />
       </section>

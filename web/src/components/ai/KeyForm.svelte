@@ -20,7 +20,6 @@
   import { focusFirstInvalid } from '../../lib/focus';
   import { aiPaths, checkKeyForm, initialForm, isListed, keyExpired, needsKey, saveKey, type KeyForm, type KeyStatus, type ModelList, type ProviderOption } from '../../lib/ai';
   import { errorText, getJSON, sendJSON } from '../../lib/api';
-  import { session } from '../../lib/session.svelte';
   import { showToast } from '../../lib/toast.svelte';
 
   interface Props {
@@ -135,11 +134,7 @@
       }
       return;
     }
-    if (result.status === 401) {
-      session.user = undefined;
-      session.status = 'signed-out';
-      return;
-    }
+    if (result.status === 401) return;
     if (result.code === 'bad_key' && keyNeeded) {
       // The sentence says whether the key or the model was refused; it sits under the key field.
       fields = { key: result.message };

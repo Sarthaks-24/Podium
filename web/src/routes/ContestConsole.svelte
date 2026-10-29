@@ -165,11 +165,7 @@
 
   function handleAuth(e: unknown): boolean {
     if (!(e instanceof ApiError)) return false;
-    if (e.status === 401) {
-      session.user = undefined;
-      session.status = 'signed-out';
-      return true;
-    }
+    if (e.status === 401) return true;
     if (e.status === 403 && e.code === 'forbidden') {
       loadState = 'forbidden';
       return true;

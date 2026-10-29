@@ -3,13 +3,14 @@
   location it names (lib/compileErrors.ts: "main.cpp:12:5",
   "Main.java:12", 'line 12', "main.js:12") turned into a button that moves
   the editor's cursor there; its name starts with the text it shows, so
-  a voice user can say what they see (X6). The text is never rendered as
-  HTML. Props: `output` (the compiler's text), `language` (which
+  a voice user can say what they see (X6). Above it one line names the
+  first error and its line (P4), so the useful line comes first. The text
+  is never rendered as HTML. Props: `output` (the compiler's text), `language` (which
   compiler's shapes to look for) and `onjump` (called with the line and
   column, or null when there is no editor to jump to).
 -->
 <script lang="ts">
-  import { segments } from '../lib/compileErrors';
+  import { firstError, segments } from '../lib/compileErrors';
 
   interface Props {
     output: string;
@@ -20,7 +21,15 @@
   let { output, language, onjump }: Props = $props();
 
   const parts = $derived(segments(output, language));
+  const first = $derived(firstError(output, language));
 </script>
+
+{#if first}
+  <p class="first">
+    {#if onjump}<button type="button" class="jump" onclick={() => onjump?.(first.line, first.col)}>Line {first.line}</button>{:else}Line {first.line}{/if}:
+    <span class="mono">{first.text}</span>
+  </p>
+{/if}
 
 <pre class="output" translate="no">{#each parts as part, i (i)}{#if typeof part === 'string'}{part}{:else if onjump}<button
         type="button"
@@ -40,6 +49,10 @@
     font-size: var(--fs-0);
     white-space: pre-wrap;
     overflow-wrap: anywhere;
+  }
+
+  .first {
+    font-weight: 500;
   }
 
   .jump {

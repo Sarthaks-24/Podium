@@ -58,11 +58,7 @@
       void restore?.();
     } catch (e) {
       if (seq !== loadSeq || !alive) return;
-      if (e instanceof ApiError && e.status === 401) {
-        session.user = undefined;
-        session.status = 'signed-out';
-        return;
-      }
+      if (e instanceof ApiError && e.status === 401) return;
       loadError = errorText(e);
       loadState = 'error';
     } finally {

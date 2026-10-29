@@ -126,11 +126,7 @@
       loadState = 'ready';
       if (contests.length === 0) void loadFirstRun();
     } catch (e) {
-      if (e instanceof ApiError && e.status === 401) {
-        session.user = undefined;
-        session.status = 'signed-out';
-        return;
-      }
+      if (e instanceof ApiError && e.status === 401) return;
       if (e instanceof ApiError && e.status === 403) {
         loadState = 'forbidden';
         return;

@@ -70,12 +70,14 @@ test('three columns at 1024 px, tabs below', async ({ page }) => {
   expect(statement!.x + statement!.width).toBeLessThanOrEqual(code!.x + 1);
   expect(result!.y).toBeGreaterThanOrEqual(code!.y + code!.height - 1);
   expect(Math.abs(result!.x - code!.x)).toBeLessThan(2);
-  await expect(page.getByRole('tablist')).toHaveCount(0);
+  // From 1024 px the only tabs are the result's: Run, Submissions, Your input (B2).
+  await expect(page.getByRole('tablist')).toHaveCount(1);
+  await expect(page.getByRole('tablist', { name: 'Result' }).getByRole('tab')).toHaveText(['Run', 'Submissions', 'Your input']);
 
   await page.setViewportSize({ width: 800, height: 900 });
-  await expect(page.getByRole('tab')).toHaveCount(2);
+  await expect(page.getByRole('tablist', { name: 'Workspace' }).getByRole('tab')).toHaveCount(2);
   await page.setViewportSize({ width: 375, height: 812 });
-  await expect(page.getByRole('tab')).toHaveText(['Problem', 'Code', 'Result']);
+  await expect(page.getByRole('tablist', { name: 'Workspace' }).getByRole('tab')).toHaveText(['Problem', 'Code', 'Result']);
   await expect(page.getByText('You are trying this problem as a student.')).toBeVisible();
 });
 
@@ -169,16 +171,16 @@ test('running on samples shows the first difference', async ({ page }) => {
   const fromSample = panel.getByRole('button', { name: 'Run on this input' });
   await expect(fromSample).toHaveCount(1);
   await fromSample.click();
-  await expect(page.getByLabel('Your input')).toHaveValue('-5 7\n');
-  await expect(page.locator('#ws-custom-panel')).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Your input' })).toHaveAttribute('aria-expanded', 'true');
+  await expect(page.getByRole('textbox', { name: 'Your input' })).toHaveValue('-5 7\n');
+  // B2: the input goes in the Your input tab, which is selected.
+  await expect(page.getByRole('tab', { name: 'Your input' })).toHaveAttribute('aria-selected', 'true');
   await expect.poll(() => api.runs.length).toBe(2);
   expect(api.runs[1].input).toBe('-5 7\n');
   api.runs.length = 1;
 
   // Custom input runs that input.
-  await page.getByLabel('Your input').fill('4 5\n');
-  await page.locator('#ws-custom-panel').getByRole('button', { name: 'Run', exact: true }).click();
+  await page.getByRole('textbox', { name: 'Your input' }).fill('4 5\n');
+  await page.getByRole('tabpanel', { name: 'Your input' }).getByRole('button', { name: 'Run', exact: true }).click();
   await expect.poll(() => api.runs.length).toBe(2);
   expect(api.runs[1].input).toBe('4 5\n');
 });
@@ -728,6 +730,7 @@ test.describe('P5 workspace', () => {
     await page.screenshot({ path: `${shots()}workspace-strip-375-light.png` });
 
     // The strip sticks to the top, and the page leaves room for it when something takes focus (X3).
+    await page.setViewportSize({ width: 375, height: 600 });
     await strip.getByRole('tab', { name: 'Code' }).click();
     await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
     await expect.poll(async () => (await strip.boundingBox())!.y).toBeLessThanOrEqual(1);
@@ -981,7 +984,7 @@ test.describe('P5 workspace', () => {
     await expect(block.locator('.diff dd').nth(1)).toHaveText('7');
     await page.screenshot({ path: `${shots()}workspace-revealed-practice-1440-light.png` });
     await block.getByRole('button', { name: 'Run on this input' }).click();
-    await expect(page.getByLabel('Your input')).toHaveValue('4 4\n');
+    await expect(page.getByRole('textbox', { name: 'Your input' })).toHaveValue('4 4\n');
     await expect.poll(() => api.runs.length).toBe(1);
     expect(api.runs[0].input).toBe('4 4\n');
 
@@ -1043,6 +1046,8 @@ test.describe('P5 workspace', () => {
         revealed: { idx: 2, kind: 'sample', label: 'Example 2', input: '100000\n1 2 3', expected: '5000050000\n', output: '', truncated: true },
       },
     });
+    // The run on the examples shows under Run (B2).
+    await panel.getByRole('tab', { name: 'Run' }).click();
     await expect(panel.getByText('This test is longer than 4 KB', { exact: false })).toBeVisible({ timeout: 10_000 });
     await expect(panel.locator('.revealed').getByRole('button', { name: 'Run on this input' })).toHaveCount(0);
   });

@@ -55,7 +55,7 @@
   import StreamNotice from '../components/StreamNotice.svelte';
   import SubmissionList from '../components/SubmissionList.svelte';
   import Workspace from '../components/Workspace.svelte';
-  import { ApiError, getJSON, sendJSON, errorText, PAGE_ERROR_MESSAGE } from '../lib/api';
+  import { ApiError, getJSON, sendJSON, errorText, PAGE_ERROR_MESSAGE, isSignedOut } from '../lib/api';
   import { serverClock } from '../lib/clock';
   import {
     CONTEST_EVENTS,
@@ -84,7 +84,6 @@
   import { routeTitle } from '../lib/routing';
   import { navigate } from '../lib/router.svelte';
   import { adjacentLabel, isPlainKey, isTypingTarget } from '../lib/shortcuts';
-  import { session } from '../lib/session.svelte';
   import { shell } from '../lib/shell.svelte';
   import { placeFigure, placeSentence, type Standings } from '../lib/standings';
   import { EventStream, type StreamMode } from '../lib/stream';
@@ -187,16 +186,7 @@
     messagesOpen = true;
   }
 
-  function handleSessionError(e: unknown): boolean {
-    if (e instanceof ApiError && e.status === 401) {
-      session.user = undefined;
-      session.status = 'signed-out';
-      return true;
-    }
-    return false;
-  }
-
-  async function load(quiet = false) {
+    async function load(quiet = false) {
     if (!quiet) loadState = 'loading';
     try {
       const sent = Date.now();
@@ -209,7 +199,7 @@
       loadState = 'ready';
       void restore();
     } catch (e) {
-      if (handleSessionError(e)) return;
+      if (isSignedOut(e)) return;
       if (quiet) return;
       if (e instanceof ApiError && e.status === 403) {
         loadError = e.message;
@@ -266,7 +256,7 @@
         await load(true);
       }
     } catch (e) {
-      if (handleSessionError(e)) return;
+      if (isSignedOut(e)) return;
       startError = e instanceof ApiError ? (e.fields.accept_honour ?? e.message) : PAGE_ERROR_MESSAGE;
     } finally {
       startBusy = false;

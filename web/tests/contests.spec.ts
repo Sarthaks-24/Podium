@@ -1050,7 +1050,8 @@ test('keyboard only: a student starts, solves, submits, reads the verdict, asks 
   api.scores.A = 40;
   api.stream.push({ type: 'submission', data: judged });
   const result = page.getByRole('region', { name: 'Result' });
-  await expect(result.locator('.headline').first()).toHaveText('Partial, 40 of 100', { timeout: 10_000 });
+  // Submit selects the Submissions tab (B2).
+  await expect(result.getByRole('tabpanel', { name: /^Submissions/ }).locator('.headline').first()).toHaveText('Partial, 40 of 100', { timeout: 10_000 });
 
   // Read the verdict: the failing subtask is open, the passing one opens with Enter.
   const passing = result.locator('details.group summary').filter({ hasText: 'Subtask 1' }).first();

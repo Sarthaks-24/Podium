@@ -17,7 +17,7 @@
  * guardSignOut(): the shell then asks before signing out (P5 F7.6, N2),
  * and the saves still run first.
  */
-import { ApiError, getJSON, sendJSON } from './api';
+import { ApiError, getJSON, sendJSON, setUnauthorizedHandler } from './api';
 import { forgetDraftsAtSignOut, noteSignedInUser } from './drafts';
 import { adoptAccountPreferences, resetPreferences } from './preferences.svelte';
 import { navigate } from './router.svelte';
@@ -45,6 +45,12 @@ class SessionState {
 
 /** Shared session state. */
 export const session = new SessionState();
+
+// Any request that answers 401 signs the page out (lib/api.ts).
+setUnauthorizedHandler(() => {
+  session.user = undefined;
+  session.status = 'signed-out';
+});
 
 /** The name to show for a user: their name, or their email when it is empty. */
 export function displayName(user: Pick<User, 'name' | 'email'>): string {

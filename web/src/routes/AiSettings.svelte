@@ -41,13 +41,9 @@
   const expiredAny = $derived(status?.providers.some((p) => keyExpired(p, now)) ?? false);
 
   /** Handles errors every request can hit; returns true when it did. */
-  function handleSessionError(e: unknown): boolean {
+  function handleAuth(e: unknown): boolean {
     if (!(e instanceof ApiError)) return false;
-    if (e.status === 401) {
-      session.user = undefined;
-      session.status = 'signed-out';
-      return true;
-    }
+    if (e.status === 401) return true;
     if (e.status === 403 && e.code === 'forbidden') {
       loadState = 'forbidden';
       return true;
@@ -62,7 +58,7 @@
       status = s;
       loadState = 'ready';
     } catch (e) {
-      if (handleSessionError(e)) return;
+      if (handleAuth(e)) return;
       loadError = errorText(e);
       loadState = 'error';
     }
@@ -85,7 +81,7 @@
       await tick();
       document.getElementById('provider')?.focus();
     } catch (e) {
-      if (!handleSessionError(e)) showToast(errorText(e), 'error');
+      if (!handleAuth(e)) showToast(errorText(e), 'error');
     } finally {
       forgetting = '';
     }
@@ -139,7 +135,7 @@
     </section>
 
     <div class="form-block">
-      <KeyForm bind:this={keyForm} bind:status onsessionerror={handleSessionError} primary={!(status.active && status.model !== '')} />
+      <KeyForm bind:this={keyForm} bind:status onsessionerror={handleAuth} primary={!(status.active && status.model !== '')} />
     </div>
 
     {#if hasFake && needsKey(status.provider)}

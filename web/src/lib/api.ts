@@ -88,6 +88,20 @@ function errorFromBody(status: number, body: unknown): ApiError {
 
 type Body = { json: unknown } | { raw: Blob; type: string };
 
+// The shell's reaction to a lost session (lib/session.svelte.ts sets it), so
+// a 401 from any request signs the page out in one place.
+let unauthorized: (() => void) | null = null;
+
+/** Sets what every 401 does; lib/session.svelte.ts registers it once. */
+export function setUnauthorizedHandler(fn: () => void): void {
+  unauthorized = fn;
+}
+
+/** True for a 401: the session is gone and the shell has already signed the page out. */
+export function isSignedOut(e: unknown): boolean {
+  return e instanceof ApiError && e.status === 401;
+}
+
 async function request<T>(method: string, path: string, body?: Body): Promise<T> {
   const headers: Record<string, string> = { Accept: 'application/json' };
   const init: RequestInit = { method, headers, credentials: 'same-origin', cache: 'no-store' };
@@ -124,6 +138,7 @@ async function request<T>(method: string, path: string, body?: Body): Promise<T>
     }
   }
 
+  if (res.status === 401) unauthorized?.();
   if (!res.ok) throw errorFromBody(res.status, parsed);
   return parsed as T;
 }

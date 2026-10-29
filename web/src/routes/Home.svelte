@@ -40,7 +40,6 @@
   import { countOf, formatDateTime, numberParts, scoreParts } from '../lib/format';
   import { setTitle } from '../lib/head';
   import { routeTitle } from '../lib/routing';
-  import { session } from '../lib/session.svelte';
   import { refreshTicker, ticker, useTicker } from '../lib/ticker.svelte';
 
   let loadState = $state<'loading' | 'ready' | 'error'>('loading');
@@ -57,11 +56,7 @@
       contests = orderedContests(data);
       loadState = 'ready';
     } catch (e) {
-      if (e instanceof ApiError && e.status === 401) {
-        session.user = undefined;
-        session.status = 'signed-out';
-        return;
-      }
+      if (e instanceof ApiError && e.status === 401) return;
       loadError = errorText(e);
       loadState = 'error';
     }

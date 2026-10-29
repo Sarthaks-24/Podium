@@ -20,10 +20,12 @@ describe('CompileOutput', () => {
     const output = "main.cpp:3:5: error: expected ';' before 'return'\n";
     app = mount(CompileOutput, { target, props: { output, language: 'cpp17', onjump: () => {} } });
     flushSync();
-    const button = target.querySelector('button');
+    const button = target.querySelector('pre button');
     expect(button?.textContent).toBe('main.cpp:3:5');
     expect(button?.getAttribute('aria-label')).toBe('main.cpp:3:5, go to line 3, column 5 in the editor');
-    expect(target.textContent).toBe(output);
+    expect(target.querySelector('pre')?.textContent).toBe(output);
+    // P4: the first error and its line come first, once.
+    expect(target.querySelector('.first')?.textContent?.replace(/\s+/g, ' ').trim()).toBe("Line 3: expected ';' before 'return'");
   });
 
   it('shows plain text when there is no editor to jump to', () => {

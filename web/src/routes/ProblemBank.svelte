@@ -88,13 +88,9 @@
   const showArchived = $derived(router.query.get('archived') === '1');
 
   /** Handles errors every request can hit; returns true when it did. */
-  function handleSessionError(err: unknown): boolean {
+  function handleAuth(err: unknown): boolean {
     if (!(err instanceof ApiError)) return false;
-    if (err.status === 401) {
-      session.user = undefined;
-      session.status = 'signed-out';
-      return true;
-    }
+    if (err.status === 401) return true;
     if (err.status === 403 && err.code === 'forbidden') {
       loadState = 'forbidden';
       return true;
@@ -109,7 +105,7 @@
       problems = data.problems ?? [];
       loadState = 'ready';
     } catch (err) {
-      if (handleSessionError(err)) return;
+      if (handleAuth(err)) return;
       loadError = errorText(err);
       loadState = 'error';
     }
@@ -176,7 +172,7 @@
       showToast(`Created ${problem.title}`);
       navigate(`/admin/problems/${problem.id}`);
     } catch (err) {
-      if (handleSessionError(err)) return;
+      if (handleAuth(err)) return;
       if (err instanceof ApiError && Object.keys(err.fields).length > 0) {
         createFields = { ...err.fields };
         const known = ['title', 'slug'];
@@ -209,7 +205,7 @@
       if (!quiet) showToast(`Validating ${name}`);
       return true;
     } catch (err) {
-      if (handleSessionError(err)) return false;
+      if (handleAuth(err)) return false;
       const why = err instanceof ApiError && err.problems.length > 0 ? err.problems[0] : errorText(err);
       showToast(`${name} cannot be validated yet: ${why} Open it to fix that.`, 'error');
       return false;
@@ -229,7 +225,7 @@
         const v = await getJSON<Validation>(problemPath(id, '/validation'));
         if (!isPending(v)) finished.push(id);
       } catch (err) {
-        if (handleSessionError(err)) return;
+        if (handleAuth(err)) return;
       }
     }
     if (!alive) return;
@@ -252,7 +248,7 @@
         try {
           problem = await sendBody<Problem>('POST', '/api/admin/problems/import', file, 'application/zip');
         } catch (err) {
-          if (handleSessionError(err)) return;
+          if (handleAuth(err)) return;
           importError = {
             message: files.length > 1 ? `${file.name}: ${errorText(err)}` : errorText(err),
             problems: err instanceof ApiError ? err.problems : [],

@@ -183,7 +183,7 @@
       const d = await getJSON<{ account: Account }>(`/api/admin/accounts?email=${encodeURIComponent(e)}`);
       if (lookup?.email === e) lookup = { email: e, status: 'found', account: d.account };
     } catch (err) {
-      if (handleSessionError(err) || lookup?.email !== e) return;
+      if (handleAuth(err) || lookup?.email !== e) return;
       lookup = { email: e, status: err instanceof ApiError && err.status === 404 ? 'none' : 'error' };
     }
   }
@@ -206,7 +206,7 @@
       showToast('Saved the organisation details');
       void loadHistory(1);
     } catch (err) {
-      if (handleSessionError(err)) return;
+      if (handleAuth(err)) return;
       if (err instanceof ApiError && Object.keys(err.fields).length > 0) {
         orgErrors = { ...err.fields };
         await focusFirstInvalid('#org-form');
@@ -286,13 +286,9 @@
   });
 
   /** Handles errors every request can hit; returns true when it did. */
-  function handleSessionError(err: unknown): boolean {
+  function handleAuth(err: unknown): boolean {
     if (!(err instanceof ApiError)) return false;
-    if (err.status === 401) {
-      session.user = undefined;
-      session.status = 'signed-out';
-      return true;
-    }
+    if (err.status === 401) return true;
     if (err.status === 403 && err.code === 'forbidden') {
       loadState = 'forbidden';
       return true;
@@ -311,7 +307,7 @@
       loadState = 'ready';
       void loadHistory(1);
     } catch (err) {
-      if (handleSessionError(err)) return;
+      if (handleAuth(err)) return;
       loadError = errorText(err);
       loadState = 'error';
     }
@@ -329,7 +325,7 @@
       historyMore = data.has_more === true;
       historyState = 'ready';
     } catch (err) {
-      if (handleSessionError(err)) return;
+      if (handleAuth(err)) return;
       if (page === 1) historyState = 'error';
       else showToast(errorText(err), 'error');
     } finally {
@@ -370,7 +366,7 @@
       showToast(`Added ${person.email} as ${person.role}`);
       void loadHistory(1);
     } catch (err) {
-      if (!handleSessionError(err)) personError = errorText(err);
+      if (!handleAuth(err)) personError = errorText(err);
     } finally {
       addingPerson = false;
     }
@@ -402,7 +398,7 @@
       showToast(`${personLabel(person)} is now ${next === 'owner' ? 'an owner' : 'an admin'}`);
       void loadHistory(1);
     } catch (err) {
-      if (!handleSessionError(err)) showToast(errorText(err), 'error');
+      if (!handleAuth(err)) showToast(errorText(err), 'error');
     } finally {
       removing = false;
       pending = null;
@@ -430,7 +426,7 @@
         void loadHistory(1);
       }
     } catch (err) {
-      if (!handleSessionError(err)) domainError = errorText(err);
+      if (!handleAuth(err)) domainError = errorText(err);
     } finally {
       addingDomain = false;
     }
@@ -457,7 +453,7 @@
       showToast(`Reset the Google account link for ${target}`);
       void loadHistory(1);
     } catch (err) {
-      if (!handleSessionError(err)) accountError = errorText(err);
+      if (!handleAuth(err)) accountError = errorText(err);
     } finally {
       removing = false;
       pending = null;
@@ -481,7 +477,7 @@
       people = people.map((p) => (p.id === out.account.id ? { ...p, disabled: out.account.disabled } : p));
       void loadHistory(1);
     } catch (err) {
-      if (!handleSessionError(err)) {
+      if (!handleAuth(err)) {
         if (kind === 'enable') showToast(errorText(err), 'error');
         else accountError = errorText(err);
       }
@@ -513,7 +509,7 @@
       }
       void loadHistory(1);
     } catch (err) {
-      if (!handleSessionError(err)) {
+      if (!handleAuth(err)) {
         showToast(errorText(err), 'error');
         if (err instanceof ApiError && err.status === 404) {
           if (target.kind === 'person') people = people.filter((p) => p.id !== target.person.id);
