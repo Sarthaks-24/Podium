@@ -507,7 +507,7 @@ test.describe('in a contest', () => {
     await expect(page.getByRole('link', { name: 'Go to the contest page.' })).toHaveCount(0);
   });
 
-  test('the rail shows each score, or not tried, and nothing else (S1-09)', async ({ page }) => {
+  test('the bar shows each score, or a dash, and nothing else (S1-09, B6)', async ({ page }) => {
     const api = await contests.mockApi(page, { phase: 'during' });
     api.scores.A = 100;
     api.scores.B = 40;
@@ -517,25 +517,18 @@ test.describe('in a contest', () => {
     const rail = page.getByRole('navigation', { name: 'Problems' });
     await expect(rail.getByRole('link', { name: /^Problem A/ })).toContainText('100/100');
     await expect(rail.getByRole('link', { name: /^Problem B/ })).toContainText('40/100');
-    await expect(rail.getByRole('link', { name: /^Problem B/ })).not.toContainText('tried');
-    await expect(rail.getByRole('link', { name: /^Problem C/ })).toContainText('not tried');
-    // The sentence for screen readers is unchanged.
+    await expect(rail.getByRole('link', { name: /^Problem C/ })).toHaveText(/C\s*-/);
+    // The sentence for screen readers says it in words.
     await expect(rail.getByRole('link', { name: 'Problem B, Interval covering, 40 of 100 points' })).toHaveAttribute('aria-current', 'page');
-    await expect(rail.getByText(/of 3 tried/)).toHaveCount(0);
-    // Questions during a contest go to Messages in the rail, not to the contact form (C2-023).
+    await expect(rail.getByRole('link', { name: 'Problem C, Shortest detour, not tried' })).toBeVisible();
+    // Questions during a contest go to Messages, not to the contact form (C2-023).
     await expect(page.getByRole('link', { name: 'Write to the organisers' })).toHaveCount(0);
     // The open problem is marked by a border, not only a tint.
     const border = await rail.locator('[aria-current="page"]').evaluate((el) => getComputedStyle(el).borderInlineStartWidth);
     expect(parseFloat(border)).toBeGreaterThanOrEqual(2);
     // A partial score fills in the partial colour.
     await expect(rail.getByRole('link', { name: /^Problem B/ }).locator('.fill')).toHaveClass(/part/);
-    await page.screenshot({ path: `${shots()}contest-rail-words-1440-light.png` });
-
-    await page.unrouteAll();
-    await contests.mockApi(page, { phase: 'practice' });
-    await page.goto('/contests/week-6/problems/B');
-    await expect(codeEditor(page)).toBeVisible();
-    await expect(page.locator('.tried')).toHaveCount(0);
+    await page.screenshot({ path: `${shots()}contest-bar-scores-1440-light.png` });
   });
 
   test('exam mode says submitted, never tried or solved', async ({ page }) => {
@@ -544,8 +537,8 @@ test.describe('in a contest', () => {
     await page.setViewportSize({ width: 1440, height: 900 });
     await page.goto('/contests/week-6/problems/A');
     const rail = page.getByRole('navigation', { name: 'Problems' });
-    await expect(rail.getByRole('link', { name: /^Problem A/ })).toContainText('submitted');
-    await expect(rail.getByRole('link', { name: /^Problem B/ })).toContainText('not submitted');
+    await expect(rail.getByRole('link', { name: /^Problem A/ })).toContainText('Submitted');
+    await expect(rail.getByRole('link', { name: /^Problem B, Interval covering, not submitted$/ })).toBeVisible();
   });
 
   test('Rules in the rail repeats the rules from before the start', async ({ page }) => {
@@ -564,7 +557,8 @@ test.describe('in a contest', () => {
     await page.getByRole('button', { name: 'I agree, start the contest' }).click();
     await expect(codeEditor(page)).toBeVisible();
 
-    const open = page.getByRole('navigation', { name: 'Problems' }).getByRole('button', { name: 'Help' });
+    // The bar's Help; the footer has one too.
+    const open = page.getByRole('button', { name: 'Help', exact: true }).first();
     await open.click();
     // Rules opens Help, which lists the rules first.
     const dialog = page.getByRole('dialog', { name: 'Help' });
@@ -681,13 +675,15 @@ test.describe('P5 workspace', () => {
     await expect(page.locator('header.bar')).toBeHidden();
     await page.setViewportSize({ width: 800, height: 900 });
     await expect(page.locator('header.bar')).toBeHidden();
-    // From 1024 px the site header is back.
+    // From 1024 px the contest bar takes its place (B6).
     await page.setViewportSize({ width: 1024, height: 900 });
-    await expect(page.locator('header.bar')).toBeVisible();
+    await expect(page.locator('header.bar')).toBeHidden();
+    await expect(page.getByRole('button', { name: 'Leave' })).toBeVisible();
     // Outside the workspace the header shows on a phone too.
     await page.setViewportSize({ width: 375, height: 812 });
     await page.getByRole('button', { name: /^Menu/ }).click();
-    await page.getByRole('link', { name: 'Leave' }).click();
+    await page.getByRole('button', { name: 'Leave' }).click();
+    await page.getByRole('dialog', { name: 'Leave the contest?' }).getByRole('button', { name: 'Leave' }).click();
     await expect(page).toHaveURL('/');
     await expect(page.locator('header.bar')).toBeVisible();
   });
@@ -828,29 +824,28 @@ test.describe('P5 workspace', () => {
     await page.screenshot({ path: `${shots()}workspace-sticky-head-1440-light.png` });
   });
 
-  test('sign out during a live contest asks first and saves the draft (F7.6)', async ({ page }) => {
+  test('Leave during a live contest asks first, says the code is saved, and the draft is saved (B6, F7.6)', async ({ page }) => {
     const api = await contests.mockApi(page, { phase: 'during' });
     await page.setViewportSize({ width: 1440, height: 900 });
     await page.goto('/contests/week-6/problems/A');
     await expect(codeEditor(page)).toHaveAttribute('data-language', /.+/);
     await codeEditor(page).click({ position: { x: 24, y: 8 } });
     await page.keyboard.press('Control+End');
-    await page.keyboard.type('// before sign out');
-    await page.getByRole('button', { name: 'Asha Rao' }).click();
-    await page.getByRole('button', { name: 'Sign out' }).click();
-    const ask = page.getByRole('dialog', { name: 'Sign out during the contest?' });
-    await expect(ask).toContainText('Your draft is saved first. Your time keeps running while you are signed out.');
+    await page.keyboard.type('// before leaving');
+    const leave = page.getByRole('button', { name: 'Leave' });
+    await leave.click();
+    const ask = page.getByRole('dialog', { name: 'Leave the contest?' });
+    await expect(ask).toContainText('Your code is saved. The clock keeps running while you are away.');
     await expect(ask.getByRole('button', { name: 'Cancel' })).toBeFocused();
-    await page.screenshot({ path: `${shots()}workspace-sign-out-guard-1440-light.png` });
+    await page.screenshot({ path: `${shots()}workspace-leave-1440-light.png` });
     await ask.getByRole('button', { name: 'Cancel' }).click();
     await expect(page).toHaveURL(/\/problems\/A$/);
-    await expect(page.getByRole('button', { name: 'Asha Rao' })).toBeFocused();
+    await expect(leave).toBeFocused();
 
-    await page.getByRole('button', { name: 'Asha Rao' }).click();
-    await page.getByRole('button', { name: 'Sign out' }).click();
-    await ask.getByRole('button', { name: 'Sign out' }).click();
-    await expect(page).toHaveURL(/\/signin/);
-    expect(api.draftPuts.some((b) => String(b.source).includes('// before sign out'))).toBe(true);
+    await leave.click();
+    await ask.getByRole('button', { name: 'Leave' }).click();
+    await expect(page).toHaveURL('/');
+    await expect.poll(() => api.draftPuts.some((b) => String(b.source).includes('// before leaving'))).toBe(true);
   });
 
   test('outside a contest sign out does not ask', async ({ page }) => {
@@ -1018,16 +1013,41 @@ test.describe('P5 workspace', () => {
     await expect(panel.locator('.revealed').getByRole('button', { name: 'Run on this input' })).toHaveCount(0);
   });
 
-  test('rail titles take up to two lines (R4)', async ({ page }) => {
+  test('from 1024 px the bar holds the letters, and Hide statement gives the editor the width (B6, E5)', async ({ page }) => {
     await contests.mockApi(page, { phase: 'during' });
-    await page.setViewportSize({ width: 1024, height: 800 });
-    await page.goto('/contests/week-6/problems/A');
-    const title = page.getByRole('navigation', { name: 'Problems' }).getByRole('link', { name: /^Problem B/ }).locator('.title');
-    await expect(title).toHaveText('Interval covering');
-    const lines = await title.evaluate((el) => Math.round(el.getBoundingClientRect().height / parseFloat(getComputedStyle(el).lineHeight)));
-    expect(lines).toBe(2);
-    expect(await title.evaluate((el) => getComputedStyle(el).webkitLineClamp)).toBe('2');
-    await page.screenshot({ path: `${shots()}workspace-rail-1024-light.png` });
+    for (const width of [1024, 1440]) {
+      await page.setViewportSize({ width, height: 900 });
+      await page.goto('/contests/week-6/problems/A');
+      await expect(codeEditor(page)).toHaveAttribute('data-language', /.+/);
+      await expect(page.locator('header.bar')).toBeHidden();
+      await expect(page.getByRole('complementary', { name: 'Problem' })).toHaveCount(0);
+      for (const name of ['Leave', /Messages/, 'Standings']) await expect(page.getByRole('button', { name })).toBeVisible();
+      await expect(page.getByRole('navigation', { name: 'Problems' }).getByRole('link')).toHaveCount(3);
+      await expect(page.getByRole('timer')).toBeVisible();
+    }
+    // Keyboard: Tab reaches every letter, and each one opens its problem.
+    const letters = page.getByRole('navigation', { name: 'Problems' }).getByRole('link');
+    await page.getByRole('button', { name: 'Leave' }).focus();
+    for (let i = 0; i < 3; i++) {
+      await page.keyboard.press('Tab');
+      await expect(letters.nth(i)).toBeFocused();
+    }
+    await page.keyboard.press('Enter');
+    await expect(page).toHaveURL(/\/problems\/C$/);
+
+    // Hide statement: the code takes the width; Show statement brings it back.
+    const code = page.getByRole('region', { name: 'Code' });
+    const narrow = (await code.boundingBox())!.width;
+    await page.getByRole('button', { name: 'Hide statement' }).click();
+    await expect(page.getByRole('region', { name: 'Statement' })).toBeHidden();
+    expect((await code.boundingBox())!.width).toBeGreaterThan(narrow + 200);
+    await page.getByRole('button', { name: 'Show statement' }).click();
+    await expect(page.getByRole('region', { name: 'Statement' })).toBeVisible();
+    // The column splitter moves with the keyboard.
+    const split = page.getByRole('separator', { name: 'Statement panel size' });
+    await split.focus();
+    await page.keyboard.press('ArrowRight');
+    await expect(split).toHaveAttribute('aria-valuenow', '50');
   });
 
   // From 1100 px the toolbar is one row at any height; 1024 to 1099 px may wrap to two (decision of fixer 1, C1-042).

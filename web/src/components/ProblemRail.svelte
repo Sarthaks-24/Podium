@@ -1,34 +1,29 @@
 <!--
-  ProblemRail: the contest's problems in the workspace rail (design.md
-  5.3). From 1024 px each row is the letter, the title (up to two lines,
-  then cut, whole on hover; R4, audit S6), the score cell in mono and a 2 px bar of earned over
-  total, in the partial colour for a partial score; the open problem is
-  marked by a border on its inline start (a shape, not only a tint, audit
-  06-7). The score cell shows the score, or "not tried" without one
-  (S1-09), and in exam mode "not submitted" or "submitted" until scores
-  are out.
-  Below 1024 px the same links sit in one row of letters with their scores
-  ("-" for none), which scrolls sideways when there are many. Under the
-  problems come Standings (a panel over the editor during the contest, B3,
-  else the standings page), Help (the rules, Run and Submit, the keys) and
-  the Messages button with its unread count, all quiet buttons with no
-  underline (the control system in styles/controls.css). Each link keeps one sentence for
-  screen readers (sentence()).
-  With `layout` "strip" it draws the one sticky row under 1024 px (B4,
-  V3-14): the problem letters with their scores (scrolling sideways when
-  there are many), the contest clock (`clock`), and a Menu holding
-  Standings, Messages with its count, Help and Leave, so the site header
-  and the link row can go and the statement starts at once.
-  Props: `problems`, `slug`, `current` (the open label), `clock` (a
-  snippet for the strip, optional), `layout` ("wide",
-  "tablet", "phone" or "strip"), `exam`, `unread` (messages not yet seen),
-  `onmessages` (opens the messages panel), `onhelp` (optional; opens Help)
-  and `onstandings` (optional; opens the standings panel instead of the
-  page).
+  ProblemRail: a contest's problems and its links inside the workspace, in
+  one of two shapes (B4, B6, design/student.md).
+  - "bar", from 1024 px, in place of the site header: Leave, the contest's
+    title, the letters with their scores (scrolling sideways past six, the
+    open one kept in view), the clock, then Messages with its unread count,
+    Standings and Help.
+  - "strip", under 1024 px, the one sticky row: the letters with their
+    scores, the clock and a Menu holding Standings, Messages, Help and
+    Leave, so the statement starts at once.
+  Each letter shows the score or "-" ("Submitted" in exam mode until
+  scores are out) over a 2 px bar, in the partial colour for a partial
+  score; the open problem has a border on its inline start (a shape, not
+  only a tint, audit 06-7); a letter whose statement changed since the
+  student last opened it carries a dot. Each link keeps one sentence for
+  screen readers (sentence()). Leave asks first while the contest is live
+  (`onleave`), otherwise it is a link home.
+  Props: `problems`, `slug`, `current` (the open label), `layout` ("bar"
+  or "strip"), `exam`, `unread` (messages not yet seen), `onmessages`,
+  `onhelp`, `onstandings` (a panel instead of the standings page), `clock`
+  (a snippet), `contestTitle`, `changed` (letters whose statement changed)
+  and `onleave`.
 -->
 <script lang="ts">
   import type { Snippet } from 'svelte';
-  import { railStatus, type ContestProblem } from '../lib/contests';
+  import type { ContestProblem } from '../lib/contests';
   import { dismissable } from '../lib/dismissable';
   import Icon from './Icon.svelte';
 
@@ -43,11 +38,24 @@
     onhelp?: () => void;
     onstandings?: () => void;
     clock?: Snippet;
+    contestTitle?: string;
+    changed?: ReadonlySet<string>;
+    onleave?: () => void;
   }
 
-  let { problems, slug, current, layout, exam = false, unread = 0, onmessages, onhelp, onstandings, clock }: Props = $props();
+  let { problems, slug, current, layout, exam = false, unread = 0, onmessages, onhelp, onstandings, clock, contestTitle = '', changed = new Set<string>(), onleave }: Props = $props();
 
   const base = $derived(`/contests/${encodeURIComponent(slug)}`);
+  // Past six letters the row scrolls; the open one stays in view (B6).
+  function keepInView(node: HTMLElement, isCurrent: boolean) {
+    if (isCurrent) node.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    return {
+      update(now: boolean) {
+        if (now) node.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+      },
+    };
+  }
+
   let menuOpen = $state(false);
   let menuButton: HTMLButtonElement | undefined = $state();
 
@@ -73,6 +81,10 @@
   }
 
   function sentence(p: ContestProblem): string {
+    return baseSentence(p) + (changed.has(p.label) ? ', statement changed' : '');
+  }
+
+  function baseSentence(p: ContestProblem): string {
     if (p.my_score !== null) return `Problem ${p.label}, ${p.title}, ${p.my_score} of ${p.max_score} points`;
     if (exam) {
       const n = count(p);
@@ -91,21 +103,49 @@
   }
 </script>
 
-{#if layout === 'strip'}
+{#snippet chips()}
+  <nav class="chips" aria-label="Problems">
+    <ul class="problems">
+      {#each problems as p (p.label)}
+        <li>
+          <a class="problem" href={href(p.label)} aria-current={p.label === current ? 'page' : undefined} aria-label={sentence(p)} title={p.title} use:keepInView={p.label === current}>
+            <span class="mono letter">{p.label}</span>
+            <span class="mono score" class:sent={scoreText(p) === 'Submitted'}>{scoreText(p)}</span>
+            {#if changed.has(p.label)}<span class="changed" aria-hidden="true"></span>{/if}
+            <span class="bar" aria-hidden="true"><span class="fill" class:part={partial(p)} style:width="{percent(p)}%"></span></span>
+          </a>
+        </li>
+      {/each}
+    </ul>
+  </nav>
+{/snippet}
+
+{#snippet leave(cls: string)}
+  {#if onleave}<button type="button" class={cls} onclick={() => pick(onleave)}>Leave</button>{:else}<a class={cls} href="/">Leave</a>{/if}
+{/snippet}
+
+{#if layout === 'bar'}
+  <div class="contest-bar">
+    {@render leave('btn btn-quiet btn-compact leave')}
+    <p class="contest-title">{contestTitle}</p>
+    {@render chips()}
+    {#if clock}<div class="row-clock">{@render clock()}</div>{/if}
+    <div class="bar-links">
+      <button type="button" class="btn btn-quiet btn-compact messages" onclick={onmessages}>
+        <Icon name="message-square" />
+        Messages{#if unread > 0}<span class="mono count">{unread}</span><span class="visually-hidden">&nbsp;unread</span>{/if}
+      </button>
+      {#if onstandings}
+        <button type="button" class="btn btn-quiet btn-compact" onclick={onstandings}>Standings</button>
+      {:else}
+        <a class="btn btn-quiet btn-compact" href="{base}/standings?from={encodeURIComponent(current)}">Standings</a>
+      {/if}
+      {#if onhelp}<button type="button" class="btn btn-quiet btn-compact" aria-keyshortcuts="?" onclick={onhelp}>Help</button>{/if}
+    </div>
+  </div>
+{:else if layout === 'strip'}
   <div class="row">
-    <nav class="chips" aria-label="Problems">
-      <ul class="problems">
-        {#each problems as p (p.label)}
-          <li>
-            <a class="problem" href={href(p.label)} aria-current={p.label === current ? 'page' : undefined} aria-label={sentence(p)} title={p.title}>
-              <span class="mono letter">{p.label}</span>
-              <span class="mono score" class:sent={scoreText(p) === 'Submitted'}>{scoreText(p)}</span>
-              <span class="bar" aria-hidden="true"><span class="fill" class:part={partial(p)} style:width="{percent(p)}%"></span></span>
-            </a>
-          </li>
-        {/each}
-      </ul>
-    </nav>
+    {@render chips()}
     {#if clock}<div class="row-clock">{@render clock()}</div>{/if}
     <div class="menu" use:dismissable={{ open: menuOpen, onclose: () => (menuOpen = false), trigger: menuButton }}>
       <button type="button" class="btn btn-quiet btn-compact" aria-expanded={menuOpen} aria-controls="strip-menu" bind:this={menuButton} onclick={() => (menuOpen = !menuOpen)}>
@@ -121,62 +161,13 @@
           </button>
         </li>
         {#if onhelp}<li><button type="button" class="item" onclick={() => pick(onhelp)}>Help</button></li>{/if}
-        <li><a class="item" href="/">Leave</a></li>
+        <li>{@render leave('item')}</li>
       </ul>
     </div>
   </div>
-{:else}
-<nav class="rail-nav" class:wide={layout === 'wide'} aria-label="Problems">
-  <ul class="problems">
-    {#each problems as p (p.label)}
-      <li>
-        <a
-          class="problem"
-          href="{base}/problems/{encodeURIComponent(p.label)}"
-          aria-current={p.label === current ? 'page' : undefined}
-          aria-label={sentence(p)}
-          title={p.title}
-        >
-          <span class="mono letter">{p.label}</span>
-          {#if layout === 'wide'}
-            {@const st = railStatus(p, exam)}
-            <span class="title">{p.title}</span>
-            <span class="cell">
-              {#if st.score}<span class="mono score">{st.score}</span>{/if}
-              {#if st.word}<span class="word" class:alone={!st.score}>{st.word}</span>{/if}
-            </span>
-          {:else}
-            <span class="mono score" class:sent={scoreText(p) === 'Submitted'}>{scoreText(p)}</span>
-          {/if}
-          <span class="bar" aria-hidden="true"><span class="fill" class:part={partial(p)} style:width="{percent(p)}%"></span></span>
-        </a>
-      </li>
-    {/each}
-  </ul>
-  <div class="links">
-    {#if onstandings}
-      <button type="button" class="btn btn-link btn-compact" onclick={onstandings}>Standings</button>
-    {:else}
-      <a class="btn btn-link btn-compact" href="{base}/standings{current ? `?from=${encodeURIComponent(current)}` : ''}">Standings</a>
-    {/if}
-    {#if onhelp}<button type="button" class="btn btn-link btn-compact" onclick={onhelp}>Help</button>{/if}
-    <button type="button" class="btn btn-link btn-compact messages" onclick={onmessages}>
-      <Icon name="message-square" />
-      Messages{#if unread > 0}<span class="mono count">{unread}</span><span class="visually-hidden">&nbsp;unread</span>{/if}
-    </button>
-  </div>
-</nav>
 {/if}
 
 <style>
-  .rail-nav {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: var(--space-2) var(--space-4);
-    min-width: 0;
-    margin-top: var(--space-3);
-  }
 
   .problems {
     display: flex;
@@ -251,32 +242,6 @@
     background: var(--part);
   }
 
-  .cell {
-    display: grid;
-    justify-items: end;
-    line-height: var(--lh-tight);
-  }
-
-  /* Words in the interface face; mono is for the digits (design.md amendment). */
-  .word {
-    color: var(--ink-muted);
-    font-family: var(--font-ui);
-    font-size: var(--fs-0);
-    white-space: nowrap;
-  }
-
-  .word:not(.alone) {
-    font-size: calc(var(--fs-0) * 0.9);
-  }
-
-
-  .links {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: var(--space-2) var(--space-3);
-  }
-
   .count {
     min-width: 1.5em;
     padding: 0 var(--space-1);
@@ -287,64 +252,44 @@
     text-align: center;
   }
 
-  /* The rail from 1024 px: one row per problem, links below. */
-  .wide {
-    display: grid;
-    gap: var(--space-5);
-    margin-top: 0;
+  /* The contest bar from 1024 px (B6): Leave and the title, the letters, the clock, the links. */
+  .contest-bar {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2) var(--space-4);
+    min-width: 0;
+    padding-inline: var(--space-3);
   }
 
-  .wide .problems {
-    display: grid;
-    gap: var(--space-1);
-    overflow: visible;
-  }
-
-  .wide .problem {
-    display: grid;
-    grid-template-columns: auto minmax(0, 1fr) auto;
-    width: 100%;
-    min-height: var(--control-h);
-  }
-
-  /* R4, audit S6: up to two lines, then cut; the whole title is on hover and in the link's name. */
-  .wide .title {
-    display: -webkit-box;
+  .contest-title {
+    flex: none;
+    max-width: 14rem;
     overflow: hidden;
-    -webkit-box-orient: vertical;
-    -webkit-line-clamp: 2;
-    line-clamp: 2;
-    font-size: var(--fs-0);
-    line-height: var(--lh-tight);
-    white-space: normal;
-    overflow-wrap: break-word;
+    font-weight: 600;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
-  /* The rail is 10rem under 1280 px: the status goes under the title, which keeps the width. */
-  @media (width < 1280px) {
-    .wide .problem {
-      grid-template-columns: auto minmax(0, 1fr);
-    }
-
-    .wide .cell {
-      display: flex;
-      grid-column: 2;
-      flex-wrap: wrap;
-      align-items: baseline;
-      gap: 0 var(--space-2);
-      justify-items: start;
-    }
+  .contest-bar .chips {
+    flex: 1;
+    min-width: 0;
   }
 
-  .wide .links {
-    display: grid;
-    justify-items: start;
+  .bar-links {
+    display: flex;
+    flex: none;
+    align-items: center;
     gap: var(--space-1);
   }
 
-  /* Quiet buttons line their words up with the rail's edge. */
-  .wide .links .btn {
-    margin-inline-start: calc(-1 * var(--space-3));
+  .changed {
+    position: absolute;
+    top: var(--space-1);
+    right: var(--space-1);
+    width: var(--space-2);
+    height: var(--space-2);
+    border-radius: 50%;
+    background: var(--act);
   }
 
   /* The one row under 1024 px (B4): the letters scroll, the clock and Menu stay. */

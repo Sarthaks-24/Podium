@@ -8,6 +8,10 @@
   45rem tall (the `short` tier) gives back padding to the editor. Under
   1024 px the panes stack under the sticky strip and show one tab at a
   time (Problem and Code from 768 px, Problem, Code and Result under it).
+  In a contest (B6) the `bar` takes the rail's place from 1024 px: one row
+  across the top, then the title and the statement beside the code, with
+  a column splitter (`colSplit`) between them sized by `cols`; with
+  `statementHidden` the code takes the whole width under the title.
   Props: `layout` ('wide', 'tablet' or 'phone'), `rows` (the code column's
   rows from 1024 px), `showStatement`, `showEditor`, `showResult`, `column`
   (bindable: the code column, which the splitter measures) and the
@@ -20,10 +24,15 @@
   interface Props {
     layout: 'wide' | 'tablet' | 'phone';
     rows?: string;
+    cols?: string;
+    statementHidden?: boolean;
+    bar?: Snippet;
+    colSplit?: Snippet;
     showStatement: boolean;
     showEditor: boolean;
     showResult: boolean;
     column?: HTMLDivElement;
+    grid?: HTMLDivElement;
     side?: Snippet;
     title: Snippet;
     strip?: Snippet;
@@ -33,21 +42,27 @@
     result: Snippet;
   }
 
-  let { layout, rows, showStatement, showEditor, showResult, column = $bindable(), side, title, strip, statement, code, splitter, result }: Props = $props();
+  let { layout, rows, cols, statementHidden = false, bar, colSplit, showStatement, showEditor, showResult, column = $bindable(), grid = $bindable(), side, title, strip, statement, code, splitter, result }: Props = $props();
 
   const wide = $derived(layout === 'wide');
+  const withBar = $derived(wide && !!bar);
 </script>
 
-<div class="ws" data-layout={layout}>
-  {#if wide && side}<aside class="rail" aria-label="Problem">{@render side()}</aside>{/if}
+<div bind:this={grid} class="ws" class:with-bar={withBar} class:no-statement={withBar && statementHidden} data-layout={layout} style:grid-template-columns={withBar ? cols : undefined}>
+  {#if withBar && bar}
+    <div class="bar-cell">{@render bar()}</div>
+  {:else if wide && side}
+    <aside class="rail" aria-label="Problem">{@render side()}</aside>
+  {/if}
   <!-- Under 1024 px the sticky row comes first, then the title and the statement at once (B4). -->
   {#if !wide && strip}{@render strip()}{/if}
   <div class="title-cell">{@render title()}</div>
 
+  {#if withBar && colSplit && !statementHidden}<div class="col-split">{@render colSplit()}</div>{/if}
   <section
     id="ws-problem"
     class="pane statement-pane"
-    hidden={!showStatement}
+    hidden={!showStatement || (withBar && statementHidden)}
     role={wide ? undefined : 'tabpanel'}
     aria-labelledby={wide ? undefined : 'ws-tab-problem'}
     aria-label={wide ? 'Statement' : undefined}
@@ -191,6 +206,42 @@
       --sticky-bleed: var(--space-4);
       padding: var(--sticky-top) var(--space-4) var(--space-4);
       overflow-y: auto;
+    }
+  }
+
+  /* B6: the contest bar across the top; the statement and the code share
+     the width the column splitter sets (an inline grid-template-columns). */
+  @media (min-width: 1024px) {
+    .ws.with-bar {
+      grid-template-rows: auto auto minmax(0, 1fr);
+      grid-template-areas:
+        'bar bar bar'
+        'title split code'
+        'statement split code';
+    }
+
+    .ws.with-bar.no-statement {
+      grid-template-areas:
+        'bar'
+        'title'
+        'code';
+    }
+
+    .bar-cell {
+      grid-area: bar;
+      padding-block: var(--space-1);
+      border-bottom: var(--rule) solid var(--line);
+      background: var(--surface-2);
+    }
+
+    .col-split {
+      grid-area: split;
+      display: grid;
+      border-left: var(--rule) solid var(--line);
+    }
+
+    .with-bar .code-col {
+      border-left: 0;
     }
   }
 

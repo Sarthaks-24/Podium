@@ -4,6 +4,13 @@ Dated entries per release. Unreleased work is listed at the top.
 
 ## Unreleased
 
+### v3 stage B6: the contest bar (2026-10-29)
+
+- From 1024 px a contest problem replaces the site header and the left rail with one bar: Leave, the contest's title, the letters with their scores (scrolling sideways past six, the open one kept in view, a dot on a letter whose statement changed), the clock, Messages with its count, Standings and Help.
+- Leave asks while the contest is live: "Your code is saved. The clock keeps running while you are away."
+- "Hide statement" gives the editor the whole width, and a column splitter between the statement and the code sets their shares (arrows, Page Up and Down, Home, End, or drag), kept on this device.
+- The rail's per-problem list is gone from contests; the organiser's try page keeps its single-problem rail.
+
 ### v3 stage B4: the phone row (2026-10-29)
 
 - Under 1024 px a contest problem drops the site header for one sticky row: each problem's letter and score, the clock, and a Menu with Standings, Messages, Help and Leave. The Problem, Code and Result tabs follow, then the title and the statement at once (the title sits about 110 px down at 375 px, was 450).

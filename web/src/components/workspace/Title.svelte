@@ -6,8 +6,9 @@
   row has Leave), the letter is for screen readers only, and the note
   takes the clock's place when there is no clock. Props:
   `layout`, `banner` and `rail` (snippets, optional), `label` (the problem
-  letter, or ""), `title`, `limits`, `back` ({ href, label }), `note` and
-  `hasClock`.
+  letter, or ""), `title`, `limits`, `back` ({ href, label }), `note`,
+  `hasClock`, and in a contest from 1024 px `statementHidden` with
+  `ontogglestatement` ("Hide statement" gives the editor the width, E5).
 -->
 <script lang="ts">
   import type { Snippet } from 'svelte';
@@ -23,9 +24,11 @@
     back: { href: string; label: string };
     note: string;
     hasClock: boolean;
+    statementHidden?: boolean;
+    ontogglestatement?: () => void;
   }
 
-  let { layout, banner, rail, label, title, limits, back, note, hasClock }: Props = $props();
+  let { layout, banner, rail, label, title, limits, back, note, hasClock, statementHidden = false, ontogglestatement }: Props = $props();
 
   const wide = $derived(layout === 'wide');
 </script>
@@ -39,7 +42,13 @@
     </PageHeader>
     {#if wide}<p class="limits">{limits}</p>{/if}
   </div>
-  {#if !wide && !hasClock && note}<p class="note">{note}</p>{/if}
+  {#if wide && ontogglestatement}
+    <button type="button" class="btn btn-quiet btn-compact" aria-expanded={!statementHidden} aria-controls="ws-problem" onclick={ontogglestatement}>
+      {statementHidden ? 'Show statement' : 'Hide statement'}
+    </button>
+  {/if}
+  <!-- Without a clock the note takes its place: under 1024 px, and beside a contest's bar (practice, time up). -->
+  {#if (!wide || rail) && !hasClock && note}<p class="note">{note}</p>{/if}
 </div>
 
 <style>

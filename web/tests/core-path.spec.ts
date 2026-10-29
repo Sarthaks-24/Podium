@@ -176,7 +176,7 @@ test('student: standings open over problem B, Escape closes them, and B is still
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto('/contests/week-6/problems/B');
   await expect(codeEditor(page)).toHaveAttribute('data-language', /.+/);
-  const open = page.getByRole('navigation', { name: 'Problems' }).getByRole('button', { name: 'Standings' });
+  const open = page.getByRole('button', { name: 'Standings' });
   await open.click();
   const board = page.getByRole('dialog', { name: 'Standings' });
   await expect(board.getByRole('table')).toBeVisible();
@@ -195,7 +195,7 @@ test('student: a question can be sent in practice after the end (B3)', async ({ 
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto('/contests/week-6/problems/B');
   await expect(codeEditor(page)).toHaveAttribute('data-language', /.+/);
-  const open = page.getByRole('navigation', { name: 'Problems' }).getByRole('button', { name: /Messages/ });
+  const open = page.getByRole('button', { name: /Messages/ });
   await open.click();
   const messages = page.getByRole('dialog', { name: 'Messages' });
   await messages.getByRole('textbox', { name: 'Question' }).fill('Why does my B time out?');

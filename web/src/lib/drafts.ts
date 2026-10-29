@@ -170,6 +170,8 @@ const LANG_KEY = 'podium-editor-language';
 const TAB_SIZE_KEY = 'podium-editor-tab-size';
 const WRAP_KEY = 'podium-editor-wrap';
 const RESULT_KEY = 'podium-workspace-result';
+/** The statement's share of the width beside the code in a contest, and whether it is hidden (B6). */
+export const STATEMENT_KEY = 'podium-workspace-statement';
 
 /** The result panel's share of the code column, in percent, while open (F7.5). */
 export const RESULT_SHARE = { min: 20, max: 80, default: 40 } as const;
@@ -215,9 +217,9 @@ export function clampShare(share: number): number {
 }
 
 /** Reads the result panel's size, or `fallback` open when nothing usable is stored. */
-export function readResultPanel(storage: DraftStorage | null, fallback: number = RESULT_SHARE.default): ResultPanelPrefs {
+export function readResultPanel(storage: DraftStorage | null, fallback: number = RESULT_SHARE.default, key = RESULT_KEY): ResultPanelPrefs {
   const none = { share: clampShare(fallback), collapsed: false };
-  const raw = read(storage, RESULT_KEY);
+  const raw = read(storage, key);
   if (raw === null) return none;
   try {
     const v = JSON.parse(raw) as { share?: unknown; collapsed?: unknown };
@@ -229,8 +231,8 @@ export function readResultPanel(storage: DraftStorage | null, fallback: number =
 }
 
 /** Remembers the result panel's size on this device. */
-export function writeResultPanel(storage: DraftStorage | null, prefs: ResultPanelPrefs): void {
-  write(storage, RESULT_KEY, JSON.stringify({ share: clampShare(prefs.share), collapsed: prefs.collapsed }));
+export function writeResultPanel(storage: DraftStorage | null, prefs: ResultPanelPrefs, key = RESULT_KEY): void {
+  write(storage, key, JSON.stringify({ share: clampShare(prefs.share), collapsed: prefs.collapsed }));
 }
 
 /**

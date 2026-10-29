@@ -41,6 +41,7 @@
   Props: `slug`, and `label` (the problem letter from the address, or "").
 -->
 <script lang="ts">
+  import ConfirmDialog from '../components/ConfirmDialog.svelte';
   import Dialog from '../components/Dialog.svelte';
   import MonoDigits from '../components/MonoDigits.svelte';
   import StandingsView from '../components/StandingsView.svelte';
@@ -103,6 +104,10 @@
   let messagesOpen = $state(false);
   // B3: during the contest the board opens over the editor; Escape closes it and the problem stays.
   let standingsOpen = $state(false);
+  // B6: Leave asks while the contest is live; the code is saved and the clock keeps running.
+  let leaveOpen = $state(false);
+  /** Problems whose statement changed since the student last opened them: a dot on the letter (B6). */
+  let changed = $state.raw<Set<string>>(new Set());
   let dismissed = $state<Set<string>>(new Set());
   /** The last time the student read this contest's messages on this device (S1). */
   let lastRead = $state(0);
@@ -137,6 +142,11 @@
   const used = $derived(
     contest && currentProblem && phase === 'during' ? { count: currentProblem.my_submission_count ?? 0, max: contest.rules.max_per_problem } : null,
   );
+
+  $effect(() => {
+    const open = current;
+    if (changed.has(open)) changed = new Set([...changed].filter((l) => l !== open));
+  });
 
   $effect(() => {
     shell.workspace = showWorkspace;
@@ -239,6 +249,7 @@
     if (type === 'statement') {
       const ev = data as { label?: string; statement_changed?: boolean };
       if (ev.label === current) statementKey++;
+      else if (ev.label && ev.statement_changed) changed = new Set([...changed, ev.label]);
       if (ev.statement_changed) polite(`The statement of problem ${ev.label} was updated.`);
       refetchSoon(0);
       return;
@@ -447,7 +458,10 @@
     onmessages={openMessages}
     onhelp={() => (shell.help = true)}
     onstandings={phase === 'during' ? () => (standingsOpen = true) : undefined}
-    clock={layout === 'strip' && phase === 'during' ? stripClock : undefined}
+    clock={(layout === 'strip' || layout === 'bar') && phase === 'during' ? stripClock : undefined}
+    contestTitle={contest?.title ?? ''}
+    {changed}
+    onleave={phase === 'during' ? () => (leaveOpen = true) : undefined}
   />
 {/snippet}
 
@@ -502,6 +516,17 @@
     canAsk={phase === 'during' || practice}
     onclose={() => (messagesOpen = false)}
     onasked={onAsked}
+  />
+  <ConfirmDialog
+    open={leaveOpen}
+    title="Leave the contest?"
+    body="Your code is saved. The clock keeps running while you are away."
+    confirmLabel="Leave"
+    onconfirm={() => {
+      leaveOpen = false;
+      navigate('/');
+    }}
+    oncancel={() => (leaveOpen = false)}
   />
   <Dialog open={standingsOpen} onclose={() => (standingsOpen = false)} title="Standings" kind="sheet">
     {#if standingsOpen}<StandingsView {slug} />{/if}

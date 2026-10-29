@@ -45,7 +45,7 @@
   import { media } from '../lib/breakpoints';
   import { serverClock } from '../lib/clock';
   import { Draft } from '../lib/draft.svelte';
-  import { RESULT_SHARE, draftStorage, readResultPanel, writeResultPanel } from '../lib/drafts';
+  import { RESULT_SHARE, STATEMENT_KEY, draftStorage, readResultPanel, writeResultPanel } from '../lib/drafts';
   import { keepHeadingFocus } from '../lib/focus';
   import { setTitle } from '../lib/head';
   import { FLUSH_MS, IntegrityRecorder } from '../lib/integrity';
@@ -161,6 +161,12 @@
   let resultShare = $state(panel.share);
   let resultCollapsed = $state(panel.collapsed);
   let codeCol: HTMLDivElement | undefined = $state();
+  // In a contest from 1024 px (B6): the statement's share beside the code, or hidden (E5).
+  const statementPanel = readResultPanel(draftStorage(), 45, STATEMENT_KEY);
+  let statementShare = $state(statementPanel.share);
+  let statementHidden = $state(statementPanel.collapsed);
+  let grid: HTMLDivElement | undefined = $state();
+  const cols = $derived(statementHidden ? 'minmax(0, 1fr)' : `minmax(0, ${statementShare}fr) auto minmax(22.5rem, ${100 - statementShare}fr)`);
 
   // The contest may allow fewer languages than the judge knows.
   const languages = $derived.by(() => {
@@ -297,6 +303,12 @@
     editor?.focus();
   }
 
+  function onStatementSplit(next: { share: number; collapsed: boolean }, remember: boolean) {
+    statementShare = next.share;
+    statementHidden = next.collapsed;
+    if (remember) writeResultPanel(draftStorage(), { share: statementShare, collapsed: statementHidden }, STATEMENT_KEY);
+  }
+
   function onSplit(next: { share: number; collapsed: boolean }, remember: boolean) {
     resultShare = next.share;
     resultCollapsed = next.collapsed;
@@ -420,16 +432,32 @@
   <Layout
     {layout}
     {rows}
+    {cols}
+    {statementHidden}
+    bar={rail ? contestBar : undefined}
+    bind:grid
     showStatement={layout === 'wide' || tab === 'problem'}
     showEditor={layout === 'wide' || tab === 'code'}
     showResult={layout === 'wide' ? !resultCollapsed : layout === 'tablet' ? tab === 'code' : tab === 'result'}
     bind:column={codeCol}
   >
     {#snippet side()}
-      <Rail {clock} {note} {backHref} {backLabel} {rail} title={problem.title} best={bestScore(judging.state.submissions)} />
+      <Rail {clock} {note} {backHref} {backLabel} title={problem.title} best={bestScore(judging.state.submissions)} />
     {/snippet}
     {#snippet title()}
-      <Title {layout} {banner} {rail} {label} title={problem.title} {limits} back={{ href: backHref, label: backLabel }} {note} hasClock={!!clock} />
+      <Title
+        {layout}
+        {banner}
+        {rail}
+        {label}
+        title={problem.title}
+        {limits}
+        back={{ href: backHref, label: backLabel }}
+        {note}
+        hasClock={!!clock}
+        {statementHidden}
+        ontogglestatement={rail ? () => onStatementSplit({ share: statementShare, collapsed: !statementHidden }, true) : undefined}
+      />
     {/snippet}
     {#snippet strip()}
       <Strip
@@ -484,6 +512,21 @@
       </div>
       <StatusLine pace={judging.paceText} used={usedNow && !lockText ? usedNow : null} saveState={draft.saveState} cursor={draft.cursor} />
     {/snippet}
+    {#snippet colSplit()}
+      <Splitter
+        share={statementShare}
+        collapsed={statementHidden}
+        min={RESULT_SHARE.min}
+        max={RESULT_SHARE.max}
+        summary=""
+        controls="ws-problem"
+        column={grid}
+        orientation="columns"
+        name="Statement"
+        button={false}
+        onchange={onStatementSplit}
+      />
+    {/snippet}
     {#snippet splitter()}
       <Splitter
         share={resultShare}
@@ -512,6 +555,8 @@
     {/snippet}
   </Layout>
 {/if}
+
+{#snippet contestBar()}{@render rail?.('bar')}{/snippet}
 
 {#snippet submitButton()}
   <SubmitButton

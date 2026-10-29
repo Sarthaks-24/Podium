@@ -2,11 +2,10 @@
   Rail: what the workspace's left column holds from 1024 px. The clock
   slot (a contest clock, or a one-line note such as "You are trying this
   problem as a student.") with the back link under it (S6), then the
-  contest's problems (`rail`) or, for a single problem, its title with the
-  best score and a 2 px bar (a partial score fills in the partial colour,
-  as standings cells do). Props: `clock` (a snippet, optional), `note`,
-  `backHref`, `backLabel`, `rail` (optional), `title` and `best`
-  ({ score, max } or null).
+  problem's title with the best score and a 2 px bar (a partial score
+  fills in the partial colour, as standings cells do). A contest has its
+  bar instead (B6). Props: `clock` (a snippet, optional), `note`,
+  `backHref`, `backLabel`, `title` and `best` ({ score, max } or null).
 -->
 <script lang="ts">
   import type { Snippet } from 'svelte';
@@ -16,12 +15,11 @@
     note: string;
     backHref: string;
     backLabel: string;
-    rail?: Snippet<[string]>;
     title: string;
     best: { score: number; max: number } | null;
   }
 
-  let { clock, note, backHref, backLabel, rail, title, best }: Props = $props();
+  let { clock, note, backHref, backLabel, title, best }: Props = $props();
 </script>
 
 <div class="rail-head">
@@ -30,21 +28,17 @@
   </div>
   <a class="back" href={backHref}>{backLabel}</a>
 </div>
-{#if rail}
-  {@render rail('wide')}
-{:else}
-  <div class="rail-problem">
-    <span class="rail-title">{title}</span>
-    <span class="mono rail-score">{best ? `${best.score} of ${best.max}` : 'Not submitted'}</span>
-    <span class="bar" aria-hidden="true">
-      <span
-        class="bar-fill"
-        class:part={best !== null && best.score > 0 && best.score < best.max}
-        style:width="{best && best.max > 0 ? Math.round((best.score / best.max) * 100) : 0}%"
-      ></span>
-    </span>
-  </div>
-{/if}
+<div class="rail-problem">
+  <span class="rail-title">{title}</span>
+  <span class="mono rail-score">{best ? `${best.score} of ${best.max}` : 'Not submitted'}</span>
+  <span class="bar" aria-hidden="true">
+    <span
+      class="bar-fill"
+      class:part={best !== null && best.score > 0 && best.score < best.max}
+      style:width="{best && best.max > 0 ? Math.round((best.score / best.max) * 100) : 0}%"
+    ></span>
+  </span>
+</div>
 
 <style>
   .rail-head {

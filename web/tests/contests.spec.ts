@@ -96,14 +96,14 @@ test('messages posted while the student was away still show, until read (S1)', a
   const rail = page.getByRole('navigation', { name: 'Problems' });
   await expect(page.locator('.banner-slot .strip')).toContainText('No, a is at least 0.');
   await expect(page.locator('.banner-slot .strip')).toContainText('1 more message waiting.');
-  await expect(rail.getByRole('button', { name: /Messages/ })).toContainText('2');
-  await rail.getByRole('button', { name: /Messages/ }).click();
+  await expect(page.getByRole('button', { name: /Messages/ })).toContainText('2');
+  await page.getByRole('button', { name: /Messages/ }).click();
   await expect(page.getByRole('dialog', { name: 'Messages' })).toBeVisible();
   await page.keyboard.press('Escape');
   await page.reload();
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('A. A plus B');
   await expect(page.locator('.banner-slot .strip')).toHaveCount(0);
-  await expect(rail.getByRole('button', { name: /Messages/ })).not.toContainText('2');
+  await expect(page.getByRole('button', { name: /Messages/ })).not.toContainText('2');
 });
 
 test('a student agrees to the honour code, solves, reads an announcement and asks a question', async ({ page }) => {
@@ -157,7 +157,7 @@ test('a student agrees to the honour code, solves, reads an announcement and ask
   // X1: spoken once through the polite announcer.
   await expect(page.locator('[data-announcer="polite"]')).toHaveText('Announcement: Problem B: the statement has been corrected.');
   await expect(page.getByRole('alert')).toHaveCount(0);
-  await expect(rail.getByRole('button', { name: /Messages/ })).toContainText('1');
+  await expect(page.getByRole('button', { name: /Messages/ })).toContainText('1');
   await page.screenshot({ path: `${shots()}contest-banner-1440-light.png` });
 
   // Open the messages and ask about problem B.
@@ -246,7 +246,7 @@ test('exam mode shows only "Submitted"', async ({ page }) => {
   await expect(page.locator('[data-announcer="polite"]')).toHaveText('Submitted.');
   const rail = page.getByRole('navigation', { name: 'Problems' });
   await expect(rail.getByRole('link', { name: 'Problem A, A plus B, submitted once, score after the contest' })).toBeVisible();
-  await expect(rail.getByRole('link', { name: /Problem A/ }).locator('.word')).toHaveText('submitted');
+  await expect(rail.getByRole('link', { name: /Problem A/ }).locator('.score')).toHaveText('Submitted');
   await expect(rail.getByRole('link', { name: 'Problem B, Interval covering, not submitted' })).toBeVisible();
   await page.screenshot({ path: `${shots()}contest-exam-1440-light.png` });
 });
@@ -1066,7 +1066,7 @@ test('keyboard only: a student starts, solves, submits, reads the verdict, asks 
   await expect(result.locator('details.group').filter({ hasText: 'Subtask 1' }).first()).toHaveAttribute('open', '');
 
   // Messages: open, ask, close; focus returns to the button.
-  const messages = page.getByRole('navigation', { name: 'Problems' }).getByRole('button', { name: /Messages/ });
+  const messages = page.getByRole('button', { name: /Messages/ });
   // The rail comes before the heading, so Shift+Tab reaches it (forward,
   // Tab would enter the editor, where it indents until Escape).
   await page.locator('main h1').focus();
@@ -1084,7 +1084,7 @@ test('keyboard only: a student starts, solves, submits, reads the verdict, asks 
 
   // Standings: the button before Messages in the rail (forward, Tab would
   // have to cross the editor) opens the board over the editor (B3).
-  const standingsButton = page.getByRole('navigation', { name: 'Problems' }).getByRole('button', { name: 'Standings' });
+  const standingsButton = page.getByRole('button', { name: 'Standings' });
   await tabTo(page, standingsButton, { back: true });
   await page.keyboard.press('Enter');
   const board = page.getByRole('dialog', { name: 'Standings' });

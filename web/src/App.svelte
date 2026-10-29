@@ -251,7 +251,7 @@
   <a class="skip" href="#main">Skip to content</a>
 
   <!-- Its real height, testing banner and wrapped rows included, lets the workspace fill the rest of the window (audit 2026-10-20 S2). -->
-  <!-- B4: inside a contest problem under 1024 px the workspace's one row replaces the site header. -->
+  <!-- B4, B6: inside a contest problem the workspace's own row (under 1024 px) or bar replaces the site header. -->
   <header class="bar" class:hide-narrow={inWorkspace} use:publishHeight={'--shell-head'}>
     {#if runMode.mode === 'testing'}
       <p class="mode-banner" role="note">
@@ -509,10 +509,8 @@
   }
 
   /* The workspace fills the window below the header. */
-  @media (width < 1024px) {
-    .bar.hide-narrow {
-      display: none;
-    }
+  .bar.hide-narrow {
+    display: none;
   }
 
   .main-workspace {
