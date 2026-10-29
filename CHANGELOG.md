@@ -4,6 +4,17 @@ Dated entries per release. Unreleased work is listed at the top.
 
 ## Unreleased
 
+### v3 stage C2: the console for contest day (2026-10-29)
+
+- The console opens with one sentence on how it is going ("Live, 30 started, 1 question waiting, judge fine." or "Judge not seen for 3 minutes."), then Announce, Extend, Extra time, Pause judging, History of changes and If something goes wrong.
+- Banners appear only when something needs action: an edited problem students have not got yet, tests that changed, a judge that is not taking work, judge errors.
+- The overview shows how many started and, per problem, solved of attempted, with the queue. Questions sit beside the work from 1024 px; under 768 px the console is three tabs, Questions first. At 375 px it is 1,436 px tall (was 3,561).
+- Questions: a standard answer fills an editable box, "Everyone" says what students will see, and the tab title carries the count of questions waiting.
+- Extend, Extra time and Announce are dialogs that say the contest has ended after the end; the server refuses to extend a closed contest (409 `contest_ended`). Pause, resume, end now and judge again all confirm the same way.
+- Student view shows the problems and the board as students see them, without the honour code or a start button (`?as=student` on standings for organisers). Results say whether the board shown is live or the students' board.
+- `docs/RUNBOOK.md` has "If something goes wrong": the judge stalled, the VM is gone, sign-in is down. The console shows the same steps.
+- Every page in a tab shares one event stream.
+
 ### v3 stage C1: the cuts (2026-10-29)
 
 - Removed with their columns, routes and tests: per-student start windows, exam feedback, best single submission scoring, the switch to stop judging at a failed example (it always stops), the roster and its CSV (the allowed domains decide who takes part), and typed slugs (the address is made from the title on create and on duplicate, numbered when taken, and never changes).

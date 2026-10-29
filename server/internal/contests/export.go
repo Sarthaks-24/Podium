@@ -247,6 +247,14 @@ func (s *Service) Stats(ctx context.Context, c *Contest) ([]ProblemStats, error)
 	return out, nil
 }
 
+// Started counts the students taking part, as the board does: those who
+// started the contest or submitted to it, less any an integrity decision
+// excluded. The console's opening sentence reads it ("31 started").
+func (s *Service) Started(ctx context.Context, c *Contest) (int, error) {
+	people, err := s.participants(ctx, c)
+	return len(people), err
+}
+
 func median(m map[int64]int) float64 {
 	if len(m) == 0 {
 		return 0

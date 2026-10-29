@@ -5,7 +5,9 @@
   GET /api/contests/{slug}/standings and says in one line whether the board
   is live, hiding its newest results ("Results from 13:51 are hidden until
   the end.", never "freeze", design/words.md) or final, and how many
-  submissions are still judging. Then the student's own place as the one
+  submissions are still judging. It always asks for the board students
+  get (?as=student), so an organiser in Student view sees that board,
+  under the line "Student view: the board as students see it now." (P10). Then the student's own place as the one
   display figure, StandingsTable with their row tinted and "Jump to you",
   and one legend line, the rest behind "How to read the board" (S8). When a
   refetch moves the student's own place or score, the announcer says so
@@ -54,7 +56,8 @@
   async function loadBoard(quiet = false) {
     if (!quiet) loadState = 'loading';
     try {
-      const s = await getJSON<Standings>(`${api}/standings`);
+      // as=student: an organiser here is in Student view and gets the board students get (P10).
+      const s = await getJSON<Standings>(`${api}/standings?as=student`);
       if (standings && s.version < standings.version && s.variant === standings.variant) return;
       const said = rankAnnouncement(standings, s);
       if (said !== '') polite(said);
@@ -130,6 +133,7 @@
 {:else if loadState === 'error'}
   <PageState kind="error" {message} onretry={() => loadBoard()} />
 {:else if standings}
+  {#if contest?.organiser}<p class="student-view small">Student view: the board as students see it now.</p>{/if}
   <p class="status" class:hiding={standings.variant === 'frozen'}>{statusLine(standings, ended)}</p>
   {#if place}
     <div class="place-wrap"><PlaceFigure {place} /></div>
@@ -156,6 +160,11 @@
   .lead {
     margin-top: var(--space-4);
     max-width: var(--measure-narrow);
+  }
+
+  .student-view {
+    margin-top: var(--space-3);
+    color: var(--ink-muted);
   }
 
   .status {

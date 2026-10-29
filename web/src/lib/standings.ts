@@ -136,6 +136,30 @@ export function statusLine(
   return line;
 }
 
+/**
+ * The line over the organisers' board on Results (pilot P10): the status
+ * line, then whether this is the live board while students see results
+ * hidden, or the board students see. `hiddenFrom` is when the board stopped
+ * updating for students, or null without hidden minutes; `hiding` is true
+ * while students still see results hidden.
+ */
+export function organiserBoardLine(
+  s: Pick<Standings, 'variant' | 'frozen_at' | 'final' | 'judging_remaining'>,
+  opts: { ended: boolean; hiddenFrom: number | null; hiding: boolean },
+): string {
+  const line = statusLine(s, opts.ended);
+  if (s.variant === 'frozen') return `${line} This is the board students ${opts.hiding ? 'see' : 'saw'}.`;
+  if (!opts.hiding || opts.hiddenFrom === null) return line;
+  const from = `results from ${clock(opts.hiddenFrom)} hidden`;
+  return opts.ended
+    ? `${line} This is the live board; students still see ${from} until the reveal.`
+    : `Live board, with every result. Students see ${from} until the end.${s.judging_remaining > 0 ? ` ${countJudging(s.judging_remaining)}` : ''}`;
+}
+
+function countJudging(n: number): string {
+  return n === 1 ? '1 submission is still being judged.' : `${n} submissions are still being judged.`;
+}
+
 /** The signed-in student's own row, if they are on the board. */
 export function myRow(s: Pick<Standings, 'rows' | 'me'>): StandingsRow | undefined {
   if (s.me === null || s.me === undefined) return undefined;

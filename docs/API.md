@@ -832,7 +832,7 @@ Every route needs a signed-in user. Access: a published, unarchived contest with
 | `POST /api/contests/{slug}/problems/{label}/submit` | as the workspace | 202 `Submission` (200 for a repeated `client_key`) |
 | `POST /api/contests/{slug}/problems/{label}/events` | as the workspace | 204 |
 | `GET /api/contests/{slug}/problems/{label}/revisions` | `?from=&to=` revision ids, optional | 200 `StatementHistory` (v1.2.0, C3; see "History and audit") |
-| `GET /api/contests/{slug}/standings` | | 200 `Standings` |
+| `GET /api/contests/{slug}/standings` (`?as=student`) | | 200 `Standings`: a student gets the board for their state; an organiser gets the full board, or with `?as=student` the board students get now ("Student view") |
 | `POST /api/contests/{slug}/clarifications` | `{"problem_label":"A" or null,"question":"..."}` | 201 `{clarification, server_now}` |
 
 Errors: `404 not_found` for a contest that does not exist, is unpublished or archived, and for a label that is not in the contest; `403 not_on_roster` for a roster contest the student is not on.
@@ -955,7 +955,7 @@ Every change that can affect results is recorded in the contest's audit log (bel
 | `PUT /api/admin/contests/{id}/roster` (admin) | `text/csv` (header row naming `email`, and optionally `name`, `roll_number`, `section`) or a JSON array of the same objects; at most 2 MB and 5,000 students | 200 `{added, removed, roster_count}`. A full replace: on a roster contest, anyone left out loses access at once, so show the counts before and after |
 | `POST`, `DELETE /api/admin/contests/{id}/admins` | `{"email":"ta@college.edu"}` (they must have signed in once) | 200 `AdminContest` |
 | `PUT /api/admin/contests/{id}/extensions/{user}` (admin) | `{"minutes":15,"reason":"..."}` (0 to 1440; 0 removes) | 200 `AdminContest`; the student gets a `contest` event. `409 not_participant` unless the student is on the roster or started or submitted. The reason can be health data: `AdminContest.extensions[].reason`, the JSON export and old `extension` audit rows give it to owners and admins only, and `""` (or `reason_given: true`) to a co-organiser whose site role is student |
-| `POST /api/admin/contests/{id}/extend` (admin) | `{"minutes":10}` (1 to 240, adds to earlier extensions) | 200 `AdminContest`; members get a `contest` event |
+| `POST /api/admin/contests/{id}/extend` (admin) | `{"minutes":10}` (1 to 240, adds to earlier extensions) | 200 `AdminContest`; members get a `contest` event. 409 `contest_ended` once the contest has closed: extending then would reopen it |
 | `POST /api/admin/contests/{id}/pause`, `/resume` (admin) | | 200 `AdminContest` |
 | `GET /api/admin/contests/{id}/submissions?problem=A&user=7&verdict=WA&page=1` | | 200 `{submissions:[...], page, has_more, results_hidden, server_now}`; `results_hidden` is true when some rows are hidden from this viewer. `verdict` is a verdict code (`AC`, `WA`, `TLE`, `MLE`, `RE`, `CE`), `pending` (state `queued` or `running`) or `error` (state `error`, a judge error); case does not matter |
 | `PUT /api/admin/contests/{id}/problems/{label}/revision` (admin) | `{"revision_id":14}` | 200 `{contest: AdminContest, announcement_md, statement_changed, rejudge_needed, server_now}` (v1.2.0, C4: "Update contest to revision N") |
@@ -969,7 +969,7 @@ Every change that can affect results is recorded in the contest's audit log (bel
 | `POST /api/admin/contests/{id}/reveal` | | 200 `AdminContest`; students held on the frozen board see the full one |
 | `GET /api/admin/contests/{id}/export.csv` | | 200 `text/csv` attachment |
 | `GET /api/admin/contests/{id}/export.json` | | 200 JSON attachment |
-| `GET /api/admin/contests/{id}/stats` | | 200 `{problems:[ProblemStats], server_now}` |
+| `GET /api/admin/contests/{id}/stats` | | 200 `{problems:[ProblemStats], started, server_now}`; `started` counts the students taking part, as the board does. Allowed while the contest is live (the console's overview reads it) |
 | `PUT /api/admin/contests/{id}/editorial` | `{"editorial_md":"...","published":true}` (at most 64 KB) | 200 `AdminContest` |
 
 ### `ContestEdit` and `AdminContest`
@@ -979,7 +979,7 @@ Every change that can affect results is recorded in the contest's audit log (bel
 `AdminContest` is every `ContestEdit` field plus `id`, `close_at` (end plus contest-wide extension), `default_honour_text`, `editorial_md`, `editorial_published`, `paused`, `extended_minutes`, `revealed_at`, `archived`, `state`, `problems [{label, problem_id, title, pinned_hash, ready, max_score}]` (`ready` is false when the problem changed since it was added; from v1.3.0 `pinned_hash` is the pinned revision's content hash, the database column having gone), `admins [{user_id, email, name}]`, `extensions [{user_id, email, name, minutes, reason}]`, `roster_count`, `created_at`, `updated_at`, `server_now`, `locked_after_start` (the field names above that only admins may change once the contest has started).
 
 
-**Queue health (v1.3.0, contract C10, D103).** Every `AdminContest` also carries what the console's attention strip shows:
+**Queue health (v1.3.0, contract C10, D103).** Every `AdminContest` also carries what the console's opening sentence and banners read (stage C2):
 
 ```json
 { "queue": { "waiting": 14, "judging": 2, "errors": 1, "oldest_wait_s": 37.5 },

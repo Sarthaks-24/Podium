@@ -64,6 +64,18 @@ Every 10 minutes, or whenever something feels slow: the metrics watch loop (`doc
 
 The live console's feed shows submissions as they arrive and their verdicts; the board header shows `judging_remaining`.
 
+The console's top line says how it is going in one sentence, for example "Live, 31 started, 2 questions waiting, judge fine." Trouble comes first: "Judge not seen for 3 minutes." when no judge has asked for work for over a minute, or "The oldest submission has waited 2 minutes for the judge." Banners under it appear only when something needs action (a problem edited since students got it, judge errors, a judge not taking work). Unanswered questions sit at the top of the Questions column and their count is in the browser tab's title, "(2) Console".
+
+### If something goes wrong
+
+The console carries the same three cases under "If something goes wrong". Keep them in step with this list.
+
+| Case | Signs | Do, in order |
+|---|---|---|
+| The judge stalled | "Judge not seen for N minutes", submissions waiting for minutes | 1. Pause judging in the console. 2. Restart the judge: `sudo systemctl restart podium-judge` (details in "The judge stopped" below). 3. Resume judging, then judge again any problem whose submissions ended in a judge error. 4. Announce what happened; nothing submitted is lost. |
+| The VM is gone | nobody can open the site; the provider's console shows the VM down or lost | 1. Restore onto a new VM ("Restoring onto a new VM" below); results are safe up to the last backup. 2. Extend the contest by the time lost, or end it and run it again. 3. Announce the new end, by email as well if students cannot reach the site. |
+| Sign-in is down | students cannot sign in with Google; those already signed in keep working | If many students cannot get in, the contest moves: before the start, change the start in Settings; after it, end the contest now and run it again at a new time. Tell students the new time by email. |
+
 ### The queue is too long
 
 In order:
@@ -75,22 +87,22 @@ In order:
 
 ### Pausing judging
 
-Pause in the live console holds the contest's submissions and runs in the queue; students can keep submitting and nothing is lost. Resume lets them through in order. Use it while a test is being fixed (below), never to slow the queue.
+Pause judging in the live console (it asks first) holds the contest's submissions and runs in the queue; students can keep submitting and nothing is lost. Resume judging lets them through in order. After either, the announcement opens filled in; post it. Use it while a test is being fixed (below), never to slow the queue.
 
 ### Extending
 
-- Everyone lost time (power cut, network down, the server down for minutes): Extend by N minutes in the live console. Extensions add up; open pages get the new end at once. Announce it.
-- One student lost time (crashed laptop, accommodation): set their extension in the console with a reason (0 removes it). Only their end moves.
+- Everyone lost time (power cut, network down, the server down for minutes): Extend in the live console, then the minutes. Extensions add up; open pages get the new end at once. The announcement opens filled in; post it. Extend works only before the end: once the contest has closed the server refuses it (it would reopen the contest for everyone), so a contest that was lost must be run again.
+- One student lost time (crashed laptop, accommodation): Extra time in the console, with a reason (0 removes it). Only their end moves. The console offers it only before the end.
 
 ### A bad test or checker found mid-contest
 
 1. Pause judging for the contest.
 2. Fix the test or the checker in the problem editor, then Validate it. Until the next step, Run and Submit on that problem answer "This problem is being updated by the organisers."
 3. Add the problem to the contest again (Problems, same label).
-4. Rejudge that problem from the live console: every submission of it is judged again with the new tests, including those still waiting on the old ones. Pressing it twice adds nothing.
+4. Judge the problem again from the live console ("Judge again" on its line in the Overview, which asks first): every submission of it is judged again with the new tests, including those still waiting on the old ones. Pressing it twice adds nothing.
 5. Resume judging. Post an announcement saying what changed and that scores are being recomputed.
 
-A single submission that looks wrongly judged: Rejudge that submission only.
+A single submission that looks wrongly judged: "Judge again" on its row of the Submissions feed.
 
 ### The judge stopped
 

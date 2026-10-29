@@ -348,7 +348,7 @@ describe('auditSummary', () => {
     );
     // v1.4.0: the row says whether a reason was written, never the reason.
     expect(auditSummary({ action: 'extension', details: { user_id: 7, minutes: 15, reason_given: true } }, new Map([[7, 'Asha Rao']]))).toBe(
-      'Gave Asha Rao 15 extra minutes, with a reason (see Time)',
+      'Gave Asha Rao 15 extra minutes, with a reason (see Extra time)',
     );
     expect(auditSummary({ action: 'extension', details: { user_id: 7, minutes: 15, reason_given: false } }, new Map([[7, 'Asha Rao']]))).toBe(
       'Gave Asha Rao 15 extra minutes, without a reason',

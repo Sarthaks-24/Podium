@@ -35,6 +35,11 @@
     gives the place only, never a frozen total beside the live score; when
     the clock ran out on this page, "Time is up" stays on screen.
 
+  - For an organiser ("Student view", pilot P10), before the start and
+    while the contest runs: the problems, each opening in the workspace
+    with the note that nothing submitted here counts, and a link to the
+    standings as students see them. No honour code and no start button.
+
   Props: `slug`, and `label` (the problem letter from the address, or "").
 -->
 <script lang="ts">
@@ -147,8 +152,10 @@
   const currentProblem = $derived(problems.find((p) => p.label === current) ?? null);
   const practice = $derived(contest?.state === 'practice');
   const banner = $derived(contest ? bannerItems(contest, dismissed, lastRead) : []);
+  /** An organiser here is in Student view (P10): no honour code, no start, the problems open as they are. */
+  const preview = $derived(contest?.organiser === true && phase !== null && phase !== 'during' && phase !== 'after');
   const showWorkspace = $derived(
-    contest !== null && currentProblem !== null && (phase === 'during' || (phase === 'after' && label !== '')),
+    contest !== null && currentProblem !== null && (phase === 'during' || ((phase === 'after' || preview) && label !== '')),
   );
   const totalScore = $derived(problems.reduce((n, p) => n + (p.my_score ?? 0), 0));
   const totalMax = $derived(problems.reduce((n, p) => n + p.max_score, 0));
@@ -511,7 +518,9 @@
       clock={phase === 'during' ? clockSnippet : undefined}
       note={phase === 'during'
         ? ''
-        : timeUp
+        : preview
+          ? 'Student view. Run and Submit work here, and nothing you submit counts.'
+          : timeUp
           ? 'Time is up. Your submissions are saved.'
           : practice
             ? `Practice. Your contest score is still ${currentProblem.my_score ?? 0} of ${currentProblem.max_score}.`
@@ -542,6 +551,35 @@
   <Dialog open={standingsOpen} onclose={() => (standingsOpen = false)} title="Standings" kind="sheet">
     {#if standingsOpen}<StandingsView {slug} />{/if}
   </Dialog>
+{:else if preview}
+  <!-- P10: Student view for an organiser, the problems and the board as students see them, without the start page. -->
+  <div class="page page-wide">
+    <PageHeader title={contest.title} back={{ href: contest.id ? `/admin/contests/${contest.id}/console` : '/admin/contests', label: 'Console' }}>
+      <p class="meta">
+        <span><MonoDigits text={formatDateTime(contest.starts_at)} />, {lengthText(contest)}, {contest.problem_count}
+          {contest.problem_count === 1 ? 'problem' : 'problems'}.</span>
+        <span class="state-word" data-state={studentState(contest.state)}>{studentStateWord(contest.state)}</span>
+      </p>
+    </PageHeader>
+    <div class="before">
+      <p class="lead preview-lead">
+        Student view: the problems and the standings as students see them. Students also get the honour code and a start button,
+        left out here.
+      </p>
+      <section class="section" aria-labelledby="preview-problems">
+        <h2 id="preview-problems">Problems</h2>
+        <ul class="preview-list">
+          {#each problems as p (p.label)}
+            <li><a href="/contests/{encodeURIComponent(slug)}/problems/{encodeURIComponent(p.label)}">{p.label}. {p.title}</a></li>
+          {/each}
+        </ul>
+      </section>
+      <p><a class="btn btn-secondary" href="/contests/{encodeURIComponent(slug)}/standings">Standings</a></p>
+      {#if contest.description_md.trim() !== ''}
+        <div class="description"><Markdown source={contest.description_md} /></div>
+      {/if}
+    </div>
+  </div>
 {:else if phase === 'upcoming' || phase === 'ready'}
   <div class="page page-wide">
     <PageHeader title={contest.title} back={{ href: '/', label: 'Your contests' }}>
@@ -761,6 +799,23 @@
 
   .description {
     max-width: var(--measure-prose);
+  }
+
+  .preview-lead {
+    margin-top: 0;
+  }
+
+  .preview-list {
+    display: grid;
+    gap: var(--space-1);
+    padding: 0;
+    list-style: none;
+  }
+
+  .preview-list a {
+    display: inline-flex;
+    align-items: center;
+    min-height: var(--control-h-touch);
   }
 
   .section {

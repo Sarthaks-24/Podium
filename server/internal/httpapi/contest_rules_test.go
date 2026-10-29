@@ -322,6 +322,57 @@ func TestM4ExportEscapesAndStats(t *testing.T) {
 	}
 }
 
+// TestC2ConsoleReads covers what the contest-day console needs from the
+// server (stage C2): the stats say how many started, an organiser's
+// Student view gets the board students get (pilot P10), and extend is
+// refused once the contest has closed (walk bug B3).
+func TestC2ConsoleReads(t *testing.T) {
+	s := newSite(t)
+	owner := s.signedIn("owner@college.edu", "Owner")
+	pa := s.importProblem(owner, "plus-a")
+	start := time.Now().Add(time.Hour).Truncate(time.Minute)
+	id := s.createContest(owner, "cr", start, map[string]int64{"A": pa}, map[string]any{"freeze_minutes": 30})
+	asha := s.signedIn("asha@college.edu", "Asha")
+	s.signedIn("bilal@college.edu", "Bilal")
+	s.at(start, 1)
+	asha.do("POST", "/api/contests/cr/start", map[string]any{"accept_honour": true}, s.srv.URL)
+	code, stats := owner.do("GET", fmt.Sprintf("/api/admin/contests/%d/stats", id), nil, "")
+	if code != 200 || stats["started"] != float64(1) {
+		t.Errorf("stats while live: %d %v", code, stats)
+	}
+
+	// In the hidden minutes the organiser's own board is full; as a student it is the frozen one.
+	s.at(start, 100)
+	if _, b := owner.do("GET", "/api/contests/cr/standings", nil, ""); b["variant"] != "full" {
+		t.Errorf("organiser board %v", b["variant"])
+	}
+	if _, b := owner.do("GET", "/api/contests/cr/standings?as=student", nil, ""); b["variant"] != "frozen" {
+		t.Errorf("student view board %v", b["variant"])
+	}
+	if _, b := asha.do("GET", "/api/contests/cr/standings?as=student", nil, ""); b["variant"] != "frozen" {
+		t.Errorf("student board %v", b["variant"])
+	}
+
+	extend := fmt.Sprintf("/api/admin/contests/%d/extend", id)
+	if code, out := owner.do("POST", extend, map[string]any{"minutes": 5}, s.srv.URL); code != 200 {
+		t.Fatalf("extend while live: %d %v", code, out)
+	}
+	// The close is now 125 minutes in; a minute later extend would reopen the contest.
+	s.at(start, 126)
+	code, out := owner.do("POST", extend, map[string]any{"minutes": 5}, s.srv.URL)
+	if code != 409 || errCode(out) != "contest_ended" {
+		t.Errorf("extend after the end: %d %v", code, out)
+	}
+	if _, c := owner.do("GET", fmt.Sprintf("/api/admin/contests/%d", id), nil, ""); c["extended_minutes"] != float64(5) {
+		t.Errorf("extended_minutes after a refused extend: %v", c["extended_minutes"])
+	}
+	var n int
+	s.db.QueryRow("SELECT count(*) FROM contest_audit WHERE contest_id = ? AND action = 'extend'", id).Scan(&n)
+	if n != 1 {
+		t.Errorf("extend audit rows: %d, want 1", n)
+	}
+}
+
 func TestM4PausedContestWaitsAtClaim(t *testing.T) {
 	s := newSite(t)
 	owner := s.signedIn("owner@college.edu", "Owner")

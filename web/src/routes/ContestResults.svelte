@@ -2,7 +2,9 @@
   ContestResults: the organiser's results for one contest at
   /admin/contests/{id}/results (cache/v1/m4-plan.md sections 3 and 4).
   The board, full or as students saw it frozen
-  (GET .../standings?variant=frozen); for a contest that holds its board,
+  (GET .../standings?variant=frozen), with one line saying whether it is
+  the live board while students see results hidden, or the board students
+  see (lib/standings organiserBoardLine, pilot P10); for a contest that holds its board,
   "Reveal" shows students the full board (POST .../reveal) once every
   student's time is up, after a confirmation, because it cannot be
   undone; links download the results as CSV or JSON; and per-problem
@@ -31,7 +33,7 @@
   import { setTitle } from '../lib/head';
   import { routeTitle } from '../lib/routing';
   import { session } from '../lib/session.svelte';
-  import { boardLabels, statusLine, type Standings } from '../lib/standings';
+  import { boardLabels, organiserBoardLine, type Standings } from '../lib/standings';
   import { ticker, useTicker } from '../lib/ticker.svelte';
   import { showToast } from '../lib/toast.svelte';
 
@@ -58,6 +60,11 @@
   });
   const revealReady = $derived(ticker.now >= revealOpensAt);
   const ended = $derived(contest?.state === 'ended' || contest?.state === 'practice');
+  // When the board stopped updating for students, and whether they still see it that way (P10).
+  const hiddenFrom = $derived(contest && contest.freeze_minutes > 0 ? (contest.close_at ?? contest.ends_at) - contest.freeze_minutes * 60_000 : null);
+  const hiding = $derived(
+    contest !== null && hiddenFrom !== null && ticker.now >= hiddenFrom && (ticker.now < revealOpensAt || (contest.hold_reveal === true && !contest.revealed_at)),
+  );
   const labels = $derived(board ? boardLabels(board, (contest?.problems ?? []).map((p) => p.label)) : []);
 
   function handleAuth(e: unknown): boolean {
@@ -227,7 +234,7 @@
     {#if boardError}
       <div class="banner banner-error" role="alert"><p>{boardError}</p></div>
     {:else if board}
-      <p class="muted">{statusLine(board, contest.state === 'ended' || contest.state === 'practice')}</p>
+      <p class="muted">{organiserBoardLine(board, { ended, hiddenFrom, hiding })}</p>
       <StandingsTable
         standings={board}
         {labels}

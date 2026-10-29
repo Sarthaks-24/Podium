@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { boardLabels, cellView, formatElapsed, myRow, ordinalWord, placeFigure, placeSentence, rankAnnouncement, statusLine, studentChoice, type Standings } from './standings';
+import { boardLabels, cellView, formatElapsed, myRow, ordinalWord, organiserBoardLine, placeFigure, placeSentence, rankAnnouncement, statusLine, studentChoice, type Standings } from './standings';
 
 function board(over: Partial<Standings> = {}): Standings {
   return {
@@ -64,6 +64,21 @@ describe('standings wording', () => {
     expect(statusLine(board({ variant: 'frozen', frozen_at: frozenAt }), true)).toBe(
       'Results from 20:30 are hidden until the organisers reveal them.',
     );
+  });
+
+  it("says on the organisers' board whether it is the live one or the one students see (P10)", () => {
+    const hiddenFrom = new Date(2026, 9, 18, 20, 30).getTime();
+    expect(organiserBoardLine(board(), { ended: false, hiddenFrom, hiding: true })).toBe(
+      'Live board, with every result. Students see results from 20:30 hidden until the end.',
+    );
+    expect(organiserBoardLine(board({ variant: 'frozen', frozen_at: hiddenFrom }), { ended: false, hiddenFrom, hiding: true })).toBe(
+      'Results from 20:30 are hidden until the end. This is the board students see.',
+    );
+    expect(organiserBoardLine(board({ final: true }), { ended: true, hiddenFrom, hiding: true })).toBe(
+      'Final standings. This is the live board; students still see results from 20:30 hidden until the reveal.',
+    );
+    // Nothing hidden from students: the plain status line.
+    expect(organiserBoardLine(board(), { ended: false, hiddenFrom: null, hiding: false })).toBe('Live. Updates as submissions are judged.');
   });
 
   it('finds the student and says their place, ties included', () => {

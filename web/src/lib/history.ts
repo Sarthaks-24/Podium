@@ -41,11 +41,12 @@ export function pinPath(contestId: number | string, label: string): string {
   return `/api/admin/contests/${encodeURIComponent(String(contestId))}/problems/${encodeURIComponent(label)}/revision`;
 }
 
-/** What the update does, said before the organiser confirms it. */
-export function updateEffect(p: Pick<ProblemPin, 'label' | 'rev' | 'latest_rev' | 'update_statement_only'>): string {
-  const from = p.rev !== undefined ? `revision ${p.rev}` : 'the pinned revision';
-  const to = p.latest_rev !== undefined ? `revision ${p.latest_rev}` : 'the newest revision';
-  const lead = `Students get ${to} of problem ${p.label} instead of ${from} the next time they open it.`;
+/**
+ * What the update does, said before the organiser confirms it, in the
+ * words of design/words.md ("Update students now", never "revision").
+ */
+export function updateEffect(p: Pick<ProblemPin, 'label' | 'update_statement_only'>): string {
+  const lead = `Students get the edited problem ${p.label} the next time they open it.`;
   return p.update_statement_only
     ? `${lead} Only the statement changed, so no submission is judged again.`
     : `${lead} The tests or limits changed too: judge the problem again afterwards so every score uses the new tests.`;

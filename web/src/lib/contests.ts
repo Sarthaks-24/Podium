@@ -11,7 +11,8 @@
  * The rest is pure maths and wording: which phase a student is in (before
  * the start, ready to start, during their window, after it), countdowns,
  * the freeze, the clock milestones a screen reader hears, problem labels,
- * and the templates and canned replies the console offers.
+ * the console's opening sentence, and the templates and standard answers
+ * the console offers.
  */
 import { countOf, formatDateTime } from './format';
 import type { ProblemPin } from './history';
@@ -120,6 +121,8 @@ export interface Contest extends ContestSummary {
   accepted?: boolean;
   /** True when the server saw this student in a second session at once. */
   second_session?: boolean;
+  /** True for an organiser, who sees this page as "Student view" (pilot P10). */
+  organiser?: boolean;
 }
 
 /** A message shown in the banner above the workspace. */
@@ -621,7 +624,7 @@ export function auditSummary(e: Pick<AuditEntry, 'action' | 'details'>, names?: 
       if (num('minutes') === 0) return `Removed the extension for ${who}`;
       const gave = `Gave ${who} ${countOf(num('minutes'), 'extra minute')}`;
       // From v1.4.0 the row says only whether a reason was written; the reason stays on the extension.
-      if (typeof d.reason_given === 'boolean') return d.reason_given ? `${gave}, with a reason (see Time)` : `${gave}, without a reason`;
+      if (typeof d.reason_given === 'boolean') return d.reason_given ? `${gave}, with a reason (see Extra time)` : `${gave}, without a reason`;
       const reason = str('reason');
       return `${gave}${reason ? ` (${reason})` : ''}`;
     }
@@ -660,6 +663,12 @@ export interface ProblemStats {
   /** Students per score; buckets are subtask score sums. */
   histogram: { score: number; students?: number; count?: number }[];
   max_score?: number;
+}
+
+/** GET /api/admin/contests/{id}/stats; `started` counts the students taking part (stage C2). */
+export interface ContestStats {
+  problems: ProblemStats[];
+  started?: number;
 }
 
 /**
@@ -720,87 +729,68 @@ export interface QueueHealth {
   oldest_wait_s: number;
 }
 
-/** One item of the console's attention strip; only "part" and "bad" ask for action. */
-export interface AttentionItem {
-  key: 'time' | 'freeze' | 'judging' | 'queue' | 'errors' | 'judge' | 'questions' | 'update';
-  text: string;
-  tone: 'note' | 'part' | 'bad';
-  href: string;
-}
-
 /** A judge asks for work every few seconds; a minute without that means none is working (C10). */
 export const JUDGE_SILENT_MS = 60_000;
 
 /** A wait the queue should not reach in a calm contest. */
 export const SLOW_WAIT_S = 60;
 
+/** The console's opening line: trouble first when there is any, then how the contest is going. */
+export interface ConsoleSentence {
+  /** "Judge not seen for 3 minutes." or "" when nothing is wrong. */
+  trouble: string;
+  /** "Live, 31 started, 2 questions waiting, judge fine." */
+  text: string;
+}
+
 /**
- * The console's attention strip (F6.1, C1 with the C10 fields): time to
- * the start or end, when the board freezes, judging on or paused, the
- * queue, judge errors, whether a judge is asking for work, unanswered
- * questions and a newer revision waiting for students. Each item
- * links to where it is handled; an item turns "part" or "bad" only when it
- * needs action. Older servers without the C10 fields simply give fewer
- * items.
+ * The one sentence at the top of the console (stage C2, design/organiser.md
+ * Live view): the contest's state (with the hidden results once the board
+ * stops updating for students), how many students started, the questions
+ * waiting, and whether the judge is working, as "Live, 31 started, 2
+ * questions waiting, judge fine." A judge silent for over a minute, or none
+ * since the server started, is said first on its own ("Judge not seen for 3
+ * minutes."), as is a queue whose oldest submission waited a minute or
+ * more. Older servers without the queue fields or the started count give a
+ * shorter sentence.
  */
-export function attentionItems(
-  c: Pick<AdminContest, 'starts_at' | 'ends_at' | 'freeze_minutes' | 'paused' | 'problems' | 'state'> & {
+export function consoleSentence(
+  c: Pick<AdminContest, 'starts_at' | 'ends_at' | 'freeze_minutes' | 'paused'> & {
     close_at?: number;
     queue?: QueueHealth;
     judge_last_claim_at?: number | null;
   },
   now: number,
-  unanswered: number,
-): AttentionItem[] {
-  const out: AttentionItem[] = [];
+  counts: { unanswered: number; started?: number | null },
+): ConsoleSentence {
   const close = c.close_at ?? c.ends_at;
-  if (now < c.starts_at) out.push({ key: 'time', text: `Starts in ${formatCountdown(c.starts_at - now)}`, tone: 'note', href: '#time-title' });
-  else if (now < close) out.push({ key: 'time', text: `Ends in ${formatCountdown(close - now)}`, tone: 'note', href: '#time-title' });
-  else out.push({ key: 'time', text: 'Ended', tone: 'note', href: '#time-title' });
+  const parts: string[] = [];
+  if (now < c.starts_at) parts.push('Upcoming');
+  else if (now < close) {
+    const hiddenFrom = c.freeze_minutes > 0 ? close - c.freeze_minutes * 60_000 : null;
+    parts.push(hiddenFrom !== null && now >= hiddenFrom ? `Live, results from ${hhmm(hiddenFrom)} hidden from students` : 'Live');
+  } else parts.push('Ended');
+  if (typeof counts.started === 'number' && now >= c.starts_at) parts.push(`${counts.started} started`);
+  if (counts.unanswered > 0) parts.push(countOf(counts.unanswered, 'question waiting', 'questions waiting'));
 
-  const freeze = c.freeze_minutes > 0 ? c.ends_at - c.freeze_minutes * 60_000 : null;
-  if (freeze !== null && now >= c.starts_at && now < close) {
-    out.push({ key: 'freeze', text: now < freeze ? `Board freezes in ${formatSpan(freeze - now)}` : 'Board frozen', tone: 'note', href: '#time-title' });
-  }
-
-  out.push(c.paused ? { key: 'judging', text: 'Judging paused', tone: 'part', href: '#time-title' } : { key: 'judging', text: 'Judging on', tone: 'note', href: '#time-title' });
-
-  if (c.queue) {
-    const q = c.queue;
-    if (q.waiting === 0 && q.judging === 0) out.push({ key: 'queue', text: 'Queue empty', tone: 'note', href: '#submissions-title' });
-    else {
-      const wait = q.oldest_wait_s > 0 ? `, oldest ${formatSpan(q.oldest_wait_s * 1000)}` : '';
-      out.push({ key: 'queue', text: `${q.waiting} waiting, ${q.judging} judging${wait}`, tone: q.oldest_wait_s >= SLOW_WAIT_S && !c.paused ? 'part' : 'note', href: '#submissions-title' });
-    }
-    if (q.errors > 0) out.push({ key: 'errors', text: countOf(q.errors, 'judge error'), tone: 'bad', href: '#submissions-title' });
-  }
-
-  if (c.judge_last_claim_at !== undefined) {
+  const trouble: string[] = [];
+  if (c.paused) parts.push('judging paused');
+  else if (c.judge_last_claim_at !== undefined) {
     const last = c.judge_last_claim_at;
-    if (last === null) out.push({ key: 'judge', text: 'No judge has asked for work since the server started', tone: 'bad', href: '#submissions-title' });
-    else if (now - last > JUDGE_SILENT_MS) out.push({ key: 'judge', text: `No judge for ${formatSpan(now - last)}`, tone: 'bad', href: '#submissions-title' });
-    else out.push({ key: 'judge', text: `Judge seen ${formatSpan(Math.max(1000, now - last))} ago`, tone: 'note', href: '#submissions-title' });
+    if (last === null) trouble.push('No judge has asked for work since the server started.');
+    else if (now - last > JUDGE_SILENT_MS) trouble.push(`Judge not seen for ${countOf(Math.floor((now - last) / 60_000), 'minute')}.`);
+    else parts.push('judge fine');
   }
-
-  out.push(
-    unanswered > 0
-      ? { key: 'questions', text: countOf(unanswered, 'unanswered question'), tone: 'bad', href: '#clar-title' }
-      : { key: 'questions', text: 'No unanswered questions', tone: 'note', href: '#clar-title' },
-  );
-
-  // A saved edit reaches students only through the console (walk 2026-10-21);
-  // after the close it no longer needs anyone's attention.
-  const waiting = c.problems.filter((p) => p.update_available).map((p) => p.label);
-  if (waiting.length > 0 && now < close) {
-    out.push({
-      key: 'update',
-      text: `${waiting.length === 1 ? `Problem ${waiting[0]} has` : `Problems ${waiting.join(', ')} have`} a newer revision for students`,
-      tone: 'part',
-      href: '#versions-title',
-    });
+  if (!c.paused && c.queue && c.queue.oldest_wait_s >= SLOW_WAIT_S) {
+    trouble.push(`The oldest submission has waited ${countOf(Math.floor(c.queue.oldest_wait_s / 60), 'minute')} for the judge.`);
   }
+  return { trouble: trouble.join(' '), text: `${parts.join(', ')}.` };
+}
 
-  return out;
+/** "14:02" in local time. */
+function hhmm(ms: number): string {
+  const d = new Date(ms);
+  return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
 /**

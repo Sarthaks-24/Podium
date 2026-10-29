@@ -1,6 +1,6 @@
-// The console's attention strip and feed wording (v2 P3 F6.1, F6.2; audit O3).
+// The console's opening sentence (stage C2) and feed wording (v2 P3 F6.2; audit O3).
 import { describe, expect, it } from 'vitest';
-import { attentionItems, endNowFreeze, feedOutcome, organiserState, publishChecks, sinceStart } from './contests';
+import { consoleSentence, endNowFreeze, feedOutcome, organiserState, publishChecks, sinceStart } from './contests';
 
 const MIN = 60_000;
 const T = 1_792_300_000_000;
@@ -17,53 +17,46 @@ const base = {
   ],
 };
 
-describe('attentionItems', () => {
-  it('stays quiet when nothing needs action', () => {
-    const items = attentionItems({ ...base, queue: { waiting: 0, judging: 0, errors: 0, oldest_wait_s: 0 }, judge_last_claim_at: T - 3000 }, T, 0);
-    expect(items.map((i) => i.text)).toEqual(['Ends in 01:30:00', 'Board freezes in 1 h', 'Judging on', 'Queue empty', 'Judge seen 3 s ago', 'No unanswered questions']);
-    expect(items.every((i) => i.tone === 'note')).toBe(true);
+describe('consoleSentence (stage C2)', () => {
+  const calm = { ...base, queue: { waiting: 0, judging: 0, errors: 0, oldest_wait_s: 0 }, judge_last_claim_at: T - 3000 };
+
+  it('says how it is going in one sentence when nothing is wrong', () => {
+    expect(consoleSentence(calm, T, { unanswered: 0, started: 31 })).toEqual({ trouble: '', text: 'Live, 31 started, judge fine.' });
   });
 
-  it('marks what needs action: a slow queue, judge errors, a silent judge, questions', () => {
-    const items = attentionItems(
-      {
-        ...base,
-        queue: { waiting: 14, judging: 2, errors: 1, oldest_wait_s: 95 },
-        judge_last_claim_at: T - 3 * MIN,
-      },
-      T,
-      2,
-    );
-    const by = Object.fromEntries(items.map((i) => [i.key, i]));
-    expect(by.queue).toMatchObject({ text: '14 waiting, 2 judging, oldest 1 min', tone: 'part' });
-    expect(by.errors).toMatchObject({ text: '1 judge error', tone: 'bad' });
-    expect(by.judge).toMatchObject({ text: 'No judge for 3 min', tone: 'bad' });
-    expect(by.questions).toMatchObject({ text: '2 unanswered questions', tone: 'bad', href: '#clar-title' });
+  it('counts the questions waiting, so a new one changes the sentence', () => {
+    expect(consoleSentence(calm, T, { unanswered: 1, started: 31 }).text).toBe('Live, 31 started, 1 question waiting, judge fine.');
+    expect(consoleSentence(calm, T, { unanswered: 2, started: 31 }).text).toBe('Live, 31 started, 2 questions waiting, judge fine.');
   });
 
-  it('says paused judging and never-seen judges, and leaves out what an older server does not send', () => {
-    const paused = attentionItems({ ...base, paused: true, judge_last_claim_at: null }, T, 0);
-    expect(paused.find((i) => i.key === 'judging')).toMatchObject({ text: 'Judging paused', tone: 'part' });
-    expect(paused.find((i) => i.key === 'judge')?.tone).toBe('bad');
-    const old = attentionItems(base, T, 0);
-    expect(old.map((i) => i.key)).toEqual(['time', 'freeze', 'judging', 'questions']);
+  it('puts a late judge first, in minutes', () => {
+    const late = consoleSentence({ ...calm, judge_last_claim_at: T - 3 * MIN - 5000 }, T, { unanswered: 2, started: 31 });
+    expect(late).toEqual({ trouble: 'Judge not seen for 3 minutes.', text: 'Live, 31 started, 2 questions waiting.' });
+    expect(consoleSentence({ ...calm, judge_last_claim_at: null }, T, { unanswered: 0 }).trouble).toBe('No judge has asked for work since the server started.');
+    // A minute is the line: a judge seen 59 s ago is fine.
+    expect(consoleSentence({ ...calm, judge_last_claim_at: T - 59_000 }, T, { unanswered: 0 }).trouble).toBe('');
   });
 
-  it('names a problem whose newer revision students do not have yet (walk 2026-10-21)', () => {
-    const items = attentionItems({ ...base, problems: [{ ...base.problems[0], update_available: true }, { ...base.problems[1] }] }, T, 0);
-    expect(items.find((i) => i.key === 'update')).toMatchObject({ text: 'Problem A has a newer revision for students', tone: 'part', href: '#versions-title' });
-    expect(attentionItems(base, T, 0).find((i) => i.key === 'update')).toBeUndefined();
-    // Once the contest has closed it is not a call to act.
-    const after = attentionItems({ ...base, problems: [{ ...base.problems[0], update_available: true }] }, T + 91 * MIN, 0);
-    expect(after.find((i) => i.key === 'update')).toBeUndefined();
+  it('says a slow queue, and paused judging instead of the judge', () => {
+    const slow = consoleSentence({ ...calm, queue: { waiting: 14, judging: 2, errors: 0, oldest_wait_s: 125 } }, T, { unanswered: 0 });
+    expect(slow.trouble).toBe('The oldest submission has waited 2 minutes for the judge.');
+    const paused = consoleSentence({ ...calm, paused: true, queue: { waiting: 14, judging: 0, errors: 0, oldest_wait_s: 300 } }, T, { unanswered: 0 });
+    expect(paused).toEqual({ trouble: '', text: 'Live, judging paused.' });
   });
 
-  it('counts down to the start before it and says Ended after the close', () => {
-    expect(attentionItems(base, T - 40 * MIN, 0)[0].text).toBe('Starts in 00:10:00');
-    expect(attentionItems({ ...base, close_at: T + 100 * MIN }, T + 95 * MIN, 0)[0].text).toBe('Ends in 00:05:00');
-    expect(attentionItems(base, T + 91 * MIN, 0)[0].text).toBe('Ended');
+  it('says when results are hidden from students, and the state before and after', () => {
+    // The judge was seen 3 s before each moment asked about.
+    const at = (now: number) => ({ ...calm, judge_last_claim_at: now - 3000 });
+    // The board stops updating for students 30 min before the close.
+    expect(consoleSentence(at(T + 61 * MIN), T + 61 * MIN, { unanswered: 0 }).text).toMatch(/^Live, results from \d\d:\d\d hidden from students, judge fine\.$/);
+    expect(consoleSentence(at(T - 40 * MIN), T - 40 * MIN, { unanswered: 0, started: 0 }).text).toBe('Upcoming, judge fine.');
+    expect(consoleSentence({ ...at(T + 95 * MIN), close_at: T + 100 * MIN }, T + 95 * MIN, { unanswered: 0 }).text).toMatch(/^Live, /);
+    expect(consoleSentence(at(T + 91 * MIN), T + 91 * MIN, { unanswered: 0, started: 40 }).text).toBe('Ended, 40 started, judge fine.');
   });
 
+  it('leaves out what an older server does not send', () => {
+    expect(consoleSentence(base, T, { unanswered: 0 })).toEqual({ trouble: '', text: 'Live.' });
+  });
 });
 
 describe('feed wording', () => {

@@ -92,6 +92,8 @@ func (d Deps) contestError(w http.ResponseWriter, r *http.Request, err error) {
 		WriteError(w, http.StatusConflict, "not_ready", err.Error())
 	case errors.Is(err, contests.ErrRevealEarly):
 		WriteError(w, http.StatusConflict, "too_early", err.Error())
+	case errors.Is(err, contests.ErrExtendEnded):
+		WriteError(w, http.StatusConflict, "contest_ended", err.Error())
 	default:
 		d.internalError(w, r, err)
 	}
@@ -537,7 +539,9 @@ func (d Deps) getStandings(w http.ResponseWriter, r *http.Request) {
 	u := userFrom(r.Context())
 	variant := contests.VariantFull
 	switch {
-	case !organiser:
+	// An organiser gets the full board, or with ?as=student the board
+	// students get now ("Student view", pilot P10).
+	case !organiser || r.URL.Query().Get("as") == "student":
 		st, err := d.Contests.State(r.Context(), c, u.ID)
 		if err != nil {
 			d.internalError(w, r, err)

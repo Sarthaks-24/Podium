@@ -724,16 +724,25 @@ func (s *Service) SetExtension(ctx context.Context, id, userID int64, minutes in
 	return err
 }
 
-// Extend adds minutes to everyone's end, audited for by.
+// Extend adds minutes to everyone's end, audited for by. Once the contest
+// has closed it refuses with ErrExtendEnded (walk bug B3): the check and
+// the change are one statement, so an extend sent just after the end
+// cannot slip through.
 func (s *Service) Extend(ctx context.Context, id int64, minutes int, by Actor) error {
 	if minutes < 1 || minutes > 240 {
 		return FieldErrors{"minutes": "Extend by 1 to 240 minutes."}
 	}
 	err := s.audited(ctx, id, by, AuditExtend, func(tx *sql.Tx) (any, bool, error) {
 		var total int
-		err := tx.QueryRowContext(ctx, "UPDATE contests SET extended_minutes = extended_minutes + ?, updated_at = ? WHERE id = ? RETURNING extended_minutes",
-			minutes, s.now().UnixMilli(), id).Scan(&total)
+		now := s.now().UnixMilli()
+		err := tx.QueryRowContext(ctx, `UPDATE contests SET extended_minutes = extended_minutes + ?, updated_at = ?
+			WHERE id = ? AND ends_at + extended_minutes * 60000 > ? RETURNING extended_minutes`,
+			minutes, now, id, now).Scan(&total)
 		if errors.Is(err, sql.ErrNoRows) {
+			var one int
+			if tx.QueryRowContext(ctx, "SELECT 1 FROM contests WHERE id = ?", id).Scan(&one) == nil {
+				return nil, false, ErrExtendEnded
+			}
 			return nil, false, ErrNotFound
 		}
 		return map[string]int{"minutes": minutes, "extended_minutes": total}, true, err

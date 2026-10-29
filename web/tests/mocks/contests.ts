@@ -211,6 +211,14 @@ export async function mockApi(page: Page, options: Options = {}) {
     notePosts: [] as Json[],
     casePosts: [] as Json[],
     manualCase: null as number | null,
+    /** Questions students asked after the page loaded, shown in the console (stage C2). */
+    newQuestions: [] as Json[],
+    /** The judge stops asking for work: its last request is 3 minutes old (stage C2). */
+    judgeLate: false,
+    /** The contest has closed, as on the server: extend answers 409 contest_ended (walk bug B3). */
+    closed: phase === 'after' || phase === 'practice',
+    /** Standings requests on the student route, with their query (Student view asks as=student, P10). */
+    boardQueries: [] as string[],
   };
 
   state.holdReveal = options.holdReveal ?? false;
@@ -239,7 +247,7 @@ export async function mockApi(page: Page, options: Options = {}) {
     state: contestState(),
     my_score: phase === 'after' || phase === 'practice' ? 140 : null,
     max_score: 300,
-    my_window: myWindow(),
+    my_window: state.who === 'admin' ? null : myWindow(),
   });
 
   const contest = () => ({
@@ -255,7 +263,7 @@ export async function mockApi(page: Page, options: Options = {}) {
     honour_text:
       'This contest counts. By starting you agree to these rules:\n\n- Work alone.\n- Do not use AI assistants.\n- Podium records your submissions, the characters you type and paste, and when you leave the page. It is deleted 180 days after the contest.',
     problems:
-      state.accepted || phase === 'after' || phase === 'practice'
+      state.accepted || state.who === 'admin' || phase === 'after' || phase === 'practice'
         ? PROBLEMS.map((p) => ({
             label: p.label,
             title: p.title,
@@ -267,7 +275,8 @@ export async function mockApi(page: Page, options: Options = {}) {
             ...(options.zeroB && p.label === 'B' ? { my_score: 0, zero_by_decision: true, zero_case_id: 12 } : {}),
           }))
         : null,
-    accepted: state.accepted,
+    accepted: state.who === 'admin' ? false : state.accepted,
+    organiser: state.who === 'admin',
     announcements: state.announcements,
     my_clarifications: state.clarifications,
     public_clarifications: state.publicClarifications,
@@ -340,7 +349,7 @@ export async function mockApi(page: Page, options: Options = {}) {
       { label: 'A', problem_id: 11, revision_id: 12, rev: 2, from_at: startsAt - 60 * MIN, actor: { user_id: 1, email: 'priya@college.edu', role: 'owner' } },
     ],
     queue: options.queueHealth === 'trouble' ? { waiting: 14, judging: 2, errors: 1, oldest_wait_s: 95 } : { waiting: 0, judging: 1, errors: 1, oldest_wait_s: 0 },
-    judge_last_claim_at: options.queueHealth === 'trouble' ? nowMs() - 3 * MIN : nowMs() - 4000,
+    judge_last_claim_at: options.queueHealth === 'trouble' || state.judgeLate ? nowMs() - 3 * MIN : nowMs() - 4000,
     unanswered: state.answers.length ? 0 : 1,
     close_at: endsAt,
     default_honour_text: 'This contest counts. By starting you agree to these rules.',
@@ -425,6 +434,7 @@ export async function mockApi(page: Page, options: Options = {}) {
         return json(route, 200, contest());
       }
       if (path === '/api/contests/week-6/standings' && method === 'GET') {
+        state.boardQueries.push(url.search);
         const updated = options.zeroB ? { board_updated_at: now - 3_600_000, board_update_reason: 'review_decision' } : {};
         return json(route, 200, { ...(phase === 'during' || phase === 'ready' || options.studentFrozen ? frozenBoard() : fullBoard()), ...updated });
       }
@@ -583,6 +593,7 @@ export async function mockApi(page: Page, options: Options = {}) {
         return json(route, 200, adminContest());
       }
       if (path === '/api/admin/contests/4/extend' && method === 'POST') {
+        if (state.closed) return apiError(route, 409, 'contest_ended', 'The contest has ended, so it cannot be extended. Extending it now would reopen it for every student.');
         state.extends.push(req.postDataJSON() as Json);
         return json(route, 200, adminContest());
       }
@@ -636,6 +647,7 @@ export async function mockApi(page: Page, options: Options = {}) {
           clarifications: [
             { id: 51, problem_label: 'B', asked_by: { user_id: 7, email: 'asha@college.edu', name: 'Asha Rao' }, question: 'Can intervals have zero length?', answer: state.answers.length ? 'Yes.' : null, public: false, created_at: now - 3 * MIN, answered_at: null },
             { id: 50, problem_label: null, asked_by: { user_id: 101, email: 'arjun@college.edu', name: 'Arjun Mehta' }, question: 'Is Java allowed?', answer: 'Yes, Java 21.', public: true, created_at: now - 9 * MIN, answered_at: now - 8 * MIN },
+            ...state.newQuestions,
           ],
         });
       }
@@ -683,6 +695,7 @@ export async function mockApi(page: Page, options: Options = {}) {
       }
       if (path === '/api/admin/contests/4/stats' && method === 'GET') {
         return json(route, 200, {
+          started: 30,
           problems: [
             { label: 'A', title: 'A plus B', max_score: 100, solved: 21, attempted: 27, median_attempts: 2, subtasks: [], histogram: [{ score: 0, students: 6 }, { score: 40, students: 3 }, { score: 100, students: 21 }] },
             { label: 'B', title: 'Interval covering', max_score: 100, solved: 4, attempted: 19, median_attempts: 4, subtasks: [], histogram: [{ score: 0, students: 11 }, { score: 40, students: 8 }, { score: 100, students: 4 }] },

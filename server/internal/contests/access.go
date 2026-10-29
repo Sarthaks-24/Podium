@@ -19,6 +19,9 @@ var (
 	ErrPracticeWait = errors.New("Your time is up. Practice opens when every student's time is up.")
 	ErrNotReady     = errors.New("This problem is being updated by the organisers. Try again in a few minutes.")
 	ErrRevealEarly  = errors.New("The reveal opens when every student's time is up.")
+	// ErrExtendEnded refuses "Extend for everyone" once the contest has
+	// closed: adding minutes then would reopen it for every student.
+	ErrExtendEnded = errors.New("The contest has ended, so it cannot be extended. Extending it now would reopen it for every student.")
 )
 
 // Final is when every student's window has closed: the close plus the

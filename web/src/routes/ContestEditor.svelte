@@ -286,7 +286,7 @@
     if (live && liveChange) {
       confirm = {
         title: 'Change a live contest?',
-        body: 'Students see the change at once: new times or a new freeze can change their clocks and the board. To give more time, Extend contest in the console is safer; to stop now, use End the contest now there.',
+        body: 'Students see the change at once: new times or a new freeze can change their clocks and the board. To give more time, Extend in the console is safer; to stop now, use End now there.',
         label: 'Save changes',
         danger: true,
         run: () => putSettings(body, 'Saved changes'),

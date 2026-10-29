@@ -773,7 +773,12 @@ func (d Deps) contestStats(w http.ResponseWriter, r *http.Request) {
 		d.internalError(w, r, err)
 		return
 	}
-	WriteJSON(w, http.StatusOK, map[string]any{"problems": stats, "server_now": d.Contests.Clock().UnixMilli()})
+	started, err := d.Contests.Started(r.Context(), c)
+	if err != nil {
+		d.internalError(w, r, err)
+		return
+	}
+	WriteJSON(w, http.StatusOK, map[string]any{"problems": stats, "started": started, "server_now": d.Contests.Clock().UnixMilli()})
 }
 
 func (d Deps) setEditorial(w http.ResponseWriter, r *http.Request) {

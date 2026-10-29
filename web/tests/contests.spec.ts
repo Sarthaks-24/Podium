@@ -523,79 +523,99 @@ test('the console pauses, extends, judges again, announces and answers', async (
   const api = await mockApi(page, { who: 'admin', phase: 'during' });
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto('/admin/contests/4/console');
-  const strip = page.getByRole('region', { name: 'Needs attention' });
-  await expect(strip).toContainText('Judging on');
+  const sentence = page.locator('#console-sentence');
+  await expect(sentence).toHaveText('Live, 30 started, 1 question waiting, judge fine.');
+  const actions = page.getByRole('group', { name: 'Contest actions' });
+  const announce = page.getByRole('dialog', { name: 'Announce to every student' });
 
-  // Pausing asks first, then leaves an announcement ready to post (C3); it is never posted by itself.
-  await strip.getByRole('button', { name: 'Pause judging' }).click();
+  // Pausing asks first, then opens an announcement ready to post (C3); it is never posted by itself.
+  await actions.getByRole('button', { name: 'Pause judging' }).click();
   const dialog = page.getByRole('dialog', { name: 'Pause judging?' });
   await expect(dialog).toContainText('their submissions wait in the queue and nothing is lost');
   await expect(dialog.getByRole('button', { name: 'Cancel' })).toBeFocused();
   await dialog.getByRole('button', { name: 'Pause judging' }).click();
-  await expect(strip).toContainText('Judging paused');
   await expect.poll(() => api.pauses).toBe(1);
-  await expect(page.getByLabel('Announcement (Markdown)')).toHaveValue(/Judging is paused for a few minutes/);
+  await expect(announce.getByLabel('Announcement (Markdown)')).toHaveValue(/Judging is paused for a few minutes/);
   expect(api.posted).toHaveLength(0);
-  await strip.getByRole('button', { name: 'Resume judging' }).click();
-  await expect(strip).toContainText('Judging on');
+  await announce.getByRole('button', { name: 'Cancel' }).click();
+  await expect(sentence).toHaveText('Live, 30 started, 1 question waiting, judging paused.');
+  // Resume asks in the same confirmation as pause (walk bug B5).
+  await actions.getByRole('button', { name: 'Resume judging' }).click();
+  await page.getByRole('dialog', { name: 'Resume judging?' }).getByRole('button', { name: 'Resume judging' }).click();
+  await expect.poll(() => api.resumes).toBe(1);
+  await expect(announce.getByLabel('Announcement (Markdown)')).toHaveValue(/Judging has resumed/);
+  await announce.getByRole('button', { name: 'Cancel' }).click();
+  await expect(sentence).toHaveText('Live, 30 started, 1 question waiting, judge fine.');
 
-  await expect(strip.getByRole('link', { name: '1 unanswered question', exact: true })).toHaveAttribute('href', '#clar-title');
-  await page.getByLabel('Minutes for everyone').fill('0');
-  await page.getByRole('button', { name: 'Extend contest' }).click();
-  await expect(page.locator('#extend-error')).toHaveText('Enter the minutes to add, 1 or more.');
-  await expect(page.getByLabel('Minutes for everyone')).toHaveAttribute('aria-invalid', 'true');
-  await page.getByLabel('Minutes for everyone').fill('15');
-  await page.getByRole('button', { name: 'Extend contest' }).click();
-  const extend = page.getByRole('dialog', { name: 'Extend the contest by 15 minutes?' });
-  await expect(extend).toContainText("Everyone's contest then ends at");
+  // Extend is a dialog: the minutes, the new end said first, then Extend contest.
+  await actions.getByRole('button', { name: 'Extend', exact: true }).click();
+  const extend = page.getByRole('dialog', { name: 'Extend the contest' });
+  await extend.getByLabel('Minutes to add for everyone').fill('0');
+  await extend.getByRole('button', { name: 'Extend contest' }).click();
+  await expect(page.locator('#extend-error')).toHaveText('Enter the minutes to add, from 1 to 240.');
+  await expect(extend.getByLabel('Minutes to add for everyone')).toHaveAttribute('aria-invalid', 'true');
+  await extend.getByLabel('Minutes to add for everyone').fill('15');
+  await expect(extend).toContainText("Every student's contest then ends at");
   await extend.getByRole('button', { name: 'Extend contest' }).click();
   await expect.poll(() => api.extends).toEqual([{ minutes: 15 }]);
-  await expect(page.getByLabel('Announcement (Markdown)')).toHaveValue('The contest has been extended by 15 minutes.');
+  await expect(announce.getByLabel('Announcement (Markdown)')).toHaveValue('The contest has been extended by 15 minutes.');
+  await announce.getByRole('button', { name: 'Cancel' }).click();
 
-  await page.locator('#ext-user').selectOption({ label: 'Asha Rao' });
-  await page.getByLabel('Extra minutes').fill('10');
-  await page.getByRole('textbox', { name: 'Reason' }).fill('Laptop crashed');
-  await page.getByRole('button', { name: 'Give extra time' }).click();
+  // Extra time for one student, listed when the dialog opens again.
+  await actions.getByRole('button', { name: 'Extra time' }).click();
+  const extra = page.getByRole('dialog', { name: 'Extra time for one student' });
+  await extra.locator('#ext-user').selectOption({ label: 'Asha Rao' });
+  await extra.getByLabel('Extra minutes').fill('10');
+  await extra.getByRole('textbox', { name: 'Reason' }).fill('Laptop crashed');
+  await extra.getByRole('button', { name: 'Give extra time' }).click();
   await expect.poll(() => api.extensions).toEqual([{ user: '7', body: { minutes: 10, reason: 'Laptop crashed' } }]);
-  await expect(page.locator('.extensions')).toContainText('Asha Rao: 10 min, Laptop crashed');
+  await expect(extra).toBeHidden();
+  await actions.getByRole('button', { name: 'Extra time' }).click();
+  await expect(extra.locator('.extensions')).toContainText('Asha Rao: 10 min, Laptop crashed');
+  await extra.getByRole('button', { name: 'Cancel' }).click();
 
-  // Filters go to the feed's query.
+  // Filters go to the feed's query; every Judge again asks first (walk bug B5).
   await page.locator('#f-problem').selectOption('A');
   await page.getByRole('button', { name: 'Filter' }).click();
   await expect.poll(() => api.feedQueries.at(-1)).toBe('?problem=A&page=1');
   await expect(page.locator('.feed tbody tr')).toHaveCount(1);
   await page.getByRole('button', { name: /^Judge again: Arjun Mehta, problem A/ }).click();
+  await page.getByRole('dialog', { name: "Judge Arjun Mehta's submission again?" }).getByRole('button', { name: 'Judge again' }).click();
   await expect.poll(() => api.rejudges).toEqual([{ submission_id: 300 }]);
-  await page.getByLabel('Judge every submission to a problem again').selectOption('A');
-  await page.getByRole('button', { name: 'Judge problem again' }).click();
+  await page.getByRole('button', { name: 'Judge problem A again' }).click();
   await page.getByRole('dialog', { name: 'Judge problem A again?' }).getByRole('button', { name: 'Judge again' }).click();
   await expect.poll(() => api.rejudges.at(-1)).toEqual({ problem_label: 'A' });
-  await expect(page.getByLabel('Announcement (Markdown)')).toHaveValue(/Every submission to problem A is being judged again/);
+  await expect(announce.getByLabel('Announcement (Markdown)')).toHaveValue(/Every submission to problem A is being judged again/);
 
-  // Posting shows a preview and asks first (C3).
-  await page.getByLabel('Start from a template').selectOption('paused');
-  await expect(page.getByLabel('Announcement (Markdown)')).toHaveValue(/Judging is paused for a few minutes/);
-  await expect(page.getByRole('group', { name: 'Preview' })).toContainText('Judging is paused for a few minutes');
-  await page.getByRole('button', { name: 'Post announcement' }).click();
-  const post = page.getByRole('dialog', { name: 'Post to every student?' });
-  await post.getByRole('button', { name: 'Post announcement' }).click();
+  // Posting from the dialog, with a preview; the dialog says it reaches everyone and cannot be taken back (C3).
+  await announce.getByLabel('Start from a template').selectOption('paused');
+  await expect(announce.getByLabel('Announcement (Markdown)')).toHaveValue(/Judging is paused for a few minutes/);
+  await expect(announce.getByRole('group', { name: 'Preview' })).toContainText('Judging is paused for a few minutes');
+  await expect(announce).toContainText('It cannot be taken back.');
+  await announce.getByRole('button', { name: 'Post announcement' }).click();
   await expect.poll(() => api.posted.length).toBe(1);
-  // Closing hands focus back to the opener; wait so it does not land later.
-  await expect(post).toBeHidden();
+  await expect(announce).toBeHidden();
 
-  // A standard answer from the one list, answered for everyone.
-  await page.getByLabel('Insert a standard answer').selectOption({ label: 'Yes.' });
-  await expect(page.getByLabel('Answer', { exact: true })).toHaveValue('Yes.');
-  await expect(page.getByLabel('Answer', { exact: true })).toBeFocused();
-  await page.getByLabel('Answer for everyone').check();
+  // A standard answer fills the box to edit; Everyone says what students will see (P12).
+  await page.getByLabel('Standard answer').selectOption({ label: 'Yes.' });
+  const answer = page.getByLabel('Answer', { exact: true });
+  await expect(answer).toHaveValue('Yes.');
+  await expect(answer).toBeFocused();
+  await answer.fill('Yes. Such an interval covers one point.');
+  await expect(page.getByText('Only Asha Rao sees the answer, in Messages.')).toBeVisible();
+  await page.getByLabel('Everyone', { exact: true }).check();
+  await expect(page.getByText('Every student sees the question and this answer in Messages, without the name of who asked.')).toBeVisible();
   await page.getByRole('button', { name: 'Send to everyone' }).click();
-  await expect.poll(() => api.answers).toEqual([{ id: '51', body: { answer: 'Yes.', public: true } }]);
+  await expect.poll(() => api.answers).toEqual([{ id: '51', body: { answer: 'Yes. Such an interval covers one point.', public: true } }]);
+  await expect(sentence).toHaveText('Live, 30 started, judge fine.');
 
-  // The audit log follows every action, newest first, with who did it.
-  const audit = page.getByRole('region', { name: 'Changes' });
+  // The audit log is behind a link, newest first, with who did it.
+  await expect(page.getByRole('region', { name: 'Changes' })).toHaveCount(0);
+  await actions.getByRole('button', { name: 'History of changes' }).click();
+  const audit = page.getByRole('dialog', { name: 'History of changes' }).getByRole('region', { name: 'Changes' });
   await expect(audit.getByRole('listitem').first()).toContainText('Judged problem A again (1 submission)');
-  // v1.4.0 rows carry reason_given, never the reason; the reason stays in Time.
-  await expect(audit).toContainText('Gave Asha Rao 10 extra minutes, with a reason (see Time)');
+  // v1.4.0 rows carry reason_given, never the reason.
+  await expect(audit).toContainText('Gave Asha Rao 10 extra minutes, with a reason');
   await expect(audit).toContainText('Extended the contest by 15 minutes');
   await expect(audit).toContainText('Paused judging');
   await expect(audit).toContainText('priya@college.edu');
@@ -631,31 +651,113 @@ test('the console says partial scores as students read them and keeps rows when 
 
   await page.route('**/api/admin/contests/4/submissions*', (route) => route.fulfill({ status: 503, json: { error: { code: 'unavailable', message: 'Down.' } } }));
   await page.clock.runFor(10_500);
-  const strip = page.getByRole('region', { name: 'Needs attention' });
-  await expect(strip).toContainText(/Could not refresh at \d\d:\d\d:\d\d\. Showing \d\d:\d\d:\d\d\. Retrying\./);
+  const panel = page.getByRole('region', { name: 'Submissions' });
+  await expect(panel.getByRole('status')).toHaveText(/Could not refresh at \d\d:\d\d:\d\d\. Showing \d\d:\d\d:\d\d\. Retrying\./);
   await expect(feed.getByRole('row')).toHaveCount(5);
 });
 
-test('the attention strip shows queue health, and a silent judge (P3 F6.1, C10)', async ({ page }) => {
+test('a late judge and a slow queue come first, and banners show only what needs action (C2, C10)', async ({ page }) => {
   const api = await mockApi(page, { who: 'admin', phase: 'during', queueHealth: 'trouble' });
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto('/admin/contests/4/console');
-  const strip = page.getByRole('region', { name: 'Needs attention' });
-  await expect(strip.getByRole('link', { name: '14 waiting, 2 judging, oldest 1 min' })).toBeVisible();
-  await expect(strip.locator('.tone-bad')).toContainText(['1 judge error', 'No judge for 3 min', '1 unanswered question']);
-  await expect(strip.locator('.tone-part')).toContainText(['14 waiting']);
-  // The judge error link filters the feed to judge errors.
-  await strip.getByRole('link', { name: '1 judge error' }).click();
+  await expect(page.locator('#console-sentence .trouble')).toHaveText('Judge not seen for 3 minutes. The oldest submission has waited 1 minute for the judge.');
+  await expect(page.locator('#console-sentence')).toContainText('Live, 30 started, 1 question waiting.');
+  const banners = page.getByRole('region', { name: 'Needs attention' });
+  await expect(banners).toContainText('The judge is not taking work.');
+  await expect(banners).toContainText('1 judge error. Those students see an error and can submit again.');
+  // Show filters the feed to judge errors.
+  await banners.getByRole('button', { name: 'Show the judge errors' }).click();
   await expect.poll(() => api.feedQueries.at(-1)).toBe('?verdict=error&page=1');
   await expect(page.locator('.feed tbody tr')).toHaveCount(1);
+  // The failure path is written into the page.
+  await banners.getByRole('button', { name: 'What to do' }).click();
+  const trouble = page.getByRole('dialog', { name: 'If something goes wrong' });
+  await expect(trouble.getByRole('heading')).toHaveText(['If something goes wrong', 'The judge stalled', 'The VM is gone', 'Sign-in is down']);
+  await expect(trouble).toContainText('sudo systemctl restart podium-judge');
   await page.screenshot({ path: `${shots()}contest-console-trouble-1440-light.png`, fullPage: true });
+});
+
+test('the sentence changes when a question arrives and when the judge is late (C2, P9)', async ({ page }) => {
+  const api = await mockApi(page, { who: 'admin', phase: 'during' });
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.clock.install();
+  await page.goto('/admin/contests/4/console');
+  const sentence = page.locator('#console-sentence');
+  await expect(sentence).toHaveText('Live, 30 started, 1 question waiting, judge fine.');
+  await expect(page).toHaveTitle('(1) Console · Week 6 contest · podium');
+  // A student asks: the live channel says so and the page reads the questions again.
+  api.newQuestions.push({
+    id: 52, problem_label: 'A', asked_by: { user_id: 104, email: 'kiran@college.edu', name: 'Kiran Das' },
+    question: 'Can a be negative?', answer: null, public: false, created_at: Date.now(), answered_at: null,
+  });
+  api.stream.push({ type: 'clarification', data: { contest: 'week-6', contest_id: 4, id: 52 } });
+  await page.clock.runFor(1000);
+  await expect(sentence).toHaveText('Live, 30 started, 2 questions waiting, judge fine.');
+  await expect(page).toHaveTitle('(2) Console · Week 6 contest · podium');
+  // The question waiting longest stays at the top.
+  await expect(page.locator('.clar .q')).toHaveText(['Can intervals have zero length?', 'Can a be negative?']);
+  // The judge stops asking for work; the next refresh says so first.
+  api.judgeLate = true;
+  await page.clock.runFor(10_500);
+  await expect(sentence).toHaveText('Judge not seen for 3 minutes. Live, 30 started, 2 questions waiting.');
+});
+
+test('after the end, Extend says the contest has ended (C2, walk bug B3)', async ({ page }) => {
+  const api = await mockApi(page, { who: 'admin', phase: 'after' });
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto('/admin/contests/4/console');
+  await expect(page.locator('#console-sentence')).toHaveText(/^Ended, 30 started/);
+  await expect(page.getByRole('button', { name: 'End now' })).toHaveCount(0);
+  const actions = page.getByRole('group', { name: 'Contest actions' });
+  await actions.getByRole('button', { name: 'Extend', exact: true }).click();
+  const extend = page.getByRole('dialog', { name: 'Extend the contest' });
+  await expect(extend).toContainText('The contest has ended.');
+  await expect(extend.getByRole('button', { name: 'Extend contest' })).toHaveCount(0);
+  await page.keyboard.press('Escape');
+  await actions.getByRole('button', { name: 'Extra time' }).click();
+  await expect(page.getByRole('dialog', { name: 'Extra time for one student' })).toContainText('The contest has ended, so extra time can no longer be given.');
+  expect(api.extends).toHaveLength(0);
+});
+
+test('an extend the server refuses after the end is said in the dialog (C2, walk bug B3)', async ({ page }) => {
+  const api = await mockApi(page, { who: 'admin', phase: 'during' });
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto('/admin/contests/4/console');
+  await page.getByRole('group', { name: 'Contest actions' }).getByRole('button', { name: 'Extend', exact: true }).click();
+  const extend = page.getByRole('dialog', { name: 'Extend the contest' });
+  await extend.getByLabel('Minutes to add for everyone').fill('5');
+  // The contest closes while the dialog is open: the server refuses (contest_ended).
+  api.closed = true;
+  await extend.getByRole('button', { name: 'Extend contest' }).click();
+  await expect(extend.getByRole('alert')).toHaveText('The contest has ended, so it cannot be extended. Extending it now would reopen it for every student.');
+  expect(api.extends).toHaveLength(0);
+  await expect(page.getByRole('dialog', { name: 'Announce to every student' })).toBeHidden();
+});
+
+test('the console on a phone: three tabs, under 1,500 px tall at 375 px (C2)', async ({ page }) => {
+  await mockApi(page, { who: 'admin', phase: 'during' });
+  await page.setViewportSize({ width: 375, height: 812 });
+  await page.goto('/admin/contests/4/console');
+  await expect(page.getByText('Can intervals have zero length?')).toBeVisible();
+  const tabs = page.getByRole('tablist', { name: 'Live view' });
+  await expect(tabs.getByRole('tab')).toHaveText([/^Questions/, 'Submissions', 'Overview']);
+  await settle(page);
+  const height = await page.evaluate(() => document.documentElement.scrollHeight);
+  test.info().annotations.push({ type: 'console height at 375 px', description: String(height) });
+  expect(height).toBeLessThan(1500);
+  await page.screenshot({ path: `${shots()}contest-console-375-light.png`, fullPage: true });
+  await tabs.getByRole('tab', { name: 'Submissions' }).click();
+  await expect(page.getByRole('cell', { name: 'Partial, 40 of 100' })).toBeVisible();
+  await expect(page.getByText('Can intervals have zero length?')).toBeHidden();
+  await tabs.getByRole('tab', { name: 'Overview' }).click();
+  await expect(page.getByText('21 solved of 27 attempted')).toBeVisible();
 });
 
 test('End the contest now says what happens and sets the end to now (P3 O5)', async ({ page }) => {
   const api = await mockApi(page, { who: 'admin', phase: 'during' });
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto('/admin/contests/4/console');
-  await page.getByRole('button', { name: 'End the contest now' }).click();
+  await page.getByRole('button', { name: 'End now' }).click();
   const end = page.getByRole('dialog', { name: 'End the contest now?' });
   await expect(end).toContainText("Everyone's time ends now");
   await expect(end).toContainText('Queued submissions are still judged.');
@@ -666,7 +768,7 @@ test('End the contest now says what happens and sets the end to now (P3 O5)', as
   await end.getByRole('button', { name: 'Cancel' }).click();
   expect(api.settingsPuts).toHaveLength(0);
   const before = Date.now();
-  await page.getByRole('button', { name: 'End the contest now' }).click();
+  await page.getByRole('button', { name: 'End now' }).click();
   await end.getByRole('button', { name: 'End the contest' }).click();
   await expect.poll(() => api.settingsPuts.length).toBe(1);
   const body = api.settingsPuts[0];
@@ -687,7 +789,7 @@ test('End now in the first minute of the freeze keeps the board frozen (V3-18, w
     await page.clock.setFixedTime(inFreeze);
     await page.setViewportSize({ width: 1440, height: 900 });
     await page.goto('/admin/contests/4/console');
-    await page.getByRole('button', { name: 'End the contest now' }).click();
+    await page.getByRole('button', { name: 'End now' }).click();
     const end = page.getByRole('dialog', { name: 'End the contest now?' });
     // Rounded up to a whole minute: the frozen moment moves 8 s earlier, never later.
     // Formatted in the browser: its timezone is the config's (Asia/Kolkata), not the runner's.
@@ -1021,12 +1123,16 @@ test('keyboard only: an organiser edits a contest, runs the console and reveals 
   await expect(page.getByLabel('Letter for Interval covering')).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Remove A plus B' })).toBeFocused();
 
-  // Console: the section links, and an error that takes focus.
+  // Console: the history of changes opens from the keyboard, and Escape hands focus back.
   await activate(page, page.getByRole('navigation', { name: 'Contest' }).getByRole('link', { name: /^Console/ }));
   await expect(page).toHaveURL('/admin/contests/4/console');
-  await activate(page, page.getByRole('button', { name: 'Give extra time' }));
-  await expect(page.locator('#ext-error')).toHaveText('Choose a student.');
-  await expect(page.locator('#ext-user')).toBeFocused();
+  const history = page.getByRole('button', { name: 'History of changes' });
+  await activate(page, history);
+  const changes = page.getByRole('dialog', { name: 'History of changes' });
+  await expect(changes).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(changes).toBeHidden();
+  await expect(history).toBeFocused();
 
   // Results: Reveal and its confirmation from the keyboard, then Similar code.
   await page.locator('main h1').focus();
@@ -1142,13 +1248,26 @@ test('the contest list stacks below 1024 px and points to the bank when empty (P
   await expect(page.getByRole('link', { name: 'Go to the problem bank' })).toHaveAttribute('href', '/admin/problems');
 });
 
-test('the contest nav opens the student view of the contest (F3.3, C2-056)', async ({ page }) => {
-  await mockApi(page, { who: 'admin', phase: 'during' });
+test('Student view shows the problems and the board as students see them, with no start page (F3.3, C2-056, P10)', async ({ page }) => {
+  const api = await mockApi(page, { who: 'admin', phase: 'during' });
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto('/admin/contests/4/console');
   const link = page.getByRole('navigation', { name: 'Contest' }).getByRole('link', { name: 'Student view' });
   await expect(link).toHaveAttribute('href', '/contests/week-6');
   await link.click();
   await expect(page).toHaveURL('/contests/week-6');
+  await expect(page.getByText('Student view: the problems and the standings as students see them.', { exact: false })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'I agree, start the contest' })).toHaveCount(0);
+  await expect(page.getByRole('heading', { name: 'Honour code' })).toHaveCount(0);
+  // The board students get: during the hidden minutes, the hidden one.
+  await page.getByRole('main').getByRole('link', { name: 'Standings' }).click();
+  await expect(page.getByText('Student view: the board as students see it now.')).toBeVisible();
+  await expect(page.getByText(/^Results from \d{2}:\d{2} are hidden until the end\./)).toBeVisible();
+  expect(api.boardQueries).toContain('?as=student');
+  // A problem opens in the workspace, saying nothing submitted here counts.
+  await page.goto('/contests/week-6');
+  await page.getByRole('link', { name: 'A. A plus B' }).click();
+  await expect(page).toHaveURL('/contests/week-6/problems/A');
   await expect(codeEditor(page)).toBeVisible();
+  await expect(page.getByText('Student view. Run and Submit work here, and nothing you submit counts.')).toBeVisible();
 });

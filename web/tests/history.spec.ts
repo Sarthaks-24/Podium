@@ -1,6 +1,7 @@
 // What is left of the v2 history screens after v3 removed revision lists
-// and diffs (V3-4): the reason a save needs while a contest runs, and the
-// rejudge naming the revision it judges against.
+// and diffs (V3-4): the reason a save needs while a contest runs, the
+// rejudge saying which tests it uses, and the console's banner for an
+// edited problem (stage C2).
 import { expect, test } from '@playwright/test';
 import * as contests from './mocks/contests';
 import * as problems from './mocks/problems';
@@ -25,14 +26,28 @@ test('while a contest runs with the problem, a save asks for the reason and send
   await expect.poll(() => api.puts.at(-1)?.reason).toBe('Fix a typo in the title.');
 });
 
-test('a rejudge names the revision it judges against', async ({ page }) => {
+test('a rejudge says it uses the tests students are served now', async ({ page }) => {
   await contests.mockApi(page, { who: 'admin', phase: 'during' });
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto('/admin/contests/4/console');
-  await page.getByLabel('Judge every submission to a problem again').selectOption('A');
-  await expect(page.getByText('Judged against revision 3, the one students are served.')).toBeVisible();
-  await page.getByRole('button', { name: 'Judge problem again' }).click();
+  await page.getByRole('button', { name: 'Judge problem A again' }).click();
   await expect(page.getByRole('dialog', { name: 'Judge problem A again?' })).toContainText(
-    'Every submission to problem A is judged again against revision 3, the one students are served. New submissions still go first',
+    'Every submission to problem A is judged again with the tests students are served now. New submissions still go first',
   );
+});
+
+test('an edited problem is a banner on the console until students get it (C2)', async ({ page }) => {
+  const api = await contests.mockApi(page, { who: 'admin', phase: 'during', updateAvailable: true });
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto('/admin/contests/4/console#versions-title');
+  const banners = page.getByRole('region', { name: 'Needs attention' });
+  await expect(banners).toContainText('Problem A was edited. Students still see the old statement.');
+  await banners.getByRole('button', { name: 'Update students now for problem A' }).click();
+  const confirm = page.getByRole('dialog', { name: 'Update students now to the edited problem A?' });
+  await expect(confirm).toContainText('Only the statement changed, so no submission is judged again.');
+  await confirm.getByRole('button', { name: 'Update students now' }).click();
+  await expect.poll(() => api.pinPuts.length).toBe(1);
+  // The server's announcement is ready to post, never posted by itself.
+  await expect(page.getByRole('dialog', { name: 'Announce to every student' }).getByLabel('Announcement (Markdown)')).toHaveValue(/The statement of problem A was updated/);
+  expect(api.posted).toHaveLength(0);
 });

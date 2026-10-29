@@ -10,10 +10,10 @@ import {
 describe('pins (C4)', () => {
   it('names the update and says what it does', () => {
     expect(pinPath(4, 'A')).toBe('/api/admin/contests/4/problems/A/revision');
-    expect(updateEffect({ label: 'A', rev: 2, latest_rev: 3, update_statement_only: true })).toBe(
-      'Students get revision 3 of problem A instead of revision 2 the next time they open it. Only the statement changed, so no submission is judged again.',
+    expect(updateEffect({ label: 'A', update_statement_only: true })).toBe(
+      'Students get the edited problem A the next time they open it. Only the statement changed, so no submission is judged again.',
     );
-    expect(updateEffect({ label: 'B', rev: 1, latest_rev: 4, update_statement_only: false })).toMatch(/judge the problem again afterwards/);
+    expect(updateEffect({ label: 'B', update_statement_only: false })).toMatch(/judge the problem again afterwards/);
   });
 
 });
