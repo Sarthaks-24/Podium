@@ -102,8 +102,8 @@ describe('the key form', () => {
   });
 
   it('says what the wizard waits for: a key, then a model', () => {
-    expect(wizardBlocker(status())).toBe('Add a key in AI assistant first.');
-    expect(wizardBlocker(status({ active: true, provider: 'openai', model: '' }))).toBe('Choose a model for OpenAI in AI assistant first.');
+    expect(wizardBlocker(status())).toBe('Add a key first.');
+    expect(wizardBlocker(status({ active: true, provider: 'openai', model: '' }))).toBe('Choose a model for OpenAI first.');
     expect(wizardBlocker(status({ active: true, provider: 'openai', model: 'gpt-x' }))).toBe('');
     expect(wizardBlocker(status({ active: true, provider: 'fake', model: '' }))).toBe('');
   });
@@ -203,7 +203,7 @@ describe('the key never stays in state', () => {
 });
 
 describe('screens that touch the key keep it out of storage, addresses and logs', () => {
-  const sources = import.meta.glob<string>(['/src/routes/AiSettings.svelte', '/src/routes/AiWizard.svelte', '/src/components/ai/KeyForm.svelte', '/src/lib/ai.ts'], {
+  const sources = import.meta.glob<string>(['/src/components/AccountMenu.svelte', '/src/routes/AiWizard.svelte', '/src/components/ai/KeyForm.svelte', '/src/lib/ai.ts'], {
     query: '?raw',
     import: 'default',
     eager: true,
@@ -220,7 +220,7 @@ describe('screens that touch the key keep it out of storage, addresses and logs'
   });
 
   it('keeps the key field a password field with autocomplete off', () => {
-    // The key form is components/ai/KeyForm, shown on the settings page and inline in the wizard.
+    // The key form is components/ai/KeyForm, shown inline in the wizard.
     const page = sources['/src/components/ai/KeyForm.svelte'];
     const input = /<input\s+id=\{fid\('api-key'\)\}[\s\S]*?\/>/.exec(page)?.[0] ?? '';
     expect(input).toContain('type="password"');

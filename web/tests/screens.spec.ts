@@ -358,7 +358,7 @@ test('signed-in organisers at /signin land on their contests, and sign out retur
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('Contests');
   const nav = page.getByRole('navigation', { name: 'Main' });
   await expect(nav.getByRole('link', { name: 'Contests' })).toHaveAttribute('aria-current', 'page');
-  await expect(nav.getByRole('link')).toHaveText(['Contests', 'Problem bank', 'Students', 'People']);
+  await expect(nav.getByRole('link')).toHaveText(['Contests', 'Problem bank', 'People']);
 
   await page.getByRole('navigation', { name: 'Main' }).getByRole('link', { name: 'People' }).click();
   await expect(page).toHaveURL('/admin/people');
@@ -436,17 +436,17 @@ test('keyboard only: the account menu opens, its items work, and Escape returns 
 
   // Tab walks the items in order; each shows its focus.
   const items: string[] = [];
-  for (let i = 0; i < 3; i++) {
+  for (let i = 0; i < 4; i++) {
     await page.keyboard.press('Tab');
     const info = await focusInfo(page);
     expect(info?.visible, `no visible focus on ${info?.name}`).toBe(true);
     items.push(info?.name ?? '');
   }
-  expect(items).toEqual(['Theme and colours', 'Help', 'Sign out']);
+  // Organisers get "Forget key" for the AI assistant (V3-15).
+  expect(items).toEqual(['Theme and colours', 'Help', 'Forget key', 'Sign out']);
 
   // Theme and colours opens the dialog; closing it lands back on the item.
-  await page.keyboard.press('Shift+Tab');
-  await page.keyboard.press('Shift+Tab');
+  for (let i = 0; i < 3; i++) await page.keyboard.press('Shift+Tab');
   await page.keyboard.press('Enter');
   const dialog = page.getByRole('dialog', { name: 'Theme and colours' });
   await expect(dialog).toBeVisible();
@@ -466,7 +466,7 @@ test('keyboard only: the account menu opens, its items work, and Escape returns 
 
   // Tabbing out of the open menu closes it.
   await page.keyboard.press('Enter');
-  for (let i = 0; i < 4; i++) await page.keyboard.press('Tab');
+  for (let i = 0; i < 5; i++) await page.keyboard.press('Tab');
   await expect(page.locator('#account-panel')).toBeHidden();
 });
 

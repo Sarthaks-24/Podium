@@ -414,11 +414,11 @@ func (d Deps) provider(w http.ResponseWriter, r *http.Request, name string) (ai.
 		e, ok = d.AI.Keys.GetProvider(token, name)
 	}
 	if !ok {
-		WriteError(w, http.StatusConflict, "no_key", "Add a key in AI assistant first.")
+		WriteError(w, http.StatusConflict, "no_key", "Add a key first.")
 		return nil, ai.KeyEntry{}, false
 	}
 	if e.Model == "" {
-		WriteError(w, http.StatusConflict, "no_model", "Choose a model for "+ai.ProviderName(e.Provider)+" in AI assistant first.")
+		WriteError(w, http.StatusConflict, "no_model", "Choose a model for "+ai.ProviderName(e.Provider)+" first.")
 		return nil, ai.KeyEntry{}, false
 	}
 	prov, err := ai.NewProvider(ai.Config{Provider: e.Provider, Model: e.Model, Key: e.Key, BaseURL: d.AI.BaseURLs[e.Provider]}, d.testing())
@@ -426,7 +426,7 @@ func (d Deps) provider(w http.ResponseWriter, r *http.Request, name string) (ai.
 		// The key was accepted under another mode; ask for it again
 		// rather than guess.
 		d.AI.Keys.ForgetProvider(token, e.Provider)
-		WriteError(w, http.StatusConflict, "no_key", "Add a key in AI assistant first.")
+		WriteError(w, http.StatusConflict, "no_key", "Add a key first.")
 		return nil, ai.KeyEntry{}, false
 	}
 	return prov, e, true

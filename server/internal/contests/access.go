@@ -38,15 +38,14 @@ func (c *Contest) PracticeOpen(st StudentState, now time.Time) bool {
 }
 
 // StateFor is the contest's state word for one student at now: a personal
-// extension keeps the contest live for them, and in window mode their own
-// clock decides.
+// extension keeps the contest live for them.
 func (c *Contest) StateFor(st StudentState, now time.Time) string {
 	sch := c.Schedule
 	switch {
 	case now.Before(sch.StartsAt):
 		return StateUpcoming
 	case !st.Over:
-		if sch.Mode == FixedStart && sch.Freeze > 0 && !now.Before(sch.Close().Add(-sch.Freeze)) {
+		if sch.Freeze > 0 && !now.Before(sch.Close().Add(-sch.Freeze)) {
 			return StateFrozen
 		}
 		return StateLive
@@ -56,9 +55,9 @@ func (c *Contest) StateFor(st StudentState, now time.Time) string {
 	return StateEnded
 }
 
-// ProblemsVisible reports whether a student may see the problems: once
-// their window has started (window mode) or the contest has started (fixed)
-// and they accepted the rules, or once their window is over.
+// ProblemsVisible reports whether a student may see the problems: once the
+// contest has started and they accepted the rules, or once their window is
+// over.
 func (c *Contest) ProblemsVisible(st StudentState, now time.Time) bool {
 	if st.Over {
 		return !now.Before(c.Schedule.StartsAt)
@@ -68,27 +67,15 @@ func (c *Contest) ProblemsVisible(st StudentState, now time.Time) bool {
 
 // StudentVariant is the board a student may see now, or ErrBoardClosed.
 //
-//   - Exam feedback and window mode: no board until the student's own
-//     window closes (window-mode ruling; exam mode shows no scores).
-//   - Fixed start: the full board until the freeze, the frozen board from
-//     the freeze until every window has closed, then full; with HoldReveal
-//     the frozen board stays until an organiser reveals.
-//   - Window mode after the student's window: full (frozen while held).
+// The full board until the freeze, the frozen board from the freeze until
+// every window has closed, then full; with HoldReveal the frozen board
+// stays until an organiser reveals.
 func (s *Service) StudentVariant(ctx context.Context, c *Contest, st StudentState) (string, error) {
 	now := s.now()
-	if (c.Schedule.Mode == WindowStart || c.Feedback == "exam") && !st.Over {
-		return "", ErrBoardClosed
-	}
 	if c.Schedule.Freeze == 0 {
 		return VariantFull, nil
 	}
 	held := c.HoldReveal && c.RevealedAt.IsZero()
-	if c.Schedule.Mode == WindowStart {
-		if held {
-			return VariantFrozen, nil
-		}
-		return VariantFull, nil
-	}
 	if now.Before(c.Schedule.Close().Add(-c.Schedule.Freeze)) {
 		return VariantFull, nil
 	}
@@ -98,24 +85,20 @@ func (s *Service) StudentVariant(ctx context.Context, c *Contest, st StudentStat
 	return VariantFull, nil
 }
 
-// FrozenAt is when the frozen board stops counting submissions, for fixed
-// starts (zero in window mode, where each student freezes at their own
-// end, or without a freeze).
+// FrozenAt is when the frozen board stops counting submissions (zero
+// without a freeze).
 func (c *Contest) FrozenAt() time.Time {
-	if c.Schedule.Mode != FixedStart || c.Schedule.Freeze == 0 {
+	if c.Schedule.Freeze == 0 {
 		return time.Time{}
 	}
 	return c.Schedule.Close().Add(-c.Schedule.Freeze)
 }
 
 // ViewOptions says how a student sees their own submissions in the
-// contest: coarse figures always (D47), times to 100 ms (every contest
-// counts, V3-6), and in exam mode nothing but "Submitted" until their
-// window closes.
-func (c *Contest) ViewOptions(st StudentState) submissions.ViewOptions {
-	o := submissions.ViewOptions{Coarse: true, RoundMS: 100}
-	o.Hide = c.Feedback == "exam" && !st.Over
-	return o
+// contest: coarse figures always (D47) and times to 100 ms (every contest
+// counts, V3-6). Exam feedback was cut (V3-15).
+func (c *Contest) ViewOptions(StudentState) submissions.ViewOptions {
+	return submissions.ViewOptions{Coarse: true, RoundMS: 100}
 }
 
 // ViewFor is ViewOptions for a contest and student by id, for the live

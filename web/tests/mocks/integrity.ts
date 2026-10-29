@@ -14,15 +14,15 @@ export type Json = Record<string, unknown>;
 export const STUDENT = { id: 7, email: 'asha@college.edu', name: 'Asha Rao', avatar_url: '', role: 'student', theme: '', verdicts: 'standard' };
 export const ADMIN = { id: 2, email: 'arjun.mehta@college.edu', name: 'Arjun Mehta', avatar_url: '', role: 'admin', theme: '', verdicts: 'standard' };
 
-export const USERS: Record<string, { name: string; email: string; roll_number: string }> = {
-  '7': { name: 'Asha Rao', email: 'asha@college.edu', roll_number: 'CS21-007' },
-  '8': { name: 'Ravi Kumar', email: 'ravi@college.edu', roll_number: 'CS21-008' },
-  '9': { name: 'Zoë Fernandes', email: 'zoe@college.edu', roll_number: 'CS21-009' },
-  '10': { name: 'Meera Iyer', email: 'meera@college.edu', roll_number: 'CS21-010' },
-  '11': { name: 'Kabir Shah', email: 'kabir@college.edu', roll_number: 'CS21-011' },
-  '12': { name: 'Neha Gupta', email: 'neha@college.edu', roll_number: 'CS21-012' },
-  '13': { name: 'Rohan Das', email: 'rohan@college.edu', roll_number: 'CS21-013' },
-  '14': { name: 'Sara Thomas', email: 'sara@college.edu', roll_number: 'CS21-014' },
+export const USERS: Record<string, { name: string; email: string }> = {
+  '7': { name: 'Asha Rao', email: 'asha@college.edu' },
+  '8': { name: 'Ravi Kumar', email: 'ravi@college.edu' },
+  '9': { name: 'Zoë Fernandes', email: 'zoe@college.edu' },
+  '10': { name: 'Meera Iyer', email: 'meera@college.edu' },
+  '11': { name: 'Kabir Shah', email: 'kabir@college.edu' },
+  '12': { name: 'Neha Gupta', email: 'neha@college.edu' },
+  '13': { name: 'Rohan Das', email: 'rohan@college.edu' },
+  '14': { name: 'Sara Thomas', email: 'sara@college.edu' },
 };
 export const PROBLEMS = { '11': { label: 'A', title: 'A plus B' }, '12': { label: 'B', title: 'Interval covering' } };
 
@@ -85,8 +85,6 @@ export interface Options {
   who?: 'student' | 'admin';
   /** The contest is still live. */
   live?: boolean;
-  /** Students started at different times. */
-  window?: boolean;
   /** The contest was never checked before the test. */
   unchecked?: boolean;
   /** The student's case was decided. */
@@ -179,8 +177,6 @@ export async function mockApi(page: Page, options: Options = {}) {
     starts_at: endsAt - 2 * 3_600_000,
     ends_at: endsAt,
     close_at: endsAt,
-    start_mode: options.window ? 'window' : 'fixed',
-    duration_minutes: options.window ? 60 : 0,
     state: options.live ? 'live' : 'ended',
     published: true,
     problems: [],
@@ -260,7 +256,7 @@ export async function mockApi(page: Page, options: Options = {}) {
         ...(baseCase().decisions as Json[]),
         { by: 3, by_name: 'Ravi K', state: 'actioned', note: 'Confirmed: the loop is copied line for line.', created_at: now - DAY, outcome: 'zero_problem', outcome_problem_label: 'B', outcome_users: [7], proposal_id: 4, sole_organiser: '' },
       ],
-      appeals: [{ id: 66, case_id: 3, adjustment_id: null, user_id: 7, text: 'The loop is the one from the lecture slides, which everyone was given.', created_at: now - 3_600_000, decide_by: now + 14 * DAY, overdue: false, state: 'open', ruling: null, user: { name: 'Asha Rao', email: 'asha@college.edu', roll_number: '' } }],
+      appeals: [{ id: 66, case_id: 3, adjustment_id: null, user_id: 7, text: 'The loop is the one from the lecture slides, which everyone was given.', created_at: now - 3_600_000, decide_by: now + 14 * DAY, overdue: false, state: 'open', ruling: null, user: { name: 'Asha Rao', email: 'asha@college.edu' } }],
       may_rule: !options.involved,
     };
   }
@@ -299,7 +295,7 @@ export async function mockApi(page: Page, options: Options = {}) {
       if (path === '/api/me') return json(route, 200, me);
       if (path === '/api/auth/config') return json(route, 200, { mode: 'production', allowed_domains: ['college.edu'], contact_email: 'priya@college.edu' });
       if (path === '/api/events') return route.fulfill({ status: 200, headers: { 'Content-Type': 'text/event-stream' }, body: '' });
-      if (path === '/api/contests') return json(route, 200, { live: [], upcoming: [], past: [{ slug: 'week-6', title: 'Week 6 contest', starts_at: endsAt - 2 * 3_600_000, ends_at: endsAt, start_mode: 'fixed', duration_minutes: 0, problem_count: 2, state: 'ended', my_score: 140, max_score: 200, my_window: null }], server_now: Date.now() });
+      if (path === '/api/contests') return json(route, 200, { live: [], upcoming: [], past: [{ slug: 'week-6', title: 'Week 6 contest', starts_at: endsAt - 2 * 3_600_000, ends_at: endsAt, problem_count: 2, state: 'ended', my_score: 140, max_score: 200, my_window: null }], server_now: Date.now() });
 
       // Student routes.
       if (path === '/api/me/standing' && method === 'GET') return json(route, 200, { band: 'good', band_name: 'Good standing', lines: [], server_now: Date.now() });
@@ -509,7 +505,7 @@ export const SCREENS: Screen[] = [
   {
     name: 'integrity-live',
     path: '/admin/contests/4/integrity',
-    options: { live: true, unchecked: true, window: true },
+    options: { live: true, unchecked: true },
     title: 'Integrity · Week 6 contest · podium',
     ready: (page) => expect(page.getByText('Not checked yet.', { exact: false })).toBeVisible(),
   },

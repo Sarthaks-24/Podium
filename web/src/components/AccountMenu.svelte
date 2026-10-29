@@ -4,7 +4,9 @@
   word), then "Theme and
   colours" and "Help" (dialogs the shell owns, opened
   through lib/shell.svelte.ts; the shortcuts item is left out on
-  touch-only screens) and, after a rule, "Sign out".
+  touch-only screens), for organisers "Forget key" (DELETE
+  /api/admin/ai/key: the server drops every AI provider key this sign-in
+  holds) and, after a rule, "Sign out".
 
   As a popover (the default) a quiet button names the person from 1024 px
   and reads "Account" below that, with a chevron; it opens a small panel
@@ -18,10 +20,12 @@
 -->
 <script lang="ts">
   import { tick } from 'svelte';
+  import { errorText, sendJSON } from '../lib/api';
   import { dismissable } from '../lib/dismissable';
   import { roleLabel } from '../lib/format';
   import { displayName, type User } from '../lib/session.svelte';
   import { shell } from '../lib/shell.svelte';
+  import { showToast } from '../lib/toast.svelte';
   import Icon from './Icon.svelte';
 
   interface Props {
@@ -36,6 +40,7 @@
   let button: HTMLButtonElement | undefined = $state();
 
   const panelId = 'account-panel';
+  const organiser = $derived(user.role === 'admin' || user.role === 'owner');
 
   async function toggle() {
     open = !open;
@@ -53,6 +58,18 @@
     button?.focus();
     shell[which] = true;
   }
+
+  /** Drops the AI provider keys the server holds for this sign-in. */
+  async function forgetKey() {
+    open = false;
+    button?.focus();
+    try {
+      await sendJSON<void>('DELETE', '/api/admin/ai/key');
+      showToast('AI key forgotten');
+    } catch (e) {
+      showToast(errorText(e), 'error');
+    }
+  }
 </script>
 
 {#snippet items()}
@@ -63,6 +80,7 @@
   <ul class="items">
     <li><button type="button" class="item" onclick={() => openDialog('theme')}>Theme and colours</button></li>
     <li class="keys"><button type="button" class="item" aria-keyshortcuts="?" onclick={() => openDialog('help')}>Help</button></li>
+    {#if organiser}<li><button type="button" class="item" onclick={forgetKey}>Forget key</button></li>{/if}
     <li class="rule"><button type="button" class="item" onclick={signOut}>Sign out</button></li>
   </ul>
 {/snippet}

@@ -149,8 +149,8 @@ export function isListed(p: Pick<ProviderOption, 'models'> | undefined, model: s
 /** What the wizard needs before it can start, as one sentence, or "" when it is ready. */
 export function wizardBlocker(status: KeyStatus | null): string {
   if (!status) return '';
-  if (!status.active) return 'Add a key in AI assistant first.';
-  if (status.model === '' && needsKey(status.provider)) return `Choose a model for ${providerLabel(status, status.provider)} in AI assistant first.`;
+  if (!status.active) return 'Add a key first.';
+  if (status.model === '' && needsKey(status.provider)) return `Choose a model for ${providerLabel(status, status.provider)} first.`;
   return '';
 }
 

@@ -2,22 +2,20 @@
   ContestResults: the organiser's results for one contest at
   /admin/contests/{id}/results (cache/v1/m4-plan.md sections 3 and 4).
   The board, full or as students saw it frozen
-  (GET .../standings?variant=frozen); "Start the reveal" loads both boards
-  from GET .../reveal and opens RevealBoard full screen for the projector
-  (it opens once every student's time is up; leaving keeps the walk, and
-  "Resume the reveal" picks it up again); a held board is released to
-  students only after a confirmation, because it cannot be undone;
-  links download the results as CSV or JSON; per-problem statistics
-  (solved, attempted, median attempts and how many students reached each
-  score, as a second line on phones); and the editorial, written in
-  Markdown with a preview, saved as a draft or published with
-  PUT .../editorial. Students see a short
-  explanation instead. A last section links to the integrity check.
+  (GET .../standings?variant=frozen); for a contest that holds its board,
+  "Reveal" shows students the full board (POST .../reveal) once every
+  student's time is up, after a confirmation, because it cannot be
+  undone; links download the results as CSV or JSON; and per-problem
+  statistics (solved, attempted, median attempts and how many students
+  reached each score, as a second line on phones). Once the contest has
+  ended, "Similar code" opens the integrity check. Students see a short
+  explanation instead. The editorial and the animated reveal walk
+  (RevealBoard) are not offered for now (V3-16); the server keeps both.
 
-  The page uses the working layout. The board, the problem statistics and
-  the editorial are the work; beside them from 1280 px (first below that)
-  the reveal, the downloads and the integrity check. A student an
-  integrity decision excluded is not on the board or in the downloads.
+  The page uses the working layout. The board and the problem statistics
+  are the work; beside them from 1280 px (first below that) the reveal,
+  the downloads and the integrity check. A student an integrity decision
+  excluded is not on the board or in the downloads.
 -->
 <script lang="ts">
   import PageState from '../components/PageState.svelte';
@@ -26,8 +24,6 @@
   import ContestAdminNav from '../components/ContestAdminNav.svelte';
   import PageHeader from '../components/PageHeader.svelte';
   import Icon from '../components/Icon.svelte';
-  import Markdown from '../components/Markdown.svelte';
-  import RevealBoard from '../components/RevealBoard.svelte';
   import StandingsTable from '../components/StandingsTable.svelte';
   import { ApiError, errorText, getJSON, sendJSON } from '../lib/api';
   import { type AdminContest, type ProblemStats } from '../lib/contests';
@@ -50,16 +46,7 @@
   let stats = $state<ProblemStats[] | null>(null);
   let statsError = $state('');
 
-  let revealData = $state.raw<{ frozen: Standings; full: Standings } | null>(null);
-  let revealOpen = $state(false);
   let revealError = $state('');
-  let revealButton: HTMLButtonElement | undefined = $state();
-
-  let editorial = $state('');
-  let editorialPublished = $state(false);
-  let editorialBusy = $state(false);
-  let editorialError = $state('');
-  let preview = $state(false);
 
   const isOrganiser = $derived(session.user?.role === 'admin' || session.user?.role === 'owner');
   const base = $derived(`/api/admin/contests/${encodeURIComponent(id)}`);
@@ -70,6 +57,7 @@
     return (contest.close_at ?? contest.ends_at) + longest * 60_000;
   });
   const revealReady = $derived(ticker.now >= revealOpensAt);
+  const ended = $derived(contest?.state === 'ended' || contest?.state === 'practice');
   const labels = $derived(board ? boardLabels(board, (contest?.problems ?? []).map((p) => p.label)) : []);
 
   function handleAuth(e: unknown): boolean {
@@ -88,8 +76,6 @@
       const c = await getJSON<AdminContest>(base);
       const restore = keepHeadingFocus();
       contest = c;
-      editorial = c.editorial_md ?? '';
-      editorialPublished = c.editorial_published ?? false;
       setTitle(routeTitle('contest-results'), c.title);
       loadState = 'ready';
       void restore();
@@ -134,41 +120,6 @@
     void loadBoard();
   }
 
-  async function startReveal() {
-    revealError = '';
-    // Leaving the reveal keeps its place; opening it again resumes.
-    if (revealData) {
-      revealOpen = true;
-      return;
-    }
-    try {
-      revealData = await getJSON<{ frozen: Standings; full: Standings }>(`${base}/reveal`);
-      revealOpen = true;
-    } catch (e) {
-      if (!handleAuth(e)) revealError = errorText(e);
-    }
-  }
-
-  function closeReveal() {
-    revealOpen = false;
-    revealButton?.focus();
-  }
-
-  async function saveEditorial(published: boolean, done: string) {
-    editorialError = '';
-    editorialBusy = true;
-    try {
-      await sendJSON<unknown>('PUT', `${base}/editorial`, { editorial_md: editorial, published });
-      editorialPublished = published;
-      showToast(done);
-    } catch (e) {
-      if (handleAuth(e)) return;
-      editorialError = e instanceof ApiError ? (e.fields.editorial_md ?? e.message) : errorText(e);
-    } finally {
-      editorialBusy = false;
-    }
-  }
-
   function students(h: ProblemStats['histogram'][number]): number {
     return h.students ?? h.count ?? 0;
   }
@@ -177,21 +128,24 @@
     return Math.max(1, ...p.histogram.map(students));
   }
 
-  let releaseOpen = $state(false);
-  let releaseBusy = $state(false);
+  let revealOpen = $state(false);
+  let revealBusy = $state(false);
 
-  async function release() {
-    releaseBusy = true;
+  /** Shows students the full board, and shows it here too. */
+  async function reveal() {
+    revealBusy = true;
+    revealError = '';
     try {
       await sendJSON<unknown>('POST', `${base}/reveal`);
-      releaseOpen = false;
-      showToast('Released the full board');
+      revealOpen = false;
+      showToast('Revealed the full board');
       contest = await getJSON<AdminContest>(base);
+      setVariant('full');
     } catch (e) {
-      releaseOpen = false;
+      revealOpen = false;
       if (!handleAuth(e)) revealError = errorText(e);
     } finally {
-      releaseBusy = false;
+      revealBusy = false;
     }
   }
 
@@ -223,26 +177,25 @@
 
   <div class="page-split results-split">
     <aside class="page-split-aside" aria-label="Reveal, downloads and integrity">
-      <section class="panel" aria-labelledby="reveal-panel-title">
-        <h2 id="reveal-panel-title">Reveal</h2>
-        <p class="muted small">The board on the projector, resolved row by row from the frozen standings.</p>
-        <button
-          type="button"
-          class="btn btn-primary reveal-btn"
-          bind:this={revealButton}
-          disabled={!revealReady}
-          aria-describedby={revealReady ? undefined : 'reveal-help'}
-          onclick={startReveal}><Icon name="maximize" /> {revealData ? 'Resume the reveal' : 'Start the reveal'}</button
-        >
-        {#if !revealReady}<p id="reveal-help" class="muted small">The reveal opens when every student's time is up.</p>{/if}
-        {#if revealError}<p class="field-error" role="alert">{revealError}</p>{/if}
-        {#if contest.hold_reveal && !contest.revealed_at}
-          <div class="hold">
-            <p class="small">Students still see the frozen board. Release the full board when the reveal is over.</p>
-            <button type="button" class="btn btn-secondary btn-compact" onclick={() => (releaseOpen = true)}>Release the full board</button>
-          </div>
-        {/if}
-      </section>
+      {#if contest.hold_reveal}
+        <section class="panel" aria-labelledby="reveal-panel-title">
+          <h2 id="reveal-panel-title">Reveal</h2>
+          {#if contest.revealed_at}
+            <p class="muted small">Revealed. Students see the full board.</p>
+          {:else}
+            <p class="small">Students still see the frozen board. Reveal shows them the full board.</p>
+            <button
+              type="button"
+              class="btn btn-primary"
+              disabled={!revealReady}
+              aria-describedby={revealReady ? undefined : 'reveal-help'}
+              onclick={() => (revealOpen = true)}>Reveal</button
+            >
+            {#if !revealReady}<p id="reveal-help" class="muted small">The reveal opens when every student's time is up.</p>{/if}
+          {/if}
+          {#if revealError}<p class="field-error" role="alert">{revealError}</p>{/if}
+        </section>
+      {/if}
 
       <section class="panel" aria-labelledby="downloads-title">
         <h2 id="downloads-title">Downloads</h2>
@@ -252,11 +205,13 @@
         </p>
       </section>
 
-      <section class="panel" aria-labelledby="integrity-title">
-        <h2 id="integrity-title">Integrity</h2>
-        <p class="muted small">Look for copied code, shared wrong outputs, hard-coded answers and probing once the contest has ended for everyone. Signals are reasons to look, not proof.</p>
-        <p><a class="btn btn-secondary" href="/admin/contests/{encodeURIComponent(id)}/integrity">Check integrity</a></p>
-      </section>
+      {#if ended}
+        <section class="panel" aria-labelledby="integrity-title">
+          <h2 id="integrity-title">Integrity</h2>
+          <p class="muted small">Look for copied code, shared wrong outputs, hard-coded answers and probing. Signals are reasons to look, not proof.</p>
+          <p><a class="btn btn-secondary" href="/admin/contests/{encodeURIComponent(id)}/integrity">Similar code</a></p>
+        </section>
+      {/if}
     </aside>
 
     <div class="page-split-main">
@@ -330,68 +285,19 @@
     {/if}
   </section>
 
-  <section class="section" aria-labelledby="editorial-title">
-    <h2 id="editorial-title">Editorial</h2>
-    <form
-      class="editorial"
-      novalidate
-      onsubmit={(e) => {
-        e.preventDefault();
-        void saveEditorial(editorialPublished, editorialPublished ? 'Saved the editorial' : 'Saved the draft');
-      }}
-    >
-      <div class="field">
-        <label for="editorial-md">Editorial (Markdown)</label>
-        <textarea id="editorial-md" class="input textarea-code" rows="10" bind:value={editorial} aria-invalid={editorialError ? 'true' : undefined} aria-describedby={editorialError ? 'editorial-error' : undefined}></textarea>
-        {#if editorialError}<p id="editorial-error" class="field-error">{editorialError}</p>{/if}
-      </div>
-      <p class="muted small">{editorialPublished ? 'Published: students see it after the contest.' : 'Not published: students do not see it yet.'}</p>
-      <div class="actions">
-        {#if editorialPublished}
-          <button type="submit" class="btn btn-secondary" disabled={editorialBusy}>Save editorial</button>
-          <button type="button" class="btn btn-secondary" disabled={editorialBusy} onclick={() => saveEditorial(false, 'Unpublished the editorial')}>Unpublish editorial</button>
-        {:else}
-          <button type="button" class="btn btn-secondary" disabled={editorialBusy} onclick={() => saveEditorial(true, 'Published the editorial')}>Publish editorial</button>
-          <button type="submit" class="btn btn-secondary" disabled={editorialBusy}>Save draft</button>
-        {/if}
-        <button type="button" class="btn btn-quiet" aria-expanded={preview} aria-controls="editorial-preview" onclick={() => (preview = !preview)}>
-          {preview ? 'Hide preview' : 'Show preview'}
-        </button>
-      </div>
-    </form>
-    {#if preview}
-      <div id="editorial-preview" class="preview">
-        {#if editorial.trim() === ''}<p class="muted">Nothing to preview yet.</p>{:else}<Markdown source={editorial} />{/if}
-      </div>
-    {/if}
-  </section>
-
     </div>
   </div>
 
   <ConfirmDialog
-    open={releaseOpen}
-    title="Release the full board?"
+    open={revealOpen}
+    title="Reveal the full board?"
     body="Students see the final standings at once. This cannot be undone."
-    confirmLabel="Release the full board"
+    confirmLabel="Reveal"
     danger
-    busy={releaseBusy}
-    onconfirm={release}
-    oncancel={() => (releaseOpen = false)}
+    busy={revealBusy}
+    onconfirm={reveal}
+    oncancel={() => (revealOpen = false)}
   />
-
-  {#if revealData}
-    <RevealBoard
-      open={revealOpen}
-      frozen={revealData.frozen}
-      full={revealData.full}
-      labels={boardLabels(revealData.full, labels)}
-      title={contest.title}
-      held={!!contest.hold_reveal && !contest.revealed_at}
-      onrelease={() => (releaseOpen = true)}
-      onclose={closeReveal}
-    />
-  {/if}
 {/if}
 
 <style>
@@ -511,15 +417,6 @@
     }
   }
 
-  .hold {
-    display: grid;
-    gap: var(--space-2);
-    justify-items: start;
-    padding: var(--space-3);
-    border: var(--rule) solid var(--part);
-    background: var(--part-tint);
-  }
-
   .exports {
     display: flex;
     flex-wrap: wrap;
@@ -570,24 +467,5 @@
     display: block;
     height: 100%;
     background: var(--act);
-  }
-
-  .editorial {
-    display: grid;
-    gap: var(--space-3);
-    max-width: var(--measure-wide);
-  }
-
-  .actions {
-    display: flex;
-    flex-wrap: wrap;
-    gap: var(--space-3);
-  }
-
-  .preview {
-    max-width: var(--measure-wide);
-    padding: var(--space-4);
-    border: var(--rule) solid var(--line);
-    background: var(--surface);
   }
 </style>

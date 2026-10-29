@@ -83,7 +83,7 @@ func TestP2SiteAuditRecordsPeopleChangesAndNoSecret(t *testing.T) {
 	studentToken := sessionCookie(student)
 	pid := s.importProblem(owner, "sum")
 	start := time.Now().Add(time.Hour)
-	cid := s.createContest(owner, "week-1", start, map[string]int64{"A": pid}, map[string]any{"access": "roster"})
+	cid := s.createContest(owner, "week-1", start, map[string]int64{"A": pid}, nil)
 
 	steps := []struct {
 		method, path string
@@ -98,8 +98,6 @@ func TestP2SiteAuditRecordsPeopleChangesAndNoSecret(t *testing.T) {
 		{"POST", "/api/admin/accounts/disable", map[string]string{"email": "asha@college.edu"}, 200},
 		{"POST", "/api/admin/accounts/enable", map[string]string{"email": "asha@college.edu"}, 200},
 		{"POST", "/api/admin/accounts/reset-google", map[string]string{"email": "asha@college.edu"}, 204},
-		{"PUT", fmt.Sprintf("/api/admin/contests/%d/roster", cid), []map[string]string{{"email": "asha@college.edu", "name": "Asha"}, {"email": "ravi@college.edu"}}, 200},
-		{"PUT", fmt.Sprintf("/api/admin/contests/%d/roster", cid), []map[string]string{{"email": "ravi@college.edu"}}, 200},
 		{"PUT", fmt.Sprintf("/api/admin/contests/%d", cid), map[string]any{"title": "Week one"}, 200},
 	}
 	for _, st := range steps {
@@ -140,14 +138,6 @@ func TestP2SiteAuditRecordsPeopleChangesAndNoSecret(t *testing.T) {
 	if n := len(f["entries"].([]any)); n != 2 {
 		t.Errorf("filtered history has %d rows, want 2", n)
 	}
-	// The roster rows name the emails added and removed.
-	_, feed := owner.do("GET", fmt.Sprintf("/api/admin/contests/%d/audit?action=roster", cid), nil, "")
-	e := feed["entries"].([]any)
-	if len(e) != 2 || !strings.Contains(fmt.Sprint(e[0]), "emails_removed:[asha@college.edu]") ||
-		!strings.Contains(fmt.Sprint(e[1]), "emails_added:[asha@college.edu ravi@college.edu]") {
-		t.Errorf("roster audit %v", e)
-	}
-
 	// The leak test: no secret anywhere in either audit table.
 	secrets := []string{fakeAIKey, fakeCookie, fakeOAuthCode, fakeBearer, token, studentToken}
 	for _, table := range []string{"site_audit", "contest_audit"} {

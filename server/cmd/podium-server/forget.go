@@ -82,9 +82,6 @@ func forgetCmd(args []string, out io.Writer) int {
 		return 2
 	}
 	who := fmt.Sprintf("account %d (%s, %s)", r.UserID, r.Email, r.Role)
-	if r.UserID == 0 {
-		who = r.Email + ": no account, roster entries only"
-	}
 	if r.Applied {
 		fmt.Fprintf(out, "forgotten: %s\n", who)
 	} else {
@@ -93,11 +90,7 @@ func forgetCmd(args []string, out io.Writer) int {
 	for _, c := range r.Counts {
 		fmt.Fprintf(out, "  %-30s %d\n", c.What, c.N)
 	}
-	if r.UserID > 0 {
-		fmt.Fprintf(out, "  name and email become %q, %s; Google link cleared; account disabled\n", r.Placeholder, r.PlaceholderEmail)
-	} else {
-		fmt.Fprintf(out, "  roster entries become %q, %s\n", r.Placeholder, r.PlaceholderEmail)
-	}
+	fmt.Fprintf(out, "  name and email become %q, %s; Google link cleared; account disabled\n", r.Placeholder, r.PlaceholderEmail)
 	for _, k := range auth.ForgetKept {
 		fmt.Fprintf(out, "  kept: %s\n", k)
 	}

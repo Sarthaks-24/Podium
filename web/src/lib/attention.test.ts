@@ -8,7 +8,6 @@ const T = 1_792_300_000_000;
 const base = {
   starts_at: T - 30 * MIN,
   ends_at: T + 90 * MIN,
-  start_mode: 'fixed' as const,
   freeze_minutes: 30,
   paused: false,
   state: 'live' as const,
@@ -92,16 +91,21 @@ describe('organiser state words', () => {
 });
 
 describe('publishChecks', () => {
-  const c = { problems: [{ label: 'A', ready: true }], access: 'roster' as const, roster_count: 0, languages: ['cpp17'], starts_at: T + MIN, freeze_minutes: 0, hold_reveal: true };
+  const c = { problems: [{ label: 'A', ready: true }], languages: ['cpp17'], starts_at: T + MIN, freeze_minutes: 0, hold_reveal: true };
 
-  it('blocks on an empty roster and warns about a held board with no freeze', () => {
+  it('lets the allowed domains take part and warns about a held board with no freeze', () => {
     const out = publishChecks(c, false, T);
-    expect(out.filter((x) => x.tone === 'bad').map((x) => x.text)).toEqual(['The roster is empty, so nobody can take part. Add the roster under More.']);
+    expect(out.filter((x) => x.tone === 'bad')).toEqual([]);
+    expect(out).toContainEqual({ tone: 'ok', text: 'Anyone from the allowed domains can take part.' });
     expect(out.at(-1)).toEqual({ tone: 'part', text: 'The board is held for a reveal, but with no freeze there is nothing to reveal.' });
   });
 
+  it('blocks with no language allowed', () => {
+    expect(publishChecks({ ...c, languages: [] }, false, T).filter((x) => x.tone === 'bad').map((x) => x.text)).toEqual(['Allow at least one language.']);
+  });
+
   it('names changed problems and needs one problem at least', () => {
-    expect(publishChecks({ ...c, roster_count: 3, problems: [{ label: 'A', ready: true }, { label: 'B', ready: false }] }, false, T)[0]).toEqual({
+    expect(publishChecks({ ...c, problems: [{ label: 'A', ready: true }, { label: 'B', ready: false }] }, false, T)[0]).toEqual({
       tone: 'bad',
       text: 'Problem B has changed since it was added. Validate, then add again.',
     });
@@ -110,7 +114,7 @@ describe('publishChecks', () => {
 });
 
 describe('endNowFreeze (walk 2026-10-21)', () => {
-  const c = { start_mode: 'fixed' as const, freeze_minutes: 10, ends_at: T + 60 * MIN, extended_minutes: 0 };
+  const c = { freeze_minutes: 10, ends_at: T + 60 * MIN, extended_minutes: 0 };
   it('drops a freeze that has not begun, so the board students saw stays', () => {
     expect(endNowFreeze(c, T, T)).toBe(0);
   });
@@ -125,8 +129,7 @@ describe('endNowFreeze (walk 2026-10-21)', () => {
     expect(endNowFreeze(c, T + 50 * MIN + 52_000, T + 50 * MIN + 52_000)).toBe(1);
     expect(endNowFreeze(c, T + 50 * MIN, T + 50 * MIN)).toBe(1);
   });
-  it('leaves window mode and contests without a freeze alone', () => {
-    expect(endNowFreeze({ ...c, start_mode: 'window' }, T, T)).toBe(10);
+  it('leaves contests without a freeze alone', () => {
     expect(endNowFreeze({ ...c, freeze_minutes: 0 }, T, T)).toBe(0);
   });
 });

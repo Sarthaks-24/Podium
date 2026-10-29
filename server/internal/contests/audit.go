@@ -21,7 +21,6 @@ const (
 	AuditSettings  = "settings"   // the contest form: {"changes": {field: {"from", "to"}}}
 	AuditProblems  = "problems"   // problems and pins: {"from": [...], "to": [...]}
 	AuditAIProblem = "ai_problem" // an admin's reason to grade an AI problem
-	AuditRoster    = "roster"     // {"count", "added", "removed"}
 	AuditExtension = "extension"  // {"user_id", "minutes", "from_minutes", "reason_given"} (v2 P6; "email" until P6, "reason" before v1.4.0)
 	AuditExtend    = "extend"     // {"minutes", "extended_minutes"}
 	AuditPause     = "pause"
@@ -134,15 +133,9 @@ func settingChanges(c *Contest, e Edit) map[string]change {
 	}
 	add("starts_at", c.Schedule.StartsAt.UnixMilli(), e.StartsAt.UnixMilli())
 	add("ends_at", c.Schedule.EndsAt.UnixMilli(), e.EndsAt.UnixMilli())
-	add("start_mode", c.Schedule.Mode, e.StartMode)
-	add("duration_minutes", int(c.Schedule.Duration/time.Minute), e.DurationMinutes)
 	add("freeze_minutes", int(c.Schedule.Freeze/time.Minute), e.FreezeMinutes)
-	add("scoring_mode", c.Scoring, e.Scoring)
-	add("access", c.Access, e.Access)
-	add("feedback_mode", c.Feedback, e.Feedback)
 	add("published", c.Published, e.Published)
 	add("practice_after_end", c.PracticeAfterEnd, e.PracticeAfterEnd)
-	add("stop_on_sample_fail", c.StopOnSampleFail, e.StopOnSampleFail)
 	add("min_gap_s", int(c.MinGap/time.Second), e.MinGapS)
 	add("max_per_problem", c.MaxPerProblem, e.MaxPerProblem)
 	add("languages", nonNilStrings(c.Languages), nonNilStrings(e.Languages))

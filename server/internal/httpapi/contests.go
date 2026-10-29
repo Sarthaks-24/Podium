@@ -24,21 +24,17 @@ type windowJSON struct {
 
 // contestSummaryJSON is ContestSummary in docs/API.md.
 type contestSummaryJSON struct {
-	Slug            string      `json:"slug"`
-	Title           string      `json:"title"`
-	StartsAt        int64       `json:"starts_at"`
-	EndsAt          int64       `json:"ends_at"`
-	StartMode       string      `json:"start_mode"`
-	DurationMinutes int         `json:"duration_minutes"`
-	ProblemCount    int         `json:"problem_count"`
-	State           string      `json:"state"`
-	MyScore         *int        `json:"my_score"`
-	MyWindow        *windowJSON `json:"my_window"`
+	Slug         string      `json:"slug"`
+	Title        string      `json:"title"`
+	StartsAt     int64       `json:"starts_at"`
+	EndsAt       int64       `json:"ends_at"`
+	ProblemCount int         `json:"problem_count"`
+	State        string      `json:"state"`
+	MyScore      *int        `json:"my_score"`
+	MyWindow     *windowJSON `json:"my_window"`
 }
 
 type rulesJSON struct {
-	FeedbackMode  string   `json:"feedback_mode"`
-	ScoringMode   string   `json:"scoring_mode"`
 	MinGapS       int      `json:"min_gap_s"`
 	MaxPerProblem int      `json:"max_per_problem"`
 	Languages     []string `json:"languages"`
@@ -84,8 +80,6 @@ func (d Deps) contestError(w http.ResponseWriter, r *http.Request, err error) {
 		WriteJSON(w, http.StatusConflict, map[string]APIError{"error": {Code: "ai_unconfirmed", Message: aiErr.Error(), Problems: aiErr.Labels}})
 	case errors.Is(err, contests.ErrNotFound):
 		WriteError(w, http.StatusNotFound, "not_found", "There is no such contest, or it is not open to you.")
-	case errors.Is(err, contests.ErrForbidden):
-		WriteError(w, http.StatusForbidden, "not_on_roster", "This contest is for the students on its list. Ask the organiser if you should be on it.")
 	case errors.As(err, &fields):
 		WriteJSON(w, http.StatusBadRequest, map[string]APIError{"error": {Code: "bad_request", Message: fields.Error(), Fields: fields}})
 	case errors.Is(err, contests.ErrBoardClosed):
@@ -129,8 +123,7 @@ func ptr[T any](v T) *T { return &v }
 func (d Deps) summary(ctx context.Context, c *contests.Contest, userID int64, organiser bool) (contestSummaryJSON, contests.StudentState, error) {
 	now := d.Contests.Clock()
 	out := contestSummaryJSON{Slug: c.Slug, Title: c.Title, StartsAt: c.Schedule.StartsAt.UnixMilli(),
-		EndsAt: c.Schedule.Close().UnixMilli(), StartMode: c.Schedule.Mode,
-		DurationMinutes: int(c.Schedule.Duration / time.Minute), ProblemCount: len(c.Problems)}
+		EndsAt: c.Schedule.Close().UnixMilli(), ProblemCount: len(c.Problems)}
 	st, err := d.Contests.State(ctx, c, userID)
 	if err != nil {
 		return out, st, err
@@ -200,7 +193,7 @@ func (d Deps) contestDetail(ctx context.Context, c *contests.Contest, u auth.Use
 	now := d.Contests.Clock()
 	out := &contestJSON{contestSummaryJSON: s, DescriptionMD: c.Description, HonourText: c.Honour(), Accepted: st.Accepted,
 		Organiser: organiser, Problems: []contestProblemJSON{},
-		Rules: rulesJSON{FeedbackMode: c.Feedback, ScoringMode: c.Scoring, MinGapS: int(c.MinGap / time.Second),
+		Rules: rulesJSON{MinGapS: int(c.MinGap / time.Second),
 			MaxPerProblem: c.MaxPerProblem, Languages: c.Languages, FreezeMinutes: int(c.Schedule.Freeze / time.Minute),
 			Practice: c.PracticeAfterEnd},
 		ServerNow: now.UnixMilli()}
@@ -316,8 +309,7 @@ func (d Deps) contestProblem(w http.ResponseWriter, r *http.Request) (*contestTa
 		return nil, false
 	}
 	t.st = st
-	t.scope = submissions.Scope{ContestID: c.ID, Languages: c.Languages, NoStopOnSample: !c.StopOnSampleFail,
-		RevisionID: t.problem.RevisionID}
+	t.scope = submissions.Scope{ContestID: c.ID, Languages: c.Languages, RevisionID: t.problem.RevisionID}
 	if organiser {
 		t.open = true
 		t.scope.MinGap = organiserGap
@@ -363,12 +355,11 @@ func (d Deps) contestProblem(w http.ResponseWriter, r *http.Request) (*contestTa
 // contestWorkspaceJSON is the M3 Workspace plus the contest's context.
 type contestWorkspaceJSON struct {
 	*submissions.Workspace
-	Label        string      `json:"label"`
-	Contest      string      `json:"contest"`
-	Window       *windowJSON `json:"window"`
-	FeedbackMode string      `json:"feedback_mode"`
-	CanSubmit    bool        `json:"can_submit"`
-	Practice     bool        `json:"practice"`
+	Label     string      `json:"label"`
+	Contest   string      `json:"contest"`
+	Window    *windowJSON `json:"window"`
+	CanSubmit bool        `json:"can_submit"`
+	Practice  bool        `json:"practice"`
 	// Refusal says why Run and Submit are off, when they are.
 	Refusal *string `json:"refusal"`
 	// RevisionID is the pinned revision served here (B2.3).
@@ -385,7 +376,7 @@ func (d Deps) getContestWorkspace(w http.ResponseWriter, r *http.Request) {
 		d.submissionError(w, r, err)
 		return
 	}
-	out := contestWorkspaceJSON{Workspace: ws, Label: t.problem.Label, Contest: t.c.Slug, FeedbackMode: t.c.Feedback,
+	out := contestWorkspaceJSON{Workspace: ws, Label: t.problem.Label, Contest: t.c.Slug,
 		CanSubmit: t.open, Practice: t.scope.Practice, RevisionID: t.problem.RevisionID}
 	if t.st.HasClock && !t.organiser {
 		out.Window = &windowJSON{StartedAt: t.st.Window.Opens.UnixMilli(), EndsAt: t.st.Window.Ends.UnixMilli()}

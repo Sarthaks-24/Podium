@@ -4,6 +4,14 @@ Dated entries per release. Unreleased work is listed at the top.
 
 ## Unreleased
 
+### v3 stage C1: the cuts (2026-10-29)
+
+- Removed with their columns, routes and tests: per-student start windows, exam feedback, best single submission scoring, the switch to stop judging at a failed example (it always stops), the roster and its CSV (the allowed domains decide who takes part), and typed slugs (the address is made from the title on create and on duplicate, numbered when taken, and never changes).
+- The Students page and the AI settings page are gone. The key form lives in the AI wizard ("Change key or model"), and "Forget key" is in the account menu for organisers.
+- A contest's tabs are Settings, Console and Results. "Similar code" on Results after the end opens the similarity page.
+- Results offer one "Reveal" button that shows students the full board; the step-by-step reveal and the editorial editor are hidden.
+- `forget-user` no longer erases roster rows; an address with no account is refused. Routes: 104 to 101.
+
 ### v3 stage B: what the agent pilot found (2026-10-29)
 
 - A save waiting to reach the server reads "Saved on this device"; only a failed save is a warning.

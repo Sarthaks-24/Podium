@@ -208,7 +208,7 @@ export function ordinalWord(n: number): string {
 /**
  * How the console names a student in its pickers: the board's name with the
  * email beside it, since two students may share a name and an account with
- * no name or roster entry is only "Student 12". Without an email (an older
+ * no name is only "Student 12". Without an email (an older
  * server, a co-organiser) the name alone.
  */
 export function studentChoice(row: Pick<StandingsRow, 'name' | 'email'>): string {

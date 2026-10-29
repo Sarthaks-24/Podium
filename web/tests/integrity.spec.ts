@@ -42,12 +42,11 @@ for (const theme of THEMES) {
 }
 
 test('the check stays closed with its reason while the contest runs', async ({ page }) => {
-  const api = await mockApi(page, { live: true, unchecked: true, window: true });
+  const api = await mockApi(page, { live: true, unchecked: true });
   await page.goto('/admin/contests/4/integrity');
   const check = page.getByRole('button', { name: 'Check integrity' });
   await expect(check).toBeDisabled();
   await expect(check).toHaveAccessibleDescription('Check integrity after the contest ends for everyone.');
-  await expect(page.getByText('it leaks by design', { exact: false })).toBeVisible();
   await expect(page.getByText('Signals are reasons to look, not proof.')).toBeVisible();
   await expect(page.getByText("No tool reliably tells AI-written code from a student's own", { exact: false })).toBeVisible();
   expect(api.runPosts).toBe(0);
@@ -160,15 +159,17 @@ test('students cannot open the organiser screens', async ({ page }) => {
   await expect(page.getByText('Only organisers can review integrity.', { exact: false })).toBeVisible();
 });
 
-test('results and the contest nav lead to the integrity page', async ({ page }) => {
+test('Similar code on Results leads to the integrity page, which has no tab of its own (V3-16)', async ({ page }) => {
   await mockApi(page);
   await page.goto('/admin/contests/4/integrity');
   const nav = page.getByRole('navigation', { name: 'Contest' });
-  await expect(nav.getByRole('link', { name: 'Integrity' })).toHaveAttribute('aria-current', 'page');
+  await expect(nav.getByRole('link', { name: 'Integrity' })).toHaveCount(0);
+  await expect(nav.locator('[aria-current="page"]')).toHaveCount(0);
+  await expect(page.getByRole('navigation', { name: 'Breadcrumb' }).locator('[aria-current="page"]')).toHaveText('Integrity');
   await expect(nav.getByRole('link', { name: 'Results' })).toHaveAttribute('href', '/admin/contests/4/results');
   await expect(page.getByRole('navigation', { name: 'Main' }).getByRole('link', { name: 'Contests' })).toHaveAttribute('aria-current', 'page');
   await nav.getByRole('link', { name: 'Results' }).click();
-  await page.getByRole('link', { name: 'Check integrity' }).click();
+  await page.getByRole('link', { name: 'Similar code' }).click();
   await expect(page).toHaveURL(/\/admin\/contests\/4\/integrity$/);
   await expect(page.getByRole('heading', { level: 1, name: 'Week 6 contest' })).toBeFocused();
 });

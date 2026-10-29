@@ -17,9 +17,6 @@ import {
   studentState,
   studentStateWord,
   orderedContests,
-  parseCsv,
-  parseRoster,
-  rosterCsv,
   rulesSentences,
   bannerItems,
   bannerLead,
@@ -43,8 +40,6 @@ function summary(over: Partial<ContestSummary> = {}): ContestSummary {
     title: 'Week 6',
     starts_at: T,
     ends_at: T + 120 * MIN,
-    start_mode: 'fixed',
-    duration_minutes: 0,
     problem_count: 3,
     state: 'live',
     my_score: null,
@@ -58,8 +53,6 @@ function contest(over: Partial<Contest> = {}): Contest {
     ...summary(),
     description_md: '',
     rules: {
-      feedback_mode: 'subtask',
-      scoring_mode: 'best_subtask',
       min_gap_s: 30,
       max_per_problem: 15,
       languages: ['cpp17', 'python3'],
@@ -98,7 +91,6 @@ describe('countdowns', () => {
     expect(formatMinutes(45)).toBe('45 min');
     expect(formatMinutes(60)).toBe('1 h');
     expect(lengthText(summary())).toBe('2 h');
-    expect(lengthText(summary({ start_mode: 'window', duration_minutes: 90 }))).toBe('1 h 30 min each');
   });
 
   it('announces milestones once as they are crossed', () => {
@@ -112,14 +104,11 @@ describe('countdowns', () => {
     expect(clockMilestone(31 * MIN, 4 * MIN)).toBe('30 minutes left.');
   });
 
-  it('picks the list countdown by state and window', () => {
+  it('picks the list countdown by state', () => {
     expect(listCountdown(summary({ state: 'upcoming' }), T - 5 * MIN)).toEqual({ lead: 'Starts in', ms: 5 * MIN, after: '' });
     expect(listCountdown(summary(), T + 20 * MIN)).toEqual({ lead: 'Ends in', ms: 100 * MIN, after: '' });
-    const win = summary({ start_mode: 'window', duration_minutes: 60, my_window: { started_at: T + 10 * MIN, ends_at: T + 70 * MIN } });
-    expect(listCountdown(win, T + 20 * MIN)).toEqual({ lead: 'Your time left', ms: 50 * MIN, after: '' });
-    expect(listCountdown(summary({ start_mode: 'window', duration_minutes: 60 }), T)).toEqual({ lead: 'Open for', ms: 120 * MIN, after: '' });
     expect(listCountdown(summary({ state: 'ended' }), T + 200 * MIN)).toBeNull();
-    // A fixed start with a personal extension counts to the student's own end.
+    // A personal extension counts to the student's own end.
     expect(listCountdown(summary({ my_window: { started_at: T, ends_at: T + 130 * MIN } }), T)).toEqual({ lead: 'Ends in', ms: 130 * MIN, after: '' });
   });
 
@@ -216,13 +205,11 @@ describe('messages read time (audit S1)', () => {
 describe('rail status (S1-09)', () => {
   const p = (my_score: number | null, my_submission_count: number, max_score = 100) => ({ my_score, max_score, my_submission_count });
   it('shows the score and nothing else, or "not tried"', () => {
-    expect(railStatus(p(null, 0), false)).toEqual({ score: '', word: 'not tried' });
-    expect(railStatus(p(null, 2), false)).toEqual({ score: '', word: 'tried' });
-    expect(railStatus(p(40, 2), false)).toEqual({ score: '40/100', word: '' });
-    expect(railStatus(p(0, 1), false)).toEqual({ score: '0/100', word: '' });
-    expect(railStatus(p(100, 3), false)).toEqual({ score: '100/100', word: '' });
-    expect(railStatus(p(null, 0), true)).toEqual({ score: '', word: 'not submitted' });
-    expect(railStatus(p(null, 1), true)).toEqual({ score: '', word: 'submitted' });
+    expect(railStatus(p(null, 0))).toEqual({ score: '', word: 'not tried' });
+    expect(railStatus(p(null, 2))).toEqual({ score: '', word: 'tried' });
+    expect(railStatus(p(40, 2))).toEqual({ score: '40/100', word: '' });
+    expect(railStatus(p(0, 1))).toEqual({ score: '0/100', word: '' });
+    expect(railStatus(p(100, 3))).toEqual({ score: '100/100', word: '' });
   });
 });
 
@@ -250,16 +237,6 @@ describe('student phase and window maths', () => {
     expect(studentPhase(shown, T + MIN)).toBe('ready');
   });
 
-  it('runs a window-mode clock from the student start, with a personal extension', () => {
-    const c = contest({ start_mode: 'window', duration_minutes: 60, ends_at: T + 6 * 60 * MIN });
-    expect(studentPhase(c, T + 3 * 60 * MIN)).toBe('ready');
-    const started = { ...c, my_window: { started_at: T + 3 * 60 * MIN, ends_at: T + 4 * 60 * MIN + 15 * MIN }, honour_accepted_at: T + 3 * 60 * MIN };
-    expect(studentPhase(started, T + 4 * 60 * MIN + 10 * MIN)).toBe('during');
-    expect(studentPhase(started, T + 4 * 60 * MIN + 15 * MIN)).toBe('after');
-    // Never started and the contest closed: after, with nothing to show.
-    expect(studentPhase(c, T + 6 * 60 * MIN)).toBe('after');
-  });
-
   it('infers acceptance from problems when the server sends no flag', () => {
     const base = { my_window: { started_at: T, ends_at: T + MIN }, problems: [{ label: 'A', title: 'x', my_score: null, max_score: 100 }] };
     expect(hasAccepted(base)).toBe(true);
@@ -268,22 +245,20 @@ describe('student phase and window maths', () => {
     expect(hasAccepted({ ...base, accepted: false })).toBe(false);
   });
 
-  it('freezes fixed-start boards only', () => {
+  it('freezes the board only with a freeze', () => {
     const c = contest();
     expect(freezeAt(c)).toBe(T + 90 * MIN);
-    expect(freezeAt({ ...c, start_mode: 'window' })).toBeNull();
     expect(freezeAt({ ...c, rules: { ...c.rules, freeze_minutes: 0 } })).toBeNull();
   });
 
   it('writes the rules as sentences', () => {
-    const lines = rulesSentences(contest({ rules: { ...contest().rules, feedback_mode: 'exam' } }));
+    const lines = rulesSentences(contest());
     expect(lines[0]).toBe('Everyone starts together and has 2 h.');
-    expect(lines.join(' ')).toContain('only says "Submitted"');
+    expect(lines.join(' ')).toContain('Each problem adds up your best result on every subtask across your submissions.');
     expect(lines.join(' ')).toContain('Languages: C++17, Python 3.');
-    expect(lines.join(' ')).toContain('The standings freeze 30 min before the end');
-    const win = rulesSentences(contest({ start_mode: 'window', duration_minutes: 90 }));
-    expect(win[0]).toContain('runs 1 h 30 min');
-    expect(win.at(-1)).toBe('The standings open when the contest closes.');
+    expect(lines.at(-1)).toBe('The standings freeze 30 min before the end; later results appear after the contest.');
+    const open = rulesSentences(contest({ rules: { ...contest().rules, freeze_minutes: 0 } }));
+    expect(open.join(' ')).not.toContain('freeze');
   });
 
   it('teaches Run and Submit right after the timing (S3)', () => {
@@ -295,17 +270,14 @@ describe('student phase and window maths', () => {
     ]);
   });
 
-  it('never promises hidden tests during a contest, and says nothing in exam mode (V3-6)', () => {
+  it('never promises hidden tests during a contest (V3-6)', () => {
     expect(rulesSentences(contest()).join(' ')).toContain('never the hidden inputs or outputs');
-    const exam = rulesSentences(contest({ rules: { ...contest().rules, feedback_mode: 'exam' } })).join(' ');
-    expect(exam).toContain('only says "Submitted"');
   });
 
   it('says the time of a late arrival is already running', () => {
     const c = contest();
     expect(startLine(c, c.starts_at - MIN)).toEqual({ kind: 'before', ms: MIN });
-    expect(startLine(c, c.starts_at + MIN).kind).toBe('late');
-    expect(startLine({ ...c, start_mode: 'window' }, c.starts_at + MIN).kind).toBe('window');
+    expect(startLine(c, c.starts_at + MIN)).toEqual({ kind: 'late', ms: 119 * MIN });
   });
 });
 
@@ -344,43 +316,12 @@ describe('lists, labels and events', () => {
   });
 });
 
-describe('roster CSV', () => {
-  it('splits quoted fields and CRLF lines', () => {
-    expect(parseCsv('a,"b, c","d ""e"""\r\nf,g\n\n')).toEqual([
-      ['a', 'b, c', 'd "e"'],
-      ['f', 'g'],
-    ]);
-  });
-
-  it('reads positional columns and flags bad lines', () => {
-    const r = parseRoster('asha@college.edu,Asha Rao,21CS001,A\nnot-an-email,X\nASHA@college.edu,Again\n,No email\n');
-    expect(r.valid).toBe(1);
-    expect(r.invalid).toBe(3);
-    expect(r.lines[0]).toEqual({ email: 'asha@college.edu', display_name: 'Asha Rao', roll_number: '21CS001', section: 'A', line: 1, error: '' });
-    expect(r.lines.map((l) => l.error)).toEqual(['', 'Not an email address', 'Listed twice', 'No email']);
-  });
-
-  it('follows a header row in any order', () => {
-    const r = parseRoster('Section,Roll No,Email,Name\nB,21CS002,ravi@college.edu,"Ravi, K"\n');
-    expect(r.lines).toEqual([{ email: 'ravi@college.edu', display_name: 'Ravi, K', roll_number: '21CS002', section: 'B', line: 2, error: '' }]);
-  });
-
-  it('writes CSV that parses back', () => {
-    const entries = [{ email: 'a@b.co', display_name: 'A "Q", R', roll_number: '1', section: '' }];
-    expect(parseRoster(rosterCsv(entries)).lines[0]).toMatchObject(entries[0]);
-  });
-});
-
 describe('auditSummary', () => {
-  it('names revision moves and who a roster change let in or out (v1.2.0)', () => {
+  it('names revision moves (v1.2.0)', () => {
     expect(auditSummary({ action: 'revision', details: { label: 'A', from_rev: 2, to_rev: 3, statement_changed: true, judging_changed: false } })).toBe(
       'Moved problem A from revision 2 to revision 3 (statement changed)',
     );
     expect(auditSummary({ action: 'revision', details: { label: 'B', from_rev: 1, to_rev: 2, statement_changed: false, judging_changed: true } })).toContain('(tests changed)');
-    expect(
-      auditSummary({ action: 'roster', details: { count: 30, added: 2, removed: 1, emails_added: ['a@c.edu', 'b@c.edu'], emails_removed: ['z@c.edu'] } }),
-    ).toBe('Replaced the roster: 30 students, 2 added, 1 removed; added a@c.edu, b@c.edu; removed z@c.edu');
-    expect(auditSummary({ action: 'roster', details: { count: 5, added: 5, removed: 0, emails_added: ['1@c', '2@c', '3@c', '4@c', '5@c'] } })).toContain('added 1@c, 2@c, 3@c and 2 more');
   });
 
   it('names each change in the past tense', () => {
@@ -389,13 +330,13 @@ describe('auditSummary', () => {
         action: 'settings',
         details: {
           changes: {
-            feedback_mode: { from: 'subtask', to: 'exam' },
+            freeze_minutes: { from: 0, to: 10 },
             graded: { from: true, to: false },
             languages: { from: ['cpp17'], to: [] },
           },
         },
       }),
-    ).toBe('Changed feedback from subtask to exam; graded from yes to no; languages from cpp17 to none');
+    ).toBe('Changed freeze from 0 to 10; graded from yes to no; languages from cpp17 to none');
     expect(auditSummary({ action: 'extension', details: { email: 'asha@college.edu', minutes: 20, reason: 'laptop crashed' } })).toBe(
       'Gave asha@college.edu 20 extra minutes (laptop crashed)',
     );

@@ -410,20 +410,13 @@
   /** The settings as the server holds them, for a change of one field. */
   function settingsOf(c: AdminContest): ContestSettings {
     return {
-      slug: c.slug,
       title: c.title,
       description_md: c.description_md ?? '',
       starts_at: c.starts_at,
       ends_at: c.ends_at,
-      start_mode: c.start_mode,
-      duration_minutes: c.duration_minutes,
       freeze_minutes: c.freeze_minutes,
-      scoring_mode: c.scoring_mode,
-      access: c.access,
-      feedback_mode: c.feedback_mode,
       published: c.published,
       practice_after_end: c.practice_after_end,
-      stop_on_sample_fail: c.stop_on_sample_fail,
       min_gap_s: c.min_gap_s,
       max_per_problem: c.max_per_problem,
       languages: [...(c.languages ?? [])],
@@ -443,7 +436,7 @@
     ];
     if (personal > 0) items.push(`${countOf(personal, 'student')} with extra time keep${personal === 1 ? 's' : ''} it.`);
     // The freeze is counted back from the end: say what happens to the board (walk 2026-10-21).
-    const frozenAt = c.start_mode === 'fixed' && c.freeze_minutes > 0 ? closeAt - c.freeze_minutes * 60_000 : null;
+    const frozenAt = c.freeze_minutes > 0 ? closeAt - c.freeze_minutes * 60_000 : null;
     if (frozenAt !== null) {
       // Name the instant that will be stored: the freeze is kept in whole minutes (V3-18).
       const now = serverClock.serverNow();

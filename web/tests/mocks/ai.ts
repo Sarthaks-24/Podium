@@ -192,6 +192,8 @@ export async function mockApi(page: Page, opts: MockOptions = {}) {
     held,
     active: (opts.key === 'active' ? 'anthropic' : opts.key === 'no-model' ? 'openai' : null) as string | null,
     keyBodies: [] as Json[],
+    /** The query of each DELETE of the key: "" forgets every provider's key. */
+    keyDeletes: [] as string[],
     modelGets: [] as string[],
     wizardBodies: [] as Json[],
     wizardGets: 0,
@@ -288,6 +290,7 @@ export async function mockApi(page: Page, opts: MockOptions = {}) {
           return json(route, 200, keyStatus());
         }
         if (method === 'DELETE') {
+          state.keyDeletes.push(url.search);
           const p = url.searchParams.get('provider');
           for (const id of p ? [p] : ids) state.held[id] = id === 'fake' ? { ...none(), models: LISTS.fake } : none();
           if (state.active === null || !state.held[state.active].has_key) state.active = ids.find((id) => state.held[id].has_key) ?? null;
@@ -296,8 +299,8 @@ export async function mockApi(page: Page, opts: MockOptions = {}) {
       }
 
       if (path === '/api/admin/ai/wizard' && method === 'POST') {
-        if (state.active === null) return apiError(route, 409, 'no_key', 'Add a key in AI assistant first.');
-        if (state.held[state.active].model === '') return apiError(route, 409, 'no_model', `Choose a model for ${name(state.active)} in AI assistant first.`);
+        if (state.active === null) return apiError(route, 409, 'no_key', 'Add a key first.');
+        if (state.held[state.active].model === '') return apiError(route, 409, 'no_model', `Choose a model for ${name(state.active)} first.`);
         state.wizardBodies.push(req.postDataJSON() as Json);
         state.wizard = { id: WIZARD_ID, kind: 'generate', state: 'thinking', started_at: T0, server_now: T0 };
         state.wizardGets = 0;
@@ -449,33 +452,36 @@ export interface Screen {
 
 export const SCREENS: Screen[] = [
   {
-    name: 'ai-settings',
-    path: '/admin/ai',
-    title: 'AI assistant · podium',
-    ready: (page) => expect(page.getByLabel('API key')).toBeVisible(),
+    name: 'ai-wizard-no-key',
+    path: '/admin/ai/new',
+    title: 'New problem with AI · podium',
+    ready: (page) => expect(page.getByRole('form', { name: 'Add a key to start' }).getByLabel('API key')).toBeVisible(),
   },
   {
-    name: 'ai-settings-active',
-    path: '/admin/ai',
-    title: 'AI assistant · podium',
-    opts: { key: 'active' },
-    ready: (page) => expect(page.getByText('Anthropic: Key active until 14:32')).toBeVisible(),
-  },
-  {
-    name: 'ai-settings-no-model',
-    path: '/admin/ai',
-    title: 'AI assistant · podium',
+    name: 'ai-wizard-no-model',
+    path: '/admin/ai/new',
+    title: 'New problem with AI · podium',
     opts: { key: 'no-model' },
-    ready: (page) => expect(page.getByText('No model chosen yet', { exact: false })).toBeVisible(),
+    ready: (page) => expect(page.getByRole('form', { name: 'Choose a model to start' })).toBeVisible(),
   },
   {
-    name: 'ai-settings-typed-model',
-    path: '/admin/ai',
-    title: 'AI assistant · podium',
+    name: 'ai-wizard-typed-model',
+    path: '/admin/ai/new',
+    title: 'New problem with AI · podium',
     opts: { key: 'no-model' },
     ready: async (page) => {
       await page.getByLabel('Model', { exact: true }).selectOption({ label: 'Type a model id' });
       await expect(page.getByLabel('Model id')).toBeFocused();
+    },
+  },
+  {
+    name: 'ai-wizard-change-key',
+    path: '/admin/ai/new',
+    title: 'New problem with AI · podium',
+    opts: { key: 'active' },
+    ready: async (page) => {
+      await page.getByRole('button', { name: 'Change key or model' }).click();
+      await expect(page.getByRole('form', { name: 'Change the Anthropic key or model' })).toBeVisible();
     },
   },
   {

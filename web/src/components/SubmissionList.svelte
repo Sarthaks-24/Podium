@@ -2,10 +2,9 @@
   SubmissionList: the person's own submissions to this problem, newest
   first. Each row reads as when, language, outcome and score, and opens in
   place to show the full verdict panel for that submission. Props:
-  `submissions` (newest first), `onjump` (passed to each panel for compile
-  error jumps), `exam` (contest exam mode: each row only says "Submitted"
-  and does not open) and `showScores` (with `exam`, after the end: the
-  score is shown too).
+  `submissions` (newest first) and `onjump` (passed to each panel for
+  compile error jumps). A row whose result the server hides only says
+  "Submitted" and does not open.
 -->
 <script lang="ts">
   import Badge from './Badge.svelte';
@@ -17,11 +16,9 @@
   interface Props {
     submissions: Submission[];
     onjump: ((line: number, col: number | null) => void) | null;
-    exam?: boolean;
-    showScores?: boolean;
   }
 
-  let { submissions, onjump, exam = false, showScores = false }: Props = $props();
+  let { submissions, onjump }: Props = $props();
 
   let open = $state<Record<number, boolean>>({});
 </script>
@@ -33,12 +30,12 @@
     {#each submissions as s (s.id)}
       {@const h = headline(s)}
       <li class="item">
-        {#if exam || s.hidden}
+        {#if s.hidden}
           <div class="row">
             <span class="when"><MonoDigits text={formatWhen(s.created_at)} /></span>
             <span class="lang">{languageLabel(s.language)}</span>
             <span class="outcome"><Badge text="Submitted" /></span>
-            <span class="score">{#if showScores && s.state === 'done'}<MonoDigits parts={scoreParts(s.score, s.max_score)} />{/if}</span>
+            <span class="score"></span>
           </div>
         {:else}
           <button

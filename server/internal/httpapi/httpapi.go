@@ -188,8 +188,6 @@ func (d Deps) contestRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/admin/contests/{id}/clone", organiser(d.cloneContest))
 	mux.HandleFunc("PUT /api/admin/contests/{id}/problems", organiser(d.setContestProblems))
 	mux.HandleFunc("PUT /api/admin/contests/{id}/problems/{label}/revision", organiser(d.updatePin))
-	mux.HandleFunc("GET /api/admin/contests/{id}/roster", organiser(d.getRoster))
-	mux.HandleFunc("PUT /api/admin/contests/{id}/roster", organiser(slowBody(d.setRoster)))
 	mux.HandleFunc("PUT /api/admin/contests/{id}/extensions/{user}", organiser(d.setExtension))
 	mux.HandleFunc("POST /api/admin/contests/{id}/extend", organiser(d.extendContest))
 	mux.HandleFunc("POST /api/admin/contests/{id}/pause", organiser(d.pauseContest(true)))

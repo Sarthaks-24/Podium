@@ -33,8 +33,12 @@ func TestRejudgeReplacesAnUnfinishedJob(t *testing.T) {
 	if n, err := r.svc.Rejudge(ctx, RejudgeRequest{ContestID: 9, ProblemID: p.ID}); err != nil || n != 0 {
 		t.Fatalf("rejudge with unchanged tests: %d %v", n, err)
 	}
-	// Different judging (here the sample rule): the leased job is replaced.
-	if n, err := r.svc.Rejudge(ctx, RejudgeRequest{ContestID: 9, ProblemID: p.ID, NoStopOnSample: true}); err != nil || n != 1 {
+	// Different judging: the leased job was queued under another rule (the
+	// sample switch is gone, V3-15, so the stored payload is edited), and is replaced.
+	if _, err := r.svc.DB.ExecContext(ctx, "UPDATE jobs SET payload = json_set(payload, '$.stop_on_sample_fail', json('false')) WHERE id = ?", old.JobID); err != nil {
+		t.Fatal(err)
+	}
+	if n, err := r.svc.Rejudge(ctx, RejudgeRequest{ContestID: 9, ProblemID: p.ID}); err != nil || n != 1 {
 		t.Fatalf("rejudge with changed judging: %d %v", n, err)
 	}
 	rep := judgeapi.Report{JobID: old.JobID, Lease: old.Lease, Final: true, Compile: []judgeapi.CompileResult{{Role: judgeapi.RoleProgram, Verdict: "CE"}}}

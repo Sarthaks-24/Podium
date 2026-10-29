@@ -11,42 +11,6 @@ import (
 	"time"
 )
 
-func TestM4ExamModeHasNoJudgingOracle(t *testing.T) {
-	s := newSite(t)
-	owner := s.signedIn("owner@college.edu", "Owner")
-	pa := s.importProblem(owner, "plus-a")
-	start := time.Now().Add(time.Hour).Truncate(time.Minute)
-	s.createContest(owner, "ex1", start, map[string]int64{"A": pa}, map[string]any{"feedback_mode": "exam", "max_per_problem": 1})
-	s.createContest(owner, "ex5", start, map[string]int64{"A": pa}, map[string]any{"feedback_mode": "exam", "max_per_problem": 5})
-	asha := s.signedIn("asha@college.edu", "Asha")
-	s.at(start, 1)
-	for _, slug := range []string{"ex1", "ex5"} {
-		asha.do("POST", "/api/contests/"+slug+"/start", map[string]any{"accept_honour": true}, s.srv.URL)
-	}
-	if code, _ := asha.do("POST", "/api/contests/ex1/problems/A/submit", map[string]any{"language": "cpp17", "source": "correct", "client_key": "k1"}, s.srv.URL); code != 202 {
-		t.Fatalf("first submit %d", code)
-	}
-	probe := func(key string) string {
-		code, out := asha.do("POST", "/api/contests/ex1/problems/A/submit", map[string]any{"language": "cpp17", "source": "x", "client_key": key}, s.srv.URL)
-		return fmt.Sprint(code, out["error"].(map[string]any)["message"])
-	}
-	count := func(slug string) any {
-		_, c := asha.do("GET", "/api/contests/"+slug, nil, "")
-		return c["problems"].([]any)[0].(map[string]any)["my_submission_count"]
-	}
-	before, countBefore := probe("p1"), count("ex1")
-	s.judgeAll()
-	after, countAfter := probe("p2"), count("ex1")
-	if before != after || countBefore != float64(1) || countAfter != float64(1) {
-		t.Errorf("refusal or count changes when judging finishes: %q / %q, counts %v / %v", before, after, countBefore, countAfter)
-	}
-	// Below the cap a pending submission never refuses the next one.
-	asha.do("POST", "/api/contests/ex5/problems/A/submit", map[string]any{"language": "cpp17", "source": "correct", "client_key": "q1"}, s.srv.URL)
-	if code, out := asha.do("POST", "/api/contests/ex5/problems/A/submit", map[string]any{"language": "cpp17", "source": "int32", "client_key": "q2"}, s.srv.URL); code != 202 {
-		t.Errorf("second submit while the first waits: %d %v", code, out)
-	}
-}
-
 func TestM4FixedFreezeIgnoresPersonalExtension(t *testing.T) {
 	s := newSite(t)
 	owner := s.signedIn("owner@college.edu", "Owner")
@@ -99,25 +63,5 @@ func TestM4HeavyReadsAreRateLimited(t *testing.T) {
 	// Another user is not affected.
 	if code, _ := owner.do("GET", "/api/contests/rl", nil, ""); code != 200 {
 		t.Errorf("another user: %d", code)
-	}
-}
-
-func TestM4RosterReplaceReportsChanges(t *testing.T) {
-	s := newSite(t)
-	owner := s.signedIn("owner@college.edu", "Owner")
-	pa := s.importProblem(owner, "plus-a")
-	start := time.Now().Add(time.Hour).Truncate(time.Minute)
-	id := s.createContest(owner, "ro", start, map[string]int64{"A": pa}, map[string]any{"access": "roster"})
-	put := func(csv string) map[string]any {
-		code, out := owner.raw("PUT", fmt.Sprintf("/api/admin/contests/%d/roster", id), "text/csv", []byte(csv), s.srv.URL)
-		if code != 200 {
-			t.Fatalf("roster %d %v", code, out)
-		}
-		return out
-	}
-	put("email\na@college.edu\nb@college.edu\n")
-	out := put("email\nB@college.edu\nc@college.edu\nd@college.edu\n")
-	if out["added"] != float64(2) || out["removed"] != float64(1) || out["roster_count"] != float64(3) {
-		t.Errorf("replace counts %v", out)
 	}
 }

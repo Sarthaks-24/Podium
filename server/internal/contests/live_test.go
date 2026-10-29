@@ -5,31 +5,10 @@ import (
 	"testing"
 )
 
-// LiveUntil in window mode follows the student's own clock, and a
-// personal extension keeps a fixed-start contest live for that student
-// only (C1-022).
+// A personal extension keeps a contest live for that student only
+// (C1-022).
 func TestLiveUntilWindowModeAndExtensions(t *testing.T) {
 	ctx := context.Background()
-	t.Run("window", func(t *testing.T) {
-		r := newSvc(t)
-		// Open from t0 to t0+180 min; each student has 60 minutes.
-		c := r.contest(t, func(e *Edit) { e.StartMode, e.DurationMinutes, e.EndsAt = WindowStart, 60, at(180) })
-		*r.now = at(30)
-		if err := r.svc.Start(ctx, c, 2, true); err != nil {
-			t.Fatal(err)
-		}
-		until, live, err := r.svc.LiveUntil(ctx, 2)
-		if err != nil || !live || !until.Equal(at(90)) {
-			t.Errorf("inside the window: %v %v %v, want live until %v", until, live, err, at(90))
-		}
-		if _, live, _ := r.svc.LiveUntil(ctx, 3); live {
-			t.Error("a student who never started is live")
-		}
-		*r.now = at(91)
-		if _, live, _ := r.svc.LiveUntil(ctx, 2); live {
-			t.Error("live after the student's own window, while the contest is still open")
-		}
-	})
 	t.Run("extension", func(t *testing.T) {
 		r := newSvc(t)
 		c := r.contest(t, nil) // fixed start, t0 to t0+120 min

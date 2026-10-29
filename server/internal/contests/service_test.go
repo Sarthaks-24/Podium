@@ -39,8 +39,7 @@ func newSvc(t testing.TB) *svcRig {
 
 func (r *svcRig) contest(t testing.TB, mutate func(*Edit)) *Contest {
 	t.Helper()
-	e := Edit{Slug: "week-1", Title: "Week 1", StartsAt: t0, EndsAt: at(120), StartMode: FixedStart, Scoring: BestSubtask,
-		Access: "domain", Feedback: "subtask", PracticeAfterEnd: true, StopOnSampleFail: true, MinGapS: 30,
+	e := Edit{Title: "Week 1", StartsAt: t0, EndsAt: at(120), PracticeAfterEnd: true, MinGapS: 30,
 		MaxPerProblem: 15, Languages: []string{"cpp17"}, FreezeMinutes: 30}
 	if mutate != nil {
 		mutate(&e)
@@ -50,50 +49,6 @@ func (r *svcRig) contest(t testing.TB, mutate func(*Edit)) *Contest {
 		t.Fatal(err)
 	}
 	return c
-}
-
-func TestWindowModeWithExtensions(t *testing.T) {
-	r := newSvc(t)
-	ctx := context.Background()
-	c := r.contest(t, func(e *Edit) { e.StartMode, e.DurationMinutes = WindowStart, 60 })
-	*r.now = at(100)
-	if err := r.svc.Start(ctx, c, 2, true); err != nil {
-		t.Fatal(err)
-	}
-	st, _ := r.svc.State(ctx, c, 2)
-	// Started at 100 with 60 minutes, but the contest closes at 120.
-	if !st.Open || !st.Window.Ends.Equal(at(120)) {
-		t.Errorf("capped window %+v", st)
-	}
-	// A personal extension moves both the cap and the end.
-	if err := r.svc.SetExtension(ctx, c.ID, 2, 15, "accommodation", owner); err != nil {
-		t.Fatal(err)
-	}
-	st, _ = r.svc.State(ctx, c, 2)
-	if !st.Window.Ends.Equal(at(135)) || st.Extension != 15*time.Minute {
-		t.Errorf("extended window %+v", st)
-	}
-	*r.now = at(130)
-	st, _ = r.svc.State(ctx, c, 2)
-	if !st.Open || c.StateFor(st, *r.now) != StateLive {
-		t.Errorf("inside the extension: %+v %s", st, c.StateFor(st, *r.now))
-	}
-	// Bilal never started: after the close he cannot start, and practice
-	// is open to him.
-	st3, _ := r.svc.State(ctx, c, 3)
-	if !st3.Over || !c.PracticeOpen(st3, *r.now) {
-		t.Errorf("non-starter after the close %+v", st3)
-	}
-	if err := r.svc.Start(ctx, c, 3, true); err == nil {
-		t.Error("started after the close")
-	}
-	// Asha's window ended at 135: practice only once the contest closed
-	// for her too, which it has.
-	*r.now = at(136)
-	st, _ = r.svc.State(ctx, c, 2)
-	if !st.Over || c.StateFor(st, *r.now) != StatePractice {
-		t.Errorf("after her window: %+v", st)
-	}
 }
 
 func TestStudentBoardVariants(t *testing.T) {
@@ -124,11 +79,6 @@ func TestStudentBoardVariants(t *testing.T) {
 	}
 	if v := variant(at(131)); v != VariantFull {
 		t.Errorf("after the reveal: %s", v)
-	}
-	// Exam mode: no board until the student's window is over.
-	r.svc.DB.Exec("UPDATE contests SET feedback_mode = 'exam' WHERE id = ?", c.ID)
-	if v := variant(at(60)); v != ErrBoardClosed.Error() {
-		t.Errorf("exam mode during the contest: %s", v)
 	}
 }
 
@@ -281,7 +231,7 @@ func TestCSVInjectionIsNeutralised(t *testing.T) {
 	c := &Contest{Problems: []ContestProblem{{Label: "A"}}}
 	var buf bytes.Buffer
 	WriteCSV(&buf, c, []ExportRow{{Row: Row{Rank: 1, Name: "=1+1", Total: 40, Cells: []Cell{{Label: "A", Score: 40}}}, Email: "a@b.c"}})
-	if lines := strings.Split(strings.TrimSpace(buf.String()), "\n"); lines[1] != "1,'=1+1,a@b.c,,,,40,40" {
+	if lines := strings.Split(strings.TrimSpace(buf.String()), "\n"); lines[1] != "1,'=1+1,a@b.c,,40,40" {
 		t.Errorf("csv %q", buf.String())
 	}
 }

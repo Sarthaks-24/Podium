@@ -499,12 +499,6 @@ test.describe('in a contest', () => {
     await expect(page.getByText('Accept the rules on the contest page to start.')).toBeVisible();
     await expect(page.getByRole('link', { name: 'Go to the contest page.' })).toHaveAttribute('href', '/contests/week-6');
     await expect(page.getByText('Ask an organiser if you think you should.')).toHaveCount(0);
-
-    await page.unrouteAll();
-    await contests.mockApi(page, { phase: 'during', problemRefusal: 'not_on_roster' });
-    await page.goto('/contests/week-6/problems/B');
-    await expect(page.getByText('This contest is for the students on its list. Ask the organiser if you should be on it.', { exact: false })).toBeVisible();
-    await expect(page.getByRole('link', { name: 'Go to the contest page.' })).toHaveCount(0);
   });
 
   test('the bar shows each score, or a dash, and nothing else (S1-09, B6)', async ({ page }) => {
@@ -529,16 +523,6 @@ test.describe('in a contest', () => {
     // A partial score fills in the partial colour.
     await expect(rail.getByRole('link', { name: /^Problem B/ }).locator('.fill')).toHaveClass(/part/);
     await page.screenshot({ path: `${shots()}contest-bar-scores-1440-light.png` });
-  });
-
-  test('exam mode says submitted, never tried or solved', async ({ page }) => {
-    const api = await contests.mockApi(page, { phase: 'during', feedback: 'exam' });
-    api.submissions.push(contests.hidden(30, 11));
-    await page.setViewportSize({ width: 1440, height: 900 });
-    await page.goto('/contests/week-6/problems/A');
-    const rail = page.getByRole('navigation', { name: 'Problems' });
-    await expect(rail.getByRole('link', { name: /^Problem A/ })).toContainText('Submitted');
-    await expect(rail.getByRole('link', { name: /^Problem B, Interval covering, not submitted$/ })).toBeVisible();
   });
 
   test('Rules in the rail repeats the rules from before the start', async ({ page }) => {

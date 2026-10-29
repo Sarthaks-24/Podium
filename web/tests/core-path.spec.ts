@@ -293,7 +293,6 @@ test('organiser: create a contest, add a problem, publish', async ({ page }) => 
   await page.goto('/admin/contests');
   await page.getByRole('button', { name: 'New contest' }).click();
   await page.getByLabel('Title', { exact: true }).fill('Week 9');
-  await page.getByLabel('Slug', { exact: true }).fill('week-9');
   await page.getByLabel('Starts', { exact: true }).fill('2026-11-01T18:00');
   await page.getByLabel('Ends', { exact: true }).fill('2026-11-01T20:00');
   await page.getByRole('button', { name: 'Create contest' }).click();

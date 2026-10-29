@@ -7,7 +7,7 @@
   - Run: the latest run on the examples (RunResults), or one line saying
     what Run does.
   - Submissions: the submission just made, or the newest, as the verdict
-    (VerdictPanel; exam mode and hidden results say only "Submitted"),
+    (VerdictPanel; a hidden result says only "Submitted"),
     then every submission. A submission that failed on an example offers
     Run, which shows the program's output there.
   - Your input: the box with its own Run (Ctrl+' runs it while it has
@@ -16,7 +16,7 @@
   A failure to send says so above the tabs with "Submit again" or "Run
   again". Each panel's first line takes focus when a tab switches by
   itself under 1024 px (data-result-focus, F7.4). Props: `judging`,
-  `samples`, `language`, `exam`, `showScores`, `problemScore`, `locked`,
+  `samples`, `language`, `problemScore`, `locked`,
   `sticky` (the verdict head sticks from 1024 px), `onjump` (a compile
   error's line) and `onruninput`.
 -->
@@ -34,8 +34,6 @@
     judging: Judging;
     samples: Sample[];
     language: string;
-    exam: boolean;
-    showScores: boolean;
     problemScore: { score: number | null; max: number } | null;
     locked: string;
     sticky: boolean;
@@ -45,7 +43,7 @@
     onruninput: (input: string) => void;
   }
 
-  let { judging, samples, language, exam, showScores, problemScore, locked, sticky, narrow = false, onjump, onruninput }: Props = $props();
+  let { judging, samples, language, problemScore, locked, sticky, narrow = false, onjump, onruninput }: Props = $props();
 
   const run = $derived(judging.state.run);
   const current = $derived(judging.current);
@@ -81,14 +79,10 @@
 </div>
 
 <div class="panel" role={narrow ? undefined : 'tabpanel'} id="ws-rpanel-submissions" aria-labelledby={narrow ? undefined : 'ws-rtab-submissions'} hidden={!narrow && judging.tab !== 'submissions'}>
-  {#if current && (exam || current.hidden)}
+  {#if current?.hidden}
     <h2 class="block-title" tabindex="-1" data-result-focus>Latest submission</h2>
-    <p class="headline-exam">Submitted</p>
-    <p class="muted small">
-      {formatWhen(current.created_at)}, {languageLabel(current.language)}.
-      {#if showScores && current.state === 'done'}Score <span class="mono">{current.score} of {current.max_score}</span>.{:else}Scores
-        appear after the contest.{/if}
-    </p>
+    <p class="headline-hidden">Submitted</p>
+    <p class="muted small">{formatWhen(current.created_at)}, {languageLabel(current.language)}. Scores appear after the contest.</p>
   {:else if current}
     <h2 class="block-title" tabindex="-1" data-result-focus>Latest submission</h2>
     <VerdictPanel submission={current} {onjump} idPrefix="current" {problemScore} {sticky} onruninput={runInput} />
@@ -102,7 +96,7 @@
   {/if}
   {#if judging.state.submissions.length > 0}
     <h2 class="block-title">Your submissions</h2>
-    <SubmissionList submissions={judging.state.submissions} onjump={null} {exam} {showScores} />
+    <SubmissionList submissions={judging.state.submissions} onjump={null} />
   {/if}
 </div>
 
@@ -147,7 +141,7 @@
     outline-offset: var(--space-1);
   }
 
-  .headline-exam {
+  .headline-hidden {
     font-size: var(--fs-2);
     font-weight: 600;
   }

@@ -8,15 +8,14 @@
   - "strip", under 1024 px, the one sticky row: the letters with their
     scores, the clock and a Menu holding Standings, Messages, Help and
     Leave, so the statement starts at once.
-  Each letter shows the score or "-" ("Submitted" in exam mode until
-  scores are out) over a 2 px bar, in the partial colour for a partial
+  Each letter shows the score or "-" over a 2 px bar, in the partial colour for a partial
   score; the open problem has a border on its inline start (a shape, not
   only a tint, audit 06-7); a letter whose statement changed since the
   student last opened it carries a dot. Each link keeps one sentence for
   screen readers (sentence()). Leave asks first while the contest is live
   (`onleave`), otherwise it is a link home.
   Props: `problems`, `slug`, `current` (the open label), `layout` ("bar"
-  or "strip"), `exam`, `unread` (messages not yet seen), `onmessages`,
+  or "strip"), `unread` (messages not yet seen), `onmessages`,
   `onhelp`, `onstandings` (a panel instead of the standings page), `clock`
   (a snippet), `contestTitle`, `changed` (letters whose statement changed)
   and `onleave`.
@@ -32,7 +31,6 @@
     slug: string;
     current: string;
     layout: string;
-    exam?: boolean;
     unread?: number;
     onmessages: () => void;
     onhelp?: () => void;
@@ -43,7 +41,7 @@
     onleave?: () => void;
   }
 
-  let { problems, slug, current, layout, exam = false, unread = 0, onmessages, onhelp, onstandings, clock, contestTitle = '', changed = new Set<string>(), onleave }: Props = $props();
+  let { problems, slug, current, layout, unread = 0, onmessages, onhelp, onstandings, clock, contestTitle = '', changed = new Set<string>(), onleave }: Props = $props();
 
   const base = $derived(`/contests/${encodeURIComponent(slug)}`);
   // Past six letters the row scrolls; the open one stays in view (B6).
@@ -70,13 +68,8 @@
     return `${base}/problems/${encodeURIComponent(label)}`;
   }
 
-  function count(p: ContestProblem): number {
-    return p.my_submission_count ?? 0;
-  }
-
   function scoreText(p: ContestProblem): string {
     if (p.my_score !== null) return `${p.my_score}/${p.max_score}`;
-    if (exam && count(p) > 0) return 'Submitted';
     return '-';
   }
 
@@ -86,11 +79,6 @@
 
   function baseSentence(p: ContestProblem): string {
     if (p.my_score !== null) return `Problem ${p.label}, ${p.title}, ${p.my_score} of ${p.max_score} points`;
-    if (exam) {
-      const n = count(p);
-      if (n === 0) return `Problem ${p.label}, ${p.title}, not submitted`;
-      return `Problem ${p.label}, ${p.title}, submitted ${n === 1 ? 'once' : `${n} times`}, score after the contest`;
-    }
     return `Problem ${p.label}, ${p.title}, not tried`;
   }
 

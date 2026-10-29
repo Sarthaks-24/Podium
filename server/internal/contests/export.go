@@ -12,42 +12,39 @@ import (
 )
 
 // ExportRow is one line of the results: the full board's row with the
-// student's contact details from the roster and when they started.
+// student's email and when they started (the roster with roll numbers was
+// cut, V3-15).
 type ExportRow struct {
 	Row
-	Email      string `json:"email"`
-	RollNumber string `json:"roll_number"`
-	Section    string `json:"section"`
-	StartedAt  *int64 `json:"started_at"`
+	Email     string `json:"email"`
+	StartedAt *int64 `json:"started_at"`
 }
 
-// Export returns the full board with each row's email, roll number,
-// section and start time. For organisers only. A student excluded by an
+// Export returns the full board with each row's email and start time. For organisers only. A student excluded by an
 // integrity decision is not on the board, so not in the export.
 func (s *Service) Export(ctx context.Context, c *Contest) ([]ExportRow, *Standings, error) {
 	st, err := s.Board(ctx, c, VariantFull)
 	if err != nil {
 		return nil, nil, err
 	}
-	rows, err := s.DB.QueryContext(ctx, `SELECT u.id, u.email, coalesce(r.roll_number, ''), coalesce(r.section, ''), coalesce(cs.started_at, 0)
+	rows, err := s.DB.QueryContext(ctx, `SELECT u.id, u.email, coalesce(cs.started_at, 0)
 		FROM users u
-		LEFT JOIN contest_roster r ON r.contest_id = ? AND r.email = u.email
 		LEFT JOIN contest_starts cs ON cs.contest_id = ? AND cs.user_id = u.id
 		WHERE u.id IN (SELECT user_id FROM contest_starts WHERE contest_id = ?
-			UNION SELECT user_id FROM submissions WHERE contest_id = ? AND kind = 'submit')`, c.ID, c.ID, c.ID, c.ID)
+			UNION SELECT user_id FROM submissions WHERE contest_id = ? AND kind = 'submit')`, c.ID, c.ID, c.ID)
 	if err != nil {
 		return nil, nil, err
 	}
 	defer rows.Close()
 	type contact struct {
-		email, roll, section string
-		started              int64
+		email   string
+		started int64
 	}
 	byUser := map[int64]contact{}
 	for rows.Next() {
 		var id int64
 		var ct contact
-		if err := rows.Scan(&id, &ct.email, &ct.roll, &ct.section, &ct.started); err != nil {
+		if err := rows.Scan(&id, &ct.email, &ct.started); err != nil {
 			return nil, nil, err
 		}
 		byUser[id] = ct
@@ -58,7 +55,7 @@ func (s *Service) Export(ctx context.Context, c *Contest) ([]ExportRow, *Standin
 	out := make([]ExportRow, 0, len(st.Rows))
 	for _, r := range st.Rows {
 		ct := byUser[r.UserID]
-		e := ExportRow{Row: r, Email: ct.email, RollNumber: ct.roll, Section: ct.section}
+		e := ExportRow{Row: r, Email: ct.email}
 		if ct.started > 0 {
 			e.StartedAt = &ct.started
 		}
@@ -81,11 +78,11 @@ func CSVCell(v string) string {
 	return v
 }
 
-// WriteCSV writes the results as CSV: rank, name, email, roll number,
-// section, started (UTC, RFC 3339), total, then one column per problem.
+// WriteCSV writes the results as CSV: rank, name, email, started (UTC,
+// RFC 3339), total, then one column per problem.
 func WriteCSV(w io.Writer, c *Contest, rows []ExportRow) error {
 	cw := csv.NewWriter(w)
-	head := []string{"rank", "name", "email", "roll_number", "section", "started", "total"}
+	head := []string{"rank", "name", "email", "started", "total"}
 	for _, p := range c.Problems {
 		head = append(head, p.Label)
 	}
@@ -97,8 +94,7 @@ func WriteCSV(w io.Writer, c *Contest, rows []ExportRow) error {
 		if r.StartedAt != nil {
 			started = time.UnixMilli(*r.StartedAt).UTC().Format(time.RFC3339)
 		}
-		rec := []string{strconv.Itoa(r.Rank), CSVCell(r.Name), CSVCell(r.Email), CSVCell(r.RollNumber), CSVCell(r.Section),
-			started, strconv.Itoa(r.Total)}
+		rec := []string{strconv.Itoa(r.Rank), CSVCell(r.Name), CSVCell(r.Email), started, strconv.Itoa(r.Total)}
 		for _, cell := range r.Cells {
 			rec = append(rec, strconv.Itoa(cell.Score))
 		}
@@ -232,12 +228,9 @@ func (s *Service) Stats(ctx context.Context, c *Contest) ([]ProblemStats, error)
 		}
 		hist := map[int]int{}
 		for u := range attempts {
-			score := bestSingle[u]
-			if c.Scoring != BestSubmission {
-				score = 0
-				for _, v := range best[u] {
-					score += v
-				}
+			score := 0
+			for _, v := range best[u] {
+				score += v
 			}
 			hist[score]++
 			if score == ps.MaxScore && ps.MaxScore > 0 {

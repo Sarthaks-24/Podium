@@ -8,7 +8,7 @@
 // The sweep saves screenshots to cache/screenshots-m4/<screen>-<width>-<theme>.png
 // at 375, 768, 1024 and 1440 px in light and dark, and checks one h1, the
 // title and no horizontal overflow. The flows cover the student before,
-// during and after a contest, exam mode, the frozen and the closed board,
+// during and after a contest, a result the server hides, the frozen board,
 // the editor, the console and the reveal.
 import { expect, test } from '@playwright/test';
 import { activate, hasFocus, tabTo } from './keyboard';
@@ -209,22 +209,8 @@ test('an upcoming fixed-start contest counts down and keeps the start button clo
   await expect(page.getByRole('button', { name: 'I agree, start the contest' })).toBeInViewport();
 });
 
-test('a window-mode contest starts the clock on agreement', async ({ page }) => {
-  const api = await mockApi(page, { phase: 'ready', startMode: 'window' });
-  await page.goto('/contests/week-6');
-  await page.getByRole('button', { name: 'Read the rules and how Run and Submit work' }).click();
-  await expect(page.getByRole('dialog', { name: 'Help' })).toContainText('Your clock starts when you agree and start, and runs 1 h');
-  await expect(page.getByRole('dialog', { name: 'Help' })).toContainText('The standings open when the contest closes.');
-  await page.keyboard.press('Escape');
-  await page.getByRole('button', { name: 'I agree, start the contest' }).click();
-  await expect.poll(() => api.starts).toBe(1);
-  await expect(page.getByRole('timer')).toHaveText(/^00:(39|40):\d{2}$/);
-  // Window mode has no board to freeze, so no freeze line.
-  await expect(page.getByText(/Standings freeze/)).toHaveCount(0);
-});
-
-test('exam mode shows only "Submitted"', async ({ page }) => {
-  const api = await mockApi(page, { phase: 'during', feedback: 'exam' });
+test('a result the server hides shows only "Submitted"', async ({ page }) => {
+  const api = await mockApi(page, { phase: 'during', hideResults: true });
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto('/contests/week-6/problems/A');
   await expect(codeEditor(page)).toBeVisible();
@@ -234,20 +220,14 @@ test('exam mode shows only "Submitted"', async ({ page }) => {
   await expect(result.getByText('Submitted', { exact: true }).first()).toBeVisible();
   await expect(result.getByText('Scores appear after the contest.')).toBeVisible();
   const id = Number(api.submissions.at(-1)!.id);
-  // Even if a full result slipped through, exam mode shows nothing more.
+  // The judged event still hides the result, so nothing more shows.
   api.stream.push({ type: 'submission', data: hidden(id, 11) });
-  api.stream.push({ type: 'submission', data: submission(id, 11, 'done', 40) });
-  // Both events were delivered (the mock sends one per connection) before checking that nothing more shows.
   await expect.poll(() => api.stream.length, { timeout: 15_000 }).toBe(0);
   await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => resolve(null))));
   await expect(result.getByText(/Partial|Wrong answer|Accepted|40 of 100/)).toHaveCount(0);
   await expect(result.locator('.strip')).toHaveCount(0);
   await expect(page.locator('[data-announcer="polite"]')).toHaveText('Submitted.');
-  const rail = page.getByRole('navigation', { name: 'Problems' });
-  await expect(rail.getByRole('link', { name: 'Problem A, A plus B, submitted once, score after the contest' })).toBeVisible();
-  await expect(rail.getByRole('link', { name: /Problem A/ }).locator('.score')).toHaveText('Submitted');
-  await expect(rail.getByRole('link', { name: 'Problem B, Interval covering, not submitted' })).toBeVisible();
-  await page.screenshot({ path: `${shots()}contest-exam-1440-light.png` });
+  await page.screenshot({ path: `${shots()}contest-hidden-result-1440-light.png` });
 });
 
 test('after the contest: result, submissions, editorial and practice', async ({ page }) => {
@@ -361,13 +341,6 @@ test('on a phone the standings header stays on screen while rows scroll', async 
   await page.screenshot({ path: `${shots()}standings-phone-rows-scrolled-375-light.png` });
 });
 
-test('a window-mode board stays closed until the window closes', async ({ page }) => {
-  await mockApi(page, { phase: 'during', startMode: 'window', boardClosed: true });
-  await page.goto('/contests/week-6/standings');
-  await expect(page.getByText('The standings open when the contest closes.')).toBeVisible();
-  await expect(page.getByRole('table')).toHaveCount(0);
-});
-
 test('a second tab with the same contest shows a notice, as does a second session', async ({ page, context, browser }) => {
   await mockApi(page, { phase: 'during' });
   await page.goto('/contests/week-6/problems/A');
@@ -389,11 +362,11 @@ test('a second tab with the same contest shows a notice, as does a second sessio
 });
 
 test('admins land on their contest list, named by job', async ({ page }) => {
-  await mockApi(page, { who: 'admin', phase: 'during' });
+  const api = await mockApi(page, { who: 'admin', phase: 'during' });
   await page.goto('/');
   await expect(page).toHaveURL('/admin/contests');
   const nav = page.getByRole('navigation', { name: 'Main' });
-  await expect(nav.getByRole('link')).toHaveText(['Contests', 'Problem bank', 'Students']);
+  await expect(nav.getByRole('link')).toHaveText(['Contests', 'Problem bank']);
   await expect(nav.getByRole('link', { name: 'Contests' })).toHaveAttribute('aria-current', 'page');
   await expect(page.getByText('To create a contest or follow one live')).toHaveCount(0);
   await expect(page.getByRole('row', { name: /Week 7 contest/ })).toContainText('Draft');
@@ -402,9 +375,13 @@ test('admins land on their contest list, named by job', async ({ page }) => {
 
   await page.getByRole('button', { name: 'New contest' }).click();
   await page.getByLabel('Title').fill('Week 8 contest');
-  await expect(page.getByLabel('Slug')).toHaveValue('week-8-contest');
+  // The server makes the address from the title (V3-15).
+  await expect(page.getByLabel('Slug')).toHaveCount(0);
   await page.getByRole('button', { name: 'Create contest' }).click();
   await expect(page).toHaveURL('/admin/contests/9');
+  expect(api.creates).toHaveLength(1);
+  expect(api.creates[0]).toMatchObject({ title: 'Week 8 contest' });
+  expect(api.creates[0]).not.toHaveProperty('slug');
 });
 
 test('a new contest marks its required fields, and a field error from the server takes focus (X7)', async ({ page }) => {
@@ -413,15 +390,15 @@ test('a new contest marks its required fields, and a field error from the server
   await page.getByRole('button', { name: 'New contest' }).click();
   const form = page.locator('#create-contest');
   await expect(form.getByText('All fields are required.')).toBeVisible();
-  for (const name of ['Title', 'Slug', 'Starts', 'Ends']) await expect(form.getByLabel(name, { exact: true })).toHaveAttribute('aria-required', 'true');
+  for (const name of ['Title', 'Starts', 'Ends']) await expect(form.getByLabel(name, { exact: true })).toHaveAttribute('aria-required', 'true');
   await form.getByLabel('Title', { exact: true }).fill('Week 6');
   await form.getByLabel('Starts', { exact: true }).fill('2026-11-01T18:00');
-  await form.getByLabel('Ends', { exact: true }).fill('2026-11-01T20:00');
+  await form.getByLabel('Ends', { exact: true }).fill('2026-11-20T20:00');
   await page.getByRole('button', { name: 'Create contest' }).click();
-  const slug = form.getByLabel('Slug', { exact: true });
-  await expect(slug).toBeFocused();
-  await expect(slug).toHaveAttribute('aria-invalid', 'true');
-  await expect(page.locator('#new-slug-error')).toHaveText('Another contest already uses this slug.');
+  const ends = form.getByLabel('Ends', { exact: true });
+  await expect(ends).toBeFocused();
+  await expect(ends).toHaveAttribute('aria-invalid', 'true');
+  await expect(page.locator('#new-end-error')).toHaveText('A contest can last at most 14 days.');
 });
 
 test('students cannot open the contest admin', async ({ page }) => {
@@ -480,7 +457,7 @@ test("a problem whose hidden tests were shown stays, and the editor says why (C2
   await expect(page.getByLabel('Letter for A plus B')).toHaveValue('A');
 });
 
-test('the editor shows field errors, picks problems and previews a roster', async ({ page }) => {
+test('the editor shows field errors, picks problems and shows the address read-only', async ({ page }) => {
   const api = await mockApi(page, { who: 'admin', phase: 'during' });
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto('/admin/contests/4');
@@ -488,20 +465,25 @@ test('the editor shows field errors, picks problems and previews a roster', asyn
   await expect(page.getByRole('note').filter({ hasText: 'This contest is live.' })).toBeVisible();
   await expect(page.getByRole('note').getByRole('link', { name: 'console' })).toHaveAttribute('href', '/admin/contests/4/console');
 
-  // A refused slug shows under the field and takes focus.
-  await page.getByLabel('Slug', { exact: true }).fill('Week 6');
-  await page.getByRole('button', { name: 'Save changes' }).click();
-  const slug = page.getByLabel('Slug', { exact: true });
-  await expect(page.locator('#f-slug-error')).toHaveText('Use lowercase letters, digits and single hyphens, like week-6.');
-  await expect(slug).toHaveAttribute('aria-invalid', 'true');
-  await expect(slug).toBeFocused();
+  // The address is made from the title and cannot be typed (V3-15).
+  await expect(page.getByText('Address /contests/week-6, made from the title when the contest was created. It does not change.')).toBeVisible();
+  await expect(page.getByLabel('Slug')).toHaveCount(0);
 
-  await slug.fill('week-6');
+  // A refused field shows its error under it and takes focus.
+  const title = page.getByLabel('Title', { exact: true });
+  await title.fill('x'.repeat(121));
+  await page.getByRole('button', { name: 'Save changes' }).click();
+  await expect(page.locator('#f-title-error')).toHaveText('Enter a title of at most 120 characters.');
+  await expect(title).toHaveAttribute('aria-invalid', 'true');
+  await expect(title).toBeFocused();
+
+  await title.fill('Week 6 contest');
   await page.getByText('Rules and scoring').click();
   await page.getByLabel('Python 3').uncheck();
   await page.getByRole('button', { name: 'Save changes' }).click();
   await expect(page.getByText('Saved changes', { exact: true })).toBeVisible();
-  expect(api.settingsPuts.at(-1)).toMatchObject({ slug: 'week-6', languages: ['cpp17'], published: true, freeze_minutes: 30 });
+  expect(api.settingsPuts.at(-1)).toMatchObject({ title: 'Week 6 contest', languages: ['cpp17'], published: true, freeze_minutes: 30 });
+  expect(api.settingsPuts.at(-1)).not.toHaveProperty('slug');
 
   // Changing the freeze of a live contest asks first.
   const puts = api.settingsPuts.length;
@@ -534,25 +516,6 @@ test('the editor shows field errors, picks problems and previews a roster', asyn
     { problem_id: 12, label: 'A' },
     { problem_id: 11, label: 'B' },
   ]);
-
-  // The roster preview names every refused line before anything is sent.
-  await page.getByLabel('Or paste the CSV').fill('email,name,roll number,section\nravi@college.edu,Ravi Kumar,21CS002,B\nnot-an-email,Nobody\nravi@college.edu,Again\n');
-  await expect(page.getByText('1 line ready, 2 refused.', { exact: false })).toBeVisible();
-  await expect(page.getByText('The file replaces the whole roster: it adds 1 and removes 1 student.', { exact: false })).toBeVisible();
-  const preview = page.getByRole('table', { name: 'Roster preview' });
-  await expect(preview.getByRole('row')).toHaveCount(4);
-  await expect(preview.getByRole('row', { name: /not-an-email/ })).toContainText('Not an email address');
-  await expect(preview.getByRole('row', { name: /Again/ })).toContainText('Listed twice');
-  await page.screenshot({ path: `${shots()}contest-editor-roster-1440-light.png`, fullPage: true });
-  await page.getByRole('button', { name: 'Replace roster' }).click();
-  const replace = page.getByRole('dialog', { name: 'Replace the roster?' });
-  await expect(replace).toContainText('1 student now, 1 after. The 1 not in the file lose access and are taken out of the contest at once.');
-  await expect(replace.getByRole('button', { name: 'Cancel' })).toBeFocused();
-  await replace.getByRole('button', { name: 'Replace roster' }).click();
-  await expect.poll(() => api.rosterPuts.length).toBe(1);
-  expect(api.rosterPuts[0]).toBe('email,name,roll_number,section\nravi@college.edu,Ravi Kumar,21CS002,B\n');
-  await page.getByText('Show the current roster').click();
-  await expect(page.getByText('asha@college.edu')).toBeVisible();
 
 });
 
@@ -708,7 +671,7 @@ test('End the contest now says what happens and sets the end to now (P3 O5)', as
   await expect.poll(() => api.settingsPuts.length).toBe(1);
   const body = api.settingsPuts[0];
   // Every other setting is sent as it was; the end moves to now and the unstarted freeze goes.
-  expect(body).toMatchObject({ slug: 'week-6', freeze_minutes: 0, languages: ['cpp17', 'python3'], published: true });
+  expect(body).toMatchObject({ title: 'Week 6 contest', freeze_minutes: 0, languages: ['cpp17', 'python3'], published: true });
   expect(Math.abs(Number(body.ends_at) - before)).toBeLessThan(15_000);
   await expect(toasts(page).getByText('Ended the contest', { exact: true })).toBeVisible();
 });
@@ -798,7 +761,7 @@ test('a contest asks for a reason before it takes an AI problem nobody solved', 
   await expect(reason).toHaveCount(0);
 });
 
-test('results switch boards, link the exports, release a held board and save the editorial', async ({ page }) => {
+test('results switch boards, link the exports, reveal a held board and open similar code', async ({ page }) => {
   const api = await mockApi(page, { who: 'admin', phase: 'after', holdReveal: true });
   await page.goto('/admin/contests/4/results');
   await expect(page.getByText('Final standings.')).toBeVisible();
@@ -808,136 +771,32 @@ test('results switch boards, link the exports, release a held board and save the
   await expect(page.getByRole('link', { name: 'Download JSON' })).toHaveAttribute('href', '/api/admin/contests/4/export.json');
   await expect(page.getByText('8 students scored 40')).toBeAttached();
   await expect(page.getByText('Students still see the frozen board.', { exact: false })).toBeVisible();
-  await page.getByRole('button', { name: 'Release the full board' }).click();
-  const confirmRelease = page.getByRole('dialog', { name: 'Release the full board?' });
-  await expect(confirmRelease).toContainText('This cannot be undone.');
-  await expect(confirmRelease.getByRole('button', { name: 'Cancel' })).toBeFocused();
-  await confirmRelease.getByRole('button', { name: 'Release the full board' }).click();
+  // The animated walk and the editorial are not offered (V3-16): Reveal is one button.
+  await expect(page.getByRole('button', { name: 'Start the reveal' })).toHaveCount(0);
+  await expect(page.getByRole('heading', { name: 'Editorial' })).toHaveCount(0);
+  await page.getByRole('button', { name: 'Reveal', exact: true }).click();
+  const confirmReveal = page.getByRole('dialog', { name: 'Reveal the full board?' });
+  await expect(confirmReveal).toContainText('This cannot be undone.');
+  await expect(confirmReveal.getByRole('button', { name: 'Cancel' })).toBeFocused();
+  await confirmReveal.getByRole('button', { name: 'Reveal', exact: true }).click();
   await expect(page.getByText('Students still see the frozen board.', { exact: false })).toBeHidden();
   await expect.poll(() => api.releases).toBe(1);
-  await page.getByRole('button', { name: 'Publish editorial' }).click();
-  await expect.poll(() => api.editorials).toEqual([{ editorial_md: '## A\n\nUse long long.', published: true }]);
-  await expect(page.getByText('Published: students see it after the contest.')).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Unpublish editorial' })).toBeVisible();
+  await expect(page.getByText('Revealed. Students see the full board.')).toBeVisible();
+  await expect(page.getByLabel('Full', { exact: true })).toBeChecked();
+  await expect(page.getByText('Final standings.')).toBeVisible();
+  await page.getByRole('link', { name: 'Similar code' }).click();
+  await expect(page).toHaveURL('/admin/contests/4/integrity');
 });
 
-test('the reveal enters full screen on open and leaves it on exit', async ({ page }) => {
-  await mockApi(page, { who: 'admin', phase: 'after' });
-  await page.setViewportSize({ width: 1440, height: 900 });
+test('similar code waits for the end, and no contest has an Integrity tab (V3-16)', async ({ page }) => {
+  await mockApi(page, { who: 'admin', phase: 'during' });
   await page.goto('/admin/contests/4/results');
-  await page.getByRole('button', { name: 'Start the reveal' }).click();
-  const reveal = page.getByRole('dialog', { name: 'Week 6 contest' });
-  await expect(reveal).toBeVisible();
-  await expect.poll(() => page.evaluate(() => document.fullscreenElement?.tagName ?? null)).toBe('HTML');
-  await reveal.getByRole('button', { name: 'Close the reveal' }).click();
-  await expect(reveal).toBeHidden();
-  await expect.poll(() => page.evaluate(() => document.fullscreenElement)).toBeNull();
-});
-
-for (const motion of ['no-preference', 'reduce'] as const) {
-  test(`the reveal walks from the bottom one row per key press (${motion})`, async ({ page }) => {
-    await page.emulateMedia({ reducedMotion: motion });
-    await mockApi(page, { who: 'admin', phase: 'after' });
-    await page.setViewportSize({ width: 1440, height: 900 });
-    await page.goto('/admin/contests/4/results');
-    await page.getByRole('button', { name: 'Start the reveal' }).click();
-    const reveal = page.getByRole('dialog', { name: 'Week 6 contest' });
-    await expect(reveal).toBeVisible();
-    const names = () => reveal.locator('.rows .row .name').allTextContents();
-    expect(await names()).toEqual(['Priya Raman', 'Arjun Mehta', 'Asha Rao', 'Ravi Kumar']);
-    await expect(reveal.getByText('2 rows left.', { exact: false })).toBeVisible();
-    await expect(reveal.locator('.row.next-row .name')).toHaveText('Asha Rao');
-    // The next row is marked in muted ink; the action colour is kept for the row that just moved (C6).
-    await expect(reveal.locator('.row.just-moved')).toHaveCount(0);
-    await page.screenshot({ path: `${shots()}reveal-start-1440-${motion}.png` });
-
-    // Record each row that is marked as moving, with its stacking order, as it happens.
-    await reveal.evaluate((el) => {
-      const seen: string[] = [];
-      (window as unknown as { movingSeen: string[] }).movingSeen = seen;
-      new MutationObserver(() => {
-        for (const row of el.querySelectorAll<HTMLElement>('.row.moving')) seen.push(`${row.querySelector('.name')?.textContent} ${getComputedStyle(row).zIndex}`);
-      }).observe(el, { subtree: true, attributes: true, attributeFilter: ['class'] });
-    });
-    await page.keyboard.press('Space');
-    await expect.poll(names).toEqual(['Priya Raman', 'Asha Rao', 'Arjun Mehta', 'Ravi Kumar']);
-    await expect(reveal.locator('[aria-live="polite"]')).toHaveText('Asha Rao moves from 3rd to 2nd with 200 points.');
-    // The climbing row is drawn above the row it passes while it slides (no move to draw with reduced motion).
-    const seen = () => page.evaluate(() => [...new Set((window as unknown as { movingSeen: string[] }).movingSeen)]);
-    if (motion === 'no-preference') await expect.poll(seen).toEqual(['Asha Rao 1']);
-    else expect(await seen()).toEqual([]);
-    await expect(reveal.locator('.row.moving')).toHaveCount(0);
-    if (motion === 'reduce') await expect(reveal.locator('.row.flash .name')).toHaveText('Asha Rao');
-    await expect(reveal.locator('.board[data-stepping]')).toHaveCount(0);
-    await expect(reveal.locator('.row').filter({ hasText: 'Asha Rao' }).locator('.rank')).toHaveText('2');
-    await expect(reveal.locator('.row.just-moved .name')).toHaveText('Asha Rao');
-    await page.screenshot({ path: `${shots()}reveal-step-1440-${motion}.png` });
-
-    // The left arrow undoes the step, the right arrow does it again.
-    await page.keyboard.press('ArrowLeft');
-    await expect.poll(names).toEqual(['Priya Raman', 'Arjun Mehta', 'Asha Rao', 'Ravi Kumar']);
-    await page.keyboard.press('ArrowRight');
-    await expect.poll(names).toEqual(['Priya Raman', 'Asha Rao', 'Arjun Mehta', 'Ravi Kumar']);
-    await expect(reveal.locator('.board[data-stepping]')).toHaveCount(0);
-
-    // Leaving keeps the place; opening again resumes.
-    await page.keyboard.press('Escape');
-    await expect(reveal).toBeHidden();
-    const resume = page.getByRole('button', { name: 'Resume the reveal' });
-    await expect(resume).toBeFocused();
-    await resume.click();
-    await expect.poll(names).toEqual(['Priya Raman', 'Asha Rao', 'Arjun Mehta', 'Ravi Kumar']);
-
-    await page.keyboard.press('ArrowRight');
-    await expect(reveal.getByText('Every result is shown.', { exact: false })).toBeVisible();
-    await expect(reveal.getByRole('button', { name: 'Show next' })).toHaveCount(0);
-    await page.screenshot({ path: `${shots()}reveal-done-1440-${motion}.png` });
-
-    // Space on Close the reveal closes instead of stepping.
-    await reveal.getByRole('button', { name: 'Close the reveal' }).focus();
-    await page.keyboard.press('Space');
-    await expect(reveal).toBeHidden();
-    await resume.click();
-    await reveal.getByRole('button', { name: 'Start over' }).click();
-    await expect.poll(names).toEqual(['Priya Raman', 'Arjun Mehta', 'Asha Rao', 'Ravi Kumar']);
-  });
-}
-
-test('the reveal skips to the top 10 and releases a held board from its end (P3 F6.4)', async ({ page }) => {
-  const api = await mockApi(page, { who: 'admin', phase: 'after', revealBoard: 'long', holdReveal: true });
-  await page.setViewportSize({ width: 1440, height: 900 });
-  await page.goto('/admin/contests/4/results');
-  await page.getByRole('button', { name: 'Start the reveal' }).click();
-  const reveal = page.getByRole('dialog', { name: 'Week 6 contest' });
-  await expect(reveal.getByText('14 rows left.', { exact: false })).toBeVisible();
-  await reveal.getByRole('button', { name: 'Skip to the top 10' }).click();
-  await expect(reveal.getByText('10 rows left.', { exact: false })).toBeVisible();
-  await expect(reveal.getByRole('button', { name: 'Skip to the top 10' })).toHaveCount(0);
-  await expect(reveal.locator('.row.next-row .rank')).toHaveText('10');
-  for (let i = 0; i < 10; i++) {
-    await page.keyboard.press('Space');
-    const n = 9 - i;
-    await expect(reveal.getByText(n === 0 ? 'Every result is shown.' : n === 1 ? '1 row left.' : `${n} rows left.`, { exact: false })).toBeVisible();
-    await expect(reveal.locator('.board[data-stepping]')).toHaveCount(0);
-  }
-  await expect(reveal.getByText('Every result is shown.', { exact: false })).toBeVisible();
-  await reveal.getByRole('button', { name: 'Release the full board' }).click();
-  await page.getByRole('dialog', { name: 'Release the full board?' }).getByRole('button', { name: 'Release the full board' }).click();
-  await expect.poll(() => api.releases).toBe(1);
-  await expect(reveal.getByRole('button', { name: 'Release the full board' })).toHaveCount(0);
-});
-
-test('a board that was never frozen says there is nothing to reveal (P3 O8)', async ({ page }) => {
-  await mockApi(page, { who: 'admin', phase: 'after', revealBoard: 'nothing' });
-  await page.setViewportSize({ width: 1440, height: 900 });
-  await page.goto('/admin/contests/4/results');
-  await page.getByRole('button', { name: 'Start the reveal' }).click();
-  const reveal = page.getByRole('dialog', { name: 'Week 6 contest' });
-  await expect(reveal.getByText('Nothing to reveal: the board was never frozen, so these are the final standings.')).toBeVisible();
-  await expect(reveal.getByRole('heading', { name: 'Week 6 contest' })).toBeFocused();
-  // The board is as tall as its rows, not the screen.
-  const board = await reveal.locator('.board').boundingBox();
-  expect(board!.height).toBeLessThan(400);
+  await expect(page.getByRole('heading', { name: 'Standings' })).toBeVisible();
+  const nav = page.getByRole('navigation', { name: 'Contest' });
+  await expect(nav.getByRole('link')).toHaveText([/^Settings/, /^Console/, /^Results/, 'Student view']);
+  await expect(page.getByRole('link', { name: 'Similar code' })).toHaveCount(0);
+  // Without a held board there is nothing to reveal.
+  await expect(page.getByRole('button', { name: 'Reveal', exact: true })).toHaveCount(0);
 });
 
 test('after the end, a held board gives the place only and says when it updates', async ({ page }) => {
@@ -1122,8 +981,8 @@ test('closing the shortcuts list gives focus to the heading when the page loaded
   await expect(page.getByRole('heading', { level: 1 })).toBeFocused();
 });
 
-test('keyboard only: an organiser edits a contest, runs the console and walks the reveal', async ({ page }) => {
-  const api = await mockApi(page, { who: 'admin', phase: 'after' });
+test('keyboard only: an organiser edits a contest, runs the console and reveals the board', async ({ page }) => {
+  const api = await mockApi(page, { who: 'admin', phase: 'after', holdReveal: true });
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto('/admin/contests');
   await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
@@ -1169,25 +1028,19 @@ test('keyboard only: an organiser edits a contest, runs the console and walks th
   await expect(page.locator('#ext-error')).toHaveText('Choose a student.');
   await expect(page.locator('#ext-user')).toBeFocused();
 
-  // Results and the reveal, driven by keys from start to end and back.
+  // Results: Reveal and its confirmation from the keyboard, then Similar code.
   await page.locator('main h1').focus();
   await activate(page, page.getByRole('link', { name: 'Results', exact: true }));
   await expect(page).toHaveURL('/admin/contests/4/results');
-  await activate(page, page.getByRole('button', { name: 'Start the reveal' }));
-  const reveal = page.getByRole('dialog', { name: 'Week 6 contest' });
-  await expect(reveal).toBeVisible();
-  await page.keyboard.press('Space');
-  await expect(reveal.locator('.board[data-stepping]')).toHaveCount(0);
-  await page.keyboard.press('Space');
-  await expect(reveal.getByText('Every result is shown.', { exact: false })).toBeVisible();
-  // Next is now off; focus stayed in the dialog, so the keys still work.
-  await expect.poll(() => hasFocus(reveal)).toBe(true);
-  await expect(reveal.locator('.board[data-stepping]')).toHaveCount(0);
-  await page.keyboard.press('ArrowLeft');
-  await expect(reveal.getByText('1 row left.', { exact: false })).toBeVisible();
-  await page.keyboard.press('Escape');
-  await expect(reveal).toBeHidden();
-  await expect(page.getByRole('button', { name: 'Resume the reveal' })).toBeFocused();
+  await activate(page, page.getByRole('button', { name: 'Reveal', exact: true }));
+  const confirmReveal = page.getByRole('dialog', { name: 'Reveal the full board?' });
+  await expect(confirmReveal.getByRole('button', { name: 'Cancel' })).toBeFocused();
+  await expect.poll(() => hasFocus(confirmReveal)).toBe(true);
+  await activate(page, confirmReveal.getByRole('button', { name: 'Reveal', exact: true }));
+  await expect.poll(() => api.releases).toBe(1);
+  await expect(page.getByText('Revealed. Students see the full board.')).toBeVisible();
+  await activate(page, page.getByRole('link', { name: 'Similar code' }));
+  await expect(page).toHaveURL('/admin/contests/4/integrity');
 });
 
 // F7: stacked rows on a phone keep their table semantics, and the title
@@ -1218,7 +1071,7 @@ test('publishing a draft asks first, listing the checks, and a refusal names the
   await expect(page.locator('.publish-line')).toContainText('Not published. 1 problem, starts');
   await page.getByRole('button', { name: 'Publish contest' }).click();
   const publish = page.getByRole('dialog', { name: 'Publish Week 6 contest?' });
-  await expect(publish).toContainText('Students on the roster see it in their contest list at once.');
+  await expect(publish).toContainText('Students from the allowed domains see it in their contest list at once.');
   await expect(publish).toContainText('1 problem, all validated.');
   await publish.getByRole('button', { name: 'Publish contest' }).click();
   await expect(page.locator('#publish-error')).toHaveText('Problem B changed or lost its validation since it was added. Validate it and add it again.');

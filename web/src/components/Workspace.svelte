@@ -30,8 +30,7 @@
   clock), `clock` (a snippet, given true for one compact line). For
   contests: `banner` (drawn above the title), `rail` (the problems, given
   the layout), `label` (the problem letter), `context` (the contest title,
-  for the document title), `feedback` ("exam" shows only "Submitted"),
-  `showScores`, `locked` (why Run and Submit are off, unless the server's
+  for the document title), `locked` (why Run and Submit are off, unless the server's
   own `refusal` says it better), `problemScore` (for "your score stays"),
   `used` (for "3 of 15 submissions used"), `minGapS` (the seconds between
   submits), `statementKey` (raised when the statement changed: it reloads,
@@ -80,8 +79,6 @@
     rail?: Snippet<[string]>;
     label?: string;
     context?: string;
-    feedback?: 'subtask' | 'exam';
-    showScores?: boolean;
     locked?: string;
     problemScore?: { score: number | null; max: number } | null;
     used?: { count: number; max: number } | null;
@@ -103,8 +100,6 @@
     rail,
     label = '',
     context = '',
-    feedback = 'subtask',
-    showScores = false,
     locked = '',
     problemScore = null,
     used = null,
@@ -134,15 +129,12 @@
   let alive = true;
   let confirmReset = $state(false);
 
-  const exam = $derived(feedback === 'exam');
-
   const judging = new Judging({
     base: api,
     problemId: () => ws?.problem_id,
     ready: () => loadState === 'ready',
     locked: () => lockText,
     minGapS: () => minGapS,
-    exam: () => exam,
     code: () => ({ language: draft.language, source: draft.source }),
     integrity: () => integrity,
     submitted: () => void draft.save(),
@@ -191,7 +183,7 @@
     if (judging.tab !== 'submissions' && judging.state.run) return runHeadline(judging.state.run).text;
     const c = judging.current;
     if (!c) return '';
-    return exam || c.hidden ? 'Submitted' : headline(c).text;
+    return c.hidden ? 'Submitted' : headline(c).text;
   });
   const rows = $derived(
     layout !== 'wide' ? undefined : resultCollapsed ? 'minmax(0, 1fr) auto 0' : `minmax(0, ${100 - resultShare}fr) auto minmax(0, ${resultShare}fr)`,
@@ -544,8 +536,6 @@
         {judging}
         samples={problem.samples}
         language={draft.language}
-        {exam}
-        {showScores}
         {problemScore}
         locked={lockText}
         sticky={layout === 'wide'}

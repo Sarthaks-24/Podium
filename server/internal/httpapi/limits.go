@@ -8,8 +8,8 @@ import (
 	"time"
 )
 
-// SlowBodyTimeout is how long a route that takes a large upload (a pack,
-// a test zip, a roster) may spend reading its body. Every other request
+// SlowBodyTimeout is how long a route that takes a large upload (a pack
+// or a test zip) may spend reading its body. Every other request
 // must arrive within the server's ReadTimeout (15 s), so a client sending
 // a body a byte at a time cannot hold a connection and its buffer for long.
 const SlowBodyTimeout = 120 * time.Second

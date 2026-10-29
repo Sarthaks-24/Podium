@@ -61,7 +61,6 @@ export interface JudgingOptions {
   /** Why Run and Submit are off, or "". */
   locked: () => string;
   minGapS: () => number;
-  exam: () => boolean;
   code: () => { language: Language; source: string };
   integrity: () => IntegrityRecorder | null;
   /** Called after a submission is accepted (the draft is saved then). */
@@ -113,8 +112,8 @@ export class Judging {
     $effect(() => {
       const s = this.watchId !== null ? this.state.submissions.find((x) => x.id === this.watchId) : undefined;
       if (!s) return;
-      // In exam mode only the submit itself is announced.
-      const text = this.o.exam() || s.hidden ? 'Submitted.' : announcement(s);
+      // A hidden result announces only the submit itself.
+      const text = s.hidden ? 'Submitted.' : announcement(s);
       // Keyed by submission, so a second "Submitted." is spoken too.
       if (`${s.id}:${text}` !== this.announced) {
         this.announced = `${s.id}:${text}`;

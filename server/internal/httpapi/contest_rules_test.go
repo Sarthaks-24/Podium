@@ -1,6 +1,6 @@
 package httpapi
 
-// Contest rules over HTTP: access (roster, domain, organisers, ids from
+// Contest rules over HTTP: access (domain, organisers, ids from
 // another contest), time windows with extensions, limits, practice, exam
 // feedback, what students may see, and the event stream's contest events.
 
@@ -75,26 +75,18 @@ func TestM4AccessAndCrossContestIDs(t *testing.T) {
 	owner := s.signedIn("owner@college.edu", "Owner")
 	pa := s.importProblem(owner, "plus-a")
 	start := time.Now().Add(time.Hour).Truncate(time.Minute)
-	c1 := s.createContest(owner, "c1", start, map[string]int64{"A": pa}, map[string]any{"access": "roster"})
+	c1 := s.createContest(owner, "c1", start, map[string]int64{"A": pa}, nil)
 	c2 := s.createContest(owner, "c2", start, map[string]int64{"A": pa}, nil)
-	roster := "email,name,roll_number,section\nasha@college.edu,Asha R,21CS001,A\n"
-	if code, out := owner.raw("PUT", fmt.Sprintf("/api/admin/contests/%d/roster", c1), "text/csv", []byte(roster), s.srv.URL); code != 200 || out["roster_count"] != float64(1) || out["added"] != float64(1) || out["removed"] != float64(0) {
-		t.Fatalf("roster %d %v", code, out)
-	}
 	asha := s.signedIn("asha@college.edu", "")
 	bilal := s.signedIn("bilal@college.edu", "Bilal")
 
-	// Roster: on the list may enter, others may not; the list hides
-	// contests the student cannot enter.
+	// The allowed domains are the roster (V3-15): any student may enter.
 	if code, _ := asha.do("GET", "/api/contests/c1", nil, ""); code != 200 {
-		t.Errorf("rostered student: %d", code)
-	}
-	if code, _ := bilal.do("GET", "/api/contests/c1", nil, ""); code != 403 {
-		t.Errorf("student not on the roster: %d", code)
+		t.Errorf("student: %d", code)
 	}
 	_, list := bilal.do("GET", "/api/contests", nil, "")
-	if n := len(list["upcoming"].([]any)); n != 1 {
-		t.Errorf("bilal's list has %d upcoming, want only c2: %v", n, list)
+	if n := len(list["upcoming"].([]any)); n != 2 {
+		t.Errorf("bilal's list has %d upcoming, want both: %v", n, list)
 	}
 	// Domain access: any signed-in student.
 	if code, _ := bilal.do("GET", "/api/contests/c2", nil, ""); code != 200 {
@@ -134,9 +126,9 @@ func TestM4AccessAndCrossContestIDs(t *testing.T) {
 	}
 
 	// Students never see emails: Asha has no account name, so the board
-	// shows her roster name.
+	// names her by number.
 	_, board := owner.do("GET", fmt.Sprintf("/api/admin/contests/%d/standings", c1), nil, "")
-	if rows := board["rows"].([]any); len(rows) != 1 || rows[0].(map[string]any)["name"] != "Asha R" {
+	if rows := board["rows"].([]any); len(rows) != 1 || !strings.HasPrefix(rows[0].(map[string]any)["name"].(string), "Student ") {
 		t.Errorf("board names: %v", board["rows"])
 	}
 	_, detail := asha.do("GET", "/api/contests/c1", nil, "")
@@ -166,54 +158,6 @@ func TestQuestionsStayOpenInPractice(t *testing.T) {
 	}
 	if code, out := asha.do("POST", "/api/contests/shut/clarifications", map[string]any{"question": "Why does B time out?"}, s.srv.URL); code != 403 || out["error"].(map[string]any)["code"] != "contest_over" {
 		t.Errorf("question after an end without practice: %d %v", code, out)
-	}
-}
-
-func TestM4WindowModeExtensionsAndBoard(t *testing.T) {
-	s := newSite(t)
-	owner := s.signedIn("owner@college.edu", "Owner")
-	pa := s.importProblem(owner, "plus-a")
-	start := time.Now().Add(time.Hour).Truncate(time.Minute)
-	id := s.createContest(owner, "win", start, map[string]int64{"A": pa},
-		map[string]any{"start_mode": "window", "duration_minutes": 30, "practice_after_end": false})
-	asha := s.signedIn("asha@college.edu", "Asha")
-	s.at(start, 10)
-	// Without pressing Start there is no clock and no problem.
-	if code, _ := asha.do("GET", "/api/contests/win/problems/A", nil, ""); code != 403 {
-		t.Errorf("problem before start: %d", code)
-	}
-	if code, _ := asha.do("POST", "/api/contests/win/start", map[string]any{"accept_honour": false}, s.srv.URL); code != 400 {
-		t.Errorf("start without accepting: %d", code)
-	}
-	code, c := asha.do("POST", "/api/contests/win/start", map[string]any{"accept_honour": true}, s.srv.URL)
-	w := c["my_window"].(map[string]any)
-	if code != 200 || w["ends_at"].(float64)-w["started_at"].(float64) != float64(30*time.Minute/time.Millisecond) {
-		t.Fatalf("window %d %v", code, c)
-	}
-	// The board stays closed until her window closes.
-	if code, out := asha.do("GET", "/api/contests/win/standings", nil, ""); code != 403 || out["error"].(map[string]any)["code"] != "board_closed" {
-		t.Errorf("board during the window: %d %v", code, out)
-	}
-	// 15 minutes extra: her window now ends at 55.
-	if code, out := owner.do("PUT", fmt.Sprintf("/api/admin/contests/%d/extensions/%d", id, asha.userID()), map[string]any{"minutes": 15, "reason": "laptop"}, s.srv.URL); code != 200 {
-		t.Fatalf("extension %d %v", code, out)
-	}
-	s.at(start, 50)
-	if code, out := s.submit(asha, "win", "A", "correct"); code != 202 {
-		t.Errorf("submit inside the extension: %d %v", code, out)
-	}
-	s.at(start, 56)
-	code, out := s.submit(asha, "win", "A", "correct")
-	if code != 403 || out["error"].(map[string]any)["message"] != "The contest has ended." {
-		t.Errorf("submit after the window: %d %v", code, out)
-	}
-	if code, out := asha.do("GET", "/api/contests/win/standings", nil, ""); code != 200 || out["variant"] != "full" {
-		t.Errorf("board after the window: %d %v", code, out)
-	}
-	// Extending the whole contest moves the close.
-	code, ext := owner.do("POST", fmt.Sprintf("/api/admin/contests/%d/extend", id), map[string]any{"minutes": 10}, s.srv.URL)
-	if code != 200 || ext["close_at"] != float64(start.Add(130*time.Minute).UnixMilli()) {
-		t.Errorf("extend %d %v", code, ext)
 	}
 }
 
@@ -265,75 +209,6 @@ func TestM4LimitsAndPractice(t *testing.T) {
 	_, detail := asha.do("GET", "/api/contests/lim", nil, "")
 	if detail["state"] != "practice" {
 		t.Errorf("state after the end: %v", detail["state"])
-	}
-}
-
-func TestM4ExamFeedbackHidesResults(t *testing.T) {
-	s := newSite(t)
-	owner := s.signedIn("owner@college.edu", "Owner")
-	pa := s.importProblem(owner, "plus-a")
-	start := time.Now().Add(time.Hour).Truncate(time.Minute)
-	s.createContest(owner, "exam", start, map[string]int64{"A": pa}, map[string]any{"feedback_mode": "exam"})
-	asha := s.signedIn("asha@college.edu", "Asha")
-	s.at(start, 1)
-	asha.do("POST", "/api/contests/exam/start", map[string]any{"accept_honour": true}, s.srv.URL)
-	stream, stop := openStream(t, asha, "browser-1")
-	defer stop()
-	waitFor(t, stream, "clock")
-
-	body := map[string]any{"language": "cpp17", "source": "correct", "client_key": "exam-1"}
-	code, sub := asha.do("POST", "/api/contests/exam/problems/A/submit", body, s.srv.URL)
-	if code != 202 || sub["hidden"] != true || sub["state"] != "submitted" {
-		t.Fatalf("submit %d %v", code, sub)
-	}
-	s.judgeAll()
-	id := strconv.Itoa(int(sub["id"].(float64)))
-	check := func(what string, v map[string]any) {
-		t.Helper()
-		if v["hidden"] != true || v["verdict"] != "" || v["score"] != float64(0) || len(v["subtasks"].([]any)) != 0 || v["max_time_ms"] != float64(0) {
-			t.Errorf("%s shows results in exam mode: %v", what, v)
-		}
-	}
-	_, got := asha.do("GET", "/api/submissions/"+id, nil, "")
-	check("GET submission", got)
-	_, dup := asha.do("POST", "/api/contests/exam/problems/A/submit", body, s.srv.URL)
-	check("repeated client key", dup)
-	_, ws := asha.do("GET", "/api/contests/exam/problems/A", nil, "")
-	check("workspace list", ws["submissions"].([]any)[0].(map[string]any))
-	_, detail := asha.do("GET", "/api/contests/exam", nil, "")
-	if detail["my_score"] != nil || detail["problems"].([]any)[0].(map[string]any)["my_score"] != nil {
-		t.Errorf("contest page shows a score in exam mode: %v", detail)
-	}
-	if code, _ := asha.do("GET", "/api/contests/exam/standings", nil, ""); code != 403 {
-		t.Errorf("board in exam mode during the contest: %d", code)
-	}
-	// No submission or standings event reaches the student while results
-	// are hidden: its arrival time would say when judging finished.
-	quiet := time.After(1500 * time.Millisecond)
-	for done := false; !done; {
-		select {
-		case ev := <-stream:
-			if ev.typ == "submission" || ev.typ == "standings" {
-				t.Errorf("exam mode sent a %s event: %s", ev.typ, ev.data)
-			}
-		case <-quiet:
-			done = true
-		}
-	}
-	// After the end: the score, coarse figures and graded rounding.
-	s.at(start, 121)
-	_, got = asha.do("GET", "/api/submissions/"+id, nil, "")
-	if got["hidden"] != false || got["score"] != float64(100) || got["max_time_ms"] != float64(100) || got["max_memory_kb"] != float64(16384) {
-		t.Errorf("after the end: %v", got)
-	}
-	st := got["subtasks"].([]any)[0].(map[string]any)["tests"].([]any)[0].(map[string]any)
-	if st["memory_kb"] != float64(0) || st["time_ms"] != float64(100) {
-		t.Errorf("hidden test figures for a student: %v", st)
-	}
-	// Organisers see every figure.
-	_, full := owner.do("GET", "/api/submissions/"+id, nil, "")
-	if full["max_time_ms"] != float64(140) || full["max_memory_kb"] != float64(5123) {
-		t.Errorf("organiser view: %v", full)
 	}
 }
 
@@ -410,12 +285,9 @@ func TestM4ExportEscapesAndStats(t *testing.T) {
 	owner := s.signedIn("owner@college.edu", "Owner")
 	pa := s.importProblem(owner, "plus-a")
 	start := time.Now().Add(time.Hour).Truncate(time.Minute)
-	id := s.createContest(owner, "exp", start, map[string]int64{"A": pa}, map[string]any{"access": "roster"})
-	roster := "email,name,roll_number,section\nasha@college.edu,\"=HYPERLINK(\"\"x\"\")\",+91,@A\n"
-	if code, out := owner.raw("PUT", fmt.Sprintf("/api/admin/contests/%d/roster", id), "text/csv", []byte(roster), s.srv.URL); code != 200 {
-		t.Fatalf("roster %d %v", code, out)
-	}
-	asha := s.signedIn("asha@college.edu", "")
+	id := s.createContest(owner, "exp", start, map[string]int64{"A": pa}, nil)
+	// The name comes from the account (the roster was cut, V3-15); a formula in it is escaped.
+	asha := s.signedIn("asha@college.edu", `=HYPERLINK("x")`)
 	s.at(start, 1)
 	asha.do("POST", "/api/contests/exp/start", map[string]any{"accept_honour": true}, s.srv.URL)
 	s.submit(asha, "exp", "A", "int32")
@@ -428,10 +300,10 @@ func TestM4ExportEscapesAndStats(t *testing.T) {
 	resp.Body.Close()
 	lines := strings.Split(strings.TrimSpace(string(body)), "\n")
 	if resp.Header.Get("Content-Type") != "text/csv; charset=utf-8" || len(lines) != 2 ||
-		lines[0] != "rank,name,email,roll_number,section,started,total,A" {
+		lines[0] != "rank,name,email,started,total,A" {
 		t.Fatalf("csv %q", body)
 	}
-	if !strings.HasPrefix(lines[1], `1,"'=HYPERLINK(""x"")",asha@college.edu,'+91,'@A,`) || !strings.HasSuffix(lines[1], ",40,40") {
+	if !strings.HasPrefix(lines[1], `1,"'=HYPERLINK(""x"")",asha@college.edu,`) || !strings.HasSuffix(lines[1], ",40,40") {
 		t.Errorf("csv row %q", lines[1])
 	}
 	code, stats := owner.do("GET", fmt.Sprintf("/api/admin/contests/%d/stats", id), nil, "")
@@ -442,10 +314,10 @@ func TestM4ExportEscapesAndStats(t *testing.T) {
 	if code, _ := owner.do("GET", fmt.Sprintf("/api/admin/contests/%d/export.json", id), nil, ""); code != 200 {
 		t.Errorf("json export %d", code)
 	}
-	// Clone copies settings and problems with new dates.
-	code, cl := owner.do("POST", fmt.Sprintf("/api/admin/contests/%d/clone", id), map[string]any{"slug": "exp-2",
+	// Clone copies settings and problems with new dates; its slug comes from the title, made unique.
+	code, cl := owner.do("POST", fmt.Sprintf("/api/admin/contests/%d/clone", id), map[string]any{
 		"starts_at": start.Add(48 * time.Hour).UnixMilli(), "ends_at": start.Add(50 * time.Hour).UnixMilli()}, s.srv.URL)
-	if code != 201 || cl["access"] != "roster" || len(cl["problems"].([]any)) != 1 || cl["published"] != false || cl["roster_count"] != float64(0) {
+	if code != 201 || cl["slug"] != "exp-2" || len(cl["problems"].([]any)) != 1 || cl["published"] != false {
 		t.Errorf("clone %d %v", code, cl)
 	}
 }

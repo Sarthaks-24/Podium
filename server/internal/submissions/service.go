@@ -103,8 +103,6 @@ type Scope struct {
 	MaxPerProblem int
 	// Practice marks submissions made after the contest ended.
 	Practice bool
-	// NoStopOnSample keeps judging after a failing sample.
-	NoStopOnSample bool
 	// Languages limits the languages allowed; empty allows all four.
 	Languages []string
 	// View is how the viewer sees the submissions listed in the workspace
@@ -435,7 +433,7 @@ func (s *Service) Submit(ctx context.Context, r SubmitRequest) (v *SubmissionVie
 		return nil, false, err
 	}
 	pl := submitPayload(p, id, judgeapi.Program{Language: r.Language, SourceSHA: srcSHA})
-	pl.StopOnSampleFail = !r.Scope.NoStopOnSample
+	pl.StopOnSampleFail = true
 	pl.Reveal = r.Scope.Reveal
 	if p.Checker == problems.CheckerCustom {
 		if pl.Checker.SourceSHA, err = s.Problems.Blobs.Put(ctx, tx, []byte(p.CheckerSource)); err != nil {

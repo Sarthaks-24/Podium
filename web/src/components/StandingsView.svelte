@@ -9,8 +9,7 @@
   display figure, StandingsTable with their row tinted and "Jump to you",
   and one legend line, the rest behind "How to read the board" (S8). When a
   refetch moves the student's own place or score, the announcer says so
-  (S6, X1). A window-mode contest answers 403 until the student's window
-  closes, and the view says the board opens then. The board refetches when
+  (S6, X1). A refusal (403) shows the server's sentence. The board refetches when
   the event stream says its version changed, at most once every 3 s.
   Props: `slug` and `oncontest` (given the contest once it loads).
 -->
@@ -29,9 +28,7 @@
 
   let { slug, oncontest }: { slug: string; oncontest?: (c: Contest) => void } = $props();
 
-  const CLOSED = 'The standings open when the contest closes.';
-
-  let loadState = $state<'loading' | 'ready' | 'closed' | 'forbidden' | 'missing' | 'error'>('loading');
+  let loadState = $state<'loading' | 'ready' | 'forbidden' | 'missing' | 'error'>('loading');
   let message = $state('');
   let contest = $state.raw<Contest | null>(null);
   let standings = $state.raw<Standings | null>(null);
@@ -67,9 +64,8 @@
       if (e instanceof ApiError && e.status === 401) return;
       if (quiet && loadState === 'ready') return;
       if (e instanceof ApiError && e.status === 403) {
-        const closed = e.code === 'board_closed' || e.message === CLOSED || /window closes|contest closes/i.test(e.message);
-        loadState = closed ? 'closed' : 'forbidden';
-        message = closed ? CLOSED : e.message;
+        loadState = 'forbidden';
+        message = e.message;
       } else if (e instanceof ApiError && e.status === 404) {
         loadState = 'missing';
       } else {
@@ -128,9 +124,6 @@
 
 {#if loadState === 'loading'}
   <PageState kind="loading" message="Loading the standings" />
-{:else if loadState === 'closed'}
-  <p class="lead">{CLOSED}</p>
-  <p class="muted small">Everyone starts at a different time in this contest, so the standings stay hidden until everyone has had their time.</p>
 {:else if loadState === 'forbidden'}
   <p class="lead">{message}</p>
 {:else if loadState === 'missing'}
@@ -164,12 +157,6 @@
   .lead {
     margin-top: var(--space-4);
     max-width: var(--measure-narrow);
-  }
-
-  .small {
-    margin-top: var(--space-2);
-    max-width: var(--measure-narrow);
-    font-size: var(--fs-0);
   }
 
   .status {

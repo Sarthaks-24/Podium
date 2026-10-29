@@ -4,8 +4,7 @@ package httpapi
 // admins organise every contest; a contest's co-organisers organise only
 // that one. Everyone else gets a 404, so contest ids cannot be probed.
 // Creating, cloning, archiving, choosing problems and co-organisers, and
-// everything that changes a running contest's results (the roster,
-// extensions, extend, pause and resume, rejudge) need the admin role. A
+// everything that changes a running contest's results (extensions, extend, pause and resume, rejudge) need the admin role. A
 // co-organiser whose site role is student cannot change the rules once the
 // contest starts, and sees results only as a student would (security
 // council S1, contests/coorganiser.go). Every change that can affect
@@ -16,8 +15,6 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"io"
-	"mime"
 	"net/http"
 	"strconv"
 	"strings"
@@ -56,15 +53,9 @@ type adminContestJSON struct {
 	StartsAt           int64                `json:"starts_at"`
 	EndsAt             int64                `json:"ends_at"`
 	CloseAt            int64                `json:"close_at"`
-	StartMode          string               `json:"start_mode"`
-	DurationMinutes    int                  `json:"duration_minutes"`
 	FreezeMinutes      int                  `json:"freeze_minutes"`
-	ScoringMode        string               `json:"scoring_mode"`
-	Access             string               `json:"access"`
-	FeedbackMode       string               `json:"feedback_mode"`
 	Published          bool                 `json:"published"`
 	PracticeAfterEnd   bool                 `json:"practice_after_end"`
-	StopOnSampleFail   bool                 `json:"stop_on_sample_fail"`
 	MinGapS            int                  `json:"min_gap_s"`
 	MaxPerProblem      int                  `json:"max_per_problem"`
 	Languages          []string             `json:"languages"`
@@ -80,7 +71,6 @@ type adminContestJSON struct {
 	State              string               `json:"state"`
 	Problems           []adminProblemJSON   `json:"problems"`
 	Extensions         []contests.Extension `json:"extensions,omitempty"`
-	RosterCount        int                  `json:"roster_count"`
 	CreatedAt          int64                `json:"created_at"`
 	UpdatedAt          int64                `json:"updated_at"`
 	ServerNow          int64                `json:"server_now"`
@@ -104,9 +94,8 @@ func (d Deps) adminContestBase(c *contests.Contest) *adminContestJSON {
 	now := d.Contests.Clock()
 	out := &adminContestJSON{ID: c.ID, Slug: c.Slug, Title: c.Title, DescriptionMD: c.Description,
 		StartsAt: c.Schedule.StartsAt.UnixMilli(), EndsAt: c.Schedule.EndsAt.UnixMilli(), CloseAt: c.Schedule.Close().UnixMilli(),
-		StartMode: c.Schedule.Mode, DurationMinutes: int(c.Schedule.Duration / time.Minute), FreezeMinutes: int(c.Schedule.Freeze / time.Minute),
-		ScoringMode: c.Scoring, Access: c.Access, FeedbackMode: c.Feedback, Published: c.Published,
-		PracticeAfterEnd: c.PracticeAfterEnd, StopOnSampleFail: c.StopOnSampleFail, MinGapS: int(c.MinGap / time.Second),
+		FreezeMinutes: int(c.Schedule.Freeze / time.Minute), Published: c.Published,
+		PracticeAfterEnd: c.PracticeAfterEnd, MinGapS: int(c.MinGap / time.Second),
 		MaxPerProblem: c.MaxPerProblem, Languages: c.Languages, HonourText: c.HonourText, DefaultHonourText: contests.DefaultHonour,
 		HoldReveal: c.HoldReveal, EditorialMD: c.Editorial, EditorialPublished: c.EditorialPublished, Paused: c.Paused,
 		ExtendedMinutes: int(c.Schedule.Extended / time.Minute), RevealedAt: millis(c.RevealedAt), Archived: c.Archived,
@@ -123,8 +112,8 @@ func (d Deps) adminContestBase(c *contests.Contest) *adminContestJSON {
 	return out
 }
 
-// adminContestOut is the whole AdminContest: the base plus extensions,
-// the roster count and the queue's health.
+// adminContestOut is the whole AdminContest: the base plus extensions and
+// the queue's health.
 func (d Deps) adminContestOut(ctx context.Context, c *contests.Contest) (*adminContestJSON, error) {
 	out := d.adminContestBase(c)
 	var err error
@@ -137,9 +126,6 @@ func (d Deps) adminContestOut(ctx context.Context, c *contests.Contest) (*adminC
 		for i := range out.Extensions {
 			out.Extensions[i].Reason = ""
 		}
-	}
-	if out.RosterCount, err = d.Contests.RosterCount(ctx, c.ID); err != nil {
-		return nil, err
 	}
 
 	q, err := d.Contests.QueueHealth(ctx, c.ID)
@@ -214,15 +200,9 @@ type contestEdit struct {
 	DescriptionMD    string   `json:"description_md"`
 	StartsAt         int64    `json:"starts_at"`
 	EndsAt           int64    `json:"ends_at"`
-	StartMode        string   `json:"start_mode"`
-	DurationMinutes  int      `json:"duration_minutes"`
 	FreezeMinutes    int      `json:"freeze_minutes"`
-	ScoringMode      string   `json:"scoring_mode"`
-	Access           string   `json:"access"`
-	FeedbackMode     string   `json:"feedback_mode"`
 	Published        bool     `json:"published"`
 	PracticeAfterEnd bool     `json:"practice_after_end"`
-	StopOnSampleFail bool     `json:"stop_on_sample_fail"`
 	MinGapS          int      `json:"min_gap_s"`
 	MaxPerProblem    int      `json:"max_per_problem"`
 	Languages        []string `json:"languages"`
@@ -232,25 +212,21 @@ type contestEdit struct {
 
 func (e contestEdit) edit() contests.Edit {
 	return contests.Edit{Slug: strings.TrimSpace(e.Slug), Title: e.Title, Description: e.DescriptionMD,
-		StartsAt: time.UnixMilli(e.StartsAt), EndsAt: time.UnixMilli(e.EndsAt), StartMode: e.StartMode,
-		DurationMinutes: e.DurationMinutes, FreezeMinutes: e.FreezeMinutes, Scoring: e.ScoringMode, Access: e.Access,
-		Feedback: e.FeedbackMode, Published: e.Published, PracticeAfterEnd: e.PracticeAfterEnd,
-		StopOnSampleFail: e.StopOnSampleFail, MinGapS: e.MinGapS, MaxPerProblem: e.MaxPerProblem, Languages: e.Languages,
+		StartsAt: time.UnixMilli(e.StartsAt), EndsAt: time.UnixMilli(e.EndsAt),
+		FreezeMinutes: e.FreezeMinutes, Published: e.Published, PracticeAfterEnd: e.PracticeAfterEnd, MinGapS: e.MinGapS, MaxPerProblem: e.MaxPerProblem, Languages: e.Languages,
 		HonourText: e.HonourText, HoldReveal: e.HoldReveal}
 }
 
 func editOf(c *contests.Contest) contestEdit {
 	return contestEdit{Slug: c.Slug, Title: c.Title, DescriptionMD: c.Description, StartsAt: c.Schedule.StartsAt.UnixMilli(),
-		EndsAt: c.Schedule.EndsAt.UnixMilli(), StartMode: c.Schedule.Mode, DurationMinutes: int(c.Schedule.Duration / time.Minute),
-		FreezeMinutes: int(c.Schedule.Freeze / time.Minute), ScoringMode: c.Scoring, Access: c.Access, FeedbackMode: c.Feedback,
-		Published: c.Published, PracticeAfterEnd: c.PracticeAfterEnd, StopOnSampleFail: c.StopOnSampleFail,
+		EndsAt: c.Schedule.EndsAt.UnixMilli(), FreezeMinutes: int(c.Schedule.Freeze / time.Minute),
+		Published: c.Published, PracticeAfterEnd: c.PracticeAfterEnd,
 		MinGapS: int(c.MinGap / time.Second), MaxPerProblem: c.MaxPerProblem, Languages: c.Languages, HonourText: c.HonourText,
 		HoldReveal: c.HoldReveal}
 }
 
 func (d Deps) createContest(w http.ResponseWriter, r *http.Request) {
-	req := contestEdit{StartMode: contests.FixedStart, ScoringMode: contests.BestSubtask, Access: "domain", FeedbackMode: "subtask",
-		PracticeAfterEnd: true, StopOnSampleFail: true, MinGapS: 30, MaxPerProblem: 15,
+	req := contestEdit{PracticeAfterEnd: true, MinGapS: 30, MaxPerProblem: 15,
 		Languages: []string{"cpp17", "java21", "python3", "node22"}}
 	if !decodeJSON(w, r, &req) {
 		return
@@ -351,76 +327,7 @@ func (d Deps) setContestProblems(w http.ResponseWriter, r *http.Request) {
 	d.writeAdminContest(w, r, c.ID, http.StatusOK)
 }
 
-type rosterEntryJSON struct {
-	Email      string `json:"email"`
-	Name       string `json:"name"`
-	RollNumber string `json:"roll_number"`
-	Section    string `json:"section"`
-}
-
-// setRoster replaces the roster from a CSV body (text/csv) or a JSON array.
-// Owners and admins only: the roster decides who may compete.
-func (d Deps) setRoster(w http.ResponseWriter, r *http.Request) {
-	c, ok := d.organisedContest(w, r)
-	if !ok {
-		return
-	}
-	var entries []contests.RosterEntry
-	mt, _, _ := mime.ParseMediaType(r.Header.Get("Content-Type"))
-	switch mt {
-	case "text/csv":
-		body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, 2<<20))
-		if err != nil {
-			WriteError(w, http.StatusRequestEntityTooLarge, "too_large", "A roster file is limited to 2 MB.")
-			return
-		}
-		if entries, err = contests.ParseRoster(bytes.NewReader(body)); err != nil {
-			d.contestError(w, r, err)
-			return
-		}
-	default:
-		var req []rosterEntryJSON
-		if !decodeJSONLimit(w, r, &req, 2<<20) {
-			return
-		}
-		raw := make([]contests.RosterEntry, 0, len(req))
-		for _, e := range req {
-			raw = append(raw, contests.RosterEntry{Email: e.Email, Name: e.Name, RollNumber: e.RollNumber, Section: e.Section})
-		}
-		var err error
-		if entries, err = contests.CheckRoster(raw); err != nil {
-			d.contestError(w, r, err)
-			return
-		}
-	}
-	ch, err := d.Contests.SetRoster(r.Context(), c.ID, entries, actor(r))
-	if err != nil {
-		d.contestError(w, r, err)
-		return
-	}
-	d.Log.Info("contest roster replaced", "by", userFrom(r.Context()).ID, "contest_id", c.ID,
-		"count", ch.Count, "added", ch.Added, "removed", ch.Removed)
-	WriteJSON(w, http.StatusOK, map[string]any{"added": ch.Added, "removed": ch.Removed, "roster_count": ch.Count})
-}
-
-func (d Deps) getRoster(w http.ResponseWriter, r *http.Request) {
-	c, ok := d.organisedContest(w, r)
-	if !ok {
-		return
-	}
-	list, err := d.Contests.Roster(r.Context(), c.ID)
-	if err != nil {
-		d.internalError(w, r, err)
-		return
-	}
-	out := make([]rosterEntryJSON, 0, len(list))
-	for _, e := range list {
-		out = append(out, rosterEntryJSON{Email: e.Email, Name: e.Name, RollNumber: e.RollNumber, Section: e.Section})
-	}
-	WriteJSON(w, http.StatusOK, map[string]any{"roster": out, "count": len(out)})
-}
-
-// setExtension gives one student on the roster, or taking part, extra time.
+// setExtension gives one student taking part extra time.
 // Owners and admins only.
 func (d Deps) setExtension(w http.ResponseWriter, r *http.Request) {
 	c, ok := d.organisedContest(w, r)
@@ -538,8 +445,7 @@ func (d Deps) rejudge(w http.ResponseWriter, r *http.Request) {
 	if !decodeJSON(w, r, &req) {
 		return
 	}
-	rr := submissions.RejudgeRequest{ContestID: c.ID, SubmissionID: req.SubmissionID, By: userFrom(r.Context()).ID,
-		NoStopOnSample: !c.StopOnSampleFail}
+	rr := submissions.RejudgeRequest{ContestID: c.ID, SubmissionID: req.SubmissionID, By: userFrom(r.Context()).ID}
 	var judgedProblem int64
 	check := func(pid int64) bool {
 		for _, p := range c.Problems {
@@ -704,8 +610,8 @@ func (d Deps) adminStandings(w http.ResponseWriter, r *http.Request) {
 }
 
 // withEmails copies the board's rows with each student's email, for the
-// organisers' board: two students may share a name, and a testing-mode or
-// roster-less account has only "Student 12". The copy leaves the cached
+// organisers' board: two students may share a name, and a testing-mode
+// account may have only "Student 12". The copy leaves the cached
 // board untouched.
 func (d Deps) withEmails(ctx context.Context, rows []contests.Row) ([]contests.Row, error) {
 	if len(rows) == 0 {

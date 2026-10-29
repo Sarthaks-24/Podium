@@ -70,7 +70,6 @@ export interface RunStats {
 export interface ReviewUser {
   name: string;
   email: string;
-  roll_number?: string;
 }
 
 export interface ReviewProblem {

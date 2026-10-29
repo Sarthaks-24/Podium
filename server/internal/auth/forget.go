@@ -73,9 +73,8 @@ const removedText = "Removed at the request of the person who asked."
 
 // Forget erases the account with email. With apply false it reports what
 // it would do and changes nothing. The actor on ctx is recorded in the
-// site audit row, which names the account by id and placeholder only. A
-// person on a roster who never signed in has no account: then only the
-// roster rows are erased. An owner account needs allowOwner.
+// site audit row, which names the account by id and placeholder only. An
+// owner account needs allowOwner.
 func (s *Service) Forget(ctx context.Context, email string, apply, allowOwner bool) (ForgetReport, error) {
 	email = strings.ToLower(strings.TrimSpace(email))
 	if email == "" {
@@ -99,10 +98,7 @@ func (s *Service) Forget(ctx context.Context, email string, apply, allowOwner bo
 	err = tx.QueryRowContext(ctx, "SELECT id, email, name, role FROM users WHERE email = ?", email).Scan(&r.UserID, &r.Email, &r.Name, &r.Role)
 	switch {
 	case errors.Is(err, sql.ErrNoRows):
-		// Roster only: a random placeholder, since there is no id.
-		r.Email = email
-		r.Placeholder = "Removed person"
-		r.PlaceholderEmail = "removed-" + strings.ToLower(randomToken(9)) + forgottenDomain
+		return ForgetReport{}, notFound("No account has that email.")
 	case err != nil:
 		return ForgetReport{}, err
 	case r.Role == Owner && !allowOwner:
@@ -115,22 +111,17 @@ func (s *Service) Forget(ctx context.Context, email string, apply, allowOwner bo
 		what, q string
 		args    []any
 	}
-	var steps []step
-	if r.UserID > 0 {
-		steps = []step{
-			{"sessions", "DELETE FROM sessions WHERE user_id = ?", []any{r.UserID}},
-			{"drafts", "DELETE FROM drafts WHERE user_id = ?", []any{r.UserID}},
-			{"integrity events", "DELETE FROM integrity_events WHERE user_id = ?", []any{r.UserID}},
-			{"browser hashes on submissions", "UPDATE submissions SET client_hash = '' WHERE user_id = ? AND client_hash <> ''", []any{r.UserID}},
-			// An extension's reason can be an accommodation, which is
-			// health data (security review 2026-10-20, finding 4).
-			{"extension reasons", "UPDATE contest_extensions SET reason = '' WHERE user_id = ? AND reason <> ''", []any{r.UserID}},
-			{"clarification questions", "UPDATE clarifications SET question = ? WHERE asked_by = ? AND question <> ?",
-				[]any{removedText, r.UserID, removedText}},
-		}
+	steps := []step{
+		{"sessions", "DELETE FROM sessions WHERE user_id = ?", []any{r.UserID}},
+		{"drafts", "DELETE FROM drafts WHERE user_id = ?", []any{r.UserID}},
+		{"integrity events", "DELETE FROM integrity_events WHERE user_id = ?", []any{r.UserID}},
+		{"browser hashes on submissions", "UPDATE submissions SET client_hash = '' WHERE user_id = ? AND client_hash <> ''", []any{r.UserID}},
+		// An extension's reason can be an accommodation, which is
+		// health data (security review 2026-10-20, finding 4).
+		{"extension reasons", "UPDATE contest_extensions SET reason = '' WHERE user_id = ? AND reason <> ''", []any{r.UserID}},
+		{"clarification questions", "UPDATE clarifications SET question = ? WHERE asked_by = ? AND question <> ?",
+			[]any{removedText, r.UserID, removedText}},
 	}
-	steps = append(steps, step{"roster entries", `UPDATE contest_roster SET email = ?, display_name = ?, roll_number = '', section = '' WHERE email = ?`,
-		[]any{r.PlaceholderEmail, r.Placeholder, r.Email}})
 	for _, st := range steps {
 		res, err := tx.ExecContext(ctx, st.q, st.args...)
 		if err != nil {
@@ -139,19 +130,11 @@ func (s *Service) Forget(ctx context.Context, email string, apply, allowOwner bo
 		n, _ := res.RowsAffected()
 		r.Counts = append(r.Counts, ForgetCount{st.what, n})
 	}
-	if r.UserID == 0 && r.Counts[len(r.Counts)-1].N == 0 {
-		return ForgetReport{}, notFound("No account and no roster entry has that email.")
-	}
-	if r.UserID > 0 {
-		if _, err := tx.ExecContext(ctx, `UPDATE users SET email = ?, name = ?, avatar_url = '', google_sub = NULL, disabled = 1,
-			role = 'student' WHERE id = ?`, r.PlaceholderEmail, r.Placeholder, r.UserID); err != nil {
-			return ForgetReport{}, err
-		}
+	if _, err := tx.ExecContext(ctx, `UPDATE users SET email = ?, name = ?, avatar_url = '', google_sub = NULL, disabled = 1,
+		role = 'student' WHERE id = ?`, r.PlaceholderEmail, r.Placeholder, r.UserID); err != nil {
+		return ForgetReport{}, err
 	}
 	details := map[string]any{"user_id": r.UserID, "placeholder": r.Placeholder, "role": r.Role}
-	if r.UserID == 0 {
-		details["roster_only"] = true
-	}
 	for _, c := range r.Counts {
 		details[strings.NewReplacer(" ", "_", "-", "_").Replace(c.What)] = c.N
 	}

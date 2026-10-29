@@ -71,15 +71,6 @@ CREATE TABLE contest_problems (
   UNIQUE (contest_id, problem_id)
 ) STRICT;
 
-CREATE TABLE contest_roster (
-  contest_id   INTEGER NOT NULL REFERENCES contests (id) ON DELETE CASCADE,
-  email        TEXT    NOT NULL COLLATE NOCASE,
-  display_name TEXT    NOT NULL DEFAULT '',
-  roll_number  TEXT    NOT NULL DEFAULT '',
-  section      TEXT    NOT NULL DEFAULT '',
-  PRIMARY KEY (contest_id, email)
-) STRICT;
-
 CREATE TABLE contest_starts (
   contest_id         INTEGER NOT NULL REFERENCES contests (id) ON DELETE CASCADE,
   user_id            INTEGER NOT NULL REFERENCES users (id) ON DELETE CASCADE,
@@ -95,17 +86,9 @@ CREATE TABLE contests (
   description_md      TEXT    NOT NULL DEFAULT '',
   starts_at           INTEGER NOT NULL,
   ends_at             INTEGER NOT NULL CHECK (ends_at > starts_at),
-  start_mode          TEXT    NOT NULL DEFAULT 'fixed' CHECK (start_mode IN ('fixed', 'window')),
-  duration_minutes    INTEGER NOT NULL DEFAULT 0,
   freeze_minutes      INTEGER NOT NULL DEFAULT 0 CHECK (freeze_minutes >= 0),
-  scoring_mode        TEXT    NOT NULL DEFAULT 'best_subtask' CHECK (scoring_mode IN ('best_subtask', 'best_submission')),
-  access              TEXT    NOT NULL DEFAULT 'domain' CHECK (access IN ('domain', 'roster')),
-  -- 'full' (showing hidden tests) is deliberately absent: hidden tests
-  -- never show input or output (decision D47).
-  feedback_mode       TEXT    NOT NULL DEFAULT 'subtask' CHECK (feedback_mode IN ('subtask', 'exam')),
   published           INTEGER NOT NULL DEFAULT 0 CHECK (published IN (0, 1)),
   practice_after_end  INTEGER NOT NULL DEFAULT 1 CHECK (practice_after_end IN (0, 1)),
-  stop_on_sample_fail INTEGER NOT NULL DEFAULT 1 CHECK (stop_on_sample_fail IN (0, 1)),
   min_gap_s           INTEGER NOT NULL DEFAULT 30 CHECK (min_gap_s BETWEEN 0 AND 3600),
   max_per_problem     INTEGER NOT NULL DEFAULT 15 CHECK (max_per_problem BETWEEN 1 AND 1000),
   languages           TEXT    NOT NULL DEFAULT '["cpp17","java21","python3","node22"]' CHECK (json_valid(languages)),

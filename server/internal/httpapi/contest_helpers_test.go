@@ -87,7 +87,8 @@ func (s *site) signedIn(email, name string) *browser {
 // settings on top of a fixed start at start lasting 120 minutes.
 func (s *site) createContest(owner *browser, slug string, start time.Time, problems map[string]int64, settings map[string]any) int64 {
 	s.t.Helper()
-	body := map[string]any{"slug": slug, "title": "Contest " + slug, "starts_at": start.UnixMilli(),
+	// The slug comes from the title (V3-15), so the title is the slug the tests address.
+	body := map[string]any{"title": slug, "starts_at": start.UnixMilli(),
 		"ends_at": start.Add(120 * time.Minute).UnixMilli(), "min_gap_s": 0}
 	for k, v := range settings {
 		body[k] = v

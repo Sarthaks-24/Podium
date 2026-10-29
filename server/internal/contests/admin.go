@@ -41,8 +41,8 @@ func (s *Service) Archive(ctx context.Context, id int64, by Actor) error {
 }
 
 // Clone copies a contest's settings and problems into a new, unpublished
-// contest with its own slug, title and dates. The roster, co-organisers,
-// extensions and editorial are not copied. An admin's reason to grade an
+// contest with its own slug, title and dates. Co-organisers, extensions
+// and the editorial are not copied. An admin's reason to grade an
 // AI problem carries over, quoted in the new contest's audit log.
 func (s *Service) Clone(ctx context.Context, id int64, slug, title string, startsAt, endsAt time.Time, by Actor) (*Contest, error) {
 	src, err := s.Get(ctx, id)
@@ -52,10 +52,8 @@ func (s *Service) Clone(ctx context.Context, id int64, slug, title string, start
 	if strings.TrimSpace(title) == "" {
 		title = src.Title
 	}
-	e := Edit{Slug: slug, Title: title, Description: src.Description, StartsAt: startsAt, EndsAt: endsAt,
-		StartMode: src.Schedule.Mode, DurationMinutes: int(src.Schedule.Duration / time.Minute),
-		FreezeMinutes: int(src.Schedule.Freeze / time.Minute), Scoring: src.Scoring, Access: src.Access, Feedback: src.Feedback,
-		PracticeAfterEnd: src.PracticeAfterEnd, StopOnSampleFail: src.StopOnSampleFail,
+	e := Edit{Title: title, Description: src.Description, StartsAt: startsAt, EndsAt: endsAt,
+		FreezeMinutes: int(src.Schedule.Freeze / time.Minute), PracticeAfterEnd: src.PracticeAfterEnd,
 		MinGapS: int(src.MinGap / time.Second), MaxPerProblem: src.MaxPerProblem, Languages: src.Languages,
 		HonourText: src.HonourText, HoldReveal: src.HoldReveal}
 	choices := make([]ProblemChoice, 0, len(src.Problems))
@@ -179,15 +177,8 @@ func (s *Service) Extensions(ctx context.Context, id int64) ([]Extension, error)
 	return out, rows.Err()
 }
 
-// RosterCount is how many students are on the roster.
-func (s *Service) RosterCount(ctx context.Context, id int64) (int, error) {
-	var n int
-	err := s.DB.QueryRowContext(ctx, "SELECT count(*) FROM contest_roster WHERE contest_id = ?", id).Scan(&n)
-	return n, err
-}
-
 // ExtendFor gives one student extra time and tells them their new end. The
-// student must be on the roster or taking part (IsParticipant); removing
+// student must be taking part (IsParticipant); removing
 // an extension (0 minutes) works for anyone who has one. by is audited.
 func (s *Service) ExtendFor(ctx context.Context, c *Contest, userID int64, minutes int, reason string, by Actor) error {
 	var n int

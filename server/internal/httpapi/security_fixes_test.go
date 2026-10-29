@@ -56,14 +56,6 @@ func TestS1ExtensionsOnlyForParticipants(t *testing.T) {
 	if code, out := c.owner.do("PUT", c.admin(fmt.Sprintf("/extensions/%d", c.asha.userID())), map[string]any{"minutes": 30}, o); code != 200 {
 		t.Errorf("extension for a student who started: %d %v", code, out)
 	}
-	// On the roster but not started yet is enough.
-	code, _ = c.owner.raw("PUT", c.admin("/roster"), "text/csv", []byte("email\nzed@college.edu\n"), o)
-	if code != 200 {
-		t.Fatalf("roster %d", code)
-	}
-	if code, out := c.owner.do("PUT", c.admin(fmt.Sprintf("/extensions/%d", zed.userID())), map[string]any{"minutes": 15}, o); code != 200 {
-		t.Errorf("extension for a student on the roster: %d %v", code, out)
-	}
 }
 
 func TestS9OrganiserActionsAreAudited(t *testing.T) {
@@ -77,7 +69,6 @@ func TestS9OrganiserActionsAreAudited(t *testing.T) {
 	}
 	ok(c.owner.do("PUT", c.admin(""), map[string]any{"min_gap_s": 45, "title": "Audited"}, o))
 	ok(c.owner.do("PUT", c.admin(""), map[string]any{"description_md": "Read the rules."}, o))
-	ok(c.owner.raw("PUT", c.admin("/roster"), "text/csv", []byte("email\nasha@college.edu\n"), o))
 	c.at(c.start, 5)
 	c.asha.do("POST", "/api/contests/s9/start", map[string]any{"accept_honour": true}, o)
 	c.submit(c.asha, "s9", "A", "correct")
@@ -104,7 +95,7 @@ func TestS9OrganiserActionsAreAudited(t *testing.T) {
 	rows.Close()
 	// Creating the contest pinned its problem and published it; then
 	// everything above.
-	want := map[string]int{"problems": 1, "settings": 3, "roster": 1, "extension": 1, "extend": 1,
+	want := map[string]int{"problems": 1, "settings": 3, "extension": 1, "extend": 1,
 		"pause": 1, "resume": 1, "rejudge": 1, "editorial": 1, "reveal": 1}
 	for action, n := range want {
 		if counts[action] != n {
@@ -125,7 +116,7 @@ func TestS9OrganiserActionsAreAudited(t *testing.T) {
 	}
 	// The JSON export carries the log.
 	_, export := c.owner.do("GET", c.admin("/export.json"), nil, "")
-	if log, _ := export["audit"].([]any); len(log) < 12 {
+	if log, _ := export["audit"].([]any); len(log) < 11 {
 		t.Errorf("export audit: %d rows", len(log))
 	}
 }

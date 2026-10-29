@@ -77,7 +77,7 @@ async function mockApi(page: Page, who: Who, options: { contactMode?: 'ok' | 'ra
       if (!me) return apiError(route, 401, 'signed_out', 'Sign in to continue.');
       if (path === '/api/contests') {
         const live = options.live
-          ? [{ id: 4, slug: 'week-6', title: 'Week 6 contest', state: 'live', start_mode: 'fixed', starts_at: NOW - 3_600_000, ends_at: NOW + 3_600_000, close_at: NOW + 3_600_000, duration_minutes: 0, problem_count: 3, my_score: null, my_window: null }]
+          ? [{ id: 4, slug: 'week-6', title: 'Week 6 contest', state: 'live', starts_at: NOW - 3_600_000, ends_at: NOW + 3_600_000, close_at: NOW + 3_600_000, problem_count: 3, my_score: null, my_window: null }]
           : [];
         return json(route, 200, { live, upcoming: [], past: [], server_now: NOW });
       }

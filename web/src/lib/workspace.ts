@@ -50,10 +50,9 @@ export interface Workspace {
   can_submit?: boolean;
   /** True when submissions now count as practice. */
   practice?: boolean;
-  feedback_mode?: string;
 }
 
-/** "submitted" is an exam-mode submission whose result is hidden until the end (M4). */
+/** "submitted" is a submission whose result the server hides from the viewer (its `hidden` flag). */
 export type JudgeState = 'queued' | 'running' | 'done' | 'error' | 'submitted';
 
 /** One judged test. verdict is "" while the test waits its turn. */

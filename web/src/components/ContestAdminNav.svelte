@@ -3,8 +3,8 @@
   contest: the trail "Contests, the contest, the current screen", the
   contest's title as the page heading with its state word, and the contest
   sub-nav (v2 N3): Settings, Console with the count of unanswered
-  questions, Results and Integrity, the current one marked with
-  aria-current, then "Student view" at the end, the contest as a student
+  questions and Results, the current one marked with aria-current, then
+  "Student view" at the end, the contest as a student
   sees it. The count comes from the `unanswered` prop when the screen
   already has it (the console), otherwise from one request to the
   contest's clarifications (until the contest response carries it, C10 in
@@ -15,7 +15,8 @@
   ContestState, or "" for none), `published` (false reads "Draft", and an
   ended contest with practice open reads "Ended, practice open":
   lib/contests organiserState), `current` ("settings", "console",
-  "results" or "integrity"), `unanswered` (optional), and an optional
+  "results", or "integrity" for the integrity page, which has no tab and
+  is reached from Results with "Similar code"), `unanswered` (optional), and an optional
   `actions` snippet for the title row.
 -->
 <script lang="ts">
@@ -46,9 +47,8 @@
     { id: 'settings', label: 'Settings', href: base },
     { id: 'console', label: 'Console', href: `${base}/console` },
     { id: 'results', label: 'Results', href: `${base}/results` },
-    { id: 'integrity', label: 'Integrity', href: `${base}/integrity` },
   ] as const);
-  const here = $derived(links.find((l) => l.id === current)?.label ?? '');
+  const here = $derived(current === 'integrity' ? 'Integrity' : (links.find((l) => l.id === current)?.label ?? ''));
 
   $effect(() => {
     if (unanswered !== undefined) return;

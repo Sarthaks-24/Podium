@@ -17,10 +17,9 @@
   (owners), a validated problem, a published contest, sharing the address
   (C2-024). A featured contest that is not published says so and puts
   Settings first instead of a countdown. "New contest"
-  opens a small form for a title, a slug (suggested from the title until it
-  is edited) and the start and end, creates the contest unpublished with
-  the default settings (fixed start, subtask feedback) and goes to
-  its settings. Students see a short explanation instead. Takes no props.
+  opens a small form for a title and the start and end, creates the
+  contest unpublished with the default settings (the server derives its
+  address from the title) and goes to its settings. Students see a short explanation instead. Takes no props.
 -->
 <script lang="ts">
   import Badge from '../components/Badge.svelte';
@@ -47,7 +46,6 @@
   import { refreshTicker, ticker, useTicker } from '../lib/ticker.svelte';
   import { setTitle } from '../lib/head';
   import { routeTitle } from '../lib/routing';
-  import { slugify } from '../lib/problems';
   import { navigate } from '../lib/router.svelte';
   import { session } from '../lib/session.svelte';
   import { showToast } from '../lib/toast.svelte';
@@ -59,8 +57,6 @@
   const defaults = defaultSettings(Date.now());
   let creating = $state(false);
   let newTitle = $state('');
-  let newSlug = $state('');
-  let slugEdited = $state(false);
   let newStart = $state(toLocalInput(defaults.starts_at));
   let newEnd = $state(toLocalInput(defaults.ends_at));
   let createBusy = $state(false);
@@ -147,8 +143,6 @@
   async function closeCreate() {
     creating = false;
     newTitle = '';
-    newSlug = '';
-    slugEdited = false;
     await tick();
     newButton?.focus();
   }
@@ -158,11 +152,9 @@
     createError = '';
     fields = {};
     const title = newTitle.trim();
-    const slug = newSlug.trim();
     const starts = fromLocalInput(newStart);
     const ends = fromLocalInput(newEnd);
     if (title === '') fields.title = 'Enter a title.';
-    if (slug === '') fields.slug = 'Enter a slug, for example week-6.';
     if (starts === null) fields.starts_at = 'Enter the start date and time.';
     if (ends === null) fields.ends_at = 'Enter the end date and time.';
     else if (starts !== null && ends <= starts) fields.ends_at = 'The contest must end after it starts.';
@@ -175,17 +167,15 @@
       const made = await sendJSON<AdminContest>('POST', '/api/admin/contests', {
         ...defaults,
         title,
-        slug,
         starts_at: starts,
         ends_at: ends,
-        duration_minutes: Math.round(((ends ?? 0) - (starts ?? 0)) / 60_000),
       });
       showToast(`Created ${made.title}`);
       navigate(`/admin/contests/${made.id}`);
     } catch (e) {
       if (e instanceof ApiError && Object.keys(e.fields).length > 0) {
         fields = { ...e.fields };
-        if (Object.keys(e.fields).some((k) => !['title', 'slug', 'starts_at', 'ends_at'].includes(k))) createError = e.message;
+        if (Object.keys(e.fields).some((k) => !['title', 'starts_at', 'ends_at'].includes(k))) createError = e.message;
         await focusFirstInvalid('.create');
       } else {
         createError = errorText(e);
@@ -272,30 +262,10 @@
             autocomplete="off"
             bind:this={titleInput}
             bind:value={newTitle}
-            oninput={() => {
-              if (!slugEdited) newSlug = slugify(newTitle);
-            }}
             aria-invalid={fields.title ? 'true' : undefined}
             aria-describedby={fields.title ? 'new-title-error' : undefined}
           />
           {#if fields.title}<p id="new-title-error" class="field-error">{fields.title}</p>{/if}
-        </div>
-        <div class="field">
-          <label for="new-slug">Slug</label>
-          <input
-            id="new-slug"
-            aria-required="true"
-            class="input mono"
-            type="text"
-            autocomplete="off"
-            spellcheck="false"
-            bind:value={newSlug}
-            oninput={() => (slugEdited = newSlug !== '')}
-            aria-invalid={fields.slug ? 'true' : undefined}
-            aria-describedby="new-slug-help{fields.slug ? ' new-slug-error' : ''}"
-          />
-          <p id="new-slug-help" class="field-help">Part of the contest address, like /contests/week-6.</p>
-          {#if fields.slug}<p id="new-slug-error" class="field-error">{fields.slug}</p>{/if}
         </div>
         <div class="field">
           <label for="new-start">Starts</label>

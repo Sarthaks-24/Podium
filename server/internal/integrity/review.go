@@ -219,13 +219,11 @@ func (s *Service) Participant(ctx context.Context, contestID, userID int64) (boo
 	return n > 0, err
 }
 
-// Person is how a reviewer sees a student named in a signal: the roster's
-// name and roll number when the contest has a roster entry for them,
-// otherwise the account's name.
+// Person is how a reviewer sees a student named in a signal: the
+// account's name, or the email when it has none.
 type Person struct {
-	Name       string `json:"name"`
-	Email      string `json:"email"`
-	RollNumber string `json:"roll_number"`
+	Name  string `json:"name"`
+	Email string `json:"email"`
 }
 
 // People returns the named users of a contest, keyed by user id. Ids that
@@ -237,9 +235,9 @@ func (s *Service) People(ctx context.Context, contestID int64, ids []int64) (map
 			continue
 		}
 		var p Person
-		err := s.DB.QueryRowContext(ctx, `SELECT u.email, coalesce(nullif(r.display_name, ''), nullif(u.name, ''), u.email), coalesce(r.roll_number, '')
-			FROM users u LEFT JOIN contest_roster r ON r.contest_id = ? AND r.email = u.email WHERE u.id = ?`, contestID, id).
-			Scan(&p.Email, &p.Name, &p.RollNumber)
+		_ = contestID
+		err := s.DB.QueryRowContext(ctx, `SELECT u.email, coalesce(nullif(u.name, ''), u.email) FROM users u WHERE u.id = ?`, id).
+			Scan(&p.Email, &p.Name)
 		if errors.Is(err, sql.ErrNoRows) {
 			continue
 		}

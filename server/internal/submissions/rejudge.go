@@ -17,8 +17,6 @@ type RejudgeRequest struct {
 	ProblemID    int64 // all of this problem's submissions in the contest
 	SubmissionID int64 // or just this one
 	By           int64
-	// NoStopOnSample matches the contest's setting.
-	NoStopOnSample bool
 	// Audit, when set, writes the audit row inside the rejudge's
 	// transaction, so it commits or rolls back with the new jobs (S1-08).
 	Audit func(ctx context.Context, tx *sql.Tx, queued int) error
@@ -120,7 +118,7 @@ func (s *Service) Rejudge(ctx context.Context, r RejudgeRequest) (int, error) {
 			return 0, err
 		}
 		pl := submitPayload(p, t.id, judgeapi.Program{Language: t.language, SourceSHA: t.source})
-		pl.StopOnSampleFail = !r.NoStopOnSample
+		pl.StopOnSampleFail = true
 		// The reveal was decided when the submission was made, by who made
 		// it and when (D115); a rejudge never widens it. An old payload
 		// without the field reveals nothing.

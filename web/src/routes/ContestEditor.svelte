@@ -10,7 +10,9 @@
   - From 1280 px a sticky column beside the form lists what the contest
     needs before it is published (lib/contests publishChecks); below that
     it comes first.
-  - Basics: title, slug, and Starts and Ends on one row.
+  - Basics: title, the contest's address as a read-only line (the server
+    makes it from the title when the contest is created, V3-15), and
+    Starts and Ends on one row.
   - Problems: the contest's problems with their letters, points and the
     revision students get, picked from validated problems in the bank.
     Adding, removing and reordering save at once, one request each; the
@@ -20,41 +22,35 @@
     A problem whose hidden tests practice showed
     says so in the picker, and publishing a contest with one
     names it in the confirm (D115).
-  - "Rules and scoring", folded: start mode, freeze, scoring, feedback,
-    who can take part, pacing, languages and the options. Holding the
-    board for a reveal needs a freeze.
+  - "Rules and scoring", folded: freeze, pacing, languages and the
+    options. Holding the board for a reveal needs a freeze.
   - Description and honour code, then Save changes for everything above.
     While the contest is live (published and past its start; an
     unpublished one past its start says students cannot see it yet),
-    saving a change to the times, start mode,
-    scoring, feedback or freeze asks first, and so does turning grading
-    off or back on once the contest has started. Leaving with unsaved settings asks
-    first.
-  - More: the roster (a CSV file or pasted text with a preview of every
-    line, then "Replace roster"), a clone, and archiving.
+    saving a change to the times or the freeze asks first. Leaving with
+    unsaved settings asks first.
+  - More: a clone (new times; the server names it from the title) and
+    archiving.
 
   Students see a short explanation instead. Props: `id`.
 -->
 <script lang="ts">
   import PageState from '../components/PageState.svelte';
-  import { onMount, tick, untrack } from 'svelte';
+  import { onMount, tick } from 'svelte';
   import ConfirmDialog from '../components/ConfirmDialog.svelte';
   import ContestAdminNav from '../components/ContestAdminNav.svelte';
   import PageHeader from '../components/PageHeader.svelte';
   import Icon from '../components/Icon.svelte';
   import MonoDigits from '../components/MonoDigits.svelte';
-  import { ApiError, errorText, getJSON, sendBody, sendJSON } from '../lib/api';
+  import { ApiError, errorText, getJSON, sendJSON } from '../lib/api';
   import {
     fromLocalInput,
     labelFor,
-    parseRoster,
     publishChecks,
-    rosterCsv,
     toLocalInput,
     type AdminContest,
     type AdminContestProblem,
     type ContestSettings,
-    type RosterRow,
   } from '../lib/contests';
   import { focusFirstInvalid, keepHeadingFocus } from '../lib/focus';
   import { countOf, formatDateTime } from '../lib/format';
@@ -67,10 +63,9 @@
 
   let { id }: { id: string } = $props();
 
-  type Form = Omit<ContestSettings, 'starts_at' | 'ends_at' | 'duration_minutes' | 'freeze_minutes' | 'min_gap_s' | 'max_per_problem'> & {
+  type Form = Omit<ContestSettings, 'starts_at' | 'ends_at' | 'freeze_minutes' | 'min_gap_s' | 'max_per_problem'> & {
     starts_at: string;
     ends_at: string;
-    duration_minutes: string;
     freeze_minutes: string;
     min_gap_s: string;
     max_per_problem: string;
@@ -98,20 +93,11 @@
   let aiReason = $state('');
   let aiError = $state('');
 
-  let rosterText = $state('');
-  let rosterBusy = $state(false);
-  let rosterError = $state('');
-  let rosterFile: HTMLInputElement | undefined = $state();
-  let currentRoster = $state<RosterRow[] | null>(null);
-  const rosterCount = $derived(contest ? (contest.roster_count ?? contest.roster?.length ?? 0) : 0);
-
-
-  let cloneSlug = $state('');
   let cloneStart = $state('');
   let cloneEnd = $state('');
   let cloneError = $state('');
   /** The clone field the error is about, so it is marked and takes focus. */
-  let cloneField = $state<'slug' | 'start' | 'end' | null>(null);
+  let cloneField = $state<'start' | 'end' | null>(null);
 
   // One confirmation dialog for every action that asks first.
   let confirm = $state<null | { title: string; body: string; items?: string[]; label: string; danger: boolean; run: () => Promise<void> }>(null);
@@ -119,7 +105,6 @@
 
   const isOrganiser = $derived(session.user?.role === 'admin' || session.user?.role === 'owner');
   const base = $derived(`/api/admin/contests/${encodeURIComponent(id)}`);
-  const roster = $derived(rosterText.trim() === '' ? null : parseRoster(rosterText));
   // The server's state ignores `published`, so an unpublished contest past
   // its start reads "live" there; students cannot see it (C2-015).
   const running = $derived(contest?.state === 'live' || contest?.state === 'frozen');
@@ -127,23 +112,6 @@
   const startedOrOver = $derived(running || contest?.state === 'ended' || contest?.state === 'practice');
   const pastStartUnpublished = $derived(!!contest && !contest.published && startedOrOver);
   const dirty = $derived(form !== null && JSON.stringify(form) !== formBaseline);
-  // What the file would change: students added and removed against the current roster.
-  const rosterDiff = $derived.by(() => {
-    if (!roster || currentRoster === null) return null;
-    const now = new Set(currentRoster.map((r) => r.email.toLowerCase()));
-    const next = new Set(roster.lines.filter((l) => l.error === '').map((l) => l.email));
-    return {
-      before: now.size,
-      after: next.size,
-      added: [...next].filter((e) => !now.has(e)).length,
-      removed: [...now].filter((e) => !next.has(e)).length,
-    };
-  });
-
-  // The current roster is fetched once a file is previewed, to show what it changes.
-  $effect(() => {
-    if (roster && currentRoster === null && contest) untrack(() => void fetchRoster());
-  });
   const available = $derived(bank.filter((p) => p.validated && !p.archived && !picked.some((x) => x.problem_id === p.id)));
 
   /** The checklist, from the settings as typed and the problems as saved. */
@@ -152,8 +120,6 @@
     return publishChecks(
       {
         problems: contest.problems ?? [],
-        access: form.access,
-        roster_count: rosterCount,
         languages: form.languages,
         starts_at: fromLocalInput(form.starts_at) ?? contest.starts_at,
         freeze_minutes: num(form.freeze_minutes),
@@ -179,20 +145,13 @@
 
   function toForm(c: AdminContest): Form {
     return {
-      slug: c.slug,
       title: c.title,
       description_md: c.description_md ?? '',
       starts_at: toLocalInput(c.starts_at),
       ends_at: toLocalInput(c.ends_at),
-      start_mode: c.start_mode,
-      duration_minutes: String(c.duration_minutes || 120),
       freeze_minutes: String(c.freeze_minutes ?? 0),
-      scoring_mode: c.scoring_mode,
-      access: c.access,
-      feedback_mode: c.feedback_mode,
       published: c.published,
       practice_after_end: c.practice_after_end,
-      stop_on_sample_fail: c.stop_on_sample_fail,
       min_gap_s: String(c.min_gap_s),
       max_per_problem: String(c.max_per_problem),
       languages: [...(c.languages ?? [])],
@@ -210,8 +169,7 @@
     if (!keep) form = saved;
     picked = (c.problems ?? []).map((p) => ({ ...p }));
     setTitle(routeTitle('admin-contest'), c.title);
-    if (cloneSlug === '') {
-      cloneSlug = `${c.slug}-copy`;
+    if (cloneStart === '') {
       cloneStart = toLocalInput(c.starts_at + 7 * 86_400_000);
       cloneEnd = toLocalInput(c.ends_at + 7 * 86_400_000);
     }
@@ -284,7 +242,7 @@
     if (ends === null) local.ends_at = 'Enter the end date and time.';
     else if (starts !== null && ends <= starts) local.ends_at = 'The contest must end after it starts.';
     if (form.languages.length === 0) local.languages = 'Allow at least one language.';
-    for (const k of ['freeze_minutes', 'min_gap_s', 'max_per_problem', 'duration_minutes'] as const) {
+    for (const k of ['freeze_minutes', 'min_gap_s', 'max_per_problem'] as const) {
       if (Number.isNaN(num(form[k]))) local[k] = 'Enter a whole number.';
     }
     if (Object.keys(local).length > 0) {
@@ -295,10 +253,8 @@
     return {
       ...form,
       title: form.title.trim(),
-      slug: form.slug.trim(),
       starts_at: starts as number,
       ends_at: ends as number,
-      duration_minutes: num(form.duration_minutes),
       freeze_minutes: num(form.freeze_minutes),
       min_gap_s: num(form.min_gap_s),
       max_per_problem: num(form.max_per_problem),
@@ -326,15 +282,11 @@
     const liveChange =
       minute(body.starts_at) !== minute(c.starts_at) ||
       minute(body.ends_at) !== minute(c.ends_at) ||
-      body.start_mode !== c.start_mode ||
-      (body.start_mode === 'window' && body.duration_minutes !== c.duration_minutes) ||
-      body.scoring_mode !== c.scoring_mode ||
-      body.feedback_mode !== c.feedback_mode ||
       body.freeze_minutes !== c.freeze_minutes;
     if (live && liveChange) {
       confirm = {
         title: 'Change a live contest?',
-        body: 'Students see the change at once: new times, scoring, feedback or freeze can change their clocks and scores. To give more time, Extend contest in the console is safer; to stop now, use End the contest now there.',
+        body: 'Students see the change at once: new times or a new freeze can change their clocks and the board. To give more time, Extend contest in the console is safer; to stop now, use End the contest now there.',
         label: 'Save changes',
         danger: true,
         run: () => putSettings(body, 'Saved changes'),
@@ -393,7 +345,7 @@
       body.published = true;
       confirm = {
         title: `Publish ${title}?`,
-        body: `${form?.access === 'roster' ? 'Students on the roster' : 'Students from the allowed domains'} see it in their contest list at once${dirty ? ', with your unsaved settings saved' : ''}.`,
+        body: `Students from the allowed domains see it in their contest list at once${dirty ? ', with your unsaved settings saved' : ''}.`,
         items: [...checks.map((c) => c.text), ...shownWarning()],
         label: 'Publish contest',
         danger: false,
@@ -556,69 +508,6 @@
     }
   }
 
-  // Roster.
-  async function readRosterFile() {
-    const file = rosterFile?.files?.[0];
-    if (!file) return;
-    rosterText = await file.text();
-    if (rosterFile) rosterFile.value = '';
-  }
-
-  async function fetchRoster() {
-    try {
-      const data = await getJSON<{ roster: RosterRow[] }>(`${base}/roster`);
-      currentRoster = data.roster ?? [];
-    } catch (e) {
-      if (!handleAuth(e)) currentRoster = contest?.roster ?? [];
-    }
-  }
-
-  async function uploadRoster() {
-    if (!roster) return;
-    rosterError = '';
-    if (roster.valid === 0) {
-      rosterError = 'No line has a valid email. Check the file and try again.';
-      return;
-    }
-    if (currentRoster === null) await fetchRoster();
-    const d = rosterDiff;
-    if (d && d.removed > 0 && (live || contest?.published)) {
-      confirm = {
-        title: 'Replace the roster?',
-        body: `${d.before} ${d.before === 1 ? 'student' : 'students'} now, ${d.after} after. The ${d.removed} not in the file lose access${live ? ' and are taken out of the contest at once' : ''}.`,
-        label: 'Replace roster',
-        danger: true,
-        run: putRoster,
-      };
-      return;
-    }
-    await putRoster();
-  }
-
-  async function putRoster() {
-    if (!roster) return;
-    rosterBusy = true;
-    try {
-      const csv = rosterCsv(roster.lines.filter((l) => l.error === ''));
-      const value = await sendBody<unknown>('PUT', `${base}/roster`, new Blob([csv], { type: 'text/csv' }), 'text/csv');
-      // PUT .../roster answers with the roster itself, so the contest is fetched again.
-      await settle(value);
-      showToast(`Replaced the roster: ${roster.valid} ${roster.valid === 1 ? 'student' : 'students'}`);
-      rosterText = '';
-      currentRoster = null;
-    } catch (e) {
-      if (handleAuth(e)) return;
-      rosterError = e instanceof ApiError && e.problems.length > 0 ? `${e.message} ${e.problems.join(' ')}` : errorText(e);
-    } finally {
-      rosterBusy = false;
-    }
-  }
-
-  async function loadRoster(event: Event) {
-    if (!(event.currentTarget as HTMLDetailsElement).open || currentRoster !== null) return;
-    await fetchRoster();
-  }
-
   async function runConfirm() {
     if (!confirm) return;
     confirmBusy = true;
@@ -640,15 +529,14 @@
     cloneField = null;
     const starts = fromLocalInput(cloneStart);
     const ends = fromLocalInput(cloneEnd);
-    if (cloneSlug.trim() === '') [cloneField, cloneError] = ['slug', 'Enter a new slug, for example week-7.'];
-    else if (starts === null) [cloneField, cloneError] = ['start', 'Enter the start date and time.'];
+    if (starts === null) [cloneField, cloneError] = ['start', 'Enter the start date and time.'];
     else if (ends === null || ends <= starts) [cloneField, cloneError] = ['end', 'Enter an end after the start.'];
     if (cloneField !== null) {
       await focusFirstInvalid('#clone-form');
       return;
     }
     try {
-      const made = await sendJSON<AdminContest>('POST', `${base}/clone`, { slug: cloneSlug.trim(), starts_at: starts, ends_at: ends });
+      const made = await sendJSON<AdminContest>('POST', `${base}/clone`, { starts_at: starts, ends_at: ends });
       showToast(`Cloned as ${made.slug}`);
       formBaseline = JSON.stringify(form);
       navigate(`/admin/contests/${made.id}`);
@@ -656,7 +544,7 @@
       if (handleAuth(e)) return;
       cloneError = e instanceof ApiError ? (Object.values(e.fields)[0] ?? e.message) : errorText(e);
       const key = e instanceof ApiError ? Object.keys(e.fields)[0] : undefined;
-      cloneField = key === 'slug' ? 'slug' : key === 'starts_at' ? 'start' : key === 'ends_at' ? 'end' : null;
+      cloneField = key === 'starts_at' ? 'start' : key === 'ends_at' ? 'end' : null;
       if (cloneField !== null) await focusFirstInvalid('#clone-form');
     }
   }
@@ -696,10 +584,7 @@
     if (!form) return '';
     const freeze = num(form.freeze_minutes);
     const line = [
-      form.start_mode === 'window' ? `each student gets ${form.duration_minutes} minutes` : 'everyone starts together',
       freeze > 0 ? `board freezes ${freeze} minutes before the end` : 'no freeze',
-      form.feedback_mode === 'exam' ? 'exam feedback' : 'subtask feedback',
-      form.access === 'roster' ? 'roster only' : 'allowed domains',
       countOf(form.languages.length, 'language'),
     ].join(', ');
     return line.charAt(0).toUpperCase() + line.slice(1);
@@ -789,20 +674,13 @@
       <form class="settings" novalidate onsubmit={save} aria-label="Contest settings">
         <section class="section" aria-labelledby="basics-title">
           <h2 id="basics-title">Basics</h2>
-          <p class="field-help">All four are required.</p>
-          <div class="grid">
-            <div class="field">
-              <label for="f-title">Title</label>
-              <input id="f-title" aria-required="true" class="input" type="text" autocomplete="off" bind:value={form.title} aria-invalid={fields.title ? 'true' : undefined} aria-describedby={fields.title ? 'f-title-error' : undefined} />
-              {@render err('title')}
-            </div>
-            <div class="field">
-              <label for="f-slug">Slug</label>
-              <input id="f-slug" aria-required="true" class="input mono" type="text" autocomplete="off" spellcheck="false" bind:value={form.slug} aria-invalid={fields.slug ? 'true' : undefined} aria-describedby="f-slug-help{fields.slug ? ' f-slug-error' : ''}" />
-              <p id="f-slug-help" class="field-help">Part of the contest address, like /contests/week-6.</p>
-              {@render err('slug')}
-            </div>
+          <p class="field-help">All three are required.</p>
+          <div class="field">
+            <label for="f-title">Title</label>
+            <input id="f-title" aria-required="true" class="input" type="text" autocomplete="off" bind:value={form.title} aria-invalid={fields.title ? 'true' : undefined} aria-describedby={fields.title ? 'f-title-error' : undefined} />
+            {@render err('title')}
           </div>
+          <p class="muted small">Address <span class="mono">/contests/{contest.slug}</span>, made from the title when the contest was created. It does not change.</p>
           <div class="times">
             <div class="field">
               <label for="f-starts_at">Starts</label>
@@ -906,52 +784,12 @@
               <span class="muted small summary-line">{rulesSummary}</span>
             </summary>
             <div class="rules-body">
-              <fieldset class="group">
-                <legend>Start</legend>
-                <label class="choice"><input type="radio" name="start_mode" value="fixed" bind:group={form.start_mode} /> Everyone starts together</label>
-                <label class="choice"><input type="radio" name="start_mode" value="window" bind:group={form.start_mode} /> Each student starts any time in the window</label>
-                {#if form.start_mode === 'window'}
-                  <div class="field narrow">
-                    <label for="f-duration_minutes">Minutes per student</label>
-                    <input id="f-duration_minutes" class="input mono" type="number" min="10" inputmode="numeric" bind:value={form.duration_minutes} aria-invalid={fields.duration_minutes ? 'true' : undefined} aria-describedby="f-duration-help{fields.duration_minutes ? ' f-duration_minutes-error' : ''}" />
-                    <p id="f-duration-help" class="field-help">Students see the board only once their own window closes.</p>
-                    {@render err('duration_minutes')}
-                  </div>
-                {/if}
-                {@render err('start_mode')}
-              </fieldset>
-
               <div class="grid">
                 <div class="field">
                   <label for="f-freeze_minutes">Freeze the board, minutes before the end</label>
                   <input id="f-freeze_minutes" class="input mono" type="number" min="0" inputmode="numeric" bind:value={form.freeze_minutes} aria-invalid={fields.freeze_minutes ? 'true' : undefined} aria-describedby="f-freeze-help{fields.freeze_minutes ? ' f-freeze_minutes-error' : ''}" />
-                  <p id="f-freeze-help" class="field-help">0 for no freeze. Applies to fixed-start contests.</p>
+                  <p id="f-freeze-help" class="field-help">0 for no freeze.</p>
                   {@render err('freeze_minutes')}
-                </div>
-                <div class="field">
-                  <label for="f-scoring_mode">Scoring</label>
-                  <select id="f-scoring_mode" class="select" bind:value={form.scoring_mode} aria-invalid={fields.scoring_mode ? 'true' : undefined} aria-describedby={fields.scoring_mode ? 'f-scoring_mode-error' : undefined}>
-                    <option value="best_subtask">Best result per subtask</option>
-                    <option value="best_submission">Best single submission</option>
-                  </select>
-                  {@render err('scoring_mode')}
-                </div>
-                <div class="field">
-                  <label for="f-feedback_mode">Feedback</label>
-                  <select id="f-feedback_mode" class="select" bind:value={form.feedback_mode} aria-invalid={fields.feedback_mode ? 'true' : undefined} aria-describedby="f-feedback-help{fields.feedback_mode ? ' f-feedback_mode-error' : ''}">
-                    <option value="subtask">Subtask results and test verdicts</option>
-                    <option value="exam">Exam: only "Submitted" until the end</option>
-                  </select>
-                  <p id="f-feedback-help" class="field-help">Hidden test inputs and outputs are never shown.</p>
-                  {@render err('feedback_mode')}
-                </div>
-                <div class="field">
-                  <label for="f-access">Who can take part</label>
-                  <select id="f-access" class="select" bind:value={form.access} aria-invalid={fields.access ? 'true' : undefined} aria-describedby={fields.access ? 'f-access-error' : undefined}>
-                    <option value="domain">Allowed domains</option>
-                    <option value="roster">Roster only</option>
-                  </select>
-                  {@render err('access')}
                 </div>
                 <div class="field">
                   <label for="f-min_gap_s">Seconds between submissions</label>
@@ -981,7 +819,6 @@
               <fieldset class="group">
                 <legend>Options</legend>
                 <label class="choice"><input type="checkbox" bind:checked={form.practice_after_end} /> Open the problems for practice after the end. Practice shows students the first hidden test they fail.</label>
-                <label class="choice"><input type="checkbox" bind:checked={form.stop_on_sample_fail} /> Stop judging at a failed sample</label>
                 <label class="choice" class:off={freezeOff && !form.hold_reveal}>
                   <input type="checkbox" bind:checked={form.hold_reveal} disabled={freezeOff && !form.hold_reveal} aria-describedby="f-hold-help" />
                   Hold the full board after the end until you reveal it
@@ -1031,76 +868,11 @@
       <section class="section more" aria-labelledby="more-title">
         <h2 id="more-title">More</h2>
 
-        <div class="sub" role="group" aria-labelledby="roster-title">
-          <h3 id="roster-title">Roster</h3>
-          <p class="muted small">
-            {rosterCount} {rosterCount === 1 ? 'student' : 'students'} on the roster.
-            {form.access === 'roster' ? 'Only they can take part.' : 'Used for names and roll numbers in the export; access is by domain.'}
-          </p>
-          <div class="row">
-            <button type="button" class="btn btn-secondary" onclick={() => rosterFile?.click()}><Icon name="upload" /> Choose a CSV file</button>
-            <input bind:this={rosterFile} class="file" type="file" accept=".csv,text/csv" aria-label="Roster CSV file" tabindex="-1" onchange={readRosterFile} />
-          </div>
-          <div class="field">
-            <label for="roster-text">Or paste the CSV</label>
-            <textarea id="roster-text" class="input textarea-code" rows="5" spellcheck="false" bind:value={rosterText} aria-describedby="roster-help"></textarea>
-            <p id="roster-help" class="field-help">One student per line: email, name, roll number, section. A header row naming the columns is fine.</p>
-          </div>
-          {#if roster}
-            <p class="small" role="status">
-              {roster.valid} {roster.valid === 1 ? 'line' : 'lines'} ready, {roster.invalid} refused.
-              {#if rosterDiff}The file replaces the whole roster: it adds {rosterDiff.added} and removes {rosterDiff.removed}
-                {rosterDiff.removed === 1 ? 'student' : 'students'}.{/if}
-            </p>
-            <div class="table-wrap preview">
-              <table class="table table-dense">
-                <caption class="visually-hidden">Roster preview</caption>
-                <thead>
-                  <tr><th scope="col" class="right">Line</th><th scope="col">Email</th><th scope="col">Name</th><th scope="col">Roll number</th><th scope="col">Section</th><th scope="col">Check</th></tr>
-                </thead>
-                <tbody>
-                  {#each roster.lines.slice(0, 200) as l (l.line)}
-                    <tr class:bad={l.error !== ''}>
-                      <td class="num right">{l.line}</td>
-                      <td class="email">{l.email}</td>
-                      <td>{l.display_name}</td>
-                      <td class="num">{l.roll_number}</td>
-                      <td>{l.section}</td>
-                      <td class="check">{l.error || 'Ready'}</td>
-                    </tr>
-                  {/each}
-                </tbody>
-              </table>
-            </div>
-            {#if roster.lines.length > 200}<p class="muted small">Showing the first 200 of {roster.lines.length} lines.</p>{/if}
-            <div class="actions">
-              <button type="button" class="btn btn-primary" disabled={rosterBusy} onclick={uploadRoster}>Replace roster</button>
-            </div>
-          {/if}
-          {#if rosterError}<p class="field-error" role="alert">{rosterError}</p>{/if}
-          {#if rosterCount > 0}
-            <details class="current" ontoggle={loadRoster}>
-              <summary>Show the current roster</summary>
-              {#if currentRoster === null}
-                <p class="muted small" role="status">Loading the roster</p>
-              {:else}
-                <ul class="plain">
-                  {#each currentRoster as r (r.email)}<li><span class="mono">{r.email}</span> {r.name ?? r.display_name ?? ''} {r.roll_number}</li>{/each}
-                </ul>
-              {/if}
-            </details>
-          {/if}
-        </div>
-
         <div class="sub" role="group" aria-labelledby="clone-title">
           <h3 id="clone-title">Clone</h3>
-          <p class="muted small">Copies the settings and problems into a new, unpublished contest.</p>
-          <p class="field-help">All three are required.</p>
+          <p class="muted small">Copies the settings and problems into a new, unpublished contest with the same title.</p>
+          <p class="field-help">Both are required.</p>
           <form id="clone-form" class="grid" novalidate onsubmit={cloneContest}>
-            <div class="field">
-              <label for="clone-slug">New slug</label>
-              <input id="clone-slug" aria-required="true" class="input mono" type="text" autocomplete="off" spellcheck="false" bind:value={cloneSlug} aria-invalid={cloneField === 'slug' ? 'true' : undefined} aria-describedby={cloneField === 'slug' ? 'clone-error' : undefined} />
-            </div>
             <div class="field">
               <label for="clone-start">Starts</label>
               <input id="clone-start" aria-required="true" class="input" type="datetime-local" bind:value={cloneStart} aria-invalid={cloneField === 'start' ? 'true' : undefined} aria-describedby={cloneField === 'start' ? 'clone-error' : undefined} />
@@ -1343,11 +1115,6 @@
     font-weight: 500;
   }
 
-  .narrow {
-    max-width: 18rem;
-    margin-top: var(--space-2);
-  }
-
   .actions {
     display: flex;
     flex-wrap: wrap;
@@ -1436,55 +1203,10 @@
     flex: 1 1 16rem;
   }
 
-  .file {
-    display: none;
-  }
-
   .more .sub {
     display: grid;
     gap: var(--space-3);
     padding-top: var(--space-4);
-  }
-
-  .preview {
-    max-height: 22rem;
-    overflow: auto;
-  }
-
-  .right,
-  .table .right {
-    text-align: right;
-  }
-
-  .email {
-    overflow-wrap: anywhere;
-  }
-
-  .bad .check {
-    color: var(--bad);
-    font-weight: 500;
-  }
-
-  .check {
-    white-space: nowrap;
-  }
-
-  .current summary {
-    width: fit-content;
-    border-radius: var(--radius);
-    color: var(--act);
-    font-size: var(--fs-0);
-    font-weight: 500;
-    cursor: pointer;
-  }
-
-  .plain {
-    display: grid;
-    gap: var(--space-1);
-    margin-top: var(--space-2);
-    padding: 0;
-    list-style: none;
-    font-size: var(--fs-0);
   }
 
   @media (min-width: 768px) {

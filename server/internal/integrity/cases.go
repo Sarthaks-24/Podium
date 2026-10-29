@@ -106,10 +106,9 @@ func (s *Service) caseOf(ctx context.Context, contestID, userID int64) (*Case, e
 
 func (s *Service) cases(ctx context.Context, where string, args ...any) ([]Case, error) {
 	rows, err := s.DB.QueryContext(ctx, `SELECT c.id, c.contest_id, c.user_id,
-		coalesce(nullif(r.display_name, ''), nullif(u.name, ''), u.email), u.email, c.decision, c.reason,
+		coalesce(nullif(u.name, ''), u.email), u.email, c.decision, c.reason,
 		coalesce(b.email, ''), c.decided_at
 		FROM integrity_cases c JOIN users u ON u.id = c.user_id
-		LEFT JOIN contest_roster r ON r.contest_id = c.contest_id AND r.email = u.email
 		LEFT JOIN users b ON b.id = c.decided_by
 		WHERE `+where+` ORDER BY c.decided_at DESC, c.id DESC`, args...)
 	if err != nil {

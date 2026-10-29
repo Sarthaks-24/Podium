@@ -4,7 +4,7 @@
   (components/AccountMenu). Navigation is named by job: students get
   "Contests"; admins and owners get "Contests" (the organiser list at
   /admin/contests, where "/" sends them), "Problem bank" (also current on
-  the AI assistant screens), "Students", and for owners "People". From
+  the AI wizard), and for owners "People". From
   768 px everything fits one row; under 768 px an organiser's nav and
   account items collapse behind a Menu button that opens a panel (Escape
   closes it), while a student keeps the links and the account button in
@@ -85,8 +85,7 @@
         label: 'Contests',
         current: ['admin-contests', 'admin-contest', 'contest-console', 'contest-results', 'contest-integrity', 'integrity-pair'].includes(name),
       },
-      { href: '/admin/problems', label: 'Problem bank', current: ['problems', 'problem', 'problem-try', 'ai-settings', 'ai-new'].includes(name) },
-      { href: '/admin/students', label: 'Students', current: name === 'students' },
+      { href: '/admin/problems', label: 'Problem bank', current: ['problems', 'problem', 'problem-try', 'ai-new'].includes(name) },
     ];
     if (isOwner) links.push({ href: '/admin/people', label: 'People', current: name === 'people' });
     return links;
@@ -165,7 +164,6 @@
     problems: screen(() => import('./routes/ProblemBank.svelte')),
     problem: screen(() => import('./routes/ProblemEditor.svelte')),
     'problem-try': screen(() => import('./routes/ProblemTry.svelte')),
-    'ai-settings': screen(() => import('./routes/AiSettings.svelte')),
     'ai-new': screen(() => import('./routes/AiWizard.svelte')),
     'admin-contests': screen(() => import('./routes/AdminContests.svelte')),
     'admin-contest': screen(() => import('./routes/ContestEditor.svelte')),
@@ -173,7 +171,6 @@
     'contest-results': screen(() => import('./routes/ContestResults.svelte')),
     'contest-integrity': screen(() => import('./routes/ContestIntegrity.svelte')),
     'integrity-pair': screen(() => import('./routes/IntegrityPair.svelte')),
-    students: screen(() => import('./routes/Students.svelte')),
   };
   const loadedScreens = $state<Record<string, Screen>>({});
   let failedScreen = $state<string | null>(null);

@@ -152,20 +152,16 @@ func TestPracticeAndEditorialWaitForEveryWindow(t *testing.T) {
 }
 
 func TestBoardScoresAgainstPinnedPoints(t *testing.T) {
-	b := board(BestSubtask)
+	b := board()
 	entries := []Entry{{UserID: 1, ProblemID: 1, At: at(10), Done: true, Earned: []int{30, 90}, Score: 120}}
 	rows := Compute(b, people("Asha"), entries, false)
 	if rows[0].Cells[0].Score != 100 {
 		t.Errorf("earned points above the pinned maximum: %+v", rows[0].Cells[0])
 	}
-	b = board(BestSubmission)
-	if rows := Compute(b, people("Asha"), entries, false); rows[0].Cells[0].Score != 100 {
-		t.Errorf("best submission above the maximum: %+v", rows[0].Cells[0])
-	}
 }
 
 func TestFixedFreezeIsContestWide(t *testing.T) {
-	b := board(BestSubtask)
+	b := board()
 	b.FreezeAt = at(90)
 	p := []Participant{{UserID: 1, Name: "Bilal", Started: t0, Ends: at(150)}} // a 30-minute extension
 	entries := []Entry{{UserID: 1, ProblemID: 2, At: at(100), Done: true, Earned: []int{100}, Score: 100}}

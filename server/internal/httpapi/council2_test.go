@@ -121,16 +121,16 @@ func TestNotStartedSaysWhy(t *testing.T) {
 
 // A duplicate contest slug is 400 with fields.slug, the shape the web
 // mocks must copy (C2-029).
-func TestDuplicateContestSlugIsAFieldError(t *testing.T) {
+// TestDuplicateTitleGetsANumberedSlug: two contests with one title get
+// week-6 and week-6-2 (the slug is derived, V3-15).
+func TestDuplicateTitleGetsANumberedSlug(t *testing.T) {
 	s := newSite(t)
 	owner := s.signedIn("owner@college.edu", "Owner")
 	start := time.Now().Add(time.Hour).Truncate(time.Minute)
-	body := map[string]any{"slug": "week-6", "title": "Week 6", "starts_at": start.UnixMilli(), "ends_at": start.Add(time.Hour).UnixMilli()}
-	if code, out := owner.do("POST", "/api/admin/contests", body, s.srv.URL); code != 201 {
-		t.Fatalf("create: %d %v", code, out)
-	}
-	code, out := owner.do("POST", "/api/admin/contests", body, s.srv.URL)
-	if code != 400 || errCode(out) != "bad_request" || fieldErr(out, "slug") == "" {
-		t.Errorf("duplicate slug: %d %v, want 400 bad_request with fields.slug", code, out)
+	body := map[string]any{"title": "Week 6", "starts_at": start.UnixMilli(), "ends_at": start.Add(time.Hour).UnixMilli()}
+	for _, want := range []string{"week-6", "week-6-2"} {
+		if code, out := owner.do("POST", "/api/admin/contests", body, s.srv.URL); code != 201 || out["slug"] != want {
+			t.Errorf("create: %d %v, want slug %s", code, out, want)
+		}
 	}
 }

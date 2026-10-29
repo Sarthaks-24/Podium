@@ -2,7 +2,6 @@
 // and baseline.spec.ts reuse them. The spec's header describes them.
 import { expect, test, type Page, type Route } from '@playwright/test';
 import { longLivedEvents } from '../sse';
-import { contestProgress } from './students';
 
 let frozenNow: number | null = null;
 /** The mock's clock: real time, or a fixed instant for pixel baselines (pair it with page.clock.setFixedTime). */
@@ -40,13 +39,10 @@ export interface Options {
   /** Interval covering came from the AI wizard: the contest asks for a reason. */
   aiGate?: boolean;
   phase?: Phase;
-  feedback?: 'subtask' | 'exam';
-  startMode?: 'fixed' | 'window';
-  boardClosed?: boolean;
   secondSession?: boolean;
   holdReveal?: boolean;
-  /** The reveal board: a long one with pending cells on every row (C6 skip), or one with nothing pending. */
-  revealBoard?: 'long' | 'nothing';
+  /** The server hides each submission's result from the student (state "submitted", `hidden`). */
+  hideResults?: boolean;
   /** After the end, students still get the frozen board (held for the reveal). */
   studentFrozen?: boolean;
   /** The student's window ends this many ms after the page loads. */
@@ -54,7 +50,7 @@ export interface Options {
   /** Whether the organiser's contest starts out published (default true: an unpublished contest past its start is a draft, C2-015). */
   published?: boolean;
   /** GET of a problem's workspace answers 403 with this code and Go's sentence (contests.go contestError, C2-017). */
-  problemRefusal?: 'not_started' | 'not_on_roster' | 'contest_over';
+  problemRefusal?: 'not_started' | 'contest_over';
   /** Students saw this contest's hidden tests in practice (D115), so its problems stay. */
   shownHere?: boolean;
   /** Bank problems whose hidden tests a contest showed in practice (D115, C1-015). */
@@ -112,7 +108,7 @@ export function submission(id: number, problemId: number, state: 'queued' | 'don
   };
 }
 
-/** An exam-mode submission before the end: everything withheld (m4-api-deviations.md). */
+/** A submission whose result the server hides: everything withheld (m4-api-deviations.md). */
 export function hidden(id: number, problemId: number): Json {
   return {
     id, problem_id: problemId, language: 'cpp17', state: 'submitted', hidden: true, verdict: '', score: 0, max_score: 100,
@@ -164,7 +160,6 @@ export const NOTES_SOURCE = '#include <cstdio>\nint main() {\n  long long a, b;\
 export async function mockApi(page: Page, options: Options = {}) {
   await longLivedEvents(page);
   const now = nowMs();
-  const startMode = options.startMode ?? 'fixed';
   const phase = options.phase ?? 'ready';
   const startsAt = phase === 'upcoming' ? now + 2 * 3_600_000 + 5 * MIN : phase === 'after' || phase === 'practice' ? now - 4 * 3_600_000 : now - 30 * MIN;
   const endsAt = phase === 'after' || phase === 'practice' ? now - 2 * 3_600_000 : startsAt + 2 * 3_600_000;
@@ -188,7 +183,6 @@ export async function mockApi(page: Page, options: Options = {}) {
     // Organiser side.
     settingsPuts: [] as Json[],
     problemPuts: [] as unknown[],
-    rosterPuts: [] as string[],
     pauses: 0,
     resumes: 0,
     extends: [] as Json[],
@@ -196,7 +190,6 @@ export async function mockApi(page: Page, options: Options = {}) {
     rejudges: [] as Json[],
     posted: [] as Json[],
     answers: [] as { id: string; body: Json }[],
-    editorials: [] as Json[],
     paused: false,
     adminProblems: [{ label: 'A', problem_id: 11, title: 'A plus B', ready: true, max_score: 100 }] as Json[],
     holdReveal: false,
@@ -204,6 +197,7 @@ export async function mockApi(page: Page, options: Options = {}) {
     releases: 0,
     adminDeletes: [] as Json[],
     feedQueries: [] as string[],
+    creates: [] as Json[],
     aiGate: options.aiGate ?? false,
     publicClarifications: [] as Json[],
     statementAt: options.statementUpdated ? now - STATEMENT_CHANGED_MIN * MIN : (null as number | null),
@@ -226,7 +220,6 @@ export async function mockApi(page: Page, options: Options = {}) {
 
   const myWindow = () => {
     if (options.endsInMs !== undefined) return { started_at: startsAt, ends_at: now + options.endsInMs };
-    if (startMode === 'window') return state.accepted ? { started_at: now - 20 * MIN, ends_at: phase === 'after' || phase === 'practice' ? now - 10 * MIN : now + 40 * MIN } : null;
     return { started_at: startsAt, ends_at: endsAt };
   };
 
@@ -242,8 +235,6 @@ export async function mockApi(page: Page, options: Options = {}) {
     title: 'Week 6 contest',
     starts_at: startsAt,
     ends_at: endsAt,
-    start_mode: startMode,
-    duration_minutes: startMode === 'window' ? 60 : 0,
     problem_count: 3,
     state: contestState(),
     my_score: phase === 'after' || phase === 'practice' ? 140 : null,
@@ -256,8 +247,6 @@ export async function mockApi(page: Page, options: Options = {}) {
     id: 4,
     description_md: 'Three problems on sums and intervals. Good luck.',
     rules: {
-      feedback_mode: options.feedback ?? 'subtask',
-      scoring_mode: 'best_subtask',
       min_gap_s: 30,
       max_per_problem: 15,
       languages: ['cpp17', 'python3', 'java21'],
@@ -335,12 +324,8 @@ export async function mockApi(page: Page, options: Options = {}) {
     id: 4,
     description_md: 'Three problems.',
     freeze_minutes: 30,
-    scoring_mode: 'best_subtask',
-    access: 'roster',
-    feedback_mode: 'subtask',
     published: options.published ?? true,
     practice_after_end: true,
-    stop_on_sample_fail: true,
     min_gap_s: 30,
     max_per_problem: 15,
     languages: ['cpp17', 'python3'],
@@ -354,7 +339,6 @@ export async function mockApi(page: Page, options: Options = {}) {
       ...state.pinPuts.map((x, i) => ({ label: x.label, problem_id: 11, revision_id: Number(x.body.revision_id), rev: 3, from_at: now + i, actor: { user_id: 2, email: 'arjun.mehta@college.edu', role: 'admin' } })).reverse(),
       { label: 'A', problem_id: 11, revision_id: 12, rev: 2, from_at: startsAt - 60 * MIN, actor: { user_id: 1, email: 'priya@college.edu', role: 'owner' } },
     ],
-    roster_count: 1,
     queue: options.queueHealth === 'trouble' ? { waiting: 14, judging: 2, errors: 1, oldest_wait_s: 95 } : { waiting: 0, judging: 1, errors: 1, oldest_wait_s: 0 },
     judge_last_claim_at: options.queueHealth === 'trouble' ? nowMs() - 3 * MIN : nowMs() - 4000,
     unanswered: state.answers.length ? 0 : 1,
@@ -382,46 +366,6 @@ export async function mockApi(page: Page, options: Options = {}) {
       reconstructed: false,
     };
   }
-
-  const revealBoards = () => {
-    const row = (user_id: number, name: string, rank: number, a: number, b: number, t: number, pa = 0, pb = 0) => ({
-      rank,
-      user_id,
-      name,
-      total: a + b,
-      last_improvement_s: t,
-      cells: [
-        { label: 'A', score: a, max: 100, pending: pa },
-        { label: 'B', score: b, max: 100, pending: pb },
-      ],
-    });
-    if (options.revealBoard === 'long') {
-      const names = Array.from({ length: 14 }, (_, i) => `Student ${i + 1}`);
-      const frozenRows = names.map((n, i) => row(i + 1, n, i + 1, 100 - i * 5, 0, 1000 + i, 0, 1));
-      const fullRows = names.map((n, i) => row(i + 1, n, i + 1, 100 - i * 5, 2, 1000 + i));
-      return {
-        frozen: { variant: 'frozen', version: 3, frozen_at: endsAt - 30 * MIN, final: false, judging_remaining: 0, me: null, labels: ['A', 'B'], rows: frozenRows },
-        full: { variant: 'full', version: 3, frozen_at: null, final: true, judging_remaining: 0, me: null, labels: ['A', 'B'], rows: fullRows },
-      };
-    }
-    if (options.revealBoard === 'nothing') {
-      const rows = [row(1, 'Priya Raman', 1, 100, 100, 3000), row(2, 'Arjun Mehta', 2, 100, 40, 2000)];
-      return {
-        frozen: { variant: 'frozen', version: 3, frozen_at: null, final: false, judging_remaining: 0, me: null, labels: ['A', 'B'], rows },
-        full: { variant: 'full', version: 3, frozen_at: null, final: true, judging_remaining: 0, me: null, labels: ['A', 'B'], rows },
-      };
-    }
-    return {
-      frozen: {
-        variant: 'frozen', version: 3, frozen_at: endsAt - 30 * MIN, final: false, judging_remaining: 0, me: null, labels: ['A', 'B'],
-        rows: [row(1, 'Priya Raman', 1, 100, 100, 3000), row(2, 'Arjun Mehta', 2, 100, 40, 2000, 0, 1), row(3, 'Asha Rao', 3, 100, 0, 1000, 0, 2), row(4, 'Ravi Kumar', 4, 40, 0, 900)],
-      },
-      full: {
-        variant: 'full', version: 3, frozen_at: null, final: true, judging_remaining: 0, me: null, labels: ['A', 'B'],
-        rows: [row(1, 'Priya Raman', 1, 100, 100, 3000), row(3, 'Asha Rao', 2, 100, 100, 5000), row(2, 'Arjun Mehta', 3, 100, 40, 2000), row(4, 'Ravi Kumar', 4, 40, 0, 900)],
-      },
-    };
-  };
 
   await page.route(
     (url) => url.pathname.startsWith('/api/'),
@@ -472,8 +416,6 @@ export async function mockApi(page: Page, options: Options = {}) {
         });
       }
       if (path === '/api/contests/week-6' && method === 'GET') return json(route, 200, contest());
-      // "Your progress" (C8): only final results, so Week 6 only once its board is final.
-      if (path === '/api/me/progress' && method === 'GET') return json(route, 200, contestProgress(now, phase === 'after'));
       if (path === '/api/contests/nope' && method === 'GET') return apiError(route, 404, 'not_found', 'There is no contest with that slug.');
       if (path === '/api/contests/week-6/start' && method === 'POST') {
         state.starts++;
@@ -483,7 +425,6 @@ export async function mockApi(page: Page, options: Options = {}) {
         return json(route, 200, contest());
       }
       if (path === '/api/contests/week-6/standings' && method === 'GET') {
-        if (options.boardClosed) return apiError(route, 403, 'board_closed', 'The board opens when the window closes.');
         const updated = options.zeroB ? { board_updated_at: now - 3_600_000, board_update_reason: 'review_decision' } : {};
         return json(route, 200, { ...(phase === 'during' || phase === 'ready' || options.studentFrozen ? frozenBoard() : fullBoard()), ...updated });
       }
@@ -532,7 +473,6 @@ export async function mockApi(page: Page, options: Options = {}) {
         if (!prob[2] && method === 'GET' && options.problemRefusal) {
           const refusals = {
             not_started: 'Accept the rules on the contest page to start.',
-            not_on_roster: 'This contest is for the students on its list. Ask the organiser if you should be on it.',
             contest_over: "Your time is up. Practice opens when every student's time is up.",
           };
           return apiError(route, 403, options.problemRefusal, refusals[options.problemRefusal]);
@@ -551,7 +491,7 @@ export async function mockApi(page: Page, options: Options = {}) {
         if (prob[3] === 'submit') {
           const body = req.postDataJSON() as Json;
           state.submits.push({ ...body, label });
-          const s = options.feedback === 'exam' ? hidden(state.nextId++, p.id) : submission(state.nextId++, p.id, 'queued');
+          const s = options.hideResults ? hidden(state.nextId++, p.id) : submission(state.nextId++, p.id, 'queued');
           state.submissions.push(s);
           return json(route, 202, { ...s, server_now: nowMs() });
         }
@@ -578,26 +518,31 @@ export async function mockApi(page: Page, options: Options = {}) {
         return json(route, 200, {
           contests: [
             { ...adminContest(), published: true, problems: PROBLEMS.map((p) => ({ label: p.label, problem_id: p.id, title: p.title, ready: true, max_score: 100 })) },
-            { ...adminContest(), id: 5, slug: 'week-7', title: 'Week 7 contest', starts_at: now + 3 * 86_400_000, ends_at: now + 3 * 86_400_000 + 2 * 3_600_000, close_at: now + 3 * 86_400_000 + 2 * 3_600_000, start_mode: 'window', duration_minutes: 90, state: 'upcoming', published: false, problems: [] },
+            { ...adminContest(), id: 5, slug: 'week-7', title: 'Week 7 contest', starts_at: now + 3 * 86_400_000, ends_at: now + 3 * 86_400_000 + 2 * 3_600_000, close_at: now + 3 * 86_400_000 + 2 * 3_600_000, state: 'upcoming', published: false, problems: [] },
           ],
           server_now: nowMs(),
         });
       }
       if (path === '/api/admin/contests' && method === 'POST') {
         const body = req.postDataJSON() as Json;
-        // Go: contestError answers FieldErrors with 400 and the fields' own sentence.
-        if (body.slug === 'week-6') return apiError(route, 400, 'bad_request', 'Another contest already uses this slug.', { fields: { slug: 'Another contest already uses this slug.' } });
-        return json(route, 201, { ...adminContest(), id: 9, title: body.title, slug: body.slug });
+        state.creates.push(body);
+        if (Number(body.ends_at) - Number(body.starts_at) > 14 * 86_400_000) {
+          return apiError(route, 400, 'bad_request', 'A contest can last at most 14 days.', { fields: { ends_at: 'A contest can last at most 14 days.' } });
+        }
+        // Go derives the slug from the title (contests.Slugify), numbered when taken.
+        const slug = String(body.title).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+        return json(route, 201, { ...adminContest(), id: 9, title: body.title, slug: slug === 'week-6-contest' ? `${slug}-2` : slug });
       }
       if (path === '/api/admin/contests/4' && method === 'GET') return json(route, 200, adminContest());
       if (path === '/api/admin/contests/4' && method === 'PUT') {
         const body = req.postDataJSON() as Json;
         state.settingsPuts.push(body);
-        if (body.slug === 'Week 6') return apiError(route, 400, 'bad_request', 'Use lowercase letters, digits and single hyphens, like week-6.', { fields: { slug: 'Use lowercase letters, digits and single hyphens, like week-6.' } });
+        if (String(body.title).length > 120) return apiError(route, 400, 'bad_request', 'Enter a title of at most 120 characters.', { fields: { title: 'Enter a title of at most 120 characters.' } });
         // Go refuses publishing (not saving an already published contest) with 400 and fields (contests.go contestError).
         const stale = 'Problem B changed or lost its validation since it was added. Validate it and add it again.';
         if (body.published === true && options.published === false && !options.publishOk) return apiError(route, 400, 'bad_request', stale, { fields: { published: stale } });
-        return json(route, 200, { ...adminContest(), ...body });
+        // Update keeps the slug (V3-15).
+        return json(route, 200, { ...adminContest(), ...body, slug: 'week-6' });
       }
       if (path === '/api/admin/contests/4/problems' && method === 'PUT') {
         const body = req.postDataJSON() as { problem_id: number; label: string; ai_reason?: string }[];
@@ -616,13 +561,6 @@ export async function mockApi(page: Page, options: Options = {}) {
         }
         state.adminProblems = body.map((b) => ({ ...b, title: PROBLEMS.find((p) => p.id === b.problem_id)?.title ?? 'Problem', ready: true, max_score: 100 }));
         return json(route, 200, adminContest());
-      }
-      if (path === '/api/admin/contests/4/roster' && method === 'GET') {
-        return json(route, 200, { roster: [{ email: 'asha@college.edu', name: 'Asha Rao', roll_number: '21CS001', section: 'A' }], count: 1 });
-      }
-      if (path === '/api/admin/contests/4/roster' && method === 'PUT') {
-        state.rosterPuts.push(req.postData() ?? '');
-        return json(route, 200, { roster: [], count: 1 });
       }
       if (path === '/api/admin/contests/4/admins') {
         if (method === 'DELETE') state.adminDeletes.push(req.postDataJSON() as Json);
@@ -743,7 +681,6 @@ export async function mockApi(page: Page, options: Options = {}) {
         state.notes = state.notes.map((n) => ({ ...n, expires_at: null }));
         return json(route, 201, { id: 14, contest_id: 4, state: 'open', title: body.title, source: 'manual', submission_id: Number(manual[1]), evidence: [], users: [], decisions: [], created_at: Date.now(), updated_at: Date.now() });
       }
-      if (path === '/api/admin/contests/4/reveal' && method === 'GET') return json(route, 200, revealBoards());
       if (path === '/api/admin/contests/4/stats' && method === 'GET') {
         return json(route, 200, {
           problems: [
@@ -768,11 +705,6 @@ export async function mockApi(page: Page, options: Options = {}) {
         const who = (url.searchParams.get('actor') ?? '').toLowerCase();
         const shown = entries.filter((e) => (want === '' || e.action === want) && (who === '' || e.actor.email.includes(who)));
         return json(route, 200, { entries: shown.reverse(), page: 1, has_more: false, server_now: nowMs() });
-      }
-      if (path === '/api/admin/contests/4/editorial' && method === 'PUT') {
-        const body = req.postDataJSON() as Json;
-        state.editorials.push(body);
-        return json(route, 200, { ...adminContest(), editorial_md: body.editorial_md, editorial_published: body.published });
       }
       return apiError(route, 404, 'not_found', 'This API route does not exist.');
     },
@@ -843,13 +775,6 @@ export const SCREENS: Screen[] = [
     ready: (page) => expect(page.locator('tr.me')).toBeVisible(),
   },
   {
-    name: 'standings-closed',
-    path: '/contests/week-6/standings',
-    options: { phase: 'during', startMode: 'window', boardClosed: true },
-    title: 'Standings · Week 6 contest · podium',
-    ready: (page) => expect(page.getByText('The standings open when the contest closes.')).toBeVisible(),
-  },
-  {
     name: 'admin-contests',
     path: '/admin/contests',
     options: { who: 'admin', phase: 'during' },
@@ -861,7 +786,7 @@ export const SCREENS: Screen[] = [
     path: '/admin/contests/4',
     options: { who: 'admin', phase: 'during' },
     title: 'Contest settings · Week 6 contest · podium',
-    ready: (page) => expect(page.getByRole('heading', { name: 'Roster' })).toBeVisible(),
+    ready: (page) => expect(page.getByRole('heading', { name: 'Clone' })).toBeVisible(),
   },
   {
     name: 'contest-console',

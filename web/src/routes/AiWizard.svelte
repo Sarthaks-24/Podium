@@ -2,8 +2,9 @@
   AiWizard: "New problem with AI" at /admin/ai/new (cache/v1/m5-plan.md
   sections 2, 4 and 7; contract C11). A line under the heading names the
   provider, the model and the key's state ("Using OpenAI, gpt-x. Key
-  active until 14:32.") with a link to the AI assistant settings, or says
-  what is missing first: a key, or a model for the provider. Two modes,
+  active until 14:32.") with "Change key or model", which opens the key
+  form inline, or says what is missing first: a key, or a model for the
+  provider. Two modes,
   chosen with radio buttons: "From a brief" (topic, difficulty,
   constraints, subtask ideas) and "From pasted text" (a textarea of at most
   20,000 characters, with the copyright note: the rewrite is in our own
@@ -15,9 +16,11 @@
   following the draft's own input generation, output generation and
   validation, "Generating the tests" and "Validating the draft", and at
   the end "Validation passed. Open the draft" (audit 2026-10-20 O7). A
-  failure shows the server's sentence and its reasons. With no key or no
-  model the key form (components/ai/KeyForm) sits inline above the brief,
-  so nothing is filled in before the page says it cannot run. One status
+  failure shows the server's sentence and its reasons, and a key problem
+  offers "Change key or model". With no key or no model the key form
+  (components/ai/KeyForm) sits inline above the brief, so nothing is
+  filled in before the page says it cannot run. "Forget key" is in the
+  account menu. One status
   line is a live region; nothing else announces. Takes no props.
 -->
 <script lang="ts">
@@ -63,6 +66,8 @@
   let loadState = $state<'loading' | 'ready' | 'forbidden'>('loading');
   let keyStatus = $state<KeyStatus | null>(null);
   let keyError = $state('');
+  /** The key form shown on request, when a key and a model are already set. */
+  let keyFormOpen = $state(false);
 
   let mode = $state<'brief' | 'paste'>('brief');
   let brief = $state<Brief>({ topic: '', difficulty: 'medium', constraints: '', subtasks: '' });
@@ -210,7 +215,23 @@
     schedulePoll();
   }
 
+  /** Shows the key form inline and puts focus on its first field. */
+  async function openKeyForm() {
+    keyFormOpen = true;
+    await tick();
+    document.getElementById('wiz-provider')?.focus();
+  }
+
+  /** After a save that leaves nothing missing, the form folds and the brief takes focus. */
+  async function keySaved(s: KeyStatus) {
+    if (wizardBlocker(s) !== '') return;
+    keyFormOpen = false;
+    await tick();
+    (document.getElementById(mode === 'brief' ? 'topic' : 'paste-text') ?? document.getElementById('key-change'))?.focus();
+  }
+
   async function loadKey() {
+    keyError = '';
     try {
       keyStatus = await getJSON<KeyStatus>(aiPaths.key);
     } catch (e) {
@@ -310,15 +331,15 @@
   {:else if loadState === 'ready'}
     <p class="key-state">
       {#if keyStatus && keyStatus.active && blocker !== ''}
-        {blocker} <a href="/admin/ai">Go to AI assistant</a>
+        {blocker}
       {:else if keyStatus && keyStatus.active}
         Using {providerLabel(keyStatus, keyStatus.provider)}{needsKey(keyStatus.provider) ? `, ${modelLabel(keyStatus, keyStatus.provider, keyStatus.model)}` : ''}.
         {`${keyLine(keyStatus)}.`}
-        <a href="/admin/ai">Change key or model</a>
+        <button id="key-change" type="button" class="btn btn-link btn-compact" aria-expanded={keyFormOpen} onclick={() => (keyFormOpen ? (keyFormOpen = false) : void openKeyForm())}>Change key or model</button>
       {:else if keyStatus}
         No key yet. Add one below to generate; it stays in the server's memory only.
       {:else if keyError !== ''}
-        {keyError} <a href="/admin/ai">Go to AI assistant</a>
+        {keyError} <button type="button" class="btn btn-link btn-compact" onclick={loadKey}>Check again</button>
       {:else}
         <span class="muted">Checking the key</span>
       {/if}
@@ -335,14 +356,14 @@
       </div>
     {/if}
 
-    {#if keyStatus && blocker !== '' && !wizard}
+    {#if keyStatus && ((blocker !== '' && !wizard) || keyFormOpen)}
       <section class="panel inline-key" aria-labelledby="wiz-form-heading">
         <KeyForm
           bind:status={keyStatus}
           id="wiz"
-          heading={keyStatus.active ? 'Choose a model to start' : 'Add a key to start'}
+          heading={keyFormOpen && blocker === '' ? undefined : keyStatus.active ? 'Choose a model to start' : 'Add a key to start'}
           onsessionerror={handleAuth}
-          onsaved={() => void tick().then(() => document.getElementById(mode === 'brief' ? 'topic' : 'paste-text')?.focus())}
+          onsaved={(s) => void keySaved(s)}
         />
       </section>
     {/if}
@@ -378,7 +399,7 @@
           <div class="banner banner-error problems-list" role="alert">
             <p>
               {wizard.error?.message ?? 'The model could not write this problem.'}
-              {#if isKeyProblem(wizard.error?.code)}<a href="/admin/ai">Go to AI assistant</a>{/if}
+              {#if isKeyProblem(wizard.error?.code)}<button type="button" class="btn btn-link btn-compact" onclick={openKeyForm}>Change key or model</button>{/if}
             </p>
             {#if wizard.error?.reasons && wizard.error.reasons.length > 0}
               <ul>{#each wizard.error.reasons as reason, i (i)}<li>{reason}</li>{/each}</ul>
@@ -508,7 +529,7 @@
           <div class="banner banner-error problems-list" role="alert">
             <p>
               {requestError.message}
-              {#if isKeyProblem(requestError.code)}<a href="/admin/ai">Go to AI assistant</a>{/if}
+              {#if isKeyProblem(requestError.code)}<button type="button" class="btn btn-link btn-compact" onclick={openKeyForm}>Change key or model</button>{/if}
             </p>
             {#if requestError.problems.length > 0}
               <ul>{#each requestError.problems as line, i (i)}<li>{line}</li>{/each}</ul>
@@ -535,7 +556,7 @@
     color: var(--ink-muted);
   }
 
-  .key-state a {
+  .key-state .btn-link {
     font-weight: 500;
   }
 

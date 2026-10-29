@@ -10,19 +10,16 @@
     the contest" (POST /api/contests/{slug}/start), all in the first
     screen at 375 px. The full rules and how Run and Submit work are in
     Help (a link under the button, or "?"); the description follows.
-    The button waits for the start in a fixed-start contest; when the start
-    arrives the announcer says so. A late arrival reads that their time is
-    already running.
+    The button waits for the start; when the start arrives the announcer
+    says so. A late arrival reads that their time is already running.
   - During their window: the shared Workspace on the contest's routes with
     the rail of problem letters (score and 2 px bar), the contest clock,
-    the Standings link and Messages. Exam contests show only
-    "Submitted". Announcements and answered questions newer than the last
+    the Standings link and Messages. Announcements and answered questions newer than the last
     time the student read the messages on this device (localStorage
     podium-messages-read:{slug}, audit S1) show in a quiet banner above the
     title and as the count on Messages (from 1024 px the
     editor never moves); a second open tab or a second session reported
-    by the server shows a notice there too. Exam mode marks submitted
-    problems "submitted" on the rail. "Rules" in the rail opens Help, which lists the same
+    by the server shows a notice there too. "Rules" in the rail opens Help, which lists the same
     rules (D114). When an organiser moves a problem to a new revision (the
     `statement` event), the open problem's statement reloads; the
     organisers announce the change.
@@ -148,7 +145,6 @@
     }
   });
   const currentProblem = $derived(problems.find((p) => p.label === current) ?? null);
-  const exam = $derived(contest?.rules.feedback_mode === 'exam');
   const practice = $derived(contest?.state === 'practice');
   const banner = $derived(contest ? bannerItems(contest, dismissed, lastRead) : []);
   const showWorkspace = $derived(
@@ -472,7 +468,6 @@
     {slug}
     current={current}
     {layout}
-    {exam}
     unread={banner.length}
     onmessages={openMessages}
     onhelp={() => (shell.help = true)}
@@ -506,10 +501,8 @@
       contestHref="/contests/{encodeURIComponent(slug)}"
       label={current}
       context={contest.title}
-      feedback={contest.rules.feedback_mode}
-      showScores={phase === 'after'}
       locked={phase === 'after' && !practice ? 'The contest has ended. Submissions are closed.' : ''}
-      problemScore={exam && phase === 'during' ? null : { score: currentProblem.my_score, max: currentProblem.max_score }}
+      problemScore={{ score: currentProblem.my_score, max: currentProblem.max_score }}
       {used}
       minGapS={phase === 'during' ? contest.rules.min_gap_s : 0}
       {statementKey}
@@ -564,11 +557,6 @@
     <div class="before">
       {#if phase === 'upcoming' || startNow.kind === 'before'}
         <p class="countdown"><span class="count-lead">Starts in</span> <span class="mono figure" role="timer">{startNow.ms >= 86_400_000 ? formatSpan(startNow.ms) : formatCountdown(startNow.ms)}</span></p>
-      {:else if startNow.kind === 'window'}
-        <p class="countdown">
-          <span class="count-lead">Start any time before <MonoDigits text={formatDateTime(contest.ends_at)} />. The contest closes in</span>
-          <span class="mono figure" role="timer">{formatCountdown(startNow.ms)}</span>
-        </p>
       {:else}
         <p class="countdown">
           <span class="count-lead">The contest started at <span class="mono">{formatDateTime(contest.starts_at).slice(-5)}</span> and your time is running. It ends in</span>
@@ -594,8 +582,6 @@
           <p id="start-help" class="muted small">
             {#if phase === 'upcoming'}
               You can start at <MonoDigits text={formatDateTime(contest.starts_at)} />.
-            {:else if contest.start_mode === 'window'}
-              Your clock starts when you press it and runs {lengthText(contest).replace(' each', '')}.
             {:else}
               Pressing it records that you agreed, then opens the problems.
             {/if}
@@ -664,7 +650,7 @@
                       {:else if h === 'error'}
                         <p class="field-error">Your submissions could not load. Close and open this again.</p>
                       {:else}
-                        <SubmissionList submissions={h} onjump={null} exam={exam} showScores />
+                        <SubmissionList submissions={h} onjump={null} />
                       {/if}
                     </div>
                   </details>

@@ -221,8 +221,8 @@ func (s *Service) scheduleRefresh(id int64, delay time.Duration) {
 
 // scoringBoard is the scoring view of the contest.
 func (s *Service) scoringBoard(c *Contest) Board {
-	b := Board{Scoring: c.Scoring, Window: c.Schedule.Mode == WindowStart, StartsAt: c.Schedule.StartsAt, Freeze: c.Schedule.Freeze}
-	if c.Schedule.Mode == FixedStart && c.Schedule.Freeze > 0 {
+	b := Board{StartsAt: c.Schedule.StartsAt, Freeze: c.Schedule.Freeze}
+	if c.Schedule.Freeze > 0 {
 		b.FreezeAt = c.Schedule.Close().Add(-c.Schedule.Freeze)
 	}
 	for _, p := range c.Problems {
@@ -232,20 +232,19 @@ func (s *Service) scoringBoard(c *Contest) Board {
 }
 
 // participants are students who opened the contest or submitted to it,
-// with their own windows. The name shown is the roster's, then the
-// account's, never the email: the board is public to the contest.
+// with their own windows. The name shown is the account's, never the
+// email: the board is public to the contest.
 func (s *Service) participants(ctx context.Context, c *Contest) ([]Participant, error) {
 	rows, err := s.DB.QueryContext(ctx, `SELECT u.id,
-		coalesce(nullif(trim(r.display_name), ''), nullif(trim(u.name), ''), 'Student ' || u.id),
+		coalesce(nullif(trim(u.name), ''), 'Student ' || u.id),
 		coalesce(cs.started_at, 0), coalesce(ce.minutes, 0)
 		FROM users u
 		LEFT JOIN contest_starts cs ON cs.contest_id = ? AND cs.user_id = u.id
 		LEFT JOIN contest_extensions ce ON ce.contest_id = ? AND ce.user_id = u.id
-		LEFT JOIN contest_roster r ON r.contest_id = ? AND r.email = u.email
 		WHERE u.id IN (SELECT user_id FROM contest_starts WHERE contest_id = ?
 			UNION SELECT user_id FROM submissions WHERE contest_id = ? AND kind = 'submit' AND practice = 0)
 		AND u.id NOT IN (SELECT user_id FROM integrity_cases WHERE contest_id = ? AND decision = 'excluded')
-		AND u.role = 'student'`, c.ID, c.ID, c.ID, c.ID, c.ID, c.ID)
+		AND u.role = 'student'`, c.ID, c.ID, c.ID, c.ID, c.ID)
 	if err != nil {
 		return nil, err
 	}
@@ -258,15 +257,8 @@ func (s *Service) participants(ctx context.Context, c *Contest) ([]Participant, 
 		if err := rows.Scan(&p.UserID, &p.Name, &started, &ext); err != nil {
 			return nil, err
 		}
-		var startForWindow time.Time
-		if c.Schedule.Mode == WindowStart && started > 0 {
-			startForWindow = time.UnixMilli(started)
-		}
-		w, ok := c.Schedule.StudentWindow(startForWindow, time.Duration(ext)*time.Minute)
-		if !ok {
-			// Window mode without a start: they cannot have submitted.
-			continue
-		}
+		_ = started
+		w := c.Schedule.StudentWindow(time.Duration(ext) * time.Minute)
 		p.Started, p.Ends = w.Opens, w.Ends
 		out = append(out, p)
 	}

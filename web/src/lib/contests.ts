@@ -10,19 +10,14 @@
  *
  * The rest is pure maths and wording: which phase a student is in (before
  * the start, ready to start, during their window, after it), countdowns,
- * the freeze, the clock milestones a screen reader hears, roster CSV
- * parsing for the preview, problem labels, and the templates and canned
- * replies the console offers.
+ * the freeze, the clock milestones a screen reader hears, problem labels,
+ * and the templates and canned replies the console offers.
  */
 import { countOf, formatDateTime } from './format';
 import type { ProblemPin } from './history';
 import { LANGUAGES, type Language } from './problems';
 
 export type ContestState = 'upcoming' | 'live' | 'frozen' | 'ended' | 'practice';
-export type StartMode = 'fixed' | 'window';
-export type FeedbackMode = 'subtask' | 'exam';
-export type ScoringMode = 'best_subtask' | 'best_submission';
-export type Access = 'domain' | 'roster';
 
 /** A student's own time in a contest. */
 export interface StudentWindow {
@@ -36,8 +31,6 @@ export interface ContestSummary {
   title: string;
   starts_at: number;
   ends_at: number;
-  start_mode: StartMode;
-  duration_minutes: number;
   problem_count: number;
   state: ContestState;
   my_score: number | null;
@@ -55,8 +48,6 @@ export interface ContestList {
 }
 
 export interface ContestRules {
-  feedback_mode: FeedbackMode;
-  scoring_mode: ScoringMode;
   min_gap_s: number;
   max_per_problem: number;
   languages: string[];
@@ -95,13 +86,11 @@ export interface Clarification {
 /**
  * The rail's score cell in the wide layout (S1-09): the score where one
  * exists and nothing else; "not tried" without a submission, "tried"
- * while one waits for its score; in exam mode, until scores are out,
- * "not submitted" and "submitted".
+ * while one waits for its score.
  */
-export function railStatus(p: Pick<ContestProblem, 'my_score' | 'max_score' | 'my_submission_count'>, exam: boolean): { score: string; word: string } {
+export function railStatus(p: Pick<ContestProblem, 'my_score' | 'max_score' | 'my_submission_count'>): { score: string; word: string } {
   const count = p.my_submission_count ?? 0;
   if (p.my_score === null) {
-    if (exam) return { score: '', word: count > 0 ? 'submitted' : 'not submitted' };
     return { score: '', word: count > 0 ? 'tried' : 'not tried' };
   }
   return { score: `${p.my_score}/${p.max_score}`, word: '' };
@@ -304,9 +293,9 @@ export function studentPhase(
   return 'ready';
 }
 
-/** The moment the board freezes for a fixed-start contest, or null. */
-export function freezeAt(c: Pick<ContestSummary, 'start_mode' | 'ends_at'> & { rules: Pick<ContestRules, 'freeze_minutes'> }): number | null {
-  if (c.start_mode !== 'fixed' || c.rules.freeze_minutes <= 0) return null;
+/** The moment the board freezes, or null without a freeze. */
+export function freezeAt(c: Pick<ContestSummary, 'ends_at'> & { rules: Pick<ContestRules, 'freeze_minutes'> }): number | null {
+  if (c.rules.freeze_minutes <= 0) return null;
   return c.ends_at - c.rules.freeze_minutes * 60_000;
 }
 
@@ -343,9 +332,8 @@ export function formatMinutes(minutes: number): string {
   return m === 0 ? `${h} h` : `${h} h ${m} min`;
 }
 
-/** How long a contest lasts for one student, in words. */
-export function lengthText(c: Pick<ContestSummary, 'start_mode' | 'duration_minutes' | 'starts_at' | 'ends_at'>): string {
-  if (c.start_mode === 'window') return `${formatMinutes(c.duration_minutes)} each`;
+/** How long a contest lasts, in words. */
+export function lengthText(c: Pick<ContestSummary, 'starts_at' | 'ends_at'>): string {
   return formatMinutes(Math.round((c.ends_at - c.starts_at) / 60_000));
 }
 
@@ -357,12 +345,7 @@ export function listCountdown(c: ContestSummary, now: number): { lead: string; m
   if (c.state === 'upcoming') return { lead: 'Starts in', ms: c.starts_at - now, after: '' };
   if (c.state === 'live' || c.state === 'frozen') {
     const after = c.state === 'frozen' ? ', newest results hidden' : '';
-    if (c.start_mode === 'window') {
-      if (!c.my_window) return { lead: 'Open for', ms: c.ends_at - now, after };
-      if (now < c.my_window.ends_at) return { lead: 'Your time left', ms: c.my_window.ends_at - now, after };
-      return null;
-    }
-    // Fixed start: the student's own end includes any personal extension.
+    // The student's own end includes any personal extension.
     return { lead: 'Ends in', ms: (c.my_window?.ends_at ?? c.ends_at) - now, after };
   }
   return null;
@@ -370,12 +353,11 @@ export function listCountdown(c: ContestSummary, now: number): { lead: string; m
 
 /**
  * The line under the title before a student starts: a countdown before the
- * start, or, for a late arrival in a fixed-start contest, that their time
- * is already running (audit 01-17). `ms` is the countdown in the line.
+ * start, or, for a late arrival, that their time is already running (audit
+ * 01-17). `ms` is the countdown in the line.
  */
-export function startLine(c: Pick<Contest, 'start_mode' | 'starts_at' | 'ends_at'>, now: number): { kind: 'before' | 'window' | 'late'; ms: number } {
+export function startLine(c: Pick<Contest, 'starts_at' | 'ends_at'>, now: number): { kind: 'before' | 'late'; ms: number } {
   if (now < c.starts_at) return { kind: 'before', ms: c.starts_at - now };
-  if (c.start_mode === 'window') return { kind: 'window', ms: c.ends_at - now };
   return { kind: 'late', ms: c.ends_at - now };
 }
 
@@ -408,10 +390,7 @@ export function allowedLanguages(ids: readonly string[] | undefined): { id: Lang
   return LANGUAGES.filter((l) => ids.includes(l.id));
 }
 
-/**
- * The three sentences that teach the two buttons (v2 S3, audit 01-4). True in
- * both scoring modes.
- */
+/** The three sentences that teach the two buttons (v2 S3, audit 01-4). */
 export const WORKSPACE_SENTENCES: readonly string[] = [
   'Run tries your code on the examples in the statement. It never counts.',
   'Submit grades your code on hidden tests, in parts called subtasks.',
@@ -422,32 +401,16 @@ export const WORKSPACE_SENTENCES: readonly string[] = [
 export const RECORDED_SENTENCE = 'Podium records how many characters you paste and when you leave the page.';
 
 /** The rules shown before the start, and again in the workspace Rules dialog. */
-export function rulesSentences(c: Pick<Contest, 'start_mode' | 'duration_minutes' | 'starts_at' | 'ends_at' | 'rules'>): string[] {
+export function rulesSentences(c: Pick<Contest, 'starts_at' | 'ends_at' | 'rules'>): string[] {
   const r = c.rules;
-  const out: string[] = [];
-  if (c.start_mode === 'window') {
-    out.push(`Your clock starts when you agree and start, and runs ${formatMinutes(c.duration_minutes)}, ending no later than the contest closes.`);
-  } else {
-    out.push(`Everyone starts together and has ${lengthText(c)}.`);
-  }
-  out.push(...WORKSPACE_SENTENCES);
-  out.push(
-    r.scoring_mode === 'best_submission'
-      ? 'Each problem scores your best single submission.'
-      : 'Each problem adds up your best result on every subtask across your submissions.',
-  );
-  out.push(
-    r.feedback_mode === 'exam'
-      ? 'This is an exam: a submission only says "Submitted". Scores appear after the end.'
-      : 'Each submission shows which subtasks passed and a verdict for every test, never the hidden inputs or outputs.',
-  );
+  const out: string[] = [`Everyone starts together and has ${lengthText(c)}.`, ...WORKSPACE_SENTENCES];
+  out.push('Each problem adds up your best result on every subtask across your submissions.');
+  out.push('Each submission shows which subtasks passed and a verdict for every test, never the hidden inputs or outputs.');
   out.push(`You can submit up to ${r.max_per_problem} times per problem, at least ${r.min_gap_s} s apart.`);
   const langs = allowedLanguages(r.languages).map((l) => l.label);
   if (langs.length > 0) out.push(`Languages: ${langs.join(', ')}.`);
-  if (c.start_mode === 'fixed' && r.freeze_minutes > 0) {
+  if (r.freeze_minutes > 0) {
     out.push(`The standings freeze ${formatMinutes(r.freeze_minutes)} before the end; later results appear after the contest.`);
-  } else if (c.start_mode === 'window') {
-    out.push('The standings open when the contest closes.');
   }
   return out;
 }
@@ -461,8 +424,6 @@ export interface AdminContestSummary {
   title: string;
   starts_at: number;
   ends_at: number;
-  start_mode: StartMode;
-  duration_minutes: number;
   state: ContestState;
   published: boolean;
   archived?: boolean;
@@ -500,38 +461,19 @@ export interface AdminContestProblem extends Partial<Omit<ProblemPin, 'label' | 
   ready?: boolean;
 }
 
-export interface RosterEntry {
-  email: string;
-  display_name: string;
-  roll_number: string;
-  section: string;
-}
-
-/** A roster row as GET .../roster returns it. */
-export interface RosterRow {
-  email: string;
-  name?: string;
-  display_name?: string;
-  roll_number: string;
-  section: string;
-}
-
-/** The settings form; also the body of POST and PUT /api/admin/contests. */
+/**
+ * The settings form; also the body of POST and PUT /api/admin/contests.
+ * The server derives the slug from the title when it makes the contest
+ * (V3-15), so the form never sends one.
+ */
 export interface ContestSettings {
-  slug: string;
   title: string;
   description_md: string;
   starts_at: number;
   ends_at: number;
-  start_mode: StartMode;
-  duration_minutes: number;
   freeze_minutes: number;
-  scoring_mode: ScoringMode;
-  access: Access;
-  feedback_mode: FeedbackMode;
   published: boolean;
   practice_after_end: boolean;
-  stop_on_sample_fail: boolean;
   min_gap_s: number;
   max_per_problem: number;
   languages: string[];
@@ -543,6 +485,8 @@ export interface ContestSettings {
 /** GET /api/admin/contests/{id}. */
 export interface AdminContest extends ContestSettings {
   id: number;
+  /** Derived from the title when the contest was made; it never changes. */
+  slug: string;
   state: ContestState;
   paused: boolean;
   extended_minutes: number;
@@ -550,9 +494,6 @@ export interface AdminContest extends ContestSettings {
   editorial_published: boolean;
   revealed_at: number | null;
   problems: AdminContestProblem[];
-  /** The roster comes from GET .../roster; older shapes inlined it. */
-  roster?: RosterRow[];
-  roster_count?: number;
   extensions?: { user_id: number; email: string; name: string; minutes: number; reason: string }[];
   /** ends_at plus the contest-wide extension. */
   close_at?: number;
@@ -574,7 +515,7 @@ export interface FeedRow {
   /** Older shape of problem_label. */
   label?: string;
   language: string;
-  /** "submitted" while exam mode hides the result. */
+  /** "submitted" while the server hides the result. */
   state: 'queued' | 'running' | 'done' | 'error' | 'submitted';
   verdict: string;
   score: number;
@@ -611,7 +552,6 @@ export const AUDIT_ACTIONS: readonly { id: string; label: string }[] = [
   { id: 'settings', label: 'Settings' },
   { id: 'problems', label: 'Problems' },
   { id: 'revision', label: 'Problem revisions' },
-  { id: 'roster', label: 'Roster' },
   { id: 'extension', label: 'Extra time for a student' },
   { id: 'extend', label: 'Contest extended' },
   { id: 'pause', label: 'Judging paused' },
@@ -632,15 +572,9 @@ const AUDIT_FIELDS: Record<string, string> = {
   honour_text: 'honour code',
   starts_at: 'start',
   ends_at: 'end',
-  start_mode: 'start mode',
-  duration_minutes: 'window length',
   freeze_minutes: 'freeze',
-  scoring_mode: 'scoring',
-  access: 'access',
-  feedback_mode: 'feedback',
   published: 'published',
   practice_after_end: 'practice after the end',
-  stop_on_sample_fail: 'stop on a failed sample',
   min_gap_s: 'gap between submissions',
   max_per_problem: 'submissions per problem',
   languages: 'languages',
@@ -678,16 +612,6 @@ export function auditSummary(e: Pick<AuditEntry, 'action' | 'details'>, names?: 
     }
     case 'ai_problem':
       return `Graded AI problem ${str('label')} as written: ${str('reason')}`;
-    case 'roster': {
-      const list = (k: string) => (Array.isArray(d[k]) ? (d[k] as unknown[]).filter((x): x is string => typeof x === 'string') : []);
-      const names = (emails: string[]) => (emails.length > 3 ? `${emails.slice(0, 3).join(', ')} and ${emails.length - 3} more` : emails.join(', '));
-      const added = list('emails_added');
-      const removed = list('emails_removed');
-      let line = `Replaced the roster: ${countOf(num('count'), 'student')}, ${num('added')} added, ${num('removed')} removed`;
-      if (added.length > 0) line += `; added ${names(added)}`;
-      if (removed.length > 0) line += `; removed ${names(removed)}`;
-      return line;
-    }
     case 'revision': {
       const what = d.statement_changed === true && d.judging_changed === true ? 'statement and tests' : d.judging_changed === true ? 'tests' : 'statement';
       return `Moved problem ${str('label')} from revision ${num('from_rev')} to revision ${num('to_rev')} (${what} changed)`;
@@ -760,12 +684,12 @@ export interface PublishCheck {
 /**
  * What a contest needs before students can have it (F6.3, C5), from the
  * data the editor already holds: at least one problem and none changed
- * since it was added, a start still ahead (until it starts), someone on
- * the roster when only the roster may take part, and a language. The
+ * since it was added, a start still ahead (until it starts), and a
+ * language. Who takes part is decided by the allowed domains (V3-15). The
  * server checks again when it publishes.
  */
 export function publishChecks(
-  c: { problems: Pick<AdminContestProblem, 'label' | 'ready'>[]; access: Access; roster_count?: number; languages: string[]; starts_at: number; freeze_minutes: number; hold_reveal?: boolean },
+  c: { problems: Pick<AdminContestProblem, 'label' | 'ready'>[]; languages: string[]; starts_at: number; freeze_minutes: number; hold_reveal?: boolean },
   started: boolean,
   now: number,
 ): PublishCheck[] {
@@ -782,12 +706,7 @@ export function publishChecks(
   if (!started) {
     out.push(c.starts_at > now ? { tone: 'ok', text: `Starts ${formatDateTime(c.starts_at)}.` } : { tone: 'part', text: 'The start time has passed. Move it ahead, or students start at once.' });
   }
-  if (c.access === 'roster') {
-    const r = c.roster_count ?? 0;
-    out.push(r > 0 ? { tone: 'ok', text: `${r} ${r === 1 ? 'student' : 'students'} on the roster.` } : { tone: 'bad', text: 'The roster is empty, so nobody can take part. Add the roster under More.' });
-  } else {
-    out.push({ tone: 'ok', text: 'Anyone from the allowed domains can take part.' });
-  }
+  out.push({ tone: 'ok', text: 'Anyone from the allowed domains can take part.' });
   out.push(c.languages.length > 0 ? { tone: 'ok', text: `${c.languages.length} ${c.languages.length === 1 ? 'language' : 'languages'} allowed.` } : { tone: 'bad', text: 'Allow at least one language.' });
   if (c.hold_reveal && c.freeze_minutes <= 0) out.push({ tone: 'part', text: 'The board is held for a reveal, but with no freeze there is nothing to reveal.' });
   return out;
@@ -825,7 +744,7 @@ export const SLOW_WAIT_S = 60;
  * items.
  */
 export function attentionItems(
-  c: Pick<AdminContest, 'starts_at' | 'ends_at' | 'start_mode' | 'freeze_minutes' | 'paused' | 'problems' | 'state'> & {
+  c: Pick<AdminContest, 'starts_at' | 'ends_at' | 'freeze_minutes' | 'paused' | 'problems' | 'state'> & {
     close_at?: number;
     queue?: QueueHealth;
     judge_last_claim_at?: number | null;
@@ -839,7 +758,7 @@ export function attentionItems(
   else if (now < close) out.push({ key: 'time', text: `Ends in ${formatCountdown(close - now)}`, tone: 'note', href: '#time-title' });
   else out.push({ key: 'time', text: 'Ended', tone: 'note', href: '#time-title' });
 
-  const freeze = c.start_mode === 'fixed' && c.freeze_minutes > 0 ? c.ends_at - c.freeze_minutes * 60_000 : null;
+  const freeze = c.freeze_minutes > 0 ? c.ends_at - c.freeze_minutes * 60_000 : null;
   if (freeze !== null && now >= c.starts_at && now < close) {
     out.push({ key: 'freeze', text: now < freeze ? `Board freezes in ${formatSpan(freeze - now)}` : 'Board frozen', tone: 'note', href: '#time-title' });
   }
@@ -925,20 +844,13 @@ export function defaultSettings(now: number): ContestSettings {
   d.setHours(18, 0, 0, 0);
   const start = d.getTime();
   return {
-    slug: '',
     title: '',
     description_md: '',
     starts_at: start,
     ends_at: start + 2 * 3_600_000,
-    start_mode: 'fixed',
-    duration_minutes: 120,
     freeze_minutes: 0,
-    scoring_mode: 'best_subtask',
-    access: 'domain',
-    feedback_mode: 'subtask',
     published: false,
     practice_after_end: true,
-    stop_on_sample_fail: true,
     min_gap_s: 30,
     max_per_problem: 15,
     languages: LANGUAGES.map((l) => l.id),
@@ -958,114 +870,6 @@ export function fromLocalInput(value: string): number | null {
   if (!m) return null;
   const d = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]), Number(m[4]), Number(m[5]), 0, 0);
   return Number.isNaN(d.getTime()) ? null : d.getTime();
-}
-
-// Roster CSV.
-
-/** A parsed roster line for the preview; error explains a line that will be refused. */
-export interface RosterLine extends RosterEntry {
-  line: number;
-  error: string;
-}
-
-/** Splits CSV text into rows of fields; handles quotes, doubled quotes and CRLF. */
-export function parseCsv(text: string): string[][] {
-  const rows: string[][] = [];
-  let row: string[] = [];
-  let field = '';
-  let quoted = false;
-  for (let i = 0; i < text.length; i++) {
-    const ch = text[i];
-    if (quoted) {
-      if (ch === '"') {
-        if (text[i + 1] === '"') {
-          field += '"';
-          i++;
-        } else {
-          quoted = false;
-        }
-      } else {
-        field += ch;
-      }
-    } else if (ch === '"' && field === '') {
-      quoted = true;
-    } else if (ch === ',') {
-      row.push(field);
-      field = '';
-    } else if (ch === '\n' || ch === '\r') {
-      if (ch === '\r' && text[i + 1] === '\n') i++;
-      row.push(field);
-      rows.push(row);
-      row = [];
-      field = '';
-    } else {
-      field += ch;
-    }
-  }
-  if (field !== '' || row.length > 0) {
-    row.push(field);
-    rows.push(row);
-  }
-  return rows.filter((r) => r.some((f) => f.trim() !== ''));
-}
-
-const EMAIL = /^[^@\s,;]+@[^@\s,;]+\.[^@\s,;]+$/;
-
-const HEADERS: Record<string, keyof RosterEntry> = {
-  email: 'email',
-  'e-mail': 'email',
-  mail: 'email',
-  name: 'display_name',
-  display_name: 'display_name',
-  'display name': 'display_name',
-  'full name': 'display_name',
-  roll: 'roll_number',
-  roll_number: 'roll_number',
-  'roll number': 'roll_number',
-  'roll no': 'roll_number',
-  'roll no.': 'roll_number',
-  section: 'section',
-};
-
-/**
- * Parses a roster CSV for the preview. Columns are email, name, roll
- * number and section in that order, or in any order under a header row that
- * names them. Each line carries an error when it will be refused: a missing
- * or malformed email, or an email already listed above.
- */
-export function parseRoster(text: string): { lines: RosterLine[]; valid: number; invalid: number } {
-  const rows = parseCsv(text);
-  let order: (keyof RosterEntry | null)[] = ['email', 'display_name', 'roll_number', 'section'];
-  let first = 0;
-  if (rows.length > 0 && rows[0].some((f) => HEADERS[f.trim().toLowerCase()] === 'email')) {
-    order = rows[0].map((f) => HEADERS[f.trim().toLowerCase()] ?? null);
-    first = 1;
-  }
-  const seen = new Set<string>();
-  const lines: RosterLine[] = [];
-  for (let r = first; r < rows.length; r++) {
-    const entry: RosterEntry = { email: '', display_name: '', roll_number: '', section: '' };
-    rows[r].forEach((value, i) => {
-      const key = order[i];
-      if (key) entry[key] = value.trim();
-    });
-    entry.email = entry.email.toLowerCase();
-    let error = '';
-    if (entry.email === '') error = 'No email';
-    else if (!EMAIL.test(entry.email)) error = 'Not an email address';
-    else if (seen.has(entry.email)) error = 'Listed twice';
-    seen.add(entry.email);
-    lines.push({ ...entry, line: r + 1, error });
-  }
-  const invalid = lines.filter((l) => l.error !== '').length;
-  return { lines, valid: lines.length - invalid, invalid };
-}
-
-/** Writes roster entries back as CSV with a header row, quoting where needed. */
-export function rosterCsv(entries: readonly RosterEntry[]): string {
-  const cell = (v: string) => (/[",\r\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v);
-  const head = 'email,name,roll_number,section';
-  return [head, ...entries.map((e) => [e.email, e.display_name, e.roll_number, e.section].map(cell).join(','))].join('\n') + '\n';
 }
 
 // Console wording.
@@ -1106,11 +910,11 @@ export function fillTemplate(text: string, values: { label?: string; minutes?: n
  * later, so a held board is never released by ending early.
  */
 export function endNowFreeze(
-  c: Pick<AdminContest, 'start_mode' | 'freeze_minutes' | 'ends_at'> & { extended_minutes?: number },
+  c: Pick<AdminContest, 'freeze_minutes' | 'ends_at'> & { extended_minutes?: number },
   newEndsAt: number,
   now: number,
 ): number {
-  if (c.start_mode !== 'fixed' || c.freeze_minutes <= 0) return c.freeze_minutes;
+  if (c.freeze_minutes <= 0) return c.freeze_minutes;
   const added = (c.extended_minutes ?? 0) * 60_000;
   const frozenAt = c.ends_at + added - c.freeze_minutes * 60_000;
   if (now < frozenAt) return 0;

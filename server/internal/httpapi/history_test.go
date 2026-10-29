@@ -71,14 +71,14 @@ func TestP2PracticeRevealsAndContestSubmitNever(t *testing.T) {
 	owner := s.signedIn("owner@college.edu", "Owner")
 	pid := s.importProblem(owner, "sum")
 	start := time.Now().Add(time.Hour)
-	for _, mode := range []string{"subtask", "exam"} {
+	for _, mode := range []string{"subtask"} {
 		slug := "rev-" + mode
 		s.clock.set(time.Now())
-		s.createContest(owner, slug, start, map[string]int64{"A": pid}, map[string]any{"feedback_mode": mode, "practice_after_end": true})
+		s.createContest(owner, slug, start, map[string]int64{"A": pid}, map[string]any{"practice_after_end": true})
 	}
 	student := s.signedIn("asha@college.edu", "Asha")
 	s.at(start, 1)
-	for _, mode := range []string{"subtask", "exam"} {
+	for _, mode := range []string{"subtask"} {
 		slug := "rev-" + mode
 		student.do("POST", "/api/contests/"+slug+"/start", map[string]any{"accept_honour": true}, s.srv.URL)
 		// "int32" wraps, so it fails the large hidden tests.
@@ -144,22 +144,20 @@ func TestPracticeRevealWaitsForEveryContestOfTheProblem(t *testing.T) {
 
 // A draft may change its slug; a published contest keeps it, so links to
 // it keep working (v3, no redirects).
-func TestPublishedContestKeepsItsSlug(t *testing.T) {
+// TestContestKeepsItsSlug: the slug is derived from the title at create
+// and never changes, so links keep working (V3-15).
+func TestContestKeepsItsSlug(t *testing.T) {
 	s := newSite(t)
 	owner := s.signedIn("owner@college.edu", "Owner")
-	code, out := owner.do("POST", "/api/admin/contests", map[string]any{"slug": "draft-a", "title": "Draft",
+	code, out := owner.do("POST", "/api/admin/contests", map[string]any{"title": "Week 6: Graphs!",
 		"starts_at": time.Now().Add(time.Hour).UnixMilli(), "ends_at": time.Now().Add(2 * time.Hour).UnixMilli()}, s.srv.URL)
-	if code != 201 {
+	if code != 201 || out["slug"] != "week-6-graphs" {
 		t.Fatalf("create %d %v", code, out)
 	}
 	id := int64(out["id"].(float64))
-	if code, out := owner.do("PUT", fmt.Sprintf("/api/admin/contests/%d", id), map[string]any{"slug": "draft-b"}, s.srv.URL); code != 200 {
-		t.Fatalf("draft rename: %d %v", code, out)
-	}
-	pid := s.importProblem(owner, "sum")
-	cid := s.createContest(owner, "pub-a", time.Now().Add(time.Hour), map[string]int64{"A": pid}, nil)
-	code, out = owner.do("PUT", fmt.Sprintf("/api/admin/contests/%d", cid), map[string]any{"slug": "pub-b"}, s.srv.URL)
-	if code != 400 || !strings.Contains(fmt.Sprint(out), "keeps its slug") {
-		t.Errorf("published rename: %d %v", code, out)
+	edit := map[string]any{"slug": "other", "title": "Week 7", "starts_at": out["starts_at"], "ends_at": out["ends_at"],
+		"min_gap_s": 30, "max_per_problem": 15, "languages": []string{"cpp17"}}
+	if code, out := owner.do("PUT", fmt.Sprintf("/api/admin/contests/%d", id), edit, s.srv.URL); code != 200 || out["slug"] != "week-6-graphs" || out["title"] != "Week 7" {
+		t.Errorf("rename: %d %v", code, out)
 	}
 }

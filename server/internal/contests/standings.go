@@ -25,14 +25,11 @@ const (
 
 // Board is the contest as scoring sees it.
 type Board struct {
-	Scoring  string
-	Window   bool          // each student's clock starts when they press Start
-	StartsAt time.Time     // fixed start
-	Freeze   time.Duration // before each student's end; 0 means no freeze
-	// FreezeAt is the contest-wide freeze for fixed starts (the close minus
-	// Freeze). A personal extension never moves it: otherwise a student's
-	// first minutes of the freeze would show to everyone. Zero means each
-	// student freezes at their own end minus Freeze (window mode).
+	StartsAt time.Time     // everyone's start
+	Freeze   time.Duration // before the end; 0 means no freeze
+	// FreezeAt is the contest-wide freeze (the close minus Freeze). A
+	// personal extension never moves it: otherwise a student's first
+	// minutes of the freeze would show to everyone.
 	FreezeAt time.Time
 	Problems []BoardProblem
 }
@@ -98,7 +95,7 @@ func Compute(b Board, people []Participant, entries []Entry, frozen bool) []Row 
 	rows := make([]Row, 0, len(people))
 	for _, p := range people {
 		freezeAt := p.Ends.Add(-b.Freeze)
-		if !b.Window && !b.FreezeAt.IsZero() {
+		if !b.FreezeAt.IsZero() {
 			freezeAt = b.FreezeAt
 		}
 		row := Row{UserID: p.UserID, Name: p.Name, Cells: make([]Cell, 0, len(b.Problems))}
@@ -124,29 +121,13 @@ func Compute(b Board, people []Participant, entries []Entry, frozen bool) []Row 
 				if !e.Done {
 					continue
 				}
+				// The best per subtask across submissions, against the pinned
+				// points (best single submission was cut, V3-15).
 				improved := false
-				switch b.Scoring {
-				case BestSubmission:
-					// Scored against the pinned points: a subtask earns at
-					// most what it was worth when the problem was added.
-					score := 0
-					for i, pts := range prob.Points {
-						if i < len(e.Earned) {
-							score += min(max(e.Earned[i], 0), pts)
-						}
-					}
-					if e.Earned == nil {
-						score = 0
-					}
-					if score > cell.Score {
-						cell.Score, improved = score, true
-					}
-				default:
-					for i := range best {
-						if i < len(e.Earned) {
-							if v := min(max(e.Earned[i], 0), prob.Points[i]); v > best[i] {
-								best[i], improved = v, true
-							}
+				for i := range best {
+					if i < len(e.Earned) {
+						if v := min(max(e.Earned[i], 0), prob.Points[i]); v > best[i] {
+							best[i], improved = v, true
 						}
 					}
 				}
@@ -154,11 +135,9 @@ func Compute(b Board, people []Participant, entries []Entry, frozen bool) []Row 
 					reached = e.At.Sub(p.Started)
 				}
 			}
-			if b.Scoring != BestSubmission {
-				cell.Score = 0
-				for _, v := range best {
-					cell.Score += v
-				}
+			cell.Score = 0
+			for _, v := range best {
+				cell.Score += v
 			}
 			row.Total += cell.Score
 			if cell.Score > 0 && reached > last {

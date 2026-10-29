@@ -5,7 +5,7 @@
 // not found"; mailto: and tel: links must carry an address. Links under
 // /api/ (exports, Google sign-in) are full page loads by design and are
 // left to the server's own tests. Then, on the student screens and the
-// organiser screens (contests, problems, People, students), every visible,
+// organiser screens (contests, problems, People), every visible,
 // enabled button is pressed on a fresh load and must do something a person
 // can see or the server can hear: a change in the page, a navigation, a
 // dialog, focus moved somewhere other than the pressed button, or an /api/
@@ -17,7 +17,6 @@
 // right type, and the social card must be a 1200 by 630 PNG under 60 KB.
 import { expect, test, type Page } from '@playwright/test';
 import { mockApi, settle, SCREENS } from './mocks/contests';
-import * as organiser from './mocks/organiser';
 import * as problems from './mocks/problems';
 import * as people from './mocks/screens';
 
@@ -75,17 +74,6 @@ const fromProblems = (name: string): Pressed => ({
     await settle(page);
   },
 });
-const fromOrganiser = (name: string): Pressed => ({
-  name,
-  load: async (page) => {
-    const s = organiser.SCREENS.find((x) => x.name === name)!;
-    await organiser.mockApi(page, s.options);
-    await page.setViewportSize({ width: 1440, height: 900 });
-    await page.goto(s.path);
-    await s.ready(page);
-    await settle(page);
-  },
-});
 const fromPeople = (name: string): Pressed => ({
   name,
   load: async (page) => {
@@ -103,7 +91,6 @@ const PRESSED: Pressed[] = [
   ...['admin-contests', 'contest-editor', 'contest-console', 'contest-results'].map(fromContests),
   ...['problems-bank', 'problem-editor'].map(fromProblems),
   fromPeople('people-owner'),
-  ...['students'].map(fromOrganiser),
 ];
 
 const BUTTONS = 'main button, footer button';

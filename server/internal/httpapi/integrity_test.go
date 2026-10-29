@@ -93,11 +93,7 @@ func newIntegrityWorld(t *testing.T) *integrityWorld {
 	w.c1 = s.createContest(w.owner, "c1", w.start, map[string]int64{"A": w.pa}, nil)
 	w.c2 = s.createContest(w.owner, "c2", w.start, map[string]int64{"A": w.pa}, nil)
 	w.ta = s.signedIn("ta@college.edu", "Tara TA")
-	roster := []map[string]string{{"email": "asha@college.edu", "name": "Asha Rao", "roll_number": "21CS001"}}
-	if code, out := w.owner.do("PUT", fmt.Sprintf("/api/admin/contests/%d/roster", w.c1), roster, s.srv.URL); code != 200 {
-		t.Fatalf("roster: %d %v", code, out)
-	}
-	w.asha = s.signedIn("asha@college.edu", "Asha")
+	w.asha = s.signedIn("asha@college.edu", "Asha Rao")
 	w.bilal = s.signedIn("bilal@college.edu", "Bilal")
 	w.chen = s.signedIn("chen@college.edu", "Chen")
 	w.dana = s.signedIn("dana@college.edu", "Dana")
@@ -264,15 +260,14 @@ func TestIntegrityPermissionsAndForeignIDs(t *testing.T) {
 		map[string]any{"decision": "warning", "reason": "A long enough reason to decide."}, s.srv.URL); code != 404 {
 		t.Errorf("decision about a student of another contest: %d %v", code, out)
 	}
-	// The run answer names the people and problems it lists; the roster's
-	// name and roll number win over the account's.
+	// The run answer names the people and problems it lists, by their accounts.
 	users := run1["users"].(map[string]any)
 	a := users[fmt.Sprint(asha)].(map[string]any)
-	if a["name"] != "Asha Rao" || a["roll_number"] != "21CS001" || a["email"] != "asha@college.edu" {
+	if a["name"] != "Asha Rao" || a["email"] != "asha@college.edu" {
 		t.Errorf("users map: %v", users)
 	}
-	if b := users[fmt.Sprint(bilal)].(map[string]any); b["name"] != "Bilal" || b["roll_number"] != "" {
-		t.Errorf("users map without a roster entry: %v", b)
+	if b := users[fmt.Sprint(bilal)].(map[string]any); b["name"] != "Bilal" {
+		t.Errorf("users map: %v", b)
 	}
 	p := run1["problems"].(map[string]any)[fmt.Sprint(w.pa)].(map[string]any)
 	if p["label"] != "A" || !strings.HasPrefix(p["title"].(string), "A plus B") {

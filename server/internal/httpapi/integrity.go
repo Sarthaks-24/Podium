@@ -27,7 +27,6 @@ func (d Deps) integrityRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/admin/contests/{id}/integrity/timeline/{user}", organiser(d.limitReads(d.getIntegrityTimeline)))
 	mux.HandleFunc("GET /api/admin/contests/{id}/integrity/cases", organiser(d.limitReads(d.listIntegrityCases)))
 	mux.HandleFunc("PUT /api/admin/contests/{id}/integrity/cases/{user}", organiser(d.decideIntegrityCase))
-	d.studentsRoutes(mux)
 }
 
 // reviewedContest loads the contest named by {id}; the routes already

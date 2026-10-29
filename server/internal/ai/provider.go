@@ -203,5 +203,5 @@ func NewProvider(c Config, testing bool) (Provider, error) {
 // needModel is the error of a Generate on a client built without
 // a model; the routes refuse earlier with 409 no_model.
 func needModel(provider string) error {
-	return &Error{Code: CodeInput, Message: "Choose a model for " + ProviderName(provider) + " in AI assistant first."}
+	return &Error{Code: CodeInput, Message: "Choose a model for " + ProviderName(provider) + " first."}
 }

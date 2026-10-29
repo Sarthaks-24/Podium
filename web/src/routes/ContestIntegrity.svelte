@@ -9,8 +9,9 @@
   it), with the groups of similar code on each problem listed as names,
   and "Download similar pairs (CSV)" for the college's own process. The
   decisions recorded for this contest are listed below, newest first; each
-  can be changed (DecisionDialog). Window-mode contests get a note that
-  they leak by design. Every view carries IntegrityNote. Props: `id`.
+  can be changed (DecisionDialog). Every view carries IntegrityNote. The
+  page has no tab of its own: Results links here with "Similar code" once
+  the contest has ended. Props: `id`.
 -->
 <script lang="ts">
   import MonoDigits from '../components/MonoDigits.svelte';
@@ -219,11 +220,6 @@
 
   <div class="section">
     <IntegrityNote />
-    {#if contest.start_mode === 'window'}
-      <p class="muted small window">
-        This contest let students start at different times, so it leaks by design: a student who finished can tell a later one about the problems. Weigh signals between early and late starters with that in mind.
-      </p>
-    {/if}
     <div class="run">
       <button
         type="button"
@@ -385,10 +381,6 @@
 
   .section h2 {
     font-size: var(--fs-3);
-  }
-
-  .window {
-    max-width: var(--measure-form);
   }
 
   .run {

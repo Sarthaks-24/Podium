@@ -1,6 +1,7 @@
 <!--
-  KeyForm: the AI provider key form (split out of AiSettings in v2 P3 for
-  the wizard's inline form, audit 2026-10-20 O7; contract C11): provider
+  KeyForm: the AI provider key form, shown inline in the wizard (audit
+  2026-10-20 O7, contract C11; the separate settings page was cut,
+  V3-15, and "Forget key" is in the account menu): provider
   (Anthropic, OpenAI, Google Gemini, and the fake provider in testing
   mode), a model picker filled from the provider's live list with a "Type
   a model id" choice that opens a free-text field, and a password field

@@ -40,7 +40,7 @@ func (s *Service) notifyStandings(ctx context.Context, c *Contest) {
 	}
 	s.board.notified[c.ID] = v
 	s.board.mu.Unlock()
-	s.publish(ctx, c, c.Feedback == "exam", EventStandings, map[string]any{"contest": c.Slug, "contest_id": c.ID, "version": v})
+	s.publish(ctx, c, false, EventStandings, map[string]any{"contest": c.Slug, "contest_id": c.ID, "version": v})
 }
 
 // publish sends an event to the contest's members with an open stream:
@@ -58,8 +58,8 @@ func (s *Service) publish(ctx context.Context, c *Contest, organisersOnly bool, 
 	students := !organisersOnly && c.Published && !c.Archived
 	rows, err := s.DB.QueryContext(ctx, `SELECT u.id FROM users u WHERE u.id IN (SELECT value FROM json_each(?)) AND u.disabled = 0 AND (
 		u.role IN ('admin', 'owner')
-		OR (? AND (? = 'domain' OR EXISTS (SELECT 1 FROM contest_roster r WHERE r.contest_id = ? AND r.email = u.email))))`,
-		string(ids), students, c.Access, c.ID)
+		OR ?)`,
+		string(ids), students)
 	if err != nil {
 		return
 	}

@@ -134,7 +134,7 @@ func TestSchemaTables(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := []string{"allowed_domains", "announcements", "blobs", "clarifications", "contest_audit", "contest_extensions",
-		"contest_problems", "contest_roster", "contest_starts", "contests", "drafts", "generations", "input_generations",
+		"contest_problems", "contest_starts", "contests", "drafts", "generations", "input_generations",
 		"integrity_cases", "integrity_events", "integrity_runs", "integrity_signals", "job_results", "jobs",
 		"problem_revisions", "problems", "revision_tests", "schema_migrations", "sessions", "settings", "site_audit",
 		"submissions", "subtasks", "testcases", "users", "validations"}

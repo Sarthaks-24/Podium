@@ -10,8 +10,7 @@ import (
 // TestIntegrityDecisionsOverHTTP: an organiser records one decision per
 // student with a reason; "excluded" takes the student off the board and a
 // later decision brings them back. Students and student co-organisers
-// cannot decide. The similar pairs download as CSV, and the students table
-// counts contests taken.
+// cannot decide. The similar pairs download as CSV.
 func TestIntegrityDecisionsOverHTTP(t *testing.T) {
 	w := newIntegrityWorld(t)
 	s := w.s
@@ -67,14 +66,5 @@ func TestIntegrityDecisionsOverHTTP(t *testing.T) {
 	resp.Body.Close()
 	if resp.StatusCode != 200 || !strings.HasPrefix(string(body), "problem,strength,score,") || !strings.Contains(resp.Header.Get("Content-Type"), "text/csv") {
 		t.Errorf("pairs.csv: %d %q", resp.StatusCode, body)
-	}
-
-	if code, _ := w.asha.do("GET", "/api/admin/students", nil, ""); code != 403 {
-		t.Errorf("a student reads the students table: %d", code)
-	}
-	code, studs := w.admin.do("GET", "/api/admin/students?q=asha", nil, "")
-	rows, _ := studs["students"].([]any)
-	if code != 200 || len(rows) != 1 || rows[0].(map[string]any)["contests"] != float64(1) {
-		t.Errorf("students: %d %v", code, studs)
 	}
 }

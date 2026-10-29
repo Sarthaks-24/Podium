@@ -15,7 +15,6 @@ export type RouteName =
   | 'problems'
   | 'problem'
   | 'problem-try'
-  | 'ai-settings'
   | 'ai-new'
   | 'contest'
   | 'contest-problem'
@@ -26,7 +25,6 @@ export type RouteName =
   | 'contest-results'
   | 'contest-integrity'
   | 'integrity-pair'
-  | 'students'
   | 'privacy'
   | 'not-found';
 
@@ -53,7 +51,6 @@ export const ROUTES: readonly RouteDef[] = [
   { pattern: '/admin/problems', name: 'problems', auth: true, title: 'Problem bank' },
   { pattern: '/admin/problems/:id', name: 'problem', auth: true, title: 'Problem' },
   { pattern: '/admin/problems/:id/try', name: 'problem-try', auth: true, title: 'Problem bank' },
-  { pattern: '/admin/ai', name: 'ai-settings', auth: true, title: 'AI assistant' },
   { pattern: '/admin/ai/new', name: 'ai-new', auth: true, title: 'New problem with AI' },
   { pattern: '/contests/:slug', name: 'contest', auth: true, title: 'Contest' },
   { pattern: '/contests/:slug/standings', name: 'standings', auth: true, title: 'Standings' },
@@ -65,7 +62,6 @@ export const ROUTES: readonly RouteDef[] = [
   { pattern: '/admin/contests/:id/integrity', name: 'contest-integrity', auth: true, title: 'Integrity' },
   { pattern: '/admin/contests/:id/integrity/signals/:signal', name: 'integrity-pair', auth: true, title: 'Signal' },
   { pattern: '/privacy', name: 'privacy', auth: false, title: 'Privacy' },
-  { pattern: '/admin/students', name: 'students', auth: true, title: 'Students' },
 ];
 
 /** Shown for any path that matches nothing in ROUTES. */
