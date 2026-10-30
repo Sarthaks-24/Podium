@@ -157,7 +157,7 @@ func TestPackRefusals(t *testing.T) {
 		"duplicate test number": {minimalPack(entry{name: "tests/1.in", body: "x"}), "two in files"},
 		// B1.7: a pack from a newer Podium is refused by its format, with
 		// the version named, even though it also has fields unknown here.
-		"newer format": {[]entry{{name: "problem.yaml", body: "format: 4\n" + minimalYAML + "hints: [3]\n"}}, "pack format 4, and this server reads format 3"},
+		"newer format":           {[]entry{{name: "problem.yaml", body: "format: 4\n" + minimalYAML + "hints: [3]\n"}}, "pack format 4, and this server reads format 3"},
 		"starters need format 3": {[]entry{{name: "problem.yaml", body: minimalYAML + "starters: [starter.cpp]\n"}, {name: "starter.cpp", body: "int main() {}\n"}}, "need format: 3"},
 	} {
 		_, err := ReadPack(zipEntries(t, tc.entries...))
