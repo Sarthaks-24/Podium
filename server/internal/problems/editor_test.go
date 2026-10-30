@@ -21,7 +21,7 @@ func TestCreateDerivesTheSlugFromTheTitle(t *testing.T) {
 		{"!!!", "", "problem"},
 		{"Kept as given", "kept-slug", "kept-slug"},
 	} {
-		p, err := s.Create(ctx, c.title, c.slug, 1)
+		p, err := s.Create(ctx, c.title, c.slug, 1, "")
 		if c.want == "" {
 			var fields FieldErrors
 			if !errors.As(err, &fields) || fields["title"] == "" {
@@ -43,7 +43,7 @@ func TestCreateDerivesTheSlugFromTheTitle(t *testing.T) {
 func TestValidateMakesMissingOutputsFirst(t *testing.T) {
 	s := newGenBank(t)
 	ctx := context.Background()
-	p, err := s.Create(ctx, "Pair sums", "", 1)
+	p, err := s.Create(ctx, "Pair sums", "", 1, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -106,7 +106,7 @@ func TestValidateMakesMissingOutputsFirst(t *testing.T) {
 func TestStartersMakeARevisionNotAJudgingChange(t *testing.T) {
 	s := newGenBank(t)
 	ctx := context.Background()
-	p, err := s.Create(ctx, "Starters", "", 1)
+	p, err := s.Create(ctx, "Starters", "", 1, "")
 	if err != nil {
 		t.Fatal(err)
 	}

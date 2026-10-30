@@ -588,6 +588,7 @@ func (d *Handlers) AskClarification(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		ProblemLabel *string `json:"problem_label"`
 		Question     string  `json:"question"`
+		ClientKey    string  `json:"client_key"`
 	}
 	if !httpx.DecodeJSON(w, r, &req) {
 		return
@@ -605,7 +606,7 @@ func (d *Handlers) AskClarification(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	cl, err := d.Contests.Ask(r.Context(), c, u.ID, req.ProblemLabel, req.Question)
+	cl, err := d.Contests.Ask(r.Context(), c, u.ID, req.ProblemLabel, req.Question, req.ClientKey)
 	if err != nil {
 		d.contestError(w, r, err)
 		return

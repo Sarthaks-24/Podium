@@ -11,6 +11,7 @@ Dated entries per release. Unreleased work is listed at the top.
 - A toast can carry one action. Removing a problem from a contest that has not started acts at once and its toast offers Undo for 8 seconds instead of asking first; Undo puts the problem back in its place and saves. Once the contest has started, removing a problem still asks first. Contests have no announcement deletion and problems no single-test removal, so the plan's other two Undo cases do not arise.
 - Run and Submit name their keys on hover (Run on the examples (Ctrl+'), Submit (Ctrl+Enter), Cmd on a Mac) and to assistive technology through `aria-keyshortcuts`, read from the same shortcut table Help shows.
 - On a phone with a notch or a home bar the page now uses the whole screen (`viewport-fit=cover`) and keeps the header, the footer, dialogs, the side sheets and the toasts clear of them; nothing moves on a screen without one.
+- Creating a contest, a problem, an announcement or a question sends a request key, as Submit already did (migration `0005_v4_client_keys`): a double click or a retry after a lost answer makes one, and the repeat gets the first one back without telling anyone twice.
 
 ### v4 stage E: the editor (2026-10-31)
 

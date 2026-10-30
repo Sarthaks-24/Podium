@@ -252,11 +252,11 @@ func TestReportChecks(t *testing.T) {
 func TestEditRulesAndStructure(t *testing.T) {
 	s := newBank(t)
 	ctx := context.Background()
-	p, err := s.Create(ctx, "Two sum", "two-sum", 0)
+	p, err := s.Create(ctx, "Two sum", "two-sum", 0, "")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.Create(ctx, "Again", "two-sum", 0); err == nil || !strings.Contains(err.Error(), "already uses") {
+	if _, err := s.Create(ctx, "Again", "two-sum", 0, ""); err == nil || !strings.Contains(err.Error(), "already uses") {
 		t.Errorf("duplicate slug: %v", err)
 	}
 	var notReady *NotReadyError

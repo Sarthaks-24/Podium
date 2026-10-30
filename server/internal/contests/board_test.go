@@ -180,7 +180,7 @@ func TestClarificationCapHoldsUnderParallelRequests(t *testing.T) {
 		wg.Add(1)
 		go func(i int) {
 			defer wg.Done()
-			r.svc.Ask(ctx, c, 2, nil, fmt.Sprintf("Question %d?", i))
+			r.svc.Ask(ctx, c, 2, nil, fmt.Sprintf("Question %d?", i), "")
 		}(i)
 	}
 	wg.Wait()

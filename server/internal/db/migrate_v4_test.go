@@ -173,3 +173,43 @@ func TestStartersMigration(t *testing.T) {
 		t.Error("starters accepted text that is not JSON")
 	}
 }
+
+// 0005 (v4 U13) adds a request key to the four creates: rows that exist get
+// none, a creator cannot use one key twice, and no key is never a repeat.
+func TestClientKeysMigration(t *testing.T) {
+	ctx := context.Background()
+	d, err := Open(ctx, filepath.Join(t.TempDir(), "p.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer d.Close()
+	if _, err := MigrateTo(ctx, d, "0004_v4_starters"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := d.ExecContext(ctx, `INSERT INTO contests (id, slug, title, starts_at, ends_at, created_at, updated_at) VALUES (1, 'c', 'C', 0, 1, 0, 0)`); err != nil {
+		t.Fatal(err)
+	}
+	if applied, err := Migrate(ctx, d); err != nil || len(applied) == 0 || applied[0] != "0005_v4_client_keys" {
+		t.Fatalf("applied %v, %v", applied, err)
+	}
+	var key string
+	if err := d.QueryRowContext(ctx, "SELECT client_key FROM contests WHERE id = 1").Scan(&key); err != nil || key != "" {
+		t.Errorf("an existing contest's key: %q %v, want none", key, err)
+	}
+	add := func(id int, by any, key string) error {
+		_, err := d.ExecContext(ctx, `INSERT INTO announcements (id, contest_id, body_md, created_by, created_at, client_key) VALUES (?, 1, 'a', ?, 0, ?)`, id, by, key)
+		return err
+	}
+	if err := add(1, nil, ""); err != nil {
+		t.Fatal(err)
+	}
+	if err := add(2, nil, ""); err != nil {
+		t.Errorf("a second announcement without a key: %v", err)
+	}
+	if err := add(3, nil, "k1"); err != nil {
+		t.Fatal(err)
+	}
+	if err := add(4, nil, "k1"); err == nil || !strings.Contains(err.Error(), "announcements_by_key") {
+		t.Errorf("the same key twice: %v, want the announcements_by_key index to refuse it", err)
+	}
+}

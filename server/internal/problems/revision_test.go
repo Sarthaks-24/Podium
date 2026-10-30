@@ -47,7 +47,7 @@ func TestEverySaveThatChangesAProblemWritesOneRevision(t *testing.T) {
 	if n := revCount(t, s, p.ID); n != 1 {
 		t.Fatalf("import made %d revisions", n)
 	}
-	created, err := s.Create(ctx, "Blank", "blank", 0)
+	created, err := s.Create(ctx, "Blank", "blank", 0, "")
 	if err != nil {
 		t.Fatal(err)
 	}

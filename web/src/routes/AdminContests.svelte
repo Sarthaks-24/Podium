@@ -17,6 +17,7 @@
   import { onMount, tick } from 'svelte';
   import { focusFirstInvalid } from '../lib/focus';
   import { ApiError, getJSON, sendJSON, errorText } from '../lib/api';
+  import { newKey } from '../lib/workspace';
   import {
     defaultSettings,
     fromLocalInput,
@@ -49,6 +50,8 @@
   // A number input binds a number, or null when empty.
   let newLength = $state<number | string | null>(Math.round((defaults.ends_at - defaults.starts_at) / 60_000));
   let createBusy = $state(false);
+  // One key for this visit (v4 U13): a double click or a retried create makes one contest; success leaves the page.
+  const createKey = newKey();
   let createError = $state('');
   let fields = $state<Record<string, string>>({});
   let titleInput: HTMLInputElement | undefined = $state();
@@ -179,6 +182,7 @@
     createBusy = true;
     try {
       const made = await sendJSON<AdminContest>('POST', '/api/admin/contests', {
+        client_key: createKey,
         ...defaults,
         title,
         starts_at: starts,

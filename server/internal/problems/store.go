@@ -234,8 +234,16 @@ const starterStatement = `Describe the task.
 
 // Create starts a new problem with a starter statement and C++ solution.
 // An empty slug is derived from the title, with a number added when another
-// problem has it, so the editor never asks for one; it stays as made.
-func (s *Service) Create(ctx context.Context, title, slug string, authorID int64) (*Problem, error) {
+// problem has it, so the editor never asks for one; it stays as made. A
+// non-empty key (v4 U13) makes a repeated request by the same person
+// return the problem the first one made.
+func (s *Service) Create(ctx context.Context, title, slug string, authorID int64, key string) (*Problem, error) {
+	if len(key) > maxClientKey {
+		return nil, FieldErrors{"client_key": "The request key is too long."}
+	}
+	if p, err := s.byClientKey(ctx, authorID, key); p != nil || err != nil {
+		return p, err
+	}
 	if strings.TrimSpace(slug) == "" && strings.TrimSpace(title) != "" {
 		free, err := s.freeSlug(ctx, SlugFromTitle(title))
 		if err != nil {
@@ -258,13 +266,43 @@ func (s *Service) Create(ctx context.Context, title, slug string, authorID int64
 		return nil, err
 	}
 	defer tx.Rollback()
-	if err := s.insert(ctx, tx, p, RevisionNote{By: authorID}); err != nil {
+	if err := s.insert(ctx, tx, p, RevisionNote{By: authorID}, key); err != nil {
+		if isRepeat(err) {
+			tx.Rollback()
+			return s.byClientKey(ctx, authorID, key)
+		}
 		return nil, err
 	}
 	if err := tx.Commit(); err != nil {
 		return nil, err
 	}
 	return p, nil
+}
+
+// maxClientKey is the longest request key a create takes, as for Submit.
+const maxClientKey = 64
+
+// byClientKey loads the problem an earlier request with this key made, or
+// nil when there is none (or no key).
+func (s *Service) byClientKey(ctx context.Context, authorID int64, key string) (*Problem, error) {
+	if key == "" {
+		return nil, nil
+	}
+	var id int64
+	err := s.DB.QueryRowContext(ctx, `SELECT id FROM problems WHERE coalesce(author_id, 0) = ? AND client_key = ? AND client_key <> ''`, authorID, key).Scan(&id)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return s.Get(ctx, id)
+}
+
+// isRepeat is true when an insert lost to an earlier one with the same key:
+// two copies of one request crossed.
+func isRepeat(err error) bool {
+	return err != nil && strings.Contains(err.Error(), "UNIQUE constraint failed") && strings.Contains(err.Error(), "problems_by_key")
 }
 
 var slugUnsafe = regexp.MustCompile(`[^a-z0-9]+`)
@@ -341,7 +379,7 @@ func (s *Service) Import(ctx context.Context, pk *Pack, authorID int64) (*Proble
 	if err := s.recordTests(ctx, tx, p.Tests); err != nil {
 		return nil, err
 	}
-	if err := s.insert(ctx, tx, p, RevisionNote{By: authorID}); err != nil {
+	if err := s.insert(ctx, tx, p, RevisionNote{By: authorID}, ""); err != nil {
 		return nil, err
 	}
 	if err := tx.Commit(); err != nil {
@@ -387,8 +425,10 @@ func (s *Service) recordTests(ctx context.Context, tx *sql.Tx, tests []Test) err
 	return nil
 }
 
-// insert adds p as a new problem with its first revision.
-func (s *Service) insert(ctx context.Context, tx *sql.Tx, p *Problem, note RevisionNote) error {
+// insert adds p as a new problem with its first revision. key is the
+// create request's key (v4 U13), empty for none; it is the row's alone, never
+// in rowValues, a revision, the content hash or a pack.
+func (s *Service) insert(ctx context.Context, tx *sql.Tx, p *Problem, note RevisionNote, key string) error {
 	now := s.now()
 	p.CreatedAt, p.UpdatedAt = now, now
 	p.ContentHash = ContentHash(p)
@@ -400,9 +440,9 @@ func (s *Service) insert(ctx context.Context, tx *sql.Tx, p *Problem, note Revis
 	err := tx.QueryRowContext(ctx, `INSERT INTO problems (slug, title, statement_md, time_limit_ms, memory_limit_mb,
 		checker, epsilon, checker_source, reference_language, reference_source, brute_language, brute_source,
 		validator_language, validator_source, tags, difficulty, samples, generator_language, generator_source,
-		generator_plan, starters, content_hash, origin, author_id, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
-		append(cols, p.Origin, author, now.UnixMilli(), now.UnixMilli())...).Scan(&p.ID)
+		generator_plan, starters, content_hash, origin, author_id, created_at, updated_at, client_key)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
+		append(cols, p.Origin, author, now.UnixMilli(), now.UnixMilli(), key)...).Scan(&p.ID)
 	if isUnique(err) {
 		return FieldErrors{"slug": fmt.Sprintf("Another problem already uses the slug %s.", p.Slug)}
 	}

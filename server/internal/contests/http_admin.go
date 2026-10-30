@@ -217,13 +217,18 @@ func editOf(c *Contest) contestEdit {
 }
 
 func (d *Handlers) CreateContest(w http.ResponseWriter, r *http.Request) {
-	req := contestEdit{PracticeAfterEnd: true, MinGapS: 30, MaxPerProblem: 15,
+	// client_key (v4 U13) is for create only: an edit never takes one.
+	var req struct {
+		contestEdit
+		ClientKey string `json:"client_key"`
+	}
+	req.contestEdit = contestEdit{PracticeAfterEnd: true, MinGapS: 30, MaxPerProblem: 15,
 		Languages: []string{"cpp17", "java21", "python3", "node22"}}
 	if !httpx.DecodeJSON(w, r, &req) {
 		return
 	}
 	u := auth.UserFrom(r.Context())
-	c, err := d.Contests.Create(r.Context(), req.edit(), u.ID)
+	c, err := d.Contests.Create(r.Context(), req.edit(), u.ID, req.ClientKey)
 	if err != nil {
 		d.contestError(w, r, err)
 		return
@@ -523,12 +528,13 @@ func (d *Handlers) PostAnnouncement(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var req struct {
-		BodyMD string `json:"body_md"`
+		BodyMD    string `json:"body_md"`
+		ClientKey string `json:"client_key"`
 	}
 	if !httpx.DecodeJSON(w, r, &req) {
 		return
 	}
-	a, err := d.Contests.Announce(r.Context(), c, req.BodyMD, auth.UserFrom(r.Context()).ID)
+	a, err := d.Contests.Announce(r.Context(), c, req.BodyMD, auth.UserFrom(r.Context()).ID, req.ClientKey)
 	if err != nil {
 		d.contestError(w, r, err)
 		return

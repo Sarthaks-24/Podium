@@ -44,7 +44,7 @@ func (r *svcRig) contest(t testing.TB, mutate func(*Edit)) *Contest {
 	if mutate != nil {
 		mutate(&e)
 	}
-	c, err := r.svc.Create(context.Background(), e, 1)
+	c, err := r.svc.Create(context.Background(), e, 1, "")
 	if err != nil {
 		t.Fatal(err)
 	}

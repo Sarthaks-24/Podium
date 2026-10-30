@@ -343,13 +343,14 @@ func (d *Handlers) ListProblems(w http.ResponseWriter, r *http.Request) {
 
 func (d *Handlers) CreateProblem(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		Title string `json:"title"`
-		Slug  string `json:"slug"`
+		Title     string `json:"title"`
+		Slug      string `json:"slug"`
+		ClientKey string `json:"client_key"`
 	}
 	if !httpx.DecodeJSON(w, r, &req) {
 		return
 	}
-	p, err := d.Problems.Create(r.Context(), req.Title, req.Slug, auth.UserFrom(r.Context()).ID)
+	p, err := d.Problems.Create(r.Context(), req.Title, req.Slug, auth.UserFrom(r.Context()).ID, req.ClientKey)
 	if err != nil {
 		d.problemError(w, r, err)
 		return

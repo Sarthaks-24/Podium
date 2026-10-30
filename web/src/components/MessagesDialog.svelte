@@ -20,6 +20,7 @@
   import { tick } from 'svelte';
   import Dialog from './Dialog.svelte';
   import { ApiError, sendJSON } from '../lib/api';
+  import { newKey } from '../lib/workspace';
   import type { Clarification, Contest } from '../lib/contests';
   import MessageList from './MessageList.svelte';
 
@@ -48,6 +49,9 @@
     }
   });
 
+  // One key per question (v4 U13): a retry after a lost answer sends it once; a new one after it is sent.
+  let key = newKey();
+
   async function ask(event: SubmitEvent) {
     event.preventDefault();
     // While a question is on its way the button stays focusable (aria-disabled) and repeats do nothing.
@@ -67,9 +71,10 @@
       const made = await sendJSON<{ clarification?: Clarification } | Clarification | undefined>(
         'POST',
         `/api/contests/${encodeURIComponent(contest.slug)}/clarifications`,
-        { problem_label: topic === '' ? null : topic, question: text },
+        { problem_label: topic === '' ? null : topic, question: text, client_key: key },
       );
       question = '';
+      key = newKey();
       sent = 'Question sent. The answer appears here and as a banner.';
       // The server answers {clarification, server_now}; a bare clarification is taken too.
       const c = made && typeof made === 'object' ? ('clarification' in made ? made.clarification : made) : undefined;

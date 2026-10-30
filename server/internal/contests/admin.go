@@ -74,7 +74,7 @@ func (s *Service) Clone(ctx context.Context, id int64, slug, title string, start
 		}
 		choices = append(choices, ProblemChoice{ProblemID: p.ProblemID, Label: p.Label, AIReason: reason})
 	}
-	c, err := s.Create(ctx, e, by.ID)
+	c, err := s.Create(ctx, e, by.ID, "")
 	if err != nil {
 		return nil, err
 	}
@@ -240,15 +240,38 @@ type Announcement struct {
 	CreatedAt int64  `json:"created_at"`
 }
 
-// Announce posts an announcement and sends it to the contest.
-func (s *Service) Announce(ctx context.Context, c *Contest, body string, by int64) (*Announcement, error) {
+// Announce posts an announcement and sends it to the contest. A repeated
+// request with the same key (v4 U13) returns the first announcement and
+// sends nothing again.
+func (s *Service) Announce(ctx context.Context, c *Contest, body string, by int64, key string) (*Announcement, error) {
 	body = strings.TrimSpace(body)
 	if body == "" || len(body) > maxAnnouncement || !utf8.ValidString(body) {
 		return nil, FieldErrors{"body_md": "Write an announcement of at most 4000 characters."}
 	}
+	if err := checkClientKey(key); err != nil {
+		return nil, err
+	}
+	repeat := func() (*Announcement, error) {
+		var a Announcement
+		err := s.DB.QueryRowContext(ctx, `SELECT id, body_md, created_at FROM announcements
+			WHERE contest_id = ? AND coalesce(created_by, 0) = ? AND client_key = ? AND client_key <> ''`, c.ID, by, key).Scan(&a.ID, &a.BodyMD, &a.CreatedAt)
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil
+		}
+		return &a, err
+	}
+	if key != "" {
+		if a, err := repeat(); a != nil || err != nil {
+			return a, err
+		}
+	}
 	a := Announcement{BodyMD: body, CreatedAt: s.now().UnixMilli()}
-	if err := s.DB.QueryRowContext(ctx, `INSERT INTO announcements (contest_id, body_md, created_by, created_at) VALUES (?, ?, ?, ?) RETURNING id`,
-		c.ID, body, nullID(by), a.CreatedAt).Scan(&a.ID); err != nil {
+	err := s.DB.QueryRowContext(ctx, `INSERT INTO announcements (contest_id, body_md, created_by, created_at, client_key) VALUES (?, ?, ?, ?, ?) RETURNING id`,
+		c.ID, body, nullID(by), a.CreatedAt, key).Scan(&a.ID)
+	if isRepeat(err, "announcements_by_key") {
+		return repeat()
+	}
+	if err != nil {
 		return nil, err
 	}
 	s.publish(ctx, c, false, EventAnnouncement, map[string]any{"contest": c.Slug, "contest_id": c.ID, "id": a.ID, "body_md": a.BodyMD})
@@ -287,11 +310,28 @@ type Clarification struct {
 	askerID      int64
 }
 
-// Ask records a student's question and tells the organisers.
-func (s *Service) Ask(ctx context.Context, c *Contest, userID int64, label *string, question string) (*Clarification, error) {
+// Ask records a student's question and tells the organisers. A repeated
+// request with the same key (v4 U13) returns the first question and tells
+// nobody again.
+func (s *Service) Ask(ctx context.Context, c *Contest, userID int64, label *string, question, key string) (*Clarification, error) {
 	question = strings.TrimSpace(question)
 	if question == "" || utf8.RuneCountInString(question) > maxQuestion || !utf8.ValidString(question) {
 		return nil, FieldErrors{"question": "Write a question of at most 2000 characters."}
+	}
+	if err := checkClientKey(key); err != nil {
+		return nil, err
+	}
+	repeat := func() (*Clarification, error) {
+		found, err := s.clarifications(ctx, c.ID, "c.asked_by = ? AND c.client_key = ? AND c.client_key <> ''", userID, key)
+		if err != nil || len(found) == 0 {
+			return nil, err
+		}
+		return &found[0], nil
+	}
+	if key != "" {
+		if cl, err := repeat(); cl != nil || err != nil {
+			return cl, err
+		}
 	}
 	if label != nil {
 		found := false
@@ -311,9 +351,12 @@ func (s *Service) Ask(ctx context.Context, c *Contest, userID int64, label *stri
 	}
 	// The cap and the insert are one statement, so parallel requests
 	// cannot all pass the count before any of them is stored.
-	err := s.DB.QueryRowContext(ctx, `INSERT INTO clarifications (contest_id, problem_label, asked_by, question, created_at)
-		SELECT ?, ?, ?, ?, ? WHERE (SELECT count(*) FROM clarifications WHERE contest_id = ? AND asked_by = ? AND answered_at IS NULL) < ?
-		RETURNING id`, c.ID, lbl, userID, question, cl.CreatedAt, c.ID, userID, maxOpenQuestions).Scan(&cl.ID)
+	err := s.DB.QueryRowContext(ctx, `INSERT INTO clarifications (contest_id, problem_label, asked_by, question, created_at, client_key)
+		SELECT ?, ?, ?, ?, ?, ? WHERE (SELECT count(*) FROM clarifications WHERE contest_id = ? AND asked_by = ? AND answered_at IS NULL) < ?
+		RETURNING id`, c.ID, lbl, userID, question, cl.CreatedAt, key, c.ID, userID, maxOpenQuestions).Scan(&cl.ID)
+	if isRepeat(err, "clarifications_by_key") {
+		return repeat()
+	}
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, FieldErrors{"question": "You have 5 questions waiting for an answer. Wait for one to be answered first."}
 	}

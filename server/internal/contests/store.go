@@ -234,11 +234,20 @@ func (e *Edit) check() FieldErrors {
 }
 
 // Create adds a contest (unpublished). Its slug is derived from the
-// title (Slugify), with -2, -3 added when another contest has it.
-func (s *Service) Create(ctx context.Context, e Edit, by int64) (*Contest, error) {
+// title (Slugify), with -2, -3 added when another contest has it. A
+// non-empty key (v4 U13) makes a repeated request by the same person
+// return the contest the first one made.
+func (s *Service) Create(ctx context.Context, e Edit, by int64, key string) (*Contest, error) {
 	e.Published = false
 	if errs := e.check(); errs != nil {
 		return nil, errs
+	}
+	if err := checkClientKey(key); err != nil {
+		return nil, err
+	}
+	const byKey = `SELECT id FROM contests WHERE coalesce(created_by, 0) = ? AND client_key = ? AND client_key <> ''`
+	if c, err := s.repeated(ctx, byKey, by, key); c != nil || err != nil {
+		return c, err
 	}
 	now := s.now().UnixMilli()
 	langs, _ := json.Marshal(e.Languages)
@@ -251,14 +260,17 @@ func (s *Service) Create(ctx context.Context, e Edit, by int64) (*Contest, error
 		var id int64
 		err := s.DB.QueryRowContext(ctx, `INSERT INTO contests (slug, title, description_md, starts_at, ends_at,
 			freeze_minutes, published, practice_after_end, min_gap_s, max_per_problem, languages, honour_text, hold_reveal,
-			full_screen, count_focus, block_paste, block_copy, created_by, created_at, updated_at)
-			VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
+			full_screen, count_focus, block_paste, block_copy, created_by, created_at, updated_at, client_key)
+			VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
 			slug, e.Title, e.Description, e.StartsAt.UnixMilli(), e.EndsAt.UnixMilli(),
 			e.FreezeMinutes, e.PracticeAfterEnd, e.MinGapS, e.MaxPerProblem, string(langs), e.HonourText, e.HoldReveal,
 			e.Exam.FullScreen, e.Exam.CountFocus, e.Exam.BlockPaste, e.Exam.BlockCopy,
-			nullID(by), now, now).Scan(&id)
+			nullID(by), now, now, key).Scan(&id)
 		if isUniqueSlug(err) {
 			continue
+		}
+		if isRepeat(err, "contests_by_key") {
+			return s.repeated(ctx, byKey, by, key)
 		}
 		if err != nil {
 			return nil, err
@@ -344,6 +356,39 @@ func nullID(id int64) any {
 
 func isUniqueSlug(err error) bool {
 	return err != nil && strings.Contains(err.Error(), "UNIQUE constraint failed: contests.slug")
+}
+
+// maxClientKey is the longest request key a create takes, as for Submit.
+const maxClientKey = 64
+
+func checkClientKey(key string) error {
+	if len(key) > maxClientKey {
+		return FieldErrors{"client_key": "The request key is too long."}
+	}
+	return nil
+}
+
+// isRepeat is true when an insert lost to an earlier one with the same key
+// (index names the *_by_key index): two copies of one request crossed.
+func isRepeat(err error, index string) bool {
+	return err != nil && strings.Contains(err.Error(), "UNIQUE constraint failed") && strings.Contains(err.Error(), index)
+}
+
+// repeated loads the contest an earlier request with this key made, or
+// nil when there is none (or no key). byKey selects its id from (creator, key).
+func (s *Service) repeated(ctx context.Context, byKey string, by int64, key string) (*Contest, error) {
+	if key == "" {
+		return nil, nil
+	}
+	var id int64
+	err := s.DB.QueryRowContext(ctx, byKey, by, key).Scan(&id)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return s.Get(ctx, id)
 }
 
 const contestColumns = `id, slug, title, description_md, starts_at, ends_at, freeze_minutes,

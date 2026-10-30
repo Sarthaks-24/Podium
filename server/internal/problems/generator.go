@@ -530,7 +530,7 @@ func (s *Service) CreateDraft(ctx context.Context, d Draft, authorID int64) (*Pr
 	if err := s.recordTests(ctx, tx, p.Tests); err != nil {
 		return nil, err
 	}
-	if err := s.insert(ctx, tx, p, RevisionNote{By: authorID, Reason: "Made by the AI wizard."}); err != nil {
+	if err := s.insert(ctx, tx, p, RevisionNote{By: authorID, Reason: "Made by the AI wizard."}, ""); err != nil {
 		return nil, err
 	}
 	if err := tx.Commit(); err != nil {

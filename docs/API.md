@@ -289,7 +289,7 @@ Every route here needs the organiser role. The pack format and the rules for tes
 | Route | Request | Success |
 |---|---|---|
 | `GET /api/admin/problems` | `?archived=1` to include archived problems | 200 `{"problems":[ProblemSummary]}`, most recently changed first |
-| `POST /api/admin/problems` | `{"title":"Two sum"}` | 201 `Problem` with a starter statement and C++ reference; the slug is made from the title (`two-sum`, then `two-sum-2` when taken) |
+| `POST /api/admin/problems` | `{"title":"Two sum","client_key"}` | 201 `Problem` with a starter statement and C++ reference; the slug is made from the title (`two-sum`, then `two-sum-2` when taken). A repeated `client_key` (v4) answers 201 with the problem the first request made |
 | `POST /api/admin/problems/import` | the pack as a zip body, at most 32 MB | 201 `Problem`; `warnings` names files in the pack podium ignores |
 | `GET /api/admin/problems/{id}` | | 200 `Problem` |
 | `PUT /api/admin/problems/{id}` | `ProblemEdit`, at most 512 KB | 200 `Problem` |
@@ -560,6 +560,7 @@ A submission that counts never carries the input, output or checker comment of a
 | Problem | tests, examples and subtasks fit together and every test has an expected output | `409 not_ready` with `problems` |
 
 - `client_key` is a random value the browser makes per press of Submit and reuses on a retry. Keys are per user, problem and contest. The same key again returns the first submission with `200` and counts nothing, so a retry after a timeout never trips the rate limit.
+- v4 (U13): creating a contest, a problem, an announcement or a question takes the same optional `client_key` (at most 64 characters, else `400 bad_request` on `client_key`). The browser makes one per form and keeps it across a retry. Keys are per person (and per contest for announcements and questions); a repeat answers `201` with what the first request made and sends no event again. The key is never shown in any answer, revision or pack.
 - `typed_chars`, `pasted_chars`, `focus_losses` and `fullscreen_exits` are the editor's counts since the last submission, clamped to 0 to 10,000,000. They never block a submit.
 - The server stores with each submission an HMAC of the client's address and user agent, keyed by `PODIUM_SESSION_SECRET`, so it cannot be reversed by trying campus addresses.
 
@@ -621,7 +622,7 @@ Every route needs a signed-in user. A published, unarchived contest is open to e
 | `POST /api/contests/{slug}/problems/{label}/submit` | as the workspace | 202 `Submission`; 200 for a repeated `client_key` |
 | `POST /api/contests/{slug}/problems/{label}/events` | as the workspace | 204 |
 | `GET /api/contests/{slug}/standings` | `?as=student` for an organiser | 200 `Standings`: a student gets the board for their state; an organiser the full board, or with `?as=student` the board students get now |
-| `POST /api/contests/{slug}/clarifications` | `{"problem_label":"A" or null,"question":"..."}` | 201 `{clarification, server_now}` |
+| `POST /api/contests/{slug}/clarifications` | `{"problem_label":"A" or null,"question":"...","client_key"}` | 201 `{clarification, server_now}`; a repeated `client_key` (v4) answers with the first question and tells nobody again |
 
 ### `ContestSummary` and `Contest`
 
@@ -705,7 +706,7 @@ Every route here needs the organiser role; a student gets `403 forbidden` before
 | Route | Request | Success |
 |---|---|---|
 | `GET /api/admin/contests` | `?archived=1` to include archived contests | 200 `{contests:[AdminContest], server_now}`; list rows leave out `extensions` and `queue` and send `unanswered` as 0, so the list costs two queries |
-| `POST /api/admin/contests` | `ContestEdit` | 201 `AdminContest`, unpublished |
+| `POST /api/admin/contests` | `ContestEdit` and `client_key` | 201 `AdminContest`, unpublished; a repeated `client_key` (v4) answers with the contest the first request made |
 | `GET /api/admin/contests/{id}` | | 200 `AdminContest` |
 | `PUT /api/admin/contests/{id}` | `ContestEdit`; fields left out keep their value | 200 `AdminContest` |
 | `DELETE /api/admin/contests/{id}` | | 204: archived, nothing deleted |
@@ -719,7 +720,7 @@ Every route here needs the organiser role; a student gets `403 forbidden` before
 | `GET /api/admin/contests/{id}/submissions` | `?problem=A&user=7&verdict=WA&page=1` | 200 `{submissions:[FeedRow], page, has_more, server_now}` |
 | `POST /api/admin/contests/{id}/rejudge` | `{"problem_label":"A"}` or `{"submission_id":80}` | 202 `{queued, revisions:[{label, revision_id, rev}], server_now}` |
 | `GET /api/admin/contests/{id}/announcements` | | 200 `{announcements, server_now}` |
-| `POST /api/admin/contests/{id}/announcements` | `{"body_md":"..."}`, at most 4,000 characters | 201 `Announcement` `{id, body_md, created_at}` |
+| `POST /api/admin/contests/{id}/announcements` | `{"body_md":"...","client_key"}`, at most 4,000 characters | 201 `Announcement` `{id, body_md, created_at}`; a repeated `client_key` (v4) answers with the first announcement and sends nothing again |
 | `GET /api/admin/contests/{id}/clarifications` | | 200 `{clarifications, server_now}`, each with `asked_by {user_id, email, name}` |
 | `PUT /api/admin/contests/{id}/clarifications/{cid}` | `{"answer":"...","public":false}`, at most 4,000 characters | 200 `Clarification` |
 | `GET /api/admin/contests/{id}/standings` | `?variant=frozen` for the frozen board | 200 `Standings`, full unless asked; each row also carries the student's `email`, so two students with one name can be told apart |

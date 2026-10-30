@@ -23,6 +23,7 @@
   import { problemTone } from '../lib/badges';
   import { isAIDraft, withoutAIDraft } from '../lib/ai';
   import { ApiError, errorText, getJSON, sendBody, sendJSON } from '../lib/api';
+  import { newKey } from '../lib/workspace';
   import { formatDateTime } from '../lib/format';
   import { setTitle } from '../lib/head';
   import { routeTitle } from '../lib/routing';
@@ -44,6 +45,8 @@
   let creating = $state(false);
   let newTitle = $state('');
   let createBusy = $state(false);
+  // One key for this visit (v4 U13): a double click or a retried create makes one problem; success leaves the page.
+  const createKey = newKey();
   let createError = $state('');
   let createFields = $state<Record<string, string>>({});
   let titleInput: HTMLInputElement | undefined = $state();
@@ -154,7 +157,7 @@
     }
     createBusy = true;
     try {
-      const problem = await sendJSON<Problem>('POST', '/api/admin/problems', { title });
+      const problem = await sendJSON<Problem>('POST', '/api/admin/problems', { title, client_key: createKey });
       showToast(`Created ${problem.title}`);
       navigate(`/admin/problems/${problem.id}`);
     } catch (err) {

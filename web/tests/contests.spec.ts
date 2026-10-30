@@ -173,7 +173,7 @@ test('a student agrees to the honour code, solves, reads an announcement and ask
   await expect(dialog.getByLabel('Question', { exact: true })).toBeFocused();
   await dialog.getByLabel('Question', { exact: true }).fill('Can intervals overlap at one point?');
   await dialog.getByRole('button', { name: 'Send question' }).click();
-  await expect.poll(() => api.asked).toEqual([{ problem_label: 'B', question: 'Can intervals overlap at one point?' }]);
+  await expect.poll(() => api.asked).toEqual([{ problem_label: 'B', question: 'Can intervals overlap at one point?', client_key: expect.any(String) }]);
   await expect(dialog.getByText('Waiting for an answer.')).toBeVisible();
   await expect(dialog.getByRole('status').filter({ hasText: 'Question sent.' })).toBeVisible();
   await page.screenshot({ path: `${shots()}contest-messages-1440-light.png` });
@@ -382,6 +382,8 @@ test('admins land on their contest list, named by job', async ({ page }) => {
   expect(api.creates).toHaveLength(1);
   expect(api.creates[0]).toMatchObject({ title: 'Week 8 contest' });
   expect(api.creates[0]).not.toHaveProperty('slug');
+  // v4 U13: the create carries a request key, so a double click makes one contest.
+  expect(String(api.creates[0].client_key)).toMatch(/^[0-9a-z-]{8,64}$/);
   // The length, two hours by default, makes the end.
   expect(Number(api.creates[0].ends_at) - Number(api.creates[0].starts_at)).toBe(120 * 60_000);
 });

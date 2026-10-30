@@ -20,7 +20,7 @@
   import { ApiError, errorText, sendJSON } from '../../lib/api';
   import { ANNOUNCEMENT_TEMPLATES, fillTemplate, type Announcement } from '../../lib/contests';
   import { ticker } from '../../lib/ticker.svelte';
-  import { formatWhen } from '../../lib/workspace';
+  import { formatWhen, newKey } from '../../lib/workspace';
 
   interface Props {
     open: boolean;
@@ -48,6 +48,9 @@
     if (t) body = fillTemplate(t.text, { label: labels[0] ?? 'A', minutes: t.id === 'time' ? minutesLeft : 10 });
   }
 
+  // One key per announcement (v4 U13): a retry after a lost answer posts it once; a new one after it is posted.
+  let key = newKey();
+
   async function post(event: SubmitEvent) {
     event.preventDefault();
     error = '';
@@ -58,7 +61,8 @@
     }
     busy = true;
     try {
-      await sendJSON<unknown>('POST', `${base}/announcements`, { body_md: body.trim() });
+      await sendJSON<unknown>('POST', `${base}/announcements`, { body_md: body.trim(), client_key: key });
+      key = newKey();
       body = '';
       template = '';
       await onposted();
