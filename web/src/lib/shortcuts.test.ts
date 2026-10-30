@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from 'vitest';
-import { NOT_AVAILABLE, adjacentLabel, isMacPlatform, isPlainKey, isTypingTarget, shortcutGroups } from './shortcuts';
+import { NOT_AVAILABLE, adjacentLabel, isMacPlatform, isPlainKey, isTypingTarget, shortcutGroups, shortcutKeys } from './shortcuts';
 
 function el(html: string): HTMLElement {
   const host = document.createElement('div');
@@ -111,5 +111,14 @@ describe('shortcutGroups', () => {
         expect(item.action).not.toMatch(/!/);
       }
     }
+  });
+});
+
+describe('shortcut hints (v4 U6)', () => {
+  it("reads a row's keys in the table's words and in the ARIA form", () => {
+    expect(shortcutKeys('Submit', false)).toEqual({ text: 'Ctrl+Enter', aria: 'Control+Enter' });
+    expect(shortcutKeys('Submit', true)).toEqual({ text: 'Cmd+Enter', aria: 'Meta+Enter' });
+    expect(shortcutKeys('Leave the code editor', false)).toEqual({ text: 'Esc then Tab', aria: '' });
+    expect(() => shortcutKeys('No such row', false)).toThrow();
   });
 });

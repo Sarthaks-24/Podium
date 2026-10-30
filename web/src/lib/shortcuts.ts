@@ -180,3 +180,18 @@ export function shortcutGroups(opts: { mac: boolean; organiser: boolean }): Shor
   }
   return groups;
 }
+
+/**
+ * The keys of the first row whose action starts with `action`, for a
+ * button's title and aria-keyshortcuts (v4 U6), so the hints come from
+ * this table alone. `text` reads as the table writes it ("Ctrl+Enter");
+ * `aria` is the ARIA form ("Control+Enter", "Meta+Enter" on a Mac).
+ */
+export function shortcutKeys(action: string, mac = isMacPlatform()): { text: string; aria: string } {
+  const row = shortcutGroups({ mac, organiser: false })
+    .flatMap((g) => g.items)
+    .find((s) => s.action.startsWith(action));
+  if (!row) throw new Error(`no shortcut for ${action}`);
+  const aria = (k: string) => k.replace(/^Ctrl\+/, 'Control+').replace(/^Cmd\+/, 'Meta+');
+  return { text: row.keys.join(row.joiner === 'then' ? ' then ' : ' or '), aria: row.joiner === 'then' ? '' : row.keys.map(aria).join(' ') };
+}

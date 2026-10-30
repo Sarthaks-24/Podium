@@ -16,6 +16,7 @@
   import type { Snippet } from 'svelte';
   import type { EditorSettingsValue } from '../../lib/draft.svelte';
   import { FONT_SIZES } from '../../lib/drafts';
+  import { shortcutKeys } from '../../lib/shortcuts';
   import type { Language } from '../../lib/workspace';
   import EditorSettings from '../EditorSettings.svelte';
   import Icon from '../Icon.svelte';
@@ -35,6 +36,9 @@
   }
 
   let { languages, language, onlanguage, onreset, settings, onsettings, locked, runBusy, onrun, submit, fullscreen = true }: Props = $props();
+
+  // Run's key, from the shortcut table (v4 U6).
+  const runKeys = shortcutKeys('Run on the examples');
 
   const canFullscreen = typeof document !== 'undefined' && document.fullscreenEnabled === true;
   let full = $state(typeof document !== 'undefined' && document.fullscreenElement !== null);
@@ -71,6 +75,8 @@
         disabled={locked !== ''}
         aria-disabled={runBusy ? 'true' : undefined}
         aria-describedby={locked ? 'ws-locked' : undefined}
+        title="Run on the examples ({runKeys.text})"
+        aria-keyshortcuts={runKeys.aria}
         onclick={onrun}><Icon name="play" />Run</button
       >
       {@render submit?.()}

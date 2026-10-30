@@ -8,6 +8,7 @@
 -->
 <script lang="ts">
   import Icon from '../Icon.svelte';
+  import { shortcutKeys } from '../../lib/shortcuts';
 
   interface Props {
     label: string;
@@ -18,6 +19,9 @@
   }
 
   let { label, waiting, locked, describedby, onclick }: Props = $props();
+
+  // Submit's key, from the shortcut table (v4 U6).
+  const keys = shortcutKeys('Submit');
 </script>
 
 <button
@@ -27,6 +31,8 @@
   disabled={locked}
   aria-disabled={waiting ? 'true' : undefined}
   aria-describedby={describedby}
+  title="Submit ({keys.text})"
+  aria-keyshortcuts={keys.aria}
   {onclick}><Icon name="send" />{label}</button
 >
 
