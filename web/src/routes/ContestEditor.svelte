@@ -457,7 +457,7 @@
     if (!contest.published) {
       confirm = {
         title: `Publish ${title}?`,
-        body: 'Students from the allowed domains see it in their contest list at once.',
+        body: 'Everyone on the sign-in list sees it in their contest list at once.',
         items: [...checks.map((c) => c.text), ...shownWarning()],
         label: 'Publish contest',
         danger: false,
@@ -507,7 +507,10 @@
     const label = labelFor(i);
     picked = [...picked, { problem_id: p.id, title: p.title || p.slug, label, ready: true, max_score: p.points }];
     addId = '';
-    if (await putProblems('', `Added ${p.title || p.slug} as ${label}`)) document.getElementById('add-problem')?.focus();
+    const from = document.activeElement;
+    const saved = await putProblems('', `Added ${p.title || p.slug} as ${label}`);
+    // Back to the picker for the next one, unless the person moved on while the save ran.
+    if (saved && (document.activeElement === from || document.activeElement === document.body)) document.getElementById('add-problem')?.focus();
   }
 
   /** Problem changes run one after another, so a quick second press waits for the first save. */
