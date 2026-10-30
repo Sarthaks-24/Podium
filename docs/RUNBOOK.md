@@ -11,7 +11,7 @@ Two people make contest day easy: one on the contest's Live tab in the browser (
 - [ ] Every problem in the contest shows "Validated" with a time after its last edit, and was added to the contest after that validation (publishing refuses anything else).
 - [ ] Time limits are at least 3 times the C++ reference's time, and the validation report shows no warnings about test count (6 to 10 hidden tests), maximum-size tests (at most 2 per subtask) or output size (under 1 MB). Each extra second of tests costs every submission.
 - [ ] A second organiser has read each statement; the samples match the Input and Output sections.
-- [ ] The contest is set up in Setup: title, problems, start, length, hidden minutes at the end, languages; under Advanced the rate limits (30 s gap and 15 per problem unless the class is small) and, for an examination only, the exam options. Everyone on the sign-in list can enter (Settings, People), so check the list and its refused addresses.
+- [ ] The contest is set up in Setup: title, problems, start, length, hidden minutes at the end, languages; under Advanced the rate limits (30 s gap and 15 per problem unless the class is small) and, for an examination only, the exam options. Everyone on the sign-in list can enter (Dashboard, People), so check the list and its refused addresses.
 - [ ] A practice contest with two easy problems is open, so first-timers learn the editor, Run and Submit before it counts.
 - [ ] Backups are healthy: `systemctl status podium-litestream` is active and `journalctl -u podium-litestream -n 20` shows recent syncs; `sudo ls -l /var/backups/podium` shows last night's backup, and `journalctl -u podium-backup -n 20` ends with `done in`. `sudo /usr/local/lib/podium/install.sh verify` ends with "everything checked is in order", and no alert is open on your phone.
 - [ ] Before the first contest, and after any change to the backup setup: the timed restore onto a second VM in "Restoring onto a new VM" below. In between, run `sudo /usr/local/lib/podium/podium-check restore-proof` once a term and write down how long it took (V3-10).
@@ -35,7 +35,7 @@ Security checks (security council, 2026-10-18):
 
 - Check the server's mode and organisers: `systemctl show podium-server -p Environment` (no `PODIUM_MODE=testing`) and `sqlite3 /var/lib/podium/db/podium.db "SELECT email, role, google_sub IS NOT NULL AS linked FROM users WHERE role <> 'student'"`.
 - Setter checklist (`docs/AUTHORING.md`, "Before a contest"): reference and a known-wrong solution judged live for every problem, at least half the tests cross-checked, a person's solution for every AI problem.
-- Do not give students the admin role to help run a contest: an admin sees every problem and every result. Per-contest organiser roles were removed in v3 (V3-4).
+- Do not give students the organiser role to help run a contest: an organiser sees every problem and every result. An admin can also manage students and organisers on the Dashboard. Per-contest organiser roles were removed in v3 (V3-4).
 - After the contest, store the JSON export (it carries the audit log) and its SHA-256 off the server.
 
 ## One hour before
@@ -140,8 +140,9 @@ If the server does not come back: `systemctl status podium-server` and its log s
 
 | They see | Cause | Do |
 |---|---|---|
-| The sign-in page refuses their account's domain | they used a personal Google account, or their domain is not allowed | ask them to use the college account; an owner can add a domain in Settings, Sign-in tab |
-| "This email is linked to a different Google account" | their address moved to a new Google account | an owner resets the link in Settings, Sign-in tab ("Reset Google link") |
+| "Your email is not on the list for this site" | they signed in with a Google address that is not the one on the list (a personal account, or a different spelling than on the form) | find their address under Dashboard, People, Refused sign-ins and choose Let in, or ask them to use the address you added |
+| "Sign-in is closed right now" | an owner or an admin closed sign-in | open it on the Dashboard, Sign-in tab, if they should get in |
+| "This email is linked to a different Google account" | their address moved to a new Google account | an owner resets the link in the Dashboard, Sign-in tab ("Reset Google link") |
 | "Accept the rules on the contest page to start." | they have not pressed Start | point them to the contest page |
 | "This page stopped live updates because podium is open in another tab or window." | a fifth tab replaced this one | close the other tabs; "Resume here" takes live updates back |
 | Their laptop died | | they sign in from another machine; drafts are saved every 10 s on the server. Give them extra time for the time lost |

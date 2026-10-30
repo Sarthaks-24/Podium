@@ -46,7 +46,7 @@ This installs the compilers, isolate, `testlib.h` for custom checkers, and the `
 `make dev-test` runs the server, the judge and the web app in testing mode (`PODIUM_MODE=testing`): no Google client, no secrets, no `.env` file. The server and judge run in WSL2 with their state in `/var/tmp/podium-dev`; Vite runs on Windows.
 
 1. `make dev-test`, then open http://localhost:5173.
-2. Sign in from the form with any email and a role (choose Admin or Owner to see Contests and Problems). A banner on every page says this is testing mode.
+2. Sign in from the form with any email and a role (choose Organiser, Admin or Owner to see Contests and Problems; Admin or Owner for the Dashboard). A banner on every page says this is testing mode.
 3. Import a pack: zip a folder from `problems/` and choose Import pack, then Validate.
 4. Choose "Try as a student" to run and submit code against it.
 
