@@ -13,7 +13,7 @@
  */
 import { autocompletion, closeBrackets, closeBracketsKeymap, closeCompletion, completeAnyWord, completeFromList, currentCompletions } from '@codemirror/autocomplete';
 import { defaultKeymap, history, historyKeymap, indentMore, indentWithTab, selectParentSyntax } from '@codemirror/commands';
-import { bracketMatching, HighlightStyle, indentOnInput, indentUnit, syntaxHighlighting } from '@codemirror/language';
+import { bracketMatching, HighlightStyle, indentOnInput, indentRange, indentUnit, syntaxHighlighting } from '@codemirror/language';
 import {
   findNext,
   findPrevious,
@@ -184,6 +184,19 @@ export const insertLineAbove: Command = (view) => {
   return true;
 };
 
+/**
+ * Shift+Alt+F: re-indents the whole file with the language's own indent
+ * rules, VS Code's "Format Document" key (V4-5). Not a formatter: spacing
+ * inside a line is left as typed. The cursor stays on its code.
+ */
+export const reindentFile: Command = (view) => {
+  if (view.state.readOnly) return false;
+  const changes = indentRange(view.state, 0, view.state.doc.length);
+  if (changes.empty) return true;
+  view.dispatch({ changes, userEvent: 'input.indent' });
+  return true;
+};
+
 /** Scrolls by a line or a page without moving the cursor. */
 const scrollBy =
   (page: boolean, dir: 1 | -1): Command =>
@@ -238,6 +251,7 @@ const extraKeys: KeyBinding[] = [
   { key: 'Alt-PageDown', run: scrollBy(true, 1), preventDefault: true },
   { key: 'Shift-Alt-ArrowRight', run: expandSelection, preventDefault: true },
   { key: 'Shift-Alt-ArrowLeft', run: shrinkSelection, preventDefault: true },
+  { key: 'Shift-Alt-f', run: reindentFile, preventDefault: true },
 ];
 
 // Escape closes the completion list only while one is shown. CodeMirror's

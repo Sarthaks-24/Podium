@@ -103,6 +103,7 @@ export function shortcutGroups(opts: { mac: boolean; organiser: boolean }): Shor
         { keys: [`${mod}+/`], action: 'Comment or uncomment the line or selection' },
         { keys: [`Shift+${alt}+A`], action: 'Block comment' },
         { keys: ['Tab', 'Shift+Tab'], joiner: 'or', action: 'Indent or outdent the line or selection' },
+        { keys: [`Shift+${alt}+F`], action: 'Re-indent the whole file' },
         { keys: [`${mod}+]`, `${mod}+[`], joiner: 'or', action: 'Indent or outdent' },
         { keys: [`${alt}+Up`, `${alt}+Down`], joiner: 'or', action: 'Move the line up or down' },
         { keys: [`Shift+${alt}+Up`, `Shift+${alt}+Down`], joiner: 'or', action: 'Copy the line up or down' },

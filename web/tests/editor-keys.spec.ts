@@ -118,6 +118,11 @@ const CHECKS: Record<string, Check> = {
     await page.keyboard.press('Control+Shift+K');
     await code(page).toBe('b');
   },
+  'Re-indent the whole file': async (page) => {
+    await setCode(page, 'int main() {\nreturn 0;\n      }', 2, 1);
+    await page.keyboard.press('Shift+Alt+F');
+    await code(page).toBe('int main() {\n    return 0;\n}');
+  },
   'Insert a line above': async (page) => {
     await setCode(page, '  a', 1, 3);
     await page.keyboard.press('Control+Shift+Enter');
