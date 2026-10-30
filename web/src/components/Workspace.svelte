@@ -473,6 +473,7 @@
         runBusy={judging.runBusy}
         onrun={() => judging.runExamples()}
         submit={submitButton}
+        fullscreen={!exam?.full_screen}
       />
       {/if}
       <div class="editor-box">

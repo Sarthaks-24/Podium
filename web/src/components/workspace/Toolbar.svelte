@@ -1,13 +1,16 @@
 <!--
   Toolbar: the code column's one row: the language, Reset, Settings
-  (components/EditorSettings), then Run and, from 1024 px, Submit at the
+  (components/EditorSettings), Full screen (v4 E8: the whole page, Exit full
+  screen while it is; the title names F11, which browsers own), then Run and, from 1024 px, Submit at the
   end. A narrow code column (the `code` container under 36rem) drops the
   icons and narrows the select so the row holds. When Run and Submit are
   off, the reason follows on its own line (#ws-locked). Props:
   `languages`, `language` (the one shown in the select), `onlanguage`,
   `onreset`, `settings` and `onsettings` (EditorSettings' values and
   change), `locked` (the reason, or ""), `runBusy`, `onrun` and `submit`
-  (a snippet, from 1024 px).
+  (a snippet, from 1024 px), and `fullscreen` (false hides Full screen: an
+  exam that requires it makes its own request on Start, and leaving it there
+  is recorded).
 -->
 <script lang="ts">
   import type { Snippet } from 'svelte';
@@ -28,10 +31,21 @@
     runBusy: boolean;
     onrun: () => void;
     submit?: Snippet;
+    fullscreen?: boolean;
   }
 
-  let { languages, language, onlanguage, onreset, settings, onsettings, locked, runBusy, onrun, submit }: Props = $props();
+  let { languages, language, onlanguage, onreset, settings, onsettings, locked, runBusy, onrun, submit, fullscreen = true }: Props = $props();
+
+  const canFullscreen = typeof document !== 'undefined' && document.fullscreenEnabled === true;
+  let full = $state(typeof document !== 'undefined' && document.fullscreenElement !== null);
+
+  function toggleFullscreen() {
+    if (document.fullscreenElement) void document.exitFullscreen().catch(() => undefined);
+    else void document.documentElement.requestFullscreen().catch(() => undefined);
+  }
 </script>
+
+<svelte:document onfullscreenchange={() => (full = document.fullscreenElement !== null)} />
 
 <div class="toolbar-wrap">
   <div class="toolbar">
@@ -41,6 +55,15 @@
     </select>
     <button type="button" class="btn btn-quiet btn-compact" onclick={onreset}>Reset</button>
     <EditorSettings {...settings} sizes={FONT_SIZES} onchange={onsettings} />
+    {#if fullscreen && canFullscreen}
+      <button
+        type="button"
+        class="btn btn-quiet btn-compact fullscreen"
+        aria-label={full ? 'Exit full screen' : 'Full screen'}
+        title={full ? 'Exit full screen (Esc or F11)' : 'Full screen (F11 works too)'}
+        onclick={toggleFullscreen}><Icon name={full ? 'minimize' : 'maximize'} /></button
+      >
+    {/if}
     <div class="run-actions">
       <button
         type="button"
@@ -87,6 +110,13 @@
 
   /* A narrow code column keeps the toolbar on one row: the icons go from
      Run, Submit and Settings, and the select and buttons narrow. */
+  /* A code column too narrow for one more button leaves Full screen to F11. */
+  @container code (width < 42rem) {
+    .fullscreen {
+      display: none;
+    }
+  }
+
   @container code (width < 36rem) {
     .run-actions :global(svg),
     .toolbar :global(.settings svg) {
