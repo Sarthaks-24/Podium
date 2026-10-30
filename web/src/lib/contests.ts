@@ -797,6 +797,7 @@ export function consoleSentence(
     close_at?: number;
     queue?: QueueHealth;
     judge_last_claim_at?: number | null;
+    server_now?: number;
   },
   now: number,
   counts: { unanswered: number; started?: number | null },
@@ -815,8 +816,11 @@ export function consoleSentence(
   if (c.paused) parts.push('judging paused');
   else if (c.judge_last_claim_at !== undefined) {
     const last = c.judge_last_claim_at;
+    // Silence is measured at the moment the server answered, so a page that
+    // has not refreshed for a while (a hidden tab) does not call a working judge silent.
+    const silent = (c.server_now ?? now) - (last ?? 0);
     if (last === null) trouble.push('No judge has asked for work since the server started.');
-    else if (now - last > JUDGE_SILENT_MS) trouble.push(`Judge not seen for ${countOf(Math.floor((now - last) / 60_000), 'minute')}.`);
+    else if (silent > JUDGE_SILENT_MS) trouble.push(`Judge not seen for ${countOf(Math.floor(silent / 60_000), 'minute')}.`);
     else parts.push('judge fine');
   }
   if (!c.paused && c.queue && c.queue.oldest_wait_s >= SLOW_WAIT_S) {

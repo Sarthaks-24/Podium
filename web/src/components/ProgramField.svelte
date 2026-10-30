@@ -2,14 +2,18 @@
   ProgramField: one program of a problem (reference solution, brute force or
   validator) in the problem editor: a group named by `label` holding a
   language select and a mono source textarea (the student workspace uses
-  CodeMirror; setters keep the plain textarea for now). Props: `id` (prefix for the control ids), `label` (the
+  CodeMirror; setters keep the plain textarea for now). Choosing another
+  language puts that language's starter in a source that is empty or
+  still a starter (lib/starters.ts), so the box never holds C++ under
+  "Python 3"; written code is kept. Props: `id` (prefix for the control ids), `label` (the
   group's name), `program` (bindable {language, source}), `help` (one line
   under the name, optional), `error` (a sentence shown under the source
   and tied to it, optional), and `onremove` with `removeLabel` (adds a
   quiet remove button for optional programs).
 -->
 <script lang="ts">
-  import { LANGUAGES, type Program } from '../lib/problems';
+  import { LANGUAGES, type Language, type Program } from '../lib/problems';
+  import { withLanguage } from '../lib/starters';
 
   interface Props {
     id: string;
@@ -39,7 +43,7 @@
 
   <div class="field language">
     <label for="{id}-language">Language</label>
-    <select id="{id}-language" class="select" bind:value={program.language}>
+    <select id="{id}-language" class="select" value={program.language} onchange={(e) => (program = withLanguage(program, e.currentTarget.value as Language))}>
       {#each LANGUAGES as lang (lang.id)}
         <option value={lang.id}>{lang.label}</option>
       {/each}

@@ -151,8 +151,8 @@ test('running on samples shows the first difference', async ({ page }) => {
       compile_output: '',
       time_step_ms: 100,
       results: [
-        { label: 'Example 1', verdict: 'AC', time_ms: 0, memory_kb: 3200, output: '3\n', expected: '3\n', message: '' },
-        { label: 'Example 2', verdict: 'WA', time_ms: 6, memory_kb: 3200, output: '12 \n', expected: '2\n', message: 'Expected 2, found 12' },
+        { label: 'Example 1', verdict: 'AC', time_ms: 0, memory_kb: 3200, output: '3\n', expected: '3\n', message: 'ok 1 number' },
+        { label: 'Example 2', verdict: 'WA', time_ms: 6, memory_kb: 3200, output: '12 \n', expected: '2\n', message: 'Token 1 differs: expected "2", found "12".' },
       ],
     },
   });
@@ -161,7 +161,11 @@ test('running on samples shows the first difference', async ({ page }) => {
   await expect(panel.getByText('First difference on line 1')).toBeVisible();
   await expect(panel.getByRole('definition').nth(0)).toHaveText('2');
   await expect(panel.getByRole('definition').nth(1)).toHaveText('12·');
-  await expect(panel.getByText('Expected 2, found 12')).toBeVisible();
+  // A checker's comment is marked as the checker's, never read as the program's output (pilot s3).
+  await expect(panel.getByText('The checker said: ok 1 number')).toBeVisible();
+  // Plain words, not "Token 1" (pilot s1).
+  await expect(panel.getByText('The first difference is at word 1: expected "2", found "12".')).toBeVisible();
+  await expect(panel.getByText('In these two lines a space shows as a dot (·) and a tab as an arrow (⇥).')).toBeVisible();
   // A graded contest's 100 ms rounding: a 0 is under 50 ms, never "0 ms" (D322).
   await expect(panel.getByText('under 50 ms')).toHaveCount(2);
   await expect(page.locator('[data-announcer="polite"]')).toHaveText('1 of 2 examples failed.');
@@ -216,6 +220,27 @@ test('after a run that did not compile, Submit asks once and the empty sample ro
   await page.getByRole('button', { name: 'Submit', exact: true }).click();
   await expect(ask).toBeHidden();
   await expect.poll(() => api.submissions.length).toBe(1);
+});
+
+test("a Java run that did not compile says the class must be Main, as a submission does (pilot s4)", async ({ page }) => {
+  const api = await mockApi(page, { draft: { language: 'java21', source: 'public class Solution {\n}\n' } });
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await openWorkspace(page);
+  await page.getByRole('button', { name: 'Run', exact: true }).click();
+  await expect.poll(() => api.runs.length).toBe(1);
+  api.stream.push({
+    type: 'run',
+    data: {
+      id: 51,
+      state: 'done',
+      compile_output: 'Main.java:1: error: class Solution is public, should be declared in a file named Solution.java\n',
+      results: [{ label: 'Example 1', verdict: '', time_ms: 0, memory_kb: 0, output: '', expected: '3\n', message: '' }],
+    },
+  });
+  const panel = page.getByRole('region', { name: 'Result' });
+  await expect(panel.getByText('Compile error', { exact: true })).toBeVisible({ timeout: 10_000 });
+  await expect(panel.getByText('Fix the first error below; later errors often follow from it.')).toBeVisible();
+  await expect(panel.getByText('If the error names a class or a .java file, call your public class Main: the file is Main.java.')).toBeVisible();
 });
 
 test('a compile error line jumps to the editor', async ({ page }) => {
@@ -865,6 +890,29 @@ test.describe('P5 workspace', () => {
     await page.getByLabel('Language').selectOption('node22');
     await expect(content).toHaveAttribute('data-language', 'javascript');
     expect([...new Set(chunks)].sort()).toEqual(['cpp', 'javascript', 'python']);
+  });
+
+  test('while a language change asks about the starter, Run and Submit do nothing (pilot s1)', async ({ page }) => {
+    const api = await mockApi(page, { draft: { language: 'cpp17', source: 'int main() { return 0; }\n' } });
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await openWorkspace(page);
+    await page.getByLabel('Language').selectOption('python3');
+    const ask = page.getByRole('dialog', { name: 'Replace your code with the Python 3 starter?' });
+    await expect(ask).toBeVisible();
+    // The keys reach the page behind the dialog, and a script's click reaches the button under it.
+    await page.keyboard.press("Control+'");
+    await page.keyboard.press('Control+Enter');
+    await page.getByRole('button', { name: 'Run', exact: true }).evaluate((b: HTMLElement) => b.click());
+    await page.getByRole('button', { name: 'Submit', exact: true }).evaluate((b: HTMLElement) => b.click());
+    await page.waitForTimeout(300);
+    expect(api.runs).toHaveLength(0);
+    expect(api.submits).toHaveLength(0);
+
+    await ask.getByRole('button', { name: 'Use the starter' }).click();
+    await expect(ask).toBeHidden();
+    await page.getByRole('button', { name: 'Run', exact: true }).click();
+    await expect.poll(() => api.runs.length).toBe(1);
+    expect(api.runs[0]).toMatchObject({ language: 'python3' });
   });
 
   test('reset to starter asks, saves at once, and survives the next save and a reload (F7.10, F7.12)', async ({ page }) => {

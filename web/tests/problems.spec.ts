@@ -134,6 +134,27 @@ for (const width of [1440, 375]) {
   });
 }
 
+test('a new language for the reference solution brings its starter only while the source is empty or a starter (pilot o2)', async ({ page }) => {
+  await mockApi(page);
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto('/admin/problems/1');
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('A plus B');
+  await tabOf(page, 'Checking').click();
+  const group = page.getByRole('group', { name: 'Reference solution' });
+  const source = group.getByLabel('Source code');
+  const language = group.getByLabel('Language');
+  await source.fill('');
+  await language.selectOption('python3');
+  await expect(source).toHaveValue(/^import sys\n/);
+  // An untouched starter is swapped again.
+  await language.selectOption('java21');
+  await expect(source).toHaveValue(/public class Main/);
+  // Written code stays.
+  await source.fill('print(int(input()) + 1)\n');
+  await language.selectOption('python3');
+  await expect(source).toHaveValue('print(int(input()) + 1)\n');
+});
+
 test('proof: a problem imported, a test given a new role from the select, saved, validated and added to a contest', async ({ page }) => {
   const state = await mockApi(page);
   const choosers = watchFileChoosers(page);

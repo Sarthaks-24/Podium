@@ -6,14 +6,18 @@
   the grid, toolbar and results in components/workspace/; this file wires
   them together: it loads the problem through lib/loader, holds the
   timers, the keys and the layout tier, and asks before a reset, a
-  language switch over typed code, or a sign-out during a live contest.
-  The draft is saved every 10 s and whenever focus or the page goes, and
+  language switch over typed code, or a sign-out during a live contest;
+  while a reset or a language switch waits for its answer, Run and Submit
+  do nothing, so they never use the code about to be replaced. A refused
+  paste is said once and goes at the next key, Run or Submit, and closing
+  the workspace empties the announcer, so nothing said about this problem
+  is left under the next one. The draft is saved every 10 s and whenever focus or the page goes, and
   integrity counts go out in batches that never hold up a submit, so a
   crash or a closed lid loses nothing and judging is never slowed.
 -->
 <script lang="ts">
   import { onMount, tick, type Snippet } from 'svelte';
-  import { polite } from '../lib/announce.svelte';
+  import { hush, polite } from '../lib/announce.svelte';
   import { ApiError, getJSON } from '../lib/api';
   import { loader } from '../lib/loader.svelte';
   import { media } from '../lib/breakpoints';
@@ -27,7 +31,7 @@
   import { Judging } from '../lib/judging.svelte';
   import { beforeSignOut, guardSignOut, session } from '../lib/session.svelte';
   import { isTypingTarget } from '../lib/shortcuts';
-  import { showToast } from '../lib/toast.svelte';
+  import { dismissToast, showToast } from '../lib/toast.svelte';
   import { LANGUAGES, bestScore, headline, isWaiting, languageLabel, limitsText, runHeadline, type Workspace } from '../lib/workspace';
   import CodeEditor from './CodeEditor.svelte';
   import ConfirmDialog from './ConfirmDialog.svelte';
@@ -101,12 +105,21 @@
   let editor: CodeEditor | undefined = $state();
   let integrity: IntegrityRecorder | null = null;
   let confirmReset = $state(false);
+  /** The "Pasting is blocked" toast on screen, until the next key, Run or Submit. */
+  let pasteNote = 0;
+
+  function clearPasteNote() {
+    if (pasteNote === 0) return;
+    dismissToast(pasteNote);
+    pasteNote = 0;
+  }
 
   const judging = new Judging({
     base: api,
     problemId: () => ws?.problem_id,
     ready: () => page.state === 'ready',
     locked: () => lockText,
+    held: () => draft.pendingLanguage !== null || confirmReset,
     minGapS: () => minGapS,
     code: () => ({ language: draft.language, source: draft.source }),
     integrity: () => integrity,
@@ -336,6 +349,11 @@
     draft.editor = editor;
   });
 
+  // The next Run or Submit takes the paste refusal away, so it never reads as part of the result.
+  $effect(() => {
+    if (judging.runBusy || judging.submitBusy) clearPasteNote();
+  });
+
   onMount(() => {
     const wide = media('laptop');
     const tablet = media('tablet');
@@ -370,6 +388,8 @@
       integrity?.flush(true);
       integrity?.stop();
       draft.saveOnLeave();
+      // The next problem starts with nothing said about this one.
+      hush();
     };
   });
 </script>
@@ -467,10 +487,13 @@
           wrap={draft.wrap}
           readOnly={layout !== 'wide'}
           blockPaste={exam?.block_paste ?? false}
-          onpasteblocked={() => showToast(PASTE_BLOCKED)}
+          onpasteblocked={() => (pasteNote = showToast(PASTE_BLOCKED))}
           oncursor={(line, col) => (draft.cursor = { line, col })}
           onchange={(s) => draft.change(s)}
-          ontyped={(n) => integrity?.typedChars(n)}
+          ontyped={(n) => {
+            integrity?.typedChars(n);
+            clearPasteNote();
+          }}
           onpaste={(n) => integrity?.paste(n)}
           onblur={() => void draft.save()}
           onsubmit={() => void judging.submit()}

@@ -6,8 +6,11 @@
   the checker's comment and for a wrong answer the first differing line;
   a passed sample shows its verdict line only, so the failure is near the
   top.
-  Compiler output comes first, verbatim, with clickable line jumps; when
-  the code did not compile, the empty input rows are left out. The run's
+  When the code did not compile, the advice a submission gets comes first
+  (with the language's hint, such as Java's class Main) and the empty
+  input rows are left out. Compiler output follows, verbatim, with
+  clickable line jumps. A checker's comment is labelled as the checker's
+  (lib/workspace.ts resultNote), so it never reads as the program's output. The run's
   first failing sample is revealed (`run.revealed`): its row becomes a
   block with the input, the expected output, the program's output and
   "Run on this input". A failing sample without that offers the button
@@ -21,8 +24,10 @@
   import {
     formatKb,
     formatMs,
+    guidance,
     isBad,
     isCustomResult,
+    resultNote,
     runCompileFailed,
     runHeadline,
     runVerdictLabel,
@@ -60,6 +65,9 @@
 <div class="run">
   <p class="headline tone-{head.tone}">{head.text}</p>
 
+  {#if runCompileFailed(run)}
+    {#each guidance('CE', language) as line, i (i)}<p class="advice">{line}</p>{/each}
+  {/if}
   {#if run.compile_output}
     <div class="block">
       <p class="label">Compiler output</p>
@@ -78,7 +86,7 @@
           <span class="mono meta">{formatKb(r.memory_kb)}</span>
         {/if}
       </div>
-      {#if r.message}<p class="message">{r.message}</p>{/if}
+      {#if r.message}<p class="message">{resultNote(r.message)}</p>{/if}
 
       {#if r.verdict === 'SK'}
         <p class="meta">An earlier test failed, so this one was not run.</p>
@@ -184,6 +192,12 @@
 
   .message {
     font-size: var(--fs-0);
+  }
+
+  .advice {
+    color: var(--ink-muted);
+    font-size: var(--fs-0);
+    max-width: var(--measure-prose);
   }
 
   .stderr pre {

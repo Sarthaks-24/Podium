@@ -402,14 +402,22 @@
       void loadStats();
       void loadStudents();
     });
-    timer = setInterval(() => {
+    const refresh = () => {
       if (!autoRefresh || page.state !== 'ready' || document.visibilityState === 'hidden') return;
       void feed?.load();
       void loadSide();
       void loadStats();
       // The contest carries the queue and the judge's last request for work.
       void loadContest(true);
-    }, 10_000);
+    };
+    timer = setInterval(refresh, 10_000);
+    // A hidden tab skips the refresh, so coming back to it refreshes at once.
+    document.addEventListener('visibilitychange', refresh);
+    const stopWidth = unwatch;
+    unwatch = () => {
+      stopWidth?.();
+      document.removeEventListener('visibilitychange', refresh);
+    };
     // New questions arrive at once over the tab's shared stream; the refresh above is the fallback.
     stream = new LiveSubscription({
       events: ['clarification'],

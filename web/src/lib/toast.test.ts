@@ -21,6 +21,15 @@ describe('toasts', () => {
     expect(toasts.items.filter((t) => t.kind === 'info').map((t) => t.message)).toEqual(['Info 5']);
   });
 
+  it('shows the same info sentence once, the newest replacing its copy', () => {
+    for (const t of toasts.items) dismissToast(t.id);
+    showToast('Pasting is blocked in this contest. Nothing was pasted.');
+    showToast('Saved');
+    const id = showToast('Pasting is blocked in this contest. Nothing was pasted.');
+    expect(toasts.items.map((t) => t.message)).toEqual(['Saved', 'Pasting is blocked in this contest. Nothing was pasted.']);
+    expect(toasts.items.at(-1)?.id).toBe(id);
+  });
+
   it('speaks info toasts through the polite announcer, and leaves errors to their alert', () => {
     vi.useFakeTimers();
     try {

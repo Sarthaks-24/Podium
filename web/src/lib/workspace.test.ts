@@ -11,6 +11,7 @@ import {
   isCustomResult,
   limitsText,
   newKey,
+  resultNote,
   runVerdictLabel,
   waitingText,
   problemScoreLine,
@@ -46,6 +47,21 @@ function sub(over: Partial<Submission> = {}): Submission {
   };
 }
 
+describe('the line under a run example', () => {
+  it("says the judge's comparison in plain words and marks a checker's comment as the checker's", () => {
+    expect(resultNote('Token 1 differs: expected "8.000000000", found "7.500000000".')).toBe(
+      'The first difference is at word 1: expected "8.000000000", found "7.500000000".',
+    );
+    expect(resultNote('Output ended early: expected "3" at token 2.')).toBe('Output ended early: expected "3" at word 2.');
+    expect(resultNote('Extra output from token 3: found "9".')).toBe('Extra output from word 3: found "9".');
+    expect(resultNote('Token 4 is longer than 4 MB.')).toBe('Word 4 is longer than 4 MB.');
+    expect(resultNote('Output differs from line 2.')).toBe('Output differs from line 2.');
+    expect(resultNote('ok valid pair 1 2')).toBe('The checker said: ok valid pair 1 2');
+    expect(resultNote('The checker crashed or ran out of time or memory.')).toBe('The checker crashed or ran out of time or memory.');
+    expect(resultNote('  ')).toBe('');
+  });
+});
+
 describe('guidance lines', () => {
   it('gives one sentence for each failing verdict and none for accepted or skipped', () => {
     for (const v of ['WA', 'TLE', 'MLE', 'RE', 'OLE', 'CE', 'IE']) {
@@ -60,7 +76,7 @@ describe('guidance lines', () => {
 
   it('adds the language hints where they are safe', () => {
     // The class hint applies only when the error names a class.
-    expect(guidance('CE', 'java21')).toContain('If the error names a class, the public class must be called Main.');
+    expect(guidance('CE', 'java21')).toContain('If the error names a class or a .java file, call your public class Main: the file is Main.java.');
     // A number too big for its type is named for a runtime error.
     expect(guidance('RE', 'cpp17')[0]).toContain('numbers too big for their type');
     expect(guidance('RE', 'java21')[1]).toContain('Use long for numbers past 2147483647');

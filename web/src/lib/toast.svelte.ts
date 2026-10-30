@@ -5,7 +5,8 @@
  * app's polite announcer (lib/announce.svelte.ts), which is always in
  * the page, so the first toast is read too. Error toasts stay until the
  * person dismisses them, so an error is never missed: the cap never
- * removes one. Info toasts fill what is left of MAX_TOASTS (at least one),
+ * removes one. An info toast said again replaces its copy on screen, so
+ * two pastes refused in a row show one line. Info toasts fill what is left of MAX_TOASTS (at least one),
  * a new one replacing the oldest, so a busy console never stacks them over
  * its controls.
  */
@@ -55,7 +56,9 @@ function capped(items: Toast[]): Toast[] {
 /** Shows a toast and returns its id. */
 export function showToast(message: string, kind: ToastKind = 'info'): number {
   const id = nextId++;
-  toasts.items = capped([...toasts.items, { id, kind, message }]);
+  // The same info sentence again replaces the one on screen, so it shows once.
+  const others = kind === 'info' ? toasts.items.filter((t) => t.kind === 'error' || t.message !== message) : toasts.items;
+  toasts.items = capped([...others, { id, kind, message }]);
   if (kind === 'info') {
     polite(message);
     setTimeout(() => dismissToast(id), TOAST_MS);

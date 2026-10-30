@@ -396,7 +396,7 @@ const HINTS: Partial<Record<string, Partial<Record<Language, string>>>> = {
     node22: 'Read all input at once with fs.readFileSync(0) instead of line by line.',
   },
   CE: {
-    java21: 'If the error names a class, the public class must be called Main.',
+    java21: 'If the error names a class or a .java file, call your public class Main: the file is Main.java.',
   },
   RE: {
     java21: 'Use long for numbers past 2147483647 (a NumberFormatException means one did not fit), and read input that may span several lines.',
@@ -416,6 +416,29 @@ export function guidance(verdict: string, language: string, opts: { sample?: boo
   const hint = HINTS[verdict]?.[language as Language];
   if (hint) out.push(hint);
   return out;
+}
+
+/**
+ * The line under a run's example: the judge's own comparison in plain
+ * words, or a problem checker's comment marked as the checker's, so it is
+ * never read as the program's output. The judge's sentences come from
+ * server/internal/judge/checker.go (they count whitespace-separated
+ * "tokens", said here as words); its notes about a checker
+ * (custom_checker.go) already start with "The checker" or "The judge".
+ */
+export function resultNote(message: string): string {
+  const m = message.trim();
+  if (m === '') return '';
+  let x = /^Token (\d+) differs: (.*)$/s.exec(m);
+  if (x) return `The first difference is at word ${x[1]}: ${x[2]}`;
+  x = /^Token (\d+) is longer than (.*)$/s.exec(m);
+  if (x) return `Word ${x[1]} is longer than ${x[2]}`;
+  x = /^Output ended early: (.*) at token (\d+)\.$/s.exec(m);
+  if (x) return `Output ended early: ${x[1]} at word ${x[2]}.`;
+  x = /^Extra output from token (\d+): (.*)$/s.exec(m);
+  if (x) return `Extra output from word ${x[1]}: ${x[2]}`;
+  if (/^Output differs from line \d+\.$/.test(m) || /^The (checker|judge)\b/.test(m)) return m;
+  return `The checker said: ${m}`;
 }
 
 /** The word for a run result's verdict; a custom input that ran is "Finished". */

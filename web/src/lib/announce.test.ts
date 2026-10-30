@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { CLEAR_MS, assertive, polite, regions } from './announce.svelte';
+import { CLEAR_MS, assertive, hush, polite, regions } from './announce.svelte';
 
 describe('announcer', () => {
   beforeEach(() => vi.useFakeTimers());
@@ -30,6 +30,17 @@ describe('announcer', () => {
     assertive('Time is up');
     vi.advanceTimersByTime(CLEAR_MS);
     expect(regions.polite).toBe('Draft saved');
+    expect(regions.assertive).toBe('Time is up');
+  });
+
+  it('hush empties the polite region, drops a pending sentence and leaves the assertive one', () => {
+    polite('Accepted. Score 100 of 100.');
+    assertive('Time is up');
+    vi.advanceTimersByTime(CLEAR_MS);
+    polite('Run finished');
+    hush();
+    vi.advanceTimersByTime(CLEAR_MS);
+    expect(regions.polite).toBe('');
     expect(regions.assertive).toBe('Time is up');
   });
 });

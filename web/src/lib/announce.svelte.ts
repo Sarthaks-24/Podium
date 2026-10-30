@@ -44,3 +44,15 @@ export function polite(text: string): void {
 export function assertive(text: string): void {
   say('assertive', text);
 }
+
+/**
+ * Empties the polite region, and drops a sentence still on its way, when
+ * the page it spoke for goes away (a workspace closing as another problem
+ * opens), so "Accepted. Score 100 of 100." is not left in the page under
+ * the next problem. Emptying a region is silent. The assertive region
+ * keeps its text: it says what needs action now.
+ */
+export function hush(): void {
+  clearTimeout(timers.polite);
+  regions.polite = '';
+}

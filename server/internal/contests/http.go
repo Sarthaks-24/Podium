@@ -63,11 +63,13 @@ type contestProblemJSON struct {
 // contestJSON is Contest in docs/API.md.
 type contestJSON struct {
 	contestSummaryJSON
-	DescriptionMD        string               `json:"description_md"`
-	Rules                rulesJSON            `json:"rules"`
-	HonourText           string               `json:"honour_text"`
-	Accepted             bool                 `json:"accepted"`
-	Organiser            bool                 `json:"organiser"`
+	DescriptionMD string    `json:"description_md"`
+	Rules         rulesJSON `json:"rules"`
+	HonourText    string    `json:"honour_text"`
+	Accepted      bool      `json:"accepted"`
+	Organiser     bool      `json:"organiser"`
+	// ID is sent to organisers only, so Student view can link back to the live view.
+	ID                   int64                `json:"id,omitempty"`
 	Problems             []contestProblemJSON `json:"problems"`
 	Announcements        []Announcement       `json:"announcements"`
 	MyClarifications     []Clarification      `json:"my_clarifications"`
@@ -212,6 +214,9 @@ func (d *Handlers) contestDetail(ctx context.Context, c *Contest, u auth.User, o
 			MaxPerProblem: c.MaxPerProblem, Languages: c.Languages, FreezeMinutes: int(c.Schedule.Freeze / time.Minute),
 			Practice: c.PracticeAfterEnd, ExamOptions: c.Exam},
 		ServerNow: now.UnixMilli()}
+	if organiser {
+		out.ID = c.ID
+	}
 	if organiser || c.ProblemsVisible(st, now) {
 		var cells map[string]Cell
 		hide := organiser || c.ViewOptions(st).Hide

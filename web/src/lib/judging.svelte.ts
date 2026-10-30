@@ -4,7 +4,8 @@
  * sends an idempotency key per press, reused by "Submit again", so a retry
  * after a lost answer never counts twice. The gap between submits and a
  * server 429 count down in the button, and after a Run that did not
- * compile Submit asks once. Results stream over GET /api/events with
+ * compile Submit asks once. While the page asks about the code (`held`),
+ * Run and Submit do nothing. Results stream over GET /api/events with
  * polling as the fallback, and the announcer speaks each result once.
  * Construct it during component initialisation: its announcements are
  * effects owned by that component.
@@ -48,6 +49,8 @@ export interface JudgingOptions {
   ready: () => boolean;
   /** Why Run and Submit are off, or "". */
   locked: () => string;
+  /** True while the page asks a question about the code (a language switch, a reset): Run and Submit wait for the answer. */
+  held?: () => boolean;
   minGapS: () => number;
   code: () => { language: Language; source: string };
   integrity: () => IntegrityRecorder | null;
@@ -182,7 +185,7 @@ export class Judging {
   }
 
   async submit(retryKey?: string, confirmed = false): Promise<void> {
-    if (this.submitBusy || !this.o.ready() || this.o.locked() !== '') return;
+    if (this.submitBusy || !this.o.ready() || this.o.locked() !== '' || this.o.held?.()) return;
     if (this.waitLeft > 0 && retryKey === undefined) {
       polite(`You can submit again in ${this.waitLeft} s.`);
       return;
@@ -262,7 +265,7 @@ export class Judging {
   }
 
   private async startRun(body: RunBody): Promise<void> {
-    if (this.runBusy || !this.o.ready() || this.o.locked() !== '') return;
+    if (this.runBusy || !this.o.ready() || this.o.locked() !== '' || this.o.held?.()) return;
     this.pendingRun = body;
     this.lastRunBody = { language: body.language, source: body.source };
     this.compileWarned = false;

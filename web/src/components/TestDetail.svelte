@@ -60,7 +60,7 @@
         <dt>Your output</dt>
         <dd class="mono bad">{diff.actual === null ? '(no more lines)' : showWhitespace(diff.actual) || '(empty line)'}</dd>
       </dl>
-      <p class="hint">Spaces show as a middle dot and tabs as an arrow.</p>
+      <p class="hint">In these two lines a space shows as a dot (·) and a tab as an arrow (⇥).</p>
     </div>
   {/if}
 

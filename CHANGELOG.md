@@ -4,6 +4,14 @@ Dated entries per release. Unreleased work is listed at the top.
 
 ## Unreleased
 
+### v3: what the final agent pilot found (2026-10-30)
+
+- The live view measures the judge's silence at the moment the server answered and refreshes as soon as its tab shows again, so a background tab no longer says "Judge not seen" while judging works. Student view's back link opens the live view.
+- Nothing said about one problem stays under the next; a refused paste shows one line that goes at the next key, Run or Submit.
+- Run and Submit wait while a language change or a reset asks its question.
+- A run that did not compile gives the same advice as a submission, Java's class Main included. Run results say "word" instead of "token", and a checker's comment reads "The checker said: ...".
+- Changing the reference solution's language in the problem editor swaps an untouched starter for the new language's.
+
 ### v3 stage D: golden API fixtures (2026-10-30)
 
 - The mini-contest acceptance test records 14 core-path responses into `web/tests/fixtures/` (`PODIUM_GOLDEN=1` rewrites them; a stale file fails `go test`). A Vitest check holds the web's API types to those files, and the mocks are typed against them.

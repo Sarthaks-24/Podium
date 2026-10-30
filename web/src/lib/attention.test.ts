@@ -37,6 +37,15 @@ describe('consoleSentence', () => {
     expect(consoleSentence({ ...calm, judge_last_claim_at: T - 59_000 }, T, { unanswered: 0 }).trouble).toBe('');
   });
 
+  it('measures the judge at the moment the server answered, so a stale page raises no false alarm', () => {
+    // The answer came at T with the judge seen 3 s before; the page is read 10 minutes later.
+    const stale = consoleSentence({ ...calm, server_now: T }, T + 10 * MIN, { unanswered: 0, started: 31 });
+    expect(stale).toEqual({ trouble: '', text: 'Live, 31 started, judge fine.' });
+    // A judge that was already silent when the server answered is still said.
+    const late = consoleSentence({ ...calm, judge_last_claim_at: T - 3 * MIN, server_now: T }, T + 10 * MIN, { unanswered: 0 });
+    expect(late.trouble).toBe('Judge not seen for 3 minutes.');
+  });
+
   it('says a slow queue, and paused judging instead of the judge', () => {
     const slow = consoleSentence({ ...calm, queue: { waiting: 14, judging: 2, errors: 0, oldest_wait_s: 125 } }, T, { unanswered: 0 });
     expect(slow.trouble).toBe('The oldest submission has waited 2 minutes for the judge.');
