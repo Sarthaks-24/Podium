@@ -195,6 +195,7 @@
         type="button"
         class="btn btn-secondary"
         disabled={page <= 1}
+        title={page <= 1 ? 'This is the newest page.' : undefined}
         onclick={() => {
           page -= 1;
           void load();
@@ -205,6 +206,7 @@
         type="button"
         class="btn btn-secondary"
         disabled={!hasMore}
+        title={hasMore ? undefined : 'This is the oldest page.'}
         onclick={() => {
           page += 1;
           void load();

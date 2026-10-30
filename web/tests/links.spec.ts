@@ -1,8 +1,10 @@
 // The link crawl and "every button does something" (web-quality #20 and
-// #29, P3 FP.5). On the contest mock (tests/mocks/contests.ts), for the
-// student and the organiser screens: every link on every screen is
-// collected, and each internal one is opened and must not land on "Page
-// not found"; mailto: and tel: links must carry an address. Links under
+// #29, P3 FP.5, v4 H3). On the student and organiser contest screens, the
+// problem bank and editor, the Settings tabs, privacy and the similar-code
+// screens: every link is collected, and each internal one is opened and
+// must not land on "Page not found"; mailto: and tel: links must carry an
+// address; a disabled button must say why (a title or a described-by
+// line), and a planted bad link must fail the crawl. Links under
 // /api/ (exports, Google sign-in) are full page loads by design and are
 // left to the server's own tests. Then, on the student screens and the
 // organiser screens (contests, problems, the Settings tabs), every visible,
@@ -17,10 +19,9 @@
 // right type, and the social card must be a 1200 by 630 PNG under 60 KB.
 import { expect, test, type Page } from '@playwright/test';
 import { mockApi, settle, SCREENS } from './mocks/contests';
+import * as integrity from './mocks/integrity';
 import * as problems from './mocks/problems';
 import * as people from './mocks/screens';
-
-const CRAWLED = ['home-student', 'contest-before', 'contest-during', 'contest-after', 'standings-frozen', 'admin-contests', 'contest-editor', 'contest-console', 'contest-results'];
 
 async function open(page: Page, name: string) {
   const s = SCREENS.find((x) => x.name === name)!;
@@ -32,32 +33,80 @@ async function open(page: Page, name: string) {
   return s;
 }
 
+/** A screen to crawl: its address, the mock that serves it and what it shows once loaded. */
+type Crawled = { name: string; path: string; mock: (page: Page) => Promise<unknown>; ready: (page: Page) => Promise<void> };
+
+const CRAWLED: Crawled[] = [
+  ...['home-student', 'contest-before', 'contest-during', 'contest-after', 'standings-frozen', 'admin-contests', 'contest-editor', 'contest-console', 'contest-results'].map((name) => {
+    const s = SCREENS.find((x) => x.name === name)!;
+    return { name, path: s.path, mock: (p: Page) => mockApi(p, s.options), ready: s.ready };
+  }),
+  ...problems.SCREENS.filter((s) => ['problems-bank', 'problem-editor'].includes(s.name)).map((s) => ({ name: s.name, path: s.path, mock: (p: Page) => problems.mockApi(p, 'admin'), ready: s.ready })),
+  ...people.SCREENS.filter((s) => s.name.startsWith('settings-') || s.name === 'privacy').map((s) => ({ name: s.name, path: s.path, mock: (p: Page) => people.mockApi(p, s.who), ready: s.ready })),
+  ...integrity.SCREENS.map((s) => ({ name: `integrity-${s.name}`, path: s.path, mock: (p: Page) => integrity.mockApi(p, s.options), ready: s.ready })),
+];
+
 async function hrefs(page: Page): Promise<string[]> {
   return page.evaluate(() => [...document.querySelectorAll<HTMLAnchorElement>('a[href]')].map((a) => a.getAttribute('href') ?? ''));
 }
 
-for (const name of CRAWLED) {
-  test(`every link on ${name} goes somewhere`, async ({ page }) => {
+/** Every link on the loaded screen that is malformed or lands on "Page not found", in words. */
+async function badLinks(page: Page, s: Crawled): Promise<string[]> {
+  const all = await hrefs(page);
+  // A button that cannot be pressed says why: a title, or a described-by line.
+  const bad: string[] = await page.evaluate(() =>
+    [...document.querySelectorAll<HTMLButtonElement>('main button')]
+      .filter((b) => (b.disabled || b.getAttribute('aria-disabled') === 'true') && b.checkVisibility())
+      .filter((b) => !b.title && !b.getAttribute('aria-describedby'))
+      .map((b) => `a disabled button with no reason: "${(b.getAttribute('aria-label') || b.textContent || '').trim()}"`),
+  );
+  for (const h of all) {
+    if (h.startsWith('mailto:')) {
+      if (!/^mailto:[^@\s]+@[^@\s]+\.[a-z]+(\?.*)?$/i.test(h)) bad.push(`a mailto: link without an address: ${h}`);
+    } else if (h.startsWith('tel:')) {
+      if (!/^tel:\+?\d{6,}$/.test(h)) bad.push(`a tel: link without a number: ${h}`);
+    } else if (/^https?:/.test(h)) bad.push(`an external link: ${h}`);
+    else if (!/^(\/|#.)/.test(h)) bad.push(`an empty or placeholder href: "${h}"`);
+  }
+  const internal = [...new Set(all.filter((h) => h.startsWith('/') && !h.startsWith('/api/')).map((h) => h.split('#')[0]))];
+  for (const path of internal) {
+    await page.unrouteAll({ behavior: 'ignoreErrors' });
+    await s.mock(page);
+    await page.goto(path);
+    await expect(page.locator('h1'), `${path} from ${s.name}`).toHaveCount(1);
+    if ((await page.locator('h1').textContent()) === 'Page not found') bad.push(`${path} is Page not found`);
+  }
+  return bad;
+}
+
+async function load1440(page: Page, s: Crawled) {
+  await s.mock(page);
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto(s.path);
+  await s.ready(page);
+  await settle(page);
+}
+
+for (const s of CRAWLED) {
+  test(`every link on ${s.name} goes somewhere`, async ({ page }) => {
     test.setTimeout(180_000);
-    const s = await open(page, name);
-    const all = await hrefs(page);
-    expect(all.length, 'links found').toBeGreaterThan(0);
-    for (const h of all) {
-      if (h.startsWith('mailto:')) expect(h, h).toMatch(/^mailto:[^@\s]+@[^@\s]+\.[a-z]+(\?.*)?$/i);
-      else if (h.startsWith('tel:')) expect(h, h).toMatch(/^tel:\+?\d{6,}$/);
-      else if (/^https?:/.test(h)) expect(h, `no external link expected: ${h}`).toBe('');
-      else expect(h, `an empty or placeholder href: "${h}"`).toMatch(/^(\/|#.)/);
-    }
-    const internal = [...new Set(all.filter((h) => h.startsWith('/') && !h.startsWith('/api/')).map((h) => h.split('#')[0]))];
-    for (const path of internal) {
-      await page.unrouteAll({ behavior: 'ignoreErrors' });
-      await mockApi(page, s.options);
-      await page.goto(path);
-      await expect(page.locator('h1'), `${path} from ${name}`).toHaveCount(1);
-      await expect(page.locator('h1'), `${path} from ${name}`).not.toHaveText('Page not found');
-    }
+    await load1440(page, s);
+    expect((await hrefs(page)).length, 'links found').toBeGreaterThan(0);
+    expect(await badLinks(page, s)).toEqual([]);
   });
 }
+
+test('a link to a missing page fails the crawl (v4 H3 self-test)', async ({ page }) => {
+  const s = CRAWLED.find((x) => x.name === 'contest-during')!;
+  await load1440(page, s);
+  await page.evaluate(() => {
+    const a = document.createElement('a');
+    a.href = '/contests/week-6/nowhere';
+    a.textContent = 'Nowhere';
+    document.querySelector('main')!.append(a);
+  });
+  expect(await badLinks(page, s)).toEqual(['/contests/week-6/nowhere is Page not found']);
+});
 
 /** A screen to press every button on: how to load it, ready to use. */
 type Pressed = { name: string; load: (page: Page) => Promise<void> };

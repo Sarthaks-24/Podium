@@ -874,7 +874,7 @@
                 {#each available as p (p.id)}<option value={String(p.id)}>{p.title || p.slug} ({p.points} points){p.shown_in_practice ? ', hidden tests shown in practice' : ''}</option>{/each}
               </select>
             </div>
-            <button type="button" class="btn btn-secondary" disabled={addId === '' || problemsBusy} onclick={addProblem}>Add problem</button>
+            <button type="button" class="btn btn-secondary" disabled={addId === '' || problemsBusy} title={addId === '' ? 'Choose a problem first.' : undefined} onclick={addProblem}>Add problem</button>
           </div>
           {#if bank.length > 0 && available.length === 0}
             <p class="muted small">Every validated problem is in this contest. <a href="/admin/problems">Go to the problem bank</a> to validate more.</p>
