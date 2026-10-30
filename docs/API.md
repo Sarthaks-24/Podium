@@ -935,6 +935,7 @@ Every path that is not under `/api/` serves the embedded web app (`server/intern
 | other files of the build (`/favicon.svg`, `/fonts/*`, `/theme-init.js`) | the file, `public, max-age=3600` |
 | `/robots.txt` | `User-agent: *` and `Disallow: /`, `public, max-age=3600` |
 | a missing path with an extension | `404`, so an old hashed chunk after a deploy fails clearly instead of loading `index.html` as JavaScript |
-| any other path | `index.html`, `no-cache`, `X-Robots-Tag: noindex` |
+| `/`, `/signin`, `/privacy`, and anything under `/contests/` or `/admin/` | `index.html`, `no-cache`, `X-Robots-Tag: noindex` |
+| any other path | `index.html` with status `404`, `no-cache`, `X-Robots-Tag: noindex`; the app shows its "Page not found" page |
 
-Podium is a college tool behind sign-in, so every page says `noindex` and `robots.txt` disallows everything. The web app routes on the client; a path no route matches shows its own not-found page.
+Podium is a college tool behind sign-in, so every page says `noindex` and `robots.txt` disallows everything. The web app routes on the client. The server's list of app paths is checked against the router's table (`web/src/lib/routing.ts`) by `TestRoutesMatchRouter`, so a new screen cannot answer 404 by mistake.

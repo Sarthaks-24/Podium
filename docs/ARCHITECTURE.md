@@ -467,7 +467,7 @@ Tests, sources and custom inputs a job fetches land in `blobs/<sha[0:2]>/<sha>` 
 
 ## Pages and crawlers
 
-The web app is client-rendered: every path without a file extension gets the same `index.html`, with `X-Robots-Tag: noindex`, and the server fills nothing per route. A missing file with an extension (an old hashed chunk after a deploy) is a real 404, so a browser never runs `index.html` as a script. `robots.txt` disallows everything. Podium is a college tool behind sign-in, so v3 removed the server-filled page head, Open Graph and social cards, JSON-LD, the route manifest and the web manifest (V3-4): each served a case no single-college contest has met. A path no route matches gets the app's own "Page not found" page.
+The web app is client-rendered: every path without a file extension gets the same `index.html`, with `X-Robots-Tag: noindex`, and the server fills nothing per route. A missing file with an extension (an old hashed chunk after a deploy) is a real 404, so a browser never runs `index.html` as a script. `robots.txt` disallows everything. Podium is a college tool behind sign-in, so v3 removed the server-filled page head, Open Graph and social cards, JSON-LD, the route manifest and the web manifest (V3-4): each served a case no single-college contest has met. A path no route matches gets the app's own "Page not found" page, with status 404 (V4-9): the server knows the app's paths (`/`, `/signin`, `/privacy` and the prefixes `/contests/` and `/admin/`), so crawlers and link checkers see a typo as missing. A Go test reads the router's table to keep the two lists in step.
 
 ## Retention and erasure
 

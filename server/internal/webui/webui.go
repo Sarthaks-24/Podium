@@ -2,7 +2,8 @@
 // server binary. `make build` copies web/dist into dist/ before compiling;
 // without it the server still runs and explains how to build the app.
 // Hashed files under /assets/ are cached for a year; index.html never is,
-// so a release reaches every browser on the next navigation. Podium is a
+// so a release reaches every browser on the next navigation. A path the
+// app has no screen for gets the app with status 404 (V4-9). Podium is a
 // college tool behind sign-in: every page says noindex and robots.txt
 // disallows everything (v3).
 package webui
@@ -13,6 +14,7 @@ import (
 	"mime"
 	"net/http"
 	"path"
+	"slices"
 	"strings"
 )
 
@@ -76,8 +78,27 @@ func handlerFor(dist fs.FS) http.Handler {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		w.Header().Set("Cache-Control", "no-cache")
 		w.Header().Set("X-Robots-Tag", "noindex")
+		// Any other path still gets the app, which draws "Page not found",
+		// but with the status crawlers and link checkers read.
+		if !appRoute("/" + name) {
+			w.WriteHeader(http.StatusNotFound)
+		}
 		w.Write(index)
 	})
+}
+
+// appPaths and appPrefixes are the paths the web app's router has a screen
+// for (web/src/lib/routing.ts); TestRoutesMatchRouter keeps them in step.
+var (
+	appPaths    = []string{"/", "/signin", "/privacy"}
+	appPrefixes = []string{"/contests/", "/admin/"}
+)
+
+func appRoute(p string) bool {
+	if slices.Contains(appPaths, p) {
+		return true
+	}
+	return slices.ContainsFunc(appPrefixes, func(pre string) bool { return strings.HasPrefix(p, pre) })
 }
 
 func notBuilt(w http.ResponseWriter, _ *http.Request) {
