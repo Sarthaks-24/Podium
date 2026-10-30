@@ -38,6 +38,10 @@ type SubmissionView struct {
 	// counts (practice, the organisers' workspace),
 	// once judged; absent on every submission that counts.
 	Revealed *RevealedTest `json:"revealed,omitempty"`
+	// Source is the submitted code, only on GET /api/submissions/{id} and
+	// only to its author, for "Code" and "Compare with mine" (v4 E2); never
+	// in a list, the console feed or an event.
+	Source *string `json:"source,omitempty"`
 	// TimeStepMS is the step the times were rounded to (to the nearest),
 	// so a 0 can be shown as "under step/2 ms".
 	TimeStepMS int   `json:"time_step_ms"`

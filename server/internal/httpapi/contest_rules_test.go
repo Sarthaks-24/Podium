@@ -110,8 +110,23 @@ func TestAccessAndCrossContestIDs(t *testing.T) {
 	if code, _ := owner.do("POST", fmt.Sprintf("/api/admin/contests/%d/rejudge", c2), map[string]any{"submission_id": subID}, s.srv.URL); code != 404 {
 		t.Errorf("rejudge a c1 submission through c2: %d", code)
 	}
-	if code, _ := bilal.do("GET", fmt.Sprintf("/api/submissions/%d", subID), nil, ""); code != 404 {
-		t.Errorf("another student's submission: %d", code)
+	if code, out := bilal.do("GET", fmt.Sprintf("/api/submissions/%d", subID), nil, ""); code != 404 || out["source"] != nil {
+		t.Errorf("another student's submission: %d %v", code, out["source"])
+	}
+	// v4 E2: the author gets their code back on the one submission route;
+	// an organiser reading it does not, and the list never carries it.
+	if code, out := asha.do("GET", fmt.Sprintf("/api/submissions/%d", subID), nil, ""); code != 200 || out["source"] == nil || out["source"] == "" {
+		t.Errorf("own submission: %d, source %v", code, out["source"])
+	}
+	if _, out := owner.do("GET", fmt.Sprintf("/api/submissions/%d", subID), nil, ""); out["source"] != nil {
+		t.Errorf("an organiser got the source on the student's route: %v", out["source"])
+	}
+	if _, ws := asha.do("GET", "/api/contests/c1/problems/A", nil, ""); ws["submissions"] != nil {
+		for _, sub := range ws["submissions"].([]any) {
+			if sub.(map[string]any)["source"] != nil {
+				t.Error("the workspace list carries source")
+			}
+		}
 	}
 	code, cl := bilal.do("POST", "/api/contests/c2/clarifications", map[string]any{"question": "Is n at least 1?"}, s.srv.URL)
 	if code != 201 {

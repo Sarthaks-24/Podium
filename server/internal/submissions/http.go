@@ -223,6 +223,16 @@ func (d *Handlers) GetSubmission(w http.ResponseWriter, r *http.Request) {
 		d.submissionError(w, r, err)
 		return
 	}
+	// The author, and nobody else, gets their code back (v4 E2); organisers
+	// read code on the similar-code screens.
+	if info, err := d.Submissions.Info(r.Context(), id); err == nil && info.UserID == auth.UserFrom(r.Context()).ID {
+		src, err := d.Submissions.Source(r.Context(), id)
+		if err != nil {
+			d.internalError(w, r, err)
+			return
+		}
+		v.Source = &src
+	}
 	httpx.WriteJSON(w, http.StatusOK, v)
 }
 

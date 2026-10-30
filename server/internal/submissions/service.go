@@ -757,6 +757,16 @@ type Info struct {
 
 // Info returns who made a submission or run, and in which contest (0
 // outside contests).
+// Source returns a submission's code. Callers check who may read it.
+func (s *Service) Source(ctx context.Context, id int64) (string, error) {
+	var src string
+	err := s.DB.QueryRowContext(ctx, "SELECT source FROM submissions WHERE id = ?", id).Scan(&src)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", ErrNotFound
+	}
+	return src, err
+}
+
 func (s *Service) Info(ctx context.Context, id int64) (Info, error) {
 	var i Info
 	err := s.DB.QueryRowContext(ctx, "SELECT user_id, coalesce(contest_id, 0), problem_id, kind FROM submissions WHERE id = ?", id).
