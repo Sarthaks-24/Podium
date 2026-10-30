@@ -39,7 +39,7 @@
   import { LANGUAGES, type ProblemSummary } from '../lib/problems';
   import { navigate, setNavigationGuard } from '../lib/router.svelte';
   import { session } from '../lib/session.svelte';
-  import { showToast } from '../lib/toast.svelte';
+  import { showToast, type ToastAction } from '../lib/toast.svelte';
 
   let { id }: { id: string } = $props();
 
@@ -542,14 +542,27 @@
 
   function removeProblem(i: number) {
     const p = picked[i];
-    const apply = async () => {
+    // Undo (v4 U4) puts the problem back where it was, unless it is back already.
+    const undo: ToastAction = {
+      label: 'Undo',
+      run: () =>
+        void queued(async () => {
+          if (picked.some((x) => x.problem_id === p.problem_id)) return;
+          const at = Math.min(i, picked.length);
+          picked = [...picked.slice(0, at), p, ...picked.slice(at)].map((x, k) => ({ ...x, label: labelFor(k) }));
+          await tick();
+          document.getElementById(`remove-${at}`)?.focus();
+          await putProblems('', `Put back ${p.title}`);
+        }),
+    };
+    const apply = async (action?: ToastAction) => {
       picked = picked.filter((_, k) => k !== i).map((x, k) => ({ ...x, label: labelFor(k) }));
       // The removed row took the focused button with it: focus the row now in
       // its place, or the problem picker when the list is empty.
       await tick();
       const target = () => document.getElementById(`remove-${Math.min(i, picked.length - 1)}`) ?? document.getElementById('add-problem');
       target()?.focus();
-      await putProblems('', `Removed ${p.title}`);
+      await putProblems('', `Removed ${p.title}`, action);
       // After a confirmation the dialog hands focus back to the removed button, so take it again.
       requestAnimationFrame(() => target()?.focus());
     };
@@ -559,11 +572,12 @@
         body: `This takes ${p.title} out of the contest, and its submissions leave the board.`,
         label: 'Remove problem',
         danger: true,
-        run: () => queued(apply).then(() => undefined),
+        run: () => queued(() => apply()).then(() => undefined),
       };
       return;
     }
-    void queued(apply);
+    // Before the start nothing is lost, so it acts at once and offers Undo instead of asking.
+    void queued(() => apply(undo));
   }
 
   /** Saves the letters after one is typed. */
@@ -592,7 +606,7 @@
   }
 
   /** Sends the problem list; true when the server took it. On a refusal the list goes back to what is saved. */
-  async function putProblems(reason: string, done: string): Promise<boolean> {
+  async function putProblems(reason: string, done: string, action?: ToastAction): Promise<boolean> {
     problemsError = '';
     const labels = picked.map((p) => p.label.trim().toUpperCase());
     if (labels.some((l) => !/^[A-Z]{1,3}$/.test(l))) {
@@ -617,7 +631,7 @@
       aiLabels = [];
       aiReason = '';
       adopt(value);
-      showToast(done);
+      showToast(done, 'info', action);
       return true;
     } catch (e) {
       if (isSignedOut(e)) return false;

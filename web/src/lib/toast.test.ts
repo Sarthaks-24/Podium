@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { CLEAR_MS, regions } from './announce.svelte';
-import { MAX_TOASTS, dismissToast, showToast, toasts } from './toast.svelte';
+import { ACTION_TOAST_MS, MAX_TOASTS, TOAST_MS, dismissToast, runToastAction, showToast, toasts } from './toast.svelte';
 
 describe('toasts', () => {
   it('shows at most three, the newest replacing the oldest', () => {
@@ -40,6 +40,29 @@ describe('toasts', () => {
       showToast('Could not save', 'error');
       vi.advanceTimersByTime(CLEAR_MS);
       expect(regions.polite).toBe('Saved the settings');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('runs an action once, closing its toast first, and keeps it 8 s while saying where it is (v4 U4)', () => {
+    vi.useFakeTimers();
+    try {
+      for (const t of toasts.items) dismissToast(t.id);
+      regions.polite = '';
+      let undone = 0;
+      const id = showToast('Removed A plus B', 'info', { label: 'Undo', run: () => undone++ });
+      vi.advanceTimersByTime(CLEAR_MS);
+      expect(regions.polite).toBe('Removed A plus B. Undo is in the corner for 8 seconds.');
+      vi.advanceTimersByTime(TOAST_MS);
+      expect(toasts.items.map((t) => t.id)).toContain(id);
+      runToastAction(id);
+      runToastAction(id);
+      expect(undone).toBe(1);
+      expect(toasts.items).toHaveLength(0);
+      const later = showToast('Removed C', 'info', { label: 'Undo', run: () => {} });
+      vi.advanceTimersByTime(ACTION_TOAST_MS);
+      expect(toasts.items.map((t) => t.id)).not.toContain(later);
     } finally {
       vi.useRealTimers();
     }

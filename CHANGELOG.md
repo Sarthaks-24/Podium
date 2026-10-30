@@ -8,6 +8,7 @@ Dated entries per release. Unreleased work is listed at the top.
 
 - A screen that is slow to load shows still blocks in its shape after the same 300 ms wait: rows on Your contests, the contests list, the problem bank and the standings, a statement in the workspace. The loading sentence is still read out; nothing shimmers or moves.
 - Coming back to Your contests, the problem bank or the standings shows what they last showed at once, then the fresh answer replaces it. When the refresh fails the old answer stays with "This may be out of date: the latest could not load." and Try again; a refusal (403 or 404) shows the refusal instead. These answers live only in the open tab's memory and are forgotten at sign out and whenever the session ends.
+- A toast can carry one action. Removing a problem from a contest that has not started acts at once and its toast offers Undo for 8 seconds instead of asking first; Undo puts the problem back in its place and saves. Once the contest has started, removing a problem still asks first. Contests have no announcement deletion and problems no single-test removal, so the plan's other two Undo cases do not arise.
 
 ### v4 stage E: the editor (2026-10-31)
 

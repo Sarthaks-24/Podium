@@ -8,15 +8,16 @@
   go away on their own, and sits outside the polite region so it is
   announced once. Errors stay however many there are; info toasts fill the
   rest of three (lib/toast.svelte.ts).
-  The stack lets clicks through to the page; only an error toast, which has
-  a button, takes them. Toasts appear at --dur with a short rise and leave
+  The stack lets clicks through to the page; only a toast with a button
+  takes them: an error's Dismiss, or an info toast's one action such as
+  Undo (v4 U4), which closes the toast and runs. Toasts appear at --dur with a short rise and leave
   with a fade at --dur-fast, both without motion when reduced
   motion is requested. Takes no props.
 -->
 <script lang="ts">
   import { prefersReducedMotion } from 'svelte/motion';
   import { fade } from 'svelte/transition';
-  import { dismissToast, toasts } from '../lib/toast.svelte';
+  import { dismissToast, runToastAction, toasts } from '../lib/toast.svelte';
 
   /** The exit: a fade at --dur-fast (a value in ms in tokens.css), none under reduced motion. */
   function leave(node: HTMLElement) {
@@ -38,8 +39,11 @@
   </div>
   <div class="stack">
     {#each toasts.items.filter((t) => t.kind !== 'error') as item (item.id)}
-      <div class="toast" out:leave>
+      <div class="toast" class:has-action={item.action} out:leave>
         <p>{item.message}</p>
+        {#if item.action}
+          <button type="button" class="btn btn-quiet btn-compact action" onclick={() => runToastAction(item.id)}>{item.action.label}</button>
+        {/if}
       </div>
     {/each}
   </div>
@@ -98,6 +102,23 @@
      the high-contrast themes) on the toast's own tint. */
   .dismiss:hover {
     border-color: var(--bad);
+    background: transparent;
+  }
+
+  .has-action {
+    pointer-events: auto;
+  }
+
+  /* The action sits on the dark toast: paper text, and a paper edge on hover. */
+  .action {
+    flex: none;
+    color: inherit;
+    font-weight: 600;
+    text-decoration: underline;
+  }
+
+  .action:hover {
+    border-color: var(--paper);
     background: transparent;
   }
 

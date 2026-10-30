@@ -15,14 +15,24 @@ import { polite } from './announce.svelte';
 
 export type ToastKind = 'info' | 'error';
 
+/** One button on an info toast, such as Undo (v4 U4). Choosing it closes the toast. */
+export interface ToastAction {
+  label: string;
+  run: () => void;
+}
+
 export interface Toast {
   id: number;
   kind: ToastKind;
   message: string;
+  action?: ToastAction;
 }
 
 /** How long an info toast stays on screen. */
 export const TOAST_MS = 6000;
+
+/** How long an info toast with an action stays, so there is time to undo. */
+export const ACTION_TOAST_MS = 8000;
 
 /** The most toasts on screen at once. */
 export const MAX_TOASTS = 3;
@@ -53,15 +63,22 @@ function capped(items: Toast[]): Toast[] {
   return items.filter((t) => t.kind === 'error' || keep.has(t.id));
 }
 
-/** Shows a toast and returns its id. */
-export function showToast(message: string, kind: ToastKind = 'info'): number {
+/** Shows a toast and returns its id. An info toast may carry one action, and then stays ACTION_TOAST_MS. */
+export function showToast(message: string, kind: ToastKind = 'info', action?: ToastAction): number {
   const id = nextId++;
   // The same info sentence again replaces the one on screen, so it shows once.
   const others = kind === 'info' ? toasts.items.filter((t) => t.kind === 'error' || t.message !== message) : toasts.items;
-  toasts.items = capped([...others, { id, kind, message }]);
+  toasts.items = capped([...others, { id, kind, message, ...(kind === 'info' && action ? { action } : {}) }]);
   if (kind === 'info') {
-    polite(message);
-    setTimeout(() => dismissToast(id), TOAST_MS);
+    polite(action ? `${message}. ${action.label} is in the corner for ${ACTION_TOAST_MS / 1000} seconds.` : message);
+    setTimeout(() => dismissToast(id), action ? ACTION_TOAST_MS : TOAST_MS);
   }
   return id;
+}
+
+/** Chooses a toast's action: the toast closes, then the action runs. */
+export function runToastAction(id: number): void {
+  const action = toasts.items.find((t) => t.id === id)?.action;
+  dismissToast(id);
+  action?.run();
 }
