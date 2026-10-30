@@ -1,6 +1,6 @@
 # Integrity
 
-How Podium looks for copying and other cheating, what it does not do, and a policy template for the owner to fill in. The reasoning lives in `docs/ARCHITECTURE.md`; this page is for organisers and reviewers.
+How Podium looks for copying and other cheating, what it does not do, and a policy template for the owner to fill in. The reasoning lives in `docs/ARCHITECTURE.md`; this page is for organisers.
 
 ## The short version
 
@@ -18,7 +18,8 @@ Students are told all of this on the honour-code screen before they start.
 | Every submission and its results | Keystrokes or their timing |
 | Characters typed and pasted in the editor, per submission | The text of pastes |
 | Paste sizes, and when the page lost and regained focus | Webcam, microphone, screen |
-| A second browser opening the same contest at the same time | Other tabs or applications |
+| A second browser opening the same contest at the same time | Other tabs or applications (unless the exam option counts tab switches) |
+| With the exam option "full screen on start", each time the student left full screen | |
 | A keyed hash of IP address and browser (never the address itself) | The IP address in readable form |
 
 Integrity records are deleted 180 days after the contest ends. The checks' results (runs and signals) go at the same time. Decisions and their reasons are kept.
@@ -27,13 +28,13 @@ Integrity records are deleted 180 days after the contest ends. The checks' resul
 
 Integrity is also about the people running the contest. A dispute about a grade has to be settled from facts, so:
 
-- **The audit log.** Every organiser action that can change results is written to the contest's audit log with who did it and when: settings (each field, from and to), problem pins, the roster, extensions, extend, pause and resume, rejudges, the reveal, the editorial, co-organisers, integrity decisions, and an admin's reason to grade an AI problem as written. Nothing can edit or delete a row, not even the server (database triggers refuse it). The console shows the log, and the JSON export carries it. Store the export, and its SHA-256, off the server after each graded contest.
-- **Student co-organisers (TAs).** A co-organiser whose own role is student can answer questions, post announcements and edit the contest before it starts. They cannot change its rules or schedule once it starts, nor replace the roster, give extra time, extend, pause, resume or rejudge: those are for owners and admins. They see results as a student would (no verdicts in exam mode until every student's time is up, the frozen board during the freeze, no integrity counts, and their own submissions under the contest's limits), so the role is no window onto hidden tests or classmates' results. Extra time can only go to a student on the roster or one who took part.
-- **Shared lab PCs.** Sign-in accepts only a Google sign-in from the last 5 minutes, Podium's cookie ends when the browser closes, and every session ends 12 hours after sign-in at the latest. Still: give each lab slot a browser guest profile (or a kiosk profile that is wiped on exit), and ask students to sign out of Podium and of Google before they leave. An owner can end anyone's sessions, or disable an account, on the People page; a disabled student's next request is refused and their open contest page loses its live updates within 25 seconds.
+- **The audit log.** Every organiser action that can change results is written to the contest's audit log with who did it and when: settings (each field, from and to), problems, "Update students now", extra time, extend, pause and resume, rejudges, the reveal, the editorial, archiving, integrity decisions, and an admin's reason to use an AI problem as written. Nothing can edit or delete a row, not even the server (database triggers refuse it). Live shows the log under History of changes, and the JSON export carries it. Store the export, and its SHA-256, off the server after each contest.
+- **Only owners and admins organise.** Every organiser screen and route needs the admin or owner role; there are no per-contest organisers or student assistants. A student gets 403 on an organiser route before any contest is read, so a student who helps run a contest has no window onto hidden tests or classmates' results. Extra time can only go to a student who took part.
+- **Shared lab PCs.** Sign-in accepts only a Google sign-in from the last 5 minutes, Podium's cookie ends when the browser closes, and every session ends 12 hours after sign-in at the latest. Still: give each lab slot a browser guest profile (or a kiosk profile that is wiped on exit), and ask students to sign out of Podium and of Google before they leave. An owner can end anyone's sessions, or disable an account, in Settings (People tab); a disabled student's next request is refused and their open contest page loses its live updates within 25 seconds.
 
 ## The checks
 
-An organiser presses **Check integrity** on a contest's results page after the contest has ended for everyone. It takes under a minute for a few hundred students and replaces the previous check's signals; decisions stay.
+After the contest has ended for everyone, an organiser opens **Similar code** from the contest's Results and presses **Check integrity**. It takes under a minute for a few hundred students and replaces the previous check's signals; decisions stay.
 
 | Signal | What it finds | Strength |
 |---|---|---|
@@ -44,25 +45,24 @@ An organiser presses **Check integrity** on a contest's results page after the c
 
 The similarity score is the share of the shorter program found in the other, not a probability. The review page shows beside it how much code is behind it: the shared fingerprints and the shorter program's length in tokens. A high score from a short program or a textbook algorithm is weak evidence, which is why strength also needs an amount of shared code.
 
-The page also shows each student's timeline: submissions with typed and pasted counts, large pastes, focus losses, second sessions, and other students who used the same browser and network. These are context, never a signal on their own: lab machines are shared, and pasting your own template is allowed.
-
-Window-mode contests leak by design: a student who finished can tell a later one about the problems. The review page says so for those contests.
+The page also shows each student's timeline: submissions with typed and pasted counts, large pastes, focus losses, full-screen exits, second sessions, and other students who used the same browser and network. When an exam option counts tab switches or full-screen exits, Similar code also shows a table of those counts per student, and Live shows them beside each submission. These are context, never a signal on their own: lab machines are shared, and pasting your own template is allowed.
 
 ## Reviewing and deciding
 
 1. Read the signal: for similar code, the side-by-side view highlights what matched. Look at the timeline of both students.
-2. Hand the evidence to the college's process if it deserves one: **Download similar pairs (CSV)** on the integrity page lists each pair with both students' names, emails, roll numbers and submission ids.
-3. Record a decision about each student it concerns, from the pair view, the integrity page or a submission row in the console:
+2. Hand the evidence to the college's process if it deserves one: **Download similar pairs (CSV)** on Similar code lists each pair with its problem, strength and score, and both students' names, emails and submission ids.
+3. Record a decision about each student it concerns, from the pair view, Similar code or a submission row in Live:
 
 | Decision | What changes |
 |---|---|
 | No action | Nothing. The reason is kept. |
 | Warning | Nothing on the board. The reason is kept. |
-| Exclude from this contest | The student no longer appears in the standings, the results page or the results export of that contest. |
+| Exclude from this contest | The student no longer appears in the standings, on Results or in the results export of that contest. |
 
 - A reason is required (a sentence or two). Each student has one decision per contest; recording a new one replaces it, so "No action" after "Exclude from this contest" brings the student back.
 - Every decision is written to the contest's audit log with who made it and when.
-- A reviewer who is one of the students named (a student later made an admin) never sees those signals and cannot decide about themselves.
+- An organiser who is one of the students named (a student later made an admin) never sees those signals and cannot decide about themselves.
+- There is no second reviewer, no deadline and no ruling after the decision in Podium: the college's own process handles the rest. Why: no comparable platform runs a tribunal inside the contest system, and the owner chose to keep one small record, a decision and its reason (owner answer, 2026-10-26).
 
 Signals are weakest on short problems and on problems with one natural solution. A strong similarity on a 50-line problem from two students who sit together means more than a moderate one on a textbook algorithm.
 
@@ -95,7 +95,7 @@ Still out of reach:
 
 No tool reliably tells AI-written code from a student's own: detectors are wrong often enough to accuse honest students, and easy to fool. Podium handles it in three other ways:
 
-- **Prevention:** graded contests default to a fixed start; run them in a lab with an invigilator for anything that counts. The honour code states the rule.
+- **Prevention:** every contest starts at one time for everyone; run it in a lab with an invigilator for anything that matters. The honour code states the rule, and the exam options (full screen on start, counting tab switches, blocking paste into the editor and copy out of the statement) are there when an examination wants them. All are off by default; Setup has them under Advanced.
 - **Indirect evidence:** large pastes, a full score far faster than the class, and clusters of near-identical code (students who asked the same model often submit the same program).
 - **Verification:** the reliable check is a conversation. Ask the student to explain their program, or to change it in front of you.
 
@@ -104,8 +104,8 @@ No tool reliably tells AI-written code from a student's own: detectors are wrong
 The owner fills this in and keeps it with the course materials. Until then Podium runs with the defaults in brackets.
 
 1. **Allowed resources.** Own templates: [yes]. Language documentation: [yes]. Searching the web: [no]. AI assistants and code generators: [no]. Discussing with others during the contest: [no].
-2. **Contest format.** Contests that count use [fixed start in a lab with an invigilator]. Window-mode contests are used only for [practice].
+2. **Contest format.** Contests are run [in a lab with an invigilator]. Exam options are turned on for [examinations only].
 3. **Evidence threshold.** A pair goes to the college's process when [a strong signal, or two moderate signals of different kinds, after a reviewer has read the code].
 4. **Who decides.** [The department's academic integrity process] decides about the student. The organiser records the outcome in Podium as No action, Warning or Exclude from this contest, with the reason.
 5. **Retention.** Integrity records are kept [180 days] after the contest; decisions and their reasons are kept.
-6. **Organisers during a contest.** Setters [may not] submit to a live contest's problems; co-organisers who are students [may not] see problems before the contest.
+6. **Organisers during a contest.** Setters [may not] submit to a live contest's problems; students who help run a contest are [not given] the admin role.

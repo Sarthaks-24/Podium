@@ -1,6 +1,6 @@
 # Writing problems
 
-Admins and owners write problems in the problem editor (Problems, in the header) or import them as a problem pack. Validation then runs the problem on the real judge; from M4, only a validated problem can go into a contest. The AI assistant arrives in M5.
+Admins and owners write problems in the problem editor (Problems, in the header) or import them as a problem pack. Validation then runs the problem on the real judge, and only a validated problem can go into a contest. The AI wizard can also write a draft (see "The AI wizard").
 
 ## Input and output
 
@@ -57,7 +57,7 @@ Parsed strictly: an unknown key is an error, so a misspelt key never silently fa
 ```yaml
 format: 1                       # pack format; exports write 1
 title: Pair with sum            # shown to students; up to 120 characters
-slug: pair-with-sum             # lowercase letters, digits and single hyphens; unique in the bank
+slug: pair-with-sum             # lowercase letters, digits and single hyphens; unique among problems
 time_limit_ms: 1000             # for C++; 100 to 10000; default 1000
 memory_limit_mb: 256            # 16 to 1024; default 256
 checker: custom                 # tokens (default), exact, float or custom
@@ -84,7 +84,7 @@ Quote every `tests` value, so YAML reads it as text.
 ### Tests
 
 - `tests/NN.in` and `tests/NN.out`, with `NN` from 1 to 999 and any zero padding (`1.in`, `01.in` and `001.in` are all test 1, so do not mix them).
-- An expected output may be left out. Such a test shows "Made on Validate" in the editor's Tests tab: Validate first makes every missing output from the reference solution, then validates (see "Generating outputs"). Judging waits until every test has one.
+- An expected output may be left out. Such a test shows "Made on Validate" in the editor's Tests tab: Validate first makes every missing output from the reference solution, then validates (see "Expected outputs from the reference"). Judging waits until every test has one.
 - An output without its input is refused.
 - At most 16 MB per file.
 - A test planned in `tests.yaml` needs no files: Generate inputs makes its input, then its output is made from the reference. A pack must have at least one test file or one planned test.
@@ -98,12 +98,12 @@ Quote every `tests` value, so YAML reads it as text.
 - Raw HTML is shown as text, never rendered. Inline styles are removed, and links open in the same tab.
 - Packs cannot carry image files yet, and the page's security policy blocks images from other sites.
 - At most 64 KB. Put large data in tests, not in the statement.
-- Tags are shown to students on their progress page, where results are grouped by tag, so write them as plain words a student would recognise ("two pointers", "prefix sums"), not internal shorthand.
+- Tags help organisers find problems in the list; write them as plain words ("two pointers", "prefix sums"), not internal shorthand.
 - When an image is used (a later pack format may carry them), give it a description in its alt text, `![a 3 by 3 grid with the start in the top left](grid.png)`, so a student who cannot see it still has the problem; the editor's readiness panel lists images without one.
 
 Statement, title, tags, difficulty and subtask titles can change at any time without affecting validation.
 
-**During a live contest** (one that pins the problem and is between its start and its close plus the longest personal extension), a save that changes the problem needs a reason: the editor asks for one, and "Replace tests" takes it too. The reason is kept with the new revision. Students keep seeing the revision the contest pins until an organiser chooses "Update contest to revision N" on the console; see "Revisions" below.
+**During a live contest** (one that pins the problem and is between its start and its close plus the longest personal extension), a save that changes the problem needs a reason: the editor asks for one, and "Replace tests" takes it too. The reason is kept with the new revision. Students keep seeing the revision the contest pins until an organiser chooses "Update students now" on the contest's Live tab; see "Revisions" below.
 
 ## Samples and subtasks
 
@@ -111,7 +111,7 @@ Every test is exactly one of two kinds (V3-5):
 
 | Kind | Who sees it | Rules |
 |---|---|---|
-| Sample (`samples`) | Everyone, with the statement | Test numbers, each once; no points. Run checks every sample; a Submit judges them first and, with "Stop on a failing sample", stops there. |
+| Sample (`samples`) | Everyone, with the statement | Test numbers, each once; no points. Run checks every sample; a Submit judges them first and stops at a failing one. |
 | Hidden test (in a subtask) | Nobody, during a contest | See the subtasks below. Only Submit judges them. |
 
 | Item | Rules |
@@ -120,18 +120,17 @@ Every test is exactly one of two kinds (V3-5):
 | `subtasks` | Up to 50. Each gets 1 to 1000 points and a `tests` range list. A student scores a subtask's points only by passing all of its tests. |
 | Range list | Comma-separated test numbers and ranges: `"3-5"`, `"3-5, 8"`, `"7"`. Ranges run upwards, numbers are 1 to 999, and no test may appear twice. It is stored in its shortest form (`"3, 4, 5"` becomes `"3-5"`). |
 
-Validation refuses to start while a test is in no subtask (and is not a sample), in two places, or a range names a test that does not exist. Points that do not add up to 100 are a warning, not an error. Validation runs the reference, the brute force and the validator over open tests like every other test, and they need expected outputs the same way.
+Validation refuses to start while a test is in no subtask (and is not a sample), in two places, or a range names a test that does not exist. Points that do not add up to 100 are a warning, not an error. Validation runs the reference, the brute force and the validator over samples like every other test, and they need expected outputs the same way.
 
-**When hidden tests are shown.** A submission that never counts shows its first failing hidden test (input, expected output, the program's output, at most 4 KB each): practice after the window when "practice after the end" is on and no other contest still uses the problem, and your own tries in the workspace. A submission that counts never shows one. Name subtasks by purpose ("Correctness", "Time complexity"), since their titles are shown.
+**When hidden tests are shown.** A submission that never counts shows its first failing hidden test (input, expected output, the program's output, at most 4 KB each): practice after the end when "practice after the end" is on and no other contest that pins the problem is still open, drafts and upcoming ones included, and your own tries in the workspace. A submission that counts never shows one. Name subtasks by purpose ("Correctness", "Time complexity"), since their titles are shown.
 
 ## Revisions
 
-Every save that changes a problem (its statement, title, tests, limits, checker, solutions, samples, subtasks or generator) makes a new numbered revision; a save that changes nothing makes none. Tags, slug, difficulty and the generator plan are bank details and make none. Generated inputs and outputs make revisions too, without an author.
+Every save that changes a problem (its statement, title, tests, limits, checker, solutions, samples, subtasks or generator) makes a new numbered revision; a save that changes nothing makes none. Tags, slug, difficulty and the generator plan are details of the problem's entry and make none. Generated inputs and outputs make revisions too, without an author.
 
-- A contest pins one revision per problem when the problem is added. Students are served that revision's title, statement and samples, never the bank's working copy, so an edit in the bank changes nothing in a contest until you choose "Update contest to revision N" on the console.
-- The update is accepted when the revision is the validated content of the problem. When only the statement or title changed, no rejudge is needed; students see "Statement updated 14:32. See what changed" with a line diff, and the console offers an announcement to post. When the tests, limits or checker changed, validate first, update, then rejudge.
-- The editor lists the newest 50 revisions with who made each, when, the reason and the contests that pin it, and can show any revision or compare two.
-- From v1.3.0 a revision older than 90 days that no contest pins or pinned, no submission was judged against and no student was served is deleted by the daily retention job; the problem's newest revision always stays. A contest's pins go 4 years after the contest, with its submissions (`docs/OPERATIONS.md`, "Retention").
+- A contest pins one revision per problem when the problem is added. Students are served that revision's title, statement and samples, never the editable problem, so an edit changes nothing in a contest until an organiser chooses "Update students now" on the contest's Live tab, where a banner names the edited problem.
+- The update is accepted when the revision is the validated content of the problem. When only the statement or title changed, no rejudge is needed, and Live offers a prefilled announcement to post, which is how students learn of the change. When the tests, limits or checker changed, validate first, update, then rejudge.
+- Revisions are kept as the record of what students were served and judged against; there is no list of them in the editor. v3 removed the revision lists, statement diffs and the log of what each student was served (V3-4): each served a case no single-college contest has met yet.
 
 ## Checkers
 
@@ -179,7 +178,7 @@ How its exit is read:
 |---|---|---|
 | exit 0 | `_ok` | Accepted |
 | exit 1, 2, 4 or 8 | `_wa`, `_pe`, `_dirt`, unexpected end of file | Wrong answer |
-| exit 7, or 50 and above | `_points`, partial scores | Wrong answer: partial points count as wrong until per-test scoring arrives in v2 |
+| exit 7, or 50 and above | `_points`, partial scores | Wrong answer: a test earns no points on its own, since subtasks are all or nothing |
 | exit 3 | `_fail` | Internal error: "The checker reported a failure" |
 | crash, time or memory limit, any other exit | | Internal error |
 
@@ -187,7 +186,7 @@ Use `_fail` when the expected answer itself is wrong, as above: during validatio
 
 Limits: compiling gets 30 s of CPU (testlib is a large header; a normal compile gets 10 s). Each run gets 10 s of CPU, 20 s of wall time, 256 MB and one process. The first 256 bytes of what it prints (standard output and error together) are kept as the message shown with the result.
 
-## Generating outputs
+## Expected outputs from the reference
 
 Write the inputs and a correct reference solution; the judge writes the expected outputs.
 
@@ -270,7 +269,7 @@ Generate inputs in the editor runs the generator for every planned test, in one 
 
 ## The AI wizard
 
-"New problem with AI" on the problem bank asks a model to write a whole problem: statement, samples, subtasks, a C++ reference, a Python brute force, a Python generator with its plan, a Python validator, the checker and limits. An owner or admin pastes their own provider key first: Anthropic, OpenAI or Google Gemini (`docs/OPERATIONS.md`, "AI wizard keys"). The server lists that provider's current models; choose one, or type the id of a model the list does not show. The key stays in the server's memory for 2 hours and is forgotten on sign-out. The wizard shows which provider and model wrote each draft.
+"New problem with AI" on Problems asks a model to write a whole problem: statement, samples, subtasks, a C++ reference, a Python brute force, a Python generator with its plan, a Python validator, the checker and limits. An owner or admin pastes their own provider key first: Anthropic, OpenAI or Google Gemini (`docs/OPERATIONS.md`, "AI wizard keys"). The server lists that provider's current models; choose one, or type the id of a model the list does not show. The key stays in the server's memory for 2 hours and is forgotten on sign-out. The wizard shows which provider and model wrote each draft.
 
 The three providers get the same instructions and the same answer schema, and every answer passes the same checks, so a draft from any of them is held to the same rules. Models differ in how often their first answer passes: when one keeps failing a check, try another model before rewriting the brief.
 
@@ -288,12 +287,12 @@ Problem statements on LeetCode, Codeforces and similar sites are copyrighted. Th
 
 1. The answer is checked: every field, the sample count, subtask points adding up to 100, the planned tests, and the editor's own rules. An answer that fails is sent back once with the reasons; if the second one fails too, the wizard says "The model's answer could not be used." and lists them.
 2. A draft problem is created with origin `ai` and the tag "ai draft". Its samples are tests 1 to k, then the generated tests. The tag stays until a person changes the statement, the reference or the brute force and saves. A save that changes none of them keeps the tag, and the change that ends it also withdraws the validation, so the problem must pass again as the person left it.
-3. Generate inputs is queued at once, which chains Generate outputs and Validate (see "Tests from a generator"). The wizard page follows each step to the end ("Generating the tests", "Validating the draft", then "Validation passed" and Open the draft); the editor shows them too. Without a key or a model, the key form appears on the wizard itself, above the brief.
+3. Generate inputs is queued at once, which chains Generate outputs and Validate (see "Tests from a generator"). The wizard page follows each step to the end (making the tests, validating the draft, then "Validation passed" and Open the draft); the editor shows them too. Without a key or a model, the key form appears on the wizard itself, above the brief.
 4. You read every part of the draft, fix what needs fixing, save it and validate it. The aim is a draft that needs at most one manual edit.
 
 The model's code is never run on the server: it goes to the judge, in isolate, like any setter's code. Nothing AI-made reaches students before a person has reviewed and validated it: only validated problems can be added to a contest, and a problem still tagged "ai draft" is refused even when the chain validated it ("The problem for label B is an AI draft. Read it and save it in the editor before adding it to a contest.").
 
-**Graded contests need a person's solution.** The tests of an AI problem come from the model's generator and their expected outputs from the model's reference, so validation cannot catch a wrong reference: they agree by construction. A graded contest therefore refuses an AI problem until a person has written a solution for it: an editor save that changes the reference or the brute force (write your own brute force; it is the independent check), followed by a validation that passes. An admin may instead grade it as written by giving a reason of at least 10 characters when adding it; the reason is kept in the contest's audit log, and the contest editor asks for it. Turning grading on for a contest that already holds such a problem is refused the same way.
+**A contest needs a person's solution.** The tests of an AI problem come from the model's generator and their expected outputs from the model's reference, so validation cannot catch a wrong reference: they agree by construction. Every contest counts (V3-6), so a contest refuses an AI problem until a person has written a solution for it: an editor save that changes the reference or the brute force (write your own brute force; it is the independent check), followed by a validation that passes. An admin may instead use it as written by giving a reason of at least 10 characters when adding it; the reason is kept in the contest's audit log, and Setup asks for it.
 
 One AI request per admin runs at a time, for at most 3 minutes. A refusal by the model, a cut-off answer, a rate limit or a provider outage is shown in words; nothing is created.
 
@@ -367,24 +366,24 @@ The full table of every program on every test opens on request below the report.
 
 Title, slug, statement, tags, difficulty and subtask titles do not. Upgrading the judge does not either; but if a later run of the very same content fails (a slower judge, a fixed judge bug), the validation is withdrawn.
 
-Generating outputs or inputs changes test files, so it unvalidates the problem too. The generator and the plan themselves are not in the hash (decision D53): editing the generator does not unvalidate the tests it already made. Generate inputs again to use the new generator.
+Making outputs or inputs changes test files, so it unvalidates the problem too. The generator and the plan themselves are not in the hash (decision D53): editing the generator does not unvalidate the tests it already made. Generate inputs again to use the new generator.
 
 On an AI draft, the first save that changes the statement withdraws the validation too (see "The AI wizard"), although the statement is not in the hash.
 
-## Before a graded contest: the setter checklist
+## Before a contest: the setter checklist
 
-Validation proves the tests and the reference agree with each other. It cannot prove they are right. Before every graded contest, for every problem in it:
+Validation proves the tests and the reference agree with each other. It cannot prove they are right. Before every contest, for every problem in it:
 
 1. **Reference judged live.** Open the problem from the contest as an organiser (the workspace) and submit the reference solution on the real judge. It must get the full score on every subtask.
 2. **A known-wrong solution judged live.** Submit at least one solution you know is wrong in a typical way (an `int` that should be `long long`, a missing edge case, a brute force that is too slow). It must lose points, on the subtask you expect. A wrong solution that scores full marks means the tests are too weak.
 3. **Brute force cross-checked.** Validation passes with a brute force, and the report shows at least half the tests cross-checked. Look at which tests were not, and add small tests if the large ones carry subtasks of their own.
-4. **AI problems.** For every problem whose origin is `ai`, write a solution of your own (a brute force is enough), save it, and validate: it must pass every test. Grading an AI problem as written, with a reason, is the exception, and the reason is in the audit log.
-5. **Freeze.** In the contest window, import no packs, run no AI wizard and rejudge nothing unless a test is wrong. A rejudge is recorded in the audit log with who asked for it.
-6. **Practice shows hidden tests.** In practice after the end, a failing submission shows the first failing hidden test (D115), unless another contest that pins the problem has not closed yet, drafts and upcoming contests included (V3-6). Anyone who keeps practising can read the hidden tests one by one, so a problem used that way is public: do not reuse it in another contest without new tests. The bank and the contest editor's picker mark such a problem "Hidden tests shown in practice", and publishing a contest that holds one names it in the confirm. A problem whose hidden tests a published contest has shown stays in that contest (it cannot be removed), so the mark cannot be lost before an exam. Every contest counts: v3 has no ungraded contests.
+4. **AI problems.** For every problem whose origin is `ai`, write a solution of your own (a brute force is enough), save it, and validate: it must pass every test. Using an AI problem as written, with a reason, is the exception, and the reason is in the audit log.
+5. **Freeze.** While the contest runs, import no packs, run no AI wizard and rejudge nothing unless a test is wrong. A rejudge is recorded in the audit log with who asked for it.
+6. **Practice shows hidden tests.** In practice after the end, a failing submission shows the first failing hidden test (D115), unless another contest that pins the problem has not closed yet, drafts and upcoming contests included (V3-6). Anyone who keeps practising can read the hidden tests one by one, so a problem used that way is public: do not reuse it in another contest without new tests. Problems and the problem picker in Setup mark such a problem "Hidden tests shown in practice", and publishing a contest that holds one names it in the confirm. A problem whose hidden tests a published contest has shown stays in that contest (it cannot be removed), so the mark cannot be lost before an exam. Every contest counts: v3 has no ungraded contests.
 
 ## Trying a problem as a student
 
-"Try as a student" in the editor's title area, or "Try" on a row of the problem bank, opens the problem in the student workspace (`/admin/problems/{id}/try`): the statement with its samples, the code editor, Run on samples, a custom input, and Submit with the subtask strip filling in as tests are judged.
+"Try as a student" in the editor's title area, or "Try" on a row of Problems, opens the problem in the student workspace (`/admin/problems/{id}/try`): the statement with its samples, the code editor, Run, Your input, and Submit with the subtask strip filling in as tests are judged.
 
 - Use it to check the statement reads well, the samples copy cleanly, and a wrong solution gets the verdict and score you expect.
 - These submissions are yours and count in no contest. Your draft is kept per problem.
@@ -392,7 +391,7 @@ Validation proves the tests and the reference agree with each other. It cannot p
 - Submits are limited to one every 5 seconds, one waiting per problem; runs to one every 2 seconds.
 - You see full figures (exact memory per test). Students will see coarser figures and no hidden test data (`docs/ARCHITECTURE.md`, "What students can see").
 
-Students get the same workspace inside contests in M4.
+Students get the same workspace inside contests.
 
 ## Import limits
 
@@ -418,11 +417,11 @@ Only one pack import, test replacement or pack download runs at a time; a second
 | Step | How |
 |---|---|
 | Create | Problems, New problem: enter a title. The slug (used in pack file names) is made from it and does not change. The problem starts with a statement outline and a C++ reference template. |
-| Import | Problems, Import pack: pick one or more `.zip` files. Each imported problem starts validating at once and the bank shows "Validating" until the result is in, so several packs need no visit to the editor. A pack the server refuses names its problems; a problem that cannot be validated yet says why in a message. Rows that are not validated offer Validate. |
+| Import | Problems, Import pack: pick one or more `.zip` files. Each imported problem starts validating at once and the list shows "Validating" until the result is in, so several packs need no visit to the editor. A pack the server refuses names its problems; a problem that cannot be validated yet says why in a message. Rows that are not validated offer Validate. |
 | Edit | Three tabs. Statement: title, the statement (the workspace's code editor, as plain text) with a preview of it and its examples as students see them, limits, difficulty and tags. Tests: one row per test with the start of its input and output and a Role select (Example, Subtask 1, Subtask 2, ..., Not in a subtask), then each subtask's points and title. Checking: the reference solution, how answers are compared, and under "Optional extra checks" the brute force, the validator, a custom checker and the generator, each named in one line while folded; the validation report sits beside them from 1280 px. Removing the brute force, the validator or the generator can be undone until you save. Save changes. The roles are saved as the sample list and subtask ranges of the pack format; a subtask's tests need not be consecutive. |
 | Replace tests | Tests tab: upload a zip of `NN.in` files, each with an optional `NN.out`, at its top level or in `tests/`. Every test is replaced; roles are kept by test number. Single test files can be downloaded from the test list. |
 | Generate inputs | Runs the generator for every planned test, then generates outputs and validates (see "Tests from a generator"). |
-| New problem with AI | On the problem bank: the AI wizard writes a draft from a brief or from pasted text (see "The AI wizard"). |
+| New problem with AI | On Problems: the AI wizard writes a draft from a brief or from pasted text (see "The AI wizard"). |
 | Validate | Saves unsaved changes first, makes missing outputs, then queues the run. The title row keeps one status line ("Validated, 7 tests, slowest 286 ms", "Validation failed on test 5"), a link to the report. Under the bar, on every tab: what stops validation (a test in no subtask), and, for an unsaved change to a judged field (limits, checker, solutions, validator, examples, subtask points and tests), that saving needs a new validation; a change to the title, statement, tags or subtask titles does not, except on an AI draft, whose statement counts. Advice ("Before you validate", "Worth adding") sits with the report. |
 | Add to contest | Takes Validate's place once the problem has passed and nothing is unsaved. Pick a draft or upcoming contest; the problem goes in after its other problems under the next letter. |
 | Try as a student | Opens the problem in the student workspace (see "Trying a problem as a student"). |

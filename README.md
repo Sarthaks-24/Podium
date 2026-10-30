@@ -2,9 +2,9 @@
 
 A self-hosted platform for weekly programming contests at a college. Students sign in with their college Google account, solve problems in C++, Java, Python or JavaScript, and get IOI-style partial scores from a sandboxed judge. A live leaderboard freezes near the end and is revealed afterwards. Admins write problems by hand, from a problem pack, or with an AI assistant that uses a temporary key.
 
-Everything runs on one small Linux VM (Ubuntu 24.04, amd64 only, 2 GB RAM is the target) and is built to serve 700+ students in one contest.
+Everything runs on one small Linux VM (Ubuntu 24.04, amd64 or arm64, 2 GB RAM is the design target) and is built to serve 700+ students in one contest.
 
-Status (2026-10-29): v3 stage A (fix and prove) is in progress on `main`; nothing is tagged or deployed yet. `CHANGELOG.md` lists what changed. Until the documentation rewrite at the v3 tag, `docs/` still describes v2 in places (removed features such as review cases, appeals, the rating and the public pages); this README is kept current.
+Status (2026-10-30): v3 is built and waits for its tag, `v3.0.0`, which installs on a fresh VM; nothing is tagged or deployed yet. `CHANGELOG.md` lists what changed, and `docs/` describes v3.
 
 ## How it fits together
 
@@ -46,7 +46,7 @@ This installs the compilers, isolate, `testlib.h` for custom checkers, and the `
 `make dev-test` runs the server, the judge and the web app in testing mode (`PODIUM_MODE=testing`): no Google client, no secrets, no `.env` file. The server and judge run in WSL2 with their state in `/var/tmp/podium-dev`; Vite runs on Windows.
 
 1. `make dev-test`, then open http://localhost:5173.
-2. Sign in from the form with any email and a role (choose Admin or Owner to see Problems). A banner on every page says this is testing mode.
+2. Sign in from the form with any email and a role (choose Admin or Owner to see Contests and Problems). A banner on every page says this is testing mode.
 3. Import a pack: zip a folder from `problems/` and choose Import pack, then Validate.
 4. Choose "Try as a student" to run and submit code against it.
 
@@ -65,19 +65,19 @@ See "Deploy to the VM" below: production mode is the default and requires every 
 
 ### Check the sandbox
 
-`make sandbox-test` runs the hostile-program suite and the M2, M3 and M5 acceptance tests (validating the example packs, then breaking one output; submitting each verdict in every language; generating outputs; generating inputs for the AI wizard's drafts) inside isolate in WSL2. `make calibrate` prints timing tables for the machine.
+`make sandbox-test` runs the hostile-program suite and the acceptance tests (validating the example packs, then breaking one output; submitting each verdict in every language; making outputs; making inputs for the AI wizard's drafts) inside isolate in WSL2. `make calibrate` prints timing tables for the machine.
 
 Other targets: `make help`.
 
 ## Checks
 
-`make check` runs what the CI `check` job runs: `gofmt`, `go vet`, Go tests, `svelte-check`, ESLint, Vitest and the `install.sh` unit checks (`tools/install-test.sh`). CI also runs the mocked Playwright suite (`cd web && npx playwright test --grep-invert "pixel baselines"`) and the sandbox suite. The pixel baselines run only on the owner's machine, because their references live in the git-ignored `cache/`. Run `make check-secrets` (or install it as a hook with `make hooks`) before committing.
+`make check` runs what the CI `check` job runs: `gofmt`, `go mod tidy -diff`, `go vet`, Go tests, `svelte-check`, ESLint, Vitest, the `install.sh` unit checks (`tools/install-test.sh`) and the deploy script checks (`tools/deploy-test.sh`). CI also runs `go test -race`, the size budget, the mocked Playwright suite (`cd web && npx playwright test --grep-invert "pixel baselines"`) and the sandbox suite. The pixel baselines run only on the owner's machine, because their references live in the git-ignored `cache/`. Run `make check-secrets` (or install it as a hook with `make hooks`) before committing.
 
 ## Build a release
 
-`make release` (on a commit tagged `vX.Y.Z`, or `make release VERSION=vX.Y.Z` on any other commit: a release must be named `vX.Y.Z`, and the drills use `v1.4.90`) runs the checks, builds the web app, embeds it, cross-compiles both binaries for Linux with `CGO_ENABLED=0`, and writes `release/podium-<version>.tar.gz` containing `bin/`, `env/` (the example env files), `install.sh`, the systemd units, the Caddyfile, `litestream.yml`, the example env files for Litestream, the nightly backup and alerts, and the backup, restore, alert and health-check scripts in `backup/`. It refuses to build when the web app's source carries placeholder copy (`tools/check-placeholders.sh`), and installs `web/node_modules` with `npm ci` first when it is missing. Building on Windows is fine: the tarball loses the execute bit on the Linux binaries, and `install.sh` sets it when it installs them.
+`make release` (on a commit tagged `vX.Y.Z`, or `make release VERSION=vX.Y.Z` on any other commit: a release must be named `vX.Y.Z`; `ARCH=arm64` builds for an ARM VM) runs the checks, builds the web app, embeds it, cross-compiles both binaries for Linux with `CGO_ENABLED=0`, and writes `release/podium-<version>.tar.gz` containing `bin/`, `env/` (the example env files), `install.sh`, the systemd units, the Caddyfile, `litestream.yml`, the example env files for Litestream, the nightly backup and alerts, and the backup, restore, alert and health-check scripts in `backup/`. It refuses to build when the web app's source carries placeholder copy (`tools/check-placeholders.sh`), and installs `web/node_modules` with `npm ci` first when it is missing. Building on Windows is fine: the tarball loses the execute bit on the Linux binaries, and `install.sh` sets it when it installs them.
 
-Since v1.1.0 the tarball also holds `MANIFEST` (version, commit, build date, schema, the migrations it carries, the judge protocol, and the oldest release it upgrades from, `UPGRADES_FROM` in the `Makefile`) and `SHA256SUMS`, and `release/podium-<version>.tar.gz.sha256` sits beside it. `podium-server -version` and `podium-judge -version` print the same facts. Pushing a `v*` tag runs the same build in GitHub Actions (`.github/workflows/release.yml`) and makes a draft release with those four files; the owner reviews and publishes it. Nothing is tagged yet: the first release and its `UPGRADES_FROM` wait for the owner's decision (D236), so `UPGRADES_FROM` stays the placeholder `v1.0.0` until then.
+The tarball also holds `MANIFEST` (version, commit, build date, processor, schema, the migrations it carries, the judge protocol, and the oldest release it upgrades from, `UPGRADES_FROM` in the `Makefile`) and `SHA256SUMS`, and `release/podium-<version>.tar.gz.sha256` sits beside it. `podium-server -version` and `podium-judge -version` print the same facts. Pushing a `v*` tag runs the same build in GitHub Actions (`.github/workflows/release.yml`) and makes a draft release with those four files; the owner reviews and publishes it. The first release, `v3.0.0`, installs fresh, so its upgrade path matters only from the release after it.
 
 ## Deploy to the VM
 
@@ -102,13 +102,13 @@ sudo ./install.sh verify          # must end with "everything checked is in orde
 
 Production needs an https `PODIUM_BASE_URL`, the Google client (its OAuth app Internal or In production, never Testing), the session secret and your own judge token; the server names anything missing and refuses to start. Then verify the sandbox on the VM itself (with the worker stopped): `sudo systemctl stop podium-judge && sudo -u judge podium-judge calibrate; sudo systemctl start podium-judge`. Keep a copy of every `/etc/podium/*.env` file in your password manager: a restore onto a new VM needs them.
 
-Upgrades: `tools/deploy.sh <host>` from Git Bash (or `make deploy HOST=<host>`) builds the release, confirms before anything leaves the machine, and runs `sudo ./install.sh upgrade` on the VM. `sudo /usr/local/lib/podium/install.sh rollback` goes back. No deploy runs in the 48 hours before a published contest, during it, or while it is still being judged.
+Upgrades: `tools/deploy.sh <host>` from Git Bash (or `make deploy HOST=<host>`) builds the release, confirms before anything leaves the machine, and runs `sudo ./install.sh upgrade` on the VM. `sudo /usr/local/lib/podium/install.sh rollback` goes back. Do not deploy in the 48 hours before a published contest, during it, or while it is still being judged: nothing enforces this, so it is a rule in `docs/RUNBOOK.md`.
 
 Full operations guide, configuration reference, backups, alerts, upgrades and rollback: `docs/OPERATIONS.md`. Contest day, restoring onto a new VM and the drills: `docs/RUNBOOK.md`.
 
 ## Load test
 
-`tools/loadtest/` holds a k6 script that plays a whole contest (sign-in, event streams, drafts, standings, runs and submissions with an end-of-contest spike, fixed and window modes) against a testing-mode stack, a seed script and a summary script. How to run it: `tools/loadtest/README.md`.
+`tools/loadtest/` holds a k6 script that plays a whole contest (sign-in, event streams, drafts, standings, runs and submissions with an end-of-contest spike) against a testing-mode stack, a seed script and a summary script. How to run it: `tools/loadtest/README.md`.
 
 ## Documentation
 
@@ -116,8 +116,8 @@ Full operations guide, configuration reference, backups, alerts, upgrades and ro
 |---|---|
 | `docs/ARCHITECTURE.md` | Services, data flow, judge design, and why each choice was made |
 | `docs/OPERATIONS.md` | Install, run modes, configuration variables, metrics, upgrades, backups and restore, validation troubleshooting |
-| `docs/RUNBOOK.md` | Contest day: checklists, what to watch, what to do when something goes wrong, restoring, the dry run with real students |
+| `docs/RUNBOOK.md` | Contest day: checklists, what to watch, if something goes wrong, restoring, the dry run with real students |
 | `docs/AUTHORING.md` | Writing problems: the pack format, statements, subtasks, checkers, validation |
-| `docs/INTEGRITY.md` | For organisers and reviewers: what is recorded during a contest, what the checks find, how a case is reviewed and decided, and a policy template |
+| `docs/INTEGRITY.md` | For organisers: what is recorded during a contest, what the similar-code check finds, how to record a decision about a student, and a policy template |
 | `docs/API.md` | HTTP routes, the judge worker API, and their request and response shapes |
 | `CHANGELOG.md` | Dated changes per release |

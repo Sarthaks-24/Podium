@@ -2,7 +2,7 @@
 
 How to install, configure, check, back up and upgrade podium on its VM, and how to run it on your own machine. What to do on a contest day, and the dry run with real students, are in `docs/RUNBOOK.md`.
 
-Status (2026-10-21): podium has not run on the VM yet. The install, upgrade, rollback, restore, alert and load procedures here are written from the code and tested in WSL2 (CI has not run on GitHub yet); the VM drills of the P0 gate have not run, so none of them is proven on the VM. Sections that depend on a drill say "not yet proven on the VM".
+Status (2026-10-30): podium has not run on the VM yet. The install, upgrade, rollback, restore, alert and load procedures here are written from the code and tested in WSL2; the VM drills have not run, so none of them is proven on the VM. Sections that depend on a drill say "not yet proven on the VM".
 
 ## Install
 
@@ -34,7 +34,7 @@ Commands besides the steps:
 
 | Command | What it does |
 |---|---|
-| `sudo ./install.sh upgrade [--force "<reason>"]` | installs this release over the running one; see "Upgrade" |
+| `sudo ./install.sh upgrade` | installs this release over the running one; see "Upgrade" |
 | `sudo ./install.sh rollback` | puts the previous release back; see "Rollback" |
 | `sudo ./install.sh verify` | checks the installed system and prints `ok`, `warn` or `FAIL` per item; exits 1 on any `FAIL`. See "Verify the installation" |
 
@@ -133,7 +133,7 @@ Oracle's free tier allows 20 GB and 50,000 requests a month; one archive a night
 
 ## Verify the sandbox on the VM
 
-After installing, and after every isolate, kernel or compiler upgrade, run the self-test (v1.1.0 and later). It needs no Go toolchain and changes nothing:
+After installing, and after every isolate, kernel or compiler upgrade, run the self-test. It needs no Go toolchain and changes nothing:
 
 ```sh
 sudo systemctl stop podium-judge
@@ -153,7 +153,7 @@ sudo systemctl start podium-judge
 
 It runs the same hostile programs (fork bomb, 2 GB allocation, endless loop and output, `/etc/shadow`, network, compile bomb, Java and Python memory, Node threads, symlink and FIFO tricks on the output file, filling `/tmp`) and prints timing tables. It exits non-zero if any program escapes its limits. Do not run contests until it passes.
 
-On a development machine, `make sandbox-test` runs the same suite plus the M2 acceptance test: it validates the three example packs in `problems/` on real isolate, breaks one expected output and checks that validation fails naming that test, and checks that a hostile custom checker is contained.
+On a development machine, `make sandbox-test` runs the same suite plus the validation acceptance test: it validates the three example packs in `problems/` on real isolate, breaks one expected output and checks that validation fails naming that test, and checks that a hostile custom checker is contained.
 
 ## Run modes
 
@@ -196,7 +196,7 @@ How it runs:
 
 Signing in: open http://localhost:5173, enter any email, an optional name and a role (Student, Admin or Owner), and choose "Sign in for testing". Signing in again with the same email changes that person's role. `owner@podium.test` (or `PODIUM_OWNER_EMAIL` if set) is always an owner. Every page shows the testing-mode banner so nobody mistakes the stack for a real contest.
 
-Live browser tests: with `make dev-test` running and the three example packs imported and validated (zip each folder in `problems/` and use "Import pack"), run `npm run test:live` in `web/`. It signs in from the form, opens the problem bank and reads a real validation report through Vite's proxy, with nothing mocked. It reuses the Vite server on port 5173, because the testing-mode base URL is `http://localhost:5173` and the cross-site check refuses any other origin.
+Live browser tests: with `make dev-test` running and the three example packs imported and validated (zip each folder in `problems/` and use "Import pack"), run `npm run test:live` in `web/`. It signs in from the form, opens Problems and reads a real validation report through Vite's proxy, with nothing mocked. It reuses the Vite server on port 5173, because the testing-mode base URL is `http://localhost:5173` and the cross-site check refuses any other origin.
 
 A second stack beside your own, for example for a walkthrough or a live run that must not touch yours, uses other ports and its own state. These are development overrides, never set on the VM:
 
@@ -226,7 +226,7 @@ Listed in the order the server reads them. The testing, dev and production colum
 | `PODIUM_DB_PATH` | optional | optional | optional | `data/podium.db` | SQLite file. On the VM use `/var/lib/podium/db/podium.db`. |
 | `PODIUM_TESTS_DIR` | optional | optional | optional | `data/tests` | Test files and program sources by SHA-256. On the VM use `/var/lib/podium/tests`. |
 | `PODIUM_OWNER_EMAIL` | optional | required | required | testing: `owner@podium.test` | Your Google account. Always an owner, may sign in from any domain, and is shown as the organiser to contact. The recovery path if every other owner is removed. |
-| `PODIUM_ALLOWED_DOMAINS` | optional | optional | optional | none | Comma-separated email domains, read only on the very first start to seed the list. Afterwards owners manage it on the People page. |
+| `PODIUM_ALLOWED_DOMAINS` | optional | optional | optional | none | Comma-separated email domains, read only on the very first start to seed the list. Afterwards owners manage it in Settings, on the Sign-in tab. |
 | `PODIUM_SESSION_SECRET` | optional | required | required | testing: random per run | At least 32 random characters (`openssl rand -base64 48`). Signs the sign-in state cookie. Changing it only interrupts sign-ins in progress. Secret. |
 | `GOOGLE_CLIENT_ID` | not read | required | required | | OAuth client ID from the Google Cloud console (see below). |
 | `GOOGLE_CLIENT_SECRET` | not read | required | required | | That client's secret. Secret. |
@@ -252,7 +252,7 @@ Needed in dev and production mode only.
 | In production (External) | students sign in with accounts outside one Workspace | choose "Publish app". With only `openid`, `email` and `profile` Google does not require a verification review, but the consent screen shows the app name you set |
 | Testing | never on the VM | 100 listed test users, 7-day sign-ins |
 
-The real-domain sign-in drill (a non-owner student account on an allowed domain signing in over HTTPS and submitting) is the proof; it is part of the go-live gate.
+The real-domain sign-in drill (a non-owner student account on an allowed domain signing in over HTTPS and submitting) is the proof; it is one of the drills in `docs/RUNBOOK.md`, "Proving the safety net".
 
 Who can sign in: anyone whose verified Google email is on an allowed domain, anyone holding the admin or owner role (on any domain), and `PODIUM_OWNER_EMAIL`. Removing an admin ends their sessions at once; removing a domain ends the sessions of students on it.
 
@@ -263,13 +263,13 @@ Who can sign in: anyone whose verified Google email is on an allowed domain, any
 - The session cookie has no expiry, so the browser forgets it when it closes. The server ends every session 12 hours after sign-in, however much it is used (a constant, `auth.SessionTTL`; there is no variable for it), and at sign-out.
 - Google sign-in asks Google for a sign-in from the last 5 minutes (`prompt=select_account`, `max_age=300`) and refuses an ID token whose `auth_time` is older than 5 minutes, so the previous student's Google session on a lab PC is not one click away.
 - In labs, give each slot a browser guest profile, or a kiosk profile that is wiped on exit, and ask students to sign out of Podium and of Google before they leave.
-- To sign someone out everywhere (a lost laptop, a PC left signed in), use People, "Sessions and access", End sessions. Disable account also stops them signing in until an owner enables it. Both act at once on requests; open live updates stop within 25 s. `POST /api/admin/accounts/reset-google` is no longer the only kill switch.
+- To sign someone out everywhere (a lost laptop, a PC left signed in), use Settings, Sign-in tab, End sessions. Disable account also stops them signing in until an owner enables it. Both act at once on requests; open live updates stop within 25 s. `POST /api/admin/accounts/reset-google` is no longer the only kill switch.
 
 ### Recovering access
 
 If you are locked out (every owner removed, or the domain list emptied), set `PODIUM_OWNER_EMAIL` to your address and restart: that account is made an owner again at start-up. Sessions can be ended for everyone with `sqlite3 /var/lib/podium/db/podium.db "DELETE FROM sessions"`.
 
-Each account is linked to the Google account that first signed in with it. If someone sees "This email is linked to a different Google account" after their address legitimately moved to a new Google account, reset the link on the People page ("Google account links"). If that someone is you, the configured owner, use `sqlite3 /var/lib/podium/db/podium.db "UPDATE users SET google_sub = NULL WHERE email = 'you@college.edu'"`.
+Each account is linked to the Google account that first signed in with it. If someone sees "This email is linked to a different Google account" after their address legitimately moved to a new Google account, reset the link in Settings, Sign-in tab ("Reset Google link"). If that someone is you, the configured owner, use `sqlite3 /var/lib/podium/db/podium.db "UPDATE users SET google_sub = NULL WHERE email = 'you@college.edu'"`.
 
 ### podium-judge (`/etc/podium/judge.env`)
 
@@ -383,9 +383,9 @@ Checked by the server before anything is queued. Every refusal is `429` with the
 
 | Limit | Value | Applies to |
 |---|---|---|
-| Pending submissions | one per user per problem (a queued rejudge does not count); not in exam mode, where a new submission queues behind the pending one | Submit |
-| Heavy reads | 10 a second per user, bursts of 20 | the contest list and page, the contest workspace, the standings, the organisers' workspace, the integrity pages and a student's cases |
-| Gap between submits | 5 s per user, across problems, for organisers trying a problem; in a contest, its `min_gap_s` (default 30 s) | Submit |
+| Pending submissions | one per user per problem (a queued rejudge does not count) | Submit |
+| Heavy reads | 10 a second per user, bursts of 20 | the contest list and page, the contest workspace, the standings, the organisers' workspace, the integrity pages and the account lookup |
+| Gap between submits | per user and problem: 5 s for organisers trying a problem; in a contest, its `min_gap_s` (default 30 s) | Submit |
 | Submissions per problem | the contest's `max_per_problem` (default 15); none for practice | Submit in a contest (`400`) |
 | Pending runs | one per user, across problems | Run |
 | Gap between runs | 2 s per user | Run |
@@ -394,49 +394,49 @@ Checked by the server before anything is queued. Every refusal is `429` with the
 | Code | 64 KB, UTF-8 | Run, Submit, drafts |
 | Custom input | 64 KB | Run |
 | Request body | 160 KB | Run, Submit, drafts |
-| Integrity events | one batch per user every 5 s, 100 per request; after 5,000 per user per problem, more are dropped | the editor's paste, blur and focus events |
+| Integrity events | one batch per user every 5 s, 100 per request; after 5,000 per user per problem, more are dropped | the editor's paste, blur, focus and full-screen exit events |
 | Clarifications | 5 unanswered questions per student per contest (`400`) | Ask |
 | AI requests | one running per admin, at most 3 minutes (`429 busy` with `Retry-After: 10`) | the AI wizard |
 | Event streams | 4 per user (a fifth replaces the oldest, which is told and stops reconnecting), 5,000 in total (then `503`, and the page polls) | `GET /api/events` |
 | Open requests | 8 at once per browser session, event streams aside (`429` with `Retry-After: 1`) | every API route with a session cookie |
-| Time to send a request | headers within 10 s, the whole request within 15 s; 120 s for the routes that take an upload | every route; the long one for pack import, test replacement and roster upload |
+| Time to send a request | headers within 10 s, the whole request within 15 s; 120 s for the routes that take an upload | every route; the long one for pack import and test replacement |
 | Request body at the edge | 33 MB (Caddy refuses more with `413` before the server sees it) | everything through Caddy |
-| Before sign-in | per client address: 5,000 at once refilled at 50 a second for `/healthz`, `GET /api/auth/config` and sign-out; 2,000 at once refilled at 20 a second for Google sign-in start and callback and test sign-in (a refused Google step lands on `/signin?error=rate_limited`). IPv6 addresses share one budget per /64; requests from the VM itself are not counted (v1.3.0) | the routes before sign-in |
+| Before sign-in | per client address: 2,500 at once refilled at 50 a second for `/healthz`, `GET /api/auth/config` and sign-out; 2,000 at once refilled at 20 a second for Google sign-in start and callback and test sign-in (a refused Google step lands on `/signin?error=rate_limited`). IPv6 addresses share one budget per /64; requests from the VM itself are not counted | the routes before sign-in |
+| Unknown session cookies | per client address, 1,000 at once refilled at 10 a second, counted before the database is read; a session the server issued or accepted in the last minute is never refused, so forged cookies from one campus address cannot lock out the students behind it | every route with a session cookie |
 | Sign-in attempts | each attempt (its state cookie) finishes once; a replayed callback lands on `/signin?error=expired` without a call to Google | the Google callback |
-| Contact messages | 5 per person and 100 in total per 24 hours (`Retry-After: 3600`) | `POST /api/contact` |
 
 A retried Submit with the same `client_key` returns the first submission and is not counted again, so a flaky network does not trip these limits. Only the contest limits are configurable, per contest in its settings.
 
 ## Running a contest
 
-All of this is in the contest's live console in the web app; the routes are in `docs/API.md`, "Contests: organisers".
+All of this is in the web app, on the contest's tabs Setup, Live and Results; the routes are in `docs/API.md`. Only owners and admins organise contests.
 
-**Before.** In the contest's settings, add validated problems (each is pinned to the version you validated; owners and admins only; adding, removing and reordering save at once), upload the roster (CSV with a header row naming at least `email`; `name`, `roll_number` and `section` are optional) if access is by roster, add co-organisers by email (they must have signed in once), then publish (owners and admins only) with "Publish contest" in the title row: it asks first and lists the checks beside the form (problems validated, the start ahead, someone on the roster, a language). An unpublished contest reads "Draft" on every organiser screen. Co-organisers run the contest but do not see the problem bank, and their own tries get the student view. An upload replaces the whole roster: anyone left out of the new file loses access at once, and the answer says how many were added and removed, so check those numbers when changing the roster of a live contest. Publishing refuses a problem that changed since it was added. Graded contests default to a fixed start (D47); the honour code students accept lists what is recorded and for how long.
+**Before.** In Setup, add validated problems (each is pinned to the version you validated; adding, removing and reordering save at once), or use "Add to contest" in the problem editor. Every field saves as it changes. Six inputs show (title, problems, start, length in minutes, hidden minutes at the end, languages); the rest, the four exam options among them, sits under Advanced. Then publish with "Publish contest" in the title row: it asks first and lists the checks beside the form (problems validated, the start ahead, a language). An unpublished contest reads "Draft" on every organiser screen. Publishing refuses a problem that changed since it was added. Who may take part is decided by the allowed domains in Settings: anyone who can sign in can enter a published contest. The honour code students accept lists what is recorded and for how long, and, when exam options are on, which measures apply.
 
-**During.** The console opens on a strip of what needs attention: time to the end, when the board freezes, judging on or paused, the queue and its oldest wait, judge errors, whether a judge asked for work in the last minute ("No judge for 3 min" means none is working: check `podium-judge` on the VM), unanswered questions and problems with a newer revision for students. Only items that need action are coloured. Questions and announcements sit beside the feed from 1280 px and come first on smaller screens. Every announcement shows a preview and asks before it reaches every student; after Pause, Resume, Extend and Judge again a suggested announcement waits in the box and is never posted by itself.
+**During.** Live opens with one sentence on how it is going ("Live, 30 started, 1 question waiting, judge fine." or "Judge not seen for 3 minutes."; the second means no judge is working: check `podium-judge` on the VM), then Announce, Extend, Extra time, Pause judging, History of changes and If something goes wrong. Banners appear only when something needs action: an edited problem students have not got yet, tests that changed, a judge that is not taking work, judge errors. Questions sit beside the work from 1024 px and come first on phones. Every announcement asks before it reaches every student; after Pause, Resume, Extend and Judge again a suggested announcement waits in the box and is never posted by itself.
 
 | Situation | Action | Effect |
 |---|---|---|
-| A typo or an unclear sentence in a statement (v1.2.0) | Edit the problem (a reason is required while the contest runs), then "Update contest to revision N" on the console, then post the offered announcement | Students keep the old statement until the update; then their page says "Statement updated 14:32. See what changed" with a line diff. No validation or rejudge is needed for a statement-only change. |
-| A test or the checker is wrong | Pause, fix the problem (with a reason), validate it, "Update contest to revision N" (before v1.2.0: add it to the contest again), Rejudge the problem, Resume | Pause holds the contest's submissions in the queue (nothing is lost; students can keep submitting). Until the contest is updated, run and submit on it answer "This problem is being updated by the organisers." Rejudge re-runs every submission of the problem at priority 50 with the new tests, including those still waiting for the judge on the old tests; the board recomputes as results arrive (at most every 2 s). Pressing it twice adds nothing. |
+| A typo or an unclear sentence in a statement | Edit the problem (a reason is required while the contest runs), then "Update students now" on Live, then post the offered announcement | Students keep the old statement until the update. No validation or rejudge is needed for a statement-only change. |
+| A test or the checker is wrong | Pause judging, fix the problem (with a reason), validate it, "Update students now", Judge again for the problem, Resume | Pause holds the contest's submissions in the queue (nothing is lost; students can keep submitting). Until the contest is updated, run and submit on it answer "This problem is being updated by the organisers." Judge again re-runs every submission of the problem at priority 50 with the new tests, including those still waiting for the judge on the old tests; the board recomputes as results arrive (at most every 2 s). Pressing it twice adds nothing. |
 | One submission looks wrongly judged | Judge again on its row | Only it is judged again. |
-| The contest must stop now (a leak, a broken problem nobody can fix in time) | End now, beside the countdown in the console's title row | Asks first, then sets the end to the server's now through the settings: everyone's time ends at once, queued submissions are still judged, students see Ended (and practice opens when the contest has it). Students given personal extra time keep it; remove it first if it must end for them too. The freeze counts back from the end, so the same update keeps the board where students saw it: ended before the freeze, the freeze (and any held reveal) is dropped; ended during it, the frozen moment stays. Moving the end earlier in Settings does not do this. Owners and admins only. |
-| Lost time for everyone (power cut, network) | Extend by N minutes | Everyone's end moves; open pages get the new end at once. Extensions add up. |
-| One student lost time (crashed laptop, accommodation) | Set their extension (0 removes it) | Only their end moves; give a reason for the record. |
-| A question many students will have | Answer it and make it public, or post an announcement | Arrives on every open page as a banner. |
-| The judge is behind | Watch `judging_remaining` on the board and the feed | Setter work (validation, generation) is limited to one lane while a graded contest is live; runs never take every lane from submissions. |
+| The contest must stop now (a leak, a broken problem nobody can fix in time) | End now, in Live's title row | Asks first, then sets the end to the server's now: everyone's time ends at once, queued submissions are still judged, students see Ended (and practice opens when the contest has it). Students given extra time keep it; remove it first if it must end for them too. Ended before the hidden minutes, the board is not frozen; ended during them, the frozen moment stays where students saw it (rounded up to whole minutes, never to zero). Moving the end earlier in Setup does not do this. |
+| Lost time for everyone (power cut, network) | Extend by N minutes | Everyone's end moves; open pages get the new end at once. Extensions add up. Refused once the contest has ended (`409 contest_ended`). |
+| One student lost time (crashed laptop, accommodation) | Extra time for that student (0 removes it) | Only their end moves; give a reason for the record. |
+| A question many students will have | Answer it for Everyone, or post an announcement | Arrives on every open page as a banner. |
+| The judge is behind | Watch the opening sentence and the feed | Setter work (validation, generation) is limited to one lane while a contest is live; runs never take every lane from submissions. |
 
-**After.** Students see the frozen board from the freeze until everyone's time is up (including personal extensions), then the full board. To keep the result for a projector walk, turn on "Hold the reveal" before the end: students stay on the frozen board until you choose Reveal. The reveal screen opens once every window has closed. Export the results as CSV (spreadsheet-safe: cells that would start a formula get a leading `'`) or JSON. Publish the editorial when ready; students see it, and practice opens, only once every student's time is up (including personal extensions). Clone a contest to run it again with new dates.
+**After.** Students see the frozen board from the hidden minutes until everyone's time is up (including extra time), then the full board. To keep the result for a reveal, tick "Keep the hidden results hidden after the end until you reveal them" under Advanced before the end: students stay on the frozen board until you press Reveal on Results, which asks once. Results also offer Similar code (see "Integrity checks"), Download CSV (spreadsheet-safe: cells that would start a formula get a leading `'`; times in your browser's zone) and Download JSON. Practice opens only once every student's time is up. Duplicate, in Setup's More menu, runs a contest again with a new start.
 
-**Retention.** Integrity evidence (paste and focus events, second sessions, each submission's typed and pasted counts and client hash) is deleted 180 days after a contest ended for everyone (D47), except for students in an open or awaiting_student integrity case for that contest; theirs goes on the first run after the case is decided. The server applies this a minute after start-up and every 12 hours and logs `integrity data past retention removed` with counts. Scores, submissions and code are kept.
+**Retention.** Integrity evidence (paste, focus and full-screen events, second sessions, each submission's typed and pasted counts, full-screen exits and client hash) is deleted 180 days after a contest ended for everyone (D47). The server applies this a minute after start-up and every 12 hours and logs `integrity data past retention removed` with counts. Scores, submissions, code and integrity decisions are kept.
 
 **Unused test files.** The same 12-hourly pass deletes files in `PODIUM_TESTS_DIR` that nothing refers to any more: tests replaced by new ones, old copies of reference solutions, checkers and generators, and runs' custom inputs. A file is kept while any problem's test, any submission or run, or any job that is waiting, running or less than 7 days old names it, and for a day after it was last saved; the judge's own uploads that were never used go after a day too. The log line is `unused test files removed` with counts and MB. Nightly backups keep their own hard-linked copies, so a file removed here is still in the backups taken before.
 
 ## Integrity checks
 
-The reviewer's guide, what each signal means and the policy template are in `docs/INTEGRITY.md`; the routes are in `docs/API.md`, "Integrity". Owners and admins review; co-organisers who are students do not.
+The organisers' guide, what each signal means and the policy template are in `docs/INTEGRITY.md`. Owners and admins run checks and record decisions.
 
-**Running a check.** On the contest's results page, choose "Check integrity" once the contest is over for everyone, personal extensions included (before that the answer is "Check integrity after the contest ends for everyone."). The check runs on the server in the background, not on the judge (D49), so judging is unaffected; a few hundred students take well under a minute, and the page shows "running" until it finishes. One check runs at a time on the whole server; a second press anywhere answers "A check is already running. Try again in a minute." Running it again replaces the contest's signals, for example after a rejudge; open cases keep their own copy of the evidence.
+**Running a check.** Once the contest is over for everyone, extra time included, open Similar code from the contest's Results and press "Check integrity" (before that the page says "Check integrity after the contest ends for everyone."). The check runs on the server in the background, not on the judge (D49), so judging is unaffected; a few hundred students take well under a minute, and the page shows "Checking" until it finishes. One check runs at a time on the whole server; a second press anywhere answers `409 already_running`, "A check is already running. Try again in a minute." Running it again replaces the contest's signals, for example after a rejudge; decisions stay.
 
 | What you see | Cause | What to do |
 |---|---|---|
@@ -444,16 +444,11 @@ The reviewer's guide, what each signal means and the policy template are in `doc
 | "The server restarted during the check." | The server stopped while a check ran; at start-up it marks such checks failed and logs a warning with the count | Run it again. |
 | No signals on a short problem | Programs under 40 tokens are skipped, and code everyone shares does not count | Expected: short problems cannot tell copying from the one natural solution. |
 
-**Reviewing.** Read the signal and, for similar code, the side-by-side view; look at both students' timelines. Open a case from one or more signals with a title and a reason of at least 20 characters. The title is shown to the students, so describe the problem, not the people ("Problem B, similar code"). Share the case: each student sees only their own evidence and writes an explanation, which they can change until the decision. Then clear or take action, again with a reason; action is refused until every student in the case was shared it. Every change is kept in the case's log and cannot be edited.
+**Deciding.** Read the signal and, for similar code, the side-by-side view; look at both students' timelines. Download the similar pairs as CSV for the college's own process. Then record one decision per student, No action, Warning or Exclude from this contest, with a reason of at least 10 characters; a new decision replaces the old one. Exclude takes the student off the board and out of the export at once.
 
-The server logs `integrity check started`, `integrity case opened`, `integrity case decided` and `integrity explanation saved` at info with ids only (`by`, `contest_id`, `case_id`, `run_id`, `state`); notes, explanations and code never go to the log.
+The server logs `integrity check started` and `integrity decision` at info with ids only (`by`, `contest_id`, `user_id`, `run_id`, `decision`); reasons and code never go to the log.
 
-**Retention of cases.** A case keeps its evidence and the students' explanations for 2 years after it is cleared or actioned. Then the same 12-hourly job empties both and logs `integrity case evidence past retention removed` with the count; the case, its title and its decision log with the reasons stay. Open and awaiting_student cases are never emptied, and reopening a closed case restarts the clock at its next decision.
-
-### After the integrity review
-
-- Retention: the 12-hour integrity retention pass also deletes integrity runs and signals of contests that ended for everyone more than 180 days ago (the same cutoff as the contest data), and the explanation versions of cases closed more than 2 years ago along with the evidence. Cases keep their own copy of signals, so open cases are unaffected; a run still `running` is left for the next pass. The server logs "integrity checks past retention removed" with counts.
-- The response window (7 days) is a constant, `ResponseWindow` in `server/internal/integrity/cases.go`; changing it needs a new release.
+**Retention of checks.** The 12-hour pass also deletes the integrity runs and signals of contests that ended for everyone more than 180 days ago, the same cutoff as the events; a run still `running` is left for the next pass. The server logs `integrity checks past retention removed` with counts. Decisions and their reasons stay.
 
 ## AI wizard keys
 
@@ -467,8 +462,8 @@ The AI wizard ("New problem with AI", `docs/AUTHORING.md`) uses the organiser's 
 
 Adding a key:
 
-1. In podium, signed in as an owner or admin, open AI assistant in the problem bank, choose the provider and paste the key.
-2. The server checks it by listing the provider's models, which costs no tokens, and offers the models that can write a problem (each provider's filter is in `docs/API.md`, "Providers and models"). Choose one, or type a model id the list does not show yet; the server checks that id with the provider's model lookup, also free.
+1. In podium, signed in as an owner or admin, open "New problem with AI" on Problems. With no key yet the key form sits on the wizard itself; later, "Change key or model" opens it. Choose the provider and paste the key.
+2. The server checks it by listing the provider's models, which costs no tokens, and offers the models that can write a problem (each provider's filter is in `docs/API.md`, "AI wizard (admin)"). Choose one, or type a model id the list does not show yet; the server checks that id with the provider's model lookup, also free.
 3. The form shows "Key active until 14:32". A refusal says why in one sentence ("OpenAI refused the key. Check it and paste it again.", "Google says this key has used up its Gemini quota. ..."), never repeating the key.
 
 A session can hold one key per provider; the last one saved is the one the wizard uses. No model is preselected: model names change faster than releases, so the list comes from the provider each time. Anthropic requests to the models that offer it have server-side refusal fallbacks switched on (beta `server-side-fallback-2026-07-01`): when the safety classifier refuses a request for a reason that does not apply to a fallback model, that model answers instead, and the answer may come from a different model than the one chosen (D54). OpenAI requests are sent with `store: false`.
@@ -476,16 +471,15 @@ A session can hold one key per provider; the last one saved is the one the wizar
 | Stored | Not stored |
 |---|---|
 | The drafts the wizard creates (origin `ai`), like any problem | The key: held in the server's memory only, tied to the session that pasted it |
-| A log line per request with user id, provider, model and outcome code | The key, the brief, the pasted text or the model's answer in any log |
-| The solve submission, as the admin's own submission | The key in any job payload, the database, backups, `cache/` or the judge |
+| A log line per request with user id, provider, model and outcome code | The key, the brief, the pasted text or the model's answer in any log; the key in any job payload, the database, backups, `cache/` or the judge |
 
-- The key lasts 2 hours, then the form asks for it again. Signing out, signing in again in the same browser, removing the key in the form, or restarting the server forgets it at once.
+- The key lasts 2 hours, then the form asks for it again. Signing out, signing in again in the same browser, "Forget key" in the account menu, or restarting the server forgets it at once.
 - Each admin's key is their own: another admin's session cannot use it.
 - One AI request per admin at a time, at most 3 minutes each.
 - The server needs outbound HTTPS to the chosen provider's host (table above). If the VM's firewall blocks it, every request ends with "The provider is unavailable. Try again in a few minutes."
 - The three provider clients use the standard library only. Nothing uses memory while idle.
 
-Testing mode (`PODIUM_MODE=testing`, `make dev-test`) also offers a "Test provider (canned problems)": no key, no network, two canned problems whose programs really work on the judge (one about a maximum subarray when the brief or text mentions "subarray" or "stretch", a pair sums problem otherwise). Use it to try the whole pipeline (draft, generate inputs, generate outputs, validate). It does not exist in dev or production, and only builds with the tag `fakeai` have it (`make dev-test` builds that way; the release binary does not).
+Testing mode (`PODIUM_MODE=testing`, `make dev-test`) also offers a "Test provider (canned problems)": no key, no network, two canned problems whose programs really work on the judge (one about a maximum subarray when the brief or text mentions "subarray" or "stretch", a pair sums problem otherwise). Use it to try the whole pipeline (draft, inputs, outputs, validation). It does not exist in dev or production, and only builds with the tag `fakeai` have it (`make dev-test` builds that way; the release binary does not).
 
 ## Behind Caddy
 
@@ -600,17 +594,13 @@ The retention pass starts a minute after the server and then runs every 12 hours
 
 ## Site settings
 
-The organisation details the public pages show (v1.3.0): name, contact email, phone and privacy contact. An owner enters them on People (`PUT /api/admin/site-settings`); they are stored in the database's `settings` table, not in an environment variable, and every change writes a `settings_changed` row to the site audit. Until they are entered the pages show nothing for them: the footer and the sign-in page fall back to `PODIUM_OWNER_EMAIL` as the contact address, and `/signin` carries no Organization JSON-LD. Enter a role address (for example `podium@college.edu`) as the contact email so the owner's own address stops appearing on the public sign-in page (pre-auth review, observation 1).
+The organisation details the sign-in page, the footer and the privacy page show: name, contact email, phone and privacy contact. An owner enters them on the Organisation tab of Settings (`PUT /api/admin/site-settings`); they are stored in the database's `settings` table, not in an environment variable, and every change writes a `settings_changed` row to the site audit. Until they are entered the pages show nothing for them: the footer and the sign-in page fall back to `PODIUM_OWNER_EMAIL` as the contact address. Enter a role address (for example `podium@college.edu`) as the contact email so the owner's own address stops appearing on the sign-in page. That address is how people reach the organisers: v3 has no contact form (V3-4).
 
 What a visitor can read without signing in is listed in `docs/API.md` (`GET /api/auth/config`): allowed domains, run mode, these settings and the retention periods. Nothing about contests.
 
-## Contact messages
-
-Signed-in people write to the organisers from `/contact` (v1.3.0). Owners and admins read the messages in the inbox and reply from their own mail with "Reply by email"; the server sends no mail. Limits: 5 messages per person and 100 in total per 24 hours; a message is at most 2,000 characters of plain text, never shown as HTML. Messages are deleted after 180 days (Retention), when an organiser deletes one (recorded in the site audit without its text), and when the sender is erased. Someone who cannot sign in writes to the contact email shown on `/signin` and in the footer.
-
 ## Erasing a person
 
-A request to delete someone's data (a student who left, a privacy request through the contact form) is handled on the VM with `podium-server forget-user`. It is a dry run unless `-apply` is given:
+A request to delete someone's data (a student who left, a privacy request to the contact address) is handled on the VM with `podium-server forget-user`. It is a dry run unless `-apply` is given:
 
 ```sh
 sudo -u podium podium-server forget-user -db /var/lib/podium/db/podium.db -owner owner@college.edu asha@college.edu
@@ -618,31 +608,9 @@ sudo -u podium podium-server forget-user -db /var/lib/podium/db/podium.db -owner
 sudo -u podium podium-server forget-user -db /var/lib/podium/db/podium.db -owner owner@college.edu -apply asha@college.edu
 ```
 
-It deletes the account's sessions, drafts, integrity events and contact messages, clears the browser hashes on its submissions, its co-organiser places and the reasons given for its extensions (an accommodation can be health data), replaces its clarification questions with a removal note (the answers stay), replaces the name and email with `Removed user N` and `removed-user-N@removed.invalid` (N is the account id) in the account and in every contest roster (roll number and section are emptied there), clears the Google link and disables the account. Submissions and scores stay, so past standings stay correct under the placeholder. The site audit gets one `user_forgotten` row as the owner account (`-owner`, default `PODIUM_OWNER_EMAIL`), naming the account by id only. Refused: `PODIUM_OWNER_EMAIL` itself, another owner unless `-allow-owner` is given (better: remove the role on People first), an account already forgotten, an address with neither an account nor a roster entry, and any run without the configured owner's address: `sudo -u podium` does not load `/etc/podium/server.env`, so pass `-owner` with the `PODIUM_OWNER_EMAIL` value. Someone on a roster who never signed in has no account; then only their roster rows are replaced (`Removed person`, a random placeholder address).
+It deletes the account's sessions, drafts and integrity events, clears the browser hashes on its submissions and the reasons given for its extra time (an accommodation can be health data), replaces its clarification questions with a removal note (the answers stay), replaces the name and email with `Removed user N` and `removed-user-N@removed.invalid` (N is the account id), clears the Google link and disables the account. Submissions and scores stay, so past standings stay correct under the placeholder. The site audit gets one `user_forgotten` row as the owner account (`-owner`, default `PODIUM_OWNER_EMAIL`), naming the account by id only, with the counts. Refused: `PODIUM_OWNER_EMAIL` itself, another owner unless `-allow-owner` is given (better: remove the role in Settings first), an account already forgotten, an address with no account, and any run without the configured owner's address: `sudo -u podium` does not load `/etc/podium/server.env`, so pass `-owner` with the `PODIUM_OWNER_EMAIL` value.
 
-From v1.4.0 it also deletes the person's notices and contest summaries (their progress is empty from then on) and resets `hide_progress`.
-
-Not touched, by design, and listed by the command: submissions, scores and code (under the placeholder); integrity cases, explanations, appeals and decisions until the case retention (2 years after the decision); private notes on their submissions until the note retention; the rating and its history until the rating retention (4 years); audit rows written before the erasure, which keep the address and text they recorded (an extension's reason, for one) until the audit retention removes them (4 years); and backups until they age out (14 days). If the person signs in again with the same Google account, a new, empty account is made.
-
-## Semester rollover
-
-At the end of a term an owner archives its contests and disables the student accounts nobody has used for 180 days, on People, under "Semester rollover" (`POST /api/admin/rollover`, owners only). Enter the term (for example `2026 odd semester`) and, if needed, the date the term's contests ended before, then "Preview rollover" lists the contests and accounts without changing anything; "Archive and disable" asks once more with the counts and applies the same request. Contests are archived (nothing is deleted; each gets an `archive` row in its audit log), accounts are disabled and signed out (an owner can enable one again on People), and the site audit records the label, the counts and the emails. Organisers and `PODIUM_OWNER_EMAIL` are never disabled by it.
-
-## Semester rollover of the rating (v1.4.0)
-
-Separate from the rollover above: when a term ends, the owner gives every student with no confirmed outcome that term 0.5 on their rating (D110), on the VM:
-
-```sh
-sudo -u podium podium-server semester-rollover -db /var/lib/podium/db/podium.db -dry-run 2026-odd
-# read the counts, then:
-sudo -u podium podium-server semester-rollover -db /var/lib/podium/db/podium.db 2026-odd
-```
-
-"This term" is everything since the previous rollover (or since the start, for the first). A label runs once: running it again prints that it was done and changes nothing. Ratings never go above 10. The site audit records `rating_rollover` with the label and the counts. An outcome overturned on appeal later gives that student the rollover it blocked.
-
-## Students data in the background (v1.4.0)
-
-Once a minute the server writes the per-student summaries of contests that turned final (or were rejudged, had a pin changed or got extra time since), tells participants the results are final once they can see the final board, and sends the day-5 reply reminders. The journal shows `contest summaries written` and `case reminders sent`; a failure is a warning and the next minute tries again. Contests that ended more than a day before the upgrade to v1.4.0 get their summaries in the first minutes after it, without a notice.
+Not touched, by design, and listed by the command: submissions, scores and code (under the placeholder); integrity decisions about them and their reasons; audit rows written before the erasure, which keep the address and text they recorded; and backups until they age out (14 days). If the person signs in again with the same Google account, a new, empty account is made.
 
 ## Checking a database
 
@@ -650,25 +618,15 @@ Once a minute the server writes the per-student summaries of contests that turne
 sudo -u podium podium-server check -db /var/lib/podium/db/podium.db -tests /var/lib/podium/tests
 ```
 
-It opens the database read-only and prints: SQLite's `integrity_check` and `foreign_key_check`, the migrations recorded against those this binary knows (a database written by a newer server is reported, not touched), row counts, and whether every test file and program source recorded in the database is on disk with the recorded size. `-hash` re-reads every file and compares its SHA-256 with its name. From schema 0010 (v1.2.0) it also checks that every problem's working copy is recorded by its newest revision and every contest pin names a revision (`revisions: ok`); anything else means a write skipped its revision and is a bug to report. Exit status 0 means sound, 1 means something is damaged or missing (listed), 2 means the check could not run. The nightly backup and `podium-restore` run it on every copy they make.
+It opens the database read-only and prints: SQLite's `integrity_check` and `foreign_key_check`, the migrations recorded against those this binary knows (a database written by a newer server is reported, not touched), row counts, and whether every test file and program source recorded in the database is on disk with the recorded size. `-hash` re-reads every file and compares its SHA-256 with its name. It also checks that every problem's working copy is recorded by its newest revision and every contest pin names a revision (`revisions: ok`); anything else means a write skipped its revision and is a bug to report. Exit status 0 means sound, 1 means something is damaged or missing (listed), 2 means the check could not run. The nightly backup and `podium-restore` run it on every copy they make. A database from before v3 makes the server stop with "this database predates v3": move it away or restore a v3 backup.
 
 ## Rehearsing a migration on a copy
 
 `podium-server migrate -db COPY` applies the migrations of this binary to a copy of the database and runs `check` on it (exit codes as for `check`). It refuses the live database (the `PODIUM_DB_PATH` one or `/var/lib/podium/db/podium.db`) and any database with a `-wal` file beside it, which another process may have open. Use it before every schema-changing deploy (D68), with the new release's binary on a copy of the newest nightly backup.
 
-## What a student saw (disputes)
+## Runs with a custom input
 
-`podium-server saw` answers "what did this student see of problem A at 14:35" from the pin history and the served log (v1.2.0). It only reads.
-
-```sh
-sudo -u podium podium-server saw -db /var/lib/podium/db/podium.db -contest week-6 -email asha@college.edu -label A -at 2026-11-10T14:35:00+05:30
-```
-
-It prints the revision pinned at that moment and since when, when the student was first served it (or "not yet"), and every revision of that problem they were served before it. The revisions themselves, with their statements and a diff, are on the problem's page in the web app.
-
-## Runs with a custom input (P2 calibration)
-
-`podium-server runs-report` prints, per contest, how many runs students made and how many used a custom input, as a Markdown table for `calibration.md` (row "Runs with a custom input, per contest", D114). It reads the run jobs' payloads, which the P3 retention job deletes after 30 days: run it before that job first runs.
+`podium-server runs-report` prints, per contest, how many runs students made and how many used a custom input, as a Markdown table. It reads the run jobs' payloads, which the retention pass empties after 30 days: run it within 30 days of the contest.
 
 ```sh
 sudo -u podium podium-server runs-report -db /var/lib/podium/db/podium.db
@@ -685,54 +643,40 @@ sudo -u podium podium-server runs-report -db /var/lib/podium/db/podium.db
 | "The checker does not compile" with `testlib.h: No such file or directory` | The `testlib` install step has not run on this host | `sudo ./install.sh testlib`. On WSL2: `deploy/install.sh testlib` as root. |
 | A custom checker takes several seconds to compile | Expected: `testlib.h` is a large header. Checkers get a 30 s CPU compile budget instead of the usual 10 s | Nothing. A checker that needs more than 30 s is reported as a compile error. |
 | A second pack import waits | Imports, test replacements and pack downloads run one at a time, because each can hold over 100 MB in memory | Wait for the first to finish. |
-| "Generating outputs" never finishes | No worker is claiming jobs, as for validation | As the first row. Generation runs after contest work, before validation. |
-| "Generating inputs" ends with "The generator failed on test 7 (subtask 2, seed 3)" | The generator crashed, ran out of time or memory, or printed nothing for that seed and those arguments | Run the generator locally with the same argv (`python3 generator.py 3 n=1000`), fix it, save, and Generate inputs again. Nothing was applied, so no test changed. |
-| Run or Submit says "This problem cannot be judged yet" | Tests outside subtasks, or tests without an expected output | Fix the listed items in the editor; choose Generate outputs for missing outputs. |
+| The editor's status stays on making outputs | No worker is claiming jobs, as for validation | As the first row. Output jobs run after contest work, before validation. |
+| Generate inputs ends with "The generator failed on test 7 (subtask 2, seed 3)" | The generator crashed, ran out of time or memory, or printed nothing for that seed and those arguments | Run the generator locally with the same argv (`python3 generator.py 3 n=1000`), fix it, save, and Generate inputs again. Nothing was applied, so no test changed. |
+| Run or Submit says "This problem cannot be judged yet" | Tests outside subtasks, or tests without an expected output | Fix the listed items in the editor; Validate makes missing outputs first. |
 
-## Deploy guard
+## When to deploy
 
-`podium-server deploy-check` answers whether a release may be installed now (D112). It reads the published, unarchived contests straight from the database, so it works whether or not the server runs, and it is what `install.sh upgrade` and `tools/deploy.sh` ask first. `/healthz` cannot answer this: it is public.
-
-```sh
-sudo -u podium podium-server deploy-check -db /var/lib/podium/db/podium.db
-```
-
-| A published contest | Answer |
-|---|---|
-| starts more than 48 hours from now | allowed, with the time the window closes |
-| starts within 48 hours | refused |
-| is running: from its start to its end plus the contest-wide extension plus the largest personal extension | refused |
-| has ended but some of its (non-practice) submissions are still waiting for or being judged | refused until the queue is empty |
-
-The first output line is `allowed`, `refused` or `allowed (forced)`; the exit code is 0, 1, or 2 when the check could not run. `-at 2026-11-10T13:00:00Z` asks about another moment, for rehearsals. Drafts and archived contests never block. Ungraded practice contests do block while they run: a deploy restarts the server, and students in them see one reconnect.
-
-**Emergency override.** A fix that cannot wait: `sudo ./install.sh upgrade --force "<reason>"` (or `tools/deploy.sh HOST --force "<reason>"`). The reason (10 characters or more) and the release are written as a `deploy_forced` row in the audit log of each contest that refused, under the owner's account, before anything is installed. It is also one row in the site audit (People, History), and for 12 hours every signed-in student's page says "The site was updated at 14:02". The guard of the release being installed writes these rows into the database as it is before the upgrade, so on a database older than migration 0011 (no site audit) only the contest rows are written; announce such a deploy in the contest yourself. A `--force` covers that one run only: the owner's "now" for a deploy is valid for that day, and the next run asks the guard again. Any admin may pause or extend a contest when the owner cannot be reached; that needs no deploy.
+A deploy restarts the server. Do not deploy in the 48 hours before a published contest, while one runs, or while its submissions are still being judged; `docs/RUNBOOK.md` has the rule. Nothing enforces it: v3 removed the guard that did, and its override, because each served a case no single-college contest has met yet (V3-4).
 
 ## Upgrade
+
+The first v3 release, `v3.0.0`, installs on a fresh VM (V3-12): nothing earlier was ever installed, and a database from before v3 is refused at start-up. Upgrades apply from the release after it.
 
 ```sh
 sha256sum -c podium-<new>.tar.gz.sha256      # the checksum beside the tarball, from the GitHub release
 tar xzf podium-<new>.tar.gz && cd podium-<new>
-cat MANIFEST                                 # version, commit, schema, migrations, protocol, upgrades_from
+cat MANIFEST                                 # version, commit, arch, schema, migrations, protocol, upgrades_from
 sudo ./install.sh upgrade
 ```
 
-**What a release is (v1.1.0).** `make release` (and the release workflow, on a pushed `v*` tag) puts two files in the tarball: `MANIFEST`, one `key=value` per line (`release`, `version`, `commit`, `built`, `schema`, `migrations`, `protocol`, `upgrades_from`), and `SHA256SUMS`, the checksum of every other file. `podium-server -version` and `podium-judge -version` print the same version, commit, build date, schema and protocol, so you can match a binary to its release; `curl -s 127.0.0.1:8080/healthz` on the VM shows the running version and schema (through Caddy it does not).
+**What a release is.** `make release` (and the release workflow, on a pushed `v*` tag) puts two files in the tarball: `MANIFEST`, one `key=value` per line (`release`, `version`, `commit`, `built`, `arch`, `schema`, `migrations`, `protocol`, `upgrades_from`), and `SHA256SUMS`, the checksum of every other file. `podium-server -version` and `podium-judge -version` print the same version, commit, build date, schema and protocol, so you can match a binary to its release; `curl -s 127.0.0.1:8080/healthz` on the VM shows the running version and schema (through Caddy it does not).
 
-**The release workflow.** Push a tag (`git tag vX.Y.Z && git push origin vX.Y.Z`, with the version the owner chose; for a test of the workflow use `v0.0.1` and delete it afterwards, never a real version); `.github/workflows/release.yml` first checks that the `ci` workflow passed on the tagged commit (push the commit and wait for `ci` before pushing the tag), then runs `make release` and makes a draft GitHub release with the tarball, its `.sha256`, `MANIFEST` and `SHA256SUMS`. Review the draft and publish it by hand. `UPGRADES_FROM` in the `Makefile` is the release this one upgrades from; raise it in a release that drops something older releases still need (a contract migration). No release is tagged yet: until the owner chooses the first one (D236), `UPGRADES_FROM` is the placeholder `v1.0.0`, and `make release` refuses to build `v1.5.0` or later with it. One release installed fresh (`v1.5.0` or `v2.0.0`) sets it to that version; tagging `v1.0.0` to `v1.2.0` as markers first sets it to `v1.2.0`.
+**The release workflow.** Push a tag (`git tag vX.Y.Z && git push origin vX.Y.Z`; for a test of the workflow use `v0.0.1` and delete it afterwards, never a real version); `.github/workflows/release.yml` first checks that the `ci` workflow passed on the tagged commit (push the commit and wait for `ci` before pushing the tag), then runs `make release` and makes a draft GitHub release with the tarball, its `.sha256`, `MANIFEST` and `SHA256SUMS`. Review the draft and publish it by hand. `UPGRADES_FROM` in the `Makefile` is the oldest release this one upgrades from; raise it in a release that drops something older releases still need (a contract migration). `make release` refuses to build `v1.5.0` or later while it is still the placeholder `v1.0.0`, and `v3.0.0` is later: set it in the `Makefile` before the first tag.
 
-From Windows, `tools/deploy.sh HOST` (or `make deploy HOST=user@vm`) does all of it: it asks the guard over ssh, runs `make release VERSION=<version>`, shows the tarball and its SHA-256 and waits for you to type the host name before anything leaves the machine, copies it to `/tmp` with `scp`, and runs `install.sh upgrade` there. The version is the `vX.Y.Z` tag on the commit (every deploy is a tag, D105); a drill build names it instead with `VERSION=v1.4.90 tools/deploy.sh HOST`. With neither, or with uncommitted changes, it stops before it asks the guard or builds anything.
+From Windows, `tools/deploy.sh HOST` (or `make deploy HOST=user@vm`) does all of it: it runs `make release VERSION=<version>`, shows the tarball and its SHA-256 and waits for you to type the host name before anything leaves the machine, copies it to a new folder in `/tmp` with `scp`, and runs `install.sh upgrade` there. The version is the `vX.Y.Z` tag on the commit; a drill build names it instead with `VERSION=vX.Y.Z tools/deploy.sh HOST`. With neither, or with uncommitted changes, it stops before it builds anything. It does not check the contest calendar: see "When to deploy".
 
 `install.sh upgrade` runs these in order and stops at the first problem, saying what was and was not changed:
 
-1. **Release files, path and configuration names**: every file must match `SHA256SUMS`; the installed version (from `/usr/local/lib/podium/MANIFEST`) must be at least the new release's `upgrades_from` ("this VM runs v1.0.0, and v1.2.0 upgrades only from v1.1.0 or later. Upgrade to v1.1.0 first, then to v1.2.0") and not newer than the new release (a downgrade is a rollback). An upgrade that stopped half-way is refused too: when the installed `podium-server` is not the binary `MANIFEST` names (step 7 failed after step 6 installed the new files), or when `previous/MANIFEST` says this same release was already installed by an upgrade, a rerun would put the new binaries in `previous/` and lose the release to roll back to, so it stops before changing anything and names `sudo /usr/local/lib/podium/install.sh rollback`. Roll back first, fix the cause, then upgrade again. Then every variable the new example files list must be named in the matching `/etc/podium/*.env`. A missing required one stops the upgrade and is named with its file; a missing optional one is listed and keeps its default. Names only, never values.
-2. **Deploy guard**: the new release's `podium-server deploy-check` (above): refused means nothing changes unless `--force`. It runs after the configuration check, so a forced deploy is recorded (and students told the site was updated) only for an upgrade that goes on.
-3. **Judge drain**: `systemctl stop podium-judge`, graceful (see "Stopping the judge"): running jobs finish and report.
-4. **Backup**: `podium-backup` runs now; the upgrade stops (and starts the judge again) unless a new local backup folder appeared.
-5. **Keep the running release**: binaries, units and `MANIFEST` go to `/usr/local/lib/podium/previous/`, with the applied migrations, the backup folder and the time.
-6. **Install**: binaries, units, scripts, Litestream configuration, backup and alert files of the new release.
-7. **Start**: the server (migrations run now), wait up to 60 s for `/healthz`, then the judge; keep the release's `MANIFEST` as `/usr/local/lib/podium/MANIFEST`, with the install time, the binaries' hashes and the applied migrations added. If the judge's protocol differs from the server's (a half-done upgrade), the judge stops with "judge protocol N needed, this judge speaks M: install the same release on both" in `journalctl -u podium-judge`, and does not restart until you install one release on both.
-8. **Verify**: `install.sh verify`, then it prints the backup folder and the rollback command.
+1. **Release files, path and configuration names**: every file must match `SHA256SUMS`; the release must be built for this machine's processor; the installed version (from `/usr/local/lib/podium/MANIFEST`) must be at least the new release's `upgrades_from` and not newer than the new release (a downgrade is a rollback). An upgrade that stopped half-way is refused too: when the installed `podium-server` is not the binary `MANIFEST` names (the start failed after the install), or when `previous/MANIFEST` says this same release was already installed by an upgrade, a rerun would put the new binaries in `previous/` and lose the release to roll back to, so it stops before changing anything and names `sudo /usr/local/lib/podium/install.sh rollback`. Roll back first, fix the cause, then upgrade again. Then every variable the new example files list must be named in the matching `/etc/podium/*.env`. A missing required one stops the upgrade and is named with its file; a missing optional one is listed and keeps its default. Names only, never values.
+2. **Judge drain**: `systemctl stop podium-judge`, graceful (see "Stopping the judge"): running jobs finish and report.
+3. **Backup**: `podium-backup` runs now; the upgrade stops (and starts the judge again) unless a new local backup folder appeared.
+4. **Keep the running release**: binaries, units and `MANIFEST` go to `/usr/local/lib/podium/previous/`, with the applied migrations, the backup folder and the time.
+5. **Install**: binaries, units, scripts, Litestream configuration, backup and alert files of the new release.
+6. **Start**: the server (migrations run now), wait up to 60 s for `/healthz`, then the judge; keep the release's `MANIFEST` as `/usr/local/lib/podium/MANIFEST`, with the install time, the binaries' hashes and the applied migrations added. If the judge's protocol differs from the server's (a half-done upgrade), the judge stops with "judge protocol N needed, this judge speaks M: install the same release on both" in `journalctl -u podium-judge`, and does not restart until you install one release on both.
+7. **Verify**: `install.sh verify`, then it prints the backup folder and the rollback command.
 
 Configuration files are never overwritten: add a new variable with `sudoedit` before running the upgrade again.
 
@@ -746,7 +690,7 @@ apt list --upgradable         # they show as held back; apt upgrade leaves them
 sudo ./install.sh unhold      # outside a contest season, to take their updates
 ```
 
-After an update of any of them: `sudo systemctl restart podium-judge` (it reports the new toolchain at start, in the server log), then `podium-judge selftest` (above), then validate the problems of the next contest again from the problem bank. Holding also holds their security updates: unhold between seasons. `install.sh verify` warns while nothing is held.
+After an update of any of them: `sudo systemctl restart podium-judge` (it reports the new toolchain at start, in the server log), then `podium-judge selftest` (above), then validate the problems of the next contest again from Problems. Holding also holds their security updates: unhold between seasons. `install.sh verify` warns while nothing is held.
 
 ## Rollback
 
@@ -757,58 +701,7 @@ After an update of any of them: `sudo systemctl restart podium-judge` (it report
 | Same schema (the upgrade applied no migration) | stop the judge (gracefully) and the server, put the previous binaries and units back, start, wait for `/healthz`, verify |
 | Newer schema (the upgrade applied a migration the previous server does not know, so it would refuse to start) | it names the backup taken just before the upgrade and what is lost: everything written since that backup, with the count of submissions and runs, plus sign-ins, drafts, clarifications and settings. It also counts the accounts erased with `podium-server forget-user` since that backup: the restore brings their data back, so after the rollback it writes the forget-user commands to run again to `/var/tmp/podium-rollback-forget-<time>.<random>.txt` (root only, since it holds addresses) and prints the name. You type `ROLLBACK` to go on. The backup is restored into a scratch folder and checked by the previous binary; the current database folder is kept as `db.before-rollback-<time>` (the nightly backup deletes it after `PODIUM_BACKUP_KEEP_DAYS`, 14 by default); the backup goes in place (folder group podium, mode 2770, files 660, so Litestream can write), missing test files are copied back, the previous binaries start, Litestream starts a new history |
 
-Both cases are rehearsed on the VM once in P0 and once before each schema-changing release (`docs/RUNBOOK.md`, "Proving the safety net"), with builds named so they never share a name with a real release (for example `v1.4.90` installed, `v1.4.91` with the same schema, `v1.4.92` with one extra migration file that is never committed). The new-schema build is made with `make package VERSION=v1.4.92 UPGRADES_FROM=v1.4.90`: `package` is `release` without `make check`, whose migration tests list the real migrations and fail on that tree by design. Not yet proven on the VM: the P0 drill has not run.
-
-### Older upgrade notes
-
-Before `install.sh upgrade` existed, upgrades were `sudo ./install.sh app`. The notes below are kept for databases from those builds.
-
-Upgrading to M2 from M1:
-
-1. `sudo ./install.sh testlib app` (installs `testlib.h` and the new judge unit, which runs `podium-judge work`).
-2. Add `PODIUM_JUDGE_TOKEN` to both env files (see "Judge token"). Without it the server refuses to start in production mode. `PODIUM_MODE`, `PODIUM_JUDGE_LISTEN` and `PODIUM_SERVER_URL` can stay unset: their defaults are right for one VM.
-3. `sudo systemctl restart podium-server podium-judge`. Migration `0003_problems.sql` runs on start.
-
-Upgrading to M3 from M2:
-
-1. `sudo ./install.sh app`, then `sudo systemctl restart podium-server podium-judge`. Migration `0004_submissions.sql` runs on start; the judge creates `compiled/` in its cache directory. No new variables.
-2. Reset any database created before M3. Migrations `0003_problems.sql` and `0004_submissions.sql` were changed before the first release (outputs may be missing, new job kinds), and a migration that already ran is never run again, so an older database keeps the old tables and judging fails on it. Stop the server and delete the database with its `-wal` and `-shm` files: `data/podium.db` for `make dev`, `/var/tmp/podium-dev` for `make dev-test`, `/var/lib/podium/db/podium.db` on a VM that ran a pre-release build. Then re-import problems from their packs.
-
-Upgrading to M4 from M3:
-
-1. `sudo ./install.sh app`, then `sudo systemctl restart podium-server podium-judge`. Migration `0005_contests.sql` runs on start. No new variables.
-
-Adding integrity checks:
-
-1. `sudo ./install.sh app`, then `sudo systemctl restart podium-server`. Migration `0006_integrity.sql` runs on start and only adds tables, so existing contests and submissions are untouched and can be checked at once. No new variables; the judge needs no change.
-
-Upgrading to M5 (AI wizard):
-
-1. Take a backup first (see "Backups"): migration `0007_wizard.sql` edits the schema text of the `jobs` table in place.
-2. `sudo ./install.sh app`, then `sudo systemctl restart podium-server podium-judge`. Restart both: the server must know the new `generate_inputs` job kind before a judge claims one. No new variables.
-3. Migration `0007_wizard.sql` adds the generator columns and the `input_generations` table, and widens the allowed job kinds by rewriting the `CREATE TABLE jobs` text with SQLite's `writable_schema` procedure (decision D52): a table rebuild would cascade-delete every job result, because foreign keys stay on during migrations. No row changes. To check afterwards: `sqlite3 /var/lib/podium/db/podium.db "PRAGMA integrity_check"` prints `ok`.
-4. To use the wizard, an admin adds a key in the web app (see "AI wizard keys"). Nothing goes in `server.env`.
-
-Upgrading to M7 (hardening):
-
-1. `sudo ./install.sh packages firewall app caddy litestream backup`, then `sudo systemctl restart podium-server podium-judge`. No migration. The `firewall` step closes every inbound port but ssh, 80 and 443; the `caddy` step rewrites the Caddyfile (admin API off, body limit). The server unit now sets `GOMEMLIMIT=220MiB`, and production refuses a `PODIUM_LISTEN` that is not loopback. The judge reads one new optional variable, `PODIUM_JUDGE_BLOB_CACHE_MB` (default 2048); add it to `judge.env` only to change the cap.
-2. Fill in `/etc/podium/litestream.env` (see "Litestream" and "Backups"), then `sudo systemctl restart podium-litestream`.
-3. Take the first nightly backup by hand: `sudo systemctl start podium-backup`.
-4. On the first start the server removes test files nothing refers to (see "Running a contest", "Unused test files"); the log says how many.
-
-Upgrading to v1.2.0 (P2, schema change: slot S2 only):
-
-1. The judge protocol is now 3: install the release on the server and the judge together (`install.sh upgrade` does both). A v1.1.0 judge left running is refused with "judge protocol 3 needed, this judge speaks 2" and stops.
-2. Migrations `0010_revisions.sql` and `0011_site_audit.sql` only add tables and columns, and back-fill revision 1 of every problem and the pin of every contest. Before the slot, rehearse them on a copy: copy the newest nightly backup's `podium.db` (a consistent copy; never `cp` the live file) into a scratch folder, then run the new release's `podium-server migrate -db /tmp/p2/podium.db`, which applies the migrations to that file and runs `check` on it: it must end `revisions: ok` and `result: ok`. `migrate` refuses the file `PODIUM_DB_PATH` names. Rollback across these migrations is a restore (D68), rehearsed once on a copy.
-3. No new variables. A pin older than its problem's working copy becomes a "reconstructed" revision (tests only, statement not recorded); the console marks it.
-
-Upgrading to the v2 release with P3 to P5 (migrations 0012, 0013 and 0014):
-
-1. Rehearse on a copy first ("Rehearsing a migration on a copy"): copy the newest nightly backup's `podium.db` into a podium-owned folder and run the new release's `podium-server migrate -db` on it; it must end `result: ok`.
-2. `0012_contact.sql` adds the contact messages, the kept standings and queue-health indexes, and drops `contest_problems.pinned_hash` (the contract step for 0010). It refuses with "contest_problems has pins without a revision" if any pin lost its revision; send that output to whoever maintains podium before going on.
-3. `0013_students.sql` adds cases from submissions, notes, notices, record views, the rating and its proposals, and the per-student contest summaries, and marks contests that ended more than a day before as already told their results are final.
-4. `0014_results_notice.sql` clears that mark for a contest an extension kept live past the upgrade, so its students are told once its results are final (council C1-049). It changes no columns.
-5. All three only add (0012 drops one column nobody reads since 0010). Rollback across them is a restore of the pre-upgrade backup, which `install.sh rollback` does (see "Rollback").
+Both cases are rehearsed on the VM before the first contest and before each schema-changing release (`docs/RUNBOOK.md`, "Proving the safety net"), with builds named so they never share a name with a real release (for example `v3.0.90` installed, `v3.0.91` with the same schema, `v3.0.92` with one extra migration file that is never committed). The new-schema build is made with `make package VERSION=v3.0.92 UPGRADES_FROM=v3.0.90`: `package` is `release` without `make check`, whose migration tests list the real migrations and fail on that tree by design. Not yet proven on the VM: the drill has not run.
 
 ## Backups
 
@@ -829,7 +722,7 @@ The offsite key works like the Litestream one: the archive is made by `tar` as p
 
 Backups hold every student's code and the session table, so they are private: the backup runs with umask 077 (`UMask=0077` in the unit, `umask 077` in the script), `/var/backups/podium` is mode 700, and the files are readable by the podium user only. The judge cannot read them.
 
-**The bucket keys are out of the server's reach (v1.1.0, D116).** A process can read the environment of any other process of its own user from `/proc`, so a server taken over as user podium could read keys from a backup process running as podium. Litestream therefore runs as its own user, `podium-backup` (in group podium, so it can write the database folder, which is mode 2770; the server keeps the database files mode 660). The nightly backup unit runs as root and splits the work: the copy and the check run as podium with an empty environment, and only the heartbeat ping runs as `podium-backup` with the heartbeat URL. `install.sh upgrade` creates the user and moves Litestream's state to it. A rollback to a release before v1.1.0 gives it back to podium, and with it the old exposure: the bucket key is again in a process of the server's user until you upgrade again.
+**The bucket keys are out of the server's reach (D116).** A process can read the environment of any other process of its own user from `/proc`, so a server taken over as user podium could read keys from a backup process running as podium. Litestream therefore runs as its own user, `podium-backup` (in group podium, so it can write the database folder, which is mode 2770; the server keeps the database files mode 660). The nightly backup unit runs as root and splits the work: the copy and the check run as podium with an empty environment, and only the heartbeat ping runs as `podium-backup` with the heartbeat URL. `install.sh upgrade` creates the user and moves Litestream's state to it.
 
 Disk snapshots from your VM provider are a fine addition but not a replacement: they usually live in the same account as the VM.
 
@@ -841,7 +734,7 @@ Disk snapshots from your VM provider are a fine addition but not a replacement: 
 4. `sudo systemctl restart podium-litestream`, then `journalctl -u podium-litestream -n 30`: the start-up check lists every variable as `set`, and Litestream logs its first snapshot and then a sync every 10 s while the database changes.
 5. Prove it: `sudo /usr/local/lib/podium/podium-restore litestream /var/tmp/restore-check` restores the newest copy from the bucket and checks it; then `sudo rm -rf /var/tmp/restore-check`.
 
-Before the P0 restore drill Litestream had only been rehearsed against a local file replica; the first restore from your bucket in step 5 is the real test; repeat it once a term with `podium-check restore-proof` (see "Alerts"). If the first sync fails with an error about checksums or a header the provider does not support, note the exact message: Litestream 0.5 has per-provider options (`sign-payload`, `require-content-md5`) under the replica in `/etc/litestream.yml`.
+Litestream has only been rehearsed against a local file replica so far; the first restore from your bucket in step 5 is the real test; repeat it once a term with `podium-check restore-proof` (see "Alerts"). If the first sync fails with an error about checksums or a header the provider does not support, note the exact message: Litestream 0.5 has per-provider options (`sign-payload`, `require-content-md5`) under the replica in `/etc/litestream.yml`.
 
 ### Nightly backup
 
