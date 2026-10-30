@@ -624,8 +624,8 @@ test('the sticky bar keeps the tabs, field errors and the main actions in reach'
   // The bar stays at the top while the page scrolls.
   await tabOf(page, 'Checking').click();
   await page.mouse.wheel(0, 2000);
-  const bar = await page.locator('.action-bar').boundingBox();
-  expect(bar!.y).toBeLessThanOrEqual(1);
+  // The scroll can settle a frame after the wheel under load.
+  await expect.poll(async () => (await page.locator('.action-bar').boundingBox())!.y).toBeLessThanOrEqual(1);
   await page.screenshot({ path: `${shots()}problem-editor-sticky-1440-light.png` });
 
   // Ctrl+S saves.
