@@ -4,6 +4,10 @@ Dated entries per release. Unreleased work is listed at the top.
 
 ## Unreleased
 
+### v4 stage E: the editor (2026-10-31)
+
+- `npm run size` also budgets the code editor (V4-3): what its first open downloads beyond the first load, with C++, is 171.57 kB gzip in four files; the budget is 189 kB, and the check fails when the editor chunk can no longer be found.
+
 ### v4 stage O: the owner dashboard (2026-10-30)
 
 - The stored role `admin` is now `organiser` (migration `0002_v4_roles`), so a new admin role can sit between organiser and owner. Nothing changes for anyone: organisers keep every right, their sessions keep working, and site audit rows from before the migration read "organiser".

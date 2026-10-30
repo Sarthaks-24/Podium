@@ -11,7 +11,7 @@
 // build (cache/v2-planning-files/v1/calibration.md, "Web bundle,
 // 2026-10-21, P6"), with about 7 percent of headroom; raise one only with
 // a measurement and a reason in that file.
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { gzipSync } from 'node:zlib';
 
 const BUDGET_KB = { js: 120, css: 16, font: 108 };
@@ -50,5 +50,48 @@ for (const kind of ['js', 'css', 'font']) {
 }
 if (failed) {
   console.error('size budget: a student\'s first load is over budget. Load the new code with import(), or record a measurement and a reason in calibration.md before raising the budget.');
+  process.exit(1);
+}
+
+// The editor (V4-3): what the first open of a code editor downloads beyond
+// the first load. That is the editor chunk (lib/editor.ts), every chunk it
+// imports statically, and the default language, C++, with the chunks Vite
+// lists for it in __vite__mapDeps. Budget: 171.57 kB measured on 2026-10-31
+// plus 10 percent (cache/v3/calibration.md); raise it only with a
+// measurement and a reason there.
+const EDITOR_BUDGET_KB = 189;
+const firstLoad = new Set(files.js.map((p) => p.slice('/assets/'.length)));
+const assets = new URL('assets/', dist);
+const read = (name) => readFileSync(new URL(name, assets), 'utf8');
+const editorFile = readdirSync(assets).find((n) => /^editor-[\w-]+\.js$/.test(n));
+if (!editorFile) {
+  console.error('size budget: no editor chunk (assets/editor-*.js) in dist; has lib/editor.ts stopped being loaded with import()?');
+  process.exit(1);
+}
+const editorText = read(editorFile);
+const mapped = /m\.f=\[([^\]]*)\]/.exec(editorText)?.[1].split(',').map((s) => s.replace(/"|assets\//g, ''));
+const cpp = /cpp17:\(\)=>\w+\(\(\)=>import\(`\.\/([^`]+)`\)[^\n]*?__vite__mapDeps\(\[([\d,]+)\]\)/.exec(editorText);
+if (!mapped || !cpp) {
+  console.error('size budget: cannot find the C++ language import in the editor chunk; update the pattern in scripts/size-budget.mjs.');
+  process.exit(1);
+}
+const opened = new Set();
+const visit = (name) => {
+  if (firstLoad.has(name) || opened.has(name)) return;
+  opened.add(name);
+  for (const m of read(name).matchAll(/(?:from|import)\s*"\.\/([\w.-]+\.js)"/g)) visit(m[1]);
+};
+visit(editorFile);
+for (const i of cpp[2].split(',')) visit(mapped[Number(i)]);
+let editorGz = 0;
+for (const name of opened) {
+  const size = gzipSync(readFileSync(new URL(name, assets))).length;
+  editorGz += size;
+  console.log(`  /assets/${name}  ${(size / 1000).toFixed(2)} kB gzip`);
+}
+const editorOver = editorGz / 1000 > EDITOR_BUDGET_KB;
+console.log(`editor: ${opened.size} files on first open (C++), ${(editorGz / 1000).toFixed(2)} kB gzip, budget ${EDITOR_BUDGET_KB} kB gzip${editorOver ? ': over budget' : ''}`);
+if (editorOver) {
+  console.error('size budget: the editor is over budget. Load the new part only when it is used, or record a measurement and a reason in calibration.md before raising the budget.');
   process.exit(1);
 }
