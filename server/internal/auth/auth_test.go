@@ -21,7 +21,9 @@ type clock struct{ t time.Time }
 
 func (c *clock) now() time.Time { return c.t }
 
-func newService(t *testing.T, seed ...string) (*auth.Service, *clock) {
+// newService makes a migrated database with the configured owner and puts
+// the listed addresses on the sign-in list as students.
+func newService(t *testing.T, listed ...string) (*auth.Service, *clock) {
 	t.Helper()
 	ctx := context.Background()
 	d, err := db.Open(ctx, filepath.Join(t.TempDir(), "a.db"))
@@ -34,8 +36,13 @@ func newService(t *testing.T, seed ...string) (*auth.Service, *clock) {
 	}
 	c := &clock{t: time.Date(2026, 10, 17, 9, 0, 0, 0, time.UTC)}
 	s := &auth.Service{DB: d, OwnerEmail: ownerEmail, Now: c.now}
-	if err := s.Bootstrap(ctx, seed); err != nil {
+	if err := s.Bootstrap(ctx); err != nil {
 		t.Fatal(err)
+	}
+	for _, e := range listed {
+		if _, err := d.ExecContext(ctx, "INSERT INTO users (email, created_at) VALUES (?, 0)", e); err != nil {
+			t.Fatal(err)
+		}
 	}
 	return s, c
 }
@@ -79,44 +86,27 @@ func id(email string) auth.Identity {
 	return auth.Identity{Subject: "s-" + strings.ToLower(email), Email: email, EmailVerified: true, Name: "N " + email}
 }
 
-func TestWorkspaceDomainRequiresHostedDomain(t *testing.T) {
-	s, _ := newService(t, "college.edu")
+// The configured owner is always on the list: on a fresh database, and
+// after being disabled by hand, a restart lets them in (the lockout
+// recovery, V4-15). No sign-in rule special-cases the address.
+func TestBootstrapListsTheOwner(t *testing.T) {
+	s, _ := newService(t)
 	ctx := context.Background()
-	consumer := id("old@college.edu")
-	if _, _, _, err := s.SignIn(ctx, consumer, "", ""); err != nil {
-		t.Fatalf("before any Workspace sign-in the email suffix is enough: %v", err)
+	if _, _, _, err := s.SignIn(ctx, id(ownerEmail), "", ""); err != nil {
+		t.Fatalf("configured owner on a fresh database: %v", err)
 	}
-	staff := id("staff@college.edu")
-	staff.HostedDomain = "college.edu"
-	if _, _, _, err := s.SignIn(ctx, staff, "", ""); err != nil {
-		t.Fatalf("Workspace sign-in: %v", err)
-	}
-	if _, _, _, err := s.SignIn(ctx, consumer, "", ""); !errors.Is(err, auth.ErrDomain) {
-		t.Errorf("token without hd for a Workspace domain: %v, want ErrDomain", err)
-	}
-}
-
-func TestBootstrapSeedsDomainsOnlyOnFreshInstall(t *testing.T) {
-	s, _ := newService(t, "college.edu")
-	ctx := context.Background()
-	if err := s.RemoveDomain(ctx, "college.edu"); err != nil {
+	s.DB.ExecContext(ctx, "UPDATE users SET disabled = 1, role = 'student' WHERE email = ?", ownerEmail)
+	if err := s.Bootstrap(ctx); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.Bootstrap(ctx, []string{"college.edu"}); err != nil {
-		t.Fatal(err)
-	}
-	ds, _ := s.AllowedDomains(ctx)
-	if len(ds) != 0 {
-		t.Errorf("restart re-seeded domains the owner removed: %v", ds)
-	}
-	people, _ := s.Organisers(ctx)
-	if len(people) != 1 || people[0].Email != ownerEmail || people[0].Role != auth.Owner || !people[0].Locked {
-		t.Errorf("organisers after bootstrap: %+v", people)
+	u, _, _, err := s.SignIn(ctx, id(ownerEmail), "", "")
+	if err != nil || u.Role != auth.Owner {
+		t.Errorf("configured owner after a restart: %+v %v", u, err)
 	}
 }
 
 func TestSignInRules(t *testing.T) {
-	s, _ := newService(t, "college.edu")
+	s, _ := newService(t, "student@college.edu")
 	ctx := context.Background()
 	if _, err := s.GrantRole(asOwner(ctx), "ta@gmail.com", auth.Organiser); err != nil {
 		t.Fatal(err)
@@ -127,10 +117,10 @@ func TestSignInRules(t *testing.T) {
 		want error
 		role auth.Role
 	}{
-		{"allowed domain", id("Student@College.edu"), nil, auth.Student},
-		{"subdomain is a different domain", id("x@cs.college.edu"), auth.ErrDomain, ""},
-		{"other domain", id("friend@gmail.com"), auth.ErrDomain, ""},
-		{"admin on another domain", id("ta@gmail.com"), nil, auth.Organiser},
+		{"on the list, any case", id("Student@College.edu"), nil, auth.Student},
+		{"same domain, not on the list", id("x@college.edu"), auth.ErrNotListed, ""},
+		{"not on the list", id("friend@gmail.com"), auth.ErrNotListed, ""},
+		{"organiser on the list", id("ta@gmail.com"), nil, auth.Organiser},
 		{"configured owner", id(ownerEmail), nil, auth.Owner},
 		{"unverified", auth.Identity{Email: "u@college.edu", Subject: "u"}, auth.ErrUnverified, ""},
 	}
@@ -161,7 +151,7 @@ func TestSignInRules(t *testing.T) {
 }
 
 func TestGoogleAccountBinding(t *testing.T) {
-	s, _ := newService(t, "college.edu")
+	s, _ := newService(t, "alice@college.edu", "alice2@college.edu", "nosub@college.edu")
 	ctx := context.Background()
 	first := auth.Identity{Subject: "sub-alice-1", Email: "alice@college.edu", EmailVerified: true}
 	if _, _, _, err := s.SignIn(ctx, first, "", ""); err != nil {
@@ -201,37 +191,23 @@ func TestGoogleAccountBinding(t *testing.T) {
 	}
 }
 
-func TestRoleAndDomainChangesEndSessions(t *testing.T) {
-	s, _ := newService(t, "college.edu", "gmail.com")
+func TestRevokeEndsSessions(t *testing.T) {
+	s, _ := newService(t, "asha@college.edu")
 	ctx := context.Background()
 	ta, err := s.GrantRole(asOwner(ctx), "ta@other.org", auth.Organiser)
 	if err != nil {
 		t.Fatal(err)
 	}
 	_, taToken, _, _ := s.SignIn(ctx, id("ta@other.org"), "", "")
-	_, gmailToken, _, _ := s.SignIn(ctx, id("kid@gmail.com"), "", "")
 	_, studentToken, _, _ := s.SignIn(ctx, id("asha@college.edu"), "", "")
-	// A look-alike domain that merely ends with "gmail.com" keeps its session.
-	s.AddDomain(ctx, "notgmail.com")
-	_, lookalikeToken, _, _ := s.SignIn(ctx, id("x@notgmail.com"), "", "")
-
 	if err := s.RevokeRole(asOwner(ctx), ta.ID); err != nil {
 		t.Fatal(err)
 	}
 	if _, _, err := s.Authenticate(ctx, taToken); !errors.Is(err, auth.ErrNoSession) {
 		t.Errorf("revoked organiser's session still valid: %v", err)
 	}
-	if err := s.RemoveDomain(ctx, "gmail.com"); err != nil {
-		t.Fatal(err)
-	}
-	if _, _, err := s.Authenticate(ctx, gmailToken); !errors.Is(err, auth.ErrNoSession) {
-		t.Errorf("student on a removed domain still signed in: %v", err)
-	}
 	if _, _, err := s.Authenticate(ctx, studentToken); err != nil {
-		t.Errorf("student on another domain signed out: %v", err)
-	}
-	if _, _, err := s.Authenticate(ctx, lookalikeToken); err != nil {
-		t.Errorf("notgmail.com student signed out by removing gmail.com: %v", err)
+		t.Errorf("someone else signed out: %v", err)
 	}
 }
 
@@ -253,7 +229,7 @@ func TestOwnerDowngradeKeepsAnOwner(t *testing.T) {
 }
 
 func TestSessions(t *testing.T) {
-	s, c := newService(t, "college.edu")
+	s, c := newService(t, "a@college.edu", "old@college.edu", "b@college.edu", "c@college.edu", "d@college.edu")
 	ctx := context.Background()
 	u, token, _, err := s.SignIn(ctx, id("a@college.edu"), "", "")
 	if err != nil {
@@ -352,28 +328,6 @@ func TestRoleChanges(t *testing.T) {
 	s.OwnerEmail = "someone-else@college.edu"
 	if err := s.RevokeRole(asOwner(ctx), people[0].ID); !errors.As(err, &ce) || ce.Message != "At least one owner must remain." {
 		t.Errorf("revoking the last owner: %v", err)
-	}
-}
-
-func TestDomains(t *testing.T) {
-	s, _ := newService(t)
-	ctx := context.Background()
-	d, created, err := s.AddDomain(ctx, " @College.EDU ")
-	if err != nil || !created || d.Domain != "college.edu" {
-		t.Fatalf("add: %+v %v %v", d, created, err)
-	}
-	if _, created, _ := s.AddDomain(ctx, "college.edu"); created {
-		t.Error("adding twice reported created")
-	}
-	var ce *auth.ChangeError
-	if _, _, err := s.AddDomain(ctx, "not a domain"); !errors.As(err, &ce) || ce.Kind != "invalid" {
-		t.Errorf("invalid domain: %v", err)
-	}
-	if err := s.RemoveDomain(ctx, "nope.edu"); !errors.As(err, &ce) || ce.Kind != "not_found" {
-		t.Errorf("removing a missing domain: %v", err)
-	}
-	if err := s.RemoveDomain(ctx, "College.edu"); err != nil {
-		t.Errorf("remove: %v", err)
 	}
 }
 

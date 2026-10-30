@@ -1,42 +1,35 @@
 <!--
-  SignInTab: the Sign-in tab of Settings, who can sign in and help for one
-  account. Allowed email domains: the list, Remove on each (it asks
-  first), and a form to add one. Account help: one email field for "Reset
+  SignInTab: the Sign-in tab of Settings, help for one account (who may
+  sign in is the list of people, V4-15). Account help: one email field for "Reset
   Google link", "End sessions" and "Disable account", then the disabled
   accounts with Enable. As an address is typed the field looks the account
   up (GET /api/admin/accounts?email=, students included) and says whose it
   is ("Asha Rao, student, last signed in ..."); until it has named one, or
   when there is none, the three actions stay disabled, and each
   confirmation names the person. Successes are toasts; form errors sit
-  under their form, tied to the inputs. Props: `domains`, `disabled` and
+  under their form, tied to the inputs. Props: `disabled` and
   `people` (all bindable; a disable or enable marks the organiser's row
   too) and `onforbidden` (the person is no longer an owner).
 -->
 <script lang="ts">
-  import { tick, untrack } from 'svelte';
+  import { untrack } from 'svelte';
   import ConfirmDialog from '../ConfirmDialog.svelte';
   import MonoDigits from '../MonoDigits.svelte';
   import { ApiError, errorText, getJSON, sendJSON } from '../../lib/api';
   import { countOf, formatDateTime } from '../../lib/format';
-  import { EMAIL, personLabel, roleWord, settingsRefused, type Account, type Domain, type Person } from '../../lib/people';
+  import { EMAIL, personLabel, roleWord, settingsRefused, type Account, type Person } from '../../lib/people';
   import { showToast } from '../../lib/toast.svelte';
 
   interface Props {
-    domains: Domain[];
     disabled: Account[];
     people: Person[];
     onforbidden: () => void;
   }
 
-  let { domains = $bindable(), disabled = $bindable(), people = $bindable(), onforbidden }: Props = $props();
+  let { disabled = $bindable(), people = $bindable(), onforbidden }: Props = $props();
 
   type AccountAction = 'reset' | 'end-sessions' | 'disable' | 'enable';
-  type Pending = { kind: 'domain'; domain: string } | { kind: AccountAction; email: string } | null;
-
-  let domainInput = $state('');
-  let addingDomain = $state(false);
-  let domainError = $state('');
-  let domainsHeading: HTMLHeadingElement | undefined = $state();
+  type Pending = { kind: AccountAction; email: string } | null;
 
   let accountEmail = $state('');
   let accountError = $state('');
@@ -97,12 +90,6 @@
 
   const confirmCopy = $derived.by(() => {
     switch (pending?.kind) {
-      case 'domain':
-        return {
-          title: `Remove @${pending.domain} from the allowed list?`,
-          body: `People with @${pending.domain} addresses will no longer be able to sign in. Existing organisers are not affected.`,
-          label: 'Remove',
-        };
       case 'reset':
         return {
           title: `Reset the Google account link for ${accountName(pending.email)}?`,
@@ -126,47 +113,6 @@
     }
     return { title: '', body: '', label: 'Remove' };
   });
-
-  async function addDomain(event: SubmitEvent) {
-    event.preventDefault();
-    domainError = '';
-    const value = domainInput.trim();
-    if (value === '' || value === '@') {
-      domainError = 'Enter a domain, for example college.edu.';
-      document.getElementById('domain-input')?.focus();
-      return;
-    }
-    addingDomain = true;
-    try {
-      const added = await sendJSON<Domain>('POST', '/api/admin/domains', { domain: value });
-      domainInput = '';
-      if (domains.some((d) => d.domain === added.domain)) {
-        showToast(`@${added.domain} is already on the list`);
-      } else {
-        domains = [...domains, added];
-        showToast(`Added @${added.domain}`);
-      }
-    } catch (err) {
-      if (!settingsRefused(err, onforbidden)) domainError = errorText(err);
-    } finally {
-      addingDomain = false;
-    }
-  }
-
-  async function removeDomain(domain: string) {
-    try {
-      await sendJSON<void>('DELETE', `/api/admin/domains/${encodeURIComponent(domain)}`);
-      domains = domains.filter((d) => d.domain !== domain);
-      showToast(`Removed @${domain}`);
-    } catch (err) {
-      if (settingsRefused(err, onforbidden)) return;
-      showToast(errorText(err), 'error');
-      if (err instanceof ApiError && err.status === 404) domains = domains.filter((d) => d.domain !== domain);
-    }
-    // The Remove button is gone; start again from the heading.
-    await tick();
-    domainsHeading?.focus();
-  }
 
   /** Checks the account email and asks before a reset, sign-out or disable. */
   function askAccount(kind: 'reset' | 'end-sessions' | 'disable') {
@@ -213,64 +159,13 @@
     if (!target) return;
     busy = true;
     try {
-      if (target.kind === 'domain') await removeDomain(target.domain);
-      else await runAccount(target.kind, target.email);
+      await runAccount(target.kind, target.email);
     } finally {
       busy = false;
       pending = null;
     }
   }
 </script>
-
-<section class="section" aria-labelledby="domains-heading">
-  <h2 id="domains-heading" tabindex="-1" bind:this={domainsHeading}>Allowed email domains</h2>
-  <p class="intro muted">Anyone with a Google account on these domains can sign in as a student.</p>
-
-  {#if domains.length > 0}
-    <ul class="list">
-      {#each domains as d (d.domain)}
-        <li>
-          <span class="item">@{d.domain}</span>
-          <button
-            type="button"
-            class="btn btn-quiet btn-danger-quiet btn-compact"
-            aria-label="Remove @{d.domain}"
-            onclick={() => (pending = { kind: 'domain', domain: d.domain })}
-          >
-            Remove
-          </button>
-        </li>
-      {/each}
-    </ul>
-  {:else}
-    <p class="empty muted">No domains yet. Until you add one, only organisers can sign in.</p>
-  {/if}
-
-  <form class="form" novalidate onsubmit={addDomain}>
-    <div class="field grow">
-      <label for="domain-input">Domain</label>
-      <!-- An example, not a placeholder that reads as a value already there. -->
-      <p id="domain-help" class="field-help">For example college.edu</p>
-      <input
-        id="domain-input"
-        aria-required="true"
-        class="input"
-        type="text"
-        inputmode="url"
-        autocomplete="off"
-        autocapitalize="none"
-        spellcheck="false"
-        bind:value={domainInput}
-        aria-invalid={domainError !== '' ? 'true' : undefined}
-        aria-describedby="domain-help{domainError !== '' ? ' domain-error' : ''}"
-      />
-    </div>
-    <button type="submit" class="btn btn-secondary submit" disabled={addingDomain}>Add domain</button>
-  </form>
-  {#if domainError !== ''}
-    <p id="domain-error" class="field-error form-error" role="alert">{domainError}</p>
-  {/if}
-</section>
 
 <section class="section" aria-labelledby="help-heading">
   <h2 id="help-heading">Account help</h2>

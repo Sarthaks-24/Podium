@@ -57,7 +57,7 @@
   const isOrganiser = $derived(organises(session.user?.role));
   const isOwner = $derived(session.user?.role === 'owner');
   // First run (no contests): what is already done on the way to a published contest; null while unknown.
-  let domainCount = $state<number | null>(null);
+  let studentsListed = $state<boolean | null>(null);
   /** Organisers other than the configured owner and the person signed in. */
   let otherOrganisers = $state<number | null>(null);
   let validatedCount = $state<number | null>(null);
@@ -85,12 +85,12 @@
     }
     if (!isOwner) return;
     try {
-      const data = await getJSON<{ domains: unknown[]; people: { id: number; locked: boolean }[] }>('/api/admin/people');
+      const data = await getJSON<{ list: { role: string }[]; people: { id: number; locked: boolean }[] }>('/api/admin/people');
       if (!page.live) return;
-      domainCount = (data.domains ?? []).length;
+      studentsListed = (data.list ?? []).some((p) => p.role === 'student');
       otherOrganisers = (data.people ?? []).filter((p) => !p.locked && p.id !== session.user?.id).length;
     } catch {
-      domainCount = null;
+      studentsListed = null;
       otherOrganisers = null;
     }
   }
@@ -332,8 +332,8 @@
       <ul class="steps">
         {#if isOwner}
           <li>
-            <span class="step">Allow your college's email domain in <a href="/admin/people?tab=sign-in">Settings</a>, so students can sign in.</span>
-            {#if domainCount !== null}<Badge tone={domainCount > 0 ? 'ok' : 'neutral'} text={domainCount > 0 ? 'Done' : 'To do'} />{/if}
+            <span class="step">Add your students to the list in <a href="/admin/people">Settings</a>, so they can sign in.</span>
+            {#if studentsListed !== null}<Badge tone={studentsListed ? 'ok' : 'neutral'} text={studentsListed ? 'Done' : 'To do'} />{/if}
           </li>
           <li>
             <span class="step">Add another organiser in <a href="/admin/people">Settings</a>, so someone else can run a contest.</span>

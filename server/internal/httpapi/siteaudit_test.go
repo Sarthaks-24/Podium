@@ -92,8 +92,8 @@ func TestSiteAuditRecordsPeopleChangesAndNoSecret(t *testing.T) {
 	}{
 		{"POST", "/api/admin/people", map[string]string{"email": "ta@college.edu", "role": "organiser"}, 200},
 		{"POST", "/api/admin/people", map[string]string{"email": "ta@college.edu", "role": "owner"}, 200},
-		{"POST", "/api/admin/domains", map[string]string{"domain": "school.edu"}, 201},
-		{"DELETE", "/api/admin/domains/school.edu", nil, 204},
+		{"POST", "/api/admin/people/import", map[string]any{"text": "new1@school.edu, new2@school.edu"}, 200},
+		{"POST", "/api/admin/people/remove", map[string]string{"email": "new1@school.edu"}, 200},
 		{"POST", "/api/admin/accounts/end-sessions", map[string]string{"email": "asha@college.edu"}, 200},
 		{"POST", "/api/admin/accounts/disable", map[string]string{"email": "asha@college.edu"}, 200},
 		{"POST", "/api/admin/accounts/enable", map[string]string{"email": "asha@college.edu"}, 200},
@@ -126,7 +126,7 @@ func TestSiteAuditRecordsPeopleChangesAndNoSecret(t *testing.T) {
 	for _, e := range hist["entries"].([]any) {
 		actions = append(actions, e.(map[string]any)["action"].(string))
 	}
-	want := "mode_changed role_revoked google_reset account_enabled account_disabled sessions_ended domain_removed domain_added role_granted role_granted"
+	want := "mode_changed role_revoked google_reset account_enabled account_disabled sessions_ended person_removed list_imported role_granted role_granted"
 	if got := strings.Join(actions, " "); !strings.HasPrefix(got, want) {
 		t.Errorf("actions %s\nwant start %s", got, want)
 	}

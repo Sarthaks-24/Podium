@@ -1,7 +1,7 @@
 <!--
   HistoryDialog: the site's history of changes, behind the "History of
   changes" button on the Organisation tab of Settings (GET
-  /api/admin/site-audit): every change to people, domains, accounts and
+  /api/admin/site-audit): every change to people, the sign-in list, accounts and
   the server's mode, newest first, with who made it. It filters by the
   kind of change and by an email, and loads older pages on request. It
   loads each time it opens, so it never shows a stale list. Props: `open`
@@ -62,7 +62,7 @@
 </script>
 
 <Dialog {open} {onclose} title="History of changes" closeLabel="Close">
-  <p class="muted small lead">Every change to people, domains and the site, newest first. Nothing here can be edited or removed.</p>
+  <p class="muted small lead">Every change to people, the sign-in list and the site, newest first. Nothing here can be edited or removed.</p>
   <form class="row" novalidate onsubmit={filter}>
     <div class="field">
       <label for="history-action">Kind of change</label>

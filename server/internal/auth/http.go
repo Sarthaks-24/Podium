@@ -101,7 +101,7 @@ func (d *Handlers) ListPeople(w http.ResponseWriter, r *http.Request) {
 		d.internalError(w, r, err)
 		return
 	}
-	domains, err := d.Auth.AllowedDomains(r.Context())
+	list, counts, refused, err := d.Auth.List(r.Context())
 	if err != nil {
 		d.internalError(w, r, err)
 		return
@@ -116,7 +116,8 @@ func (d *Handlers) ListPeople(w http.ResponseWriter, r *http.Request) {
 		d.internalError(w, r, err)
 		return
 	}
-	httpx.WriteJSON(w, http.StatusOK, map[string]any{"people": people, "domains": domains, "disabled": disabled, "organisation": org})
+	httpx.WriteJSON(w, http.StatusOK, map[string]any{"people": people, "list": list, "counts": counts, "refused": refused,
+		"disabled": disabled, "organisation": org})
 }
 
 // LookupAccount finds one account by its email, students included, so
@@ -223,33 +224,58 @@ func (d *Handlers) ResetGoogleAccount(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-func (d *Handlers) AddDomain(w http.ResponseWriter, r *http.Request) {
+// ImportPeople adds people to the list from pasted text. With dry_run it
+// only says what would happen, so the page can show the counts first.
+func (d *Handlers) ImportPeople(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		Domain string `json:"domain"`
+		Text   string `json:"text"`
+		DryRun bool   `json:"dry_run"`
 	}
 	if !httpx.DecodeJSON(w, r, &req) {
 		return
 	}
-	dm, created, err := d.Auth.AddDomain(r.Context(), req.Domain)
+	res, err := d.Auth.Import(r.Context(), req.Text, req.DryRun)
 	if err != nil {
 		d.changeError(w, r, err)
 		return
 	}
-	status := http.StatusOK
-	if created {
-		status = http.StatusCreated
-		d.Log.Info("domain allowed", "by", UserFrom(r.Context()).ID, "domain", dm.Domain)
+	if !req.DryRun && len(res.Added) > 0 {
+		d.Log.Info("people added to the list", "by", UserFrom(r.Context()).ID, "count", len(res.Added))
 	}
-	httpx.WriteJSON(w, status, dm)
+	httpx.WriteJSON(w, http.StatusOK, res)
 }
 
-func (d *Handlers) RemoveDomain(w http.ResponseWriter, r *http.Request) {
-	domain := r.PathValue("domain")
-	if err := d.Auth.RemoveDomain(r.Context(), domain); err != nil {
+// RemovePerson takes someone off the list: deleted when they never signed
+// in, otherwise disabled and signed out.
+func (d *Handlers) RemovePerson(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Email string `json:"email"`
+	}
+	if !httpx.DecodeJSON(w, r, &req) {
+		return
+	}
+	deleted, err := d.Auth.Remove(r.Context(), req.Email)
+	if err != nil {
 		d.changeError(w, r, err)
 		return
 	}
-	d.Log.Info("domain removed", "by", UserFrom(r.Context()).ID, "domain", domain)
+	d.Log.Info("person removed from the list", "by", UserFrom(r.Context()).ID, "deleted", deleted, "domain", DomainOf(req.Email))
+	httpx.WriteJSON(w, http.StatusOK, map[string]any{"deleted": deleted})
+}
+
+// LetIn adds a refused address to the list.
+func (d *Handlers) LetIn(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Email string `json:"email"`
+	}
+	if !httpx.DecodeJSON(w, r, &req) {
+		return
+	}
+	if err := d.Auth.LetIn(r.Context(), req.Email); err != nil {
+		d.changeError(w, r, err)
+		return
+	}
+	d.Log.Info("refused address let in", "by", UserFrom(r.Context()).ID, "domain", DomainOf(req.Email))
 	w.WriteHeader(http.StatusNoContent)
 }
 

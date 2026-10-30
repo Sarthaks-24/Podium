@@ -19,8 +19,9 @@ import (
 
 // Site audit actions (docs/API.md, "Site audit: People History").
 const (
-	AuditRoleGranted     = "role_granted"
-	AuditRoleRevoked     = "role_revoked"
+	AuditRoleGranted = "role_granted"
+	AuditRoleRevoked = "role_revoked"
+	// The domain actions are only in rows from before v4 (V4-15).
 	AuditDomainAdded     = "domain_added"
 	AuditDomainRemoved   = "domain_removed"
 	AuditAccountDisabled = "account_disabled"

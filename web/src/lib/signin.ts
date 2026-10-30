@@ -10,27 +10,18 @@
 export type MessagePart = string | { email: string };
 
 /** The error codes /api/auth/google/callback can send back (docs/API.md). */
-export type SignInErrorCode = 'domain' | 'unverified' | 'disabled' | 'account' | 'expired' | 'google' | 'server' | 'rate_limited';
+export type SignInErrorCode = 'not_listed' | 'unverified' | 'disabled' | 'account' | 'expired' | 'google' | 'server' | 'rate_limited';
 
-const ERROR_CODES: readonly SignInErrorCode[] = ['domain', 'unverified', 'disabled', 'account', 'expired', 'google', 'server', 'rate_limited'];
+const ERROR_CODES: readonly SignInErrorCode[] = ['not_listed', 'unverified', 'disabled', 'account', 'expired', 'google', 'server', 'rate_limited'];
 
-/** Narrows a ?error= value to a known code, or null. */
+/** Narrows a ?error= value to a known code, or null. A bookmarked v3 "domain" reads as not on the list. */
 export function parseErrorCode(value: string | null): SignInErrorCode | null {
-  return ERROR_CODES.find((c) => c === value) ?? null;
-}
-
-/** "@a", "@a or @b", "@a, @b or @c". */
-export function formatDomains(domains: readonly string[]): string {
-  const at = domains.map((d) => `@${d}`);
-  if (at.length <= 1) return at.join('');
-  return `${at.slice(0, -1).join(', ')} or ${at[at.length - 1]}`;
+  return ERROR_CODES.find((c) => c === (value === 'domain' ? 'not_listed' : value)) ?? null;
 }
 
 /** The line under the heading that says which accounts may sign in. */
-export function audienceLine(domains: readonly string[]): string {
-  if (domains.length === 0) return 'Sign in with your Google account.';
-  if (domains.length === 1) return `Sign in with your ${formatDomains(domains)} Google account.`;
-  return `Sign in with a Google account from ${formatDomains(domains)}.`;
+export function audienceLine(): string {
+  return 'Sign in with the Google account of the email the organisers added.';
 }
 
 /** The person to contact: a mailto part, or plain words when none is configured. */
@@ -41,20 +32,12 @@ function contact(email: string): MessagePart {
 /** The error banner for a ?error= code, or null when the code is unknown. */
 export function errorMessage(
   code: SignInErrorCode | null,
-  domains: readonly string[],
   contactEmail: string,
 ): MessagePart[] | null {
   const who = contact(contactEmail);
   switch (code) {
-    case 'domain': {
-      const lead = 'This account is not on the allowed list. ';
-      if (domains.length === 0) return [lead + 'Ask ', who, ' to add your email.'];
-      const which =
-        domains.length === 1
-          ? `with your ${formatDomains(domains)} account`
-          : `with an account from ${formatDomains(domains)}`;
-      return [`${lead}Sign in ${which}, or ask `, who, ' to add your email.'];
-    }
+    case 'not_listed':
+      return ['Your email is not on the list for this site. Ask ', who, ' to add it.'];
     case 'unverified':
       return ['Google has not verified this email address yet. Verify it with Google, then try again.'];
     case 'disabled':

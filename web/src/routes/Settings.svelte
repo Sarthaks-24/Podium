@@ -3,7 +3,7 @@
   had), in three tabs so only one part shows at a time:
   - People (components/settings/PeopleTab): who can organise, with two
     roles on screen, organiser and owner.
-  - Sign-in (SignInTab): the allowed email domains, and account help for
+  - Sign-in (SignInTab): account help for
     one address (reset the Google link, end sessions, disable or enable).
   - Organisation (OrganisationTab): the details the public pages show, and
     "History of changes" for the site's history.
@@ -25,7 +25,7 @@
   import { setTitle } from '../lib/head';
   import { loader } from '../lib/loader.svelte';
   import type { Organisation } from '../lib/mode.svelte';
-  import type { Account, Domain, PeopleData, Person } from '../lib/people';
+  import type { Account, PeopleData, Person } from '../lib/people';
   import { navigate, router } from '../lib/router.svelte';
   import { forbiddenText, routeTitle } from '../lib/routing';
 
@@ -43,7 +43,6 @@
   }
 
   let people = $state<Person[]>([]);
-  let domains = $state<Domain[]>([]);
   let disabled = $state<Account[]>([]);
   let org = $state<Organisation>({ name: '', contact_email: '', phone: '', privacy_contact: '' });
 
@@ -51,7 +50,6 @@
     () => getJSON<PeopleData>('/api/admin/people'),
     (data) => {
       people = data.people ?? [];
-      domains = data.domains ?? [];
       disabled = data.disabled ?? [];
       if (data.organisation) org = { ...org, ...data.organisation };
     },
@@ -89,7 +87,7 @@
       <PeopleTab bind:people {origin} onforbidden={forbid} />
     </div>
     <div id="settings-panel-sign-in" role="tabpanel" aria-labelledby="settings-tab-sign-in" hidden={tab !== 'sign-in'}>
-      <SignInTab bind:domains bind:disabled bind:people onforbidden={forbid} />
+      <SignInTab bind:disabled bind:people onforbidden={forbid} />
     </div>
     <div id="settings-panel-organisation" role="tabpanel" aria-labelledby="settings-tab-organisation" hidden={tab !== 'organisation'}>
       <OrganisationTab bind:org onforbidden={forbid} />

@@ -20,17 +20,12 @@ export const PEOPLE = [
   { id: 3, email: 'ta@college.edu', name: '', role: 'organiser', last_login_at: null, locked: false },
 ];
 
-export const DOMAINS = [
-  { domain: 'college.edu', created_at: 1791000000000 },
-  { domain: 'cs.college.edu', created_at: 1791500000000 },
-];
-
-export const CONFIG = { allowed_domains: ['college.edu'], contact_email: 'priya@college.edu' };
+export const CONFIG = { contact_email: 'priya@college.edu' };
 
 /** The site audit that "History of changes" on Settings shows (contract C4), newest first. */
 export const SITE_AUDIT = [
   { id: 3, at: 1792183192359, action: 'role_granted', actor: { user_id: 1, email: 'priya@college.edu', role: 'owner' }, subject_email: 'ta@college.edu', details: { role: 'organiser', from_role: 'student' } },
-  { id: 2, at: 1792096792359, action: 'domain_added', actor: { user_id: 1, email: 'priya@college.edu', role: 'owner' }, subject_email: '', details: { domain: 'cs.college.edu' } },
+  { id: 2, at: 1792096792359, action: 'list_imported', actor: { user_id: 1, email: 'priya@college.edu', role: 'owner' }, subject_email: '', details: { added: 12, duplicates: 1, invalid: 0 } },
   { id: 1, at: 1791923992359, action: 'mode_changed', actor: null, subject_email: '', details: { from: 'testing', to: 'production', sessions_ended: 0 } },
 ];
 
@@ -51,7 +46,7 @@ export async function mockApi(page: Page, who: Who) {
   const state = {
     who,
     people: structuredClone(PEOPLE),
-    domains: structuredClone(DOMAINS),
+    list: [{ role: 'student' }] as { role: string }[],
     nextId: 10,
     resets: [] as string[],
     disabled: [] as { id: number; email: string; name: string; role: string; disabled: boolean; last_login_at: number | null }[],
@@ -102,7 +97,7 @@ export async function mockApi(page: Page, who: Who) {
       // The organiser home's first-run list asks whether a validated problem exists (C2-024).
       if (path === '/api/admin/problems' && method === 'GET') return json(route, 200, { problems: [] });
       if (path === '/api/admin/people' && method === 'GET') {
-        return json(route, 200, { people: state.people, domains: state.domains, disabled: state.disabled, organisation: state.organisation });
+        return json(route, 200, { people: state.people, list: state.list, counts: { on_list: state.list.length, signed_in: 0, never_came: state.list.length }, refused: [], disabled: state.disabled, organisation: state.organisation });
       }
       if (path === '/api/admin/accounts' && method === 'GET') {
         const email = (new URL(req.url()).searchParams.get('email') ?? '').trim().toLowerCase();
@@ -162,17 +157,6 @@ export async function mockApi(page: Page, who: Who) {
         state.people = state.people.filter((p) => p.id !== id);
         return json(route, 204);
       }
-      if (path === '/api/admin/domains' && method === 'POST') {
-        const raw = (req.postDataJSON() as { domain: string }).domain.toLowerCase().replace(/^@/, '');
-        if (!/^[a-z0-9-]+(\.[a-z0-9-]+)+$/.test(raw)) {
-          return apiError(route, 400, 'bad_request', 'Enter a domain like college.edu.');
-        }
-        const existing = state.domains.find((d) => d.domain === raw);
-        if (existing) return json(route, 200, existing);
-        const added = { domain: raw, created_at: Date.now() };
-        state.domains.push(added);
-        return json(route, 201, added);
-      }
       if (path === '/api/admin/accounts/reset-google' && method === 'POST') {
         const type = (await req.headerValue('content-type')) ?? '';
         if (!type.startsWith('application/json')) {
@@ -185,15 +169,6 @@ export async function mockApi(page: Page, who: Who) {
         const known = [...state.people.map((p) => p.email), STUDENT.email];
         if (!known.includes(target)) return apiError(route, 404, 'not_found', 'Nobody with that email has an account.');
         state.resets.push(target);
-        return json(route, 204);
-      }
-      const domainMatch = path.match(/^\/api\/admin\/domains\/(.+)$/);
-      if (domainMatch && method === 'DELETE') {
-        const domain = decodeURIComponent(domainMatch[1]);
-        if (!state.domains.some((d) => d.domain === domain)) {
-          return apiError(route, 404, 'not_found', 'That domain is not on the list.');
-        }
-        state.domains = state.domains.filter((d) => d.domain !== domain);
         return json(route, 204);
       }
       return apiError(route, 404, 'not_found', 'This API route does not exist.');
@@ -224,14 +199,14 @@ export const SCREENS: Screen[] = [
     path: '/signin',
     who: 'signed-out',
     title: 'Sign in · podium',
-    ready: (page) => expect(page.getByText('Sign in with your @college.edu Google account.')).toBeVisible(),
+    ready: (page) => expect(page.getByText('Sign in with the Google account of the email the organisers added.')).toBeVisible(),
   },
   {
-    name: 'signin-error-domain',
-    path: '/signin?error=domain',
+    name: 'signin-error-not-listed',
+    path: '/signin?error=not_listed',
     who: 'signed-out',
     title: 'Sign in · podium',
-    ready: (page) => expect(page.getByRole('alert')).toContainText('This account is not on the allowed list.'),
+    ready: (page) => expect(page.getByRole('alert')).toContainText('Your email is not on the list for this site.'),
   },
   {
     name: 'home-owner',
@@ -252,7 +227,7 @@ export const SCREENS: Screen[] = [
     path: '/admin/people?tab=sign-in',
     who: 'owner',
     title: 'Settings · podium',
-    ready: (page) => expect(page.getByRole('button', { name: 'Remove @cs.college.edu' })).toBeVisible(),
+    ready: (page) => expect(page.getByRole('button', { name: 'Reset Google link' })).toBeVisible(),
   },
   {
     name: 'settings-organisation',

@@ -106,15 +106,6 @@ func (d Deps) authConfig(w http.ResponseWriter, r *http.Request) {
 	if !d.localOnly(w, r) {
 		return
 	}
-	domains, err := d.Auth.AllowedDomains(r.Context())
-	if err != nil {
-		d.internalError(w, r, err)
-		return
-	}
-	names := make([]string, len(domains))
-	for i, dm := range domains {
-		names[i] = dm.Domain
-	}
 	mode := d.Mode
 	if mode == "" {
 		mode = "production"
@@ -130,7 +121,7 @@ func (d Deps) authConfig(w http.ResponseWriter, r *http.Request) {
 	if contactEmail == "" {
 		contactEmail = d.Auth.OwnerEmail
 	}
-	httpx.WriteJSON(w, http.StatusOK, map[string]any{"allowed_domains": names, "contact_email": contactEmail, "mode": mode,
+	httpx.WriteJSON(w, http.StatusOK, map[string]any{"contact_email": contactEmail, "mode": mode,
 		"organisation": org, "retention": retention.Periods()})
 }
 
@@ -182,10 +173,6 @@ func (d Deps) googleStart(w http.ResponseWriter, r *http.Request) {
 		d.internalError(w, r, err)
 		return
 	}
-	hd := ""
-	if domains, err := d.Auth.AllowedDomains(r.Context()); err == nil && len(domains) == 1 {
-		hd = domains[0].Domain
-	}
 	// SameSite=Lax: the cookie must come back on Google's top-level
 	// redirect to the callback.
 	name, path := d.flowCookie()
@@ -194,7 +181,7 @@ func (d Deps) googleStart(w http.ResponseWriter, r *http.Request) {
 		HttpOnly: true, Secure: d.secure(), SameSite: http.SameSiteLaxMode,
 	})
 	w.Header().Set("Cache-Control", "no-store")
-	http.Redirect(w, r, d.IdP.AuthCodeURL(f.State, f.Nonce, f.Verifier, hd), http.StatusFound)
+	http.Redirect(w, r, d.IdP.AuthCodeURL(f.State, f.Nonce, f.Verifier, ""), http.StatusFound)
 }
 
 func (d Deps) googleCallback(w http.ResponseWriter, r *http.Request) {
@@ -236,9 +223,9 @@ func (d Deps) googleCallback(w http.ResponseWriter, r *http.Request) {
 	}
 	u, token, _, err := d.Auth.SignIn(r.Context(), id, httpx.ClientIP(r), r.UserAgent())
 	switch {
-	case errors.Is(err, auth.ErrDomain):
-		d.Log.Info("sign-in refused: domain not allowed", "domain", auth.DomainOf(id.Email))
-		fail("domain")
+	case errors.Is(err, auth.ErrNotListed):
+		d.Log.Info("sign-in refused: not on the list", "domain", auth.DomainOf(id.Email))
+		fail("not_listed")
 		return
 	case errors.Is(err, auth.ErrUnverified):
 		fail("unverified")

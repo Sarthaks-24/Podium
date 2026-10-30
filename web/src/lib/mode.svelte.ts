@@ -33,7 +33,6 @@ export interface RetentionPeriod {
 
 /** The parsed config. */
 export interface SiteConfig {
-  allowed_domains: string[];
   contact_email: string;
   mode: RunMode;
   organisation: Organisation;
@@ -48,7 +47,6 @@ class ModeState {
   contactEmail = $state('');
   organisation = $state<Organisation>({ ...EMPTY_ORG });
   retention = $state<RetentionPeriod[]>([]);
-  allowedDomains = $state<string[]>([]);
   /** "loading" until the first answer; "failed" when it could not be read. */
   status = $state<'loading' | 'ready' | 'failed'>('loading');
 }
@@ -71,7 +69,6 @@ export function parseConfig(raw: unknown): SiteConfig {
   const org = (typeof c.organisation === 'object' && c.organisation !== null ? c.organisation : {}) as Record<string, unknown>;
   const rows = Array.isArray(c.retention) ? c.retention : [];
   return {
-    allowed_domains: Array.isArray(c.allowed_domains) ? c.allowed_domains.filter((d): d is string => typeof d === 'string') : [],
     contact_email: text(c.contact_email),
     mode: parseMode(c.mode),
     organisation: { name: text(org.name), contact_email: text(org.contact_email), phone: text(org.phone), privacy_contact: text(org.privacy_contact) },
@@ -95,7 +92,6 @@ export function applyConfig(c: SiteConfig): void {
   runMode.contactEmail = c.contact_email;
   runMode.organisation = c.organisation;
   runMode.retention = c.retention;
-  runMode.allowedDomains = c.allowed_domains;
   runMode.status = 'ready';
 }
 

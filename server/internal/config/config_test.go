@@ -60,16 +60,8 @@ func TestBaseURLNormalisedToOriginForm(t *testing.T) {
 	}
 }
 
-func TestLoadServerDomainsAndSecrets(t *testing.T) {
-	c, err := LoadServer(env(validServer(map[string]string{"PODIUM_ALLOWED_DOMAINS": " @College.edu, cs.college.edu ,"})))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if strings.Join(c.AllowedDomains, ",") != "college.edu,cs.college.edu" {
-		t.Errorf("AllowedDomains = %v", c.AllowedDomains)
-	}
+func TestLoadServerSecrets(t *testing.T) {
 	bad := []map[string]string{
-		{"PODIUM_ALLOWED_DOMAINS": "college"},
 		{"PODIUM_SESSION_SECRET": "short"},
 		{"PODIUM_SESSION_SECRET": "change-me-change-me-change-me-change-me"},
 		{"PODIUM_OWNER_EMAIL": "not-an-email"},
@@ -84,22 +76,9 @@ func TestLoadServerDomainsAndSecrets(t *testing.T) {
 			continue
 		}
 		for _, v := range o {
-			if strings.Contains(err.Error(), v) && v != "college" {
+			if strings.Contains(err.Error(), v) {
 				t.Errorf("error message echoes the value %q: %s", v, err)
 			}
-		}
-	}
-}
-
-func TestNormaliseDomain(t *testing.T) {
-	for in, want := range map[string]string{"@Example.EDU": "example.edu", " cs.uni.ac.in ": "cs.uni.ac.in"} {
-		if got, ok := NormaliseDomain(in); !ok || got != want {
-			t.Errorf("NormaliseDomain(%q) = %q, %v", in, got, ok)
-		}
-	}
-	for _, in := range []string{"", "localhost", "a..b.com", "-a.com", "a b.com", "x.c"} {
-		if _, ok := NormaliseDomain(in); ok {
-			t.Errorf("NormaliseDomain(%q) accepted", in)
 		}
 	}
 }

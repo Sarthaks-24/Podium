@@ -21,12 +21,6 @@ export interface Person {
   disabled?: boolean;
 }
 
-/** An email domain whose Google accounts may sign in as students. */
-export interface Domain {
-  domain: string;
-  created_at: number;
-}
-
 /** Any account, students included, as the account help sees it. */
 export interface Account {
   id: number;
@@ -40,7 +34,6 @@ export interface Account {
 /** The answer of GET /api/admin/people. */
 export interface PeopleData {
   people: Person[];
-  domains: Domain[];
   disabled?: Account[];
   organisation?: Organisation;
 }

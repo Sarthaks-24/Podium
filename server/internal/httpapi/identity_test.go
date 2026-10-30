@@ -124,7 +124,7 @@ func newSiteMode(t *testing.T, mode string) *site {
 		t.Fatal(err)
 	}
 	svc := &auth.Service{DB: d, OwnerEmail: "owner@college.edu"}
-	if err := svc.Bootstrap(ctx, []string{"college.edu"}); err != nil {
+	if err := svc.Bootstrap(ctx); err != nil {
 		t.Fatal(err)
 	}
 	idp := authtest.New(t)
@@ -201,6 +201,14 @@ func (s *site) browser() *browser {
 // signIn runs the whole flow as person and returns the final URL.
 func (b *browser) signIn(person authtest.Person, next string) *url.URL {
 	b.s.t.Helper()
+	// Before v4 the test site allowed the college.edu domain; it now puts
+	// every college.edu address it signs in on the list, so only tests of
+	// the list itself use another domain.
+	if strings.HasSuffix(strings.ToLower(person.Email), "@college.edu") {
+		if _, err := b.s.db.Exec("INSERT OR IGNORE INTO users (email, created_at) VALUES (lower(?), 0)", person.Email); err != nil {
+			b.s.t.Fatal(err)
+		}
+	}
 	b.s.idp.SignInAs(person)
 	resp, err := b.client.Get(b.s.srv.URL + "/api/auth/google/start?next=" + url.QueryEscape(next))
 	if err != nil {
@@ -238,7 +246,7 @@ func (b *browser) me() (int, string) {
 	return code, role
 }
 
-func TestSignInAllowedAndDisallowedDomain(t *testing.T) {
+func TestSignInOnAndOffTheList(t *testing.T) {
 	s := newSite(t)
 
 	student := s.browser()
@@ -255,11 +263,11 @@ func TestSignInAllowedAndDisallowedDomain(t *testing.T) {
 
 	outsider := s.browser()
 	final = outsider.signIn(authtest.Person{Email: "friend@gmail.com", Verified: true}, "/")
-	if final.Path != "/signin" || final.Query().Get("error") != "domain" {
-		t.Fatalf("disallowed domain landed on %s", final)
+	if final.Path != "/signin" || final.Query().Get("error") != "not_listed" {
+		t.Fatalf("an address not on the list landed on %s", final)
 	}
 	if code, _ := outsider.me(); code != 401 {
-		t.Errorf("disallowed domain got a session: /api/me %d", code)
+		t.Errorf("an address not on the list got a session: /api/me %d", code)
 	}
 
 	unverified := s.browser()
@@ -310,9 +318,13 @@ func TestOwnerAddsAndRemovesAdmin(t *testing.T) {
 	if code, _ := ta.me(); code != 401 {
 		t.Errorf("removed admin's next request: %d, want 401 (their sessions end)", code)
 	}
-	// They are on a disallowed domain, so they cannot sign in again.
-	if final := s.browser().signIn(authtest.Person{Email: "ta@gmail.com", Verified: true}, "/"); final.Query().Get("error") != "domain" {
-		t.Errorf("removed admin signing in again landed on %s", final)
+	// Removing the role leaves them on the list as a student (V4-15).
+	again := s.browser()
+	if final := again.signIn(authtest.Person{Email: "ta@gmail.com", Verified: true}, "/"); final.Path != "/" {
+		t.Errorf("former organiser signing in again landed on %s", final)
+	}
+	if code, role := again.me(); code != 200 || role != "student" {
+		t.Errorf("former organiser: /api/me %d %q, want a student", code, role)
 	}
 
 	// The configured owner cannot be removed, and errors are JSON.
@@ -321,19 +333,13 @@ func TestOwnerAddsAndRemovesAdmin(t *testing.T) {
 		t.Errorf("changing the configured owner: %d %v", code, body)
 	}
 
-	// Domains.
-	if code, _ := owner.do("POST", "/api/admin/domains", map[string]string{"domain": "@cs.college.edu"}, origin); code != 201 {
-		t.Errorf("add domain: %d", code)
-	}
-	if code, _ := owner.do("DELETE", "/api/admin/domains/cs.college.edu", nil, origin); code != 204 {
-		t.Errorf("remove domain: %d", code)
-	}
-	if code, _ := owner.do("POST", "/api/admin/domains", map[string]string{"domain": "x", "extra": "y"}, origin); code != 400 {
+	// Bodies with unknown fields are refused.
+	if code, _ := owner.do("POST", "/api/admin/people/import", map[string]string{"text": "x@college.edu", "extra": "y"}, origin); code != 400 {
 		t.Errorf("unknown field: %d, want 400", code)
 	}
 
 	// A text/plain body, which a cross-site form could send, is refused.
-	req, _ := http.NewRequest("POST", s.srv.URL+"/api/admin/domains", strings.NewReader(`{"domain":"evil.edu"}`))
+	req, _ := http.NewRequest("POST", s.srv.URL+"/api/admin/people/import", strings.NewReader(`{"text":"evil@evil.edu"}`))
 	req.Header.Set("Content-Type", "text/plain")
 	req.Header.Set("Origin", origin)
 	if resp, err := owner.client.Do(req); err != nil || resp.StatusCode != http.StatusUnsupportedMediaType {
@@ -341,7 +347,7 @@ func TestOwnerAddsAndRemovesAdmin(t *testing.T) {
 	}
 
 	// Cross-site writes are refused even with a valid session.
-	if code, body := owner.do("POST", "/api/admin/domains", map[string]string{"domain": "evil.edu"}, "https://evil.example"); code != 403 {
+	if code, body := owner.do("POST", "/api/admin/people/import", map[string]string{"text": "evil@evil.edu"}, "https://evil.example"); code != 403 {
 		t.Errorf("cross-site POST: %d %v", code, body)
 	}
 
@@ -369,7 +375,7 @@ func TestCallbackWithoutStateIsExpired(t *testing.T) {
 func TestAuthConfig(t *testing.T) {
 	s := newSite(t)
 	code, body := s.browser().do("GET", "/api/auth/config", nil, "")
-	if code != 200 || body["contact_email"] != "owner@college.edu" || len(body["allowed_domains"].([]any)) != 1 {
+	if code != 200 || body["contact_email"] != "owner@college.edu" || body["allowed_domains"] != nil {
 		t.Errorf("config: %d %v", code, body)
 	}
 }
@@ -382,7 +388,7 @@ func TestSessionCookieFlags(t *testing.T) {
 	defer d.Close()
 	db.Migrate(ctx, d)
 	svc := &auth.Service{DB: d, OwnerEmail: "owner@college.edu"}
-	svc.Bootstrap(ctx, []string{"college.edu"})
+	svc.Bootstrap(ctx)
 	idp := authtest.New(t)
 	base := "https://contest.example.edu"
 	h := New(Deps{
@@ -398,7 +404,7 @@ func TestSessionCookieFlags(t *testing.T) {
 		t.Fatalf("sign-in state cookie: %+v", flow)
 	}
 
-	idp.SignInAs(authtest.Person{Email: "a@college.edu", Verified: true})
+	idp.SignInAs(authtest.Person{Email: "owner@college.edu", Verified: true})
 	noFollow := &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
 	resp, err := noFollow.Get(rec.Header().Get("Location"))
 	if err != nil {

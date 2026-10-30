@@ -4,7 +4,6 @@ import { parseConfig, parseMode, telHref } from './mode.svelte';
 describe('site config', () => {
   it('reads the organisation and the retention periods', () => {
     const c = parseConfig({
-      allowed_domains: ['college.edu', 7],
       contact_email: ' podium@college.edu ',
       mode: 'production',
       organisation: { name: 'Example College', contact_email: 'podium@college.edu', phone: '+91 80 1234 5678', privacy_contact: '' },
@@ -14,7 +13,6 @@ describe('site config', () => {
         'nonsense',
       ],
     });
-    expect(c.allowed_domains).toEqual(['college.edu']);
     expect(c.contact_email).toBe('podium@college.edu');
     expect(c.organisation).toEqual({ name: 'Example College', contact_email: 'podium@college.edu', phone: '+91 80 1234 5678', privacy_contact: '' });
     expect(c.retention.map((r) => r.id)).toEqual(['sessions']);

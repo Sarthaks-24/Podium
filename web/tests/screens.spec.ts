@@ -1,7 +1,7 @@
 // Screen sweep for the M1 identity screens. Every /api/ call is answered by
 // an in-test mock, one per page, so each test starts from the same fixtures:
 // signed out, a student, or an owner with three organisers (one locked) and
-// two allowed domains.
+// a student on the sign-in list.
 //
 // For each screen, in light and dark, at 375, 768, 1024 and 1440 px, the
 // sweep checks there is no horizontal page overflow, exactly one h1 and the
@@ -103,7 +103,7 @@ for (const width of [1440, 375]) {
     await expect(page.getByRole('tab', { name: 'Sign-in' })).toHaveAttribute('aria-selected', 'true');
     await expect(page).toHaveURL('/admin/people?tab=sign-in');
     const signIn = await tabThrough(page, 'Reset Google link');
-    for (const name of ['Remove @college.edu', 'Remove @cs.college.edu', 'Add domain', 'Reset Google link']) {
+    for (const name of ['Reset Google link']) {
       expect(signIn, `Tab did not reach "${name}"`).toContain(name);
     }
 
@@ -160,24 +160,6 @@ test('adding an organiser shows server errors inline and success as a toast', as
   await expect(page.locator('#person-error')).toHaveCount(0);
   await expect(page.getByRole('cell', { name: 'new.ta@college.edu', exact: true })).toBeVisible();
   await expect(email).toHaveValue('');
-});
-
-test('domains can be added and removed', async ({ page }) => {
-  await mockApi(page, 'owner');
-  await page.goto('/admin/people?tab=sign-in');
-
-  await page.getByLabel('Domain', { exact: true }).fill('@Alumni.College.edu');
-  await page.getByRole('button', { name: 'Add domain' }).click();
-  await expect(page.getByText('Added @alumni.college.edu')).toBeVisible();
-
-  await page.getByRole('button', { name: 'Remove @cs.college.edu' }).click();
-  const dialog = page.getByRole('dialog', { name: 'Remove @cs.college.edu from the allowed list?' });
-  await expect(dialog).toContainText(
-    'People with @cs.college.edu addresses will no longer be able to sign in. Existing organisers are not affected.',
-  );
-  await dialog.getByRole('button', { name: 'Remove' }).click();
-  await expect(page.getByText('Removed @cs.college.edu')).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Remove @cs.college.edu' })).toHaveCount(0);
 });
 
 test('resetting a Google account link asks first and reports errors inline', async ({ page }) => {
@@ -342,14 +324,14 @@ test('History of changes sits behind the Organisation tab, and lists and filters
   await expect(history.getByRole('listitem').first()).toContainText('priya@college.edu (Owner)');
   await expect(history.getByRole('listitem').last()).toContainText('The server');
 
-  await history.getByLabel('Kind of change').selectOption('domain_added');
+  await history.getByLabel('Kind of change').selectOption('list_imported');
   await expect(history.getByRole('listitem')).toHaveCount(1);
-  await expect(history).toContainText('Allowed @cs.college.edu to sign in');
+  await expect(history).toContainText('Added 12 people to the list');
   await history.getByLabel('Kind of change').selectOption('');
   await history.getByLabel('Email contains').fill('nobody');
   await history.getByRole('button', { name: 'Search' }).click();
   await expect(history).toContainText('No change matches. Clear the filter to see everything.');
-  expect(api.auditQueries).toContain('page=1&action=domain_added');
+  expect(api.auditQueries).toContain('page=1&action=list_imported');
   expect(api.auditQueries).toContain('page=1&q=nobody');
   await page.keyboard.press('Escape');
   await expect(history).toBeHidden();
@@ -380,7 +362,7 @@ test('each Settings tab at 1440 px is under 1,000 px tall, and shows one tab at 
 
 test('the first-contest checklist appears once: on the contests home, never in Settings', async ({ page }) => {
   const api = await mockApi(page, 'owner');
-  api.domains = [];
+  api.list = [];
   api.people = api.people.filter((p) => p.locked);
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto('/');
@@ -391,8 +373,8 @@ test('the first-contest checklist appears once: on the contests home, never in S
   await expect(checklist.getByRole('listitem').nth(1)).toContainText('To do');
 
   await checklist.getByRole('listitem').nth(0).getByRole('link', { name: 'Settings' }).click();
-  await expect(page).toHaveURL('/admin/people?tab=sign-in');
-  await expect(page.getByRole('tab', { name: 'Sign-in' })).toHaveAttribute('aria-selected', 'true');
+  await expect(page).toHaveURL('/admin/people');
+  await expect(page.getByRole('tab', { name: 'People' })).toHaveAttribute('aria-selected', 'true');
   for (const tab of ['People', 'Sign-in', 'Organisation']) {
     await page.getByRole('tab', { name: tab }).click();
     await expect(page.getByRole('tabpanel')).toBeVisible();
@@ -400,10 +382,8 @@ test('the first-contest checklist appears once: on the contests home, never in S
     await expect(page.getByText('Getting started')).toHaveCount(0);
     await expect(page.getByText('To do', { exact: true })).toHaveCount(0);
   }
-  await page.getByRole('tab', { name: 'Sign-in' }).click();
-  await page.getByLabel('Domain', { exact: true }).fill('college.edu');
-  await page.getByRole('button', { name: 'Add domain' }).click();
-  await expect(toasts(page).getByText('Added @college.edu')).toBeVisible();
+  // Someone puts a student on the list (People, O4); the step is then done.
+  api.list = [{ role: 'student' }];
   await page.getByRole('navigation', { name: 'Main' }).getByRole('link', { name: 'Contests' }).click();
   await expect(page.getByRole('region', { name: 'Your first contest' }).getByRole('listitem').nth(0)).toContainText('Done');
 });
@@ -670,10 +650,10 @@ test('a first-run owner sees the steps to a first contest, with what is done (C2
   await page.goto('/');
   const steps = page.getByRole('region', { name: 'Your first contest' }).getByRole('listitem');
   await expect(steps).toHaveCount(5);
-  // Domains and other organisers exist in the mock, validated problems do not.
-  await expect(steps.nth(0)).toContainText("Allow your college's email domain in Settings, so students can sign in.");
+  // Students on the list and other organisers exist in the mock, validated problems do not.
+  await expect(steps.nth(0)).toContainText('Add your students to the list in Settings, so they can sign in.');
   await expect(steps.nth(0)).toContainText('Done');
-  await expect(steps.nth(0).getByRole('link', { name: 'Settings' })).toHaveAttribute('href', '/admin/people?tab=sign-in');
+  await expect(steps.nth(0).getByRole('link', { name: 'Settings' })).toHaveAttribute('href', '/admin/people');
   await expect(steps.nth(1)).toContainText('Done');
   await expect(steps.nth(1).getByRole('link', { name: 'Settings' })).toHaveAttribute('href', '/admin/people');
   await expect(steps.nth(2)).toContainText('To do');

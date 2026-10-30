@@ -1,7 +1,8 @@
 // Package auth owns identity: Google sign-in (OpenID Connect with PKCE and
-// a verified ID token), the server-side email-domain check, sessions stored
-// by token hash, the owner/admin/student roles, the owner bootstrapped from
-// configuration, and the allowed-domain list. It also keeps the site audit
+// a verified ID token), the list of people who may sign in (list.go),
+// sessions stored by token hash, the four roles and who may change whose
+// account (rules.go), and the owner bootstrapped from configuration. It
+// also keeps the site audit
 // log, the organisation's site settings, the run-mode record and account
 // lookup, and erases a person (forget-user). Its HTTP handlers (http.go)
 // serve the People page; sign-in and the session cookie stay with the
@@ -19,7 +20,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Sarthaks-24/podium/internal/config"
 	"github.com/Sarthaks-24/podium/internal/retention"
 )
 
@@ -73,7 +73,6 @@ const SessionTTL = retention.Sessions
 
 // Sign-in refusals. Handlers map them to the /signin?error= codes.
 var (
-	ErrDomain     = errors.New("email domain not allowed")
 	ErrUnverified = errors.New("email not verified")
 	ErrDisabled   = errors.New("account disabled")
 	// ErrAccount: the email is bound to a different Google account (or this
@@ -82,8 +81,8 @@ var (
 	ErrNoSession = errors.New("no valid session")
 )
 
-// ChangeError is a refused change to people or domains, with a message for
-// people. Kind is "invalid", "not_found" or "conflict".
+// ChangeError is a refused change to people, with a message for people.
+// Kind is "invalid", "not_found", "conflict" or "forbidden".
 type ChangeError struct {
 	Kind    string
 	Message string
@@ -115,65 +114,29 @@ func (s *Service) now() time.Time {
 	return time.Now()
 }
 
-// Bootstrap makes OwnerEmail an owner, creating the user if needed. On a
-// fresh install (no users yet) it also seeds the allowed domains; after that
-// owners manage the list in the web app and configuration no longer
-// overrides it.
-func (s *Service) Bootstrap(ctx context.Context, seedDomains []string) error {
-	tx, err := s.DB.BeginTx(ctx, nil)
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback()
-	var users int
-	if err := tx.QueryRowContext(ctx, "SELECT count(*) FROM users").Scan(&users); err != nil {
-		return err
-	}
-	now := s.now().UnixMilli()
-	if _, err := tx.ExecContext(ctx, `INSERT INTO users (email, role, created_at) VALUES (?, 'owner', ?)
-		ON CONFLICT (email) DO UPDATE SET role = 'owner', disabled = 0`, s.OwnerEmail, now); err != nil {
+// Bootstrap makes OwnerEmail an owner, creating the user if needed and
+// re-enabling them: the configured owner is always on the list, which is
+// how an owner locked out of the Dashboard gets back in.
+func (s *Service) Bootstrap(ctx context.Context) error {
+	if _, err := s.DB.ExecContext(ctx, `INSERT INTO users (email, role, created_at) VALUES (?, 'owner', ?)
+		ON CONFLICT (email) DO UPDATE SET role = 'owner', disabled = 0`, s.OwnerEmail, s.now().UnixMilli()); err != nil {
 		return fmt.Errorf("bootstrap owner: %w", err)
 	}
-	if users == 0 {
-		for _, d := range seedDomains {
-			if _, err := tx.ExecContext(ctx, "INSERT OR IGNORE INTO allowed_domains (domain, created_at) VALUES (?, ?)", d, now); err != nil {
-				return fmt.Errorf("seed domains: %w", err)
-			}
-		}
-	}
-	return tx.Commit()
-}
-
-// AllowedDomains lists the allowed email domains, sorted.
-func (s *Service) AllowedDomains(ctx context.Context) ([]Domain, error) {
-	rows, err := s.DB.QueryContext(ctx, "SELECT domain, created_at FROM allowed_domains ORDER BY domain")
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	out := []Domain{}
-	for rows.Next() {
-		var d Domain
-		if err := rows.Scan(&d.Domain, &d.CreatedAt); err != nil {
-			return nil, err
-		}
-		out = append(out, d)
-	}
-	return out, rows.Err()
+	return nil
 }
 
 // SignIn applies the sign-in rules to a verified identity and starts a
-// session. The email may sign in when its domain is allowed, when the
-// account already holds the organiser or owner role, or when it is OwnerEmail.
-// It returns the session token for the cookie and its expiry.
+// session. The email may sign in only when it is on the list (list.go) and
+// not disabled; an address that is not is recorded as refused. The row is
+// bound to the first Google account that signs in with it. It returns the
+// session token for the cookie and its expiry.
 func (s *Service) SignIn(ctx context.Context, id Identity, ip, userAgent string) (User, string, time.Time, error) {
 	if !id.EmailVerified {
 		return User{}, "", time.Time{}, ErrUnverified
 	}
-	email := strings.ToLower(id.Email)
-	at := strings.LastIndexByte(email, '@')
-	if at < 1 {
-		return User{}, "", time.Time{}, ErrDomain
+	email := strings.ToLower(strings.TrimSpace(id.Email))
+	if !validEmail(email) {
+		return User{}, "", time.Time{}, ErrNotListed
 	}
 	tx, err := s.DB.BeginTx(ctx, nil)
 	if err != nil {
@@ -181,12 +144,20 @@ func (s *Service) SignIn(ctx context.Context, id Identity, ip, userAgent string)
 	}
 	defer tx.Rollback()
 
-	var role Role = Student
+	userID, _, found, err := listed(ctx, tx, email)
+	if err != nil {
+		return User{}, "", time.Time{}, err
+	}
+	if !found {
+		tx.Rollback()
+		if err := s.recordRefusal(ctx, email); err != nil {
+			return User{}, "", time.Time{}, err
+		}
+		return User{}, "", time.Time{}, ErrNotListed
+	}
 	var disabled bool
 	var boundSub sql.NullString
-	err = tx.QueryRowContext(ctx, "SELECT role, disabled, google_sub FROM users WHERE email = ?", email).Scan(&role, &disabled, &boundSub)
-	exists := err == nil
-	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+	if err := tx.QueryRowContext(ctx, "SELECT disabled, google_sub FROM users WHERE id = ?", userID).Scan(&disabled, &boundSub); err != nil {
 		return User{}, "", time.Time{}, err
 	}
 	// The account is bound to the first Google account that signed in with
@@ -195,43 +166,24 @@ func (s *Service) SignIn(ctx context.Context, id Identity, ip, userAgent string)
 	if id.Subject == "" || (boundSub.Valid && boundSub.String != id.Subject) {
 		return User{}, "", time.Time{}, ErrAccount
 	}
-	var otherEmail string
-	err = tx.QueryRowContext(ctx, "SELECT email FROM users WHERE google_sub = ? AND email <> ?", id.Subject, email).Scan(&otherEmail)
+	var otherID int64
+	err = tx.QueryRowContext(ctx, "SELECT id FROM users WHERE google_sub = ? AND id <> ?", id.Subject, userID).Scan(&otherID)
 	if err == nil {
 		return User{}, "", time.Time{}, ErrAccount // this Google account is linked to another address
 	}
 	if !errors.Is(err, sql.ErrNoRows) {
 		return User{}, "", time.Time{}, err
 	}
-	if !(email == s.OwnerEmail || (exists && role.AtLeast(Organiser))) {
-		domain := email[at+1:]
-		var workspace bool
-		err := tx.QueryRowContext(ctx, "SELECT workspace FROM allowed_domains WHERE domain = ?", domain).Scan(&workspace)
-		if errors.Is(err, sql.ErrNoRows) {
-			return User{}, "", time.Time{}, ErrDomain
-		}
-		if err != nil {
-			return User{}, "", time.Time{}, err
-		}
-		switch {
-		case id.HostedDomain == domain && !workspace:
-			if _, err := tx.ExecContext(ctx, "UPDATE allowed_domains SET workspace = 1 WHERE domain = ?", domain); err != nil {
-				return User{}, "", time.Time{}, err
-			}
-		case id.HostedDomain != domain && workspace:
-			return User{}, "", time.Time{}, ErrDomain
-		}
-	}
 	if disabled {
 		return User{}, "", time.Time{}, ErrDisabled
 	}
 
 	now := s.now()
-	u := User{Email: email, Name: limit(id.Name, 200), AvatarURL: safeAvatar(id.Picture)}
-	err = tx.QueryRowContext(ctx, `INSERT INTO users (email, name, avatar_url, google_sub, created_at, last_login_at) VALUES (?, ?, ?, ?, ?, ?)
-		ON CONFLICT (email) DO UPDATE SET name = excluded.name, avatar_url = excluded.avatar_url,
-			google_sub = excluded.google_sub, last_login_at = excluded.last_login_at
-		RETURNING id, role, theme, verdicts`, email, u.Name, u.AvatarURL, id.Subject, now.UnixMilli(), now.UnixMilli()).Scan(&u.ID, &u.Role, &u.Theme, &u.Verdicts)
+	u := User{ID: userID, Name: limit(id.Name, 200), AvatarURL: safeAvatar(id.Picture)}
+	// The row keeps the address as it was listed; a dotted Gmail spelling
+	// from Google does not rename it.
+	err = tx.QueryRowContext(ctx, `UPDATE users SET name = ?, avatar_url = ?, google_sub = ?, last_login_at = ? WHERE id = ?
+		RETURNING email, role, theme, verdicts`, u.Name, u.AvatarURL, id.Subject, now.UnixMilli(), userID).Scan(&u.Email, &u.Role, &u.Theme, &u.Verdicts)
 	if err != nil {
 		return User{}, "", time.Time{}, fmt.Errorf("record user: %w", err)
 	}
@@ -346,12 +298,6 @@ type Person struct {
 	Locked bool `json:"locked"`
 	// Disabled marks an account an owner has disabled (accounts.go).
 	Disabled bool `json:"disabled"`
-}
-
-// Domain is an allowed email domain.
-type Domain struct {
-	Domain    string `json:"domain"`
-	CreatedAt int64  `json:"created_at"`
 }
 
 // Organisers lists everyone with the organiser, admin or owner role,
@@ -483,66 +429,6 @@ func (s *Service) RevokeRole(ctx context.Context, id int64) error {
 	return tx.Commit()
 }
 
-// AddDomain allows a domain; adding one already present returns it with
-// created false.
-func (s *Service) AddDomain(ctx context.Context, domain string) (Domain, bool, error) {
-	d, ok := normaliseDomain(domain)
-	if !ok {
-		return Domain{}, false, invalid("Enter a domain such as college.edu.")
-	}
-	tx, err := s.DB.BeginTx(ctx, nil)
-	if err != nil {
-		return Domain{}, false, err
-	}
-	defer tx.Rollback()
-	res, err := tx.ExecContext(ctx, "INSERT OR IGNORE INTO allowed_domains (domain, created_at) VALUES (?, ?)", d, s.now().UnixMilli())
-	if err != nil {
-		return Domain{}, false, err
-	}
-	created, _ := res.RowsAffected()
-	if created == 1 {
-		if err := s.recordSite(ctx, tx, AuditDomainAdded, "", map[string]any{"domain": d}); err != nil {
-			return Domain{}, false, err
-		}
-	}
-	var out Domain
-	if err := tx.QueryRowContext(ctx, "SELECT domain, created_at FROM allowed_domains WHERE domain = ?", d).Scan(&out.Domain, &out.CreatedAt); err != nil {
-		return Domain{}, false, err
-	}
-	return out, created == 1, tx.Commit()
-}
-
-// RemoveDomain stops sign-ins from a domain and ends the sessions of
-// students on it. Organisers on it keep access because their role, not the
-// domain, admits them.
-func (s *Service) RemoveDomain(ctx context.Context, domain string) error {
-	d, _ := normaliseDomain(domain)
-	tx, err := s.DB.BeginTx(ctx, nil)
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback()
-	res, err := tx.ExecContext(ctx, "DELETE FROM allowed_domains WHERE domain = ?", d)
-	if err != nil {
-		return err
-	}
-	if n, _ := res.RowsAffected(); n == 0 {
-		return notFound("That domain is not on the allowed list.")
-	}
-	// Compare the email's suffix exactly; LIKE would treat _ as a wildcard.
-	res, err = tx.ExecContext(ctx, `DELETE FROM sessions WHERE user_id IN (
-		SELECT id FROM users WHERE role = 'student' AND email <> ? AND substr(lower(email), -length(?) - 1) = '@' || ?)`,
-		s.OwnerEmail, d, d)
-	if err != nil {
-		return err
-	}
-	ended, _ := res.RowsAffected()
-	if err := s.recordSite(ctx, tx, AuditDomainRemoved, "", map[string]any{"domain": d, "sessions_ended": ended}); err != nil {
-		return err
-	}
-	return tx.Commit()
-}
-
 func hashToken(token string) string {
 	sum := sha256.Sum256([]byte(token))
 	return hex.EncodeToString(sum[:])
@@ -555,8 +441,6 @@ func limit(s string, n int) string {
 	}
 	return strings.ToValidUTF8(s[:n], "")
 }
-
-var normaliseDomain = config.NormaliseDomain
 
 // safeAvatar keeps only https avatar URLs from Google's image host, which
 // is the one external image source the Content-Security-Policy allows.

@@ -50,7 +50,7 @@ func newServices(ctx context.Context, cfg config.Server, database *sql.DB, log *
 		aiKeys:    &ai.Keys{},
 		retention: &retention.Job{DB: database, Log: log}}
 	s.auth = &auth.Service{DB: database, OwnerEmail: cfg.OwnerEmail}
-	if err := s.auth.Bootstrap(ctx, cfg.AllowedDomains); err != nil {
+	if err := s.auth.Bootstrap(ctx); err != nil {
 		return nil, err
 	}
 	// Nothing made in testing mode may survive into another mode.
@@ -58,7 +58,7 @@ func newServices(ctx context.Context, cfg config.Server, database *sql.DB, log *
 		return nil, fmt.Errorf("record run mode: %w", err)
 	} else if ch.Changed {
 		log.Warn("run mode differs from the database's last start: every session ended",
-			"from", ch.Previous, "to", cfg.Mode, "sessions_ended", ch.SessionsEnded, "organisers_demoted", ch.Demoted)
+			"from", ch.Previous, "to", cfg.Mode, "sessions_ended", ch.SessionsEnded, "organisers_demoted", ch.Demoted, "testing_accounts_disabled", ch.Disabled)
 	}
 
 	// Outputs a generate job's worker uploaded but nothing used are deleted

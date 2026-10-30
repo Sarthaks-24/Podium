@@ -301,7 +301,7 @@ export async function mockApi(page: Page, options: Options = {}) {
       const me = state.who === 'organiser' ? ADMIN : STUDENT;
 
       if (path === '/api/me') return json(route, 200, me);
-      if (path === '/api/auth/config') return json(route, 200, { mode: 'production', allowed_domains: ['college.edu'], contact_email: 'priya@college.edu' });
+      if (path === '/api/auth/config') return json(route, 200, { mode: 'production', contact_email: 'priya@college.edu' });
       if (path === '/api/events') return route.fulfill({ status: 200, headers: { 'Content-Type': 'text/event-stream' }, body: '' });
       if (path === '/api/contests') return json(route, 200, { live: [], upcoming: [], past: [{ slug: 'week-6', title: 'Week 6 contest', starts_at: endsAt - 2 * 3_600_000, ends_at: endsAt, problem_count: 2, state: 'ended', my_score: 140, max_score: 200, my_window: null }], server_now: Date.now() });
 

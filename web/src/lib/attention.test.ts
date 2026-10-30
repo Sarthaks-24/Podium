@@ -95,10 +95,10 @@ describe('organiser state words', () => {
 describe('publishChecks', () => {
   const c = { problems: [{ label: 'A', ready: true }], languages: ['cpp17'], starts_at: T + MIN, freeze_minutes: 0, hold_reveal: true };
 
-  it('lets the allowed domains take part and warns about a held board with no freeze', () => {
+  it('lets everyone on the sign-in list take part and warns about a held board with no freeze', () => {
     const out = publishChecks(c, false, T);
     expect(out.filter((x) => x.tone === 'bad')).toEqual([]);
-    expect(out).toContainEqual({ tone: 'ok', text: 'Anyone from the allowed domains can take part.' });
+    expect(out).toContainEqual({ tone: 'ok', text: 'Everyone on the sign-in list can take part.' });
     expect(out.at(-1)).toEqual({ tone: 'part', text: 'Results stay hidden until you reveal them, but none are hidden at the end, so there is nothing to reveal.' });
   });
 

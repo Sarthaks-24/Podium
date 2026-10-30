@@ -5,7 +5,6 @@ import (
 	"log/slog"
 	"net"
 	"net/mail"
-	"regexp"
 	"strings"
 )
 
@@ -21,7 +20,6 @@ var ServerVars = []Var{
 	{Name: "PODIUM_DB_PATH", Default: "data/podium.db"},
 	{Name: "PODIUM_TESTS_DIR", Default: "data/tests"},
 	{Name: "PODIUM_OWNER_EMAIL"},
-	{Name: "PODIUM_ALLOWED_DOMAINS"},
 	{Name: "PODIUM_SESSION_SECRET", Secret: true},
 	{Name: "GOOGLE_CLIENT_ID"},
 	{Name: "GOOGLE_CLIENT_SECRET", Secret: true},
@@ -48,9 +46,6 @@ type Server struct {
 	// OwnerEmail is always an owner; it is the recovery path if every other
 	// owner is removed, and the contact shown on the sign-in page.
 	OwnerEmail string
-	// AllowedDomains seeds the allowed-domain list on first start only;
-	// afterwards owners manage the list in the web app.
-	AllowedDomains []string
 	// SessionSecret signs the short-lived sign-in state cookie. In testing
 	// mode without one, a random secret is made for this run.
 	SessionSecret []byte
@@ -66,15 +61,6 @@ type Server struct {
 
 // minSecretLen is the shortest accepted PODIUM_SESSION_SECRET.
 const minSecretLen = 32
-
-var domainPattern = regexp.MustCompile(`^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$`)
-
-// NormaliseDomain lowercases d, strips a leading "@" and reports whether the
-// result is a valid DNS domain.
-func NormaliseDomain(d string) (string, bool) {
-	d = strings.ToLower(strings.TrimPrefix(strings.TrimSpace(d), "@"))
-	return d, len(d) <= 253 && domainPattern.MatchString(d)
-}
 
 // LoadServer validates the server configuration. On failure the error lists
 // every problem at once and names the file to fix. What is required depends
@@ -120,17 +106,6 @@ func LoadServer(get Getenv) (Server, error) {
 		c.OwnerEmail = testingOwner
 	}
 	need("PODIUM_OWNER_EMAIL", c.OwnerEmail)
-	for _, d := range strings.Split(r.str("PODIUM_ALLOWED_DOMAINS"), ",") {
-		if strings.TrimSpace(d) == "" {
-			continue
-		}
-		nd, ok := NormaliseDomain(d)
-		if !ok {
-			r.p.add("PODIUM_ALLOWED_DOMAINS must be a comma-separated list of domains such as college.edu")
-			break
-		}
-		c.AllowedDomains = append(c.AllowedDomains, nd)
-	}
 	if s := r.str("PODIUM_SESSION_SECRET"); s != "" {
 		if len(s) < minSecretLen || strings.Contains(s, "change-me") {
 			r.p.add("PODIUM_SESSION_SECRET must be a random string of at least %d characters (for example from: openssl rand -base64 48)", minSecretLen)

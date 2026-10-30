@@ -225,8 +225,7 @@ Listed in the order the server reads them. The testing, dev and production colum
 | `PODIUM_JUDGE_LISTEN` | optional | optional | optional | `127.0.0.1:8081` | Address of the judge worker API. Must be loopback in every mode and differ from `PODIUM_LISTEN` (see "Judge API listener"). |
 | `PODIUM_DB_PATH` | optional | optional | optional | `data/podium.db` | SQLite file. On the VM use `/var/lib/podium/db/podium.db`. |
 | `PODIUM_TESTS_DIR` | optional | optional | optional | `data/tests` | Test files and program sources by SHA-256. On the VM use `/var/lib/podium/tests`. |
-| `PODIUM_OWNER_EMAIL` | optional | required | required | testing: `owner@podium.test` | Your Google account. Always an owner, may sign in from any domain, and is shown as the organiser to contact. The recovery path if every other owner is removed. |
-| `PODIUM_ALLOWED_DOMAINS` | optional | optional | optional | none | Comma-separated email domains, read only on the very first start to seed the list. Afterwards owners manage it in Settings, on the Sign-in tab. |
+| `PODIUM_OWNER_EMAIL` | optional | required | required | testing: `owner@podium.test` | Your Google account. Always an owner and always on the sign-in list (the server puts it back at every start), and shown as the organiser to contact. The recovery path if every other owner is removed or the list locks you out. |
 | `PODIUM_SESSION_SECRET` | optional | required | required | testing: random per run | At least 32 random characters (`openssl rand -base64 48`). Signs the sign-in state cookie. Changing it only interrupts sign-ins in progress. Secret. |
 | `GOOGLE_CLIENT_ID` | not read | required | required | | OAuth client ID from the Google Cloud console (see below). |
 | `GOOGLE_CLIENT_SECRET` | not read | required | required | | That client's secret. Secret. |
@@ -252,9 +251,9 @@ Needed in dev and production mode only.
 | In production (External) | students sign in with accounts outside one Workspace | choose "Publish app". With only `openid`, `email` and `profile` Google does not require a verification review, but the consent screen shows the app name you set |
 | Testing | never on the VM | 100 listed test users, 7-day sign-ins |
 
-The real-domain sign-in drill (a non-owner student account on an allowed domain signing in over HTTPS and submitting) is the proof; it is one of the drills in `docs/RUNBOOK.md`, "Proving the safety net".
+The real-domain sign-in drill (a non-owner student account on the sign-in list signing in over HTTPS and submitting) is the proof; it is one of the drills in `docs/RUNBOOK.md`, "Proving the safety net".
 
-Who can sign in: anyone whose verified Google email is on an allowed domain, anyone holding the admin or owner role (on any domain), and `PODIUM_OWNER_EMAIL`. Removing an admin ends their sessions at once; removing a domain ends the sessions of students on it.
+Who can sign in: anyone whose verified Google email is on the list of people in Settings, People (V4-15), and is not disabled; `PODIUM_OWNER_EMAIL` is always on it. Gmail addresses match however their dots are placed. A refused address is kept (the 500 most recent) so an owner or an admin can let it in with one click. Removing someone who signed in disables the account and ends their sessions at once.
 
 `PODIUM_BASE_URL` must be just the scheme and host (no path); podium runs at the root of its own host name.
 
@@ -411,7 +410,7 @@ A retried Submit with the same `client_key` returns the first submission and is 
 
 All of this is in the web app, on the contest's tabs Setup, Live and Results; the routes are in `docs/API.md`. Only owners and admins organise contests.
 
-**Before.** In Setup, add validated problems (each is pinned to the version you validated; adding, removing and reordering save at once), or use "Add to contest" in the problem editor. Every field saves as it changes. Six inputs show (title, problems, start, length in minutes, hidden minutes at the end, languages); the rest, the four exam options among them, sits under Advanced. Then publish with "Publish contest" in the title row: it asks first and lists the checks beside the form (problems validated, the start ahead, a language). An unpublished contest reads "Draft" on every organiser screen. Publishing refuses a problem that changed since it was added. Who may take part is decided by the allowed domains in Settings: anyone who can sign in can enter a published contest. The honour code students accept lists what is recorded and for how long, and, when exam options are on, which measures apply.
+**Before.** In Setup, add validated problems (each is pinned to the version you validated; adding, removing and reordering save at once), or use "Add to contest" in the problem editor. Every field saves as it changes. Six inputs show (title, problems, start, length in minutes, hidden minutes at the end, languages); the rest, the four exam options among them, sits under Advanced. Then publish with "Publish contest" in the title row: it asks first and lists the checks beside the form (problems validated, the start ahead, a language). An unpublished contest reads "Draft" on every organiser screen. Publishing refuses a problem that changed since it was added. Who may take part is decided by the list of people in Settings: anyone who can sign in can enter a published contest. The honour code students accept lists what is recorded and for how long, and, when exam options are on, which measures apply.
 
 **During.** Live opens with one sentence on how it is going ("Live, 30 started, 1 question waiting, judge fine." or "Judge not seen for 3 minutes."; the second means no judge is working: check `podium-judge` on the VM), then Announce, Extend, Extra time, Pause judging, History of changes and If something goes wrong. Banners appear only when something needs action: an edited problem students have not got yet, tests that changed, a judge that is not taking work, judge errors. Questions sit beside the work from 1024 px and come first on phones. Every announcement asks before it reaches every student; after Pause, Resume, Extend and Judge again a suggested announcement waits in the box and is never posted by itself.
 
@@ -596,7 +595,7 @@ The retention pass starts a minute after the server and then runs every 12 hours
 
 The organisation details the sign-in page, the footer and the privacy page show: name, contact email, phone and privacy contact. An owner enters them on the Organisation tab of Settings (`PUT /api/admin/site-settings`); they are stored in the database's `settings` table, not in an environment variable, and every change writes a `settings_changed` row to the site audit. Until they are entered the pages show nothing for them: the footer and the sign-in page fall back to `PODIUM_OWNER_EMAIL` as the contact address. Enter a role address (for example `podium@college.edu`) as the contact email so the owner's own address stops appearing on the sign-in page. That address is how people reach the organisers: v3 has no contact form (V3-4).
 
-What a visitor can read without signing in is listed in `docs/API.md` (`GET /api/auth/config`): allowed domains, run mode, these settings and the retention periods. Nothing about contests.
+What a visitor can read without signing in is listed in `docs/API.md` (`GET /api/auth/config`): the contact address, run mode, these settings and the retention periods. Nothing about contests.
 
 ## Erasing a person
 

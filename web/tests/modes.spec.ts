@@ -14,7 +14,7 @@ async function mock(page: Page, mode: string) {
     async (route) => {
       const req = route.request();
       const path = new URL(req.url()).pathname;
-      if (path === '/api/auth/config') return json(route, 200, { allowed_domains: ['college.edu'], contact_email: 'owner@podium.test', mode });
+      if (path === '/api/auth/config') return json(route, 200, { contact_email: 'owner@podium.test', mode });
       if (path === '/api/auth/test-signin') {
         const body = req.postDataJSON() as { email: string; role: string };
         state.posted.push(body);

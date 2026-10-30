@@ -733,7 +733,7 @@ export interface PublishCheck {
  * What a contest needs before students can have it, from the
  * data the editor already holds: at least one problem and none changed
  * since it was added, a start still ahead (until it starts), and a
- * language. Who takes part is decided by the allowed domains. The
+ * language. Who takes part is the sign-in list (V4-15). The
  * server checks again when it publishes.
  */
 export function publishChecks(
@@ -754,7 +754,7 @@ export function publishChecks(
   if (!started) {
     out.push(c.starts_at > now ? { tone: 'ok', text: `Starts ${formatDateTime(c.starts_at)}.` } : { tone: 'part', text: 'The start time has passed. Move it ahead, or students start at once.' });
   }
-  out.push({ tone: 'ok', text: 'Anyone from the allowed domains can take part.' });
+  out.push({ tone: 'ok', text: 'Everyone on the sign-in list can take part.' });
   out.push(c.languages.length > 0 ? { tone: 'ok', text: `${c.languages.length} ${c.languages.length === 1 ? 'language' : 'languages'} allowed.` } : { tone: 'bad', text: 'Allow at least one language.' });
   if (c.hold_reveal && c.freeze_minutes <= 0) out.push({ tone: 'part', text: 'Results stay hidden until you reveal them, but none are hidden at the end, so there is nothing to reveal.' });
   return out;

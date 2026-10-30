@@ -1230,7 +1230,7 @@ test('publishing a draft asks first, listing the checks, and a refusal names the
   await expect(page.getByText(/^Not published\. 1 problem, starts/)).toBeVisible();
   await page.getByRole('button', { name: 'Publish contest' }).click();
   const publish = page.getByRole('dialog', { name: 'Publish Week 6 contest?' });
-  await expect(publish).toContainText('Students from the allowed domains see it in their contest list at once.');
+  await expect(publish).toContainText('Everyone on the sign-in list sees it in their contest list at once.');
   await expect(publish).toContainText('1 problem, all validated.');
   await publish.getByRole('button', { name: 'Publish contest' }).click();
   await expect(page.locator('#publish-error')).toHaveText('Problem B changed or lost its validation since it was added. Validate it and add it again.');

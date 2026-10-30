@@ -73,8 +73,10 @@ export interface SiteAuditPage {
 export const SITE_ACTIONS: readonly { id: string; label: string }[] = [
   { id: 'role_granted', label: 'Role given' },
   { id: 'role_revoked', label: 'Role removed' },
-  { id: 'domain_added', label: 'Domain added' },
-  { id: 'domain_removed', label: 'Domain removed' },
+  { id: 'person_added', label: 'Added to the list' },
+  { id: 'list_imported', label: 'List pasted' },
+  { id: 'person_removed', label: 'Removed from the list' },
+  { id: 'let_in', label: 'Let in' },
   { id: 'account_disabled', label: 'Account disabled' },
   { id: 'account_enabled', label: 'Account enabled' },
   { id: 'sessions_ended', label: 'Sessions ended' },
@@ -118,6 +120,15 @@ export function siteAuditSummary(e: Pick<SiteAuditEntry, 'action' | 'subject_ema
         : `Made ${who} an ${roleWord(d.role)}`;
     case 'role_revoked':
       return `Removed ${who} as ${roleWord(d.from_role)}${ended(d.sessions_ended)}`;
+    case 'person_added':
+      return `Added ${who} to the list`;
+    case 'list_imported':
+      return `Added ${countOf(typeof d.added === 'number' ? d.added : 0, 'person', 'people')} to the list`;
+    case 'person_removed':
+      return d.deleted === true ? `Removed ${who} from the list` : `Removed ${who} from the list and disabled the account${ended(d.sessions_ended)}`;
+    case 'let_in':
+      return `Let ${who} in after a refused sign-in`;
+    // Rows from before v4 (V4-15).
     case 'domain_added':
       return `Allowed @${str('domain')} to sign in`;
     case 'domain_removed':

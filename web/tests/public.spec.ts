@@ -32,8 +32,7 @@ export const RETENTION = [
 ];
 
 export const CONFIG = {
-  allowed_domains: ['college.edu'],
-  contact_email: 'podium@college.edu',
+    contact_email: 'podium@college.edu',
   mode: 'production',
   organisation: { name: 'Example College of Engineering', contact_email: 'podium@college.edu', phone: '+91 80 1234 5678', privacy_contact: 'privacy@college.edu' },
   retention: RETENTION,
@@ -119,7 +118,7 @@ test('sign-in names the organisation and how to reach it, and explains a rate li
 });
 
 test('an organisation with nothing entered shows nothing made up', async ({ page }) => {
-  await mockApi(page, 'signed-out', { config: { allowed_domains: ['college.edu'], contact_email: '', mode: 'production', organisation: { name: '', contact_email: '', phone: '', privacy_contact: '' }, retention: [] } });
+  await mockApi(page, 'signed-out', { config: { contact_email: '', mode: 'production', organisation: { name: '', contact_email: '', phone: '', privacy_contact: '' }, retention: [] } });
   await page.goto('/signin');
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('Weekly programming contests');
   await expect(page.getByText('Contact the organisers')).toHaveCount(0);

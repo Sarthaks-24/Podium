@@ -11,7 +11,7 @@ Two people make contest day easy: one on the contest's Live tab in the browser (
 - [ ] Every problem in the contest shows "Validated" with a time after its last edit, and was added to the contest after that validation (publishing refuses anything else).
 - [ ] Time limits are at least 3 times the C++ reference's time, and the validation report shows no warnings about test count (6 to 10 hidden tests), maximum-size tests (at most 2 per subtask) or output size (under 1 MB). Each extra second of tests costs every submission.
 - [ ] A second organiser has read each statement; the samples match the Input and Output sections.
-- [ ] The contest is set up in Setup: title, problems, start, length, hidden minutes at the end, languages; under Advanced the rate limits (30 s gap and 15 per problem unless the class is small) and, for an examination only, the exam options. Everyone on an allowed domain can enter (Settings, Sign-in tab), so check the domain list.
+- [ ] The contest is set up in Setup: title, problems, start, length, hidden minutes at the end, languages; under Advanced the rate limits (30 s gap and 15 per problem unless the class is small) and, for an examination only, the exam options. Everyone on the sign-in list can enter (Settings, People), so check the list and its refused addresses.
 - [ ] A practice contest with two easy problems is open, so first-timers learn the editor, Run and Submit before it counts.
 - [ ] Backups are healthy: `systemctl status podium-litestream` is active and `journalctl -u podium-litestream -n 20` shows recent syncs; `sudo ls -l /var/backups/podium` shows last night's backup, and `journalctl -u podium-backup -n 20` ends with `done in`. `sudo /usr/local/lib/podium/install.sh verify` ends with "everything checked is in order", and no alert is open on your phone.
 - [ ] Before the first contest, and after any change to the backup setup: the timed restore onto a second VM in "Restoring onto a new VM" below. In between, run `sudo /usr/local/lib/podium/podium-check restore-proof` once a term and write down how long it took (V3-10).
@@ -238,7 +238,7 @@ These drills prove that the backups, alerts and upgrades work on the real VM. Ea
 | Upgrade and rollback | `sudo ./install.sh upgrade` of a test release, then `sudo /usr/local/lib/podium/install.sh rollback`, once with the same schema and once with a newer one | both end with verify in order |
 | Deploy during practice | a test student in a practice session while `install.sh upgrade` reinstalls the same release | the page reconnects, the draft is kept, a submit pressed during the restart counts once |
 | Restore onto a new VM | "Restoring onto a new VM" on a second, temporary VM, timed | under 60 minutes, recovery point noted |
-| Real sign-in | a student account on an allowed domain signs in over HTTPS on the real domain and submits | the OAuth app is Internal or In production (OPERATIONS.md, "Google sign-in") |
+| Real sign-in | a student account on the sign-in list signs in over HTTPS on the real domain and submits | the OAuth app is Internal or In production (OPERATIONS.md, "Google sign-in") |
 
 
 ## Dry run with real students

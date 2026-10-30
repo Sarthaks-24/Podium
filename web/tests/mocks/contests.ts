@@ -434,7 +434,7 @@ export async function mockApi(page: Page, options: Options = {}) {
       const me = state.who === 'organiser' ? ADMIN : STUDENT;
 
       if (path === '/api/me') return json(route, 200, me);
-      if (path === '/api/auth/config') return json(route, 200, { mode: 'production', allowed_domains: ['college.edu'], contact_email: 'priya@college.edu' });
+      if (path === '/api/auth/config') return json(route, 200, { mode: 'production', contact_email: 'priya@college.edu' });
       if (path === '/api/auth/logout') return json(route, 204);
       if (path === '/api/events') {
         const next = state.stream.shift();

@@ -13,9 +13,10 @@ type ModeChange struct {
 	Previous string
 	// Changed is true when Previous differs from the mode now.
 	Changed bool
-	// SessionsEnded and Demoted count what the change undid.
+	// SessionsEnded, Demoted and Disabled count what the change undid.
 	SessionsEnded int64
 	Demoted       int64
+	Disabled      int64
 }
 
 // RecordMode compares the run mode with the one the database last ran in
@@ -28,6 +29,12 @@ type ModeChange struct {
 //     owner. Testing-mode sign-ins never link one; neither does a role
 //     granted to someone who has not signed in with Google yet, so such a
 //     grant has to be made again after the switch.
+//   - On the same change, every account that signed in without a linked
+//     Google account (so only through testing mode) is disabled, except
+//     the configured owner: every row is a person on the sign-in list
+//     (V4-15), and a testing-mode visitor must not stay on it. Someone
+//     added to the list who never signed in has no last sign-in and is
+//     left alone.
 //
 // Call it once at start-up, after Bootstrap.
 func (s *Service) RecordMode(ctx context.Context, mode string) (ModeChange, error) {
@@ -57,6 +64,12 @@ func (s *Service) RecordMode(ctx context.Context, mode string) (ModeChange, erro
 			return ModeChange{}, err
 		}
 		ch.Demoted, _ = res.RowsAffected()
+		res, err = tx.ExecContext(ctx, `UPDATE users SET disabled = 1
+			WHERE disabled = 0 AND google_sub IS NULL AND last_login_at IS NOT NULL AND email <> ?`, s.OwnerEmail)
+		if err != nil {
+			return ModeChange{}, err
+		}
+		ch.Disabled, _ = res.RowsAffected()
 	}
 	if _, err := tx.ExecContext(ctx, `INSERT INTO settings (key, value, updated_at) VALUES ('mode', ?, ?)
 		ON CONFLICT (key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`, mode, s.now().UnixMilli()); err != nil {
@@ -67,7 +80,7 @@ func (s *Service) RecordMode(ctx context.Context, mode string) (ModeChange, erro
 		from = "none"
 	}
 	if err := s.recordSite(ctx, tx, AuditModeChanged, "", map[string]any{"from": from, "to": mode,
-		"sessions_ended": ch.SessionsEnded, "demoted": ch.Demoted}); err != nil {
+		"sessions_ended": ch.SessionsEnded, "demoted": ch.Demoted, "disabled": ch.Disabled}); err != nil {
 		return ModeChange{}, err
 	}
 	return ch, tx.Commit()

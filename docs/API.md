@@ -95,8 +95,7 @@ What an organiser watches on contest day; also read by the load test (`tools/loa
 What the sign-in page, the footer and the privacy page need before anyone signs in. No contest data, no counts, no version.
 
 ```json
-{ "allowed_domains": ["college.edu"],
-  "contact_email": "podium@college.edu",
+{ "contact_email": "podium@college.edu",
   "mode": "production",
   "organisation": { "name": "Example College of Engineering", "contact_email": "podium@college.edu",
                     "phone": "+91 80 1234 5678", "privacy_contact": "privacy@college.edu" },
@@ -106,7 +105,6 @@ What the sign-in page, the footer and the privacy page need before anyone signs 
 
 | Field | Meaning |
 |---|---|
-| `allowed_domains` | every allowed sign-in domain, sorted |
 | `contact_email` | the address to show as the organisers' contact: `organisation.contact_email` once an owner has entered one, otherwise `PODIUM_OWNER_EMAIL` |
 | `mode` | `testing`, `dev` or `production`. In `testing` the web app shows the test sign-in form and the testing-mode banner instead of "Continue with Google" |
 | `organisation` | the site settings an owner enters under Settings, Organisation: `name`, `contact_email`, `phone`, `privacy_contact`, each `""` until entered; a page shows nothing for an empty field |
@@ -132,17 +130,17 @@ Any session the browser already had ends. Nothing made here survives a change of
 
 Not registered in testing mode, nor is the callback. `?next=/path` is where to land afterwards; it must be a path on this site (starts with `/`, not `//`), else `/`.
 
-Redirects (302) to Google's consent screen with PKCE, a nonce and a state value held in a short-lived signed cookie. With exactly one allowed domain, it is passed to Google as a hint. It shows the account chooser and asks for a sign-in from the last 5 minutes (`prompt=select_account`, `max_age=300`), so on a shared PC the previous student's Google session is not one click away.
+Redirects (302) to Google's consent screen with PKCE, a nonce and a state value held in a short-lived signed cookie. It shows the account chooser and asks for a sign-in from the last 5 minutes (`prompt=select_account`, `max_age=300`), so on a shared PC the previous student's Google session is not one click away.
 
 ### `GET /api/auth/google/callback` (public, Google redirects here)
 
-Verifies the state, exchanges the code, verifies the ID token (signature, issuer, audience and authorised party, expiry, nonce, and `auth_time` no older than 5 minutes when present) and requires `email_verified`. An email may sign in when its domain is allowed, when the account already has the organiser or owner role, or when it is `PODIUM_OWNER_EMAIL`. Each account is bound to the Google account (`sub`) that first signed in with it; a different Google account with the same address is refused. A college domain that has once signed in through Google Workspace refuses Google accounts without the matching `hd` claim. On success it creates the user if needed, ends any session the browser had, starts a new one and redirects to `next`.
+Verifies the state, exchanges the code, verifies the ID token (signature, issuer, audience and authorised party, expiry, nonce, and `auth_time` no older than 5 minutes when present) and requires `email_verified`. An email may sign in only when it is on the list of people (every account is one row of it, V4-15) and the account is not disabled; `PODIUM_OWNER_EMAIL` is always on it, because the server puts it back at every start. Addresses are compared trimmed and in lower case, and for `gmail.com` and `googlemail.com` without the dots of the local part (Gmail ignores them); nothing else is rewritten. A refused address is recorded (address, first and last time, count; the 500 most recent are kept) so People can let it in. Each account is bound to the Google account (`sub`) that first signed in with it; a different Google account with the same address is refused. On success it updates the listed account (name and picture from Google; the address stays as it was listed), ends any session the browser had, starts a new one and redirects to `next`.
 
 On failure it redirects to `/signin?error=<code>`:
 
 | Code | Meaning |
 |---|---|
-| `domain` | the email's domain is not on the allowed list |
+| `not_listed` | the email is not on the list of people; the page says "Your email is not on the list for this site. Ask the organiser to add it." (a v3 `domain` link reads the same) |
 | `unverified` | Google has not verified the address |
 | `disabled` | an owner disabled the account |
 | `account` | the address is linked to a different Google account (an owner can reset the link) |
@@ -179,7 +177,7 @@ Saves the display preferences, so they follow the account to another machine. Re
 
 ## Settings: people, sign-in and organisation
 
-The routes behind the Settings page. Reading people, giving and removing roles, ending sessions, disabling, enabling and reading the site audit need the admin role; resetting a Google link, the domains and the site settings need the owner role; the account lookup needs the organiser role.
+The routes behind the Settings page. Reading people, giving and removing roles, ending sessions, disabling, enabling and reading the site audit need the admin role; resetting a Google link and the site settings need the owner role; the account lookup needs the organiser role.
 
 An admin acts only on students and organisers, and gives only the organiser role: acting on an admin, an owner, `PODIUM_OWNER_EMAIL` or themself, or giving the admin or owner role, is `403 forbidden` with a sentence that says an owner must do it. The check runs inside the change itself (`server/internal/auth/rules.go`), so every route that changes an account applies it. Every change here (roles, domains, disabling and enabling, ended sessions, Google link resets, site settings) writes a site audit row in the same transaction as the change.
 
@@ -187,7 +185,7 @@ An admin acts only on students and organisers, and gives only the organiser role
 
 | Route | Request | Success | Errors |
 |---|---|---|---|
-| `GET /api/admin/people` | | 200 `{people, domains, disabled, organisation}` (below) | |
+| `GET /api/admin/people` | | 200 `{people, list, counts, refused, disabled, organisation}` (below) | |
 | `POST /api/admin/people` | `{"email":"ta@college.edu","role":"organiser"}`; `role` is `organiser`, `admin` or `owner`; the person need not have signed in, and the role is theirs at first sign-in | 200 the person, as in `people` | `400 bad_request` (email or role), `403 forbidden` (an admin out of bounds), `409 conflict` (the configured owner, or the change would leave no owner) |
 | `DELETE /api/admin/people/{id}` | | 204: the person becomes a student and their sessions end | `404 not_found`, `403 forbidden` (an admin out of bounds), `409 conflict` (the configured owner, or the last owner) |
 | `POST /api/admin/accounts/reset-google` | `{"email":"asha@college.edu"}` | 204: unlinks the Google account and ends their sessions; the next Google account to sign in with the address is linked | `404 not_found` |
@@ -195,8 +193,9 @@ An admin acts only on students and organisers, and gives only the organiser role
 | `POST /api/admin/accounts/disable` | `{"email"}` | 200 `{"account": Account, "ended": 1}`: ends every session; the account is refused at sign-in and at every signed-in route | `404 not_found`; `403 forbidden` (an admin out of bounds); `409 conflict` for `PODIUM_OWNER_EMAIL` and for disabling yourself |
 | `POST /api/admin/accounts/enable` | `{"email"}` | 200 `{"account": Account, "ended": 0}`: they may sign in again | `404 not_found`; `403 forbidden` (an admin out of bounds) |
 | `GET /api/admin/accounts` (organiser) | `?email=` | 200 `{"account": Account, "server_now"}` | `400 bad_request` without an email; `404 not_found` "Nobody with that email has an account."; anyone below organiser gets the same `403` whether or not the address exists |
-| `POST /api/admin/domains` | `{"domain":"college.edu"}`, lower-cased, a leading `@` ignored | 201 `{"domain","created_at"}`; 200 with the existing entry when already there | `400 bad_request` |
-| `DELETE /api/admin/domains/{domain}` | | 204: stops sign-ins from the domain and ends its students' sessions; organisers on it keep access | `404 not_found` |
+| `POST /api/admin/people/import` | `{"text":"a@college.edu, b@college.edu","dry_run":true}`: addresses separated by commas, semicolons, spaces or new lines, at most 500 | 200 `{added, duplicates, invalid}`, each a list of addresses; with `dry_run` nothing is saved, so the page shows the counts first; the second call saves the same answer. Added people are students. A duplicate is an address already on the list or earlier in the paste (compared as sign-in compares) | `400 bad_request` (more than 500) |
+| `POST /api/admin/people/remove` | `{"email"}` | 200 `{"deleted": true}` for someone who never signed in (the row goes); `{"deleted": false}` for someone who did: the account is disabled and every session ends, because their submissions point at it | `404 not_found`, `403 forbidden` (an admin out of bounds), `409 conflict` (`PODIUM_OWNER_EMAIL`, yourself, the last owner) |
+| `POST /api/admin/people/let-in` | `{"email"}` | 204: the address is on the list as a student (if it was not) and its refused row is gone | `400 bad_request`, `403 forbidden` |
 | `PUT /api/admin/site-settings` | `Organisation`, every field present (`""` clears one) | 200 the saved `Organisation` | `400 bad_request` with `fields` |
 | `GET /api/admin/site-audit` | `?page=&action=&q=&since=&until=` | 200 `{entries, page, has_more, server_now}` (below) | |
 
@@ -205,13 +204,18 @@ An admin acts only on students and organisers, and gives only the organiser role
 ```json
 { "people": [ { "id": 1, "email": "owner@college.edu", "name": "Priya Raman", "role": "owner",
                 "last_login_at": 1792183192359, "locked": true, "disabled": false } ],
-  "domains": [ { "domain": "college.edu", "created_at": 1792183192359 } ],
+  "list": [ { "id": 1, "email": "owner@college.edu", "name": "Priya Raman", "role": "owner",
+              "last_login_at": 1792183192359, "disabled": false, "locked": true },
+            { "id": 9, "email": "ravi@college.edu", "name": "", "role": "student",
+              "last_login_at": null, "disabled": false, "locked": false } ],
+  "counts": { "on_list": 2, "signed_in": 1, "never_came": 1 },
+  "refused": [ { "email": "stranger@example.org", "count": 2, "first_at": 1792183000000, "last_at": 1792183100000 } ],
   "disabled": [ { "id": 7, "email": "asha@college.edu", "name": "Asha Rao", "role": "student",
                   "disabled": true, "last_login_at": 1792183100000 } ],
   "organisation": { "name": "", "contact_email": "", "phone": "", "privacy_contact": "" } }
 ```
 
-`people` is everyone with the organiser, admin or owner role, owners first, then admins. `locked` is true for `PODIUM_OWNER_EMAIL`, whose owner role comes from the server configuration. `disabled` lists every disabled account, by email. The account lookup matches the address as sign-in stores it (trimmed, lower case) and never logs it.
+`people` is everyone with the organiser, admin or owner role, owners first, then admins. `list` is everyone on the sign-in list, students included, by role then name; `counts` leaves disabled accounts out. `refused` is the refused addresses, newest first. `locked` is true for `PODIUM_OWNER_EMAIL`, whose owner role comes from the server configuration. `disabled` lists every disabled account, by email. The account lookup matches the address as sign-in stores it (trimmed, lower case) and never logs it.
 
 `Organisation`, shown in the footer, on the sign-in page and on the privacy page, stored in the server's `settings` table and never in an environment variable:
 
@@ -226,7 +230,7 @@ Leading and trailing spaces are trimmed. A change writes one `settings_changed` 
 
 ### The site audit
 
-Every change to people, domains and the site, newest first, 100 per page. It opens from the Organisation tab of Settings.
+Every change to people, the sign-in list and the site, newest first, 100 per page. It opens from the Organisation tab of Settings.
 
 ```json
 { "entries": [ { "id": 31, "at": 1792311120000, "action": "role_granted",
@@ -243,13 +247,16 @@ Every change to people, domains and the site, newest first, 100 per page. It ope
 |---|---|---|
 | `role_granted` | the person | `{role, from_role}` |
 | `role_revoked` | the person | `{from_role, sessions_ended}` |
-| `domain_added` | `""` | `{domain}` |
-| `domain_removed` | `""` | `{domain, sessions_ended}` |
+| `person_added` | the person | `{}` |
+| `list_imported` | `""` | `{added, duplicates, invalid}` (counts) |
+| `person_removed` | the person | `{deleted, sessions_ended}` |
+| `let_in` | the person | `{}` |
+| `domain_added`, `domain_removed` | `""` | `{domain}`, `{domain, sessions_ended}`: only in rows from before v4 |
 | `account_disabled` | the person | `{sessions_ended}` |
 | `account_enabled` | the person | `{}` |
 | `sessions_ended` | the person | `{count}` |
 | `google_reset` | the person | `{sessions_ended}` |
-| `mode_changed` | `""` | `{from, to, sessions_ended, demoted}`: the server started in another run mode |
+| `mode_changed` | `""` | `{from, to, sessions_ended, demoted, disabled}`: the server started in another run mode; `disabled` counts the accounts that signed in only through testing mode (V4-15) |
 | `settings_changed` | `""` | `{fields}`: the names of the site settings that changed |
 | `user_forgotten` | `""` | `{user_id, placeholder, role}` and a count per thing erased: `podium-server forget-user`; the person is named by id only |
 
@@ -577,7 +584,7 @@ data: {"server_now":1792183192400}
 
 ## Contests: students
 
-Every route needs a signed-in user. A published, unarchived contest is open to everyone who can sign in (the allowed domains decide who takes part); anything else is `404 not_found`. Organisers and owners always get in and are never on the board. Every answer carries `server_now`.
+Every route needs a signed-in user. A published, unarchived contest is open to everyone who can sign in (the list of people decides who takes part); anything else is `404 not_found`. Organisers and owners always get in and are never on the board. Every answer carries `server_now`.
 
 | Route | Request | Success |
 |---|---|---|

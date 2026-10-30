@@ -56,7 +56,7 @@ async function mockApi(page: Page, signedIn: boolean) {
       const req = route.request();
       const path = new URL(req.url()).pathname;
       const method = req.method();
-      if (path === '/api/auth/config') return json(route, 200, { allowed_domains: ['college.edu'], contact_email: 'priya@college.edu' });
+      if (path === '/api/auth/config') return json(route, 200, { contact_email: 'priya@college.edu' });
       if (path === '/api/me' && method === 'GET') {
         return state.signedIn ? json(route, 200, state.me) : json(route, 401, { error: { code: 'signed_out', message: 'Sign in to continue.' } });
       }
@@ -70,7 +70,7 @@ async function mockApi(page: Page, signedIn: boolean) {
         state.signedIn = false;
         return json(route, 204);
       }
-      if (path === '/api/admin/people') return json(route, 200, { people: PEOPLE, domains: [{ domain: 'college.edu', created_at: 1791000000000 }] });
+      if (path === '/api/admin/people') return json(route, 200, { people: PEOPLE });
       return json(route, 404, { error: { code: 'not_found', message: 'No mock.' } });
     },
   );

@@ -105,7 +105,8 @@ func TestOpenAndMigrate(t *testing.T) {
 	}
 }
 
-// The v3 schema holds exactly these tables (S1-07). A new table is a new
+// The schema holds exactly these tables (S1-07; v4 0003 swapped
+// allowed_domains for refused_signins). A new table is a new
 // numbered migration and a new row here.
 func TestSchemaTables(t *testing.T) {
 	ctx := context.Background()
@@ -133,10 +134,10 @@ func TestSchemaTables(t *testing.T) {
 	if err := rows.Err(); err != nil {
 		t.Fatal(err)
 	}
-	want := []string{"allowed_domains", "announcements", "blobs", "clarifications", "contest_audit", "contest_extensions",
+	want := []string{"announcements", "blobs", "clarifications", "contest_audit", "contest_extensions",
 		"contest_problems", "contest_starts", "contests", "drafts", "generations", "input_generations",
 		"integrity_cases", "integrity_events", "integrity_runs", "integrity_signals", "job_results", "jobs",
-		"problem_revisions", "problems", "revision_tests", "schema_migrations", "sessions", "settings", "site_audit",
+		"problem_revisions", "problems", "refused_signins", "revision_tests", "schema_migrations", "sessions", "settings", "site_audit",
 		"submissions", "subtasks", "testcases", "users", "validations"}
 	if strings.Join(got, " ") != strings.Join(want, " ") {
 		t.Errorf("tables:\n got %v\nwant %v", got, want)

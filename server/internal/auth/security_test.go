@@ -15,7 +15,7 @@ import (
 )
 
 func TestRecordModeUndoesTestingMode(t *testing.T) {
-	s, _ := newService(t, "college.edu")
+	s, _ := newService(t)
 	ctx := context.Background()
 	// First start with the record: no mode stored yet, so every session
 	// ends (the database may have run in testing mode before).
@@ -76,10 +76,15 @@ func TestRecordModeUndoesTestingMode(t *testing.T) {
 			t.Errorf("%s is %s after the switch, want %s", e, roles[e], r)
 		}
 	}
-	// The demoted intruder, on a domain that is not allowed, cannot get in
-	// with a real Google account either.
-	if _, _, _, err := s.SignIn(ctx, id("intruder@gmail.com"), "", ""); !errors.Is(err, auth.ErrDomain) {
-		t.Errorf("demoted testing-mode owner signing in with Google: %v, want ErrDomain", err)
+	// Every account made by a testing-mode sign-in is disabled, so the
+	// intruder cannot get in with a real Google account either (V4-15:
+	// every row is on the sign-in list). The configured owner and a real
+	// organiser are not.
+	if _, _, _, err := s.SignIn(ctx, id("intruder@gmail.com"), "", ""); !errors.Is(err, auth.ErrDisabled) {
+		t.Errorf("testing-mode visitor signing in with Google: %v, want ErrDisabled", err)
+	}
+	if _, _, _, err := s.SignIn(ctx, id("prof@college.edu"), "", ""); err != nil {
+		t.Errorf("real organiser after the switch: %v", err)
 	}
 
 	// Production to dev also counts as a change: sessions end, and nobody
@@ -90,7 +95,7 @@ func TestRecordModeUndoesTestingMode(t *testing.T) {
 }
 
 func TestAccountActions(t *testing.T) {
-	s, _ := newService(t, "college.edu")
+	s, _ := newService(t, "a@college.edu")
 	ctx := context.Background()
 	owner, _, _, err := s.SignIn(ctx, id(ownerEmail), "", "")
 	if err != nil {

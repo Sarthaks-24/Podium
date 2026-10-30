@@ -118,8 +118,9 @@ func New(d Deps) http.Handler {
 	mux.HandleFunc("POST /api/admin/accounts/disable", admin(people.SetAccountDisabled(true)))
 	mux.HandleFunc("POST /api/admin/accounts/enable", admin(people.SetAccountDisabled(false)))
 	mux.HandleFunc("GET /api/admin/accounts", d.requireRole(auth.Organiser, d.limitReads(people.LookupAccount)))
-	mux.HandleFunc("POST /api/admin/domains", owner(people.AddDomain))
-	mux.HandleFunc("DELETE /api/admin/domains/{domain}", owner(people.RemoveDomain))
+	mux.HandleFunc("POST /api/admin/people/import", admin(people.ImportPeople))
+	mux.HandleFunc("POST /api/admin/people/remove", admin(people.RemovePerson))
+	mux.HandleFunc("POST /api/admin/people/let-in", admin(people.LetIn))
 	mux.HandleFunc("GET /api/admin/site-audit", admin(people.SiteAudit))
 	mux.HandleFunc("PUT /api/admin/site-settings", owner(people.SetSiteSettings))
 

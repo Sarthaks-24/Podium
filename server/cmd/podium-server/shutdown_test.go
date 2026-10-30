@@ -33,7 +33,7 @@ func TestShutdownWaitsForARetentionBatch(t *testing.T) {
 		t.Fatal(err)
 	}
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
-	cfg := config.Server{OwnerEmail: "owner@college.edu", AllowedDomains: []string{"college.edu"}, Mode: config.ModeTesting,
+	cfg := config.Server{OwnerEmail: "owner@college.edu", Mode: config.ModeTesting,
 		TestsDir: filepath.Join(dir, "tests"), SessionSecret: []byte("0123456789abcdef0123456789abcdef")}
 	svc, err := newServices(ctx, cfg, database, log)
 	if err != nil {

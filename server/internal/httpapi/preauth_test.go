@@ -60,7 +60,7 @@ func TestValidSessionSurvivesAnExhaustedAddress(t *testing.T) {
 		t.Fatal(err)
 	}
 	svc := &auth.Service{DB: d, OwnerEmail: "owner@college.edu"}
-	if err := svc.Bootstrap(ctx, []string{"college.edu"}); err != nil {
+	if err := svc.Bootstrap(ctx); err != nil {
 		t.Fatal(err)
 	}
 	h := New(Deps{DB: d, Log: slog.New(slog.NewJSONHandler(&bytes.Buffer{}, nil)), WebApp: http.NotFoundHandler(), Auth: svc,
@@ -134,7 +134,7 @@ func TestPreAuthLimitPerAddress(t *testing.T) {
 		t.Fatal(err)
 	}
 	svc := &auth.Service{DB: d, OwnerEmail: "owner@college.edu"}
-	svc.Bootstrap(ctx, []string{"college.edu"})
+	svc.Bootstrap(ctx)
 	h := New(Deps{DB: d, Log: slog.New(slog.NewJSONHandler(&bytes.Buffer{}, nil)), WebApp: http.NotFoundHandler(), Auth: svc,
 		BaseURL: "https://podium.example", preAuthLimit: newIPLimiter(3, 0.01, nil), signInLimiter: newIPLimiter(0, 0.01, nil)})
 	call := func(path, peer, xff string) *httptest.ResponseRecorder {
@@ -256,6 +256,7 @@ func TestAClassSignsInFromOneAddress(t *testing.T) {
 // call to Google after its first use (P0 security review, finding 4).
 func TestSignInCallbackIsSingleUse(t *testing.T) {
 	s := newSite(t)
+	s.db.Exec("INSERT OR IGNORE INTO users (email, created_at) VALUES ('asha@college.edu', 0)")
 	s.idp.SignInAs(authtest.Person{Email: "asha@college.edu", Verified: true, Name: "Asha"})
 	b := s.browser()
 	var callback *url.URL

@@ -31,7 +31,7 @@
   const ready = $derived(runMode.status !== 'loading');
   const testing = $derived(runMode.mode === 'testing');
   const org = $derived(runMode.organisation);
-  const error = $derived(ready ? errorMessage(errorCode, runMode.allowedDomains, runMode.contactEmail) : null);
+  const error = $derived(ready ? errorMessage(errorCode, runMode.contactEmail) : null);
 
   onMount(() => {
     setTitle(routeTitle('signin'));
@@ -42,7 +42,7 @@
 <div class="signin">
   <PageHeader title={org.name !== '' ? `Weekly programming contests for ${org.name}` : 'Weekly programming contests'} />
   <p class="audience" aria-live="polite">
-    {#if ready && !testing}{audienceLine(runMode.allowedDomains)}{/if}
+    {#if ready && !testing}{audienceLine()}{/if}
   </p>
 
   {#if error}

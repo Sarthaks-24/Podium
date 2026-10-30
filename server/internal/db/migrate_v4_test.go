@@ -110,3 +110,33 @@ func TestRolesMigrationKeepsEveryRow(t *testing.T) {
 		t.Error("role CHECK not enforced after the rebuild")
 	}
 }
+
+// 0003 drops the allowed domains and adds the refused sign-ins, from a
+// database in the 0002 state that has a domain on its list.
+func TestSignInMigration(t *testing.T) {
+	ctx := context.Background()
+	d, err := Open(ctx, filepath.Join(t.TempDir(), "p.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer d.Close()
+	if _, err := MigrateTo(ctx, d, "0002_v4_roles"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := d.ExecContext(ctx, "INSERT INTO allowed_domains (domain, created_at) VALUES ('college.edu', 0)"); err != nil {
+		t.Fatal(err)
+	}
+	if applied, err := Migrate(ctx, d); err != nil || len(applied) == 0 || applied[0] != "0003_v4_signin" {
+		t.Fatalf("applied %v, %v", applied, err)
+	}
+	var n int
+	if err := d.QueryRowContext(ctx, "SELECT count(*) FROM sqlite_master WHERE name = 'allowed_domains'").Scan(&n); err != nil || n != 0 {
+		t.Errorf("allowed_domains still there: %d %v", n, err)
+	}
+	if _, err := d.ExecContext(ctx, "INSERT INTO refused_signins (email, first_at, last_at) VALUES ('X@Y.org', 1, 1)"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := d.ExecContext(ctx, "INSERT INTO refused_signins (email, first_at, last_at) VALUES ('x@y.org', 1, 1)"); err == nil {
+		t.Error("refused_signins.email should ignore case")
+	}
+}
