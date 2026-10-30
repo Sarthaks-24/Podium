@@ -1,4 +1,9 @@
-package httpapi
+package problems
+
+// The problem bank's HTTP handlers: list, create, import and export packs,
+// edit, replace and download tests, archive, and validation. Organisers
+// only; httpapi mounts them behind the admin role. Shapes are Problem and
+// friends in docs/API.md.
 
 import (
 	"context"
@@ -6,15 +11,27 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"mime"
 	"net/http"
 	"strconv"
 	"time"
 	"unicode/utf8"
 
+	"github.com/Sarthaks-24/podium/internal/auth"
+	"github.com/Sarthaks-24/podium/internal/httpx"
 	"github.com/Sarthaks-24/podium/internal/judgeapi"
-	"github.com/Sarthaks-24/podium/internal/problems"
 )
+
+// Handlers serve the problem bank routes.
+type Handlers struct {
+	Problems *Service
+	Log      *slog.Logger
+}
+
+func (d *Handlers) internalError(w http.ResponseWriter, r *http.Request, err error) {
+	httpx.InternalError(d.Log, w, r, err)
+}
 
 // maxEditBody bounds a problem save: a 64 KB statement and four 64 KB
 // sources, as JSON.
@@ -34,7 +51,7 @@ func withPackSlot(w http.ResponseWriter, r *http.Request) (func(), bool) {
 	case packOps <- struct{}{}:
 		return func() { <-packOps }, true
 	case <-r.Context().Done():
-		writeBusy(w, 5, "Another pack is being processed. Try again in a moment.")
+		httpx.WriteBusy(w, 5, "Another pack is being processed. Try again in a moment.")
 		return nil, false
 	}
 }
@@ -116,8 +133,8 @@ type problemJSON struct {
 	// Revision is the revision the working copy is. LiveContests are the
 	// running contests that pin the problem: while there are any, a save
 	// needs a reason.
-	Revision     *revisionRefJSON       `json:"revision"`
-	LiveContests []problems.LiveContest `json:"live_contests"`
+	Revision     *revisionRefJSON `json:"revision"`
+	LiveContests []LiveContest    `json:"live_contests"`
 }
 
 type problemEditJSON struct {
@@ -155,20 +172,12 @@ type validationJSON struct {
 	QueuePosition *int                     `json:"queue_position"`
 	Compile       []judgeapi.CompileResult `json:"compile"`
 	Tests         []judgeapi.TestResult    `json:"tests"`
-	Summary       *problems.Summary        `json:"summary"`
+	Summary       *Summary                 `json:"summary"`
 	Error         *string                  `json:"error"`
 }
 
-func millis(t time.Time) *int64 {
-	if t.IsZero() {
-		return nil
-	}
-	ms := t.UnixMilli()
-	return &ms
-}
-
-func summaryJSON(e problems.BankEntry) problemSummaryJSON {
-	return problemSummaryJSON{ID: e.ID, Slug: e.Slug, Title: e.Title, Difficulty: e.Difficulty, Tags: nonNil(e.Tags),
+func summaryJSON(e BankEntry) problemSummaryJSON {
+	return problemSummaryJSON{ID: e.ID, Slug: e.Slug, Title: e.Title, Difficulty: e.Difficulty, Tags: httpx.NonNil(e.Tags),
 		Origin: e.Origin, Archived: e.Archived, TestCount: e.TestCount, Points: e.Points, Validated: e.Validated,
 		ValidatedAt: validatedAt(e.Validated, e.ValidatedAt), UpdatedAt: e.UpdatedAt.UnixMilli(), ShownInPractice: e.ShownInPractice}
 }
@@ -179,32 +188,25 @@ func validatedAt(valid bool, t time.Time) *int64 {
 	if !valid {
 		return nil
 	}
-	return millis(t)
+	return httpx.Millis(t)
 }
 
-func nonNil(s []string) []string {
-	if s == nil {
-		return []string{}
-	}
-	return s
-}
-
-func optSource(s *problems.Source) *sourceJSON {
+func optSource(s *Source) *sourceJSON {
 	if s == nil {
 		return nil
 	}
 	return &sourceJSON{s.Language, s.Source}
 }
 
-func fromSourceJSON(s *sourceJSON) *problems.Source {
+func fromSourceJSON(s *sourceJSON) *Source {
 	if s == nil {
 		return nil
 	}
-	return &problems.Source{Language: s.Language, Source: s.Source}
+	return &Source{Language: s.Language, Source: s.Source}
 }
 
 // preview returns the start of a blob as valid UTF-8 text.
-func (d Deps) preview(sha string) string {
+func (d *Handlers) preview(sha string) string {
 	b, err := d.Problems.Blobs.Read(sha, previewBytes)
 	if err != nil {
 		return ""
@@ -216,14 +218,14 @@ func (d Deps) preview(sha string) string {
 }
 
 // problemJSON is Problem in docs/API.md, with its revisions.
-func (d Deps) problemJSON(ctx context.Context, p *problems.Problem) (problemJSON, error) {
+func (d *Handlers) problemJSON(ctx context.Context, p *Problem) (problemJSON, error) {
 	points := 0
 	for _, st := range p.Subtasks {
 		points += st.Points
 	}
 	out := problemJSON{
 		problemSummaryJSON: problemSummaryJSON{ID: p.ID, Slug: p.Slug, Title: p.Title, Difficulty: p.Difficulty,
-			Tags: nonNil(p.Tags), Origin: p.Origin, Archived: p.Archived, TestCount: len(p.Tests), Points: points,
+			Tags: httpx.NonNil(p.Tags), Origin: p.Origin, Archived: p.Archived, TestCount: len(p.Tests), Points: points,
 			Validated: p.Validated(), ValidatedAt: validatedAt(p.Validated(), p.ValidatedAt), UpdatedAt: p.UpdatedAt.UnixMilli()},
 		StatementMD: p.Statement, TimeLimitMS: p.TimeLimitMS, MemoryLimitMB: p.MemoryLimitMB,
 		Checker: p.Checker, Epsilon: p.Epsilon, CheckerSource: p.CheckerSource,
@@ -231,7 +233,7 @@ func (d Deps) problemJSON(ctx context.Context, p *problems.Problem) (problemJSON
 		Brute:     optSource(p.Brute), Validator: optSource(p.Validator), Generator: optSource(p.Generator),
 		Plan:    []planJSON{},
 		Samples: p.Samples, Subtasks: []subtaskJSON{}, Tests: []testJSON{},
-		ContentHash: p.ContentHash, Problems: nonNil(p.Problems()), Warnings: nonNil(p.Warnings()),
+		ContentHash: p.ContentHash, Problems: httpx.NonNil(p.Problems()), Warnings: httpx.NonNil(p.Warnings()),
 	}
 	if out.Samples == nil {
 		out.Samples = []int{}
@@ -240,10 +242,10 @@ func (d Deps) problemJSON(ctx context.Context, p *problems.Problem) (problemJSON
 		out.ValidatedHash = &p.ValidatedHash
 	}
 	for _, st := range p.Subtasks {
-		out.Subtasks = append(out.Subtasks, subtaskJSON{st.Idx, st.Points, st.Title, st.Tests, nonNil(st.GeneratorArgs)})
+		out.Subtasks = append(out.Subtasks, subtaskJSON{st.Idx, st.Points, st.Title, st.Tests, httpx.NonNil(st.GeneratorArgs)})
 	}
 	for _, t := range p.Plan {
-		out.Plan = append(out.Plan, planJSON{t.Test, t.Subtask, t.Seed, nonNil(t.Args)})
+		out.Plan = append(out.Plan, planJSON{t.Test, t.Subtask, t.Seed, httpx.NonNil(t.Args)})
 	}
 	for _, t := range p.Tests {
 		tj := testJSON{Idx: t.Idx, Sample: p.IsSample(t.Idx), InputSize: t.InputSize, OutputSize: t.OutputSize,
@@ -260,19 +262,19 @@ func (d Deps) problemJSON(ctx context.Context, p *problems.Problem) (problemJSON
 }
 
 // writeProblem answers with Problem.
-func (d Deps) writeProblem(w http.ResponseWriter, r *http.Request, status int, p *problems.Problem, warnings ...string) {
+func (d *Handlers) writeProblem(w http.ResponseWriter, r *http.Request, status int, p *Problem, warnings ...string) {
 	out, err := d.problemJSON(r.Context(), p)
 	if err != nil {
 		d.internalError(w, r, err)
 		return
 	}
 	out.Warnings = append(out.Warnings, warnings...)
-	WriteJSON(w, status, out)
+	httpx.WriteJSON(w, status, out)
 }
 
-func validationOut(v *problems.Validation) validationJSON {
+func validationOut(v *Validation) validationJSON {
 	out := validationJSON{ID: v.ID, State: v.State, ContentHash: v.ContentHash, Current: v.Current,
-		QueuedAt: v.QueuedAt.UnixMilli(), FinishedAt: millis(v.FinishedAt), Summary: v.Summary,
+		QueuedAt: v.QueuedAt.UnixMilli(), FinishedAt: httpx.Millis(v.FinishedAt), Summary: v.Summary,
 		Compile: v.Compile, Tests: v.Tests}
 	if out.Compile == nil {
 		out.Compile = []judgeapi.CompileResult{}
@@ -280,7 +282,7 @@ func validationOut(v *problems.Validation) validationJSON {
 	if out.Tests == nil {
 		out.Tests = []judgeapi.TestResult{}
 	}
-	if v.State == problems.ValidationQueued {
+	if v.State == ValidationQueued {
 		out.QueuePosition = &v.QueuePosition
 	}
 	if v.Error != "" {
@@ -294,35 +296,35 @@ func validationOut(v *problems.Validation) validationJSON {
 func problemID(w http.ResponseWriter, r *http.Request) (int64, bool) {
 	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
 	if err != nil || id <= 0 {
-		WriteError(w, http.StatusNotFound, "not_found", "There is no such problem.")
+		httpx.WriteError(w, http.StatusNotFound, "not_found", "There is no such problem.")
 		return 0, false
 	}
 	return id, true
 }
 
 // problemError maps the problems package's errors to responses.
-func (d Deps) problemError(w http.ResponseWriter, r *http.Request, err error) {
-	var fields problems.FieldErrors
-	var pack *problems.PackError
-	var notReady *problems.NotReadyError
+func (d *Handlers) problemError(w http.ResponseWriter, r *http.Request, err error) {
+	var fields FieldErrors
+	var pack *PackError
+	var notReady *NotReadyError
 	switch {
-	case errors.Is(err, problems.ErrNotFound):
-		WriteError(w, http.StatusNotFound, "not_found", "There is no such problem.")
+	case errors.Is(err, ErrNotFound):
+		httpx.WriteError(w, http.StatusNotFound, "not_found", "There is no such problem.")
 	case errors.As(err, &fields):
-		WriteJSON(w, http.StatusBadRequest, map[string]APIError{"error": {Code: "bad_request",
+		httpx.WriteJSON(w, http.StatusBadRequest, map[string]httpx.APIError{"error": {Code: "bad_request",
 			Message: "Some fields need fixing.", Fields: fields}})
 	case errors.As(err, &pack):
-		WriteJSON(w, http.StatusBadRequest, map[string]APIError{"error": {Code: "bad_pack",
+		httpx.WriteJSON(w, http.StatusBadRequest, map[string]httpx.APIError{"error": {Code: "bad_pack",
 			Message: "The pack cannot be imported. Fix these and upload it again.", Problems: pack.Problems}})
 	case errors.As(err, &notReady):
-		WriteJSON(w, http.StatusConflict, map[string]APIError{"error": {Code: "not_ready",
+		httpx.WriteJSON(w, http.StatusConflict, map[string]httpx.APIError{"error": {Code: "not_ready",
 			Message: "The problem is not ready. Fix these first.", Problems: notReady.Problems}})
 	default:
 		d.internalError(w, r, err)
 	}
 }
 
-func (d Deps) listProblems(w http.ResponseWriter, r *http.Request) {
+func (d *Handlers) ListProblems(w http.ResponseWriter, r *http.Request) {
 	list, err := d.Problems.List(r.Context(), r.URL.Query().Get("archived") == "1")
 	if err != nil {
 		d.internalError(w, r, err)
@@ -332,23 +334,23 @@ func (d Deps) listProblems(w http.ResponseWriter, r *http.Request) {
 	for _, e := range list {
 		out = append(out, summaryJSON(e))
 	}
-	WriteJSON(w, http.StatusOK, map[string]any{"problems": out})
+	httpx.WriteJSON(w, http.StatusOK, map[string]any{"problems": out})
 }
 
-func (d Deps) createProblem(w http.ResponseWriter, r *http.Request) {
+func (d *Handlers) CreateProblem(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Title string `json:"title"`
 		Slug  string `json:"slug"`
 	}
-	if !decodeJSON(w, r, &req) {
+	if !httpx.DecodeJSON(w, r, &req) {
 		return
 	}
-	p, err := d.Problems.Create(r.Context(), req.Title, req.Slug, userFrom(r.Context()).ID)
+	p, err := d.Problems.Create(r.Context(), req.Title, req.Slug, auth.UserFrom(r.Context()).ID)
 	if err != nil {
 		d.problemError(w, r, err)
 		return
 	}
-	d.Log.Info("problem created", "by", userFrom(r.Context()).ID, "problem_id", p.ID)
+	d.Log.Info("problem created", "by", auth.UserFrom(r.Context()).ID, "problem_id", p.ID)
 	d.writeProblem(w, r, http.StatusCreated, p)
 }
 
@@ -356,23 +358,23 @@ func (d Deps) createProblem(w http.ResponseWriter, r *http.Request) {
 func readZipBody(w http.ResponseWriter, r *http.Request) ([]byte, bool) {
 	mt, _, _ := mime.ParseMediaType(r.Header.Get("Content-Type"))
 	if mt != "application/zip" && mt != "application/x-zip-compressed" {
-		WriteError(w, http.StatusUnsupportedMediaType, "bad_request", "Upload a .zip file.")
+		httpx.WriteError(w, http.StatusUnsupportedMediaType, "bad_request", "Upload a .zip file.")
 		return nil, false
 	}
-	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, problems.MaxPackBytes))
+	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, MaxPackBytes))
 	var tooBig *http.MaxBytesError
 	if errors.As(err, &tooBig) {
-		WriteError(w, http.StatusRequestEntityTooLarge, "too_large", "The zip is larger than 32 MB.")
+		httpx.WriteError(w, http.StatusRequestEntityTooLarge, "too_large", "The zip is larger than 32 MB.")
 		return nil, false
 	}
 	if err != nil {
-		WriteError(w, http.StatusBadRequest, "bad_request", "The upload was interrupted. Try again.")
+		httpx.WriteError(w, http.StatusBadRequest, "bad_request", "The upload was interrupted. Try again.")
 		return nil, false
 	}
 	return body, true
 }
 
-func (d Deps) importProblem(w http.ResponseWriter, r *http.Request) {
+func (d *Handlers) ImportProblem(w http.ResponseWriter, r *http.Request) {
 	body, ok := readZipBody(w, r)
 	if !ok {
 		return
@@ -382,22 +384,22 @@ func (d Deps) importProblem(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer release()
-	pk, err := problems.ReadPack(body)
+	pk, err := ReadPack(body)
 	if err != nil {
 		d.problemError(w, r, err)
 		return
 	}
-	p, err := d.Problems.Import(r.Context(), pk, userFrom(r.Context()).ID)
-	var fields problems.FieldErrors
+	p, err := d.Problems.Import(r.Context(), pk, auth.UserFrom(r.Context()).ID)
+	var fields FieldErrors
 	if errors.As(err, &fields) && fields["slug"] != "" {
-		WriteError(w, http.StatusConflict, "conflict", fmt.Sprintf("A problem with the slug %s already exists. Change slug in problem.yaml, or archive and rename the old problem.", pk.Problem.Slug))
+		httpx.WriteError(w, http.StatusConflict, "conflict", fmt.Sprintf("A problem with the slug %s already exists. Change slug in problem.yaml, or archive and rename the old problem.", pk.Problem.Slug))
 		return
 	}
 	if err != nil {
 		d.problemError(w, r, err)
 		return
 	}
-	d.Log.Info("problem imported", "by", userFrom(r.Context()).ID, "problem_id", p.ID, "tests", len(p.Tests), "ignored", len(pk.Ignored))
+	d.Log.Info("problem imported", "by", auth.UserFrom(r.Context()).ID, "problem_id", p.ID, "tests", len(p.Tests), "ignored", len(pk.Ignored))
 	var ignored []string
 	for _, name := range pk.Ignored {
 		ignored = append(ignored, fmt.Sprintf("Ignored %s: podium does not use it yet.", name))
@@ -405,7 +407,7 @@ func (d Deps) importProblem(w http.ResponseWriter, r *http.Request) {
 	d.writeProblem(w, r, http.StatusCreated, p, ignored...)
 }
 
-func (d Deps) getProblem(w http.ResponseWriter, r *http.Request) {
+func (d *Handlers) GetProblem(w http.ResponseWriter, r *http.Request) {
 	id, ok := problemID(w, r)
 	if !ok {
 		return
@@ -418,24 +420,24 @@ func (d Deps) getProblem(w http.ResponseWriter, r *http.Request) {
 	d.writeProblem(w, r, http.StatusOK, p)
 }
 
-func (d Deps) updateProblem(w http.ResponseWriter, r *http.Request) {
+func (d *Handlers) UpdateProblem(w http.ResponseWriter, r *http.Request) {
 	id, ok := problemID(w, r)
 	if !ok {
 		return
 	}
 	var req problemEditJSON
-	if !decodeJSONLimit(w, r, &req, maxEditBody) {
+	if !httpx.DecodeJSONLimit(w, r, &req, maxEditBody) {
 		return
 	}
-	e := problems.Edit{Title: req.Title, Slug: req.Slug, Statement: req.StatementMD,
+	e := Edit{Title: req.Title, Slug: req.Slug, Statement: req.StatementMD,
 		TimeLimitMS: req.TimeLimitMS, MemoryLimitMB: req.MemoryLimitMB,
 		Checker: req.Checker, Epsilon: req.Epsilon, CheckerSource: req.CheckerSource,
-		Reference: problems.Source{Language: req.Reference.Language, Source: req.Reference.Source},
+		Reference: Source{Language: req.Reference.Language, Source: req.Reference.Source},
 		Brute:     fromSourceJSON(req.Brute), Validator: fromSourceJSON(req.Validator),
 		Tags: req.Tags, Difficulty: req.Difficulty, Samples: req.Samples,
-		By: userFrom(r.Context()).ID, Reason: req.Reason}
+		By: auth.UserFrom(r.Context()).ID, Reason: req.Reason}
 	for _, st := range req.Subtasks {
-		e.Subtasks = append(e.Subtasks, problems.Subtask{Points: st.Points, Title: st.Title, Tests: st.Tests, GeneratorArgs: st.GeneratorArgs})
+		e.Subtasks = append(e.Subtasks, Subtask{Points: st.Points, Title: st.Title, Tests: st.Tests, GeneratorArgs: st.GeneratorArgs})
 	}
 	if req.Generator != nil || req.Plan != nil {
 		g, err := d.generatorEdit(r, id, req.Generator, req.Plan)
@@ -455,19 +457,19 @@ func (d Deps) updateProblem(w http.ResponseWriter, r *http.Request) {
 
 // generatorEdit builds the generator part of a save from the raw fields.
 // When only one of them was sent, the other keeps its stored value.
-func (d Deps) generatorEdit(r *http.Request, id int64, rawGen, rawPlan json.RawMessage) (*problems.GeneratorEdit, error) {
-	var cur *problems.Problem
+func (d *Handlers) generatorEdit(r *http.Request, id int64, rawGen, rawPlan json.RawMessage) (*GeneratorEdit, error) {
+	var cur *Problem
 	if rawGen == nil || rawPlan == nil {
 		var err error
 		if cur, err = d.Problems.Get(r.Context(), id); err != nil {
 			return nil, err
 		}
 	}
-	g := &problems.GeneratorEdit{}
+	g := &GeneratorEdit{}
 	if rawGen != nil {
 		var src *sourceJSON
 		if err := json.Unmarshal(rawGen, &src); err != nil {
-			return nil, problems.FieldErrors{"generator": "Send the generator as {language, source} or null."}
+			return nil, FieldErrors{"generator": "Send the generator as {language, source} or null."}
 		}
 		g.Source = fromSourceJSON(src)
 	} else {
@@ -476,10 +478,10 @@ func (d Deps) generatorEdit(r *http.Request, id int64, rawGen, rawPlan json.RawM
 	if rawPlan != nil {
 		var plan []planJSON
 		if err := json.Unmarshal(rawPlan, &plan); err != nil {
-			return nil, problems.FieldErrors{"plan": "Send the plan as a list of {idx, subtask, seed, args}."}
+			return nil, FieldErrors{"plan": "Send the plan as a list of {idx, subtask, seed, args}."}
 		}
 		for _, t := range plan {
-			g.Plan = append(g.Plan, problems.PlannedTest{Test: t.Idx, Subtask: t.Subtask, Seed: t.Seed, Args: t.Args})
+			g.Plan = append(g.Plan, PlannedTest{Test: t.Idx, Subtask: t.Subtask, Seed: t.Seed, Args: t.Args})
 		}
 	} else {
 		g.Plan = cur.Plan
@@ -487,7 +489,7 @@ func (d Deps) generatorEdit(r *http.Request, id int64, rawGen, rawPlan json.RawM
 	return g, nil
 }
 
-func (d Deps) replaceTests(w http.ResponseWriter, r *http.Request) {
+func (d *Handlers) ReplaceTests(w http.ResponseWriter, r *http.Request) {
 	id, ok := problemID(w, r)
 	if !ok {
 		return
@@ -501,17 +503,17 @@ func (d Deps) replaceTests(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer release()
-	note := problems.RevisionNote{By: userFrom(r.Context()).ID, Reason: r.URL.Query().Get("reason")}
+	note := RevisionNote{By: auth.UserFrom(r.Context()).ID, Reason: r.URL.Query().Get("reason")}
 	p, err := d.Problems.ReplaceTests(r.Context(), id, body, note)
 	if err != nil {
 		d.problemError(w, r, err)
 		return
 	}
-	d.Log.Info("tests replaced", "by", userFrom(r.Context()).ID, "problem_id", id, "tests", len(p.Tests))
+	d.Log.Info("tests replaced", "by", auth.UserFrom(r.Context()).ID, "problem_id", id, "tests", len(p.Tests))
 	d.writeProblem(w, r, http.StatusOK, p)
 }
 
-func (d Deps) downloadTest(w http.ResponseWriter, r *http.Request) {
+func (d *Handlers) DownloadTest(w http.ResponseWriter, r *http.Request) {
 	id, ok := problemID(w, r)
 	if !ok {
 		return
@@ -519,12 +521,12 @@ func (d Deps) downloadTest(w http.ResponseWriter, r *http.Request) {
 	idx, err := strconv.Atoi(r.PathValue("idx"))
 	part := r.PathValue("part")
 	if err != nil || (part != "input" && part != "output") {
-		WriteError(w, http.StatusNotFound, "not_found", "There is no such test file.")
+		httpx.WriteError(w, http.StatusNotFound, "not_found", "There is no such test file.")
 		return
 	}
 	sha, err := d.Problems.TestBlob(r.Context(), id, idx, part == "output")
-	if errors.Is(err, problems.ErrNotFound) {
-		WriteError(w, http.StatusNotFound, "not_found", "There is no such test file.")
+	if errors.Is(err, ErrNotFound) {
+		httpx.WriteError(w, http.StatusNotFound, "not_found", "There is no such test file.")
 		return
 	}
 	if err != nil {
@@ -544,7 +546,7 @@ func (d Deps) downloadTest(w http.ResponseWriter, r *http.Request) {
 	io.Copy(w, f)
 }
 
-func (d Deps) exportProblem(w http.ResponseWriter, r *http.Request) {
+func (d *Handlers) ExportProblem(w http.ResponseWriter, r *http.Request) {
 	id, ok := problemID(w, r)
 	if !ok {
 		return
@@ -565,13 +567,13 @@ func (d Deps) exportProblem(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/zip")
 	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s.zip"`, p.Slug))
 	w.Header().Set("Cache-Control", "no-store")
-	err = problems.WritePack(w, p, func(sha string) ([]byte, error) { return d.Problems.Blobs.Read(sha, problems.MaxPackFile+1) })
+	err = WritePack(w, p, func(sha string) ([]byte, error) { return d.Problems.Blobs.Read(sha, MaxPackFile+1) })
 	if err != nil {
 		d.Log.Error("export failed part way", "problem_id", id, "err", err)
 	}
 }
 
-func (d Deps) archiveProblem(w http.ResponseWriter, r *http.Request) {
+func (d *Handlers) ArchiveProblem(w http.ResponseWriter, r *http.Request) {
 	id, ok := problemID(w, r)
 	if !ok {
 		return
@@ -580,43 +582,56 @@ func (d Deps) archiveProblem(w http.ResponseWriter, r *http.Request) {
 		d.problemError(w, r, err)
 		return
 	}
-	d.Log.Info("problem archived", "by", userFrom(r.Context()).ID, "problem_id", id)
+	d.Log.Info("problem archived", "by", auth.UserFrom(r.Context()).ID, "problem_id", id)
 	w.WriteHeader(http.StatusNoContent)
 }
 
-func (d Deps) validateProblem(w http.ResponseWriter, r *http.Request) {
+func (d *Handlers) ValidateProblem(w http.ResponseWriter, r *http.Request) {
 	id, ok := problemID(w, r)
 	if !ok {
 		return
 	}
-	v, err := d.Problems.RequestValidation(r.Context(), id, userFrom(r.Context()).ID)
+	v, err := d.Problems.RequestValidation(r.Context(), id, auth.UserFrom(r.Context()).ID)
 	if err != nil {
 		d.problemError(w, r, err)
 		return
 	}
-	d.Log.Info("validation queued", "by", userFrom(r.Context()).ID, "problem_id", id, "validation_id", v.ID)
-	WriteJSON(w, http.StatusAccepted, validationOut(v))
+	d.Log.Info("validation queued", "by", auth.UserFrom(r.Context()).ID, "problem_id", id, "validation_id", v.ID)
+	httpx.WriteJSON(w, http.StatusAccepted, validationOut(v))
 }
 
-func (d Deps) getValidation(w http.ResponseWriter, r *http.Request) {
+func (d *Handlers) GetValidation(w http.ResponseWriter, r *http.Request) {
 	id, ok := problemID(w, r)
 	if !ok {
 		return
 	}
 	v, err := d.Problems.LatestValidation(r.Context(), id)
-	if errors.Is(err, problems.ErrNotFound) {
-		WriteError(w, http.StatusNotFound, "not_found", "This problem has not been validated yet.")
+	if errors.Is(err, ErrNotFound) {
+		httpx.WriteError(w, http.StatusNotFound, "not_found", "This problem has not been validated yet.")
 		return
 	}
 	if err != nil {
 		d.internalError(w, r, err)
 		return
 	}
-	WriteJSON(w, http.StatusOK, validationOut(v))
+	httpx.WriteJSON(w, http.StatusOK, validationOut(v))
 }
 
-// decodeJSONLimit is decodeJSON with a larger body limit.
-func decodeJSONLimit(w http.ResponseWriter, r *http.Request, v any, limit int64) bool {
-	r.Body = http.MaxBytesReader(w, r.Body, limit)
-	return decodeJSONBody(w, r, v)
+type revisionRefJSON struct {
+	ID  int64 `json:"id"`
+	Rev int   `json:"rev"`
+}
+
+// addRevisions fills Problem's revision fields: the newest revision and
+// the running contests that pin the problem.
+func (d *Handlers) addRevisions(ctx context.Context, p *Problem, out *problemJSON) error {
+	list, _, _, err := d.Problems.Revisions(ctx, p.ID, 1)
+	if err != nil {
+		return err
+	}
+	if len(list) > 0 {
+		out.Revision = &revisionRefJSON{list[0].ID, list[0].Rev}
+	}
+	out.LiveContests, err = d.Problems.LiveContests(ctx, p.ID)
+	return err
 }

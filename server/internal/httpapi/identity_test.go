@@ -30,6 +30,7 @@ import (
 	"github.com/Sarthaks-24/podium/internal/events"
 	"github.com/Sarthaks-24/podium/internal/integrity"
 	"github.com/Sarthaks-24/podium/internal/jobs"
+	"github.com/Sarthaks-24/podium/internal/jobs/judgeserver"
 	"github.com/Sarthaks-24/podium/internal/judgeapi"
 	"github.com/Sarthaks-24/podium/internal/problems"
 	"github.com/Sarthaks-24/podium/internal/submissions"
@@ -58,7 +59,7 @@ type site struct {
 	logs     *syncBuffer
 	logLevel *slog.LevelVar
 	// ai is the wizard's state; the fake provider exists in testing mode.
-	ai *AI
+	ai *ai.Wizard
 	// authSvc applies the identity rules.
 	authSvc *auth.Service
 	// restart replaces the handler with one built from fresh services on
@@ -140,7 +141,7 @@ func newSiteMode(t *testing.T, mode string) *site {
 		judgeapi.KindRun:            submissions.RunKind{Now: clock.now},
 	}
 	s := &site{t: t, idp: idp, bank: &problems.Service{DB: d, Blobs: blobs, Jobs: jobSvc, Now: clock.now}, hub: &events.Hub{}, db: d, clock: clock,
-		dbPath: dbPath, logs: logs, logLevel: level, ai: &AI{Keys: &ai.Keys{}, Slots: &ai.Slots{}}}
+		dbPath: dbPath, logs: logs, logLevel: level, ai: &ai.Wizard{Keys: &ai.Keys{}, Slots: &ai.Slots{}}}
 	s.subs = &submissions.Service{DB: d, Jobs: jobSvc, Problems: s.bank, Hub: s.hub, Now: clock.now, HashKey: []byte("test-hash-key")}
 	s.authSvc = svc
 	jobSvc.Discard = func(shas []string) { blobs.DiscardUnrecorded(context.Background(), d, shas) }
@@ -149,13 +150,13 @@ func newSiteMode(t *testing.T, mode string) *site {
 	s.contests = &contests.Service{DB: d, Problems: s.bank, Hub: s.hub, Now: clock.now, BoardEvery: time.Nanosecond}
 	s.subs.ContestView = s.contests.ViewFor
 	s.integrity = &integrity.Service{DB: d, Problems: s.bank, Contests: s.contests, Now: clock.now}
-	inputEvents := &InputGenerationEvents{Problems: s.bank, Hub: s.hub}
+	inputEvents := &problems.InputGenerationEvents{Problems: s.bank, Hub: s.hub}
 	jobSvc.OnChange = func(id int64, kind string) {
 		s.subs.OnJobChange(id, kind)
 		s.contests.OnJobChange(id, kind)
 		inputEvents.OnJobChange(id, kind)
 	}
-	s.judge = httptest.NewServer(NewJudge(JudgeDeps{Log: log, Jobs: jobSvc, Blobs: blobs, Token: judgeToken}))
+	s.judge = httptest.NewServer(judgeserver.New(judgeserver.Deps{Log: log, Jobs: jobSvc, Blobs: blobs, Token: judgeToken}))
 	t.Cleanup(s.judge.Close)
 	// The server's URL is only known once it starts, so the handler is
 	// built on first request.
@@ -180,7 +181,7 @@ func newSiteMode(t *testing.T, mode string) *site {
 		s.subs = &submissions.Service{DB: d, Jobs: jobSvc, Problems: s.bank, Hub: s.hub, Now: clock.now, HashKey: []byte("test-hash-key")}
 		s.contests = &contests.Service{DB: d, Problems: s.bank, Hub: s.hub, Now: clock.now, BoardEvery: time.Nanosecond}
 		s.subs.ContestView = s.contests.ViewFor
-		s.ai = &AI{Keys: &ai.Keys{}, Slots: &ai.Slots{}}
+		s.ai = &ai.Wizard{Keys: &ai.Keys{}, Slots: &ai.Slots{}}
 		h = build()
 	}
 	return s

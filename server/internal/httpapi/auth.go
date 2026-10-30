@@ -6,11 +6,11 @@ import (
 	"net"
 	"net/http"
 	"net/url"
-	"strconv"
 	"strings"
 	"time"
 
 	"github.com/Sarthaks-24/podium/internal/auth"
+	"github.com/Sarthaks-24/podium/internal/httpx"
 	"github.com/Sarthaks-24/podium/internal/retention"
 )
 
@@ -59,11 +59,6 @@ func (d Deps) clearCookie(w http.ResponseWriter, name, path string) {
 		HttpOnly: true, Secure: d.secure(), SameSite: http.SameSiteLaxMode})
 }
 
-// forwardedHeaders are set by reverse proxies. In testing mode any of them
-// means the request did not come from this machine's own browser: Caddy
-// (or any other proxy) in front of a testing-mode server must never work.
-var forwardedHeaders = []string{"X-Forwarded-For", "Forwarded", "X-Real-Ip", "X-Forwarded-Host"}
-
 // isLocalHost reports whether a Host header names this machine:
 // localhost, 127.0.0.1 or [::1], with any port.
 func isLocalHost(host string) bool {
@@ -86,13 +81,13 @@ func (d Deps) localOnly(w http.ResponseWriter, r *http.Request) bool {
 		return true
 	}
 	ok := isLocalHost(r.Host)
-	for _, h := range forwardedHeaders {
+	for _, h := range httpx.ForwardedHeaders {
 		if r.Header.Get(h) != "" {
 			ok = false
 		}
 	}
 	if !ok {
-		WriteError(w, http.StatusForbidden, "testing_mode_local", "This server is in testing mode, which works only from a browser on the same machine.")
+		httpx.WriteError(w, http.StatusForbidden, "testing_mode_local", "This server is in testing mode, which works only from a browser on the same machine.")
 	}
 	return ok
 }
@@ -135,7 +130,7 @@ func (d Deps) authConfig(w http.ResponseWriter, r *http.Request) {
 	if contactEmail == "" {
 		contactEmail = d.Auth.OwnerEmail
 	}
-	WriteJSON(w, http.StatusOK, map[string]any{"allowed_domains": names, "contact_email": contactEmail, "mode": mode,
+	httpx.WriteJSON(w, http.StatusOK, map[string]any{"allowed_domains": names, "contact_email": contactEmail, "mode": mode,
 		"organisation": org, "retention": retention.Periods()})
 }
 
@@ -149,7 +144,7 @@ func (d Deps) testSignIn(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if r.Header.Get("Origin") != d.BaseURL {
-		WriteError(w, http.StatusForbidden, "cross_site", "Test sign-in works only from the sign-in page at "+d.BaseURL+".")
+		httpx.WriteError(w, http.StatusForbidden, "cross_site", "Test sign-in works only from the sign-in page at "+d.BaseURL+".")
 		return
 	}
 	var req struct {
@@ -158,16 +153,16 @@ func (d Deps) testSignIn(w http.ResponseWriter, r *http.Request) {
 		Role  auth.Role `json:"role"`
 		Next  string    `json:"next"`
 	}
-	if !decodeJSON(w, r, &req) {
+	if !httpx.DecodeJSON(w, r, &req) {
 		return
 	}
-	u, token, _, err := d.Auth.TestSignIn(r.Context(), req.Email, req.Name, req.Role, clientIP(r), r.UserAgent())
+	u, token, _, err := d.Auth.TestSignIn(r.Context(), req.Email, req.Name, req.Role, httpx.ClientIP(r), r.UserAgent())
 	if errors.Is(err, auth.ErrDisabled) {
-		WriteError(w, http.StatusForbidden, "disabled", "This account is disabled. An owner can enable it on the People page.")
+		httpx.WriteError(w, http.StatusForbidden, "disabled", "This account is disabled. An owner can enable it on the People page.")
 		return
 	}
 	if err != nil {
-		d.changeError(w, r, err)
+		auth.WriteChangeError(d.Log, w, r, err)
 		return
 	}
 	// As with Google, a new sign-in ends this browser's previous session.
@@ -177,7 +172,7 @@ func (d Deps) testSignIn(w http.ResponseWriter, r *http.Request) {
 	}
 	d.setSessionCookie(w, token)
 	d.Log.Info("test sign-in", "user_id", u.ID, "role", u.Role)
-	WriteJSON(w, http.StatusOK, map[string]string{"next": auth.SafeNext(req.Next)})
+	httpx.WriteJSON(w, http.StatusOK, map[string]string{"next": auth.SafeNext(req.Next)})
 }
 
 func (d Deps) googleStart(w http.ResponseWriter, r *http.Request) {
@@ -239,21 +234,21 @@ func (d Deps) googleCallback(w http.ResponseWriter, r *http.Request) {
 		fail("google")
 		return
 	}
-	u, token, _, err := d.Auth.SignIn(r.Context(), id, clientIP(r), r.UserAgent())
+	u, token, _, err := d.Auth.SignIn(r.Context(), id, httpx.ClientIP(r), r.UserAgent())
 	switch {
 	case errors.Is(err, auth.ErrDomain):
-		d.Log.Info("sign-in refused: domain not allowed", "domain", domainOf(id.Email))
+		d.Log.Info("sign-in refused: domain not allowed", "domain", auth.DomainOf(id.Email))
 		fail("domain")
 		return
 	case errors.Is(err, auth.ErrUnverified):
 		fail("unverified")
 		return
 	case errors.Is(err, auth.ErrDisabled):
-		d.Log.Info("sign-in refused: account disabled", "domain", domainOf(id.Email))
+		d.Log.Info("sign-in refused: account disabled", "domain", auth.DomainOf(id.Email))
 		fail("disabled")
 		return
 	case errors.Is(err, auth.ErrAccount):
-		d.Log.Warn("sign-in refused: email bound to a different Google account", "domain", domainOf(id.Email))
+		d.Log.Warn("sign-in refused: email bound to a different Google account", "domain", auth.DomainOf(id.Email))
 		fail("account")
 		return
 	case err != nil:
@@ -287,23 +282,6 @@ func (d Deps) logout(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// me is GET /api/me: the signed-in user.
-func (d Deps) me(w http.ResponseWriter, r *http.Request) {
-	WriteJSON(w, http.StatusOK, userFrom(r.Context()))
-}
-
-func (d Deps) setPreferences(w http.ResponseWriter, r *http.Request) {
-	var p auth.Preferences
-	if !decodeJSON(w, r, &p) {
-		return
-	}
-	if err := d.Auth.SetPreferences(r.Context(), userFrom(r.Context()).ID, p); err != nil {
-		d.changeError(w, r, err)
-		return
-	}
-	WriteJSON(w, http.StatusOK, p)
-}
-
 // authenticate looks the session up and keeps knownSessions in step with
 // the answer.
 func (d Deps) authenticate(ctx context.Context, token string) (auth.User, error) {
@@ -317,13 +295,6 @@ func (d Deps) authenticate(ctx context.Context, token string) (auth.User, error)
 	return u, err
 }
 
-type userKey struct{}
-
-func userFrom(ctx context.Context) auth.User {
-	u, _ := ctx.Value(userKey{}).(auth.User)
-	return u
-}
-
 // requireRole wraps h so it runs only for a signed-in user holding at least
 // min. The role comes from the database on every request.
 func (d Deps) requireRole(min auth.Role, h http.HandlerFunc) http.HandlerFunc {
@@ -333,7 +304,7 @@ func (d Deps) requireRole(min auth.Role, h http.HandlerFunc) http.HandlerFunc {
 		}
 		c, err := r.Cookie(d.sessionCookieName())
 		if err != nil {
-			WriteError(w, http.StatusUnauthorized, "signed_out", "Sign in to continue.")
+			httpx.WriteError(w, http.StatusUnauthorized, "signed_out", "Sign in to continue.")
 			return
 		}
 		// Unknown cookies cost a database read each, so an address that
@@ -341,18 +312,18 @@ func (d Deps) requireRole(min auth.Role, h http.HandlerFunc) http.HandlerFunc {
 		// A session seen valid in the last minute is never refused here:
 		// the address is often a whole campus behind one NAT.
 		addr := addressKey(r)
-		if !loopbackRequest(r) && d.authFailLimit.exhausted(addr) && !d.known.has(c.Value) {
+		if !httpx.Loopback(r) && d.authFailLimit.exhausted(addr) && !d.known.has(c.Value) {
 			w.Header().Set("Retry-After", "5")
-			WriteError(w, http.StatusTooManyRequests, "rate_limited", "Too many requests from your network. Wait a few seconds and try again.")
+			httpx.WriteError(w, http.StatusTooManyRequests, "rate_limited", "Too many requests from your network. Wait a few seconds and try again.")
 			return
 		}
 		u, err := d.authenticate(r.Context(), c.Value)
 		if errors.Is(err, auth.ErrNoSession) {
-			if !loopbackRequest(r) {
+			if !httpx.Loopback(r) {
 				d.authFailLimit.allow(addr)
 			}
 			d.clearCookie(w, d.sessionCookieName(), "/")
-			WriteError(w, http.StatusUnauthorized, "signed_out", "Your session has ended. Sign in again.")
+			httpx.WriteError(w, http.StatusUnauthorized, "signed_out", "Your session has ended. Sign in again.")
 			return
 		}
 		if err != nil {
@@ -360,12 +331,12 @@ func (d Deps) requireRole(min auth.Role, h http.HandlerFunc) http.HandlerFunc {
 			return
 		}
 		if !u.Role.AtLeast(min) {
-			WriteError(w, http.StatusForbidden, "forbidden", "You do not have access to this. Ask an owner if you need it.")
+			httpx.WriteError(w, http.StatusForbidden, "forbidden", "You do not have access to this. Ask an owner if you need it.")
 			return
 		}
 		// The actor rides on the context so every change the request makes
 		// names them in the site audit.
-		ctx := auth.WithActor(context.WithValue(r.Context(), userKey{}, u), auth.Actor{ID: u.ID, Email: u.Email, Role: u.Role})
+		ctx := auth.WithActor(auth.WithUser(r.Context(), u), auth.Actor{ID: u.ID, Email: u.Email, Role: u.Role})
 		h(w, r.WithContext(ctx))
 	}
 }
@@ -383,7 +354,7 @@ func (d Deps) sameOrigin(next http.Handler) http.Handler {
 				origin := r.Header.Get("Origin")
 				site := r.Header.Get("Sec-Fetch-Site")
 				if (origin != "" && origin != want) || (origin == "" && site != "" && site != "same-origin") {
-					WriteError(w, http.StatusForbidden, "cross_site", "This request came from another site and was refused.")
+					httpx.WriteError(w, http.StatusForbidden, "cross_site", "This request came from another site and was refused.")
 					return
 				}
 			}
@@ -392,39 +363,9 @@ func (d Deps) sameOrigin(next http.Handler) http.Handler {
 	})
 }
 
-// clientIP is the address recorded with a session. Behind Caddy on the
-// same host the peer is loopback, so the forwarded address is used then.
-func clientIP(r *http.Request) string {
-	host, _, err := net.SplitHostPort(r.RemoteAddr)
-	if err != nil {
-		host = r.RemoteAddr
-	}
-	if ip := net.ParseIP(host); ip != nil && ip.IsLoopback() {
-		if fwd := r.Header.Get("X-Forwarded-For"); fwd != "" {
-			parts := strings.Split(fwd, ",")
-			if p := net.ParseIP(strings.TrimSpace(parts[len(parts)-1])); p != nil {
-				return p.String()
-			}
-		}
-	}
-	return host
-}
-
-func domainOf(email string) string {
-	if i := strings.LastIndexByte(email, '@'); i >= 0 {
-		return email[i+1:]
-	}
-	return ""
-}
-
 // redirectURL is the callback registered with Google.
 func RedirectURL(baseURL string) string {
 	u, _ := url.Parse(baseURL)
 	u.Path = strings.TrimRight(u.Path, "/") + "/api/auth/google/callback"
 	return u.String()
-}
-
-func parseID(s string) (int64, bool) {
-	id, err := strconv.ParseInt(s, 10, 64)
-	return id, err == nil && id > 0
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -324,4 +325,49 @@ func (s *Service) entries(ctx context.Context, c *Contest, userID int64) ([]Entr
 // a review decision reads the student's rank and score just before it.
 func (s *Service) BoardNow(ctx context.Context, c *Contest) (*Standings, error) {
 	return s.computeBoard(ctx, c, VariantFull, 0)
+}
+
+// WithEmails copies the board's rows with each student's email, for the
+// organisers' board: two students may share a name, and a testing-mode
+// account may have only "Student 12". The copy leaves the cached
+// board untouched.
+func (s *Service) WithEmails(ctx context.Context, rows []Row) ([]Row, error) {
+	if len(rows) == 0 {
+		return rows, nil
+	}
+	out := append([]Row(nil), rows...)
+	at := make(map[int64][]int, len(out))
+	for i, row := range out {
+		at[row.UserID] = append(at[row.UserID], i)
+	}
+	q, err := s.DB.QueryContext(ctx, `SELECT u.id, u.email FROM users u
+		WHERE u.id IN (SELECT value FROM json_each(?))`, idList(out))
+	if err != nil {
+		return nil, err
+	}
+	defer q.Close()
+	for q.Next() {
+		var id int64
+		var email string
+		if err := q.Scan(&id, &email); err != nil {
+			return nil, err
+		}
+		for _, i := range at[id] {
+			out[i].Email = email
+		}
+	}
+	return out, q.Err()
+}
+
+// idList is the rows' user ids as a JSON array, for json_each.
+func idList(rows []Row) string {
+	b := make([]byte, 0, len(rows)*6)
+	b = append(b, '[')
+	for i, row := range rows {
+		if i > 0 {
+			b = append(b, ',')
+		}
+		b = strconv.AppendInt(b, row.UserID, 10)
+	}
+	return string(append(b, ']'))
 }

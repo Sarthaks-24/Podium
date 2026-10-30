@@ -6,6 +6,9 @@ import (
 	"strconv"
 	"sync"
 	"time"
+
+	"github.com/Sarthaks-24/podium/internal/auth"
+	"github.com/Sarthaks-24/podium/internal/httpx"
 )
 
 // Reads that cost several queries (the contest list and page, a
@@ -65,10 +68,10 @@ func (l *readLimiter) take(user int64) (time.Duration, bool) {
 func (d Deps) limitReads(h http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if d.reads != nil {
-			if wait, ok := d.reads.take(userFrom(r.Context()).ID); !ok {
+			if wait, ok := d.reads.take(auth.UserFrom(r.Context()).ID); !ok {
 				secs := max(1, int(math.Ceil(wait.Seconds())))
 				w.Header().Set("Retry-After", strconv.Itoa(secs))
-				WriteJSON(w, http.StatusTooManyRequests, map[string]any{"error": map[string]any{
+				httpx.WriteJSON(w, http.StatusTooManyRequests, map[string]any{"error": map[string]any{
 					"code": "rate_limited", "message": "Too many requests at once. Try again in " + strconv.Itoa(secs) + " s.", "retry_after_s": secs}})
 				return
 			}

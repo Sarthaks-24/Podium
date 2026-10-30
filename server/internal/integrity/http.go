@@ -1,78 +1,80 @@
-package httpapi
+package integrity
 
 // Integrity routes. Owners and admins run the similarity check
 // after a contest, read the ranked signals and the side-by-side pair
 // view, download the similar pairs as CSV, and record one decision per
-// student with a reason (integrity/cases.go). Anyone else gets the same
+// student with a reason (cases.go). Anyone else gets the same
 // 404 as a missing contest. A reviewer named in a signal (a student since
 // made an admin) never sees it.
 
 import (
 	"errors"
+	"log/slog"
 	"net/http"
 
 	"github.com/Sarthaks-24/podium/internal/auth"
 	"github.com/Sarthaks-24/podium/internal/contests"
-	"github.com/Sarthaks-24/podium/internal/integrity"
+	"github.com/Sarthaks-24/podium/internal/httpx"
 )
 
-// integrityRoutes mounts the integrity API. It needs Contests as well.
-func (d Deps) integrityRoutes(mux *http.ServeMux) {
-	organiser := func(h http.HandlerFunc) http.HandlerFunc { return d.requireRole(auth.Admin, h) }
-	mux.HandleFunc("POST /api/admin/contests/{id}/integrity/run", organiser(d.runIntegrity))
-	mux.HandleFunc("GET /api/admin/contests/{id}/integrity", organiser(d.limitReads(d.getIntegrity)))
-	mux.HandleFunc("GET /api/admin/contests/{id}/integrity/pairs.csv", organiser(d.limitReads(d.exportPairs)))
-	mux.HandleFunc("GET /api/admin/contests/{id}/integrity/signals/{signal}/pair", organiser(d.limitReads(d.getIntegrityPair)))
-	mux.HandleFunc("GET /api/admin/contests/{id}/integrity/timeline/{user}", organiser(d.limitReads(d.getIntegrityTimeline)))
-	mux.HandleFunc("GET /api/admin/contests/{id}/integrity/counts", organiser(d.limitReads(d.getIntegrityCounts)))
-	mux.HandleFunc("GET /api/admin/contests/{id}/integrity/cases", organiser(d.limitReads(d.listIntegrityCases)))
-	mux.HandleFunc("PUT /api/admin/contests/{id}/integrity/cases/{user}", organiser(d.decideIntegrityCase))
+// Handlers serve the integrity routes. They need the contests too.
+type Handlers struct {
+	Integrity *Service
+	Contests  *contests.Service
+	// Organised loads the contest named by {id} as the organiser routes
+	// do, answering a 404 itself when there is none.
+	Organised func(http.ResponseWriter, *http.Request) (*contests.Contest, bool)
+	Log       *slog.Logger
+}
+
+func (d *Handlers) internalError(w http.ResponseWriter, r *http.Request, err error) {
+	httpx.InternalError(d.Log, w, r, err)
 }
 
 // reviewedContest loads the contest named by {id}; the routes already
 // need the admin role.
-func (d Deps) reviewedContest(w http.ResponseWriter, r *http.Request) (*contests.Contest, bool) {
-	return d.organisedContest(w, r)
+func (d *Handlers) reviewedContest(w http.ResponseWriter, r *http.Request) (*contests.Contest, bool) {
+	return d.Organised(w, r)
 }
 
 // integrityError maps the integrity package's errors to responses.
-func (d Deps) integrityError(w http.ResponseWriter, r *http.Request, err error, notFound string) {
-	var input *integrity.InputError
+func (d *Handlers) integrityError(w http.ResponseWriter, r *http.Request, err error, notFound string) {
+	var input *InputError
 	switch {
 	case errors.As(err, &input):
-		WriteError(w, http.StatusBadRequest, "bad_request", input.Message)
-	case errors.Is(err, integrity.ErrNotFound):
-		WriteError(w, http.StatusNotFound, "not_found", notFound)
-	case errors.Is(err, integrity.ErrBusy):
-		WriteError(w, http.StatusConflict, "already_running", "A check is already running. Try again in a minute.")
+		httpx.WriteError(w, http.StatusBadRequest, "bad_request", input.Message)
+	case errors.Is(err, ErrNotFound):
+		httpx.WriteError(w, http.StatusNotFound, "not_found", notFound)
+	case errors.Is(err, ErrBusy):
+		httpx.WriteError(w, http.StatusConflict, "already_running", "A check is already running. Try again in a minute.")
 	default:
 		d.internalError(w, r, err)
 	}
 }
 
 // serverNow is the contest clock in Unix milliseconds, for server_now.
-func (d Deps) serverNow() int64 { return d.Contests.Clock().UnixMilli() }
+func (d *Handlers) serverNow() int64 { return d.Contests.Clock().UnixMilli() }
 
-// runIntegrity starts a check. It is refused until the contest is over for
+// RunIntegrity starts a check. It is refused until the contest is over for
 // everyone: the close plus the longest personal extension, the same moment
 // the editorial and practice open.
-func (d Deps) runIntegrity(w http.ResponseWriter, r *http.Request) {
+func (d *Handlers) RunIntegrity(w http.ResponseWriter, r *http.Request) {
 	c, ok := d.reviewedContest(w, r)
 	if !ok {
 		return
 	}
 	if d.Contests.Clock().Before(c.Final()) {
-		WriteError(w, http.StatusConflict, "contest_live", "Check integrity after the contest ends for everyone.")
+		httpx.WriteError(w, http.StatusConflict, "contest_live", "Check integrity after the contest ends for everyone.")
 		return
 	}
-	u := userFrom(r.Context())
+	u := auth.UserFrom(r.Context())
 	id, err := d.Integrity.Start(r.Context(), c.ID, u.ID)
 	if err != nil {
 		d.integrityError(w, r, err, "")
 		return
 	}
 	d.Log.Info("integrity check started", "by", u.ID, "contest_id", c.ID, "run_id", id)
-	WriteJSON(w, http.StatusAccepted, map[string]any{"run_id": id, "server_now": d.serverNow()})
+	httpx.WriteJSON(w, http.StatusAccepted, map[string]any{"run_id": id, "server_now": d.serverNow()})
 }
 
 // problemRef names a problem as the integrity pages show it.
@@ -91,13 +93,13 @@ func problemRefs(c *contests.Contest) map[int64]problemRef {
 
 // runJSON is Run with the people and problems it names.
 type runJSON struct {
-	*integrity.Run
-	Users     map[int64]integrity.Person `json:"users"`
-	Problems  map[int64]problemRef       `json:"problems"`
-	ServerNow int64                      `json:"server_now"`
+	*Run
+	Users     map[int64]Person     `json:"users"`
+	Problems  map[int64]problemRef `json:"problems"`
+	ServerNow int64                `json:"server_now"`
 }
 
-func (d Deps) getIntegrity(w http.ResponseWriter, r *http.Request) {
+func (d *Handlers) GetIntegrity(w http.ResponseWriter, r *http.Request) {
 	c, ok := d.reviewedContest(w, r)
 	if !ok {
 		return
@@ -109,7 +111,7 @@ func (d Deps) getIntegrity(w http.ResponseWriter, r *http.Request) {
 	}
 	// A reviewer named in a signal (a student since made an admin) never
 	// sees it, as they never see a case they are in.
-	me := userFrom(r.Context()).ID
+	me := auth.UserFrom(r.Context()).ID
 	kept := run.Signals[:0:0]
 	for _, sg := range run.Signals {
 		if sg.UserA != me && sg.UserB != me {
@@ -126,18 +128,18 @@ func (d Deps) getIntegrity(w http.ResponseWriter, r *http.Request) {
 		d.internalError(w, r, err)
 		return
 	}
-	WriteJSON(w, http.StatusOK, runJSON{Run: run, Users: users, Problems: problemRefs(c), ServerNow: d.serverNow()})
+	httpx.WriteJSON(w, http.StatusOK, runJSON{Run: run, Users: users, Problems: problemRefs(c), ServerNow: d.serverNow()})
 }
 
-func (d Deps) getIntegrityPair(w http.ResponseWriter, r *http.Request) {
+func (d *Handlers) GetIntegrityPair(w http.ResponseWriter, r *http.Request) {
 	c, ok := d.reviewedContest(w, r)
 	if !ok {
 		return
 	}
 	const missing = "There is no such similar-code signal in this contest."
-	id, ok := parseID(r.PathValue("signal"))
+	id, ok := httpx.ParseID(r.PathValue("signal"))
 	if !ok {
-		WriteError(w, http.StatusNotFound, "not_found", missing)
+		httpx.WriteError(w, http.StatusNotFound, "not_found", missing)
 		return
 	}
 	a, b, err := d.Integrity.Pair(r.Context(), c.ID, id)
@@ -145,22 +147,22 @@ func (d Deps) getIntegrityPair(w http.ResponseWriter, r *http.Request) {
 		d.integrityError(w, r, err, missing)
 		return
 	}
-	if me := userFrom(r.Context()).ID; a.UserID == me || b.UserID == me {
-		WriteError(w, http.StatusNotFound, "not_found", missing)
+	if me := auth.UserFrom(r.Context()).ID; a.UserID == me || b.UserID == me {
+		httpx.WriteError(w, http.StatusNotFound, "not_found", missing)
 		return
 	}
-	WriteJSON(w, http.StatusOK, map[string]any{"a": a, "b": b, "server_now": d.serverNow()})
+	httpx.WriteJSON(w, http.StatusOK, map[string]any{"a": a, "b": b, "server_now": d.serverNow()})
 }
 
-func (d Deps) getIntegrityTimeline(w http.ResponseWriter, r *http.Request) {
+func (d *Handlers) GetIntegrityTimeline(w http.ResponseWriter, r *http.Request) {
 	c, ok := d.reviewedContest(w, r)
 	if !ok {
 		return
 	}
 	const missing = "There is no such student in this contest."
-	userID, ok := parseID(r.PathValue("user"))
-	if !ok || userID == userFrom(r.Context()).ID {
-		WriteError(w, http.StatusNotFound, "not_found", missing)
+	userID, ok := httpx.ParseID(r.PathValue("user"))
+	if !ok || userID == auth.UserFrom(r.Context()).ID {
+		httpx.WriteError(w, http.StatusNotFound, "not_found", missing)
 		return
 	}
 	in, err := d.Integrity.Participant(r.Context(), c.ID, userID)
@@ -169,7 +171,7 @@ func (d Deps) getIntegrityTimeline(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !in {
-		WriteError(w, http.StatusNotFound, "not_found", missing)
+		httpx.WriteError(w, http.StatusNotFound, "not_found", missing)
 		return
 	}
 	moments, err := d.Integrity.Timeline(r.Context(), c.ID, userID)
@@ -177,13 +179,13 @@ func (d Deps) getIntegrityTimeline(w http.ResponseWriter, r *http.Request) {
 		d.internalError(w, r, err)
 		return
 	}
-	WriteJSON(w, http.StatusOK, map[string]any{"moments": moments, "server_now": d.serverNow()})
+	httpx.WriteJSON(w, http.StatusOK, map[string]any{"moments": moments, "server_now": d.serverNow()})
 }
 
-// getIntegrityCounts answers the editor's counts per student for the
+// GetIntegrityCounts answers the editor's counts per student for the
 // similar-code page: pastes, focus losses and full-screen exits.
 // The reviewer's own row is left out, as their timeline is.
-func (d Deps) getIntegrityCounts(w http.ResponseWriter, r *http.Request) {
+func (d *Handlers) GetIntegrityCounts(w http.ResponseWriter, r *http.Request) {
 	c, ok := d.reviewedContest(w, r)
 	if !ok {
 		return
@@ -193,18 +195,18 @@ func (d Deps) getIntegrityCounts(w http.ResponseWriter, r *http.Request) {
 		d.internalError(w, r, err)
 		return
 	}
-	me := userFrom(r.Context()).ID
-	out := make([]integrity.Counts, 0, len(all))
+	me := auth.UserFrom(r.Context()).ID
+	out := make([]Counts, 0, len(all))
 	for _, x := range all {
 		if x.UserID != me {
 			out = append(out, x)
 		}
 	}
-	WriteJSON(w, http.StatusOK, map[string]any{"counts": out, "server_now": d.serverNow()})
+	httpx.WriteJSON(w, http.StatusOK, map[string]any{"counts": out, "server_now": d.serverNow()})
 }
 
 // caseJSON is a decision list with server_now.
-func (d Deps) listIntegrityCases(w http.ResponseWriter, r *http.Request) {
+func (d *Handlers) ListIntegrityCases(w http.ResponseWriter, r *http.Request) {
 	c, ok := d.reviewedContest(w, r)
 	if !ok {
 		return
@@ -214,28 +216,28 @@ func (d Deps) listIntegrityCases(w http.ResponseWriter, r *http.Request) {
 		d.internalError(w, r, err)
 		return
 	}
-	WriteJSON(w, http.StatusOK, map[string]any{"cases": cases, "server_now": d.serverNow()})
+	httpx.WriteJSON(w, http.StatusOK, map[string]any{"cases": cases, "server_now": d.serverNow()})
 }
 
-// decideIntegrityCase records the decision about one student: no_action,
+// DecideIntegrityCase records the decision about one student: no_action,
 // warning or excluded, with a reason. It replaces an earlier decision.
-func (d Deps) decideIntegrityCase(w http.ResponseWriter, r *http.Request) {
+func (d *Handlers) DecideIntegrityCase(w http.ResponseWriter, r *http.Request) {
 	c, ok := d.reviewedContest(w, r)
 	if !ok {
 		return
 	}
 	const missing = "There is no such student in this contest."
-	userID, ok := parseID(r.PathValue("user"))
-	u := userFrom(r.Context())
+	userID, ok := httpx.ParseID(r.PathValue("user"))
+	u := auth.UserFrom(r.Context())
 	if !ok || userID == u.ID {
-		WriteError(w, http.StatusNotFound, "not_found", missing)
+		httpx.WriteError(w, http.StatusNotFound, "not_found", missing)
 		return
 	}
 	var body struct {
 		Decision string `json:"decision"`
 		Reason   string `json:"reason"`
 	}
-	if !decodeJSON(w, r, &body) {
+	if !httpx.DecodeJSON(w, r, &body) {
 		return
 	}
 	cs, err := d.Integrity.Decide(r.Context(), c.ID, userID, contests.Actor{ID: u.ID, Email: u.Email, Role: string(u.Role)}, body.Decision, body.Reason)
@@ -244,12 +246,12 @@ func (d Deps) decideIntegrityCase(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	d.Log.Info("integrity decision", "by", u.ID, "contest_id", c.ID, "user_id", userID, "decision", cs.Decision)
-	WriteJSON(w, http.StatusOK, map[string]any{"case": cs, "server_now": d.serverNow()})
+	httpx.WriteJSON(w, http.StatusOK, map[string]any{"case": cs, "server_now": d.serverNow()})
 }
 
-// exportPairs writes the latest check's similar-code pairs as CSV, the
+// ExportPairs writes the latest check's similar-code pairs as CSV, the
 // evidence an organiser hands to the college's own process.
-func (d Deps) exportPairs(w http.ResponseWriter, r *http.Request) {
+func (d *Handlers) ExportPairs(w http.ResponseWriter, r *http.Request) {
 	c, ok := d.reviewedContest(w, r)
 	if !ok {
 		return
@@ -270,7 +272,7 @@ func (d Deps) exportPairs(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "text/csv; charset=utf-8")
 	w.Header().Set("Content-Disposition", `attachment; filename="`+c.Slug+`-similar-pairs.csv"`)
-	if err := integrity.WritePairsCSV(w, run, users, problemLabels(c)); err != nil {
+	if err := WritePairsCSV(w, run, users, problemLabels(c)); err != nil {
 		d.Log.Error("similar pairs export", "contest_id", c.ID, "err", err)
 	}
 }

@@ -126,14 +126,22 @@ var routeRoles = map[string]string{
 	"POST /api/judge/report":                                       "judge",
 }
 
-// registeredRoutes reads every "METHOD path" pattern the package's
-// production files register, so a new route without a row in routeRoles
-// fails the test.
+// routeFiles are where routes are registered: this package's route table
+// and the judge worker API on its own listener.
+var routeFiles = []string{"*.go", "../jobs/judgeserver/*.go"}
+
+// registeredRoutes reads every "METHOD path" pattern the production files
+// in routeFiles register, so a new route without a row in routeRoles fails
+// the test.
 func registeredRoutes(t *testing.T) []string {
 	t.Helper()
-	files, err := filepath.Glob("*.go")
-	if err != nil {
-		t.Fatal(err)
+	var files []string
+	for _, pattern := range routeFiles {
+		matched, err := filepath.Glob(pattern)
+		if err != nil {
+			t.Fatal(err)
+		}
+		files = append(files, matched...)
 	}
 	fset := token.NewFileSet()
 	var out []string

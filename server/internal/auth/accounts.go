@@ -19,9 +19,20 @@ type Account struct {
 	LastLoginAt *int64 `json:"last_login_at"`
 }
 
-func accountByEmail(ctx context.Context, tx *sql.Tx, email string) (Account, error) {
+// Account finds one account by its email, students included, matched as
+// sign-in stores it (trimmed, lower case). Nobody with that email is a
+// not_found ChangeError.
+func (s *Service) Account(ctx context.Context, email string) (Account, error) {
+	return accountByEmail(ctx, s.DB, email)
+}
+
+type rowQuerier interface {
+	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
+}
+
+func accountByEmail(ctx context.Context, q rowQuerier, email string) (Account, error) {
 	var a Account
-	err := tx.QueryRowContext(ctx, "SELECT id, email, name, role, disabled, last_login_at FROM users WHERE email = ?",
+	err := q.QueryRowContext(ctx, "SELECT id, email, name, role, disabled, last_login_at FROM users WHERE email = ?",
 		strings.ToLower(strings.TrimSpace(email))).Scan(&a.ID, &a.Email, &a.Name, &a.Role, &a.Disabled, &a.LastLoginAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return a, notFound("Nobody with that email has an account.")

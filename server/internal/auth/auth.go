@@ -3,8 +3,9 @@
 // by token hash, the owner/admin/student roles, the owner bootstrapped from
 // configuration, and the allowed-domain list. It also keeps the site audit
 // log, the organisation's site settings, the run-mode record and account
-// lookup, and erases a person (forget-user). HTTP handlers live in
-// httpapi; this package holds the rules.
+// lookup, and erases a person (forget-user). Its HTTP handlers (http.go)
+// serve the People page; sign-in and the session cookie stay with the
+// middleware in httpapi.
 package auth
 
 import (

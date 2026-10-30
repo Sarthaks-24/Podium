@@ -2,7 +2,7 @@ package httpapi
 
 // Checks for the routes the security council's fixes added (2026-10-18):
 // the owner's account actions (S6) and the contest audit log (S9). They
-// are mounted by securityRoutes (people.go).
+// are served by auth/http.go and contests/http_admin.go.
 
 import (
 	"fmt"

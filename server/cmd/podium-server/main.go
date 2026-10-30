@@ -27,6 +27,7 @@ import (
 	"github.com/Sarthaks-24/podium/internal/config"
 	"github.com/Sarthaks-24/podium/internal/db"
 	"github.com/Sarthaks-24/podium/internal/httpapi"
+	"github.com/Sarthaks-24/podium/internal/jobs/judgeserver"
 	"github.com/Sarthaks-24/podium/internal/schedule"
 )
 
@@ -136,7 +137,7 @@ func run(envFile string) error {
 	defer cancelBase()
 	srv := apiServer(cfg.Listen, svc.handler(cfg, provider), base)
 	srv.RegisterOnShutdown(cancelBase)
-	judgeSrv := judgeServer(cfg.JudgeListen, httpapi.NewJudge(httpapi.JudgeDeps{Log: log, Jobs: svc.jobs, Blobs: svc.blobs, Token: cfg.JudgeToken}))
+	judgeSrv := judgeServer(cfg.JudgeListen, judgeserver.New(judgeserver.Deps{Log: log, Jobs: svc.jobs, Blobs: svc.blobs, Token: cfg.JudgeToken}))
 	errc := make(chan error, 2)
 	go func() {
 		log.Info("listening", "addr", cfg.Listen, "base_url", cfg.BaseURL)

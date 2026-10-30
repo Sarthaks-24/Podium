@@ -24,8 +24,8 @@ import (
 	"time"
 
 	"github.com/Sarthaks-24/podium/internal/db"
-	"github.com/Sarthaks-24/podium/internal/httpapi"
 	"github.com/Sarthaks-24/podium/internal/jobs"
+	"github.com/Sarthaks-24/podium/internal/jobs/judgeserver"
 	"github.com/Sarthaks-24/podium/internal/judge"
 	"github.com/Sarthaks-24/podium/internal/judgeapi"
 	"github.com/Sarthaks-24/podium/internal/problems"
@@ -74,7 +74,7 @@ func newRig(t *testing.T) *rig {
 	if _, err := d.Exec(`INSERT INTO users (id, email, role, created_at) VALUES (1, 'setter@college.edu', 'admin', 0)`); err != nil {
 		t.Fatal(err)
 	}
-	srv := httptest.NewServer(httpapi.NewJudge(httpapi.JudgeDeps{Log: log, Jobs: jobSvc, Blobs: blobs, Token: testToken}))
+	srv := httptest.NewServer(judgeserver.New(judgeserver.Deps{Log: log, Jobs: jobSvc, Blobs: blobs, Token: testToken}))
 	t.Cleanup(srv.Close)
 
 	client := &Client{BaseURL: srv.URL, Token: testToken, HTTP: &http.Client{Timeout: time.Minute}}

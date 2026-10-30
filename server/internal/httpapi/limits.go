@@ -6,6 +6,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/Sarthaks-24/podium/internal/httpx"
 )
 
 // SlowBodyTimeout is how long a route that takes a large upload (a pack
@@ -59,7 +61,7 @@ func (f *inFlight) limit(cookieName string, next http.Handler) http.Handler {
 		if f.open[key] >= MaxInFlight {
 			f.mu.Unlock()
 			w.Header().Set("Retry-After", "1")
-			WriteJSON(w, http.StatusTooManyRequests, map[string]any{"error": map[string]any{
+			httpx.WriteJSON(w, http.StatusTooManyRequests, map[string]any{"error": map[string]any{
 				"code": "rate_limited", "message": "Too many requests at once from this browser. Try again in a second.", "retry_after_s": 1}})
 			return
 		}

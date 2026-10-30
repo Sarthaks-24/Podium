@@ -1,31 +1,32 @@
 // Package httpapi wires podium-server's HTTP routes: the JSON API under
 // /api/, the health check, and the embedded web app for everything else.
-// It also owns cross-cutting middleware: security headers, the cross-site
-// request check, session authentication, panic recovery and request
-// logging. Route shapes are documented in docs/API.md.
+// It holds the route table, with the role each route needs, and the
+// cross-cutting middleware: security headers, the cross-site request
+// check, sign-in and session authentication, rate limits, panic recovery
+// and request logging. The handlers live next to their domain (http.go in
+// auth, problems, submissions, contests, integrity and ai; ops for the
+// health check and metrics). Route shapes are documented in docs/API.md.
 package httpapi
 
 import (
-	"context"
 	"database/sql"
-	"encoding/json"
 	"log/slog"
-	"net"
 	"net/http"
-	"runtime/debug"
-	"strconv"
 	"time"
 
+	"github.com/Sarthaks-24/podium/internal/ai"
 	"github.com/Sarthaks-24/podium/internal/auth"
 	"github.com/Sarthaks-24/podium/internal/contests"
-	"github.com/Sarthaks-24/podium/internal/db/migrations"
 	"github.com/Sarthaks-24/podium/internal/events"
+	"github.com/Sarthaks-24/podium/internal/httpx"
 	"github.com/Sarthaks-24/podium/internal/integrity"
+	"github.com/Sarthaks-24/podium/internal/jobs"
+	"github.com/Sarthaks-24/podium/internal/ops"
 	"github.com/Sarthaks-24/podium/internal/problems"
 	"github.com/Sarthaks-24/podium/internal/submissions"
 )
 
-// Deps are the services the handlers use.
+// Deps are the services the routes use.
 type Deps struct {
 	DB     *sql.DB
 	Log    *slog.Logger
@@ -51,7 +52,7 @@ type Deps struct {
 	Integrity *integrity.Service
 	// AI is the wizard's in-memory state: pasted keys, one call per
 	// admin, wizard runs. Its routes are mounted only when it is set.
-	AI *AI
+	AI *ai.Wizard
 
 	// reads limits heavy reads per user; New sets it.
 	reads *readLimiter
@@ -88,8 +89,10 @@ func New(d Deps) http.Handler {
 	}
 	d.flows = newUsedFlows()
 
+	health := &ops.Handlers{DB: d.DB, Log: d.Log, Jobs: d.queue(), Hub: d.Hub, Version: d.Version}
+
 	mux := http.NewServeMux()
-	mux.HandleFunc("GET /healthz", d.preAuth(d.healthz))
+	mux.HandleFunc("GET /healthz", d.preAuth(health.Health))
 
 	mux.HandleFunc("GET /api/auth/config", d.preAuth(d.authConfig))
 	if d.Mode == "testing" {
@@ -99,113 +102,138 @@ func New(d Deps) http.Handler {
 		mux.HandleFunc("GET /api/auth/google/callback", d.signInLimit(true, d.googleCallback))
 	}
 	mux.HandleFunc("POST /api/auth/logout", d.preAuth(d.logout))
-	mux.HandleFunc("GET /api/me", d.requireRole(auth.Student, d.me))
-	mux.HandleFunc("PUT /api/me/preferences", d.requireRole(auth.Student, d.setPreferences))
+	people := &auth.Handlers{Auth: d.Auth, Log: d.Log, Now: d.now}
+	mux.HandleFunc("GET /api/me", d.requireRole(auth.Student, people.Me))
+	mux.HandleFunc("PUT /api/me/preferences", d.requireRole(auth.Student, people.SetPreferences))
 
-	mux.HandleFunc("GET /api/admin/people", d.requireRole(auth.Owner, d.listPeople))
-	mux.HandleFunc("POST /api/admin/people", d.requireRole(auth.Owner, d.grantRole))
-	mux.HandleFunc("DELETE /api/admin/people/{id}", d.requireRole(auth.Owner, d.revokeRole))
-	mux.HandleFunc("POST /api/admin/accounts/reset-google", d.requireRole(auth.Owner, d.resetGoogleAccount))
-	d.securityRoutes(mux)
-	mux.HandleFunc("POST /api/admin/domains", d.requireRole(auth.Owner, d.addDomain))
-	mux.HandleFunc("DELETE /api/admin/domains/{domain}", d.requireRole(auth.Owner, d.removeDomain))
-	mux.HandleFunc("GET /api/admin/site-audit", d.requireRole(auth.Owner, d.siteAudit))
-	mux.HandleFunc("PUT /api/admin/site-settings", d.requireRole(auth.Owner, d.setSiteSettings))
+	owner := func(h http.HandlerFunc) http.HandlerFunc { return d.requireRole(auth.Owner, h) }
+	mux.HandleFunc("GET /api/admin/people", owner(people.ListPeople))
+	mux.HandleFunc("POST /api/admin/people", owner(people.GrantRole))
+	mux.HandleFunc("DELETE /api/admin/people/{id}", owner(people.RevokeRole))
+	mux.HandleFunc("POST /api/admin/accounts/reset-google", owner(people.ResetGoogleAccount))
+	mux.HandleFunc("POST /api/admin/accounts/end-sessions", owner(people.EndSessions))
+	mux.HandleFunc("POST /api/admin/accounts/disable", owner(people.SetAccountDisabled(true)))
+	mux.HandleFunc("POST /api/admin/accounts/enable", owner(people.SetAccountDisabled(false)))
+	mux.HandleFunc("GET /api/admin/accounts", d.requireRole(auth.Admin, d.limitReads(people.LookupAccount)))
+	mux.HandleFunc("POST /api/admin/domains", owner(people.AddDomain))
+	mux.HandleFunc("DELETE /api/admin/domains/{domain}", owner(people.RemoveDomain))
+	mux.HandleFunc("GET /api/admin/site-audit", owner(people.SiteAudit))
+	mux.HandleFunc("PUT /api/admin/site-settings", owner(people.SetSiteSettings))
 
 	admin := func(h http.HandlerFunc) http.HandlerFunc { return d.requireRole(auth.Admin, h) }
-	mux.HandleFunc("GET /api/admin/problems", admin(d.listProblems))
-	mux.HandleFunc("POST /api/admin/problems", admin(d.createProblem))
-	mux.HandleFunc("POST /api/admin/problems/import", admin(slowBody(d.importProblem)))
-	mux.HandleFunc("GET /api/admin/problems/{id}", admin(d.getProblem))
-	mux.HandleFunc("PUT /api/admin/problems/{id}", admin(d.updateProblem))
-	mux.HandleFunc("DELETE /api/admin/problems/{id}", admin(d.archiveProblem))
-	mux.HandleFunc("PUT /api/admin/problems/{id}/tests", admin(slowBody(d.replaceTests)))
-	mux.HandleFunc("GET /api/admin/problems/{id}/tests/{idx}/{part}", admin(d.downloadTest))
-	mux.HandleFunc("GET /api/admin/problems/{id}/export", admin(d.exportProblem))
-	mux.HandleFunc("POST /api/admin/problems/{id}/validate", admin(d.validateProblem))
-	mux.HandleFunc("GET /api/admin/problems/{id}/validation", admin(d.getValidation))
-	mux.HandleFunc("POST /api/admin/problems/{id}/generate", admin(d.generateOutputs))
-	mux.HandleFunc("GET /api/admin/problems/{id}/generation", admin(d.getGeneration))
-	mux.HandleFunc("POST /api/admin/problems/{id}/generate-inputs", admin(d.generateInputs))
-	mux.HandleFunc("GET /api/admin/problems/{id}/input-generation", admin(d.getInputGeneration))
+	bank := &problems.Handlers{Problems: d.Problems, Log: d.Log}
+	work := &submissions.Handlers{Submissions: d.Submissions, Log: d.Log}
+	mux.HandleFunc("GET /api/admin/problems", admin(bank.ListProblems))
+	mux.HandleFunc("POST /api/admin/problems", admin(bank.CreateProblem))
+	mux.HandleFunc("POST /api/admin/problems/import", admin(slowBody(bank.ImportProblem)))
+	mux.HandleFunc("GET /api/admin/problems/{id}", admin(bank.GetProblem))
+	mux.HandleFunc("PUT /api/admin/problems/{id}", admin(bank.UpdateProblem))
+	mux.HandleFunc("DELETE /api/admin/problems/{id}", admin(bank.ArchiveProblem))
+	mux.HandleFunc("PUT /api/admin/problems/{id}/tests", admin(slowBody(bank.ReplaceTests)))
+	mux.HandleFunc("GET /api/admin/problems/{id}/tests/{idx}/{part}", admin(bank.DownloadTest))
+	mux.HandleFunc("GET /api/admin/problems/{id}/export", admin(bank.ExportProblem))
+	mux.HandleFunc("POST /api/admin/problems/{id}/validate", admin(bank.ValidateProblem))
+	mux.HandleFunc("GET /api/admin/problems/{id}/validation", admin(bank.GetValidation))
+	mux.HandleFunc("POST /api/admin/problems/{id}/generate", admin(bank.GenerateOutputs))
+	mux.HandleFunc("GET /api/admin/problems/{id}/generation", admin(bank.GetGeneration))
+	mux.HandleFunc("POST /api/admin/problems/{id}/generate-inputs", admin(bank.GenerateInputs))
+	mux.HandleFunc("GET /api/admin/problems/{id}/input-generation", admin(bank.GetInputGeneration))
 	if d.AI != nil {
-		d.aiRoutes(mux)
+		wizard := &ai.Handlers{Wizard: d.AI, Problems: d.Problems, Hub: d.Hub, Log: d.Log,
+			Testing: d.Mode == "testing", SessionToken: d.sessionToken}
+		mux.HandleFunc("GET /api/admin/ai/providers", admin(wizard.GetAIProviders))
+		mux.HandleFunc("GET /api/admin/ai/models", admin(wizard.GetAIModels))
+		mux.HandleFunc("GET /api/admin/ai/key", admin(wizard.GetAIKey))
+		mux.HandleFunc("PUT /api/admin/ai/key", admin(wizard.PutAIKey))
+		mux.HandleFunc("DELETE /api/admin/ai/key", admin(wizard.DeleteAIKey))
+		mux.HandleFunc("POST /api/admin/ai/wizard", admin(wizard.StartWizard))
+		mux.HandleFunc("GET /api/admin/ai/wizard/{id}", admin(wizard.GetWizard))
 	}
 
 	// The organisers' workspace: an admin tries a problem from the bank
 	// ("Try as a student"). Students reach the same workspace through the
 	// contest routes under /api/contests/{slug}/problems/{label} below.
-	mux.HandleFunc("GET /api/workspace/{problem}", admin(d.limitReads(d.getWorkspace)))
-	mux.HandleFunc("PUT /api/workspace/{problem}/draft", admin(d.saveDraft))
-	mux.HandleFunc("POST /api/workspace/{problem}/run", admin(d.runCode))
-	mux.HandleFunc("POST /api/workspace/{problem}/submit", admin(d.submitCode))
-	mux.HandleFunc("POST /api/workspace/{problem}/events", admin(d.recordEvents))
-	mux.HandleFunc("GET /api/submissions/{id}", d.requireRole(auth.Student, d.getSubmission))
-	mux.HandleFunc("GET /api/runs/{id}", d.requireRole(auth.Student, d.getRun))
+	mux.HandleFunc("GET /api/workspace/{problem}", admin(d.limitReads(work.GetWorkspace)))
+	mux.HandleFunc("PUT /api/workspace/{problem}/draft", admin(work.SaveDraft))
+	mux.HandleFunc("POST /api/workspace/{problem}/run", admin(work.RunCode))
+	mux.HandleFunc("POST /api/workspace/{problem}/submit", admin(work.SubmitCode))
+	mux.HandleFunc("POST /api/workspace/{problem}/events", admin(work.RecordEvents))
+	mux.HandleFunc("GET /api/submissions/{id}", d.requireRole(auth.Student, work.GetSubmission))
+	mux.HandleFunc("GET /api/runs/{id}", d.requireRole(auth.Student, work.GetRun))
 	if d.Submissions != nil && d.Submissions.Jobs != nil {
-		mux.HandleFunc("GET /api/admin/metrics", admin(d.metrics))
+		mux.HandleFunc("GET /api/admin/metrics", admin(health.Metrics))
 	}
 	mux.HandleFunc("GET /api/events", d.requireRole(auth.Student, d.eventStream))
 
 	if d.Contests != nil {
-		d.contestRoutes(mux)
+		console := &contests.Handlers{Contests: d.Contests, Submissions: d.Submissions, Problems: d.Problems, Log: d.Log}
+		d.contestRoutes(mux, console)
+		mux.HandleFunc("GET /api/admin/contests/{id}/audit", admin(console.ContestAudit))
 		if d.Integrity != nil {
-			d.integrityRoutes(mux)
+			review := &integrity.Handlers{Integrity: d.Integrity, Contests: d.Contests, Organised: console.OrganisedContest, Log: d.Log}
+			mux.HandleFunc("POST /api/admin/contests/{id}/integrity/run", admin(review.RunIntegrity))
+			mux.HandleFunc("GET /api/admin/contests/{id}/integrity", admin(d.limitReads(review.GetIntegrity)))
+			mux.HandleFunc("GET /api/admin/contests/{id}/integrity/pairs.csv", admin(d.limitReads(review.ExportPairs)))
+			mux.HandleFunc("GET /api/admin/contests/{id}/integrity/signals/{signal}/pair", admin(d.limitReads(review.GetIntegrityPair)))
+			mux.HandleFunc("GET /api/admin/contests/{id}/integrity/timeline/{user}", admin(d.limitReads(review.GetIntegrityTimeline)))
+			mux.HandleFunc("GET /api/admin/contests/{id}/integrity/counts", admin(d.limitReads(review.GetIntegrityCounts)))
+			mux.HandleFunc("GET /api/admin/contests/{id}/integrity/cases", admin(d.limitReads(review.ListIntegrityCases)))
+			mux.HandleFunc("PUT /api/admin/contests/{id}/integrity/cases/{user}", admin(review.DecideIntegrityCase))
 		}
 	}
 
 	mux.HandleFunc("/api/", func(w http.ResponseWriter, r *http.Request) {
-		WriteError(w, http.StatusNotFound, "not_found", "This API route does not exist.")
+		httpx.WriteError(w, http.StatusNotFound, "not_found", "This API route does not exist.")
 	})
 	mux.Handle("/", d.WebApp)
-	// recoverer sits inside logRequests so a request that panics is still
+	// Recover sits inside LogRequests so a request that panics is still
 	// logged with its 500. In testing mode localOnlyAll refuses anything
 	// that did not come from this machine's own browser.
-	return d.logRequests(d.recoverer(securityHeaders(d.localOnlyAll(newInFlight().limit(d.sessionCookieName(), d.sameOrigin(mux))))))
+	return httpx.LogRequests(d.Log, httpx.Recover(d.Log, securityHeaders(d.localOnlyAll(newInFlight().limit(d.sessionCookieName(), d.sameOrigin(mux))))))
 }
 
 // contestRoutes mounts the contest API. Student routes need
 // a signed-in user and apply the contest's own access rules; organiser
 // routes need the admin or owner role.
-func (d Deps) contestRoutes(mux *http.ServeMux) {
+func (d Deps) contestRoutes(mux *http.ServeMux, console *contests.Handlers) {
 	signedIn := func(h http.HandlerFunc) http.HandlerFunc { return d.requireRole(auth.Student, h) }
 	organiser := func(h http.HandlerFunc) http.HandlerFunc { return d.requireRole(auth.Admin, h) }
-	mux.HandleFunc("GET /api/contests", signedIn(d.limitReads(d.listContests)))
-	mux.HandleFunc("GET /api/contests/{slug}", signedIn(d.limitReads(d.getContest)))
-	mux.HandleFunc("POST /api/contests/{slug}/start", signedIn(d.startContest))
-	mux.HandleFunc("GET /api/contests/{slug}/problems/{label}", signedIn(d.limitReads(d.getContestWorkspace)))
-	mux.HandleFunc("PUT /api/contests/{slug}/problems/{label}/draft", signedIn(d.saveContestDraft))
-	mux.HandleFunc("POST /api/contests/{slug}/problems/{label}/run", signedIn(d.runContestCode))
-	mux.HandleFunc("POST /api/contests/{slug}/problems/{label}/submit", signedIn(d.submitContestCode))
-	mux.HandleFunc("POST /api/contests/{slug}/problems/{label}/events", signedIn(d.recordContestEvents))
-	mux.HandleFunc("GET /api/contests/{slug}/standings", signedIn(d.limitReads(d.getStandings)))
-	mux.HandleFunc("POST /api/contests/{slug}/clarifications", signedIn(d.askClarification))
+	mux.HandleFunc("GET /api/contests", signedIn(d.limitReads(console.ListContests)))
+	mux.HandleFunc("GET /api/contests/{slug}", signedIn(d.limitReads(console.GetContest)))
+	mux.HandleFunc("POST /api/contests/{slug}/start", signedIn(console.StartContest))
+	mux.HandleFunc("GET /api/contests/{slug}/problems/{label}", signedIn(d.limitReads(console.GetContestWorkspace)))
+	mux.HandleFunc("PUT /api/contests/{slug}/problems/{label}/draft", signedIn(console.SaveContestDraft))
+	mux.HandleFunc("POST /api/contests/{slug}/problems/{label}/run", signedIn(console.RunContestCode))
+	mux.HandleFunc("POST /api/contests/{slug}/problems/{label}/submit", signedIn(console.SubmitContestCode))
+	mux.HandleFunc("POST /api/contests/{slug}/problems/{label}/events", signedIn(console.RecordContestEvents))
+	mux.HandleFunc("GET /api/contests/{slug}/standings", signedIn(d.limitReads(console.GetStandings)))
+	mux.HandleFunc("POST /api/contests/{slug}/clarifications", signedIn(console.AskClarification))
 
-	mux.HandleFunc("GET /api/admin/contests", organiser(d.listAdminContests))
-	mux.HandleFunc("POST /api/admin/contests", organiser(d.createContest))
-	mux.HandleFunc("GET /api/admin/contests/{id}", organiser(d.getAdminContest))
-	mux.HandleFunc("PUT /api/admin/contests/{id}", organiser(d.updateContest))
-	mux.HandleFunc("DELETE /api/admin/contests/{id}", organiser(d.archiveContest))
-	mux.HandleFunc("POST /api/admin/contests/{id}/clone", organiser(d.cloneContest))
-	mux.HandleFunc("PUT /api/admin/contests/{id}/problems", organiser(d.setContestProblems))
-	mux.HandleFunc("PUT /api/admin/contests/{id}/problems/{label}/revision", organiser(d.updatePin))
-	mux.HandleFunc("PUT /api/admin/contests/{id}/extensions/{user}", organiser(d.setExtension))
-	mux.HandleFunc("POST /api/admin/contests/{id}/extend", organiser(d.extendContest))
-	mux.HandleFunc("POST /api/admin/contests/{id}/pause", organiser(d.pauseContest(true)))
-	mux.HandleFunc("POST /api/admin/contests/{id}/resume", organiser(d.pauseContest(false)))
-	mux.HandleFunc("GET /api/admin/contests/{id}/submissions", organiser(d.contestFeed))
-	mux.HandleFunc("POST /api/admin/contests/{id}/rejudge", organiser(d.rejudge))
-	mux.HandleFunc("GET /api/admin/contests/{id}/announcements", organiser(d.listAnnouncements))
-	mux.HandleFunc("POST /api/admin/contests/{id}/announcements", organiser(d.postAnnouncement))
-	mux.HandleFunc("GET /api/admin/contests/{id}/clarifications", organiser(d.listClarifications))
-	mux.HandleFunc("PUT /api/admin/contests/{id}/clarifications/{cid}", organiser(d.answerClarification))
-	mux.HandleFunc("GET /api/admin/contests/{id}/standings", organiser(d.adminStandings))
-	mux.HandleFunc("GET /api/admin/contests/{id}/reveal", organiser(d.getReveal))
-	mux.HandleFunc("POST /api/admin/contests/{id}/reveal", organiser(d.postReveal))
-	mux.HandleFunc("GET /api/admin/contests/{id}/export.csv", organiser(d.exportCSV))
-	mux.HandleFunc("GET /api/admin/contests/{id}/export.json", organiser(d.exportJSON))
-	mux.HandleFunc("GET /api/admin/contests/{id}/stats", organiser(d.contestStats))
-	mux.HandleFunc("PUT /api/admin/contests/{id}/editorial", organiser(d.setEditorial))
+	mux.HandleFunc("GET /api/admin/contests", organiser(console.ListAdminContests))
+	mux.HandleFunc("POST /api/admin/contests", organiser(console.CreateContest))
+	mux.HandleFunc("GET /api/admin/contests/{id}", organiser(console.GetAdminContest))
+	mux.HandleFunc("PUT /api/admin/contests/{id}", organiser(console.UpdateContest))
+	mux.HandleFunc("DELETE /api/admin/contests/{id}", organiser(console.ArchiveContest))
+	mux.HandleFunc("POST /api/admin/contests/{id}/clone", organiser(console.CloneContest))
+	mux.HandleFunc("PUT /api/admin/contests/{id}/problems", organiser(console.SetContestProblems))
+	mux.HandleFunc("PUT /api/admin/contests/{id}/problems/{label}/revision", organiser(console.UpdatePin))
+	mux.HandleFunc("PUT /api/admin/contests/{id}/extensions/{user}", organiser(console.SetExtension))
+	mux.HandleFunc("POST /api/admin/contests/{id}/extend", organiser(console.ExtendContest))
+	mux.HandleFunc("POST /api/admin/contests/{id}/pause", organiser(console.PauseContest(true)))
+	mux.HandleFunc("POST /api/admin/contests/{id}/resume", organiser(console.PauseContest(false)))
+	mux.HandleFunc("GET /api/admin/contests/{id}/submissions", organiser(console.ContestFeed))
+	mux.HandleFunc("POST /api/admin/contests/{id}/rejudge", organiser(console.Rejudge))
+	mux.HandleFunc("GET /api/admin/contests/{id}/announcements", organiser(console.ListAnnouncements))
+	mux.HandleFunc("POST /api/admin/contests/{id}/announcements", organiser(console.PostAnnouncement))
+	mux.HandleFunc("GET /api/admin/contests/{id}/clarifications", organiser(console.ListClarifications))
+	mux.HandleFunc("PUT /api/admin/contests/{id}/clarifications/{cid}", organiser(console.AnswerClarification))
+	mux.HandleFunc("GET /api/admin/contests/{id}/standings", organiser(console.AdminStandings))
+	mux.HandleFunc("GET /api/admin/contests/{id}/reveal", organiser(console.GetReveal))
+	mux.HandleFunc("POST /api/admin/contests/{id}/reveal", organiser(console.PostReveal))
+	mux.HandleFunc("GET /api/admin/contests/{id}/export.csv", organiser(console.ExportCSV))
+	mux.HandleFunc("GET /api/admin/contests/{id}/export.json", organiser(console.ExportJSON))
+	mux.HandleFunc("GET /api/admin/contests/{id}/stats", organiser(console.ContestStats))
+	mux.HandleFunc("PUT /api/admin/contests/{id}/editorial", organiser(console.SetEditorial))
 }
 
 // now is the server's clock: the contests service's, which tests replace.
@@ -216,101 +244,33 @@ func (d Deps) now() time.Time {
 	return time.Now()
 }
 
+// sessionToken is the request's session cookie; requireRole has already
+// checked it.
+func (d Deps) sessionToken(r *http.Request) string {
+	c, err := r.Cookie(d.sessionCookieName())
+	if err != nil {
+		return ""
+	}
+	return c.Value
+}
+
+// forgetKey drops the AI key of a session that is ending.
+func (d Deps) forgetKey(token string) { d.AI.ForgetKey(token) }
+
+// queue is the judge queue the services share.
+func (d Deps) queue() *jobs.Service {
+	switch {
+	case d.Problems != nil && d.Problems.Jobs != nil:
+		return d.Problems.Jobs
+	case d.Submissions != nil:
+		return d.Submissions.Jobs
+	}
+	return nil
+}
+
 // internalError logs err and answers with a generic 500.
 func (d Deps) internalError(w http.ResponseWriter, r *http.Request, err error) {
-	d.Log.Error("request failed", "path", r.URL.Path, "err", err)
-	WriteError(w, http.StatusInternalServerError, "internal", "Something went wrong on the server. Try again; if it keeps happening, tell an organiser.")
-}
-
-func (d Deps) healthz(w http.ResponseWriter, r *http.Request) {
-	ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
-	defer cancel()
-	if err := d.DB.PingContext(ctx); err != nil {
-		d.Log.Error("health check: database unreachable", "err", err)
-		WriteJSON(w, http.StatusServiceUnavailable, map[string]string{"status": "degraded", "db": "unreachable"})
-		return
-	}
-	out := map[string]any{"status": "ok", "db": "ok"}
-	if loopbackRequest(r) {
-		// Only a caller on this machine learns the release (install.sh
-		// verify, the deploy scripts): through Caddy the version stays
-		// private, so a scanner cannot match it against known bugs.
-		out["version"], out["schema"] = d.Version, migrations.Latest()
-		// The judge queue, for podium-check's stalled-judge alert: jobs
-		// waiting, the oldest one's age, and how long since
-		// a judge last asked for work (null when none has since start).
-		var queued, oldest int64
-		if err := d.DB.QueryRowContext(ctx, "SELECT count(*), coalesce(min(created_at), 0) FROM jobs WHERE state = 'queued'").
-			Scan(&queued, &oldest); err == nil {
-			now := time.Now()
-			out["jobs_queued"] = queued
-			out["oldest_queued_s"] = int64(0)
-			if queued > 0 {
-				out["oldest_queued_s"] = max(0, int64(now.Sub(time.UnixMilli(oldest)).Seconds()))
-			}
-			out["judge_last_claim_s"] = nil
-			if d.Problems != nil && d.Problems.Jobs != nil {
-				if at, ok := d.Problems.Jobs.LastClaimAt(); ok {
-					out["judge_last_claim_s"] = max(0, int64(now.Sub(at).Seconds()))
-				}
-			}
-		}
-	}
-	WriteJSON(w, http.StatusOK, out)
-}
-
-// loopbackRequest reports whether the request came straight from this
-// machine: a loopback peer and none of a proxy's forwarding headers
-// (Caddy on the same host connects from loopback and always adds
-// X-Forwarded-For).
-func loopbackRequest(r *http.Request) bool {
-	host, _, err := net.SplitHostPort(r.RemoteAddr)
-	if err != nil {
-		host = r.RemoteAddr
-	}
-	if ip := net.ParseIP(host); ip == nil || !ip.IsLoopback() {
-		return false
-	}
-	for _, h := range forwardedHeaders {
-		if r.Header.Get(h) != "" {
-			return false
-		}
-	}
-	return true
-}
-
-// WriteJSON writes v as a JSON response with the given status.
-func WriteJSON(w http.ResponseWriter, status int, v any) {
-	w.Header().Set("Content-Type", "application/json; charset=utf-8")
-	w.Header().Set("Cache-Control", "no-store")
-	w.WriteHeader(status)
-	json.NewEncoder(w).Encode(v)
-}
-
-// APIError is the body of every error response: a stable machine code and
-// a sentence for people that says what happened and what to do.
-type APIError struct {
-	Code    string `json:"code"`
-	Message string `json:"message"`
-	// Fields maps a form field to what is wrong with it.
-	Fields map[string]string `json:"fields,omitempty"`
-	// Problems lists everything wrong with an upload or a request to
-	// validate, so it can be fixed in one pass.
-	Problems []string `json:"problems,omitempty"`
-}
-
-// WriteError writes an APIError.
-func WriteError(w http.ResponseWriter, status int, code, message string) {
-	WriteJSON(w, status, map[string]APIError{"error": {Code: code, Message: message}})
-}
-
-// writeBusy refuses a request because its one slot is taken: 429 with code
-// "busy" and a Retry-After of secs, the same shape as the rate limits, so a
-// client retries every "busy" the same way.
-func writeBusy(w http.ResponseWriter, secs int, message string) {
-	w.Header().Set("Retry-After", strconv.Itoa(secs))
-	WriteJSON(w, http.StatusTooManyRequests, map[string]map[string]any{"error": {
-		"code": "busy", "message": message, "retry_after_s": secs}})
+	httpx.InternalError(d.Log, w, r, err)
 }
 
 // contentSecurityPolicy allows only same-origin code. Google avatars are
@@ -327,59 +287,6 @@ func securityHeaders(next http.Handler) http.Handler {
 		h.Set("Referrer-Policy", "same-origin")
 		h.Set("X-Frame-Options", "DENY")
 		h.Set("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
-		next.ServeHTTP(w, r)
-	})
-}
-
-type statusRecorder struct {
-	http.ResponseWriter
-	status int
-}
-
-func (s *statusRecorder) WriteHeader(code int) {
-	s.status = code
-	s.ResponseWriter.WriteHeader(code)
-}
-
-// Flush keeps server-sent event streams working through the recorder.
-func (s *statusRecorder) Flush() {
-	if f, ok := s.ResponseWriter.(http.Flusher); ok {
-		f.Flush()
-	}
-}
-
-func (s *statusRecorder) Unwrap() http.ResponseWriter { return s.ResponseWriter }
-
-// logRequests logs server errors at warn and everything else at debug, so
-// a 700-student contest does not flood the journal. Query strings are not
-// logged because OAuth callbacks carry codes in them, and request bodies
-// never are: PUT /api/admin/ai/key carries a provider key (CLAUDE.md 3a).
-// A test checks that the key never reaches this log.
-func (d Deps) logRequests(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		start := time.Now()
-		rec := &statusRecorder{ResponseWriter: w, status: http.StatusOK}
-		next.ServeHTTP(rec, r)
-		level := slog.LevelDebug
-		if rec.status >= 500 {
-			level = slog.LevelWarn
-		}
-		d.Log.Log(r.Context(), level, "request", "method", r.Method, "path", r.URL.Path,
-			"status", rec.status, "ms", time.Since(start).Milliseconds())
-	})
-}
-
-func (d Deps) recoverer(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		defer func() {
-			if v := recover(); v != nil {
-				if v == http.ErrAbortHandler {
-					panic(v)
-				}
-				d.Log.Error("handler panic", "path", r.URL.Path, "panic", v, "stack", string(debug.Stack()))
-				WriteError(w, http.StatusInternalServerError, "internal", "Something went wrong on the server. Try again; if it keeps happening, tell an organiser.")
-			}
-		}()
 		next.ServeHTTP(w, r)
 	})
 }

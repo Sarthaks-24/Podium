@@ -4,6 +4,10 @@ Dated entries per release. Unreleased work is listed at the top.
 
 ## Unreleased
 
+### v3 stage D: handlers next to their domain (2026-10-30)
+
+- The HTTP handlers moved out of `httpapi` into their domain packages (`auth`, `problems`, `submissions`, `contests`, `integrity`, `ai`, `jobs/judgeserver`, `ops`), with shared helpers in `httpx`. `httpapi` keeps the route table, sign-in, limits and the event stream: 1,248 lines, was 5,370. No handler queries the database directly. Routes, bodies and codes are unchanged.
+
 ### v3 stage D: web structure (2026-10-30)
 
 - Every screen loads through one loader that keeps only the newest answer and stops on unmount; no screen keeps its own load state.

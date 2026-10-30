@@ -33,13 +33,16 @@ Server packages (`server/internal`):
 |---|---|
 | `config` | environment variables, run modes and the start-up validator |
 | `db` | SQLite and migrations |
-| `httpapi` | public routes and middleware, and the judge API handler on its own listener |
+| `httpapi` | the route table with the role each route needs, and the middleware: sign-in and sessions, rate limits, the cross-site check, security headers; the event stream |
+| `httpx` | what every handler package shares: JSON answers and errors, body decoding, the client address, request logging and panic recovery |
+| `ops` | the health check and the organisers' metrics |
 | `webui` | the embedded web app; every page says `noindex` and `robots.txt` disallows everything |
 | `auth` | Google sign-in, sessions, roles, testing-mode sign-in; the site audit, site settings, account lookup and erasure (`forget-user`) |
 | `problems` | problems, pack format, content hash, validation rules and summary, output generation, generators and the generate inputs chain, AI drafts, revisions |
 | `submissions` | runs, submissions, drafts, rate limits, scoring, what each viewer may see, integrity counts |
 | `events` | the server-sent event hub: streams per user, fan-out, slow clients dropped |
 | `jobs` | the one queue of judge work: leases, results, uploads, sweeps, change notifications |
+| `jobs/judgeserver` | the judge worker API, on its own listener |
 | `judgeapi` | request and response types shared by server and judge |
 | `judge` | sandbox driver, verdicts, built-in and testlib checkers |
 | `judge/calib` | host calibration and the hostile-program suite |
@@ -50,6 +53,8 @@ Server packages (`server/internal`):
 | `schedule` | the one scheduler that runs the server's background jobs (job sweep, session sweep, AI key sweep, retention) |
 | `ai` | the AI wizard's model side: the in-memory key store, the Anthropic, OpenAI and Gemini clients, the problem schema and prompts, answer checks; the testing-mode fake is in `ai/fakeai`, built only with the tag `fakeai` |
 | `buildinfo` | what a build is: version, commit, date (set by `make release`), schema and judge protocol, for `-version` and the release `MANIFEST` |
+
+Handlers live next to their domain: `auth`, `problems`, `submissions`, `contests`, `integrity` and `ai` each keep theirs in `http.go` (and `http_*.go`), and `httpapi` mounts them. A domain service owns its SQL; no handler queries the database.
 
 ## Run modes
 
@@ -134,7 +139,7 @@ Arguments are limited to letters, digits and `_ . , : = + -` (64 characters, 16 
 
 ## AI wizard
 
-The `ai` package (three providers, D111) is the model side: the key store, the provider clients, the problem schema and prompts, and the checks that turn a model's answer into a draft. `httpapi` holds the routes and the in-memory wizard runs; `problems` turns a checked answer into a draft and runs the generator chain.
+The `ai` package (three providers, D111) is the model side: the key store, the provider clients, the problem schema and prompts, and the checks that turn a model's answer into a draft. `ai/http.go` holds the routes' handlers and the in-memory wizard runs; `problems` turns a checked answer into a draft and runs the generator chain.
 
 ```
 admin picks a provider, pastes key --> PUT /api/admin/ai/key --> ai.NewSecret at once
@@ -295,7 +300,7 @@ Each row keeps the actor's email and role as they were. The actor rides on the r
 
 ## Integrity
 
-`integrity_runs` holds one row per "Check integrity" press with its counts, `integrity_signals` the signals, and `integrity_cases` one decision per student per contest. The code is `server/internal/integrity`; the routes are in `server/internal/httpapi/integrity.go`; the organisers' screen is Similar code, opened from Results after the end. The organisers' guide and the policy template are `docs/INTEGRITY.md`.
+`integrity_runs` holds one row per "Check integrity" press with its counts, `integrity_signals` the signals, and `integrity_cases` one decision per student per contest. The code is `server/internal/integrity`; the route handlers are in `server/internal/integrity/http.go`; the organisers' screen is Similar code, opened from Results after the end. The organisers' guide and the policy template are `docs/INTEGRITY.md`.
 
 **What is checked.** An owner or admin starts a check once the contest is over for everyone (the close plus the longest personal extension). It reads each problem's judged, non-practice contest submissions by students; organisers' submissions are never evidence.
 

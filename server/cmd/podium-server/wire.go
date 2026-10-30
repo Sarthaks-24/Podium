@@ -80,7 +80,7 @@ func newServices(ctx context.Context, cfg config.Server, database *sql.DB, log *
 	s.problems = &problems.Service{DB: database, Blobs: s.blobs, Jobs: s.jobs}
 	s.contests = &contests.Service{DB: database, Problems: s.problems, Hub: s.hub}
 	s.submissions = submissions.New(database, s.jobs, s.problems, s.hub, cfg.SessionSecret, s.contests.ViewFor)
-	inputEvents := &httpapi.InputGenerationEvents{Problems: s.problems, Hub: s.hub}
+	inputEvents := &problems.InputGenerationEvents{Problems: s.problems, Hub: s.hub}
 	s.jobs.Notify(s.submissions.OnJobChange, s.contests.OnJobChange, inputEvents.OnJobChange)
 
 	// Integrity checks run in one background goroutine on this server,
@@ -100,7 +100,7 @@ func (s *services) handler(cfg config.Server, provider httpapi.IdentityProvider)
 		DB: s.db, Log: s.log, WebApp: webui.Handler(),
 		Auth: s.auth, IdP: provider, BaseURL: cfg.BaseURL, SessionSecret: cfg.SessionSecret,
 		Problems: s.problems, Submissions: s.submissions, Hub: s.hub, Contests: s.contests, Integrity: s.integrity,
-		AI:   &httpapi.AI{Keys: s.aiKeys, Slots: &ai.Slots{}},
+		AI:   &ai.Wizard{Keys: s.aiKeys, Slots: &ai.Slots{}},
 		Mode: string(cfg.Mode), Version: version,
 	})
 }

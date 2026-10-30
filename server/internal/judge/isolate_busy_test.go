@@ -124,7 +124,9 @@ func TestInitRetriesABusyBox(t *testing.T) {
 	// A cancelled job stops waiting.
 	iso, _ = newFakeIsolate(t, "-1")
 	initBackoff = []time.Duration{time.Hour}
-	cctx, cancel := context.WithTimeout(ctx, 50*time.Millisecond)
+	// Long enough for the first init to finish on a loaded machine, so the
+	// deadline lands in the hour-long wait.
+	cctx, cancel := context.WithTimeout(ctx, time.Second)
 	defer cancel()
 	start := time.Now()
 	if _, err := iso.Init(cctx, 7); !errors.Is(err, context.DeadlineExceeded) || time.Since(start) > 10*time.Second {

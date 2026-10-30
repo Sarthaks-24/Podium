@@ -1,4 +1,4 @@
-package httpapi
+package contests
 
 // Student-facing contest routes: the list,
 // one contest, the honour code and start, the contest workspace, the
@@ -9,11 +9,13 @@ package httpapi
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"net/http"
 	"time"
 
 	"github.com/Sarthaks-24/podium/internal/auth"
-	"github.com/Sarthaks-24/podium/internal/contests"
+	"github.com/Sarthaks-24/podium/internal/httpx"
+	"github.com/Sarthaks-24/podium/internal/problems"
 	"github.com/Sarthaks-24/podium/internal/submissions"
 )
 
@@ -42,7 +44,7 @@ type rulesJSON struct {
 	Practice      bool     `json:"practice_after_end"`
 	// The exam options, so the workspace knows which measures are on and
 	// says so at the start.
-	contests.ExamOptions
+	ExamOptions
 }
 
 type contestProblemJSON struct {
@@ -61,58 +63,70 @@ type contestProblemJSON struct {
 // contestJSON is Contest in docs/API.md.
 type contestJSON struct {
 	contestSummaryJSON
-	DescriptionMD        string                   `json:"description_md"`
-	Rules                rulesJSON                `json:"rules"`
-	HonourText           string                   `json:"honour_text"`
-	Accepted             bool                     `json:"accepted"`
-	Organiser            bool                     `json:"organiser"`
-	Problems             []contestProblemJSON     `json:"problems"`
-	Announcements        []contests.Announcement  `json:"announcements"`
-	MyClarifications     []contests.Clarification `json:"my_clarifications"`
-	PublicClarifications []contests.Clarification `json:"public_clarifications"`
-	EditorialMD          *string                  `json:"editorial_md"`
-	ServerNow            int64                    `json:"server_now"`
+	DescriptionMD        string               `json:"description_md"`
+	Rules                rulesJSON            `json:"rules"`
+	HonourText           string               `json:"honour_text"`
+	Accepted             bool                 `json:"accepted"`
+	Organiser            bool                 `json:"organiser"`
+	Problems             []contestProblemJSON `json:"problems"`
+	Announcements        []Announcement       `json:"announcements"`
+	MyClarifications     []Clarification      `json:"my_clarifications"`
+	PublicClarifications []Clarification      `json:"public_clarifications"`
+	EditorialMD          *string              `json:"editorial_md"`
+	ServerNow            int64                `json:"server_now"`
+}
+
+// Handlers serve the contest routes, the students' and the organisers'.
+type Handlers struct {
+	Contests    *Service
+	Submissions *submissions.Service
+	Problems    *problems.Service
+	Log         *slog.Logger
+}
+
+func (d *Handlers) internalError(w http.ResponseWriter, r *http.Request, err error) {
+	httpx.InternalError(d.Log, w, r, err)
 }
 
 // contestError maps the contests package's errors to responses.
-func (d Deps) contestError(w http.ResponseWriter, r *http.Request, err error) {
-	var fields contests.FieldErrors
-	var aiErr *contests.AIProblemError
+func (d *Handlers) contestError(w http.ResponseWriter, r *http.Request, err error) {
+	var fields FieldErrors
+	var aiErr *AIProblemError
 	switch {
 	case errors.As(err, &aiErr):
-		WriteJSON(w, http.StatusConflict, map[string]APIError{"error": {Code: "ai_unconfirmed", Message: aiErr.Error(), Problems: aiErr.Labels}})
-	case errors.Is(err, contests.ErrNotFound):
-		WriteError(w, http.StatusNotFound, "not_found", "There is no such contest, or it is not open to you.")
+		httpx.WriteJSON(w, http.StatusConflict, map[string]httpx.APIError{"error": {Code: "ai_unconfirmed", Message: aiErr.Error(), Problems: aiErr.Labels}})
+	case errors.Is(err, ErrNotFound):
+		httpx.WriteError(w, http.StatusNotFound, "not_found", "There is no such contest, or it is not open to you.")
 	case errors.As(err, &fields):
-		WriteJSON(w, http.StatusBadRequest, map[string]APIError{"error": {Code: "bad_request", Message: fields.Error(), Fields: fields}})
-	case errors.Is(err, contests.ErrNotStarted), errors.Is(err, contests.ErrBeforeStart):
-		WriteError(w, http.StatusForbidden, "not_started", err.Error())
-	case errors.Is(err, contests.ErrContestOver), errors.Is(err, contests.ErrPracticeWait):
-		WriteError(w, http.StatusForbidden, "contest_over", err.Error())
-	case errors.Is(err, contests.ErrNotReady):
-		WriteError(w, http.StatusConflict, "not_ready", err.Error())
-	case errors.Is(err, contests.ErrRevealEarly):
-		WriteError(w, http.StatusConflict, "too_early", err.Error())
-	case errors.Is(err, contests.ErrExtendEnded):
-		WriteError(w, http.StatusConflict, "contest_ended", err.Error())
+		httpx.WriteJSON(w, http.StatusBadRequest, map[string]httpx.APIError{"error": {Code: "bad_request", Message: fields.Error(), Fields: fields}})
+	case errors.Is(err, ErrNotStarted), errors.Is(err, ErrBeforeStart):
+		httpx.WriteError(w, http.StatusForbidden, "not_started", err.Error())
+	case errors.Is(err, ErrContestOver), errors.Is(err, ErrPracticeWait):
+		httpx.WriteError(w, http.StatusForbidden, "contest_over", err.Error())
+	case errors.Is(err, ErrNotReady):
+		httpx.WriteError(w, http.StatusConflict, "not_ready", err.Error())
+	case errors.Is(err, ErrRevealEarly):
+		httpx.WriteError(w, http.StatusConflict, "too_early", err.Error())
+	case errors.Is(err, ErrExtendEnded):
+		httpx.WriteError(w, http.StatusConflict, "contest_ended", err.Error())
 	default:
 		d.internalError(w, r, err)
 	}
 }
 
-func viewerOf(u auth.User) contests.Viewer {
-	return contests.Viewer{UserID: u.ID, Email: u.Email, Organiser: u.Role.AtLeast(auth.Admin)}
+func viewerOf(u auth.User) Viewer {
+	return Viewer{UserID: u.ID, Email: u.Email, Organiser: u.Role.AtLeast(auth.Admin)}
 }
 
 // studentContest loads the contest named by {slug} and checks the viewer
 // may enter it. organiser is true for owners and admins.
-func (d Deps) studentContest(w http.ResponseWriter, r *http.Request) (*contests.Contest, bool, bool) {
+func (d *Handlers) studentContest(w http.ResponseWriter, r *http.Request) (*Contest, bool, bool) {
 	c, err := d.Contests.GetBySlug(r.Context(), r.PathValue("slug"))
 	if err != nil {
 		d.contestError(w, r, err)
 		return nil, false, false
 	}
-	organiser, err := d.Contests.MayEnter(r.Context(), c, viewerOf(userFrom(r.Context())))
+	organiser, err := d.Contests.MayEnter(r.Context(), c, viewerOf(auth.UserFrom(r.Context())))
 	if err != nil {
 		d.contestError(w, r, err)
 		return nil, false, false
@@ -120,10 +134,8 @@ func (d Deps) studentContest(w http.ResponseWriter, r *http.Request) (*contests.
 	return c, organiser, true
 }
 
-func ptr[T any](v T) *T { return &v }
-
 // summary builds ContestSummary for the viewer, and returns their state.
-func (d Deps) summary(ctx context.Context, c *contests.Contest, userID int64, organiser bool) (contestSummaryJSON, contests.StudentState, error) {
+func (d *Handlers) summary(ctx context.Context, c *Contest, userID int64, organiser bool) (contestSummaryJSON, StudentState, error) {
 	now := d.Contests.Clock()
 	out := contestSummaryJSON{Slug: c.Slug, Title: c.Title, StartsAt: c.Schedule.StartsAt.UnixMilli(),
 		EndsAt: c.Schedule.Close().UnixMilli(), ProblemCount: len(c.Problems)}
@@ -149,8 +161,8 @@ func (d Deps) summary(ctx context.Context, c *contests.Contest, userID int64, or
 	return out, st, nil
 }
 
-func (d Deps) listContests(w http.ResponseWriter, r *http.Request) {
-	u := userFrom(r.Context())
+func (d *Handlers) ListContests(w http.ResponseWriter, r *http.Request) {
+	u := auth.UserFrom(r.Context())
 	all, err := d.Contests.List(r.Context(), false)
 	if err != nil {
 		d.internalError(w, r, err)
@@ -162,7 +174,7 @@ func (d Deps) listContests(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 		organiser, err := d.Contests.MayEnter(r.Context(), c, viewerOf(u))
-		if errors.Is(err, contests.ErrForbidden) || errors.Is(err, contests.ErrNotFound) {
+		if errors.Is(err, ErrForbidden) || errors.Is(err, ErrNotFound) {
 			continue
 		}
 		if err != nil {
@@ -175,20 +187,20 @@ func (d Deps) listContests(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		switch s.State {
-		case contests.StateLive, contests.StateFrozen:
+		case StateLive, StateFrozen:
 			out["live"] = append(out["live"], s)
-		case contests.StateUpcoming:
+		case StateUpcoming:
 			out["upcoming"] = append(out["upcoming"], s)
 		default:
 			out["past"] = append(out["past"], s)
 		}
 	}
-	WriteJSON(w, http.StatusOK, map[string]any{"live": out["live"], "upcoming": out["upcoming"], "past": out["past"],
+	httpx.WriteJSON(w, http.StatusOK, map[string]any{"live": out["live"], "upcoming": out["upcoming"], "past": out["past"],
 		"server_now": d.Contests.Clock().UnixMilli()})
 }
 
 // contestDetail builds Contest for the viewer.
-func (d Deps) contestDetail(ctx context.Context, c *contests.Contest, u auth.User, organiser bool) (*contestJSON, error) {
+func (d *Handlers) contestDetail(ctx context.Context, c *Contest, u auth.User, organiser bool) (*contestJSON, error) {
 	s, st, err := d.summary(ctx, c, u.ID, organiser)
 	if err != nil {
 		return nil, err
@@ -201,7 +213,7 @@ func (d Deps) contestDetail(ctx context.Context, c *contests.Contest, u auth.Use
 			Practice: c.PracticeAfterEnd, ExamOptions: c.Exam},
 		ServerNow: now.UnixMilli()}
 	if organiser || c.ProblemsVisible(st, now) {
-		var cells map[string]contests.Cell
+		var cells map[string]Cell
 		hide := organiser || c.ViewOptions(st).Hide
 		if !hide {
 			if _, cells, err = d.Contests.MyScore(ctx, c, st, u.ID); err != nil {
@@ -216,7 +228,7 @@ func (d Deps) contestDetail(ctx context.Context, c *contests.Contest, u auth.Use
 			pj := contestProblemJSON{Label: p.Label, Title: p.Title, MaxScore: p.MaxScore(), MySubmissionCount: counts[p.ProblemID],
 				RevisionID: p.RevisionID}
 			if cell, ok := cells[p.Label]; ok {
-				pj.MyScore = ptr(cell.Score)
+				pj.MyScore = httpx.Ptr(cell.Score)
 			}
 			out.Problems = append(out.Problems, pj)
 		}
@@ -229,26 +241,26 @@ func (d Deps) contestDetail(ctx context.Context, c *contests.Contest, u auth.Use
 	}
 	if organiser || c.EditorialVisible(st, now) {
 		if c.Editorial != "" && (c.EditorialPublished || organiser) {
-			out.EditorialMD = ptr(c.Editorial)
+			out.EditorialMD = httpx.Ptr(c.Editorial)
 		}
 	}
 	return out, nil
 }
 
-func (d Deps) getContest(w http.ResponseWriter, r *http.Request) {
+func (d *Handlers) GetContest(w http.ResponseWriter, r *http.Request) {
 	c, organiser, ok := d.studentContest(w, r)
 	if !ok {
 		return
 	}
-	out, err := d.contestDetail(r.Context(), c, userFrom(r.Context()), organiser)
+	out, err := d.contestDetail(r.Context(), c, auth.UserFrom(r.Context()), organiser)
 	if err != nil {
 		d.internalError(w, r, err)
 		return
 	}
-	WriteJSON(w, http.StatusOK, out)
+	httpx.WriteJSON(w, http.StatusOK, out)
 }
 
-func (d Deps) startContest(w http.ResponseWriter, r *http.Request) {
+func (d *Handlers) StartContest(w http.ResponseWriter, r *http.Request) {
 	c, organiser, ok := d.studentContest(w, r)
 	if !ok {
 		return
@@ -256,10 +268,10 @@ func (d Deps) startContest(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		AcceptHonour bool `json:"accept_honour"`
 	}
-	if !decodeJSON(w, r, &req) {
+	if !httpx.DecodeJSON(w, r, &req) {
 		return
 	}
-	u := userFrom(r.Context())
+	u := auth.UserFrom(r.Context())
 	if err := d.Contests.Start(r.Context(), c, u.ID, req.AcceptHonour); err != nil {
 		d.contestError(w, r, err)
 		return
@@ -269,16 +281,16 @@ func (d Deps) startContest(w http.ResponseWriter, r *http.Request) {
 		d.internalError(w, r, err)
 		return
 	}
-	WriteJSON(w, http.StatusOK, out)
+	httpx.WriteJSON(w, http.StatusOK, out)
 }
 
 // contestTarget is the contest problem a workspace request is about and
 // the rules that apply to the viewer.
 type contestTarget struct {
-	c         *contests.Contest
-	problem   contests.ContestProblem
+	c         *Contest
+	problem   ContestProblem
 	scope     submissions.Scope
-	st        contests.StudentState
+	st        StudentState
 	organiser bool
 	// open is true when the viewer may run and submit now (for the score,
 	// or as practice when scope.Practice is set); refusal says why not.
@@ -289,7 +301,7 @@ type contestTarget struct {
 // contestProblem resolves {slug} and {label} and applies the time and
 // access rules. Students see a problem only once their window started (or
 // is over); organisers always.
-func (d Deps) contestProblem(w http.ResponseWriter, r *http.Request) (*contestTarget, bool) {
+func (d *Handlers) contestProblem(w http.ResponseWriter, r *http.Request) (*contestTarget, bool) {
 	c, organiser, ok := d.studentContest(w, r)
 	if !ok {
 		return nil, false
@@ -302,10 +314,10 @@ func (d Deps) contestProblem(w http.ResponseWriter, r *http.Request) (*contestTa
 		}
 	}
 	if !found {
-		WriteError(w, http.StatusNotFound, "not_found", "There is no such problem in this contest.")
+		httpx.WriteError(w, http.StatusNotFound, "not_found", "There is no such problem in this contest.")
 		return nil, false
 	}
-	u := userFrom(r.Context())
+	u := auth.UserFrom(r.Context())
 	st, err := d.Contests.State(r.Context(), c, u.ID)
 	if err != nil {
 		d.internalError(w, r, err)
@@ -315,25 +327,25 @@ func (d Deps) contestProblem(w http.ResponseWriter, r *http.Request) (*contestTa
 	t.scope = submissions.Scope{ContestID: c.ID, Languages: c.Languages, RevisionID: t.problem.RevisionID}
 	if organiser {
 		t.open = true
-		t.scope.MinGap = organiserGap
+		t.scope.MinGap = submissions.OrganiserGap
 		if !t.problem.Ready {
-			t.open, t.refusal = false, contests.ErrNotReady
+			t.open, t.refusal = false, ErrNotReady
 		}
 		return t, true
 	}
 	now := d.Contests.Clock()
 	if !c.ProblemsVisible(st, now) {
 		if now.Before(c.Schedule.StartsAt) {
-			d.contestError(w, r, contests.ErrBeforeStart)
+			d.contestError(w, r, ErrBeforeStart)
 		} else {
-			d.contestError(w, r, contests.ErrNotStarted)
+			d.contestError(w, r, ErrNotStarted)
 		}
 		return nil, false
 	}
 	t.scope.MinGap, t.scope.MaxPerProblem, t.scope.View = c.MinGap, c.MaxPerProblem, c.ViewOptions(st)
 	switch {
 	case !t.problem.Ready:
-		t.refusal = contests.ErrNotReady
+		t.refusal = ErrNotReady
 	case st.Open:
 		t.open = true
 	case st.Over && c.PracticeOpen(st, now):
@@ -346,11 +358,11 @@ func (d Deps) contestProblem(w http.ResponseWriter, r *http.Request) (*contestTa
 		}
 		t.open, t.scope.Practice, t.scope.MaxPerProblem, t.scope.Reveal = true, true, 0, !pending
 	case st.Over && c.PracticeAfterEnd:
-		t.refusal = contests.ErrPracticeWait
+		t.refusal = ErrPracticeWait
 	case st.Over:
-		t.refusal = contests.ErrContestOver
+		t.refusal = ErrContestOver
 	default:
-		t.refusal = contests.ErrNotStarted
+		t.refusal = ErrNotStarted
 	}
 	return t, true
 }
@@ -370,14 +382,14 @@ type contestWorkspaceJSON struct {
 	RevisionID int64 `json:"revision_id"`
 }
 
-func (d Deps) getContestWorkspace(w http.ResponseWriter, r *http.Request) {
+func (d *Handlers) GetContestWorkspace(w http.ResponseWriter, r *http.Request) {
 	t, ok := d.contestProblem(w, r)
 	if !ok {
 		return
 	}
-	ws, err := d.Submissions.Workspace(r.Context(), t.problem.ProblemID, userFrom(r.Context()).ID, t.scope)
+	ws, err := d.Submissions.Workspace(r.Context(), t.problem.ProblemID, auth.UserFrom(r.Context()).ID, t.scope)
 	if err != nil {
-		d.submissionError(w, r, err)
+		submissions.WriteError(d.Log, w, r, err)
 		return
 	}
 	out := contestWorkspaceJSON{Workspace: ws, Label: t.problem.Label, Contest: t.c.Slug,
@@ -386,12 +398,12 @@ func (d Deps) getContestWorkspace(w http.ResponseWriter, r *http.Request) {
 		out.Window = &windowJSON{StartedAt: t.st.Window.Opens.UnixMilli(), EndsAt: t.st.Window.Ends.UnixMilli()}
 	}
 	if t.refusal != nil {
-		out.Refusal = ptr(t.refusal.Error())
+		out.Refusal = httpx.Ptr(t.refusal.Error())
 	}
-	WriteJSON(w, http.StatusOK, out)
+	httpx.WriteJSON(w, http.StatusOK, out)
 }
 
-func (d Deps) saveContestDraft(w http.ResponseWriter, r *http.Request) {
+func (d *Handlers) SaveContestDraft(w http.ResponseWriter, r *http.Request) {
 	t, ok := d.contestProblem(w, r)
 	if !ok {
 		return
@@ -400,17 +412,17 @@ func (d Deps) saveContestDraft(w http.ResponseWriter, r *http.Request) {
 		Language string `json:"language"`
 		Source   string `json:"source"`
 	}
-	if !decodeJSONLimit(w, r, &req, maxRunBody) {
+	if !httpx.DecodeJSONLimit(w, r, &req, submissions.MaxRunBody) {
 		return
 	}
-	if err := d.Submissions.SaveDraft(r.Context(), t.problem.ProblemID, userFrom(r.Context()).ID, t.scope, req.Language, req.Source); err != nil {
-		d.submissionError(w, r, err)
+	if err := d.Submissions.SaveDraft(r.Context(), t.problem.ProblemID, auth.UserFrom(r.Context()).ID, t.scope, req.Language, req.Source); err != nil {
+		submissions.WriteError(d.Log, w, r, err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
 }
 
-func (d Deps) runContestCode(w http.ResponseWriter, r *http.Request) {
+func (d *Handlers) RunContestCode(w http.ResponseWriter, r *http.Request) {
 	t, ok := d.contestProblem(w, r)
 	if !ok {
 		return
@@ -424,19 +436,19 @@ func (d Deps) runContestCode(w http.ResponseWriter, r *http.Request) {
 		Source   string  `json:"source"`
 		Input    *string `json:"input"`
 	}
-	if !decodeJSONLimit(w, r, &req, maxRunBody) {
+	if !httpx.DecodeJSONLimit(w, r, &req, submissions.MaxRunBody) {
 		return
 	}
-	v, err := d.Submissions.Run(r.Context(), submissions.RunRequest{ProblemID: t.problem.ProblemID, UserID: userFrom(r.Context()).ID,
+	v, err := d.Submissions.Run(r.Context(), submissions.RunRequest{ProblemID: t.problem.ProblemID, UserID: auth.UserFrom(r.Context()).ID,
 		Scope: t.scope, Language: req.Language, Source: req.Source, Input: req.Input})
 	if err != nil {
-		d.submissionError(w, r, err)
+		submissions.WriteError(d.Log, w, r, err)
 		return
 	}
-	WriteJSON(w, http.StatusAccepted, v)
+	httpx.WriteJSON(w, http.StatusAccepted, v)
 }
 
-func (d Deps) submitContestCode(w http.ResponseWriter, r *http.Request) {
+func (d *Handlers) SubmitContestCode(w http.ResponseWriter, r *http.Request) {
 	t, ok := d.contestProblem(w, r)
 	if !ok {
 		return
@@ -454,16 +466,16 @@ func (d Deps) submitContestCode(w http.ResponseWriter, r *http.Request) {
 		FocusLosses int    `json:"focus_losses"`
 		Exits       int    `json:"fullscreen_exits"`
 	}
-	if !decodeJSONLimit(w, r, &req, maxRunBody) {
+	if !httpx.DecodeJSONLimit(w, r, &req, submissions.MaxRunBody) {
 		return
 	}
-	u := userFrom(r.Context())
+	u := auth.UserFrom(r.Context())
 	v, dup, err := d.Submissions.Submit(r.Context(), submissions.SubmitRequest{ProblemID: t.problem.ProblemID, UserID: u.ID,
 		Scope: t.scope, Language: req.Language, Source: req.Source, ClientKey: req.ClientKey,
 		Typed: req.TypedChars, Pasted: req.PastedChars, Blur: req.FocusLosses, Exits: req.Exits,
-		ClientHash: d.Submissions.ClientHash(clientIP(r), r.UserAgent())})
+		ClientHash: d.Submissions.ClientHash(httpx.ClientIP(r), r.UserAgent())})
 	if err != nil {
-		d.submissionError(w, r, err)
+		submissions.WriteError(d.Log, w, r, err)
 		return
 	}
 	// A new submission does not touch the board: it changes nothing until
@@ -474,10 +486,10 @@ func (d Deps) submitContestCode(w http.ResponseWriter, r *http.Request) {
 	if dup {
 		status = http.StatusOK
 	}
-	WriteJSON(w, status, v)
+	httpx.WriteJSON(w, status, v)
 }
 
-func (d Deps) recordContestEvents(w http.ResponseWriter, r *http.Request) {
+func (d *Handlers) RecordContestEvents(w http.ResponseWriter, r *http.Request) {
 	t, ok := d.contestProblem(w, r)
 	if !ok {
 		return
@@ -485,15 +497,15 @@ func (d Deps) recordContestEvents(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Events []submissions.Event `json:"events"`
 	}
-	if !decodeJSON(w, r, &req) {
+	if !httpx.DecodeJSON(w, r, &req) {
 		return
 	}
 	if !t.open {
 		w.WriteHeader(http.StatusNoContent) // nothing to record outside the window
 		return
 	}
-	if err := d.Submissions.RecordEvents(r.Context(), t.problem.ProblemID, userFrom(r.Context()).ID, t.scope, req.Events); err != nil {
-		d.submissionError(w, r, err)
+	if err := d.Submissions.RecordEvents(r.Context(), t.problem.ProblemID, auth.UserFrom(r.Context()).ID, t.scope, req.Events); err != nil {
+		submissions.WriteError(d.Log, w, r, err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -501,18 +513,18 @@ func (d Deps) recordContestEvents(w http.ResponseWriter, r *http.Request) {
 
 // standingsJSON is Standings in docs/API.md.
 type standingsJSON struct {
-	Variant          string         `json:"variant"`
-	Version          int64          `json:"version"`
-	FrozenAt         *int64         `json:"frozen_at"`
-	Final            bool           `json:"final"`
-	JudgingRemaining int            `json:"judging_remaining"`
-	Labels           []string       `json:"labels"`
-	Rows             []contests.Row `json:"rows"`
-	Me               int64          `json:"me"`
-	ServerNow        int64          `json:"server_now"`
+	Variant          string   `json:"variant"`
+	Version          int64    `json:"version"`
+	FrozenAt         *int64   `json:"frozen_at"`
+	Final            bool     `json:"final"`
+	JudgingRemaining int      `json:"judging_remaining"`
+	Labels           []string `json:"labels"`
+	Rows             []Row    `json:"rows"`
+	Me               int64    `json:"me"`
+	ServerNow        int64    `json:"server_now"`
 }
 
-func (d Deps) standingsOut(ctx context.Context, c *contests.Contest, variant string, me int64) (*standingsJSON, error) {
+func (d *Handlers) standingsOut(ctx context.Context, c *Contest, variant string, me int64) (*standingsJSON, error) {
 	b, err := d.Contests.Board(ctx, c, variant)
 	if err != nil {
 		return nil, err
@@ -524,23 +536,23 @@ func (d Deps) standingsOut(ctx context.Context, c *contests.Contest, variant str
 	now := d.Contests.Clock()
 	out := &standingsJSON{Variant: variant, Version: b.Version, JudgingRemaining: b.JudgingRemaining, Labels: b.Labels,
 		Rows: b.Rows, Me: me, ServerNow: now.UnixMilli(),
-		Final: variant == contests.VariantFull && !now.Before(final) && b.JudgingRemaining == 0}
+		Final: variant == VariantFull && !now.Before(final) && b.JudgingRemaining == 0}
 	if out.Rows == nil {
-		out.Rows = []contests.Row{}
+		out.Rows = []Row{}
 	}
-	if variant == contests.VariantFrozen {
-		out.FrozenAt = millis(c.FrozenAt())
+	if variant == VariantFrozen {
+		out.FrozenAt = httpx.Millis(c.FrozenAt())
 	}
 	return out, nil
 }
 
-func (d Deps) getStandings(w http.ResponseWriter, r *http.Request) {
+func (d *Handlers) GetStandings(w http.ResponseWriter, r *http.Request) {
 	c, organiser, ok := d.studentContest(w, r)
 	if !ok {
 		return
 	}
-	u := userFrom(r.Context())
-	variant := contests.VariantFull
+	u := auth.UserFrom(r.Context())
+	variant := VariantFull
 	switch {
 	// An organiser gets the full board, or with ?as=student the board
 	// students get now ("Student view", pilot P10).
@@ -560,10 +572,10 @@ func (d Deps) getStandings(w http.ResponseWriter, r *http.Request) {
 		d.internalError(w, r, err)
 		return
 	}
-	WriteJSON(w, http.StatusOK, out)
+	httpx.WriteJSON(w, http.StatusOK, out)
 }
 
-func (d Deps) askClarification(w http.ResponseWriter, r *http.Request) {
+func (d *Handlers) AskClarification(w http.ResponseWriter, r *http.Request) {
 	c, organiser, ok := d.studentContest(w, r)
 	if !ok {
 		return
@@ -572,10 +584,10 @@ func (d Deps) askClarification(w http.ResponseWriter, r *http.Request) {
 		ProblemLabel *string `json:"problem_label"`
 		Question     string  `json:"question"`
 	}
-	if !decodeJSON(w, r, &req) {
+	if !httpx.DecodeJSON(w, r, &req) {
 		return
 	}
-	u := userFrom(r.Context())
+	u := auth.UserFrom(r.Context())
 	if !organiser {
 		st, err := d.Contests.State(r.Context(), c, u.ID)
 		if err != nil {
@@ -584,7 +596,7 @@ func (d Deps) askClarification(w http.ResponseWriter, r *http.Request) {
 		}
 		// Practice after the end keeps Messages open (walk bug B4); otherwise the end closes questions.
 		if st.Over && !c.PracticeOpen(st, d.Contests.Clock()) {
-			WriteError(w, http.StatusForbidden, "contest_over", "The contest has ended, so questions are closed.")
+			httpx.WriteError(w, http.StatusForbidden, "contest_over", "The contest has ended, so questions are closed.")
 			return
 		}
 	}
@@ -594,5 +606,5 @@ func (d Deps) askClarification(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	cl.AskedBy = nil
-	WriteJSON(w, http.StatusCreated, map[string]any{"clarification": cl, "server_now": d.Contests.Clock().UnixMilli()})
+	httpx.WriteJSON(w, http.StatusCreated, map[string]any{"clarification": cl, "server_now": d.Contests.Clock().UnixMilli()})
 }

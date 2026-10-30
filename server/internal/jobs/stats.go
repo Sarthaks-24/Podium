@@ -83,6 +83,18 @@ func (s *Service) recordFinished(j Job, now time.Time) {
 	s.doneNext = (s.doneNext + 1) % finishedRing
 }
 
+// Waiting counts the queued jobs and returns when the oldest was queued
+// (the zero time when none waits), for the health check.
+func (s *Service) Waiting(ctx context.Context) (int64, time.Time, error) {
+	var queued, oldest int64
+	err := s.DB.QueryRowContext(ctx, "SELECT count(*), coalesce(min(created_at), 0) FROM jobs WHERE state = 'queued'").
+		Scan(&queued, &oldest)
+	if err != nil || queued == 0 {
+		return queued, time.Time{}, err
+	}
+	return queued, time.UnixMilli(oldest), nil
+}
+
 // Stats reads the queue: two indexed queries on the jobs table and the
 // in-memory record of recently closed jobs.
 func (s *Service) Stats(ctx context.Context) (Stats, error) {

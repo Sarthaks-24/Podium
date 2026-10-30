@@ -13,6 +13,7 @@ import (
 	"testing"
 
 	"github.com/Sarthaks-24/podium/internal/db"
+	"github.com/Sarthaks-24/podium/internal/httpx"
 )
 
 func newTestHandler(t *testing.T, web http.Handler) (http.Handler, *bytes.Buffer) {
@@ -45,7 +46,7 @@ func TestUnknownAPIRouteIsJSON404(t *testing.T) {
 	h, _ := newTestHandler(t, http.NotFoundHandler())
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, httptest.NewRequest("GET", "/api/nope", nil))
-	var body map[string]APIError
+	var body map[string]httpx.APIError
 	if rec.Code != 404 || json.Unmarshal(rec.Body.Bytes(), &body) != nil || body["error"].Code != "not_found" {
 		t.Fatalf("got %d %s", rec.Code, rec.Body)
 	}

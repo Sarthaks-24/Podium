@@ -14,8 +14,8 @@ import (
 	"time"
 
 	"github.com/Sarthaks-24/podium/internal/db"
-	"github.com/Sarthaks-24/podium/internal/httpapi"
 	"github.com/Sarthaks-24/podium/internal/jobs"
+	"github.com/Sarthaks-24/podium/internal/jobs/judgeserver"
 	"github.com/Sarthaks-24/podium/internal/judgeapi"
 	"github.com/Sarthaks-24/podium/internal/problems"
 )
@@ -61,7 +61,7 @@ func newDrainRig(t *testing.T) *drainRig {
 	r.jobs = &jobs.Service{DB: d, Kinds: map[string]jobs.Kind{judgeapi.KindValidate: drainKind{}},
 		Now: func() time.Time { return time.UnixMilli(r.now.Load()) }}
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
-	api := httpapi.NewJudge(httpapi.JudgeDeps{Log: log, Jobs: r.jobs, Blobs: problems.Blobs{Dir: t.TempDir()}, Token: drainToken})
+	api := judgeserver.New(judgeserver.Deps{Log: log, Jobs: r.jobs, Blobs: problems.Blobs{Dir: t.TempDir()}, Token: drainToken})
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		if req.URL.Path == "/api/judge/claim" {
 			r.claims.Add(1)

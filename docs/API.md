@@ -2,7 +2,7 @@
 
 All API routes live under `/api/` and speak JSON. Every other path serves the embedded web app, which renders its own pages (see "Static files"). The judge worker has its own routes on a separate listener ("Judge worker API").
 
-The routes are registered in `server/internal/httpapi`. `server/internal/httpapi/route_roles_test.go` reads every registration from the source and holds the role each route needs, so a new route without a row there fails the tests; this document lists the same routes, grouped by area. Each heading or table row names the role: public, student (anyone signed in), admin, owner, or judge.
+The routes are registered in `server/internal/httpapi/httpapi.go`, the judge routes in `server/internal/jobs/judgeserver`. `server/internal/httpapi/route_roles_test.go` reads every registration from the source and holds the role each route needs, so a new route without a row there fails the tests; this document lists the same routes, grouped by area. Each heading or table row names the role: public, student (anyone signed in), admin, owner, or judge.
 
 ## Conventions
 

@@ -12,6 +12,8 @@ import (
 	"strconv"
 	"sync"
 	"time"
+
+	"github.com/Sarthaks-24/podium/internal/httpx"
 )
 
 // Budgets per client address before sign-in, each a token bucket: Burst
@@ -112,7 +114,7 @@ func (l *ipLimiter) sweep(now time.Time) {
 // addressKey is the budget a request counts against: its client address,
 // with IPv6 addresses grouped by /64 (one host can hold a whole /64).
 func addressKey(r *http.Request) string {
-	ip := net.ParseIP(clientIP(r))
+	ip := net.ParseIP(httpx.ClientIP(r))
 	if ip == nil {
 		return "unknown"
 	}
@@ -137,7 +139,7 @@ func (d Deps) signInLimit(redirect bool, h http.HandlerFunc) http.HandlerFunc {
 
 func (d Deps) limited(l *ipLimiter, redirect bool, h http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		if !loopbackRequest(r) {
+		if !httpx.Loopback(r) {
 			if ok, wait := l.allow(addressKey(r)); !ok {
 				secs := max(1, int(wait.Seconds()+0.999))
 				w.Header().Set("Retry-After", strconv.Itoa(secs))
@@ -146,7 +148,7 @@ func (d Deps) limited(l *ipLimiter, redirect bool, h http.HandlerFunc) http.Hand
 					http.Redirect(w, r, "/signin?error=rate_limited", http.StatusFound)
 					return
 				}
-				WriteJSON(w, http.StatusTooManyRequests, map[string]any{"error": map[string]any{
+				httpx.WriteJSON(w, http.StatusTooManyRequests, map[string]any{"error": map[string]any{
 					"code": "rate_limited", "message": "Too many requests from your network. Wait a few seconds and try again.",
 					"retry_after_s": secs}})
 				return
