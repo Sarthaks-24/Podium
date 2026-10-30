@@ -933,6 +933,8 @@ Every path that is not under `/api/` serves the embedded web app (`server/intern
 |---|---|
 | `/assets/*` (hashed build output) | the file, `Cache-Control: public, max-age=31536000, immutable` |
 | other files of the build (`/favicon.svg`, `/fonts/*`, `/theme-init.js`) | the file, `public, max-age=3600` |
+| a path ending in `/` (not `/` itself) | `301` to the same path without it, query kept |
+| `/progress`, `/notices`, `/contact`, `/integrity` and `/integrity/*` (v2 pages) | `301` to `/` |
 | `/robots.txt` | `User-agent: *` and `Disallow: /`, `public, max-age=3600` |
 | a missing path with an extension | `404`, so an old hashed chunk after a deploy fails clearly instead of loading `index.html` as JavaScript |
 | `/`, `/signin`, `/privacy`, and anything under `/contests/` or `/admin/` | `index.html`, `no-cache`, `X-Robots-Tag: noindex` |

@@ -7,6 +7,7 @@ Dated entries per release. Unreleased work is listed at the top.
 ### v4 stage H: site hygiene (2026-10-30)
 
 - A path the app has no screen for answers 404 instead of 200, still showing the "Page not found" page. A Go test keeps the server's list of app paths in step with the router.
+- A trailing slash redirects to the same page without it, and the v2 pages (`/progress`, `/notices`, `/contact`, `/integrity`) redirect home.
 
 ### v3: what the final agent pilot found, second part (2026-10-30)
 

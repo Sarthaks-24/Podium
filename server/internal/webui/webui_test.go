@@ -57,6 +57,27 @@ func TestHandler(t *testing.T) {
 	}
 }
 
+func TestRedirects(t *testing.T) {
+	h := handlerFor(fstest.MapFS{"index.html": {Data: []byte("shell")}})
+	cases := []struct{ path, to string }{
+		{"/contests/week-6/", "/contests/week-6"},
+		{"/admin/people/?tab=signin", "/admin/people?tab=signin"},
+		{"//evil.example/", "/evil.example"},
+		{"/progress", "/"},
+		{"/notices", "/"},
+		{"/contact", "/"},
+		{"/integrity", "/"},
+		{"/integrity/cases/3", "/"},
+	}
+	for _, c := range cases {
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, httptest.NewRequest("GET", c.path, nil))
+		if rec.Code != http.StatusMovedPermanently || rec.Header().Get("Location") != c.to {
+			t.Errorf("GET %s: %d to %q, want 301 to %q", c.path, rec.Code, rec.Header().Get("Location"), c.to)
+		}
+	}
+}
+
 // TestNotFoundServesShell checks that an unknown path still gets the app,
 // which draws the "Page not found" screen, with the status a crawler reads.
 func TestNotFoundServesShell(t *testing.T) {

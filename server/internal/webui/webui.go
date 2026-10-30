@@ -50,6 +50,21 @@ func handlerFor(dist fs.FS) http.Handler {
 			return
 		}
 		name := strings.TrimPrefix(path.Clean(r.URL.Path), "/")
+		// One address per page: a trailing slash goes to the cleaned path,
+		// which never starts with "//", so the redirect cannot leave the site.
+		if r.URL.Path != "/" && strings.HasSuffix(r.URL.Path, "/") {
+			to := "/" + name
+			if r.URL.RawQuery != "" {
+				to += "?" + r.URL.RawQuery
+			}
+			http.Redirect(w, r, to, http.StatusMovedPermanently)
+			return
+		}
+		// Pages v2 had outside /admin/ and /contests/, in case one is bookmarked.
+		if slices.Contains(retiredPaths, name) || strings.HasPrefix(name, "integrity/") {
+			http.Redirect(w, r, "/", http.StatusMovedPermanently)
+			return
+		}
 		if name == "robots.txt" {
 			w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 			w.Header().Set("Cache-Control", "public, max-age=3600")
@@ -92,6 +107,8 @@ func handlerFor(dist fs.FS) http.Handler {
 var (
 	appPaths    = []string{"/", "/signin", "/privacy"}
 	appPrefixes = []string{"/contests/", "/admin/"}
+
+	retiredPaths = []string{"progress", "notices", "contact", "integrity"}
 )
 
 func appRoute(p string) bool {
