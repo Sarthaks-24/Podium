@@ -24,8 +24,8 @@ export type ContestSummaryLike = Like<(typeof contests)['live'][number]>;
 export type ContestLike = Like<typeof contest>;
 export type RulesLike = Like<(typeof contest)['rules']>;
 export type WorkspaceLike = Like<typeof workspace>;
-/** A submission as the mocks keep it; server_now is added when it is served. */
-export type SubmissionLike = Like<Omit<typeof submission, 'server_now'>>;
+/** A submission as the mocks keep it; server_now is added when it is served, and source (v4 E2) only on the author's own GET of one. */
+export type SubmissionLike = Like<Omit<typeof submission, 'server_now' | 'source'>>;
 export type StandingsLike = Like<typeof standings>;
 export type AdminContestLike = Like<typeof adminContest>;
 export type FeedLike = Like<typeof adminFeed>;

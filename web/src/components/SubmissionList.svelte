@@ -53,6 +53,7 @@
   async function use(s: Submission) {
     const source = await load(s.id);
     if (source !== null) onuse?.(s, source);
+    else view[s.id] = 'code'; // shows "The code could not load" under the row
   }
 </script>
 

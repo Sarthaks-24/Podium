@@ -364,7 +364,9 @@
   // Compiler marks (v4 E4): a run or submission seen waiting here that ends
   // in a compile error marks its lines; the next one to wait clears them.
   // One that was already over when the page opened marks nothing, since the
-  // code may have changed since.
+  // code may have changed since. shortcut: one still waiting when the page
+  // opened is marked when it ends, though the code may have changed; track
+  // only what this page sent if that ever misleads.
   // Not reactive state: the effects below write it, so tracking it would loop.
   // eslint-disable-next-line svelte/prefer-svelte-reactivity
   const waited = new Set<string>();
