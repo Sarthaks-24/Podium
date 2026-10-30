@@ -52,8 +52,8 @@
 <style>
   .toasts {
     position: fixed;
-    left: var(--gutter);
-    bottom: var(--space-4);
+    left: calc(var(--gutter) + env(safe-area-inset-left));
+    bottom: calc(var(--space-4) + env(safe-area-inset-bottom));
     z-index: var(--z-toast);
     display: grid;
     gap: var(--space-2);

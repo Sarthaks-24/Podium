@@ -324,7 +324,8 @@
     grid-template-columns: minmax(0, 1fr);
     grid-template-rows: auto 1fr auto;
     min-height: 100vh;
-    min-height: 100dvh;
+    /* body pads the safe areas (v4 U9), so the shell fills what is left. */
+    min-height: calc(100dvh - env(safe-area-inset-top) - env(safe-area-inset-bottom));
   }
 
   .skip {

@@ -424,8 +424,8 @@ textarea.input {
    at the top, so the on-screen keyboard never covers its fields. */
 .dialog {
   width: min(var(--measure-narrow), calc(100vw - 2 * var(--gutter)));
-  max-height: calc(100dvh - 2 * var(--space-4));
-  margin: var(--space-4) auto auto;
+  max-height: calc(100dvh - 2 * var(--space-4) - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+  margin: calc(var(--space-4) + env(safe-area-inset-top)) auto auto;
   padding: var(--space-5);
   overflow-y: auto;
   overscroll-behavior: contain;
@@ -476,6 +476,10 @@ textarea.input {
   height: 100dvh;
   max-height: none;
   margin: 0 0 0 auto;
+  /* Clear of a notch, a curved edge and a home bar (v4 U9). */
+  padding-top: calc(var(--space-5) + env(safe-area-inset-top));
+  padding-right: calc(var(--space-5) + env(safe-area-inset-right));
+  padding-bottom: calc(var(--space-5) + env(safe-area-inset-bottom));
   border-width: 0 0 0 var(--rule);
   border-radius: 0;
 }
