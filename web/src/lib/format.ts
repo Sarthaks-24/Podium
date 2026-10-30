@@ -29,11 +29,16 @@ export function countOf(n: number, noun: string, plural = `${noun}s`): string {
   return `${n} ${n === 1 ? noun : plural}`;
 }
 
-const ROLE_LABELS: Record<Role, string> = { student: 'Student', organiser: 'Organiser', owner: 'Owner' };
+const ROLE_LABELS: Record<Role, string> = { student: 'Student', organiser: 'Organiser', admin: 'Admin', owner: 'Owner' };
 
 /** Sentence-case name of a role. */
 export function roleLabel(role: Role): string {
   return ROLE_LABELS[role];
+}
+
+/** True when v is one of the four roles. */
+export function isRole(v: unknown): v is Role {
+  return typeof v === 'string' && Object.hasOwn(ROLE_LABELS, v);
 }
 
 /** A run of text, set in Fragment Mono when it is a number. */

@@ -23,20 +23,25 @@ import (
 	"github.com/Sarthaks-24/podium/internal/retention"
 )
 
-// Role is a global role. The order is student < organiser < owner. The
-// stored value of an organiser was "admin" until v4 (migration
-// 0002_v4_roles); old site audit rows may still name it.
+// Role is a global role. The order is student < organiser < admin <
+// owner (V4-16): an admin organises like an organiser and also manages
+// students and organisers in the Dashboard (rules.go). Until v4 the stored
+// value of an organiser was "admin" (migration 0002_v4_roles); site audit
+// rows from before it are read with that in mind (siteaudit.go).
 type Role string
 
 const (
 	Student   Role = "student"
 	Organiser Role = "organiser"
+	Admin     Role = "admin"
 	Owner     Role = "owner"
 )
 
 func (r Role) rank() int {
 	switch r {
 	case Owner:
+		return 3
+	case Admin:
 		return 2
 	case Organiser:
 		return 1
@@ -86,9 +91,10 @@ type ChangeError struct {
 
 func (e *ChangeError) Error() string { return e.Message }
 
-func invalid(msg string) error  { return &ChangeError{"invalid", msg} }
-func notFound(msg string) error { return &ChangeError{"not_found", msg} }
-func conflict(msg string) error { return &ChangeError{"conflict", msg} }
+func invalid(msg string) error   { return &ChangeError{"invalid", msg} }
+func notFound(msg string) error  { return &ChangeError{"not_found", msg} }
+func conflict(msg string) error  { return &ChangeError{"conflict", msg} }
+func forbidden(msg string) error { return &ChangeError{"forbidden", msg} }
 
 // Service applies the identity rules against the database.
 type Service struct {
@@ -348,10 +354,11 @@ type Domain struct {
 	CreatedAt int64  `json:"created_at"`
 }
 
-// Organisers lists everyone with the organiser or owner role, owners first.
+// Organisers lists everyone with the organiser, admin or owner role,
+// owners first, then admins.
 func (s *Service) Organisers(ctx context.Context) ([]Person, error) {
 	rows, err := s.DB.QueryContext(ctx, `SELECT id, email, name, role, last_login_at, disabled FROM users
-		WHERE role IN ('owner', 'organiser') ORDER BY role = 'owner' DESC, lower(name) = '', lower(name), email`)
+		WHERE role IN ('owner', 'admin', 'organiser') ORDER BY role = 'owner' DESC, role = 'admin' DESC, lower(name) = '', lower(name), email`)
 	if err != nil {
 		return nil, err
 	}
@@ -368,18 +375,16 @@ func (s *Service) Organisers(ctx context.Context) ([]Person, error) {
 	return out, rows.Err()
 }
 
-// GrantRole gives email the organiser or owner role, creating the account if
-// the person has never signed in.
+// GrantRole gives email the organiser, admin or owner role, creating the
+// account if the person has never signed in. The actor on ctx must be
+// allowed the change (rules.go).
 func (s *Service) GrantRole(ctx context.Context, email string, role Role) (Person, error) {
 	email = strings.ToLower(strings.TrimSpace(email))
 	if a, err := mail.ParseAddress(email); err != nil || a.Address != email || len(email) > 254 {
 		return Person{}, invalid("Enter a single email address, such as ta@college.edu.")
 	}
-	if role != Organiser && role != Owner {
-		return Person{}, invalid("Choose organiser or owner.")
-	}
-	if email == s.OwnerEmail {
-		return Person{}, conflict("This owner is set in the server configuration and cannot be changed here.")
+	if role != Organiser && role != Admin && role != Owner {
+		return Person{}, invalid("Choose organiser, admin or owner.")
 	}
 	tx, err := s.DB.BeginTx(ctx, nil)
 	if err != nil {
@@ -390,6 +395,12 @@ func (s *Service) GrantRole(ctx context.Context, email string, role Role) (Perso
 	err = tx.QueryRowContext(ctx, "SELECT role FROM users WHERE email = ?", email).Scan(&current)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return Person{}, err
+	}
+	if err := s.changeAllowed(ctx, email, current, role); err != nil {
+		return Person{}, err
+	}
+	if email == s.OwnerEmail {
+		return Person{}, conflict("This owner is set in the server configuration and cannot be changed here.")
 	}
 	if current == Owner && role != Owner {
 		if err := lastOwnerGuard(ctx, tx); err != nil {
@@ -445,6 +456,9 @@ func (s *Service) RevokeRole(ctx context.Context, id int64) error {
 		return notFound("That person is not an organiser.")
 	}
 	if err != nil {
+		return err
+	}
+	if err := s.changeAllowed(ctx, email, role, Student); err != nil {
 		return err
 	}
 	if email == s.OwnerEmail {

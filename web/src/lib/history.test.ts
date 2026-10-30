@@ -24,6 +24,8 @@ describe('site audit (People History)', () => {
   it('writes one past-tense sentence per action', () => {
     expect(siteAuditSummary(row('role_granted', { role: 'organiser', from_role: 'student' }))).toBe('Made ta@college.edu an organiser');
     expect(siteAuditSummary(row('role_granted', { role: 'owner', from_role: 'organiser' }))).toBe('Changed ta@college.edu from organiser to owner');
+    expect(siteAuditSummary(row('role_granted', { role: 'admin', from_role: 'none' }))).toBe('Made ta@college.edu an admin');
+    expect(siteAuditSummary(row('role_granted', { role: 'admin', from_role: 'organiser' }))).toBe('Changed ta@college.edu from organiser to admin');
     expect(siteAuditSummary(row('role_revoked', { from_role: 'organiser', sessions_ended: 2 }))).toBe('Removed ta@college.edu as organiser; 2 sessions ended');
     expect(siteAuditSummary(row('domain_added', { domain: 'college.edu' }, ''))).toBe('Allowed @college.edu to sign in');
     expect(siteAuditSummary(row('domain_removed', { domain: 'cs.college.edu', sessions_ended: 0 }, ''))).toBe('Removed @cs.college.edu from the allowed list');

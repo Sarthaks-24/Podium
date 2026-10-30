@@ -19,6 +19,7 @@
   board or in the downloads. Students see a short explanation instead.
 -->
 <script lang="ts">
+  import { organises } from '../lib/roles';
   import PageState from '../components/PageState.svelte';
   import { onMount } from 'svelte';
   import ConfirmDialog from '../components/ConfirmDialog.svelte';
@@ -51,7 +52,7 @@
   // Taken as the data arrives, just before the loading view gives way, so the heading keeps focus.
   let restoreFocus: () => Promise<void> = async () => undefined;
 
-  const isOrganiser = $derived(session.user?.role === 'organiser' || session.user?.role === 'owner');
+  const isOrganiser = $derived(organises(session.user?.role));
   const base = $derived(`/api/admin/contests/${encodeURIComponent(id)}`);
   const page = loader(
     () => getJSON<AdminContest>(base),

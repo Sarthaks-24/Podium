@@ -15,6 +15,7 @@
   Props: `id` (the contest), `signal`.
 -->
 <script lang="ts">
+  import { organises } from '../lib/roles';
   import MonoDigits from '../components/MonoDigits.svelte';
   import PageState from '../components/PageState.svelte';
   import PageHeader from '../components/PageHeader.svelte';
@@ -61,7 +62,7 @@
   let deciding = $state<{ id: number; name: string } | null>(null);
   let cases = $state.raw<Case[]>([]);
 
-  const isOrganiser = $derived(session.user?.role === 'organiser' || session.user?.role === 'owner');
+  const isOrganiser = $derived(organises(session.user?.role));
   const base = $derived(`/api/admin/contests/${encodeURIComponent(id)}/integrity`);
   const back = $derived(`/admin/contests/${encodeURIComponent(id)}/integrity`);
   let contestTitle = $state('');

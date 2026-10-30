@@ -6,8 +6,7 @@
  * reuses AuditEntry from lib/contests.ts. No route here ever carries a
  * test's input or output.
  */
-import { countOf, roleLabel } from './format';
-import type { Role } from './session.svelte';
+import { countOf, isRole, roleLabel } from './format';
 
 // Pins (organisers).
 
@@ -99,7 +98,7 @@ function listWords(words: string[]): string {
 }
 
 function roleWord(v: unknown): string {
-  return v === 'owner' || v === 'organiser' || v === 'student' ? roleLabel(v as Role).toLowerCase() : String(v ?? '');
+  return isRole(v) ? roleLabel(v).toLowerCase() : String(v ?? '');
 }
 
 function ended(n: unknown): string {
@@ -113,9 +112,10 @@ export function siteAuditSummary(e: Pick<SiteAuditEntry, 'action' | 'subject_ema
   const str = (k: string) => (typeof d[k] === 'string' ? (d[k] as string) : '');
   switch (e.action) {
     case 'role_granted':
-      return d.from_role && d.from_role !== 'student'
+      // The server writes from_role "none" for someone who had no account yet.
+      return d.from_role && d.from_role !== 'student' && d.from_role !== 'none'
         ? `Changed ${who} from ${roleWord(d.from_role)} to ${roleWord(d.role)}`
-        : `Made ${who} ${d.role === 'owner' ? 'an owner' : 'an organiser'}`;
+        : `Made ${who} an ${roleWord(d.role)}`;
     case 'role_revoked':
       return `Removed ${who} as ${roleWord(d.from_role)}${ended(d.sessions_ended)}`;
     case 'domain_added':
@@ -145,9 +145,7 @@ export function siteAuditSummary(e: Pick<SiteAuditEntry, 'action' | 'subject_ema
 /** Who made a site audit change: "priya@college.edu (Owner)", or "The server". */
 export function actorText(actor: SiteAuditEntry['actor']): string {
   if (!actor) return 'The server';
-  return actor.role === 'owner' || actor.role === 'organiser' || actor.role === 'student'
-    ? `${actor.email} (${roleLabel(actor.role as Role)})`
-    : actor.email;
+  return isRole(actor.role) ? `${actor.email} (${roleLabel(actor.role)})` : actor.email;
 }
 
 /** The query string of a History or Changes request; empty filters are left out. */

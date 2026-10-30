@@ -22,7 +22,8 @@ import { forgetDraftsAtSignOut, noteSignedInUser } from './drafts';
 import { adoptAccountPreferences, resetPreferences } from './preferences.svelte';
 import { navigate } from './router.svelte';
 
-export type Role = 'student' | 'organiser' | 'owner';
+/** Lowest to highest (V4-16); lib/roles.ts says which of them organise. */
+export type Role = 'student' | 'organiser' | 'admin' | 'owner';
 
 /** The current user, as returned by GET /api/me. */
 export interface User {

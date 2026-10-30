@@ -18,6 +18,7 @@
   Props: `user` (the signed-in user), `inline`, and `onsignout`.
 -->
 <script lang="ts">
+  import { organises } from '../lib/roles';
   import { tick } from 'svelte';
   import { errorText, sendJSON } from '../lib/api';
   import { dismissable } from '../lib/dismissable';
@@ -39,7 +40,7 @@
   let button: HTMLButtonElement | undefined = $state();
 
   const panelId = 'account-panel';
-  const organiser = $derived(user.role === 'organiser' || user.role === 'owner');
+  const organiser = $derived(organises(user.role));
 
   async function toggle() {
     open = !open;

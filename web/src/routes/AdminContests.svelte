@@ -10,6 +10,7 @@
   already done marked. Students see a short explanation instead.
 -->
 <script lang="ts">
+  import { organises } from '../lib/roles';
   import Badge from '../components/Badge.svelte';
   import PageState from '../components/PageState.svelte';
   import PageHeader from '../components/PageHeader.svelte';
@@ -53,7 +54,7 @@
   let titleInput: HTMLInputElement | undefined = $state();
   let newButton: HTMLButtonElement | undefined = $state();
 
-  const isOrganiser = $derived(session.user?.role === 'organiser' || session.user?.role === 'owner');
+  const isOrganiser = $derived(organises(session.user?.role));
   const isOwner = $derived(session.user?.role === 'owner');
   // First run (no contests): what is already done on the way to a published contest; null while unknown.
   let domainCount = $state<number | null>(null);

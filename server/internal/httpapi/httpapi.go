@@ -107,78 +107,81 @@ func New(d Deps) http.Handler {
 	mux.HandleFunc("PUT /api/me/preferences", d.requireRole(auth.Student, people.SetPreferences))
 
 	owner := func(h http.HandlerFunc) http.HandlerFunc { return d.requireRole(auth.Owner, h) }
-	mux.HandleFunc("GET /api/admin/people", owner(people.ListPeople))
-	mux.HandleFunc("POST /api/admin/people", owner(people.GrantRole))
-	mux.HandleFunc("DELETE /api/admin/people/{id}", owner(people.RevokeRole))
+	// Admins manage students and organisers; which person they may change
+	// is decided per person inside auth (rules.go), not by the route alone.
+	admin := func(h http.HandlerFunc) http.HandlerFunc { return d.requireRole(auth.Admin, h) }
+	mux.HandleFunc("GET /api/admin/people", admin(people.ListPeople))
+	mux.HandleFunc("POST /api/admin/people", admin(people.GrantRole))
+	mux.HandleFunc("DELETE /api/admin/people/{id}", admin(people.RevokeRole))
 	mux.HandleFunc("POST /api/admin/accounts/reset-google", owner(people.ResetGoogleAccount))
-	mux.HandleFunc("POST /api/admin/accounts/end-sessions", owner(people.EndSessions))
-	mux.HandleFunc("POST /api/admin/accounts/disable", owner(people.SetAccountDisabled(true)))
-	mux.HandleFunc("POST /api/admin/accounts/enable", owner(people.SetAccountDisabled(false)))
+	mux.HandleFunc("POST /api/admin/accounts/end-sessions", admin(people.EndSessions))
+	mux.HandleFunc("POST /api/admin/accounts/disable", admin(people.SetAccountDisabled(true)))
+	mux.HandleFunc("POST /api/admin/accounts/enable", admin(people.SetAccountDisabled(false)))
 	mux.HandleFunc("GET /api/admin/accounts", d.requireRole(auth.Organiser, d.limitReads(people.LookupAccount)))
 	mux.HandleFunc("POST /api/admin/domains", owner(people.AddDomain))
 	mux.HandleFunc("DELETE /api/admin/domains/{domain}", owner(people.RemoveDomain))
-	mux.HandleFunc("GET /api/admin/site-audit", owner(people.SiteAudit))
+	mux.HandleFunc("GET /api/admin/site-audit", admin(people.SiteAudit))
 	mux.HandleFunc("PUT /api/admin/site-settings", owner(people.SetSiteSettings))
 
-	admin := func(h http.HandlerFunc) http.HandlerFunc { return d.requireRole(auth.Organiser, h) }
+	organiser := func(h http.HandlerFunc) http.HandlerFunc { return d.requireRole(auth.Organiser, h) }
 	bank := &problems.Handlers{Problems: d.Problems, Log: d.Log}
 	work := &submissions.Handlers{Submissions: d.Submissions, Log: d.Log}
-	mux.HandleFunc("GET /api/admin/problems", admin(bank.ListProblems))
-	mux.HandleFunc("POST /api/admin/problems", admin(bank.CreateProblem))
-	mux.HandleFunc("POST /api/admin/problems/import", admin(slowBody(bank.ImportProblem)))
-	mux.HandleFunc("GET /api/admin/problems/{id}", admin(bank.GetProblem))
-	mux.HandleFunc("PUT /api/admin/problems/{id}", admin(bank.UpdateProblem))
-	mux.HandleFunc("DELETE /api/admin/problems/{id}", admin(bank.ArchiveProblem))
-	mux.HandleFunc("PUT /api/admin/problems/{id}/tests", admin(slowBody(bank.ReplaceTests)))
-	mux.HandleFunc("GET /api/admin/problems/{id}/tests/{idx}/{part}", admin(bank.DownloadTest))
-	mux.HandleFunc("GET /api/admin/problems/{id}/export", admin(bank.ExportProblem))
-	mux.HandleFunc("POST /api/admin/problems/{id}/validate", admin(bank.ValidateProblem))
-	mux.HandleFunc("GET /api/admin/problems/{id}/validation", admin(bank.GetValidation))
-	mux.HandleFunc("POST /api/admin/problems/{id}/generate", admin(bank.GenerateOutputs))
-	mux.HandleFunc("GET /api/admin/problems/{id}/generation", admin(bank.GetGeneration))
-	mux.HandleFunc("POST /api/admin/problems/{id}/generate-inputs", admin(bank.GenerateInputs))
-	mux.HandleFunc("GET /api/admin/problems/{id}/input-generation", admin(bank.GetInputGeneration))
+	mux.HandleFunc("GET /api/admin/problems", organiser(bank.ListProblems))
+	mux.HandleFunc("POST /api/admin/problems", organiser(bank.CreateProblem))
+	mux.HandleFunc("POST /api/admin/problems/import", organiser(slowBody(bank.ImportProblem)))
+	mux.HandleFunc("GET /api/admin/problems/{id}", organiser(bank.GetProblem))
+	mux.HandleFunc("PUT /api/admin/problems/{id}", organiser(bank.UpdateProblem))
+	mux.HandleFunc("DELETE /api/admin/problems/{id}", organiser(bank.ArchiveProblem))
+	mux.HandleFunc("PUT /api/admin/problems/{id}/tests", organiser(slowBody(bank.ReplaceTests)))
+	mux.HandleFunc("GET /api/admin/problems/{id}/tests/{idx}/{part}", organiser(bank.DownloadTest))
+	mux.HandleFunc("GET /api/admin/problems/{id}/export", organiser(bank.ExportProblem))
+	mux.HandleFunc("POST /api/admin/problems/{id}/validate", organiser(bank.ValidateProblem))
+	mux.HandleFunc("GET /api/admin/problems/{id}/validation", organiser(bank.GetValidation))
+	mux.HandleFunc("POST /api/admin/problems/{id}/generate", organiser(bank.GenerateOutputs))
+	mux.HandleFunc("GET /api/admin/problems/{id}/generation", organiser(bank.GetGeneration))
+	mux.HandleFunc("POST /api/admin/problems/{id}/generate-inputs", organiser(bank.GenerateInputs))
+	mux.HandleFunc("GET /api/admin/problems/{id}/input-generation", organiser(bank.GetInputGeneration))
 	if d.AI != nil {
 		wizard := &ai.Handlers{Wizard: d.AI, Problems: d.Problems, Hub: d.Hub, Log: d.Log,
 			Testing: d.Mode == "testing", SessionToken: d.sessionToken}
-		mux.HandleFunc("GET /api/admin/ai/providers", admin(wizard.GetAIProviders))
-		mux.HandleFunc("GET /api/admin/ai/models", admin(wizard.GetAIModels))
-		mux.HandleFunc("GET /api/admin/ai/key", admin(wizard.GetAIKey))
-		mux.HandleFunc("PUT /api/admin/ai/key", admin(wizard.PutAIKey))
-		mux.HandleFunc("DELETE /api/admin/ai/key", admin(wizard.DeleteAIKey))
-		mux.HandleFunc("POST /api/admin/ai/wizard", admin(wizard.StartWizard))
-		mux.HandleFunc("GET /api/admin/ai/wizard/{id}", admin(wizard.GetWizard))
+		mux.HandleFunc("GET /api/admin/ai/providers", organiser(wizard.GetAIProviders))
+		mux.HandleFunc("GET /api/admin/ai/models", organiser(wizard.GetAIModels))
+		mux.HandleFunc("GET /api/admin/ai/key", organiser(wizard.GetAIKey))
+		mux.HandleFunc("PUT /api/admin/ai/key", organiser(wizard.PutAIKey))
+		mux.HandleFunc("DELETE /api/admin/ai/key", organiser(wizard.DeleteAIKey))
+		mux.HandleFunc("POST /api/admin/ai/wizard", organiser(wizard.StartWizard))
+		mux.HandleFunc("GET /api/admin/ai/wizard/{id}", organiser(wizard.GetWizard))
 	}
 
-	// The organisers' workspace: an admin tries a problem from the bank
+	// The organisers' workspace: an organiser tries a problem from the bank
 	// ("Try as a student"). Students reach the same workspace through the
 	// contest routes under /api/contests/{slug}/problems/{label} below.
-	mux.HandleFunc("GET /api/workspace/{problem}", admin(d.limitReads(work.GetWorkspace)))
-	mux.HandleFunc("PUT /api/workspace/{problem}/draft", admin(work.SaveDraft))
-	mux.HandleFunc("POST /api/workspace/{problem}/run", admin(work.RunCode))
-	mux.HandleFunc("POST /api/workspace/{problem}/submit", admin(work.SubmitCode))
-	mux.HandleFunc("POST /api/workspace/{problem}/events", admin(work.RecordEvents))
+	mux.HandleFunc("GET /api/workspace/{problem}", organiser(d.limitReads(work.GetWorkspace)))
+	mux.HandleFunc("PUT /api/workspace/{problem}/draft", organiser(work.SaveDraft))
+	mux.HandleFunc("POST /api/workspace/{problem}/run", organiser(work.RunCode))
+	mux.HandleFunc("POST /api/workspace/{problem}/submit", organiser(work.SubmitCode))
+	mux.HandleFunc("POST /api/workspace/{problem}/events", organiser(work.RecordEvents))
 	mux.HandleFunc("GET /api/submissions/{id}", d.requireRole(auth.Student, work.GetSubmission))
 	mux.HandleFunc("GET /api/runs/{id}", d.requireRole(auth.Student, work.GetRun))
 	if d.Submissions != nil && d.Submissions.Jobs != nil {
-		mux.HandleFunc("GET /api/admin/metrics", admin(health.Metrics))
+		mux.HandleFunc("GET /api/admin/metrics", organiser(health.Metrics))
 	}
 	mux.HandleFunc("GET /api/events", d.requireRole(auth.Student, d.eventStream))
 
 	if d.Contests != nil {
 		console := &contests.Handlers{Contests: d.Contests, Submissions: d.Submissions, Problems: d.Problems, Log: d.Log}
 		d.contestRoutes(mux, console)
-		mux.HandleFunc("GET /api/admin/contests/{id}/audit", admin(console.ContestAudit))
+		mux.HandleFunc("GET /api/admin/contests/{id}/audit", organiser(console.ContestAudit))
 		if d.Integrity != nil {
 			review := &integrity.Handlers{Integrity: d.Integrity, Contests: d.Contests, Organised: console.OrganisedContest, Log: d.Log}
-			mux.HandleFunc("POST /api/admin/contests/{id}/integrity/run", admin(review.RunIntegrity))
-			mux.HandleFunc("GET /api/admin/contests/{id}/integrity", admin(d.limitReads(review.GetIntegrity)))
-			mux.HandleFunc("GET /api/admin/contests/{id}/integrity/pairs.csv", admin(d.limitReads(review.ExportPairs)))
-			mux.HandleFunc("GET /api/admin/contests/{id}/integrity/signals/{signal}/pair", admin(d.limitReads(review.GetIntegrityPair)))
-			mux.HandleFunc("GET /api/admin/contests/{id}/integrity/timeline/{user}", admin(d.limitReads(review.GetIntegrityTimeline)))
-			mux.HandleFunc("GET /api/admin/contests/{id}/integrity/counts", admin(d.limitReads(review.GetIntegrityCounts)))
-			mux.HandleFunc("GET /api/admin/contests/{id}/integrity/cases", admin(d.limitReads(review.ListIntegrityCases)))
-			mux.HandleFunc("PUT /api/admin/contests/{id}/integrity/cases/{user}", admin(review.DecideIntegrityCase))
+			mux.HandleFunc("POST /api/admin/contests/{id}/integrity/run", organiser(review.RunIntegrity))
+			mux.HandleFunc("GET /api/admin/contests/{id}/integrity", organiser(d.limitReads(review.GetIntegrity)))
+			mux.HandleFunc("GET /api/admin/contests/{id}/integrity/pairs.csv", organiser(d.limitReads(review.ExportPairs)))
+			mux.HandleFunc("GET /api/admin/contests/{id}/integrity/signals/{signal}/pair", organiser(d.limitReads(review.GetIntegrityPair)))
+			mux.HandleFunc("GET /api/admin/contests/{id}/integrity/timeline/{user}", organiser(d.limitReads(review.GetIntegrityTimeline)))
+			mux.HandleFunc("GET /api/admin/contests/{id}/integrity/counts", organiser(d.limitReads(review.GetIntegrityCounts)))
+			mux.HandleFunc("GET /api/admin/contests/{id}/integrity/cases", organiser(d.limitReads(review.ListIntegrityCases)))
+			mux.HandleFunc("PUT /api/admin/contests/{id}/integrity/cases/{user}", organiser(review.DecideIntegrityCase))
 		}
 	}
 

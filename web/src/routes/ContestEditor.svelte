@@ -11,6 +11,7 @@
   published. Students see a short explanation instead.
 -->
 <script lang="ts">
+  import { organises } from '../lib/roles';
   import PageState from '../components/PageState.svelte';
   import { onMount, tick } from 'svelte';
   import ActionMenu from '../components/ActionMenu.svelte';
@@ -144,7 +145,7 @@
   }>(null);
   let confirmBusy = $state(false);
 
-  const isOrganiser = $derived(session.user?.role === 'organiser' || session.user?.role === 'owner');
+  const isOrganiser = $derived(organises(session.user?.role));
   const base = $derived(`/api/admin/contests/${encodeURIComponent(id)}`);
   const page = loader(
     () => getJSON<AdminContest>(base),

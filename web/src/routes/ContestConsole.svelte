@@ -12,6 +12,7 @@
   unanswered count, so a waiting question shows from another tab.
 -->
 <script lang="ts">
+  import { organises } from '../lib/roles';
   import { onDestroy, onMount, tick } from 'svelte';
   import ConfirmDialog from '../components/ConfirmDialog.svelte';
   import ContestAdminNav from '../components/ContestAdminNav.svelte';
@@ -98,7 +99,7 @@
   let tab = $state<Tab>('questions');
   let phone = $state(false);
 
-  const isOrganiser = $derived(session.user?.role === 'organiser' || session.user?.role === 'owner');
+  const isOrganiser = $derived(organises(session.user?.role));
   const base = $derived(`/api/admin/contests/${encodeURIComponent(id)}`);
   const labels = $derived((contest?.problems ?? []).map((p) => p.label));
   const closeAt = $derived(contest ? (contest.close_at ?? contest.ends_at) : 0);

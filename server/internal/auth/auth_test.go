@@ -40,6 +40,13 @@ func newService(t *testing.T, seed ...string) (*auth.Service, *clock) {
 	return s, c
 }
 
+// asOwner is ctx with the configured owner (user 1, made by Bootstrap)
+// acting: every signed-in request carries its actor, and a change to
+// someone's account without one is refused.
+func asOwner(ctx context.Context) context.Context {
+	return auth.WithActor(ctx, auth.Actor{ID: 1, Email: ownerEmail, Role: auth.Owner})
+}
+
 // Before migration 0002_v4_roles the stored role of an organiser was
 // "admin"; the audit is append-only, so old rows still say so and are read
 // as organiser, while a row written later keeps "admin" (v4 O1).
@@ -111,7 +118,7 @@ func TestBootstrapSeedsDomainsOnlyOnFreshInstall(t *testing.T) {
 func TestSignInRules(t *testing.T) {
 	s, _ := newService(t, "college.edu")
 	ctx := context.Background()
-	if _, err := s.GrantRole(ctx, "ta@gmail.com", auth.Organiser); err != nil {
+	if _, err := s.GrantRole(asOwner(ctx), "ta@gmail.com", auth.Organiser); err != nil {
 		t.Fatal(err)
 	}
 	cases := []struct {
@@ -197,7 +204,7 @@ func TestGoogleAccountBinding(t *testing.T) {
 func TestRoleAndDomainChangesEndSessions(t *testing.T) {
 	s, _ := newService(t, "college.edu", "gmail.com")
 	ctx := context.Background()
-	ta, err := s.GrantRole(ctx, "ta@other.org", auth.Organiser)
+	ta, err := s.GrantRole(asOwner(ctx), "ta@other.org", auth.Organiser)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -208,7 +215,7 @@ func TestRoleAndDomainChangesEndSessions(t *testing.T) {
 	s.AddDomain(ctx, "notgmail.com")
 	_, lookalikeToken, _, _ := s.SignIn(ctx, id("x@notgmail.com"), "", "")
 
-	if err := s.RevokeRole(ctx, ta.ID); err != nil {
+	if err := s.RevokeRole(asOwner(ctx), ta.ID); err != nil {
 		t.Fatal(err)
 	}
 	if _, _, err := s.Authenticate(ctx, taToken); !errors.Is(err, auth.ErrNoSession) {
@@ -231,15 +238,15 @@ func TestRoleAndDomainChangesEndSessions(t *testing.T) {
 func TestOwnerDowngradeKeepsAnOwner(t *testing.T) {
 	s, _ := newService(t)
 	ctx := context.Background()
-	co, _ := s.GrantRole(ctx, "co@college.edu", auth.Owner)
-	if _, err := s.GrantRole(ctx, "co@college.edu", auth.Organiser); err != nil {
+	co, _ := s.GrantRole(asOwner(ctx), "co@college.edu", auth.Owner)
+	if _, err := s.GrantRole(asOwner(ctx), "co@college.edu", auth.Organiser); err != nil {
 		t.Fatalf("downgrading one of two owners: %v", err)
 	}
-	s.GrantRole(ctx, "co@college.edu", auth.Owner)
+	s.GrantRole(asOwner(ctx), "co@college.edu", auth.Owner)
 	s.OwnerEmail = "moved@college.edu" // the configured owner is now someone else
 	s.DB.ExecContext(ctx, "UPDATE users SET role = 'student' WHERE email = ?", ownerEmail)
 	var ce *auth.ChangeError
-	if _, err := s.GrantRole(ctx, "co@college.edu", auth.Organiser); !errors.As(err, &ce) || ce.Kind != "conflict" {
+	if _, err := s.GrantRole(asOwner(ctx), "co@college.edu", auth.Organiser); !errors.As(err, &ce) || ce.Kind != "conflict" {
 		t.Errorf("downgrading the last owner through grant: %v", err)
 	}
 	_ = co
@@ -318,32 +325,32 @@ func TestRoleChanges(t *testing.T) {
 	s, _ := newService(t)
 	ctx := context.Background()
 	var ce *auth.ChangeError
-	if _, err := s.GrantRole(ctx, "not an email", auth.Organiser); !errors.As(err, &ce) || ce.Kind != "invalid" {
+	if _, err := s.GrantRole(asOwner(ctx), "not an email", auth.Organiser); !errors.As(err, &ce) || ce.Kind != "invalid" {
 		t.Errorf("invalid email: %v", err)
 	}
-	if _, err := s.GrantRole(ctx, "x@y.edu", "student"); !errors.As(err, &ce) || ce.Kind != "invalid" {
+	if _, err := s.GrantRole(asOwner(ctx), "x@y.edu", "student"); !errors.As(err, &ce) || ce.Kind != "invalid" {
 		t.Errorf("invalid role: %v", err)
 	}
-	if _, err := s.GrantRole(ctx, ownerEmail, auth.Organiser); !errors.As(err, &ce) || ce.Kind != "conflict" {
+	if _, err := s.GrantRole(asOwner(ctx), ownerEmail, auth.Organiser); !errors.As(err, &ce) || ce.Kind != "conflict" {
 		t.Errorf("demoting the configured owner via grant: %v", err)
 	}
-	p, err := s.GrantRole(ctx, "Co@Other.org", auth.Owner)
+	p, err := s.GrantRole(asOwner(ctx), "Co@Other.org", auth.Owner)
 	if err != nil || p.Email != "co@other.org" || p.Role != auth.Owner || p.LastLoginAt != nil {
 		t.Fatalf("grant owner: %+v %v", p, err)
 	}
-	if err := s.RevokeRole(ctx, p.ID); err != nil {
+	if err := s.RevokeRole(asOwner(ctx), p.ID); err != nil {
 		t.Fatalf("revoking one of two owners: %v", err)
 	}
 	people, _ := s.Organisers(ctx)
-	if err := s.RevokeRole(ctx, people[0].ID); !errors.As(err, &ce) || ce.Kind != "conflict" {
+	if err := s.RevokeRole(asOwner(ctx), people[0].ID); !errors.As(err, &ce) || ce.Kind != "conflict" {
 		t.Errorf("revoking the configured owner: %v", err)
 	}
-	if err := s.RevokeRole(ctx, p.ID); !errors.As(err, &ce) || ce.Kind != "not_found" {
+	if err := s.RevokeRole(asOwner(ctx), p.ID); !errors.As(err, &ce) || ce.Kind != "not_found" {
 		t.Errorf("revoking a student: %v", err)
 	}
 	// The last-owner guard, with the configured owner moved aside.
 	s.OwnerEmail = "someone-else@college.edu"
-	if err := s.RevokeRole(ctx, people[0].ID); !errors.As(err, &ce) || ce.Message != "At least one owner must remain." {
+	if err := s.RevokeRole(asOwner(ctx), people[0].ID); !errors.As(err, &ce) || ce.Message != "At least one owner must remain." {
 		t.Errorf("revoking the last owner: %v", err)
 	}
 }

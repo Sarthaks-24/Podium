@@ -23,7 +23,7 @@ type ModeChange struct {
 // in as anyone, so nothing made in it may survive into another mode:
 //
 //   - On any change of mode (or no record yet) every session ends.
-//   - On a change to dev or production, every admin and owner without a
+//   - On a change to dev or production, every organiser, admin and owner without a
 //     linked Google account becomes a student again, except the configured
 //     owner. Testing-mode sign-ins never link one; neither does a role
 //     granted to someone who has not signed in with Google yet, so such a
@@ -52,7 +52,7 @@ func (s *Service) RecordMode(ctx context.Context, mode string) (ModeChange, erro
 	ch.SessionsEnded, _ = res.RowsAffected()
 	if mode != "testing" {
 		res, err := tx.ExecContext(ctx, `UPDATE users SET role = 'student'
-			WHERE role IN ('organiser', 'owner') AND google_sub IS NULL AND email <> ?`, s.OwnerEmail)
+			WHERE role IN ('organiser', 'admin', 'owner') AND google_sub IS NULL AND email <> ?`, s.OwnerEmail)
 		if err != nil {
 			return ModeChange{}, err
 		}

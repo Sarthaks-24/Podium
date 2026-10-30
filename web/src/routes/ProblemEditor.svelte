@@ -11,6 +11,7 @@
   contest using the problem asks for a reason with each save.
 -->
 <script lang="ts">
+  import { organises } from '../lib/roles';
   import PageState from '../components/PageState.svelte';
   import PageHeader from '../components/PageHeader.svelte';
   import ActionMenu from '../components/ActionMenu.svelte';
@@ -72,7 +73,7 @@
   // A current server sends "generator" (null when there is none); an older one leaves it out.
   const hasGenerator = $derived(problem !== null && problem.generator !== undefined);
   const aiDraft = $derived(problem !== null && isAIDraft(problem.tags));
-  const isOrganiser = $derived(session.user?.role === 'organiser' || session.user?.role === 'owner');
+  const isOrganiser = $derived(organises(session.user?.role));
 
   const page = loader(
     () => getJSON<Problem>(problemPath(id)),

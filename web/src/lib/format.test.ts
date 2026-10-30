@@ -18,6 +18,7 @@ describe('roleLabel', () => {
   it('uses sentence case', () => {
     expect(roleLabel('owner')).toBe('Owner');
     expect(roleLabel('organiser')).toBe('Organiser');
+    expect(roleLabel('admin')).toBe('Admin');
     expect(roleLabel('student')).toBe('Student');
   });
 });

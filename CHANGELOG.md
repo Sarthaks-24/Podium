@@ -7,6 +7,8 @@ Dated entries per release. Unreleased work is listed at the top.
 ### v4 stage O: the owner dashboard (2026-10-30)
 
 - The stored role `admin` is now `organiser` (migration `0002_v4_roles`), so a new admin role can sit between organiser and owner. Nothing changes for anyone: organisers keep every right, their sessions keep working, and site audit rows from before the migration read "organiser".
+- A fourth role, admin, between organiser and owner. An admin organises like an organiser, and also reads People and the site audit, gives and removes the organiser role, and ends sessions, disables and enables students and organisers; never an admin, an owner, the configured owner or themself (403). One rule function in `auth` decides every such change; organiser live events reach admins too.
+- People History says "Made x an organiser" instead of "Changed x from none to organiser" for someone who had no account yet.
 - A migration can ask to run with foreign keys off (its first line says `-- podium: foreign_keys off`), for SQLite's table rebuild; it commits only if no reference is broken, on a connection that is then thrown away.
 
 ### v4 stage H: site hygiene (2026-10-30)

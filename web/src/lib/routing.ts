@@ -10,6 +10,7 @@
  * Links under /api/ are never intercepted: /api/auth/google/start is a server
  * redirect to Google and needs a full page load.
  */
+import { organises } from './roles';
 import type { Role } from './session.svelte';
 
 /** Names of the screens the app can show. */
@@ -103,7 +104,7 @@ export function routeTitle(name: RouteName): string {
 /** True when someone signed in with `role` may open the route's screen. */
 export function mayOpen(route: Pick<RouteDef, 'role'>, role: Role | undefined): boolean {
   if (route.role === 'owner') return role === 'owner';
-  if (route.role === 'organiser') return role === 'organiser' || role === 'owner';
+  if (route.role === 'organiser') return organises(role);
   return true;
 }
 

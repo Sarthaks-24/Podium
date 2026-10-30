@@ -38,8 +38,11 @@ func TestRecordModeUndoesTestingMode(t *testing.T) {
 	if _, _, _, err := s.TestSignIn(ctx, "ta@college.edu", "", auth.Organiser, "", ""); err != nil {
 		t.Fatal(err)
 	}
+	if _, _, _, err := s.TestSignIn(ctx, "boss@college.edu", "", auth.Admin, "", ""); err != nil {
+		t.Fatal(err)
+	}
 	// A real admin with a Google link keeps the role.
-	if _, err := s.GrantRole(ctx, "prof@college.edu", auth.Organiser); err != nil {
+	if _, err := s.GrantRole(asOwner(ctx), "prof@college.edu", auth.Organiser); err != nil {
 		t.Fatal(err)
 	}
 	if _, _, _, err := s.SignIn(ctx, id("prof@college.edu"), "", ""); err != nil {
@@ -50,9 +53,9 @@ func TestRecordModeUndoesTestingMode(t *testing.T) {
 	if err != nil || !ch.Changed || ch.Previous != "testing" {
 		t.Fatalf("switch to production: %+v %v", ch, err)
 	}
-	if ch.Demoted != 3 || ch.SessionsEnded != 3 {
-		// intruder, ta and early@gmail.com are demoted; three sessions end.
-		t.Errorf("switch to production: demoted %d, ended %d; want 3 and 3", ch.Demoted, ch.SessionsEnded)
+	if ch.Demoted != 4 || ch.SessionsEnded != 4 {
+		// intruder, ta, boss and early@gmail.com are demoted; four sessions end.
+		t.Errorf("switch to production: demoted %d, ended %d; want 4 and 4", ch.Demoted, ch.SessionsEnded)
 	}
 	if _, _, err := s.Authenticate(ctx, tok); !errors.Is(err, auth.ErrNoSession) {
 		t.Errorf("testing-mode session survived the switch: %v", err)
@@ -66,7 +69,7 @@ func TestRecordModeUndoesTestingMode(t *testing.T) {
 		roles[e] = r
 	}
 	rows.Close()
-	want := map[string]auth.Role{"intruder@gmail.com": auth.Student, "ta@college.edu": auth.Student,
+	want := map[string]auth.Role{"intruder@gmail.com": auth.Student, "ta@college.edu": auth.Student, "boss@college.edu": auth.Student,
 		"early@gmail.com": auth.Student, "prof@college.edu": auth.Organiser, ownerEmail: auth.Owner}
 	for e, r := range want {
 		if roles[e] != r {
@@ -97,7 +100,7 @@ func TestAccountActions(t *testing.T) {
 	_, tok2, _, _ := s.SignIn(ctx, id("a@college.edu"), "", "")
 	var ce *auth.ChangeError
 
-	a, n, err := s.EndSessions(ctx, "A@College.edu ")
+	a, n, err := s.EndSessions(asOwner(ctx), "A@College.edu ")
 	if err != nil || n != 2 || a.Email != "a@college.edu" {
 		t.Fatalf("end sessions: %+v %d %v", a, n, err)
 	}
@@ -106,12 +109,12 @@ func TestAccountActions(t *testing.T) {
 			t.Errorf("session survived end sessions: %v", err)
 		}
 	}
-	if _, _, err := s.EndSessions(ctx, "nobody@college.edu"); !errors.As(err, &ce) || ce.Kind != "not_found" {
+	if _, _, err := s.EndSessions(asOwner(ctx), "nobody@college.edu"); !errors.As(err, &ce) || ce.Kind != "not_found" {
 		t.Errorf("end sessions of an unknown email: %v", err)
 	}
 
 	_, tok3, _, _ := s.SignIn(ctx, id("a@college.edu"), "", "")
-	if a, n, err := s.SetDisabled(ctx, "a@college.edu", true, owner.ID); err != nil || !a.Disabled || n != 1 {
+	if a, n, err := s.SetDisabled(asOwner(ctx), "a@college.edu", true, owner.ID); err != nil || !a.Disabled || n != 1 {
 		t.Fatalf("disable: %+v %d %v", a, n, err)
 	}
 	if _, _, err := s.Authenticate(ctx, tok3); !errors.Is(err, auth.ErrNoSession) {
@@ -127,21 +130,21 @@ func TestAccountActions(t *testing.T) {
 	if err != nil || len(list) != 1 || list[0].Email != "a@college.edu" {
 		t.Errorf("disabled list: %+v %v", list, err)
 	}
-	if _, _, err := s.SetDisabled(ctx, "a@college.edu", false, owner.ID); err != nil {
+	if _, _, err := s.SetDisabled(asOwner(ctx), "a@college.edu", false, owner.ID); err != nil {
 		t.Fatal(err)
 	}
 	if _, _, _, err := s.SignIn(ctx, id("a@college.edu"), "", ""); err != nil {
 		t.Errorf("re-enabled account cannot sign in: %v", err)
 	}
 
-	if _, _, err := s.SetDisabled(ctx, ownerEmail, true, 0); !errors.As(err, &ce) || ce.Kind != "conflict" {
+	if _, _, err := s.SetDisabled(asOwner(ctx), ownerEmail, true, 0); !errors.As(err, &ce) || ce.Kind != "conflict" {
 		t.Errorf("disabling the configured owner: %v", err)
 	}
-	other, err := s.GrantRole(ctx, "second@college.edu", auth.Owner)
+	other, err := s.GrantRole(asOwner(ctx), "second@college.edu", auth.Owner)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := s.SetDisabled(ctx, "second@college.edu", true, other.ID); !errors.As(err, &ce) || ce.Kind != "conflict" {
+	if _, _, err := s.SetDisabled(asOwner(ctx), "second@college.edu", true, other.ID); !errors.As(err, &ce) || ce.Kind != "conflict" {
 		t.Errorf("an owner disabling themselves: %v", err)
 	}
 }

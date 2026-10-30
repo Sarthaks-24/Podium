@@ -53,6 +53,9 @@ func (s *Service) EndSessions(ctx context.Context, email string) (Account, int64
 	if err != nil {
 		return Account{}, 0, err
 	}
+	if err := s.changeAllowed(ctx, a.Email, a.Role, a.Role); err != nil {
+		return Account{}, 0, err
+	}
 	res, err := tx.ExecContext(ctx, "DELETE FROM sessions WHERE user_id = ?", a.ID)
 	if err != nil {
 		return Account{}, 0, err
@@ -78,6 +81,9 @@ func (s *Service) SetDisabled(ctx context.Context, email string, disabled bool, 
 	defer tx.Rollback()
 	a, err := accountByEmail(ctx, tx, email)
 	if err != nil {
+		return Account{}, 0, err
+	}
+	if err := s.changeAllowed(ctx, a.Email, a.Role, a.Role); err != nil {
 		return Account{}, 0, err
 	}
 	if disabled && a.Email == s.OwnerEmail {

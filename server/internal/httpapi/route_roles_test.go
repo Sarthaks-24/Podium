@@ -20,7 +20,7 @@ import (
 )
 
 // routeRoles is who may call each route: "public" (no sign-in),
-// "student", "organiser" or "owner" (that role or above), or "judge" (the
+// "student", "organiser", "admin" or "owner" (that role or above), or "judge" (the
 // worker token on the judge listener). Routes registered only in testing
 // mode carry the suffix " testing".
 var routeRoles = map[string]string{
@@ -45,17 +45,17 @@ var routeRoles = map[string]string{
 	"POST /api/contests/{slug}/problems/{label}/events":            "student",
 	"GET /api/contests/{slug}/standings":                           "student",
 	"POST /api/contests/{slug}/clarifications":                     "student",
-	"GET /api/admin/people":                                        "owner",
-	"POST /api/admin/people":                                       "owner",
-	"DELETE /api/admin/people/{id}":                                "owner",
+	"GET /api/admin/people":                                        "admin",
+	"POST /api/admin/people":                                       "admin",
+	"DELETE /api/admin/people/{id}":                                "admin",
 	"POST /api/admin/accounts/reset-google":                        "owner",
-	"POST /api/admin/accounts/end-sessions":                        "owner",
-	"POST /api/admin/accounts/disable":                             "owner",
-	"POST /api/admin/accounts/enable":                              "owner",
+	"POST /api/admin/accounts/end-sessions":                        "admin",
+	"POST /api/admin/accounts/disable":                             "admin",
+	"POST /api/admin/accounts/enable":                              "admin",
 	"GET /api/admin/accounts":                                      "organiser",
 	"POST /api/admin/domains":                                      "owner",
 	"DELETE /api/admin/domains/{domain}":                           "owner",
-	"GET /api/admin/site-audit":                                    "owner",
+	"GET /api/admin/site-audit":                                    "admin",
 	"PUT /api/admin/site-settings":                                 "owner",
 	"GET /api/admin/metrics":                                       "organiser",
 	"GET /api/admin/ai/providers":                                  "organiser",
@@ -226,6 +226,9 @@ func TestRouteRoles(t *testing.T) {
 	s := newSite(t)
 	owner := s.signedIn("owner@college.edu", "Owner")
 	if code, body := owner.do("POST", "/api/admin/people", map[string]any{"email": "admin@college.edu", "role": "organiser"}, s.srv.URL); code >= 300 {
+		t.Fatalf("make organiser: %d %v", code, body)
+	}
+	if code, body := owner.do("POST", "/api/admin/people", map[string]any{"email": "boss@college.edu", "role": "admin"}, s.srv.URL); code >= 300 {
 		t.Fatalf("make admin: %d %v", code, body)
 	}
 	callers := []struct {
@@ -236,9 +239,10 @@ func TestRouteRoles(t *testing.T) {
 		{"signed out", 0, s.browser()},
 		{"student", 1, s.signedIn("asha@college.edu", "Asha")},
 		{"organiser", 2, s.signedIn("admin@college.edu", "Admin")},
-		{"owner", 3, owner},
+		{"admin", 3, s.signedIn("boss@college.edu", "Boss")},
+		{"owner", 4, owner},
 	}
-	ranks := map[string]int{"public": 0, "student": 1, "organiser": 2, "owner": 3}
+	ranks := map[string]int{"public": 0, "student": 1, "organiser": 2, "admin": 3, "owner": 4}
 
 	// Signing out ends the caller's session, so it goes last.
 	sort.SliceStable(routes, func(i, j int) bool {

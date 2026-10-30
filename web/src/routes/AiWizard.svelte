@@ -11,6 +11,7 @@
   region; nothing else announces.
 -->
 <script lang="ts">
+  import { organises } from '../lib/roles';
   import PageState from '../components/PageState.svelte';
   import PageHeader from '../components/PageHeader.svelte';
   import Icon from '../components/Icon.svelte';
@@ -51,7 +52,7 @@
   const POLL_LIVE_MS = 6000;
 
   // The page loads nothing of its own: it is refused for students, or a request says so.
-  let forbidden = $state(session.user?.role !== 'organiser' && session.user?.role !== 'owner');
+  let forbidden = $state(!organises(session.user?.role));
   let keyStatus = $state<KeyStatus | null>(null);
   let keyError = $state('');
   /** The key form shown on request, when a key and a model are already set. */

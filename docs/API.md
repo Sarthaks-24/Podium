@@ -43,7 +43,7 @@ Areas add their own codes, listed with their routes: `disabled` (sign-in), `bad_
 ### Sign-in, roles and requests
 
 - **Sessions.** Signing in sets an HttpOnly session cookie, `SameSite=Lax`, with no `Expires` or `Max-Age`, so the browser forgets it when it closes, which matters on shared lab PCs. The server ends every session 12 hours after sign-in however much it is used (sessions never renew), at sign-out, when an owner ends the person's sessions or disables the account, and when the server starts in a different `PODIUM_MODE` than last time. With an `https` base URL the cookie is `__Host-podium_session` and marked `Secure`; with a local `http` base URL it is `podium_session`.
-- **Roles.** `student` < `organiser` < `owner`. Before v4 the organiser role was stored as `admin` (migration `0002_v4_roles` renamed it); site audit rows written before that migration are read with `organiser` in place of `admin`. A route needs its role or a higher one: without a session it answers `401 signed_out`, below the role `403 forbidden`. Roles are read from the database on every request, so removing an organiser takes effect at once.
+- **Roles.** `student` < `organiser` < `admin` < `owner`. An admin organises like an organiser and also manages students and organisers (below, "Settings"). Before v4 the organiser role was stored as `admin` (migration `0002_v4_roles` renamed it); site audit rows written before that migration are read with `organiser` in place of `admin`. A route needs its role or a higher one: without a session it answers `401 signed_out`, below the role `403 forbidden`. Roles are read from the database on every request, so removing an organiser takes effect at once.
 - **Cross-site requests.** `POST`, `PUT`, `PATCH` and `DELETE` under `/api/` are refused with `403 cross_site` unless the request's `Origin` matches `PODIUM_BASE_URL` (or, without an `Origin` header, `Sec-Fetch-Site` is `same-origin` or absent).
 - **Testing mode is local only.** With `PODIUM_MODE=testing`, a request whose `Host` is not `localhost`, `127.0.0.1` or `[::1]` (any port), or that carries `X-Forwarded-For`, `Forwarded`, `X-Real-IP` or `X-Forwarded-Host`, is refused with `403 testing_mode_local`: a proxy in front means the browser is not on this machine.
 
@@ -118,7 +118,7 @@ A `retention` row is `{id, data, amount, unit, after, kept}`. The ids are `sessi
 
 Registered only when `PODIUM_MODE=testing`, which serves loopback alone; in other modes the path is `404 not_found`. Signs in as anyone with any role, without Google. The request must also carry an `Origin` equal to the base URL.
 
-Request: `{"email":"asha@college.edu","name":"Asha Rao","role":"organiser","next":"/admin/problems"}`. `name` and `next` may be empty; `role` is `student`, `organiser` or `owner`. The account is created if needed, otherwise its name and role are updated. `PODIUM_OWNER_EMAIL` always keeps the owner role.
+Request: `{"email":"asha@college.edu","name":"Asha Rao","role":"organiser","next":"/admin/problems"}`. `name` and `next` may be empty; `role` is `student`, `organiser`, `admin` or `owner`. The account is created if needed, otherwise its name and role are updated. `PODIUM_OWNER_EMAIL` always keeps the owner role.
 
 | Status | Body |
 |---|---|
@@ -179,19 +179,21 @@ Saves the display preferences, so they follow the account to another machine. Re
 
 ## Settings: people, sign-in and organisation
 
-The routes behind the Settings page. All need the owner role except the account lookup. Every change here (roles, domains, disabling and enabling, ended sessions, Google link resets, site settings) writes a site audit row in the same transaction as the change.
+The routes behind the Settings page. Reading people, giving and removing roles, ending sessions, disabling, enabling and reading the site audit need the admin role; resetting a Google link, the domains and the site settings need the owner role; the account lookup needs the organiser role.
+
+An admin acts only on students and organisers, and gives only the organiser role: acting on an admin, an owner, `PODIUM_OWNER_EMAIL` or themself, or giving the admin or owner role, is `403 forbidden` with a sentence that says an owner must do it. The check runs inside the change itself (`server/internal/auth/rules.go`), so every route that changes an account applies it. Every change here (roles, domains, disabling and enabling, ended sessions, Google link resets, site settings) writes a site audit row in the same transaction as the change.
 
 `Account` is `{id, email, name, role, disabled, last_login_at}`; `last_login_at` is `null` for someone added who never signed in.
 
 | Route | Request | Success | Errors |
 |---|---|---|---|
 | `GET /api/admin/people` | | 200 `{people, domains, disabled, organisation}` (below) | |
-| `POST /api/admin/people` | `{"email":"ta@college.edu","role":"organiser"}`; `role` is `organiser` or `owner`; the person need not have signed in | 200 the person, as in `people` | `400 bad_request` (email or role), `409 conflict` (the configured owner, or the change would leave no owner) |
-| `DELETE /api/admin/people/{id}` | | 204: the person becomes a student and their sessions end | `404 not_found`, `409 conflict` (the configured owner, or the last owner) |
+| `POST /api/admin/people` | `{"email":"ta@college.edu","role":"organiser"}`; `role` is `organiser`, `admin` or `owner`; the person need not have signed in, and the role is theirs at first sign-in | 200 the person, as in `people` | `400 bad_request` (email or role), `403 forbidden` (an admin out of bounds), `409 conflict` (the configured owner, or the change would leave no owner) |
+| `DELETE /api/admin/people/{id}` | | 204: the person becomes a student and their sessions end | `404 not_found`, `403 forbidden` (an admin out of bounds), `409 conflict` (the configured owner, or the last owner) |
 | `POST /api/admin/accounts/reset-google` | `{"email":"asha@college.edu"}` | 204: unlinks the Google account and ends their sessions; the next Google account to sign in with the address is linked | `404 not_found` |
-| `POST /api/admin/accounts/end-sessions` | `{"email"}` | 200 `{"account": Account, "ended": 2}`: signs the person out everywhere; their open event streams close at the next clock tick (25 s at most) | `404 not_found` |
-| `POST /api/admin/accounts/disable` | `{"email"}` | 200 `{"account": Account, "ended": 1}`: ends every session; the account is refused at sign-in and at every signed-in route | `404 not_found`; `409 conflict` for `PODIUM_OWNER_EMAIL` and for disabling yourself |
-| `POST /api/admin/accounts/enable` | `{"email"}` | 200 `{"account": Account, "ended": 0}`: they may sign in again | `404 not_found` |
+| `POST /api/admin/accounts/end-sessions` | `{"email"}` | 200 `{"account": Account, "ended": 2}`: signs the person out everywhere; their open event streams close at the next clock tick (25 s at most) | `404 not_found`; `403 forbidden` (an admin out of bounds) |
+| `POST /api/admin/accounts/disable` | `{"email"}` | 200 `{"account": Account, "ended": 1}`: ends every session; the account is refused at sign-in and at every signed-in route | `404 not_found`; `403 forbidden` (an admin out of bounds); `409 conflict` for `PODIUM_OWNER_EMAIL` and for disabling yourself |
+| `POST /api/admin/accounts/enable` | `{"email"}` | 200 `{"account": Account, "ended": 0}`: they may sign in again | `404 not_found`; `403 forbidden` (an admin out of bounds) |
 | `GET /api/admin/accounts` (organiser) | `?email=` | 200 `{"account": Account, "server_now"}` | `400 bad_request` without an email; `404 not_found` "Nobody with that email has an account."; anyone below organiser gets the same `403` whether or not the address exists |
 | `POST /api/admin/domains` | `{"domain":"college.edu"}`, lower-cased, a leading `@` ignored | 201 `{"domain","created_at"}`; 200 with the existing entry when already there | `400 bad_request` |
 | `DELETE /api/admin/domains/{domain}` | | 204: stops sign-ins from the domain and ends its students' sessions; organisers on it keep access | `404 not_found` |
@@ -209,7 +211,7 @@ The routes behind the Settings page. All need the owner role except the account 
   "organisation": { "name": "", "contact_email": "", "phone": "", "privacy_contact": "" } }
 ```
 
-`people` is everyone with the organiser or owner role. `locked` is true for `PODIUM_OWNER_EMAIL`, whose owner role comes from the server configuration. `disabled` lists every disabled account, by email. The account lookup matches the address as sign-in stores it (trimmed, lower case) and never logs it.
+`people` is everyone with the organiser, admin or owner role, owners first, then admins. `locked` is true for `PODIUM_OWNER_EMAIL`, whose owner role comes from the server configuration. `disabled` lists every disabled account, by email. The account lookup matches the address as sign-in stores it (trimmed, lower case) and never logs it.
 
 `Organisation`, shown in the footer, on the sign-in page and on the privacy page, stored in the server's `settings` table and never in an environment variable:
 

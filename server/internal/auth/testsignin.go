@@ -24,9 +24,9 @@ func (s *Service) TestSignIn(ctx context.Context, email, name string, role Role,
 		return User{}, "", time.Time{}, invalid("Enter an email address, for example asha@college.edu.")
 	}
 	switch role {
-	case Student, Organiser, Owner:
+	case Student, Organiser, Admin, Owner:
 	default:
-		return User{}, "", time.Time{}, invalid("Choose student, organiser or owner.")
+		return User{}, "", time.Time{}, invalid("Choose student, organiser, admin or owner.")
 	}
 	if email == s.OwnerEmail {
 		role = Owner

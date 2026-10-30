@@ -7,6 +7,7 @@
   Props: `id`, the problem id from the address.
 -->
 <script lang="ts">
+  import { organises } from '../lib/roles';
   import PageState from '../components/PageState.svelte';
   import PageHeader from '../components/PageHeader.svelte';
   import { onMount } from 'svelte';
@@ -18,7 +19,7 @@
 
   let { id }: { id: string } = $props();
 
-  const isOrganiser = $derived(session.user?.role === 'organiser' || session.user?.role === 'owner');
+  const isOrganiser = $derived(organises(session.user?.role));
 
   onMount(() => {
     if (!isOrganiser) setTitle(routeTitle('problems'));

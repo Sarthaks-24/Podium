@@ -12,6 +12,7 @@
   instead.
 -->
 <script lang="ts">
+  import { organises } from '../lib/roles';
   import PageState from '../components/PageState.svelte';
   import PageHeader from '../components/PageHeader.svelte';
   import Badge from '../components/Badge.svelte';
@@ -71,7 +72,7 @@
     return d === '' ? '' : (DIFFICULTIES.find((x) => x.id === d)?.label ?? d);
   }
 
-  const isOrganiser = $derived(session.user?.role === 'organiser' || session.user?.role === 'owner');
+  const isOrganiser = $derived(organises(session.user?.role));
   const showArchived = $derived(router.query.get('archived') === '1');
 
   /** Handles errors every request can hit; returns true when it did. */

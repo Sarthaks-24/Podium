@@ -63,6 +63,8 @@ func WriteChangeError(log *slog.Logger, w http.ResponseWriter, r *http.Request, 
 		httpx.WriteError(w, http.StatusBadRequest, "bad_request", ce.Message)
 	case "not_found":
 		httpx.WriteError(w, http.StatusNotFound, "not_found", ce.Message)
+	case "forbidden":
+		httpx.WriteError(w, http.StatusForbidden, "forbidden", ce.Message)
 	default:
 		httpx.WriteError(w, http.StatusConflict, "conflict", ce.Message)
 	}

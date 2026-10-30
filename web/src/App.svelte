@@ -12,6 +12,7 @@
   once the text is approved, and Help, which "?" also opens.
 -->
 <script lang="ts">
+  import { organises } from './lib/roles';
   import { onMount, tick } from 'svelte';
   import AccountMenu from './components/AccountMenu.svelte';
   import HelpDialog from './components/HelpDialog.svelte';
@@ -48,7 +49,7 @@
   $effect(() => {
     if (session.status === 'signed-out') stopAllStreams();
   });
-  const isOrganiser = $derived(session.user?.role === 'organiser' || session.user?.role === 'owner');
+  const isOrganiser = $derived(organises(session.user?.role));
   const needsSignIn = $derived(route.auth && session.status === 'signed-out');
   const leaveSignIn = $derived(route.name === 'signin' && signedIn);
   // A contest problem in the workspace: on a phone the student's link row

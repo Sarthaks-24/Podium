@@ -31,8 +31,9 @@ describe('who may open a screen', () => {
     expect(mayOpen(settings, 'student')).toBe(false);
   });
 
-  it('lets organisers of either role into the organiser screens', () => {
+  it('lets every organising role into the organiser screens', () => {
     expect(mayOpen(bank, 'organiser')).toBe(true);
+    expect(mayOpen(bank, 'admin')).toBe(true);
     expect(mayOpen(bank, 'owner')).toBe(true);
     expect(mayOpen(bank, 'student')).toBe(false);
     expect(mayOpen(bank, undefined)).toBe(false);
