@@ -1,6 +1,6 @@
 package contests
 
-// Pins by revision (decision D61). A contest pins a problem revision per
+// Pins by revision. A contest pins a problem revision per
 // label; the workspace serves that revision's title, statement and
 // samples. "Update students now" moves a pin to the problem's newest
 // validated revision, writes an audit row, and offers the organiser an
@@ -32,7 +32,7 @@ var ErrSamePin = errors.New("revision already pinned")
 var ErrPinMoved = errors.New("the pin changed since it was read")
 
 // EventStatement tells a contest's members that a label now pins another
-// revision (C3).
+// revision.
 const EventStatement = "statement"
 
 // AuditRevision is the audit action of "Update students now".

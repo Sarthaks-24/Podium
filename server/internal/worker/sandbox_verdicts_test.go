@@ -1,6 +1,6 @@
 //go:build sandbox
 
-// M3 acceptance on the real judge (PLAN.md section 19): correct, wrong,
+// On the real judge: correct, wrong,
 // time-limit, memory-limit and compile-error submissions in all four
 // languages get the right verdict and score; a run on the samples shows the
 // program's output; outputs are generated for a pack shipped without them.
@@ -74,7 +74,7 @@ func (r *rig) submitAndWait(t *testing.T, problemID int64, lang, src, key string
 	return nil
 }
 
-func TestM3VerdictsInEveryLanguage(t *testing.T) {
+func TestVerdictsInEveryLanguage(t *testing.T) {
 	r := newRig(t)
 	p := r.importPack(t, "a-plus-b", nil)
 	// The memory-limit programs run against a copy with a 4 s time limit.
@@ -118,7 +118,7 @@ func TestM3VerdictsInEveryLanguage(t *testing.T) {
 	}
 }
 
-func TestM3RunOnSamples(t *testing.T) {
+func TestRunOnSamples(t *testing.T) {
 	r := newRig(t)
 	ctx := context.Background()
 	p := r.importPack(t, "a-plus-b", nil)
@@ -129,14 +129,14 @@ func TestM3RunOnSamples(t *testing.T) {
 	deadline := time.Now().Add(2 * time.Minute)
 	for time.Now().Before(deadline) && run.State != "done" && run.State != "error" {
 		time.Sleep(300 * time.Millisecond)
-		run, _ = r.subs.GetRun(ctx, run.ID)
+		run, _ = r.subs.GetRunWith(ctx, run.ID, submissions.ViewOptions{})
 	}
 	if run.State != "done" || len(run.Results) != 2 || run.Results[0].Verdict != "AC" || run.Results[0].Output != "3\n7\n" {
 		t.Errorf("run %+v", run)
 	}
 }
 
-func TestM3GenerateOutputsThenValidate(t *testing.T) {
+func TestGenerateOutputsThenValidate(t *testing.T) {
 	r := newRig(t)
 	ctx := context.Background()
 	p := r.importPack(t, "a-plus-b", nil)

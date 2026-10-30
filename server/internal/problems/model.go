@@ -2,10 +2,11 @@
 // limits, checkers, solutions and tests; the problem pack format for import
 // and export; the content hash that decides whether a problem is
 // validated; and the validation gate, which runs on the real judge through
-// the jobs queue (decisions D44 to D46). Since v2 every write also makes
-// an immutable revision (D61) with its line diff, and open tests sit
-// beside the samples and hidden tests (D115). Docs: docs/AUTHORING.md for
-// the pack format and rules, docs/API.md for the routes.
+// the jobs queue, so a problem reaches a contest only after its own
+// solutions pass on the machine that will judge it. Every write also makes
+// an immutable revision, so a contest can pin the version it was set with.
+// Docs: docs/AUTHORING.md for the pack format and rules, docs/API.md for
+// the routes.
 package problems
 
 import (
@@ -48,7 +49,7 @@ const (
 const (
 	OriginManual = "manual"
 	OriginImport = "import"
-	// OriginAI marks a draft the AI wizard made (M5).
+	// OriginAI marks a draft the AI wizard made.
 	OriginAI = "ai"
 )
 
@@ -67,7 +68,7 @@ type Problem struct {
 	// Brute and Validator are nil when the problem has none.
 	Brute     *Source
 	Validator *Source
-	// Generator, when set, makes the inputs of the tests in Plan (M5). It
+	// Generator, when set, makes the inputs of the tests in Plan. It
 	// is setter code like the others and runs only inside isolate.
 	Generator  *Source
 	Plan       []PlannedTest
@@ -401,7 +402,7 @@ func (p *Problem) SubtaskOf(n int) int {
 func (p *Problem) IsSample(n int) bool { return slices.Contains(p.Samples, n) }
 
 // TestKind is "sample" or "hidden" (a subtask's test, or one in no
-// subtask yet), as revision_tests records it. v3 has no open tests (V3-5).
+// subtask yet), as revision_tests records it. v3 has no open tests.
 func (p *Problem) TestKind(n int) string {
 	if p.IsSample(n) {
 		return KindSample

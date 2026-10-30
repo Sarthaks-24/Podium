@@ -16,7 +16,7 @@ import (
 	"github.com/Sarthaks-24/podium/internal/judge"
 )
 
-// DefaultCompileCacheBytes caps the compile cache (PLAN.md 4.1 lever 3).
+// DefaultCompileCacheBytes caps the compile cache.
 const DefaultCompileCacheBytes = 500 << 20
 
 // CompileCache keeps compiled programs under Dir/<key>/, keyed by language,

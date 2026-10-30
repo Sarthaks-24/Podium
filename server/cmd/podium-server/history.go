@@ -27,8 +27,8 @@ func openReadOnly(path string) (*sql.DB, error) {
 
 // runsReportCmd runs "podium-server runs-report": per contest, how many
 // runs students made and how many of them used a custom input, for the
-// calibration row "Runs with a custom input, per contest" (P2 gate, D114).
-// It reads the run jobs' payloads, which P3's retention job deletes after
+// calibration row "Runs with a custom input, per contest".
+// It reads the run jobs' payloads, which the retention pass empties after
 // 30 days, so take it before that job first runs.
 func runsReportCmd(args []string, out io.Writer) int {
 	fs := flag.NewFlagSet("runs-report", flag.ContinueOnError)
@@ -96,7 +96,7 @@ const runsReportSQL = `SELECT c.slug, c.starts_at,
 
 // migrateCmd runs "podium-server migrate -db COPY": applies this release's
 // migrations to a database file and checks the result, for rehearsing an
-// upgrade on a copy of the live database before the deploy slot (D68).
+// upgrade on a copy of the live database before the deploy slot.
 // It refuses the configured live database, which the server migrates
 // itself when it starts.
 func migrateCmd(args []string, out io.Writer) int {

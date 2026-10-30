@@ -201,7 +201,7 @@ func TestIntegrityOneCheckAtATime(t *testing.T) {
 	}
 	for _, c := range []int64{w.c1, w.c2} {
 		code, out := w.owner.do("POST", w.url(c, "/run"), nil, s.srv.URL)
-		if code != 409 || out["error"].(map[string]any)["code"] != "busy" {
+		if code != 409 || out["error"].(map[string]any)["code"] != "already_running" {
 			t.Errorf("second run on contest %d: %d %v", c, code, out)
 		}
 	}

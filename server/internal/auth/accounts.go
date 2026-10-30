@@ -7,8 +7,8 @@ import (
 	"strings"
 )
 
-// Account is one person's account as the owner's account actions see it
-// (security council S6): ending someone's sessions, and disabling or
+// Account is one person's account as the owner's account actions see it:
+// ending someone's sessions, and disabling or
 // re-enabling them.
 type Account struct {
 	ID          int64  `json:"id"`

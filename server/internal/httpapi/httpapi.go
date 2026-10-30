@@ -13,6 +13,7 @@ import (
 	"net"
 	"net/http"
 	"runtime/debug"
+	"strconv"
 	"time"
 
 	"github.com/Sarthaks-24/podium/internal/auth"
@@ -46,9 +47,9 @@ type Deps struct {
 	// Contests runs contests: schedules, access, standings, clarifications.
 	Contests *contests.Service
 	// Integrity runs integrity checks after a contest and keeps the review
-	// cases (D47, D49). Its routes need Contests too.
+	// cases. Its routes need Contests too.
 	Integrity *integrity.Service
-	// AI is the wizard's in-memory state (M5): pasted keys, one call per
+	// AI is the wizard's in-memory state: pasted keys, one call per
 	// admin, wizard runs. Its routes are mounted only when it is set.
 	AI *AI
 
@@ -64,7 +65,7 @@ type Deps struct {
 	flows         *usedFlows
 	// Mode is the run mode (testing, dev or production). Testing mode has
 	// no Google sign-in; instead anyone at this machine signs in with a
-	// form (decision D48).
+	// form.
 	Mode string
 	// Version is the server's release version, shown in the metrics.
 	Version string
@@ -159,11 +160,11 @@ func New(d Deps) http.Handler {
 	mux.Handle("/", d.WebApp)
 	// recoverer sits inside logRequests so a request that panics is still
 	// logged with its 500. In testing mode localOnlyAll refuses anything
-	// that did not come from this machine's own browser (S2).
+	// that did not come from this machine's own browser.
 	return d.logRequests(d.recoverer(securityHeaders(d.localOnlyAll(newInFlight().limit(d.sessionCookieName(), d.sameOrigin(mux))))))
 }
 
-// contestRoutes mounts the contest API (milestone M4). Student routes need
+// contestRoutes mounts the contest API. Student routes need
 // a signed-in user and apply the contest's own access rules; organiser
 // routes need the admin or owner role.
 func (d Deps) contestRoutes(mux *http.ServeMux) {
@@ -235,8 +236,8 @@ func (d Deps) healthz(w http.ResponseWriter, r *http.Request) {
 		// verify, the deploy scripts): through Caddy the version stays
 		// private, so a scanner cannot match it against known bugs.
 		out["version"], out["schema"] = d.Version, migrations.Latest()
-		// The judge queue, for podium-check's stalled-judge alert (council
-		// C1-048): jobs waiting, the oldest one's age, and how long since
+		// The judge queue, for podium-check's stalled-judge alert: jobs
+		// waiting, the oldest one's age, and how long since
 		// a judge last asked for work (null when none has since start).
 		var queued, oldest int64
 		if err := d.DB.QueryRowContext(ctx, "SELECT count(*), coalesce(min(created_at), 0) FROM jobs WHERE state = 'queued'").
@@ -301,6 +302,15 @@ type APIError struct {
 // WriteError writes an APIError.
 func WriteError(w http.ResponseWriter, status int, code, message string) {
 	WriteJSON(w, status, map[string]APIError{"error": {Code: code, Message: message}})
+}
+
+// writeBusy refuses a request because its one slot is taken: 429 with code
+// "busy" and a Retry-After of secs, the same shape as the rate limits, so a
+// client retries every "busy" the same way.
+func writeBusy(w http.ResponseWriter, secs int, message string) {
+	w.Header().Set("Retry-After", strconv.Itoa(secs))
+	WriteJSON(w, http.StatusTooManyRequests, map[string]map[string]any{"error": {
+		"code": "busy", "message": message, "retry_after_s": secs}})
 }
 
 // contentSecurityPolicy allows only same-origin code. Google avatars are

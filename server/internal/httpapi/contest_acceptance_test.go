@@ -52,7 +52,7 @@ var script = []step{
 
 func name(i int) string { return fmt.Sprintf("Student %02d", i) }
 
-func TestM4MiniContest(t *testing.T) {
+func TestMiniContest(t *testing.T) {
 	s := newSite(t)
 	owner := s.signedIn("owner@college.edu", "Owner")
 	a := s.importProblem(owner, "plus-a")

@@ -1,4 +1,4 @@
-// Package worker is podium-judge's side of the judge API (decision D44):
+// Package worker is podium-judge's side of the judge API:
 // it claims jobs from the server, fetches test files and sources by hash
 // into a local cache, runs them in isolate through judge.Runner, and
 // reports results as it goes. It never opens the database; everything it
@@ -71,7 +71,7 @@ func httpError(op string, resp *http.Response) error {
 }
 
 // ProtocolError means the server and this judge come from different
-// releases (B1.3). Retrying cannot help, so the worker stops with the
+// releases. Retrying cannot help, so the worker stops with the
 // message; podium-judge exits with status 3, which its unit does not
 // restart.
 type ProtocolError struct{ Message string }
@@ -82,7 +82,7 @@ func (e *ProtocolError) Error() string { return e.Message }
 // same on every retry until PODIUM_JUDGE_TOKEN matches on both sides, so
 // the worker stops after a few in a row (AuthRetries) and podium-judge
 // exits with status 4, which its unit does not restart: the unit fails
-// and its OnFailure alert fires (council C1-048).
+// and its OnFailure alert fires.
 type AuthError struct{ Op string }
 
 func (e *AuthError) Error() string {
@@ -138,7 +138,7 @@ func (c *Client) Claim(ctx context.Context, req judgeapi.ClaimRequest) (*judgeap
 	return nil, httpError("claim", resp)
 }
 
-// ReportToolchain sends the host's toolchain (B1.4) and returns the hash
+// ReportToolchain sends the host's toolchain and returns the hash
 // to send with each claim.
 func (c *Client) ReportToolchain(ctx context.Context, t judgeapi.Toolchain) (string, error) {
 	resp, err := c.do(ctx, http.MethodPost, "/api/judge/toolchain", judgeapi.ToolchainReport{Protocol: judgeapi.ProtocolVersion, Toolchain: t})

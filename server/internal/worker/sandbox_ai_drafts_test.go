@@ -1,7 +1,6 @@
 //go:build sandbox
 
-// M5 acceptance on the real judge (cache/v1/m5-plan.md section 5): the
-// fake provider's two packs, one from a brief and one from pasted text,
+// On the real judge: the fake provider's two packs, one from a brief and one from pasted text,
 // become drafts; their inputs are generated in isolate, outputs are
 // generated from the reference, and validation passes, with no manual
 // step. Then the model's solution ("Can a model solve this?") is judged
@@ -15,6 +14,7 @@ import (
 	"time"
 
 	"github.com/Sarthaks-24/podium/internal/ai"
+	"github.com/Sarthaks-24/podium/internal/ai/fakeai"
 	"github.com/Sarthaks-24/podium/internal/problems"
 )
 
@@ -54,10 +54,10 @@ func (r *rig) waitPipeline(t *testing.T, id int64) *problems.Validation {
 	return nil
 }
 
-func TestM5FakeWizardDraftsReachValidated(t *testing.T) {
+func TestFakeWizardDraftsReachValidated(t *testing.T) {
 	r := newRig(t)
 	ctx := context.Background()
-	fake := &ai.Fake{}
+	fake := &fakeai.Fake{}
 	for name, req := range map[string]ai.Request{
 		"brief":  {Brief: &ai.Brief{Topic: "Maximum subarray sum", Difficulty: "easy", Constraints: "n up to 200000"}},
 		"pasted": {Pasted: "Given two integers a and b, return their sum. Example: a = 1, b = 2, output 3."},
@@ -94,7 +94,7 @@ func TestM5FakeWizardDraftsReachValidated(t *testing.T) {
 	}
 }
 
-func TestM5BrokenGeneratorIsNamed(t *testing.T) {
+func TestBrokenGeneratorIsNamed(t *testing.T) {
 	r := newRig(t)
 	ctx := context.Background()
 	pack := ai.FakePairSums()

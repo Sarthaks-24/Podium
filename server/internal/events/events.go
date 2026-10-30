@@ -3,9 +3,10 @@
 // user is watching (a submission being judged, a contest's standings, an
 // announcement). Contest-wide events go to the set of connected users who
 // belong to the contest (PublishMany), so there is no separate topic
-// registry to keep in step with access rules. Publishing never blocks: a client that cannot keep up is
-// disconnected and reconnects, so a slow phone never delays judging for
-// anyone else. PLAN.md section 6 (realtime) and docs/API.md.
+// registry to keep in step with access rules. Publishing never blocks: a
+// client that cannot keep up is disconnected and reconnects, so a slow
+// phone never delays judging for anyone else. The events are listed in
+// docs/API.md.
 package events
 
 import (
@@ -62,13 +63,9 @@ type Client struct {
 // the next tab in turn.
 func (c *Client) Replaced() bool { return c.replaced.Load() }
 
-// Subscribe opens a stream for a user. A user's fifth stream replaces
-// their oldest. Call Unsubscribe when it ends.
-func (h *Hub) Subscribe(userID int64) (*Client, error) { return h.SubscribeTagged(userID, "") }
-
-// SubscribeTagged is Subscribe with an opaque tag kept on the stream (the
-// hashed IP and browser), so a second session on another machine can be
-// noticed (decision D47).
+// SubscribeTagged opens a stream for a user, with an opaque tag kept on
+// the stream (the hashed IP and browser), so a second session on another machine can be
+// noticed.
 func (h *Hub) SubscribeTagged(userID int64, tag string) (*Client, error) {
 	h.mu.Lock()
 	defer h.mu.Unlock()

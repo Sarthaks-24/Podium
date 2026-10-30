@@ -12,7 +12,7 @@ import (
 	"github.com/Sarthaks-24/podium/internal/problems"
 )
 
-// Generate inputs (M5, cache/v1/m5-plan.md section 3): the problem's
+// Generate inputs: the problem's
 // generator runs on the judge once per planned test; when every input
 // arrived, output generation and then validation follow on their own.
 

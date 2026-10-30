@@ -4,6 +4,16 @@ Dated entries per release. Unreleased work is listed at the top.
 
 ## Unreleased
 
+### v3 stage D: server structure (2026-10-30)
+
+- Dead code from the cuts deleted (the live contest helper, the no-reveal view option, the co-organiser branch, a duplicate audit writer, unused stream, run and worker entry points). Archiving a contest drops its cached boards.
+- Test files and test names say what they test instead of the plan phase; production comments give the reason in words instead of plan ids.
+- `busy` is always 429 with `Retry-After` and `retry_after_s`; a similarity check already running is `409 already_running`; a full stream cap is `503 stream_limit`.
+- `TestRouteRoles` probes every route as signed out, student, organiser and owner, reading the route list from the source so a new route without a row fails.
+- One scheduler runs the background jobs, with one retention pass every 12 hours; shutdown waits for a running batch before closing the database. Services take their dependencies in constructors (`cmd/podium-server/wire.go`).
+- The test AI provider is only in builds made with `-tags fakeai` (`make dev`, `make dev-test`); the Anthropic client uses plain net/http and go.mod drops `anthropic-sdk-go` (indirect modules 20 to 9).
+- `PODIUM_JUDGE_BOX_BASE` moves the judge's isolate boxes; start-up refuses a range that covers the self-test box.
+
 ### v3 stage C6: the problem editor (2026-10-30)
 
 - The editor has three tabs, Statement, Tests and Checking, with one status line in the title row ("Validated, 5 tests, slowest 212 ms"). At 1440 px each tab of a five-test problem is under 1,200 px (the editor was 3,987).

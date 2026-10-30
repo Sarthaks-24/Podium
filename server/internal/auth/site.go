@@ -1,6 +1,6 @@
 package auth
 
-// Site settings (v2 plan B3.7): the organisation details the public pages
+// Site settings: the organisation details the public pages
 // show, entered by an owner on People and stored in the settings table
 // under one key. They are public by design (GET /api/auth/config), so the
 // rules below are about shape, not secrecy: one line each, bounded, and
@@ -99,8 +99,7 @@ func singleLine(v string) bool {
 
 // Hidden reports a format character (Unicode Cf) other than the zero-width
 // joiners some scripts need: bidirectional overrides and the like, which
-// could make stored text read differently from what it says (security
-// review 2026-10-20, finding 11).
+// could make stored text read differently from what it says.
 func Hidden(r rune) bool {
 	return unicode.Is(unicode.Cf, r) && r != 0x200c && r != 0x200d
 }
@@ -193,8 +192,8 @@ func (s *Service) SetOrganisation(ctx context.Context, o Organisation) (Organisa
 }
 
 // RecordSiteTx appends a site audit row for a change tx makes in another
-// package (contact messages, erasure, the semester rollover). details
-// must hold fixed fields only, never request text.
+// package (erasure). details must hold fixed fields only, never request
+// text.
 func (s *Service) RecordSiteTx(ctx context.Context, tx *sql.Tx, action, subject string, details map[string]any) error {
 	return s.recordSite(ctx, tx, action, subject, details)
 }

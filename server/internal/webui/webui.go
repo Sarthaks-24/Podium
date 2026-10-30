@@ -4,7 +4,7 @@
 // Hashed files under /assets/ are cached for a year; index.html never is,
 // so a release reaches every browser on the next navigation. Podium is a
 // college tool behind sign-in: every page says noindex and robots.txt
-// disallows everything (v3, V3-4).
+// disallows everything (v3).
 package webui
 
 import (

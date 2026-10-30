@@ -15,7 +15,7 @@ import (
 const geminiBase = "https://generativelanguage.googleapis.com/v1beta"
 
 // Gemini calls the Gemini API's generateContent with net/http and the
-// standard library (D111). Structured output uses responseSchema, an
+// standard library. Structured output uses responseSchema, an
 // OpenAPI subset, translated from the wizard's JSON schema. The key goes
 // in the x-goog-api-key header, never in the URL.
 type Gemini struct {
@@ -96,7 +96,7 @@ type geminiModel struct {
 // not with a JSON text answer.
 var geminiExcluded = []string{"embedding", "image", "tts", "audio", "live", "gemma", "aqa"}
 
-// geminiUsable is the Gemini filter rule (D111).
+// geminiUsable is the Gemini filter rule.
 func geminiUsable(m geminiModel) bool {
 	if !slices.Contains(m.SupportedGenerationMethods, "generateContent") {
 		return false

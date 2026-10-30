@@ -80,9 +80,8 @@ func (d Deps) listPeople(w http.ResponseWriter, r *http.Request) {
 	WriteJSON(w, http.StatusOK, map[string]any{"people": people, "domains": domains, "disabled": disabled, "organisation": org})
 }
 
-// securityRoutes mounts the routes the security council's fixes added
-// (2026-10-18): the owner's account actions (S6) and the contest audit log
-// (S9). New calls it.
+// securityRoutes mounts the owner's account actions and the contest audit
+// log. New calls it.
 func (d Deps) securityRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/admin/accounts/end-sessions", d.requireRole(auth.Owner, d.endSessions))
 	mux.HandleFunc("POST /api/admin/accounts/disable", d.requireRole(auth.Owner, d.setAccountDisabled(true)))

@@ -1,6 +1,6 @@
 package contests
 
-// The contest audit log (security council S9, migration 0008): one
+// The contest audit log (migration 0008): one
 // append-only row for every organiser action that can change a contest's
 // results, so a later dispute can be settled from the database rather than
 // from journald.
@@ -21,7 +21,7 @@ const (
 	AuditSettings  = "settings"   // the contest form: {"changes": {field: {"from", "to"}}}
 	AuditProblems  = "problems"   // problems and pins: {"from": [...], "to": [...]}
 	AuditAIProblem = "ai_problem" // an admin's reason to grade an AI problem
-	AuditExtension = "extension"  // {"user_id", "minutes", "from_minutes", "reason_given"} (v2 P6; "email" until P6, "reason" before v1.4.0)
+	AuditExtension = "extension"  // {"user_id", "minutes", "from_minutes", "reason_given"} ("email" and "reason" in older rows)
 	AuditExtend    = "extend"     // {"minutes", "extended_minutes"}
 	AuditPause     = "pause"
 	AuditResume    = "resume"
@@ -58,11 +58,19 @@ type execer interface {
 // RecordTx is Record inside the caller's transaction, stamped now (Unix
 // milliseconds), so the audit row commits or rolls back with the change.
 func RecordTx(ctx context.Context, tx *sql.Tx, contestID int64, a Actor, action string, details any, now int64) error {
+	return recordAt(ctx, tx, contestID, a, action, details, now)
+}
+
+// recordAt writes one audit row through ex, stamped now.
+func recordAt(ctx context.Context, ex execer, contestID int64, a Actor, action string, details any, now int64) error {
+	if details == nil {
+		details = map[string]any{}
+	}
 	b, err := json.Marshal(details)
 	if err != nil {
 		return fmt.Errorf("audit details: %w", err)
 	}
-	_, err = tx.ExecContext(ctx, `INSERT INTO contest_audit (contest_id, actor_id, actor_email, actor_role, action, details, created_at)
+	_, err = ex.ExecContext(ctx, `INSERT INTO contest_audit (contest_id, actor_id, actor_email, actor_role, action, details, created_at)
 		VALUES (?, ?, ?, ?, ?, ?, ?)`, contestID, a.ID, a.Email, a.Role, action, string(b), now)
 	if err != nil {
 		return fmt.Errorf("record %s in the audit log: %w", action, err)
@@ -71,7 +79,7 @@ func RecordTx(ctx context.Context, tx *sql.Tx, contestID int64, a Actor, action 
 }
 
 // audited runs change and its audit row in one transaction, so the row
-// commits or rolls back with the change (S1-08). change returns the row's
+// commits or rolls back with the change. change returns the row's
 // details and whether to write one at all.
 func (s *Service) audited(ctx context.Context, contestID int64, by Actor, action string, change func(tx *sql.Tx) (details any, record bool, err error)) error {
 	tx, err := s.DB.BeginTx(ctx, nil)
@@ -92,19 +100,7 @@ func (s *Service) audited(ctx context.Context, contestID int64, by Actor, action
 }
 
 func (s *Service) recordTx(ctx context.Context, ex execer, contestID int64, a Actor, action string, details any) error {
-	if details == nil {
-		details = map[string]any{}
-	}
-	b, err := json.Marshal(details)
-	if err != nil {
-		return fmt.Errorf("audit details: %w", err)
-	}
-	_, err = ex.ExecContext(ctx, `INSERT INTO contest_audit (contest_id, actor_id, actor_email, actor_role, action, details, created_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?)`, contestID, a.ID, a.Email, a.Role, action, string(b), s.now().UnixMilli())
-	if err != nil {
-		return fmt.Errorf("record %s in the audit log: %w", action, err)
-	}
-	return nil
+	return recordAt(ctx, ex, contestID, a, action, details, s.now().UnixMilli())
 }
 
 // change is one setting's old and new value in a settings row.
@@ -178,14 +174,10 @@ func (s *Service) AuditAll(ctx context.Context, contestID int64) ([]AuditEntry, 
 // AuditPage is how many rows one page of the audit log holds.
 const AuditPage = 200
 
-// AuditFilter narrows the console's Changes feed (B2.8): one action, and
+// AuditFilter narrows the console's Changes feed: one action, and
 // actors whose email contains Actor (case insensitive).
 type AuditFilter struct {
 	Action, Actor string
-	// NoIntegrity leaves out integrity decision rows, and the reason of an
-	// extension row written before v1.4.0 (it can be health data), for a
-	// co-organiser whose site role is student.
-	NoIntegrity bool
 }
 
 // AuditLog lists the contest's audit rows, newest first, a page at a time
@@ -204,9 +196,6 @@ func (s *Service) AuditLog(ctx context.Context, contestID int64, page int, f Aud
 		q += " AND instr(lower(actor_email), ?) > 0"
 		args = append(args, strings.ToLower(f.Actor))
 	}
-	if f.NoIntegrity {
-		q += " AND action <> '" + AuditDecision + "'"
-	}
 	rows, err := s.DB.QueryContext(ctx, q+" ORDER BY id DESC LIMIT ? OFFSET ?", append(args, AuditPage+1, (page-1)*AuditPage)...)
 	if err != nil {
 		return nil, false, err
@@ -220,18 +209,6 @@ func (s *Service) AuditLog(ctx context.Context, contestID int64, page int, f Aud
 			return nil, false, err
 		}
 		e.Details = json.RawMessage(details)
-		if f.NoIntegrity && e.Action == AuditExtension {
-			var m map[string]any
-			if json.Unmarshal([]byte(details), &m) == nil {
-				if _, ok := m["reason"]; ok {
-					delete(m, "reason")
-					m["reason_given"] = true
-					if b, err := json.Marshal(m); err == nil {
-						e.Details = b
-					}
-				}
-			}
-		}
 		out = append(out, e)
 	}
 	more := len(out) > AuditPage
@@ -239,10 +216,4 @@ func (s *Service) AuditLog(ctx context.Context, contestID int64, page int, f Aud
 		out = out[:AuditPage]
 	}
 	return out, more, rows.Err()
-}
-
-// RecordTx is Record inside the caller's transaction (a review decision
-// records its board change with the decision).
-func (s *Service) RecordTx(ctx context.Context, tx *sql.Tx, contestID int64, a Actor, action string, details any) error {
-	return s.recordTx(ctx, tx, contestID, a, action, details)
 }

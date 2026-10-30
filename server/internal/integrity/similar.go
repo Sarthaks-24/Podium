@@ -38,7 +38,7 @@ type Pair struct {
 	SpansB       []Span
 }
 
-// Settings tune the comparison; Defaults are the council's values.
+// Settings tune the comparison.
 type Settings struct {
 	// MinTokens skips programs too short to tell apart (A plus B).
 	MinTokens int
@@ -57,7 +57,7 @@ type Settings struct {
 	CommonFloor int
 }
 
-// Defaults are the integrity plan's settings (cache/v1/integrity-plan.md).
+// Defaults are the settings the check ships with.
 var Defaults = Settings{MinTokens: 40, MinFingerprints: 8, Threshold: 0.6, CommonShare: 0.1, CommonFloor: 5}
 
 // withDefaults takes the settings from Defaults when none is set.

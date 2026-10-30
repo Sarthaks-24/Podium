@@ -1,10 +1,10 @@
-// Package ai is the AI wizard's model side (M5, cache/v1/m5-plan.md; three
-// providers since D111): the in-memory key store, the provider clients
+// Package ai is the AI wizard's model side: the in-memory key store, the
+// provider clients
 // (Anthropic, OpenAI, Google Gemini), the WizardPack schema and prompts,
 // and the checks that turn a model's answer into a problem draft.
 // A provider key is pasted by an admin, held in memory for two hours and
 // never written to the database, logs, errors, fixtures or job payloads
-// (CLAUDE.md 3a, decision D50). The model's code is never run on the
+// (CLAUDE.md 3a). The model's code is never run on the
 // server: it goes to the judge, in isolate, like any setter's code.
 package ai
 
@@ -23,7 +23,7 @@ type Provider interface {
 	// of the model, or a model listing when no model is chosen yet.
 	Check(ctx context.Context) error
 	// ListModels returns the provider's models that can write a problem,
-	// after the provider's filter rule (D111). No model id is written in
+	// after the provider's filter rule. No model id is written in
 	// the code; the rules are.
 	ListModels(ctx context.Context) ([]Model, error)
 }
@@ -103,9 +103,20 @@ const (
 	ProviderAnthropic = "anthropic"
 	ProviderOpenAI    = "openai"
 	ProviderGemini    = "gemini"
-	// ProviderFake exists only in testing mode (decision D50).
+	// ProviderFake exists only in testing mode, and only in builds that
+	// link package fakeai.
 	ProviderFake = "fake"
 )
+
+// fake makes the testing-mode provider; nil in the release build.
+var fake func() Provider
+
+// RegisterFake makes the testing-mode provider available. Package fakeai
+// calls it when it is linked in.
+func RegisterFake(f func() Provider) { fake = f }
+
+// HasFake reports whether this build has the testing-mode provider.
+func HasFake() bool { return fake != nil }
 
 // Providers lists the real providers in the order the key form shows them.
 var Providers = []string{ProviderAnthropic, ProviderOpenAI, ProviderGemini}
@@ -126,13 +137,13 @@ func ProviderName(p string) string {
 }
 
 // Known reports whether p is a provider this server offers; the fake one
-// only in testing mode.
+// only in testing mode, in a build that has it.
 func Known(p string, testing bool) bool {
 	switch p {
 	case ProviderAnthropic, ProviderOpenAI, ProviderGemini:
 		return true
 	case ProviderFake:
-		return testing
+		return testing && HasFake()
 	}
 	return false
 }
@@ -173,13 +184,13 @@ type Config struct {
 }
 
 // NewProvider returns the client for c. The fake provider exists only when
-// testing is set (PODIUM_MODE=testing).
+// testing is set (PODIUM_MODE=testing) and the build has it.
 func NewProvider(c Config, testing bool) (Provider, error) {
 	if c.Provider == ProviderFake {
-		if !testing {
+		if !testing || !HasFake() {
 			return nil, &Error{Code: CodeInput, Message: "The test provider exists only in testing mode."}
 		}
-		return &Fake{}, nil
+		return fake(), nil
 	}
 	if !Known(c.Provider, testing) {
 		return nil, &Error{Code: CodeInput, Message: "Choose Anthropic, OpenAI or Google Gemini as the provider."}

@@ -4,8 +4,8 @@ import (
 	"encoding/json"
 )
 
-// ContentHash is the SHA-256 of everything validation depends on
-// (decision D45): limits, checker, solutions, samples,
+// ContentHash is the SHA-256 of everything validation depends on:
+// limits, checker, solutions, samples,
 // subtasks and tests.
 // Title, slug, statement, tags and subtask titles are left out, so fixing
 // a typo in the statement keeps a problem validated. The judge build is

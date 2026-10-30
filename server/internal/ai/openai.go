@@ -14,8 +14,8 @@ import (
 // openAIBase is the public API; tests point BaseURL at a stand-in.
 const openAIBase = "https://api.openai.com/v1"
 
-// OpenAI calls the Responses API with net/http and the standard library
-// (D111). Structured output uses a JSON schema in strict mode; the
+// OpenAI calls the Responses API with net/http and the standard library.
+// Structured output uses a JSON schema in strict mode; the
 // response is not stored at OpenAI (store: false).
 type OpenAI struct {
 	Key   Secret
@@ -94,7 +94,7 @@ var openAIExcluded = []string{"audio", "realtime", "tts", "transcribe", "image",
 
 var openAIReasoning = regexp.MustCompile(`^o[0-9]`)
 
-// openAIUsable is the OpenAI filter rule (D111): chat model families by
+// openAIUsable is the OpenAI filter rule: chat model families by
 // their id, without the ones before structured outputs.
 func openAIUsable(id string) bool {
 	if !strings.HasPrefix(id, "gpt-") && !openAIReasoning.MatchString(id) {

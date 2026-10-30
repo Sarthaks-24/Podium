@@ -2,8 +2,7 @@ package integrity
 
 import "hash/fnv"
 
-// Winnowing parameters (Schleimer, Wilkerson and Aiken 2003; the integrity
-// council's settings): hashes of K consecutive tokens, the minimum kept
+// Winnowing parameters (Schleimer, Wilkerson and Aiken 2003): hashes of K consecutive tokens, the minimum kept
 // from every window of W hashes. Any run of at least W+K-1 = 8 tokens two
 // programs share yields at least one shared fingerprint.
 const (

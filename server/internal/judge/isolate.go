@@ -42,7 +42,7 @@ type Limits struct {
 	FileSizeKB int
 }
 
-// DefaultFileSizeKB is the 16 MB output cap from PLAN.md section 7.1.
+// DefaultFileSizeKB is the 16 MB cap on what a program may write.
 const DefaultFileSizeKB = 16 * 1024
 
 // extraTime lets isolate measure how far past the limit a program ran.
@@ -90,7 +90,7 @@ func (m Meta) MemoryKB() int {
 
 // ErrBoxBusy is isolate refusing --init because another isolate process
 // holds the box's lock right now. Init waits and tries again a few times
-// before it returns this (walk 2026-10-21, D325).
+// before it returns this.
 var ErrBoxBusy = errors.New("the isolate box is in use by another process")
 
 // ErrBoxClaimed is Init on a box this judge already holds: a lane bug,

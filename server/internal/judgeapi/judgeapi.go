@@ -1,5 +1,5 @@
 // Package judgeapi holds the request and response bodies of the judge
-// worker API (docs/API.md, decision D44), shared by podium-server and
+// worker API (docs/API.md), shared by podium-server and
 // podium-judge so the two cannot drift. It has no behaviour beyond the
 // small checks both sides need on the same values.
 package judgeapi
@@ -20,13 +20,14 @@ import (
 // A claim without the field is protocol 1, the v1.0.0 judge.
 //
 // Version 2 (v1.1.0) added the toolchain report and the toolchain hash on
-// each claim. Version 3 (v1.2.0, D115) added open run inputs
+// each claim. Version 3 (v1.2.0) added open run inputs
 // (RunInput.Open) and the revealed hidden test of a practice submission
 // (SubmitPayload.Reveal). Bump it whenever a request or payload changes
 // shape.
 const ProtocolVersion = 3
 
-// Job kinds. M2 has only validation; M3 adds submissions and runs.
+// Job kinds: validation here; submissions, runs and generation in their
+// own files.
 const KindValidate = "validate"
 
 // LeaseSeconds is how long a claim lasts without a report.

@@ -18,7 +18,7 @@ type RejudgeRequest struct {
 	SubmissionID int64 // or just this one
 	By           int64
 	// Audit, when set, writes the audit row inside the rejudge's
-	// transaction, so it commits or rolls back with the new jobs (S1-08).
+	// transaction, so it commits or rolls back with the new jobs.
 	Audit func(ctx context.Context, tx *sql.Tx, queued int) error
 }
 
@@ -27,9 +27,9 @@ const rejudgeReason = "Replaced by a rejudge."
 
 // Rejudge queues the submissions again with the problem's current tests,
 // at RejudgePriority, and returns how many were queued. Each new job and
-// its submission record the revision the contest pins now (B2.10); the
+// its submission record the revision the contest pins now; the
 // old job keeps its own. A submission that revealed its first failing
-// hidden test (D115) still does; no other starts to. Each submission
+// hidden test still does; no other starts to. Each submission
 // goes back to "queued" with its old result cleared, so standings count it
 // only once the new result is in.
 //
@@ -120,7 +120,7 @@ func (s *Service) Rejudge(ctx context.Context, r RejudgeRequest) (int, error) {
 		pl := submitPayload(p, t.id, judgeapi.Program{Language: t.language, SourceSHA: t.source})
 		pl.StopOnSampleFail = true
 		// The reveal was decided when the submission was made, by who made
-		// it and when (D115); a rejudge never widens it. An old payload
+		// it and when; a rejudge never widens it. An old payload
 		// without the field reveals nothing.
 		var old struct {
 			Reveal bool `json:"reveal"`

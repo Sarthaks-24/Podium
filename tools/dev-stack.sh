@@ -7,7 +7,9 @@
 #
 #   tools/dev-stack.sh BINDIR
 #
-# BINDIR holds Linux builds of podium-server and podium-judge. State lives
+# BINDIR holds Linux builds of podium-server and podium-judge; build the
+# server with -tags fakeai (as make dev-test does) for the test AI provider,
+# which the release binary does not have. State lives
 # under $PODIUM_DEV_STATE (default /var/tmp/podium-dev), outside the
 # repository: SQLite's WAL needs a local Linux filesystem, not /mnt/<drive>.
 # Runs as root and drops privileges: the server as user podium, the judge as

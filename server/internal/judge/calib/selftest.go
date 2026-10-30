@@ -14,7 +14,7 @@ import (
 
 // SelfTest runs the hostile suite and a hello world in every language on
 // this host, in box, and prints one PASS or FAIL line per program to w
-// (podium-judge selftest, B1.9). It is the same check as the sandbox
+// (podium-judge selftest). It is the same check as the sandbox
 // tests (go test -tags sandbox), shipped in the binary so it runs on the
 // VM, where there is no Go toolchain. It returns how many failed; err is
 // set only when the suite itself could not run.

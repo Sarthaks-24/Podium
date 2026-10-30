@@ -141,6 +141,12 @@ func TestKeysPerProvider(t *testing.T) {
 }
 
 func TestNewProvider(t *testing.T) {
+	// The release build links no fake provider: testing mode refuses it too.
+	if _, err := NewProvider(Config{Provider: ProviderFake}, true); err == nil || Known(ProviderFake, true) {
+		t.Error("fake provider in a build without one")
+	}
+	defer RegisterFake(nil)
+	RegisterFake(func() Provider { return &stub{} })
 	if _, err := NewProvider(Config{Provider: ProviderFake}, false); err == nil {
 		t.Error("fake provider outside testing mode")
 	}

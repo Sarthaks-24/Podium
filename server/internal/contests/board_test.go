@@ -212,3 +212,38 @@ func TestBoardRefusesAnUnreadableScore(t *testing.T) {
 		t.Error("the schema took invalid JSON in submissions.earned")
 	}
 }
+
+func TestArchiveDropsTheCachedBoards(t *testing.T) {
+	r := newSvc(t)
+	ctx := context.Background()
+	c := r.contest(t, nil)
+	seedBoard(t, r, c, 3, 1)
+	for _, v := range []string{VariantFull, VariantFrozen} {
+		if _, err := r.svc.Board(ctx, c, v); err != nil {
+			t.Fatal(err)
+		}
+	}
+	cached := func() (n int) {
+		r.svc.board.mu.Lock()
+		defer r.svc.board.mu.Unlock()
+		for k := range r.svc.board.entries {
+			if k.id == c.ID {
+				n++
+			}
+		}
+		return n
+	}
+	if n := cached(); n != 2 {
+		t.Fatalf("%d boards cached before archive, want 2", n)
+	}
+	before := r.svc.Version(c.ID)
+	if err := r.svc.Archive(ctx, c.ID, owner); err != nil {
+		t.Fatal(err)
+	}
+	if n := cached(); n != 0 {
+		t.Fatalf("%d boards cached after archive, want 0", n)
+	}
+	if v := r.svc.Version(c.ID); v <= before {
+		t.Fatalf("version went from %d to %d", before, v)
+	}
+}

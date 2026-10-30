@@ -1,6 +1,6 @@
 package problems
 
-// Problem revisions (v2 plan B2.1 and B2.2, decision D61). The problems row
+// Problem revisions. The problems row
 // is the editable working copy; every save that changes anything a
 // revision records adds an immutable problem_revisions row with its tests
 // in revision_tests. Contests pin a revision (package contests), so what a
@@ -274,7 +274,7 @@ func (s *Service) LiveContests(ctx context.Context, problemID int64) ([]LiveCont
 }
 
 // requireReason refuses a save that would make a new revision while a live
-// contest pins the problem, unless the setter says why (B2.2).
+// contest pins the problem, unless the setter says why.
 func (s *Service) requireReason(ctx context.Context, tx *sql.Tx, p *Problem, note RevisionNote) error {
 	if utf8.RuneCountInString(strings.TrimSpace(note.Reason)) > MaxReason {
 		return FieldErrors{"reason": fmt.Sprintf("Keep the reason under %d characters.", MaxReason)}
@@ -359,7 +359,7 @@ func (s *Service) RevisionTests(ctx context.Context, revisionID int64) ([]Revisi
 
 // CheckRevisions lists every problem whose working copy is not recorded by
 // its newest revision, and every contest pin without a revision. An empty
-// list means no write skipped its revision (B2.2); podium-server check
+// list means no write skipped its revision; podium-server check
 // reports it.
 func CheckRevisions(ctx context.Context, db *sql.DB) ([]string, error) {
 	rows, err := db.QueryContext(ctx, "SELECT id FROM problems ORDER BY id")

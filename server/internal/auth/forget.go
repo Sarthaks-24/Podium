@@ -1,14 +1,13 @@
 package auth
 
-// Erasure (v2 plan section 9, B3.2): podium-server forget-user. What a
-// person did stays countable, so past standings remain correct, but
-// nothing left names them: their sessions, drafts, integrity events,
-// contact messages and the browser hashes on their submissions go; their
-// name and email become a placeholder; the Google link is cleared and
-// the account is disabled, so the next sign-in with that address makes a
-// new account. Audit rows written before keep the address they recorded
-// until the audit retention (4 years) removes them: they are append only
-// by design.
+// Erasure: podium-server forget-user. What a person did stays countable,
+// so past standings remain correct, but nothing left names them: their
+// sessions, drafts, integrity events and the browser hashes on their
+// submissions go; extension reasons and clarification questions are
+// blanked; their name and email become a placeholder; the Google link is
+// cleared and the account is disabled, so the next sign-in with that
+// address makes a new account. Audit rows written before keep the address
+// they recorded: they are append only by design.
 
 import (
 	"context"
@@ -117,7 +116,7 @@ func (s *Service) Forget(ctx context.Context, email string, apply, allowOwner bo
 		{"integrity events", "DELETE FROM integrity_events WHERE user_id = ?", []any{r.UserID}},
 		{"browser hashes on submissions", "UPDATE submissions SET client_hash = '' WHERE user_id = ? AND client_hash <> ''", []any{r.UserID}},
 		// An extension's reason can be an accommodation, which is
-		// health data (security review 2026-10-20, finding 4).
+		// health data.
 		{"extension reasons", "UPDATE contest_extensions SET reason = '' WHERE user_id = ? AND reason <> ''", []any{r.UserID}},
 		{"clarification questions", "UPDATE clarifications SET question = ? WHERE asked_by = ? AND question <> ?",
 			[]any{removedText, r.UserID, removedText}},

@@ -1,7 +1,9 @@
 package contests
 
-// Tests for council run 2 (2026-10-21), backend part: fixes and gate
-// proofs that had no test (C2-019).
+// Guards on the grading path: a pin update that was overtaken or reads
+// unreadable subtasks, an AI draft with unreadable tags, ending a contest
+// early with a personal extension, and an excluded student on the board
+// and in the export.
 
 import (
 	"context"

@@ -11,8 +11,8 @@ import (
 // Reads that cost several queries (the contest list and page, a
 // workspace, the standings) are limited per user with a token bucket: 10
 // a second on average, bursts of 20. A page needs a handful; a script
-// looping them cannot hold the database pool's 8 connections (db.MaxConns;
-// m4-security finding 10).
+// looping them cannot hold the database pool's 8 connections
+// (db.MaxConns).
 const (
 	readRate  = 10.0
 	readBurst = 20.0

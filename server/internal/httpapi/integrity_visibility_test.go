@@ -5,8 +5,6 @@ import (
 	"testing"
 )
 
-// Fixes from the final security and code review of v2 (P6, S6.2).
-
 // A reviewer named in a live signal (a student later made an admin) does
 // not see it: not in the run, not as a pair, not as their own timeline,
 // as they never see a case they are in.

@@ -8,7 +8,8 @@ import (
 )
 
 // RetentionPeriod is how long integrity evidence is kept after a contest
-// has ended for everyone (decision D47 default: 180 days).
+// has ended for everyone: 180 days, long enough for a review and any
+// complaint after it.
 const RetentionPeriod = retention.IntegrityEvents
 
 // secondSessionQuiet stops one pair of machines from recording a second
@@ -18,8 +19,8 @@ const secondSessionQuiet = 10 * time.Minute
 
 // RecordSecondSession notes, for every contest whose window is open for the
 // student now, that they opened a second session from another machine or
-// browser while one was already open (D47: evidence for a reviewer, never
-// shown to the student as an accusation and never acted on automatically).
+// browser while one was already open: evidence for a reviewer, never
+// shown to the student as an accusation and never acted on automatically.
 func (s *Service) RecordSecondSession(ctx context.Context, userID int64) error {
 	rows, err := s.DB.QueryContext(ctx, "SELECT contest_id FROM contest_starts WHERE user_id = ?", userID)
 	if err != nil {

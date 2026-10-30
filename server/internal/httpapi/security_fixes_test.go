@@ -43,7 +43,7 @@ func (c *coOrgSite) admin(path string) string {
 	return fmt.Sprintf("/api/admin/contests/%d%s", c.id, path)
 }
 
-func TestS1ExtensionsOnlyForParticipants(t *testing.T) {
+func TestExtensionsOnlyForParticipants(t *testing.T) {
 	c := newCoOrgSite(t, "s1x", nil)
 	o := c.srv.URL
 	zed := c.signedIn("zed@college.edu", "Zed")
@@ -58,7 +58,7 @@ func TestS1ExtensionsOnlyForParticipants(t *testing.T) {
 	}
 }
 
-func TestS9OrganiserActionsAreAudited(t *testing.T) {
+func TestOrganiserActionsAreAudited(t *testing.T) {
 	c := newCoOrgSite(t, "s9", map[string]any{"hold_reveal": true, "freeze_minutes": 10})
 	o := c.srv.URL
 	ok := func(code int, out map[string]any) {
@@ -136,7 +136,7 @@ func testingRequest(b *browser, method, path, host string, headers map[string]st
 	return send(b, req)
 }
 
-func TestS2TestingModeRefusesProxiedRequests(t *testing.T) {
+func TestTestingModeRefusesProxiedRequests(t *testing.T) {
 	s := newSiteMode(t, "testing")
 	b := s.browser()
 	o := s.srv.URL
@@ -192,7 +192,7 @@ func TestS2TestingModeRefusesProxiedRequests(t *testing.T) {
 	}
 }
 
-func TestS5SessionCookieAndSignOut(t *testing.T) {
+func TestSessionCookieAndSignOut(t *testing.T) {
 	s := newSiteMode(t, "testing")
 	b := s.browser()
 	req, _ := http.NewRequest("POST", s.srv.URL+"/api/auth/test-signin", strings.NewReader(`{"email":"asha@college.edu","role":"student"}`))
@@ -232,7 +232,7 @@ func TestS5SessionCookieAndSignOut(t *testing.T) {
 	}
 }
 
-func TestS5GoogleSignInAsksForAFreshLogin(t *testing.T) {
+func TestGoogleSignInAsksForAFreshLogin(t *testing.T) {
 	s := newSite(t)
 	s.signedIn("asha@college.edu", "Asha")
 	if q := s.idp.LastAuthQuery; q.Get("prompt") != "select_account" || q.Get("max_age") != "300" {

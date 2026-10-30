@@ -1,7 +1,6 @@
-// Package submissions is the student side of judging (milestone M3,
-// cache/v1/m3-plan.md): running code on samples or a custom input,
-// submitting it for a score, drafts saved as students type, rate limits,
-// the integrity counts of decision D47, and the job kinds that carry runs
+// Package submissions is the student side of judging: running code on
+// samples or a custom input, submitting it for a score, drafts saved as
+// students type, rate limits, the integrity counts, and the job kinds that carry runs
 // and submissions to the judge. Scores are always computed here from the
 // per-test results and the problem's subtasks, never taken from the judge.
 package submissions
@@ -19,7 +18,7 @@ const (
 )
 
 // TestOutcome is one test's result as students see it: never its input or
-// output (decision D47).
+// output.
 type TestOutcome struct {
 	Idx      int    `json:"idx"`
 	Verdict  string `json:"verdict"`

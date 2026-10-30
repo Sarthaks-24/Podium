@@ -15,6 +15,7 @@ var JudgeVars = []Var{
 	{Name: "PODIUM_JUDGE_TOKEN", Secret: true},
 	{Name: "PODIUM_ISOLATE_PATH", Default: "/usr/bin/isolate"},
 	{Name: "PODIUM_JUDGE_LANES", Default: "2"},
+	{Name: "PODIUM_JUDGE_BOX_BASE", Default: "0"},
 	{Name: "PODIUM_JUDGE_CACHE_DIR", Default: "/var/cache/podium-judge"},
 	{Name: "PODIUM_JUDGE_BLOB_CACHE_MB", Default: "2048"},
 	{Name: "PODIUM_LOG_LEVEL", Default: "info"},
@@ -33,6 +34,9 @@ type Judge struct {
 	IsolatePath string
 	// Lanes is the number of sandboxes run in parallel; each is one box id.
 	Lanes int
+	// BoxBase is the first lane's isolate box id; lane n uses BoxBase+n,
+	// so a second judge on the same host can take other boxes.
+	BoxBase int
 	// CacheDir holds test blobs and compiled binaries.
 	CacheDir string
 	// BlobCacheMB caps the downloaded files in CacheDir/blobs; the least
@@ -41,6 +45,13 @@ type Judge struct {
 	// LogLevel is the minimum level written to the JSON log.
 	LogLevel slog.Level
 }
+
+// SelfTestBox is the isolate box "podium-judge selftest" and "calibrate"
+// use by default, clear of the lanes.
+const SelfTestBox = 80
+
+// MaxBoxBase keeps the last lane under isolate's default of 1,000 boxes.
+const MaxBoxBase = 1000 - 16
 
 // LoadWorker validates the configuration of "podium-judge work": the
 // sandbox settings plus the server to pull work from.
@@ -64,6 +75,11 @@ func LoadWorker(get Getenv) (Judge, error) {
 	}
 	c.IsolatePath = r.str("PODIUM_ISOLATE_PATH")
 	c.Lanes = r.int("PODIUM_JUDGE_LANES", 1, 16)
+	c.BoxBase = r.int("PODIUM_JUDGE_BOX_BASE", 0, MaxBoxBase)
+	if c.Lanes > 0 && c.BoxBase <= SelfTestBox && c.BoxBase+c.Lanes > SelfTestBox {
+		r.p.add("PODIUM_JUDGE_BOX_BASE and PODIUM_JUDGE_LANES give boxes %d to %d, which include box %d that selftest and calibrate use; choose a base that keeps clear of it",
+			c.BoxBase, c.BoxBase+c.Lanes-1, SelfTestBox)
+	}
 	c.CacheDir = r.str("PODIUM_JUDGE_CACHE_DIR")
 	c.BlobCacheMB = r.int("PODIUM_JUDGE_BLOB_CACHE_MB", 64, 1<<20)
 	c.LogLevel = r.level("PODIUM_LOG_LEVEL")

@@ -1,14 +1,9 @@
 package httpapi
 
-// Organiser contest routes (cache/v1/m4-plan.md section 4). Owners and
-// admins organise every contest; a contest's co-organisers organise only
-// that one. Everyone else gets a 404, so contest ids cannot be probed.
-// Creating, cloning, archiving, choosing problems and co-organisers, and
-// everything that changes a running contest's results (extensions, extend, pause and resume, rejudge) need the admin role. A
-// co-organiser whose site role is student cannot change the rules once the
-// contest starts, and sees results only as a student would (security
-// council S1, contests/coorganiser.go). Every change that can affect
-// results is written to the contest's audit log (S9).
+// Organiser contest routes. Owners and admins organise every contest;
+// everyone else gets a 404, so contest ids cannot be probed. Every change
+// that can affect results is written to the contest's audit log in the
+// same transaction as the change.
 
 import (
 	"bytes"
@@ -20,7 +15,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Sarthaks-24/podium/internal/auth"
 	"github.com/Sarthaks-24/podium/internal/contests"
 	"github.com/Sarthaks-24/podium/internal/submissions"
 )
@@ -33,7 +27,7 @@ type adminProblemJSON struct {
 	PinnedHash string `json:"pinned_hash"`
 	Ready      bool   `json:"ready"`
 	MaxScore   int    `json:"max_score"`
-	// The pinned revision and the problem's newest one (C4).
+	// The pinned revision and the problem's newest one.
 	RevisionID          int64 `json:"revision_id"`
 	Rev                 int   `json:"rev"`
 	LatestRevisionID    int64 `json:"latest_revision_id"`
@@ -44,7 +38,7 @@ type adminProblemJSON struct {
 }
 
 // adminContestJSON is AdminContest in docs/API.md: every setting, the
-// problems with their pins, co-organisers and extensions.
+// problems with their pins, and extensions.
 type adminContestJSON struct {
 	ID                 int64                `json:"id"`
 	Slug               string               `json:"slug"`
@@ -74,15 +68,15 @@ type adminContestJSON struct {
 	CreatedAt          int64                `json:"created_at"`
 	UpdatedAt          int64                `json:"updated_at"`
 	ServerNow          int64                `json:"server_now"`
-	// Queue health for the console's attention strip (C10, D103).
+	// Queue health for the console's attention strip.
 	Queue            *queueJSON `json:"queue,omitempty"`
 	JudgeLastClaimAt *int64     `json:"judge_last_claim_at"`
 	Unanswered       int        `json:"unanswered"`
-	// The exam options (V3-25): full_screen, count_focus, block_paste, block_copy.
+	// The exam options: full_screen, count_focus, block_paste, block_copy.
 	contests.ExamOptions
 }
 
-// queueJSON is the contest's share of the judge queue (C10).
+// queueJSON is the contest's share of the judge queue.
 type queueJSON struct {
 	Waiting     int     `json:"waiting"`
 	Judging     int     `json:"judging"`
@@ -91,7 +85,7 @@ type queueJSON struct {
 }
 
 // adminContestBase is AdminContest from the loaded contest alone, with no
-// query: what the contest list shows (S1-08, no query per contest).
+// query: what the contest list shows (no query per contest).
 func (d Deps) adminContestBase(c *contests.Contest) *adminContestJSON {
 	now := d.Contests.Clock()
 	out := &adminContestJSON{ID: c.ID, Slug: c.Slug, Title: c.Title, DescriptionMD: c.Description,
@@ -121,13 +115,6 @@ func (d Deps) adminContestOut(ctx context.Context, c *contests.Contest) (*adminC
 	var err error
 	if out.Extensions, err = d.Contests.Extensions(ctx, c.ID); err != nil {
 		return nil, err
-	}
-	// The reason for a classmate's extra time can be health data: a
-	// co-organiser whose site role is student sees the minutes only.
-	if !userFrom(ctx).Role.AtLeast(auth.Admin) {
-		for i := range out.Extensions {
-			out.Extensions[i].Reason = ""
-		}
 	}
 
 	q, err := d.Contests.QueueHealth(ctx, c.ID)
@@ -302,8 +289,7 @@ func (d Deps) cloneContest(w http.ResponseWriter, r *http.Request) {
 	d.writeAdminContest(w, r, out.ID, http.StatusCreated)
 }
 
-// setContestProblems needs the admin role: choosing problems opens the
-// problem bank, which co-organisers (often student TAs) never see.
+// setContestProblems chooses the contest's problems from the bank.
 func (d Deps) setContestProblems(w http.ResponseWriter, r *http.Request) {
 	c, ok := d.organisedContest(w, r)
 	if !ok {
@@ -313,7 +299,7 @@ func (d Deps) setContestProblems(w http.ResponseWriter, r *http.Request) {
 		ProblemID int64  `json:"problem_id"`
 		Label     string `json:"label"`
 		// AIReason confirms an AI problem no person has written a solution
-		// for, in a graded contest (security council S10).
+		// for, in a graded contest.
 		AIReason string `json:"ai_reason"`
 	}
 	if !decodeJSON(w, r, &req) {
@@ -490,14 +476,14 @@ func (d Deps) rejudge(w http.ResponseWriter, r *http.Request) {
 		WriteError(w, http.StatusBadRequest, "bad_request", "Choose a problem or one submission to rejudge.")
 		return
 	}
-	// The revisions the new jobs judge against and record (B2.10).
+	// The revisions the new jobs judge against and record.
 	revs := []map[string]any{}
 	for _, p := range c.Problems {
 		if p.ProblemID == rr.ProblemID || (rr.SubmissionID > 0 && p.ProblemID == judgedProblem) {
 			revs = append(revs, map[string]any{"label": p.Label, "revision_id": p.RevisionID, "rev": p.Rev})
 		}
 	}
-	// The audit row commits with the new jobs (S1-08).
+	// The audit row commits with the new jobs.
 	rr.Audit = func(ctx context.Context, tx *sql.Tx, queued int) error {
 		what := map[string]any{"queued": queued, "revisions": revs}
 		if req.ProblemLabel != "" {
@@ -664,8 +650,6 @@ func (d Deps) getReveal(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	// A co-organiser whose site role is student sees the full board when
-	// students do: with a held reveal, after it.
 	final, err := d.Contests.FinalAt(r.Context(), c)
 	if err != nil {
 		d.internalError(w, r, err)
@@ -721,7 +705,7 @@ func (d Deps) exportCSV(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var buf bytes.Buffer
-	// The browser's zone, so the start times read as they do on the screens (pilot P3).
+	// The browser's zone, so the start times read as they do on the screens.
 	if err := contests.WriteCSV(&buf, c, rows, contests.ExportLocation(r.URL.Query().Get("tz"))); err != nil {
 		d.internalError(w, r, err)
 		return

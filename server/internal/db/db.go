@@ -97,7 +97,7 @@ func Open(ctx context.Context, path string) (*sql.DB, error) {
 // groupWritable makes the database file mode 0660, creating it empty
 // when it does not exist (SQLite treats an empty file as a new database).
 // Litestream runs as its own user in the server's group and must write
-// the database for its checkpoints (D116); SQLite gives the -wal and -shm
+// the database for its checkpoints; SQLite gives the -wal and -shm
 // files the database file's mode, so they follow. Best effort: on a
 // filesystem without Unix modes nothing changes.
 func groupWritable(path string) {

@@ -45,3 +45,26 @@ func TestWorkerNeedsServerAndToken(t *testing.T) {
 		t.Error("server URL without scheme accepted")
 	}
 }
+
+func TestJudgeBoxBase(t *testing.T) {
+	tok := strings.Repeat("j", 40)
+	c, err := LoadWorker(env(map[string]string{"PODIUM_JUDGE_TOKEN": tok}))
+	if err != nil || c.BoxBase != 0 {
+		t.Fatalf("default: %d %v", c.BoxBase, err)
+	}
+	c, err = LoadWorker(env(map[string]string{"PODIUM_JUDGE_TOKEN": tok, "PODIUM_JUDGE_BOX_BASE": "100", "PODIUM_JUDGE_LANES": "4"}))
+	if err != nil || c.BoxBase != 100 {
+		t.Fatalf("100: %d %v", c.BoxBase, err)
+	}
+	for _, bad := range []map[string]string{
+		{"PODIUM_JUDGE_BOX_BASE": "-1"},
+		{"PODIUM_JUDGE_BOX_BASE": "985"},
+		{"PODIUM_JUDGE_BOX_BASE": "two"},
+		{"PODIUM_JUDGE_BOX_BASE": "78", "PODIUM_JUDGE_LANES": "3"}, // 78 to 80 takes the selftest box
+	} {
+		bad["PODIUM_JUDGE_TOKEN"] = tok
+		if _, err := LoadWorker(env(bad)); err == nil || !strings.Contains(err.Error(), "PODIUM_JUDGE_BOX_BASE") {
+			t.Errorf("%v accepted or unclear: %v", bad, err)
+		}
+	}
+}

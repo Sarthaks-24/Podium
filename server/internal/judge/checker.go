@@ -10,7 +10,7 @@ import (
 	"strconv"
 )
 
-// CheckerType selects how output is compared (PLAN.md section 7.4).
+// CheckerType selects how output is compared.
 type CheckerType string
 
 const (

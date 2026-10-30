@@ -1,6 +1,6 @@
 package auth
 
-// The site audit (v2 plan B2.7, decision D62): one append-only row for
+// The site audit: one append-only row for
 // every change to people, domains and the site, written in the same
 // transaction as the change. A row names the actor (as they were at the
 // time), the action, the person it was about and a small JSON object of

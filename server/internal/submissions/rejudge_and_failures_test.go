@@ -1,9 +1,7 @@
 package submissions
 
-// M4 security review (cache/council-2026-10-18/m4-security.md): rejudges
-// replace unfinished jobs (finding 4), judge failures show and do not count
-// (finding 6), and judge uploads stream to disk with orphans deleted
-// (M3 re-check).
+// Rejudges replace unfinished jobs, judge failures show and do not count,
+// and judge uploads stream to disk with orphans deleted.
 
 import (
 	"context"

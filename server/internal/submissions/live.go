@@ -13,7 +13,7 @@ import (
 // streams. Updates for one job are sent in order, and only when what the
 // author can see has changed: for students that is when a block of samples
 // or a whole subtask finishes, never per hidden test, so the arrival time
-// of an event says nothing about a single hidden test (decision D47).
+// of an event says nothing about a single hidden test.
 type publisher struct {
 	mu    sync.Mutex
 	last  map[int64]string

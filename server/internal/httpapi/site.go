@@ -1,6 +1,6 @@
 package httpapi
 
-// The owner's organisation details (B3.7): name, contact email, phone and
+// The owner's organisation details: name, contact email, phone and
 // privacy contact, shown in the footer and on the sign-in page. Shapes are
 // in docs/API.md, "Site settings".
 

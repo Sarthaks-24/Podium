@@ -52,7 +52,7 @@ func (s *Service) now() time.Time {
 func (s *Service) settings() Settings { return s.Settings.withDefaults() }
 
 // Start begins a check of a contest in the background and returns its
-// run id. One check runs at a time per server (D49). The caller checks
+// run id. One check runs at a time per server. The caller checks
 // that the contest has ended and that the user may review it.
 func (s *Service) Start(ctx context.Context, contestID, by int64) (int64, error) {
 	s.mu.Lock()

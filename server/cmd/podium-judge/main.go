@@ -46,8 +46,8 @@ var version = buildinfo.Version
 const exitProtocol = 3
 
 // exitAuth is the exit status when the server keeps refusing the judge
-// token (401): fixing judge.env or server.env, not a restart, helps
-// (council C1-048). The unit does not restart on it, so OnFailure alerts.
+// token (401): fixing judge.env or server.env, not a restart, helps.
+// The unit does not restart on it, so OnFailure alerts.
 const exitAuth = 4
 
 func main() {
@@ -83,7 +83,7 @@ func main() {
 func calibrate(args []string) error {
 	fs := flag.NewFlagSet("calibrate", flag.ExitOnError)
 	reps := fs.Int("reps", 5, "repetitions per timing measurement")
-	box := fs.Int("box", 80, "isolate box id to use (keep clear of lane ids)")
+	box := fs.Int("box", config.SelfTestBox, "isolate box id to use (keep clear of lane ids)")
 	fs.Parse(args)
 
 	cfg, err := config.LoadJudge(os.Getenv)
@@ -127,11 +127,11 @@ func calibrate(args []string) error {
 }
 
 // selftest runs the hostile suite and a hello world per language in one
-// box and prints PASS or FAIL for each (B1.9). It exits 1 when any
+// box and prints PASS or FAIL for each. It exits 1 when any
 // program was not contained.
 func selftest(args []string) error {
 	fs := flag.NewFlagSet("selftest", flag.ExitOnError)
-	box := fs.Int("box", 80, "isolate box id to use (keep clear of lane ids)")
+	box := fs.Int("box", config.SelfTestBox, "isolate box id to use (keep clear of lane ids)")
 	fs.Parse(args)
 	cfg, err := config.LoadJudge(os.Getenv)
 	if err != nil {
@@ -164,7 +164,7 @@ func work() error {
 		return err
 	}
 	log := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: cfg.LogLevel}))
-	log.Info("starting podium-judge", append([]any{"version", version, "lanes", cfg.Lanes}, config.Summary(os.Getenv, config.JudgeVars)...)...)
+	log.Info("starting podium-judge", append([]any{"version", version, "lanes", cfg.Lanes, "first_box", cfg.BoxBase}, config.Summary(os.Getenv, config.JudgeVars)...)...)
 	stopCtx, stopClaims := context.WithCancel(context.Background())
 	defer stopClaims()
 	ctx, abandon := context.WithCancel(context.Background())
@@ -195,6 +195,7 @@ func work() error {
 		Compiled:  &worker.CompileCache{Dir: compiled, MaxBytes: worker.DefaultCompileCacheBytes},
 		Log:       log,
 		Lanes:     cfg.Lanes,
+		BoxBase:   cfg.BoxBase,
 		WorkDir:   jobs,
 		Name:      host,
 		Version:   version,
@@ -227,7 +228,7 @@ func stopOnSignals(sigs <-chan os.Signal, done <-chan struct{}, stopClaims, aban
 	}
 }
 
-// reportToolchain sends this host's toolchain to the server (B1.4),
+// reportToolchain sends this host's toolchain to the server,
 // retrying while the server is away, and returns the hash claims carry.
 // A stop before the server answers returns "" and no error.
 func reportToolchain(ctx context.Context, client *worker.Client, isolatePath string, log *slog.Logger) (string, error) {

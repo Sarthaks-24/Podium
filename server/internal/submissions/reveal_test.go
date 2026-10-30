@@ -163,7 +163,7 @@ func TestPracticeRevealsAndContestNever(t *testing.T) {
 		rv.Truncated != (len(in5) > 4<<10 || len(out5) > 4<<10) {
 		t.Fatalf("practice revealed fields: input %d of %d bytes, truncated %v", len(rv.Input), len(in5), rv.Truncated)
 	}
-	for name, o := range map[string]ViewOptions{"co-organiser": {Coarse: true, NoReveal: true}, "exam hidden": {Coarse: true, Hide: true}} {
+	for name, o := range map[string]ViewOptions{"exam hidden": {Coarse: true, Hide: true}} {
 		v, _ := r.svc.GetWith(ctx, sub.ID, o)
 		if v.Revealed != nil {
 			t.Errorf("%s sees the revealed test", name)

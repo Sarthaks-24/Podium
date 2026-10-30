@@ -187,11 +187,11 @@ func modelIDs(v any) []string {
 	return out
 }
 
-// TestM5KeyNeverStored runs the wizard with a real-looking key for each
+// TestAIKeyNeverStored runs the wizard with a real-looking key for each
 // of the three providers against stand-ins, then looks for the keys in
 // every log line (debug included), the SQLite database and WAL files,
 // and the blob store.
-func TestM5KeyNeverStored(t *testing.T) {
+func TestAIKeyNeverStored(t *testing.T) {
 	newKey := func(prefix string) string {
 		var rb [12]byte
 		rand.Read(rb[:])

@@ -30,7 +30,7 @@ func versionLine(ctx context.Context, cmd ...string) string {
 
 // DetectToolchain asks each compiler and runtime the judge uses for its
 // version, by the same paths the language table runs, plus isolate and
-// the kernel release (B1.4).
+// the kernel release.
 func DetectToolchain(ctx context.Context, isolatePath string) judgeapi.Toolchain {
 	langs := judge.Languages
 	kernel, err := os.ReadFile("/proc/sys/kernel/osrelease")

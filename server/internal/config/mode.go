@@ -5,7 +5,7 @@ import (
 	"net/url"
 )
 
-// Mode is how strictly a service runs (PODIUM_MODE, decision D48).
+// Mode is how strictly a service runs (PODIUM_MODE).
 type Mode string
 
 const (

@@ -1,4 +1,4 @@
-// Package jobs is podium's one queue of judge work (decision D44): jobs are
+// Package jobs is podium's one queue of judge work: jobs are
 // rows in SQLite, a worker leases one at a time over the judge API, reports
 // results as it goes, and closes it. The queue knows nothing about what a
 // job means; each kind registers a Kind that checks reports against the
@@ -7,7 +7,7 @@
 // stored only as hashes. A lease that is not renewed within LeaseTTL
 // returns the job to the queue and the third expiry fails it; a job still
 // running at its deadline fails even if its worker keeps renewing. Two
-// contest rules apply at claim (M4): jobs of a paused contest wait, and
+// contest rules apply at claim: jobs of a paused contest wait, and
 // while a contest is live at most one validation or generation job
 // is leased at a time.
 package jobs
@@ -138,9 +138,33 @@ type Service struct {
 	done     []finishedJob
 	doneNext int
 	// lastClaim is when a judge last asked for work (Unix ms), whether or
-	// not it got any: the console's "judge last seen" (C10). In memory
+	// not it got any: the console's "judge last seen". In memory
 	// only; zero until the first claim after a start.
 	lastClaim atomic.Int64
+}
+
+// New returns the queue. kinds builds the kind handlers from the queue
+// itself, because output and input generation queue the next step of
+// their chain through it. discard is Discard.
+func New(db *sql.DB, discard func(shas []string), kinds func(*Service) map[string]Kind) *Service {
+	s := &Service{DB: db, Discard: discard}
+	s.Kinds = kinds(s)
+	return s
+}
+
+// Notify adds watchers, called like OnChange after any already set. The
+// watchers need the queue themselves, so they are added once they exist,
+// before the queue is used.
+func (s *Service) Notify(watchers ...func(jobID int64, kind string)) {
+	prev := s.OnChange
+	s.OnChange = func(jobID int64, kind string) {
+		if prev != nil {
+			prev(jobID, kind)
+		}
+		for _, w := range watchers {
+			w(jobID, kind)
+		}
+	}
 }
 
 // LastClaimAt returns when a judge last asked for work, and false when
@@ -684,8 +708,7 @@ func (s *Service) Sweep(ctx context.Context) (requeued, failed int64, err error)
 	}
 	// The deadline is per attempt: a job requeued after a judge crash and
 	// then held in the queue (a paused contest, a backlog) gets a fresh one
-	// at its next claim, rather than failing at once with "took too long"
-	// (council C1-050).
+	// at its next claim, rather than failing at once with "took too long".
 	res, err := tx.ExecContext(ctx, `UPDATE jobs SET state = 'queued', lease_hash = NULL, lease_expires_at = NULL, deadline_at = NULL
 		WHERE state = 'leased' AND lease_expires_at < ?`, now.UnixMilli())
 	if err != nil {

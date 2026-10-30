@@ -70,7 +70,7 @@ func (b *browser) userID() int64 {
 	return int64(me["id"].(float64))
 }
 
-func TestM4AccessAndCrossContestIDs(t *testing.T) {
+func TestAccessAndCrossContestIDs(t *testing.T) {
 	s := newSite(t)
 	owner := s.signedIn("owner@college.edu", "Owner")
 	pa := s.importProblem(owner, "plus-a")
@@ -161,7 +161,7 @@ func TestQuestionsStayOpenInPractice(t *testing.T) {
 	}
 }
 
-func TestM4LimitsAndPractice(t *testing.T) {
+func TestLimitsAndPractice(t *testing.T) {
 	s := newSite(t)
 	owner := s.signedIn("owner@college.edu", "Owner")
 	pa := s.importProblem(owner, "plus-a")
@@ -212,7 +212,7 @@ func TestM4LimitsAndPractice(t *testing.T) {
 	}
 }
 
-func TestM4ContestEvents(t *testing.T) {
+func TestContestEvents(t *testing.T) {
 	s := newSite(t)
 	owner := s.signedIn("owner@college.edu", "Owner")
 	pa := s.importProblem(owner, "plus-a")
@@ -280,7 +280,7 @@ func TestM4ContestEvents(t *testing.T) {
 	}
 }
 
-func TestM4ExportEscapesAndStats(t *testing.T) {
+func TestExportEscapesAndStats(t *testing.T) {
 	s := newSite(t)
 	owner := s.signedIn("owner@college.edu", "Owner")
 	pa := s.importProblem(owner, "plus-a")
@@ -322,11 +322,11 @@ func TestM4ExportEscapesAndStats(t *testing.T) {
 	}
 }
 
-// TestC2ConsoleReads covers what the contest-day console needs from the
+// TestConsoleReads covers what the contest-day console needs from the
 // server (stage C2): the stats say how many started, an organiser's
 // Student view gets the board students get (pilot P10), and extend is
 // refused once the contest has closed (walk bug B3).
-func TestC2ConsoleReads(t *testing.T) {
+func TestConsoleReads(t *testing.T) {
 	s := newSite(t)
 	owner := s.signedIn("owner@college.edu", "Owner")
 	pa := s.importProblem(owner, "plus-a")
@@ -373,7 +373,7 @@ func TestC2ConsoleReads(t *testing.T) {
 	}
 }
 
-func TestM4PausedContestWaitsAtClaim(t *testing.T) {
+func TestPausedContestWaitsAtClaim(t *testing.T) {
 	s := newSite(t)
 	owner := s.signedIn("owner@college.edu", "Owner")
 	pa := s.importProblem(owner, "plus-a")
@@ -396,7 +396,7 @@ func TestM4PausedContestWaitsAtClaim(t *testing.T) {
 	}
 }
 
-func TestM4StreamEndsWithSessionAndReplacedTabsStop(t *testing.T) {
+func TestStreamEndsWithSessionAndReplacedTabsStop(t *testing.T) {
 	old := clockEvery
 	clockEvery = 100 * time.Millisecond
 	defer func() { clockEvery = old }()

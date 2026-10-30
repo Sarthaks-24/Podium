@@ -87,7 +87,7 @@ func (s *site) judgeCall(method, path, token string, body any, headers ...string
 	return resp, out
 }
 
-func TestM2ImportValidateOverHTTP(t *testing.T) {
+func TestImportValidateOverHTTP(t *testing.T) {
 	s := newSite(t)
 	owner := s.browser()
 	owner.signIn(authtest.Person{Email: "owner@college.edu", Verified: true, Name: "Owner"}, "/")

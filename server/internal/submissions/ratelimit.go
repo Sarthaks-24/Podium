@@ -9,7 +9,7 @@ import (
 
 // Minimum intervals per user for the cheap, frequent writes. Each takes
 // SQLite's single writer lock, so a script sending them in a loop would
-// hold up judging for everyone (m3-security-2 finding 4).
+// hold up judging for everyone.
 const (
 	draftGap  = 2 * time.Second
 	eventsGap = 5 * time.Second

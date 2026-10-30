@@ -55,7 +55,7 @@ type BankEntry struct {
 	ValidatedAt time.Time
 	UpdatedAt   time.Time
 	// ShownInPractice: a contest that pins the problem has shown students
-	// its hidden tests, being open for practice after its end (D115). Its
+	// its hidden tests, being open for practice after its end. Its
 	// hidden tests may be known.
 	ShownInPractice bool
 }
@@ -63,7 +63,7 @@ type BankEntry struct {
 // shownInPractice is the SQL for BankEntry.ShownInPractice of problem p
 // at the time given as an argument. Practice opens at the latest
 // final time, so ends_at marks it a little early, never late. Only a
-// published contest shows anything to students (C2-014). It reads the
+// published contest shows anything to students. It reads the
 // contests as they are now; contests.SetProblems keeps such a problem in
 // its contest, so the mark does not disappear when it is taken out.
 const shownInPractice = `EXISTS (SELECT 1 FROM contest_problems cp JOIN contests c ON c.id = cp.contest_id
@@ -470,7 +470,7 @@ type Edit struct {
 	Samples                    []int
 	Subtasks                   []Subtask
 	// By is the person saving; Reason is why, required while a live
-	// contest pins the problem and the save changes it (B2.2).
+	// contest pins the problem and the save changes it.
 	By     int64
 	Reason string
 	// Generator, when set, replaces the generator, the plan and each
@@ -501,7 +501,7 @@ func (s *Service) Update(ctx context.Context, id int64, e Edit) (*Problem, error
 	// The AI draft marking ends only when a person changes the statement or
 	// a solution, and then the validation is withdrawn, so the problem must
 	// pass again as the person left it before a contest can take it. A save
-	// that changes neither keeps the marking (security council S10).
+	// that changes neither keeps the marking.
 	draft := slices.ContainsFunc(p.Tags, isAIDraftTag)
 	solutionEdited := e.Reference != p.Reference || !sameSource(emptyToNil(e.Brute), p.Brute)
 	personEdit := solutionEdited || e.Statement != p.Statement
@@ -577,7 +577,7 @@ func emptyToNil(src *Source) *Source {
 
 // save writes the working copy and, when anything a revision records
 // changed, a new revision. Every write of a problem, its subtasks or its
-// tests goes through save or insert (B2.2).
+// tests goes through save or insert.
 func (s *Service) save(ctx context.Context, tx *sql.Tx, p *Problem, note RevisionNote) error {
 	p.UpdatedAt = s.now()
 	p.ContentHash = ContentHash(p)

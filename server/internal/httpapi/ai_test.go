@@ -18,6 +18,8 @@ import (
 	"time"
 
 	"github.com/Sarthaks-24/podium/internal/ai"
+	// Testing mode offers the fake provider only in builds that link it.
+	_ "github.com/Sarthaks-24/podium/internal/ai/fakeai"
 	"github.com/Sarthaks-24/podium/internal/judgeapi"
 )
 
@@ -51,7 +53,7 @@ func pollWizard(t *testing.T, b *browser, id string) map[string]any {
 
 func idOf(v any) string { return strconv.Itoa(int(v.(float64))) }
 
-func TestM5WizardWithFakeProvider(t *testing.T) {
+func TestWizardWithFakeProvider(t *testing.T) {
 	s := newSiteMode(t, "testing")
 	s.logLevel.Set(slog.LevelDebug)
 	admin := s.testSignIn("ta@college.edu", "admin")
@@ -96,7 +98,7 @@ func TestM5WizardWithFakeProvider(t *testing.T) {
 
 	// One call per admin at a time.
 	release, _ := s.ai.Slots.Take(admin.userID())
-	if code, body := admin.do("POST", "/api/admin/ai/wizard", brief, s.srv.URL); code != 429 || errCode(body) != "busy" {
+	if code, body := admin.do("POST", "/api/admin/ai/wizard", brief, s.srv.URL); code != 429 || errCode(body) != "busy" || body["error"].(map[string]any)["retry_after_s"] != 10.0 {
 		t.Errorf("second call while one runs: %d %v", code, body)
 	}
 	release()

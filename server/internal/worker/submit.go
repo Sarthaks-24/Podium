@@ -113,11 +113,11 @@ func language(id string) (judge.Language, error) {
 	return lang, nil
 }
 
-// submit judges a submission (cache/v1/m3-plan.md section 2): samples
+// submit judges a submission: samples
 // first, stopping everything at a failing sample; then each subtask in
 // order, stopping it at its first failure. Skipped tests are reported as
 // SK. Only an output hash is reported, never output text, and checker
-// comments only for samples: hidden tests stay hidden (D47).
+// comments only for samples: hidden tests stay hidden.
 func (w *Worker) submit(ctx context.Context, box int, c *judgeapi.Claim) error {
 	var pl judgeapi.SubmitPayload
 	rep, work, done, err := w.startJob(ctx, c, &pl)
@@ -171,7 +171,7 @@ func (w *Worker) runSubmit(ctx context.Context, box int, lease Lease, rep *repor
 			}
 			tr.OutputSHA = fileSHA(out)
 			// A submission that never counts shows its first failing
-			// hidden test (D115): only then is output sent.
+			// hidden test: only then is output sent.
 			if pl.Reveal && !t.Sample && !revealed && revealable(tr.Verdict) {
 				tr.Output, revealed = readExcerpt(out, judgeapi.MaxRunOutput), true
 			}
@@ -196,7 +196,7 @@ func (w *Worker) runSubmit(ctx context.Context, box int, lease Lease, rep *repor
 }
 
 // revealable reports whether a hidden test's verdict is one the program
-// caused, so its output may be revealed (D115).
+// caused, so its output may be revealed.
 func revealable(v string) bool {
 	switch judge.Verdict(v) {
 	case judge.WrongAnswer, judge.TimeLimit, judge.MemoryLimit, judge.RuntimeError, judge.OutputLimit:
@@ -250,7 +250,7 @@ func (w *Worker) runRun(ctx context.Context, box int, lease Lease, rep *reporter
 	}
 	limit := time.Duration(pl.TimeLimitMS) * time.Millisecond
 	// Open tests run only while every sample and open test before them
-	// passed (D115); the rest are reported as skipped.
+	// passed; the rest are reported as skipped.
 	stopOpen := false
 	for i, input := range pl.Inputs {
 		if input.Open && stopOpen {

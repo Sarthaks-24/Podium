@@ -1,11 +1,10 @@
 // Package auth owns identity: Google sign-in (OpenID Connect with PKCE and
 // a verified ID token), the server-side email-domain check, sessions stored
 // by token hash, the owner/admin/student roles, the owner bootstrapped from
-// configuration, and the allowed-domain list. Since v2 it also keeps the
-// site audit log, the organisation's site settings, the run-mode record,
-// account lookup and the account side of the semester rollover, and erases
-// a person (forget-user). HTTP handlers live in httpapi; this package
-// holds the rules.
+// configuration, and the allowed-domain list. It also keeps the site audit
+// log, the organisation's site settings, the run-mode record and account
+// lookup, and erases a person (forget-user). HTTP handlers live in
+// httpapi; this package holds the rules.
 package auth
 
 import (
@@ -60,7 +59,7 @@ type User struct {
 
 // SessionTTL is how long a session lasts: 12 hours from sign-in, however
 // much it is used, so a session left open on a shared lab PC is gone by
-// the next day at the latest (security council S5). The cookie itself has
+// the next day at the latest. The cookie itself has
 // no expiry, so closing the browser ends it sooner.
 const SessionTTL = retention.Sessions
 
@@ -298,7 +297,7 @@ func (s *Service) ResetGoogleAccount(ctx context.Context, email string) error {
 // SignOut ends the session for token, if any. Sign-out needs no session,
 // so a token that cannot be one, or names no session, costs only a read:
 // a flood of made-up cookies must not queue writes behind a contest's
-// submissions (P0 security review, finding 3).
+// submissions.
 func (s *Service) SignOut(ctx context.Context, token string) error {
 	if token == "" || len(token) > 100 {
 		return nil

@@ -37,7 +37,7 @@ func (f FieldErrors) Error() string {
 }
 
 // DefaultHonour is the honour code shown when a contest has none of its
-// own (decision D47 defaults; the owner may change it per contest).
+// own; the owner may change it per contest.
 const DefaultHonour = `This contest counts. By starting you agree to these rules:
 
 - Work alone. Do not share code or ideas with anyone until the contest ends.
@@ -78,7 +78,7 @@ type Contest struct {
 }
 
 // ExamOptions are the measures an organiser can turn on for an
-// examination (V3-25). All are off by default, and a contest with none on
+// examination. All are off by default, and a contest with none on
 // is an ordinary contest. The JSON names are the API's, in the organiser's
 // contest, its edit body and the student's rules.
 type ExamOptions struct {
@@ -109,13 +109,13 @@ type ContestProblem struct {
 	// Title is the pinned revision's title (the bank's working copy for a
 	// pin without a revision).
 	Title string
-	// PinnedHash is the pinned revision's content hash (D45).
+	// PinnedHash is the pinned revision's content hash.
 	PinnedHash string
 	// Ready is false when the problem changed since it was added, or lost
 	// its validation: the contest refuses to publish until it is re-added.
 	Ready  bool
 	Points []int
-	// RevisionID and Rev name the pinned revision (B2.3); Reconstructed
+	// RevisionID and Rev name the pinned revision; Reconstructed
 	// marks one the upgrade to v1.2.0 rebuilt from judging jobs.
 	RevisionID    int64
 	Rev           int
@@ -140,8 +140,8 @@ func (p ContestProblem) MaxScore() int {
 }
 
 // Edit is everything the contest form can change in one save. The slug
-// is derived from the title when the contest is created and never edited
-// (V3-15): Update ignores Slug.
+// is derived from the title when the contest is created and never edited:
+// Update ignores Slug.
 type Edit struct {
 	Slug, Title, Description string
 	StartsAt, EndsAt         time.Time
@@ -523,9 +523,9 @@ func (s *Service) SetProblems(ctx context.Context, id int64, choices []ProblemCh
 	if err != nil {
 		return nil, err
 	}
-	// Once students could see hidden tests here (practice after the end,
-	// D115), its problems stay: the bank marks a problem as shown from the
-	// contests that hold it (C2-014), and taking it out would hide that
+	// Once students could see hidden tests here (practice after the end),
+	// its problems stay: the bank marks a problem as shown from the
+	// contests that hold it, and taking it out would hide that
 	// before an exam.
 	nowMs := s.now().UnixMilli()
 	shown := published && practice && endsAt <= nowMs
@@ -594,7 +594,7 @@ func (s *Service) SetProblems(ctx context.Context, id int64, choices []ProblemCh
 			return nil, FieldErrors{"problems": fmt.Sprintf("The problem for label %s is not validated. Validate it before adding it to a contest.", ch.Label)}
 		}
 		// The wizard's chain can validate a draft on its own; a person
-		// must still read and save it before students can see it (M5).
+		// must still read and save it before students can see it.
 		// Unreadable tags are an error, so the guard never fails open.
 		var tagList []string
 		if err := json.Unmarshal([]byte(tags), &tagList); err != nil {
@@ -892,7 +892,7 @@ func (s *Service) Start(ctx context.Context, c *Contest, userID int64, accept bo
 // PinnedInOpenContest reports whether a contest other than except pins
 // the problem and has not closed for everyone yet (personal extensions
 // included), drafts and upcoming contests too. Practice then keeps the
-// problem's hidden tests to itself (V3-6, security finding M2).
+// problem's hidden tests to itself.
 func (s *Service) PinnedInOpenContest(ctx context.Context, problemID, except int64) (bool, error) {
 	var pending bool
 	err := s.DB.QueryRowContext(ctx, `SELECT EXISTS (SELECT 1 FROM contest_problems cp JOIN contests c ON c.id = cp.contest_id

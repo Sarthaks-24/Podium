@@ -9,8 +9,8 @@ func TestPublishManyUsersAndTags(t *testing.T) {
 	var h Hub
 	a, _ := h.SubscribeTagged(1, "laptop")
 	h.SubscribeTagged(1, "phone")
-	b, _ := h.Subscribe(2)
-	c, _ := h.Subscribe(3)
+	b, _ := h.SubscribeTagged(2, "")
+	c, _ := h.SubscribeTagged(3, "")
 	h.PublishMany([]int64{1, 2}, "standings", map[string]int{"version": 4})
 	for _, cl := range []*Client{a, b} {
 		select {
@@ -43,7 +43,7 @@ func TestReplacedStreamIsMarked(t *testing.T) {
 	var h Hub
 	var first *Client
 	for i := 0; i < MaxPerUser; i++ {
-		c, _ := h.Subscribe(1)
+		c, _ := h.SubscribeTagged(1, "")
 		if i == 0 {
 			first = c
 		}
@@ -51,7 +51,7 @@ func TestReplacedStreamIsMarked(t *testing.T) {
 	if first.Replaced() {
 		t.Fatal("marked before being replaced")
 	}
-	h.Subscribe(1)
+	h.SubscribeTagged(1, "")
 	select {
 	case <-first.Done:
 	default:
@@ -60,7 +60,7 @@ func TestReplacedStreamIsMarked(t *testing.T) {
 	if !first.Replaced() {
 		t.Error("the replaced stream does not say so")
 	}
-	slow, _ := h.Subscribe(2)
+	slow, _ := h.SubscribeTagged(2, "")
 	for i := 0; i <= buffer; i++ {
 		h.Publish(2, "x", i)
 	}

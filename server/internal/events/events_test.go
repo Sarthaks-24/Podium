@@ -4,9 +4,9 @@ import "testing"
 
 func TestPublishReachesOnlyTheUser(t *testing.T) {
 	var h Hub
-	a1, _ := h.Subscribe(1)
-	a2, _ := h.Subscribe(1)
-	b, _ := h.Subscribe(2)
+	a1, _ := h.SubscribeTagged(1, "")
+	a2, _ := h.SubscribeTagged(1, "")
+	b, _ := h.SubscribeTagged(2, "")
 	h.Publish(1, "submission", map[string]int{"id": 7})
 	for _, c := range []*Client{a1, a2} {
 		select {
@@ -35,7 +35,7 @@ func TestPublishReachesOnlyTheUser(t *testing.T) {
 
 func TestSlowClientIsDropped(t *testing.T) {
 	var h Hub
-	slow, _ := h.Subscribe(1)
+	slow, _ := h.SubscribeTagged(1, "")
 	for i := 0; i < buffer+1; i++ {
 		h.Publish(1, "tick", i)
 	}
@@ -54,7 +54,7 @@ func TestStreamLimits(t *testing.T) {
 	var h Hub
 	var first *Client
 	for i := 0; i < MaxPerUser+1; i++ {
-		c, err := h.Subscribe(1)
+		c, err := h.SubscribeTagged(1, "")
 		if err != nil {
 			t.Fatal(err)
 		}

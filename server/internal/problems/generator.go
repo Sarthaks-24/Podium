@@ -17,7 +17,7 @@ import (
 	"github.com/Sarthaks-24/podium/internal/judgeapi"
 )
 
-// Tests from a generator (cache/v1/m5-plan.md section 3): a problem may
+// Tests from a generator: a problem may
 // carry a generator and a plan of the tests it makes. "Generate inputs"
 // runs the generator in isolate once per planned test, stores each output
 // as that test's input, then queues output generation from the reference,

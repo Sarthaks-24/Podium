@@ -3,8 +3,7 @@ package judgeapi
 import "regexp"
 
 // KindGenerateInputs runs a problem's generator once per planned test and
-// uploads each output, which becomes that test's input (M5,
-// cache/v1/m5-plan.md section 3).
+// uploads each output, which becomes that test's input.
 const KindGenerateInputs = "generate_inputs"
 
 // RoleGenerator is the role of the generator program in a generate_inputs

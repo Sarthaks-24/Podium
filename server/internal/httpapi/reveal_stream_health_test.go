@@ -1,7 +1,7 @@
 package httpapi
 
-// Fixes from council run 1 (cache/v2-plan/current-inconsistencies/
-// run-1-2026-10-21/FINDINGS.md), one test per finding id.
+// Hidden tests in practice, the stream tag across network changes, and the
+// judge queue on the health route.
 
 import (
 	"encoding/json"
@@ -36,7 +36,7 @@ func (s *site) shownInPractice(owner *browser, pid int64) bool {
 
 // C1-015: the bank marks a problem whose hidden tests a contest showed:
 // practice after the end (every contest counts since v3, V3-6).
-func TestC1015HiddenTestsShownInPractice(t *testing.T) {
+func TestHiddenTestsShownInPractice(t *testing.T) {
 	s := newSite(t)
 	owner := s.signedIn("owner@college.edu", "Owner")
 	start := time.Now().Add(time.Hour).Truncate(time.Minute)
@@ -60,7 +60,7 @@ func TestC1015HiddenTestsShownInPractice(t *testing.T) {
 // C1-051: a phone that moves from wifi to cellular keeps its stream tag,
 // so it records no second session; a desktop on another address, or
 // another browser, is another device.
-func TestC1051StreamTagIgnoresAPhoneChangingNetworks(t *testing.T) {
+func TestStreamTagIgnoresAPhoneChangingNetworks(t *testing.T) {
 	d := Deps{Submissions: &submissions.Service{HashKey: []byte("k")}}
 	req := func(addr, ua string) *http.Request {
 		r := httptest.NewRequest("GET", "/api/events", nil)
@@ -83,7 +83,7 @@ func TestC1051StreamTagIgnoresAPhoneChangingNetworks(t *testing.T) {
 
 // C1-048: /healthz on loopback tells podium-check how long jobs have
 // waited and when a judge last asked for work.
-func TestC1048HealthzReportsTheJudgeQueue(t *testing.T) {
+func TestHealthzReportsTheJudgeQueue(t *testing.T) {
 	s := newSite(t)
 	owner := s.signedIn("owner@college.edu", "Owner")
 	asha := s.signedIn("asha@college.edu", "Asha")

@@ -200,19 +200,3 @@ func TestGenerateRetriesOnceWithReasons(t *testing.T) {
 		t.Errorf("a refusal was retried: %v %d", err, len(s.reqs))
 	}
 }
-
-func TestFakeProvider(t *testing.T) {
-	f := &Fake{}
-	ctx := context.Background()
-	p, err := Generate(ctx, f, Request{Brief: &Brief{Topic: "Maximum subarray sum"}})
-	if err != nil || p.Slug != "best-stretch" {
-		t.Fatalf("%v %v", p, err)
-	}
-	p, err = Generate(ctx, f, Request{Pasted: "Add two numbers a and b."})
-	if err != nil || p.Slug != "pair-sums" {
-		t.Fatalf("%v %v", p, err)
-	}
-	if f.Calls() != 2 {
-		t.Errorf("calls %d", f.Calls())
-	}
-}

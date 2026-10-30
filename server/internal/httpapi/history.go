@@ -3,7 +3,7 @@ package httpapi
 // Revisions and the site audit: the problem's current revision and the
 // live contests that pin it, "Update students now" (move a contest's pin
 // to the newest validated revision), and the People page's history. No
-// route here returns a test's input, output or hash (D47).
+// route here returns a test's input, output or hash.
 
 import (
 	"context"
@@ -83,7 +83,7 @@ func (d Deps) updatePin(w http.ResponseWriter, r *http.Request) {
 		"statement_changed": u.StatementChanged, "rejudge_needed": u.JudgingChanged, "server_now": d.Contests.Clock().UnixMilli()})
 }
 
-// siteAudit is the People page's History (B2.8), owners only.
+// siteAudit is the People page's History, owners only.
 func (d Deps) siteAudit(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	page, _ := strconv.Atoi(q.Get("page"))

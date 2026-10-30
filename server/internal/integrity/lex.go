@@ -1,14 +1,11 @@
-// Package integrity finds signs of copying in a contest's submissions
-// (cache/v1/integrity-plan.md, decision D49): similar code by winnowing
-// normalised tokens, identical wrong answers, hard-coded expected outputs,
-// and probing. It produces evidence for a person to review, never a
-// verdict: no AI-likelihood score, no automatic penalty. It also runs the
-// review itself: cases from signals or from one submission (manual review
-// and private notes), the reply and decision clocks, outcomes proposed by
-// one reviewer and confirmed by a second, appeals, the record view log,
-// and the organisers' rating with the Standing band students see (D110).
-// Nothing here changes a score except a confirmed zero for a problem,
-// which contests applies to the board.
+// Package integrity finds signs of copying in a contest's submissions:
+// similar code by winnowing normalised tokens, identical wrong answers,
+// hard-coded expected outputs, and probing. It produces evidence for a
+// person to review, never a verdict: no AI-likelihood score, no automatic
+// penalty, because a false accusation costs a student more than a missed
+// copy. It also records the organiser's one decision per student per
+// contest; "Exclude from this contest" is the only outcome that changes
+// the board.
 package integrity
 
 import (

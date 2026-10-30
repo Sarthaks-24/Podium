@@ -11,7 +11,7 @@ import (
 	"time"
 )
 
-func TestM4FixedFreezeIgnoresPersonalExtension(t *testing.T) {
+func TestFixedFreezeIgnoresPersonalExtension(t *testing.T) {
 	s := newSite(t)
 	owner := s.signedIn("owner@college.edu", "Owner")
 	a := s.importProblem(owner, "plus-a")
@@ -40,7 +40,7 @@ func TestM4FixedFreezeIgnoresPersonalExtension(t *testing.T) {
 	}
 }
 
-func TestM4HeavyReadsAreRateLimited(t *testing.T) {
+func TestHeavyReadsAreRateLimited(t *testing.T) {
 	s := newSite(t)
 	owner := s.signedIn("owner@college.edu", "Owner")
 	pa := s.importProblem(owner, "plus-a")

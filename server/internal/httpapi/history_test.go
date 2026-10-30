@@ -66,7 +66,7 @@ func assertNoSecrets(t *testing.T, what string, body any, secrets []string) {
 	}
 }
 
-func TestP2PracticeRevealsAndContestSubmitNever(t *testing.T) {
+func TestPracticeRevealsAndContestSubmitNever(t *testing.T) {
 	s := newSite(t)
 	owner := s.signedIn("owner@college.edu", "Owner")
 	pid := s.importProblem(owner, "sum")

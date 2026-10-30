@@ -1,6 +1,6 @@
 package contests
 
-// AI problems in contests (security council S10). The wizard's
+// AI problems in contests. The wizard's
 // reference solution is the model's code: tests generated from it agree
 // with it by construction, so validation cannot catch a wrong reference.
 // A contest takes such a problem only once a person has written a

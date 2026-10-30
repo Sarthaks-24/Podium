@@ -21,7 +21,7 @@ func TestMetricsForOrganisersOnly(t *testing.T) {
 		map[string]any{"language": "cpp17", "source": "int main(){}"}, s.srv.URL); code != 202 {
 		t.Fatalf("submit: %d %v", code, out)
 	}
-	c, err := s.hub.Subscribe(student.userID())
+	c, err := s.hub.SubscribeTagged(student.userID(), "")
 	if err != nil {
 		t.Fatal(err)
 	}

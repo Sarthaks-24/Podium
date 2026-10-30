@@ -57,8 +57,7 @@ func NewProvider(ep Endpoints, clientID, clientSecret, redirectURL string) *Prov
 // SignInMaxAge is how recently the person must have typed their Google
 // password (or passed Google's own check) for a sign-in to count. On a
 // shared lab PC the previous student is often still signed in to Google;
-// without this, the next student would be one click from their account
-// (security council S5).
+// without this, the next student would be one click from their account.
 const SignInMaxAge = 5 * time.Minute
 
 // AuthCodeURL is where the browser goes to sign in. It asks Google to show

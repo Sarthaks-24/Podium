@@ -1,7 +1,6 @@
 package httpapi
 
-// Limits before sign-in (P0 security review, finding 4, and the pre-auth
-// audit's observation 4): a per-address budget on the routes a visitor
+// Limits before sign-in: a per-address budget on the routes a visitor
 // reaches without a session, and single use of each sign-in attempt, so
 // a script can neither flood the server with queries nor replay one
 // callback into many outbound calls to Google.
@@ -20,8 +19,7 @@ import (
 // few addresses behind its NAT, so each is sized for a whole class at
 // once: 700 students load the config about three times each on the way
 // through a sign-in (the app, the sign-in page, the page after the
-// redirect) and make one start and one callback (security review
-// 2026-10-20, finding 1).
+// redirect) and make one start and one callback.
 const (
 	// The cheap routes: the config, the health check, sign-out.
 	PreAuthBurst = 2500
@@ -64,7 +62,7 @@ func newIPLimiter(burst, rate float64, now func() time.Time) *ipLimiter {
 // allow takes one token from key's bucket, or says how long until one is
 // free. A full table is swept at most once a second; if it is still full,
 // one arbitrary bucket makes room, so a stranger never shares a budget
-// that someone else is draining (finding 2).
+// that someone else is draining.
 func (l *ipLimiter) allow(key string) (bool, time.Duration) {
 	now := l.now()
 	l.mu.Lock()
@@ -162,7 +160,7 @@ func (d Deps) limited(l *ipLimiter, redirect bool, h http.HandlerFunc) http.Hand
 // server issued or authenticated. When an address has spent its budget of
 // unknown cookies (a campus NAT someone is flooding with forged ones), a
 // cookie seen here still goes to the database, so students behind the
-// same address keep working (V3-19, security audit 2026-10-28 H1). It
+// same address keep working. It
 // grants nothing: the database still decides. Only hashes are kept.
 type knownSessions struct {
 	now  func() time.Time
@@ -235,7 +233,7 @@ func (k *knownSessions) forget(token string) {
 
 // usedFlows remembers the state of every sign-in attempt the callback has
 // taken, until the attempt would have expired, so each sealed state
-// cookie finishes at most one sign-in (finding 4). In memory: a restart
+// cookie finishes at most one sign-in. In memory: a restart
 // forgets them, which reopens only attempts started in the 10 minutes
 // before it.
 type usedFlows struct {

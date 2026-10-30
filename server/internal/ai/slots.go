@@ -37,6 +37,3 @@ func (s *Slots) Take(userID int64) (release func(), ok bool) {
 		})
 	}, true
 }
-
-// ErrBusy is what a refused Take maps to.
-var ErrBusy = &Error{Code: "busy", Message: "A wizard request of yours is still running. Wait for it to finish."}

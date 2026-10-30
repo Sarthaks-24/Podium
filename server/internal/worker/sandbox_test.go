@@ -90,7 +90,7 @@ func newRig(t *testing.T) *rig {
 		Lanes:    2, WorkDir: filepath.Join(work, "jobs"), Name: "sandbox-test", Version: "test",
 	}
 	done := make(chan struct{})
-	go func() { w.Run(ctx); close(done) }()
+	go func() { w.Drain(ctx, ctx); close(done) }()
 	t.Cleanup(func() { cancel(); <-done })
 	return &rig{bank: bank, subs: subs}
 }
@@ -179,7 +179,7 @@ func describe(v *problems.Validation) string {
 	return b.String()
 }
 
-func TestM2ExamplePacksValidate(t *testing.T) {
+func TestExamplePacksValidate(t *testing.T) {
 	r := newRig(t)
 	for _, slug := range []string{"a-plus-b", "average-speed", "pair-with-sum"} {
 		start := time.Now()
@@ -200,7 +200,7 @@ func TestM2ExamplePacksValidate(t *testing.T) {
 	}
 }
 
-func TestM2BrokenOutputNamesTheTest(t *testing.T) {
+func TestBrokenOutputNamesTheTest(t *testing.T) {
 	r := newRig(t)
 	broken, _ := os.ReadFile(filepath.Join(*examplesDir, "a-plus-b", "tests", "05.out"))
 	lines := strings.SplitN(string(broken), "\n", 2)
@@ -221,7 +221,7 @@ func TestM2BrokenOutputNamesTheTest(t *testing.T) {
 	}
 }
 
-func TestM2HostileCheckerIsContained(t *testing.T) {
+func TestHostileCheckerIsContained(t *testing.T) {
 	r := newRig(t)
 	for name, src := range map[string]string{
 		"fork bomb":     "#include <unistd.h>\nint main(){ for(;;) fork(); }\n",

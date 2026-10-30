@@ -13,7 +13,7 @@ import (
 
 // ExportRow is one line of the results: the full board's row with the
 // student's email and when they started (the roster with roll numbers was
-// cut, V3-15).
+// cut).
 type ExportRow struct {
 	Row
 	Email     string `json:"email"`
@@ -337,7 +337,7 @@ type FeedItem struct {
 	PastedChars *int `json:"pasted_chars,omitempty"`
 	FocusLosses *int `json:"focus_losses,omitempty"`
 	// FullscreenExits counts the times the student left full screen
-	// before this submission (V3-25).
+	// before this submission.
 	FullscreenExits *int `json:"fullscreen_exits,omitempty"`
 }
 

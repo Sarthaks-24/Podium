@@ -7,7 +7,8 @@ import (
 )
 
 // Language describes how to compile and run one supported language inside
-// isolate. Defaults follow PLAN.md section 7.2 and are calibrated in M0.
+// isolate. The limits are calibrated on the judge host (podium-judge
+// calibrate).
 type Language struct {
 	// ID is the stable identifier stored with submissions.
 	ID string

@@ -1,9 +1,8 @@
 //go:build sandbox
 
-// P2 on the real judge (D115, judge protocol 3): a Run checks the samples
-// and reveals the first failure; a
-// practice submission reveals its first failing hidden test with the
-// program's output; a counting submission sends no output at all.
+// On the real judge: a Run checks the samples and reveals the first
+// failure; a practice submission reveals its first failing hidden test
+// with the program's output; a counting submission sends no output at all.
 package worker
 
 import (
@@ -25,12 +24,12 @@ func (r *rig) runAndWait(t *testing.T, problemID int64, src string) *submissions
 	deadline := time.Now().Add(2 * time.Minute)
 	for time.Now().Before(deadline) && run.State != "done" && run.State != "error" {
 		time.Sleep(300 * time.Millisecond)
-		run, _ = r.subs.GetRun(ctx, run.ID)
+		run, _ = r.subs.GetRunWith(ctx, run.ID, submissions.ViewOptions{})
 	}
 	return run
 }
 
-func TestP2RunRevealsTheFirstFailingSample(t *testing.T) {
+func TestRunRevealsTheFirstFailingSample(t *testing.T) {
 	r := newRig(t)
 	p := r.importPack(t, "average-speed", nil)
 	if len(p.Samples) != 2 || p.Samples[1] != 7 {
@@ -55,7 +54,7 @@ func TestP2RunRevealsTheFirstFailingSample(t *testing.T) {
 	}
 }
 
-func TestP2PracticeSubmissionRevealsTheFailingHiddenTest(t *testing.T) {
+func TestPracticeSubmissionRevealsTheFailingHiddenTest(t *testing.T) {
 	r := newRig(t)
 	ctx := context.Background()
 	p := r.importPack(t, "a-plus-b", nil)

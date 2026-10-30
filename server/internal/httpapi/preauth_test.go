@@ -123,7 +123,7 @@ func TestKnownSessionsExpire(t *testing.T) {
 	}
 }
 
-func TestP3PreAuthLimitPerAddress(t *testing.T) {
+func TestPreAuthLimitPerAddress(t *testing.T) {
 	ctx := context.Background()
 	d, err := db.Open(ctx, filepath.Join(t.TempDir(), "p.db"))
 	if err != nil {
@@ -196,7 +196,7 @@ func TestP3PreAuthLimitPerAddress(t *testing.T) {
 	}
 }
 
-func TestP3IPLimiterRefillsAndBoundsItsTable(t *testing.T) {
+func TestIPLimiterRefillsAndBoundsItsTable(t *testing.T) {
 	now := time.Unix(1_800_000_000, 0)
 	l := newIPLimiter(2, 1, func() time.Time { return now })
 	l.allow("a")
@@ -229,10 +229,10 @@ func TestP3IPLimiterRefillsAndBoundsItsTable(t *testing.T) {
 	}
 }
 
-// TestP3AClassSignsInFromOneAddress: 700 students behind one NAT sign in
+// TestAClassSignsInFromOneAddress: 700 students behind one NAT sign in
 // within a minute, each loading the config three times and making one
 // start and one callback (security review 2026-10-20, finding 1).
-func TestP3AClassSignsInFromOneAddress(t *testing.T) {
+func TestAClassSignsInFromOneAddress(t *testing.T) {
 	now := time.Unix(1_800_000_000, 0)
 	clock := func() time.Time { return now }
 	cheap, signIn := newIPLimiter(PreAuthBurst, PreAuthRate, clock), newIPLimiter(SignInBurst, SignInRate, clock)
@@ -251,10 +251,10 @@ func TestP3AClassSignsInFromOneAddress(t *testing.T) {
 	}
 }
 
-// TestP3SignInCallbackIsSingleUse: a normal sign-in still works, and a
+// TestSignInCallbackIsSingleUse: a normal sign-in still works, and a
 // state cookie replayed with made-up codes ends as "expired" without a
 // call to Google after its first use (P0 security review, finding 4).
-func TestP3SignInCallbackIsSingleUse(t *testing.T) {
+func TestSignInCallbackIsSingleUse(t *testing.T) {
 	s := newSite(t)
 	s.idp.SignInAs(authtest.Person{Email: "asha@college.edu", Verified: true, Name: "Asha"})
 	b := s.browser()
@@ -310,7 +310,7 @@ func TestP3SignInCallbackIsSingleUse(t *testing.T) {
 	}
 }
 
-func TestP3UsedFlowsTable(t *testing.T) {
+func TestUsedFlowsTable(t *testing.T) {
 	u := newUsedFlows()
 	if fresh, rec := u.take("s1", 100, 50); !fresh || !rec {
 		t.Fatal("first take")
@@ -333,7 +333,7 @@ func TestP3UsedFlowsTable(t *testing.T) {
 
 // X-Forwarded-For counts only from Caddy on this host: a request from any
 // other peer is keyed by that peer, whatever it claims (C1-026).
-func TestP3PreAuthIgnoresForwardedForFromOtherPeers(t *testing.T) {
+func TestPreAuthIgnoresForwardedForFromOtherPeers(t *testing.T) {
 	for _, c := range []struct {
 		remote, fwd, want string
 	}{

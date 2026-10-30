@@ -73,6 +73,21 @@ func (b *boardCache) bump(id int64) {
 	b.version[id]++
 }
 
+// drop forgets an archived contest's boards, so the cache holds only
+// contests people still open. The version stays, so it never goes back.
+func (b *boardCache) drop(id int64) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.init()
+	b.version[id]++
+	for k := range b.entries {
+		if k.id == id {
+			delete(b.entries, k)
+		}
+	}
+	delete(b.notified, id)
+}
+
 // Version is the contest board's current version, for clients deciding
 // whether to refetch.
 func (s *Service) Version(id int64) int64 {
@@ -94,7 +109,7 @@ func (s *Service) boardEvery() time.Duration {
 }
 
 // Board returns the contest's standings in the given variant. The work is
-// bounded however many people ask at once (m4-security finding 1):
+// bounded however many people ask at once:
 //
 //   - A current board is returned from the cache.
 //   - Only one computation per contest and variant runs at a time. Readers
@@ -294,7 +309,7 @@ func (s *Service) entries(ctx context.Context, c *Contest, userID int64) ([]Entr
 		if !e.Done {
 			remaining++
 		}
-		// A score that cannot be read is an error, never a silent 0 (S1-08).
+		// A score that cannot be read is an error, never a silent 0.
 		if e.Done && earned != "" {
 			if err := json.Unmarshal([]byte(earned), &e.Earned); err != nil {
 				return nil, 0, fmt.Errorf("contest %d: earned of user %d on problem %d: %w", c.ID, e.UserID, e.ProblemID, err)

@@ -14,7 +14,7 @@ import (
 )
 
 // compileTimeoutWait is how long a user's Run and Submit are refused after
-// their program's compile ran out of time or memory (security council S4).
+// their program's compile ran out of time or memory.
 // C++ and Java compiles share one lock on the judge, so a student looping
 // such a program would stall every other student's compile.
 const compileTimeoutWait = 60 * time.Second

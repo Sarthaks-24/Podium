@@ -38,8 +38,8 @@ type Server struct {
 	// Listen is the address the HTTP server binds; Caddy proxies to it.
 	Listen string
 	// JudgeListen is the address of the judge worker API. It is a separate
-	// listener so the judge routes are never behind the public proxy
-	// (decision D44); keep it on loopback unless a remote worker needs it.
+	// listener so the judge routes are never behind the public proxy;
+	// keep it on loopback unless a remote worker needs it.
 	JudgeListen string
 	// DBPath is the SQLite database file.
 	DBPath string
@@ -78,7 +78,7 @@ func NormaliseDomain(d string) (string, bool) {
 
 // LoadServer validates the server configuration. On failure the error lists
 // every problem at once and names the file to fix. What is required depends
-// on the mode (decision D48):
+// on the mode:
 //
 //	                     testing           dev        production
 //	PODIUM_BASE_URL      localhost:5173    required   required, https

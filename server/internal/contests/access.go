@@ -13,7 +13,7 @@ var (
 	ErrBoardClosed = errors.New("The board opens when your window closes.")
 	ErrNotStarted  = errors.New("Accept the rules on the contest page to start.")
 	// ErrBeforeStart is ErrNotStarted before the contest's start time,
-	// when accepting the rules is refused too (C2-017).
+	// when accepting the rules is refused too.
 	ErrBeforeStart  = errors.New("The contest has not started yet. The contest page shows when it starts.")
 	ErrContestOver  = errors.New("The contest has ended.")
 	ErrPracticeWait = errors.New("Your time is up. Practice opens when every student's time is up.")
@@ -98,8 +98,8 @@ func (c *Contest) FrozenAt() time.Time {
 }
 
 // ViewOptions says how a student sees their own submissions in the
-// contest: coarse figures always (D47) and times to 100 ms (every contest
-// counts, V3-6). Exam feedback was cut (V3-15).
+// contest: coarse figures always and times to 100 ms, since every contest
+// counts.
 func (c *Contest) ViewOptions(StudentState) submissions.ViewOptions {
 	return submissions.ViewOptions{Coarse: true, RoundMS: 100}
 }

@@ -32,7 +32,7 @@ type JudgeDeps struct {
 	Token string
 }
 
-// NewJudge returns the judge worker API (decision D44). It is served on
+// NewJudge returns the judge worker API. It is served on
 // its own listener, PODIUM_JUDGE_LISTEN, so these routes never sit behind
 // the public reverse proxy, and every request needs the worker token.
 func NewJudge(d JudgeDeps) http.Handler {
@@ -74,7 +74,7 @@ func decodeJudge(w http.ResponseWriter, r *http.Request, v any, limit int64) boo
 	return true
 }
 
-// protocolOK answers 426 to a judge of another protocol version (B1.3).
+// protocolOK answers 426 to a judge of another protocol version.
 // The judge stops on it with this message rather than retrying.
 func (d JudgeDeps) protocolOK(w http.ResponseWriter, got int) bool {
 	if got == 0 {
@@ -112,7 +112,7 @@ func (d JudgeDeps) claim(w http.ResponseWriter, r *http.Request) {
 	WriteJSON(w, http.StatusOK, c)
 }
 
-// toolchain checks and logs the judge's toolchain report (B1.4) and
+// toolchain checks and logs the judge's toolchain report and
 // answers with the hash its claims carry.
 func (d JudgeDeps) toolchain(w http.ResponseWriter, r *http.Request) {
 	var req judgeapi.ToolchainReport

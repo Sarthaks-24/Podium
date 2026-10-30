@@ -1,7 +1,7 @@
 // Package buildinfo says which build a binary is: the release version,
 // commit and build date set by make release (-ldflags -X), the schema
 // version (the highest migration this build carries) and the judge
-// protocol version. Both binaries print it with -version (B1.1), and
+// protocol version. Both binaries print it with -version, and
 // make release writes the same facts into the release MANIFEST.
 package buildinfo
 

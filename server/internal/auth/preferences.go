@@ -5,7 +5,7 @@ import (
 	"regexp"
 )
 
-// Verdict colour sets (decision D40).
+// Verdict colour sets.
 const (
 	VerdictsStandard = "standard"
 	VerdictsSignal   = "signal"

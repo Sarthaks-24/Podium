@@ -15,7 +15,7 @@ import (
 )
 
 // organiserGap is the minimum time between submits when an organiser tries
-// a problem (M3). Contests set their own gap in M4.
+// a problem. Contests set their own gap.
 const organiserGap = 5 * time.Second
 
 // clockEvery is how often the event stream sends the server's clock.
@@ -165,10 +165,10 @@ func (d Deps) recordEvents(w http.ResponseWriter, r *http.Request) {
 }
 
 // mayRead lets the author read their own run or submission, and organisers
-// (owners, admins, and co-organisers of the submission's contest) read
-// anyone's. It returns the id and how the viewer sees it: organisers every
+// (owners and admins) read anyone's. It returns the id and how the viewer sees it: organisers every
 // figure, the author the student view of their contest (coarse figures,
-// rounded times, exam mode hiding results; decision D47).
+// rounded times, exam mode hiding results), so a program cannot leak a
+// hidden test through exact figures.
 func (d Deps) mayRead(w http.ResponseWriter, r *http.Request, wantKind string) (int64, submissions.ViewOptions, bool) {
 	notFound := func() (int64, submissions.ViewOptions, bool) {
 		WriteError(w, http.StatusNotFound, "not_found", "There is no such submission.")
@@ -226,14 +226,14 @@ func (d Deps) getRun(w http.ResponseWriter, r *http.Request) {
 }
 
 // streamTag names the device a stream comes from, for the second-session
-// signal (D47): the address and the browser. A phone changes address when
+// signal: the address and the browser. A phone changes address when
 // it moves from wifi to cellular, and its old stream lingers until TCP
 // gives up, so for a phone or tablet browser the address is left out and
-// the same browser on a new network is the same device (council C1-051).
+// the same browser on a new network is the same device.
 // A desktop keeps the address: identical lab machines differ only by it.
 // A phone or tablet that sends ?device= (a random id its browser keeps)
 // is told apart by it, so two phones of one model on one account are two
-// devices (C2-034); the id never replaces a desktop's address, where a
+// devices; the id never replaces a desktop's address, where a
 // shared id would hide two machines.
 func (d Deps) streamTag(r *http.Request) string {
 	ua := r.UserAgent()
@@ -276,7 +276,7 @@ func mobileAgent(ua string) bool {
 // stream ends with its session (logout, expiry, a disabled account). A
 // stream displaced by the user's fifth tab gets a final "replaced" event,
 // so that tab stops reconnecting. Opening a stream from a second machine
-// or browser while another is open is recorded for live contests (D47).
+// or browser while another is open is recorded for live contests.
 func (d Deps) eventStream(w http.ResponseWriter, r *http.Request) {
 	_, ok := w.(http.Flusher)
 	if !ok || d.Hub == nil {
@@ -298,7 +298,7 @@ func (d Deps) eventStream(w http.ResponseWriter, r *http.Request) {
 	c, err := d.Hub.SubscribeTagged(u.ID, tag)
 	if err != nil {
 		w.Header().Set("Retry-After", "30")
-		WriteError(w, http.StatusServiceUnavailable, "busy", "Too many live connections right now; the page will poll instead.")
+		WriteError(w, http.StatusServiceUnavailable, "stream_limit", "Too many live connections right now; the page will poll instead.")
 		return
 	}
 	defer d.Hub.Unsubscribe(c)

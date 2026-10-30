@@ -15,8 +15,7 @@ import (
 // 100 ms between tries) while holding a pooled connection; under the
 // 700-student load test that sleeping hand-off became the bottleneck: the
 // four connections all sat in waiting writers, reads queued behind them for
-// seconds, and judging stalled for 90 s (M7, on a desktop; that note was not
-// kept, and the VM rerun is written up in cache/v2-plan/drills/). Queued in
+// seconds, and judging stalled for 90 s (measured on a desktop). Queued in
 // Go, the next writer starts the moment the last one commits.
 //
 // What counts as a write: every transaction that is not read-only (they

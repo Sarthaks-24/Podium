@@ -24,7 +24,7 @@ All API routes live under `/api/` and speak JSON. Every other path serves the we
 { "error": { "code": "bad_request", "message": "Some fields need fixing.", "fields": { "slug": "Use lowercase letters, digits and single hyphens, like two-sum." } } }
 ```
 
-Common error codes: `bad_request`, `rate_limited` (before sign-in, v1.3.0), `signed_out`, `forbidden`, `not_found`, `cross_site`, `conflict`, `internal`, and in testing mode `testing_mode_local`. Test sign-in adds `disabled`. The problem routes add `bad_pack`, `not_ready`, `too_large` and `busy`; the AI wizard adds `no_key`, `no_model`, `bad_key`, `provider_error` and `busy`; the workspace routes add `not_ready` and `rate_limited`; the contest routes add `not_on_roster`, `not_started`, `contest_over`, `board_closed` and `too_early`; the organiser contest routes add `locked_after_start`, `results_hidden`, `not_participant` and `ai_unconfirmed`; the event stream adds `busy` and `unsupported`; the students routes (v1.4.0) add `proposal_needed`, `proposal_pending`, `two_person_rule`, `uninvolved_reviewer`, `rating_changed` and `not_final`; the judge API adds `unauthorized`, `protocol` (426), `lease`, `bad_report`, `bad_upload` and `too_large`.
+`busy` always means 429: the one slot for this kind of request is taken; the response carries `Retry-After` and `retry_after_s`. Common error codes: `bad_request`, `rate_limited` (before sign-in, v1.3.0), `signed_out`, `forbidden`, `not_found`, `cross_site`, `conflict`, `internal`, and in testing mode `testing_mode_local`. Test sign-in adds `disabled`. The problem routes add `bad_pack`, `not_ready`, `too_large` and `busy`; the AI wizard adds `no_key`, `no_model`, `bad_key`, `provider_error` and `busy`; the workspace routes add `not_ready` and `rate_limited`; the contest routes add `not_on_roster`, `not_started`, `contest_over`, `board_closed` and `too_early`; the organiser contest routes add `locked_after_start`, `results_hidden`, `not_participant` and `ai_unconfirmed`; the event stream adds `stream_limit` and `unsupported`; the integrity check adds `already_running`; the students routes (v1.4.0) add `proposal_needed`, `proposal_pending`, `two_person_rule`, `uninvolved_reviewer`, `rating_changed` and `not_final`; the judge API adds `unauthorized`, `protocol` (426), `lease`, `bad_report`, `bad_upload` and `too_large`.
 
 ## Health
 
@@ -390,7 +390,7 @@ A `brute` or `validator` with empty source counts as none. Subtasks are numbered
 | import, replace tests | 413 `too_large` | the zip is larger than 32 MB |
 | import, replace tests | 400 `bad_pack` with `problems` | anything wrong with the archive or its contents (limits in `docs/AUTHORING.md`) |
 | import | 409 `conflict` | a problem with the pack's slug exists |
-| import, replace tests, export | 503 `busy` | the request ended while waiting for another pack operation; only one runs at a time |
+| import, replace tests, export | 429 `busy` (`Retry-After: 5`) | the request ended while waiting for another pack operation; only one runs at a time |
 | validate | 409 `not_ready` with `problems` | the problem has no tests, no subtask, tests outside the subtasks, or tests without an expected output |
 | validation | 404 `not_found` | the problem has never been validated |
 | generate | 409 `not_ready` with `problems` | no tests, no reference source, a generation still queued or running, or (with `all` false) no output missing; with `then_validate`, also anything else that stops validation (a test in no subtask, a range naming a missing test). 400 when `all` and `then_validate` are both set |
@@ -586,7 +586,7 @@ What each provider's failures say (also the `message` of a wizard run's `error`,
 | 400 `bad_request` | an unknown mode or difficulty, an empty topic or text, or a field over its limit |
 | 409 `no_key` | "Add a key in AI assistant first." (no key for the provider asked for, or none at all) |
 | 409 `no_model` | "Choose a model for OpenAI in AI assistant first." (the key was saved without a model) |
-| 429 `busy` | "One AI request at a time. Wait for the current one to finish." (a generation or a solve of this admin is still running) |
+| 429 `busy` (`Retry-After: 10`) | "One AI request at a time. Wait for the current one to finish." (a generation or a solve of this admin is still running) |
 
 The call runs in the background, at most 3 minutes with its one retry. When the answer passes the checks it becomes a draft problem (origin `ai`, tag `ai draft`; a taken slug gets `-2`, `-3` and so on), and input generation is queued for it at once, which chains output generation and validation.
 
@@ -811,7 +811,7 @@ data: {"id":80,"state":"running","verdict":"",...}
 - On every `clock` tick the server checks the session again; a stream whose session has ended (signed out, expired, account disabled) is closed.
 - Each user may hold 4 streams (tabs); a fifth replaces the oldest, which gets a `replaced` event and is closed. The web app then stops reconnecting that tab and offers to continue in the newer one.
 - In a live contest, opening a stream from another browser or machine while one is open is recorded for the organisers as a "second session" (decision D47). A phone or tablet browser that changes network is the same device (docs/ARCHITECTURE.md, "Integrity (D47)"). Nothing is shown to the student.
-- The server holds at most 5,000 streams. Beyond that: `503 busy` with `Retry-After: 30`, and the page polls instead.
+- The server holds at most 5,000 streams. Beyond that: `503 stream_limit` with `Retry-After: 30`, and the page polls instead.
 - A stream that falls 16 events behind, or does not accept a write within 10 s, is closed; the browser reconnects.
 - `501 unsupported` if the server cannot stream; the page polls instead.
 
@@ -1272,7 +1272,7 @@ Students (any signed-in user):
 | Status | When |
 |---|---|
 | 409 `contest_live` | "Check integrity after the contest ends for everyone.": before the close plus the longest personal extension, the moment practice and the editorial open |
-| 409 `busy` | "A check is already running. Try again in a minute.": one check runs at a time on the server, for any contest |
+| 409 `already_running` | "A check is already running. Try again in a minute.": one check runs at a time on the server, for any contest |
 | 400 `bad_request` | a title empty or over 120 characters; a note under 20 or over 4,000 characters; no signals or more than 50; a signal not in the contest's latest check; an unknown state; `actioned` before every student in the case was shared it ("Share the case with the students and give them time to explain before taking action."); an empty explanation |
 | 404 `not_found` | explaining a case not shared with the user, or already `cleared` or `actioned` |
 | 429 `rate_limited` | the read routes share the per-user read limit |

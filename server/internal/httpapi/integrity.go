@@ -1,7 +1,6 @@
 package httpapi
 
-// Integrity routes (cache/v1/integrity-plan.md section 7, decisions D47
-// and D49, cut down in v3). Owners and admins run the similarity check
+// Integrity routes. Owners and admins run the similarity check
 // after a contest, read the ranked signals and the side-by-side pair
 // view, download the similar pairs as CSV, and record one decision per
 // student with a reason (integrity/cases.go). Anyone else gets the same
@@ -45,7 +44,7 @@ func (d Deps) integrityError(w http.ResponseWriter, r *http.Request, err error, 
 	case errors.Is(err, integrity.ErrNotFound):
 		WriteError(w, http.StatusNotFound, "not_found", notFound)
 	case errors.Is(err, integrity.ErrBusy):
-		WriteError(w, http.StatusConflict, "busy", "A check is already running. Try again in a minute.")
+		WriteError(w, http.StatusConflict, "already_running", "A check is already running. Try again in a minute.")
 	default:
 		d.internalError(w, r, err)
 	}
@@ -182,7 +181,7 @@ func (d Deps) getIntegrityTimeline(w http.ResponseWriter, r *http.Request) {
 }
 
 // getIntegrityCounts answers the editor's counts per student for the
-// similar-code page (V3-25): pastes, focus losses and full-screen exits.
+// similar-code page: pastes, focus losses and full-screen exits.
 // The reviewer's own row is left out, as their timeline is.
 func (d Deps) getIntegrityCounts(w http.ResponseWriter, r *http.Request) {
 	c, ok := d.reviewedContest(w, r)

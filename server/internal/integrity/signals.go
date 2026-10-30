@@ -8,7 +8,7 @@ import (
 )
 
 // TestOutput is one judged hidden test of a submission: its verdict and
-// the hash of the program's output (reported by the judge since M3).
+// the hash of the program's output, as the judge reports it.
 type TestOutput struct {
 	UserID       int64
 	SubmissionID int64
@@ -23,7 +23,7 @@ const emptySHA = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b8
 
 // WrongPair is two students who printed the same wrong output on the same
 // hidden tests. Programs in different languages that fail identically
-// are the strongest sign of a shared source (integrity council).
+// are the strongest sign of a shared source.
 type WrongPair struct {
 	UserA, UserB int64
 	ProblemID    int64

@@ -35,14 +35,17 @@ func (s *Service) Archive(ctx context.Context, id int64, by Actor) error {
 		return nil, true, nil
 	})
 	if err == nil {
-		s.changed(id)
+		s.board.drop(id)
+		if s.Changed != nil {
+			s.Changed(id)
+		}
 	}
 	return err
 }
 
 // Clone copies a contest's settings and problems into a new, unpublished
-// contest with its own slug, title and dates. Co-organisers, extensions
-// and the editorial are not copied. An admin's reason to grade an
+// contest with its own slug, title and dates. Extensions and the
+// editorial are not copied. An admin's reason to grade an
 // AI problem carries over, quoted in the new contest's audit log.
 func (s *Service) Clone(ctx context.Context, id int64, slug, title string, startsAt, endsAt time.Time, by Actor) (*Contest, error) {
 	src, err := s.Get(ctx, id)

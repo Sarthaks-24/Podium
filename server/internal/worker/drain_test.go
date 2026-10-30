@@ -199,3 +199,34 @@ func TestForcedStopRequeuesAfterTheLease(t *testing.T) {
 		t.Errorf("after the lease the job is %q, want %q", s, jobs.Queued)
 	}
 }
+
+// Each lane uses its own box, counted from BoxBase.
+func TestLanesUseBoxesFromTheBase(t *testing.T) {
+	r := newDrainRig(t)
+	r.w.Lanes, r.w.BoxBase = 2, 40
+	boxes := make(chan int, 2)
+	handle := r.w.handle
+	r.w.handle = func(ctx context.Context, box int, c *judgeapi.Claim) error {
+		boxes <- box
+		return handle(ctx, box, c)
+	}
+	r.enqueue(t)
+	r.enqueue(t)
+	stop, stopClaims := context.WithCancel(context.Background())
+	done, _ := r.start(t, stop, context.Background())
+	got := map[int]bool{}
+	for len(got) < 2 {
+		select {
+		case b := <-boxes:
+			got[b] = true
+		case <-time.After(10 * time.Second):
+			t.Fatalf("boxes so far %v", got)
+		}
+	}
+	stopClaims()
+	close(r.release)
+	<-done
+	if !got[40] || !got[41] {
+		t.Errorf("boxes %v, want 40 and 41", got)
+	}
+}

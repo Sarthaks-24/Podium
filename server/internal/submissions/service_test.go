@@ -205,7 +205,7 @@ func TestSubmitScoresAndStreams(t *testing.T) {
 	r := newRig(t)
 	ctx := context.Background()
 	p := r.importPack(t, nil)
-	stream, _ := r.hub.Subscribe(1)
+	stream, _ := r.hub.SubscribeTagged(1, "")
 	sc := Scope{MinGap: 30 * time.Second}
 
 	v, _, err := r.svc.Submit(ctx, SubmitRequest{ProblemID: p.ID, UserID: 1, Scope: sc, Language: "cpp17", Source: "int main(){}", ClientKey: "k1", Typed: 40, Pasted: 0})
@@ -306,7 +306,7 @@ func TestRunOnSamplesAndCustomInput(t *testing.T) {
 		t.Errorf("second pending run: %v", err)
 	}
 	r.judgeNext(t, judgeapi.KindRun, map[int]string{2: "WA"})
-	run, _ = r.svc.GetRun(ctx, run.ID)
+	run, _ = r.svc.GetRunWith(ctx, run.ID, ViewOptions{})
 	if run.State != "done" || len(run.Results) != 2 || run.Results[0].Label != "Example 1" || run.Results[0].Output != "3\n7\n" || run.Results[0].Stderr != "trace\n" ||
 		run.Results[0].Expected == nil || *run.Results[0].Expected != "3\n7\n" || run.Results[1].Verdict != "WA" {
 		t.Errorf("run %+v", run)
@@ -318,7 +318,7 @@ func TestRunOnSamplesAndCustomInput(t *testing.T) {
 		t.Fatal(err)
 	}
 	r.judgeNext(t, judgeapi.KindRun, map[int]string{0: "OK"})
-	custom, _ = r.svc.GetRun(ctx, custom.ID)
+	custom, _ = r.svc.GetRunWith(ctx, custom.ID, ViewOptions{})
 	if len(custom.Results) != 1 || custom.Results[0].Label != "Your input" || custom.Results[0].Expected != nil || custom.Results[0].Verdict != "OK" {
 		t.Errorf("custom run %+v", custom)
 	}

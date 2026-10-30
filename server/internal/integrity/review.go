@@ -120,7 +120,7 @@ type Moment struct {
 // Timeline lists what happened for one student in a contest, oldest
 // first: submissions with their counts, editor events, second sessions,
 // and other students who used the same browser and network. Shared
-// devices are listed, never clustered (integrity council ruling).
+// devices are listed, never clustered.
 func (s *Service) Timeline(ctx context.Context, contestID, userID int64) ([]Moment, error) {
 	out := []Moment{}
 	rows, err := s.DB.QueryContext(ctx, `SELECT created_at, problem_id, language, verdict, score, max_score, typed_chars, pasted_chars, focus_losses,
@@ -216,7 +216,7 @@ var itoa = strconv.Itoa
 
 // Counts is what the editor recorded for one student in a contest, from
 // the integrity events: the exam options' counts for the similar-code
-// page (V3-25).
+// page.
 type Counts struct {
 	UserID int64  `json:"user_id"`
 	Name   string `json:"name"`

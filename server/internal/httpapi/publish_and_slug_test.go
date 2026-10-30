@@ -1,7 +1,7 @@
 package httpapi
 
-// Tests for the fixes of council run 2 (2026-10-21,
-// cache/v2-plan/current-inconsistencies/run-2-2026-10-21), backend part.
+// The shown mark on publish, the stream tag from a phone's device id, why a
+// contest has not started, and numbered slugs for duplicate titles.
 
 import (
 	"fmt"
@@ -16,7 +16,7 @@ import (
 // C2-014: an unpublished draft past its start shows students nothing, so
 // it marks no problem; a problem whose hidden tests a contest has shown
 // stays in that contest, so the bank's mark cannot disappear.
-func TestC2014ShownMarkNeedsPublishAndStays(t *testing.T) {
+func TestShownMarkNeedsPublishAndStays(t *testing.T) {
 	s := newSite(t)
 	owner := s.signedIn("owner@college.edu", "Owner")
 	o := s.srv.URL

@@ -3,7 +3,7 @@ package contests
 import "time"
 
 // Schedule is when a contest runs. Everyone starts together; the
-// per-student start window was cut (V3-15).
+// per-student start window was cut.
 type Schedule struct {
 	StartsAt time.Time
 	EndsAt   time.Time

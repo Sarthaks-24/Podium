@@ -19,7 +19,7 @@ type ModeChange struct {
 }
 
 // RecordMode compares the run mode with the one the database last ran in
-// and stores the new one (security council S2). Testing mode signs anyone
+// and stores the new one. Testing mode signs anyone
 // in as anyone, so nothing made in it may survive into another mode:
 //
 //   - On any change of mode (or no record yet) every session ends.

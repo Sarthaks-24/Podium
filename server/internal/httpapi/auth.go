@@ -44,8 +44,8 @@ func (d Deps) flowCookie() (name, path string) {
 func (d Deps) secure() bool { return strings.HasPrefix(d.BaseURL, "https://") }
 
 // setSessionCookie sets a browser-session cookie: no Expires or Max-Age,
-// so closing the browser forgets it (a shared lab PC, security council
-// S5). The server ends the session itself auth.SessionTTL after sign-in.
+// so closing the browser forgets it (a shared lab PC). The server ends the
+// session itself auth.SessionTTL after sign-in.
 func (d Deps) setSessionCookie(w http.ResponseWriter, token string) {
 	d.known.add(token)
 	http.SetCookie(w, &http.Cookie{
@@ -75,8 +75,9 @@ func isLocalHost(host string) bool {
 }
 
 // localOnly refuses, in testing mode, a request whose Host is not this
-// machine or that carries a proxy's forwarding header (security council
-// S2). The configuration check already keeps testing mode on loopback;
+// machine or that carries a proxy's forwarding header, since testing mode
+// lets anyone sign in as anyone. The configuration check already keeps
+// testing mode on loopback;
 // this stops a proxy on the same host (Caddy on the real VM) from
 // publishing it. Outside testing mode it lets everything through. It
 // answers the refusal itself and returns false.
@@ -225,7 +226,7 @@ func (d Deps) googleCallback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// Each attempt finishes once: a replayed callback costs no call to
-	// Google (P0 security review, finding 4).
+	// Google.
 	if fresh, recorded := d.flows.take(f.State, f.Expires, time.Now().Unix()); !fresh {
 		fail("expired")
 		return
@@ -336,9 +337,9 @@ func (d Deps) requireRole(min auth.Role, h http.HandlerFunc) http.HandlerFunc {
 			return
 		}
 		// Unknown cookies cost a database read each, so an address that
-		// sent too many waits before the next read (security audit L3).
+		// sent too many waits before the next read.
 		// A session seen valid in the last minute is never refused here:
-		// the address is often a whole campus behind one NAT (V3-19).
+		// the address is often a whole campus behind one NAT.
 		addr := addressKey(r)
 		if !loopbackRequest(r) && d.authFailLimit.exhausted(addr) && !d.known.has(c.Value) {
 			w.Header().Set("Retry-After", "5")
@@ -363,7 +364,7 @@ func (d Deps) requireRole(min auth.Role, h http.HandlerFunc) http.HandlerFunc {
 			return
 		}
 		// The actor rides on the context so every change the request makes
-		// names them in the site audit (B2.7).
+		// names them in the site audit.
 		ctx := auth.WithActor(context.WithValue(r.Context(), userKey{}, u), auth.Actor{ID: u.ID, Email: u.Email, Role: u.Role})
 		h(w, r.WithContext(ctx))
 	}

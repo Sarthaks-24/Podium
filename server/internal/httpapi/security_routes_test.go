@@ -12,7 +12,7 @@ import (
 	"github.com/Sarthaks-24/podium/internal/auth/authtest"
 )
 
-func TestS6OwnerEndsSessionsAndDisablesAccounts(t *testing.T) {
+func TestOwnerEndsSessionsAndDisablesAccounts(t *testing.T) {
 	old := clockEvery
 	clockEvery = 100 * time.Millisecond
 	defer func() { clockEvery = old }()
@@ -101,7 +101,7 @@ func TestS6OwnerEndsSessionsAndDisablesAccounts(t *testing.T) {
 	}
 }
 
-func TestS9AuditRoute(t *testing.T) {
+func TestAuditRoute(t *testing.T) {
 	c := newCoOrgSite(t, "s9r", nil)
 	o := c.srv.URL
 	c.owner.do("PUT", c.admin(""), map[string]any{"min_gap_s": 60}, o)

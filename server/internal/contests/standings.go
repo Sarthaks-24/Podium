@@ -1,15 +1,12 @@
-// Package contests runs contests (milestone M4, cache/v1/m4-plan.md):
-// scheduling and each student's window, access, per-contest limits, IOI
-// scoring and the standings with freeze and reveal, rejudges, extensions,
-// clarifications and announcements, the contest events sent to connected
-// members, and the integrity rules of decision D47 (second sessions,
-// retention). Since v2 it also keeps the contest audit log and the slug
-// history, pins problems by revision, reports queue health, applies the
-// board without the students an integrity decision excluded, and archives
-// a term in the semester rollover. This file holds the scoring itself, a
-// pure function of the contest, its problems and its submissions, so the
-// rules can be tested against
-// hand-computed boards.
+// Package contests runs contests: scheduling and each student's end time,
+// access, per-contest limits, IOI scoring and the standings with freeze and
+// reveal, rejudges, extensions, clarifications and announcements, the
+// contest events sent to connected members, and the integrity rules
+// (second sessions, retention). It also keeps the contest audit log, pins
+// problems by revision, reports queue health and leaves off the board the
+// students an integrity decision excluded. This file holds the scoring
+// itself, a pure function of the contest, its problems and its
+// submissions, so the rules can be tested against hand-computed boards.
 package contests
 
 import (
@@ -17,7 +14,7 @@ import (
 	"time"
 )
 
-// Scoring modes (PLAN.md section 9).
+// Scoring modes.
 const (
 	BestSubtask    = "best_subtask"
 	BestSubmission = "best_submission"
@@ -122,7 +119,7 @@ func Compute(b Board, people []Participant, entries []Entry, frozen bool) []Row 
 					continue
 				}
 				// The best per subtask across submissions, against the pinned
-				// points (best single submission was cut, V3-15).
+				// points (best single submission was cut).
 				improved := false
 				for i := range best {
 					if i < len(e.Earned) {

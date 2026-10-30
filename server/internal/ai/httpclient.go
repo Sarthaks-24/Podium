@@ -11,9 +11,8 @@ import (
 	"time"
 )
 
-// What the OpenAI and Gemini clients share: one JSON request with a
-// bounded answer and a retry on overload, and the sentences every
-// provider uses. The key travels only in a request header; it is never in
+// What the three provider clients share: one JSON request with a bounded
+// answer and a retry on overload, and the sentences every provider uses. The key travels only in a request header; it is never in
 // a URL, so it cannot reach a log line through an error that prints one.
 
 const (
@@ -61,9 +60,11 @@ type httpFailure struct {
 // noRedirect keeps the key header from following a redirect anywhere.
 func noRedirect(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
 
-// apiClient is the http.Client of the two net/http providers: no client
-// timeout (the caller's context bounds each call, 3 minutes for a
-// generation) and no redirects.
+// apiClient is the http.Client of the providers: no client timeout (the
+// caller's context bounds each call, 3 minutes for a generation, and a long
+// stream must not be cut) and no redirects (Go would resend a key header
+// such as X-Api-Key to the new host; it strips only Authorization and
+// Cookie).
 func apiClient(hc *http.Client) *http.Client {
 	if hc != nil {
 		return hc
@@ -76,17 +77,37 @@ func apiClient(hc *http.Client) *http.Client {
 // answer as *Error. retryable says which failures are worth another try.
 func doJSON(ctx context.Context, hc *http.Client, method, url string, header map[string]string, body any, out any,
 	retryable func(*httpFailure) bool) error {
+	resp, err := send(ctx, hc, method, url, header, body, httpRetries, retryable)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if err := json.NewDecoder(io.LimitReader(resp.Body, maxAnswer)).Decode(out); err != nil {
+		if ctx.Err() != nil {
+			return transportError(ctx)
+		}
+		return errUnavailable()
+	}
+	return nil
+}
+
+// send sends one request with header set, trying a retryable failure
+// again up to retries times, and returns a 2xx response for the caller to
+// read and close. A non-2xx answer comes back as *httpFailure; a call that
+// got no answer as *Error.
+func send(ctx context.Context, hc *http.Client, method, url string, header map[string]string, body any,
+	retries int, retryable func(*httpFailure) bool) (*http.Response, error) {
 	var payload []byte
 	if body != nil {
 		var err error
 		if payload, err = json.Marshal(body); err != nil {
-			return err
+			return nil, err
 		}
 	}
 	for attempt := 0; ; attempt++ {
 		req, err := http.NewRequestWithContext(ctx, method, url, bytes.NewReader(payload))
 		if err != nil {
-			return errUnavailable()
+			return nil, errUnavailable()
 		}
 		if body != nil {
 			req.Header.Set("Content-Type", "application/json")
@@ -98,34 +119,29 @@ func doJSON(ctx context.Context, hc *http.Client, method, url string, header map
 		if err != nil {
 			// The error names the URL (never the key, which is a header);
 			// it is dropped all the same.
-			return transportError(ctx)
+			return nil, transportError(ctx)
 		}
 		if resp.StatusCode >= 200 && resp.StatusCode < 300 {
-			err := json.NewDecoder(io.LimitReader(resp.Body, maxAnswer)).Decode(out)
-			resp.Body.Close()
-			if err != nil {
-				if ctx.Err() != nil {
-					return transportError(ctx)
-				}
-				return errUnavailable()
-			}
-			return nil
+			return resp, nil
 		}
 		raw, _ := io.ReadAll(io.LimitReader(resp.Body, maxErrorBody))
 		resp.Body.Close()
 		f := &httpFailure{status: resp.StatusCode, body: raw}
-		if attempt >= httpRetries || !retryable(f) {
-			return f
+		if attempt >= retries || !retryable(f) {
+			return nil, f
 		}
 		select {
 		case <-ctx.Done():
-			return transportError(ctx)
+			return nil, transportError(ctx)
 		case <-time.After(retryDelay(attempt + 1)):
 		}
 	}
 }
 
 func (f *httpFailure) Error() string { return http.StatusText(f.status) }
+
+// limitBody bounds what is read of a 2xx answer.
+func limitBody(resp *http.Response) io.Reader { return io.LimitReader(resp.Body, maxAnswer) }
 
 // strictSchema returns a copy of a JSON schema in the form OpenAI's strict
 // mode wants: every object lists all its properties as required and

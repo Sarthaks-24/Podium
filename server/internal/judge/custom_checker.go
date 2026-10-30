@@ -7,9 +7,8 @@ import (
 	"time"
 )
 
-// checkerLimits bound a custom checker run. The checker is setter code (and
-// from M5 possibly model-written), so it runs in a fresh box like any
-// submission.
+// checkerLimits bound a custom checker run. The checker is setter code
+// (possibly model-written), so it runs in a fresh box like any submission.
 var checkerLimits = Limits{CPU: 10 * time.Second, Wall: 20 * time.Second, MemoryKB: 256 * 1024,
 	Processes: 1, FileSizeKB: DefaultFileSizeKB}
 

@@ -23,8 +23,8 @@ const (
 // judge.env is being edited, and no more.
 const DefaultAuthRetries = 5
 
-// Worker runs judge lanes. Each lane is one isolate box (box id = lane
-// number) and handles one job at a time.
+// Worker runs judge lanes. Each lane is one isolate box (box id BoxBase
+// plus the lane number) and handles one job at a time.
 type Worker struct {
 	Runner *judge.Runner
 	Client *Client
@@ -33,6 +33,9 @@ type Worker struct {
 	Compiled *CompileCache
 	Log      *slog.Logger
 	Lanes    int
+	// BoxBase is the first lane's box id (PODIUM_JUDGE_BOX_BASE), so two
+	// judges on one host can use different boxes.
+	BoxBase int
 	// WorkDir holds compiled programs and outputs while a job runs.
 	WorkDir string
 	// Name, Version and Isolate identify this worker in the server's log.
@@ -67,10 +70,6 @@ func (w *Worker) stopFor(err error) {
 	}
 }
 
-// Run claims and runs jobs on every lane until ctx ends. Ending ctx also
-// abandons the jobs that are running; use Drain to let them finish.
-func (w *Worker) Run(ctx context.Context) error { return w.Drain(ctx, ctx) }
-
 // Drain claims and runs jobs on every lane until stop ends. Then each lane
 // finishes the job it holds, reports it, and Drain returns once every lane
 // is idle. This is how an upgrade drains the judge: there is no global
@@ -91,16 +90,17 @@ func (w *Worker) Drain(stop, jobs context.Context) error {
 	w.mu.Unlock()
 	var wg sync.WaitGroup
 	for lane := 0; lane < w.Lanes; lane++ {
+		box := w.BoxBase + lane
 		// A box left behind by a killed worker would make Init fail.
 		if w.Runner != nil {
-			if err := w.Runner.Iso.Cleanup(jobs, lane); err != nil {
-				w.Log.Warn("box cleanup failed", "box", lane, "err", err)
+			if err := w.Runner.Iso.Cleanup(jobs, box); err != nil {
+				w.Log.Warn("box cleanup failed", "box", box, "err", err)
 			}
 		}
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			w.lane(stop, jobs, lane)
+			w.lane(stop, jobs, box)
 		}()
 	}
 	wg.Wait()
@@ -109,8 +109,8 @@ func (w *Worker) Drain(stop, jobs context.Context) error {
 	// Cleanup runs even when jobs was cancelled (a forced stop).
 	if w.Runner != nil {
 		for lane := 0; lane < w.Lanes; lane++ {
-			if err := w.Runner.Iso.Cleanup(jobs, lane); err != nil {
-				w.Log.Warn("box cleanup at stop failed", "box", lane, "err", err)
+			if err := w.Runner.Iso.Cleanup(jobs, w.BoxBase+lane); err != nil {
+				w.Log.Warn("box cleanup at stop failed", "box", w.BoxBase+lane, "err", err)
 			}
 		}
 	}

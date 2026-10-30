@@ -1,6 +1,6 @@
 package httpapi
 
-// Student-facing contest routes (cache/v1/m4-plan.md section 4): the list,
+// Student-facing contest routes: the list,
 // one contest, the honour code and start, the contest workspace, the
 // standings and clarifications. Every contest-scoped id is resolved through
 // the contest named in the URL, so an id from another contest is a 404.
@@ -41,7 +41,7 @@ type rulesJSON struct {
 	FreezeMinutes int      `json:"freeze_minutes"`
 	Practice      bool     `json:"practice_after_end"`
 	// The exam options, so the workspace knows which measures are on and
-	// says so at the start (V3-25).
+	// says so at the start.
 	contests.ExamOptions
 }
 
@@ -340,7 +340,7 @@ func (d Deps) contestProblem(w http.ResponseWriter, r *http.Request) (*contestTa
 		t.open = true
 	case st.Over && c.PracticeOpen(st, now):
 		// Practice shows the first failing hidden test, except while
-		// another contest that pins the problem has not closed (V3-6, M2).
+		// another contest that pins the problem has not closed.
 		pending, err := d.Contests.PinnedInOpenContest(r.Context(), t.problem.ProblemID, c.ID)
 		if err != nil {
 			d.contestError(w, r, err)
@@ -357,7 +357,8 @@ func (d Deps) contestProblem(w http.ResponseWriter, r *http.Request) (*contestTa
 	return t, true
 }
 
-// contestWorkspaceJSON is the M3 Workspace plus the contest's context.
+// contestWorkspaceJSON is the organisers' workspace plus the contest's
+// context.
 type contestWorkspaceJSON struct {
 	*submissions.Workspace
 	Label     string      `json:"label"`
@@ -367,7 +368,7 @@ type contestWorkspaceJSON struct {
 	Practice  bool        `json:"practice"`
 	// Refusal says why Run and Submit are off, when they are.
 	Refusal *string `json:"refusal"`
-	// RevisionID is the pinned revision served here (B2.3).
+	// RevisionID is the pinned revision served here.
 	RevisionID int64 `json:"revision_id"`
 }
 
@@ -470,7 +471,7 @@ func (d Deps) submitContestCode(w http.ResponseWriter, r *http.Request) {
 	// A new submission does not touch the board: it changes nothing until
 	// its verdict arrives (the "+1" pending cells follow with the next
 	// refresh). Invalidating here let one student force a recompute per
-	// submit (m4-security finding 1).
+	// submit.
 	status := http.StatusAccepted
 	if dup {
 		status = http.StatusOK

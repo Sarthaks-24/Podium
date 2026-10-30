@@ -11,7 +11,7 @@ import (
 )
 
 // TestSignIn starts a session as anyone, with the given role, without
-// Google. It exists only for PODIUM_MODE=testing (decision D48), where the
+// Google. It exists only for PODIUM_MODE=testing, where the
 // server listens on loopback alone; the HTTP route is not registered in any
 // other mode, and the handler also refuses anything that arrived through a
 // proxy. The configured owner always keeps the owner role, and the

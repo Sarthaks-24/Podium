@@ -16,7 +16,7 @@ import (
 
 // generateInputs runs the problem's generator once per planned test, with
 // argv seed and the test's arguments and an empty stdin, and uploads each
-// output, which becomes that test's input (M5).
+// output, which becomes that test's input.
 func (w *Worker) generateInputs(ctx context.Context, box int, c *judgeapi.Claim) error {
 	var pl judgeapi.GenerateInputsPayload
 	rep, work, done, err := w.startJob(ctx, c, &pl)

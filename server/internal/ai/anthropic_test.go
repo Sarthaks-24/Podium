@@ -274,3 +274,47 @@ func TestAnthropicCreditBalance(t *testing.T) {
 		t.Errorf("credit balance: %v", e)
 	}
 }
+
+// TestAnthropicModelPages: a listing with more pages follows last_id.
+func TestAnthropicModelPages(t *testing.T) {
+	var afters []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		after := r.URL.Query().Get("after_id")
+		afters = append(afters, after)
+		page := map[string]any{"data": []any{anthropicModel("claude-a", true)}, "has_more": true, "last_id": "claude-a"}
+		if after == "claude-a" {
+			page = map[string]any{"data": []any{anthropicModel("claude-b", true)}, "has_more": false, "last_id": "claude-b"}
+		}
+		json.NewEncoder(w).Encode(page)
+	}))
+	defer srv.Close()
+	a := &Anthropic{Key: NewSecret(testKey), BaseURL: srv.URL, MaxRetries: 0}
+	models, err := a.ListModels(context.Background())
+	if err != nil || len(models) != 2 || models[1].ID != "claude-b" || fmt.Sprint(afters) != "[ claude-a]" {
+		t.Fatalf("models %v %v, after_id %q", models, err, afters)
+	}
+}
+
+// TestAnthropicFallbackBlock: text before a fallback block is the first
+// model's partial answer and is dropped; an error event mid-stream is the
+// provider being unavailable.
+func TestAnthropicFallbackBlock(t *testing.T) {
+	answer, _ := json.Marshal(FakePairSums())
+	ev := func(v any) string { b, _ := json.Marshal(v); return "event: x\ndata: " + string(b) + "\n\n" }
+	body := ev(map[string]any{"type": "message_start", "message": map[string]any{"content": []any{}}}) +
+		ev(map[string]any{"type": "content_block_start", "index": 0, "content_block": map[string]any{"type": "text", "text": `{"title":`}}) +
+		ev(map[string]any{"type": "content_block_start", "index": 1, "content_block": map[string]any{"type": "fallback"}}) +
+		ev(map[string]any{"type": "content_block_start", "index": 2, "content_block": map[string]any{"type": "text", "text": ""}}) +
+		ev(map[string]any{"type": "content_block_delta", "index": 2, "delta": map[string]any{"type": "text_delta", "text": string(answer)}}) +
+		ev(map[string]any{"type": "message_delta", "delta": map[string]any{"stop_reason": "end_turn"}}) +
+		ev(map[string]any{"type": "message_stop"})
+	_, a := newFakeAPI(t, 200, body, true)
+	pack, err := a.Generate(context.Background(), Request{Pasted: "x"})
+	if err != nil || pack.Slug != "pair-sums" {
+		t.Fatalf("pack %v %v", pack, err)
+	}
+	_, a = newFakeAPI(t, 200, ev(map[string]any{"type": "error", "error": map[string]any{"type": "overloaded_error"}}), true)
+	if _, err := a.Generate(context.Background(), Request{Pasted: "x"}); err == nil || err.(*Error).Code != CodeUnavailable {
+		t.Errorf("overload mid-stream: %v", err)
+	}
+}

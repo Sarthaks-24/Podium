@@ -237,7 +237,7 @@ func (b *browser) me() (int, string) {
 	return code, role
 }
 
-func TestM1SignInAllowedAndDisallowedDomain(t *testing.T) {
+func TestSignInAllowedAndDisallowedDomain(t *testing.T) {
 	s := newSite(t)
 
 	student := s.browser()
@@ -274,7 +274,7 @@ func TestM1SignInAllowedAndDisallowedDomain(t *testing.T) {
 	}
 }
 
-func TestM1OwnerAddsAndRemovesAdmin(t *testing.T) {
+func TestOwnerAddsAndRemovesAdmin(t *testing.T) {
 	s := newSite(t)
 	owner := s.browser()
 	if final := owner.signIn(authtest.Person{Email: "owner@college.edu", Verified: true, Name: "Owner"}, "/admin/people"); final.Path != "/admin/people" {
@@ -352,7 +352,7 @@ func TestM1OwnerAddsAndRemovesAdmin(t *testing.T) {
 	}
 }
 
-func TestM1CallbackWithoutStateIsExpired(t *testing.T) {
+func TestCallbackWithoutStateIsExpired(t *testing.T) {
 	s := newSite(t)
 	b := s.browser()
 	resp, err := b.client.Get(s.srv.URL + "/api/auth/google/callback?code=x&state=y")
@@ -365,7 +365,7 @@ func TestM1CallbackWithoutStateIsExpired(t *testing.T) {
 	}
 }
 
-func TestM1AuthConfig(t *testing.T) {
+func TestAuthConfig(t *testing.T) {
 	s := newSite(t)
 	code, body := s.browser().do("GET", "/api/auth/config", nil, "")
 	if code != 200 || body["contact_email"] != "owner@college.edu" || len(body["allowed_domains"].([]any)) != 1 {
@@ -373,9 +373,9 @@ func TestM1AuthConfig(t *testing.T) {
 	}
 }
 
-// TestM1SessionCookieFlags drives the flow by hand against an https base
+// TestSessionCookieFlags drives the flow by hand against an https base
 // URL and inspects the Set-Cookie headers.
-func TestM1SessionCookieFlags(t *testing.T) {
+func TestSessionCookieFlags(t *testing.T) {
 	ctx := context.Background()
 	d, _ := db.Open(ctx, filepath.Join(t.TempDir(), "c.db"))
 	defer d.Close()

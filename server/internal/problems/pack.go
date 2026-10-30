@@ -17,10 +17,10 @@ import (
 	"github.com/Sarthaks-24/podium/internal/judge"
 )
 
-// Pack import limits (decision D46 as amended: sizes are checked against
+// Pack import limits (sizes are checked against
 // the bytes actually decompressed rather than a compression ratio, which
-// would refuse legitimate repetitive tests). Packs come from setters and,
-// from M5, from a model; the server reads them outside any sandbox.
+// would refuse legitimate repetitive tests). Packs come from setters and
+// from a model; the server reads them outside any sandbox.
 const (
 	MaxPackBytes      = 32 << 20  // the zip itself
 	MaxPackUnpacked   = 128 << 20 // all files once decompressed
@@ -48,11 +48,11 @@ type Pack struct {
 	Ignored []string
 }
 
-// PackFormat is the newest pack format this server reads and writes
-// (B1.7). A problem.yaml without a format line is format 1; one with a
+// PackFormat is the newest pack format this server reads and writes.
+// A problem.yaml without a format line is format 1; one with a
 // higher number was written by a newer Podium and is refused, rather than
-// read with fields silently ignored. Format 2 (v1.2.0, D115) added open
-// tests; v3 has none (V3-5), so it imports them as samples and exports
+// read with fields silently ignored. Format 2 (v1.2.0) added open
+// tests; v3 has none, so it imports them as samples and exports
 // format 1.
 const PackFormat = 2
 
@@ -226,7 +226,7 @@ func parsePackFiles(files map[string][]byte) (*Pack, error) {
 	}
 	p.Tags = meta.Tags
 	p.Difficulty = meta.Difficulty
-	// Open tests of a format 2 pack become samples (V3-5).
+	// Open tests of a format 2 pack become samples.
 	p.Samples = append(meta.Samples, meta.Open...)
 	for _, st := range meta.Subtasks {
 		p.Subtasks = append(p.Subtasks, Subtask{Points: st.Points, Title: st.Title, Tests: st.Tests, GeneratorArgs: st.GeneratorArgs})

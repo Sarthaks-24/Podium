@@ -36,7 +36,7 @@ type Case struct {
 	Forbidden string
 }
 
-// Hostile lists the PLAN.md section 7.6 programs plus a few extras.
+// Hostile lists the programs that try to escape or starve the sandbox.
 var Hostile = []Case{
 	{Name: "fork bomb (C++)", Lang: "cpp17", File: "fork_bomb.cpp", Want: []judge.Verdict{judge.RuntimeError, judge.TimeLimit}},
 	{Name: "malloc 2 GB and touch pages (C++)", Lang: "cpp17", File: "malloc_2g.cpp", Want: []judge.Verdict{judge.MemoryLimit}},

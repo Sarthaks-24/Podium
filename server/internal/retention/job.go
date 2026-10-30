@@ -1,9 +1,11 @@
 package retention
 
-// The daily retention job: it empties run payloads older than RunPayloads
-// in batches, so one pass never holds the write lock for long while a
-// contest runs. Sessions (auth), integrity events (contests and
-// integrity) and backups (podium-backup) have their own.
+// The run payload step of the server's retention pass: it empties run
+// payloads older than RunPayloads in batches, so one pass never holds the
+// write lock for long while a contest runs. podium-server runs it with the
+// integrity retention of contests and integrity and the collection of
+// unused test files; the session sweep and backups (podium-backup) run on
+// their own.
 
 import (
 	"context"
@@ -21,6 +23,9 @@ type Job struct {
 	// Now is the clock; tests replace it.
 	Now func() time.Time
 	Log *slog.Logger
+	// Hold, when set, runs inside each batch's transaction before it
+	// commits; tests use it to stop the server mid-batch.
+	Hold func()
 }
 
 // Result counts what one pass changed.
@@ -44,14 +49,23 @@ func (j *Job) Run(ctx context.Context) (Result, error) {
 }
 
 // batches repeats one transaction until it changes fewer than batch rows.
-func (j *Job) batches(ctx context.Context, step func(tx *sql.Tx) (int64, error)) (int64, error) {
+// When ctx ends (the server is stopping) the batch in progress still
+// commits, and no further batch starts.
+func (j *Job) batches(ctx context.Context, step func(ctx context.Context, tx *sql.Tx) (int64, error)) (int64, error) {
 	var total int64
 	for {
-		tx, err := j.DB.BeginTx(ctx, nil)
+		if err := ctx.Err(); err != nil {
+			return total, err
+		}
+		txCtx := context.WithoutCancel(ctx)
+		tx, err := j.DB.BeginTx(txCtx, nil)
 		if err != nil {
 			return total, err
 		}
-		n, err := step(tx)
+		n, err := step(txCtx, tx)
+		if err == nil && j.Hold != nil {
+			j.Hold()
+		}
 		if err == nil {
 			err = tx.Commit()
 		}
@@ -71,7 +85,7 @@ func (j *Job) batches(ctx context.Context, step func(tx *sql.Tx) (int64, error))
 // output and stderr excerpts. The job row and its verdicts stay.
 func (j *Job) runs(ctx context.Context, now time.Time, r *Result) error {
 	cut := now.Add(-RunPayloads).UnixMilli()
-	n, err := j.batches(ctx, func(tx *sql.Tx) (int64, error) {
+	n, err := j.batches(ctx, func(ctx context.Context, tx *sql.Tx) (int64, error) {
 		const pick = `SELECT id FROM jobs WHERE kind = 'run' AND payload <> '{}' AND created_at < ? AND state IN ('done', 'failed')
 			ORDER BY created_at LIMIT ?`
 		if _, err := tx.ExecContext(ctx, `UPDATE job_results SET output = '', stderr = '' WHERE (output <> '' OR stderr <> '') AND job_id IN (`+pick+`)`,

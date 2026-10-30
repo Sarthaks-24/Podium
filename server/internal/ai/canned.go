@@ -1,53 +1,11 @@
 package ai
 
-import (
-	"context"
-	"encoding/json"
-	"strings"
-	"sync/atomic"
-)
+// The two canned packs of the testing-mode provider (package fakeai),
+// also used by this package's tests as packs that pass every check. Only
+// fakeai and tests call them, so the linker leaves them out of the release
+// binary, which does not link fakeai.
 
-// Fake is the testing-mode provider (decision D50): no key, no network.
-// It answers with one of two canned packs whose programs really work on
-// the judge, so the whole pipeline (draft, generate inputs, generate
-// outputs, validate) can be checked end to end. A brief or pasted text
-// mentioning a subarray or a stretch gets the maximum subarray sum pack;
-// anything else gets the A plus B variant.
-type Fake struct {
-	calls atomic.Int64
-}
-
-// Calls reports how many requests the fake has answered.
-func (f *Fake) Calls() int { return int(f.calls.Load()) }
-
-func wantsSubarray(text string) bool {
-	t := strings.ToLower(text)
-	return strings.Contains(t, "subarray") || strings.Contains(t, "stretch")
-}
-
-// Generate implements Provider.
-func (f *Fake) Generate(ctx context.Context, req Request) (*WizardPack, error) {
-	f.calls.Add(1)
-	if err := ctx.Err(); err != nil {
-		return nil, &Error{Code: CodeCanceled, Message: "The request was cancelled."}
-	}
-	text := req.Pasted
-	if req.Brief != nil {
-		text = req.Brief.Topic + " " + req.Brief.Constraints + " " + req.Brief.SubtaskIdeas
-	}
-	if wantsSubarray(text) {
-		return FakeMaxSubarray(), nil
-	}
-	return FakePairSums(), nil
-}
-
-// Check implements Provider.
-func (f *Fake) Check(context.Context) error { return nil }
-
-// ListModels implements Provider: the one canned model.
-func (f *Fake) ListModels(context.Context) ([]Model, error) {
-	return []Model{{ID: FakeModel, Name: "Canned problems"}}, nil
-}
+import "encoding/json"
 
 // clonePack returns a deep copy, so callers may change what they get.
 func clonePack(p WizardPack) *WizardPack {

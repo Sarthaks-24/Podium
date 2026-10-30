@@ -17,7 +17,7 @@ import (
 )
 
 // ValidatePriority puts validation behind every contest job (lower runs
-// first; M3 uses 10 to 60 for runs, submissions and rejudges).
+// first; runs, submissions and rejudges use 10 to 60).
 const ValidatePriority = 90
 
 // NotReadyError lists what stops a problem from being validated.
@@ -67,7 +67,7 @@ type Summary struct {
 	TimeLimitMS         int   `json:"time_limit_ms"`
 	// ReferenceLanguage and TimeFactor say why TimeLimitMS can differ
 	// from the problem's limit: it is that limit times the reference
-	// language's factor (D323). Summaries stored before D323 lack both.
+	// language's factor. Older summaries lack both.
 	ReferenceLanguage string   `json:"reference_language,omitempty"`
 	TimeFactor        float64  `json:"time_factor,omitempty"`
 	Problems          []string `json:"problems"`
@@ -500,7 +500,7 @@ func summarise(pl judgeapi.ValidatePayload, res jobs.Result) Summary {
 			sm.MaxTimeMS, slowest, sm.TimeLimitMS))
 	}
 	// A brute force that finishes only the small tests leaves the large
-	// ones resting on the reference alone (security council S10). Each
+	// ones resting on the reference alone. Each
 	// unchecked test is reported, and fewer than half cross-checked fails
 	// the problem: add smaller tests the brute force can finish.
 	if pl.Programs.Brute != nil && compiled[judgeapi.RoleBrute] {

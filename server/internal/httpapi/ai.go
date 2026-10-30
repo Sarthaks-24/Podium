@@ -16,8 +16,8 @@ import (
 	"github.com/Sarthaks-24/podium/internal/problems"
 )
 
-// AI wizard routes (M5, cache/v1/m5-plan.md section 7). The provider key
-// is pasted per session and lives only in AI.Keys (decision D50): it is
+// AI wizard routes. The provider key
+// is pasted per session and lives only in AI.Keys: it is
 // wrapped in an ai.Secret as soon as the request is decoded and never
 // reaches a log line, an error, the database or a job payload.
 
@@ -188,7 +188,7 @@ func (d Deps) testing() bool { return d.Mode == "testing" }
 // providerIDs lists the providers this server offers, in the form's order.
 func (d Deps) providerIDs() []string {
 	ids := append([]string{}, ai.Providers...)
-	if d.testing() {
+	if ai.Known(ai.ProviderFake, d.testing()) {
 		ids = append(ids, ai.ProviderFake)
 	}
 	return ids
@@ -275,7 +275,7 @@ func noKeyMessage(provider string) string {
 }
 
 // getAIModels lists a provider's models with the session's key, keeping
-// the filtered list for the session (C11).
+// the filtered list for the session.
 func (d Deps) getAIModels(w http.ResponseWriter, r *http.Request) {
 	provider := r.URL.Query().Get("provider")
 	if !ai.Known(provider, d.testing()) {
@@ -436,7 +436,7 @@ func (d Deps) provider(w http.ResponseWriter, r *http.Request, name string) (ai.
 func (d Deps) takeSlot(w http.ResponseWriter, userID int64) (func(), bool) {
 	release, ok := d.AI.Slots.Take(userID)
 	if !ok {
-		WriteError(w, http.StatusTooManyRequests, "busy", "One AI request at a time. Wait for the current one to finish.")
+		writeBusy(w, 10, "One AI request at a time. Wait for the current one to finish.")
 		return nil, false
 	}
 	return release, true

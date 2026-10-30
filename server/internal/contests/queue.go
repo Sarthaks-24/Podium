@@ -7,7 +7,7 @@ import (
 )
 
 // QueueHealth is a contest's share of the judge queue, for the console's
-// attention strip (contract C10, D103).
+// attention strip.
 type QueueHealth struct {
 	// Waiting and Judging count the contest's jobs (Submit and Run) in the
 	// queue, paused ones included, and with a judge.

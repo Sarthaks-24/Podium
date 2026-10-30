@@ -1,6 +1,6 @@
 package judgeapi
 
-// Job kinds added in M3 (cache/v1/m3-plan.md section 2).
+// Job kinds for student code: a submission and a run.
 const (
 	KindSubmit   = "submit"
 	KindRun      = "run"
@@ -12,8 +12,8 @@ const (
 const RoleProgram = "program"
 
 // MaxRunOutput bounds the output excerpt a run reports per input. Submit
-// jobs report output only with Reveal, on the first failing hidden test
-// (D115); otherwise hidden tests stay hidden (decision D47).
+// jobs report output only with Reveal, on the first failing hidden test;
+// otherwise hidden tests stay hidden.
 const MaxRunOutput = 4 << 10
 
 // SubmitTest is one test of a submission, in judging order.
@@ -47,7 +47,7 @@ type SubmitPayload struct {
 	// Reveal is set for a submission that never counts (practice, the
 	// organisers' workspace): the worker reports the
 	// program's output (at most MaxRunOutput) on the first hidden test
-	// that fails, so the author can see it (D115, protocol 3).
+	// that fails, so the author can see it (protocol 3).
 	Reveal bool `json:"reveal,omitempty"`
 }
 
@@ -57,7 +57,7 @@ type RunInput struct {
 	Idx         int    `json:"idx"`
 	InputSHA    string `json:"input_sha"`
 	ExpectedSHA string `json:"expected_sha,omitempty"`
-	// Open marks an open test (D115, protocol 3): the worker runs it only
+	// Open marks an open test (protocol 3): the worker runs it only
 	// while every earlier input with an expected output passed, and
 	// reports SK otherwise.
 	Open bool `json:"open,omitempty"`

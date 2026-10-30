@@ -83,7 +83,7 @@ func decodeSubmit(raw json.RawMessage) (judgeapi.SubmitPayload, error) {
 
 // CheckReport refuses results for tests the submission does not have, any
 // output text (hidden tests stay hidden) except on a failing hidden test of
-// a submission whose payload asks to reveal it (D115), and messages on
+// a submission whose payload asks to reveal it, and messages on
 // hidden tests (a checker comment can quote the expected answer). It also notes a program
 // compile that timed out, for Finish.
 func (k SubmitKind) CheckReport(raw json.RawMessage, r judgeapi.Report) error {
@@ -208,7 +208,7 @@ func (k SubmitKind) Finish(ctx context.Context, tx *sql.Tx, job *jobs.Job) error
 }
 
 // revealOf picks the first hidden test, in judging order, that the program
-// failed, for a payload that asks to reveal it (D115); nil otherwise.
+// failed, for a payload that asks to reveal it; nil otherwise.
 func revealOf(pl judgeapi.SubmitPayload, results []judgeapi.TestResult) *storedReveal {
 	if !pl.Reveal {
 		return nil

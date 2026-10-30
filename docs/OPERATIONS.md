@@ -281,7 +281,8 @@ Listed in the order the judge reads them, with the same mode columns. `podium-ju
 | `PODIUM_SERVER_URL` | optional | optional | optional | `http://127.0.0.1:8081` | The server's judge API (its `PODIUM_JUDGE_LISTEN`) as a URL with no path. For a remote judge, the local end of the tunnel. |
 | `PODIUM_JUDGE_TOKEN` | optional | optional | required | testing and dev: the public testing token | The server's `PODIUM_JUDGE_TOKEN`. Production refuses the testing token. Secret. |
 | `PODIUM_ISOLATE_PATH` | optional | optional | optional | `/usr/bin/isolate` | The isolate binary. |
-| `PODIUM_JUDGE_LANES` | optional | optional | optional | `2` | Sandboxes judged in parallel (1 to 16). Two fit a 2 GB VM. Lane n uses isolate box n, so run one judge per host; a second one waits up to about 4 s for a busy box and then fails the job as a judge error (D325). |
+| `PODIUM_JUDGE_LANES` | optional | optional | optional | `2` | Sandboxes judged in parallel (1 to 16). Two fit a 2 GB VM. Lane n uses isolate box `PODIUM_JUDGE_BOX_BASE` + n; a judge that finds its box busy waits up to about 4 s and then fails the job as a judge error. |
+| `PODIUM_JUDGE_BOX_BASE` | optional | optional | optional | `0` | First isolate box id (0 to 984). Give a second judge on the same host a base past the first one's boxes, so neither cleans up or waits on the other's; the boxes must keep clear of box 80, which `selftest` and `calibrate` use. |
 | `PODIUM_JUDGE_CACHE_DIR` | optional | optional | optional | `/var/cache/podium-judge` | Downloaded tests and sources, per-job work files and compiled programs (see "Judge cache"). |
 | `PODIUM_JUDGE_BLOB_CACHE_MB` | optional | optional | optional | `2048` | Cap on `blobs/` in the cache directory, in MB, 64 to 1048576. Above it the least recently used files no running job holds are removed after each job. Keep it above the largest problem's tests (every test of a problem is fetched to validate it). |
 | `PODIUM_LOG_LEVEL` | optional | optional | optional | `info` | As above. |
@@ -395,7 +396,7 @@ Checked by the server before anything is queued. Every refusal is `429` with the
 | Request body | 160 KB | Run, Submit, drafts |
 | Integrity events | one batch per user every 5 s, 100 per request; after 5,000 per user per problem, more are dropped | the editor's paste, blur and focus events |
 | Clarifications | 5 unanswered questions per student per contest (`400`) | Ask |
-| AI requests | one running per admin, at most 3 minutes (`429 busy` without `retry_after_s`: try again when it ends) | the AI wizard |
+| AI requests | one running per admin, at most 3 minutes (`429 busy` with `Retry-After: 10`) | the AI wizard |
 | Event streams | 4 per user (a fifth replaces the oldest, which is told and stops reconnecting), 5,000 in total (then `503`, and the page polls) | `GET /api/events` |
 | Open requests | 8 at once per browser session, event streams aside (`429` with `Retry-After: 1`) | every API route with a session cookie |
 | Time to send a request | headers within 10 s, the whole request within 15 s; 120 s for the routes that take an upload | every route; the long one for pack import, test replacement and roster upload |
@@ -427,7 +428,7 @@ All of this is in the contest's live console in the web app; the routes are in `
 
 **After.** Students see the frozen board from the freeze until everyone's time is up (including personal extensions), then the full board. To keep the result for a projector walk, turn on "Hold the reveal" before the end: students stay on the frozen board until you choose Reveal. The reveal screen opens once every window has closed. Export the results as CSV (spreadsheet-safe: cells that would start a formula get a leading `'`) or JSON. Publish the editorial when ready; students see it, and practice opens, only once every student's time is up (including personal extensions). Clone a contest to run it again with new dates.
 
-**Retention.** Integrity evidence (paste and focus events, second sessions, each submission's typed and pasted counts and client hash) is deleted 180 days after a contest ended for everyone (D47), except for students in an open or awaiting_student integrity case for that contest; theirs goes on the first run after the case is decided. The server applies this at start-up and every 12 hours and logs `integrity data past retention removed` with counts. Scores, submissions and code are kept.
+**Retention.** Integrity evidence (paste and focus events, second sessions, each submission's typed and pasted counts and client hash) is deleted 180 days after a contest ended for everyone (D47), except for students in an open or awaiting_student integrity case for that contest; theirs goes on the first run after the case is decided. The server applies this a minute after start-up and every 12 hours and logs `integrity data past retention removed` with counts. Scores, submissions and code are kept.
 
 **Unused test files.** The same 12-hourly pass deletes files in `PODIUM_TESTS_DIR` that nothing refers to any more: tests replaced by new ones, old copies of reference solutions, checkers and generators, and runs' custom inputs. A file is kept while any problem's test, any submission or run, or any job that is waiting, running or less than 7 days old names it, and for a day after it was last saved; the judge's own uploads that were never used go after a day too. The log line is `unused test files removed` with counts and MB. Nightly backups keep their own hard-linked copies, so a file removed here is still in the backups taken before.
 
@@ -482,9 +483,9 @@ A session can hold one key per provider; the last one saved is the one the wizar
 - Each admin's key is their own: another admin's session cannot use it.
 - One AI request per admin at a time, at most 3 minutes each.
 - The server needs outbound HTTPS to the chosen provider's host (table above). If the VM's firewall blocks it, every request ends with "The provider is unavailable. Try again in a few minutes."
-- The Anthropic SDK adds about 5 MB to the server binary; the OpenAI and Gemini clients use the standard library only. Nothing uses memory while idle.
+- The three provider clients use the standard library only. Nothing uses memory while idle.
 
-Testing mode (`PODIUM_MODE=testing`, `make dev-test`) also offers a "Test provider (canned problems)": no key, no network, two canned problems whose programs really work on the judge (one about a maximum subarray when the brief or text mentions "subarray" or "stretch", a pair sums problem otherwise). Use it to try the whole pipeline (draft, generate inputs, generate outputs, validate). It does not exist in dev or production.
+Testing mode (`PODIUM_MODE=testing`, `make dev-test`) also offers a "Test provider (canned problems)": no key, no network, two canned problems whose programs really work on the judge (one about a maximum subarray when the brief or text mentions "subarray" or "stretch", a pair sums problem otherwise). Use it to try the whole pipeline (draft, generate inputs, generate outputs, validate). It does not exist in dev or production, and only builds with the tag `fakeai` have it (`make dev-test` builds that way; the release binary does not).
 
 ## Behind Caddy
 
@@ -589,13 +590,13 @@ How long the server keeps each kind of data. The periods are constants in `serve
 | Id | Data | Kept | How it ends |
 |---|---|---|---|
 | `sessions` | Sign-in sessions | 12 hours after sign-in | hourly sweep |
-| `integrity_events` | Paste and focus events during contests, their counts and similar-code checks | 180 days after the contest | integrity retention every 12 hours |
-| `run_payloads` | Custom input and program output of a Run | 30 days | daily retention job; the run's verdict row stays |
+| `integrity_events` | Paste and focus events during contests, their counts and similar-code checks | 180 days after the contest | retention pass every 12 hours |
+| `run_payloads` | Custom input and program output of a Run | 30 days | retention pass every 12 hours; the run's verdict row stays |
 | `backups` | Backups | 14 days | `podium-backup` (`PODIUM_BACKUP_KEEP_DAYS`) and the bucket's lifecycle rule |
 
 Everything else (submissions, scores, code, problems and their versions, audit logs, integrity decisions with their reasons) is kept until an owner erases a person with `forget-user` or deletes the database. v3 has no multi-year deletion; add one when a college policy asks for it.
 
-The daily job starts a minute after the server and then runs every 24 hours, in batches of 2,000 rows per transaction, and logs one line (`data past retention removed`). A run job's payload (the code and custom input it named) becomes `{}` and its output excerpts are emptied; the next blob collection then removes the custom input files. A run older than 30 days shows its verdicts and no output.
+The retention pass starts a minute after the server and then runs every 12 hours, in batches of 2,000 rows per transaction, and logs one line (`data past retention removed`). A run job's payload (the code and custom input it named) becomes `{}` and its output excerpts are emptied; the next blob collection then removes the custom input files. A run older than 30 days shows its verdicts and no output.
 
 ## Site settings
 

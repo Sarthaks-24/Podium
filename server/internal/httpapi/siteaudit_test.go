@@ -69,7 +69,7 @@ func sessionCookie(b *browser) string {
 	return ""
 }
 
-func TestP2SiteAuditRecordsPeopleChangesAndNoSecret(t *testing.T) {
+func TestSiteAuditRecordsPeopleChangesAndNoSecret(t *testing.T) {
 	s := newSite(t)
 	owner := s.signedIn("owner@college.edu", "Owner")
 	token := sessionCookie(owner)

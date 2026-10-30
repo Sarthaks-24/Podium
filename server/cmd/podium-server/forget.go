@@ -15,8 +15,8 @@ import (
 	"github.com/Sarthaks-24/podium/internal/db"
 )
 
-// forgetCmd runs "podium-server forget-user EMAIL": erase one person
-// (B3.2, PLAN.md section 9). It is a dry run unless -apply is given: it
+// forgetCmd runs "podium-server forget-user EMAIL": erase one person.
+// It is a dry run unless -apply is given: it
 // prints what would be deleted and changes nothing. With -apply the
 // change and its site audit row are one transaction, recorded as the
 // owner account. Exit 0 when done (or the dry run worked), 1 when

@@ -20,7 +20,7 @@ import (
 	"github.com/Sarthaks-24/podium/internal/problems"
 )
 
-// Limits on what a student sends (PLAN.md 7.5).
+// Limits on what a student sends.
 const (
 	MaxSource    = 64 << 10
 	MaxInput     = 64 << 10
@@ -47,7 +47,7 @@ var (
 	ErrNotFound = errors.New("not found")
 	// ErrPinMoved refuses a submit, run or rejudge whose problem changed
 	// after the contest's Ready check, so the judged tests would not be
-	// the pinned revision's (council C1-045). The words are contests'
+	// the pinned revision's. The words are contests'
 	// ErrNotReady's, for a student.
 	ErrPinMoved = errors.New("This problem is being updated by the organisers. Try again in a few minutes.")
 )
@@ -86,6 +86,13 @@ type Service struct {
 	limits rateLimiter
 }
 
+// New returns the service. hashKey is HashKey; contestView is
+// ContestView.
+func New(db *sql.DB, j *jobs.Service, p *problems.Service, hub *events.Hub, hashKey []byte,
+	contestView func(ctx context.Context, contestID, userID int64) ViewOptions) *Service {
+	return &Service{DB: db, Jobs: j, Problems: p, Hub: hub, HashKey: hashKey, ContestView: contestView}
+}
+
 func (s *Service) now() time.Time {
 	if s.Now != nil {
 		return s.Now()
@@ -94,7 +101,7 @@ func (s *Service) now() time.Time {
 }
 
 // Scope says whose rules apply: outside a contest (organisers trying a
-// problem in M3) or inside one (M4).
+// problem) or inside one.
 type Scope struct {
 	ContestID int64
 	// MinGap is the shortest time between two submits by one user to one problem.
@@ -108,13 +115,13 @@ type Scope struct {
 	// View is how the viewer sees the submissions listed in the workspace
 	// and returned by Submit.
 	View ViewOptions
-	// RevisionID is the problem revision the contest pins (B2.3): the
+	// RevisionID is the problem revision the contest pins: the
 	// workspace serves its title, statement and samples, and submissions
 	// and runs record it. 0 outside contests.
 	RevisionID int64
 	// Reveal marks submissions that never count (practice after the
 	// window, the organisers' workspace): their
-	// first failing hidden test is revealed to the author (D115).
+	// first failing hidden test is revealed to the author.
 	Reveal bool
 }
 
@@ -190,7 +197,7 @@ type Language struct {
 	Name string `json:"name"`
 	// TimeFactor multiplies the problem's time limit for this language
 	// (the judge's table), so the editor can show the limit a program
-	// really gets (walk 2026-10-21, D323).
+	// really gets.
 	TimeFactor float64 `json:"time_factor"`
 }
 
@@ -206,7 +213,7 @@ var languages = func() []Language {
 
 // Workspace loads a problem for the editor. Organisers may try a problem
 // before it is validated; students reach problems only through contests,
-// which accept validated problems only (M4). In a contest it serves the
+// which accept validated problems only. In a contest it serves the
 // pinned revision (sc.RevisionID), never the bank's working copy, and
 // records the first time a student is served it.
 func (s *Service) Workspace(ctx context.Context, problemID, userID int64, sc Scope) (*Workspace, error) {
@@ -318,13 +325,13 @@ type SubmitRequest struct {
 	ClientKey           string
 	Typed, Pasted, Blur int
 	// Exits counts the times the student left full screen since the last
-	// submission, in a contest that asks for it (V3-25).
+	// submission, in a contest that asks for it.
 	Exits      int
 	ClientHash string
 }
 
 // ClientHash turns an IP address and user agent into the opaque value
-// stored with a submission (D47): enough to notice two people on one
+// stored with a submission: enough to notice two people on one
 // browser, not enough to recover either. It is keyed (HMAC with HashKey),
 // so campus IP ranges cannot be brute-forced back out of it.
 func (s *Service) ClientHash(ip, userAgent string) string {
@@ -400,7 +407,7 @@ func (s *Service) Submit(ctx context.Context, r SubmitRequest) (v *SubmissionVie
 	if pending > 0 && !r.Scope.View.Hide {
 		return nil, false, &RateError{"Your last submission for this problem is still being judged. Wait for its result.", 5 * time.Second}
 	}
-	// The gap is per person and problem (V3-17): finishing A never holds up B.
+	// The gap is per person and problem: finishing A never holds up B.
 	var last sql.NullInt64
 	if err := tx.QueryRowContext(ctx, `SELECT max(created_at) FROM submissions WHERE user_id = ? AND problem_id = ? AND coalesce(contest_id, 0) = ? AND kind = 'submit'`,
 		r.UserID, r.ProblemID, r.Scope.ContestID).Scan(&last); err != nil {
@@ -443,7 +450,7 @@ func (s *Service) Submit(ctx context.Context, r SubmitRequest) (v *SubmissionVie
 			return nil, false, err
 		}
 	}
-	// Fair queue (PLAN.md 4.1 lever 5): a student's first submission on a
+	// Fair queue: a student's first submission on a
 	// problem goes ahead of someone's tenth.
 	priority := SubmitPriority + min(judged, 10)
 	if r.Scope.Practice {
@@ -477,7 +484,7 @@ func nullID(id int64) any {
 }
 
 // tagJob records a job's contest (so a paused contest's jobs wait) and the
-// revision it judges against (B2.10).
+// revision it judges against.
 func tagJob(ctx context.Context, tx *sql.Tx, jobID int64, sc Scope) error {
 	if sc.ContestID <= 0 && sc.RevisionID <= 0 {
 		return nil
@@ -515,8 +522,8 @@ func checkPin(ctx context.Context, tx *sql.Tx, p *problems.Problem, revisionID i
 
 // problemForJudging loads a problem that can be judged: tests, samples
 // and subtasks fit together and every test has its expected output.
-// (Contests also require validation, M4; organisers may try an
-// unvalidated problem.)
+// (Contests also require validation; organisers may try an unvalidated
+// problem.)
 func (s *Service) problemForJudging(ctx context.Context, id int64) (*problems.Problem, error) {
 	p, err := s.Problems.Get(ctx, id)
 	if errors.Is(err, problems.ErrNotFound) {
@@ -532,7 +539,7 @@ func (s *Service) problemForJudging(ctx context.Context, id int64) (*problems.Pr
 }
 
 // submitPayload lists tests samples first, then each subtask's tests in
-// subtask order. Open tests are Run's, never Submit's (D115).
+// subtask order. Open tests are Run's, never Submit's.
 func submitPayload(p *problems.Problem, submissionID int64, prog judgeapi.Program) judgeapi.SubmitPayload {
 	pl := judgeapi.SubmitPayload{SubmissionID: submissionID, Program: prog, TimeLimitMS: p.TimeLimitMS,
 		MemoryLimitMB: p.MemoryLimitMB, Checker: judgeapi.Checker{Type: p.Checker, Epsilon: p.Epsilon},
@@ -558,8 +565,7 @@ func submitPayload(p *problems.Problem, submissionID int64, prog judgeapi.Progra
 	return pl
 }
 
-// RunRequest is one press of Run: on the samples and open tests, or on a
-// custom input.
+// RunRequest is one press of Run: on the samples, or on a custom input.
 type RunRequest struct {
 	ProblemID, UserID int64
 	Scope             Scope
@@ -669,7 +675,7 @@ func (s *Service) Run(ctx context.Context, r RunRequest) (*RunView, error) {
 	return s.GetRunWith(ctx, id, r.Scope.View)
 }
 
-// Event is one integrity event from the editor (D47). At is when it
+// Event is one integrity event from the editor. At is when it
 // happened, in server Unix ms as the browser estimates it; events arrive
 // in batches, so it is kept when plausible.
 type Event struct {
@@ -731,12 +737,6 @@ func (s *Service) RecordEvents(ctx context.Context, problemID, userID int64, sc 
 		}
 	}
 	return tx.Commit()
-}
-
-// Owner returns who made a submission or run, for access checks.
-func (s *Service) Owner(ctx context.Context, id int64) (userID int64, kind string, err error) {
-	i, err := s.Info(ctx, id)
-	return i.UserID, i.Kind, err
 }
 
 // Info is what access checks need to know about a submission or run.

@@ -27,14 +27,14 @@ const previewBytes = 200
 // each can hold over 100 MB, and the VM has 2 GB.
 var packOps = make(chan struct{}, 1)
 
-// withPackSlot waits for the pack slot; it writes a 503 and returns false
-// when the request ends first.
+// withPackSlot waits for the pack slot; it writes 429 busy and returns
+// false when the request ends first.
 func withPackSlot(w http.ResponseWriter, r *http.Request) (func(), bool) {
 	select {
 	case packOps <- struct{}{}:
 		return func() { <-packOps }, true
 	case <-r.Context().Done():
-		WriteError(w, http.StatusServiceUnavailable, "busy", "Another pack is being processed. Try again in a moment.")
+		writeBusy(w, 5, "Another pack is being processed. Try again in a moment.")
 		return nil, false
 	}
 }
@@ -53,7 +53,7 @@ type problemSummaryJSON struct {
 	ValidatedAt *int64   `json:"validated_at"`
 	UpdatedAt   int64    `json:"updated_at"`
 	// ShownInPractice: practice after a contest has
-	// shown students its hidden tests (D115).
+	// shown students its hidden tests.
 	ShownInPractice bool `json:"shown_in_practice"`
 }
 
@@ -68,11 +68,11 @@ type subtaskJSON struct {
 	Title  string `json:"title"`
 	Tests  string `json:"tests"`
 	// GeneratorArgs are the arguments the generator gets for this
-	// subtask's planned tests (M5). Left out of a save, they are kept.
+	// subtask's planned tests. Left out of a save, they are kept.
 	GeneratorArgs []string `json:"generator_args"`
 }
 
-// planJSON is one test the generator makes (M5).
+// planJSON is one test the generator makes.
 type planJSON struct {
 	Idx     int      `json:"idx"`
 	Subtask int      `json:"subtask"`
@@ -137,7 +137,7 @@ type problemEditJSON struct {
 	Samples       []int         `json:"samples"`
 	Subtasks      []subtaskJSON `json:"subtasks"`
 	// Reason says why the problem changed; required while a live contest
-	// pins it (B2.2).
+	// pins it.
 	Reason string `json:"reason"`
 	// Generator and Plan are raw so a save can tell "left out" (keep the
 	// generator, the plan and each subtask's arguments) from null or [].

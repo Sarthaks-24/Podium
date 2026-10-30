@@ -19,7 +19,7 @@ import (
 	"github.com/Sarthaks-24/podium/internal/judgeapi"
 )
 
-func TestM3WorkspaceSubmitAndStream(t *testing.T) {
+func TestWorkspaceSubmitAndStream(t *testing.T) {
 	s := newSite(t)
 	owner := s.browser()
 	owner.signIn(authtest.Person{Email: "owner@college.edu", Verified: true, Name: "Owner"}, "/")

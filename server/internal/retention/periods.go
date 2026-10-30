@@ -42,7 +42,7 @@ const (
 )
 
 // Period is one row of the retention table, as GET /api/auth/config
-// returns it (contract C5).
+// returns it.
 type Period struct {
 	// ID is stable; the web app may key on it.
 	ID string `json:"id"`

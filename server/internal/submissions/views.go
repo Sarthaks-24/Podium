@@ -12,8 +12,8 @@ import (
 )
 
 // SubmissionView is a submission as its author sees it: verdicts, times
-// and scores, never the input or output of a hidden test (decision D47),
-// except Revealed on a submission that never counts (D115).
+// and scores, never the input or output of a hidden test,
+// except Revealed on a submission that never counts.
 type SubmissionView struct {
 	ID            int64           `json:"id"`
 	ProblemID     int64           `json:"problem_id"`
@@ -36,16 +36,16 @@ type SubmissionView struct {
 	Hidden bool `json:"hidden"`
 	// Revealed is the first failing hidden test of a submission that never
 	// counts (practice, the organisers' workspace),
-	// once judged; absent on every submission that counts (D115).
+	// once judged; absent on every submission that counts.
 	Revealed *RevealedTest `json:"revealed,omitempty"`
 	// TimeStepMS is the step the times were rounded to (to the nearest),
-	// so a 0 can be shown as "under step/2 ms" (D322).
+	// so a 0 can be shown as "under step/2 ms".
 	TimeStepMS int   `json:"time_step_ms"`
 	ServerNow  int64 `json:"server_now"`
 }
 
 // RevealedTest is a failing test shown with its input, the expected output
-// and the program's output, each at most 4 KB (D115).
+// and the program's output, each at most 4 KB.
 type RevealedTest struct {
 	Idx        int    `json:"idx"`
 	SubtaskIdx int    `json:"subtask_idx"`
@@ -55,7 +55,7 @@ type RevealedTest struct {
 	Truncated  bool   `json:"truncated"`
 }
 
-// RevealedRunTest is the first failing sample or open test of a run.
+// RevealedRunTest is the first failing sample of a run.
 type RevealedRunTest struct {
 	Idx       int    `json:"idx"`
 	Kind      string `json:"kind"`
@@ -95,10 +95,10 @@ type RunView struct {
 	State         string      `json:"state"`
 	CompileOutput string      `json:"compile_output"`
 	Results       []RunResult `json:"results"`
-	// Revealed is the first sample or open test that failed (D115).
+	// Revealed is the first sample that failed.
 	Revealed *RevealedRunTest `json:"revealed,omitempty"`
 	Error    string           `json:"error,omitempty"`
-	// TimeStepMS is the step the times were rounded to (D322).
+	// TimeStepMS is the step the times were rounded to.
 	TimeStepMS int   `json:"time_step_ms"`
 	ServerNow  int64 `json:"server_now"`
 }
@@ -114,7 +114,7 @@ func roundTo(ms, step int) int {
 
 // ViewOptions say how much a viewer may see of a submission.
 type ViewOptions struct {
-	// Coarse is for students (decision D47): no memory figure for hidden
+	// Coarse is for students: no memory figure for hidden
 	// tests, the maximum rounded up to 16 MB steps, times rounded to
 	// RoundMS. Exact figures on hidden tests let a program leak a test's
 	// values a few bits per submission.
@@ -125,10 +125,6 @@ type ViewOptions struct {
 	// the student's window is open): state "submitted", no verdict, score,
 	// tests, times or compile output.
 	Hide bool
-	// NoReveal leaves out a revealed hidden test: a co-organiser whose
-	// site role is student reading someone else's submission is not
-	// trusted with hidden tests (D115).
-	NoReveal bool
 }
 
 // StudentView is how a student sees a submission outside any contest
@@ -192,8 +188,7 @@ func (s *Service) loadRow(ctx context.Context, id int64) (row, error) {
 	return r, err
 }
 
-// Get returns a submission with every figure (organisers, and owners in
-// M3, where only organisers submit).
+// Get returns a submission with every figure, as organisers see it.
 func (s *Service) Get(ctx context.Context, id int64) (*SubmissionView, error) {
 	return s.GetWith(ctx, id, ViewOptions{})
 }
@@ -236,7 +231,7 @@ func (s *Service) GetWith(ctx context.Context, id int64, o ViewOptions) (*Submis
 		view := Score{Samples: sc.Samples, Subtasks: sc.Subtasks, MaxTimeMS: v.MaxTimeMS, MaxMemoryKB: v.MaxMemoryKB}
 		applyView(&view, o)
 		v.Subtasks, v.Samples, v.CompileOutput, v.MaxTimeMS, v.MaxMemoryKB = view.Subtasks, view.Samples, sc.CompileOutput, view.MaxTimeMS, view.MaxMemoryKB
-		if sc.Revealed != nil && !o.NoReveal {
+		if sc.Revealed != nil {
 			v.Revealed = s.revealed(sc.Revealed)
 		}
 		return v, nil
@@ -279,7 +274,7 @@ func (s *Service) GetWith(ctx context.Context, id int64, o ViewOptions) (*Submis
 // maskUnfinished hides per-test progress inside a block that is still
 // being judged (the samples, or a subtask), so polling a submission shows
 // as much as the live stream does and no more: when a whole block
-// finishes, never when one hidden test does (D47).
+// finishes, never when one hidden test does.
 func maskUnfinished(sc *Score) {
 	blank := func(tests []TestOutcome) {
 		for i := range tests {
@@ -315,7 +310,7 @@ type storedResult struct {
 	Subtasks      []SubtaskResult `json:"subtasks"`
 	Samples       []TestOutcome   `json:"samples"`
 	CompileOutput string          `json:"compile_output"`
-	// Revealed is set only when the job's payload asked for it (D115).
+	// Revealed is set only when the job's payload asked for it.
 	Revealed *storedReveal `json:"revealed,omitempty"`
 }
 
@@ -336,11 +331,6 @@ func (s *Service) revealed(r *storedReveal) *RevealedTest {
 	return &RevealedTest{Idx: r.Idx, SubtaskIdx: r.Subtask, Input: clipText(in, maxSampleTxt), Expected: clipText(exp, maxSampleTxt),
 		Output:    clipText([]byte(r.Output), maxSampleTxt),
 		Truncated: len(in) > maxSampleTxt || len(exp) > maxSampleTxt || len(r.Output) >= judgeapi.MaxRunOutput-3}
-}
-
-// GetRun returns a run with whatever results have arrived.
-func (s *Service) GetRun(ctx context.Context, id int64) (*RunView, error) {
-	return s.GetRunWith(ctx, id, ViewOptions{})
 }
 
 // GetRunWith returns a run with times rounded as the options say. A run

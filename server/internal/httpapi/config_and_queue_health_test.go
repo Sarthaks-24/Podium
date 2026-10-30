@@ -1,7 +1,7 @@
 package httpapi
 
-// P3 backend: site settings and the config route (C5), the contact form
-// and inbox (C6), and queue health on the contest response (C10).
+// Site settings and the config route, queue health on the contest
+// response, and the organiser contest list without per-contest lookups.
 
 import (
 	"encoding/json"
@@ -14,7 +14,7 @@ import (
 	"github.com/Sarthaks-24/podium/internal/retention"
 )
 
-func TestP3ConfigCarriesOrganisationAndRetention(t *testing.T) {
+func TestConfigCarriesOrganisationAndRetention(t *testing.T) {
 	s := newSite(t)
 	anon := s.browser()
 	code, body := anon.do("GET", "/api/auth/config", nil, "")
@@ -96,7 +96,7 @@ func TestP3ConfigCarriesOrganisationAndRetention(t *testing.T) {
 	}
 }
 
-func TestP3QueueHealthOnTheContestResponse(t *testing.T) {
+func TestQueueHealthOnTheContestResponse(t *testing.T) {
 	s := newSite(t)
 	owner := s.signedIn("owner@college.edu", "Owner")
 	pid := s.importProblem(owner, "queue-health")
