@@ -6,6 +6,7 @@ Dated entries per release. Unreleased work is listed at the top.
 
 ### v4 stage E: the editor (2026-10-31)
 
+- Completion offers snippets for C++ (main with fast input, fastio, fori, tests, readvec, ll) and Java (main as class Main with fast input, tokens, readint, fori, tests); Tab moves between a snippet's fields.
 - Shift+Alt+F re-indents the whole file, as VS Code's Format Document key does, by the language's indent rules (V4-5); it is in Help.
 - `npm run size` also budgets the code editor (V4-3): what its first open downloads beyond the first load, with C++, is 171.57 kB gzip in four files; the budget is 189 kB, and the check fails when the editor chunk can no longer be found.
 

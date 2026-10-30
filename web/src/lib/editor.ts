@@ -11,7 +11,7 @@
  * contest that blocks paste gets a compartment that refuses every paste
  * and drop and tells the caller, so the workspace can say why.
  */
-import { autocompletion, closeBrackets, closeBracketsKeymap, closeCompletion, completeAnyWord, completeFromList, currentCompletions } from '@codemirror/autocomplete';
+import { autocompletion, closeBrackets, closeBracketsKeymap, closeCompletion, completeAnyWord, completeFromList, currentCompletions, snippetCompletion, type Completion } from '@codemirror/autocomplete';
 import { defaultKeymap, history, historyKeymap, indentMore, indentWithTab, selectParentSyntax } from '@codemirror/commands';
 import { bracketMatching, HighlightStyle, indentOnInput, indentRange, indentUnit, syntaxHighlighting } from '@codemirror/language';
 import {
@@ -286,8 +286,39 @@ const KEYWORDS: Partial<Record<Language, string[]>> = {
   ],
 };
 
+/**
+ * Snippets a contest solution starts from (v4 E7): the label is what to
+ * type, Enter or Tab takes it, and Tab then moves between its fields.
+ * A "\t" becomes the file's indent unit.
+ */
+export const SNIPPETS: Partial<Record<Language, { label: string; detail: string; template: string }[]>> = {
+  cpp17: [
+    { label: 'main', detail: 'program with fast input', template: '#include <bits/stdc++.h>\nusing namespace std;\n\nint main() {\n\tios::sync_with_stdio(false);\n\tcin.tie(nullptr);\n\t${}\n\treturn 0;\n}' },
+    { label: 'fastio', detail: 'fast cin and cout', template: 'ios::sync_with_stdio(false);\ncin.tie(nullptr);' },
+    { label: 'fori', detail: 'for loop', template: 'for (int ${i} = 0; ${i} < ${n}; ${i}++) {\n\t${}\n}' },
+    { label: 'tests', detail: 'loop over test cases', template: 'int t;\ncin >> t;\nwhile (t--) {\n\t${}\n}' },
+    { label: 'readvec', detail: 'read n numbers', template: 'vector<long long> ${a}(${n});\nfor (auto &x : ${a}) cin >> x;' },
+    { label: 'll', detail: 'long long alias', template: 'using ll = long long;' },
+  ],
+  java21: [
+    { label: 'main', detail: 'class Main with fast input', template: 'import java.io.*;\nimport java.util.*;\n\npublic class Main {\n\tpublic static void main(String[] args) throws IOException {\n\t\tBufferedReader in = new BufferedReader(new InputStreamReader(System.in));\n\t\tPrintWriter out = new PrintWriter(new BufferedWriter(new OutputStreamWriter(System.out)));\n\t\t${}\n\t\tout.flush();\n\t}\n}' },
+    { label: 'tokens', detail: 'split the next line', template: 'StringTokenizer st = new StringTokenizer(in.readLine());' },
+    { label: 'readint', detail: 'next number from the line', template: 'int ${n} = Integer.parseInt(st.nextToken());' },
+    { label: 'fori', detail: 'for loop', template: 'for (int ${i} = 0; ${i} < ${n}; ${i}++) {\n\t${}\n}' },
+    { label: 'tests', detail: 'loop over test cases', template: 'int t = Integer.parseInt(in.readLine().trim());\nwhile (t-- > 0) {\n\t${}\n}' },
+  ],
+};
+
+/** The completion list for a language: its words, then its snippets. */
+export function completionOptions(language: Language): Completion[] {
+  return [
+    ...(KEYWORDS[language] ?? []).map((label) => ({ label })),
+    ...(SNIPPETS[language] ?? []).map((s) => snippetCompletion(s.template, { label: s.label, detail: s.detail, type: 'text' })),
+  ];
+}
+
 const completion = (language: EditorLanguage) => {
-  const words = language === 'text' ? undefined : KEYWORDS[language];
+  const words = language === 'text' || !KEYWORDS[language] ? undefined : completionOptions(language);
   return autocompletion({ defaultKeymap: false, ...(words ? { override: [completeAnyWord, completeFromList(words)] } : {}) });
 };
 

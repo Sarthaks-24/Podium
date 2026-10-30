@@ -8,7 +8,7 @@ import { completionStatus } from '@codemirror/autocomplete';
 import { foldedRanges } from '@codemirror/language';
 import { searchPanelOpen } from '@codemirror/search';
 import { EditorView, runScopeHandlers } from '@codemirror/view';
-import { createEditor, loadMode, type EditorHandle, type EditorOptions } from './editor';
+import { SNIPPETS, completionOptions, createEditor, loadMode, type EditorHandle, type EditorOptions } from './editor';
 
 let handle: EditorHandle | null = null;
 
@@ -87,5 +87,20 @@ describe('createEditor extensions', () => {
     expect(foldedRanges(view.state).size).toBe(1);
     expect(press(view, '}', 221, true)).toBe(true);
     expect(foldedRanges(view.state).size).toBe(0);
+  });
+});
+
+describe('snippets (v4 E7)', () => {
+  it('puts the C++ and Java snippets in the completion list, after the words', () => {
+    const cpp = completionOptions('cpp17').map((c) => c.label);
+    expect(cpp).toEqual(expect.arrayContaining(['main', 'fastio', 'fori', 'tests', 'readvec', 'll', 'vector']));
+    expect(cpp.indexOf('main')).toBeGreaterThan(cpp.indexOf('vector'));
+    const java = completionOptions('java21').map((c) => c.label);
+    expect(java).toEqual(expect.arrayContaining(['main', 'tokens', 'readint', 'fori', 'tests']));
+    expect(completionOptions('python3').map((c) => c.label)).toEqual([]);
+  });
+
+  it('gives Java the class name the judge runs', () => {
+    expect(SNIPPETS.java21?.find((s) => s.label === 'main')?.template).toContain('public class Main {');
   });
 });
