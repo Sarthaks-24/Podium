@@ -230,7 +230,16 @@ const starterStatement = `Describe the task.
 `
 
 // Create starts a new problem with a starter statement and C++ solution.
+// An empty slug is derived from the title, with a number added when another
+// problem has it, so the editor never asks for one; it stays as made.
 func (s *Service) Create(ctx context.Context, title, slug string, authorID int64) (*Problem, error) {
+	if strings.TrimSpace(slug) == "" && strings.TrimSpace(title) != "" {
+		free, err := s.freeSlug(ctx, SlugFromTitle(title))
+		if err != nil {
+			return nil, err
+		}
+		slug = free
+	}
 	p := &Problem{
 		Title: title, Slug: slug, Statement: starterStatement,
 		TimeLimitMS: defaultTimeLimit, MemoryLimitMB: defaultMemoryMB,
@@ -253,6 +262,42 @@ func (s *Service) Create(ctx context.Context, title, slug string, authorID int64
 		return nil, err
 	}
 	return p, nil
+}
+
+var slugUnsafe = regexp.MustCompile(`[^a-z0-9]+`)
+
+// SlugFromTitle makes a problem's slug from its title: lowercase letters
+// and digits joined by single hyphens, at most 48 characters (room for a
+// number), "problem" when nothing is left.
+func SlugFromTitle(title string) string {
+	s := strings.Trim(slugUnsafe.ReplaceAllString(strings.ToLower(title), "-"), "-")
+	if len(s) > 48 {
+		s = strings.TrimRight(s[:48], "-")
+	}
+	if s == "" {
+		return "problem"
+	}
+	return s
+}
+
+// freeSlug returns base, or base with "-2", "-3" and so on when another
+// problem has it.
+func (s *Service) freeSlug(ctx context.Context, base string) (string, error) {
+	slug := base
+	for i := 2; ; i++ {
+		var taken int
+		if err := s.DB.QueryRowContext(ctx, "SELECT count(*) FROM problems WHERE slug = ?", slug).Scan(&taken); err != nil {
+			return "", err
+		}
+		if taken == 0 {
+			return slug, nil
+		}
+		if i > 99 {
+			return "", FieldErrors{"slug": fmt.Sprintf("Another problem already uses the slug %s.", base)}
+		}
+		suffix := fmt.Sprintf("-%d", i)
+		slug = strings.TrimRight(base[:min(len(base), 64-len(suffix))], "-") + suffix
+	}
 }
 
 // onlyFields keeps the errors for the given fields; the rest come from

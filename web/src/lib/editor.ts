@@ -28,6 +28,10 @@
  *   workspace can say why. It lives in a compartment, like read-only.
  * - `describedBy` names the element holding the editor's keyboard hint, so
  *   a screen reader hears how to leave the editor (X2).
+ * - The language 'text' is plain text with no mode: the problem editor's
+ *   statement uses it, with the same keys and theme as the workspace,
+ *   because no Markdown mode is installed. `id` puts an id on the editable
+ *   element, so a field error can point at it.
  */
 import { autocompletion, closeBrackets, closeBracketsKeymap, closeCompletion, completeAnyWord, completeFromList, currentCompletions } from '@codemirror/autocomplete';
 import { defaultKeymap, history, historyKeymap, indentMore, indentWithTab, selectParentSyntax } from '@codemirror/commands';
@@ -67,10 +71,14 @@ const MODES: Record<Language, () => Promise<Extension>> = {
   node22: () => import('@codemirror/lang-javascript').then((m) => m.javascript()),
 };
 
+/** A program language, or plain text (the statement). */
+export type EditorLanguage = Language | 'text';
+
 const loaded = new Map<Language, Promise<Extension>>();
 
 /** The language mode, fetched once per page; a failed fetch is tried again next time. */
-export function loadMode(language: Language): Promise<Extension> {
+export function loadMode(language: EditorLanguage): Promise<Extension> {
+  if (language === 'text') return Promise.resolve([]);
   let p = loaded.get(language);
   if (!p) {
     p = MODES[language]();
@@ -144,8 +152,10 @@ export interface EditorCallbacks {
 export interface EditorOptions extends EditorCallbacks {
   parent: HTMLElement;
   doc: string;
-  language: Language;
+  language: EditorLanguage;
   label: string;
+  /** An id for the editable element. */
+  id?: string;
   /** The id of the element that describes the editor (its keyboard hint). */
   describedBy?: string;
   tabMovesFocus: boolean;
@@ -159,7 +169,7 @@ export interface EditorOptions extends EditorCallbacks {
 
 /** The handle the component keeps. */
 export interface EditorHandle {
-  setLanguage(language: Language, label: string): void;
+  setLanguage(language: EditorLanguage, label: string): void;
   setTabMovesFocus(on: boolean): void;
   setTabSize(size: 2 | 4): void;
   setWrap(on: boolean): void;
@@ -283,8 +293,8 @@ const KEYWORDS: Partial<Record<Language, string[]>> = {
   ],
 };
 
-const completion = (language: Language) => {
-  const words = KEYWORDS[language];
+const completion = (language: EditorLanguage) => {
+  const words = language === 'text' ? undefined : KEYWORDS[language];
   return autocompletion({ defaultKeymap: false, ...(words ? { override: [completeAnyWord, completeFromList(words)] } : {}) });
 };
 
@@ -336,6 +346,11 @@ export function createEditor(o: EditorOptions): EditorHandle {
       'aria-multiline': 'true',
       // Browser translation must never rewrite code (final audit 2026-10-21).
       translate: 'no',
+      ...(o.id ? { id: o.id } : {}),
+      // Plain text (the statement) is one field of a form and scrolls inside
+      // a fixed height: an explicit tab stop lets every checker see that its
+      // scrolling region is reachable from the keyboard.
+      ...(o.language === 'text' ? { tabindex: '0' } : {}),
       ...(o.describedBy ? { 'aria-describedby': o.describedBy } : {}),
     });
 
@@ -394,9 +409,9 @@ export function createEditor(o: EditorOptions): EditorHandle {
   report(view.state);
 
   // The newest request wins, so a slow first mode never replaces a later choice.
-  let wanted: Language = o.language;
+  let wanted: EditorLanguage = o.language;
   let destroyed = false;
-  const applyMode = (language: Language) => {
+  const applyMode = (language: EditorLanguage) => {
     wanted = language;
     view.dispatch({ effects: completionConf.reconfigure(completion(language)) });
     loadMode(language)

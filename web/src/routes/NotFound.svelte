@@ -1,7 +1,7 @@
 <!--
   NotFound: shown for any path the router does not know (v2 N5, audit
   04-13). Echoes the address that failed and offers the links that fit the
-  visitor: "Your contests" for a student, "Contests" and "Problem bank" for
+  visitor: "Your contests" for a student, "Contests" and "Problems" for
   an organiser, and "Sign in" when nobody is signed in. Takes no props.
 -->
 <script lang="ts">
@@ -20,7 +20,7 @@
         ? [{ href: '/', label: 'Your contests' }]
         : [
             { href: '/admin/contests', label: 'Contests' },
-            { href: '/admin/problems', label: 'Problem bank' },
+            { href: '/admin/problems', label: 'Problems' },
           ],
   );
 

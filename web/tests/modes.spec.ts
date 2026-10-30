@@ -50,7 +50,7 @@ test('testing mode signs in from a form', async ({ page }) => {
   await page.getByLabel('Role').selectOption('admin');
   await page.getByRole('button', { name: 'Sign in for testing' }).click();
   await expect(page).toHaveURL(/\/admin\/contests$/);
-  await expect(page.getByRole('link', { name: 'Problem bank' })).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Problems', exact: true })).toBeVisible();
   expect(state.posted.at(-1)).toMatchObject({ email: 'ta@college.edu', role: 'admin' });
   await expect(page.getByRole('note')).toContainText('Testing mode');
 });

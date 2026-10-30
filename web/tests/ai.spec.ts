@@ -81,7 +81,7 @@ test('the bank links to the wizard, which holds the key form, and marks AI draft
   await expect(change).toHaveAttribute('aria-expanded', 'true');
   await expect(page.getByRole('form', { name: 'Change the Anthropic key or model' })).toBeVisible();
   await expect(page.getByLabel('Provider')).toBeFocused();
-  await expect(page.getByRole('navigation', { name: 'Main' }).getByRole('link', { name: 'Problem bank' })).toHaveAttribute('aria-current', 'page');
+  await expect(page.getByRole('navigation', { name: 'Main' }).getByRole('link', { name: 'Problems', exact: true })).toHaveAttribute('aria-current', 'page');
   // The old settings address is gone.
   await page.goto('/admin/ai');
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('Page not found');
@@ -319,6 +319,10 @@ test('the editor edits the generator and plan, and generates inputs', async ({ p
   await expect(page.getByText('The AI assistant wrote this draft.', { exact: false })).toBeVisible();
   await expect(page.getByLabel('Tags')).toHaveValue('arrays');
 
+  // The generator sits on the Checking tab, under the folded optional extra checks.
+  await page.getByRole('tab', { name: /^Checking/ }).click();
+  await expect(page.getByRole('list', { name: 'Optional extra checks in use' })).toContainText('Generator in Python 3, 4 planned tests');
+  await page.getByText('Optional extra checks').click();
   const section = page.getByRole('region', { name: 'Generator', exact: true });
   await expect(section.getByRole('group', { name: 'Generator program' })).toBeVisible();
   await expect(section.getByLabel('Subtask 1, n up to 1000')).toHaveValue('n=1000');
@@ -378,6 +382,8 @@ test('the generator section is reachable from the keyboard on a phone', async ({
   await page.setViewportSize({ width: 375, height: 812 });
   await page.goto('/admin/problems/20');
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('Maximum subarray');
+  await page.getByRole('tab', { name: /^Checking/ }).click();
+  await page.getByText('Optional extra checks').click();
   await page.getByRole('button', { name: 'Remove generator' }).focus();
   const reached: string[] = [];
   for (let i = 0; i < 40; i++) {

@@ -515,8 +515,13 @@ export const SCREENS: Screen[] = [
   {
     name: 'ai-editor-generator',
     path: '/admin/problems/20',
-    title: 'Maximum subarray · Problem bank · podium',
+    title: 'Maximum subarray · Problems · podium',
     opts: { key: 'active' },
-    ready: (page) => expect(page.getByRole('region', { name: 'Generator', exact: true })).toBeVisible(),
+    // The generator is on the Checking tab, under the folded optional extra checks.
+    ready: async (page) => {
+      await page.getByRole('tab', { name: /^Checking/ }).click();
+      await page.getByText('Optional extra checks').click();
+      await expect(page.getByRole('region', { name: 'Generator', exact: true })).toBeVisible();
+    },
   },
 ];

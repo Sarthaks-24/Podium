@@ -55,7 +55,7 @@ describe('judgedFieldsChanged mirrors hash.go', () => {
     now.validator = { language: 'python3', source: 'pass' };
     now.samples = '1';
     now.subtasks[0].points = 90;
-    expect(judgedFieldsChanged(saved, now)).toEqual(['limits', 'checker', 'reference solution', 'brute force', 'validator', 'samples', 'subtasks']);
+    expect(judgedFieldsChanged(saved, now)).toEqual(['limits', 'checker', 'reference solution', 'brute force', 'validator', 'examples', 'subtasks']);
   });
 
   it('treats a program with empty source as none and reads lists as numbers', () => {

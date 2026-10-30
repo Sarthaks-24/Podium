@@ -323,7 +323,7 @@
 </script>
 
 <div class="wizard">
-  <PageHeader title="New problem with AI" crumbs={[{ label: 'Problem bank', href: '/admin/problems' }, { label: 'New problem with AI' }]} />
+  <PageHeader title="New problem with AI" crumbs={[{ label: 'Problems', href: '/admin/problems' }, { label: 'New problem with AI' }]} />
 
   {#if loadState === 'forbidden'}
     <PageState kind="forbidden" message="Only organisers can use the AI assistant." />

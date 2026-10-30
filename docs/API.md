@@ -279,7 +279,7 @@ Every route here needs the admin or owner role. Pack format and rules: `docs/AUT
 | Route | Request | Success |
 |---|---|---|
 | `GET /api/admin/problems` | `?archived=1` to include archived problems | 200 `{"problems":[ProblemSummary]}`, most recently changed first |
-| `POST /api/admin/problems` | `{"title":"Two sum","slug":"two-sum"}` | 201 `Problem` with a starter statement and C++ reference |
+| `POST /api/admin/problems` | `{"title":"Two sum"}` | 201 `Problem` with a starter statement and C++ reference. The slug is made from the title (`two-sum`, then `two-sum-2` when taken); a `slug` may still be sent |
 | `POST /api/admin/problems/import` | the pack as a zip body | 201 `Problem` |
 | `GET /api/admin/problems/{id}` | | 200 `Problem` |
 | `PUT /api/admin/problems/{id}` | `ProblemEdit` | 200 `Problem` |
@@ -289,7 +289,7 @@ Every route here needs the admin or owner role. Pack format and rules: `docs/AUT
 | `GET /api/admin/problems/{id}/export` | | 200 the pack, `application/zip`, as an attachment named `<slug>.zip`; outputs not generated yet are left out |
 | `POST /api/admin/problems/{id}/validate` | no body | 202 `Validation` |
 | `GET /api/admin/problems/{id}/validation` | | 200 `Validation`, the latest one |
-| `POST /api/admin/problems/{id}/generate` | `{"all":false}` | 202 `Generation` (see "Output generation") |
+| `POST /api/admin/problems/{id}/generate` | `{"all":false}`, `{"all":true}` or `{"then_validate":true}` | 202 `Generation` (see "Output generation") |
 | `GET /api/admin/problems/{id}/generation` | | 200 `Generation`, the latest one |
 | `POST /api/admin/problems/{id}/generate-inputs` | no body | 202 `InputGeneration` (see "Input generation") |
 | `GET /api/admin/problems/{id}/input-generation` | | 200 `InputGeneration`, the latest one |
@@ -334,9 +334,9 @@ An `{id}` that is not a problem gives `404 not_found` on every route.
 - `plan` lists the tests the generator makes (always an array): test `idx` of subtask `subtask`, made by running the generator with argv `seed` followed by `args`. `subtasks[].generator_args` are the arguments the editor proposes for new planned tests of that subtask (always an array). Format and rules: `docs/AUTHORING.md`, "Tests from a generator".
 - `checker` is `tokens`, `exact`, `float` or `custom`. `epsilon` matters only for `float`; `checker_source` is the testlib checker for `custom` and `""` otherwise.
 - `tests[].subtask_idx` is `null` for a sample. Previews are the first 200 bytes of each file, cut at a whole UTF-8 character.
-- `tests[].output_missing` is true while a test has no expected output (a pack or test zip without its `.out` file); `output_preview` is then `""`. "Generate outputs" fills it.
+- `tests[].output_missing` is true while a test has no expected output (a pack or test zip without its `.out` file); `output_preview` is then `""`. The editor's Validate fills it first (`generate` with `then_validate`).
 - **v3:** there are no open tests (V3-5); `open` and `tests[].open` are gone. A format 2 pack's open tests import as samples.
-- `problems` lists what stops validation and judging (a test in no subtask, a range naming a missing test, "Test 3 has no expected output. Generate outputs from the reference solution."); `warnings` is advice that does not (points not adding up to 100, no brute force, no validator, more than 10 hidden tests). After an import, `warnings` also names files the pack carried that podium ignores.
+- `problems` lists what stops validation and judging (a test in no subtask, a range naming a missing test, "Test 3 has no expected output yet. Validate makes it from the reference solution.", always the last line); `warnings` is advice that does not (points not adding up to 100, no brute force, no validator, more than 10 hidden tests). After an import, `warnings` also names files the pack carried that podium ignores.
 
 `ProblemEdit` replaces every editable field at once (at most 512 KB of JSON):
 
@@ -393,7 +393,7 @@ A `brute` or `validator` with empty source counts as none. Subtasks are numbered
 | import, replace tests, export | 503 `busy` | the request ended while waiting for another pack operation; only one runs at a time |
 | validate | 409 `not_ready` with `problems` | the problem has no tests, no subtask, tests outside the subtasks, or tests without an expected output |
 | validation | 404 `not_found` | the problem has never been validated |
-| generate | 409 `not_ready` with `problems` | no tests, no reference source, a generation still queued or running, or (with `all` false) no output missing |
+| generate | 409 `not_ready` with `problems` | no tests, no reference source, a generation still queued or running, or (with `all` false) no output missing; with `then_validate`, also anything else that stops validation (a test in no subtask, a range naming a missing test). 400 when `all` and `then_validate` are both set |
 | generation | 404 `not_found` | outputs have never been generated for the problem |
 | generate-inputs | 409 `not_ready` with `problems` | no generator, no planned tests, no reference source, or an input or output generation still queued or running |
 | input-generation | 404 `not_found` | inputs have never been generated for the problem |
@@ -406,7 +406,7 @@ Validate notes:
 
 ### Output generation
 
-`POST /api/admin/problems/{id}/generate` runs the reference solution on the problem's inputs, on the judge, and makes what it prints the expected outputs. Request: `{"all":false}` fills only missing outputs; `{"all":true}` replaces every output (the editor asks to confirm first). Unsaved edits are not seen: the job uses the problem as stored.
+`POST /api/admin/problems/{id}/generate` runs the reference solution on the problem's inputs, on the judge, and makes what it prints the expected outputs. Request: `{"all":false}` fills only missing outputs; `{"all":true}` replaces every output (the editor asks to confirm first). `{"then_validate":true}` is the editor's Validate on a problem with missing outputs: it fills them, and when every one arrived the server queues the validation (the summary then has `"validating": true`). Unsaved edits are not seen: the job uses the problem as stored.
 
 `Generation`:
 

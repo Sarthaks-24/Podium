@@ -3,7 +3,7 @@
   word-mark (a link home), the main navigation and one account control
   (components/AccountMenu). Navigation is named by job (lib/routing
   mainNav): students get "Contests"; organisers get "Contests" (the
-  organiser list at /admin/contests, where "/" sends them), "Problem bank"
+  organiser list at /admin/contests, where "/" sends them), "Problems"
   (also current on the AI wizard), and for owners "Settings"; a link is
   current when the screen's row names its section. From
   768 px everything fits one row; under 768 px an organiser's nav and

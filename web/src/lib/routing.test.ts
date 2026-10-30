@@ -53,8 +53,8 @@ describe('who may open a screen', () => {
 describe('main navigation', () => {
   it('names the links by role, Settings for owners only', () => {
     expect(mainNav('student').map((l) => l.label)).toEqual(['Contests']);
-    expect(mainNav('admin').map((l) => l.label)).toEqual(['Contests', 'Problem bank']);
-    expect(mainNav('owner').map((l) => l.label)).toEqual(['Contests', 'Problem bank', 'Settings']);
+    expect(mainNav('admin').map((l) => l.label)).toEqual(['Contests', 'Problems']);
+    expect(mainNav('owner').map((l) => l.label)).toEqual(['Contests', 'Problems', 'Settings']);
   });
 
   it('links each section to a screen of that section', () => {

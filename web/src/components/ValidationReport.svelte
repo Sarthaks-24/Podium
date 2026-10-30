@@ -11,14 +11,16 @@
   queue position or "Running". A result for an older version of the
   problem says so. State changes are announced through a polite live
   region. Props: `validation` (the Validation from the API, or null when
-  the problem was never validated).
+  the problem was never validated) and `onreveal`, which, when given,
+  takes a program's link instead (the editor shows the tab and unfolds
+  the part that holds the source).
 -->
 <script lang="ts">
   import { formatDateTime } from '../lib/format';
   import MonoDigits from './MonoDigits.svelte';
   import { buildReport, isPending, programFieldId, progressText, roleName, verdictLabel, type Role, type Validation } from '../lib/problems';
 
-  let { validation }: { validation: Validation | null } = $props();
+  let { validation, onreveal }: { validation: Validation | null; onreveal?: (id: string) => void } = $props();
 
   const report = $derived(validation ? buildReport(validation) : null);
 
@@ -49,6 +51,10 @@
     const el = document.getElementById(programFieldId(role));
     if (!el) return;
     event.preventDefault();
+    if (onreveal) {
+      onreveal(el.id);
+      return;
+    }
     el.scrollIntoView({ block: 'center' });
     el.focus({ preventScroll: true });
   }

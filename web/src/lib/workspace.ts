@@ -161,8 +161,8 @@ export interface Generation {
   results: { idx: number; verdict: string; time_ms: number }[];
   /** The reference solution's compiler output; with no results it means the compile failed. */
   compile_output?: string;
-  /** Set when done: how many outputs were applied, and why any were not. */
-  summary?: { applied: number; problems: string[] } | null;
+  /** Set when done: how many outputs were applied, why any were not, and whether a validation was queued next. */
+  summary?: { applied: number; problems: string[]; validating?: boolean } | null;
   error: string | null;
 }
 

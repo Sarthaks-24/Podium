@@ -1,17 +1,18 @@
-// Screen sweep and flows for the M2 problem screens (/admin/problems and
+// Screen sweep and flows for the problem screens (/admin/problems and
 // /admin/problems/{id}). Every /api/ call is answered by an in-test mock of
-// the admin problems API in cache/v1/m2-plan.md section 4, one per page, so
-// each test starts from the same fixtures: an admin with four problems
-// (validated, not validated with an unassigned test, archived, and one whose
-// last validation failed).
+// the admin problems API (tests/mocks/problems.ts), one per page, so each
+// test starts from the same fixtures: an admin with five problems
+// (validated, not validated with a test in no subtask, archived, one whose
+// last validation failed, and one with missing outputs) and three contests
+// for Add to contest.
 //
 // For each screen, in light and dark, at 375, 768, 1024 and 1440 px, the
 // sweep checks there is no horizontal page overflow, exactly one h1 and the
 // expected title, then saves a full-page screenshot to
 // cache/screenshots-m2/<screen>-<width>-<theme>.png. Further tests cover the
-// keyboard path through the editor, stacking at 375 px, saving with a field
-// error, validation from queued to passed and to failed, import errors and
-// success, creating, archiving, and the unsaved-changes guard.
+// editor's three tabs from the keyboard, roles chosen per test, saving with
+// field errors on another tab, Validate making missing outputs, Add to
+// contest, the menu, the bank, and the height of each tab at 1440 px.
 import { expect, test, type Page } from '@playwright/test';
 import { activate, hasFocus, tabTo } from './keyboard';
 import { shots, WIDTHS, THEMES, T0, watchFileChoosers, zipFile, mockApi, SCREENS } from './mocks/problems';
@@ -53,12 +54,19 @@ for (const theme of THEMES) {
   });
 }
 
+/** Opens one of the editor's tabs by its name. */
+function tabOf(page: Page, name: 'Statement' | 'Tests' | 'Checking') {
+  return page.getByRole('tab', { name: new RegExp(`^${name}`) });
+}
+
 /** Describes the focused element and whether its focus indicator is visible. */
 function focusInfo(page: Page) {
   return page.evaluate(() => {
     const el = document.activeElement as HTMLElement | null;
     if (!el || el === document.body) return null;
-    const style = getComputedStyle(el);
+    // The code editor draws its ring on the well around it (CodeEditor.svelte).
+    const ringed = el.closest('.host') as HTMLElement | null;
+    const style = getComputedStyle(ringed ?? el);
     const outlineVisible =
       style.outlineStyle !== 'none' && parseFloat(style.outlineWidth) > 0 && !/rgba\(.*,\s*0\)$/.test(style.outlineColor);
     return {
@@ -70,43 +78,119 @@ function focusInfo(page: Page) {
   });
 }
 
+/** Tabs forward until `last` is reached, checking each stop shows focus; returns what was reached. */
+async function tabThrough(page: Page, last: string, max = 80): Promise<string[]> {
+  const reached: string[] = [];
+  for (let i = 0; i < max; i++) {
+    await page.keyboard.press('Tab');
+    const info = await focusInfo(page);
+    if (info === null) break;
+    expect(info.visible, `no visible focus on ${info.tag} "${info.name || info.id}"`).toBe(true);
+    reached.push(info.name || info.id);
+    if (info.name === last || info.id === last) break;
+  }
+  return reached;
+}
+
 for (const width of [1440, 375]) {
-  test(`keyboard reaches every control on the editor at ${width}px`, async ({ page }) => {
+  test(`keyboard reaches every control on each tab of the editor at ${width}px`, async ({ page }) => {
     await mockApi(page);
     await page.setViewportSize({ width, height: 900 });
     await page.goto('/admin/problems/1');
     await expect(page.getByRole('heading', { level: 1 })).toHaveText('A plus B');
-    if (width >= 768) await expect(page.locator('.statement .katex').first()).toBeVisible();
 
-    const reached: string[] = [];
-    for (let i = 0; i < 120; i++) {
-      await page.keyboard.press('Tab');
-      const info = await focusInfo(page);
-      if (info === null) break;
-      expect(info.visible, `no visible focus on ${info.tag} "${info.name || info.id}"`).toBe(true);
-      reached.push(info.name || info.id);
-      if (info.name === 'Archive problem') break;
+    const statement = await tabThrough(page, 'tags');
+    const head = ['Problems', 'Validated, 5 tests, slowest 212 ms', 'Try as a student', 'More', 'Statement', 'Save changes', 'Add to contest'];
+    for (const name of [...head, 'title', 'Statement', 'time_limit_ms', 'memory_limit_mb', 'difficulty', 'tags', ...(width >= 768 ? [] : ['Write'])]) {
+      expect(statement, `Tab did not reach "${name}" on Statement`).toContain(name);
     }
 
-    const always = [
-      'Problem bank', 'Try as a student', 'Validated 16 Oct 02:09', 'Save changes', 'Validate', 'title', 'slug',
-      'statement_md', 'time_limit_ms', 'memory_limit_mb', 'checker', 'tags', 'difficulty', 'samples', 'subtask-0-points',
-      'Remove subtask 1', 'Remove subtask 2', 'Add subtask', 'Replace tests', 'Regenerate all outputs', 'Show all 5 tests',
-      'reference-language', 'reference-source', 'Remove brute force', 'Add validator', 'Download pack', 'Archive problem',
-    ];
-    // The jump links carry a short state (P3 A3) and stay on phones as one scrolling row.
-    const wide = ['Statement', 'Solutions with brute force', 'Tests 5', 'Judging no validator', 'Validation'];
-    const phone = ['Write'];
-    for (const name of [...always, ...wide, ...(width >= 768 ? [] : phone)]) {
-      expect(reached, `Tab did not reach "${name}"`).toContain(name);
+    // Arrows move between the tabs, as on every tablist.
+    await tabOf(page, 'Statement').focus();
+    await page.keyboard.press('ArrowRight');
+    await expect(tabOf(page, 'Tests')).toHaveAttribute('aria-selected', 'true');
+    const tests = await tabThrough(page, 'Add subtask');
+    for (const name of ['Replace tests', 'Role of test 1', 'Role of test 5', 'Download input of test 5', 'subtask-0-points', 'subtask-0-title', 'Remove subtask 2', 'Add subtask']) {
+      expect(tests, `Tab did not reach "${name}" on Tests`).toContain(name);
+    }
+
+    await tabOf(page, 'Tests').focus();
+    await page.keyboard.press('ArrowRight');
+    await expect(tabOf(page, 'Checking')).toHaveAttribute('aria-selected', 'true');
+    const checking = await tabThrough(page, 'Optional extra checks');
+    for (const name of ['reference-language', 'reference-source', 'checker', 'Optional extra checks']) {
+      expect(checking, `Tab did not reach "${name}" on Checking`).toContain(name);
     }
   });
 }
 
-test('subtasks, saving and validating work from the keyboard', async ({ page }) => {
+test('proof: a problem imported, a test given a new role from the select, saved, validated and added to a contest', async ({ page }) => {
+  const state = await mockApi(page);
+  const choosers = watchFileChoosers(page);
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto('/admin/problems');
+  await page.getByRole('button', { name: 'Import pack' }).click();
+  await (await choosers.next()).setFiles(zipFile('pair.zip', 'good pack'));
+  const row = page.getByRole('row', { name: /Pair with sum/ });
+  await expect(row.locator('.badge')).toHaveText('Validated', { timeout: 15_000 });
+  await row.getByRole('link', { name: 'Pair with sum', exact: true }).click();
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Pair with sum');
+
+  await tabOf(page, 'Tests').click();
+  const role = page.getByLabel('Role of test 4');
+  await expect(role).toHaveValue('1');
+  await role.selectOption({ label: 'Subtask 2' });
+  await expect(page.getByText('Unsaved changes', { exact: true })).toBeVisible();
+  await expect(page.getByRole('group', { name: 'Subtask 1' }).locator('.count')).toHaveText('1 test');
+  await expect(page.getByRole('group', { name: 'Subtask 2' }).locator('.count')).toHaveText('2 tests');
+  await page.getByRole('button', { name: 'Save changes' }).click();
+  await expect(toasts(page).getByText('Saved', { exact: true })).toBeVisible();
+  // The server gets the same lists as before: examples and a range per subtask.
+  expect(state.puts.at(-1)?.samples).toEqual([1, 2]);
+  expect(state.puts.at(-1)?.subtasks).toEqual([
+    { points: 40, title: 'Small numbers', tests: '3' },
+    { points: 60, title: 'Full range', tests: '4-5' },
+  ]);
+  await expect(page.locator('.status')).toHaveText('Not validated, 5 tests');
+
+  const validate = page.getByRole('button', { name: 'Validate', exact: true });
+  await expect(validate).toHaveClass(/btn-primary/);
+  await validate.click();
+  await expect(page.locator('.status')).toHaveText('Validating, 2nd in queue');
+  await expect(page.locator('.status')).toHaveText('Validated, 5 tests, slowest 212 ms', { timeout: 15_000 });
+  // Once it passes, Add to contest takes Validate's place.
+  await expect(validate).toHaveCount(0);
+  await page.getByRole('button', { name: 'Add to contest' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Add Pair with sum to a contest' });
+  await expect(dialog.getByLabel('Contest').locator('option')).toHaveText(['Week 7, draft', /^Week 8, starts /]);
+  await dialog.getByRole('button', { name: 'Add to contest' }).click();
+  await expect(toasts(page).getByText('Added to Week 7 as problem B', { exact: true })).toBeVisible();
+  expect(state.contestPuts).toEqual([{ id: 7, body: [{ problem_id: 2, label: 'A' }, { problem_id: 10, label: 'B' }] }]);
+  await page.screenshot({ path: `${shots()}problem-editor-proof-1440-light.png`, fullPage: true });
+});
+
+test('each tab of the editor is under 1,400 px tall at 1440 px (the walk measured 3,987 px)', async ({ page }) => {
+  await mockApi(page);
+  await page.setViewportSize({ width: 1440, height: 900 });
+  for (const id of [1, 4]) {
+    await page.goto(`/admin/problems/${id}`);
+    await expect(page.locator('.status')).toBeVisible();
+    for (const name of ['Statement', 'Tests', 'Checking'] as const) {
+      await tabOf(page, name).click();
+      await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => resolve(null))));
+      const height = await page.evaluate(() => document.documentElement.scrollHeight);
+      test.info().annotations.push({ type: 'height', description: `problem ${id}, ${name}: ${height} px` });
+      await page.screenshot({ path: `${shots()}problem-editor-${id}-${name.toLowerCase()}-1440-light.png`, fullPage: true });
+      // Problem 1 is the walk's problem; problem 4 (15 tests, a failed report) is recorded for comparison.
+      if (id === 1) expect.soft(height, `${name} tab`).toBeLessThan(1400);
+    }
+  }
+});
+
+test('subtasks and roles work from the keyboard, and removing a subtask leaves its tests in none', async ({ page }) => {
   const state = await mockApi(page);
   await page.goto('/admin/problems/1');
-  await expect(page.getByRole('heading', { level: 1 })).toHaveText('A plus B');
+  await tabOf(page, 'Tests').click();
 
   const add = page.getByRole('button', { name: 'Add subtask' });
   await add.focus();
@@ -115,15 +199,26 @@ test('subtasks, saving and validating work from the keyboard', async ({ page }) 
   await page.keyboard.type('10');
   await page.keyboard.press('Tab');
   await page.keyboard.type('Extra');
-  await page.keyboard.press('Tab');
-  await page.keyboard.type('6');
-  await expect(page.getByText('Unsaved changes', { exact: true })).toBeVisible();
+  await page.getByLabel('Role of test 5').selectOption('3');
+  await expect(page.getByLabel('Role of test 5').locator('option')).toHaveText(['Example', 'Subtask 1', 'Subtask 2', 'Subtask 3', 'Not in a subtask']);
 
   await page.getByRole('button', { name: 'Remove subtask 3' }).focus();
   await page.keyboard.press('Enter');
   await expect(page.getByRole('group', { name: 'Subtask 3' })).toHaveCount(0);
   await expect(add).toBeFocused();
+  await expect(page.getByLabel('Role of test 5')).toHaveValue('none');
+  await expect(page.getByText('Test 5 is in no subtask. Choose its role.')).toBeVisible();
+  await expect(page.getByRole('group', { name: 'Subtask 2' }).locator('.count')).toHaveText('0 tests');
 
+  // An empty subtask is caught before saving and its link goes to the table.
+  await page.getByRole('button', { name: 'Save changes' }).click();
+  const list = page.locator('#field-errors');
+  await expect(list).toContainText("Subtask 2 tests: Give subtask 2 at least one test: choose Subtask 2 as a test's role.");
+  expect(state.puts).toHaveLength(0);
+
+  await page.getByLabel('Role of test 5').focus();
+  await page.keyboard.press('ArrowUp');
+  await expect(page.getByLabel('Role of test 5')).toHaveValue('2');
   await page.locator('#subtask-1-points').fill('50');
   await page.getByRole('button', { name: 'Save changes' }).focus();
   await page.keyboard.press('Enter');
@@ -135,20 +230,16 @@ test('subtasks, saving and validating work from the keyboard', async ({ page }) 
     { points: 50, title: 'Full range', tests: '5' },
   ]);
   await expect(page.getByText('Unsaved changes', { exact: true })).toHaveCount(0);
-  await expect(page.locator('.status')).toContainText('Not validated');
-  await expect(page.getByText('These results are for an earlier version. Validate again.')).toBeVisible();
+  await expect(page.locator('.status')).toHaveText('Not validated, 5 tests');
 
-  await page.getByRole('button', { name: 'Validate' }).focus();
+  await page.getByRole('button', { name: 'Validate', exact: true }).focus();
   await page.keyboard.press('Enter');
-  await expect(page.getByText('Waiting for the judge (2nd in queue)')).toBeVisible();
-  await expect(page.locator('.headline')).toHaveText('Running', { timeout: 10_000 });
-  await expect(page.locator('.headline')).toHaveText('Validation passed', { timeout: 10_000 });
+  await expect(page.locator('.status')).toHaveText('Validated, 5 tests, slowest 212 ms', { timeout: 15_000 });
+  await tabOf(page, 'Checking').click();
+  await expect(page.locator('.headline')).toHaveText('Validation passed');
   await expect(page.getByText('Reference solution passed 5 of 5 tests')).toBeVisible();
-  await expect(page.getByText('Brute force agreed on 5 of 5 tests')).toBeVisible();
   await expect(page.getByText('Slowest reference run 212 ms of 1000 ms')).toBeVisible();
-  await expect(page.locator('.status')).toContainText('Validated');
   await expect(page.locator('[aria-live="polite"]').filter({ hasText: 'Validation passed' })).toHaveCount(1);
-  await page.screenshot({ path: `${shots()}problem-editor-validated-1440-light.png`, fullPage: true });
 });
 
 test('the editor stacks at 375 px with Write and Preview tabs for the statement', async ({ page }) => {
@@ -174,114 +265,100 @@ test('the editor stacks at 375 px with Write and Preview tabs for the statement'
   await page.getByRole('tab', { name: 'Write' }).click();
   await expect(page.locator('#statement_md')).toBeVisible();
 
-  // Tests stack: input over output.
-  await page.getByText('Show all 5 tests').click();
-  const row = page.getByRole('row', { name: /^5 Subtask 2/ });
+  // Tests stack: number and role, then input over output.
+  await tabOf(page, 'Tests').click();
+  const row = page.getByRole('row').filter({ has: page.getByLabel('Role of test 5') });
   const input = await row.locator('.file-cell').nth(0).boundingBox();
   const output = await row.locator('.file-cell').nth(1).boundingBox();
+  const num = await row.locator('.test-num').boundingBox();
+  const role = await row.locator('.role').boundingBox();
   expect(output!.y).toBeGreaterThan(input!.y + input!.height - 1);
-
-  const boxes = [];
-  // Sections in dependency order (P3 A3): the statement, the solutions the outputs come from, then the tests.
-  for (const name of ['Statement and limits', 'Solutions', 'Tests']) {
-    const box = await page.getByRole('region', { name, exact: true }).boundingBox();
-    expect(box, name).not.toBeNull();
-    boxes.push(box!);
-  }
-  for (let i = 1; i < boxes.length; i++) {
-    expect(boxes[i].y, 'sections follow each other').toBeGreaterThanOrEqual(boxes[i - 1].y + boxes[i - 1].height - 1);
-    expect(Math.abs(boxes[i].x - boxes[0].x)).toBeLessThan(2);
-  }
+  expect(Math.abs(role!.y - num!.y)).toBeLessThan(12);
+  await page.screenshot({ path: `${shots()}problem-editor-tests-375-light.png`, fullPage: true });
 });
 
-test('server field errors appear next to their fields', async ({ page }) => {
+test('server field errors appear next to their fields, and a link opens the tab that holds one', async ({ page }) => {
   await mockApi(page);
   await page.goto('/admin/problems/1');
-  const slug = page.getByLabel('Slug', { exact: true });
-  await slug.fill('taken');
+  const time = page.getByLabel('Time limit (ms)');
+  await time.fill('99999');
   await page.getByRole('button', { name: 'Save changes' }).click();
 
-  await expect(page.locator('#slug-error')).toHaveText('Another problem already uses the slug taken.');
-  await expect(slug).toHaveAttribute('aria-invalid', 'true');
-  await expect(slug).toHaveAttribute('aria-describedby', 'slug-help slug-error');
-  await expect(slug).toBeFocused();
+  await expect(page.locator('#time_limit_ms-error')).toHaveText('Set a time limit from 100 to 10000 ms.');
+  await expect(time).toHaveAttribute('aria-invalid', 'true');
+  await expect(time).toHaveAttribute('aria-describedby', 'time_limit_ms-error');
+  await expect(time).toBeFocused();
+  await expect(page.locator('.error-count')).toHaveText('2 fields need attention');
+  const list = page.locator('#field-errors');
+  await expect(list).toContainText('Some fields need fixing.');
+  await list.getByRole('link', { name: 'Subtask 2 points: Points run from 1 to 1000.' }).click();
+  await expect(tabOf(page, 'Tests')).toHaveAttribute('aria-selected', 'true');
+  await expect(page.locator('#subtask-1-points')).toBeFocused();
   await expect(page.locator('#subtasks-1-points-error')).toHaveText('Points run from 1 to 1000.');
-  await expect(page.getByRole('alert').filter({ hasText: 'Some fields need fixing.' })).toBeVisible();
-
-  await slug.fill('a-plus-b');
-  await page.locator('#samples').fill('1, x');
-  await page.getByRole('button', { name: 'Save changes' }).click();
-  await expect(page.locator('#samples-error')).toContainText('"x" is not a test number or range.');
-  await expect(page.locator('#slug-error')).toHaveCount(0);
   await page.screenshot({ path: `${shots()}problem-editor-field-errors-1440-light.png`, fullPage: true });
 });
 
-test('a failed validation names the test, program and verdict', async ({ page }) => {
+test('a failed validation names the test, program and verdict, and its links unfold the extra checks', async ({ page }) => {
   await mockApi(page);
   await page.goto('/admin/problems/4');
+  await expect(page.locator('.status')).toHaveText('Validation failed on test 7');
+  await page.locator('.status').click();
+  await expect(tabOf(page, 'Checking')).toHaveAttribute('aria-selected', 'true');
+  await expect(page.getByRole('heading', { name: 'Validation', exact: true })).toBeFocused();
   await expect(page.locator('.headline')).toHaveText('Validation failed');
-  await expect(page.locator('.status')).toHaveText('Validation failed, 1 problem');
   await expect(page.locator('.report .lead')).toHaveText('Fix the brute force: it did not compile.');
 
   // Grouped by program, each with a link to its source.
   const reference = page.getByRole('region', { name: 'Reference solution' });
   await expect(reference.getByText('Wrong answer on test 7')).toBeVisible();
   await expect(reference.getByText('Line 1: expected 2.500000, found 2.400000')).toBeVisible();
-  await expect(reference.getByText('Reference solution passed 14 of 15 tests')).toBeVisible();
   await expect(reference.locator('.guidance')).toContainText('expected output');
   const brute = page.getByRole('region', { name: 'Brute force' });
   await expect(brute.getByText('Brute force did not compile', { exact: true })).toBeVisible();
-  await expect(brute.locator('pre').filter({ hasText: "SyntaxError: '(' was never closed" })).toBeVisible();
+  await expect(page.locator('#brute-source')).toBeHidden();
   await brute.getByRole('link', { name: 'Go to brute force' }).click();
   await expect(page.locator('#brute-source')).toBeFocused();
-  // Only failing lines are red.
-  const passColour = await reference.locator('.line.tone-ok').first().evaluate((el) => getComputedStyle(el).color);
-  const inkColour = await page.locator('h1').evaluate((el) => getComputedStyle(el).color);
-  expect(passColour).toBe(inkColour);
 
   await page.getByText('All test results').click();
   await expect(page.getByRole('cell', { name: 'Wrong answer' })).toBeVisible();
 
-  await page.getByRole('button', { name: 'Validate' }).click();
+  await page.getByRole('button', { name: 'Validate', exact: true }).click();
   await expect(page.getByText('Waiting for the judge (2nd in queue)')).toBeVisible();
   await expect(page.locator('.headline')).toHaveText('Validation failed', { timeout: 10_000 });
-  await expect(page.getByText('Wrong answer on test 7')).toBeVisible();
 });
 
-test('once validated, the advice is no longer headed Before you validate (walk 2026-10-21)', async ({ page }) => {
+test('once validated, the advice is headed Worth adding, not Before you validate (walk 2026-10-21)', async ({ page }) => {
   const api = await mockApi(page);
   (api.problems[1] as { warnings: string[] }).warnings = ['There is no validator.'];
   await page.goto('/admin/problems/1');
+  await tabOf(page, 'Checking').click();
   await expect(page.getByRole('note', { name: 'Worth adding' })).toContainText('There is no validator.');
   await expect(page.getByRole('note', { name: 'Before you validate' })).toHaveCount(0);
 });
 
-test('validation is refused while a test is in no subtask', async ({ page }) => {
+test('validation is refused while a test is in no subtask, and choosing its role fixes the table', async ({ page }) => {
   await mockApi(page);
   await page.goto('/admin/problems/2');
-  // The readiness panel names what blocks validation first, then the advice (P3 A1).
+  // What blocks validation sits under the bar on every tab.
   const blockers = page.getByRole('group', { name: 'Fix this before you validate' });
   await expect(blockers).toContainText('Test 7 is in no subtask. Add it to a subtask, or mark it as a sample.');
-  await expect(page.getByRole('note', { name: 'Before you validate' })).toContainText('No brute force');
   // While something blocks validation, Validate is not the primary action.
-  await expect(page.getByRole('button', { name: 'Validate' })).toHaveClass(/btn-secondary/);
-  // Named outside the table, which stays closed until asked for.
-  await expect(page.getByText('7 tests: 1 sample, 5 in 2 subtasks, 1 in no subtask.')).toBeVisible();
-  await expect(page.getByText('Test 7 is in no subtask. Add it to a subtask range or to the samples.')).toBeVisible();
-  await page.getByText('Show all 7 tests').click();
-  await expect(page.getByRole('row', { name: /^7 Not in a subtask/ })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Validate', exact: true })).toHaveClass(/btn-secondary/);
 
-  // Groups follow the subtasks as typed, before saving.
-  await page.locator('#subtask-1-tests').fill('5-7');
-  await expect(page.getByRole('row', { name: /^7 Subtask 2/ })).toBeVisible();
-  await expect(page.getByText('Test 7 is in no subtask. Add it to a subtask range or to the samples.')).toHaveCount(0);
-  await page.locator('#subtask-1-tests').fill('5-6');
-  await expect(page.getByLabel('Allowed error')).toBeVisible();
+  await tabOf(page, 'Tests').click();
+  await expect(page.getByText('7 tests: 1 example that students see, the rest hidden.')).toBeVisible();
+  await expect(page.getByText('Test 7 is in no subtask. Choose its role.')).toBeVisible();
+  await expect(page.getByLabel('Role of test 7')).toHaveValue('none');
+  await page.getByLabel('Role of test 7').selectOption({ label: 'Subtask 2' });
+  await expect(page.getByText('Test 7 is in no subtask. Choose its role.')).toHaveCount(0);
+  await expect(page.getByText('Unsaved changes', { exact: true })).toBeVisible();
+  // Moved back, the lists are as they were: nothing to save.
+  await page.getByLabel('Role of test 7').selectOption('none');
+  await expect(page.getByText('Unsaved changes', { exact: true })).toHaveCount(0);
 
-  await page.getByRole('button', { name: 'Validate' }).click();
+  await page.getByRole('button', { name: 'Validate', exact: true }).click();
   const alert = page.getByRole('alert').filter({ hasText: 'This problem cannot be validated yet.' });
   await expect(alert).toContainText('Test 7 is in no subtask.');
-  await expect(page.getByText('Not validated yet.')).toBeVisible();
 });
 
 test('importing a pack shows its problems, then validates the new problem in place (P3 O6)', async ({ page }) => {
@@ -312,8 +389,6 @@ test('importing a pack shows its problems, then validates the new problem in pla
   await expect(row.locator('.badge')).toHaveText('Validating');
   await expect(row.locator('.badge')).toHaveText('Validated', { timeout: 15_000 });
   expect(state.imports).toEqual(['bad pack', 'good pack']);
-  await row.getByRole('link', { name: 'Pair with sum', exact: true }).click();
-  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Pair with sum');
 });
 
 test('several packs import in one pick, and a row offers Validate when it is not validated (P3 O6)', async ({ page }) => {
@@ -330,9 +405,10 @@ test('several packs import in one pick, and a row offers Validate when it is not
   await expect(page.getByText('Interval covering cannot be validated yet: Test 7 is in no subtask.', { exact: false }).first()).toBeVisible();
 });
 
-test('the bank shows status words, archived problems on request, and creates problems', async ({ page }) => {
-  await mockApi(page);
+test('the bank shows status words, archived problems on request, and creates a problem from a title alone', async ({ page }) => {
+  const state = await mockApi(page);
   await page.goto('/admin/problems');
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Problems');
   await expect(page.getByRole('row', { name: /A plus B/ })).toContainText('Validated');
   await expect(page.getByRole('row', { name: /Interval covering/ })).toContainText('Not validated');
 
@@ -343,37 +419,50 @@ test('the bank shows status words, archived problems on request, and creates pro
   await page.getByRole('button', { name: 'New problem' }).click();
   const title = page.getByLabel('Title', { exact: true });
   await expect(title).toBeFocused();
-  await title.fill('Interval Covering');
-  await expect(page.getByLabel('Slug', { exact: true })).toHaveValue('interval-covering');
+  // The form asks for a title only; the server makes the rest.
+  await expect(page.locator('#create-problem input')).toHaveCount(1);
   await page.getByRole('button', { name: 'Create problem' }).click();
-  await expect(page.locator('#new-slug-error')).toHaveText('Another problem already uses the slug interval-covering.');
-
-  await page.getByLabel('Slug', { exact: true }).fill('interval-covering-2');
-  await title.fill('Interval Covering II');
-  await expect(page.getByLabel('Slug', { exact: true })).toHaveValue('interval-covering-2');
+  await expect(page.locator('#new-title-error')).toHaveText('Enter a title.');
+  await title.fill('Interval Covering');
   await page.getByRole('button', { name: 'Create problem' }).click();
   await expect(page).toHaveURL('/admin/problems/10');
-  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Interval Covering II');
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Interval Covering');
+  expect(state.problems[10].slug).toBe('interval-covering-2');
+  await tabOf(page, 'Tests').click();
   await expect(page.getByText('No tests yet.')).toBeVisible();
 });
 
-test('archiving asks first and returns to the bank', async ({ page }) => {
+test('archiving is in the menu, asks first and returns to the bank', async ({ page }) => {
   const state = await mockApi(page);
   await page.goto('/admin/problems/1');
-  await page.getByRole('button', { name: 'Archive problem' }).click();
+  const menu = page.getByRole('button', { name: 'More' });
+  await menu.click();
+  await expect(page.locator('#problem-menu').getByRole('button')).toHaveText(['Download pack', 'Regenerate all outputs', 'Archive']);
+  await page.locator('#problem-menu').getByRole('button', { name: 'Archive' }).click();
   const dialog = page.getByRole('dialog', { name: 'Archive A plus B?' });
-  await expect(dialog).toContainText('It leaves the problem bank. Contests that used it keep it.');
+  await expect(dialog).toContainText('It leaves the list of problems. Contests that used it keep it.');
   await expect(dialog.getByRole('button', { name: 'Cancel' })).toBeFocused();
   await page.keyboard.press('Escape');
   await expect(dialog).toBeHidden();
   expect(state.archived).toEqual([]);
 
-  await page.getByRole('button', { name: 'Archive problem' }).click();
+  await menu.click();
+  await page.locator('#problem-menu').getByRole('button', { name: 'Archive' }).click();
   await dialog.getByRole('button', { name: 'Archive problem' }).click();
   await expect(page).toHaveURL('/admin/problems');
   await expect(page.getByText('Archived', { exact: true })).toBeVisible();
   await expect(page.getByRole('link', { name: 'A plus B', exact: true })).toHaveCount(0);
   expect(state.archived).toEqual([1]);
+});
+
+test('Download pack in the menu downloads the pack', async ({ page }) => {
+  await mockApi(page);
+  await page.goto('/admin/problems/1');
+  await page.getByRole('button', { name: 'More' }).click();
+  const download = page.waitForEvent('download');
+  await page.locator('#problem-menu').getByRole('button', { name: 'Download pack' }).click();
+  // The browser's download is not routed through the mock, so the address is what is checked.
+  expect(new URL((await download).url()).pathname).toBe('/api/admin/problems/1/export');
 });
 
 test('leaving with unsaved changes asks first', async ({ page }) => {
@@ -383,23 +472,24 @@ test('leaving with unsaved changes asks first', async ({ page }) => {
   await expect(page.locator('.statement').getByText('Given two integers')).toBeVisible();
   await expect(page.locator('.preview-title')).toHaveText('A plus B, edited');
 
-  await page.getByRole('navigation', { name: 'Breadcrumb' }).getByRole('link', { name: 'Problem bank' }).click();
+  await page.getByRole('navigation', { name: 'Breadcrumb' }).getByRole('link', { name: 'Problems' }).click();
   const dialog = page.getByRole('dialog', { name: 'Leave without saving?' });
   await expect(dialog).toBeVisible();
   await dialog.getByRole('button', { name: 'Cancel' }).click();
   await expect(page).toHaveURL('/admin/problems/1');
   await expect(page.locator('#title')).toHaveValue('A plus B, edited');
 
-  await page.getByRole('navigation', { name: 'Main' }).getByRole('link', { name: 'Problem bank', exact: true }).click();
+  await page.getByRole('navigation', { name: 'Main' }).getByRole('link', { name: 'Problems', exact: true }).click();
   await dialog.getByRole('button', { name: 'Leave page' }).click();
   await expect(page).toHaveURL('/admin/problems');
-  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Problem bank');
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Problems');
 });
 
-test('replacing tests uploads a zip and lists the new tests', async ({ page }) => {
+test('replacing tests uploads a zip and lists the new tests with their roles', async ({ page }) => {
   await mockApi(page);
   const choosers = watchFileChoosers(page);
   await page.goto('/admin/problems/1');
+  await tabOf(page, 'Tests').click();
   await page.getByRole('button', { name: 'Replace tests' }).click();
   // Replacing every test asks first; the file picker opens from the confirm.
   const confirm = page.getByRole('dialog', { name: /^Replace all \d+ tests\?$/ });
@@ -407,22 +497,18 @@ test('replacing tests uploads a zip and lists the new tests', async ({ page }) =
   await confirm.getByRole('button', { name: 'Replace tests' }).click();
   await (await choosers.next()).setFiles(zipFile('tests.zip', 'zip'));
   await expect(page.getByText('Replaced tests. 2 tests stored.')).toBeVisible();
-  await page.getByText('Show all 2 tests').click();
-  // Groups come from the sample and subtask lists as they stand (samples 1, 2).
-  await expect(page.getByRole('row', { name: /^2 Sample/ })).toBeVisible();
-  await expect(page.getByRole('link', { name: 'Download output of test 2' })).toHaveAttribute(
-    'href',
-    '/api/admin/problems/1/tests/2/output',
-  );
+  // Roles come from the example and subtask lists as they stand (examples 1, 2).
+  await expect(page.getByLabel('Role of test 2')).toHaveValue('example');
+  await expect(tabOf(page, 'Tests')).toHaveText(/Tests\s*2/);
+  await expect(page.getByRole('link', { name: 'Download output of test 2' })).toHaveAttribute('href', '/api/admin/problems/1/tests/2/output');
 });
 
 test('statements are sanitised and maths is rendered', async ({ page }) => {
   await mockApi(page);
   await page.goto('/admin/problems/1');
-  const statement = page.getByLabel('Statement', { exact: true });
-  await statement.fill(
-    '# Heading\n\nHi <img src=x onerror="window.__pwned=1"> [link](javascript:window.__pwned=2) and $x^2$.\n\n![figure](/fig.png)',
-  );
+  const statement = page.locator('#statement_md');
+  await expect(statement).toHaveAttribute('contenteditable', 'true');
+  await statement.fill('# Heading\n\nHi <img src=x onerror="window.__pwned=1"> [link](javascript:window.__pwned=2) and $x^2$.\n\n![figure](/fig.png)');
   const preview = page.locator('.statement');
   await expect(preview.locator('.katex')).toHaveCount(1);
   await expect(preview.locator('h4')).toHaveText('Heading');
@@ -437,40 +523,48 @@ test('students see an explanation instead of the bank and no Problems link', asy
   await mockApi(page, 'student');
   await page.goto('/admin/problems');
   await expect(page.getByText('Only organisers can manage problems.')).toBeVisible();
-  await expect(page.getByRole('link', { name: 'Problem bank', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('link', { name: 'Problems', exact: true })).toHaveCount(0);
 });
 
-test('admins see the Problem bank link and it marks the current page', async ({ page }) => {
+test('admins see the Problems link and it marks the current page', async ({ page }) => {
   await mockApi(page);
   await page.goto('/admin/problems/1');
   const nav = page.getByRole('navigation', { name: 'Main' });
-  await nav.getByRole('link', { name: 'Problem bank', exact: true }).click();
+  await nav.getByRole('link', { name: 'Problems', exact: true }).click();
   await expect(page).toHaveURL('/admin/problems');
-  await expect(nav.getByRole('link', { name: 'Problem bank', exact: true })).toHaveAttribute('aria-current', 'page');
+  await expect(nav.getByRole('link', { name: 'Problems', exact: true })).toHaveAttribute('aria-current', 'page');
   await expect(page.getByRole('heading', { level: 1 })).toBeFocused();
   await page.getByRole('link', { name: 'A plus B', exact: true }).click();
-  await expect(nav.getByRole('link', { name: 'Problem bank', exact: true })).toHaveAttribute('aria-current', 'page');
+  await expect(nav.getByRole('link', { name: 'Problems', exact: true })).toHaveAttribute('aria-current', 'page');
   await expect(page.getByRole('link', { name: 'Settings' })).toHaveCount(0);
 });
 
-test('missing outputs are named and generated from the reference', async ({ page }) => {
+test('Validate makes missing outputs from the reference, then validates; there is no Generate button', async ({ page }) => {
   const state = await mockApi(page);
   await page.goto('/admin/problems/5');
-  await expect(page.getByText('2 tests have no expected output. Generate outputs to fill them from the reference solution.')).toBeVisible();
-  await page.getByText('Show all 5 tests').click();
-  await expect(page.getByRole('row', { name: /^4 Subtask 1/ })).toContainText('Output missing');
+  await expect(page.locator('.status')).toHaveText('Not validated, 5 tests');
+  // The missing outputs are not something to fix: Validate makes them.
+  await expect(page.getByRole('group', { name: /before you validate/ })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Validate', exact: true })).toHaveClass(/btn-primary/);
+  await tabOf(page, 'Tests').click();
+  await expect(page.getByText('2 tests have no expected output yet. Validate makes them from the reference solution.')).toBeVisible();
+  await expect(page.getByRole('row').filter({ has: page.getByLabel('Role of test 4') })).toContainText('Made on Validate');
   await expect(page.getByRole('link', { name: 'Download output of test 4' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: /Generate/ })).toHaveCount(0);
 
-  await page.getByRole('button', { name: 'Generate outputs' }).click();
-  await expect(page.locator('.gen-line')).toHaveText('Generating outputs');
-  expect(state.generates).toEqual([{ all: false }]);
-  await expect(page.locator('.gen-line')).toHaveText('Generated 2 outputs. Slowest run 220 ms.', { timeout: 10_000 });
-  await expect(page.getByText('Output missing')).toHaveCount(0);
-  await expect(page.getByRole('button', { name: 'Generate outputs' })).toHaveCount(0);
+  await page.getByRole('button', { name: 'Validate', exact: true }).click();
+  await expect(page.locator('.status')).toHaveText('Making outputs, then validating');
+  expect(state.generates).toEqual([{ then_validate: true }]);
+  await expect(page.locator('.status')).toHaveText('Validated, 5 tests, slowest 212 ms', { timeout: 15_000 });
+  await expect(page.getByText('Made on Validate')).toHaveCount(0);
   await page.screenshot({ path: `${shots()}problem-editor-generated-1440-light.png`, fullPage: true });
+});
 
-  // Regenerating everything asks first and uses the same word.
-  await page.getByRole('button', { name: 'Regenerate all outputs' }).click();
+test('Regenerate all outputs is in the menu and asks first', async ({ page }) => {
+  const state = await mockApi(page);
+  await page.goto('/admin/problems/1');
+  await page.getByRole('button', { name: 'More' }).click();
+  await page.locator('#problem-menu').getByRole('button', { name: 'Regenerate all outputs' }).click();
   const dialog = page.getByRole('dialog', { name: 'Regenerate all outputs?' });
   await expect(dialog.getByRole('button', { name: 'Cancel' })).toBeFocused();
   await dialog.getByRole('button', { name: 'Regenerate all outputs' }).click();
@@ -481,9 +575,10 @@ test('missing outputs are named and generated from the reference', async ({ page
 test('a refused generation shows the reason in place', async ({ page }) => {
   await mockApi(page);
   await page.goto('/admin/problems/4');
-  await page.getByRole('button', { name: 'Regenerate all outputs' }).click();
+  await page.getByRole('button', { name: 'More' }).click();
+  await page.locator('#problem-menu').getByRole('button', { name: 'Regenerate all outputs' }).click();
   await page.getByRole('dialog').getByRole('button', { name: 'Regenerate all outputs' }).click();
-  // Shown in the polite region under the buttons, read once (not also an alert).
+  // Shown in the polite region under the bar, read once (not also an alert).
   const reason = page.locator('.generation[aria-live="polite"] .banner-error').filter({ hasText: 'The problem is not ready. Fix these first.' });
   await expect(reason).toContainText('Add a reference solution first.');
 });
@@ -492,32 +587,32 @@ test('a reference that does not compile, or a problem changed mid-run, is said p
   const state = await mockApi(page);
   state.genOutcome = 'compile';
   await page.goto('/admin/problems/5');
-  await page.getByRole('button', { name: 'Generate outputs' }).click();
+  await page.getByRole('button', { name: 'Validate', exact: true }).click();
   await expect(page.locator('.gen-line')).toHaveText('The reference solution did not compile, so no outputs were generated.', {
     timeout: 10_000,
   });
   await expect(page.locator('.gen-failures')).toContainText('expected ; before return');
+  await expect(page.locator('.status')).toHaveText('Not validated, 5 tests');
 
   state.genOutcome = 'stale';
-  await page.getByRole('button', { name: 'Generate outputs' }).click();
+  await page.getByRole('button', { name: 'Validate', exact: true }).click();
   await expect(page.locator('.gen-line')).toHaveText('Some outputs were not applied.', { timeout: 10_000 });
   await expect(page.locator('.gen-failures')).toContainText('The problem changed while outputs were generated.');
 });
 
-test('the sticky bar keeps status, field errors and the main actions in reach', async ({ page }) => {
+test('the sticky bar keeps the tabs, field errors and the main actions in reach', async ({ page }) => {
   const state = await mockApi(page);
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto('/admin/problems/1');
   await expect(page.getByRole('link', { name: 'Try as a student' })).toHaveAttribute('href', '/admin/problems/1/try');
-  const validate = page.getByRole('button', { name: 'Validate', exact: true });
-  await expect(validate).toHaveClass(/btn-secondary/);
+  await expect(page.getByRole('button', { name: 'Add to contest' })).toHaveClass(/btn-primary/);
 
   await page.locator('#title').fill('A plus B, edited');
   await expect(page.getByRole('button', { name: 'Save and validate' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Save changes' })).toHaveClass(/btn-primary/);
 
   // The bar stays at the top while the page scrolls.
-  await page.getByRole('link', { name: /^Solutions/ }).click();
+  await tabOf(page, 'Checking').click();
   await page.mouse.wheel(0, 2000);
   const bar = await page.locator('.action-bar').boundingBox();
   expect(bar!.y).toBeLessThanOrEqual(1);
@@ -527,35 +622,39 @@ test('the sticky bar keeps status, field errors and the main actions in reach', 
   await page.keyboard.press('Control+s');
   await expect(toasts(page).getByText('Saved', { exact: true })).toBeVisible();
   expect(state.puts).toHaveLength(1);
-
-  // Field errors: a count in the bar and a list of links that focus each field.
-  await page.locator('#slug').fill('taken');
-  await page.getByRole('button', { name: 'Save changes' }).click();
-  await expect(page.locator('.error-count')).toHaveText('2 fields need attention');
-  const list = page.locator('#field-errors');
-  await list.getByRole('link', { name: 'Subtask 2 points: Points run from 1 to 1000.' }).click();
-  await expect(page.locator('#subtask-1-points')).toBeFocused();
-  await list.getByRole('link', { name: 'Slug: Another problem already uses the slug taken.' }).click();
-  await expect(page.locator('#slug')).toBeFocused();
 });
 
-test('a problem with no tests offers Upload tests', async ({ page }) => {
+test('a problem with no tests offers Upload tests, and no extra checks are in use', async ({ page }) => {
   await mockApi(page);
   await page.goto('/admin/problems/3');
+  await expect(page.locator('.status')).toHaveText('Archived');
+  await tabOf(page, 'Tests').click();
   await expect(page.getByRole('button', { name: 'Upload tests' })).toBeVisible();
   await expect(page.getByText('No tests yet. Upload a .zip of numbered input and output files to add them.')).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Regenerate all outputs' })).toHaveCount(0);
-  await expect(page.getByText('No validator. Add one to check every test input against the constraints.')).toBeVisible();
+  await page.getByRole('button', { name: 'More' }).click();
+  await expect(page.locator('#problem-menu').getByRole('button')).toHaveText(['Download pack']);
+  await page.keyboard.press('Escape');
+  await tabOf(page, 'Checking').click();
+  await expect(page.getByRole('list', { name: 'Optional extra checks in use' })).toHaveText('None in use.');
+  await page.getByText('Optional extra checks').click();
+  await expect(page.getByText('None. Add one to check every test input against the constraints.')).toBeVisible();
 });
 
-test('reference and brute force sit side by side at 1440 px', async ({ page }) => {
+test('the optional extra checks fold away with one line for each in use', async ({ page }) => {
   await mockApi(page);
-  await page.setViewportSize({ width: 1440, height: 900 });
-  await page.goto('/admin/problems/1');
-  const ref = await page.getByRole('group', { name: 'Reference solution' }).boundingBox();
-  const brute = await page.getByRole('group', { name: 'Brute force' }).boundingBox();
-  expect(Math.abs(ref!.y - brute!.y)).toBeLessThan(2);
-  expect(brute!.x).toBeGreaterThan(ref!.x + ref!.width - 1);
+  await page.goto('/admin/problems/2');
+  await tabOf(page, 'Checking').click();
+  await expect(page.getByLabel('Allowed error')).toBeVisible();
+  const used = page.getByRole('list', { name: 'Optional extra checks in use' });
+  await expect(used.getByRole('listitem')).toHaveText(['Validator in Python 3']);
+  await expect(page.getByRole('group', { name: 'Validator' })).toBeHidden();
+
+  // Choosing the custom checker unfolds the section at its source.
+  await page.getByLabel('How answers are compared').selectOption('custom');
+  await expect(page.locator('#checker_source')).toBeFocused();
+  await expect(used).toHaveCount(0);
+  await page.getByText('Optional extra checks').click();
+  await expect(used.getByRole('listitem')).toHaveText(['Validator in Python 3', 'Custom checker in C++17 with testlib']);
 });
 
 test('the bank sorts by last change, filters past ten problems and links to Try', async ({ page }) => {
@@ -593,7 +692,7 @@ test('bank rows read as title and status, then tests and date, on a phone', asyn
   await expect(row.locator('.tags')).toBeHidden();
 });
 
-test('keyboard only: an organiser opens a problem, edits it, saves with Ctrl+S and validates', async ({ page }) => {
+test('keyboard only: an organiser opens a problem, edits the statement, saves with Ctrl+S and adds it to a contest', async ({ page }) => {
   const state = await mockApi(page);
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto('/admin/problems');
@@ -603,8 +702,8 @@ test('keyboard only: an organiser opens a problem, edits it, saves with Ctrl+S a
   await expect(page).toHaveURL('/admin/problems/1');
   await expect(page.getByRole('heading', { level: 1 })).toBeFocused();
 
-  // The statement is a plain text area: Tab moves on from it, never traps.
-  const statement = page.getByLabel('Statement', { exact: true });
+  // The statement is the workspace's editor as plain text: Tab moves on from it, never traps.
+  const statement = page.locator('#statement_md');
   await tabTo(page, statement);
   await page.keyboard.press('Control+End');
   await page.keyboard.type('\n\nAll numbers fit in 64 bits.');
@@ -617,8 +716,17 @@ test('keyboard only: an organiser opens a problem, edits it, saves with Ctrl+S a
   await expect(toasts(page).getByText('Saved', { exact: true })).toBeVisible();
   expect(String(state.puts.at(-1)?.statement_md)).toContain('All numbers fit in 64 bits.');
 
-  await activate(page, page.getByRole('button', { name: 'Validate' }));
-  await expect(page.locator('.headline')).toHaveText('Validation passed', { timeout: 15_000 });
+  // The statement is not judged, so the problem stays validated and Add to contest is the next step.
+  await page.locator('main h1').focus();
+  await activate(page, page.getByRole('button', { name: 'Add to contest' }));
+  const dialog = page.getByRole('dialog', { name: 'Add A plus B to a contest' });
+  await expect(dialog).toBeVisible();
+  await tabTo(page, dialog.getByLabel('Contest'));
+  await page.keyboard.press('ArrowDown');
+  await expect(dialog.getByLabel('Contest')).toHaveValue('8');
+  await activate(page, dialog.getByRole('button', { name: 'Add to contest' }));
+  await expect(toasts(page).getByText('Added to Week 8 as problem A', { exact: true })).toBeVisible();
+  expect(state.contestPuts.at(-1)).toEqual({ id: 8, body: [{ problem_id: 1, label: 'A' }] });
 
   // The shortcut list names the editor keys for organisers.
   await page.locator('main h1').focus();
@@ -629,32 +737,30 @@ test('keyboard only: an organiser opens a problem, edits it, saves with Ctrl+S a
   await expect(keys).toBeHidden();
 });
 
-test('a finished validation says its result in the bar and the report link takes focus (P3 O2)', async ({ page }) => {
+test('a finished validation says its result under the bar and the report link opens Checking (P3 O2)', async ({ page }) => {
   await mockApi(page);
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto('/admin/problems/1');
-  const readiness = page.getByRole('region', { name: /^Readiness/ });
-  await expect(readiness).toContainText('Validated on this version.');
-  await expect(readiness.getByRole('link', { name: 'Choose a contest' })).toHaveAttribute('href', '/admin/contests');
 
   // An unsaved judged change says it will need a new validation; a title change does not.
   await page.locator('#title').fill('A plus B again');
-  await expect(readiness).toContainText('Validated on this version. Your unsaved changes do not affect it.');
+  await expect(page.getByText('Saving needs a new validation', { exact: false })).toHaveCount(0);
   await page.locator('#time_limit_ms').fill('2000');
-  await expect(readiness).toContainText('Saving needs a new validation: you changed the limits.');
-  await page.locator('#time_limit_ms').fill('1000');
-  await page.locator('#title').fill('A plus B');
+  await expect(page.getByText('Saving needs a new validation: you changed the limits.')).toBeVisible();
 
-  await page.getByRole('button', { name: 'Validate' }).click();
-  const bar = page.locator('.bar-result');
-  await expect(bar).toHaveText(/Validation passed: 5 of 5 tests, slowest 212 ms\.\s*See the report/, { timeout: 15_000 });
-  await bar.getByRole('link', { name: 'See the report' }).click();
+  await page.getByRole('button', { name: 'Save and validate' }).click();
+  const result = page.locator('.bar-result');
+  await expect(result).toHaveText(/Validation passed: 5 of 5 tests, slowest 212 ms\.\s*See the report/, { timeout: 15_000 });
+  await result.getByRole('link', { name: 'See the report' }).click();
+  await expect(tabOf(page, 'Checking')).toHaveAttribute('aria-selected', 'true');
   await expect(page.getByRole('heading', { name: 'Validation', exact: true })).toBeFocused();
 });
 
 test('removing the brute force or validator can be undone until the next save (P3 A6)', async ({ page }) => {
   await mockApi(page);
   await page.goto('/admin/problems/2');
+  await tabOf(page, 'Checking').click();
+  await page.getByText('Optional extra checks').click();
   await page.getByRole('button', { name: 'Remove validator' }).click();
   await expect(page.getByText('Validator removed. It goes for good when you save.')).toBeVisible();
   await expect(page.getByRole('button', { name: 'Undo remove' })).toBeFocused();
@@ -663,7 +769,7 @@ test('removing the brute force or validator can be undone until the next save (P
   await expect(page.getByText('Unsaved changes', { exact: true })).toHaveCount(0);
 });
 
-test('the preview shows the samples as students see them (P3 A5)', async ({ page }) => {
+test('the preview shows the examples as students see them (P3 A5)', async ({ page }) => {
   await mockApi(page);
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto('/admin/problems/1');
@@ -671,8 +777,10 @@ test('the preview shows the samples as students see them (P3 A5)', async ({ page
   await expect(preview.getByRole('heading', { name: 'Example 1' })).toBeVisible();
   await expect(preview.getByRole('heading', { name: 'Example 2' })).toBeVisible();
   await expect(preview.getByRole('button', { name: 'Copy example 1 input' })).toBeVisible();
-  // The samples follow the field as typed.
-  await page.locator('#samples').fill('1');
+  // The examples follow the roles as chosen.
+  await tabOf(page, 'Tests').click();
+  await page.getByLabel('Role of test 2').selectOption({ label: 'Subtask 1' });
+  await tabOf(page, 'Statement').click();
   await expect(preview.getByRole('heading', { name: 'Example 2' })).toHaveCount(0);
 });
 

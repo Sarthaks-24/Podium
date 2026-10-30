@@ -348,6 +348,12 @@ export function formatTestList(tests: readonly number[]): string {
   return parts.join(', ');
 }
 
+/** A subtask's test list in the one form the editor writes ("3-5, 8"), so a role moved and moved back leaves no change. */
+export function rangesOf(text: string): string {
+  const r = parseTestList(text);
+  return r.ok ? rangeText(r.tests) : text;
+}
+
 /** Builds the editor's working copy from a problem. */
 export function toDraft(p: Problem): Draft {
   const gen = p.generator !== undefined;
@@ -369,8 +375,8 @@ export function toDraft(p: Problem): Draft {
     samples: formatTestList(p.samples),
     subtasks: p.subtasks.map((s) =>
       gen
-        ? { points: s.points, title: s.title, tests: s.tests, args: (s.generator_args ?? []).join(' ') }
-        : { points: s.points, title: s.title, tests: s.tests },
+        ? { points: s.points, title: s.title, tests: rangesOf(s.tests), args: (s.generator_args ?? []).join(' ') }
+        : { points: s.points, title: s.title, tests: rangesOf(s.tests) },
     ),
   };
   if (gen) {
@@ -409,7 +415,7 @@ export function toEdit(d: Draft): EditResult {
     const points = need(`subtasks.${i}.points`, s.points, 'the points for this subtask');
     const range = parseTestList(s.tests);
     if (!range.ok) fields[`subtasks.${i}.tests`] = range.error;
-    else if (range.tests.length === 0) fields[`subtasks.${i}.tests`] = 'Enter the tests in this subtask, for example 3-5.';
+    else if (range.tests.length === 0) fields[`subtasks.${i}.tests`] = `Give subtask ${i + 1} at least one test: choose Subtask ${i + 1} as a test's role.`;
     if (s.args === undefined) return { points, title: s.title.trim(), tests: s.tests.trim() };
     const argError = checkArgs(s.args);
     if (argError !== '') fields[`subtasks.${i}.generator_args`] = argError;
@@ -899,7 +905,7 @@ function programKey(p: Program | null | undefined): string {
  * The judged fields that differ between the saved copy and the working copy,
  * in words, mirroring server/internal/problems/hash.go (ContentHash): limits,
  * checker and its allowed error, the custom checker's source, the reference,
- * brute force and validator, samples and subtask points and ranges. Title,
+ * brute force and validator, examples and subtask points and ranges. Title,
  * slug, statement, tags, difficulty, subtask titles and the generator are
  * not judged. An AI draft also loses its validation when a person changes
  * its statement, reference or brute force (store.go Update), so for one the
@@ -918,7 +924,7 @@ export function judgedFieldsChanged(saved: Draft, now: Draft, aiDraft = false): 
     const r = parseTestList(text);
     return r.ok ? r.tests.join(',') : text;
   };
-  if (list(saved.samples) !== list(now.samples)) out.push('samples');
+  if (list(saved.samples) !== list(now.samples)) out.push('examples');
   const subtasks = (d: Draft) =>
     d.subtasks
       .map((s) => {

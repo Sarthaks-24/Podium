@@ -64,9 +64,9 @@ export const ROUTES: readonly RouteDef[] = [
   { pattern: '/signin', name: 'signin', auth: false, title: 'Sign in' },
   // Settings kept the People page's address, so old links and bookmarks still open it.
   { pattern: '/admin/people', name: 'settings', auth: true, title: 'Settings', role: 'owner', section: 'settings' },
-  { pattern: '/admin/problems', name: 'problems', auth: true, title: 'Problem bank', role: 'organiser', section: 'problems' },
+  { pattern: '/admin/problems', name: 'problems', auth: true, title: 'Problems', role: 'organiser', section: 'problems' },
   { pattern: '/admin/problems/:id', name: 'problem', auth: true, title: 'Problem', role: 'organiser', section: 'problems' },
-  { pattern: '/admin/problems/:id/try', name: 'problem-try', auth: true, title: 'Problem bank', role: 'organiser', section: 'problems' },
+  { pattern: '/admin/problems/:id/try', name: 'problem-try', auth: true, title: 'Problems', role: 'organiser', section: 'problems' },
   { pattern: '/admin/ai/new', name: 'ai-new', auth: true, title: 'New problem with AI', role: 'organiser', section: 'problems' },
   { pattern: '/contests/:slug', name: 'contest', auth: true, title: 'Contest', section: 'student' },
   { pattern: '/contests/:slug/standings', name: 'standings', auth: true, title: 'Standings', section: 'student' },
@@ -125,7 +125,7 @@ export function mainNav(role: Role): NavItem[] {
   if (role === 'student') return [{ section: 'student', href: '/', label: 'Contests' }];
   const items: NavItem[] = [
     { section: 'contests', href: '/admin/contests', label: 'Contests' },
-    { section: 'problems', href: '/admin/problems', label: 'Problem bank' },
+    { section: 'problems', href: '/admin/problems', label: 'Problems' },
   ];
   if (role === 'owner') items.push({ section: 'settings', href: '/admin/people', label: 'Settings' });
   return items;

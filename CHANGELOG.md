@@ -4,6 +4,15 @@ Dated entries per release. Unreleased work is listed at the top.
 
 ## Unreleased
 
+### v3 stage C6: the problem editor (2026-10-30)
+
+- The editor has three tabs, Statement, Tests and Checking, with one status line in the title row ("Validated, 5 tests, slowest 212 ms"). At 1440 px each tab of a five-test problem is under 1,200 px (the editor was 3,987).
+- Validate is the one primary action until it passes, then "Add to contest" picks a draft or upcoming contest and adds the problem under the next letter. Validate makes missing expected outputs first; the Generate outputs button is gone and "Regenerate all outputs" sits in the More menu with Download pack and Archive.
+- Each test has a role select (Example, Subtask N, Not in a subtask) instead of typed ranges; saving writes the same lists the server always read.
+- The generator, brute force, validator and custom checker sit under "Optional extra checks" with one line each when used.
+- The statement is written in the same editor as code (plain text), with Preview.
+- The nav says Problems. A new problem's address is made from its title; the slug field is gone.
+
 ### v3 stage C7: exam options (2026-10-30)
 
 - Setup has four exam options under Advanced, all off by default: full screen on start, count tab switches and focus loss, block paste into the editor, block copy out of the statement.

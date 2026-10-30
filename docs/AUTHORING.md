@@ -84,10 +84,10 @@ Quote every `tests` value, so YAML reads it as text.
 ### Tests
 
 - `tests/NN.in` and `tests/NN.out`, with `NN` from 1 to 999 and any zero padding (`1.in`, `01.in` and `001.in` are all test 1, so do not mix them).
-- An expected output may be left out. Such a test shows "Output missing" in the editor, and the problem lists "Test 3 has no expected output." until you choose Generate outputs (see "Generating outputs"). Validation and judging wait until every test has one.
+- An expected output may be left out. Such a test shows "Made on Validate" in the editor's Tests tab: Validate first makes every missing output from the reference solution, then validates (see "Generating outputs"). Judging waits until every test has one.
 - An output without its input is refused.
 - At most 16 MB per file.
-- A test planned in `tests.yaml` needs no files: Generate inputs makes its input and Generate outputs its output. A pack must have at least one test file or one planned test.
+- A test planned in `tests.yaml` needs no files: Generate inputs makes its input, then its output is made from the reference. A pack must have at least one test file or one planned test.
 
 ## Statement
 
@@ -191,10 +191,10 @@ Limits: compiling gets 30 s of CPU (testlib is a large header; a normal compile 
 
 Write the inputs and a correct reference solution; the judge writes the expected outputs.
 
-| Button | What it does |
+| Action | What it does |
 |---|---|
-| Generate outputs | Shown while any test has no output. Runs the reference on those inputs only. |
-| Regenerate all outputs | Runs the reference on every input and replaces every output. Asks to confirm first: "Every expected output is replaced by what the reference solution prints." |
+| Validate | While any test has no output, runs the reference on those inputs only, then validates once every output arrived. The title row says "Making outputs, then validating". |
+| Regenerate all outputs (in the editor's More menu) | Runs the reference on every input and replaces every output. Asks to confirm first: "Every expected output is replaced by what the reference solution prints." |
 
 How it runs:
 
@@ -417,18 +417,17 @@ Only one pack import, test replacement or pack download runs at a time; a second
 
 | Step | How |
 |---|---|
-| Create | Problems, New problem: enter a title and a slug. The problem starts with a statement outline and a C++ reference template. |
+| Create | Problems, New problem: enter a title. The slug (used in pack file names) is made from it and does not change. The problem starts with a statement outline and a C++ reference template. |
 | Import | Problems, Import pack: pick one or more `.zip` files. Each imported problem starts validating at once and the bank shows "Validating" until the result is in, so several packs need no visit to the editor. A pack the server refuses names its problems; a problem that cannot be validated yet says why in a message. Rows that are not validated offer Validate. |
-| Edit | The sections follow what each needs: Statement and limits (with a preview that shows the statement and its samples as students see them), Solutions (reference and brute force), Tests (samples, subtasks, test files), Generator, then Judging (the checker in plain words, its allowed error, a custom checker, the validator). From 1280 px a column beside the form keeps the readiness panel and the preview in view. Removing the brute force, the validator or the generator can be undone until you save. Save changes. |
-| Replace tests | Upload a zip of `NN.in` files, each with an optional `NN.out`, at its top level or in `tests/`. Every test is replaced; samples and subtask ranges stay as written, and the editor lists any that no longer fit. Single test files can be downloaded from the test list. |
-| Generate outputs | Fills missing outputs from the reference solution; "Regenerate all outputs" replaces them all after a confirmation (see "Generating outputs"). |
+| Edit | Three tabs. Statement: title, the statement (the workspace's code editor, as plain text) with a preview of it and its examples as students see them, limits, difficulty and tags. Tests: one row per test with the start of its input and output and a Role select (Example, Subtask 1, Subtask 2, ..., Not in a subtask), then each subtask's points and title. Checking: the reference solution, how answers are compared, and under "Optional extra checks" the brute force, the validator, a custom checker and the generator, each named in one line while folded; the validation report sits beside them from 1280 px. Removing the brute force, the validator or the generator can be undone until you save. Save changes. The roles are saved as the sample list and subtask ranges of the pack format; a subtask's tests need not be consecutive. |
+| Replace tests | Tests tab: upload a zip of `NN.in` files, each with an optional `NN.out`, at its top level or in `tests/`. Every test is replaced; roles are kept by test number. Single test files can be downloaded from the test list. |
 | Generate inputs | Runs the generator for every planned test, then generates outputs and validates (see "Tests from a generator"). |
 | New problem with AI | On the problem bank: the AI wizard writes a draft from a brief or from pasted text (see "The AI wizard"). |
-| Validate | Saves unsaved changes first, then queues the run. When it finishes, the sticky bar says how it went ("Validation passed: 6 of 6 tests, slowest 11 ms" or "Validation failed on test 5") with a link to the report. |
-| Readiness | The panel beside the form lists what stops validation (a test in no subtask, a missing output), the warnings ("Before you validate"), statement images without a description, and whether the validation covers this version. An unsaved change to a judged field (limits, checker, solutions, validator, samples, open tests, subtask points and ranges) says that saving needs a new validation; a change to the title, statement, tags or subtask titles does not, except on an AI draft, whose statement counts. Once validated it offers Choose a contest, which opens the contest list. |
+| Validate | Saves unsaved changes first, makes missing outputs, then queues the run. The title row keeps one status line ("Validated, 7 tests, slowest 286 ms", "Validation failed on test 5"), a link to the report. Under the bar, on every tab: what stops validation (a test in no subtask), and, for an unsaved change to a judged field (limits, checker, solutions, validator, examples, subtask points and tests), that saving needs a new validation; a change to the title, statement, tags or subtask titles does not, except on an AI draft, whose statement counts. Advice ("Before you validate", "Worth adding") sits with the report. |
+| Add to contest | Takes Validate's place once the problem has passed and nothing is unsaved. Pick a draft or upcoming contest; the problem goes in after its other problems under the next letter. |
 | Try as a student | Opens the problem in the student workspace (see "Trying a problem as a student"). |
 | Download pack | The same layout as an import, ready to re-import or keep in version control. Sources are named `solution`, `brute`, `validator` and `generator` with their language's extension, the plan is written to `tests.yaml`, and tests are numbered with two digits (three from test 100). Outputs not generated yet are left out. |
-| Archive problem | Asks to confirm, then hides the problem from the bank. Its tests and history are kept; "Show archived" lists it again. |
+| Archive | In the More menu, with Download pack and Regenerate all outputs. Asks to confirm, then hides the problem from the list. Its tests and history are kept; "Show archived" lists it again. |
 
 ## Example packs
 

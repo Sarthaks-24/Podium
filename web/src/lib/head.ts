@@ -1,6 +1,6 @@
 /**
  * Document title helpers. Every screen sets a unique title of the form
- * "Problem bank · podium" so browser tabs and history entries are readable.
+ * "Problems · podium" so browser tabs and history entries are readable.
  */
 
 /** The product name, always the last part of the title. */

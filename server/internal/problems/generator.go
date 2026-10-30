@@ -516,20 +516,8 @@ func (s *Service) CreateDraft(ctx context.Context, d Draft, authorID int64) (*Pr
 		return nil, err
 	}
 	p.AuthorID = authorID
-	base := p.Slug
-	for i := 2; ; i++ {
-		var taken int
-		if err := s.DB.QueryRowContext(ctx, "SELECT count(*) FROM problems WHERE slug = ?", p.Slug).Scan(&taken); err != nil {
-			return nil, err
-		}
-		if taken == 0 {
-			break
-		}
-		if i > 99 {
-			return nil, FieldErrors{"slug": fmt.Sprintf("Another problem already uses the slug %s.", base)}
-		}
-		suffix := fmt.Sprintf("-%d", i)
-		p.Slug = strings.TrimRight(base[:min(len(base), 64-len(suffix))], "-") + suffix
+	if p.Slug, err = s.freeSlug(ctx, p.Slug); err != nil {
+		return nil, err
 	}
 	if err := s.writeTests(p.Tests, ins, outs); err != nil {
 		return nil, err

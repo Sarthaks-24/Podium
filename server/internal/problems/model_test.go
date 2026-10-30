@@ -15,7 +15,7 @@ func TestProblemsGroupTestsInOneLine(t *testing.T) {
 	p.Subtasks = []Subtask{{Idx: 1, Points: 100, Tests: "2"}}
 	want := []string{
 		"Tests 3-6 are in no subtask. Add them to a subtask, or mark them as samples.",
-		"Tests 1-6 have no expected output. Generate outputs from the reference solution.",
+		"Tests 1-6 have no expected output yet. Validate makes them from the reference solution.",
 	}
 	if got := p.Problems(); !reflect.DeepEqual(got, want) {
 		t.Errorf("got %q\nwant %q", got, want)
@@ -31,7 +31,7 @@ func TestProblemsGroupTestsInOneLine(t *testing.T) {
 	}
 	want = []string{
 		"Test 6 is in no subtask. Add it to a subtask, or mark it as a sample.",
-		"Test 4 has no expected output. Generate outputs from the reference solution.",
+		"Test 4 has no expected output yet. Validate makes it from the reference solution.",
 	}
 	if got := p.Problems(); !reflect.DeepEqual(got, want) {
 		t.Errorf("got %q\nwant %q", got, want)

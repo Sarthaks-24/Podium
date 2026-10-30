@@ -427,7 +427,7 @@ test('signed-in organisers at /signin land on their contests, and sign out retur
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('Contests');
   const nav = page.getByRole('navigation', { name: 'Main' });
   await expect(nav.getByRole('link', { name: 'Contests' })).toHaveAttribute('aria-current', 'page');
-  await expect(nav.getByRole('link')).toHaveText(['Contests', 'Problem bank', 'Settings']);
+  await expect(nav.getByRole('link')).toHaveText(['Contests', 'Problems', 'Settings']);
 
   await page.getByRole('navigation', { name: 'Main' }).getByRole('link', { name: 'Settings' }).click();
   await expect(page).toHaveURL('/admin/people');
@@ -487,7 +487,7 @@ test('the small-screen menu opens, and Escape closes it', async ({ page }) => {
   await expect(menu).toBeFocused();
 
   await menu.click();
-  await page.getByRole('link', { name: 'Problem bank' }).click();
+  await page.getByRole('link', { name: 'Problems', exact: true }).click();
   await expect(page).toHaveURL('/admin/problems');
   await expect(menu).toHaveAttribute('aria-expanded', 'false');
 });
@@ -589,7 +589,7 @@ test('the 404 page echoes the address and links by role', async ({ page }) => {
 test('the 404 page offers organisers their contests and the problem bank, and sign in to visitors', async ({ page }) => {
   await mockApi(page, 'owner');
   await page.goto('/nope');
-  await expect(page.getByRole('main').getByRole('link')).toHaveText(['Contests', 'Problem bank']);
+  await expect(page.getByRole('main').getByRole('link')).toHaveText(['Contests', 'Problems']);
   await page.unrouteAll();
   await mockApi(page, 'signed-out');
   await page.goto('/nope');

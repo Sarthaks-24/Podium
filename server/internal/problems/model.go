@@ -302,9 +302,9 @@ func (p *Problem) missingOutputs() []string {
 	case 0:
 		return nil
 	case 1:
-		return []string{fmt.Sprintf("Test %d has no expected output. Generate outputs from the reference solution.", nums[0])}
+		return []string{fmt.Sprintf("Test %d has no expected output yet. Validate makes it from the reference solution.", nums[0])}
 	}
-	return []string{fmt.Sprintf("Tests %s have no expected output. Generate outputs from the reference solution.", FormatRanges(nums))}
+	return []string{fmt.Sprintf("Tests %s have no expected output yet. Validate makes them from the reference solution.", FormatRanges(nums))}
 }
 
 // StructureProblems is Problems without missing outputs: tests, samples and

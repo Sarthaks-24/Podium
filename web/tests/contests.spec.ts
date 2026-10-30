@@ -83,7 +83,7 @@ test('the contest list puts the live contest first with a countdown', async ({ p
   // Students get Contests and Your progress (P4).
   await expect(page.getByRole('link', { name: 'Contests', exact: true })).toHaveAttribute('aria-current', 'page');
   await expect(page.getByRole('navigation', { name: 'Main' }).getByRole('link')).toHaveText(['Contests']);
-  await expect(page.getByRole('link', { name: 'Problem bank' })).toHaveCount(0);
+  await expect(page.getByRole('link', { name: 'Problems', exact: true })).toHaveCount(0);
 });
 
 test('messages posted while the student was away still show, until read (S1)', async ({ page }) => {
@@ -366,7 +366,7 @@ test('admins land on their contest list, named by job', async ({ page }) => {
   await page.goto('/');
   await expect(page).toHaveURL('/admin/contests');
   const nav = page.getByRole('navigation', { name: 'Main' });
-  await expect(nav.getByRole('link')).toHaveText(['Contests', 'Problem bank']);
+  await expect(nav.getByRole('link')).toHaveText(['Contests', 'Problems']);
   await expect(nav.getByRole('link', { name: 'Contests' })).toHaveAttribute('aria-current', 'page');
   await expect(page.getByText('To create a contest or follow one live')).toHaveCount(0);
   await expect(page.getByRole('row', { name: /Week 7 contest/ })).toContainText('Draft');

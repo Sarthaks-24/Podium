@@ -399,16 +399,29 @@ func (d Deps) generateOutputs(w http.ResponseWriter, r *http.Request) {
 	}
 	var req struct {
 		All bool `json:"all"`
+		// ThenValidate is the editor's Validate on a problem with missing
+		// outputs: those are made first, then the validation is queued.
+		ThenValidate bool `json:"then_validate"`
 	}
 	if !decodeJSON(w, r, &req) {
 		return
 	}
-	g, err := d.Problems.RequestGeneration(r.Context(), id, userFrom(r.Context()).ID, req.All)
+	if req.All && req.ThenValidate {
+		WriteError(w, http.StatusBadRequest, "bad_request", "Send all or then_validate, not both.")
+		return
+	}
+	var g *problems.Generation
+	var err error
+	if req.ThenValidate {
+		g, err = d.Problems.RequestGenerationThenValidation(r.Context(), id, userFrom(r.Context()).ID)
+	} else {
+		g, err = d.Problems.RequestGeneration(r.Context(), id, userFrom(r.Context()).ID, req.All)
+	}
 	if err != nil {
 		d.problemError(w, r, err)
 		return
 	}
-	d.Log.Info("output generation queued", "by", userFrom(r.Context()).ID, "problem_id", id, "all", req.All)
+	d.Log.Info("output generation queued", "by", userFrom(r.Context()).ID, "problem_id", id, "all", req.All, "then_validate", req.ThenValidate)
 	WriteJSON(w, http.StatusAccepted, generationOut(g))
 }
 

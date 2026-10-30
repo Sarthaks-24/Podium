@@ -1,23 +1,27 @@
 <!--
-  TestsSection: the problem editor's Tests section (split out of
-  ProblemEditor in v2 P3 F5.1): the sample numbers
-  (D115: Run checks them after the samples; no points, no subtask), subtask rows with
-  points that should add up to 100, a one-line summary of the stored tests
-  computed from the subtasks as typed, tests in no subtask and tests
-  without an expected output named outside the table, the table itself in
-  a disclosure, "Upload tests" or "Replace tests" from a .zip, and
-  "Generate outputs" or "Regenerate all outputs" with the result in place.
-  Uploading, generating and their confirmations stay with the editor.
+  TestsSection: the problem editor's Tests tab. One table lists every
+  stored test with the first two lines of its input and output (and the
+  whole size when that is longer) and a Role select per
+  row (Example, Subtask 1, Subtask 2, ..., Not in a subtask), in place of
+  typed test ranges; a choice rewrites the draft's example list and subtask
+  ranges (lib/problemEditor setRole), so a save sends the server the same
+  lists as before. A test in no subtask, and tests without an expected
+  output, are named above the table; Validate makes missing outputs from
+  the reference solution, so there is no Generate button here. Under the
+  table each subtask has its points, an optional title and how many tests
+  it has, with Add subtask; the points should add up to 100. "Upload
+  tests" or "Replace tests" takes a .zip; uploading and its confirmation
+  stay with the editor.
   Props: `id`, `draft` and `fields` (bindable; removing a subtask drops
   the row errors, which are keyed by position), `fileInput` (bindable, the
-  hidden .zip picker), `tests`, `replacing`, `replaceError`, `genBusy`,
-  `genPending`, `genError`, `genSummary`, and the callbacks `onupload`,
-  `ongenerate`, `onregenerate` and `onfile`.
+  hidden .zip picker), `tests`, `replacing`, `replaceError` and the
+  callbacks `onupload` and `onfile`.
 -->
 <script lang="ts">
   import { tick } from 'svelte';
   import { describedBy } from '../../lib/problemFields';
-  import { draftGroups, formatBytes, problemPath, rangeText, type Draft, type Problem } from '../../lib/problems';
+  import { formatBytes, problemPath, rangeText, type Draft, type Problem } from '../../lib/problems';
+  import { parseRole, roleOf, roleValue, setRole, subtaskCounts } from '../../lib/problemEditor';
 
   type Report = { message: string; problems: readonly string[] } | null;
 
@@ -29,13 +33,7 @@
     tests: Problem['tests'];
     replacing: boolean;
     replaceError: Report;
-    genBusy: boolean;
-    genPending: boolean;
-    genError: Report;
-    genSummary: { tone: string; text: string; lines: string[] } | null;
     onupload: () => void;
-    ongenerate: () => void;
-    onregenerate: () => void;
     onfile: () => void;
   }
 
@@ -47,33 +45,18 @@
     tests,
     replacing,
     replaceError,
-    genBusy,
-    genPending,
-    genError,
-    genSummary,
     onupload,
-    ongenerate,
-    onregenerate,
     onfile,
   }: Props = $props();
 
   let addSubtaskButton: HTMLButtonElement | undefined = $state();
 
   const pointsTotal = $derived(draft.subtasks.reduce((sum, s) => sum + (s.points ?? 0), 0));
-  const groups = $derived(draftGroups(tests, draft));
-  const unassigned = $derived(tests.filter((t) => groups.get(t.idx) === 'Not in a subtask').map((t) => t.idx));
+  const roles = $derived(new Map(tests.map((t) => [t.idx, roleOf(t.idx, draft)])));
+  const counts = $derived(subtaskCounts(tests, draft));
+  const unassigned = $derived(tests.filter((t) => roles.get(t.idx) === 'none').map((t) => t.idx));
   const missing = $derived(tests.filter((t) => t.output_missing).map((t) => t.idx));
-  const testsSummary = $derived.by(() => {
-    if (tests.length === 0) return '';
-    const n = tests.length;
-    const samples = tests.filter((t) => groups.get(t.idx) === 'Sample').length;
-    const named = new Set([...groups.values()].filter((g) => g.startsWith('Subtask ')));
-    const inSubtasks = tests.filter((t) => groups.get(t.idx)?.startsWith('Subtask ')).length;
-    const parts = [`${samples} ${samples === 1 ? 'sample' : 'samples'}`];
-    if (inSubtasks > 0) parts.push(`${inSubtasks} in ${named.size} ${named.size === 1 ? 'subtask' : 'subtasks'}`);
-    if (unassigned.length > 0) parts.push(`${unassigned.length} in no subtask`);
-    return `${n} ${n === 1 ? 'test' : 'tests'}: ${parts.join(', ')}.`;
-  });
+  const examples = $derived(tests.filter((t) => roles.get(t.idx) === 'example').length);
 
   function err(key: string): string {
     return fields[key] ?? '';
@@ -81,6 +64,12 @@
 
   function described(key: string, help = ''): string | undefined {
     return describedBy(fields, key, help);
+  }
+
+  function choose(idx: number, value: string) {
+    setRole(draft, idx, parseRole(value));
+    // The lists were rewritten, so their errors no longer apply.
+    fields = Object.fromEntries(Object.entries(fields).filter(([k]) => k !== 'samples' && !/^subtasks\.\d+\.tests$/.test(k)));
   }
 
   async function addSubtask() {
@@ -100,29 +89,117 @@
   }
 </script>
 
-<section class="block" aria-labelledby="tests-heading">
-  <h2 id="tests-heading" tabindex="-1">Tests</h2>
-
-  <div class="field samples">
-    <label for="samples">Sample tests</label>
+<section class="tests-tab" aria-labelledby="tests-heading">
+  <div class="tests-head">
+    <h2 id="tests-heading" tabindex="-1">Tests</h2>
+    <button type="button" class="btn btn-secondary" disabled={replacing} onclick={onupload}>
+      {tests.length === 0 ? 'Upload tests' : 'Replace tests'}
+    </button>
     <input
-      id="samples"
-      class="input mono"
-      type="text"
-      autocomplete="off"
-      spellcheck="false"
-      placeholder="1, 2"
-      bind:value={draft.samples}
-      aria-invalid={err('samples') ? 'true' : undefined}
-      aria-describedby={described('samples', 'samples-help')}
+      bind:this={fileInput}
+      class="file"
+      type="file"
+      accept=".zip,application/zip"
+      aria-label="Tests to upload"
+      tabindex="-1"
+      onchange={onfile}
     />
-    <p id="samples-help" class="field-help">Shown to students under the statement. Test numbers like 1, 2.</p>
-    {#if err('samples')}<p id="samples-error" class="field-error">{err('samples')}</p>{/if}
   </div>
+  <p class="field-help upload-help">
+    A .zip of numbered input and output files, such as 01.in and 01.out. Leave an output out and Validate makes it from the
+    reference solution.
+  </p>
+  {#if replacing}<p class="muted" role="status">Uploading tests</p>{/if}
+  {#if replaceError}
+    <div class="banner banner-error problems-list" role="alert">
+      <p>{replaceError.message}</p>
+      {#if replaceError.problems.length > 0}
+        <ul>{#each replaceError.problems as line, i (i)}<li>{line}</li>{/each}</ul>
+      {/if}
+    </div>
+  {/if}
+
+  {#if err('samples')}<p id="samples-error" class="field-error">{err('samples')}</p>{/if}
+
+  {#if tests.length === 0}
+    <p class="muted empty">No tests yet. Upload a .zip of numbered input and output files to add them.</p>
+  {:else}
+    <p class="tests-summary">
+      {tests.length}
+      {tests.length === 1 ? 'test' : 'tests'}: {examples}
+      {examples === 1 ? 'example' : 'examples'} that students see, the rest hidden.
+    </p>
+    {#if unassigned.length === 1}
+      <p class="field-error">Test {unassigned[0]} is in no subtask. Choose its role.</p>
+    {:else if unassigned.length > 1}
+      <p class="field-error">Tests {rangeText(unassigned)} are in no subtask. Choose their roles.</p>
+    {/if}
+    {#if missing.length > 0}
+      <p class="missing-note">
+        {missing.length === 1 ? `Test ${missing[0]} has` : `${missing.length} tests have`} no expected output yet. Validate makes
+        {missing.length === 1 ? 'it' : 'them'} from the reference solution.
+      </p>
+    {/if}
+    <div class="table-wrap tests">
+      <table class="table table-stack" aria-labelledby="tests-heading">
+        <thead>
+          <tr>
+            <th scope="col">Test</th>
+            <th scope="col">Input</th>
+            <th scope="col">Output</th>
+            <th scope="col">Role</th>
+            <th scope="col">Download</th>
+          </tr>
+        </thead>
+        <tbody>
+          {#each tests as t (t.idx)}
+            {@const role = roles.get(t.idx) ?? 'none'}
+            <tr>
+              <th scope="row" class="num test-num">{t.idx}</th>
+              <td class="file-cell">
+                <span class="cell-label">Input</span>
+                <pre class="peek" translate="no">{t.input_preview}</pre>
+                {#if t.input_size > t.input_preview.length}<span class="size">{formatBytes(t.input_size)} in all</span>{/if}
+              </td>
+              <td class="file-cell">
+                <span class="cell-label">Output</span>
+                {#if t.output_missing}
+                  <span class="missing-word">Made on Validate</span>
+                {:else}
+                  <pre class="peek" translate="no">{t.output_preview}</pre>
+                  {#if t.output_size > t.output_preview.length}<span class="size">{formatBytes(t.output_size)} in all</span>{/if}
+                {/if}
+              </td>
+              <td class="role">
+                <select
+                  id="role-{t.idx}"
+                  class="select"
+                  class:unassigned={role === 'none'}
+                  aria-label="Role of test {t.idx}"
+                  value={roleValue(role)}
+                  onchange={(e) => choose(t.idx, e.currentTarget.value)}
+                >
+                  <option value="example">Example</option>
+                  {#each draft.subtasks.map((_s, i) => i + 1) as n (n)}<option value={String(n)}>Subtask {n}</option>{/each}
+                  <option value="none">Not in a subtask</option>
+                </select>
+              </td>
+              <td class="downloads">
+                <a href={problemPath(id, `/tests/${t.idx}/input`)} download aria-label="Download input of test {t.idx}">Input</a>
+                {#if !t.output_missing}
+                  <a href={problemPath(id, `/tests/${t.idx}/output`)} download aria-label="Download output of test {t.idx}">Output</a>
+                {/if}
+              </td>
+            </tr>
+          {/each}
+        </tbody>
+      </table>
+    </div>
+  {/if}
 
   <h3 class="sub">Subtasks</h3>
   <p class="field-help sub-help">
-    Every test that is not a sample belongs to exactly one subtask. {draft.subtasks.length === 0
+    Every test that is not an example belongs to one subtask. {draft.subtasks.length === 0
       ? 'Contests expect the points to add up to 100.'
       : `Points add up to ${pointsTotal}${pointsTotal !== 100 ? '; contests expect 100' : ''}.`}
   </p>
@@ -149,7 +226,7 @@
               />
             </div>
             <div class="field subtask-title">
-              <label for="subtask-{i}-title">Title</label>
+              <label for="subtask-{i}-title">Title (optional)</label>
               <input
                 id="subtask-{i}-title"
                 class="input"
@@ -160,20 +237,7 @@
                 aria-describedby={described(`subtasks.${i}.title`)}
               />
             </div>
-            <div class="field range">
-              <label for="subtask-{i}-tests">Tests</label>
-              <input
-                id="subtask-{i}-tests"
-                class="input mono"
-                type="text"
-                autocomplete="off"
-                spellcheck="false"
-                placeholder="3-5"
-                bind:value={subtask.tests}
-                aria-invalid={err(`subtasks.${i}.tests`) ? 'true' : undefined}
-                aria-describedby={described(`subtasks.${i}.tests`)}
-              />
-            </div>
+            <span class="count" class:none={counts[i] === 0}>{counts[i]} {counts[i] === 1 ? 'test' : 'tests'}</span>
             <button
               type="button"
               class="btn btn-quiet btn-danger-quiet remove"
@@ -195,198 +259,27 @@
   <p class="add-row">
     <button id="add-subtask" type="button" class="btn btn-secondary" bind:this={addSubtaskButton} onclick={addSubtask}>Add subtask</button>
   </p>
-
-  <div class="files-head">
-    <h3 class="sub">Test files</h3>
-    <div class="file-actions">
-      <button type="button" class="btn btn-secondary" disabled={replacing} onclick={onupload}>
-        {tests.length === 0 ? 'Upload tests' : 'Replace tests'}
-      </button>
-      {#if tests.length > 0}
-        {#if missing.length > 0}
-          <button type="button" class="btn btn-secondary" disabled={genBusy || genPending} onclick={ongenerate}>
-            Generate outputs
-          </button>
-        {/if}
-        <button
-          type="button"
-          class="btn btn-quiet"
-          aria-disabled={genBusy || genPending ? 'true' : undefined}
-          onclick={() => {
-            if (!genBusy && !genPending) onregenerate();
-          }}
-        >
-          Regenerate all outputs
-        </button>
-      {/if}
-    </div>
-    <input
-      bind:this={fileInput}
-      class="file"
-      type="file"
-      accept=".zip,application/zip"
-      aria-label="Tests to upload"
-      tabindex="-1"
-      onchange={onfile}
-    />
-  </div>
-  <p class="field-help">
-    A .zip of numbered input and output files, such as 01.in and 01.out; output files may be left out and generated from the
-    reference solution. Subtask ranges stay as they are.
-  </p>
-  {#if replacing}<p class="muted" role="status">Uploading tests</p>{/if}
-  {#if replaceError}
-    <div class="banner banner-error problems-list" role="alert">
-      <p>{replaceError.message}</p>
-      {#if replaceError.problems.length > 0}
-        <ul>{#each replaceError.problems as line, i (i)}<li>{line}</li>{/each}</ul>
-      {/if}
-    </div>
-  {/if}
-
-  <div class="generation" aria-live="polite">
-    {#if genError}
-      <div class="banner banner-error problems-list">
-        <p>{genError.message}</p>
-        {#if genError.problems.length > 0}
-          <ul>{#each genError.problems as line, i (i)}<li>{line}</li>{/each}</ul>
-        {/if}
-      </div>
-    {:else if genSummary}
-      <p class="gen-line tone-{genSummary.tone}">{genSummary.text}</p>
-      {#if genSummary.lines.length > 0}
-        <ul class="gen-failures">{#each genSummary.lines as line, i (i)}<li>{line}</li>{/each}</ul>
-      {/if}
-    {/if}
-  </div>
-
-  {#if tests.length === 0}
-    <p class="muted empty">No tests yet. Upload a .zip of numbered input and output files to add them.</p>
-  {:else}
-    <p class="tests-summary">{testsSummary}</p>
-    {#if unassigned.length === 1}
-      <p class="field-error">Test {unassigned[0]} is in no subtask. Add it to a subtask range or to the samples.</p>
-    {:else if unassigned.length > 1}
-      <p class="field-error">Tests {rangeText(unassigned)} are in no subtask. Add them to a subtask range or to the samples.</p>
-    {/if}
-    {#if missing.length > 0}
-      <p class="missing-note">
-        {missing.length === 1 ? `Test ${missing[0]} has` : `${missing.length} tests have`} no expected output. Generate outputs to fill
-        {missing.length === 1 ? 'it' : 'them'} from the reference solution.
-      </p>
-    {/if}
-    <details class="all-tests">
-      <summary>Show all {tests.length} {tests.length === 1 ? 'test' : 'tests'}</summary>
-      <div class="table-wrap tests">
-        <table class="table table-stack">
-          <thead>
-            <tr>
-              <th scope="col">Test</th>
-              <th scope="col">Group</th>
-              <th scope="col">Input</th>
-              <th scope="col">Output</th>
-              <th scope="col">Download</th>
-            </tr>
-          </thead>
-          <tbody>
-            {#each tests as t (t.idx)}
-              {@const g = groups.get(t.idx) ?? ''}
-              <tr>
-                <th scope="row" class="num test-num">{t.idx}</th>
-                <td class="group" class:unassigned={g === 'Not in a subtask'}>{g}</td>
-                <td class="file-cell">
-                  <span class="cell-label">Input</span>
-                  <span class="size">{formatBytes(t.input_size)}</span>
-                  <pre class="peek" translate="no">{t.input_preview}</pre>
-                </td>
-                <td class="file-cell">
-                  <span class="cell-label">Output</span>
-                  {#if t.output_missing}
-                    <span class="missing-word">Output missing</span>
-                  {:else}
-                    <span class="size">{formatBytes(t.output_size)}</span>
-                    <pre class="peek" translate="no">{t.output_preview}</pre>
-                  {/if}
-                </td>
-                <td class="downloads">
-                  <a href={problemPath(id, `/tests/${t.idx}/input`)} download aria-label="Download input of test {t.idx}">Input</a>
-                  {#if !t.output_missing}
-                    <a href={problemPath(id, `/tests/${t.idx}/output`)} download aria-label="Download output of test {t.idx}">Output</a>
-                  {/if}
-                </td>
-              </tr>
-            {/each}
-          </tbody>
-        </table>
-      </div>
-    </details>
-  {/if}
 </section>
 
 <style>
-  .samples {
-    max-width: 24rem;
-    margin-top: var(--space-4);
+  .tests-tab {
+    min-width: 0;
   }
 
-  .subtasks {
-    display: grid;
-    gap: var(--space-3);
-    max-width: var(--measure-wide);
-    margin-top: var(--space-4);
-    padding: 0;
-    list-style: none;
-  }
-
-  .subtask {
-    display: grid;
-    grid-template-columns: minmax(0, 6rem) minmax(0, 6rem) minmax(0, 1fr) minmax(0, 10rem) auto;
-    align-items: end;
-    gap: var(--space-3);
-    padding-bottom: var(--space-3);
-    border-bottom: var(--rule) solid var(--line);
-  }
-
-  .subtask-name {
-    align-self: center;
-    padding-top: var(--space-5);
-    font-weight: 500;
-    white-space: nowrap;
-  }
-
-  .row-error {
-    grid-column: 1 / -1;
-  }
-
-  .add-row {
-    margin-top: var(--space-4);
-  }
-
-  .files-head {
+  .tests-head {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
     justify-content: space-between;
     gap: var(--space-3);
     max-width: var(--measure-wide);
-    margin-top: var(--space-6);
-  }
-
-  .files-head .sub {
-    margin-top: 0;
-  }
-
-  .file-actions {
-    display: flex;
-    flex-wrap: wrap;
-    gap: var(--space-2);
   }
 
   .file {
     display: none;
   }
 
-  .files-head + .field-help {
+  .upload-help {
     margin-top: var(--space-1);
     max-width: var(--measure-prose);
   }
@@ -406,19 +299,8 @@
     font-weight: 500;
   }
 
-  .all-tests {
-    max-width: var(--measure-wide);
-    margin-top: var(--space-3);
-  }
-
-  .all-tests summary {
-    width: fit-content;
-    border-radius: var(--radius);
-    color: var(--act);
-    cursor: pointer;
-  }
-
   .tests {
+    max-width: var(--measure-wide);
     margin-top: var(--space-3);
   }
 
@@ -430,11 +312,12 @@
     font-weight: 500;
   }
 
-  .group {
-    white-space: nowrap;
+  .role .select {
+    min-width: 11rem;
   }
 
-  .unassigned {
+  .role .select.unassigned {
+    border-color: var(--bad);
     color: var(--bad);
     font-weight: 500;
   }
@@ -442,7 +325,6 @@
   .file-cell {
     min-width: 10rem;
     max-width: 18rem;
-    vertical-align: top;
   }
 
   .size {
@@ -458,8 +340,8 @@
   }
 
   .peek {
-    max-height: calc(4 * var(--lh-body) * var(--fs-0));
-    margin-top: var(--space-1);
+    max-height: calc(2 * var(--lh-body) * var(--fs-0));
+    margin: 0;
     overflow: hidden;
     font-size: var(--fs-0);
     white-space: pre;
@@ -474,12 +356,59 @@
     margin-left: var(--space-3);
   }
 
+  .subtasks {
+    display: grid;
+    gap: var(--space-3);
+    max-width: var(--measure-wide);
+    margin-top: var(--space-3);
+    padding: 0;
+    list-style: none;
+  }
+
+  .subtask {
+    display: grid;
+    grid-template-columns: minmax(0, 6rem) minmax(0, 6rem) minmax(0, 1fr) minmax(0, 6rem) auto;
+    align-items: end;
+    gap: var(--space-3);
+    padding-bottom: var(--space-3);
+    border-bottom: var(--rule) solid var(--line);
+  }
+
+  .subtask-name {
+    align-self: center;
+    padding-top: var(--space-5);
+    font-weight: 500;
+    white-space: nowrap;
+  }
+
+  .count {
+    align-self: center;
+    padding-top: var(--space-5);
+    color: var(--ink-muted);
+    font-family: var(--font-mono);
+    font-size: var(--fs-0);
+    white-space: nowrap;
+  }
+
+  .count.none {
+    color: var(--bad);
+    font-weight: 500;
+  }
+
+  .row-error {
+    grid-column: 1 / -1;
+  }
+
+  .add-row {
+    margin-top: var(--space-3);
+  }
+
   @media (width < 768px) {
     .subtask {
       grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
       grid-template-areas:
         'name remove'
-        'points range'
+        'points count'
         'title title';
     }
 
@@ -497,18 +426,22 @@
       grid-area: points;
     }
 
-    .range {
-      grid-area: range;
+    .count {
+      grid-area: count;
     }
 
     .subtask-title {
       grid-area: title;
     }
 
-    /* Tests stack: number and group, then input over output. */
-
+    /* Tests stack: number and role, then input over output. */
     .tests tbody tr {
       grid-template-columns: auto minmax(0, 1fr);
+    }
+
+    .tests .role {
+      grid-row: 1;
+      grid-column: 2;
     }
 
     .tests .file-cell,

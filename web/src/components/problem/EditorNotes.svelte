@@ -1,9 +1,9 @@
 <!--
-  EditorNotes: the problem editor's notes under the sticky bar (split out of
-  ProblemEditor for the P3 gate's size, council run 2 C2-053): that the
-  problem is archived; that live contests pin it, with a link to each
-  one's console (where the new revision reaches students) and the "Reason
-  for this change" field a save then needs; and that the AI assistant wrote the
+  EditorNotes: the problem editor's notes above the tabs (split out of
+  ProblemEditor to keep it readable): that the problem is archived; that a
+  live contest uses it, with a link to each one's live view (where "Update
+  students now" gives students the saved change) and the "Reason for this
+  change" field a save then needs; and that the AI assistant wrote the
   draft. Props: `problem`, `aiDraft`, `reason` (bindable) and `fields`
   (the save's field errors, for `reason`).
 -->
@@ -31,12 +31,12 @@
   <div class="banner banner-info lead live-note">
     <p>
       {live.map((c) => c.title).join(', ')}
-      {live.length === 1 ? 'is' : 'are'} live with this problem. A save makes a new revision; students keep the revision their
-      contest pinned until you update the contest on its console.
+      {live.length === 1 ? 'is' : 'are'} live with this problem. Students keep seeing it as it was until you choose Update
+      students now on the contest's live view.
     </p>
     <ul class="consoles">
       {#each live as c (c.contest_id)}
-        <li><a href="/admin/contests/{c.contest_id}/console#versions-title">Open the console of {c.title}</a> (problem {c.label})</li>
+        <li><a href="/admin/contests/{c.contest_id}/console#versions-title">Open the live view of {c.title}</a> (problem {c.label})</li>
       {/each}
     </ul>
     <div class="field reason-field">
@@ -51,7 +51,7 @@
         aria-invalid={fields.reason ? 'true' : undefined}
         aria-describedby="reason-help{fields.reason ? ' reason-error' : ''}"
       />
-      <p id="reason-help" class="field-help">Required while a contest is live. It is kept with the revision.</p>
+      <p id="reason-help" class="field-help">Required while a contest is live. It is kept in the contest's history of changes.</p>
       {#if fields.reason}<p id="reason-error" class="field-error">{fields.reason}</p>{/if}
     </div>
   </div>

@@ -208,7 +208,7 @@ export function problemFixtures(): Record<number, Json> {
         { ...test_(4, 1, '5 6\n1 2 3 4 5\n', ''), output_missing: true },
         { ...test_(5, 1, '1 1\n1\n', ''), output_missing: true },
       ],
-      problems: ['Tests 4 and 5 have no expected output. Generate outputs.'],
+      problems: ['Tests 4-5 have no expected output yet. Validate makes them from the reference solution.'],
       content_hash: 'h5',
     },
   };
@@ -327,6 +327,13 @@ export async function mockApi(page: Page, who: 'admin' | 'student' = 'admin') {
     nextId: 10,
     hash: 100,
     diffQueries: [] as string[],
+    // Contests for Add to contest: a draft, an upcoming one, and one that has ended.
+    contests: [
+      { id: 7, slug: 'week-7', title: 'Week 7', starts_at: T0 + 7 * 86400000, ends_at: T0 + 7 * 86400000 + 7200000, state: 'upcoming', published: false, problems: [{ problem_id: 2, label: 'A', title: 'Interval covering' }] },
+      { id: 8, slug: 'week-8', title: 'Week 8', starts_at: T0 + 14 * 86400000, ends_at: T0 + 14 * 86400000 + 7200000, state: 'upcoming', published: true, problems: [] },
+      { id: 6, slug: 'week-6', title: 'Week 6', starts_at: T0 - 7 * 86400000, ends_at: T0 - 7 * 86400000 + 7200000, state: 'ended', published: true, problems: [] },
+    ] as Json[],
+    contestPuts: [] as { id: number; body: Json[] }[],
   };
   Object.assign(state.problems[1], revisionsFixture());
 
@@ -349,20 +356,35 @@ export async function mockApi(page: Page, who: 'admin' | 'student' = 'admin') {
         const list = url.searchParams.get('archived') === '1' ? all : all.filter((p) => !p.archived);
         return json(route, 200, { problems: list.map(summaryOf) });
       }
-      if (path === '/api/admin/problems' && method === 'POST') {
-        const body = req.postDataJSON() as { title: string; slug: string };
-        if (Object.values(state.problems).some((p) => p.slug === body.slug)) {
-          // Go: problemError answers FieldErrors with 400 and its own sentence (httpapi/problems.go).
-          return apiError(route, 400, 'bad_request', 'Some fields need fixing.', {
-            fields: { slug: `Another problem already uses the slug ${body.slug}.` },
-          });
+      if (path === '/api/admin/contests' && method === 'GET') return json(route, 200, { contests: state.contests });
+      const cm = path.match(/^\/api\/admin\/contests\/(\d+)(\/problems)?$/);
+      if (cm) {
+        const c = state.contests.find((x) => x.id === Number(cm[1]));
+        if (!c) return apiError(route, 404, 'not_found', 'There is no contest with that id.');
+        if (!cm[2] && method === 'GET') return json(route, 200, c);
+        if (cm[2] && method === 'PUT') {
+          const body = req.postDataJSON() as Json[];
+          state.contestPuts.push({ id: c.id as number, body });
+          c.problems = body.map((x) => ({ ...x, title: String(state.problems[Number(x.problem_id)]?.title ?? '') }));
+          return json(route, 200, c);
         }
+      }
+      if (path === '/api/admin/problems' && method === 'POST') {
+        const body = req.postDataJSON() as { title: string; slug?: string };
+        if (String(body.title ?? '').trim() === '') {
+          // Go: problemError answers FieldErrors with 400 and its own sentence (httpapi/problems.go).
+          return apiError(route, 400, 'bad_request', 'Some fields need fixing.', { fields: { title: 'Enter a title.' } });
+        }
+        // The server makes the slug from the title, with a number when it is taken.
+        const base = body.title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+        let slug = base;
+        for (let n = 2; Object.values(state.problems).some((p) => p.slug === slug); n++) slug = `${base}-${n}`;
         const id = state.nextId++;
         const p = {
           ...problemFixtures()[3],
           id,
           title: body.title,
-          slug: body.slug,
+          slug,
           archived: false,
           origin: 'manual',
           statement_md: '',
@@ -419,20 +441,25 @@ export async function mockApi(page: Page, who: 'admin' | 'student' = 'admin') {
               fields: { reason: 'Say why you changed the problem while a contest is live.' },
             });
           }
-          if (body.slug === 'taken') {
+          if (body.time_limit_ms === 99999) {
             return apiError(route, 400, 'bad_request', 'Some fields need fixing.', {
-              fields: { slug: 'Another problem already uses the slug taken.', 'subtasks[1].points': 'Points run from 1 to 1000.' },
+              fields: { time_limit_ms: 'Set a time limit from 100 to 10000 ms.', 'subtasks[1].points': 'Points run from 1 to 1000.' },
             });
           }
           const subtasks: Json[] = (body.subtasks as Json[]).map((s, i) => ({ ...s, idx: i + 1 }));
-          const hash = `h${state.hash++}`;
+          // As hash.go: only judged fields change the content hash, so a statement or title edit keeps the validation.
+          const judged = (x: Json) =>
+            JSON.stringify([x.time_limit_ms, x.memory_limit_mb, x.checker, x.checker === 'float' ? x.epsilon : 0, x.checker === 'custom' ? x.checker_source : '',
+              x.reference, x.brute ?? null, x.validator ?? null, x.samples, (x.subtasks as Json[]).map((s) => [Number(s.points), String(s.tests).replace(/\s/g, '')])]);
+          const same = judged(p) === judged(body);
+          const hash = same ? String(p.content_hash) : `h${state.hash++}`;
           const { reason: _reason, ...edit } = body;
           void _reason;
           Object.assign(p, edit, {
             subtasks,
             points: subtasks.reduce((n, s) => n + Number(s.points), 0),
             content_hash: hash,
-            validated: p.validated_hash === hash,
+            validated: same ? p.validated : p.validated_hash === hash,
             updated_at: T0,
           });
           return json(route, 200, p);
@@ -473,6 +500,11 @@ export async function mockApi(page: Page, who: 'admin' | 'student' = 'admin') {
               error: { code: 'not_ready', message: 'The problem is not ready. Fix these first.', problems: ['Add a reference solution first.'] },
             });
           }
+          if (body.then_validate && (p.problems as string[]).some((line) => !line.includes('no expected output'))) {
+            return apiError(route, 409, 'not_ready', 'This problem cannot be validated yet.', {
+              problems: (p.problems as string[]).filter((line) => !line.includes('no expected output')),
+            });
+          }
           const idxs = (p.tests as Json[]).filter((t) => body.all || t.output_missing).map((t) => Number(t.idx));
           const results = idxs.map((idx) => ({ idx, verdict: 'OK', time_ms: 200 + idx * 3 }));
           const done: Json =
@@ -480,7 +512,7 @@ export async function mockApi(page: Page, who: 'admin' | 'student' = 'admin') {
               ? { results: [], compile_output: 'main.cpp:3:5: error: expected ; before return\n', summary: { applied: 0, problems: [] } }
               : state.genOutcome === 'stale'
                 ? { results, summary: { applied: 0, problems: ['The problem changed while outputs were generated. Generate them again.'] } }
-                : { results, summary: { applied: idxs.length, problems: [] } };
+                : { results, summary: { applied: idxs.length, problems: [], ...(body.then_validate ? { validating: true } : {}) } };
           state.generations[id] = { id: 1, state: 'queued', results: [], error: null };
           state.genScripts[id] = [
             { id: 1, state: 'running', results: [], error: null },
@@ -497,6 +529,13 @@ export async function mockApi(page: Page, who: 'admin' | 'student' = 'admin') {
                 if (t.output_missing) Object.assign(t, { output_missing: false, output_size: 2, output_preview: '2\n' });
               }
               p.problems = [];
+              p.content_hash = `h${state.hash++}`;
+              // Then the server queues the validation (generate.go Finish).
+              if ((state.generations[id].summary as Json | undefined)?.validating) {
+                const hash = p.content_hash as string;
+                state.validations[id] = validationOf('queued', hash, { queue_position: 1 });
+                state.scripts[id] = [validationOf('running', hash), passedFor(hash)];
+              }
             }
           }
           const g = state.generations[id];
@@ -525,13 +564,13 @@ export const SCREENS: Screen[] = [
   {
     name: 'problems-bank',
     path: '/admin/problems',
-    title: 'Problem bank · podium',
+    title: 'Problems · podium',
     ready: (page) => expect(page.getByRole('link', { name: 'Interval covering', exact: true })).toBeVisible(),
   },
   {
     name: 'problem-editor',
     path: '/admin/problems/1',
-    title: 'A plus B · Problem bank · podium',
+    title: 'A plus B · Problems · podium',
     ready: async (page) => {
       await expect(page.getByRole('heading', { level: 1 })).toHaveText('A plus B');
       await expect(page.locator('.statement .katex').first()).toBeVisible();
@@ -540,25 +579,25 @@ export const SCREENS: Screen[] = [
   {
     name: 'problem-editor-warnings',
     path: '/admin/problems/2',
-    title: 'Interval covering · Problem bank · podium',
-    ready: (page) => expect(page.getByRole('note', { name: 'Before you validate' })).toBeVisible(),
+    title: 'Interval covering · Problems · podium',
+    ready: (page) => expect(page.getByRole('group', { name: 'Fix this before you validate' })).toBeVisible(),
   },
   {
     name: 'problem-editor-failed',
     path: '/admin/problems/4',
-    title: 'Average speed · Problem bank · podium',
-    ready: (page) => expect(page.locator('.headline')).toHaveText('Validation failed'),
+    title: 'Average speed · Problems · podium',
+    ready: (page) => expect(page.locator('.status')).toHaveText('Validation failed on test 7'),
   },
   {
     name: 'problem-editor-missing-outputs',
     path: '/admin/problems/5',
-    title: 'Pair sums · Problem bank · podium',
-    ready: (page) => expect(page.getByText('2 tests have no expected output.', { exact: false })).toBeVisible(),
+    title: 'Pair sums · Problems · podium',
+    ready: (page) => expect(page.locator('.status')).toHaveText('Not validated, 5 tests'),
   },
   {
     name: 'problem-not-found',
     path: '/admin/problems/999',
     title: 'Problem not found · podium',
-    ready: (page) => expect(page.getByRole('link', { name: 'Go to the problem bank.' })).toBeVisible(),
+    ready: (page) => expect(page.getByRole('link', { name: 'Go to Problems.' })).toBeVisible(),
   },
 ];

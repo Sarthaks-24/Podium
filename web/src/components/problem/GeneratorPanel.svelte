@@ -1,6 +1,7 @@
 <!--
-  GeneratorPanel: the problem editor's Generator section (M5, split out of
-  ProblemEditor in v2 P3 F5.1): the generator program, its arguments per
+  GeneratorPanel: the problem editor's Generator part, inside the Checking
+  tab's "Optional extra checks" (M5, split out of ProblemEditor in v2 P3
+  F5.1): the generator program, its arguments per
   subtask, and the plan as a compact table of test, subtask, seed and
   arguments with rows to add and remove, then "Generate inputs" with its
   result in place (failures name the test, subtask and seed). It edits the
@@ -108,8 +109,8 @@
 </script>
 
 {#if draft.plan !== undefined}
-  <section class="block" aria-labelledby="generator-heading">
-    <h2 id="generator-heading" tabindex="-1">Generator</h2>
+  <section class="generator" aria-labelledby="generator-heading">
+    <h3 id="generator-heading" class="program-name" tabindex="-1">Generator</h3>
     {#if unused}
       <div class="optional one-line">
         {#if removed}
@@ -139,14 +140,14 @@
         />
       {:else}
         <div class="optional">
-          <h3 class="program-name">Generator program</h3>
+          <h4 class="program-name">Generator program</h4>
           <p class="field-help">No generator. Add one to make test inputs from seeds instead of uploading them.</p>
           <button id="add-generator" type="button" class="btn btn-secondary" onclick={addGenerator}>Add generator</button>
         </div>
       {/if}
     </div>
 
-    <h3 class="sub">Arguments per subtask</h3>
+    <h4 class="sub">Arguments per subtask</h4>
     <p class="field-help sub-help">
       Given to the generator after the seed for every planned test of the subtask, separated by spaces, for example n=1000
       max=1000000000.
@@ -177,9 +178,9 @@
       </div>
     {/if}
 
-    <h3 class="sub" id="plan-heading">Planned tests</h3>
+    <h4 class="sub" id="plan-heading">Planned tests</h4>
     <p class="field-help sub-help">
-      Each row makes one test from a seed and optional arguments of its own. Samples come from the statement, so leave their
+      Each row makes one test from a seed and optional arguments of its own. Examples come from the statement, so leave their
       numbers out.
     </p>
     {#if err('plan')}<p id="plan-error" class="field-error">{err('plan')}</p>{/if}
@@ -325,6 +326,15 @@
 {/if}
 
 <style>
+  .generator {
+    margin-top: var(--space-6);
+  }
+
+  .generator h4.sub {
+    margin-top: var(--space-5);
+    font-size: var(--fs-1);
+  }
+
   .one-line {
     margin-top: var(--space-2);
   }

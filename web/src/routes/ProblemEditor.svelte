@@ -1,47 +1,51 @@
 <!--
-  ProblemEditor: one problem at /admin/problems/{id} (design.md 5.6). The
-  route loads the problem, keeps the working copy and its unsaved-changes
-  guard, saves (Ctrl+S or Cmd+S), and runs validation, output generation
-  and input generation, polling each every 2 s while the judge has it. The
-  sections are components in components/problem/: EditorBar (the sticky
-  status and actions), EditorNotes, StatementSection, TestsSection, GeneratorPanel
-  (from M5, when the server sends a "generator" key), SolutionsSection
-  with JudgingSection, EditorFooter, then the validation report.
-  Their shared classes are in
-  components/problem/editor.css. A live contest that pins the problem asks
-  for a reason with each save; an AI draft carries a note until a person
-  saves it. Props: `id`, the problem id from the address.
+  ProblemEditor: one problem at /admin/problems/{id}. The title row carries
+  one status line ("Validated, 7 tests, slowest 286 ms", a link to the
+  report), Try as a student and a menu with Download pack, Regenerate all
+  outputs and Archive. Under it the sticky bar (EditorBar) holds three
+  tabs, Statement, Tests and Checking, with Save changes and Validate; once
+  the problem has passed, "Add to contest" takes Validate's place and opens
+  a picker of draft and upcoming contests (AddToContestDialog). What needs
+  attention sits under the bar on every tab: why a save or Validate was
+  refused, what stops validation, a judged change that a save would need
+  to validate again, and the run in progress. Validate makes missing
+  outputs first (POST .../generate with then_validate) and the server
+  validates once they arrive, so there is no separate Generate step.
+  The route loads the problem through lib/loader (newest answer wins, none
+  after it has gone), keeps the working copy and its unsaved-changes guard,
+  saves on Ctrl+S or Cmd+S, and polls validation, output and input
+  generation every 2 s while the judge has them. A field error on another
+  tab switches to that tab before focusing the field. A live contest using
+  the problem asks for a reason with each save; an AI draft carries a note
+  until a person saves it. Props: `id`, the problem id from the address.
 -->
 <script lang="ts">
   import PageState from '../components/PageState.svelte';
   import PageHeader from '../components/PageHeader.svelte';
-  import { onMount } from 'svelte';
-  import { focusFirstInvalid } from '../lib/focus';
+  import ActionMenu from '../components/ActionMenu.svelte';
+  import { onMount, tick } from 'svelte';
+  import { keepHeadingFocus } from '../lib/focus';
   import ConfirmDialog from '../components/ConfirmDialog.svelte';
   import ValidationReport from '../components/ValidationReport.svelte';
   import { inputGenPending, inputGenReport, isAIDraft, type InputGeneration } from '../lib/ai';
-  import { ApiError, errorText, getJSON, sendBody, sendJSON } from '../lib/api';
-  import EditorFooter from '../components/problem/EditorFooter.svelte';
+  import { ApiError, errorText, getJSON, isSignedOut, sendBody, sendJSON } from '../lib/api';
   import GeneratorPanel from '../components/problem/GeneratorPanel.svelte';
   import EditorBar from '../components/problem/EditorBar.svelte';
   import EditorNotes from '../components/problem/EditorNotes.svelte';
-  import SolutionsSection from '../components/problem/SolutionsSection.svelte';
+  import SaveErrors from '../components/problem/SaveErrors.svelte';
   import StatementSection from '../components/problem/StatementSection.svelte';
   import TestsSection from '../components/problem/TestsSection.svelte';
-  import JudgingSection from '../components/problem/JudgingSection.svelte';
-  import ReadinessPanel from '../components/problem/ReadinessPanel.svelte';
-  import StatementPreview from '../components/StatementPreview.svelte';
-  import { media } from '../lib/breakpoints';
+  import CheckingSection from '../components/problem/CheckingSection.svelte';
+  import AddToContestDialog from '../components/problem/AddToContestDialog.svelte';
   import '../components/problem/editor.css';
   import { setTitle } from '../lib/head';
+  import { loader } from '../lib/loader.svelte';
   import { routeTitle } from '../lib/routing';
   import {
-    editorStatus,
     fieldKey,
     imagesWithoutAlt,
     isPending,
     judgedFieldsChanged,
-    previewSamples,
     ordinal,
     problemPath,
     readPlan,
@@ -49,6 +53,7 @@
     toEdit,
     validationResultLine,
     pipelineLine,
+    wordList,
     type Draft,
     type Problem,
     type Validation,
@@ -58,17 +63,17 @@
   import { session } from '../lib/session.svelte';
   import { showToast } from '../lib/toast.svelte';
   import { type Generation } from '../lib/workspace';
-  import { editorJumps, generationSummary } from '../lib/problemEditor';
+  import { generationSummary, statusLine } from '../lib/problemEditor';
 
   let { id }: { id: string } = $props();
+
+  type TabId = 'statement' | 'tests' | 'checking';
 
   /** How often the validation and generation are asked for while the judge has them. */
   const POLL_MS = 2000;
 
   const isMac = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
 
-  let loadState = $state<'loading' | 'ready' | 'missing' | 'forbidden' | 'error'>('loading');
-  let loadError = $state('');
   let problem = $state<Problem | null>(null);
   let draft = $state<Draft | null>(null);
   let baseline = $state('');
@@ -76,10 +81,18 @@
   // A server from M5 on sends "generator" (null when there is none).
   const hasGenerator = $derived(problem !== null && problem.generator !== undefined);
   const aiDraft = $derived(problem !== null && isAIDraft(problem.tags));
+  const isOrganiser = $derived(session.user?.role === 'admin' || session.user?.role === 'owner');
+
+  const page = loader(
+    () => getJSON<Problem>(problemPath(id)),
+    (p) => adopt(p, true),
+  );
+
+  let tab = $state<TabId>('statement');
 
   let fields = $state<Record<string, string>>({});
   let saveError = $state('');
-  /** Why the problem changed; required while a live contest pins it (C4, B2.2). */
+  /** Why the problem changed; required while a live contest uses it. */
   let reason = $state('');
   let saving = $state(false);
 
@@ -93,22 +106,44 @@
 
   let generation = $state<Generation | null>(null);
   let genError = $state<{ message: string; problems: readonly string[] } | null>(null);
-  let genBusy = $state(false);
+  /** Set when this page started an output generation, so its result is said here. */
+  let genStarted = $state(false);
+  /** Set while an output generation runs that a validation follows (Validate, or generated inputs). */
+  let chained = $state(false);
   let regenOpen = $state(false);
   let replaceOpen = $state(false);
 
   let archiveOpen = $state(false);
   let archiving = $state(false);
+  let addOpen = $state(false);
   let leaveTo = $state<string | null>(null);
 
-  // M5: the generator, its plan, and generating inputs from it.
+  // The generator, its plan, and generating inputs from it.
   let inputGen = $state<InputGeneration | null>(null);
   let inputGenError = $state<{ message: string; problems: readonly string[] } | null>(null);
   let inputGenBusy = $state(false);
 
-  const status = $derived(problem ? editorStatus(problem, validation) : null);
+  const genPending = $derived(generation !== null && (generation.state === 'queued' || generation.state === 'running'));
+  const genSummary = $derived(genStarted ? generationSummary(generation) : null);
+  const inputPending = $derived(inputGenPending(inputGen));
+  const inputReport = $derived(inputGen && problem ? inputGenReport(inputGen, readPlan(problem.plan)) : null);
+
   const validating = $derived(isPending(validation));
+  const status = $derived(problem ? statusLine(problem, validation, chained && genPending) : null);
+  const missingOutputs = $derived((problem?.tests ?? []).some((t) => t.output_missing));
+  /** What stops validation; the line on missing outputs (always the last) is left out, since Validate makes them. */
+  const blockers = $derived.by(() => {
+    const all = problem?.problems ?? [];
+    return missingOutputs ? all.slice(0, -1) : all;
+  });
+  /** Judged fields changed and not saved (a save would need a new validation). */
+  const judged = $derived(draft && baseline ? judgedFieldsChanged(JSON.parse(baseline) as Draft, draft, aiDraft) : []);
+  const ready = $derived(
+    !!problem && problem.validated && !problem.archived && !dirty && validation?.current !== false && !validating && !genPending,
+  );
+  const validatePrimary = $derived(!dirty && !!problem && blockers.length === 0 && !ready);
   const validateLabel = $derived.by(() => {
+    if (chained && genPending) return 'Making outputs';
     if (validating && validation) {
       return validation.state === 'queued' && validation.queue_position !== null && validation.queue_position > 0
         ? `Validating, ${ordinal(validation.queue_position)} in queue`
@@ -116,33 +151,36 @@
     }
     return dirty ? 'Save and validate' : 'Validate';
   });
-  // The button that matters now is the primary one.
-  const blocked = $derived((problem?.problems ?? []).length > 0);
-  // While the server names what stops validation, Validate is not the next step.
-  const validatePrimary = $derived(!dirty && !!problem && !blocked && !(problem.validated && validation?.current !== false));
-  /** Judged fields changed and not saved (a save would need a new validation). */
-  const judged = $derived(draft && baseline ? judgedFieldsChanged(JSON.parse(baseline) as Draft, draft, aiDraft) : []);
   const resultLine = $derived(validation && validation.current !== false ? validationResultLine(validation) : null);
-  const pipeline = $derived(pipelineLine(hasGenerator ? inputGen : null, generation, validation));
-  /** Set when a validation finishes while the editor is open: the bar then says how it went (audit O2). */
+  // The chain line is for a chain only: Validate's outputs, or a generator's inputs and what follows.
+  const pipeline = $derived(chained || inputPending ? pipelineLine(hasGenerator ? inputGen : null, generation, validation) : '');
+  /** Set when a validation finishes while the editor is open: the result then takes one line under the bar. */
   let justFinished = $state(false);
-  /** From 1280 px the preview sits in the context column beside the form. */
-  let desk = $state(media('desk').matches);
-
-  const genPending = $derived(generation !== null && (generation.state === 'queued' || generation.state === 'running'));
-  const genSummary = $derived(generationSummary(generation));
-
-  const inputPending = $derived(inputGenPending(inputGen));
-  const inputReport = $derived(inputGen && problem ? inputGenReport(inputGen, readPlan(problem.plan)) : null);
 
   const fieldList = $derived(fieldErrors(fields, draft, hasGenerator));
 
-  /** Handles errors every request can hit; returns true when it did. */
+  /** Advice that does not stop validation, with a line for statement images that have no description. */
+  const warnings = $derived.by(() => {
+    if (!problem || !draft) return [];
+    const n = imagesWithoutAlt(draft.statement_md);
+    if (n === 0) return problem.warnings;
+    return [
+      ...problem.warnings,
+      `${n === 1 ? 'An image' : `${n} images`} in the statement ${n === 1 ? 'has' : 'have'} no description. Write one between the square brackets, as in ![A graph of the input](graph.png), so screen readers can read ${n === 1 ? 'it' : 'them'}.`,
+    ];
+  });
+
+  const tabs = $derived([
+    { id: 'statement' as const, label: 'Statement' },
+    { id: 'tests' as const, label: 'Tests', count: problem?.tests.length ?? 0 },
+    { id: 'checking' as const, label: 'Checking' },
+  ]);
+
+  /** Handles errors every side request can hit; returns true when it did. */
   function handleAuth(e: unknown): boolean {
-    if (!(e instanceof ApiError)) return false;
-    if (e.status === 401) return true;
-    if (e.status === 403 && e.code === 'forbidden') {
-      loadState = 'forbidden';
+    if (isSignedOut(e)) return true;
+    if (e instanceof ApiError && e.status === 403) {
+      page.forbid();
       return true;
     }
     return false;
@@ -163,26 +201,23 @@
     setTitle(p.title, routeTitle('problems'));
   }
 
-  // Polling stops for good when the editor goes away.
-  let alive = true;
-
   /** Polls one job of the problem every 2 s while `pending` holds; `take` gets each answer. */
   function poller<T>(path: string, pending: () => boolean, take: (value: T) => void) {
     let timer: ReturnType<typeof setTimeout> | undefined;
     async function tick() {
       try {
         const value = await getJSON<T>(problemPath(id, path));
-        if (!alive) return;
+        if (!page.live) return;
         take(value);
       } catch (e) {
         if (handleAuth(e)) return;
-        // A failed poll is retried on the next tick.
+        // A failed poll is tried again on the next tick.
       }
       schedule();
     }
     function schedule() {
       clearTimeout(timer);
-      if (alive && pending()) timer = setTimeout(tick, POLL_MS);
+      if (page.live && pending()) timer = setTimeout(tick, POLL_MS);
     }
     return { tick, schedule, stop: () => clearTimeout(timer) };
   }
@@ -192,103 +227,84 @@
     validation = v;
     if (isPending(was) && !isPending(v)) {
       justFinished = true;
-      refreshProblem();
+      void refreshProblem();
     }
   });
   const genPoll = poller<Generation>('/generation', () => genPending, (g) => {
     const wasPending = genPending;
     generation = g;
     if (wasPending && !(g.state === 'queued' || g.state === 'running')) {
-      refreshProblem();
-      // After generated inputs, the server queues validation next.
-      if (hasGenerator && !isPending(validation)) void validationPoll.tick();
+      chained = false;
+      void refreshProblem();
+      // When every output arrived, the server queued the validation next.
+      if (g.summary?.validating && !isPending(validation)) void validationPoll.tick();
     }
   });
   const inputPoll = poller<InputGeneration>('/input-generation', () => inputPending, (g) => {
     const wasPending = inputPending;
     inputGen = g;
     if (wasPending && !inputGenPending(g)) {
-      refreshProblem();
+      void refreshProblem();
       // Output generation follows good inputs; show it and poll it.
-      if (g.summary?.generating_outputs) void genPoll.tick();
+      if (g.summary?.generating_outputs) {
+        genStarted = true;
+        chained = true;
+        void genPoll.tick();
+      }
     }
   });
 
   async function refreshProblem() {
     try {
       const p = await getJSON<Problem>(problemPath(id));
-      if (alive) adopt(p, false);
+      if (page.live) adopt(p, false);
     } catch (e) {
       handleAuth(e);
     }
   }
 
+  /** Fetches one job's latest state; null when there is none yet. */
+  async function latest<T>(path: string): Promise<T | null> {
+    try {
+      return await getJSON<T>(problemPath(id, path));
+    } catch (e) {
+      handleAuth(e);
+      return null;
+    }
+  }
+
   async function load() {
-    loadState = 'loading';
-    try {
-      const p = await getJSON<Problem>(problemPath(id));
-      if (!alive) return;
-      adopt(p, true);
-      loadState = 'ready';
-    } catch (e) {
-      if (handleAuth(e)) return;
-      if (e instanceof ApiError && (e.status === 404 || e.status === 400)) {
-        loadState = 'missing';
-        setTitle('Problem not found');
-        return;
-      }
-      loadError = errorText(e);
-      loadState = 'error';
-      return;
-    }
-    try {
-      validation = await getJSON<Validation>(problemPath(id, '/validation'));
-      if (problem) validation = { ...validation, current: validation.content_hash === problem.content_hash };
-      validationPoll.schedule();
-    } catch (e) {
-      if (handleAuth(e)) return;
-      validation = null;
-    }
-    try {
-      generation = await getJSON<Generation>(problemPath(id, '/generation'));
-      genPoll.schedule();
-    } catch (e) {
-      if (handleAuth(e)) return;
-      generation = null;
-    }
-    if (!hasGenerator) return;
-    try {
-      inputGen = await getJSON<InputGeneration>(problemPath(id, '/input-generation'));
-      inputPoll.schedule();
-    } catch (e) {
-      if (handleAuth(e)) return;
-      inputGen = null;
-    }
+    const restore = keepHeadingFocus();
+    await page.load();
+    void restore();
+    if (page.state === 'missing') setTitle('Problem not found');
+    if (page.state !== 'ready' || !problem) return;
+    const v = await latest<Validation>('/validation');
+    if (!page.live) return;
+    validation = v && problem ? { ...v, current: v.content_hash === problem.content_hash } : null;
+    validationPoll.schedule();
+    generation = await latest<Generation>('/generation');
+    genPoll.schedule();
+    if (!hasGenerator || !page.live) return;
+    inputGen = await latest<InputGeneration>('/input-generation');
+    inputPoll.schedule();
   }
 
   onMount(() => {
     setTitle(routeTitle('problem'));
-    const role = session.user?.role;
-    if (role === 'admin' || role === 'owner') {
-      load();
-    } else {
-      loadState = 'forbidden';
-    }
-    const deskQuery = media('desk');
-    const syncDesk = () => (desk = deskQuery.matches);
-    deskQuery.addEventListener('change', syncDesk);
+    if (!isOrganiser) page.forbid();
+    else void load();
     const removeGuard = setNavigationGuard((to) => {
       if (!dirty) return true;
       leaveTo = to;
       return false;
     });
     return () => {
-      alive = false;
+      page.stop();
       validationPoll.stop();
       genPoll.stop();
       inputPoll.stop();
       removeGuard();
-      deskQuery.removeEventListener('change', syncDesk);
     };
   });
 
@@ -300,10 +316,31 @@
 
   function onKeydown(event: KeyboardEvent) {
     const mod = isMac ? event.metaKey : event.ctrlKey;
-    if (mod && !event.altKey && (event.key === 's' || event.key === 'S') && draft && loadState === 'ready') {
+    if (mod && !event.altKey && (event.key === 's' || event.key === 'S') && draft && page.state === 'ready') {
       event.preventDefault();
-      if (!saving) save();
+      if (!saving) void save();
     }
+  }
+
+  /** Shows the tab that holds an element, unfolds what hides it, and focuses it. */
+  async function reveal(elementId: string) {
+    const el = document.getElementById(elementId);
+    if (!el) return;
+    const panel = el.closest<HTMLElement>('[role="tabpanel"][data-tab]');
+    if (panel) tab = panel.dataset.tab as TabId;
+    const folded = el.closest('details');
+    if (folded) folded.open = true;
+    await tick();
+    el.scrollIntoView({ block: 'center' });
+    el.focus({ preventScroll: true });
+  }
+
+  /** After a refused save: the first field marked invalid, on whichever tab, or else the list of errors. */
+  async function focusInvalid() {
+    await tick();
+    const el = document.querySelector<HTMLElement>('.editor [aria-invalid="true"]');
+    if (el?.id) await reveal(el.id);
+    else document.getElementById('field-errors')?.focus();
   }
 
   /** Saves the working copy. Resolves to true when the server took it. */
@@ -314,8 +351,8 @@
     const result = toEdit(draft);
     if (!result.ok) {
       fields = result.fields;
-      saveError = 'Some fields need attention. They are marked above.';
-      await focusFirstInvalid('.editor');
+      saveError = 'Some fields need attention. Each is linked here.';
+      await focusInvalid();
       return false;
     }
     saving = true;
@@ -334,7 +371,7 @@
       for (const [key, message] of Object.entries(raw)) next[fieldKey(key)] = message;
       fields = next;
       saveError = errorText(e);
-      if (Object.keys(next).length > 0) await focusFirstInvalid('.editor');
+      if (Object.keys(next).length > 0) await focusInvalid();
       return false;
     } finally {
       saving = false;
@@ -343,16 +380,27 @@
 
   function onSubmit(event: SubmitEvent) {
     event.preventDefault();
-    save();
+    void save();
   }
 
+  /** Validates; missing outputs are made from the reference first, then the server validates. */
   async function validate() {
     validateError = null;
+    genError = null;
+    justFinished = false;
     if (dirty && !(await save())) return;
+    if (!problem) return;
     requesting = true;
     try {
-      validation = await sendJSON<Validation>('POST', problemPath(id, '/validate'));
-      validationPoll.schedule();
+      if (problem.tests.some((t) => t.output_missing)) {
+        generation = await sendJSON<Generation>('POST', problemPath(id, '/generate'), { then_validate: true });
+        genStarted = true;
+        chained = true;
+        genPoll.schedule();
+      } else {
+        validation = await sendJSON<Validation>('POST', problemPath(id, '/validate'));
+        validationPoll.schedule();
+      }
     } catch (e) {
       if (handleAuth(e)) return;
       validateError = { message: errorText(e), problems: e instanceof ApiError ? e.problems : [] };
@@ -361,22 +409,19 @@
     }
   }
 
-  async function generate(all: boolean) {
+  async function regenerate() {
     regenOpen = false;
     genError = null;
     if (dirty && !(await save())) return;
-    genBusy = true;
     try {
-      generation = await sendJSON<Generation>('POST', problemPath(id, '/generate'), { all });
+      generation = await sendJSON<Generation>('POST', problemPath(id, '/generate'), { all: true });
+      genStarted = true;
       genPoll.schedule();
     } catch (e) {
       if (handleAuth(e)) return;
       genError = { message: errorText(e), problems: e instanceof ApiError ? e.problems : [] };
-    } finally {
-      genBusy = false;
     }
   }
-
 
   async function generateInputs() {
     inputGenError = null;
@@ -417,6 +462,15 @@
     }
   }
 
+  function downloadPack() {
+    const a = document.createElement('a');
+    a.href = problemPath(id, '/export');
+    a.download = '';
+    document.body.append(a);
+    a.click();
+    a.remove();
+  }
+
   async function archive() {
     archiving = true;
     try {
@@ -441,152 +495,188 @@
     navigate(to);
   }
 
-  /** Moves to the full validation report and puts focus on its heading. */
-  function showReport(event: MouseEvent) {
-    const el = document.getElementById('validation-heading');
-    if (!el) return;
+  /** Moves to the validation report on the Checking tab and puts focus on its heading. */
+  async function showReport(event: MouseEvent) {
     event.preventDefault();
-    el.scrollIntoView({ block: 'start' });
-    el.focus({ preventScroll: true });
+    await reveal('validation-heading');
   }
 
-  const jumps = $derived(editorJumps(problem, draft, hasGenerator));
+  const menu = $derived([
+    { label: 'Download pack', onselect: downloadPack },
+    ...((problem?.tests.length ?? 0) > 0 ? [{ label: 'Regenerate all outputs', onselect: () => (regenOpen = true) }] : []),
+    ...(problem && !problem.archived ? [{ label: 'Archive', onselect: () => (archiveOpen = true), danger: true }] : []),
+  ]);
 
   const pageTitle = $derived(
-    loadState === 'missing' ? 'Problem not found' : problem ? (problem.title.trim() !== '' ? problem.title : problem.slug) : 'Problem',
+    page.state === 'missing' ? 'Problem not found' : problem ? (problem.title.trim() !== '' ? problem.title : problem.slug) : 'Problem',
   );
 </script>
 
 <svelte:window onbeforeunload={onBeforeUnload} onkeydown={onKeydown} />
 
+{#snippet generatorPart()}
+  {#if draft && problem}
+    <GeneratorPanel
+      bind:draft
+      bind:fields
+      testIdx={problem.tests.map((t) => t.idx)}
+      {dirty}
+      {saving}
+      busy={inputGenBusy}
+      pending={inputPending}
+      error={inputGenError}
+      report={inputReport}
+      ongenerate={generateInputs}
+    />
+  {/if}
+{/snippet}
+
 <div class="editor">
-  <PageHeader title={pageTitle} crumbs={[{ label: 'Problem bank', href: '/admin/problems' }, { label: pageTitle }]}>
+  <PageHeader title={pageTitle} crumbs={[{ label: 'Problems', href: '/admin/problems' }, { label: pageTitle }]}>
     {#snippet actions()}
-      {#if problem && loadState === 'ready'}
+      {#if problem && page.state === 'ready'}
+        {#if status}
+          <a class="status tone-{status.tone}" href="#validation-heading" onclick={showReport}>
+            {#if status.tone === 'ok'}<span class="dot" aria-hidden="true"></span>{/if}{status.text}
+          </a>
+        {/if}
         <a class="btn btn-quiet" href="/admin/problems/{problem.id}/try">Try as a student</a>
+        <ActionMenu id="problem-menu" items={menu} />
       {/if}
     {/snippet}
   </PageHeader>
 
-  {#if loadState === 'forbidden'}
+  {#if page.state === 'forbidden'}
     <PageState kind="forbidden" message="Only organisers can manage problems." />
-  {:else if loadState === 'missing'}
-    <PageState kind="missing" message="There is no problem with that number." parent={{ href: '/admin/problems', label: 'Go to the problem bank.' }} />
-  {:else if loadState === 'loading'}
+  {:else if page.state === 'missing'}
+    <PageState kind="missing" message="There is no problem with that number." parent={{ href: '/admin/problems', label: 'Go to Problems.' }} />
+  {:else if page.state === 'loading'}
     <PageState kind="loading" message="Loading problem" />
-  {:else if loadState === 'error'}
-    <PageState kind="error" message={loadError} onretry={load} />
+  {:else if page.state === 'error'}
+    <PageState kind="error" message={page.error} onretry={load} />
   {:else if problem && draft}
+    <EditorNotes {problem} {aiDraft} bind:reason {fields} />
+
     <EditorBar
-      {status}
+      {tab}
+      {tabs}
+      ontab={(t) => (tab = t)}
       {aiDraft}
       {dirty}
       fieldCount={fieldList.length}
-      {jumps}
       {saving}
-      busy={requesting || saving || validating}
+      busy={requesting || saving || validating || genPending || inputPending}
       {validateLabel}
       {validatePrimary}
-      result={justFinished && !dirty && !validating ? resultLine : null}
+      {ready}
       onvalidate={validate}
-      onreport={showReport}
+      onadd={() => (addOpen = true)}
     />
 
-    <EditorNotes {problem} {aiDraft} bind:reason {fields} />
-
-    <div class="page-split editor-split">
-      <aside class="page-split-aside" aria-label="Readiness and preview">
-        <ReadinessPanel
-          {problem}
-          {status}
-          {judged}
-          {dirty}
-          {pipeline}
-          result={resultLine}
-          altMissing={imagesWithoutAlt(draft.statement_md)}
-          onreport={showReport}
-        />
-        {#if desk}
-          <section class="panel aside-preview" aria-labelledby="preview-heading">
-            <h2 id="preview-heading">Preview</h2>
-            <StatementPreview
-              title={draft.title}
-              markdown={draft.statement_md}
-              timeLimitMs={draft.time_limit_ms}
-              memoryMb={draft.memory_limit_mb}
-              samples={previewSamples(problem.tests, draft.samples).samples}
-              samplesCut={previewSamples(problem.tests, draft.samples).cut}
-            />
-          </section>
+    <div class="notes">
+      <SaveErrors {saveError} {fieldList} onreveal={reveal} />
+      {#if validateError}
+        <div class="banner banner-error problems-list" role="alert">
+          <p>{validateError.message}</p>
+          {#if validateError.problems.length > 0}
+            <ul>{#each validateError.problems as line, i (i)}<li>{line}</li>{/each}</ul>
+          {/if}
+        </div>
+      {:else if blockers.length > 0}
+        <div class="blockers" role="group" aria-labelledby="blockers-title">
+          <h2 id="blockers-title" class="group-title tone-bad">Fix {blockers.length === 1 ? 'this' : 'these'} before you validate</h2>
+          <ul>{#each blockers as line, i (i)}<li>{line}</li>{/each}</ul>
+        </div>
+      {/if}
+      {#if judged.length > 0}
+        <p class="line tone-part">
+          {problem.validated
+            ? `Saving needs a new validation: you changed the ${wordList(judged)}.`
+            : `Your changes to the ${wordList(judged)} are not saved yet.`}
+        </p>
+      {/if}
+      <div class="generation" aria-live="polite">
+        {#if genError}
+          <div class="banner banner-error problems-list">
+            <p>{genError.message}</p>
+            {#if genError.problems.length > 0}
+              <ul>{#each genError.problems as line, i (i)}<li>{line}</li>{/each}</ul>
+            {/if}
+          </div>
+        {:else if pipeline}
+          <p class="line pipeline">{pipeline}</p>
+        {:else if genSummary}
+          <p class="gen-line tone-{genSummary.tone}">{genSummary.text}</p>
+          {#if genSummary.lines.length > 0}
+            <ul class="gen-failures">{#each genSummary.lines as line, i (i)}<li>{line}</li>{/each}</ul>
+          {/if}
         {/if}
-      </aside>
-
-      <div class="page-split-main editor-main">
-        <form id="problem-form" class="form" novalidate onsubmit={onSubmit}>
-          <StatementSection bind:draft {fields} showPreview={!desk} tests={problem.tests} />
-
-          <SolutionsSection bind:draft {fields} />
-
-          <TestsSection
-            {id}
-            bind:draft
-            bind:fields
-            bind:fileInput={testsInput}
-            tests={problem.tests}
-            {replacing}
-            {replaceError}
-            {genBusy}
-            {genPending}
-            {genError}
-            {genSummary}
-            onupload={() => (problem && problem.tests.length > 0 ? (replaceOpen = true) : pickTests())}
-            ongenerate={() => generate(false)}
-            onregenerate={() => (regenOpen = true)}
-            onfile={replaceTests}
-          />
-
-          {#if hasGenerator}
-            <GeneratorPanel
-              bind:draft
-              bind:fields
-              testIdx={problem.tests.map((t) => t.idx)}
-              {dirty}
-              {saving}
-              busy={inputGenBusy}
-              pending={inputPending}
-              error={inputGenError}
-              report={inputReport}
-              ongenerate={generateInputs}
-            />
-          {/if}
-
-          <JudgingSection bind:draft {fields} />
-
-          <EditorFooter {id} archived={!!problem.archived} {saveError} {fieldList} onarchive={() => (archiveOpen = true)} />
-        </form>
-
-        <section class="block validation" aria-labelledby="validation-heading">
-          <h2 id="validation-heading" tabindex="-1">Validation</h2>
-          {#if validateError}
-            <div class="banner banner-error problems-list" role="alert">
-              <p>{validateError.message}</p>
-              {#if validateError.problems.length > 0}
-                <ul>{#each validateError.problems as line, i (i)}<li>{line}</li>{/each}</ul>
-              {/if}
-            </div>
-          {/if}
-          <ValidationReport {validation} />
-        </section>
-
       </div>
+      {#if justFinished && !dirty && !validating && resultLine}
+        <p class="line bar-result">
+          <span class="tone-{resultLine.tone}">{resultLine.text}</span>
+          <a href="#validation-heading" onclick={showReport}>See the report</a>
+        </p>
+      {/if}
     </div>
+
+    <form id="problem-form" class="form" novalidate onsubmit={onSubmit}>
+      <div id="panel-statement" class="tab-panel" role="tabpanel" aria-labelledby="tab-statement" data-tab="statement" hidden={tab !== 'statement'}>
+        <StatementSection bind:draft {fields} tests={problem.tests} />
+      </div>
+
+      <div id="panel-tests" class="tab-panel" role="tabpanel" aria-labelledby="tab-tests" data-tab="tests" hidden={tab !== 'tests'}>
+        <TestsSection
+          {id}
+          bind:draft
+          bind:fields
+          bind:fileInput={testsInput}
+          tests={problem.tests}
+          {replacing}
+          {replaceError}
+          onupload={() => (problem && problem.tests.length > 0 ? (replaceOpen = true) : pickTests())}
+          onfile={replaceTests}
+        />
+      </div>
+
+      <div id="panel-checking" class="tab-panel" role="tabpanel" aria-labelledby="tab-checking" data-tab="checking" hidden={tab !== 'checking'}>
+        <div class="checking-layout">
+          <CheckingSection bind:draft {fields} generator={hasGenerator ? generatorPart : undefined} />
+
+          <section class="validation" aria-labelledby="validation-heading">
+            <h2 id="validation-heading" tabindex="-1">Validation</h2>
+            <ValidationReport {validation} onreveal={reveal} />
+            {#if warnings.length > 0}
+              {@const passed = problem.validated && judged.length === 0}
+              <div class="advice" role="note" aria-labelledby="warnings-title">
+                <h3 id="warnings-title" class="group-title">{passed ? 'Worth adding' : 'Before you validate'}</h3>
+                <ul>{#each warnings as warning, i (i)}<li>{warning}</li>{/each}</ul>
+              </div>
+            {/if}
+          </section>
+        </div>
+      </div>
+    </form>
   {/if}
 </div>
+
+{#if problem}
+  <AddToContestDialog
+    open={addOpen}
+    problemId={problem.id}
+    title={problem.title}
+    onclose={() => (addOpen = false)}
+    ondone={(contest, label) => {
+      addOpen = false;
+      showToast(`Added to ${contest} as problem ${label}`);
+    }}
+  />
+{/if}
 
 <ConfirmDialog
   open={archiveOpen}
   title="Archive {problem?.title ?? 'this problem'}?"
-  body="It leaves the problem bank. Contests that used it keep it."
+  body="It leaves the list of problems. Contests that used it keep it."
   confirmLabel="Archive problem"
   danger
   busy={archiving}
@@ -597,7 +687,7 @@
 <ConfirmDialog
   open={replaceOpen}
   title="Replace all {problem?.tests.length ?? 0} tests?"
-  body="The tests in the .zip you pick take the place of every test now on this problem. Subtask ranges stay as they are."
+  body="The tests in the .zip you pick take the place of every test now on this problem. Roles are kept by test number."
   confirmLabel="Replace tests"
   danger
   onconfirm={() => {
@@ -612,8 +702,7 @@
   title="Regenerate all outputs?"
   body="Every expected output is replaced by what the reference solution prints. Validate again afterwards."
   confirmLabel="Regenerate all outputs"
-  busy={genBusy}
-  onconfirm={() => generate(true)}
+  onconfirm={regenerate}
   oncancel={() => (regenOpen = false)}
 />
 
@@ -632,38 +721,114 @@
     min-width: 0;
   }
 
-  /* The context column sits under the sticky bar, not behind it. */
-  .editor-split {
-    margin-top: var(--space-5);
+  .status {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+    margin-right: var(--space-2);
+    border-radius: var(--radius);
+    font-weight: 500;
+    text-decoration: none;
   }
 
-  @media (min-width: 1280px) {
-    .editor-split > .page-split-aside {
-      top: calc(var(--sticky-bar-h, var(--space-7)) + var(--space-4));
-      max-height: calc(100dvh - var(--sticky-bar-h, var(--space-7)) - 2 * var(--space-4));
-      /* A preview taller than the window scrolls in the column; without this
-         its end (the sample copy buttons) could never be reached. */
-      overflow-y: auto;
-      overscroll-behavior: contain;
-    }
+  .status:hover {
+    text-decoration: underline;
   }
 
-  /* One column that never grows past the page: wide tables scroll inside it. */
-  .editor-main {
-    grid-template-columns: minmax(0, 1fr);
-    gap: 0;
+  .dot {
+    width: var(--space-2);
+    height: var(--space-2);
+    border-radius: 50%;
+    background: currentColor;
   }
 
-  .aside-preview h2 {
-    font-size: var(--fs-sub);
+  .tone-ok {
+    color: var(--ok);
   }
 
-  .validation.block {
+  .tone-bad {
+    color: var(--bad);
+  }
+
+  .tone-wait,
+  .tone-note {
+    color: var(--ink-muted);
+  }
+
+  .tone-part {
+    color: var(--part);
+    font-weight: 500;
+  }
+
+  .notes {
+    display: grid;
+    gap: var(--space-2);
+    max-width: var(--measure-wide);
+    margin-top: var(--space-3);
+  }
+
+  .line {
+    max-width: var(--measure-prose);
+  }
+
+  .pipeline {
+    color: var(--ink-muted);
+  }
+
+  .bar-result {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0 var(--space-3);
+    font-weight: 500;
+  }
+
+  .blockers,
+  .advice {
+    display: grid;
+    gap: var(--space-1);
+  }
+
+  .group-title {
+    font-size: var(--fs-1);
+    font-weight: 600;
+  }
+
+  .blockers ul,
+  .advice ul {
+    padding-left: var(--space-5);
+  }
+
+  .tab-panel {
+    margin-top: var(--space-4);
+    min-width: 0;
+  }
+
+  .validation {
     display: grid;
     gap: var(--space-4);
     margin-top: var(--space-6);
-    padding-top: 0;
-    border-top: 0;
+    padding-top: var(--space-5);
+    border-top: var(--rule) solid var(--line);
     max-width: var(--measure-wide);
+  }
+
+  .validation h2 {
+    font-size: var(--fs-3);
+  }
+
+  /* From 1280 px the report sits beside the programs, so the tab stays short. */
+  @media (min-width: 1280px) {
+    .checking-layout {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+      gap: var(--space-7);
+      align-items: start;
+    }
+
+    .validation {
+      margin-top: 0;
+      padding-top: 0;
+      border-top: 0;
+    }
   }
 </style>

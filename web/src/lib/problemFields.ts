@@ -18,7 +18,7 @@ export const FIELD_LABELS: Record<string, string> = {
   checker_source: 'Checker source',
   tags: 'Tags',
   difficulty: 'Difficulty',
-  samples: 'Sample tests',
+  samples: 'Examples',
   subtasks: 'Subtasks',
   reference: 'Reference solution',
   brute: 'Brute force',
@@ -61,8 +61,12 @@ export function fieldTarget(key: string, draft: Draft | null, hasGenerator: bool
   if (row) {
     const i = Number(row[1]);
     const ok = draft !== null && i < draft.subtasks.length;
+    // A subtask's tests are chosen in the tests table's Role column.
+    if (row[2] === 'tests') return { id: 'tests-heading', label: `Subtask ${i + 1} tests` };
     return { id: ok ? `subtask-${i}-${row[2]}` : null, label: `Subtask ${i + 1} ${row[2]}` };
   }
+  if (key === 'samples') return { id: 'tests-heading', label: FIELD_LABELS.samples };
+  if (key === 'slug') return { id: null, label: FIELD_LABELS.slug };
   const program = /^(reference|brute|validator)(?:\.(\w+))?$/.exec(key);
   if (program) {
     const role = program[1] as 'reference' | 'brute' | 'validator';

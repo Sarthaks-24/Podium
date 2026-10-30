@@ -8,8 +8,10 @@
   would see it.
   Past ten problems a filter narrows the list by title or tag. Under 768 px
   each row reads as title and status, then tests and the date, muted. "New problem" opens a
-  small form for a title and a slug, suggested from the title until the
-  slug is edited, and goes to the new problem's editor. "New problem with
+  small form that asks only for a title (the server makes the problem's
+  file name from it) and goes to the new problem's editor. The list loads
+  through lib/loader, so an answer for the other archived setting, or one
+  after the page has gone, is dropped. "New problem with
   AI" opens the wizard at /admin/ai/new, which holds the key form; a
   problem the wizard made carries an "AI draft" mark beside
   its title until a person saves it, and one whose hidden tests
@@ -27,7 +29,7 @@
   import PageHeader from '../components/PageHeader.svelte';
   import Badge from '../components/Badge.svelte';
   import MonoDigits from '../components/MonoDigits.svelte';
-  import { onDestroy, onMount, tick, untrack } from 'svelte';
+  import { onMount, tick, untrack } from 'svelte';
   import { focusFirstInvalid } from '../lib/focus';
   import { problemTone } from '../lib/badges';
   import { isAIDraft, withoutAIDraft } from '../lib/ai';
@@ -35,19 +37,22 @@
   import { formatDateTime } from '../lib/format';
   import { setTitle } from '../lib/head';
   import { routeTitle } from '../lib/routing';
-  import { DIFFICULTIES, isPending, problemPath, slugify, statusWord, type Problem, type ProblemSummary, type Validation } from '../lib/problems';
+  import { loader } from '../lib/loader.svelte';
+  import { DIFFICULTIES, isPending, problemPath, statusWord, type Problem, type ProblemSummary, type Validation } from '../lib/problems';
   import { navigate, router } from '../lib/router.svelte';
   import { session } from '../lib/session.svelte';
   import { showToast } from '../lib/toast.svelte';
 
-  let loadState = $state<'loading' | 'ready' | 'forbidden' | 'error'>('loading');
-  let loadError = $state('');
   let problems = $state<ProblemSummary[]>([]);
+  /** Which list the page shows: the archived ones too, or not. */
+  let wantArchived = false;
+  const page = loader(
+    () => getJSON<{ problems: ProblemSummary[] }>(`/api/admin/problems${wantArchived ? '?archived=1' : ''}`),
+    (data) => (problems = data.problems ?? []),
+  );
 
   let creating = $state(false);
   let newTitle = $state('');
-  let newSlug = $state('');
-  let slugEdited = $state(false);
   let createBusy = $state(false);
   let createError = $state('');
   let createFields = $state<Record<string, string>>({});
@@ -61,11 +66,6 @@
   /** Problems whose validation this page started and is waiting for. */
   let validating = $state<ReadonlySet<number>>(new Set());
   let pollTimer: ReturnType<typeof setTimeout> | undefined;
-  let alive = true;
-  onDestroy(() => {
-    alive = false;
-    clearTimeout(pollTimer);
-  });
 
   /** The filter appears once the list is longer than this. */
   const FILTER_FROM = 10;
@@ -91,35 +91,43 @@
   function handleAuth(err: unknown): boolean {
     if (!(err instanceof ApiError)) return false;
     if (err.status === 401) return true;
-    if (err.status === 403 && err.code === 'forbidden') {
-      loadState = 'forbidden';
+    if (err.status === 403) {
+      page.forbid();
       return true;
     }
     return false;
   }
 
-  async function load(archived: boolean, quiet = false) {
-    if (!quiet) loadState = 'loading';
+  function load(archived: boolean) {
+    wantArchived = archived;
+    return page.load();
+  }
+
+  /** Takes the list again without the loading view, after an import or a finished validation. */
+  async function reload() {
     try {
-      const data = await getJSON<{ problems: ProblemSummary[] }>(`/api/admin/problems${archived ? '?archived=1' : ''}`);
-      problems = data.problems ?? [];
-      loadState = 'ready';
+      const data = await getJSON<{ problems: ProblemSummary[] }>(`/api/admin/problems${showArchived ? '?archived=1' : ''}`);
+      if (page.live) problems = data.problems ?? [];
     } catch (err) {
-      if (handleAuth(err)) return;
-      loadError = errorText(err);
-      loadState = 'error';
+      handleAuth(err);
     }
   }
 
-  onMount(() => setTitle(routeTitle('problems')));
+  onMount(() => {
+    setTitle(routeTitle('problems'));
+    return () => {
+      page.stop();
+      clearTimeout(pollTimer);
+    };
+  });
 
   $effect(() => {
     const archived = showArchived;
     if (!isOrganiser) {
-      loadState = 'forbidden';
+      page.forbid();
       return;
     }
-    untrack(() => load(archived));
+    untrack(() => void load(archived));
   });
 
   function toggleArchived(event: Event) {
@@ -138,20 +146,10 @@
   async function closeCreate() {
     creating = false;
     newTitle = '';
-    newSlug = '';
-    slugEdited = false;
     createError = '';
     createFields = {};
     await tick();
     newButton?.focus();
-  }
-
-  function onTitleInput() {
-    if (!slugEdited) newSlug = slugify(newTitle);
-  }
-
-  function onSlugInput() {
-    slugEdited = newSlug !== '';
   }
 
   async function create(event: SubmitEvent) {
@@ -159,24 +157,21 @@
     createError = '';
     createFields = {};
     const title = newTitle.trim();
-    const slug = newSlug.trim();
     if (title === '') createFields.title = 'Enter a title.';
-    if (slug === '') createFields.slug = 'Enter a slug, for example interval-covering.';
     if (Object.keys(createFields).length > 0) {
       await focusFirstInvalid('.create');
       return;
     }
     createBusy = true;
     try {
-      const problem = await sendJSON<Problem>('POST', '/api/admin/problems', { title, slug });
+      const problem = await sendJSON<Problem>('POST', '/api/admin/problems', { title });
       showToast(`Created ${problem.title}`);
       navigate(`/admin/problems/${problem.id}`);
     } catch (err) {
       if (handleAuth(err)) return;
       if (err instanceof ApiError && Object.keys(err.fields).length > 0) {
         createFields = { ...err.fields };
-        const known = ['title', 'slug'];
-        if (Object.keys(err.fields).some((k) => !known.includes(k))) createError = err.message;
+        if (Object.keys(err.fields).some((k) => k !== 'title')) createError = Object.values(err.fields).join(' ');
         await focusFirstInvalid('.create');
       } else {
         createError = errorText(err);
@@ -214,7 +209,7 @@
 
   function schedulePoll() {
     clearTimeout(pollTimer);
-    if (alive && validating.size > 0) pollTimer = setTimeout(pollValidations, 2000);
+    if (page.live && validating.size > 0) pollTimer = setTimeout(pollValidations, 2000);
   }
 
   /** Follows the validations this page started; the list reloads when one finishes. */
@@ -228,10 +223,10 @@
         if (handleAuth(err)) return;
       }
     }
-    if (!alive) return;
+    if (!page.live) return;
     const done = finished.length > 0;
     validating = new Set([...validating].filter((id) => !finished.includes(id)));
-    if (done) await load(showArchived, true);
+    if (done) await reload();
     schedulePoll();
   }
 
@@ -263,14 +258,14 @@
     }
     if (made.length > 0) {
       showToast(made.join(' '));
-      await load(showArchived, true);
+      await reload();
     }
   }
 </script>
 
-<PageHeader title="Problem bank" />
+<PageHeader title="Problems" />
 
-{#if loadState === 'forbidden'}
+{#if page.state === 'forbidden'}
   <PageState kind="forbidden" message="Only organisers can manage problems." />
 {:else}
   <div class="toolbar">
@@ -324,7 +319,6 @@
   {#if creating}
     <form id="create-problem" class="create" novalidate onsubmit={create} aria-labelledby="create-heading">
       <h2 id="create-heading" class="create-heading">New problem</h2>
-      <p class="field-help">All fields are required.</p>
       <div class="create-fields">
         <div class="field grow">
           <label for="new-title">Title</label>
@@ -336,29 +330,10 @@
             autocomplete="off"
             bind:this={titleInput}
             bind:value={newTitle}
-            oninput={onTitleInput}
             aria-invalid={createFields.title ? 'true' : undefined}
             aria-describedby={createFields.title ? 'new-title-error' : undefined}
           />
           {#if createFields.title}<p id="new-title-error" class="field-error">{createFields.title}</p>{/if}
-        </div>
-        <div class="field grow">
-          <label for="new-slug">Slug</label>
-          <input
-            id="new-slug"
-            aria-required="true"
-            class="input mono"
-            type="text"
-            autocomplete="off"
-            autocapitalize="none"
-            spellcheck="false"
-            bind:value={newSlug}
-            oninput={onSlugInput}
-            aria-invalid={createFields.slug ? 'true' : undefined}
-            aria-describedby="new-slug-help{createFields.slug ? ' new-slug-error' : ''}"
-          />
-          <p id="new-slug-help" class="field-help">Lower case letters, digits and hyphens. Used in pack file names.</p>
-          {#if createFields.slug}<p id="new-slug-error" class="field-error">{createFields.slug}</p>{/if}
         </div>
       </div>
       <div class="create-actions">
@@ -369,10 +344,10 @@
     </form>
   {/if}
 
-  {#if loadState === 'loading'}
+  {#if page.state === 'loading'}
     <PageState kind="loading" message="Loading problems" />
-  {:else if loadState === 'error'}
-    <PageState kind="error" message={loadError} onretry={() => load(showArchived)} />
+  {:else if page.state === 'error' || page.state === 'missing'}
+    <PageState kind="error" message={page.error} onretry={() => load(showArchived)} />
   {:else if problems.length === 0}
     <PageState kind="empty" message="No problems yet. Import a pack, create one, or draft one with AI. Imported packs are validated at once." />
   {:else}

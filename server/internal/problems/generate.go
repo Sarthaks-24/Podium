@@ -50,6 +50,20 @@ type GenerationSummary struct {
 // problem's inputs: those missing an output, or every input when all is
 // set (the editor confirms that first, since it replaces outputs).
 func (s *Service) RequestGeneration(ctx context.Context, id, userID int64, all bool) (*Generation, error) {
+	return s.requestGeneration(ctx, id, userID, all, false)
+}
+
+// RequestGenerationThenValidation is Validate for a problem whose tests
+// still lack expected outputs: it queues output generation for those tests,
+// and the generation queues the validation once every output arrived (the
+// editor's Validate makes missing outputs, with no separate step). Samples
+// and subtasks that do not fit the tests are refused first, as
+// RequestValidation refuses them, because the chain would stop there.
+func (s *Service) RequestGenerationThenValidation(ctx context.Context, id, userID int64) (*Generation, error) {
+	return s.requestGeneration(ctx, id, userID, false, true)
+}
+
+func (s *Service) requestGeneration(ctx context.Context, id, userID int64, all, thenValidate bool) (*Generation, error) {
 	tx, err := s.DB.BeginTx(ctx, nil)
 	if err != nil {
 		return nil, err
@@ -65,10 +79,15 @@ func (s *Service) RequestGeneration(ctx context.Context, id, userID int64, all b
 	if strings.TrimSpace(p.Reference.Source) == "" {
 		return nil, &NotReadyError{[]string{"Write the reference solution before generating outputs."}}
 	}
+	if thenValidate {
+		if probs := p.StructureProblems(); len(probs) > 0 {
+			return nil, &NotReadyError{probs}
+		}
+	}
 	if err := pendingGeneration(ctx, tx, id); err != nil {
 		return nil, err
 	}
-	if err := s.queue().enqueueGeneration(ctx, tx, p, userID, all, false); err != nil {
+	if err := s.queue().enqueueGeneration(ctx, tx, p, userID, all, thenValidate); err != nil {
 		return nil, err
 	}
 	if err := tx.Commit(); err != nil {

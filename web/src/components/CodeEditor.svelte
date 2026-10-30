@@ -8,20 +8,22 @@
   --editor-font-size on the well, at least 16 px on touch screens so iOS
   never zooms into the editor (F7.4). A visually hidden line, referenced
   by the editor's aria-describedby, says how to leave the editor and which
-  keys run and submit (X2).
+  keys run and submit (X2); `keysHint` replaces that last sentence where
+  the keys do something else (the problem editor's statement, plain text
+  with language 'text').
   Callers reach jumpTo(), setDoc() and focus() through bind:this.
   Props: `initial` (the code to start with), `language`, `label` (the
-  editor's accessible name, naming the problem and language), `fontSize`
+  editor's accessible name, naming the problem and language), `id` (the
+  editable element's id, for field errors), `keysHint`, `fontSize`
   (px), `tabSize` (2 or 4), `wrap`, `readOnly` (under 1024 px, V3-14),
   `blockPaste` (a contest's exam option: pastes insert nothing and
   `onpasteblocked` is called, V3-25), `tabMovesFocus`, and the callbacks
-  `onchange`, `ontyped`, `onpaste`, `onblur`, `onsubmit`, `onrun` and
-  `oncursor` (line and column, for "Ln 2, Col 5").
+  `onchange`, then the optional `ontyped`, `onpaste`, `onblur`,
+  `onsubmit`, `onrun` and `oncursor` (line and column, for "Ln 2, Col 5").
 -->
 <script lang="ts">
   import { onMount } from 'svelte';
-  import type { EditorHandle } from '../lib/editor';
-  import type { Language } from '../lib/workspace';
+  import type { EditorHandle, EditorLanguage } from '../lib/editor';
 
   const isMac = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
   const mod = isMac ? 'Cmd' : 'Ctrl';
@@ -29,8 +31,10 @@
 
   interface Props {
     initial: string;
-    language: Language;
+    language: EditorLanguage;
     label: string;
+    id?: string;
+    keysHint?: string;
     fontSize: number;
     tabMovesFocus: boolean;
     tabSize: 2 | 4;
@@ -39,18 +43,20 @@
     blockPaste?: boolean;
     onpasteblocked?: () => void;
     onchange: (source: string) => void;
-    ontyped: (chars: number) => void;
-    onpaste: (chars: number) => void;
-    onblur: () => void;
-    onsubmit: () => void;
-    onrun: () => void;
-    oncursor: (line: number, col: number) => void;
+    ontyped?: (chars: number) => void;
+    onpaste?: (chars: number) => void;
+    onblur?: () => void;
+    onsubmit?: () => void;
+    onrun?: () => void;
+    oncursor?: (line: number, col: number) => void;
   }
 
   let {
     initial,
     language,
     label,
+    id,
+    keysHint,
     fontSize,
     tabMovesFocus,
     tabSize,
@@ -85,6 +91,7 @@
           doc: pendingDoc ?? initial,
           language,
           label,
+          id,
           describedBy: hintId,
           tabMovesFocus,
           tabSize,
@@ -93,12 +100,12 @@
           blockPaste,
           onPasteBlocked: () => onpasteblocked?.(),
           onChange: (s) => onchange(s),
-          onTyped: (n) => ontyped(n),
-          onPaste: (n) => onpaste(n),
-          onBlur: () => onblur(),
-          onSubmit: () => onsubmit(),
-          onRun: () => onrun(),
-          onCursor: (line, col) => oncursor(line, col),
+          onTyped: (n) => ontyped?.(n),
+          onPaste: (n) => onpaste?.(n),
+          onBlur: () => onblur?.(),
+          onSubmit: () => onsubmit?.(),
+          onRun: () => onrun?.(),
+          onCursor: (line, col) => oncursor?.(line, col),
         });
         handle = created;
         if (pendingJump) created.jumpTo(pendingJump.line, pendingJump.col);
@@ -160,7 +167,7 @@
   <div class="host" bind:this={host}></div>
   <p class="visually-hidden" id={hintId}>
     {tabMovesFocus ? 'Tab leaves the editor.' : 'Tab indents. Press Escape, then Tab, to leave the editor.'}
-    {mod}+Enter submits and {mod}+' runs. Press ? outside the editor for every shortcut.
+    {keysHint ?? `${mod}+Enter submits and ${mod}+' runs. Press ? outside the editor for every shortcut.`}
   </p>
   {#if failed}
     <p class="note">The editor could not load. Reload the page to try again; your code is kept.</p>
