@@ -138,6 +138,7 @@ const WORKSPACE: Keys<Workspace> = {
   memory_limit_mb: 'required',
   languages: 'required',
   samples: 'required',
+  starters: 'required',
   draft: 'required',
   submissions: 'required',
   server_now: 'required',

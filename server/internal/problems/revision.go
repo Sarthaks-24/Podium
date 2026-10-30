@@ -12,6 +12,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"slices"
 	"strings"
 	"time"
@@ -55,6 +56,9 @@ type Revision struct {
 	Validator, Generator       SourceRef
 	Samples                    []int
 	Subtasks                   []RevisionSubtask
+	// Starters is the starter code students see, by language (v4 E5);
+	// empty in revisions from before it.
+	Starters map[string]string
 	// Reconstructed marks a revision the upgrade to v1.2.0 made for a
 	// contest pin older than the working copy: tests only.
 	Reconstructed bool
@@ -92,7 +96,7 @@ func revisionOf(p *Problem) Revision {
 		Title: p.Title, Statement: p.Statement, StatementRecorded: true,
 		TimeLimitMS: &tl, MemoryLimitMB: &mem, Checker: &checker, Epsilon: &eps,
 		Reference: refOf(&p.Reference), Brute: refOf(p.Brute), Validator: refOf(p.Validator), Generator: refOf(p.Generator),
-		Samples: append([]int{}, p.Samples...), Subtasks: []RevisionSubtask{}}
+		Samples: append([]int{}, p.Samples...), Subtasks: []RevisionSubtask{}, Starters: maps.Clone(startersOrEmpty(p.Starters))}
 	if p.Checker == CheckerCustom {
 		r.CheckerSHA = SHA([]byte(p.CheckerSource))
 	}
@@ -104,13 +108,13 @@ func revisionOf(p *Problem) Revision {
 
 // sameRevision reports whether two revisions record the same problem:
 // everything judging depends on (the content hash), the title and
-// statement students read, the subtask titles they see, and the
-// generator. Tags, slug, difficulty and the generator plan are bank
-// details and make no revision.
+// statement students read, the subtask titles they see, the starter code
+// their editor opens with, and the generator. Tags, slug, difficulty and
+// the generator plan are bank details and make no revision.
 func sameRevision(a, b Revision) bool {
 	return a.ContentHash == b.ContentHash && a.StatementRecorded && b.StatementRecorded &&
 		a.Title == b.Title && a.Statement == b.Statement && a.Generator == b.Generator &&
-		slices.Equal(a.Subtasks, b.Subtasks)
+		slices.Equal(a.Subtasks, b.Subtasks) && maps.Equal(startersOrEmpty(a.Starters), startersOrEmpty(b.Starters))
 }
 
 // StatementChanged reports whether the title or statement differ.
@@ -126,19 +130,19 @@ type txQueryer interface {
 const revisionColumns = `id, problem_id, rev, content_hash, statement_hash, title, statement_md, statement_recorded,
 	time_limit_ms, memory_limit_mb, checker, epsilon, checker_sha, reference_language, reference_sha, brute_language, brute_sha,
 	validator_language, validator_sha, generator_language, generator_sha, samples, subtasks, reconstructed,
-	coalesce(created_by, 0), created_at, reason`
+	coalesce(created_by, 0), created_at, reason, starters`
 
 func scanRevision(sc interface{ Scan(...any) error }) (*Revision, error) {
 	var r Revision
 	var tl, mem sql.NullInt64
 	var checker sql.NullString
 	var eps sql.NullFloat64
-	var samples, subtasks string
+	var samples, subtasks, starters string
 	var created int64
 	err := sc.Scan(&r.ID, &r.ProblemID, &r.Rev, &r.ContentHash, &r.StatementHash, &r.Title, &r.Statement, &r.StatementRecorded,
 		&tl, &mem, &checker, &eps, &r.CheckerSHA, &r.Reference.Language, &r.Reference.SHA, &r.Brute.Language, &r.Brute.SHA,
 		&r.Validator.Language, &r.Validator.SHA, &r.Generator.Language, &r.Generator.SHA, &samples, &subtasks,
-		&r.Reconstructed, &r.CreatedBy, &created, &r.Reason)
+		&r.Reconstructed, &r.CreatedBy, &created, &r.Reason, &starters)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
@@ -166,6 +170,9 @@ func scanRevision(sc interface{ Scan(...any) error }) (*Revision, error) {
 	}
 	if err := json.Unmarshal([]byte(subtasks), &r.Subtasks); err != nil {
 		return nil, fmt.Errorf("revision %d subtasks: %w", r.ID, err)
+	}
+	if err := json.Unmarshal([]byte(starters), &r.Starters); err != nil {
+		return nil, fmt.Errorf("revision %d starters: %w", r.ID, err)
 	}
 	r.Samples = nonNilInts(r.Samples)
 	if r.Subtasks == nil {
@@ -205,6 +212,7 @@ func writeRevision(ctx context.Context, tx txQueryer, p *Problem, note RevisionN
 	r.CreatedBy, r.CreatedAt, r.Reason = note.By, now, limitReason(note.Reason)
 	samples, _ := json.Marshal(nonNilInts(r.Samples))
 	subtasks, _ := json.Marshal(r.Subtasks)
+	starters, _ := json.Marshal(startersOrEmpty(r.Starters))
 	var by any
 	if note.By > 0 {
 		by = note.By
@@ -212,11 +220,11 @@ func writeRevision(ctx context.Context, tx txQueryer, p *Problem, note RevisionN
 	err = tx.QueryRowContext(ctx, `INSERT INTO problem_revisions (problem_id, rev, content_hash, statement_hash, title, statement_md,
 		statement_recorded, time_limit_ms, memory_limit_mb, checker, epsilon, checker_sha, reference_language, reference_sha,
 		brute_language, brute_sha, validator_language, validator_sha, generator_language, generator_sha, samples,
-		subtasks, reconstructed, created_by, created_at, reason)
-		VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?) RETURNING id`,
+		subtasks, reconstructed, created_by, created_at, reason, starters)
+		VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?) RETURNING id`,
 		p.ID, r.Rev, r.ContentHash, r.StatementHash, r.Title, r.Statement, *r.TimeLimitMS, *r.MemoryLimitMB, *r.Checker, *r.Epsilon,
 		r.CheckerSHA, r.Reference.Language, r.Reference.SHA, r.Brute.Language, r.Brute.SHA, r.Validator.Language, r.Validator.SHA,
-		r.Generator.Language, r.Generator.SHA, string(samples), string(subtasks), by, now.UnixMilli(), r.Reason).Scan(&r.ID)
+		r.Generator.Language, r.Generator.SHA, string(samples), string(subtasks), by, now.UnixMilli(), r.Reason, string(starters)).Scan(&r.ID)
 	if err != nil {
 		return nil, false, fmt.Errorf("record revision %d of problem %d: %w", r.Rev, p.ID, err)
 	}

@@ -190,6 +190,11 @@ func (s *Service) checkProblem(ctx context.Context, p *problems.Problem, subs []
 	if p.Brute != nil {
 		base = append(base, Subject{Language: p.Brute.Language, Source: p.Brute.Source})
 	}
+	// Starter code every student was given is shared too, or a long starter
+	// would make the whole class look alike (v4 E5).
+	for lang, code := range p.Starters {
+		base = append(base, Subject{Language: lang, Source: code})
+	}
 	pairs := Compare(subjects, base, s.settings())
 	for _, pr := range pairs {
 		ev, _ := json.Marshal(map[string]any{"shared": pr.Shared, "fingerprints": pr.Fingerprints, "tokens": pr.Tokens,

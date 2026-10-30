@@ -113,6 +113,7 @@ export function problemFixtures(): Record<number, Json> {
         test_(4, 1, '0 0\n', '0\n'),
         test_(5, 2, '1000000000 1000000000\n', '2000000000\n'),
       ],
+      starters: {},
       content_hash: 'h1',
     },
     2: {

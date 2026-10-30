@@ -1,5 +1,7 @@
 /**
- * Starter code per language, put in the editor when there is no draft.
+ * Starter code per language, put in the editor when there is no draft. A
+ * problem may bring its own for a language (v4 E5, the workspace's
+ * `starters`); these are used where it does not.
  * Each one reads input the fast way for its language, because a slow read
  * is the most common reason a correct idea gets "Time limit exceeded".
  */
@@ -49,15 +51,15 @@ console.log(out.join('\\n'));
 `,
 };
 
-/** The starter code for a language. */
-export function starter(language: Language): string {
-  return STARTERS[language];
+/** The starter code for a language: the problem's own when it has one. */
+export function starter(language: Language, own: Partial<Record<string, string>> = {}): string {
+  return own[language] || STARTERS[language];
 }
 
-/** True when the source is empty or still one of the starters, untouched. */
-export function isStarterOrEmpty(source: string): boolean {
+/** True when the source is empty or still one of the starters, the problem's own included, untouched. */
+export function isStarterOrEmpty(source: string, own: Partial<Record<string, string>> = {}): boolean {
   const s = source.trim();
-  return s === '' || Object.values(STARTERS).some((t) => t.trim() === s);
+  return s === '' || [...Object.values(STARTERS), ...Object.values(own)].some((t) => t !== undefined && t.trim() === s);
 }
 
 /**

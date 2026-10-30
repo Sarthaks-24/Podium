@@ -93,6 +93,8 @@ export interface Options {
   staleDraft?: boolean;
   /** Exam options the contest starts with (V3-25); all off by default. Settings saved later override them. */
   exam?: { full_screen?: boolean; count_focus?: boolean; block_paste?: boolean; block_copy?: boolean };
+  /** The problem's own starter code by language (v4 E5); none by default. */
+  starters?: Record<string, string>;
 }
 
 /** When B's statement changed, minutes before the page loads (the C3 fixture). */
@@ -337,6 +339,7 @@ export async function mockApi(page: Page, options: Options = {}) {
         { id: 'python3', name: 'Python 3' },
       ],
       samples: [{ idx: 1, input: '1 2\n', output: '3\n', truncated: false }],
+      starters: options.starters ?? {},
       draft: state.drafts[label] ?? null,
       submissions: state.submissions.filter((s) => s.problem_id === p.id).sort((a, b) => Number(b.id) - Number(a.id)),
       can_submit: phase === 'during' || phase === 'practice',

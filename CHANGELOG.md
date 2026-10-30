@@ -6,6 +6,7 @@ Dated entries per release. Unreleased work is listed at the top.
 
 ### v4 stage E: the editor (2026-10-31)
 
+- A problem can bring its own starter code per language (migration `0004_v4_starters`), written on the problem editor's Statement tab: a student with no draft opens it, and a language without one keeps Podium's starter. It is pinned like the statement, so it reaches a contest through "Update students now" (whose announcement then says so); it never unvalidates or rejudges a problem, counts as shared code in the similar-code check, and travels in packs as format 3.
 - A passed example in Run opens, under "Your output and the expected one", to the program's output beside the expected one, any stderr, and Run on this input; it stays one line until opened, so a failure stays near the top.
 - A Full screen button in the workspace toolbar (its title names F11, which still works) puts the whole page in full screen and back. An exam that requires full screen keeps its own request on Start and shows no button, and a code column too narrow for it leaves full screen to F11.
 - Completion offers snippets for C++ (main with fast input, fastio, fori, tests, readvec, ll) and Java (main as class Main with fast input, tokens, readint, fori, tests); Tab moves between a snippet's fields.

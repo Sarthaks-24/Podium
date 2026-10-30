@@ -179,16 +179,19 @@ type Draft struct {
 
 // Workspace is what the student's editor page needs.
 type Workspace struct {
-	ProblemID     int64            `json:"problem_id"`
-	Title         string           `json:"title"`
-	StatementMD   string           `json:"statement_md"`
-	TimeLimitMS   int              `json:"time_limit_ms"`
-	MemoryLimitMB int              `json:"memory_limit_mb"`
-	Languages     []Language       `json:"languages"`
-	Samples       []Sample         `json:"samples"`
-	Draft         *Draft           `json:"draft"`
-	Submissions   []SubmissionView `json:"submissions"`
-	ServerNow     int64            `json:"server_now"`
+	ProblemID     int64      `json:"problem_id"`
+	Title         string     `json:"title"`
+	StatementMD   string     `json:"statement_md"`
+	TimeLimitMS   int        `json:"time_limit_ms"`
+	MemoryLimitMB int        `json:"memory_limit_mb"`
+	Languages     []Language `json:"languages"`
+	Samples       []Sample   `json:"samples"`
+	// Starters is the problem's own starter code by language, {} when it
+	// has none; the web app falls back to its own (v4 E5).
+	Starters    map[string]string `json:"starters"`
+	Draft       *Draft            `json:"draft"`
+	Submissions []SubmissionView  `json:"submissions"`
+	ServerNow   int64             `json:"server_now"`
 }
 
 // Language is a choice in the editor's language select.
@@ -226,7 +229,10 @@ func (s *Service) Workspace(ctx context.Context, problemID, userID int64, sc Sco
 	}
 	w := &Workspace{ProblemID: p.ID, Title: p.Title, StatementMD: p.Statement, TimeLimitMS: p.TimeLimitMS,
 		MemoryLimitMB: p.MemoryLimitMB, Languages: []Language{}, Samples: []Sample{}, Submissions: []SubmissionView{},
-		ServerNow: s.now().UnixMilli()}
+		Starters: map[string]string{}, ServerNow: s.now().UnixMilli()}
+	for l, code := range p.Starters {
+		w.Starters[l] = code
+	}
 	for _, l := range languages {
 		if sc.allows(l.ID) {
 			w.Languages = append(w.Languages, l)
@@ -245,6 +251,10 @@ func (s *Service) Workspace(ctx context.Context, problemID, userID int64, sc Sco
 		// working copy is what v1.1.0 served for it.
 		if !rev.Reconstructed && rev.ProblemID == p.ID {
 			w.Title, w.StatementMD = rev.Title, rev.Statement
+			w.Starters = map[string]string{}
+			for l, code := range rev.Starters {
+				w.Starters[l] = code
+			}
 			if rev.TimeLimitMS != nil && rev.MemoryLimitMB != nil {
 				w.TimeLimitMS, w.MemoryLimitMB = *rev.TimeLimitMS, *rev.MemoryLimitMB
 			}

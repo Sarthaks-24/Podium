@@ -126,10 +126,12 @@ type problemJSON struct {
 	Samples       []int         `json:"samples"`
 	Subtasks      []subtaskJSON `json:"subtasks"`
 	Tests         []testJSON    `json:"tests"`
-	ContentHash   string        `json:"content_hash"`
-	ValidatedHash *string       `json:"validated_hash"`
-	Problems      []string      `json:"problems"`
-	Warnings      []string      `json:"warnings"`
+	// Starters is the starter code by language; {} when the problem has none.
+	Starters      map[string]string `json:"starters"`
+	ContentHash   string            `json:"content_hash"`
+	ValidatedHash *string           `json:"validated_hash"`
+	Problems      []string          `json:"problems"`
+	Warnings      []string          `json:"warnings"`
 	// Revision is the revision the working copy is. LiveContests are the
 	// running contests that pin the problem: while there are any, a save
 	// needs a reason.
@@ -153,6 +155,8 @@ type problemEditJSON struct {
 	Difficulty    string        `json:"difficulty"`
 	Samples       []int         `json:"samples"`
 	Subtasks      []subtaskJSON `json:"subtasks"`
+	// Starters, when present, replaces the starter code; left out, it is kept.
+	Starters *map[string]string `json:"starters"`
 	// Reason says why the problem changed; required while a live contest
 	// pins it.
 	Reason string `json:"reason"`
@@ -232,7 +236,7 @@ func (d *Handlers) problemJSON(ctx context.Context, p *Problem) (problemJSON, er
 		Reference: sourceJSON{p.Reference.Language, p.Reference.Source},
 		Brute:     optSource(p.Brute), Validator: optSource(p.Validator), Generator: optSource(p.Generator),
 		Plan:    []planJSON{},
-		Samples: p.Samples, Subtasks: []subtaskJSON{}, Tests: []testJSON{},
+		Samples: p.Samples, Subtasks: []subtaskJSON{}, Tests: []testJSON{}, Starters: startersOrEmpty(p.Starters),
 		ContentHash: p.ContentHash, Problems: httpx.NonNil(p.Problems()), Warnings: httpx.NonNil(p.Warnings()),
 	}
 	if out.Samples == nil {
@@ -435,7 +439,7 @@ func (d *Handlers) UpdateProblem(w http.ResponseWriter, r *http.Request) {
 		Reference: Source{Language: req.Reference.Language, Source: req.Reference.Source},
 		Brute:     fromSourceJSON(req.Brute), Validator: fromSourceJSON(req.Validator),
 		Tags: req.Tags, Difficulty: req.Difficulty, Samples: req.Samples,
-		By: auth.UserFrom(r.Context()).ID, Reason: req.Reason}
+		Starters: req.Starters, By: auth.UserFrom(r.Context()).ID, Reason: req.Reason}
 	for _, st := range req.Subtasks {
 		e.Subtasks = append(e.Subtasks, Subtask{Points: st.Points, Title: st.Title, Tests: st.Tests, GeneratorArgs: st.GeneratorArgs})
 	}

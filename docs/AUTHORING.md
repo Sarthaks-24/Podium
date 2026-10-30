@@ -50,7 +50,7 @@ Source files must sit at the top of the pack, with a name of up to 40 letters, d
 
 ### problem.yaml
 
-**Pack format.** Podium reads formats 1 and 2. Format 2 added `open`, the open tests; v3 has none (V3-5) and imports them as samples. Exports write format 1, and a pack without a `format` line is format 1.
+**Pack format.** Podium reads formats 1, 2 and 3. Format 2 added `open`, the open tests; v3 has none (V3-5) and imports them as samples. Format 3 (v4) added `starters`. Exports write format 3 for a problem with starter code and format 1 otherwise, so an older Podium still reads the rest; a pack without a `format` line is format 1.
 
 Parsed strictly: an unknown key is an error, so a misspelt key never silently falls back to a default. Comments are allowed.
 
@@ -68,6 +68,7 @@ reference: solution.cpp         # required: the setter's correct solution
 brute: brute.js                 # optional: a slow, obviously correct solution
 validator: validator.py         # optional: checks every input against the constraints
 generator: generator.py         # optional: makes the inputs planned in tests.yaml
+starters: [starter.cpp, starter.py]  # optional, format 3: what a student's editor opens with, one file per language
 samples: [1, 2]                 # test numbers shown with the statement; they carry no points
 subtasks:                       # at least one; scored all or nothing
   - points: 30                  # 1 to 1000; the subtasks should add up to 100
@@ -117,6 +118,7 @@ Every test is exactly one of two kinds (V3-5):
 | Item | Rules |
 |---|---|
 | `samples` | Test numbers, each once. Shown with the statement; no points. |
+| `starters` | Format 3. One file per language, the extension names it (`.cpp`, `.java`, `.py`, `.js`), at most 4 KB each: the code a student's editor opens with in that language before they type. A language without one gets Podium's own starter, which reads input the fast way. Statement-like: it makes a revision, is outside the content hash (no revalidation, no rejudge), and reaches a contest only through "Update students now". |
 | `subtasks` | Up to 50. Each gets 1 to 1000 points and a `tests` range list. A student scores a subtask's points only by passing all of its tests. |
 | Range list | Comma-separated test numbers and ranges: `"3-5"`, `"3-5, 8"`, `"7"`. Ranges run upwards, numbers are 1 to 999, and no test may appear twice. It is stored in its shortest form (`"3, 4, 5"` becomes `"3-5"`). |
 
@@ -126,9 +128,9 @@ Validation refuses to start while a test is in no subtask (and is not a sample),
 
 ## Revisions
 
-Every save that changes a problem (its statement, title, tests, limits, checker, solutions, samples, subtasks or generator) makes a new numbered revision; a save that changes nothing makes none. Tags, slug, difficulty and the generator plan are details of the problem's entry and make none. Generated inputs and outputs make revisions too, without an author.
+Every save that changes a problem (its statement, title, starter code, tests, limits, checker, solutions, samples, subtasks or generator) makes a new numbered revision; a save that changes nothing makes none. Tags, slug, difficulty and the generator plan are details of the problem's entry and make none. Generated inputs and outputs make revisions too, without an author.
 
-- A contest pins one revision per problem when the problem is added. Students are served that revision's title, statement and samples, never the editable problem, so an edit changes nothing in a contest until an organiser chooses "Update students now" on the contest's Live tab, where a banner names the edited problem.
+- A contest pins one revision per problem when the problem is added. Students are served that revision's title, statement, starter code and samples, never the editable problem, so an edit changes nothing in a contest until an organiser chooses "Update students now" on the contest's Live tab, where a banner names the edited problem.
 - The update is accepted when the revision is the validated content of the problem. When only the statement or title changed, no rejudge is needed, and Live offers a prefilled announcement to post, which is how students learn of the change. When the tests, limits or checker changed, validate first, update, then rejudge.
 - Revisions are kept as the record of what students were served and judged against; there is no list of them in the editor. v3 removed the revision lists, statement diffs and the log of what each student was served (V3-4): each served a case no single-college contest has met yet.
 

@@ -120,19 +120,19 @@ type queryer interface {
 
 func load(ctx context.Context, q queryer, id int64) (*Problem, error) {
 	p := &Problem{ID: id}
-	var tags, samples, bruteLang, bruteSrc, valLang, valSrc, genLang, genSrc, plan string
+	var tags, samples, bruteLang, bruteSrc, valLang, valSrc, genLang, genSrc, plan, starters string
 	var vhash sql.NullString
 	var vat, author sql.NullInt64
 	var created, updated int64
 	err := q.QueryRowContext(ctx, `SELECT slug, title, statement_md, time_limit_ms, memory_limit_mb, checker, epsilon,
 		checker_source, reference_language, reference_source, brute_language, brute_source, validator_language,
 		validator_source, tags, difficulty, samples, origin, author_id, archived, created_at, updated_at,
-		content_hash, validated_hash, validated_at, generator_language, generator_source, generator_plan
+		content_hash, validated_hash, validated_at, generator_language, generator_source, generator_plan, starters
 		FROM problems WHERE id = ?`, id).Scan(
 		&p.Slug, &p.Title, &p.Statement, &p.TimeLimitMS, &p.MemoryLimitMB, &p.Checker, &p.Epsilon,
 		&p.CheckerSource, &p.Reference.Language, &p.Reference.Source, &bruteLang, &bruteSrc, &valLang,
 		&valSrc, &tags, &p.Difficulty, &samples, &p.Origin, &author, &p.Archived, &created, &updated,
-		&p.ContentHash, &vhash, &vat, &genLang, &genSrc, &plan)
+		&p.ContentHash, &vhash, &vat, &genLang, &genSrc, &plan, &starters)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
@@ -156,6 +156,9 @@ func load(ctx context.Context, q queryer, id int64) (*Problem, error) {
 	}
 	if err := json.Unmarshal([]byte(samples), &p.Samples); err != nil {
 		return nil, fmt.Errorf("problem %d samples: %w", id, err)
+	}
+	if err := json.Unmarshal([]byte(starters), &p.Starters); err != nil {
+		return nil, fmt.Errorf("problem %d starters: %w", id, err)
 	}
 	if p.Tags == nil {
 		p.Tags = []string{}
@@ -397,8 +400,8 @@ func (s *Service) insert(ctx context.Context, tx *sql.Tx, p *Problem, note Revis
 	err := tx.QueryRowContext(ctx, `INSERT INTO problems (slug, title, statement_md, time_limit_ms, memory_limit_mb,
 		checker, epsilon, checker_source, reference_language, reference_source, brute_language, brute_source,
 		validator_language, validator_source, tags, difficulty, samples, generator_language, generator_source,
-		generator_plan, content_hash, origin, author_id, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
+		generator_plan, starters, content_hash, origin, author_id, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
 		append(cols, p.Origin, author, now.UnixMilli(), now.UnixMilli())...).Scan(&p.ID)
 	if isUnique(err) {
 		return FieldErrors{"slug": fmt.Sprintf("Another problem already uses the slug %s.", p.Slug)}
@@ -428,9 +431,18 @@ func rowValues(p *Problem) []any {
 	tags, _ := json.Marshal(nonNil(p.Tags))
 	samples, _ := json.Marshal(nonNilInts(p.Samples))
 	plan, _ := json.Marshal(nonNilPlan(p.Plan))
+	starters, _ := json.Marshal(startersOrEmpty(p.Starters))
 	return []any{p.Slug, p.Title, p.Statement, p.TimeLimitMS, p.MemoryLimitMB, p.Checker, p.Epsilon,
 		p.CheckerSource, p.Reference.Language, p.Reference.Source, bl, bs, vl, vs,
-		string(tags), p.Difficulty, string(samples), gl, gs, string(plan), p.ContentHash}
+		string(tags), p.Difficulty, string(samples), gl, gs, string(plan), string(starters), p.ContentHash}
+}
+
+// startersOrEmpty is a nil map as an empty one, so the column is '{}', never null.
+func startersOrEmpty(m map[string]string) map[string]string {
+	if m == nil {
+		return map[string]string{}
+	}
+	return m
 }
 
 func (s *Service) writeChildren(ctx context.Context, tx *sql.Tx, p *Problem) error {
@@ -469,6 +481,9 @@ type Edit struct {
 	Difficulty                 string
 	Samples                    []int
 	Subtasks                   []Subtask
+	// Starters, when set, replaces the starter code; nil keeps it, so an
+	// editor that does not know about starters cannot erase them.
+	Starters *map[string]string
 	// By is the person saving; Reason is why, required while a live
 	// contest pins the problem and the save changes it.
 	By     int64
@@ -518,6 +533,9 @@ func (s *Service) Update(ctx context.Context, id int64, e Edit) (*Problem, error
 		oldArgs[st.Idx] = st.GeneratorArgs
 	}
 	p.Samples, p.Subtasks = nonNilInts(e.Samples), e.Subtasks
+	if e.Starters != nil {
+		p.Starters = *e.Starters
+	}
 	if e.Generator != nil {
 		p.Generator, p.Plan = emptyToNil(e.Generator.Source), e.Generator.Plan
 	} else {
@@ -584,7 +602,7 @@ func (s *Service) save(ctx context.Context, tx *sql.Tx, p *Problem, note Revisio
 	_, err := tx.ExecContext(ctx, `UPDATE problems SET slug = ?, title = ?, statement_md = ?, time_limit_ms = ?,
 		memory_limit_mb = ?, checker = ?, epsilon = ?, checker_source = ?, reference_language = ?, reference_source = ?,
 		brute_language = ?, brute_source = ?, validator_language = ?, validator_source = ?, tags = ?, difficulty = ?,
-		samples = ?, generator_language = ?, generator_source = ?, generator_plan = ?, content_hash = ?, updated_at = ? WHERE id = ?`,
+		samples = ?, generator_language = ?, generator_source = ?, generator_plan = ?, starters = ?, content_hash = ?, updated_at = ? WHERE id = ?`,
 		append(rowValues(p), p.UpdatedAt.UnixMilli(), p.ID)...)
 	if isUnique(err) {
 		return FieldErrors{"slug": fmt.Sprintf("Another problem already uses the slug %s.", p.Slug)}

@@ -5,8 +5,10 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"maps"
 	"path"
 	"regexp"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -52,9 +54,13 @@ type Pack struct {
 // A problem.yaml without a format line is format 1; one with a
 // higher number was written by a newer Podium and is refused, rather than
 // read with fields silently ignored. Format 2 (v1.2.0) added open
-// tests; v3 has none, so it imports them as samples and exports
-// format 1.
-const PackFormat = 2
+// tests; v3 has none, so it imports them as samples. Format 3 (v4 E5)
+// added starter code. Export writes format 3 only for a problem with
+// starters and format 1 otherwise, so older servers still read the rest.
+const PackFormat = 3
+
+// packFormatStarters is the first format with starters.
+const packFormatStarters = 3
 
 // packFormatOpen is the first format with open tests.
 const packFormatOpen = 2
@@ -77,6 +83,9 @@ type packMeta struct {
 	Samples       []int         `yaml:"samples,flow"`
 	Open          []int         `yaml:"open,omitempty,flow"`
 	Subtasks      []packSubtask `yaml:"subtasks"`
+	// Starters names one file per language (the extension says which) whose
+	// text a student's editor starts with.
+	Starters []string `yaml:"starters,omitempty,flow"`
 }
 
 type packSubtask struct {
@@ -207,6 +216,9 @@ func parsePackFiles(files map[string][]byte) (*Pack, error) {
 	if meta.Format < 0 {
 		return nil, &PackError{[]string{fmt.Sprintf("problem.yaml: format must be 1 or %d (or left out).", PackFormat)}}
 	}
+	if len(meta.Starters) > 0 && meta.Format < packFormatStarters {
+		return nil, &PackError{[]string{fmt.Sprintf("problem.yaml lists starters, which need format: %d. Add that line at the top.", packFormatStarters)}}
+	}
 	if len(meta.Open) > 0 && meta.Format < packFormatOpen {
 		return nil, &PackError{[]string{fmt.Sprintf("problem.yaml lists open tests, which need format: %d. Add that line at the top.", packFormatOpen)}}
 	}
@@ -260,6 +272,20 @@ func parsePackFiles(files map[string][]byte) (*Pack, error) {
 	p.Brute = source("brute", meta.Brute)
 	p.Validator = source("validator", meta.Validator)
 	p.Generator = source("generator", meta.Generator)
+	for _, name := range meta.Starters {
+		st := source("starter", name)
+		if st == nil {
+			continue
+		}
+		if p.Starters == nil {
+			p.Starters = map[string]string{}
+		}
+		if _, dup := p.Starters[st.Language]; dup {
+			add("problem.yaml lists two starters for %s; keep one.", st.Language)
+			continue
+		}
+		p.Starters[st.Language] = st.Source
+	}
 	if raw, ok := files[packPlanFile]; ok {
 		used[packPlanFile] = true
 		if len(raw) > MaxProblemYAML {
@@ -471,6 +497,12 @@ func WritePack(w io.Writer, p *Problem, read func(sha string) ([]byte, error)) e
 	}
 	if p.Checker == CheckerCustom {
 		files = append(files, packFile{packCheckerSource, []byte(p.CheckerSource)})
+	}
+	for _, lang := range slices.Sorted(maps.Keys(p.Starters)) {
+		name := "starter" + ExtByLanguage[lang]
+		meta.Format = packFormatStarters
+		meta.Starters = append(meta.Starters, name)
+		files = append(files, packFile{name, []byte(p.Starters[lang])})
 	}
 	if p.Generator != nil {
 		meta.Generator = "generator" + ExtByLanguage[p.Generator.Language]

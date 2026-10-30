@@ -99,3 +99,43 @@ func TestValidateMakesMissingOutputsFirst(t *testing.T) {
 		t.Fatalf("validation not queued after the outputs: %+v %v", v, err)
 	}
 }
+
+// A starter is statement-like content (v4 E5): saving one makes a new
+// revision that records it, keeps the content hash (so validation and
+// judging are untouched), and an edit that leaves it out keeps it.
+func TestStartersMakeARevisionNotAJudgingChange(t *testing.T) {
+	s := newGenBank(t)
+	ctx := context.Background()
+	p, err := s.Create(ctx, "Starters", "", 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	before, _ := s.Get(ctx, p.ID)
+	revs, _, total, _ := s.Revisions(ctx, p.ID, 10)
+	e := editOf(before)
+	starters := map[string]string{"cpp17": "int main() {\n}\n"}
+	e.Starters = &starters
+	got, err := s.Update(ctx, p.ID, e)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.ContentHash != before.ContentHash || got.Starters["cpp17"] != starters["cpp17"] {
+		t.Errorf("hash %s to %s, starters %v", before.ContentHash, got.ContentHash, got.Starters)
+	}
+	after, _, total2, _ := s.Revisions(ctx, p.ID, 10)
+	if total2 != total+1 || after[0].Starters["cpp17"] != starters["cpp17"] || len(revs[0].Starters) != 0 {
+		t.Errorf("revisions %d to %d; newest starters %v", total, total2, after[0].Starters)
+	}
+	// An editor that sends no starters keeps them.
+	e = editOf(got)
+	e.Starters = nil
+	if kept, err := s.Update(ctx, p.ID, e); err != nil || kept.Starters["cpp17"] == "" {
+		t.Errorf("save without starters: %v %v", kept.Starters, err)
+	}
+	bad := map[string]string{"cobol": "x"}
+	e.Starters = &bad
+	var fields FieldErrors
+	if _, err := s.Update(ctx, p.ID, e); !errors.As(err, &fields) || fields["starters"] == "" {
+		t.Errorf("unknown language: %v", err)
+	}
+}

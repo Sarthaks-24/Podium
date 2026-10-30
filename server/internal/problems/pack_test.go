@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"io"
 	"io/fs"
+	"maps"
 	"os"
 	"path"
 	"path/filepath"
@@ -156,7 +157,8 @@ func TestPackRefusals(t *testing.T) {
 		"duplicate test number": {minimalPack(entry{name: "tests/1.in", body: "x"}), "two in files"},
 		// B1.7: a pack from a newer Podium is refused by its format, with
 		// the version named, even though it also has fields unknown here.
-		"newer format": {[]entry{{name: "problem.yaml", body: "format: 3\n" + minimalYAML + "hints: [3]\n"}}, "pack format 3, and this server reads format 2"},
+		"newer format": {[]entry{{name: "problem.yaml", body: "format: 4\n" + minimalYAML + "hints: [3]\n"}}, "pack format 4, and this server reads format 3"},
+		"starters need format 3": {[]entry{{name: "problem.yaml", body: minimalYAML + "starters: [starter.cpp]\n"}, {name: "starter.cpp", body: "int main() {}\n"}}, "need format: 3"},
 	} {
 		_, err := ReadPack(zipEntries(t, tc.entries...))
 		if err == nil || !strings.Contains(err.Error(), tc.want) {
@@ -337,5 +339,47 @@ func TestPackFormatOne(t *testing.T) {
 		if _, err := ReadPack(zipEntries(t, entries...)); err != nil {
 			t.Errorf("%q: %v", head, err)
 		}
+	}
+}
+
+// Starters survive an export and an import, and only a problem that has
+// them is exported as format 3 (v4 E5).
+func TestPackStartersRoundTrip(t *testing.T) {
+	pk, err := ReadPack(zipDir(t, filepath.Join(examples, "a-plus-b")))
+	if err != nil {
+		t.Fatal(err)
+	}
+	p := pk.Problem
+	blobs := map[string][]byte{}
+	for i := range p.Tests {
+		in, out := pk.Inputs[p.Tests[i].Idx], pk.Outputs[p.Tests[i].Idx]
+		p.Tests[i].InputSHA, p.Tests[i].OutputSHA = SHA(in), SHA(out)
+		blobs[SHA(in)], blobs[SHA(out)] = in, out
+	}
+	p.Starters = map[string]string{"cpp17": "int main() {\n}\n", "java21": "public class Main {}\n"}
+	var buf bytes.Buffer
+	if err := WritePack(&buf, &p, func(sha string) ([]byte, error) { return blobs[sha], nil }); err != nil {
+		t.Fatal(err)
+	}
+	again, err := ReadPack(buf.Bytes())
+	if err != nil {
+		t.Fatalf("re-import: %v", err)
+	}
+	if !maps.Equal(again.Problem.Starters, p.Starters) {
+		t.Errorf("starters %v, want %v", again.Problem.Starters, p.Starters)
+	}
+	zr, _ := zip.NewReader(bytes.NewReader(buf.Bytes()), int64(buf.Len()))
+	for _, f := range zr.File {
+		if path.Base(f.Name) == "problem.yaml" {
+			rc, _ := f.Open()
+			b, _ := io.ReadAll(rc)
+			rc.Close()
+			if !strings.HasPrefix(string(b), "format: 3\n") || !strings.Contains(string(b), "starters: [starter.cpp, starter.java]") {
+				t.Errorf("problem.yaml:\n%s", b)
+			}
+		}
+	}
+	if ContentHash(&p) != ContentHash(&again.Problem) {
+		t.Error("starters changed the content hash")
 	}
 }

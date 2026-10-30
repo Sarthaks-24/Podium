@@ -40,6 +40,8 @@ export interface Workspace {
   /** `time_factor` multiplies the time limit for that language; absent from older servers. */
   languages: { id: Language; name: string; time_factor?: number }[];
   samples: Sample[];
+  /** The problem's own starter code by language ({} when it has none; v4 E5). */
+  starters: Record<string, string>;
   draft: Draft | null;
   /** Own submissions, newest first, at most 20. */
   submissions: Submission[];

@@ -332,6 +332,7 @@ Every route here needs the organiser role. The pack format and the rules for tes
   "subtasks": [ { "idx": 1, "points": 40, "title": "Small numbers", "tests": "3-4", "generator_args": ["n=10"] } ],
   "tests": [ { "idx": 1, "sample": true, "subtask_idx": null, "input_size": 8, "output_size": 3,
                "input_preview": "2\n1 2\n", "output_preview": "3\n", "output_missing": false } ],
+  "starters": { "python3": "import sys\n..." },
   "content_hash": "9f2c...", "validated_hash": "9f2c...",
   "revision": { "id": 14, "rev": 3 }, "live_contests": [ { "contest_id": 4, "slug": "week-6", "title": "Week 6", "label": "B" } ],
   "problems": [], "warnings": ["No input validator: validation cannot check inputs against the constraints."] }
@@ -354,6 +355,8 @@ Every route here needs the organiser role. The pack format and the rules for tes
   "tags": ["math"], "difficulty": "easy", "samples": [1, 2],
   "subtasks": [ { "points": 40, "title": "Small numbers", "tests": "3-4" } ], "reason": "" }
 ```
+
+- `starters` (optional) replaces the starter code by language (`cpp17`, `java21`, `python3`, `node22`, at most 4 KB each); left out, the stored starters are kept. A change makes a revision but not a judging change.
 
 - A `brute` or `validator` with empty source counts as none. Subtasks are numbered in the order sent; each `tests` range list is stored in its shortest form (`"3, 4, 5"` becomes `"3-5"`).
 - `generator` (`{language, source}` or `null`) and `plan` may be sent too. Leave both out to keep the generator, the plan and each subtask's `generator_args`, so an editor that does not show them cannot erase them. Send either to replace them: the one left out keeps its stored value. `null`, or empty source, removes the generator, and the plan must then be empty.
@@ -478,13 +481,14 @@ The workspace is where code is written, run and submitted. Under `/api/workspace
   "languages": [ { "id": "cpp17", "name": "C++17", "time_factor": 1 }, { "id": "java21", "name": "Java 21", "time_factor": 2 },
                  { "id": "python3", "name": "Python 3", "time_factor": 3 }, { "id": "node22", "name": "JavaScript (Node 22)", "time_factor": 2 } ],
   "samples": [ { "idx": 1, "input": "2\n1 2\n", "output": "3\n", "truncated": false } ],
+  "starters": { "cpp17": "#include <bits/stdc++.h>\n..." },
   "draft": { "language": "cpp17", "source": "...", "updated_at": 1792183192359 },
   "submissions": [], "server_now": 1792183192400 }
 ```
 
 - `samples` are the examples, each input and output at most 4 KB cut at a whole UTF-8 character (`truncated` says so). An example whose output is not made yet is left out.
 - `time_factor` multiplies `time_limit_ms` for that language on the judge, so the editor shows the limit a program really gets.
-- `draft` is `null` when nothing was saved. `submissions` is the viewer's newest 20 on this problem, newest first. Starter code lives in the web app.
+- `draft` is `null` when nothing was saved. `submissions` is the viewer's newest 20 on this problem, newest first. `starters` is the problem's own starter code by language, from the pinned revision in a contest, `{}` when it has none; a language without one uses the web app's starter.
 
 ### `Run`
 

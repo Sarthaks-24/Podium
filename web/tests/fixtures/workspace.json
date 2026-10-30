@@ -45,6 +45,7 @@
     }
   ],
   "server_now": 1800006660000,
+  "starters": {},
   "statement_md": "You are given $t$ pairs of integers. For each pair $a$, $b$, print $a + b$.\n\n## Input\n\nThe first line holds $t$, the number of pairs. Each of the next $t$ lines holds two integers $a$ and $b$.\n\n## Output\n\nPrint $t$ lines: the sum of each pair, in the order given.\n\n## Constraints\n\n- $1 \\le t \\le 1000$\n- Subtask 1 (40 points): $|a|, |b| \\le 1000$\n- Subtask 2 (60 points): $|a|, |b| \\le 10^{18}$\n\nThe sum can exceed the range of a 32-bit integer.\n",
   "submissions": [
     {

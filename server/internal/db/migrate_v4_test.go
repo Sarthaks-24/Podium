@@ -140,3 +140,36 @@ func TestSignInMigration(t *testing.T) {
 		t.Error("refused_signins.email should ignore case")
 	}
 }
+
+// 0004 gives problems and revisions that exist an empty set of starters,
+// which means the web app's own, and the column holds only JSON.
+func TestStartersMigration(t *testing.T) {
+	ctx := context.Background()
+	d, err := Open(ctx, filepath.Join(t.TempDir(), "p.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer d.Close()
+	if _, err := MigrateTo(ctx, d, "0003_v4_signin"); err != nil {
+		t.Fatal(err)
+	}
+	for _, q := range []string{
+		`INSERT INTO problems (id, slug, title, time_limit_ms, memory_limit_mb, checker, reference_language, created_at, updated_at, content_hash)
+			VALUES (1, 'p', 'P', 1000, 256, 'tokens', 'cpp17', 0, 0, 'h')`,
+		`INSERT INTO problem_revisions (problem_id, rev, content_hash, title, created_at) VALUES (1, 1, 'h', 'P', 0)`,
+	} {
+		if _, err := d.ExecContext(ctx, q); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if applied, err := Migrate(ctx, d); err != nil || len(applied) == 0 || applied[0] != "0004_v4_starters" {
+		t.Fatalf("applied %v, %v", applied, err)
+	}
+	var a, b string
+	if err := d.QueryRowContext(ctx, "SELECT (SELECT starters FROM problems), (SELECT starters FROM problem_revisions)").Scan(&a, &b); err != nil || a != "{}" || b != "{}" {
+		t.Errorf("starters after the migration: %q %q %v, want {} and {}", a, b, err)
+	}
+	if _, err := d.ExecContext(ctx, "UPDATE problems SET starters = 'nope'"); err == nil {
+		t.Error("starters accepted text that is not JSON")
+	}
+}

@@ -11,6 +11,7 @@ package problems
 
 import (
 	"fmt"
+	"maps"
 	"regexp"
 	"slices"
 	"sort"
@@ -29,6 +30,7 @@ const (
 	MaxMemoryLimitMB = 1024
 	MaxTitle         = 120
 	MaxStatement     = 64 << 10
+	MaxStarter       = 4 << 10
 	MaxSource        = 64 << 10
 	MaxTests         = 999
 	MaxSubtasks      = 50
@@ -81,6 +83,10 @@ type Problem struct {
 	Samples  []int
 	Subtasks []Subtask
 	Tests    []Test
+	// Starters is the code a student's editor shows before they type, by
+	// language id; a language without one uses the web app's starter (v4
+	// E5). Statement-like content: in each revision, outside ContentHash.
+	Starters map[string]string
 
 	ContentHash   string
 	ValidatedHash string
@@ -167,6 +173,17 @@ func checkFields(p *Problem) FieldErrors {
 	}
 	if len(p.Statement) > MaxStatement {
 		errs["statement_md"] = "The statement is longer than 64 KB. Shorten it or move data into tests."
+	}
+	// Sorted, so a save with several mistakes always names the same one.
+	for _, lang := range slices.Sorted(maps.Keys(p.Starters)) {
+		if ExtByLanguage[lang] == "" {
+			errs["starters"] = fmt.Sprintf("There is no language %q. Use cpp17, java21, python3 or node22.", lang)
+			break
+		}
+		if len(p.Starters[lang]) > MaxStarter {
+			errs["starters"] = fmt.Sprintf("The %s starter is longer than 4 KB. Keep it to the code every solution begins with.", lang)
+			break
+		}
 	}
 	if p.TimeLimitMS < MinTimeLimitMS || p.TimeLimitMS > MaxTimeLimitMS {
 		errs["time_limit_ms"] = fmt.Sprintf("Set a time limit from %d to %d ms.", MinTimeLimitMS, MaxTimeLimitMS)

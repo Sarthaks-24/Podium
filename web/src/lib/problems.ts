@@ -190,6 +190,8 @@ export interface Problem extends ProblemSummary {
   samples: number[];
   subtasks: Subtask[];
   tests: TestCase[];
+  /** The starter code students' editors open with, by language; absent from older servers (v4 E5). */
+  starters?: Record<string, string>;
   content_hash: string;
   validated_hash: string | null;
   /** What stops validation and judging (a test in no subtask, a missing output); older servers leave it out. */
@@ -216,6 +218,8 @@ export interface ProblemEdit {
   subtasks: { points: number; title: string; tests: string; generator_args?: string[] }[];
   generator?: Program | null;
   plan?: PlannedTest[];
+  /** Left out, the server keeps the starters. */
+  starters?: Record<string, string>;
 }
 
 /** One planned test as the editor's table holds it. */
@@ -250,6 +254,8 @@ export interface Draft {
   /** Present only when the server knows about generators. */
   generator?: Program | null;
   plan?: PlanRow[];
+  /** Present only when the server knows about starters. */
+  starters?: Record<string, string>;
 }
 
 export type ValidationState = 'queued' | 'running' | 'passed' | 'failed' | 'error';
@@ -364,6 +370,7 @@ export function toDraft(p: Problem): Draft {
         : { points: s.points, title: s.title, tests: rangesOf(s.tests) },
     ),
   };
+  if (p.starters !== undefined) draft.starters = { ...p.starters };
   if (gen) {
     draft.generator = p.generator ? { ...p.generator } : null;
     draft.plan = readPlan(p.plan).map((t) => ({ idx: t.idx, subtask: t.subtask, seed: t.seed, args: t.args.join(' ') }));
@@ -455,6 +462,8 @@ export function toEdit(d: Draft): EditResult {
       subtasks,
       ...(d.generator !== undefined ? { generator: d.generator ? { ...d.generator } : null } : {}),
       ...(plan !== undefined ? { plan } : {}),
+      // An emptied box goes back to Podium's own starter.
+      ...(d.starters !== undefined ? { starters: Object.fromEntries(Object.entries(d.starters).filter(([, code]) => code.trim() !== '')) } : {}),
     },
   };
 }

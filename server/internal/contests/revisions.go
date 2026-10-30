@@ -13,6 +13,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"slices"
 	"time"
 
@@ -40,10 +41,12 @@ const AuditRevision = "revision"
 
 // PinUpdate is what "Update students now" changed.
 type PinUpdate struct {
-	Label                     string
-	From, To                  *problems.Revision
-	StatementChanged          bool
-	JudgingChanged            bool
+	Label            string
+	From, To         *problems.Revision
+	StatementChanged bool
+	JudgingChanged   bool
+	// StartersChanged: the starter code students open with changed (v4 E5).
+	StartersChanged           bool
 	PointsChanged             bool
 	At                        time.Time
 	AnnouncementMD            string
@@ -131,6 +134,7 @@ func (s *Service) applyPin(ctx context.Context, c *Contest, cp ContestProblem, l
 	if from != nil {
 		u.StatementChanged = problems.StatementChanged(from, to)
 		u.JudgingChanged = from.ContentHash != to.ContentHash
+		u.StartersChanged = !maps.Equal(from.Starters, to.Starters)
 	} else {
 		u.StatementChanged, u.JudgingChanged = true, true
 	}
@@ -161,6 +165,9 @@ func (s *Service) applyPin(ctx context.Context, c *Contest, cp ContestProblem, l
 func announcementFor(label string, u *PinUpdate) string {
 	if u.JudgingChanged {
 		return fmt.Sprintf("Problem %s was updated: its tests or limits changed, so submissions on it will be judged again. Your score on it may change once judging finishes.", label)
+	}
+	if u.StartersChanged && !u.StatementChanged {
+		return fmt.Sprintf("Problem %s now opens with new starter code. If you have not written any code for it yet, open it again to get the new starter.", label)
 	}
 	return fmt.Sprintf("The statement of problem %s was updated. Open the problem again to read the new version.", label)
 }

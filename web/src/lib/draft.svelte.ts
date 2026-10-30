@@ -63,6 +63,8 @@ export class Draft {
   editor: EditorLike | undefined;
 
   private loaded = false;
+  /** The problem's own starters, by language (v4 E5). */
+  private starters: Partial<Record<string, string>> = {};
   private savedLanguage = '';
   private savedSource = '';
   private mirrorTimer: ReturnType<typeof setTimeout> | undefined;
@@ -89,6 +91,7 @@ export class Draft {
 
   /** Takes the loaded workspace's draft, or the device mirror when it is newer, or the starter. */
   restore(data: Workspace): void {
+    this.starters = data.starters ?? {};
     const allowed = (data.languages ?? []).map((l) => l.id);
     if (allowed.length > 0 && !allowed.includes(this.language)) this.language = allowed[0];
     const picked = pickDraft(data.draft, readMirror(this.storage, mirrorKey(this.owner, this.base), this.owner));
@@ -98,7 +101,7 @@ export class Draft {
     } else if (picked.draft) {
       this.source = picked.draft.source;
     } else {
-      this.source = starter(this.language);
+      this.source = starter(this.language, this.starters);
     }
     this.initialDoc = this.source;
     this.loaded = true;
@@ -162,20 +165,20 @@ export class Draft {
     if (next === this.language) return;
     this.keep(this.language, this.source);
     const kept = readMirror(this.storage, languageMirrorKey(this.owner, this.base, next), this.owner);
-    if (kept && !isStarterOrEmpty(kept.source)) this.switchTo(next, kept.source);
-    else if (isStarterOrEmpty(this.source)) this.switchTo(next, starter(next));
+    if (kept && !isStarterOrEmpty(kept.source, this.starters)) this.switchTo(next, kept.source);
+    else if (isStarterOrEmpty(this.source, this.starters)) this.switchTo(next, starter(next, this.starters));
     else this.pendingLanguage = next;
   }
 
   /** Ends the confirm: `useStarter` loads the new language's starter, otherwise the code stays. */
   confirmLanguage(useStarter: boolean): void {
     const next = this.pendingLanguage;
-    if (next) this.switchTo(next, useStarter ? starter(next) : null);
+    if (next) this.switchTo(next, useStarter ? starter(next, this.starters) : null);
   }
 
   /** Reset: the starter replaces the code and is saved at once. */
   async reset(): Promise<void> {
-    const code = starter(this.language);
+    const code = starter(this.language, this.starters);
     this.source = code;
     this.editor?.setDoc(code);
     await this.save();

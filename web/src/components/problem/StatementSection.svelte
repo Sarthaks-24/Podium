@@ -7,7 +7,8 @@
   form. Under 768 px the statement has Write and Preview tabs instead of
   the preview beside it. The preview draws the statement and its examples
   with the students' own component. There is no slug field: the server
-  makes it from the title when the problem is created. Props: `draft`
+  makes it from the title when the problem is created. Under the tags,
+  the starter code (StartersField). Props: `draft`
   (bindable), `fields` (the field errors by key) and `tests` (for the
   examples).
 -->
@@ -15,6 +16,7 @@
   import { onMount, tick } from 'svelte';
   import CodeEditor from '../CodeEditor.svelte';
   import StatementPreview from '../StatementPreview.svelte';
+  import StartersField from './StartersField.svelte';
   import { media } from '../../lib/breakpoints';
   import { DEFAULT_FONT_SIZE } from '../../lib/drafts';
   import { describedBy } from '../../lib/problemFields';
@@ -221,6 +223,8 @@
       <p id="tags-help" class="field-help">Separate tags with commas.</p>
       {#if err('tags')}<p id="tags-error" class="field-error">{err('tags')}</p>{/if}
     </div>
+
+    <StartersField bind:draft {fields} />
   </section>
 
   {#if !phone}
