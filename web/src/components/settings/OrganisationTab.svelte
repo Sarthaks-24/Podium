@@ -3,13 +3,11 @@
   email, phone and privacy contact the public pages show, saved with PUT
   /api/admin/site-settings ("Save organisation details"); each refused
   field says what to fix under itself, and the footer and sign-in page pick
-  the new values up at once. Under the form, "History of changes" opens
-  the site's history (HistoryDialog), which is needed rarely and so is not
-  on the page. From 1024 px the four fields sit in two columns. Props:
+  the new values up at once (the history of changes is the Audit tab).
+  From 1024 px the four fields sit in two columns. Props:
   `org` (bindable) and `onforbidden` (the person is no longer an owner).
 -->
 <script lang="ts">
-  import HistoryDialog from './HistoryDialog.svelte';
   import { ApiError, errorText, sendJSON } from '../../lib/api';
   import { focusFirstInvalid } from '../../lib/focus';
   import { runMode, type Organisation } from '../../lib/mode.svelte';
@@ -33,7 +31,6 @@
   let errors = $state<Record<string, string>>({});
   let error = $state('');
   let busy = $state(false);
-  let historyOpen = $state(false);
 
   async function save(event: SubmitEvent) {
     event.preventDefault();
@@ -94,12 +91,7 @@
     {#if error}<p class="field-error" role="alert">{error}</p>{/if}
     <button type="submit" class="btn btn-secondary" disabled={busy}>Save organisation details</button>
   </form>
-  <p class="history">
-    <button type="button" class="btn btn-link btn-compact" onclick={() => (historyOpen = true)}>History of changes</button>
-  </p>
 </section>
-
-<HistoryDialog open={historyOpen} onclose={() => (historyOpen = false)} />
 
 <style>
   .org {
@@ -123,11 +115,5 @@
       gap: var(--space-4) var(--space-5);
       max-width: none;
     }
-  }
-
-  .history {
-    margin-top: var(--space-5);
-    padding-top: var(--space-4);
-    border-top: var(--rule) solid var(--line);
   }
 </style>

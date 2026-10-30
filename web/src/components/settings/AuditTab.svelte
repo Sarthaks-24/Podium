@@ -1,15 +1,14 @@
 <!--
-  HistoryDialog: the site's history of changes, behind the "History of
-  changes" button on the Organisation tab of Settings (GET
-  /api/admin/site-audit): every change to people, the sign-in list, accounts and
-  the server's mode, newest first, with who made it. It filters by the
-  kind of change and by an email, and loads older pages on request. It
-  loads each time it opens, so it never shows a stale list. Props: `open`
-  and `onclose`.
+  AuditTab: the Audit tab of the Dashboard (V4-17, stage O O7), the site's
+  history of changes (GET /api/admin/site-audit): every change to people,
+  the sign-in list, accounts, the sign-in switch and the server's mode,
+  newest first, with who made it. Owners and admins read it. It filters by
+  the kind of change and by an email, and loads older pages on request. It
+  loads each time the tab is shown, so it never shows a stale list. Props:
+  `active` (the tab is shown).
 -->
 <script lang="ts">
   import { untrack } from 'svelte';
-  import Dialog from '../Dialog.svelte';
   import MonoDigits from '../MonoDigits.svelte';
   import { errorText, getJSON, isSignedOut } from '../../lib/api';
   import { formatDateTime } from '../../lib/format';
@@ -17,11 +16,10 @@
   import { showToast } from '../../lib/toast.svelte';
 
   interface Props {
-    open: boolean;
-    onclose: () => void;
+    active: boolean;
   }
 
-  let { open, onclose }: Props = $props();
+  let { active }: Props = $props();
 
   let entries = $state<SiteAuditEntry[]>([]);
   let status = $state<'loading' | 'ready' | 'error'>('loading');
@@ -50,9 +48,9 @@
     }
   }
 
-  // Opening loads; the filters load when submitted.
+  // Showing the tab loads; the filters load when submitted.
   $effect(() => {
-    if (open) untrack(() => void load(1));
+    if (active) untrack(() => void load(1));
   });
 
   function filter(event?: SubmitEvent) {
@@ -61,7 +59,8 @@
   }
 </script>
 
-<Dialog {open} {onclose} title="History of changes" closeLabel="Close">
+<section class="section" aria-labelledby="audit-heading">
+  <h2 id="audit-heading">History of changes</h2>
   <p class="muted small lead">Every change to people, the sign-in list and the site, newest first. Nothing here can be edited or removed.</p>
   <form class="row" novalidate onsubmit={filter}>
     <div class="field">
@@ -100,7 +99,7 @@
       {/if}
     {/if}
   </div>
-</Dialog>
+</section>
 
 <style>
   .lead {

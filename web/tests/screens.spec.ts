@@ -112,8 +112,8 @@ for (const width of [1440, 375]) {
     await page.getByRole('tab', { name: 'Sign-in' }).focus();
     await page.keyboard.press('End');
     await expect(page.getByRole('tab', { name: 'Organisation' })).toBeFocused();
-    const organisation = await tabThrough(page, 'History of changes');
-    for (const name of ['Save organisation details', 'History of changes']) {
+    const organisation = await tabThrough(page, 'Save organisation details');
+    for (const name of ['Save organisation details']) {
       expect(organisation, `Tab did not reach "${name}"`).toContain(name);
     }
   });
@@ -190,7 +190,7 @@ test('a role changes only after the owner confirms it', async ({ page }) => {
 test('an admin gives and takes the organiser role, and never sees admin, owner or their own row as changeable (V4-16)', async ({ page }) => {
   await mockApi(page, 'admin');
   await page.goto('/admin/dashboard');
-  await expect(page.getByRole('tab')).toHaveText(['People', 'Live', 'Sign-in']);
+  await expect(page.getByRole('tab')).toHaveText(['People', 'Live', 'Sign-in', 'Audit']);
   const asha = page.getByRole('combobox', { name: 'Role for Asha Rao' });
   await expect(asha.getByRole('option')).toHaveText(['Student', 'Organiser']);
   await expect(page.getByRole('combobox', { name: 'Role for Bilal Khan' })).toHaveCount(0);
@@ -335,14 +335,14 @@ test('an owner ends sessions, disables and enables an account, each asked first'
   expect(state.accountCalls).toEqual(['end-sessions asha@college.edu', 'disable asha@college.edu', 'enable asha@college.edu']);
 });
 
-test('History of changes sits behind the Organisation tab, and lists and filters the site changes', async ({ page }) => {
+test('the Audit tab lists and filters the site changes, for owners and admins (O7)', async ({ page }) => {
   const api = await mockApi(page, 'owner');
-  await page.goto('/admin/people');
+  await page.goto('/admin/dashboard');
   await expect(page.getByRole('table').first()).toBeVisible();
   expect(api.auditQueries).toEqual([]);
-  await page.getByRole('tab', { name: 'Organisation' }).click();
-  await page.getByRole('button', { name: 'History of changes' }).click();
-  const history = page.getByRole('dialog', { name: 'History of changes' });
+  await page.getByRole('tab', { name: 'Audit' }).click();
+  await expect(page).toHaveURL('/admin/dashboard?tab=audit');
+  const history = page.getByRole('tabpanel', { name: 'Audit' });
   await expect(history.getByRole('listitem')).toHaveCount(3);
   await expect(history.getByRole('listitem').first()).toContainText('Made ta@college.edu an organiser');
   await expect(history.getByRole('listitem').first()).toContainText('priya@college.edu (Owner)');
@@ -357,9 +357,11 @@ test('History of changes sits behind the Organisation tab, and lists and filters
   await expect(history).toContainText('No change matches. Clear the filter to see everything.');
   expect(api.auditQueries).toContain('page=1&action=list_imported');
   expect(api.auditQueries).toContain('page=1&q=nobody');
-  await page.keyboard.press('Escape');
-  await expect(history).toBeHidden();
-  await expect(page.getByRole('button', { name: 'History of changes' })).toBeFocused();
+
+  // An admin reads the same history.
+  api.who = 'admin';
+  await page.goto('/admin/dashboard?tab=audit');
+  await expect(page.getByRole('tabpanel', { name: 'Audit' }).getByRole('listitem')).toHaveCount(3);
 });
 
 test('the Sign-in and Organisation tabs at 1440 px are under 1,000 px tall, and one tab shows at a time', async ({ page }) => {

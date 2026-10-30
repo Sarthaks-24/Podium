@@ -32,7 +32,7 @@ export const PEOPLE = [
 
 export const CONFIG = { contact_email: 'priya@college.edu' };
 
-/** The site audit that "History of changes" on Settings shows (contract C4), newest first. */
+/** The site audit the Dashboard's Audit tab shows (contract C4), newest first. */
 export const SITE_AUDIT = [
   { id: 3, at: 1792183192359, action: 'role_granted', actor: { user_id: 1, email: 'priya@college.edu', role: 'owner' }, subject_email: 'ta@college.edu', details: { role: 'organiser', from_role: 'student' } },
   { id: 2, at: 1792096792359, action: 'list_imported', actor: { user_id: 1, email: 'priya@college.edu', role: 'owner' }, subject_email: '', details: { added: 12, duplicates: 1, invalid: 0 } },

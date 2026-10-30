@@ -8,9 +8,11 @@
     last backup, refreshed every 5 s while shown.
   - Sign-in (SignInTab): account help for one address (end sessions,
     disable or enable; resetting a Google link is for owners).
+  - Audit (AuditTab): the site's history of changes, filterable.
   - Organisation (OrganisationTab, owners only): the details the public
-    pages show, and "History of changes" for the site's history.
-  The tab is in the address (?tab=live, ?tab=sign-in, ?tab=organisation; People when
+    pages show.
+  The tab is in the address (?tab=live, ?tab=sign-in, ?tab=audit,
+  ?tab=organisation; People when
   none), so a link can open a tab and a reload keeps it. One request (GET
   /api/admin/people) loads them all, and again after each change to the
   list. The shell lets only admins and owners in; a 403 later (the role
@@ -21,6 +23,7 @@
   import PageHeader from '../components/PageHeader.svelte';
   import PageState from '../components/PageState.svelte';
   import Tabs from '../components/Tabs.svelte';
+  import AuditTab from '../components/settings/AuditTab.svelte';
   import LiveTab from '../components/settings/LiveTab.svelte';
   import OrganisationTab from '../components/settings/OrganisationTab.svelte';
   import PeopleTab from '../components/settings/PeopleTab.svelte';
@@ -34,12 +37,13 @@
   import { forbiddenText, routeTitle } from '../lib/routing';
   import { session } from '../lib/session.svelte';
 
-  type Tab = 'people' | 'live' | 'sign-in' | 'organisation';
+  type Tab = 'people' | 'live' | 'sign-in' | 'audit' | 'organisation';
   const isOwner = $derived(session.user?.role === 'owner');
   const tabs = $derived<{ id: Tab; label: string }[]>([
     { id: 'people', label: 'People' },
     { id: 'live', label: 'Live' },
     { id: 'sign-in', label: 'Sign-in' },
+    { id: 'audit', label: 'Audit' },
     ...(isOwner ? [{ id: 'organisation' as Tab, label: 'Organisation' }] : []),
   ]);
 
@@ -116,6 +120,9 @@
     </div>
     <div id="settings-panel-sign-in" role="tabpanel" aria-labelledby="settings-tab-sign-in" hidden={tab !== 'sign-in'}>
       <SignInTab bind:open={signInOpen} bind:disabled bind:people owner={isOwner} onforbidden={forbid} />
+    </div>
+    <div id="settings-panel-audit" role="tabpanel" aria-labelledby="settings-tab-audit" hidden={tab !== 'audit'}>
+      <AuditTab active={tab === 'audit'} />
     </div>
     {#if isOwner}
       <div id="settings-panel-organisation" role="tabpanel" aria-labelledby="settings-tab-organisation" hidden={tab !== 'organisation'}>

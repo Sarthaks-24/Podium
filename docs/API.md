@@ -249,7 +249,7 @@ Leading and trailing spaces are trimmed. A change writes one `settings_changed` 
 
 ### The site audit
 
-Every change to people, the sign-in list and the site, newest first, 100 per page. It opens from the Organisation tab of Settings.
+Every change to people, the sign-in list and the site, newest first, 100 per page. It is the Dashboard's Audit tab; owners and admins read it (admin role).
 
 ```json
 { "entries": [ { "id": 31, "at": 1792311120000, "action": "role_granted",
