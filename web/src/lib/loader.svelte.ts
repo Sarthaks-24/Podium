@@ -30,6 +30,8 @@ import { ApiError, errorText, isSignedOut } from './api';
 /** What a screen shows while it loads, or why it cannot. */
 export type LoadState = 'loading' | 'ready' | 'forbidden' | 'missing' | 'error';
 
+// Not reactive state: nothing renders from it; a screen gets its copy through onData.
+// eslint-disable-next-line svelte/prefer-svelte-reactivity
 const answers = new Map<string, unknown>();
 
 /** Forgets every kept answer; the session calls it at sign out and on a 401. */
