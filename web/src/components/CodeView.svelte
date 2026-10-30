@@ -7,7 +7,7 @@
   line holding one carries an edge in the gutter, so the match never
   depends on colour alone. The well scrolls sideways on its own and takes
   focus, so long lines are reachable from the keyboard. Student code is
-  shown as text, never as HTML. Props: `source`, `spans`, `label` (the
+  shown as text, never as HTML. Props: `source`, `spans` (none: plain code, v4 E2), `label` (the
   region's accessible name, for example "Asha Rao's program").
 -->
 <script lang="ts">
@@ -26,7 +26,7 @@
 </script>
 
 <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
-<div class="well" role="region" aria-label="{label}, {lines.length} {lines.length === 1 ? 'line' : 'lines'}, {passages} shared {passages === 1 ? 'passage' : 'passages'}" tabindex="0">
+<div class="well" role="region" aria-label="{label}, {lines.length} {lines.length === 1 ? 'line' : 'lines'}{spans.length ? `, ${passages} shared ${passages === 1 ? 'passage' : 'passages'}` : ''}" tabindex="0">
   <pre class="code" translate="no"><code>{#each lines as line (line.number)}<span class="line" class:hit={line.matched}><span class="ln" aria-hidden="true">{line.number}</span><span class="src">{#each line.segments as seg, i (i)}{#if seg.mark}{#if seg.opens}<span class="visually-hidden">Shared passage starts. </span>{/if}<mark>{seg.text}</mark>{#if seg.closes}<span class="visually-hidden"> Shared passage ends.</span>{/if}{:else}{seg.text}{/if}{/each}</span></span>{/each}</code></pre>
 </div>
 

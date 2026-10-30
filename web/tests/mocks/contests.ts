@@ -204,6 +204,8 @@ export async function mockApi(page: Page, options: Options = {}) {
     draftPuts: [] as Json[],
     /** The last draft saved per problem label, served back like the server does. */
     drafts: {} as Record<string, Json>,
+    /** Submitted code by submission id, sent back only on GET /api/submissions/{id} (v4 E2). */
+    sources: {} as Record<number, string>,
     runs: [] as Json[],
     asked: [] as Json[],
     nextId: 40,
@@ -553,6 +555,7 @@ export async function mockApi(page: Page, options: Options = {}) {
           const body = req.postDataJSON() as Json;
           state.submits.push({ ...body, label });
           const s = options.hideResults ? hidden(state.nextId++, p.id) : submission(state.nextId++, p.id, 'queued');
+          state.sources[Number(s.id)] = String(body.source);
           state.submissions.push(s);
           return json(route, 202, { ...s, server_now: nowMs() });
         }
@@ -560,7 +563,7 @@ export async function mockApi(page: Page, options: Options = {}) {
       const sub = path.match(/^\/api\/submissions\/(\d+)$/);
       if (sub) {
         const s = state.submissions.find((x) => x.id === Number(sub[1]));
-        return s ? json(route, 200, { ...s, server_now: nowMs() }) : apiError(route, 404, 'not_found', 'No such submission.');
+        return s ? json(route, 200, { ...s, source: state.sources[Number(s.id)], server_now: nowMs() }) : apiError(route, 404, 'not_found', 'No such submission.');
       }
 
       // Organiser routes.

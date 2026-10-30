@@ -9,7 +9,7 @@
 -->
 <script lang="ts">
   import type { Judging } from '../../lib/judging.svelte';
-  import { formatWhen, isWaiting, languageLabel, type Sample } from '../../lib/workspace';
+  import { formatWhen, isWaiting, languageLabel, type Sample, type Submission } from '../../lib/workspace';
   import Icon from '../Icon.svelte';
   import RunResults from '../RunResults.svelte';
   import StreamNotice from '../StreamNotice.svelte';
@@ -28,9 +28,13 @@
     narrow?: boolean;
     onjump: (line: number, col: number | null) => void;
     onruninput: (input: string) => void;
+    /** The editor's code now, for Compare with mine. */
+    mine: () => string;
+    /** Use this code on a past submission; only where the editor takes typing. */
+    onuse: (s: Submission, source: string) => void;
   }
 
-  let { judging, samples, language, problemScore, locked, sticky, narrow = false, onjump, onruninput }: Props = $props();
+  let { judging, samples, language, problemScore, locked, sticky, narrow = false, onjump, onruninput, mine, onuse }: Props = $props();
 
   const run = $derived(judging.state.run);
   const current = $derived(judging.current);
@@ -83,7 +87,7 @@
   {/if}
   {#if judging.state.submissions.length > 0}
     <h2 class="block-title">Your submissions</h2>
-    <SubmissionList submissions={judging.state.submissions} onjump={null} />
+    <SubmissionList submissions={judging.state.submissions} onjump={null} {mine} onuse={narrow ? undefined : onuse} />
   {/if}
 </div>
 

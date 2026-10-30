@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { firstDifference, showWhitespace } from './diff';
+import { firstDifference, lineDiff, showWhitespace } from './diff';
 
 describe('sample diff', () => {
   it('finds nothing when outputs match, ignoring line endings and one final newline', () => {
@@ -29,5 +29,29 @@ describe('sample diff', () => {
 
   it('makes spaces and tabs visible', () => {
     expect(showWhitespace('a b\tc ')).toBe('a·b⇥c·');
+  });
+});
+
+describe('line diff (v4 E2)', () => {
+  const show = (d: ReturnType<typeof lineDiff>) => d?.map((l) => l.kind + l.text).join('\n');
+
+  it('keeps shared lines and marks the rest - for a and + for b', () => {
+    expect(show(lineDiff('a\nb\nc\nd\n', 'a\nx\nc\nd\ne'))).toBe(' a\n-b\n+x\n c\n d\n+e');
+  });
+
+  it('reads two equal programs as all kept, whatever their line endings', () => {
+    expect(show(lineDiff('int main() {\r\n}\r\n', 'int main() {\n}'))).toBe(' int main() {\n }');
+  });
+
+  it('handles an empty side', () => {
+    expect(show(lineDiff('', 'a\nb'))).toBe('+a\n+b');
+    expect(show(lineDiff('a', ''))).toBe('-a');
+    expect(lineDiff('', '')).toEqual([]);
+  });
+
+  it('gives up past the limit once the shared start and end are taken off', () => {
+    const many = (p: string) => Array.from({ length: 1001 }, (_, i) => p + i).join('\n');
+    expect(lineDiff(many('a'), many('b'))).toBeNull();
+    expect(lineDiff('top\n' + many('a'), 'top\n' + many('a') + '\nend')?.length).toBe(1003);
   });
 });

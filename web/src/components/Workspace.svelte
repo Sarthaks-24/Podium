@@ -32,7 +32,7 @@
   import { beforeSignOut, guardSignOut, session } from '../lib/session.svelte';
   import { isTypingTarget } from '../lib/shortcuts';
   import { dismissToast, showToast } from '../lib/toast.svelte';
-  import { LANGUAGES, bestScore, headline, isWaiting, languageLabel, limitsText, runHeadline, type Workspace } from '../lib/workspace';
+  import { LANGUAGES, bestScore, headline, isWaiting, languageLabel, limitsText, runHeadline, type Language, type Workspace } from '../lib/workspace';
   import CodeEditor from './CodeEditor.svelte';
   import ConfirmDialog from './ConfirmDialog.svelte';
   import PageHeader from './PageHeader.svelte';
@@ -105,6 +105,8 @@
   let editor: CodeEditor | undefined = $state();
   let integrity: IntegrityRecorder | null = null;
   let confirmReset = $state(false);
+  /** A past submission's code waiting on the "Use this code" confirm. */
+  let restoring = $state.raw<{ language: Language; source: string } | null>(null);
   /** The "Pasting is blocked" toast on screen, until the next key, Run or Submit. */
   let pasteNote = 0;
 
@@ -119,7 +121,7 @@
     problemId: () => ws?.problem_id,
     ready: () => page.state === 'ready',
     locked: () => lockText,
-    held: () => draft.pendingLanguage !== null || confirmReset,
+    held: () => draft.pendingLanguage !== null || confirmReset || restoring !== null,
     minGapS: () => minGapS,
     code: () => ({ language: draft.language, source: draft.source }),
     integrity: () => integrity,
@@ -271,6 +273,15 @@
     confirmReset = false;
     await draft.reset();
     polite('Reset. The starter is back.');
+    editor?.focus();
+  }
+
+  async function restore() {
+    if (!restoring) return;
+    const { language, source } = restoring;
+    restoring = null;
+    await draft.useCode(language, source);
+    polite("That submission's code is in the editor.");
     editor?.focus();
   }
 
@@ -541,6 +552,8 @@
         narrow={layout !== 'wide'}
         onjump={jump}
         onruninput={runOnInput}
+        mine={() => draft.source}
+        onuse={(s, source) => (restoring = { language: s.language, source })}
       />
     {/snippet}
   </Layout>
@@ -575,6 +588,18 @@
   danger
   onconfirm={() => void reset()}
   oncancel={() => (confirmReset = false)}
+/>
+
+<ConfirmDialog
+  open={restoring !== null}
+  title="Replace your code with this submission's?"
+  body={restoring && restoring.language !== draft.language
+    ? `The editor switches to ${languageLabel(restoring.language)} with this submission's code, and saves it. Your ${languageLabel(draft.language)} code comes back when you switch back.`
+    : `Your ${languageLabel(draft.language)} code for this problem is replaced with this submission's, and saved.`}
+  confirmLabel="Use this code"
+  danger
+  onconfirm={() => void restore()}
+  oncancel={() => (restoring = null)}
 />
 
 <ConfirmDialog

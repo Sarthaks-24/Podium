@@ -184,6 +184,13 @@ export class Draft {
     await this.save();
   }
 
+  /** Use this code: a past submission's code (and its language) replaces the editor's and is saved at once. */
+  async useCode(language: Language, code: string): Promise<void> {
+    this.keep(this.language, this.source);
+    this.switchTo(language, code);
+    await this.save();
+  }
+
   settings(next: Partial<EditorSettingsValue>): void {
     if (next.fontSize !== undefined) this.fontSize = next.fontSize || DEFAULT_FONT_SIZE;
     if (next.tabSize !== undefined) this.tabSize = next.tabSize;
