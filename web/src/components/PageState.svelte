@@ -1,7 +1,10 @@
 <!--
   PageState: what a screen shows instead of its content, one of five kinds.
   - loading: a status line, shown only after 300 ms so a fast load never
-    flashes; the live region is there from the start.
+    flashes; the live region is there from the start. With a `shape`
+    (v4 U1) the line is read but not seen, and static blocks shaped like
+    the screen show instead: "rows" for a list or table, "statement" for
+    a problem. No shimmer and no motion.
   - error: what happened in a banner, and a "Try again" button.
   - forbidden: why the screen is closed, then where to ask: the organisers'
     contact email as a mailto link when the server has one, otherwise the
@@ -11,7 +14,7 @@
     snippet) when there is one.
   Props: `kind`, `message`, `onretry` (error), `ask` (forbidden fallback),
   `parent` ({ href, label }, missing), `action` (snippet, empty), `delay`
-  (loading, in ms).
+  and `shape` (loading).
 -->
 <script lang="ts">
   import { onMount, type Snippet } from 'svelte';
@@ -25,9 +28,13 @@
     parent?: { href: string; label: string } | null;
     action?: Snippet;
     delay?: number;
+    shape?: 'rows' | 'statement';
   }
 
-  let { kind, message, onretry, ask = 'Ask an owner if you need access.', parent = null, action, delay = 300 }: Props = $props();
+  let { kind, message, onretry, ask = 'Ask an owner if you need access.', parent = null, action, delay = 300, shape }: Props = $props();
+
+  // Bar widths in percent: a statement is a title, then lines of text and an example box.
+  const BARS = { rows: [100, 100, 100, 100, 100, 100], statement: [40, 100, 96, 88, 100, 62] };
 
   let shown = $state(false);
 
@@ -39,7 +46,12 @@
 </script>
 
 {#if kind === 'loading'}
-  <p class="page-state muted" role="status">{shown ? message : ''}</p>
+  <p class="page-state muted" class:visually-hidden={shape} role="status">{shown ? message : ''}</p>
+  {#if shape && shown}
+    <div class="skeleton {shape}" aria-hidden="true" data-testid="skeleton">
+      {#each BARS[shape] as w, i (i)}<span style:width="{w}%"></span>{/each}
+    </div>
+  {/if}
 {:else if kind === 'error'}
   <div class="page-state banner banner-error" role="alert"><p>{message}</p></div>
   {#if onretry}<p class="retry"><button type="button" class="btn btn-secondary" onclick={onretry}>Try again</button></p>{/if}
@@ -64,5 +76,35 @@
   .retry,
   .next {
     margin-top: var(--space-3);
+  }
+
+  .skeleton {
+    display: grid;
+    gap: var(--space-2);
+    max-width: var(--measure-wide);
+    margin-top: var(--space-4);
+  }
+
+  .skeleton span {
+    display: block;
+    height: var(--control-h);
+    border-radius: var(--radius);
+    background: var(--surface-2);
+  }
+
+  .statement {
+    gap: var(--space-3);
+  }
+
+  .statement span {
+    height: var(--space-4);
+  }
+
+  .statement span:first-child {
+    height: var(--space-6);
+  }
+
+  .statement span:last-child {
+    height: calc(4 * var(--space-6));
   }
 </style>

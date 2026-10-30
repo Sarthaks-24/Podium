@@ -334,7 +334,7 @@
   {/if}
 
   {#if page.state === 'loading'}
-    <PageState kind="loading" message="Loading problems" />
+    <PageState kind="loading" message="Loading problems" shape="rows" />
   {:else if page.state === 'error' || page.state === 'missing'}
     <PageState kind="error" message={page.error} onretry={() => load(showArchived)} />
   {:else if problems.length === 0}

@@ -114,7 +114,7 @@
 </script>
 
 {#if page.state === 'loading'}
-  <PageState kind="loading" message="Loading the standings" />
+  <PageState kind="loading" message="Loading the standings" shape="rows" />
 {:else if page.state === 'forbidden'}
   <p class="lead">{page.error}</p>
 {:else if page.state === 'missing'}

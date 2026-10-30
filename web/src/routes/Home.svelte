@@ -91,7 +91,7 @@
 <PageHeader title="Your contests" />
 
 {#if page.state === 'loading'}
-  <PageState kind="loading" message="Loading contests" />
+  <PageState kind="loading" message="Loading contests" shape="rows" />
 {:else if page.state !== 'ready'}
   <PageState kind="error" message={page.error} onretry={load} />
 {:else if contests.length === 0}

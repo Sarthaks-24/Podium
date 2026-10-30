@@ -440,7 +440,7 @@
   <div class="state">
     <PageHeader compact title={page.state === 'missing' ? 'Problem not found' : 'Problem'} back={{ href: backHref, label: backLabel }} />
     {#if page.state === 'loading'}
-      <PageState kind="loading" message="Loading the problem" />
+      <PageState kind="loading" message="Loading the problem" shape="statement" />
     {:else if page.state === 'forbidden' && (page.code === 'not_started' || page.code === 'contest_over')}
       <PageState kind="missing" message={page.error} parent={{ href: contestHref || backHref, label: 'Go to the contest page.' }} />
     {:else if page.state === 'forbidden'}

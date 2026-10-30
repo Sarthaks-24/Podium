@@ -4,6 +4,10 @@ Dated entries per release. Unreleased work is listed at the top.
 
 ## Unreleased
 
+### v4 stage U: the UX patterns (2026-10-31)
+
+- A screen that is slow to load shows still blocks in its shape after the same 300 ms wait: rows on Your contests, the contests list, the problem bank and the standings, a statement in the workspace. The loading sentence is still read out; nothing shimmers or moves.
+
 ### v4 stage E: the editor (2026-10-31)
 
 - A run or submission that ends in a compile error marks the lines the compiler names in the editor: a wavy underline, a shape in the gutter (a dot for an error, a triangle for a warning, a ring for a note) and the message on hover. Editing a marked line takes its mark away, and the next Run or Submit clears the rest. F8 and Shift+F8 go to the next or previous mark (in Help). A fold gutter sits beside the line numbers. `@codemirror/lint` 6.9.7, already installed under the VS Code keymap, is now a direct dependency; the editor's first open is 174.42 kB gzip of 189.
