@@ -41,3 +41,22 @@ test('an Undo toast stays 8 seconds, longer than a plain toast', async ({ page }
   await page.clock.runFor(1500);
   await expect(undo).toHaveCount(0);
 });
+
+test('keyboard only: Undo can be reached with Tab before it goes, and the count is recorded', async ({ page }) => {
+  await mockApi(page, { who: 'organiser', phase: 'upcoming' });
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto('/admin/contests/4');
+  await page.getByRole('button', { name: 'Remove A plus B' }).focus();
+  await page.keyboard.press('Enter');
+  const undo = toasts(page).getByRole('button', { name: 'Undo' });
+  await expect(undo).toBeVisible();
+  let presses = 0;
+  while (presses < 60 && !(await undo.evaluate((el) => el === document.activeElement))) {
+    await page.keyboard.press('Tab');
+    presses++;
+  }
+  test.info().annotations.push({ type: 'tabs to Undo', description: String(presses) });
+  await expect(undo).toBeFocused();
+  await page.keyboard.press('Enter');
+  await expect(page.getByLabel('Letter for A plus B')).toHaveValue('A');
+});

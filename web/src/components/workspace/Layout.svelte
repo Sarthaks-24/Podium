@@ -162,7 +162,7 @@
       /* Sized from the shell: the header's real height, testing
          banner included, comes from App.svelte as --shell-head. 18rem only
          keeps a zoomed-in window usable. */
-      height: calc(100dvh - var(--shell-head, var(--space-7)) - 2 * var(--space-3));
+      height: calc(100dvh - var(--shell-head, var(--space-7)) - 2 * var(--space-3) - env(safe-area-inset-top) - env(safe-area-inset-bottom));
       min-height: 18rem;
       border: var(--rule) solid var(--line);
       background: var(--surface);
