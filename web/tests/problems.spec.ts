@@ -151,8 +151,8 @@ test('proof: a problem imported, a test given a new role from the select, saved,
   await expect(role).toHaveValue('1');
   await role.selectOption({ label: 'Subtask 2' });
   await expect(page.getByText('Unsaved changes', { exact: true })).toBeVisible();
-  await expect(page.getByRole('group', { name: 'Subtask 1' }).locator('.count')).toHaveText('1 test');
-  await expect(page.getByRole('group', { name: 'Subtask 2' }).locator('.count')).toHaveText('2 tests');
+  await expect(page.getByRole('group', { name: 'Subtask 1' }).getByText(/^\d+ tests?$/)).toHaveText('1 test');
+  await expect(page.getByRole('group', { name: 'Subtask 2' }).getByText(/^\d+ tests?$/)).toHaveText('2 tests');
   await page.getByRole('button', { name: 'Save changes' }).click();
   await expect(toasts(page).getByText('Saved', { exact: true })).toBeVisible();
   // The server gets the same lists as before: examples and a range per subtask.
@@ -218,7 +218,7 @@ test('subtasks and roles work from the keyboard, and removing a subtask leaves i
   await expect(add).toBeFocused();
   await expect(page.getByLabel('Role of test 5')).toHaveValue('none');
   await expect(page.getByText('Test 5 is in no subtask. Choose its role.')).toBeVisible();
-  await expect(page.getByRole('group', { name: 'Subtask 2' }).locator('.count')).toHaveText('0 tests');
+  await expect(page.getByRole('group', { name: 'Subtask 2' }).getByText(/^\d+ tests?$/)).toHaveText('0 tests');
 
   // An empty subtask is caught before saving and its link goes to the table.
   await page.getByRole('button', { name: 'Save changes' }).click();
@@ -246,7 +246,7 @@ test('subtasks and roles work from the keyboard, and removing a subtask leaves i
   await page.keyboard.press('Enter');
   await expect(statusLine(page)).toHaveText('Validated, 5 tests, slowest 212 ms', { timeout: 15_000 });
   await tabOf(page, 'Checking').click();
-  await expect(page.locator('.headline')).toHaveText('Validation passed');
+  await expect(page.getByTestId('validation-headline')).toHaveText('Validation passed');
   await expect(page.getByText('Reference solution passed 5 of 5 tests')).toBeVisible();
   await expect(page.getByText('Slowest reference run 212 ms of 1000 ms')).toBeVisible();
   await expect(page.locator('[aria-live="polite"]').filter({ hasText: 'Validation passed' })).toHaveCount(1);
@@ -278,10 +278,10 @@ test('the editor stacks at 375 px with Write and Preview tabs for the statement'
   // Tests stack: number and role, then input over output.
   await tabOf(page, 'Tests').click();
   const row = page.getByRole('row').filter({ has: page.getByLabel('Role of test 5') });
-  const input = await row.locator('.file-cell').nth(0).boundingBox();
-  const output = await row.locator('.file-cell').nth(1).boundingBox();
-  const num = await row.locator('.test-num').boundingBox();
-  const role = await row.locator('.role').boundingBox();
+  const input = await row.getByRole('cell').nth(0).boundingBox();
+  const output = await row.getByRole('cell').nth(1).boundingBox();
+  const num = await row.getByRole('rowheader').boundingBox();
+  const role = await row.getByRole('cell').filter({ has: page.getByLabel('Role of test 5') }).boundingBox();
   expect(output!.y).toBeGreaterThan(input!.y + input!.height - 1);
   expect(Math.abs(role!.y - num!.y)).toBeLessThan(12);
   await page.screenshot({ path: `${shots()}problem-editor-tests-375-light.png`, fullPage: true });
@@ -298,7 +298,7 @@ test('server field errors appear next to their fields, and a link opens the tab 
   await expect(time).toHaveAttribute('aria-invalid', 'true');
   await expect(time).toHaveAttribute('aria-describedby', 'time_limit_ms-error');
   await expect(time).toBeFocused();
-  await expect(page.locator('.error-count')).toHaveText('2 fields need attention');
+  await expect(page.getByRole('link', { name: '2 fields need attention' })).toBeVisible();
   const list = page.locator('#field-errors');
   await expect(list).toContainText('Some fields need fixing.');
   await list.getByRole('link', { name: 'Subtask 2 points: Points run from 1 to 1000.' }).click();
@@ -315,14 +315,14 @@ test('a failed validation names the test, program and verdict, and its links unf
   await statusLine(page).click();
   await expect(tabOf(page, 'Checking')).toHaveAttribute('aria-selected', 'true');
   await expect(page.getByRole('heading', { name: 'Validation', exact: true })).toBeFocused();
-  await expect(page.locator('.headline')).toHaveText('Validation failed');
-  await expect(page.locator('.report .lead')).toHaveText('Fix the brute force: it did not compile.');
+  await expect(page.getByTestId('validation-headline')).toHaveText('Validation failed');
+  await expect(page.getByText('Fix the brute force: it did not compile.', { exact: true })).toBeVisible();
 
   // Grouped by program, each with a link to its source.
   const reference = page.getByRole('region', { name: 'Reference solution' });
   await expect(reference.getByText('Wrong answer on test 7')).toBeVisible();
   await expect(reference.getByText('Line 1: expected 2.500000, found 2.400000')).toBeVisible();
-  await expect(reference.locator('.guidance')).toContainText('expected output');
+  await expect(reference.getByText(/expected output/)).toBeVisible();
   const brute = page.getByRole('region', { name: 'Brute force' });
   await expect(brute.getByText('Brute force did not compile', { exact: true })).toBeVisible();
   await expect(page.locator('#brute-source')).toBeHidden();
@@ -334,7 +334,7 @@ test('a failed validation names the test, program and verdict, and its links unf
 
   await page.getByRole('button', { name: 'Validate', exact: true }).click();
   await expect(page.getByText('Waiting for the judge (2nd in queue)')).toBeVisible();
-  await expect(page.locator('.headline')).toHaveText('Validation failed', { timeout: 10_000 });
+  await expect(page.getByTestId('validation-headline')).toHaveText('Validation failed', { timeout: 10_000 });
 });
 
 test('once validated, the advice is headed Worth adding, not Before you validate (walk 2026-10-21)', async ({ page }) => {
@@ -479,8 +479,9 @@ test('leaving with unsaved changes asks first', async ({ page }) => {
   await mockApi(page);
   await page.goto('/admin/problems/1');
   await page.locator('#title').fill('A plus B, edited');
-  await expect(page.locator('.statement').getByText('Given two integers')).toBeVisible();
-  await expect(page.locator('.preview-title')).toHaveText('A plus B, edited');
+  const preview = page.getByRole('region', { name: 'Preview', exact: true });
+  await expect(preview.getByText('Given two integers')).toBeVisible();
+  await expect(preview.getByText('A plus B, edited', { exact: true })).toBeVisible();
 
   await page.getByRole('navigation', { name: 'Breadcrumb' }).getByRole('link', { name: 'Problems' }).click();
   const dialog = page.getByRole('dialog', { name: 'Leave without saving?' });
@@ -519,7 +520,7 @@ test('statements are sanitised and maths is rendered', async ({ page }) => {
   const statement = page.locator('#statement_md');
   await expect(statement).toHaveAttribute('contenteditable', 'true');
   await statement.fill('# Heading\n\nHi <img src=x onerror="window.__pwned=1"> [link](javascript:window.__pwned=2) and $x^2$.\n\n![figure](/fig.png)');
-  const preview = page.locator('.statement');
+  const preview = page.getByRole('region', { name: 'Preview', exact: true });
   await expect(preview.locator('.katex')).toHaveCount(1);
   await expect(preview.locator('h4')).toHaveText('Heading');
   await expect(preview.locator('img[onerror]')).toHaveCount(0);
@@ -579,7 +580,7 @@ test('Regenerate all outputs is in the menu and asks first', async ({ page }) =>
   await expect(dialog.getByRole('button', { name: 'Cancel' })).toBeFocused();
   await dialog.getByRole('button', { name: 'Regenerate all outputs' }).click();
   await expect.poll(() => state.generates.at(-1)).toEqual({ all: true });
-  await expect(page.locator('.gen-line')).toHaveText('Generated 5 outputs. Slowest run 220 ms.', { timeout: 10_000 });
+  await expect(page.getByText('Generated 5 outputs. Slowest run 220 ms.', { exact: true })).toBeVisible({ timeout: 10_000 });
 });
 
 test('a refused generation shows the reason in place', async ({ page }) => {
@@ -589,7 +590,7 @@ test('a refused generation shows the reason in place', async ({ page }) => {
   await page.locator('#problem-menu').getByRole('button', { name: 'Regenerate all outputs' }).click();
   await page.getByRole('dialog').getByRole('button', { name: 'Regenerate all outputs' }).click();
   // Shown in the polite region under the bar, read once (not also an alert).
-  const reason = page.locator('.generation[aria-live="polite"] .banner-error').filter({ hasText: 'The problem is not ready. Fix these first.' });
+  const reason = page.locator('[aria-live="polite"]').filter({ hasText: 'The problem is not ready. Fix these first.' });
   await expect(reason).toContainText('Add a reference solution first.');
 });
 
@@ -598,16 +599,16 @@ test('a reference that does not compile, or a problem changed mid-run, is said p
   state.genOutcome = 'compile';
   await page.goto('/admin/problems/5');
   await page.getByRole('button', { name: 'Validate', exact: true }).click();
-  await expect(page.locator('.gen-line')).toHaveText('The reference solution did not compile, so no outputs were generated.', {
+  await expect(page.getByText('The reference solution did not compile, so no outputs were generated.', { exact: true })).toBeVisible({
     timeout: 10_000,
   });
-  await expect(page.locator('.gen-failures')).toContainText('expected ; before return');
+  await expect(page.getByRole('listitem').filter({ hasText: 'expected ; before return' })).toBeVisible();
   await expect(statusLine(page)).toHaveText('Not validated, 5 tests');
 
   state.genOutcome = 'stale';
   await page.getByRole('button', { name: 'Validate', exact: true }).click();
-  await expect(page.locator('.gen-line')).toHaveText('Some outputs were not applied.', { timeout: 10_000 });
-  await expect(page.locator('.gen-failures')).toContainText('The problem changed while outputs were generated.');
+  await expect(page.getByText('Some outputs were not applied.', { exact: true })).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByRole('listitem').filter({ hasText: 'The problem changed while outputs were generated.' })).toBeVisible();
 });
 
 test('the sticky bar keeps the tabs, field errors and the main actions in reach', async ({ page }) => {
@@ -694,9 +695,9 @@ test('bank rows read as title and status, then tests and date, on a phone', asyn
   await page.setViewportSize({ width: 375, height: 812 });
   await page.goto('/admin/problems');
   const row = page.getByRole('row', { name: /A plus B/ });
-  const title = await row.locator('.title').boundingBox();
+  const title = await row.getByRole('rowheader').boundingBox();
   const status = await row.locator('.state').boundingBox();
-  const tests = await row.locator('.tests').boundingBox();
+  const tests = await row.getByRole('cell').filter({ hasText: /^Tests\s*\d+$/ }).boundingBox();
   expect(Math.abs(title!.y - status!.y)).toBeLessThan(6);
   expect(tests!.y).toBeGreaterThan(title!.y + title!.height - 1);
   await expect(row.locator('.tags')).toBeHidden();
@@ -759,9 +760,8 @@ test('a finished validation says its result under the bar and the report link op
   await expect(page.getByText('Saving needs a new validation: you changed the limits.')).toBeVisible();
 
   await page.getByRole('button', { name: 'Save and validate' }).click();
-  const result = page.locator('.bar-result');
-  await expect(result).toHaveText(/Validation passed: 5 of 5 tests, slowest 212 ms\.\s*See the report/, { timeout: 15_000 });
-  await result.getByRole('link', { name: 'See the report' }).click();
+  await expect(page.getByText('Validation passed: 5 of 5 tests, slowest 212 ms.', { exact: true })).toBeVisible({ timeout: 15_000 });
+  await page.getByRole('link', { name: 'See the report' }).click();
   await expect(tabOf(page, 'Checking')).toHaveAttribute('aria-selected', 'true');
   await expect(page.getByRole('heading', { name: 'Validation', exact: true })).toBeFocused();
 });

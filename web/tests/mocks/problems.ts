@@ -372,7 +372,7 @@ export async function mockApi(page: Page, who: 'admin' | 'student' = 'admin') {
       if (path === '/api/admin/problems' && method === 'POST') {
         const body = req.postDataJSON() as { title: string; slug?: string };
         if (String(body.title ?? '').trim() === '') {
-          // Go: problemError answers FieldErrors with 400 and its own sentence (httpapi/problems.go).
+          // Go: problemError answers FieldErrors with 400 and its own sentence (problems/http.go).
           return apiError(route, 400, 'bad_request', 'Some fields need fixing.', { fields: { title: 'Enter a title.' } });
         }
         // The server makes the slug from the title, with a number when it is taken.

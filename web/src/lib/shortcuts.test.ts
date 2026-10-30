@@ -88,7 +88,7 @@ describe('shortcutGroups', () => {
     expect(titles(true)).toEqual(['Anywhere', 'Solving a problem', ...editor, 'Problem editor']);
   });
 
-  it('lists the VS Code editing keys students asked for (P6)', () => {
+  it('lists the VS Code editing keys students asked for', () => {
     const actions = shortcutGroups({ mac: false, organiser: false }).flatMap((g) => g.items.map((i) => `${i.keys.join(' ')}: ${i.action}`));
     for (const want of ['Ctrl+/: Comment', 'Ctrl+F: Find', 'Ctrl+D: Select the word', 'Alt+Up Alt+Down: Move the line', 'Ctrl+Z: Undo']) {
       expect(actions.some((a) => a.startsWith(want))).toBe(true);

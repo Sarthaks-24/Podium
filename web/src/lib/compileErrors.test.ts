@@ -113,7 +113,7 @@ describe('compile error locations', () => {
   });
 });
 
-describe('the first error, shown above the output (P4)', () => {
+describe('the first error, shown above the output', () => {
   it('takes the place and the words from one g++ or javac line', () => {
     expect(firstError(GPP, 'cpp17')).toEqual({ line: 12, col: 5, text: "expected ';' before 'return'" });
     expect(firstError(JAVAC, 'java21')).toEqual({ line: 12, col: null, text: "';' expected" });

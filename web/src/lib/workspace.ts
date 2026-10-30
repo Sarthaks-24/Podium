@@ -361,11 +361,6 @@ export function runHeadline(run: Run): { text: string; tone: Tone } {
   return r ? { text: runVerdictLabel(r.verdict), tone: isBad(r.verdict) ? 'bad' : 'ok' } : { text: 'Finished', tone: 'ok' };
 }
 
-/** Why a full test is on screen: practice submissions and every run show their first failing test. */
-export function revealedReason(from: 'run' | 'submission'): string {
-  return from === 'run' ? 'This test is shown because this was a run.' : 'This test is shown because this is practice.';
-}
-
 /** The heading of a submission's revealed test: "Test 5, in subtask 2". */
 export function revealedTitle(r: Pick<SubmissionRevealed, 'idx' | 'subtask_idx'>): string {
   return r.subtask_idx === null ? `Test ${r.idx}` : `Test ${r.idx}, in subtask ${r.subtask_idx}`;

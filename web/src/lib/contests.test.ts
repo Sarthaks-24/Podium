@@ -114,7 +114,7 @@ describe('countdowns', () => {
     expect(listCountdown(summary({ my_window: { started_at: T, ends_at: T + 130 * MIN } }), T)).toEqual({ lead: 'Ends in', ms: 130 * MIN, after: '' });
   });
 
-  it('reads a frozen contest as live for students, with the freeze in the countdown (D84)', () => {
+  it('reads a frozen contest as live for students, with the freeze in the countdown', () => {
     expect(studentStateWord('frozen')).toBe('Live');
     expect(studentStateWord('practice')).toBe('Practice');
     expect(studentState('frozen')).toBe('live');
@@ -122,7 +122,7 @@ describe('countdowns', () => {
   });
 });
 
-describe('the banner queue (B1)', () => {
+describe('the banner queue', () => {
   const q = (id: number, answered_at: number | null, pub: boolean, answer: string | null = 'Yes.') => ({
     id, problem_label: 'B', question: 'Zero length?', answer, public: pub, created_at: 1, answered_at,
   });
@@ -147,8 +147,8 @@ describe('the banner queue (B1)', () => {
   });
 });
 
-describe('the pinned contest on Your contests (S10)', () => {
-  it('features a contest the student can enter or took part in, never one they missed (D324)', () => {
+describe('the pinned contest on Your contests', () => {
+  it('features a contest the student can enter or took part in, never one they missed', () => {
     const missed = { slug: 'week-8', state: 'ended' as const, my_score: null };
     const mine = { slug: 'week-7', state: 'practice' as const, my_score: 140 };
     const next = { slug: 'week-9', state: 'upcoming' as const, my_score: null };
@@ -159,7 +159,7 @@ describe('the pinned contest on Your contests (S10)', () => {
   });
 });
 
-describe('messages read time (audit S1)', () => {
+describe('messages read time', () => {
   function memory(): Pick<Storage, 'getItem' | 'setItem'> & { data: Map<string, string> } {
     const data = new Map<string, string>();
     return { data, getItem: (k) => data.get(k) ?? null, setItem: (k, v) => void data.set(k, v) };
@@ -204,7 +204,7 @@ describe('messages read time (audit S1)', () => {
   });
 });
 
-describe('organiser order (N6)', () => {
+describe('organiser order', () => {
   it('puts live and frozen first, then upcoming soonest, then the rest newest', () => {
     const row = (id: number, state: string, starts: number, ends: number) => ({ id, state: state as 'live', starts_at: starts, ends_at: ends });
     const list = [row(1, 'ended', 10, 20), row(2, 'upcoming', 500, 600), row(3, 'frozen', 100, 400), row(4, 'upcoming', 300, 350), row(5, 'practice', 30, 40), row(6, 'live', 90, 200)];
@@ -257,7 +257,7 @@ describe('student phase and window maths', () => {
     expect(open.join(' ')).not.toContain('freeze');
   });
 
-  it('teaches Run and Submit right after the timing (S3)', () => {
+  it('teaches Run and Submit right after the timing', () => {
     const lines = rulesSentences(contest());
     expect(lines.slice(1, 4)).toEqual([
       'Run tries your code on the examples in the statement. It never counts.',
@@ -266,7 +266,7 @@ describe('student phase and window maths', () => {
     ]);
   });
 
-  it('never promises hidden tests during a contest (V3-6)', () => {
+  it('never promises hidden tests during a contest', () => {
     expect(rulesSentences(contest()).join(' ')).toContain('never the hidden inputs or outputs');
   });
 
@@ -364,7 +364,7 @@ describe('auditSummary', () => {
   });
 });
 
-describe('exam options (V3-25)', () => {
+describe('exam options', () => {
   it('says nothing when none is on', () => {
     expect(examLine(null)).toBe('');
     expect(examLine({ full_screen: false, block_paste: false })).toBe('');

@@ -130,7 +130,7 @@ describe('toDraft and toEdit', () => {
     expect(Object.keys(result.fields).sort()).toEqual(['samples', 'subtasks.0.points', 'subtasks.1.tests', 'time_limit_ms']);
   });
 
-  it('leaves the generator out for a server before M5', () => {
+  it('leaves the generator out for a server without generators', () => {
     const draft = toDraft(PROBLEM);
     expect('generator' in draft).toBe(false);
     expect('plan' in draft).toBe(false);
@@ -258,7 +258,7 @@ describe('uncheckedLine', () => {
 });
 
 describe('slowestReferenceText', () => {
-  it("says when the reference's language gets more than the problem's limit (D323)", () => {
+  it("says when the reference's language gets more than the problem's limit", () => {
     const s = { max_time_ms: 129, time_limit_ms: 2000 };
     expect(slowestReferenceText({ ...s, reference_language: 'java21', time_factor: 2 })).toBe(
       "Slowest reference run 129 ms of the 2000 ms Java 21 gets (twice the problem's 1000 ms)",

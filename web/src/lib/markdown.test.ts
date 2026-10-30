@@ -135,7 +135,7 @@ describe('renderStatement', () => {
   });
 });
 
-describe('KaTeX loading (F8.2)', () => {
+describe('KaTeX loading', () => {
   const source = import.meta.glob<string>('./markdown.ts', { query: '?raw', import: 'default', eager: true })['./markdown.ts'];
 
   it('imports KaTeX and its stylesheet only through lib/katex.ts', () => {

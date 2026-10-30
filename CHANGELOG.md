@@ -4,6 +4,12 @@ Dated entries per release. Unreleased work is listed at the top.
 
 ## Unreleased
 
+### v3 stage D: web tests and leftovers (2026-10-30)
+
+- The mocked Playwright specs find elements by role, label or test id; 24 class locators remain, each a measured layout box, CodeMirror internals or the class under test (was 171).
+- A Vitest case checks the editor's keymap and extensions directly (brackets, completion, wrap, find, folding).
+- The sentence "This test is shown because this was a run" is gone; test names carry no plan ids.
+
 ### v3 stage D: handlers next to their domain (2026-10-30)
 
 - The HTTP handlers moved out of `httpapi` into their domain packages (`auth`, `problems`, `submissions`, `contests`, `integrity`, `ai`, `jobs/judgeserver`, `ops`), with shared helpers in `httpx`. `httpapi` keeps the route table, sign-in, limits and the event stream: 1,248 lines, was 5,370. No handler queries the database directly. Routes, bodies and codes are unchanged.

@@ -66,7 +66,7 @@ describe('standings wording', () => {
     );
   });
 
-  it("says on the organisers' board whether it is the live one or the one students see (P10)", () => {
+  it("says on the organisers' board whether it is the live one or the one students see", () => {
     const hiddenFrom = new Date(2026, 9, 18, 20, 30).getTime();
     expect(organiserBoardLine(board(), { ended: false, hiddenFrom, hiding: true })).toBe(
       'Live board, with every result. Students see results from 20:30 hidden until the end.',
@@ -106,7 +106,7 @@ describe('standings wording', () => {
   });
 });
 
-describe('own place (S6)', () => {
+describe('own place', () => {
   const row = (user_id: number, rank: number, total: number) => ({ rank, user_id, name: `S${user_id}`, total, last_improvement_s: 0, cells: [] });
   const board = (rows: ReturnType<typeof row>[], variant: 'full' | 'frozen' = 'full') => ({ rows, me: 7, variant });
 

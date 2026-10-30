@@ -16,7 +16,7 @@ import AxeBuilder from '@axe-core/playwright';
 import { expect, test } from '@playwright/test';
 import * as contests from './mocks/contests';
 import { shots, WIDTHS, THEMES, type Json, submission, mockApi, HISTORY, editorText, openWorkspace } from './mocks/workspace';
-import { codeEditor } from './locators';
+import { codeEditor, contestBanner } from './locators';
 
 for (const theme of THEMES) {
   test.describe(`${theme} theme`, () => {
@@ -88,28 +88,28 @@ test('submitting fills the subtask strip as results stream in', async ({ page })
 
   await page.getByRole('button', { name: 'Submit', exact: true }).click();
   const panel = page.getByRole('region', { name: 'Result' });
-  await expect(panel.locator('.headline').first()).toHaveText('Submitted, 3rd in queue');
+  await expect(panel.getByText('Submitted, 3rd in queue', { exact: true }).first()).toBeVisible();
   expect(api.submits).toHaveLength(1);
   expect(api.submits[0]).toMatchObject({ language: 'cpp17', typed_chars: 0, pasted_chars: 0 });
   expect(String(api.submits[0].client_key)).toMatch(/^[0-9a-f-]{36}$/);
 
   const id = 20;
   api.stream.push({ type: 'submission', data: submission(id, 'samples') });
-  await expect(panel.locator('.headline').first()).toHaveText('Submitted, judging', { timeout: 10_000 });
+  await expect(panel.getByText('Submitted, judging', { exact: true }).first()).toBeVisible({ timeout: 10_000 });
   api.stream.push({ type: 'submission', data: submission(id, 'subtask1') });
   await expect(panel.locator('.strip .fill').first()).toHaveClass(/tone-ok/, { timeout: 10_000 });
   await page.screenshot({ path: `${shots()}workspace-judging-1440-light.png` });
   api.stream.push({ type: 'submission', data: submission(id, 'partial') });
-  await expect(panel.locator('.headline').first()).toHaveText('Partial, 40 of 100', { timeout: 10_000 });
+  await expect(panel.getByText('Partial, 40 of 100', { exact: true }).first()).toBeVisible({ timeout: 10_000 });
   await expect(panel.getByText('Wrong answer on test 5').first()).toBeVisible();
   // X1: the app's polite announcer speaks the result as a sentence.
   await expect(page.locator('[data-announcer="polite"]')).toHaveText('Partial score. Wrong answer on test 5. Score 40 of 100.');
-  await expect(panel.locator('.strip')).toHaveAttribute('aria-label', 'Subtask 1, 40 points, passed; Subtask 2, 60 points, failed');
+  await expect(panel.getByRole('img', { name: 'Subtask 1, 40 points, passed; Subtask 2, 60 points, failed', exact: true })).toBeVisible();
   await expect(panel.getByText('Check edge cases', { exact: false }).first()).toBeVisible();
   await page.screenshot({ path: `${shots()}workspace-partial-1440-light.png` });
 
   // The list holds both, newest first, and a row opens in place.
-  const rows = panel.locator('.list > li > .row');
+  const rows = panel.getByRole('listitem').locator('button[aria-controls^="submission-"]');
   await expect(rows).toHaveCount(2);
   await rows.nth(1).click();
   await expect(rows.nth(1)).toHaveAttribute('aria-expanded', 'true');
@@ -159,8 +159,8 @@ test('running on samples shows the first difference', async ({ page }) => {
   const panel = page.getByRole('region', { name: 'Result' });
   await expect(panel.getByText('1 of 2 examples failed')).toBeVisible({ timeout: 10_000 });
   await expect(panel.getByText('First difference on line 1')).toBeVisible();
-  await expect(panel.locator('.diff dd').nth(0)).toHaveText('2');
-  await expect(panel.locator('.diff dd').nth(1)).toHaveText('12·');
+  await expect(panel.getByRole('definition').nth(0)).toHaveText('2');
+  await expect(panel.getByRole('definition').nth(1)).toHaveText('12·');
   await expect(panel.getByText('Expected 2, found 12')).toBeVisible();
   // A graded contest's 100 ms rounding: a 0 is under 50 ms, never "0 ms" (D322).
   await expect(panel.getByText('under 50 ms')).toHaveCount(2);
@@ -303,7 +303,7 @@ test('an unsent submission retries with the same key', async ({ page, context })
   await page.getByRole('button', { name: 'Submit again' }).click();
   await expect(page.getByRole('alert')).toContainText('Not sent: the server could not be reached.');
   await page.getByRole('button', { name: 'Submit again' }).click();
-  await expect(page.locator('.headline').first()).toHaveText('Submitted, 3rd in queue');
+  await expect(page.getByRole('region', { name: 'Result' }).getByText('Submitted, 3rd in queue', { exact: true }).first()).toBeVisible();
   expect(api.submits).toHaveLength(3);
   expect(new Set(api.submits.map((b) => b.client_key)).size).toBe(1);
 
@@ -574,7 +574,7 @@ test.describe('in a contest', () => {
     await submit.focus();
     await page.keyboard.press('Enter');
     const panel = page.getByRole('region', { name: 'Result' });
-    await expect(panel.locator('.headline').first()).toHaveText('Submitted, 2nd in queue');
+    await expect(panel.getByText('Submitted, 2nd in queue', { exact: true }).first()).toBeVisible();
     await expect(page.locator('[data-announcer="polite"]')).toHaveText('Submitted. Waiting for the judge.');
     // S4: the contest's 30 s gap counts down in the same button, which keeps focus.
     const counting = page.locator('button.submit');
@@ -629,7 +629,7 @@ test.describe('in a contest', () => {
     await expect(codeEditor(page)).toBeVisible();
     api.publicClarifications.push({ id: 50, problem_label: null, question: 'Is Java allowed?', answer: 'Yes, Java 21.', public: true, created_at: Date.now() - 60_000, answered_at: Date.now() + 1000 });
     api.stream.push({ type: 'clarification', data: { contest: 'week-6', contest_id: 4, id: 50 } });
-    const banner = page.locator('.banner-slot .strip');
+    const banner = contestBanner(page);
     await expect(banner).toContainText('An organiser answered a question for everyone', { timeout: 10_000 });
     await expect(banner).toContainText('Is Java allowed?');
     await expect(banner).toContainText('Yes, Java 21.');
@@ -643,7 +643,7 @@ test.describe('in a contest', () => {
     await page.setViewportSize({ width: 1440, height: 900 });
     await page.goto('/contests/week-6/problems/A');
     await expect(page.getByText('Under 5 minutes left. Submit what you have.')).toBeVisible();
-    expect(await page.locator('.clock .time').evaluate((el) => getComputedStyle(el).fontWeight)).toBe('400');
+    expect(await page.getByRole('timer').evaluate((el) => getComputedStyle(el).fontWeight)).toBe('400');
   });
 });
 
@@ -765,7 +765,7 @@ test.describe('P5 workspace', () => {
     await expect(sep).toHaveAttribute('aria-valuenow', '0');
     await expect(sep).toHaveAttribute('aria-valuetext', 'Result hidden');
     await expect(result).toBeHidden();
-    await expect(page.locator('.split-summary')).toHaveText('Partial, 40 of 100');
+    await expect(sep).toHaveText('Partial, 40 of 100');
     const show = page.getByRole('button', { name: 'Show result' });
     await expect(show).toHaveAttribute('aria-expanded', 'false');
     expect((await page.locator('.editor-box').boundingBox())!.height).toBeGreaterThan(600);
@@ -856,7 +856,7 @@ test.describe('P5 workspace', () => {
     await expect(content).toHaveAttribute('data-language', 'cpp');
     expect([...new Set(chunks)]).toEqual(['cpp']);
 
-    const limits = page.locator('.limits');
+    const limits = page.getByText(/^Time limit \d/);
     await expect(limits).toHaveText('Time limit 1 s, memory 256 MB');
     await page.getByLabel('Language').selectOption('python3');
     await expect(content).toHaveAttribute('data-language', 'python');
@@ -921,13 +921,12 @@ test.describe('P5 workspace', () => {
     await page.setViewportSize({ width: 1440, height: 900 });
     await page.goto('/contests/week-6/problems/A');
     const panel = page.getByRole('region', { name: 'Result' });
-    const block = panel.locator('.revealed');
+    const block = panel.getByTestId('revealed-test');
     await expect(block.getByRole('heading', { name: 'Test 3, in subtask 2' })).toBeVisible();
-    await expect(block).toContainText('This test is shown because this is practice.');
     await expect(block.locator('pre').nth(0)).toHaveText('4 4');
     await expect(block).toContainText('First difference on line 1');
-    await expect(block.locator('.diff dd').nth(0)).toHaveText('8');
-    await expect(block.locator('.diff dd').nth(1)).toHaveText('7');
+    await expect(block.getByRole('definition').nth(0)).toHaveText('8');
+    await expect(block.getByRole('definition').nth(1)).toHaveText('7');
     await page.screenshot({ path: `${shots()}workspace-revealed-practice-1440-light.png` });
     await block.getByRole('button', { name: 'Run on this input' }).click();
     await expect(page.getByRole('textbox', { name: 'Your input' })).toHaveValue('4 4\n');
@@ -940,8 +939,8 @@ test.describe('P5 workspace', () => {
     const live = await contests.mockApi(page, { phase: 'during' });
     live.submissions.push(contests.submission(51, 11, 'done', 40));
     await page.goto('/contests/week-6/problems/A');
-    await expect(page.getByRole('region', { name: 'Result' }).locator('.headline').first()).toHaveText('Partial, 40 of 100');
-    await expect(page.getByText(/This test is shown because/)).toHaveCount(0);
+    await expect(page.getByRole('region', { name: 'Result' }).getByText('Partial, 40 of 100', { exact: true }).first()).toBeVisible();
+    await expect(page.getByTestId('revealed-test')).toHaveCount(0);
   });
 
   test('a run shows its first failing sample, and an input over 4 KB cannot be rerun (F7.13, D115)', async ({ page }) => {
@@ -969,8 +968,7 @@ test.describe('P5 workspace', () => {
     });
     const panel = page.getByRole('region', { name: 'Result' });
     await expect(panel.getByText('1 of 3 examples failed')).toBeVisible({ timeout: 10_000 });
-    const block = panel.locator('.revealed');
-    await expect(block).toContainText('This test is shown because this was a run.');
+    const block = panel.getByTestId('revealed-test');
     await expect(block.locator('pre').nth(0)).toHaveText('4 4');
     // B1: the end of what the program printed to stderr.
     await expect(block.getByText('Error output (stderr), the last lines')).toBeVisible();
@@ -995,7 +993,7 @@ test.describe('P5 workspace', () => {
     // The run on the examples shows under Run (B2).
     await panel.getByRole('tab', { name: 'Run' }).click();
     await expect(panel.getByText('This test is longer than 4 KB', { exact: false })).toBeVisible({ timeout: 10_000 });
-    await expect(panel.locator('.revealed').getByRole('button', { name: 'Run on this input' })).toHaveCount(0);
+    await expect(panel.getByTestId('revealed-test').getByRole('button', { name: 'Run on this input' })).toHaveCount(0);
   });
 
   test('from 1024 px the bar holds the letters, and Hide statement gives the editor the width (B6, E5)', async ({ page }) => {

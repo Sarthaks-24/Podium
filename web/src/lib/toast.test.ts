@@ -10,7 +10,7 @@ describe('toasts', () => {
     expect(toasts.items.map((t) => t.message)).toEqual(['Message 3', 'Message 4', 'Message 5']);
   });
 
-  it('never evicts an error toast to make room for info toasts (C1-007)', () => {
+  it('never evicts an error toast to make room for info toasts', () => {
     for (const t of toasts.items) dismissToast(t.id);
     showToast('Could not save the answer', 'error');
     for (let i = 1; i <= 4; i++) showToast(`Info ${i}`);
@@ -21,7 +21,7 @@ describe('toasts', () => {
     expect(toasts.items.filter((t) => t.kind === 'info').map((t) => t.message)).toEqual(['Info 5']);
   });
 
-  it('speaks info toasts through the polite announcer, and leaves errors to their alert (X1)', () => {
+  it('speaks info toasts through the polite announcer, and leaves errors to their alert', () => {
     vi.useFakeTimers();
     try {
       regions.polite = '';

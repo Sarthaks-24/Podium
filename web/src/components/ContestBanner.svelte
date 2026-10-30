@@ -42,7 +42,7 @@
 
 <div class="wrap">
   {#if top}
-    <div class="banner banner-info strip">
+    <div class="banner banner-info strip" data-testid="contest-banner">
       <Icon name={top.kind === 'announcement' ? 'bell' : 'message-square'} />
       <div class="text">
         <p class="lead">

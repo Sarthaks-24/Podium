@@ -16,7 +16,6 @@ import {
   problemScoreLine,
   runAnnouncement,
   runHeadline,
-  revealedReason,
   revealedTitle,
   usedText,
   type Run,
@@ -168,7 +167,7 @@ describe('headlines and announcements', () => {
   });
 });
 
-describe('S4 wording and the run announcement (X1)', () => {
+describe('score and usage lines, and the run announcement', () => {
   const run = (over: Partial<Run>): Run => ({ id: 1, state: 'done', compile_output: '', results: [], ...over });
   const sample = (verdict: string) => ({ label: 'Example 1', verdict, time_ms: 10, memory_kb: 3000, output: '3\n', expected: '3\n' });
 
@@ -195,7 +194,7 @@ describe('S4 wording and the run announcement (X1)', () => {
   });
 });
 
-describe('the run headline and the revealed test (P5 F7.13, D115)', () => {
+describe('the run headline and the revealed test', () => {
   const run = (results: Run['results']): Run => ({ id: 1, state: 'done', compile_output: '', results });
   const row = (kind: 'sample' | 'custom', verdict: string, expected: string | null = '3\n') => ({
     kind, label: kind === 'custom' ? 'Your input' : 'x', verdict, time_ms: 10, memory_kb: 3000, output: '3\n', expected,
@@ -216,9 +215,7 @@ describe('the run headline and the revealed test (P5 F7.13, D115)', () => {
     expect(runAnnouncement({ ...run([row('sample', '', null)]), state: 'running' })).toBe('Running on the examples.');
   });
 
-  it('says why a test is shown, and names it', () => {
-    expect(revealedReason('submission')).toBe('This test is shown because this is practice.');
-    expect(revealedReason('run')).toBe('This test is shown because this was a run.');
+  it('names a revealed test', () => {
     expect(revealedTitle({ idx: 5, subtask_idx: 2 })).toBe('Test 5, in subtask 2');
     expect(revealedTitle({ idx: 1, subtask_idx: null })).toBe('Test 1');
   });

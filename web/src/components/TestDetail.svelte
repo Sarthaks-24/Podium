@@ -4,12 +4,12 @@
   starts with the first differing line, whitespace made visible
   (lib/diff.ts), then the program's output beside the expected one. When
   the test is revealed (a practice submission's first failing hidden
-  test, or a run's first failing example) it is a bordered
-  block that says why it is shown and adds the input; "Run on this input"
+  test, or a run's first failing example) it is a bordered block that
+  adds the input; "Run on this input"
   puts that input in the custom input box and runs it, unless the
   input was cut at 4 KB, when running it would not be the same test.
-  Props: `heading` (an h3 for the block, optional), `reason` (the "This
-  test is shown because..." line; set only for a revealed test), `input`
+  Props: `heading` (an h3 for the block, optional), `revealed` (draws
+  the bordered block; set only for a revealed test), `input`
   (optional), `expected` (null for a custom input), `output`,
   `outputCut` (only the start of the output is shown), `cut` (any of the
   texts was cut at 4 KB), `verdict` (the test's verdict code, for the
@@ -23,7 +23,7 @@
 
   interface Props {
     heading?: string;
-    reason?: string;
+    revealed?: boolean;
     input?: string | null;
     expected: string | null;
     output: string;
@@ -35,15 +35,14 @@
     onruninput?: (input: string) => void;
   }
 
-  let { heading = '', reason = '', input = null, expected, output, outputCut = false, cut = false, verdict, stderr = '', runInput = null, onruninput }: Props = $props();
+  let { heading = '', revealed = false, input = null, expected, output, outputCut = false, cut = false, verdict, stderr = '', runInput = null, onruninput }: Props = $props();
 
   const diff = $derived(expected !== null && verdict === 'WA' ? firstDifference(expected, output) : null);
   const canRun = $derived(onruninput !== undefined && runInput !== null && !cut);
 </script>
 
-<div class="detail" class:revealed={reason !== ''}>
+<div class="detail" class:revealed data-testid={revealed ? 'revealed-test' : undefined}>
   {#if heading}<h3 class="heading">{heading}</h3>{/if}
-  {#if reason}<p class="reason">{reason}</p>{/if}
 
   {#if input !== null}
     <div class="out">
@@ -108,11 +107,6 @@
 
   .heading {
     font-size: var(--fs-1);
-  }
-
-  .reason {
-    color: var(--ink-muted);
-    font-size: var(--fs-0);
   }
 
   .label {

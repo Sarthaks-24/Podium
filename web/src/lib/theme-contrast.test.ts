@@ -130,13 +130,12 @@ describe('themes in tokens.css', () => {
 });
 
 // Pairs the rules above leave out. 30 of them once failed; a token pass
-// fixed them all (the
-// comment colour, a 30 percent selection mix, --line-strong in three dark
+// fixed them all (the comment colour, a 30 percent selection mix, --line-strong in three dark
 // themes, and a Dismiss hover drawn as a border). Any new failure fails
 // this test.
-const X5_KNOWN: string[] = [];
+const EXTRA_KNOWN: string[] = [];
 
-function x5Failures(id: string, signal: boolean): string[] {
+function extraFailures(id: string, signal: boolean): string[] {
   const t = resolveTheme(rules, id, signal);
   const root = rules.find((r) => r.media === null && r.selector === ':root' && '--code-selection' in r.vars)?.vars ?? {};
   const out: string[] = [];
@@ -158,16 +157,15 @@ function x5Failures(id: string, signal: boolean): string[] {
   return out;
 }
 
-describe('X5 contrast pairs', () => {
+describe('pairs the theme rules leave out', () => {
   it('passes every pair', () => {
-    const all = THEMES.flatMap(({ id }) => [...x5Failures(id, false), ...x5Failures(id, true)]);
-    expect([...new Set(all)]).toEqual(X5_KNOWN);
+    const all = THEMES.flatMap(({ id }) => [...extraFailures(id, false), ...extraFailures(id, true)]);
+    expect([...new Set(all)]).toEqual(EXTRA_KNOWN);
   });
 });
 
-// The fills the
-// controls mix from theme colours, with the text drawn on them.
-function f1Failures(id: string, signal: boolean): string[] {
+// The fills the controls mix from theme colours, with the text drawn on them.
+function fillFailures(id: string, signal: boolean): string[] {
   const t = resolveTheme(rules, id, signal);
   const out: string[] = [];
   const text = HIGH_CONTRAST.has(id) ? 7 : 4.5;
@@ -199,13 +197,13 @@ function over(rgba: string, hex: string): string {
   return mixSrgb(top, hex, a);
 }
 
-describe('F1 token pass pairs', () => {
+describe('text on mixed control fills', () => {
   it('keeps text readable on every mixed control fill', () => {
-    const all = THEMES.flatMap(({ id }) => [...f1Failures(id, false), ...f1Failures(id, true)]);
+    const all = THEMES.flatMap(({ id }) => [...fillFailures(id, false), ...fillFailures(id, true)]);
     expect(all).toEqual([]);
   });
 
-  it('has a scrim that dims the page in every theme, light or dark (F6)', () => {
+  it('has a scrim that dims the page in every theme, light or dark', () => {
     for (const { id } of THEMES) {
       const t = resolveTheme(rules, id, false);
       expect(t['--scrim'], id).toMatch(/^rgba\(/);

@@ -36,7 +36,7 @@ async function setCode(page: Page, text: string, line = 1, col = 1) {
 }
 
 async function cursor(page: Page): Promise<{ line: number; col: number }> {
-  const text = (await page.locator('.cursor').textContent()) ?? '';
+  const text = (await page.getByText(/^Ln \d+, Col \d+$/).textContent()) ?? '';
   const m = /Ln (\d+), Col (\d+)/.exec(text);
   return { line: Number(m?.[1]), col: Number(m?.[2]) };
 }
@@ -138,12 +138,12 @@ const CHECKS: Record<string, Check> = {
   'Open completion': async (page) => {
     await setCode(page, 'apple\nap', 2, 3);
     await page.keyboard.press('Control+Space');
-    await expect(page.locator('.cm-tooltip-autocomplete')).toBeVisible();
+    await expect(page.getByRole('listbox', { name: 'Completions' })).toBeVisible();
   },
   'Accept the completion': async (page) => {
     await setCode(page, 'apple\nap', 2, 3);
     await page.keyboard.press('Control+Space');
-    await expect(page.locator('.cm-tooltip-autocomplete')).toBeVisible();
+    await expect(page.getByRole('listbox', { name: 'Completions' })).toBeVisible();
     // CodeMirror ignores an accept in the first 75 ms, so a stray Enter never picks a word.
     await page.waitForTimeout(150);
     await page.keyboard.press('Enter');
@@ -152,24 +152,24 @@ const CHECKS: Record<string, Check> = {
   'Fold or unfold the block': async (page) => {
     await setCode(page, 'int main() {\n  int a;\n}', 1, 13);
     await page.keyboard.press('Control+Shift+BracketLeft');
-    await expect(page.locator('.cm-foldPlaceholder')).toHaveCount(1);
+    await expect(page.getByLabel('folded code')).toHaveCount(1);
     await page.keyboard.press('Control+Shift+BracketRight');
-    await expect(page.locator('.cm-foldPlaceholder')).toHaveCount(0);
+    await expect(page.getByLabel('folded code')).toHaveCount(0);
   },
   'Fold all': async (page) => {
     await setCode(page, 'int main() {\n  int a;\n}');
     await page.keyboard.press('Control+K');
     await page.keyboard.press('Control+0');
-    await expect(page.locator('.cm-foldPlaceholder')).toHaveCount(1);
+    await expect(page.getByLabel('folded code')).toHaveCount(1);
   },
   'Unfold all': async (page) => {
     await setCode(page, 'int main() {\n  int a;\n}');
     await page.keyboard.press('Control+K');
     await page.keyboard.press('Control+0');
-    await expect(page.locator('.cm-foldPlaceholder')).toHaveCount(1);
+    await expect(page.getByLabel('folded code')).toHaveCount(1);
     await page.keyboard.press('Control+K');
     await page.keyboard.press('Control+J');
-    await expect(page.locator('.cm-foldPlaceholder')).toHaveCount(0);
+    await expect(page.getByLabel('folded code')).toHaveCount(0);
   },
   'Type the closing bracket or quote too': async (page) => {
     await setCode(page, '');
@@ -285,7 +285,7 @@ const CHECKS: Record<string, Check> = {
   'Go to a line': async (page) => {
     await setCode(page, 'a\nb\nc');
     await page.keyboard.press('Control+G');
-    const field = page.locator('.cm-panel input').first();
+    const field = page.getByRole('textbox', { name: /^Go to line/ });
     await expect(field).toBeFocused();
     await field.fill('3');
     await page.keyboard.press('Enter');
@@ -331,12 +331,12 @@ const CHECKS: Record<string, Check> = {
   Find: async (page) => {
     await setCode(page, 'x y x');
     await page.keyboard.press('Control+F');
-    await expect(page.locator('.cm-search input[name="search"]')).toBeFocused();
+    await expect(page.getByRole('textbox', { name: 'Find' })).toBeFocused();
   },
   Replace: async (page) => {
     await setCode(page, 'x y x');
     await page.keyboard.press('Control+H');
-    await expect(page.locator('.cm-search input[name="replace"]')).toBeVisible();
+    await expect(page.getByRole('textbox', { name: 'Replace' })).toBeVisible();
   },
   'Next or previous match': async (page) => {
     await setCode(page, 'x y x');
@@ -366,7 +366,7 @@ const CHECKS: Record<string, Check> = {
     await page.keyboard.press('Control+H');
     await page.keyboard.type('a');
     // The panel reads its fields on key presses, so type rather than fill.
-    await page.locator('.cm-search input[name="replace"]').focus();
+    await page.getByRole('textbox', { name: 'Replace' }).focus();
     await page.keyboard.type('b');
     await page.keyboard.press('Control+Alt+Enter');
     await code(page).toBe('b b');
@@ -375,18 +375,18 @@ const CHECKS: Record<string, Check> = {
     await setCode(page, 'x');
     await page.keyboard.press('Control+F');
     await page.keyboard.press('Alt+C');
-    await expect(page.locator('.cm-search input[name="case"]')).toBeChecked();
+    await expect(page.getByRole('checkbox', { name: 'Match case' })).toBeChecked();
     await page.keyboard.press('Alt+W');
-    await expect(page.locator('.cm-search input[name="word"]')).toBeChecked();
+    await expect(page.getByRole('checkbox', { name: 'Whole word' })).toBeChecked();
     await page.keyboard.press('Alt+R');
-    await expect(page.locator('.cm-search input[name="re"]')).toBeChecked();
+    await expect(page.getByRole('checkbox', { name: 'Regular expression' })).toBeChecked();
   },
   'Close find': async (page) => {
     await setCode(page, 'x');
     await page.keyboard.press('Control+F');
-    await expect(page.locator('.cm-search')).toBeVisible();
+    await expect(page.getByRole('textbox', { name: 'Find' })).toBeVisible();
     await page.keyboard.press('Escape');
-    await expect(page.locator('.cm-search')).toHaveCount(0);
+    await expect(page.getByRole('textbox', { name: 'Find' })).toHaveCount(0);
   },
 };
 
@@ -431,7 +431,7 @@ test('Ctrl+Enter in the find panel never submits', async ({ page }) => {
   await openWorkspace(page);
   await codeEditor(page).click();
   await page.keyboard.press('Control+H');
-  await page.locator('.cm-search input[name="replace"]').focus();
+  await page.getByRole('textbox', { name: 'Replace' }).focus();
   await page.keyboard.press('Control+Enter');
   await page.waitForTimeout(300);
   expect(api.submits).toHaveLength(0);

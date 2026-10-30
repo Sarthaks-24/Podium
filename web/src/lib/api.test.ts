@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ApiError, NETWORK_MESSAGE, PAGE_ERROR_MESSAGE, UNEXPECTED_MESSAGE, errorText, getJSON, isSignedOut, sendBody, sendJSON, setUnauthorizedHandler } from './api';
 
-describe('a lost session (F1)', () => {
+describe('a lost session', () => {
   it('signs the page out in one place on any 401, and only on a 401', async () => {
     const signedOut = vi.fn();
     setUnauthorizedHandler(signedOut);
@@ -179,7 +179,7 @@ describe('sendBody', () => {
   });
 });
 
-describe('errorText (C1-032)', () => {
+describe('errorText', () => {
   it('shows the server sentence for an ApiError and says the page failed otherwise', () => {
     expect(errorText(new ApiError(409, 'conflict', 'The problem changed since you opened it.'))).toBe('The problem changed since you opened it.');
     expect(errorText(new TypeError('x is undefined'))).toBe(PAGE_ERROR_MESSAGE);

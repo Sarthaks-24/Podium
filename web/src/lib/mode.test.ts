@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { parseConfig, parseMode, telHref } from './mode.svelte';
 
-describe('site config (C5)', () => {
+describe('site config', () => {
   it('reads the organisation and the retention periods', () => {
     const c = parseConfig({
       allowed_domains: ['college.edu', 7],

@@ -13,7 +13,7 @@
 import { expect, test } from '@playwright/test';
 import { activate, hasFocus, tabTo } from './keyboard';
 import { shots, WIDTHS, THEMES, submission, hidden, mockApi, settle, SCREENS, freezeClock } from './mocks/contests';
-import { codeEditor, toasts } from './locators';
+import { codeEditor, contestBanner, feedRows, saveStatus, toasts } from './locators';
 
 for (const theme of THEMES) {
   test.describe(`${theme} theme`, () => {
@@ -66,7 +66,7 @@ test('the contest list puts the live contest first with a countdown', async ({ p
   // S10: the live contest is pinned on top with its countdown and one button.
   const pinned = page.getByRole('region', { name: 'Week 6 contest' });
   await expect(pinned).toContainText('Live');
-  await expect(pinned.locator('.pinned-count')).toHaveText(/^Ends in\s*\d{2}:\d{2}:\d{2}$/);
+  await expect(pinned.getByText(/^Ends in\s*\d{2}:\d{2}:\d{2}$/)).toBeVisible();
   await expect(pinned.getByRole('link', { name: 'Open contest' })).toHaveAttribute('href', '/contests/week-6');
   await expect(pinned.getByRole('link', { name: 'Open contest' })).toHaveClass(/btn-primary/);
   await expect(page.locator('.btn-primary')).toHaveCount(1);
@@ -75,7 +75,7 @@ test('the contest list puts the live contest first with a countdown', async ({ p
   await expect(rows.nth(0)).toContainText('Upcoming');
   await expect(rows.nth(1)).toContainText('240 of 300');
   await expect(rows.nth(1)).toContainText('Ended');
-  await expect(rows.nth(0).locator('.countdown')).toHaveText(/^Starts in \d d( \d+ h)?$/);
+  await expect(rows.nth(0).getByText(/^Starts in \d d( \d+ h)?$/)).toBeVisible();
   // Phones keep the score, on the line under the start.
   await page.setViewportSize({ width: 375, height: 812 });
   await expect(rows.nth(1).getByText('240 of 300')).toBeVisible();
@@ -93,15 +93,15 @@ test('messages posted while the student was away still show, until read (S1)', a
   api.clarifications.push({ id: 9, problem_label: 'A', question: 'Can a be negative?', answer: 'No, a is at least 0.', public: false, created_at: before - 60_000, answered_at: before + 60_000 });
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto('/contests/week-6/problems/A');
-  await expect(page.locator('.banner-slot .strip')).toContainText('No, a is at least 0.');
-  await expect(page.locator('.banner-slot .strip')).toContainText('1 more message waiting.');
+  await expect(contestBanner(page)).toContainText('No, a is at least 0.');
+  await expect(contestBanner(page)).toContainText('1 more message waiting.');
   await expect(page.getByRole('button', { name: /Messages/ })).toContainText('2');
   await page.getByRole('button', { name: /Messages/ }).click();
   await expect(page.getByRole('dialog', { name: 'Messages' })).toBeVisible();
   await page.keyboard.press('Escape');
   await page.reload();
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('A. A plus B');
-  await expect(page.locator('.banner-slot .strip')).toHaveCount(0);
+  await expect(contestBanner(page)).toHaveCount(0);
   await expect(page.getByRole('button', { name: /Messages/ })).not.toContainText('2');
 });
 
@@ -128,12 +128,12 @@ test('a student agrees to the honour code, solves, reads an announcement and ask
   await page.getByRole('button', { name: 'I agree, start the contest' }).click();
   await expect.poll(() => api.starts).toBe(1);
   const rail = page.getByRole('navigation', { name: 'Problems' });
-  await expect(rail.locator('.problems').getByRole('link')).toHaveCount(3);
+  await expect(rail.getByRole('link', { name: /^Problem [A-C], / })).toHaveCount(3);
   await expect(rail.getByRole('link', { name: 'Problem A, A plus B, not tried' })).toHaveAttribute('aria-current', 'page');
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('A. A plus B');
   await expect(page.getByRole('timer')).toHaveText(/^\d{2}:\d{2}:\d{2}$/);
   // The clock says nothing about the standings (S1-09.5).
-  await expect(page.locator('.clock')).not.toContainText(/freez/i);
+  await expect(page.getByTestId('contest-clock')).not.toContainText(/freez/i);
   await expect(page.getByLabel('Language').locator('option')).toHaveText(['C++17', 'Java 21', 'Python 3']);
 
   // Submit, then the judged result comes in and the rail picks up the score.
@@ -145,13 +145,13 @@ test('a student agrees to the honour code, solves, reads an announcement and ask
   const judged = submission(id, 11, 'done', 40);
   api.submissions[api.submissions.length - 1] = judged;
   api.stream.push({ type: 'submission', data: judged });
-  await expect(page.getByRole('region', { name: 'Result' }).locator('.headline').first()).toHaveText('Partial, 40 of 100', { timeout: 10_000 });
+  await expect(page.getByRole('region', { name: 'Result' }).getByText('Partial, 40 of 100', { exact: true }).first()).toBeVisible({ timeout: 10_000 });
   await expect(rail.getByRole('link', { name: 'Problem A, A plus B, 40 of 100 points' })).toBeVisible({ timeout: 10_000 });
 
   // An announcement arrives as a quiet banner, not an alert.
   api.announcements.push({ id: 1, body_md: 'Problem B: the statement has been corrected.', created_at: Date.now() + 1000 });
   api.stream.push({ type: 'announcement', data: { contest: 4, id: 1, body_md: 'Problem B: the statement has been corrected.' } });
-  const banner = page.locator('.banner-slot .strip').filter({ hasText: 'Problem B: the statement has been corrected.' });
+  const banner = contestBanner(page).filter({ hasText: 'Problem B: the statement has been corrected.' });
   await expect(banner).toBeVisible({ timeout: 10_000 });
   // X1: spoken once through the polite announcer.
   await expect(page.locator('[data-announcer="polite"]')).toHaveText('Announcement: Problem B: the statement has been corrected.');
@@ -225,7 +225,7 @@ test('a result the server hides shows only "Submitted"', async ({ page }) => {
   await expect.poll(() => api.stream.length, { timeout: 15_000 }).toBe(0);
   await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => resolve(null))));
   await expect(result.getByText(/Partial|Wrong answer|Accepted|40 of 100/)).toHaveCount(0);
-  await expect(result.locator('.strip')).toHaveCount(0);
+  await expect(result.getByRole('img', { name: /^(No subtasks|Subtask )/ })).toHaveCount(0);
   await expect(page.locator('[data-announcer="polite"]')).toHaveText('Submitted.');
   await page.screenshot({ path: `${shots()}contest-hidden-result-1440-light.png` });
 });
@@ -236,14 +236,14 @@ test('after the contest: result, submissions, editorial and practice', async ({ 
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto('/contests/week-6');
   // B5: the messages are folded under the result.
-  await page.getByText('Messages', { exact: true }).click();
+  await page.getByRole('heading', { name: 'Messages', exact: true }).click();
   const questions = page.getByRole('region', { name: 'Your questions' });
   await expect(questions).toContainText('Can intervals touch?');
   await expect(questions).toContainText('Yes, touching counts as covered.');
   await expect(page.getByRole('heading', { name: 'Your result' })).toBeVisible();
   // S9: one lead, the place as the display figure, no repeated sentence.
-  await expect(page.locator('.result-lead')).toHaveText(/^Ended \d+ [A-Z][a-z]{2}, \d{2}:\d{2}\. You scored 140 of 300\.$/);
-  await expect(page.locator('.result .place-figure')).toHaveText(/^\s*\d+ of 28$/);
+  await expect(page.getByText(/^Ended \d+ [A-Z][a-z]{2}, \d{2}:\d{2}\. You scored 140 of 300\.$/)).toBeVisible();
+  await expect(page.getByText(/^\s*\d+ of 28$/)).toBeVisible();
   await expect(page.getByText(/You are \d+/)).toHaveCount(0);
   await expect(page.getByText('Practice is open: new submissions do not count.')).toBeVisible();
   await expect(page.getByText('Use 64-bit integers.')).toBeVisible();
@@ -267,7 +267,7 @@ test('after the contest the page keeps answers for everyone, in the dialog copy 
   api.publicClarifications.push({ id: 10, problem_label: 'A', question: 'May the sum overflow?', answer: 'Use 64-bit integers for the sum.', public: true, created_at: Date.now() - 2 * 3_600_000, answered_at: Date.now() - 2 * 3_600_000 + 60_000 });
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto('/contests/week-6');
-  await page.getByText('Messages', { exact: true }).click();
+  await page.getByRole('heading', { name: 'Messages', exact: true }).click();
   const everyone = page.getByRole('region', { name: 'Answers for everyone' });
   await expect(everyone).toContainText('May the sum overflow?');
   await expect(everyone).toContainText('Use 64-bit integers for the sum.');
@@ -291,7 +291,7 @@ test('the frozen board shows pending cells, tints the own row and jumps to it', 
   const mine = page.locator('tr.me');
   await expect(mine).toContainText('Asha Rao');
   await expect(mine).toContainText('(you)');
-  await expect(mine.locator('.pending')).toHaveText('+2');
+  await expect(mine.getByText('+2', { exact: true })).toBeVisible();
   await expect(mine.getByText('Problem B, 0 of 100, 2 pending', { exact: false })).toHaveCount(0);
   await expect(mine.getByText('Problem B, no score before the freeze, 2 pending')).toBeAttached();
   const tint = await mine.locator('th').evaluate((el) => getComputedStyle(el).backgroundColor);
@@ -307,16 +307,16 @@ test('the frozen board shows pending cells, tints the own row and jumps to it', 
   await expect(mine).toBeFocused();
   await expect(mine).toBeInViewport();
   // With the own row in view the button hides, keeping its place.
-  await expect(page.locator('.tools')).toHaveClass(/away/);
+  await expect(page.getByRole('button', { name: 'Jump to you' })).toBeHidden();
   await expect(page.locator('tr.me .name-text')).toHaveText(/Asha Rao\s\(you\)/);
 
   // The header stays put while rows scroll.
-  const head = page.locator('.board-wrap thead th').first();
+  const head = page.getByRole('columnheader').first();
   expect(await head.evaluate((el) => getComputedStyle(el).position)).toBe('sticky');
 
   // On a phone the rank and name stay pinned while the problems scroll.
   await page.setViewportSize({ width: 375, height: 812 });
-  const wrap = page.locator('.board-wrap');
+  const wrap = page.getByRole('region', { name: /^Standings for / });
   await wrap.evaluate((el) => (el.scrollLeft = 400));
   const name = page.locator('tbody tr').first().locator('th.name');
   const before = await name.boundingBox();
@@ -329,7 +329,7 @@ test('on a phone the standings header stays on screen while rows scroll', async 
   await mockApi(page, { phase: 'during' });
   await page.setViewportSize({ width: 375, height: 812 });
   await page.goto('/contests/week-6/standings');
-  const wrap = page.locator('.board-wrap');
+  const wrap = page.getByRole('region', { name: /^Standings for / });
   await expect(wrap.locator('tbody tr')).toHaveCount(28);
   // The box fits the screen and scrolls both ways, so its sticky header row has something to stick to.
   const box = (await wrap.boundingBox())!;
@@ -371,7 +371,7 @@ test('admins land on their contest list, named by job', async ({ page }) => {
   await expect(page.getByText('To create a contest or follow one live')).toHaveCount(0);
   await expect(page.getByRole('row', { name: /Week 7 contest/ })).toContainText('Draft');
   // A published live contest comes first, read by its state; there is no separate visibility column (P3 O1).
-  await expect(page.getByRole('region', { name: 'Week 6 contest' }).locator('.state-word')).toHaveText(/^(Live|Frozen)$/);
+  await expect(page.getByRole('region', { name: 'Week 6 contest' }).getByText(/^(Live|Frozen)$/)).toBeVisible();
 
   await page.getByRole('button', { name: 'New contest' }).click();
   await page.getByLabel('Title').fill('Week 8 contest');
@@ -476,7 +476,7 @@ test('the editor saves each field as it changes, shows field errors and keeps th
 
   // A field that cannot be saved shows its error beside it, and nothing is sent.
   const title = page.getByLabel('Title', { exact: true });
-  const saved = page.locator('.save-line [role="status"]');
+  const saved = saveStatus(page);
   await title.fill('x'.repeat(121));
   await expect(page.locator('#f-title-error')).toHaveText('Enter a title of at most 120 characters.');
   await expect(title).toHaveAttribute('aria-invalid', 'true');
@@ -579,14 +579,14 @@ test('the console pauses, extends, judges again, announces and answers', async (
   await expect.poll(() => api.extensions).toEqual([{ user: '7', body: { minutes: 10, reason: 'Laptop crashed' } }]);
   await expect(extra).toBeHidden();
   await actions.getByRole('button', { name: 'Extra time' }).click();
-  await expect(extra.locator('.extensions')).toContainText('Asha Rao: 10 min, Laptop crashed');
+  await expect(extra.getByRole('listitem')).toContainText('Asha Rao: 10 min, Laptop crashed');
   await extra.getByRole('button', { name: 'Cancel' }).click();
 
   // Filters go to the feed's query; every Judge again asks first (walk bug B5).
   await page.locator('#f-problem').selectOption('A');
   await page.getByRole('button', { name: 'Filter' }).click();
   await expect.poll(() => api.feedQueries.at(-1)).toBe('?problem=A&page=1');
-  await expect(page.locator('.feed tbody tr')).toHaveCount(1);
+  await expect(feedRows(page)).toHaveCount(1);
   await page.getByRole('button', { name: /^Judge again: Arjun Mehta, problem A/ }).click();
   await page.getByRole('dialog', { name: "Judge Arjun Mehta's submission again?" }).getByRole('button', { name: 'Judge again' }).click();
   await expect.poll(() => api.rejudges).toEqual([{ submission_id: 300 }]);
@@ -641,7 +641,7 @@ test('a workspace whose stream is down still picks up announcements (walk 2026-1
   // Posted while the stream is down: no event will ever carry it.
   api.announcements.push({ id: 9, body_md: 'Posted while your stream was down.', created_at: Date.now() });
   await page.clock.runFor(20_000);
-  await expect(page.locator('.banner-slot .strip').filter({ hasText: 'Posted while your stream was down.' })).toBeVisible();
+  await expect(contestBanner(page).filter({ hasText: 'Posted while your stream was down.' })).toBeVisible();
 });
 
 test('the console says partial scores as students read them and keeps rows when a refresh fails (P3 O3, C2)', async ({ page }) => {
@@ -649,19 +649,20 @@ test('the console says partial scores as students read them and keeps rows when 
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.clock.install();
   await page.goto('/admin/contests/4/console');
-  const feed = page.locator('.feed tbody');
-  await expect(feed.getByRole('row', { name: /Asha Rao/ })).toContainText('Partial, 40 of 100');
-  await expect(feed.getByRole('row', { name: /Kiran Das/ })).toContainText('Wrong answer');
-  await expect(feed.getByRole('row', { name: /Arjun Mehta/ })).toContainText('Accepted');
+  const feed = feedRows(page);
+  await expect(feed.filter({ hasText: 'Asha Rao' })).toContainText('Partial, 40 of 100');
+  await expect(feed.filter({ hasText: 'Kiran Das' })).toContainText('Wrong answer');
+  await expect(feed.filter({ hasText: 'Arjun Mehta' })).toContainText('Accepted');
   // Minutes from the start, with the clock time on hover.
-  await expect(feed.getByRole('row', { name: /Asha Rao/ }).locator('.when')).toHaveText(/^\+\d+ min$/);
-  await expect(feed.getByRole('row', { name: /Asha Rao/ }).locator('.when')).toHaveAttribute('title', /^(\d{1,2} [A-Z][a-z]{2} )?\d\d:\d\d$/); // a date too, after midnight
+  const when = feed.filter({ hasText: 'Asha Rao' }).getByRole('cell').first();
+  await expect(when).toHaveText(/^\+\d+ min$/);
+  await expect(when).toHaveAttribute('title', /^(\d{1,2} [A-Z][a-z]{2} )?\d\d:\d\d$/); // a date too, after midnight
 
   await page.route('**/api/admin/contests/4/submissions*', (route) => route.fulfill({ status: 503, json: { error: { code: 'unavailable', message: 'Down.' } } }));
   await page.clock.runFor(10_500);
   const panel = page.getByRole('region', { name: 'Submissions' });
   await expect(panel.getByRole('status')).toHaveText(/Could not refresh at \d\d:\d\d:\d\d\. Showing \d\d:\d\d:\d\d\. Retrying\./);
-  await expect(feed.getByRole('row')).toHaveCount(5);
+  await expect(feed).toHaveCount(5);
 });
 
 test('a late judge and a slow queue come first, and banners show only what needs action (C2, C10)', async ({ page }) => {
@@ -676,7 +677,7 @@ test('a late judge and a slow queue come first, and banners show only what needs
   // Show filters the feed to judge errors.
   await banners.getByRole('button', { name: 'Show the judge errors' }).click();
   await expect.poll(() => api.feedQueries.at(-1)).toBe('?verdict=error&page=1');
-  await expect(page.locator('.feed tbody tr')).toHaveCount(1);
+  await expect(feedRows(page)).toHaveCount(1);
   // The failure path is written into the page.
   await banners.getByRole('button', { name: 'What to do' }).click();
   const trouble = page.getByRole('dialog', { name: 'If something goes wrong' });
@@ -703,7 +704,7 @@ test('the sentence changes when a question arrives and when the judge is late (C
   await expect(sentence).toHaveText('Live, 30 started, 2 questions waiting, judge fine.');
   await expect(page).toHaveTitle('(2) Live · Week 6 contest · podium');
   // The question waiting longest stays at the top.
-  await expect(page.locator('.clar .q')).toHaveText(['Can intervals have zero length?', 'Can a be negative?']);
+  await expect(page.getByRole('region', { name: 'Questions' }).getByRole('listitem')).toHaveText([/Can intervals have zero length\?/, /Can a be negative\?/]);
   // The judge stops asking for work; the next refresh says so first.
   api.judgeLate = true;
   await page.clock.runFor(10_500);
@@ -818,7 +819,7 @@ test('End now in the first minute of the freeze keeps the board frozen (V3-18, w
 test('unpublishing a live contest asks first', async ({ page }) => {
   const api = await mockApi(page, { who: 'admin', phase: 'during', published: true });
   await page.goto('/admin/contests/4');
-  await expect(page.locator('.publish-line')).toContainText('Published and live.');
+  await expect(page.getByText(/^Published and live\./)).toBeVisible();
   await page.getByRole('button', { name: 'Unpublish contest' }).click();
   const unpublish = page.getByRole('dialog', { name: 'Unpublish Week 6 contest?' });
   await expect(unpublish).toContainText('The contest disappears from students at once, in the middle of it');
@@ -838,13 +839,13 @@ test('the console feed filters waiting or judging and judge errors', async ({ pa
   await verdict.selectOption({ label: 'Waiting or judging' });
   await page.getByRole('button', { name: 'Filter' }).click();
   await expect.poll(() => api.feedQueries.at(-1)).toBe('?verdict=pending&page=1');
-  await expect(page.locator('.feed tbody tr')).toHaveCount(1);
-  await expect(page.locator('.feed tbody')).toContainText('Judging');
+  await expect(feedRows(page)).toHaveCount(1);
+  await expect(feedRows(page)).toContainText('Judging');
   await verdict.selectOption({ label: 'Judge error' });
   await page.getByRole('button', { name: 'Filter' }).click();
   await expect.poll(() => api.feedQueries.at(-1)).toBe('?verdict=error&page=1');
-  await expect(page.locator('.feed tbody tr')).toHaveCount(1);
-  await expect(page.locator('.feed tbody')).toContainText('Meera Iyer');
+  await expect(feedRows(page)).toHaveCount(1);
+  await expect(feedRows(page)).toContainText('Meera Iyer');
 });
 
 test('a contest asks for a reason before it takes an AI problem nobody solved', async ({ page }) => {
@@ -877,7 +878,7 @@ test('results switch boards, reveal a held board once, download the CSV and open
   await page.goto('/admin/contests/4/results');
   await expect(page.getByText('Final standings.')).toBeVisible();
   // The board spans the page (the walk measured 560 px of 1440).
-  const board = await page.locator('.board-wrap').boundingBox();
+  const board = await page.getByRole('region', { name: /^Standings for / }).boundingBox();
   const column = await page.locator('section[aria-labelledby="board-title"]').boundingBox();
   expect(board!.width).toBeGreaterThanOrEqual(column!.width - 1);
   await page.getByLabel('As students see it').check();
@@ -886,7 +887,9 @@ test('results switch boards, reveal a held board once, download the CSV and open
   await expect(page.getByRole('heading', { name: 'Statistics' })).toBeVisible();
   await expect(page.getByRole('table', { name: 'Statistics for each problem' })).toHaveCount(1);
   // One row of actions: Reveal, then Similar code beside Download CSV.
-  await expect(page.locator('.results-actions > *')).toHaveText(['Reveal', 'Similar code', /Download CSV/, /Download JSON/]);
+  await expect(
+    page.getByRole('button', { name: 'Reveal', exact: true }).or(page.getByRole('link', { name: /^(Similar code|Download CSV|Download JSON)$/ })),
+  ).toHaveText(['Reveal', 'Similar code', /Download CSV/, /Download JSON/]);
   await expect(page.getByRole('link', { name: 'Download CSV' })).toHaveAttribute('href', /^\/api\/admin\/contests\/4\/export\.csv\?tz=Asia%2F(Kolkata|Calcutta)$/);
   await expect(page.getByRole('link', { name: 'Download JSON' })).toHaveAttribute('href', '/api/admin/contests/4/export.json');
   await expect(page.getByText(/^Students see the board without the results from \d{2}:\d{2}\. Reveal shows them the full board\.$/)).toBeVisible();
@@ -957,15 +960,16 @@ test('after the end, a held board gives the place only and says when it updates'
   await expect(page.getByText(/points\.$/)).toHaveCount(0);
   await page.getByRole('link', { name: 'See the standings' }).click();
   await expect(page.getByText(/^Results from \d{2}:\d{2} are hidden until the organisers reveal them\./)).toBeVisible();
-  await expect(page.locator('.legend')).toHaveText(
-    'The bar under a score is the share of points earned; a dash means not tried. Time is when the total was reached, from the start.',
-  );
+  await expect(
+    page.getByText('The bar under a score is the share of points earned; a dash means not tried. Time is when the total was reached, from the start.', { exact: true }),
+  ).toBeVisible();
   await page.getByText('How to read the board').click();
   await expect(page.getByText('counts submissions made while the newest results are hidden', { exact: false })).toBeVisible();
   // S6: the own place is the page's one display figure, labelled "so far" while results are hidden.
-  await expect(page.locator('.place')).toContainText('Your place so far');
-  await expect(page.locator(".place-figure")).toHaveText(/^\s*\d+ of 28$/);
-  expect(await page.locator('.place-rank').evaluate((el) => getComputedStyle(el).fontSize)).toBe('44px');
+  await expect(page.getByText('Your place so far', { exact: true })).toBeVisible();
+  const figure = page.getByText(/^\s*\d+ of 28$/);
+  await expect(figure).toBeVisible();
+  expect(await figure.getByText(/^\d+$/).evaluate((el) => getComputedStyle(el).fontSize)).toBe('44px');
   await expect(page.locator('tr.me th.name')).toContainText('Asha Rao (you)');
 });
 
@@ -1062,7 +1066,7 @@ test('keyboard only: a student starts, solves, submits, reads the verdict, asks 
   api.stream.push({ type: 'submission', data: judged });
   const result = page.getByRole('region', { name: 'Result' });
   // Submit selects the Submissions tab (B2).
-  await expect(result.getByRole('tabpanel', { name: /^Submissions/ }).locator('.headline').first()).toHaveText('Partial, 40 of 100', { timeout: 10_000 });
+  await expect(result.getByRole('tabpanel', { name: /^Submissions/ }).getByText('Partial, 40 of 100', { exact: true }).first()).toBeVisible({ timeout: 10_000 });
 
   // Read the verdict: the failing subtask is open, the passing one opens with Enter.
   const passing = result.locator('details.group summary').filter({ hasText: 'Subtask 1' }).first();
@@ -1170,7 +1174,7 @@ test('keyboard only: an organiser edits a contest, runs the console and reveals 
   await page.keyboard.press('Control+a');
   await page.keyboard.type('20');
   await expect.poll(() => api.settingsPuts.at(-1)?.min_gap_s).toBe(20);
-  await expect(page.locator('.save-line [role="status"]')).toHaveText('Saved');
+  await expect(saveStatus(page)).toHaveText('Saved');
 
   // Live: the history of changes opens from the keyboard, and Escape hands focus back.
   await activate(page, page.getByRole('navigation', { name: 'Contest' }).getByRole('link', { name: /^Live/ }));
@@ -1223,7 +1227,7 @@ test('stacked rows stay table rows and the whole row is the link', async ({ page
 test('publishing a draft asks first, listing the checks, and a refusal names the reason (P3 O1)', async ({ page }) => {
   await mockApi(page, { who: 'admin', phase: 'upcoming', published: false });
   await page.goto('/admin/contests/4');
-  await expect(page.locator('.publish-line')).toContainText('Not published. 1 problem, starts');
+  await expect(page.getByText(/^Not published\. 1 problem, starts/)).toBeVisible();
   await page.getByRole('button', { name: 'Publish contest' }).click();
   const publish = page.getByRole('dialog', { name: 'Publish Week 6 contest?' });
   await expect(publish).toContainText('Students from the allowed domains see it in their contest list at once.');
@@ -1236,7 +1240,7 @@ test('an unpublished contest past its start is a draft, not live (C2-015)', asyn
   const api = await mockApi(page, { who: 'admin', phase: 'during', published: false });
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto('/admin/contests/4');
-  await expect(page.locator('.title-row .state-word')).toHaveText('Draft');
+  await expect(page.getByText('Draft', { exact: true })).toBeVisible();
   await expect(page.getByText('This contest is live.', { exact: false })).toHaveCount(0);
   await expect(page.getByRole('note').filter({ hasText: 'The start time has passed.' })).toHaveText(
     'The start time has passed. Students cannot see this contest until you publish it, so move the start or publish now.',
@@ -1252,7 +1256,7 @@ test('an unpublished contest past its start is a draft, not live (C2-015)', asyn
 test('an unpublished contest reads Draft, and keeping results hidden needs hidden minutes (P3 O1, O8)', async ({ page }) => {
   await mockApi(page, { who: 'admin', phase: 'upcoming', published: false });
   await page.goto('/admin/contests/4');
-  await expect(page.locator('.title-row .state-word')).toHaveText('Draft');
+  await expect(page.getByText('Draft', { exact: true })).toBeVisible();
   await expect(page.getByRole('region', { name: 'Before you publish' })).toContainText('1 problem, all validated.');
   await page.locator('#advanced summary').click();
   const hold = page.getByLabel('Keep the hidden results hidden after the end until you reveal them');
@@ -1271,8 +1275,7 @@ test('a save that fails says so, keeps the page on a link or Back, and Try again
     route.request().method() === 'PUT' ? route.fulfill({ status: 503, json: { error: { code: 'unavailable', message: 'The server is busy. Try again in a moment.' } } }) : route.fallback(),
   );
   await page.getByLabel('Title', { exact: true }).fill('Week 6 final');
-  const line = page.locator('.save-line');
-  await expect(line.getByRole('status')).toHaveText('Not saved.');
+  await expect(saveStatus(page)).toHaveText('Not saved.');
   await expect(page.getByRole('alert').filter({ hasText: 'The server is busy.' })).toBeVisible();
 
   // A link asks first.
@@ -1290,8 +1293,8 @@ test('a save that fails says so, keeps the page on a link or Back, and Try again
   await expect(page.getByLabel('Title', { exact: true })).toHaveValue('Week 6 final');
 
   await page.unroute('**/api/admin/contests/4');
-  await line.getByRole('button', { name: 'Try again' }).click();
-  await expect(line.getByRole('status')).toHaveText('Saved');
+  await page.getByRole('button', { name: 'Try again' }).click();
+  await expect(saveStatus(page)).toHaveText('Saved');
   expect(api.settingsPuts.at(-1)).toEqual({ title: 'Week 6 final' });
 });
 

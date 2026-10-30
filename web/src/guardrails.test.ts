@@ -194,7 +194,7 @@ describe('first load', () => {
     expect(sources['/src/App.svelte']).not.toMatch(/from '\.\/routes\//);
   });
 
-  it('preloads every font face the stylesheet declares (D91)', () => {
+  it('preloads every font face the stylesheet declares', () => {
     const faces = [...sources['/src/styles/base.css'].matchAll(/url\("(\/fonts\/[\w-]+\.woff2)"\)/g)].map((m) => m[1]);
     const preloads = [...sources['/index.html'].matchAll(/<link rel="preload" href="([^"]+)" as="font"/g)].map((m) => m[1]);
     expect(faces.length).toBe(4);

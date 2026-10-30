@@ -7,11 +7,11 @@
   a passed sample shows its verdict line only, so the failure is near the
   top.
   Compiler output comes first, verbatim, with clickable line jumps; when
-  the code did not compile, the empty input rows are left out. The run's first failing sample is revealed
-  (`run.revealed`): its row becomes a block with "This test is shown
-  because this was a run.", the input, the expected output, the program's
-  output and "Run on this input". A failing sample without that offers the
-  button too, with the sample's own input. The button puts the
+  the code did not compile, the empty input rows are left out. The run's
+  first failing sample is revealed (`run.revealed`): its row becomes a
+  block with the input, the expected output, the program's output and
+  "Run on this input". A failing sample without that offers the button
+  too, with the sample's own input. The button puts the
   input in the custom input box, opens it and runs it there. Props: `run`,
   `language` (for the compiler's location shapes), `onjump`, `samples`
   (the workspace's samples, for their inputs) and `onruninput` (optional;
@@ -23,7 +23,6 @@
     formatMs,
     isBad,
     isCustomResult,
-    revealedReason,
     runCompileFailed,
     runHeadline,
     runVerdictLabel,
@@ -86,7 +85,7 @@
       {:else if run.revealed && isRevealed(r)}
         {@const rv = run.revealed}
         <TestDetail
-          reason={revealedReason('run')}
+          revealed
           input={rv.input}
           expected={rv.expected}
           output={rv.output}

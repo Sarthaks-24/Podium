@@ -185,7 +185,7 @@ describe('event stream', () => {
   });
 });
 
-describe('after sign-out (C1-041)', () => {
+describe('after sign-out', () => {
   it('stops polling and retrying when a poll answers 401', async () => {
     const timers: { fn: () => void; id: number }[] = [];
     let id = 1;
@@ -243,7 +243,7 @@ describe('after sign-out (C1-041)', () => {
   });
 });
 
-describe('one shared stream per tab (F4)', () => {
+describe('one shared stream per tab', () => {
   it('opens one source for every subscriber, routes events by name and closes after the last', () => {
     const sources: FakeSource[] = [];
     const make = {
@@ -279,7 +279,7 @@ describe('one shared stream per tab (F4)', () => {
   });
 });
 
-describe('the device id on the event stream (C2-034)', () => {
+describe('the device id on the event stream', () => {
   function memory() {
     const m = new Map<string, string>();
     return { getItem: (k: string) => m.get(k) ?? null, setItem: (k: string, v: string) => void m.set(k, v) };

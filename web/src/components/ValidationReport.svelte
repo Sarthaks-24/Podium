@@ -68,7 +68,7 @@
   </p>
 {:else}
   <div class="report">
-    <p class="headline tone-{headline.tone}">{headline.text}</p>
+    <p class="headline tone-{headline.tone}" data-testid="validation-headline">{headline.text}</p>
     {#if report.lead}<p class="lead">{report.lead}</p>{/if}
 
     {#if !validation.current}

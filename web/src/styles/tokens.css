@@ -1,35 +1,22 @@
 /*
-  Design tokens for podium. The themes are light, dark and high
-  contrast in both. This is the only file in
-  the web app allowed to contain colour literals; components read
-  everything through these custom properties.
+  Design tokens for podium, the only file in the web app allowed to
+  contain colour literals; components read everything through these
+  custom properties. Light is the default; with no data-theme on <html>
+  the system's prefers-color-scheme picks Light or Dark, and
+  data-theme="<id>" (ids in lib/theme.ts) forces a theme. Each theme
+  belongs to the light or dark family, which supplies the verdict colours
+  and color-scheme; a theme block changes only surfaces, ink, rules and
+  the action colour, and the high-contrast themes have their own 7:1
+  verdicts. data-verdicts="signal" swaps in the colour-blind safe set
+  (teal, purple, orange). Selectors are [data-theme], not
+  :root[data-theme], so a swatch in the theme picker paints itself in its
+  theme. lib/theme-contrast.test.ts checks every theme.
 
-  Theme rules:
-  - Light is the default. With no data-theme on <html>, the system's
-    prefers-color-scheme picks Light or Dark.
-  - data-theme="<id>" forces a theme. The ids are listed in lib/theme.ts.
-  - Every theme belongs to a family, light or dark, which supplies the
-    verdict colours and color-scheme; a theme block only changes surfaces,
-    ink, rules and the action colour. Verdict colours are not themeable;
-   the high-contrast themes have their own 7:1 set.
-  - data-verdicts="signal" on <html> swaps the verdicts for the colour-blind
-    safe set (teal, purple, orange) in whichever family is showing.
-  - Selectors are [data-theme] rather than :root[data-theme], so a swatch
-    in the theme picker can carry data-theme and paint itself in that
-    theme without changing the page.
-  - tests: lib/theme-contrast.test.ts checks every theme against the
-    contrast and distinguishability rules.
-
-  Breakpoints (the source is lib/breakpoints.ts, and
-  guardrails.test.ts fails on any other width):
-    phone   below 768 px     (width < 768px)
-    tablet  from 768 px      (min-width: 768px)
-    laptop  from 1024 px     (min-width: 1024px)
-    desk    from 1280 px     (min-width: 1280px), the page split
-    wide    from 1440 px     (min-width: 1440px)
-    short   laptop and at most 45rem tall
-  Custom properties cannot be used in a media query, so the numbers are
-  written out where a query needs them.
+  Breakpoints (source lib/breakpoints.ts; guardrails.test.ts fails on any
+  other width): phone below 768 px, tablet from 768, laptop from 1024,
+  desk from 1280 (the page split), wide from 1440, and short, a laptop at
+  most 45rem tall. Custom properties cannot be used in a media query, so
+  the numbers are written out where a query needs them.
 */
 
 :root {

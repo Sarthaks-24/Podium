@@ -49,7 +49,7 @@
   onMount(() => useTicker());
 </script>
 
-<div class="clock" class:compact>
+<div class="clock" class:compact data-testid="contest-clock">
   <p class="label" id="clock-label">Time left</p>
   <p class="mono time" role="timer" aria-labelledby="clock-label">{formatCountdown(left)}</p>
   {#if left > 0 && left <= 5 * 60_000}<p class="late">Under 5 minutes left. Submit what you have.</p>{/if}

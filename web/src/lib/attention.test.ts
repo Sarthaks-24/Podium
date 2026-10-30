@@ -17,7 +17,7 @@ const base = {
   ],
 };
 
-describe('consoleSentence (stage C2)', () => {
+describe('consoleSentence', () => {
   const calm = { ...base, queue: { waiting: 0, judging: 0, errors: 0, oldest_wait_s: 0 }, judge_last_claim_at: T - 3000 };
 
   it('says how it is going in one sentence when nothing is wrong', () => {
@@ -117,7 +117,7 @@ describe('endNowFreeze (walk 2026-10-21)', () => {
     // Time added for everyone moves the frozen moment too.
     expect(endNowFreeze({ ...c, extended_minutes: 5 }, T + 52 * MIN, T + 57 * MIN)).toBe(2);
   });
-  it('never drops a freeze that has begun, even in its first minute (V3-18, walk bug B1)', () => {
+  it('never drops a freeze that has begun, even in its first minute', () => {
     // Frozen at T + 50 min; ended 52 s later. Rounding down stored 0 and released the held board.
     expect(endNowFreeze(c, T + 50 * MIN + 52_000, T + 50 * MIN + 52_000)).toBe(1);
     expect(endNowFreeze(c, T + 50 * MIN, T + 50 * MIN)).toBe(1);

@@ -21,6 +21,10 @@ import { shots, WIDTHS, THEMES, T0, WIZARD_ID, FAKE_KEY, OPENAI_KEY, GEMINI_KEY,
 /** The line under the wizard's heading that names the provider, the model and the key. */
 const keyState = (page: Page) => page.getByRole('paragraph').filter({ hasText: /Using |Choose a model for / });
 
+/** A step of the wizard's progress list, by the state its hidden word reads. */
+const step = (page: Page, state: 'done' | 'in progress' | 'failed') =>
+  page.getByRole('region', { name: 'Progress' }).getByRole('listitem').filter({ hasText: `, ${state}` });
+
 for (const theme of THEMES) {
   test.describe(`${theme} theme`, () => {
     test.use({ colorScheme: theme });
@@ -256,7 +260,7 @@ test('a wizard from a brief follows the live event to the draft', async ({ page 
   await page.getByRole('button', { name: 'Generate' }).click();
 
   await expect(page.getByRole('heading', { name: 'Progress' })).toBeFocused();
-  await expect(page.locator('.step-current')).toHaveText(/Writing the problem/);
+  await expect(step(page, 'in progress')).toHaveText(/Writing the problem/);
   await expect(page).toHaveURL(new RegExp(`/admin/ai/new\\?wizard=${WIZARD_ID}$`));
   expect(state.wizardBodies).toEqual([
     {
@@ -270,8 +274,8 @@ test('a wizard from a brief follows the live event to the draft', async ({ page 
   state.events.push(
     `event: wizard\ndata: ${JSON.stringify({ id: WIZARD_ID, kind: 'generate', state: 'draft_created', problem_id: 20, provider: 'anthropic', model: 'claude-opus-5-5' })}\n\n`,
   );
-  await expect(page.locator('.step-current')).toHaveText(/Generating the tests/);
-  await expect(page.locator('.step-done').first().locator('.mark-icon.done svg')).toHaveCount(1);
+  await expect(step(page, 'in progress')).toHaveText(/Generating the tests/);
+  await expect(step(page, 'done').first().locator('svg')).toHaveCount(1);
   // C11: the run names the provider and model that made the draft.
   await expect(page.getByText('Drafted by Anthropic with Claude Opus 5.5.', { exact: false })).toBeVisible();
   await expect(page.getByRole('status').filter({ hasText: 'Generating the tests' })).toHaveCount(1);
@@ -289,8 +293,8 @@ test('a wizard from pasted text polls when live updates are down', async ({ page
   await text.fill(`  ${pasted}\n`);
   await expect(page.getByText(`${pasted.length} of 20,000 characters`)).toBeVisible();
   await page.getByRole('button', { name: 'Generate' }).click();
-  await expect(page.locator('.step-current')).toHaveText(/Writing the problem/);
-  await expect(page.locator('.step-current')).toHaveText(/Generating the tests/, { timeout: 10_000 });
+  await expect(step(page, 'in progress')).toHaveText(/Writing the problem/);
+  await expect(step(page, 'in progress')).toHaveText(/Generating the tests/, { timeout: 10_000 });
   expect(state.wizardBodies).toEqual([{ mode: 'paste', text: pasted }]);
   await expect(page.getByRole('link', { name: 'Open the draft in the editor' })).toHaveAttribute('href', '/admin/problems/20');
 
@@ -307,9 +311,9 @@ test('a wizard failure shows the reasons and keeps the request', async ({ page }
   const alert = page.getByRole('alert').filter({ hasText: "The model's answer could not be used." });
   await expect(alert).toContainText("The model's answer could not be used.", { timeout: 10_000 });
   await expect(alert.getByRole('listitem')).toHaveText(['subtasks: points add up to 90, not 100.', 'reference: the C++ source is empty.']);
-  await expect(page.locator('.step-failed')).toHaveText(/Writing the problem/);
+  await expect(step(page, 'failed')).toHaveText(/Writing the problem/);
   // State is a shape: a cross for failed, never only a red dot (C1-029).
-  await expect(page.locator('.step-failed .mark-icon.failed svg')).toHaveCount(1);
+  await expect(step(page, 'failed').locator('svg')).toHaveCount(1);
   await expect(page.getByLabel('Topic', { exact: true })).toHaveValue('Interval scheduling');
   await page.screenshot({ path: `${shots()}ai-wizard-error-1440-light.png`, fullPage: true });
 });
@@ -318,7 +322,7 @@ test('the editor edits the generator and plan, and generates inputs', async ({ p
   const state = await mockApi(page, { key: 'active' });
   await page.goto('/admin/problems/20');
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('Maximum subarray');
-  await expect(page.locator('.action-bar').getByText('AI draft')).toBeVisible();
+  await expect(page.getByText('AI draft', { exact: true })).toBeVisible();
   await expect(page.getByText('The AI assistant wrote this draft.', { exact: false })).toBeVisible();
   await expect(page.getByLabel('Tags')).toHaveValue('arrays');
 
@@ -367,7 +371,7 @@ test('the editor edits the generator and plan, and generates inputs', async ({ p
   expect((put.subtasks as Json[]).map((s) => s.generator_args)).toEqual([['n=1000'], ['n=200000', 'neg=0']]);
   expect((put.generator as Json).language).toBe('python3');
   // The tag went with the person's save.
-  await expect(page.locator('.action-bar').getByText('AI draft')).toHaveCount(0);
+  await expect(page.getByText('AI draft', { exact: true })).toHaveCount(0);
 
   // The first run names the failing test; the second succeeds and outputs follow.
   await section.getByRole('button', { name: 'Generate inputs' }).click();

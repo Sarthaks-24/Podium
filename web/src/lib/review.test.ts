@@ -142,7 +142,7 @@ describe('wording', () => {
     expect(evidenceSize(null)).toBe('');
   });
 
-  it('words the strength of similar code with its reason, never a bare number (pilot P11)', () => {
+  it('words the strength of similar code with its reason, never a bare number', () => {
     // The pilot's "Weak 1.00": 15 of 15 fingerprints shared.
     expect(similarReason(1, { shared: 15, fingerprints: 15 })).toBe('Short programs, identical');
     expect(similarReason(0.94, { shared: 41 })).toBe('Long programs, nearly identical');

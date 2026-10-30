@@ -142,7 +142,7 @@ describe('editor settings', () => {
     expect(() => writeEditorPrefs(broken, { fontSize: 12, tabMovesFocus: false, tabSize: 4, wrap: false, language: 'cpp17' }, 7)).not.toThrow();
   });
 
-  it('remembers the language per account, across problems (P5)', () => {
+  it('remembers the language per account, across problems', () => {
     const s = memory();
     writeEditorPrefs(s, { fontSize: 14, tabMovesFocus: false, tabSize: 4, wrap: false, language: 'python3' }, 7);
     expect(readEditorPrefs(s, 7).language).toBe('python3');
@@ -163,7 +163,7 @@ describe('editor settings', () => {
   });
 });
 
-describe('the result panel size (P5 F7.5)', () => {
+describe('the result panel size', () => {
   it('keeps the share inside 20 to 80 percent, whole', () => {
     expect(clampShare(10)).toBe(RESULT_SHARE.min);
     expect(clampShare(95)).toBe(RESULT_SHARE.max);

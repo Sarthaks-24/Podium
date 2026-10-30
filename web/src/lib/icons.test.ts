@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { ICONS } from './icons';
 
 describe('icon set', () => {
-  it('has the v2 F10 icons', () => {
+  it('has the icons the workspace buttons use', () => {
     for (const name of ['play', 'send', 'pause', 'menu', 'plus', 'circle-check', 'circle-x', 'circle-alert', 'chevron-right']) {
       expect(Object.keys(ICONS), name).toContain(name);
     }

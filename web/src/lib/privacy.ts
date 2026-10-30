@@ -11,7 +11,7 @@
 import source from '../content/privacy.md?raw';
 
 /** The marker line in the Markdown. */
-export const RETENTION_MARKER = '<!-- retention -->';
+const RETENTION_MARKER = '<!-- retention -->';
 
 /** The Markdown before and after the retention table. */
 export function privacyParts(markdown: string = source): { before: string; after: string } {

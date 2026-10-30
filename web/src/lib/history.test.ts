@@ -7,7 +7,7 @@ import {
   updateEffect,
 } from './history';
 
-describe('pins (C4)', () => {
+describe('pins', () => {
   it('names the update and says what it does', () => {
     expect(pinPath(4, 'A')).toBe('/api/admin/contests/4/problems/A/revision');
     expect(updateEffect({ label: 'A', update_statement_only: true })).toBe(

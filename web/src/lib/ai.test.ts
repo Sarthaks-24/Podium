@@ -62,7 +62,7 @@ function serialised(value: unknown): string {
 }
 
 describe('the key form', () => {
-  it('starts on the first provider with no model: there is no default model (C11)', () => {
+  it('starts on the first provider with no model: there is no default model', () => {
     expect(initialForm(status({ provider: 'anthropic' }))).toEqual({ provider: 'anthropic', model: '', key: '' });
     expect(initialForm(status({ provider: '' }))).toEqual({ provider: 'anthropic', model: '', key: '' });
   });
@@ -321,7 +321,7 @@ describe('draftChainSteps', () => {
   const states = (r: ReturnType<typeof draftChainSteps>) => r.steps.map((s) => s.state);
   const draft = { state: 'draft_created', problem_id: 20 };
 
-  it('follows the draft past its creation to a validated problem (audit O7)', () => {
+  it('follows the draft past its creation to a validated problem', () => {
     expect(states(draftChainSteps({ state: 'thinking' }, null, null, null))).toEqual(['current', 'waiting', 'waiting', 'waiting']);
     expect(states(draftChainSteps(draft, { state: 'running' }, null, null))).toEqual(['done', 'done', 'current', 'waiting']);
     expect(states(draftChainSteps(draft, { state: 'done' }, { state: 'done' }, { state: 'queued' }))).toEqual(['done', 'done', 'done', 'current']);

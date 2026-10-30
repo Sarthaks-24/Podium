@@ -19,7 +19,6 @@
     isBad,
     problemScoreLine,
     isWaiting,
-    revealedReason,
     revealedTitle,
     type Submission,
     type TestResult,
@@ -89,7 +88,7 @@
   {#if revealed}
     <TestDetail
       heading={revealedTitle(revealed)}
-      reason={revealedReason('submission')}
+      revealed
       input={revealed.input}
       expected={revealed.expected}
       output={revealed.output}
