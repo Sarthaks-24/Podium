@@ -4,8 +4,10 @@
   input, the verdict in words with time and memory and, through
   TestDetail, the program's output and, for a sample, the expected output,
   the checker's comment and for a wrong answer the first differing line;
-  a passed sample shows its verdict line only, so the failure is near the
-  top.
+  a passed sample shows its verdict line, with its output beside the
+  expected one (and stderr) folded under "Your output and the expected
+  one", so a failure stays near the top (v4 E6). Every example offers "Run
+  on this input".
   When the code did not compile, the advice a submission gets comes first
   (with the language's hint, such as Java's class Main) and the empty
   input rows are left out. Compiler output follows, verbatim, with
@@ -113,12 +115,20 @@
           runInput={isBad(r.verdict) ? sampleInput(r.label) : null}
           {onruninput}
         />
-      {:else if r.stderr}
-        <!-- Debugging output printed to stderr shows even when the example passed, so a student can see their prints. -->
-        <div class="stderr">
-          <p class="meta">Error output (stderr), the last lines</p>
-          <pre translate="no">{r.stderr}</pre>
-        </div>
+      {:else}
+        <!-- A passed example keeps its row short, so a failure stays near the top; its output, the expected one and any stderr open on request (v4 E6). -->
+        <details class="passed">
+          <summary>Your output and the expected one</summary>
+          <TestDetail
+            expected={r.expected}
+            output={r.output}
+            outputCut={r.output_truncated}
+            verdict={r.verdict}
+            stderr={r.stderr}
+            runInput={sampleInput(r.label)}
+            {onruninput}
+          />
+        </details>
       {/if}
     </section>
   {/each}
@@ -200,14 +210,14 @@
     max-width: var(--measure-prose);
   }
 
-  .stderr pre {
-    max-height: calc(8 * var(--lh-body) * var(--fs-0));
-    padding: var(--space-2) var(--space-3);
-    overflow: auto;
-    border: var(--rule) solid var(--line);
-    background: var(--surface-2);
+  .passed summary {
+    width: fit-content;
+    color: var(--ink-muted);
     font-size: var(--fs-0);
-    white-space: pre-wrap;
-    overflow-wrap: anywhere;
+    cursor: pointer;
+  }
+
+  .passed[open] summary {
+    margin-bottom: var(--space-2);
   }
 </style>

@@ -171,6 +171,14 @@ test('running on samples shows the first difference', async ({ page }) => {
   await expect(page.locator('[data-announcer="polite"]')).toHaveText('1 of 2 examples failed.');
   await page.screenshot({ path: `${shots()}workspace-run-1440-light.png` });
 
+  // v4 E6: a passed example stays one line until opened, then shows its output beside the expected one and Run on this input.
+  const passed = panel.getByRole('group').filter({ hasText: 'Your output and the expected one' });
+  await expect(passed.getByRole('button', { name: 'Run on this input' })).toBeHidden();
+  await passed.getByText('Your output and the expected one').click();
+  await expect(passed.getByText('3', { exact: true }).first()).toBeVisible();
+  await expect(passed.getByRole('button', { name: 'Run on this input' })).toBeVisible();
+  await passed.getByText('Your output and the expected one').click();
+
   // D114: "Run on this input" on the failing sample fills the custom box, opens it and runs it.
   const fromSample = panel.getByRole('button', { name: 'Run on this input' });
   await expect(fromSample).toHaveCount(1);
