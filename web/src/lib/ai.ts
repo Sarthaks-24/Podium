@@ -1,6 +1,5 @@
 /**
- * The AI wizard's data shapes and the pure helpers behind its screens
- * (cache/v1/m5-plan.md sections 1, 4 and 7).
+ * The AI wizard's data shapes and the pure helpers behind its screens.
  *
  * The provider key is the one secret the web app ever handles. It lives in
  * a password field until it is sent with PUT /api/admin/ai/key, and
@@ -9,7 +8,7 @@
  * URL, the console or a message: an error that somehow carries the key has
  * it replaced by redactKey() before anyone sees it.
  *
- * Providers (contract C11 of the v2 plan): Anthropic, OpenAI and Google
+ * Providers: Anthropic, OpenAI and Google
  * Gemini, one key per provider per session. There is no default model; the
  * picker is filled from the provider's live list once a key is saved, and
  * any model id can be typed instead.
@@ -17,15 +16,15 @@
 import { ApiError, errorText } from './api';
 import { verdictLabel, type PlannedTest } from './problems';
 
-/** One model a provider offers, from the provider's own list (contract C11). */
+/** One model a provider offers, from the provider's own list. */
 export interface ModelOption {
   id: string;
   name: string;
 }
 
 /**
- * A provider and what this session holds for it (KeyStatus.providers[],
- * C11). "fake" exists only in testing mode and needs no key.
+ * A provider and what this session holds for it (KeyStatus.providers[]).
+ * "fake" exists only in testing mode and needs no key.
  */
 export interface ProviderOption {
   id: string;
@@ -52,7 +51,7 @@ export interface KeyStatus {
   server_now?: number;
 }
 
-/** GET /api/admin/ai/models?provider= (C11). */
+/** GET /api/admin/ai/models?provider=. */
 export interface ModelList {
   provider: string;
   models: ModelOption[];
@@ -73,10 +72,7 @@ export const FAKE_PROVIDER = 'fake';
 /** Pasted text and briefs are refused past this many characters. */
 export const MAX_TEXT = 20_000;
 
-/** How long the server keeps a key, in words, for the settings page. */
-export const KEY_HOURS = 2;
-
-/** The longest model id the server takes, and the characters it allows (C11). */
+/** The longest model id the server takes, and the characters it allows. */
 export const MAX_MODEL_ID = 128;
 const MODEL_ID = /^[A-Za-z0-9._:-]*$/;
 
@@ -119,15 +115,9 @@ export function keyExpired(p: Pick<ProviderOption, 'has_key' | 'active_until'>, 
   return p.has_key && p.active_until !== null && p.active_until < now;
 }
 
-/** The providers this session holds a live key for, in the server's order. */
-export function heldKeys(status: KeyStatus): ProviderOption[] {
-  const now = status.server_now ?? Date.now();
-  return status.providers.filter((p) => p.has_key && !keyExpired(p, now));
-}
-
 /**
  * The form a page starts with: the active provider with its saved model,
- * or the first provider with no model. There is no default model (C11):
+ * or the first provider with no model. There is no default model:
  * the provider's live list fills the picker once a key is saved. The key
  * is always empty.
  */
@@ -258,7 +248,7 @@ export interface Wizard {
   state: WizardState | string;
   error?: { code: string; message: string; reasons?: string[] } | null;
   problem_id?: number | null;
-  /** The provider and model that made the draft or the solution (C11). */
+  /** The provider and model that made the draft or the solution. */
   provider?: string;
   model?: string;
 }
@@ -287,22 +277,12 @@ export interface WizardStep {
   state: 'done' | 'current' | 'waiting' | 'failed';
 }
 
-/** The two steps the wizard page shows, from a wizard's state. */
-export function wizardSteps(w: Pick<Wizard, 'state'>): WizardStep[] {
-  const failed = w.state === 'error';
-  const created = w.state === 'draft_created' || w.state === 'done';
-  return [
-    { text: 'Writing the problem', state: failed ? 'failed' : created ? 'done' : 'current' },
-    { text: 'Draft created, generating tests', state: w.state === 'done' ? 'done' : created ? 'current' : 'waiting' },
-  ];
-}
-
 /** A judge job's state as the chain needs it; null when the problem never had one. */
 type Job = { state: string } | null;
 
 /**
- * The wizard page's steps from the request to a validated draft (audit
- * 2026-10-20 O7: progress used to stop at "Draft created"): writing the
+ * The wizard page's steps from the request to a validated draft, so
+ * progress does not stop at "Draft created": writing the
  * problem, the draft created, its tests generated (inputs, then outputs
  * from the reference), and validation. After the draft exists the page
  * follows the problem's own input generation, output generation and

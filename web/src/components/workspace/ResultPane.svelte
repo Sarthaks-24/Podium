@@ -1,24 +1,11 @@
 <!--
   ResultPane: the result area as three fixed tabs, Run, Submissions and
-  Your input (B2, cache/v3/design/editor.md section 1). Run on the
-  examples selects Run, Submit selects Submissions, and a run on your own
-  input stays on Your input; nothing replaces anything without the tab
-  changing (lib/judging.svelte.ts holds the tab).
-  - Run: the latest run on the examples (RunResults), or one line saying
-    what Run does.
-  - Submissions: the submission just made, or the newest, as the verdict
-    (VerdictPanel; a hidden result says only "Submitted"),
-    then every submission. A submission that failed on an example offers
-    Run, which shows the program's output there.
-  - Your input: the box with its own Run (Ctrl+' runs it while it has
-    focus) and that run's result. "Run on this input" on a failing example
-    fills the box and switches here (D114).
-  A failure to send says so above the tabs with "Submit again" or "Run
-  again". Each panel's first line takes focus when a tab switches by
-  itself under 1024 px (data-result-focus, F7.4). Props: `judging`,
-  `samples`, `language`, `problemScore`, `locked`,
-  `sticky` (the verdict head sticks from 1024 px), `onjump` (a compile
-  error's line) and `onruninput`.
+  Your input (lib/judging.svelte.ts holds which one shows). Run has the
+  latest run on the examples; Submissions has the newest verdict, then
+  every submission; Your input has its own box and Run. A failure to send
+  says so above the tabs with "Submit again" or "Run again". When a tab
+  switches by itself under 1024 px, focus moves to its first line, so a
+  keyboard or screen reader user lands on the new result.
 -->
 <script lang="ts">
   import type { Judging } from '../../lib/judging.svelte';
@@ -37,7 +24,7 @@
     problemScore: { score: number | null; max: number } | null;
     locked: string;
     sticky: boolean;
-    /** Under 1024 px nothing runs (V3-14): only Submissions shows, without tabs (pilot P3). */
+    /** Under 1024 px nothing runs: only Submissions shows, without tabs. */
     narrow?: boolean;
     onjump: (line: number, col: number | null) => void;
     onruninput: (input: string) => void;
@@ -162,7 +149,7 @@
     width: 100%;
   }
 
-  /* 16 px on touch screens, so iOS does not zoom into the box (F7.4). */
+  /* 16 px on touch screens, so iOS does not zoom into the box. */
   @media (pointer: coarse) {
     .input {
       font-size: var(--fs-1);

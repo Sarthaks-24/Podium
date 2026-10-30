@@ -1,6 +1,5 @@
 /**
- * Field errors of the problem editor (split out of ProblemEditor in v2 P3
- * F5.1): which control a server or client error key belongs to, its label
+ * Field errors of the problem editor: which control a server or client error key belongs to, its label
  * in the error list, and the aria-describedby of a field. Keys are the
  * editor's own (lib/problems.ts fieldKey maps the server's onto them).
  */

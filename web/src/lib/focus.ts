@@ -29,7 +29,7 @@ export function keepHeadingFocus(): () => Promise<void> {
  * After the next render, focuses the first control marked invalid inside
  * `scope` (a selector for a form, or the element itself, such as a
  * dialog), so an error the server returned moves focus the way a check in
- * the page does (X7). A group marked data-invalid="true" gives focus to its
+ * the page does. A group marked data-invalid="true" gives focus to its
  * first input.
  */
 export async function focusFirstInvalid(scope: string | ParentNode | null | undefined): Promise<void> {

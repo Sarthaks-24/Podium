@@ -1,6 +1,6 @@
 /**
- * The public site configuration from GET /api/auth/config (contract C5) as
- * reactive state: the server's run mode (PODIUM_MODE, decision D48), the
+ * The public site configuration from GET /api/auth/config as
+ * reactive state: the server's run mode (PODIUM_MODE), the
  * organisers' contact email, the organisation details an owner enters on
  * People, and the retention periods the privacy page lists. "testing" mode
  * means sign-in is a form with no Google account behind it; the shell shows
@@ -13,7 +13,7 @@ import { getJSON } from './api';
 
 export type RunMode = 'testing' | 'dev' | 'production';
 
-/** The organisation details (B3.7). Every field is "" until an owner enters it. */
+/** The organisation details. Every field is "" until an owner enters it. */
 export interface Organisation {
   name: string;
   contact_email: string;

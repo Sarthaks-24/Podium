@@ -60,9 +60,9 @@ describe('guidance lines', () => {
   });
 
   it('adds the language hints where they are safe', () => {
-    // Pilot P5: the class hint applies only when the error names a class.
+    // The class hint applies only when the error names a class.
     expect(guidance('CE', 'java21')).toContain('If the error names a class, the public class must be called Main.');
-    // Pilot P4: a number too big for its type is named for a runtime error.
+    // A number too big for its type is named for a runtime error.
     expect(guidance('RE', 'cpp17')[0]).toContain('numbers too big for their type');
     expect(guidance('RE', 'java21')[1]).toContain('Use long for numbers past 2147483647');
     expect(guidance('CE', 'cpp17')).toHaveLength(1);
@@ -124,7 +124,7 @@ describe('headlines and announcements', () => {
     expect(failureText('RE', 2)).toBe('Runtime error on test 2');
     expect(formatMs(14)).toBe('10 ms');
     expect(formatMs(15)).toBe('20 ms');
-    // The server rounds to the nearest step, so a 0 is under half of it (D322).
+    // The server rounds to the nearest step, so a 0 is under half of it.
     expect(formatMs(0)).toBe('under 5 ms');
     expect(formatMs(4)).toBe('under 5 ms');
     expect(formatMs(0, 100)).toBe('under 50 ms');
@@ -136,7 +136,7 @@ describe('headlines and announcements', () => {
     expect(formatKb(3300)).toBe('3.2 MB');
     expect(limitsText(1000, 256)).toBe('Time limit 1 s, memory 256 MB');
     expect(limitsText(1500, 64)).toBe('Time limit 1500 ms, memory 64 MB');
-    // The limit a slower language really gets, with the reason (D323).
+    // The limit a slower language really gets, with the reason.
     expect(limitsText(1000, 256, { label: 'C++17', factor: 1 })).toBe('Time limit 1 s, memory 256 MB');
     expect(limitsText(1000, 256, { label: 'Java 21', factor: 2 })).toBe(
       "Time limit 2 s in Java 21 (twice the problem's 1 s, as it runs slower than C++), memory 256 MB",

@@ -1,25 +1,11 @@
 <!--
-  ContestAdminNav: the PageHeader of the organiser screens for one
-  contest: the trail "Contests, the contest, the current screen" (the
-  contest's step opens the tab that fits its state, lib/contests
-  organiserHome), the contest's title as the page heading with its state
-  word, and the contest tabs: Setup, Live (the console) with the count of
-  unanswered questions and Results, the current one marked with
-  aria-current, then "Student view" at the end, the contest as a student
-  sees it. The count comes from the `unanswered` prop when the screen
-  already has it (the console), otherwise from one request to the
-  contest's clarifications (until the contest response carries it, C10 in
-  P3); a failed request shows no count. The links wrap onto a second row
-  on narrow screens, so the page never scrolls sideways at 320 px.
-
-  Props: `id`, `slug` (for "Student view"), `title`, `state` (a
-  ContestState, or "" for none), `published` (false reads "Draft", and an
-  ended contest with practice open reads "Ended, practice open":
-  lib/contests organiserState), `current` ("settings", "console",
-  "results", or "integrity" for the similar-code page, which has no tab,
-  is reached from Results with "Similar code" and is named so in the
-  trail), `unanswered` (optional), and an optional
-  `actions` snippet for the title row.
+  ContestAdminNav: the header of the organiser screens for one contest:
+  the trail, the contest's title with its state word, and the tabs Setup,
+  Live (with the unanswered count) and Results, then "Student view". The
+  count comes from the `unanswered` prop when the screen has it, otherwise
+  from one request, and a failed request shows no count. The similar-code
+  page has no tab and is named in the trail. The links wrap onto a second
+  row on narrow screens, so the page never scrolls sideways at 320 px.
 -->
 <script lang="ts">
   import type { Snippet } from 'svelte';
@@ -32,7 +18,7 @@
     slug: string;
     title: string;
     state: ContestState | '';
-    /** False shows the state word "Draft" (audit O1); left out, the state alone decides. */
+    /** False shows the state word "Draft"; left out, the state alone decides. */
     published?: boolean;
     current: 'settings' | 'console' | 'results' | 'integrity';
     unanswered?: number;
@@ -54,7 +40,7 @@
 
   $effect(() => {
     if (unanswered !== undefined) return;
-    // The page path is /admin/contests/{id}; the API lives under /api (audit O4).
+    // The page path is /admin/contests/{id}; the API lives under /api.
     const url = `/api${base}/clarifications`;
     let live = true;
     getJSON<{ clarifications: Clarification[] }>(url)
@@ -124,7 +110,7 @@
     color: var(--ink);
   }
 
-  /* State is a shape (F9): a border, which forced-colours mode keeps. */
+  /* State is a shape: a border, which forced-colours mode keeps. */
   .sub a[aria-current='page'] {
     border-bottom-color: var(--act);
     color: var(--ink);
@@ -160,7 +146,7 @@
     }
   }
 
-  /* Phones: narrower padding; the links wrap rather than scroll (N3). */
+  /* Phones: narrower padding; the links wrap rather than scroll. */
   @media (width < 768px) {
     .sub a {
       padding-inline: var(--space-2);

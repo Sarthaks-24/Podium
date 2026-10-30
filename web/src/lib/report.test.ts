@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildReport, draftGroups, editorStatus, testFailureText, type TestCase, type Validation } from './problems';
+import { buildReport, testFailureText, type Validation } from './problems';
 
 function validation(over: Partial<Validation> = {}): Validation {
   return {
@@ -77,58 +77,5 @@ describe('validation report', () => {
     expect(testFailureText({ idx: 4, role: 'brute', verdict: 'WA' })).toBe('Disagreed with the reference on test 4');
     expect(testFailureText({ idx: 4, role: 'checker', verdict: 'IE' })).toBe('Failed on test 4');
     expect(testFailureText({ idx: 4, role: 'reference', verdict: 'RE' })).toBe('Runtime error on test 4');
-  });
-});
-
-describe('editor status', () => {
-  const p = { archived: false, validated: true, validated_at: new Date(2026, 9, 16, 19, 42).getTime(), content_hash: 'h' };
-
-  it('reads each state in words', () => {
-    expect(editorStatus(p, null)).toEqual({ text: 'Validated 16 Oct 19:42', tone: 'ok' });
-    expect(editorStatus({ ...p, validated: false, validated_at: null }, null).text).toBe('Not validated');
-    expect(editorStatus({ ...p, archived: true }, null).text).toBe('Archived');
-    expect(editorStatus(p, validation({ state: 'queued', queue_position: 3 })).text).toBe('Validating, 3rd in queue');
-    expect(editorStatus(p, validation({ state: 'running' })).text).toBe('Validating');
-    expect(editorStatus({ ...p, validated: false }, validation({ summary: { ...SUMMARY, problems: ['a', 'b'] } }))).toEqual({
-      text: 'Validation failed, 2 problems',
-      tone: 'bad',
-    });
-    // A failure for an older version does not count.
-    expect(editorStatus(p, validation({ content_hash: 'old' })).text).toBe('Validated 16 Oct 19:42');
-  });
-});
-
-describe('groups from the draft', () => {
-  const t = (idx: number, sample: boolean, subtask_idx: number | null): TestCase => ({
-    idx,
-    sample,
-    subtask_idx,
-    input_size: 1,
-    output_size: 1,
-    input_preview: '',
-    output_preview: '',
-  });
-  const tests = [t(1, true, null), t(2, false, 1), t(3, false, 1), t(4, false, null), t(5, false, null)];
-
-  it('follows the subtasks as typed', () => {
-    const g = draftGroups(tests, { samples: '1', subtasks: [{ points: 50, title: '', tests: '2' }, { points: 50, title: '', tests: '3-4' }] });
-    expect([...g.entries()]).toEqual([
-      [1, 'Sample'],
-      [2, 'Subtask 1'],
-      [3, 'Subtask 2'],
-      [4, 'Subtask 2'],
-      [5, 'Not in a subtask'],
-    ]);
-  });
-
-  it('names tests in no subtask', () => {
-    const g = draftGroups(tests, { samples: '1', subtasks: [{ points: 100, title: '', tests: '2-3' }] });
-    expect(g.get(4)).toBe('Not in a subtask');
-  });
-
-  it('falls back to the saved groups while a list cannot be read', () => {
-    const g = draftGroups(tests, { samples: '1, x', subtasks: [] });
-    expect(g.get(2)).toBe('Subtask 1');
-    expect(g.get(4)).toBe('Not in a subtask');
   });
 });

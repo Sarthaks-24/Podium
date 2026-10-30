@@ -1,6 +1,6 @@
 /**
  * One dismissal rule for the header and workspace popovers (account menu,
- * theme menu, editor settings; council C1-033), used as
+ * theme menu, editor settings), used as
  * `use:dismissable={{ open, onclose, trigger }}` on the element that holds
  * both the button and its panel:
  *

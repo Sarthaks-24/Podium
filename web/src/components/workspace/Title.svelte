@@ -8,7 +8,7 @@
   `layout`, `banner` and `rail` (snippets, optional), `label` (the problem
   letter, or ""), `title`, `limits`, `back` ({ href, label }), `note`,
   `hasClock`, and in a contest from 1024 px `statementHidden` with
-  `ontogglestatement` ("Hide statement" gives the editor the width, E5).
+  `ontogglestatement` ("Hide statement" gives the editor the width).
 -->
 <script lang="ts">
   import type { Snippet } from 'svelte';
@@ -36,7 +36,7 @@
 <div class="title-area">
   {#if banner}<div class="banner-slot">{@render banner()}</div>{/if}
   <div class="title-main">
-    <!-- Under 1024 px a contest's row carries the letter and Leave (B4): the title is the title. -->
+    <!-- Under 1024 px a contest's row carries the letter and Leave: the title is the title. -->
     <PageHeader compact back={wide || rail ? null : back}>
       {#snippet heading()}{#if label}<span class="mono letter" class:hidden-narrow={!wide}>{label}</span><span class="visually-hidden">.&nbsp;</span>{/if}{title}{/snippet}
     </PageHeader>
@@ -107,7 +107,7 @@
     }
   }
 
-  /* The short tier (F7.3): the title shares one line with the limits. */
+  /* The short tier: the title shares one line with the limits. */
   @media (min-width: 1024px) and (max-height: 45rem) {
     .title-main {
       display: flex;

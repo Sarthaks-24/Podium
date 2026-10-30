@@ -1,28 +1,15 @@
 <!--
-  ProblemBank: the admin list of problems at /admin/problems
-  (GET /api/admin/problems), most recently changed first. A table gives
-  each problem's title (a link to its editor), difficulty, tags, test
-  count, points, the status as a badge (Validated, Validating, Not
-  validated or Archived), when it last changed, "Validate" on a
-  problem that is not validated, and Try, which opens it as a student
-  would see it.
-  Past ten problems a filter narrows the list by title or tag. Under 768 px
-  each row reads as title and status, then tests and the date, muted. "New problem" opens a
-  small form that asks only for a title (the server makes the problem's
-  file name from it) and goes to the new problem's editor. The list loads
-  through lib/loader, so an answer for the other archived setting, or one
-  after the page has gone, is dropped. "New problem with
-  AI" opens the wizard at /admin/ai/new, which holds the key form; a
-  problem the wizard made carries an "AI draft" mark beside
-  its title until a person saves it, and one whose hidden tests
-  practice after a contest showed carries "Hidden tests shown in
-  practice" (D115). "Import pack" picks one or more .zip
-  files and sends each as is (application/zip), then starts validating
-  each imported problem and stays on the list, so three packs need no
-  page visits (audit O6); a refused pack shows the server's message and
-  its list of problems. "Show archived" adds
-  ?archived=1 to the address. Students see a short explanation instead.
-  Takes no props.
+  ProblemBank: the organiser's list of problems at /admin/problems, most
+  recently changed first, each with its status, test count and points,
+  Validate when it is not validated and Try to open it as a student would.
+  A filter appears past ten problems. "New problem" asks only for a title
+  and opens the editor; "New problem with AI" opens the wizard; "Import
+  pack" sends one or more .zip files and starts validating each, staying
+  on the list so several packs need no page visits. AI drafts and
+  problems whose hidden tests practice showed carry a mark beside the
+  title. The list loads through lib/loader, so an older answer, or one
+  after the page has gone, is dropped. Students see a short explanation
+  instead.
 -->
 <script lang="ts">
   import PageState from '../components/PageState.svelte';

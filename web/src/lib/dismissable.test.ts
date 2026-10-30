@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-// C1-033: the one dismissal rule shared by the popovers.
+// The one dismissal rule shared by the popovers.
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { dismissable } from './dismissable';
 

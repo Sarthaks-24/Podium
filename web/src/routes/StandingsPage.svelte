@@ -1,10 +1,10 @@
 <!--
   StandingsPage: a contest's board for students, at
-  /contests/{slug}/standings (design.md 5.4): the page header and
+  /contests/{slug}/standings: the page header and
   StandingsView. During the contest the board opens as a panel over the
-  editor instead (B3); this page is for after the end, and for a link.
+  editor instead; this page is for after the end, and for a link.
   Back returns to the problem the student came from when the address
-  names one (?from=B, S1-09). Props: `slug`.
+  names one (?from=B). Props: `slug`.
 -->
 <script lang="ts">
   import { onMount } from 'svelte';

@@ -4,6 +4,12 @@ Dated entries per release. Unreleased work is listed at the top.
 
 ## Unreleased
 
+### v3 stage D: web structure (2026-10-30)
+
+- Every screen loads through one loader that keeps only the newest answer and stops on unmount; no screen keeps its own load state.
+- Twelve unused exports and their tests deleted; long component header comments cut to one paragraph; plan ids in comments replaced by the reason in words.
+- Part of the class locators in the mocked specs became role locators (171 to 138 lines).
+
 ### v3 stage D: server structure (2026-10-30)
 
 - Dead code from the cuts deleted (the live contest helper, the no-reveal view option, the co-organiser branch, a duplicate audit writer, unused stream, run and worker entry points). Archiving a contest drops its cached boards.

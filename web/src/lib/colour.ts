@@ -1,6 +1,6 @@
 /**
  * Colour maths and a reader for styles/tokens.css, used by the theme tests
- * (decision D41). The app itself does not import this module.
+ * to check contrast. The app itself does not import this module.
  *
  * - contrast(): the WCAG 2 contrast ratio of two #rrggbb colours.
  * - distance(): Euclidean distance in OKLab, optionally after simulating

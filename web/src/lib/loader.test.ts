@@ -84,6 +84,8 @@ describe('loader', () => {
     const forbidden = fail(new ApiError(403, 'forbidden', 'No.'));
     await forbidden.load();
     expect(forbidden.state).toBe('forbidden');
+    expect(forbidden.error).toBe('No.');
+    expect(forbidden.code).toBe('forbidden');
     const missing = fail(new ApiError(404, 'not_found', 'There is no contest with that number.'));
     await missing.load();
     expect(missing.state).toBe('missing');
@@ -116,5 +118,22 @@ describe('loader', () => {
     req.resolve('late');
     await done;
     expect(page.state).toBe('forbidden');
+  });
+
+  it('keeps a ready page on screen while a quiet refetch runs and when it fails', async () => {
+    const req = deferred<string>();
+    const queue = [Promise.resolve('first'), req.promise];
+    const got: string[] = [];
+    const page = loader(
+      () => queue.shift()!,
+      (d) => got.push(d),
+    );
+    await page.load();
+    const done = page.load({ quiet: true });
+    expect(page.state).toBe('ready');
+    req.reject(new ApiError(500, 'internal', 'The server failed.'));
+    await done;
+    expect(page.state).toBe('ready');
+    expect(got).toEqual(['first']);
   });
 });

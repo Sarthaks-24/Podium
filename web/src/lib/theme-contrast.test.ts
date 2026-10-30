@@ -1,5 +1,5 @@
 // Checks every theme in tokens.css, with both verdict sets, against the
-// rules in decision D41: text contrast, control boundaries, the editor
+// accessibility rules: text contrast, control boundaries, the editor
 // well, verdicts on their tints, and the distance between the action
 // colour and the verdicts (also under simulated colour blindness for the
 // colour-blind safe set).
@@ -11,7 +11,7 @@ import { THEMES } from './theme';
 const rules = parseTokenRules(tokensCss);
 const HIGH_CONTRAST = new Set(['hc-light', 'hc-dark']);
 // About four just-noticeable differences in OKLab. The worst pair shipped is
-// 0.091 (dark colour-blind set, deuteranopia); see D41.
+// 0.091 (dark colour-blind set, deuteranopia).
 const MIN_DISTANCE = 0.09;
 
 /** color-mix(in srgb, a p, b): a straight mix of the encoded channels. */
@@ -129,8 +129,8 @@ describe('themes in tokens.css', () => {
   });
 });
 
-// X5 (v2 frontend plan 6.7, audit 06-14): pairs the rules above leave out.
-// P0 listed 30 failing pairs; the P1 token pass fixed them all (the
+// Pairs the rules above leave out. 30 of them once failed; a token pass
+// fixed them all (the
 // comment colour, a 30 percent selection mix, --line-strong in three dark
 // themes, and a Dismiss hover drawn as a border). Any new failure fails
 // this test.
@@ -165,7 +165,7 @@ describe('X5 contrast pairs', () => {
   });
 });
 
-// F1 token pass (v2 frontend plan 6.1, audit 05 T4 to T17): the fills the
+// The fills the
 // controls mix from theme colours, with the text drawn on them.
 function f1Failures(id: string, signal: boolean): string[] {
   const t = resolveTheme(rules, id, signal);
@@ -175,17 +175,17 @@ function f1Failures(id: string, signal: boolean): string[] {
     const ratio = contrast(fg, bg);
     if (ratio < text) out.push(`${id}${signal ? ' (signal)' : ''}: ${name}: ${ratio.toFixed(2)} < ${text}`);
   };
-  // T6 and the existing hover: primary buttons, hovered and pressed.
+  // Primary buttons, hovered and pressed.
   need('--act-ink on hovered primary', t['--act-ink'], mixSrgb(t['--act'], t['--ink'], 0.86));
   need('--act-ink on pressed primary', t['--act-ink'], mixSrgb(t['--act'], t['--ink'], 0.76));
-  // T7: secondary hover.
+  // Secondary hover.
   need('--ink on secondary hover', t['--ink'], mixSrgb(t['--ink'], t['--surface'], 0.04));
-  // T10: the hover fill of an actionable table row, with everything a row shows.
+  // The hover fill of an actionable table row, with everything a row shows.
   const row = mixSrgb(t['--surface-2'], t['--surface'], 0.5);
   for (const fg of ['--ink', '--ink-muted', '--act', '--ok', '--part', '--bad', '--wait']) need(`${fg} on row hover`, t[fg], row);
-  // T8: muted table headers.
+  // Muted table headers.
   need('--ink-muted on table header', t['--ink-muted'], t['--surface-2']);
-  // T17: selected text.
+  // Selected text.
   need('--ink on selection', t['--ink'], t['--act-tint']);
   return out;
 }

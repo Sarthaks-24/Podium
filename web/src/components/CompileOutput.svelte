@@ -3,8 +3,8 @@
   location it names (lib/compileErrors.ts: "main.cpp:12:5",
   "Main.java:12", 'line 12', "main.js:12") turned into a button that moves
   the editor's cursor there; its name starts with the text it shows, so
-  a voice user can say what they see (X6). Above it one line names the
-  first error and its line (P4), so the useful line comes first. The text
+  a voice user can say what they see. Above it one line names the
+  first error and its line, so the useful line comes first. The text
   is never rendered as HTML. Props: `output` (the compiler's text), `language` (which
   compiler's shapes to look for) and `onjump` (called with the line and
   column, or null when there is no editor to jump to).

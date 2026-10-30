@@ -1,10 +1,10 @@
 <!--
   Rail: what the workspace's left column holds from 1024 px. The clock
   slot (a contest clock, or a one-line note such as "You are trying this
-  problem as a student.") with the back link under it (S6), then the
+  problem as a student.") with the back link under it, then the
   problem's title with the best score and a 2 px bar (a partial score
   fills in the partial colour, as standings cells do). A contest has its
-  bar instead (B6). Props: `clock` (a snippet, optional), `note`,
+  bar instead. Props: `clock` (a snippet, optional), `note`,
   `backHref`, `backLabel`, `title` and `best` ({ score, max } or null).
 -->
 <script lang="ts">

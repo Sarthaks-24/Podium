@@ -1,6 +1,6 @@
 <!--
   ProblemTry: an organiser tries a problem as a student would, at
-  /admin/problems/{id}/try (cache/v1/m3-plan.md section 7a). It mounts the
+  /admin/problems/{id}/try. It mounts the
   shared Workspace on the problem's workspace routes; submissions made here
   are the organiser's own and count in no contest. Students see a short
   explanation instead, because the problem bank is never shown to them.

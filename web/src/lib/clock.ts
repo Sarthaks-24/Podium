@@ -1,5 +1,5 @@
 /**
- * The server's clock as seen from the browser (m3-plan.md section 7a).
+ * The server's clock as seen from the browser.
  *
  * Every workspace, run and submission response carries server_now (Unix
  * ms), and the event stream sends a clock event every 25 s. The offset is
@@ -7,7 +7,7 @@
  * request so half the round trip is accounted for. Samples with a shorter
  * round trip are more trustworthy, so a new sample replaces the current
  * one when its round trip is no worse, or when the current one is stale.
- * M4's contest timer reads serverNow().
+ * The contest clock reads serverNow().
  */
 
 /** The offset from one response: server time minus browser time, in ms. */

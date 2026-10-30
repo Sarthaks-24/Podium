@@ -1,37 +1,15 @@
 /**
- * The code editor: CodeMirror 6 set up for the workspace.
- *
- * Loaded with a dynamic import by components/CodeEditor.svelte only, so
- * CodeMirror stays out of the main bundle. Each language mode is its own
- * chunk, fetched when that language is first chosen (P5 F7.8): the editor
- * opens at once with plain text and the highlighting arrives with the
- * mode. A later switch that lands first wins; a mode that fails to load
- * leaves the code as plain text, which still edits and submits.
- *
- * - Colours come from CSS custom properties (the well and the --code-*
- *   tokens), so the editor follows every theme without being rebuilt.
- * - Font size is the --editor-font-size-used property on the host element
- *   (CodeEditor.svelte keeps it at 16 px or more on touch screens).
- * - Tab indents unless "Tab moves focus" is on. Either way, Escape then Tab
- *   leaves the editor (CodeMirror's tab-focus escape), so a keyboard user is
- *   never trapped.
- * - Mod-Enter and Mod-' call the caller's submit and run; they are bound
- *   ahead of the VS Code keymap, which would otherwise insert a line.
- * - Keys follow VS Code (`@replit/codemirror-vscode-keymap` plus the few it
- *   leaves out, below); the full table is lib/shortcuts.ts. Find and
- *   replace, auto-closed brackets, completion (words from the file for C++
- *   and Java), multiple cursors, folding, word wrap and tab size 2 or 4.
- * - Typed and pasted characters are reported from each transaction's
- *   userEvent ("input.type", "input.paste"), never with timing.
- * - `blockPaste` (a contest's exam option, V3-25) refuses every paste and
- *   drop: nothing is inserted and `onPasteBlocked` is called, so the
- *   workspace can say why. It lives in a compartment, like read-only.
- * - `describedBy` names the element holding the editor's keyboard hint, so
- *   a screen reader hears how to leave the editor (X2).
- * - The language 'text' is plain text with no mode: the problem editor's
- *   statement uses it, with the same keys and theme as the workspace,
- *   because no Markdown mode is installed. `id` puts an id on the editable
- *   element, so a field error can point at it.
+ * The code editor: CodeMirror 6 set up for the workspace, loaded with a
+ * dynamic import by components/CodeEditor.svelte only, so CodeMirror stays
+ * out of the main bundle; each language mode is its own chunk and a mode
+ * that fails to load leaves plain text that still edits and submits.
+ * Colours come from CSS custom properties, so the editor follows every
+ * theme without being rebuilt. Keys follow VS Code (the full table is
+ * lib/shortcuts.ts), Escape then Tab always leaves the editor so a
+ * keyboard user is never trapped, and typed and pasted characters are
+ * counted from each transaction's user event, never from timing. A
+ * contest that blocks paste gets a compartment that refuses every paste
+ * and drop and tells the caller, so the workspace can say why.
  */
 import { autocompletion, closeBrackets, closeBracketsKeymap, closeCompletion, completeAnyWord, completeFromList, currentCompletions } from '@codemirror/autocomplete';
 import { defaultKeymap, history, historyKeymap, indentMore, indentWithTab, selectParentSyntax } from '@codemirror/commands';
@@ -161,9 +139,9 @@ export interface EditorOptions extends EditorCallbacks {
   tabMovesFocus: boolean;
   tabSize?: 2 | 4;
   wrap?: boolean;
-  /** Under 1024 px code is read, not written (V3-14): no edits, and no on-screen keyboard. */
+  /** Under 1024 px code is read, not written: no edits, and no on-screen keyboard. */
   readOnly?: boolean;
-  /** Refuse pastes and drops into the editor (exam option, V3-25). */
+  /** Refuse pastes and drops into the editor (a contest's exam option). */
   blockPaste?: boolean;
 }
 
@@ -192,7 +170,7 @@ function inserted(tr: { changes: { iterChanges: (fn: (a: number, b: number, c: n
   return n;
 }
 
-// The VS Code keys the replit keymap leaves out (cache/v3/design/editor.md section 3).
+// The VS Code keys the replit keymap leaves out.
 
 /** Mod+Shift+Enter: a new line above each cursor, at the line's indent. */
 export const insertLineAbove: Command = (view) => {
@@ -272,10 +250,11 @@ const closeShownCompletion: Command = (view) => currentCompletions(view.state).l
 // Escape for completion is the guarded one above.
 const vscodeKeys = vscodeKeymap.filter((b) => !(b.key === 'Tab' && b.run === indentMore) && b.run !== closeCompletion);
 
-/** C++ and Java have no completion source of their own, so they complete words from the file. */
-// C++ and Java modes bring no completion of their own: words from the file
-// plus the names a contest solution reaches for (pilot P8; no language
-// server, V3-13).
+/**
+ * C++ and Java modes bring no completion of their own: words from the file
+ * plus the names a contest solution reaches for, since there is no
+ * language server.
+ */
 const KEYWORDS: Partial<Record<Language, string[]>> = {
   cpp17: [
     'auto', 'bool', 'break', 'char', 'const', 'continue', 'double', 'else', 'false', 'for', 'if', 'int', 'long', 'return',
@@ -298,7 +277,7 @@ const completion = (language: EditorLanguage) => {
   return autocompletion({ defaultKeymap: false, ...(words ? { override: [completeAnyWord, completeFromList(words)] } : {}) });
 };
 
-// The find and go-to-line panels' words, in sentence case (design.md section 8).
+// The find and go-to-line panels' words, in sentence case.
 const phrases = EditorState.phrases.of({
   next: 'Next',
   previous: 'Previous',
@@ -344,7 +323,7 @@ export function createEditor(o: EditorOptions): EditorHandle {
     EditorView.contentAttributes.of({
       'aria-label': label,
       'aria-multiline': 'true',
-      // Browser translation must never rewrite code (final audit 2026-10-21).
+      // Browser translation must never rewrite code.
       translate: 'no',
       ...(o.id ? { id: o.id } : {}),
       // Plain text (the statement) is one field of a form and scrolls inside

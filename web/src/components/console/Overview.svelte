@@ -1,6 +1,6 @@
 <!--
-  Overview: how the contest is going, under the console's opening sentence
-  (stage C2, design/organiser.md Live view). How many students started,
+  Overview: how the contest is going, under the console's opening sentence.
+  How many students started,
   then one line per problem with a bar and "21 solved of 27 attempted"
   (GET /api/admin/contests/{id}/stats: solved is the full score), and the
   queue ("Queue: 3 waiting, 1 judging"). Each problem line has a quiet

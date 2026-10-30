@@ -10,7 +10,7 @@
   `headingBase` (the level a "#" heading becomes, default 4, to sit under
   the editor's own headings), and `samples`: when given, the statement and
   its samples are drawn by the students' own Statement component, so the
-  preview matches what students see (v2 P3 A5); `samplesCut` says the
+  preview matches what students see; `samplesCut` says the
   sample text is only the start of each file.
 -->
 <script lang="ts">

@@ -1,5 +1,5 @@
 /**
- * One announcer for the whole app (v2 F5, audit 06). App.svelte renders two
+ * One announcer for the whole app. App.svelte renders two
  * always-present, visually hidden live regions, one polite and one
  * assertive, from `regions`. polite() and assertive() first clear their
  * region and set the text a moment later, so the same sentence said twice

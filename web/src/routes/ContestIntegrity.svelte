@@ -1,23 +1,14 @@
 <!--
-  ContestIntegrity: the organiser's similar-code report for one contest
-  at /admin/contests/{id}/integrity (docs/INTEGRITY.md), titled and
-  trailed "Similar code" like the button that opens it. "Check integrity"
-  starts a check (POST .../integrity/run); it is disabled with the reason
-  until every student's time is up, and while a check runs the page says
-  so and polls GET .../integrity every two seconds until it is done. Under
-  the stats line come the signals, filtered by kind and strength and
-  grouped by problem in tables (strength in words, with the reason for
-  similar code), with the groups of similar code on each problem listed as names,
-  and "Download similar pairs (CSV)" for the college's own process. The
-  decisions recorded for this contest are listed below, newest first; each
-  can be changed (DecisionDialog). When the contest had an exam option on
-  (V3-25), a table under the signals gives what the editor recorded per
-  student over the contest (GET .../integrity/counts): pasted characters,
-  and the focus losses and full-screen exits when those were counted.
-  Every view carries IntegrityNote. The
-  page has no tab of its own: Results links here with "Similar code" once
-  the contest has ended. The contest loads through lib/loader, so an
-  answer after the page has gone is dropped. Props: `id`.
+  ContestIntegrity: "Similar code" for one contest at
+  /admin/contests/{id}/integrity, reached from Results once the contest
+  has ended. "Check integrity" waits until every student's time is up,
+  then runs and polls every two seconds. The signals are grouped by
+  problem with their strength in words, the similar pairs can be
+  downloaded as CSV for the college's own process, and the decisions
+  recorded for this contest are listed and can be changed. When an exam
+  option was on, a table gives what the editor counted per student. Every
+  view carries IntegrityNote, because a signal is not proof. The contest
+  loads through lib/loader.
 -->
 <script lang="ts">
   import MonoDigits from '../components/MonoDigits.svelte';
@@ -67,7 +58,7 @@
   let starting = $state(false);
   let cases = $state.raw<Case[] | null>(null);
   let casesError = $state('');
-  /** What the editor recorded per student, when an exam option is on (V3-25). */
+  /** What the editor recorded per student, when an exam option is on. */
   type Counts = { user_id: number; name: string; pastes: number; pasted_chars: number; focus_losses: number; fullscreen_exits: number };
   let counts = $state.raw<Counts[] | null>(null);
   let countsError = $state('');
@@ -173,7 +164,7 @@
     }, POLL_MS);
   }
 
-  /** A new check replaces the signals shown, so checking again asks first (C3). */
+  /** A new check replaces the signals shown, so checking again asks first. */
   let recheckOpen = $state(false);
 
   async function startCheck() {

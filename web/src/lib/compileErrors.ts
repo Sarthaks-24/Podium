@@ -124,7 +124,7 @@ export function locations(output: string, language?: string): Location[] {
 
 /**
  * The first error the compiler names, for the one line shown above its
- * output (P4): where it is and what it says. g++ and javac put both on one
+ * output: where it is and what it says. g++ and javac put both on one
  * line ("main.cpp:12:5: error: expected ';'"); Python and Node give the
  * place first and the message on a later line ("SyntaxError: ..."). Null
  * when the output names no place in the student's code.

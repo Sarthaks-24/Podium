@@ -308,7 +308,7 @@ test('after adding an organiser, the page says what to send them', async ({ page
   await page.goto('/admin/people');
   await page.getByRole('region', { name: 'Organisers' }).getByLabel('Email', { exact: true }).fill('new.ta@college.edu');
   await page.getByRole('button', { name: 'Add organiser' }).click();
-  const note = page.locator('.invite');
+  const note = page.getByRole('status').filter({ hasText: 'this address' });
   const origin = new URL(page.url()).origin;
   await expect(note).toContainText(`Send new.ta@college.edu this address: ${origin}. They sign in with Google using that email.`);
   await expect(page.getByRole('row', { name: /new\.ta@college\.edu/ })).toContainText('Invited');

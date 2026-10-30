@@ -2,7 +2,7 @@
   SignalTable: integrity signals as a table (docs/INTEGRITY.md): the
   students named, the kind in words, the strength in words, for similar
   code with its reason under it ("Short programs, identical", never a bare
-  "Weak 1.00", pilot P11), what was found, and for similar code the
+  "Weak 1.00", which read as proof), what was found, and for similar code the
   numbers behind it (fingerprints, tokens, score) and a link to the
   side-by-side view. Under a table with similar code, one line says what
   the strength weighs. With `selectable` each row starts with a checkbox for

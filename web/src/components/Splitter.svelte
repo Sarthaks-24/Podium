@@ -1,7 +1,7 @@
 <!--
-  Splitter: the WAI-ARIA window splitter (F5) between the editor and the
-  result from 1024 px (F7.5), or with `orientation` "columns" between the
-  statement and the code (B6, E5). Drag the grip, or use the keyboard on
+  Splitter: the WAI-ARIA window splitter between the editor and the
+  result from 1024 px, or with `orientation` "columns" between the
+  statement and the code. Drag the grip, or use the keyboard on
   it: arrows move it by 5 percent, Page Up and Page Down by 15, Home and
   End go to the ends, Enter hides or shows the pane; a step down from the
   smallest size hides it too, and so does dragging well past it. For rows

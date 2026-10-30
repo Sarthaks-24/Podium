@@ -1,4 +1,4 @@
-// The console's opening sentence (stage C2) and feed wording (v2 P3 F6.2; audit O3).
+// The console's opening sentence and feed wording.
 import { describe, expect, it } from 'vitest';
 import { consoleSentence, endNowFreeze, feedOutcome, organiserState, publishChecks, sinceStart } from './contests';
 

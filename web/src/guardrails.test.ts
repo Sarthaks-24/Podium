@@ -1,7 +1,7 @@
 // Enforces repository rules on the web sources (CLAUDE.md sections 7 and 8):
 // colour literals live only in styles/tokens.css, no file contains an en
 // dash or em dash, and every media query uses the breakpoint tiers of
-// lib/breakpoints.ts (v2 F8).
+// lib/breakpoints.ts.
 import { describe, expect, it } from 'vitest';
 import { QUERIES, TIERS } from './lib/breakpoints';
 
@@ -30,7 +30,7 @@ describe('web source guardrails', () => {
     expect(Object.keys(sources).length).toBeGreaterThan(5);
   });
 
-  // C2-071 (C1-035): a text or page measure is a --measure-* token. Any ch
+  // A text or page measure is a --measure-* token. Any ch
   // width, or a rem width of 40 or more, is a measure; smaller rem widths
   // size a single control and may stay literal.
   it('keeps page measures in tokens', () => {
@@ -61,7 +61,7 @@ describe('web source guardrails', () => {
   });
 
   // --focus is a box-shadow list; inside an outline it makes the whole
-  // declaration invalid, so the ring silently disappears (C1-009).
+  // declaration invalid, so the ring silently disappears.
   it('never uses the --focus shadow as an outline colour', () => {
     const offenders = Object.entries(sources)
       .filter(([path]) => !isTest(path))
@@ -71,7 +71,7 @@ describe('web source guardrails', () => {
   });
 
   // Page-level stacking uses the --z-* tokens, so a toast never ties with
-  // the bar; small local orders (1 to 9) inside a component are fine (C1-034).
+  // the bar; small local orders (1 to 9) inside a component are fine.
   it('takes page-level z-index values from the tokens', () => {
     const offenders = Object.entries(sources)
       .filter(([path]) => path !== TOKENS && !isTest(path))
@@ -83,7 +83,7 @@ describe('web source guardrails', () => {
   // The rating number is read on organiser screens only (docs/API.md
   // "Students"): no screen a student sees imports the module that holds it.
 
-  // One error fallback, from lib/api.ts errorText (C1-032): no screen
+  // One error fallback, from lib/api.ts errorText: no screen
   // carries its own copy of the sentence.
   it('words an unexpected error only in lib/api.ts', () => {
     const offenders = Object.entries(sources)
@@ -93,7 +93,7 @@ describe('web source guardrails', () => {
     expect(offenders).toEqual([]);
   });
 
-  // Widths and rules come from the tokens (CLAUDE.md section 8, C1-035):
+  // Widths and rules come from the tokens (CLAUDE.md section 8):
   // a component names --measure-* instead of its value, draws outlines,
   // borders and underlines in --rule multiples, and uses the shared .small.
   it('names the measure and rule tokens in components instead of their values', () => {
@@ -178,7 +178,7 @@ describe('breakpoints', () => {
   });
 });
 
-// F8.1 and F8.2: what a student's first load carries.
+// What a student's first load carries.
 describe('first load', () => {
   // The screens a student can open; every other route is an organiser's and
   // is loaded with import() from screens.ts.
@@ -202,7 +202,7 @@ describe('first load', () => {
   });
 });
 
-// C2-042 (C1-019): a toast's words are also in the visually hidden polite
+// A toast's words are also in the visually hidden polite
 // announcer, so `getByText(...).first()` finds them even when no toast is
 // drawn. Playwright specs check toasts inside `.toasts`.
 describe('toast checks in the Playwright specs', () => {

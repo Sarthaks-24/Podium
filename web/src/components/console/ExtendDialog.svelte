@@ -1,9 +1,9 @@
 <!--
-  ExtendDialog: "Extend the contest" for everyone, from the console (stage
-  C2). The minutes to add, the new end said before anything is sent ("Every
+  ExtendDialog: "Extend the contest" for everyone, from the
+  console. The minutes to add, the new end said before anything is sent ("Every
   student's contest then ends at 15:40"), and "Extend contest", which
   POSTs .../extend. After the end it says the contest has ended and offers only
-  the Close button (walk bug B3); the server refuses too, and a refusal is shown
+  the Close button; the server refuses too, and a refusal is shown
   inside the dialog, where it can be read over the backdrop.
 
   Props: `open`, `base` (the contest's admin API path), `closeAt` (the end

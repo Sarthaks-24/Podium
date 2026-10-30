@@ -1,8 +1,8 @@
 /**
- * The code in the workspace editor and where it is kept (B2, F6): the
+ * The code in the workspace editor and where it is kept: the
  * language and source, the copy on the server and the mirror on this
- * device (lib/drafts.ts), the editor settings, and the language memory
- * (P5). One per Workspace; the component holds the timers and calls
+ * device (lib/drafts.ts), the editor settings, and the language memory.
+ *One per Workspace; the component holds the timers and calls
  * save() every 10 s, on blur and when the page hides.
  *
  * - On load the newer of the server's draft and the device mirror wins;
@@ -12,7 +12,7 @@
  *   starter while the code is still a starter; over typed code it waits
  *   in `pendingLanguage` for the confirm, and Cancel keeps the code.
  * - Reset puts the starter back and saves at once, so the next timed save
- *   or a reload cannot bring the old code back (F7.12, D114).
+ *   or a reload cannot bring the old code back.
  */
 import { ApiError, isSignedOut, sendJSON } from './api';
 import { serverClock } from './clock';
@@ -58,7 +58,7 @@ export class Draft {
   tabSize = $state<2 | 4>(4);
   wrap = $state(false);
   cursor = $state({ line: 1, col: 1 });
-  /** A language chosen over typed code, waiting for the confirm (P5). */
+  /** A language chosen over typed code, waiting for the confirm. */
   pendingLanguage = $state<Language | null>(null);
   editor: EditorLike | undefined;
 
@@ -157,7 +157,7 @@ export class Draft {
     }
   }
 
-  /** A language picked in the select (P5). */
+  /** A language picked in the select. */
   choose(next: Language): void {
     if (next === this.language) return;
     this.keep(this.language, this.source);
@@ -173,7 +173,7 @@ export class Draft {
     if (next) this.switchTo(next, useStarter ? starter(next) : null);
   }
 
-  /** Reset: the starter replaces the code and is saved at once (F7.12). */
+  /** Reset: the starter replaces the code and is saved at once. */
   async reset(): Promise<void> {
     const code = starter(this.language);
     this.source = code;

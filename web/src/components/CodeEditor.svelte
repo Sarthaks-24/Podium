@@ -1,25 +1,13 @@
 <!--
-  CodeEditor: the workspace's code editor in the dark well (design.md 5.3).
-  On mount it loads lib/editor.ts with a dynamic import, so CodeMirror is
-  fetched only by screens that edit code, and shows a short loading line
-  until then; each language's highlighting is its own chunk, fetched when
-  that language is chosen (F7.8). Changing `language`, `label` or
-  `tabMovesFocus` reconfigures the running editor; `fontSize` sets
-  --editor-font-size on the well, at least 16 px on touch screens so iOS
-  never zooms into the editor (F7.4). A visually hidden line, referenced
-  by the editor's aria-describedby, says how to leave the editor and which
-  keys run and submit (X2); `keysHint` replaces that last sentence where
-  the keys do something else (the problem editor's statement, plain text
-  with language 'text').
-  Callers reach jumpTo(), setDoc() and focus() through bind:this.
-  Props: `initial` (the code to start with), `language`, `label` (the
-  editor's accessible name, naming the problem and language), `id` (the
-  editable element's id, for field errors), `keysHint`, `fontSize`
-  (px), `tabSize` (2 or 4), `wrap`, `readOnly` (under 1024 px, V3-14),
-  `blockPaste` (a contest's exam option: pastes insert nothing and
-  `onpasteblocked` is called, V3-25), `tabMovesFocus`, and the callbacks
-  `onchange`, then the optional `ontyped`, `onpaste`, `onblur`,
-  `onsubmit`, `onrun` and `oncursor` (line and column, for "Ln 2, Col 5").
+  CodeEditor: the workspace's code editor in the dark well. It loads
+  lib/editor.ts with a dynamic import on mount, so only screens that edit
+  code fetch CodeMirror, and shows a short loading line until then.
+  Changing the language, label or Tab behaviour reconfigures the running
+  editor; the font size is at least 16 px on touch screens so iOS never
+  zooms in. A visually hidden line, referenced by aria-describedby, says
+  how to leave the editor and which keys run and submit. Under 1024 px it
+  is read only, and a contest may block paste. Callers reach jumpTo(),
+  setDoc() and focus() through bind:this.
 -->
 <script lang="ts">
   import { onMount } from 'svelte';
@@ -178,7 +166,7 @@
 
 <style>
   .well {
-    /* lib/editor.ts reads the size from here; touch screens never go under 16 px (F7.4). */
+    /* lib/editor.ts reads the size from here; touch screens never go under 16 px. */
     --editor-font-size-used: var(--editor-font-size);
     position: relative;
     display: grid;

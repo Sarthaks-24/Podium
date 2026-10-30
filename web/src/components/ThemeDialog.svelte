@@ -1,11 +1,10 @@
 <!--
   ThemeDialog: "Theme and colours", the theme picker (ThemePicker.svelte)
-  in the shared native dialog shell, opened from the account menu (v2 N2,
-  audit 04-5). The shell renders the one copy and opens it from
+  in the shared native dialog shell, opened from the account menu. The shell renders the one copy and opens it from
   shell.theme. Focus starts on the heading so the title is read first;
   Escape and the close button shut it, and focus returns to the control
   that opened it, or to the page heading when the account menu closed
-  with it (components/Dialog, P8). Props: `open` and `onclose`.
+  with it (components/Dialog). Props: `open` and `onclose`.
 -->
 <script lang="ts">
   import Dialog from './Dialog.svelte';

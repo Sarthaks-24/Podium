@@ -1,26 +1,13 @@
 /**
- * Drafts: the code in the editor, kept in two places so a crash, a closed
- * lid or a dropped connection loses nothing.
- *
- * The server copy is saved every 10 s and when the editor loses focus. The
- * local copy is a mirror in localStorage, written on every pause in typing.
- * On load, pickDraft() takes whichever is newer; both carry server time
- * (the browser's clock corrected by the offset from lib/clock.ts), so a
- * laptop with a wrong clock still compares fairly. Storage can throw
- * (private windows, blocked site data), so every access is guarded and the
- * editor works without it.
- *
- * The mirror belongs to one account: its key and its value both carry the
- * user id, an entry written for someone else is ignored, and every mirror
- * on the device is removed at sign-out and whenever a different account
- * signs in (forgetDrafts(), noteSignedInUser()). On a shared lab machine
- * the next student never sees, or saves as their own, the last student's
- * code.
- *
- * The editor's own settings (font size, tab size, word wrap, Tab
- * behaviour) and the size of the workspace's result panel (P5 F7.5) live
- * here too, under their own keys: they belong to this device. The last
- * language belongs to the account, so its key carries the user id.
+ * Drafts: the code in the editor, kept on the server (every 10 s and on
+ * blur) and mirrored in localStorage on every pause in typing, so a crash,
+ * a closed lid or a dropped connection loses nothing; on load pickDraft()
+ * takes the newer, compared in server time so a wrong laptop clock still
+ * compares fairly. The mirror belongs to one account and is removed at
+ * sign-out and when another account signs in, so on a shared lab machine
+ * the next student never sees the last student's code. Storage can
+ * throw, so every access is guarded. The editor's own settings and the
+ * result panel's size live here too, under keys that belong to the device.
  */
 import type { Draft, Language } from './workspace';
 
@@ -161,7 +148,7 @@ export function pickDraft(server: Draft | null, local: Draft | null): { draft: D
 /** Font sizes the editor offers, in px. */
 export const FONT_SIZES = [12, 13, 14, 15, 16, 18, 20, 22, 24] as const;
 
-/** The editor's default font size (design.md section 4). */
+/** The editor's default font size. */
 export const DEFAULT_FONT_SIZE = 14;
 
 const FONT_KEY = 'podium-editor-font';
@@ -170,10 +157,10 @@ const LANG_KEY = 'podium-editor-language';
 const TAB_SIZE_KEY = 'podium-editor-tab-size';
 const WRAP_KEY = 'podium-editor-wrap';
 const RESULT_KEY = 'podium-workspace-result';
-/** The statement's share of the width beside the code in a contest, and whether it is hidden (B6). */
+/** The statement's share of the width beside the code in a contest, and whether it is hidden. */
 export const STATEMENT_KEY = 'podium-workspace-statement';
 
-/** The result panel's share of the code column, in percent, while open (F7.5). */
+/** The result panel's share of the code column, in percent, while open. */
 export const RESULT_SHARE = { min: 20, max: 80, default: 40 } as const;
 
 function read(storage: DraftStorage | null, key: string): string | null {
@@ -238,7 +225,7 @@ export function writeResultPanel(storage: DraftStorage | null, prefs: ResultPane
 /**
  * Reads the remembered editor settings, falling back to the defaults. Word
  * wrap starts on when `narrow` (under 768 px) until it is set; the
- * language is the one `owner` chose last, on any problem or contest (P5).
+ * language is the one `owner` chose last, on any problem or contest.
  */
 export function readEditorPrefs(storage: DraftStorage | null, owner: number, narrow = false): EditorPrefs {
   const size = Number(read(storage, FONT_KEY));

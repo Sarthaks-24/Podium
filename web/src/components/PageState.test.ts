@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-// F3: the five page states, rendered.
+// The five page states, rendered.
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createRawSnippet, flushSync, mount, unmount } from 'svelte';
 import PageState from './PageState.svelte';

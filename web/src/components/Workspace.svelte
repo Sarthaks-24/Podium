@@ -1,51 +1,21 @@
 <!--
   Workspace: read a problem, write code, run it, submit it and understand
-  the verdict (design.md 5.3, cache/v3/design/editor.md). Mounted for
-  organisers at /admin/problems/{id}/try and for students under a contest.
-  Split once in B2: the code and where it is kept live in
-  lib/draft.svelte.ts, submitting, running and the result tabs in
-  lib/judging.svelte.ts, the grid in workspace/Layout, the toolbar in
-  workspace/Toolbar and the results in workspace/ResultPane. This file
-  wires them: it loads the problem, holds the timers, the keys and the
-  layout tier, and the two confirms.
-
-  - From 1024 px the rail, the statement and the code column with the
-    editor over the tabbed result; the splitter sets the result's share,
-    20 to 80 percent, or hides it to one line, kept on this device (F7.5).
-    Under 1024 px the panes are tabs under the sticky strip, which carries
-    Submit; when a tab switches by itself after Submit or Run, focus moves
-    to the result's first line (F7.4).
-  - The draft is saved every 10 s, when the editor or the window loses
-    focus, before sign-out and when the page hides; integrity counts
-    (lib/integrity.ts) are sent in batches and never hold up a submit.
-  - Ctrl+Enter submits, Ctrl+' runs (on Your input while that box has
-    focus), Ctrl+S saves (Cmd on a Mac); an editor key pressed outside the
-    editor shows a toast saying where it works (P6). Help lists them all.
-  - Reset and a language switch over typed code ask first (F7.12, P5).
-  - During a live contest (a `clock` is given) sign out asks first (F7.6).
-  - The contest's exam options (`exam`, V3-25): a blocked paste inserts
-    nothing and a blocked copy from the statement copies nothing, each with
-    a line saying so; with full screen on, every exit from full screen is
-    counted and sent with the integrity events.
-
-  Props: `base` (the API base, such as "/api/workspace/12"), `backHref` and
-  `backLabel`, `contestHref` (where a refused "not started" or "time is
-  up" load points), `note` (one line in the clock slot when there is no
-  clock), `clock` (a snippet, given true for one compact line). For
-  contests: `banner` (drawn above the title), `rail` (the problems, given
-  the layout), `label` (the problem letter), `context` (the contest title,
-  for the document title), `locked` (why Run and Submit are off, unless the server's
-  own `refusal` says it better), `problemScore` (for "your score stays"),
-  `used` (for "3 of 15 submissions used"), `minGapS` (the seconds between
-  submits), `statementKey` (raised when the statement changed: it reloads,
-  the editor is left alone), `exam` (the exam options that are on), and
-  `extraEvents` with `onevent` and `onresync` (more events on the same
-  stream, and a hook on reconnect).
+  the verdict, for organisers at /admin/problems/{id}/try and for students
+  in a contest. The code and where it is kept live in lib/draft.svelte.ts,
+  submitting, running and the result tabs in lib/judging.svelte.ts, and
+  the grid, toolbar and results in components/workspace/; this file wires
+  them together: it loads the problem through lib/loader, holds the
+  timers, the keys and the layout tier, and asks before a reset, a
+  language switch over typed code, or a sign-out during a live contest.
+  The draft is saved every 10 s and whenever focus or the page goes, and
+  integrity counts go out in batches that never hold up a submit, so a
+  crash or a closed lid loses nothing and judging is never slowed.
 -->
 <script lang="ts">
   import { onMount, tick, type Snippet } from 'svelte';
   import { polite } from '../lib/announce.svelte';
-  import { ApiError, errorText, getJSON, isSignedOut } from '../lib/api';
+  import { ApiError, getJSON } from '../lib/api';
+  import { loader } from '../lib/loader.svelte';
   import { media } from '../lib/breakpoints';
   import { serverClock } from '../lib/clock';
   import { Draft } from '../lib/draft.svelte';
@@ -127,20 +97,15 @@
   // The mirror is per account (lib/drafts.ts); the shell mounts this only when signed in.
   const draft = new Draft(api, session.user?.id ?? 0, typeof window !== 'undefined' && !media('tablet').matches);
 
-  let loadState = $state<'loading' | 'ready' | 'missing' | 'forbidden' | 'error'>('loading');
-  let loadError = $state('');
-  // The server's 403 code: not_started and contest_over point back to the contest page (C2-017).
-  let forbiddenCode = $state('');
   let ws = $state.raw<Workspace | null>(null);
   let editor: CodeEditor | undefined = $state();
   let integrity: IntegrityRecorder | null = null;
-  let alive = true;
   let confirmReset = $state(false);
 
   const judging = new Judging({
     base: api,
     problemId: () => ws?.problem_id,
-    ready: () => loadState === 'ready',
+    ready: () => page.state === 'ready',
     locked: () => lockText,
     minGapS: () => minGapS,
     code: () => ({ language: draft.language, source: draft.source }),
@@ -152,16 +117,16 @@
   // Layout: from 1024 px three columns, from 768 px two tabs, under it three.
   let layout = $state<'wide' | 'tablet' | 'phone'>('wide');
   let tab = $state<'problem' | 'code' | 'result'>('problem');
-  // Under 1024 px code is read, not written (V3-14, owner answer 2).
+  // Under 1024 px code is read, not written.
   const NARROW = 'Use a computer to edit, run or submit.';
   // The server says why Run and Submit are off when they are; `locked` is the fallback.
   const lockText = $derived(ws?.refusal ? ws.refusal : layout !== 'wide' ? NARROW : locked);
-  // A short laptop starts with a smaller result, so the editor keeps its height (F7.3).
+  // A short laptop starts with a smaller result, so the editor keeps its height.
   const panel = readResultPanel(draftStorage(), typeof window !== 'undefined' && media('short').matches ? 30 : RESULT_SHARE.default);
   let resultShare = $state(panel.share);
   let resultCollapsed = $state(panel.collapsed);
   let codeCol: HTMLDivElement | undefined = $state();
-  // In a contest from 1024 px (B6): the statement's share beside the code, or hidden (E5).
+  // In a contest from 1024 px: the statement's share beside the code, or hidden.
   const statementPanel = readResultPanel(draftStorage(), 45, STATEMENT_KEY);
   let statementShare = $state(statementPanel.share);
   let statementHidden = $state(statementPanel.collapsed);
@@ -173,7 +138,7 @@
     const ids = (ws?.languages ?? []).map((l) => l.id);
     return ids.length > 0 ? LANGUAGES.filter((l) => ids.includes(l.id)) : [...LANGUAGES];
   });
-  /** The selected language and the judge's time factor for it, for the limits line (D323). */
+  /** The selected language and the judge's time factor for it, for the limits line. */
   const limits = $derived(
     ws
       ? limitsText(ws.time_limit_ms, ws.memory_limit_mb, {
@@ -197,48 +162,41 @@
     layout !== 'wide' ? undefined : resultCollapsed ? 'minmax(0, 1fr) auto 0' : `minmax(0, ${100 - resultShare}fr) auto minmax(0, ${resultShare}fr)`,
   );
 
-  async function load() {
-    loadState = 'loading';
-    let data: Workspace;
-    try {
+  // A problem the address names wrongly (400) reads as missing, like one that is not there.
+  const page = loader(
+    async () => {
       const sent = Date.now();
-      data = await getJSON<Workspace>(api);
-      serverClock.observe(data.server_now, sent, Date.now());
-    } catch (e) {
-      if (isSignedOut(e)) return;
-      if (e instanceof ApiError && e.status === 403) {
-        loadError = e.message || 'You cannot open this problem.';
-        forbiddenCode = e.code;
-        loadState = 'forbidden';
-        return;
+      try {
+        const data = await getJSON<Workspace>(api);
+        serverClock.observe(data.server_now, sent, Date.now());
+        return data;
+      } catch (e) {
+        throw e instanceof ApiError && e.status === 400 ? new ApiError(404, e.code, e.message) : e;
       }
-      if (e instanceof ApiError && (e.status === 404 || e.status === 400)) {
-        loadState = 'missing';
-        setTitle('Problem not found');
-        return;
-      }
-      loadError = errorText(e);
-      loadState = 'error';
-      return;
-    }
-    if (!alive) return;
-    ws = data;
-    if (label !== '') setTitle(`${label}. ${data.title}`, context);
-    else setTitle(`Try ${data.title}`);
-    draft.restore(data);
-    judging.loaded(data);
-    const restore = keepHeadingFocus();
-    loadState = 'ready';
-    void restore();
-    // After Start the pressed button is gone: focus goes to the problem's heading, never the body (P8).
-    void tick().then(() => {
-      const a = document.activeElement;
-      if (!a || a === document.body) document.querySelector<HTMLElement>('main h1')?.focus();
-    });
-    judging.startStream(extraEvents, onevent, onresync);
+    },
+    (data) => {
+      const restore = keepHeadingFocus();
+      ws = data;
+      if (label !== '') setTitle(`${label}. ${data.title}`, context);
+      else setTitle(`Try ${data.title}`);
+      draft.restore(data);
+      judging.loaded(data);
+      void restore();
+      // After Start the pressed button is gone: focus goes to the problem's heading, never the body.
+      void tick().then(() => {
+        const a = document.activeElement;
+        if (!a || a === document.body) document.querySelector<HTMLElement>('main h1')?.focus();
+      });
+      judging.startStream(extraEvents, onevent, onresync);
+    },
+  );
+
+  async function load() {
+    await page.load();
+    if (page.live && page.state === 'missing') setTitle('Problem not found');
   }
 
-  // A changed statement (C3): reload what the student reads, never the editor.
+  // A changed statement: reload what the student reads, never the editor.
   let seenStatementKey: number | null = null;
   $effect(() => {
     const key = statementKey;
@@ -251,7 +209,7 @@
   async function reloadStatement() {
     try {
       const data = await getJSON<Workspace>(api);
-      if (!alive || !ws) return;
+      if (!page.live || !ws) return;
       ws = { ...ws, title: data.title, statement_md: data.statement_md, samples: data.samples, time_limit_ms: data.time_limit_ms, memory_limit_mb: data.memory_limit_mb };
     } catch {
       // The old statement stays; the next change or a reload brings the new one.
@@ -261,7 +219,7 @@
   /**
    * Shows the result pane when another tab hides it. When the tab switched
    * by itself, focus follows to the shown panel's first line, so a keyboard
-   * or screen reader user lands on what changed (F7.4). From 1024 px
+   * or screen reader user lands on what changed. From 1024 px
    * nothing switches and focus stays on the button.
    */
   async function revealResult() {
@@ -315,12 +273,12 @@
     if (remember) writeResultPanel(draftStorage(), { share: resultShare, collapsed: resultCollapsed });
   }
 
-  // Editor keys pressed outside the editor say where they work (P6).
+  // Editor keys pressed outside the editor say where they work.
   const EDITOR_KEYS = new Set(['/', 'd', 'l', 'h', 'g', 'u']);
   let hinted = 0;
 
   function onKeydown(event: KeyboardEvent) {
-    if (event.defaultPrevented || loadState !== 'ready') return;
+    if (event.defaultPrevented || page.state !== 'ready') return;
     const modKey = isMac ? event.metaKey : event.ctrlKey;
     if (!modKey || event.altKey) return;
     const target = event.target as Element | null;
@@ -358,7 +316,7 @@
     }
   }
 
-  // Full screen on (V3-25): the contest page asked for it at Start; each exit is counted.
+  // Full screen on: the contest page asked for it at Start; each exit is counted.
   function onFullscreenChange() {
     if (exam?.full_screen && !document.fullscreenElement) integrity?.fullscreenExit();
   }
@@ -368,7 +326,7 @@
     draft.saveOnLeave();
   }
 
-  // F7.6: during a live contest, sign out asks first (App.svelte); the draft save still runs before it.
+  // During a live contest, sign out asks first (App.svelte); the draft save still runs before it.
   $effect(() => {
     if (!clock) return;
     return guardSignOut('Your draft is saved first. Your time keeps running while you are signed out.');
@@ -400,7 +358,7 @@
 
     return () => {
       forgetSave();
-      alive = false;
+      page.stop();
       document.removeEventListener('fullscreenchange', onFullscreenChange);
       wide.removeEventListener('change', place);
       tablet.removeEventListener('change', place);
@@ -419,19 +377,19 @@
 <svelte:window onkeydown={onKeydown} onblur={onWindowBlur} onfocus={() => integrity?.focus()} onpagehide={onPageHide} />
 <svelte:document onvisibilitychange={onVisibility} />
 
-{#if loadState !== 'ready' || !ws}
+{#if page.state !== 'ready' || !ws}
   <div class="state">
-    <PageHeader compact title={loadState === 'missing' ? 'Problem not found' : 'Problem'} back={{ href: backHref, label: backLabel }} />
-    {#if loadState === 'loading'}
+    <PageHeader compact title={page.state === 'missing' ? 'Problem not found' : 'Problem'} back={{ href: backHref, label: backLabel }} />
+    {#if page.state === 'loading'}
       <PageState kind="loading" message="Loading the problem" />
-    {:else if loadState === 'forbidden' && (forbiddenCode === 'not_started' || forbiddenCode === 'contest_over')}
-      <PageState kind="missing" message={loadError} parent={{ href: contestHref || backHref, label: 'Go to the contest page.' }} />
-    {:else if loadState === 'forbidden'}
-      <PageState kind="forbidden" message={loadError} ask="Ask an organiser if you think you should." />
-    {:else if loadState === 'missing'}
+    {:else if page.state === 'forbidden' && (page.code === 'not_started' || page.code === 'contest_over')}
+      <PageState kind="missing" message={page.error} parent={{ href: contestHref || backHref, label: 'Go to the contest page.' }} />
+    {:else if page.state === 'forbidden'}
+      <PageState kind="forbidden" message={page.error || 'You cannot open this problem.'} ask="Ask an organiser if you think you should." />
+    {:else if page.state === 'missing'}
       <PageState kind="missing" message="This problem does not exist." parent={{ href: backHref, label: 'Go back.' }} />
-    {:else if loadState === 'error'}
-      <PageState kind="error" message={loadError} onretry={load} />
+    {:else if page.state === 'error'}
+      <PageState kind="error" message={page.error} onretry={load} />
     {/if}
   </div>
 {:else}

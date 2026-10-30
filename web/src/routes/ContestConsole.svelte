@@ -1,37 +1,15 @@
 <!--
   ContestConsole: the organiser's live view of one contest at
-  /admin/contests/{id}/console, laid out for contest day (stage C2,
-  cache/v3/design/organiser.md "Live view"; first built in
-  cache/v1/m4-plan.md section 4).
-
-  - The title row: the time to the start or the end and, while the
-    contest runs, "End now", which says its effect before it sets the end
-    to now. The browser tab's title carries the unanswered count,
-    "(2) Console", so a waiting question shows from another tab (P9).
-  - One sentence that says how it is going (lib/contests consoleSentence):
-    "Live, 31 started, 2 questions waiting, judge fine.", with a late judge
-    or a slow queue said first. Under it the actions, each a dialog that
-    sits closed until used: Announce, Extend, Extra time, Pause judging
-    (or Resume), and the links "History of changes" (the audit log,
-    console/ChangesDialog) and "If something goes wrong" (the failure
-    path, console/TroubleDialog). After the end, Extend and Extra time say
-    the contest has ended (walk bug B3).
-  - Banners only when something needs action: a problem edited since
-    students got it ("Update students now"), judge errors ("Show" filters
-    the feed), a judge not taking work ("What to do"), and the tests of a
-    problem changed by an update ("Judge problem A again").
-  - Questions beside the work from 1024 px and first below that
-    (console/Questions): unanswered at the top, answered folded. The work
-    is the overview (console/Overview: started, solved and attempted per
-    problem, the queue) and the submissions feed (console/Feed). On phones
-    the three are tabs: Questions, Submissions, Overview.
-
-  Pause, resume and every "Judge again" ask in one ConfirmDialog. After
-  Pause, Resume, Extend, an update and judging a problem again, the
-  announcement dialog opens with a template filled in; it is never posted
-  by itself. New questions arrive over the tab's shared live channel
-  (LiveSubscription); everything else refreshes every 10 s. Students see a
-  short explanation instead. Props: `id`.
+  /admin/contests/{id}/console, laid out for contest day. One sentence
+  says how it is going, with a late judge or a slow queue first; the
+  actions (Announce, Extend, Extra time, Pause judging) are dialogs that
+  stay closed until used, and banners appear only when something needs
+  action. Questions sit beside the overview and the submissions feed from
+  1024 px and become tabs on phones. Actions that change what students see
+  open the announcement dialog with a template, which is never posted by
+  itself. New questions arrive over the tab's shared live channel and the
+  rest refreshes every 10 s; the browser tab's title carries the
+  unanswered count, so a waiting question shows from another tab.
 -->
 <script lang="ts">
   import { onDestroy, onMount, tick } from 'svelte';
@@ -51,6 +29,7 @@
   import Questions from '../components/console/Questions.svelte';
   import TroubleDialog from '../components/console/TroubleDialog.svelte';
   import { ApiError, errorText, getJSON, sendJSON } from '../lib/api';
+  import { loader } from '../lib/loader.svelte';
   import { media } from '../lib/breakpoints';
   import { serverClock } from '../lib/clock';
   import {
@@ -81,8 +60,6 @@
 
   let { id }: { id: string } = $props();
 
-  let loadState = $state<'loading' | 'ready' | 'forbidden' | 'missing' | 'error'>('loading');
-  let loadError = $state('');
   let contest = $state.raw<AdminContest | null>(null);
   let stats = $state.raw<ContestStats | null>(null);
   let statsError = $state('');
@@ -131,7 +108,7 @@
   const sentence = $derived(contest ? consoleSentence(contest, ticker.now, { unanswered, started: stats?.started ?? null }) : null);
   /** Names by user id, for change rows that name a student by id only. */
   const names = $derived(new Map([...students.map((s) => [s.user_id, s.name] as const), ...(contest?.extensions ?? []).map((x) => [x.user_id, x.name || x.email] as const)]));
-  // Edits waiting for students; after the close they no longer need anyone (walk 2026-10-21).
+  // Edits waiting for students; after the close they no longer need anyone.
   const updates = $derived(contest && !ended ? contest.problems.filter((p) => p.update_available) : []);
   const judgeErrors = $derived(contest?.queue?.errors ?? 0);
   const judgeTrouble = $derived(sentence !== null && /judge/i.test(sentence.trouble));
@@ -141,35 +118,32 @@
     if (!(e instanceof ApiError)) return false;
     if (e.status === 401) return true;
     if (e.status === 403 && e.code === 'forbidden') {
-      loadState = 'forbidden';
+      page.forbid();
       return true;
     }
     return false;
   }
 
-  async function loadContest(quiet = false) {
-    if (!quiet) loadState = 'loading';
-    try {
+  const page = loader(
+    async () => {
       const sent = Date.now();
       const c = await getJSON<AdminContest>(base);
       if (typeof c.server_now === 'number') serverClock.observe(c.server_now, sent, Date.now());
+      return c;
+    },
+    (c) => {
       refreshTicker();
       const restore = keepHeadingFocus();
       contest = c;
-      loadState = 'ready';
       void restore();
       // Every action here reloads the contest, so an open history follows it.
       changesKey += 1;
-    } catch (e) {
-      if (handleAuth(e) || quiet) return;
-      if (e instanceof ApiError && e.status === 404) {
-        loadState = 'missing';
-        setTitle('Contest not found');
-        return;
-      }
-      loadError = errorText(e);
-      loadState = 'error';
-    }
+    },
+  );
+
+  async function loadContest(quiet = false) {
+    await page.load({ quiet });
+    if (page.live && page.state === 'missing') setTitle('Contest not found');
   }
 
   async function loadStats() {
@@ -234,7 +208,7 @@
     }
   }
 
-  /** Fills the announcement from a template; the dialog opens after the current one closes. Posting stays the organiser's choice (C3). */
+  /** Fills the announcement from a template; the dialog opens after the current one closes. Posting stays the organiser's choice. */
   function suggest(templateId: string, values: { label?: string; minutes?: number } = {}) {
     const t = ANNOUNCEMENT_TEMPLATES.find((x) => x.id === templateId);
     if (!t) return;
@@ -293,7 +267,7 @@
     };
   }
 
-  /** Ends a running contest now (audit O5): the end moves to the server's now, minus any time added for everyone. */
+  /** Ends a running contest now: the end moves to the server's now, minus any time added for everyone. */
   function endNow() {
     const c = contest;
     if (!c) return;
@@ -303,10 +277,10 @@
       c.practice_after_end ? 'Students see Ended, and practice opens.' : 'Students see Ended.',
     ];
     if (personal > 0) items.push(`${countOf(personal, 'student')} with extra time keep${personal === 1 ? 's' : ''} it.`);
-    // The freeze is counted back from the end: say what happens to the board (walk 2026-10-21).
+    // The freeze is counted back from the end: say what happens to the board.
     const frozenAt = c.freeze_minutes > 0 ? closeAt - c.freeze_minutes * 60_000 : null;
     if (frozenAt !== null) {
-      // Name the instant that will be stored: the freeze is kept in whole minutes (V3-18).
+      // Name the instant that will be stored: the freeze is kept in whole minutes.
       const now = serverClock.serverNow();
       const keptAt = now - endNowFreeze(c, now - (c.extended_minutes ?? 0) * 60_000, now) * 60_000;
       items.push(
@@ -419,28 +393,28 @@
     tablet.addEventListener('change', onWidth);
     unwatch = () => tablet.removeEventListener('change', onWidth);
     if (!isOrganiser) {
-      loadState = 'forbidden';
+      page.forbid();
       return;
     }
     void loadContest().then(() => {
-      if (loadState !== 'ready') return;
+      if (page.state !== 'ready') return;
       void loadSide();
       void loadStats();
       void loadStudents();
     });
     timer = setInterval(() => {
-      if (!autoRefresh || loadState !== 'ready' || document.visibilityState === 'hidden') return;
+      if (!autoRefresh || page.state !== 'ready' || document.visibilityState === 'hidden') return;
       void feed?.load();
       void loadSide();
       void loadStats();
-      // The contest carries the queue and the judge's last request for work (C10).
+      // The contest carries the queue and the judge's last request for work.
       void loadContest(true);
     }, 10_000);
     // New questions arrive at once over the tab's shared stream; the refresh above is the fallback.
     stream = new LiveSubscription({
       events: ['clarification'],
       onEvent: () => {
-        if (loadState === 'ready') void loadSide();
+        if (page.state === 'ready') void loadSide();
       },
       onReconnect: () => void loadSide(),
       poll: () => undefined,
@@ -458,13 +432,14 @@
     }
   });
 
-  // The tab title carries the unanswered count, so a waiting question shows from another tab (P9).
+  // The tab title carries the unanswered count, so a waiting question shows from another tab.
   $effect(() => {
     if (!contest) return;
     setTitle(unanswered > 0 ? `(${unanswered}) ${routeTitle('contest-console')}` : routeTitle('contest-console'), contest.title);
   });
 
   onDestroy(() => {
+    page.stop();
     clearInterval(timer);
     stream?.stop();
     unwatch?.();
@@ -484,20 +459,20 @@
   {/if}
 {/snippet}
 
-{#if loadState === 'forbidden'}
+{#if page.state === 'forbidden'}
   <PageHeader title={routeTitle('contest-console')} />
   <PageState kind="forbidden" message="Only organisers can run contests." />
-{:else if loadState !== 'ready' || !contest}
+{:else if page.state !== 'ready' || !contest}
   <PageHeader
-    title={loadState === 'missing' ? 'Contest not found' : routeTitle('contest-console')}
-    crumbs={[{ label: 'Contests', href: '/admin/contests' }, { label: loadState === 'missing' ? 'Contest not found' : routeTitle('contest-console') }]}
+    title={page.state === 'missing' ? 'Contest not found' : routeTitle('contest-console')}
+    crumbs={[{ label: 'Contests', href: '/admin/contests' }, { label: page.state === 'missing' ? 'Contest not found' : routeTitle('contest-console') }]}
   />
-  {#if loadState === 'loading'}
+  {#if page.state === 'loading'}
     <PageState kind="loading" message="Loading the contest" />
-  {:else if loadState === 'missing'}
+  {:else if page.state === 'missing'}
     <PageState kind="missing" message="There is no contest with that number." parent={{ href: '/admin/contests', label: 'Go back to the list.' }} />
   {:else}
-    <PageState kind="error" message={loadError} onretry={() => loadContest()} />
+    <PageState kind="error" message={page.error} onretry={() => loadContest()} />
   {/if}
 {:else}
   <ContestAdminNav
@@ -730,7 +705,7 @@
     flex-wrap: wrap;
   }
 
-  /* Questions first below 1024 px; from there beside the work (P9). */
+  /* Questions first below 1024 px; from there beside the work. */
   .live {
     display: grid;
     grid-template-columns: minmax(0, 1fr);

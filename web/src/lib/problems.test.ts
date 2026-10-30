@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest';
 import {
   checkArgs,
   rangeText,
-  failureSentence,
   nextPlanRow,
   readPlan,
   splitArgs,
@@ -12,15 +11,12 @@ import {
   ordinal,
   parseTestList,
   progressText,
-  reportLines,
-  slugify,
   statusWord,
   toDraft,
   toEdit,
   uncheckedLine,
   verdictLabel,
   type Problem,
-  type Validation,
   slowestReferenceText,
 } from './problems';
 
@@ -85,15 +81,6 @@ describe('formatTestList', () => {
   it('round-trips with parseTestList', () => {
     const tests = [1, 2, 4, 5, 6, 9];
     expect(parseTestList(formatTestList(tests))).toEqual({ ok: true, tests });
-  });
-});
-
-describe('slugify', () => {
-  it('suggests a slug from a title', () => {
-    expect(slugify('Interval Covering')).toBe('interval-covering');
-    expect(slugify('  A + B, again!  ')).toBe('a-b-again');
-    expect(slugify('Crème brûlée')).toBe('creme-brulee');
-    expect(slugify('x'.repeat(80))).toHaveLength(64);
   });
 });
 
@@ -240,12 +227,6 @@ describe('words', () => {
     expect(formatBytes(2048)).toBe('2.0 KB');
   });
 
-  it('describes failures with the test, role and verdict', () => {
-    expect(failureSentence({ idx: 7, role: 'reference', verdict: 'WA' })).toBe('Test 7: reference solution got wrong answer');
-    expect(failureSentence({ idx: 2, role: 'validator', verdict: 'WA' })).toBe('Test 2: validator rejected the input');
-    expect(failureSentence({ idx: 9, role: 'brute', verdict: 'TLE' })).toBe('Test 9: brute force exceeded the time limit');
-  });
-
   it('describes the queue', () => {
     expect(progressText({ state: 'queued', queue_position: 2 })).toBe('Waiting for the judge (2nd in queue)');
     expect(progressText({ state: 'queued', queue_position: null })).toBe('Waiting for the judge');
@@ -273,79 +254,6 @@ describe('uncheckedLine', () => {
       tone: 'note',
     });
     expect(uncheckedLine({ ...summary, brute_unchecked: 4 })?.tone).toBe('bad');
-  });
-});
-
-describe('reportLines', () => {
-  const base: Validation = {
-    id: 1,
-    state: 'passed',
-    content_hash: 'abc',
-    current: true,
-    queued_at: 0,
-    finished_at: 1,
-    queue_position: null,
-    compile: [],
-    tests: [],
-    summary: {
-      reference_passed: 15,
-      reference_total: 15,
-      brute_agreed: 15,
-      brute_total: 15,
-      validator_passed: 15,
-      validator_total: 15,
-      max_time_ms: 212,
-      time_limit_ms: 1000,
-      problems: [],
-      warnings: ['Subtask points add up to 90, not 100.'],
-    },
-    error: null,
-  };
-
-  it('writes one line per check', () => {
-    expect(reportLines(base).map((l) => [l.text, l.tone])).toEqual([
-      ['Reference solution passed 15 of 15 tests', 'ok'],
-      ['Brute force agreed on 15 of 15 tests', 'ok'],
-      ['Validator accepted 15 of 15 inputs', 'ok'],
-      ['Slowest reference run 212 ms of 1000 ms', 'ok'],
-      ['Subtask points add up to 90, not 100.', 'note'],
-    ]);
-  });
-
-  it('names failing tests and compile errors, and skips skipped runs', () => {
-    const v: Validation = {
-      ...base,
-      state: 'failed',
-      compile: [
-        { role: 'reference', verdict: 'OK', output: '' },
-        { role: 'brute', verdict: 'CE', output: 'brute.py: SyntaxError' },
-      ],
-      tests: [
-        { idx: 6, role: 'reference', verdict: 'AC', time_ms: 10, memory_kb: 100, message: '' },
-        { idx: 7, role: 'reference', verdict: 'WA', time_ms: 10, memory_kb: 100, message: 'expected 3, found 4' },
-        { idx: 7, role: 'brute', verdict: 'SK', time_ms: 10000, memory_kb: 100, message: '' },
-      ],
-      summary: {
-        ...base.summary!,
-        reference_passed: 14,
-        brute_total: 0,
-        warnings: [],
-        problems: ['Test 7: reference solution got wrong answer. expected 3, found 4'],
-      },
-    };
-    const lines = reportLines(v);
-    expect(lines[0]).toEqual({ text: 'Brute force did not compile', tone: 'bad', detail: 'brute.py: SyntaxError' });
-    expect(lines.map((l) => l.text)).toContain('Reference solution passed 14 of 15 tests');
-    expect(lines.map((l) => l.text)).not.toContain('Brute force agreed on 0 of 0 tests');
-    // Once summarised, each failure appears once, in the server's words.
-    expect(lines.filter((l) => l.text.startsWith('Test 7'))).toEqual([
-      { text: 'Test 7: reference solution got wrong answer. expected 3, found 4', tone: 'bad' },
-    ]);
-
-    // While running, failures are listed as they arrive.
-    const running = reportLines({ ...v, state: 'running', summary: null });
-    expect(running.at(-1)).toEqual({ text: 'Test 7: reference solution got wrong answer', tone: 'bad', detail: 'expected 3, found 4' });
-    expect(running.filter((l) => l.text.startsWith('Test 7: brute'))).toEqual([]);
   });
 });
 

@@ -3,7 +3,6 @@ import {
   checkKeyForm,
   cleanModelId,
   draftedBy,
-  heldKeys,
   isListed,
   wizardBlocker,
   formatClock,
@@ -18,7 +17,6 @@ import {
   wizardPending,
   wizardRequest,
   wizardStatusText,
-  wizardSteps,
   draftChainSteps,
   withoutAIDraft,
   type InputGeneration,
@@ -29,7 +27,7 @@ import { ApiError } from './api';
 // Split so tools/check-secrets.sh does not read the fake as a credential.
 const KEY = 'sk-' + 'ant-api03-TEST-ONLY-not-a-real-key-0123456789';
 
-// The C11 shape: no default model, a session's list per provider.
+// The key status shape: no default model, a session's list per provider.
 const PROVIDERS: KeyStatus['providers'] = [
   {
     id: 'anthropic',
@@ -94,11 +92,6 @@ describe('the key form', () => {
     expect(isListed(PROVIDERS[1], 'gpt-x')).toBe(true);
     expect(isListed(PROVIDERS[1], 'gpt-y')).toBe(false);
     expect(isListed(PROVIDERS[1], '')).toBe(false);
-  });
-
-  it('lists the keys the session holds and drops expired ones', () => {
-    expect(heldKeys(status({ server_now: 1792183192359 })).map((p) => p.id)).toEqual(['openai']);
-    expect(heldKeys(status({ server_now: 1792190392360 }))).toEqual([]);
   });
 
   it('says what the wizard waits for: a key, then a model', () => {
@@ -253,14 +246,7 @@ describe('the wizard request', () => {
 describe('wizard progress', () => {
   it('reads "Writing the problem", then "Draft created, generating tests"', () => {
     expect(wizardStatusText({ state: 'thinking' })).toBe('Writing the problem');
-    expect(wizardSteps({ state: 'thinking' }).map((s) => s.state)).toEqual(['current', 'waiting']);
     expect(wizardStatusText({ state: 'draft_created' })).toBe('Draft created, generating tests');
-    expect(wizardSteps({ state: 'draft_created' }).map((s) => s.state)).toEqual(['done', 'current']);
-    expect(wizardSteps({ state: 'error' }).map((s) => s.state)).toEqual(['failed', 'waiting']);
-  });
-
-  it('marks both steps done when the wizard is done', () => {
-    expect(wizardSteps({ state: 'done' }).map((s) => s.state)).toEqual(['done', 'done']);
   });
 
   it('links to the settings for key problems only', () => {

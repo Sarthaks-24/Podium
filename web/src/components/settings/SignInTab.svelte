@@ -43,7 +43,7 @@
   let pending = $state<Pending>(null);
   let busy = $state(false);
 
-  // The account the help field names, looked up as the address is typed (O10).
+  // The account the help field names, looked up as the address is typed.
   let lookup = $state<{ email: string; status: 'loading' | 'found' | 'none' | 'error'; account?: Account } | null>(null);
   let lookupTimer: ReturnType<typeof setTimeout> | undefined;
 
@@ -64,7 +64,7 @@
   const accountLooksLikeEmail = $derived(EMAIL.test(accountEmail.trim()));
   /** The lookup found no account for the address typed: the actions would only be refused. */
   const noAccount = $derived(lookup !== null && lookup.email === accountEmail.trim().toLowerCase() && lookup.status === 'none');
-  /** An address typed but not yet named above (lookup running, failed or found nothing): never act on it (O10, D232, C2-031). */
+  /** An address typed but not yet named above (lookup running, failed or found nothing): never act on it. */
   const unseen = $derived(accountEmail.trim() !== '' && accountMatch === null);
 
   $effect(() => {
@@ -249,7 +249,7 @@
   <form class="form" novalidate onsubmit={addDomain}>
     <div class="field grow">
       <label for="domain-input">Domain</label>
-      <!-- An example, not a placeholder that reads as a value already there (C2-068). -->
+      <!-- An example, not a placeholder that reads as a value already there. -->
       <p id="domain-help" class="field-help">For example college.edu</p>
       <input
         id="domain-input"

@@ -1,9 +1,9 @@
 <!--
-  ExtraTimeDialog: extra minutes for one student, from the console (stage
-  C2): the student, the minutes (0 removes the extra time) and an optional
+  ExtraTimeDialog: extra minutes for one student, from the
+  console: the student, the minutes (0 removes the extra time) and an optional
   reason, saved with PUT .../extensions/{user}. The students given extra
   time so far are listed under the form. After the end it says the
-  contest has ended and offers only Close (walk bug B3). A refused field
+  contest has ended and offers only Close. A refused field
   is marked and takes focus; any other refusal shows inside the dialog.
 
   Props: `open`, `base` (the contest's admin API path), `students`

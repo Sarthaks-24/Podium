@@ -1,28 +1,14 @@
 <!--
-  StandingsTable: the leaderboard (design.md 5.4). A dense table in its own
-  scroll box, so the header row stays put while rows scroll and, on
-  phones, the rank and name columns stay pinned while the problem columns
-  scroll sideways, with a line saying so while columns wait to the right.
-  Rank and scores are mono with tabular figures. Each tried problem cell
-  has a 4 px bar along its bottom, the earned share in --ok (full) or
-  --part (partial) on a --line track, on a --surface cell (audit
-  2026-10-20 S8); a tried zero is "0" in --bad, untried a muted dash, and
-  "+N" in --ink-muted counts submissions made after the freeze; screen
-  readers hear each cell as a sentence (lib/standings.ts). The signed-in
-  student's row is tinted with --act-tint and marked "(you)", and "Jump to
-  you" scrolls to it and moves focus there; it hides (keeping its space)
-  while that row is already in view. The box is sized to the screen and scrolls
-  both ways at every width, so the header row sticks on phones too; under
-  768 px a vertical swipe that reaches the end of the box goes on to the
-  page, so it is never trapped. From 768 px the board is as wide as its
-  content (names stop at 16rem), so scores sit beside names (audit 01-10);
-  on phones a long name wraps to two lines instead of being cut (audit
-  07-9). Props: `standings`, `labels` (the problem
-  letters, in order), `caption` (the table's accessible name), `large`
-  (bigger type, for a projector), `wide` (the box and the table take the
-  full width, for the organiser's results) and `nameHref` (organiser views only:
-  each name links to that student's page, web-quality #16; the board
-  itself carries no mark of any review decision).
+  StandingsTable: the leaderboard, a dense table in its own scroll box so
+  the header row sticks at every width and, on phones, rank and name stay
+  pinned while the problem columns scroll sideways; a vertical swipe that
+  reaches the end of the box goes on to the page, so it never traps.
+  Scores are mono with tabular figures, each tried cell has a bar for its
+  earned share, and screen readers hear each cell as a sentence
+  (lib/standings.ts). The signed-in student's row is tinted and marked
+  "(you)", with "Jump to you" while it is out of view. Organiser views
+  may link each name to the student's page; the board itself never shows
+  a review decision.
 -->
 <script lang="ts">
   import { onMount, tick } from 'svelte';
@@ -41,9 +27,9 @@
 
   let wrap: HTMLDivElement | undefined = $state();
   const mine = $derived(myRow(standings));
-  /** The own row is inside the box's view, so "Jump to you" has nothing to do (S8). */
+  /** The own row is inside the box's view, so "Jump to you" has nothing to do. */
   let mineInView = $state(false);
-  /** More problem columns wait to the right of the box (phones, S8). */
+  /** More problem columns wait to the right of the box (phones). */
   let moreRight = $state(false);
 
   function measure() {
@@ -305,7 +291,7 @@
     text-align: center;
   }
 
-  /* S8: the earned share is a 4 px bar along the bottom of the cell on a
+  /* The earned share is a 4 px bar along the bottom of the cell on a
      --line track, so a partial reads as progress; the cell stays --surface. */
   .meter {
     position: absolute;

@@ -1,6 +1,5 @@
 <!--
-  Layout: the workspace's grid (design.md 5.3, F7.2 to F7.5; split out of
-  Workspace in B2). From 1024 px three columns fill the window under the
+  Layout: the workspace's grid. From 1024 px three columns fill the window under the
   shell's measured header (--shell-head): the rail, the statement under the
   title, and the code column with the editor over the result, their rows
   set by the splitter (`rows`). From 1024 to 1279 px the rail is narrower
@@ -8,7 +7,7 @@
   45rem tall (the `short` tier) gives back padding to the editor. Under
   1024 px the panes stack under the sticky strip and show one tab at a
   time (Problem and Code from 768 px, Problem, Code and Result under it).
-  In a contest (B6) the `bar` takes the rail's place from 1024 px: one row
+  In a contest the `bar` takes the rail's place from 1024 px: one row
   across the top, then the title and the statement beside the code, with
   a column splitter (`colSplit`) between them sized by `cols`; with
   `statementHidden` the code takes the whole width under the title.
@@ -54,7 +53,7 @@
   {:else if wide && side}
     <aside class="rail" aria-label="Problem">{@render side()}</aside>
   {/if}
-  <!-- Under 1024 px the sticky row comes first, then the title and the statement at once (B4). -->
+  <!-- Under 1024 px the sticky row comes first, then the title and the statement at once. -->
   {#if !wide && strip}{@render strip()}{/if}
   <div class="title-cell">{@render title()}</div>
 
@@ -160,7 +159,7 @@
       grid-template-areas:
         'rail title code'
         'rail statement code';
-      /* Sized from the shell (S2, F7.3): the header's real height, testing
+      /* Sized from the shell: the header's real height, testing
          banner included, comes from App.svelte as --shell-head. 18rem only
          keeps a zoomed-in window usable. */
       height: calc(100dvh - var(--shell-head, var(--space-7)) - 2 * var(--space-3));
@@ -187,7 +186,7 @@
       overflow-y: auto;
     }
 
-    /* The rows come from the splitter (F7.5) as an inline style; this is the shape before it. */
+    /* The rows come from the splitter as an inline style; this is the shape before it. */
     .code-col {
       grid-area: code;
       grid-template-rows: minmax(0, 3fr) auto minmax(0, 2fr);
@@ -209,7 +208,7 @@
     }
   }
 
-  /* B6: the contest bar across the top; the statement and the code share
+  /* In a contest the bar runs across the top; the statement and the code share
      the width the column splitter sets (an inline grid-template-columns). */
   @media (min-width: 1024px) {
     .ws.with-bar {
@@ -245,7 +244,7 @@
     }
   }
 
-  /* S6: a wider rail from 1280 px, so most titles fit on their two lines. */
+  /* A wider rail from 1280 px, so most titles fit on their two lines. */
   @media (min-width: 1280px) {
     .ws {
       grid-template-columns: 13rem minmax(0, 1fr) minmax(22.5rem, 1.15fr);
@@ -253,7 +252,7 @@
   }
 
   /* Under 1280 px, at any height (1366 by 768 at 125 percent is 1093 px
-     wide; audit S2 and council C1-042): a narrower rail and a wider code
+     wide): a narrower rail and a wider code
      column, so the toolbar keeps one row. */
   @media (1024px <= width < 1280px) {
     .ws {
@@ -269,7 +268,7 @@
     }
   }
 
-  /* The short tier (F7.3): every pane gives back padding to the editor. */
+  /* The short tier: every pane gives back padding to the editor. */
   @media (min-width: 1024px) and (max-height: 45rem) {
     .title-cell {
       padding-block: var(--space-2);

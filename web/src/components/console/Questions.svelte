@@ -1,6 +1,6 @@
 <!--
-  Questions: the console's questions from students (stage C2, pilot P9 and
-  P12). Unanswered questions come first, the longest waiting at the top,
+  Questions: the console's questions from students.
+  Unanswered questions come first, the longest waiting at the top,
   each with who asked, the problem, when and how long it has waited. An
   answer is written in its own box; "Standard answer" fills the box with
   one of the standard answers to edit before sending, never sends it as
@@ -53,7 +53,7 @@
     return replies[c.id] ?? EMPTY;
   }
 
-  /** Puts a standard answer in the box to edit (P12); it is never sent by itself. */
+  /** Puts a standard answer in the box to edit; it is never sent by itself. */
   function insertStandard(c: Clarification, event: Event) {
     const select = event.currentTarget as HTMLSelectElement;
     const r = reply(c);

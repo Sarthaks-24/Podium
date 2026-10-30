@@ -55,6 +55,16 @@ for (const theme of THEMES) {
 }
 
 /** Opens one of the editor's tabs by its name. */
+/** The editor's status line in the title row, a link to the validation report. */
+function statusLine(page: Page) {
+  return page.getByRole('link', { name: /^(Not validated|Validat|Making outputs|Archived)/ });
+}
+
+/** The status badge in a row of the problem bank. */
+function rowStatus(row: ReturnType<Page['getByRole']>) {
+  return row.getByRole('cell', { name: /^(Not validated|Validating|Validated|Archived)$/ });
+}
+
 function tabOf(page: Page, name: 'Statement' | 'Tests' | 'Checking') {
   return page.getByRole('tab', { name: new RegExp(`^${name}`) });
 }
@@ -132,7 +142,7 @@ test('proof: a problem imported, a test given a new role from the select, saved,
   await page.getByRole('button', { name: 'Import pack' }).click();
   await (await choosers.next()).setFiles(zipFile('pair.zip', 'good pack'));
   const row = page.getByRole('row', { name: /Pair with sum/ });
-  await expect(row.locator('.badge')).toHaveText('Validated', { timeout: 15_000 });
+  await expect(rowStatus(row)).toHaveText('Validated', { timeout: 15_000 });
   await row.getByRole('link', { name: 'Pair with sum', exact: true }).click();
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('Pair with sum');
 
@@ -151,13 +161,13 @@ test('proof: a problem imported, a test given a new role from the select, saved,
     { points: 40, title: 'Small numbers', tests: '3' },
     { points: 60, title: 'Full range', tests: '4-5' },
   ]);
-  await expect(page.locator('.status')).toHaveText('Not validated, 5 tests');
+  await expect(statusLine(page)).toHaveText('Not validated, 5 tests');
 
   const validate = page.getByRole('button', { name: 'Validate', exact: true });
   await expect(validate).toHaveClass(/btn-primary/);
   await validate.click();
-  await expect(page.locator('.status')).toHaveText('Validating, 2nd in queue');
-  await expect(page.locator('.status')).toHaveText('Validated, 5 tests, slowest 212 ms', { timeout: 15_000 });
+  await expect(statusLine(page)).toHaveText('Validating, 2nd in queue');
+  await expect(statusLine(page)).toHaveText('Validated, 5 tests, slowest 212 ms', { timeout: 15_000 });
   // Once it passes, Add to contest takes Validate's place.
   await expect(validate).toHaveCount(0);
   await page.getByRole('button', { name: 'Add to contest' }).click();
@@ -174,7 +184,7 @@ test('each tab of the editor is under 1,400 px tall at 1440 px (the walk measure
   await page.setViewportSize({ width: 1440, height: 900 });
   for (const id of [1, 4]) {
     await page.goto(`/admin/problems/${id}`);
-    await expect(page.locator('.status')).toBeVisible();
+    await expect(statusLine(page)).toBeVisible();
     for (const name of ['Statement', 'Tests', 'Checking'] as const) {
       await tabOf(page, name).click();
       await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => resolve(null))));
@@ -230,11 +240,11 @@ test('subtasks and roles work from the keyboard, and removing a subtask leaves i
     { points: 50, title: 'Full range', tests: '5' },
   ]);
   await expect(page.getByText('Unsaved changes', { exact: true })).toHaveCount(0);
-  await expect(page.locator('.status')).toHaveText('Not validated, 5 tests');
+  await expect(statusLine(page)).toHaveText('Not validated, 5 tests');
 
   await page.getByRole('button', { name: 'Validate', exact: true }).focus();
   await page.keyboard.press('Enter');
-  await expect(page.locator('.status')).toHaveText('Validated, 5 tests, slowest 212 ms', { timeout: 15_000 });
+  await expect(statusLine(page)).toHaveText('Validated, 5 tests, slowest 212 ms', { timeout: 15_000 });
   await tabOf(page, 'Checking').click();
   await expect(page.locator('.headline')).toHaveText('Validation passed');
   await expect(page.getByText('Reference solution passed 5 of 5 tests')).toBeVisible();
@@ -301,8 +311,8 @@ test('server field errors appear next to their fields, and a link opens the tab 
 test('a failed validation names the test, program and verdict, and its links unfold the extra checks', async ({ page }) => {
   await mockApi(page);
   await page.goto('/admin/problems/4');
-  await expect(page.locator('.status')).toHaveText('Validation failed on test 7');
-  await page.locator('.status').click();
+  await expect(statusLine(page)).toHaveText('Validation failed on test 7');
+  await statusLine(page).click();
   await expect(tabOf(page, 'Checking')).toHaveAttribute('aria-selected', 'true');
   await expect(page.getByRole('heading', { name: 'Validation', exact: true })).toBeFocused();
   await expect(page.locator('.headline')).toHaveText('Validation failed');
@@ -386,15 +396,15 @@ test('importing a pack shows its problems, then validates the new problem in pla
   await expect(toasts(page).getByText('Imported Pair with sum. Validating.', { exact: true })).toBeVisible();
   await expect(page).toHaveURL('/admin/problems');
   const row = page.getByRole('row', { name: /Pair with sum/ });
-  await expect(row.locator('.badge')).toHaveText('Validating');
-  await expect(row.locator('.badge')).toHaveText('Validated', { timeout: 15_000 });
+  await expect(rowStatus(row)).toHaveText('Validating');
+  await expect(rowStatus(row)).toHaveText('Validated', { timeout: 15_000 });
   expect(state.imports).toEqual(['bad pack', 'good pack']);
 });
 
 test('several packs import in one pick, and a row offers Validate when it is not validated (P3 O6)', async ({ page }) => {
   const state = await mockApi(page);
   await page.goto('/admin/problems');
-  await expect(page.getByRole('row', { name: /Interval covering/ }).locator('.badge')).toHaveText('Not validated');
+  await expect(rowStatus(page.getByRole('row', { name: /Interval covering/ }))).toHaveText('Not validated');
   await page.locator('input[type="file"]').setInputFiles([zipFile('one.zip', 'good pack 1'), zipFile('two.zip', 'good pack 2')]);
   await expect.poll(() => state.imports).toEqual(['good pack 1', 'good pack 2']);
   await expect(toasts(page).getByText('Imported Pair with sum 1. Validating. Imported Pair with sum 2. Validating.', { exact: true })).toBeVisible();
@@ -542,7 +552,7 @@ test('admins see the Problems link and it marks the current page', async ({ page
 test('Validate makes missing outputs from the reference, then validates; there is no Generate button', async ({ page }) => {
   const state = await mockApi(page);
   await page.goto('/admin/problems/5');
-  await expect(page.locator('.status')).toHaveText('Not validated, 5 tests');
+  await expect(statusLine(page)).toHaveText('Not validated, 5 tests');
   // The missing outputs are not something to fix: Validate makes them.
   await expect(page.getByRole('group', { name: /before you validate/ })).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Validate', exact: true })).toHaveClass(/btn-primary/);
@@ -553,9 +563,9 @@ test('Validate makes missing outputs from the reference, then validates; there i
   await expect(page.getByRole('button', { name: /Generate/ })).toHaveCount(0);
 
   await page.getByRole('button', { name: 'Validate', exact: true }).click();
-  await expect(page.locator('.status')).toHaveText('Making outputs, then validating');
+  await expect(statusLine(page)).toHaveText('Making outputs, then validating');
   expect(state.generates).toEqual([{ then_validate: true }]);
-  await expect(page.locator('.status')).toHaveText('Validated, 5 tests, slowest 212 ms', { timeout: 15_000 });
+  await expect(statusLine(page)).toHaveText('Validated, 5 tests, slowest 212 ms', { timeout: 15_000 });
   await expect(page.getByText('Made on Validate')).toHaveCount(0);
   await page.screenshot({ path: `${shots()}problem-editor-generated-1440-light.png`, fullPage: true });
 });
@@ -592,7 +602,7 @@ test('a reference that does not compile, or a problem changed mid-run, is said p
     timeout: 10_000,
   });
   await expect(page.locator('.gen-failures')).toContainText('expected ; before return');
-  await expect(page.locator('.status')).toHaveText('Not validated, 5 tests');
+  await expect(statusLine(page)).toHaveText('Not validated, 5 tests');
 
   state.genOutcome = 'stale';
   await page.getByRole('button', { name: 'Validate', exact: true }).click();
@@ -627,7 +637,7 @@ test('the sticky bar keeps the tabs, field errors and the main actions in reach'
 test('a problem with no tests offers Upload tests, and no extra checks are in use', async ({ page }) => {
   await mockApi(page);
   await page.goto('/admin/problems/3');
-  await expect(page.locator('.status')).toHaveText('Archived');
+  await expect(statusLine(page)).toHaveText('Archived');
   await tabOf(page, 'Tests').click();
   await expect(page.getByRole('button', { name: 'Upload tests' })).toBeVisible();
   await expect(page.getByText('No tests yet. Upload a .zip of numbered input and output files to add them.')).toBeVisible();

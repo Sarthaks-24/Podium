@@ -10,7 +10,7 @@
   rest of three (lib/toast.svelte.ts).
   The stack lets clicks through to the page; only an error toast, which has
   a button, takes them. Toasts appear at --dur with a short rise and leave
-  with a fade at --dur-fast (design.md 7), both without motion when reduced
+  with a fade at --dur-fast, both without motion when reduced
   motion is requested. Takes no props.
 -->
 <script lang="ts">
@@ -95,7 +95,7 @@
   }
 
   /* Hover is a shape, not a fill, so the text keeps its 4.5:1 (7:1 in
-     the high-contrast themes) on the toast's own tint (X5). */
+     the high-contrast themes) on the toast's own tint. */
   .dismiss:hover {
     border-color: var(--bad);
     background: transparent;

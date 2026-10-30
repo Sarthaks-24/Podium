@@ -1,6 +1,6 @@
 /**
  * Turns what the event stream and the API say about runs and submissions
- * into the workspace's state (m3-plan.md section 6).
+ * into the workspace's state.
  *
  * Every event carries the full object, so merging is replacing, with two
  * guards: events for another problem are ignored (the stream is per user,

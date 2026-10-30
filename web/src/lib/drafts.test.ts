@@ -85,7 +85,7 @@ describe('local mirror', () => {
     expect(readMirror(s, mirrorKey(8, '/api/workspace/3'), 8)).toBeNull();
     s.setItem(mirrorKey(8, '/api/workspace/3'), s.data.get(mirrorKey(7, '/api/workspace/3'))!);
     expect(readMirror(s, mirrorKey(8, '/api/workspace/3'), 8)).toBeNull();
-    // The M3 shape with no owner is ignored too.
+    // The older shape with no owner is ignored too.
     s.setItem('podium-draft:/api/workspace/3', JSON.stringify(server));
     expect(readMirror(s, 'podium-draft:/api/workspace/3', 8)).toBeNull();
   });

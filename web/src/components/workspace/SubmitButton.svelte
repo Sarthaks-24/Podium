@@ -1,7 +1,7 @@
 <!--
   SubmitButton: the one primary button of the workspace, with the send
   icon. While a submit is on its way it reads "Submitting", and the
-  contest's wait counts down inside it ("Submit in 24 s", S4); both keep
+  contest's wait counts down inside it ("Submit in 24 s"); both keep
   it aria-disabled so focus stays, and a fixed width so nothing moves.
   Props: `label`, `waiting` (busy or counting down), `locked` (Submit is
   off for a reason said elsewhere), `describedby` and `onclick`.
@@ -31,7 +31,7 @@
 >
 
 <style>
-  /* "Submit in 24 s" fits without the button growing as it counts (S4). */
+  /* "Submit in 24 s" fits without the button growing as it counts. */
   .submit {
     min-width: 9rem;
   }

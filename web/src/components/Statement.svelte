@@ -5,7 +5,7 @@
   the sanitised HTML and draws the maths. Each sample shows its input and
   output in mono with a Copy button for each; the button says "Copied" for
   a moment and a polite status line announces it. With `blockCopy` (a
-  contest's exam option, V3-25) the Copy buttons are gone and a copy from
+  contest's exam option) the Copy buttons are gone and a copy from
   the statement or the examples copies nothing and shows a line saying so.
   Props: `markdown` (the statement source), `samples`, `blockCopy`, and
   `headingBase` (the level a "#" heading in the statement becomes, default
@@ -84,7 +84,7 @@
 
   {#if samples.length > 0}
     <div class="samples">
-      <!-- V3-27: the word's meaning where a student first meets it. -->
+      <!-- The word's meaning where a student first meets it. -->
       <p class="hint">Examples are tests you can see. Run tries your code on them and never counts.</p>
       {#each samples as s, i (s.idx)}
         <section class="sample" aria-labelledby="sample-{s.idx}">

@@ -1,5 +1,5 @@
 /**
- * The Lucide icon set (design.md section 9, v2 F10), as shape data so
+ * The Lucide icon set, as shape data so
  * Icon.svelte draws them without raw HTML and a unit test can list the set.
  * Shapes are copied from Lucide through the Iconify API (better-icons
  * skill) on a 24 x 24 grid; Icon.svelte supplies the stroke.
@@ -29,14 +29,14 @@ export const ICONS = {
   'chevron-up': [path('M18 15l-6-6-6 6')],
   'chevron-down': [path('M6 9l6 6 6-6')],
   'chevron-right': [path('m9 18l6-6l-6-6')],
-  // P5: Previous in the workspace's phone strip.
+  // Previous in the workspace's phone strip.
   'chevron-left': [path('m15 18l-6-6l6-6')],
   trash: [path('M3 6h18M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2')],
   clock: [ring, path('M12 6v6l4 2')],
   lock: [{ tag: 'rect', x: 3, y: 11, width: 18, height: 11, rx: 2 }, path('M7 11V7a5 5 0 0 1 10 0v4')],
   'alert-triangle': [path('M21.73 18l-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3M12 9v4M12 17h.01')],
   maximize: [path('M8 3H5a2 2 0 0 0-2 2v3M21 8V5a2 2 0 0 0-2-2h-3M3 16v3a2 2 0 0 0 2 2h3M16 21h3a2 2 0 0 0 2-2v-3')],
-  // Added in v2 F10: Run, Submit, pause, the phone menu, add, and the verdict marks.
+  // Run, Submit, pause, the phone menu, add, and the verdict marks.
   play: [path('M5 5a2 2 0 0 1 3.008-1.728l11.997 6.998a2 2 0 0 1 .003 3.458l-12 7A2 2 0 0 1 5 19z')],
   send: [path('M14.536 21.686a.5.5 0 0 0 .937-.024l6.5-19a.496.496 0 0 0-.635-.635l-19 6.5a.5.5 0 0 0-.024.937l7.93 3.18a2 2 0 0 1 1.112 1.11zm7.318-19.539l-10.94 10.939')],
   pause: [{ tag: 'rect', x: 14, y: 3, width: 5, height: 18, rx: 1 }, { tag: 'rect', x: 5, y: 3, width: 5, height: 18, rx: 1 }],

@@ -1,6 +1,5 @@
 <!--
-  NotFound: shown for any path the router does not know (v2 N5, audit
-  04-13). Echoes the address that failed and offers the links that fit the
+  NotFound: shown for any path the router does not know. Echoes the address that failed and offers the links that fit the
   visitor: "Your contests" for a student, "Contests" and "Problems" for
   an organiser, and "Sign in" when nobody is signed in. Takes no props.
 -->

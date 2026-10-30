@@ -1,31 +1,13 @@
 <!--
-  AdminContests: "Contests", the organiser landing page at /admin/contests
-  (GET /api/admin/contests; "/" sends organisers here). From the top:
-
-  - Needs you: unanswered questions in a live contest (one request to its
-    questions until the list carries the count) and contest problems that
-    changed since they were added, each a link to where it is fixed. It
-    waits until a contest has run, because before that there is nothing
-    to show, and it is left out when nothing needs action.
-  - Live and next: one block for each published live contest and for the
-    next published one, with its state word, a countdown in mono and
-    "Open live view".
-  - New contest: a small form for the title, the start and the length that
-    creates the contest unpublished with the default settings (the server
-    derives its address from the title) and opens its Setup.
-  - Every other contest in one table, drafts and later ones first, then
-    past ones newest first: the title (a link to the tab that fits its
-    state, lib/contests organiserHome), when it starts, how long it lasts,
-    the problem count and the organiser state word ("Draft" while students
-    cannot see it). Under 1024 px each row reads as title and state, then
-    the start, and the whole row is the link.
-
-  With no contests yet it points to the problem bank and lists the steps to
-  a first published contest, with a Done mark on those already taken: an
-  allowed email domain and another organiser (owners, each a link to
-  Settings), a validated problem, a published contest, sharing the
-  address. This is the app's one first-run checklist; Settings has none.
-  Students see a short explanation instead. Takes no props.
+  AdminContests: "Contests", the organiser landing page at /admin/contests.
+  From the top: what needs the organiser (unanswered questions in a live
+  contest, problems changed since they were added), left out when nothing
+  does; the live and next published contests with a countdown and "Open
+  live view"; a small New contest form that creates a draft and opens its
+  Setup; and every other contest in one table, each title linking to the
+  tab that fits its state. With no contests yet it shows the app's one
+  first-run checklist, the steps to a first published contest with those
+  already done marked. Students see a short explanation instead.
 -->
 <script lang="ts">
   import Badge from '../components/Badge.svelte';
@@ -124,7 +106,7 @@
     return [...sorted.filter((c) => c.published && isLive(c)), ...(next ? [next] : [])];
   });
   const rest = $derived(sorted.filter((c) => !liveAndNext.includes(c)));
-  /** "Needs you" waits until a contest has run (V3-20): before that there is nothing to show. */
+  /** "Needs you" waits until a contest has run: before that there is nothing to show. */
   const hasRun = $derived(contests.some((c) => c.published && c.state !== 'upcoming'));
 
   /** Unanswered questions per live contest, by id. */
@@ -547,7 +529,7 @@
     font-weight: 500;
   }
 
-  /* Rows stack below 1024 px here (R1), wider than the phone tier of
+  /* Rows stack below 1024 px here, wider than the phone tier of
      .table-stack in controls.css: title and state, then the start; the
      title link covers the row. */
   @media (width < 1024px) {

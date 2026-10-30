@@ -1,13 +1,13 @@
 <!--
-  Privacy: the /privacy page (v2 N4, P3 FP.1). Open to everyone, signed in
+  Privacy: the /privacy page. Open to everyone, signed in
   or not. The notice is drafted in src/content/privacy.md and waits for
-  the owner's approval (decision D85): until lib/site.ts PRIVACY_LINKED is
+  the owner's approval: until lib/site.ts PRIVACY_LINKED is
   true the page says the notice is being written and names the
   organisers' contact email, and nothing links here. "/privacy?draft"
   shows the drafted notice with a line saying it is a draft, so the owner
   can read it in place. The full notice renders the Markdown and, at its
   marker, a table of every retention period from GET /api/auth/config
-  (contract C5; lib/privacy.ts), never typed by hand, then who to ask.
+  (lib/privacy.ts), never typed by hand, then who to ask.
   Takes no props.
 -->
 <script lang="ts">

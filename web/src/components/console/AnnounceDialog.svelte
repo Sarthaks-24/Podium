@@ -1,6 +1,6 @@
 <!--
   AnnounceDialog: an announcement to every student of the contest, from
-  the console (stage C2; C3 of v2). Start from a template or write it, see
+  the console. Start from a template or write it, see
   the preview, then "Post announcement" (POST .../announcements). The
   dialog is the confirmation: it says that every student sees it at once
   and that it cannot be taken back. After Pause, Resume, Extend and Judge

@@ -1,5 +1,5 @@
 <!--
-  Home: "Your contests" (design.md 5.2, v2 S2), the student's landing page
+  Home: "Your contests", the student's landing page
   (organisers land on /admin/contests instead). One list from
   GET /api/contests, not cards: live contests first with their countdown,
   then upcoming ones soonest first, then past ones newest first. Each row
@@ -7,13 +7,13 @@
   link), when it runs, how long it lasts, the problem count, the student's
   score once they have one ("240 of 300", digits in mono) and the state
   word. The first contest (live, else the next, else the latest one the
-  student took part in, never one they missed: D324) is pinned above the
+  student took part in, never one they missed) is pinned above the
   table in a panel with its countdown as mono digits and
-  one primary button, "Open contest" in every state (audit 2026-10-20 S10,
-  design/words.md); the table lists the rest under "Other
+  one primary button, "Open contest" in every state, so the
+  student never has to choose; the table lists the rest under "Other
   contests" ("Contests" when nothing is pinned). A live row in the table adds an "Open contest" button. A
-  frozen contest reads "Live" with "standings frozen" in its countdown
-  (D84). Under 768 px each row reads as title and state, then the start,
+  frozen contest reads "Live" with "standings frozen" in its countdown.
+ Under 768 px each row reads as title and state, then the start,
   then the length and problem count in one muted line beside the score. A
   countdown over a day reads as a span ("Starts in 2 d 23 h"). The app
   shell sends signed-out visitors to /signin first. Takes no props.
@@ -23,7 +23,8 @@
   import PageState from '../components/PageState.svelte';
   import PageHeader from '../components/PageHeader.svelte';
   import { onMount } from 'svelte';
-  import { ApiError, getJSON, errorText } from '../lib/api';
+  import { getJSON } from '../lib/api';
+  import { loader } from '../lib/loader.svelte';
   import { serverClock } from '../lib/clock';
   import {
     formatCountdown,
@@ -42,25 +43,21 @@
   import { routeTitle } from '../lib/routing';
   import { refreshTicker, ticker, useTicker } from '../lib/ticker.svelte';
 
-  let loadState = $state<'loading' | 'ready' | 'error'>('loading');
-  let loadError = $state('');
   let contests = $state<ContestSummary[]>([]);
 
-  async function load() {
-    loadState = 'loading';
-    try {
+  const page = loader(
+    async () => {
       const sent = Date.now();
       const data = await getJSON<ContestList>('/api/contests');
       if (typeof data.server_now === 'number') serverClock.observe(data.server_now, sent, Date.now());
+      return data;
+    },
+    (data) => {
       refreshTicker();
       contests = orderedContests(data);
-      loadState = 'ready';
-    } catch (e) {
-      if (e instanceof ApiError && e.status === 401) return;
-      loadError = errorText(e);
-      loadState = 'error';
-    }
-  }
+    },
+  );
+  const load = () => page.load();
 
   // Reload when a countdown runs out, so the state words move on.
   let reloadAt = $derived.by(() => {
@@ -73,7 +70,7 @@
   });
 
   $effect(() => {
-    if (loadState === 'ready' && ticker.now >= reloadAt) void load();
+    if (page.state === 'ready' && ticker.now >= reloadAt) void load();
   });
 
   function isLive(c: ContestSummary): boolean {
@@ -83,22 +80,26 @@
   onMount(() => {
     setTitle(routeTitle('home'));
     void load();
-    return useTicker();
+    const stopTicker = useTicker();
+    return () => {
+      page.stop();
+      stopTicker();
+    };
   });
 </script>
 
 <PageHeader title="Your contests" />
 
-{#if loadState === 'loading'}
+{#if page.state === 'loading'}
   <PageState kind="loading" message="Loading contests" />
-{:else if loadState === 'error'}
-  <PageState kind="error" message={loadError} onretry={load} />
+{:else if page.state !== 'ready'}
+  <PageState kind="error" message={page.error} onretry={load} />
 {:else if contests.length === 0}
   <PageState kind="empty" message="No contests yet. When an organiser schedules one, it appears here." />
 {:else}
   {@const pin = pinnedContest(contests)}
   {@const others = contests.filter((c) => c !== pin)}
-  <!-- S10: the live or next contest on top, with its countdown and one button; never one the student missed (D324). -->
+  <!-- The live or next contest on top, with its countdown and one button; never one the student missed. -->
   {#if pin}
   {@const pcd = listCountdown(pin, ticker.now)}
   {@const pinHref = `/contests/${encodeURIComponent(pin.slug)}`}

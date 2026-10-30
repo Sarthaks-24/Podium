@@ -1,26 +1,27 @@
 <!--
-  StandingsView: a contest's board for a student (design.md 5.4), shared by
+  StandingsView: a contest's board for a student, shared by
   the standings page and the panel that opens over the editor during the
-  contest (B3). It loads the contest (for its problem letters) and
+  contest. It loads the contest (for its problem letters) and
   GET /api/contests/{slug}/standings and says in one line whether the board
   is live, hiding its newest results ("Results from 13:51 are hidden until
   the end.", never "freeze", design/words.md) or final, and how many
   submissions are still judging. It always asks for the board students
   get (?as=student), so an organiser in Student view sees that board,
-  under the line "Student view: the board as students see it now." (P10). Then the student's own place as the one
+  under the line "Student view: the board as students see it now." Then the student's own place as the one
   display figure, StandingsTable with their row tinted and "Jump to you",
-  and one legend line, the rest behind "How to read the board" (S8). When a
-  refetch moves the student's own place or score, the announcer says so
-  (S6, X1). A refusal (403) shows the server's sentence. The board refetches when
+  and one legend line, the rest behind "How to read the board". When a
+  refetch moves the student's own place or score, the announcer says so.
+ A refusal (403) shows the server's sentence. The board refetches when
   the event stream says its version changed, at most once every 3 s.
   Props: `slug` and `oncontest` (given the contest once it loads).
 -->
 <script lang="ts">
   import { onDestroy, onMount } from 'svelte';
   import { polite } from '../lib/announce.svelte';
-  import { ApiError, errorText, getJSON } from '../lib/api';
+  import { getJSON } from '../lib/api';
   import { serverClock } from '../lib/clock';
   import { isForContest, type Contest } from '../lib/contests';
+  import { loader } from '../lib/loader.svelte';
   import { boardLabels, placeFigure, rankAnnouncement, statusLine, type Standings } from '../lib/standings';
   import { LiveSubscription, type StreamMode } from '../lib/stream';
   import PageState from './PageState.svelte';
@@ -30,8 +31,6 @@
 
   let { slug, oncontest }: { slug: string; oncontest?: (c: Contest) => void } = $props();
 
-  let loadState = $state<'loading' | 'ready' | 'forbidden' | 'missing' | 'error'>('loading');
-  let message = $state('');
   let contest = $state.raw<Contest | null>(null);
   let standings = $state.raw<Standings | null>(null);
   let streamMode = $state<StreamMode>('connecting');
@@ -45,6 +44,7 @@
     try {
       const sent = Date.now();
       const c = await getJSON<Contest>(api);
+      if (!page.live) return;
       serverClock.observe(c.server_now, sent, Date.now());
       contest = c;
       oncontest?.(c);
@@ -53,30 +53,18 @@
     }
   }
 
-  async function loadBoard(quiet = false) {
-    if (!quiet) loadState = 'loading';
-    try {
-      // as=student: an organiser here is in Student view and gets the board students get (P10).
-      const s = await getJSON<Standings>(`${api}/standings?as=student`);
+  // as=student: an organiser here is in Student view and gets the board students get.
+  const page = loader(
+    () => getJSON<Standings>(`${api}/standings?as=student`),
+    (s) => {
+      // An older board that arrives late never replaces a newer one.
       if (standings && s.version < standings.version && s.variant === standings.variant) return;
       const said = rankAnnouncement(standings, s);
       if (said !== '') polite(said);
       standings = s;
-      loadState = 'ready';
-    } catch (e) {
-      if (e instanceof ApiError && e.status === 401) return;
-      if (quiet && loadState === 'ready') return;
-      if (e instanceof ApiError && e.status === 403) {
-        loadState = 'forbidden';
-        message = e.message;
-      } else if (e instanceof ApiError && e.status === 404) {
-        loadState = 'missing';
-      } else {
-        loadState = 'error';
-        message = errorText(e);
-      }
-    }
-  }
+    },
+  );
+  const loadBoard = (quiet = false) => page.load({ quiet });
 
   // Version events from everyone's submissions arrive often; refetch at most every 3 s.
   let lastFetch = 0;
@@ -119,19 +107,20 @@
   });
 
   onDestroy(() => {
+    page.stop();
     stream?.stop();
     clearTimeout(pending);
   });
 </script>
 
-{#if loadState === 'loading'}
+{#if page.state === 'loading'}
   <PageState kind="loading" message="Loading the standings" />
-{:else if loadState === 'forbidden'}
-  <p class="lead">{message}</p>
-{:else if loadState === 'missing'}
+{:else if page.state === 'forbidden'}
+  <p class="lead">{page.error}</p>
+{:else if page.state === 'missing'}
   <PageState kind="missing" message="There is no contest at this address." parent={{ href: '/', label: 'Go to your contests.' }} />
-{:else if loadState === 'error'}
-  <PageState kind="error" {message} onretry={() => loadBoard()} />
+{:else if page.state === 'error'}
+  <PageState kind="error" message={page.error} onretry={() => loadBoard()} />
 {:else if standings}
   {#if contest?.organiser}<p class="student-view small">Student view: the board as students see it now.</p>{/if}
   <p class="status" class:hiding={standings.variant === 'frozen'}>{statusLine(standings, ended)}</p>
@@ -142,7 +131,7 @@
   <div class="board">
     <StandingsTable {standings} {labels} caption="Standings for {contest?.title ?? 'this contest'}" />
   </div>
-  <!-- S8: one line under the board, the rest behind a disclosure. -->
+  <!-- One line under the board, the rest behind a disclosure, so the board comes first. -->
   <p class="legend">
     The bar under a score is the share of points earned; a dash means not tried. Time is when the total was reached, from the start.
   </p>

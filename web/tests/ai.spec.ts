@@ -14,9 +14,12 @@
 // after saving), the fake provider, the wizard from a brief over the live
 // stream and from pasted text over polling, a wizard failure with reasons,
 // the editor's generator section and input generation.
-import { expect, test } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
 import { activate, tabTo } from './keyboard';
 import { shots, WIDTHS, THEMES, T0, WIZARD_ID, FAKE_KEY, OPENAI_KEY, GEMINI_KEY, type Json, json, mockApi, expectKeyGone, SCREENS } from './mocks/ai';
+
+/** The line under the wizard's heading that names the provider, the model and the key. */
+const keyState = (page: Page) => page.getByRole('paragraph').filter({ hasText: /Using |Choose a model for / });
 
 for (const theme of THEMES) {
   test.describe(`${theme} theme`, () => {
@@ -59,7 +62,7 @@ test('the bank links to the wizard, which holds the key form, and marks AI draft
   await page.goto('/admin/problems');
   const row = page.getByRole('row', { name: /Maximum subarray/ });
   await expect(row.getByText('AI draft')).toBeVisible();
-  await expect(row.locator('.tags')).toHaveText('arrays');
+  await expect(row.getByRole('cell', { name: 'arrays', exact: true })).toHaveText('arrays');
   await page.getByRole('link', { name: 'New problem with AI' }).click();
   await expect(page.getByRole('heading', { level: 1, name: 'New problem with AI' })).toBeFocused();
   await expect(page.getByText('No key yet.', { exact: false })).toBeVisible();
@@ -123,7 +126,7 @@ test('saving a key checks it, lists the models, clears the field and never keeps
   const picker = page.getByLabel('Model', { exact: true });
   await expect(picker).toBeFocused();
   await expect(picker.locator('option:not([disabled])')).toHaveText(['Claude Opus 5.5', 'Claude Sonnet 5.5', 'Type a model id']);
-  await expect(page.locator('.key-state')).toHaveText('Choose a model for Anthropic first.');
+  await expect(keyState(page)).toHaveText('Choose a model for Anthropic first.');
   await expect(page.getByRole('form', { name: 'Choose a model to start' })).toBeVisible();
   await expect(field).toHaveValue('');
 
@@ -133,13 +136,13 @@ test('saving a key checks it, lists the models, clears the field and never keeps
   await page.getByRole('button', { name: 'Save model' }).click();
   await expect(page.getByText('Model saved', { exact: true })).toBeVisible();
   expect(state.keyBodies.at(-1)).toEqual({ provider: 'anthropic', model: 'claude-sonnet-5-5', key: '' });
-  await expect(page.locator('.key-state')).toContainText('Using Anthropic, Claude Sonnet 5.5. Key active until 14:32.');
+  await expect(keyState(page)).toContainText('Using Anthropic, Claude Sonnet 5.5. Key active until 14:32.');
   await expect(page.getByRole('button', { name: 'Generate draft' })).toBeEnabled();
   await expectKeyGone(page, state);
 
   // Reloading shows the state from the server, still without the key.
   await page.reload();
-  await expect(page.locator('.key-state')).toContainText('Using Anthropic, Claude Sonnet 5.5. Key active until 14:32.');
+  await expect(keyState(page)).toContainText('Using Anthropic, Claude Sonnet 5.5. Key active until 14:32.');
   await page.getByRole('button', { name: 'Change key or model' }).click();
   await expect(page.getByLabel('Model', { exact: true })).toHaveValue('claude-sonnet-5-5');
   await expectKeyGone(page, state);
@@ -157,7 +160,7 @@ test('saving a key checks it, lists the models, clears the field and never keeps
 test('each provider keeps its own key, a typed model id is accepted, and the list refreshes', async ({ page }) => {
   const state = await mockApi(page, { key: 'active' });
   await page.goto('/admin/ai/new');
-  await expect(page.locator('.key-state')).toContainText('Using Anthropic, Claude Opus 5.5. Key active until 14:32.');
+  await expect(keyState(page)).toContainText('Using Anthropic, Claude Opus 5.5. Key active until 14:32.');
   const change = page.getByRole('button', { name: 'Change key or model' });
   await change.click();
 
@@ -170,7 +173,7 @@ test('each provider keeps its own key, a typed model id is accepted, and the lis
   await expect(page.getByText('Key saved', { exact: true })).toBeVisible();
   expect(state.keyBodies.at(-1)).toEqual({ provider: 'openai', model: 'gpt-x-preview', key: OPENAI_KEY });
   // The new key is the one used for drafts; the form folds and the brief takes focus.
-  await expect(page.locator('.key-state')).toContainText('Using OpenAI, gpt-x-preview. Key active until 14:32.');
+  await expect(keyState(page)).toContainText('Using OpenAI, gpt-x-preview. Key active until 14:32.');
   await expect(page.getByLabel('Topic', { exact: true })).toBeFocused();
   await change.click();
   // The typed model is not in the list, so the picker shows it typed.
@@ -202,7 +205,7 @@ test('each provider keeps its own key, a typed model id is accepted, and the lis
   await page.getByLabel('Model id').fill('models/gemini-x-pro');
   await page.getByLabel('API key').fill(GEMINI_KEY);
   await page.getByRole('button', { name: 'Save key' }).click();
-  await expect(page.locator('.key-state')).toContainText('Using Google Gemini, Gemini X Pro. Key active until 14:32.');
+  await expect(keyState(page)).toContainText('Using Google Gemini, Gemini X Pro. Key active until 14:32.');
   expect(state.keyBodies.at(-1)).toEqual({ provider: 'gemini', model: 'gemini-x-pro', key: GEMINI_KEY });
   await change.click();
   await expect(page.getByLabel('Provider')).toHaveValue('gemini');
@@ -218,7 +221,7 @@ test('each provider keeps its own key, a typed model id is accepted, and the lis
 test('the wizard waits for a model when a key was saved without one', async ({ page }) => {
   await mockApi(page, { key: 'no-model' });
   await page.goto('/admin/ai/new');
-  await expect(page.locator('.key-state')).toHaveText('Choose a model for OpenAI first.');
+  await expect(keyState(page)).toHaveText('Choose a model for OpenAI first.');
   await expect(page.getByRole('button', { name: 'Generate' })).toBeDisabled();
   await expect(page.getByRole('form', { name: 'Choose a model to start' })).toBeVisible();
   await expect(page.getByRole('link', { name: 'Go to AI assistant' })).toHaveCount(0);
@@ -232,7 +235,7 @@ test('in testing mode the fake provider needs no key', async ({ page }) => {
   await expect(page.getByLabel('API key')).toHaveCount(0);
   await expect(page.getByText('The fake provider needs no key.', { exact: false })).toBeVisible();
   await page.getByRole('button', { name: 'Use fake provider' }).click();
-  await expect(page.locator('.key-state')).toContainText('Using Test provider (canned problems). Fake provider active, no key needed.');
+  await expect(keyState(page)).toContainText('Using Test provider (canned problems). Fake provider active, no key needed.');
   await expect(page.getByRole('button', { name: 'Generate draft' })).toBeEnabled();
   expect(state.keyBodies).toEqual([{ provider: 'fake', model: 'canned', key: '' }]);
 });
@@ -437,8 +440,8 @@ test('the wizard follows the draft until it is validated (P3 O7)', async ({ page
 test('wizard copy keeps its spaces and full stops (P3 O7)', async ({ page }) => {
   await mockApi(page, { key: 'active' });
   await page.goto('/admin/ai/new');
-  await expect(page.locator('.key-state')).not.toContainText('needed Change');
+  await expect(keyState(page)).not.toContainText('needed Change');
   await page.getByLabel('Topic', { exact: true }).fill('Maximum subarray sum');
   await page.getByRole('button', { name: 'Generate draft' }).click();
-  await expect(page.locator('.created')).toHaveText(/^Drafted by .+\. The draft is in the problem bank\./, { timeout: 10_000 });
+  await expect(page.getByRole('paragraph').filter({ hasText: /^Drafted by / })).toHaveText(/^Drafted by .+\. The draft is in the problem bank\./, { timeout: 10_000 });
 });

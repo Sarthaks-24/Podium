@@ -1,24 +1,12 @@
 <!--
-  Feed: the console's submissions feed (stage C2; v2 P3 F6.2, audit O3).
-  Filters for problem, student and verdict, pages of 50, and the time of the
-  rows shown: "Updated 14:02:10", or after a failed refresh "Could not
-  refresh at 14:02:20. Showing 14:02:10. Retrying." with the last rows kept.
-  Outcomes read as students read them ("Partial, 40 of 100" apart from a
-  zero); the time is minutes from the start, with the clock time on hover.
-  When the contest has an exam option on (V3-25), a Recorded column gives
-  what the editor counted before each submission: the pasted characters,
-  the focus losses when they are counted, and the full-screen exits when
-  full screen is on.
-  Each row has two quiet buttons: "Record a decision" (the integrity
-  decision about that student) and "Judge again", both handed to the page,
-  which asks first. The page refreshes the feed through `load()` and shows
-  only judge errors through `showErrors()`.
-
-  Props: `base` (the contest's admin API path), `startsAt`, `labels` (the
-  problem letters), `students` ({ user_id, name }, for the filter), `exam`
-  (the contest's exam options),
-  `autoRefresh` (bindable: the page's 10 s refresh), `onrejudge(row)` and
-  `ondecide(row)`.
+  Feed: the console's submissions feed, filtered by problem, student and
+  verdict in pages of 50, with the time of the rows shown; after a failed
+  refresh the last rows stay with a line saying so. Outcomes read as
+  students read them and times are minutes from the start. When an exam
+  option is on, a Recorded column gives what the editor counted before
+  each submission. Each row offers "Record a decision" and "Judge again",
+  handed to the page, which asks first; the page calls `load()` to
+  refresh and `showErrors()` to show only judge errors.
 -->
 <script lang="ts">
   import Badge from '../Badge.svelte';
@@ -56,7 +44,7 @@
   let fProblem = $state('');
   let fUser = $state('');
   let fVerdict = $state('');
-  /** When the shown rows arrived, and when a later refresh failed (C2). */
+  /** When the shown rows arrived, and when a later refresh failed. */
   let feedAt = $state(0);
   let feedFailedAt = $state(0);
 
@@ -88,7 +76,7 @@
     } catch (e) {
       if (mine !== seq) return;
       if (e instanceof ApiError && (e.status === 401 || e.status === 403)) return;
-      // A failed refresh keeps the rows already shown (C2).
+      // A failed refresh keeps the rows already shown.
       if (feedState === 'ready') {
         feedFailedAt = serverClock.serverNow();
         return;
@@ -275,7 +263,7 @@
     white-space: nowrap;
   }
 
-  /* The row actions are quiet in every row and full strength only on the row a pointer or focus is on (O3). */
+  /* The row actions are quiet in every row and full strength only on the row a pointer or focus is on. */
   .again {
     color: var(--ink-muted);
     font-size: var(--fs-0);

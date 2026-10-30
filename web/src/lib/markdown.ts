@@ -1,28 +1,12 @@
 /**
- * Statement rendering: Markdown with TeX maths, as students will see it.
- *
- * Loaded with a dynamic import only by the screens that show statements, so
- * marked and DOMPurify stay out of the main bundle. KaTeX, its stylesheet
- * and its self-hosted fonts are one more import (lib/katex.ts), made only
- * when a text holds maths (F8.2).
- *
- * The pipeline, in order:
- * 1. marked turns Markdown into HTML. Raw HTML in the source is escaped and
- *    shown as text, never passed through. A marked extension turns $...$
- *    into <span class="math" data-tex="..."> and a $$...$$ block into
- *    <div class="math math-block" data-tex="...">, with the TeX escaped, so
- *    maths survives sanitising as plain data. The TeX is also the
- *    placeholder's text, so a formula reads as its source until KaTeX
- *    arrives, or if it never does. Statement headings are moved down so
- *    "#" becomes the level the page asks for.
- * 2. DOMPurify sanitises that HTML: inline style attributes are forbidden,
- *    as are script, style, iframe, object, embed and form controls; links
- *    get rel="noopener noreferrer" and open in the same tab; images load
- *    lazily and decode off the main thread.
- * 3. After the sanitised HTML is in the page, renderMath() loads KaTeX when
- *    there is a placeholder and asks it to fill each one from its data-tex
- *    text, with trust off and errors shown inline instead of thrown.
- *    KaTeX's output is generated from text, so it is trusted.
+ * Statement rendering, Markdown with TeX maths as students will see it,
+ * loaded with a dynamic import so marked, DOMPurify and KaTeX stay out of
+ * the main bundle. marked turns Markdown into HTML with raw HTML escaped
+ * and maths kept as escaped data-tex placeholders that read as their
+ * source until KaTeX arrives; DOMPurify then removes inline styles,
+ * scripts, frames and form controls; renderMath() fills the placeholders
+ * after the HTML is in the page, with trust off and errors shown inline.
+ * KaTeX output is generated from text, so it is trusted.
  */
 import DOMPurify from 'dompurify';
 import { Marked, type TokenizerAndRendererExtension, type Tokens } from 'marked';

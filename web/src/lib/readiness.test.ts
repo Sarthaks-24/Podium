@@ -1,4 +1,4 @@
-// The problem editor's readiness helpers (v2 P3 F5.2, lib/problems.ts).
+// The problem editor's readiness helpers (lib/problems.ts).
 import { describe, expect, it } from 'vitest';
 import { imagesWithoutAlt, judgedFieldsChanged, pipelineLine, toDraft, validationResultLine, wordList, type Problem, type Validation } from './problems';
 

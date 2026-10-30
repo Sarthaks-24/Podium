@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-// X6: a jump button's accessible name starts with the location it shows,
+// A jump button's accessible name starts with the location it shows,
 // so a voice user saying "main.cpp:3:5" reaches it (WCAG 2.5.3).
 import { afterEach, describe, expect, it } from 'vitest';
 import { flushSync, mount, unmount } from 'svelte';
@@ -24,7 +24,7 @@ describe('CompileOutput', () => {
     expect(button?.textContent).toBe('main.cpp:3:5');
     expect(button?.getAttribute('aria-label')).toBe('main.cpp:3:5, go to line 3, column 5 in the editor');
     expect(target.querySelector('pre')?.textContent).toBe(output);
-    // P4: the first error and its line come first, once.
+    // The first error and its line come first, once.
     expect(target.querySelector('.first')?.textContent?.replace(/\s+/g, ' ').trim()).toBe("Line 3: expected ';' before 'return'");
   });
 

@@ -1,24 +1,12 @@
 <!--
-  VerdictPanel: everything about one submission (design.md 5.3 and 8). The
-  headline names the outcome in sentence case ("Wrong answer on test 5",
-  "Partial, 40 of 100", "3rd in queue"), a line of guidance follows for a
-  failing verdict, then the subtask strip filling as results arrive, the
-  compiler output verbatim with clickable line jumps, and the tests: the
-  samples and each subtask in its own disclosure, a failing one open, each
-  row giving the verdict in words, the time in mono and the memory. A
-  waiting submission reads "Submitted, 3rd in queue"; one that scored less
-  than the problem already has adds "Your score on this problem stays 60
-  of 100" (S4). A practice submission may carry its first failing hidden
-  test (`revealed`, D115): it is shown in full under the strip through
-  TestDetail, with "This test is shown because this is practice." and
-  "Run on this input"; a submission that counts never carries one, so it
-  never shows. With `sticky` the headline, its detail line and the strip
-  stay at the top of a scrolling result pane while the rest scrolls under
-  them (audit 2026-10-20 S5). Props: `submission`, `onjump` (moves the
-  editor to a compile error's line), `idPrefix` (keeps ids unique when
-  several panels are on the page), `problemScore` (optional, { score, max }
-  so far), `sticky` (optional) and `onruninput` (optional; puts an input
-  in the custom input box and runs it).
+  VerdictPanel: everything about one submission: a sentence-case headline
+  ("Wrong answer on test 5", "Partial, 40 of 100"), guidance for a failing
+  verdict, the subtask strip, the compiler output with line jumps, and
+  the tests grouped by subtask with a failing group open. A lower score
+  than the problem already has says the score stays. A practice
+  submission may carry its first failing hidden test, shown in full with
+  "Run on this input"; a submission that counts never carries one. With
+  `sticky` the headline and strip stay at the top while the rest scrolls.
 -->
 <script lang="ts">
   import { verdictLabel } from '../lib/problems';
@@ -50,7 +38,7 @@
   }
 
   let { submission, onjump, idPrefix, problemScore = null, sticky = false, onruninput }: Props = $props();
-  // D115: only a finished submission that never counts carries it; the server decides.
+  // Only a finished submission that never counts carries it; the server decides.
   const revealed = $derived(submission.state === 'done' && submission.revealed ? submission.revealed : null);
   const revealedVerdict = $derived(
     revealed ? (submission.subtasks.flatMap((st) => st.tests).find((t) => t.idx === revealed.idx)?.verdict ?? '') : '',
@@ -91,7 +79,7 @@
     {#if head.detail}<p class="detail">{head.detail}</p>{/if}
     {#if submission.subtasks.length > 0 && submission.verdict !== 'CE'}
       <SubtaskStrip {submission} />
-      <!-- V3-27: the word's meaning where a student first meets it. -->
+      <!-- The word's meaning where a student first meets it. -->
       <p class="detail">A subtask's points count when every hidden test in it passes.</p>
     {/if}
   </div>
@@ -179,7 +167,7 @@
     gap: var(--space-2);
   }
 
-  /* S5: the verdict, its detail and the strip stay in view while the tests scroll. The
+  /* The verdict, its detail and the strip stay in view while the tests scroll. The
      pane says how much padding it has (--sticky-top, --sticky-bleed), so the
      head sticks to the pane's very top and its background covers the sides. */
   .head.sticky {

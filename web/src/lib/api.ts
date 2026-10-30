@@ -52,7 +52,7 @@ export const PAGE_ERROR_MESSAGE = 'Something on this page failed. Reload the pag
 /**
  * The sentence to show for a caught error: the server's own (or the
  * network one) for an ApiError, PAGE_ERROR_MESSAGE otherwise. One helper,
- * so the screens never drift apart (council C1-032).
+ * so the screens never drift apart.
  */
 export function errorText(e: unknown): string {
   return e instanceof ApiError ? e.message : PAGE_ERROR_MESSAGE;

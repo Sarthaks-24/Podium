@@ -1,23 +1,11 @@
 /**
- * Submitting, running and the results of one workspace (B2, F6), and which
- * result tab is shown: Run, Submissions or Your input
- * (cache/v3/design/editor.md section 1). Run on the examples selects Run,
- * a run on your input stays on Your input, Submit selects Submissions;
- * nothing replaces anything without the tab changing.
- *
- * - Submit sends an idempotency key made per press and reused by "Submit
- *   again", so a retry after a lost answer never counts twice. Offline or
- *   unreachable requests say "Not sent" and offer a retry.
- * - The contest's gap between submits and a server 429 with a wait count
- *   down in the button ("Submit in 24 s", S4); a refusal without a known
- *   wait is a muted status line (`paceText`), never a red alert.
- * - After a Run that did not compile, Submit asks once while the code is
- *   unchanged (`confirmCompile`).
- * - Results stream over GET /api/events (lib/stream.ts), with polling as
- *   the fallback and a refetch of own submissions after every reconnect.
- * - The announcer speaks each submission and run result once as a
- *   sentence (X1), compile errors included.
- *
+ * Submitting, running and the results of one workspace, and which result
+ * tab shows; nothing replaces a result without the tab changing. Submit
+ * sends an idempotency key per press, reused by "Submit again", so a retry
+ * after a lost answer never counts twice. The gap between submits and a
+ * server 429 count down in the button, and after a Run that did not
+ * compile Submit asks once. Results stream over GET /api/events with
+ * polling as the fallback, and the announcer speaks each result once.
  * Construct it during component initialisation: its announcements are
  * effects owned by that component.
  */
@@ -82,7 +70,7 @@ export class Judging {
   confirmCompile = $state(false);
   customInput = $state('');
 
-  /** The code and language of the last run, so a compile error is only warned about while the code is unchanged (S4). */
+  /** The code and language of the last run, so a compile error is only warned about while the code is unchanged. */
   private lastRunBody = $state.raw<{ language: Language; source: string } | null>(null);
   private compileWarned = false;
   private pendingKey: string | null = null;
@@ -97,7 +85,7 @@ export class Judging {
   /** The submission the Submissions tab opens: the one just made, else the newest. */
   current = $derived(this.watchId !== null ? (this.state.submissions.find((s) => s.id === this.watchId) ?? this.latest) : this.latest);
   waitLeft = $derived(Math.max(0, Math.ceil((this.waitUntil - this.nowTick) / 1000)));
-  /** S4: a known wait counts down inside the Submit button; only a refusal without a known wait takes the status line. */
+  /** A known wait counts down inside the Submit button; only a refusal without a known wait takes the status line. */
   paceText = $derived(this.notice?.kind === 'pace' && this.waitLeft === 0 && this.waitUntil === 0 ? this.notice.text : '');
   submitLabel = $derived(this.submitBusy ? 'Submitting' : this.waitLeft > 0 ? `Submit in ${this.waitLeft} s` : 'Submit');
   /** The latest run was on the student's own input. */
@@ -121,7 +109,7 @@ export class Judging {
       }
     });
 
-    // Announces the latest run as it starts and finishes (X1), compile errors included.
+    // Announces the latest run as it starts and finishes, compile errors included.
     $effect(() => {
       const r = this.state.run;
       if (!r) return;
@@ -199,7 +187,7 @@ export class Judging {
       polite(`You can submit again in ${this.waitLeft} s.`);
       return;
     }
-    // A run that did not compile asks once before a submit uses up an attempt (S4).
+    // A run that did not compile asks once before a submit uses up an attempt.
     if (retryKey === undefined && !confirmed && this.runDidNotCompile && !this.compileWarned) {
       this.confirmCompile = true;
       return;

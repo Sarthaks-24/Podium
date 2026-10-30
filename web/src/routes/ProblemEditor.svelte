@@ -1,23 +1,14 @@
 <!--
-  ProblemEditor: one problem at /admin/problems/{id}. The title row carries
-  one status line ("Validated, 7 tests, slowest 286 ms", a link to the
-  report), Try as a student and a menu with Download pack, Regenerate all
-  outputs and Archive. Under it the sticky bar (EditorBar) holds three
-  tabs, Statement, Tests and Checking, with Save changes and Validate; once
-  the problem has passed, "Add to contest" takes Validate's place and opens
-  a picker of draft and upcoming contests (AddToContestDialog). What needs
-  attention sits under the bar on every tab: why a save or Validate was
-  refused, what stops validation, a judged change that a save would need
-  to validate again, and the run in progress. Validate makes missing
-  outputs first (POST .../generate with then_validate) and the server
-  validates once they arrive, so there is no separate Generate step.
-  The route loads the problem through lib/loader (newest answer wins, none
-  after it has gone), keeps the working copy and its unsaved-changes guard,
-  saves on Ctrl+S or Cmd+S, and polls validation, output and input
-  generation every 2 s while the judge has them. A field error on another
-  tab switches to that tab before focusing the field. A live contest using
-  the problem asks for a reason with each save; an AI draft carries a note
-  until a person saves it. Props: `id`, the problem id from the address.
+  ProblemEditor: one problem at /admin/problems/{id}, in three tabs
+  (Statement, Tests, Checking) under a sticky bar with Save changes and
+  Validate, which becomes "Add to contest" once the problem has passed.
+  What needs attention sits under the bar on every tab. Validate makes
+  missing outputs first and the server validates once they arrive, so
+  there is no separate Generate step. The problem loads through
+  lib/loader; the page keeps the working copy with an unsaved-changes
+  guard, saves on Ctrl+S or Cmd+S, and polls the judge every 2 s while it
+  works. A field error on another tab switches to it first, and a live
+  contest using the problem asks for a reason with each save.
 -->
 <script lang="ts">
   import PageState from '../components/PageState.svelte';
@@ -78,7 +69,7 @@
   let draft = $state<Draft | null>(null);
   let baseline = $state('');
   const dirty = $derived(draft !== null && JSON.stringify(draft) !== baseline);
-  // A server from M5 on sends "generator" (null when there is none).
+  // A current server sends "generator" (null when there is none); an older one leaves it out.
   const hasGenerator = $derived(problem !== null && problem.generator !== undefined);
   const aiDraft = $derived(problem !== null && isAIDraft(problem.tags));
   const isOrganiser = $derived(session.user?.role === 'admin' || session.user?.role === 'owner');

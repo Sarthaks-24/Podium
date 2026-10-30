@@ -1,9 +1,9 @@
 <!--
-  Breadcrumbs: the trail above the title on organiser screens (v2 F4),
+  Breadcrumbs: the trail above the title on organiser screens,
   rendered by PageHeader. A nav named "Breadcrumb" holding an ordered list;
   every item but the last is a link followed by a chevron hidden from
   assistive technology, and the last item is the current page, marked with
-  aria-current. Each link is at least --control-h tall (X4). Props:
+  aria-current. Each link is at least --control-h tall. Props:
   `items`, the trail from the top level down to the current page.
 -->
 <script lang="ts" module>

@@ -1,6 +1,5 @@
 /**
- * Standings as the API returns them, and how each part reads on screen
- * (cache/v1/m4-plan.md section 3, design.md section 5.4).
+ * Standings as the API returns them, and how each part reads on screen.
  *
  * The server ranks; the web app only draws. Each problem cell is a score,
  * a two-tone fill (earned fraction over the rest) and, on a frozen board,
@@ -122,7 +121,7 @@ export function statusLine(
 ): string {
   let line: string;
   if (s.variant === 'frozen') {
-    // design/words.md: say what happens, once, never "freeze" (B3).
+    // design/words.md: say what happens, once, never "freeze".
     const from = s.frozen_at ? `Results from ${clock(s.frozen_at)}` : 'The newest results';
     line = ended ? `${from} are hidden until the organisers reveal them.` : `${from} are hidden until the end.`;
   } else if (s.final) {
@@ -137,7 +136,7 @@ export function statusLine(
 }
 
 /**
- * The line over the organisers' board on Results (pilot P10): the status
+ * The line over the organisers' board on Results: the status
  * line, then whether this is the live board while students see results
  * hidden, or the board students see. `hiddenFrom` is when the board stopped
  * updating for students, or null without hidden minutes; `hiding` is true
@@ -185,8 +184,8 @@ export function placeSentence(s: Pick<Standings, 'rows' | 'me'> & Partial<Pick<S
 }
 
 /**
- * The own-place figure on the standings page (v2 S6, D80: Direction A with
- * B's one display figure): the rank, the board size, whether it is a tie
+ * The own-place figure on the standings page, its one
+ * display figure: the rank, the board size, whether it is a tie
  * and the label above it. Null when the student is not on the board.
  */
 export function placeFigure(s: Pick<Standings, 'rows' | 'me'> & Partial<Pick<Standings, 'variant'>>): { rank: number; of: number; tied: boolean; label: string } | null {
@@ -198,7 +197,7 @@ export function placeFigure(s: Pick<Standings, 'rows' | 'me'> & Partial<Pick<Sta
 
 /**
  * The sentence a screen reader hears when the student's own place or score
- * changes after a refetch (S6, audit 06-6): "You are now 12th with 240
+ * changes after a refetch: "You are now 12th with 240
  * points." On a frozen board only the place moves. Empty when nothing
  * changed or the student is not on both boards.
  */

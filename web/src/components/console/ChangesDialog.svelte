@@ -1,6 +1,6 @@
 <!--
   ChangesDialog: the contest's audit log, behind the console's "History of
-  changes" link (stage C2): every change that can affect results, newest
+  changes" link: every change that can affect results, newest
   first, with who made it (GET .../audit). It filters by the kind of
   change and by who made it, shows the latest 10 with "Show all", and
   loads older pages on request. It loads when it opens, and again when
@@ -79,7 +79,7 @@
     </div>
     <div class="field grow">
       <label for="audit-actor">Made by</label>
-      <!-- An example, not a placeholder that reads as a value already there (C2-068). -->
+      <!-- An example, not a placeholder that reads as a value already there. -->
       <p id="audit-actor-help" class="field-help">An email, for example ta@college.edu</p>
       <input id="audit-actor" class="input" type="search" autocomplete="off" spellcheck="false" aria-describedby="audit-actor-help" bind:value={actor} />
     </div>

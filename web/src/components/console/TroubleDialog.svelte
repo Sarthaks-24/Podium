@@ -1,6 +1,6 @@
 <!--
   TroubleDialog: "If something goes wrong", the contest-day failure path
-  written into the console (stage C2). Three cases, each a short list of
+  written into the console. Three cases, each a short list of
   what to do in order: the judge stalled (pause, restart the judge, judge
   again), the VM gone (restore, extend, announce) and sign-in down (the
   contest moves). docs/RUNBOOK.md carries the same steps with the

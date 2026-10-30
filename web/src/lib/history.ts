@@ -4,7 +4,7 @@
  * .../problems/{label}/revision), and SiteAuditEntry from
  * GET /api/admin/site-audit (People "History"). The contest "Changes" feed
  * reuses AuditEntry from lib/contests.ts. No route here ever carries a
- * test's input or output (D47).
+ * test's input or output.
  */
 import { countOf, roleLabel } from './format';
 import type { Role } from './session.svelte';

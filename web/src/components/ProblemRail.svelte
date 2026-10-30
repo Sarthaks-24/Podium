@@ -1,24 +1,12 @@
 <!--
-  ProblemRail: a contest's problems and its links inside the workspace, in
-  one of two shapes (B4, B6, design/student.md).
-  - "bar", from 1024 px, in place of the site header: Leave, the contest's
-    title, the letters with their scores (scrolling sideways past six, the
-    open one kept in view), the clock, then Messages with its unread count,
-    Standings and Help.
-  - "strip", under 1024 px, the one sticky row: the letters with their
-    scores, the clock and a Menu holding Standings, Messages, Help and
-    Leave, so the statement starts at once.
-  Each letter shows the score or "-" over a 2 px bar, in the partial colour for a partial
-  score; the open problem has a border on its inline start (a shape, not
-  only a tint, audit 06-7); a letter whose statement changed since the
-  student last opened it carries a dot. Each link keeps one sentence for
-  screen readers (sentence()). Leave asks first while the contest is live
-  (`onleave`), otherwise it is a link home.
-  Props: `problems`, `slug`, `current` (the open label), `layout` ("bar"
-  or "strip"), `unread` (messages not yet seen), `onmessages`,
-  `onhelp`, `onstandings` (a panel instead of the standings page), `clock`
-  (a snippet), `contestTitle`, `changed` (letters whose statement changed)
-  and `onleave`.
+  ProblemRail: a contest's problems and links inside the workspace. As a
+  "bar" from 1024 px it replaces the site header with Leave, the title,
+  the letters, the clock, Messages, Standings and Help; as a "strip" under
+  1024 px it is the one sticky row with the letters, the clock and a Menu,
+  so the statement starts at once. Each letter shows its score over a
+  thin bar; the open one has a border, a shape and not only a tint, and a
+  changed statement adds a dot. Every link has a sentence for screen
+  readers, and Leave asks first while the contest is live.
 -->
 <script lang="ts">
   import type { Snippet } from 'svelte';
@@ -44,7 +32,7 @@
   let { problems, slug, current, layout, unread = 0, onmessages, onhelp, onstandings, clock, contestTitle = '', changed = new Set<string>(), onleave }: Props = $props();
 
   const base = $derived(`/contests/${encodeURIComponent(slug)}`);
-  // Past six letters the row scrolls; the open one stays in view (B6).
+  // Past six letters the row scrolls; the open one stays in view.
   function keepInView(node: HTMLElement, isCurrent: boolean) {
     if (isCurrent) node.scrollIntoView({ block: 'nearest', inline: 'nearest' });
     return {
@@ -57,7 +45,7 @@
   let menuOpen = $state(false);
   let menuButton: HTMLButtonElement | undefined = $state();
 
-  /** Closes the menu, gives focus back to its button, then runs the item (the dialog returns focus there, P8). */
+  /** Closes the menu, gives focus back to its button, then runs the item (the dialog returns focus there). */
   function pick(fn: (() => void) | undefined) {
     menuOpen = false;
     menuButton?.focus();
@@ -185,7 +173,7 @@
     background: var(--surface-2);
   }
 
-  /* State is a shape (F9, audit 06-7): the open problem has a border on its
+  /* State is a shape, not only a tint: the open problem has a border on its
      inline start, which forced colours keep, besides the tint. */
   .problem {
     border-inline-start: calc(2 * var(--rule)) solid transparent;
@@ -225,7 +213,7 @@
     background: var(--ok);
   }
 
-  /* A partial score fills in the partial colour, as standings cells do (audit 01-15). */
+  /* A partial score fills in the partial colour, as standings cells do. */
   .fill.part {
     background: var(--part);
   }
@@ -240,7 +228,7 @@
     text-align: center;
   }
 
-  /* The contest bar from 1024 px (B6): Leave and the title, the letters, the clock, the links. */
+  /* The contest bar from 1024 px: Leave and the title, the letters, the clock, the links. */
   .contest-bar {
     display: flex;
     align-items: center;
@@ -280,7 +268,7 @@
     background: var(--act);
   }
 
-  /* The one row under 1024 px (B4): the letters scroll, the clock and Menu stay. */
+  /* The one row under 1024 px: the letters scroll, the clock and Menu stay. */
   .row {
     display: flex;
     align-items: center;

@@ -1,13 +1,12 @@
 <!--
   ContestBanner: the newest announcement, answered question or answer an
-  organiser gave everyone (B1) that the student has not read yet, even
-  when it arrived while they were away (design.md section 6, Banner; audit
-  S1), shown in one quiet strip above the
+  organiser gave everyone that the student has not read yet, even
+  when it arrived while they were away, shown in one quiet strip above the
   workspace. Each new message is spoken once through the app's polite
-  announcer (X1, audit 06-5), never as an alert: it does not take focus or
+  announcer, never as an alert: it does not take focus or
   interrupt typing. Dismiss hides it;
   "Show all messages" opens the messages dialog. When several arrived, the
-  strip says how many more are waiting and offers "Dismiss all" (S1-09.4).
+  strip says how many more are waiting and offers "Dismiss all".
   Props: `items` (newest first), `ondismiss` (with the item's key),
   `ondismissall` and `onopen`.
 -->

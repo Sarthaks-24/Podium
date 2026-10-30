@@ -3,12 +3,15 @@ import {
   audienceLine,
   errorMessage,
   formatDomains,
-  messageText,
   parseErrorCode,
   safeNext,
   startHref,
+  type MessagePart,
   type SignInErrorCode,
 } from './signin';
+
+/** The message as plain text, the email links as their address. */
+const messageText = (parts: readonly MessagePart[]) => parts.map((p) => (typeof p === 'string' ? p : p.email)).join('');
 
 const NONE: string[] = [];
 const ONE = ['college.edu'];

@@ -3,10 +3,10 @@
   RunResults or under the verdict in VerdictPanel. For a wrong answer it
   starts with the first differing line, whitespace made visible
   (lib/diff.ts), then the program's output beside the expected one. When
-  the test is revealed (D115: a practice submission's first failing hidden
+  the test is revealed (a practice submission's first failing hidden
   test, or a run's first failing example) it is a bordered
   block that says why it is shown and adds the input; "Run on this input"
-  puts that input in the custom input box and runs it (D114), unless the
+  puts that input in the custom input box and runs it, unless the
   input was cut at 4 KB, when running it would not be the same test.
   Props: `heading` (an h3 for the block, optional), `reason` (the "This
   test is shown because..." line; set only for a revealed test), `input`
@@ -99,7 +99,7 @@
     container: detail / inline-size;
   }
 
-  /* A revealed test is one bordered block (design.md amendment: a panel per task area). */
+  /* A revealed test is one bordered block: one panel per task area. */
   .revealed {
     padding: var(--space-3);
     border: var(--rule) solid var(--line-strong);

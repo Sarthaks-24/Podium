@@ -1,6 +1,5 @@
 /**
- * Integrity review as the web app sees it (cache/v1/integrity-plan.md
- * sections 5 and 7, docs/INTEGRITY.md).
+ * Integrity review as the web app sees it (docs/INTEGRITY.md).
  *
  * The shapes mirror the API: Run from GET /api/admin/contests/{id}/integrity,
  * PairSide from .../signals/{signal}/pair, Moment from .../timeline/{user}
@@ -168,7 +167,7 @@ export const STRENGTH_MEANING = 'Strength weighs how much code is shared as well
  * programs share, then how much of the shorter one matched. The cut-offs
  * are the server's (integrity.Strength: 40 and 25 shared fingerprints,
  * scores 0.9 and 0.75), so "Short programs, identical" is always weak
- * however high the score (pilot P11: "Weak 1.00" told the organiser
+ * however high the score ("Weak 1.00" told the organiser
  * nothing). Without the counts (signals stored before them) only the
  * likeness is said.
  */

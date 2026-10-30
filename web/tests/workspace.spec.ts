@@ -909,8 +909,9 @@ test.describe('P5 workspace', () => {
     await expect.poll(() => editorText(page)).toBe(starterText);
   });
 
-  // The server decides what is revealed (TestP2RejudgeNeverWidensTheReveal and the D115 tests in
-  // server/internal/httpapi); this test only checks what the web app draws from each answer (C1-023).
+  // The server decides what is revealed (TestPracticeRevealsAndContestSubmitNever in
+  // server/internal/httpapi and TestPracticeRevealsAndContestNever in server/internal/submissions);
+  // this test only checks what the web app draws from each answer.
   test('a revealed hidden test is drawn when the server sends one, and nothing when it does not (F7.13, D115)', async ({ page }) => {
     const api = await contests.mockApi(page, { phase: 'practice' });
     api.submissions.push({

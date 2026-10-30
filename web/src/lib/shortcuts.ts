@@ -1,7 +1,6 @@
 /**
  * Keyboard shortcuts: the list the "Keyboard shortcuts" dialog shows, and
- * the small rules the global keys follow (PLAN.md section 12, design.md
- * section 6).
+ * the small rules the global keys follow.
  *
  * - "?" opens the list from anywhere, unless the person is typing.
  * - "[" and "]" open the previous and next problem in a contest, also only
@@ -67,8 +66,7 @@ export interface ShortcutGroup {
 export const NOT_AVAILABLE = 'Not available, and why';
 
 /**
- * The shortcuts shown in the Help dialog: the contract of
- * cache/v3/design/editor.md section 3. Every row outside "Anywhere",
+ * The shortcuts shown in the Help dialog. Every row outside "Anywhere",
  * "Solving a problem" and "Not available" is pressed by
  * web/tests/editor-keys.spec.ts, which fails on a row it has no check for.
  * Organisers also see the problem editor's key; students never see admin

@@ -1,6 +1,6 @@
 <!--
   SubtaskStrip: one bar per subtask, as wide as its points, filling as the
-  judge reports tests (design.md 5.3 and 7). A subtask fills in --wait while
+  judge reports tests. A subtask fills in --wait while
   it is being judged, then turns --ok when it passed or --bad when it
   failed. The fill grows over --dur-slow as a scaleX transform, so it runs
   on the compositor: this is one of the product's two orchestrated

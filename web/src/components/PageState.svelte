@@ -1,6 +1,5 @@
 <!--
-  PageState: what a screen shows instead of its content (v2 F3, audit 04-7,
-  04-12, 08-7), one of five kinds.
+  PageState: what a screen shows instead of its content, one of five kinds.
   - loading: a status line, shown only after 300 ms so a fast load never
     flashes; the live region is there from the start.
   - error: what happened in a banner, and a "Try again" button.

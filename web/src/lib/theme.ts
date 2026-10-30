@@ -4,10 +4,10 @@
  * A theme choice is "system" (no data-theme on <html>, so tokens.css follows
  * prefers-color-scheme) or one of the theme ids below, applied as
  * data-theme. The verdict set is "standard" or "signal", the colour-blind
- * safe set, applied as data-verdicts="signal" (decision D40).
+ * safe set, applied as data-verdicts="signal".
  *
  * The account holds the real preferences (GET /api/me, PUT
- * /api/me/preferences; decision D42). localStorage keeps a copy under
+ * /api/me/preferences), so they follow the person to another machine. localStorage keeps a copy under
  * THEME_KEY and VERDICTS_KEY only so public/theme-init.js can paint the
  * first frame right; a test keeps that script's id list in step with
  * THEMES. Storage access can throw (private windows, blocked site data), so
@@ -28,7 +28,7 @@ export type ThemeGroup = 'Light' | 'Dark' | 'Accessible';
 /** Group order in the picker. */
 export const GROUPS: readonly ThemeGroup[] = ['Light', 'Dark', 'Accessible'];
 
-/** Every theme in tokens.css: light, dark and high contrast in both (V3-8, replacing D39's ten). */
+/** Every theme in tokens.css: light, dark and high contrast in both. */
 export const THEMES: readonly ThemeInfo[] = [
   { id: 'light', label: 'Light', group: 'Light', family: 'light' },
   { id: 'dark', label: 'Dark', group: 'Dark', family: 'dark' },

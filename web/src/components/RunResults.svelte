@@ -7,12 +7,11 @@
   a passed sample shows its verdict line only, so the failure is near the
   top.
   Compiler output comes first, verbatim, with clickable line jumps; when
-  the code did not compile, the empty input rows are left out (audit
-  2026-10-20 S4). The run's first failing sample is revealed
+  the code did not compile, the empty input rows are left out. The run's first failing sample is revealed
   (`run.revealed`): its row becomes a block with "This test is shown
   because this was a run.", the input, the expected output, the program's
   output and "Run on this input". A failing sample without that offers the
-  button too, with the sample's own input (D114). The button puts the
+  button too, with the sample's own input. The button puts the
   input in the custom input box, opens it and runs it there. Props: `run`,
   `language` (for the compiler's location shapes), `onjump`, `samples`
   (the workspace's samples, for their inputs) and `onruninput` (optional;
@@ -69,7 +68,7 @@
     </div>
   {/if}
 
-  <!-- A run that did not compile ran no input: the empty sample rows stay out (S4). -->
+  <!-- A run that did not compile ran no input: the empty sample rows stay out. -->
   {#each runCompileFailed(run) ? [] : run.results as r, i (i)}
     <section class="result">
       <div class="result-head">
@@ -108,7 +107,7 @@
           {onruninput}
         />
       {:else if r.stderr}
-        <!-- Pilot P6: debugging output printed to stderr shows even when the example passed. -->
+        <!-- Debugging output printed to stderr shows even when the example passed, so a student can see their prints. -->
         <div class="stderr">
           <p class="meta">Error output (stderr), the last lines</p>
           <pre translate="no">{r.stderr}</pre>

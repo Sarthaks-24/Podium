@@ -1,6 +1,6 @@
 <!--
   TestSignIn: the sign-in form used instead of "Continue with Google" when
-  the server runs in testing mode (decision D48). It asks for an email, an
+  the server runs in testing mode. It asks for an email, an
   optional name and a role, posts them to /api/auth/test-signin, reloads the
   session and goes to the page the visitor was heading for. Errors from the
   server appear inline under the form. Props: next, the path to open after

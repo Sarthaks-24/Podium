@@ -238,7 +238,7 @@ export async function mockApi(page: Page, opts: MockOptions = {}) {
       if (path === '/api/auth/config') return json(route, 200, { mode: opts.testing ? 'testing' : 'production' });
 
       if (path === '/api/events') {
-        if (opts.events !== 'stream') return apiError(route, 503, 'busy', 'Too many streams.');
+        if (opts.events !== 'stream') return apiError(route, 503, 'stream_limit', 'Too many streams.');
         const body = state.events.splice(0).join('');
         return route.fulfill({ status: 200, contentType: 'text/event-stream', body: body || ': idle\n\n' });
       }

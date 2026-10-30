@@ -1,40 +1,18 @@
 /**
- * The client side of GET /api/events (m3-plan.md section 6).
- *
- * One EventSource per page. When it fails, it is closed and reopened after
- * a jittered, growing delay (half to all of 1 s, 2 s, 4 s ... capped at
- * 30 s), so a server restart does not bring every student back in the same
- * second. Three failures in a row without a successful open switch to
- * polling every 15 s through the caller's poll(); while polling, the stream
- * is tried again every fourth poll and polling stops once it opens. Each
- * open after a failure calls onReconnect(), so the caller can refetch what
- * it may have missed.
- *
- * A stream only counts as healthy once it has stayed open for 30 s: an
- * open that is dropped sooner still counts as a failure, so the backoff
- * keeps growing instead of starting again from 1 s.
- *
- * The server keeps a few streams per person and drops the oldest for a
- * newer one, sending it a last `replaced` event first. A replaced stream
- * stops for good, with no reconnect and no polling, so five open tabs do
- * not evict each other in a loop; the page says so and offers resume(),
- * which connects again (and replaces the other tab in turn).
- *
- * After sign-out every stream stops: the shell calls stopAllStreams(), and
- * a poll that fails with 401 stops its own stream (C1-041).
- *
- * Pages do not open streams themselves: each takes a LiveSubscription, and
- * the tab keeps one shared stream for all of them (F4, stage C2), opened by
- * the first and closed when the last one stops. Each event goes to the
- * subscribers that named it; a reconnect, a poll and a mode change go to
- * every subscriber.
+ * The client side of GET /api/events. The tab keeps one shared
+ * EventSource, opened by the first LiveSubscription and closed when the
+ * last one stops; each event goes to the subscribers that named it. A
+ * failed stream reopens after a jittered, growing delay capped at 30 s, so
+ * a server restart does not bring every student back in the same second,
+ * and only counts as healthy after 30 s open; three failures in a row
+ * switch to polling every 15 s through the subscribers' poll(). A stream
+ * the server replaces for a newer tab stops for good, so open tabs never
+ * evict each other in a loop, and every stream stops at sign-out.
  */
 
 import { ApiError } from './api';
 
-// Not reactive state: nothing renders from it.
-const reconnectListeners = new Set<() => void>();
-// Every started stream, so a sign-out can stop them all (C1-041).
+// Every started stream, so a sign-out can stop them all.
 const started = new Set<EventStream>();
 
 /**
@@ -44,17 +22,6 @@ const started = new Set<EventStream>();
  */
 export function stopAllStreams(): void {
   for (const s of [...started]) s.stop();
-}
-
-/**
- * Calls `fn` whenever any live stream in this tab comes back after a
- * failure, besides that stream's own onReconnect. The shell uses it to read
- * /api/me again after a deploy restarted the server (D112). Returns the
- * function that removes it.
- */
-export function onStreamReconnect(fn: () => void): () => void {
-  reconnectListeners.add(fn);
-  return () => reconnectListeners.delete(fn);
 }
 
 /** The delay before reconnect attempt `attempt` (0 for the first), in ms. */
@@ -215,7 +182,6 @@ export class EventStream {
       this.setMode('live');
       if (wasDown) {
         this.o.onReconnect();
-        for (const fn of reconnectListeners) fn();
       }
     };
     es.onerror = () => {
@@ -356,7 +322,7 @@ const DEVICE_KEY = 'podium-device';
 const DEVICE_ID = /^[A-Za-z0-9]{1,64}$/;
 
 /**
- * This browser's random id, kept in localStorage (C2-034): the server tells
+ * This browser's random id, kept in localStorage: the server tells
  * two phones of one model apart by it for the second-session signal. Empty
  * when the browser refuses storage; a new id is made when none is kept.
  */

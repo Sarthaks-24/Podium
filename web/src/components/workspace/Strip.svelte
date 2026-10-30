@@ -1,10 +1,9 @@
 <!--
-  Strip: under 1024 px one strip sticks to the top of the window (F7.2,
-  B4): a contest's one row (the problem letters, the clock and the Menu,
+  Strip: under 1024 px one strip sticks to the top of the window: a contest's one row (the problem letters, the clock and the Menu,
   drawn by the contest's `rail` snippet) or, without one, the clock, then
   the Problem, Code (and under 768 px Result) tabs. Run and Submit are not
-  offered under 1024 px (V3-14). Its height sets the page's scroll padding
-  while it sticks (X3, base.css). Props: `layout`, `clock` and `rail`
+  offered under 1024 px. Its height sets the page's scroll padding
+  while it sticks (base.css), so focused fields never hide under it. Props: `layout`, `clock` and `rail`
   (snippets, optional), `tab`, `ontab` and `judging` (true while the shown
   submission is being judged: the Result tab carries a dot).
 -->

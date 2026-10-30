@@ -1,51 +1,17 @@
 <!--
   ContestPage: one contest for a student, at /contests/{slug} and
-  /contests/{slug}/problems/{label} (cache/v1/m4-plan.md section 5,
-  design.md 5.3). The page follows the student's own phase on the server's
-  clock (lib/contests.ts studentPhase):
-
-  - Before the start, and before they agree (audit 2026-10-20 S3, B5): the
-    countdown as the page's lead figure, three facts (length, languages,
-    the wait between submissions), the honour code and "I agree, start
-    the contest" (POST /api/contests/{slug}/start), all in the first
-    screen at 375 px. When the organisers turned on exam options (V3-25),
-    one line above the button names them, so nothing blocks silently; with
-    full screen on, the button also asks the browser for full screen.
-    The full rules and how Run and Submit work are in Help (a link under
-    the button, or "?"); the description follows.
-    The button waits for the start; when the start arrives the announcer
-    says so. A late arrival reads that their time is already running.
-  - During their window: the shared Workspace on the contest's routes with
-    the rail of problem letters (score and 2 px bar), the contest clock,
-    the Standings link and Messages. Announcements and answered questions newer than the last
-    time the student read the messages on this device (localStorage
-    podium-messages-read:{slug}, audit S1) show in a quiet banner above the
-    title and as the count on Messages (from 1024 px the
-    editor never moves); a second open tab or a second session reported
-    by the server shows a notice there too. "Rules" in the rail opens Help, which lists the same
-    rules (D114). When an organiser moves a problem to a new revision (the
-    `statement` event), the open problem's statement reloads; the
-    organisers announce the change. The exam options go to the workspace;
-    with full screen on, a student out of full screen sees a line and
-    "Return to full screen" above the title.
-    A frozen contest reads "Live" to students (D84). "[" and "]" open the previous and
-    next problem when focus is not in a text field (lib/shortcuts.ts).
-  - After it (audit 2026-10-20 S9, B5): the place as the display figure
-    (PlaceFigure), one lead "Ended 21 Oct, 00:11. You scored 40 of 300.",
-    then one list of problems, each with its score, opening to "Open" and
-    the student's own submissions, the problem of the newest one open; the
-    editorial once published, and practice when the organisers left it
-    open (submissions then do not count towards the standings). The
-    messages follow, folded. A board still frozen after the end
-    gives the place only, never a frozen total beside the live score; when
-    the clock ran out on this page, "Time is up" stays on screen.
-
-  - For an organiser ("Student view", pilot P10), before the start and
-    while the contest runs: the problems, each opening in the workspace
-    with the note that nothing submitted here counts, and a link to the
-    standings as students see them. No honour code and no start button.
-
-  Props: `slug`, and `label` (the problem letter from the address, or "").
+  /contests/{slug}/problems/{label}, following the student's own phase on
+  the server's clock (lib/contests.ts studentPhase). Before the start it
+  shows the countdown, three facts, any exam options that are on and the
+  honour code with "I agree, start the contest", all in the first screen
+  at 375 px, so nothing blocks silently. During the student's window it
+  mounts the shared Workspace with the problem rail, the clock, Standings
+  and Messages; unread announcements and answers show in a quiet banner,
+  and a changed statement reloads without touching the editor. After it
+  the place is the lead figure, then one list of problems with the
+  student's submissions, the editorial and practice when the organisers
+  left it open. An organiser in Student view gets the problems and the
+  board as students see them, with no honour code and no start button.
 -->
 <script lang="ts">
   import ConfirmDialog from '../components/ConfirmDialog.svelte';
@@ -65,7 +31,8 @@
   import StreamNotice from '../components/StreamNotice.svelte';
   import SubmissionList from '../components/SubmissionList.svelte';
   import Workspace from '../components/Workspace.svelte';
-  import { ApiError, getJSON, sendJSON, errorText, PAGE_ERROR_MESSAGE, isSignedOut } from '../lib/api';
+  import { ApiError, getJSON, sendJSON, PAGE_ERROR_MESSAGE, isSignedOut } from '../lib/api';
+  import { loader } from '../lib/loader.svelte';
   import { serverClock } from '../lib/clock';
   import {
     CONTEST_EVENTS,
@@ -103,27 +70,25 @@
 
   let { slug, label = '' }: { slug: string; label?: string } = $props();
 
-  let loadState = $state<'loading' | 'ready' | 'forbidden' | 'missing' | 'error'>('loading');
-  let loadError = $state('');
   let contest = $state.raw<Contest | null>(null);
 
   let startBusy = $state(false);
   let startError = $state('');
   let messagesOpen = $state(false);
-  // B3: during the contest the board opens over the editor; Escape closes it and the problem stays.
+  // During the contest the board opens over the editor; Escape closes it and the problem stays.
   let standingsOpen = $state(false);
-  // B6: Leave asks while the contest is live; the code is saved and the clock keeps running.
+  // Leave asks while the contest is live; the code is saved and the clock keeps running.
   let leaveOpen = $state(false);
-  /** Problems whose statement changed since the student last opened them: a dot on the letter (B6). */
+  /** Problems whose statement changed since the student last opened them: a dot on the letter. */
   let changed = $state.raw<Set<string>>(new Set());
   let dismissed = $state<Set<string>>(new Set());
-  /** The last time the student read this contest's messages on this device (S1). */
+  /** The last time the student read this contest's messages on this device. */
   let lastRead = $state(0);
   let otherTab = $state(false);
   let sessionNoticeHidden = $state(false);
   let streamMode = $state<StreamMode>('connecting');
   let timeUp = $state(false);
-  /** Whether the page is in full screen, for the exam option's line (V3-25). */
+  /** Whether the page is in full screen, for the exam option's line. */
   let fullscreen = $state(false);
   /** Raised when the open problem moved to a new revision, so its statement reloads. */
   let statementKey = $state(0);
@@ -131,13 +96,13 @@
   // After the end: the student's place and their submissions per problem.
   let standings = $state.raw<Standings | null>(null);
   let history = $state<Record<string, Submission[] | 'loading' | 'error'>>({});
-  /** The problem whose disclosure opens first: the one with the newest submission (S9). */
+  /** The problem whose disclosure opens first: the one with the newest submission. */
   let latestLabel = $state('');
 
   const api = $derived(`/api/contests/${encodeURIComponent(slug)}`);
   const phase = $derived(contest ? studentPhase(contest, ticker.now) : null);
   const problems = $derived(contest?.problems ?? []);
-  // Pilot P2: without a letter in the address, the problem open last on this device, else A.
+  // Without a letter in the address, the problem open last on this device, else A.
   const lastKey = $derived(`podium-last-problem:${slug}`);
   const lastOpen = $derived.by(() => {
     try {
@@ -160,7 +125,7 @@
   const currentProblem = $derived(problems.find((p) => p.label === current) ?? null);
   const practice = $derived(contest?.state === 'practice');
   const banner = $derived(contest ? bannerItems(contest, dismissed, lastRead) : []);
-  /** An organiser here is in Student view (P10): no honour code, no start, the problems open as they are. */
+  /** An organiser here is in Student view: no honour code, no start, the problems open as they are. */
   const preview = $derived(contest?.organiser === true && phase !== null && phase !== 'during' && phase !== 'after');
   const showWorkspace = $derived(
     contest !== null && currentProblem !== null && (phase === 'during' || ((phase === 'after' || preview) && label !== '')),
@@ -232,34 +197,26 @@
     messagesOpen = true;
   }
 
-    async function load(quiet = false) {
-    if (!quiet) loadState = 'loading';
-    try {
+  const page = loader(
+    async () => {
       const sent = Date.now();
       const data = await getJSON<Contest>(api);
       serverClock.observe(data.server_now, sent, Date.now());
+      return data;
+    },
+    (data) => {
       refreshTicker();
       const restore = keepHeadingFocus();
       contest = data;
       setTitle(data.title);
-      loadState = 'ready';
       void restore();
-    } catch (e) {
-      if (isSignedOut(e)) return;
-      if (quiet) return;
-      if (e instanceof ApiError && e.status === 403) {
-        loadError = e.message;
-        loadState = 'forbidden';
-        setTitle(routeTitle('contest'));
-      } else if (e instanceof ApiError && e.status === 404) {
-        loadState = 'missing';
-        setTitle('Contest not found');
-      } else {
-        loadError = errorText(e);
-        loadState = 'error';
-        setTitle(routeTitle('contest'));
-      }
-    }
+    },
+  );
+
+  async function load(quiet = false) {
+    await page.load({ quiet });
+    if (!page.live || page.state === 'ready' || page.state === 'loading') return;
+    setTitle(page.state === 'missing' ? 'Contest not found' : routeTitle('contest'));
   }
 
   // Refetches are coalesced: a burst of events costs one request.
@@ -297,6 +254,7 @@
     try {
       const sent = Date.now();
       const data = await sendJSON<Contest>('POST', `${api}/start`, { accept_honour: true });
+      if (!page.live) return;
       if (data && typeof data === 'object' && 'slug' in data) {
         serverClock.observe(data.server_now, sent, Date.now());
         refreshTicker();
@@ -332,12 +290,12 @@
     if (p === null) return;
     if (lastPhase !== null && lastPhase !== p) untrack(() => refetchSoon(0));
     // The clock ran out on this page: say so on the page that replaces the workspace.
-    // Focus goes to the new page's h1 (P5 F7.4); the workspace under it is being replaced.
+    // Focus goes to the new page's h1; the workspace under it is being replaced.
     if (lastPhase === 'during' && p === 'after') {
       timeUp = true;
       void tick().then(() => document.querySelector<HTMLElement>('main h1')?.focus());
     }
-    // The start arrived while the student waited on this page (audit 01-16).
+    // The start arrived while the student waited on this page.
     if (lastPhase === 'upcoming' && p === 'ready') polite('The contest has started. You can start now.');
     lastPhase = p;
   });
@@ -345,7 +303,7 @@
   // Outside the workspace this page keeps its own stream for contest events.
   let stream: LiveSubscription | null = null;
   $effect(() => {
-    const needStream = loadState === 'ready' && !showWorkspace;
+    const needStream = page.state === 'ready' && !showWorkspace;
     untrack(() => {
       if (needStream && !stream) {
         stream = new LiveSubscription({
@@ -387,7 +345,7 @@
   }
 
   // After the end: load the submissions of every problem the student tried
-  // and open the one with the newest submission (S9).
+  // and open the one with the newest submission.
   $effect(() => {
     if (phase !== 'after' || label !== '') return;
     const tried = problems.filter((p) => (p.my_submission_count ?? 0) > 0).map((p) => p.label);
@@ -455,6 +413,7 @@
   });
 
   onDestroy(() => {
+    page.stop();
     clearTimeout(refetchTimer);
     stream?.stop();
     channel?.close();
@@ -519,16 +478,16 @@
 
 {#snippet stripClock()}{@render clockSnippet(true)}{/snippet}
 
-{#if loadState !== 'ready' || !contest}
-  <PageHeader title={loadState === 'missing' ? 'Contest not found' : 'Contest'} back={{ href: '/', label: 'Your contests' }} />
-  {#if loadState === 'loading'}
+{#if page.state !== 'ready' || !contest}
+  <PageHeader title={page.state === 'missing' ? 'Contest not found' : 'Contest'} back={{ href: '/', label: 'Your contests' }} />
+  {#if page.state === 'loading'}
     <PageState kind="loading" message="Loading the contest" />
-  {:else if loadState === 'missing'}
+  {:else if page.state === 'missing'}
     <PageState kind="missing" message="There is no contest at this address." parent={{ href: '/', label: 'Go to your contests.' }} />
-  {:else if loadState === 'forbidden'}
-    <p class="lead">{loadError}</p>
-  {:else if loadState === 'error'}
-    <PageState kind="error" message={loadError} onretry={() => load()} />
+  {:else if page.state === 'forbidden'}
+    <p class="lead">{page.error}</p>
+  {:else if page.state === 'error'}
+    <PageState kind="error" message={page.error} onretry={() => load()} />
   {/if}
 {:else if showWorkspace && currentProblem}
   {#key `${current}:${phase}`}
@@ -585,7 +544,7 @@
     {#if standingsOpen}<StandingsView {slug} />{/if}
   </Dialog>
 {:else if preview}
-  <!-- P10: Student view for an organiser, the problems and the board as students see them, without the start page. -->
+  <!-- Student view for an organiser: the problems and the board as students see them, without the start page. -->
   <div class="page page-wide">
     <PageHeader title={contest.title} back={{ href: contest.id ? `/admin/contests/${contest.id}/console` : '/admin/contests', label: 'Live view' }}>
       <p class="meta">
@@ -623,7 +582,7 @@
       </p>
     </PageHeader>
 
-    <!-- B5 (S4): the countdown, three facts, the honour code and the button fit one screen; the full rules are in Help. -->
+    <!-- The countdown, three facts, the honour code and the button fit one screen; the full rules are in Help. -->
     <div class="before">
       {#if phase === 'upcoming' || startNow.kind === 'before'}
         <p class="countdown"><span class="count-lead">Starts in</span> <span class="mono figure" role="timer">{startNow.ms >= 86_400_000 ? formatSpan(startNow.ms) : formatCountdown(startNow.ms)}</span></p>
@@ -687,7 +646,7 @@
 
     <div class="page-split after">
       <div class="page-split-main">
-        <!-- S9 and B5 (S7): one lead, the place as the display figure, then one list of problems that open to their submissions. -->
+        <!-- One lead, the place as the display figure, then one list of problems that open to their submissions. -->
         <section class="result" aria-labelledby="result-title">
           <h2 id="result-title">Your result</h2>
           {#if problems.length === 0}
@@ -782,7 +741,7 @@
     margin-top: var(--space-4);
   }
 
-  /* B5: three facts in one row from 768 px, one per line on a phone. */
+  /* Three facts in one row from 768 px, one per line on a phone. */
   .facts {
     display: flex;
     flex-wrap: wrap;
@@ -815,7 +774,7 @@
     white-space: normal;
   }
 
-  /* S3: the countdown is the page's lead figure, digits in mono, words in Grotesk. */
+  /* The countdown is the page's lead figure, digits in mono, words in Grotesk. */
   .countdown {
     display: grid;
     gap: var(--space-1);
@@ -869,7 +828,7 @@
     margin-top: var(--space-3);
   }
 
-  /* The exam options in one line, read before the button (V3-25). */
+  /* The exam options in one line, read before the button. */
   .exam-line {
     max-width: var(--measure-prose);
     font-weight: 500;

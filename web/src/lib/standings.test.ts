@@ -36,7 +36,7 @@ describe('standings cells', () => {
     });
     expect(cellView(undefined, 'C')).toMatchObject({ text: '-', tone: 'none', sentence: 'Problem C, not tried' });
     expect(cellView({ label: 'C', score: 0, max: 100, pending: 0 }, 'C').text).toBe('-');
-    // S8: a tried zero reads as a zero in its own tone, not like a dash.
+    // A tried zero reads as a zero in its own tone, not like a dash.
     expect(cellView({ label: 'C', score: 0, max: 100, pending: 0, tried: true }, 'C')).toMatchObject({ text: '0', tone: 'zero' });
     expect(cellView({ label: 'C', score: 0, max: 100, pending: 2, tried: true }, 'C')).toMatchObject({ text: '', pending: '+2', tone: 'none' });
     expect(cellView({ label: 'E', score: 0, max: 100, pending: 2 }, 'E')).toMatchObject({

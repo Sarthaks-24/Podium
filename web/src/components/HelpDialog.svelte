@@ -1,5 +1,5 @@
 <!--
-  HelpDialog: the one Help dialog (cache/v3/design/editor.md section 1), in
+  HelpDialog: the one Help dialog, in
   a native modal dialog. It holds the contest's rules when a contest page
   has put them in `shell.rules`, then Run and Submit in two lines, then the
   keyboard shortcuts (lib/shortcuts.ts). The shell opens it when "?" is

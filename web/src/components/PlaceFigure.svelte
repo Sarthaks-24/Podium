@@ -1,8 +1,8 @@
 <!--
   PlaceFigure: the student's own place as the page's one display figure
-  (D80, design.md amendment: "7 of 24", mono number at --fs-6, Grotesk
+  ("7 of 24", mono number at --fs-6, Grotesk
   words at --fs-2, a muted label above, no box). Used on the standings
-  page and on the contest result (audit 2026-10-20 S9). Props: `place`,
+  page and on the contest result. Props: `place`,
   from lib/standings.ts placeFigure.
 -->
 <script lang="ts">

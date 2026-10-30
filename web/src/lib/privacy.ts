@@ -1,8 +1,8 @@
 /**
- * The privacy notice (P3 FP.1, held for the owner's approval under D85).
+ * The privacy notice, held until the owner approves its text.
  * The text is src/content/privacy.md; the line "<!-- retention -->" marks
  * where the table of retention periods goes. The table is never typed by
- * hand: the page renders it from GET /api/auth/config (contract C5), which
+ * hand: the page renders it from GET /api/auth/config, which
  * reads server/internal/retention/periods.go. The same Markdown is
  * rendered at build time into dist/privacy-body.html (vite.config.ts) for
  * the server's no-JavaScript body block, with a marked block in place of
@@ -19,6 +19,3 @@ export function privacyParts(markdown: string = source): { before: string; after
   if (i < 0) return { before: markdown, after: '' };
   return { before: markdown.slice(0, i).trimEnd(), after: markdown.slice(i + RETENTION_MARKER.length).trimStart() };
 }
-
-/** The drafted notice, as written. */
-export const PRIVACY_SOURCE: string = source;

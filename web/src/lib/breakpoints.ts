@@ -1,5 +1,5 @@
 /**
- * Breakpoints, the one source (v2 F8). Three width tiers and one height
+ * Breakpoints, the one source. Three width tiers and one height
  * tier; tokens.css repeats the table in a comment, and guardrails.test.ts
  * fails on a media query or matchMedia call that uses any other width.
  *
@@ -8,13 +8,13 @@
  * | phone  | 0       | one column, the workspace in three tabs          |
  * | tablet | 768 px  | wider gutters, the workspace in two tabs         |
  * | laptop | 1024 px | the three-column workspace, side by side tables  |
- * | desk   | 1280 px | .page-split: a sticky context column beside the work (D181) |
+ * | desk   | 1280 px | .page-split: a sticky context column beside the work |
  * | wide   | 1440 px | the widest measures                              |
- * | short  | laptop and at most 45rem tall: the workspace keeps the editor tall (P5) |
+ * | short  | laptop and at most 45rem tall: the workspace keeps the editor tall |
  *
  * CSS writes a tier as (min-width: 768px) for "from the tier up" or as the
  * exact complement (width < 768px) for "below it", never max-width: 767px,
- * which leaves a gap at fractional widths on zoomed screens (D127).
+ * which leaves a gap at fractional widths on zoomed screens.
  */
 
 /** The width tiers, in CSS pixels. */

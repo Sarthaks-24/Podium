@@ -1,6 +1,6 @@
 /*
-  Shared controls: buttons, inputs, selects, fields, tables and banners
-  (design.md section 6). Imported once from main.ts. Everything reads tokens;
+  Shared controls: buttons, inputs, selects, fields, tables and banners.
+ Imported once from main.ts. Everything reads tokens;
   radius is used on controls only, tables and banners stay square.
 */
 
@@ -41,7 +41,7 @@
   background: color-mix(in srgb, var(--act) 86%, var(--ink));
 }
 
-/* Pressed (T6): one step darker than hover. */
+/* Pressed: one step darker than hover. */
 .btn-primary:active:not(:disabled) {
   background: color-mix(in srgb, var(--act) 76%, var(--ink));
 }
@@ -51,7 +51,7 @@
   background: var(--surface);
 }
 
-/* Hover shows on the fill as well as the border (T7). */
+/* Hover shows on the fill as well as the border. */
 .btn-secondary:hover {
   border-color: var(--ink-muted);
   background: color-mix(in srgb, var(--ink) 4%, var(--surface));
@@ -67,7 +67,7 @@
 }
 
 /*
-  The control system (audit 2026-10-20 change 4):
+  The control system:
   - Every button is --control-h tall (32 px on desktop, 44 px on touch).
     .btn-compact only narrows the padding and the type, inside table rows
     and toolbars; it never changes the height.
@@ -97,7 +97,7 @@
   gap: var(--space-2);
 }
 
-/* A button that reads as a link inside a line of text (T16). */
+/* A button that reads as a link inside a line of text. */
 .btn-inline {
   min-height: auto;
   padding-inline: 0;
@@ -211,8 +211,8 @@ textarea.input {
   overflow-x: auto;
 }
 
-/* Program source sits in the editor well, dark in every theme (design.md
-   5.3), so it already looks like the code editor that replaces it. */
+/* Program source sits in the editor well, dark in every theme,
+   so it already looks like the code editor that replaces it. */
 .textarea-well,
 .textarea-well:hover {
   border-color: var(--well-edge);
@@ -272,7 +272,7 @@ textarea.input {
   vertical-align: middle;
 }
 
-/* Headers recede so the data reads first (T8). Tabular figures stay on
+/* Headers recede so the data reads first. Tabular figures stay on
    .num only: on the whole table they would also space Grotesk's commas. */
 .table thead th {
   background: var(--surface-2);
@@ -293,12 +293,12 @@ textarea.input {
   border-bottom: 0;
 }
 
-/* Rows you can act on show a quiet hover (T10). */
+/* Rows you can act on show a quiet hover. */
 .table tbody tr:has(a, button):hover > * {
   background: color-mix(in srgb, var(--surface-2) 50%, var(--surface));
 }
 
-/* Mono digits one optical step down, to match the Grotesk beside them (T11). */
+/* Mono digits one optical step down, to match the Grotesk beside them. */
 .table .num {
   font-family: var(--font-mono);
   font-size: var(--mono-optical);
@@ -306,7 +306,7 @@ textarea.input {
   white-space: nowrap;
 }
 
-/* Dense tables (T9): logs, feeds, signal lists and standings. Lists of
+/* Dense tables: logs, feeds, signal lists and standings. Lists of
    things you open keep the default size. */
 .table-dense {
   font-size: var(--fs-0);
@@ -346,13 +346,13 @@ textarea.input {
   color: var(--ink-muted);
 }
 
-/* Secondary text one step down (council C1-035: was redefined in 30
-   components). */
+/* Secondary text one step down, defined once here rather than in each
+   component. */
 .small {
   font-size: var(--fs-0);
 }
 
-/* One back link above a page title (T13), tall enough to tap (X4). */
+/* One back link above a page title, tall enough to tap. */
 .back {
   display: inline-flex;
   align-items: center;
@@ -363,8 +363,7 @@ textarea.input {
 }
 
 /*
-  Badges (audit change 3, design.md 6 "Badge: verdict and state words
-  only"): a word in sentence case on a tint, never an icon or a count.
+  Badges, for verdict and state words only: a word in sentence case on a tint, never an icon or a count.
   components/Badge.svelte draws one; lib/badges.ts picks the tone.
   data-tone: act (Live, Frozen), ok (Accepted, Validated), part (Partial,
   Not validated), bad (Wrong answer), wait (Judging, AI draft), muted
@@ -395,7 +394,7 @@ textarea.input {
 .badge[data-tone='wait'] { background: var(--wait-tint); color: var(--wait); }
 .badge[data-tone='muted'] { color: var(--ink-muted); }
 
-/* One state word (T14), drawn as a badge: Live and Frozen in the action
+/* One state word, drawn as a badge: Live and Frozen in the action
    colour, Upcoming and Practice in ink, Ended and the rest muted. */
 .state-word {
   color: var(--ink-muted);
@@ -411,7 +410,7 @@ textarea.input {
   color: var(--ink);
 }
 
-/* Section rhythm (T15): every h2 section after the first gets the section
+/* Section rhythm: every h2 section after the first gets the section
    gap and a rule above it. */
 .page-section + .page-section {
   margin-top: var(--section-gap);
@@ -419,7 +418,7 @@ textarea.input {
   border-top: var(--rule) solid var(--line);
 }
 
-/* Dialogs (F6): one shell for every native <dialog>. The scrim dims the
+/* Dialogs: one shell for every native <dialog>. The scrim dims the
    page in light and dark themes alike; the head with the title and close
    button stays in view while the body scrolls. On phones the dialog sits
    at the top, so the on-screen keyboard never covers its fields. */
@@ -470,7 +469,7 @@ textarea.input {
   }
 }
 
-/* A panel down the right edge (B3): Standings and Messages open over the
+/* A panel down the right edge: Standings and Messages open over the
    editor column, and the statement stays in view beside them. */
 .dialog.dialog-sheet {
   width: min(44rem, 100vw);
@@ -481,7 +480,7 @@ textarea.input {
   border-radius: 0;
 }
 
-/* Stacked rows on phones (F7): add .table-stack to a .table, then give its
+/* Stacked rows on phones: add .table-stack to a .table, then give its
    cells grid areas in the component. Under 768 px the header is hidden
    (kept for screen readers), each row becomes a padded grid and the cells
    lose their own padding and rules. A link with .row-link stretches over

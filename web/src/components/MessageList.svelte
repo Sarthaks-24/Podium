@@ -4,7 +4,7 @@
   answers or "Waiting for an answer.", and answers made public for
   everyone (minus the student's own). MessagesDialog shows it during a
   contest and ContestPage after it, so the copy and the dates never
-  differ (council C1-010). Props: `contest` (its announcements,
+  differ. Props: `contest` (its announcements,
   my_clarifications and public_clarifications), `level` (2 or 3, the
   heading level of each section), `idPrefix` (keeps heading ids unique on
   the page), and `framed` (each section is a panel and empty sections are

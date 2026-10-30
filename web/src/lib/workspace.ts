@@ -1,10 +1,9 @@
 /**
- * The student workspace's data shapes and the wording of its results
- * (cache/v1/m3-plan.md sections 5 and 7a, design.md section 8).
+ * The student workspace's data shapes and the wording of its results.
  *
  * The shapes mirror the API: Workspace from GET /api/workspace/{problem},
  * Submission and Run from the submit and run routes and the event stream.
- * Paths are built from a base such as "/api/workspace/12", so M4 can point
+ * Paths are built from a base such as "/api/workspace/12", so a contest can point
  * the same screen at a contest's routes.
  *
  * The rest is wording: the headline a submission reads as ("Wrong answer on
@@ -38,14 +37,14 @@ export interface Workspace {
   statement_md: string;
   time_limit_ms: number;
   memory_limit_mb: number;
-  /** `time_factor` multiplies the time limit for that language (D323); absent from older servers. */
+  /** `time_factor` multiplies the time limit for that language; absent from older servers. */
   languages: { id: Language; name: string; time_factor?: number }[];
   samples: Sample[];
   draft: Draft | null;
   /** Own submissions, newest first, at most 20. */
   submissions: Submission[];
   server_now: number;
-  /** Contest workspaces (M4): why Run and Submit are off, or null. */
+  /** Contest workspaces: why Run and Submit are off, or null. */
   refusal?: string | null;
   can_submit?: boolean;
   /** True when submissions now count as practice. */
@@ -97,13 +96,13 @@ export interface Submission {
   server_now?: number;
   /** Exam mode before the end: everything but the time and language is withheld. */
   hidden?: boolean;
-  /** The first failing hidden test, on a submission that never counts (D115). */
+  /** The first failing hidden test, on a submission that never counts. */
   revealed?: SubmissionRevealed | null;
-  /** The step the times were rounded to: 100 for a student in a graded contest, else 10 (D322). */
+  /** The step the times were rounded to: 100 for a student in a graded contest, else 10. */
   time_step_ms?: number;
 }
 
-/** A hidden test a practice submission shows in full (D115). Each text is at most 4 KB. */
+/** A hidden test a practice submission shows in full. Each text is at most 4 KB. */
 export interface SubmissionRevealed {
   idx: number;
   subtask_idx: number | null;
@@ -114,7 +113,7 @@ export interface SubmissionRevealed {
   truncated: boolean;
 }
 
-/** The first failing sample of a Run, in full (D115). */
+/** The first failing sample of a Run, in full. */
 export interface RunRevealed extends SubmissionRevealed {
   kind: 'sample';
   label: string;
@@ -147,9 +146,9 @@ export interface Run {
   compile_output: string;
   queue_position?: number | null;
   results: RunResult[];
-  /** The first failing sample; absent for a custom input and when all passed (D115). */
+  /** The first failing sample; absent for a custom input and when all passed. */
   revealed?: RunRevealed | null;
-  /** The step the times were rounded to (D322). */
+  /** The step the times were rounded to. */
   time_step_ms?: number;
   server_now?: number;
 }
@@ -196,7 +195,7 @@ export function languageLabel(id: string): string {
  * Time as shown, rounded to the nearest `step` ms: the server's
  * `time_step_ms` (100 for a student in a graded contest, else 10), never
  * finer than 10. The server rounds to the nearest step, so a 0 reads
- * "under 50 ms" or "under 5 ms" rather than "0 ms" (walk 2026-10-21, D322).
+ * "under 50 ms" or "under 5 ms" rather than "0 ms", which reads as a mistake.
  */
 export function formatMs(ms: number, step = 10): string {
   const s = Math.max(step, 10);
@@ -206,7 +205,7 @@ export function formatMs(ms: number, step = 10): string {
 
 /** Memory as shown: "512 KB" or "3.1 MB". */
 export function formatKb(kb: number): string {
-  // Students never get a hidden test's memory (D47): the server sends 0,
+  // Students never get a hidden test's memory: the server sends 0,
   // which no real run uses, so it shows as nothing rather than "0 KB".
   if (kb <= 0) return '';
   if (kb < 1024) return `${Math.round(kb)} KB`;
@@ -217,8 +216,7 @@ export function formatKb(kb: number): string {
  * The limits line under the title: "Time limit 1 s, memory 256 MB". For a
  * language the judge gives more time (its `time_factor`), the limit is the
  * one that language gets, with the reason: "Time limit 2 s in Java 21
- * (twice the problem's 1 s, as it runs slower than C++), memory 256 MB"
- * (walk 2026-10-21, D323).
+ * (twice the problem's 1 s, as it runs slower than C++), memory 256 MB".
  */
 export function limitsText(timeMs: number, memoryMb: number, lang?: { label: string; factor?: number }): string {
   const f = lang?.factor;
@@ -269,7 +267,7 @@ export function waitingText(x: { state: JudgeState; queue_position?: number | nu
 
 /**
  * The waiting headline of a submission: the press is confirmed with the
- * button's word (design.md 8, audit 01-1): "Submitted, 3rd in queue",
+ * button's word: "Submitted, 3rd in queue",
  * "Submitted, waiting for the judge", "Submitted, judging".
  */
 export function submittedText(x: { state: JudgeState; queue_position?: number | null }): string {
@@ -316,7 +314,7 @@ export function announcement(s: Submission): string {
 
 /**
  * The line under a finished submission that scored less than the problem
- * already has: "Your score on this problem stays 60 of 100." (audit 01-5).
+ * already has: "Your score on this problem stays 60 of 100."
  * Empty when the submission is not done or did not score lower.
  */
 export function problemScoreLine(s: Pick<Submission, 'state' | 'score' | 'hidden'>, problem: { score: number | null; max: number } | null): string {
@@ -324,7 +322,7 @@ export function problemScoreLine(s: Pick<Submission, 'state' | 'score' | 'hidden
   return problem.score > s.score ? `Your score on this problem stays ${problem.score} of ${problem.max}.` : '';
 }
 
-/** "3 of 50 submissions used" beside Submit (audit 01-6). */
+/** "3 of 50 submissions used" beside Submit. */
 export function usedText(count: number, max: number): string {
   return `${count} of ${max} submissions used`;
 }
@@ -363,7 +361,7 @@ export function runHeadline(run: Run): { text: string; tone: Tone } {
   return r ? { text: runVerdictLabel(r.verdict), tone: isBad(r.verdict) ? 'bad' : 'ok' } : { text: 'Finished', tone: 'ok' };
 }
 
-/** Why a full test is on screen (D115): practice submissions and every run show their first failing test. */
+/** Why a full test is on screen: practice submissions and every run show their first failing test. */
 export function revealedReason(from: 'run' | 'submission'): string {
   return from === 'run' ? 'This test is shown because this was a run.' : 'This test is shown because this is practice.';
 }
@@ -374,7 +372,7 @@ export function revealedTitle(r: Pick<SubmissionRevealed, 'idx' | 'subtask_idx'>
 }
 
 /**
- * The sentence announced for a run (X1, audit 06-2): "Running on samples.",
+ * The sentence announced for a run: "Running on samples.",
  * "Passed 2 of 3 samples.", "Compile error.", or "" while it waits in the
  * queue, so a queue position never repeats.
  */

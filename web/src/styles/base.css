@@ -52,14 +52,14 @@ html {
   text-size-adjust: 100%;
 }
 
-/* X3: while a bar sticks to the top (data-sticky-bar, such as the workspace
+/* While a bar sticks to the top (data-sticky-bar, such as the workspace
    strip under 1024 px), anything focused or jumped to lands below it. The
    bar's owner sets --sticky-bar-h to its measured height. */
 html:has([data-sticky-bar]) {
   scroll-padding-top: calc(var(--sticky-bar-h, var(--space-7)) + var(--space-2));
 }
 
-/* Checkboxes, radios and ranges take the action colour everywhere (T4). */
+/* Checkboxes, radios and ranges take the action colour everywhere. */
 :root {
   accent-color: var(--act);
 }
@@ -117,8 +117,8 @@ h6 {
   line-height: var(--lh-tight);
 }
 
-/* One size per heading role on every screen (T1); balanced lines so a
-   heading never ends on one word, and no lone last word in text (T2). */
+/* One size per heading role on every screen; balanced lines so a
+   heading never ends on one word, and no lone last word in text. */
 h1 { font-size: var(--fs-page); }
 h2 { font-size: var(--fs-section); }
 h3 { font-size: var(--fs-sub); }
@@ -134,7 +134,7 @@ li {
   text-wrap: pretty;
 }
 
-/* Calmer links (T5): a thin underline at 45 percent of the link colour,
+/* Calmer links: a thin underline at 45 percent of the link colour,
    full strength on hover. The underline stays, so a link never relies on
    colour alone. */
 a {
@@ -148,7 +148,7 @@ a:hover {
   text-decoration-color: currentColor;
 }
 
-/* Selected text in the theme's own colours (T17). The editor well keeps
+/* Selected text in the theme's own colours. The editor well keeps
    its own --code-selection. */
 ::selection {
   background: var(--act-tint);
@@ -178,7 +178,7 @@ pre,
 }
 
 /* Mono digits inside a line of Grotesk text are set one optical step
-   down so they do not jump (T11, and the mockup correction for inline
+   down so they do not jump (inline
    digits such as "820 of 1500" or "Ends in 01:30:00"). Mono figures carry
    no thousands separator: Fragment Mono's comma is a full cell wide. */
 :is(p, li, span, td, label, a) > .mono:not(.input) {
@@ -219,7 +219,7 @@ h2[tabindex="-1"]:focus {
 }
 
 /*
-  The working layout (D181, audit 2026-10-20 change 1). On a wide screen a
+  The working layout. On a wide screen a
   page is the work on the left at --measure-form and a context column on
   the right: status, readiness, the next action, rules, a preview. The
   context column stays in view while the work scrolls. Below 1280 px the
@@ -269,7 +269,7 @@ h2[tabindex="-1"]:focus {
 }
 
 /*
-  A surface panel (audit change 2): one task area (Questions, Submissions,
+  A surface panel: one task area (Questions, Submissions,
   the honour code, a readiness list) on --surface with a --line border,
   square like tables, no shadow, as tall as its content. Panels group the
   parts of one page; they are not cards and never sit in a grid of equal

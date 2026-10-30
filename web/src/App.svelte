@@ -1,32 +1,15 @@
 <!--
-  App: the shell around every screen. The header holds the podium
-  word-mark (a link home), the main navigation and one account control
-  (components/AccountMenu). Navigation is named by job (lib/routing
-  mainNav): students get "Contests"; organisers get "Contests" (the
-  organiser list at /admin/contests, where "/" sends them), "Problems"
-  (also current on the AI wizard), and for owners "Settings"; a link is
-  current when the screen's row names its section. From
-  768 px everything fits one row; under 768 px an organiser's nav and
-  account items collapse behind a Menu button that opens a panel (Escape
-  closes it), while a student keeps the links and the account button in
-  the row, except in the contest workspace, where the workspace strip
-  takes that space. Signed out, only the theme control shows.
-
-  The main area shows the screen for the current path, after the session
-  from GET /api/me has loaded: the route table (lib/routing.ts) says which
-  screen and who may open it, and screens.ts gives the component, loaded
-  on first visit for an organiser screen. Signed-out visitors to a
-  protected path are sent to /signin with a ?next= back, and signed-in
-  visitors to /signin are sent on. Someone the row does not let in sees
-  the page's title and one sentence saying who may open it, the same
-  forbidden state on every screen. After each
-  client-side navigation focus moves to the new page's heading. The footer
-  carries the organisation's name and "Contact the organisers: {email}"
-  (and its phone as a tel: link) when the server names them, the Privacy
-  link once the owner approves the text (lib/site.ts), a "Help"
-  button and the build year; "?" anywhere outside a text field
-  opens the same dialog (components/HelpDialog). The two announcer
-  regions of lib/announce.svelte.ts live at the end. Takes no props.
+  App: the shell around every screen. The header holds the word-mark, the
+  navigation named by job (lib/routing mainNav) and one account control;
+  under 768 px an organiser's links fold behind Menu, while a student
+  keeps theirs in the row except in the contest workspace, whose strip
+  takes that space. The main area waits for GET /api/me, then shows the
+  screen the route table names (screens.ts loads organiser screens on
+  first visit); signed-out visitors to a protected path go to /signin and
+  come back after, someone the row does not let in sees one shared
+  forbidden state, and focus moves to the new page's heading after each
+  navigation. The footer carries the organisers' contact, the Privacy link
+  once the text is approved, and Help, which "?" also opens.
 -->
 <script lang="ts">
   import { onMount, tick } from 'svelte';
@@ -61,7 +44,7 @@
   const route = $derived(match.route);
   const signedIn = $derived(session.status === 'signed-in');
   // An EventSource cannot see a 401: once the session ends, stop every
-  // stream so a signed-out page neither polls nor reconnects (C1-041).
+  // stream so a signed-out page neither polls nor reconnects.
   $effect(() => {
     if (session.status === 'signed-out') stopAllStreams();
   });
@@ -69,9 +52,9 @@
   const needsSignIn = $derived(route.auth && session.status === 'signed-out');
   const leaveSignIn = $derived(route.name === 'signin' && signedIn);
   // A contest problem in the workspace: on a phone the student's link row
-  // gives way to the workspace strip (usability audit S7).
+  // gives way to the workspace strip.
   const inWorkspace = $derived(shell.workspace && route.name.startsWith('contest'));
-  // Organisers land on their own contest list; "/" is the student list (N1).
+  // Organisers land on their own contest list; "/" is the student list.
   const organiserHome = $derived(route.name === 'home' && isOrganiser);
   /** False when the row names a role the person signed in does not have. */
   const allowed = $derived(mayOpen(route, session.user?.role));
@@ -185,7 +168,7 @@
     }
   }
 
-  // Sign out during a live contest asks first (P5 F7.6, N2); the draft is saved before the session ends either way.
+  // Sign out during a live contest asks first; the draft is saved before the session ends either way.
   let signOutAsk = $state<string | null>(null);
 
   async function onSignOut() {
@@ -219,8 +202,8 @@
 <div class="page">
   <a class="skip" href="#main">Skip to content</a>
 
-  <!-- Its real height, testing banner and wrapped rows included, lets the workspace fill the rest of the window (audit 2026-10-20 S2). -->
-  <!-- B4, B6: inside a contest problem the workspace's own row (under 1024 px) or bar replaces the site header. -->
+  <!-- Its real height, testing banner and wrapped rows included, lets the workspace fill the rest of the window. -->
+  <!-- Inside a contest problem the workspace's own row (under 1024 px) or bar replaces the site header. -->
   <header class="bar" class:hide-narrow={inWorkspace} use:publishHeight={'--shell-head'}>
     {#if runMode.mode === 'testing'}
       <p class="mode-banner" role="note">
@@ -288,7 +271,7 @@
         <Current {...match.params} />
       {/key}
     {:else if failedScreen === route.name}
-      <!-- A chunk that failed (often a new release) needs a full reload, not another import (C2-069). -->
+      <!-- A chunk that failed (often a new release) needs a full reload, not another import. -->
       <PageState kind="error" message="This page could not load. Reload to try again." onretry={() => location.reload()} />
     {:else}
       <PageState kind="loading" message="Loading the page" />
@@ -322,7 +305,7 @@
 <div class="visually-hidden" aria-live="assertive" data-announcer="assertive">{regions.assertive}</div>
 <HelpDialog open={shell.help} organiser={isOrganiser} onclose={() => (shell.help = false)} />
 {#if signedIn}<ThemeDialog open={shell.theme} onclose={() => (shell.theme = false)} />{/if}
-<!-- Only a contest workspace asks before sign out (F7.6), so the dialog exists only beside one. -->
+<!-- Only a contest workspace asks before sign out, so the dialog exists only beside one. -->
 {#if shell.workspace}
   <ConfirmDialog
     open={signOutAsk !== null}
@@ -378,7 +361,7 @@
     border-bottom: var(--rule) solid var(--line);
   }
 
-  /* One row from 768 px (N7): word-mark, nav, then the account button. */
+  /* One row from 768 px: word-mark, nav, then the account button. */
   .bar-inner {
     display: flex;
     flex-wrap: wrap;
@@ -513,7 +496,7 @@
   }
 
   /* Phones: a student keeps the links and the account button in the row;
-     an organiser's nav and account items go behind Menu (N7, audit 04-15). */
+     an organiser's nav and account items go behind Menu. */
   @media (width < 768px) {
     .bar-inner {
       gap: var(--space-2) var(--space-3);

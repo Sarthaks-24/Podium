@@ -1,6 +1,6 @@
 /**
  * The problem bank's data shapes and the pure helpers behind the admin
- * screens (cache/v1/m2-plan.md sections 4 and 8, docs/API.md).
+ * screens (docs/API.md).
  *
  * The editor works on a Draft: the editable part of a Problem with tags and
  * sample tests held as the text the person typed. toDraft() builds one from
@@ -8,10 +8,10 @@
  * reporting input it cannot read as field errors keyed like the server's.
  * The rest turns a Validation into the plain sentences the report shows.
  *
- * From M5 a problem may carry a generator and a plan of the tests it makes
- * (cache/v1/m5-plan.md section 7). A server that sends no "generator" key
- * predates M5: the draft then has no generator part and toEdit() sends
- * none, so older servers and fixtures see the same body as before.
+ * A problem may carry a generator and a plan of the tests it makes. A
+ * server that sends no "generator" key is older: the draft then has no
+ * generator part and toEdit() sends none, so older servers and fixtures
+ * see the same body as before.
  */
 
 /** Program languages, as the API names them. */
@@ -64,7 +64,7 @@ export interface ProblemSummary {
   validated: boolean;
   validated_at: number | null;
   updated_at: number;
-  /** A contest pinning it showed students its hidden tests (practice after the end; D115). */
+  /** A contest pinning it showed students its hidden tests (practice after the end). */
   shown_in_practice?: boolean;
 }
 
@@ -80,7 +80,7 @@ export interface Subtask {
   points: number;
   title: string;
   tests: string;
-  /** Arguments the generator gets for this subtask's planned tests (M5). */
+  /** Arguments the generator gets for this subtask's planned tests. */
   generator_args?: string[];
 }
 
@@ -183,9 +183,9 @@ export interface Problem extends ProblemSummary {
   reference: Program;
   brute: Program | null;
   validator: Program | null;
-  /** The input generator (M5); absent from servers before M5. */
+  /** The input generator; absent from older servers. */
   generator?: Program | null;
-  /** The tests the generator makes (M5). */
+  /** The tests the generator makes. */
   plan?: PlannedTest[];
   samples: number[];
   subtasks: Subtask[];
@@ -245,9 +245,9 @@ export interface Draft {
   difficulty: Difficulty;
   /** Test numbers and ranges, as typed, for example "1, 2". */
   samples: string;
-  /** `args`: generator arguments separated by spaces, present from M5. */
+  /** `args`: generator arguments separated by spaces, absent from older servers. */
   subtasks: { points: number | null; title: string; tests: string; args?: string }[];
-  /** Present only when the server knows about generators (M5). */
+  /** Present only when the server knows about generators. */
   generator?: Program | null;
   plan?: PlanRow[];
 }
@@ -282,7 +282,7 @@ export interface Validation {
     max_time_ms: number;
     /** The problem's limit times the reference language's factor. */
     time_limit_ms: number;
-    /** The reference's language and its time factor (D323); absent on summaries stored before. */
+    /** The reference's language and its time factor; absent on summaries stored before. */
     reference_language?: string;
     time_factor?: number;
     problems: string[];
@@ -294,21 +294,6 @@ export interface Validation {
 /** True while the judge has the validation queued or running. */
 export function isPending(v: Pick<Validation, 'state'> | null): boolean {
   return v !== null && (v.state === 'queued' || v.state === 'running');
-}
-
-/**
- * Suggests a slug for a title: lower case ASCII letters, digits and single
- * hyphens, at most 64 characters.
- */
-export function slugify(title: string): string {
-  return title
-    .normalize('NFKD')
-    .replace(/[̀-ͯ]/g, '')
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-    .slice(0, 64)
-    .replace(/-+$/g, '');
 }
 
 /** The result of reading a list of test numbers. */
@@ -518,33 +503,6 @@ function capitalise(text: string): string {
   return text.charAt(0).toUpperCase() + text.slice(1);
 }
 
-/** What happened to a role on a test, as the end of a sentence. */
-function outcome(role: Role, verdict: string): string {
-  switch (verdict) {
-    case 'WA':
-      return role === 'validator' ? 'rejected the input' : 'got wrong answer';
-    case 'TLE':
-      return 'exceeded the time limit';
-    case 'MLE':
-      return 'exceeded the memory limit';
-    case 'RE':
-      return 'had a runtime error';
-    case 'OLE':
-      return 'exceeded the output limit';
-    case 'CE':
-      return 'did not compile';
-    case 'IE':
-      return role === 'checker' ? 'failed' : 'hit an internal error in the judge';
-    default:
-      return `got ${verdictLabel(verdict).toLowerCase()}`;
-  }
-}
-
-/** "Test 7: reference solution got wrong answer". */
-export function failureSentence(t: { idx: number; role: Role; verdict: string }): string {
-  return `Test ${t.idx}: ${roleName(t.role)} ${outcome(t.role, t.verdict)}`;
-}
-
 /** True when a verdict counts as a failure in the report. Skipped is not one. */
 export function isFailure(verdict: string): boolean {
   return verdict !== 'AC' && verdict !== 'SK' && verdict !== 'OK';
@@ -586,7 +544,7 @@ export function limitTime(ms: number): string {
 /**
  * The reference's slowest run against its limit. When the reference's
  * language gets more than the problem's limit, the line says so: "of 2000
- * ms" on a 1000 ms problem read as a mistake (walk 2026-10-21, D323).
+ * ms" on a 1000 ms problem read as a mistake.
  */
 export function slowestReferenceText(s: Pick<NonNullable<Validation['summary']>, 'max_time_ms' | 'time_limit_ms' | 'reference_language' | 'time_factor'>): string {
   const head = `Slowest reference run ${s.max_time_ms} ms of`;
@@ -618,62 +576,6 @@ export interface ReportLine {
   tone: 'ok' | 'bad' | 'note';
   /** Program output shown verbatim under the line, in mono. */
   detail?: string;
-}
-
-/**
- * The plain list a finished (or partly finished) validation reads as: one
- * line per compile failure, one per check in the summary, one per failing
- * test with its message, then the server's problems and warnings.
- */
-export function reportLines(v: Validation): ReportLine[] {
-  const lines: ReportLine[] = [];
-  for (const c of v.compile) {
-    if (c.verdict === 'CE') lines.push({ text: `${capitalise(roleName(c.role))} did not compile`, tone: 'bad', detail: c.output });
-    else if (isFailure(c.verdict)) {
-      lines.push({ text: `${capitalise(roleName(c.role))}: ${verdictLabel(c.verdict).toLowerCase()} while compiling`, tone: 'bad', detail: c.output || undefined });
-    }
-  }
-  const s = v.summary;
-  if (s) {
-    if (s.reference_total > 0) {
-      lines.push({
-        text: `Reference solution passed ${s.reference_passed} of ${s.reference_total} tests`,
-        tone: s.reference_passed === s.reference_total ? 'ok' : 'bad',
-      });
-    }
-    if (s.brute_total > 0) {
-      lines.push({
-        text: `Brute force agreed on ${s.brute_agreed} of ${s.brute_total} tests`,
-        tone: s.brute_agreed === s.brute_total ? 'ok' : 'bad',
-      });
-    }
-    const unchecked = uncheckedLine(s);
-    if (unchecked) lines.push(unchecked);
-    if (s.validator_total > 0) {
-      lines.push({
-        text: `Validator accepted ${s.validator_passed} of ${s.validator_total} inputs`,
-        tone: s.validator_passed === s.validator_total ? 'ok' : 'bad',
-      });
-    }
-    if (s.reference_total > 0) {
-      lines.push({
-        text: slowestReferenceText(s),
-        tone: s.max_time_ms * 2 <= s.time_limit_ms ? 'ok' : 'bad',
-      });
-    }
-  }
-  // While the run is going, list failures as they arrive; once the server
-  // has summarised, its problems say the same thing, so show only those.
-  if (!s) {
-    for (const t of v.tests) {
-      if (isFailure(t.verdict)) lines.push({ text: failureSentence(t), tone: 'bad', detail: t.message || undefined });
-    }
-  }
-  if (s) {
-    for (const p of s.problems) lines.push({ text: p, tone: 'bad' });
-    for (const w of s.warnings) lines.push({ text: w, tone: 'note' });
-  }
-  return lines;
 }
 
 /** One program's part of the validation report. */
@@ -728,8 +630,7 @@ export function setterGuidance(role: Role, verdict: string): string {
 }
 
 /**
- * Builds the validation report grouped by program (decision from the M2 UI
- * review): a lead sentence naming the first thing to fix, then per program
+ * Builds the validation report grouped by program: a lead sentence naming the first thing to fix, then per program
  * its summary line, compile failure and failing tests with one line of
  * guidance each, then the server's problems and warnings.
  */
@@ -828,60 +729,6 @@ export function buildReport(v: Validation): Report {
 /** The element id of a program's source field in the editor. */
 export function programFieldId(role: Role): string {
   return role === 'checker' ? 'checker_source' : `${role}-source`;
-}
-
-/** The headline status of a problem, as the editor's header says it. */
-export function editorStatus(
-  p: Pick<Problem, 'archived' | 'validated' | 'validated_at' | 'content_hash'>,
-  v: Validation | null,
-): { text: string; tone: 'ok' | 'bad' | 'wait' | 'note' } {
-  if (p.archived) return { text: 'Archived', tone: 'note' };
-  if (v && isPending(v)) {
-    if (v.state === 'running') return { text: 'Validating', tone: 'wait' };
-    return {
-      text: v.queue_position !== null && v.queue_position > 0 ? `Validating, ${ordinal(v.queue_position)} in queue` : 'Validating',
-      tone: 'wait',
-    };
-  }
-  if (v && v.content_hash === p.content_hash && (v.state === 'failed' || v.state === 'error')) {
-    const n = v.summary?.problems.length ?? 0;
-    return { text: n > 0 ? `Validation failed, ${n} ${n === 1 ? 'problem' : 'problems'}` : 'Validation failed', tone: 'bad' };
-  }
-  if (p.validated && p.validated_at !== null) return { text: `Validated ${formatShort(p.validated_at)}`, tone: 'ok' };
-  return { text: 'Not validated', tone: 'note' };
-}
-
-const SHORT_MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-
-/** "16 Oct 19:42" in local time. */
-export function formatShort(ms: number): string {
-  const d = new Date(ms);
-  return `${d.getDate()} ${SHORT_MONTHS[d.getMonth()]} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
-}
-
-/**
- * Where each test belongs according to the draft as typed: "Sample",
- * "Subtask 2" or "Not in a subtask". A list that cannot
- * be read yet falls back to what the server last saved for that test.
- */
-export function draftGroups(tests: readonly TestCase[], d: Pick<Draft, 'samples' | 'subtasks'>): Map<number, string> {
-  const out = new Map<number, string>();
-  const samples = parseTestList(d.samples);
-  const ranges = d.subtasks.map((s) => parseTestList(s.tests));
-  for (const t of tests) {
-    const saved = t.sample ? 'Sample' : t.subtask_idx !== null ? `Subtask ${t.subtask_idx}` : 'Not in a subtask';
-    if (!samples.ok || ranges.some((r) => !r.ok)) {
-      out.set(t.idx, saved);
-      continue;
-    }
-    if (samples.tests.includes(t.idx)) {
-      out.set(t.idx, 'Sample');
-      continue;
-    }
-    const i = ranges.findIndex((r) => r.ok && r.tests.includes(t.idx));
-    out.set(t.idx, i >= 0 ? `Subtask ${i + 1}` : 'Not in a subtask');
-  }
-  return out;
 }
 
 /** Formats a byte count: "512 B", "12.4 KB", "1.0 MB". */

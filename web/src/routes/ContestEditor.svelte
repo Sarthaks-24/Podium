@@ -1,37 +1,14 @@
 <!--
   ContestEditor: Setup, an organiser's settings for one contest at
-  /admin/contests/{id}. Every field saves as it changes, with a PUT of only
-  the fields that changed (the server keeps the rest): typing saves after a
-  short pause or when the field loses focus, checkboxes save at once. One
-  line in the title row says "Saved", "Saving" or "Not saved" (with Try
-  again), and a field the server refuses shows its sentence under it.
-  Leaving the page, or going back, while a change waits or after a failed
-  save asks first. While the contest is live, a change to the start, the
-  length or the hidden minutes asks first, because students see it at once.
-
-  - Title row: the state word, one line on what students see ("Not
-    published. 3 problems, starts 21 Oct 2026 18:00"), "Publish contest" or
-    "Unpublish contest", which asks first and names what students will see,
-    and a More menu with Duplicate (a copy as a new draft) and Archive.
-  - From 1280 px a sticky column beside the form lists what the contest
-    needs before it is published (lib/contests publishChecks); below that
-    it comes first.
-  - Six inputs: the title; the problems, picked from validated problems in
-    the bank (adding, removing and reordering save at once and the letters
-    follow the order; a problem the AI wizard made that no person solved
-    asks for a reason first, "Grade as the AI wrote it"); the start; the
-    length in minutes (the server stores the end); the minutes at the end
-    whose results are hidden; the languages.
-  - Advanced, folded under a one-line summary: the address (made from the
-    title when the contest was created, read only), the wait between
-    submissions, submissions per problem, practice after the end, keeping
-    results hidden until the reveal, the exam options (four switches, all
-    off by default: full screen on start, count tab switches and focus
-    loss, block paste into the editor, block copy out of the statement;
-    students are told which are on before they start), the description
-    and the honour code.
-
-  Students see a short explanation instead. Props: `id`.
+  /admin/contests/{id}. Every field saves as it changes with a PUT of only
+  the changed fields, and one line in the title row says "Saved", "Saving"
+  or "Not saved", so there is no Save button to forget; leaving with a
+  change pending, or changing the start, length or hidden minutes while
+  the contest is live, asks first, because students see it at once. The
+  six inputs come first (title, problems, start, length, hidden minutes,
+  languages) and everything else waits under Advanced; from 1280 px a
+  sticky column lists what the contest still needs before it can be
+  published. Students see a short explanation instead.
 -->
 <script lang="ts">
   import PageState from '../components/PageState.svelte';
@@ -100,7 +77,7 @@
   }
 
   type ExamKey = 'full_screen' | 'count_focus' | 'block_paste' | 'block_copy';
-  /** The exam options (V3-25), each a switch that is off by default, with what it does. */
+  /** The exam options, each a switch that is off by default, with what it does. */
   const EXAM: readonly { key: ExamKey; label: string; help: string }[] = [
     { key: 'full_screen', label: 'Full screen on start', help: 'Asks for full screen when a student presses Start, and counts each time they leave it.' },
     { key: 'count_focus', label: 'Count tab switches and focus loss', help: 'Shows you how often each student left the page. Podium records it either way.' },
@@ -177,7 +154,7 @@
     },
   );
   // The server's state ignores `published`, so an unpublished contest past
-  // its start reads "live" there; students cannot see it (C2-015).
+  // its start reads "live" there; students cannot see it.
   const running = $derived(contest?.state === 'live' || contest?.state === 'frozen');
   const live = $derived(!!contest?.published && running);
   const startedOrOver = $derived(running || contest?.state === 'ended' || contest?.state === 'practice');
@@ -454,7 +431,7 @@
 
   // Publishing.
 
-  /** The picked problems whose hidden tests a contest already showed (D115, C1-015). */
+  /** The picked problems whose hidden tests a contest already showed. */
   const shownLabels = $derived(picked.filter((p) => bank.find((b) => b.id === p.problem_id)?.shown_in_practice).map((p) => p.label));
 
   /** The publish confirm's line for those problems. */
@@ -519,7 +496,7 @@
     change(['languages'], true);
   }
 
-  // Problems: every change is saved at once (audit O1).
+  // Problems: every change is saved at once.
   async function addProblem() {
     const p = bank.find((x) => String(x.id) === addId);
     if (!p) return;

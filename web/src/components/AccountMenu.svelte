@@ -1,6 +1,5 @@
 <!--
-  AccountMenu: the one account control in the header (v2 N2, audit 04-4 and
-  04-17). It says who is signed in ("Signed in as {email}" and the role
+  AccountMenu: the one account control in the header. It says who is signed in ("Signed in as {email}" and the role
   word), then "Theme and
   colours" and "Help" (dialogs the shell owns, opened
   through lib/shell.svelte.ts; the shortcuts item is left out on
@@ -52,7 +51,7 @@
     onsignout();
   }
 
-  /** Closes the menu first (P8), so the dialog it opens returns focus to the trigger. */
+  /** Closes the menu first, so the dialog it opens returns focus to the trigger. */
   function openDialog(which: 'theme' | 'help') {
     open = false;
     button?.focus();
@@ -132,7 +131,7 @@
     text-overflow: ellipsis;
   }
 
-  /* The name from 1024 px; below that the button reads "Account" (N7). */
+  /* The name from 1024 px; below that the button reads "Account". */
   .word {
     display: none;
   }

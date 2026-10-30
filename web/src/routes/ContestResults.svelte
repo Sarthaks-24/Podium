@@ -5,17 +5,17 @@
   results hidden after the end: before every student's time is up it says
   when the reveal opens and offers no button; then "Reveal" shows students
   the full board (POST .../reveal) after one confirmation, because it
-  cannot be undone; after it the line says when it happened (pilot P2).
+  cannot be undone; after it the line says when it happened.
   Beside it sit "Similar code" (once the contest has ended; it opens the
   integrity page), "Download CSV" and "Download JSON", and a download
-  leaves a line naming the file (pilot P3). Below, across the page width
+  leaves a line naming the file. Below, across the page width
   (the walk measured the board at 560 px of 1440): the standings, full or
   as students saw them (GET .../standings?variant=frozen) when results
   were hidden, with one line saying which board this is
   (lib/standings organiserBoardLine), then the one statistics table:
   solved, attempted, median attempts and how many students reached each
   score, per problem. The animated reveal walk and the editorial are not
-  offered (V3-16). A student an integrity decision excluded is not on the
+  offered. A student an integrity decision excluded is not on the
   board or in the downloads. Students see a short explanation instead.
 -->
 <script lang="ts">
@@ -69,7 +69,7 @@
   });
   const revealReady = $derived(ticker.now >= revealOpensAt);
   const ended = $derived(contest?.state === 'ended' || contest?.state === 'practice');
-  // When the board stopped updating for students, and whether they still see it that way (P10).
+  // When the board stopped updating for students, and whether they still see it that way.
   const hiddenFrom = $derived(contest && contest.freeze_minutes > 0 ? (contest.close_at ?? contest.ends_at) - contest.freeze_minutes * 60_000 : null);
   const hiding = $derived(
     contest !== null && hiddenFrom !== null && ticker.now >= hiddenFrom && (ticker.now < revealOpensAt || (contest.hold_reveal === true && !contest.revealed_at)),
@@ -77,7 +77,7 @@
   // There is something to reveal only when results are hidden and kept hidden after the end.
   const held = $derived(!!contest?.hold_reveal && hiddenFrom !== null);
   const offerReveal = $derived(held && !contest?.revealed_at && revealReady);
-  /** The reveal line follows the state: before it opens, when it is open, after it (pilot P2). */
+  /** The reveal line follows the state: before it opens, when it is open, after it. */
   const revealLine = $derived.by(() => {
     if (!contest || !held || hiddenFrom === null) return '';
     if (contest.revealed_at) return `Revealed ${formatDayTime(contest.revealed_at)}. Students see the full board.`;

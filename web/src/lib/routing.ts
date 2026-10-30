@@ -233,7 +233,7 @@ export function resolveTarget(to: string, origin: string): { target: string; has
 }
 
 /**
- * Scrolls to the element a navigation's hash names (walk 2026-10-21): a
+ * Scrolls to the element a navigation's hash names: a
  * link such as /admin/contests/4/console#versions-title lands on a screen
  * that draws the element only after its data loads, so the browser's own
  * jump finds nothing. Looks again every 100 ms for up to `waitMs`, then

@@ -2,7 +2,7 @@
  * Toast notifications, shown bottom-left by components/Toasts.svelte.
  *
  * Info toasts dismiss themselves after TOAST_MS and are spoken through the
- * app's polite announcer (lib/announce.svelte.ts, X1), which is always in
+ * app's polite announcer (lib/announce.svelte.ts), which is always in
  * the page, so the first toast is read too. Error toasts stay until the
  * person dismisses them, so an error is never missed: the cap never
  * removes one. Info toasts fill what is left of MAX_TOASTS (at least one),

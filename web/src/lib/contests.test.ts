@@ -9,7 +9,6 @@ import {
   formatCountdown,
   formatMinutes,
   formatSpan,
-  freezeAt,
   fromLocalInput,
   hasAccepted,
   isForContest,
@@ -27,7 +26,6 @@ import {
   markMessagesRead,
   pinnedContest,
   messagesReadAt,
-  railStatus,
   startLine,
   studentPhase,
   toLocalInput,
@@ -206,17 +204,6 @@ describe('messages read time (audit S1)', () => {
   });
 });
 
-describe('rail status (S1-09)', () => {
-  const p = (my_score: number | null, my_submission_count: number, max_score = 100) => ({ my_score, max_score, my_submission_count });
-  it('shows the score and nothing else, or "not tried"', () => {
-    expect(railStatus(p(null, 0))).toEqual({ score: '', word: 'not tried' });
-    expect(railStatus(p(null, 2))).toEqual({ score: '', word: 'tried' });
-    expect(railStatus(p(40, 2))).toEqual({ score: '40/100', word: '' });
-    expect(railStatus(p(0, 1))).toEqual({ score: '0/100', word: '' });
-    expect(railStatus(p(100, 3))).toEqual({ score: '100/100', word: '' });
-  });
-});
-
 describe('organiser order (N6)', () => {
   it('puts live and frozen first, then upcoming soonest, then the rest newest', () => {
     const row = (id: number, state: string, starts: number, ends: number) => ({ id, state: state as 'live', starts_at: starts, ends_at: ends });
@@ -258,12 +245,6 @@ describe('student phase and window maths', () => {
     expect(hasAccepted({ ...base, problems: null })).toBe(false);
     expect(hasAccepted({ ...base, honour_accepted_at: null })).toBe(false);
     expect(hasAccepted({ ...base, accepted: false })).toBe(false);
-  });
-
-  it('freezes the board only with a freeze', () => {
-    const c = contest();
-    expect(freezeAt(c)).toBe(T + 90 * MIN);
-    expect(freezeAt({ ...c, rules: { ...c.rules, freeze_minutes: 0 } })).toBeNull();
   });
 
   it('writes the rules as sentences', () => {
@@ -355,7 +336,7 @@ describe('auditSummary', () => {
     expect(auditSummary({ action: 'extension', details: { email: 'asha@college.edu', minutes: 20, reason: 'laptop crashed' } })).toBe(
       'Gave asha@college.edu 20 extra minutes (laptop crashed)',
     );
-    // Without the email and reason (the shape after the P3 review), the name comes from the console's list.
+    // Without the email and reason (organisers only see the name), the name comes from the console's list.
     expect(auditSummary({ action: 'extension', details: { user_id: 7, minutes: 15 } }, new Map([[7, 'Asha Rao']]))).toBe('Gave Asha Rao 15 extra minutes');
     expect(auditSummary({ action: 'extension', details: { user_id: 7, minutes: 15 } })).toBe('Gave user 7 15 extra minutes');
     expect(auditSummary({ action: 'extension', details: { email: 'asha@college.edu', minutes: 0 } })).toBe(

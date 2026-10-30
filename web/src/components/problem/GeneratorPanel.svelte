@@ -1,7 +1,6 @@
 <!--
   GeneratorPanel: the problem editor's Generator part, inside the Checking
-  tab's "Optional extra checks" (M5, split out of ProblemEditor in v2 P3
-  F5.1): the generator program, its arguments per
+  tab's "Optional extra checks": the generator program, its arguments per
   subtask, and the plan as a compact table of test, subtask, seed and
   arguments with rows to add and remove, then "Generate inputs" with its
   result in place (failures name the test, subtask and seed). It edits the
@@ -46,7 +45,7 @@
 
   let addPlanButton: HTMLButtonElement | undefined = $state();
 
-  /** The generator just removed, kept so the removal can be undone until the next save (A6). */
+  /** The generator just removed, kept so the removal can be undone until the next save. */
   let removed = $state<Program | null>(null);
 
   // A save or a reload gives the editor a new working copy; the undo ends there.
@@ -55,7 +54,7 @@
     removed = null;
   });
 
-  /** With no generator and no plan the section is one line (audit O2). */
+  /** With no generator and no plan the section is one line. */
   const unused = $derived(!draft.generator && (draft.plan?.length ?? 0) === 0);
 
   const canGenerateInputs = $derived(!!draft.generator && (draft.plan?.length ?? 0) > 0);

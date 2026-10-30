@@ -1,6 +1,5 @@
 <!--
-  Toolbar: the code column's one row (audit 2026-10-20 S2,
-  cache/v3/design/editor.md section 1): the language, Reset, Settings
+  Toolbar: the code column's one row: the language, Reset, Settings
   (components/EditorSettings), then Run and, from 1024 px, Submit at the
   end. A narrow code column (the `code` container under 36rem) drops the
   icons and narrows the select so the row holds. When Run and Submit are

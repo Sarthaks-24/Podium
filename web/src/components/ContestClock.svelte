@@ -1,13 +1,12 @@
 <!--
-  ContestClock: the time a student has left (design.md 5.3), in mono on the
+  ContestClock: the time a student has left, in mono on the
   server's clock (lib/ticker.svelte.ts). The clock says nothing about the
-  standings: what the board hides is said once, on the standings (S1-09.5).
+  standings: what the board hides is said once, on the standings.
   A polite live region speaks only at 30, 10, 5 and 1
   minutes left and when time is up; the timer itself is never announced.
   In the last 5 minutes a sentence under the time says so ("Under 5
   minutes left. Submit what you have."), with no colour, to stay calm; the
-  mono face has one weight, so the time is never set in a faked bold (S4,
-  audit 01-8). At zero the clock says "Time is up. Your submissions are saved." on
+  mono face has one weight, so the time is never set in a faked bold. At zero the clock says "Time is up. Your submissions are saved." on
   screen too. Props: `endsAt` (Unix ms),
   `onexpire` (called once when the time reaches zero) and `compact` (for
   the sticky strip under 1024 px: the time alone, the "Time left"
@@ -90,7 +89,7 @@
     font-weight: 600;
   }
 
-  /* The workspace strip under 1024 px (F7.2): the time beside the previous and next problem; "Time left" stays for
+  /* The workspace strip under 1024 px: the time beside the previous and next problem; "Time left" stays for
      screen readers as the timer's name. */
   .compact {
     gap: 0;

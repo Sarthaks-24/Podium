@@ -1,5 +1,4 @@
-// F10: the icon set is the design.md 9 list the app uses plus the nine v2
-// additions, and every icon has drawable shapes on the 24 x 24 grid.
+// The icon set is the list the app uses, and every icon has drawable shapes on the 24 x 24 grid.
 import { describe, expect, it } from 'vitest';
 import { ICONS } from './icons';
 

@@ -12,9 +12,9 @@
  *
  * Screens holding unsaved work register a save with beforeSignOut(); sign
  * out waits for those saves (at most SIGN_OUT_WAIT_MS) before it ends the
- * session, so the workspace's last edits reach the server first (audit
- * 01-9). During a live contest the workspace also registers a guard with
- * guardSignOut(): the shell then asks before signing out (P5 F7.6, N2),
+ * session, so the workspace's last edits reach the server first.
+ * During a live contest the workspace also registers a guard with
+ * guardSignOut(): the shell then asks before signing out,
  * and the saves still run first.
  */
 import { ApiError, getJSON, sendJSON, setUnauthorizedHandler } from './api';

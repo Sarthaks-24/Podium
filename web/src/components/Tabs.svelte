@@ -1,8 +1,8 @@
 <!--
-  Tabs: a row of tabs that follows the WAI-ARIA tabs pattern (F5): one tab
+  Tabs: a row of tabs that follows the WAI-ARIA tabs pattern: one tab
   in the Tab order, arrows, Home and End move and choose. The panels are
   the caller's; each tab names its panel through `controls`. State is a
-  shape (F9): the selected tab is underlined by a border, which forced
+  shape: the selected tab is underlined by a border, which forced
   colours keep. A tab can carry a count ("Submissions 3") and a dot with
   ", judging" for screen readers while something it shows is being judged.
   Props: `tabs` ({ id, label, count?, busy? }), `selected`, `onselect`,

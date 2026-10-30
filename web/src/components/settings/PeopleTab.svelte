@@ -322,7 +322,7 @@
   }
 
   @media (width < 768px) {
-    /* Stacked organiser rows (F7): name and role, then email, then the last sign-in and Remove. */
+    /* Stacked organiser rows: name and role, then email, then the last sign-in and Remove. */
     .organisers tbody tr {
       grid-template-columns: minmax(0, 1fr) auto;
       grid-template-areas:

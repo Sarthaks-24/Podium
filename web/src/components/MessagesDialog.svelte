@@ -1,17 +1,17 @@
 <!--
   MessagesDialog: everything organisers said during a contest, and the
   place to ask them something, in a panel down the right edge over the
-  editor column (components/Dialog, B3; Escape closes it, focus returns to
-  the opener). The MessageList comes first (S6): announcements newest
+  editor column (components/Dialog; Escape closes it, focus returns to
+  the opener). The MessageList comes first: announcements newest
   first, the student's own questions with their answers or "Waiting for an
   answer", and answers made public for everyone. Then, while the student
-  may still ask (during their window and in practice, B4 of the walk),
+  may still ask (during their window and in practice),
   "Ask a question" about the contest in general or one problem
   (POST /api/contests/{slug}/clarifications); a refused question shows the
   server's sentence under the field, and a sent one is confirmed in a
   status line inside the dialog (a toast would sit behind the modal).
   "About" starts on "The contest in general" and says which problem is
-  open (P7). Props: `open`, `contest`, `current`
+  open. Props: `open`, `contest`, `current`
   (the open problem's letter, or ""), `canAsk`, `onclose` and `onasked`
   (called after a question was sent, with the new clarification when the
   server returns it).
@@ -40,7 +40,7 @@
   let error = $state('');
   let sent = $state('');
 
-  // Each opening starts clean on the general topic (P7).
+  // Each opening starts clean on the general topic.
   $effect(() => {
     if (open) {
       topic = '';
@@ -57,7 +57,7 @@
     const text = question.trim();
     if (text === '') {
       error = 'Write your question first.';
-      // Every other form moves focus to the field it names (C2-060).
+      // Every other form moves focus to the field it names.
       await tick();
       document.getElementById('ask-question')?.focus();
       return;

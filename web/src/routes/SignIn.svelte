@@ -1,16 +1,16 @@
 <!--
-  SignIn: the public sign-in page (design.md 5.1). One left-aligned column:
+  SignIn: the public sign-in page. One left-aligned column:
   the heading, a line saying which Google accounts may sign in (built from
   GET /api/auth/config), an error banner when Google sign-in came back with
   ?error= (rate_limited included), the "Continue with Google" link, and a
   contact line with the organisers' email and phone from the organisation
-  details (C5, FP.3; nothing shows for a field not entered). The link is
+  details (nothing shows for a field not entered). The link is
   a full page navigation to /api/auth/google/start carrying the ?next= path
   this page was opened with. The heading names the organisation once an
   owner has entered it. The config comes from lib/mode.svelte.ts, loaded
   once for the whole app. When the server runs in testing mode the link
   is replaced by the TestSignIn form. The privacy link joins the contact
-  line once the owner approves the text (lib/site.ts PRIVACY_LINKED, D85).
+  line once the owner approves the text (lib/site.ts PRIVACY_LINKED).
   Signed-in visitors are redirected away by the app shell before this
   renders. Takes no props.
 -->

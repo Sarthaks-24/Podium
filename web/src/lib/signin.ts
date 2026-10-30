@@ -78,11 +78,6 @@ export function errorMessage(
   }
 }
 
-/** Joins message parts into plain text, for tests and for logs. */
-export function messageText(parts: readonly MessagePart[]): string {
-  return parts.map((p) => (typeof p === 'string' ? p : p.email)).join('');
-}
-
 /**
  * Keeps ?next= to a path on this site. Anything that is not a single-slash
  * path, or that points back at the sign-in page, becomes "/".

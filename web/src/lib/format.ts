@@ -36,7 +36,7 @@ export function roleLabel(role: Role): string {
   return ROLE_LABELS[role];
 }
 
-/** A run of text, set in Fragment Mono when it is a number (v2 S2, audit 01-19). */
+/** A run of text, set in Fragment Mono when it is a number. */
 export interface TextPart {
   text: string;
   mono: boolean;

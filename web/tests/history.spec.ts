@@ -12,12 +12,13 @@ test('while a contest runs with the problem, a save asks for the reason and send
   (api.problems[1] as { live_contests?: unknown }).live_contests = live;
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto('/admin/problems/1');
-  await expect(page.locator('.live-note')).toContainText('Week 6 contest is live with this problem.');
+  const note = page.getByRole('paragraph').filter({ hasText: 'live with this problem' });
+  await expect(note).toContainText('Week 6 contest is live with this problem.');
   // "Running" is for judging; a contest is live (design.md section 8, C1-038).
-  await expect(page.locator('.live-note')).not.toContainText('running');
+  await expect(note).not.toContainText('running');
   // The saved change reaches students from the live view, one link away (walk 2026-10-21).
-  await expect(page.locator('.live-note').getByRole('link', { name: 'Open the live view of Week 6 contest' })).toHaveAttribute('href', '/admin/contests/4/console#versions-title');
-  await expect(page.locator('.live-note')).not.toContainText(/revision|pin/);
+  await expect(page.getByRole('link', { name: 'Open the live view of Week 6 contest' })).toHaveAttribute('href', '/admin/contests/4/console#versions-title');
+  await expect(note).not.toContainText(/revision|pin/);
   await page.locator('#title').fill('A plus B, edited');
   await page.getByRole('button', { name: 'Save changes' }).click();
   await expect(page.locator('#reason-error')).toHaveText('Say why you changed the problem while a contest is live.');

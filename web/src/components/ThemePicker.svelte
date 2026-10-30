@@ -6,8 +6,8 @@
   Light, Dark and Accessible groups from lib/theme.ts, each option with a
   small swatch painted in that theme) and a checkbox for colour-blind safe
   verdict colours. A choice applies at once; when someone is signed in it
-  is also saved to their account, so it follows them to another machine
-  (decision D42). Each change is announced politely through the app's
+  is also saved to their account, so it follows them to another machine.
+  Each change is announced politely through the app's
   announcer (lib/announce.svelte.ts). Takes no props.
 -->
 <script lang="ts">

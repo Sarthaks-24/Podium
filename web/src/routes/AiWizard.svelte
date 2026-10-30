@@ -1,27 +1,14 @@
 <!--
-  AiWizard: "New problem with AI" at /admin/ai/new (cache/v1/m5-plan.md
-  sections 2, 4 and 7; contract C11). A line under the heading names the
-  provider, the model and the key's state ("Using OpenAI, gpt-x. Key
-  active until 14:32.") with "Change key or model", which opens the key
-  form inline, or says what is missing first: a key, or a model for the
-  provider. Two modes,
-  chosen with radio buttons: "From a brief" (topic, difficulty,
-  constraints, subtask ideas) and "From pasted text" (a textarea of at most
-  20,000 characters, with the copyright note: the rewrite is in our own
-  words, and such packs are not redistributed). Generate posts the request
-  to POST /api/admin/ai/wizard and keeps the request id in the address
-  (?wizard=), so a reload picks the progress up again. Progress comes from
-  the `wizard` live event, with polling of GET /api/admin/ai/wizard/{id}
-  while the stream is down: "Writing the problem", "Draft created", then,
-  following the draft's own input generation, output generation and
-  validation, "Generating the tests" and "Validating the draft", and at
-  the end "Validation passed. Open the draft" (audit 2026-10-20 O7). A
-  failure shows the server's sentence and its reasons, and a key problem
-  offers "Change key or model". With no key or no model the key form
-  (components/ai/KeyForm) sits inline above the brief, so nothing is
-  filled in before the page says it cannot run. "Forget key" is in the
-  account menu. One status
-  line is a live region; nothing else announces. Takes no props.
+  AiWizard: "New problem with AI" at /admin/ai/new. A line under the
+  heading names the provider, the model and the key's state, or what is
+  missing first; with no key or no model the key form sits inline above
+  the brief, so nothing is filled in before the page says it cannot run.
+  The organiser writes a brief or pastes text, and Generate keeps the
+  request id in the address so a reload picks the progress up again.
+  Progress comes from the `wizard` live event, with polling while the
+  stream is down, and follows the draft through its tests and validation
+  to "Validation passed. Open the draft". One status line is a live
+  region; nothing else announces.
 -->
 <script lang="ts">
   import PageState from '../components/PageState.svelte';
@@ -63,7 +50,8 @@
   const POLL_DOWN_MS = 2000;
   const POLL_LIVE_MS = 6000;
 
-  let loadState = $state<'loading' | 'ready' | 'forbidden'>('loading');
+  // The page loads nothing of its own: it is refused for students, or a request says so.
+  let forbidden = $state(session.user?.role !== 'admin' && session.user?.role !== 'owner');
   let keyStatus = $state<KeyStatus | null>(null);
   let keyError = $state('');
   /** The key form shown on request, when a key and a model are already set. */
@@ -79,7 +67,7 @@
   let wizard = $state<Wizard | null>(null);
   let lostWizard = $state(false);
 
-  // Unknown until the status loads; then the wizard needs a key and a model (C11).
+  // Unknown until the status loads; then the wizard needs a key and a model.
   const blocker = $derived(wizardBlocker(keyStatus));
   const keyActive = $derived(blocker === '');
   const pending = $derived(wizardPending(wizard));
@@ -105,7 +93,7 @@
     if (!(e instanceof ApiError)) return false;
     if (e.status === 401) return true;
     if (e.status === 403 && e.code === 'forbidden') {
-      loadState = 'forbidden';
+      forbidden = true;
       return true;
     }
     return false;
@@ -241,12 +229,7 @@
 
   onMount(() => {
     setTitle(routeTitle('ai-new'));
-    const role = session.user?.role;
-    if (role !== 'admin' && role !== 'owner') {
-      loadState = 'forbidden';
-      return;
-    }
-    loadState = 'ready';
+    if (forbidden) return;
     loadKey();
     const resume = router.query.get('wizard');
     if (resume) {
@@ -325,9 +308,9 @@
 <div class="wizard">
   <PageHeader title="New problem with AI" crumbs={[{ label: 'Problems', href: '/admin/problems' }, { label: 'New problem with AI' }]} />
 
-  {#if loadState === 'forbidden'}
+  {#if forbidden}
     <PageState kind="forbidden" message="Only organisers can use the AI assistant." />
-  {:else if loadState === 'ready'}
+  {:else}
     <p class="key-state">
       {#if keyStatus && keyStatus.active && blocker !== ''}
         {blocker}

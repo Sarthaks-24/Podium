@@ -1,7 +1,6 @@
 <!--
   EditorSettings: the "Settings" button in the workspace toolbar and the
-  small panel it opens (audit 2026-10-20 S2, cache/v3/design/editor.md
-  section 1): font size, tab size (2 or 4), word wrap and "Tab moves
+  small panel it opens: font size, tab size (2 or 4), word wrap and "Tab moves
   focus". A disclosure, not a menu: the panel holds form controls. Escape
   closes it and returns focus to the button, as do a click outside and
   tabbing out (the same behaviour as AccountMenu). Reset is not here; it

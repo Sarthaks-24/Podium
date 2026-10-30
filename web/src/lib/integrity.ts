@@ -1,25 +1,13 @@
 /**
- * Integrity counts from the editor (decision D47, m3-plan.md section 7).
- *
- * What is recorded: the number of characters typed and pasted (from
- * CodeMirror's input.type and input.paste transactions), each paste's
- * length, the window losing and regaining focus, and, in a contest that
- * asks for full screen (V3-25), each time the student leaves it. What is
- * not: keystroke timing, the text itself, or anything outside this page.
- *
- * Paste, blur, focus and full-screen exit events are queued and sent in batches of at most
- * 100 every 30 s and when a submission is made, with fetch keepalive (or
- * navigator.sendBeacon when fetch is unavailable), so a batch survives the
- * page closing. Sending never blocks or delays a submission, and a failed
- * batch is dropped rather than retried: these are signals for an organiser
- * to look closer, not evidence on their own. The character counts and the
- * number of focus losses and full-screen exits since the last submission
- * go with the next submit.
- *
- * The server takes at most one batch every 5 s per person (M4), so batches
- * are paced: a flush within 5 s of the last send waits for the gap, and a
- * queue longer than one batch goes out one batch per gap. Only the last
- * flush as the page closes sends at once, because there is no later.
+ * Integrity counts from the editor: characters typed and pasted, each
+ * paste's length, focus lost and regained, and full-screen exits when the
+ * contest asks for full screen; never keystroke timing, the text itself,
+ * or anything outside this page. Events go out in paced batches with fetch
+ * keepalive, so a batch survives the page closing, and sending never
+ * blocks a submission; a failed batch is dropped rather than retried,
+ * because these are signals for an organiser to look closer, not evidence
+ * on their own. The counts since the last submission go with the next
+ * submit.
  */
 
 export type IntegrityKind = 'paste' | 'blur' | 'focus' | 'fullscreen_exit';

@@ -1,12 +1,12 @@
 <!--
-  Dialog: the one native modal dialog every dialog and panel is built on
-  (F5, B3), styled by controls.css (.dialog, .dialog-small, .dialog-sheet).
+  Dialog: the one native modal dialog every dialog and panel is built on,
+ styled by controls.css (.dialog, .dialog-small, .dialog-sheet).
   It opens with showModal() when `open` turns true and closes when it turns
   false; Escape and the close button call `onclose` (Escape does nothing
   while `busy`). Focus starts on the heading, or on what `initialFocus`
   returns, and goes back to the control that opened it when it closes;
   when that control is gone (a menu that closed with it), focus goes to the
-  page heading, never to the body (P8).
+  page heading, never to the body.
   With `title` it draws the standard head, the title as an h2 and a Close
   button named `closeLabel`; without one the caller draws its own heading
   with the id `labelledby`. `kind` is 'normal', 'small' (a confirm) or

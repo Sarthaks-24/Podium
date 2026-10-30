@@ -1,6 +1,5 @@
 /**
- * Contests as the web app sees them (cache/v1/m4-plan.md sections 2 and 4,
- * design.md sections 5.2, 5.3 and 8).
+ * Contests as the web app sees them.
  *
  * The shapes mirror the API: ContestSummary from GET /api/contests, Contest
  * from GET /api/contests/{slug}, and the organiser shapes from
@@ -49,7 +48,7 @@ export interface ContestList {
 }
 
 /**
- * The exam options (V3-25): measures an organiser turns on for an
+ * The exam options: measures an organiser turns on for an
  * examination, all off by default. They sit under Advanced in contest
  * setup, come to the student with the rules, and the workspace acts on
  * them; missing reads as off.
@@ -143,19 +142,6 @@ export interface Clarification {
   asker_name?: string;
 }
 
-/**
- * The rail's score cell in the wide layout (S1-09): the score where one
- * exists and nothing else; "not tried" without a submission, "tried"
- * while one waits for its score.
- */
-export function railStatus(p: Pick<ContestProblem, 'my_score' | 'max_score' | 'my_submission_count'>): { score: string; word: string } {
-  const count = p.my_submission_count ?? 0;
-  if (p.my_score === null) {
-    return { score: '', word: count > 0 ? 'tried' : 'not tried' };
-  }
-  return { score: `${p.my_score}/${p.max_score}`, word: '' };
-}
-
 /** Who asked, for the organiser inbox. */
 export function askerName(c: Pick<Clarification, 'asked_by' | 'asker_name'>): string {
   if (c.asked_by && typeof c.asked_by === 'object') return c.asked_by.name || c.asked_by.email || 'A student';
@@ -180,14 +166,14 @@ export interface Contest extends ContestSummary {
   accepted?: boolean;
   /** True when the server saw this student in a second session at once. */
   second_session?: boolean;
-  /** True for an organiser, who sees this page as "Student view" (pilot P10). */
+  /** True for an organiser, who sees this page as "Student view". */
   organiser?: boolean;
 }
 
 /** A message shown in the banner above the workspace. */
 export interface BannerItem {
   key: string;
-  /** "public" is an answer an organiser gave everyone (B1). */
+  /** "public" is an answer an organiser gave everyone. */
   kind: 'announcement' | 'answer' | 'public';
   body: string;
   question?: string;
@@ -196,12 +182,12 @@ export interface BannerItem {
 
 /**
  * The banner queue: announcements, answered own questions and answers an
- * organiser made public for everyone (B1, audit 01-2) newer than the
+ * organiser made public for everyone, newer than the
  * student's last read time and not dismissed, newest first. Keys are
  * "a<id>" and "c<id>"; a public answer to the student's own question shows
  * once, as their own. `lastRead` is a server time kept per contest on the
  * device (messagesReadAt), not the time the page opened: a message posted
- * while the student was elsewhere still shows (audit 2026-10-20 S1).
+ * while the student was elsewhere still shows.
  */
 export function bannerItems(
   c: Pick<Contest, 'announcements' | 'my_clarifications'> & { public_clarifications?: Clarification[] },
@@ -277,7 +263,7 @@ export function isForContest(data: unknown, c: { id?: number; slug: string }): b
   return tag === c.slug || (c.id !== undefined && tag === c.id) || String(tag) === String(c.id ?? c.slug);
 }
 
-/** The state word (design.md section 8). */
+/** The state word. */
 export function stateWord(state: ContestState): string {
   switch (state) {
     case 'upcoming':
@@ -294,7 +280,7 @@ export function stateWord(state: ContestState): string {
 }
 
 /**
- * The state word a student reads (decision D84): a frozen contest is still
+ * The state word a student reads: a frozen contest is still
  * running for them, so it reads 'Live' and the countdown line adds
  * "newest results hidden". Organiser screens keep stateWord.
  */
@@ -320,8 +306,8 @@ export function orderedContests(list: ContestList): ContestSummary[] {
  * upcoming, then past newest first) that the student can still enter or
  * took part in. A past or practice contest counts only when it has the student's score
  * (`my_score` is null until they accept the rules), so a contest they never
- * entered is not offered as "See your result" above their own (walk
- * 2026-10-21, D324). Null when every contest is a past one they missed.
+ * entered is not offered as "See your result" above their own.
+ * Null when every contest is a past one they missed.
  */
 export function pinnedContest<T extends Pick<ContestSummary, 'state' | 'my_score'>>(ordered: readonly T[]): T | null {
   const open = (c: T) => c.state === 'live' || c.state === 'frozen' || c.state === 'upcoming';
@@ -353,12 +339,6 @@ export function studentPhase(
   if (now < c.starts_at) return 'upcoming';
   if (now >= c.ends_at) return 'after';
   return 'ready';
-}
-
-/** The moment the board freezes, or null without a freeze. */
-export function freezeAt(c: Pick<ContestSummary, 'ends_at'> & { rules: Pick<ContestRules, 'freeze_minutes'> }): number | null {
-  if (c.rules.freeze_minutes <= 0) return null;
-  return c.ends_at - c.rules.freeze_minutes * 60_000;
 }
 
 function pad(n: number): string {
@@ -401,7 +381,7 @@ export function lengthText(c: Pick<ContestSummary, 'starts_at' | 'ends_at'>): st
 
 /**
  * The countdown line for a row of the contest list, or null for none.
- * `after` follows the time: ", newest results hidden" in the last minutes (D84).
+ * `after` follows the time: ", newest results hidden" in the last minutes.
  */
 export function listCountdown(c: ContestSummary, now: number): { lead: string; ms: number; after: string } | null {
   if (c.state === 'upcoming') return { lead: 'Starts in', ms: c.starts_at - now, after: '' };
@@ -415,8 +395,8 @@ export function listCountdown(c: ContestSummary, now: number): { lead: string; m
 
 /**
  * The line under the title before a student starts: a countdown before the
- * start, or, for a late arrival, that their time is already running (audit
- * 01-17). `ms` is the countdown in the line.
+ * start, or, for a late arrival, that their time is already running.
+ * `ms` is the countdown in the line.
  */
 export function startLine(c: Pick<Contest, 'starts_at' | 'ends_at'>, now: number): { kind: 'before' | 'late'; ms: number } {
   if (now < c.starts_at) return { kind: 'before', ms: c.starts_at - now };
@@ -452,14 +432,14 @@ export function allowedLanguages(ids: readonly string[] | undefined): { id: Lang
   return LANGUAGES.filter((l) => ids.includes(l.id));
 }
 
-/** The three sentences that teach the two buttons (v2 S3, audit 01-4). */
+/** The three sentences that teach the two buttons. */
 export const WORKSPACE_SENTENCES: readonly string[] = [
   'Run tries your code on the examples in the statement. It never counts.',
   'Submit grades your code on hidden tests, in parts called subtasks.',
   'A later, worse submission never lowers your score.',
 ];
 
-/** The line the workspace Rules dialog adds to the rules (D114, what D47 records). */
+/** The line the workspace Rules dialog adds to the rules: what the editor records. */
 export const RECORDED_SENTENCE = 'Podium records how many characters you paste and when you leave the page.';
 
 /** The rules shown before the start, and again in the workspace Rules dialog. */
@@ -500,7 +480,7 @@ export interface AdminContestSummary {
 }
 
 /**
- * The organiser list in display order (v2 N6): live and frozen contests
+ * The organiser list in display order: live and frozen contests
  * first by their end, so an extended contest never drops among the past
  * ones; then upcoming soonest first; then the rest newest first.
  */
@@ -528,7 +508,7 @@ export function problemCount(c: Pick<AdminContestSummary, 'problem_count' | 'pro
   return c.problem_count ?? c.problems?.length ?? 0;
 }
 
-/** A problem in the organiser's view; ready is false when it changed since it was added. The pin fields are C4 (v1.2.0). */
+/** A problem in the organiser's view; ready is false when it changed since it was added. The pin fields say which version of the problem it uses. */
 export interface AdminContestProblem extends Partial<Omit<ProblemPin, 'label' | 'problem_id'>> {
   label: string;
   problem_id: number;
@@ -539,8 +519,8 @@ export interface AdminContestProblem extends Partial<Omit<ProblemPin, 'label' | 
 
 /**
  * The settings form; also the body of POST and PUT /api/admin/contests.
- * The server derives the slug from the title when it makes the contest
- * (V3-15), so the form never sends one.
+ * The server derives the slug from the title when it makes the contest,
+ *so the form never sends one.
  */
 export interface ContestSettings extends ExamOptions {
   title: string;
@@ -574,7 +554,7 @@ export interface AdminContest extends ContestSettings {
   /** ends_at plus the contest-wide extension. */
   close_at?: number;
   default_honour_text?: string;
-  /** Queue health, the judge's last request for work and the unanswered count (C10, v1.3.0). */
+  /** Queue health, the judge's last request for work and the unanswered count. */
   queue?: QueueHealth;
   judge_last_claim_at?: number | null;
   unanswered?: number;
@@ -604,7 +584,7 @@ export interface FeedRow {
   note_count?: number;
   /** v1.4.0, reviewers only: the case opened from this submission. */
   case_id?: number | null;
-  /** The editor's counts since the student's previous submission (D47; full-screen exits V3-25). */
+  /** The editor's counts since the student's previous submission; full-screen exits only when full screen is on. */
   typed_chars?: number;
   pasted_chars?: number;
   focus_losses?: number;
@@ -676,8 +656,8 @@ function auditValue(field: string, v: unknown): string {
 /**
  * One sentence for an audit row, in the past tense. `names` maps user ids
  * to names, for rows that name a student only by id: the extension row is
- * to stop carrying the email and reason (P3 security review, D162's
- * amendment), so the feed must read without them.
+ * to stop carrying the email and reason, which only
+ * organisers may see, so the feed must read without them.
  */
 export function auditSummary(e: Pick<AuditEntry, 'action' | 'details'>, names?: ReadonlyMap<number, string>): string {
   const d = e.details ?? {};
@@ -747,14 +727,14 @@ export interface ProblemStats {
   max_score?: number;
 }
 
-/** GET /api/admin/contests/{id}/stats; `started` counts the students taking part (stage C2). */
+/** GET /api/admin/contests/{id}/stats; `started` counts the students taking part. */
 export interface ContestStats {
   problems: ProblemStats[];
   started?: number;
 }
 
 /**
- * A contest's state as organisers see it (audit 2026-10-20 O1, O8): a
+ * A contest's state as organisers see it: a
  * contest students cannot see yet is a draft, whatever its dates, and once
  * it has ended it reads as ended even while practice is open. The kind
  * picks the state word's colour (styles/controls.css .state-word).
@@ -773,10 +753,10 @@ export interface PublishCheck {
 }
 
 /**
- * What a contest needs before students can have it (F6.3, C5), from the
+ * What a contest needs before students can have it, from the
  * data the editor already holds: at least one problem and none changed
  * since it was added, a start still ahead (until it starts), and a
- * language. Who takes part is decided by the allowed domains (V3-15). The
+ * language. Who takes part is decided by the allowed domains. The
  * server checks again when it publishes.
  */
 export function publishChecks(
@@ -803,7 +783,7 @@ export function publishChecks(
   return out;
 }
 
-/** Queue health on the organiser contest response (C10, v1.3.0). */
+/** Queue health on the organiser contest response. */
 export interface QueueHealth {
   waiting: number;
   judging: number;
@@ -811,7 +791,7 @@ export interface QueueHealth {
   oldest_wait_s: number;
 }
 
-/** A judge asks for work every few seconds; a minute without that means none is working (C10). */
+/** A judge asks for work every few seconds; a minute without that means none is working. */
 export const JUDGE_SILENT_MS = 60_000;
 
 /** A wait the queue should not reach in a calm contest. */
@@ -826,8 +806,7 @@ export interface ConsoleSentence {
 }
 
 /**
- * The one sentence at the top of the console (stage C2, design/organiser.md
- * Live view): the contest's state (with the hidden results once the board
+ * The one sentence at the top of the console: the contest's state (with the hidden results once the board
  * stops updating for students), how many students started, the questions
  * waiting, and whether the judge is working, as "Live, 31 started, 2
  * questions waiting, judge fine." A judge silent for over a minute, or none
@@ -876,7 +855,7 @@ function hhmm(ms: number): string {
 }
 
 /**
- * A feed row's outcome as students word it (audit O3): "Accepted" for full
+ * A feed row's outcome as students word it: "Accepted" for full
  * marks, "Partial, 40 of 100" for some points, the verdict for none; the
  * tone colours the badge.
  */
@@ -972,13 +951,13 @@ export function fillTemplate(text: string, values: { label?: string; minutes?: n
 }
 
 /**
- * The freeze "End the contest now" sends with the new end (walk 2026-10-21).
+ * The freeze "End the contest now" sends with the new end.
  * The frozen moment is the close minus the freeze, so moving the end earlier
  * moves it into the past and hides results students already saw on the live
  * board. Before the freeze has begun the freeze is dropped (0): the board at
  * the end is the one everyone saw. Once the board is frozen, the freeze
  * shrinks so the frozen moment stays put, rounded up to whole minutes and
- * never below 1 (V3-18): the frozen moment moves at most 59 s earlier, never
+ * never below 1: the frozen moment moves at most 59 s earlier, never
  * later, so a held board is never released by ending early.
  */
 export function endNowFreeze(

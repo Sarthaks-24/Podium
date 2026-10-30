@@ -1,5 +1,5 @@
 <!--
-  Icon: one Lucide icon from lib/icons.ts (design.md section 9) drawn
+  Icon: one Lucide icon from lib/icons.ts drawn
   inline with a 1.5 stroke in the current text colour, --icon-size (20 px)
   on its own and the words' size inside a button. Icons sit beside words,
   never instead of them, so the SVG is hidden from assistive technology;
@@ -40,7 +40,7 @@
     height: var(--icon-size);
   }
 
-  /* Inside a button the icon follows the words, as before v2. */
+  /* Inside a button the icon follows the words. */
   :global(.btn) .icon {
     width: 1.125em;
     height: 1.125em;

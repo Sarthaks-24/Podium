@@ -1,5 +1,5 @@
 <!--
-  PageHeader: the top of every screen (v2 F2, audit 05-1 and 05-2). From the
+  PageHeader: the top of every screen. From the
   top: a breadcrumb trail on organiser screens or one back link on student
   screens, then the title row (the page's only h1, which takes focus after
   a navigation, its state word, and the actions at the end of the row),

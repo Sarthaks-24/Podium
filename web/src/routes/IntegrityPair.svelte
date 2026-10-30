@@ -252,7 +252,7 @@
     </div>
   </section>
 
-  <!-- After the code and the timelines it asks you to read first (C7). -->
+  <!-- After the code and the timelines it asks you to read first. -->
   <section class="section" aria-labelledby="decide-title">
     <h2 id="decide-title">Decisions</h2>
     <ul class="decide">
