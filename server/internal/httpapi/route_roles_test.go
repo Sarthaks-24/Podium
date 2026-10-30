@@ -31,6 +31,7 @@ var routeRoles = map[string]string{
 	"GET /api/auth/google/callback":                                "public",
 	"POST /api/auth/logout":                                        "public",
 	"GET /api/me":                                                  "student",
+	"GET /api/me/profile":                                          "student",
 	"PUT /api/me/preferences":                                      "student",
 	"GET /api/submissions/{id}":                                    "student",
 	"GET /api/runs/{id}":                                           "student",

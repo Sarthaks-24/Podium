@@ -105,7 +105,7 @@ func handlerFor(dist fs.FS) http.Handler {
 // appPaths and appPrefixes are the paths the web app's router has a screen
 // for (web/src/lib/routing.ts); TestRoutesMatchRouter keeps them in step.
 var (
-	appPaths    = []string{"/", "/signin", "/privacy"}
+	appPaths    = []string{"/", "/signin", "/privacy", "/me"}
 	appPrefixes = []string{"/contests/", "/admin/"}
 
 	retiredPaths = []string{"progress", "notices", "contact", "integrity"}

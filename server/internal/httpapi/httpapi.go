@@ -108,6 +108,7 @@ func New(d Deps) http.Handler {
 	mux.HandleFunc("POST /api/auth/logout", d.preAuth(d.logout))
 	people := &auth.Handlers{Auth: d.Auth, Log: d.Log, Now: d.now}
 	mux.HandleFunc("GET /api/me", d.requireRole(auth.Student, people.Me))
+	mux.HandleFunc("GET /api/me/profile", d.requireRole(auth.Student, people.MyProfile))
 	mux.HandleFunc("PUT /api/me/preferences", d.requireRole(auth.Student, people.SetPreferences))
 
 	owner := func(h http.HandlerFunc) http.HandlerFunc { return d.requireRole(auth.Owner, h) }

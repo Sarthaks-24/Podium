@@ -517,14 +517,14 @@ test('keyboard only: the account menu opens, its items work, and Escape returns 
 
   // Tab walks the items in order; each shows its focus.
   const items: string[] = [];
-  for (let i = 0; i < 4; i++) {
+  for (let i = 0; i < 5; i++) {
     await page.keyboard.press('Tab');
     const info = await focusInfo(page);
     expect(info?.visible, `no visible focus on ${info?.name}`).toBe(true);
     items.push(info?.name ?? '');
   }
   // Organisers get "Forget key" for the AI assistant (V3-15).
-  expect(items).toEqual(['Theme and colours', 'Help', 'Forget key', 'Sign out']);
+  expect(items).toEqual(['Your profile', 'Theme and colours', 'Help', 'Forget key', 'Sign out']);
 
   // Theme and colours opens the dialog; closing it lands back on the item.
   for (let i = 0; i < 3; i++) await page.keyboard.press('Shift+Tab');
@@ -547,7 +547,7 @@ test('keyboard only: the account menu opens, its items work, and Escape returns 
 
   // Tabbing out of the open menu closes it.
   await page.keyboard.press('Enter');
-  for (let i = 0; i < 5; i++) await page.keyboard.press('Tab');
+  for (let i = 0; i < 6; i++) await page.keyboard.press('Tab');
   await expect(page.locator('#account-panel')).toBeHidden();
 });
 

@@ -83,6 +83,16 @@ func (d *Handlers) Me(w http.ResponseWriter, r *http.Request) {
 	httpx.WriteJSON(w, http.StatusOK, UserFrom(r.Context()))
 }
 
+// MyProfile answers GET /api/me/profile: the signed-in person's own dates (v4 M1).
+func (d *Handlers) MyProfile(w http.ResponseWriter, r *http.Request) {
+	p, err := d.Auth.Profile(r.Context(), UserFrom(r.Context()).ID)
+	if err != nil {
+		d.internalError(w, r, err)
+		return
+	}
+	httpx.WriteJSON(w, http.StatusOK, p)
+}
+
 func (d *Handlers) SetPreferences(w http.ResponseWriter, r *http.Request) {
 	var p Preferences
 	if !httpx.DecodeJSON(w, r, &p) {

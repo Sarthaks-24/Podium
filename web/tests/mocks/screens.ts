@@ -87,6 +87,9 @@ export async function mockApi(page: Page, who: Who) {
         state.who = 'signed-out';
         return json(route, 204);
       }
+      if (path === '/api/me/profile' && method === 'GET') {
+        return me ? json(route, 200, { member_since: 1789000000000, last_sign_in: 1792180000000 }) : apiError(route, 401, 'signed_out', 'Sign in to continue.');
+      }
       if (path === '/api/me' && method === 'GET') {
         return me ? json(route, 200, me) : apiError(route, 401, 'signed_out', 'Sign in to continue.');
       }
@@ -334,6 +337,13 @@ export const SCREENS: Screen[] = [
     who: 'signed-out',
     title: 'Privacy · podium',
     ready: (page) => expect(page.getByText('The privacy notice for podium is being written.')).toBeVisible(),
+  },
+  {
+    name: 'me',
+    path: '/me',
+    who: 'student',
+    title: 'Your profile · podium',
+    ready: (page) => expect(page.getByText('Last sign-in')).toBeVisible(),
   },
   {
     name: 'not-found',

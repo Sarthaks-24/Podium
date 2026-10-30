@@ -32,6 +32,7 @@ export type RouteName =
   | 'contest-integrity'
   | 'integrity-pair'
   | 'privacy'
+  | 'me'
   | 'not-found';
 
 /** The parts of the main navigation; the link of a screen's own part is marked current. */
@@ -86,6 +87,7 @@ export const ROUTES: readonly RouteDef[] = [
     role: 'organiser',
     section: 'contests',
   },
+  { pattern: '/me', name: 'me', auth: true, title: 'Your profile' },
   { pattern: '/privacy', name: 'privacy', auth: false, title: 'Privacy' },
 ];
 

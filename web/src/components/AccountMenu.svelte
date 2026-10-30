@@ -1,6 +1,6 @@
 <!--
   AccountMenu: the one account control in the header. It says who is signed in ("Signed in as {email}" and the role
-  word), then "Theme and
+  word), then "Your profile" (the /me page, v4 M1), "Theme and
   colours" and "Help" (dialogs the shell owns, opened
   through lib/shell.svelte.ts; the shortcuts item is left out on
   touch-only screens), for organisers "Forget key" (DELETE
@@ -78,6 +78,7 @@
     <span class="role">{roleLabel(user.role)}</span>
   </p>
   <ul class="items">
+    <li><a class="item" href="/me" onclick={() => (open = false)}>Your profile</a></li>
     <li><button type="button" class="item" onclick={() => openDialog('theme')}>Theme and colours</button></li>
     <li class="keys"><button type="button" class="item" aria-keyshortcuts="?" onclick={() => openDialog('help')}>Help</button></li>
     {#if organiser}<li><button type="button" class="item" onclick={forgetKey}>Forget key</button></li>{/if}
@@ -209,6 +210,10 @@
     font: inherit;
     font-weight: 500;
     text-align: start;
+  }
+
+  a.item {
+    text-decoration: none;
   }
 
   .item:hover {

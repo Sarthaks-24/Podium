@@ -4,12 +4,14 @@
   focus". A disclosure, not a menu: the panel holds form controls. Escape
   closes it and returns focus to the button, as do a click outside and
   tabbing out (the same behaviour as AccountMenu). Reset is not here; it
-  sits beside the language in the toolbar. Props: `fontSize`, `sizes` (the
+  sits beside the language in the toolbar. The fields are EditorSettingsFields,
+  shared with the profile page. Props: `fontSize`, `sizes` (the
   choices, in px), `tabSize`, `wrap`, `tabMovesFocus`, and `onchange`,
   called with the changed setting.
 -->
 <script lang="ts">
   import Icon from './Icon.svelte';
+  import EditorSettingsFields from './EditorSettingsFields.svelte';
   import { dismissable } from '../lib/dismissable';
 
   interface Settings {
@@ -42,28 +44,7 @@
     Settings<Icon name="chevron-down" />
   </button>
   <div id="ws-editor-settings" class="panel" hidden={!open}>
-    <div class="field">
-      <label for="ws-font">Font size</label>
-      <select id="ws-font" class="select" value={fontSize} onchange={(e) => onchange({ fontSize: Number(e.currentTarget.value) })}>
-        {#each sizes as size (size)}<option value={size}>{size} px</option>{/each}
-      </select>
-    </div>
-    <div class="field">
-      <label for="ws-tab-size">Tab size</label>
-      <select id="ws-tab-size" class="select" value={tabSize} onchange={(e) => onchange({ tabSize: e.currentTarget.value === '2' ? 2 : 4 })}>
-        <option value={2}>2 spaces</option>
-        <option value={4}>4 spaces</option>
-      </select>
-    </div>
-    <label class="check">
-      <input type="checkbox" checked={wrap} onchange={(e) => onchange({ wrap: e.currentTarget.checked })} />
-      Word wrap
-    </label>
-    <label class="check">
-      <input type="checkbox" checked={tabMovesFocus} onchange={(e) => onchange({ tabMovesFocus: e.currentTarget.checked })} />
-      Tab moves focus
-    </label>
-    <p class="field-help">With it on, Tab leaves the editor instead of indenting. Esc then Tab always leaves it.</p>
+    <EditorSettingsFields {fontSize} {sizes} {tabSize} {wrap} {tabMovesFocus} idPrefix="ws" {onchange} />
   </div>
 </div>
 
@@ -89,20 +70,5 @@
 
   .panel[hidden] {
     display: none;
-  }
-
-  .check {
-    display: inline-flex;
-    align-items: center;
-    gap: var(--space-2);
-    min-height: var(--control-h);
-    font-size: var(--fs-0);
-    cursor: pointer;
-  }
-
-  .check input {
-    width: var(--space-4);
-    height: var(--space-4);
-    margin: 0;
   }
 </style>

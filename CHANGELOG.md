@@ -4,6 +4,10 @@ Dated entries per release. Unreleased work is listed at the top.
 
 ## Unreleased
 
+### v4 stage M: the profile (2026-10-31)
+
+- Your profile (`/me`, from the account menu) shows your Google picture, or your initials while it loads or when it cannot, with your name, email, role, when you joined and when you last signed in (`GET /api/me/profile`), then your theme and colours and your code editor settings: the same controls as the account menu's dialog and the editor's Settings. Only you see it. The picture is the first image in Podium and is fetched without a referrer.
+
 ### v4 stage U: the UX patterns (2026-10-31)
 
 - A screen that is slow to load shows still blocks in its shape after the same 300 ms wait: rows on Your contests, the contests list, the problem bank and the standings, a statement in the workspace. The loading sentence is still read out; nothing shimmers or moves.

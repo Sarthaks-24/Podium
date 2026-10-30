@@ -37,6 +37,7 @@ func TestHandler(t *testing.T) {
 		{"GET", "/robots.txt", 200, "public, max-age=3600"},
 		{"GET", "/signin", 200, "no-cache"},
 		{"GET", "/privacy", 200, "no-cache"},
+		{"GET", "/me", 200, "no-cache"},
 		{"GET", "/admin/people", 200, "no-cache"},
 		{"GET", "/nope", 404, "no-cache"},
 		{"GET", "/contests", 404, "no-cache"},

@@ -189,6 +189,10 @@ Ends the current session on the server (the row is deleted, so a copied cookie i
 
 `200 {"id":1,"email":"a@college.edu","name":"Asha Rao","avatar_url":"https://...","role":"student","theme":"","verdicts":"standard"}`. `theme` is a display theme id, or `""` to follow the system; `verdicts` is `standard` or `signal` (colour-blind safe verdict colours).
 
+### `GET /api/me/profile` (student)
+
+The signed-in person's own dates for the `/me` page (v4): `200 {"member_since":1789000000000,"last_sign_in":1792180000000}`, Unix milliseconds; `last_sign_in` is `0` for an account that never signed in. Nobody can ask for anyone else's.
+
 ### `PUT /api/me/preferences` (student)
 
 Saves the display preferences, so they follow the account to another machine. Request: `{"theme":"dark","verdicts":"signal"}`, both required. `theme` is `""` or 1 to 32 characters of `a-z`, `0-9` and `-`; the server checks only the shape, and the web app treats an id it does not know as `""`. Response `200`: the saved preferences. Errors: `400 bad_request` for a malformed theme or an unknown verdict set.
