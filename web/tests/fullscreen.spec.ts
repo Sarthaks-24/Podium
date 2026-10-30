@@ -15,7 +15,7 @@ async function fakeFullscreen(page: Page) {
     Object.defineProperty(document, 'fullscreenElement', { get: () => element });
     Element.prototype.requestFullscreen = function () {
       w.__fs.push('request');
-      element = this;
+      element = document.documentElement;
       document.dispatchEvent(new Event('fullscreenchange'));
       return Promise.resolve();
     };
