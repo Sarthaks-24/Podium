@@ -37,6 +37,7 @@ var routeRoles = map[string]string{
 	"GET /api/runs/{id}":                                           "student",
 	"GET /api/events":                                              "student",
 	"GET /api/contests":                                            "student",
+	"GET /api/me/contests":                                         "student",
 	"GET /api/contests/{slug}":                                     "student",
 	"POST /api/contests/{slug}/start":                              "student",
 	"GET /api/contests/{slug}/problems/{label}":                    "student",

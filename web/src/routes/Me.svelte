@@ -3,7 +3,9 @@
   role and for nobody else. Top: the Google picture (the first image in
   the product, never sent a referrer) with the person's initials while it
   loads or when it fails, the name, then email, role, member since and
-  last sign-in (GET /api/me/profile). Below: the theme and colours
+  last sign-in (GET /api/me/profile). Then Your contests (v4 M2, GET
+  /api/me/contests): each one entered, with its date, score and place (none
+  while the contest shows students a frozen board). Below: the theme and colours
   (ThemePicker, the same control as the account menu's dialog) and the
   code editor's preferences (EditorSettingsFields, the same fields as the
   workspace's Settings), which are kept on this device. Takes no props.
@@ -16,7 +18,10 @@
   import ThemePicker from '../components/ThemePicker.svelte';
   import { getJSON } from '../lib/api';
   import { FONT_SIZES, draftStorage, readEditorPrefs, writeEditorPrefs, type EditorPrefs } from '../lib/drafts';
-  import { formatDateTime, roleLabel } from '../lib/format';
+  import MonoDigits from '../components/MonoDigits.svelte';
+  import { studentStateWord, type ContestState } from '../lib/contests';
+  import { formatDateTime, roleLabel, scoreParts } from '../lib/format';
+  import { ordinal } from '../lib/problems';
   import { setTitle } from '../lib/head';
   import { loader } from '../lib/loader.svelte';
   import { routeTitle } from '../lib/routing';
@@ -53,10 +58,31 @@
     writeEditorPrefs(storage, editor, user.id);
   }
 
+  // Your contests (v4 M2): the place is absent while the contest shows students a frozen board.
+  interface MyContest {
+    slug: string;
+    title: string;
+    starts_at: number;
+    state: ContestState;
+    score: number;
+    max_score: number;
+    place?: number;
+    of?: number;
+  }
+  let entered = $state<MyContest[]>([]);
+  const contestsPage = loader(
+    () => getJSON<{ contests: MyContest[] }>('/api/me/contests'),
+    (d) => (entered = d.contests ?? []),
+  );
+
   onMount(() => {
     setTitle(routeTitle('me'));
     void page.load();
-    return () => page.stop();
+    void contestsPage.load();
+    return () => {
+      page.stop();
+      contestsPage.stop();
+    };
   });
 </script>
 
@@ -98,6 +124,31 @@
       <PageState kind="error" message="Your member and sign-in dates could not load." onretry={() => void page.load()} />
     {/if}
   </div>
+</section>
+
+<section class="prefs" aria-labelledby="contests-heading">
+  <h2 id="contests-heading">Your contests</h2>
+  {#if contestsPage.state === 'loading'}
+    <PageState kind="loading" message="Loading your contests" shape="rows" />
+  {:else if contestsPage.state !== 'ready'}
+    <PageState kind="error" message="Your contests could not load." onretry={() => void contestsPage.load()} />
+  {:else if entered.length === 0}
+    <p class="muted">No contests yet. A contest you start shows here with your score and place.</p>
+  {:else}
+    <ul class="entered">
+      {#each entered as c (c.slug)}
+        <li>
+          <a class="title" href="/contests/{encodeURIComponent(c.slug)}">{c.title}</a>
+          <span class="meta">
+            <span>{formatDateTime(c.starts_at)}</span>
+            {#if c.state === 'live' || c.state === 'frozen' || c.state === 'upcoming'}<span>{studentStateWord(c.state)}</span>{/if}
+            <span>Score <MonoDigits parts={scoreParts(c.score, c.max_score)} /></span>
+            <span>{c.place && c.of ? `${ordinal(c.place)} of ${c.of}` : 'Place not shown yet'}</span>
+          </span>
+        </li>
+      {/each}
+    </ul>
+  {/if}
 </section>
 
 <section class="prefs" aria-labelledby="theme-heading">
@@ -199,6 +250,34 @@
     display: grid;
     gap: var(--space-3);
     margin-top: var(--space-4);
+  }
+
+  .entered {
+    margin-top: var(--space-3);
+    padding: 0;
+    list-style: none;
+    border-top: var(--rule) solid var(--line);
+  }
+
+  .entered li {
+    display: grid;
+    gap: var(--space-1);
+    padding-block: var(--space-3);
+    border-bottom: var(--rule) solid var(--line);
+  }
+
+  .entered .title {
+    font-weight: 600;
+    overflow-wrap: anywhere;
+  }
+
+  .meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-1) var(--space-4);
+    color: var(--ink-muted);
+    font-size: var(--fs-0);
+    font-variant-numeric: tabular-nums;
   }
 
   /* Short choices: a select as wide as the column reads as a text field. */

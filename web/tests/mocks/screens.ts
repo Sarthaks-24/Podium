@@ -87,6 +87,17 @@ export async function mockApi(page: Page, who: Who) {
         state.who = 'signed-out';
         return json(route, 204);
       }
+      if (path === '/api/me/contests' && method === 'GET') {
+        return me
+          ? json(route, 200, {
+              contests: [
+                { slug: 'week-6', title: 'Week 6 contest', starts_at: 1792000000000, state: 'ended', score: 240, max_score: 300, place: 3, of: 41 },
+                { slug: 'week-5', title: 'Week 5 contest', starts_at: 1791400000000, state: 'ended', score: 100, max_score: 300 },
+              ],
+              server_now: Date.now(),
+            })
+          : apiError(route, 401, 'signed_out', 'Sign in to continue.');
+      }
       if (path === '/api/me/profile' && method === 'GET') {
         return me ? json(route, 200, { member_since: 1789000000000, last_sign_in: 1792180000000 }) : apiError(route, 401, 'signed_out', 'Sign in to continue.');
       }

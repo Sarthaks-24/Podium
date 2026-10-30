@@ -33,6 +33,25 @@ test('the account menu leads to Your profile, which shows who you are and your d
   await expect(page.locator('.avatar')).toHaveText('AR');
 });
 
+test('Your contests lists each contest entered, with score and place, and says when a place is not out', async ({ page }) => {
+  await screens.mockApi(page, 'student');
+  await page.goto('/me');
+  const list = page.getByRole('region', { name: 'Your contests' });
+  const rows = list.getByRole('listitem');
+  await expect(rows).toHaveCount(2);
+  await expect(rows.nth(0)).toContainText('Week 6 contest');
+  await expect(rows.nth(0)).toContainText('3rd of 41');
+  await expect(rows.nth(0).getByRole('link', { name: 'Week 6 contest' })).toHaveAttribute('href', '/contests/week-6');
+  await expect(rows.nth(1)).toContainText('Place not shown yet');
+});
+
+test('with no contests entered, the list says what will show there', async ({ page }) => {
+  await screens.mockApi(page, 'student');
+  await page.route('**/api/me/contests', (route) => route.fulfill({ json: { contests: [], server_now: Date.now() } }));
+  await page.goto('/me');
+  await expect(page.getByRole('region', { name: 'Your contests' })).toContainText('No contests yet.');
+});
+
 test('the picture loads with no referrer, and a broken one leaves the initials', async ({ page }) => {
   await screens.mockApi(page, 'student');
   await withPicture(page, true);

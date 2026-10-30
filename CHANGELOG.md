@@ -7,6 +7,7 @@ Dated entries per release. Unreleased work is listed at the top.
 ### v4 stage M: the profile (2026-10-31)
 
 - Your profile (`/me`, from the account menu) shows your Google picture, or your initials while it loads or when it cannot, with your name, email, role, when you joined and when you last signed in (`GET /api/me/profile`), then your theme and colours and your code editor settings: the same controls as the account menu's dialog and the editor's Settings. Only you see it. The picture is the first image in Podium and is fetched without a referrer.
+- Your profile lists the contests you entered, newest first, each with its date, your score and your place (`GET /api/me/contests`). The place shows only when the standings you can see are final for it: during a freeze, and while organisers hold the reveal, it reads "Place not shown yet".
 
 ### v4 stage U: the UX patterns (2026-10-31)
 

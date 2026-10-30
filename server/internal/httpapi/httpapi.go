@@ -210,6 +210,7 @@ func (d Deps) contestRoutes(mux *http.ServeMux, console *contests.Handlers) {
 	signedIn := func(h http.HandlerFunc) http.HandlerFunc { return d.requireRole(auth.Student, h) }
 	organiser := func(h http.HandlerFunc) http.HandlerFunc { return d.requireRole(auth.Organiser, h) }
 	mux.HandleFunc("GET /api/contests", signedIn(d.limitReads(console.ListContests)))
+	mux.HandleFunc("GET /api/me/contests", signedIn(d.limitReads(console.MyContests)))
 	mux.HandleFunc("GET /api/contests/{slug}", signedIn(d.limitReads(console.GetContest)))
 	mux.HandleFunc("POST /api/contests/{slug}/start", signedIn(console.StartContest))
 	mux.HandleFunc("GET /api/contests/{slug}/problems/{label}", signedIn(d.limitReads(console.GetContestWorkspace)))
