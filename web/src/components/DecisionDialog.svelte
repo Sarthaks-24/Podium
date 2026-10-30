@@ -11,7 +11,7 @@
 <script lang="ts">
   import Dialog from './Dialog.svelte';
   import { focusFirstInvalid } from '../lib/focus';
-  import { ApiError, errorText, sendJSON } from '../lib/api';
+  import { errorText, sendJSON } from '../lib/api';
   import { DECISIONS, MIN_REASON, noteCounter, noteLength, type Case, type DecisionKind } from '../lib/review';
 
   interface Props {
@@ -59,7 +59,7 @@
       );
       ondecided(out.case);
     } catch (e) {
-      error = e instanceof ApiError ? e.message : errorText(e);
+      error = errorText(e);
     } finally {
       busy = false;
     }

@@ -192,8 +192,8 @@
 
   async function finishSignOut() {
     signOutAsk = null;
-    const err = await signOut();
-    if (err) showToast(err.message, 'error');
+    // The page has signed out already; only the server's copy may still be open.
+    if (await signOut()) showToast('Signed out on this device, but the server did not confirm it. To end the session everywhere, sign in and sign out again once you are online.', 'error');
   }
 </script>
 

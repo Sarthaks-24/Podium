@@ -88,8 +88,11 @@ export class Judging {
   /** The submission the Submissions tab opens: the one just made, else the newest. */
   current = $derived(this.watchId !== null ? (this.state.submissions.find((s) => s.id === this.watchId) ?? this.latest) : this.latest);
   waitLeft = $derived(Math.max(0, Math.ceil((this.waitUntil - this.nowTick) / 1000)));
-  /** A known wait counts down inside the Submit button; only a refusal without a known wait takes the status line. */
-  paceText = $derived(this.notice?.kind === 'pace' && this.waitLeft === 0 && this.waitUntil === 0 ? this.notice.text : '');
+  /**
+   * A known wait counts down inside the Submit button; only a refusal without a known wait takes the status line.
+   * A refused Run always does: the Submit countdown says nothing about Run.
+   */
+  paceText = $derived(this.notice?.kind === 'pace' && (this.notice.action === 'run' || (this.waitLeft === 0 && this.waitUntil === 0)) ? this.notice.text : '');
   submitLabel = $derived(this.submitBusy ? 'Submitting' : this.waitLeft > 0 ? `Submit in ${this.waitLeft} s` : 'Submit');
   /** The latest run was on the student's own input. */
   customRun = $derived(this.state.run !== null && this.state.run.results.some((r) => r.kind === 'custom'));

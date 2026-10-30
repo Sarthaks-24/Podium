@@ -12,7 +12,7 @@
 -->
 <script lang="ts">
   import { polite } from '../lib/announce.svelte';
-  import { ApiError, sendJSON } from '../lib/api';
+  import { errorText, sendJSON } from '../lib/api';
   import { choosePreferences, preferences } from '../lib/preferences.svelte';
   import { session } from '../lib/session.svelte';
   import { GROUPS, choiceLabel, themesIn, toAccount, type Preferences } from '../lib/theme';
@@ -30,8 +30,7 @@
     try {
       await sendJSON('PUT', '/api/me/preferences', toAccount(next));
     } catch (err) {
-      const reason = err instanceof ApiError ? err.message : String(err);
-      showToast(`Changed on this device only. Saving it to your account failed: ${reason}`, 'error');
+      showToast(`Changed on this device only. It was not saved to your account: ${errorText(err)} Pick it again to retry.`, 'error');
     }
   }
 

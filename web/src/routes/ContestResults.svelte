@@ -151,15 +151,22 @@
     revealError = '';
     try {
       await sendJSON<unknown>('POST', `${base}/reveal`);
+    } catch (e) {
       revealOpen = false;
-      showToast('Revealed the full board');
+      revealBusy = false;
+      if (!isSignedOut(e) && page.live) revealError = errorText(e);
+      return;
+    }
+    revealOpen = false;
+    showToast('Revealed the full board');
+    try {
       const c = await getJSON<AdminContest>(base);
       if (!page.live) return;
       contest = c;
       setVariant('full');
     } catch (e) {
-      revealOpen = false;
-      if (!isSignedOut(e) && page.live) revealError = errorText(e);
+      // The reveal worked; only this page's copy is stale.
+      if (!isSignedOut(e) && page.live) revealError = 'Revealed the full board, but this page could not load it. Reload the page to see it.';
     } finally {
       revealBusy = false;
     }

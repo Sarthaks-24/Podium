@@ -188,8 +188,9 @@
       return true;
     } catch (err) {
       if (handleAuth(err)) return false;
-      const why = err instanceof ApiError && err.problems.length > 0 ? err.problems[0] : errorText(err);
-      showToast(`${name} cannot be validated yet: ${why} Open it to fix that.`, 'error');
+      // Opening the problem fixes what is wrong with it, not a network fault.
+      if (err instanceof ApiError && err.problems.length > 0) showToast(`${name} cannot be validated yet: ${err.problems[0]} Open it to fix that.`, 'error');
+      else showToast(`Could not start validating ${name}. ${errorText(err)}`, 'error');
       return false;
     }
   }
