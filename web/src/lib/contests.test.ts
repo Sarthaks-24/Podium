@@ -10,7 +10,6 @@ import {
   formatMinutes,
   formatSpan,
   fromLocalInput,
-  hasAccepted,
   isForContest,
   labelFor,
   lengthText,
@@ -67,6 +66,8 @@ function contest(over: Partial<Contest> = {}): Contest {
     public_clarifications: [],
     editorial_md: null,
     server_now: T,
+    accepted: false,
+    organiser: false,
     ...over,
   };
 }
@@ -123,7 +124,7 @@ describe('countdowns', () => {
 });
 
 describe('the banner queue', () => {
-  const q = (id: number, answered_at: number | null, pub: boolean, answer: string | null = 'Yes.') => ({
+  const q = (id: number, answered_at: number | null, pub: boolean, answer = 'Yes.') => ({
     id, problem_label: 'B', question: 'Zero length?', answer, public: pub, created_at: 1, answered_at,
   });
   it('adds answers given to everyone, newest first, and skips own and old ones', () => {
@@ -131,7 +132,7 @@ describe('the banner queue', () => {
       {
         announcements: [{ id: 3, body_md: 'Problem A fixed.', created_at: 500 }],
         my_clarifications: [q(10, 600, true)],
-        public_clarifications: [q(10, 600, true), q(11, 700, true), q(12, 50, true), q(13, null, true, null)],
+        public_clarifications: [q(10, 600, true), q(11, 700, true), q(12, 50, true), q(13, null, true, '')],
       },
       new Set(),
       100,
@@ -237,14 +238,6 @@ describe('student phase and window maths', () => {
   it('keeps a fixed window closed until the honour code is accepted', () => {
     const shown = contest({ my_window: { started_at: T, ends_at: T + 120 * MIN }, accepted: false });
     expect(studentPhase(shown, T + MIN)).toBe('ready');
-  });
-
-  it('infers acceptance from problems when the server sends no flag', () => {
-    const base = { my_window: { started_at: T, ends_at: T + MIN }, problems: [{ label: 'A', title: 'x', my_score: null, max_score: 100 }] };
-    expect(hasAccepted(base)).toBe(true);
-    expect(hasAccepted({ ...base, problems: null })).toBe(false);
-    expect(hasAccepted({ ...base, honour_accepted_at: null })).toBe(false);
-    expect(hasAccepted({ ...base, accepted: false })).toBe(false);
   });
 
   it('writes the rules as sentences', () => {

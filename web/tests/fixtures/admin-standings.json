@@ -1,0 +1,495 @@
+{
+  "final": false,
+  "frozen_at": null,
+  "judging_remaining": 0,
+  "labels": [
+    "A",
+    "B"
+  ],
+  "me": 1,
+  "rows": [
+    {
+      "cells": [
+        {
+          "label": "A",
+          "max": 100,
+          "pending": 0,
+          "score": 100,
+          "tried": true
+        },
+        {
+          "label": "B",
+          "max": 100,
+          "pending": 0,
+          "score": 100,
+          "tried": true
+        }
+      ],
+      "email": "s01@college.edu",
+      "last_improvement_s": 1200,
+      "name": "Student 01",
+      "rank": 1,
+      "total": 200,
+      "user_id": 2
+    },
+    {
+      "cells": [
+        {
+          "label": "A",
+          "max": 100,
+          "pending": 0,
+          "score": 100,
+          "tried": true
+        },
+        {
+          "label": "B",
+          "max": 100,
+          "pending": 0,
+          "score": 100,
+          "tried": true
+        }
+      ],
+      "email": "s03@college.edu",
+      "last_improvement_s": 1200,
+      "name": "Student 03",
+      "rank": 1,
+      "total": 200,
+      "user_id": 4
+    },
+    {
+      "cells": [
+        {
+          "label": "A",
+          "max": 100,
+          "pending": 0,
+          "score": 100,
+          "tried": true
+        },
+        {
+          "label": "B",
+          "max": 100,
+          "pending": 0,
+          "score": 100,
+          "tried": true
+        }
+      ],
+      "email": "s02@college.edu",
+      "last_improvement_s": 1500,
+      "name": "Student 02",
+      "rank": 3,
+      "total": 200,
+      "user_id": 3
+    },
+    {
+      "cells": [
+        {
+          "label": "A",
+          "max": 100,
+          "pending": 0,
+          "score": 100,
+          "tried": true
+        },
+        {
+          "label": "B",
+          "max": 100,
+          "pending": 0,
+          "score": 100,
+          "tried": true
+        }
+      ],
+      "email": "s19@college.edu",
+      "last_improvement_s": 6600,
+      "name": "Student 19",
+      "rank": 4,
+      "total": 200,
+      "user_id": 20
+    },
+    {
+      "cells": [
+        {
+          "label": "A",
+          "max": 100,
+          "pending": 0,
+          "score": 100,
+          "tried": true
+        },
+        {
+          "label": "B",
+          "max": 100,
+          "pending": 0,
+          "score": 40,
+          "tried": true
+        }
+      ],
+      "email": "s04@college.edu",
+      "last_improvement_s": 2400,
+      "name": "Student 04",
+      "rank": 5,
+      "total": 140,
+      "user_id": 5
+    },
+    {
+      "cells": [
+        {
+          "label": "A",
+          "max": 100,
+          "pending": 0,
+          "score": 40,
+          "tried": true
+        },
+        {
+          "label": "B",
+          "max": 100,
+          "pending": 0,
+          "score": 100,
+          "tried": true
+        }
+      ],
+      "email": "s09@college.edu",
+      "last_improvement_s": 6000,
+      "name": "Student 09",
+      "rank": 6,
+      "total": 140,
+      "user_id": 10
+    },
+    {
+      "cells": [
+        {
+          "label": "A",
+          "max": 100,
+          "pending": 0,
+          "score": 0,
+          "tried": false
+        },
+        {
+          "label": "B",
+          "max": 100,
+          "pending": 0,
+          "score": 100,
+          "tried": true
+        }
+      ],
+      "email": "s12@college.edu",
+      "last_improvement_s": 3600,
+      "name": "Student 12",
+      "rank": 7,
+      "total": 100,
+      "user_id": 13
+    },
+    {
+      "cells": [
+        {
+          "label": "A",
+          "max": 100,
+          "pending": 0,
+          "score": 100,
+          "tried": true
+        },
+        {
+          "label": "B",
+          "max": 100,
+          "pending": 0,
+          "score": 0,
+          "tried": false
+        }
+      ],
+      "email": "s13@college.edu",
+      "last_improvement_s": 3600,
+      "name": "Student 13",
+      "rank": 7,
+      "total": 100,
+      "user_id": 14
+    },
+    {
+      "cells": [
+        {
+          "label": "A",
+          "max": 100,
+          "pending": 0,
+          "score": 100,
+          "tried": true
+        },
+        {
+          "label": "B",
+          "max": 100,
+          "pending": 0,
+          "score": 0,
+          "tried": false
+        }
+      ],
+      "email": "s16@college.edu",
+      "last_improvement_s": 5340,
+      "name": "Student 16",
+      "rank": 9,
+      "total": 100,
+      "user_id": 17
+    },
+    {
+      "cells": [
+        {
+          "label": "A",
+          "max": 100,
+          "pending": 0,
+          "score": 100,
+          "tried": true
+        },
+        {
+          "label": "B",
+          "max": 100,
+          "pending": 0,
+          "score": 0,
+          "tried": false
+        }
+      ],
+      "email": "s17@college.edu",
+      "last_improvement_s": 5460,
+      "name": "Student 17",
+      "rank": 10,
+      "total": 100,
+      "user_id": 18
+    },
+    {
+      "cells": [
+        {
+          "label": "A",
+          "max": 100,
+          "pending": 0,
+          "score": 100,
+          "tried": true
+        },
+        {
+          "label": "B",
+          "max": 100,
+          "pending": 0,
+          "score": 0,
+          "tried": false
+        }
+      ],
+      "email": "s08@college.edu",
+      "last_improvement_s": 5700,
+      "name": "Student 08",
+      "rank": 11,
+      "total": 100,
+      "user_id": 9
+    },
+    {
+      "cells": [
+        {
+          "label": "A",
+          "max": 100,
+          "pending": 0,
+          "score": 40,
+          "tried": true
+        },
+        {
+          "label": "B",
+          "max": 100,
+          "pending": 0,
+          "score": 40,
+          "tried": true
+        }
+      ],
+      "email": "s05@college.edu",
+      "last_improvement_s": 360,
+      "name": "Student 05",
+      "rank": 12,
+      "total": 80,
+      "user_id": 6
+    },
+    {
+      "cells": [
+        {
+          "label": "A",
+          "max": 100,
+          "pending": 0,
+          "score": 40,
+          "tried": true
+        },
+        {
+          "label": "B",
+          "max": 100,
+          "pending": 0,
+          "score": 40,
+          "tried": true
+        }
+      ],
+      "email": "s15@college.edu",
+      "last_improvement_s": 5100,
+      "name": "Student 15",
+      "rank": 13,
+      "total": 80,
+      "user_id": 16
+    },
+    {
+      "cells": [
+        {
+          "label": "A",
+          "max": 100,
+          "pending": 0,
+          "score": 40,
+          "tried": true
+        },
+        {
+          "label": "B",
+          "max": 100,
+          "pending": 0,
+          "score": 0,
+          "tried": false
+        }
+      ],
+      "email": "s10@college.edu",
+      "last_improvement_s": 1200,
+      "name": "Student 10",
+      "rank": 14,
+      "total": 40,
+      "user_id": 11
+    },
+    {
+      "cells": [
+        {
+          "label": "A",
+          "max": 100,
+          "pending": 0,
+          "score": 40,
+          "tried": true
+        },
+        {
+          "label": "B",
+          "max": 100,
+          "pending": 0,
+          "score": 0,
+          "tried": false
+        }
+      ],
+      "email": "s11@college.edu",
+      "last_improvement_s": 1200,
+      "name": "Student 11",
+      "rank": 14,
+      "total": 40,
+      "user_id": 12
+    },
+    {
+      "cells": [
+        {
+          "label": "A",
+          "max": 100,
+          "pending": 0,
+          "score": 40,
+          "tried": true
+        },
+        {
+          "label": "B",
+          "max": 100,
+          "pending": 0,
+          "score": 0,
+          "tried": false
+        }
+      ],
+      "email": "s14@college.edu",
+      "last_improvement_s": 1800,
+      "name": "Student 14",
+      "rank": 16,
+      "total": 40,
+      "user_id": 15
+    },
+    {
+      "cells": [
+        {
+          "label": "A",
+          "max": 100,
+          "pending": 0,
+          "score": 0,
+          "tried": false
+        },
+        {
+          "label": "B",
+          "max": 100,
+          "pending": 0,
+          "score": 40,
+          "tried": true
+        }
+      ],
+      "email": "s20@college.edu",
+      "last_improvement_s": 2700,
+      "name": "Student 20",
+      "rank": 17,
+      "total": 40,
+      "user_id": 21
+    },
+    {
+      "cells": [
+        {
+          "label": "A",
+          "max": 100,
+          "pending": 0,
+          "score": 0,
+          "tried": true
+        },
+        {
+          "label": "B",
+          "max": 100,
+          "pending": 0,
+          "score": 0,
+          "tried": false
+        }
+      ],
+      "email": "s06@college.edu",
+      "last_improvement_s": 0,
+      "name": "Student 06",
+      "rank": 18,
+      "total": 0,
+      "user_id": 7
+    },
+    {
+      "cells": [
+        {
+          "label": "A",
+          "max": 100,
+          "pending": 0,
+          "score": 0,
+          "tried": false
+        },
+        {
+          "label": "B",
+          "max": 100,
+          "pending": 0,
+          "score": 0,
+          "tried": false
+        }
+      ],
+      "email": "s07@college.edu",
+      "last_improvement_s": 0,
+      "name": "Student 07",
+      "rank": 18,
+      "total": 0,
+      "user_id": 8
+    },
+    {
+      "cells": [
+        {
+          "label": "A",
+          "max": 100,
+          "pending": 0,
+          "score": 0,
+          "tried": true
+        },
+        {
+          "label": "B",
+          "max": 100,
+          "pending": 0,
+          "score": 0,
+          "tried": true
+        }
+      ],
+      "email": "s18@college.edu",
+      "last_improvement_s": 0,
+      "name": "Student 18",
+      "rank": 18,
+      "total": 0,
+      "user_id": 19
+    }
+  ],
+  "server_now": 1800006900000,
+  "variant": "full",
+  "version": 1
+}

@@ -1,7 +1,25 @@
 // Fixtures and the API mock of contests.spec.ts, moved here so a11y.spec.ts
-// and baseline.spec.ts reuse them. The spec's header describes them.
+// and baseline.spec.ts reuse them. The spec's header describes them. The
+// core-path bodies are typed against the server's recorded responses
+// (server.ts), so a field the server sends and the mock lacks fails
+// svelte-check.
 import { expect, test, type Page, type Route } from '@playwright/test';
 import { longLivedEvents } from '../sse';
+import type {
+  AdminContestLike,
+  AnnouncementsLike,
+  ClarificationsLike,
+  ContestLike,
+  ContestListLike,
+  ContestSummaryLike,
+  FeedLike,
+  FeedRowLike,
+  MeLike,
+  RulesLike,
+  StandingsLike,
+  SubmissionLike,
+  WorkspaceLike,
+} from './server';
 
 let frozenNow: number | null = null;
 /** The mock's clock: real time, or a fixed instant for pixel baselines (pair it with page.clock.setFixedTime). */
@@ -21,8 +39,8 @@ export const MIN = 60_000;
 
 export type Json = Record<string, unknown>;
 
-export const STUDENT = { id: 7, email: 'asha@college.edu', name: 'Asha Rao', avatar_url: '', role: 'student', theme: '', verdicts: 'standard' };
-export const ADMIN = { id: 2, email: 'arjun.mehta@college.edu', name: 'Arjun Mehta', avatar_url: '', role: 'admin', theme: '', verdicts: 'standard' };
+export const STUDENT = { id: 7, email: 'asha@college.edu', name: 'Asha Rao', avatar_url: '', role: 'student', theme: '', verdicts: 'standard' } satisfies MeLike;
+export const ADMIN = { id: 2, email: 'arjun.mehta@college.edu', name: 'Arjun Mehta', avatar_url: '', role: 'admin', theme: '', verdicts: 'standard' } satisfies MeLike;
 
 export const PROBLEMS = [
   { label: 'A', title: 'A plus B', id: 11, max: 100 },
@@ -109,7 +127,9 @@ export function submission(id: number, problemId: number, state: 'queued' | 'don
       { idx: 1, points: 40, earned: done && score >= 40 ? 40 : 0, verdict: done ? (score >= 40 ? 'AC' : 'WA') : '', tests: [{ idx: 2, verdict: done ? (score >= 40 ? 'AC' : 'WA') : '', time_ms: 10, memory_kb: 3300 }] },
       { idx: 2, points: 60, earned: done && score === 100 ? 60 : 0, verdict: done ? (score === 100 ? 'AC' : 'WA') : '', tests: [{ idx: 3, verdict: done ? (score === 100 ? 'AC' : 'WA') : '', time_ms: 30, memory_kb: 3300 }] },
     ],
-  };
+    hidden: false,
+    time_step_ms: 10,
+  } satisfies SubmissionLike;
 }
 
 /** A submission whose result the server hides: everything withheld (m4-api-deviations.md). */
@@ -117,7 +137,8 @@ export function hidden(id: number, problemId: number): Json {
   return {
     id, problem_id: problemId, language: 'cpp17', state: 'submitted', hidden: true, verdict: '', score: 0, max_score: 100,
     max_time_ms: 0, max_memory_kb: 0, created_at: nowMs(), judged_at: null, queue_position: null, compile_output: '', samples: [], subtasks: [],
-  };
+    time_step_ms: 10,
+  } satisfies SubmissionLike;
 }
 
 /**
@@ -260,7 +281,7 @@ export async function mockApi(page: Page, options: Options = {}) {
     my_score: phase === 'after' || phase === 'practice' ? 140 : null,
     max_score: 300,
     my_window: state.who === 'admin' ? null : myWindow(),
-  });
+  }) satisfies ContestSummaryLike;
 
   const contest = () => ({
     ...summary(),
@@ -271,8 +292,9 @@ export async function mockApi(page: Page, options: Options = {}) {
       max_per_problem: 15,
       languages: ['cpp17', 'python3', 'java21'],
       freeze_minutes: 30,
+      practice_after_end: true,
       ...examOptions(),
-    },
+    } satisfies RulesLike,
     honour_text:
       'This contest counts. By starting you agree to these rules:\n\n- Work alone.\n- Do not use AI assistants.\n- Podium records your submissions, the characters you type and paste, and when you leave the page. It is deleted 180 days after the contest.',
     problems:
@@ -296,13 +318,15 @@ export async function mockApi(page: Page, options: Options = {}) {
     editorial_md: phase === 'after' || phase === 'practice' ? '## A plus B\n\nUse 64-bit integers.' : null,
     second_session: options.secondSession ?? false,
     server_now: nowMs(),
-  });
+  }) satisfies ContestLike;
 
   const workspace = (label: string) => {
     const p = PROBLEMS.find((x) => x.label === label)!;
     return {
       problem_id: p.id,
+      contest: 'week-6',
       label,
+      revision_id: 10 + p.id,
       title: p.title,
       statement_md: STATEMENT,
       time_limit_ms: 1000,
@@ -315,8 +339,12 @@ export async function mockApi(page: Page, options: Options = {}) {
       samples: [{ idx: 1, input: '1 2\n', output: '3\n', truncated: false }],
       draft: state.drafts[label] ?? null,
       submissions: state.submissions.filter((s) => s.problem_id === p.id).sort((a, b) => Number(b.id) - Number(a.id)),
+      can_submit: phase === 'during' || phase === 'practice',
+      practice: phase === 'practice',
+      refusal: null,
+      window: state.who === 'admin' ? null : myWindow(),
       server_now: nowMs(),
-    };
+    } satisfies WorkspaceLike;
   };
 
   const fullBoard = () => ({
@@ -328,7 +356,8 @@ export async function mockApi(page: Page, options: Options = {}) {
     rows: boardRows(28, 23, false).map((r) => ({ ...r, cells: r.cells.map((c) => ({ ...c, pending: 0 })) })),
     me: 7,
     labels: ['A', 'B', 'C'],
-  });
+    server_now: nowMs(),
+  }) satisfies StandingsLike;
 
   const frozenBoard = () => ({
     variant: 'frozen',
@@ -339,11 +368,15 @@ export async function mockApi(page: Page, options: Options = {}) {
     rows: boardRows(28, 23, true),
     me: 7,
     labels: ['A', 'B', 'C'],
-  });
+    server_now: nowMs(),
+  }) satisfies StandingsLike;
 
   const adminContest = () => ({
     ...summary(),
     id: 4,
+    archived: false,
+    created_at: startsAt - 86_400_000,
+    updated_at: startsAt - 86_400_000,
     description_md: 'Three problems.',
     freeze_minutes: 30,
     published: options.published ?? true,
@@ -373,7 +406,7 @@ export async function mockApi(page: Page, options: Options = {}) {
     admins: [{ user_id: 3, email: 'ta@college.edu', name: 'Meera Iyer' }],
     server_now: nowMs(),
     ...state.settings,
-  });
+  }) satisfies AdminContestLike;
 
   /** C4 pin fields: A is pinned to revision 2 and, with updateAvailable, revision 3 is validated. */
   function pinFields(p: Json): Json {
@@ -421,7 +454,7 @@ export async function mockApi(page: Page, options: Options = {}) {
               { ...summary(), slug: 'week-5', title: 'Week 5 contest', state: 'ended', starts_at: now - 7 * 86_400_000, ends_at: now - 7 * 86_400_000 + 2 * 3_600_000, my_score: 240, my_window: null },
             ],
             server_now: nowMs(),
-          });
+          } satisfies ContestListLike);
         }
         return json(route, 200, {
           live:
@@ -437,7 +470,7 @@ export async function mockApi(page: Page, options: Options = {}) {
             ...(phase === 'after' || phase === 'practice' ? [summary()] : []),
           ],
           server_now: nowMs(),
-        });
+        } satisfies ContestListLike);
       }
       if (path === '/api/contests/week-6' && method === 'GET') return json(route, 200, contest());
       if (path === '/api/contests/nope' && method === 'GET') return apiError(route, 404, 'not_found', 'There is no contest with that slug.');
@@ -524,7 +557,7 @@ export async function mockApi(page: Page, options: Options = {}) {
       const sub = path.match(/^\/api\/submissions\/(\d+)$/);
       if (sub) {
         const s = state.submissions.find((x) => x.id === Number(sub[1]));
-        return s ? json(route, 200, s) : apiError(route, 404, 'not_found', 'No such submission.');
+        return s ? json(route, 200, { ...s, server_now: nowMs() }) : apiError(route, 404, 'not_found', 'No such submission.');
       }
 
       // Organiser routes.
@@ -644,19 +677,19 @@ export async function mockApi(page: Page, options: Options = {}) {
         state.feedQueries.push(url.search);
         // What students submitted on this page, newest first, with the editor's counts as they were sent.
         const mine = state.submits
-          .map((b, i) => ({
+          .map((b, i): FeedRowLike => ({
             id: 400 + i, user_id: 7, name: 'Asha Rao', email: 'asha@college.edu', problem_label: String(b.label), language: String(b.language), state: 'queued', verdict: '',
-            score: 0, max_score: 100, created_at: now, practice: false, rejudged: false, note_count: 0, case_id: null,
+            score: 0, max_score: 100, created_at: now, judged_at: null, practice: false, rejudged: false, note_count: 0, case_id: null,
             typed_chars: Number(b.typed_chars ?? 0), pasted_chars: Number(b.pasted_chars ?? 0), focus_losses: Number(b.focus_losses ?? 0), fullscreen_exits: Number(b.fullscreen_exits ?? 0),
           }))
           .reverse();
-        const rows = [
+        const rows: FeedRowLike[] = [
           ...mine,
-          { id: 301, user_id: 7, name: 'Asha Rao', email: 'asha@college.edu', problem_label: 'B', language: 'cpp17', state: 'done', verdict: 'WA', score: 40, max_score: 100, created_at: now - 2 * MIN, practice: false, rejudged: false, note_count: state.notes.length, case_id: state.manualCase },
-          { id: 300, user_id: 101, name: 'Arjun Mehta', email: 'arjun@college.edu', problem_label: 'A', language: 'python3', state: 'done', verdict: 'AC', score: 100, max_score: 100, created_at: now - 5 * MIN, practice: false, rejudged: false, note_count: 0, case_id: null },
-          { id: 299, user_id: 102, name: 'Ravi Kumar', email: 'ravi@college.edu', problem_label: 'C', language: 'java21', state: 'running', verdict: '', score: 0, max_score: 100, created_at: now - 6 * MIN, practice: false, rejudged: false, note_count: 0, case_id: null },
-          { id: 298, user_id: 103, name: 'Meera Iyer', email: 'meera@college.edu', problem_label: 'B', language: 'cpp17', state: 'error', verdict: '', score: 0, max_score: 100, created_at: now - 7 * MIN, practice: false, rejudged: false, note_count: 0, case_id: null },
-          { id: 297, user_id: 104, name: 'Kiran Das', email: 'kiran@college.edu', problem_label: 'C', language: 'cpp17', state: 'done', verdict: 'WA', score: 0, max_score: 100, created_at: now - 9 * MIN, practice: false, rejudged: false, note_count: 0, case_id: null },
+          { id: 301, user_id: 7, name: 'Asha Rao', email: 'asha@college.edu', problem_label: 'B', language: 'cpp17', state: 'done', verdict: 'WA', score: 40, max_score: 100, created_at: now - 2 * MIN, judged_at: now - 2 * MIN, practice: false, rejudged: false, note_count: state.notes.length, case_id: state.manualCase },
+          { id: 300, user_id: 101, name: 'Arjun Mehta', email: 'arjun@college.edu', problem_label: 'A', language: 'python3', state: 'done', verdict: 'AC', score: 100, max_score: 100, created_at: now - 5 * MIN, judged_at: now - 5 * MIN, practice: false, rejudged: false, note_count: 0, case_id: null },
+          { id: 299, user_id: 102, name: 'Ravi Kumar', email: 'ravi@college.edu', problem_label: 'C', language: 'java21', state: 'running', verdict: '', score: 0, max_score: 100, created_at: now - 6 * MIN, judged_at: null, practice: false, rejudged: false, note_count: 0, case_id: null },
+          { id: 298, user_id: 103, name: 'Meera Iyer', email: 'meera@college.edu', problem_label: 'B', language: 'cpp17', state: 'error', verdict: '', score: 0, max_score: 100, created_at: now - 7 * MIN, judged_at: null, practice: false, rejudged: false, note_count: 0, case_id: null },
+          { id: 297, user_id: 104, name: 'Kiran Das', email: 'kiran@college.edu', problem_label: 'C', language: 'cpp17', state: 'done', verdict: 'WA', score: 0, max_score: 100, created_at: now - 9 * MIN, judged_at: now - 9 * MIN, practice: false, rejudged: false, note_count: 0, case_id: null },
         ];
         const problem = url.searchParams.get('problem');
         const user = url.searchParams.get('user');
@@ -665,9 +698,11 @@ export async function mockApi(page: Page, options: Options = {}) {
         const matches = (r: (typeof rows)[number]) =>
           !verdict || (verdict === 'pending' ? r.state === 'queued' || r.state === 'running' : verdict === 'error' ? r.state === 'error' : r.verdict === verdict);
         const shown = rows.filter((r) => (!problem || r.problem_label === problem) && (!user || String(r.user_id) === user) && matches(r));
-        return json(route, 200, { submissions: shown, page: 1, has_more: false, server_now: nowMs() });
+        return json(route, 200, { submissions: shown, page: 1, has_more: false, server_now: nowMs() } satisfies FeedLike);
       }
-      if (path === '/api/admin/contests/4/announcements' && method === 'GET') return json(route, 200, { announcements: state.posted.map((p, i) => ({ id: i + 1, body_md: p.body_md, created_at: now })) });
+      if (path === '/api/admin/contests/4/announcements' && method === 'GET') {
+        return json(route, 200, { announcements: state.posted.map((p, i) => ({ id: i + 1, body_md: p.body_md, created_at: now })), server_now: nowMs() } satisfies AnnouncementsLike);
+      }
       if (path === '/api/admin/contests/4/announcements' && method === 'POST') {
         state.posted.push(req.postDataJSON() as Json);
         return json(route, 201, { id: state.posted.length, body_md: 'x', created_at: now });
@@ -679,7 +714,8 @@ export async function mockApi(page: Page, options: Options = {}) {
             { id: 50, problem_label: null, asked_by: { user_id: 101, email: 'arjun@college.edu', name: 'Arjun Mehta' }, question: 'Is Java allowed?', answer: 'Yes, Java 21.', public: true, created_at: now - 9 * MIN, answered_at: now - 8 * MIN },
             ...state.newQuestions,
           ],
-        });
+          server_now: nowMs(),
+        } satisfies ClarificationsLike);
       }
       const clar = path.match(/^\/api\/admin\/contests\/4\/clarifications\/(\d+)$/);
       if (clar && method === 'PUT') {

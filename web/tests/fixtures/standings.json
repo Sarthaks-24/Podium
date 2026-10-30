@@ -1,0 +1,475 @@
+{
+  "final": false,
+  "frozen_at": 1800005400000,
+  "judging_remaining": 0,
+  "labels": [
+    "A",
+    "B"
+  ],
+  "me": 8,
+  "rows": [
+    {
+      "cells": [
+        {
+          "label": "A",
+          "max": 100,
+          "pending": 0,
+          "score": 100,
+          "tried": true
+        },
+        {
+          "label": "B",
+          "max": 100,
+          "pending": 0,
+          "score": 100,
+          "tried": true
+        }
+      ],
+      "last_improvement_s": 1200,
+      "name": "Student 01",
+      "rank": 1,
+      "total": 200,
+      "user_id": 2
+    },
+    {
+      "cells": [
+        {
+          "label": "A",
+          "max": 100,
+          "pending": 0,
+          "score": 100,
+          "tried": true
+        },
+        {
+          "label": "B",
+          "max": 100,
+          "pending": 0,
+          "score": 100,
+          "tried": true
+        }
+      ],
+      "last_improvement_s": 1200,
+      "name": "Student 03",
+      "rank": 1,
+      "total": 200,
+      "user_id": 4
+    },
+    {
+      "cells": [
+        {
+          "label": "A",
+          "max": 100,
+          "pending": 0,
+          "score": 100,
+          "tried": true
+        },
+        {
+          "label": "B",
+          "max": 100,
+          "pending": 0,
+          "score": 100,
+          "tried": true
+        }
+      ],
+      "last_improvement_s": 1500,
+      "name": "Student 02",
+      "rank": 3,
+      "total": 200,
+      "user_id": 3
+    },
+    {
+      "cells": [
+        {
+          "label": "A",
+          "max": 100,
+          "pending": 0,
+          "score": 100,
+          "tried": true
+        },
+        {
+          "label": "B",
+          "max": 100,
+          "pending": 0,
+          "score": 40,
+          "tried": true
+        }
+      ],
+      "last_improvement_s": 2400,
+      "name": "Student 04",
+      "rank": 4,
+      "total": 140,
+      "user_id": 5
+    },
+    {
+      "cells": [
+        {
+          "label": "A",
+          "max": 100,
+          "pending": 0,
+          "score": 100,
+          "tried": true
+        },
+        {
+          "label": "B",
+          "max": 100,
+          "pending": 1,
+          "score": 40,
+          "tried": true
+        }
+      ],
+      "last_improvement_s": 4200,
+      "name": "Student 19",
+      "rank": 5,
+      "total": 140,
+      "user_id": 20
+    },
+    {
+      "cells": [
+        {
+          "label": "A",
+          "max": 100,
+          "pending": 0,
+          "score": 0,
+          "tried": false
+        },
+        {
+          "label": "B",
+          "max": 100,
+          "pending": 0,
+          "score": 100,
+          "tried": true
+        }
+      ],
+      "last_improvement_s": 3600,
+      "name": "Student 12",
+      "rank": 6,
+      "total": 100,
+      "user_id": 13
+    },
+    {
+      "cells": [
+        {
+          "label": "A",
+          "max": 100,
+          "pending": 0,
+          "score": 100,
+          "tried": true
+        },
+        {
+          "label": "B",
+          "max": 100,
+          "pending": 0,
+          "score": 0,
+          "tried": false
+        }
+      ],
+      "last_improvement_s": 3600,
+      "name": "Student 13",
+      "rank": 6,
+      "total": 100,
+      "user_id": 14
+    },
+    {
+      "cells": [
+        {
+          "label": "A",
+          "max": 100,
+          "pending": 0,
+          "score": 100,
+          "tried": true
+        },
+        {
+          "label": "B",
+          "max": 100,
+          "pending": 0,
+          "score": 0,
+          "tried": false
+        }
+      ],
+      "last_improvement_s": 5340,
+      "name": "Student 16",
+      "rank": 8,
+      "total": 100,
+      "user_id": 17
+    },
+    {
+      "cells": [
+        {
+          "label": "A",
+          "max": 100,
+          "pending": 0,
+          "score": 40,
+          "tried": true
+        },
+        {
+          "label": "B",
+          "max": 100,
+          "pending": 0,
+          "score": 40,
+          "tried": true
+        }
+      ],
+      "last_improvement_s": 360,
+      "name": "Student 05",
+      "rank": 9,
+      "total": 80,
+      "user_id": 6
+    },
+    {
+      "cells": [
+        {
+          "label": "A",
+          "max": 100,
+          "pending": 0,
+          "score": 40,
+          "tried": true
+        },
+        {
+          "label": "B",
+          "max": 100,
+          "pending": 0,
+          "score": 40,
+          "tried": true
+        }
+      ],
+      "last_improvement_s": 5100,
+      "name": "Student 15",
+      "rank": 10,
+      "total": 80,
+      "user_id": 16
+    },
+    {
+      "cells": [
+        {
+          "label": "A",
+          "max": 100,
+          "pending": 0,
+          "score": 40,
+          "tried": true
+        },
+        {
+          "label": "B",
+          "max": 100,
+          "pending": 0,
+          "score": 0,
+          "tried": false
+        }
+      ],
+      "last_improvement_s": 1200,
+      "name": "Student 10",
+      "rank": 11,
+      "total": 40,
+      "user_id": 11
+    },
+    {
+      "cells": [
+        {
+          "label": "A",
+          "max": 100,
+          "pending": 0,
+          "score": 40,
+          "tried": true
+        },
+        {
+          "label": "B",
+          "max": 100,
+          "pending": 0,
+          "score": 0,
+          "tried": false
+        }
+      ],
+      "last_improvement_s": 1200,
+      "name": "Student 11",
+      "rank": 11,
+      "total": 40,
+      "user_id": 12
+    },
+    {
+      "cells": [
+        {
+          "label": "A",
+          "max": 100,
+          "pending": 0,
+          "score": 40,
+          "tried": true
+        },
+        {
+          "label": "B",
+          "max": 100,
+          "pending": 0,
+          "score": 0,
+          "tried": false
+        }
+      ],
+      "last_improvement_s": 1800,
+      "name": "Student 14",
+      "rank": 13,
+      "total": 40,
+      "user_id": 15
+    },
+    {
+      "cells": [
+        {
+          "label": "A",
+          "max": 100,
+          "pending": 0,
+          "score": 0,
+          "tried": false
+        },
+        {
+          "label": "B",
+          "max": 100,
+          "pending": 0,
+          "score": 40,
+          "tried": true
+        }
+      ],
+      "last_improvement_s": 2700,
+      "name": "Student 20",
+      "rank": 14,
+      "total": 40,
+      "user_id": 21
+    },
+    {
+      "cells": [
+        {
+          "label": "A",
+          "max": 100,
+          "pending": 0,
+          "score": 40,
+          "tried": true
+        },
+        {
+          "label": "B",
+          "max": 100,
+          "pending": 1,
+          "score": 0,
+          "tried": true
+        }
+      ],
+      "last_improvement_s": 3000,
+      "name": "Student 09",
+      "rank": 15,
+      "total": 40,
+      "user_id": 10
+    },
+    {
+      "cells": [
+        {
+          "label": "A",
+          "max": 100,
+          "pending": 0,
+          "score": 0,
+          "tried": true
+        },
+        {
+          "label": "B",
+          "max": 100,
+          "pending": 0,
+          "score": 0,
+          "tried": false
+        }
+      ],
+      "last_improvement_s": 0,
+      "name": "Student 06",
+      "rank": 16,
+      "total": 0,
+      "user_id": 7
+    },
+    {
+      "cells": [
+        {
+          "label": "A",
+          "max": 100,
+          "pending": 0,
+          "score": 0,
+          "tried": false
+        },
+        {
+          "label": "B",
+          "max": 100,
+          "pending": 0,
+          "score": 0,
+          "tried": false
+        }
+      ],
+      "last_improvement_s": 0,
+      "name": "Student 07",
+      "rank": 16,
+      "total": 0,
+      "user_id": 8
+    },
+    {
+      "cells": [
+        {
+          "label": "A",
+          "max": 100,
+          "pending": 1,
+          "score": 0,
+          "tried": true
+        },
+        {
+          "label": "B",
+          "max": 100,
+          "pending": 0,
+          "score": 0,
+          "tried": false
+        }
+      ],
+      "last_improvement_s": 0,
+      "name": "Student 08",
+      "rank": 16,
+      "total": 0,
+      "user_id": 9
+    },
+    {
+      "cells": [
+        {
+          "label": "A",
+          "max": 100,
+          "pending": 1,
+          "score": 0,
+          "tried": true
+        },
+        {
+          "label": "B",
+          "max": 100,
+          "pending": 0,
+          "score": 0,
+          "tried": false
+        }
+      ],
+      "last_improvement_s": 0,
+      "name": "Student 17",
+      "rank": 16,
+      "total": 0,
+      "user_id": 18
+    },
+    {
+      "cells": [
+        {
+          "label": "A",
+          "max": 100,
+          "pending": 0,
+          "score": 0,
+          "tried": true
+        },
+        {
+          "label": "B",
+          "max": 100,
+          "pending": 0,
+          "score": 0,
+          "tried": true
+        }
+      ],
+      "last_improvement_s": 0,
+      "name": "Student 18",
+      "rank": 16,
+      "total": 0,
+      "user_id": 19
+    }
+  ],
+  "server_now": 1800006900000,
+  "variant": "frozen",
+  "version": 1
+}

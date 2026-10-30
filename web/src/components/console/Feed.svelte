@@ -170,7 +170,7 @@
               <th scope="row" class="who">
                 {row.name}{#if row.practice}<span class="muted"> (practice)</span>{/if}
               </th>
-              <td class="mono plabel">{row.problem_label ?? row.label}</td>
+              <td class="mono plabel">{row.problem_label}</td>
               <td class="lang">{languageLabel(row.language)}</td>
               <td class="verdict"><Badge tone={out.tone}><MonoDigits text={out.text} /></Badge></td>
               {#if recorded}<td class="recorded small"><MonoDigits text={recordedText(row, exam)} /></td>{/if}
@@ -181,7 +181,7 @@
                 <button
                   type="button"
                   class="btn btn-quiet btn-compact again"
-                  aria-label="Judge again: {row.name}, problem {row.problem_label ?? row.label}, {formatWhen(row.created_at, ticker.now)}"
+                  aria-label="Judge again: {row.name}, problem {row.problem_label}, {formatWhen(row.created_at, ticker.now)}"
                   onclick={() => onrejudge(row)}>Judge again</button
                 >
               </td>

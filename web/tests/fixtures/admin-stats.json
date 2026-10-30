@@ -1,0 +1,74 @@
+{
+  "problems": [
+    {
+      "attempted": 17,
+      "histogram": [
+        {
+          "score": 100,
+          "students": 9
+        },
+        {
+          "score": 40,
+          "students": 6
+        },
+        {
+          "score": 0,
+          "students": 2
+        }
+      ],
+      "label": "A",
+      "max_score": 100,
+      "median_attempts": 1,
+      "solved": 9,
+      "subtasks": [
+        {
+          "earned": 15,
+          "idx": 1,
+          "points": 40
+        },
+        {
+          "earned": 9,
+          "idx": 2,
+          "points": 60
+        }
+      ],
+      "title": "A plus B (plus-a)"
+    },
+    {
+      "attempted": 11,
+      "histogram": [
+        {
+          "score": 100,
+          "students": 6
+        },
+        {
+          "score": 40,
+          "students": 4
+        },
+        {
+          "score": 0,
+          "students": 1
+        }
+      ],
+      "label": "B",
+      "max_score": 100,
+      "median_attempts": 1,
+      "solved": 6,
+      "subtasks": [
+        {
+          "earned": 10,
+          "idx": 1,
+          "points": 40
+        },
+        {
+          "earned": 6,
+          "idx": 2,
+          "points": 60
+        }
+      ],
+      "title": "A plus B (plus-b)"
+    }
+  ],
+  "server_now": 1800006660000,
+  "started": 20
+}

@@ -1,0 +1,76 @@
+{
+  "contests": [
+    {
+      "archived": false,
+      "block_copy": false,
+      "block_paste": false,
+      "close_at": 1800007200000,
+      "count_focus": false,
+      "created_at": 1799996400000,
+      "default_honour_text": "This contest counts. By starting you agree to these rules:\n\n- Work alone. Do not share code or ideas with anyone until the contest ends.\n- You may use your own templates and the documentation of your language.\n- Do not use AI assistants, chatbots or code generators.\n- Podium records your submissions, the number of characters you type and paste in its editor, paste sizes, and when you leave the page. Organisers use this only to review possible copying, and it is deleted 180 days after the contest unless a review is open.",
+      "description_md": "",
+      "editorial_md": "",
+      "editorial_published": false,
+      "ends_at": 1800007200000,
+      "extended_minutes": 0,
+      "freeze_minutes": 30,
+      "full_screen": false,
+      "hold_reveal": false,
+      "honour_text": "",
+      "id": 1,
+      "judge_last_claim_at": null,
+      "languages": [
+        "cpp17",
+        "java21",
+        "python3",
+        "node22"
+      ],
+      "max_per_problem": 15,
+      "min_gap_s": 0,
+      "paused": false,
+      "practice_after_end": true,
+      "problems": [
+        {
+          "label": "A",
+          "latest_rev": 1,
+          "latest_revision_id": 1,
+          "max_score": 100,
+          "pinned_hash": "5d619b5ed61a0990340b4f8146b036c76409dfa8ce1f4e0bce797bb20561107a",
+          "problem_id": 1,
+          "ready": true,
+          "reconstructed": false,
+          "rev": 1,
+          "revision_id": 1,
+          "title": "A plus B (plus-a)",
+          "update_available": false,
+          "update_statement_only": false
+        },
+        {
+          "label": "B",
+          "latest_rev": 1,
+          "latest_revision_id": 2,
+          "max_score": 100,
+          "pinned_hash": "5d619b5ed61a0990340b4f8146b036c76409dfa8ce1f4e0bce797bb20561107a",
+          "problem_id": 2,
+          "ready": true,
+          "reconstructed": false,
+          "rev": 1,
+          "revision_id": 2,
+          "title": "A plus B (plus-b)",
+          "update_available": false,
+          "update_statement_only": false
+        }
+      ],
+      "published": true,
+      "revealed_at": null,
+      "server_now": 1800006660000,
+      "slug": "mini",
+      "starts_at": 1800000000000,
+      "state": "frozen",
+      "title": "mini",
+      "unanswered": 0,
+      "updated_at": 1799996400000
+    }
+  ],
+  "server_now": 1800006660000
+}

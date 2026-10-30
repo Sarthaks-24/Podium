@@ -23,7 +23,6 @@
     organiserHome,
     organiserOrder,
     organiserState,
-    problemCount,
     toLocalInput,
     type AdminContest,
     type AdminContestSummary,
@@ -372,7 +371,7 @@
               <th scope="row" class="title"><a class="row-link" href={organiserHome(c)}>{c.title}</a></th>
               <td class="when"><MonoDigits text={formatDateTime(c.starts_at)} /></td>
               <td class="length">{lengthText(c)}</td>
-              <td class="num right problems">{problemCount(c)}</td>
+              <td class="num right problems">{c.problems.length}</td>
               <td class="state"><span class="state-word" data-state={st.kind}>{st.word}</span>{#if c.paused}<span class="paused">Judging paused</span>{/if}</td>
             </tr>
           {/each}

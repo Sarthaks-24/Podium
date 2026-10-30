@@ -42,7 +42,6 @@
     messagesReadAt,
     formatCountdown,
     formatSpan,
-    hasAccepted,
     isForContest,
     lengthText,
     RECORDED_SENTENCE,
@@ -629,7 +628,7 @@
     </div>
   </div>
 {:else}
-  {@const endedAt = contest.my_window && hasAccepted(contest) ? contest.my_window.ends_at : contest.ends_at}
+  {@const endedAt = contest.my_window && contest.accepted ? contest.my_window.ends_at : contest.ends_at}
   {@const place = standings && !(standings.variant === 'frozen') ? placeFigure(standings) : null}
   <div class="page page-wide">
     <PageHeader

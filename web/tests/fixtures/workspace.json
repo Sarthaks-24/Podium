@@ -1,0 +1,205 @@
+{
+  "can_submit": true,
+  "contest": "mini",
+  "draft": null,
+  "label": "A",
+  "languages": [
+    {
+      "id": "cpp17",
+      "name": "C++17",
+      "time_factor": 1
+    },
+    {
+      "id": "java21",
+      "name": "Java 21",
+      "time_factor": 2
+    },
+    {
+      "id": "python3",
+      "name": "Python 3",
+      "time_factor": 3
+    },
+    {
+      "id": "node22",
+      "name": "JavaScript (Node 22)",
+      "time_factor": 2
+    }
+  ],
+  "memory_limit_mb": 256,
+  "practice": false,
+  "problem_id": 1,
+  "refusal": null,
+  "revision_id": 1,
+  "samples": [
+    {
+      "idx": 1,
+      "input": "2\n1 2\n3 4\n",
+      "output": "3\n7\n",
+      "truncated": false
+    },
+    {
+      "idx": 2,
+      "input": "1\n-5 5\n",
+      "output": "0\n",
+      "truncated": false
+    }
+  ],
+  "server_now": 1800006660000,
+  "statement_md": "You are given $t$ pairs of integers. For each pair $a$, $b$, print $a + b$.\n\n## Input\n\nThe first line holds $t$, the number of pairs. Each of the next $t$ lines holds two integers $a$ and $b$.\n\n## Output\n\nPrint $t$ lines: the sum of each pair, in the order given.\n\n## Constraints\n\n- $1 \\le t \\le 1000$\n- Subtask 1 (40 points): $|a|, |b| \\le 1000$\n- Subtask 2 (60 points): $|a|, |b| \\le 10^{18}$\n\nThe sum can exceed the range of a 32-bit integer.\n",
+  "submissions": [
+    {
+      "compile_output": "",
+      "created_at": 1800004200000,
+      "hidden": false,
+      "id": 26,
+      "judged_at": 1800004200000,
+      "language": "cpp17",
+      "max_memory_kb": 16384,
+      "max_score": 100,
+      "max_time_ms": 100,
+      "problem_id": 1,
+      "queue_position": null,
+      "samples": [
+        {
+          "idx": 1,
+          "memory_kb": 5123,
+          "time_ms": 100,
+          "verdict": "AC"
+        },
+        {
+          "idx": 2,
+          "memory_kb": 5123,
+          "time_ms": 100,
+          "verdict": "AC"
+        }
+      ],
+      "score": 100,
+      "server_now": 1800006660000,
+      "state": "done",
+      "subtasks": [
+        {
+          "earned": 40,
+          "idx": 1,
+          "points": 40,
+          "tests": [
+            {
+              "idx": 3,
+              "memory_kb": 0,
+              "time_ms": 100,
+              "verdict": "AC"
+            },
+            {
+              "idx": 4,
+              "memory_kb": 0,
+              "time_ms": 100,
+              "verdict": "AC"
+            }
+          ],
+          "verdict": "AC"
+        },
+        {
+          "earned": 60,
+          "idx": 2,
+          "points": 60,
+          "tests": [
+            {
+              "idx": 5,
+              "memory_kb": 0,
+              "time_ms": 100,
+              "verdict": "AC"
+            },
+            {
+              "idx": 6,
+              "memory_kb": 0,
+              "time_ms": 100,
+              "verdict": "AC"
+            }
+          ],
+          "verdict": "AC"
+        }
+      ],
+      "time_step_ms": 100,
+      "verdict": "AC"
+    },
+    {
+      "compile_output": "",
+      "created_at": 1800000600000,
+      "hidden": false,
+      "id": 9,
+      "judged_at": 1800000600000,
+      "language": "cpp17",
+      "max_memory_kb": 16384,
+      "max_score": 100,
+      "max_time_ms": 100,
+      "problem_id": 1,
+      "queue_position": null,
+      "samples": [
+        {
+          "idx": 1,
+          "memory_kb": 5123,
+          "time_ms": 100,
+          "verdict": "AC"
+        },
+        {
+          "idx": 2,
+          "memory_kb": 5123,
+          "time_ms": 100,
+          "verdict": "AC"
+        }
+      ],
+      "score": 40,
+      "server_now": 1800006660000,
+      "state": "done",
+      "subtasks": [
+        {
+          "earned": 40,
+          "idx": 1,
+          "points": 40,
+          "tests": [
+            {
+              "idx": 3,
+              "memory_kb": 0,
+              "time_ms": 100,
+              "verdict": "AC"
+            },
+            {
+              "idx": 4,
+              "memory_kb": 0,
+              "time_ms": 100,
+              "verdict": "AC"
+            }
+          ],
+          "verdict": "AC"
+        },
+        {
+          "earned": 0,
+          "idx": 2,
+          "points": 60,
+          "tests": [
+            {
+              "idx": 5,
+              "memory_kb": 0,
+              "time_ms": 100,
+              "verdict": "WA"
+            },
+            {
+              "idx": 6,
+              "memory_kb": 0,
+              "time_ms": 100,
+              "verdict": "WA"
+            }
+          ],
+          "verdict": "WA"
+        }
+      ],
+      "time_step_ms": 100,
+      "verdict": "WA"
+    }
+  ],
+  "time_limit_ms": 1000,
+  "title": "A plus B (plus-a)",
+  "window": {
+    "ends_at": 1800007200000,
+    "started_at": 1800000000000
+  }
+}

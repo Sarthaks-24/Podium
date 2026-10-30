@@ -1,0 +1,74 @@
+{
+  "compile_output": "",
+  "created_at": 1800000600000,
+  "hidden": false,
+  "id": 9,
+  "judged_at": 1800000600000,
+  "language": "cpp17",
+  "max_memory_kb": 16384,
+  "max_score": 100,
+  "max_time_ms": 100,
+  "problem_id": 1,
+  "queue_position": null,
+  "samples": [
+    {
+      "idx": 1,
+      "memory_kb": 5123,
+      "time_ms": 100,
+      "verdict": "AC"
+    },
+    {
+      "idx": 2,
+      "memory_kb": 5123,
+      "time_ms": 100,
+      "verdict": "AC"
+    }
+  ],
+  "score": 40,
+  "server_now": 1800006660000,
+  "state": "done",
+  "subtasks": [
+    {
+      "earned": 40,
+      "idx": 1,
+      "points": 40,
+      "tests": [
+        {
+          "idx": 3,
+          "memory_kb": 0,
+          "time_ms": 100,
+          "verdict": "AC"
+        },
+        {
+          "idx": 4,
+          "memory_kb": 0,
+          "time_ms": 100,
+          "verdict": "AC"
+        }
+      ],
+      "verdict": "AC"
+    },
+    {
+      "earned": 0,
+      "idx": 2,
+      "points": 60,
+      "tests": [
+        {
+          "idx": 5,
+          "memory_kb": 0,
+          "time_ms": 100,
+          "verdict": "WA"
+        },
+        {
+          "idx": 6,
+          "memory_kb": 0,
+          "time_ms": 100,
+          "verdict": "WA"
+        }
+      ],
+      "verdict": "WA"
+    }
+  ],
+  "time_step_ms": 100,
+  "verdict": "WA"
+}

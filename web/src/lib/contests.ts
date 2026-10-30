@@ -133,19 +133,18 @@ export interface Clarification {
   id: number;
   problem_label: string | null;
   question: string;
-  answer: string | null;
+  /** "" until an organiser answers. */
+  answer: string;
   public: boolean;
   created_at: number;
   answered_at: number | null;
   /** Organiser views only. */
-  asked_by?: number | { user_id: number; email: string; name: string };
-  asker_name?: string;
+  asked_by?: { user_id: number; email: string; name: string };
 }
 
 /** Who asked, for the organiser inbox. */
-export function askerName(c: Pick<Clarification, 'asked_by' | 'asker_name'>): string {
-  if (c.asked_by && typeof c.asked_by === 'object') return c.asked_by.name || c.asked_by.email || 'A student';
-  return c.asker_name || 'A student';
+export function askerName(c: Pick<Clarification, 'asked_by'>): string {
+  return c.asked_by?.name || c.asked_by?.email || 'A student';
 }
 
 /** GET /api/contests/{slug}. */
@@ -161,13 +160,12 @@ export interface Contest extends ContestSummary {
   public_clarifications: Clarification[];
   editorial_md: string | null;
   server_now: number;
-  /** When the student agreed to the honour code, when the server sends it. */
-  honour_accepted_at?: number | null;
-  accepted?: boolean;
+  /** True once the student agreed to the honour code. */
+  accepted: boolean;
   /** True when the server saw this student in a second session at once. */
   second_session?: boolean;
   /** True for an organiser, who sees this page as "Student view". */
-  organiser?: boolean;
+  organiser: boolean;
 }
 
 /** A message shown in the banner above the workspace. */
@@ -314,13 +312,6 @@ export function pinnedContest<T extends Pick<ContestSummary, 'state' | 'my_score
   return ordered.find((c) => open(c) || c.my_score !== null) ?? null;
 }
 
-/** True once the student agreed to the honour code. */
-export function hasAccepted(c: Pick<Contest, 'accepted' | 'honour_accepted_at' | 'problems' | 'my_window'>): boolean {
-  if (typeof c.accepted === 'boolean') return c.accepted;
-  if (c.honour_accepted_at !== undefined) return c.honour_accepted_at !== null && c.honour_accepted_at > 0;
-  return c.my_window !== null && (c.problems?.length ?? 0) > 0;
-}
-
 /**
  * Where a student stands: "upcoming" before the start, "ready" when they may
  * agree to the honour code and start, "during" while their own window is
@@ -328,11 +319,8 @@ export function hasAccepted(c: Pick<Contest, 'accepted' | 'honour_accepted_at' |
  */
 export type Phase = 'upcoming' | 'ready' | 'during' | 'after';
 
-export function studentPhase(
-  c: Pick<Contest, 'starts_at' | 'ends_at' | 'my_window' | 'accepted' | 'honour_accepted_at' | 'problems'>,
-  now: number,
-): Phase {
-  if (c.my_window && hasAccepted(c)) {
+export function studentPhase(c: Pick<Contest, 'starts_at' | 'ends_at' | 'my_window' | 'accepted'>, now: number): Phase {
+  if (c.my_window && c.accepted) {
     if (now < c.my_window.started_at) return 'upcoming';
     return now < c.my_window.ends_at ? 'during' : 'after';
   }
@@ -470,13 +458,11 @@ export interface AdminContestSummary {
   ends_at: number;
   state: ContestState;
   published: boolean;
-  archived?: boolean;
-  /** Older shape; the server sends the problems themselves. */
-  problem_count?: number;
-  problems?: AdminContestProblem[];
-  paused?: boolean;
+  archived: boolean;
+  problems: AdminContestProblem[];
+  paused: boolean;
   /** ends_at plus the contest-wide extension. */
-  close_at?: number;
+  close_at: number;
 }
 
 /**
@@ -501,11 +487,6 @@ export function organiserHome(c: { id: number | string; state: ContestState; pub
   if (c.published === false) return base;
   if (c.state === 'ended' || c.state === 'practice') return `${base}/results`;
   return `${base}/console`;
-}
-
-/** How many problems an organiser's contest row has. */
-export function problemCount(c: Pick<AdminContestSummary, 'problem_count' | 'problems'>): number {
-  return c.problem_count ?? c.problems?.length ?? 0;
 }
 
 /** A problem in the organiser's view; ready is false when it changed since it was added. The pin fields say which version of the problem it uses. */
@@ -544,21 +525,23 @@ export interface AdminContest extends ContestSettings {
   /** Derived from the title when the contest was made; it never changes. */
   slug: string;
   state: ContestState;
+  archived: boolean;
   paused: boolean;
   extended_minutes: number;
   editorial_md: string;
   editorial_published: boolean;
   revealed_at: number | null;
   problems: AdminContestProblem[];
+  /** Left out when no student has extra time. */
   extensions?: { user_id: number; email: string; name: string; minutes: number; reason: string }[];
   /** ends_at plus the contest-wide extension. */
-  close_at?: number;
-  default_honour_text?: string;
+  close_at: number;
+  default_honour_text: string;
   /** Queue health, the judge's last request for work and the unanswered count. */
   queue?: QueueHealth;
-  judge_last_claim_at?: number | null;
-  unanswered?: number;
-  server_now?: number;
+  judge_last_claim_at: number | null;
+  unanswered: number;
+  server_now: number;
 }
 
 /** One row of the console's submission feed. */
@@ -566,10 +549,8 @@ export interface FeedRow {
   id: number;
   user_id: number;
   name: string;
-  email?: string;
-  problem_label?: string;
-  /** Older shape of problem_label. */
-  label?: string;
+  email: string;
+  problem_label: string;
   language: string;
   /** "submitted" while the server hides the result. */
   state: 'queued' | 'running' | 'done' | 'error' | 'submitted';
@@ -577,14 +558,11 @@ export interface FeedRow {
   score: number;
   max_score: number;
   created_at: number;
-  practice?: boolean;
-  rejudged?: boolean;
+  judged_at: number | null;
+  practice: boolean;
+  rejudged: boolean;
   hidden?: boolean;
-  /** v1.4.0, reviewers only: private notes on the submission. */
-  note_count?: number;
-  /** v1.4.0, reviewers only: the case opened from this submission. */
-  case_id?: number | null;
-  /** The editor's counts since the student's previous submission; full-screen exits only when full screen is on. */
+  /** The editor's counts since the student's previous submission, left out when none were recorded; full-screen exits only when full screen is on. */
   typed_chars?: number;
   pasted_chars?: number;
   focus_losses?: number;
@@ -593,9 +571,8 @@ export interface FeedRow {
 
 export interface FeedPage {
   submissions: FeedRow[];
-  page?: number;
-  has_more?: boolean;
-  total?: number;
+  page: number;
+  has_more: boolean;
 }
 
 /** One row of GET /api/admin/contests/{id}/audit: an organiser action that can change results. */
@@ -718,19 +695,19 @@ export function auditSummary(e: Pick<AuditEntry, 'action' | 'details'>, names?: 
 
 export interface ProblemStats {
   label: string;
-  title?: string;
+  title: string;
   solved: number;
-  attempted?: number;
+  attempted: number;
   median_attempts: number | null;
   /** Students per score; buckets are subtask score sums. */
-  histogram: { score: number; students?: number; count?: number }[];
-  max_score?: number;
+  histogram: { score: number; students: number }[];
+  max_score: number;
 }
 
 /** GET /api/admin/contests/{id}/stats; `started` counts the students taking part. */
 export interface ContestStats {
   problems: ProblemStats[];
-  started?: number;
+  started: number;
 }
 
 /**

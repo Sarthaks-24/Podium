@@ -4,6 +4,11 @@ Dated entries per release. Unreleased work is listed at the top.
 
 ## Unreleased
 
+### v3 stage D: golden API fixtures (2026-10-30)
+
+- The mini-contest acceptance test records 14 core-path responses into `web/tests/fixtures/` (`PODIUM_GOLDEN=1` rewrites them; a stale file fails `go test`). A Vitest check holds the web's API types to those files, and the mocks are typed against them.
+- The types lost the fields the server never sends (`asker_name`, `honour_accepted_at`, `problem_count`, old feed fields) and now require what it always sends.
+
 ### v3 stage D: web tests and leftovers (2026-10-30)
 
 - The mocked Playwright specs find elements by role, label or test id; 24 class locators remain, each a measured layout box, CodeMirror internals or the class under test (was 171).

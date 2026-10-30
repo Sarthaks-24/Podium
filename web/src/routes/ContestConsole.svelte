@@ -308,7 +308,7 @@
   }
 
   function rejudgeOne(row: FeedRow) {
-    const label = row.problem_label ?? row.label ?? '';
+    const label = row.problem_label;
     ask(
       `Judge ${row.name}'s submission again?`,
       `This submission to problem ${label} is judged again with the tests students are served now. Its score in the standings may change.`,

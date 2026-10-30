@@ -138,12 +138,8 @@
     void loadBoard();
   }
 
-  function students(h: ProblemStats['histogram'][number]): number {
-    return h.students ?? h.count ?? 0;
-  }
-
   function histogramMax(p: ProblemStats): number {
-    return Math.max(1, ...p.histogram.map(students));
+    return Math.max(1, ...p.histogram.map((h) => h.students));
   }
 
   let revealOpen = $state(false);
@@ -286,9 +282,9 @@
                     {#each p.histogram as h (h.score)}
                       <li>
                         <span class="mono bucket-score" aria-hidden="true">{h.score}</span>
-                        <span class="bucket-bar" aria-hidden="true"><span style:width="{Math.round((students(h) / histogramMax(p)) * 100)}%"></span></span>
-                        <span class="mono bucket-count" aria-hidden="true">{students(h)}</span>
-                        <span class="visually-hidden">{students(h)} {students(h) === 1 ? 'student' : 'students'} scored {h.score}</span>
+                        <span class="bucket-bar" aria-hidden="true"><span style:width="{Math.round((h.students / histogramMax(p)) * 100)}%"></span></span>
+                        <span class="mono bucket-count" aria-hidden="true">{h.students}</span>
+                        <span class="visually-hidden">{h.students} {h.students === 1 ? 'student' : 'students'} scored {h.score}</span>
                       </li>
                     {/each}
                   </ul>

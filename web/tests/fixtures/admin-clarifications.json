@@ -1,0 +1,33 @@
+{
+  "clarifications": [
+    {
+      "answer": "",
+      "answered_at": null,
+      "asked_by": {
+        "email": "s04@college.edu",
+        "name": "Student 04",
+        "user_id": 5
+      },
+      "created_at": 1800006660000,
+      "id": 2,
+      "problem_label": null,
+      "public": false,
+      "question": "Is Java allowed?"
+    },
+    {
+      "answer": "Yes, as the constraints say.",
+      "answered_at": 1800006660000,
+      "asked_by": {
+        "email": "s19@college.edu",
+        "name": "Student 19",
+        "user_id": 20
+      },
+      "created_at": 1800006660000,
+      "id": 1,
+      "problem_label": "A",
+      "public": true,
+      "question": "Can a and b be negative?"
+    }
+  ],
+  "server_now": 1800006660000
+}

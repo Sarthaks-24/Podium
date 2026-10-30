@@ -1,0 +1,74 @@
+{
+  "compile_output": "",
+  "created_at": 1800000300000,
+  "hidden": false,
+  "id": 1,
+  "judged_at": null,
+  "language": "cpp17",
+  "max_memory_kb": 0,
+  "max_score": 100,
+  "max_time_ms": 0,
+  "problem_id": 1,
+  "queue_position": 1,
+  "samples": [
+    {
+      "idx": 1,
+      "memory_kb": 0,
+      "time_ms": 0,
+      "verdict": ""
+    },
+    {
+      "idx": 2,
+      "memory_kb": 0,
+      "time_ms": 0,
+      "verdict": ""
+    }
+  ],
+  "score": 0,
+  "server_now": 1800000300000,
+  "state": "queued",
+  "subtasks": [
+    {
+      "earned": 0,
+      "idx": 1,
+      "points": 40,
+      "tests": [
+        {
+          "idx": 3,
+          "memory_kb": 0,
+          "time_ms": 0,
+          "verdict": ""
+        },
+        {
+          "idx": 4,
+          "memory_kb": 0,
+          "time_ms": 0,
+          "verdict": ""
+        }
+      ],
+      "verdict": ""
+    },
+    {
+      "earned": 0,
+      "idx": 2,
+      "points": 60,
+      "tests": [
+        {
+          "idx": 5,
+          "memory_kb": 0,
+          "time_ms": 0,
+          "verdict": ""
+        },
+        {
+          "idx": 6,
+          "memory_kb": 0,
+          "time_ms": 0,
+          "verdict": ""
+        }
+      ],
+      "verdict": ""
+    }
+  ],
+  "time_step_ms": 100,
+  "verdict": ""
+}

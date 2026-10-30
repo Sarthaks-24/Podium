@@ -1,0 +1,20 @@
+{
+  "live": [
+    {
+      "ends_at": 1800007200000,
+      "my_score": 200,
+      "my_window": {
+        "ends_at": 1800007200000,
+        "started_at": 1800000000000
+      },
+      "problem_count": 2,
+      "slug": "mini",
+      "starts_at": 1800000000000,
+      "state": "frozen",
+      "title": "mini"
+    }
+  ],
+  "past": [],
+  "server_now": 1800006660000,
+  "upcoming": []
+}

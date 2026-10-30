@@ -1,0 +1,72 @@
+{
+  "accepted": true,
+  "announcements": [
+    {
+      "body_md": "Problem B: the statement has been corrected.",
+      "created_at": 1800006660000,
+      "id": 1
+    }
+  ],
+  "description_md": "",
+  "editorial_md": null,
+  "ends_at": 1800007200000,
+  "honour_text": "This contest counts. By starting you agree to these rules:\n\n- Work alone. Do not share code or ideas with anyone until the contest ends.\n- You may use your own templates and the documentation of your language.\n- Do not use AI assistants, chatbots or code generators.\n- Podium records your submissions, the number of characters you type and paste in its editor, paste sizes, and when you leave the page. Organisers use this only to review possible copying, and it is deleted 180 days after the contest unless a review is open.",
+  "my_clarifications": [
+    {
+      "answer": "Yes, as the constraints say.",
+      "answered_at": 1800006660000,
+      "created_at": 1800006660000,
+      "id": 1,
+      "problem_label": "A",
+      "public": true,
+      "question": "Can a and b be negative?"
+    }
+  ],
+  "my_score": 200,
+  "my_window": {
+    "ends_at": 1800007200000,
+    "started_at": 1800000000000
+  },
+  "organiser": false,
+  "problem_count": 2,
+  "problems": [
+    {
+      "label": "A",
+      "max_score": 100,
+      "my_score": 100,
+      "my_submission_count": 2,
+      "revision_id": 1,
+      "title": "A plus B (plus-a)"
+    },
+    {
+      "label": "B",
+      "max_score": 100,
+      "my_score": 100,
+      "my_submission_count": 2,
+      "revision_id": 2,
+      "title": "A plus B (plus-b)"
+    }
+  ],
+  "public_clarifications": [],
+  "rules": {
+    "block_copy": false,
+    "block_paste": false,
+    "count_focus": false,
+    "freeze_minutes": 30,
+    "full_screen": false,
+    "languages": [
+      "cpp17",
+      "java21",
+      "python3",
+      "node22"
+    ],
+    "max_per_problem": 15,
+    "min_gap_s": 0,
+    "practice_after_end": true
+  },
+  "server_now": 1800006660000,
+  "slug": "mini",
+  "starts_at": 1800000000000,
+  "state": "frozen",
+  "title": "mini"
+}

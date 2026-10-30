@@ -54,10 +54,14 @@ func name(i int) string { return fmt.Sprintf("Student %02d", i) }
 
 func TestMiniContest(t *testing.T) {
 	s := newSite(t)
+	start := time.Now().Add(time.Hour).Truncate(time.Minute)
+	// The clock starts an hour before the contest, so every time the
+	// golden files hold sits on a whole minute from the start.
+	s.at(start, -60)
+	g := &golden{t: t, start: start, url: s.srv.URL}
 	owner := s.signedIn("owner@college.edu", "Owner")
 	a := s.importProblem(owner, "plus-a")
 	b := s.importProblem(owner, "plus-b")
-	start := time.Now().Add(time.Hour).Truncate(time.Minute)
 	id := s.createContest(owner, "mini", start, map[string]int64{"A": a, "B": b}, map[string]any{"freeze_minutes": 30})
 
 	students := map[int]*browser{}
@@ -74,11 +78,65 @@ func TestMiniContest(t *testing.T) {
 			t.Fatalf("start %d: %d %v", i, code, out)
 		}
 	}
-	for _, st := range script {
+	for i, st := range script {
 		s.at(start, st.minute)
-		if code, out := s.submit(students[st.student], "mini", st.label, st.prog); code != 202 {
+		code, out := s.submit(students[st.student], "mini", st.label, st.prog)
+		if code != 202 {
 			t.Fatalf("%s %s at %v: %d %v", name(st.student), st.label, st.minute, code, out)
 		}
+		if i == 0 {
+			g.check("submit", code, out)
+		}
+	}
+
+	// Messages, so the contest page and the organisers' inbox carry an
+	// announcement, a question answered for everyone and one waiting.
+	s.at(start, 111)
+	code, asked := students[19].do("POST", "/api/contests/mini/clarifications", map[string]any{"problem_label": "A", "question": "Can a and b be negative?"}, s.srv.URL)
+	if code != 201 {
+		t.Fatalf("ask %d %v", code, asked)
+	}
+	cid := int64(asked["clarification"].(map[string]any)["id"].(float64))
+	if code, out := students[4].do("POST", "/api/contests/mini/clarifications", map[string]any{"question": "Is Java allowed?"}, s.srv.URL); code != 201 {
+		t.Fatalf("ask %d %v", code, out)
+	}
+	if code, out := owner.do("PUT", fmt.Sprintf("/api/admin/contests/%d/clarifications/%d", id, cid), map[string]any{"answer": "Yes, as the constraints say.", "public": true}, s.srv.URL); code != 200 {
+		t.Fatalf("answer %d %v", code, out)
+	}
+	if code, out := owner.do("POST", fmt.Sprintf("/api/admin/contests/%d/announcements", id), map[string]any{"body_md": "Problem B: the statement has been corrected."}, s.srv.URL); code != 201 {
+		t.Fatalf("announce %d %v", code, out)
+	}
+
+	// The core path as Student 19 and the organiser see it, kept as golden
+	// files for the web app (golden_test.go).
+	s19 := students[19]
+	code, out := s19.do("GET", "/api/me", nil, "")
+	g.check("me", code, out)
+	code, out = s19.do("GET", "/api/contests", nil, "")
+	g.check("contests", code, out)
+	code, out = s19.do("GET", "/api/contests/mini", nil, "")
+	g.check("contest", code, out)
+	code, ws := s19.do("GET", "/api/contests/mini/problems/A", nil, "")
+	g.check("workspace", code, ws)
+	subs, _ := ws["submissions"].([]any)
+	if len(subs) == 0 {
+		t.Fatalf("workspace without submissions: %v", ws)
+	}
+	// The oldest is the 32-bit program, a partial score.
+	first := int64(subs[len(subs)-1].(map[string]any)["id"].(float64))
+	code, out = s19.do("GET", fmt.Sprintf("/api/submissions/%d", first), nil, "")
+	g.check("submission", code, out)
+	admin := fmt.Sprintf("/api/admin/contests/%d", id)
+	for _, route := range []struct{ name, path string }{
+		{"admin-contests", "/api/admin/contests"},
+		{"admin-contest", admin},
+		{"admin-feed", admin + "/submissions"},
+		{"admin-clarifications", admin + "/clarifications"},
+		{"admin-announcements", admin + "/announcements"},
+		{"admin-stats", admin + "/stats"},
+	} {
+		code, out := owner.do("GET", route.path, nil, "")
+		g.check(route.name, code, out)
 	}
 
 	// During the freeze a student sees the frozen board: late scores are
@@ -100,11 +158,13 @@ func TestMiniContest(t *testing.T) {
 	// Equal totals and times share a rank and are listed by name.
 	sortTies(wantFrozen)
 	checkBoard(t, "frozen", frozen, wantFrozen)
+	g.check("standings", code, frozen)
 	// Organisers see the full board at any time.
 	code, live := owner.do("GET", fmt.Sprintf("/api/admin/contests/%d/standings", id), nil, "")
 	if code != 200 || live["variant"] != "full" {
 		t.Fatalf("organiser board %d %v", code, live)
 	}
+	g.check("admin-standings", code, live)
 	// The organisers' board names each student's email; the public one never does.
 	for _, row := range live["rows"].([]any) {
 		if e, _ := row.(map[string]any)["email"].(string); !strings.Contains(e, "@") {
