@@ -7,6 +7,7 @@ Dated entries per release. Unreleased work is listed at the top.
 ### v4 stage U: the UX patterns (2026-10-31)
 
 - A screen that is slow to load shows still blocks in its shape after the same 300 ms wait: rows on Your contests, the contests list, the problem bank and the standings, a statement in the workspace. The loading sentence is still read out; nothing shimmers or moves.
+- Coming back to Your contests, the problem bank or the standings shows what they last showed at once, then the fresh answer replaces it. When the refresh fails the old answer stays with "This may be out of date: the latest could not load." and Try again; a refusal (403 or 404) shows the refusal instead. These answers live only in the open tab's memory and are forgotten at sign out and whenever the session ends.
 
 ### v4 stage E: the editor (2026-10-31)
 

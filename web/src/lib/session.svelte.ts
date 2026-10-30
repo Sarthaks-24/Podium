@@ -19,6 +19,7 @@
  */
 import { ApiError, getJSON, sendJSON, setUnauthorizedHandler } from './api';
 import { forgetDraftsAtSignOut, noteSignedInUser } from './drafts';
+import { forgetAnswers } from './loader.svelte';
 import { adoptAccountPreferences, resetPreferences } from './preferences.svelte';
 import { navigate } from './router.svelte';
 
@@ -49,6 +50,7 @@ export const session = new SessionState();
 
 // Any request that answers 401 signs the page out (lib/api.ts).
 setUnauthorizedHandler(() => {
+  forgetAnswers();
   session.user = undefined;
   session.status = 'signed-out';
 });
@@ -75,6 +77,7 @@ export async function loadSession(): Promise<ApiError | null> {
     session.status = 'signed-out';
     if (err instanceof ApiError && err.status === 401) {
       // No session: wipe the last student's mirrors on a shared lab PC.
+      forgetAnswers();
       forgetDraftsAtSignOut();
       return null;
     }
@@ -143,6 +146,7 @@ export async function signOut(): Promise<ApiError | null> {
   session.user = undefined;
   session.status = 'signed-out';
   resetPreferences();
+  forgetAnswers();
   forgetDraftsAtSignOut();
   navigate('/signin');
   return failure;

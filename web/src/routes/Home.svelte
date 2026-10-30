@@ -22,6 +22,7 @@
   import MonoDigits from '../components/MonoDigits.svelte';
   import PageState from '../components/PageState.svelte';
   import PageHeader from '../components/PageHeader.svelte';
+  import StaleNote from '../components/StaleNote.svelte';
   import { onMount } from 'svelte';
   import { getJSON } from '../lib/api';
   import { loader } from '../lib/loader.svelte';
@@ -56,6 +57,7 @@
       refreshTicker();
       contests = orderedContests(data);
     },
+    () => '/api/contests',
   );
   const load = () => page.load();
 
@@ -89,6 +91,7 @@
 </script>
 
 <PageHeader title="Your contests" />
+<StaleNote {page} />
 
 {#if page.state === 'loading'}
   <PageState kind="loading" message="Loading contests" shape="rows" />

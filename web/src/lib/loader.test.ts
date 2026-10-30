@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { ApiError, PAGE_ERROR_MESSAGE } from './api';
-import { loader } from './loader.svelte';
+import { forgetAnswers, loader } from './loader.svelte';
 
 /** A request the test answers by hand. */
 function deferred<T>() {
@@ -135,5 +135,76 @@ describe('loader', () => {
     await done;
     expect(page.state).toBe('ready');
     expect(got).toEqual(['first']);
+  });
+});
+
+describe('kept answers (v4 U2)', () => {
+  /** A screen that answers from `replies` in turn, each a value or an error to throw. */
+  function screen(key: string, replies: unknown[]) {
+    const got: unknown[] = [];
+    const page = loader(
+      () => {
+        const r = replies.shift();
+        return r instanceof Error ? Promise.reject(r) : Promise.resolve(r);
+      },
+      (d) => got.push(d),
+      () => key,
+    );
+    return { page, got };
+  }
+
+  it('shows the kept answer at once on a revisit, then the fresh one', async () => {
+    forgetAnswers();
+    await screen('/a', ['first']).page.load();
+    const again = screen('/a', ['second']);
+    const loading = again.page.load();
+    expect(again.got).toEqual(['first']);
+    expect(again.page.state).toBe('ready');
+    await loading;
+    expect(again.got).toEqual(['first', 'second']);
+    expect(again.page.stale).toBe(false);
+  });
+
+  it('keeps the old answer and turns stale when the refresh fails, until a load works', async () => {
+    forgetAnswers();
+    await screen('/b', ['old']).page.load();
+    const again = screen('/b', [new ApiError(0, 'network', 'offline'), 'new']);
+    await again.page.load();
+    expect(again.got).toEqual(['old']);
+    expect(again.page.state).toBe('ready');
+    expect(again.page.stale).toBe(true);
+    await again.page.load();
+    expect(again.page.stale).toBe(false);
+    expect(again.got.at(-1)).toBe('new');
+  });
+
+  it('drops the kept answer on a 403 or 404 and shows the refusal', async () => {
+    forgetAnswers();
+    await screen('/c', ['mine']).page.load();
+    const again = screen('/c', [new ApiError(403, 'forbidden', 'Not yours.')]);
+    await again.page.load();
+    expect(again.page.state).toBe('forbidden');
+    expect(again.page.stale).toBe(false);
+    const third = screen('/c', ['later']);
+    const loading = third.page.load();
+    expect(third.page.state).toBe('loading');
+    await loading;
+  });
+
+  it('forgets every kept answer at sign out, and a screen without a key keeps nothing', async () => {
+    forgetAnswers();
+    await screen('/d', ['before']).page.load();
+    forgetAnswers();
+    const after = screen('/d', ['after']);
+    const loading = after.page.load();
+    expect(after.got).toEqual([]);
+    expect(after.page.state).toBe('loading');
+    await loading;
+    const plain = loader(() => Promise.resolve('x'), () => {});
+    await plain.load();
+    const again = loader(() => Promise.resolve('y'), () => {});
+    const p = again.load();
+    expect(again.state).toBe('loading');
+    await p;
   });
 });

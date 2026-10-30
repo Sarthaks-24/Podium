@@ -15,6 +15,7 @@
   import { organises } from '../lib/roles';
   import PageState from '../components/PageState.svelte';
   import PageHeader from '../components/PageHeader.svelte';
+  import StaleNote from '../components/StaleNote.svelte';
   import Badge from '../components/Badge.svelte';
   import MonoDigits from '../components/MonoDigits.svelte';
   import { onMount, tick, untrack } from 'svelte';
@@ -37,6 +38,7 @@
   const page = loader(
     () => getJSON<{ problems: ProblemSummary[] }>(`/api/admin/problems${wantArchived ? '?archived=1' : ''}`),
     (data) => (problems = data.problems ?? []),
+    () => `/api/admin/problems${wantArchived ? '?archived=1' : ''}`,
   );
 
   let creating = $state(false);
@@ -333,6 +335,7 @@
     </form>
   {/if}
 
+  <StaleNote {page} />
   {#if page.state === 'loading'}
     <PageState kind="loading" message="Loading problems" shape="rows" />
   {:else if page.state === 'error' || page.state === 'missing'}

@@ -26,6 +26,7 @@
   import { LiveSubscription, type StreamMode } from '../lib/stream';
   import PageState from './PageState.svelte';
   import PlaceFigure from './PlaceFigure.svelte';
+  import StaleNote from './StaleNote.svelte';
   import StandingsTable from './StandingsTable.svelte';
   import StreamNotice from './StreamNotice.svelte';
 
@@ -63,6 +64,7 @@
       if (said !== '') polite(said);
       standings = s;
     },
+    () => `${api}/standings?as=student`,
   );
   const loadBoard = (quiet = false) => page.load({ quiet });
 
@@ -113,6 +115,7 @@
   });
 </script>
 
+<StaleNote {page} />
 {#if page.state === 'loading'}
   <PageState kind="loading" message="Loading the standings" shape="rows" />
 {:else if page.state === 'forbidden'}
