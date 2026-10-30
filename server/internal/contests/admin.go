@@ -55,7 +55,7 @@ func (s *Service) Clone(ctx context.Context, id int64, slug, title string, start
 	e := Edit{Title: title, Description: src.Description, StartsAt: startsAt, EndsAt: endsAt,
 		FreezeMinutes: int(src.Schedule.Freeze / time.Minute), PracticeAfterEnd: src.PracticeAfterEnd,
 		MinGapS: int(src.MinGap / time.Second), MaxPerProblem: src.MaxPerProblem, Languages: src.Languages,
-		HonourText: src.HonourText, HoldReveal: src.HoldReveal}
+		HonourText: src.HonourText, HoldReveal: src.HoldReveal, Exam: src.Exam}
 	choices := make([]ProblemChoice, 0, len(src.Problems))
 	for _, p := range src.Problems {
 		reason, err := s.aiConfirmedIn(ctx, src.ID, p.ProblemID)

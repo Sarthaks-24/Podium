@@ -25,7 +25,11 @@
   - Advanced, folded under a one-line summary: the address (made from the
     title when the contest was created, read only), the wait between
     submissions, submissions per problem, practice after the end, keeping
-    results hidden until the reveal, the description and the honour code.
+    results hidden until the reveal, the exam options (four switches, all
+    off by default: full screen on start, count tab switches and focus
+    loss, block paste into the editor, block copy out of the statement;
+    students are told which are on before they start), the description
+    and the honour code.
 
   Students see a short explanation instead. Props: `id`.
 -->
@@ -72,6 +76,7 @@
     | 'max_per_problem'
     | 'practice_after_end'
     | 'hold_reveal'
+    | ExamKey
     | 'description_md'
     | 'honour_text';
 
@@ -86,14 +91,38 @@
     max_per_problem: number | string | null;
     practice_after_end: boolean;
     hold_reveal: boolean;
+    full_screen: boolean;
+    count_focus: boolean;
+    block_paste: boolean;
+    block_copy: boolean;
     description_md: string;
     honour_text: string;
   }
 
+  type ExamKey = 'full_screen' | 'count_focus' | 'block_paste' | 'block_copy';
+  /** The exam options (V3-25), each a switch that is off by default, with what it does. */
+  const EXAM: readonly { key: ExamKey; label: string; help: string }[] = [
+    { key: 'full_screen', label: 'Full screen on start', help: 'Asks for full screen when a student presses Start, and counts each time they leave it.' },
+    { key: 'count_focus', label: 'Count tab switches and focus loss', help: 'Shows you how often each student left the page. Podium records it either way.' },
+    { key: 'block_paste', label: 'Block paste into the editor', help: 'A paste inserts nothing, and the student is told why.' },
+    { key: 'block_copy', label: 'Block copy out of the statement', help: 'Copying the statement or the examples does nothing, and the student is told why.' },
+  ];
+
   /** Typing saves after this pause. */
   const PAUSE_MS = 800;
   /** The settings under Advanced, so an error there opens it. */
-  const ADVANCED: readonly Key[] = ['min_gap_s', 'max_per_problem', 'practice_after_end', 'hold_reveal', 'description_md', 'honour_text'];
+  const ADVANCED: readonly Key[] = [
+    'min_gap_s',
+    'max_per_problem',
+    'practice_after_end',
+    'hold_reveal',
+    'full_screen',
+    'count_focus',
+    'block_paste',
+    'block_copy',
+    'description_md',
+    'honour_text',
+  ];
   /** Changes a live contest's clock or board, so they ask first. */
   const TIMING: readonly Key[] = ['starts_at', 'length', 'freeze_minutes'];
 
@@ -222,6 +251,10 @@
       max_per_problem: c.max_per_problem,
       practice_after_end: c.practice_after_end,
       hold_reveal: c.hold_reveal ?? false,
+      full_screen: c.full_screen ?? false,
+      count_focus: c.count_focus ?? false,
+      block_paste: c.block_paste ?? false,
+      block_copy: c.block_copy ?? false,
       description_md: c.description_md ?? '',
       honour_text: c.honour_text ?? '',
     };
@@ -689,6 +722,7 @@
       countOf(whole(form.max_per_problem) || 0, 'submission') + ' per problem',
       form.practice_after_end ? 'practice after the end' : 'no practice after the end',
       ...(form.hold_reveal ? ['results hidden until you reveal them'] : []),
+      ...(EXAM.some((x) => form?.[x.key]) ? [`exam options: ${EXAM.filter((x) => form?.[x.key]).map((x) => x.label.toLowerCase()).join(', ')}`] : []),
     ].join(', ');
     return line.charAt(0).toUpperCase() + line.slice(1);
   });
@@ -1033,6 +1067,26 @@
               </p>
             </fieldset>
 
+            <fieldset class="group">
+              <legend>Exam options</legend>
+              <p class="field-help">All off for an ordinary contest. Students read which ones are on before they start.</p>
+              {#each EXAM as x (x.key)}
+                <label class="choice">
+                  <input
+                    type="checkbox"
+                    checked={form[x.key]}
+                    aria-describedby="f-{x.key}-help"
+                    onchange={(e) => {
+                      if (form) form[x.key] = e.currentTarget.checked;
+                      change([x.key], true);
+                    }}
+                  />
+                  {x.label}
+                </label>
+                <p id="f-{x.key}-help" class="field-help exam-help">{x.help}</p>
+              {/each}
+            </fieldset>
+
             <div class="field">
               <label for="f-description_md">Description (Markdown)</label>
               <textarea
@@ -1278,7 +1332,8 @@
     accent-color: var(--act);
   }
 
-  .hold-help {
+  .hold-help,
+  .exam-help {
     margin-top: calc(-1 * var(--space-2));
     padding-left: var(--space-6);
   }

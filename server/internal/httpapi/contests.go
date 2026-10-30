@@ -40,6 +40,9 @@ type rulesJSON struct {
 	Languages     []string `json:"languages"`
 	FreezeMinutes int      `json:"freeze_minutes"`
 	Practice      bool     `json:"practice_after_end"`
+	// The exam options, so the workspace knows which measures are on and
+	// says so at the start (V3-25).
+	contests.ExamOptions
 }
 
 type contestProblemJSON struct {
@@ -197,7 +200,7 @@ func (d Deps) contestDetail(ctx context.Context, c *contests.Contest, u auth.Use
 		Organiser: organiser, Problems: []contestProblemJSON{},
 		Rules: rulesJSON{MinGapS: int(c.MinGap / time.Second),
 			MaxPerProblem: c.MaxPerProblem, Languages: c.Languages, FreezeMinutes: int(c.Schedule.Freeze / time.Minute),
-			Practice: c.PracticeAfterEnd},
+			Practice: c.PracticeAfterEnd, ExamOptions: c.Exam},
 		ServerNow: now.UnixMilli()}
 	if organiser || c.ProblemsVisible(st, now) {
 		var cells map[string]contests.Cell
@@ -450,6 +453,7 @@ func (d Deps) submitContestCode(w http.ResponseWriter, r *http.Request) {
 		TypedChars  int    `json:"typed_chars"`
 		PastedChars int    `json:"pasted_chars"`
 		FocusLosses int    `json:"focus_losses"`
+		Exits       int    `json:"fullscreen_exits"`
 	}
 	if !decodeJSONLimit(w, r, &req, maxRunBody) {
 		return
@@ -457,7 +461,7 @@ func (d Deps) submitContestCode(w http.ResponseWriter, r *http.Request) {
 	u := userFrom(r.Context())
 	v, dup, err := d.Submissions.Submit(r.Context(), submissions.SubmitRequest{ProblemID: t.problem.ProblemID, UserID: u.ID,
 		Scope: t.scope, Language: req.Language, Source: req.Source, ClientKey: req.ClientKey,
-		Typed: req.TypedChars, Pasted: req.PastedChars, Blur: req.FocusLosses,
+		Typed: req.TypedChars, Pasted: req.PastedChars, Blur: req.FocusLosses, Exits: req.Exits,
 		ClientHash: d.Submissions.ClientHash(clientIP(r), r.UserAgent())})
 	if err != nil {
 		d.submissionError(w, r, err)

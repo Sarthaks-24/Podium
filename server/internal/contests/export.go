@@ -336,6 +336,9 @@ type FeedItem struct {
 	TypedChars  *int `json:"typed_chars,omitempty"`
 	PastedChars *int `json:"pasted_chars,omitempty"`
 	FocusLosses *int `json:"focus_losses,omitempty"`
+	// FullscreenExits counts the times the student left full screen
+	// before this submission (V3-25).
+	FullscreenExits *int `json:"fullscreen_exits,omitempty"`
 }
 
 // Feed lists the contest's submissions, newest first, a page at a time,
@@ -349,8 +352,8 @@ func (s *Service) Feed(ctx context.Context, c *Contest, f FeedFilter) ([]FeedIte
 		f.Page = 1
 	}
 	q := `SELECT s.id, s.user_id, coalesce(nullif(u.name, ''), u.email), u.email, s.problem_id, s.language, s.state, s.verdict, s.score,
-		s.max_score, s.created_at, s.judged_at, s.practice, s.rejudged_at IS NOT NULL, s.typed_chars, s.pasted_chars, s.focus_losses
-		FROM submissions s JOIN users u ON u.id = s.user_id WHERE s.contest_id = ? AND s.kind = 'submit'`
+		s.max_score, s.created_at, s.judged_at, s.practice, s.rejudged_at IS NOT NULL, s.typed_chars, s.pasted_chars, s.focus_losses,
+		s.fullscreen_exits FROM submissions s JOIN users u ON u.id = s.user_id WHERE s.contest_id = ? AND s.kind = 'submit'`
 	args := []any{c.ID}
 	if f.ProblemID > 0 {
 		q += " AND s.problem_id = ?"
@@ -384,12 +387,12 @@ func (s *Service) Feed(ctx context.Context, c *Contest, f FeedFilter) ([]FeedIte
 		var it FeedItem
 		var pid int64
 		var judged *int64
-		var typed, pasted, losses int
+		var typed, pasted, losses, exits int
 		if err := rows.Scan(&it.ID, &it.UserID, &it.Name, &it.Email, &pid, &it.Language, &it.State, &it.Verdict, &it.Score,
-			&it.MaxScore, &it.CreatedAt, &judged, &it.Practice, &it.Rejudged, &typed, &pasted, &losses); err != nil {
+			&it.MaxScore, &it.CreatedAt, &judged, &it.Practice, &it.Rejudged, &typed, &pasted, &losses, &exits); err != nil {
 			return nil, false, err
 		}
-		it.TypedChars, it.PastedChars, it.FocusLosses = &typed, &pasted, &losses
+		it.TypedChars, it.PastedChars, it.FocusLosses, it.FullscreenExits = &typed, &pasted, &losses, &exits
 		it.JudgedAt = judged
 		it.ProblemLabel = labels[pid]
 		out = append(out, it)

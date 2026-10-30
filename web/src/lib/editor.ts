@@ -23,6 +23,9 @@
  *   and Java), multiple cursors, folding, word wrap and tab size 2 or 4.
  * - Typed and pasted characters are reported from each transaction's
  *   userEvent ("input.type", "input.paste"), never with timing.
+ * - `blockPaste` (a contest's exam option, V3-25) refuses every paste and
+ *   drop: nothing is inserted and `onPasteBlocked` is called, so the
+ *   workspace can say why. It lives in a compartment, like read-only.
  * - `describedBy` names the element holding the editor's keyboard hint, so
  *   a screen reader hears how to leave the editor (X2).
  */
@@ -134,6 +137,8 @@ export interface EditorCallbacks {
   onRun: () => void;
   /** The main cursor moved: line and column, both from 1. */
   onCursor?: (line: number, col: number) => void;
+  /** A paste or drop was refused because `blockPaste` is on. */
+  onPasteBlocked?: () => void;
 }
 
 export interface EditorOptions extends EditorCallbacks {
@@ -148,6 +153,8 @@ export interface EditorOptions extends EditorCallbacks {
   wrap?: boolean;
   /** Under 1024 px code is read, not written (V3-14): no edits, and no on-screen keyboard. */
   readOnly?: boolean;
+  /** Refuse pastes and drops into the editor (exam option, V3-25). */
+  blockPaste?: boolean;
 }
 
 /** The handle the component keeps. */
@@ -157,6 +164,7 @@ export interface EditorHandle {
   setTabSize(size: 2 | 4): void;
   setWrap(on: boolean): void;
   setReadOnly(on: boolean): void;
+  setBlockPaste(on: boolean): void;
   /** Replaces the whole document; not counted as typing. */
   setDoc(doc: string): void;
   getDoc(): string;
@@ -306,6 +314,14 @@ export function createEditor(o: EditorOptions): EditorHandle {
   const wrapConf = new Compartment();
   const readOnlyConf = new Compartment();
   const readOnlyExt = (on: boolean) => (on ? [EditorState.readOnly.of(true), EditorView.editable.of(false)] : []);
+  const blockPasteConf = new Compartment();
+  // Handled before CodeMirror's own paste and drop, so nothing is inserted.
+  const refuse = (event: Event) => {
+    event.preventDefault();
+    o.onPasteBlocked?.();
+    return true;
+  };
+  const blockPasteExt = (on: boolean) => (on ? EditorView.domEventHandlers({ paste: refuse, drop: refuse }) : []);
 
   // Podium's own keys win over VS Code's (Mod-Enter would insert a line there).
   const own = keymap.of([
@@ -348,6 +364,7 @@ export function createEditor(o: EditorOptions): EditorHandle {
         tabSizeConf.of(tabSizeExt(o.tabSize ?? 4)),
         wrapConf.of(o.wrap ? EditorView.lineWrapping : []),
         readOnlyConf.of(readOnlyExt(o.readOnly ?? false)),
+        blockPasteConf.of(blockPasteExt(o.blockPaste ?? false)),
         own,
         tabConf.of(tabKeys(o.tabMovesFocus)),
         keymap.of([{ key: 'Escape', run: closeShownCompletion }, ...closeBracketsKeymap, ...extraKeys, ...vscodeKeys, ...defaultKeymap, ...historyKeymap]),
@@ -406,6 +423,9 @@ export function createEditor(o: EditorOptions): EditorHandle {
     },
     setReadOnly(on) {
       view.dispatch({ effects: readOnlyConf.reconfigure(readOnlyExt(on)) });
+    },
+    setBlockPaste(on) {
+      view.dispatch({ effects: blockPasteConf.reconfigure(blockPasteExt(on)) });
     },
     setDoc(doc) {
       if (doc === view.state.doc.toString()) return;

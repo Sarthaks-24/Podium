@@ -8,8 +8,11 @@
     countdown as the page's lead figure, three facts (length, languages,
     the wait between submissions), the honour code and "I agree, start
     the contest" (POST /api/contests/{slug}/start), all in the first
-    screen at 375 px. The full rules and how Run and Submit work are in
-    Help (a link under the button, or "?"); the description follows.
+    screen at 375 px. When the organisers turned on exam options (V3-25),
+    one line above the button names them, so nothing blocks silently; with
+    full screen on, the button also asks the browser for full screen.
+    The full rules and how Run and Submit work are in Help (a link under
+    the button, or "?"); the description follows.
     The button waits for the start; when the start arrives the announcer
     says so. A late arrival reads that their time is already running.
   - During their window: the shared Workspace on the contest's routes with
@@ -22,7 +25,9 @@
     by the server shows a notice there too. "Rules" in the rail opens Help, which lists the same
     rules (D114). When an organiser moves a problem to a new revision (the
     `statement` event), the open problem's statement reloads; the
-    organisers announce the change.
+    organisers announce the change. The exam options go to the workspace;
+    with full screen on, a student out of full screen sees a line and
+    "Return to full screen" above the title.
     A frozen contest reads "Live" to students (D84). "[" and "]" open the previous and
     next problem when focus is not in a text field (lib/shortcuts.ts).
   - After it (audit 2026-10-20 S9, B5): the place as the display figure
@@ -65,6 +70,7 @@
   import {
     CONTEST_EVENTS,
     bannerItems,
+    examLine,
     markMessagesRead,
     messagesReadAt,
     formatCountdown,
@@ -117,6 +123,8 @@
   let sessionNoticeHidden = $state(false);
   let streamMode = $state<StreamMode>('connecting');
   let timeUp = $state(false);
+  /** Whether the page is in full screen, for the exam option's line (V3-25). */
+  let fullscreen = $state(false);
   /** Raised when the open problem moved to a new revision, so its statement reloads. */
   let statementKey = $state(0);
 
@@ -160,6 +168,8 @@
   const totalScore = $derived(problems.reduce((n, p) => n + (p.my_score ?? 0), 0));
   const totalMax = $derived(problems.reduce((n, p) => n + p.max_score, 0));
   const secondSession = $derived(!sessionNoticeHidden && (otherTab || contest?.second_session === true));
+  const exam = $derived(contest && !contest.organiser ? contest.rules : null);
+  const examText = $derived(examLine(exam));
   const startNow = $derived(contest ? startLine(contest, ticker.now) : { kind: 'before' as const, ms: 0 });
   const used = $derived(
     contest && currentProblem && phase === 'during' ? { count: currentProblem.my_submission_count ?? 0, max: contest.rules.max_per_problem } : null,
@@ -282,6 +292,8 @@
   async function start() {
     startError = '';
     startBusy = true;
+    // Asked for in the click itself, which the browser requires; a refusal leaves the contest as it is.
+    if (exam?.full_screen) enterFullscreen();
     try {
       const sent = Date.now();
       const data = await sendJSON<Contest>('POST', `${api}/start`, { accept_honour: true });
@@ -297,6 +309,14 @@
       startError = e instanceof ApiError ? (e.fields.accept_honour ?? e.message) : PAGE_ERROR_MESSAGE;
     } finally {
       startBusy = false;
+    }
+  }
+
+  function enterFullscreen() {
+    try {
+      void document.documentElement.requestFullscreen?.()?.catch(() => undefined);
+    } catch {
+      // The browser refused; the line above the title offers it again.
     }
   }
 
@@ -413,6 +433,9 @@
     import('../lib/markdown').catch(() => undefined);
     void load();
     const stopTicker = useTicker();
+    const onFullscreen = () => (fullscreen = !!document.fullscreenElement);
+    onFullscreen();
+    document.addEventListener('fullscreenchange', onFullscreen);
     if (typeof BroadcastChannel !== 'undefined') {
       try {
         channel = new BroadcastChannel(`podium-contest:${slug}`);
@@ -425,7 +448,10 @@
         channel = null;
       }
     }
-    return stopTicker;
+    return () => {
+      stopTicker();
+      document.removeEventListener('fullscreenchange', onFullscreen);
+    };
   });
 
   onDestroy(() => {
@@ -461,6 +487,12 @@
           : 'Your account is in this contest from another session as well. Organisers can see both sessions.'}
       </p>
       <button type="button" class="btn btn-quiet" onclick={() => (sessionNoticeHidden = true)}>Dismiss</button>
+    </div>
+  {/if}
+  {#if phase === 'during' && exam?.full_screen && !fullscreen}
+    <div class="banner session-notice" role="status">
+      <p>This contest counts each time you leave full screen.</p>
+      <button type="button" class="btn btn-secondary" onclick={enterFullscreen}>Return to full screen</button>
     </div>
   {/if}
   {#if phase === 'during'}
@@ -512,6 +544,7 @@
       {used}
       minGapS={phase === 'during' ? contest.rules.min_gap_s : 0}
       {statementKey}
+      exam={phase === 'during' ? exam : null}
       extraEvents={CONTEST_EVENTS}
       onevent={onEvent}
       onresync={() => refetchSoon(0)}
@@ -613,6 +646,7 @@
           <Markdown source={contest.honour_text.trim() !== '' ? contest.honour_text : 'Work alone, and do not share code or ideas until the contest ends.'} />
         </div>
         <div class="start">
+          {#if examText}<p class="exam-line">{examText}</p>{/if}
           <button type="button" class="btn btn-primary" disabled={phase === 'upcoming' || startBusy} aria-describedby="start-help" onclick={start}>
             I agree, start the contest
           </button>
@@ -833,6 +867,12 @@
     justify-items: start;
     gap: var(--space-2);
     margin-top: var(--space-3);
+  }
+
+  /* The exam options in one line, read before the button (V3-25). */
+  .exam-line {
+    max-width: var(--measure-prose);
+    font-weight: 500;
   }
 
   .time-up {

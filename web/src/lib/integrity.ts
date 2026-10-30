@@ -3,16 +3,18 @@
  *
  * What is recorded: the number of characters typed and pasted (from
  * CodeMirror's input.type and input.paste transactions), each paste's
- * length, and the window losing and regaining focus. What is not: keystroke
- * timing, the text itself, or anything outside this page.
+ * length, the window losing and regaining focus, and, in a contest that
+ * asks for full screen (V3-25), each time the student leaves it. What is
+ * not: keystroke timing, the text itself, or anything outside this page.
  *
- * Paste, blur and focus events are queued and sent in batches of at most
+ * Paste, blur, focus and full-screen exit events are queued and sent in batches of at most
  * 100 every 30 s and when a submission is made, with fetch keepalive (or
  * navigator.sendBeacon when fetch is unavailable), so a batch survives the
  * page closing. Sending never blocks or delays a submission, and a failed
  * batch is dropped rather than retried: these are signals for an organiser
  * to look closer, not evidence on their own. The character counts and the
- * number of focus losses since the last submission go with the next submit.
+ * number of focus losses and full-screen exits since the last submission
+ * go with the next submit.
  *
  * The server takes at most one batch every 5 s per person (M4), so batches
  * are paced: a flush within 5 s of the last send waits for the gap, and a
@@ -20,7 +22,7 @@
  * flush as the page closes sends at once, because there is no later.
  */
 
-export type IntegrityKind = 'paste' | 'blur' | 'focus';
+export type IntegrityKind = 'paste' | 'blur' | 'focus' | 'fullscreen_exit';
 
 /** One event as POST .../events takes it; `at` is server Unix ms. */
 export interface IntegrityEvent {
@@ -34,6 +36,7 @@ export interface IntegrityCounts {
   typed_chars: number;
   pasted_chars: number;
   focus_losses: number;
+  fullscreen_exits: number;
 }
 
 /** How often queued events are sent, in ms. */
@@ -84,6 +87,7 @@ export class IntegrityRecorder {
   private typed = 0;
   private pasted = 0;
   private losses = 0;
+  private exits = 0;
   private queue: IntegrityEvent[] = [];
   private readonly url: string;
   private readonly now: () => number;
@@ -120,6 +124,12 @@ export class IntegrityRecorder {
   /** The window got focus back. */
   focus(): void {
     this.push({ kind: 'focus', size: 0, at: this.now() });
+  }
+
+  /** The student left full screen. */
+  fullscreenExit(): void {
+    this.exits++;
+    this.push({ kind: 'fullscreen_exit', size: 0, at: this.now() });
   }
 
   private push(ev: IntegrityEvent) {
@@ -169,7 +179,7 @@ export class IntegrityRecorder {
 
   /** The counts for a submission. */
   counts(): IntegrityCounts {
-    return { typed_chars: this.typed, pasted_chars: this.pasted, focus_losses: this.losses };
+    return { typed_chars: this.typed, pasted_chars: this.pasted, focus_losses: this.losses, fullscreen_exits: this.exits };
   }
 
   /** Starts counting again after a submission was accepted. */
@@ -177,5 +187,6 @@ export class IntegrityRecorder {
     this.typed = 0;
     this.pasted = 0;
     this.losses = 0;
+    this.exits = 0;
   }
 }

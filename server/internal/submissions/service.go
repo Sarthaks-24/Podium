@@ -317,7 +317,10 @@ type SubmitRequest struct {
 	Language, Source    string
 	ClientKey           string
 	Typed, Pasted, Blur int
-	ClientHash          string
+	// Exits counts the times the student left full screen since the last
+	// submission, in a contest that asks for it (V3-25).
+	Exits      int
+	ClientHash string
 }
 
 // ClientHash turns an IP address and user agent into the opaque value
@@ -425,10 +428,10 @@ func (s *Service) Submit(ctx context.Context, r SubmitRequest) (v *SubmissionVie
 	}
 	var id int64
 	err = tx.QueryRowContext(ctx, `INSERT INTO submissions (problem_id, contest_id, user_id, kind, language, source, source_sha,
-		max_score, client_key, typed_chars, pasted_chars, focus_losses, client_hash, practice, created_at, revision_id)
-		VALUES (?, ?, ?, 'submit', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
+		max_score, client_key, typed_chars, pasted_chars, focus_losses, fullscreen_exits, client_hash, practice, created_at, revision_id)
+		VALUES (?, ?, ?, 'submit', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
 		r.ProblemID, contest, r.UserID, r.Language, r.Source, srcSHA, maxScore, r.ClientKey,
-		clamp(r.Typed), clamp(r.Pasted), clamp(r.Blur), r.ClientHash, r.Scope.Practice, now.UnixMilli(), nullID(r.Scope.RevisionID)).Scan(&id)
+		clamp(r.Typed), clamp(r.Pasted), clamp(r.Blur), clamp(r.Exits), r.ClientHash, r.Scope.Practice, now.UnixMilli(), nullID(r.Scope.RevisionID)).Scan(&id)
 	if err != nil {
 		return nil, false, err
 	}
@@ -679,8 +682,8 @@ type Event struct {
 // server's own clock is used instead.
 const eventAgeLimit = 10 * time.Minute
 
-// RecordEvents stores paste, blur and focus events. Unknown kinds are
-// refused; sizes are clamped.
+// RecordEvents stores paste, blur, focus and full-screen exit events.
+// Unknown kinds are refused; sizes are clamped.
 func (s *Service) RecordEvents(ctx context.Context, problemID, userID int64, sc Scope, evs []Event) error {
 	if len(evs) > maxEvents {
 		return &InputError{"Too many events in one request."}
@@ -689,7 +692,7 @@ func (s *Service) RecordEvents(ctx context.Context, problemID, userID int64, sc 
 	// lock is taken: kinds, the rate, and the cap (a plain read).
 	for _, e := range evs {
 		switch e.Kind {
-		case "paste", "blur", "focus":
+		case "paste", "blur", "focus", "fullscreen_exit":
 		default:
 			return &InputError{"Unknown event kind."}
 		}

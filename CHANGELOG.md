@@ -4,6 +4,13 @@ Dated entries per release. Unreleased work is listed at the top.
 
 ## Unreleased
 
+### v3 stage C7: exam options (2026-10-30)
+
+- Setup has four exam options under Advanced, all off by default: full screen on start, count tab switches and focus loss, block paste into the editor, block copy out of the statement.
+- Nothing blocks silently: before Start, and in Help's rules, one line says which measures are on. A blocked paste or copy shows a line saying so; leaving full screen offers "Return to full screen".
+- When an option is on, the console's submissions feed shows what was recorded beside each submission, and the similar-code page shows a table per student. Full-screen exits are a new integrity event (`fullscreen_exit`) and a count on each submission.
+- The measures apply only during a student's own contest time, not in practice or the organiser's student view. Blocking happens in the browser; the server records and counts.
+
 ### v3 stage C5: Results (2026-10-30)
 
 - Results lead with one line on where the reveal stands, then Reveal (only once there is something to reveal), Similar code, Download CSV and Download JSON. Reveal asks once; nothing says "release" any more. The step-by-step reveal overlay is deleted.

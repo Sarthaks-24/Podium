@@ -102,6 +102,14 @@ CREATE TABLE contests (
   -- organiser reveals it (revealed_at), so a projector walk is a surprise.
   hold_reveal         INTEGER NOT NULL DEFAULT 0 CHECK (hold_reveal IN (0, 1)),
   revealed_at         INTEGER,
+  -- exam options (V3-25), each off unless the organiser turns it on:
+  -- ask for full screen at the start and count the exits, show the focus
+  -- losses to organisers, refuse pastes into the editor, refuse copies
+  -- out of the statement
+  full_screen         INTEGER NOT NULL DEFAULT 0 CHECK (full_screen IN (0, 1)),
+  count_focus         INTEGER NOT NULL DEFAULT 0 CHECK (count_focus IN (0, 1)),
+  block_paste         INTEGER NOT NULL DEFAULT 0 CHECK (block_paste IN (0, 1)),
+  block_copy          INTEGER NOT NULL DEFAULT 0 CHECK (block_copy IN (0, 1)),
   archived            INTEGER NOT NULL DEFAULT 0 CHECK (archived IN (0, 1)),
   created_by          INTEGER REFERENCES users (id) ON DELETE SET NULL,
   created_at          INTEGER NOT NULL,
@@ -152,7 +160,7 @@ CREATE TABLE integrity_events (
   user_id    INTEGER NOT NULL REFERENCES users (id) ON DELETE CASCADE,
   problem_id INTEGER NOT NULL,
   contest_id INTEGER NOT NULL DEFAULT 0,
-  kind       TEXT    NOT NULL CHECK (kind IN ('paste', 'blur', 'focus', 'second_session')),
+  kind       TEXT    NOT NULL CHECK (kind IN ('paste', 'blur', 'focus', 'fullscreen_exit', 'second_session')),
   size       INTEGER NOT NULL DEFAULT 0,
   created_at INTEGER NOT NULL
 ) STRICT;
@@ -369,11 +377,12 @@ CREATE TABLE submissions (
   -- returns the first instead of counting twice
   client_key    TEXT    NOT NULL DEFAULT '',
   -- integrity counts (D47): characters typed and pasted in the editor
-  -- since the last submission, focus losses, and a hash of IP and
-  -- browser. Never keystroke timing.
+  -- since the last submission, focus losses, full-screen exits (V3-25),
+  -- and a hash of IP and browser. Never keystroke timing.
   typed_chars   INTEGER NOT NULL DEFAULT 0,
   pasted_chars  INTEGER NOT NULL DEFAULT 0,
   focus_losses  INTEGER NOT NULL DEFAULT 0,
+  fullscreen_exits INTEGER NOT NULL DEFAULT 0,
   client_hash   TEXT    NOT NULL DEFAULT '',
   -- made after a contest ended (practice): never in standings
   practice      INTEGER NOT NULL DEFAULT 0 CHECK (practice IN (0, 1)),

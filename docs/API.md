@@ -747,7 +747,7 @@ A submission that counts never carries the input, output or checker comment of a
 | Problem | tests, samples and subtasks fit together and every test has an expected output; validation is not required to try a problem | `409 not_ready` with `problems` |
 
 - `client_key` is a random value the browser makes per press of Submit and reuses on a retry. Keys are per user, problem and contest (the same key on another problem, or in another contest, is a new submission). The same key from the same user on the same problem returns the first submission with `200` and counts nothing again, so a retry after a timeout never trips the rate limit.
-- `typed_chars`, `pasted_chars` and `focus_losses` are the editor's counts since the last submission (D47), clamped to 0 to 10,000,000. They never block a submit.
+- `typed_chars`, `pasted_chars` and `focus_losses` are the editor's counts since the last submission (D47), clamped to 0 to 10,000,000. They never block a submit. `fullscreen_exits` (optional) counts the times the student left full screen since the last submission, in a contest with `full_screen` (V3-25).
 - The server also stores a hash of the client's IP address and user agent with each submission, an HMAC keyed by `PODIUM_SESSION_SECRET`, so it cannot be reversed by trying campus addresses.
 
 429 bodies carry the wait, and the response has a `Retry-After` header with the same number:
@@ -767,7 +767,7 @@ A submission that counts never carries the input, output or checker comment of a
 
 ### Integrity events
 
-`POST .../events` records what the editor saw (decision D47): `kind` is `paste` (with `size`, the pasted length in characters), `blur` or `focus` (window focus lost and back). At most 100 events per request. `at` is when it happened, in server Unix ms as the browser estimates it from `server_now`; events go in batches, so the server keeps `at` when it lies in the last 10 minutes and uses its own clock otherwise. Never keystrokes or text.
+`POST .../events` records what the editor saw (decision D47): `kind` is `paste` (with `size`, the pasted length in characters), `blur` or `focus` (window focus lost and back), or `fullscreen_exit` (the student left full screen, V3-25). At most 100 events per request. `at` is when it happened, in server Unix ms as the browser estimates it from `server_now`; events go in batches, so the server keeps `at` when it lies in the last 10 minutes and uses its own clock otherwise. Never keystrokes or text.
 
 | Status | When |
 |---|---|
@@ -859,7 +859,8 @@ Reads that cost several queries (the contest list, the contest page, the contest
 ```json
 { "description_md": "...", "honour_text": "This contest is graded. ...", "accepted": true, "organiser": false,
   "rules": { "feedback_mode": "subtask", "scoring_mode": "best_subtask", "min_gap_s": 30, "max_per_problem": 15,
-             "languages": ["cpp17", "python3"], "freeze_minutes": 30, "practice_after_end": true },
+             "languages": ["cpp17", "python3"], "freeze_minutes": 30, "practice_after_end": true,
+             "full_screen": false, "count_focus": false, "block_paste": false, "block_copy": false },
   "problems": [ { "label": "A", "title": "A plus B", "my_score": 40, "max_score": 100, "my_submission_count": 3 } ],
   "announcements": [ { "id": 3, "body_md": "...", "created_at": 1792311000000 } ],
   "my_clarifications": [ Clarification ], "public_clarifications": [ Clarification ],
@@ -974,7 +975,7 @@ Every change that can affect results is recorded in the contest's audit log (bel
 
 ### `ContestEdit` and `AdminContest`
 
-`ContestEdit` holds the form's fields: `slug`, `title`, `description_md`, `starts_at`, `ends_at`, `start_mode` (`fixed` or `window`), `duration_minutes` (window mode, at least 10 and at most the whole window), `freeze_minutes`, `scoring_mode` (`best_subtask` or `best_submission`), `access` (`domain` or `roster`), `feedback_mode` (`subtask` or `exam`), `published`, `practice_after_end`, `stop_on_sample_fail`, `min_gap_s` (0 to 3600), `max_per_problem` (1 to 1000), `languages`, `honour_text` (empty for the default), `hold_reveal`. Defaults on create: fixed start, best per subtask, domain access, subtask feedback, practice after the end, stop on a failing sample, 30 s gap, 15 per problem, all four languages. Unknown fields are refused. Publishing checks that every problem is still the validated version that was added ("Problem B changed or lost its validation since it was added. Validate it and add it again."). Invalid fields: `400 bad_request` with `fields`.
+`ContestEdit` holds the form's fields: `slug`, `title`, `description_md`, `starts_at`, `ends_at`, `start_mode` (`fixed` or `window`), `duration_minutes` (window mode, at least 10 and at most the whole window), `freeze_minutes`, `scoring_mode` (`best_subtask` or `best_submission`), `access` (`domain` or `roster`), `feedback_mode` (`subtask` or `exam`), `published`, `practice_after_end`, `stop_on_sample_fail`, `min_gap_s` (0 to 3600), `max_per_problem` (1 to 1000), `languages`, `honour_text` (empty for the default), `hold_reveal`, and the exam options (V3-25) `full_screen` (ask for full screen at the start and count each exit), `count_focus` (show organisers the focus losses), `block_paste` (refuse pastes into the editor) and `block_copy` (refuse copies out of the statement), each false unless set. Defaults on create: fixed start, best per subtask, domain access, subtask feedback, practice after the end, stop on a failing sample, 30 s gap, 15 per problem, all four languages. Unknown fields are refused. Publishing checks that every problem is still the validated version that was added ("Problem B changed or lost its validation since it was added. Validate it and add it again."). Invalid fields: `400 bad_request` with `fields`.
 
 `AdminContest` is every `ContestEdit` field plus `id`, `close_at` (end plus contest-wide extension), `default_honour_text`, `editorial_md`, `editorial_published`, `paused`, `extended_minutes`, `revealed_at`, `archived`, `state`, `problems [{label, problem_id, title, pinned_hash, ready, max_score}]` (`ready` is false when the problem changed since it was added; from v1.3.0 `pinned_hash` is the pinned revision's content hash, the database column having gone), `admins [{user_id, email, name}]`, `extensions [{user_id, email, name, minutes, reason}]`, `roster_count`, `created_at`, `updated_at`, `server_now`, `locked_after_start` (the field names above that only admins may change once the contest has started).
 
@@ -1023,7 +1024,7 @@ Unknown actions may appear in later releases; show them by their name.
 
 - **Pause** stops the judge from taking the contest's submissions and runs; they still queue, and nothing is lost. **Resume** lets them through in order.
 - **Rejudge** queues every submission of a problem (or one submission) again at priority 50 with the problem's current tests; each goes back to `queued` and counts again once judged. Submissions still waiting for the judge, or being judged, on the old tests are included: their old job is cancelled and replaced. A submission already waiting on exactly the current tests is left alone, so pressing Rejudge twice adds nothing (`queued` counts only what was queued). The problem must still match its pin: after editing tests, validate the problem and add it to the contest again first (`409 not_ready` otherwise). A rejudge waiting in the queue never blocks the student from submitting.
-- **Feed** rows: `{id, user_id, name, email, problem_label, language, state, verdict, score, max_score, created_at, judged_at, practice, rejudged, typed_chars, pasted_chars, focus_losses}`, newest first, 50 per page.
+- **Feed** rows: `{id, user_id, name, email, problem_label, language, state, verdict, score, max_score, created_at, judged_at, practice, rejudged, typed_chars, pasted_chars, focus_losses, fullscreen_exits}`, newest first, 50 per page.
 - **Reveal** answers `409 too_early` "The reveal opens when every student's time is up." until the close plus the longest personal extension. The web app asks once, then shows students the full board.
 
 ### Export and stats
@@ -1240,6 +1241,7 @@ Checks for copying after a contest, and the review of what they find (decisions 
 | `GET /api/admin/contests/{id}/integrity` | | 200 `Run` plus `users`, `problems` and `server_now`; `404 not_found` "This contest has not been checked yet." |
 | `GET /api/admin/contests/{id}/integrity/signals/{signal}/pair` | | 200 `{a: Side, b: Side, server_now}` for a `similar` signal; any other kind is a `404`, and so is a signal that names the viewer |
 | `GET /api/admin/contests/{id}/integrity/timeline/{user}` | | 200 `{moments: [Moment], server_now}`; `404` when the user neither accepted the rules nor submitted in this contest, and for the viewer's own timeline. The run (`GET .../integrity`) leaves out every signal that names the viewer (a student since made an admin) |
+| `GET /api/admin/contests/{id}/integrity/counts` | | 200 `{counts: [{user_id, name, pastes, pasted_chars, focus_losses, fullscreen_exits}], server_now}`: what the editor recorded per student over the whole contest (V3-25), the most events first, the viewer's own row left out. Allowed at any time; the similar-code page shows it when an exam option is on |
 | `GET /api/admin/contests/{id}/integrity/cases` | | 200 `{cases: [Case], server_now}`, newest first; each case carries the viewer's `may_confirm`, `may_rule` and `sole_organiser` as `GET /api/admin/integrity/cases/{case}` does (D321) |
 | `GET /api/admin/contests/{id}/integrity/waiting` | | 200 `{waiting_for_you: n}`: cases whose pending proposal this reviewer may confirm, leaving out cases about them; names nothing, so not logged as a read (D321). `403` to a co-organiser who may not review |
 | `POST /api/admin/contests/{id}/integrity/cases` | `{title, note, signal_ids: [n]}` | 201 `Case`, logged as a read of the case (D97) |
@@ -1261,7 +1263,7 @@ Students (any signed-in user):
 - `users`: `{id: {name, email, roll_number}}` for every user a signal names. The name and roll number come from the contest's roster when the student is on it, otherwise the account's name and an empty roll number.
 - `problems`: `{id: {label, title}}` for the contest's problems.
 - `Side`: `{submission_id, user_id, language, source, created_at, spans: [{start, end}]}`; spans are byte offsets into `source`.
-- `Moment`: `{at, kind, problem_id?, text}`; `kind` is `submission`, `paste`, `blur`, `focus`, `second_session` or `shared_device`, oldest first. `shared_device` names the other student ("Same browser and network as ...") and is never a signal.
+- `Moment`: `{at, kind, problem_id?, text}`; `kind` is `submission`, `paste`, `blur`, `focus`, `fullscreen_exit`, `second_session` or `shared_device`, oldest first. `shared_device` names the other student ("Same browser and network as ...") and is never a signal.
 - `Case`: `{id, contest_id, state, title, evidence: [Signal], created_at, updated_at, users: [{user_id, name, shared_at|null, explanation, explained_at|null}], decisions: [{by, state, note, created_at}]}`. `evidence` is a copy of the signals taken when the case opened, so a later check cannot change it. The students are the users its signals name.
 - `StudentCase`: `{id, contest_id, state, title, evidence: [{problem_id, kind, text, submission_id?, source?, spans?}], explanation, shared_at, decided}`. Only the student's own evidence, worded for them; `source` and `spans` are their own program for `similar`. Never another student's name, email or code, never the case title (`title` here is the contest's title, because a reviewer's title may name people) and never the decision notes.
 

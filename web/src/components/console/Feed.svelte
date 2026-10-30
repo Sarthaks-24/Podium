@@ -5,13 +5,18 @@
   refresh at 14:02:20. Showing 14:02:10. Retrying." with the last rows kept.
   Outcomes read as students read them ("Partial, 40 of 100" apart from a
   zero); the time is minutes from the start, with the clock time on hover.
+  When the contest has an exam option on (V3-25), a Recorded column gives
+  what the editor counted before each submission: the pasted characters,
+  the focus losses when they are counted, and the full-screen exits when
+  full screen is on.
   Each row has two quiet buttons: "Record a decision" (the integrity
   decision about that student) and "Judge again", both handed to the page,
   which asks first. The page refreshes the feed through `load()` and shows
   only judge errors through `showErrors()`.
 
   Props: `base` (the contest's admin API path), `startsAt`, `labels` (the
-  problem letters), `students` ({ user_id, name }, for the filter),
+  problem letters), `students` ({ user_id, name }, for the filter), `exam`
+  (the contest's exam options),
   `autoRefresh` (bindable: the page's 10 s refresh), `onrejudge(row)` and
   `ondecide(row)`.
 -->
@@ -21,7 +26,7 @@
   import MonoDigits from '../MonoDigits.svelte';
   import { ApiError, errorText, getJSON } from '../../lib/api';
   import { serverClock } from '../../lib/clock';
-  import { feedOutcome, sinceStart, type FeedPage, type FeedRow } from '../../lib/contests';
+  import { anyExamOption, feedOutcome, recordedText, sinceStart, type ExamOptions, type FeedPage, type FeedRow } from '../../lib/contests';
   import { verdictLabel } from '../../lib/problems';
   import { ticker } from '../../lib/ticker.svelte';
   import { formatWhen, languageLabel } from '../../lib/workspace';
@@ -31,12 +36,15 @@
     startsAt: number;
     labels: readonly string[];
     students: readonly { user_id: number; name: string }[];
+    exam?: ExamOptions;
     autoRefresh: boolean;
     onrejudge: (row: FeedRow) => void;
     ondecide: (row: FeedRow) => void;
   }
 
-  let { base, startsAt, labels, students, autoRefresh = $bindable(), onrejudge, ondecide }: Props = $props();
+  let { base, startsAt, labels, students, exam = {}, autoRefresh = $bindable(), onrejudge, ondecide }: Props = $props();
+
+  const recorded = $derived(anyExamOption(exam));
 
   const VERDICTS = ['AC', 'WA', 'TLE', 'MLE', 'RE', 'CE'];
 
@@ -161,6 +169,7 @@
             <th scope="col">Problem</th>
             <th scope="col">Language</th>
             <th scope="col">Outcome</th>
+            {#if recorded}<th scope="col">Recorded</th>{/if}
             <th scope="col"><span class="visually-hidden">Actions</span></th>
           </tr>
         </thead>
@@ -176,6 +185,7 @@
               <td class="mono plabel">{row.problem_label ?? row.label}</td>
               <td class="lang">{languageLabel(row.language)}</td>
               <td class="verdict"><Badge tone={out.tone}><MonoDigits text={out.text} /></Badge></td>
+              {#if recorded}<td class="recorded small"><MonoDigits text={recordedText(row, exam)} /></td>{/if}
               <td class="act">
                 <button type="button" class="btn btn-quiet btn-compact again" aria-label="Record a decision about {row.name}" onclick={() => ondecide(row)}
                   >Record a decision</button
@@ -277,6 +287,10 @@
     color: var(--ink);
   }
 
+  .recorded {
+    color: var(--ink-muted);
+  }
+
   .pager {
     display: flex;
     align-items: center;
@@ -290,6 +304,7 @@
       grid-template-areas:
         'when who plabel'
         'verdict verdict verdict'
+        'recorded recorded recorded'
         'act act act';
       align-items: center;
       padding: var(--space-2) var(--space-3);
@@ -316,6 +331,10 @@
 
     .feed .verdict {
       grid-area: verdict;
+    }
+
+    .feed .recorded {
+      grid-area: recorded;
     }
 
     .feed .act {

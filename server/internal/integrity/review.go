@@ -112,7 +112,7 @@ func (s *Service) side(ctx context.Context, contestID, subID int64, spans []Span
 // Moment is one entry in a student's timeline.
 type Moment struct {
 	At      int64  `json:"at"`
-	Kind    string `json:"kind"` // submission, paste, blur, focus, second_session, shared_device
+	Kind    string `json:"kind"` // submission, paste, blur, focus, fullscreen_exit, second_session, shared_device
 	Problem int64  `json:"problem_id,omitempty"`
 	Text    string `json:"text"`
 }
@@ -123,22 +123,25 @@ type Moment struct {
 // devices are listed, never clustered (integrity council ruling).
 func (s *Service) Timeline(ctx context.Context, contestID, userID int64) ([]Moment, error) {
 	out := []Moment{}
-	rows, err := s.DB.QueryContext(ctx, `SELECT created_at, problem_id, language, verdict, score, max_score, typed_chars, pasted_chars, focus_losses
-		FROM submissions WHERE contest_id = ? AND user_id = ? AND kind = 'submit' ORDER BY id`, contestID, userID)
+	rows, err := s.DB.QueryContext(ctx, `SELECT created_at, problem_id, language, verdict, score, max_score, typed_chars, pasted_chars, focus_losses,
+		fullscreen_exits FROM submissions WHERE contest_id = ? AND user_id = ? AND kind = 'submit' ORDER BY id`, contestID, userID)
 	if err != nil {
 		return nil, err
 	}
 	for rows.Next() {
 		var m Moment
 		var lang, verdict string
-		var score, max, typed, pasted, losses int
-		if err := rows.Scan(&m.At, &m.Problem, &lang, &verdict, &score, &max, &typed, &pasted, &losses); err != nil {
+		var score, max, typed, pasted, losses, exits int
+		if err := rows.Scan(&m.At, &m.Problem, &lang, &verdict, &score, &max, &typed, &pasted, &losses, &exits); err != nil {
 			rows.Close()
 			return nil, err
 		}
 		m.Kind = "submission"
 		m.Text = strings.TrimSpace(lang + " " + verdict + " " + itoa(score) + " of " + itoa(max) +
 			". Typed " + itoa(typed) + ", pasted " + itoa(pasted) + " characters, left the page " + itoa(losses) + " times.")
+		if exits > 0 {
+			m.Text += " Left full screen " + itoa(exits) + " times."
+		}
 		out = append(out, m)
 	}
 	rows.Close()
@@ -164,6 +167,8 @@ func (s *Service) Timeline(ctx context.Context, contestID, userID int64) ([]Mome
 			m.Text = "Left the page."
 		case "focus":
 			m.Text = "Came back to the page."
+		case "fullscreen_exit":
+			m.Text = "Left full screen."
 		case "second_session":
 			m.Text = "Opened the contest in a second browser while the first was open."
 		}
@@ -208,6 +213,47 @@ func sortMoments(ms []Moment) {
 }
 
 var itoa = strconv.Itoa
+
+// Counts is what the editor recorded for one student in a contest, from
+// the integrity events: the exam options' counts for the similar-code
+// page (V3-25).
+type Counts struct {
+	UserID int64  `json:"user_id"`
+	Name   string `json:"name"`
+	// Pastes and PastedChars are the pastes into the editor and their
+	// total length.
+	Pastes      int `json:"pastes"`
+	PastedChars int `json:"pasted_chars"`
+	// FocusLosses counts the times the page lost focus (a tab switch or
+	// another window).
+	FocusLosses int `json:"focus_losses"`
+	// FullscreenExits counts the times the student left full screen.
+	FullscreenExits int `json:"fullscreen_exits"`
+}
+
+// ContestCounts lists the recorded counts of every student with an event
+// in the contest, the most events first, then by name.
+func (s *Service) ContestCounts(ctx context.Context, contestID int64) ([]Counts, error) {
+	rows, err := s.DB.QueryContext(ctx, `SELECT e.user_id, coalesce(nullif(u.name, ''), u.email),
+		coalesce(sum(e.kind = 'paste'), 0), coalesce(sum(CASE WHEN e.kind = 'paste' THEN e.size ELSE 0 END), 0),
+		coalesce(sum(e.kind = 'blur'), 0), coalesce(sum(e.kind = 'fullscreen_exit'), 0)
+		FROM integrity_events e JOIN users u ON u.id = e.user_id
+		WHERE e.contest_id = ? AND e.kind IN ('paste', 'blur', 'fullscreen_exit')
+		GROUP BY e.user_id ORDER BY count(*) DESC, 2, e.user_id`, contestID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []Counts{}
+	for rows.Next() {
+		var c Counts
+		if err := rows.Scan(&c.UserID, &c.Name, &c.Pastes, &c.PastedChars, &c.FocusLosses, &c.FullscreenExits); err != nil {
+			return nil, err
+		}
+		out = append(out, c)
+	}
+	return out, rows.Err()
+}
 
 // Participant reports whether a user took part in a contest: accepted its
 // rules or submitted to it. The timeline is refused for anyone else, so a

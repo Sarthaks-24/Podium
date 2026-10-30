@@ -1,7 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import {
   allowedLanguages,
+  anyExamOption,
   auditSummary,
+  examLine,
+  recordedText,
   clockMilestone,
   formatCountdown,
   formatMinutes,
@@ -380,3 +383,30 @@ describe('auditSummary', () => {
   });
 });
 
+describe('exam options (V3-25)', () => {
+  it('says nothing when none is on', () => {
+    expect(examLine(null)).toBe('');
+    expect(examLine({ full_screen: false, block_paste: false })).toBe('');
+    expect(anyExamOption({})).toBe(false);
+    expect(rulesSentences(contest()).join(' ')).not.toContain('This contest');
+  });
+
+  it('names every measure that is on in one line', () => {
+    expect(examLine({ block_paste: true })).toBe('This contest blocks pasting into the editor.');
+    expect(examLine({ block_paste: true, full_screen: true })).toBe(
+      'This contest blocks pasting into the editor and opens in full screen, counting each time you leave it.',
+    );
+    expect(examLine({ full_screen: true, count_focus: true, block_paste: true, block_copy: true })).toBe(
+      'This contest blocks pasting into the editor, blocks copying from the statement, opens in full screen, counting each time you leave it, and counts each time you switch tabs or leave the page.',
+    );
+    const rules = { ...contest().rules, block_copy: true };
+    expect(rulesSentences(contest({ rules }))).toContain('This contest blocks copying from the statement.');
+  });
+
+  it('gives the feed the counts of the measures that are on', () => {
+    const row = { pasted_chars: 12, focus_losses: 1, fullscreen_exits: 2 };
+    expect(recordedText(row, { block_paste: true })).toBe('Pasted 12 characters');
+    expect(recordedText(row, { count_focus: true, full_screen: true })).toBe('Pasted 12 characters, left the page 1 time, left full screen 2 times');
+    expect(recordedText({}, { full_screen: true })).toBe('Pasted 0 characters, left full screen 0 times');
+  });
+});

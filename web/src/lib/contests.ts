@@ -48,7 +48,66 @@ export interface ContestList {
   server_now?: number;
 }
 
-export interface ContestRules {
+/**
+ * The exam options (V3-25): measures an organiser turns on for an
+ * examination, all off by default. They sit under Advanced in contest
+ * setup, come to the student with the rules, and the workspace acts on
+ * them; missing reads as off.
+ */
+export interface ExamOptions {
+  /** Ask for full screen when the student starts, and count each exit. */
+  full_screen?: boolean;
+  /** Show organisers the focus losses (recorded in every contest). */
+  count_focus?: boolean;
+  /** Refuse pastes into the editor. */
+  block_paste?: boolean;
+  /** Refuse copies out of the statement. */
+  block_copy?: boolean;
+}
+
+/** True when any exam option is on. */
+export function anyExamOption(o: ExamOptions | null | undefined): boolean {
+  return !!o && !!(o.full_screen || o.count_focus || o.block_paste || o.block_copy);
+}
+
+/**
+ * The one line the student reads before starting, naming every measure
+ * that is on ("This contest blocks pasting into the editor and opens in
+ * full screen, counting each time you leave it."), or '' when none is:
+ * nothing blocks silently.
+ */
+export function examLine(o: ExamOptions | null | undefined): string {
+  if (!o) return '';
+  const parts: string[] = [];
+  if (o.block_paste) parts.push('blocks pasting into the editor');
+  if (o.block_copy) parts.push('blocks copying from the statement');
+  if (o.full_screen) parts.push('opens in full screen, counting each time you leave it');
+  if (o.count_focus) parts.push('counts each time you switch tabs or leave the page');
+  if (parts.length === 0) return '';
+  const last = parts[parts.length - 1];
+  const list = parts.length === 1 ? last : parts.length === 2 ? `${parts[0]} and ${last}` : `${parts.slice(0, -1).join(', ')}, and ${last}`;
+  return `This contest ${list}.`;
+}
+
+/** The line a refused paste shows. */
+export const PASTE_BLOCKED = 'Pasting is blocked in this contest. Nothing was pasted.';
+/** The line a refused copy from the statement shows. */
+export const COPY_BLOCKED = 'Copying from the statement is blocked in this contest.';
+
+/** What the editor recorded with a submission, as the console's feed says it when an exam option is on. */
+export function recordedText(
+  row: Pick<FeedRow, 'pasted_chars' | 'focus_losses' | 'fullscreen_exits'>,
+  o: ExamOptions,
+): string {
+  const times = (n: number) => (n === 1 ? '1 time' : `${n} times`);
+  const parts = [`pasted ${row.pasted_chars ?? 0} characters`];
+  if (o.count_focus) parts.push(`left the page ${times(row.focus_losses ?? 0)}`);
+  if (o.full_screen) parts.push(`left full screen ${times(row.fullscreen_exits ?? 0)}`);
+  const text = parts.join(', ');
+  return text.charAt(0).toUpperCase() + text.slice(1);
+}
+
+export interface ContestRules extends ExamOptions {
   min_gap_s: number;
   max_per_problem: number;
   languages: string[];
@@ -415,6 +474,8 @@ export function rulesSentences(c: Pick<Contest, 'starts_at' | 'ends_at' | 'rules
   if (r.freeze_minutes > 0) {
     out.push(`The standings freeze ${formatMinutes(r.freeze_minutes)} before the end; later results appear after the contest.`);
   }
+  const exam = examLine(r);
+  if (exam) out.push(exam);
   return out;
 }
 
@@ -481,7 +542,7 @@ export interface AdminContestProblem extends Partial<Omit<ProblemPin, 'label' | 
  * The server derives the slug from the title when it makes the contest
  * (V3-15), so the form never sends one.
  */
-export interface ContestSettings {
+export interface ContestSettings extends ExamOptions {
   title: string;
   description_md: string;
   starts_at: number;
@@ -543,6 +604,11 @@ export interface FeedRow {
   note_count?: number;
   /** v1.4.0, reviewers only: the case opened from this submission. */
   case_id?: number | null;
+  /** The editor's counts since the student's previous submission (D47; full-screen exits V3-25). */
+  typed_chars?: number;
+  pasted_chars?: number;
+  focus_losses?: number;
+  fullscreen_exits?: number;
 }
 
 export interface FeedPage {
@@ -594,6 +660,10 @@ const AUDIT_FIELDS: Record<string, string> = {
   max_per_problem: 'submissions per problem',
   languages: 'languages',
   hold_reveal: 'hold the reveal',
+  full_screen: 'full screen on start',
+  count_focus: 'count tab switches and focus loss',
+  block_paste: 'block paste into the editor',
+  block_copy: 'block copy out of the statement',
 };
 
 function auditValue(field: string, v: unknown): string {

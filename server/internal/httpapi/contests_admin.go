@@ -78,6 +78,8 @@ type adminContestJSON struct {
 	Queue            *queueJSON `json:"queue,omitempty"`
 	JudgeLastClaimAt *int64     `json:"judge_last_claim_at"`
 	Unanswered       int        `json:"unanswered"`
+	// The exam options (V3-25): full_screen, count_focus, block_paste, block_copy.
+	contests.ExamOptions
 }
 
 // queueJSON is the contest's share of the judge queue (C10).
@@ -97,7 +99,7 @@ func (d Deps) adminContestBase(c *contests.Contest) *adminContestJSON {
 		FreezeMinutes: int(c.Schedule.Freeze / time.Minute), Published: c.Published,
 		PracticeAfterEnd: c.PracticeAfterEnd, MinGapS: int(c.MinGap / time.Second),
 		MaxPerProblem: c.MaxPerProblem, Languages: c.Languages, HonourText: c.HonourText, DefaultHonourText: contests.DefaultHonour,
-		HoldReveal: c.HoldReveal, EditorialMD: c.Editorial, EditorialPublished: c.EditorialPublished, Paused: c.Paused,
+		HoldReveal: c.HoldReveal, ExamOptions: c.Exam, EditorialMD: c.Editorial, EditorialPublished: c.EditorialPublished, Paused: c.Paused,
 		ExtendedMinutes: int(c.Schedule.Extended / time.Minute), RevealedAt: millis(c.RevealedAt), Archived: c.Archived,
 		State: c.Schedule.State(now, c.PracticeAfterEnd), Problems: []adminProblemJSON{},
 		CreatedAt: c.CreatedAt.UnixMilli(), UpdatedAt: c.UpdatedAt.UnixMilli(), ServerNow: now.UnixMilli()}
@@ -208,13 +210,14 @@ type contestEdit struct {
 	Languages        []string `json:"languages"`
 	HonourText       string   `json:"honour_text"`
 	HoldReveal       bool     `json:"hold_reveal"`
+	contests.ExamOptions
 }
 
 func (e contestEdit) edit() contests.Edit {
 	return contests.Edit{Slug: strings.TrimSpace(e.Slug), Title: e.Title, Description: e.DescriptionMD,
 		StartsAt: time.UnixMilli(e.StartsAt), EndsAt: time.UnixMilli(e.EndsAt),
 		FreezeMinutes: e.FreezeMinutes, Published: e.Published, PracticeAfterEnd: e.PracticeAfterEnd, MinGapS: e.MinGapS, MaxPerProblem: e.MaxPerProblem, Languages: e.Languages,
-		HonourText: e.HonourText, HoldReveal: e.HoldReveal}
+		HonourText: e.HonourText, HoldReveal: e.HoldReveal, Exam: e.ExamOptions}
 }
 
 func editOf(c *contests.Contest) contestEdit {
@@ -222,7 +225,7 @@ func editOf(c *contests.Contest) contestEdit {
 		EndsAt: c.Schedule.EndsAt.UnixMilli(), FreezeMinutes: int(c.Schedule.Freeze / time.Minute),
 		Published: c.Published, PracticeAfterEnd: c.PracticeAfterEnd,
 		MinGapS: int(c.MinGap / time.Second), MaxPerProblem: c.MaxPerProblem, Languages: c.Languages, HonourText: c.HonourText,
-		HoldReveal: c.HoldReveal}
+		HoldReveal: c.HoldReveal, ExamOptions: c.Exam}
 }
 
 func (d Deps) createContest(w http.ResponseWriter, r *http.Request) {

@@ -23,6 +23,10 @@
     editor shows a toast saying where it works (P6). Help lists them all.
   - Reset and a language switch over typed code ask first (F7.12, P5).
   - During a live contest (a `clock` is given) sign out asks first (F7.6).
+  - The contest's exam options (`exam`, V3-25): a blocked paste inserts
+    nothing and a blocked copy from the statement copies nothing, each with
+    a line saying so; with full screen on, every exit from full screen is
+    counted and sent with the integrity events.
 
   Props: `base` (the API base, such as "/api/workspace/12"), `backHref` and
   `backLabel`, `contestHref` (where a refused "not started" or "time is
@@ -34,8 +38,9 @@
   own `refusal` says it better), `problemScore` (for "your score stays"),
   `used` (for "3 of 15 submissions used"), `minGapS` (the seconds between
   submits), `statementKey` (raised when the statement changed: it reloads,
-  the editor is left alone), and `extraEvents` with `onevent` and
-  `onresync` (more events on the same stream, and a hook on reconnect).
+  the editor is left alone), `exam` (the exam options that are on), and
+  `extraEvents` with `onevent` and `onresync` (more events on the same
+  stream, and a hook on reconnect).
 -->
 <script lang="ts">
   import { onMount, tick, type Snippet } from 'svelte';
@@ -47,6 +52,7 @@
   import { RESULT_SHARE, STATEMENT_KEY, draftStorage, readResultPanel, writeResultPanel } from '../lib/drafts';
   import { keepHeadingFocus } from '../lib/focus';
   import { setTitle } from '../lib/head';
+  import { PASTE_BLOCKED, type ExamOptions } from '../lib/contests';
   import { FLUSH_MS, IntegrityRecorder } from '../lib/integrity';
   import { Judging } from '../lib/judging.svelte';
   import { beforeSignOut, guardSignOut, session } from '../lib/session.svelte';
@@ -84,6 +90,7 @@
     used?: { count: number; max: number } | null;
     minGapS?: number;
     statementKey?: number;
+    exam?: ExamOptions | null;
     extraEvents?: readonly string[];
     onevent?: (type: string, data: unknown) => void;
     onresync?: () => void;
@@ -105,6 +112,7 @@
     used = null,
     minGapS = 0,
     statementKey = 0,
+    exam = null,
     extraEvents = [],
     onevent,
     onresync,
@@ -350,6 +358,11 @@
     }
   }
 
+  // Full screen on (V3-25): the contest page asked for it at Start; each exit is counted.
+  function onFullscreenChange() {
+    if (exam?.full_screen && !document.fullscreenElement) integrity?.fullscreenExit();
+  }
+
   function onPageHide() {
     integrity?.flush(true);
     draft.saveOnLeave();
@@ -377,6 +390,7 @@
     tablet.addEventListener('change', place);
 
     integrity = new IntegrityRecorder(`${api}/events`, () => serverClock.serverNow());
+    document.addEventListener('fullscreenchange', onFullscreenChange);
     const flushTimer = setInterval(() => integrity?.flush(), FLUSH_MS);
     const saveTimer = setInterval(() => void draft.save(), SAVE_MS);
     const secondTimer = setInterval(() => judging.tick(), 1000);
@@ -387,6 +401,7 @@
     return () => {
       forgetSave();
       alive = false;
+      document.removeEventListener('fullscreenchange', onFullscreenChange);
       wide.removeEventListener('change', place);
       tablet.removeEventListener('change', place);
       clearInterval(flushTimer);
@@ -463,7 +478,7 @@
     {/snippet}
     {#snippet statement()}
       {#if layout !== 'wide'}<p class="limits">{limits}</p>{/if}
-      <Statement markdown={problem.statement_md} samples={problem.samples} />
+      <Statement markdown={problem.statement_md} samples={problem.samples} blockCopy={exam?.block_copy ?? false} />
     {/snippet}
     {#snippet code()}
       {#if layout !== 'wide'}
@@ -493,6 +508,8 @@
           tabSize={draft.tabSize}
           wrap={draft.wrap}
           readOnly={layout !== 'wide'}
+          blockPaste={exam?.block_paste ?? false}
+          onpasteblocked={() => showToast(PASTE_BLOCKED)}
           oncursor={(line, col) => (draft.cursor = { line, col })}
           onchange={(s) => draft.change(s)}
           ontyped={(n) => integrity?.typedChars(n)}

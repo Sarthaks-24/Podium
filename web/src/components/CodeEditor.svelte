@@ -13,7 +13,8 @@
   Props: `initial` (the code to start with), `language`, `label` (the
   editor's accessible name, naming the problem and language), `fontSize`
   (px), `tabSize` (2 or 4), `wrap`, `readOnly` (under 1024 px, V3-14),
-  `tabMovesFocus`, and the callbacks
+  `blockPaste` (a contest's exam option: pastes insert nothing and
+  `onpasteblocked` is called, V3-25), `tabMovesFocus`, and the callbacks
   `onchange`, `ontyped`, `onpaste`, `onblur`, `onsubmit`, `onrun` and
   `oncursor` (line and column, for "Ln 2, Col 5").
 -->
@@ -35,6 +36,8 @@
     tabSize: 2 | 4;
     wrap: boolean;
     readOnly?: boolean;
+    blockPaste?: boolean;
+    onpasteblocked?: () => void;
     onchange: (source: string) => void;
     ontyped: (chars: number) => void;
     onpaste: (chars: number) => void;
@@ -44,8 +47,25 @@
     oncursor: (line: number, col: number) => void;
   }
 
-  let { initial, language, label, fontSize, tabMovesFocus, tabSize, wrap, readOnly = false, onchange, ontyped, onpaste, onblur, onsubmit, onrun, oncursor }: Props =
-    $props();
+  let {
+    initial,
+    language,
+    label,
+    fontSize,
+    tabMovesFocus,
+    tabSize,
+    wrap,
+    readOnly = false,
+    blockPaste = false,
+    onpasteblocked,
+    onchange,
+    ontyped,
+    onpaste,
+    onblur,
+    onsubmit,
+    onrun,
+    oncursor,
+  }: Props = $props();
 
   let host: HTMLDivElement | undefined = $state();
   let handle = $state<EditorHandle | null>(null);
@@ -70,6 +90,8 @@
           tabSize,
           wrap,
           readOnly,
+          blockPaste,
+          onPasteBlocked: () => onpasteblocked?.(),
           onChange: (s) => onchange(s),
           onTyped: (n) => ontyped(n),
           onPaste: (n) => onpaste(n),
@@ -110,6 +132,10 @@
 
   $effect(() => {
     handle?.setReadOnly(readOnly);
+  });
+
+  $effect(() => {
+    handle?.setBlockPaste(blockPaste);
   });
 
   /** Moves the cursor to a line and column and focuses the editor. */

@@ -4,12 +4,17 @@
   import (marked, DOMPurify and KaTeX stay out of the main bundle), renders
   the sanitised HTML and draws the maths. Each sample shows its input and
   output in mono with a Copy button for each; the button says "Copied" for
-  a moment and a polite status line announces it. Props: `markdown` (the
-  statement source), `samples`, and `headingBase` (the level a "#" heading
-  in the statement becomes, default 2, under the page's h1).
+  a moment and a polite status line announces it. With `blockCopy` (a
+  contest's exam option, V3-25) the Copy buttons are gone and a copy from
+  the statement or the examples copies nothing and shows a line saying so.
+  Props: `markdown` (the statement source), `samples`, `blockCopy`, and
+  `headingBase` (the level a "#" heading in the statement becomes, default
+  2, under the page's h1).
 -->
 <script lang="ts">
   import { onMount } from 'svelte';
+  import { COPY_BLOCKED } from '../lib/contests';
+  import { showToast } from '../lib/toast.svelte';
   import type { Sample } from '../lib/workspace';
   import Icon from './Icon.svelte';
 
@@ -17,9 +22,10 @@
     markdown: string;
     samples: Sample[];
     headingBase?: number;
+    blockCopy?: boolean;
   }
 
-  let { markdown, samples, headingBase = 2 }: Props = $props();
+  let { markdown, samples, headingBase = 2, blockCopy = false }: Props = $props();
 
   type Renderer = typeof import('../lib/markdown');
 
@@ -60,9 +66,15 @@
     clearTimeout(copyTimer);
     copyTimer = setTimeout(() => (copied = ''), 2000);
   }
+
+  function refuseCopy(event: ClipboardEvent) {
+    if (!blockCopy) return;
+    event.preventDefault();
+    showToast(COPY_BLOCKED);
+  }
 </script>
 
-<div class="statement-wrap">
+<div class="statement-wrap" oncopy={refuseCopy} oncut={refuseCopy}>
   {#if failed}
     <p class="muted">The statement could not load. Reload the page to try again.</p>
   {:else if renderer === null}
@@ -83,6 +95,7 @@
               <div class="io-part">
                 <div class="io-head">
                   <span class="io-label">{part.label}</span>
+                  {#if !blockCopy}
                   <button
                     type="button"
                     class="btn btn-quiet btn-compact copy"
@@ -92,6 +105,7 @@
                     <Icon name={copied === key ? 'check' : 'copy'} />
                     {copied === key ? 'Copied' : 'Copy'}
                   </button>
+                  {/if}
                 </div>
                 <pre translate="no">{part.text}</pre>
               </div>

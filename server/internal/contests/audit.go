@@ -140,6 +140,10 @@ func settingChanges(c *Contest, e Edit) map[string]change {
 	add("max_per_problem", c.MaxPerProblem, e.MaxPerProblem)
 	add("languages", nonNilStrings(c.Languages), nonNilStrings(e.Languages))
 	add("hold_reveal", c.HoldReveal, e.HoldReveal)
+	add("full_screen", c.Exam.FullScreen, e.Exam.FullScreen)
+	add("count_focus", c.Exam.CountFocus, e.Exam.CountFocus)
+	add("block_paste", c.Exam.BlockPaste, e.Exam.BlockPaste)
+	add("block_copy", c.Exam.BlockCopy, e.Exam.BlockCopy)
 	return out
 }
 

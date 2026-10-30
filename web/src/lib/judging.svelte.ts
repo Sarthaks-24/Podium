@@ -211,7 +211,7 @@ export class Judging {
     const integrity = this.o.integrity();
     // Integrity events go first, on their own; they never hold up the submit.
     integrity?.flush();
-    const counts = integrity?.counts() ?? { typed_chars: 0, pasted_chars: 0, focus_losses: 0 };
+    const counts = integrity?.counts() ?? { typed_chars: 0, pasted_chars: 0, focus_losses: 0, fullscreen_exits: 0 };
     const body = { ...this.o.code(), ...counts, client_key: key };
     try {
       const s = await this.timed(() => sendJSON<Submission>('POST', this.paths.submit, body));

@@ -66,6 +66,7 @@ type Contest struct {
 	// an organiser reveals it (RevealedAt).
 	HoldReveal bool
 	RevealedAt time.Time
+	Exam       ExamOptions
 	// MaxExtension is the longest personal extension, loaded with the
 	// contest: every window is over at the close plus this.
 	MaxExtension time.Duration
@@ -74,6 +75,23 @@ type Contest struct {
 	CreatedAt    time.Time
 	UpdatedAt    time.Time
 	Problems     []ContestProblem
+}
+
+// ExamOptions are the measures an organiser can turn on for an
+// examination (V3-25). All are off by default, and a contest with none on
+// is an ordinary contest. The JSON names are the API's, in the organiser's
+// contest, its edit body and the student's rules.
+type ExamOptions struct {
+	// FullScreen asks for full screen when the student starts; each exit
+	// is counted and shown to organisers.
+	FullScreen bool `json:"full_screen"`
+	// CountFocus shows organisers the focus losses, which are recorded in
+	// every contest.
+	CountFocus bool `json:"count_focus"`
+	// BlockPaste refuses pastes into the editor.
+	BlockPaste bool `json:"block_paste"`
+	// BlockCopy refuses copies out of the statement.
+	BlockCopy bool `json:"block_copy"`
 }
 
 // Honour returns the contest's honour code, or the default.
@@ -134,6 +152,7 @@ type Edit struct {
 	MinGapS, MaxPerProblem   int
 	Languages                []string
 	HonourText               string
+	Exam                     ExamOptions
 }
 
 // Service runs contests.
@@ -233,10 +252,11 @@ func (s *Service) Create(ctx context.Context, e Edit, by int64) (*Contest, error
 		var id int64
 		err := s.DB.QueryRowContext(ctx, `INSERT INTO contests (slug, title, description_md, starts_at, ends_at,
 			freeze_minutes, published, practice_after_end, min_gap_s, max_per_problem, languages, honour_text, hold_reveal,
-			created_by, created_at, updated_at)
-			VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
+			full_screen, count_focus, block_paste, block_copy, created_by, created_at, updated_at)
+			VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
 			slug, e.Title, e.Description, e.StartsAt.UnixMilli(), e.EndsAt.UnixMilli(),
 			e.FreezeMinutes, e.PracticeAfterEnd, e.MinGapS, e.MaxPerProblem, string(langs), e.HonourText, e.HoldReveal,
+			e.Exam.FullScreen, e.Exam.CountFocus, e.Exam.BlockPaste, e.Exam.BlockCopy,
 			nullID(by), now, now).Scan(&id)
 		if isUniqueSlug(err) {
 			continue
@@ -296,10 +316,11 @@ func (s *Service) Update(ctx context.Context, id int64, e Edit, by Actor) (*Cont
 	langs, _ := json.Marshal(e.Languages)
 	_, err = tx.ExecContext(ctx, `UPDATE contests SET title = ?, description_md = ?, starts_at = ?, ends_at = ?,
 		freeze_minutes = ?, published = ?, practice_after_end = ?, min_gap_s = ?, max_per_problem = ?, languages = ?, honour_text = ?,
-		hold_reveal = ?, updated_at = ? WHERE id = ?`,
+		hold_reveal = ?, full_screen = ?, count_focus = ?, block_paste = ?, block_copy = ?, updated_at = ? WHERE id = ?`,
 		e.Title, e.Description, e.StartsAt.UnixMilli(), e.EndsAt.UnixMilli(),
 		e.FreezeMinutes, e.Published, e.PracticeAfterEnd,
-		e.MinGapS, e.MaxPerProblem, string(langs), e.HonourText, e.HoldReveal, s.now().UnixMilli(), id)
+		e.MinGapS, e.MaxPerProblem, string(langs), e.HonourText, e.HoldReveal,
+		e.Exam.FullScreen, e.Exam.CountFocus, e.Exam.BlockPaste, e.Exam.BlockCopy, s.now().UnixMilli(), id)
 	if err != nil {
 		return nil, err
 	}
@@ -328,7 +349,8 @@ func isUniqueSlug(err error) bool {
 
 const contestColumns = `id, slug, title, description_md, starts_at, ends_at, freeze_minutes,
 	published, practice_after_end, min_gap_s, max_per_problem,
-	languages, honour_text, editorial_md, editorial_published, paused, extended_minutes, hold_reveal, coalesce(revealed_at, 0), archived,
+	languages, honour_text, editorial_md, editorial_published, paused, extended_minutes, hold_reveal, coalesce(revealed_at, 0),
+	full_screen, count_focus, block_paste, block_copy, archived,
 	coalesce(created_by, 0), created_at, updated_at,
 	(SELECT coalesce(max(minutes), 0) FROM contest_extensions e WHERE e.contest_id = contests.id)`
 
@@ -340,7 +362,7 @@ func scanContest(sc interface{ Scan(...any) error }) (*Contest, error) {
 	err := sc.Scan(&c.ID, &c.Slug, &c.Title, &c.Description, &starts, &ends, &freeze,
 		&c.Published, &c.PracticeAfterEnd, &gap,
 		&c.MaxPerProblem, &langs, &c.HonourText, &c.Editorial, &c.EditorialPublished, &c.Paused, &extended, &c.HoldReveal, &revealed,
-		&c.Archived, &c.CreatedBy, &created, &updated, &maxExt)
+		&c.Exam.FullScreen, &c.Exam.CountFocus, &c.Exam.BlockPaste, &c.Exam.BlockCopy, &c.Archived, &c.CreatedBy, &created, &updated, &maxExt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}

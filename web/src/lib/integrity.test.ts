@@ -30,7 +30,7 @@ function recorder() {
 }
 
 describe('integrity recorder', () => {
-  it('counts typed and pasted characters and focus losses', () => {
+  it('counts typed and pasted characters, focus losses and full-screen exits', () => {
     const { r } = recorder();
     r.typedChars(5);
     r.typedChars(0);
@@ -39,9 +39,11 @@ describe('integrity recorder', () => {
     r.blur();
     r.focus();
     r.blur();
-    expect(r.counts()).toEqual({ typed_chars: 5, pasted_chars: 7, focus_losses: 2 });
+    r.fullscreenExit();
+    expect(r.counts()).toEqual({ typed_chars: 5, pasted_chars: 7, focus_losses: 2, fullscreen_exits: 1 });
+    expect(r.pending.map((e) => e.kind)).toEqual(['paste', 'blur', 'focus', 'blur', 'fullscreen_exit']);
     r.resetCounts();
-    expect(r.counts()).toEqual({ typed_chars: 0, pasted_chars: 0, focus_losses: 0 });
+    expect(r.counts()).toEqual({ typed_chars: 0, pasted_chars: 0, focus_losses: 0, fullscreen_exits: 0 });
   });
 
   it('queues paste, blur and focus events with no text and sends them in one batch', () => {

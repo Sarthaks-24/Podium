@@ -124,6 +124,7 @@ func (d Deps) submitCode(w http.ResponseWriter, r *http.Request) {
 		TypedChars  int    `json:"typed_chars"`
 		PastedChars int    `json:"pasted_chars"`
 		FocusLosses int    `json:"focus_losses"`
+		Exits       int    `json:"fullscreen_exits"`
 	}
 	if !decodeJSONLimit(w, r, &req, maxRunBody) {
 		return
@@ -132,7 +133,7 @@ func (d Deps) submitCode(w http.ResponseWriter, r *http.Request) {
 	v, dup, err := d.Submissions.Submit(r.Context(), submissions.SubmitRequest{ProblemID: id, UserID: u.ID,
 		Scope:    submissions.Scope{MinGap: organiserGap, Reveal: true},
 		Language: req.Language, Source: req.Source, ClientKey: req.ClientKey,
-		Typed: req.TypedChars, Pasted: req.PastedChars, Blur: req.FocusLosses,
+		Typed: req.TypedChars, Pasted: req.PastedChars, Blur: req.FocusLosses, Exits: req.Exits,
 		ClientHash: d.Submissions.ClientHash(clientIP(r), r.UserAgent())})
 	if err != nil {
 		d.submissionError(w, r, err)

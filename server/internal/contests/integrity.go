@@ -60,9 +60,10 @@ func (s *Service) RecordSecondSession(ctx context.Context, userID int64) error {
 }
 
 // Retain deletes integrity events and clears the per-submission integrity
-// counts (client hash, typed and pasted characters, focus losses) of every
-// contest that ended for everyone more than RetentionPeriod ago. It is
-// idempotent and returns how many events and submissions it changed.
+// counts (client hash, typed and pasted characters, focus losses,
+// full-screen exits) of every contest that ended for everyone more than
+// RetentionPeriod ago. It is idempotent and returns how many events and
+// submissions it changed.
 func (s *Service) Retain(ctx context.Context) (events, subs int64, err error) {
 	cutoff := s.now().Add(-RetentionPeriod).UnixMilli()
 	const old = `SELECT contest_id FROM contest_final WHERE final_at < ?`
@@ -76,8 +77,8 @@ func (s *Service) Retain(ctx context.Context) (events, subs int64, err error) {
 		return 0, 0, err
 	}
 	events, _ = res.RowsAffected()
-	res, err = tx.ExecContext(ctx, `UPDATE submissions SET client_hash = '', typed_chars = 0, pasted_chars = 0, focus_losses = 0
-		WHERE contest_id IN (`+old+`) AND (client_hash <> '' OR typed_chars <> 0 OR pasted_chars <> 0 OR focus_losses <> 0)`, cutoff)
+	res, err = tx.ExecContext(ctx, `UPDATE submissions SET client_hash = '', typed_chars = 0, pasted_chars = 0, focus_losses = 0, fullscreen_exits = 0
+		WHERE contest_id IN (`+old+`) AND (client_hash <> '' OR typed_chars <> 0 OR pasted_chars <> 0 OR focus_losses <> 0 OR fullscreen_exits <> 0)`, cutoff)
 	if err != nil {
 		return 0, 0, err
 	}

@@ -615,6 +615,7 @@
         startsAt={contest.starts_at}
         {labels}
         {students}
+        exam={contest}
         bind:autoRefresh
         onrejudge={rejudgeOne}
         ondecide={(row) => (deciding = { id: row.user_id, name: row.name })}

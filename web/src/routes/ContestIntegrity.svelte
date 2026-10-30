@@ -10,7 +10,11 @@
   similar code), with the groups of similar code on each problem listed as names,
   and "Download similar pairs (CSV)" for the college's own process. The
   decisions recorded for this contest are listed below, newest first; each
-  can be changed (DecisionDialog). Every view carries IntegrityNote. The
+  can be changed (DecisionDialog). When the contest had an exam option on
+  (V3-25), a table under the signals gives what the editor recorded per
+  student over the contest (GET .../integrity/counts): pasted characters,
+  and the focus losses and full-screen exits when those were counted.
+  Every view carries IntegrityNote. The
   page has no tab of its own: Results links here with "Similar code" once
   the contest has ended. The contest loads through lib/loader, so an
   answer after the page has gone is dropped. Props: `id`.
@@ -26,7 +30,7 @@
   import DecisionDialog from '../components/DecisionDialog.svelte';
   import SignalTable from '../components/SignalTable.svelte';
   import { ApiError, errorText, getJSON, isSignedOut, sendJSON } from '../lib/api';
-  import { type AdminContest } from '../lib/contests';
+  import { anyExamOption, type AdminContest } from '../lib/contests';
   import { keepHeadingFocus } from '../lib/focus';
   import { formatDateTime } from '../lib/format';
   import { setTitle } from '../lib/head';
@@ -63,6 +67,10 @@
   let starting = $state(false);
   let cases = $state.raw<Case[] | null>(null);
   let casesError = $state('');
+  /** What the editor recorded per student, when an exam option is on (V3-25). */
+  type Counts = { user_id: number; name: string; pastes: number; pasted_chars: number; focus_losses: number; fullscreen_exits: number };
+  let counts = $state.raw<Counts[] | null>(null);
+  let countsError = $state('');
 
   let kind = $state('');
   let strength = $state('');
@@ -105,6 +113,18 @@
     if (page.state !== 'ready') return;
     void loadRun();
     void loadCases();
+    if (anyExamOption(contest)) void loadCounts();
+  }
+
+  async function loadCounts() {
+    countsError = '';
+    try {
+      const data = await getJSON<{ counts: Counts[] }>(`${base}/integrity/counts`);
+      if (page.live) counts = data.counts ?? [];
+    } catch (e) {
+      if (quiet(e)) return;
+      countsError = errorText(e);
+    }
   }
 
   async function loadRun(): Promise<Run | null> {
@@ -306,6 +326,43 @@
       {/if}
     {/if}
   </section>
+
+  {#if anyExamOption(contest)}
+    <section class="section" aria-labelledby="counts-title">
+      <h2 id="counts-title">Recorded during the contest</h2>
+      {#if countsError}
+        <p class="field-error">{countsError}</p>
+      {:else if counts === null}
+        <p class="muted" role="status">Loading what was recorded</p>
+      {:else if counts.length === 0}
+        <p class="muted">Nothing was recorded: no pastes{contest.count_focus ? ', no tab switches' : ''}{contest.full_screen ? ', no exits from full screen' : ''}.</p>
+      {:else}
+        <div class="table-wrap">
+          <table class="table table-stack">
+            <caption class="visually-hidden">What the editor recorded per student in {contest.title}</caption>
+            <thead>
+              <tr>
+                <th scope="col">Student</th>
+                <th scope="col">Pasted</th>
+                {#if contest.count_focus}<th scope="col">Left the page</th>{/if}
+                {#if contest.full_screen}<th scope="col">Left full screen</th>{/if}
+              </tr>
+            </thead>
+            <tbody>
+              {#each counts as c (c.user_id)}
+                <tr>
+                  <th scope="row">{c.name}</th>
+                  <td><MonoDigits text={`${c.pasted_chars} characters in ${c.pastes === 1 ? '1 paste' : `${c.pastes} pastes`}`} /></td>
+                  {#if contest.count_focus}<td><MonoDigits text={c.focus_losses === 1 ? '1 time' : `${c.focus_losses} times`} /></td>{/if}
+                  {#if contest.full_screen}<td><MonoDigits text={c.fullscreen_exits === 1 ? '1 time' : `${c.fullscreen_exits} times`} /></td>{/if}
+                </tr>
+              {/each}
+            </tbody>
+          </table>
+        </div>
+      {/if}
+    </section>
+  {/if}
 
   <section class="section" aria-labelledby="cases-title">
     <h2 id="cases-title">Decisions</h2>

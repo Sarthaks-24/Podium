@@ -25,6 +25,7 @@ func (d Deps) integrityRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/admin/contests/{id}/integrity/pairs.csv", organiser(d.limitReads(d.exportPairs)))
 	mux.HandleFunc("GET /api/admin/contests/{id}/integrity/signals/{signal}/pair", organiser(d.limitReads(d.getIntegrityPair)))
 	mux.HandleFunc("GET /api/admin/contests/{id}/integrity/timeline/{user}", organiser(d.limitReads(d.getIntegrityTimeline)))
+	mux.HandleFunc("GET /api/admin/contests/{id}/integrity/counts", organiser(d.limitReads(d.getIntegrityCounts)))
 	mux.HandleFunc("GET /api/admin/contests/{id}/integrity/cases", organiser(d.limitReads(d.listIntegrityCases)))
 	mux.HandleFunc("PUT /api/admin/contests/{id}/integrity/cases/{user}", organiser(d.decideIntegrityCase))
 }
@@ -178,6 +179,29 @@ func (d Deps) getIntegrityTimeline(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	WriteJSON(w, http.StatusOK, map[string]any{"moments": moments, "server_now": d.serverNow()})
+}
+
+// getIntegrityCounts answers the editor's counts per student for the
+// similar-code page (V3-25): pastes, focus losses and full-screen exits.
+// The reviewer's own row is left out, as their timeline is.
+func (d Deps) getIntegrityCounts(w http.ResponseWriter, r *http.Request) {
+	c, ok := d.reviewedContest(w, r)
+	if !ok {
+		return
+	}
+	all, err := d.Integrity.ContestCounts(r.Context(), c.ID)
+	if err != nil {
+		d.internalError(w, r, err)
+		return
+	}
+	me := userFrom(r.Context()).ID
+	out := make([]integrity.Counts, 0, len(all))
+	for _, x := range all {
+		if x.UserID != me {
+			out = append(out, x)
+		}
+	}
+	WriteJSON(w, http.StatusOK, map[string]any{"counts": out, "server_now": d.serverNow()})
 }
 
 // caseJSON is a decision list with server_now.

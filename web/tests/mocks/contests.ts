@@ -73,6 +73,8 @@ export interface Options {
   notFinal?: boolean;
   /** Week 7, the draft in the organiser's list, has a problem that changed since it was added. */
   staleDraft?: boolean;
+  /** Exam options the contest starts with (V3-25); all off by default. Settings saved later override them. */
+  exam?: { full_screen?: boolean; count_focus?: boolean; block_paste?: boolean; block_copy?: boolean };
 }
 
 /** When B's statement changed, minutes before the page loads (the C3 fixture). */
@@ -225,6 +227,12 @@ export async function mockApi(page: Page, options: Options = {}) {
     settings: {} as Json,
   };
 
+  /** The four exam options as the server holds them: the options, then what the organiser saved. */
+  const examOptions = () => {
+    const keys = ['full_screen', 'count_focus', 'block_paste', 'block_copy'] as const;
+    return Object.fromEntries(keys.map((k) => [k, Boolean(k in state.settings ? state.settings[k] : options.exam?.[k])])) as Record<(typeof keys)[number], boolean>;
+  };
+
   state.holdReveal = options.holdReveal ?? false;
   if (phase === 'after' || phase === 'practice') {
     state.submissions.push(submission(30, 11, 'done', 100, startsAt + 20 * MIN), submission(31, 12, 'done', 40, startsAt + 50 * MIN));
@@ -263,6 +271,7 @@ export async function mockApi(page: Page, options: Options = {}) {
       max_per_problem: 15,
       languages: ['cpp17', 'python3', 'java21'],
       freeze_minutes: 30,
+      ...examOptions(),
     },
     honour_text:
       'This contest counts. By starting you agree to these rules:\n\n- Work alone.\n- Do not use AI assistants.\n- Podium records your submissions, the characters you type and paste, and when you leave the page. It is deleted 180 days after the contest.',
@@ -358,6 +367,7 @@ export async function mockApi(page: Page, options: Options = {}) {
     close_at: endsAt,
     default_honour_text: 'This contest counts. By starting you agree to these rules.',
     hold_reveal: state.holdReveal,
+    ...examOptions(),
     revealed_at: state.revealedAt,
     extensions: state.extensions.map((x) => ({ user_id: Number(x.user), email: 'asha@college.edu', name: 'Asha Rao', minutes: x.body.minutes, reason: x.body.reason })),
     admins: [{ user_id: 3, email: 'ta@college.edu', name: 'Meera Iyer' }],
@@ -632,7 +642,16 @@ export async function mockApi(page: Page, options: Options = {}) {
       }
       if (path === '/api/admin/contests/4/submissions' && method === 'GET') {
         state.feedQueries.push(url.search);
+        // What students submitted on this page, newest first, with the editor's counts as they were sent.
+        const mine = state.submits
+          .map((b, i) => ({
+            id: 400 + i, user_id: 7, name: 'Asha Rao', email: 'asha@college.edu', problem_label: String(b.label), language: String(b.language), state: 'queued', verdict: '',
+            score: 0, max_score: 100, created_at: now, practice: false, rejudged: false, note_count: 0, case_id: null,
+            typed_chars: Number(b.typed_chars ?? 0), pasted_chars: Number(b.pasted_chars ?? 0), focus_losses: Number(b.focus_losses ?? 0), fullscreen_exits: Number(b.fullscreen_exits ?? 0),
+          }))
+          .reverse();
         const rows = [
+          ...mine,
           { id: 301, user_id: 7, name: 'Asha Rao', email: 'asha@college.edu', problem_label: 'B', language: 'cpp17', state: 'done', verdict: 'WA', score: 40, max_score: 100, created_at: now - 2 * MIN, practice: false, rejudged: false, note_count: state.notes.length, case_id: state.manualCase },
           { id: 300, user_id: 101, name: 'Arjun Mehta', email: 'arjun@college.edu', problem_label: 'A', language: 'python3', state: 'done', verdict: 'AC', score: 100, max_score: 100, created_at: now - 5 * MIN, practice: false, rejudged: false, note_count: 0, case_id: null },
           { id: 299, user_id: 102, name: 'Ravi Kumar', email: 'ravi@college.edu', problem_label: 'C', language: 'java21', state: 'running', verdict: '', score: 0, max_score: 100, created_at: now - 6 * MIN, practice: false, rejudged: false, note_count: 0, case_id: null },

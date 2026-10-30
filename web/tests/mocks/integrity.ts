@@ -109,6 +109,8 @@ export interface Options {
    * first: the viewer's proposal answers 409 proposal_pending (C2-025).
    */
   raceProposal?: boolean;
+  /** The contest had full screen on and counted focus losses (V3-25): the page lists what was recorded. */
+  exam?: boolean;
 }
 
 export type CaseUserJson = Json & { user_id: number; shared_at: number | null; asked_at: number | null; respond_by: number | null; explanations: { text: string; created_at: number }[] };
@@ -184,6 +186,10 @@ export async function mockApi(page: Page, options: Options = {}) {
     problems: [],
     admins: [],
     extensions: [],
+    full_screen: options.exam ?? false,
+    count_focus: options.exam ?? false,
+    block_paste: false,
+    block_copy: false,
     server_now: Date.now(),
   });
 
@@ -379,6 +385,15 @@ export async function mockApi(page: Page, options: Options = {}) {
                 { at: start + 79 * MIN, kind: 'submission', problem_id: 12, text: 'cpp17 AC 100 of 100. Typed 540, pasted 0 characters, left the page 1 times.' },
               ];
         return json(route, 200, { moments, server_now: Date.now() });
+      }
+      if (path === '/api/admin/contests/4/integrity/counts' && method === 'GET') {
+        return json(route, 200, {
+          counts: [
+            { user_id: 7, name: 'Asha Rao', pastes: 2, pasted_chars: 431, focus_losses: 3, fullscreen_exits: 2 },
+            { user_id: 8, name: 'Ravi Kumar', pastes: 0, pasted_chars: 0, focus_losses: 1, fullscreen_exits: 0 },
+          ],
+          server_now: Date.now(),
+        });
       }
       if (path === '/api/admin/contests/4/integrity/cases' && method === 'GET') {
         return json(route, 200, { cases: state.decisions, server_now: Date.now() });
