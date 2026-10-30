@@ -27,6 +27,10 @@ type Handlers struct {
 	Hub  *events.Hub
 	// Version is the server's release version.
 	Version string
+	// DBPath is the database file and BackupDir the nightly backups'
+	// folder, for the Live tab (live.go); either may be empty.
+	DBPath    string
+	BackupDir string
 }
 
 // started is when this process began, for uptime in the metrics.

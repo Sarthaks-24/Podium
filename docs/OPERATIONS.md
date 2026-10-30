@@ -225,6 +225,7 @@ Listed in the order the server reads them. The testing, dev and production colum
 | `PODIUM_JUDGE_LISTEN` | optional | optional | optional | `127.0.0.1:8081` | Address of the judge worker API. Must be loopback in every mode and differ from `PODIUM_LISTEN` (see "Judge API listener"). |
 | `PODIUM_DB_PATH` | optional | optional | optional | `data/podium.db` | SQLite file. On the VM use `/var/lib/podium/db/podium.db`. |
 | `PODIUM_TESTS_DIR` | optional | optional | optional | `data/tests` | Test files and program sources by SHA-256. On the VM use `/var/lib/podium/tests`. |
+| `PODIUM_BACKUP_DIR` | optional | optional | optional | `/var/backups/podium` | The nightly backups' folder, the same as in `backup.env`. The server only reads the time of the newest backup from its `latest` link, for the Dashboard's Live tab. |
 | `PODIUM_OWNER_EMAIL` | optional | required | required | testing: `owner@podium.test` | Your Google account. Always an owner and always on the sign-in list (the server puts it back at every start), and shown as the organiser to contact. The recovery path if every other owner is removed or the list locks you out. |
 | `PODIUM_SESSION_SECRET` | optional | required | required | testing: random per run | At least 32 random characters (`openssl rand -base64 48`). Signs the sign-in state cookie. Changing it only interrupts sign-ins in progress. Secret. |
 | `GOOGLE_CLIENT_ID` | not read | required | required | | OAuth client ID from the Google Cloud console (see below). |

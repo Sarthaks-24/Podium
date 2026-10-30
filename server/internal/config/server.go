@@ -19,6 +19,7 @@ var ServerVars = []Var{
 	{Name: "PODIUM_JUDGE_LISTEN", Default: "127.0.0.1:8081"},
 	{Name: "PODIUM_DB_PATH", Default: "data/podium.db"},
 	{Name: "PODIUM_TESTS_DIR", Default: "data/tests"},
+	{Name: "PODIUM_BACKUP_DIR", Default: "/var/backups/podium"},
 	{Name: "PODIUM_OWNER_EMAIL"},
 	{Name: "PODIUM_SESSION_SECRET", Secret: true},
 	{Name: "GOOGLE_CLIENT_ID"},
@@ -43,6 +44,10 @@ type Server struct {
 	DBPath string
 	// TestsDir holds test blobs named by their SHA-256.
 	TestsDir string
+	// BackupDir is where podium-backup keeps the nightly backups; the
+	// Dashboard reads the time of the newest from it. Only read, never
+	// written by the server.
+	BackupDir string
 	// OwnerEmail is always an owner; it is the recovery path if every other
 	// owner is removed, and the contact shown on the sign-in page.
 	OwnerEmail string
@@ -94,6 +99,7 @@ func LoadServer(get Getenv) (Server, error) {
 	c.JudgeListen = r.str("PODIUM_JUDGE_LISTEN")
 	c.DBPath = r.str("PODIUM_DB_PATH")
 	c.TestsDir = r.str("PODIUM_TESTS_DIR")
+	c.BackupDir = r.str("PODIUM_BACKUP_DIR")
 	switch {
 	case testing && (!loopbackURL(c.BaseURL) || !IsLoopback(c.Listen)):
 		r.p.add("testing mode turns sign-in off, so it runs only on this machine: PODIUM_BASE_URL must be a localhost address and PODIUM_LISTEN a loopback address")

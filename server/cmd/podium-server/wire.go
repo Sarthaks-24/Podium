@@ -101,7 +101,7 @@ func (s *services) handler(cfg config.Server, provider httpapi.IdentityProvider)
 		Auth: s.auth, IdP: provider, BaseURL: cfg.BaseURL, SessionSecret: cfg.SessionSecret,
 		Problems: s.problems, Submissions: s.submissions, Hub: s.hub, Contests: s.contests, Integrity: s.integrity,
 		AI:   &ai.Wizard{Keys: s.aiKeys, Slots: &ai.Slots{}},
-		Mode: string(cfg.Mode), Version: version,
+		Mode: string(cfg.Mode), Version: version, DBPath: cfg.DBPath, BackupDir: cfg.BackupDir,
 	})
 }
 

@@ -58,6 +58,7 @@ var routeRoles = map[string]string{
 	"POST /api/admin/people/let-in":                                "admin",
 	"GET /api/admin/site-audit":                                    "admin",
 	"PUT /api/admin/site-settings":                                 "owner",
+	"GET /api/admin/live":                                          "admin",
 	"GET /api/admin/metrics":                                       "organiser",
 	"GET /api/admin/ai/providers":                                  "organiser",
 	"GET /api/admin/ai/models":                                     "organiser",

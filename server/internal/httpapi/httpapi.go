@@ -70,6 +70,10 @@ type Deps struct {
 	Mode string
 	// Version is the server's release version, shown in the metrics.
 	Version string
+	// DBPath and BackupDir feed the Dashboard's Live tab (database size,
+	// disk free, the last backup); either may be empty.
+	DBPath    string
+	BackupDir string
 }
 
 // New returns the root handler.
@@ -89,7 +93,7 @@ func New(d Deps) http.Handler {
 	}
 	d.flows = newUsedFlows()
 
-	health := &ops.Handlers{DB: d.DB, Log: d.Log, Jobs: d.queue(), Hub: d.Hub, Version: d.Version}
+	health := &ops.Handlers{DB: d.DB, Log: d.Log, Jobs: d.queue(), Hub: d.Hub, Version: d.Version, DBPath: d.DBPath, BackupDir: d.BackupDir}
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", d.preAuth(health.Health))
@@ -166,6 +170,7 @@ func New(d Deps) http.Handler {
 	mux.HandleFunc("GET /api/runs/{id}", d.requireRole(auth.Student, work.GetRun))
 	if d.Submissions != nil && d.Submissions.Jobs != nil {
 		mux.HandleFunc("GET /api/admin/metrics", organiser(health.Metrics))
+		mux.HandleFunc("GET /api/admin/live", admin(health.Live))
 	}
 	mux.HandleFunc("GET /api/events", d.requireRole(auth.Student, d.eventStream))
 

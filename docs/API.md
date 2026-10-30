@@ -89,6 +89,20 @@ What an organiser watches on contest day; also read by the load test (`tools/loa
 - `finished_*`, the `submit_*` percentiles (Submit to first claim, and Submit to verdict, over submissions closed in the last 10 minutes) and `failed_last_5_min` live in memory and restart at zero with the server.
 - `db.waits` and `db.wait_ms` count, since the start, requests that waited for a database connection.
 
+### `GET /api/admin/live` (admin)
+
+The Dashboard's Live tab (V4-17): what an admin watches during a run. From memory and two stat calls, so the tab reads it every 5 s while it is open.
+
+```json
+{ "server_now": 1792183192400, "signed_in_now": 42, "judge_last_seen_s": 3, "queued": 2, "submit_wait_p50_ms": 2400,
+  "disk_free_mb": 18432, "database_mb": 54, "last_backup_at": 1792120000000 }
+```
+
+- `signed_in_now` counts people with a page open (an event stream), not every valid session.
+- `judge_last_seen_s` is how long ago a judge last asked for work; `null` when none has since the server started.
+- `disk_free_mb` is the space left where the database lives, `-1` when the server cannot tell (any system but Linux); `database_mb` is the database file and its write-ahead log.
+- `last_backup_at` is the time of the newest nightly backup, read from the `latest` link `podium-backup` keeps in `PODIUM_BACKUP_DIR`; `null` when there is none.
+
 ## Sign-in and the signed-in person
 
 ### `GET /api/auth/config` (public)

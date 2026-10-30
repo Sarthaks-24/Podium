@@ -119,6 +119,9 @@ export async function mockApi(page: Page, who: Who) {
         const counts = { on_list: on.length, signed_in: on.filter((p) => p.last_login_at !== null).length, never_came: on.filter((p) => p.last_login_at === null).length };
         return json(route, 200, { people: state.people, list, counts, refused: state.refused, disabled: state.disabled, organisation: state.organisation });
       }
+      if (path === '/api/admin/live' && method === 'GET') {
+        return json(route, 200, { server_now: Date.now(), signed_in_now: 42, judge_last_seen_s: 3, queued: 2, submit_wait_p50_ms: 2400, disk_free_mb: 18432, database_mb: 54, last_backup_at: null });
+      }
       if (path === '/api/admin/people/import' && method === 'POST') {
         const body = req.postDataJSON() as { text: string; dry_run: boolean };
         state.imports.push(body);
@@ -284,6 +287,13 @@ export const SCREENS: Screen[] = [
     who: 'owner',
     title: 'Dashboard · podium',
     ready: (page) => expect(page.getByRole('table').first()).toBeVisible(),
+  },
+  {
+    name: 'settings-live',
+    path: '/admin/dashboard?tab=live',
+    who: 'owner',
+    title: 'Dashboard · podium',
+    ready: (page) => expect(page.getByText('42 people with a page open')).toBeVisible(),
   },
   {
     name: 'settings-sign-in',

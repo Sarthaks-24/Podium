@@ -63,3 +63,43 @@ func TestMetricsForOrganisersOnly(t *testing.T) {
 		t.Errorf("after judging %v", queue)
 	}
 }
+
+// The Dashboard's Live tab (v4 O5): admins and owners only, and the five
+// lines it shows. The test site has no database path or backup folder, so
+// those read as unknown and "no backup yet".
+func TestLiveForAdmins(t *testing.T) {
+	s := newSite(t)
+	owner := s.signedIn("owner@college.edu", "Owner")
+	if code, _ := owner.do("POST", "/api/admin/people", map[string]string{"email": "org@college.edu", "role": "organiser"}, s.srv.URL); code != 200 {
+		t.Fatal("make organiser")
+	}
+	organiser := s.signedIn("org@college.edu", "Org")
+	if code, _ := organiser.do("GET", "/api/admin/live", nil, ""); code != 403 {
+		t.Errorf("organiser: %d, want 403", code)
+	}
+	student := s.signedIn("asha@college.edu", "Asha")
+	c, err := s.hub.SubscribeTagged(student.userID(), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.hub.Unsubscribe(c)
+	pid := s.importProblem(owner, "live-sum")
+	if code, out := owner.do("POST", fmt.Sprintf("/api/workspace/%d/submit", pid),
+		map[string]any{"language": "cpp17", "source": "int main(){}"}, s.srv.URL); code != 202 {
+		t.Fatalf("submit: %d %v", code, out)
+	}
+	code, out := owner.do("GET", "/api/admin/live", nil, "")
+	if code != 200 {
+		t.Fatalf("owner: %d %v", code, out)
+	}
+	if out["signed_in_now"].(float64) != 1 || out["queued"].(float64) != 1 || out["disk_free_mb"].(float64) != -1 || out["last_backup_at"] != nil {
+		t.Errorf("live %v", out)
+	}
+	if out["judge_last_seen_s"] != nil {
+		t.Errorf("no judge has asked for work, yet judge_last_seen_s is %v", out["judge_last_seen_s"])
+	}
+	s.judgeAll()
+	if _, out = owner.do("GET", "/api/admin/live", nil, ""); out["judge_last_seen_s"] == nil || out["queued"].(float64) != 0 {
+		t.Errorf("after judging: %v", out)
+	}
+}

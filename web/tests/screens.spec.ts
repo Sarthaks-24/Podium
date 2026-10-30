@@ -99,6 +99,8 @@ for (const width of [1440, 375]) {
 
     await page.getByRole('tab', { name: 'People' }).focus();
     await page.keyboard.press('ArrowRight');
+    await expect(page.getByRole('tab', { name: 'Live' })).toBeFocused();
+    await page.keyboard.press('ArrowRight');
     await expect(page.getByRole('tab', { name: 'Sign-in' })).toBeFocused();
     await expect(page.getByRole('tab', { name: 'Sign-in' })).toHaveAttribute('aria-selected', 'true');
     await expect(page).toHaveURL('/admin/dashboard?tab=sign-in');
@@ -188,7 +190,7 @@ test('a role changes only after the owner confirms it', async ({ page }) => {
 test('an admin gives and takes the organiser role, and never sees admin, owner or their own row as changeable (V4-16)', async ({ page }) => {
   await mockApi(page, 'admin');
   await page.goto('/admin/dashboard');
-  await expect(page.getByRole('tab')).toHaveText(['People', 'Sign-in']);
+  await expect(page.getByRole('tab')).toHaveText(['People', 'Live', 'Sign-in']);
   const asha = page.getByRole('combobox', { name: 'Role for Asha Rao' });
   await expect(asha.getByRole('option')).toHaveText(['Student', 'Organiser']);
   await expect(page.getByRole('combobox', { name: 'Role for Bilal Khan' })).toHaveCount(0);
@@ -695,4 +697,26 @@ test('a student who opens the Dashboard sees who may, under the page title', asy
   await expect(page.getByRole('main')).toContainText('Only admins and owners can open the Dashboard.');
   await expect(page.getByRole('tab')).toHaveCount(0);
   await expect(page).toHaveTitle('Dashboard · podium');
+});
+
+test('the Live tab shows the five lines and reads them again only while it is open (O5)', async ({ page }) => {
+  await mockApi(page, 'owner');
+  let reads = 0;
+  await page.route('**/api/admin/live', (route) => {
+    reads++;
+    return route.fallback();
+  });
+  await page.clock.install();
+  await page.goto('/admin/dashboard');
+  await page.getByRole('tab', { name: 'Live' }).click();
+  const live = page.getByRole('tabpanel', { name: 'Live' });
+  for (const line of ['42 people with a page open', 'Last asked for work 3 s ago', '2 waiting, median wait 2.4 s over the last 10 minutes', '18,432 MB free, database 54 MB', 'No backup yet.']) {
+    await expect(live).toContainText(line);
+  }
+  await expect.poll(() => reads).toBe(1);
+  await page.clock.runFor(5000);
+  await expect.poll(() => reads).toBe(2);
+  await page.getByRole('tab', { name: 'People' }).click();
+  await page.clock.runFor(15000);
+  expect(reads).toBe(2);
 });

@@ -4,11 +4,13 @@
   one part shows at a time:
   - People (components/settings/PeopleTab): the list of people who may
     sign in, with roles, Remove, Add people and the refused sign-ins.
+  - Live (LiveTab): signed in now, the judge, the queue, disk and the
+    last backup, refreshed every 5 s while shown.
   - Sign-in (SignInTab): account help for one address (end sessions,
     disable or enable; resetting a Google link is for owners).
   - Organisation (OrganisationTab, owners only): the details the public
     pages show, and "History of changes" for the site's history.
-  The tab is in the address (?tab=sign-in, ?tab=organisation; People when
+  The tab is in the address (?tab=live, ?tab=sign-in, ?tab=organisation; People when
   none), so a link can open a tab and a reload keeps it. One request (GET
   /api/admin/people) loads them all, and again after each change to the
   list. The shell lets only admins and owners in; a 403 later (the role
@@ -19,6 +21,7 @@
   import PageHeader from '../components/PageHeader.svelte';
   import PageState from '../components/PageState.svelte';
   import Tabs from '../components/Tabs.svelte';
+  import LiveTab from '../components/settings/LiveTab.svelte';
   import OrganisationTab from '../components/settings/OrganisationTab.svelte';
   import PeopleTab from '../components/settings/PeopleTab.svelte';
   import SignInTab from '../components/settings/SignInTab.svelte';
@@ -31,10 +34,11 @@
   import { forbiddenText, routeTitle } from '../lib/routing';
   import { session } from '../lib/session.svelte';
 
-  type Tab = 'people' | 'sign-in' | 'organisation';
+  type Tab = 'people' | 'live' | 'sign-in' | 'organisation';
   const isOwner = $derived(session.user?.role === 'owner');
   const tabs = $derived<{ id: Tab; label: string }[]>([
     { id: 'people', label: 'People' },
+    { id: 'live', label: 'Live' },
     { id: 'sign-in', label: 'Sign-in' },
     ...(isOwner ? [{ id: 'organisation' as Tab, label: 'Organisation' }] : []),
   ]);
@@ -105,6 +109,9 @@
     <div id="settings-panel-people" role="tabpanel" aria-labelledby="settings-tab-people" hidden={tab !== 'people'}>
       <PeopleTab {list} {counts} {refused} {viewer} {origin} onreload={reload} onforbidden={forbid} />
     </div>
+    <div id="settings-panel-live" role="tabpanel" aria-labelledby="settings-tab-live" hidden={tab !== 'live'}>
+      <LiveTab active={tab === 'live'} onforbidden={forbid} />
+    </div>
     <div id="settings-panel-sign-in" role="tabpanel" aria-labelledby="settings-tab-sign-in" hidden={tab !== 'sign-in'}>
       <SignInTab bind:disabled bind:people owner={isOwner} onforbidden={forbid} />
     </div>
@@ -119,6 +126,13 @@
 <style>
   .tab-row {
     border-bottom: var(--rule) solid var(--line);
+  }
+
+  /* Four tabs do not fit a phone in one row: they wrap rather than scroll the page. */
+  @media (width < 768px) {
+    .tab-row :global(.tabs) {
+      flex-wrap: wrap;
+    }
   }
 
   .panels {
