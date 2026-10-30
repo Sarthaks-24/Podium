@@ -144,6 +144,7 @@ export function shortcutGroups(opts: { mac: boolean; organiser: boolean }): Shor
         { keys: [opts.mac ? `${alt}+Right` : `${mod}+Right`], action: 'Go to the next word' },
         ...(opts.mac ? [] : [{ keys: [`${mod}+Up`, `${mod}+Down`], joiner: 'or' as const, action: 'Scroll a line without moving the cursor' }]),
         { keys: [`${alt}+Page Up`, `${alt}+Page Down`], joiner: 'or', action: 'Scroll a page without moving the cursor' },
+        { keys: ['F8', 'Shift+F8'], joiner: 'or', action: 'Go to the next or previous compile error' },
       ],
     },
     {

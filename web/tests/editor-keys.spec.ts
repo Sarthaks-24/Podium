@@ -47,6 +47,9 @@ const selected = (page: Page) => page.evaluate(() => document.getSelection()?.to
 
 type Check = (page: Page) => Promise<void>;
 
+/** The mock of the current test, for a check that needs the server to answer (a compile error). */
+let api: Awaited<ReturnType<typeof mockApi>>;
+
 /** One check per row, keyed by the row's action text. */
 const CHECKS: Record<string, Check> = {
   // Editing
@@ -331,6 +334,24 @@ const CHECKS: Record<string, Check> = {
     await expect.poll(() => scroller.evaluate((el) => el.scrollTop)).toBeGreaterThan(100);
     await at(page).toEqual({ line: 1, col: 1 });
   },
+  'Go to the next or previous compile error': async (page) => {
+    await setCode(page, 'int main() {\n  int a\n  int b\n}', 1, 1);
+    await page.getByRole('button', { name: 'Run', exact: true }).click();
+    await expect.poll(() => api.runs.length).toBe(1);
+    api.stream.push({
+      type: 'run',
+      data: { id: 51, state: 'done', compile_output: "main.cpp:2:8: error: expected ';'\nmain.cpp:3:8: error: expected ';'\n", results: [{ label: 'Example 1', verdict: '', time_ms: 0, memory_kb: 0, output: '', expected: '3\n', message: '' }] },
+    });
+    await expect(page.locator('.cm-lintRange-error')).toHaveCount(2, { timeout: 10_000 });
+    await codeEditor(page).click();
+    await page.keyboard.press('Control+Home');
+    await page.keyboard.press('F8');
+    await at(page).toEqual({ line: 2, col: 8 });
+    await page.keyboard.press('F8');
+    await at(page).toEqual({ line: 3, col: 8 });
+    await page.keyboard.press('Shift+F8');
+    await at(page).toEqual({ line: 2, col: 8 });
+  },
 
   // Find and replace
   Find: async (page) => {
@@ -409,7 +430,7 @@ test('every editor row of the shortcut table has a check here', () => {
 
 test.describe('the editor keys', () => {
   test.beforeEach(async ({ page }) => {
-    await mockApi(page, { draft: { language: 'cpp17', source: 'int a;' } });
+    api = await mockApi(page, { draft: { language: 'cpp17', source: 'int a;' } });
     await page.setViewportSize({ width: 1440, height: 900 });
     await openWorkspace(page);
   });

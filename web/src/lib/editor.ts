@@ -13,7 +13,8 @@
  */
 import { autocompletion, closeBrackets, closeBracketsKeymap, closeCompletion, completeAnyWord, completeFromList, currentCompletions, snippetCompletion, type Completion } from '@codemirror/autocomplete';
 import { defaultKeymap, history, historyKeymap, indentMore, indentWithTab, selectParentSyntax } from '@codemirror/commands';
-import { bracketMatching, HighlightStyle, indentOnInput, indentRange, indentUnit, syntaxHighlighting } from '@codemirror/language';
+import { bracketMatching, foldGutter, HighlightStyle, indentOnInput, indentRange, indentUnit, syntaxHighlighting } from '@codemirror/language';
+import { forEachDiagnostic, lintGutter, previousDiagnostic, setDiagnostics, setDiagnosticsEffect, type Diagnostic } from '@codemirror/lint';
 import {
   findNext,
   findPrevious,
@@ -108,6 +109,20 @@ const theme = EditorView.theme(
     '.cm-button': { backgroundImage: 'none', backgroundColor: 'var(--code-active-line)', border: 'var(--rule) solid var(--code-gutter)', borderRadius: 'var(--radius)' },
     '.cm-tooltip': { backgroundColor: 'var(--well)', color: 'var(--well-ink)', border: 'var(--rule) solid var(--code-gutter)' },
     '.cm-tooltip-autocomplete > ul': { fontFamily: 'var(--font-mono)' },
+    // Compiler marks (v4 E4): each kind has its own shape, not only its colour.
+    '.cm-lintRange': { backgroundImage: 'none', textDecorationLine: 'underline', textUnderlineOffset: '0.25em' },
+    '.cm-lintRange-error': { textDecorationStyle: 'wavy', textDecorationColor: 'var(--code-invalid)' },
+    '.cm-lintRange-warning': { textDecorationStyle: 'wavy', textDecorationColor: 'var(--code-function)' },
+    '.cm-lintRange-info': { textDecorationStyle: 'dotted', textDecorationColor: 'var(--code-gutter)' },
+    '.cm-lint-marker': { content: 'normal', display: 'block', width: '0.6em', height: '0.6em', margin: '0.45em auto 0' },
+    '.cm-lint-marker-error': { borderRadius: '50%', backgroundColor: 'var(--code-invalid)' },
+    '.cm-lint-marker-warning': { clipPath: 'polygon(50% 0, 100% 100%, 0 100%)', backgroundColor: 'var(--code-function)' },
+    '.cm-lint-marker-info': { borderRadius: '50%', border: 'calc(2 * var(--rule)) solid var(--code-gutter)' },
+    '.cm-diagnostic': { padding: 'var(--space-1) var(--space-2)', fontFamily: 'var(--font-mono)', fontSize: 'var(--fs-0)' },
+    '.cm-diagnostic-error': { borderLeftColor: 'var(--code-invalid)' },
+    '.cm-diagnostic-warning': { borderLeftColor: 'var(--code-function)' },
+    '.cm-diagnostic-info': { borderLeftColor: 'var(--code-gutter)' },
+    '.cm-foldGutter .cm-gutterElement': { padding: '0 var(--space-1)', cursor: 'pointer' },
     '.cm-tooltip-autocomplete > ul > li[aria-selected]': { backgroundColor: 'var(--code-selection)', color: 'var(--well-ink)' },
   },
   { dark: true },
@@ -156,6 +171,8 @@ export interface EditorHandle {
   /** Replaces the whole document; not counted as typing. */
   setDoc(doc: string): void;
   getDoc(): string;
+  /** Marks compiler messages in the code (underline, gutter, hover); an empty list clears them. */
+  setMarks(marks: readonly EditorMark[]): void;
   /** Moves the cursor to a line (and column), scrolls it into view and focuses. */
   jumpTo(line: number, col: number | null): void;
   focus(): void;
@@ -252,7 +269,49 @@ const extraKeys: KeyBinding[] = [
   { key: 'Shift-Alt-ArrowRight', run: expandSelection, preventDefault: true },
   { key: 'Shift-Alt-ArrowLeft', run: shrinkSelection, preventDefault: true },
   { key: 'Shift-Alt-f', run: reindentFile, preventDefault: true },
+  // F8 (next) comes from the VS Code keymap; it leaves Shift+F8 out.
+  { key: 'Shift-F8', run: previousDiagnostic, preventDefault: true },
 ];
+
+/** A compiler message to mark in the code (lib/compileErrors.ts compileMarks). */
+export interface EditorMark {
+  line: number;
+  col: number | null;
+  text: string;
+  severity: 'error' | 'warning' | 'info';
+}
+
+/**
+ * The marks as diagnostics, from the column to the line's end. With no
+ * column, or one at the end ("expected ';'" points past the last
+ * character), the line's code is underlined from its first non-blank.
+ */
+export function markDiagnostics(doc: EditorState['doc'], marks: readonly EditorMark[]): Diagnostic[] {
+  return marks.map((m) => {
+    const l = doc.line(Math.min(Math.max(1, m.line), doc.lines));
+    const at = l.from + Math.max(0, (m.col ?? 1) - 1);
+    const from = m.col !== null && at < l.to ? at : l.from + (l.text.length - l.text.trimStart().length);
+    return { from: Math.min(from, l.to), to: l.to, severity: m.severity, message: m.text };
+  });
+}
+
+// A mark goes when its line is edited; the rest follow the code.
+const dropEditedMarks = EditorState.transactionExtender.of((tr) => {
+  if (!tr.docChanged) return null;
+  const kept: Diagnostic[] = [];
+  let dropped = false;
+  forEachDiagnostic(tr.startState, (d, from, to) => {
+    const start = tr.startState.doc.lineAt(from).from;
+    const end = tr.startState.doc.lineAt(to).to;
+    let touched = false;
+    tr.changes.iterChangedRanges((a, b) => {
+      if (a <= end && b >= start) touched = true;
+    });
+    if (touched) dropped = true;
+    else kept.push({ ...d, from: tr.changes.mapPos(from), to: tr.changes.mapPos(to) });
+  });
+  return dropped ? { effects: setDiagnosticsEffect.of(kept) } : null;
+});
 
 // Escape closes the completion list only while one is shown. CodeMirror's
 // own closeCompletion also takes Escape when a source answered with no
@@ -384,6 +443,8 @@ export function createEditor(o: EditorOptions): EditorHandle {
       doc: o.doc,
       extensions: [
         lineNumbers(),
+        // Code only: the statement is prose.
+        o.language === 'text' ? [] : [foldGutter(), lintGutter(), dropEditedMarks],
         highlightActiveLineGutter(),
         highlightSpecialChars(),
         history(),
@@ -472,6 +533,9 @@ export function createEditor(o: EditorOptions): EditorHandle {
     },
     getDoc() {
       return view.state.doc.toString();
+    },
+    setMarks(marks) {
+      view.dispatch(setDiagnostics(view.state, markDiagnostics(view.state.doc, marks)));
     },
     jumpTo(line, col) {
       const doc = view.state.doc;

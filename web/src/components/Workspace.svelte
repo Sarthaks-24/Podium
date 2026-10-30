@@ -22,6 +22,7 @@
   import { loader } from '../lib/loader.svelte';
   import { media } from '../lib/breakpoints';
   import { serverClock } from '../lib/clock';
+  import { compileMarks } from '../lib/compileErrors';
   import { Draft } from '../lib/draft.svelte';
   import { RESULT_SHARE, STATEMENT_KEY, draftStorage, readResultPanel, writeResultPanel } from '../lib/drafts';
   import { keepHeadingFocus } from '../lib/focus';
@@ -32,7 +33,7 @@
   import { beforeSignOut, guardSignOut, session } from '../lib/session.svelte';
   import { isTypingTarget } from '../lib/shortcuts';
   import { dismissToast, showToast } from '../lib/toast.svelte';
-  import { LANGUAGES, bestScore, headline, isWaiting, languageLabel, limitsText, runHeadline, type Language, type Workspace } from '../lib/workspace';
+  import { LANGUAGES, bestScore, headline, isWaiting, languageLabel, limitsText, runCompileFailed, runHeadline, type Language, type Workspace } from '../lib/workspace';
   import CodeEditor from './CodeEditor.svelte';
   import ConfirmDialog from './ConfirmDialog.svelte';
   import PageHeader from './PageHeader.svelte';
@@ -358,6 +359,31 @@
 
   $effect(() => {
     draft.editor = editor;
+  });
+
+  // Compiler marks (v4 E4): a run or submission seen waiting here that ends
+  // in a compile error marks its lines; the next one to wait clears them.
+  // One that was already over when the page opened marks nothing, since the
+  // code may have changed since.
+  // Not reactive state: the effects below write it, so tracking it would loop.
+  // eslint-disable-next-line svelte/prefer-svelte-reactivity
+  const waited = new Set<string>();
+  function follow(key: string, r: (Parameters<typeof isWaiting>[0] & { compile_output: string }) | null, failed: boolean) {
+    if (!r) return;
+    if (isWaiting(r)) {
+      if (!waited.has(key)) editor?.setMarks([]);
+      waited.add(key);
+    } else if (waited.delete(key)) {
+      editor?.setMarks(failed ? compileMarks(r.compile_output, draft.language) : []);
+    }
+  }
+  $effect(() => {
+    const run = judging.state.run;
+    follow(`run ${run?.id}`, run, !!run && runCompileFailed(run));
+  });
+  $effect(() => {
+    const s = judging.current;
+    follow(`submission ${s?.id}`, s, s?.verdict === 'CE');
   });
 
   // The next Run or Submit takes the paste refusal away, so it never reads as part of the result.

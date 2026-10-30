@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { firstError, locations, segments } from './compileErrors';
+import { compileMarks, firstError, locations, segments } from './compileErrors';
 
 const GPP = `main.cpp: In function 'int main()':
 main.cpp:12:5: error: expected ';' before 'return'
@@ -126,5 +126,22 @@ describe('the first error, shown above the output', () => {
 
   it('gives nothing when no place in the code is named', () => {
     expect(firstError('Killed', 'cpp17')).toBeNull();
+  });
+});
+
+describe('the marks in the editor (v4 E4)', () => {
+  it('marks each g++ or javac line that says error, warning or note, and skips an include line', () => {
+    expect(compileMarks(GPP, 'cpp17')).toEqual([{ line: 12, col: 5, text: "expected ';' before 'return'", severity: 'error' }]);
+    expect(compileMarks(JAVAC, 'java21')).toEqual([
+      { line: 12, col: null, text: "';' expected", severity: 'error' },
+      { line: 20, col: null, text: 'cannot find symbol', severity: 'error' },
+    ]);
+    expect(compileMarks("main.cpp:3:9: warning: unused variable 'x'\nmain.cpp:4:1: note: here", 'cpp17').map((m) => m.severity)).toEqual(['warning', 'info']);
+  });
+
+  it('marks the first error alone for Python and Node', () => {
+    expect(compileMarks(PYTHON, 'python3')).toEqual([{ line: 12, col: null, text: "SyntaxError: '(' was never closed", severity: 'error' }]);
+    expect(compileMarks(NODE, 'node22')).toEqual([{ line: 12, col: null, text: "SyntaxError: Unexpected token ';'", severity: 'error' }]);
+    expect(compileMarks('Killed', 'cpp17')).toEqual([]);
   });
 });

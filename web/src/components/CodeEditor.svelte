@@ -11,7 +11,7 @@
 -->
 <script lang="ts">
   import { onMount } from 'svelte';
-  import type { EditorHandle, EditorLanguage } from '../lib/editor';
+  import type { EditorHandle, EditorLanguage, EditorMark } from '../lib/editor';
 
   const isMac = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
   const mod = isMac ? 'Cmd' : 'Ctrl';
@@ -143,6 +143,11 @@
   export function setDoc(doc: string): void {
     if (handle) handle.setDoc(doc);
     else pendingDoc = doc;
+  }
+
+  /** Marks compiler messages in the code; an empty list clears them. */
+  export function setMarks(marks: readonly EditorMark[]): void {
+    handle?.setMarks(marks);
   }
 
   /** Focuses the editor. */

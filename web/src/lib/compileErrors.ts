@@ -141,3 +141,30 @@ export function firstError(output: string, language?: string): (Location & { tex
   const said = lines.find((l) => /error/i.test(l))?.trim() ?? '';
   return { ...loc, text: said.replace(/^Sorry:\s*/, '') };
 }
+
+/** A compiler message pinned to a place in the code, for the editor's marks. */
+export interface Mark extends Location {
+  text: string;
+  severity: 'error' | 'warning' | 'info';
+}
+
+const SEVERITY = { error: 'error', warning: 'warning', note: 'info' } as const;
+
+/**
+ * The marks for the editor (v4 E4): every line of output that names a
+ * place and says error, warning or note (g++, javac); for Python and Node,
+ * whose message comes on a later line, the first error alone.
+ */
+export function compileMarks(output: string, language?: string): Mark[] {
+  const out: Mark[] = [];
+  for (const raw of output.split('\n')) {
+    const loc = segments(raw, language).find((s) => typeof s !== 'string');
+    const said = /\b(error|warning|note)\b:?\s*(.*)$/i.exec(raw);
+    if (!loc || typeof loc === 'string' || !said) continue;
+    const kind = said[1].toLowerCase() as keyof typeof SEVERITY;
+    out.push({ line: loc.line, col: loc.col, text: said[2].trim() || raw.trim(), severity: SEVERITY[kind] });
+  }
+  if (out.length > 0) return out;
+  const first = firstError(output, language);
+  return first ? [{ ...first, severity: 'error' }] : [];
+}
