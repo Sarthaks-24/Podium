@@ -118,11 +118,25 @@ func (s *Service) now() time.Time {
 // re-enabling them: the configured owner is always on the list, which is
 // how an owner locked out of the Dashboard gets back in.
 func (s *Service) Bootstrap(ctx context.Context) error {
-	if _, err := s.DB.ExecContext(ctx, `INSERT INTO users (email, role, created_at) VALUES (?, 'owner', ?)
-		ON CONFLICT (email) DO UPDATE SET role = 'owner', disabled = 0`, s.OwnerEmail, s.now().UnixMilli()); err != nil {
+	tx, err := s.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	// A Gmail spelling with other dots is the same person, already listed.
+	id, _, found, err := listed(ctx, tx, s.OwnerEmail)
+	if err != nil {
 		return fmt.Errorf("bootstrap owner: %w", err)
 	}
-	return nil
+	if found {
+		_, err = tx.ExecContext(ctx, "UPDATE users SET role = 'owner', disabled = 0 WHERE id = ?", id)
+	} else {
+		_, err = tx.ExecContext(ctx, "INSERT INTO users (email, role, created_at) VALUES (?, 'owner', ?)", s.OwnerEmail, s.now().UnixMilli())
+	}
+	if err != nil {
+		return fmt.Errorf("bootstrap owner: %w", err)
+	}
+	return tx.Commit()
 }
 
 // SignIn applies the sign-in rules to a verified identity and starts a
@@ -349,15 +363,23 @@ func (s *Service) GrantRole(ctx context.Context, email string, role Role) (Perso
 		return Person{}, err
 	}
 	defer tx.Rollback()
+	// The person as listed: a Gmail spelling with other dots is the same
+	// row, so nobody can plant a second one beside a protected person.
 	var current Role
-	err = tx.QueryRowContext(ctx, "SELECT role FROM users WHERE email = ?", email).Scan(&current)
-	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+	userID, stored, found, err := listed(ctx, tx, email)
+	if err != nil {
 		return Person{}, err
+	}
+	if found {
+		email = stored
+		if err := tx.QueryRowContext(ctx, "SELECT role FROM users WHERE id = ?", userID).Scan(&current); err != nil {
+			return Person{}, err
+		}
 	}
 	if err := s.changeAllowed(ctx, email, current, role); err != nil {
 		return Person{}, err
 	}
-	if email == s.OwnerEmail {
+	if canonical(email) == canonical(s.OwnerEmail) {
 		return Person{}, conflict("This owner is set in the server configuration and cannot be changed here.")
 	}
 	if current == Owner && role != Owner {

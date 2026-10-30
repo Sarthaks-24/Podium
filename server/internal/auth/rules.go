@@ -21,9 +21,9 @@ func allowedChange(actor Actor, ownerEmail, targetEmail string, current, next Ro
 		return nil
 	case actor.Role != Admin:
 		return forbidden("Only admins and owners can change people's accounts.")
-	case targetEmail == actor.Email:
+	case canonical(targetEmail) == canonical(actor.Email):
 		return forbidden("You cannot change your own account. Ask an owner.")
-	case targetEmail == ownerEmail || !studentOrOrganiser(current):
+	case canonical(targetEmail) == canonical(ownerEmail) || !studentOrOrganiser(current):
 		return forbidden("Only an owner can change an admin's or an owner's account.")
 	case !studentOrOrganiser(next):
 		return forbidden("Only an owner can make someone an admin or an owner.")

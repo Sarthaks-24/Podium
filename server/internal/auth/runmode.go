@@ -29,7 +29,7 @@ type ModeChange struct {
 //     owner. Testing-mode sign-ins never link one; neither does a role
 //     granted to someone who has not signed in with Google yet, so such a
 //     grant has to be made again after the switch.
-//   - On the same change, every account that signed in without a linked
+//   - On a change from testing, every account that signed in without a linked
 //     Google account (so only through testing mode) is disabled, except
 //     the configured owner: every row is a person on the sign-in list
 //     (V4-15), and a testing-mode visitor must not stay on it. Someone
@@ -64,7 +64,12 @@ func (s *Service) RecordMode(ctx context.Context, mode string) (ModeChange, erro
 			return ModeChange{}, err
 		}
 		ch.Demoted, _ = res.RowsAffected()
-		res, err = tx.ExecContext(ctx, `UPDATE users SET disabled = 1
+	}
+	// Only leaving testing mode can leave testing-made accounts behind; a
+	// real account whose Google link an owner reset looks the same, so
+	// another change of mode leaves it alone.
+	if mode != "testing" && ch.Previous == "testing" {
+		res, err := tx.ExecContext(ctx, `UPDATE users SET disabled = 1
 			WHERE disabled = 0 AND google_sub IS NULL AND last_login_at IS NOT NULL AND email <> ?`, s.OwnerEmail)
 		if err != nil {
 			return ModeChange{}, err

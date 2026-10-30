@@ -147,3 +147,50 @@ func TestRefusedListIsCapped(t *testing.T) {
 		}
 	}
 }
+
+// An admin cannot plant a second row for a protected person by spelling
+// their Gmail address with dots (security review 2026-10-31, M1): every
+// path resolves the person through the same canonical match.
+func TestGrantRoleFollowsGmailDots(t *testing.T) {
+	s, _ := newService(t)
+	ctx := context.Background()
+	if _, err := s.GrantRole(asOwner(ctx), "johnsmith@gmail.com", auth.Owner); err != nil {
+		t.Fatal(err)
+	}
+	boss, err := s.GrantRole(asOwner(ctx), "boss@college.edu", auth.Admin)
+	if err != nil {
+		t.Fatal(err)
+	}
+	asAdmin := auth.WithActor(ctx, auth.Actor{ID: boss.ID, Email: boss.Email, Role: auth.Admin})
+	var ce *auth.ChangeError
+	if _, err := s.GrantRole(asAdmin, "john.smith@gmail.com", auth.Organiser); !errors.As(err, &ce) || ce.Kind != "forbidden" {
+		t.Errorf("admin targets an owner through a dotted spelling: %v, want forbidden", err)
+	}
+	var n int
+	s.DB.QueryRowContext(ctx, "SELECT count(*) FROM users WHERE email LIKE '%smith@gmail.com'").Scan(&n)
+	if n != 1 {
+		t.Errorf("%d rows for one Gmail mailbox, want 1", n)
+	}
+	// An owner granting through another spelling changes the one row.
+	p, err := s.GrantRole(asOwner(ctx), "John.Smith@googlemail.com", auth.Organiser)
+	if err != nil || p.Email != "johnsmith@gmail.com" {
+		t.Errorf("owner grant through another spelling: %+v %v, want the listed row", p, err)
+	}
+}
+
+// The configured owner is matched the same way: a dotted spelling in the
+// configuration finds the row already listed instead of adding a second.
+func TestBootstrapFollowsGmailDots(t *testing.T) {
+	s, _ := newService(t, "priya@gmail.com")
+	ctx := context.Background()
+	s.OwnerEmail = "pri.ya@gmail.com"
+	if err := s.Bootstrap(ctx); err != nil {
+		t.Fatal(err)
+	}
+	var n int
+	var role string
+	s.DB.QueryRowContext(ctx, "SELECT count(*), max(role) FROM users WHERE email LIKE 'pri%ya@gmail.com'").Scan(&n, &role)
+	if n != 1 || role != "owner" {
+		t.Errorf("%d rows, role %q; want the one listed row made owner", n, role)
+	}
+}

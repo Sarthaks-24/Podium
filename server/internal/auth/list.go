@@ -70,7 +70,7 @@ func listed(ctx context.Context, q querier, email string) (id int64, stored stri
 		return 0, "", false, nil
 	}
 	// shortcut: reads every Gmail row and compares in Go; fine for a list of a few hundred, a canonical column if it grows to thousands.
-	rows, err := q.QueryContext(ctx, "SELECT id, email FROM users WHERE email LIKE '%@gmail.com' OR email LIKE '%@googlemail.com'")
+	rows, err := q.QueryContext(ctx, "SELECT id, email FROM users WHERE email LIKE '%@gmail.com' OR email LIKE '%@googlemail.com' ORDER BY id")
 	if err != nil {
 		return 0, "", false, err
 	}
@@ -174,6 +174,25 @@ func (s *Service) Import(ctx context.Context, text string, dryRun bool) (ImportR
 	if err := s.changeAllowed(ctx, "", "", Student); err != nil {
 		return out, err
 	}
+	// The list's canonical forms, read once: a paste of 500 must not scan
+	// the Gmail rows once per address while it holds the write lock.
+	onList := map[string]bool{}
+	rows, err := tx.QueryContext(ctx, "SELECT email FROM users")
+	if err != nil {
+		return out, err
+	}
+	for rows.Next() {
+		var e string
+		if err := rows.Scan(&e); err != nil {
+			rows.Close()
+			return out, err
+		}
+		onList[canonical(e)] = true
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return out, err
+	}
 	seen := map[string]bool{}
 	now := s.now().UnixMilli()
 	for _, f := range fields {
@@ -183,19 +202,11 @@ func (s *Service) Import(ctx context.Context, text string, dryRun bool) (ImportR
 			continue
 		}
 		canon := canonical(email)
-		if seen[canon] {
+		if seen[canon] || onList[canon] {
 			out.Duplicates = append(out.Duplicates, email)
 			continue
 		}
 		seen[canon] = true
-		_, _, found, err := listed(ctx, tx, email)
-		if err != nil {
-			return out, err
-		}
-		if found {
-			out.Duplicates = append(out.Duplicates, email)
-			continue
-		}
 		out.Added = append(out.Added, email)
 		if dryRun {
 			continue
