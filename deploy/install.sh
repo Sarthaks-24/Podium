@@ -735,7 +735,7 @@ cmd_upgrade() {
   release=$(release_name)
   [[ -f $db ]] || die "no database at $db; nothing to upgrade (start the server once, or run a fresh install)"
 
-  log "upgrade to $release: 1/8 release files, upgrade path, configuration names"
+  log "upgrade to $release: 1/7 release files, upgrade path, configuration names"
   verify_release
   check_upgrade_path
   check_unfinished_upgrade "$release" /usr/local/bin/podium-server

@@ -43,8 +43,7 @@ const DefaultHonour = `This contest counts. By starting you agree to these rules
 - Work alone. Do not share code or ideas with anyone until the contest ends.
 - You may use your own templates and the documentation of your language.
 - Do not use AI assistants, chatbots or code generators.
-- Podium records your submissions, the number of characters you type and paste in its editor, paste sizes, and when you leave the page. Organisers use this only to review possible copying, and it is deleted 180 days after the contest unless a review is open.
-- If a review is opened you will see the evidence and can explain your work before any decision.`
+- Podium records your submissions, the number of characters you type and paste in its editor, paste sizes, and when you leave the page. Organisers use this only to review possible copying, and it is deleted 180 days after the contest unless a review is open.`
 
 // Contest is one contest with its problems.
 type Contest struct {

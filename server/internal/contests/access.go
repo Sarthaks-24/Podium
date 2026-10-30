@@ -10,8 +10,7 @@ import (
 
 // Refusals the API turns into 403 or 409 with the message as written.
 var (
-	ErrBoardClosed = errors.New("The board opens when your window closes.")
-	ErrNotStarted  = errors.New("Accept the rules on the contest page to start.")
+	ErrNotStarted = errors.New("Accept the rules on the contest page to start.")
 	// ErrBeforeStart is ErrNotStarted before the contest's start time,
 	// when accepting the rules is refused too.
 	ErrBeforeStart  = errors.New("The contest has not started yet. The contest page shows when it starts.")
@@ -68,10 +67,9 @@ func (c *Contest) ProblemsVisible(st StudentState, now time.Time) bool {
 	return st.Accepted && st.HasClock && !now.Before(st.Window.Opens)
 }
 
-// StudentVariant is the board a student may see now, or ErrBoardClosed.
-//
-// The full board until the freeze, the frozen board from the freeze until
-// every window has closed, then full; with HoldReveal the frozen board
+// StudentVariant is the board a student may see now: the full board
+// until the freeze, the frozen board from the freeze until the contest
+// and every extension have ended, then full; with HoldReveal the frozen board
 // stays until an organiser reveals.
 func (s *Service) StudentVariant(ctx context.Context, c *Contest, st StudentState) (string, error) {
 	now := s.now()

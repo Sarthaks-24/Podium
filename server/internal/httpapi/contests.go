@@ -85,8 +85,6 @@ func (d Deps) contestError(w http.ResponseWriter, r *http.Request, err error) {
 		WriteError(w, http.StatusNotFound, "not_found", "There is no such contest, or it is not open to you.")
 	case errors.As(err, &fields):
 		WriteJSON(w, http.StatusBadRequest, map[string]APIError{"error": {Code: "bad_request", Message: fields.Error(), Fields: fields}})
-	case errors.Is(err, contests.ErrBoardClosed):
-		WriteError(w, http.StatusForbidden, "board_closed", err.Error())
 	case errors.Is(err, contests.ErrNotStarted), errors.Is(err, contests.ErrBeforeStart):
 		WriteError(w, http.StatusForbidden, "not_started", err.Error())
 	case errors.Is(err, contests.ErrContestOver), errors.Is(err, contests.ErrPracticeWait):

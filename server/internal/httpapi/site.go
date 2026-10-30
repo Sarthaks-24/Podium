@@ -2,7 +2,7 @@ package httpapi
 
 // The owner's organisation details: name, contact email, phone and
 // privacy contact, shown in the footer and on the sign-in page. Shapes are
-// in docs/API.md, "Site settings".
+// in docs/API.md, "Settings: people, sign-in and organisation".
 
 import (
 	"errors"

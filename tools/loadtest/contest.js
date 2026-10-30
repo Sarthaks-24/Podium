@@ -9,10 +9,8 @@
 // more virtual user signs in as the owner and polls GET /api/admin/metrics
 // every 5 s, through the end and until the judge queue has drained.
 //
-// Fixed mode: everyone starts within RAMP_MINUTES and the contest ends for
-// everyone at MINUTES, so the spike hits together. Window mode: the
-// contest window is MINUTES long, each student presses Start at a random
-// time and has WINDOW_MINUTES, so the spike is spread out.
+// Everyone starts within RAMP_MINUTES and the contest ends for everyone at
+// MINUTES, so the spike hits together.
 //
 // See README.md in this folder for how to run it and read the results.
 
@@ -32,9 +30,7 @@ const BASE = (__ENV.BASE_URL || 'http://127.0.0.1:8080').replace(/\/$/, '');
 // from that origin, and state-changing requests are checked against it.
 const ORIGIN = __ENV.ORIGIN || 'http://localhost:5173';
 const VUS = num(__ENV.VUS, 100);
-const MODE = __ENV.MODE === 'window' ? 'window' : 'fixed';
 const MINUTES = num(__ENV.MINUTES, 15);
-const WINDOW_MINUTES = num(__ENV.WINDOW_MINUTES, 10);
 const RAMP_MINUTES = num(__ENV.RAMP_MINUTES, 2);
 // Aggregate rates across all students, per minute. The defaults scale
 // PLAN.md section 4 (700 students: about 30 submissions a minute on
@@ -83,9 +79,8 @@ export const options = {
   summaryTrendStats: ['avg', 'med', 'p(90)', 'p(95)', 'p(99)', 'max', 'count'],
 };
 
-// 429 is a limit doing its job and is counted on its own; 403 is the
-// window-mode board answering "closed until your window ends".
-http.setResponseCallback(http.expectedStatuses({ min: 200, max: 399 }, 403, 429));
+// 429 is a limit doing its job and is counted on its own.
+http.setResponseCallback(http.expectedStatuses({ min: 200, max: 399 }, 429));
 
 const rateLimited = new Counter('rate_limited');
 const sseOpened = new Counter('sse_opened');
@@ -191,36 +186,31 @@ export function setup() {
   for (const s of SLUGS) if (!bySlug[s]) throw new Error(`problem ${s} is missing; run seed.py first`);
 
   const now = Date.now();
-  const slug = `load-${MODE}-${Math.floor(now / 1000)}`;
+  // The server makes the contest's address from its title.
   const edit = {
-    slug, title: `Load test ${MODE} ${new Date(now).toISOString()}`,
-    starts_at: now - 5000, ends_at: now + MINUTES * 60000, start_mode: MODE,
-    freeze_minutes: MODE === 'fixed' ? Math.floor(MINUTES / 5) : 0,
+    title: `Load test ${Math.floor(now / 1000)}`,
+    starts_at: now - 5000, ends_at: now + MINUTES * 60000,
+    freeze_minutes: Math.floor(MINUTES / 5),
     min_gap_s: MIN_GAP_S, max_per_problem: 15,
   };
-  if (MODE === 'window') edit.duration_minutes = WINDOW_MINUTES;
   const json = { headers: { 'Content-Type': 'application/json', Origin: ORIGIN }, responseType: 'text', tags: { kind: 'setup' } };
   const created = http.post(`${BASE}/api/admin/contests`, JSON.stringify(edit), json);
   if (created.status !== 201) throw new Error(`create contest: ${created.status} ${created.body}`);
   const id = created.json('id');
+  const slug = created.json('slug');
   const problems = SLUGS.map((s, i) => ({ problem_id: bySlug[s], label: LABELS[i] }));
   const set = http.put(`${BASE}/api/admin/contests/${id}/problems`, JSON.stringify(problems), json);
   if (set.status !== 200) throw new Error(`set problems: ${set.status} ${set.body}`);
   const pub = http.put(`${BASE}/api/admin/contests/${id}`, JSON.stringify({ published: true }), json);
   if (pub.status !== 200) throw new Error(`publish: ${pub.status} ${pub.body}`);
   jar.clear(BASE);
-  console.log(JSON.stringify({ event: 'contest', slug, id, mode: MODE, starts_at: edit.starts_at, ends_at: edit.ends_at, vus: VUS }));
+  console.log(JSON.stringify({ event: 'contest', slug, id, starts_at: edit.starts_at, ends_at: edit.ends_at, vus: VUS }));
   return { slug, id, start: now, end: edit.ends_at };
 }
 
 // session returns when this student arrives and leaves, in Unix ms.
 function session(data) {
-  if (MODE === 'fixed') {
-    return { from: data.start + Math.random() * RAMP_MINUTES * 60000, to: data.end - 2000 };
-  }
-  const spread = Math.max(0, MINUTES - WINDOW_MINUTES - 0.5) * 60000;
-  const from = data.start + Math.random() * spread;
-  return { from, to: Math.min(data.end - 2000, from + WINDOW_MINUTES * 60000 - 5000) };
+  return { from: data.start + Math.random() * RAMP_MINUTES * 60000, to: data.end - 2000 };
 }
 
 // openStream holds GET /api/events until `until`, like EventSource. A
@@ -412,7 +402,7 @@ export function handleSummary(data) {
   const f = (v) => (typeof v === 'number' ? v.toFixed(1) : String(v));
   const api = 'http_req_duration{kind:api}';
   const lines = [
-    `podium load test: ${MODE} mode, ${VUS} students, ${MINUTES} min`,
+    `podium load test: ${VUS} students, ${MINUTES} min`,
     `API latency (ms): p50 ${f(metric(data, api, 'med'))}, p95 ${f(metric(data, api, 'p(95)'))}, p99 ${f(metric(data, api, 'p(99)'))}, max ${f(metric(data, api, 'max'))}, requests ${metric(data, api, 'count')}`,
     `API failures: ${f(100 * metric(data, 'http_req_failed{kind:api}', 'rate'))} %, errors ${metric(data, 'api_errors', 'count')}, 429 ${metric(data, 'rate_limited', 'count')}`,
     `Event streams: opened ${metric(data, 'sse_opened', 'count')}, reconnects ${metric(data, 'sse_reconnects', 'count')}, server peak ${metric(data, 'sse_connections_server', 'max')}`,
@@ -426,6 +416,6 @@ export function handleSummary(data) {
   }
   return {
     stdout: lines.join('\n') + '\n',
-    [`${RESULTS}/summary-${MODE}-${VUS}.json`]: JSON.stringify(data, null, 1),
+    [`${RESULTS}/summary-${VUS}.json`]: JSON.stringify(data, null, 1),
   };
 }

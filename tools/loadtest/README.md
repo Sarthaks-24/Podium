@@ -4,7 +4,7 @@ A k6 script that plays a whole contest against a podium server in testing mode: 
 
 | File | What it does |
 |---|---|
-| `contest.js` | The k6 script. Fixed and window start modes, a submission spike at the end of each student's time, per-route latency, 429 counts, event stream reconnects, queue depth every 5 s. |
+| `contest.js` | The k6 script. A submission spike at the end of each student's time, per-route latency, 429 counts, event stream reconnects, queue depth every 5 s. |
 | `seed.py` | Imports and validates the example packs in `problems/` and creates the student accounts. Python 3 standard library only. |
 | `summarize.py` | Turns the run's console log into a CSV time series of the queue and prints the peak queue, the judge's throughput and the drain time. |
 
@@ -12,7 +12,7 @@ A k6 script that plays a whole contest against a podium server in testing mode: 
 
 | Action | How often (defaults) |
 |---|---|
-| Sign in from the testing form, open the contest list and page, accept the rules | once, at a random time in the first `RAMP_MINUTES` (fixed) or of the window (window mode) |
+| Sign in from the testing form, open the contest list and page, accept the rules | once, at a random time in the first `RAMP_MINUTES` |
 | Hold `GET /api/events` open | the whole session; a stream that ends early is counted as a reconnect and reopened with the web app's back-off |
 | Open a problem's workspace | every 4 minutes on average, moving from A to C as time passes |
 | Save the draft | every 7.5 to 22.5 s (`DRAFT_EVERY_S`, mean 15) |
@@ -24,7 +24,7 @@ A k6 script that plays a whole contest against a podium server in testing mode: 
 
 Submitted programs are the packs' own solutions and plausible wrong ones: correct C++, Java and Python, an `int` overflow that passes the small subtask, wrong answers on the first sample, compile errors, and a brute force too slow for the large subtask. Each carries a unique comment, so nothing is shared between students in the compile cache. The defaults scale PLAN.md section 4 (700 students: about 30 submissions a minute on average, 100 to 150 a minute at the end) to the number of students.
 
-Every request is tagged: `kind:api` for the student API (the thresholds and the summary), `kind:sse` for event streams, `kind:monitor` for the metrics poll, `kind:setup` for creating the contest. A run fails its thresholds when the API's p95 is 300 ms or more, or more than 1 % of API requests fail; 403 (the window-mode board answering "closed") and 429 (a limit) are not failures, and 429s are counted on their own.
+Every request is tagged: `kind:api` for the student API (the thresholds and the summary), `kind:sse` for event streams, `kind:monitor` for the metrics poll, `kind:setup` for creating the contest. A run fails its thresholds when the API's p95 is 300 ms or more, or more than 1 % of API requests fail; 429 (a limit) is not a failure, and 429s are counted on their own.
 
 ## Settings
 
@@ -35,9 +35,7 @@ Pass with `-e NAME=value`.
 | `BASE_URL` | `http://127.0.0.1:8080` | the server |
 | `ORIGIN` | `http://localhost:5173` | the server's `PODIUM_BASE_URL`, sent as `Origin`: testing mode accepts the sign-in form only from it (`seed.py --origin` is the same) |
 | `VUS` | 100 | students |
-| `MODE` | `fixed` | `fixed` or `window` |
-| `MINUTES` | 15 | contest length (fixed), or the whole window (window mode) |
-| `WINDOW_MINUTES` | 10 | window mode: each student's time, at least 10 |
+| `MINUTES` | 15 | contest length |
 | `RAMP_MINUTES` | 2 | fixed: students arrive over this time |
 | `SUBMIT_PER_MIN` | 30 × VUS / 700 | submissions a minute across the class |
 | `SPIKE_PER_MIN` | 120 × VUS / 700 | the same in each student's last `SPIKE_MINUTES` |
@@ -85,7 +83,7 @@ taskset -c 2-15 k6 run -e BASE_URL=http://127.0.0.1:18080 -e VUS=700 -e MINUTES=
 python3 -I summarize.py results/console-fixed-700.log
 ```
 
-Window mode: `-e MODE=window -e MINUTES=30 -e WINDOW_MINUTES=15`. Run the seed once per stack; every k6 run creates its own contest. Stop the stack with `sudo pkill -f /var/tmp/podium-load/podium-`.
+Run the seed once per stack; every k6 run creates its own contest. Stop the stack with `sudo pkill -f /var/tmp/podium-load/podium-`.
 
 ## Run it against the VM
 
