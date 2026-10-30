@@ -568,7 +568,7 @@ test('admins see the Problems link and it marks the current page', async ({ page
   await expect(page.getByRole('heading', { level: 1 })).toBeFocused();
   await page.getByRole('link', { name: 'A plus B', exact: true }).click();
   await expect(nav.getByRole('link', { name: 'Problems', exact: true })).toHaveAttribute('aria-current', 'page');
-  await expect(page.getByRole('link', { name: 'Settings' })).toHaveCount(0);
+  await expect(page.getByRole('link', { name: 'Dashboard' })).toHaveCount(0);
 });
 
 test('Validate makes missing outputs from the reference, then validates; there is no Generate button', async ({ page }) => {

@@ -30,6 +30,7 @@ Some errors carry more. `fields` maps a form field to what is wrong with it; `pr
 | `bad_request` | 400, or 415 for a wrong content type | the request cannot be used as sent |
 | `signed_out` | 401 | no session, or it has ended |
 | `forbidden` | 403 | signed in, but the role is too low for the route |
+| `not_allowed` | 403 | the role reaches the route, but not this person: an admin acting on an admin, an owner, `PODIUM_OWNER_EMAIL` or themself, or giving the admin or owner role |
 | `not_found` | 404 | no such route, or a thing that does not exist or that the caller may not know about |
 | `cross_site` | 403 | a write from another origin |
 | `conflict` | 409 | the change clashes with the current state |
@@ -179,23 +180,23 @@ Saves the display preferences, so they follow the account to another machine. Re
 
 The routes behind the Settings page. Reading people, giving and removing roles, ending sessions, disabling, enabling and reading the site audit need the admin role; resetting a Google link and the site settings need the owner role; the account lookup needs the organiser role.
 
-An admin acts only on students and organisers, and gives only the organiser role: acting on an admin, an owner, `PODIUM_OWNER_EMAIL` or themself, or giving the admin or owner role, is `403 forbidden` with a sentence that says an owner must do it. The check runs inside the change itself (`server/internal/auth/rules.go`), so every route that changes an account applies it. Every change here (roles, domains, disabling and enabling, ended sessions, Google link resets, site settings) writes a site audit row in the same transaction as the change.
+An admin acts only on students and organisers, and gives only the organiser role: acting on an admin, an owner, `PODIUM_OWNER_EMAIL` or themself, or giving the admin or owner role, is `403 not_allowed` with a sentence that says an owner must do it (`not_allowed`, not `forbidden`, so a page can tell a refused change from a lost role). The check runs inside the change itself (`server/internal/auth/rules.go`), so every route that changes an account applies it. Every change here (roles, domains, disabling and enabling, ended sessions, Google link resets, site settings) writes a site audit row in the same transaction as the change.
 
 `Account` is `{id, email, name, role, disabled, last_login_at}`; `last_login_at` is `null` for someone added who never signed in.
 
 | Route | Request | Success | Errors |
 |---|---|---|---|
 | `GET /api/admin/people` | | 200 `{people, list, counts, refused, disabled, organisation}` (below) | |
-| `POST /api/admin/people` | `{"email":"ta@college.edu","role":"organiser"}`; `role` is `organiser`, `admin` or `owner`; the person need not have signed in, and the role is theirs at first sign-in | 200 the person, as in `people` | `400 bad_request` (email or role), `403 forbidden` (an admin out of bounds), `409 conflict` (the configured owner, or the change would leave no owner) |
-| `DELETE /api/admin/people/{id}` | | 204: the person becomes a student and their sessions end | `404 not_found`, `403 forbidden` (an admin out of bounds), `409 conflict` (the configured owner, or the last owner) |
+| `POST /api/admin/people` | `{"email":"ta@college.edu","role":"organiser"}`; `role` is `organiser`, `admin` or `owner`; the person need not have signed in, and the role is theirs at first sign-in | 200 the person, as in `people` | `400 bad_request` (email or role), `403 not_allowed` (an admin out of bounds), `409 conflict` (the configured owner, or the change would leave no owner) |
+| `DELETE /api/admin/people/{id}` | | 204: the person becomes a student and their sessions end | `404 not_found`, `403 not_allowed` (an admin out of bounds), `409 conflict` (the configured owner, or the last owner) |
 | `POST /api/admin/accounts/reset-google` | `{"email":"asha@college.edu"}` | 204: unlinks the Google account and ends their sessions; the next Google account to sign in with the address is linked | `404 not_found` |
-| `POST /api/admin/accounts/end-sessions` | `{"email"}` | 200 `{"account": Account, "ended": 2}`: signs the person out everywhere; their open event streams close at the next clock tick (25 s at most) | `404 not_found`; `403 forbidden` (an admin out of bounds) |
-| `POST /api/admin/accounts/disable` | `{"email"}` | 200 `{"account": Account, "ended": 1}`: ends every session; the account is refused at sign-in and at every signed-in route | `404 not_found`; `403 forbidden` (an admin out of bounds); `409 conflict` for `PODIUM_OWNER_EMAIL` and for disabling yourself |
-| `POST /api/admin/accounts/enable` | `{"email"}` | 200 `{"account": Account, "ended": 0}`: they may sign in again | `404 not_found`; `403 forbidden` (an admin out of bounds) |
+| `POST /api/admin/accounts/end-sessions` | `{"email"}` | 200 `{"account": Account, "ended": 2}`: signs the person out everywhere; their open event streams close at the next clock tick (25 s at most) | `404 not_found`; `403 not_allowed` (an admin out of bounds) |
+| `POST /api/admin/accounts/disable` | `{"email"}` | 200 `{"account": Account, "ended": 1}`: ends every session; the account is refused at sign-in and at every signed-in route | `404 not_found`; `403 not_allowed` (an admin out of bounds); `409 conflict` for `PODIUM_OWNER_EMAIL` and for disabling yourself |
+| `POST /api/admin/accounts/enable` | `{"email"}` | 200 `{"account": Account, "ended": 0}`: they may sign in again | `404 not_found`; `403 not_allowed` (an admin out of bounds) |
 | `GET /api/admin/accounts` (organiser) | `?email=` | 200 `{"account": Account, "server_now"}` | `400 bad_request` without an email; `404 not_found` "Nobody with that email has an account."; anyone below organiser gets the same `403` whether or not the address exists |
 | `POST /api/admin/people/import` | `{"text":"a@college.edu, b@college.edu","dry_run":true}`: addresses separated by commas, semicolons, spaces or new lines, at most 500 | 200 `{added, duplicates, invalid}`, each a list of addresses; with `dry_run` nothing is saved, so the page shows the counts first; the second call saves the same answer. Added people are students. A duplicate is an address already on the list or earlier in the paste (compared as sign-in compares) | `400 bad_request` (more than 500) |
-| `POST /api/admin/people/remove` | `{"email"}` | 200 `{"deleted": true}` for someone who never signed in (the row goes); `{"deleted": false}` for someone who did: the account is disabled and every session ends, because their submissions point at it | `404 not_found`, `403 forbidden` (an admin out of bounds), `409 conflict` (`PODIUM_OWNER_EMAIL`, yourself, the last owner) |
-| `POST /api/admin/people/let-in` | `{"email"}` | 204: the address is on the list as a student (if it was not) and its refused row is gone | `400 bad_request`, `403 forbidden` |
+| `POST /api/admin/people/remove` | `{"email"}` | 200 `{"deleted": true}` for someone who never signed in (the row goes); `{"deleted": false}` for someone who did: the account is disabled and every session ends, because their submissions point at it | `404 not_found`, `403 not_allowed` (an admin out of bounds), `409 conflict` (`PODIUM_OWNER_EMAIL`, yourself, the last owner) |
+| `POST /api/admin/people/let-in` | `{"email"}` | 204: the address is on the list as a student (if it was not) and its refused row is gone | `400 bad_request`, `403 not_allowed` |
 | `PUT /api/admin/site-settings` | `Organisation`, every field present (`""` clears one) | 200 the saved `Organisation` | `400 bad_request` with `fields` |
 | `GET /api/admin/site-audit` | `?page=&action=&q=&since=&until=` | 200 `{entries, page, has_more, server_now}` (below) | |
 

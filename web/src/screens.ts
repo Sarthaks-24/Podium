@@ -38,7 +38,7 @@ const contest: ScreenDef = { component: ContestPage, key: (p) => p.slug };
 export const SCREENS: Record<RouteName, ScreenDef> = {
   home: { component: Home },
   signin: { component: SignIn },
-  settings: lazy(() => import('./routes/Settings.svelte')),
+  dashboard: lazy(() => import('./routes/Dashboard.svelte')),
   problems: lazy(() => import('./routes/ProblemBank.svelte')),
   problem: lazy(() => import('./routes/ProblemEditor.svelte')),
   'problem-try': lazy(() => import('./routes/ProblemTry.svelte')),

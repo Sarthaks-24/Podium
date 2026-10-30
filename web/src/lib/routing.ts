@@ -17,7 +17,7 @@ import type { Role } from './session.svelte';
 export type RouteName =
   | 'home'
   | 'signin'
-  | 'settings'
+  | 'dashboard'
   | 'problems'
   | 'problem'
   | 'problem-try'
@@ -35,10 +35,10 @@ export type RouteName =
   | 'not-found';
 
 /** The parts of the main navigation; the link of a screen's own part is marked current. */
-export type Section = 'student' | 'contests' | 'problems' | 'settings';
+export type Section = 'student' | 'contests' | 'problems' | 'dashboard';
 
-/** Who may open a screen: organisers (admins and owners), or owners only. */
-export type Access = 'organiser' | 'owner';
+/** Who may open a screen: anyone who organises, admins and owners, or owners only. */
+export type Access = 'organiser' | 'admin' | 'owner';
 
 /** One row of the route table. */
 export interface RouteDef {
@@ -63,8 +63,9 @@ export interface RouteDef {
 export const ROUTES: readonly RouteDef[] = [
   { pattern: '/', name: 'home', auth: true, title: 'Your contests', section: 'student' },
   { pattern: '/signin', name: 'signin', auth: false, title: 'Sign in' },
-  // Settings kept the People page's address, so old links and bookmarks still open it.
-  { pattern: '/admin/people', name: 'settings', auth: true, title: 'Settings', role: 'owner', section: 'settings' },
+  { pattern: '/admin/dashboard', name: 'dashboard', auth: true, title: 'Dashboard', role: 'admin', section: 'dashboard' },
+  // The Dashboard kept the old People and Settings address, so old links and bookmarks still open it.
+  { pattern: '/admin/people', name: 'dashboard', auth: true, title: 'Dashboard', role: 'admin', section: 'dashboard' },
   { pattern: '/admin/problems', name: 'problems', auth: true, title: 'Problems', role: 'organiser', section: 'problems' },
   { pattern: '/admin/problems/:id', name: 'problem', auth: true, title: 'Problem', role: 'organiser', section: 'problems' },
   { pattern: '/admin/problems/:id/try', name: 'problem-try', auth: true, title: 'Problems', role: 'organiser', section: 'problems' },
@@ -104,13 +105,15 @@ export function routeTitle(name: RouteName): string {
 /** True when someone signed in with `role` may open the route's screen. */
 export function mayOpen(route: Pick<RouteDef, 'role'>, role: Role | undefined): boolean {
   if (route.role === 'owner') return role === 'owner';
+  if (route.role === 'admin') return role === 'admin' || role === 'owner';
   if (route.role === 'organiser') return organises(role);
   return true;
 }
 
 /** The one sentence the shell shows, under the page's title, to someone a row does not let in. */
 export function forbiddenText(route: Pick<RouteDef, 'role' | 'section'>): string {
-  if (route.role === 'owner') return 'Only owners can change the settings.';
+  if (route.role === 'owner') return 'Only owners can change this.';
+  if (route.role === 'admin') return 'Only admins and owners can open the Dashboard.';
   return route.section === 'problems' ? 'Only organisers can manage problems.' : 'Only organisers can manage contests.';
 }
 
@@ -121,14 +124,14 @@ export interface NavItem {
   label: string;
 }
 
-/** The main navigation by role: a student's contests; an organiser's contests and problems, and Settings for owners. */
+/** The main navigation by role: a student's contests; an organiser's contests and problems, and the Dashboard for admins and owners. */
 export function mainNav(role: Role): NavItem[] {
   if (role === 'student') return [{ section: 'student', href: '/', label: 'Contests' }];
   const items: NavItem[] = [
     { section: 'contests', href: '/admin/contests', label: 'Contests' },
     { section: 'problems', href: '/admin/problems', label: 'Problems' },
   ];
-  if (role === 'owner') items.push({ section: 'settings', href: '/admin/people', label: 'Settings' });
+  if (role === 'admin' || role === 'owner') items.push({ section: 'dashboard', href: '/admin/dashboard', label: 'Dashboard' });
   return items;
 }
 

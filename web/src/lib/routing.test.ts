@@ -7,7 +7,7 @@ describe('route table', () => {
   });
 
   it('reads titles from the table', () => {
-    expect(routeTitle('settings')).toBe('Settings');
+    expect(routeTitle('dashboard')).toBe('Dashboard');
     expect(routeTitle('contest-console')).toBe('Live');
     expect(routeTitle('not-found')).toBe('Page not found');
   });
@@ -21,14 +21,16 @@ describe('route table', () => {
 });
 
 describe('who may open a screen', () => {
-  const settings = matchRoute('/admin/people').route;
+  const dashboard = matchRoute('/admin/dashboard').route;
   const bank = matchRoute('/admin/problems').route;
   const contest = matchRoute('/contests/week-6').route;
 
-  it('lets only owners into Settings', () => {
-    expect(mayOpen(settings, 'owner')).toBe(true);
-    expect(mayOpen(settings, 'organiser')).toBe(false);
-    expect(mayOpen(settings, 'student')).toBe(false);
+  it('lets admins and owners into the Dashboard, at its old address too', () => {
+    expect(mayOpen(dashboard, 'owner')).toBe(true);
+    expect(mayOpen(dashboard, 'admin')).toBe(true);
+    expect(mayOpen(dashboard, 'organiser')).toBe(false);
+    expect(mayOpen(dashboard, 'student')).toBe(false);
+    expect(matchRoute('/admin/people').route.name).toBe('dashboard');
   });
 
   it('lets every organising role into the organiser screens', () => {
@@ -45,17 +47,18 @@ describe('who may open a screen', () => {
   });
 
   it('says who may open a closed screen, by its section', () => {
-    expect(forbiddenText(settings)).toBe('Only owners can change the settings.');
+    expect(forbiddenText(dashboard)).toBe('Only admins and owners can open the Dashboard.');
     expect(forbiddenText(bank)).toBe('Only organisers can manage problems.');
     expect(forbiddenText(matchRoute('/admin/contests/4/console').route)).toBe('Only organisers can manage contests.');
   });
 });
 
 describe('main navigation', () => {
-  it('names the links by role, Settings for owners only', () => {
+  it('names the links by role, the Dashboard for admins and owners', () => {
     expect(mainNav('student').map((l) => l.label)).toEqual(['Contests']);
     expect(mainNav('organiser').map((l) => l.label)).toEqual(['Contests', 'Problems']);
-    expect(mainNav('owner').map((l) => l.label)).toEqual(['Contests', 'Problems', 'Settings']);
+    expect(mainNav('admin').map((l) => l.label)).toEqual(['Contests', 'Problems', 'Dashboard']);
+    expect(mainNav('owner').map((l) => l.label)).toEqual(['Contests', 'Problems', 'Dashboard']);
   });
 
   it('links each section to a screen of that section', () => {

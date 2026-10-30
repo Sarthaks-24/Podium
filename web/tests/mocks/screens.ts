@@ -9,10 +9,20 @@ export function shots(): string {
 export const WIDTHS = [375, 768, 1024, 1440] as const;
 export const THEMES = ['light', 'dark'] as const;
 
-export type Who = 'signed-out' | 'student' | 'owner';
+export type Who = 'signed-out' | 'student' | 'admin' | 'owner';
 
 export const OWNER = { id: 1, email: 'priya@college.edu', name: 'Priya Raman', avatar_url: '', role: 'owner' };
 export const STUDENT = { id: 7, email: 'asha@college.edu', name: 'Asha Rao', avatar_url: '', role: 'student' };
+export const ADMIN = { id: 5, email: 'boss@college.edu', name: 'Bilal Khan', avatar_url: '', role: 'admin' };
+
+/** The students on the sign-in list: Asha signed in, Ravi never came. */
+export const STUDENTS = [
+  { id: 7, email: 'asha@college.edu', name: 'Asha Rao', role: 'student', last_login_at: 1792100000000, locked: false },
+  { id: 8, email: 'ravi@college.edu', name: '', role: 'student', last_login_at: null as number | null, locked: false },
+];
+
+/** A Google address that tried to sign in and is not on the list. */
+export const REFUSED = [{ email: 'stranger@gmail.com', count: 2, first_at: 1792000000000, last_at: 1792090000000 }];
 
 export const PEOPLE = [
   { id: 1, email: 'priya@college.edu', name: 'Priya Raman', role: 'owner', last_login_at: 1792183192359, locked: true },
@@ -46,7 +56,9 @@ export async function mockApi(page: Page, who: Who) {
   const state = {
     who,
     people: structuredClone(PEOPLE),
-    list: [{ role: 'student' }] as { role: string }[],
+    students: structuredClone(STUDENTS),
+    refused: structuredClone(REFUSED),
+    imports: [] as { text: string; dry_run: boolean }[],
     nextId: 10,
     resets: [] as string[],
     disabled: [] as { id: number; email: string; name: string; role: string; disabled: boolean; last_login_at: number | null }[],
@@ -64,7 +76,10 @@ export async function mockApi(page: Page, who: Who) {
       const req = route.request();
       const path = new URL(req.url()).pathname;
       const method = req.method();
-      const me = state.who === 'owner' ? OWNER : state.who === 'student' ? STUDENT : null;
+      const me = state.who === 'owner' ? OWNER : state.who === 'admin' ? ADMIN : state.who === 'student' ? STUDENT : null;
+      if (state.who === 'admin' && !state.people.some((p) => p.id === ADMIN.id)) {
+        state.people.push({ id: ADMIN.id, email: ADMIN.email, name: ADMIN.name, role: 'admin', last_login_at: 1792180000000, locked: false });
+      }
 
       if (path === '/api/auth/config' && method === 'GET') return json(route, 200, CONFIG);
       if (path === '/api/auth/logout' && method === 'POST') {
@@ -79,9 +94,10 @@ export async function mockApi(page: Page, who: Who) {
       }
       if (path.startsWith('/api/admin/')) {
         if (!me) return apiError(route, 401, 'signed_out', 'Sign in to continue.');
-        if (me.role !== 'owner') return apiError(route, 403, 'forbidden', 'Only owners can do that.');
+        const ownerOnly = path === '/api/admin/site-settings' || path === '/api/admin/accounts/reset-google';
+        if (me.role !== 'owner' && (ownerOnly || me.role !== 'admin')) return apiError(route, 403, 'forbidden', 'Only owners can do that.');
       }
-      if (path.startsWith('/api/admin/') && me?.role === 'owner' && path === '/api/admin/contests' && method === 'GET') {
+      if (path === '/api/admin/contests' && method === 'GET') {
         return json(route, 200, { contests: [], server_now: Date.now() });
       }
       if (path === '/api/admin/site-audit' && method === 'GET') {
@@ -97,7 +113,47 @@ export async function mockApi(page: Page, who: Who) {
       // The organiser home's first-run list asks whether a validated problem exists (C2-024).
       if (path === '/api/admin/problems' && method === 'GET') return json(route, 200, { problems: [] });
       if (path === '/api/admin/people' && method === 'GET') {
-        return json(route, 200, { people: state.people, list: state.list, counts: { on_list: state.list.length, signed_in: 0, never_came: state.list.length }, refused: [], disabled: state.disabled, organisation: state.organisation });
+        const off = (email: string) => state.disabled.some((a) => a.email === email);
+        const list = [...state.people, ...state.students].map((p) => ({ ...p, disabled: off(p.email) }));
+        const on = list.filter((p) => !p.disabled);
+        const counts = { on_list: on.length, signed_in: on.filter((p) => p.last_login_at !== null).length, never_came: on.filter((p) => p.last_login_at === null).length };
+        return json(route, 200, { people: state.people, list, counts, refused: state.refused, disabled: state.disabled, organisation: state.organisation });
+      }
+      if (path === '/api/admin/people/import' && method === 'POST') {
+        const body = req.postDataJSON() as { text: string; dry_run: boolean };
+        state.imports.push(body);
+        const listed = new Set([...state.people, ...state.students].map((p) => p.email));
+        const out = { added: [] as string[], duplicates: [] as string[], invalid: [] as string[] };
+        for (const raw of body.text.split(/[\s,;]+/).filter((x) => x !== '')) {
+          const email = raw.toLowerCase();
+          if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) out.invalid.push(raw);
+          else if (listed.has(email)) out.duplicates.push(email);
+          else {
+            listed.add(email);
+            out.added.push(email);
+          }
+        }
+        if (!body.dry_run) {
+          for (const email of out.added) state.students.push({ id: state.nextId++, email, name: '', role: 'student', last_login_at: null, locked: false });
+        }
+        return json(route, 200, out);
+      }
+      if (path === '/api/admin/people/remove' && method === 'POST') {
+        const email = (req.postDataJSON() as { email: string }).email;
+        const student = state.students.find((p) => p.email === email);
+        if (!student) return apiError(route, 404, 'not_found', 'Nobody with that email has an account.');
+        if (student.last_login_at === null) {
+          state.students = state.students.filter((p) => p.email !== email);
+          return json(route, 200, { deleted: true });
+        }
+        state.disabled.push({ id: student.id, email, name: student.name, role: 'student', disabled: true, last_login_at: student.last_login_at });
+        return json(route, 200, { deleted: false });
+      }
+      if (path === '/api/admin/people/let-in' && method === 'POST') {
+        const email = (req.postDataJSON() as { email: string }).email;
+        state.refused = state.refused.filter((r) => r.email !== email);
+        state.students.push({ id: state.nextId++, email, name: '', role: 'student', last_login_at: null, locked: false });
+        return json(route, 204);
       }
       if (path === '/api/admin/accounts' && method === 'GET') {
         const email = (new URL(req.url()).searchParams.get('email') ?? '').trim().toLowerCase();
@@ -139,6 +195,12 @@ export async function mockApi(page: Page, who: Who) {
         if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(body.email)) {
           return apiError(route, 400, 'bad_request', 'Enter a full email address, for example ta@college.edu.');
         }
+        const student = state.students.find((p) => p.email === body.email);
+        if (student) {
+          state.students = state.students.filter((p) => p !== student);
+          state.people.push({ ...student, role: body.role });
+          return json(route, 200, { ...student, role: body.role });
+        }
         const existing = state.people.find((p) => p.email === body.email);
         if (existing) {
           existing.role = body.role;
@@ -155,6 +217,7 @@ export async function mockApi(page: Page, who: Who) {
         if (!person) return apiError(route, 404, 'not_found', 'That person is not an organiser.');
         if (person.locked) return apiError(route, 409, 'conflict', 'The configured owner cannot be changed here.');
         state.people = state.people.filter((p) => p.id !== id);
+        state.students.push({ ...person, role: 'student' });
         return json(route, 204);
       }
       if (path === '/api/admin/accounts/reset-google' && method === 'POST') {
@@ -217,31 +280,38 @@ export const SCREENS: Screen[] = [
   },
   {
     name: 'settings-people',
-    path: '/admin/people',
+    path: '/admin/dashboard',
     who: 'owner',
-    title: 'Settings · podium',
+    title: 'Dashboard · podium',
     ready: (page) => expect(page.getByRole('table').first()).toBeVisible(),
   },
   {
     name: 'settings-sign-in',
-    path: '/admin/people?tab=sign-in',
+    path: '/admin/dashboard?tab=sign-in',
     who: 'owner',
-    title: 'Settings · podium',
+    title: 'Dashboard · podium',
     ready: (page) => expect(page.getByRole('button', { name: 'Reset Google link' })).toBeVisible(),
   },
   {
     name: 'settings-organisation',
-    path: '/admin/people?tab=organisation',
+    path: '/admin/dashboard?tab=organisation',
     who: 'owner',
-    title: 'Settings · podium',
+    title: 'Dashboard · podium',
     ready: (page) => expect(page.getByRole('button', { name: 'Save organisation details' })).toBeVisible(),
   },
   {
+    name: 'settings-admin',
+    path: '/admin/dashboard',
+    who: 'admin',
+    title: 'Dashboard · podium',
+    ready: (page) => expect(page.getByRole('heading', { name: 'Refused sign-ins' })).toBeVisible(),
+  },
+  {
     name: 'settings-student',
-    path: '/admin/people',
+    path: '/admin/dashboard',
     who: 'student',
-    title: 'Settings · podium',
-    ready: (page) => expect(page.getByText('Only owners can change the settings.')).toBeVisible(),
+    title: 'Dashboard · podium',
+    ready: (page) => expect(page.getByText('Only admins and owners can open the Dashboard.')).toBeVisible(),
   },
   {
     name: 'privacy',

@@ -7,7 +7,8 @@
   is ("Asha Rao, student, last signed in ..."); until it has named one, or
   when there is none, the three actions stay disabled, and each
   confirmation names the person. Successes are toasts; form errors sit
-  under their form, tied to the inputs. Props: `disabled` and
+  under their form, tied to the inputs. Props: `owner` (only owners may
+  reset a Google link; admins do not see it), `disabled` and
   `people` (all bindable; a disable or enable marks the organiser's row
   too) and `onforbidden` (the person is no longer an owner).
 -->
@@ -21,12 +22,13 @@
   import { showToast } from '../../lib/toast.svelte';
 
   interface Props {
+    owner: boolean;
     disabled: Account[];
     people: Person[];
     onforbidden: () => void;
   }
 
-  let { disabled = $bindable(), people = $bindable(), onforbidden }: Props = $props();
+  let { owner, disabled = $bindable(), people = $bindable(), onforbidden }: Props = $props();
 
   type AccountAction = 'reset' | 'end-sessions' | 'disable' | 'enable';
   type Pending = { kind: AccountAction; email: string } | null;
@@ -170,12 +172,12 @@
 <section class="section" aria-labelledby="help-heading">
   <h2 id="help-heading">Account help</h2>
   <p class="intro muted">
-    Reset Google link when someone's address moved to a new Google account, so their next sign-in is accepted. End sessions signs
+    {#if owner}Reset Google link when someone's address moved to a new Google account, so their next sign-in is accepted.{/if} End sessions signs
     someone out on every device, for a lost laptop or a lab PC left signed in. Disable account also stops them signing in until you
     enable it again.
   </p>
 
-  <form class="form" novalidate onsubmit={(e) => { e.preventDefault(); askAccount('reset'); }}>
+  <form class="form" novalidate onsubmit={(e) => { e.preventDefault(); askAccount(owner ? 'reset' : 'end-sessions'); }}>
     <div class="field grow">
       <label for="account-email">Email</label>
       <input
@@ -205,7 +207,9 @@
         {/if}
       </p>
     </div>
-    <button type="submit" class="btn btn-secondary submit" disabled={unseen || (busy && pending?.kind === 'reset')} aria-describedby={unseen ? 'account-who' : undefined}>Reset Google link</button>
+    {#if owner}
+      <button type="submit" class="btn btn-secondary submit" disabled={unseen || (busy && pending?.kind === 'reset')} aria-describedby={unseen ? 'account-who' : undefined}>Reset Google link</button>
+    {/if}
     <button
       type="button"
       class="btn btn-secondary submit"

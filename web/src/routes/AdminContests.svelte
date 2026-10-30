@@ -55,7 +55,7 @@
   let newButton: HTMLButtonElement | undefined = $state();
 
   const isOrganiser = $derived(organises(session.user?.role));
-  const isOwner = $derived(session.user?.role === 'owner');
+  const managesPeople = $derived(session.user?.role === 'owner' || session.user?.role === 'admin');
   // First run (no contests): what is already done on the way to a published contest; null while unknown.
   let studentsListed = $state<boolean | null>(null);
   /** Organisers other than the configured owner and the person signed in. */
@@ -83,7 +83,7 @@
     } catch {
       validatedCount = null;
     }
-    if (!isOwner) return;
+    if (!managesPeople) return;
     try {
       const data = await getJSON<{ list: { role: string }[]; people: { id: number; locked: boolean }[] }>('/api/admin/people');
       if (!page.live) return;
@@ -330,13 +330,13 @@
     <section class="first-run" aria-labelledby="first-run-heading">
       <h2 id="first-run-heading">Your first contest</h2>
       <ul class="steps">
-        {#if isOwner}
+        {#if managesPeople}
           <li>
-            <span class="step">Add your students to the list in <a href="/admin/people">Settings</a>, so they can sign in.</span>
+            <span class="step">Add your students to the list in the <a href="/admin/dashboard">Dashboard</a>, so they can sign in.</span>
             {#if studentsListed !== null}<Badge tone={studentsListed ? 'ok' : 'neutral'} text={studentsListed ? 'Done' : 'To do'} />{/if}
           </li>
           <li>
-            <span class="step">Add another organiser in <a href="/admin/people">Settings</a>, so someone else can run a contest.</span>
+            <span class="step">Add another organiser in the <a href="/admin/dashboard">Dashboard</a>, so someone else can run a contest.</span>
             {#if otherOrganisers !== null}<Badge tone={otherOrganisers > 0 ? 'ok' : 'neutral'} text={otherOrganisers > 0 ? 'Done' : 'To do'} />{/if}
           </li>
         {/if}
