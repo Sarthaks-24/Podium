@@ -314,10 +314,10 @@ func TestExportEscapesAndStats(t *testing.T) {
 	if code, _ := owner.do("GET", fmt.Sprintf("/api/admin/contests/%d/export.json", id), nil, ""); code != 200 {
 		t.Errorf("json export %d", code)
 	}
-	// Clone copies settings and problems with new dates; its slug comes from the title, made unique.
+	// Clone copies settings and problems with new dates, titled "(copy)"; its slug comes from that title.
 	code, cl := owner.do("POST", fmt.Sprintf("/api/admin/contests/%d/clone", id), map[string]any{
 		"starts_at": start.Add(48 * time.Hour).UnixMilli(), "ends_at": start.Add(50 * time.Hour).UnixMilli()}, s.srv.URL)
-	if code != 201 || cl["slug"] != "exp-2" || len(cl["problems"].([]any)) != 1 || cl["published"] != false {
+	if code != 201 || cl["title"] != "exp (copy)" || cl["slug"] != "exp-copy" || len(cl["problems"].([]any)) != 1 || cl["published"] != false {
 		t.Errorf("clone %d %v", code, cl)
 	}
 }

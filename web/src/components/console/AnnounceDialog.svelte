@@ -9,6 +9,7 @@
 
   Props: `open`, `base` (the contest's admin API path), `announcements`
   (newest first), `labels` (problem letters, for the templates),
+  `minutesLeft` (the time check says the real minutes left),
   `body` and `template` (bindable, so a draft survives closing), `onclose`
   and `onposted`.
 -->
@@ -26,13 +27,14 @@
     base: string;
     announcements: readonly Announcement[];
     labels: readonly string[];
+    minutesLeft: number;
     body: string;
     template: string;
     onclose: () => void;
     onposted: () => Promise<void> | void;
   }
 
-  let { open, base, announcements, labels, body = $bindable(), template = $bindable(), onclose, onposted }: Props = $props();
+  let { open, base, announcements, labels, minutesLeft, body = $bindable(), template = $bindable(), onclose, onposted }: Props = $props();
 
   let error = $state('');
   let busy = $state(false);
@@ -43,7 +45,7 @@
 
   function useTemplate() {
     const t = ANNOUNCEMENT_TEMPLATES.find((x) => x.id === template);
-    if (t) body = fillTemplate(t.text, { label: labels[0] ?? 'A', minutes: 10 });
+    if (t) body = fillTemplate(t.text, { label: labels[0] ?? 'A', minutes: t.id === 'time' ? minutesLeft : 10 });
   }
 
   async function post(event: SubmitEvent) {

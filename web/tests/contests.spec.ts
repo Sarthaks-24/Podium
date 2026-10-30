@@ -164,9 +164,9 @@ test('a student agrees to the honour code, solves, reads an announcement and ask
   const dialog = page.getByRole('dialog', { name: 'Messages' });
   await expect(dialog).toBeVisible();
   await expect(dialog.getByText('Problem B: the statement has been corrected.')).toBeVisible();
-  // P7: the topic starts on the contest in general and says which problem is open.
-  await expect(dialog.getByLabel('About')).toHaveValue('');
-  await expect(dialog.getByText('You have problem A open.', { exact: false })).toBeVisible();
+  // The topic starts on the problem open, with general one choice away.
+  await expect(dialog.getByLabel('About')).toHaveValue('A');
+  await expect(dialog.getByText('Set to the problem you have open.', { exact: false })).toBeVisible();
   await dialog.getByLabel('About').selectOption('B');
   await dialog.getByRole('button', { name: 'Send question' }).click();
   await expect(dialog.getByText('Write your question first.')).toBeVisible();
@@ -1357,7 +1357,7 @@ test('Duplicate asks for the new start and opens the copy (C3)', async ({ page }
   await page.getByRole('button', { name: 'More' }).click();
   await page.getByRole('button', { name: 'Duplicate' }).click();
   const dialog = page.getByRole('dialog', { name: 'Duplicate Week 6 contest' });
-  await expect(dialog).toContainText('A new draft with the same setup, problems, title and length.');
+  await expect(dialog).toContainText('A new draft with the same setup, problems and length, titled Week 6 contest (copy).');
   await dialog.getByLabel('Starts').fill('2026-12-01T18:00');
   await dialog.getByRole('button', { name: 'Duplicate contest' }).click();
   await expect(page).toHaveURL('/admin/contests/9');

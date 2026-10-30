@@ -49,7 +49,7 @@
     <ul class="probs">
       {#each rows as r (r.label)}
         <li>
-          <span class="mono plabel" title={r.title}>{r.label}</span>
+          <span class="plabel" title={r.title}><span class="mono">{r.label}</span> {r.title}</span>
           <span class="bar" aria-hidden="true">
             <span class="tried" style:width={share(r.attempted)}></span>
             <span class="solved" style:width={share(r.solved)}></span>
@@ -81,12 +81,18 @@
 
   .probs li {
     display: grid;
-    grid-template-columns: 2ch minmax(4rem, 1fr) auto auto;
+    grid-template-columns: minmax(0, 12rem) minmax(4rem, 1fr) auto auto;
     align-items: center;
     gap: var(--space-3);
   }
 
   .plabel {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .plabel .mono {
     font-weight: 600;
   }
 
@@ -138,7 +144,7 @@
   /* Phones: the numbers and Judge again go under the bar. */
   @media (width < 768px) {
     .probs li {
-      grid-template-columns: 2ch minmax(0, 1fr) auto;
+      grid-template-columns: minmax(0, 8rem) minmax(0, 1fr) auto;
       grid-template-areas:
         'label bar bar'
         '. nums again';

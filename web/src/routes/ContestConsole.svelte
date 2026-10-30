@@ -611,6 +611,7 @@
     {base}
     {announcements}
     {labels}
+    minutesLeft={Math.max(1, Math.round((closeAt - ticker.now) / 60_000))}
     bind:body={annBody}
     bind:template={annTemplate}
     onclose={() => (announceOpen = false)}

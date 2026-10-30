@@ -81,7 +81,22 @@ export const SITE_ACTIONS: readonly { id: string; label: string }[] = [
   { id: 'sessions_ended', label: 'Sessions ended' },
   { id: 'google_reset', label: 'Google link reset' },
   { id: 'mode_changed', label: 'Run mode changed' },
+  { id: 'settings_changed', label: 'Organisation changed' },
+  { id: 'user_forgotten', label: 'Account erased' },
 ];
+
+/** The organisation's fields as the Organisation tab names them. */
+const ORG_FIELDS: Record<string, string> = {
+  name: 'name',
+  contact_email: 'contact email',
+  phone: 'phone',
+  privacy_contact: 'privacy contact',
+};
+
+/** "name", "name and phone", "name, phone and contact email". */
+function listWords(words: string[]): string {
+  return words.length < 2 ? (words[0] ?? '') : `${words.slice(0, -1).join(', ')} and ${words[words.length - 1]}`;
+}
 
 function roleWord(v: unknown): string {
   return v === 'owner' || v === 'admin' || v === 'student' ? roleLabel(v as Role).toLowerCase() : String(v ?? '');
@@ -117,6 +132,12 @@ export function siteAuditSummary(e: Pick<SiteAuditEntry, 'action' | 'subject_ema
       return `Reset the Google account link of ${who}${ended(d.sessions_ended)}`;
     case 'mode_changed':
       return `The server started in ${str('to') || 'another'} mode${str('from') ? ` (was ${str('from')})` : ''}${ended(d.sessions_ended)}`;
+    case 'settings_changed': {
+      const fields = Array.isArray(d.fields) ? (d.fields as unknown[]).map((f) => ORG_FIELDS[String(f)] ?? String(f)) : [];
+      return fields.length > 0 ? `Changed the organisation's ${listWords(fields)}` : "Changed the organisation's details";
+    }
+    case 'user_forgotten':
+      return `Erased account ${typeof d.user_id === 'number' ? d.user_id : ''} at the person's request`.replace('  ', ' ');
   }
   return e.action;
 }

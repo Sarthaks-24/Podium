@@ -19,6 +19,7 @@
   import { errorText, sendJSON, ApiError } from '../../lib/api';
   import { formatDateTime, roleLabel } from '../../lib/format';
   import { personLabel, roleWord, settingsRefused, withArticle, type OrganiserRole, type Person } from '../../lib/people';
+  import { runMode } from '../../lib/mode.svelte';
   import { showToast } from '../../lib/toast.svelte';
 
   interface Props {
@@ -225,7 +226,7 @@
   {/if}
   {#if invited}
     <div class="invite" role="status">
-      <p>Send {invited} this address: <span class="address">{origin}</span>. They sign in with Google using that email.</p>
+      <p>Send {invited} this address: <span class="address">{origin}</span>. {runMode.mode === 'testing' ? 'They sign in with that email on the sign-in form.' : 'They sign in with Google using that email.'}</p>
       <div class="invite-actions">
         <button type="button" class="btn btn-secondary" onclick={copyAddress}>Copy address</button>
         <button type="button" class="btn btn-quiet btn-compact" onclick={() => (invited = null)}>Dismiss</button>

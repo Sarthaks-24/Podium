@@ -4,6 +4,14 @@ Dated entries per release. Unreleased work is listed at the top.
 
 ## Unreleased
 
+### v3: what the final agent pilot found, second part (2026-10-30)
+
+- A duplicated contest is titled "{title} (copy)", so two drafts no longer look the same.
+- The live view's time-check announcement fills in the real minutes left, and the overview names each problem beside its letter.
+- Messages' "About" starts on the problem you have open; "The contest in general" is one choice away.
+- The Organisation history says what changed ("Changed the organisation's name") and names an erased account in words.
+- The standings read a total's time as "at 7:17 from the start", and in testing mode an invite says to sign in with the email on the form.
+
 ### v3: what the final agent pilot found (2026-10-30)
 
 - The live view measures the judge's silence at the moment the server answered and refreshes as soon as its tab shows again, so a background tab no longer says "Judge not seen" while judging works. Student view's back link opens the live view.

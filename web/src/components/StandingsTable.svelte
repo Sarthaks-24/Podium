@@ -112,8 +112,8 @@
               {/if}
             </th>
             <td class="total mono">
-              {r.total}<span class="visually-hidden">, reached after</span>
-              <span class="time" title="Time to reach this score">{formatElapsed(r.last_improvement_s)}</span>
+              {r.total}<span class="visually-hidden">, at</span>
+              <span class="time" title="Time from the start to reach this score">{formatElapsed(r.last_improvement_s)}</span><span class="visually-hidden"> from the start</span>
             </td>
             {#each labels as l (l)}
               {@const v = cellView(cellFor(r, l), l)}

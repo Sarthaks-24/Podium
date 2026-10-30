@@ -34,8 +34,13 @@ describe('site audit (People History)', () => {
     expect(siteAuditSummary(row('mode_changed', { from: 'testing', to: 'production', sessions_ended: 4 }, ''))).toBe(
       'The server started in production mode (was testing); 4 sessions ended',
     );
+    expect(siteAuditSummary(row('settings_changed', { fields: ['name'] }, ''))).toBe("Changed the organisation's name");
+    expect(siteAuditSummary(row('settings_changed', { fields: ['name', 'phone', 'contact_email'] }, ''))).toBe(
+      "Changed the organisation's name, phone and contact email",
+    );
+    expect(siteAuditSummary(row('user_forgotten', { user_id: 7 }, ''))).toBe("Erased account 7 at the person's request");
     // A later release may add actions; they show by name.
-    expect(siteAuditSummary(row('settings_changed', {}, ''))).toBe('settings_changed');
+    expect(siteAuditSummary(row('something_new', {}, ''))).toBe('something_new');
   });
 
   it('names the actor, or the server', () => {

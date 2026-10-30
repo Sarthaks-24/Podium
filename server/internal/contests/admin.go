@@ -53,7 +53,11 @@ func (s *Service) Clone(ctx context.Context, id int64, slug, title string, start
 		return nil, err
 	}
 	if strings.TrimSpace(title) == "" {
-		title = src.Title
+		// "(copy)" tells the two drafts apart in the list; the title limit still holds.
+		title = src.Title + " (copy)"
+		if r := []rune(title); len(r) > 120 {
+			title = string(r[:120])
+		}
 	}
 	e := Edit{Title: title, Description: src.Description, StartsAt: startsAt, EndsAt: endsAt,
 		FreezeMinutes: int(src.Schedule.Freeze / time.Minute), PracticeAfterEnd: src.PracticeAfterEnd,

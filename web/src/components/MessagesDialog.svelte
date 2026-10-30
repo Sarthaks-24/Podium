@@ -10,8 +10,8 @@
   (POST /api/contests/{slug}/clarifications); a refused question shows the
   server's sentence under the field, and a sent one is confirmed in a
   status line inside the dialog (a toast would sit behind the modal).
-  "About" starts on "The contest in general" and says which problem is
-  open. Props: `open`, `contest`, `current`
+  "About" starts on the problem open, or on "The contest in general" with
+  none open: a question is most often about the problem in front of you. Props: `open`, `contest`, `current`
   (the open problem's letter, or ""), `canAsk`, `onclose` and `onasked`
   (called after a question was sent, with the new clarification when the
   server returns it).
@@ -40,10 +40,10 @@
   let error = $state('');
   let sent = $state('');
 
-  // Each opening starts clean on the general topic.
+  // Each opening starts clean on the problem open, or the general topic.
   $effect(() => {
     if (open) {
-      topic = '';
+      topic = current ?? '';
       sent = '';
     }
   });
@@ -92,11 +92,11 @@
       <div class="ask-fields">
         <div class="field">
           <label for="ask-topic">About</label>
-          <select id="ask-topic" class="select" bind:value={topic} aria-describedby={current && topic === '' ? 'ask-topic-help' : undefined}>
+          <select id="ask-topic" class="select" bind:value={topic} aria-describedby={current && topic === current ? 'ask-topic-help' : undefined}>
             <option value="">The contest in general</option>
             {#each contest.problems ?? [] as p (p.label)}<option value={p.label}>Problem {p.label}: {p.title}</option>{/each}
           </select>
-          {#if current && topic === ''}<p id="ask-topic-help" class="field-help">You have problem {current} open. Choose it above if the question is about it.</p>{/if}
+          {#if current && topic === current}<p id="ask-topic-help" class="field-help">Set to the problem you have open. Choose "The contest in general" for anything else.</p>{/if}
         </div>
         <div class="field">
           <label for="ask-question">Question</label>

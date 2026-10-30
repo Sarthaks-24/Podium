@@ -1,7 +1,7 @@
 <!--
   DuplicateDialog: "Duplicate" from a contest's More menu. It asks only for
   the copy's start (a week after this contest's by default); the copy keeps
-  the setup, the problems, the title and the length, and starts as a draft.
+  the setup, the problems and the length, titled "(copy)", and starts as a draft.
   "Duplicate contest" POSTs .../clone with the new start and the end that
   keeps the length; the server names the copy's address from the title. A
   refusal is shown inside the dialog, under the start when it is about the
@@ -69,7 +69,7 @@
 
 <Dialog {open} {onclose} {busy} kind="small" title="Duplicate {title}" closeLabel="Close">
   <form class="form" novalidate onsubmit={submit}>
-    <p class="body">A new draft with the same setup, problems, title and length.</p>
+    <p class="body">A new draft with the same setup, problems and length, titled {title} (copy).</p>
     <div class="field">
       <label for="dup-start">Starts</label>
       <input
