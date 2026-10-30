@@ -114,13 +114,13 @@ func New(d Deps) http.Handler {
 	mux.HandleFunc("POST /api/admin/accounts/end-sessions", owner(people.EndSessions))
 	mux.HandleFunc("POST /api/admin/accounts/disable", owner(people.SetAccountDisabled(true)))
 	mux.HandleFunc("POST /api/admin/accounts/enable", owner(people.SetAccountDisabled(false)))
-	mux.HandleFunc("GET /api/admin/accounts", d.requireRole(auth.Admin, d.limitReads(people.LookupAccount)))
+	mux.HandleFunc("GET /api/admin/accounts", d.requireRole(auth.Organiser, d.limitReads(people.LookupAccount)))
 	mux.HandleFunc("POST /api/admin/domains", owner(people.AddDomain))
 	mux.HandleFunc("DELETE /api/admin/domains/{domain}", owner(people.RemoveDomain))
 	mux.HandleFunc("GET /api/admin/site-audit", owner(people.SiteAudit))
 	mux.HandleFunc("PUT /api/admin/site-settings", owner(people.SetSiteSettings))
 
-	admin := func(h http.HandlerFunc) http.HandlerFunc { return d.requireRole(auth.Admin, h) }
+	admin := func(h http.HandlerFunc) http.HandlerFunc { return d.requireRole(auth.Organiser, h) }
 	bank := &problems.Handlers{Problems: d.Problems, Log: d.Log}
 	work := &submissions.Handlers{Submissions: d.Submissions, Log: d.Log}
 	mux.HandleFunc("GET /api/admin/problems", admin(bank.ListProblems))
@@ -194,10 +194,10 @@ func New(d Deps) http.Handler {
 
 // contestRoutes mounts the contest API. Student routes need
 // a signed-in user and apply the contest's own access rules; organiser
-// routes need the admin or owner role.
+// routes need the organiser or owner role.
 func (d Deps) contestRoutes(mux *http.ServeMux, console *contests.Handlers) {
 	signedIn := func(h http.HandlerFunc) http.HandlerFunc { return d.requireRole(auth.Student, h) }
-	organiser := func(h http.HandlerFunc) http.HandlerFunc { return d.requireRole(auth.Admin, h) }
+	organiser := func(h http.HandlerFunc) http.HandlerFunc { return d.requireRole(auth.Organiser, h) }
 	mux.HandleFunc("GET /api/contests", signedIn(d.limitReads(console.ListContests)))
 	mux.HandleFunc("GET /api/contests/{slug}", signedIn(d.limitReads(console.GetContest)))
 	mux.HandleFunc("POST /api/contests/{slug}/start", signedIn(console.StartContest))

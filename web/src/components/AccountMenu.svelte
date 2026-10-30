@@ -39,7 +39,7 @@
   let button: HTMLButtonElement | undefined = $state();
 
   const panelId = 'account-panel';
-  const organiser = $derived(user.role === 'admin' || user.role === 'owner');
+  const organiser = $derived(user.role === 'organiser' || user.role === 'owner');
 
   async function toggle() {
     open = !open;

@@ -288,7 +288,7 @@ test('organiser: import a pack and see it validated', async ({ page }) => {
 });
 
 test('organiser: create a contest, add a problem, publish', async ({ page }) => {
-  const created = await contests.mockApi(page, { who: 'admin', phase: 'upcoming', published: false, publishOk: true });
+  const created = await contests.mockApi(page, { who: 'organiser', phase: 'upcoming', published: false, publishOk: true });
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto('/admin/contests');
   await page.getByRole('button', { name: 'New contest' }).click();

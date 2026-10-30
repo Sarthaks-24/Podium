@@ -189,16 +189,54 @@ func refuseUnknown(ctx context.Context, d *sql.DB, names []string) error {
 	return rows.Err()
 }
 
+// foreignKeysOff, as a migration's first line, runs it with foreign keys
+// off: SQLite's 12-step table rebuild, the only way to change a CHECK,
+// drops a table other tables reference, which with them on would run the
+// children's ON DELETE actions.
+const foreignKeysOff = "-- podium: foreign_keys off"
+
 // apply runs one migration unless it already ran. The check and the change
 // share one IMMEDIATE transaction, so two processes starting together
 // cannot both apply it. PRAGMA foreign_keys cannot change inside a
-// transaction, so migrations must not rely on switching it off.
+// transaction, so a migration that needs them off says so on its first
+// line and runs on a connection of its own (applyKeysOff).
 func apply(ctx context.Context, d *sql.DB, version, body string) (bool, error) {
+	if strings.HasPrefix(body, foreignKeysOff) {
+		return applyKeysOff(ctx, d, version, body)
+	}
 	tx, err := d.BeginTx(ctx, nil)
 	if err != nil {
 		return false, err
 	}
 	defer tx.Rollback()
+	return applyIn(ctx, tx, version, body, false)
+}
+
+// applyKeysOff runs a migration with foreign keys off on a dedicated
+// connection, refuses to commit if PRAGMA foreign_key_check finds a broken
+// reference, and then discards the connection, so one with foreign keys
+// off never serves a request.
+func applyKeysOff(ctx context.Context, d *sql.DB, version, body string) (bool, error) {
+	conn, err := d.Conn(ctx)
+	if err != nil {
+		return false, err
+	}
+	defer func() {
+		conn.Raw(func(any) error { return driver.ErrBadConn })
+		conn.Close()
+	}()
+	if _, err := conn.ExecContext(ctx, "PRAGMA foreign_keys = OFF"); err != nil {
+		return false, err
+	}
+	tx, err := conn.BeginTx(ctx, nil)
+	if err != nil {
+		return false, err
+	}
+	defer tx.Rollback()
+	return applyIn(ctx, tx, version, body, true)
+}
+
+func applyIn(ctx context.Context, tx *sql.Tx, version, body string, checkKeys bool) (bool, error) {
 	var n int
 	if err := tx.QueryRowContext(ctx, "SELECT count(*) FROM schema_migrations WHERE version = ?", version).Scan(&n); err != nil {
 		return false, err
@@ -208,6 +246,15 @@ func apply(ctx context.Context, d *sql.DB, version, body string) (bool, error) {
 	}
 	if _, err := tx.ExecContext(ctx, body); err != nil {
 		return false, err
+	}
+	if checkKeys {
+		var broken int
+		if err := tx.QueryRowContext(ctx, "SELECT count(*) FROM pragma_foreign_key_check").Scan(&broken); err != nil {
+			return false, err
+		}
+		if broken > 0 {
+			return false, fmt.Errorf("%d rows would break a foreign key; nothing was changed", broken)
+		}
 	}
 	if _, err := tx.ExecContext(ctx, "INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)",
 		version, time.Now().UnixMilli()); err != nil {

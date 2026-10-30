@@ -13,7 +13,7 @@ export const ADMIN = {
   email: 'arjun.mehta@college.edu',
   name: 'Arjun Mehta',
   avatar_url: '',
-  role: 'admin',
+  role: 'organiser',
   theme: '',
   verdicts: 'standard',
 };
@@ -310,7 +310,7 @@ export function revisionsFixture(): Json {
   };
 }
 
-export async function mockApi(page: Page, who: 'admin' | 'student' = 'admin') {
+export async function mockApi(page: Page, who: 'organiser' | 'student' = 'organiser') {
   const state = {
     problems: problemFixtures(),
     validations: { 1: passedFor('h1'), 4: structuredClone(FAILED_4) } as Record<number, Json>,
@@ -344,7 +344,7 @@ export async function mockApi(page: Page, who: 'admin' | 'student' = 'admin') {
       const url = new URL(req.url());
       const path = url.pathname;
       const method = req.method();
-      const me = who === 'admin' ? ADMIN : STUDENT;
+      const me = who === 'organiser' ? ADMIN : STUDENT;
 
       if (path === '/api/me' && method === 'GET') return json(route, 200, me);
       if (path.startsWith('/api/admin/') && me.role === 'student') {

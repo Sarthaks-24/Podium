@@ -26,7 +26,7 @@ async function mock(page: Page, mode: string) {
       }
       if (path === '/api/me') {
         return state.signedIn
-          ? json(route, 200, { id: 3, email: 'ta@college.edu', name: 'TA', avatar_url: '', role: 'admin', theme: '', verdicts: 'standard' })
+          ? json(route, 200, { id: 3, email: 'ta@college.edu', name: 'TA', avatar_url: '', role: 'organiser', theme: '', verdicts: 'standard' })
           : json(route, 401, { error: { code: 'signed_out', message: 'Sign in to continue.' } });
       }
       if (path === '/api/admin/problems') return json(route, 200, { problems: [] });
@@ -47,11 +47,11 @@ test('testing mode signs in from a form', async ({ page }) => {
   await expect(page.getByRole('alert')).toContainText('Enter an email address');
 
   await page.getByLabel('Email').fill('ta@college.edu');
-  await page.getByLabel('Role').selectOption('admin');
+  await page.getByLabel('Role').selectOption('organiser');
   await page.getByRole('button', { name: 'Sign in for testing' }).click();
   await expect(page).toHaveURL(/\/admin\/contests$/);
   await expect(page.getByRole('link', { name: 'Problems', exact: true })).toBeVisible();
-  expect(state.posted.at(-1)).toMatchObject({ email: 'ta@college.edu', role: 'admin' });
+  expect(state.posted.at(-1)).toMatchObject({ email: 'ta@college.edu', role: 'organiser' });
   await expect(page.getByRole('note')).toContainText('Testing mode');
 });
 

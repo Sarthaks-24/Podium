@@ -29,7 +29,7 @@ func historyDB(t *testing.T) (string, *sql.DB) {
 func TestRunsReport(t *testing.T) {
 	path, d := historyDB(t)
 	for _, q := range []string{
-		`INSERT INTO users (id, email, role, created_at) VALUES (1, 'asha@college.edu', 'student', 0), (2, 'ravi@college.edu', 'student', 0), (3, 'ta@college.edu', 'admin', 0)`,
+		`INSERT INTO users (id, email, role, created_at) VALUES (1, 'asha@college.edu', 'student', 0), (2, 'ravi@college.edu', 'student', 0), (3, 'ta@college.edu', 'organiser', 0)`,
 		`INSERT INTO problems (id, slug, title, time_limit_ms, memory_limit_mb, checker, reference_language, created_at, updated_at, content_hash)
 			VALUES (1, 'p', 'P', 1000, 256, 'tokens', 'cpp17', 0, 0, 'h')`,
 		`INSERT INTO contests (id, slug, title, starts_at, ends_at, created_at, updated_at) VALUES (1, 'week-1', 'Week 1', 1792310400000, 1792317600000, 0, 0)`,

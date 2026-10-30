@@ -61,7 +61,7 @@
   let deciding = $state<{ id: number; name: string } | null>(null);
   let cases = $state.raw<Case[]>([]);
 
-  const isOrganiser = $derived(session.user?.role === 'admin' || session.user?.role === 'owner');
+  const isOrganiser = $derived(session.user?.role === 'organiser' || session.user?.role === 'owner');
   const base = $derived(`/api/admin/contests/${encodeURIComponent(id)}/integrity`);
   const back = $derived(`/admin/contests/${encodeURIComponent(id)}/integrity`);
   let contestTitle = $state('');

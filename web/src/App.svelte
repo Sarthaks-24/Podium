@@ -48,7 +48,7 @@
   $effect(() => {
     if (session.status === 'signed-out') stopAllStreams();
   });
-  const isOrganiser = $derived(session.user?.role === 'admin' || session.user?.role === 'owner');
+  const isOrganiser = $derived(session.user?.role === 'organiser' || session.user?.role === 'owner');
   const needsSignIn = $derived(route.auth && session.status === 'signed-out');
   const leaveSignIn = $derived(route.name === 'signin' && signedIn);
   // A contest problem in the workspace: on a phone the student's link row

@@ -103,7 +103,7 @@ export function routeTitle(name: RouteName): string {
 /** True when someone signed in with `role` may open the route's screen. */
 export function mayOpen(route: Pick<RouteDef, 'role'>, role: Role | undefined): boolean {
   if (route.role === 'owner') return role === 'owner';
-  if (route.role === 'organiser') return role === 'admin' || role === 'owner';
+  if (route.role === 'organiser') return role === 'organiser' || role === 'owner';
   return true;
 }
 

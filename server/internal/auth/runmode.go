@@ -52,7 +52,7 @@ func (s *Service) RecordMode(ctx context.Context, mode string) (ModeChange, erro
 	ch.SessionsEnded, _ = res.RowsAffected()
 	if mode != "testing" {
 		res, err := tx.ExecContext(ctx, `UPDATE users SET role = 'student'
-			WHERE role IN ('admin', 'owner') AND google_sub IS NULL AND email <> ?`, s.OwnerEmail)
+			WHERE role IN ('organiser', 'owner') AND google_sub IS NULL AND email <> ?`, s.OwnerEmail)
 		if err != nil {
 			return ModeChange{}, err
 		}

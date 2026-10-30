@@ -15,7 +15,7 @@ func TestIntegritySignalsHiddenFromTheirOwnStudent(t *testing.T) {
 	run := w.check(w.c1)
 	asha, bilal := w.asha.userID(), w.bilal.userID()
 	sig := similarSignal(t, run, asha, bilal)
-	if _, err := s.db.Exec("UPDATE users SET role = 'admin' WHERE id = ?", asha); err != nil {
+	if _, err := s.db.Exec("UPDATE users SET role = 'organiser' WHERE id = ?", asha); err != nil {
 		t.Fatal(err)
 	}
 	code, mine := w.asha.do("GET", w.url(w.c1, ""), nil, "")

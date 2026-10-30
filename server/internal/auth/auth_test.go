@@ -40,6 +40,33 @@ func newService(t *testing.T, seed ...string) (*auth.Service, *clock) {
 	return s, c
 }
 
+// Before migration 0002_v4_roles the stored role of an organiser was
+// "admin"; the audit is append-only, so old rows still say so and are read
+// as organiser, while a row written later keeps "admin" (v4 O1).
+func TestOldAuditRowsReadAdminAsOrganiser(t *testing.T) {
+	s, _ := newService(t)
+	ctx := context.Background()
+	if _, err := s.DB.ExecContext(ctx, `INSERT INTO site_audit (at, actor_id, actor_email, actor_role, action, subject_email, details) VALUES
+		(1, 1, 'owner@college.edu', 'admin', 'role_granted', 'ta@college.edu', '{"role":"admin","from_role":"student"}'),
+		(4102444800000, 1, 'owner@college.edu', 'admin', 'role_granted', 'ta@college.edu', '{"role":"admin","from_role":"organiser"}')`); err != nil {
+		t.Fatal(err)
+	}
+	rows, _, err := s.SiteAudit(ctx, auth.SiteAuditFilter{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[int64]string{}
+	for _, r := range rows {
+		got[r.At] = string(r.Actor.Role) + " " + string(r.Details)
+	}
+	if want := `organiser {"from_role":"student","role":"organiser"}`; got[1] != want {
+		t.Errorf("old row: %s, want %s", got[1], want)
+	}
+	if want := `admin {"role":"admin","from_role":"organiser"}`; got[4102444800000] != want {
+		t.Errorf("new row: %s, want %s", got[4102444800000], want)
+	}
+}
+
 func id(email string) auth.Identity {
 	// One Google account per address, whatever case the address is in.
 	return auth.Identity{Subject: "s-" + strings.ToLower(email), Email: email, EmailVerified: true, Name: "N " + email}
@@ -84,7 +111,7 @@ func TestBootstrapSeedsDomainsOnlyOnFreshInstall(t *testing.T) {
 func TestSignInRules(t *testing.T) {
 	s, _ := newService(t, "college.edu")
 	ctx := context.Background()
-	if _, err := s.GrantRole(ctx, "ta@gmail.com", auth.Admin); err != nil {
+	if _, err := s.GrantRole(ctx, "ta@gmail.com", auth.Organiser); err != nil {
 		t.Fatal(err)
 	}
 	cases := []struct {
@@ -96,7 +123,7 @@ func TestSignInRules(t *testing.T) {
 		{"allowed domain", id("Student@College.edu"), nil, auth.Student},
 		{"subdomain is a different domain", id("x@cs.college.edu"), auth.ErrDomain, ""},
 		{"other domain", id("friend@gmail.com"), auth.ErrDomain, ""},
-		{"admin on another domain", id("ta@gmail.com"), nil, auth.Admin},
+		{"admin on another domain", id("ta@gmail.com"), nil, auth.Organiser},
 		{"configured owner", id(ownerEmail), nil, auth.Owner},
 		{"unverified", auth.Identity{Email: "u@college.edu", Subject: "u"}, auth.ErrUnverified, ""},
 	}
@@ -170,7 +197,7 @@ func TestGoogleAccountBinding(t *testing.T) {
 func TestRoleAndDomainChangesEndSessions(t *testing.T) {
 	s, _ := newService(t, "college.edu", "gmail.com")
 	ctx := context.Background()
-	ta, err := s.GrantRole(ctx, "ta@other.org", auth.Admin)
+	ta, err := s.GrantRole(ctx, "ta@other.org", auth.Organiser)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -205,14 +232,14 @@ func TestOwnerDowngradeKeepsAnOwner(t *testing.T) {
 	s, _ := newService(t)
 	ctx := context.Background()
 	co, _ := s.GrantRole(ctx, "co@college.edu", auth.Owner)
-	if _, err := s.GrantRole(ctx, "co@college.edu", auth.Admin); err != nil {
+	if _, err := s.GrantRole(ctx, "co@college.edu", auth.Organiser); err != nil {
 		t.Fatalf("downgrading one of two owners: %v", err)
 	}
 	s.GrantRole(ctx, "co@college.edu", auth.Owner)
 	s.OwnerEmail = "moved@college.edu" // the configured owner is now someone else
 	s.DB.ExecContext(ctx, "UPDATE users SET role = 'student' WHERE email = ?", ownerEmail)
 	var ce *auth.ChangeError
-	if _, err := s.GrantRole(ctx, "co@college.edu", auth.Admin); !errors.As(err, &ce) || ce.Kind != "conflict" {
+	if _, err := s.GrantRole(ctx, "co@college.edu", auth.Organiser); !errors.As(err, &ce) || ce.Kind != "conflict" {
 		t.Errorf("downgrading the last owner through grant: %v", err)
 	}
 	_ = co
@@ -291,13 +318,13 @@ func TestRoleChanges(t *testing.T) {
 	s, _ := newService(t)
 	ctx := context.Background()
 	var ce *auth.ChangeError
-	if _, err := s.GrantRole(ctx, "not an email", auth.Admin); !errors.As(err, &ce) || ce.Kind != "invalid" {
+	if _, err := s.GrantRole(ctx, "not an email", auth.Organiser); !errors.As(err, &ce) || ce.Kind != "invalid" {
 		t.Errorf("invalid email: %v", err)
 	}
 	if _, err := s.GrantRole(ctx, "x@y.edu", "student"); !errors.As(err, &ce) || ce.Kind != "invalid" {
 		t.Errorf("invalid role: %v", err)
 	}
-	if _, err := s.GrantRole(ctx, ownerEmail, auth.Admin); !errors.As(err, &ce) || ce.Kind != "conflict" {
+	if _, err := s.GrantRole(ctx, ownerEmail, auth.Organiser); !errors.As(err, &ce) || ce.Kind != "conflict" {
 		t.Errorf("demoting the configured owner via grant: %v", err)
 	}
 	p, err := s.GrantRole(ctx, "Co@Other.org", auth.Owner)

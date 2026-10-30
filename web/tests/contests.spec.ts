@@ -362,7 +362,7 @@ test('a second tab with the same contest shows a notice, as does a second sessio
 });
 
 test('admins land on their contest list, named by job', async ({ page }) => {
-  const api = await mockApi(page, { who: 'admin', phase: 'during' });
+  const api = await mockApi(page, { who: 'organiser', phase: 'during' });
   await page.goto('/');
   await expect(page).toHaveURL('/admin/contests');
   const nav = page.getByRole('navigation', { name: 'Main' });
@@ -387,7 +387,7 @@ test('admins land on their contest list, named by job', async ({ page }) => {
 });
 
 test('a new contest marks its required fields, and a field error from the server takes focus (X7)', async ({ page }) => {
-  await mockApi(page, { who: 'admin', phase: 'upcoming' });
+  await mockApi(page, { who: 'organiser', phase: 'upcoming' });
   await page.goto('/admin/contests');
   await page.getByRole('button', { name: 'New contest' }).click();
   const form = page.locator('#create-contest');
@@ -412,7 +412,7 @@ test('students cannot open the contest admin', async ({ page }) => {
 });
 
 test('the Live tab counts unanswered questions on Setup (O4)', async ({ page }) => {
-  await mockApi(page, { who: 'admin', phase: 'during' });
+  await mockApi(page, { who: 'organiser', phase: 'during' });
   const asked: string[] = [];
   page.on('request', (r) => {
     if (r.url().includes('/clarifications')) asked.push(new URL(r.url()).pathname);
@@ -427,7 +427,7 @@ test('the Live tab counts unanswered questions on Setup (O4)', async ({ page }) 
 });
 
 test('hidden tests shown in practice are named (C1-015)', async ({ page }) => {
-  await mockApi(page, { who: 'admin', phase: 'during', published: false, shownInPractice: [11, 12], publishOk: true });
+  await mockApi(page, { who: 'organiser', phase: 'during', published: false, shownInPractice: [11, 12], publishOk: true });
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto('/admin/contests/4');
   await expect(page.getByLabel('Title', { exact: true })).toHaveValue('Week 6 contest');
@@ -448,7 +448,7 @@ test('hidden tests shown in practice are named (C1-015)', async ({ page }) => {
 });
 
 test("a problem whose hidden tests were shown stays, and the editor says why (C2-014)", async ({ page }) => {
-  const api = await mockApi(page, { who: 'admin', phase: 'during', shownHere: true });
+  const api = await mockApi(page, { who: 'organiser', phase: 'during', shownHere: true });
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto('/admin/contests/4');
   await page.getByRole('button', { name: 'Remove A plus B' }).click();
@@ -460,7 +460,7 @@ test("a problem whose hidden tests were shown stays, and the editor says why (C2
 });
 
 test('the editor saves each field as it changes, shows field errors and keeps the address read-only', async ({ page }) => {
-  const api = await mockApi(page, { who: 'admin', phase: 'during' });
+  const api = await mockApi(page, { who: 'organiser', phase: 'during' });
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto('/admin/contests/4');
   await expect(page.getByLabel('Title', { exact: true })).toHaveValue('Week 6 contest');
@@ -528,7 +528,7 @@ test('the editor saves each field as it changes, shows field errors and keeps th
 });
 
 test('the console pauses, extends, judges again, announces and answers', async ({ page }) => {
-  const api = await mockApi(page, { who: 'admin', phase: 'during' });
+  const api = await mockApi(page, { who: 'organiser', phase: 'during' });
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto('/admin/contests/4/console');
   const sentence = page.locator('#console-sentence');
@@ -645,7 +645,7 @@ test('a workspace whose stream is down still picks up announcements (walk 2026-1
 });
 
 test('the console says partial scores as students read them and keeps rows when a refresh fails (P3 O3, C2)', async ({ page }) => {
-  await mockApi(page, { who: 'admin', phase: 'during' });
+  await mockApi(page, { who: 'organiser', phase: 'during' });
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.clock.install();
   await page.goto('/admin/contests/4/console');
@@ -666,7 +666,7 @@ test('the console says partial scores as students read them and keeps rows when 
 });
 
 test('a late judge and a slow queue come first, and banners show only what needs action (C2, C10)', async ({ page }) => {
-  const api = await mockApi(page, { who: 'admin', phase: 'during', queueHealth: 'trouble' });
+  const api = await mockApi(page, { who: 'organiser', phase: 'during', queueHealth: 'trouble' });
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto('/admin/contests/4/console');
   await expect(page.locator('#console-sentence .trouble')).toHaveText('Judge not seen for 3 minutes. The oldest submission has waited 1 minute for the judge.');
@@ -687,7 +687,7 @@ test('a late judge and a slow queue come first, and banners show only what needs
 });
 
 test('the sentence changes when a question arrives and when the judge is late (C2, P9)', async ({ page }) => {
-  const api = await mockApi(page, { who: 'admin', phase: 'during' });
+  const api = await mockApi(page, { who: 'organiser', phase: 'during' });
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.clock.install();
   await page.goto('/admin/contests/4/console');
@@ -712,7 +712,7 @@ test('the sentence changes when a question arrives and when the judge is late (C
 });
 
 test('after the end, Extend says the contest has ended (C2, walk bug B3)', async ({ page }) => {
-  const api = await mockApi(page, { who: 'admin', phase: 'after' });
+  const api = await mockApi(page, { who: 'organiser', phase: 'after' });
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto('/admin/contests/4/console');
   await expect(page.locator('#console-sentence')).toHaveText(/^Ended, 30 started/);
@@ -729,7 +729,7 @@ test('after the end, Extend says the contest has ended (C2, walk bug B3)', async
 });
 
 test('an extend the server refuses after the end is said in the dialog (C2, walk bug B3)', async ({ page }) => {
-  const api = await mockApi(page, { who: 'admin', phase: 'during' });
+  const api = await mockApi(page, { who: 'organiser', phase: 'during' });
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto('/admin/contests/4/console');
   await page.getByRole('group', { name: 'Contest actions' }).getByRole('button', { name: 'Extend', exact: true }).click();
@@ -744,7 +744,7 @@ test('an extend the server refuses after the end is said in the dialog (C2, walk
 });
 
 test('the console on a phone: three tabs, under 1,500 px tall at 375 px (C2)', async ({ page }) => {
-  await mockApi(page, { who: 'admin', phase: 'during' });
+  await mockApi(page, { who: 'organiser', phase: 'during' });
   await page.setViewportSize({ width: 375, height: 812 });
   await page.goto('/admin/contests/4/console');
   await expect(page.getByText('Can intervals have zero length?')).toBeVisible();
@@ -763,7 +763,7 @@ test('the console on a phone: three tabs, under 1,500 px tall at 375 px (C2)', a
 });
 
 test('End the contest now says what happens and sets the end to now (P3 O5)', async ({ page }) => {
-  const api = await mockApi(page, { who: 'admin', phase: 'during' });
+  const api = await mockApi(page, { who: 'organiser', phase: 'during' });
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto('/admin/contests/4/console');
   await page.getByRole('button', { name: 'End now' }).click();
@@ -793,7 +793,7 @@ test('End now in the first minute of the freeze keeps the board frozen (V3-18, w
   const inFreeze = base + 60 * 60_000 + 52_000;
   freezeClock(base);
   try {
-    const api = await mockApi(page, { who: 'admin', phase: 'during' });
+    const api = await mockApi(page, { who: 'organiser', phase: 'during' });
     freezeClock(inFreeze);
     await page.clock.setFixedTime(inFreeze);
     await page.setViewportSize({ width: 1440, height: 900 });
@@ -817,7 +817,7 @@ test('End now in the first minute of the freeze keeps the board frozen (V3-18, w
 });
 
 test('unpublishing a live contest asks first', async ({ page }) => {
-  const api = await mockApi(page, { who: 'admin', phase: 'during', published: true });
+  const api = await mockApi(page, { who: 'organiser', phase: 'during', published: true });
   await page.goto('/admin/contests/4');
   await expect(page.getByText(/^Published and live\./)).toBeVisible();
   await page.getByRole('button', { name: 'Unpublish contest' }).click();
@@ -833,7 +833,7 @@ test('unpublishing a live contest asks first', async ({ page }) => {
 });
 
 test('the console feed filters waiting or judging and judge errors', async ({ page }) => {
-  const api = await mockApi(page, { who: 'admin', phase: 'during' });
+  const api = await mockApi(page, { who: 'organiser', phase: 'during' });
   await page.goto('/admin/contests/4/console');
   const verdict = page.getByLabel('Verdict', { exact: true });
   await verdict.selectOption({ label: 'Waiting or judging' });
@@ -849,7 +849,7 @@ test('the console feed filters waiting or judging and judge errors', async ({ pa
 });
 
 test('a contest asks for a reason before it takes an AI problem nobody solved', async ({ page }) => {
-  const api = await mockApi(page, { who: 'admin', phase: 'upcoming', aiGate: true });
+  const api = await mockApi(page, { who: 'organiser', phase: 'upcoming', aiGate: true });
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto('/admin/contests/4');
   await page.getByLabel('Add a validated problem').selectOption({ label: 'Interval covering (100 points)' });
@@ -873,7 +873,7 @@ test('a contest asks for a reason before it takes an AI problem nobody solved', 
 });
 
 test('results switch boards, reveal a held board once, download the CSV and open similar code', async ({ page }) => {
-  const api = await mockApi(page, { who: 'admin', phase: 'after', holdReveal: true });
+  const api = await mockApi(page, { who: 'organiser', phase: 'after', holdReveal: true });
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto('/admin/contests/4/results');
   await expect(page.getByText('Final standings.')).toBeVisible();
@@ -929,7 +929,7 @@ test('results switch boards, reveal a held board once, download the CSV and open
 });
 
 test('the reveal is not offered before every student\'s time is up, and nothing says release (pilot P2)', async ({ page }) => {
-  const api = await mockApi(page, { who: 'admin', phase: 'during', holdReveal: true });
+  const api = await mockApi(page, { who: 'organiser', phase: 'during', holdReveal: true });
   await page.goto('/admin/contests/4/results');
   await expect(
     page.getByText(/^Results from \d{2}:\d{2} stay hidden from students until you reveal them\. The reveal opens at \d{2}:\d{2}, when every student's time is up\.$/),
@@ -941,7 +941,7 @@ test('the reveal is not offered before every student\'s time is up, and nothing 
 });
 
 test('similar code waits for the end, and no contest has an Integrity tab (V3-16)', async ({ page }) => {
-  await mockApi(page, { who: 'admin', phase: 'during' });
+  await mockApi(page, { who: 'organiser', phase: 'during' });
   await page.goto('/admin/contests/4/results');
   await expect(page.getByRole('heading', { name: 'Standings' })).toBeVisible();
   const nav = page.getByRole('navigation', { name: 'Contest' });
@@ -1135,7 +1135,7 @@ test('closing the shortcuts list gives focus to the heading when the page loaded
 });
 
 test('keyboard only: an organiser edits a contest, runs the console and reveals the board', async ({ page }) => {
-  const api = await mockApi(page, { who: 'admin', phase: 'after', holdReveal: true });
+  const api = await mockApi(page, { who: 'organiser', phase: 'after', holdReveal: true });
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto('/admin/contests');
   await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
@@ -1225,7 +1225,7 @@ test('stacked rows stay table rows and the whole row is the link', async ({ page
 });
 
 test('publishing a draft asks first, listing the checks, and a refusal names the reason (P3 O1)', async ({ page }) => {
-  await mockApi(page, { who: 'admin', phase: 'upcoming', published: false });
+  await mockApi(page, { who: 'organiser', phase: 'upcoming', published: false });
   await page.goto('/admin/contests/4');
   await expect(page.getByText(/^Not published\. 1 problem, starts/)).toBeVisible();
   await page.getByRole('button', { name: 'Publish contest' }).click();
@@ -1237,7 +1237,7 @@ test('publishing a draft asks first, listing the checks, and a refusal names the
 });
 
 test('an unpublished contest past its start is a draft, not live (C2-015)', async ({ page }) => {
-  const api = await mockApi(page, { who: 'admin', phase: 'during', published: false });
+  const api = await mockApi(page, { who: 'organiser', phase: 'during', published: false });
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto('/admin/contests/4');
   await expect(page.getByText('Draft', { exact: true })).toBeVisible();
@@ -1254,7 +1254,7 @@ test('an unpublished contest past its start is a draft, not live (C2-015)', asyn
 });
 
 test('an unpublished contest reads Draft, and keeping results hidden needs hidden minutes (P3 O1, O8)', async ({ page }) => {
-  await mockApi(page, { who: 'admin', phase: 'upcoming', published: false });
+  await mockApi(page, { who: 'organiser', phase: 'upcoming', published: false });
   await page.goto('/admin/contests/4');
   await expect(page.getByText('Draft', { exact: true })).toBeVisible();
   await expect(page.getByRole('region', { name: 'Before you publish' })).toContainText('1 problem, all validated.');
@@ -1267,7 +1267,7 @@ test('an unpublished contest reads Draft, and keeping results hidden needs hidde
 });
 
 test('a save that fails says so, keeps the page on a link or Back, and Try again saves it (C3, F8)', async ({ page }) => {
-  const api = await mockApi(page, { who: 'admin', phase: 'upcoming', published: false });
+  const api = await mockApi(page, { who: 'organiser', phase: 'upcoming', published: false });
   await page.goto('/admin/contests');
   await page.getByRole('link', { name: 'Week 6 contest', exact: true }).click();
   await expect(page).toHaveURL('/admin/contests/4');
@@ -1299,7 +1299,7 @@ test('a save that fails says so, keeps the page on a link or Back, and Try again
 });
 
 test('setup saves as you type: a title changed survives a reload, with no Save button (C3)', async ({ page }) => {
-  const api = await mockApi(page, { who: 'admin', phase: 'upcoming', published: false });
+  const api = await mockApi(page, { who: 'organiser', phase: 'upcoming', published: false });
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto('/admin/contests/4');
   await page.getByLabel('Title', { exact: true }).fill('Week 6 practice round');
@@ -1319,7 +1319,7 @@ test('setup saves as you type: a title changed survives a reload, with no Save b
 });
 
 test('setup at 1440 px shows six inputs and folds the rest, under 1,200 px tall (C3)', async ({ page }) => {
-  await mockApi(page, { who: 'admin', phase: 'upcoming', published: false });
+  await mockApi(page, { who: 'organiser', phase: 'upcoming', published: false });
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto('/admin/contests/4');
   await expect(page.getByLabel('Title', { exact: true })).toHaveValue('Week 6 contest');
@@ -1347,7 +1347,7 @@ test('setup at 1440 px shows six inputs and folds the rest, under 1,200 px tall 
 });
 
 test('Duplicate asks for the new start and opens the copy (C3)', async ({ page }) => {
-  await mockApi(page, { who: 'admin', phase: 'upcoming', published: false });
+  await mockApi(page, { who: 'organiser', phase: 'upcoming', published: false });
   const clones: unknown[] = [];
   await page.route('**/api/admin/contests/4/clone', async (route) => {
     clones.push(route.request().postDataJSON());
@@ -1367,7 +1367,7 @@ test('Duplicate asks for the new start and opens the copy (C3)', async ({ page }
 });
 
 test('the contests home puts live and next first, and Needs you waits until a contest has run (V3-20)', async ({ page }) => {
-  await mockApi(page, { who: 'admin', phase: 'during', staleDraft: true });
+  await mockApi(page, { who: 'organiser', phase: 'during', staleDraft: true });
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto('/admin/contests');
   const live = page.getByRole('region', { name: 'Week 6 contest' });
@@ -1388,14 +1388,14 @@ test('the contests home puts live and next first, and Needs you waits until a co
 });
 
 test('before any contest has run there is no Needs you, and every title opens the tab that fits (O1)', async ({ page }) => {
-  await mockApi(page, { who: 'admin', phase: 'upcoming', published: false, staleDraft: true });
+  await mockApi(page, { who: 'organiser', phase: 'upcoming', published: false, staleDraft: true });
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto('/admin/contests');
   await expect(page.getByRole('row', { name: /Week 6 contest/ })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Needs you' })).toHaveCount(0);
   await expect(page.getByRole('row', { name: /Week 6 contest/ }).getByRole('link')).toHaveAttribute('href', '/admin/contests/4');
 
-  await mockApi(page, { who: 'admin', phase: 'after' });
+  await mockApi(page, { who: 'organiser', phase: 'after' });
   await page.goto('/admin/contests');
   await expect(page.getByRole('row', { name: /Week 6 contest/ }).getByRole('link')).toHaveAttribute('href', '/admin/contests/4/results');
   // The trail's contest step follows the same rule.
@@ -1404,7 +1404,7 @@ test('before any contest has run there is no Needs you, and every title opens th
 });
 
 test('the contest list stacks below 1024 px and points to the bank when empty (P3 R1, O6)', async ({ page }) => {
-  await mockApi(page, { who: 'admin', phase: 'during' });
+  await mockApi(page, { who: 'organiser', phase: 'during' });
   await page.setViewportSize({ width: 900, height: 900 });
   await page.goto('/admin/contests');
   const row = page.getByRole('row', { name: /Week 7 contest/ });
@@ -1421,7 +1421,7 @@ test('the contest list stacks below 1024 px and points to the bank when empty (P
 });
 
 test('Student view shows the problems and the board as students see them, with no start page (F3.3, C2-056, P10)', async ({ page }) => {
-  const api = await mockApi(page, { who: 'admin', phase: 'during' });
+  const api = await mockApi(page, { who: 'organiser', phase: 'during' });
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto('/admin/contests/4/console');
   const link = page.getByRole('navigation', { name: 'Contest' }).getByRole('link', { name: 'Student view' });

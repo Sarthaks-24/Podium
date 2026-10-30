@@ -47,7 +47,7 @@ func TestConfigCarriesOrganisationAndRetention(t *testing.T) {
 
 	owner := s.signedIn("owner@college.edu", "Owner")
 	admin := s.signedIn("admin@college.edu", "Admin")
-	owner.do("POST", "/api/admin/people", map[string]any{"email": "admin@college.edu", "role": "admin"}, s.srv.URL)
+	owner.do("POST", "/api/admin/people", map[string]any{"email": "admin@college.edu", "role": "organiser"}, s.srv.URL)
 	settings := map[string]any{"name": "  Example College  ", "contact_email": "Podium@College.edu", "phone": "+91 80 1234 5678",
 		"privacy_contact": "privacy@college.edu"}
 	if code, out := admin.do("PUT", "/api/admin/site-settings", settings, s.srv.URL); code != 403 {

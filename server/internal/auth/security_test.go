@@ -19,7 +19,7 @@ func TestRecordModeUndoesTestingMode(t *testing.T) {
 	ctx := context.Background()
 	// First start with the record: no mode stored yet, so every session
 	// ends (the database may have run in testing mode before).
-	if _, _, _, err := s.TestSignIn(ctx, "early@gmail.com", "", auth.Admin, "", ""); err != nil {
+	if _, _, _, err := s.TestSignIn(ctx, "early@gmail.com", "", auth.Organiser, "", ""); err != nil {
 		t.Fatal(err)
 	}
 	ch, err := s.RecordMode(ctx, "testing")
@@ -35,11 +35,11 @@ func TestRecordModeUndoesTestingMode(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, _, _, err := s.TestSignIn(ctx, "ta@college.edu", "", auth.Admin, "", ""); err != nil {
+	if _, _, _, err := s.TestSignIn(ctx, "ta@college.edu", "", auth.Organiser, "", ""); err != nil {
 		t.Fatal(err)
 	}
 	// A real admin with a Google link keeps the role.
-	if _, err := s.GrantRole(ctx, "prof@college.edu", auth.Admin); err != nil {
+	if _, err := s.GrantRole(ctx, "prof@college.edu", auth.Organiser); err != nil {
 		t.Fatal(err)
 	}
 	if _, _, _, err := s.SignIn(ctx, id("prof@college.edu"), "", ""); err != nil {
@@ -67,7 +67,7 @@ func TestRecordModeUndoesTestingMode(t *testing.T) {
 	}
 	rows.Close()
 	want := map[string]auth.Role{"intruder@gmail.com": auth.Student, "ta@college.edu": auth.Student,
-		"early@gmail.com": auth.Student, "prof@college.edu": auth.Admin, ownerEmail: auth.Owner}
+		"early@gmail.com": auth.Student, "prof@college.edu": auth.Organiser, ownerEmail: auth.Owner}
 	for e, r := range want {
 		if roles[e] != r {
 			t.Errorf("%s is %s after the switch, want %s", e, roles[e], r)

@@ -29,7 +29,7 @@ test('while a contest runs with the problem, a save asks for the reason and send
 });
 
 test('a rejudge says it uses the tests students are served now', async ({ page }) => {
-  await contests.mockApi(page, { who: 'admin', phase: 'during' });
+  await contests.mockApi(page, { who: 'organiser', phase: 'during' });
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto('/admin/contests/4/console');
   await page.getByRole('button', { name: 'Judge problem A again' }).click();
@@ -39,7 +39,7 @@ test('a rejudge says it uses the tests students are served now', async ({ page }
 });
 
 test('an edited problem is a banner on the console until students get it (C2)', async ({ page }) => {
-  const api = await contests.mockApi(page, { who: 'admin', phase: 'during', updateAvailable: true });
+  const api = await contests.mockApi(page, { who: 'organiser', phase: 'during', updateAvailable: true });
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto('/admin/contests/4/console#versions-title');
   const banners = page.getByRole('region', { name: 'Needs attention' });

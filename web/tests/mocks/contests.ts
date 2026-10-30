@@ -40,7 +40,7 @@ export const MIN = 60_000;
 export type Json = Record<string, unknown>;
 
 export const STUDENT = { id: 7, email: 'asha@college.edu', name: 'Asha Rao', avatar_url: '', role: 'student', theme: '', verdicts: 'standard' } satisfies MeLike;
-export const ADMIN = { id: 2, email: 'arjun.mehta@college.edu', name: 'Arjun Mehta', avatar_url: '', role: 'admin', theme: '', verdicts: 'standard' } satisfies MeLike;
+export const ADMIN = { id: 2, email: 'arjun.mehta@college.edu', name: 'Arjun Mehta', avatar_url: '', role: 'organiser', theme: '', verdicts: 'standard' } satisfies MeLike;
 
 export const PROBLEMS = [
   { label: 'A', title: 'A plus B', id: 11, max: 100 },
@@ -53,7 +53,7 @@ export const STATEMENT = 'Given two integers $a$ and $b$, print $a + b$.\n\n## I
 export type Phase = 'upcoming' | 'ready' | 'during' | 'after' | 'practice';
 
 export interface Options {
-  who?: 'student' | 'admin';
+  who?: 'student' | 'organiser';
   /** Interval covering came from the AI wizard: the contest asks for a reason. */
   aiGate?: boolean;
   phase?: Phase;
@@ -280,7 +280,7 @@ export async function mockApi(page: Page, options: Options = {}) {
     state: contestState(),
     my_score: phase === 'after' || phase === 'practice' ? 140 : null,
     max_score: 300,
-    my_window: state.who === 'admin' ? null : myWindow(),
+    my_window: state.who === 'organiser' ? null : myWindow(),
   }) satisfies ContestSummaryLike;
 
   const contest = () => ({
@@ -298,7 +298,7 @@ export async function mockApi(page: Page, options: Options = {}) {
     honour_text:
       'This contest counts. By starting you agree to these rules:\n\n- Work alone.\n- Do not use AI assistants.\n- Podium records your submissions, the characters you type and paste, and when you leave the page. It is deleted 180 days after the contest.',
     problems:
-      state.accepted || state.who === 'admin' || phase === 'after' || phase === 'practice'
+      state.accepted || state.who === 'organiser' || phase === 'after' || phase === 'practice'
         ? PROBLEMS.map((p) => ({
             label: p.label,
             title: p.title,
@@ -310,8 +310,8 @@ export async function mockApi(page: Page, options: Options = {}) {
             ...(options.zeroB && p.label === 'B' ? { my_score: 0, zero_by_decision: true, zero_case_id: 12 } : {}),
           }))
         : null,
-    accepted: state.who === 'admin' ? false : state.accepted,
-    organiser: state.who === 'admin',
+    accepted: state.who === 'organiser' ? false : state.accepted,
+    organiser: state.who === 'organiser',
     announcements: state.announcements,
     my_clarifications: state.clarifications,
     public_clarifications: state.publicClarifications,
@@ -342,7 +342,7 @@ export async function mockApi(page: Page, options: Options = {}) {
       can_submit: phase === 'during' || phase === 'practice',
       practice: phase === 'practice',
       refusal: null,
-      window: state.who === 'admin' ? null : myWindow(),
+      window: state.who === 'organiser' ? null : myWindow(),
       server_now: nowMs(),
     } satisfies WorkspaceLike;
   };
@@ -391,7 +391,7 @@ export async function mockApi(page: Page, options: Options = {}) {
     editorial_published: false,
     problems: state.adminProblems.map((p) => pinFields(p)),
     pin_history: [
-      ...state.pinPuts.map((x, i) => ({ label: x.label, problem_id: 11, revision_id: Number(x.body.revision_id), rev: 3, from_at: now + i, actor: { user_id: 2, email: 'arjun.mehta@college.edu', role: 'admin' } })).reverse(),
+      ...state.pinPuts.map((x, i) => ({ label: x.label, problem_id: 11, revision_id: Number(x.body.revision_id), rev: 3, from_at: now + i, actor: { user_id: 2, email: 'arjun.mehta@college.edu', role: 'organiser' } })).reverse(),
       { label: 'A', problem_id: 11, revision_id: 12, rev: 2, from_at: startsAt - 60 * MIN, actor: { user_id: 1, email: 'priya@college.edu', role: 'owner' } },
     ],
     queue: options.queueHealth === 'trouble' ? { waiting: 14, judging: 2, errors: 1, oldest_wait_s: 95 } : { waiting: 0, judging: 1, errors: 1, oldest_wait_s: 0 },
@@ -431,7 +431,7 @@ export async function mockApi(page: Page, options: Options = {}) {
       const url = new URL(req.url());
       const path = url.pathname;
       const method = req.method();
-      const me = state.who === 'admin' ? ADMIN : STUDENT;
+      const me = state.who === 'organiser' ? ADMIN : STUDENT;
 
       if (path === '/api/me') return json(route, 200, me);
       if (path === '/api/auth/config') return json(route, 200, { mode: 'production', allowed_domains: ['college.edu'], contact_email: 'priya@college.edu' });
@@ -856,21 +856,21 @@ export const SCREENS: Screen[] = [
   {
     name: 'admin-contests',
     path: '/admin/contests',
-    options: { who: 'admin', phase: 'during' },
+    options: { who: 'organiser', phase: 'during' },
     title: 'Contests · podium',
     ready: (page) => expect(page.getByRole('link', { name: 'Week 7 contest', exact: true })).toBeVisible(),
   },
   {
     name: 'contest-editor',
     path: '/admin/contests/4',
-    options: { who: 'admin', phase: 'during' },
+    options: { who: 'organiser', phase: 'during' },
     title: 'Setup · Week 6 contest · podium',
     ready: (page) => expect(page.getByLabel('Title', { exact: true })).toHaveValue('Week 6 contest'),
   },
   {
     name: 'contest-console',
     path: '/admin/contests/4/console',
-    options: { who: 'admin', phase: 'during' },
+    options: { who: 'organiser', phase: 'during' },
     title: '(1) Live · Week 6 contest · podium',
     ready: async (page) => {
       await expect(page.getByText('Can intervals have zero length?')).toBeVisible();
@@ -880,7 +880,7 @@ export const SCREENS: Screen[] = [
   {
     name: 'contest-results',
     path: '/admin/contests/4/results',
-    options: { who: 'admin', phase: 'after' },
+    options: { who: 'organiser', phase: 'after' },
     title: 'Results · Week 6 contest · podium',
     ready: async (page) => {
       await expect(page.getByRole('region', { name: /Standings for Week 6 contest/ })).toBeVisible();

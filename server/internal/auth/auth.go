@@ -23,20 +23,22 @@ import (
 	"github.com/Sarthaks-24/podium/internal/retention"
 )
 
-// Role is a global role. The order is student < admin < owner.
+// Role is a global role. The order is student < organiser < owner. The
+// stored value of an organiser was "admin" until v4 (migration
+// 0002_v4_roles); old site audit rows may still name it.
 type Role string
 
 const (
-	Student Role = "student"
-	Admin   Role = "admin"
-	Owner   Role = "owner"
+	Student   Role = "student"
+	Organiser Role = "organiser"
+	Owner     Role = "owner"
 )
 
 func (r Role) rank() int {
 	switch r {
 	case Owner:
 		return 2
-	case Admin:
+	case Organiser:
 		return 1
 	}
 	return 0
@@ -156,7 +158,7 @@ func (s *Service) AllowedDomains(ctx context.Context) ([]Domain, error) {
 
 // SignIn applies the sign-in rules to a verified identity and starts a
 // session. The email may sign in when its domain is allowed, when the
-// account already holds the admin or owner role, or when it is OwnerEmail.
+// account already holds the organiser or owner role, or when it is OwnerEmail.
 // It returns the session token for the cookie and its expiry.
 func (s *Service) SignIn(ctx context.Context, id Identity, ip, userAgent string) (User, string, time.Time, error) {
 	if !id.EmailVerified {
@@ -195,7 +197,7 @@ func (s *Service) SignIn(ctx context.Context, id Identity, ip, userAgent string)
 	if !errors.Is(err, sql.ErrNoRows) {
 		return User{}, "", time.Time{}, err
 	}
-	if !(email == s.OwnerEmail || (exists && role.AtLeast(Admin))) {
+	if !(email == s.OwnerEmail || (exists && role.AtLeast(Organiser))) {
 		domain := email[at+1:]
 		var workspace bool
 		err := tx.QueryRowContext(ctx, "SELECT workspace FROM allowed_domains WHERE domain = ?", domain).Scan(&workspace)
@@ -346,10 +348,10 @@ type Domain struct {
 	CreatedAt int64  `json:"created_at"`
 }
 
-// Organisers lists everyone with the admin or owner role, owners first.
+// Organisers lists everyone with the organiser or owner role, owners first.
 func (s *Service) Organisers(ctx context.Context) ([]Person, error) {
 	rows, err := s.DB.QueryContext(ctx, `SELECT id, email, name, role, last_login_at, disabled FROM users
-		WHERE role IN ('owner', 'admin') ORDER BY role = 'owner' DESC, lower(name) = '', lower(name), email`)
+		WHERE role IN ('owner', 'organiser') ORDER BY role = 'owner' DESC, lower(name) = '', lower(name), email`)
 	if err != nil {
 		return nil, err
 	}
@@ -366,15 +368,15 @@ func (s *Service) Organisers(ctx context.Context) ([]Person, error) {
 	return out, rows.Err()
 }
 
-// GrantRole gives email the admin or owner role, creating the account if
+// GrantRole gives email the organiser or owner role, creating the account if
 // the person has never signed in.
 func (s *Service) GrantRole(ctx context.Context, email string, role Role) (Person, error) {
 	email = strings.ToLower(strings.TrimSpace(email))
 	if a, err := mail.ParseAddress(email); err != nil || a.Address != email || len(email) > 254 {
 		return Person{}, invalid("Enter a single email address, such as ta@college.edu.")
 	}
-	if role != Admin && role != Owner {
-		return Person{}, invalid("Choose admin or owner.")
+	if role != Organiser && role != Owner {
+		return Person{}, invalid("Choose organiser or owner.")
 	}
 	if email == s.OwnerEmail {
 		return Person{}, conflict("This owner is set in the server configuration and cannot be changed here.")
@@ -439,7 +441,7 @@ func (s *Service) RevokeRole(ctx context.Context, id int64) error {
 	var email string
 	var role Role
 	err = tx.QueryRowContext(ctx, "SELECT email, role FROM users WHERE id = ?", id).Scan(&email, &role)
-	if errors.Is(err, sql.ErrNoRows) || (err == nil && !role.AtLeast(Admin)) {
+	if errors.Is(err, sql.ErrNoRows) || (err == nil && !role.AtLeast(Organiser)) {
 		return notFound("That person is not an organiser.")
 	}
 	if err != nil {

@@ -14,7 +14,7 @@ export const ADMIN = {
   email: 'arjun.mehta@college.edu',
   name: 'Arjun Mehta',
   avatar_url: '',
-  role: 'admin',
+  role: 'organiser',
   theme: '',
   verdicts: 'standard',
 };

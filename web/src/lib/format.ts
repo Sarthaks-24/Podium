@@ -29,7 +29,7 @@ export function countOf(n: number, noun: string, plural = `${noun}s`): string {
   return `${n} ${n === 1 ? noun : plural}`;
 }
 
-const ROLE_LABELS: Record<Role, string> = { student: 'Student', admin: 'Organiser', owner: 'Owner' };
+const ROLE_LABELS: Record<Role, string> = { student: 'Student', organiser: 'Organiser', owner: 'Owner' };
 
 /** Sentence-case name of a role. */
 export function roleLabel(role: Role): string {

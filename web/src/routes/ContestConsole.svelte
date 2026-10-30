@@ -98,7 +98,7 @@
   let tab = $state<Tab>('questions');
   let phone = $state(false);
 
-  const isOrganiser = $derived(session.user?.role === 'admin' || session.user?.role === 'owner');
+  const isOrganiser = $derived(session.user?.role === 'organiser' || session.user?.role === 'owner');
   const base = $derived(`/api/admin/contests/${encodeURIComponent(id)}`);
   const labels = $derived((contest?.problems ?? []).map((p) => p.label));
   const closeAt = $derived(contest ? (contest.close_at ?? contest.ends_at) : 0);

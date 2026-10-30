@@ -40,7 +40,7 @@ async function paste(page: Page, text: string) {
 }
 
 test('the four switches sit under Advanced, off, and each saves alone', async ({ page }) => {
-  const api = await contests.mockApi(page, { who: 'admin', phase: 'upcoming', published: false });
+  const api = await contests.mockApi(page, { who: 'organiser', phase: 'upcoming', published: false });
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto('/admin/contests/4');
   const options = page.getByRole('group', { name: 'Exam options' });
@@ -103,7 +103,7 @@ test('with full screen on, Start asks for it and leaving it is a count the conso
   expect(api.submits[0]).toMatchObject({ fullscreen_exits: 1 });
 
   // The organiser's live view: the feed carries the count beside the pasted characters.
-  api.who = 'admin';
+  api.who = 'organiser';
   await page.goto('/admin/contests/4/console');
   const feed = page.getByRole('region', { name: 'Submissions' });
   await expect(feed.getByRole('columnheader', { name: 'Recorded' })).toBeVisible();
@@ -125,7 +125,7 @@ test('with no exam option on, nothing changes', async ({ page }) => {
   await expect(codeEditor(page)).toContainText('pasted!');
   await expect(page.getByRole('button', { name: /^Copy example/ }).first()).toBeVisible();
 
-  api.who = 'admin';
+  api.who = 'organiser';
   await page.goto('/admin/contests/4/console');
   const feed = page.getByRole('region', { name: 'Submissions' });
   await expect(feed.getByRole('columnheader', { name: 'Outcome' })).toBeVisible();

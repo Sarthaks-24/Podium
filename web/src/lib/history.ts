@@ -99,7 +99,7 @@ function listWords(words: string[]): string {
 }
 
 function roleWord(v: unknown): string {
-  return v === 'owner' || v === 'admin' || v === 'student' ? roleLabel(v as Role).toLowerCase() : String(v ?? '');
+  return v === 'owner' || v === 'organiser' || v === 'student' ? roleLabel(v as Role).toLowerCase() : String(v ?? '');
 }
 
 function ended(n: unknown): string {
@@ -145,7 +145,7 @@ export function siteAuditSummary(e: Pick<SiteAuditEntry, 'action' | 'subject_ema
 /** Who made a site audit change: "priya@college.edu (Owner)", or "The server". */
 export function actorText(actor: SiteAuditEntry['actor']): string {
   if (!actor) return 'The server';
-  return actor.role === 'owner' || actor.role === 'admin' || actor.role === 'student'
+  return actor.role === 'owner' || actor.role === 'organiser' || actor.role === 'student'
     ? `${actor.email} (${roleLabel(actor.role as Role)})`
     : actor.email;
 }

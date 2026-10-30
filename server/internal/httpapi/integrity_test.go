@@ -85,7 +85,7 @@ func newIntegrityWorld(t *testing.T) *integrityWorld {
 	s := newSite(t)
 	w := &integrityWorld{s: s, start: time.Now().Add(time.Hour).Truncate(time.Minute)}
 	w.owner = s.signedIn("owner@college.edu", "Owner")
-	if code, out := w.owner.do("POST", "/api/admin/people", map[string]string{"email": "admin@college.edu", "role": "admin"}, s.srv.URL); code != 200 {
+	if code, out := w.owner.do("POST", "/api/admin/people", map[string]string{"email": "admin@college.edu", "role": "organiser"}, s.srv.URL); code != 200 {
 		t.Fatalf("grant admin: %d %v", code, out)
 	}
 	w.admin = s.signedIn("admin@college.edu", "Admin")

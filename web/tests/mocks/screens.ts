@@ -16,8 +16,8 @@ export const STUDENT = { id: 7, email: 'asha@college.edu', name: 'Asha Rao', ava
 
 export const PEOPLE = [
   { id: 1, email: 'priya@college.edu', name: 'Priya Raman', role: 'owner', last_login_at: 1792183192359, locked: true },
-  { id: 2, email: 'arjun.mehta@college.edu', name: 'Arjun Mehta', role: 'admin', last_login_at: 1791923992359, locked: false },
-  { id: 3, email: 'ta@college.edu', name: '', role: 'admin', last_login_at: null, locked: false },
+  { id: 2, email: 'arjun.mehta@college.edu', name: 'Arjun Mehta', role: 'organiser', last_login_at: 1791923992359, locked: false },
+  { id: 3, email: 'ta@college.edu', name: '', role: 'organiser', last_login_at: null, locked: false },
 ];
 
 export const DOMAINS = [
@@ -29,7 +29,7 @@ export const CONFIG = { allowed_domains: ['college.edu'], contact_email: 'priya@
 
 /** The site audit that "History of changes" on Settings shows (contract C4), newest first. */
 export const SITE_AUDIT = [
-  { id: 3, at: 1792183192359, action: 'role_granted', actor: { user_id: 1, email: 'priya@college.edu', role: 'owner' }, subject_email: 'ta@college.edu', details: { role: 'admin', from_role: 'student' } },
+  { id: 3, at: 1792183192359, action: 'role_granted', actor: { user_id: 1, email: 'priya@college.edu', role: 'owner' }, subject_email: 'ta@college.edu', details: { role: 'organiser', from_role: 'student' } },
   { id: 2, at: 1792096792359, action: 'domain_added', actor: { user_id: 1, email: 'priya@college.edu', role: 'owner' }, subject_email: '', details: { domain: 'cs.college.edu' } },
   { id: 1, at: 1791923992359, action: 'mode_changed', actor: null, subject_email: '', details: { from: 'testing', to: 'production', sessions_ended: 0 } },
 ];

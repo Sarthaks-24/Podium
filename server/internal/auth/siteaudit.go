@@ -76,6 +76,32 @@ func (s *Service) recordSite(ctx context.Context, tx execer, action, subject str
 	return nil
 }
 
+// oldRoleNames reads a row written before v4 renamed the stored role:
+// "admin" in the actor or in the role fields of the details meant
+// organiser.
+func oldRoleNames(a *Actor, details string) string {
+	if a.Role == "admin" {
+		a.Role = Organiser
+	}
+	if !strings.Contains(details, `"admin"`) {
+		return details
+	}
+	var m map[string]any
+	if json.Unmarshal([]byte(details), &m) != nil {
+		return details
+	}
+	for _, k := range []string{"role", "from_role"} {
+		if m[k] == "admin" {
+			m[k] = string(Organiser)
+		}
+	}
+	b, err := json.Marshal(m)
+	if err != nil {
+		return details
+	}
+	return string(b)
+}
+
 // SiteAuditEntry is one row of the site audit.
 type SiteAuditEntry struct {
 	ID     int64  `json:"id"`
@@ -125,6 +151,11 @@ func (s *Service) SiteAudit(ctx context.Context, f SiteAuditFilter) ([]SiteAudit
 	}
 	q += " ORDER BY id DESC LIMIT ? OFFSET ?"
 	args = append(args, SiteAuditPage+1, (f.Page-1)*SiteAuditPage)
+	// Rows written before 0002_v4_roles stored an organiser as "admin".
+	var renamedAt int64
+	if err := s.DB.QueryRowContext(ctx, "SELECT coalesce(max(applied_at), 0) FROM schema_migrations WHERE version = '0002_v4_roles'").Scan(&renamedAt); err != nil {
+		return nil, false, err
+	}
 	rows, err := s.DB.QueryContext(ctx, q, args...)
 	if err != nil {
 		return nil, false, err
@@ -137,6 +168,9 @@ func (s *Service) SiteAudit(ctx context.Context, f SiteAuditFilter) ([]SiteAudit
 		var details string
 		if err := rows.Scan(&e.ID, &e.At, &e.Action, &a.ID, &a.Email, &a.Role, &e.SubjectEmail, &details); err != nil {
 			return nil, false, err
+		}
+		if e.At < renamedAt {
+			details = oldRoleNames(&a, details)
 		}
 		if a.ID > 0 {
 			e.Actor = &a

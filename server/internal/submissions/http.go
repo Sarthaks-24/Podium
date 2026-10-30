@@ -204,7 +204,7 @@ func (d *Handlers) mayRead(w http.ResponseWriter, r *http.Request, wantKind stri
 		return notFound()
 	}
 	u := auth.UserFrom(r.Context())
-	if u.Role.AtLeast(auth.Admin) {
+	if u.Role.AtLeast(auth.Organiser) {
 		return id, ViewOptions{}, true
 	}
 	if info.UserID == u.ID {

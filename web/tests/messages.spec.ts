@@ -53,7 +53,7 @@ test('a run refused for pacing says so on screen while Submit counts down', asyn
 });
 
 test('a reveal that worked says so even when the board could not reload', async ({ page }) => {
-  const api = await contests.mockApi(page, { who: 'admin', phase: 'after', holdReveal: true });
+  const api = await contests.mockApi(page, { who: 'organiser', phase: 'after', holdReveal: true });
   await page.route('**/api/admin/contests/4', (route) => (api.reveals > 0 && route.request().method() === 'GET' ? route.abort() : route.fallback()));
   await page.goto('/admin/contests/4/results');
   await page.getByRole('button', { name: 'Reveal', exact: true }).click();

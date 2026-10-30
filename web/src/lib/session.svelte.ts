@@ -22,7 +22,7 @@ import { forgetDraftsAtSignOut, noteSignedInUser } from './drafts';
 import { adoptAccountPreferences, resetPreferences } from './preferences.svelte';
 import { navigate } from './router.svelte';
 
-export type Role = 'student' | 'admin' | 'owner';
+export type Role = 'student' | 'organiser' | 'owner';
 
 /** The current user, as returned by GET /api/me. */
 export interface User {

@@ -335,7 +335,7 @@ func TestFailedAuditRollsTheChangeBack(t *testing.T) {
 	r := newSvc(t)
 	ctx := context.Background()
 	c := r.contest(t, nil)
-	ghost := Actor{ID: 999, Email: "ghost@college.edu", Role: "admin"}
+	ghost := Actor{ID: 999, Email: "ghost@college.edu", Role: "organiser"}
 	if err := r.svc.SetPaused(ctx, c.ID, true, ghost); err == nil {
 		t.Error("pause with a failing audit row succeeded")
 	}

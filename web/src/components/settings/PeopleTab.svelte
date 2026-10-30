@@ -33,7 +33,7 @@
   type Pending = { kind: 'remove'; person: Person } | { kind: 'role'; person: Person; role: OrganiserRole } | null;
 
   let email = $state('');
-  let role = $state<OrganiserRole>('admin');
+  let role = $state<OrganiserRole>('organiser');
   let adding = $state(false);
   let error = $state('');
   /** The organiser just added, for the "send them this address" note. */
@@ -164,7 +164,7 @@
                 {roleLabel(person.role)}
               {:else}
                 <select id="role-{person.id}" class="select role-select" aria-label="Role for {personLabel(person)}" value={person.role} onchange={(e) => askRole(e, person)}>
-                  <option value="admin">Organiser</option>
+                  <option value="organiser">Organiser</option>
                   <option value="owner">Owner</option>
                 </select>
               {/if}
@@ -215,7 +215,7 @@
     <div class="field">
       <label for="person-role">Role</label>
       <select id="person-role" class="select" bind:value={role} aria-describedby={error !== '' ? 'person-error' : undefined}>
-        <option value="admin">Organiser</option>
+        <option value="organiser">Organiser</option>
         <option value="owner">Owner</option>
       </select>
     </div>

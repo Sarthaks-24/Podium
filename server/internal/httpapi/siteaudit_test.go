@@ -90,7 +90,7 @@ func TestSiteAuditRecordsPeopleChangesAndNoSecret(t *testing.T) {
 		body         any
 		want         int
 	}{
-		{"POST", "/api/admin/people", map[string]string{"email": "ta@college.edu", "role": "admin"}, 200},
+		{"POST", "/api/admin/people", map[string]string{"email": "ta@college.edu", "role": "organiser"}, 200},
 		{"POST", "/api/admin/people", map[string]string{"email": "ta@college.edu", "role": "owner"}, 200},
 		{"POST", "/api/admin/domains", map[string]string{"domain": "school.edu"}, 201},
 		{"DELETE", "/api/admin/domains/school.edu", nil, 204},

@@ -57,7 +57,7 @@ func (s *Service) publish(ctx context.Context, c *Contest, organisersOnly bool, 
 	ids, _ := json.Marshal(users)
 	students := !organisersOnly && c.Published && !c.Archived
 	rows, err := s.DB.QueryContext(ctx, `SELECT u.id FROM users u WHERE u.id IN (SELECT value FROM json_each(?)) AND u.disabled = 0 AND (
-		u.role IN ('admin', 'owner')
+		u.role IN ('organiser', 'owner')
 		OR ?)`,
 		string(ids), students)
 	if err != nil {

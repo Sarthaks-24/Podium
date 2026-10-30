@@ -291,9 +291,9 @@ test('a role changes only after the owner confirms it', async ({ page }) => {
   const dialog = page.getByRole('dialog', { name: 'Make Arjun Mehta an owner?' });
   await expect(dialog).toContainText('Owners can also change the settings: people, sign-in and the organisation.');
   // Until confirmed, the row still says what is true.
-  await expect(select).toHaveValue('admin');
+  await expect(select).toHaveValue('organiser');
   await dialog.getByRole('button', { name: 'Cancel' }).click();
-  expect(api.people.find((p) => p.id === 2)?.role).toBe('admin');
+  expect(api.people.find((p) => p.id === 2)?.role).toBe('organiser');
 
   await select.selectOption('owner');
   await dialog.getByRole('button', { name: 'Change role' }).click();
@@ -321,7 +321,7 @@ test('after adding an organiser, the page says what to send them', async ({ page
 
 test('an organiser who signed in without a name is not shown as invited', async ({ page }) => {
   const api = await mockApi(page, 'owner');
-  api.people.push({ id: 4, email: 'lab@college.edu', name: '', role: 'admin', last_login_at: 1792183192359, locked: false });
+  api.people.push({ id: 4, email: 'lab@college.edu', name: '', role: 'organiser', last_login_at: 1792183192359, locked: false });
   await page.goto('/admin/people');
   const row = page.getByRole('row', { name: /lab@college\.edu/ });
   await expect(row).toContainText('No name');

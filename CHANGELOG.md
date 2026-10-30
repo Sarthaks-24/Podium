@@ -4,6 +4,11 @@ Dated entries per release. Unreleased work is listed at the top.
 
 ## Unreleased
 
+### v4 stage O: the owner dashboard (2026-10-30)
+
+- The stored role `admin` is now `organiser` (migration `0002_v4_roles`), so a new admin role can sit between organiser and owner. Nothing changes for anyone: organisers keep every right, their sessions keep working, and site audit rows from before the migration read "organiser".
+- A migration can ask to run with foreign keys off (its first line says `-- podium: foreign_keys off`), for SQLite's table rebuild; it commits only if no reference is broken, on a connection that is then thrown away.
+
 ### v4 stage H: site hygiene (2026-10-30)
 
 - A path the app has no screen for answers 404 instead of 200, still showing the "Page not found" page. A Go test keeps the server's list of app paths in step with the router.

@@ -117,7 +117,7 @@ func (d *Handlers) contestError(w http.ResponseWriter, r *http.Request, err erro
 }
 
 func viewerOf(u auth.User) Viewer {
-	return Viewer{UserID: u.ID, Email: u.Email, Organiser: u.Role.AtLeast(auth.Admin)}
+	return Viewer{UserID: u.ID, Email: u.Email, Organiser: u.Role.AtLeast(auth.Organiser)}
 }
 
 // studentContest loads the contest named by {slug} and checks the viewer

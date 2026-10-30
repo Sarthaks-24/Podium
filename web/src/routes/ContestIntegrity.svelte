@@ -71,7 +71,7 @@
   // Taken as the data arrives, just before the loading view gives way, so the heading keeps focus.
   let restoreFocus: () => Promise<void> = async () => undefined;
 
-  const isOrganiser = $derived(session.user?.role === 'admin' || session.user?.role === 'owner');
+  const isOrganiser = $derived(session.user?.role === 'organiser' || session.user?.role === 'owner');
   const base = $derived(`/api/admin/contests/${encodeURIComponent(id)}`);
   const page = loader(
     () => getJSON<AdminContest>(base),

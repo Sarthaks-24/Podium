@@ -71,7 +71,7 @@ func newRig(t *testing.T) *rig {
 	}
 	bank := &problems.Service{DB: d, Blobs: blobs, Jobs: jobSvc}
 	subs := &submissions.Service{DB: d, Jobs: jobSvc, Problems: bank}
-	if _, err := d.Exec(`INSERT INTO users (id, email, role, created_at) VALUES (1, 'setter@college.edu', 'admin', 0)`); err != nil {
+	if _, err := d.Exec(`INSERT INTO users (id, email, role, created_at) VALUES (1, 'setter@college.edu', 'organiser', 0)`); err != nil {
 		t.Fatal(err)
 	}
 	srv := httptest.NewServer(judgeserver.New(judgeserver.Deps{Log: log, Jobs: jobSvc, Blobs: blobs, Token: testToken}))

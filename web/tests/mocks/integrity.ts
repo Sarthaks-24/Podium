@@ -12,7 +12,7 @@ export const MIN = 60_000;
 export type Json = Record<string, unknown>;
 
 export const STUDENT = { id: 7, email: 'asha@college.edu', name: 'Asha Rao', avatar_url: '', role: 'student', theme: '', verdicts: 'standard' };
-export const ADMIN = { id: 2, email: 'arjun.mehta@college.edu', name: 'Arjun Mehta', avatar_url: '', role: 'admin', theme: '', verdicts: 'standard' };
+export const ADMIN = { id: 2, email: 'arjun.mehta@college.edu', name: 'Arjun Mehta', avatar_url: '', role: 'organiser', theme: '', verdicts: 'standard' };
 
 export const USERS: Record<string, { name: string; email: string }> = {
   '7': { name: 'Asha Rao', email: 'asha@college.edu' },
@@ -84,7 +84,7 @@ export function signals(): Json[] {
 }
 
 export interface Options {
-  who?: 'student' | 'admin';
+  who?: 'student' | 'organiser';
   /** The contest is still live. */
   live?: boolean;
   /** The contest was never checked before the test. */
@@ -129,7 +129,7 @@ export async function mockApi(page: Page, options: Options = {}) {
   const now = Date.now();
   const endsAt = options.live ? now + 40 * MIN : now - 2 * 3_600_000;
   const state = {
-    who: options.who ?? 'admin',
+    who: options.who ?? 'organiser',
     run: options.unchecked ? null : ({ state: 'done' } as { state: string } | null),
     runGets: 0,
     runPosts: 0,
@@ -298,7 +298,7 @@ export async function mockApi(page: Page, options: Options = {}) {
       const url = new URL(req.url());
       const path = url.pathname;
       const method = req.method();
-      const me = state.who === 'admin' ? ADMIN : STUDENT;
+      const me = state.who === 'organiser' ? ADMIN : STUDENT;
 
       if (path === '/api/me') return json(route, 200, me);
       if (path === '/api/auth/config') return json(route, 200, { mode: 'production', allowed_domains: ['college.edu'], contact_email: 'priya@college.edu' });

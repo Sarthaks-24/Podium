@@ -1,13 +1,13 @@
 /**
  * What the owner's Settings page reads from GET /api/admin/people, and the
- * words it uses for people. The server's two organiser roles are "admin"
- * and "owner"; on screen they read "organiser" and "owner".
+ * words it uses for people. The server's two organiser roles are
+ * "organiser" and "owner".
  */
 import { ApiError, isSignedOut } from './api';
 import { roleLabel } from './format';
 import type { Organisation } from './mode.svelte';
 
-export type OrganiserRole = 'admin' | 'owner';
+export type OrganiserRole = 'organiser' | 'owner';
 
 /** Someone with an organiser role. */
 export interface Person {
@@ -55,7 +55,7 @@ export function personLabel(p: Pick<Person, 'name' | 'email'>): string {
 
 /** A role in lower case for a sentence ("organiser"); an unknown role by its own name. */
 export function roleWord(role: string): string {
-  return role === 'owner' || role === 'admin' || role === 'student' ? roleLabel(role).toLowerCase() : role;
+  return role === 'owner' || role === 'organiser' || role === 'student' ? roleLabel(role).toLowerCase() : role;
 }
 
 /** "an owner" or "an organiser". */

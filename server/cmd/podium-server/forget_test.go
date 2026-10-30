@@ -12,7 +12,7 @@ func TestForgetUser(t *testing.T) {
 	for _, q := range []string{
 		`INSERT INTO users (id, email, name, avatar_url, role, google_sub, created_at) VALUES
 			(1, 'owner@college.edu', 'Owner', '', 'owner', 'sub-1', 0),
-			(7, 'asha@college.edu', 'Asha Rao', 'https://lh3.googleusercontent.com/a', 'admin', 'sub-7', 0),
+			(7, 'asha@college.edu', 'Asha Rao', 'https://lh3.googleusercontent.com/a', 'organiser', 'sub-7', 0),
 			(8, 'ravi@college.edu', 'Ravi', '', 'student', 'sub-8', 0)`,
 		`INSERT INTO sessions (id, user_id, created_at, expires_at) VALUES ('s7a', 7, 0, 9999999999999), ('s7b', 7, 0, 9999999999999), ('s8', 8, 0, 9999999999999)`,
 		`INSERT INTO problems (id, slug, title, time_limit_ms, memory_limit_mb, checker, reference_language, created_at, updated_at, content_hash)

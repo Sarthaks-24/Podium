@@ -13,11 +13,11 @@ func TestTestingModeSignIn(t *testing.T) {
 	if code, _ := b.do("GET", "/api/auth/google/start", nil, ""); code != 404 {
 		t.Errorf("google sign-in available in testing mode: %d", code)
 	}
-	code, body := b.do("POST", "/api/auth/test-signin", map[string]string{"email": "TA@Example.com", "name": "TA", "role": "admin", "next": "//evil.example"}, s.srv.URL)
+	code, body := b.do("POST", "/api/auth/test-signin", map[string]string{"email": "TA@Example.com", "name": "TA", "role": "organiser", "next": "//evil.example"}, s.srv.URL)
 	if code != 200 || body["next"] != "/" {
 		t.Fatalf("test sign-in: %d %v", code, body)
 	}
-	if code, role := b.me(); code != 200 || role != "admin" {
+	if code, role := b.me(); code != 200 || role != "organiser" {
 		t.Errorf("after test sign-in: %d %s", code, role)
 	}
 	if code, _ := b.do("GET", "/api/admin/problems", nil, ""); code != 200 {

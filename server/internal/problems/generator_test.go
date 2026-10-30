@@ -29,7 +29,7 @@ func newGenBank(t *testing.T) *Service {
 	if _, err := db.Migrate(ctx, d); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := d.Exec(`INSERT INTO users (id, email, role, created_at) VALUES (1, 'setter@college.edu', 'admin', 0)`); err != nil {
+	if _, err := d.Exec(`INSERT INTO users (id, email, role, created_at) VALUES (1, 'setter@college.edu', 'organiser', 0)`); err != nil {
 		t.Fatal(err)
 	}
 	blobs := Blobs{Dir: filepath.Join(t.TempDir(), "tests")}

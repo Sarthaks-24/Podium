@@ -39,7 +39,7 @@ func newRig(t *testing.T) *rig {
 	if _, err := db.Migrate(ctx, d); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := d.Exec(`INSERT INTO users (id, email, role, created_at) VALUES (1, 'a@college.edu', 'admin', 0), (2, 'b@college.edu', 'admin', 0)`); err != nil {
+	if _, err := d.Exec(`INSERT INTO users (id, email, role, created_at) VALUES (1, 'a@college.edu', 'organiser', 0), (2, 'b@college.edu', 'organiser', 0)`); err != nil {
 		t.Fatal(err)
 	}
 	now := time.UnixMilli(1_800_000_000_000)

@@ -72,7 +72,7 @@
   // A current server sends "generator" (null when there is none); an older one leaves it out.
   const hasGenerator = $derived(problem !== null && problem.generator !== undefined);
   const aiDraft = $derived(problem !== null && isAIDraft(problem.tags));
-  const isOrganiser = $derived(session.user?.role === 'admin' || session.user?.role === 'owner');
+  const isOrganiser = $derived(session.user?.role === 'organiser' || session.user?.role === 'owner');
 
   const page = loader(
     () => getJSON<Problem>(problemPath(id)),

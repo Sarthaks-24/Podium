@@ -41,7 +41,7 @@ const CRAWLED: Crawled[] = [
     const s = SCREENS.find((x) => x.name === name)!;
     return { name, path: s.path, mock: (p: Page) => mockApi(p, s.options), ready: s.ready };
   }),
-  ...problems.SCREENS.filter((s) => ['problems-bank', 'problem-editor'].includes(s.name)).map((s) => ({ name: s.name, path: s.path, mock: (p: Page) => problems.mockApi(p, 'admin'), ready: s.ready })),
+  ...problems.SCREENS.filter((s) => ['problems-bank', 'problem-editor'].includes(s.name)).map((s) => ({ name: s.name, path: s.path, mock: (p: Page) => problems.mockApi(p, 'organiser'), ready: s.ready })),
   ...people.SCREENS.filter((s) => s.name.startsWith('settings-') || s.name === 'privacy').map((s) => ({ name: s.name, path: s.path, mock: (p: Page) => people.mockApi(p, s.who), ready: s.ready })),
   ...integrity.SCREENS.map((s) => ({ name: `integrity-${s.name}`, path: s.path, mock: (p: Page) => integrity.mockApi(p, s.options), ready: s.ready })),
 ];
@@ -116,7 +116,7 @@ const fromProblems = (name: string): Pressed => ({
   name,
   load: async (page) => {
     const s = problems.SCREENS.find((x) => x.name === name)!;
-    await problems.mockApi(page, 'admin');
+    await problems.mockApi(page, 'organiser');
     await page.setViewportSize({ width: 1440, height: 900 });
     await page.goto(s.path);
     await s.ready(page);

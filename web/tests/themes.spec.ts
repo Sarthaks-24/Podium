@@ -37,7 +37,7 @@ const OWNER = {
 };
 const PEOPLE = [
   { id: 1, email: 'priya@college.edu', name: 'Priya Raman', role: 'owner', last_login_at: 1792183192359, locked: true },
-  { id: 2, email: 'arjun.mehta@college.edu', name: 'Arjun Mehta', role: 'admin', last_login_at: 1791923992359, locked: false },
+  { id: 2, email: 'arjun.mehta@college.edu', name: 'Arjun Mehta', role: 'organiser', last_login_at: 1791923992359, locked: false },
 ];
 
 function json(route: Route, status: number, body?: unknown) {

@@ -2,7 +2,7 @@
 
 All API routes live under `/api/` and speak JSON. Every other path serves the embedded web app, which renders its own pages (see "Static files"). The judge worker has its own routes on a separate listener ("Judge worker API").
 
-The routes are registered in `server/internal/httpapi/httpapi.go`, the judge routes in `server/internal/jobs/judgeserver`. `server/internal/httpapi/route_roles_test.go` reads every registration from the source and holds the role each route needs, so a new route without a row there fails the tests; this document lists the same routes, grouped by area. Each heading or table row names the role: public, student (anyone signed in), admin, owner, or judge.
+The routes are registered in `server/internal/httpapi/httpapi.go`, the judge routes in `server/internal/jobs/judgeserver`. `server/internal/httpapi/route_roles_test.go` reads every registration from the source and holds the role each route needs, so a new route without a row there fails the tests; this document lists the same routes, grouped by area. Each heading or table row names the role: public, student (anyone signed in), organiser, owner, or judge.
 
 ## Conventions
 
@@ -43,7 +43,7 @@ Areas add their own codes, listed with their routes: `disabled` (sign-in), `bad_
 ### Sign-in, roles and requests
 
 - **Sessions.** Signing in sets an HttpOnly session cookie, `SameSite=Lax`, with no `Expires` or `Max-Age`, so the browser forgets it when it closes, which matters on shared lab PCs. The server ends every session 12 hours after sign-in however much it is used (sessions never renew), at sign-out, when an owner ends the person's sessions or disables the account, and when the server starts in a different `PODIUM_MODE` than last time. With an `https` base URL the cookie is `__Host-podium_session` and marked `Secure`; with a local `http` base URL it is `podium_session`.
-- **Roles.** `student` < `admin` < `owner`. The web app calls the admin role "organiser". A route needs its role or a higher one: without a session it answers `401 signed_out`, below the role `403 forbidden`. Roles are read from the database on every request, so removing an organiser takes effect at once.
+- **Roles.** `student` < `organiser` < `owner`. Before v4 the organiser role was stored as `admin` (migration `0002_v4_roles` renamed it); site audit rows written before that migration are read with `organiser` in place of `admin`. A route needs its role or a higher one: without a session it answers `401 signed_out`, below the role `403 forbidden`. Roles are read from the database on every request, so removing an organiser takes effect at once.
 - **Cross-site requests.** `POST`, `PUT`, `PATCH` and `DELETE` under `/api/` are refused with `403 cross_site` unless the request's `Origin` matches `PODIUM_BASE_URL` (or, without an `Origin` header, `Sec-Fetch-Site` is `same-origin` or absent).
 - **Testing mode is local only.** With `PODIUM_MODE=testing`, a request whose `Host` is not `localhost`, `127.0.0.1` or `[::1]` (any port), or that carries `X-Forwarded-For`, `Forwarded`, `X-Real-IP` or `X-Forwarded-Host`, is refused with `403 testing_mode_local`: a proxy in front means the browser is not on this machine.
 
@@ -67,7 +67,7 @@ Areas add their own codes, listed with their routes: `disabled` (sign-in), `bad_
 
 A request from the VM itself (a loopback peer with no forwarding headers) also gets the release and the judge queue, for `install.sh verify` and `podium-check`: `{"status":"ok","db":"ok","version":"v3.0.0","schema":"0001_v3","jobs_queued":2,"oldest_queued_s":40,"judge_last_claim_s":1}`. `judge_last_claim_s` is `null` when no judge has asked for work since the server started. Through Caddy the answer never carries these, so a scanner cannot match the version against known bugs.
 
-### `GET /api/admin/metrics` (admin)
+### `GET /api/admin/metrics` (organiser)
 
 What an organiser watches on contest day; also read by the load test (`tools/loadtest`). Cheap enough to poll every few seconds: two indexed queries and in-memory counters.
 
@@ -118,7 +118,7 @@ A `retention` row is `{id, data, amount, unit, after, kept}`. The ids are `sessi
 
 Registered only when `PODIUM_MODE=testing`, which serves loopback alone; in other modes the path is `404 not_found`. Signs in as anyone with any role, without Google. The request must also carry an `Origin` equal to the base URL.
 
-Request: `{"email":"asha@college.edu","name":"Asha Rao","role":"admin","next":"/admin/problems"}`. `name` and `next` may be empty; `role` is `student`, `admin` or `owner`. The account is created if needed, otherwise its name and role are updated. `PODIUM_OWNER_EMAIL` always keeps the owner role.
+Request: `{"email":"asha@college.edu","name":"Asha Rao","role":"organiser","next":"/admin/problems"}`. `name` and `next` may be empty; `role` is `student`, `organiser` or `owner`. The account is created if needed, otherwise its name and role are updated. `PODIUM_OWNER_EMAIL` always keeps the owner role.
 
 | Status | Body |
 |---|---|
@@ -126,7 +126,7 @@ Request: `{"email":"asha@college.edu","name":"Asha Rao","role":"admin","next":"/
 | 400 `bad_request` | not an email address, or an unknown role |
 | 403 | `cross_site` (no `Origin`, or not the base URL), `testing_mode_local`, or `disabled` (an owner disabled the account) |
 
-Any session the browser already had ends. Nothing made here survives a change of mode: when the server next starts in `dev` or `production`, every session ends and every admin or owner without a linked Google account (other than `PODIUM_OWNER_EMAIL`) becomes a student again.
+Any session the browser already had ends. Nothing made here survives a change of mode: when the server next starts in `dev` or `production`, every session ends and every organiser or owner without a linked Google account (other than `PODIUM_OWNER_EMAIL`) becomes a student again.
 
 ### `GET /api/auth/google/start` (public, browser navigation)
 
@@ -136,7 +136,7 @@ Redirects (302) to Google's consent screen with PKCE, a nonce and a state value 
 
 ### `GET /api/auth/google/callback` (public, Google redirects here)
 
-Verifies the state, exchanges the code, verifies the ID token (signature, issuer, audience and authorised party, expiry, nonce, and `auth_time` no older than 5 minutes when present) and requires `email_verified`. An email may sign in when its domain is allowed, when the account already has the admin or owner role, or when it is `PODIUM_OWNER_EMAIL`. Each account is bound to the Google account (`sub`) that first signed in with it; a different Google account with the same address is refused. A college domain that has once signed in through Google Workspace refuses Google accounts without the matching `hd` claim. On success it creates the user if needed, ends any session the browser had, starts a new one and redirects to `next`.
+Verifies the state, exchanges the code, verifies the ID token (signature, issuer, audience and authorised party, expiry, nonce, and `auth_time` no older than 5 minutes when present) and requires `email_verified`. An email may sign in when its domain is allowed, when the account already has the organiser or owner role, or when it is `PODIUM_OWNER_EMAIL`. Each account is bound to the Google account (`sub`) that first signed in with it; a different Google account with the same address is refused. A college domain that has once signed in through Google Workspace refuses Google accounts without the matching `hd` claim. On success it creates the user if needed, ends any session the browser had, starts a new one and redirects to `next`.
 
 On failure it redirects to `/signin?error=<code>`:
 
@@ -186,13 +186,13 @@ The routes behind the Settings page. All need the owner role except the account 
 | Route | Request | Success | Errors |
 |---|---|---|---|
 | `GET /api/admin/people` | | 200 `{people, domains, disabled, organisation}` (below) | |
-| `POST /api/admin/people` | `{"email":"ta@college.edu","role":"admin"}`; `role` is `admin` or `owner`; the person need not have signed in | 200 the person, as in `people` | `400 bad_request` (email or role), `409 conflict` (the configured owner, or the change would leave no owner) |
+| `POST /api/admin/people` | `{"email":"ta@college.edu","role":"organiser"}`; `role` is `organiser` or `owner`; the person need not have signed in | 200 the person, as in `people` | `400 bad_request` (email or role), `409 conflict` (the configured owner, or the change would leave no owner) |
 | `DELETE /api/admin/people/{id}` | | 204: the person becomes a student and their sessions end | `404 not_found`, `409 conflict` (the configured owner, or the last owner) |
 | `POST /api/admin/accounts/reset-google` | `{"email":"asha@college.edu"}` | 204: unlinks the Google account and ends their sessions; the next Google account to sign in with the address is linked | `404 not_found` |
 | `POST /api/admin/accounts/end-sessions` | `{"email"}` | 200 `{"account": Account, "ended": 2}`: signs the person out everywhere; their open event streams close at the next clock tick (25 s at most) | `404 not_found` |
 | `POST /api/admin/accounts/disable` | `{"email"}` | 200 `{"account": Account, "ended": 1}`: ends every session; the account is refused at sign-in and at every signed-in route | `404 not_found`; `409 conflict` for `PODIUM_OWNER_EMAIL` and for disabling yourself |
 | `POST /api/admin/accounts/enable` | `{"email"}` | 200 `{"account": Account, "ended": 0}`: they may sign in again | `404 not_found` |
-| `GET /api/admin/accounts` (admin) | `?email=` | 200 `{"account": Account, "server_now"}` | `400 bad_request` without an email; `404 not_found` "Nobody with that email has an account."; anyone below admin gets the same `403` whether or not the address exists |
+| `GET /api/admin/accounts` (organiser) | `?email=` | 200 `{"account": Account, "server_now"}` | `400 bad_request` without an email; `404 not_found` "Nobody with that email has an account."; anyone below organiser gets the same `403` whether or not the address exists |
 | `POST /api/admin/domains` | `{"domain":"college.edu"}`, lower-cased, a leading `@` ignored | 201 `{"domain","created_at"}`; 200 with the existing entry when already there | `400 bad_request` |
 | `DELETE /api/admin/domains/{domain}` | | 204: stops sign-ins from the domain and ends its students' sessions; organisers on it keep access | `404 not_found` |
 | `PUT /api/admin/site-settings` | `Organisation`, every field present (`""` clears one) | 200 the saved `Organisation` | `400 bad_request` with `fields` |
@@ -209,7 +209,7 @@ The routes behind the Settings page. All need the owner role except the account 
   "organisation": { "name": "", "contact_email": "", "phone": "", "privacy_contact": "" } }
 ```
 
-`people` is everyone with the admin or owner role. `locked` is true for `PODIUM_OWNER_EMAIL`, whose owner role comes from the server configuration. `disabled` lists every disabled account, by email. The account lookup matches the address as sign-in stores it (trimmed, lower case) and never logs it.
+`people` is everyone with the organiser or owner role. `locked` is true for `PODIUM_OWNER_EMAIL`, whose owner role comes from the server configuration. `disabled` lists every disabled account, by email. The account lookup matches the address as sign-in stores it (trimmed, lower case) and never logs it.
 
 `Organisation`, shown in the footer, on the sign-in page and on the privacy page, stored in the server's `settings` table and never in an environment variable:
 
@@ -229,7 +229,7 @@ Every change to people, domains and the site, newest first, 100 per page. It ope
 ```json
 { "entries": [ { "id": 31, "at": 1792311120000, "action": "role_granted",
                  "actor": { "user_id": 1, "email": "owner@college.edu", "role": "owner" },
-                 "subject_email": "ta@college.edu", "details": { "role": "admin", "from_role": "student" } } ],
+                 "subject_email": "ta@college.edu", "details": { "role": "organiser", "from_role": "student" } } ],
   "page": 1, "has_more": false, "server_now": 1792311200000 }
 ```
 
@@ -253,9 +253,9 @@ Every change to people, domains and the site, newest first, 100 per page. It ope
 
 Show an unknown action by its name.
 
-## Problems (admin)
+## Problems (organiser)
 
-Every route here needs the admin role. The pack format and the rules for tests, subtasks, checkers and generators are in `docs/AUTHORING.md`. An `{id}` that is not a problem is `404 not_found` on every route.
+Every route here needs the organiser role. The pack format and the rules for tests, subtasks, checkers and generators are in `docs/AUTHORING.md`. An `{id}` that is not a problem is `404 not_found` on every route.
 
 | Route | Request | Success |
 |---|---|---|
@@ -385,9 +385,9 @@ Every route here needs the admin role. The pack format and the rules for tests, 
 
 - Inputs replace any test with the same number and clear its expected output until output generation fills it. The job records the content hash and a plan hash (generator plus plan) when queued; if either changed before it finished, nothing is applied.
 - Generator limits: 5 s per test before the language factor, 256 MB, 16 MB of output per test.
-- Each change of the job also reaches the admin who queued it as an `input_generation` event.
+- Each change of the job also reaches the organiser who queued it as an `input_generation` event.
 
-## AI wizard (admin)
+## AI wizard (organiser)
 
 The wizard drafts a problem from a brief or from pasted text, with Anthropic, OpenAI or Google Gemini. The routes are mounted when the server has the wizard's state (always in a normal build). Every answer carries `server_now`. A provider key is pasted per session and held in the server's memory only, for 2 hours, tied to the session and the provider: never stored, logged, sent to the judge or shown back. A session may hold one key per provider. Signing out, signing in again in the same browser, or a restart forgets them. Bodies of the key route are never logged.
 
@@ -411,7 +411,7 @@ The wizard drafts a problem from a brief or from pasted text, with Anthropic, Op
 
 `WizardRequest`: `{"mode":"brief","brief":{"topic","difficulty","constraints","subtasks"}}` or `{"mode":"paste","text":"..."}`. `difficulty` is `easy`, `medium` or `hard`; `topic` is required; each brief field is at most 2,000 characters and `text` at most 20,000. An optional `provider` picks which of the session's keys to use.
 
-`Wizard` (the admin's own runs, kept in memory for an hour after the end): `{id, kind: "generate", state, problem_id?, provider, model, started_at, server_now, error?: {code, message, reasons}}`. `state` is `thinking`, then `draft_created` or `error`. On success the draft is a new problem (origin `ai`, tag `ai draft`) and input generation is queued for it at once. The same object reaches the admin as a `wizard` event when the run ends. The call runs in the background, at most 3 minutes with its one retry.
+`Wizard` (the organiser's own runs, kept in memory for an hour after the end): `{id, kind: "generate", state, problem_id?, provider, model, started_at, server_now, error?: {code, message, reasons}}`. `state` is `thinking`, then `draft_created` or `error`. On success the draft is a new problem (origin `ai`, tag `ai draft`) and input generation is queued for it at once. The same object reaches the organiser as a `wizard` event when the run ends. The call runs in the background, at most 3 minutes with its one retry.
 
 | Status and code | When |
 |---|---|
@@ -421,7 +421,7 @@ The wizard drafts a problem from a brief or from pasted text, with Anthropic, Op
 | 409 `no_model` | the key was saved without a model |
 | 429 `busy` (`Retry-After: 10`) | "One AI request at a time. Wait for the current one to finish." |
 | 502 `provider_error` | the provider refused the model listing |
-| 404 `not_found` | another admin's run, an unknown id, or a run that ended over an hour ago or before a restart |
+| 404 `not_found` | another organiser's run, an unknown id, or a run that ended over an hour ago or before a restart |
 
 A run's `error.code` is one of `key_refused`, `no_quota`, `no_access`, `model_not_found`, `unsupported_model`, `rate_limited`, `unavailable`, `bad_request`, `refused` (the model declined), `cut_off` (too long, after one shorter retry), `invalid_answer` (with `reasons`, after one retry with them), `timeout`, `canceled`, `input`, `not_found` or `internal`. The messages name the provider and say what to do, for example "OpenAI refused the key. Check it and paste it again."
 
@@ -431,11 +431,11 @@ The workspace is where code is written, run and submitted. Under `/api/workspace
 
 | Route | Request | Success |
 |---|---|---|
-| `GET /api/workspace/{problem}` (admin) | | 200 `Workspace` |
-| `PUT /api/workspace/{problem}/draft` (admin) | `{"language":"cpp17","source":"..."}` | 204 |
-| `POST /api/workspace/{problem}/run` (admin) | `{"language","source","input"}`; leave out `input` to run the examples | 202 `Run` |
-| `POST /api/workspace/{problem}/submit` (admin) | `{"language","source","client_key","typed_chars","pasted_chars","focus_losses","fullscreen_exits"}` | 202 `Submission`; 200 with the first submission for a repeated `client_key` |
-| `POST /api/workspace/{problem}/events` (admin) | `{"events":[{"kind":"paste","size":120,"at":1792183192359}]}` | 204 |
+| `GET /api/workspace/{problem}` (organiser) | | 200 `Workspace` |
+| `PUT /api/workspace/{problem}/draft` (organiser) | `{"language":"cpp17","source":"..."}` | 204 |
+| `POST /api/workspace/{problem}/run` (organiser) | `{"language","source","input"}`; leave out `input` to run the examples | 202 `Run` |
+| `POST /api/workspace/{problem}/submit` (organiser) | `{"language","source","client_key","typed_chars","pasted_chars","focus_losses","fullscreen_exits"}` | 202 `Submission`; 200 with the first submission for a repeated `client_key` |
+| `POST /api/workspace/{problem}/events` (organiser) | `{"events":[{"kind":"paste","size":120,"at":1792183192359}]}` | 204 |
 | `GET /api/runs/{id}` (student) | | 200 `Run` |
 | `GET /api/submissions/{id}` (student) | | 200 `Submission` |
 
@@ -504,7 +504,7 @@ Times are rounded to 10 ms, or 100 ms for a student in a contest; `time_step_ms`
 | `hidden` | false; true only as a fail-safe when the server cannot read the submission's contest, and then the submission shows only that it was received |
 | `revealed` | practice only, below |
 
-A submission that counts never carries the input, output or checker comment of any test. What a student sees of their own submission is the same on every path (this route, the workspace list, the answer to a submit and the live events); admins see every figure:
+A submission that counts never carries the input, output or checker comment of any test. What a student sees of their own submission is the same on every path (this route, the workspace list, the answer to a submit and the live events); organisers see every figure:
 
 - no memory figure for hidden tests (`memory_kb` 0), `max_memory_kb` rounded up to the next 16 MB, times to 100 ms in a contest and 10 ms elsewhere;
 - while judging, per-test verdicts only inside finished blocks (the examples as a whole, each whole subtask), and `max_time_ms` and `max_memory_kb` stay 0 until the end, so polling shows no more than the live stream.
@@ -557,8 +557,8 @@ A `text/event-stream` for the signed-in user, read with `EventSource`; `Cache-Co
 | `statement` | `{"contest","contest_id","label","revision_id","statement_changed","pinned_at"}` | an organiser moved a problem of a published contest to a newer revision ("Update students now"); fetch the contest again |
 | `clarification` | `{"contest","contest_id","id"}` | a question was answered (to the asker, or everyone when public) or asked (to organisers) |
 | `contest` | `{"contest","contest_id","ends_at"}` | the end moved: the whole contest was extended, or this student got extra time (`ends_at` is then their own) |
-| `wizard` | a `Wizard` | an AI wizard run of this admin ended |
-| `input_generation` | an `InputGeneration` | a generate inputs job this admin queued changed |
+| `wizard` | a `Wizard` | an AI wizard run of this organiser ended |
+| `input_generation` | an `InputGeneration` | a generate inputs job this organiser queued changed |
 | `replaced` | `{}` | sent just before the server closes this stream because the user opened a fifth one; do not reconnect |
 
 ```
@@ -566,8 +566,8 @@ event: clock
 data: {"server_now":1792183192400}
 ```
 
-- Events for one run or submission arrive in order, and only when something visible changed: for an admin each test, for a student the examples finishing and each whole subtask finishing.
-- Contest events go to admins and owners with a stream open, and for a published contest to every signed-in student; the list is read when each event is sent.
+- Events for one run or submission arrive in order, and only when something visible changed: for an organiser each test, for a student the examples finishing and each whole subtask finishing.
+- Contest events go to organisers and owners with a stream open, and for a published contest to every signed-in student; the list is read when each event is sent.
 - On every `clock` tick the server checks the session again; a stream whose session ended is closed.
 - Each user may hold 4 streams; a fifth replaces the oldest, which gets `replaced`. The web app shares one stream between the pages of a tab.
 - During a contest, a student opening a stream from another browser or machine while one is open is recorded for the organisers as a second session. A phone or tablet that changes network stays the same device. Nothing is shown to the student.
@@ -575,7 +575,7 @@ data: {"server_now":1792183192400}
 
 ## Contests: students
 
-Every route needs a signed-in user. A published, unarchived contest is open to everyone who can sign in (the allowed domains decide who takes part); anything else is `404 not_found`. Admins and owners always get in and are never on the board. Every answer carries `server_now`.
+Every route needs a signed-in user. A published, unarchived contest is open to everyone who can sign in (the allowed domains decide who takes part); anything else is `404 not_found`. Organisers and owners always get in and are never on the board. Every answer carries `server_now`.
 
 | Route | Request | Success |
 |---|---|---|
@@ -587,7 +587,7 @@ Every route needs a signed-in user. A published, unarchived contest is open to e
 | `POST /api/contests/{slug}/problems/{label}/run` | as the workspace | 202 `Run` |
 | `POST /api/contests/{slug}/problems/{label}/submit` | as the workspace | 202 `Submission`; 200 for a repeated `client_key` |
 | `POST /api/contests/{slug}/problems/{label}/events` | as the workspace | 204 |
-| `GET /api/contests/{slug}/standings` | `?as=student` for an admin | 200 `Standings`: a student gets the board for their state; an admin the full board, or with `?as=student` the board students get now |
+| `GET /api/contests/{slug}/standings` | `?as=student` for an organiser | 200 `Standings`: a student gets the board for their state; an organiser the full board, or with `?as=student` the board students get now |
 | `POST /api/contests/{slug}/clarifications` | `{"problem_label":"A" or null,"question":"..."}` | 201 `{clarification, server_now}` |
 
 ### `ContestSummary` and `Contest`
@@ -633,7 +633,7 @@ The `Workspace` plus `{label, contest, window, can_submit, practice, refusal, re
 
 - The title, statement, limits and examples are those of the revision the contest pins, never the problem's working copy, so an organiser's edit reaches students only through "Update students now". `languages` lists only the contest's languages.
 - Submissions count while the student's own time is open. After it they are practice (judged at a lower priority, never on the board) when the contest allows practice and every student's time is over; otherwise run and submit are refused.
-- `can_submit` and `refusal` say whether run and submit work now, and why not. An admin can always run and submit, with a 5 s gap and the student view of the results.
+- `can_submit` and `refusal` say whether run and submit work now, and why not. An organiser can always run and submit, with a 5 s gap and the student view of the results.
 
 | Refusal | When |
 |---|---|
@@ -667,7 +667,7 @@ At most 5 unanswered questions per student per contest and 2,000 characters each
 
 ## Contests: organisers
 
-Every route here needs the admin role; a student gets `403 forbidden` before any contest is read. An `{id}` that is not a contest is `404 not_found`, and every id in a URL or body (a submission, a question, a label) is checked against the contest in the URL. Every change that can affect results writes a row to the contest's audit log in the same transaction.
+Every route here needs the organiser role; a student gets `403 forbidden` before any contest is read. An `{id}` that is not a contest is `404 not_found`, and every id in a URL or body (a submission, a question, a label) is checked against the contest in the URL. Every change that can affect results writes a row to the contest's audit log in the same transaction.
 
 | Route | Request | Success |
 |---|---|---|
@@ -733,7 +733,7 @@ The measures apply only during a student's own contest time. Blocking happens in
 
 ### Choosing problems
 
-`PUT .../problems` replaces the contest's problems: at most 26, each label a capital letter used once, each problem once. Each problem must exist, be validated and not be tagged `ai draft` (a person reads and saves an AI draft first); its content hash and subtask points are pinned. A problem whose origin is `ai` and for which no person has written a solution is `409 ai_unconfirmed` with the labels in `problems`, unless `ai_reason` (at least 10 characters) gives the admin's reason to grade it as written; the reason goes to the audit log and is not asked again for this contest. Once a published contest has shown students its hidden tests in practice, a change that drops one of its problems is `400` with `fields.problems`. Errors name the label, never the problem's title.
+`PUT .../problems` replaces the contest's problems: at most 26, each label a capital letter used once, each problem once. Each problem must exist, be validated and not be tagged `ai draft` (a person reads and saves an AI draft first); its content hash and subtask points are pinned. A problem whose origin is `ai` and for which no person has written a solution is `409 ai_unconfirmed` with the labels in `problems`, unless `ai_reason` (at least 10 characters) gives the organiser's reason to grade it as written; the reason goes to the audit log and is not asked again for this contest. Once a published contest has shown students its hidden tests in practice, a change that drops one of its problems is `400` with `fields.problems`. Errors name the label, never the problem's title.
 
 ### Update students now
 
@@ -766,7 +766,7 @@ The measures apply only during a student's own contest time. Blocking happens in
 |---|---|
 | `settings` | `{"changes": {"min_gap_s": {"from": 30, "to": 60}, ...}}`, times in Unix ms; the description and honour code are recorded as their sizes |
 | `problems` | `{"from": [{label, problem_id, pinned_hash, revision_id, rev}], "to": [...]}` |
-| `ai_problem` | `{label, problem_id, reason}`: an admin's reason to grade an AI problem as written |
+| `ai_problem` | `{label, problem_id, reason}`: an organiser's reason to grade an AI problem as written |
 | `revision` | "Update students now": `{label, problem_id, from_revision_id, from_rev, to_revision_id, to_rev, statement_changed, judging_changed}` |
 | `extension` | `{user_id, from_minutes, minutes, reason_given}` |
 | `extend` | `{minutes, extended_minutes}` |
@@ -777,9 +777,9 @@ The measures apply only during a student's own contest time. Blocking happens in
 
 Show an unknown action by its name.
 
-## Similar code (admin)
+## Similar code (organiser)
 
-After a contest an organiser runs a check for copied code, reads the ranked signals and the side-by-side view of a pair, downloads the similar pairs as CSV, and records one decision per student with a reason. Signals are reasons to look, not proof. The reviewer's guide is `docs/INTEGRITY.md`. Every route needs the admin role, every answer carries `server_now`, and a signal, student or decision from another contest is a `404`. A reviewer never sees a signal, pair, timeline, count row or decision about themselves (a student since made an organiser). The read routes share the per-user read limit.
+After a contest an organiser runs a check for copied code, reads the ranked signals and the side-by-side view of a pair, downloads the similar pairs as CSV, and records one decision per student with a reason. Signals are reasons to look, not proof. The reviewer's guide is `docs/INTEGRITY.md`. Every route needs the organiser role, every answer carries `server_now`, and a signal, student or decision from another contest is a `404`. A reviewer never sees a signal, pair, timeline, count row or decision about themselves (a student since made an organiser). The read routes share the per-user read limit.
 
 | Route | Request | Success |
 |---|---|---|

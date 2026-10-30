@@ -71,7 +71,7 @@
     return d === '' ? '' : (DIFFICULTIES.find((x) => x.id === d)?.label ?? d);
   }
 
-  const isOrganiser = $derived(session.user?.role === 'admin' || session.user?.role === 'owner');
+  const isOrganiser = $derived(session.user?.role === 'organiser' || session.user?.role === 'owner');
   const showArchived = $derived(router.query.get('archived') === '1');
 
   /** Handles errors every request can hit; returns true when it did. */

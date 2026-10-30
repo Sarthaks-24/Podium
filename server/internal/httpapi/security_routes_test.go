@@ -22,7 +22,7 @@ func TestOwnerEndsSessionsAndDisablesAccounts(t *testing.T) {
 	asha := s.signedIn("asha@college.edu", "Asha")
 	laptop := s.signedIn("asha@college.edu", "Asha")
 	admin := s.signedIn("prof@college.edu", "Prof")
-	owner.do("POST", "/api/admin/people", map[string]string{"email": "prof@college.edu", "role": "admin"}, o)
+	owner.do("POST", "/api/admin/people", map[string]string{"email": "prof@college.edu", "role": "organiser"}, o)
 
 	// Only owners have the account actions.
 	for _, path := range []string{"/api/admin/accounts/end-sessions", "/api/admin/accounts/disable", "/api/admin/accounts/enable"} {
@@ -141,7 +141,7 @@ func TestAccountLookup(t *testing.T) {
 	owner := s.signedIn("owner@college.edu", "Owner")
 	asha := s.signedIn("asha@college.edu", "Asha Rao")
 	admin := s.signedIn("prof@college.edu", "Prof")
-	owner.do("POST", "/api/admin/people", map[string]string{"email": "prof@college.edu", "role": "admin"}, o)
+	owner.do("POST", "/api/admin/people", map[string]string{"email": "prof@college.edu", "role": "organiser"}, o)
 
 	for who, b := range map[string]*browser{"owner": owner, "admin": admin} {
 		code, out := b.do("GET", "/api/admin/accounts?email=%20Asha@College.EDU%20", nil, "")

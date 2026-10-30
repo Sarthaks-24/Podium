@@ -27,12 +27,12 @@ describe('who may open a screen', () => {
 
   it('lets only owners into Settings', () => {
     expect(mayOpen(settings, 'owner')).toBe(true);
-    expect(mayOpen(settings, 'admin')).toBe(false);
+    expect(mayOpen(settings, 'organiser')).toBe(false);
     expect(mayOpen(settings, 'student')).toBe(false);
   });
 
   it('lets organisers of either role into the organiser screens', () => {
-    expect(mayOpen(bank, 'admin')).toBe(true);
+    expect(mayOpen(bank, 'organiser')).toBe(true);
     expect(mayOpen(bank, 'owner')).toBe(true);
     expect(mayOpen(bank, 'student')).toBe(false);
     expect(mayOpen(bank, undefined)).toBe(false);
@@ -53,7 +53,7 @@ describe('who may open a screen', () => {
 describe('main navigation', () => {
   it('names the links by role, Settings for owners only', () => {
     expect(mainNav('student').map((l) => l.label)).toEqual(['Contests']);
-    expect(mainNav('admin').map((l) => l.label)).toEqual(['Contests', 'Problems']);
+    expect(mainNav('organiser').map((l) => l.label)).toEqual(['Contests', 'Problems']);
     expect(mainNav('owner').map((l) => l.label)).toEqual(['Contests', 'Problems', 'Settings']);
   });
 

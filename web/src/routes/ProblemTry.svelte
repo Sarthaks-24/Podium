@@ -18,7 +18,7 @@
 
   let { id }: { id: string } = $props();
 
-  const isOrganiser = $derived(session.user?.role === 'admin' || session.user?.role === 'owner');
+  const isOrganiser = $derived(session.user?.role === 'organiser' || session.user?.role === 'owner');
 
   onMount(() => {
     if (!isOrganiser) setTitle(routeTitle('problems'));

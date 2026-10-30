@@ -56,8 +56,8 @@ func idOf(v any) string { return strconv.Itoa(int(v.(float64))) }
 func TestWizardWithFakeProvider(t *testing.T) {
 	s := newSiteMode(t, "testing")
 	s.logLevel.Set(slog.LevelDebug)
-	admin := s.testSignIn("ta@college.edu", "admin")
-	other := s.testSignIn("ta2@college.edu", "admin")
+	admin := s.testSignIn("ta@college.edu", "organiser")
+	other := s.testSignIn("ta2@college.edu", "organiser")
 	student := s.testSignIn("asha@college.edu", "student")
 
 	if code, _ := student.do("GET", "/api/admin/ai/key", nil, ""); code != 403 {
@@ -300,7 +300,7 @@ func errCode(body map[string]any) string {
 // TestSignOutForgetsAIKey: the key belongs to the session and goes with it.
 func TestSignOutForgetsAIKey(t *testing.T) {
 	s := newSiteMode(t, "testing")
-	b := s.testSignIn("ta@college.edu", "admin")
+	b := s.testSignIn("ta@college.edu", "organiser")
 	if code, _ := b.do("PUT", "/api/admin/ai/key", map[string]string{"provider": "fake"}, s.srv.URL); code != 200 {
 		t.Fatalf("add key: %d", code)
 	}
@@ -320,7 +320,7 @@ func TestSignOutForgetsAIKey(t *testing.T) {
 	if _, ok := s.ai.Keys.Get(token); ok {
 		t.Error("the key outlived sign-out")
 	}
-	b2 := s.testSignIn("ta@college.edu", "admin")
+	b2 := s.testSignIn("ta@college.edu", "organiser")
 	if _, st := b2.do("GET", "/api/admin/ai/key", nil, ""); st["active"] != false {
 		t.Errorf("a new session sees the old key: %v", st)
 	}
@@ -332,7 +332,7 @@ func TestSignOutForgetsAIKey(t *testing.T) {
 			token = c.Value
 		}
 	}
-	b2.do("POST", "/api/auth/test-signin", map[string]string{"email": "ta@college.edu", "role": "admin"}, s.srv.URL)
+	b2.do("POST", "/api/auth/test-signin", map[string]string{"email": "ta@college.edu", "role": "organiser"}, s.srv.URL)
 	if _, ok := s.ai.Keys.Get(token); ok {
 		t.Error("the key outlived a replaced session")
 	}

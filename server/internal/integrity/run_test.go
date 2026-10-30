@@ -51,7 +51,7 @@ func newRig(t *testing.T) *rig {
 	if err != nil {
 		t.Fatal(err)
 	}
-	mustExec(t, d, `INSERT INTO users (id, email, name, role, created_at) VALUES (100, 'o@college.edu', 'Organiser', 'admin', 0)`)
+	mustExec(t, d, `INSERT INTO users (id, email, name, role, created_at) VALUES (100, 'o@college.edu', 'Organiser', 'organiser', 0)`)
 	for u := 1; u <= 12; u++ {
 		mustExec(t, d, `INSERT INTO users (id, email, name, role, created_at) VALUES (?, ?, ?, 'student', 0)`,
 			u, "s"+itoa(u)+"@college.edu", "Student "+itoa(u))
@@ -231,7 +231,7 @@ func TestDecideRecordsOneDecisionPerStudent(t *testing.T) {
 	r := newRig(t)
 	ctx := context.Background()
 	r.submit(t, 7, "cpp17", "int main(){}", 100, nil)
-	by := contests.Actor{ID: 100, Email: "o@college.edu", Role: "admin"}
+	by := contests.Actor{ID: 100, Email: "o@college.edu", Role: "organiser"}
 	if _, err := r.svc.Decide(ctx, r.contest, 7, by, "excluded", "short"); err == nil {
 		t.Error("a short reason was accepted")
 	}

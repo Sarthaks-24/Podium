@@ -15,7 +15,7 @@
 
   let email = $state('');
   let name = $state('');
-  let role = $state<'student' | 'admin' | 'owner'>('student');
+  let role = $state<'student' | 'organiser' | 'owner'>('student');
   let busy = $state(false);
   let error = $state('');
 
@@ -61,7 +61,7 @@
     <label for="test-role">Role</label>
     <select id="test-role" class="select" name="role" bind:value={role}>
       <option value="student">Student</option>
-      <option value="admin">Organiser</option>
+      <option value="organiser">Organiser</option>
       <option value="owner">Owner</option>
     </select>
   </div>

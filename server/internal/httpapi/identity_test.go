@@ -283,8 +283,8 @@ func TestOwnerAddsAndRemovesAdmin(t *testing.T) {
 	}
 	origin := s.srv.URL
 
-	code, body := owner.do("POST", "/api/admin/people", map[string]string{"email": "TA@gmail.com", "role": "admin"}, origin)
-	if code != 200 || body["email"] != "ta@gmail.com" || body["role"] != "admin" {
+	code, body := owner.do("POST", "/api/admin/people", map[string]string{"email": "TA@gmail.com", "role": "organiser"}, origin)
+	if code != 200 || body["email"] != "ta@gmail.com" || body["role"] != "organiser" {
 		t.Fatalf("add admin: %d %v", code, body)
 	}
 	taID := int64(body["id"].(float64))
@@ -294,7 +294,7 @@ func TestOwnerAddsAndRemovesAdmin(t *testing.T) {
 	if final := ta.signIn(authtest.Person{Email: "ta@gmail.com", Verified: true, Name: "TA"}, "/"); final.Path != "/" {
 		t.Fatalf("admin on another domain landed on %s", final)
 	}
-	if code, role := ta.me(); code != 200 || role != "admin" {
+	if code, role := ta.me(); code != 200 || role != "organiser" {
 		t.Fatalf("admin: /api/me %d %q", code, role)
 	}
 
@@ -316,7 +316,7 @@ func TestOwnerAddsAndRemovesAdmin(t *testing.T) {
 	}
 
 	// The configured owner cannot be removed, and errors are JSON.
-	code, body = owner.do("POST", "/api/admin/people", map[string]string{"email": "owner@college.edu", "role": "admin"}, origin)
+	code, body = owner.do("POST", "/api/admin/people", map[string]string{"email": "owner@college.edu", "role": "organiser"}, origin)
 	if code != 409 || body["error"] == nil {
 		t.Errorf("changing the configured owner: %d %v", code, body)
 	}

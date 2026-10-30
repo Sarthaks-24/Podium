@@ -51,7 +51,7 @@
   const POLL_LIVE_MS = 6000;
 
   // The page loads nothing of its own: it is refused for students, or a request says so.
-  let forbidden = $state(session.user?.role !== 'admin' && session.user?.role !== 'owner');
+  let forbidden = $state(session.user?.role !== 'organiser' && session.user?.role !== 'owner');
   let keyStatus = $state<KeyStatus | null>(null);
   let keyError = $state('');
   /** The key form shown on request, when a key and a model are already set. */
