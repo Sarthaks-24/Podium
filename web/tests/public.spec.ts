@@ -1,6 +1,4 @@
-// The P3 public and contact pages (cache/v2-plan/phases/P3-public-pages.md
-// FP.1 to FP.3): sign-in with the organisation's details, the signed-in
-// contact form and the organisers' inbox (contract C6), and the privacy
+// The public pages: sign-in with the organisation's details and the privacy
 // page with its retention table from the config (C5). Every /api/ call is
 // answered by the mock below. The sweep saves screenshots to
 // cache/screenshots-v2-p3/<screen>-<width>-<theme>.png at 375, 768, 1024
@@ -51,25 +49,14 @@ function apiError(route: Route, status: number, code: string, message: string, e
   return json(route, status, { error: { code, message, ...extra } });
 }
 
-async function mockApi(page: Page, who: Who, options: { contactMode?: 'ok' | 'rate'; config?: unknown; siteUpdatedAt?: number; deleteFails?: boolean; live?: boolean } = {}) {
-  const state = {
-    who,
-    sent: [] as { topic: string; message: string }[],
-    deleted: [] as number[],
-    inboxQueries: [] as string[],
-    contactMode: options.contactMode ?? 'ok',
-    messages: [
-      { id: 12, topic: 'contest', message: 'The statement of problem B says 1 <= n but the sample has n = 0.\nWhich one is right?', created_at: NOW - 3_600_000, sender: { user_id: 7, email: 'asha@college.edu', name: 'Asha Rao', role: 'student' } },
-      { id: 11, topic: 'privacy', message: 'Please send me a copy of what podium keeps about me.', created_at: NOW - 86_400_000, sender: { user_id: 9, email: 'ravi@college.edu', name: '', role: 'student' } },
-    ],
-  };
+async function mockApi(page: Page, who: Who, options: { config?: unknown; siteUpdatedAt?: number; live?: boolean } = {}) {
+  const state = { who };
   await page.route(
     (url) => url.pathname.startsWith('/api/'),
     async (route) => {
       const req = route.request();
       const url = new URL(req.url());
       const path = url.pathname;
-      const method = req.method();
       const me = state.who === 'owner' ? OWNER : state.who === 'student' ? STUDENT : null;
       if (path === '/api/auth/config') return json(route, 200, options.config ?? CONFIG);
       if (path === '/api/me') return me ? json(route, 200, { ...me, site_updated_at: options.siteUpdatedAt ?? null }) : apiError(route, 401, 'signed_out', 'Sign in to continue.');
@@ -83,28 +70,6 @@ async function mockApi(page: Page, who: Who, options: { contactMode?: 'ok' | 'ra
       }
       if (path === '/api/integrity/cases') return json(route, 200, { cases: [], contests: {}, problems: {} });
       if (path === '/api/admin/contests') return json(route, 200, { contests: [], server_now: NOW });
-      if (path === '/api/contact' && method === 'POST') {
-        const body = req.postDataJSON() as { topic: string; message: string };
-        if (state.contactMode === 'rate') {
-          return apiError(route, 429, 'rate_limited', 'You have sent 5 messages in the last 24 hours. Try again tomorrow, or email the organisers.', { retry_after_s: 3600 });
-        }
-        state.sent.push(body);
-        return json(route, 201, { id: 13, created_at: NOW });
-      }
-      if (path === '/api/admin/contact' && method === 'GET') {
-        if (me.role === 'student') return apiError(route, 403, 'forbidden', 'You do not have access to this. Ask an owner if you need it.');
-        state.inboxQueries.push(url.search);
-        if (url.searchParams.get('before') === '11') {
-          return json(route, 200, { messages: [{ id: 3, topic: 'other', message: 'An old note.', created_at: NOW - 30 * 86_400_000, sender: { user_id: 4, email: 'neha@college.edu', name: 'Neha Gupta', role: 'student' } }], has_more: false, server_now: NOW });
-        }
-        return json(route, 200, { messages: state.messages.filter((m) => !state.deleted.includes(m.id)), has_more: true, server_now: NOW });
-      }
-      const del = path.match(/^\/api\/admin\/contact\/(\d+)$/);
-      if (del && method === 'DELETE') {
-        if (options.deleteFails) return apiError(route, 500, 'internal', 'The message could not be deleted. Try again in a moment.');
-        state.deleted.push(Number(del[1]));
-        return json(route, 204);
-      }
       return apiError(route, 404, 'not_found', 'This API route does not exist.');
     },
   );
