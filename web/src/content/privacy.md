@@ -17,7 +17,7 @@ podium does not record the keys you press, your screen, your camera, or anything
 
 - **You** see your own submissions, runs, drafts and questions.
 - **Other students** see your name, your place and your scores on a contest's standings, never your email. If you ask a question and the organisers answer it for everyone, others see the question and the answer, not who asked.
-- **The organisers** (owners and organisers) see everything listed above for every contest, including your email, your code, and the paste, focus and full-screen records on a contest's similar-code screens.
+- **Organisers and owners** see everything listed above for every contest, including your email, your code, and the paste, focus and full-screen records on a contest's similar-code screens.
 - **Only owners** manage accounts and roles, and see the record of what was done to an account.
 - **Google** handles your sign-in, which asks only for your name, email and picture. podium sends nothing else to Google.
 - Your code is judged on podium's own server, in a sandbox. It is never sent to an AI service. Organisers may use an AI service to draft problems; that uses the text they type, never anything about you.
