@@ -125,6 +125,7 @@ func New(d Deps) http.Handler {
 	mux.HandleFunc("POST /api/admin/people/import", admin(people.ImportPeople))
 	mux.HandleFunc("POST /api/admin/people/remove", admin(people.RemovePerson))
 	mux.HandleFunc("POST /api/admin/people/let-in", admin(people.LetIn))
+	mux.HandleFunc("PUT /api/admin/signin", admin(people.SetSignIn))
 	mux.HandleFunc("GET /api/admin/site-audit", admin(people.SiteAudit))
 	mux.HandleFunc("PUT /api/admin/site-settings", owner(people.SetSiteSettings))
 

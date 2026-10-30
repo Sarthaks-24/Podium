@@ -116,7 +116,12 @@ func (d *Handlers) ListPeople(w http.ResponseWriter, r *http.Request) {
 		d.internalError(w, r, err)
 		return
 	}
-	httpx.WriteJSON(w, http.StatusOK, map[string]any{"people": people, "list": list, "counts": counts, "refused": refused,
+	open, err := d.Auth.SignInOpen(r.Context())
+	if err != nil {
+		d.internalError(w, r, err)
+		return
+	}
+	httpx.WriteJSON(w, http.StatusOK, map[string]any{"people": people, "list": list, "signin_open": open, "counts": counts, "refused": refused,
 		"disabled": disabled, "organisation": org})
 }
 
@@ -261,6 +266,26 @@ func (d *Handlers) RemovePerson(w http.ResponseWriter, r *http.Request) {
 	}
 	d.Log.Info("person removed from the list", "by", UserFrom(r.Context()).ID, "deleted", deleted, "domain", DomainOf(req.Email))
 	httpx.WriteJSON(w, http.StatusOK, map[string]any{"deleted": deleted})
+}
+
+// SetSignIn opens or closes sign-in for everyone below admin.
+func (d *Handlers) SetSignIn(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Open *bool `json:"open"`
+	}
+	if !httpx.DecodeJSON(w, r, &req) {
+		return
+	}
+	if req.Open == nil {
+		httpx.WriteError(w, http.StatusBadRequest, "bad_request", "Send open as true or false.")
+		return
+	}
+	if err := d.Auth.SetSignInOpen(r.Context(), *req.Open); err != nil {
+		d.internalError(w, r, err)
+		return
+	}
+	d.Log.Info("sign-in switch set", "by", UserFrom(r.Context()).ID, "open", *req.Open)
+	httpx.WriteJSON(w, http.StatusOK, map[string]bool{"open": *req.Open})
 }
 
 // LetIn adds a refused address to the list.

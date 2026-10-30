@@ -121,7 +121,12 @@ func (d Deps) authConfig(w http.ResponseWriter, r *http.Request) {
 	if contactEmail == "" {
 		contactEmail = d.Auth.OwnerEmail
 	}
-	httpx.WriteJSON(w, http.StatusOK, map[string]any{"contact_email": contactEmail, "mode": mode,
+	open, err := d.Auth.SignInOpen(r.Context())
+	if err != nil {
+		d.internalError(w, r, err)
+		return
+	}
+	httpx.WriteJSON(w, http.StatusOK, map[string]any{"contact_email": contactEmail, "mode": mode, "signin_open": open,
 		"organisation": org, "retention": retention.Periods()})
 }
 
@@ -226,6 +231,9 @@ func (d Deps) googleCallback(w http.ResponseWriter, r *http.Request) {
 	case errors.Is(err, auth.ErrNotListed):
 		d.Log.Info("sign-in refused: not on the list", "domain", auth.DomainOf(id.Email))
 		fail("not_listed")
+		return
+	case errors.Is(err, auth.ErrSignInClosed):
+		fail("closed")
 		return
 	case errors.Is(err, auth.ErrUnverified):
 		fail("unverified")

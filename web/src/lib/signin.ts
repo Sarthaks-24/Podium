@@ -10,9 +10,9 @@
 export type MessagePart = string | { email: string };
 
 /** The error codes /api/auth/google/callback can send back (docs/API.md). */
-export type SignInErrorCode = 'not_listed' | 'unverified' | 'disabled' | 'account' | 'expired' | 'google' | 'server' | 'rate_limited';
+export type SignInErrorCode = 'not_listed' | 'closed' | 'unverified' | 'disabled' | 'account' | 'expired' | 'google' | 'server' | 'rate_limited';
 
-const ERROR_CODES: readonly SignInErrorCode[] = ['not_listed', 'unverified', 'disabled', 'account', 'expired', 'google', 'server', 'rate_limited'];
+const ERROR_CODES: readonly SignInErrorCode[] = ['not_listed', 'closed', 'unverified', 'disabled', 'account', 'expired', 'google', 'server', 'rate_limited'];
 
 /** Narrows a ?error= value to a known code, or null. A bookmarked v3 "domain" reads as not on the list. */
 export function parseErrorCode(value: string | null): SignInErrorCode | null {
@@ -38,6 +38,8 @@ export function errorMessage(
   switch (code) {
     case 'not_listed':
       return ['Your email is not on the list for this site. Ask ', who, ' to add it.'];
+    case 'closed':
+      return ['Sign-in is closed right now. Ask ', who, ' when it opens again.'];
     case 'unverified':
       return ['Google has not verified this email address yet. Verify it with Google, then try again.'];
     case 'disabled':

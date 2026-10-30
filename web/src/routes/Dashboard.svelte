@@ -55,6 +55,7 @@
   let counts = $state<ListCounts>({ on_list: 0, signed_in: 0, never_came: 0 });
   let refused = $state<Refusal[]>([]);
   let disabled = $state<Account[]>([]);
+  let signInOpen = $state(true);
   let org = $state<Organisation>({ name: '', contact_email: '', phone: '', privacy_contact: '' });
 
   function apply(data: PeopleData) {
@@ -63,6 +64,7 @@
     counts = data.counts ?? { on_list: 0, signed_in: 0, never_came: 0 };
     refused = data.refused ?? [];
     disabled = data.disabled ?? [];
+    signInOpen = data.signin_open !== false;
     if (data.organisation) org = { ...org, ...data.organisation };
   }
 
@@ -113,7 +115,7 @@
       <LiveTab active={tab === 'live'} onforbidden={forbid} />
     </div>
     <div id="settings-panel-sign-in" role="tabpanel" aria-labelledby="settings-tab-sign-in" hidden={tab !== 'sign-in'}>
-      <SignInTab bind:disabled bind:people owner={isOwner} onforbidden={forbid} />
+      <SignInTab bind:open={signInOpen} bind:disabled bind:people owner={isOwner} onforbidden={forbid} />
     </div>
     {#if isOwner}
       <div id="settings-panel-organisation" role="tabpanel" aria-labelledby="settings-tab-organisation" hidden={tab !== 'organisation'}>

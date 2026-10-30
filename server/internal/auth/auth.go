@@ -156,8 +156,9 @@ func (s *Service) SignIn(ctx context.Context, id Identity, ip, userAgent string)
 		return User{}, "", time.Time{}, ErrNotListed
 	}
 	var disabled bool
+	var role Role
 	var boundSub sql.NullString
-	if err := tx.QueryRowContext(ctx, "SELECT disabled, google_sub FROM users WHERE id = ?", userID).Scan(&disabled, &boundSub); err != nil {
+	if err := tx.QueryRowContext(ctx, "SELECT role, disabled, google_sub FROM users WHERE id = ?", userID).Scan(&role, &disabled, &boundSub); err != nil {
 		return User{}, "", time.Time{}, err
 	}
 	// The account is bound to the first Google account that signed in with
@@ -176,6 +177,17 @@ func (s *Service) SignIn(ctx context.Context, id Identity, ip, userAgent string)
 	}
 	if disabled {
 		return User{}, "", time.Time{}, ErrDisabled
+	}
+	// A closed switch keeps everyone below admin out, so admins and owners
+	// can always get in to open it again.
+	if !role.AtLeast(Admin) {
+		open, err := signInOpen(ctx, tx)
+		if err != nil {
+			return User{}, "", time.Time{}, err
+		}
+		if !open {
+			return User{}, "", time.Time{}, ErrSignInClosed
+		}
 	}
 
 	now := s.now()

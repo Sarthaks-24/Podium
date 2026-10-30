@@ -47,6 +47,8 @@
 
   {#if error}
     <p class="banner banner-error error" role="alert"><Message parts={error} /></p>
+  {:else if ready && !testing && !runMode.signInOpen}
+    <p class="banner error" role="status">Sign-in is closed right now. Organisers can still sign in.</p>
   {/if}
 
   {#if testing}

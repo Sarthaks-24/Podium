@@ -77,6 +77,8 @@ export const SITE_ACTIONS: readonly { id: string; label: string }[] = [
   { id: 'list_imported', label: 'List pasted' },
   { id: 'person_removed', label: 'Removed from the list' },
   { id: 'let_in', label: 'Let in' },
+  { id: 'signin_closed', label: 'Sign-in closed' },
+  { id: 'signin_opened', label: 'Sign-in opened' },
   { id: 'account_disabled', label: 'Account disabled' },
   { id: 'account_enabled', label: 'Account enabled' },
   { id: 'sessions_ended', label: 'Sessions ended' },
@@ -126,6 +128,10 @@ export function siteAuditSummary(e: Pick<SiteAuditEntry, 'action' | 'subject_ema
       return `Added ${countOf(typeof d.added === 'number' ? d.added : 0, 'person', 'people')} to the list`;
     case 'person_removed':
       return d.deleted === true ? `Removed ${who} from the list` : `Removed ${who} from the list and disabled the account${ended(d.sessions_ended)}`;
+    case 'signin_closed':
+      return 'Closed sign-in for everyone below admin';
+    case 'signin_opened':
+      return 'Opened sign-in';
     case 'let_in':
       return `Let ${who} in after a refused sign-in`;
     // Rows from before v4 (V4-15).

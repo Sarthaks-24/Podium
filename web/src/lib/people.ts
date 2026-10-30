@@ -74,6 +74,8 @@ export interface PeopleData {
   list?: ListedPerson[];
   counts?: ListCounts;
   refused?: Refusal[];
+  /** False while sign-in is closed (V4-17). */
+  signin_open?: boolean;
   disabled?: Account[];
   organisation?: Organisation;
 }

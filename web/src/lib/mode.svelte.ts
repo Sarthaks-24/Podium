@@ -35,6 +35,8 @@ export interface RetentionPeriod {
 export interface SiteConfig {
   contact_email: string;
   mode: RunMode;
+  /** False while an owner or an admin has closed sign-in (V4-17). */
+  signin_open: boolean;
   organisation: Organisation;
   retention: RetentionPeriod[];
 }
@@ -45,6 +47,7 @@ class ModeState {
   mode = $state<RunMode | 'unknown'>('unknown');
   /** The organisers' contact email, or "" until the config loads or when none is set. */
   contactEmail = $state('');
+  signInOpen = $state(true);
   organisation = $state<Organisation>({ ...EMPTY_ORG });
   retention = $state<RetentionPeriod[]>([]);
   /** "loading" until the first answer; "failed" when it could not be read. */
@@ -71,6 +74,7 @@ export function parseConfig(raw: unknown): SiteConfig {
   return {
     contact_email: text(c.contact_email),
     mode: parseMode(c.mode),
+    signin_open: c.signin_open !== false,
     organisation: { name: text(org.name), contact_email: text(org.contact_email), phone: text(org.phone), privacy_contact: text(org.privacy_contact) },
     retention: rows
       .filter((r): r is Record<string, unknown> => typeof r === 'object' && r !== null)
@@ -90,6 +94,7 @@ export function parseConfig(raw: unknown): SiteConfig {
 export function applyConfig(c: SiteConfig): void {
   runMode.mode = c.mode;
   runMode.contactEmail = c.contact_email;
+  runMode.signInOpen = c.signin_open;
   runMode.organisation = c.organisation;
   runMode.retention = c.retention;
   runMode.status = 'ready';

@@ -54,6 +54,11 @@ describe('errorMessage', () => {
     );
   });
 
+  it('says sign-in is closed, and whom to ask (V4-17)', () => {
+    expect(text('closed')).toBe('Sign-in is closed right now. Ask owner@college.edu when it opens again.');
+    expect(parseErrorCode('closed')).toBe('closed');
+  });
+
   it('gives the fixed sentences', () => {
     expect(text('unverified')).toBe('Google has not verified this email address yet. Verify it with Google, then try again.');
     expect(text('disabled')).toBe('This account has been disabled. Ask owner@college.edu if you think this is a mistake.');

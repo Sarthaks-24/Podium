@@ -7,7 +7,10 @@
   is ("Asha Rao, student, last signed in ..."); until it has named one, or
   when there is none, the three actions stay disabled, and each
   confirmation names the person. Successes are toasts; form errors sit
-  under their form, tied to the inputs. Props: `owner` (only owners may
+  under their form, tied to the inputs. Above them, the sign-in switch:
+  closing it keeps everyone below admin from starting a new session (it
+  asks first), opening it is one press. Props: `open` (bindable, the
+  switch), `owner` (only owners may
   reset a Google link; admins do not see it), `disabled` and
   `people` (all bindable; a disable or enable marks the organiser's row
   too) and `onforbidden` (the person is no longer an owner).
@@ -22,16 +25,18 @@
   import { showToast } from '../../lib/toast.svelte';
 
   interface Props {
+    open: boolean;
     owner: boolean;
     disabled: Account[];
     people: Person[];
     onforbidden: () => void;
   }
 
-  let { owner, disabled = $bindable(), people = $bindable(), onforbidden }: Props = $props();
+  let { open = $bindable(), owner, disabled = $bindable(), people = $bindable(), onforbidden }: Props = $props();
 
   type AccountAction = 'reset' | 'end-sessions' | 'disable' | 'enable';
-  type Pending = { kind: AccountAction; email: string } | null;
+  type Pending = { kind: AccountAction; email: string } | { kind: 'close' } | null;
+  let switching = $state(false);
 
   let accountEmail = $state('');
   let accountError = $state('');
@@ -92,6 +97,12 @@
 
   const confirmCopy = $derived.by(() => {
     switch (pending?.kind) {
+      case 'close':
+        return {
+          title: 'Close sign-in?',
+          body: 'Nobody below admin can sign in until you open it again. People signed in now stay signed in.',
+          label: 'Close sign-in',
+        };
       case 'reset':
         return {
           title: `Reset the Google account link for ${accountName(pending.email)}?`,
@@ -115,6 +126,19 @@
     }
     return { title: '', body: '', label: 'Remove' };
   });
+
+  async function setOpen(next: boolean) {
+    switching = true;
+    try {
+      await sendJSON<{ open: boolean }>('PUT', '/api/admin/signin', { open: next });
+      open = next;
+      showToast(next ? 'Opened sign-in' : 'Closed sign-in');
+    } catch (err) {
+      if (!settingsRefused(err, onforbidden)) showToast(errorText(err), 'error');
+    } finally {
+      switching = false;
+    }
+  }
 
   /** Checks the account email and asks before a reset, sign-out or disable. */
   function askAccount(kind: 'reset' | 'end-sessions' | 'disable') {
@@ -161,13 +185,25 @@
     if (!target) return;
     busy = true;
     try {
-      await runAccount(target.kind, target.email);
+      if (target.kind === 'close') await setOpen(false);
+      else await runAccount(target.kind, target.email);
     } finally {
       busy = false;
       pending = null;
     }
   }
 </script>
+
+<section class="section" aria-labelledby="switch-heading">
+  <h2 id="switch-heading">Sign-in</h2>
+  {#if open}
+    <p class="intro">Sign-in is open: everyone on the list can sign in.</p>
+    <button type="button" class="btn btn-secondary btn-danger-secondary switch" disabled={switching} onclick={() => (pending = { kind: 'close' })}>Close sign-in</button>
+  {:else}
+    <p class="intro"><strong>Sign-in is closed.</strong> Only admins and owners can sign in; people signed in now stay signed in.</p>
+    <button type="button" class="btn btn-primary switch" disabled={switching} onclick={() => setOpen(true)}>Open sign-in</button>
+  {/if}
+</section>
 
 <section class="section" aria-labelledby="help-heading">
   <h2 id="help-heading">Account help</h2>
@@ -289,6 +325,10 @@
 
   .who {
     max-width: var(--measure-form);
+  }
+
+  .switch {
+    margin-top: var(--space-3);
   }
 
   .subhead {

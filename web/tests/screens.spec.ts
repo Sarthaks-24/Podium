@@ -720,3 +720,28 @@ test('the Live tab shows the five lines and reads them again only while it is op
   await page.clock.runFor(15000);
   expect(reads).toBe(2);
 });
+
+test('closing sign-in asks first, the sign-in page then says so, and opening is one press (O6)', async ({ page }) => {
+  const api = await mockApi(page, 'owner');
+  await page.goto('/admin/dashboard?tab=sign-in');
+  await expect(page.getByText('Sign-in is open: everyone on the list can sign in.')).toBeVisible();
+  await page.getByRole('button', { name: 'Close sign-in' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Close sign-in?' });
+  await expect(dialog).toContainText('People signed in now stay signed in.');
+  await dialog.getByRole('button', { name: 'Close sign-in' }).click();
+  await expect(toasts(page).getByText('Closed sign-in', { exact: true })).toBeVisible();
+  await expect(page.getByText('Sign-in is closed.')).toBeVisible();
+  expect(api.signinOpen).toBe(false);
+
+  api.who = 'signed-out';
+  await page.goto('/signin');
+  await expect(page.getByRole('status').filter({ hasText: 'Sign-in is closed right now. Organisers can still sign in.' })).toBeVisible();
+  await page.goto('/signin?error=closed');
+  await expect(page.getByRole('alert')).toContainText('Sign-in is closed right now. Ask priya@college.edu when it opens again.');
+
+  api.who = 'owner';
+  await page.goto('/admin/dashboard?tab=sign-in');
+  await page.getByRole('button', { name: 'Open sign-in' }).click();
+  await expect(toasts(page).getByText('Opened sign-in', { exact: true })).toBeVisible();
+  expect(api.signinOpen).toBe(true);
+});

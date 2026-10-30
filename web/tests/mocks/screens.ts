@@ -59,6 +59,7 @@ export async function mockApi(page: Page, who: Who) {
     students: structuredClone(STUDENTS),
     refused: structuredClone(REFUSED),
     imports: [] as { text: string; dry_run: boolean }[],
+    signinOpen: true,
     nextId: 10,
     resets: [] as string[],
     disabled: [] as { id: number; email: string; name: string; role: string; disabled: boolean; last_login_at: number | null }[],
@@ -81,7 +82,7 @@ export async function mockApi(page: Page, who: Who) {
         state.people.push({ id: ADMIN.id, email: ADMIN.email, name: ADMIN.name, role: 'admin', last_login_at: 1792180000000, locked: false });
       }
 
-      if (path === '/api/auth/config' && method === 'GET') return json(route, 200, CONFIG);
+      if (path === '/api/auth/config' && method === 'GET') return json(route, 200, { ...CONFIG, signin_open: state.signinOpen });
       if (path === '/api/auth/logout' && method === 'POST') {
         state.who = 'signed-out';
         return json(route, 204);
@@ -117,7 +118,11 @@ export async function mockApi(page: Page, who: Who) {
         const list = [...state.people, ...state.students].map((p) => ({ ...p, disabled: off(p.email) }));
         const on = list.filter((p) => !p.disabled);
         const counts = { on_list: on.length, signed_in: on.filter((p) => p.last_login_at !== null).length, never_came: on.filter((p) => p.last_login_at === null).length };
-        return json(route, 200, { people: state.people, list, counts, refused: state.refused, disabled: state.disabled, organisation: state.organisation });
+        return json(route, 200, { people: state.people, list, counts, signin_open: state.signinOpen, refused: state.refused, disabled: state.disabled, organisation: state.organisation });
+      }
+      if (path === '/api/admin/signin' && method === 'PUT') {
+        state.signinOpen = (req.postDataJSON() as { open: boolean }).open;
+        return json(route, 200, { open: state.signinOpen });
       }
       if (path === '/api/admin/live' && method === 'GET') {
         return json(route, 200, { server_now: Date.now(), signed_in_now: 42, judge_last_seen_s: 3, queued: 2, submit_wait_p50_ms: 2400, disk_free_mb: 18432, database_mb: 54, last_backup_at: null });

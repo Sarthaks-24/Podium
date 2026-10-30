@@ -39,7 +39,7 @@ func TestConfigCarriesOrganisationAndRetention(t *testing.T) {
 	// Nothing about contests, counts or the release before sign-in.
 	for k := range body {
 		switch k {
-		case "allowed_domains", "contact_email", "mode", "organisation", "retention":
+		case "contact_email", "mode", "organisation", "retention", "signin_open":
 		default:
 			t.Errorf("config carries %q", k)
 		}

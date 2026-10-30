@@ -112,6 +112,7 @@ What the sign-in page, the footer and the privacy page need before anyone signs 
 ```json
 { "contact_email": "podium@college.edu",
   "mode": "production",
+  "signin_open": true,
   "organisation": { "name": "Example College of Engineering", "contact_email": "podium@college.edu",
                     "phone": "+91 80 1234 5678", "privacy_contact": "privacy@college.edu" },
   "retention": [
@@ -122,6 +123,7 @@ What the sign-in page, the footer and the privacy page need before anyone signs 
 |---|---|
 | `contact_email` | the address to show as the organisers' contact: `organisation.contact_email` once an owner has entered one, otherwise `PODIUM_OWNER_EMAIL` |
 | `mode` | `testing`, `dev` or `production`. In `testing` the web app shows the test sign-in form and the testing-mode banner instead of "Continue with Google" |
+| `signin_open` | `false` while an owner or an admin has closed sign-in (V4-17); the sign-in page then says so |
 | `organisation` | the site settings an owner enters under Settings, Organisation: `name`, `contact_email`, `phone`, `privacy_contact`, each `""` until entered; a page shows nothing for an empty field |
 | `retention` | every retention period the server applies, in the order the privacy page lists them, from `server/internal/retention/periods.go`. The privacy page renders its table from this list |
 
@@ -155,6 +157,7 @@ On failure it redirects to `/signin?error=<code>`:
 
 | Code | Meaning |
 |---|---|
+| `closed` | sign-in is closed (Dashboard, Sign-in tab) and the person is below admin; sessions already open keep working |
 | `not_listed` | the email is not on the list of people; the page says "Your email is not on the list for this site. Ask the organiser to add it." (a v3 `domain` link reads the same) |
 | `unverified` | Google has not verified the address |
 | `disabled` | an owner disabled the account |
@@ -210,11 +213,12 @@ An admin acts only on students and organisers, and gives only the organiser role
 | `GET /api/admin/accounts` (organiser) | `?email=` | 200 `{"account": Account, "server_now"}` | `400 bad_request` without an email; `404 not_found` "Nobody with that email has an account."; anyone below organiser gets the same `403` whether or not the address exists |
 | `POST /api/admin/people/import` | `{"text":"a@college.edu, b@college.edu","dry_run":true}`: addresses separated by commas, semicolons, spaces or new lines, at most 500 | 200 `{added, duplicates, invalid}`, each a list of addresses; with `dry_run` nothing is saved, so the page shows the counts first; the second call saves the same answer. Added people are students. A duplicate is an address already on the list or earlier in the paste (compared as sign-in compares) | `400 bad_request` (more than 500) |
 | `POST /api/admin/people/remove` | `{"email"}` | 200 `{"deleted": true}` for someone who never signed in (the row goes); `{"deleted": false}` for someone who did: the account is disabled and every session ends, because their submissions point at it | `404 not_found`, `403 not_allowed` (an admin out of bounds), `409 conflict` (`PODIUM_OWNER_EMAIL`, yourself, the last owner) |
+| `PUT /api/admin/signin` | `{"open": false}` | 200 `{"open": false}`: closes (or opens) sign-in for everyone below admin; setting what it already is changes nothing | `400 bad_request` without `open` |
 | `POST /api/admin/people/let-in` | `{"email"}` | 204: the address is on the list as a student (if it was not) and its refused row is gone | `400 bad_request`, `403 not_allowed` |
 | `PUT /api/admin/site-settings` | `Organisation`, every field present (`""` clears one) | 200 the saved `Organisation` | `400 bad_request` with `fields` |
 | `GET /api/admin/site-audit` | `?page=&action=&q=&since=&until=` | 200 `{entries, page, has_more, server_now}` (below) | |
 
-`GET /api/admin/people` answers:
+`GET /api/admin/people` answers (with `signin_open` beside the fields below):
 
 ```json
 { "people": [ { "id": 1, "email": "owner@college.edu", "name": "Priya Raman", "role": "owner",
@@ -266,6 +270,7 @@ Every change to people, the sign-in list and the site, newest first, 100 per pag
 | `list_imported` | `""` | `{added, duplicates, invalid}` (counts) |
 | `person_removed` | the person | `{deleted, sessions_ended}` |
 | `let_in` | the person | `{}` |
+| `signin_closed`, `signin_opened` | `""` | `{}` |
 | `domain_added`, `domain_removed` | `""` | `{domain}`, `{domain, sessions_ended}`: only in rows from before v4 |
 | `account_disabled` | the person | `{sessions_ended}` |
 | `account_enabled` | the person | `{}` |
