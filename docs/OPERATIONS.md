@@ -346,11 +346,15 @@ Read by `podium-alert@.service` and `podium-check.service`; template `deploy/ale
 
 ### Judge token
 
-1. Generate it once: `openssl rand -hex 32`.
+The installer sets it (v4): when `sudo ./install.sh dirs` creates `server.env` and `judge.env`, it writes one random token (32 bytes as hex) into both, mode 600 and owned by root, and never prints it. A re-run keeps the token already in either file, so the judge keeps working.
+
+To rotate it:
+
+1. Generate a new one: `openssl rand -hex 32`.
 2. Put the same value in `/etc/podium/server.env` and `/etc/podium/judge.env` as `PODIUM_JUDGE_TOKEN` (`sudoedit` each file).
 3. `sudo systemctl restart podium-server podium-judge`.
 
-To rotate it, repeat all three steps. A job the old worker held is handed out again once its lease runs out (60 s).
+Rotating means all three steps. A job the old worker held is handed out again once its lease runs out (60 s).
 
 ### Stopping the judge
 

@@ -276,6 +276,34 @@ example_for() {
 # As podium the same call can only change what podium already owns.
 as_podium_install() { setpriv --reuid=podium --regid=podium --init-groups -- install "$@"; }
 
+# shared_judge_token DIR: the PODIUM_JUDGE_TOKEN new env files in DIR get
+# (v4 NB). A real token already in server.env or judge.env is kept, so a
+# re-run never rotates one the judge already holds; otherwise 32 random
+# bytes as hex. The caller keeps it in a variable and never prints it.
+shared_judge_token() {
+  local f t
+  for f in "$1/server.env" "$1/judge.env"; do
+    t=$(envval "$f" PODIUM_JUDGE_TOKEN)
+    if [[ -n $t && $t != change-me ]]; then
+      printf '%s' "$t"
+      return
+    fi
+  done
+  head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n'
+}
+
+# put_judge_token FILE: sets PODIUM_JUDGE_TOKEN in FILE to $JUDGE_TOKEN.
+# The value comes through the environment, never a command line other
+# users could read in ps, and the temporary copy is mode 600 from the
+# start; FILE keeps its own mode and owner.
+put_judge_token() {
+  local tmp="$1.tmp"
+  install -m 600 /dev/null "$tmp"
+  awk '/^PODIUM_JUDGE_TOKEN=/ { print "PODIUM_JUDGE_TOKEN=" ENVIRON["JUDGE_TOKEN"]; next } { print }' "$1" > "$tmp"
+  cat "$tmp" > "$1"
+  rm -f "$tmp"
+}
+
 step_dirs() {
   log "dirs: data, tests, judge cache, config"
   install -d -o podium -g podium -m 750 /var/lib/podium
@@ -289,9 +317,14 @@ step_dirs() {
   install -d -o judge  -g judge  -m 750 /var/cache/podium-judge
   install -d -o root   -g root   -m 755 /etc/podium
   local svc
+  # v4 NB: one judge token for both new files, kept from an existing file
+  # on a re-run; it is never printed, only passed through the environment.
+  local JUDGE_TOKEN
+  JUDGE_TOKEN=$(shared_judge_token /etc/podium)
   for svc in server judge; do
     [[ -e /etc/podium/$svc.env ]] && continue
     install -o root -g root -m 600 "$(example_for "$svc")" "/etc/podium/$svc.env"
+    JUDGE_TOKEN=$JUDGE_TOKEN put_judge_token "/etc/podium/$svc.env"
     if [[ $svc == server ]]; then
       # The examples carry local relative paths; the VM uses absolute ones
       # (the server unit runs with a read-only filesystem outside them).
@@ -1096,8 +1129,8 @@ checklist() {
   cat <<'EOF'
 
 First-run checklist (docs/OPERATIONS.md, "Install")
-  1. Fill in /etc/podium/server.env and /etc/podium/judge.env (the same
-     PODIUM_JUDGE_TOKEN in both), then: sudo ./install.sh app
+  1. Fill in /etc/podium/server.env and /etc/podium/judge.env (the judge
+     token is already set, the same in both), then: sudo ./install.sh app
   2. Fill in /etc/podium/litestream.env, then: sudo systemctl restart podium-litestream
   3. Fill in /etc/podium/backup.env (heartbeat URL),
      then: sudo systemctl start podium-backup

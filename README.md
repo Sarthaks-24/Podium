@@ -88,9 +88,7 @@ The VM is Ubuntu 24.04 on **amd64 or arm64**. `make release` builds for amd64; `
 ```sh
 tar xzf podium-<version>.tar.gz && cd podium-<version>
 sudo ./install.sh                 # every step; skips what needs a value you have not set yet
-openssl rand -hex 32              # the judge token: same value in server.env and judge.env
-sudoedit /etc/podium/server.env   # fill in the values (docs/OPERATIONS.md, Configuration)
-sudoedit /etc/podium/judge.env    # PODIUM_JUDGE_TOKEN
+sudoedit /etc/podium/server.env   # fill in the values (docs/OPERATIONS.md, Configuration); the judge token is already set in both files
 sudo ./install.sh app             # starts the server and the judge once no placeholder is left
 sudoedit /etc/podium/litestream.env   # the database bucket and its key
 sudo systemctl restart podium-litestream

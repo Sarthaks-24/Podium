@@ -4,6 +4,10 @@ Dated entries per release. Unreleased work is listed at the top.
 
 ## Unreleased
 
+### v4 stage N: the env files (2026-10-31)
+
+- The installer now sets the judge token for you: when `sudo ./install.sh dirs` creates `/etc/podium/server.env` and `judge.env`, it writes one random `PODIUM_JUDGE_TOKEN` into both (mode 600, owned by root) and never prints it. A re-run keeps the token already in either file. The first-run checklist and the README no longer ask you to make one; rotating it is still the three steps in docs/OPERATIONS.md. The two files keep their layout (option B, V4-11).
+
 ### v4 stage P: the public site (2026-10-31)
 
 - Signed out, `/` is now a short landing page instead of a jump to sign-in: what Podium is for at this college, what students and organisers do in it, how a contest works in three lines, and "Sign in with your college Google account". Every other page still asks to sign in first.

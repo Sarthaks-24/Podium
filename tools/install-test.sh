@@ -311,5 +311,44 @@ opened='-A INPUT -p tcp -m state --state NEW -m tcp --dport 80 -j ACCEPT
 -A INPUT -j REJECT --reject-with icmp-host-prohibited'
 if input_order_ok "$opened"; then pass "http and https accepted ahead of a REJECT pass"; else fail "accepts ahead of a REJECT failed the order check"; fi
 
+# v4 NB: the installer makes one judge token for both new env files, keeps
+# an existing one on a re-run, and never prints it.
+eval "$(grep '^envval()' -A3 "$script")"
+eval "$(fn shared_judge_token)"
+eval "$(fn put_judge_token)"
+envdir=$tmp/etc-podium
+mkdir -p "$envdir"
+t1=$(shared_judge_token "$envdir")
+t2=$(shared_judge_token "$envdir")
+if [[ $t1 =~ ^[0-9a-f]{64}$ && $t1 != "$t2" ]]; then pass "a new judge token is 32 random bytes as hex"; else fail "new judge token: '${#t1}' characters, repeat equal: $([[ $t1 == "$t2" ]] && echo yes || echo no)"; fi
+printf 'PODIUM_MODE=production\nPODIUM_JUDGE_TOKEN=change-me\nPODIUM_LOG_LEVEL=info\n' > "$envdir/server.env"
+cp "$envdir/server.env" "$envdir/judge.env"
+JUDGE_TOKEN=$t1 put_judge_token "$envdir/server.env"
+JUDGE_TOKEN=$t1 put_judge_token "$envdir/judge.env"
+if [[ $(envval "$envdir/server.env" PODIUM_JUDGE_TOKEN) == "$t1" && $(envval "$envdir/judge.env" PODIUM_JUDGE_TOKEN) == "$t1" ]]; then
+  pass "both new env files get the same judge token"
+else
+  fail "the two env files' judge tokens differ"
+fi
+if [[ $(envval "$envdir/server.env" PODIUM_MODE) == production && $(envval "$envdir/server.env" PODIUM_LOG_LEVEL) == info && ! -e $envdir/server.env.tmp ]]; then
+  pass "writing the token keeps the other lines and leaves no temporary copy"
+else
+  fail "put_judge_token changed other lines or left server.env.tmp"
+fi
+if [[ $(shared_judge_token "$envdir") == "$t1" ]]; then pass "a re-run keeps the token the judge already holds"; else fail "a re-run made a new judge token"; fi
+rm "$envdir/server.env"
+if [[ $(shared_judge_token "$envdir") == "$t1" ]]; then pass "a re-run with only judge.env left keeps its token"; else fail "judge.env's token was not kept"; fi
+if fn step_dirs | grep -E '(echo|printf|log)[^#]*JUDGE_TOKEN' >/dev/null || fn put_judge_token | grep -E 'awk .*\$JUDGE_TOKEN|sed .*JUDGE_TOKEN' >/dev/null; then
+  fail "the judge token is printed or put on a command line"
+else
+  pass "the judge token is never printed and never on a command line"
+fi
+if fn step_dirs | grep -q 'install -o root -g root -m 600 "$(example_for "$svc")"' && fn put_judge_token | grep -q 'install -m 600 /dev/null'; then
+  pass "both env files and the temporary copy are mode 600"
+else
+  fail "an env file or the temporary copy is not created mode 600"
+fi
+if fn checklist | grep -q 'the same$' || ! fn checklist | grep -q 'token is already set'; then fail "the first-run checklist still asks for the judge token"; else pass "the first-run checklist no longer asks for the judge token"; fi
+
 if (( fails > 0 )); then echo "$fails install.sh check(s) failed"; exit 1; fi
 echo "install.sh checks passed"
