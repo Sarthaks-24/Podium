@@ -4,6 +4,18 @@ Dated entries per release. Unreleased work is listed at the top.
 
 ## Unreleased
 
+### v4 audit (2026-10-31)
+
+- CI passes again: on Linux the editor's Shift+Alt+Up and Down added a cursor (the VS Code keymap follows VS Code on Linux) instead of copying the line as the shortcut table says. They copy the line on every system now.
+- Built with Go 1.27.3 (11 standard-library fixes that reach net/http, crypto/tls and crypto/x509) and DOMPurify 3.4.17 (two advisories). CI now runs govulncheck and `npm audit` for the shipped packages, cancels a run a newer push replaced, and time-limits every job.
+- Security: a path such as `/%5Cevil.example/` no longer redirects off the site; choosing a role on the testing sign-in form no longer changes a Google-linked person's stored role, so nothing set in testing mode outlives it; the configured owner is protected in any Gmail spelling of the address; a 42-byte zip no longer crashes the pack reader into a 500; in production the judge refuses a plain-http server address that is not loopback.
+- Submit and Run stop waiting after 30 seconds without an answer and offer Retry. A retried submission the server already has still counts once, and the notice says so.
+- Your contests reloads when a countdown runs out, so Upcoming turns into Live without a manual reload.
+- The console says when the questions could not load instead of "No questions yet", keeps the last list, and no longer sends an open History of changes back to page one every 10 seconds.
+- Leaving the window saves the draft once instead of two or three times, so the status no longer ends on "kept on this device" when the server has the code.
+- Migration `0006_v4_indexes` adds four indexes (the organisers' submission feed, contests a student started, a contest's announcements, contests that pin a problem). Indexes only; an older binary refuses the newer schema, as after every migration.
+- `docs/API.md` held the whole document twice since stage P; the copy is gone. Dead code from the v2 and v3 removals is deleted.
+
 ### v4 stage N: the env files (2026-10-31)
 
 - The installer now sets the judge token for you: when `sudo ./install.sh dirs` creates `/etc/podium/server.env` and `judge.env`, it writes one random `PODIUM_JUDGE_TOKEN` into both (mode 600, owned by root) and never prints it. A re-run keeps the token already in either file. The first-run checklist and the README no longer ask you to make one; rotating it is still the three steps in docs/OPERATIONS.md. The two files keep their layout (option B, V4-11).
