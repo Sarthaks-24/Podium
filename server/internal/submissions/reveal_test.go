@@ -91,7 +91,7 @@ func TestRunRevealsTheFirstFailingSample(t *testing.T) {
 	}
 
 	// The first failing sample is the one revealed.
-	*r.clock = r.clock.Add(3e9)
+	r.clock.advance(3e9)
 	run, _ = r.svc.Run(ctx, RunRequest{ProblemID: p.ID, UserID: 1, Language: "python3", Source: "print(4)"})
 	r.report(t, judgeapi.KindRun, func(*judgeapi.Claim) []judgeapi.TestResult {
 		return []judgeapi.TestResult{
@@ -106,7 +106,7 @@ func TestRunRevealsTheFirstFailingSample(t *testing.T) {
 	}
 
 	// Every test passing reveals nothing.
-	*r.clock = r.clock.Add(3e9)
+	r.clock.advance(3e9)
 	run, _ = r.svc.Run(ctx, RunRequest{ProblemID: p.ID, UserID: 1, Language: "python3", Source: "print(5)"})
 	r.judgeNext(t, judgeapi.KindRun, nil)
 	got, _ = r.svc.GetRunWith(ctx, run.ID, StudentView)
@@ -173,8 +173,8 @@ func TestPracticeRevealsAndContestNever(t *testing.T) {
 	// A submission that counts: the judge may not send output, and no
 	// view carries revealed, in either feedback mode.
 	for _, mode := range []ViewOptions{{Coarse: true, RoundMS: 100}, {Coarse: true, RoundMS: 100, Hide: true}} {
-		*r.clock = r.clock.Add(10e9)
-		sub, _, err := r.svc.Submit(ctx, SubmitRequest{ProblemID: p.ID, UserID: 2, Language: "cpp17", Source: "contest" + strings.Repeat("x", int(r.clock.Unix()%7)),
+		r.clock.advance(10e9)
+		sub, _, err := r.svc.Submit(ctx, SubmitRequest{ProblemID: p.ID, UserID: 2, Language: "cpp17", Source: "contest" + strings.Repeat("x", int(r.clock.now().Unix()%7)),
 			Scope: Scope{ContestID: 9, View: mode}})
 		if err != nil {
 			t.Fatal(err)

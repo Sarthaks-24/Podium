@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -25,7 +26,26 @@ type rig struct {
 	bank  *problems.Service
 	jobs  *jobs.Service
 	hub   *events.Hub
-	clock *time.Time
+	clock *testClock
+}
+
+// testClock is the rig's clock. Tests move it while the live-update
+// goroutines OnJobChange starts read it, so both go through a mutex.
+type testClock struct {
+	mu sync.Mutex
+	t  time.Time
+}
+
+func (c *testClock) now() time.Time {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.t
+}
+
+func (c *testClock) advance(d time.Duration) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.t = c.t.Add(d)
 }
 
 func newRig(t *testing.T) *rig {
@@ -42,9 +62,8 @@ func newRig(t *testing.T) *rig {
 	if _, err := d.Exec(`INSERT INTO users (id, email, role, created_at) VALUES (1, 'a@college.edu', 'organiser', 0), (2, 'b@college.edu', 'organiser', 0)`); err != nil {
 		t.Fatal(err)
 	}
-	now := time.UnixMilli(1_800_000_000_000)
-	clock := &now
-	tick := func() time.Time { return *clock }
+	clock := &testClock{t: time.UnixMilli(1_800_000_000_000)}
+	tick := clock.now
 	blobs := problems.Blobs{Dir: filepath.Join(t.TempDir(), "tests")}
 	j := &jobs.Service{DB: d, Now: tick, Kinds: map[string]jobs.Kind{
 		judgeapi.KindValidate: problems.ValidateKind{Now: tick},
@@ -187,7 +206,7 @@ func TestSubmitGapIsPerProblem(t *testing.T) {
 		t.Fatal(err)
 	}
 	r.judgeNext(t, judgeapi.KindSubmit, nil)
-	*r.clock = r.clock.Add(5 * time.Second)
+	r.clock.advance(5 * time.Second)
 	if err := submit(b, "b1"); err != nil {
 		t.Errorf("B 5 s after A: %v", err)
 	}
@@ -195,7 +214,7 @@ func TestSubmitGapIsPerProblem(t *testing.T) {
 	if err := submit(a, "a2"); !errors.As(err, &rate) || !strings.Contains(rate.Error(), "one every 30 seconds") {
 		t.Errorf("A again inside its gap: %v", err)
 	}
-	*r.clock = r.clock.Add(26 * time.Second)
+	r.clock.advance(26 * time.Second)
 	if err := submit(a, "a3"); err != nil {
 		t.Errorf("A after its gap: %v", err)
 	}
@@ -240,12 +259,12 @@ func TestSubmitScoresAndStreams(t *testing.T) {
 	}
 
 	// Too soon after the last one.
-	*r.clock = r.clock.Add(10 * time.Second)
+	r.clock.advance(10 * time.Second)
 	_, _, err = r.svc.Submit(ctx, SubmitRequest{ProblemID: p.ID, UserID: 1, Scope: sc, Language: "cpp17", Source: "y", ClientKey: "k3"})
 	if !errors.As(err, &rate) || rate.RetryAfter != 20*time.Second || !strings.Contains(rate.Message, "Try again in 20 s") {
 		t.Errorf("gap: %v", err)
 	}
-	*r.clock = r.clock.Add(25 * time.Second)
+	r.clock.advance(25 * time.Second)
 	w, _, err := r.svc.Submit(ctx, SubmitRequest{ProblemID: p.ID, UserID: 1, Scope: sc, Language: "cpp17", Source: "y", ClientKey: "k3"})
 	if err != nil {
 		t.Fatal(err)
@@ -311,7 +330,7 @@ func TestRunOnSamplesAndCustomInput(t *testing.T) {
 		run.Results[0].Expected == nil || *run.Results[0].Expected != "3\n7\n" || run.Results[1].Verdict != "WA" {
 		t.Errorf("run %+v", run)
 	}
-	*r.clock = r.clock.Add(3 * time.Second) // runs are 2 s apart at least
+	r.clock.advance(3 * time.Second) // runs are 2 s apart at least
 	in := "1\n5 6\n"
 	custom, err := r.svc.Run(ctx, RunRequest{ProblemID: p.ID, UserID: 1, Language: "python3", Source: "print(11)", Input: &in})
 	if err != nil {

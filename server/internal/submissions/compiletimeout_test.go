@@ -52,7 +52,7 @@ func TestCompileTimeoutSlowsDownOnlyThatUser(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	*r.clock = r.clock.Add(5 * time.Second)
+	r.clock.advance(5 * time.Second)
 	var rate *RateError
 	for name, err := range map[string]error{"run": run(1), "submit": submit(1)} {
 		if !errors.As(err, &rate) || !strings.Contains(rate.Message, "took too long to compile. Try again in 55 seconds") ||
@@ -70,7 +70,7 @@ func TestCompileTimeoutSlowsDownOnlyThatUser(t *testing.T) {
 		t.Errorf("another user's submit refused: %v", err)
 	}
 
-	*r.clock = r.clock.Add(56 * time.Second)
+	r.clock.advance(56 * time.Second)
 	if err := run(1); err != nil {
 		t.Errorf("run after 60 s: %v", err)
 	}
@@ -93,7 +93,7 @@ func TestOrdinaryCompileErrorDoesNotSlowDown(t *testing.T) {
 	if err := r.jobs.Report(ctx, rep); err != nil {
 		t.Fatal(err)
 	}
-	*r.clock = r.clock.Add(5 * time.Second)
+	r.clock.advance(5 * time.Second)
 	if _, err := r.svc.Run(ctx, RunRequest{ProblemID: p.ID, UserID: 1, Language: "cpp17", Source: "x"}); err != nil {
 		t.Errorf("run after an ordinary compile error: %v", err)
 	}

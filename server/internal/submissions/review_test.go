@@ -121,7 +121,7 @@ func TestClientKeyIsPerProblem(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	*r.clock = r.clock.Add(time.Minute)
+	r.clock.advance(time.Minute)
 	b, dup, err := r.svc.Submit(ctx, SubmitRequest{ProblemID: second.ID, UserID: 1, Language: "cpp17", Source: "x", ClientKey: "k"})
 	if err != nil || dup || b.ID == a.ID {
 		t.Errorf("same key on another problem: %v dup=%v", err, dup)
@@ -132,7 +132,7 @@ func TestEventTimesFromTheBrowser(t *testing.T) {
 	r := newRig(t)
 	ctx := context.Background()
 	p := r.importPack(t, nil)
-	now := r.clock.UnixMilli()
+	now := r.clock.now().UnixMilli()
 	evs := []Event{{Kind: "blur", At: now - 30_000}, {Kind: "blur", At: now + 60_000}, {Kind: "blur", At: now - time.Hour.Milliseconds()}}
 	if err := r.svc.RecordEvents(ctx, p.ID, 1, Scope{}, evs); err != nil {
 		t.Fatal(err)

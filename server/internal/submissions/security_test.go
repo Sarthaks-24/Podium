@@ -117,7 +117,7 @@ func TestDraftAndEventRateLimits(t *testing.T) {
 	if err := r.svc.SaveDraft(ctx, p.ID, 2, Scope{}, "python3", "b"); err != nil {
 		t.Errorf("another user is not limited: %v", err)
 	}
-	*r.clock = r.clock.Add(2 * time.Second)
+	r.clock.advance(2 * time.Second)
 	if err := r.svc.SaveDraft(ctx, p.ID, 1, Scope{}, "python3", "c"); err != nil {
 		t.Errorf("draft after the gap: %v", err)
 	}
@@ -133,7 +133,7 @@ func TestDraftAndEventRateLimits(t *testing.T) {
 	if err := r.svc.RecordEvents(ctx, p.ID, 1, Scope{}, []Event{{Kind: "blur"}}); !errors.As(err, &rate) {
 		t.Errorf("second batch within 5 s: %v", err)
 	}
-	*r.clock = r.clock.Add(5 * time.Second)
+	r.clock.advance(5 * time.Second)
 	if err := r.svc.RecordEvents(ctx, p.ID, 1, Scope{}, []Event{{Kind: "blur"}}); err != nil {
 		t.Errorf("batch after the gap: %v", err)
 	}
