@@ -528,7 +528,9 @@
           readOnly={layout !== 'wide'}
           blockPaste={exam?.block_paste ?? false}
           onpasteblocked={() => (pasteNote = showToast(PASTE_BLOCKED))}
-          oncursor={(line, col) => (draft.cursor = { line, col })}
+          oncursor={(line, col) => {
+            draft.cursor = { line, col };
+          }}
           onchange={(s) => draft.change(s)}
           ontyped={(n) => {
             integrity?.typedChars(n);
