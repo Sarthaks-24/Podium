@@ -343,6 +343,13 @@ export const SCREENS: Screen[] = [
     ready: (page) => expect(page.getByText('Only admins and owners can open the Dashboard.')).toBeVisible(),
   },
   {
+    name: 'landing',
+    path: '/',
+    who: 'signed-out',
+    title: 'Programming contests · podium',
+    ready: (page) => expect(page.getByRole('heading', { level: 1, name: 'Programming contests at this college' })).toBeVisible(),
+  },
+  {
     name: 'privacy',
     path: '/privacy',
     who: 'signed-out',

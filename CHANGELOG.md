@@ -4,6 +4,10 @@ Dated entries per release. Unreleased work is listed at the top.
 
 ## Unreleased
 
+### v4 stage P: the public site (2026-10-31)
+
+- Signed out, `/` is now a short landing page instead of a jump to sign-in: what Podium is for at this college, what students and organisers do in it, how a contest works in three lines, and "Sign in with your college Google account". Every other page still asks to sign in first.
+
 ### v4 stage M: the profile (2026-10-31)
 
 - Your profile (`/me`, from the account menu) shows your Google picture, or your initials while it loads or when it cannot, with your name, email, role, when you joined and when you last signed in (`GET /api/me/profile`), then your theme and colours and your code editor settings: the same controls as the account menu's dialog and the editor's Settings. Only you see it. The picture is the first image in Podium and is fetched without a referrer.

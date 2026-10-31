@@ -21,6 +21,7 @@
   import Toasts from './components/Toasts.svelte';
   import PageHeader from './components/PageHeader.svelte';
   import PageState from './components/PageState.svelte';
+  import Landing from './routes/Landing.svelte';
   import ThemeMenu from './components/ThemeMenu.svelte';
   import { regions } from './lib/announce.svelte';
   import { setTitle } from './lib/head';
@@ -50,7 +51,9 @@
     if (session.status === 'signed-out') stopAllStreams();
   });
   const isOrganiser = $derived(organises(session.user?.role));
-  const needsSignIn = $derived(route.auth && session.status === 'signed-out');
+  // v4 P1 (V4-8): a signed-out / is the landing page, not a bounce to sign-in.
+  const showLanding = $derived(route.name === 'home' && session.status === 'signed-out');
+  const needsSignIn = $derived(route.auth && session.status === 'signed-out' && !showLanding);
   const leaveSignIn = $derived(route.name === 'signin' && signedIn);
   // A contest problem in the workspace: on a phone the student's link row
   // gives way to the workspace strip.
@@ -264,6 +267,8 @@
   >
     {#if session.status === 'loading' || needsSignIn || leaveSignIn || organiserHome}
       <p class="visually-hidden" role="status">Loading</p>
+    {:else if showLanding}
+      <Landing />
     {:else if !allowed}
       <PageHeader title={route.title} />
       <PageState kind="forbidden" message={forbiddenText(route)} />
