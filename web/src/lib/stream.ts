@@ -243,8 +243,9 @@ export class EventStream {
     const r = this.o.poll();
     if (r instanceof Promise) {
       r.catch((e: unknown) => {
+        // Anything else is retried on the next tick; rethrowing here only
+        // made an unhandled rejection.
         if (e instanceof ApiError && e.status === 401) this.stop();
-        else throw e;
       });
     }
   }

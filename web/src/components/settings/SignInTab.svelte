@@ -76,6 +76,7 @@
     }
     if (untrack(() => lookup?.email) === e) return;
     lookupTimer = setTimeout(() => void lookUp(e), 250);
+    return () => clearTimeout(lookupTimer);
   });
 
   async function lookUp(e: string) {

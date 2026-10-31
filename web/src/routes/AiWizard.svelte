@@ -236,7 +236,8 @@
     if (resume) {
       wizard = { id: resume, state: 'thinking' };
       void pollWizard().then(() => {
-        if (wizardPending(wizard)) startWatch();
+        // Left before the first answer: the cleanup below already ran.
+        if (alive && wizardPending(wizard)) startWatch();
       });
     }
     return () => {

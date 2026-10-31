@@ -139,13 +139,20 @@
     }
   }
 
+  // The address being let in, so a double click sends one request.
+  let lettingIn = $state('');
+
   async function letIn(r: Refusal) {
+    if (lettingIn) return;
+    lettingIn = r.email;
     try {
       await sendJSON<void>('POST', '/api/admin/people/let-in', { email: r.email });
       showToast(`Let ${r.email} in. They can sign in now.`);
       await onreload();
     } catch (err) {
       if (!settingsRefused(err, onforbidden)) showToast(errorText(err), 'error');
+    } finally {
+      lettingIn = '';
     }
   }
 
@@ -313,7 +320,7 @@
             {r.email}
             <span class="muted small"><MonoDigits text={`${countOf(r.count, 'time')}, last ${formatDateTime(r.last_at)}`} /></span>
           </span>
-          <button type="button" class="btn btn-secondary btn-compact" aria-label="Let {r.email} in" onclick={() => letIn(r)}>Let in</button>
+          <button type="button" class="btn btn-secondary btn-compact" aria-label="Let {r.email} in" disabled={lettingIn === r.email} onclick={() => letIn(r)}>Let in</button>
         </li>
       {/each}
     </ul>
