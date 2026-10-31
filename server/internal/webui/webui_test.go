@@ -81,6 +81,19 @@ func TestRedirects(t *testing.T) {
 	}
 }
 
+// TestRedirectStaysOnSite checks paths a browser would read as another host
+// once redirected: it turns a backslash into a slash and drops tabs and newlines.
+func TestRedirectStaysOnSite(t *testing.T) {
+	h := handlerFor(testBase, fstest.MapFS{"index.html": {Data: []byte("shell")}})
+	for _, p := range []string{"/%5Cevil.example/", "/%09/evil.example/", "/%0A/evil.example/", "/a%5C/"} {
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, httptest.NewRequest("GET", p, nil))
+		if loc := rec.Header().Get("Location"); loc != "" || rec.Code != http.StatusNotFound {
+			t.Errorf("GET %s: %d to %q, want 404 and no redirect", p, rec.Code, loc)
+		}
+	}
+}
+
 // TestNotFoundServesShell checks that an unknown path still gets the app,
 // which draws the "Page not found" screen, with the status a crawler reads.
 func TestNotFoundServesShell(t *testing.T) {

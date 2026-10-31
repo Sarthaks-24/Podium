@@ -73,8 +73,10 @@ func handlerFor(base string, dist fs.FS) http.Handler {
 		}
 		name := strings.TrimPrefix(path.Clean(r.URL.Path), "/")
 		// One address per page: a trailing slash goes to the cleaned path,
-		// which never starts with "//", so the redirect cannot leave the site.
-		if r.URL.Path != "/" && strings.HasSuffix(r.URL.Path, "/") {
+		// which never starts with "//". A browser reads a backslash as a slash
+		// and drops tabs and newlines, so "/\evil.com" would leave the site:
+		// no page has those characters, and such a path gets the 404 instead.
+		if r.URL.Path != "/" && strings.HasSuffix(r.URL.Path, "/") && !strings.ContainsFunc(name, offSite) {
 			to := "/" + name
 			if r.URL.RawQuery != "" {
 				to += "?" + r.URL.RawQuery
@@ -161,6 +163,10 @@ func appRoute(p string) bool {
 	}
 	return slices.ContainsFunc(appPrefixes, func(pre string) bool { return strings.HasPrefix(p, pre) })
 }
+
+// offSite reports a character that makes a browser read a redirect target
+// differently from the server: a backslash, or a control character.
+func offSite(r rune) bool { return r == '\\' || r < 0x20 || r == 0x7f }
 
 func notBuilt(w http.ResponseWriter, _ *http.Request) {
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
