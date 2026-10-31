@@ -462,3 +462,18 @@ test('Ctrl+Enter in the find panel never submits', async ({ page }) => {
   await page.waitForTimeout(300);
   expect(api.submits).toHaveLength(0);
 });
+
+// CodeMirror picks its Linux bindings from navigator.platform, so this runs the
+// Linux keys on any machine. The VS Code keymap adds a cursor on Shift+Alt+Up
+// and Down there; the table promises copying the line on Linux too.
+test('Shift+Alt+Down copies the line on Linux', async ({ page }) => {
+  await page.addInitScript(() => Object.defineProperty(Navigator.prototype, 'platform', { get: () => 'Linux x86_64' }));
+  await mockApi(page, { draft: { language: 'cpp17', source: 'int a;' } });
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await openWorkspace(page);
+  await setCode(page, 'a');
+  await page.keyboard.press('Shift+Alt+ArrowDown');
+  await code(page).toBe('a\na');
+  await page.keyboard.press('Shift+Alt+ArrowUp');
+  await code(page).toBe('a\na\na');
+});

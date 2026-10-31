@@ -12,7 +12,7 @@
  * and drop and tells the caller, so the workspace can say why.
  */
 import { autocompletion, closeBrackets, closeBracketsKeymap, closeCompletion, completeAnyWord, completeFromList, currentCompletions, snippetCompletion, type Completion } from '@codemirror/autocomplete';
-import { defaultKeymap, history, historyKeymap, indentMore, indentWithTab, selectParentSyntax } from '@codemirror/commands';
+import { copyLineDown, copyLineUp, defaultKeymap, history, historyKeymap, indentMore, indentWithTab, selectParentSyntax } from '@codemirror/commands';
 import { bracketMatching, foldGutter, HighlightStyle, indentOnInput, indentRange, indentUnit, syntaxHighlighting } from '@codemirror/language';
 import { forEachDiagnostic, lintGutter, previousDiagnostic, setDiagnostics, setDiagnosticsEffect, type Diagnostic } from '@codemirror/lint';
 import {
@@ -257,6 +257,10 @@ const toggleQuery =
 
 const extraKeys: KeyBinding[] = [
   { key: 'Mod-Shift-Enter', run: insertLineAbove, preventDefault: true },
+  // The replit keymap follows VS Code on Linux, where Shift+Alt+Up and Down add
+  // a cursor; the shortcut table promises copying the line on Linux too.
+  { key: 'Shift-Alt-ArrowUp', run: copyLineUp, preventDefault: true },
+  { key: 'Shift-Alt-ArrowDown', run: copyLineDown, preventDefault: true },
   { key: 'Mod-h', run: openSearchPanel, scope: 'editor search-panel', preventDefault: true },
   { key: 'F3', run: findNext, shift: findPrevious, scope: 'editor search-panel', preventDefault: true },
   { key: 'Alt-c', run: toggleQuery('caseSensitive'), scope: 'search-panel' },
