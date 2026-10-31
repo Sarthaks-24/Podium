@@ -94,6 +94,40 @@ func TestRecordModeUndoesTestingMode(t *testing.T) {
 	}
 }
 
+// TestTestSignInKeepsRealRoles: RecordMode leaves Google-linked rows alone,
+// so a testing-mode sign-in must not change their role, or picking "owner"
+// on the form for a real person would survive the switch to production.
+func TestTestSignInKeepsRealRoles(t *testing.T) {
+	s, _ := newService(t)
+	ctx := context.Background()
+	if _, err := s.RecordMode(ctx, "production"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.GrantRole(asOwner(ctx), "prof@college.edu", auth.Organiser); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, _, err := s.SignIn(ctx, id("prof@college.edu"), "", ""); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.RecordMode(ctx, "testing"); err != nil {
+		t.Fatal(err)
+	}
+	u, _, _, err := s.TestSignIn(ctx, "prof@college.edu", "", auth.Owner, "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if u.Role != auth.Organiser {
+		t.Errorf("test sign-in as a Google-linked organiser gave role %s, want organiser", u.Role)
+	}
+	if _, err := s.RecordMode(ctx, "production"); err != nil {
+		t.Fatal(err)
+	}
+	var role auth.Role
+	if err := s.DB.QueryRowContext(ctx, "SELECT role FROM users WHERE email = 'prof@college.edu'").Scan(&role); err != nil || role != auth.Organiser {
+		t.Errorf("after testing mode prof@college.edu is %s (%v), want organiser", role, err)
+	}
+}
+
 func TestAccountActions(t *testing.T) {
 	s, _ := newService(t, "a@college.edu")
 	ctx := context.Background()
