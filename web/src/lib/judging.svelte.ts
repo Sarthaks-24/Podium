@@ -208,7 +208,7 @@ export class Judging {
     const counts = integrity?.counts() ?? { typed_chars: 0, pasted_chars: 0, focus_losses: 0, fullscreen_exits: 0 };
     const body = { ...this.o.code(), ...counts, client_key: key };
     try {
-      const s = await this.timed(() => sendJSON<Submission>('POST', this.paths.submit, body));
+      const s = await this.timed(() => sendJSON<Submission>('POST', this.paths.submit, body, { timeoutMs: ANSWER_WAIT_MS }));
       if (!this.alive) return;
       this.pendingKey = null;
       integrity?.resetCounts();
@@ -225,8 +225,9 @@ export class Judging {
       await this.o.reveal();
     } catch (e) {
       if (isSignedOut(e)) return;
-      if (e instanceof ApiError && e.code === 'network') {
-        this.notice = { action: 'submit', text: offlineText(), retry: true, kind: 'error' };
+      if (e instanceof ApiError && (e.code === 'network' || e.code === 'timeout')) {
+        // Retry sends the same key, so a submission the server already has counts once.
+        this.notice = { action: 'submit', text: e.code === 'timeout' ? SUBMIT_TIMEOUT : offlineText(), retry: true, kind: 'error' };
       } else {
         this.pendingKey = null;
         const pace = e instanceof ApiError && e.status === 429;
@@ -275,7 +276,7 @@ export class Judging {
     this.notice = null;
     this.runBusy = true;
     try {
-      const r = await this.timed(() => sendJSON<Run>('POST', this.paths.run, body));
+      const r = await this.timed(() => sendJSON<Run>('POST', this.paths.run, body, { timeoutMs: ANSWER_WAIT_MS }));
       if (!this.alive) return;
       this.pendingRun = null;
       this.state = { ...this.state, run: r };
@@ -283,8 +284,8 @@ export class Judging {
       await this.o.reveal();
     } catch (e) {
       if (isSignedOut(e)) return;
-      if (e instanceof ApiError && e.code === 'network') {
-        this.notice = { action: 'run', text: offlineText(), retry: true, kind: 'error' };
+      if (e instanceof ApiError && (e.code === 'network' || e.code === 'timeout')) {
+        this.notice = { action: 'run', text: e.code === 'timeout' ? RUN_TIMEOUT : offlineText(), retry: true, kind: 'error' };
       } else {
         this.pendingRun = null;
         this.notice = { action: 'run', text: errorText(e), retry: false, kind: e instanceof ApiError && e.status === 429 ? 'pace' : 'error' };
@@ -344,6 +345,13 @@ export class Judging {
     return value;
   }
 }
+
+// Submit and Run give up after this long without an answer, so the button
+// never reads "Submitting" for minutes on a hung connection. The server's
+// own write wait ends after 10 s, so this fires only when no answer comes.
+const ANSWER_WAIT_MS = 30_000;
+const SUBMIT_TIMEOUT = 'No answer from the server after 30 s. Your code is kept on this device. Retry: if the server already has this submission, it still counts once.';
+const RUN_TIMEOUT = 'No answer from the server after 30 s. Your code is kept on this device. Retry in a moment.';
 
 function offlineText(): string {
   return typeof navigator !== 'undefined' && navigator.onLine === false

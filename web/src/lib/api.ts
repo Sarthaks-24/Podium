@@ -43,6 +43,9 @@ export class ApiError extends Error {
 /** Shown when the request never reached the server. */
 export const NETWORK_MESSAGE = 'Could not reach the server. Check your connection and try again.';
 
+/** Shown when a request sent with a time limit got no answer within it (code "timeout"). */
+export const TIMEOUT_MESSAGE = 'The server did not answer in time. Try again in a moment.';
+
 /** Shown when the server answered with something that is not the API's JSON. */
 export const UNEXPECTED_MESSAGE = 'The server sent an unexpected response. Try again in a moment.';
 
@@ -102,7 +105,14 @@ export function isSignedOut(e: unknown): boolean {
   return e instanceof ApiError && e.status === 401;
 }
 
-async function request<T>(method: string, path: string, body?: Body): Promise<T> {
+/** A request that got no answer: its time limit ran out, or the network failed. */
+function unanswered(e: unknown): ApiError {
+  return e instanceof DOMException && e.name === 'TimeoutError'
+    ? new ApiError(0, 'timeout', TIMEOUT_MESSAGE)
+    : new ApiError(0, 'network', NETWORK_MESSAGE);
+}
+
+async function request<T>(method: string, path: string, body?: Body, timeoutMs?: number): Promise<T> {
   const headers: Record<string, string> = { Accept: 'application/json' };
   const init: RequestInit = { method, headers, credentials: 'same-origin', cache: 'no-store' };
   if (body !== undefined && 'raw' in body) {
@@ -113,11 +123,13 @@ async function request<T>(method: string, path: string, body?: Body): Promise<T>
     init.body = JSON.stringify(body.json);
   }
 
+  if (timeoutMs !== undefined) init.signal = AbortSignal.timeout(timeoutMs);
+
   let res: Response;
   try {
     res = await fetch(path, init);
-  } catch {
-    throw new ApiError(0, 'network', NETWORK_MESSAGE);
+  } catch (e) {
+    throw unanswered(e);
   }
 
   if (res.status === 204) return undefined as T;
@@ -125,8 +137,8 @@ async function request<T>(method: string, path: string, body?: Body): Promise<T>
   let text: string;
   try {
     text = await res.text();
-  } catch {
-    throw new ApiError(0, 'network', NETWORK_MESSAGE);
+  } catch (e) {
+    throw unanswered(e);
   }
 
   let parsed: unknown = undefined;
@@ -148,9 +160,13 @@ export function getJSON<T>(path: string): Promise<T> {
   return request<T>('GET', path);
 }
 
-/** Send a request with an optional JSON body and read the JSON answer. */
-export function sendJSON<T>(method: 'POST' | 'PUT' | 'PATCH' | 'DELETE', path: string, body?: unknown): Promise<T> {
-  return request<T>(method, path, { json: body });
+/**
+ * Send a request with an optional JSON body and read the JSON answer.
+ * `timeoutMs` gives up after that long with ApiError code "timeout"; only
+ * small requests a person waits on use it, never uploads or AI calls.
+ */
+export function sendJSON<T>(method: 'POST' | 'PUT' | 'PATCH' | 'DELETE', path: string, body?: unknown, opts: { timeoutMs?: number } = {}): Promise<T> {
+  return request<T>(method, path, { json: body }, opts.timeoutMs);
 }
 
 /**

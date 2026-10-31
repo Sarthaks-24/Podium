@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { ApiError, NETWORK_MESSAGE, PAGE_ERROR_MESSAGE, UNEXPECTED_MESSAGE, errorText, getJSON, isSignedOut, sendBody, sendJSON, setUnauthorizedHandler } from './api';
+import { ApiError, NETWORK_MESSAGE, PAGE_ERROR_MESSAGE, TIMEOUT_MESSAGE, UNEXPECTED_MESSAGE, errorText, getJSON, isSignedOut, sendBody, sendJSON, setUnauthorizedHandler } from './api';
 
 describe('a lost session', () => {
   it('signs the page out in one place on any 401, and only on a 401', async () => {
@@ -129,6 +129,22 @@ describe('sendJSON', () => {
     const [, init] = fn.mock.calls[0];
     expect(init?.body).toBeUndefined();
     expect((init?.headers as Record<string, string>)['Content-Type']).toBeUndefined();
+  });
+
+  it('gives up after timeoutMs with code "timeout", and only when asked to', async () => {
+    const fn = fakeFetch(new DOMException('signal timed out', 'TimeoutError'));
+    const err = await caught(sendJSON('POST', '/api/workspace/1/submit', {}, { timeoutMs: 30_000 }));
+    expect(err.code).toBe('timeout');
+    expect(err.status).toBe(0);
+    expect(err.message).toBe(TIMEOUT_MESSAGE);
+    expect(fn.mock.calls[0][1]?.signal).toBeInstanceOf(AbortSignal);
+
+    const plain = fakeFetch(new Response(null, { status: 204 }));
+    await sendJSON('POST', '/api/admin/problems/import', {});
+    expect(plain.mock.calls[0][1]?.signal).toBeUndefined();
+
+    fakeFetch(new TypeError('Failed to fetch'));
+    expect((await caught(sendJSON('POST', '/api/workspace/1/submit', {}, { timeoutMs: 30_000 }))).code).toBe('network');
   });
 
   it('passes conflict messages through as is', async () => {

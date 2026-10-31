@@ -1128,6 +1128,26 @@ test.describe('P5 workspace', () => {
   });
 });
 
+test('a submit with no answer for 30 s says so, and Retry sends the same key', async ({ page }) => {
+  // AbortSignal.timeout runs on the browser's own timer, not the page clock: a real 30 s wait.
+  test.setTimeout(90_000);
+  const api = await mockApi(page);
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await openWorkspace(page);
+  let held = 0;
+  await page.route('**/api/workspace/1/submit', (route) => {
+    if (held++ === 0) return; // never answered
+    return route.fallback();
+  });
+  await page.getByRole('button', { name: 'Submit', exact: true }).click();
+  await expect(page.getByRole('alert')).toContainText('No answer from the server after 30 s.', { timeout: 40_000 });
+  await expect(page.getByRole('alert')).toContainText('if the server already has this submission, it still counts once');
+  await page.getByRole('button', { name: 'Submit again' }).click();
+  await expect.poll(() => api.submits.length).toBe(1);
+  await expect(page.getByRole('alert')).toHaveCount(0);
+  expect(held).toBe(2);
+});
+
 test('leaving the window saves the draft once, not once per event', async ({ page }) => {
   const api = await mockApi(page, { draft: { language: 'cpp17', source: 'int a;' } });
   await page.setViewportSize({ width: 1440, height: 900 });
