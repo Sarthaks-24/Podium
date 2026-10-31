@@ -61,18 +61,25 @@
   );
   const load = () => page.load();
 
-  // Reload when a countdown runs out, so the state words move on.
+  // Reload when a countdown runs out, so the state words move on. The
+  // targets are absolute times (a countdown from 0), not "now plus what is
+  // left": that sum drops out the moment it is reached. Each target reloads
+  // once, so a server that still says "upcoming" is not asked every second.
   let reloadAt = $derived.by(() => {
     let next = Number.POSITIVE_INFINITY;
     for (const c of contests) {
-      const cd = listCountdown(c, ticker.now);
-      if (cd && cd.ms > 0) next = Math.min(next, ticker.now + cd.ms);
+      const at = listCountdown(c, 0)?.ms;
+      if (at !== undefined && at > reloadedFor) next = Math.min(next, at);
     }
     return next;
   });
+  let reloadedFor = $state(Number.NEGATIVE_INFINITY);
 
   $effect(() => {
-    if (page.state === 'ready' && ticker.now >= reloadAt) void load();
+    if (page.state === 'ready' && ticker.now >= reloadAt) {
+      reloadedFor = reloadAt;
+      void load();
+    }
   });
 
   function isLive(c: ContestSummary): boolean {

@@ -86,6 +86,26 @@ test('the contest list puts the live contest first with a countdown', async ({ p
   await expect(page.getByRole('link', { name: 'Problems', exact: true })).toHaveCount(0);
 });
 
+test('Your contests asks again when a countdown runs out, once', async ({ page }) => {
+  await mockApi(page);
+  await page.clock.install();
+  const startsAt = Date.now() + 3_000;
+  let asked = 0;
+  await page.route('**/api/contests', (route) => {
+    asked++;
+    const upcoming = { slug: 'week-7', title: 'Week 7 contest', starts_at: startsAt, ends_at: startsAt + 7_200_000, problem_count: 3, state: 'upcoming', my_score: null, max_score: 300, my_window: null };
+    return route.fulfill({ json: { live: [], upcoming: [upcoming], past: [], server_now: Date.now() } });
+  });
+  await page.goto('/');
+  await expect(page.getByRole('region', { name: 'Week 7 contest' })).toContainText('Upcoming');
+  await expect.poll(() => asked).toBe(1);
+  await page.clock.runFor(6_000);
+  await expect.poll(() => asked).toBe(2);
+  // The mock still says upcoming: no reload every second after that.
+  await page.clock.runFor(5_000);
+  expect(asked).toBe(2);
+});
+
 test('messages posted while the student was away still show, until read (S1)', async ({ page }) => {
   const api = await mockApi(page, { phase: 'during' });
   const before = Date.now() - 5 * 60_000;
