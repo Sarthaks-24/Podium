@@ -5,7 +5,7 @@
 // also keeps the site audit
 // log, the organisation's site settings, the run-mode record and account
 // lookup, and erases a person (forget-user). Its HTTP handlers (http.go)
-// serve the People page; sign-in and the session cookie stay with the
+// serve the Dashboard's People, Sign-in and Audit tabs; sign-in and the session cookie stay with the
 // middleware in httpapi.
 package auth
 
@@ -313,7 +313,7 @@ func (s *Service) DeleteExpiredSessions(ctx context.Context) (int64, error) {
 	return res.RowsAffected()
 }
 
-// Person is an organiser as listed on the People page.
+// Person is an organiser, admin or owner as listed on the Dashboard's People tab.
 type Person struct {
 	ID          int64  `json:"id"`
 	Email       string `json:"email"`

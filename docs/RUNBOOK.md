@@ -4,7 +4,7 @@ What to check before a contest, what to watch and do during it, and what to fini
 
 Status (2026-10-30): no contest has run on the VM and none of the drills in "Proving the safety net" has run. The checklists come from the code, the WSL2 tests and the load test on a desktop. Sections that depend on a drill are marked "not yet proven on the VM"; tick a box here only from a real contest or a drill note.
 
-Two people make contest day easy: one on the contest's Live tab in the browser (clarifications, announcements, the board), one with an SSH session on the VM (the metrics, the logs, the services). One person can do both for a small class. Only owners and admins organise contests.
+Two people make contest day easy: one on the contest's Live tab in the browser (clarifications, announcements, the board), one with an SSH session on the VM (the metrics, the logs, the services). One person can do both for a small class. Organisers, admins and owners run contests; students never see an organiser screen.
 
 ## A week before
 

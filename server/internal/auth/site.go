@@ -1,7 +1,7 @@
 package auth
 
 // Site settings: the organisation details the public pages
-// show, entered by an owner on People and stored in the settings table
+// show, entered by an owner on the Dashboard's Organisation tab and stored in the settings table
 // under one key. They are public by design (GET /api/auth/config), so the
 // rules below are about shape, not secrecy: one line each, bounded, and
 // never a value the server made up.

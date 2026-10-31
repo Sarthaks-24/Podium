@@ -31,7 +31,7 @@
     shape?: 'rows' | 'statement';
   }
 
-  let { kind, message, onretry, ask = 'Ask an owner if you need access.', parent = null, action, delay = 300, shape }: Props = $props();
+  let { kind, message, onretry, ask = 'Ask an admin or an owner if you need access.', parent = null, action, delay = 300, shape }: Props = $props();
 
   // Bar widths in percent: a statement is a title, then lines of text and an example box.
   const BARS = { rows: [100, 100, 100, 100, 100, 100], statement: [40, 100, 96, 88, 100, 62] };

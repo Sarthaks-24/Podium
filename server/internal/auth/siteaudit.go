@@ -114,7 +114,7 @@ type SiteAuditEntry struct {
 	Details      json.RawMessage `json:"details"`
 }
 
-// SiteAuditFilter narrows the People page's History.
+// SiteAuditFilter narrows the Dashboard's Audit tab.
 type SiteAuditFilter struct {
 	Action string
 	// Q matches the actor's or the subject's email, case insensitive.

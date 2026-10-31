@@ -9,13 +9,13 @@
 <script lang="ts">
   import { ApiError, sendJSON } from '../lib/api';
   import { navigate } from '../lib/router.svelte';
-  import { loadSession } from '../lib/session.svelte';
+  import { loadSession, type Role } from '../lib/session.svelte';
 
   let { next }: { next: string } = $props();
 
   let email = $state('');
   let name = $state('');
-  let role = $state<'student' | 'organiser' | 'owner'>('student');
+  let role = $state<Role>('student');
   let busy = $state(false);
   let error = $state('');
 
@@ -62,6 +62,7 @@
     <select id="test-role" class="select" name="role" bind:value={role}>
       <option value="student">Student</option>
       <option value="organiser">Organiser</option>
+      <option value="admin">Admin</option>
       <option value="owner">Owner</option>
     </select>
   </div>

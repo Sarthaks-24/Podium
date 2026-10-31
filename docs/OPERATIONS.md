@@ -267,7 +267,7 @@ Gmail addresses match however their dots are placed. A refused address is kept (
 - The session cookie has no expiry, so the browser forgets it when it closes. The server ends every session 12 hours after sign-in, however much it is used (a constant, `auth.SessionTTL`; there is no variable for it), and at sign-out.
 - Google sign-in asks Google for a sign-in from the last 5 minutes (`prompt=select_account`, `max_age=300`) and refuses an ID token whose `auth_time` is older than 5 minutes, so the previous student's Google session on a lab PC is not one click away.
 - In labs, give each slot a browser guest profile, or a kiosk profile that is wiped on exit, and ask students to sign out of Podium and of Google before they leave.
-- To sign someone out everywhere (a lost laptop, a PC left signed in), use the Dashboard, Sign-in tab, End sessions. Disable account also stops them signing in until an owner enables it. Both act at once on requests; open live updates stop within 25 s. `POST /api/admin/accounts/reset-google` is no longer the only kill switch.
+- To sign someone out everywhere (a lost laptop, a PC left signed in), use the Dashboard, Sign-in tab, End sessions. Disable account also stops them signing in until an admin or an owner enables it. Both act at once on requests; open live updates stop within 25 s. `POST /api/admin/accounts/reset-google` is no longer the only kill switch.
 
 ### Recovering access
 
@@ -417,7 +417,7 @@ A retried Submit with the same `client_key` returns the first submission and is 
 
 ## Running a contest
 
-All of this is in the web app, on the contest's tabs Setup, Live and Results; the routes are in `docs/API.md`. Only owners and admins organise contests.
+All of this is in the web app, on the contest's tabs Setup, Live and Results; the routes are in `docs/API.md`. Organisers, admins and owners run contests; students never see an organiser screen.
 
 **Before.** In Setup, add validated problems (each is pinned to the version you validated; adding, removing and reordering save at once), or use "Add to contest" in the problem editor. Every field saves as it changes. Six inputs show (title, problems, start, length in minutes, hidden minutes at the end, languages); the rest, the four exam options among them, sits under Advanced. Then publish with "Publish contest" in the title row: it asks first and lists the checks beside the form (problems validated, the start ahead, a language). An unpublished contest reads "Draft" on every organiser screen. Publishing refuses a problem that changed since it was added. Who may take part is decided by the list of people in the Dashboard: anyone who can sign in can enter a published contest. The honour code students accept lists what is recorded and for how long, and, when exam options are on, which measures apply.
 

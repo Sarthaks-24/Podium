@@ -37,8 +37,8 @@ func (s *Service) TestSignIn(ctx context.Context, email, name string, role Role,
 		return User{}, "", time.Time{}, err
 	}
 	defer tx.Rollback()
-	// A disabled account stays disabled here too; an owner re-enables it on
-	// the People page.
+	// A disabled account stays disabled here too; an admin or an owner
+	// re-enables it on the Dashboard's People tab.
 	var disabled bool
 	err = tx.QueryRowContext(ctx, "SELECT disabled FROM users WHERE email = ?", email).Scan(&disabled)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {

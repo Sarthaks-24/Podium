@@ -2,7 +2,7 @@
 
 All API routes live under `/api/` and speak JSON. Every other path serves the embedded web app, which renders its own pages (see "Static files"). The judge worker has its own routes on a separate listener ("Judge worker API").
 
-The routes are registered in `server/internal/httpapi/httpapi.go`, the judge routes in `server/internal/jobs/judgeserver`. `server/internal/httpapi/route_roles_test.go` reads every registration from the source and holds the role each route needs, so a new route without a row there fails the tests; this document lists the same routes, grouped by area. Each heading or table row names the role: public, student (anyone signed in), organiser, owner, or judge.
+The routes are registered in `server/internal/httpapi/httpapi.go`, the judge routes in `server/internal/jobs/judgeserver`. `server/internal/httpapi/route_roles_test.go` reads every registration from the source and holds the role each route needs, so a new route without a row there fails the tests; this document lists the same routes, grouped by area. Each heading or table row names the role: public, student (anyone signed in), organiser, admin, owner (each meaning that role or above), or judge.
 
 ## Conventions
 
@@ -133,7 +133,7 @@ A `retention` row is `{id, data, amount, unit, after, kept}`. The ids are `sessi
 
 Registered only when `PODIUM_MODE=testing`, which serves loopback alone; in other modes the path is `404 not_found`. Signs in as anyone with any role, without Google. The request must also carry an `Origin` equal to the base URL.
 
-Request: `{"email":"asha@college.edu","name":"Asha Rao","role":"organiser","next":"/admin/problems"}`. `name` and `next` may be empty; `role` is `student`, `organiser`, `admin` or `owner`. The account is created if needed, otherwise its name and role are updated. `PODIUM_OWNER_EMAIL` always keeps the owner role.
+Request: `{"email":"asha@college.edu","name":"Asha Rao","role":"organiser","next":"/admin/problems"}`. `name` and `next` may be empty; `role` is `student`, `organiser`, `admin` or `owner`. The account is created if needed, otherwise its name and role are updated; an account already linked to a Google account keeps its stored role, so nothing chosen here outlives testing mode. `PODIUM_OWNER_EMAIL` always keeps the owner role.
 
 | Status | Body |
 |---|---|
@@ -141,7 +141,7 @@ Request: `{"email":"asha@college.edu","name":"Asha Rao","role":"organiser","next
 | 400 `bad_request` | not an email address, or an unknown role |
 | 403 | `cross_site` (no `Origin`, or not the base URL), `testing_mode_local`, or `disabled` (an owner disabled the account) |
 
-Any session the browser already had ends. Nothing made here survives a change of mode: when the server next starts in `dev` or `production`, every session ends and every organiser or owner without a linked Google account (other than `PODIUM_OWNER_EMAIL`) becomes a student again.
+Any session the browser already had ends. Nothing made here survives a change of mode: when the server next starts in `dev` or `production`, every session ends and every organiser, admin or owner without a linked Google account (other than `PODIUM_OWNER_EMAIL`) becomes a student again.
 
 ### `GET /api/auth/google/start` (public, browser navigation)
 

@@ -55,6 +55,16 @@ test('testing mode signs in from a form', async ({ page }) => {
   await expect(page.getByRole('note')).toContainText('Testing mode');
 });
 
+test('the testing form offers every role the server accepts, admin included (V4-16)', async ({ page }) => {
+  const state = await mock(page, 'testing');
+  await page.goto('/signin');
+  await expect(page.getByLabel('Role').locator('option')).toHaveText(['Student', 'Organiser', 'Admin', 'Owner']);
+  await page.getByLabel('Email').fill('boss@college.edu');
+  await page.getByLabel('Role').selectOption('admin');
+  await page.getByRole('button', { name: 'Sign in for testing' }).click();
+  await expect.poll(() => state.posted.at(-1)).toMatchObject({ email: 'boss@college.edu', role: 'admin' });
+});
+
 test('production mode shows only Google sign-in', async ({ page }) => {
   await mock(page, 'production');
   await page.goto('/signin');

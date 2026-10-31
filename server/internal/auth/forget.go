@@ -49,7 +49,7 @@ var ErrForgetOwner = errors.New("the configured owner (PODIUM_OWNER_EMAIL) canno
 
 // ErrForgetOwnerRole refuses erasing another owner without the caller's
 // explicit say-so: take the role away first, or pass allowOwner.
-var ErrForgetOwnerRole = errors.New("this account is an owner; remove the owner role on People first, or pass -allow-owner")
+var ErrForgetOwnerRole = errors.New("this account is an owner; remove the owner role on the Dashboard's People tab first, or pass -allow-owner")
 
 // ErrNoOwnerEmail: the configured owner is unknown, so the guard above
 // cannot work (a shell without /etc/podium/server.env loaded).

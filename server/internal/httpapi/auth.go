@@ -154,7 +154,7 @@ func (d Deps) testSignIn(w http.ResponseWriter, r *http.Request) {
 	}
 	u, token, _, err := d.Auth.TestSignIn(r.Context(), req.Email, req.Name, req.Role, httpx.ClientIP(r), r.UserAgent())
 	if errors.Is(err, auth.ErrDisabled) {
-		httpx.WriteError(w, http.StatusForbidden, "disabled", "This account is disabled. An owner can enable it on the People page.")
+		httpx.WriteError(w, http.StatusForbidden, "disabled", "This account is disabled. An admin or an owner can enable it on the Dashboard, People tab.")
 		return
 	}
 	if err != nil {
@@ -326,7 +326,7 @@ func (d Deps) requireRole(min auth.Role, h http.HandlerFunc) http.HandlerFunc {
 			return
 		}
 		if !u.Role.AtLeast(min) {
-			httpx.WriteError(w, http.StatusForbidden, "forbidden", "You do not have access to this. Ask an owner if you need it.")
+			httpx.WriteError(w, http.StatusForbidden, "forbidden", "You do not have access to this. Ask an admin or an owner if you need it.")
 			return
 		}
 		// The actor rides on the context so every change the request makes

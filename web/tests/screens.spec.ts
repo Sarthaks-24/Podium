@@ -322,7 +322,7 @@ test('an owner ends sessions, disables and enables an account, each asked first'
   await expect(section.locator('#account-who')).toContainText('Asha Rao, student');
   await section.getByRole('button', { name: 'Disable account' }).click();
   const disable = page.getByRole('dialog', { name: 'Disable Asha Rao (asha@college.edu)?' });
-  await expect(disable).toContainText('cannot sign in until an owner enables the account again');
+  await expect(disable).toContainText('cannot sign in until an admin or an owner enables the account again');
   await disable.getByRole('button', { name: 'Disable account' }).click();
   await expect(toasts(page).getByText('Disabled asha@college.edu', { exact: true })).toBeVisible();
   await expect(section.getByRole('listitem')).toContainText(['asha@college.edu']);

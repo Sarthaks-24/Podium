@@ -205,7 +205,7 @@ func New(d Deps) http.Handler {
 
 // contestRoutes mounts the contest API. Student routes need
 // a signed-in user and apply the contest's own access rules; organiser
-// routes need the organiser or owner role.
+// routes need the organiser role or above.
 func (d Deps) contestRoutes(mux *http.ServeMux, console *contests.Handlers) {
 	signedIn := func(h http.HandlerFunc) http.HandlerFunc { return d.requireRole(auth.Student, h) }
 	organiser := func(h http.HandlerFunc) http.HandlerFunc { return d.requireRole(auth.Organiser, h) }

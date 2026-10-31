@@ -332,7 +332,7 @@ type ListedPerson struct {
 	Locked bool `json:"locked"`
 }
 
-// ListCounts are the People page's three counts.
+// ListCounts are the three counts on the Dashboard's People tab.
 type ListCounts struct {
 	OnList    int `json:"on_list"`
 	SignedIn  int `json:"signed_in"`

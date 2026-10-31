@@ -119,7 +119,7 @@
       case 'disable':
         return {
           title: `Disable ${accountName(pending.email)}?`,
-          body: 'They are signed out on every device at once and cannot sign in until an owner enables the account again.',
+          body: 'They are signed out on every device at once and cannot sign in until an admin or an owner enables the account again.',
           label: 'Disable account',
         };
       case 'enable':
