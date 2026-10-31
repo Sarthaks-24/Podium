@@ -15,6 +15,8 @@ Dated entries per release. Unreleased work is listed at the top.
 - Leaving the window saves the draft once instead of two or three times, so the status no longer ends on "kept on this device" when the server has the code.
 - Migration `0006_v4_indexes` adds four indexes (the organisers' submission feed, contests a student started, a contest's announcements, contests that pin a problem). Indexes only; an older binary refuses the newer schema, as after every migration.
 - `docs/API.md` held the whole document twice since stage P; the copy is gone. Dead code from the v2 and v3 removals is deleted.
+- A database made before 2026-10-30 (for example the `make dev-test` state in `/var/tmp/podium-dev`) lacks columns that were added by editing `0001_v3.sql`, and fails with "no such column: full_screen" or "stderr". Delete that state and start again; nothing installed is affected. A test now fails CI if a released migration file is edited.
+- Dev tooling: `minimatch` is pinned to 11.0.3 through an override (a denial-of-service advisory reached ESLint); `npm audit` is down from 14 findings to 2 low ones in `deepmerge`, which has no fix. Nothing in the built app changed.
 
 ### v4 stage N: the env files (2026-10-31)
 
