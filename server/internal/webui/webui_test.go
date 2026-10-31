@@ -11,8 +11,10 @@ import (
 	"testing/fstest"
 )
 
+const testBase = "https://podium.example"
+
 func TestHandler(t *testing.T) {
-	h := handlerFor(fstest.MapFS{
+	h := handlerFor(testBase, fstest.MapFS{
 		"index.html":         {Data: []byte("<!doctype html><title>podium</title>")},
 		"assets/app-abc.js":  {Data: []byte("console.log(1)")},
 		"favicon.svg":        {Data: []byte("<svg/>")},
@@ -59,7 +61,7 @@ func TestHandler(t *testing.T) {
 }
 
 func TestRedirects(t *testing.T) {
-	h := handlerFor(fstest.MapFS{"index.html": {Data: []byte("shell")}})
+	h := handlerFor(testBase, fstest.MapFS{"index.html": {Data: []byte("shell")}})
 	cases := []struct{ path, to string }{
 		{"/contests/week-6/", "/contests/week-6"},
 		{"/admin/people/?tab=signin", "/admin/people?tab=signin"},
@@ -82,7 +84,7 @@ func TestRedirects(t *testing.T) {
 // TestNotFoundServesShell checks that an unknown path still gets the app,
 // which draws the "Page not found" screen, with the status a crawler reads.
 func TestNotFoundServesShell(t *testing.T) {
-	h := handlerFor(fstest.MapFS{"index.html": {Data: []byte("shell")}})
+	h := handlerFor(testBase, fstest.MapFS{"index.html": {Data: []byte("shell")}})
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, httptest.NewRequest("GET", "/nope", nil))
 	if rec.Code != http.StatusNotFound || rec.Body.String() != "shell" {
@@ -125,7 +127,7 @@ func TestRoutesMatchRouter(t *testing.T) {
 
 func TestHandlerNotBuilt(t *testing.T) {
 	rec := httptest.NewRecorder()
-	handlerFor(fstest.MapFS{}).ServeHTTP(rec, httptest.NewRequest("GET", "/", nil))
+	handlerFor(testBase, fstest.MapFS{}).ServeHTTP(rec, httptest.NewRequest("GET", "/", nil))
 	if rec.Code != http.StatusServiceUnavailable {
 		t.Errorf("status %d, want 503", rec.Code)
 	}
@@ -135,7 +137,7 @@ func TestHandlerNotBuilt(t *testing.T) {
 // indexable; with either cookie name it is the app, noindex. Both are
 // private and vary on the cookie, so no cache hands one to the other.
 func TestLandingPage(t *testing.T) {
-	h := handlerFor(fstest.MapFS{
+	h := handlerFor(testBase, fstest.MapFS{
 		"index.html":   {Data: []byte("app shell")},
 		"landing.html": {Data: []byte("<h1>Programming contests at this college</h1>")},
 	})
@@ -166,5 +168,31 @@ func TestLandingPage(t *testing.T) {
 	h.ServeHTTP(rec, httptest.NewRequest("GET", "/contests/week-6", nil))
 	if rec.Body.String() != "app shell" {
 		t.Errorf("/contests/week-6 signed out: %q, want the app", rec.Body.String())
+	}
+}
+
+// v4 P3: robots.txt lets search engines read / alone and names the
+// sitemap, which lists /; the landing page's %BASE_URL% is the configured
+// address.
+func TestRobotsSitemapAndBaseURL(t *testing.T) {
+	h := handlerFor(testBase, fstest.MapFS{
+		"index.html":   {Data: []byte("app")},
+		"landing.html": {Data: []byte(`<link rel="canonical" href="%BASE_URL%/" />`)},
+	})
+	get := func(p string) *httptest.ResponseRecorder {
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, httptest.NewRequest("GET", p, nil))
+		return rec
+	}
+	robots := get("/robots.txt").Body.String()
+	if robots != "User-agent: *\nAllow: /$\nDisallow: /\nSitemap: https://podium.example/sitemap.xml\n" {
+		t.Errorf("robots.txt: %q", robots)
+	}
+	site := get("/sitemap.xml")
+	if !strings.Contains(site.Body.String(), "<loc>https://podium.example/</loc>") || strings.Count(site.Body.String(), "<loc>") != 1 || !strings.HasPrefix(site.Header().Get("Content-Type"), "application/xml") {
+		t.Errorf("sitemap: %q %q", site.Header().Get("Content-Type"), site.Body.String())
+	}
+	if body := get("/").Body.String(); body != `<link rel="canonical" href="https://podium.example/" />` {
+		t.Errorf("landing page: %q, want the address filled in", body)
 	}
 }

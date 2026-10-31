@@ -97,7 +97,7 @@ func newServices(ctx context.Context, cfg config.Server, database *sql.DB, log *
 // handler is the public API and web app.
 func (s *services) handler(cfg config.Server, provider httpapi.IdentityProvider) http.Handler {
 	return httpapi.New(httpapi.Deps{
-		DB: s.db, Log: s.log, WebApp: webui.Handler(),
+		DB: s.db, Log: s.log, WebApp: webui.Handler(cfg.BaseURL),
 		Auth: s.auth, IdP: provider, BaseURL: cfg.BaseURL, SessionSecret: cfg.SessionSecret,
 		Problems: s.problems, Submissions: s.submissions, Hub: s.hub, Contests: s.contests, Integrity: s.integrity,
 		AI:   &ai.Wizard{Keys: s.aiKeys, Slots: &ai.Slots{}},

@@ -25,7 +25,19 @@ const swap = (html, from, to, what) => {
   return html.replace(from, to);
 };
 
+const TITLE = 'Programming contests · podium';
 const DESCRIPTION = "Podium runs this college's programming contests: students solve problems in the browser, organisers set them.";
+// The site address is a token Go fills on serve (webui.go), so one build serves any host.
+const HEAD = [
+  `<meta name="description" content="${DESCRIPTION}" />`,
+  '<link rel="canonical" href="%BASE_URL%/" />',
+  '<meta property="og:type" content="website" />',
+  '<meta property="og:site_name" content="podium" />',
+  `<meta property="og:title" content="${TITLE}" />`,
+  `<meta property="og:description" content="${DESCRIPTION}" />`,
+  '<meta property="og:url" content="%BASE_URL%/" />',
+  '<meta name="twitter:card" content="summary" />',
+].join('\n    ');
 const { body } = render(Landing);
 const foot = PRIVACY_LINKED ? '<p><a href="/privacy">Privacy</a></p>' : '';
 const shell =
@@ -36,8 +48,8 @@ const shell =
   '</div>';
 
 let html = readFileSync('dist/index.html', 'utf8');
-html = swap(html, /\s*<!-- A college tool behind sign-in: never indexed \(v3\)\. -->\s*<meta name="robots" content="noindex" \/>/, `\n    <meta name="description" content="${DESCRIPTION}" />`, 'the noindex meta');
-html = swap(html, /<title>podium<\/title>/, '<title>Programming contests · podium</title>', 'the title');
+html = swap(html, /\s*<!-- A college tool behind sign-in: never indexed \(v3\)\. -->\s*<meta name="robots" content="noindex" \/>/, `\n    ${HEAD}`, 'the noindex meta');
+html = swap(html, /<title>podium<\/title>/, `<title>${TITLE}</title>`, 'the title');
 html = swap(html, /<div id="app">[\s\S]*?<\/main>\s*<\/div>/, `<div id="app">${shell}</div>`, 'the #app fallback');
 writeFileSync('dist/landing.html', html);
 rmSync(OUT, { recursive: true, force: true });

@@ -36,7 +36,7 @@ Server packages (`server/internal`):
 | `httpapi` | the route table with the role each route needs, and the middleware: sign-in and sessions, rate limits, the cross-site check, security headers; the event stream |
 | `httpx` | what every handler package shares: JSON answers and errors, body decoding, the client address, request logging and panic recovery |
 | `ops` | the health check and the organisers' metrics |
-| `webui` | the embedded web app; every page says `noindex` and `robots.txt` disallows everything |
+| `webui` | the embedded web app; the prerendered landing page at `/` for a request without a session cookie (v4), every other page `noindex`; `robots.txt` and `sitemap.xml` |
 | `auth` | Google sign-in, the list of people who may sign in, sessions, the four roles and who may change whose account (`rules.go`), the sign-in switch, testing-mode sign-in; the site audit, site settings, account lookup and erasure (`forget-user`) |
 | `problems` | problems, pack format, content hash, validation rules and summary, output generation, generators and the generate inputs chain, AI drafts, revisions |
 | `submissions` | runs, submissions, drafts, rate limits, scoring, what each viewer may see, integrity counts |
@@ -471,7 +471,7 @@ Tests, sources and custom inputs a job fetches land in `blobs/<sha[0:2]>/<sha>` 
 
 ## Pages and crawlers
 
-The web app is client-rendered: every path without a file extension gets the same `index.html`, with `X-Robots-Tag: noindex`, and the server fills nothing per route. A missing file with an extension (an old hashed chunk after a deploy) is a real 404, so a browser never runs `index.html` as a script. `robots.txt` disallows everything. Podium is a college tool behind sign-in, so v3 removed the server-filled page head, Open Graph and social cards, JSON-LD, the route manifest and the web manifest (V3-4): each served a case no single-college contest has met. A path no route matches gets the app's own "Page not found" page, with status 404 (V4-9): the server knows the app's paths (`/`, `/signin`, `/privacy` and the prefixes `/contests/` and `/admin/`), so crawlers and link checkers see a typo as missing. A Go test reads the router's table to keep the two lists in step.
+The web app is client-rendered: every path without a file extension gets the same `index.html`, with `X-Robots-Tag: noindex`, and the server fills nothing per route. A missing file with an extension (an old hashed chunk after a deploy) is a real 404, so a browser never runs `index.html` as a script. v4 adds one exception (V4-6 to V4-8): `npm run build` prerenders the landing page (`web/scripts/prerender.mjs`, `svelte/server` `render()`) into `landing.html`, which the server sends for `/` to a request without a session cookie, its `%BASE_URL%` filled at start-up, with its own description, canonical link and Open Graph tags; `robots.txt` allows `/` alone and names `sitemap.xml`. Otherwise Podium is a college tool behind sign-in, so v3 removed the server-filled page head, Open Graph and social cards, JSON-LD, the route manifest and the web manifest (V3-4): each served a case no single-college contest has met. A path no route matches gets the app's own "Page not found" page, with status 404 (V4-9): the server knows the app's paths (`/`, `/signin`, `/privacy` and the prefixes `/contests/` and `/admin/`), so crawlers and link checkers see a typo as missing. A Go test reads the router's table to keep the two lists in step.
 
 ## Retention and erasure
 

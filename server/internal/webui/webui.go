@@ -10,7 +10,9 @@
 package webui
 
 import (
+	"bytes"
 	"embed"
+	"html"
 	"io/fs"
 	"mime"
 	"net/http"
@@ -29,13 +31,15 @@ func init() {
 	mime.AddExtensionType(".woff2", "font/woff2")
 }
 
-// Handler returns the SPA handler over the embedded build.
-func Handler() http.Handler {
+// Handler returns the SPA handler over the embedded build; base is the
+// public URL (config BaseURL), for the landing page's links, robots.txt
+// and the sitemap.
+func Handler(base string) http.Handler {
 	dist, err := fs.Sub(embedded, "dist")
 	if err != nil {
 		panic(err)
 	}
-	return handlerFor(dist)
+	return handlerFor(base, dist)
 }
 
 // SessionCookies are the session cookie's two names (httpapi
@@ -50,13 +54,15 @@ func hasSession(r *http.Request) bool {
 	})
 }
 
-func handlerFor(dist fs.FS) http.Handler {
+func handlerFor(base string, dist fs.FS) http.Handler {
 	index, err := fs.ReadFile(dist, "index.html")
 	if err != nil {
 		return http.HandlerFunc(notBuilt)
 	}
 	// The prerendered landing page (v4 P2), when the build made one.
 	landing, _ := fs.ReadFile(dist, "landing.html")
+	// The prerender leaves the site address as a token (V4-7): filled once here.
+	landing = bytes.ReplaceAll(landing, []byte("%BASE_URL%"), []byte(base))
 	files := http.FileServerFS(dist)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet && r.Method != http.MethodHead {
@@ -80,10 +86,20 @@ func handlerFor(dist fs.FS) http.Handler {
 			http.Redirect(w, r, "/", http.StatusMovedPermanently)
 			return
 		}
+		// v4 P3: only the landing page is for search engines ("/$" is longer
+		// than "/", so it wins for / alone). Privacy joins once its text is
+		// approved and it is prerendered; until then it says noindex.
 		if name == "robots.txt" {
 			w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 			w.Header().Set("Cache-Control", "public, max-age=3600")
-			w.Write([]byte("User-agent: *\nDisallow: /\n"))
+			w.Write([]byte("User-agent: *\nAllow: /$\nDisallow: /\nSitemap: " + base + "/sitemap.xml\n"))
+			return
+		}
+		if name == "sitemap.xml" {
+			w.Header().Set("Content-Type", "application/xml; charset=utf-8")
+			w.Header().Set("Cache-Control", "public, max-age=3600")
+			w.Write([]byte(`<?xml version="1.0" encoding="UTF-8"?>` + "\n" +
+				`<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"><url><loc>` + html.EscapeString(base+"/") + "</loc></url></urlset>\n"))
 			return
 		}
 		if name != "" && name != "index.html" && !strings.HasPrefix(path.Base(name), ".") {
