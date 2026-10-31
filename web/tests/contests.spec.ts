@@ -687,6 +687,24 @@ test('the console says partial scores as students read them and keeps rows when 
   await expect(feed).toHaveCount(5);
 });
 
+test('the console says when questions could not load, and the 10 s refresh leaves an open history alone', async ({ page }) => {
+  const api = await mockApi(page, { who: 'organiser', phase: 'during' });
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.clock.install();
+  await page.route('**/api/admin/contests/4/clarifications', (route) => route.fulfill({ status: 503, json: { error: { code: 'unavailable', message: 'Down.' } } }));
+  await page.goto('/admin/contests/4/console');
+  const questions = page.locator('#console-questions');
+  await expect(questions.getByRole('status')).toHaveText('The questions could not be loaded. They refresh every 10 s.');
+  await expect(questions).not.toContainText('No questions yet');
+
+  await page.getByRole('group', { name: 'Contest actions' }).getByRole('button', { name: 'History of changes' }).click();
+  await expect(page.getByRole('dialog', { name: 'History of changes' })).toBeVisible();
+  await expect.poll(() => api.auditQueries.length).toBeGreaterThan(0);
+  const asked = api.auditQueries.length;
+  await page.clock.runFor(25_000);
+  expect(api.auditQueries.length).toBe(asked);
+});
+
 test('a late judge and a slow queue come first, and banners show only what needs action (C2, C10)', async ({ page }) => {
   const api = await mockApi(page, { who: 'organiser', phase: 'during', queueHealth: 'trouble' });
   await page.setViewportSize({ width: 1440, height: 900 });

@@ -9,8 +9,9 @@
   each with "Make public" or "Make private".
 
   Props: `base` (the contest's admin API path), `clarifications` (every
-  question of the contest) and `onanswered`, called after an answer is
-  saved so the page loads the questions again.
+  question of the contest), `onanswered`, called after an answer is
+  saved so the page loads the questions again, and `error`, set while the
+  questions could not be loaded (the list then is the last one that did).
 -->
 <script lang="ts">
   import { untrack } from 'svelte';
@@ -27,9 +28,10 @@
     base: string;
     clarifications: readonly Clarification[];
     onanswered: () => Promise<void> | void;
+    error?: string;
   }
 
-  let { base, clarifications, onanswered }: Props = $props();
+  let { base, clarifications, onanswered, error = '' }: Props = $props();
 
   type Reply = { text: string; public: boolean; error: string; busy: boolean };
   let replies = $state<Record<number, Reply>>({});
@@ -94,8 +96,11 @@
     <h2 id="clar-title">Questions</h2>
     {#if waiting.length > 0}<Badge tone="bad">{countOf(waiting.length, 'unanswered', 'unanswered')}</Badge>{/if}
   </div>
+  {#if error}<p class="small load-failed" role="status">{error}</p>{/if}
   {#if waiting.length === 0}
-    <p class="muted small">{answered.length === 0 ? 'No questions yet. They appear here the moment a student asks.' : 'Every question is answered.'}</p>
+    {#if !error || answered.length > 0}
+      <p class="muted small">{answered.length === 0 ? 'No questions yet. They appear here the moment a student asks.' : 'Every question is answered.'}</p>
+    {/if}
   {:else}
     <ul class="items">
       {#each waiting as c (c.id)}
@@ -169,6 +174,11 @@
 </section>
 
 <style>
+  .load-failed {
+    color: var(--part);
+    font-weight: 600;
+  }
+
   .panel h2 {
     font-size: var(--fs-section);
   }

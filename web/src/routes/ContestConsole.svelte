@@ -64,6 +64,7 @@
   let contest = $state.raw<AdminContest | null>(null);
   let stats = $state.raw<ContestStats | null>(null);
   let statsError = $state('');
+  let sideError = $state('');
   let clarifications = $state.raw<Clarification[]>([]);
   let announcements = $state.raw<Announcement[]>([]);
   let students = $state.raw<{ user_id: number; name: string }[]>([]);
@@ -137,13 +138,14 @@
       const restore = keepHeadingFocus();
       contest = c;
       void restore();
-      // Every action here reloads the contest, so an open history follows it.
-      changesKey += 1;
     },
   );
 
   async function loadContest(quiet = false) {
     await page.load({ quiet });
+    // Every action here reloads the contest, so an open history follows it;
+    // the quiet 10 s refresh does not, or the dialog would lose its pages.
+    if (!quiet) changesKey += 1;
     if (page.live && page.state === 'missing') setTitle('Contest not found');
   }
 
@@ -156,12 +158,18 @@
     }
   }
 
+  // The 10 s refresh and each question event both load; only the newest answer counts.
+  let sideSeq = 0;
+
   async function loadSide() {
+    const mine = ++sideSeq;
     try {
       const [a, c] = await Promise.all([
         getJSON<{ announcements: Announcement[] }>(`${base}/announcements`),
         getJSON<{ clarifications: Clarification[] }>(`${base}/clarifications`),
       ]);
+      if (mine !== sideSeq) return;
+      sideError = '';
       announcements = [...(a.announcements ?? [])].sort((x, y) => y.created_at - x.created_at);
       const list = c.clarifications ?? [];
       const fresh = list.filter((q) => !q.answer && seenQuestions !== null && !seenQuestions.has(q.id));
@@ -174,7 +182,7 @@
       seenQuestions = new Set(list.map((q) => q.id));
       clarifications = list;
     } catch (e) {
-      handleAuth(e);
+      if (mine === sideSeq && !handleAuth(e)) sideError = 'The questions could not be loaded. They refresh every 10 s.';
     }
   }
 
@@ -182,8 +190,9 @@
     try {
       const s = await getJSON<Standings>(`${base}/standings`);
       students = s.rows.map((r) => ({ user_id: r.user_id, name: studentChoice(r) })).sort((a, b) => a.name.localeCompare(b.name));
-    } catch {
-      students = [];
+    } catch (e) {
+      // Keep the last list: an empty one would read as "nobody started".
+      handleAuth(e);
     }
   }
 
@@ -575,7 +584,7 @@
       aria-labelledby={phone ? 'console-tab-questions' : undefined}
       hidden={phone && tab !== 'questions'}
     >
-      <Questions base={base} {clarifications} onanswered={loadSide} />
+      <Questions base={base} {clarifications} onanswered={loadSide} error={sideError} />
     </div>
     <div
       class="area-overview"
