@@ -341,7 +341,7 @@ func (s *Service) Organisers(ctx context.Context) ([]Person, error) {
 		if err := rows.Scan(&p.ID, &p.Email, &p.Name, &p.Role, &p.LastLoginAt, &p.Disabled); err != nil {
 			return nil, err
 		}
-		p.Locked = p.Email == s.OwnerEmail
+		p.Locked = s.isConfiguredOwner(p.Email)
 		out = append(out, p)
 	}
 	return out, rows.Err()
@@ -379,7 +379,7 @@ func (s *Service) GrantRole(ctx context.Context, email string, role Role) (Perso
 	if err := s.changeAllowed(ctx, email, current, role); err != nil {
 		return Person{}, err
 	}
-	if canonical(email) == canonical(s.OwnerEmail) {
+	if s.isConfiguredOwner(email) {
 		return Person{}, conflict("This owner is set in the server configuration and cannot be changed here.")
 	}
 	if current == Owner && role != Owner {
@@ -441,7 +441,7 @@ func (s *Service) RevokeRole(ctx context.Context, id int64) error {
 	if err := s.changeAllowed(ctx, email, role, Student); err != nil {
 		return err
 	}
-	if email == s.OwnerEmail {
+	if s.isConfiguredOwner(email) {
 		return conflict("This owner is set in the server configuration and cannot be removed here.")
 	}
 	if role == Owner {

@@ -52,6 +52,12 @@ func (s *Service) RecordMode(ctx context.Context, mode string) (ModeChange, erro
 		return ch, nil
 	}
 	ch.Changed = true
+	// The configured owner's row, found the way Bootstrap found it (a Gmail
+	// spelling may differ); 0 when there is none, which excludes nobody.
+	ownerID, _, _, err := listed(ctx, tx, s.OwnerEmail)
+	if err != nil {
+		return ModeChange{}, err
+	}
 	res, err := tx.ExecContext(ctx, "DELETE FROM sessions")
 	if err != nil {
 		return ModeChange{}, err
@@ -59,7 +65,7 @@ func (s *Service) RecordMode(ctx context.Context, mode string) (ModeChange, erro
 	ch.SessionsEnded, _ = res.RowsAffected()
 	if mode != "testing" {
 		res, err := tx.ExecContext(ctx, `UPDATE users SET role = 'student'
-			WHERE role IN ('organiser', 'admin', 'owner') AND google_sub IS NULL AND email <> ?`, s.OwnerEmail)
+			WHERE role IN ('organiser', 'admin', 'owner') AND google_sub IS NULL AND id <> ?`, ownerID)
 		if err != nil {
 			return ModeChange{}, err
 		}
@@ -70,7 +76,7 @@ func (s *Service) RecordMode(ctx context.Context, mode string) (ModeChange, erro
 	// another change of mode leaves it alone.
 	if mode != "testing" && ch.Previous == "testing" {
 		res, err := tx.ExecContext(ctx, `UPDATE users SET disabled = 1
-			WHERE disabled = 0 AND google_sub IS NULL AND last_login_at IS NOT NULL AND email <> ?`, s.OwnerEmail)
+			WHERE disabled = 0 AND google_sub IS NULL AND last_login_at IS NOT NULL AND id <> ?`, ownerID)
 		if err != nil {
 			return ModeChange{}, err
 		}

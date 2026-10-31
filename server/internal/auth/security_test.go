@@ -128,6 +128,32 @@ func TestTestSignInKeepsRealRoles(t *testing.T) {
 	}
 }
 
+// TestConfiguredOwnerInAnyGmailSpelling: Bootstrap binds PODIUM_OWNER_EMAIL
+// to a listed row with other Gmail dots, so every guard of the configured
+// owner must recognise that row too.
+func TestConfiguredOwnerInAnyGmailSpelling(t *testing.T) {
+	s, _ := newService(t, "j.doe@gmail.com")
+	ctx := context.Background()
+	s.OwnerEmail = "jdoe@gmail.com"
+	if err := s.Bootstrap(ctx); err != nil {
+		t.Fatal(err)
+	}
+	var ce *auth.ChangeError
+	if _, _, err := s.SetDisabled(asOwner(ctx), "j.doe@gmail.com", true, 0); !errors.As(err, &ce) || ce.Kind != "conflict" {
+		t.Errorf("disabling the configured owner by its stored spelling: %v, want conflict", err)
+	}
+	if _, err := s.Remove(asOwner(ctx), "j.doe@gmail.com"); !errors.As(err, &ce) || ce.Kind != "conflict" {
+		t.Errorf("removing the configured owner by its stored spelling: %v, want conflict", err)
+	}
+	if _, err := s.RecordMode(ctx, "production"); err != nil {
+		t.Fatal(err)
+	}
+	var role auth.Role
+	if err := s.DB.QueryRowContext(ctx, "SELECT role FROM users WHERE email = 'j.doe@gmail.com'").Scan(&role); err != nil || role != auth.Owner {
+		t.Errorf("after a mode change the configured owner is %s (%v), want owner", role, err)
+	}
+}
+
 func TestAccountActions(t *testing.T) {
 	s, _ := newService(t, "a@college.edu")
 	ctx := context.Background()

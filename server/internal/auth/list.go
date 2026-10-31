@@ -47,6 +47,12 @@ func canonical(email string) string {
 	return e
 }
 
+// isConfiguredOwner reports whether email is PODIUM_OWNER_EMAIL, in any
+// spelling Bootstrap would bind to the same row (Gmail dots, case).
+func (s *Service) isConfiguredOwner(email string) bool {
+	return s.OwnerEmail != "" && canonical(email) == canonical(s.OwnerEmail)
+}
+
 func isGmail(canon string) bool { return strings.HasSuffix(canon, "@gmail.com") }
 
 type querier interface {
@@ -280,7 +286,7 @@ func (s *Service) Remove(ctx context.Context, email string) (deleted bool, err e
 	if err := s.changeAllowed(ctx, a.Email, a.Role, a.Role); err != nil {
 		return false, err
 	}
-	if a.Email == s.OwnerEmail {
+	if s.isConfiguredOwner(a.Email) {
 		return false, conflict("This owner is set in the server configuration and cannot be removed.")
 	}
 	if actor, _ := ActorFrom(ctx); actor.ID == a.ID {
@@ -358,7 +364,7 @@ func (s *Service) List(ctx context.Context) ([]ListedPerson, ListCounts, []Refus
 			rows.Close()
 			return nil, c, nil, err
 		}
-		p.Locked = p.Email == s.OwnerEmail
+		p.Locked = s.isConfiguredOwner(p.Email)
 		people = append(people, p)
 		if !p.Disabled {
 			c.OnList++

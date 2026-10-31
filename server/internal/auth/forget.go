@@ -82,7 +82,7 @@ func (s *Service) Forget(ctx context.Context, email string, apply, allowOwner bo
 	if s.OwnerEmail == "" {
 		return ForgetReport{}, ErrNoOwnerEmail
 	}
-	if email == s.OwnerEmail {
+	if s.isConfiguredOwner(email) {
 		return ForgetReport{}, ErrForgetOwner
 	}
 	if strings.HasSuffix(email, forgottenDomain) {

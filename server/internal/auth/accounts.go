@@ -86,7 +86,7 @@ func (s *Service) SetDisabled(ctx context.Context, email string, disabled bool, 
 	if err := s.changeAllowed(ctx, a.Email, a.Role, a.Role); err != nil {
 		return Account{}, 0, err
 	}
-	if disabled && a.Email == s.OwnerEmail {
+	if disabled && s.isConfiguredOwner(a.Email) {
 		return Account{}, 0, conflict("This owner is set in the server configuration and cannot be disabled.")
 	}
 	if disabled && a.ID == by {

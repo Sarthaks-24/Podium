@@ -29,7 +29,7 @@ func (s *Service) TestSignIn(ctx context.Context, email, name string, role Role,
 	default:
 		return User{}, "", time.Time{}, invalid("Choose student, organiser, admin or owner.")
 	}
-	if email == s.OwnerEmail {
+	if s.isConfiguredOwner(email) {
 		role = Owner
 	}
 	tx, err := s.DB.BeginTx(ctx, nil)
@@ -44,7 +44,7 @@ func (s *Service) TestSignIn(ctx context.Context, email, name string, role Role,
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return User{}, "", time.Time{}, err
 	}
-	if disabled && email != s.OwnerEmail {
+	if disabled && !s.isConfiguredOwner(email) {
 		return User{}, "", time.Time{}, ErrDisabled
 	}
 	now := s.now()
