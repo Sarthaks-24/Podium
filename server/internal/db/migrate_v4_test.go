@@ -213,3 +213,44 @@ func TestClientKeysMigration(t *testing.T) {
 		t.Errorf("the same key twice: %v, want the announcements_by_key index to refuse it", err)
 	}
 }
+
+// 0006 (v4 audit) adds indexes; each query it was made for must use it
+// instead of scanning or sorting the table.
+func TestIndexesMigrationIsUsed(t *testing.T) {
+	ctx := context.Background()
+	d, err := Open(ctx, filepath.Join(t.TempDir(), "p.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer d.Close()
+	if _, err := Migrate(ctx, d); err != nil {
+		t.Fatal(err)
+	}
+	for index, q := range map[string]string{
+		"submissions_by_feed":         "SELECT s.id FROM submissions s WHERE s.contest_id = 1 AND s.kind = 'submit' ORDER BY s.id DESC LIMIT 50 OFFSET 0",
+		"contest_starts_by_user":      "SELECT contest_id FROM contest_starts WHERE user_id = 1",
+		"announcements_by_contest":    "SELECT id, body_md, created_at FROM announcements WHERE contest_id = 1 ORDER BY id DESC",
+		"contest_problems_by_problem": "SELECT contest_id FROM contest_problems WHERE problem_id = 1",
+	} {
+		rows, err := d.QueryContext(ctx, "EXPLAIN QUERY PLAN "+q)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var plan []string
+		for rows.Next() {
+			var id, parent, unused int
+			var detail string
+			if err := rows.Scan(&id, &parent, &unused, &detail); err != nil {
+				t.Fatal(err)
+			}
+			plan = append(plan, detail)
+		}
+		if err := rows.Err(); err != nil {
+			t.Fatal(err)
+		}
+		rows.Close()
+		if p := strings.Join(plan, "; "); !strings.Contains(p, index) || strings.Contains(p, "TEMP B-TREE") {
+			t.Errorf("%s: plan %q, want %s and no sort", index, p, index)
+		}
+	}
+}
