@@ -282,7 +282,7 @@ Listed in the order the judge reads them, with the same mode columns. `podium-ju
 | Variable | testing | dev | production | Default | Purpose |
 |---|---|---|---|---|---|
 | `PODIUM_MODE` | | | | `production` | As on the server. |
-| `PODIUM_SERVER_URL` | optional | optional | optional | `http://127.0.0.1:8081` | The server's judge API (its `PODIUM_JUDGE_LISTEN`) as a URL with no path. For a remote judge, the local end of the tunnel. |
+| `PODIUM_SERVER_URL` | optional | optional | optional | `http://127.0.0.1:8081` | The server's judge API (its `PODIUM_JUDGE_LISTEN`) as a URL with no path. For a remote judge, the local end of the tunnel. Production refuses a plain `http` address that is not loopback, since the token travels in every request. |
 | `PODIUM_JUDGE_TOKEN` | optional | optional | required | testing and dev: the public testing token | The server's `PODIUM_JUDGE_TOKEN`. Production refuses the testing token. Secret. |
 | `PODIUM_ISOLATE_PATH` | optional | optional | optional | `/usr/bin/isolate` | The isolate binary. |
 | `PODIUM_JUDGE_LANES` | optional | optional | optional | `2` | Sandboxes judged in parallel (1 to 16). Two fit a 2 GB VM. Lane n uses isolate box `PODIUM_JUDGE_BOX_BASE` + n; a judge that finds its box busy waits up to about 4 s and then fails the job as a judge error. |

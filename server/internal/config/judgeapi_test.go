@@ -44,6 +44,24 @@ func TestWorkerNeedsServerAndToken(t *testing.T) {
 	if _, err := LoadWorker(env(map[string]string{"PODIUM_JUDGE_TOKEN": strings.Repeat("j", 40), "PODIUM_SERVER_URL": "127.0.0.1:8081"})); err == nil {
 		t.Error("server URL without scheme accepted")
 	}
+	// Production keeps the token off the network: plain http only to loopback.
+	tok := strings.Repeat("j", 40)
+	for url, ok := range map[string]bool{
+		"http://127.0.0.1:8081":      true,
+		"http://localhost":           true,
+		"http://[::1]:8081":          true,
+		"https://judge.example.edu":  true,
+		"http://10.0.0.5:8081":       false,
+		"http://contest.example.edu": false,
+	} {
+		_, err := LoadWorker(env(map[string]string{"PODIUM_JUDGE_TOKEN": tok, "PODIUM_SERVER_URL": url}))
+		if (err == nil) != ok {
+			t.Errorf("production worker with %s: %v, want accepted %v", url, err, ok)
+		}
+	}
+	if _, err := LoadWorker(env(map[string]string{"PODIUM_JUDGE_TOKEN": tok, "PODIUM_MODE": "dev", "PODIUM_SERVER_URL": "http://10.0.0.5:8081"})); err != nil {
+		t.Errorf("dev worker on a private address: %v", err)
+	}
 }
 
 func TestJudgeBoxBase(t *testing.T) {

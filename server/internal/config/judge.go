@@ -2,6 +2,7 @@ package config
 
 import (
 	"log/slog"
+	"net"
 	"net/url"
 	"strings"
 )
@@ -60,6 +61,10 @@ func LoadWorker(get Getenv) (Judge, error) {
 	c := Judge{Mode: r.mode("PODIUM_MODE"), ServerURL: r.str("PODIUM_SERVER_URL")}
 	if u, err := url.Parse(c.ServerURL); err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" || (u.Path != "" && u.Path != "/") {
 		r.p.add("PODIUM_SERVER_URL must be the server's judge address, such as http://127.0.0.1:8081")
+	} else if c.Mode == ModeProduction && u.Scheme == "http" && !IsLoopback(net.JoinHostPort(u.Hostname(), "0")) {
+		// The token travels in every request: over plain http it must not
+		// leave the machine. A remote judge uses the local end of a tunnel.
+		r.p.add("PODIUM_SERVER_URL must be a loopback address in production, such as http://127.0.0.1:8081 (for a judge on another machine, the local end of the tunnel), so the judge token never crosses the network in clear")
 	}
 	c.ServerURL = strings.TrimSuffix(c.ServerURL, "/")
 	switch {
