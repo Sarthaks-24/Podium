@@ -195,7 +195,7 @@ The signed-in person's own dates for the `/me` page (v4): `200 {"member_since":1
 
 ### `GET /api/me/contests` (student)
 
-The contests the signed-in person entered (a start, or a submission that counts), newest first, for the `/me` page (v4): `200 {"contests":[{"slug","title","starts_at","state","score","max_score","place","of"}],"server_now"}`. `score` is their own total, always shown, as on the contest page. `place` and `of` (their rank and the number of rows on the board) come from the board students see now and are left out while it is frozen (during the freeze, and after the end while the organisers hold the reveal), and for anyone the board leaves out. No other person's data is ever in it.
+The contests the signed-in person entered (a start, or a submission that counts), newest first, archived ones left out, for the `/me` page (v4): `200 {"contests":[{"slug","title","starts_at","state","score","max_score","place","of"}],"server_now"}`. `score` is their own total, always shown, as on the contest page. `place` and `of` (their rank and the number of rows on the board) come from the board students see now and are left out while it is frozen (during the freeze, and after the end while the organisers hold the reveal), and for anyone the board leaves out. No other person's data is ever in it.
 
 ### `PUT /api/me/preferences` (student)
 

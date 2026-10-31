@@ -6,7 +6,10 @@ package contests
 // now: while the contest shows students a frozen board (the freeze, or the
 // organisers holding the reveal) there is none, so the profile never says
 // more than the standings page does. No new table: entering is a
-// contest_starts row or a non-practice submission, as for the board.
+// contest_starts row or a non-practice submission, as for the board. An
+// archived contest is left out: students cannot open it any more. Each row
+// costs a state, a score and a cached board read, which suits one page for
+// one person, not a list of everyone.
 
 import (
 	"context"
@@ -34,7 +37,7 @@ func (s *Service) Entered(ctx context.Context, userID int64) ([]*Contest, error)
 	rows, err := s.DB.QueryContext(ctx, `SELECT id FROM contests WHERE id IN (
 			SELECT contest_id FROM contest_starts WHERE user_id = ?
 			UNION SELECT contest_id FROM submissions WHERE user_id = ? AND contest_id IS NOT NULL AND kind = 'submit' AND practice = 0)
-		AND published = 1 ORDER BY starts_at DESC, id DESC`, userID, userID)
+		AND published = 1 AND archived = 0 ORDER BY starts_at DESC, id DESC`, userID, userID)
 	if err != nil {
 		return nil, err
 	}

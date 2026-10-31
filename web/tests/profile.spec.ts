@@ -3,7 +3,9 @@
 // preferences, the same controls as the menus. Four widths, both themes,
 // no sideways scroll; the picture is fetched with no referrer.
 import { expect, test, type Page } from '@playwright/test';
+import * as contests from './mocks/contests';
 import * as screens from './mocks/screens';
+import { codeEditor } from './locators';
 
 // A one-pixel image, served in place of Google's picture so no test reaches the network.
 const PICTURE = '<svg xmlns="http://www.w3.org/2000/svg" width="1" height="1"><rect width="1" height="1" fill="#888"/></svg>';
@@ -96,3 +98,14 @@ for (const theme of ['light', 'dark'] as const) {
     });
   }
 }
+
+test('a font size set on the profile is the one the workspace editor opens with', async ({ page }) => {
+  await contests.mockApi(page, { phase: 'during' });
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto('/me');
+  await page.getByRole('region', { name: 'Code editor' }).getByLabel('Font size').selectOption('18');
+  await page.goto('/contests/week-6/problems/A');
+  await expect(codeEditor(page)).toBeVisible();
+  await page.getByRole('button', { name: 'Settings' }).click();
+  await expect(page.locator('#ws-font')).toHaveValue('18');
+});

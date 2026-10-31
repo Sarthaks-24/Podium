@@ -99,4 +99,12 @@ func TestMyContests(t *testing.T) {
 	if got := mine(asha); got["held"]["place"] != float64(1) {
 		t.Errorf("held after the reveal: %v, want place 1", got["held"])
 	}
+
+	// An archived contest leaves the list: its page no longer opens for students.
+	if code, out := owner.do("DELETE", fmt.Sprintf("/api/admin/contests/%d", held), nil, s.srv.URL); code/100 != 2 {
+		t.Fatalf("archive: %d %v", code, out)
+	}
+	if got := mine(asha); len(got) != 1 || got["held"] != nil {
+		t.Errorf("after archiving held: %v, want open only", got)
+	}
 }
