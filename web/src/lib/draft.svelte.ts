@@ -124,8 +124,22 @@ export class Draft {
     this.queueMirror();
   }
 
-  /** Saves to the server now when the code changed since the last save. */
-  async save(): Promise<void> {
+  private saving: Promise<void> | null = null;
+
+  /**
+   * Saves to the server now when the code changed since the last save. A
+   * call while a save is on its way joins it: leaving the window fires the
+   * editor's blur, the window's blur and the visibility change in one tick,
+   * and the server refuses a second save within 2 s.
+   */
+  save(): Promise<void> {
+    this.saving ??= this.saveNow().finally(() => {
+      this.saving = null;
+    });
+    return this.saving;
+  }
+
+  private async saveNow(): Promise<void> {
     if (!this.loaded || !this.unsaved) return;
     const body = { language: this.language, source: this.source };
     this.mirror({ ...body, updated_at: serverClock.serverNow() });

@@ -1128,6 +1128,25 @@ test.describe('P5 workspace', () => {
   });
 });
 
+test('leaving the window saves the draft once, not once per event', async ({ page }) => {
+  const api = await mockApi(page, { draft: { language: 'cpp17', source: 'int a;' } });
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await openWorkspace(page);
+  await codeEditor(page).click();
+  await page.keyboard.press('Control+End');
+  await page.keyboard.type('// once');
+  // Alt-Tab: the editor's blur, the window's blur and the visibility change in one tick.
+  await page.evaluate(() => {
+    (document.activeElement as HTMLElement | null)?.blur();
+    window.dispatchEvent(new Event('blur'));
+    document.dispatchEvent(new Event('visibilitychange'));
+  });
+  await expect.poll(() => api.draftPuts.length).toBe(1);
+  await page.waitForTimeout(500);
+  expect(api.draftPuts).toHaveLength(1);
+  await expect(page.locator('p.save')).not.toHaveText('Not saved to the server, kept on this device');
+});
+
 test('the event stream carries this browser\'s device id (C2-034)', async ({ page }) => {
   await mockApi(page);
   const streams: string[] = [];
