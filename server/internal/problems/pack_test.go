@@ -3,6 +3,7 @@ package problems
 import (
 	"archive/zip"
 	"bytes"
+	"encoding/binary"
 	"io"
 	"io/fs"
 	"maps"
@@ -283,6 +284,22 @@ func TestContentHashCoversJudgingOnly(t *testing.T) {
 		if ContentHash(&q) == base {
 			t.Errorf("%s did not change the hash", name)
 		}
+	}
+}
+
+// TestZipEntryCountShortZip64: a 42-byte upload that is only a ZIP64
+// locator and an end record must be refused, not panic on the bounds check.
+func TestZipEntryCountShortZip64(t *testing.T) {
+	data := make([]byte, 42)
+	binary.LittleEndian.PutUint32(data[0:], 0x07064b50)  // locator
+	binary.LittleEndian.PutUint64(data[8:], 100)         // ZIP64 record offset, past the end
+	binary.LittleEndian.PutUint32(data[20:], 0x06054b50) // end of central directory
+	binary.LittleEndian.PutUint16(data[30:], 0xffff)     // entry count: see ZIP64
+	if n, ok := zipEntryCount(data); ok {
+		t.Errorf("entry count %d accepted for a 42-byte zip", n)
+	}
+	if _, err := ReadPack(data); err == nil {
+		t.Error("ReadPack accepted a 42-byte zip")
 	}
 }
 

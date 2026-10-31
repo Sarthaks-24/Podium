@@ -40,7 +40,7 @@ func zipEntryCount(data []byte) (n uint64, ok bool) {
 		return n, true
 	}
 	off := binary.LittleEndian.Uint64(data[l+8:])
-	if off > uint64(len(data)-56) || binary.LittleEndian.Uint32(data[off:]) != zip64EOCD {
+	if len(data) < 56 || off > uint64(len(data)-56) || binary.LittleEndian.Uint32(data[off:]) != zip64EOCD {
 		return 0, false
 	}
 	return binary.LittleEndian.Uint64(data[off+32:]), true
