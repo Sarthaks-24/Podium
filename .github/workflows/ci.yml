@@ -19,9 +19,15 @@ on:
 permissions:
   contents: read
 
+# A newer push to the same branch makes the older run's result moot.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   check:
     runs-on: ubuntu-24.04
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
@@ -44,6 +50,12 @@ jobs:
       # against the gzip budget in web/scripts/size-budget.mjs (v2 P6 F8.3).
       - name: web size budget
         run: cd web && npm run size
+      # Known vulnerabilities in the Go toolchain and modules the code reaches,
+      # and in the packages the web app ships (dev tooling left out).
+      - name: vulnerability scan
+        run: |
+          cd server && go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...
+          cd ../web && npm audit --omit=dev --audit-level=high
 
   e2e:
     runs-on: ubuntu-24.04
@@ -62,7 +74,7 @@ jobs:
       - id: pw
         run: echo "version=$(cd web && node -p "require('@playwright/test/package.json').version")" >> "$GITHUB_OUTPUT"
       - id: pw-cache
-        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
         with:
           path: ~/.cache/ms-playwright
           key: playwright-${{ runner.os }}-${{ steps.pw.outputs.version }}

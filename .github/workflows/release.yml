@@ -17,6 +17,7 @@ permissions:
 jobs:
   release:
     runs-on: ubuntu-24.04
+    timeout-minutes: 30
     env:
       # The tag, read through the environment, never pasted into a script.
       TAG: ${{ github.ref_name }}
@@ -29,12 +30,11 @@ jobs:
       - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
         with:
           go-version-file: server/go.mod
-          cache-dependency-path: server/go.sum
+          # A release builds from clean caches, never ones a ci run wrote.
+          cache: false
       - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
         with:
           node-version: 22
-          cache: npm
-          cache-dependency-path: web/package-lock.json
       - name: the ci run of this commit passed
         env:
           GH_TOKEN: ${{ github.token }}
