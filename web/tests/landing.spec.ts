@@ -40,3 +40,11 @@ for (const theme of ['light', 'dark'] as const) {
     });
   }
 }
+
+test('signed out on the sign-in page, the word-mark leads to the landing page', async ({ page }) => {
+  await screens.mockApi(page, 'signed-out');
+  await page.goto('/signin');
+  await page.locator('.wordmark').click();
+  await expect(page).toHaveURL(/\/$/);
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Programming contests at this college');
+});

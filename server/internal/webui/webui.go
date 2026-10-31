@@ -3,9 +3,10 @@
 // without it the server still runs and explains how to build the app.
 // Hashed files under /assets/ are cached for a year; index.html never is,
 // so a release reaches every browser on the next navigation. A path the
-// app has no screen for gets the app with status 404 (V4-9). Podium is a
-// college tool behind sign-in: every page says noindex and robots.txt
-// disallows everything (v3).
+// app has no screen for gets the app with status 404 (V4-9). / without a
+// session cookie is the prerendered landing page (v4 P2, V4-8), the one page
+// with no noindex; every other page is a college tool behind sign-in and
+// says noindex. robots.txt still disallows everything until P3.
 package webui
 
 import (
@@ -37,11 +38,25 @@ func Handler() http.Handler {
 	return handlerFor(dist)
 }
 
+// SessionCookies are the session cookie's two names (httpapi
+// sessionCookieName: __Host- prefixed on https); TestSessionCookieNames in
+// httpapi keeps them in step.
+var SessionCookies = []string{"__Host-podium_session", "podium_session"}
+
+func hasSession(r *http.Request) bool {
+	return slices.ContainsFunc(SessionCookies, func(name string) bool {
+		_, err := r.Cookie(name)
+		return err == nil
+	})
+}
+
 func handlerFor(dist fs.FS) http.Handler {
 	index, err := fs.ReadFile(dist, "index.html")
 	if err != nil {
 		return http.HandlerFunc(notBuilt)
 	}
+	// The prerendered landing page (v4 P2), when the build made one.
+	landing, _ := fs.ReadFile(dist, "landing.html")
 	files := http.FileServerFS(dist)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet && r.Method != http.MethodHead {
@@ -91,7 +106,19 @@ func handlerFor(dist fs.FS) http.Handler {
 			return
 		}
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		w.Header().Set("Cache-Control", "no-cache")
+		if name == "" {
+			// V4-8: / is the landing page without a session cookie and the
+			// app with one (a stale cookie gets the app, which shows the
+			// landing page itself), so no cache may keep either for the other.
+			w.Header().Set("Cache-Control", "private, no-store")
+			w.Header().Set("Vary", "Cookie")
+			if landing != nil && !hasSession(r) {
+				w.Write(landing)
+				return
+			}
+		} else {
+			w.Header().Set("Cache-Control", "no-cache")
+		}
 		w.Header().Set("X-Robots-Tag", "noindex")
 		// Any other path still gets the app, which draws "Page not found",
 		// but with the status crawlers and link checkers read.

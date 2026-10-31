@@ -7,6 +7,7 @@ Dated entries per release. Unreleased work is listed at the top.
 ### v4 stage P: the public site (2026-10-31)
 
 - Signed out, `/` is now a short landing page instead of a jump to sign-in: what Podium is for at this college, what students and organisers do in it, how a contest works in three lines, and "Sign in with your college Google account". Every other page still asks to sign in first.
+- The landing page is also prerendered at build time (`npm run build` now runs `scripts/prerender.mjs` after Vite, about 0.9 s): `dist/landing.html` holds the page as HTML, readable with scripts off and by search engines, and the app takes over when its script loads. The server sends it for `/` to a request without a session cookie, without `noindex`; with one, the app as before. `/` is now sent `Cache-Control: private, no-store` and `Vary: Cookie`, so no cache hands one to the other. The privacy page waits for its approved text, and the 404 page names the address it was given, so neither is prerendered yet.
 
 ### v4 stage M: the profile (2026-10-31)
 

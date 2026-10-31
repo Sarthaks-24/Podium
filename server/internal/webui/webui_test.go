@@ -24,7 +24,7 @@ func TestHandler(t *testing.T) {
 		status       int
 		cache        string
 	}{
-		{"GET", "/", 200, "no-cache"},
+		{"GET", "/", 200, "private, no-store"},
 		{"GET", "/contests/week-6", 200, "no-cache"},
 		{"HEAD", "/contests/week-6", 200, "no-cache"},
 		{"GET", "/assets/app-abc.js", 200, "public, max-age=31536000, immutable"},
@@ -128,5 +128,43 @@ func TestHandlerNotBuilt(t *testing.T) {
 	handlerFor(fstest.MapFS{}).ServeHTTP(rec, httptest.NewRequest("GET", "/", nil))
 	if rec.Code != http.StatusServiceUnavailable {
 		t.Errorf("status %d, want 503", rec.Code)
+	}
+}
+
+// v4 P2 (V4-8): / without a session cookie is the prerendered landing page,
+// indexable; with either cookie name it is the app, noindex. Both are
+// private and vary on the cookie, so no cache hands one to the other.
+func TestLandingPage(t *testing.T) {
+	h := handlerFor(fstest.MapFS{
+		"index.html":   {Data: []byte("app shell")},
+		"landing.html": {Data: []byte("<h1>Programming contests at this college</h1>")},
+	})
+	get := func(cookie string) *httptest.ResponseRecorder {
+		req := httptest.NewRequest("GET", "/", nil)
+		if cookie != "" {
+			req.AddCookie(&http.Cookie{Name: cookie, Value: "x"})
+		}
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
+		return rec
+	}
+	out := get("")
+	if out.Code != 200 || !strings.Contains(out.Body.String(), "Programming contests") || out.Header().Get("X-Robots-Tag") != "" {
+		t.Errorf("signed out: %d %q robots %q, want the landing page, indexable", out.Code, out.Body.String(), out.Header().Get("X-Robots-Tag"))
+	}
+	for _, name := range append([]string{""}, SessionCookies...) {
+		rec := get(name)
+		if rec.Header().Get("Cache-Control") != "private, no-store" || rec.Header().Get("Vary") != "Cookie" {
+			t.Errorf("cookie %q: Cache-Control %q Vary %q", name, rec.Header().Get("Cache-Control"), rec.Header().Get("Vary"))
+		}
+		if name != "" && (rec.Body.String() != "app shell" || rec.Header().Get("X-Robots-Tag") != "noindex") {
+			t.Errorf("cookie %q: %q robots %q, want the app, noindex", name, rec.Body.String(), rec.Header().Get("X-Robots-Tag"))
+		}
+	}
+	// Only / is the landing page: another path without a cookie is the app.
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest("GET", "/contests/week-6", nil))
+	if rec.Body.String() != "app shell" {
+		t.Errorf("/contests/week-6 signed out: %q, want the app", rec.Body.String())
 	}
 }

@@ -201,6 +201,23 @@ pre,
   border: 0;
 }
 
+/* The prerendered landing page's plain shell (scripts/prerender.mjs, v4
+   P2): what a reader without JavaScript and a search engine see before the
+   app takes over. */
+.prerendered {
+  padding: var(--space-4) var(--gutter) var(--space-7);
+}
+
+.prerendered > header {
+  padding-bottom: var(--space-5);
+}
+
+.prerendered-mark {
+  color: var(--ink);
+  font-weight: 600;
+  text-decoration: none;
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
