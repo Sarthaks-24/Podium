@@ -21,7 +21,6 @@
   import Toasts from './components/Toasts.svelte';
   import PageHeader from './components/PageHeader.svelte';
   import PageState from './components/PageState.svelte';
-  import Landing from './routes/Landing.svelte';
   import ThemeMenu from './components/ThemeMenu.svelte';
   import { regions } from './lib/announce.svelte';
   import { setTitle } from './lib/head';
@@ -35,7 +34,7 @@
   import { publishHeight } from './lib/publishHeight';
   import { PRIVACY_LINKED } from './lib/site';
   import { showToast } from './lib/toast.svelte';
-  import { SCREENS, screenKey, type Screen } from './screens';
+  import { Landing, SCREENS, screenKey, type Screen } from './screens';
 
   const year = __BUILD_YEAR__;
 

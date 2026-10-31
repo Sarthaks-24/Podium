@@ -15,7 +15,7 @@ const HEX_COLOUR = /#[0-9a-fA-F]{3,8}\b/;
 const TOKENS = '/src/styles/tokens.css';
 // Browser chrome metas and the favicon cannot use CSS variables, so they
 // carry copies of token values; the test below keeps the copies exact.
-const MIRRORS_TOKENS = ['/index.html', '/public/favicon.svg'];
+const MIRRORS_TOKENS = ['/index.html', '/public/favicon.svg', '/public/site.webmanifest'];
 // Tests may name colours to check the contrast maths.
 const isTest = (path: string) => path.endsWith('.test.ts');
 
@@ -182,7 +182,7 @@ describe('breakpoints', () => {
 describe('first load', () => {
   // The screens a student can open; every other route is an organiser's and
   // is loaded with import() from screens.ts.
-  const STUDENT_SCREENS = ['ContestPage', 'Home', 'NotFound', 'Privacy', 'SignIn', 'StandingsPage'];
+  const STUDENT_SCREENS = ['ContestPage', 'Home', 'Landing', 'NotFound', 'Privacy', 'SignIn', 'StandingsPage'];
 
   it('imports only student screens statically in screens.ts, and no screen in App.svelte', () => {
     const table = sources['/src/screens.ts'];

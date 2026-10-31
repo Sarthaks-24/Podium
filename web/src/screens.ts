@@ -12,6 +12,7 @@ import type { Component } from 'svelte';
 import type { RouteName } from './lib/routing';
 import ContestPage from './routes/ContestPage.svelte';
 import Home from './routes/Home.svelte';
+import Landing from './routes/Landing.svelte';
 import NotFound from './routes/NotFound.svelte';
 import Privacy from './routes/Privacy.svelte';
 import SignIn from './routes/SignIn.svelte';
@@ -61,3 +62,6 @@ export const SCREENS: Record<RouteName, ScreenDef> = {
 export function screenKey(def: ScreenDef, params: Record<string, string>): string {
   return def.key ? def.key(params) : Object.values(params).join('/');
 }
+
+/** The signed-out home (v4 P1): not a route of its own, App shows it for / when nobody is signed in. */
+export { Landing };
