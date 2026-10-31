@@ -36,7 +36,11 @@ const HEAD = [
   `<meta property="og:title" content="${TITLE}" />`,
   `<meta property="og:description" content="${DESCRIPTION}" />`,
   '<meta property="og:url" content="%BASE_URL%/" />',
-  '<meta name="twitter:card" content="summary" />',
+  '<meta property="og:image" content="%BASE_URL%/og.png" />',
+  '<meta property="og:image:width" content="1200" />',
+  '<meta property="og:image:height" content="630" />',
+  '<meta property="og:image:alt" content="The podium word-mark" />',
+  '<meta name="twitter:card" content="summary_large_image" />',
 ].join('\n    ');
 const { body } = render(Landing);
 const foot = PRIVACY_LINKED ? '<p><a href="/privacy">Privacy</a></p>' : '';

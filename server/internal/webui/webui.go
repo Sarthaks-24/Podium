@@ -29,6 +29,7 @@ func init() {
 	// lack on the VM.
 	mime.AddExtensionType(".ico", "image/x-icon")
 	mime.AddExtensionType(".woff2", "font/woff2")
+	mime.AddExtensionType(".webmanifest", "application/manifest+json")
 }
 
 // Handler returns the SPA handler over the embedded build; base is the

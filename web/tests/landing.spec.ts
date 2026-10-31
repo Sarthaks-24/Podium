@@ -48,3 +48,17 @@ test('signed out on the sign-in page, the word-mark leads to the landing page', 
   await expect(page).toHaveURL(/\/$/);
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('Programming contests at this college');
 });
+
+test('the web manifest loads with no errors, names Podium and has both icons (P4)', async ({ page }) => {
+  await screens.mockApi(page, 'signed-out');
+  await page.goto('/');
+  await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
+  const cdp = await page.context().newCDPSession(page);
+  const got = (await cdp.send('Page.getAppManifest' as never)) as { url: string; errors: { message: string }[]; data: string };
+  expect(got.errors).toEqual([]);
+  const manifest = JSON.parse(got.data);
+  expect(manifest.name).toBe('podium');
+  expect(manifest.display).toBe('browser');
+  expect(manifest.icons.map((i: { sizes: string }) => i.sizes)).toEqual(['192x192', '512x512']);
+  for (const src of ['/icon-192.png', '/icon-512.png', '/og.png']) expect((await page.request.get(src)).status()).toBe(200);
+});
