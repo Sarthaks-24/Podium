@@ -137,8 +137,8 @@ func (d *Handlers) ListPeople(w http.ResponseWriter, r *http.Request) {
 
 // LookupAccount finds one account by its email, students included, so
 // People's Account help can say whose account an action is about before
-// it runs (audit 2026-10-20 O10). Owners and admins only: anyone else gets
-// the same 403 whether or not the address exists, so the route tells
+// it runs (audit 2026-10-20 O10). Organisers and above (kept in the stage O
+// review, L3); anyone else gets the same 403 whether or not the address exists, so the route tells
 // nobody else which addresses have accounts. The address is matched as
 // sign-in stores it (trimmed, lower case) and is never logged.
 func (d *Handlers) LookupAccount(w http.ResponseWriter, r *http.Request) {
@@ -345,7 +345,7 @@ func (d *Handlers) SetSiteSettings(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// SiteAudit is the People page's History, owners only.
+// SiteAudit is the Dashboard's Audit tab, for admins and owners.
 func (d *Handlers) SiteAudit(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	page, _ := strconv.Atoi(q.Get("page"))

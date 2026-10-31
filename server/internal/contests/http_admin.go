@@ -147,8 +147,9 @@ func (d *Handlers) writeAdminContest(w http.ResponseWriter, r *http.Request, id 
 	httpx.WriteJSON(w, status, out)
 }
 
-// OrganisedContest loads the contest named by {id} for one of its
-// organisers; anyone else gets the same 404 as a missing contest.
+// OrganisedContest loads the contest named by {id}, or answers 404. It does
+// not check who asks: every organiser manages every contest, and the route
+// guard already requires the organiser role.
 func (d *Handlers) OrganisedContest(w http.ResponseWriter, r *http.Request) (*Contest, bool) {
 	id, ok := httpx.ParseID(r.PathValue("id"))
 	if !ok {
@@ -323,7 +324,7 @@ func (d *Handlers) SetContestProblems(w http.ResponseWriter, r *http.Request) {
 }
 
 // SetExtension gives one student taking part extra time.
-// Owners and admins only.
+// Organisers and above, like every route here.
 func (d *Handlers) SetExtension(w http.ResponseWriter, r *http.Request) {
 	c, ok := d.OrganisedContest(w, r)
 	if !ok {
@@ -426,8 +427,8 @@ func (d *Handlers) ContestFeed(w http.ResponseWriter, r *http.Request) {
 		"server_now": d.Contests.Clock().UnixMilli()})
 }
 
-// Rejudge queues a problem's or one submission's rejudge. Owners and admins
-// only: a rejudge can change every score on the board.
+// Rejudge queues a problem's or one submission's rejudge, for organisers
+// and above; a rejudge can change every score on the board.
 func (d *Handlers) Rejudge(w http.ResponseWriter, r *http.Request) {
 	c, ok := d.OrganisedContest(w, r)
 	if !ok {

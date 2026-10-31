@@ -7,10 +7,8 @@ package db
 
 import (
 	"context"
-	"crypto/sha256"
 	"database/sql"
 	"database/sql/driver"
-	"encoding/hex"
 	"fmt"
 	"os"
 	"path"
@@ -24,28 +22,6 @@ import (
 
 // migrationFS holds the schema files (package migrations).
 var migrationFS = migrations.FS
-
-// init registers podium_sha256(text), the lowercase hex SHA-256 of a
-// text or blob value (problems.SHA computes the same in Go), on every
-// connection of the driver. Migration 0010 uses it to fill the revision
-// rows' source hashes, so the backfill stays in its SQL file.
-func init() {
-	sqlite.MustRegisterDeterministicScalarFunction("podium_sha256", 1, func(_ *sqlite.FunctionContext, args []driver.Value) (driver.Value, error) {
-		var b []byte
-		switch v := args[0].(type) {
-		case nil:
-			return nil, nil
-		case string:
-			b = []byte(v)
-		case []byte:
-			b = v
-		default:
-			b = []byte(fmt.Sprint(v))
-		}
-		sum := sha256.Sum256(b)
-		return hex.EncodeToString(sum[:]), nil
-	})
-}
 
 // MaxConns is the size of the connection pool.
 const MaxConns = 8

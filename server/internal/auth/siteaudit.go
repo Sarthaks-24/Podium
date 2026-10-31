@@ -17,7 +17,7 @@ import (
 	"strings"
 )
 
-// Site audit actions (docs/API.md, "Site audit: People History").
+// Site audit actions (docs/API.md, GET /api/admin/site-audit; the Dashboard's Audit tab).
 const (
 	AuditRoleGranted = "role_granted"
 	AuditRoleRevoked = "role_revoked"

@@ -93,11 +93,6 @@ export function roleWord(role: string): string {
   return isRole(role) ? roleLabel(role).toLowerCase() : role;
 }
 
-/** "an owner", "an admin" or "an organiser". */
-export function withArticle(role: OrganiserRole): string {
-  return `an ${roleWord(role)}`;
-}
-
 /**
  * Handles what any Settings request can hit: a 401 (lib/api.ts has
  * already signed the page out) and a 403 when the person is no longer an

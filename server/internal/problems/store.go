@@ -20,8 +20,7 @@ import (
 
 // Errors the API maps to status codes.
 var (
-	ErrNotFound  = errors.New("problem not found")
-	ErrSlugTaken = errors.New("slug taken")
+	ErrNotFound = errors.New("problem not found")
 )
 
 // Service manages the problem bank.

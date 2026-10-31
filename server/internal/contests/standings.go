@@ -14,12 +14,6 @@ import (
 	"time"
 )
 
-// Scoring modes.
-const (
-	BestSubtask    = "best_subtask"
-	BestSubmission = "best_submission"
-)
-
 // Board is the contest as scoring sees it.
 type Board struct {
 	StartsAt time.Time     // everyone's start

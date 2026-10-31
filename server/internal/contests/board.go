@@ -321,8 +321,8 @@ func (s *Service) entries(ctx context.Context, c *Contest, userID int64) ([]Entr
 	return out, remaining, rows.Err()
 }
 
-// BoardNow computes the full board from the database, bypassing the cache:
-// a review decision reads the student's rank and score just before it.
+// BoardNow computes the full board from the database, bypassing the cache.
+// Only tests call it, to compare a board with the cached one.
 func (s *Service) BoardNow(ctx context.Context, c *Contest) (*Standings, error) {
 	return s.computeBoard(ctx, c, VariantFull, 0)
 }

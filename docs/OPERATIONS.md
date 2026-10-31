@@ -559,7 +559,7 @@ Set up and prove it once:
 
 ## Metrics
 
-`GET /api/admin/metrics` (owners and admins) answers what to watch during a contest, from two indexed queries and in-memory counters, so polling it every few seconds costs nothing noticeable. The route is in `docs/API.md`.
+`GET /api/admin/metrics` (organisers and above) answers what to watch during a contest, from two indexed queries and in-memory counters, so polling it every few seconds costs nothing noticeable. The route is in `docs/API.md`.
 
 | Field | Meaning |
 |---|---|

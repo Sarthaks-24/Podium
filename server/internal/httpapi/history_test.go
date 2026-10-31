@@ -1,70 +1,13 @@
 package httpapi
 
-// P2 history over HTTP (v2 plan B2.3 to B2.9, gate items 2 to 4): a
-// statement edited mid-contest and "what X saw at T" answered from data
-// for three students; no revision route returns hidden test data; the
-// history routes per role; renamed contests answer 301; practice reveals
-// a failing hidden test and a counting submission never does (D115).
+// Practice reveals a failing hidden test, and a counting contest submission
+// never does (D115).
 
 import (
-	"context"
-	"encoding/json"
 	"fmt"
-	"strings"
 	"testing"
 	"time"
 )
-
-// editBody turns a Problem answer into a ProblemEdit with the statement
-// replaced.
-func editBody(p map[string]any, statement, reason string) map[string]any {
-	body := map[string]any{"statement_md": statement, "reason": reason}
-	for _, k := range []string{"title", "slug", "time_limit_ms", "memory_limit_mb", "checker", "epsilon", "checker_source",
-		"reference", "brute", "validator", "tags", "difficulty", "samples"} {
-		body[k] = p[k]
-	}
-	var subs []map[string]any
-	for _, st := range p["subtasks"].([]any) {
-		m := st.(map[string]any)
-		subs = append(subs, map[string]any{"points": m["points"], "title": m["title"], "tests": m["tests"]})
-	}
-	body["subtasks"] = subs
-	return body
-}
-
-// hiddenSecrets lists what a revision route must never show: every hidden
-// test's input and output text and the hashes of all test files.
-func (s *site) hiddenSecrets(id int64) []string {
-	s.t.Helper()
-	p, err := s.bank.Get(context.Background(), id)
-	if err != nil {
-		s.t.Fatal(err)
-	}
-	var out []string
-	for _, t := range p.Tests {
-		out = append(out, t.InputSHA, t.OutputSHA)
-		if p.IsSample(t.Idx) {
-			continue
-		}
-		for _, sha := range []string{t.InputSHA, t.OutputSHA} {
-			b, _ := s.bank.Blobs.Read(sha, 1<<20)
-			if text := strings.TrimSpace(string(b)); len(text) >= 6 {
-				out = append(out, text)
-			}
-		}
-	}
-	return out
-}
-
-func assertNoSecrets(t *testing.T, what string, body any, secrets []string) {
-	t.Helper()
-	b, _ := json.Marshal(body)
-	for _, sec := range secrets {
-		if strings.Contains(string(b), sec) {
-			t.Errorf("%s returns hidden test data (%.20q...)", what, sec)
-		}
-	}
-}
 
 func TestPracticeRevealsAndContestSubmitNever(t *testing.T) {
 	s := newSite(t)

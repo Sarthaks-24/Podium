@@ -97,17 +97,6 @@
   gap: var(--space-2);
 }
 
-/* A button that reads as a link inside a line of text. */
-.btn-inline {
-  min-height: auto;
-  padding-inline: 0;
-}
-
-.btn-inline:hover {
-  background: transparent;
-  text-decoration: underline;
-}
-
 /* An icon beside a button's words takes the words' size. */
 .btn .icon {
   width: 1.125em;

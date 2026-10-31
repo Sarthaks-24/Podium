@@ -4,15 +4,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"time"
 )
 
 // ErrNotParticipant refuses an extension for someone not taking part in
 // the contest.
 var ErrNotParticipant = errors.New("That person has not started this contest, so they cannot be given extra time.")
-
-// Started reports whether the contest's start time has passed.
-func (c *Contest) Started(now time.Time) bool { return !now.Before(c.Schedule.StartsAt) }
 
 // IsParticipant reports whether a user may be given extra time: they
 // started the contest or submitted to it, and they are a student

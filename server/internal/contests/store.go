@@ -194,8 +194,6 @@ func (s *Service) changed(id int64) {
 	}
 }
 
-var slugPattern = regexp.MustCompile(`^[a-z0-9]+(-[a-z0-9]+)*$`)
-
 func (e *Edit) check() FieldErrors {
 	errs := FieldErrors{}
 	e.Title = strings.TrimSpace(e.Title)
@@ -542,8 +540,7 @@ type pin struct {
 }
 
 // SetProblems replaces the contest's problems for by. Each must be
-// validated; its current content hash and newest revision are pinned, and
-// every label whose problem or revision changed gets a pin history row. A
+// validated; its current content hash and newest revision are pinned. A
 // problem the AI wizard made needs a person's solution (problems saved with
 // a changed reference or brute force) or an admin's reason (AIReason),
 // else the whole change is refused with AIProblemError. The change, and

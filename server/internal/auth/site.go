@@ -190,10 +190,3 @@ func (s *Service) SetOrganisation(ctx context.Context, o Organisation) (Organisa
 	c.org, c.loaded = o, true
 	return o, nil
 }
-
-// RecordSiteTx appends a site audit row for a change tx makes in another
-// package (erasure). details must hold fixed fields only, never request
-// text.
-func (s *Service) RecordSiteTx(ctx context.Context, tx *sql.Tx, action, subject string, details map[string]any) error {
-	return s.recordSite(ctx, tx, action, subject, details)
-}

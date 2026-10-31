@@ -2,7 +2,7 @@
  * Contest pins and the site audit feed as the web app sees them: the pin
  * fields on AdminContest, the answer of "Update students now" (PUT
  * .../problems/{label}/revision), and SiteAuditEntry from
- * GET /api/admin/site-audit (People "History"). The contest "Changes" feed
+ * GET /api/admin/site-audit (the Dashboard's Audit tab). The contest "Changes" feed
  * reuses AuditEntry from lib/contests.ts. No route here ever carries a
  * test's input or output.
  */

@@ -25,9 +25,8 @@ var (
 type Service struct {
 	DB       *sql.DB
 	Problems *problems.Service
-	// Contests holds notices back during a student's live contest, and
-	// rewrites a board and its summaries after a review decision changed
-	// it. Nil in tests that need neither.
+	// Contests invalidates a contest's cached board and supplies the clock.
+	// Nil in tests that need neither.
 	Contests *contests.Service
 	Log      *slog.Logger
 	// Now is the clock; tests replace it.
