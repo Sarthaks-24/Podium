@@ -4,9 +4,10 @@
   three plain lines, and the way in: "Sign in with your college Google
   account". It loads no data and needs no script to read, so the build
   prerenders it to dist/landing.html (scripts/prerender.mjs), and inside
-  the app it is the signed-out home. The privacy link and the organisers'
-  contact sit in the footer around it (the app shell, or the prerendered
-  page's own). Left-aligned, one column, no animation (design.md section 2).
+  the app it is the signed-out home. The privacy link (once approved) and
+  the organisers' contact sit in the app shell's footer; the prerendered
+  copy carries only the privacy link, since the contact is runtime data.
+  Left-aligned, one column, no animation (design.md section 2).
   Takes no props.
 -->
 <script lang="ts">

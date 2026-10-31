@@ -128,7 +128,7 @@ func handlerFor(base string, dist fs.FS) http.Handler {
 			// app with one (a stale cookie gets the app, which shows the
 			// landing page itself), so no cache may keep either for the other.
 			w.Header().Set("Cache-Control", "private, no-store")
-			w.Header().Set("Vary", "Cookie")
+			w.Header().Add("Vary", "Cookie")
 			if landing != nil && !hasSession(r) {
 				w.Write(landing)
 				return
