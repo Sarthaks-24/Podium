@@ -525,6 +525,34 @@ export interface ContestSettings extends ExamOptions {
   honour_text: string;
   /** Keep students on the frozen board after the end until an organiser reveals. */
   hold_reveal?: boolean;
+  /** Who may take part besides staff; "everyone" when left out. */
+  audience?: Audience;
+}
+
+/** Everyone who can sign in, or only the students invited to the contest. */
+export type Audience = 'everyone' | 'invited';
+
+/** GET /api/admin/contests/{id}/invites: one invited student. */
+export interface ContestInvite {
+  user_id: number;
+  name: string;
+  email: string;
+  invited_at: number;
+}
+
+/** GET /api/admin/contests/{id}/invites/candidates: an enabled student on the sign-in list. */
+export interface InviteCandidate {
+  user_id: number;
+  name: string;
+  email: string;
+  invited: boolean;
+}
+
+/** POST /api/admin/contests/{id}/invites/paste: what a paste adds, or with dry_run would add. */
+export interface InvitePasteResult {
+  added: string[];
+  already_invited: string[];
+  unmatched: { line: string; reason: string }[];
 }
 
 /** GET /api/admin/contests/{id}. */
@@ -613,6 +641,8 @@ export const AUDIT_ACTIONS: readonly { id: string; label: string }[] = [
   { id: 'code_viewed', label: 'Code opened by staff' },
   { id: 'organiser_added', label: 'Organiser added' },
   { id: 'organiser_removed', label: 'Organiser removed' },
+  { id: 'invites_added', label: 'Students invited' },
+  { id: 'invite_removed', label: 'Invite removed' },
 ];
 
 /** The contest form's fields as the audit log names them. */
@@ -626,6 +656,7 @@ const AUDIT_FIELDS: Record<string, string> = {
   freeze_minutes: 'freeze',
   published: 'published',
   practice_after_end: 'practice after the end',
+  audience: 'who can take part',
   min_gap_s: 'gap between submissions',
   max_per_problem: 'submissions per problem',
   languages: 'languages',
@@ -638,6 +669,7 @@ const AUDIT_FIELDS: Record<string, string> = {
 
 function auditValue(field: string, v: unknown): string {
   if ((field === 'starts_at' || field === 'ends_at') && typeof v === 'number') return formatDateTime(v);
+  if (field === 'audience') return v === 'invited' ? 'invited students only' : 'everyone who can sign in';
   if (typeof v === 'boolean') return v ? 'yes' : 'no';
   if (Array.isArray(v)) return v.length === 0 ? 'none' : v.join(', ');
   return String(v);
@@ -708,6 +740,10 @@ export function auditSummary(e: Pick<AuditEntry, 'action' | 'details'>, names?: 
       return `Added ${str('email') || `user ${num('user_id')}`} as an organiser`;
     case 'organiser_removed':
       return `Removed ${str('email') || `user ${num('user_id')}`} from the organisers`;
+    case 'invites_added':
+      return `Invited ${countOf(num('count'), 'student')}${d.pasted === true ? ' from a pasted list' : ''}`;
+    case 'invite_removed':
+      return `Removed the invite of ${names?.get(num('user_id')) || `user ${num('user_id')}`}`;
   }
   return e.action;
 }

@@ -220,6 +220,7 @@ const ADMIN_CONTEST: Keys<AdminContest> = {
   languages: 'required',
   honour_text: 'required',
   hold_reveal: 'optional',
+  audience: 'optional',
   full_screen: 'optional',
   count_focus: 'optional',
   block_paste: 'optional',

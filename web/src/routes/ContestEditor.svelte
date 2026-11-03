@@ -8,7 +8,10 @@
   six inputs come first (title, problems, start, length, hidden minutes,
   languages) and everything else waits under Advanced; from 1280 px a
   sticky column lists what the contest still needs before it can be
-  published. Students see a short explanation instead.
+  published. Above the problems, Organisers lists who manages this contest
+  (v4.01). Under Advanced, "Who can take part" chooses everyone who can
+  sign in or only invited students; the second shows InvitesPanel and opens
+  Advanced on load. Students see a short explanation instead.
 -->
 <script lang="ts">
   import { organises } from '../lib/roles';
@@ -18,6 +21,7 @@
   import ConfirmDialog from '../components/ConfirmDialog.svelte';
   import ContestAdminNav from '../components/ContestAdminNav.svelte';
   import DuplicateDialog from '../components/DuplicateDialog.svelte';
+  import InvitesPanel from '../components/InvitesPanel.svelte';
   import PageHeader from '../components/PageHeader.svelte';
   import Icon from '../components/Icon.svelte';
   import MonoDigits from '../components/MonoDigits.svelte';
@@ -29,6 +33,7 @@
     publishChecks,
     toLocalInput,
     type AdminContest,
+    type Audience,
     type AdminContestProblem,
     type ContestOrganiser,
     type ContestSettings,
@@ -56,6 +61,7 @@
     | 'max_per_problem'
     | 'practice_after_end'
     | 'hold_reveal'
+    | 'audience'
     | ExamKey
     | 'description_md'
     | 'honour_text';
@@ -71,6 +77,7 @@
     max_per_problem: number | string | null;
     practice_after_end: boolean;
     hold_reveal: boolean;
+    audience: Audience;
     full_screen: boolean;
     count_focus: boolean;
     block_paste: boolean;
@@ -92,6 +99,7 @@
   const PAUSE_MS = 800;
   /** The settings under Advanced, so an error there opens it. */
   const ADVANCED: readonly Key[] = [
+    'audience',
     'min_gap_s',
     'max_per_problem',
     'practice_after_end',
@@ -196,6 +204,9 @@
     (c) => {
       adopt(c);
       form = toForm(c);
+      // Who can take part sits under Advanced; an invite-only contest opens
+      // it, so the invites are in view.
+      if (c.audience === 'invited') advancedOpen = true;
     },
   );
   // The server's state ignores `published`, so an unpublished contest past
@@ -273,6 +284,7 @@
       max_per_problem: c.max_per_problem,
       practice_after_end: c.practice_after_end,
       hold_reveal: c.hold_reveal ?? false,
+      audience: c.audience ?? 'everyone',
       full_screen: c.full_screen ?? false,
       count_focus: c.count_focus ?? false,
       block_paste: c.block_paste ?? false,
@@ -757,6 +769,7 @@
   const advancedSummary = $derived.by(() => {
     if (!form) return '';
     const line = [
+      ...(form.audience === 'invited' ? ['invited students only'] : []),
       `wait ${whole(form.min_gap_s) || 0} s between submissions`,
       countOf(whole(form.max_per_problem) || 0, 'submission') + ' per problem',
       form.practice_after_end ? 'practice after the end' : 'no practice after the end',
@@ -1074,6 +1087,28 @@
             <span class="muted small summary-line">{advancedSummary}</span>
           </summary>
           <div class="advanced-body">
+            <fieldset class="group" aria-describedby={fields.audience ? 'f-audience-error' : undefined}>
+              <legend>Who can take part</legend>
+              {#each [{ value: 'everyone', label: 'Everyone who can sign in' }, { value: 'invited', label: 'Only invited students' }] as opt (opt.value)}
+                <label class="choice">
+                  <input
+                    type="radio"
+                    name="audience"
+                    value={opt.value}
+                    checked={form.audience === opt.value}
+                    onchange={() => {
+                      if (form) form.audience = opt.value as Audience;
+                      change(['audience'], true);
+                    }}
+                  />
+                  {opt.label}
+                </label>
+              {/each}
+            </fieldset>
+            {@render err('audience')}
+            {#if contest.audience === 'invited'}
+              <InvitesPanel {base} {running} />
+            {/if}
             <p class="muted small">Address <span class="mono">/contests/{contest.slug}</span>, made from the title when the contest was created. It does not change.</p>
             <div class="grid">
               <div class="field">

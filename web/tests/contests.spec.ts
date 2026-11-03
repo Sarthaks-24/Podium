@@ -1544,3 +1544,57 @@ test('an admin opens a person’s submissions and submitted code (C5)', async ({
   await page.getByRole('button', { name: 'Code' }).click();
   await expect(page.getByRole('region', { name: 'Submitted code, 1 line' })).toContainText('int main() {}');
 });
+
+test('setup limits a contest to invited students and invites by picker and by paste (I3)', async ({ page }) => {
+  await mockApi(page, { who: 'organiser', phase: 'during' });
+  const students = [
+    { user_id: 7, name: 'Asha Rao', email: 'asha@college.edu' },
+    { user_id: 8, name: 'Ravi Kumar', email: 'ravi@college.edu' },
+    { user_id: 9, name: 'Meena Das', email: 'meena@college.edu' },
+  ];
+  let invited: number[] = [9];
+  const now = Date.now();
+  await page.route('**/api/admin/contests/4/invites**', async (route) => {
+    const req = route.request();
+    const url = new URL(req.url());
+    if (req.method() === 'GET' && url.pathname.endsWith('/candidates')) {
+      return route.fulfill({ json: { candidates: students.map((s) => ({ ...s, invited: invited.includes(s.user_id) })) } });
+    }
+    if (req.method() === 'GET') {
+      return route.fulfill({ json: { audience: 'invited', invites: students.filter((s) => invited.includes(s.user_id)).map((s) => ({ ...s, invited_at: now })), server_now: now } });
+    }
+    if (req.method() === 'POST' && url.pathname.endsWith('/paste')) {
+      const body = req.postDataJSON() as { text: string; dry_run: boolean };
+      if (!body.dry_run) invited = [...invited, 7];
+      return route.fulfill({ json: { added: ['asha@college.edu'], already_invited: [], unmatched: [{ line: 'nobody@college.edu', reason: 'Not a student on the sign-in list' }] } });
+    }
+    if (req.method() === 'POST') {
+      const body = req.postDataJSON() as { user_ids: number[] };
+      invited = [...invited, ...body.user_ids];
+      return route.fulfill({ json: { added: body.user_ids.length } });
+    }
+    return route.continue();
+  });
+  await page.goto('/admin/contests/4');
+  await page.locator('#advanced summary').click();
+  await page.getByRole('radio', { name: 'Only invited students' }).check();
+  await expect(page.getByRole('heading', { name: 'Invited students (1)' })).toBeVisible();
+  // While the contest runs, Remove is refused with the reason on screen.
+  await expect(page.getByRole('button', { name: 'Remove meena@college.edu' })).toBeDisabled();
+  await expect(page.getByText('Invites cannot be removed while the contest runs.')).toBeVisible();
+
+  await page.getByLabel('Search students by name or email').fill('ravi');
+  await page.getByRole('checkbox', { name: /Ravi Kumar/ }).check();
+  await page.getByRole('button', { name: 'Invite 1 student' }).click();
+  await expect(page.getByRole('heading', { name: 'Invited students (2)' })).toBeVisible();
+
+  await page.getByLabel('Search students by name or email').fill('nobody');
+  await expect(page.getByText('Not on the sign-in list. Ask an admin to add them.')).toBeVisible();
+
+  await page.getByLabel('One email address per line').fill('asha@college.edu\nnobody@college.edu');
+  await page.getByRole('button', { name: 'Check' }).click();
+  await expect(page.getByText('1 student to invite, 0 already invited, 1 line not matched.')).toBeVisible();
+  await expect(page.getByText('nobody@college.edu: Not a student on the sign-in list')).toBeVisible();
+  await page.getByRole('button', { name: 'Invite 1 student' }).last().click();
+  await expect(page.getByRole('heading', { name: 'Invited students (3)' })).toBeVisible();
+});

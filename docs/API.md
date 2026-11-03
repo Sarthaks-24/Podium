@@ -610,7 +610,7 @@ data: {"server_now":1792183192400}
 ```
 
 - Events for one run or submission arrive in order, and only when something visible changed: for an organiser each test, for a student the examples finishing and each whole subtask finishing.
-- Manager-only contest events go to listed organisers, admins and owners with a stream open. Public contest events also go to unlisted organisers and students of a published contest. The live membership and account state are read when each event is sent.
+- Manager-only contest events go to listed organisers, admins and owners with a stream open. Public contest events also go to unlisted organisers and students of a published contest (for an invite-only contest, invited students only). The live membership and account state are read when each event is sent.
 - On every `clock` tick the server checks the session again; a stream whose session ended is closed.
 - Each user may hold 4 streams; a fifth replaces the oldest, which gets `replaced`. The web app shares one stream between the pages of a tab.
 - During a contest, a student opening a stream from another browser or machine while one is open is recorded for the organisers as a second session. A phone or tablet that changes network stays the same device. Nothing is shown to the student.
@@ -652,6 +652,7 @@ Every route needs a signed-in user. A published, unarchived contest is open to s
 
 ```json
 { "description_md": "...", "honour_text": "This contest counts. ...", "accepted": true, "organiser": false,
+  "organised_by": ["Priya Sharma", "Ravi Kumar"],
   "rules": { "min_gap_s": 30, "max_per_problem": 15, "languages": ["cpp17", "python3"], "freeze_minutes": 30,
              "practice_after_end": true, "full_screen": false, "count_focus": false, "block_paste": false, "block_copy": false },
   "problems": [ { "label": "A", "title": "A plus B", "my_score": 40, "max_score": 100, "my_submission_count": 3, "revision_id": 14 } ],
@@ -662,6 +663,7 @@ Every route needs a signed-in user. A published, unarchived contest is open to s
 - `problems` is empty until the student has accepted the rules and the contest has started; after their time is over it lists the problems again. `revision_id` is the pinned revision students are served.
 - `rules` carries the four exam options, so the workspace knows which measures are on and says so before Start and in Help.
 - `honour_text` is the contest's own honour code, or the default.
+- `organised_by` names the contest's listed organisers who are still enabled staff, in the order they were added (the creator first), each by name or, without one, by email. The page shows it below the start button.
 - `my_submission_count` counts the student's submissions as they are made, practice and judge failures excluded.
 - `editorial_md` is set only when the editorial is published and every student's time is over.
 - `Clarification`: `{id, problem_label, question, answer, public, created_at, answered_at}`. Students never see who asked a public question.
@@ -719,10 +721,15 @@ Every route here needs the organiser role and manage access to the contest. List
 | `GET /api/admin/contests/{id}` | | 200 `AdminContest` |
 | `GET /api/admin/contests/{id}/organisers` | | 200 `{organisers:[{user_id,email,name,role,added_at}], server_now}` |
 | `POST /api/admin/contests/{id}/organisers` | `{"email":"person@example.edu"}`; resolves listed addresses with the same Gmail dot matching as sign-in; only enabled organiser, admin or owner accounts qualify | 200 organiser row; an existing member is left unchanged |
-| `DELETE /api/admin/contests/{id}/organisers/{user}` | | 204; removing membership takes effect on the next request |
+| `DELETE /api/admin/contests/{id}/organisers/{user}` | | 204; removing membership takes effect on the next request. Adding and removing write `organiser_added` and `organiser_removed` audit rows `{user_id, email}` |
+| `GET /api/admin/contests/{id}/invites` | | 200 `{audience, invites:[{user_id,name,email,invited_at}], server_now}` |
+| `GET /api/admin/contests/{id}/invites/candidates` | read-rate-limited | 200 `{candidates:[{user_id,name,email,invited}]}`: every enabled student on the sign-in list, never staff or disabled people; the picker filters on the client |
+| `POST /api/admin/contests/{id}/invites` | `{"user_ids":[7,8]}`, at most 500 | 200 `{added}`; ids that are not enabled students are skipped; an `invites_added` audit row `{count}`. Allowed at any time, including after the start |
+| `POST /api/admin/contests/{id}/invites/paste` | `{"text":"one address per line","dry_run":true}`, at most 500 lines | 200 `{added:[email], already_invited:[email], unmatched:[{line, reason}]}`; addresses match the sign-in list's Gmail-aware rule; every unmatched line has the reason "Not a student on the sign-in list" (staff, disabled and unknown read the same). A dry run writes nothing; otherwise the matches are invited with one `invites_added` row `{count, pasted:true}` |
+| `DELETE /api/admin/contests/{id}/invites/{user}` | | 204 and an `invite_removed` row `{user_id}`; from the start until the final close `409 invites_locked` "Invites cannot be removed while the contest runs." |
 | `PUT /api/admin/contests/{id}` | `ContestEdit`; fields left out keep their value | 200 `AdminContest` |
 | `DELETE /api/admin/contests/{id}` | | 204: archived, nothing deleted |
-| `POST /api/admin/contests/{id}/clone` | `{title, starts_at, ends_at}` (`title` empty keeps the old one; `slug` is accepted and ignored) | 201 `AdminContest`: settings, problems and organisers copied atomically; the cloner is added, extensions and editorial are not copied |
+| `POST /api/admin/contests/{id}/clone` | `{title, starts_at, ends_at}` (`title` empty keeps the old one; `slug` is accepted and ignored) | 201 `AdminContest`: settings (the audience among them), problems, organisers and invites copied atomically; the cloner is added, extensions and editorial are not copied |
 | `PUT /api/admin/contests/{id}/problems` | `[{"problem_id":3,"label":"A","ai_reason":"..."}]` | 200 `AdminContest` (rules below) |
 | `PUT /api/admin/contests/{id}/problems/{label}/revision` | `{"revision_id":14}` | 200 `{contest: AdminContest, announcement_md, statement_changed, rejudge_needed, server_now}`: "Update students now" |
 | `PUT /api/admin/contests/{id}/extensions/{user}` | `{"minutes":15,"reason":"..."}`, 0 to 1440; 0 removes | 200 `AdminContest`; the student gets a `contest` event |
@@ -746,7 +753,7 @@ Every route here needs the organiser role and manage access to the contest. List
 
 ### `ContestEdit` and `AdminContest`
 
-`ContestEdit` holds the form's fields: `title`, `description_md`, `starts_at`, `ends_at`, `freeze_minutes`, `published`, `practice_after_end`, `min_gap_s` (0 to 3600), `max_per_problem` (1 to 1000), `languages`, `honour_text` (empty for the default), `hold_reveal`, and the four exam options, each false unless set:
+`ContestEdit` holds the form's fields: `title`, `description_md`, `starts_at`, `ends_at`, `freeze_minutes`, `published`, `practice_after_end`, `min_gap_s` (0 to 3600), `max_per_problem` (1 to 1000), `languages`, `honour_text` (empty for the default), `hold_reveal`, `audience` (`everyone`, the default, or `invited`: only invited students take part, checked on every request and in the event stream; staff keep their levels; changing `everyone` to `invited` is `400` once any student has started), and the four exam options, each false unless set:
 
 | Option | What it does |
 |---|---|

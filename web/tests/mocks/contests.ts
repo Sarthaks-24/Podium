@@ -389,6 +389,7 @@ export async function mockApi(page: Page, options: Options = {}) {
     freeze_minutes: 30,
     published: options.published ?? true,
     practice_after_end: true,
+    audience: 'everyone',
     min_gap_s: 30,
     max_per_problem: 15,
     languages: ['cpp17', 'python3'],
