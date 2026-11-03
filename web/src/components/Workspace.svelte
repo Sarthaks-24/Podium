@@ -32,6 +32,7 @@
   import { Judging } from '../lib/judging.svelte';
   import { beforeSignOut, guardSignOut, session } from '../lib/session.svelte';
   import { isTypingTarget } from '../lib/shortcuts';
+  import { RequestSequence } from '../lib/requestSequence';
   import { dismissToast, showToast } from '../lib/toast.svelte';
   import { LANGUAGES, bestScore, headline, isWaiting, languageLabel, limitsText, runCompileFailed, runHeadline, type Language, type Workspace } from '../lib/workspace';
   import CodeEditor from './CodeEditor.svelte';
@@ -214,6 +215,7 @@
 
   // A changed statement: reload what the student reads, never the editor.
   let seenStatementKey: number | null = null;
+  const statementRequest = new RequestSequence();
   $effect(() => {
     const key = statementKey;
     const first = seenStatementKey === null;
@@ -223,9 +225,10 @@
   });
 
   async function reloadStatement() {
+    const request = statementRequest.next();
     try {
       const data = await getJSON<Workspace>(api);
-      if (!page.live || !ws) return;
+      if (!statementRequest.isCurrent(request) || !page.live || !ws) return;
       ws = { ...ws, title: data.title, statement_md: data.statement_md, samples: data.samples, time_limit_ms: data.time_limit_ms, memory_limit_mb: data.memory_limit_mb };
     } catch {
       // The old statement stays; the next change or a reload brings the new one.
