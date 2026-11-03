@@ -81,6 +81,31 @@ func enqueue(t *testing.T, s *Service, priority int) int64 {
 	return id
 }
 
+func TestOnChangeReceivesContestID(t *testing.T) {
+	s, _, _ := newService(t)
+	ctx := context.Background()
+	var got int64
+	s.OnChange = func(_ int64, _ string, contestID int64) { got = contestID }
+	id := enqueue(t, s, 10)
+	if _, err := s.DB.ExecContext(ctx, "UPDATE jobs SET contest_id = ? WHERE id = ?", 42, id); err != nil {
+		t.Fatal(err)
+	}
+	c, err := s.Claim(ctx, claim("w"))
+	if err != nil || c == nil {
+		t.Fatal(err)
+	}
+	if got != 42 {
+		t.Fatalf("claim OnChange contest id = %d, want 42", got)
+	}
+	got = 0
+	if err := s.Report(ctx, judgeapi.Report{JobID: c.JobID, Lease: c.Lease, Final: true}); err != nil {
+		t.Fatal(err)
+	}
+	if got != 42 {
+		t.Fatalf("report OnChange contest id = %d, want 42", got)
+	}
+}
+
 func TestClaimOrderAndLease(t *testing.T) {
 	s, _, k := newService(t)
 	ctx := context.Background()

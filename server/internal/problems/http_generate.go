@@ -108,7 +108,7 @@ type InputGenerationEvents struct {
 }
 
 // OnJobChange implements the jobs OnChange hook.
-func (n *InputGenerationEvents) OnJobChange(jobID int64, kind string) {
+func (n *InputGenerationEvents) OnJobChange(jobID int64, kind string, _ int64) {
 	if kind != judgeapi.KindGenerateInputs || n.Hub == nil {
 		return
 	}

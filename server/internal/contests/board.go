@@ -150,7 +150,7 @@ func (s *Service) Board(ctx context.Context, c *Contest, variant string) (*Stand
 			}
 			continue
 		}
-		now := time.Now()
+		now := s.now()
 		if e.board != nil && now.Sub(e.lastStart) < s.boardEvery() {
 			b, wait := e.board, e.lastStart.Add(s.boardEvery()).Sub(now)
 			s.board.mu.Unlock()
@@ -210,7 +210,7 @@ func (s *Service) scheduleRefresh(id int64, delay time.Duration) {
 	}
 	s.board.refresh[id] = true
 	s.board.mu.Unlock()
-	time.AfterFunc(max(delay, 0), func() {
+	s.after(max(delay, 0), func() {
 		s.board.mu.Lock()
 		delete(s.board.refresh, id)
 		var variants []string
@@ -224,10 +224,12 @@ func (s *Service) scheduleRefresh(id int64, delay time.Duration) {
 		defer cancel()
 		c, err := s.Get(ctx, id)
 		if err != nil {
+			s.scheduleRefresh(id, refreshRetryDelay)
 			return
 		}
 		for _, v := range variants {
 			if _, err := s.Board(ctx, c, v); err != nil {
+				s.scheduleRefresh(id, refreshRetryDelay)
 				return
 			}
 		}

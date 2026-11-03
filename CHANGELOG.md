@@ -4,6 +4,10 @@ Dated entries per release. Unreleased work is listed at the top.
 
 ## Unreleased
 
+### v4.01 contest updates (2026-11-03)
+
+- Standings stream updates now name a version already cached for every board variant, and the refresh retries after a temporary contest or standings read failure. A stale cached version no longer suppresses the final update once all board variants reach the latest version.
+
 ### v4.01 judge recovery (2026-11-03)
 
 - When isolate cannot initialise an assigned box for a non-busy reason, the judge worker leaves the job leased and exits without a Fatal report. systemd restarts it, and a root pre-start helper clears only that worker's boxes so the lease can expire and the server can requeue the job.

@@ -169,6 +169,7 @@ type Service struct {
 	// BoardEvery is the shortest time between two recomputes of a
 	// contest's board (DefaultBoardEvery when zero).
 	BoardEvery time.Duration
+	afterFunc  func(time.Duration, func())
 
 	board boardCache
 }
@@ -178,6 +179,14 @@ func (s *Service) now() time.Time {
 		return s.Now()
 	}
 	return time.Now()
+}
+
+func (s *Service) after(delay time.Duration, fn func()) {
+	if s.afterFunc != nil {
+		s.afterFunc(delay, fn)
+		return
+	}
+	time.AfterFunc(delay, fn)
 }
 
 // Clock is the service's current time, for handlers that answer with

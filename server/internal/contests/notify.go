@@ -2,7 +2,6 @@ package contests
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
 	"time"
 
@@ -13,6 +12,8 @@ import (
 // one "standings" event per contest, so 700 browsers refetch the board at
 // most about once every BoardEvery rather than once per verdict.
 const standingsDelay = time.Second
+
+const refreshRetryDelay = time.Second
 
 // Event names on the stream (docs/API.md, "Live updates").
 const (
@@ -32,15 +33,24 @@ func (s *Service) notifyStandings(ctx context.Context, c *Contest) {
 	if s.Hub == nil {
 		return
 	}
-	v := s.Version(c.ID)
 	s.board.mu.Lock()
-	if s.board.notified[c.ID] >= v {
+	s.board.init()
+	current := s.board.version[c.ID]
+	cached := int64(-1)
+	for k, e := range s.board.entries {
+		if k.id == c.ID && e.board != nil && (cached < 0 || e.board.Version < cached) {
+			cached = e.board.Version
+		}
+	}
+	if cached < 0 || s.board.notified[c.ID] >= cached {
 		s.board.mu.Unlock()
 		return
 	}
-	s.board.notified[c.ID] = v
+	if cached == current {
+		s.board.notified[c.ID] = cached
+	}
 	s.board.mu.Unlock()
-	s.publish(ctx, c, false, EventStandings, map[string]any{"contest": c.Slug, "contest_id": c.ID, "version": v})
+	s.publish(ctx, c, false, EventStandings, map[string]any{"contest": c.Slug, "contest_id": c.ID, "version": cached})
 }
 
 // publish sends an event to the contest's members with an open stream:
@@ -84,23 +94,12 @@ func (s *Service) publishTo(typ string, v any, users ...int64) {
 	}
 }
 
-// OnJobChange invalidates a contest's board when one of its submissions
-// finishes judging. It is chained into the jobs service's OnChange hook and
-// does not block.
-func (s *Service) OnJobChange(jobID int64, kind string) {
-	if kind != judgeapi.KindSubmit {
+// OnJobChange invalidates a contest's board when one of its submission
+// jobs changes. The queue supplies the contest id, so this hook does not
+// query the jobs table.
+func (s *Service) OnJobChange(_ int64, kind string, contestID int64) {
+	if kind != judgeapi.KindSubmit || contestID <= 0 {
 		return
 	}
-	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-		var contest sql.NullInt64
-		var state string
-		if err := s.DB.QueryRowContext(ctx, "SELECT contest_id, state FROM jobs WHERE id = ?", jobID).Scan(&contest, &state); err != nil {
-			return
-		}
-		if contest.Valid && (state == "done" || state == "failed") {
-			s.Invalidate(contest.Int64)
-		}
-	}()
+	s.Invalidate(contestID)
 }

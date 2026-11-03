@@ -264,6 +264,9 @@ func TestContestEvents(t *testing.T) {
 	if len(pub) != 1 || pub[0].(map[string]any)["asked_by"] != nil {
 		t.Errorf("public clarification %v", pub)
 	}
+	// A standings event points to a version already present in the cache,
+	// so seed the board before expecting the worker's invalidation event.
+	asha.do("GET", "/api/contests/ev/standings", nil, "")
 	s.submit(asha, "ev", "A", "correct")
 	if ev := waitFor(t, bs, "standings"); !strings.Contains(ev.data, `"contest":"ev"`) {
 		t.Errorf("standings event %s", ev.data)

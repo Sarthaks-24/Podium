@@ -90,6 +90,7 @@ type Job struct {
 	CreatedAt     time.Time
 	StartedAt     time.Time
 	FinishedAt    time.Time
+	contestID     int64
 }
 
 // Kind gives a job kind its meaning.
@@ -116,10 +117,11 @@ type Service struct {
 	Kinds map[string]Kind
 	// Now is the clock; tests replace it.
 	Now func() time.Time
-	// OnChange, when set, is called after every committed report or close,
+	// OnChange, when set, is called after every committed claim, report or close,
 	// outside the transaction, so watchers (the live event stream) can
-	// read the new state. It must not block.
-	OnChange func(jobID int64, kind string)
+	// read the new state. contestID is zero for a job outside a contest.
+	// It must not block.
+	OnChange func(jobID int64, kind string, contestID int64)
 	// Discard, when set, receives the outputs a job's worker uploaded once
 	// the job closed or its lease was swept, if no other open job holds
 	// them; it deletes those nothing ended up using.
@@ -155,14 +157,14 @@ func New(db *sql.DB, discard func(shas []string), kinds func(*Service) map[strin
 // Notify adds watchers, called like OnChange after any already set. The
 // watchers need the queue themselves, so they are added once they exist,
 // before the queue is used.
-func (s *Service) Notify(watchers ...func(jobID int64, kind string)) {
+func (s *Service) Notify(watchers ...func(jobID int64, kind string, contestID int64)) {
 	prev := s.OnChange
-	s.OnChange = func(jobID int64, kind string) {
+	s.OnChange = func(jobID int64, kind string, contestID int64) {
 		if prev != nil {
-			prev(jobID, kind)
+			prev(jobID, kind, contestID)
 		}
 		for _, w := range watchers {
-			w(jobID, kind)
+			w(jobID, kind, contestID)
 		}
 	}
 }
@@ -238,13 +240,14 @@ func (s *Service) Claim(ctx context.Context, req judgeapi.ClaimRequest) (*judgea
 	var c judgeapi.Claim
 	var payload string
 	var deadline sql.NullInt64
+	var contestID sql.NullInt64
 	// Jobs of a paused contest wait in the queue (judging paused, nothing
 	// lost); everything behind them still runs.
 	pick := func(kinds []any) error {
-		q := `SELECT id, kind, payload, deadline_at FROM jobs WHERE state = 'queued' AND kind IN (?` + strings.Repeat(", ?", len(kinds)-1) + `)
+		q := `SELECT id, kind, payload, deadline_at, contest_id FROM jobs WHERE state = 'queued' AND kind IN (?` + strings.Repeat(", ?", len(kinds)-1) + `)
 			AND (contest_id IS NULL OR NOT EXISTS (SELECT 1 FROM contests c WHERE c.id = jobs.contest_id AND c.paused = 1))
 			ORDER BY priority, id LIMIT 1`
-		return tx.QueryRowContext(ctx, q, kinds...).Scan(&c.JobID, &c.Kind, &payload, &deadline)
+		return tx.QueryRowContext(ctx, q, kinds...).Scan(&c.JobID, &c.Kind, &payload, &deadline, &contestID)
 	}
 	// Runs outrank submissions, so students pressing Run could starve
 	// judging. After a run, the next claim takes other work first when any
@@ -283,7 +286,7 @@ func (s *Service) Claim(ctx context.Context, req judgeapi.ClaimRequest) (*judgea
 	s.mu.Lock()
 	s.lastRun = c.Kind == judgeapi.KindRun
 	s.mu.Unlock()
-	s.changed(c.JobID, c.Kind)
+	s.changed(c.JobID, c.Kind, contestID.Int64)
 	c.Lease = lease
 	c.LeaseSeconds = judgeapi.LeaseSeconds
 	c.Payload = json.RawMessage(payload)
@@ -341,21 +344,22 @@ func (s *Service) contestGate(ctx context.Context, tx *sql.Tx, kinds []any, now 
 }
 
 // leased checks a lease inside tx and returns the job's kind and payload.
-func (s *Service) leased(ctx context.Context, tx *sql.Tx, jobID int64, lease string) (string, json.RawMessage, error) {
+func (s *Service) leased(ctx context.Context, tx *sql.Tx, jobID int64, lease string) (string, json.RawMessage, int64, error) {
 	var kind, state, payload string
 	var leaseHash sql.NullString
-	err := tx.QueryRowContext(ctx, "SELECT kind, state, payload, lease_hash FROM jobs WHERE id = ?", jobID).
-		Scan(&kind, &state, &payload, &leaseHash)
+	var contestID sql.NullInt64
+	err := tx.QueryRowContext(ctx, "SELECT kind, state, payload, lease_hash, contest_id FROM jobs WHERE id = ?", jobID).
+		Scan(&kind, &state, &payload, &leaseHash, &contestID)
 	if errors.Is(err, sql.ErrNoRows) {
-		return "", nil, ErrLease
+		return "", nil, 0, ErrLease
 	}
 	if err != nil {
-		return "", nil, err
+		return "", nil, 0, err
 	}
 	if state != Leased || subtle.ConstantTimeCompare([]byte(leaseHash.String), []byte(hashLease(lease))) != 1 {
-		return "", nil, ErrLease
+		return "", nil, 0, ErrLease
 	}
-	return kind, json.RawMessage(payload), nil
+	return kind, json.RawMessage(payload), contestID.Int64, nil
 }
 
 // MayFetch reports whether the worker holding jobID's lease may download
@@ -367,7 +371,7 @@ func (s *Service) MayFetch(ctx context.Context, jobID int64, lease, sha string) 
 		return false, err
 	}
 	defer tx.Rollback()
-	kind, payload, err := s.leased(ctx, tx, jobID, lease)
+	kind, payload, _, err := s.leased(ctx, tx, jobID, lease)
 	if errors.Is(err, ErrLease) {
 		return false, nil
 	}
@@ -413,7 +417,7 @@ func (s *Service) MayUpload(ctx context.Context, jobID int64, lease string) (boo
 		return false, err
 	}
 	defer tx.Rollback()
-	kind, payload, err := s.leased(ctx, tx, jobID, lease)
+	kind, payload, _, err := s.leased(ctx, tx, jobID, lease)
 	if errors.Is(err, ErrLease) {
 		return false, nil
 	}
@@ -491,7 +495,7 @@ func (s *Service) Report(ctx context.Context, r judgeapi.Report) error {
 		return err
 	}
 	defer tx.Rollback()
-	kindName, payload, err := s.leased(ctx, tx, r.JobID, r.Lease)
+	kindName, payload, contestID, err := s.leased(ctx, tx, r.JobID, r.Lease)
 	if err != nil {
 		return err
 	}
@@ -519,7 +523,7 @@ func (s *Service) Report(ctx context.Context, r judgeapi.Report) error {
 			return err
 		}
 		if len(r.Compile)+len(r.Results) > 0 {
-			s.changed(r.JobID, kindName)
+			s.changed(r.JobID, kindName, contestID)
 		}
 		return nil
 	}
@@ -539,7 +543,7 @@ func (s *Service) Report(ctx context.Context, r judgeapi.Report) error {
 	}
 	s.recordFinished(job, now)
 	s.dropUploads(r.JobID)
-	s.changed(r.JobID, kindName)
+	s.changed(r.JobID, kindName, contestID)
 	return nil
 }
 
@@ -583,9 +587,9 @@ func (s *Service) Cancel(ctx context.Context, tx *sql.Tx, id int64, reason strin
 	return err
 }
 
-func (s *Service) changed(jobID int64, kind string) {
+func (s *Service) changed(jobID int64, kind string, contestID int64) {
 	if s.OnChange != nil {
-		s.OnChange(jobID, kind)
+		s.OnChange(jobID, kind, contestID)
 	}
 }
 
@@ -650,7 +654,7 @@ func (s *Service) Sweep(ctx context.Context) (requeued, failed int64, err error)
 		id     int64
 		reason string
 	}
-	var touched [][2]any
+	var touched [][3]any
 	var closed []Job
 	var doomed []dead
 	for rows.Next() {
@@ -681,22 +685,23 @@ func (s *Service) Sweep(ctx context.Context) (requeued, failed int64, err error)
 		}
 		failed++
 		closed = append(closed, job)
-		touched = append(touched, [2]any{job.ID, job.Kind})
+		touched = append(touched, [3]any{job.ID, job.Kind, job.contestID})
 	}
 	// Results from an abandoned attempt are dropped: the next worker
 	// starts the job again from the beginning.
-	expired, err := tx.QueryContext(ctx, "SELECT id, kind FROM jobs WHERE state = 'leased' AND lease_expires_at < ?", now.UnixMilli())
+	expired, err := tx.QueryContext(ctx, "SELECT id, kind, contest_id FROM jobs WHERE state = 'leased' AND lease_expires_at < ?", now.UnixMilli())
 	if err != nil {
 		return 0, 0, err
 	}
 	for expired.Next() {
 		var id int64
 		var kind string
-		if err := expired.Scan(&id, &kind); err != nil {
+		var contestID sql.NullInt64
+		if err := expired.Scan(&id, &kind, &contestID); err != nil {
 			expired.Close()
 			return 0, 0, err
 		}
-		touched = append(touched, [2]any{id, kind})
+		touched = append(touched, [3]any{id, kind, contestID.Int64})
 	}
 	expired.Close()
 	if err := expired.Err(); err != nil {
@@ -727,7 +732,7 @@ func (s *Service) Sweep(ctx context.Context) (requeued, failed int64, err error)
 	}
 	s.dropUploads(ids...)
 	for _, t := range touched {
-		s.changed(t[0].(int64), t[1].(string))
+		s.changed(t[0].(int64), t[1].(string), t[2].(int64))
 	}
 	return requeued, failed, nil
 }
@@ -764,11 +769,12 @@ func (s *Service) load(ctx context.Context, q queryer, id int64) (Job, error) {
 	var j Job
 	var payload, summary string
 	var started, finished sql.NullInt64
+	var contestID sql.NullInt64
 	var created int64
 	err := q.QueryRowContext(ctx, `SELECT id, kind, priority, state, payload, summary, error, attempts, worker, worker_version,
-		created_at, started_at, finished_at FROM jobs WHERE id = ?`, id).
+		created_at, started_at, finished_at, contest_id FROM jobs WHERE id = ?`, id).
 		Scan(&j.ID, &j.Kind, &j.Priority, &j.State, &payload, &summary, &j.Error, &j.Attempts, &j.Worker, &j.WorkerVersion,
-			&created, &started, &finished)
+			&created, &started, &finished, &contestID)
 	if errors.Is(err, sql.ErrNoRows) {
 		return Job{}, ErrNotFound
 	}
@@ -776,6 +782,7 @@ func (s *Service) load(ctx context.Context, q queryer, id int64) (Job, error) {
 		return Job{}, err
 	}
 	j.Payload = json.RawMessage(payload)
+	j.contestID = contestID.Int64
 	if summary != "" {
 		j.Result.Summary = json.RawMessage(summary)
 	}

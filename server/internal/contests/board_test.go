@@ -62,7 +62,7 @@ func TestHundredReadsAfterAChangeComputeOnce(t *testing.T) {
 	// A change, then 100 readers at once, after the rate limit's window.
 	r.svc.board.bump(c.ID)
 	r.svc.board.mu.Lock()
-	r.svc.board.entries[boardKey{c.ID, VariantFull}].lastStart = time.Now().Add(-time.Hour)
+	r.svc.board.entries[boardKey{c.ID, VariantFull}].lastStart = r.svc.now().Add(-time.Hour)
 	r.svc.board.mu.Unlock()
 	before := r.svc.board.computes.Load()
 	var wg sync.WaitGroup
