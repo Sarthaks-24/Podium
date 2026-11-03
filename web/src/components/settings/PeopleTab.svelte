@@ -99,7 +99,10 @@
     try {
       const data = await getJSON<{ submissions: PersonSubmission[]; page: number; has_more: boolean }>(`/api/admin/people/${person.id}/submissions?page=${page}`);
       if (!historyRequests.isCurrent(request)) return;
-      personSubmissions = page === 1 ? data.submissions : [...personSubmissions, ...data.submissions];
+      // A new submission between pages shifts the next page by one row, so
+      // rows already shown are dropped rather than listed twice.
+      const shownIds = new Set(personSubmissions.map((s) => s.id));
+      personSubmissions = page === 1 ? data.submissions : [...personSubmissions, ...data.submissions.filter((s) => !shownIds.has(s.id))];
       personSubmissionPage = data.page;
       morePersonSubmissions = data.has_more;
     } catch (err) {

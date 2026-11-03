@@ -7,6 +7,7 @@ package submissions
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"log/slog"
 	"net/http"
@@ -236,22 +237,20 @@ func (d *Handlers) GetSubmission(w http.ResponseWriter, r *http.Request) {
 		d.submissionError(w, r, err)
 		return
 	}
-	// Authors always see their own source. Staff see it only when they manage
-	// the contest; the audit is queued after the response.
+	// Whoever passed mayRead above sees the source: the author, admins and
+	// owners, and organisers who manage the contest. A staff open is audited
+	// after the response.
 	var viewed *Info
 	if info, err := d.Submissions.Info(r.Context(), id); err == nil {
 		u := auth.UserFrom(r.Context())
-		allowed := info.UserID == u.ID || u.Role == auth.Admin || u.Role == auth.Owner || u.Role == auth.Organiser
-		if allowed {
-			src, err := d.Submissions.Source(r.Context(), id)
-			if err != nil {
-				d.internalError(w, r, err)
-				return
-			}
-			v.Source = &src
-			if info.UserID != u.ID && d.CodeViewed != nil {
-				viewed = &info
-			}
+		src, err := d.Submissions.Source(r.Context(), id)
+		if err != nil {
+			d.internalError(w, r, err)
+			return
+		}
+		v.Source = &src
+		if info.UserID != u.ID && d.CodeViewed != nil {
+			viewed = &info
 		}
 	}
 	httpx.WriteJSON(w, http.StatusOK, v)
@@ -289,8 +288,11 @@ func (d *Handlers) ListPersonSubmissions(w http.ResponseWriter, r *http.Request)
 		}
 	}
 	var exists int
-	if err := d.Submissions.DB.QueryRowContext(r.Context(), `SELECT 1 FROM users WHERE id=?`, userID).Scan(&exists); err != nil {
+	if err := d.Submissions.DB.QueryRowContext(r.Context(), `SELECT 1 FROM users WHERE id=?`, userID).Scan(&exists); errors.Is(err, sql.ErrNoRows) {
 		httpx.WriteError(w, http.StatusNotFound, "not_found", "There is no such person.")
+		return
+	} else if err != nil {
+		d.internalError(w, r, err)
 		return
 	}
 	const size = 50

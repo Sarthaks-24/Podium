@@ -142,7 +142,9 @@ func (s *Service) PasteInvites(ctx context.Context, contestID int64, text string
 	if len(lines) > MaxInvites {
 		return out, FieldErrors{"text": "Paste at most 500 lines at a time."}
 	}
-	tx, err := s.DB.BeginTx(ctx, nil)
+	// A dry run only reads, so it does not hold the write gate that every
+	// submission needs.
+	tx, err := s.DB.BeginTx(ctx, &sql.TxOptions{ReadOnly: dryRun})
 	if err != nil {
 		return out, err
 	}
