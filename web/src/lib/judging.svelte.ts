@@ -77,6 +77,7 @@ export class Judging {
   private lastRunBody = $state.raw<{ language: Language; source: string } | null>(null);
   private compileWarned = false;
   private pendingKey: string | null = null;
+  private pendingSubmit: Record<string, unknown> | null = null;
   private pendingRun: RunBody | null = null;
   private announced = '';
   private announcedRun = '';
@@ -203,14 +204,19 @@ export class Judging {
     this.notice = null;
     this.submitBusy = true;
     const integrity = this.o.integrity();
-    // Integrity events go first, on their own; they never hold up the submit.
-    integrity?.flush();
-    const counts = integrity?.counts() ?? { typed_chars: 0, pasted_chars: 0, focus_losses: 0, fullscreen_exits: 0 };
-    const body = { ...this.o.code(), ...counts, client_key: key };
+    let body = this.pendingSubmit;
+    if (retryKey === undefined || body === null) {
+      // Integrity events go first, on their own; they never hold up the submit.
+      integrity?.flush();
+      const counts = integrity?.counts() ?? { typed_chars: 0, pasted_chars: 0, focus_losses: 0, fullscreen_exits: 0 };
+      body = { ...this.o.code(), ...counts, client_key: key };
+      this.pendingSubmit = body;
+    }
     try {
       const s = await this.timed(() => sendJSON<Submission>('POST', this.paths.submit, body, { timeoutMs: ANSWER_WAIT_MS }));
       if (!this.alive) return;
       this.pendingKey = null;
+      this.pendingSubmit = null;
       integrity?.resetCounts();
       this.state = { ...this.state, submissions: mergeSubmission(this.state.submissions, s) };
       this.watchId = s.id;
@@ -230,6 +236,7 @@ export class Judging {
         this.notice = { action: 'submit', text: e.code === 'timeout' ? SUBMIT_TIMEOUT : offlineText(), retry: true, kind: 'error' };
       } else {
         this.pendingKey = null;
+        this.pendingSubmit = null;
         const pace = e instanceof ApiError && e.status === 429;
         if (pace && e.retryAfter !== null) {
           this.waitUntil = Date.now() + e.retryAfter * 1000;
@@ -350,7 +357,7 @@ export class Judging {
 // never reads "Submitting" for minutes on a hung connection. The server's
 // own write wait ends after 10 s, so this fires only when no answer comes.
 const ANSWER_WAIT_MS = 30_000;
-const SUBMIT_TIMEOUT = 'No answer from the server after 30 s. Your code is kept on this device. Retry: if the server already has this submission, it still counts once.';
+const SUBMIT_TIMEOUT = 'No answer from the server after 30 s. Your code is kept on this device. Retry sends the code from that attempt; if you changed the editor, use Submit.';
 const RUN_TIMEOUT = 'No answer from the server after 30 s. Your code is kept on this device. Retry in a moment.';
 
 function offlineText(): string {

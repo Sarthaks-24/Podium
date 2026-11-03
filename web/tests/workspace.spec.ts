@@ -1139,13 +1139,22 @@ test('a submit with no answer for 30 s says so, and Retry sends the same key', a
     if (held++ === 0) return; // never answered
     return route.fallback();
   });
+  let firstBody: Record<string, unknown> | undefined;
+  await page.route('**/api/workspace/1/submit', async (route) => {
+    if (!firstBody) firstBody = route.request().postDataJSON() as Record<string, unknown>;
+    return route.fallback();
+  });
   await page.getByRole('button', { name: 'Submit', exact: true }).click();
   await expect(page.getByRole('alert')).toContainText('No answer from the server after 30 s.', { timeout: 40_000 });
-  await expect(page.getByRole('alert')).toContainText('if the server already has this submission, it still counts once');
+  await expect(page.getByRole('alert')).toContainText('Retry sends the code from that attempt');
+  await codeEditor(page).click();
+  await page.keyboard.press('Control+A');
+  await page.keyboard.type('changed after timeout');
   await page.getByRole('button', { name: 'Submit again' }).click();
   await expect.poll(() => api.submits.length).toBe(1);
   await expect(page.getByRole('alert')).toHaveCount(0);
   expect(held).toBe(2);
+  expect(api.submits[0]).toEqual(firstBody);
 });
 
 test('leaving the window saves the draft once, not once per event', async ({ page }) => {

@@ -7,6 +7,7 @@ Dated entries per release. Unreleased work is listed at the top.
 ### v4.01 contest updates (2026-11-03)
 
 - Standings stream updates now name a version already cached for every board variant, and the refresh retries after a temporary contest or standings read failure. A stale cached version no longer suppresses the final update once all board variants reach the latest version.
+- A submission retry replays the exact code and integrity data from the original attempt. The notice explains that changing the editor requires a normal Submit.
 
 ### v4.01 judge recovery (2026-11-03)
 
