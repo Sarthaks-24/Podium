@@ -47,6 +47,8 @@ Pass with `-e NAME=value`.
 | `MIN_GAP_S` | 30 | the contest's gap between submits |
 | `DRAIN_MAX_MINUTES` | 30 | how long the monitor waits for the queue to drain after the end |
 | `PROBLEMS` | `a-plus-b,average-speed,pair-with-sum` | pack slugs, in label order |
+| `INVITE_ONLY` | 1 | 1 makes the contest invite-only (v4.01): setup fetches the picker's candidates once (`name:candidates`, with its size in KB in the log) and invites the `VUS` seeded students in batches of 500 (`name:invite_add`), and every student request pays the invite check. 0 runs an open contest. `seed.py --users` must be at least `VUS` |
+| `CODE_VIEWS_PER_MIN` | 3 | one staff user opens a recent submission's code this often (`name:feed`, then `name:code_view`), so `code_viewed` audit rows are written through the write gate during the submit spike; 0 turns it off |
 | `RESULTS` | `results` | folder for the JSON summary |
 
 ## Run it in WSL2 or on Linux

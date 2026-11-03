@@ -46,6 +46,13 @@ const DRAFT_EVERY_S = num(__ENV.DRAFT_EVERY_S, 15);
 const MIN_GAP_S = num(__ENV.MIN_GAP_S, 30);
 const DRAIN_MAX_MINUTES = num(__ENV.DRAIN_MAX_MINUTES, 30);
 const RESULTS = __ENV.RESULTS || 'results';
+// v4.01 stage L: the contest is invite-only by default, so every request
+// pays the invite check, and setup times the picker's candidates fetch and
+// one bulk invite of every seeded student.
+const INVITE_ONLY = num(__ENV.INVITE_ONLY, 1) === 1;
+// Staff open a student's code (and write a code_viewed audit row) this
+// often across the contest: a few a minute, as during a real one.
+const CODE_VIEWS_PER_MIN = num(__ENV.CODE_VIEWS_PER_MIN, 3);
 const SLUGS = (__ENV.PROBLEMS || 'a-plus-b,average-speed,pair-with-sum').split(',');
 const LABELS = SLUGS.map((_, i) => String.fromCharCode(65 + i));
 
@@ -55,6 +62,14 @@ export const options = {
       executor: 'per-vu-iterations',
       exec: 'student',
       vus: VUS,
+      iterations: 1,
+      maxDuration: `${Math.ceil(MINUTES + 3)}m`,
+      gracefulStop: '30s',
+    },
+    staff: {
+      executor: 'per-vu-iterations',
+      exec: 'staff',
+      vus: 1,
       iterations: 1,
       maxDuration: `${Math.ceil(MINUTES + 3)}m`,
       gracefulStop: '30s',
@@ -72,7 +87,8 @@ export const options = {
     'http_req_failed{kind:api}': ['rate<0.01'],
   // A threshold that always holds makes k6 keep each route's own figures
   // for the summary.
-  }, Object.fromEntries(['signin', 'me', 'contests', 'contest', 'start', 'workspace', 'draft', 'standings', 'integrity', 'run', 'submit']
+  }, Object.fromEntries(['signin', 'me', 'contests', 'contest', 'start', 'workspace', 'draft', 'standings', 'integrity', 'run', 'submit',
+    'candidates', 'invite_add', 'feed', 'code_view']
     .map((n) => [`http_req_duration{name:${n}}`, ['max>=0']]))),
   setupTimeout: '120s',
   discardResponseBodies: true,
@@ -192,6 +208,7 @@ export function setup() {
     starts_at: now - 5000, ends_at: now + MINUTES * 60000,
     freeze_minutes: Math.floor(MINUTES / 5),
     min_gap_s: MIN_GAP_S, max_per_problem: 15,
+    audience: INVITE_ONLY ? 'invited' : 'everyone',
   };
   const json = { headers: { 'Content-Type': 'application/json', Origin: ORIGIN }, responseType: 'text', tags: { kind: 'setup' } };
   const created = http.post(`${BASE}/api/admin/contests`, JSON.stringify(edit), json);
@@ -201,11 +218,49 @@ export function setup() {
   const problems = SLUGS.map((s, i) => ({ problem_id: bySlug[s], label: LABELS[i] }));
   const set = http.put(`${BASE}/api/admin/contests/${id}/problems`, JSON.stringify(problems), json);
   if (set.status !== 200) throw new Error(`set problems: ${set.status} ${set.body}`);
+  if (INVITE_ONLY) invite(id, json);
   const pub = http.put(`${BASE}/api/admin/contests/${id}`, JSON.stringify({ published: true }), json);
   if (pub.status !== 200) throw new Error(`publish: ${pub.status} ${pub.body}`);
   jar.clear(BASE);
   console.log(JSON.stringify({ event: 'contest', slug, id, starts_at: edit.starts_at, ends_at: edit.ends_at, vus: VUS }));
   return { slug, id, start: now, end: edit.ends_at };
+}
+
+// invite fetches the picker's candidates once and invites the seeded
+// students the run will use, in batches of the server's limit of 500, as an
+// organiser would before the contest. Both requests are timed by name.
+function invite(id, json) {
+  const tagged = (name) => Object.assign({}, json, { tags: { kind: 'setup', name } });
+  const cands = http.get(`${BASE}/api/admin/contests/${id}/invites/candidates`, tagged('candidates'));
+  if (cands.status !== 200) throw new Error(`invite candidates: ${cands.status} ${cands.body}`);
+  const wanted = new Set(Array.from({ length: VUS }, (_, i) => `student${String(i + 1).padStart(4, '0')}@load.test`));
+  const ids = cands.json('candidates').filter((c) => wanted.has(c.email)).map((c) => c.user_id);
+  if (ids.length < VUS) throw new Error(`only ${ids.length} of ${VUS} students are on the sign-in list; run seed.py --users ${VUS} first`);
+  let ms = 0;
+  for (let i = 0; i < ids.length; i += 500) {
+    const res = http.post(`${BASE}/api/admin/contests/${id}/invites`, JSON.stringify({ user_ids: ids.slice(i, i + 500) }), tagged('invite_add'));
+    if (res.status !== 200) throw new Error(`invite: ${res.status} ${res.body}`);
+    ms += res.timings.duration;
+  }
+  console.log(JSON.stringify({ event: 'invites', candidates: cands.json('candidates').length, invited: ids.length,
+    candidates_ms: cands.timings.duration, candidates_kb: Math.round(cands.body.length / 1024), invite_ms: ms }));
+}
+
+// staff opens a recent submission's code CODE_VIEWS_PER_MIN times a
+// minute until the end, so code_viewed audit rows are written through the
+// write gate during the submit spike, as during a real contest.
+export async function staff(data) {
+  if (CODE_VIEWS_PER_MIN <= 0) return;
+  if (!(await signIn('owner@podium.test', 'owner', 'Load owner'))) return;
+  for (;;) {
+    await pause(expMs(60000 / CODE_VIEWS_PER_MIN));
+    if (Date.now() >= data.end) return;
+    const feed = await call('GET', `/api/admin/contests/${data.id}/submissions?page=1`, null, 'feed', { responseType: 'text' });
+    if (feed.status !== 200) continue;
+    const rows = feed.json('submissions') || [];
+    if (rows.length === 0) continue;
+    await call('GET', `/api/submissions/${pick(rows).id}`, null, 'code_view');
+  }
 }
 
 // session returns when this student arrives and leaves, in Unix ms.
