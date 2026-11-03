@@ -71,6 +71,9 @@ func (w *Worker) finish(ctx context.Context, c *judgeapi.Claim, rep *reporter, e
 	if errors.Is(err, ErrLease) || ctx.Err() != nil {
 		return err
 	}
+	if errors.Is(err, judge.ErrBoxInit) {
+		return err
+	}
 	if err != nil {
 		w.Log.Error("job failed to run", "job_id", c.JobID, "kind", c.Kind, "err", err)
 		return rep.send(ctx, judgeapi.Report{Fatal: "The judge could not run this job: " + clip(err.Error(), 300)})

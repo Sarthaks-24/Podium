@@ -50,6 +50,13 @@ type Runner struct {
 	memUsed int
 }
 
+func boxInitFailure(ctx context.Context, err error) error {
+	if err == nil || ctx.Err() != nil || errors.Is(err, ErrBoxBusy) {
+		return err
+	}
+	return fmt.Errorf("%w: %w", ErrBoxInit, err)
+}
+
 // reserve blocks until kb of the memory budget is free and returns the
 // function that gives it back. A request larger than the whole budget
 // waits for the budget to be empty and then takes all of it.
@@ -127,7 +134,7 @@ func (r *Runner) Compile(ctx context.Context, box int, lang Language, source []b
 	defer release()
 	dir, err := r.Iso.Init(ctx, box)
 	if err != nil {
-		return prog, CompileResult{}, err
+		return prog, CompileResult{}, boxInitFailure(ctx, err)
 	}
 	defer r.Iso.Cleanup(ctx, box)
 
@@ -197,7 +204,7 @@ func (r *Runner) Execute(ctx context.Context, box int, prog Program, timeLimit t
 	defer release()
 	dir, err := r.Iso.Init(ctx, box)
 	if err != nil {
-		return ExecResult{}, err
+		return ExecResult{}, boxInitFailure(ctx, err)
 	}
 	defer r.Iso.Cleanup(ctx, box)
 

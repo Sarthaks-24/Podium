@@ -93,6 +93,10 @@ func (m Meta) MemoryKB() int {
 // before it returns this.
 var ErrBoxBusy = errors.New("the isolate box is in use by another process")
 
+// ErrBoxInit marks an isolate box initialization failure that makes the
+// judge worker unsafe to continue using without a restart and box reset.
+var ErrBoxInit = errors.New("isolate box initialization failed")
+
 // ErrBoxClaimed is Init on a box this judge already holds: a lane bug,
 // refused rather than re-initialising a box a run still uses.
 var ErrBoxClaimed = errors.New("the isolate box is already in use by this judge")

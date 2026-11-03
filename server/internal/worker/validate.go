@@ -101,6 +101,9 @@ func (w *Worker) validate(ctx context.Context, box int, c *judgeapi.Claim) error
 		return err
 	}
 	if err != nil {
+		if errors.Is(err, judge.ErrBoxInit) {
+			return err
+		}
 		// The run itself broke (isolate failed, a blob was missing): tell
 		// the setter, without internal detail beyond the message.
 		w.Log.Error("validation failed to run", "job_id", c.JobID, "err", err)

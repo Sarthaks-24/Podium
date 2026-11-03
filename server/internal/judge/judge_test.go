@@ -2,11 +2,21 @@ package judge
 
 import (
 	"context"
+	"errors"
 	"slices"
 	"strings"
 	"testing"
 	"time"
 )
+
+func TestCompileMarksNonBusyBoxInitFailure(t *testing.T) {
+	iso, _ := newFakeIsolate(t, "fail")
+	r := &Runner{Iso: iso}
+	_, _, err := r.Compile(context.Background(), 11, Languages["cpp17"], []byte("int main() {}"), t.TempDir())
+	if !errors.Is(err, ErrBoxInit) {
+		t.Fatalf("Compile error = %v, want ErrBoxInit", err)
+	}
+}
 
 func TestRunArgs(t *testing.T) {
 	req := RunRequest{

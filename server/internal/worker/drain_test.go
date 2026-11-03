@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"io"
 	"log/slog"
 	"net/http"
@@ -16,6 +17,7 @@ import (
 	"github.com/Sarthaks-24/podium/internal/db"
 	"github.com/Sarthaks-24/podium/internal/jobs"
 	"github.com/Sarthaks-24/podium/internal/jobs/judgeserver"
+	"github.com/Sarthaks-24/podium/internal/judge"
 	"github.com/Sarthaks-24/podium/internal/judgeapi"
 	"github.com/Sarthaks-24/podium/internal/problems"
 )
@@ -32,6 +34,32 @@ func (drainKind) Finish(_ context.Context, _ *sql.Tx, job *jobs.Job) error {
 }
 
 const drainToken = "drain-test-token-drain-test-token-0001"
+
+func TestBoxInitFailureLeavesJobLeasedAndStopsWorker(t *testing.T) {
+	r := newDrainRig(t)
+	id := r.enqueue(t)
+	r.w.handle = func(context.Context, int, *judgeapi.Claim) error {
+		return errors.Join(judge.ErrBoxInit, errors.New("isolate init failed"))
+	}
+	stop, stopClaims := context.WithCancel(context.Background())
+	defer stopClaims()
+	done := make(chan error, 1)
+	go func() { done <- r.w.Drain(stop, context.Background()) }()
+	select {
+	case err := <-done:
+		if !errors.Is(err, judge.ErrBoxInit) {
+			t.Fatalf("Drain error = %v, want ErrBoxInit", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("Drain did not stop after the box failed to initialise")
+	}
+	if got := r.state(t, id); got != jobs.Leased {
+		t.Fatalf("job state = %q, want leased so its lease can expire and requeue", got)
+	}
+	if got := r.claims.Load(); got != 1 {
+		t.Errorf("worker made %d claims after the init failure, want 1", got)
+	}
+}
 
 // drainRig is a real queue behind the real judge API, and a one-lane
 // worker whose job blocks until the test lets it finish.

@@ -171,6 +171,10 @@ func (w *Worker) lane(stop, ctx context.Context, box int) {
 		switch {
 		case errors.Is(err, ErrLease):
 			w.Log.Warn("lease lost; job dropped", "lane", box, "job_id", claim.JobID)
+		case errors.Is(err, judge.ErrBoxInit):
+			w.Log.Error("box could not initialise; stopping so systemd can reset it and the job lease can expire", "lane", box, "job_id", claim.JobID, "err", err)
+			w.stopFor(err)
+			return
 		case ctx.Err() != nil:
 			w.Log.Warn("job abandoned by a forced stop; the server requeues it after its lease", "lane", box, "job_id", claim.JobID)
 		case err != nil:
