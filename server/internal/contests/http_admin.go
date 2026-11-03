@@ -594,7 +594,7 @@ func (d *Handlers) AdminStandings(w http.ResponseWriter, r *http.Request) {
 	if r.URL.Query().Get("variant") == VariantFrozen {
 		variant = VariantFrozen
 	}
-	out, err := d.standingsOut(r.Context(), c, variant, auth.UserFrom(r.Context()).ID)
+	out, err := d.standingsOut(r.Context(), c, variant, auth.UserFrom(r.Context()).ID, false)
 	if err != nil {
 		d.internalError(w, r, err)
 		return
@@ -623,12 +623,12 @@ func (d *Handlers) GetReveal(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	me := auth.UserFrom(r.Context()).ID
-	frozen, err := d.standingsOut(r.Context(), c, VariantFrozen, me)
+	frozen, err := d.standingsOut(r.Context(), c, VariantFrozen, me, false)
 	if err != nil {
 		d.internalError(w, r, err)
 		return
 	}
-	full, err := d.standingsOut(r.Context(), c, VariantFull, me)
+	full, err := d.standingsOut(r.Context(), c, VariantFull, me, false)
 	if err != nil {
 		d.internalError(w, r, err)
 		return

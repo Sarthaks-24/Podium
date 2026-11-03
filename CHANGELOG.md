@@ -15,6 +15,7 @@ Dated entries per release. Unreleased work is listed at the top.
 - Contest submissions keep the request arrival timestamp used for the open-window decision, so queue delays do not shift freeze ordering or weaken the gap rule.
 - Background scheduled checks and live updates now recover from panics and log the task name and stack, allowing scheduler loops to continue.
 - Contest broadcast refetches and the first polling fallback tick now use up to three seconds of jitter, and stream clock samples account for 500 ms of round-trip latency.
+- Frozen standings hide the judging count from student views, and integrity shared-browser review uses a partial index over non-empty hashes.
 
 ### v4.01 judge recovery (2026-11-03)
 

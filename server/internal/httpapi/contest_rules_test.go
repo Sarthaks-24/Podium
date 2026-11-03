@@ -361,14 +361,17 @@ func TestConsoleReads(t *testing.T) {
 
 	// In the hidden minutes the organiser's own board is full; as a student it is the frozen one.
 	s.at(start, 100)
-	if _, b := owner.do("GET", "/api/contests/cr/standings", nil, ""); b["variant"] != "full" {
+	if code, sub := asha.do("POST", "/api/contests/cr/problems/A/submit", map[string]any{"language": "cpp17", "source": "int main(){ return 0; }", "client_key": "f10-pending"}, s.srv.URL); code != http.StatusAccepted || sub["state"] != "queued" {
+		t.Fatalf("submission during freeze: %d %v", code, sub)
+	}
+	if _, b := owner.do("GET", "/api/contests/cr/standings", nil, ""); b["variant"] != "full" || b["judging_remaining"] != float64(1) {
 		t.Errorf("organiser board %v", b["variant"])
 	}
-	if _, b := owner.do("GET", "/api/contests/cr/standings?as=student", nil, ""); b["variant"] != "frozen" {
+	if _, b := owner.do("GET", "/api/contests/cr/standings?as=student", nil, ""); b["variant"] != "frozen" || b["judging_remaining"] != float64(0) {
 		t.Errorf("student view board %v", b["variant"])
 	}
-	if _, b := asha.do("GET", "/api/contests/cr/standings?as=student", nil, ""); b["variant"] != "frozen" {
-		t.Errorf("student board %v", b["variant"])
+	if _, b := asha.do("GET", "/api/contests/cr/standings?as=student", nil, ""); b["variant"] != "frozen" || b["judging_remaining"] != float64(0) {
+		t.Errorf("student board exposes judging count: %v", b)
 	}
 
 	extend := fmt.Sprintf("/api/admin/contests/%d/extend", id)

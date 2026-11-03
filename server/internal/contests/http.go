@@ -530,7 +530,7 @@ type standingsJSON struct {
 	ServerNow        int64    `json:"server_now"`
 }
 
-func (d *Handlers) standingsOut(ctx context.Context, c *Contest, variant string, me int64) (*standingsJSON, error) {
+func (d *Handlers) standingsOut(ctx context.Context, c *Contest, variant string, me int64, studentView bool) (*standingsJSON, error) {
 	b, err := d.Contests.Board(ctx, c, variant)
 	if err != nil {
 		return nil, err
@@ -540,9 +540,13 @@ func (d *Handlers) standingsOut(ctx context.Context, c *Contest, variant string,
 		return nil, err
 	}
 	now := d.Contests.Clock()
-	out := &standingsJSON{Variant: variant, Version: b.Version, JudgingRemaining: b.JudgingRemaining, Labels: b.Labels,
+	judgingRemaining := b.JudgingRemaining
+	if studentView && variant == VariantFrozen {
+		judgingRemaining = 0
+	}
+	out := &standingsJSON{Variant: variant, Version: b.Version, JudgingRemaining: judgingRemaining, Labels: b.Labels,
 		Rows: b.Rows, Me: me, ServerNow: now.UnixMilli(),
-		Final: variant == VariantFull && !now.Before(final) && b.JudgingRemaining == 0}
+		Final: variant == VariantFull && !now.Before(final) && judgingRemaining == 0}
 	if out.Rows == nil {
 		out.Rows = []Row{}
 	}
@@ -573,7 +577,8 @@ func (d *Handlers) GetStandings(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	out, err := d.standingsOut(r.Context(), c, variant, u.ID)
+	studentView := !organiser || r.URL.Query().Get("as") == "student"
+	out, err := d.standingsOut(r.Context(), c, variant, u.ID, studentView)
 	if err != nil {
 		d.internalError(w, r, err)
 		return

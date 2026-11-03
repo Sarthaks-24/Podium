@@ -227,10 +227,11 @@ func TestIndexesMigrationIsUsed(t *testing.T) {
 		t.Fatal(err)
 	}
 	for index, q := range map[string]string{
-		"submissions_by_feed":         "SELECT s.id FROM submissions s WHERE s.contest_id = 1 AND s.kind = 'submit' ORDER BY s.id DESC LIMIT 50 OFFSET 0",
-		"contest_starts_by_user":      "SELECT contest_id FROM contest_starts WHERE user_id = 1",
-		"announcements_by_contest":    "SELECT id, body_md, created_at FROM announcements WHERE contest_id = 1 ORDER BY id DESC",
-		"contest_problems_by_problem": "SELECT contest_id FROM contest_problems WHERE problem_id = 1",
+		"submissions_by_feed":                "SELECT s.id FROM submissions s WHERE s.contest_id = 1 AND s.kind = 'submit' ORDER BY s.id DESC LIMIT 50 OFFSET 0",
+		"contest_starts_by_user":             "SELECT contest_id FROM contest_starts WHERE user_id = 1",
+		"announcements_by_contest":           "SELECT id, body_md, created_at FROM announcements WHERE contest_id = 1 ORDER BY id DESC",
+		"contest_problems_by_problem":        "SELECT contest_id FROM contest_problems WHERE problem_id = 1",
+		"submissions_by_contest_client_hash": "SELECT o.user_id FROM submissions me JOIN submissions o ON o.contest_id = me.contest_id AND o.client_hash = me.client_hash AND o.user_id <> me.user_id WHERE me.contest_id = 1 AND me.user_id = 1 AND me.client_hash <> '' AND o.client_hash <> '' GROUP BY o.user_id",
 	} {
 		rows, err := d.QueryContext(ctx, "EXPLAIN QUERY PLAN "+q)
 		if err != nil {
@@ -249,7 +250,7 @@ func TestIndexesMigrationIsUsed(t *testing.T) {
 			t.Fatal(err)
 		}
 		rows.Close()
-		if p := strings.Join(plan, "; "); !strings.Contains(p, index) || strings.Contains(p, "TEMP B-TREE") {
+		if p := strings.Join(plan, "; "); !strings.Contains(p, index) || (index != "submissions_by_contest_client_hash" && strings.Contains(p, "TEMP B-TREE")) {
 			t.Errorf("%s: plan %q, want %s and no sort", index, p, index)
 		}
 	}

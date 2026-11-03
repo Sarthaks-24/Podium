@@ -179,7 +179,7 @@ func (s *Service) Timeline(ctx context.Context, contestID, userID int64) ([]Mome
 		return nil, err
 	}
 	rows, err = s.DB.QueryContext(ctx, `SELECT DISTINCT o.user_id, coalesce(nullif(u.name, ''), u.email), min(o.created_at)
-		FROM submissions me JOIN submissions o ON o.contest_id = me.contest_id AND o.client_hash = me.client_hash AND o.user_id <> me.user_id
+		FROM submissions me JOIN submissions o ON o.contest_id = me.contest_id AND o.client_hash = me.client_hash AND o.user_id <> me.user_id AND o.client_hash <> ''
 		JOIN users u ON u.id = o.user_id
 		WHERE me.contest_id = ? AND me.user_id = ? AND me.client_hash <> '' GROUP BY o.user_id`, contestID, userID)
 	if err != nil {

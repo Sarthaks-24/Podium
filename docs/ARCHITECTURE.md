@@ -254,6 +254,8 @@ Submissions count while the student's own time is open. After it they are practi
 
 **The board cache.** Standings are a pure function of the contest, its problems and its submissions (`contests.Compute`, tested against hand-computed boards), cached in memory per contest and variant. Anything that changes a board (a verdict, a rejudge, a pin change, an extension, a new participant, an integrity decision) bumps the contest's version; a new submission does not, since it changes nothing until its verdict. Archiving a contest drops its cached boards. The work is bounded however many people look at once:
 
+The frozen board response for students sets `judging_remaining` to zero so the count cannot reveal judging progress during the freeze. Organiser responses keep the actual count. Integrity review of shared browser hashes uses the partial `submissions_by_contest_client_hash` index, which excludes empty hashes.
+
 | Rule | Effect |
 |---|---|
 | One computation at a time per contest and variant | Readers arriving meanwhile get the last board, or wait for the running computation when there is no board yet or it is already for the current version. Measured: 100 concurrent reads after a change compute once. |

@@ -689,7 +689,7 @@ The `Workspace` plus `{label, contest, window, can_submit, practice, refusal, re
 ### `Standings`
 
 ```json
-{ "variant": "frozen", "version": 12, "frozen_at": 1792315800000, "final": false, "judging_remaining": 2,
+{ "variant": "frozen", "version": 12, "frozen_at": 1792315800000, "final": false, "judging_remaining": 0,
   "labels": ["A", "B"],
   "rows": [ { "rank": 1, "user_id": 7, "name": "Asha R", "total": 140, "last_improvement_s": 2400,
               "cells": [ { "label": "A", "score": 100, "max": 100, "pending": 0, "tried": true },
@@ -701,7 +701,7 @@ The `Workspace` plus `{label, contest, window, can_submit, practice, refusal, re
 - `pending` counts submissions made after the freeze that the frozen board does not show yet.
 - `name` is the account name, else "Student {id}"; never an email on a student's board. A student excluded by a similar-code decision is not on the board.
 - `final` is true on the full board once every student's time is over and nothing waits for the judge.
-- A student gets the full board until the freeze, then the frozen board until every student's time is over and, with `hold_reveal`, until an organiser reveals; then the full board.
+- A student gets the full board until the freeze, then the frozen board until every student's time is over and, with `hold_reveal`, until an organiser reveals; then the full board. In the frozen student response, `judging_remaining` is always `0`; the live count remains on the organiser board.
 
 ### Clarifications
 
