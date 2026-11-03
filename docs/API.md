@@ -609,7 +609,7 @@ data: {"server_now":1792183192400}
 ```
 
 - Events for one run or submission arrive in order, and only when something visible changed: for an organiser each test, for a student the examples finishing and each whole subtask finishing.
-- Contest events go to organisers and owners with a stream open, and for a published contest to every signed-in student; the list is read when each event is sent.
+- Manager-only contest events go to listed organisers, admins and owners with a stream open. Public contest events also go to unlisted organisers and students of a published contest. The live membership and account state are read when each event is sent.
 - On every `clock` tick the server checks the session again; a stream whose session ended is closed.
 - Each user may hold 4 streams; a fifth replaces the oldest, which gets `replaced`. The web app shares one stream between the pages of a tab.
 - During a contest, a student opening a stream from another browser or machine while one is open is recorded for the organisers as a second session. A phone or tablet that changes network stays the same device. Nothing is shown to the student.
@@ -617,11 +617,11 @@ data: {"server_now":1792183192400}
 
 ## Contests: students
 
-Every route needs a signed-in user. A published, unarchived contest is open to everyone who can sign in (the list of people decides who takes part); anything else is `404 not_found`. Organisers and owners always get in and are never on the board. Every answer carries `server_now`.
+Every route needs a signed-in user. A published, unarchived contest is open to students who can sign in; invite-only contests further restrict participation. Listed organisers, admins and owners manage a contest. An unlisted organiser can read a published contest page, statements, the student standings variant, announcements, public clarifications and public contest events. Other contest reads and writes return `404 not_found`. Students cannot open organiser routes. Every answer carries `server_now`.
 
 | Route | Request | Success |
 |---|---|---|
-| `GET /api/contests` | | 200 `{live:[ContestSummary], upcoming:[...], past:[...], server_now}` |
+| `GET /api/contests` | | 200 `{live:[ContestSummary], upcoming:[...], past:[...], server_now}`; published contests visible to an unlisted organiser appear here too |
 | `GET /api/contests/{slug}` | | 200 `Contest` |
 | `POST /api/contests/{slug}/start` | `{"accept_honour":true}` | 200 `Contest` |
 | `GET /api/contests/{slug}/problems/{label}` | | 200 contest `Workspace` |
@@ -709,16 +709,16 @@ At most 5 unanswered questions per student per contest and 2,000 characters each
 
 ## Contests: organisers
 
-Every route here needs the organiser role; a student gets `403 forbidden` before any contest is read. An `{id}` that is not a contest is `404 not_found`, and every id in a URL or body (a submission, a question, a label) is checked against the contest in the URL. Every change that can affect results writes a row to the contest's audit log in the same transaction.
+Every route here needs the organiser role and manage access to the contest. Listed organisers, admins and owners manage it; an unlisted organiser gets `404 not_found`. The contest list includes only contests the caller manages. A student gets `403 forbidden` before any contest is read. An `{id}` that is not a contest is `404 not_found`, and every id in a URL or body (a submission, a question, a label) is checked against the contest in the URL. Every change that can affect results writes a row to the contest's audit log in the same transaction.
 
 | Route | Request | Success |
 |---|---|---|
-| `GET /api/admin/contests` | `?archived=1` to include archived contests | 200 `{contests:[AdminContest], server_now}`; list rows leave out `extensions` and `queue` and send `unanswered` as 0, so the list costs two queries |
+| `GET /api/admin/contests` | `?archived=1` to include archived contests | 200 `{contests:[AdminContest], server_now}`; only contests the caller manages are listed; rows leave out `extensions` and `queue` and send `unanswered` as 0 |
 | `POST /api/admin/contests` | `ContestEdit` and `client_key` | 201 `AdminContest`, unpublished; a repeated `client_key` (v4) answers with the contest the first request made |
 | `GET /api/admin/contests/{id}` | | 200 `AdminContest` |
 | `PUT /api/admin/contests/{id}` | `ContestEdit`; fields left out keep their value | 200 `AdminContest` |
 | `DELETE /api/admin/contests/{id}` | | 204: archived, nothing deleted |
-| `POST /api/admin/contests/{id}/clone` | `{title, starts_at, ends_at}` (`title` empty keeps the old one; `slug` is accepted and ignored) | 201 `AdminContest`: settings and problems copied, not extensions or the editorial |
+| `POST /api/admin/contests/{id}/clone` | `{title, starts_at, ends_at}` (`title` empty keeps the old one; `slug` is accepted and ignored) | 201 `AdminContest`: settings, problems and organisers copied atomically; the cloner is added, extensions and editorial are not copied |
 | `PUT /api/admin/contests/{id}/problems` | `[{"problem_id":3,"label":"A","ai_reason":"..."}]` | 200 `AdminContest` (rules below) |
 | `PUT /api/admin/contests/{id}/problems/{label}/revision` | `{"revision_id":14}` | 200 `{contest: AdminContest, announcement_md, statement_changed, rejudge_needed, server_now}`: "Update students now" |
 | `PUT /api/admin/contests/{id}/extensions/{user}` | `{"minutes":15,"reason":"..."}`, 0 to 1440; 0 removes | 200 `AdminContest`; the student gets a `contest` event |

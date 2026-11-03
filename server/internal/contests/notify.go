@@ -53,9 +53,8 @@ func (s *Service) notifyStandings(ctx context.Context, c *Contest) {
 	s.publish(ctx, c, false, EventStandings, map[string]any{"contest": c.Slug, "contest_id": c.ID, "version": cached})
 }
 
-// publish sends an event to the contest's members with an open stream:
-// organisers always; students only of a published contest they may enter.
-// With organisersOnly set, students are left out.
+// publish sends manager events to managers and public events to viewers and
+// participants. Membership is checked on every event so removals apply at once.
 func (s *Service) publish(ctx context.Context, c *Contest, organisersOnly bool, typ string, v any) {
 	if s.Hub == nil {
 		return
@@ -65,11 +64,13 @@ func (s *Service) publish(ctx context.Context, c *Contest, organisersOnly bool, 
 		return
 	}
 	ids, _ := json.Marshal(users)
-	students := !organisersOnly && c.Published && !c.Archived
-	rows, err := s.DB.QueryContext(ctx, `SELECT u.id FROM users u WHERE u.id IN (SELECT value FROM json_each(?)) AND u.disabled = 0 AND (
-		u.role IN ('organiser', 'admin', 'owner')
-		OR ?)`,
-		string(ids), students)
+	publicEvents := !organisersOnly && c.Published && !c.Archived
+	rows, err := s.DB.QueryContext(ctx, `SELECT u.id FROM users u
+		WHERE u.id IN (SELECT value FROM json_each(?)) AND u.disabled = 0 AND (
+			u.role IN ('admin', 'owner')
+			OR (u.role = 'organiser' AND EXISTS (SELECT 1 FROM contest_organisers o WHERE o.contest_id = ? AND o.user_id = u.id))
+			OR (? AND u.role IN ('organiser', 'student'))
+		)`, string(ids), c.ID, publicEvents)
 	if err != nil {
 		return
 	}

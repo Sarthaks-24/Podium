@@ -147,9 +147,7 @@ func (d *Handlers) writeAdminContest(w http.ResponseWriter, r *http.Request, id 
 	httpx.WriteJSON(w, status, out)
 }
 
-// OrganisedContest loads the contest named by {id}, or answers 404. It does
-// not check who asks: every organiser manages every contest, and the route
-// guard already requires the organiser role.
+// OrganisedContest loads a contest the caller may manage, or answers 404.
 func (d *Handlers) OrganisedContest(w http.ResponseWriter, r *http.Request) (*Contest, bool) {
 	id, ok := httpx.ParseID(r.PathValue("id"))
 	if !ok {
@@ -159,6 +157,15 @@ func (d *Handlers) OrganisedContest(w http.ResponseWriter, r *http.Request) (*Co
 	c, err := d.Contests.Get(r.Context(), id)
 	if err != nil {
 		d.contestError(w, r, err)
+		return nil, false
+	}
+	access, err := d.Contests.contestAccess(r.Context(), c, viewerOf(auth.UserFrom(r.Context())))
+	if err != nil {
+		d.contestError(w, r, err)
+		return nil, false
+	}
+	if access != AccessManage {
+		d.contestError(w, r, ErrNotFound)
 		return nil, false
 	}
 	return c, true
@@ -178,6 +185,17 @@ func (d *Handlers) ListAdminContests(w http.ResponseWriter, r *http.Request) {
 	}
 	out := []*adminContestJSON{}
 	for _, c := range all {
+		access, err := d.Contests.contestAccess(r.Context(), c, viewerOf(auth.UserFrom(r.Context())))
+		if errors.Is(err, ErrNotFound) {
+			continue
+		}
+		if err != nil {
+			d.internalError(w, r, err)
+			return
+		}
+		if access != AccessManage {
+			continue
+		}
 		out = append(out, d.adminContestBase(c))
 	}
 	httpx.WriteJSON(w, http.StatusOK, map[string]any{"contests": out, "server_now": d.Contests.Clock().UnixMilli()})

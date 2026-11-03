@@ -134,7 +134,7 @@ func TestSchemaTables(t *testing.T) {
 	if err := rows.Err(); err != nil {
 		t.Fatal(err)
 	}
-	want := []string{"announcements", "blobs", "clarifications", "contest_audit", "contest_extensions",
+	want := []string{"announcements", "blobs", "clarifications", "contest_audit", "contest_extensions", "contest_organisers",
 		"contest_problems", "contest_starts", "contests", "drafts", "generations", "input_generations",
 		"integrity_cases", "integrity_events", "integrity_runs", "integrity_signals", "job_results", "jobs",
 		"problem_revisions", "problems", "refused_signins", "revision_tests", "schema_migrations", "sessions", "settings", "site_audit",

@@ -6,6 +6,7 @@ package httpapi
 
 import (
 	"bufio"
+	"context"
 	"fmt"
 	"io"
 	"net/http"
@@ -13,6 +14,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/Sarthaks-24/podium/internal/contests"
 )
 
 type sse struct{ typ, data string }
@@ -149,6 +152,87 @@ func TestAccessAndCrossContestIDs(t *testing.T) {
 	_, detail := asha.do("GET", "/api/contests/c1", nil, "")
 	if strings.Contains(fmt.Sprint(detail), "@college.edu") {
 		t.Errorf("contest page shows an email: %v", detail)
+	}
+}
+
+func TestContestViewerAccessAndCloneOrganisers(t *testing.T) {
+	s := newSite(t)
+	owner := s.signedIn("owner@college.edu", "Owner")
+	for _, email := range []string{"listed@college.edu", "viewer@college.edu"} {
+		if code, out := owner.do("POST", "/api/admin/people", map[string]any{"email": email, "role": "organiser"}, s.srv.URL); code >= 300 {
+			t.Fatalf("grant organiser %s: %d %v", email, code, out)
+		}
+	}
+	listed := s.signedIn("listed@college.edu", "Listed")
+	viewer := s.signedIn("viewer@college.edu", "Viewer")
+	problem := s.importProblem(owner, "viewer-problem")
+	start := time.Now().Add(-time.Hour).Truncate(time.Minute)
+	id := s.createContest(owner, "viewer-contest", start, map[string]int64{"A": problem}, nil)
+	if _, err := s.db.Exec("INSERT INTO contest_organisers (contest_id, user_id, added_by, added_at) VALUES (?, ?, ?, ?)", id, listed.userID(), owner.userID(), s.clock.now().UnixMilli()); err != nil {
+		t.Fatal(err)
+	}
+	if code, page := viewer.do("GET", "/api/contests/viewer-contest", nil, ""); code != 200 || page["organiser"] != false || page["id"] != nil || len(page["problems"].([]any)) != 1 {
+		t.Errorf("viewer page: %d %v", code, page)
+	}
+	if _, list := listed.do("GET", "/api/admin/contests", nil, ""); len(list["contests"].([]any)) != 1 {
+		t.Errorf("listed organiser contest list: %v", list)
+	}
+	if _, list := viewer.do("GET", "/api/admin/contests", nil, ""); len(list["contests"].([]any)) != 0 {
+		t.Errorf("viewer console list contains a managed contest: %v", list)
+	}
+	if _, list := viewer.do("GET", "/api/contests", nil, ""); len(list["live"].([]any)) != 1 {
+		t.Errorf("viewer student contest list: %v", list)
+	}
+	if _, detail := listed.do("GET", fmt.Sprintf("/api/admin/problems/%d", problem), nil, ""); len(detail["live_contests"].([]any)) != 1 {
+		t.Errorf("manager live contest list: %v", detail["live_contests"])
+	}
+	if _, detail := viewer.do("GET", fmt.Sprintf("/api/admin/problems/%d", problem), nil, ""); len(detail["live_contests"].([]any)) != 0 {
+		t.Errorf("viewer live contest list: %v", detail["live_contests"])
+	}
+	if code, _ := viewer.do("GET", fmt.Sprintf("/api/admin/contests/%d", id), nil, ""); code != 404 {
+		t.Errorf("viewer console: %d, want 404", code)
+	}
+	if code, _ := viewer.do("POST", "/api/contests/viewer-contest/start", map[string]any{"accept_honour": true}, s.srv.URL); code != 404 {
+		t.Errorf("viewer start: %d, want 404", code)
+	}
+	if _, err := s.db.Exec("INSERT INTO contest_organisers (contest_id, user_id, added_by, added_at) VALUES (?, ?, ?, ?)", id, viewer.userID(), owner.userID(), s.clock.now().UnixMilli()); err != nil {
+		t.Fatal(err)
+	}
+	code, cloned := listed.do("POST", fmt.Sprintf("/api/admin/contests/%d/clone", id), map[string]any{
+		"title": "viewer clone", "starts_at": start.Add(48 * time.Hour).UnixMilli(), "ends_at": start.Add(50 * time.Hour).UnixMilli()}, s.srv.URL)
+	if code != 201 {
+		t.Fatalf("clone as listed organiser: %d %v", code, cloned)
+	}
+	var members int
+	if err := s.db.QueryRow("SELECT count(*) FROM contest_organisers WHERE contest_id = ?", int64(cloned["id"].(float64))).Scan(&members); err != nil || members != 3 {
+		t.Errorf("clone managers = %d, err %v, want copied organiser, creator and cloner", members, err)
+	}
+}
+
+func TestCloneRollsBackEveryCopiedRow(t *testing.T) {
+	s := newSite(t)
+	owner := s.signedIn("owner@college.edu", "Owner")
+	problem := s.importProblem(owner, "atomic-clone-problem")
+	start := time.Now().Add(time.Hour).Truncate(time.Minute)
+	id := s.createContest(owner, "atomic-source", start, map[string]int64{"A": problem}, nil)
+	if _, err := s.db.Exec(`CREATE TRIGGER reject_atomic_clone_problem BEFORE INSERT ON contest_problems
+		WHEN (SELECT slug FROM contests WHERE id = NEW.contest_id) = 'atomic-copy'
+		BEGIN SELECT RAISE(ABORT, 'clone test failure'); END`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.contests.Clone(context.Background(), id, "atomic-copy", "atomic copy", start.Add(48*time.Hour), start.Add(50*time.Hour), contests.Actor{ID: owner.userID(), Email: "owner@college.edu", Role: "owner"}); err == nil {
+		t.Fatal("clone unexpectedly succeeded")
+	}
+	var clones, members int
+	if err := s.db.QueryRow("SELECT count(*) FROM contests WHERE slug = 'atomic-copy'").Scan(&clones); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.db.QueryRow(`SELECT count(*) FROM contest_organisers o JOIN contests c ON c.id = o.contest_id
+		WHERE c.slug = 'atomic-copy'`).Scan(&members); err != nil {
+		t.Fatal(err)
+	}
+	if clones != 0 || members != 0 {
+		t.Errorf("failed clone left contest=%d managers=%d", clones, members)
 	}
 }
 

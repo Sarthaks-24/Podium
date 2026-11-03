@@ -18,6 +18,9 @@ func TestIntegritySignalsHiddenFromTheirOwnStudent(t *testing.T) {
 	if _, err := s.db.Exec("UPDATE users SET role = 'organiser' WHERE id = ?", asha); err != nil {
 		t.Fatal(err)
 	}
+	if _, err := s.db.Exec("INSERT INTO contest_organisers (contest_id, user_id, added_by, added_at) VALUES (?, ?, ?, ?)", w.c1, asha, w.owner.userID(), s.clock.now().UnixMilli()); err != nil {
+		t.Fatal(err)
+	}
 	code, mine := w.asha.do("GET", w.url(w.c1, ""), nil, "")
 	if code != 200 {
 		t.Fatalf("run as the promoted student: %d %v", code, mine)

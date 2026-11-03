@@ -117,23 +117,22 @@ func (d *Handlers) contestError(w http.ResponseWriter, r *http.Request, err erro
 }
 
 func viewerOf(u auth.User) Viewer {
-	return Viewer{UserID: u.ID, Email: u.Email, Organiser: u.Role.AtLeast(auth.Organiser)}
+	return Viewer{UserID: u.ID, Email: u.Email, Role: u.Role}
 }
 
-// studentContest loads the contest named by {slug} and checks the viewer
-// may enter it. organiser is true for owners and admins.
-func (d *Handlers) studentContest(w http.ResponseWriter, r *http.Request) (*Contest, bool, bool) {
+// studentContest loads the contest named by {slug} and resolves its access.
+func (d *Handlers) studentContest(w http.ResponseWriter, r *http.Request) (*Contest, Access, bool) {
 	c, err := d.Contests.GetBySlug(r.Context(), r.PathValue("slug"))
 	if err != nil {
 		d.contestError(w, r, err)
-		return nil, false, false
+		return nil, AccessNone, false
 	}
-	organiser, err := d.Contests.MayEnter(r.Context(), c, viewerOf(auth.UserFrom(r.Context())))
+	access, err := d.Contests.contestAccess(r.Context(), c, viewerOf(auth.UserFrom(r.Context())))
 	if err != nil {
 		d.contestError(w, r, err)
-		return nil, false, false
+		return nil, AccessNone, false
 	}
-	return c, organiser, true
+	return c, access, true
 }
 
 // summary builds ContestSummary for the viewer, and returns their state.
@@ -175,15 +174,15 @@ func (d *Handlers) ListContests(w http.ResponseWriter, r *http.Request) {
 		if !c.Published {
 			continue
 		}
-		organiser, err := d.Contests.MayEnter(r.Context(), c, viewerOf(u))
-		if errors.Is(err, ErrForbidden) || errors.Is(err, ErrNotFound) {
+		access, err := d.Contests.contestAccess(r.Context(), c, viewerOf(u))
+		if errors.Is(err, ErrNotFound) {
 			continue
 		}
 		if err != nil {
 			d.internalError(w, r, err)
 			return
 		}
-		s, _, err := d.summary(r.Context(), c, u.ID, organiser)
+		s, _, err := d.summary(r.Context(), c, u.ID, access == AccessManage)
 		if err != nil {
 			d.internalError(w, r, err)
 			return
@@ -202,7 +201,9 @@ func (d *Handlers) ListContests(w http.ResponseWriter, r *http.Request) {
 }
 
 // contestDetail builds Contest for the viewer.
-func (d *Handlers) contestDetail(ctx context.Context, c *Contest, u auth.User, organiser bool) (*contestJSON, error) {
+// access is passed explicitly so viewers get statements without any personal workspace data.
+func (d *Handlers) contestDetail(ctx context.Context, c *Contest, u auth.User, access Access) (*contestJSON, error) {
+	organiser := access == AccessManage
 	s, st, err := d.summary(ctx, c, u.ID, organiser)
 	if err != nil {
 		return nil, err
@@ -217,17 +218,20 @@ func (d *Handlers) contestDetail(ctx context.Context, c *Contest, u auth.User, o
 	if organiser {
 		out.ID = c.ID
 	}
-	if organiser || c.ProblemsVisible(st, now) {
+	if organiser || access == AccessView || c.ProblemsVisible(st, now) {
 		var cells map[string]Cell
-		hide := organiser || c.ViewOptions(st).Hide
+		hide := organiser || access == AccessView || c.ViewOptions(st).Hide
 		if !hide {
 			if _, cells, err = d.Contests.MyScore(ctx, c, st, u.ID); err != nil {
 				return nil, err
 			}
 		}
-		counts, err := d.Contests.SubmissionCounts(ctx, c, u.ID)
-		if err != nil {
-			return nil, err
+		counts := map[int64]int{}
+		if access != AccessView {
+			counts, err = d.Contests.SubmissionCounts(ctx, c, u.ID)
+			if err != nil {
+				return nil, err
+			}
 		}
 		for _, p := range c.Problems {
 			pj := contestProblemJSON{Label: p.Label, Title: p.Title, MaxScore: p.MaxScore(), MySubmissionCount: counts[p.ProblemID],
@@ -244,7 +248,7 @@ func (d *Handlers) contestDetail(ctx context.Context, c *Contest, u auth.User, o
 	if out.MyClarifications, out.PublicClarifications, err = d.Contests.StudentClarifications(ctx, c.ID, u.ID); err != nil {
 		return nil, err
 	}
-	if organiser || c.EditorialVisible(st, now) {
+	if organiser || (access != AccessView && c.EditorialVisible(st, now)) {
 		if c.Editorial != "" && (c.EditorialPublished || organiser) {
 			out.EditorialMD = httpx.Ptr(c.Editorial)
 		}
@@ -253,11 +257,11 @@ func (d *Handlers) contestDetail(ctx context.Context, c *Contest, u auth.User, o
 }
 
 func (d *Handlers) GetContest(w http.ResponseWriter, r *http.Request) {
-	c, organiser, ok := d.studentContest(w, r)
+	c, access, ok := d.studentContest(w, r)
 	if !ok {
 		return
 	}
-	out, err := d.contestDetail(r.Context(), c, auth.UserFrom(r.Context()), organiser)
+	out, err := d.contestDetail(r.Context(), c, auth.UserFrom(r.Context()), access)
 	if err != nil {
 		d.internalError(w, r, err)
 		return
@@ -266,8 +270,12 @@ func (d *Handlers) GetContest(w http.ResponseWriter, r *http.Request) {
 }
 
 func (d *Handlers) StartContest(w http.ResponseWriter, r *http.Request) {
-	c, organiser, ok := d.studentContest(w, r)
+	c, access, ok := d.studentContest(w, r)
 	if !ok {
+		return
+	}
+	if access != AccessParticipate {
+		d.contestError(w, r, ErrNotFound)
 		return
 	}
 	var req struct {
@@ -281,7 +289,7 @@ func (d *Handlers) StartContest(w http.ResponseWriter, r *http.Request) {
 		d.contestError(w, r, err)
 		return
 	}
-	out, err := d.contestDetail(r.Context(), c, u, organiser)
+	out, err := d.contestDetail(r.Context(), c, u, access)
 	if err != nil {
 		d.internalError(w, r, err)
 		return
@@ -308,11 +316,16 @@ type contestTarget struct {
 // access rules. Students see a problem only once their window started (or
 // is over); organisers always.
 func (d *Handlers) contestProblem(w http.ResponseWriter, r *http.Request) (*contestTarget, bool) {
-	c, organiser, ok := d.studentContest(w, r)
+	c, access, ok := d.studentContest(w, r)
 	if !ok {
 		return nil, false
 	}
+	if access != AccessManage && access != AccessParticipate {
+		d.contestError(w, r, ErrNotFound)
+		return nil, false
+	}
 	now := d.Contests.Clock()
+	organiser := access == AccessManage
 	t := &contestTarget{c: c, organiser: organiser, at: now}
 	found := false
 	for _, p := range c.Problems {
@@ -557,16 +570,17 @@ func (d *Handlers) standingsOut(ctx context.Context, c *Contest, variant string,
 }
 
 func (d *Handlers) GetStandings(w http.ResponseWriter, r *http.Request) {
-	c, organiser, ok := d.studentContest(w, r)
+	c, access, ok := d.studentContest(w, r)
 	if !ok {
 		return
 	}
 	u := auth.UserFrom(r.Context())
+	organiser := access == AccessManage
 	variant := VariantFull
 	switch {
 	// An organiser gets the full board, or with ?as=student the board
 	// students get now ("Student view", pilot P10).
-	case !organiser || r.URL.Query().Get("as") == "student":
+	case access != AccessManage || r.URL.Query().Get("as") == "student":
 		st, err := d.Contests.State(r.Context(), c, u.ID)
 		if err != nil {
 			d.internalError(w, r, err)
@@ -587,10 +601,15 @@ func (d *Handlers) GetStandings(w http.ResponseWriter, r *http.Request) {
 }
 
 func (d *Handlers) AskClarification(w http.ResponseWriter, r *http.Request) {
-	c, organiser, ok := d.studentContest(w, r)
+	c, access, ok := d.studentContest(w, r)
 	if !ok {
 		return
 	}
+	if access == AccessView {
+		d.contestError(w, r, ErrNotFound)
+		return
+	}
+	organiser := access == AccessManage
 	var req struct {
 		ProblemLabel *string `json:"problem_label"`
 		Question     string  `json:"question"`

@@ -3,11 +3,14 @@ package contests
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
 	"time"
 	"unicode/utf8"
+
+	"github.com/Sarthaks-24/podium/internal/problems"
 )
 
 // Size limits on organisers' and students' text.
@@ -53,7 +56,6 @@ func (s *Service) Clone(ctx context.Context, id int64, slug, title string, start
 		return nil, err
 	}
 	if strings.TrimSpace(title) == "" {
-		// "(copy)" tells the two drafts apart in the list; the title limit still holds.
 		title = src.Title + " (copy)"
 		if r := []rune(title); len(r) > 120 {
 			title = string(r[:120])
@@ -63,31 +65,142 @@ func (s *Service) Clone(ctx context.Context, id int64, slug, title string, start
 		FreezeMinutes: int(src.Schedule.Freeze / time.Minute), PracticeAfterEnd: src.PracticeAfterEnd,
 		MinGapS: int(src.MinGap / time.Second), MaxPerProblem: src.MaxPerProblem, Languages: src.Languages,
 		HonourText: src.HonourText, HoldReveal: src.HoldReveal, Exam: src.Exam}
-	choices := make([]ProblemChoice, 0, len(src.Problems))
+	if errs := e.check(); errs != nil {
+		return nil, errs
+	}
+	aiReasons := make(map[int64]string, len(src.Problems))
 	for _, p := range src.Problems {
 		reason, err := s.aiConfirmedIn(ctx, src.ID, p.ProblemID)
 		if err != nil {
 			return nil, err
 		}
-		if reason != "" {
-			reason = fmt.Sprintf("Copied from contest %s, where the reason was: %s", src.Slug, reason)
+		aiReasons[p.ProblemID] = reason
+	}
+	langs, err := json.Marshal(e.Languages)
+	if err != nil {
+		return nil, err
+	}
+	now := s.now().UnixMilli()
+	tx, err := s.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+	base := Slugify(e.Title)
+	var cloneID int64
+	for n := 1; n <= 100; n++ {
+		cloneSlug := base
+		if n > 1 {
+			cloneSlug = fmt.Sprintf("%s-%d", base, n)
 		}
-		choices = append(choices, ProblemChoice{ProblemID: p.ProblemID, Label: p.Label, AIReason: reason})
+		err = tx.QueryRowContext(ctx, `INSERT INTO contests (slug, title, description_md, starts_at, ends_at,
+			freeze_minutes, published, practice_after_end, min_gap_s, max_per_problem, languages, honour_text, hold_reveal,
+			full_screen, count_focus, block_paste, block_copy, created_by, created_at, updated_at)
+			VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
+			cloneSlug, e.Title, e.Description, e.StartsAt.UnixMilli(), e.EndsAt.UnixMilli(),
+			e.FreezeMinutes, e.PracticeAfterEnd, e.MinGapS, e.MaxPerProblem, string(langs), e.HonourText, e.HoldReveal,
+			e.Exam.FullScreen, e.Exam.CountFocus, e.Exam.BlockPaste, e.Exam.BlockCopy,
+			nullID(by.ID), now, now).Scan(&cloneID)
+		if isUniqueSlug(err) {
+			continue
+		}
+		if err != nil {
+			return nil, err
+		}
+		break
 	}
-	c, err := s.Create(ctx, e, by.ID, "")
+	if cloneID == 0 {
+		return nil, FieldErrors{"title": "Too many contests have this title. Change it a little."}
+	}
+	if _, err := tx.ExecContext(ctx, `INSERT INTO contest_organisers (contest_id, user_id, added_by, added_at)
+		SELECT ?, user_id, added_by, added_at FROM contest_organisers WHERE contest_id = ?`, cloneID, id); err != nil {
+		return nil, err
+	}
+	if _, err := tx.ExecContext(ctx, `INSERT OR IGNORE INTO contest_organisers (contest_id, user_id, added_by, added_at)
+		VALUES (?, ?, ?, ?)`, cloneID, by.ID, by.ID, now); err != nil {
+		return nil, err
+	}
+	pins, err := s.cloneProblems(ctx, tx, cloneID, src, aiReasons, by)
 	if err != nil {
 		return nil, err
 	}
-	if len(choices) == 0 {
-		return c, nil
+	if len(pins) != 0 {
+		if err := s.recordTx(ctx, tx, cloneID, by, AuditProblems, map[string]any{"from": []pin{}, "to": pins}); err != nil {
+			return nil, err
+		}
 	}
-	out, err := s.SetProblems(ctx, c.ID, choices, by)
-	if err != nil {
-		// A half-made copy helps nobody: remove it and say why.
-		s.DB.ExecContext(ctx, "DELETE FROM contests WHERE id = ?", c.ID)
+	if err := tx.Commit(); err != nil {
 		return nil, err
 	}
-	return out, nil
+	return s.Get(ctx, cloneID)
+}
+
+func (s *Service) cloneProblems(ctx context.Context, tx *sql.Tx, cloneID int64, src *Contest, aiReasons map[int64]string, by Actor) ([]pin, error) {
+	var pins []pin
+	var unconfirmed []string
+	for i, p := range src.Problems {
+		var hash, tagsJSON, origin string
+		var validated sql.NullString
+		var solutionByPerson bool
+		err := tx.QueryRowContext(ctx, "SELECT content_hash, validated_hash, tags, origin, solution_by_person FROM problems WHERE id = ? AND archived = 0", p.ProblemID).
+			Scan(&hash, &validated, &tagsJSON, &origin, &solutionByPerson)
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, FieldErrors{"problems": fmt.Sprintf("The problem for label %s no longer exists.", p.Label)}
+		}
+		if err != nil {
+			return nil, err
+		}
+		if validated.String != hash {
+			return nil, FieldErrors{"problems": fmt.Sprintf("The problem for label %s is not validated. Validate it before adding it to a contest.", p.Label)}
+		}
+		var tags []string
+		if err := json.Unmarshal([]byte(tagsJSON), &tags); err != nil {
+			return nil, fmt.Errorf("problem %d tags: %w", p.ProblemID, err)
+		}
+		for _, tag := range tags {
+			if strings.EqualFold(strings.TrimSpace(tag), problems.AIDraftTag) {
+				return nil, FieldErrors{"problems": fmt.Sprintf("The problem for label %s is an AI draft. Read it and save it in the editor before adding it to a contest.", p.Label)}
+			}
+		}
+		needs, err := unconfirmedAI(ctx, tx, cloneID, p.ProblemID)
+		if err != nil {
+			return nil, err
+		}
+		if needs && origin == "ai" && !solutionByPerson {
+			reason := strings.TrimSpace(aiReasons[p.ProblemID])
+			if utf8.RuneCountInString(reason) < minAIReason {
+				unconfirmed = append(unconfirmed, p.Label)
+			} else {
+				reason = fmt.Sprintf("Copied from contest %s, where the reason was: %s", src.Slug, reason)
+				if err := s.recordTx(ctx, tx, cloneID, by, AuditAIProblem, map[string]any{"label": p.Label, "problem_id": p.ProblemID, "reason": limitStr(reason, 1000)}); err != nil {
+					return nil, err
+				}
+			}
+		}
+		points, err := subtaskPoints(ctx, tx, p.ProblemID)
+		if err != nil {
+			return nil, err
+		}
+		var revisionID int64
+		var rev int
+		err = tx.QueryRowContext(ctx, `SELECT id, rev FROM problem_revisions WHERE problem_id = ? AND content_hash = ? AND reconstructed = 0
+			ORDER BY rev DESC LIMIT 1`, p.ProblemID, hash).Scan(&revisionID, &rev)
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, fmt.Errorf("problem %d has no revision for its content", p.ProblemID)
+		}
+		if err != nil {
+			return nil, err
+		}
+		if _, err := tx.ExecContext(ctx, `INSERT INTO contest_problems (contest_id, problem_id, label, ord, points, revision_id)
+			VALUES (?, ?, ?, ?, ?, ?)`, cloneID, p.ProblemID, p.Label, i, points, revisionID); err != nil {
+			return nil, err
+		}
+		pins = append(pins, pin{Label: p.Label, ProblemID: p.ProblemID, Hash: hash, RevisionID: revisionID, Rev: rev})
+	}
+	if len(unconfirmed) > 0 {
+		return nil, &AIProblemError{Labels: unconfirmed}
+	}
+	return pins, nil
 }
 
 // SetEditorial saves the editorial. Students see it only when it is

@@ -30,6 +30,10 @@ func TestContestAuthorizationMatrix(t *testing.T) {
 	problem := s.importProblem(owner, "matrix-problem")
 	start := time.Now().Add(-time.Hour).Truncate(time.Minute)
 	contestID := s.createContest(owner, "matrix-contest", start, map[string]int64{"A": problem}, nil)
+	listedID := listed.userID()
+	if _, err := s.db.Exec("INSERT INTO contest_organisers (contest_id, user_id, added_by, added_at) VALUES (?, ?, ?, ?)", contestID, listedID, owner.userID(), s.clock.now().UnixMilli()); err != nil {
+		t.Fatal(err)
+	}
 	if code, out := student.do("POST", "/api/contests/matrix-contest/start", map[string]any{"accept_honour": true}, s.srv.URL); code != 200 {
 		t.Fatalf("start for source fixture: %d %v", code, out)
 	}

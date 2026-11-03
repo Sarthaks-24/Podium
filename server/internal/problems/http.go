@@ -27,6 +27,8 @@ import (
 type Handlers struct {
 	Problems *Service
 	Log      *slog.Logger
+	// CanManageContest applies the contest package's access rule to each live contest.
+	CanManageContest func(context.Context, int64, auth.User) (bool, error)
 }
 
 func (d *Handlers) internalError(w http.ResponseWriter, r *http.Request, err error) {
@@ -638,5 +640,23 @@ func (d *Handlers) addRevisions(ctx context.Context, p *Problem, out *problemJSO
 		out.Revision = &revisionRefJSON{list[0].ID, list[0].Rev}
 	}
 	out.LiveContests, err = d.Problems.LiveContests(ctx, p.ID)
-	return err
+	if err != nil {
+		return err
+	}
+	if d.CanManageContest == nil {
+		out.LiveContests = []LiveContest{}
+		return nil
+	}
+	visible := out.LiveContests[:0]
+	for _, contest := range out.LiveContests {
+		allowed, err := d.CanManageContest(ctx, contest.ContestID, auth.UserFrom(ctx))
+		if err != nil {
+			return err
+		}
+		if allowed {
+			visible = append(visible, contest)
+		}
+	}
+	out.LiveContests = visible
+	return nil
 }

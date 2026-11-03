@@ -6,6 +6,7 @@ podium is the contest site the organisers run for programming contests. This pag
 - **Sign-ins from an address not on the list.** If someone signs in with a Google account whose address the organisers have not added, podium keeps that address, when it first and last tried and how often, so an organiser can let them in. Only the 500 most recent are kept.
 - **Your sign-in sessions.** When each session started, the network address it came from and your browser's name, so the organisers can end a session that is not yours.
 - **Your code.** Everything you submit: the code, the language, when you sent it, the verdict and the score. When you only run your code, podium keeps a fingerprint of the code, not the code, and the input and output of that run for a short time. The editor saves a draft of your code for each problem on the server and in your browser, so it is still there after a reload or on another computer.
+- **Who can read your code.** Organisers of this contest and admins can read the code you submit.
 - **How you wrote it, during a contest.** For each submission, how many characters you typed and how many you pasted. While your contest is open, podium also records when you paste (the length, never the text), when you leave the page and come back, when you leave full screen, and when your account is open in two places at once. For that last check your browser keeps a random device number, and podium keeps a fingerprint of your network address and browser. Outside contests none of this is recorded.
 - **Your contests.** When you started each contest and accepted its rules, any extra time an organiser gave you and the reason they wrote for it.
 - **Your questions.** Questions you ask during a contest and their answers.
@@ -18,7 +19,7 @@ podium does not record the keys you press, your screen, your camera, or anything
 
 - **You** see your own submissions, runs, drafts and questions.
 - **Other students** see your name, your place and your scores on a contest's standings, never your email. If you ask a question and the organisers answer it for everyone, others see the question and the answer, not who asked.
-- **Organisers, admins and owners** see everything listed above for every contest, including your email, your code, and the paste, focus and full-screen records on a contest's similar-code screens.
+- **Organisers of a contest, admins and owners** can read the code you submit and review contest activity for that contest. Unlisted organisers can read published contest statements and standings, but cannot read student code or the organiser console.
 - **Admins and owners** manage the list of people who may sign in, accounts and roles, and see the record of what was done to an account and the addresses that tried to sign in.
 - **Google** handles your sign-in, which asks only for your name, email and picture. podium sends nothing else to Google.
 - Your code is judged on podium's own server, in a sandbox. It is never sent to an AI service. Organisers may use an AI service to draft problems; that uses the text they type, never anything about you.

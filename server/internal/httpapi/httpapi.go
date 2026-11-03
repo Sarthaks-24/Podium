@@ -9,7 +9,9 @@
 package httpapi
 
 import (
+	"context"
 	"database/sql"
+	"errors"
 	"log/slog"
 	"net/http"
 	"time"
@@ -131,7 +133,18 @@ func New(d Deps) http.Handler {
 	mux.HandleFunc("PUT /api/admin/site-settings", owner(people.SetSiteSettings))
 
 	organiser := func(h http.HandlerFunc) http.HandlerFunc { return d.requireRole(auth.Organiser, h) }
-	bank := &problems.Handlers{Problems: d.Problems, Log: d.Log}
+	bank := &problems.Handlers{Problems: d.Problems, Log: d.Log,
+		CanManageContest: func(ctx context.Context, id int64, user auth.User) (bool, error) {
+			c, err := d.Contests.Get(ctx, id)
+			if errors.Is(err, contests.ErrNotFound) {
+				return false, nil
+			}
+			if err != nil {
+				return false, err
+			}
+			access, err := d.Contests.AccessFor(ctx, c, contests.Viewer{UserID: user.ID, Role: user.Role})
+			return access == contests.AccessManage, err
+		}}
 	work := &submissions.Handlers{Submissions: d.Submissions, Log: d.Log}
 	mux.HandleFunc("GET /api/admin/problems", organiser(bank.ListProblems))
 	mux.HandleFunc("POST /api/admin/problems", organiser(bank.CreateProblem))

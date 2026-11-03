@@ -13,6 +13,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/Sarthaks-24/podium/internal/auth"
 	"github.com/Sarthaks-24/podium/internal/events"
 	"github.com/Sarthaks-24/podium/internal/judge"
 	"github.com/Sarthaks-24/podium/internal/problems"
@@ -264,8 +265,12 @@ func (s *Service) Create(ctx context.Context, e Edit, by int64, key string) (*Co
 		if n > 1 {
 			slug = fmt.Sprintf("%s-%d", base, n)
 		}
+		tx, err := s.DB.BeginTx(ctx, nil)
+		if err != nil {
+			return nil, err
+		}
 		var id int64
-		err := s.DB.QueryRowContext(ctx, `INSERT INTO contests (slug, title, description_md, starts_at, ends_at,
+		err = tx.QueryRowContext(ctx, `INSERT INTO contests (slug, title, description_md, starts_at, ends_at,
 			freeze_minutes, published, practice_after_end, min_gap_s, max_per_problem, languages, honour_text, hold_reveal,
 			full_screen, count_focus, block_paste, block_copy, created_by, created_at, updated_at, client_key)
 			VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
@@ -274,12 +279,23 @@ func (s *Service) Create(ctx context.Context, e Edit, by int64, key string) (*Co
 			e.Exam.FullScreen, e.Exam.CountFocus, e.Exam.BlockPaste, e.Exam.BlockCopy,
 			nullID(by), now, now, key).Scan(&id)
 		if isUniqueSlug(err) {
+			tx.Rollback()
 			continue
 		}
 		if isRepeat(err, "contests_by_key") {
+			tx.Rollback()
 			return s.repeated(ctx, byKey, by, key)
 		}
 		if err != nil {
+			tx.Rollback()
+			return nil, err
+		}
+		if _, err := tx.ExecContext(ctx, `INSERT INTO contest_organisers (contest_id, user_id, added_by, added_at)
+			VALUES (?, ?, ?, ?)`, id, by, by, now); err != nil {
+			tx.Rollback()
+			return nil, err
+		}
+		if err := tx.Commit(); err != nil {
 			return nil, err
 		}
 		return s.Get(ctx, id)
@@ -856,21 +872,53 @@ func (s *Service) extension(ctx context.Context, id, userID int64) (time.Duratio
 
 // Viewer is the person asking.
 type Viewer struct {
-	UserID    int64
-	Email     string
-	Organiser bool // owner or admin
+	UserID int64
+	Email  string
+	Role   auth.Role
 }
 
-// MayEnter reports whether a viewer may open the contest (as a student, or
-// as an organiser).
-func (s *Service) MayEnter(ctx context.Context, c *Contest, v Viewer) (organiser bool, err error) {
-	if v.Organiser {
-		return true, nil
+// Access is the viewer's permission level for one contest.
+type Access uint8
+
+const (
+	// AccessNone means no contest access.
+	AccessNone Access = iota
+	// AccessParticipate is the student contest path.
+	AccessParticipate
+	// AccessView is the read-only path for unlisted organisers.
+	AccessView
+	// AccessManage permits organiser and console routes.
+	AccessManage
+)
+
+// contestAccess is the single rule for contest-scoped access.
+func (s *Service) contestAccess(ctx context.Context, c *Contest, v Viewer) (Access, error) {
+	if v.Role == auth.Admin || v.Role == auth.Owner {
+		return AccessManage, nil
+	}
+	if v.Role == auth.Organiser {
+		var listed bool
+		err := s.DB.QueryRowContext(ctx, "SELECT EXISTS (SELECT 1 FROM contest_organisers WHERE contest_id = ? AND user_id = ?)", c.ID, v.UserID).Scan(&listed)
+		if err != nil {
+			return AccessNone, err
+		}
+		if listed {
+			return AccessManage, nil
+		}
+		if c.Published || c.Archived {
+			return AccessView, nil
+		}
+		return AccessNone, ErrNotFound
 	}
 	if !c.Published || c.Archived {
-		return false, ErrNotFound
+		return AccessNone, ErrNotFound
 	}
-	return false, nil
+	return AccessParticipate, nil
+}
+
+// AccessFor reports the contest permission level for a viewer.
+func (s *Service) AccessFor(ctx context.Context, c *Contest, v Viewer) (Access, error) {
+	return s.contestAccess(ctx, c, v)
 }
 
 // StudentState is one student's place in a contest.

@@ -136,21 +136,30 @@ func TestRefreshRetriesBoardError(t *testing.T) {
 	}
 }
 
-// Organiser-only events reach every role at or above organiser, admins
-// included (v4 O2), and never a student; the list is read per event, so a
-// demotion stops them at once.
+// Organiser-only events reach managers, while public events also reach an
+// unlisted organiser who has view access.
 func TestOrganiserEventsReachAdmins(t *testing.T) {
 	r := newSvc(t)
 	ctx := context.Background()
 	if _, err := r.svc.DB.Exec(`INSERT INTO users (id, email, role, created_at) VALUES
-		(4, 'org@college.edu', 'organiser', 0), (5, 'boss@college.edu', 'admin', 0)`); err != nil {
+		(4, 'org@college.edu', 'organiser', 0), (5, 'boss@college.edu', 'admin', 0), (6, 'viewer@college.edu', 'organiser', 0)`); err != nil {
 		t.Fatal(err)
 	}
 	hub := &events.Hub{}
 	r.svc.Hub = hub
 	c := r.contest(t, nil)
+	if _, err := r.svc.DB.Exec("INSERT INTO contest_organisers (contest_id, user_id, added_by, added_at) VALUES (?, 4, 1, 0)", c.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := r.svc.DB.Exec("UPDATE contests SET published = 1 WHERE id = ?", c.ID); err != nil {
+		t.Fatal(err)
+	}
+	c, err := r.svc.Get(ctx, c.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
 	clients := map[int64]*events.Client{}
-	for _, id := range []int64{1, 2, 4, 5} {
+	for _, id := range []int64{1, 2, 4, 5, 6} {
 		cl, err := hub.SubscribeTagged(id, "t")
 		if err != nil {
 			t.Fatal(err)
@@ -170,8 +179,12 @@ func TestOrganiserEventsReachAdmins(t *testing.T) {
 	}
 
 	r.svc.publish(ctx, c, true, "test", nil)
-	if g := got(); !g[1] || !g[4] || !g[5] || g[2] {
-		t.Errorf("organiser event reached %v, want owner 1, organiser 4 and admin 5, not student 2", g)
+	if g := got(); !g[1] || !g[4] || !g[5] || g[2] || g[6] {
+		t.Errorf("organiser event reached %v, want owner 1, manager 4 and admin 5 only", g)
+	}
+	r.svc.publish(ctx, c, false, "test", nil)
+	if g := got(); !g[1] || !g[4] || !g[5] || !g[6] || !g[2] {
+		t.Errorf("public event reached %v, want viewer 6 and published-contest participants", g)
 	}
 	if _, err := r.svc.DB.Exec("UPDATE users SET role = 'student' WHERE id = 5"); err != nil {
 		t.Fatal(err)
@@ -179,5 +192,12 @@ func TestOrganiserEventsReachAdmins(t *testing.T) {
 	r.svc.publish(ctx, c, true, "test", nil)
 	if g := got(); g[5] {
 		t.Error("a demoted admin still got an organiser event")
+	}
+	if _, err := r.svc.DB.Exec("UPDATE users SET role = 'student' WHERE id = 4"); err != nil {
+		t.Fatal(err)
+	}
+	r.svc.publish(ctx, c, true, "test", nil)
+	if g := got(); g[4] {
+		t.Error("a demoted listed organiser still got a manager event")
 	}
 }

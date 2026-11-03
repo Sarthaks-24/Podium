@@ -15,13 +15,14 @@ import (
 // column: full_screen" and "no such column: stderr". Schema changes go in a
 // new numbered file (V4-23); add its hash here in the same commit.
 var released = map[string]string{
-	"0001_v3.sql":                  "a4e642ded2914a10b31a36cacd396092e73ca268d612cda49e62cca96e231c94",
-	"0002_v4_roles.sql":            "fff24a5a4c01bf2a39dab88f106c01fc48d7ddde54d67585cb78ed9de0228a19",
-	"0003_v4_signin.sql":           "2c637090a832f1be0b0f88b809a8cc1ef15dfe3cd754a36cccc6e6adfc941c04",
-	"0004_v4_starters.sql":         "129e51a73d2be9440822e08627edf78792def156cd82c51d41a8591b929b5171",
-	"0005_v4_client_keys.sql":      "d6044502bee31557338c8a21b3fdf8faadbf059ddace1ca53c9a3fe3f7dc9814",
-	"0006_v4_indexes.sql":          "85187096dced004b5582f9d1fc95728b472cf1755c2f6920dd741c95c836beeb",
-	"0007_v401_integrity_hash.sql": "001f72df6a8bf5646720ffb7ebe765641b90fce039d16e9cb9f5024ca5d2005b",
+	"0001_v3.sql":                      "a4e642ded2914a10b31a36cacd396092e73ca268d612cda49e62cca96e231c94",
+	"0002_v4_roles.sql":                "fff24a5a4c01bf2a39dab88f106c01fc48d7ddde54d67585cb78ed9de0228a19",
+	"0003_v4_signin.sql":               "2c637090a832f1be0b0f88b809a8cc1ef15dfe3cd754a36cccc6e6adfc941c04",
+	"0004_v4_starters.sql":             "129e51a73d2be9440822e08627edf78792def156cd82c51d41a8591b929b5171",
+	"0005_v4_client_keys.sql":          "d6044502bee31557338c8a21b3fdf8faadbf059ddace1ca53c9a3fe3f7dc9814",
+	"0006_v4_indexes.sql":              "85187096dced004b5582f9d1fc95728b472cf1755c2f6920dd741c95c836beeb",
+	"0007_v401_integrity_hash.sql":     "001f72df6a8bf5646720ffb7ebe765641b90fce039d16e9cb9f5024ca5d2005b",
+	"0008_v401_contest_organisers.sql": "0496174caf441182ba0264e8b74475c13544cee4360c4d4937e65b6a0a6b32e3",
 }
 
 func TestMigrationsAreAppendOnly(t *testing.T) {
