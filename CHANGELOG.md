@@ -23,6 +23,10 @@ Dated entries per release. Unreleased work is listed at the top.
 - The deep-directory hostile program joins the sandbox suite: such a program fails its own job without requeueing it, its lane stops before claiming another student's job on the broken box, and the reset before the judge restarts heals the box.
 - Standings are recomputed and announced only when a submission's judging ends, not on every claim and per-test progress report.
 
+### Upgrade fix (2026-11-04)
+
+- `install.sh upgrade` could stop without a message right after the backup timer in step 5, leaving the new binaries installed and the old server running: `systemctl list-timers | head` under `pipefail` died of SIGPIPE. The timer lines no longer pipe into `head`, and `tools/install-test.sh` refuses the pattern. An upgrade that stopped this way is rolled back with `sudo /usr/local/lib/podium/install.sh rollback` before the next try.
+
 ### v4.01 judge recovery (2026-11-03)
 
 - When isolate cannot initialise an assigned box for a non-busy reason, the judge worker leaves the job leased and exits without a Fatal report. systemd restarts it, and a root pre-start helper clears only that worker's boxes so the lease can expire and the server can requeue the job.
