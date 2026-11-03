@@ -20,7 +20,8 @@ Dated entries per release. Unreleased work is listed at the top.
 - Invite-only contests: under Advanced, "Who can take part" can be limited to invited students. Organisers pick students from the sign-in list or paste addresses with a preview; invites can be added at any time and cannot be removed while the contest runs. Clone copies the audience and the invites.
 - The contest page names its organisers below the start button.
 - The footer, sign-in and privacy pages show only the contact email entered in Settings, Organisation, never the owner account's own address; with none entered they leave the contact line out.
-- The deep-directory hostile program joins the sandbox suite: such a program fails its own job without requeueing it, and the reset before a judge restart heals the box.
+- The deep-directory hostile program joins the sandbox suite: such a program fails its own job without requeueing it, its lane stops before claiming another student's job on the broken box, and the reset before the judge restarts heals the box.
+- Standings are recomputed and announced only when a submission's judging ends, not on every claim and per-test progress report.
 
 ### v4.01 judge recovery (2026-11-03)
 
