@@ -16,19 +16,54 @@ import (
 	"time"
 )
 
+// RecordCodeView appends a privacy audit row, suppressing repeat opens of
+// the same student's code by the same staff member for ten minutes.
+func (s *Service) RecordCodeView(ctx context.Context, contestID, studentID int64, by Actor) error {
+	if contestID <= 0 || studentID <= 0 || by.ID <= 0 {
+		return nil
+	}
+	key := fmt.Sprintf("%d/%d/%d", contestID, by.ID, studentID)
+	now := s.now()
+	s.codeViewMu.Lock()
+	if s.codeViews == nil {
+		s.codeViews = map[string]time.Time{}
+	}
+	for k, at := range s.codeViews {
+		if now.Sub(at) >= 10*time.Minute {
+			delete(s.codeViews, k)
+		}
+	}
+	if last := s.codeViews[key]; now.Sub(last) < 10*time.Minute {
+		s.codeViewMu.Unlock()
+		return nil
+	}
+	s.codeViews[key] = now
+	s.codeViewMu.Unlock()
+	if err := recordAt(ctx, s.DB, contestID, by, AuditCodeViewed, map[string]int64{"user_id": studentID}, now.UnixMilli()); err != nil {
+		s.codeViewMu.Lock()
+		if s.codeViews[key] == now {
+			delete(s.codeViews, key)
+		}
+		s.codeViewMu.Unlock()
+		return err
+	}
+	return nil
+}
+
 // Audit actions.
 const (
-	AuditSettings  = "settings"   // the contest form: {"changes": {field: {"from", "to"}}}
-	AuditProblems  = "problems"   // problems and pins: {"from": [...], "to": [...]}
-	AuditAIProblem = "ai_problem" // an admin's reason to grade an AI problem
-	AuditExtension = "extension"  // {"user_id", "minutes", "from_minutes", "reason_given"} ("email" and "reason" in older rows)
-	AuditExtend    = "extend"     // {"minutes", "extended_minutes"}
-	AuditPause     = "pause"
-	AuditResume    = "resume"
-	AuditRejudge   = "rejudge" // {"problem_label" or "submission_id", "queued"}
-	AuditReveal    = "reveal"
-	AuditEditorial = "editorial" // {"published", "was_published", "changed", "bytes"}
-	AuditArchive   = "archive"
+	AuditSettings   = "settings"   // the contest form: {"changes": {field: {"from", "to"}}}
+	AuditProblems   = "problems"   // problems and pins: {"from": [...], "to": [...]}
+	AuditAIProblem  = "ai_problem" // an admin's reason to grade an AI problem
+	AuditExtension  = "extension"  // {"user_id", "minutes", "from_minutes", "reason_given"} ("email" and "reason" in older rows)
+	AuditExtend     = "extend"     // {"minutes", "extended_minutes"}
+	AuditPause      = "pause"
+	AuditResume     = "resume"
+	AuditRejudge    = "rejudge" // {"problem_label" or "submission_id", "queued"}
+	AuditReveal     = "reveal"
+	AuditEditorial  = "editorial" // {"published", "was_published", "changed", "bytes"}
+	AuditCodeViewed = "code_viewed"
+	AuditArchive    = "archive"
 	// AuditDecision is an integrity decision about one student:
 	// {"user_id", "decision"}; the reason stays in integrity_cases.
 	AuditDecision = "integrity_decision"

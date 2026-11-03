@@ -392,3 +392,26 @@ func TestContestOrganiserMembership(t *testing.T) {
 		t.Fatalf("after removal = %#v, %v", got, err)
 	}
 }
+
+func TestCodeViewAuditDeduplicatesWithinTenMinutes(t *testing.T) {
+	r := newSvc(t)
+	c := r.contest(t, nil)
+	ctx := context.Background()
+	by := Actor{ID: 1, Email: "owner@college.edu", Role: "owner"}
+	for range 2 {
+		if err := r.svc.RecordCodeView(ctx, c.ID, 2, by); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var n int
+	if err := r.svc.DB.QueryRow(`SELECT count(*) FROM contest_audit WHERE contest_id=? AND action=?`, c.ID, AuditCodeViewed).Scan(&n); err != nil || n != 1 {
+		t.Fatalf("rows %d, %v", n, err)
+	}
+	*r.now = r.now.Add(11 * time.Minute)
+	if err := r.svc.RecordCodeView(ctx, c.ID, 2, by); err != nil {
+		t.Fatal(err)
+	}
+	if err := r.svc.DB.QueryRow(`SELECT count(*) FROM contest_audit WHERE contest_id=? AND action=?`, c.ID, AuditCodeViewed).Scan(&n); err != nil || n != 2 {
+		t.Fatalf("rows after window %d, %v", n, err)
+	}
+}

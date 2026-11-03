@@ -8,6 +8,7 @@ package integrity
 // made an admin) never sees it.
 
 import (
+	"context"
 	"errors"
 	"log/slog"
 	"net/http"
@@ -23,8 +24,9 @@ type Handlers struct {
 	Contests  *contests.Service
 	// Organised loads the contest named by {id} as the organiser routes
 	// do, answering a 404 itself when there is none.
-	Organised func(http.ResponseWriter, *http.Request) (*contests.Contest, bool)
-	Log       *slog.Logger
+	Organised  func(http.ResponseWriter, *http.Request) (*contests.Contest, bool)
+	Log        *slog.Logger
+	CodeViewed func(context.Context, int64, int64, auth.User)
 }
 
 func (d *Handlers) internalError(w http.ResponseWriter, r *http.Request, err error) {
@@ -152,6 +154,11 @@ func (d *Handlers) GetIntegrityPair(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	httpx.WriteJSON(w, http.StatusOK, map[string]any{"a": a, "b": b, "server_now": d.serverNow()})
+	if d.CodeViewed != nil {
+		u := auth.UserFrom(r.Context())
+		d.CodeViewed(r.Context(), c.ID, a.UserID, u)
+		d.CodeViewed(r.Context(), c.ID, b.UserID, u)
+	}
 }
 
 func (d *Handlers) GetIntegrityTimeline(w http.ResponseWriter, r *http.Request) {

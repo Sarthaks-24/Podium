@@ -25,6 +25,7 @@ import (
 	"github.com/Sarthaks-24/podium/internal/jobs"
 	"github.com/Sarthaks-24/podium/internal/ops"
 	"github.com/Sarthaks-24/podium/internal/problems"
+	"github.com/Sarthaks-24/podium/internal/safego"
 	"github.com/Sarthaks-24/podium/internal/submissions"
 )
 
@@ -146,6 +147,17 @@ func New(d Deps) http.Handler {
 			return access == contests.AccessManage, err
 		}}
 	work := &submissions.Handlers{Submissions: d.Submissions, Log: d.Log}
+	if d.Contests != nil {
+		work.CanReadContestCode = func(ctx context.Context, contestID int64, u auth.User) (bool, error) {
+			c, err := d.Contests.Get(ctx, contestID)
+			if err != nil {
+				return false, err
+			}
+			a, err := d.Contests.AccessFor(ctx, c, contests.Viewer{UserID: u.ID, Email: u.Email, Role: u.Role})
+			return a == contests.AccessManage, err
+		}
+		work.CodeViewed = d.queueCodeView
+	}
 	mux.HandleFunc("GET /api/admin/problems", organiser(bank.ListProblems))
 	mux.HandleFunc("POST /api/admin/problems", organiser(bank.CreateProblem))
 	mux.HandleFunc("POST /api/admin/problems/import", organiser(slowBody(bank.ImportProblem)))
@@ -194,7 +206,7 @@ func New(d Deps) http.Handler {
 		d.contestRoutes(mux, console)
 		mux.HandleFunc("GET /api/admin/contests/{id}/audit", organiser(console.ContestAudit))
 		if d.Integrity != nil {
-			review := &integrity.Handlers{Integrity: d.Integrity, Contests: d.Contests, Organised: console.OrganisedContest, Log: d.Log}
+			review := &integrity.Handlers{Integrity: d.Integrity, Contests: d.Contests, Organised: console.OrganisedContest, Log: d.Log, CodeViewed: d.queueCodeView}
 			mux.HandleFunc("POST /api/admin/contests/{id}/integrity/run", organiser(review.RunIntegrity))
 			mux.HandleFunc("GET /api/admin/contests/{id}/integrity", organiser(d.limitReads(review.GetIntegrity)))
 			mux.HandleFunc("GET /api/admin/contests/{id}/integrity/pairs.csv", organiser(d.limitReads(review.ExportPairs)))
@@ -270,6 +282,19 @@ func (d Deps) now() time.Time {
 		return d.Contests.Clock()
 	}
 	return time.Now()
+}
+
+func (d Deps) queueCodeView(_ context.Context, contestID, studentID int64, u auth.User) {
+	if d.Contests == nil {
+		return
+	}
+	safego.Go(d.Log, "contest-code-view-audit", func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := d.Contests.RecordCodeView(ctx, contestID, studentID, contests.Actor{ID: u.ID, Email: u.Email, Role: string(u.Role)}); err != nil && d.Log != nil {
+			d.Log.Error("record contest code view", "error", err, "contest_id", contestID)
+		}
+	})
 }
 
 // sessionToken is the request's session cookie; requireRole has already

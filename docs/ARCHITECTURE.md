@@ -243,6 +243,8 @@ Submissions count while the student's own time is open. After it they are practi
 
 `contest_organisers` records the people assigned to each contest. The creator is listed at creation, and cloning copies the organisers and adds the cloner in the same transaction as the contest, its pinned problems and initial audit rows. The problem bank remains shared among organisers, including hidden tests; only the live-contest list on a problem page is filtered to contests the viewer manages.
 
+Submission source and detailed verdicts are visible to the author, admins and owners, and organisers who manage the submission's contest. A published-view organiser cannot inspect another person's code. Each staff source open, including the similar-code pair screen, appends a `code_viewed` contest audit row; repeated opens by the same staff member for the same student are coalesced for ten minutes. The writer runs after the response through the database write gate, and these rows follow the append-only contest audit retention.
+
 **Scoring.**
 
 | Rule | Detail |

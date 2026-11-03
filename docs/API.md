@@ -479,7 +479,7 @@ The workspace is where code is written, run and submitted. Under `/api/workspace
 | `GET /api/runs/{id}` (student) | | 200 `Run` |
 | `GET /api/submissions/{id}` (student) | | 200 `Submission` |
 
-- `{problem}` is a problem id. Run and submission reads are for the author and for organisers. A missing id, a run asked for on the submissions route (or the reverse), and someone else's run or submission all give `404 not_found`, so ids reveal nothing. `GET /api/submissions/{id}` also carries `source`, the submitted code, for its author only (v4: "Code" and "Compare with mine"); never for an organiser on this route, in a list, the console feed or an event.
+- `{problem}` is a problem id. Run and submission reads are for the author, admins and owners, or organisers who manage that contest. An unlisted organiser with published view access cannot read submissions or source. Outside a contest, staff may read only their own submissions. A missing id, a run asked for on the submissions route (or the reverse), and an unauthorised run or submission all give `404 not_found`, so ids reveal nothing. `GET /api/submissions/{id}` carries `source` for its author or permitted staff; staff opens write a `code_viewed` contest audit row, deduplicated per staff member and student for ten minutes. Similar-code pair views audit both students. Code reads remain in the append-only contest audit log.
 - Run, submit and draft bodies may be up to 160 KB: code at most 64 KB and custom input at most 64 KB, both valid UTF-8. `language` is `cpp17`, `java21`, `python3` or `node22`.
 
 ### `Workspace`

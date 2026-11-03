@@ -116,13 +116,26 @@ func TestAccessAndCrossContestIDs(t *testing.T) {
 	if code, out := bilal.do("GET", fmt.Sprintf("/api/submissions/%d", subID), nil, ""); code != 404 || out["source"] != nil {
 		t.Errorf("another student's submission: %d %v", code, out["source"])
 	}
-	// v4 E2: the author gets their code back on the one submission route;
-	// an organiser reading it does not, and the list never carries it.
+	// The author and staff who manage the contest get source on the submission
+	// route; lists never carry source.
 	if code, out := asha.do("GET", fmt.Sprintf("/api/submissions/%d", subID), nil, ""); code != 200 || out["source"] == nil || out["source"] == "" {
 		t.Errorf("own submission: %d, source %v", code, out["source"])
 	}
-	if _, out := owner.do("GET", fmt.Sprintf("/api/submissions/%d", subID), nil, ""); out["source"] != nil {
-		t.Errorf("an organiser got the source on the student's route: %v", out["source"])
+	if _, out := owner.do("GET", fmt.Sprintf("/api/submissions/%d", subID), nil, ""); out["source"] == nil {
+		t.Errorf("contest manager did not get source on the student's route")
+	}
+	owner.do("GET", fmt.Sprintf("/api/submissions/%d", subID), nil, "")
+	deadline := time.Now().Add(time.Second)
+	var codeViews int
+	for time.Now().Before(deadline) {
+		_ = s.db.QueryRow(`SELECT count(*) FROM contest_audit WHERE contest_id=? AND action='code_viewed'`, c1).Scan(&codeViews)
+		if codeViews > 0 {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if codeViews != 1 {
+		t.Errorf("code view audit rows = %d, want one for two opens", codeViews)
 	}
 	if _, ws := asha.do("GET", "/api/contests/c1/problems/A", nil, ""); ws["submissions"] != nil {
 		for _, sub := range ws["submissions"].([]any) {

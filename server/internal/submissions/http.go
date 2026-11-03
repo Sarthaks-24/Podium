@@ -6,6 +6,7 @@ package submissions
 // use WriteError, OrganiserGap and MaxRunBody from here.
 
 import (
+	"context"
 	"errors"
 	"log/slog"
 	"net/http"
@@ -18,8 +19,10 @@ import (
 
 // Handlers serve the workspace and submission routes.
 type Handlers struct {
-	Submissions *Service
-	Log         *slog.Logger
+	Submissions        *Service
+	Log                *slog.Logger
+	CanReadContestCode func(context.Context, int64, auth.User) (bool, error)
+	CodeViewed         func(context.Context, int64, int64, auth.User)
 }
 
 // OrganiserGap is the minimum time between submits when an organiser tries
@@ -204,8 +207,18 @@ func (d *Handlers) mayRead(w http.ResponseWriter, r *http.Request, wantKind stri
 		return notFound()
 	}
 	u := auth.UserFrom(r.Context())
-	if u.Role.AtLeast(auth.Organiser) {
+	if u.Role == auth.Admin || u.Role == auth.Owner {
 		return id, ViewOptions{}, true
+	}
+	if u.Role == auth.Organiser && info.ContestID > 0 && d.CanReadContestCode != nil {
+		ok, err := d.CanReadContestCode(r.Context(), info.ContestID, u)
+		if err != nil {
+			d.internalError(w, r, err)
+			return 0, ViewOptions{}, false
+		}
+		if ok {
+			return id, ViewOptions{}, true
+		}
 	}
 	if info.UserID == u.ID {
 		return id, d.Submissions.ViewFor(r.Context(), info.ContestID, u.ID, true), true
@@ -223,17 +236,28 @@ func (d *Handlers) GetSubmission(w http.ResponseWriter, r *http.Request) {
 		d.submissionError(w, r, err)
 		return
 	}
-	// The author, and nobody else, gets their code back (v4 E2); organisers
-	// read code on the similar-code screens.
-	if info, err := d.Submissions.Info(r.Context(), id); err == nil && info.UserID == auth.UserFrom(r.Context()).ID {
-		src, err := d.Submissions.Source(r.Context(), id)
-		if err != nil {
-			d.internalError(w, r, err)
-			return
+	// Authors always see their own source. Staff see it only when they manage
+	// the contest; the audit is queued after the response.
+	var viewed *Info
+	if info, err := d.Submissions.Info(r.Context(), id); err == nil {
+		u := auth.UserFrom(r.Context())
+		allowed := info.UserID == u.ID || u.Role == auth.Admin || u.Role == auth.Owner || u.Role == auth.Organiser
+		if allowed {
+			src, err := d.Submissions.Source(r.Context(), id)
+			if err != nil {
+				d.internalError(w, r, err)
+				return
+			}
+			v.Source = &src
+			if info.UserID != u.ID && d.CodeViewed != nil {
+				viewed = &info
+			}
 		}
-		v.Source = &src
 	}
 	httpx.WriteJSON(w, http.StatusOK, v)
+	if viewed != nil {
+		d.CodeViewed(r.Context(), viewed.ContestID, viewed.UserID, auth.UserFrom(r.Context()))
+	}
 }
 
 func (d *Handlers) GetRun(w http.ResponseWriter, r *http.Request) {

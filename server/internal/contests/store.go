@@ -10,6 +10,7 @@ import (
 	"slices"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 	"unicode/utf8"
 
@@ -172,7 +173,9 @@ type Service struct {
 	BoardEvery time.Duration
 	afterFunc  func(time.Duration, func())
 
-	board boardCache
+	board      boardCache
+	codeViewMu sync.Mutex
+	codeViews  map[string]time.Time
 }
 
 func (s *Service) now() time.Time {
