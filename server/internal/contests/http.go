@@ -301,6 +301,7 @@ type contestTarget struct {
 	// or as practice when scope.Practice is set); refusal says why not.
 	open    bool
 	refusal error
+	at      time.Time
 }
 
 // contestProblem resolves {slug} and {label} and applies the time and
@@ -311,7 +312,8 @@ func (d *Handlers) contestProblem(w http.ResponseWriter, r *http.Request) (*cont
 	if !ok {
 		return nil, false
 	}
-	t := &contestTarget{c: c, organiser: organiser}
+	now := d.Contests.Clock()
+	t := &contestTarget{c: c, organiser: organiser, at: now}
 	found := false
 	for _, p := range c.Problems {
 		if p.Label == r.PathValue("label") {
@@ -323,7 +325,7 @@ func (d *Handlers) contestProblem(w http.ResponseWriter, r *http.Request) (*cont
 		return nil, false
 	}
 	u := auth.UserFrom(r.Context())
-	st, err := d.Contests.State(r.Context(), c, u.ID)
+	st, err := d.Contests.StateAt(r.Context(), c, u.ID, now)
 	if err != nil {
 		d.internalError(w, r, err)
 		return nil, false
@@ -338,7 +340,6 @@ func (d *Handlers) contestProblem(w http.ResponseWriter, r *http.Request) (*cont
 		}
 		return t, true
 	}
-	now := d.Contests.Clock()
 	if !c.ProblemsVisible(st, now) {
 		if now.Before(c.Schedule.StartsAt) {
 			d.contestError(w, r, ErrBeforeStart)
@@ -478,7 +479,7 @@ func (d *Handlers) SubmitContestCode(w http.ResponseWriter, r *http.Request) {
 	v, dup, err := d.Submissions.Submit(r.Context(), submissions.SubmitRequest{ProblemID: t.problem.ProblemID, UserID: u.ID,
 		Scope: t.scope, Language: req.Language, Source: req.Source, ClientKey: req.ClientKey,
 		Typed: req.TypedChars, Pasted: req.PastedChars, Blur: req.FocusLosses, Exits: req.Exits,
-		ClientHash: d.Submissions.ClientHash(httpx.ClientIP(r), r.UserAgent())})
+		ClientHash: d.Submissions.ClientHash(httpx.ClientIP(r), r.UserAgent()), At: t.at})
 	if err != nil {
 		submissions.WriteError(d.Log, w, r, err)
 		return

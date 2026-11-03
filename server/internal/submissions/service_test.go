@@ -220,6 +220,33 @@ func TestSubmitGapIsPerProblem(t *testing.T) {
 	}
 }
 
+func TestSubmitUsesArrivalTimeForCreatedAtAndGap(t *testing.T) {
+	r := newRig(t)
+	ctx := context.Background()
+	p := r.importPack(t, nil)
+	arrival := r.clock.now()
+	scope := Scope{MinGap: 30 * time.Second, View: ViewOptions{Hide: true}}
+	req := SubmitRequest{ProblemID: p.ID, UserID: 1, Scope: scope, Language: "cpp17", Source: "int main(){}", ClientKey: "arrival-1", At: arrival}
+	if _, _, err := r.svc.Submit(ctx, req); err != nil {
+		t.Fatal(err)
+	}
+	var created int64
+	if err := r.svc.DB.QueryRow(`SELECT created_at FROM submissions WHERE client_key = ?`, "arrival-1").Scan(&created); err != nil {
+		t.Fatal(err)
+	}
+	if created != arrival.UnixMilli() {
+		t.Fatalf("created_at = %d, want arrival time %d", created, arrival.UnixMilli())
+	}
+	r.clock.advance(40 * time.Second)
+	req.ClientKey = "arrival-2"
+	req.Source = "int main(){return 1;}"
+	req.At = arrival.Add(10 * time.Second)
+	var rate *RateError
+	if _, _, err := r.svc.Submit(ctx, req); !errors.As(err, &rate) {
+		t.Fatalf("request inside arrival-time gap was accepted: %v", err)
+	}
+}
+
 func TestSubmitScoresAndStreams(t *testing.T) {
 	r := newRig(t)
 	ctx := context.Background()

@@ -338,6 +338,9 @@ type SubmitRequest struct {
 	// submission, in a contest that asks for it.
 	Exits      int
 	ClientHash string
+	// At is the request arrival time used for contest-open decisions and gaps.
+	// Zero keeps the service clock for callers without an earlier gate check.
+	At time.Time
 }
 
 // ClientHash turns an IP address and user agent into the opaque value
@@ -390,7 +393,10 @@ func (s *Service) Submit(ctx context.Context, r SubmitRequest) (v *SubmissionVie
 			return nil, false, err
 		}
 	}
-	now := s.now()
+	now := r.At
+	if now.IsZero() {
+		now = s.now()
+	}
 	// After the repeat check, so a retried request still gets its
 	// submission back.
 	if err := checkCompileTimeout(r.UserID, r.Scope.ContestID, now); err != nil {

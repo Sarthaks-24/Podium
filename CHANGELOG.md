@@ -12,6 +12,7 @@ Dated entries per release. Unreleased work is listed at the top.
 - An integrity check failure records its error with a fresh five-second database context and logs failures to write that result.
 - Alert throttling now starts only after a successful webhook post, so a failed delivery can be retried immediately.
 - A repeated identical judging progress result is now idempotent, allowing the worker to finish after a lost report response.
+- Contest submissions keep the request arrival timestamp used for the open-window decision, so queue delays do not shift freeze ordering or weaken the gap rule.
 
 ### v4.01 judge recovery (2026-11-03)
 

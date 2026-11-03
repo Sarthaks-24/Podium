@@ -887,6 +887,11 @@ type StudentState struct {
 
 // State returns a student's place in the contest at now.
 func (s *Service) State(ctx context.Context, c *Contest, userID int64) (StudentState, error) {
+	return s.StateAt(ctx, c, userID, s.now())
+}
+
+// StateAt returns a student's place in the contest at the supplied request time.
+func (s *Service) StateAt(ctx context.Context, c *Contest, userID int64, now time.Time) (StudentState, error) {
 	var st StudentState
 	var started, accepted int64
 	err := s.DB.QueryRowContext(ctx, "SELECT started_at, honour_accepted_at FROM contest_starts WHERE contest_id = ? AND user_id = ?", c.ID, userID).
@@ -903,7 +908,6 @@ func (s *Service) State(ctx context.Context, c *Contest, userID int64) (StudentS
 	}
 	st.Extension = ext
 	st.Window, st.HasClock = c.Schedule.StudentWindow(ext), true
-	now := s.now()
 	st.Over = !now.Before(st.Window.Ends)
 	st.Open = st.Accepted && !now.Before(st.Window.Opens) && !st.Over
 	return st, nil
