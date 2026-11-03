@@ -348,6 +348,7 @@ install_app_files() {
   install -m 644 "$HERE/systemd/podium-server.service" "$HERE/systemd/podium-judge.service" \
     "$HERE/systemd/podium-alert@.service" /etc/systemd/system/
   install -d -m 755 "$LIB"
+  install -m 755 "$HERE/reset-boxes" "$LIB/reset-boxes"
   install -m 755 "$HERE/backup/podium-alert" "$LIB/podium-alert"
   # A copy of this script, so verify and rollback work without the release
   # folder: sudo /usr/local/lib/podium/install.sh verify

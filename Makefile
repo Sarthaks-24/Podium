@@ -114,6 +114,7 @@ check: web/node_modules/.package-lock.json ## Everything CI runs: formatting, ve
 	cd server && go vet ./... && $(GOFLAGS_LINUX) go vet -tags sandbox,fakeai ./...
 	cd web && npm run check && npm run lint
 	bash tools/install-test.sh
+	bash tools/reset-boxes-test.sh
 	bash tools/deploy-test.sh
 	$(MAKE) test
 

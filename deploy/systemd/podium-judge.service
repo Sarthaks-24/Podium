@@ -11,6 +11,7 @@ Requires=isolate.service
 User=judge
 Group=judge
 EnvironmentFile=/etc/podium/judge.env
+ExecStartPre=+/usr/local/lib/podium/reset-boxes
 ExecStart=/usr/local/bin/podium-judge work
 Restart=always
 RestartSec=2
