@@ -10,6 +10,7 @@ Dated entries per release. Unreleased work is listed at the top.
 - A submission retry replays the exact code and integrity data from the original attempt. The notice explains that changing the editor requires a normal Submit.
 - Reconnecting to a contest refreshes the open statement. When multiple statement reads overlap, only the newest response is applied.
 - An integrity check failure records its error with a fresh five-second database context and logs failures to write that result.
+- Alert throttling now starts only after a successful webhook post, so a failed delivery can be retried immediately.
 
 ### v4.01 judge recovery (2026-11-03)
 

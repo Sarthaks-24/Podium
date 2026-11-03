@@ -42,6 +42,7 @@ post() {
 
 # throttle KEY: true when an alert for KEY may go now; counts held ones.
 held=0
+throttle_file=
 throttle() {
   local f
   f="$state/$(printf '%s' "$1" | tr -c 'A-Za-z0-9_.@-' '_')"
@@ -56,7 +57,12 @@ throttle() {
     fi
     held=${count:-0}
   fi
-  echo "$now 0" > "$f"
+  throttle_file=$f
+}
+
+record_post() {
+  [[ -n $throttle_file ]] || return 0
+  echo "$now 0" > "$throttle_file"
 }
 
 case ${1:-} in
@@ -68,11 +74,13 @@ case ${1:-} in
     (( held > 0 )) && msg+=" It also failed $held more times since the last alert."
     msg+=" Look: systemctl status $unit; journalctl -u $unit -n 50 --no-pager"
     post "podium: $unit failed" high "$msg"
+    record_post
     ;;
   send)
     [[ $# -eq 4 ]] || die "usage: podium-alert send KEY TITLE MESSAGE"
     throttle "check-$2" || exit 0
     post "podium: $3" high "$4 (on $host at $when)"
+    record_post
     ;;
   resolved)
     [[ $# -eq 3 ]] || die "usage: podium-alert resolved TITLE MESSAGE"
