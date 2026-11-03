@@ -128,6 +128,9 @@ func TestInviteOnlyContest(t *testing.T) {
 	if code != 409 || fmt.Sprint(out["error"]) == "" {
 		t.Errorf("remove while running: %d %v", code, out)
 	}
+	if _, list := lead.do("GET", base, nil, ""); list["locked"] != true {
+		t.Errorf("invites list while running says locked=%v", list["locked"])
+	}
 	if code, out := lead.do("POST", base, map[string]any{"user_ids": []int64{ravi.userID()}}, s.srv.URL); code != 200 || out["added"] != float64(1) {
 		t.Errorf("invite while running: %d %v", code, out)
 	}

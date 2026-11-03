@@ -1107,7 +1107,7 @@
             </fieldset>
             {@render err('audience')}
             {#if contest.audience === 'invited'}
-              <InvitesPanel {base} {running} />
+              <InvitesPanel {base} />
             {/if}
             <p class="muted small">Address <span class="mono">/contests/{contest.slug}</span>, made from the title when the contest was created. It does not change.</p>
             <div class="grid">

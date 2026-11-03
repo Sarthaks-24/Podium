@@ -7,8 +7,9 @@
   line, that Check previews (added, already invited, and each line that
   matched no student) before "Invite N" writes anything. Only enabled
   students on the sign-in list can be invited; the server decides.
-  Props: `base` (the contest's admin API path, /api/admin/contests/{id})
-  and `running` (true from the start until the final close).
+  Props: `base` (the contest's admin API path, /api/admin/contests/{id}).
+  Whether Remove is refused comes from the server with the list (`locked`,
+  true from the start until the final close, extra time included).
 -->
 <script lang="ts">
   import { onMount } from 'svelte';
@@ -19,12 +20,12 @@
 
   interface Props {
     base: string;
-    running: boolean;
   }
 
-  let { base, running }: Props = $props();
+  let { base }: Props = $props();
 
   let invites = $state<ContestInvite[]>([]);
+  let running = $state(false);
   let candidates = $state<InviteCandidate[]>([]);
   let loaded = $state(false);
   let error = $state('');
@@ -45,10 +46,11 @@
   async function load() {
     try {
       const [list, cands] = await Promise.all([
-        getJSON<{ invites: ContestInvite[] }>(`${base}/invites`),
+        getJSON<{ invites: ContestInvite[]; locked: boolean }>(`${base}/invites`),
         getJSON<{ candidates: InviteCandidate[] }>(`${base}/invites/candidates`),
       ]);
       invites = list.invites;
+      running = list.locked;
       candidates = cands.candidates;
       chosen = chosen.filter((id) => candidates.some((c) => c.user_id === id && !c.invited));
       error = '';

@@ -1561,7 +1561,7 @@ test('setup limits a contest to invited students and invites by picker and by pa
       return route.fulfill({ json: { candidates: students.map((s) => ({ ...s, invited: invited.includes(s.user_id) })) } });
     }
     if (req.method() === 'GET') {
-      return route.fulfill({ json: { audience: 'invited', invites: students.filter((s) => invited.includes(s.user_id)).map((s) => ({ ...s, invited_at: now })), server_now: now } });
+      return route.fulfill({ json: { audience: 'invited', locked: true, invites: students.filter((s) => invited.includes(s.user_id)).map((s) => ({ ...s, invited_at: now })), server_now: now } });
     }
     if (req.method() === 'POST' && url.pathname.endsWith('/paste')) {
       const body = req.postDataJSON() as { text: string; dry_run: boolean };

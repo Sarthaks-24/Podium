@@ -6,7 +6,6 @@ package contests
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
 	"errors"
 	"net/http"
 	"strconv"
@@ -126,7 +125,10 @@ func (d *Handlers) AddOrganiser(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		Email string `json:"email"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Email == "" {
+	if !httpx.DecodeJSON(w, r, &body) {
+		return
+	}
+	if body.Email == "" {
 		httpx.WriteError(w, http.StatusBadRequest, "invalid_request", "Enter a listed organiser email.")
 		return
 	}

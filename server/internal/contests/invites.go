@@ -152,8 +152,11 @@ func (s *Service) PasteInvites(ctx context.Context, contestID int64, text string
 		id      int64
 		student bool
 	}
-	people := map[string]person{}
-	rows, err := tx.QueryContext(ctx, `SELECT id, email, role = 'student' AND disabled = 0 FROM users`)
+	// As sign-in matches: the exact address first, then its canonical form
+	// (Gmail dots). Should two rows share a canonical form, the exact one
+	// still wins for its own address.
+	exact, people := map[string]person{}, map[string]person{}
+	rows, err := tx.QueryContext(ctx, `SELECT id, email, role = 'student' AND disabled = 0 FROM users ORDER BY id`)
 	if err != nil {
 		return out, err
 	}
@@ -164,7 +167,10 @@ func (s *Service) PasteInvites(ctx context.Context, contestID int64, text string
 			rows.Close()
 			return out, err
 		}
-		people[auth.Canonical(email)] = p
+		exact[email] = p
+		if _, seen := people[auth.Canonical(email)]; !seen {
+			people[auth.Canonical(email)] = p
+		}
 	}
 	rows.Close()
 	if err := rows.Err(); err != nil {
@@ -190,7 +196,10 @@ func (s *Service) PasteInvites(ctx context.Context, contestID int64, text string
 	var add []int64
 	for _, l := range lines {
 		email := strings.ToLower(strings.Trim(l, "<>\"' ,;\t"))
-		p, ok := people[auth.Canonical(email)]
+		p, ok := exact[email]
+		if !ok {
+			p, ok = people[auth.Canonical(email)]
+		}
 		switch {
 		case !ok || !p.student:
 			out.Unmatched = append(out.Unmatched, PasteMiss{Line: limitStr(l, 254), Reason: NotInvitable})
@@ -218,10 +227,17 @@ func (s *Service) PasteInvites(ctx context.Context, contestID int64, text string
 	return out, tx.Commit()
 }
 
+// InvitesLocked reports whether removing invites is refused now: from the
+// contest's start until its final close, extra time included.
+func (s *Service) InvitesLocked(c *Contest) bool {
+	now := s.now()
+	return !now.Before(c.Schedule.StartsAt) && now.Before(c.Final())
+}
+
 // RemoveInvite takes back a student's invite, audited for by. It is
 // refused from the contest's start until its final close.
 func (s *Service) RemoveInvite(ctx context.Context, c *Contest, userID int64, by Actor) error {
-	if now := s.now(); !now.Before(c.Schedule.StartsAt) && now.Before(c.Final()) {
+	if s.InvitesLocked(c) {
 		return ErrInvitesLocked
 	}
 	return s.audited(ctx, c.ID, by, AuditInviteRemoved, func(tx *sql.Tx) (any, bool, error) {
@@ -245,7 +261,8 @@ func (d *Handlers) ListInvites(w http.ResponseWriter, r *http.Request) {
 		d.internalError(w, r, err)
 		return
 	}
-	httpx.WriteJSON(w, http.StatusOK, map[string]any{"audience": c.Audience, "invites": list, "server_now": d.Contests.Clock().UnixMilli()})
+	httpx.WriteJSON(w, http.StatusOK, map[string]any{"audience": c.Audience, "invites": list,
+		"locked": d.Contests.InvitesLocked(c), "server_now": d.Contests.Clock().UnixMilli()})
 }
 
 // InviteCandidates answers every enabled student on the sign-in list, for
