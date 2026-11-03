@@ -21,6 +21,7 @@
   import PageHeader from '../components/PageHeader.svelte';
   import Icon from '../components/Icon.svelte';
   import MonoDigits from '../components/MonoDigits.svelte';
+  import { polite } from '../lib/announce.svelte';
   import { ApiError, errorText, getJSON, isSignedOut, sendJSON } from '../lib/api';
   import {
     fromLocalInput,
@@ -139,20 +140,41 @@
   let organisersBusy = $state(false);
 
   async function loadOrganisers() {
-    try { organisers = (await getJSON<{ organisers: ContestOrganiser[] }>(`${base}/organisers`)).organisers; }
-    catch (e) { organiserError = errorText(e); }
+    try {
+      organisers = (await getJSON<{ organisers: ContestOrganiser[] }>(`${base}/organisers`)).organisers;
+      organiserError = '';
+    } catch (e) {
+      organiserError = errorText(e);
+    }
   }
   async function addOrganiser() {
-    organisersBusy = true; organiserError = '';
-    try { await sendJSON('POST', `${base}/organisers`, { email: organiserEmail }); organiserEmail = ''; await loadOrganisers(); }
-    catch (e) { organiserError = errorText(e); }
-    finally { organisersBusy = false; }
+    const email = organiserEmail.trim();
+    if (email === '' || organisersBusy) return;
+    organisersBusy = true;
+    organiserError = '';
+    try {
+      await sendJSON('POST', `${base}/organisers`, { email });
+      organiserEmail = '';
+      await loadOrganisers();
+      polite(`Added ${email} as an organiser.`);
+    } catch (e) {
+      organiserError = errorText(e);
+    } finally {
+      organisersBusy = false;
+    }
   }
-  async function removeOrganiser(userId: number) {
-    organisersBusy = true; organiserError = '';
-    try { await sendJSON('DELETE', `${base}/organisers/${userId}`); await loadOrganisers(); }
-    catch (e) { organiserError = errorText(e); }
-    finally { organisersBusy = false; }
+  async function removeOrganiser(person: ContestOrganiser) {
+    organisersBusy = true;
+    organiserError = '';
+    try {
+      await sendJSON('DELETE', `${base}/organisers/${person.user_id}`);
+      await loadOrganisers();
+      polite(`Removed ${person.email} from the organisers.`);
+    } catch (e) {
+      organiserError = errorText(e);
+    } finally {
+      organisersBusy = false;
+    }
   }
 
   // One confirmation dialog for every action that asks first.
@@ -855,15 +877,34 @@
         <section class="section" aria-labelledby="organisers-title">
           <h2 id="organisers-title">Organisers</h2>
           <p class="muted">People listed as organisers can manage this contest. This does not change their site role.</p>
-          <ul>
-            {#each organisers as person (person.user_id)}
-              <li>{person.name || person.email} <span class="muted">{person.email}</span>
-                {#if person.user_id !== session.user?.id}<button type="button" class="btn btn-danger-quiet btn-compact" disabled={organisersBusy} onclick={() => removeOrganiser(person.user_id)}>Remove {person.email}</button>{/if}
-              </li>
-            {/each}
-          </ul>
+          {#if organisers.length === 0}
+            <p class="muted">Nobody is listed. Admins and the owner still manage this contest.</p>
+          {:else}
+            <ul>
+              {#each organisers as person (person.user_id)}
+                <li>{person.name || person.email} <span class="muted">{person.email}</span>
+                  {#if person.user_id !== session.user?.id}<button type="button" class="btn btn-danger-quiet btn-compact" disabled={organisersBusy} onclick={() => removeOrganiser(person)}>Remove {person.email}</button>{/if}
+                </li>
+              {/each}
+            </ul>
+          {/if}
           <div class="row">
-            <div class="field grow"><label for="organiser-email">Add a listed organiser by email</label><input id="organiser-email" class="input" type="email" autocomplete="off" bind:value={organiserEmail} /></div>
+            <div class="field grow">
+              <label for="organiser-email">Add a listed organiser by email</label>
+              <input
+                id="organiser-email"
+                class="input"
+                type="email"
+                autocomplete="off"
+                bind:value={organiserEmail}
+                onkeydown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    void addOrganiser();
+                  }
+                }}
+              />
+            </div>
             <button type="button" class="btn btn-secondary" title={!organiserEmail.trim() ? 'Enter an email address to add an organiser.' : ''} disabled={organisersBusy || !organiserEmail.trim()} onclick={addOrganiser}>Add organiser</button>
           </div>
           {#if organiserError}<p class="field-error" role="alert">{organiserError}</p>{/if}

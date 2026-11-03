@@ -814,6 +814,12 @@
     list-style: none;
   }
 
+  .preview-list a {
+    display: inline-flex;
+    align-items: center;
+    min-height: var(--control-h-touch);
+  }
+
   .section {
     display: grid;
     gap: var(--space-3);

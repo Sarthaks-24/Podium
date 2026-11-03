@@ -9,7 +9,10 @@
   out someone who did; both ask first. "Add people" takes one address or a
   pasted list: Check runs a dry run and shows the three counts, then "Add
   N people" saves. Refused sign-ins list the Google addresses that tried
-  and were not on the list, each with Let in. The rules are the server's
+  and were not on the list, each with Let in. For an admin or the owner,
+  Submissions on a row opens that person's history, newest first, with the
+  code of each (GET /api/admin/people/{id}/submissions; opening code is
+  audited by the server). The rules are the server's
   (server/internal/auth/rules.go); this only hides what it would refuse.
   Props: `list`, `counts`, `refused` (from GET /api/admin/people),
   `viewer` (the person signed in), `origin` (the site's address),
@@ -17,6 +20,7 @@
   person lost the Dashboard).
 -->
 <script lang="ts">
+  import { tick } from 'svelte';
   import ConfirmDialog from '../ConfirmDialog.svelte';
   import CodeView from '../CodeView.svelte';
   import MonoDigits from '../MonoDigits.svelte';
@@ -36,6 +40,7 @@
     type Viewer,
   } from '../../lib/people';
   import { runMode } from '../../lib/mode.svelte';
+  import { RequestSequence } from '../../lib/requestSequence';
   import type { Role } from '../../lib/session.svelte';
   import { showToast } from '../../lib/toast.svelte';
 
@@ -68,19 +73,72 @@
   let morePersonSubmissions = $state(false);
   let submissionsError = $state('');
   let codeSource = $state('');
+  let codeFor = $state<PersonSubmission | null>(null);
+  let loadingSubmissions = $state(false);
+  let historyHeading = $state<HTMLHeadingElement | null>(null);
+  let codeHeading = $state<HTMLHeadingElement | null>(null);
+  let historyOpener: HTMLElement | null = null;
+  // Only the newest answer is applied, so a slow reply for one person never
+  // lands under another person's heading.
+  const historyRequests = new RequestSequence();
+  const codeRequests = new RequestSequence();
+
   async function openSubmissions(person: ListedPerson, page = 1) {
-    selectedPerson = person; submissionsError = ''; codeSource = '';
-    try {
-      const data = await getJSON<{submissions:PersonSubmission[];page:number;has_more:boolean}>(`/api/admin/people/${person.id}/submissions?page=${page}`);
-      personSubmissions = page === 1 ? data.submissions : [...personSubmissions, ...data.submissions];
-      personSubmissionPage = data.page; morePersonSubmissions = data.has_more;
+    const request = historyRequests.next();
+    codeRequests.next();
+    if (page === 1) {
+      if (selectedPerson?.id !== person.id) historyOpener = document.activeElement as HTMLElement | null;
+      selectedPerson = person;
+      personSubmissions = [];
+      morePersonSubmissions = false;
+      codeSource = '';
+      codeFor = null;
     }
-    catch (err) { submissionsError = errorText(err); }
+    submissionsError = '';
+    loadingSubmissions = true;
+    try {
+      const data = await getJSON<{ submissions: PersonSubmission[]; page: number; has_more: boolean }>(`/api/admin/people/${person.id}/submissions?page=${page}`);
+      if (!historyRequests.isCurrent(request)) return;
+      personSubmissions = page === 1 ? data.submissions : [...personSubmissions, ...data.submissions];
+      personSubmissionPage = data.page;
+      morePersonSubmissions = data.has_more;
+    } catch (err) {
+      if (historyRequests.isCurrent(request)) submissionsError = errorText(err);
+    } finally {
+      if (historyRequests.isCurrent(request)) loadingSubmissions = false;
+    }
+    if (page === 1 && historyRequests.isCurrent(request)) historyHeading?.focus();
   }
+
+  function closeSubmissions() {
+    historyRequests.next();
+    codeRequests.next();
+    selectedPerson = null;
+    codeSource = '';
+    codeFor = null;
+    submissionsError = '';
+    loadingSubmissions = false;
+    historyOpener?.focus();
+    historyOpener = null;
+  }
+
   async function openCode(item: PersonSubmission) {
-    submissionsError = ''; codeSource = '';
-    try { const sub = await getJSON<{source?:string}>(`/api/submissions/${item.id}`); codeSource = sub.source ?? ''; }
-    catch (err) { submissionsError = errorText(err); }
+    const request = codeRequests.next();
+    submissionsError = '';
+    try {
+      const sub = await getJSON<{ source?: string }>(`/api/submissions/${item.id}`);
+      if (!codeRequests.isCurrent(request)) return;
+      codeSource = sub.source ?? '';
+      codeFor = item;
+      await tick();
+      codeHeading?.focus();
+    } catch (err) {
+      if (codeRequests.isCurrent(request)) submissionsError = errorText(err);
+    }
+  }
+
+  function submissionWhere(item: PersonSubmission): string {
+    return `${item.contest_title || 'Outside a contest'}${item.problem_label ? `, problem ${item.problem_label}` : ''}`;
   }
 
   const shown = $derived.by(() => {
@@ -284,15 +342,39 @@
     </table>
   </div>
   {#if selectedPerson}
-    <section class="section" aria-label="Submissions for {personLabel(selectedPerson)}" aria-live="polite">
-      <h2>Submissions for {personLabel(selectedPerson)}</h2>
-      <button type="button" class="btn btn-quiet" onclick={() => (selectedPerson = null)}>Close submissions</button>
+    {@const person = selectedPerson}
+    <section class="section" aria-labelledby="history-heading">
+      <h2 id="history-heading" tabindex="-1" bind:this={historyHeading}>Submissions for {personLabel(person)}</h2>
+      <button type="button" class="btn btn-quiet" onclick={closeSubmissions}>Close submissions</button>
       {#if submissionsError}<p class="field-error" role="alert">{submissionsError}</p>{/if}
-      {#if personSubmissions.length === 0}<p class="muted">No submissions yet.</p>{:else}
-        <ul>{#each personSubmissions as item (item.id)}<li>{item.contest_title || 'Outside a contest'}{item.problem_label ? `, problem ${item.problem_label}` : ''}, {formatDateTime(item.created_at)}: {item.verdict || item.state}, {item.score} of {item.max_score} points <button type="button" class="btn btn-quiet btn-compact" onclick={() => openCode(item)}>Code</button></li>{/each}</ul>
-        {#if morePersonSubmissions}<button type="button" class="btn btn-secondary" onclick={() => openSubmissions(selectedPerson!, personSubmissionPage + 1)}>Older submissions</button>{/if}
+      {#if loadingSubmissions && personSubmissions.length === 0}
+        <p class="muted">Loading submissions.</p>
+      {:else if personSubmissions.length === 0}
+        {#if !submissionsError}<p class="muted">No submissions yet.</p>{/if}
+      {:else}
+        <ul>
+          {#each personSubmissions as item (item.id)}
+            <li>
+              {submissionWhere(item)}, {formatDateTime(item.created_at)}: {item.verdict || item.state}, {item.score} of {item.max_score} points
+              <button
+                type="button"
+                class="btn btn-quiet btn-compact"
+                aria-label="Code for {submissionWhere(item)}, {formatDateTime(item.created_at)}"
+                onclick={() => openCode(item)}>Code</button
+              >
+            </li>
+          {/each}
+        </ul>
+        {#if morePersonSubmissions}
+          <button type="button" class="btn btn-secondary" disabled={loadingSubmissions} onclick={() => openSubmissions(person, personSubmissionPage + 1)}
+            >Older submissions</button
+          >
+        {/if}
       {/if}
-      {#if codeSource}<CodeView source={codeSource} spans={[]} label="Submitted code" />{/if}
+      {#if codeFor}
+        <h3 tabindex="-1" bind:this={codeHeading}>Code for {submissionWhere(codeFor)}, {formatDateTime(codeFor.created_at)}</h3>
+        <CodeView source={codeSource} spans={[]} label="Submitted code" />
+      {/if}
     </section>
   {/if}
 </section>

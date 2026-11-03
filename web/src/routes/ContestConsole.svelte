@@ -52,6 +52,7 @@
   import { countOf } from '../lib/format';
   import { setTitle } from '../lib/head';
   import { pinPath, updateEffect, type PinUpdate } from '../lib/history';
+  import { RequestSequence } from '../lib/requestSequence';
   import { routeTitle } from '../lib/routing';
   import { session } from '../lib/session.svelte';
   import { studentChoice, type Standings } from '../lib/standings';
@@ -71,12 +72,32 @@
   let students = $state.raw<{ user_id: number; name: string }[]>([]);
   let autoRefresh = $state(true);
   let feed: ReturnType<typeof Feed> | undefined = $state();
-  let viewedCode = $state<{name:string; source:string} | null>(null);
+  let viewedCode = $state<{ name: string; label: string; source: string } | null>(null);
   let codeError = $state('');
+  let codeHeading = $state<HTMLHeadingElement | null>(null);
+  let codeOpener: HTMLElement | null = null;
+  const codeRequests = new RequestSequence();
   async function viewCode(row: FeedRow) {
-    codeError = ''; viewedCode = null;
-    try { const sub = await getJSON<{source?:string}>(`/api/submissions/${row.id}`); if (sub.source === undefined) throw new Error('Code is not available.'); viewedCode = {name:row.name,source:sub.source}; }
-    catch (e) { codeError = errorText(e); }
+    const request = codeRequests.next();
+    codeOpener = document.activeElement as HTMLElement | null;
+    codeError = '';
+    try {
+      const sub = await getJSON<{ source?: string }>(`/api/submissions/${row.id}`);
+      if (!codeRequests.isCurrent(request)) return;
+      if (sub.source === undefined) throw new Error('Code is not available.');
+      viewedCode = { name: row.name, label: row.problem_label, source: sub.source };
+      await tick();
+      codeHeading?.focus();
+    } catch (e) {
+      if (codeRequests.isCurrent(request)) codeError = errorText(e);
+    }
+  }
+  function closeCode() {
+    codeRequests.next();
+    viewedCode = null;
+    codeError = '';
+    codeOpener?.focus();
+    codeOpener = null;
   }
 
   // Questions seen so far, so only new ones are announced.
@@ -610,6 +631,14 @@
       aria-labelledby={phone ? 'console-tab-submissions' : undefined}
       hidden={phone && tab !== 'submissions'}
     >
+      {#if codeError}<p class="field-error" role="alert">{codeError}</p>{/if}
+      {#if viewedCode}
+        <section class="panel" aria-labelledby="console-code-heading">
+          <h2 id="console-code-heading" tabindex="-1" bind:this={codeHeading}>Code from {viewedCode.name}, problem {viewedCode.label}</h2>
+          <button type="button" class="btn btn-quiet" onclick={closeCode}>Close code</button>
+          <CodeView source={viewedCode.source} spans={[]} label="Submitted code" />
+        </section>
+      {/if}
       <Feed
         bind:this={feed}
         {base}
@@ -622,8 +651,6 @@
         ondecide={(row) => (deciding = { id: row.user_id, name: row.name })}
         oncode={viewCode}
       />
-      {#if viewedCode}<section class="panel" aria-label="Submitted code"><h2>Code from {viewedCode.name}</h2><button type="button" class="btn btn-quiet" onclick={() => (viewedCode = null)}>Close code</button><CodeView source={viewedCode.source} spans={[]} label="Submitted code" /></section>{/if}
-      {#if codeError}<p class="field-error" role="alert">{codeError}</p>{/if}
     </div>
   </div>
 
