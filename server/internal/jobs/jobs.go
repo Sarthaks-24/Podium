@@ -595,17 +595,39 @@ func (s *Service) changed(jobID int64, kind string, contestID int64) {
 
 func (s *Service) insertResults(ctx context.Context, tx *sql.Tx, r judgeapi.Report) error {
 	var seq int64
+	seen := map[string]bool{}
 	if err := tx.QueryRowContext(ctx, "SELECT coalesce(max(seq), 0) FROM job_results WHERE job_id = ?", r.JobID).Scan(&seq); err != nil {
 		return err
 	}
 	insert := func(kind string, idx int, role, verdict string, timeMS, memKB int, msg, output, outputSHA, stderr string) error {
-		seq++
-		_, err := tx.ExecContext(ctx, `INSERT INTO job_results (job_id, seq, kind, idx, role, verdict, time_ms, memory_kb, message, output, output_sha, stderr)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, r.JobID, seq, kind, idx, role, verdict, timeMS, memKB, msg, output, outputSHA, stderr)
-		if err != nil && strings.Contains(err.Error(), "UNIQUE constraint failed") {
+		identity := fmt.Sprintf("%s\x00%s\x00%d", kind, role, idx)
+		if seen[identity] {
 			return Badf("second result for %s %s %d", kind, Clip(role), idx)
 		}
-		return err
+		seen[identity] = true
+		seq++
+		res, err := tx.ExecContext(ctx, `INSERT INTO job_results (job_id, seq, kind, idx, role, verdict, time_ms, memory_kb, message, output, output_sha, stderr)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			ON CONFLICT (job_id, kind, idx, role) DO NOTHING`, r.JobID, seq, kind, idx, role, verdict, timeMS, memKB, msg, output, outputSHA, stderr)
+		if err != nil {
+			return err
+		}
+		inserted, err := res.RowsAffected()
+		if err != nil {
+			return err
+		}
+		if inserted == 0 {
+			var identical int
+			if err := tx.QueryRowContext(ctx, `SELECT count(*) FROM job_results WHERE job_id = ? AND kind = ? AND idx = ? AND role = ?
+				AND verdict = ? AND time_ms = ? AND memory_kb = ? AND output_sha = ?`,
+				r.JobID, kind, idx, role, verdict, timeMS, memKB, outputSHA).Scan(&identical); err != nil {
+				return err
+			}
+			if identical == 0 {
+				return Badf("second result for %s %s %d", kind, Clip(role), idx)
+			}
+		}
+		return nil
 	}
 	for _, c := range r.Compile {
 		if err := insert("compile", 0, c.Role, c.Verdict, 0, 0, c.Output, "", "", ""); err != nil {

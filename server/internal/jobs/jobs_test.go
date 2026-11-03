@@ -153,6 +153,27 @@ func TestClaimOrderAndLease(t *testing.T) {
 	}
 }
 
+func TestRepeatedProgressReportIsIdempotent(t *testing.T) {
+	s, _, k := newService(t)
+	ctx := context.Background()
+	id := enqueue(t, s, 10)
+	c, err := s.Claim(ctx, claim("w"))
+	if err != nil || c == nil {
+		t.Fatalf("claim = %+v, %v", c, err)
+	}
+	result := judgeapi.TestResult{Idx: 1, Role: "program", Verdict: "AC", TimeMS: 17, MemoryKB: 2048, OutputSHA: "same"}
+	if err := s.Report(ctx, judgeapi.Report{JobID: id, Lease: c.Lease, Results: []judgeapi.TestResult{result}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Report(ctx, judgeapi.Report{JobID: id, Lease: c.Lease, Results: []judgeapi.TestResult{result}, Final: true}); err != nil {
+		t.Fatalf("identical replay failed: %v", err)
+	}
+	job, err := s.Get(ctx, id)
+	if err != nil || job.State != Done || len(job.Result.Tests) != 1 || k.finished != 1 {
+		t.Fatalf("job = %+v, finished = %d, error = %v", job, k.finished, err)
+	}
+}
+
 func TestExpiredLeasesRequeueThenFail(t *testing.T) {
 	s, clk, _ := newService(t)
 	ctx := context.Background()

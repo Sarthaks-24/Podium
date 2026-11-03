@@ -244,8 +244,11 @@ func TestReportChecks(t *testing.T) {
 	if err := s.Jobs.Report(ctx, ok); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.Jobs.Report(ctx, ok); !errors.As(err, &bad) {
-		t.Errorf("repeated result accepted: %v", err)
+	ok.Final = true
+	if err := s.Jobs.Report(ctx, ok); err != nil {
+		t.Errorf("identical progress replay: %v", err)
+	} else if job, err := s.Jobs.Get(ctx, c.JobID); err != nil || job.State != jobs.Done {
+		t.Errorf("replayed report did not finish the job: %+v, %v", job, err)
 	}
 }
 
