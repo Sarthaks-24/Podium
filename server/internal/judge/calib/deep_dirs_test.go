@@ -78,6 +78,9 @@ func TestDeepDirectories(t *testing.T) {
 		t.Fatalf("the poisoning run is a box init failure, so its job would be requeued: %v", err)
 	}
 	t.Logf("poisoning run: %v", err)
+	if !r.BoxBroken(box) {
+		t.Error("the poisoned box is not marked broken, so its lane would claim another student's job")
+	}
 
 	soft(orig.Max)
 	if err := r.Iso.Cleanup(ctx, box); err != nil {

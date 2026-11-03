@@ -48,6 +48,33 @@ type Runner struct {
 	memMu   sync.Mutex
 	memCond *sync.Cond
 	memUsed int
+
+	brokenMu sync.Mutex
+	broken   map[int]bool
+}
+
+// cleanup ends a box after its job. A failure that is not a cancelled
+// context means the next init of the box fails too (audit A16: isolate's
+// walker dies on a deep tree), so the box is marked broken and its lane
+// stops before it claims another student's job.
+func (r *Runner) cleanup(ctx context.Context, box int) {
+	if err := r.Iso.Cleanup(ctx, box); err != nil && ctx.Err() == nil {
+		r.brokenMu.Lock()
+		if r.broken == nil {
+			r.broken = map[int]bool{}
+		}
+		r.broken[box] = true
+		r.brokenMu.Unlock()
+	}
+}
+
+// BoxBroken reports whether cleaning box failed after an earlier job, so
+// a job claimed for it would only fail to initialise. Only a restart,
+// whose pre-start reset clears the box, makes it usable again.
+func (r *Runner) BoxBroken(box int) bool {
+	r.brokenMu.Lock()
+	defer r.brokenMu.Unlock()
+	return r.broken[box]
 }
 
 func boxInitFailure(ctx context.Context, err error) error {
@@ -136,7 +163,7 @@ func (r *Runner) Compile(ctx context.Context, box int, lang Language, source []b
 	if err != nil {
 		return prog, CompileResult{}, boxInitFailure(ctx, err)
 	}
-	defer r.Iso.Cleanup(ctx, box)
+	defer r.cleanup(ctx, box)
 
 	if err := os.WriteFile(filepath.Join(dir, lang.Source), source, 0o644); err != nil {
 		return prog, CompileResult{}, err
@@ -206,7 +233,7 @@ func (r *Runner) Execute(ctx context.Context, box int, prog Program, timeLimit t
 	if err != nil {
 		return ExecResult{}, boxInitFailure(ctx, err)
 	}
-	defer r.Iso.Cleanup(ctx, box)
+	defer r.cleanup(ctx, box)
 
 	if err := copyRegularFiles(prog.Dir, dir, nil); err != nil {
 		return ExecResult{}, err

@@ -18,6 +18,20 @@ func TestCompileMarksNonBusyBoxInitFailure(t *testing.T) {
 	}
 }
 
+// A job whose box cannot be cleaned afterwards marks that box broken, so
+// its lane stops before claiming the next job; other boxes stay usable.
+func TestFailedCleanupMarksTheBoxBroken(t *testing.T) {
+	iso, _ := newFakeIsolate(t, "cleanupfail")
+	r := &Runner{Iso: iso}
+	r.Compile(context.Background(), 11, Languages["cpp17"], []byte("int main() {}"), t.TempDir())
+	if !r.BoxBroken(11) {
+		t.Error("box 11 is not marked broken after its cleanup failed")
+	}
+	if r.BoxBroken(12) {
+		t.Error("box 12 is marked broken without a job on it")
+	}
+}
+
 func TestRunArgs(t *testing.T) {
 	req := RunRequest{
 		Box:    1,

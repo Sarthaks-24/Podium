@@ -31,12 +31,18 @@ func fakeIsolate(dir string, args []string) int {
 	}
 	fmt.Fprintln(f, strings.Join(args, " "))
 	f.Close()
+	mode, _ := os.ReadFile(filepath.Join(dir, "busy.txt"))
+	// "cleanupfail" stands for a box a deep tree broke (audit A16): it
+	// initialises, but cleaning it fails.
+	if strings.TrimSpace(string(mode)) == "cleanupfail" && strings.Contains(strings.Join(args, " "), "--cleanup") {
+		fmt.Fprintln(os.Stderr, "Cannot open directory a: Too many open files")
+		return 2
+	}
 	if !strings.Contains(strings.Join(args, " "), "--init") {
 		return 0
 	}
 	calls, _ := os.ReadFile(filepath.Join(dir, "calls.txt"))
 	inits := strings.Count(string(calls), "--init")
-	mode, _ := os.ReadFile(filepath.Join(dir, "busy.txt"))
 	switch m := strings.TrimSpace(string(mode)); m {
 	case "fail":
 		fmt.Fprintln(os.Stderr, "Cannot create control group")

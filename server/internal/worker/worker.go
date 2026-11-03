@@ -126,6 +126,13 @@ func (w *Worker) lane(stop, ctx context.Context, box int) {
 		maxRefused = DefaultAuthRetries
 	}
 	for stop.Err() == nil && ctx.Err() == nil {
+		// A box its last job left uncleanable fails every later init: stop
+		// before claiming, so no other student's job waits out a lease on it.
+		if w.Runner != nil && w.Runner.BoxBroken(box) {
+			w.Log.Error("box broken by its last job; stopping before the next claim so systemd can reset it", "lane", box)
+			w.stopFor(errors.Join(judge.ErrBoxInit, errors.New("the box could not be cleaned after its last job")))
+			return
+		}
 		// The claim itself runs under the job context: a stop that lands
 		// while the request is in flight must not drop a job the server
 		// has already leased to this lane.
