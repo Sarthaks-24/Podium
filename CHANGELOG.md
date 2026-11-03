@@ -16,7 +16,11 @@ Dated entries per release. Unreleased work is listed at the top.
 - Background scheduled checks and live updates now recover from panics and log the task name and stack, allowing scheduler loops to continue.
 - Contest broadcast refetches and the first polling fallback tick now use up to three seconds of jitter, and stream clock samples account for 500 ms of round-trip latency.
 - Frozen standings hide the judging count from student views, and integrity shared-browser review uses a partial index over non-empty hashes.
-- Contest organisers are assigned per contest. Listed organisers manage it, unlisted organisers can read its published statement and student standings, and admins and owners manage every contest. Contest events follow the same access rule, and cloning copies organisers atomically.
+- Contest organisers are assigned per contest. Listed organisers manage it, unlisted organisers can read its published statement and student standings, and admins and owners manage every contest. Contest events follow the same access rule, and cloning copies organisers atomically. Adding and removing an organiser is recorded in the contest's audit log.
+- Invite-only contests: under Advanced, "Who can take part" can be limited to invited students. Organisers pick students from the sign-in list or paste addresses with a preview; invites can be added at any time and cannot be removed while the contest runs. Clone copies the audience and the invites.
+- The contest page names its organisers below the start button.
+- The footer, sign-in and privacy pages show only the contact email entered in Settings, Organisation, never the owner account's own address; with none entered they leave the contact line out.
+- The deep-directory hostile program joins the sandbox suite: such a program fails its own job without requeueing it, and the reset before a judge restart heals the box.
 
 ### v4.01 judge recovery (2026-11-03)
 
