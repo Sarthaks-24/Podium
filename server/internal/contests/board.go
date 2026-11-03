@@ -3,6 +3,7 @@ package contests
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"strconv"
@@ -59,6 +60,7 @@ type boardCache struct {
 	entries  map[boardKey]*boardEntry
 	version  map[int64]int64
 	refresh  map[int64]bool  // a background refresh is scheduled
+	failures map[int64]int   // background refreshes failed in a row
 	notified map[int64]int64 // last version sent in a standings event
 	computes atomic.Int64    // how many boards were computed (tests)
 }
@@ -66,7 +68,7 @@ type boardCache struct {
 func (b *boardCache) init() {
 	if b.entries == nil {
 		b.entries, b.version = map[boardKey]*boardEntry{}, map[int64]int64{}
-		b.refresh, b.notified = map[int64]bool{}, map[int64]int64{}
+		b.refresh, b.notified, b.failures = map[int64]bool{}, map[int64]int64{}, map[int64]int{}
 	}
 }
 
@@ -163,7 +165,7 @@ func (s *Service) Board(ctx context.Context, c *Contest, variant string) (*Stand
 		e.running, e.runVersion, e.done, e.lastStart = true, v, make(chan struct{}), now
 		s.board.mu.Unlock()
 
-		st, err := s.computeBoard(ctx, c, variant, v)
+		st, err := s.computeBoardSafe(ctx, c, variant, v)
 
 		s.board.mu.Lock()
 		e.running = false
@@ -178,6 +180,17 @@ func (s *Service) Board(ctx context.Context, c *Contest, variant string) (*Stand
 		}
 		return st, err
 	}
+}
+
+// computeBoardSafe is computeBoard with a panic turned into an error, so
+// the entry's running flag is always cleared and its waiters released.
+func (s *Service) computeBoardSafe(ctx context.Context, c *Contest, variant string, version int64) (st *Standings, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			st, err = nil, fmt.Errorf("compute board for contest %d: panic: %v", c.ID, r)
+		}
+	}()
+	return s.computeBoard(ctx, c, variant, version)
 }
 
 // computeBoard reads the participants and submissions and scores them.
@@ -227,19 +240,44 @@ func (s *Service) scheduleRefresh(id int64, delay time.Duration) {
 			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 			defer cancel()
 			c, err := s.Get(ctx, id)
+			if errors.Is(err, ErrNotFound) {
+				s.refreshFailed(id, false)
+				return
+			}
 			if err != nil {
-				s.scheduleRefresh(id, refreshRetryDelay)
+				s.refreshFailed(id, true)
 				return
 			}
 			for _, v := range variants {
 				if _, err := s.Board(ctx, c, v); err != nil {
-					s.scheduleRefresh(id, refreshRetryDelay)
+					s.refreshFailed(id, true)
 					return
 				}
 			}
+			s.board.mu.Lock()
+			delete(s.board.failures, id)
+			s.board.mu.Unlock()
 			s.notifyStandings(ctx, c)
 		})
 	})
+}
+
+// refreshFailed counts a failed background refresh and, when retry is
+// set, schedules the next one after a delay that doubles from
+// refreshRetryDelay up to refreshRetryMax, so a lasting failure costs one
+// attempt every 30 s rather than one a second.
+func (s *Service) refreshFailed(id int64, retry bool) {
+	s.board.mu.Lock()
+	n := s.board.failures[id]
+	if retry {
+		s.board.failures[id] = n + 1
+	} else {
+		delete(s.board.failures, id)
+	}
+	s.board.mu.Unlock()
+	if retry {
+		s.scheduleRefresh(id, min(refreshRetryDelay<<min(n, 5), refreshRetryMax))
+	}
 }
 
 // scoringBoard is the scoring view of the contest.

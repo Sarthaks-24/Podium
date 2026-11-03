@@ -249,6 +249,36 @@ func TestFailedCheckUsesFreshContextAndEndsRun(t *testing.T) {
 	}
 }
 
+// A check that panics still ends its run as failed and frees the checker.
+func TestPanickingCheckEndsRun(t *testing.T) {
+	r := newRig(t)
+	r.svc.Hold = func() { panic("boom") }
+	runID, err := r.svc.Start(context.Background(), r.contest, 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var state string
+	for deadline := time.Now().Add(5 * time.Second); time.Now().Before(deadline); time.Sleep(10 * time.Millisecond) {
+		if err := r.db.QueryRow(`SELECT state FROM integrity_runs WHERE id = ?`, runID).Scan(&state); err != nil {
+			t.Fatal(err)
+		}
+		if state == "error" {
+			break
+		}
+	}
+	if state != "error" {
+		t.Fatalf("run state %q after a panic, want error", state)
+	}
+	r.svc.Hold = nil
+	for deadline := time.Now().Add(5 * time.Second); ; time.Sleep(10 * time.Millisecond) {
+		if _, err := r.svc.Start(context.Background(), r.contest, 100); err == nil {
+			break
+		} else if time.Now().After(deadline) {
+			t.Fatalf("checker still busy after a panic: %v", err)
+		}
+	}
+}
+
 func TestDecideRecordsOneDecisionPerStudent(t *testing.T) {
 	r := newRig(t)
 	ctx := context.Background()

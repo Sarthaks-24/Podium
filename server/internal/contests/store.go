@@ -908,7 +908,7 @@ func (s *Service) contestAccess(ctx context.Context, c *Contest, v Viewer) (Acce
 		if listed {
 			return AccessManage, nil
 		}
-		if c.Published || c.Archived {
+		if c.Published {
 			return AccessView, nil
 		}
 		return AccessNone, ErrNotFound

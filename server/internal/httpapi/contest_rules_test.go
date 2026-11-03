@@ -222,6 +222,68 @@ func TestContestViewerAccessAndCloneOrganisers(t *testing.T) {
 	}
 }
 
+// TestOrganiserRoutes: a manager adds and removes co-organisers; a student
+// or a non-manager is refused with 404; removal drops to view at once;
+// both changes are audited. An unpublished contest stays hidden from an
+// unlisted organiser even once archived.
+func TestOrganiserRoutes(t *testing.T) {
+	s := newSite(t)
+	owner := s.signedIn("owner@college.edu", "Owner")
+	for _, email := range []string{"lead@college.edu", "co@college.edu", "outsider@college.edu"} {
+		if code, out := owner.do("POST", "/api/admin/people", map[string]any{"email": email, "role": "organiser"}, s.srv.URL); code >= 300 {
+			t.Fatalf("grant organiser %s: %d %v", email, code, out)
+		}
+	}
+	lead := s.signedIn("lead@college.edu", "Lead")
+	co := s.signedIn("co@college.edu", "Co")
+	outsider := s.signedIn("outsider@college.edu", "Outsider")
+	s.signedIn("asha@college.edu", "Asha")
+	problem := s.importProblem(owner, "organiser-routes")
+	start := time.Now().Add(time.Hour).Truncate(time.Minute)
+	id := s.createContest(owner, "organiser-routes", start, map[string]int64{"A": problem}, nil)
+	route := fmt.Sprintf("/api/admin/contests/%d/organisers", id)
+	if code, out := owner.do("POST", route, map[string]any{"email": "lead@college.edu"}, s.srv.URL); code != 200 {
+		t.Fatalf("owner adds lead: %d %v", code, out)
+	}
+	if code, _ := outsider.do("POST", route, map[string]any{"email": "outsider@college.edu"}, s.srv.URL); code != 404 {
+		t.Errorf("non-manager adds: %d, want 404", code)
+	}
+	if code, _ := lead.do("POST", route, map[string]any{"email": "asha@college.edu"}, s.srv.URL); code != 404 {
+		t.Errorf("adding a student: %d, want 404", code)
+	}
+	code, added := lead.do("POST", route, map[string]any{"email": "CO@College.edu"}, s.srv.URL)
+	if code != 200 {
+		t.Fatalf("lead adds co: %d %v", code, added)
+	}
+	console := fmt.Sprintf("/api/admin/contests/%d", id)
+	if code, _ := co.do("GET", console, nil, ""); code != 200 {
+		t.Errorf("added organiser console: %d, want 200", code)
+	}
+	if code, _ := lead.do("DELETE", fmt.Sprintf("%s/%d", route, int64(added["user_id"].(float64))), nil, s.srv.URL); code != 204 {
+		t.Errorf("remove co: %d", code)
+	}
+	if code, _ := co.do("GET", console, nil, ""); code != 404 {
+		t.Errorf("removed organiser console: %d, want 404", code)
+	}
+	if code, _ := co.do("GET", "/api/contests/organiser-routes", nil, ""); code != 200 {
+		t.Errorf("removed organiser contest page: %d, want 200 (view)", code)
+	}
+	var addedRows, removedRows int
+	if err := s.db.QueryRow(`SELECT count(*) FILTER (WHERE action = 'organiser_added'), count(*) FILTER (WHERE action = 'organiser_removed')
+		FROM contest_audit WHERE contest_id = ?`, id).Scan(&addedRows, &removedRows); err != nil {
+		t.Fatal(err)
+	}
+	if addedRows != 2 || removedRows != 1 {
+		t.Errorf("audit rows: added %d removed %d, want 2 and 1", addedRows, removedRows)
+	}
+	if _, err := s.db.Exec("UPDATE contests SET published = 0, archived = 1 WHERE id = ?", id); err != nil {
+		t.Fatal(err)
+	}
+	if code, _ := outsider.do("GET", "/api/contests/organiser-routes", nil, ""); code != 404 {
+		t.Errorf("unlisted organiser on an archived draft: %d, want 404", code)
+	}
+}
+
 func TestCloneRollsBackEveryCopiedRow(t *testing.T) {
 	s := newSite(t)
 	owner := s.signedIn("owner@college.edu", "Owner")

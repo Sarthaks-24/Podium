@@ -603,6 +603,9 @@ export const AUDIT_ACTIONS: readonly { id: string; label: string }[] = [
   { id: 'ai_problem', label: 'AI problems graded as written' },
   { id: 'archive', label: 'Archived' },
   { id: 'integrity_decision', label: 'Integrity decisions' },
+  { id: 'code_viewed', label: 'Code opened by staff' },
+  { id: 'organiser_added', label: 'Organiser added' },
+  { id: 'organiser_removed', label: 'Organiser removed' },
 ];
 
 /** The contest form's fields as the audit log names them. */
@@ -692,6 +695,12 @@ export function auditSummary(e: Pick<AuditEntry, 'action' | 'details'>, names?: 
       return d.was_published === true ? 'Edited the published editorial' : 'Published the editorial';
     case 'archive':
       return 'Archived the contest';
+    case 'code_viewed':
+      return `Opened the code of ${names?.get(num('user_id')) || `user ${num('user_id')}`}`;
+    case 'organiser_added':
+      return `Added ${str('email') || `user ${num('user_id')}`} as an organiser`;
+    case 'organiser_removed':
+      return `Removed ${str('email') || `user ${num('user_id')}`} from the organisers`;
   }
   return e.action;
 }

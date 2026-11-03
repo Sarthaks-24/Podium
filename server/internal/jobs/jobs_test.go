@@ -174,6 +174,26 @@ func TestRepeatedProgressReportIsIdempotent(t *testing.T) {
 	}
 }
 
+// A replay that changes a stored result is still a bad report.
+func TestConflictingProgressReportIsRefused(t *testing.T) {
+	s, _, _ := newService(t)
+	ctx := context.Background()
+	id := enqueue(t, s, 10)
+	c, err := s.Claim(ctx, claim("w"))
+	if err != nil || c == nil {
+		t.Fatalf("claim = %+v, %v", c, err)
+	}
+	first := judgeapi.TestResult{Idx: 1, Role: "program", Verdict: "AC", TimeMS: 17, MemoryKB: 2048, OutputSHA: "same"}
+	if err := s.Report(ctx, judgeapi.Report{JobID: id, Lease: c.Lease, Results: []judgeapi.TestResult{first}}); err != nil {
+		t.Fatal(err)
+	}
+	changed := first
+	changed.Verdict = "WA"
+	if err := s.Report(ctx, judgeapi.Report{JobID: id, Lease: c.Lease, Results: []judgeapi.TestResult{changed}}); err == nil {
+		t.Fatal("a replay with a different verdict was accepted")
+	}
+}
+
 func TestExpiredLeasesRequeueThenFail(t *testing.T) {
 	s, clk, _ := newService(t)
 	ctx := context.Background()

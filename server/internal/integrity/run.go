@@ -71,6 +71,13 @@ func (s *Service) Start(ctx context.Context, contestID, by int64) (int64, error)
 	id, _ := res.LastInsertId()
 	safego.Go(s.Log, "integrity-check", func() {
 		defer s.done()
+		// A panic still ends the run as failed; safego logs it after.
+		defer func() {
+			if r := recover(); r != nil {
+				s.failRun(id, contestID, fmt.Errorf("panic: %v", r))
+				panic(r)
+			}
+		}()
 		if s.Hold != nil {
 			s.Hold()
 		}

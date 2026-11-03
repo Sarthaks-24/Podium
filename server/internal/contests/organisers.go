@@ -1,8 +1,13 @@
+// Per-contest organisers (migration 0008): the people who manage one
+// contest besides admins and the owner.
+
 package contests
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strconv"
 
@@ -10,6 +15,7 @@ import (
 	"github.com/Sarthaks-24/podium/internal/httpx"
 )
 
+// Organiser is one person listed as a manager of a contest.
 type Organiser struct {
 	UserID  int64  `json:"user_id"`
 	Email   string `json:"email"`
@@ -18,6 +24,7 @@ type Organiser struct {
 	AddedAt int64  `json:"added_at"`
 }
 
+// Organisers lists the contest's listed managers by email.
 func (s *Service) Organisers(ctx context.Context, contestID int64) ([]Organiser, error) {
 	rows, err := s.DB.QueryContext(ctx, `SELECT u.id,u.email,u.name,u.role,o.added_at FROM contest_organisers o JOIN users u ON u.id=o.user_id WHERE o.contest_id=? ORDER BY u.email COLLATE NOCASE`, contestID)
 	if err != nil {
@@ -35,6 +42,44 @@ func (s *Service) Organisers(ctx context.Context, contestID int64) ([]Organiser,
 	return out, rows.Err()
 }
 
+// AddOrganiser lists userID as a manager of the contest, audited for by.
+// Adding someone already listed writes nothing and returns their
+// original added_at.
+func (s *Service) AddOrganiser(ctx context.Context, contestID, userID int64, by Actor) (int64, error) {
+	var at int64
+	err := s.audited(ctx, contestID, by, AuditOrganiserAdded, func(tx *sql.Tx) (any, bool, error) {
+		res, err := tx.ExecContext(ctx, `INSERT OR IGNORE INTO contest_organisers(contest_id,user_id,added_by,added_at) VALUES(?,?,?,?)`, contestID, userID, by.ID, s.now().UnixMilli())
+		if err != nil {
+			return nil, false, err
+		}
+		n, _ := res.RowsAffected()
+		var email string
+		if err := tx.QueryRowContext(ctx, `SELECT o.added_at, u.email FROM contest_organisers o JOIN users u ON u.id = o.user_id WHERE o.contest_id=? AND o.user_id=?`, contestID, userID).Scan(&at, &email); err != nil {
+			return nil, false, err
+		}
+		return map[string]any{"user_id": userID, "email": email}, n > 0, nil
+	})
+	return at, err
+}
+
+// RemoveOrganiser takes userID off the contest's managers, audited for by.
+// Removing someone not listed writes nothing.
+func (s *Service) RemoveOrganiser(ctx context.Context, contestID, userID int64, by Actor) error {
+	return s.audited(ctx, contestID, by, AuditOrganiserRemoved, func(tx *sql.Tx) (any, bool, error) {
+		var email string
+		if err := tx.QueryRowContext(ctx, `SELECT email FROM users WHERE id=?`, userID).Scan(&email); err != nil && !errors.Is(err, sql.ErrNoRows) {
+			return nil, false, err
+		}
+		res, err := tx.ExecContext(ctx, `DELETE FROM contest_organisers WHERE contest_id=? AND user_id=?`, contestID, userID)
+		if err != nil {
+			return nil, false, err
+		}
+		n, _ := res.RowsAffected()
+		return map[string]any{"user_id": userID, "email": email}, n > 0, nil
+	})
+}
+
+// ListOrganisers answers the contest's managers.
 func (d *Handlers) ListOrganisers(w http.ResponseWriter, r *http.Request) {
 	c, ok := d.OrganisedContest(w, r)
 	if !ok {
@@ -48,6 +93,8 @@ func (d *Handlers) ListOrganisers(w http.ResponseWriter, r *http.Request) {
 	httpx.WriteJSON(w, http.StatusOK, map[string]any{"organisers": list, "server_now": d.Contests.Clock().UnixMilli()})
 }
 
+// AddOrganiser lists a person whose role is organiser or above as a
+// manager of the contest. Anyone else answers 404 with one message.
 func (d *Handlers) AddOrganiser(w http.ResponseWriter, r *http.Request) {
 	c, ok := d.OrganisedContest(w, r)
 	if !ok {
@@ -69,18 +116,16 @@ func (d *Handlers) AddOrganiser(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteError(w, http.StatusNotFound, "not_found", "That person is not a listed organiser.")
 		return
 	}
-	now := d.Contests.Clock().UnixMilli()
-	if _, err = d.Contests.DB.ExecContext(r.Context(), `INSERT OR IGNORE INTO contest_organisers(contest_id,user_id,added_by,added_at) VALUES(?,?,?,?)`, c.ID, u.ID, auth.UserFrom(r.Context()).ID, now); err != nil {
+	at, err := d.Contests.AddOrganiser(r.Context(), c.ID, u.ID, actor(r))
+	if err != nil {
 		d.internalError(w, r, err)
 		return
 	}
-	if err = d.Contests.DB.QueryRowContext(r.Context(), `SELECT added_at FROM contest_organisers WHERE contest_id=? AND user_id=?`, c.ID, u.ID).Scan(&now); err != nil {
-		d.internalError(w, r, err)
-		return
-	}
-	httpx.WriteJSON(w, http.StatusOK, Organiser{UserID: u.ID, Email: u.Email, Name: u.Name, Role: string(u.Role), AddedAt: now})
+	httpx.WriteJSON(w, http.StatusOK, Organiser{UserID: u.ID, Email: u.Email, Name: u.Name, Role: string(u.Role), AddedAt: at})
 }
 
+// RemoveOrganiser takes a person off the contest's managers; they drop to
+// view on their next request.
 func (d *Handlers) RemoveOrganiser(w http.ResponseWriter, r *http.Request) {
 	c, ok := d.OrganisedContest(w, r)
 	if !ok {
@@ -91,7 +136,7 @@ func (d *Handlers) RemoveOrganiser(w http.ResponseWriter, r *http.Request) {
 		d.contestError(w, r, ErrNotFound)
 		return
 	}
-	if _, err = d.Contests.DB.ExecContext(r.Context(), `DELETE FROM contest_organisers WHERE contest_id=? AND user_id=?`, c.ID, id); err != nil {
+	if err = d.Contests.RemoveOrganiser(r.Context(), c.ID, id, actor(r)); err != nil {
 		d.internalError(w, r, err)
 		return
 	}

@@ -15,6 +15,9 @@ const standingsDelay = time.Second
 
 const refreshRetryDelay = time.Second
 
+// refreshRetryMax caps the doubling delay between failed refreshes.
+const refreshRetryMax = 30 * time.Second
+
 // Event names on the stream (docs/API.md, "Live updates").
 const (
 	EventStandings     = "standings"

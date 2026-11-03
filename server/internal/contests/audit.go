@@ -61,9 +61,13 @@ const (
 	AuditResume     = "resume"
 	AuditRejudge    = "rejudge" // {"problem_label" or "submission_id", "queued"}
 	AuditReveal     = "reveal"
-	AuditEditorial  = "editorial" // {"published", "was_published", "changed", "bytes"}
-	AuditCodeViewed = "code_viewed"
-	AuditArchive    = "archive"
+	AuditEditorial  = "editorial"   // {"published", "was_published", "changed", "bytes"}
+	AuditCodeViewed = "code_viewed" // {"user_id"}: staff opened that student's code
+	// AuditOrganiserAdded and AuditOrganiserRemoved change who manages the
+	// contest: {"user_id", "email"}.
+	AuditOrganiserAdded   = "organiser_added"
+	AuditOrganiserRemoved = "organiser_removed"
+	AuditArchive          = "archive"
 	// AuditDecision is an integrity decision about one student:
 	// {"user_id", "decision"}; the reason stays in integrity_cases.
 	AuditDecision = "integrity_decision"

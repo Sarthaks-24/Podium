@@ -113,6 +113,24 @@ func TestRefreshRetriesGetError(t *testing.T) {
 	if len(*queued) != 1 || (*queued)[0].delay != refreshRetryDelay {
 		t.Fatalf("Get error scheduled %v, want one retry after %v", *queued, refreshRetryDelay)
 	}
+	// A lasting failure backs off: 2 s, 4 s, ... up to refreshRetryMax.
+	for _, want := range []time.Duration{2 * time.Second, 4 * time.Second, 8 * time.Second, 16 * time.Second, 30 * time.Second, 30 * time.Second} {
+		runQueuedRefresh(t, queued)
+		if len(*queued) != 1 || (*queued)[0].delay != want {
+			t.Fatalf("retry scheduled %v, want one after %v", *queued, want)
+		}
+	}
+}
+
+// A refresh for a contest that no longer exists stops instead of retrying.
+func TestRefreshStopsForDeletedContest(t *testing.T) {
+	r := newSvc(t)
+	queued := queueRefreshes(r.svc)
+	r.svc.scheduleRefresh(987654, 0)
+	runQueuedRefresh(t, queued)
+	if len(*queued) != 0 {
+		t.Fatalf("refresh of a missing contest scheduled %v, want none", *queued)
+	}
 }
 
 func TestRefreshRetriesBoardError(t *testing.T) {
