@@ -147,6 +147,7 @@ func New(d Deps) http.Handler {
 			return access == contests.AccessManage, err
 		}}
 	work := &submissions.Handlers{Submissions: d.Submissions, Log: d.Log}
+	mux.HandleFunc("GET /api/admin/people/{id}/submissions", admin(work.ListPersonSubmissions))
 	if d.Contests != nil {
 		work.CanReadContestCode = func(ctx context.Context, contestID int64, u auth.User) (bool, error) {
 			c, err := d.Contests.Get(ctx, contestID)

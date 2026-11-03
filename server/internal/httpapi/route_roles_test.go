@@ -48,6 +48,7 @@ var routeRoles = map[string]string{
 	"GET /api/contests/{slug}/standings":                           "student",
 	"POST /api/contests/{slug}/clarifications":                     "student",
 	"GET /api/admin/people":                                        "admin",
+	"GET /api/admin/people/{id}/submissions":                       "admin",
 	"POST /api/admin/people":                                       "admin",
 	"DELETE /api/admin/people/{id}":                                "admin",
 	"POST /api/admin/accounts/reset-google":                        "owner",

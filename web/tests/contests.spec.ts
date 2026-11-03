@@ -1524,3 +1524,22 @@ test('an unlisted organiser sees read-only statements and standings without a st
   await expect(codeEditor(page)).toHaveCount(0);
   await expect(page.getByRole('link', { name: 'Standings' })).toBeVisible();
 });
+
+
+
+
+
+
+test('an admin opens a person’s submissions and submitted code (C5)', async ({ page }) => {
+  await mockApi(page, { who: 'organiser' });
+  await page.route('**/api/me', (route) => route.fulfill({ json: { id: 2, email: 'admin@college.edu', name: 'Admin', avatar_url: '', role: 'admin', theme: '', verdicts: 'standard' } }));
+  const person = { id: 7, email: 'asha@college.edu', name: 'Asha Rao', role: 'student', last_login_at: Date.now(), locked: false, disabled: false };
+  await page.route('**/api/admin/people', (route) => route.fulfill({ json: { people: [], list: [person], counts: { on_list: 1, signed_in: 1, never_came: 0 }, refused: [], disabled: [] } }));
+  await page.route('**/api/admin/people/7/submissions**', (route) => route.fulfill({ json: { submissions: [{ id: 501, contest_id: 4, contest_title: 'Week 6 contest', problem_label: 'A', problem_id: 11, created_at: Date.now(), state: 'done', verdict: 'AC', score: 100, max_score: 100 }], page: 1, has_more: false, server_now: Date.now() } }));
+  await page.route('**/api/submissions/501', (route) => route.fulfill({ json: { id: 501, source: 'int main() {}' } }));
+  await page.goto('/admin/people');
+  await page.getByRole('button', { name: 'Submissions' }).click();
+  await expect(page.getByRole('heading', { name: 'Submissions for Asha Rao' })).toBeVisible();
+  await page.getByRole('button', { name: 'Code' }).click();
+  await expect(page.getByRole('region', { name: 'Submitted code, 1 line' })).toContainText('int main() {}');
+});

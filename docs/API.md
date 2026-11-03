@@ -212,6 +212,7 @@ An admin acts only on students and organisers, and gives only the organiser role
 | Route | Request | Success | Errors |
 |---|---|---|---|
 | `GET /api/admin/people` | | 200 `{people, list, counts, refused, disabled, organisation}` (below) | |
+| `GET /api/admin/people/{id}/submissions` | `?page=1` (50 per page) | 200 `{submissions:[{id, contest_id, contest_title, problem_label, problem_id, created_at, state, verdict, score, max_score}], page, has_more, server_now}`; admin and owner only |
 | `POST /api/admin/people` | `{"email":"ta@college.edu","role":"organiser"}`; `role` is `organiser`, `admin` or `owner`; the person need not have signed in, and the role is theirs at first sign-in | 200 the person, as in `people` | `400 bad_request` (email or role), `403 not_allowed` (an admin out of bounds), `409 conflict` (the configured owner, or the change would leave no owner) |
 | `DELETE /api/admin/people/{id}` | | 204: the person becomes a student and their sessions end | `404 not_found`, `403 not_allowed` (an admin out of bounds), `409 conflict` (the configured owner, or the last owner) |
 | `POST /api/admin/accounts/reset-google` | `{"email":"asha@college.edu"}` | 204: unlinks the Google account and ends their sessions; the next Google account to sign in with the address is linked | `404 not_found` |

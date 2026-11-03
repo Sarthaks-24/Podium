@@ -18,9 +18,10 @@
 -->
 <script lang="ts">
   import ConfirmDialog from '../ConfirmDialog.svelte';
+  import CodeView from '../CodeView.svelte';
   import MonoDigits from '../MonoDigits.svelte';
   import { polite } from '../../lib/announce.svelte';
-  import { errorText, sendJSON } from '../../lib/api';
+  import { errorText, getJSON, sendJSON } from '../../lib/api';
   import { countOf, formatDateTime, roleLabel } from '../../lib/format';
   import {
     mayChange,
@@ -60,6 +61,27 @@
   let addError = $state('');
   let pending = $state<Pending>(null);
   let busy = $state(false);
+  type PersonSubmission = { id:number; contest_id?:number; contest_title?:string; problem_label?:string; problem_id:number; created_at:number; state:string; verdict:string; score:number; max_score:number };
+  let selectedPerson = $state<ListedPerson | null>(null);
+  let personSubmissions = $state<PersonSubmission[]>([]);
+  let personSubmissionPage = $state(1);
+  let morePersonSubmissions = $state(false);
+  let submissionsError = $state('');
+  let codeSource = $state('');
+  async function openSubmissions(person: ListedPerson, page = 1) {
+    selectedPerson = person; submissionsError = ''; codeSource = '';
+    try {
+      const data = await getJSON<{submissions:PersonSubmission[];page:number;has_more:boolean}>(`/api/admin/people/${person.id}/submissions?page=${page}`);
+      personSubmissions = page === 1 ? data.submissions : [...personSubmissions, ...data.submissions];
+      personSubmissionPage = data.page; morePersonSubmissions = data.has_more;
+    }
+    catch (err) { submissionsError = errorText(err); }
+  }
+  async function openCode(item: PersonSubmission) {
+    submissionsError = ''; codeSource = '';
+    try { const sub = await getJSON<{source?:string}>(`/api/submissions/${item.id}`); codeSource = sub.source ?? ''; }
+    catch (err) { submissionsError = errorText(err); }
+  }
 
   const shown = $derived.by(() => {
     const q = filter.trim().toLowerCase();
@@ -236,6 +258,9 @@
               <span class="cell-label">Last sign-in</span>{#if person.last_login_at !== null}<MonoDigits text={formatDateTime(person.last_login_at)} />{:else}<span class="muted word">Never</span>{/if}
             </td>
             <td class="actions">
+              {#if viewer.role === 'admin' || viewer.role === 'owner'}
+                <button type="button" class="btn btn-quiet btn-compact" onclick={() => openSubmissions(person)}>Submissions</button>
+              {/if}
               {#if person.locked}
                 <span class="muted locked">Set in server configuration</span>
               {:else if changeable && !person.disabled}
@@ -258,6 +283,18 @@
       </tbody>
     </table>
   </div>
+  {#if selectedPerson}
+    <section class="section" aria-label="Submissions for {personLabel(selectedPerson)}" aria-live="polite">
+      <h2>Submissions for {personLabel(selectedPerson)}</h2>
+      <button type="button" class="btn btn-quiet" onclick={() => (selectedPerson = null)}>Close submissions</button>
+      {#if submissionsError}<p class="field-error" role="alert">{submissionsError}</p>{/if}
+      {#if personSubmissions.length === 0}<p class="muted">No submissions yet.</p>{:else}
+        <ul>{#each personSubmissions as item (item.id)}<li>{item.contest_title || 'Outside a contest'}{item.problem_label ? `, problem ${item.problem_label}` : ''}, {formatDateTime(item.created_at)}: {item.verdict || item.state}, {item.score} of {item.max_score} points <button type="button" class="btn btn-quiet btn-compact" onclick={() => openCode(item)}>Code</button></li>{/each}</ul>
+        {#if morePersonSubmissions}<button type="button" class="btn btn-secondary" onclick={() => openSubmissions(selectedPerson!, personSubmissionPage + 1)}>Older submissions</button>{/if}
+      {/if}
+      {#if codeSource}<CodeView source={codeSource} spans={[]} label="Submitted code" />{/if}
+    </section>
+  {/if}
 </section>
 
 <section class="section" aria-labelledby="add-heading">

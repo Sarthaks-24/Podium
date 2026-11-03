@@ -272,3 +272,63 @@ func (d *Handlers) GetRun(w http.ResponseWriter, r *http.Request) {
 	}
 	httpx.WriteJSON(w, http.StatusOK, v)
 }
+
+// ListPersonSubmissions is the admins' and owner's per-person history.
+func (d *Handlers) ListPersonSubmissions(w http.ResponseWriter, r *http.Request) {
+	userID, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil || userID <= 0 {
+		httpx.WriteError(w, http.StatusNotFound, "not_found", "There is no such person.")
+		return
+	}
+	page := 1
+	if raw := r.URL.Query().Get("page"); raw != "" {
+		page, err = strconv.Atoi(raw)
+		if err != nil || page < 1 || page > 100000 {
+			httpx.WriteError(w, http.StatusBadRequest, "bad_request", "Page must be a positive number.")
+			return
+		}
+	}
+	var exists int
+	if err := d.Submissions.DB.QueryRowContext(r.Context(), `SELECT 1 FROM users WHERE id=?`, userID).Scan(&exists); err != nil {
+		httpx.WriteError(w, http.StatusNotFound, "not_found", "There is no such person.")
+		return
+	}
+	const size = 50
+	rows, err := d.Submissions.DB.QueryContext(r.Context(), `SELECT s.id,COALESCE(s.contest_id,0),COALESCE(c.title,''),COALESCE(cp.label,''),s.problem_id,s.created_at,s.state,s.verdict,s.score,s.max_score,s.kind FROM submissions s LEFT JOIN contests c ON c.id=s.contest_id LEFT JOIN contest_problems cp ON cp.contest_id=s.contest_id AND cp.problem_id=s.problem_id WHERE s.user_id=? AND s.kind='submit' ORDER BY s.created_at DESC,s.id DESC LIMIT ? OFFSET ?`, userID, size+1, (page-1)*size)
+	if err != nil {
+		d.internalError(w, r, err)
+		return
+	}
+	defer rows.Close()
+	type item struct {
+		ID           int64  `json:"id"`
+		ContestID    int64  `json:"contest_id,omitempty"`
+		ContestTitle string `json:"contest_title,omitempty"`
+		ProblemLabel string `json:"problem_label,omitempty"`
+		ProblemID    int64  `json:"problem_id"`
+		CreatedAt    int64  `json:"created_at"`
+		State        string `json:"state"`
+		Verdict      string `json:"verdict"`
+		Score        int    `json:"score"`
+		MaxScore     int    `json:"max_score"`
+		Kind         string `json:"kind"`
+	}
+	list := []item{}
+	for rows.Next() {
+		var x item
+		if err := rows.Scan(&x.ID, &x.ContestID, &x.ContestTitle, &x.ProblemLabel, &x.ProblemID, &x.CreatedAt, &x.State, &x.Verdict, &x.Score, &x.MaxScore, &x.Kind); err != nil {
+			d.internalError(w, r, err)
+			return
+		}
+		list = append(list, x)
+	}
+	if err := rows.Err(); err != nil {
+		d.internalError(w, r, err)
+		return
+	}
+	more := len(list) > size
+	if more {
+		list = list[:size]
+	}
+	httpx.WriteJSON(w, http.StatusOK, map[string]any{"submissions": list, "page": page, "has_more": more, "server_now": d.Submissions.now().UnixMilli()})
+}
