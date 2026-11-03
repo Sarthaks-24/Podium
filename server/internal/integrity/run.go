@@ -76,14 +76,23 @@ func (s *Service) Start(ctx context.Context, contestID, by int64) (int64, error)
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 		defer cancel()
 		if err := s.Check(ctx, id, contestID); err != nil {
-			if s.Log != nil {
-				s.Log.Error("integrity check failed", "run_id", id, "contest_id", contestID, "err", err)
-			}
-			s.DB.ExecContext(ctx, `UPDATE integrity_runs SET state = 'error', error = ?, finished_at = ? WHERE id = ?`,
-				"The check could not finish. Try again; if it fails again, see the server log.", s.now().UnixMilli(), id)
+			s.failRun(id, contestID, err)
 		}
 	}()
 	return id, nil
+}
+
+func (s *Service) failRun(id, contestID int64, cause error) {
+	if s.Log != nil {
+		s.Log.Error("integrity check failed", "run_id", id, "contest_id", contestID, "err", cause)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	_, err := s.DB.ExecContext(ctx, `UPDATE integrity_runs SET state = 'error', error = ?, finished_at = ? WHERE id = ?`,
+		"The check could not finish. Try again; if it fails again, see the server log.", s.now().UnixMilli(), id)
+	if err != nil && s.Log != nil {
+		s.Log.Error("integrity check failure could not be recorded", "run_id", id, "contest_id", contestID, "err", err)
+	}
 }
 
 // Recover marks checks left running by a server that stopped mid-check

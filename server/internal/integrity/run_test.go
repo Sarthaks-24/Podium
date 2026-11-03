@@ -227,6 +227,28 @@ func TestCheckFindsEachKindOfSignal(t *testing.T) {
 	}
 }
 
+func TestFailedCheckUsesFreshContextAndEndsRun(t *testing.T) {
+	r := newRig(t)
+	res := mustExec(t, r.db, `INSERT INTO integrity_runs (contest_id, started_by, started_at) VALUES (?, 100, ?)`, r.contest, r.svc.now().UnixMilli())
+	runID, err := res.LastInsertId()
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if err := r.svc.Check(ctx, runID, r.contest); err == nil {
+		t.Fatal("Check with a canceled context succeeded")
+	}
+	r.svc.failRun(runID, r.contest, context.DeadlineExceeded)
+	var state, message string
+	if err := r.db.QueryRow(`SELECT state, error FROM integrity_runs WHERE id = ?`, runID).Scan(&state, &message); err != nil {
+		t.Fatal(err)
+	}
+	if state != "error" || message == "" {
+		t.Fatalf("run = state %q, error %q; want error state and message", state, message)
+	}
+}
+
 func TestDecideRecordsOneDecisionPerStudent(t *testing.T) {
 	r := newRig(t)
 	ctx := context.Background()
