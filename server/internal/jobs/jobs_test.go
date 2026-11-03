@@ -85,7 +85,8 @@ func TestOnChangeReceivesContestID(t *testing.T) {
 	s, _, _ := newService(t)
 	ctx := context.Background()
 	var got int64
-	s.OnChange = func(_ int64, _ string, contestID int64) { got = contestID }
+	var closed bool
+	s.OnChange = func(_ int64, _ string, contestID int64, c bool) { got, closed = contestID, c }
 	id := enqueue(t, s, 10)
 	if _, err := s.DB.ExecContext(ctx, "UPDATE jobs SET contest_id = ? WHERE id = ?", 42, id); err != nil {
 		t.Fatal(err)
@@ -94,15 +95,21 @@ func TestOnChangeReceivesContestID(t *testing.T) {
 	if err != nil || c == nil {
 		t.Fatal(err)
 	}
-	if got != 42 {
-		t.Fatalf("claim OnChange contest id = %d, want 42", got)
+	if got != 42 || closed {
+		t.Fatalf("claim OnChange contest id = %d closed %v, want 42 and not closed", got, closed)
 	}
 	got = 0
+	if err := s.Report(ctx, judgeapi.Report{JobID: c.JobID, Lease: c.Lease, Results: []judgeapi.TestResult{{Idx: 1, Role: "program", Verdict: "AC"}}}); err != nil {
+		t.Fatal(err)
+	}
+	if got != 42 || closed {
+		t.Fatalf("progress OnChange contest id = %d closed %v, want 42 and not closed", got, closed)
+	}
 	if err := s.Report(ctx, judgeapi.Report{JobID: c.JobID, Lease: c.Lease, Final: true}); err != nil {
 		t.Fatal(err)
 	}
-	if got != 42 {
-		t.Fatalf("report OnChange contest id = %d, want 42", got)
+	if got != 42 || !closed {
+		t.Fatalf("final OnChange contest id = %d closed %v, want 42 and closed", got, closed)
 	}
 }
 

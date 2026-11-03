@@ -54,7 +54,7 @@ func (p *publisher) changed(jobID int64, sig string, done bool) bool {
 
 // OnJobChange publishes the new state of the run or submission a job
 // belongs to. It is the jobs service's OnChange hook and must not block.
-func (s *Service) OnJobChange(jobID int64, kind string, _ int64) {
+func (s *Service) OnJobChange(jobID int64, kind string, _ int64, _ bool) {
 	if s.Hub == nil || (kind != judgeapi.KindSubmit && kind != judgeapi.KindRun) {
 		return
 	}

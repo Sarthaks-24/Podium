@@ -102,9 +102,11 @@ func (s *Service) publishTo(typ string, v any, users ...int64) {
 
 // OnJobChange invalidates a contest's board when one of its submission
 // jobs changes. The queue supplies the contest id, so this hook does not
-// query the jobs table.
-func (s *Service) OnJobChange(_ int64, kind string, contestID int64) {
-	if kind != judgeapi.KindSubmit || contestID <= 0 {
+// query the jobs table. Only a closed job (done or failed) can move a
+// board; claims and per-test progress reports change nothing on it, so
+// they do not cost a recompute and a standings event to every browser.
+func (s *Service) OnJobChange(_ int64, kind string, contestID int64, closed bool) {
+	if kind != judgeapi.KindSubmit || contestID <= 0 || !closed {
 		return
 	}
 	s.Invalidate(contestID)

@@ -119,9 +119,10 @@ type Service struct {
 	Now func() time.Time
 	// OnChange, when set, is called after every committed claim, report or close,
 	// outside the transaction, so watchers (the live event stream) can
-	// read the new state. contestID is zero for a job outside a contest.
-	// It must not block.
-	OnChange func(jobID int64, kind string, contestID int64)
+	// read the new state. contestID is zero for a job outside a contest;
+	// closed is true only when the job ended (done or failed), the one
+	// change that can move a board. It must not block.
+	OnChange func(jobID int64, kind string, contestID int64, closed bool)
 	// Discard, when set, receives the outputs a job's worker uploaded once
 	// the job closed or its lease was swept, if no other open job holds
 	// them; it deletes those nothing ended up using.
@@ -157,14 +158,14 @@ func New(db *sql.DB, discard func(shas []string), kinds func(*Service) map[strin
 // Notify adds watchers, called like OnChange after any already set. The
 // watchers need the queue themselves, so they are added once they exist,
 // before the queue is used.
-func (s *Service) Notify(watchers ...func(jobID int64, kind string, contestID int64)) {
+func (s *Service) Notify(watchers ...func(jobID int64, kind string, contestID int64, closed bool)) {
 	prev := s.OnChange
-	s.OnChange = func(jobID int64, kind string, contestID int64) {
+	s.OnChange = func(jobID int64, kind string, contestID int64, closed bool) {
 		if prev != nil {
-			prev(jobID, kind, contestID)
+			prev(jobID, kind, contestID, closed)
 		}
 		for _, w := range watchers {
-			w(jobID, kind, contestID)
+			w(jobID, kind, contestID, closed)
 		}
 	}
 }
@@ -286,7 +287,7 @@ func (s *Service) Claim(ctx context.Context, req judgeapi.ClaimRequest) (*judgea
 	s.mu.Lock()
 	s.lastRun = c.Kind == judgeapi.KindRun
 	s.mu.Unlock()
-	s.changed(c.JobID, c.Kind, contestID.Int64)
+	s.changed(c.JobID, c.Kind, contestID.Int64, false)
 	c.Lease = lease
 	c.LeaseSeconds = judgeapi.LeaseSeconds
 	c.Payload = json.RawMessage(payload)
@@ -523,7 +524,7 @@ func (s *Service) Report(ctx context.Context, r judgeapi.Report) error {
 			return err
 		}
 		if len(r.Compile)+len(r.Results) > 0 {
-			s.changed(r.JobID, kindName, contestID)
+			s.changed(r.JobID, kindName, contestID, false)
 		}
 		return nil
 	}
@@ -543,7 +544,7 @@ func (s *Service) Report(ctx context.Context, r judgeapi.Report) error {
 	}
 	s.recordFinished(job, now)
 	s.dropUploads(r.JobID)
-	s.changed(r.JobID, kindName, contestID)
+	s.changed(r.JobID, kindName, contestID, true)
 	return nil
 }
 
@@ -587,9 +588,9 @@ func (s *Service) Cancel(ctx context.Context, tx *sql.Tx, id int64, reason strin
 	return err
 }
 
-func (s *Service) changed(jobID int64, kind string, contestID int64) {
+func (s *Service) changed(jobID int64, kind string, contestID int64, closed bool) {
 	if s.OnChange != nil {
-		s.OnChange(jobID, kind, contestID)
+		s.OnChange(jobID, kind, contestID, closed)
 	}
 }
 
@@ -676,7 +677,7 @@ func (s *Service) Sweep(ctx context.Context) (requeued, failed int64, err error)
 		id     int64
 		reason string
 	}
-	var touched [][3]any
+	var touched [][4]any // id, kind, contest id, closed
 	var closed []Job
 	var doomed []dead
 	for rows.Next() {
@@ -707,7 +708,7 @@ func (s *Service) Sweep(ctx context.Context) (requeued, failed int64, err error)
 		}
 		failed++
 		closed = append(closed, job)
-		touched = append(touched, [3]any{job.ID, job.Kind, job.contestID})
+		touched = append(touched, [4]any{job.ID, job.Kind, job.contestID, true})
 	}
 	// Results from an abandoned attempt are dropped: the next worker
 	// starts the job again from the beginning.
@@ -723,7 +724,7 @@ func (s *Service) Sweep(ctx context.Context) (requeued, failed int64, err error)
 			expired.Close()
 			return 0, 0, err
 		}
-		touched = append(touched, [3]any{id, kind, contestID.Int64})
+		touched = append(touched, [4]any{id, kind, contestID.Int64, false})
 	}
 	expired.Close()
 	if err := expired.Err(); err != nil {
@@ -754,7 +755,7 @@ func (s *Service) Sweep(ctx context.Context) (requeued, failed int64, err error)
 	}
 	s.dropUploads(ids...)
 	for _, t := range touched {
-		s.changed(t[0].(int64), t[1].(string), t[2].(int64))
+		s.changed(t[0].(int64), t[1].(string), t[2].(int64), t[3].(bool))
 	}
 	return requeued, failed, nil
 }

@@ -38,7 +38,12 @@ func TestJobChangeInvalidatesFromTheHookContestID(t *testing.T) {
 	queueRefreshes(r.svc)
 	c := r.contest(t, nil)
 	r.svc.DB.Close()
-	r.svc.OnJobChange(4, "submit", c.ID)
+	// A claim or progress report moves nothing on the board.
+	r.svc.OnJobChange(4, "submit", c.ID, false)
+	if got := r.svc.Version(c.ID); got != 0 {
+		t.Fatalf("contest version after progress = %d, want 0", got)
+	}
+	r.svc.OnJobChange(4, "submit", c.ID, true)
 	if got := r.svc.Version(c.ID); got != 1 {
 		t.Fatalf("contest version = %d, want 1 without a database lookup", got)
 	}

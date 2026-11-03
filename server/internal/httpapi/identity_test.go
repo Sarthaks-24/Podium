@@ -151,10 +151,10 @@ func newSiteMode(t *testing.T, mode string) *site {
 	s.subs.ContestView = s.contests.ViewFor
 	s.integrity = &integrity.Service{DB: d, Problems: s.bank, Contests: s.contests, Now: clock.now}
 	inputEvents := &problems.InputGenerationEvents{Problems: s.bank, Hub: s.hub}
-	jobSvc.OnChange = func(id int64, kind string, contestID int64) {
-		s.subs.OnJobChange(id, kind, contestID)
-		s.contests.OnJobChange(id, kind, contestID)
-		inputEvents.OnJobChange(id, kind, contestID)
+	jobSvc.OnChange = func(id int64, kind string, contestID int64, closed bool) {
+		s.subs.OnJobChange(id, kind, contestID, closed)
+		s.contests.OnJobChange(id, kind, contestID, closed)
+		inputEvents.OnJobChange(id, kind, contestID, closed)
 	}
 	s.judge = httptest.NewServer(judgeserver.New(judgeserver.Deps{Log: log, Jobs: jobSvc, Blobs: blobs, Token: judgeToken}))
 	t.Cleanup(s.judge.Close)
