@@ -544,6 +544,8 @@ export interface AdminContest extends ContestSettings {
   server_now: number;
 }
 
+export interface ContestOrganiser { user_id: number; email: string; name: string; role: string; added_at: number }
+
 /** One row of the console's submission feed. */
 export interface FeedRow {
   id: number;

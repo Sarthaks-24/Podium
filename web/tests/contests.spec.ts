@@ -1483,3 +1483,25 @@ test('Student view shows the problems and the board as students see them, with n
   await expect(codeEditor(page)).toBeVisible();
   await expect(page.getByText('Student view. Run and Submit work here, and nothing you submit counts.')).toBeVisible();
 });
+
+test('setup can add and remove a listed co-organiser (C2)', async ({ page }) => {
+  await mockApi(page, { who: 'organiser', phase: 'upcoming', published: false });
+  let people = [{ user_id: 1, email: 'owner@college.edu', name: 'Owner', role: 'owner', added_at: 1 }];
+  await page.route('**/api/admin/contests/4/organisers**', async (route) => {
+    const req = route.request();
+    if (req.method() === 'GET') return route.fulfill({ json: { organisers: people, server_now: Date.now() } });
+    if (req.method() === 'POST') {
+      people.push({ user_id: 9, email: 'asha@college.edu', name: 'Asha', role: 'organiser', added_at: Date.now() });
+      return route.fulfill({ status: 200, json: people.at(-1) });
+    }
+    if (req.method() === 'DELETE') { people = people.filter((p) => p.user_id !== 9); return route.fulfill({ status: 204, body: '' }); }
+    return route.continue();
+  });
+  await page.goto('/admin/contests/4');
+  await expect(page.getByRole('heading', { name: 'Organisers' })).toBeVisible();
+  await page.getByLabel('Add a listed organiser by email').fill('asha@college.edu');
+  await page.getByRole('button', { name: 'Add organiser' }).click();
+  await expect(page.getByText('asha@college.edu', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Remove asha@college.edu' }).click();
+  await expect(page.getByText('asha@college.edu', { exact: true })).toHaveCount(0);
+});

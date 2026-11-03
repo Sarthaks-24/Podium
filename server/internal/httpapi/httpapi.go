@@ -190,7 +190,7 @@ func New(d Deps) http.Handler {
 	mux.HandleFunc("GET /api/events", d.requireRole(auth.Student, d.eventStream))
 
 	if d.Contests != nil {
-		console := &contests.Handlers{Contests: d.Contests, Submissions: d.Submissions, Problems: d.Problems, Log: d.Log}
+		console := &contests.Handlers{Contests: d.Contests, Auth: d.Auth, Submissions: d.Submissions, Problems: d.Problems, Log: d.Log}
 		d.contestRoutes(mux, console)
 		mux.HandleFunc("GET /api/admin/contests/{id}/audit", organiser(console.ContestAudit))
 		if d.Integrity != nil {
@@ -238,6 +238,9 @@ func (d Deps) contestRoutes(mux *http.ServeMux, console *contests.Handlers) {
 	mux.HandleFunc("POST /api/admin/contests", organiser(console.CreateContest))
 	mux.HandleFunc("GET /api/admin/contests/{id}", organiser(console.GetAdminContest))
 	mux.HandleFunc("PUT /api/admin/contests/{id}", organiser(console.UpdateContest))
+	mux.HandleFunc("GET /api/admin/contests/{id}/organisers", organiser(console.ListOrganisers))
+	mux.HandleFunc("POST /api/admin/contests/{id}/organisers", organiser(console.AddOrganiser))
+	mux.HandleFunc("DELETE /api/admin/contests/{id}/organisers/{user}", organiser(console.RemoveOrganiser))
 	mux.HandleFunc("DELETE /api/admin/contests/{id}", organiser(console.ArchiveContest))
 	mux.HandleFunc("POST /api/admin/contests/{id}/clone", organiser(console.CloneContest))
 	mux.HandleFunc("PUT /api/admin/contests/{id}/problems", organiser(console.SetContestProblems))

@@ -366,3 +366,29 @@ func TestFailedAuditRollsTheChangeBack(t *testing.T) {
 		t.Errorf("%d pause rows, want 1", n)
 	}
 }
+
+func TestContestOrganiserMembership(t *testing.T) {
+	r := newSvc(t)
+	c := r.contest(t, nil)
+	ctx := context.Background()
+	if _, err := r.svc.DB.Exec(`INSERT INTO users(id,email,name,role,created_at) VALUES(4,'co@college.edu','Co','organiser',0)`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := r.svc.DB.Exec(`INSERT INTO contest_organisers(contest_id,user_id,added_by,added_at) VALUES(?,?,?,?)`, c.ID, 4, 1, 123); err != nil {
+		t.Fatal(err)
+	}
+	got, err := r.svc.Organisers(ctx, c.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 2 || got[0].Email != "co@college.edu" {
+		t.Fatalf("organisers = %#v", got)
+	}
+	if _, err := r.svc.DB.Exec(`DELETE FROM contest_organisers WHERE contest_id=? AND user_id=?`, c.ID, 4); err != nil {
+		t.Fatal(err)
+	}
+	got, err = r.svc.Organisers(ctx, c.ID)
+	if err != nil || len(got) != 1 {
+		t.Fatalf("after removal = %#v, %v", got, err)
+	}
+}

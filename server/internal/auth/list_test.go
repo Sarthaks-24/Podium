@@ -194,3 +194,11 @@ func TestBootstrapFollowsGmailDots(t *testing.T) {
 		t.Errorf("%d rows, role %q; want the one listed row made owner", n, role)
 	}
 }
+
+func TestListedPersonUsesGmailDotMatching(t *testing.T) {
+	s, _ := newService(t, "owner@example.edu", "ab@gmail.com")
+	got, found, err := s.ListedPerson(context.Background(), "a.b@gmail.com")
+	if err != nil || !found || got.Email != "ab@gmail.com" {
+		t.Fatalf("ListedPerson = %+v, %v, %v", got, found, err)
+	}
+}

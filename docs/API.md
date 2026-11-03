@@ -716,6 +716,9 @@ Every route here needs the organiser role and manage access to the contest. List
 | `GET /api/admin/contests` | `?archived=1` to include archived contests | 200 `{contests:[AdminContest], server_now}`; only contests the caller manages are listed; rows leave out `extensions` and `queue` and send `unanswered` as 0 |
 | `POST /api/admin/contests` | `ContestEdit` and `client_key` | 201 `AdminContest`, unpublished; a repeated `client_key` (v4) answers with the contest the first request made |
 | `GET /api/admin/contests/{id}` | | 200 `AdminContest` |
+| `GET /api/admin/contests/{id}/organisers` | | 200 `{organisers:[{user_id,email,name,role,added_at}], server_now}` |
+| `POST /api/admin/contests/{id}/organisers` | `{"email":"person@example.edu"}`; resolves listed addresses with the same Gmail dot matching as sign-in; only enabled organiser, admin or owner accounts qualify | 200 organiser row; an existing member is left unchanged |
+| `DELETE /api/admin/contests/{id}/organisers/{user}` | | 204; removing membership takes effect on the next request |
 | `PUT /api/admin/contests/{id}` | `ContestEdit`; fields left out keep their value | 200 `AdminContest` |
 | `DELETE /api/admin/contests/{id}` | | 204: archived, nothing deleted |
 | `POST /api/admin/contests/{id}/clone` | `{title, starts_at, ends_at}` (`title` empty keeps the old one; `slug` is accepted and ignored) | 201 `AdminContest`: settings, problems and organisers copied atomically; the cloner is added, extensions and editorial are not copied |

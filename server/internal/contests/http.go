@@ -81,6 +81,7 @@ type contestJSON struct {
 // Handlers serve the contest routes, the students' and the organisers'.
 type Handlers struct {
 	Contests    *Service
+	Auth        *auth.Service
 	Submissions *submissions.Service
 	Problems    *problems.Service
 	Log         *slog.Logger

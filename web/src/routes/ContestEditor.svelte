@@ -29,6 +29,7 @@
     toLocalInput,
     type AdminContest,
     type AdminContestProblem,
+    type ContestOrganiser,
     type ContestSettings,
   } from '../lib/contests';
   import { focusFirstInvalid, keepHeadingFocus } from '../lib/focus';
@@ -132,6 +133,27 @@
   let aiError = $state('');
 
   let duplicating = $state(false);
+  let organisers = $state<ContestOrganiser[]>([]);
+  let organiserEmail = $state('');
+  let organiserError = $state('');
+  let organisersBusy = $state(false);
+
+  async function loadOrganisers() {
+    try { organisers = (await getJSON<{ organisers: ContestOrganiser[] }>(`${base}/organisers`)).organisers; }
+    catch (e) { organiserError = errorText(e); }
+  }
+  async function addOrganiser() {
+    organisersBusy = true; organiserError = '';
+    try { await sendJSON('POST', `${base}/organisers`, { email: organiserEmail }); organiserEmail = ''; await loadOrganisers(); }
+    catch (e) { organiserError = errorText(e); }
+    finally { organisersBusy = false; }
+  }
+  async function removeOrganiser(userId: number) {
+    organisersBusy = true; organiserError = '';
+    try { await sendJSON('DELETE', `${base}/organisers/${userId}`); await loadOrganisers(); }
+    catch (e) { organiserError = errorText(e); }
+    finally { organisersBusy = false; }
+  }
 
   // One confirmation dialog for every action that asks first.
   let confirm = $state<null | {
@@ -735,7 +757,7 @@
   onMount(() => {
     setTitle(routeTitle('admin-contest'));
     if (!isOrganiser) page.forbid();
-    else void load();
+    else { void load(); void loadOrganisers(); }
     const unguard = setNavigationGuard((to) => {
       if (!dirty) return true;
       leaveTo = to;
@@ -830,6 +852,22 @@
 
     <div class="page-split-main editor-main">
       <form class="settings" novalidate onsubmit={(e) => e.preventDefault()} aria-label="Contest setup">
+        <section class="section" aria-labelledby="organisers-title">
+          <h2 id="organisers-title">Organisers</h2>
+          <p class="muted">People listed as organisers can manage this contest. This does not change their site role.</p>
+          <ul>
+            {#each organisers as person (person.user_id)}
+              <li>{person.name || person.email} <span class="muted">{person.email}</span>
+                {#if person.user_id !== session.user?.id}<button type="button" class="btn btn-danger-quiet btn-compact" disabled={organisersBusy} onclick={() => removeOrganiser(person.user_id)}>Remove {person.email}</button>{/if}
+              </li>
+            {/each}
+          </ul>
+          <div class="row">
+            <div class="field grow"><label for="organiser-email">Add a listed organiser by email</label><input id="organiser-email" class="input" type="email" autocomplete="off" bind:value={organiserEmail} /></div>
+            <button type="button" class="btn btn-secondary" disabled={organisersBusy || !organiserEmail.trim()} onclick={addOrganiser}>Add organiser</button>
+          </div>
+          {#if organiserError}<p class="field-error" role="alert">{organiserError}</p>{/if}
+        </section>
         <div class="field">
           <label for="f-title">Title</label>
           <input

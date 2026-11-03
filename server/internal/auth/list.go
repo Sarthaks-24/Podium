@@ -92,6 +92,21 @@ func listed(ctx context.Context, q querier, email string) (id int64, stored stri
 	return 0, "", false, rows.Err()
 }
 
+// ListedPerson resolves an address using the same Gmail-aware matching as sign-in.
+// It returns no person when the address is absent or disabled.
+func (s *Service) ListedPerson(ctx context.Context, email string) (User, bool, error) {
+	var u User
+	id, _, found, err := listed(ctx, s.DB, email)
+	if err != nil || !found {
+		return u, found, err
+	}
+	err = s.DB.QueryRowContext(ctx, `SELECT id, email, name, role, disabled FROM users WHERE id = ?`, id).Scan(&u.ID, &u.Email, &u.Name, &u.Role, &u.Disabled)
+	if err != nil {
+		return User{}, false, err
+	}
+	return u, !u.Disabled, nil
+}
+
 // recordRefusal notes a refused address in its own transaction (the
 // sign-in's is rolled back) and keeps only the MaxRefused most recent.
 func (s *Service) recordRefusal(ctx context.Context, email string) error {
