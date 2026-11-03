@@ -705,7 +705,9 @@ step_backup() {
   install -m 644 "$HERE/systemd/podium-backup.service" "$HERE/systemd/podium-backup.timer" /etc/systemd/system/
   systemctl daemon-reload
   systemctl enable --now podium-backup.timer
-  systemctl list-timers podium-backup.timer --no-pager | head -n 2
+  # No "| head": under pipefail, head closing the pipe before systemctl's
+  # footer kills the whole script silently (seen on an upgrade, 2026-11-04).
+  systemctl list-timers podium-backup.timer --no-pager --no-legend
 }
 
 step_alerts() {
@@ -722,7 +724,7 @@ step_alerts() {
     "$HERE/systemd/podium-check.timer" /etc/systemd/system/
   systemctl daemon-reload
   systemctl enable --now podium-check.timer
-  systemctl list-timers podium-check.timer --no-pager | head -n 2
+  systemctl list-timers podium-check.timer --no-pager --no-legend
 }
 
 # --- upgrade, rollback, verify ---------------------------------------------

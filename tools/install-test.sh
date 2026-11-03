@@ -350,5 +350,14 @@ else
 fi
 if fn checklist | grep -q 'the same$' || ! fn checklist | grep -q 'token is already set'; then fail "the first-run checklist still asks for the judge token"; else pass "the first-run checklist no longer asks for the judge token"; fi
 
+# Under pipefail, systemctl piped into head dies of SIGPIPE when head exits
+# before systemctl writes its footer, and set -e ends the script without a
+# word: an upgrade stopped after step 5's backup timer (2026-11-04).
+if grep -nE '^[^#]*systemctl[^|#]*\|[[:space:]]*head' "$script"; then
+  fail "install.sh pipes systemctl into head, which can end the script silently under pipefail"
+else
+  pass "install.sh never pipes systemctl into head"
+fi
+
 if (( fails > 0 )); then echo "$fails install.sh check(s) failed"; exit 1; fi
 echo "install.sh checks passed"
