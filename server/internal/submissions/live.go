@@ -3,10 +3,12 @@ package submissions
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"sync"
 	"time"
 
 	"github.com/Sarthaks-24/podium/internal/judgeapi"
+	"github.com/Sarthaks-24/podium/internal/safego"
 )
 
 // publisher sends run and submission updates to their authors' event
@@ -56,7 +58,7 @@ func (s *Service) OnJobChange(jobID int64, kind string, _ int64) {
 	if s.Hub == nil || (kind != judgeapi.KindSubmit && kind != judgeapi.KindRun) {
 		return
 	}
-	go func() {
+	safego.Go(slog.Default(), "submission-live-update", func() {
 		unlock := s.pub.lock(jobID)
 		defer unlock()
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -95,7 +97,7 @@ func (s *Service) OnJobChange(jobID int64, kind string, _ int64) {
 		if s.pub.changed(jobID, signature(v, opts.Coarse), finished) {
 			s.Hub.Publish(user, "submission", v)
 		}
-	}()
+	})
 }
 
 // ViewFor is how a viewer sees their own submission in a contest (0

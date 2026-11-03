@@ -5,8 +5,11 @@ package schedule
 
 import (
 	"context"
+	"log/slog"
 	"sync"
 	"time"
+
+	"github.com/Sarthaks-24/podium/internal/safego"
 )
 
 // Task is one background job.
@@ -34,10 +37,10 @@ func Start(tasks []Task) *Scheduler {
 	s := &Scheduler{cancel: cancel}
 	for _, t := range tasks {
 		s.wg.Add(1)
-		go func() {
+		safego.Go(slog.Default(), "schedule-loop:"+t.Name, func() {
 			defer s.wg.Done()
 			loop(ctx, t)
-		}()
+		})
 	}
 	return s
 }
@@ -51,7 +54,7 @@ func loop(ctx context.Context, t Task) {
 			return
 		case <-timer.C:
 		}
-		t.Run(ctx)
+		<-safego.Go(slog.Default(), "schedule-task:"+t.Name, func() { t.Run(ctx) })
 		timer.Reset(t.Every)
 	}
 }

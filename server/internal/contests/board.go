@@ -4,10 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"strconv"
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/Sarthaks-24/podium/internal/safego"
 )
 
 // Variants of the board.
@@ -211,29 +214,31 @@ func (s *Service) scheduleRefresh(id int64, delay time.Duration) {
 	s.board.refresh[id] = true
 	s.board.mu.Unlock()
 	s.after(max(delay, 0), func() {
-		s.board.mu.Lock()
-		delete(s.board.refresh, id)
-		var variants []string
-		for k, e := range s.board.entries {
-			if k.id == id && e.board != nil {
-				variants = append(variants, k.variant)
+		<-safego.Go(slog.Default(), "contest-board-refresh", func() {
+			s.board.mu.Lock()
+			delete(s.board.refresh, id)
+			var variants []string
+			for k, e := range s.board.entries {
+				if k.id == id && e.board != nil {
+					variants = append(variants, k.variant)
+				}
 			}
-		}
-		s.board.mu.Unlock()
-		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-		defer cancel()
-		c, err := s.Get(ctx, id)
-		if err != nil {
-			s.scheduleRefresh(id, refreshRetryDelay)
-			return
-		}
-		for _, v := range variants {
-			if _, err := s.Board(ctx, c, v); err != nil {
+			s.board.mu.Unlock()
+			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			defer cancel()
+			c, err := s.Get(ctx, id)
+			if err != nil {
 				s.scheduleRefresh(id, refreshRetryDelay)
 				return
 			}
-		}
-		s.notifyStandings(ctx, c)
+			for _, v := range variants {
+				if _, err := s.Board(ctx, c, v); err != nil {
+					s.scheduleRefresh(id, refreshRetryDelay)
+					return
+				}
+			}
+			s.notifyStandings(ctx, c)
+		})
 	})
 }
 

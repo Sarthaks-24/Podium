@@ -13,6 +13,7 @@ import (
 
 	"github.com/Sarthaks-24/podium/internal/contests"
 	"github.com/Sarthaks-24/podium/internal/problems"
+	"github.com/Sarthaks-24/podium/internal/safego"
 )
 
 // Errors the API maps to status codes.
@@ -68,7 +69,7 @@ func (s *Service) Start(ctx context.Context, contestID, by int64) (int64, error)
 		return 0, err
 	}
 	id, _ := res.LastInsertId()
-	go func() {
+	safego.Go(s.Log, "integrity-check", func() {
 		defer s.done()
 		if s.Hold != nil {
 			s.Hold()
@@ -78,7 +79,7 @@ func (s *Service) Start(ctx context.Context, contestID, by int64) (int64, error)
 		if err := s.Check(ctx, id, contestID); err != nil {
 			s.failRun(id, contestID, err)
 		}
-	}()
+	})
 	return id, nil
 }
 

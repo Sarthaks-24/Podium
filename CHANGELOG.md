@@ -13,6 +13,7 @@ Dated entries per release. Unreleased work is listed at the top.
 - Alert throttling now starts only after a successful webhook post, so a failed delivery can be retried immediately.
 - A repeated identical judging progress result is now idempotent, allowing the worker to finish after a lost report response.
 - Contest submissions keep the request arrival timestamp used for the open-window decision, so queue delays do not shift freeze ordering or weaken the gap rule.
+- Background scheduled checks and live updates now recover from panics and log the task name and stack, allowing scheduler loops to continue.
 
 ### v4.01 judge recovery (2026-11-03)
 

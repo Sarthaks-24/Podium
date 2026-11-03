@@ -1,7 +1,10 @@
 package schedule
 
 import (
+	"bytes"
 	"context"
+	"log/slog"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -51,4 +54,32 @@ func TestStopGivesUpAfterTimeout(t *testing.T) {
 		t.Error("Stop reported done while a run was stuck")
 	}
 	close(release)
+}
+
+func TestPanickingTaskLogsAndLoopContinues(t *testing.T) {
+	var logs bytes.Buffer
+	previous := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&logs, nil)))
+	t.Cleanup(func() { slog.SetDefault(previous) })
+	var calls atomic.Int64
+	continued := make(chan struct{})
+	s := Start([]Task{{Name: "recoverable", Every: time.Millisecond, Run: func(context.Context) {
+		if calls.Add(1) == 1 {
+			panic("task failure")
+		}
+		select {
+		case <-continued:
+		default:
+			close(continued)
+		}
+	}}})
+	select {
+	case <-continued:
+	case <-time.After(time.Second):
+		t.Fatal("scheduler did not continue after panic")
+	}
+	s.Stop(time.Second)
+	if !strings.Contains(logs.String(), "task failure") {
+		t.Fatalf("panic was not logged: %s", logs.String())
+	}
 }
