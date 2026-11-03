@@ -137,6 +137,7 @@ test('a student agrees to the honour code, solves, reads an announcement and ask
   await expect(facts).toContainText('Length2 h');
   await expect(facts).toContainText('LanguagesC++17, Java 21, Python 3');
   await expect(facts).toContainText('Wait between submissions30 s');
+  await expect(page.getByText('Organisers: Priya Sharma and Ravi Kumar')).toBeVisible();
   await expect(page.getByText('It is deleted 180 days after the contest.', { exact: false })).toBeVisible();
   await expect(page.getByText(/^The contest started at \d{2}:\d{2} and your time is running\. It ends in/)).toBeVisible();
   await page.getByRole('button', { name: 'Read the rules and how Run and Submit work' }).click();

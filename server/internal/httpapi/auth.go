@@ -115,12 +115,12 @@ func (d Deps) authConfig(w http.ResponseWriter, r *http.Request) {
 		d.internalError(w, r, err)
 		return
 	}
-	// The organisation's own address replaces the owner's personal one as
-	// soon as an owner enters it (pre-auth review, observation 1).
+	// Only the address an owner enters in Settings, Organisation is shown as
+	// the organisers' contact. The owner's own account (PODIUM_OWNER_EMAIL)
+	// is often the developer's, not the organisers', so it is never a
+	// fallback (owner, 2026-11-03); with no address the pages leave the
+	// contact line out.
 	contactEmail := org.ContactEmail
-	if contactEmail == "" {
-		contactEmail = d.Auth.OwnerEmail
-	}
 	open, err := d.Auth.SignInOpen(r.Context())
 	if err != nil {
 		d.internalError(w, r, err)

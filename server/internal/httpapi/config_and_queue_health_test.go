@@ -18,7 +18,8 @@ func TestConfigCarriesOrganisationAndRetention(t *testing.T) {
 	s := newSite(t)
 	anon := s.browser()
 	code, body := anon.do("GET", "/api/auth/config", nil, "")
-	if code != 200 || body["contact_email"] != "owner@college.edu" {
+	// No contact entered yet: the owner's own address is never shown.
+	if code != 200 || body["contact_email"] != "" {
 		t.Fatalf("config: %d %v", code, body)
 	}
 	org := body["organisation"].(map[string]any)
@@ -88,11 +89,11 @@ func TestConfigCarriesOrganisationAndRetention(t *testing.T) {
 	if code, _ := owner.do("PUT", "/api/admin/site-settings", map[string]any{"name": "x"}, s.srv.URL); code != 400 {
 		t.Errorf("partial settings: %d", code)
 	}
-	// Clearing the contact email falls back to the owner's address.
+	// Clearing the contact email shows none, not the owner's address.
 	settings["contact_email"] = ""
 	owner.do("PUT", "/api/admin/site-settings", settings, s.srv.URL)
-	if _, body = anon.do("GET", "/api/auth/config", nil, ""); body["contact_email"] != "owner@college.edu" {
-		t.Errorf("fallback contact %v", body["contact_email"])
+	if _, body = anon.do("GET", "/api/auth/config", nil, ""); body["contact_email"] != "" {
+		t.Errorf("contact after clearing %v, want none", body["contact_email"])
 	}
 }
 

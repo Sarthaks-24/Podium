@@ -27,6 +27,9 @@
     "ends_at": 1800007200000,
     "started_at": 1800000000000
   },
+  "organised_by": [
+    "Owner"
+  ],
   "organiser": false,
   "problem_count": 2,
   "problems": [

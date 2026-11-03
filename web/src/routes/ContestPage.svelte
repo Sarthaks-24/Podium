@@ -44,6 +44,7 @@
     formatSpan,
     isForContest,
     lengthText,
+    organisedByText,
     RECORDED_SENTENCE,
     allowedLanguages,
     rulesSentences,
@@ -559,6 +560,9 @@
       </p>
     </PageHeader>
     <div class="before">
+      {#if organisedByText(contest.organised_by) !== ''}
+        <p class="muted">Organisers: {organisedByText(contest.organised_by)}</p>
+      {/if}
       <p class="lead preview-lead">
         {#if readonlyView}Read-only view: statements and standings as students see them. Starting the contest and submitting code are unavailable.{:else}Student view: the problems and the standings as students see them. Students also get the honour code and a start button, left out here.{/if}
       </p>
@@ -631,6 +635,10 @@
       <p class="muted small">
         <button type="button" class="btn btn-link btn-compact help-link" onclick={() => (shell.help = true)}>Read the rules and how Run and Submit work</button>
       </p>
+      <!-- Below the start button, so the button stays in the first screen on a phone. -->
+      {#if organisedByText(contest.organised_by) !== ''}
+        <p class="muted small">Organisers: {organisedByText(contest.organised_by)}</p>
+      {/if}
       <StreamNotice mode={streamMode} onresume={() => stream?.resume()} />
       {#if contest.description_md.trim() !== ''}
         <div class="description"><Markdown source={contest.description_md} /></div>

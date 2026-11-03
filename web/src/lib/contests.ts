@@ -167,6 +167,13 @@ export interface Contest extends ContestSummary {
   second_session?: boolean;
   /** True for an organiser, who sees this page as "Student view". */
   organiser: boolean;
+  /** Names of the contest's listed organisers, the creator first. */
+  organised_by: string[];
+}
+
+/** "Priya, Ravi and Asha", or "" when nobody is listed. */
+export function organisedByText(names: readonly string[] | undefined): string {
+  return names && names.length > 0 ? new Intl.ListFormat('en', { type: 'conjunction' }).format(names) : '';
 }
 
 /** A message shown in the banner above the workspace. */

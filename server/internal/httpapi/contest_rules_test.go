@@ -237,7 +237,7 @@ func TestOrganiserRoutes(t *testing.T) {
 	lead := s.signedIn("lead@college.edu", "Lead")
 	co := s.signedIn("co@college.edu", "Co")
 	outsider := s.signedIn("outsider@college.edu", "Outsider")
-	s.signedIn("asha@college.edu", "Asha")
+	asha := s.signedIn("asha@college.edu", "Asha")
 	problem := s.importProblem(owner, "organiser-routes")
 	start := time.Now().Add(time.Hour).Truncate(time.Minute)
 	id := s.createContest(owner, "organiser-routes", start, map[string]int64{"A": problem}, nil)
@@ -275,6 +275,10 @@ func TestOrganiserRoutes(t *testing.T) {
 	}
 	if addedRows != 2 || removedRows != 1 {
 		t.Errorf("audit rows: added %d removed %d, want 2 and 1", addedRows, removedRows)
+	}
+	// Students see who runs the contest: the creator first, by name.
+	if _, page := asha.do("GET", "/api/contests/organiser-routes", nil, ""); fmt.Sprint(page["organised_by"]) != "[Owner Lead]" {
+		t.Errorf("organised_by = %v, want [Owner Lead]", page["organised_by"])
 	}
 	if _, err := s.db.Exec("UPDATE contests SET published = 0, archived = 1 WHERE id = ?", id); err != nil {
 		t.Fatal(err)

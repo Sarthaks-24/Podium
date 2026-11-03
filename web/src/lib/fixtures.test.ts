@@ -128,6 +128,7 @@ const CONTEST: Keys<Contest> = {
   accepted: 'required',
   second_session: 'optional',
   organiser: 'required',
+  organised_by: 'required',
 };
 const SAMPLE: Keys<Sample> = { idx: 'required', input: 'required', output: 'required', truncated: 'required' };
 const WORKSPACE: Keys<Workspace> = {

@@ -68,6 +68,7 @@ function contest(over: Partial<Contest> = {}): Contest {
     server_now: T,
     accepted: false,
     organiser: false,
+    organised_by: [],
     ...over,
   };
 }

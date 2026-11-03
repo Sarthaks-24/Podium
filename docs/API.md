@@ -121,7 +121,7 @@ What the sign-in page, the footer and the privacy page need before anyone signs 
 
 | Field | Meaning |
 |---|---|
-| `contact_email` | the address to show as the organisers' contact: `organisation.contact_email` once an owner has entered one, otherwise `PODIUM_OWNER_EMAIL` |
+| `contact_email` | the address to show as the organisers' contact: `organisation.contact_email`, or `""` until an owner enters one (pages then leave the contact line out). `PODIUM_OWNER_EMAIL` is never shown here: that account is often the developer's |
 | `mode` | `testing`, `dev` or `production`. In `testing` the web app shows the test sign-in form and the testing-mode banner instead of "Continue with Google" |
 | `signin_open` | `false` while an owner or an admin has closed sign-in (V4-17); the sign-in page then says so |
 | `organisation` | the site settings an owner enters under Settings, Organisation: `name`, `contact_email`, `phone`, `privacy_contact`, each `""` until entered; a page shows nothing for an empty field |

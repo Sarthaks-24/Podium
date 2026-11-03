@@ -42,6 +42,29 @@ func (s *Service) Organisers(ctx context.Context, contestID int64) ([]Organiser,
 	return out, rows.Err()
 }
 
+// OrganiserNames are the names the contest page shows as its organisers:
+// listed people who are still enabled staff, in the order they were added
+// (the creator first), each by name or, without one, by email.
+func (s *Service) OrganiserNames(ctx context.Context, contestID int64) ([]string, error) {
+	rows, err := s.DB.QueryContext(ctx, `SELECT coalesce(nullif(trim(u.name), ''), u.email) FROM contest_organisers o
+		JOIN users u ON u.id = o.user_id
+		WHERE o.contest_id = ? AND u.disabled = 0 AND u.role IN ('organiser', 'admin', 'owner')
+		ORDER BY o.added_at, o.user_id`, contestID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []string{}
+	for rows.Next() {
+		var name string
+		if err := rows.Scan(&name); err != nil {
+			return nil, err
+		}
+		out = append(out, name)
+	}
+	return out, rows.Err()
+}
+
 // AddOrganiser lists userID as a manager of the contest, audited for by.
 // Adding someone already listed writes nothing and returns their
 // original added_at.

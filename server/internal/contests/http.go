@@ -69,6 +69,9 @@ type contestJSON struct {
 	HonourText    string    `json:"honour_text"`
 	Accepted      bool      `json:"accepted"`
 	Organiser     bool      `json:"organiser"`
+	// OrganisedBy names the contest's listed organisers for everyone who can
+	// open the page, in the order they were added (the creator first).
+	OrganisedBy []string `json:"organised_by"`
 	// ID is sent to organisers only, so Student view can link back to the live view.
 	ID                   int64                `json:"id,omitempty"`
 	Problems             []contestProblemJSON `json:"problems"`
@@ -250,6 +253,9 @@ func (d *Handlers) contestDetail(ctx context.Context, c *Contest, u auth.User, a
 			}
 			out.Problems = append(out.Problems, pj)
 		}
+	}
+	if out.OrganisedBy, err = d.Contests.OrganiserNames(ctx, c.ID); err != nil {
+		return nil, err
 	}
 	if out.Announcements, err = d.Contests.Announcements(ctx, c.ID); err != nil {
 		return nil, err

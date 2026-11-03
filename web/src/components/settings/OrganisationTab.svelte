@@ -46,7 +46,7 @@
       });
       org = { ...saved };
       runMode.organisation = { ...saved };
-      if (saved.contact_email !== '') runMode.contactEmail = saved.contact_email;
+      runMode.contactEmail = saved.contact_email;
       showToast('Saved the organisation details');
     } catch (err) {
       if (settingsRefused(err, onforbidden)) return;
@@ -65,8 +65,8 @@
 <section class="section" aria-labelledby="org-heading">
   <h2 id="org-heading">Organisation details</h2>
   <p class="intro muted">
-    Shown on the sign-in page, in the footer and on the privacy page. Use a role address as the contact email, so your own address stops
-    appearing on public pages.
+    Shown on the sign-in page, in the footer and on the privacy page. Until a contact email is entered, those pages show no contact line.
+    Use the organisers' address, not the developer's.
   </p>
   <form id="org-form" class="org" novalidate onsubmit={save}>
     <div class="fields">

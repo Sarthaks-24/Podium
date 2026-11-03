@@ -318,6 +318,7 @@ export async function mockApi(page: Page, options: Options = {}) {
         : null,
     accepted: (state.who === 'organiser' || state.who === 'organiser-view') ? false : state.accepted,
     organiser: state.who === 'organiser',
+    organised_by: ['Priya Sharma', 'Ravi Kumar'],
     announcements: state.announcements,
     my_clarifications: state.clarifications,
     public_clarifications: state.publicClarifications,
