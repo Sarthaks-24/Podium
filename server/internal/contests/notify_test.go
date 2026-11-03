@@ -219,3 +219,51 @@ func TestOrganiserEventsReachAdmins(t *testing.T) {
 		t.Error("a demoted listed organiser still got a manager event")
 	}
 }
+
+// An invite-only contest's public events reach invited students and staff,
+// never an uninvited student; a student who leaves the sign-in list loses
+// their invites with their row.
+func TestInvitedContestEventsReachInvitedStudents(t *testing.T) {
+	r := newSvc(t)
+	ctx := context.Background()
+	hub := &events.Hub{}
+	r.svc.Hub = hub
+	c := r.contest(t, nil)
+	if _, err := r.svc.DB.Exec("UPDATE contests SET published = 1, audience = 'invited' WHERE id = ?", c.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := r.svc.DB.Exec("INSERT INTO contest_invites (contest_id, user_id, invited_by, invited_at) VALUES (?, 3, 1, 0)", c.ID); err != nil {
+		t.Fatal(err)
+	}
+	c, err := r.svc.Get(ctx, c.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	clients := map[int64]*events.Client{}
+	for _, id := range []int64{1, 2, 3} {
+		cl, err := hub.SubscribeTagged(id, "t")
+		if err != nil {
+			t.Fatal(err)
+		}
+		clients[id] = cl
+	}
+	r.svc.publish(ctx, c, false, "test", nil)
+	got := map[int64]bool{}
+	for id, cl := range clients {
+		select {
+		case <-cl.C:
+			got[id] = true
+		default:
+		}
+	}
+	if !got[1] || got[2] || !got[3] {
+		t.Errorf("public event reached %v, want owner 1 and invited student 3, not uninvited student 2", got)
+	}
+	if _, err := r.svc.DB.Exec("DELETE FROM users WHERE id = 3"); err != nil {
+		t.Fatal(err)
+	}
+	var left int
+	if err := r.svc.DB.QueryRow("SELECT count(*) FROM contest_invites WHERE contest_id = ?", c.ID).Scan(&left); err != nil || left != 0 {
+		t.Errorf("invites after the student left the list = %d, err %v; want 0", left, err)
+	}
+}

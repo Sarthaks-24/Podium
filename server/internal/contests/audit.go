@@ -67,7 +67,11 @@ const (
 	// contest: {"user_id", "email"}.
 	AuditOrganiserAdded   = "organiser_added"
 	AuditOrganiserRemoved = "organiser_removed"
-	AuditArchive          = "archive"
+	// AuditInvitesAdded is {"count"} (and "pasted": true for a paste);
+	// AuditInviteRemoved is {"user_id"}.
+	AuditInvitesAdded  = "invites_added"
+	AuditInviteRemoved = "invite_removed"
+	AuditArchive       = "archive"
 	// AuditDecision is an integrity decision about one student:
 	// {"user_id", "decision"}; the reason stays in integrity_cases.
 	AuditDecision = "integrity_decision"
@@ -171,6 +175,7 @@ func settingChanges(c *Contest, e Edit) map[string]change {
 	add("freeze_minutes", int(c.Schedule.Freeze/time.Minute), e.FreezeMinutes)
 	add("published", c.Published, e.Published)
 	add("practice_after_end", c.PracticeAfterEnd, e.PracticeAfterEnd)
+	add("audience", c.Audience, e.Audience)
 	add("min_gap_s", int(c.MinGap/time.Second), e.MinGapS)
 	add("max_per_problem", c.MaxPerProblem, e.MaxPerProblem)
 	add("languages", nonNilStrings(c.Languages), nonNilStrings(e.Languages))

@@ -72,10 +72,13 @@ type Contest struct {
 	// contest: every window is over at the close plus this.
 	MaxExtension time.Duration
 	Archived     bool
-	CreatedBy    int64
-	CreatedAt    time.Time
-	UpdatedAt    time.Time
-	Problems     []ContestProblem
+	// Audience is AudienceEveryone or AudienceInvited (stage I): who may
+	// take part besides staff.
+	Audience  string
+	CreatedBy int64
+	CreatedAt time.Time
+	UpdatedAt time.Time
+	Problems  []ContestProblem
 }
 
 // ExamOptions are the measures an organiser can turn on for an
@@ -154,7 +157,19 @@ type Edit struct {
 	Languages                []string
 	HonourText               string
 	Exam                     ExamOptions
+	// Audience is AudienceEveryone (the default when empty) or
+	// AudienceInvited.
+	Audience string
 }
+
+// The two audiences a contest can have.
+const (
+	// AudienceEveryone lets every student who can sign in take part.
+	AudienceEveryone = "everyone"
+	// AudienceInvited lets only the students invited to the contest take
+	// part; staff see it as before.
+	AudienceInvited = "invited"
+)
 
 // Service runs contests.
 type Service struct {
@@ -238,6 +253,12 @@ func (e *Edit) check() FieldErrors {
 			errs["languages"] = "Choose languages from the list."
 		}
 	}
+	if e.Audience == "" {
+		e.Audience = AudienceEveryone
+	}
+	if e.Audience != AudienceEveryone && e.Audience != AudienceInvited {
+		errs["audience"] = "Choose everyone who can sign in, or only invited students."
+	}
 	if len(errs) == 0 {
 		return nil
 	}
@@ -275,12 +296,12 @@ func (s *Service) Create(ctx context.Context, e Edit, by int64, key string) (*Co
 		var id int64
 		err = tx.QueryRowContext(ctx, `INSERT INTO contests (slug, title, description_md, starts_at, ends_at,
 			freeze_minutes, published, practice_after_end, min_gap_s, max_per_problem, languages, honour_text, hold_reveal,
-			full_screen, count_focus, block_paste, block_copy, created_by, created_at, updated_at, client_key)
-			VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
+			full_screen, count_focus, block_paste, block_copy, created_by, created_at, updated_at, client_key, audience)
+			VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
 			slug, e.Title, e.Description, e.StartsAt.UnixMilli(), e.EndsAt.UnixMilli(),
 			e.FreezeMinutes, e.PracticeAfterEnd, e.MinGapS, e.MaxPerProblem, string(langs), e.HonourText, e.HoldReveal,
 			e.Exam.FullScreen, e.Exam.CountFocus, e.Exam.BlockPaste, e.Exam.BlockCopy,
-			nullID(by), now, now, key).Scan(&id)
+			nullID(by), now, now, key, e.Audience).Scan(&id)
 		if isUniqueSlug(err) {
 			tx.Rollback()
 			continue
@@ -348,16 +369,27 @@ func (s *Service) Update(ctx context.Context, id int64, e Edit, by Actor) (*Cont
 		return nil, err
 	}
 	defer tx.Rollback()
+	// Limiting a contest to invited students after someone started would
+	// lock them out mid-contest; opening it to everyone is always allowed.
+	if c.Audience == AudienceEveryone && e.Audience == AudienceInvited {
+		var started bool
+		if err := tx.QueryRowContext(ctx, `SELECT EXISTS (SELECT 1 FROM contest_starts WHERE contest_id = ?)`, id).Scan(&started); err != nil {
+			return nil, err
+		}
+		if started {
+			return nil, FieldErrors{"audience": "Students have already started this contest, so it can no longer be limited to invited students."}
+		}
+	}
 	// The slug was derived at create and stays, so links keep working.
 	e.Slug = c.Slug
 	langs, _ := json.Marshal(e.Languages)
 	_, err = tx.ExecContext(ctx, `UPDATE contests SET title = ?, description_md = ?, starts_at = ?, ends_at = ?,
 		freeze_minutes = ?, published = ?, practice_after_end = ?, min_gap_s = ?, max_per_problem = ?, languages = ?, honour_text = ?,
-		hold_reveal = ?, full_screen = ?, count_focus = ?, block_paste = ?, block_copy = ?, updated_at = ? WHERE id = ?`,
+		hold_reveal = ?, full_screen = ?, count_focus = ?, block_paste = ?, block_copy = ?, audience = ?, updated_at = ? WHERE id = ?`,
 		e.Title, e.Description, e.StartsAt.UnixMilli(), e.EndsAt.UnixMilli(),
 		e.FreezeMinutes, e.Published, e.PracticeAfterEnd,
 		e.MinGapS, e.MaxPerProblem, string(langs), e.HonourText, e.HoldReveal,
-		e.Exam.FullScreen, e.Exam.CountFocus, e.Exam.BlockPaste, e.Exam.BlockCopy, s.now().UnixMilli(), id)
+		e.Exam.FullScreen, e.Exam.CountFocus, e.Exam.BlockPaste, e.Exam.BlockCopy, e.Audience, s.now().UnixMilli(), id)
 	if err != nil {
 		return nil, err
 	}
@@ -422,7 +454,7 @@ const contestColumns = `id, slug, title, description_md, starts_at, ends_at, fre
 	languages, honour_text, editorial_md, editorial_published, paused, extended_minutes, hold_reveal, coalesce(revealed_at, 0),
 	full_screen, count_focus, block_paste, block_copy, archived,
 	coalesce(created_by, 0), created_at, updated_at,
-	(SELECT coalesce(max(minutes), 0) FROM contest_extensions e WHERE e.contest_id = contests.id)`
+	(SELECT coalesce(max(minutes), 0) FROM contest_extensions e WHERE e.contest_id = contests.id), audience`
 
 func scanContest(sc interface{ Scan(...any) error }) (*Contest, error) {
 	var c Contest
@@ -432,7 +464,7 @@ func scanContest(sc interface{ Scan(...any) error }) (*Contest, error) {
 	err := sc.Scan(&c.ID, &c.Slug, &c.Title, &c.Description, &starts, &ends, &freeze,
 		&c.Published, &c.PracticeAfterEnd, &gap,
 		&c.MaxPerProblem, &langs, &c.HonourText, &c.Editorial, &c.EditorialPublished, &c.Paused, &extended, &c.HoldReveal, &revealed,
-		&c.Exam.FullScreen, &c.Exam.CountFocus, &c.Exam.BlockPaste, &c.Exam.BlockCopy, &c.Archived, &c.CreatedBy, &created, &updated, &maxExt)
+		&c.Exam.FullScreen, &c.Exam.CountFocus, &c.Exam.BlockPaste, &c.Exam.BlockCopy, &c.Archived, &c.CreatedBy, &created, &updated, &maxExt, &c.Audience)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
@@ -915,6 +947,18 @@ func (s *Service) contestAccess(ctx context.Context, c *Contest, v Viewer) (Acce
 	}
 	if !c.Published || c.Archived {
 		return AccessNone, ErrNotFound
+	}
+	if c.Audience == AudienceInvited {
+		// One primary-key lookup on every request, so a change to the
+		// invites applies at once.
+		var invited bool
+		err := s.DB.QueryRowContext(ctx, "SELECT EXISTS (SELECT 1 FROM contest_invites WHERE contest_id = ? AND user_id = ?)", c.ID, v.UserID).Scan(&invited)
+		if err != nil {
+			return AccessNone, err
+		}
+		if !invited {
+			return AccessNone, ErrNotFound
+		}
 	}
 	return AccessParticipate, nil
 }

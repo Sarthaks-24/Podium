@@ -47,6 +47,10 @@ func canonical(email string) string {
 	return e
 }
 
+// Canonical is the form the sign-in list compares addresses in (see
+// canonical), for other packages that match pasted addresses to it.
+func Canonical(email string) string { return canonical(email) }
+
 // isConfiguredOwner reports whether email is PODIUM_OWNER_EMAIL, in any
 // spelling Bootstrap would bind to the same row (Gmail dots, case).
 func (s *Service) isConfiguredOwner(email string) bool {

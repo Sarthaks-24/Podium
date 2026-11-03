@@ -116,6 +116,8 @@ func (d *Handlers) contestError(w http.ResponseWriter, r *http.Request, err erro
 		httpx.WriteError(w, http.StatusConflict, "too_early", err.Error())
 	case errors.Is(err, ErrExtendEnded):
 		httpx.WriteError(w, http.StatusConflict, "contest_ended", err.Error())
+	case errors.Is(err, ErrInvitesLocked):
+		httpx.WriteError(w, http.StatusConflict, "invites_locked", err.Error())
 	default:
 		d.internalError(w, r, err)
 	}

@@ -375,7 +375,8 @@ func TestCallbackWithoutStateIsExpired(t *testing.T) {
 func TestAuthConfig(t *testing.T) {
 	s := newSite(t)
 	code, body := s.browser().do("GET", "/api/auth/config", nil, "")
-	if code != 200 || body["contact_email"] != "owner@college.edu" || body["allowed_domains"] != nil {
+	// The owner's own address is never the contact (owner, 2026-11-03).
+	if code != 200 || body["contact_email"] != "" || body["allowed_domains"] != nil {
 		t.Errorf("config: %d %v", code, body)
 	}
 }

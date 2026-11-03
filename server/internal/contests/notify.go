@@ -72,8 +72,10 @@ func (s *Service) publish(ctx context.Context, c *Contest, organisersOnly bool, 
 		WHERE u.id IN (SELECT value FROM json_each(?)) AND u.disabled = 0 AND (
 			u.role IN ('admin', 'owner')
 			OR (u.role = 'organiser' AND EXISTS (SELECT 1 FROM contest_organisers o WHERE o.contest_id = ? AND o.user_id = u.id))
-			OR (? AND u.role IN ('organiser', 'student'))
-		)`, string(ids), c.ID, publicEvents)
+			OR (? AND u.role = 'organiser')
+			OR (? AND u.role = 'student' AND (? = 'everyone'
+				OR EXISTS (SELECT 1 FROM contest_invites i WHERE i.contest_id = ? AND i.user_id = u.id)))
+		)`, string(ids), c.ID, publicEvents, publicEvents, c.Audience, c.ID)
 	if err != nil {
 		return
 	}
