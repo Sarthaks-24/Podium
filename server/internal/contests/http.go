@@ -57,7 +57,8 @@ type contestProblemJSON struct {
 	// per-problem figure shown, and it says nothing about judging.
 	MySubmissionCount int `json:"my_submission_count"`
 	// RevisionID is the pinned revision.
-	RevisionID int64 `json:"revision_id"`
+	RevisionID  int64  `json:"revision_id"`
+	StatementMD string `json:"statement_md,omitempty"`
 }
 
 // contestJSON is Contest in docs/API.md.
@@ -237,6 +238,13 @@ func (d *Handlers) contestDetail(ctx context.Context, c *Contest, u auth.User, a
 		for _, p := range c.Problems {
 			pj := contestProblemJSON{Label: p.Label, Title: p.Title, MaxScore: p.MaxScore(), MySubmissionCount: counts[p.ProblemID],
 				RevisionID: p.RevisionID}
+			if access == AccessView || access == AccessManage {
+				revision, err := d.Problems.RevisionByID(ctx, p.RevisionID)
+				if err != nil {
+					return nil, err
+				}
+				pj.StatementMD = revision.Statement
+			}
 			if cell, ok := cells[p.Label]; ok {
 				pj.MyScore = httpx.Ptr(cell.Score)
 			}

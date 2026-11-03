@@ -101,7 +101,7 @@ const RULES: Keys<ContestRules> = {
   block_paste: 'optional',
   block_copy: 'optional',
 };
-const PROBLEM: Keys<ContestProblem> = { label: 'required', title: 'required', my_score: 'required', max_score: 'required', my_submission_count: 'optional' };
+const PROBLEM: Keys<ContestProblem> = { label: 'required', title: 'required', statement_md: 'optional', my_score: 'required', max_score: 'required', my_submission_count: 'optional' };
 const ANNOUNCEMENT: Keys<Announcement> = { id: 'required', body_md: 'required', created_at: 'required' };
 const CLARIFICATION: Keys<Clarification> = {
   id: 'required',
@@ -373,3 +373,4 @@ describe('the organiser core path matches the server', () => {
     expect([...missing(STATS, adminStats, 'stats'), ...missingEach(PROBLEM_STATS, adminStats.problems, 'stats.problems')]).toEqual([]);
   });
 });
+

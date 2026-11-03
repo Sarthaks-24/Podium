@@ -28,9 +28,10 @@
     autoRefresh: boolean;
     onrejudge: (row: FeedRow) => void;
     ondecide: (row: FeedRow) => void;
+    oncode: (row: FeedRow) => void;
   }
 
-  let { base, startsAt, labels, students, exam = {}, autoRefresh = $bindable(), onrejudge, ondecide }: Props = $props();
+  let { base, startsAt, labels, students, exam = {}, autoRefresh = $bindable(), onrejudge, ondecide, oncode }: Props = $props();
 
   const recorded = $derived(anyExamOption(exam));
 
@@ -175,6 +176,7 @@
               <td class="verdict"><Badge tone={out.tone}><MonoDigits text={out.text} /></Badge></td>
               {#if recorded}<td class="recorded small"><MonoDigits text={recordedText(row, exam)} /></td>{/if}
               <td class="act">
+                <button type="button" class="btn btn-quiet btn-compact again" aria-label="Code: {row.name}, problem {row.problem_label}" onclick={() => oncode(row)}>Code</button>
                 <button type="button" class="btn btn-quiet btn-compact again" aria-label="Record a decision about {row.name}" onclick={() => ondecide(row)}
                   >Record a decision</button
                 >

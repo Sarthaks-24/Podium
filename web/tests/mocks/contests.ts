@@ -54,6 +54,7 @@ export type Phase = 'upcoming' | 'ready' | 'during' | 'after' | 'practice';
 
 export interface Options {
   who?: 'student' | 'organiser';
+  unlistedOrganiser?: boolean;
   /** Interval covering came from the AI wizard: the contest asks for a reason. */
   aiGate?: boolean;
   phase?: Phase;
@@ -191,7 +192,7 @@ export async function mockApi(page: Page, options: Options = {}) {
   const startsAt = phase === 'upcoming' ? now + 2 * 3_600_000 + 5 * MIN : phase === 'after' || phase === 'practice' ? now - 4 * 3_600_000 : now - 30 * MIN;
   const endsAt = phase === 'after' || phase === 'practice' ? now - 2 * 3_600_000 : startsAt + 2 * 3_600_000;
   const state = {
-    who: options.who ?? 'student',
+    who: options.unlistedOrganiser ? 'organiser-view' : options.who ?? 'student',
     accepted: phase === 'during' || phase === 'after' || phase === 'practice',
     scores: { A: phase === 'after' || phase === 'practice' ? 100 : null, B: phase === 'after' || phase === 'practice' ? 40 : null, C: null } as Record<string, number | null>,
     submissions: [] as Json[],
@@ -284,7 +285,7 @@ export async function mockApi(page: Page, options: Options = {}) {
     state: contestState(),
     my_score: phase === 'after' || phase === 'practice' ? 140 : null,
     max_score: 300,
-    my_window: state.who === 'organiser' ? null : myWindow(),
+    my_window: (state.who === 'organiser' || state.who === 'organiser-view') ? null : myWindow(),
   }) satisfies ContestSummaryLike;
 
   const contest = () => ({
@@ -302,7 +303,7 @@ export async function mockApi(page: Page, options: Options = {}) {
     honour_text:
       'This contest counts. By starting you agree to these rules:\n\n- Work alone.\n- Do not use AI assistants.\n- Podium records your submissions, the characters you type and paste, and when you leave the page. It is deleted 180 days after the contest.',
     problems:
-      state.accepted || state.who === 'organiser' || phase === 'after' || phase === 'practice'
+      state.accepted || (state.who === 'organiser' || state.who === 'organiser-view') || phase === 'after' || phase === 'practice'
         ? PROBLEMS.map((p) => ({
             label: p.label,
             title: p.title,
@@ -310,11 +311,12 @@ export async function mockApi(page: Page, options: Options = {}) {
             max_score: p.max,
             my_submission_count: state.submissions.filter((s) => s.problem_id === p.id).length,
             revision_id: 10 + p.id,
+            ...(state.who === 'organiser-view' ? { statement_md: STATEMENT } : {}),
             statement_updated_at: p.label === 'B' ? state.statementAt : null,
             ...(options.zeroB && p.label === 'B' ? { my_score: 0, zero_by_decision: true, zero_case_id: 12 } : {}),
           }))
         : null,
-    accepted: state.who === 'organiser' ? false : state.accepted,
+    accepted: (state.who === 'organiser' || state.who === 'organiser-view') ? false : state.accepted,
     organiser: state.who === 'organiser',
     announcements: state.announcements,
     my_clarifications: state.clarifications,
@@ -347,7 +349,7 @@ export async function mockApi(page: Page, options: Options = {}) {
       can_submit: phase === 'during' || phase === 'practice',
       practice: phase === 'practice',
       refusal: null,
-      window: state.who === 'organiser' ? null : myWindow(),
+      window: (state.who === 'organiser' || state.who === 'organiser-view') ? null : myWindow(),
       server_now: nowMs(),
     } satisfies WorkspaceLike;
   };
@@ -436,7 +438,7 @@ export async function mockApi(page: Page, options: Options = {}) {
       const url = new URL(req.url());
       const path = url.pathname;
       const method = req.method();
-      const me = state.who === 'organiser' ? ADMIN : STUDENT;
+      const me = (state.who === 'organiser' || state.who === 'organiser-view') ? ADMIN : STUDENT;
 
       if (path === '/api/me') return json(route, 200, me);
       if (path === '/api/auth/config') return json(route, 200, { mode: 'production', contact_email: 'priya@college.edu' });
@@ -894,3 +896,4 @@ export const SCREENS: Screen[] = [
     },
   },
 ];
+

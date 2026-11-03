@@ -864,7 +864,7 @@
           </ul>
           <div class="row">
             <div class="field grow"><label for="organiser-email">Add a listed organiser by email</label><input id="organiser-email" class="input" type="email" autocomplete="off" bind:value={organiserEmail} /></div>
-            <button type="button" class="btn btn-secondary" disabled={organisersBusy || !organiserEmail.trim()} onclick={addOrganiser}>Add organiser</button>
+            <button type="button" class="btn btn-secondary" title={!organiserEmail.trim() ? 'Enter an email address to add an organiser.' : ''} disabled={organisersBusy || !organiserEmail.trim()} onclick={addOrganiser}>Add organiser</button>
           </div>
           {#if organiserError}<p class="field-error" role="alert">{organiserError}</p>{/if}
         </section>

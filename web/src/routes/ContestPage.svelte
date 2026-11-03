@@ -63,6 +63,7 @@
   import { navigate } from '../lib/router.svelte';
   import { adjacentLabel, isPlainKey, isTypingTarget } from '../lib/shortcuts';
   import { shell } from '../lib/shell.svelte';
+  import { session } from '../lib/session.svelte';
   import { placeFigure, placeSentence, type Standings } from '../lib/standings';
   import { LiveSubscription, type StreamMode } from '../lib/stream';
   import { refreshTicker, ticker, useTicker } from '../lib/ticker.svelte';
@@ -123,12 +124,13 @@
     }
   });
   const currentProblem = $derived(problems.find((p) => p.label === current) ?? null);
+  const readonlyView = $derived(session.user?.role === 'organiser' && contest?.organiser === false);
   const practice = $derived(contest?.state === 'practice');
   const banner = $derived(contest ? bannerItems(contest, dismissed, lastRead) : []);
   /** An organiser here is in Student view: no honour code, no start, the problems open as they are. */
-  const preview = $derived(contest?.organiser === true && phase !== null && phase !== 'during' && phase !== 'after');
+  const preview = $derived(readonlyView || (contest?.organiser === true && phase !== null && phase !== 'during' && phase !== 'after'));
   const showWorkspace = $derived(
-    contest !== null && currentProblem !== null && (phase === 'during' || ((phase === 'after' || preview) && label !== '')),
+    !readonlyView && contest !== null && currentProblem !== null && (phase === 'during' || ((phase === 'after' || preview) && label !== '')),
   );
   const totalScore = $derived(problems.reduce((n, p) => n + (p.my_score ?? 0), 0));
   const totalMax = $derived(problems.reduce((n, p) => n + p.max_score, 0));
@@ -549,7 +551,7 @@
 {:else if preview}
   <!-- Student view for an organiser: the problems and the board as students see them, without the start page. -->
   <div class="page page-wide">
-    <PageHeader title={contest.title} back={{ href: contest.id ? `/admin/contests/${contest.id}/console` : '/admin/contests', label: 'Live view' }}>
+    <PageHeader title={contest.title} back={readonlyView ? { href: '/', label: 'Your contests' } : { href: contest.id ? `/admin/contests/${contest.id}/console` : '/admin/contests', label: 'Live view' }}>
       <p class="meta">
         <span><MonoDigits text={formatDateTime(contest.starts_at)} />, {lengthText(contest)}, {contest.problem_count}
           {contest.problem_count === 1 ? 'problem' : 'problems'}.</span>
@@ -558,14 +560,17 @@
     </PageHeader>
     <div class="before">
       <p class="lead preview-lead">
-        Student view: the problems and the standings as students see them. Students also get the honour code and a start button,
-        left out here.
+        {#if readonlyView}Read-only view: statements and standings as students see them. Starting the contest and submitting code are unavailable.{:else}Student view: the problems and the standings as students see them. Students also get the honour code and a start button, left out here.{/if}
       </p>
       <section class="section" aria-labelledby="preview-problems">
         <h2 id="preview-problems">Problems</h2>
         <ul class="preview-list">
           {#each problems as p (p.label)}
-            <li><a href="/contests/{encodeURIComponent(slug)}/problems/{encodeURIComponent(p.label)}">{p.label}. {p.title}</a></li>
+            {#if readonlyView}
+              <li><h3>{p.label}. {p.title}</h3>{#if p.statement_md}<Markdown source={p.statement_md} />{/if}</li>
+            {:else}
+              <li><a href="/contests/{encodeURIComponent(slug)}/problems/{encodeURIComponent(p.label)}">{p.label}. {p.title}</a></li>
+            {/if}
           {/each}
         </ul>
       </section>
@@ -601,6 +606,7 @@
         <div><dt>Languages</dt><dd>{allowedLanguages(contest.rules.languages).map((l) => l.label).join(', ')}</dd></div>
         <div><dt>Wait between submissions</dt><dd><MonoDigits text={`${contest.rules.min_gap_s} s`} /></dd></div>
       </dl>
+      {#if !contest.organiser}<p class="muted small">Organisers of this contest and admins can read the code you submit.</p>{/if}
 
       <section class="honour-panel" aria-labelledby="honour-title">
         <h2 id="honour-title">Honour code</h2>
@@ -806,12 +812,6 @@
     gap: var(--space-1);
     padding: 0;
     list-style: none;
-  }
-
-  .preview-list a {
-    display: inline-flex;
-    align-items: center;
-    min-height: var(--control-h-touch);
   }
 
   .section {

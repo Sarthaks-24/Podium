@@ -1505,3 +1505,22 @@ test('setup can add and remove a listed co-organiser (C2)', async ({ page }) => 
   await page.getByRole('button', { name: 'Remove asha@college.edu' }).click();
   await expect(page.getByText('asha@college.edu', { exact: true })).toHaveCount(0);
 });
+
+test('a contest manager opens a student submission in the console code view (C4)', async ({ page }) => {
+  const api = await mockApi(page, { who: 'organiser', phase: 'during' });
+  api.sources[301] = 'int main() { return 0; }';
+  api.submissions.push({ id: 301, user_id: 7, state: 'done', verdict: 'WA', score: 40, max_score: 100, problem_id: 2, problem_label: 'B', created_at: Date.now(), practice: false });
+  await page.goto('/admin/contests/4/console');
+  await page.getByRole('button', { name: /Code: Asha Rao, problem B/ }).click();
+  await expect(page.getByRole('region', { name: 'Submitted code, 1 line' })).toContainText('int main() { return 0; }');
+});
+
+test('an unlisted organiser sees read-only statements and standings without a start or editor (C4)', async ({ page }) => {
+  await mockApi(page, { unlistedOrganiser: true, phase: 'during' });
+  await page.goto('/contests/week-6');
+  await expect(page.getByText(/Read-only view: statements and standings/)).toBeVisible();
+  await expect(page.locator('.preview-list li').first().getByText('Given two integers', { exact: false })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'I agree, start the contest' })).toHaveCount(0);
+  await expect(codeEditor(page)).toHaveCount(0);
+  await expect(page.getByRole('link', { name: 'Standings' })).toBeVisible();
+});

@@ -16,6 +16,7 @@
   import { onDestroy, onMount, tick } from 'svelte';
   import ConfirmDialog from '../components/ConfirmDialog.svelte';
   import ContestAdminNav from '../components/ContestAdminNav.svelte';
+  import CodeView from '../components/CodeView.svelte';
   import DecisionDialog from '../components/DecisionDialog.svelte';
   import MonoDigits from '../components/MonoDigits.svelte';
   import PageHeader from '../components/PageHeader.svelte';
@@ -70,6 +71,13 @@
   let students = $state.raw<{ user_id: number; name: string }[]>([]);
   let autoRefresh = $state(true);
   let feed: ReturnType<typeof Feed> | undefined = $state();
+  let viewedCode = $state<{name:string; source:string} | null>(null);
+  let codeError = $state('');
+  async function viewCode(row: FeedRow) {
+    codeError = ''; viewedCode = null;
+    try { const sub = await getJSON<{source?:string}>(`/api/submissions/${row.id}`); if (sub.source === undefined) throw new Error('Code is not available.'); viewedCode = {name:row.name,source:sub.source}; }
+    catch (e) { codeError = errorText(e); }
+  }
 
   // Questions seen so far, so only new ones are announced.
   let seenQuestions: Set<number> | null = null;
@@ -612,7 +620,10 @@
         bind:autoRefresh
         onrejudge={rejudgeOne}
         ondecide={(row) => (deciding = { id: row.user_id, name: row.name })}
+        oncode={viewCode}
       />
+      {#if viewedCode}<section class="panel" aria-label="Submitted code"><h2>Code from {viewedCode.name}</h2><button type="button" class="btn btn-quiet" onclick={() => (viewedCode = null)}>Close code</button><CodeView source={viewedCode.source} spans={[]} label="Submitted code" /></section>{/if}
+      {#if codeError}<p class="field-error" role="alert">{codeError}</p>{/if}
     </div>
   </div>
 

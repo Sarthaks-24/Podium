@@ -117,6 +117,7 @@ export interface ContestRules extends ExamOptions {
 export interface ContestProblem {
   label: string;
   title: string;
+  statement_md?: string;
   my_score: number | null;
   max_score: number;
   /** How many times the student submitted it; read as 0 when missing. */
