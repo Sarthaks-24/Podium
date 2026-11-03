@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { STALE_MS, ServerClock, clockOffset } from './clock';
+import { STALE_MS, STREAM_CLOCK_RTT_MS, ServerClock, clockOffset, observeStreamClock } from './clock';
 
 describe('clock offset', () => {
   it('measures at the midpoint of the round trip', () => {
@@ -35,5 +35,12 @@ describe('clock offset', () => {
     expect(clock.observe(Number.NaN, 0, 0)).toBe(false);
     expect(clock.observe(0, 0, 0)).toBe(false);
     expect(clock.offset).toBe(0);
+  });
+
+  it('gives stream clock events an assumed 500 ms round trip', () => {
+    const clock = new ServerClock(() => 1000);
+    expect(observeStreamClock(clock, 1600, 1000)).toBe(true);
+    expect(clock.rtt).toBe(STREAM_CLOCK_RTT_MS);
+    expect(clock.offset).toBe(850);
   });
 });

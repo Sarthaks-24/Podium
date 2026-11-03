@@ -12,7 +12,7 @@
  */
 import { polite } from './announce.svelte';
 import { ApiError, errorText, getJSON, isSignedOut, sendJSON } from './api';
-import { serverClock } from './clock';
+import { observeStreamClock, serverClock } from './clock';
 import type { IntegrityRecorder } from './integrity';
 import { LiveSubscription, type StreamMode } from './stream';
 import { mergeRun, mergeSubmission, mergeSubmissions, reduceEvent, type JudgingState, type StreamEvent } from './submissionState';
@@ -308,7 +308,7 @@ export class Judging {
     if (id === undefined) return;
     if (ev.type === 'clock' && typeof ev.data?.server_now === 'number') {
       const now = Date.now();
-      serverClock.observe(ev.data.server_now, now, now);
+      observeStreamClock(serverClock, ev.data.server_now, now);
     }
     this.state = reduceEvent(this.state, ev, id);
   }

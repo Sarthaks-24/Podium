@@ -17,6 +17,7 @@ export function clockOffset(serverNow: number, sentAt: number, receivedAt: numbe
 
 /** How long a sample is trusted before any newer one replaces it. */
 export const STALE_MS = 60_000;
+export const STREAM_CLOCK_RTT_MS = 500;
 
 /** Keeps the best recent estimate of the server's clock. */
 export class ServerClock {
@@ -46,6 +47,11 @@ export class ServerClock {
   serverNow(): number {
     return this.now() + this.offset;
   }
+}
+
+/** Records a stream clock event with the documented one-way latency assumption. */
+export function observeStreamClock(clock: ServerClock, serverNow: number, receivedAt: number): boolean {
+  return clock.observe(serverNow, receivedAt - STREAM_CLOCK_RTT_MS, receivedAt);
 }
 
 /** The clock shared by the whole app. */

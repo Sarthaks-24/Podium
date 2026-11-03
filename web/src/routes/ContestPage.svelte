@@ -56,6 +56,7 @@
   } from '../lib/contests';
   import { polite } from '../lib/announce.svelte';
   import { keepHeadingFocus } from '../lib/focus';
+  import { jitter } from '../lib/jitter';
   import { formatDateTime, formatDayTime, scoreParts } from '../lib/format';
   import { setTitle } from '../lib/head';
   import { routeTitle } from '../lib/routing';
@@ -220,9 +221,9 @@
 
   // Refetches are coalesced: a burst of events costs one request.
   let refetchTimer: ReturnType<typeof setTimeout> | undefined;
-  function refetchSoon(ms = 400) {
+  function refetchSoon(ms = 400, broadcast = false) {
     clearTimeout(refetchTimer);
-    refetchTimer = setTimeout(() => void load(true), ms);
+    refetchTimer = setTimeout(() => void load(true), ms + (broadcast ? jitter(3000) : 0));
   }
 
   function onEvent(type: string, data: unknown) {
@@ -239,10 +240,10 @@
       if (ev.label === current) statementKey++;
       else if (ev.label && ev.statement_changed) changed = new Set([...changed, ev.label]);
       if (ev.statement_changed) polite(`The statement of problem ${ev.label} was updated.`);
-      refetchSoon(0);
+      refetchSoon(0, true);
       return;
     }
-    if (type === 'announcement' || type === 'clarification' || type === 'contest') refetchSoon(type === 'contest' ? 0 : 400);
+    if (type === 'announcement' || type === 'clarification' || type === 'contest') refetchSoon(type === 'contest' ? 0 : 400, true);
   }
 
   async function start() {
@@ -308,7 +309,7 @@
         stream = new LiveSubscription({
           events: ['submission', ...CONTEST_EVENTS],
           onEvent,
-          onReconnect: () => refetchSoon(0),
+          onReconnect: () => refetchSoon(0, true),
           poll: () => void load(true),
           onMode: (m) => (streamMode = m),
         });
@@ -430,7 +431,7 @@
       {compact}
       onexpire={() => {
         timeUp = true;
-        refetchSoon(0);
+        refetchSoon(0, true);
       }}
     />
   {/if}

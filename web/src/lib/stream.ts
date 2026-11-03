@@ -11,6 +11,7 @@
  */
 
 import { ApiError } from './api';
+import { jitter } from './jitter';
 
 // Every started stream, so a sign-out can stop them all.
 const started = new Set<EventStream>();
@@ -234,8 +235,7 @@ export class EventStream {
       if (this.polls % 4 === 0 && this.es === null) this.connect();
       this.pollTimer = this.o.setTimer(tick, this.o.pollMs);
     };
-    this.callPoll();
-    this.pollTimer = this.o.setTimer(tick, this.o.pollMs);
+    this.pollTimer = this.o.setTimer(tick, jitter(3000, this.o.random));
   }
 
   /** Runs the caller's poll; a 401 from it means signed out, so the stream stops. */

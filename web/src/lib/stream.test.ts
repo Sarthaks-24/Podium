@@ -108,6 +108,10 @@ describe('event stream', () => {
     h.fire();
     h.sources[2].fail();
     expect(h.modes.at(-1)).toBe('polling');
+    expect(h.polls()).toBe(0);
+    expect(h.timers).toHaveLength(1);
+    expect(h.timers[0].ms).toBe(1500);
+    h.fire();
     expect(h.polls()).toBe(1);
     expect(h.timers).toHaveLength(1);
     expect(h.timers[0].ms).toBe(15_000);
@@ -215,6 +219,8 @@ describe('after sign-out', () => {
     });
     stream.start();
     expect(stream.mode).toBe('polling');
+    expect(polls).toBe(0);
+    timers.shift()?.fn();
     await Promise.resolve();
     await Promise.resolve();
     expect(polls).toBe(1);
