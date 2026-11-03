@@ -2,11 +2,11 @@
 
 How to install, configure, check, back up and upgrade podium on its VM, and how to run it on your own machine. What to do on a contest day, and the dry run with real students, are in `docs/RUNBOOK.md`.
 
-Status (2026-10-30): podium has not run on the VM yet. The install, upgrade, rollback, restore, alert and load procedures here are written from the code and tested in WSL2; the VM drills have not run, so none of them is proven on the VM. Sections that depend on a drill say "not yet proven on the VM".
+Status (2026-11-03): podium has not run on a production VM yet. The planned host is a Google Cloud VM (V4-26, "Google Cloud" below), replacing Oracle Always Free. The install, upgrade, rollback, restore, alert and load procedures here are written from the code and tested in WSL2; the VM drills have not run, so none of them is proven on the VM. Sections that depend on a drill say "not yet proven on the VM".
 
 ## Install
 
-Target: Ubuntu 24.04 LTS on **amd64 or arm64**, cgroup v2 (the default), 2 GB RAM or more. A release holds binaries for one of them: `make release` builds amd64 (`podium-<version>.tar.gz`), `make release ARCH=arm64` builds arm64 (`podium-<version>-arm64.tar.gz`), and `install.sh` refuses a release built for another processor than the machine's (the `arch=` line of its `MANIFEST`). On arm64 isolate is built from source, since upstream publishes no arm64 package. For Oracle's free Ampere VM see "Oracle Always Free".
+Target: Ubuntu 24.04 LTS on **amd64 or arm64**, cgroup v2 (the default), 2 GB RAM or more. A release holds binaries for one of them: `make release` builds amd64 (`podium-<version>.tar.gz`), `make release ARCH=arm64` builds arm64 (`podium-<version>-arm64.tar.gz`), and `install.sh` refuses a release built for another processor than the machine's (the `arch=` line of its `MANIFEST`). On arm64 isolate is built from source, since upstream publishes no arm64 package. For the planned Google Cloud VM see "Google Cloud"; for Oracle's free Ampere VM, the earlier choice, see "Oracle Always Free".
 
 ```sh
 tar xzf podium-<version>.tar.gz && cd podium-<version>
@@ -60,9 +60,46 @@ Run it after a fresh install, after every upgrade (the upgrade runs it itself) a
 
 The judge unit runs `podium-judge work`, which pulls jobs from the server's judge API. It needs `PODIUM_JUDGE_TOKEN` in both `server.env` and `judge.env` (see "Judge token" below).
 
+## Google Cloud
+
+Podium's planned production host (V4-26): one Compute Engine VM paid from Google Cloud's free trial credit. Written from the code and from Google's pages as read on 2026-11-01; not yet proven on the VM. The VM is production from its first boot: production mode only, no test data, code only as a release through `install.sh upgrade`.
+
+| Piece | Setting |
+|---|---|
+| Machine | `e2-standard-2` (2 vCPU, 8 GB) in `asia-south1` (Mumbai), close to the students |
+| Image | Ubuntu 24.04 LTS, x86/64, not Minimal |
+| Disk | 30 GB Balanced persistent disk, deletion rule "Keep disk"; a daily snapshot schedule kept 7 days |
+| Address | a static external IPv4 (an ephemeral one changes on every stop and start) |
+| Protection | deletion protection on; no service account on the VM; project-wide SSH keys blocked, so only your key opens it |
+| Cloud firewall | keep the default ssh, http and https rules, add udp 443 for HTTP/3, delete the rdp rule. `install.sh firewall` opens the same ports in ufw; a port must be open in both |
+| Release | `make release VERSION=vX.Y.Z` (amd64); isolate comes from its apt repository |
+| Budget | a budget alert at $300 that counts spending before the credit, with alerts at 25, 50, 75, 90 and 100 percent |
+
+The public address is one of three:
+
+| Option | Address | HTTPS | Notes |
+|---|---|---|---|
+| Your own domain (recommended) | `https://podium.<domain>` | Caddy, Let's Encrypt (`install.sh caddy`) | A record to the static IP, TTL 300, DNS only. Never Cloudflare's proxy: every student would share its addresses, so per-address sign-in limits lock out a classroom, and the event stream gets another buffer. Turn on auto-renew |
+| DuckDNS | `https://<name>.duckdns.org` | Caddy, Let's Encrypt | free; the name depends on a hobby service |
+| Tailscale Funnel | `https://podium.<tailnet>.ts.net` | Tailscale | no inbound port but ssh. HTTP mode only (`tailscale funnel --bg 8080`), which sets `X-Forwarded-For` to the visitor and replaces a forged one; never `--tcp`, which makes every student look like the VM itself. `install.sh caddy` skips itself and `install.sh verify` reports `FAIL caddy`, the one expected failure. Disable the machine's key expiry |
+
+Backups:
+
+| Copy | Where | Why |
+|---|---|---|
+| Litestream | Backblaze B2 ("Set up the bucket"), **required** here | the trial's end stops the whole Google account; B2 is the copy that survives it |
+| Offsite nightly (optional) | a Cloud Storage bucket in the same project, `PODIUM_OFFSITE_ENDPOINT=https://storage.googleapis.com`, `PODIUM_OFFSITE_REGION=asia-south1`, an HMAC key of a service account that holds only Storage Object Creator and Storage Object Viewer on that bucket, lifecycle rule "delete after 30 days" | holds the test files, which Litestream does not. Not yet proven: rclone's S3 mode against Cloud Storage's interoperability API; the first manual `systemctl start podium-backup` is the test. It dies with the Google account, so also pull the nightly copy to your own machine |
+| Disk snapshots | Compute Engine, daily, 7 days | the fastest way back from a broken install; not a replacement for Litestream |
+
+The trial is $300 for 90 days, whichever ends first. This setup costs about $69 a month (about $207 over the trial). When the trial ends Google stops the VM and keeps the disk, snapshots and buckets for 30 days; upgrade to a paid account, move to another host ("Restoring onto a new VM" in `docs/RUNBOOK.md`, from B2), or shut down. Decide 15 days before the end date.
+
+The rebuild drill and the load test never run on the production VM. Snapshot its disk and boot a throwaway clone with a network tag that a firewall rule denies all outbound traffic, so its copies of production's secrets cannot write to the production bucket, fire production's alerts or take over its Tailscale identity; disable Litestream, the timers, Caddy and Tailscale on the clone before lifting the rule.
+
+The Oracle watchdog is not needed on Google Cloud: leave the repository variable `PODIUM_URL` unset and `.github/workflows/watchdog.yml` skips its job. To rebuild, follow "Rebuild after the VM is gone" below with the table above in place of Oracle's, and the RUNBOOK's "Restoring onto a new VM".
+
 ## Oracle Always Free
 
-Podium's chosen host (V3-28): one Oracle Cloud VM at no cost. Written from the code and from Oracle's pages as read on 2026-10-29; not yet proven on the VM.
+Podium's host before V4-26 (V3-28): one Oracle Cloud VM at no cost. The arm64 build, the watchdog and the Oracle offsite bucket still ship, so this section stays for anyone who hosts there. Written from the code and from Oracle's pages as read on 2026-10-29; not yet proven on the VM.
 
 | Piece | Setting |
 |---|---|

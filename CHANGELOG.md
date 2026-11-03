@@ -4,6 +4,11 @@ Dated entries per release. Unreleased work is listed at the top.
 
 ## Unreleased
 
+### Docs and the testing sign-in form (2026-11-03)
+
+- The testing sign-in form offers Admin beside Student, Organiser and Owner, so the admin role can be tried with `make dev-test`. Messages that still read as before the role rename now say that organisers organise and that admins can act on the Dashboard too.
+- The docs follow the move of the production host from Oracle Always Free to a Google Cloud VM (V4-26): `docs/OPERATIONS.md` has a "Google Cloud" section (machine, address options, backups with B2 required, the trial's end, drills on a clone with outbound traffic denied), and the README, `docs/ARCHITECTURE.md` and `docs/RUNBOOK.md` point to it. The Oracle section stays, since the arm64 build and the watchdog still ship. Status lines say where the project stands: v4 built, nothing tagged or deployed.
+
 ### v4 audit (2026-10-31)
 
 - CI passes again: on Linux the editor's Shift+Alt+Up and Down added a cursor (the VS Code keymap follows VS Code on Linux) instead of copying the line as the shortcut table says. They copy the line on every system now.

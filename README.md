@@ -1,10 +1,10 @@
 # podium
 
-A self-hosted platform for weekly programming contests at a college. Students sign in with their college Google account, solve problems in C++, Java, Python or JavaScript, and get IOI-style partial scores from a sandboxed judge. A live leaderboard freezes near the end and is revealed afterwards. Admins write problems by hand, from a problem pack, or with an AI assistant that uses a temporary key.
+A self-hosted platform for weekly programming contests at a college. Students sign in with their college Google account, solve problems in C++, Java, Python or JavaScript, and get IOI-style partial scores from a sandboxed judge. A live leaderboard freezes near the end and is revealed afterwards. Organisers write problems by hand, from a problem pack, or with an AI assistant that uses a temporary key. Only people on the sign-in list get in; admins and the owner keep that list on the Dashboard.
 
 Everything runs on one small Linux VM (Ubuntu 24.04, amd64 or arm64, 2 GB RAM is the design target) and is built to serve 700+ students in one contest.
 
-Status (2026-10-30): v3 is built and waits for its tag, `v3.0.0`, which installs on a fresh VM; nothing is tagged or deployed yet. `CHANGELOG.md` lists what changed, and `docs/` describes v3.
+Status (2026-11-03): v3 and the v4 changes (four roles, sign-in by a list, the Dashboard, editor upgrades, the profile page, the public landing page) are built on `main` and CI passes. Nothing is tagged or deployed yet. The production host is moving from Oracle Always Free to a Google Cloud VM (V4-26, see `docs/OPERATIONS.md`, "Google Cloud"); the install there, the VM drills and a volunteer test run come next. `CHANGELOG.md` lists what changed, and `docs/` describes the code on `main`.
 
 ## How it fits together
 
@@ -83,7 +83,7 @@ The tarball also holds `MANIFEST` (version, commit, build date, processor, schem
 
 ## Deploy to the VM
 
-The VM is Ubuntu 24.04 on **amd64 or arm64**. `make release` builds for amd64; `make release ARCH=arm64` builds `podium-<version>-arm64.tar.gz` for an ARM VM such as Oracle's free Ampere A1 (docs/OPERATIONS.md, "Oracle Always Free", which also covers the watchdog and the offsite backup bucket). On a fresh VM, in production mode (the default):
+The VM is Ubuntu 24.04 on **amd64 or arm64**. `make release` builds for amd64, which is what the planned Google Cloud VM needs (docs/OPERATIONS.md, "Google Cloud": machine, address options, backups, the trial's end). `make release ARCH=arm64` builds `podium-<version>-arm64.tar.gz` for an ARM VM such as Oracle's free Ampere A1, the earlier choice (docs/OPERATIONS.md, "Oracle Always Free", which also covers the watchdog and the offsite bucket there). On a fresh VM, in production mode (the default):
 
 ```sh
 tar xzf podium-<version>.tar.gz && cd podium-<version>
