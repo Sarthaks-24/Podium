@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/Sarthaks-24/podium/internal/buildinfo"
 	"github.com/Sarthaks-24/podium/internal/httpx"
 )
 
@@ -14,6 +15,9 @@ import (
 // comes from memory or a stat call, so the tab may poll it every 5 s.
 type Live struct {
 	ServerNow int64 `json:"server_now"`
+	// Release is the running version and its codename, "v2.0.0 Billota".
+	// Admins only: /healthz hides the version from the public.
+	Release string `json:"release"`
 	// SignedInNow counts the people with a live page open (an event
 	// stream), not every valid session.
 	SignedInNow int `json:"signed_in_now"`
@@ -43,7 +47,7 @@ func (d *Handlers) Live(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	now := time.Now()
-	out := Live{ServerNow: now.UnixMilli(), Queued: q.Queued, SubmitWaitP50MS: q.SubmitWaitP50MS, DiskFreeMB: -1}
+	out := Live{ServerNow: now.UnixMilli(), Release: buildinfo.Release(), Queued: q.Queued, SubmitWaitP50MS: q.SubmitWaitP50MS, DiskFreeMB: -1}
 	if d.Hub != nil {
 		out.SignedInNow = len(d.Hub.Users())
 	}

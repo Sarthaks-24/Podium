@@ -89,7 +89,7 @@ func run(envFile string) error {
 		return err
 	}
 	log := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: cfg.LogLevel}))
-	log.Info("starting podium-server", append([]any{"version", version}, config.Summary(os.Getenv, config.ServerVars)...)...)
+	log.Info("starting podium-server", append([]any{"version", version, "codename", buildinfo.Codename}, config.Summary(os.Getenv, config.ServerVars)...)...)
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()

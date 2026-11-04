@@ -73,7 +73,7 @@ A request from the VM itself (a loopback peer with no forwarding headers) also g
 What an organiser watches on contest day; also read by the load test (`tools/loadtest`). Cheap enough to poll every few seconds: two indexed queries and in-memory counters.
 
 ```json
-{ "server_now": 1792183192400, "uptime_s": 5400, "version": "v3.0.0",
+{ "server_now": 1792183192400, "uptime_s": 5400, "version": "v2.0.0",
   "queue": { "kinds": { "submit": { "queued": 40, "leased": 2, "finished_last_minute": 31, "finished_last_5_min": 150 },
                         "run": { "queued": 3, "leased": 0, "finished_last_minute": 12, "finished_last_5_min": 55 } },
              "queued": 43, "leased": 2, "queued_paused": 0, "oldest_queued_s": 81.5,
@@ -94,10 +94,11 @@ What an organiser watches on contest day; also read by the load test (`tools/loa
 The Dashboard's Live tab (V4-17): what an admin watches during a run. From memory and two stat calls, so the tab reads it every 5 s while it is open.
 
 ```json
-{ "server_now": 1792183192400, "signed_in_now": 42, "judge_last_seen_s": 3, "queued": 2, "submit_wait_p50_ms": 2400,
+{ "server_now": 1792183192400, "release": "v2.0.0 Billota", "signed_in_now": 42, "judge_last_seen_s": 3, "queued": 2, "submit_wait_p50_ms": 2400,
   "disk_free_mb": 18432, "database_mb": 54, "last_backup_at": 1792120000000 }
 ```
 
+- `release` is the running version and its codename (`dev` on a plain build). Only admins see it; `/healthz` hides the version from the public.
 - `signed_in_now` counts people with a page open (an event stream), not every valid session.
 - `judge_last_seen_s` is how long ago a judge last asked for work; `null` when none has since the server started.
 - `disk_free_mb` is the space left where the database lives, `-1` when the server cannot tell (any system but Linux); `database_mb` is the database file and its write-ahead log.
@@ -875,7 +876,7 @@ Used only by `podium-judge work`. It is served on its own listener, `PODIUM_JUDG
 
 ### `POST /api/judge/claim` (judge)
 
-Request: `{"kinds":["run","submit","generate","generate_inputs","validate"],"worker":"vm-1","version":"v3.0.0","isolate":"2.2.1","protocol":3,"toolchain":"<sha256>"}`. `worker`, `version` and `isolate` are logged and stored with the job. `protocol` left out means 1. `toolchain` is the hash the toolchain report returned; the server stores nothing.
+Request: `{"kinds":["run","submit","generate","generate_inputs","validate"],"worker":"vm-1","version":"v2.0.0","isolate":"2.2.1","protocol":3,"toolchain":"<sha256>"}`. `worker`, `version` and `isolate` are logged and stored with the job. `protocol` left out means 1. `toolchain` is the hash the toolchain report returned; the server stores nothing.
 
 | Status | Body |
 |---|---|

@@ -139,7 +139,7 @@ export async function mockApi(page: Page, who: Who) {
         return json(route, 200, { open: state.signinOpen });
       }
       if (path === '/api/admin/live' && method === 'GET') {
-        return json(route, 200, { server_now: Date.now(), signed_in_now: 42, judge_last_seen_s: 3, queued: 2, submit_wait_p50_ms: 2400, disk_free_mb: 18432, database_mb: 54, last_backup_at: null });
+        return json(route, 200, { server_now: Date.now(), release: 'v2.0.0 Billota', signed_in_now: 42, judge_last_seen_s: 3, queued: 2, submit_wait_p50_ms: 2400, disk_free_mb: 18432, database_mb: 54, last_backup_at: null });
       }
       if (path === '/api/admin/people/import' && method === 'POST') {
         const body = req.postDataJSON() as { text: string; dry_run: boolean };

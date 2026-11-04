@@ -26,7 +26,7 @@ VERSION    ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo d
 VERSION    := $(VERSION)
 WSL_DISTRO ?= Ubuntu-24.04
 # The VM's processor: amd64 (most VMs, and WSL2 for local work) or arm64
-# (Oracle's free Ampere A1 VM, V3-28). Only release, package and
+# (an ARM VM such as Oracle's Ampere A1, V3-28). Only release, package and
 # sandbox-binaries are meant for arm64; the targets that run what they
 # build here (dev-test, sandbox-test, calibrate) need this machine's amd64.
 ARCH       ?= amd64
@@ -37,7 +37,10 @@ GOFLAGS_LINUX := GOOS=linux GOARCH=$(ARCH) CGO_ENABLED=0
 COMMIT     := $(shell git rev-parse --short=12 HEAD 2>/dev/null || echo unknown)
 BUILD_DATE := $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
 BUILDINFO  := github.com/Sarthaks-24/podium/internal/buildinfo
-LDFLAGS    := -s -w -X $(BUILDINFO).Version=$(VERSION) -X $(BUILDINFO).Commit=$(COMMIT) -X $(BUILDINFO).Date=$(BUILD_DATE)
+# The release's name, shown beside the version on the Dashboard (D236).
+# One word: it goes into -ldflags unquoted.
+CODENAME   ?= Billota
+LDFLAGS    := -s -w -X $(BUILDINFO).Version=$(VERSION) -X $(BUILDINFO).Codename=$(CODENAME) -X $(BUILDINFO).Commit=$(COMMIT) -X $(BUILDINFO).Date=$(BUILD_DATE)
 # amd64 keeps the plain name every script and workflow already expects;
 # arm64 releases carry the suffix, so both can sit in release/ together.
 RELEASE_NAME := podium-$(VERSION)$(if $(filter arm64,$(ARCH)),-arm64)
@@ -45,11 +48,9 @@ RELEASE    := release/$(RELEASE_NAME)
 # The oldest installed release this one upgrades from; install.sh upgrade
 # refuses an older one. Raise it in the release that drops something an
 # older release still needs (a contract migration, PLAN.md section 8).
-# Pending the owner's release decision (D236): nothing is tagged, so v1.0.0
-# is a placeholder. Option A (one release for P0 to P6, installed fresh, as
-# v1.5.0 or v2.0.0) sets that version here; option B (v1.0.0 to v1.2.0 as
-# markers, then one release) sets v1.2.0. The CHANGELOG says the same.
-UPGRADES_FROM ?= v1.0.0
+# D236, decided 2026-11-04: the first real release is v2.0.0 "Billota",
+# installed fresh, so it upgrades from nothing older than itself.
+UPGRADES_FROM ?= v2.0.0
 
 # Run a root command inside WSL2 when on Windows, directly otherwise.
 ifeq ($(OS),Windows_NT)

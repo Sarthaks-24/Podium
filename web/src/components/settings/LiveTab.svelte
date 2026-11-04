@@ -1,8 +1,9 @@
 <!--
-  LiveTab: the Live tab of the Dashboard (V4-17), the five lines an admin
+  LiveTab: the Live tab of the Dashboard (V4-17), the six lines an admin
   watches during a test run: how many people have a page open, when the
   judge last asked for work, the queue and its median wait, disk free and
-  the database's size, and the newest nightly backup. It reads GET
+  the database's size, the newest nightly backup, and the running release
+  with its codename. It reads GET
   /api/admin/live every 5 seconds while the tab is shown and the browser
   tab is visible, and not at all otherwise. A failed read keeps the last
   answer and says it may be out of date. Props: `active` (the tab is
@@ -23,6 +24,7 @@
 
   interface Live {
     server_now: number;
+    release: string;
     signed_in_now: number;
     judge_last_seen_s: number | null;
     queued: number;
@@ -99,6 +101,8 @@
       </dd>
       <dt>Last backup</dt>
       <dd>{#if live.last_backup_at === null}No backup yet.{:else}<MonoDigits text={formatDateTime(live.last_backup_at)} />{/if}</dd>
+      <dt>Release</dt>
+      <dd><MonoDigits text={live.release} /></dd>
     </dl>
   {:else if error === ''}
     <p class="muted" role="status">Loading</p>

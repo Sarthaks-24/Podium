@@ -4,7 +4,7 @@ A self-hosted platform for weekly programming contests at a college. Students si
 
 Everything runs on one small Linux VM (Ubuntu 24.04, amd64 or arm64, 2 GB RAM is the design target) and is built to serve 700+ students in one contest.
 
-Status (2026-11-03): v3 and the v4 changes (four roles, sign-in by a list, the Dashboard, editor upgrades, the profile page, the public landing page) are built on `main` and CI passes. Nothing is tagged or deployed yet. The production host is moving from Oracle Always Free to a Google Cloud VM (V4-26, see `docs/OPERATIONS.md`, "Google Cloud"); the install there, the VM drills and a volunteer test run come next. `CHANGELOG.md` lists what changed, and `docs/` describes the code on `main`.
+Status (2026-11-04): v3, the v4 changes and v4.01 (four roles, sign-in by a list, the Dashboard, editor upgrades, the profile page, the public landing page) are built on `main` and CI passes. Nothing is tagged or deployed yet. The first release is `v2.0.0` Billota (V4-27), going onto a Google Cloud VM with its own domain (V4-26, see `docs/OPERATIONS.md`, "Google Cloud"); the install there and the VM drills come next. `CHANGELOG.md` lists what changed, and `docs/` describes the code on `main`.
 
 ## How it fits together
 
@@ -79,11 +79,11 @@ Other targets: `make help`.
 
 `make release` (on a commit tagged `vX.Y.Z`, or `make release VERSION=vX.Y.Z` on any other commit: a release must be named `vX.Y.Z`; `ARCH=arm64` builds for an ARM VM) runs the checks, builds the web app, embeds it, cross-compiles both binaries for Linux with `CGO_ENABLED=0`, and writes `release/podium-<version>.tar.gz` containing `bin/`, `env/` (the example env files), `install.sh`, the systemd units, the Caddyfile, `litestream.yml`, the example env files for Litestream, the nightly backup and alerts, and the backup, restore, alert and health-check scripts in `backup/`. It refuses to build when the web app's source carries placeholder copy (`tools/check-placeholders.sh`), and installs `web/node_modules` with `npm ci` first when it is missing. Building on Windows is fine: the tarball loses the execute bit on the Linux binaries, and `install.sh` sets it when it installs them.
 
-The tarball also holds `MANIFEST` (version, commit, build date, processor, schema, the migrations it carries, the judge protocol, and the oldest release it upgrades from, `UPGRADES_FROM` in the `Makefile`) and `SHA256SUMS`, and `release/podium-<version>.tar.gz.sha256` sits beside it. `podium-server -version` and `podium-judge -version` print the same facts. Pushing a `v*` tag runs the same build in GitHub Actions (`.github/workflows/release.yml`) and makes a draft release with those four files; the owner reviews and publishes it. The first release, `v3.0.0`, installs fresh, so its upgrade path matters only from the release after it.
+The tarball also holds `MANIFEST` (version, commit, build date, processor, schema, the migrations it carries, the judge protocol, and the oldest release it upgrades from, `UPGRADES_FROM` in the `Makefile`) and `SHA256SUMS`, and `release/podium-<version>.tar.gz.sha256` sits beside it. `podium-server -version` and `podium-judge -version` print the same facts. Pushing a `v*` tag runs the same build in GitHub Actions (`.github/workflows/release.yml`) and makes a draft release with those four files; the owner reviews and publishes it. The first release, `v2.0.0` with the codename Billota (V4-27), installs fresh, so its upgrade path matters only from the release after it. The codename comes from `CODENAME` in the `Makefile` and shows beside the version on the Dashboard's Live tab.
 
 ## Deploy to the VM
 
-The VM is Ubuntu 24.04 on **amd64 or arm64**. `make release` builds for amd64, which is what the planned Google Cloud VM needs (docs/OPERATIONS.md, "Google Cloud": machine, address options, backups, the trial's end). `make release ARCH=arm64` builds `podium-<version>-arm64.tar.gz` for an ARM VM such as Oracle's free Ampere A1, the earlier choice (docs/OPERATIONS.md, "Oracle Always Free", which also covers the watchdog and the offsite bucket there). On a fresh VM, in production mode (the default):
+The VM is Ubuntu 24.04 on **amd64 or arm64**. `make release` builds for amd64, which is what the Google Cloud VM needs (docs/OPERATIONS.md, "Google Cloud": machine, address, backups, the trial's end). `make release ARCH=arm64` builds `podium-<version>-arm64.tar.gz` for an ARM VM. On a fresh VM, in production mode (the default):
 
 ```sh
 tar xzf podium-<version>.tar.gz && cd podium-<version>

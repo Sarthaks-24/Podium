@@ -14,12 +14,23 @@ import (
 )
 
 // Set at build time: -X github.com/Sarthaks-24/podium/internal/buildinfo.Version=v1.1.0
-// and likewise Commit and Date. A plain go build leaves the defaults.
+// and likewise Codename, Commit and Date. A plain go build leaves the
+// defaults. Codename is the release's name (D236: v2.0.0 is "Billota").
 var (
-	Version = "dev"
-	Commit  = "unknown"
-	Date    = "unknown"
+	Version  = "dev"
+	Codename = ""
+	Commit   = "unknown"
+	Date     = "unknown"
 )
+
+// Release is the version followed by the codename when there is one, for
+// people to read (the Dashboard's Live tab). Scripts compare Version.
+func Release() string {
+	if Codename == "" {
+		return Version
+	}
+	return Version + " " + Codename
+}
 
 // Schema is the highest migration name this build applies.
 func Schema() string { return migrations.Latest() }
@@ -27,8 +38,8 @@ func Schema() string { return migrations.Latest() }
 // Protocol is the judge API version this build speaks.
 func Protocol() int { return judgeapi.ProtocolVersion }
 
-// Write prints the five lines of -version, one "key value" pair each, in
+// Write prints the six lines of -version, one "key value" pair each, in
 // a form install.sh and make release read with sed.
 func Write(w io.Writer) {
-	fmt.Fprintf(w, "version %s\ncommit %s\nbuilt %s\nschema %s\nprotocol %d\n", Version, Commit, Date, Schema(), Protocol())
+	fmt.Fprintf(w, "version %s\ncodename %s\ncommit %s\nbuilt %s\nschema %s\nprotocol %d\n", Version, Codename, Commit, Date, Schema(), Protocol())
 }

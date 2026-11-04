@@ -701,7 +701,7 @@ test('a student who opens the Dashboard sees who may, under the page title', asy
   await expect(page).toHaveTitle('Dashboard · podium');
 });
 
-test('the Live tab shows the five lines and reads them again only while it is open (O5)', async ({ page }) => {
+test('the Live tab shows the six lines and reads them again only while it is open (O5)', async ({ page }) => {
   await mockApi(page, 'owner');
   let reads = 0;
   await page.route('**/api/admin/live', (route) => {
@@ -712,7 +712,7 @@ test('the Live tab shows the five lines and reads them again only while it is op
   await page.goto('/admin/dashboard');
   await page.getByRole('tab', { name: 'Live' }).click();
   const live = page.getByRole('tabpanel', { name: 'Live' });
-  for (const line of ['42 people with a page open', 'Last asked for work 3 s ago', '2 waiting, median wait 2.4 s over the last 10 minutes', '18,432 MB free, database 54 MB', 'No backup yet.']) {
+  for (const line of ['42 people with a page open', 'Last asked for work 3 s ago', '2 waiting, median wait 2.4 s over the last 10 minutes', '18,432 MB free, database 54 MB', 'No backup yet.', 'v2.0.0 Billota']) {
     await expect(live).toContainText(line);
   }
   await expect.poll(() => reads).toBe(1);

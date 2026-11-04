@@ -2,11 +2,11 @@
 
 How to install, configure, check, back up and upgrade podium on its VM, and how to run it on your own machine. What to do on a contest day, and the dry run with real students, are in `docs/RUNBOOK.md`.
 
-Status (2026-11-03): podium has not run on a production VM yet. The planned host is a Google Cloud VM (V4-26, "Google Cloud" below), replacing Oracle Always Free. The install, upgrade, rollback, restore, alert and load procedures here are written from the code and tested in WSL2; the VM drills have not run, so none of them is proven on the VM. Sections that depend on a drill say "not yet proven on the VM".
+Status (2026-11-04): podium has not run on a production VM yet. The host is a Google Cloud VM with its own domain (V4-26, "Google Cloud" below); the first release is `v2.0.0` Billota (V4-27). The install, upgrade, rollback, restore, alert and load procedures here are written from the code and tested in WSL2; the VM drills have not run, so none of them is proven on the VM. Sections that depend on a drill say "not yet proven on the VM".
 
 ## Install
 
-Target: Ubuntu 24.04 LTS on **amd64 or arm64**, cgroup v2 (the default), 2 GB RAM or more. A release holds binaries for one of them: `make release` builds amd64 (`podium-<version>.tar.gz`), `make release ARCH=arm64` builds arm64 (`podium-<version>-arm64.tar.gz`), and `install.sh` refuses a release built for another processor than the machine's (the `arch=` line of its `MANIFEST`). On arm64 isolate is built from source, since upstream publishes no arm64 package. For the planned Google Cloud VM see "Google Cloud"; for Oracle's free Ampere VM, the earlier choice, see "Oracle Always Free".
+Target: Ubuntu 24.04 LTS on **amd64 or arm64**, cgroup v2 (the default), 2 GB RAM or more. A release holds binaries for one of them: `make release` builds amd64 (`podium-<version>.tar.gz`), `make release ARCH=arm64` builds arm64 (`podium-<version>-arm64.tar.gz`), and `install.sh` refuses a release built for another processor than the machine's (the `arch=` line of its `MANIFEST`). On arm64 isolate is built from source, since upstream publishes no arm64 package. Production runs on the amd64 Google Cloud VM in "Google Cloud"; the arm64 build stays for anyone hosting on an ARM machine.
 
 ```sh
 tar xzf podium-<version>.tar.gz && cd podium-<version>
@@ -62,7 +62,7 @@ The judge unit runs `podium-judge work`, which pulls jobs from the server's judg
 
 ## Google Cloud
 
-Podium's planned production host (V4-26): one Compute Engine VM paid from Google Cloud's free trial credit. Written from the code and from Google's pages as read on 2026-11-01; not yet proven on the VM. The VM is production from its first boot: production mode only, no test data, code only as a release through `install.sh upgrade`.
+Podium's production host (V4-26): one Compute Engine VM paid from Google Cloud's free trial credit. Written from the code and from Google's pages as read on 2026-11-01; not yet proven on the VM. The VM is production from its first boot: production mode only, no test data, code only as a release through `install.sh upgrade`.
 
 | Piece | Setting |
 |---|---|
@@ -95,78 +95,15 @@ The trial is $300 for 90 days, whichever ends first. This setup costs about $69 
 
 The rebuild drill and the load test never run on the production VM. Snapshot its disk and boot a throwaway clone with a network tag that a firewall rule denies all outbound traffic, so its copies of production's secrets cannot write to the production bucket, fire production's alerts or take over its Tailscale identity; disable Litestream, the timers, Caddy and Tailscale on the clone before lifting the rule.
 
-The Oracle watchdog is not needed on Google Cloud: leave the repository variable `PODIUM_URL` unset and `.github/workflows/watchdog.yml` skips its job. To rebuild, follow "Rebuild after the VM is gone" below with the table above in place of Oracle's, and the RUNBOOK's "Restoring onto a new VM".
-
-## Oracle Always Free
-
-Podium's host before V4-26 (V3-28): one Oracle Cloud VM at no cost. The arm64 build, the watchdog and the Oracle offsite bucket still ship, so this section stays for anyone who hosts there. Written from the code and from Oracle's pages as read on 2026-10-29; not yet proven on the VM.
-
-| Piece | Setting |
-|---|---|
-| Shape | `VM.Standard.A1.Flex`, 2 OCPU and 12 GB (the whole Always Free ARM allowance), in the account's home region |
-| Image | Canonical Ubuntu 24.04, aarch64, not Minimal; boot volume 100 GB, attachment paravirtualized (the default) |
-| Release | `make release VERSION=vX.Y.Z ARCH=arm64`, then copy `release/podium-vX.Y.Z-arm64.tar.gz` and its `.sha256` |
-| Sandbox suite | `make sandbox-binaries ARCH=arm64` builds `server/bin/calib.test` and `worker.test` for the VM ("Verify the sandbox on the VM") |
-| Network | the subnet's security list: ingress 80/tcp, 443/tcp and 443/udp from `0.0.0.0/0`, beside the default 22/tcp; the image's own iptables rules are handled by `install.sh firewall` ("Firewall and ssh") |
-| Name | a DuckDNS subdomain with an A record to the VM's public IP; `PODIUM_BASE_URL=https://<name>.duckdns.org` |
-
-Replacing the image's iptables rules with ufw also drops Oracle's rules for its iSCSI boot volumes. They matter only for an iSCSI attachment; keep the boot volume paravirtualized.
-
-### Idle reclaim and the watchdog
-
-Oracle may reclaim an Always Free VM that is idle for 7 days: CPU at the 95th percentile under 20 percent, network under 20 percent and, on ARM, memory under 20 percent. Its page does not say whether reclaim stops or deletes the VM. Podium is idle between contests, so it qualifies. A Pay As You Go account is not reclaimed (and costs nothing inside the free limits); without one, the watchdog and the backups cover both cases:
-
-| Case | What notices | What happens |
-|---|---|---|
-| Oracle stops the VM | `.github/workflows/watchdog.yml`, every 30 minutes | `tools/oci-watchdog.sh` starts it through Oracle's API and posts to ntfy |
-| The site stops answering | the same run checks `/healthz` | the heartbeat service alerts |
-| Oracle deletes the VM | the same run gets "not found" | ntfy and the heartbeat alert; rebuild below |
-| The watchdog stops running | the heartbeat service hears nothing | it alerts. GitHub pauses schedules in a repository with no activity for 60 days: push something, or re-enable the workflow under Actions |
-
-The watchdog signs its requests with curl and openssl, no third-party action. It needs, under the repository's Settings, Secrets and variables, Actions:
-
-| Secret | Value |
-|---|---|
-| `OCI_TENANCY_OCID`, `OCI_USER_OCID`, `OCI_FINGERPRINT`, `OCI_REGION` | the watchdog user's API key details (Identity, Users, the user, API keys) and the region, such as `ap-hyderabad-1` |
-| `OCI_INSTANCE_OCID` | the VM's OCID |
-| `OCI_PRIVATE_KEY` | the API key's private PEM, whole |
-| `WATCHDOG_PING_URL` | a healthchecks.io check: period 30 minutes, grace 1 hour, with email and ntfy integrations |
-| `WATCHDOG_NTFY_URL` | optional: the ntfy topic URL for "started the VM" |
-| Variable `PODIUM_URL` | `https://<name>.duckdns.org`. Set it last: the job is skipped while it is empty |
-
-The watchdog user belongs to a group of its own with only these policy statements (in the VM's compartment):
-
-```
-Allow group podium-watchdog to read instances in compartment <compartment>
-Allow group podium-watchdog to use instances in compartment <compartment> where request.permission = 'INSTANCE_POWER_ACTIONS'
-```
-
-`tools/oci-watchdog-test.sh` checks the script against a local stand-in for Oracle's API that verifies every signature (`tools/fake-oci.py`); the first manual run of the workflow (Actions, watchdog, Run workflow) is the check against Oracle itself.
-
-### Buckets
-
-| Copy | Provider | Settings |
-|---|---|---|
-| Litestream | Backblaze B2 ("Set up the bucket") | as below, with the lifecycle setting "Keep prior versions for this number of days: 7", so a replica deleted from a taken-over VM can still be brought back for a week |
-| Offsite nightly | Oracle Object Storage | a private bucket in the root compartment (the S3 compatibility API's default), lifecycle rule "delete objects older than 30 days"; a user of its own whose group may only write and read objects in that bucket; a customer secret key of that user as `PODIUM_OFFSITE_ACCESS_KEY_ID` and `PODIUM_OFFSITE_SECRET_ACCESS_KEY`; endpoint `https://<namespace>.compat.objectstorage.<region>.oraclecloud.com` |
-
-The offsite user's policy, so a taken-over VM can add archives but not delete them:
-
-```
-Allow group podium-offsite to read buckets in tenancy where target.bucket.name = 'podium-nightly'
-Allow group podium-offsite to manage objects in tenancy where all {target.bucket.name = 'podium-nightly', any {request.permission = 'OBJECT_CREATE', request.permission = 'OBJECT_INSPECT', request.permission = 'OBJECT_READ'}}
-```
-
-Oracle's free tier allows 20 GB and 50,000 requests a month; one archive a night uses a few requests. Watch the bucket's size against 20 GB: 30 archives of the database and test files must fit.
-
 ### Rebuild after the VM is gone
 
-1. Create the VM again (table above) and point the DuckDNS name at its new IP.
+1. Create the VM again (the table above), reserve a new static IP, and point the domain's A record at it.
 2. Copy the release and install: `sudo ./install.sh`.
 3. Put the five env files back in `/etc/podium/` (root, mode 600) from the owner's copy.
-4. `sudo systemctl stop podium-server podium-litestream`, then restore the test files and last night's database from the offsite bucket: `sudo /usr/local/lib/podium/podium-restore offsite /var/tmp/night`. For a newer database (up to 10 s before the VM went), restore it from Litestream with those test files: `sudo /usr/local/lib/podium/podium-restore litestream /var/tmp/restore /var/tmp/night/tests`. Put the result in place as in `docs/RUNBOOK.md`, "Restoring from a backup".
+4. `sudo systemctl stop podium-server podium-litestream`, then restore the test files and last night's database: from the offsite bucket with `sudo /usr/local/lib/podium/podium-restore offsite /var/tmp/night`, or, if the Google account is gone with that bucket, unpack the newest nightly copy pulled to the owner's machine into `/var/tmp/night`. For a newer database (up to 10 s before the VM went), restore it from Litestream with those test files: `sudo /usr/local/lib/podium/podium-restore litestream /var/tmp/restore /var/tmp/night/tests`. Put the result in place as in `docs/RUNBOOK.md`, "Restoring from a backup".
 5. `sudo ./install.sh app caddy`, then `sudo ./install.sh verify`.
-6. Update `OCI_INSTANCE_OCID` in the repository's secrets for the watchdog.
+
+`docs/RUNBOOK.md`, "Restoring onto a new VM", is the same procedure as a timed drill.
 
 ## Verify the sandbox on the VM
 
@@ -361,7 +298,7 @@ Read by `podium-backup.service`; template `deploy/backup.env.example`. Every var
 | `PODIUM_OFFSITE_REGION` | none | the bucket's region |
 | `PODIUM_OFFSITE_ACCESS_KEY_ID`, `PODIUM_OFFSITE_SECRET_ACCESS_KEY` | none | a key that may read and write objects in that bucket and nothing else, no delete. Secret |
 
-With the offsite bucket set, a night whose upload fails keeps its local folder, sends no heartbeat and fails the unit (so the failed-unit alert fires). A bucket named without its key, or a key without a bucket, is the same failure. Nothing offsite is deleted by the script: a lifecycle rule on the bucket ages archives out (see "Oracle Always Free").
+With the offsite bucket set, a night whose upload fails keeps its local folder, sends no heartbeat and fails the unit (so the failed-unit alert fires). A bucket named without its key, or a key without a bucket, is the same failure. Nothing offsite is deleted by the script: a lifecycle rule on the bucket ages archives out (see "Google Cloud").
 
 ### Alerts (`/etc/podium/alert.env`)
 
@@ -548,7 +485,7 @@ sudo sshd -t && sudo systemctl restart ssh
 
 Your provider's own firewall, if it has one, should allow the same three ports.
 
-Some cloud images load their own iptables rules at boot. Oracle's Ubuntu images do (netfilter-persistent): ssh, then a bare `REJECT` in INPUT and FORWARD, ahead of where ufw adds its rules, so 80 and 443 stay closed whatever ufw says. Installing ufw removes netfilter-persistent (ufw declares that it breaks it), so from the next boot only ufw's rules load; `install.sh firewall` also deletes the image's two `REJECT` rules from the running system, so the site answers without a reboot. `install.sh verify` fails when a `REJECT` sits ahead of http and https in `iptables -S INPUT`.
+Some cloud images load their own iptables rules at boot. Oracle Cloud's Ubuntu images do, for example (netfilter-persistent): ssh, then a bare `REJECT` in INPUT and FORWARD, ahead of where ufw adds its rules, so 80 and 443 stay closed whatever ufw says. Installing ufw removes netfilter-persistent (ufw declares that it breaks it), so from the next boot only ufw's rules load; `install.sh firewall` also deletes the image's two `REJECT` rules from the running system, so the site answers without a reboot. `install.sh verify` fails when a `REJECT` sits ahead of http and https in `iptables -S INPUT`.
 
 ## Event stream behind Caddy
 
@@ -699,7 +636,7 @@ A deploy restarts the server. Do not deploy in the 48 hours before a published c
 
 ## Upgrade
 
-The first v3 release, `v3.0.0`, installs on a fresh VM (V3-12): nothing earlier was ever installed, and a database from before v3 is refused at start-up. Upgrades apply from the release after it.
+The first release, `v2.0.0` with the codename Billota (V4-27; it carries v3 and v4), installs on a fresh VM (V3-12): nothing earlier was ever installed, and a database from before v3 is refused at start-up. Upgrades apply from the release after it.
 
 ```sh
 sha256sum -c podium-<new>.tar.gz.sha256      # the checksum beside the tarball, from the GitHub release
@@ -710,7 +647,7 @@ sudo ./install.sh upgrade
 
 **What a release is.** `make release` (and the release workflow, on a pushed `v*` tag) puts two files in the tarball: `MANIFEST`, one `key=value` per line (`release`, `version`, `commit`, `built`, `arch`, `schema`, `migrations`, `protocol`, `upgrades_from`), and `SHA256SUMS`, the checksum of every other file. `podium-server -version` and `podium-judge -version` print the same version, commit, build date, schema and protocol, so you can match a binary to its release; `curl -s 127.0.0.1:8080/healthz` on the VM shows the running version and schema (through Caddy it does not).
 
-**The release workflow.** Push a tag (`git tag vX.Y.Z && git push origin vX.Y.Z`; for a test of the workflow use `v0.0.1` and delete it afterwards, never a real version); `.github/workflows/release.yml` first checks that the `ci` workflow passed on the tagged commit (push the commit and wait for `ci` before pushing the tag), then runs `make release` and makes a draft GitHub release with the tarball, its `.sha256`, `MANIFEST` and `SHA256SUMS`. Review the draft and publish it by hand. `UPGRADES_FROM` in the `Makefile` is the oldest release this one upgrades from; raise it in a release that drops something older releases still need (a contract migration). `make release` refuses to build `v1.5.0` or later while it is still the placeholder `v1.0.0`, and `v3.0.0` is later: set it in the `Makefile` before the first tag.
+**The release workflow.** Push a tag (`git tag vX.Y.Z && git push origin vX.Y.Z`; for a test of the workflow use `v0.0.1` and delete it afterwards, never a real version); `.github/workflows/release.yml` first checks that the `ci` workflow passed on the tagged commit (push the commit and wait for `ci` before pushing the tag), then runs `make release` and makes a draft GitHub release with the tarball, its `.sha256`, `MANIFEST` and `SHA256SUMS`. Review the draft and publish it by hand. `UPGRADES_FROM` in the `Makefile` is the oldest release this one upgrades from; raise it in a release that drops something older releases still need (a contract migration). It is `v2.0.0`, the first release (V4-27). `CODENAME` in the `Makefile` names the release; the Dashboard's Live tab shows it beside the version, so give each release its own.
 
 From Windows, `tools/deploy.sh HOST` (or `make deploy HOST=user@vm`) does all of it: it runs `make release VERSION=<version>`, shows the tarball and its SHA-256 and waits for you to type the host name before anything leaves the machine, copies it to a new folder in `/tmp` with `scp`, and runs `install.sh upgrade` there. The version is the `vX.Y.Z` tag on the commit; a drill build names it instead with `VERSION=vX.Y.Z tools/deploy.sh HOST`. With neither, or with uncommitted changes, it stops before it builds anything. It does not check the contest calendar: see "When to deploy".
 
@@ -758,7 +695,7 @@ Three copies, all installed by `install.sh` (steps `litestream` and `backup`). T
 | What | the database | the database and the test files | the same night's folder, as one `<stamp>.tar.gz` |
 | Where | the bucket in `/etc/podium/litestream.env` (off the VM) | `/var/backups/podium/<date>` on the VM (podium only, 700) | the bucket in `PODIUM_OFFSITE_*` of `/etc/podium/backup.env` (off the VM) |
 | How often | every change, uploaded every 10 s | every night about 03:15 UTC, and on demand | right after each nightly backup passes its check |
-| Kept | 14 days of history (a daily snapshot plus every change since) | 14 days | the bucket's lifecycle rule (30 days on Oracle's free tier) |
+| Kept | 14 days of history (a daily snapshot plus every change since) | 14 days | the bucket's lifecycle rule (30 days) |
 | Restores | the newest state, or any moment in the 14 days | that night's state | that night's state, with the test files |
 | Protects against | losing the VM or its disk | a bad change (a wrong rejudge, a deleted contest), a damaged database | losing the VM and its test files; losing the Litestream provider |
 

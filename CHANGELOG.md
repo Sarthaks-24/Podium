@@ -23,6 +23,14 @@ Dated entries per release. Unreleased work is listed at the top.
 - The deep-directory hostile program joins the sandbox suite: such a program fails its own job without requeueing it, its lane stops before claiming another student's job on the broken box, and the reset before the judge restarts heals the box.
 - Standings are recomputed and announced only when a submission's judging ends, not on every claim and per-test progress report.
 
+### Release name (2026-11-04)
+
+- The first release is `v2.0.0`, codename Billota (V4-27, settling D236). `UPGRADES_FROM` in the `Makefile` is now `v2.0.0`, and `CODENAME` names the release. `podium-server -version` prints a `codename` line, the server logs it at start-up, and the Dashboard's Live tab shows "Release v2.0.0 Billota" to admins. `/healthz` still keeps the version from the public.
+
+### Google Cloud host (2026-11-04)
+
+- The docs describe the Google Cloud VM as the host (V4-26): the Oracle Always Free section of `docs/OPERATIONS.md` gives way to a Google Cloud rebuild procedure, and README, ARCHITECTURE, RUNBOOK and `deploy/backup.env.example` follow. The Oracle watchdog workflow and its scripts (`tools/oci-watchdog.sh`, its test and `tools/fake-oci.py`) are removed. The arm64 build stays.
+
 ### Upgrade fix (2026-11-04)
 
 - `install.sh upgrade` could stop without a message right after the backup timer in step 5, leaving the new binaries installed and the old server running: `systemctl list-timers | head` under `pipefail` died of SIGPIPE. The timer lines no longer pipe into `head`, and `tools/install-test.sh` refuses the pattern. An upgrade that stopped this way is rolled back with `sudo /usr/local/lib/podium/install.sh rollback` before the next try.
@@ -301,7 +309,7 @@ Dated entries per release. Unreleased work is listed at the top.
 - One migration, `0001_v3.sql`, replaces v2's 0001 to 0015 (V3-3): 30 tables, down from 54, with `json_valid` checks on scoring JSON and the `contest_final` view. Not an upgrade: install fresh.
 - Grading correctness (S1-08): every "over for everyone" query reads the `contest_final` view; the board refuses a score it cannot read instead of scoring zero; every `rows.Next` loop checks `rows.Err`; each organiser action writes its audit row in its own transaction, so a failed row rolls the change back; the organiser contest list no longer runs three queries per contest.
 
-Nothing below is tagged or deployed. The v2 phases were planned as the releases v1.0.0 (P0) to v1.5.0 (P5) and v2.0.0 (P6); they reached `main` together, so they are proposed to ship as one release once the P0 drills on the VM pass. The owner decides the version and the upgrade path (D236): either one release for P0 to P6, installed fresh, named `v1.5.0` or `v2.0.0`, with `UPGRADES_FROM` set to that version, or `v1.0.0` to `v1.2.0` tagged as markers and the rest as one release with `UPGRADES_FROM` set to `v1.2.0`. Until then the `Makefile` keeps the placeholder `v1.0.0`. The phase labels below say where each change came from.
+Nothing below is tagged or deployed. The v2 phases were planned as the releases v1.0.0 (P0) to v1.5.0 (P5) and v2.0.0 (P6); they reached `main` together. D236 is settled (V4-27, 2026-11-04): everything here ships inside the first release, `v2.0.0` Billota, installed fresh, with `UPGRADES_FROM` set to `v2.0.0`. The phase labels below say where each change came from.
 
 ### v2 P6 (close)
 
