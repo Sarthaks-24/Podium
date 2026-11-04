@@ -39,6 +39,8 @@ export interface SiteConfig {
   signin_open: boolean;
   organisation: Organisation;
   retention: RetentionPeriod[];
+  /** The release's codename for the footer, "" on a plain build; never the version. */
+  codename: string;
 }
 
 const EMPTY_ORG: Organisation = { name: '', contact_email: '', phone: '', privacy_contact: '' };
@@ -50,6 +52,7 @@ class ModeState {
   signInOpen = $state(true);
   organisation = $state<Organisation>({ ...EMPTY_ORG });
   retention = $state<RetentionPeriod[]>([]);
+  codename = $state('');
   /** "loading" until the first answer; "failed" when it could not be read. */
   status = $state<'loading' | 'ready' | 'failed'>('loading');
 }
@@ -87,6 +90,7 @@ export function parseConfig(raw: unknown): SiteConfig {
         kept: text(r.kept),
       }))
       .filter((r) => r.data !== '' && r.kept !== ''),
+    codename: text(c.codename),
   };
 }
 
@@ -97,6 +101,7 @@ export function applyConfig(c: SiteConfig): void {
   runMode.signInOpen = c.signin_open;
   runMode.organisation = c.organisation;
   runMode.retention = c.retention;
+  runMode.codename = c.codename;
   runMode.status = 'ready';
 }
 

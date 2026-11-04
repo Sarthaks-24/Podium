@@ -108,7 +108,7 @@ The Dashboard's Live tab (V4-17): what an admin watches during a run. From memor
 
 ### `GET /api/auth/config` (public)
 
-What the sign-in page, the footer and the privacy page need before anyone signs in. No contest data, no counts, no version.
+What the sign-in page, the footer and the privacy page need before anyone signs in. No contest data, no counts, no version number: only the release's codename, which the footer shows.
 
 ```json
 { "contact_email": "podium@college.edu",
@@ -117,7 +117,8 @@ What the sign-in page, the footer and the privacy page need before anyone signs 
   "organisation": { "name": "Example College of Engineering", "contact_email": "podium@college.edu",
                     "phone": "+91 80 1234 5678", "privacy_contact": "privacy@college.edu" },
   "retention": [
-    { "id": "sessions", "data": "Sign-in sessions", "amount": 12, "unit": "hours", "after": "sign_in", "kept": "12 hours after sign-in" } ] }
+    { "id": "sessions", "data": "Sign-in sessions", "amount": 12, "unit": "hours", "after": "sign_in", "kept": "12 hours after sign-in" } ],
+  "codename": "Billota" }
 ```
 
 | Field | Meaning |
@@ -126,6 +127,7 @@ What the sign-in page, the footer and the privacy page need before anyone signs 
 | `mode` | `testing`, `dev` or `production`. In `testing` the web app shows the test sign-in form and the testing-mode banner instead of "Continue with Google" |
 | `signin_open` | `false` while an owner or an admin has closed sign-in (V4-17); the sign-in page then says so |
 | `organisation` | the site settings an owner enters under Settings, Organisation: `name`, `contact_email`, `phone`, `privacy_contact`, each `""` until entered; a page shows nothing for an empty field |
+| `codename` | the release's codename (`CODENAME` in the `Makefile`), `""` on a plain build. The footer shows it as "podium Billota". The version number is never public (V4-27) |
 | `retention` | every retention period the server applies, in the order the privacy page lists them, from `server/internal/retention/periods.go`. The privacy page renders its table from this list |
 
 A `retention` row is `{id, data, amount, unit, after, kept}`. The ids are `sessions` (12 hours after sign-in), `integrity_events` (180 days after the contest), `run_payloads` (30 days after the run) and `backups` (14 days); `unit` is `hours`, `days` or `years`; `after` is `sign_in`, `created` or `contest_end`; `kept` is the period as one phrase. The table with its reasons is in `docs/OPERATIONS.md`, "Retention".

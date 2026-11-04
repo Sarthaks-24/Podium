@@ -37,10 +37,11 @@ func TestConfigCarriesOrganisationAndRetention(t *testing.T) {
 	if fmt.Sprint(a) != fmt.Sprint(b) {
 		t.Errorf("retention\n got %s\nwant %s", got, want)
 	}
-	// Nothing about contests, counts or the release before sign-in.
+	// Nothing about contests, counts or the version before sign-in; the
+	// release's codename is public on purpose (the footer shows it).
 	for k := range body {
 		switch k {
-		case "contact_email", "mode", "organisation", "retention", "signin_open":
+		case "contact_email", "mode", "organisation", "retention", "signin_open", "codename":
 		default:
 			t.Errorf("config carries %q", k)
 		}

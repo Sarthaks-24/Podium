@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/Sarthaks-24/podium/internal/auth"
+	"github.com/Sarthaks-24/podium/internal/buildinfo"
 	"github.com/Sarthaks-24/podium/internal/httpx"
 	"github.com/Sarthaks-24/podium/internal/retention"
 )
@@ -126,8 +127,10 @@ func (d Deps) authConfig(w http.ResponseWriter, r *http.Request) {
 		d.internalError(w, r, err)
 		return
 	}
+	// The codename is public (owner, 2026-11-04: the footer shows it); the
+	// version number stays loopback-only, see ops.Health.
 	httpx.WriteJSON(w, http.StatusOK, map[string]any{"contact_email": contactEmail, "mode": mode, "signin_open": open,
-		"organisation": org, "retention": retention.Periods()})
+		"organisation": org, "retention": retention.Periods(), "codename": buildinfo.Codename})
 }
 
 // testSignIn signs in as anyone with any role, for testing mode only (the

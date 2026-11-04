@@ -576,6 +576,9 @@ test('the footer names the organisers, and privacy waits for the owner (D85)', a
   await expect(foot).toContainText('Contact the organisers: priya@college.edu');
   await expect(foot.getByRole('link', { name: 'priya@college.edu' })).toHaveAttribute('href', 'mailto:priya@college.edu');
   await expect(foot.getByRole('link', { name: 'Privacy' })).toHaveCount(0);
+  // The release's codename, never its version number (V4-27).
+  await expect(foot).toContainText(`© ${new Date().getFullYear()} podium Billota`);
+  await expect(foot).not.toContainText('v2.');
   await page.goto('/privacy');
   await expect(page.locator('h1')).toHaveCount(1);
   await expect(page.locator('h1')).toHaveText('Privacy');

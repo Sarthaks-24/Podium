@@ -6,6 +6,7 @@ describe('site config', () => {
     const c = parseConfig({
       contact_email: ' podium@college.edu ',
       mode: 'production',
+      codename: ' Billota ',
       organisation: { name: 'Example College', contact_email: 'podium@college.edu', phone: '+91 80 1234 5678', privacy_contact: '' },
       retention: [
         { id: 'sessions', data: 'Sign-in sessions', amount: 12, unit: 'hours', after: 'sign_in', kept: '12 hours after sign-in' },
@@ -14,6 +15,7 @@ describe('site config', () => {
       ],
     });
     expect(c.contact_email).toBe('podium@college.edu');
+    expect(c.codename).toBe('Billota');
     expect(c.organisation).toEqual({ name: 'Example College', contact_email: 'podium@college.edu', phone: '+91 80 1234 5678', privacy_contact: '' });
     expect(c.retention.map((r) => r.id)).toEqual(['sessions']);
   });
@@ -23,6 +25,7 @@ describe('site config', () => {
     expect(c.mode).toBe('testing');
     expect(c.organisation).toEqual({ name: '', contact_email: '', phone: '', privacy_contact: '' });
     expect(c.retention).toEqual([]);
+    expect(c.codename).toBe('');
     expect(parseConfig(null).contact_email).toBe('');
     expect(parseMode('odd')).toBe('production');
   });

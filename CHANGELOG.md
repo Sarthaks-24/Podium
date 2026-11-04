@@ -25,7 +25,7 @@ Dated entries per release. Unreleased work is listed at the top.
 
 ### Release name (2026-11-04)
 
-- The first release is `v2.0.0`, codename Billota (V4-27, settling D236). `UPGRADES_FROM` in the `Makefile` is now `v2.0.0`, and `CODENAME` names the release. `podium-server -version` prints a `codename` line, the server logs it at start-up, and the Dashboard's Live tab shows "Release v2.0.0 Billota" to admins. `/healthz` still keeps the version from the public.
+- The first release is `v2.0.0`, codename Billota (V4-27, settling D236). `UPGRADES_FROM` in the `Makefile` is now `v2.0.0`, and `CODENAME` names the release. `podium-server -version` prints a `codename` line, the server logs it at start-up, and the Dashboard's Live tab shows "Release v2.0.0 Billota" to admins. `/healthz` still keeps the version from the public. The footer on every page shows the codename to everyone ("© 2026 podium Billota", from `codename` in `GET /api/auth/config`), never the version number.
 
 ### Google Cloud host (2026-11-04)
 

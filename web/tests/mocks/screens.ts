@@ -30,7 +30,7 @@ export const PEOPLE = [
   { id: 3, email: 'ta@college.edu', name: '', role: 'organiser', last_login_at: null, locked: false },
 ];
 
-export const CONFIG = { contact_email: 'priya@college.edu' };
+export const CONFIG = { contact_email: 'priya@college.edu', codename: 'Billota' };
 
 /** The site audit the Dashboard's Audit tab shows (contract C4), newest first. */
 export const SITE_AUDIT = [
