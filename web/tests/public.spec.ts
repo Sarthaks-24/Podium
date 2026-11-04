@@ -113,8 +113,8 @@ test('sign-in names the organisation and how to reach it, and explains a rate li
   await expect(page.getByRole('alert')).toHaveText('Too many people are signing in from this network at once. Wait a few seconds, then start again.');
   await expect(page.getByRole('link', { name: 'podium@college.edu' })).toHaveAttribute('href', 'mailto:podium@college.edu');
   await expect(page.getByRole('link', { name: '+91 80 1234 5678' })).toHaveAttribute('href', 'tel:+918012345678');
-  // Privacy waits for the owner (D85): no link anywhere yet.
-  await expect(page.getByRole('link', { name: /podium records about you|Privacy/ })).toHaveCount(0);
+  // The approved privacy notice (D85) is linked from sign-in and the footer.
+  await expect(page.getByRole('link', { name: 'What podium records about you' })).toHaveAttribute('href', '/privacy');
 });
 
 test('an organisation with nothing entered shows nothing made up', async ({ page }) => {
@@ -124,15 +124,12 @@ test('an organisation with nothing entered shows nothing made up', async ({ page
   await expect(page.getByText('Contact the organisers')).toHaveCount(0);
 });
 
-test('the privacy notice waits for the owner, and its draft lists every retention period from the config (FP.1)', async ({ page }) => {
+test('the approved privacy notice lists every retention period from the config (FP.1)', async ({ page }) => {
   await mockApi(page, 'signed-out');
-  await page.goto('/privacy');
-  await expect(page.getByText('The privacy notice for podium is being written.', { exact: false })).toBeVisible();
-  await expect(page.getByRole('table')).toHaveCount(0);
-
   await page.setViewportSize({ width: 1440, height: 900 });
-  await page.goto('/privacy?draft');
-  await expect(page.getByRole('note')).toHaveText("Draft for the owner's approval. Nothing links to this page yet.");
+  await page.goto('/privacy');
+  await expect(page.getByText('The privacy notice for podium is being written.', { exact: false })).toHaveCount(0);
+  await expect(page.getByRole('note')).toHaveCount(0);
   await expect(page.getByRole('heading', { level: 2, name: 'What podium records' })).toBeVisible();
   const rows = page.getByRole('table', { name: 'How long podium keeps each kind of data' }).locator('tbody tr');
   await expect(rows).toHaveCount(RETENTION.length);
@@ -145,7 +142,7 @@ test('the privacy notice waits for the owner, and its draft lists every retentio
     await page.setViewportSize({ width, height: width < 768 ? 812 : 900 });
     await settle(page);
     expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(0);
-    await page.screenshot({ path: `${shots()}privacy-draft-${width}-light.png`, fullPage: true });
+    await page.screenshot({ path: `${shots()}privacy-${width}-light.png`, fullPage: true });
   }
 });
 
@@ -155,7 +152,7 @@ for (const theme of THEMES) {
     await page.emulateMedia({ colorScheme: theme });
     for (const [path, who, ready] of [
       ['/signin?error=rate_limited', 'signed-out', 'Continue with Google'],
-      ['/privacy?draft', 'signed-out', 'What podium records'],
+      ['/privacy', 'signed-out', 'What podium records'],
     ] as const) {
       await page.unrouteAll({ behavior: 'ignoreErrors' });
       await mockApi(page, who);

@@ -27,6 +27,10 @@ Dated entries per release. Unreleased work is listed at the top.
 
 - The first release is `v2.0.0`, codename Billota (V4-27, settling D236). `UPGRADES_FROM` in the `Makefile` is now `v2.0.0`, and `CODENAME` names the release. `podium-server -version` prints a `codename` line, the server logs it at start-up, and the Dashboard's Live tab shows "Release v2.0.0 Billota" to admins. `/healthz` still keeps the version from the public. The footer on every page shows the codename to everyone ("© 2026 podium Billota", from `codename` in `GET /api/auth/config`), never the version number.
 
+### Privacy notice published (2026-11-04)
+
+- The owner approved the privacy notice (D85), so the footer links `/privacy` and the sign-in page links "What podium records about you". The page shows the full notice with its retention table to everyone.
+
 ### Google Cloud host (2026-11-04)
 
 - The docs describe the Google Cloud VM as the host (V4-26): the Oracle Always Free section of `docs/OPERATIONS.md` gives way to a Google Cloud rebuild procedure, and README, ARCHITECTURE, RUNBOOK and `deploy/backup.env.example` follow. The Oracle watchdog workflow and its scripts (`tools/oci-watchdog.sh`, its test and `tools/fake-oci.py`) are removed. The arm64 build stays.

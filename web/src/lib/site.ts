@@ -2,7 +2,7 @@
  * Site-wide switches the shell reads.
  *
  * PRIVACY_LINKED: whether the footer and the sign-in page link /privacy.
- * The route exists, but its text is the owner's to approve, so nothing
- * links it until then. Flip this one line once the owner approves the text.
+ * The text is the owner's to approve; approved 2026-11-04, so it is on.
+ * Set it back to false to hide the notice while a change waits for approval.
  */
-export const PRIVACY_LINKED = false;
+export const PRIVACY_LINKED = true;

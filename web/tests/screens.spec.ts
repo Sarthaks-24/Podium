@@ -569,13 +569,13 @@ test('from 768 px the organiser header fits one row', async ({ page }) => {
   }
 });
 
-test('the footer names the organisers, and privacy waits for the owner (D85)', async ({ page }) => {
+test('the footer names the organisers and links the approved privacy notice (D85)', async ({ page }) => {
   await mockApi(page, 'student');
   await page.goto('/');
   const foot = page.locator('footer');
   await expect(foot).toContainText('Contact the organisers: priya@college.edu');
   await expect(foot.getByRole('link', { name: 'priya@college.edu' })).toHaveAttribute('href', 'mailto:priya@college.edu');
-  await expect(foot.getByRole('link', { name: 'Privacy' })).toHaveCount(0);
+  await expect(foot.getByRole('link', { name: 'Privacy' })).toHaveAttribute('href', '/privacy');
   // The release's codename, never its version number (V4-27).
   await expect(foot).toContainText(`© ${new Date().getFullYear()} podium Billota`);
   await expect(foot).not.toContainText('v2.');

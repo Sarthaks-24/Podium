@@ -354,7 +354,7 @@ export const SCREENS: Screen[] = [
     path: '/privacy',
     who: 'signed-out',
     title: 'Privacy · podium',
-    ready: (page) => expect(page.getByText('The privacy notice for podium is being written.')).toBeVisible(),
+    ready: (page) => expect(page.getByRole('heading', { level: 2, name: 'What podium records' })).toBeVisible(),
   },
   {
     name: 'me',
