@@ -37,3 +37,21 @@ export async function focusFirstInvalid(scope: string | ParentNode | null | unde
   const root = typeof scope === 'string' ? document.querySelector(scope) : scope;
   root?.querySelector<HTMLElement>(':is([aria-invalid="true"], [data-invalid="true"] input)')?.focus();
 }
+
+/** The title link of the list row marked data-focus-row="<key>", or null when the row is not on the page. */
+export function rowTitleLink(key: string): HTMLElement | null {
+  if (key === '') return null;
+  return document.querySelector<HTMLElement>(`[data-focus-row="${CSS.escape(key)}"] [data-focus-title]`);
+}
+
+/**
+ * After a list reloads, puts focus on a row's title link when the control
+ * that had focus went away with the old rows (a Restore button that is no
+ * longer there). Does nothing when focus is still on a live control.
+ */
+export async function refocusRow(key: string): Promise<void> {
+  await tick();
+  const now = document.activeElement;
+  if (now && now !== document.body && now.isConnected) return;
+  (rowTitleLink(key) ?? document.querySelector<HTMLElement>('main h1'))?.focus();
+}

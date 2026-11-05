@@ -32,4 +32,4 @@ When a period ends, the server deletes the data itself. Submissions, scores, you
 
 ## Your choices
 
-You can ask the organisers for a copy of what podium holds about you, or to remove your account. Removing it deletes your sessions, drafts and paste and focus records, clears the reasons for any extra time and the text of your questions, and replaces your name and email with "Removed user" everywhere. Your submissions and scores stay, so past standings do not change. Backups that hold your data are deleted when their own period ends.
+You can ask whoever runs this site for a copy of what podium holds about you, or to remove your account. Removing it deletes your sessions, drafts and paste and focus records, clears the reasons for any extra time and the text of your questions, and replaces your name and email with "Removed user" everywhere. Your submissions and scores stay, so past standings do not change. Backups that hold your data are deleted when their own period ends.

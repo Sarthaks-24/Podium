@@ -77,7 +77,18 @@
     void restore(slug.trim());
   }
 
-  const what = $derived(kind === 'problem' ? 'It comes back to the list of problems at its old address.' : 'It comes back to the list of contests at its old address. Students can open it again if it is published.');
+  // The server's sentence with each hyphenated slug in a code element, so a slug never breaks at its hyphens.
+  const messageParts = $derived(
+    message
+      .split(/([a-z0-9]+(?:-[a-z0-9]+)+)/)
+      .filter((t) => t !== '')
+      .map((text) => ({ text, slug: /^[a-z0-9]+(?:-[a-z0-9]+)+$/.test(text) })),
+  );
+
+  const what = $derived(
+    (kind === 'problem' ? 'It comes back to the list of problems at its old address.' : 'It comes back to the list of contests at its old address. Students can open it again if it is published.') +
+      ' Submissions, scores and contest results are unchanged.',
+  );
 </script>
 
 <ConfirmDialog
@@ -91,9 +102,12 @@
   oncancel={onclose}
 />
 
-<Dialog open={open && step === 'slug'} {onclose} {busy} kind="small" title="Restore {title}" closeLabel="Close" initialFocus={() => slugInput}>
+<Dialog open={open && step === 'slug'} {onclose} {busy} kind="small" labelledby="restore-slug-title" initialFocus={() => slugInput}>
+  <h2 id="restore-slug-title">Restore {title}</h2>
   <form class="form" novalidate onsubmit={submit}>
-    <p class="body">{message}</p>
+    <p class="body">
+      {#each messageParts as part, i (i)}{#if part.slug}<code class="slug">{part.text}</code>{:else}{part.text}{/if}{/each}
+    </p>
     <div class="field">
       <label for="restore-slug">New address</label>
       <input
@@ -108,7 +122,7 @@
         aria-invalid={fieldError ? 'true' : undefined}
         aria-describedby={fieldError ? 'restore-slug-error restore-slug-help' : 'restore-slug-help'}
       />
-      <p id="restore-slug-help" class="field-help">Lowercase letters, digits and single hyphens.</p>
+      <p id="restore-slug-help" class="field-help">The short name used in links, such as <code class="slug">{kind === 'problem' ? 'two-sum' : 'week-3'}</code>. Lowercase letters, digits and single hyphens.</p>
       {#if fieldError}<p id="restore-slug-error" class="field-error">{fieldError}</p>{/if}
     </div>
     {#if error}<p class="field-error" role="alert">{error}</p>{/if}
@@ -128,6 +142,17 @@
 
   .body {
     color: var(--ink-muted);
+  }
+
+  .slug {
+    /* Atomic, so it moves to the next line whole; it breaks inside only when wider than the dialog. */
+    display: inline-block;
+    max-width: 100%;
+    overflow-wrap: anywhere;
+  }
+
+  .field-help {
+    text-wrap: wrap;
   }
 
   .actions {

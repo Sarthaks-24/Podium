@@ -16,7 +16,7 @@
   import PageHeader from '../components/PageHeader.svelte';
   import RestoreFlow from '../components/RestoreFlow.svelte';
   import { onMount, tick } from 'svelte';
-  import { focusFirstInvalid } from '../lib/focus';
+  import { focusFirstInvalid, refocusRow } from '../lib/focus';
   import { ApiError, getJSON, sendJSON, errorText } from '../lib/api';
   import { newKey } from '../lib/workspace';
   import {
@@ -388,8 +388,8 @@
         <tbody>
           {#each rest as c (c.id)}
             {@const st = organiserState(c)}
-            <tr>
-              <th scope="row" class="title"><a class="row-link" href={organiserHome(c)}>{c.title}</a></th>
+            <tr data-focus-row="contest-{c.id}">
+              <th scope="row" class="title"><a class="row-link" data-focus-title href={organiserHome(c)}>{c.title}</a></th>
               <td class="when"><MonoDigits text={formatDateTime(c.starts_at)} /></td>
               <td class="length">{lengthText(c)}</td>
               <td class="num right problems">{c.problems.length}</td>
@@ -417,8 +417,9 @@
     path="/api/admin/contests/{restoring.id}/restore"
     onclose={() => (restoring = null)}
     ondone={() => {
+      const key = `contest-${restoring?.id}`;
       restoring = null;
-      void load();
+      void load().then(() => refocusRow(key));
     }}
   />
 {/if}

@@ -15,6 +15,7 @@
 -->
 <script lang="ts">
   import ConfirmDialog from '../components/ConfirmDialog.svelte';
+  import ContactLine from '../components/ContactLine.svelte';
   import Dialog from '../components/Dialog.svelte';
   import MonoDigits from '../components/MonoDigits.svelte';
   import StandingsView from '../components/StandingsView.svelte';
@@ -427,10 +428,6 @@
 
 <svelte:window onkeydown={onKeydown} />
 
-{#snippet contactLine(email: string | undefined, cls: string)}
-  {#if email}<p class={cls}>Questions about this contest? Email <a href="mailto:{email}">{email}</a></p>{/if}
-{/snippet}
-
 {#snippet clockSnippet(compact: boolean)}
   {#if contest?.my_window}
     <ContestClock
@@ -478,6 +475,7 @@
     onstandings={phase === 'during' ? () => (standingsOpen = true) : undefined}
     clock={(layout === 'strip' || layout === 'bar') && phase === 'during' ? stripClock : undefined}
     contestTitle={contest?.title ?? ''}
+    contact={contest?.contact_email ?? ''}
     {changed}
     onleave={phase === 'during' ? () => (leaveOpen = true) : undefined}
   />
@@ -503,6 +501,7 @@
       backHref={phase === 'during' ? '/' : `/contests/${encodeURIComponent(slug)}`}
       backLabel={phase === 'during' ? 'Your contests' : contest.title}
       contestHref="/contests/{encodeURIComponent(slug)}"
+      contact={contest.contact_email ?? ''}
       label={current}
       context={contest.title}
       locked={phase === 'after' && !practice ? 'The contest has ended. Submissions are closed.' : ''}
@@ -567,7 +566,7 @@
       {#if organisedByText(contest.organised_by) !== ''}
         <p class="muted">Organisers: {organisedByText(contest.organised_by)}</p>
       {/if}
-      {@render contactLine(contest.contact_email, 'muted')}
+      <ContactLine email={contest.contact_email} class="muted" />
       <p class="lead preview-lead">
         {#if readonlyView}Read-only view: statements and standings as students see them. Starting the contest and submitting code are unavailable.{:else}Student view: the problems and the standings as students see them. Students also get the honour code and a start button, left out here.{/if}
       </p>
@@ -644,7 +643,7 @@
       {#if organisedByText(contest.organised_by) !== ''}
         <p class="muted small">Organisers: {organisedByText(contest.organised_by)}</p>
       {/if}
-      {@render contactLine(contest.contact_email, 'muted small')}
+      <ContactLine email={contest.contact_email} />
       <StreamNotice mode={streamMode} onresume={() => stream?.resume()} />
       {#if contest.description_md.trim() !== ''}
         <div class="description"><Markdown source={contest.description_md} /></div>
@@ -660,6 +659,7 @@
       back={{ href: '/', label: 'Your contests' }}
       state={contest.state !== 'ended' ? { word: studentStateWord(contest.state), kind: studentState(contest.state) } : null}
     />
+    <ContactLine email={contest.contact_email} />
 
     {#if timeUp}<p class="time-up" role="status">Time is up. Your submissions are saved.</p>{/if}
 
