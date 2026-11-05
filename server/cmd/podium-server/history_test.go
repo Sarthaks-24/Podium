@@ -57,6 +57,27 @@ func TestRunsReport(t *testing.T) {
 	}
 }
 
+// sudo -u podium carries no environment: the VM's tests folder is the
+// default when it exists, PODIUM_TESTS_DIR still wins, data/tests otherwise.
+func TestDefaultTestsDir(t *testing.T) {
+	old := liveTestsDir
+	t.Cleanup(func() { liveTestsDir = old })
+	t.Setenv("PODIUM_TESTS_DIR", "")
+	liveTestsDir = t.TempDir()
+	if got := defaultTestsDir(); got != liveTestsDir {
+		t.Errorf("with the VM folder present: %q, want %q", got, liveTestsDir)
+	}
+	t.Setenv("PODIUM_TESTS_DIR", "/elsewhere")
+	if got := defaultTestsDir(); got != "/elsewhere" {
+		t.Errorf("with PODIUM_TESTS_DIR set: %q", got)
+	}
+	t.Setenv("PODIUM_TESTS_DIR", "")
+	liveTestsDir = filepath.Join(t.TempDir(), "missing")
+	if got := defaultTestsDir(); got != "data/tests" {
+		t.Errorf("with no VM folder: %q, want data/tests", got)
+	}
+}
+
 func TestMigrateACopy(t *testing.T) {
 	ctx := context.Background()
 	path := filepath.Join(t.TempDir(), "copy.db")

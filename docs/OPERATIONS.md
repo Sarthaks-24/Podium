@@ -617,7 +617,7 @@ It opens the database read-only and prints: SQLite's `integrity_check` and `fore
 
 ## Rehearsing a migration on a copy
 
-`podium-server migrate -db COPY` applies the migrations of this binary to a copy of the database and runs `check` on it (exit codes as for `check`). It refuses the live database (the `PODIUM_DB_PATH` one or `/var/lib/podium/db/podium.db`) and any database with a `-wal` file beside it, which another process may have open. Use it before every schema-changing deploy (D68), with the new release's binary on a copy of the newest nightly backup.
+`podium-server migrate -db COPY` applies the migrations of this binary to a copy of the database and runs `check` on it (exit codes as for `check`). It refuses the live database (the `PODIUM_DB_PATH` one or `/var/lib/podium/db/podium.db`) and any database with a `-wal` file beside it, which another process may have open. Use it before every schema-changing deploy (D68), with the new release's binary on a copy of the newest nightly backup. The check after the migration reads the test files from `-tests`, which defaults to `PODIUM_TESTS_DIR`, else `/var/lib/podium/tests` when that folder exists (so `sudo -u podium` works on the VM without the server's environment), else `data/tests`. `check` uses the same default.
 
 ## Runs with a custom input
 

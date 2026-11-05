@@ -24,7 +24,7 @@ func checkCmd(args []string, out io.Writer) int {
 	fs := flag.NewFlagSet("check", flag.ContinueOnError)
 	fs.SetOutput(out)
 	dbPath := fs.String("db", envOr("PODIUM_DB_PATH", "data/podium.db"), "SQLite database to check")
-	testsDir := fs.String("tests", envOr("PODIUM_TESTS_DIR", "data/tests"), "test files directory that goes with it")
+	testsDir := fs.String("tests", defaultTestsDir(), "test files directory that goes with it")
 	hash := fs.Bool("hash", false, "also re-hash every test file (slower: reads every byte)")
 	if err := fs.Parse(args); err != nil {
 		return 2
@@ -127,6 +127,22 @@ func envOr(name, def string) string {
 		return v
 	}
 	return def
+}
+
+// liveTestsDir is where install.sh puts the test files on the VM; a var so
+// tests can point it elsewhere.
+var liveTestsDir = "/var/lib/podium/tests"
+
+// defaultTestsDir is PODIUM_TESTS_DIR, else the VM's folder when it exists
+// (sudo -u podium carries no server environment), else data/tests.
+func defaultTestsDir() string {
+	if v := os.Getenv("PODIUM_TESTS_DIR"); v != "" {
+		return v
+	}
+	if fi, err := os.Stat(liveTestsDir); err == nil && fi.IsDir() {
+		return liveTestsDir
+	}
+	return "data/tests"
 }
 
 func limitList(l []string, n int) []string {
