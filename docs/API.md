@@ -19,7 +19,7 @@ Errors use one shape, with a stable machine code and a sentence for people. The 
 { "error": { "code": "not_found", "message": "This API route does not exist." } }
 ```
 
-Some errors carry more. `fields` maps a form field to what is wrong with it; `problems` lists everything wrong with an upload or a request to validate, so it can be fixed in one pass; `retry_after_s` comes with every 429; `suggested_slug` comes with a slug conflict on a restore (below).
+Some errors carry more. `fields` maps a form field to what is wrong with it; `problems` lists everything wrong with an upload or a request to validate, so it can be fixed in one pass; `retry_after_s` comes with every 429; `suggested_slug` comes with a slug conflict on a restore or a pack import; `existing` comes with a pack import conflict (below).
 
 ```json
 { "error": { "code": "bad_request", "message": "Some fields need fixing.", "fields": { "title": "Enter a title of at most 120 characters." } } }
@@ -302,7 +302,7 @@ Every route here needs the organiser role. The pack format and the rules for tes
 |---|---|---|
 | `GET /api/admin/problems` | `?archived=1` to include archived problems | 200 `{"problems":[ProblemSummary]}`, most recently changed first |
 | `POST /api/admin/problems` | `{"title":"Two sum","client_key"}` | 201 `Problem` with a starter statement and C++ reference; the slug is made from the title (`two-sum`, then `two-sum-2` when taken). A repeated `client_key` (v1.3) answers 201 with the problem the first request made |
-| `POST /api/admin/problems/import` | the pack as a zip body, at most 32 MB | 201 `Problem`; `warnings` names files in the pack podium ignores |
+| `POST /api/admin/problems/import` | the pack as a zip body, at most 32 MB; optional query `on_conflict` (`rename`, `archive_existing` or `replace`), `slug` (the new slug, for `rename`) and `file_name` (the pack's file name, for the note of a `replace`) | 201 `Problem`; `warnings` names files in the pack podium ignores. Without `on_conflict`, a slug that is taken is a 409 (below). `rename` imports a new problem under `slug` (400 `fields.slug` when it breaks the slug rule, 409 when it is taken too). `archive_existing` archives the problem that has the pack's slug and imports the pack under it, in one transaction. `replace` saves the pack as one new revision of that problem, keeping its id, slug, author and submissions; the revision note is "Replaced from pack `<file_name>`", and origin and tags come from the pack as on a fresh import. When nothing holds the slug any more, both act as a plain import. An unknown `on_conflict` is 400 `fields.on_conflict` |
 | `GET /api/admin/problems/{id}` | | 200 `Problem` |
 | `PUT /api/admin/problems/{id}` | `ProblemEdit`, at most 512 KB | 200 `Problem` |
 | `DELETE /api/admin/problems/{id}` | | 204: archives the problem, kept with its tests. Its slug is freed: `slug` becomes `<slug>-archived-<id>` and the original moves to `archived_slug`, so a new problem can use it. Archiving an archived problem changes nothing |
@@ -316,6 +316,24 @@ Every route here needs the organiser role. The pack format and the rules for tes
 | `GET /api/admin/problems/{id}/generation` | | 200 the latest `Generation`; 404 when never run |
 | `POST /api/admin/problems/{id}/generate-inputs` | no body | 202 `InputGeneration` |
 | `GET /api/admin/problems/{id}/input-generation` | | 200 the latest `InputGeneration`; 404 when never run |
+
+### Pack import conflict
+
+When the pack's slug is already a problem's and no `on_conflict` is given, the import answers 409 `conflict`:
+
+```json
+{ "error": {
+    "code": "conflict",
+    "message": "A problem with the slug two-sum already exists. Choose what to do with this pack.",
+    "suggested_slug": "two-sum-2",
+    "existing": {
+      "id": 12, "title": "Two sum", "slug": "two-sum",
+      "live_contests": [], "hidden_live_contests": 0,
+      "open_contests": [{ "contest_id": 4, "slug": "week-3-practice", "title": "Week 3 practice", "label": "A" }],
+      "hidden_open_contests": 2 } } }
+```
+
+`live_contests` are the running contests that pin the problem and `open_contests` the other published contests that have not ended, each listed only when the caller manages it; the rest are counted in `hidden_live_contests` and `hidden_open_contests`. `replace` while `live_contests` or `hidden_live_contests` is not empty answers 409 with code `problem_live`, the same `existing` and a message such as "Two sum is in Week 3 practice, which is running. Edit it from the problem page, where you can update students." Replacing an archived problem is 400 `fields.on_conflict`.
 
 ### Shapes
 
