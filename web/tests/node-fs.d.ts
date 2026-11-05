@@ -11,5 +11,10 @@ declare module 'node:fs' {
   export function rmSync(path: string, options?: { recursive?: boolean; force?: boolean }): void;
 }
 
+// The screen audit finds the repository root from its own file.
+declare module 'node:url' {
+  export function fileURLToPath(url: string | URL): string;
+}
+
 // The screen audit's config passes the run's date to its workers through the environment.
 declare const process: { env: Record<string, string | undefined> };
