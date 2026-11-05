@@ -28,6 +28,8 @@ export const ICONS = {
   'refresh-cw': [path('M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8M21 3v5h-5M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16M8 16H3v5')],
   'chevron-up': [path('M18 15l-6-6-6 6')],
   'chevron-down': [path('M6 9l6 6 6-6')],
+  // The column splitter's grip, on hover and focus.
+  'grip-vertical': [{ tag: 'circle', cx: 9, cy: 12, r: 1 }, { tag: 'circle', cx: 9, cy: 5, r: 1 }, { tag: 'circle', cx: 9, cy: 19, r: 1 }, { tag: 'circle', cx: 15, cy: 12, r: 1 }, { tag: 'circle', cx: 15, cy: 5, r: 1 }, { tag: 'circle', cx: 15, cy: 19, r: 1 }],
   'chevron-right': [path('m9 18l6-6l-6-6')],
   // Previous in the workspace's phone strip.
   'chevron-left': [path('m15 18l-6-6l6-6')],

@@ -24,7 +24,7 @@
   import { serverClock } from '../lib/clock';
   import { compileMarks } from '../lib/compileErrors';
   import { Draft } from '../lib/draft.svelte';
-  import { RESULT_SHARE, STATEMENT_KEY, draftStorage, readResultPanel, writeResultPanel } from '../lib/drafts';
+  import { INPUT_DEFAULT, INPUT_KEY, RESULT_SHARE, STATEMENT_DEFAULT, STATEMENT_KEY, draftStorage, readResultPanel, resetLayout, writeResultPanel } from '../lib/drafts';
   import { keepHeadingFocus } from '../lib/focus';
   import { setTitle } from '../lib/head';
   import { PASTE_BLOCKED, type ExamOptions } from '../lib/contests';
@@ -139,14 +139,17 @@
   // The server says why Run and Submit are off when they are; `locked` is the fallback.
   const lockText = $derived(ws?.refusal ? ws.refusal : layout !== 'wide' ? NARROW : locked);
   // A short laptop starts with a smaller result, so the editor keeps its height.
-  const panel = readResultPanel(draftStorage(), typeof window !== 'undefined' && media('short').matches ? 30 : RESULT_SHARE.default);
+  const shortScreen = () => typeof window !== 'undefined' && media('short').matches;
+  const panel = readResultPanel(draftStorage(), shortScreen() ? 30 : RESULT_SHARE.default);
   let resultShare = $state(panel.share);
   let resultCollapsed = $state(panel.collapsed);
   let codeCol: HTMLDivElement | undefined = $state();
-  // In a contest from 1024 px: the statement's share beside the code, or hidden.
-  const statementPanel = readResultPanel(draftStorage(), 45, STATEMENT_KEY);
+  // From 1024 px: the statement's share beside the code, or hidden. One stored size for every workspace.
+  const statementPanel = readResultPanel(draftStorage(), STATEMENT_DEFAULT, STATEMENT_KEY);
   let statementShare = $state(statementPanel.share);
   let statementHidden = $state(statementPanel.collapsed);
+  // The output's share of the "Your input" tab.
+  let inputShare = $state(readResultPanel(draftStorage(), INPUT_DEFAULT, INPUT_KEY).share);
   let grid: HTMLDivElement | undefined = $state();
   const cols = $derived(statementHidden ? 'minmax(0, 1fr)' : `minmax(0, ${statementShare}fr) auto minmax(22.5rem, ${100 - statementShare}fr)`);
 
@@ -293,6 +296,22 @@
     statementShare = next.share;
     statementHidden = next.collapsed;
     if (remember) writeResultPanel(draftStorage(), { share: statementShare, collapsed: statementHidden }, STATEMENT_KEY);
+  }
+
+  function onInputSplit(share: number, remember: boolean) {
+    inputShare = share;
+    if (remember) writeResultPanel(draftStorage(), { share, collapsed: false }, INPUT_KEY);
+  }
+
+  // Every pane back to its default size, here and in storage.
+  function onResetLayout() {
+    resetLayout(draftStorage());
+    resultShare = shortScreen() ? 30 : RESULT_SHARE.default;
+    resultCollapsed = false;
+    statementShare = STATEMENT_DEFAULT;
+    statementHidden = false;
+    inputShare = INPUT_DEFAULT;
+    polite('Pane sizes reset.');
   }
 
   function onSplit(next: { share: number; collapsed: boolean }, remember: boolean) {
@@ -483,7 +502,7 @@
         {note}
         hasClock={!!clock}
         {statementHidden}
-        ontogglestatement={rail ? () => onStatementSplit({ share: statementShare, collapsed: !statementHidden }, true) : undefined}
+        ontogglestatement={() => onStatementSplit({ share: statementShare, collapsed: !statementHidden }, true)}
       />
     {/snippet}
     {#snippet strip()}
@@ -511,6 +530,7 @@
         onreset={() => (confirmReset = true)}
         settings={{ fontSize: draft.fontSize, tabSize: draft.tabSize, wrap: draft.wrap, tabMovesFocus: draft.tabMovesFocus }}
         onsettings={(s) => draft.settings(s)}
+        onresetlayout={onResetLayout}
         locked={lockText}
         runBusy={judging.runBusy}
         onrun={() => judging.runExamples()}
@@ -582,6 +602,8 @@
         {problemScore}
         locked={lockText}
         sticky={layout === 'wide'}
+        {inputShare}
+        oninputshare={onInputSplit}
         narrow={layout !== 'wide'}
         onjump={jump}
         onruninput={runOnInput}

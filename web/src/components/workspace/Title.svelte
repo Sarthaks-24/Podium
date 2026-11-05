@@ -7,7 +7,7 @@
   takes the clock's place when there is no clock. Props:
   `layout`, `banner` and `rail` (snippets, optional), `label` (the problem
   letter, or ""), `title`, `limits`, `back` ({ href, label }), `note`,
-  `hasClock`, and in a contest from 1024 px `statementHidden` with
+  `hasClock`, and from 1024 px `statementHidden` with
   `ontogglestatement` ("Hide statement" gives the editor the width).
 -->
 <script lang="ts">

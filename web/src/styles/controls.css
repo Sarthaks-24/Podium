@@ -191,7 +191,9 @@ textarea.input {
   resize: vertical;
 }
 
+/* The grip at the corner (resize: vertical) sets the height; it stops at about six lines. */
 .textarea-code {
+  min-height: calc(3 * var(--space-6));
   font-family: var(--font-mono);
   font-size: var(--fs-0);
   tab-size: 4;

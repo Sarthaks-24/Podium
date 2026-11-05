@@ -2,18 +2,19 @@
   Layout: the workspace's grid. From 1024 px three columns fill the window under the
   shell's measured header (--shell-head): the rail, the statement under the
   title, and the code column with the editor over the result, their rows
-  set by the splitter (`rows`). From 1024 to 1279 px the rail is narrower
-  and the code column wider, so the toolbar keeps one row; a laptop at most
-  45rem tall (the `short` tier) gives back padding to the editor. Under
-  1024 px the panes stack under the sticky strip and show one tab at a
+  set by the splitter (`rows`). A column splitter (`colSplit`) sits between
+  the statement and the code on every page, sized by `cols` (the rail keeps
+  its own width); with `statementHidden` the code takes the whole width. From
+  1024 to 1279 px the rail is narrower, and from 1280 px it is wider; a laptop
+  at most 45rem tall (the `short` tier) gives back padding to the editor.
+  Under 1024 px the panes stack under the sticky strip and show one tab at a
   time (Problem and Code from 768 px, Problem, Code and Result under it).
   In a contest the `bar` takes the rail's place from 1024 px: one row
-  across the top, then the title and the statement beside the code, with
-  a column splitter (`colSplit`) between them sized by `cols`; with
-  `statementHidden` the code takes the whole width under the title.
+  across the top, then the title and the statement beside the code.
   Props: `layout` ('wide', 'tablet' or 'phone'), `rows` (the code column's
-  rows from 1024 px), `showStatement`, `showEditor`, `showResult`, `column`
-  (bindable: the code column, which the splitter measures) and the
+  rows from 1024 px), `cols` (the statement, splitter and code columns),
+  `showStatement`, `showEditor`, `showResult`, `column` (bindable: the code
+  column, which the splitter measures), `grid` (bindable) and the
   snippets `side` (the rail) and `splitter` (from 1024 px), `strip` (under
   1024 px), `title`, `statement`, `code` (the editor pane) and `result`.
 -->
@@ -45,9 +46,11 @@
 
   const wide = $derived(layout === 'wide');
   const withBar = $derived(wide && !!bar);
+  // The rail keeps its width (--rail-w) beside the columns the splitter sets.
+  const template = $derived(!wide || !cols ? undefined : withBar ? cols : `var(--rail-w) ${cols}`);
 </script>
 
-<div bind:this={grid} class="ws" class:with-bar={withBar} class:no-statement={withBar && statementHidden} data-layout={layout} style:grid-template-columns={withBar ? cols : undefined}>
+<div bind:this={grid} class="ws" class:with-bar={withBar} class:no-statement={wide && statementHidden} data-layout={layout} style:grid-template-columns={template}>
   {#if withBar && bar}
     <div class="bar-cell">{@render bar()}</div>
   {:else if wide && side}
@@ -57,11 +60,11 @@
   {#if !wide && strip}{@render strip()}{/if}
   <div class="title-cell">{@render title()}</div>
 
-  {#if withBar && colSplit && !statementHidden}<div class="col-split">{@render colSplit()}</div>{/if}
+  {#if wide && colSplit && !statementHidden}<div class="col-split">{@render colSplit()}</div>{/if}
   <section
     id="ws-problem"
     class="pane statement-pane"
-    hidden={!showStatement || (withBar && statementHidden)}
+    hidden={!showStatement || (wide && statementHidden)}
     role={wide ? undefined : 'tabpanel'}
     aria-labelledby={wide ? undefined : 'ws-tab-problem'}
     aria-label={wide ? 'Statement' : undefined}
@@ -151,14 +154,16 @@
     }
   }
 
-  /* Three columns: rail, statement, code over verdict, filling the window. */
+  /* Rail, statement, splitter and code over verdict, filling the window. The
+     columns come from the splitter as an inline style; this is the shape before it. */
   @media (min-width: 1024px) {
     .ws {
-      grid-template-columns: 10rem minmax(0, 1fr) minmax(22.5rem, 1.15fr);
+      --rail-w: 10rem;
+      grid-template-columns: var(--rail-w) minmax(0, 40fr) auto minmax(22.5rem, 60fr);
       grid-template-rows: auto minmax(0, 1fr);
       grid-template-areas:
-        'rail title code'
-        'rail statement code';
+        'rail title split code'
+        'rail statement split code';
       /* Sized from the shell: the header's real height, testing
          banner included, comes from App.svelte as --shell-head. 18rem only
          keeps a zoomed-in window usable. */
@@ -166,6 +171,12 @@
       min-height: 18rem;
       border: var(--rule) solid var(--line);
       background: var(--surface);
+    }
+
+    .ws.no-statement {
+      grid-template-areas:
+        'rail title'
+        'rail code';
     }
 
     .rail {
@@ -186,11 +197,16 @@
       overflow-y: auto;
     }
 
+    .col-split {
+      grid-area: split;
+      display: grid;
+      border-left: var(--rule) solid var(--line);
+    }
+
     /* The rows come from the splitter as an inline style; this is the shape before it. */
     .code-col {
       grid-area: code;
-      grid-template-rows: minmax(0, 3fr) auto minmax(0, 2fr);
-      border-left: var(--rule) solid var(--line);
+      grid-template-rows: minmax(0, 65fr) auto minmax(0, 35fr);
       min-height: 0;
     }
 
@@ -203,15 +219,21 @@
     .result-pane {
       --sticky-top: var(--space-3);
       --sticky-bleed: var(--space-4);
+      display: flex;
+      flex-direction: column;
       padding: var(--sticky-top) var(--space-4) var(--space-4);
       overflow-y: auto;
     }
+
+    .result-pane > :global(*) {
+      flex: none;
+    }
   }
 
-  /* In a contest the bar runs across the top; the statement and the code share
-     the width the column splitter sets (an inline grid-template-columns). */
+  /* In a contest the bar runs across the top. */
   @media (min-width: 1024px) {
     .ws.with-bar {
+      grid-template-columns: minmax(0, 40fr) auto minmax(22.5rem, 60fr);
       grid-template-rows: auto auto minmax(0, 1fr);
       grid-template-areas:
         'bar bar bar'
@@ -232,33 +254,18 @@
       border-bottom: var(--rule) solid var(--line);
       background: var(--surface-2);
     }
-
-    .col-split {
-      grid-area: split;
-      display: grid;
-      border-left: var(--rule) solid var(--line);
-    }
-
-    .with-bar .code-col {
-      border-left: 0;
-    }
   }
 
   /* A wider rail from 1280 px, so most titles fit on their two lines. */
   @media (min-width: 1280px) {
     .ws {
-      grid-template-columns: 13rem minmax(0, 1fr) minmax(22.5rem, 1.15fr);
+      --rail-w: 13rem;
     }
   }
 
   /* Under 1280 px, at any height (1366 by 768 at 125 percent is 1093 px
-     wide): a narrower rail and a wider code
-     column, so the toolbar keeps one row. */
+     wide): a narrower rail, so the code keeps its width. */
   @media (1024px <= width < 1280px) {
-    .ws {
-      grid-template-columns: 10rem minmax(0, 1fr) minmax(22.5rem, 1.4fr);
-    }
-
     .rail {
       padding-inline: var(--space-3);
     }

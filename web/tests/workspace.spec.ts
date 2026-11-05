@@ -782,12 +782,12 @@ test.describe('P5 workspace', () => {
     await openWorkspace(page);
     const sep = page.getByRole('separator', { name: 'Result panel size' });
     const result = page.getByRole('region', { name: 'Result' });
-    await expect(sep).toHaveAttribute('aria-valuenow', '40');
+    await expect(sep).toHaveAttribute('aria-valuenow', '35');
     await expect(sep).toHaveAttribute('aria-controls', 'ws-result');
     const before = (await result.boundingBox())!.height;
     await sep.focus();
     await page.keyboard.press('ArrowUp');
-    await expect(sep).toHaveAttribute('aria-valuenow', '45');
+    await expect(sep).toHaveAttribute('aria-valuenow', '40');
     expect((await result.boundingBox())!.height).toBeGreaterThan(before);
     await page.keyboard.press('End');
     await expect(sep).toHaveAttribute('aria-valuenow', '80');
@@ -832,7 +832,8 @@ test.describe('P5 workspace', () => {
     await page.setViewportSize({ width: 1440, height: 900 });
     await openWorkspace(page);
     const pane = page.locator('#ws-result');
-    await pane.evaluate((el) => (el.scrollTop = el.scrollHeight));
+    // Part way down: the result starts smaller (35 percent), so the very bottom would scroll the verdict away.
+    await pane.evaluate((el) => (el.scrollTop = 150));
     const paneBox = (await pane.boundingBox())!;
     const head = page.locator('#ws-result .head.sticky');
     await expect(head).toContainText('Partial, 40 of 100');
@@ -1086,7 +1087,7 @@ test.describe('P5 workspace', () => {
     const split = page.getByRole('separator', { name: 'Statement panel size' });
     await split.focus();
     await page.keyboard.press('ArrowRight');
-    await expect(split).toHaveAttribute('aria-valuenow', '50');
+    await expect(split).toHaveAttribute('aria-valuenow', '45');
   });
 
   // From 1100 px the toolbar is one row at any height; 1024 to 1099 px may wrap to two (decision of fixer 1, C1-042).

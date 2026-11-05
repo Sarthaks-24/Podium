@@ -2,18 +2,22 @@
   ResultPane: the result area as three fixed tabs, Run, Submissions and
   Your input (lib/judging.svelte.ts holds which one shows). Run has the
   latest run on the examples; Submissions has the newest verdict, then
-  every submission; Your input has its own box and Run. A failure to send
+  every submission; Your input has its own box and Run, and from 1024 px
+  the box fills the pane and a row splitter sets how much of it is the
+  output (`inputShare`, the output's percent, and `oninputshare`). A failure to send
   says so above the tabs with "Submit again" or "Run again". When a tab
   switches by itself under 1024 px, focus moves to its first line, so a
   keyboard or screen reader user lands on the new result.
 -->
 <script lang="ts">
   import type { Judging } from '../../lib/judging.svelte';
+  import { RESULT_SHARE } from '../../lib/drafts';
   import { formatWhen, isWaiting, languageLabel, type Sample, type Submission } from '../../lib/workspace';
   import Icon from '../Icon.svelte';
   import RunResults from '../RunResults.svelte';
   import StreamNotice from '../StreamNotice.svelte';
   import SubmissionList from '../SubmissionList.svelte';
+  import Splitter from '../Splitter.svelte';
   import Tabs from '../Tabs.svelte';
   import VerdictPanel from '../VerdictPanel.svelte';
 
@@ -26,6 +30,8 @@
     sticky: boolean;
     /** Under 1024 px nothing runs: only Submissions shows, without tabs. */
     narrow?: boolean;
+    inputShare?: number;
+    oninputshare?: (share: number, remember: boolean) => void;
     onjump: (line: number, col: number | null) => void;
     onruninput: (input: string) => void;
     /** The editor's code now, for Compare with mine. */
@@ -34,7 +40,9 @@
     onuse: (s: Submission, source: string) => void;
   }
 
-  let { judging, samples, language, problemScore, locked, sticky, narrow = false, onjump, onruninput, mine, onuse }: Props = $props();
+  let { judging, samples, language, problemScore, locked, sticky, narrow = false, inputShare = 45, oninputshare = () => {}, onjump, onruninput, mine, onuse }: Props = $props();
+
+  let inputPane: HTMLDivElement | undefined = $state();
 
   const run = $derived(judging.state.run);
   const current = $derived(judging.current);
@@ -91,16 +99,48 @@
   {/if}
 </div>
 
-<div class="panel" role="tabpanel" id="ws-rpanel-input" aria-labelledby="ws-rtab-input" hidden={narrow || judging.tab !== 'input'}>
-  <label class="block-title" for="ws-custom" data-result-focus tabindex="-1">Your input</label>
-  <textarea id="ws-custom" class="input textarea-code" rows="4" spellcheck="false" bind:value={judging.customInput}></textarea>
-  <button type="button" class="btn btn-secondary btn-compact run" disabled={locked !== ''} aria-disabled={judging.runBusy ? 'true' : undefined} onclick={() => judging.runCustom()}>
-    <Icon name="play" />Run
-  </button>
-  {#if run && judging.customRun}
-    <h2 class="block-title">Run on your input</h2>
-    <RunResults {run} {language} {onjump} {samples} />
+<div
+  class="panel"
+  class:fill={!narrow}
+  role="tabpanel"
+  id="ws-rpanel-input"
+  aria-labelledby="ws-rtab-input"
+  hidden={narrow || judging.tab !== 'input'}
+  bind:this={inputPane}
+  style:grid-template-rows={narrow ? undefined : `minmax(6rem, ${100 - inputShare}fr) auto minmax(3rem, ${inputShare}fr)`}
+>
+  <div class="in-box">
+    <div class="in-head">
+      <label class="block-title" for="ws-custom" data-result-focus tabindex="-1">Your input</label>
+      <button type="button" class="btn btn-secondary btn-compact run" disabled={locked !== ''} aria-disabled={judging.runBusy ? 'true' : undefined} onclick={() => judging.runCustom()}>
+        <Icon name="play" />Run
+      </button>
+    </div>
+    <textarea id="ws-custom" class="input textarea-code" rows="4" spellcheck="false" bind:value={judging.customInput}></textarea>
+  </div>
+  {#if !narrow}
+    <Splitter
+      share={inputShare}
+      collapsed={false}
+      min={RESULT_SHARE.min}
+      max={RESULT_SHARE.max}
+      summary=""
+      controls="ws-input-out"
+      column={inputPane}
+      name="Output"
+      button={false}
+      hideable={false}
+      onchange={(next, remember) => oninputshare(next.share, remember)}
+    />
   {/if}
+  <div class="in-out" id="ws-input-out">
+    {#if run && judging.customRun}
+      <h2 class="block-title">Run on your input</h2>
+      <RunResults {run} {language} {onjump} {samples} />
+    {:else if !narrow}
+      <p class="muted empty">The result of Run on your input appears here.</p>
+    {/if}
+  </div>
 </div>
 
 <style>
@@ -112,6 +152,41 @@
 
   .panel[hidden] {
     display: none;
+  }
+
+  /* From 1024 px the pane's height goes to the box and its output, split by the row splitter. */
+  .panel.fill {
+    flex: 1 1 0;
+    min-height: 11rem;
+  }
+
+  .in-box {
+    display: grid;
+    grid-template-rows: auto minmax(0, 1fr);
+    gap: var(--space-2);
+    min-height: 0;
+  }
+
+  /* The label and Run share a row, so the box keeps the height. */
+  .in-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-3);
+  }
+
+  .in-box textarea {
+    height: 100%;
+    min-height: 0;
+    resize: none;
+  }
+
+  .in-out {
+    display: grid;
+    align-content: start;
+    gap: var(--space-3);
+    min-height: 0;
+    overflow-y: auto;
   }
 
   .panel > .btn {
