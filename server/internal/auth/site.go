@@ -104,6 +104,17 @@ func Hidden(r rune) bool {
 	return unicode.Is(unicode.Cf, r) && r != 0x200c && r != 0x200d
 }
 
+// ValidContactEmail reports whether s, already trimmed and lowercased, is
+// empty or a single bare email address of at most 254 characters. The site
+// contact and each contest's contact use the same rule.
+func ValidContactEmail(s string) bool {
+	if s == "" {
+		return true
+	}
+	a, err := mail.ParseAddress(s)
+	return err == nil && a.Address == s && len(s) <= 254
+}
+
 // checkOrganisation trims o and returns what is wrong with it.
 func checkOrganisation(o *Organisation) FieldErrors {
 	o.Name = strings.TrimSpace(o.Name)
@@ -114,10 +125,8 @@ func checkOrganisation(o *Organisation) FieldErrors {
 	if utf8.RuneCountInString(o.Name) > 120 || !singleLine(o.Name) {
 		f["name"] = "Use one line of at most 120 characters for the name."
 	}
-	if o.ContactEmail != "" {
-		if a, err := mail.ParseAddress(o.ContactEmail); err != nil || a.Address != o.ContactEmail || len(o.ContactEmail) > 254 {
-			f["contact_email"] = "Enter a single email address, such as podium@college.edu."
-		}
+	if !ValidContactEmail(o.ContactEmail) {
+		f["contact_email"] = "Enter a single email address, such as podium@college.edu."
 	}
 	if o.Phone != "" {
 		digits, ok := 0, len(o.Phone) <= 32

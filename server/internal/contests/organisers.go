@@ -43,11 +43,17 @@ func (s *Service) Organisers(ctx context.Context, contestID int64) ([]Organiser,
 
 // OrganiserNames are the names the contest page shows as its organisers:
 // listed people who are still enabled staff, in the order they were added
-// (the creator first), each by name or, without one, by email.
-func (s *Service) OrganiserNames(ctx context.Context, contestID int64) ([]string, error) {
+// (the creator first). Staff see each by name or, without one, by email.
+// Students see names only: an organiser with no name is left out, so an
+// account email never reaches a student.
+func (s *Service) OrganiserNames(ctx context.Context, contestID int64, staff bool) ([]string, error) {
+	nameOnly := ""
+	if !staff {
+		nameOnly = " AND trim(u.name) <> ''"
+	}
 	rows, err := s.DB.QueryContext(ctx, `SELECT coalesce(nullif(trim(u.name), ''), u.email) FROM contest_organisers o
 		JOIN users u ON u.id = o.user_id
-		WHERE o.contest_id = ? AND u.disabled = 0 AND u.role IN ('organiser', 'admin', 'owner')
+		WHERE o.contest_id = ? AND u.disabled = 0 AND u.role IN ('organiser', 'admin', 'owner')`+nameOnly+`
 		ORDER BY o.added_at, o.user_id`, contestID)
 	if err != nil {
 		return nil, err
