@@ -127,7 +127,7 @@ sudo systemctl start podium-judge
 
 It runs the same hostile programs (fork bomb, 2 GB allocation, endless loop and output, `/etc/shadow`, network, compile bomb, Java and Python memory, Node threads, symlink and FIFO tricks on the output file, filling `/tmp`) and prints timing tables. It exits non-zero if any program escapes its limits. Do not run contests until it passes.
 
-On a development machine, `make sandbox-test` runs the same suite plus the validation acceptance test: it validates the three example packs in `problems/` on real isolate, breaks one expected output and checks that validation fails naming that test, and checks that a hostile custom checker is contained.
+On a development machine, `make sandbox-test` runs the same suite plus the validation acceptance test: it validates the three example packs in `problems/` on real isolate, breaks one expected output and checks that validation fails naming that test, and checks that a hostile custom checker is contained. `tools/sandbox-test.sh` copies the `-examples` directory into its private work folder before switching to the judge user, so examples inside a private home directory remain readable. It removes the copy on exit.
 
 ## Run modes
 
@@ -511,7 +511,7 @@ If clock lines arrive in bursts or only when the request ends, something between
 
 ## Alerts
 
-Nothing extra stays in memory: systemd starts a small unit when something fails, and a timer runs a check every 15 minutes (D70). Alerts go to `PODIUM_ALERT_WEBHOOK` in `/etc/podium/alert.env`; ntfy is the chosen channel.
+Nothing extra stays in memory: systemd starts a small unit when something fails, and a timer runs a check every 15 minutes (D70). Alerts go to `PODIUM_ALERT_WEBHOOK` in `/etc/podium/alert.env`; ntfy is the chosen channel. When the variable is absent from the environment, `podium-alert` reads it from that file itself, including alerts raised by a manual `podium-check` run.
 
 | Signal | How | Repeats |
 |---|---|---|

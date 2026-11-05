@@ -19,7 +19,14 @@
 set -euo pipefail
 
 die() { printf 'podium-alert: %s\n' "$*" >&2; exit 1; }
+# A hand run has no PODIUM_ALERT_WEBHOOK (only systemd's EnvironmentFile=
+# sets it): read it from alert.env as data, never sourced. PODIUM_ALERT_ENV
+# points the tests at another file.
+envfile=${PODIUM_ALERT_ENV:-/etc/podium/alert.env}
 url=${PODIUM_ALERT_WEBHOOK:-}
+if [[ -z $url && -r $envfile ]]; then
+  url=$(sed -n 's/^PODIUM_ALERT_WEBHOOK=//p' "$envfile" | tail -n1 | tr -d '\r' | sed -e 's/^"\(.*\)"$/\1/' -e "s/^'\(.*\)'\$/\1/")
+fi
 state=${STATE_DIRECTORY:-/var/lib/podium-alert}
 host=$(hostname)
 now=$(date -u +%s)
@@ -28,9 +35,10 @@ when=$(date -u '+%Y-%m-%d %H:%M UTC')
 # post TITLE PRIORITY MESSAGE
 post() {
   if [[ -z $url || $url == change-me ]]; then
-    die "PODIUM_ALERT_WEBHOOK missing in /etc/podium/alert.env; not sent: $1"
+    [[ -r $envfile || -n ${PODIUM_ALERT_WEBHOOK:-} ]] || die "cannot read $envfile (missing or unreadable, run as root); not sent: $1"
+    die "PODIUM_ALERT_WEBHOOK missing or empty in $envfile; not sent: $1"
   fi
-  [[ $url == https://* && $url != *[[:space:]]* && $url != *'"'* && $url != *'\'* ]] || die "PODIUM_ALERT_WEBHOOK must start with https:// and hold no spaces or quotes (in /etc/podium/alert.env)"
+  [[ $url == https://* && $url != *[[:space:]]* && $url != *'"'* && $url != *'\'* ]] || die "PODIUM_ALERT_WEBHOOK must start with https:// and hold no spaces or quotes (in $envfile)"
   # ntfy reads Title, Priority and Tags; any other webhook gets the body.
   # The URL goes to curl on stdin, not as an argument: arguments are
   # visible to every user in the process list, and the topic is the secret.

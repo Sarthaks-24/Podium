@@ -4,6 +4,11 @@ Dated entries per release. Unreleased work is listed at the top.
 
 ## Unreleased
 
+### v2.0.1 deploy fixes (2026-11-05)
+
+- `podium-alert` reads `PODIUM_ALERT_WEBHOOK` from `/etc/podium/alert.env` when the environment does not set it, so a hand run of `podium-alert test` or `podium-check restore-proof --corrupt` sends its alert. The file is read as data, never sourced, and the error names whether the file is unreadable or the value is empty.
+- `tools/sandbox-test.sh` copies the `-examples` folder into its private work folder before switching to the judge user, so problem packs in a private home folder no longer fail with `permission denied`.
+
 ### v4.01 contest updates (2026-11-03)
 
 - Standings stream updates now name a version already cached for every board variant, and the refresh retries after a temporary contest or standings read failure. A stale cached version no longer suppresses the final update once all board variants reach the latest version.
