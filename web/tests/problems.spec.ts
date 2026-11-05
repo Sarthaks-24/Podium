@@ -887,7 +887,8 @@ test('a taken slug can archive the existing problem, which lists the contests it
   await page.goto('/admin/problems');
   const dialog = await importDuplicate(page);
   await dialog.getByRole('radio', { name: /Archive the existing problem/ }).check();
-  await expect(dialog.getByText('A plus B is in Week 6 practice, which has not ended.', { exact: false })).toBeVisible();
+  await expect(dialog.getByText('A plus B is in these contests, which have not ended.', { exact: false })).toBeVisible();
+  await expect(dialog.getByRole('listitem').filter({ hasText: 'Week 6 practice' })).toBeVisible();
   await expect(dialog.getByText('and 1 contest you do not manage')).toBeVisible();
   await dialog.getByRole('button', { name: 'Archive and import' }).click();
   await expect(toasts(page).getByText('Imported A plus B again. Validating.', { exact: true })).toBeVisible();
