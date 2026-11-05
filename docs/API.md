@@ -476,7 +476,7 @@ The wizard drafts a problem from a brief or from pasted text, with Anthropic, Op
 
 `KeyStatus` also carries `custom_prompt` (boolean): true when `PODIUM_AI_PROMPT_FILE` replaces the wizard's authoring rules. The text is never sent.
 
-`GET /api/admin/problems/pack-prompt` (organiser and up) returns 200 `{"prompt":"..."}`: the text an organiser gives to any AI so it returns a pack for Import pack. It is built from an embedded template filled with the importer's own limits and file names, and asks for pack format 1. No request body or parameters.
+`GET /api/admin/problems/pack-prompt` (organiser and up) returns 200 `{"prompt":"..."}`: the text an organiser gives to any AI so it returns a pack for Import pack. It is built from an embedded template filled with the importer's own limits and file names, and asks for pack format 1. Its first line is a stamp, "Podium <release> pack prompt, pack format 1", with no release for a plain dev build. No request body or parameters.
 
 `KeyStatus`: `{active, provider, model, active_until, providers: [{id, name, has_key, model, active_until, models}], server_now}`; without a key, `active` is false and `provider` is `anthropic`.
 
@@ -694,7 +694,7 @@ Every route needs a signed-in user. A published, unarchived contest is open to s
 - `rules` carries the four exam options, so the workspace knows which measures are on and says so before Start and in Help.
 - `honour_text` is the contest's own honour code, or the default.
 - `organised_by` names the contest's listed organisers who are still enabled staff, in the order they were added (the creator first), each by name. Staff (who see the page as Student view) get the account email for an organiser with no name; students never do, and an organiser with no name is left out of their list, so it can be empty. The page shows it below the start button.
-- `contact_email` is the contest's own contact address, typed by its organisers, or `""`. The page shows "Questions about this contest? Email ..." under the Organisers line, and nothing when it is empty. It is never an account email unless an organiser typed it.
+- `contact_email` is the contest's own contact address, typed by its organisers, or `""`. The page shows "Questions about this contest? Email ..." under the Organisers line, and nothing when it is empty. The student contest header, the ended page and the closed-problem screen show it too. It is never an account email unless an organiser typed it. A student who cannot see the contest gets the same 404 as for a missing one, with no contact.
 - `my_submission_count` counts the student's submissions as they are made, practice and judge failures excluded.
 - `editorial_md` is set only when the editorial is published and every student's time is over.
 - `Clarification`: `{id, problem_label, question, answer, public, created_at, answered_at}`. Students never see who asked a public question.

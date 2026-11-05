@@ -40,6 +40,21 @@ test('the prompt panel opens from the keyboard, shows the reminders and copies t
   await expect(panel).toHaveCount(0);
 });
 
+test('Download as file saves the prompt as podium-pack-prompt.txt and says so', async ({ page }) => {
+  await problemsApi(page);
+  await page.route('**/api/admin/problems/pack-prompt', (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ prompt: PROMPT }) }));
+  await page.goto('/admin/problems');
+  await activate(page, page.getByRole('button', { name: 'Prompt for another AI' }));
+  const panel = page.locator('#pack-prompt-panel');
+  const saved = page.waitForEvent('download');
+  await activate(page, panel.getByRole('button', { name: 'Download as file' }));
+  const file = await saved;
+  expect(file.suggestedFilename()).toBe('podium-pack-prompt.txt');
+  const path = await file.path();
+  expect((await import('node:fs')).readFileSync(path, 'utf8')).toBe(PROMPT);
+  await expect(panel.getByRole('status')).toHaveText('Downloaded podium-pack-prompt.txt.');
+});
+
 test('the wizard tells an admin, not an organiser, when the site uses a custom prompt', async ({ page }) => {
   await aiApi(page);
   await page.goto('/admin/ai/new');
