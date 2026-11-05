@@ -401,7 +401,7 @@ Students get the same workspace inside contests.
 
 ## Packs from another AI
 
-Any AI chat can write a pack for Import pack, not only the wizard's three providers. On Problems, "Prompt for another AI" opens a prompt to copy into that chat. It describes the pack format the server reads (file names, the `problem.yaml` keys, the limits under "Import limits") and ends with a line where you describe the problem you want.
+Any AI chat can write a pack for Import pack, not only the wizard's three providers. On Problems, "Prompt for another AI" opens a prompt to copy into that chat. Its first line names the Podium release and the pack format (for example "Podium v2.0.1 pack prompt, pack format 1"), so a saved copy says which build it came from. "Download as file" saves it as `podium-pack-prompt.txt`. It describes the pack format the server reads (file names, the `problem.yaml` keys, the limits under "Import limits") and ends with a line where you describe the problem you want.
 
 1. Copy the prompt, replace its last line with your problem, and send it.
 2. If the AI can make files, it returns a zip. Otherwise it returns each file under its exact name: put the files in one folder and zip them (Windows: select the files, right-click, Send to, Compressed (zipped) folder; Mac: select the files, right-click, Compress). Zip the files, not a folder around them.

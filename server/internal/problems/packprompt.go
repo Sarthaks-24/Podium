@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"text/template"
 
+	"github.com/Sarthaks-24/podium/internal/buildinfo"
 	"github.com/Sarthaks-24/podium/internal/httpx"
 )
 
@@ -25,13 +26,28 @@ var packPromptTmpl = template.Must(template.ParseFS(packPromptFS, "packprompt/pr
 
 // PackPrompt returns the prompt an organiser gives to any AI to get a pack
 // for Import pack. Every number and name comes from the importer's own
-// constants and from the example pack, not from retyped text.
+// constants and from the example pack, not from retyped text. The first
+// line names this build's release and the pack format (V201-16).
 func PackPrompt() (string, error) {
+	return packPrompt(buildinfo.Version)
+}
+
+// packPromptStamp is the prompt's first line. A plain dev build has no
+// release to name.
+func packPromptStamp(version string) string {
+	if version == "" || version == "dev" {
+		return fmt.Sprintf("Podium pack prompt, pack format %d", promptPackFormat)
+	}
+	return fmt.Sprintf("Podium %s pack prompt, pack format %d", version, promptPackFormat)
+}
+
+func packPrompt(version string) (string, error) {
 	yml, err := packPromptFS.ReadFile("packprompt/example/problem.yaml")
 	if err != nil {
 		return "", err
 	}
 	data := map[string]any{
+		"Stamp":          packPromptStamp(version),
 		"Format":         promptPackFormat,
 		"ExampleSlug":    "double-it",
 		"ExampleYAML":    string(yml),

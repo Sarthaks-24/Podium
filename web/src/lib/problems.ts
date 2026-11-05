@@ -886,9 +886,11 @@ export function rangeText(nums: readonly number[]): string {
  * is restored.
  */
 export function archiveWarnings(title: string, open: readonly Pick<LiveContest, 'title'>[], hidden = 0): string[] {
-  const lines = open.map(
-    (c) => `${title} is in ${c.title}, which has not ended. Students keep seeing it there, but you cannot update it in that contest until you restore it.`,
-  );
+  const lines: string[] = [];
+  if (open.length > 0) {
+    lines.push(`${title} is in these contests, which have not ended. Students keep seeing it there, but you cannot update it in a contest until you restore it.`);
+    lines.push(...open.map((c) => c.title));
+  }
   if (hidden > 0) lines.push(`and ${hidden === 1 ? '1 contest' : `${hidden} contests`} you do not manage`);
   return lines;
 }

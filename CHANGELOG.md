@@ -16,11 +16,17 @@ Releases are numbered from `v2.0.0`. The builds before it were never released; t
 - Stored sizes are clamped to 20 to 80 percent on load, so a bad value cannot hide a pane. Under 1024 px nothing changes: panes are tabs and editing stays off.
 - New: `web/tests/resize.spec.ts`; `a11y.spec.ts` covers the new splitters. `workspace.spec.ts` changed only for the new defaults (result 35, statement 40 plus one step).
 
+### v2.0.1 stage G: audit extras (2026-11-05)
+
+- The outside-AI prompt now starts with a line naming the release and the pack format, for example "Podium v2.0.1 pack prompt, pack format 1" (a plain dev build, which has no release, says "Podium pack prompt, pack format 1"). The panel under "Prompt for another AI" has "Download as file" next to Copy; it saves `podium-pack-prompt.txt` and says so in the same status line as Copy.
+- The contest's own contact now also shows in the student contest header (an "Email organisers" link in the bar from 1024 px, and in the Menu below it), on the ended page, and on the screen a student sees when a problem is closed (not started, or time up). Nothing shows when the contact is empty. The not-invited state is unchanged: the server answers it with the same 404 as a contest that does not exist, so no contest details are given to someone who cannot see it. No API response changed.
+
 ### v2.0.1 stage C: contacts (2026-11-05)
 
 - The footer reads "Problems with the site? Email <address>" and sign-in "Cannot sign in? Email <address>". The Settings field is now "Site contact email" with help text; its JSON name `contact_email` is unchanged. The sign-in errors, the closed-screen line and the privacy fallback no longer call the address "the organisers'": without an address the sign-in errors say "whoever runs this site".
 - Each contest has an optional `contact_email` (migration `0011_v201_contact.sql`, validated like the site contact, copied by Clone, audited). The editor shows "Contact email for this contest" under Advanced; the contest page shows "Questions about this contest? Email <address>" under Organisers, and nothing when empty.
 - Students now see organiser names only: an organiser with no name is left out of `organised_by` and the line hides if none remain. Before, such an organiser's account email was shown. Staff keep the email fallback.
+- The privacy notice now says to ask whoever runs this site, not the organisers, for a copy of your data or to remove your account. Contact emails with `?`, `&` or `%` are refused, so they cannot add headers to the `mailto:` links.
 - Upgrade note: like 0010, the previous server refuses a database with migration 0011, so a rollback restores the pre-upgrade backup. The golden API fixtures in `web/tests/fixtures` were regenerated (`PODIUM_GOLDEN=1`) for the new field.
 
 ### v2.0.1 stage F: AI prompts (2026-11-05)

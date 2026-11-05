@@ -1203,24 +1203,28 @@
               {/each}
             </fieldset>
 
-            <div class="field">
-              <label for="f-contact_email">Contact email for this contest</label>
-              <input
-                id="f-contact_email"
-                class="input"
-                type="email"
-                autocomplete="off"
-                maxlength="254"
-                placeholder="contest@college.edu"
-                bind:value={form.contact_email}
-                oninput={() => change(['contact_email'])}
-                onchange={saveNow}
-                aria-invalid={fields.contact_email ? 'true' : undefined}
-                aria-describedby="f-contact-help{fields.contact_email ? ' f-contact_email-error' : ''}"
-              />
-              <p id="f-contact-help" class="field-help">Shown on the contest page to everyone who can open it. Leave empty to show none.</p>
-              {@render err('contact_email')}
-            </div>
+            <fieldset class="group">
+              <legend>Contact</legend>
+              <div class="field">
+                <label for="f-contact_email">Contact email for this contest</label>
+                <input
+                  id="f-contact_email"
+                  class="input"
+                  type="email"
+                  autocomplete="off"
+                  maxlength="254"
+                  placeholder="name@example.com"
+                  bind:value={form.contact_email}
+                  oninput={() => change(['contact_email'])}
+                  onchange={saveNow}
+                  aria-invalid={fields.contact_email ? 'true' : undefined}
+                  aria-describedby="f-contact-help{fields.contact_email ? ' f-contact_email-error' : ''}"
+                />
+                <p id="f-contact-help" class="field-help">Shown on the contest page to everyone who can open it. Leave empty to show none.</p>
+                {@render err('contact_email')}
+              </div>
+            </fieldset>
+
             <div class="field">
               <label for="f-description_md">Description (Markdown)</label>
               <textarea
