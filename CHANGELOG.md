@@ -6,6 +6,15 @@ Releases are numbered from `v2.0.0`. The builds before it were never released; t
 
 ## Unreleased: v2.0.1 Billota
 
+### v2.0.1 stage A: archive and restore (2026-11-05)
+
+- Archiving a problem or a contest frees its slug: it takes `<slug>-archived-<id>` and keeps the original in the new `archived_slug` field, so a new problem or contest can use the address at once. Archiving twice changes nothing. Migration `0010_v201.sql` does the same for items already archived, and leaves one alone if its new slug is taken.
+- New `POST /api/admin/problems/{id}/restore` and `POST /api/admin/contests/{id}/restore`. An empty slug gives the original back; if another item took it, the answer is 409 with `suggested_slug`, and the screen asks for a new slug with that one filled in. A restored contest is audited as `restore`.
+- An archived problem's slug cannot be changed until it is restored, and its exported pack carries the original slug in `problem.yaml` and in the file name.
+- The problem page now lists `open_contests` (published contests that pin the problem and have not ended, limited to those you manage) and a count of the rest. The archive dialog names them: an archived problem keeps working in a contest, but cannot be updated there until restored.
+- Problems and Contests have "Show archived" with a Restore button on each archived row; the editors show Restore in the menu instead of Archive.
+- Upgrade note: the previous server refuses a database with migration 0010, so a rollback restores the pre-upgrade backup (`docs/OPERATIONS.md`, "Migration 0010").
+
 ### v2.0.1 deploy fixes (2026-11-05)
 
 - `podium-alert` reads `PODIUM_ALERT_WEBHOOK` from `/etc/podium/alert.env` when the environment does not set it, so a hand run of `podium-alert test` or `podium-check restore-proof --corrupt` sends its alert. The file is read as data, never sourced, and the error names whether the file is unreadable or the value is empty.

@@ -663,6 +663,13 @@ From Windows, `tools/deploy.sh HOST` (or `make deploy HOST=user@vm`) does all of
 
 Configuration files are never overwritten: add a new variable with `sudoedit` before running the upgrade again.
 
+### Migration 0010 (v2.0.1): archived slugs
+
+`0010_v201.sql` adds `archived_slug` to `problems` and `contests` and, for every problem and contest already archived, moves the slug to `<slug>-archived-<id>` (the slug cut so the whole fits 64 characters) and keeps the original in `archived_slug`. A row whose new slug is already used is left as it is (`archived_slug` stays empty), so the migration cannot stop the server from starting. It rebuilds no table.
+
+- Before the upgrade, rehearse it as for any schema change (above): take the newest nightly backup, `podium-server migrate -db COPY`, then look at the archived rows: `sqlite3 COPY "SELECT id, slug, archived_slug FROM problems WHERE archived = 1"`.
+- **Rollback.** The previous server refuses a database that records a migration it does not know, so rolling back is the "Newer schema" case below: the backup taken just before the upgrade is restored and what was written since is lost. The migration itself loses nothing: no data is dropped, and the original slugs stay in `archived_slug`.
+
 ## Holding the compilers
 
 A gcc, JDK, Python, Node or isolate update can change how fast a reference runs or, rarely, a verdict. Before a contest season, stop apt from moving them:

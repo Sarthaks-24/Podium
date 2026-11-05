@@ -57,8 +57,11 @@ const (
 
 // Problem is one problem in the bank.
 type Problem struct {
-	ID            int64
-	Slug          string
+	ID   int64
+	Slug string
+	// ArchivedSlug is the slug an archived problem had before archiving freed
+	// it; empty when the slug never moved.
+	ArchivedSlug  string
 	Title         string
 	Statement     string
 	TimeLimitMS   int
