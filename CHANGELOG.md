@@ -6,6 +6,10 @@ Releases are numbered from `v2.0.0`. The builds before it were never released; t
 
 ## Unreleased: v2.0.1 Billota
 
+### v2.0.1 stage G: audit extras (2026-11-05)
+
+- The outside-AI prompt now starts with a line naming the release and the pack format, for example "Podium v2.0.1 pack prompt, pack format 1" (a plain dev build, which has no release, says "Podium pack prompt, pack format 1"). The panel under "Prompt for another AI" has "Download as file" next to Copy; it saves `podium-pack-prompt.txt` and says so in the same status line as Copy.
+- The contest's own contact now also shows in the student contest header (an "Email organisers" link in the bar from 1024 px, and in the Menu below it), on the ended page, and on the screen a student sees when a problem is closed (not started, or time up). Nothing shows when the contact is empty. The not-invited state is unchanged: the server answers it with the same 404 as a contest that does not exist, so no contest details are given to someone who cannot see it. No API response changed.
 ### v2.0.1 stage C: contacts (2026-11-05)
 
 - The footer reads "Problems with the site? Email <address>" and sign-in "Cannot sign in? Email <address>". The Settings field is now "Site contact email" with help text; its JSON name `contact_email` is unchanged. The sign-in errors, the closed-screen line and the privacy fallback no longer call the address "the organisers'": without an address the sign-in errors say "whoever runs this site".

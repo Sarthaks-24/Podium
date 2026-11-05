@@ -25,11 +25,12 @@
     onstandings?: () => void;
     clock?: Snippet;
     contestTitle?: string;
+    contact?: string;
     changed?: ReadonlySet<string>;
     onleave?: () => void;
   }
 
-  let { problems, slug, current, layout, unread = 0, onmessages, onhelp, onstandings, clock, contestTitle = '', changed = new Set<string>(), onleave }: Props = $props();
+  let { problems, slug, current, layout, unread = 0, onmessages, onhelp, onstandings, clock, contestTitle = '', contact = '', changed = new Set<string>(), onleave }: Props = $props();
 
   const base = $derived(`/contests/${encodeURIComponent(slug)}`);
   // Past six letters the row scrolls; the open one stays in view.
@@ -117,6 +118,7 @@
         <a class="btn btn-quiet btn-compact" href="{base}/standings?from={encodeURIComponent(current)}">Standings</a>
       {/if}
       {#if onhelp}<button type="button" class="btn btn-quiet btn-compact" aria-keyshortcuts="?" onclick={onhelp}>Help</button>{/if}
+      {#if contact}<a class="btn btn-quiet btn-compact" href="mailto:{contact}" title={contact} aria-label="Email the organisers at {contact}">Email organisers</a>{/if}
     </div>
   </div>
 {:else if layout === 'strip'}
@@ -137,6 +139,7 @@
           </button>
         </li>
         {#if onhelp}<li><button type="button" class="item" onclick={() => pick(onhelp)}>Help</button></li>{/if}
+        {#if contact}<li><a class="item item-stack" href="mailto:{contact}" aria-label="Email the organisers at {contact}">Email organisers<span class="item-sub">{contact}</span></a></li>{/if}
         <li>{@render leave('item')}</li>
       </ul>
     </div>
@@ -333,6 +336,20 @@
 
   .item:hover {
     background: var(--surface-2);
+  }
+
+  .item-stack {
+    flex-direction: column;
+    align-items: flex-start;
+    justify-content: center;
+    gap: 0;
+    padding-block: var(--space-2);
+  }
+
+  .item-sub {
+    color: var(--ink-muted);
+    font-size: var(--fs-0);
+    overflow-wrap: anywhere;
   }
 
   /* Forced colours drop the tint and the bar fills: the current problem
