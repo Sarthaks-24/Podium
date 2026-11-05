@@ -25,6 +25,13 @@ dbs:
       # (B2 bills class A calls), and at most 10 s of changes at risk.
       sync-interval: 10s
 
+# Clean up uploaded L0 files once an hour instead of every 15 s (the 0.5
+# default). Each check lists the bucket once or twice, even when nothing
+# changed: at 15 s that is up to 11,520 list calls a day, over B2's free
+# 2,500 class C cap; at 1 h it is 48 (PF-5). L0 files only stay in the
+# bucket up to an hour longer; the newest one is always kept.
+l0-retention-check-interval: 1h
+
 # A full snapshot every day, kept for 14 days; point-in-time restore works
 # anywhere inside that window.
 snapshot:

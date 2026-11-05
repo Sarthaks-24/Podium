@@ -130,11 +130,13 @@ litestream_ready() {
 }
 
 # newest_remote REMOTE_PATH [rclone filter flags...]: Unix time of the
-# newest file, or 0. Server-side times only: no request per object.
+# newest file, or 0. Server-side times only: no request per object, and
+# --fast-list makes it one list call per 1,000 objects (B2 caps list calls
+# at 2,500 a day on the free tier, PF-5).
 newest_remote() {
   local path=$1; shift
   local t
-  t=$(rclone --config "" --cache-dir /tmp/rclone lsjson -R --files-only --no-mimetype --use-server-modtime "$@" "$path" \
+  t=$(rclone --config "" --cache-dir /tmp/rclone lsjson -R --fast-list --files-only --no-mimetype --use-server-modtime "$@" "$path" \
       | jq -r 'map(.ModTime) | max // empty') || return 1
   [[ -n $t ]] && date -u -d "$t" +%s || echo 0
 }
@@ -178,7 +180,9 @@ check_litestream() {
     RCLONE_CONFIG_LS_ENDPOINT=$(envget "$f" PODIUM_BACKUP_ENDPOINT "")
     RCLONE_CONFIG_LS_REGION=$(envget "$f" PODIUM_BACKUP_REGION "")
     export RCLONE_CONFIG_LS_ACCESS_KEY_ID RCLONE_CONFIG_LS_SECRET_ACCESS_KEY RCLONE_CONFIG_LS_ENDPOINT RCLONE_CONFIG_LS_REGION
-    newest_remote "ls:$(envget "$f" PODIUM_BACKUP_BUCKET "")/$(envget "$f" PODIUM_BACKUP_PATH "")" --max-age 7d
+    # Only L0: every sync lands there and Litestream 0.5 always keeps the
+    # newest L0 file, so one small folder answers "when was the last upload".
+    newest_remote "ls:$(envget "$f" PODIUM_BACKUP_BUCKET "")/$(envget "$f" PODIUM_BACKUP_PATH "")/ltx/0"
   ) || { problem litestream "bucket unreachable" "listing the Litestream bucket failed: the key, endpoint or network is wrong"; return; }
   local_t=$(stat -c %Y "$db")
   [[ -f $db-wal ]] && local_t=$(( $(stat -c %Y "$db-wal") > local_t ? $(stat -c %Y "$db-wal") : local_t ))
