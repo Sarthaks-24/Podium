@@ -36,6 +36,8 @@ type APIError struct {
 	// Problems lists everything wrong with an upload or a request to
 	// validate, so it can be fixed in one pass.
 	Problems []string `json:"problems,omitempty"`
+	// SuggestedSlug is a free slug offered with a slug conflict.
+	SuggestedSlug string `json:"suggested_slug,omitempty"`
 }
 
 // WriteError writes an APIError.

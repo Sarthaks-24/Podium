@@ -15,6 +15,7 @@ import (
 	"mime"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 	"unicode/utf8"
 
@@ -59,18 +60,20 @@ func withPackSlot(w http.ResponseWriter, r *http.Request) (func(), bool) {
 }
 
 type problemSummaryJSON struct {
-	ID          int64    `json:"id"`
-	Slug        string   `json:"slug"`
-	Title       string   `json:"title"`
-	Difficulty  string   `json:"difficulty"`
-	Tags        []string `json:"tags"`
-	Origin      string   `json:"origin"`
-	Archived    bool     `json:"archived"`
-	TestCount   int      `json:"test_count"`
-	Points      int      `json:"points"`
-	Validated   bool     `json:"validated"`
-	ValidatedAt *int64   `json:"validated_at"`
-	UpdatedAt   int64    `json:"updated_at"`
+	ID         int64    `json:"id"`
+	Slug       string   `json:"slug"`
+	Title      string   `json:"title"`
+	Difficulty string   `json:"difficulty"`
+	Tags       []string `json:"tags"`
+	Origin     string   `json:"origin"`
+	Archived   bool     `json:"archived"`
+	// ArchivedSlug is the original slug of an archived problem; "" otherwise.
+	ArchivedSlug string `json:"archived_slug"`
+	TestCount    int    `json:"test_count"`
+	Points       int    `json:"points"`
+	Validated    bool   `json:"validated"`
+	ValidatedAt  *int64 `json:"validated_at"`
+	UpdatedAt    int64  `json:"updated_at"`
 	// ShownInPractice: practice after a contest has
 	// shown students its hidden tests.
 	ShownInPractice bool `json:"shown_in_practice"`
@@ -139,6 +142,12 @@ type problemJSON struct {
 	// needs a reason.
 	Revision     *revisionRefJSON `json:"revision"`
 	LiveContests []LiveContest    `json:"live_contests"`
+	// OpenContests are the published contests that pin the problem and have
+	// not ended, started or not, that the viewer manages. HiddenOpenContests
+	// counts the ones they do not. An archived problem cannot be updated in
+	// these until it is restored.
+	OpenContests       []LiveContest `json:"open_contests"`
+	HiddenOpenContests int           `json:"hidden_open_contests"`
 }
 
 type problemEditJSON struct {
@@ -184,7 +193,7 @@ type validationJSON struct {
 
 func summaryJSON(e BankEntry) problemSummaryJSON {
 	return problemSummaryJSON{ID: e.ID, Slug: e.Slug, Title: e.Title, Difficulty: e.Difficulty, Tags: httpx.NonNil(e.Tags),
-		Origin: e.Origin, Archived: e.Archived, TestCount: e.TestCount, Points: e.Points, Validated: e.Validated,
+		Origin: e.Origin, Archived: e.Archived, ArchivedSlug: e.ArchivedSlug, TestCount: e.TestCount, Points: e.Points, Validated: e.Validated,
 		ValidatedAt: validatedAt(e.Validated, e.ValidatedAt), UpdatedAt: e.UpdatedAt.UnixMilli(), ShownInPractice: e.ShownInPractice}
 }
 
@@ -231,7 +240,7 @@ func (d *Handlers) problemJSON(ctx context.Context, p *Problem) (problemJSON, er
 	}
 	out := problemJSON{
 		problemSummaryJSON: problemSummaryJSON{ID: p.ID, Slug: p.Slug, Title: p.Title, Difficulty: p.Difficulty,
-			Tags: httpx.NonNil(p.Tags), Origin: p.Origin, Archived: p.Archived, TestCount: len(p.Tests), Points: points,
+			Tags: httpx.NonNil(p.Tags), Origin: p.Origin, Archived: p.Archived, ArchivedSlug: p.ArchivedSlug, TestCount: len(p.Tests), Points: points,
 			Validated: p.Validated(), ValidatedAt: validatedAt(p.Validated(), p.ValidatedAt), UpdatedAt: p.UpdatedAt.UnixMilli()},
 		StatementMD: p.Statement, TimeLimitMS: p.TimeLimitMS, MemoryLimitMB: p.MemoryLimitMB,
 		Checker: p.Checker, Epsilon: p.Epsilon, CheckerSource: p.CheckerSource,
@@ -312,10 +321,14 @@ func problemID(w http.ResponseWriter, r *http.Request) (int64, bool) {
 func (d *Handlers) problemError(w http.ResponseWriter, r *http.Request, err error) {
 	var fields FieldErrors
 	var pack *PackError
+	var taken *SlugTakenError
 	var notReady *NotReadyError
 	switch {
 	case errors.Is(err, ErrNotFound):
 		httpx.WriteError(w, http.StatusNotFound, "not_found", "There is no such problem.")
+	case errors.As(err, &taken):
+		httpx.WriteJSON(w, http.StatusConflict, map[string]httpx.APIError{"error": {Code: "conflict", Message: taken.Error(),
+			Fields: FieldErrors{"slug": taken.Error()}, SuggestedSlug: taken.Suggested}})
 	case errors.As(err, &fields):
 		httpx.WriteJSON(w, http.StatusBadRequest, map[string]httpx.APIError{"error": {Code: "bad_request",
 			Message: "Some fields need fixing.", Fields: fields}})
@@ -572,7 +585,7 @@ func (d *Handlers) ExportProblem(w http.ResponseWriter, r *http.Request) {
 	// way can no longer change the status, so it is logged and the
 	// download ends short.
 	w.Header().Set("Content-Type", "application/zip")
-	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s.zip"`, p.Slug))
+	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s.zip"`, p.PackSlug()))
 	w.Header().Set("Cache-Control", "no-store")
 	err = WritePack(w, p, func(sha string) ([]byte, error) { return d.Problems.Blobs.Read(sha, MaxPackFile+1) })
 	if err != nil {
@@ -591,6 +604,28 @@ func (d *Handlers) ArchiveProblem(w http.ResponseWriter, r *http.Request) {
 	}
 	d.Log.Info("problem archived", "by", auth.UserFrom(r.Context()).ID, "problem_id", id)
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// RestoreProblem brings an archived problem back. The body's slug is optional:
+// empty gives the original slug back, or answers 409 with a free one.
+func (d *Handlers) RestoreProblem(w http.ResponseWriter, r *http.Request) {
+	id, ok := problemID(w, r)
+	if !ok {
+		return
+	}
+	var req struct {
+		Slug string `json:"slug"`
+	}
+	if r.ContentLength != 0 && !httpx.DecodeJSON(w, r, &req) {
+		return
+	}
+	p, err := d.Problems.Restore(r.Context(), id, strings.TrimSpace(req.Slug))
+	if err != nil {
+		d.problemError(w, r, err)
+		return
+	}
+	d.Log.Info("problem restored", "by", auth.UserFrom(r.Context()).ID, "problem_id", id)
+	d.writeProblem(w, r, http.StatusOK, p)
 }
 
 func (d *Handlers) ValidateProblem(w http.ResponseWriter, r *http.Request) {
@@ -643,9 +678,26 @@ func (d *Handlers) addRevisions(ctx context.Context, p *Problem, out *problemJSO
 	if err != nil {
 		return err
 	}
+	open, err := d.Problems.OpenContests(ctx, p.ID)
+	if err != nil {
+		return err
+	}
+	out.OpenContests = []LiveContest{}
 	if d.CanManageContest == nil {
 		out.LiveContests = []LiveContest{}
+		out.HiddenOpenContests = len(open)
 		return nil
+	}
+	for _, contest := range open {
+		allowed, err := d.CanManageContest(ctx, contest.ContestID, auth.UserFrom(ctx))
+		if err != nil {
+			return err
+		}
+		if allowed {
+			out.OpenContests = append(out.OpenContests, contest)
+		} else {
+			out.HiddenOpenContests++
+		}
 	}
 	visible := out.LiveContests[:0]
 	for _, contest := range out.LiveContests {

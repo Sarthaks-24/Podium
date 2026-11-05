@@ -437,3 +437,25 @@ func sameTests(p *Problem, tests []RevisionTest) bool {
 	}
 	return true
 }
+
+// OpenContests lists the published, unarchived contests that pin the
+// problem and have not ended, whether or not they have started.
+func (s *Service) OpenContests(ctx context.Context, problemID int64) ([]LiveContest, error) {
+	rows, err := s.DB.QueryContext(ctx, `SELECT c.id, c.slug, c.title, cp.label FROM contest_problems cp JOIN contests c ON c.id = cp.contest_id
+		JOIN contest_final f ON f.contest_id = c.id
+		WHERE cp.problem_id = ? AND c.published = 1 AND c.archived = 0 AND ? < f.final_at
+		ORDER BY c.starts_at, c.id`, problemID, s.now().UnixMilli())
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []LiveContest{}
+	for rows.Next() {
+		var c LiveContest
+		if err := rows.Scan(&c.ContestID, &c.Slug, &c.Title, &c.Label); err != nil {
+			return nil, err
+		}
+		out = append(out, c)
+	}
+	return out, rows.Err()
+}
