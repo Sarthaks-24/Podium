@@ -165,9 +165,14 @@
   --scrim: rgba(22, 33, 28, 0.4);
 }
 
-/* Dark family: the Dark theme's values. */
+/* Dark family: the Dark theme's values. data-family="dark" is set on <html>
+   for every chosen theme (lib/theme.ts), and it is what a preset or a
+   custom theme (lib/theme-engine.ts) gets its verdict colours, color-scheme
+   and menu shadow from; its interface colours come from inline custom
+   properties. */
 [data-theme="dark"],
-[data-theme="hc-dark"] {
+[data-theme="hc-dark"],
+[data-family="dark"] {
   color-scheme: dark;
 
   --paper: #121513;
@@ -235,6 +240,23 @@
   --wait: #D0D0D0; --wait-tint: #1A1A1A;
 }
 
+/* A preset or custom theme with the high contrast choice: the verdicts of
+   the two high-contrast themes above, 7:1 on every surface. Only those two
+   attributes together match; the built-in themes never set data-contrast. */
+[data-family="light"][data-contrast="high"] {
+  --ok: #0A5A2E;   --ok-tint: #E3F1E8;
+  --part: #6A4400; --part-tint: #FBEEDA;
+  --bad: #8A1209;  --bad-tint: #FBE4E1;
+  --wait: #333333; --wait-tint: #F0F0F0;
+}
+
+[data-family="dark"][data-contrast="high"] {
+  --ok: #7EE2A8;   --ok-tint: #0B2616;
+  --part: #FFC56B; --part-tint: #2B1C05;
+  --bad: #FF9A8F;  --bad-tint: #300F0B;
+  --wait: #D0D0D0; --wait-tint: #1A1A1A;
+}
+
 /* No theme chosen and the system prefers dark: the Dark theme. These are
    the dark family values again, because a selector list cannot mix a plain
    rule with a media-query rule. */
@@ -272,6 +294,33 @@
   --ok: #267260;   --ok-tint: #E5EEEC;
   --part: #6E519D; --part-tint: #EEEAF3;
   --bad: #A73C00;  --bad-tint: #F4E8E0;
+}
+
+/* The same sets for a family (presets and custom themes). These sit before
+   the theme-id rules below so a built-in theme, which also carries
+   data-family, keeps its own values. */
+[data-verdicts="signal"][data-family="light"] {
+  --ok: #267260;   --ok-tint: #E5EEEC;
+  --part: #6E519D; --part-tint: #EEEAF3;
+  --bad: #A73C00;  --bad-tint: #F4E8E0;
+}
+
+[data-verdicts="signal"][data-family="dark"] {
+  --ok: #00DEB6;   --ok-tint: #163D34;
+  --part: #F098F7; --part-tint: #3C323E;
+  --bad: #FF9766;  --bad-tint: #3F3127;
+}
+
+[data-verdicts="signal"][data-family="light"][data-contrast="high"] {
+  --ok: #07565B;   --ok-tint: #E0EFEF;
+  --part: #59369F; --part-tint: #EDE9F6;
+  --bad: #902602;  --bad-tint: #F5E7E2;
+}
+
+[data-verdicts="signal"][data-family="dark"][data-contrast="high"] {
+  --ok: #00DEB6;   --ok-tint: #0B2E28;
+  --part: #CEA4FF; --part-tint: #2C2534;
+  --bad: #FF9B5A;  --bad-tint: #342419;
 }
 
 [data-verdicts="signal"][data-theme="dark"] {
