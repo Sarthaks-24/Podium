@@ -214,6 +214,7 @@ var revisionFreeWrites = map[string]string{
 	"writeChildren": "subtasks and testcases, called by insert and save only",
 	"Update":        "validated_hash and solution_by_person after save",
 	"archiveIn":     "archived and slug",
+	"replaceIn":     "origin and solution_by_person after save",
 	"Restore":       "archived and slug",
 	"Finish":        "validated_hash after a validation",
 }

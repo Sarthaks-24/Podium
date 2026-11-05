@@ -38,6 +38,9 @@ type APIError struct {
 	Problems []string `json:"problems,omitempty"`
 	// SuggestedSlug is a free slug offered with a slug conflict.
 	SuggestedSlug string `json:"suggested_slug,omitempty"`
+	// Existing describes what a conflict is with, when the caller needs more
+	// than a sentence to choose: the problem a pack's slug collides with.
+	Existing any `json:"existing,omitempty"`
 }
 
 // WriteError writes an APIError.

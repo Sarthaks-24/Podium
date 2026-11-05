@@ -14,6 +14,7 @@ import (
 	"log/slog"
 	"mime"
 	"net/http"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -409,13 +410,19 @@ func (d *Handlers) ImportProblem(w http.ResponseWriter, r *http.Request) {
 		d.problemError(w, r, err)
 		return
 	}
-	p, err := d.Problems.Import(r.Context(), pk, auth.UserFrom(r.Context()).ID)
-	var fields FieldErrors
-	if errors.As(err, &fields) && fields["slug"] != "" {
-		httpx.WriteError(w, http.StatusConflict, "conflict", fmt.Sprintf("A problem with the slug %s already exists. Change slug in problem.yaml, or archive and rename the old problem.", pk.Problem.Slug))
+	q := r.URL.Query()
+	p, err := d.Problems.ImportAs(r.Context(), pk, auth.UserFrom(r.Context()).ID,
+		ImportOptions{OnConflict: q.Get("on_conflict"), Slug: q.Get("slug"), FileName: q.Get("file_name")})
+	var conflict *SlugConflictError
+	var live *ReplaceLiveError
+	switch {
+	case errors.As(err, &conflict):
+		d.writeImportConflict(w, r, conflict.ExistingID, conflict.Suggested, "conflict", conflict.Error())
 		return
-	}
-	if err != nil {
+	case errors.As(err, &live):
+		d.writeImportConflict(w, r, live.ExistingID, "", "problem_live", d.replaceRefusal(r.Context(), live))
+		return
+	case err != nil:
 		d.problemError(w, r, err)
 		return
 	}
@@ -425,6 +432,93 @@ func (d *Handlers) ImportProblem(w http.ResponseWriter, r *http.Request) {
 		ignored = append(ignored, fmt.Sprintf("Ignored %s: podium does not use it yet.", name))
 	}
 	d.writeProblem(w, r, http.StatusCreated, p, ignored...)
+}
+
+// existingJSON is the problem a pack's slug collides with, as the import
+// conflict answer describes it: the contests that use it are listed only
+// when the viewer manages them and counted otherwise.
+type existingJSON struct {
+	ID                 int64         `json:"id"`
+	Title              string        `json:"title"`
+	Slug               string        `json:"slug"`
+	LiveContests       []LiveContest `json:"live_contests"`
+	HiddenLiveContests int           `json:"hidden_live_contests"`
+	OpenContests       []LiveContest `json:"open_contests"`
+	HiddenOpenContests int           `json:"hidden_open_contests"`
+}
+
+// manageable splits contests into those the viewer manages and a count of
+// the rest. Without a way to tell, none are shown.
+func (d *Handlers) manageable(ctx context.Context, list []LiveContest) ([]LiveContest, int, error) {
+	shown := []LiveContest{}
+	if d.CanManageContest == nil {
+		return shown, len(list), nil
+	}
+	hidden := 0
+	for _, c := range list {
+		allowed, err := d.CanManageContest(ctx, c.ContestID, auth.UserFrom(ctx))
+		if err != nil {
+			return nil, 0, err
+		}
+		if allowed {
+			shown = append(shown, c)
+		} else {
+			hidden++
+		}
+	}
+	return shown, hidden, nil
+}
+
+func (d *Handlers) describeExisting(ctx context.Context, id int64) (*existingJSON, error) {
+	p, err := d.Problems.Get(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	out := &existingJSON{ID: p.ID, Title: p.Title, Slug: p.Slug}
+	live, err := d.Problems.LiveContests(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	if out.LiveContests, out.HiddenLiveContests, err = d.manageable(ctx, live); err != nil {
+		return nil, err
+	}
+	open, err := d.Problems.OpenContests(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	// A running contest is open too; list each contest once, as live.
+	notLive := open[:0:0]
+	for _, c := range open {
+		if !slices.ContainsFunc(live, func(l LiveContest) bool { return l.ContestID == c.ContestID }) {
+			notLive = append(notLive, c)
+		}
+	}
+	out.OpenContests, out.HiddenOpenContests, err = d.manageable(ctx, notLive)
+	return out, err
+}
+
+func (d *Handlers) writeImportConflict(w http.ResponseWriter, r *http.Request, id int64, suggested, code, message string) {
+	existing, err := d.describeExisting(r.Context(), id)
+	if err != nil {
+		d.problemError(w, r, err)
+		return
+	}
+	httpx.WriteJSON(w, http.StatusConflict, map[string]httpx.APIError{"error": {Code: code, Message: message,
+		SuggestedSlug: suggested, Existing: existing}})
+}
+
+// replaceRefusal is the sentence for a replace refused by a running contest,
+// naming the first contest the viewer manages.
+func (d *Handlers) replaceRefusal(ctx context.Context, e *ReplaceLiveError) string {
+	title := "This problem"
+	if p, err := d.Problems.Get(ctx, e.ExistingID); err == nil {
+		title = p.Title
+	}
+	shown, _, err := d.manageable(ctx, e.Live)
+	if err != nil || len(shown) == 0 {
+		return fmt.Sprintf("%s is in a running contest you do not manage. Edit it from the problem page, where you can update students.", title)
+	}
+	return fmt.Sprintf("%s is in %s, which is running. Edit it from the problem page, where you can update students.", title, shown[0].Title)
 }
 
 func (d *Handlers) GetProblem(w http.ResponseWriter, r *http.Request) {
