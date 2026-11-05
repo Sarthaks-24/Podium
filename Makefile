@@ -117,6 +117,7 @@ check: web/node_modules/.package-lock.json ## Everything CI runs: formatting, ve
 	bash tools/install-test.sh
 	bash tools/reset-boxes-test.sh
 	bash tools/podium-alert-test.sh
+	bash tools/sandbox-wrapper-test.sh
 	bash tools/deploy-test.sh
 	$(MAKE) test
 
