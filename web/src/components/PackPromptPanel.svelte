@@ -51,7 +51,7 @@
       document.body.append(a);
       a.click();
       a.remove();
-      setTimeout(() => URL.revokeObjectURL(url), 0);
+      setTimeout(() => URL.revokeObjectURL(url), 1000); // some browsers cancel a download from a URL revoked at once
       status = 'Downloaded podium-pack-prompt.txt.';
     } catch {
       status = 'Download did not work here. Copy the prompt and save it yourself.';
