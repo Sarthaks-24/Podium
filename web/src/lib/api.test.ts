@@ -202,3 +202,13 @@ describe('errorText', () => {
     expect(errorText('nothing')).toBe(PAGE_ERROR_MESSAGE);
   });
 });
+
+describe('a slug conflict', () => {
+  it('carries the suggested slug', async () => {
+    fakeFetch(respond(409, { error: { code: 'conflict', message: 'Another problem now uses two-sum. Choose a new slug.', fields: { slug: 'Taken.' }, suggested_slug: 'two-sum-2' } }));
+    const err = await caught(sendJSON('POST', '/api/admin/problems/1/restore', { slug: '' }));
+    expect(err.status).toBe(409);
+    expect(err.suggestedSlug).toBe('two-sum-2');
+    expect(err.fields.slug).toBe('Taken.');
+  });
+});

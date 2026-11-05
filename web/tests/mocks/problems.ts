@@ -319,6 +319,9 @@ export async function mockApi(page: Page, who: 'organiser' | 'student' = 'organi
     scripts: {} as Record<number, Json[]>,
     puts: [] as Json[],
     archived: [] as number[],
+    // Bodies of POST ./restore, and whether the original slug is now used by another problem.
+    restores: [] as Json[],
+    restoreTaken: false,
     imports: [] as string[],
     generates: [] as Json[],
     generations: {} as Record<number, Json>,
@@ -463,6 +466,18 @@ export async function mockApi(page: Page, who: 'organiser' | 'student' = 'organi
             validated: same ? p.validated : p.validated_hash === hash,
             updated_at: T0,
           });
+          return json(route, 200, p);
+        }
+        if (rest === '/restore' && method === 'POST') {
+          const body = req.postDataJSON() as Json;
+          state.restores.push(body);
+          if (state.restoreTaken && body.slug === '') {
+            return apiError(route, 409, 'conflict', `Another problem now uses ${p.slug}. Choose a new slug.`, {
+              fields: { slug: `Another problem now uses ${p.slug}. Choose a new slug.` },
+              suggested_slug: `${p.slug}-2`,
+            });
+          }
+          Object.assign(p, { archived: false, slug: body.slug || p.slug });
           return json(route, 200, p);
         }
         if (rest === '' && method === 'DELETE') {

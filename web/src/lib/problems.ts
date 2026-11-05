@@ -59,6 +59,8 @@ export interface ProblemSummary {
   tags: string[];
   origin: 'manual' | 'import' | 'ai';
   archived: boolean;
+  /** The slug an archived problem had before archiving freed it; "" otherwise. */
+  archived_slug?: string;
   test_count: number;
   points: number;
   validated: boolean;
@@ -174,6 +176,10 @@ export interface Problem extends ProblemSummary {
   /** The revision the working copy is. */
   revision?: { id: number; rev: number };
   live_contests?: LiveContest[];
+  /** Published contests that pin it and have not ended, that the viewer manages. */
+  open_contests?: LiveContest[];
+  /** Further unended contests the viewer does not manage. */
+  hidden_open_contests?: number;
   statement_md: string;
   time_limit_ms: number;
   memory_limit_mb: number;
@@ -871,4 +877,18 @@ export function rangeText(nums: readonly number[]): string {
     i = j + 1;
   }
   return parts.join(', ');
+}
+
+/**
+ * The lines the archive dialog lists: each unended contest that pins the
+ * problem, then a count of the ones the viewer does not manage. An archived
+ * problem keeps working in a contest, but cannot be updated there until it
+ * is restored.
+ */
+export function archiveWarnings(title: string, open: readonly Pick<LiveContest, 'title'>[], hidden = 0): string[] {
+  const lines = open.map(
+    (c) => `${title} is in ${c.title}, which has not ended. Students keep seeing it there, but you cannot update it in that contest until you restore it.`,
+  );
+  if (hidden > 0) lines.push(`and ${hidden === 1 ? '1 contest' : `${hidden} contests`} you do not manage`);
+  return lines;
 }

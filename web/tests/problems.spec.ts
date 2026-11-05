@@ -664,7 +664,7 @@ test('a problem with no tests offers Upload tests, and no extra checks are in us
   await expect(page.getByRole('button', { name: 'Upload tests' })).toBeVisible();
   await expect(page.getByText('No tests yet. Upload a .zip of numbered input and output files to add them.')).toBeVisible();
   await page.getByRole('button', { name: 'More' }).click();
-  await expect(page.locator('#problem-menu').getByRole('button')).toHaveText(['Download pack']);
+  await expect(page.locator('#problem-menu').getByRole('button')).toHaveText(['Download pack', 'Restore']);
   await page.keyboard.press('Escape');
   await tabOf(page, 'Checking').click();
   await expect(page.getByRole('list', { name: 'Optional extra checks in use' })).toHaveText('None in use.');
@@ -827,4 +827,35 @@ test('an organiser screen that fails to load says so and offers a reload (C2-069
   fail = false;
   await page.getByRole('button', { name: 'Try again' }).click();
   await expect(page.getByRole('link', { name: 'Interval covering', exact: true })).toBeVisible();
+});
+
+test('an archived problem is restored from the bank, and a taken slug asks for a new one', async ({ page }) => {
+  const state = await mockApi(page);
+  state.restoreTaken = true;
+  await page.goto('/admin/problems?archived=1');
+  const row = page.getByRole('row', { name: /Old sorting/ });
+  await expect(page.getByRole('button', { name: 'Restore A plus B' })).toHaveCount(0);
+  await row.getByRole('button', { name: 'Restore Old sorting' }).click();
+  const confirm = page.getByRole('dialog', { name: 'Restore Old sorting?' });
+  await expect(confirm.getByRole('button', { name: 'Cancel' })).toBeFocused();
+  await confirm.getByRole('button', { name: 'Restore' }).click();
+
+  const ask = page.getByRole('dialog', { name: 'Restore Old sorting' });
+  await expect(ask).toContainText('Another problem now uses old-sorting. Choose a new slug.');
+  await expect(ask.getByLabel('New address')).toHaveValue('old-sorting-2');
+  await ask.getByRole('button', { name: 'Restore' }).click();
+  await expect(toasts(page)).toContainText('Restored Old sorting');
+  expect(state.restores).toEqual([{ slug: '' }, { slug: 'old-sorting-2' }]);
+  await expect(page.getByRole('row', { name: /Old sorting/ })).not.toContainText('Archived');
+});
+
+test('an archived problem has Restore in its menu instead of Archive', async ({ page }) => {
+  const state = await mockApi(page);
+  await page.goto('/admin/problems/3');
+  await page.getByRole('button', { name: 'More' }).click();
+  await expect(page.locator('#problem-menu').getByRole('button')).toHaveText(['Download pack', 'Restore']);
+  await page.locator('#problem-menu').getByRole('button', { name: 'Restore' }).click();
+  await page.getByRole('dialog', { name: 'Restore Old sorting?' }).getByRole('button', { name: 'Restore' }).click();
+  await expect(toasts(page)).toContainText('Restored Old sorting');
+  expect(state.restores).toEqual([{ slug: '' }]);
 });
