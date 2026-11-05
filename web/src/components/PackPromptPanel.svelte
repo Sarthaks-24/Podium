@@ -43,7 +43,7 @@
 </script>
 
 <div class="prompt-area">
-  <button type="button" class="btn btn-link" aria-expanded={open} aria-controls="pack-prompt-panel" onclick={toggle}>
+  <button type="button" class="btn btn-link toggle" aria-expanded={open} aria-controls="pack-prompt-panel" onclick={toggle}>
     Prompt for another AI
   </button>
   {#if open}
@@ -60,7 +60,7 @@
       {:else if loadError !== ''}
         <p class="banner banner-error" role="alert">{loadError}</p>
       {:else}
-        <textarea class="input textarea-code prompt-text" readonly rows="14" aria-label="Prompt for another AI" value={prompt}></textarea>
+        <textarea class="input textarea-code prompt-text" readonly wrap="soft" rows="14" aria-label="Prompt for another AI" value={prompt}></textarea>
         <div class="action-row">
           <button type="button" class="btn btn-secondary" onclick={copy}><Icon name="copy" />Copy prompt</button>
           <span class="muted" role="status">{status}</span>
@@ -94,5 +94,14 @@
 
   .prompt-text {
     width: 100%;
+    white-space: pre-wrap;
+    overflow-wrap: break-word;
+    /* "===" would draw as one identity sign. */
+    font-variant-ligatures: none;
+  }
+
+  /* btn-link keeps button padding; pull the toggle back so its text lines up with the buttons' edge above. */
+  .toggle {
+    margin-left: calc(-1 * (var(--space-4) + var(--rule)));
   }
 </style>
