@@ -19,7 +19,7 @@ Errors use one shape, with a stable machine code and a sentence for people. The 
 { "error": { "code": "not_found", "message": "This API route does not exist." } }
 ```
 
-Some errors carry more. `fields` maps a form field to what is wrong with it; `problems` lists everything wrong with an upload or a request to validate, so it can be fixed in one pass; `retry_after_s` comes with every 429.
+Some errors carry more. `fields` maps a form field to what is wrong with it; `problems` lists everything wrong with an upload or a request to validate, so it can be fixed in one pass; `retry_after_s` comes with every 429; `suggested_slug` comes with a slug conflict on a restore (below).
 
 ```json
 { "error": { "code": "bad_request", "message": "Some fields need fixing.", "fields": { "title": "Enter a title of at most 120 characters." } } }
@@ -305,10 +305,11 @@ Every route here needs the organiser role. The pack format and the rules for tes
 | `POST /api/admin/problems/import` | the pack as a zip body, at most 32 MB | 201 `Problem`; `warnings` names files in the pack podium ignores |
 | `GET /api/admin/problems/{id}` | | 200 `Problem` |
 | `PUT /api/admin/problems/{id}` | `ProblemEdit`, at most 512 KB | 200 `Problem` |
-| `DELETE /api/admin/problems/{id}` | | 204: archives the problem, kept with its tests |
+| `DELETE /api/admin/problems/{id}` | | 204: archives the problem, kept with its tests. Its slug is freed: `slug` becomes `<slug>-archived-<id>` and the original moves to `archived_slug`, so a new problem can use it. Archiving an archived problem changes nothing |
+| `POST /api/admin/problems/{id}/restore` | `{"slug":""}` (the body may be left out) | 200 `Problem`, no longer archived. An empty `slug` gives the original slug back; a given `slug` must follow the slug rule. Restoring a problem that is not archived changes nothing. 409 `conflict` when the slug is used by another problem, with `fields.slug`, `suggested_slug` (a free slug built from it) and the message "Another problem now uses two-sum. Choose a new slug." The restore is logged as `problem restored` |
 | `PUT /api/admin/problems/{id}/tests` | a zip of `NN.in` files, each with an optional `NN.out`; `?reason=` as for a save | 200 `Problem` |
 | `GET /api/admin/problems/{id}/tests/{idx}/{part}` | `{part}` is `input` or `output` | 200 the file, `text/plain`, as an attachment `test-NN.in` or `test-NN.out`; 404 for an output not made yet |
-| `GET /api/admin/problems/{id}/export` | | 200 the pack, `application/zip`, as `<slug>.zip` (format 1); outputs not made yet are left out |
+| `GET /api/admin/problems/{id}/export` | | 200 the pack, `application/zip`, as `<slug>.zip` (format 1; for an archived problem the slug is `archived_slug`, in the file name and in `problem.yaml`, so a re-import gets it back); outputs not made yet are left out |
 | `POST /api/admin/problems/{id}/validate` | no body | 202 `Validation` |
 | `GET /api/admin/problems/{id}/validation` | | 200 the latest `Validation`; 404 when never validated |
 | `POST /api/admin/problems/{id}/generate` | `{"all":false}`, `{"all":true}` or `{"then_validate":true}` | 202 `Generation` |
@@ -322,11 +323,12 @@ Every route here needs the organiser role. The pack format and the rules for tes
 
 ```json
 { "id": 3, "slug": "a-plus-b", "title": "A plus B", "difficulty": "easy", "tags": ["math"],
-  "origin": "import", "archived": false, "test_count": 6, "points": 100,
+  "origin": "import", "archived": false, "archived_slug": "", "test_count": 6, "points": 100,
   "validated": true, "validated_at": 1792183192359, "updated_at": 1792183100000,
   "shown_in_practice": false }
 ```
 
+- `archived_slug` is the slug an archived problem had before archiving freed it; `""` for a problem that is not archived, and for one archived before v2.0.1 whose freed slug was already taken (its slug never moved).
 - `difficulty` is `easy`, `medium`, `hard` or `""`. `origin` is `manual`, `import` or `ai` (the AI wizard). A wizard draft carries the tag `ai draft` until a person changes its statement, reference or brute force.
 - `validated` is true when the last passing validation covers the problem as it is now (its content hash equals the problem's); `validated_at` is `null` otherwise.
 - `shown_in_practice` is true when a published contest that pins the problem has shown students its first failing hidden test in practice after its end. Such a contest keeps the problem (`PUT .../problems` refuses to drop it), so the mark stays.
@@ -347,6 +349,7 @@ Every route here needs the organiser role. The pack format and the rules for tes
   "starters": { "python3": "import sys\n..." },
   "content_hash": "9f2c...", "validated_hash": "9f2c...",
   "revision": { "id": 14, "rev": 3 }, "live_contests": [ { "contest_id": 4, "slug": "week-6", "title": "Week 6", "label": "B" } ],
+  "open_contests": [ { "contest_id": 5, "slug": "week-7", "title": "Week 7", "label": "A" } ], "hidden_open_contests": 0,
   "problems": [], "warnings": ["No input validator: validation cannot check inputs against the constraints."] }
 ```
 
@@ -355,7 +358,7 @@ Every route here needs the organiser role. The pack format and the rules for tes
 - `plan` lists the tests the generator makes: test `idx` of subtask `subtask`, made by running the generator with argv `seed` followed by `args`. `subtasks[].generator_args` are the arguments proposed for new planned tests of that subtask.
 - `checker` is `tokens`, `exact`, `float` or `custom`. `epsilon` matters only for `float`; `checker_source` is the testlib checker for `custom`, `""` otherwise.
 - `tests[].subtask_idx` is `null` for an example. Previews are the first 200 bytes, cut at a whole UTF-8 character. `output_missing` is true while a test has no expected output; Validate makes it first.
-- `revision` is the problem's newest revision. `live_contests` are the published contests that pin the problem and are running now; while there are any, a save needs a `reason`.
+- `revision` is the problem's newest revision. `live_contests` are the published contests that pin the problem and are running now; while there are any, a save needs a `reason`. `open_contests` are the published contests that pin the problem and have not ended, started or not, limited to those the caller manages; `hidden_open_contests` counts the others. The archive dialog lists them: an archived problem keeps working in a contest, but cannot be updated there until restored.
 - `problems` lists what stops validation and judging (a test in no subtask, a range naming a missing test, a test with no expected output); `warnings` is advice that does not (points not adding up to 100, no brute force, no validator, more than 10 hidden tests).
 
 `ProblemEdit` replaces every editable field at once:
@@ -405,6 +408,8 @@ Every route here needs the organiser role. The pack format and the rules for tes
 | import, tests | 413 `too_large` | the zip is larger than 32 MB |
 | import, tests | 400 `bad_pack` with `problems` | anything wrong with the archive or its contents |
 | import | 409 `conflict` | a problem with the pack's slug exists |
+| restore | 409 `conflict` with `fields.slug` and `suggested_slug` | another problem now uses the slug the restore would give back (or the one chosen) |
+| restore | 400 `bad_request` with `fields.slug` | a chosen slug breaks the slug rule |
 | import, tests, export | 429 `busy` (`Retry-After: 5`) | another pack is being processed; one runs at a time |
 | validate | 409 `not_ready` with `problems` | no tests, no subtask, tests outside the subtasks, or tests without an expected output |
 | generate | 409 `not_ready` with `problems` | no tests, no reference, a generation still queued or running, or (with `all` false) no output missing; with `then_validate`, also anything else that stops validation. 400 when `all` and `then_validate` are both set |
@@ -731,7 +736,8 @@ Every route here needs the organiser role and manage access to the contest. List
 | `POST /api/admin/contests/{id}/invites/paste` | `{"text":"one address per line","dry_run":true}`, at most 500 lines | 200 `{added:[email], already_invited:[email], unmatched:[{line, reason}]}`; addresses match the sign-in list's Gmail-aware rule; every unmatched line has the reason "Not a student on the sign-in list" (staff, disabled and unknown read the same). A dry run writes nothing; otherwise the matches are invited with one `invites_added` row `{count, pasted:true}` |
 | `DELETE /api/admin/contests/{id}/invites/{user}` | | 204 and an `invite_removed` row `{user_id}`; from the start until the final close `409 invites_locked` "Invites cannot be removed while the contest runs." |
 | `PUT /api/admin/contests/{id}` | `ContestEdit`; fields left out keep their value | 200 `AdminContest` |
-| `DELETE /api/admin/contests/{id}` | | 204: archived, nothing deleted |
+| `DELETE /api/admin/contests/{id}` | | 204: archived, nothing deleted. The slug is freed as for a problem: `slug` becomes `<slug>-archived-<id>` and the original moves to `archived_slug`, so a new contest can use the address. Archiving an archived contest changes nothing |
+| `POST /api/admin/contests/{id}/restore` | `{"slug":""}` (the body may be left out) | 200 `AdminContest`, no longer archived, with a `restore` audit row `{slug}`. Slug rules and the 409 `conflict` with `suggested_slug` are as for a problem (the message says "Another contest now uses week-3. Choose a new slug."). Restoring a contest that is not archived changes nothing |
 | `POST /api/admin/contests/{id}/clone` | `{title, starts_at, ends_at}` (`title` empty keeps the old one; `slug` is accepted and ignored) | 201 `AdminContest`: settings (the audience among them), problems, organisers and invites copied atomically; the cloner is added, extensions and editorial are not copied |
 | `PUT /api/admin/contests/{id}/problems` | `[{"problem_id":3,"label":"A","ai_reason":"..."}]` | 200 `AdminContest` (rules below) |
 | `PUT /api/admin/contests/{id}/problems/{label}/revision` | `{"revision_id":14}` | 200 `{contest: AdminContest, announcement_md, statement_changed, rejudge_needed, server_now}`: "Update students now" |
@@ -772,7 +778,7 @@ The measures apply only during a student's own contest time. Blocking happens in
 - Field rules: a title of 1 to 120 characters; an end after the start and at most 14 days later; a freeze shorter than the contest; at least one language from the list; a description up to 32 KB and an honour code up to 8 KB. Invalid fields are `400 bad_request` with `fields`.
 - Publishing needs at least one problem, and every problem must still be the validated version that was added ("Problem B changed or lost its validation since it was added. Validate it and add it again.").
 
-`AdminContest` is every `ContestEdit` field plus `id`, `slug`, `close_at` (the end plus the contest-wide extension), `default_honour_text`, `editorial_md`, `editorial_published`, `paused`, `extended_minutes`, `revealed_at`, `archived`, `state`, `created_at`, `updated_at`, `server_now`, and:
+`AdminContest` is every `ContestEdit` field plus `id`, `slug`, `close_at` (the end plus the contest-wide extension), `default_honour_text`, `editorial_md`, `editorial_published`, `paused`, `extended_minutes`, `revealed_at`, `archived`, `archived_slug` (as for a problem), `state`, `created_at`, `updated_at`, `server_now`, and:
 
 - `problems`: `[{label, problem_id, title, pinned_hash, ready, max_score, revision_id, rev, latest_revision_id, latest_rev, update_available, update_statement_only, reconstructed}]`. `ready` is false when the problem changed since it was added. `update_available` is true when the problem has a newer validated revision than the pin, and `update_statement_only` when that revision changes only the statement. `reconstructed` is always false on a v1.2 database.
 - `extensions`: `[{user_id, email, name, minutes, reason}]`. The reason can be health data and goes only to admins.
@@ -827,6 +833,7 @@ The measures apply only during a student's own contest time. Blocking happens in
 | `extension` | `{user_id, from_minutes, minutes, reason_given}` |
 | `extend` | `{minutes, extended_minutes}` |
 | `pause`, `resume`, `reveal`, `archive` | `{}` |
+| `restore` | `{slug}`: the slug the contest has again |
 | `rejudge` | `{problem_label}` or `{submission_id}`, with `queued` and `revisions` |
 | `editorial` | `{published, was_published, changed, bytes}`, when it is published or unpublished, or changed while published |
 | `integrity_decision` | `{user_id, decision}`; the reason stays with the decision |
