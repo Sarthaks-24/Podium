@@ -25,12 +25,14 @@ export class ApiError extends Error {
   readonly retryAfter: number | null;
   /** A free slug the server offers with a slug conflict, or "". */
   readonly suggestedSlug: string;
+  /** What a conflict is with, as the server sent it (a pack import's colliding problem), or null. */
+  readonly existing: unknown;
 
   constructor(
     status: number,
     code: string,
     message: string,
-    details: { fields?: Record<string, string>; problems?: string[]; retryAfter?: number | null; suggestedSlug?: string } = {},
+    details: { fields?: Record<string, string>; problems?: string[]; retryAfter?: number | null; suggestedSlug?: string; existing?: unknown } = {},
   ) {
     super(message);
     this.name = 'ApiError';
@@ -40,6 +42,7 @@ export class ApiError extends Error {
     this.problems = details.problems ?? [];
     this.retryAfter = details.retryAfter ?? null;
     this.suggestedSlug = details.suggestedSlug ?? '';
+    this.existing = details.existing ?? null;
   }
 }
 
@@ -79,13 +82,14 @@ function errorFromBody(status: number, body: unknown): ApiError {
   if (typeof body === 'object' && body !== null && 'error' in body) {
     const err = (body as { error: unknown }).error;
     if (typeof err === 'object' && err !== null) {
-      const { code, message, fields, problems, retry_after_s: retry, suggested_slug: suggested } = err as Record<string, unknown>;
+      const { code, message, fields, problems, retry_after_s: retry, suggested_slug: suggested, existing } = err as Record<string, unknown>;
       if (typeof code === 'string' && typeof message === 'string' && message !== '') {
         return new ApiError(status, code, message, {
           fields: stringMap(fields),
           problems: stringList(problems),
           retryAfter: typeof retry === 'number' && Number.isFinite(retry) && retry >= 0 ? retry : null,
           suggestedSlug: typeof suggested === 'string' ? suggested : '',
+          existing,
         });
       }
     }

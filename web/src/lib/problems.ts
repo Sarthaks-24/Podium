@@ -892,3 +892,79 @@ export function archiveWarnings(title: string, open: readonly Pick<LiveContest, 
   if (hidden > 0) lines.push(`and ${hidden === 1 ? '1 contest' : `${hidden} contests`} you do not manage`);
   return lines;
 }
+
+/** The problem a pack's slug collides with, as a pack import's 409 describes it. */
+export interface ImportExisting {
+  id: number;
+  title: string;
+  slug: string;
+  /** Running contests that pin it, limited to those the viewer manages. */
+  live_contests: LiveContest[];
+  hidden_live_contests: number;
+  /** Published contests that pin it and have not ended, not running, limited to those the viewer manages. */
+  open_contests: LiveContest[];
+  hidden_open_contests: number;
+}
+
+/** What to do with a pack whose slug is taken: the value of the import's `on_conflict`. */
+export type ImportChoice = 'rename' | 'archive_existing' | 'replace';
+
+/** Reads `existing` of an import conflict; null when it is not there or malformed. */
+export function parseExisting(value: unknown): ImportExisting | null {
+  if (typeof value !== 'object' || value === null) return null;
+  const v = value as Record<string, unknown>;
+  if (typeof v.id !== 'number' || typeof v.title !== 'string' || typeof v.slug !== 'string') return null;
+  const list = (x: unknown): LiveContest[] => (Array.isArray(x) ? (x as LiveContest[]) : []);
+  const count = (x: unknown): number => (typeof x === 'number' && x > 0 ? x : 0);
+  return {
+    id: v.id,
+    title: v.title,
+    slug: v.slug,
+    live_contests: list(v.live_contests),
+    hidden_live_contests: count(v.hidden_live_contests),
+    open_contests: list(v.open_contests),
+    hidden_open_contests: count(v.hidden_open_contests),
+  };
+}
+
+/** The query string of an import that resolves a taken slug: "?on_conflict=...", plus the slug and the file name. */
+export function importQuery(choice: ImportChoice, slug: string, fileName: string): string {
+  const q = new URLSearchParams({ on_conflict: choice });
+  if (choice === 'rename') q.set('slug', slug);
+  if (fileName !== '') q.set('file_name', fileName);
+  return `?${q.toString()}`;
+}
+
+/** The label of the dialog's one action button for each choice. */
+export const IMPORT_CHOICE_LABEL: Readonly<Record<ImportChoice, string>> = {
+  rename: 'Import as new',
+  archive_existing: 'Archive and import',
+  replace: 'Replace problem',
+};
+
+/** Why Replace is unavailable, or "" when it is allowed: a running contest uses the problem. */
+export function replaceBlocked(e: ImportExisting): string {
+  if (e.live_contests.length > 0) {
+    return `${e.title} is in ${e.live_contests[0].title}, which is running. Edit it from the problem page, where you can update students.`;
+  }
+  if (e.hidden_live_contests > 0) {
+    return `${e.title} is in a running contest you do not manage. Edit it from the problem page, where you can update students.`;
+  }
+  return '';
+}
+
+/** A title for comparing: lowercase, with every space removed. */
+export function titleKey(title: string): string {
+  return title.replace(/\s+/g, '').toLowerCase();
+}
+
+/**
+ * The problem a new title repeats: an active one first, else an archived
+ * one. Case and spaces are ignored; an empty title repeats nothing.
+ */
+export function sameTitle<T extends { title: string; archived: boolean }>(title: string, list: readonly T[]): T | null {
+  const key = titleKey(title);
+  if (key === '') return null;
+  const same = list.filter((p) => titleKey(p.title) === key);
+  return same.find((p) => !p.archived) ?? same[0] ?? null;
+}

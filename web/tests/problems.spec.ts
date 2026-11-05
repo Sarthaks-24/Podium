@@ -859,3 +859,96 @@ test('an archived problem has Restore in its menu instead of Archive', async ({ 
   await expect(toasts(page)).toContainText('Restored Old sorting');
   expect(state.restores).toEqual([{ slug: '' }]);
 });
+
+/** Picks a pack that collides with A plus B and returns the conflict dialog. */
+async function importDuplicate(page: Page) {
+  await page.locator('input[type="file"]').setInputFiles(zipFile('dupe.zip', 'dupe pack'));
+  const dialog = page.getByRole('dialog', { name: 'A problem with the slug a-plus-b already exists' });
+  await expect(dialog).toBeVisible();
+  return dialog;
+}
+
+test('a pack whose slug is taken can be imported as new under another slug', async ({ page }) => {
+  const state = await mockApi(page);
+  await page.goto('/admin/problems');
+  const dialog = await importDuplicate(page);
+  await expect(dialog.getByRole('radio', { name: /Import as a new problem/ })).toBeChecked();
+  await expect(dialog.getByLabel('New slug')).toHaveValue('a-plus-b-2');
+  await expect(dialog.getByRole('button', { name: 'Import as new' })).toBeVisible();
+  await page.screenshot({ path: `${shots()}problems-bank-import-conflict-1440-light.png`, fullPage: true });
+  await dialog.getByLabel('New slug').fill('a-plus-b-again');
+  await dialog.getByRole('button', { name: 'Import as new' }).click();
+  await expect(toasts(page).getByText('Imported A plus B again. Validating.', { exact: true })).toBeVisible();
+  expect(state.importQueries).toEqual(['', '?on_conflict=rename&slug=a-plus-b-again&file_name=dupe.zip']);
+});
+
+test('a taken slug can archive the existing problem, which lists the contests it is in', async ({ page }) => {
+  const state = await mockApi(page);
+  await page.goto('/admin/problems');
+  const dialog = await importDuplicate(page);
+  await dialog.getByRole('radio', { name: /Archive the existing problem/ }).check();
+  await expect(dialog.getByText('A plus B is in Week 6 practice, which has not ended.', { exact: false })).toBeVisible();
+  await expect(dialog.getByText('and 1 contest you do not manage')).toBeVisible();
+  await dialog.getByRole('button', { name: 'Archive and import' }).click();
+  await expect(toasts(page).getByText('Imported A plus B again. Validating.', { exact: true })).toBeVisible();
+  expect(state.importQueries[1]).toBe('?on_conflict=archive_existing&file_name=dupe.zip');
+});
+
+test('a taken slug can replace the existing problem', async ({ page }) => {
+  const state = await mockApi(page);
+  await page.goto('/admin/problems');
+  const dialog = await importDuplicate(page);
+  const replace = dialog.getByRole('radio', { name: /Replace the existing problem/ });
+  await expect(replace).toBeEnabled();
+  await replace.check();
+  await dialog.getByRole('button', { name: 'Replace problem' }).click();
+  await expect(toasts(page).getByText('Imported A plus B. Validating.', { exact: true })).toBeVisible();
+  expect(state.importQueries[1]).toBe('?on_conflict=replace&file_name=dupe.zip');
+});
+
+test('replace is unavailable while the problem is in a running contest, and cancel skips the pack', async ({ page }) => {
+  const state = await mockApi(page);
+  state.importLive = true;
+  await page.goto('/admin/problems');
+  const dialog = await importDuplicate(page);
+  const replace = dialog.getByRole('radio', { name: /Replace the existing problem/ });
+  await expect(replace).toBeDisabled();
+  await expect(dialog).toContainText('A plus B is in Week 6 practice, which is running. Edit it from the problem page, where you can update students.');
+  await dialog.getByRole('button', { name: 'Cancel' }).click();
+  await expect(dialog).toBeHidden();
+  expect(state.importQueries).toEqual(['']);
+});
+
+test('the conflict dialog needs a slug to import as new and closes with Escape', async ({ page }) => {
+  await mockApi(page);
+  await page.goto('/admin/problems');
+  const dialog = await importDuplicate(page);
+  await dialog.getByLabel('New slug').fill('');
+  await dialog.getByRole('button', { name: 'Import as new' }).click();
+  await expect(dialog.getByText('Enter a slug.')).toBeVisible();
+  await expect(dialog.getByLabel('New slug')).toBeFocused();
+  await page.keyboard.press('Escape');
+  await expect(dialog).toBeHidden();
+});
+
+test('creating a problem warns when its title exists, with Open it or Restore it', async ({ page }) => {
+  const state = await mockApi(page);
+  await page.goto('/admin/problems');
+  await page.getByRole('button', { name: 'New problem' }).click();
+  const title = page.getByLabel('Title', { exact: true });
+  await title.fill('  a PLUS b ');
+  const notice = page.locator('#create-problem').getByRole('status');
+  await expect(notice).toContainText('A problem called A plus B already exists.');
+  await expect(notice.getByRole('link', { name: 'Open it' })).toHaveAttribute('href', '/admin/problems/1');
+  await expect(page.getByRole('button', { name: 'Create problem' })).toBeEnabled();
+
+  await title.fill('Old sorting');
+  await expect(notice).toContainText('A problem called Old sorting already exists.');
+  await notice.getByRole('button', { name: 'Restore it' }).click();
+  await page.getByRole('dialog', { name: 'Restore Old sorting?' }).getByRole('button', { name: 'Restore' }).click();
+  await expect(toasts(page)).toContainText('Restored Old sorting');
+  expect(state.restores).toEqual([{ slug: '' }]);
+
+  await title.fill('Something new');
+  await expect(notice).toHaveCount(0);
+});
