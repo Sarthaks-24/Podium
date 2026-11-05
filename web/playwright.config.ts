@@ -10,6 +10,8 @@ const baseURL = `http://127.0.0.1:${port}`;
 
 export default defineConfig({
   testDir: './tests',
+  // The screen audit has its own config (playwright.audit.config.ts, make audit).
+  testIgnore: '**/audit/**',
   fullyParallel: true,
   forbidOnly: true,
   retries: 0,
