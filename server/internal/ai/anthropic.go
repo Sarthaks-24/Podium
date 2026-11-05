@@ -256,7 +256,7 @@ func (a *Anthropic) Generate(ctx context.Context, req Request) (*WizardPack, err
 	if req.Previous != "" && len(req.Fix) > 0 {
 		msgs = append(msgs, anthropicTurn("assistant", req.Previous), anthropicTurn("user", FixPrompt(req.Fix)))
 	}
-	text, err := a.call(ctx, systemPrompt, msgs, PackSchema())
+	text, err := a.call(ctx, systemPrompt(), msgs, PackSchema())
 	if err != nil {
 		return nil, err
 	}

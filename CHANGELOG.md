@@ -6,6 +6,13 @@ Releases are numbered from `v2.0.0`. The builds before it were never released; t
 
 ## Unreleased: v2.0.1 Billota
 
+### v2.0.1 stage F: AI prompts (2026-11-05)
+
+- The wizard's system prompt is split into a fixed security part and the default authoring rules. The text sent by default is unchanged byte for byte (a test compares it with the v2.0.0 text).
+- New optional `PODIUM_AI_PROMPT_FILE` (server only): a UTF-8 file of at most 16 KB that replaces the authoring rules. The fixed part is always sent first. A missing, empty, oversized or non-UTF-8 file stops start-up with a message naming the variable and the path. The log says `default` or `file sha256:<12 hex>`, never the text. Rollback: remove the variable and restart.
+- New `podium-server print-ai-prompt` prints the built-in rules. Admins and owners see "This site uses a custom prompt" on the wizard page (`custom_prompt` in `GET /api/admin/ai/key`).
+- New `GET /api/admin/problems/pack-prompt` and a "Prompt for another AI" panel in the Import pack area: a prompt for any outside AI, built from the importer's own limits and file names, with a Copy button. A test imports the template's example pack, so a pack format change breaks the build instead of the prompt.
+
 ### v2.0.1 stage B: import conflicts (2026-11-05)
 
 - Importing a pack whose slug is already used no longer ends in an error. The 409 now names the existing problem (`existing`, with its running and unended contests limited to those you manage and a count of the rest) and offers a free `suggested_slug`; the old advice to rename the old problem is gone.

@@ -172,3 +172,40 @@ func TestLoadEnvFileErrorHidesLine(t *testing.T) {
 		t.Fatalf("want an error that hides the line content, got %v", err)
 	}
 }
+
+func TestAIPromptFile(t *testing.T) {
+	dir := t.TempDir()
+	write := func(name string, b []byte) string {
+		p := filepath.Join(dir, name)
+		if err := os.WriteFile(p, b, 0o600); err != nil {
+			t.Fatal(err)
+		}
+		return p
+	}
+	c, err := LoadServer(env(validServer(nil)))
+	if err != nil || c.AIPrompt != "" || c.AIPromptSHA != "" {
+		t.Fatalf("unset: %+v %v", c, err)
+	}
+	good := write("good.txt", []byte("- Write easy problems.\n"))
+	c, err = LoadServer(env(validServer(map[string]string{"PODIUM_AI_PROMPT_FILE": good})))
+	if err != nil || c.AIPrompt != "- Write easy problems.\n" || len(c.AIPromptSHA) != 12 {
+		t.Fatalf("good file: %+v %v", c, err)
+	}
+	for name, path := range map[string]string{
+		"missing":      filepath.Join(dir, "nope.txt"),
+		"empty":        write("empty.txt", []byte(" \n\t\n")),
+		"too big":      write("big.txt", []byte(strings.Repeat("a", MaxAIPromptFile+1))),
+		"invalid utf8": write("bad.txt", []byte{0xff, 0xfe, 'a'}),
+	} {
+		_, err := LoadServer(env(validServer(map[string]string{"PODIUM_AI_PROMPT_FILE": path})))
+		if err == nil || !strings.Contains(err.Error(), "PODIUM_AI_PROMPT_FILE") || !strings.Contains(err.Error(), filepath.Base(path)) {
+			t.Errorf("%s: error %v", name, err)
+		}
+	}
+	if err := func() error {
+		_, err := LoadServer(env(validServer(map[string]string{"PODIUM_AI_PROMPT_FILE": write("atmax.txt", []byte(strings.Repeat("a", MaxAIPromptFile)))})))
+		return err
+	}(); err != nil {
+		t.Errorf("a file of exactly 16 KB: %v", err)
+	}
+}

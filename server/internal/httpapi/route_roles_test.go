@@ -74,6 +74,7 @@ var routeRoles = map[string]string{
 	"GET /api/admin/problems":                                      "organiser",
 	"POST /api/admin/problems":                                     "organiser",
 	"POST /api/admin/problems/import":                              "organiser",
+	"GET /api/admin/problems/pack-prompt":                          "organiser",
 	"GET /api/admin/problems/{id}":                                 "organiser",
 	"PUT /api/admin/problems/{id}":                                 "organiser",
 	"DELETE /api/admin/problems/{id}":                              "organiser",

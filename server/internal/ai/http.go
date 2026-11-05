@@ -218,6 +218,9 @@ type keyStatusJSON struct {
 	ActiveUntil *int64            `json:"active_until"`
 	Providers   []keyProviderJSON `json:"providers"`
 	ServerNow   int64             `json:"server_now"`
+	// CustomPrompt is true when PODIUM_AI_PROMPT_FILE replaces the
+	// authoring rules. Never the text.
+	CustomPrompt bool `json:"custom_prompt"`
 }
 
 // providerEntries returns what the session holds for each provider.
@@ -238,7 +241,7 @@ func (d *Handlers) providerEntries(r *http.Request) []keyProviderJSON {
 }
 
 func (d *Handlers) keyStatus(r *http.Request) keyStatusJSON {
-	out := keyStatusJSON{Provider: ProviderAnthropic, Providers: d.providerEntries(r), ServerNow: time.Now().UnixMilli()}
+	out := keyStatusJSON{Provider: ProviderAnthropic, Providers: d.providerEntries(r), ServerNow: time.Now().UnixMilli(), CustomPrompt: CustomPrompt()}
 	if st, ok := d.Wizard.Keys.Status(d.sessionToken(r)); ok {
 		out.Active, out.Provider, out.Model, out.ActiveUntil = true, st.Provider, st.Model, httpx.Millis(st.ActiveUntil)
 	}
