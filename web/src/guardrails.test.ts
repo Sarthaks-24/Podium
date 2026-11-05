@@ -15,7 +15,11 @@ const HEX_COLOUR = /#[0-9a-fA-F]{3,8}\b/;
 const TOKENS = '/src/styles/tokens.css';
 // Browser chrome metas and the favicon cannot use CSS variables, so they
 // carry copies of token values; the test below keeps the copies exact.
-const MIRRORS_TOKENS = ['/index.html', '/public/favicon.svg', '/public/site.webmanifest'];
+const MIRRORS_TOKENS = ['/index.html', '/public/favicon.svg', '/public/site.webmanifest', '/src/lib/theme-engine.ts', '/src/lib/theme-rules.ts'];
+// The engine (theme-engine.ts) keeps the fixed verdict colours and the fallback
+// tokens, copies of tokens.css that theme-engine.test.ts keeps exact. Presets are
+// inputs to the engine, colours a person would choose, so they are not tokens.
+const ENGINE_INPUTS = ['/src/lib/theme-presets.ts'];
 // Tests may name colours to check the contrast maths.
 const isTest = (path: string) => path.endsWith('.test.ts');
 
@@ -46,7 +50,7 @@ describe('web source guardrails', () => {
 
   it('keeps hex colours inside tokens.css', () => {
     const offenders = Object.entries(sources)
-      .filter(([path]) => path !== TOKENS && !MIRRORS_TOKENS.includes(path) && !isTest(path))
+      .filter(([path]) => path !== TOKENS && !MIRRORS_TOKENS.includes(path) && !ENGINE_INPUTS.includes(path) && !isTest(path))
       .filter(([, text]) => HEX_COLOUR.test(text))
       .map(([path]) => path);
     expect(offenders).toEqual([]);

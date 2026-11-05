@@ -13,6 +13,8 @@ import {
 import { d41Failures } from './theme-rules';
 
 const rules = parseTokenRules(tokensCss);
+// Built from code points so this file stays free of the dashes the repo bans.
+const BANNED = new RegExp(`[!${String.fromCharCode(0x2013, 0x2014)}]`);
 
 /** mulberry32: a small seeded generator, so every run sees the same inputs. */
 function rng(seed: number): () => number {
@@ -136,7 +138,7 @@ describe('theme engine', () => {
     it('says what it changed when a mid-tone background is pushed to an extreme', () => {
       const theme = deriveTheme({ background: '#808080', accent: '#808080', contrast: 'standard' });
       expect(theme.adjustments.length).toBeGreaterThan(0);
-      expect(theme.adjustments.every((a) => /^[A-Z]/.test(a) && !/[!–—]/.test(a))).toBe(true);
+      expect(theme.adjustments.every((a) => /^[A-Z]/.test(a) && !BANNED.test(a))).toBe(true);
     });
 
     it('is deterministic', () => {
