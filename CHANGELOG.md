@@ -70,6 +70,7 @@ Releases are numbered from `v2.0.0`. The builds before it were never released; t
 - `podium-alert` reads `PODIUM_ALERT_WEBHOOK` from `/etc/podium/alert.env` when the environment does not set it, so a hand run of `podium-alert test` or `podium-check restore-proof --corrupt` sends its alert. The file is read as data, never sourced, and the error names whether the file is unreadable or the value is empty.
 - `tools/sandbox-test.sh` copies the `-examples` folder into its private work folder before switching to the judge user, so problem packs in a private home folder no longer fail with `permission denied`.
 - Backblaze B2 list calls (class C) stay far under the free 2,500 a day (PF-5). Litestream 0.5 listed the bucket every 15 s to clean up L0 files, up to 11,520 calls a day; `/etc/litestream.yml` now sets `l0-retention-check-interval: 1h` (48 a day). `podium-check` lists only the `ltx/0` folder with one call instead of the whole replica. A normal day now uses about 150. Upgrade: install the new `/etc/litestream.yml` and restart `podium-litestream`.
+- `podium-server migrate` and `check` read the test files from `/var/lib/podium/tests` when that folder exists and `PODIUM_TESTS_DIR` is not set, so a rehearsal with `sudo -u podium` no longer reports every test file missing (PF-6). `migrate` also takes `-tests`.
 
 ## v2.0.0 Billota (2026-11-04)
 

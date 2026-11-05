@@ -103,6 +103,7 @@ func migrateCmd(args []string, out io.Writer) int {
 	fs := flag.NewFlagSet("migrate", flag.ContinueOnError)
 	fs.SetOutput(out)
 	dbPath := fs.String("db", "", "the copy to migrate (never the live database)")
+	testsDir := fs.String("tests", defaultTestsDir(), "test files directory the check after the migration reads")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
@@ -141,7 +142,7 @@ func migrateCmd(args []string, out io.Writer) int {
 		return 1
 	}
 	fmt.Fprintf(out, "applied %d migrations: %v\n", len(applied), applied)
-	return checkCmd([]string{"-db", *dbPath, "-tests", envOr("PODIUM_TESTS_DIR", "data/tests")}, out)
+	return checkCmd([]string{"-db", *dbPath, "-tests", *testsDir}, out)
 }
 
 // liveDBPath is where install.sh puts the database on the VM.
