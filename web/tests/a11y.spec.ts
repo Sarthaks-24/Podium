@@ -18,6 +18,7 @@ import * as integrity from './mocks/integrity';
 import * as problems from './mocks/problems';
 import * as screens from './mocks/screens';
 import * as workspace from './mocks/workspace';
+import { AXE_TAGS } from './axe';
 import { codeEditor } from './locators';
 
 interface Target {
@@ -69,7 +70,7 @@ async function settle(page: Page) {
 
 /** Runs axe, saves the result as <file>.json and fails on a serious or critical finding KNOWN does not list. */
 async function audit(page: Page, t: Target, file: string) {
-  const results = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa']).analyze();
+  const results = await new AxeBuilder({ page }).withTags(AXE_TAGS).analyze();
   const dir = cache('v2-plan/audits/axe');
   mkdirSync(dir, { recursive: true });
   const report = results.violations.map((v) => ({
