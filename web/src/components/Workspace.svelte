@@ -37,6 +37,7 @@
   import { LANGUAGES, bestScore, headline, isWaiting, languageLabel, limitsText, runCompileFailed, runHeadline, type Language, type Workspace } from '../lib/workspace';
   import CodeEditor from './CodeEditor.svelte';
   import ConfirmDialog from './ConfirmDialog.svelte';
+  import ContactLine from './ContactLine.svelte';
   import PageHeader from './PageHeader.svelte';
   import PageState from './PageState.svelte';
   import Splitter from './Splitter.svelte';
@@ -55,6 +56,7 @@
     backHref: string;
     backLabel: string;
     contestHref?: string;
+    contact?: string;
     note?: string;
     clock?: Snippet<[boolean]>;
     banner?: Snippet;
@@ -77,6 +79,7 @@
     backHref,
     backLabel,
     contestHref = '',
+    contact = '',
     note = '',
     clock,
     banner,
@@ -446,6 +449,7 @@
       <PageState kind="loading" message="Loading the problem" shape="statement" />
     {:else if page.state === 'forbidden' && (page.code === 'not_started' || page.code === 'contest_over')}
       <PageState kind="missing" message={page.error} parent={{ href: contestHref || backHref, label: 'Go to the contest page.' }} />
+      <ContactLine email={contact} />
     {:else if page.state === 'forbidden'}
       <PageState kind="forbidden" message={page.error || 'You cannot open this problem.'} ask="Ask an organiser if you think you should." />
     {:else if page.state === 'missing'}
