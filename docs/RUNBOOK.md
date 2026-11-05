@@ -35,7 +35,7 @@ Security checks (security council, 2026-10-18):
 
 - Check the server's mode and organisers: `systemctl show podium-server -p Environment` (no `PODIUM_MODE=testing`) and `sqlite3 /var/lib/podium/db/podium.db "SELECT email, role, google_sub IS NOT NULL AS linked FROM users WHERE role <> 'student'"`.
 - Setter checklist (`docs/AUTHORING.md`, "Before a contest"): reference and a known-wrong solution judged live for every problem, at least half the tests cross-checked, a person's solution for every AI problem.
-- Do not give students the organiser role to help run a contest: an organiser sees every problem and every result. An admin can also manage students and organisers on the Dashboard. Per-contest organiser roles were removed in v3 (V3-4).
+- Do not give students the organiser role to help run a contest: an organiser sees every problem and every result. An admin can also manage students and organisers on the Dashboard. Per-contest organiser roles were removed in v1.2 (V3-4).
 - After the contest, store the JSON export (it carries the audit log) and its SHA-256 off the server.
 
 ## One hour before
@@ -121,7 +121,7 @@ sudo systemctl restart podium-judge
 
 Not yet proven on the VM (the upgrade and rollback drill has not run).
 
-The rule is no deploy from 48 hours before a contest until its queue is empty, and nothing in Podium enforces it (v3 removed the check that refused such deploys, and its override, V3-4). When a fix cannot wait (a crash that recurs, a security fix):
+The rule is no deploy from 48 hours before a contest until its queue is empty, and nothing in Podium enforces it (v1.2 removed the check that refused such deploys, and its override, V3-4). When a fix cannot wait (a crash that recurs, a security fix):
 
 1. Pause judging of the contest if the fix touches judging, and announce the restart: "The site restarts for a minute at 14:02. Your code and drafts are kept; the page reconnects by itself."
 2. `tools/deploy.sh HOST` from your machine, or on the VM `sudo ./install.sh upgrade` in the new release's folder.

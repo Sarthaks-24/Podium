@@ -44,7 +44,7 @@ Areas add their own codes, listed with their routes: `disabled` (sign-in), `bad_
 ### Sign-in, roles and requests
 
 - **Sessions.** Signing in sets an HttpOnly session cookie, `SameSite=Lax`, with no `Expires` or `Max-Age`, so the browser forgets it when it closes, which matters on shared lab PCs. The server ends every session 12 hours after sign-in however much it is used (sessions never renew), at sign-out, when an owner ends the person's sessions or disables the account, and when the server starts in a different `PODIUM_MODE` than last time. With an `https` base URL the cookie is `__Host-podium_session` and marked `Secure`; with a local `http` base URL it is `podium_session`.
-- **Roles.** `student` < `organiser` < `admin` < `owner`. An admin organises like an organiser and also manages students and organisers (below, "Settings"). Before v4 the organiser role was stored as `admin` (migration `0002_v4_roles` renamed it); site audit rows written before that migration are read with `organiser` in place of `admin`. A route needs its role or a higher one: without a session it answers `401 signed_out`, below the role `403 forbidden`. Roles are read from the database on every request, so removing an organiser takes effect at once.
+- **Roles.** `student` < `organiser` < `admin` < `owner`. An admin organises like an organiser and also manages students and organisers (below, "Settings"). Before v1.3 the organiser role was stored as `admin` (migration `0002_v4_roles` renamed it); site audit rows written before that migration are read with `organiser` in place of `admin`. A route needs its role or a higher one: without a session it answers `401 signed_out`, below the role `403 forbidden`. Roles are read from the database on every request, so removing an organiser takes effect at once.
 - **Cross-site requests.** `POST`, `PUT`, `PATCH` and `DELETE` under `/api/` are refused with `403 cross_site` unless the request's `Origin` matches `PODIUM_BASE_URL` (or, without an `Origin` header, `Sec-Fetch-Site` is `same-origin` or absent).
 - **Testing mode is local only.** With `PODIUM_MODE=testing`, a request whose `Host` is not `localhost`, `127.0.0.1` or `[::1]` (any port), or that carries `X-Forwarded-For`, `Forwarded`, `X-Real-IP` or `X-Forwarded-Host`, is refused with `403 testing_mode_local`: a proxy in front means the browser is not on this machine.
 
@@ -66,7 +66,7 @@ Areas add their own codes, listed with their routes: `disabled` (sign-in), `bad_
 | 200 | `{"status":"ok","db":"ok"}` |
 | 503 | `{"status":"degraded","db":"unreachable"}` |
 
-A request from the VM itself (a loopback peer with no forwarding headers) also gets the release and the judge queue, for `install.sh verify` and `podium-check`: `{"status":"ok","db":"ok","version":"v3.0.0","schema":"0001_v3","jobs_queued":2,"oldest_queued_s":40,"judge_last_claim_s":1}`. `judge_last_claim_s` is `null` when no judge has asked for work since the server started. Through Caddy the answer never carries these, so a scanner cannot match the version against known bugs.
+A request from the VM itself (a loopback peer with no forwarding headers) also gets the release and the judge queue, for `install.sh verify` and `podium-check`: `{"status":"ok","db":"ok","version":"v2.0.0","schema":"0001_v3","jobs_queued":2,"oldest_queued_s":40,"judge_last_claim_s":1}`. `judge_last_claim_s` is `null` when no judge has asked for work since the server started. Through Caddy the answer never carries these, so a scanner cannot match the version against known bugs.
 
 ### `GET /api/admin/metrics` (organiser)
 
@@ -161,7 +161,7 @@ On failure it redirects to `/signin?error=<code>`:
 | Code | Meaning |
 |---|---|
 | `closed` | sign-in is closed (Dashboard, Sign-in tab) and the person is below admin; sessions already open keep working |
-| `not_listed` | the email is not on the list of people; the page says "Your email is not on the list for this site. Ask the organiser to add it." (a v3 `domain` link reads the same) |
+| `not_listed` | the email is not on the list of people; the page says "Your email is not on the list for this site. Ask the organiser to add it." (a v1.2 `domain` link reads the same) |
 | `unverified` | Google has not verified the address |
 | `disabled` | an owner disabled the account |
 | `account` | the address is linked to a different Google account (an owner can reset the link) |
@@ -194,11 +194,11 @@ Ends the current session on the server (the row is deleted, so a copied cookie i
 
 ### `GET /api/me/profile` (student)
 
-The signed-in person's own dates for the `/me` page (v4): `200 {"member_since":1789000000000,"last_sign_in":1792180000000}`, Unix milliseconds; `last_sign_in` is `0` for an account that never signed in. Nobody can ask for anyone else's.
+The signed-in person's own dates for the `/me` page (v1.3): `200 {"member_since":1789000000000,"last_sign_in":1792180000000}`, Unix milliseconds; `last_sign_in` is `0` for an account that never signed in. Nobody can ask for anyone else's.
 
 ### `GET /api/me/contests` (student)
 
-The contests the signed-in person entered (a start, or a submission that counts), newest first, archived ones left out, for the `/me` page (v4): `200 {"contests":[{"slug","title","starts_at","state","score","max_score","place","of"}],"server_now"}`. `score` is their own total, always shown, as on the contest page. `place` and `of` (their rank and the number of rows on the board) come from the board students see now and are left out while it is frozen (during the freeze, and after the end while the organisers hold the reveal), and for anyone the board leaves out. No other person's data is ever in it.
+The contests the signed-in person entered (a start, or a submission that counts), newest first, archived ones left out, for the `/me` page (v1.3): `200 {"contests":[{"slug","title","starts_at","state","score","max_score","place","of"}],"server_now"}`. `score` is their own total, always shown, as on the contest page. `place` and `of` (their rank and the number of rows on the board) come from the board students see now and are left out while it is frozen (during the freeze, and after the end while the organisers hold the reveal), and for anyone the board leaves out. No other person's data is ever in it.
 
 ### `PUT /api/me/preferences` (student)
 
@@ -283,7 +283,7 @@ Every change to people, the sign-in list and the site, newest first, 100 per pag
 | `person_removed` | the person | `{deleted, sessions_ended}` |
 | `let_in` | the person | `{}` |
 | `signin_closed`, `signin_opened` | `""` | `{}` |
-| `domain_added`, `domain_removed` | `""` | `{domain}`, `{domain, sessions_ended}`: only in rows from before v4 |
+| `domain_added`, `domain_removed` | `""` | `{domain}`, `{domain, sessions_ended}`: only in rows from before v1.3 |
 | `account_disabled` | the person | `{sessions_ended}` |
 | `account_enabled` | the person | `{}` |
 | `sessions_ended` | the person | `{count}` |
@@ -301,7 +301,7 @@ Every route here needs the organiser role. The pack format and the rules for tes
 | Route | Request | Success |
 |---|---|---|
 | `GET /api/admin/problems` | `?archived=1` to include archived problems | 200 `{"problems":[ProblemSummary]}`, most recently changed first |
-| `POST /api/admin/problems` | `{"title":"Two sum","client_key"}` | 201 `Problem` with a starter statement and C++ reference; the slug is made from the title (`two-sum`, then `two-sum-2` when taken). A repeated `client_key` (v4) answers 201 with the problem the first request made |
+| `POST /api/admin/problems` | `{"title":"Two sum","client_key"}` | 201 `Problem` with a starter statement and C++ reference; the slug is made from the title (`two-sum`, then `two-sum-2` when taken). A repeated `client_key` (v1.3) answers 201 with the problem the first request made |
 | `POST /api/admin/problems/import` | the pack as a zip body, at most 32 MB | 201 `Problem`; `warnings` names files in the pack podium ignores |
 | `GET /api/admin/problems/{id}` | | 200 `Problem` |
 | `PUT /api/admin/problems/{id}` | `ProblemEdit`, at most 512 KB | 200 `Problem` |
@@ -572,7 +572,7 @@ A submission that counts never carries the input, output or checker comment of a
 | Problem | tests, examples and subtasks fit together and every test has an expected output | `409 not_ready` with `problems` |
 
 - `client_key` is a random value the browser makes per press of Submit and reuses on a retry. Keys are per user, problem and contest. The same key again returns the first submission with `200` and counts nothing, so a retry after a timeout never trips the rate limit.
-- v4 (U13): creating a contest, a problem, an announcement or a question takes the same optional `client_key` (at most 64 characters, else `400 bad_request` on `client_key`). The browser makes one per form and keeps it across a retry. Keys are per person (and per contest for announcements and questions); a repeat answers `201` with what the first request made and sends no event again. The key is never shown in any answer, revision or pack.
+- v1.3 (U13): creating a contest, a problem, an announcement or a question takes the same optional `client_key` (at most 64 characters, else `400 bad_request` on `client_key`). The browser makes one per form and keeps it across a retry. Keys are per person (and per contest for announcements and questions); a repeat answers `201` with what the first request made and sends no event again. The key is never shown in any answer, revision or pack.
 - `typed_chars`, `pasted_chars`, `focus_losses` and `fullscreen_exits` are the editor's counts since the last submission, clamped to 0 to 10,000,000. They never block a submit.
 - The server stores with each submission an HMAC of the client's address and user agent, keyed by `PODIUM_SESSION_SECRET`, so it cannot be reversed by trying campus addresses.
 
@@ -634,7 +634,7 @@ Every route needs a signed-in user. A published, unarchived contest is open to s
 | `POST /api/contests/{slug}/problems/{label}/submit` | as the workspace | 202 `Submission`; 200 for a repeated `client_key` |
 | `POST /api/contests/{slug}/problems/{label}/events` | as the workspace | 204 |
 | `GET /api/contests/{slug}/standings` | `?as=student` for an organiser | 200 `Standings`: a student gets the board for their state; an organiser the full board, or with `?as=student` the board students get now |
-| `POST /api/contests/{slug}/clarifications` | `{"problem_label":"A" or null,"question":"...","client_key"}` | 201 `{clarification, server_now}`; a repeated `client_key` (v4) answers with the first question and tells nobody again |
+| `POST /api/contests/{slug}/clarifications` | `{"problem_label":"A" or null,"question":"...","client_key"}` | 201 `{clarification, server_now}`; a repeated `client_key` (v1.3) answers with the first question and tells nobody again |
 
 ### `ContestSummary` and `Contest`
 
@@ -720,7 +720,7 @@ Every route here needs the organiser role and manage access to the contest. List
 | Route | Request | Success |
 |---|---|---|
 | `GET /api/admin/contests` | `?archived=1` to include archived contests | 200 `{contests:[AdminContest], server_now}`; only contests the caller manages are listed; rows leave out `extensions` and `queue` and send `unanswered` as 0 |
-| `POST /api/admin/contests` | `ContestEdit` and `client_key` | 201 `AdminContest`, unpublished; a repeated `client_key` (v4) answers with the contest the first request made |
+| `POST /api/admin/contests` | `ContestEdit` and `client_key` | 201 `AdminContest`, unpublished; a repeated `client_key` (v1.3) answers with the contest the first request made |
 | `GET /api/admin/contests/{id}` | | 200 `AdminContest` |
 | `GET /api/admin/contests/{id}/organisers` | | 200 `{organisers:[{user_id,email,name,role,added_at}], server_now}` |
 | `POST /api/admin/contests/{id}/organisers` | `{"email":"person@example.edu"}`; resolves listed addresses with the same Gmail dot matching as sign-in; only enabled organiser, admin or owner accounts qualify | 200 organiser row; an existing member is left unchanged |
@@ -742,7 +742,7 @@ Every route here needs the organiser role and manage access to the contest. List
 | `GET /api/admin/contests/{id}/submissions` | `?problem=A&user=7&verdict=WA&page=1` | 200 `{submissions:[FeedRow], page, has_more, server_now}` |
 | `POST /api/admin/contests/{id}/rejudge` | `{"problem_label":"A"}` or `{"submission_id":80}` | 202 `{queued, revisions:[{label, revision_id, rev}], server_now}` |
 | `GET /api/admin/contests/{id}/announcements` | | 200 `{announcements, server_now}` |
-| `POST /api/admin/contests/{id}/announcements` | `{"body_md":"...","client_key"}`, at most 4,000 characters | 201 `Announcement` `{id, body_md, created_at}`; a repeated `client_key` (v4) answers with the first announcement and sends nothing again |
+| `POST /api/admin/contests/{id}/announcements` | `{"body_md":"...","client_key"}`, at most 4,000 characters | 201 `Announcement` `{id, body_md, created_at}`; a repeated `client_key` (v1.3) answers with the first announcement and sends nothing again |
 | `GET /api/admin/contests/{id}/clarifications` | | 200 `{clarifications, server_now}`, each with `asked_by {user_id, email, name}` |
 | `PUT /api/admin/contests/{id}/clarifications/{cid}` | `{"answer":"...","public":false}`, at most 4,000 characters | 200 `Clarification` |
 | `GET /api/admin/contests/{id}/standings` | `?variant=frozen` for the frozen board | 200 `Standings`, full unless asked; each row also carries the student's `email`, so two students with one name can be told apart |
@@ -774,7 +774,7 @@ The measures apply only during a student's own contest time. Blocking happens in
 
 `AdminContest` is every `ContestEdit` field plus `id`, `slug`, `close_at` (the end plus the contest-wide extension), `default_honour_text`, `editorial_md`, `editorial_published`, `paused`, `extended_minutes`, `revealed_at`, `archived`, `state`, `created_at`, `updated_at`, `server_now`, and:
 
-- `problems`: `[{label, problem_id, title, pinned_hash, ready, max_score, revision_id, rev, latest_revision_id, latest_rev, update_available, update_statement_only, reconstructed}]`. `ready` is false when the problem changed since it was added. `update_available` is true when the problem has a newer validated revision than the pin, and `update_statement_only` when that revision changes only the statement. `reconstructed` is always false on a v3 database.
+- `problems`: `[{label, problem_id, title, pinned_hash, ready, max_score, revision_id, rev, latest_revision_id, latest_rev, update_available, update_statement_only, reconstructed}]`. `ready` is false when the problem changed since it was added. `update_available` is true when the problem has a newer validated revision than the pin, and `update_statement_only` when that revision changes only the statement. `reconstructed` is always false on a v1.2 database.
 - `extensions`: `[{user_id, email, name, minutes, reason}]`. The reason can be health data and goes only to admins.
 - Queue health, what the console's opening sentence and banners read:
 
@@ -870,11 +870,11 @@ A decision writes an `integrity_decision` row to the contest audit in the same t
 
 ## Judge worker API
 
-Used only by `podium-judge work`. It is served on its own listener, `PODIUM_JUDGE_LISTEN` (default `127.0.0.1:8081`, loopback only), never through Caddy, with no session cookies and no cross-site check. The request and response types live in `server/internal/judgeapi`, shared by both programs; the protocol, the worker and the sandbox are the proven core and v3 left them as they were.
+Used only by `podium-judge work`. It is served on its own listener, `PODIUM_JUDGE_LISTEN` (default `127.0.0.1:8081`, loopback only), never through Caddy, with no session cookies and no cross-site check. The request and response types live in `server/internal/judgeapi`, shared by both programs; the protocol, the worker and the sandbox are the proven core and v1.2 left them as they were.
 
 - **Auth.** Every request sends `Authorization: Bearer <PODIUM_JUDGE_TOKEN>`. The server compares SHA-256 digests of the two tokens in constant time; anything else is `401 unauthorized`.
 - **Bodies.** JSON with no unknown fields; at most 64 KB for a claim or toolchain report and 1 MB for a report; a malformed body is `400 bad_request`. An unknown route is `404 not_found`. The one non-JSON body is an uploaded output, at most 16 MB.
-- **Protocol 3.** A judge and server of different protocols refuse each other with `426 protocol`. A run input may carry `"open": true` and a submit payload `"reveal": true`; the v3 server never sends `open`, and sends `reveal` only for practice and the organisers' workspace, when the judge reports `output` (the first 4 KB) on the first failing hidden test. The server refuses output on any other submit result.
+- **Protocol 3.** A judge and server of different protocols refuse each other with `426 protocol`. A run input may carry `"open": true` and a submit payload `"reveal": true`; the v1.2 server never sends `open`, and sends `reveal` only for practice and the organisers' workspace, when the judge reports `output` (the first 4 KB) on the first failing hidden test. The server refuses output on any other submit result.
 
 ### `POST /api/judge/claim` (judge)
 
@@ -990,11 +990,11 @@ Every path that is not under `/api/` serves the embedded web app (`server/intern
 | `/assets/*` (hashed build output) | the file, `Cache-Control: public, max-age=31536000, immutable` |
 | other files of the build (`/favicon.svg`, `/fonts/*`, `/theme-init.js`) | the file, `public, max-age=3600` |
 | a path ending in `/` (not `/` itself) | `301` to the same path without it, query kept |
-| `/progress`, `/notices`, `/contact`, `/integrity` and `/integrity/*` (v2 pages) | `301` to `/` |
-| `/robots.txt` | `User-agent: *`, `Allow: /$`, `Disallow: /` and `Sitemap: <base URL>/sitemap.xml`, `public, max-age=3600` (v4: only the landing page is for search engines) |
+| `/progress`, `/notices`, `/contact`, `/integrity` and `/integrity/*` (v1.1 pages) | `301` to `/` |
+| `/robots.txt` | `User-agent: *`, `Allow: /$`, `Disallow: /` and `Sitemap: <base URL>/sitemap.xml`, `public, max-age=3600` (v1.3: only the landing page is for search engines) |
 | `/sitemap.xml` | the one URL `<base URL>/`, `application/xml`, `public, max-age=3600` |
 | a missing path with an extension | `404`, so an old hashed chunk after a deploy fails clearly instead of loading `index.html` as JavaScript |
-| `/` without a session cookie | the prerendered landing page `landing.html` (v4), its `%BASE_URL%` filled with the base URL, `Cache-Control: private, no-store`, `Vary: Cookie`, no `X-Robots-Tag` |
+| `/` without a session cookie | the prerendered landing page `landing.html` (v1.3), its `%BASE_URL%` filled with the base URL, `Cache-Control: private, no-store`, `Vary: Cookie`, no `X-Robots-Tag` |
 | `/` with a session cookie | `index.html`, `private, no-store`, `Vary: Cookie`, `X-Robots-Tag: noindex` |
 | `/signin`, `/privacy`, `/me`, and anything under `/contests/` or `/admin/` | `index.html`, `no-cache`, `X-Robots-Tag: noindex` |
 | any other path | `index.html` with status `404`, `no-cache`, `X-Robots-Tag: noindex`; the app shows its "Page not found" page |

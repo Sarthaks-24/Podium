@@ -2,14 +2,20 @@
 
 Dated entries per release. Unreleased work is listed at the top.
 
-## Unreleased
+Releases are numbered from `v2.0.0`. The builds before it were never released; these entries call them v1.0 (first called v1), v1.1 (v2), v1.2 (v3), v1.3 (v4) and v1.4 (v4.01). Decision ids (`V3-n`, `V4-n`) and migration file names keep the old names.
+
+## Unreleased: v2.0.1 Billota
 
 ### v2.0.1 deploy fixes (2026-11-05)
 
 - `podium-alert` reads `PODIUM_ALERT_WEBHOOK` from `/etc/podium/alert.env` when the environment does not set it, so a hand run of `podium-alert test` or `podium-check restore-proof --corrupt` sends its alert. The file is read as data, never sourced, and the error names whether the file is unreadable or the value is empty.
 - `tools/sandbox-test.sh` copies the `-examples` folder into its private work folder before switching to the judge user, so problem packs in a private home folder no longer fail with `permission denied`.
 
-### v4.01 contest updates (2026-11-03)
+## v2.0.0 Billota (2026-11-04)
+
+The first release, installed fresh on the Google Cloud VM. It carries everything below, v1.0 to v1.4.
+
+### v1.4 contest updates (2026-11-03)
 
 - Standings stream updates now name a version already cached for every board variant, and the refresh retries after a temporary contest or standings read failure. A stale cached version no longer suppresses the final update once all board variants reach the latest version.
 - A submission retry replays the exact code and integrity data from the original attempt. The notice explains that changing the editor requires a normal Submit.
@@ -44,7 +50,7 @@ Dated entries per release. Unreleased work is listed at the top.
 
 - `install.sh upgrade` could stop without a message right after the backup timer in step 5, leaving the new binaries installed and the old server running: `systemctl list-timers | head` under `pipefail` died of SIGPIPE. The timer lines no longer pipe into `head`, and `tools/install-test.sh` refuses the pattern. An upgrade that stopped this way is rolled back with `sudo /usr/local/lib/podium/install.sh rollback` before the next try.
 
-### v4.01 judge recovery (2026-11-03)
+### v1.4 judge recovery (2026-11-03)
 
 - When isolate cannot initialise an assigned box for a non-busy reason, the judge worker leaves the job leased and exits without a Fatal report. systemd restarts it, and a root pre-start helper clears only that worker's boxes so the lease can expire and the server can requeue the job.
 - `docs/OPERATIONS.md` explains the recovery and how to inspect the judge when it remains unavailable.
@@ -52,9 +58,9 @@ Dated entries per release. Unreleased work is listed at the top.
 ### Docs and the testing sign-in form (2026-11-03)
 
 - The testing sign-in form offers Admin beside Student, Organiser and Owner, so the admin role can be tried with `make dev-test`. Messages that still read as before the role rename now say that organisers organise and that admins can act on the Dashboard too.
-- The docs follow the move of the production host from Oracle Always Free to a Google Cloud VM (V4-26): `docs/OPERATIONS.md` has a "Google Cloud" section (machine, address options, backups with B2 required, the trial's end, drills on a clone with outbound traffic denied), and the README, `docs/ARCHITECTURE.md` and `docs/RUNBOOK.md` point to it. The Oracle section stays, since the arm64 build and the watchdog still ship. Status lines say where the project stands: v4 built, nothing tagged or deployed.
+- The docs follow the move of the production host from Oracle Always Free to a Google Cloud VM (V4-26): `docs/OPERATIONS.md` has a "Google Cloud" section (machine, address options, backups with B2 required, the trial's end, drills on a clone with outbound traffic denied), and the README, `docs/ARCHITECTURE.md` and `docs/RUNBOOK.md` point to it. The Oracle section stays, since the arm64 build and the watchdog still ship. Status lines say where the project stands: v1.3 built, nothing tagged or deployed.
 
-### v4 audit (2026-10-31)
+### v1.3 audit (2026-10-31)
 
 - CI passes again: on Linux the editor's Shift+Alt+Up and Down added a cursor (the VS Code keymap follows VS Code on Linux) instead of copying the line as the shortcut table says. They copy the line on every system now.
 - Built with Go 1.27.3 (11 standard-library fixes that reach net/http, crypto/tls and crypto/x509) and DOMPurify 3.4.17 (two advisories). CI now runs govulncheck and `npm audit` for the shipped packages, cancels a run a newer push replaced, and time-limits every job.
@@ -64,27 +70,27 @@ Dated entries per release. Unreleased work is listed at the top.
 - The console says when the questions could not load instead of "No questions yet", keeps the last list, and no longer sends an open History of changes back to page one every 10 seconds.
 - Leaving the window saves the draft once instead of two or three times, so the status no longer ends on "kept on this device" when the server has the code.
 - Migration `0006_v4_indexes` adds four indexes (the organisers' submission feed, contests a student started, a contest's announcements, contests that pin a problem). Indexes only; an older binary refuses the newer schema, as after every migration.
-- `docs/API.md` held the whole document twice since stage P; the copy is gone. Dead code from the v2 and v3 removals is deleted.
+- `docs/API.md` held the whole document twice since stage P; the copy is gone. Dead code from the v1.1 and v1.2 removals is deleted.
 - A database made before 2026-10-30 (for example the `make dev-test` state in `/var/tmp/podium-dev`) lacks columns that were added by editing `0001_v3.sql`, and fails with "no such column: full_screen" or "stderr". Delete that state and start again; nothing installed is affected. A test now fails CI if a released migration file is edited.
 - Dev tooling: `minimatch` is pinned to 11.0.3 through an override (a denial-of-service advisory reached ESLint); `npm audit` is down from 14 findings to 2 low ones in `deepmerge`, which has no fix. Nothing in the built app changed.
 
-### v4 stage N: the env files (2026-10-31)
+### v1.3 stage N: the env files (2026-10-31)
 
 - The installer now sets the judge token for you: when `sudo ./install.sh dirs` creates `/etc/podium/server.env` and `judge.env`, it writes one random `PODIUM_JUDGE_TOKEN` into both (mode 600, owned by root) and never prints it. A re-run keeps the token already in either file. The first-run checklist and the README no longer ask you to make one; rotating it is still the three steps in docs/OPERATIONS.md. The two files keep their layout (option B, V4-11).
 
-### v4 stage P: the public site (2026-10-31)
+### v1.3 stage P: the public site (2026-10-31)
 
 - Signed out, `/` is now a short landing page instead of a jump to sign-in: what Podium is for at this college, what students and organisers do in it, how a contest works in three lines, and "Sign in with your college Google account". Every other page still asks to sign in first.
 - The landing page is also prerendered at build time (`npm run build` now runs `scripts/prerender.mjs` after Vite, about 0.9 s): `dist/landing.html` holds the page as HTML, readable with scripts off and by search engines, and the app takes over when its script loads. The server sends it for `/` to a request without a session cookie, without `noindex`; with one, the app as before. `/` is now sent `Cache-Control: private, no-store` and `Vary: Cookie`, so no cache hands one to the other. The privacy page waits for its approved text, and the 404 page names the address it was given, so neither is prerendered yet.
 - The landing page has its own description, canonical link and Open Graph and Twitter tags, built from the base URL at start-up. `robots.txt` now lets search engines read `/` alone and names a new `/sitemap.xml` that lists it; every other page stays `noindex`.
 - Podium has a web manifest (`site.webmanifest`: name, the paper colour, 192 and 512 px icons; display "browser", so no install prompt) and a 1200 by 630 share image (`og.png`) that the landing page names for link previews. All three are drawn from the favicon's "p" and the word-mark by `web/scripts/icons.mjs`.
 
-### v4 stage M: the profile (2026-10-31)
+### v1.3 stage M: the profile (2026-10-31)
 
 - Your profile (`/me`, from the account menu) shows your Google picture, or your initials while it loads or when it cannot, with your name, email, role, when you joined and when you last signed in (`GET /api/me/profile`), then your theme and colours and your code editor settings: the same controls as the account menu's dialog and the editor's Settings. Only you see it. The picture is the first image in Podium and is fetched without a referrer.
 - Your profile lists the contests you entered, newest first, each with its date, your score and your place (`GET /api/me/contests`). The place shows only when the standings you can see are final for it: during a freeze, and while organisers hold the reveal, it reads "Place not shown yet".
 
-### v4 stage U: the UX patterns (2026-10-31)
+### v1.3 stage U: the UX patterns (2026-10-31)
 
 - A screen that is slow to load shows still blocks in its shape after the same 300 ms wait: rows on Your contests, the contests list, the problem bank and the standings, a statement in the workspace. The loading sentence is still read out; nothing shimmers or moves.
 - Coming back to Your contests, the problem bank or the standings shows what they last showed at once, then the fresh answer replaces it. When the refresh fails the old answer stays with "This may be out of date: the latest could not load." and Try again; a refusal (403 or 404) shows the refusal instead. These answers live only in the open tab's memory and are forgotten at sign out and whenever the session ends.
@@ -93,7 +99,7 @@ Dated entries per release. Unreleased work is listed at the top.
 - On a phone with a notch or a home bar the page now uses the whole screen (`viewport-fit=cover`) and keeps the header, the footer, dialogs, the side sheets and the toasts clear of them; nothing moves on a screen without one.
 - Creating a contest, a problem, an announcement or a question sends a request key, as Submit already did (migration `0005_v4_client_keys`): a double click or a retry after a lost answer makes one, and the repeat gets the first one back without telling anyone twice.
 
-### v4 stage E: the editor (2026-10-31)
+### v1.3 stage E: the editor (2026-10-31)
 
 - A run or submission that ends in a compile error marks the lines the compiler names in the editor: a wavy underline, a shape in the gutter (a dot for an error, a triangle for a warning, a ring for a note) and the message on hover. Editing a marked line takes its mark away, and the next Run or Submit clears the rest. F8 and Shift+F8 go to the next or previous mark (in Help). A fold gutter sits beside the line numbers. `@codemirror/lint` 6.9.7, already installed under the VS Code keymap, is now a direct dependency; the editor's first open is 174.42 kB gzip of 189.
 
@@ -105,7 +111,7 @@ Dated entries per release. Unreleased work is listed at the top.
 - Shift+Alt+F re-indents the whole file, as VS Code's Format Document key does, by the language's indent rules (V4-5); it is in Help.
 - `npm run size` also budgets the code editor (V4-3): what its first open downloads beyond the first load, with C++, is 171.57 kB gzip in four files; the budget is 189 kB, and the check fails when the editor chunk can no longer be found.
 
-### v4 stage O: the owner dashboard (2026-10-30)
+### v1.3 stage O: the owner dashboard (2026-10-30)
 
 - The stored role `admin` is now `organiser` (migration `0002_v4_roles`), so a new admin role can sit between organiser and owner. Nothing changes for anyone: organisers keep every right, their sessions keep working, and site audit rows from before the migration read "organiser".
 - A fourth role, admin, between organiser and owner. An admin organises like an organiser, and also reads People and the site audit, gives and removes the organiser role, and ends sessions, disables and enables students and organisers; never an admin, an owner, the configured owner or themself (403). One rule function in `auth` decides every such change; organiser live events reach admins too.
@@ -119,15 +125,15 @@ Dated entries per release. Unreleased work is listed at the top.
 - People History says "Made x an organiser" instead of "Changed x from none to organiser" for someone who had no account yet.
 - A migration can ask to run with foreign keys off (its first line says `-- podium: foreign_keys off`), for SQLite's table rebuild; it commits only if no reference is broken, on a connection that is then thrown away.
 
-### v4 stage H: site hygiene (2026-10-30)
+### v1.3 stage H: site hygiene (2026-10-30)
 
 - A path the app has no screen for answers 404 instead of 200, still showing the "Page not found" page. A Go test keeps the server's list of app paths in step with the router.
-- A trailing slash redirects to the same page without it, and the v2 pages (`/progress`, `/notices`, `/contact`, `/integrity`) redirect home.
-- The privacy notice describes v3 as built: no progress page, standing, rating, notices or contact form; drafts on the server, run fingerprints, the device number, similar-code decisions and extra time are named. It stays unlinked until the owner approves the text.
+- A trailing slash redirects to the same page without it, and the v1.1 pages (`/progress`, `/notices`, `/contact`, `/integrity`) redirect home.
+- The privacy notice describes v1.2 as built: no progress page, standing, rating, notices or contact form; drafts on the server, run fingerprints, the device number, similar-code decisions and extra time are named. It stays unlinked until the owner approves the text.
 - Five messages now say what happened and what to do: a theme not saved to the account, a sign-out the server did not confirm, a validation that could not start for a network fault, a reveal whose board could not reload, and a Run refused for pacing while Submit counts down (the last was only spoken, never shown).
 - The link crawl covers every organiser screen, and Newer, Older and Add problem say why they are disabled. A Playwright check holds every route to a title no other route uses.
 
-### v3: what the final agent pilot found, second part (2026-10-30)
+### v1.2: what the final agent pilot found, second part (2026-10-30)
 
 - A duplicated contest is titled "{title} (copy)", so two drafts no longer look the same.
 - The live view's time-check announcement fills in the real minutes left, and the overview names each problem beside its letter.
@@ -135,7 +141,7 @@ Dated entries per release. Unreleased work is listed at the top.
 - The Organisation history says what changed ("Changed the organisation's name") and names an erased account in words.
 - The standings read a total's time as "at 7:17 from the start", and in testing mode an invite says to sign in with the email on the form.
 
-### v3: what the final agent pilot found (2026-10-30)
+### v1.2: what the final agent pilot found (2026-10-30)
 
 - The live view measures the judge's silence at the moment the server answered and refreshes as soon as its tab shows again, so a background tab no longer says "Judge not seen" while judging works. Student view's back link opens the live view.
 - Nothing said about one problem stays under the next; a refused paste shows one line that goes at the next key, Run or Submit.
@@ -143,28 +149,28 @@ Dated entries per release. Unreleased work is listed at the top.
 - A run that did not compile gives the same advice as a submission, Java's class Main included. Run results say "word" instead of "token", and a checker's comment reads "The checker said: ...".
 - Changing the reference solution's language in the problem editor swaps an untouched starter for the new language's.
 
-### v3 stage D: golden API fixtures (2026-10-30)
+### v1.2 stage D: golden API fixtures (2026-10-30)
 
 - The mini-contest acceptance test records 14 core-path responses into `web/tests/fixtures/` (`PODIUM_GOLDEN=1` rewrites them; a stale file fails `go test`). A Vitest check holds the web's API types to those files, and the mocks are typed against them.
 - The types lost the fields the server never sends (`asker_name`, `honour_accepted_at`, `problem_count`, old feed fields) and now require what it always sends.
 
-### v3 stage D: web tests and leftovers (2026-10-30)
+### v1.2 stage D: web tests and leftovers (2026-10-30)
 
 - The mocked Playwright specs find elements by role, label or test id; 24 class locators remain, each a measured layout box, CodeMirror internals or the class under test (was 171).
 - A Vitest case checks the editor's keymap and extensions directly (brackets, completion, wrap, find, folding).
 - The sentence "This test is shown because this was a run" is gone; test names carry no plan ids.
 
-### v3 stage D: handlers next to their domain (2026-10-30)
+### v1.2 stage D: handlers next to their domain (2026-10-30)
 
 - The HTTP handlers moved out of `httpapi` into their domain packages (`auth`, `problems`, `submissions`, `contests`, `integrity`, `ai`, `jobs/judgeserver`, `ops`), with shared helpers in `httpx`. `httpapi` keeps the route table, sign-in, limits and the event stream: 1,248 lines, was 5,370. No handler queries the database directly. Routes, bodies and codes are unchanged.
 
-### v3 stage D: web structure (2026-10-30)
+### v1.2 stage D: web structure (2026-10-30)
 
 - Every screen loads through one loader that keeps only the newest answer and stops on unmount; no screen keeps its own load state.
 - Twelve unused exports and their tests deleted; long component header comments cut to one paragraph; plan ids in comments replaced by the reason in words.
 - Part of the class locators in the mocked specs became role locators (171 to 138 lines).
 
-### v3 stage D: server structure (2026-10-30)
+### v1.2 stage D: server structure (2026-10-30)
 
 - Dead code from the cuts deleted (the live contest helper, the no-reveal view option, the co-organiser branch, a duplicate audit writer, unused stream, run and worker entry points). Archiving a contest drops its cached boards.
 - Test files and test names say what they test instead of the plan phase; production comments give the reason in words instead of plan ids.
@@ -174,7 +180,7 @@ Dated entries per release. Unreleased work is listed at the top.
 - The test AI provider is only in builds made with `-tags fakeai` (`make dev`, `make dev-test`); the Anthropic client uses plain net/http and go.mod drops `anthropic-sdk-go` (indirect modules 20 to 9).
 - `PODIUM_JUDGE_BOX_BASE` moves the judge's isolate boxes; start-up refuses a range that covers the self-test box.
 
-### v3 stage C6: the problem editor (2026-10-30)
+### v1.2 stage C6: the problem editor (2026-10-30)
 
 - The editor has three tabs, Statement, Tests and Checking, with one status line in the title row ("Validated, 5 tests, slowest 212 ms"). At 1440 px each tab of a five-test problem is under 1,200 px (the editor was 3,987).
 - Validate is the one primary action until it passes, then "Add to contest" picks a draft or upcoming contest and adds the problem under the next letter. Validate makes missing expected outputs first; the Generate outputs button is gone and "Regenerate all outputs" sits in the More menu with Download pack and Archive.
@@ -183,28 +189,28 @@ Dated entries per release. Unreleased work is listed at the top.
 - The statement is written in the same editor as code (plain text), with Preview.
 - The nav says Problems. A new problem's address is made from its title; the slug field is gone.
 
-### v3 stage C7: exam options (2026-10-30)
+### v1.2 stage C7: exam options (2026-10-30)
 
 - Setup has four exam options under Advanced, all off by default: full screen on start, count tab switches and focus loss, block paste into the editor, block copy out of the statement.
 - Nothing blocks silently: before Start, and in Help's rules, one line says which measures are on. A blocked paste or copy shows a line saying so; leaving full screen offers "Return to full screen".
 - When an option is on, the console's submissions feed shows what was recorded beside each submission, and the similar-code page shows a table per student. Full-screen exits are a new integrity event (`fullscreen_exit`) and a count on each submission.
 - The measures apply only during a student's own contest time, not in practice or the organiser's student view. Blocking happens in the browser; the server records and counts.
 
-### v3 stage C5: Results (2026-10-30)
+### v1.2 stage C5: Results (2026-10-30)
 
 - Results lead with one line on where the reveal stands, then Reveal (only once there is something to reveal), Similar code, Download CSV and Download JSON. Reveal asks once; nothing says "release" any more. The step-by-step reveal overlay is deleted.
 - The board spans the page and one statistics table follows.
 - The CSV writes the browser's local time (`?tz=`, the server's zone otherwise) and a dash for a problem not tried; the download shows a line with the file name.
 - Similar code is the page's name, and strength reads in words with the reason under it ("Weak", "Short programs, identical"), the numbers in the details.
 
-### v3 stage C4: Settings (2026-10-29)
+### v1.2 stage C4: Settings (2026-10-29)
 
 - People is now Settings, for owners, with three tabs: People, Sign-in and Organisation. The tab is in the address, so a reload keeps it. At 1440 px each tab is under 1,000 px of content (the page was 2,611).
 - Two roles show in words: organiser and owner. The history of changes opens from the Organisation tab.
 - The first-contest checklist appears once, on the contests home, with a step to add another organiser for owners.
 - The route table owns each screen's role and section; anyone a route turns away sees one forbidden page.
 
-### v3 stage C3: contest setup (2026-10-29)
+### v1.2 stage C3: contest setup (2026-10-29)
 
 - Setup saves every field as it changes, with one "Saved" line in the title row and no Save button; a refused field is marked and the rest still save.
 - Six inputs show: title, problems, start, length in minutes, hidden minutes at the end, languages. The rest folds under Advanced with a one-line summary. At 1440 px the page is 922 px tall (was 2,326 with 25 inputs).
@@ -213,7 +219,7 @@ Dated entries per release. Unreleased work is listed at the top.
 - The contests home shows live and next first, then one table; "Needs you" appears once a contest has run.
 - Back with an unsaved change asks first, like a link. Organiser screens load through one loader that keeps only the newest answer.
 
-### v3 stage C2: the console for contest day (2026-10-29)
+### v1.2 stage C2: the console for contest day (2026-10-29)
 
 - The console opens with one sentence on how it is going ("Live, 30 started, 1 question waiting, judge fine." or "Judge not seen for 3 minutes."), then Announce, Extend, Extra time, Pause judging, History of changes and If something goes wrong.
 - Banners appear only when something needs action: an edited problem students have not got yet, tests that changed, a judge that is not taking work, judge errors.
@@ -224,7 +230,7 @@ Dated entries per release. Unreleased work is listed at the top.
 - `docs/RUNBOOK.md` has "If something goes wrong": the judge stalled, the VM is gone, sign-in is down. The console shows the same steps.
 - Every page in a tab shares one event stream.
 
-### v3 stage C1: the cuts (2026-10-29)
+### v1.2 stage C1: the cuts (2026-10-29)
 
 - Removed with their columns, routes and tests: per-student start windows, exam feedback, best single submission scoring, the switch to stop judging at a failed example (it always stops), the roster and its CSV (the allowed domains decide who takes part), and typed slugs (the address is made from the title on create and on duplicate, numbered when taken, and never changes).
 - The Students page and the AI settings page are gone. The key form lives in the AI wizard ("Change key or model"), and "Forget key" is in the account menu for organisers.
@@ -232,7 +238,7 @@ Dated entries per release. Unreleased work is listed at the top.
 - Results offer one "Reveal" button that shows students the full board; the step-by-step reveal and the editorial editor are hidden.
 - `forget-user` no longer erases roster rows; an address with no account is refused. Routes: 104 to 101.
 
-### v3 stage B: what the agent pilot found (2026-10-29)
+### v1.2 stage B: what the agent pilot found (2026-10-29)
 
 - A save waiting to reach the server reads "Saved on this device"; only a failed save is a warning.
 - Opening a contest again opens the problem left open last on this device.
@@ -242,38 +248,38 @@ Dated entries per release. Unreleased work is listed at the top.
 - "You have problem X open" shows only while the question's topic is general.
 - C++ and Java suggest their keywords as well as words already in the file.
 
-### v3 stage B6: the contest bar (2026-10-29)
+### v1.2 stage B6: the contest bar (2026-10-29)
 
 - From 1024 px a contest problem replaces the site header and the left rail with one bar: Leave, the contest's title, the letters with their scores (scrolling sideways past six, the open one kept in view, a dot on a letter whose statement changed), the clock, Messages with its count, Standings and Help.
 - Leave asks while the contest is live: "Your code is saved. The clock keeps running while you are away."
 - "Hide statement" gives the editor the whole width, and a column splitter between the statement and the code sets their shares (arrows, Page Up and Down, Home, End, or drag), kept on this device.
 - The rail's per-problem list is gone from contests; the organiser's try page keeps its single-problem rail.
 
-### v3 stage B4: the phone row (2026-10-29)
+### v1.2 stage B4: the phone row (2026-10-29)
 
 - Under 1024 px a contest problem drops the site header for one sticky row: each problem's letter and score, the clock, and a Menu with Standings, Messages, Help and Leave. The Problem, Code and Result tabs follow, then the title and the statement at once (the title sits about 110 px down at 375 px, was 450).
 - Phones and tablets read code but do not write it (V3-14, owner answer 2): the editor is read-only with no on-screen keyboard, the Code tab says "Use a computer to edit, run or submit.", and Run and Submit are not offered under 1024 px.
 
-### v3 stage B3: standings and messages as panels (2026-10-29)
+### v1.2 stage B3: standings and messages as panels (2026-10-29)
 
 - During a contest Standings opens as a panel over the editor column; Escape closes it and the problem stays. The standings page remains for after the end.
 - Messages opens as the same kind of panel, the messages first and "Ask a question" last. The topic starts on "The contest in general" and says which problem is open. Questions stay open in practice after the end (the server now accepts them while practice is open).
 - Students read "Results from 13:51 are hidden until the end." and "You are 7th of 28 so far", never "frozen"; the legend says the time is when the total was reached, from the start. The rail's Rules is Help.
 - Every dialog is built on one `Dialog` component: focus returns to the control that opened it, or to the page heading when that control is gone. The account menu closes when it opens Theme or Help. After Start, focus lands on the problem's heading.
 
-### v3 stage B2: the result tabs and the one Workspace split (2026-10-29)
+### v1.2 stage B2: the result tabs and the one Workspace split (2026-10-29)
 
 - The result area is three fixed tabs: Run, Submissions (with a count) and Your input. Run on the examples selects Run, Submit selects Submissions, a run on your own input stays on Your input; nothing swaps silently and Run and Submit keep focus. Your input holds the box with its own Run and that run's result; "Run on this input" on a failing example fills it and switches there. A submission that failed on an example offers "Run to see your output".
 - The compiler output starts with one line naming the first error and its line ("Line 12: expected ';' before 'return'"), a button to jump there.
 - `Workspace.svelte` went from about 2,000 lines to 566: the code and its saving in `lib/draft.svelte.ts`, submitting, running and the tabs in `lib/judging.svelte.ts`, and the grid, rail, title, sticky strip, toolbar, status line and result pane in `components/workspace/`; `Tabs` and `Splitter` are shared components.
 - A 401 from any request signs the page out in one place (`lib/api.ts`); the 19 copies of that code in the screens are gone.
 
-### v3 stage B5: before the start and after the end (2026-10-29)
+### v1.2 stage B5: before the start and after the end (2026-10-29)
 
 - Before the start: the countdown, three facts (length, languages, wait between submissions), the honour code and "I agree, start the contest", all in the first screen on a phone. The full rules and how Run and Submit work moved to Help ("Read the rules and how Run and Submit work", or "?"); the example verdict and the "How the workspace works" panel are gone.
 - After the end: the place and score, then one list of problems, each with its score, opening to "Open" and the student's own submissions; the problem with the newest submission opens by itself. The separate score table, "Review" and "Practise" are gone. Messages are folded under the result.
 
-### v3 stage B1: the editor and its surroundings (2026-10-29)
+### v1.2 stage B1: the editor and its surroundings (2026-10-29)
 
 - The editor takes the VS Code keys (`@replit/codemirror-vscode-keymap`, V3-13) plus the few it leaves out: insert a line above, scroll without moving the cursor, grow and shrink the selection, F3 and Ctrl+H, and Alt+C, Alt+W, Alt+R in the find box. Find and replace, auto-closed brackets and quotes, completion (words from the file for C++ and Java), multiple cursors (Alt+Click, Ctrl+Alt+Up and Down, Shift+Alt+drag for a box), folding, word wrap and tab size 2 or 4. Podium's Ctrl+Enter and Ctrl+' still win. Escape closes a completion list only while one is shown, so Escape then Tab always leaves the editor.
 - One Help dialog, opened by "?", the footer, the account menu and the contest's Rules: the rules, Run and Submit in two lines, then every shortcut. The shortcut table in `web/src/lib/shortcuts.ts` is the contract; `web/tests/editor-keys.spec.ts` presses every editor row and fails on a row it has no check for. An editor key pressed outside the editor says where it works.
@@ -290,18 +296,18 @@ Dated entries per release. Unreleased work is listed at the top.
 - Offsite nightly copy (V3-30): with `PODIUM_OFFSITE_*` set in `backup.env`, each checked nightly backup, database and test files, is streamed as `<stamp>.tar.gz` to a second bucket at another provider. The key stays in a `podium-backup` process, the script never deletes there, and a failed upload keeps the local copy and fails the unit. `podium-restore offsite` restores from it, `podium-check` alerts when its newest archive is over 36 hours old, and `tools/offsite-test.sh` rehearses both against a local stand-in bucket.
 - Watchdog (`.github/workflows/watchdog.yml`, `tools/oci-watchdog.sh`): every 30 minutes it asks Oracle's API for the VM's state, starts the VM if Oracle stopped it, checks `/healthz`, and pings a heartbeat that alerts on any change and on a missed run. Requests are signed with curl and openssl, no third-party action; `tools/oci-watchdog-test.sh` checks the signatures against a local stand-in. The job is skipped until the `PODIUM_URL` variable is set.
 
-### v3 stage A (2026-10-28)
+### v1.2 stage A (2026-10-28)
 
 - End the contest now during the freeze keeps the board frozen (V3-18). The remaining freeze is rounded up to whole minutes and never to zero, so the frozen moment moves at most 59 s earlier; before, an end inside the first minute of the freeze stored no freeze and released a held board at once. The confirm names the moment the board stays frozen at.
 - The gap between submissions is per problem (V3-17). A student who submits A can submit B at once; before, B was refused for the rest of A's 30 s.
 - Security: a flood of forged session cookies from one address no longer locks out real students behind the same address, such as a campus NAT (V3-19, security audit 2026-10-28 H1). A session the server issued or accepted in the last minute skips the per-address refusal and is checked against the database as before.
-- A database from before v3 makes the server stop with "this database predates v3" and what to do (move it away or restore a v3 backup), instead of saying it was written by a newer release (walk bug B7).
+- A database from before v1.2 makes the server stop with "this database predates v3" (v3 is the old name of v1.2) and what to do (move it away or restore a v1.2 backup), instead of saying it was written by a newer release (walk bug B7).
 - Grading correctness (stage A5, closing S1-08): a problem revision, its tags, samples or generator arguments that cannot be read are an error, never an empty list, so a pin update can no longer store no points and the AI-draft guard no longer fails open. The schema checks `json_valid` on revision samples and subtasks, problem tags and samples, subtask generator arguments and contest audit details, and revision tests are only examples or hidden. Four more `rows.Next` loops check `rows.Err`; the guard test now counts per loop and per variable. Tests prove a student's extra time keeps a contest live for the setter lane gate, the edit reason and both integrity retention passes.
 - Tests pin the student workspace before stage B changes it: switching problems keeps each problem's code, an autosaved draft comes back from the server after a reload, running on your own input, the verdict's subtask rows, announcements and Dismiss. Browser tests find the editor and the toasts by role and name; the toast stack is a group named Notifications. Go tests cover End now with a personal extension and an excluded student missing from the board and the CSV.
 - CI: every action is pinned to a commit SHA, CI runs on push only, the core path runs first in the browser job, the Playwright browser is cached, `make test` never reuses cached Go results, and Vitest reuses its workers (24 s to 4 s locally).
-- README: the status line describes v3, the deploy steps no longer mention the removed deploy guard or the `age` key, and the load test guide says to copy `tools/dev-stack.sh` to the VM, since the release does not ship it.
+- README: the status line describes v1.2, the deploy steps no longer mention the removed deploy guard or the `age` key, and the load test guide says to copy `tools/dev-stack.sh` to the VM, since the release does not ship it.
 
-### v3 stage 1 (2026-10-26)
+### v1.2 stage 1 (2026-10-26)
 
 - Integrity (V3-2, owner answer B): an organiser records one decision per student, No action, Warning or Exclude from this contest, with a reason; an excluded student leaves the board and the export. Appeals, proposals, the two-person rule, deadlines, notes, the rating and standing, notices, student progress, summaries, the class view, record views and the term rollover are removed. New: a CSV export of similar pairs. Retention keeps only sessions, integrity events, run payloads and backups (`05a31e1`).
 - Removed per-contest co-organisers and student TAs: every organiser route needs the admin or owner role, and students get 403 on organiser routes before any contest is read (`4132775`).
@@ -315,18 +321,18 @@ Dated entries per release. Unreleased work is listed at the top.
 - Themes: light, dark, high contrast light and high contrast dark, plus System (V3-8). A saved choice of a removed theme falls back to System.
 - Two test kinds: examples and hidden tests (V3-5). Open tests are gone; a format 2 pack's open tests import as samples, exports write format 1, the shipped average-speed pack lists test 7 as a sample. The judge protocol is unchanged. The run headline reads "All 3 examples passed" or "2 of 3 examples failed" (S1-09).
 - Every contest counts (V3-6): the `graded` setting, `confirm_ungraded` and live ungraded contests are gone; student times round to 100 ms in every contest. Practice after the end no longer reveals a hidden test while another contest that pins the same problem has not closed, drafts and upcoming ones included (security finding M2).
-- One migration, `0001_v3.sql`, replaces v2's 0001 to 0015 (V3-3): 30 tables, down from 54, with `json_valid` checks on scoring JSON and the `contest_final` view. Not an upgrade: install fresh.
+- One migration, `0001_v3.sql`, replaces v1.1's 0001 to 0015 (V3-3): 30 tables, down from 54, with `json_valid` checks on scoring JSON and the `contest_final` view. Not an upgrade: install fresh.
 - Grading correctness (S1-08): every "over for everyone" query reads the `contest_final` view; the board refuses a score it cannot read instead of scoring zero; every `rows.Next` loop checks `rows.Err`; each organiser action writes its audit row in its own transaction, so a failed row rolls the change back; the organiser contest list no longer runs three queries per contest.
 
-Nothing below is tagged or deployed. The v2 phases were planned as the releases v1.0.0 (P0) to v1.5.0 (P5) and v2.0.0 (P6); they reached `main` together. D236 is settled (V4-27, 2026-11-04): everything here ships inside the first release, `v2.0.0` Billota, installed fresh, with `UPGRADES_FROM` set to `v2.0.0`. The phase labels below say where each change came from.
+Nothing below is tagged or deployed. The v1.1 phases were once planned as their own releases (an old numbering that ran from `v1.0.0` to `v2.0.0`, now dropped); they reached `main` together. Any `v1.x.0` number in the entries below belongs to that dropped numbering. D236 is settled (V4-27, 2026-11-04): everything here ships inside the first release, `v2.0.0` Billota, installed fresh, with `UPGRADES_FROM` set to `v2.0.0`. The phase labels below say where each change came from.
 
-### v2 P6 (close)
+### v1.1 P6 (close)
 
 #### Backend (2026-10-21)
 
 - No contract migration: P4's migrations 0013 and 0014 kept no column for a release, so the schema stays at 0014 (D259).
 - `tools/install-test.sh` checks the upgrade-path refusals: an older release than `upgrades_from`, an unversioned install and a downgrade are refused before anything changes. A release must be named `vX.Y.Z` (`make release VERSION=vX.Y.Z` on an untagged commit), so every install can be upgraded later.
-- Final security and code review of the whole v2 diff: `podium-check` no longer evaluates the server's `/healthz` numbers as shell code as root; `install.sh` makes podium's folders as podium, so a planted symlink cannot make root chown another folder; a rollback refuses to run on a missing or unreadable database; the configuration check runs before the deploy guard, so a forced deploy is recorded only for an upgrade that goes on; temporary files and the deploy folder on the VM get random names; `podium-server migrate` refuses a database in use; a failed prune no longer stops the copy off the VM; `check-secrets` knows age, PGP and fine-grained GitHub keys, alert URLs and key and database file names.
+- Final security and code review of the whole v1.1 diff: `podium-check` no longer evaluates the server's `/healthz` numbers as shell code as root; `install.sh` makes podium's folders as podium, so a planted symlink cannot make root chown another folder; a rollback refuses to run on a missing or unreadable database; the configuration check runs before the deploy guard, so a forced deploy is recorded only for an upgrade that goes on; temporary files and the deploy folder on the VM get random names; `podium-server migrate` refuses a database in use; a failed prune no longer stops the copy off the VM; `check-secrets` knows age, PGP and fine-grained GitHub keys, alert URLs and key and database file names.
 - The nightly check no longer fails on the pins retention releases, which would have refused every backup from the first contest's fourth anniversary; an expired contest is never summarised again as all zeros.
 - A case shared during a student's live contest stays hidden until it ends, even when cleared first. A reviewer never sees signals, notes or rating lines of a case they are a student of. A co-organiser whose site role is student no longer reads extension reasons or the held reveal's full board. A renamed contest's old web path redirects only when signed in.
 - Proposals, pin updates, the rating rollover and the results notice re-check what they read inside their write; the class view's most failed test ignores skipped tests; the feed shows no note count on a reviewer's own submissions; the term rollover label refuses tabs and hidden characters; new `extension` rows in the contest audit name the student by id only, without the email.
@@ -412,7 +418,7 @@ The "still awkward" items of the real-stack walk that needed no owner decision.
 - Error toasts are never evicted by newer info toasts; a failed inbox delete shows inside its dialog; focus rings in the workspace are drawn; the contest page after the end keeps the answers for everyone; the Submit countdown keeps text contrast; the workspace toolbar is one row from 1100 px; the student link row stays out of the phone workspace; every event stream stops at sign-out.
 - The no-JavaScript privacy page has its retention table, and `/contact` names the address to write to.
 
-### v2 P5 (planned as `v1.5.0`)
+### v1.1 P5
 
 #### Frontend: workspace (2026-10-21)
 
@@ -429,7 +435,7 @@ Student-facing: it goes live in a slot the deploy guard allows, announced in tha
 - "Reset to starter" in Editor settings asks first and saves at once, so a reload keeps the starter (F7.12).
 - A practice submission shows its first failing hidden test in full, and every run its first failing sample or open test, with "Run on this input"; a contest submission never does. Runs count open tests in their headline (F7.13, D115).
 
-### v2 P4 (planned as `v1.4.0`)
+### v1.1 P4
 
 #### Backend (2026-10-20)
 
@@ -472,7 +478,7 @@ The privacy text changed and waits for the owner's re-approval (input 29); it st
 - "Hide my progress" in the account menu. A problem a review decision set to zero says so on the student's own result, with a link to the case.
 - The privacy notice lists the P4 data: contest summaries, notices, private notes, questions, decisions and appeals, the standing, the organisers' rating, the record view log and the hide-progress choice, with who sees each.
 
-### v2 P3 (planned as `v1.3.0`)
+### v1.1 P3
 
 #### Backend (2026-10-20)
 
@@ -520,7 +526,7 @@ The workspace items (S2, S4) are student-facing; each is its own commit.
 - A social card, `favicon.ico`, a touch icon and a web manifest; a Playwright crawl of every link and button.
 - "The site was updated at 14:02" for students after an emergency deploy, once per update (D112).
 
-### v2 P2 (planned as `v1.2.0`)
+### v1.1 P2
 
 #### Backend (2026-10-20)
 
@@ -557,7 +563,7 @@ The history screens need the backend's C3 and C4 routes.
 - The Nordic slate theme's action colour is a calmer blue.
 - `/privacy` exists for the drafted notice; nothing links it until the owner approves the text (D85).
 
-### v2 P1 (planned as `v1.1.0`)
+### v1.1 P1
 
 #### Backend (2026-10-20)
 
@@ -573,7 +579,7 @@ The history screens need the backend's C3 and C4 routes.
 
 #### Frontend (2026-10-20)
 
-Live-safe: the token pass is one commit, so reverting it restores the v1 look.
+Live-safe: the token pass is one commit, so reverting it restores the v1.0 look.
 
 - A calmer, more even look (Direction A with one display figure kept for standings, D80): small text is 14 px, every page title, section and subsection has one size on every screen, links have a thinner underline that fills on hover, buttons show hover and pressed states, table headers recede, rows you can open show a quiet hover, and mono digits sit one optical step smaller beside the text.
 - Every screen has the same header: organiser screens show where you are as a breadcrumb trail ("Contest admin, Week 6 contest, Console"), student screens keep one back link.
@@ -585,7 +591,7 @@ Live-safe: the token pass is one commit, so reverting it restores the v1 look.
 - Contrast fixes: comments stay readable on a selection in the code editor in every theme, control borders reach 3:1 in Overcast, OLED black and Nordic slate, and the error toast's Dismiss keeps its contrast on hover.
 - For the server: the build writes `routes.json` (each route's title, description and whether it is public), and `index.html` has the `podium:head` and `podium:body` blocks the server will fill in P3.
 
-### v2 P0 (planned as `v1.0.0`)
+### v1.1 P0
 
 #### Backend (2026-10-20)
 
