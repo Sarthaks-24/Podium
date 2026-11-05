@@ -96,6 +96,8 @@ export interface Options {
   exam?: { full_screen?: boolean; count_focus?: boolean; block_paste?: boolean; block_copy?: boolean };
   /** The problem's own starter code by language (v4 E5); none by default. */
   starters?: Record<string, string>;
+  /** The contest's own contact address on its page (V201-8); none by default. */
+  contestContact?: string;
 }
 
 /** When B's statement changed, minutes before the page loads (the C3 fixture). */
@@ -319,6 +321,7 @@ export async function mockApi(page: Page, options: Options = {}) {
     accepted: (state.who === 'organiser' || state.who === 'organiser-view') ? false : state.accepted,
     organiser: state.who === 'organiser',
     organised_by: ['Priya Sharma', 'Ravi Kumar'],
+    contact_email: options.contestContact ?? '',
     announcements: state.announcements,
     my_clarifications: state.clarifications,
     public_clarifications: state.publicClarifications,
@@ -391,6 +394,7 @@ export async function mockApi(page: Page, options: Options = {}) {
     published: options.published ?? true,
     practice_after_end: true,
     audience: 'everyone',
+    contact_email: '',
     min_gap_s: 30,
     max_per_problem: 15,
     languages: ['cpp17', 'python3'],

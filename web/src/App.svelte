@@ -8,7 +8,7 @@
   first visit); signed-out visitors to a protected path go to /signin and
   come back after, someone the row does not let in sees one shared
   forbidden state, and focus moves to the new page's heading after each
-  navigation. The footer carries the organisers' contact, the Privacy link
+  navigation. The footer carries the site contact, the Privacy link
   once the text is approved, Help, which "?" also opens, and the release's
   codename beside the copyright (never the version number, V4-27).
 -->
@@ -288,7 +288,7 @@
     <!-- Sign-in carries the same line in its own column. -->
     {#if runMode.contactEmail !== '' && route.name !== 'signin'}
       <p class="contact">
-        {#if runMode.organisation.name !== ''}{`${runMode.organisation.name}. `}{/if}Contact the organisers:
+        {#if runMode.organisation.name !== ''}{`${runMode.organisation.name}. `}{/if}Problems with the site? Email
         <a href="mailto:{runMode.contactEmail}">{runMode.contactEmail}</a>{#if runMode.organisation.phone !== ''},
           <a href={telHref(runMode.organisation.phone)}>{runMode.organisation.phone}</a>{/if}
       </p>

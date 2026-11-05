@@ -129,6 +129,7 @@ const CONTEST: Keys<Contest> = {
   second_session: 'optional',
   organiser: 'required',
   organised_by: 'required',
+  contact_email: 'optional',
 };
 const SAMPLE: Keys<Sample> = { idx: 'required', input: 'required', output: 'required', truncated: 'required' };
 const WORKSPACE: Keys<Workspace> = {
@@ -221,6 +222,7 @@ const ADMIN_CONTEST: Keys<AdminContest> = {
   honour_text: 'required',
   hold_reveal: 'optional',
   audience: 'optional',
+  contact_email: 'optional',
   full_screen: 'optional',
   count_focus: 'optional',
   block_paste: 'optional',

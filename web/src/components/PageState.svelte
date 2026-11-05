@@ -6,7 +6,7 @@
     the screen show instead: "rows" for a list or table, "statement" for
     a problem. No shimmer and no motion.
   - error: what happened in a banner, and a "Try again" button.
-  - forbidden: why the screen is closed, then where to ask: the organisers'
+  - forbidden: why the screen is closed, then where to ask: the site
     contact email as a mailto link when the server has one, otherwise the
     `ask` sentence.
   - missing: what is not there, and a link to the parent screen.

@@ -427,6 +427,10 @@
 
 <svelte:window onkeydown={onKeydown} />
 
+{#snippet contactLine(email: string | undefined, cls: string)}
+  {#if email}<p class={cls}>Questions about this contest? Email <a href="mailto:{email}">{email}</a></p>{/if}
+{/snippet}
+
 {#snippet clockSnippet(compact: boolean)}
   {#if contest?.my_window}
     <ContestClock
@@ -563,6 +567,7 @@
       {#if organisedByText(contest.organised_by) !== ''}
         <p class="muted">Organisers: {organisedByText(contest.organised_by)}</p>
       {/if}
+      {@render contactLine(contest.contact_email, 'muted')}
       <p class="lead preview-lead">
         {#if readonlyView}Read-only view: statements and standings as students see them. Starting the contest and submitting code are unavailable.{:else}Student view: the problems and the standings as students see them. Students also get the honour code and a start button, left out here.{/if}
       </p>
@@ -639,6 +644,7 @@
       {#if organisedByText(contest.organised_by) !== ''}
         <p class="muted small">Organisers: {organisedByText(contest.organised_by)}</p>
       {/if}
+      {@render contactLine(contest.contact_email, 'muted small')}
       <StreamNotice mode={streamMode} onresume={() => stream?.resume()} />
       {#if contest.description_md.trim() !== ''}
         <div class="description"><Markdown source={contest.description_md} /></div>

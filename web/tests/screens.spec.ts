@@ -569,11 +569,11 @@ test('from 768 px the organiser header fits one row', async ({ page }) => {
   }
 });
 
-test('the footer names the organisers and links the approved privacy notice (D85)', async ({ page }) => {
+test('the footer names the site contact and links the approved privacy notice (D85)', async ({ page }) => {
   await mockApi(page, 'student');
   await page.goto('/');
   const foot = page.locator('footer');
-  await expect(foot).toContainText('Contact the organisers: priya@college.edu');
+  await expect(foot).toContainText('Problems with the site? Email priya@college.edu');
   await expect(foot.getByRole('link', { name: 'priya@college.edu' })).toHaveAttribute('href', 'mailto:priya@college.edu');
   await expect(foot.getByRole('link', { name: 'Privacy' })).toHaveAttribute('href', '/privacy');
   // The release's codename, never its version number (V4-27).

@@ -169,6 +169,8 @@ export interface Contest extends ContestSummary {
   organiser: boolean;
   /** Names of the contest's listed organisers, the creator first. */
   organised_by: string[];
+  /** The contest's own contact address; "" when none is set. */
+  contact_email?: string;
 }
 
 /** "Priya, Ravi and Asha", or "" when nobody is listed. */
@@ -527,6 +529,8 @@ export interface ContestSettings extends ExamOptions {
   hold_reveal?: boolean;
   /** Who may take part besides staff; "everyone" when left out. */
   audience?: Audience;
+  /** Shown on the contest page; "" shows none. */
+  contact_email?: string;
 }
 
 /** Everyone who can sign in, or only the students invited to the contest. */
@@ -657,6 +661,7 @@ const AUDIT_FIELDS: Record<string, string> = {
   published: 'published',
   practice_after_end: 'practice after the end',
   audience: 'who can take part',
+  contact_email: 'contact email',
   min_gap_s: 'gap between submissions',
   max_per_problem: 'submissions per problem',
   languages: 'languages',

@@ -123,7 +123,7 @@ What the sign-in page, the footer and the privacy page need before anyone signs 
 
 | Field | Meaning |
 |---|---|
-| `contact_email` | the address to show as the organisers' contact: `organisation.contact_email`, or `""` until an owner enters one (pages then leave the contact line out). `PODIUM_OWNER_EMAIL` is never shown here: that account is often the developer's |
+| `contact_email` | the site contact, shown in the footer ("Problems with the site? Email ...") and on sign-in: `organisation.contact_email`, or `""` until an owner enters one (pages then leave the contact line out). Each contest has its own `contact_email` on its page. `PODIUM_OWNER_EMAIL` is never shown here: that account is often the developer's |
 | `mode` | `testing`, `dev` or `production`. In `testing` the web app shows the test sign-in form and the testing-mode banner instead of "Continue with Google" |
 | `signin_open` | `false` while an owner or an admin has closed sign-in (V4-17); the sign-in page then says so |
 | `organisation` | the site settings an owner enters under Settings, Organisation: `name`, `contact_email`, `phone`, `privacy_contact`, each `""` until entered; a page shows nothing for an empty field |
@@ -248,12 +248,12 @@ An admin acts only on students and organisers, and gives only the organiser role
 
 `people` is everyone with the organiser, admin or owner role, owners first, then admins. `list` is everyone on the sign-in list, students included, by role then name; `counts` leaves disabled accounts out. `refused` is the refused addresses, newest first. `locked` is true for `PODIUM_OWNER_EMAIL`, whose owner role comes from the server configuration. `disabled` lists every disabled account, by email. The account lookup matches the address as sign-in stores it (trimmed, lower case) and never logs it.
 
-`Organisation`, shown in the footer, on the sign-in page and on the privacy page, stored in the server's `settings` table and never in an environment variable:
+`Organisation` (the screen calls its email "Site contact email"), shown in the footer, on the sign-in page and on the privacy page, stored in the server's `settings` table and never in an environment variable:
 
 | Field | Rule |
 |---|---|
 | `name` | at most 120 characters, one line |
-| `contact_email` | an email address, at most 254 characters; shown as a `mailto:` link |
+| `contact_email` | the site contact: an email address, at most 254 characters; shown as a `mailto:` link. The JSON name is unchanged from earlier builds |
 | `phone` | at most 32 characters of digits, spaces, `+`, `-`, `(`, `)` and `.`, with at least 6 digits; shown as a `tel:` link |
 | `privacy_contact` | who to ask about personal data: a name or an address, at most 200 characters, one line |
 
@@ -682,7 +682,7 @@ Every route needs a signed-in user. A published, unarchived contest is open to s
 
 ```json
 { "description_md": "...", "honour_text": "This contest counts. ...", "accepted": true, "organiser": false,
-  "organised_by": ["Priya Sharma", "Ravi Kumar"],
+  "organised_by": ["Priya Sharma", "Ravi Kumar"], "contact_email": "week6@college.edu",
   "rules": { "min_gap_s": 30, "max_per_problem": 15, "languages": ["cpp17", "python3"], "freeze_minutes": 30,
              "practice_after_end": true, "full_screen": false, "count_focus": false, "block_paste": false, "block_copy": false },
   "problems": [ { "label": "A", "title": "A plus B", "my_score": 40, "max_score": 100, "my_submission_count": 3, "revision_id": 14 } ],
@@ -693,7 +693,8 @@ Every route needs a signed-in user. A published, unarchived contest is open to s
 - `problems` is empty until the student has accepted the rules and the contest has started; after their time is over it lists the problems again. `revision_id` is the pinned revision students are served.
 - `rules` carries the four exam options, so the workspace knows which measures are on and says so before Start and in Help.
 - `honour_text` is the contest's own honour code, or the default.
-- `organised_by` names the contest's listed organisers who are still enabled staff, in the order they were added (the creator first), each by name or, without one, by email. The page shows it below the start button.
+- `organised_by` names the contest's listed organisers who are still enabled staff, in the order they were added (the creator first), each by name. Staff (who see the page as Student view) get the account email for an organiser with no name; students never do, and an organiser with no name is left out of their list, so it can be empty. The page shows it below the start button.
+- `contact_email` is the contest's own contact address, typed by its organisers, or `""`. The page shows "Questions about this contest? Email ..." under the Organisers line, and nothing when it is empty. It is never an account email unless an organiser typed it.
 - `my_submission_count` counts the student's submissions as they are made, practice and judge failures excluded.
 - `editorial_md` is set only when the editorial is published and every student's time is over.
 - `Clarification`: `{id, problem_label, question, answer, public, created_at, answered_at}`. Students never see who asked a public question.
@@ -784,7 +785,7 @@ Every route here needs the organiser role and manage access to the contest. List
 
 ### `ContestEdit` and `AdminContest`
 
-`ContestEdit` holds the form's fields: `title`, `description_md`, `starts_at`, `ends_at`, `freeze_minutes`, `published`, `practice_after_end`, `min_gap_s` (0 to 3600), `max_per_problem` (1 to 1000), `languages`, `honour_text` (empty for the default), `hold_reveal`, `audience` (`everyone`, the default, or `invited`: only invited students take part, checked on every request and in the event stream; staff keep their levels; changing `everyone` to `invited` is `400` once any student has started), and the four exam options, each false unless set:
+`ContestEdit` holds the form's fields: `title`, `description_md`, `starts_at`, `ends_at`, `freeze_minutes`, `published`, `practice_after_end`, `min_gap_s` (0 to 3600), `max_per_problem` (1 to 1000), `languages`, `honour_text` (empty for the default), `hold_reveal`, `contact_email` (empty for none, else one email address of at most 254 characters, trimmed and lower-cased, checked like the site contact; a bad value is `400` with a `contact_email` field message; shown on the contest page to everyone who can open it, and cloned with the contest), `audience` (`everyone`, the default, or `invited`: only invited students take part, checked on every request and in the event stream; staff keep their levels; changing `everyone` to `invited` is `400` once any student has started), and the four exam options, each false unless set:
 
 | Option | What it does |
 |---|---|

@@ -6,6 +6,13 @@ Releases are numbered from `v2.0.0`. The builds before it were never released; t
 
 ## Unreleased: v2.0.1 Billota
 
+### v2.0.1 stage C: contacts (2026-11-05)
+
+- The footer reads "Problems with the site? Email <address>" and sign-in "Cannot sign in? Email <address>". The Settings field is now "Site contact email" with help text; its JSON name `contact_email` is unchanged. The sign-in errors, the closed-screen line and the privacy fallback no longer call the address "the organisers'": without an address the sign-in errors say "whoever runs this site".
+- Each contest has an optional `contact_email` (migration `0011_v201_contact.sql`, validated like the site contact, copied by Clone, audited). The editor shows "Contact email for this contest" under Advanced; the contest page shows "Questions about this contest? Email <address>" under Organisers, and nothing when empty.
+- Students now see organiser names only: an organiser with no name is left out of `organised_by` and the line hides if none remain. Before, such an organiser's account email was shown. Staff keep the email fallback.
+- Upgrade note: like 0010, the previous server refuses a database with migration 0011, so a rollback restores the pre-upgrade backup. The golden API fixtures in `web/tests/fixtures` were regenerated (`PODIUM_GOLDEN=1`) for the new field.
+
 ### v2.0.1 stage F: AI prompts (2026-11-05)
 
 - The wizard's system prompt is split into a fixed security part and the default authoring rules. The text sent by default is unchanged byte for byte (a test compares it with the v2.0.0 text).

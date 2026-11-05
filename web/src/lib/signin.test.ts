@@ -46,11 +46,11 @@ describe('errorMessage', () => {
     expect(errorMessage('account', CONTACT)).toContainEqual({ email: CONTACT });
   });
 
-  it('falls back to "an organiser" without a contact email', () => {
-    expect(text('not_listed', '')).toBe('Your email is not on the list for this site. Ask an organiser to add it.');
-    expect(text('disabled', '')).toBe('This account has been disabled. Ask an organiser if you think this is a mistake.');
+  it('falls back to "whoever runs this site" without a contact email', () => {
+    expect(text('not_listed', '')).toBe('Your email is not on the list for this site. Ask whoever runs this site to add it.');
+    expect(text('disabled', '')).toBe('This account has been disabled. Ask whoever runs this site if you think this is a mistake.');
     expect(text('account', '')).toBe(
-      'This email is linked to a different Google account. Ask an organiser to reset the link if your address moved to a new Google account.',
+      'This email is linked to a different Google account. Ask whoever runs this site to reset the link if your address moved to a new Google account.',
     );
   });
 
