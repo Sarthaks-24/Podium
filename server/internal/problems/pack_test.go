@@ -460,3 +460,28 @@ func TestPackPromptIsFilledFromTheCode(t *testing.T) {
 		t.Error("prompt has a dash the style rules ban")
 	}
 }
+
+// The first line names the release and the pack format; a plain dev build
+// has no release and says only the format.
+func TestPackPromptStamp(t *testing.T) {
+	for _, c := range []struct{ version, first string }{
+		{"v2.0.1", "Podium v2.0.1 pack prompt, pack format 1"},
+		{"dev", "Podium pack prompt, pack format 1"},
+		{"", "Podium pack prompt, pack format 1"},
+	} {
+		text, err := packPrompt(c.version)
+		if err != nil {
+			t.Fatal(err)
+		}
+		first, rest, _ := strings.Cut(text, "\n")
+		if first != c.first {
+			t.Errorf("version %q: first line %q, want %q", c.version, first, c.first)
+		}
+		if !strings.HasPrefix(rest, "\nYou are helping an organiser") {
+			t.Errorf("version %q: the stamp is not followed by a blank line and the prompt: %q", c.version, rest[:40])
+		}
+	}
+	if got, _ := PackPrompt(); !strings.HasPrefix(got, "Podium pack prompt, pack format 1\n") {
+		t.Errorf("a plain test build should carry no version: %q", got[:40])
+	}
+}
