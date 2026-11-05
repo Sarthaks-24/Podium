@@ -1,0 +1,17 @@
+format: 1
+title: Double it
+slug: double-it
+time_limit_ms: 1000
+memory_limit_mb: 256
+checker: tokens
+tags: [math]
+difficulty: easy
+reference: solution.cpp
+samples: [1]
+subtasks:
+  - points: 40
+    title: Small numbers
+    tests: "2"
+  - points: 60
+    title: Large numbers
+    tests: "3"

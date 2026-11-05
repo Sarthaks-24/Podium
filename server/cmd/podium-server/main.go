@@ -4,7 +4,7 @@
 //
 // With no argument it runs the server. The subcommands are operator tools
 // that open the database themselves (usage in flag.Usage below, details in
-// docs/OPERATIONS.md): check, runs-report, migrate and forget-user.
+// docs/OPERATIONS.md): check, runs-report, migrate, print-ai-prompt and forget-user.
 // forget-user is a dry run unless given -apply.
 package main
 
@@ -43,6 +43,7 @@ func main() {
 		fmt.Fprintln(os.Stderr, "       podium-server check [-db F] [-tests D] [-hash]  check a database and its test files")
 		fmt.Fprintln(os.Stderr, "       podium-server runs-report [-db F]          runs with a custom input, per contest")
 		fmt.Fprintln(os.Stderr, "       podium-server migrate -db COPY             rehearse an upgrade on a copy of the database")
+		fmt.Fprintln(os.Stderr, "       podium-server print-ai-prompt              print the wizard's built-in authoring rules")
 		fmt.Fprintln(os.Stderr, "       podium-server forget-user [-db F] [-apply] EMAIL  erase one person (a dry run without -apply)")
 	}
 	flag.Parse()
@@ -58,6 +59,10 @@ func main() {
 	}
 	if flag.Arg(0) == "forget-user" {
 		os.Exit(forgetCmd(flag.Args()[1:], os.Stdout))
+	}
+	if flag.Arg(0) == "print-ai-prompt" {
+		fmt.Fprintln(os.Stdout, ai.DefaultRules)
+		return
 	}
 	if flag.Arg(0) == "runs-report" {
 		os.Exit(runsReportCmd(flag.Args()[1:], os.Stdout))
@@ -90,6 +95,13 @@ func run(envFile string) error {
 	}
 	log := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: cfg.LogLevel}))
 	log.Info("starting podium-server", append([]any{"version", version, "codename", buildinfo.Codename}, config.Summary(os.Getenv, config.ServerVars)...)...)
+
+	if cfg.AIPrompt != "" {
+		ai.SetRules(cfg.AIPrompt)
+		log.Info("ai prompt", "rules", "file sha256:"+cfg.AIPromptSHA)
+	} else {
+		log.Info("ai prompt", "rules", "default")
+	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()

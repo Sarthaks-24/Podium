@@ -2,10 +2,16 @@ package config
 
 import (
 	"crypto/rand"
+	"crypto/sha256"
+	"encoding/hex"
+	"io"
 	"log/slog"
 	"net"
 	"net/mail"
+	"os"
+	"path/filepath"
 	"strings"
+	"unicode/utf8"
 )
 
 // ServerVars lists every variable podium-server reads, in the order it reads
@@ -26,6 +32,7 @@ var ServerVars = []Var{
 	{Name: "GOOGLE_CLIENT_SECRET", Secret: true},
 	{Name: "PODIUM_JUDGE_TOKEN", Secret: true},
 	{Name: "PODIUM_LOG_LEVEL", Default: "info"},
+	{Name: "PODIUM_AI_PROMPT_FILE"},
 }
 
 // Server is the validated configuration of podium-server.
@@ -62,7 +69,15 @@ type Server struct {
 	JudgeToken string
 	// LogLevel is the minimum level written to the JSON log.
 	LogLevel slog.Level
+	// AIPrompt is the text of PODIUM_AI_PROMPT_FILE, the wizard's authoring
+	// rules; "" means the built-in rules. AIPromptSHA is the first 12 hex
+	// characters of its SHA-256, for the log. The text itself is never logged.
+	AIPrompt    string
+	AIPromptSHA string
 }
+
+// MaxAIPromptFile is the largest PODIUM_AI_PROMPT_FILE accepted.
+const MaxAIPromptFile = 16 << 10
 
 // minSecretLen is the shortest accepted PODIUM_SESSION_SECRET.
 const minSecretLen = 32
@@ -144,6 +159,9 @@ func LoadServer(get Getenv) (Server, error) {
 		r.p.add("PODIUM_JUDGE_LISTEN must be a loopback address such as 127.0.0.1:8081; reach a remote judge through an SSH or WireGuard tunnel (docs/OPERATIONS.md)")
 	}
 	c.LogLevel = r.level("PODIUM_LOG_LEVEL")
+	if f := r.str("PODIUM_AI_PROMPT_FILE"); f != "" {
+		c.AIPrompt, c.AIPromptSHA = readPromptFile(r.p, f)
+	}
 	return c, r.p.err()
 }
 
@@ -201,4 +219,32 @@ func (r *reader) placeholderFree(name string) string {
 		return ""
 	}
 	return s
+}
+
+// readPromptFile reads the wizard rules override. A file that is missing,
+// too big, not UTF-8 or empty is a start-up problem, never a silent fall
+// back to the default.
+func readPromptFile(p *Problems, path string) (text, sha string) {
+	bad := func(why string) (string, string) {
+		p.add("PODIUM_AI_PROMPT_FILE %q %s; fix the file or remove the variable", path, why)
+		return "", ""
+	}
+	f, err := os.Open(filepath.Clean(path))
+	if err != nil {
+		return bad("cannot be read")
+	}
+	defer f.Close()
+	b, err := io.ReadAll(io.LimitReader(f, MaxAIPromptFile+1))
+	switch {
+	case err != nil:
+		return bad("cannot be read")
+	case len(b) > MaxAIPromptFile:
+		return bad("is larger than 16 KB")
+	case !utf8.Valid(b):
+		return bad("is not valid UTF-8 text")
+	case strings.TrimSpace(string(b)) == "":
+		return bad("is empty")
+	}
+	sum := sha256.Sum256(b)
+	return string(b), hex.EncodeToString(sum[:])[:12]
 }

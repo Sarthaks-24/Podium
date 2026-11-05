@@ -216,7 +216,7 @@ func (o *OpenAI) Generate(ctx context.Context, req Request) (*WizardPack, error)
 	if req.Previous != "" && len(req.Fix) > 0 {
 		msgs = append(msgs, openAIMessage{Role: "assistant", Content: req.Previous}, openAIMessage{Role: "user", Content: FixPrompt(req.Fix)})
 	}
-	text, err := o.call(ctx, systemPrompt, msgs, "wizard_pack", PackSchema())
+	text, err := o.call(ctx, systemPrompt(), msgs, "wizard_pack", PackSchema())
 	if err != nil {
 		return nil, err
 	}
