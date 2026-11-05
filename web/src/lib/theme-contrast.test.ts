@@ -7,6 +7,7 @@ import { describe, expect, it } from 'vitest';
 import tokensCss from '../styles/tokens.css?raw';
 import { COLOUR_TOKENS, contrast, distance, mixSrgb, parseTokenRules, resolveFamily, resolveTheme, type Vision } from './colour';
 import { d41Failures, over } from './theme-rules';
+import { EDITOR_SCHEMES } from './editor-colours';
 import { THEMES } from './theme';
 
 const rules = parseTokenRules(tokensCss);
@@ -143,9 +144,9 @@ function extraFailures(id: string, signal: boolean): string[] {
   for (const k of ['keyword', 'string', 'number', 'comment', 'type', 'function', 'meta', 'invalid', 'gutter']) {
     need(`--code-${k} on --well`, root[`--code-${k}`], t['--well'], 4.5);
   }
-  // --code-selection is color-mix(in srgb, var(--act) N%, var(--well)).
-  const pct = Number(/var\(--act\) (\d+)%/.exec(root['--code-selection'] ?? '')?.[1]);
-  need('--code-comment on --code-selection', root['--code-comment'], mixSrgb(t['--act'], t['--well'], pct / 100), 4.5);
+  // --code-selection is color-mix(in srgb, var(--code-keyword) N%, var(--well)).
+  const pct = Number(/var\(--code-keyword\) (\d+)%/.exec(root['--code-selection'] ?? '')?.[1]);
+  need('--code-comment on --code-selection', root['--code-comment'], mixSrgb(root['--code-keyword'], t['--well'], pct / 100), 4.5);
   // The error toast's Dismiss on hover keeps the toast's --bad-tint fill (Toasts.svelte).
   need('error toast Dismiss hover', t['--bad'], t['--bad-tint'], text);
   return out;
@@ -242,5 +243,97 @@ describe('colour maths', () => {
   it('shows red and green collapsing under deuteranopia', () => {
     expect(distance('#137A48', '#B42318')).toBeGreaterThan(0.2);
     expect(distance('#137A48', '#B42318', 'deutan')).toBeLessThan(distance('#137A48', '#B42318'));
+  });
+});
+
+// The editor colour schemes (styles/tokens.css, lib/editor-colours.ts). Each
+// replaces the well and every --code-* colour as a set, so it is checked on
+// its own: syntax on the well, on the selection and on the active line,
+// the gutter, the focus ring and the shared-passage tint.
+const plainRoot = rules.find((r) => r.media === null && r.selector === ':root' && '--code-selection' in r.vars)?.vars ?? {};
+
+/** Tokens of a scheme: the Night defaults in :root, then the scheme's own block. Night takes `well` from a theme. */
+function scheme(id: string, theme: Record<string, string>): Record<string, string> {
+  if (id === 'night') return { ...plainRoot, '--well': theme['--well'], '--well-ink': theme['--well-ink'] };
+  const own = rules.find((r) => r.media === null && r.selector.split(',').map((x) => x.trim()).includes(`:root[data-editor="${id}"]`));
+  if (!own) throw new Error(`no block for editor scheme ${id}`);
+  return { ...plainRoot, ...own.vars };
+}
+
+function schemeFailures(id: string, e: Record<string, string>): string[] {
+  const out: string[] = [];
+  const high = id === 'high-contrast';
+  const syntax = high ? 7 : 4.5;
+  const need = (name: string, fg: string, bg: string, min: number) => {
+    const ratio = contrast(fg, bg);
+    if (ratio < min) out.push(`${id}: ${name}: ${ratio.toFixed(2)} < ${min}`);
+  };
+  const pct = (token: string, fallback: string) => Number(new RegExp(String.raw`var\(${fallback}\) (\d+)%`).exec(e[token] ?? '')?.[1]);
+  const selection = mixSrgb(e['--code-keyword'], e['--well'], pct('--code-selection', '--code-keyword') / 100);
+  const active = mixSrgb(e['--well-ink'], e['--well'], pct('--code-active-line', '--well-ink') / 100);
+  const match = mixSrgb(e['--code-number'], e['--well'], pct('--code-match', '--code-match-edge') / 100);
+  need('--well-ink on --well', e['--well-ink'], e['--well'], 7);
+  for (const k of ['keyword', 'string', 'number', 'comment', 'type', 'function', 'meta', 'invalid']) {
+    need(`--code-${k} on --well`, e[`--code-${k}`], e['--well'], syntax);
+    need(`--code-${k} on selection`, e[`--code-${k}`], selection, syntax);
+    need(`--code-${k} on active line`, e[`--code-${k}`], active, syntax);
+  }
+  need('--well-ink on selection', e['--well-ink'], selection, syntax);
+  need('--code-gutter on --well', e['--code-gutter'], e['--well'], 4.5);
+  // The active line's own number is drawn in --well-ink (lib/editor.ts), not the gutter colour.
+  need('--well-ink on active line', e['--well-ink'], active, 7);
+  need('--code-keyword (focus ring) on --well', e['--code-keyword'], e['--well'], 3);
+  need('--well-ink on shared passage', e['--well-ink'], match, 4.5);
+  need('shared-passage edge on --well', e['--code-number'], e['--well'], 3);
+  return out;
+}
+
+describe('editor colour schemes', () => {
+  it('lists the same five ids as the server', () => {
+    expect(EDITOR_SCHEMES.map((s) => s.id)).toEqual(['night', 'paper', 'midnight', 'dusk', 'high-contrast']);
+  });
+
+  it('keeps the selection and active-line mixes in :root', () => {
+    expect(plainRoot['--code-selection']).toMatch(/^color-mix\(in srgb, var\(--code-keyword\) \d+%, var\(--well\)\)$/);
+    expect(plainRoot['--code-active-line']).toMatch(/^color-mix\(in srgb, var\(--well-ink\) \d+%, var\(--well\)\)$/);
+  });
+
+  for (const { id } of EDITOR_SCHEMES) {
+    if (id === 'night') continue;
+    it(`${id} defines every well and code colour`, () => {
+      const e = scheme(id, {});
+      const own = rules.find((r) => r.media === null && r.selector.split(',').map((x) => x.trim()).includes(`:root[data-editor="${id}"]`));
+      const names = ['--well', '--well-ink', '--well-edge', ...['keyword', 'string', 'number', 'comment', 'type', 'function', 'meta', 'invalid', 'gutter'].map((k) => `--code-${k}`)];
+      expect(names.filter((k) => !(k in (own?.vars ?? {})))).toEqual([]);
+      for (const k of names.filter((n) => n !== '--well-edge')) expect(e[k], k).toMatch(/^#[0-9a-f]{6}$/i);
+    });
+    it(`${id} paints its picker snippet from the same values`, () => {
+      const sample = rules.find((r) => r.media === null && r.selector.split(',').map((x) => x.trim()).includes(`[data-editor-sample="${id}"]`));
+      const own = rules.find((r) => r.media === null && r.selector.split(',').map((x) => x.trim()).includes(`:root[data-editor="${id}"]`));
+      expect(sample).toBe(own);
+    });
+  }
+
+  for (const { id } of EDITOR_SCHEMES) {
+    // Night keeps each theme's own well, so it is checked on all of them.
+    const wells = id === 'night' ? THEMES.map((t) => [t.id, resolveTheme(rules, t.id, false)] as const) : [['any', {}] as const];
+    for (const [theme, well] of wells) {
+      it(`${id}${id === 'night' ? ` on the ${theme} well` : ''} meets the contrast rules`, () => {
+        expect(schemeFailures(id, scheme(id, well as Record<string, string>))).toEqual([]);
+      });
+    }
+  }
+
+  it('Night as a sample equals the Night defaults', () => {
+    const sample = rules.find((r) => r.media === null && r.selector === '[data-editor-sample="night"]')?.vars ?? {};
+    for (const k of Object.keys(sample)) {
+      if (k === '--well' || k === '--well-ink') continue;
+      expect(sample[k], k).toBe(plainRoot[k]);
+    }
+    expect(sample['--well-ink']).toBe(plainRoot['--well-ink'] ?? sample['--well-ink']);
+  });
+
+  it('is checked by the same rules for the old per-theme code tests', () => {
+    expect(plainRoot['--code-focus']).toBe('var(--code-keyword)');
   });
 });

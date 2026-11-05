@@ -84,10 +84,13 @@
      figures are usually drawn black on transparent. Not themed on purpose. */
   --figure-backing: #FFFFFF;
 
-  /* Code in the editor well. The well is dark in every theme (from #000000
-     to #1C2128), so one set serves them all; each colour is at least
-     4.5:1 on the lightest well, and the gutter at least 4.5:1 too. The
-     selection and active line are mixed from the theme's own colours. */
+  /* Code in the editor well. This is the Night scheme, the default: the
+     well is dark in every theme (from #000000 to #1C2128), so one set serves
+     them all; each colour is at least 4.5:1 on the lightest well, and the
+     gutter at least 4.5:1 too. The editor colours setting (data-editor on
+     <html>, blocks at the end of this file) replaces the well and these
+     colours as a set. The selection and active line are mixed from the
+     scheme's own colours, so a scheme can be checked on its own. */
   --code-keyword: #A5B4FF;
   --code-string: #9FD8A4;
   --code-number: #F2C58A;
@@ -100,7 +103,7 @@
   /* The editor's focus ring is drawn on the well, where --act can fall to
      2.3:1, so it takes the keyword colour (at least 3:1 on every well). */
   --code-focus: var(--code-keyword);
-  --code-selection: color-mix(in srgb, var(--act) 30%, var(--well));
+  --code-selection: color-mix(in srgb, var(--code-keyword) 22%, var(--well));
   --code-active-line: color-mix(in srgb, var(--well-ink) 7%, var(--well));
 
   /* Passages two programs share, in the integrity views. The edge marks
@@ -347,4 +350,103 @@
     --part: #F098F7; --part-tint: #3C323E;
     --bad: #FF9766;  --bad-tint: #3F3127;
   }
+}
+
+/*
+  Editor colour schemes (the setting is separate from the interface theme,
+  lib/editor-colours.ts). Night, the default, is the block at the top of this
+  file with each theme's own well and has no rule here. The others replace the
+  well, the ink, its edge and every --code-* colour as one set. :root[...] so
+  they outrank the system-dark block above; [data-editor-sample] paints the
+  picker's snippet for each. lib/theme-contrast.test.ts checks
+  each: syntax colours 4.5:1 (7:1 in High contrast) on the well, the
+  selection and the active line, the gutter 4.5:1, the focus ring 3:1.
+*/
+
+/* Night as a sample: the picker paints each scheme's snippet from
+   [data-editor-sample], so Night needs its values spelled out here too (the
+   default block at the top inherits whatever scheme is on <html>). */
+[data-editor-sample="night"] {
+  --well: #171B1F;
+  --well-ink: #E6E8E3;
+  --code-keyword: #A5B4FF;
+  --code-string: #9FD8A4;
+  --code-number: #F2C58A;
+  --code-comment: #B8BFBA;
+  --code-type: #7FD1CC;
+  --code-function: #E6E8E3;
+  --code-meta: #E8A6CB;
+  --code-invalid: #FF9A8F;
+  --code-gutter: #858E88;
+}
+
+/* Paper: a light well. */
+:root[data-editor="paper"],
+[data-editor-sample="paper"] {
+  --well: #FAFAF8;
+  --well-ink: #1B1F23;
+  --well-edge: var(--line-strong);
+  --code-keyword: #3B4FC4;
+  --code-string: #1F6F3A;
+  --code-number: #8A4B08;
+  --code-comment: #5B6660;
+  --code-type: #0F6B74;
+  --code-function: #1B1F23;
+  --code-meta: #9A2C6A;
+  --code-invalid: #B42318;
+  --code-gutter: #5F6762;
+  --code-selection: color-mix(in srgb, var(--code-keyword) 10%, var(--well));
+  --code-active-line: color-mix(in srgb, var(--well-ink) 4%, var(--well));
+}
+
+/* Midnight: a black well. */
+:root[data-editor="midnight"],
+[data-editor-sample="midnight"] {
+  --well: #000000;
+  --well-ink: #E6E8E3;
+  --well-edge: var(--line-strong);
+  --code-keyword: #8FA2FF;
+  --code-string: #8FE0A0;
+  --code-number: #FFB86B;
+  --code-comment: #A3ABA6;
+  --code-type: #5FD6CF;
+  --code-function: #F2F4EF;
+  --code-meta: #F29CC8;
+  --code-invalid: #FF8F86;
+  --code-gutter: #8A938D;
+}
+
+/* Dusk: a warm dark well. */
+:root[data-editor="dusk"],
+[data-editor-sample="dusk"] {
+  --well: #261E1B;
+  --well-ink: #EDE3DA;
+  --well-edge: var(--line-strong);
+  --code-keyword: #F0A6CA;
+  --code-string: #B5D98A;
+  --code-number: #F5B77D;
+  --code-comment: #C2B5AB;
+  --code-type: #8CCFD6;
+  --code-function: #F3EAE1;
+  --code-meta: #D6A3F0;
+  --code-invalid: #FF9D8E;
+  --code-gutter: #9A8C83;
+}
+
+/* High contrast: a black well, every syntax colour at 7:1 or more. */
+:root[data-editor="high-contrast"],
+[data-editor-sample="high-contrast"] {
+  --well: #000000;
+  --well-ink: #FFFFFF;
+  --well-edge: var(--line-strong);
+  --code-keyword: #9CC7FF;
+  --code-string: #8FF0A4;
+  --code-number: #FFD27A;
+  --code-comment: #D4D4D4;
+  --code-type: #7FF0E8;
+  --code-function: #FFFFFF;
+  --code-meta: #FFA6DA;
+  --code-invalid: #FF9A8F;
+  --code-gutter: #BDBDBD;
+  --code-selection: color-mix(in srgb, var(--code-keyword) 14%, var(--well));
 }
