@@ -49,12 +49,15 @@ func (s *Service) TestSignIn(ctx context.Context, email, name string, role Role,
 	}
 	now := s.now()
 	u := User{Email: email, Name: limit(strings.TrimSpace(name), 200)}
+	var custom string
 	// A row with a Google link keeps its stored role: RecordMode leaves such
 	// rows alone, so a role chosen here would outlive testing mode.
 	err = tx.QueryRowContext(ctx, `INSERT INTO users (email, name, role, created_at, last_login_at) VALUES (?, ?, ?, ?, ?)
 		ON CONFLICT (email) DO UPDATE SET name = excluded.name, last_login_at = excluded.last_login_at,
 			role = CASE WHEN users.google_sub IS NULL THEN excluded.role ELSE users.role END
-		RETURNING id, role, theme, verdicts`, email, u.Name, string(role), now.UnixMilli(), now.UnixMilli()).Scan(&u.ID, &u.Role, &u.Theme, &u.Verdicts)
+		RETURNING id, role, theme, verdicts, editor_colours, theme_custom`, email, u.Name, string(role), now.UnixMilli(), now.UnixMilli()).
+		Scan(&u.ID, &u.Role, &u.Theme, &u.Verdicts, &u.EditorColours, &custom)
+	u.ThemeCustom = customJSON(custom)
 	if err != nil {
 		return User{}, "", time.Time{}, fmt.Errorf("record test user: %w", err)
 	}

@@ -14,6 +14,7 @@ import (
 	"crypto/sha256"
 	"database/sql"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/mail"
@@ -60,9 +61,13 @@ type User struct {
 	AvatarURL string `json:"avatar_url"`
 	Role      Role   `json:"role"`
 	Disabled  bool   `json:"-"`
-	// Theme and Verdicts are the display preferences (preferences.go).
-	Theme    string `json:"theme"`
-	Verdicts string `json:"verdicts"`
+	// Theme, Verdicts, EditorColours and ThemeCustom are the display
+	// preferences (preferences.go). ThemeCustom is the custom theme's three
+	// inputs as a JSON object, or null when none was saved.
+	Theme         string          `json:"theme"`
+	Verdicts      string          `json:"verdicts"`
+	EditorColours string          `json:"editor_colours"`
+	ThemeCustom   json.RawMessage `json:"theme_custom"`
 }
 
 // SessionTTL is how long a session lasts: 12 hours from sign-in, however
@@ -206,10 +211,13 @@ func (s *Service) SignIn(ctx context.Context, id Identity, ip, userAgent string)
 
 	now := s.now()
 	u := User{ID: userID, Name: limit(id.Name, 200), AvatarURL: safeAvatar(id.Picture)}
+	var custom string
 	// The row keeps the address as it was listed; a dotted Gmail spelling
 	// from Google does not rename it.
 	err = tx.QueryRowContext(ctx, `UPDATE users SET name = ?, avatar_url = ?, google_sub = ?, last_login_at = ? WHERE id = ?
-		RETURNING email, role, theme, verdicts`, u.Name, u.AvatarURL, id.Subject, now.UnixMilli(), userID).Scan(&u.Email, &u.Role, &u.Theme, &u.Verdicts)
+		RETURNING email, role, theme, verdicts, editor_colours, theme_custom`, u.Name, u.AvatarURL, id.Subject, now.UnixMilli(), userID).
+		Scan(&u.Email, &u.Role, &u.Theme, &u.Verdicts, &u.EditorColours, &custom)
+	u.ThemeCustom = customJSON(custom)
 	if err != nil {
 		return User{}, "", time.Time{}, fmt.Errorf("record user: %w", err)
 	}
@@ -234,9 +242,11 @@ func (s *Service) Authenticate(ctx context.Context, token string) (u User, renew
 	id := hashToken(token)
 	now := s.now()
 	var created, expires int64
+	var custom string
 	err = s.DB.QueryRowContext(ctx, `SELECT u.id, u.email, u.name, u.avatar_url, u.role, u.disabled, u.theme, u.verdicts,
-		s.created_at, s.expires_at FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.id = ?`, id).
-		Scan(&u.ID, &u.Email, &u.Name, &u.AvatarURL, &u.Role, &u.Disabled, &u.Theme, &u.Verdicts, &created, &expires)
+		u.editor_colours, u.theme_custom, s.created_at, s.expires_at FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.id = ?`, id).
+		Scan(&u.ID, &u.Email, &u.Name, &u.AvatarURL, &u.Role, &u.Disabled, &u.Theme, &u.Verdicts, &u.EditorColours, &custom, &created, &expires)
+	u.ThemeCustom = customJSON(custom)
 	if errors.Is(err, sql.ErrNoRows) {
 		return User{}, time.Time{}, ErrNoSession
 	}
