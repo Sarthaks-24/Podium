@@ -191,9 +191,7 @@ textarea.input {
   resize: vertical;
 }
 
-/* The grip at the corner (resize: vertical) sets the height; it stops at about six lines. */
 .textarea-code {
-  min-height: calc(3 * var(--space-6));
   font-family: var(--font-mono);
   font-size: var(--fs-0);
   tab-size: 4;
@@ -204,6 +202,11 @@ textarea.input {
 
 /* Program source sits in the editor well, dark in every theme,
    so it already looks like the code editor that replaces it. */
+/* The organiser's code boxes: the grip at the corner (resize: vertical) stops at about six lines. */
+.textarea-well {
+  min-height: calc(3 * var(--space-6));
+}
+
 .textarea-well,
 .textarea-well:hover {
   border-color: var(--well-edge);

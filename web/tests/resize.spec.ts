@@ -10,7 +10,7 @@ import { HISTORY, mockApi, openWorkspace } from './mocks/workspace';
 
 const WIDTHS = [1024, 1280, 1440] as const;
 const THEMES = ['light', 'dark'] as const;
-const KEYS = ['podium-workspace-statement', 'podium-workspace-result', 'podium-workspace-input', 'podium-organiser-write'];
+const KEYS = ['podium-workspace-statement', 'podium-workspace-result', 'podium-workspace-input', 'podium-workspace-input-tab', 'podium-organiser-write'];
 
 const sep = (page: Page, name: string) => page.getByRole('separator', { name: `${name} panel size` });
 const value = async (page: Page, name: string) => Number(await sep(page, name).getAttribute('aria-valuenow'));
@@ -115,17 +115,17 @@ for (const theme of THEMES) {
         await sep(page, 'Result').focus();
         await page.keyboard.press('End');
         const out = sep(page, 'Output');
-        await expect(out).toHaveAttribute('aria-valuenow', '45');
+        await expect(out).toHaveAttribute('aria-valuenow', '25');
         const pane = (await page.getByRole('region', { name: 'Result' }).boundingBox())!;
         const h0 = (await box.boundingBox())!.height;
         // The box takes a share of the pane, not a fixed four rows.
         expect(h0).toBeGreaterThan(pane.height * 0.2);
         await out.focus();
         await page.keyboard.press('ArrowDown');
-        await expect(out).toHaveAttribute('aria-valuenow', '40');
+        await expect(out).toHaveAttribute('aria-valuenow', '20');
         expect((await box.boundingBox())!.height).toBeGreaterThan(h0);
         await page.keyboard.press('PageUp');
-        await expect(out).toHaveAttribute('aria-valuenow', '55');
+        await expect(out).toHaveAttribute('aria-valuenow', '35');
         await page.keyboard.press('Home');
         await page.keyboard.press('ArrowDown');
         // The output is never hidden: Enter and a step below the smallest do nothing.
@@ -136,6 +136,24 @@ for (const theme of THEMES) {
         await drag(page, 'Output', 0, -40);
         expect(await value(page, 'Output')).toBeGreaterThan(20);
         await page.screenshot({ path: `${shots()}resize-input-${width}-${theme}.png` });
+      });
+
+      test('Your input has its own result share and the box shows enough lines', async ({ page }) => {
+        await page.setViewportSize({ width, height: { 1024: 640, 1280: 800, 1440: 900 }[width] });
+        await mockApi(page, { submissions: HISTORY });
+        await openWorkspace(page);
+        const res = sep(page, 'Result');
+        const own = width === 1024 ? '30' : '35';
+        await expect(res).toHaveAttribute('aria-valuenow', own);
+        await page.getByRole('tab', { name: 'Your input' }).click();
+        await expect(res).toHaveAttribute('aria-valuenow', '75');
+        const lines = await page.getByRole('textbox', { name: 'Your input' }).evaluate((el) => {
+          const cs = getComputedStyle(el);
+          return (el.clientHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom)) / parseFloat(cs.lineHeight);
+        });
+        expect(lines).toBeGreaterThanOrEqual(width === 1024 ? 5 : 8);
+        await page.getByRole('tab', { name: 'Run' }).click();
+        await expect(res).toHaveAttribute('aria-valuenow', own);
       });
 
       test('in a contest the same splitter works and Enter hides the statement', async ({ page }) => {
@@ -163,14 +181,19 @@ for (const theme of THEMES) {
         await page.getByRole('tab', { name: 'Your input' }).click();
         await sep(page, 'Output').focus();
         await page.keyboard.press('PageUp');
+        await sep(page, 'Result').focus();
+        await page.keyboard.press('PageDown');
+        await expect.poll(() => stored(page, 'podium-workspace-input-tab')).not.toBeNull();
         await expect.poll(() => stored(page, 'podium-workspace-statement')).not.toBeNull();
         await expect.poll(() => stored(page, 'podium-workspace-input')).not.toBeNull();
 
         await page.getByRole('button', { name: 'Settings' }).click();
         await page.getByRole('button', { name: 'Reset layout' }).click();
         await expect(sep(page, 'Statement')).toHaveAttribute('aria-valuenow', '40');
+        await expect(sep(page, 'Result')).toHaveAttribute('aria-valuenow', '75');
+        await expect(sep(page, 'Output')).toHaveAttribute('aria-valuenow', '25');
+        await page.getByRole('tab', { name: 'Run' }).click();
         await expect(sep(page, 'Result')).toHaveAttribute('aria-valuenow', width === 1024 ? '30' : '35');
-        await expect(sep(page, 'Output')).toHaveAttribute('aria-valuenow', '45');
         for (const key of KEYS) expect(await stored(page, key), key).toBeNull();
         expect(await stored(page, 'podium-editor-wrap')).toBe('1');
         await page.reload();
@@ -192,7 +215,7 @@ for (const theme of THEMES) {
         await expect(page.getByRole('region', { name: 'Code' })).toBeVisible();
         expect((await page.getByRole('region', { name: 'Code' }).boundingBox())!.width).toBeGreaterThan(300);
         await page.getByRole('tab', { name: 'Your input' }).click();
-        await expect(sep(page, 'Output')).toHaveAttribute('aria-valuenow', '45');
+        await expect(sep(page, 'Output')).toHaveAttribute('aria-valuenow', '25');
         await problems.mockApi(page);
         await page.goto('/admin/problems/1');
         await expect(sep(page, 'Write')).toHaveAttribute('aria-valuenow', '20');

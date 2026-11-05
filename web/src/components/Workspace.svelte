@@ -24,7 +24,7 @@
   import { serverClock } from '../lib/clock';
   import { compileMarks } from '../lib/compileErrors';
   import { Draft } from '../lib/draft.svelte';
-  import { INPUT_DEFAULT, INPUT_KEY, RESULT_SHARE, STATEMENT_DEFAULT, STATEMENT_KEY, draftStorage, readResultPanel, resetLayout, writeResultPanel } from '../lib/drafts';
+  import { INPUT_DEFAULT, INPUT_KEY, INPUT_TAB_DEFAULT, INPUT_TAB_KEY, RESULT_SHARE, STATEMENT_DEFAULT, STATEMENT_KEY, draftStorage, readResultPanel, resetLayout, writeResultPanel } from '../lib/drafts';
   import { keepHeadingFocus } from '../lib/focus';
   import { setTitle } from '../lib/head';
   import { PASTE_BLOCKED, type ExamOptions } from '../lib/contests';
@@ -143,6 +143,8 @@
   const panel = readResultPanel(draftStorage(), shortScreen() ? 30 : RESULT_SHARE.default);
   let resultShare = $state(panel.share);
   let resultCollapsed = $state(panel.collapsed);
+  // The result's own share while "Your input" shows, larger so the box has lines to type in.
+  let inputTabShare = $state(readResultPanel(draftStorage(), INPUT_TAB_DEFAULT, INPUT_TAB_KEY).share);
   let codeCol: HTMLDivElement | undefined = $state();
   // From 1024 px: the statement's share beside the code, or hidden. One stored size for every workspace.
   const statementPanel = readResultPanel(draftStorage(), STATEMENT_DEFAULT, STATEMENT_KEY);
@@ -178,9 +180,12 @@
     if (!c) return '';
     return c.hidden ? 'Submitted' : headline(c).text;
   });
-  const rows = $derived(
-    layout !== 'wide' ? undefined : resultCollapsed ? 'minmax(0, 1fr) auto 0' : `minmax(0, ${100 - resultShare}fr) auto minmax(0, ${resultShare}fr)`,
-  );
+  const rows = $derived.by(() => {
+    if (layout !== 'wide') return undefined;
+    if (resultCollapsed) return 'minmax(0, 1fr) auto 0';
+    const share = judging.tab === 'input' ? inputTabShare : resultShare;
+    return `minmax(0, ${100 - share}fr) auto minmax(0, ${share}fr)`;
+  });
 
   // A problem the address names wrongly (400) reads as missing, like one that is not there.
   const page = loader(
@@ -308,6 +313,7 @@
     resetLayout(draftStorage());
     resultShare = shortScreen() ? 30 : RESULT_SHARE.default;
     resultCollapsed = false;
+    inputTabShare = INPUT_TAB_DEFAULT;
     statementShare = STATEMENT_DEFAULT;
     statementHidden = false;
     inputShare = INPUT_DEFAULT;
@@ -315,9 +321,13 @@
   }
 
   function onSplit(next: { share: number; collapsed: boolean }, remember: boolean) {
-    resultShare = next.share;
+    if (judging.tab === 'input') inputTabShare = next.share;
+    else resultShare = next.share;
     resultCollapsed = next.collapsed;
-    if (remember) writeResultPanel(draftStorage(), { share: resultShare, collapsed: resultCollapsed });
+    if (remember) {
+      if (judging.tab === 'input') writeResultPanel(draftStorage(), { share: inputTabShare, collapsed: resultCollapsed }, INPUT_TAB_KEY);
+      else writeResultPanel(draftStorage(), { share: resultShare, collapsed: resultCollapsed });
+    }
   }
 
   // Editor keys pressed outside the editor say where they work.
@@ -584,7 +594,7 @@
     {/snippet}
     {#snippet splitter()}
       <Splitter
-        share={resultShare}
+        share={judging.tab === 'input' ? inputTabShare : resultShare}
         collapsed={resultCollapsed}
         min={RESULT_SHARE.min}
         max={RESULT_SHARE.max}

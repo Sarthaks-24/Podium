@@ -40,7 +40,7 @@
     onuse: (s: Submission, source: string) => void;
   }
 
-  let { judging, samples, language, problemScore, locked, sticky, narrow = false, inputShare = 45, oninputshare = () => {}, onjump, onruninput, mine, onuse }: Props = $props();
+  let { judging, samples, language, problemScore, locked, sticky, narrow = false, inputShare = 25, oninputshare = () => {}, onjump, onruninput, mine, onuse }: Props = $props();
 
   let inputPane: HTMLDivElement | undefined = $state();
 
@@ -107,7 +107,7 @@
   aria-labelledby="ws-rtab-input"
   hidden={narrow || judging.tab !== 'input'}
   bind:this={inputPane}
-  style:grid-template-rows={narrow ? undefined : `minmax(6rem, ${100 - inputShare}fr) auto minmax(3rem, ${inputShare}fr)`}
+  style:grid-template-rows={narrow ? undefined : `minmax(8rem, ${100 - inputShare}fr) auto minmax(3rem, ${inputShare}fr)`}
 >
   <div class="in-box">
     <div class="in-head">
@@ -158,6 +158,7 @@
   .panel.fill {
     flex: 1 1 0;
     min-height: 11rem;
+    padding-block: var(--space-3);
   }
 
   .in-box {
