@@ -202,17 +202,14 @@ describe('text on mixed control fills', () => {
   });
 });
 
-// The engine also keeps verdict text readable on --surface-2 (the table header). The hand-tuned
-// Light theme's amber is 4.48:1 there, a rounding short of 4.5, so it is listed instead of
-// retuned in this stage; any other failure fails.
-const KNOWN_SHORT = new Set(['light: --part on --surface-2: 4.48 < 4.5']);
-
+// The engine also keeps verdict text readable on --surface-2 (the table header); every
+// built-in theme meets it with no exceptions.
 describe('the shared D41 rules', () => {
   for (const { id } of THEMES) {
     for (const signal of [false, true]) {
       it(`${id}${signal ? ' with colour-blind safe verdicts' : ''} passes theme-rules.ts`, () => {
         const found = d41Failures(resolveTheme(rules, id, signal), { high: HIGH_CONTRAST.has(id), signal });
-        expect(found.filter((f) => !KNOWN_SHORT.has(`${id}: ${f}`))).toEqual([]);
+        expect(found).toEqual([]);
       });
     }
   }

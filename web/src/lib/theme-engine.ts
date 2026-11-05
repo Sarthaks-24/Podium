@@ -62,7 +62,7 @@ const v = (ok: string, okT: string, part: string, partT: string, bad: string, ba
 export const VERDICTS: Record<Family, Record<ContrastLevel, Record<VerdictSetName, Verdicts>>> = {
   light: {
     standard: {
-      standard: v('#137A48', '#E2F2E8', '#9D5D13', '#FBEEDA', '#B42318', '#FBE4E1', '#5B6660', '#ECEEE9'),
+      standard: v('#137A48', '#E2F2E8', '#9C5C12', '#FBEEDA', '#B42318', '#FBE4E1', '#5B6660', '#ECEEE9'),
       signal: v('#267260', '#E5EEEC', '#6E519D', '#EEEAF3', '#A73C00', '#F4E8E0', '#5B6660', '#ECEEE9'),
     },
     high: {
