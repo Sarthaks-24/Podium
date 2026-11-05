@@ -270,7 +270,7 @@ func (g *Gemini) Generate(ctx context.Context, req Request) (*WizardPack, error)
 			geminiContent{Role: "model", Parts: []geminiPart{{Text: req.Previous}}},
 			geminiContent{Role: "user", Parts: []geminiPart{{Text: FixPrompt(req.Fix)}}})
 	}
-	text, err := g.call(ctx, systemPrompt, msgs, PackSchema())
+	text, err := g.call(ctx, systemPrompt(), msgs, PackSchema())
 	if err != nil {
 		return nil, err
 	}

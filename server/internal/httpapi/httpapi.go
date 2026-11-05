@@ -162,6 +162,7 @@ func New(d Deps) http.Handler {
 	mux.HandleFunc("GET /api/admin/problems", organiser(bank.ListProblems))
 	mux.HandleFunc("POST /api/admin/problems", organiser(bank.CreateProblem))
 	mux.HandleFunc("POST /api/admin/problems/import", organiser(slowBody(bank.ImportProblem)))
+	mux.HandleFunc("GET /api/admin/problems/pack-prompt", organiser(bank.GetPackPrompt))
 	mux.HandleFunc("GET /api/admin/problems/{id}", organiser(bank.GetProblem))
 	mux.HandleFunc("PUT /api/admin/problems/{id}", organiser(bank.UpdateProblem))
 	mux.HandleFunc("DELETE /api/admin/problems/{id}", organiser(bank.ArchiveProblem))

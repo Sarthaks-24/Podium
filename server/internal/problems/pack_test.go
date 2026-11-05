@@ -4,6 +4,7 @@ import (
 	"archive/zip"
 	"bytes"
 	"encoding/binary"
+	"fmt"
 	"io"
 	"io/fs"
 	"maps"
@@ -398,5 +399,64 @@ func TestPackStartersRoundTrip(t *testing.T) {
 	}
 	if ContentHash(&p) != ContentHash(&again.Problem) {
 		t.Error("starters changed the content hash")
+	}
+}
+
+// The pack the outside-AI prompt quotes must import through the real
+// importer, so a format change fails here before the prompt can drift.
+func TestPackPromptExampleImports(t *testing.T) {
+	var buf bytes.Buffer
+	zw := zip.NewWriter(&buf)
+	err := fs.WalkDir(packPromptFS, "packprompt/example", func(p string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() {
+			return err
+		}
+		b, err := packPromptFS.ReadFile(p)
+		if err != nil {
+			return err
+		}
+		w, err := zw.Create(strings.TrimPrefix(p, "packprompt/example/"))
+		if err != nil {
+			return err
+		}
+		_, err = w.Write(b)
+		return err
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	zw.Close()
+	pk, err := ReadPack(buf.Bytes())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if probs := pk.Problem.Problems(); len(probs) != 0 {
+		t.Errorf("problems %v", probs)
+	}
+	if pk.Problem.Slug != "double-it" || len(pk.Problem.Tests) != 3 {
+		t.Errorf("slug %q, %d tests", pk.Problem.Slug, len(pk.Problem.Tests))
+	}
+}
+
+func TestPackPromptIsFilledFromTheCode(t *testing.T) {
+	text, err := PackPrompt()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{
+		"format: 1", "problem.yaml", "statement.md", "tests/01.in", "double-it.zip",
+		fmt.Sprintf("at most %d MB zipped", MaxPackBytes>>20), fmt.Sprintf("at most %d files", MaxPackEntries),
+		fmt.Sprintf("Number at most %d tests", MaxTests), "in your own words", "Compressed (zipped) folder",
+		"=== PROBLEM DESCRIPTION ===", "title: Double it",
+	} {
+		if !strings.Contains(text, want) {
+			t.Errorf("prompt lacks %q", want)
+		}
+	}
+	if strings.Contains(text, "{{") || strings.Contains(text, "<no value>") {
+		t.Error("template left a placeholder unfilled")
+	}
+	if strings.ContainsAny(text, "–—") {
+		t.Error("prompt has a dash the style rules ban")
 	}
 }
