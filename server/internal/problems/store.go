@@ -41,18 +41,20 @@ func (s *Service) now() time.Time {
 
 // BankEntry is one row of the problem bank.
 type BankEntry struct {
-	ID          int64
-	Slug        string
-	Title       string
-	Difficulty  string
-	Tags        []string
-	Origin      string
-	Archived    bool
-	TestCount   int
-	Points      int
-	Validated   bool
-	ValidatedAt time.Time
-	UpdatedAt   time.Time
+	ID         int64
+	Slug       string
+	Title      string
+	Difficulty string
+	Tags       []string
+	Origin     string
+	Archived   bool
+	// ArchivedSlug is the original slug of an archived problem.
+	ArchivedSlug string
+	TestCount    int
+	Points       int
+	Validated    bool
+	ValidatedAt  time.Time
+	UpdatedAt    time.Time
 	// ShownInPractice: a contest that pins the problem has shown students
 	// its hidden tests, being open for practice after its end. Its
 	// hidden tests may be known.
@@ -72,7 +74,7 @@ const shownInPractice = `EXISTS (SELECT 1 FROM contest_problems cp JOIN contests
 // List returns the bank, newest change first.
 func (s *Service) List(ctx context.Context, archived bool) ([]BankEntry, error) {
 	rows, err := s.DB.QueryContext(ctx, `SELECT p.id, p.slug, p.title, p.difficulty, p.tags, p.origin, p.archived,
-		p.content_hash, coalesce(p.validated_hash, ''), coalesce(p.validated_at, 0), p.updated_at,
+		p.archived_slug, p.content_hash, coalesce(p.validated_hash, ''), coalesce(p.validated_at, 0), p.updated_at,
 		(SELECT count(*) FROM testcases t WHERE t.problem_id = p.id),
 		(SELECT coalesce(sum(points), 0) FROM subtasks st WHERE st.problem_id = p.id), `+shownInPractice+`
 		FROM problems p WHERE p.archived = 0 OR ? ORDER BY p.updated_at DESC, p.id DESC`, s.now().UnixMilli(), archived)
@@ -86,7 +88,7 @@ func (s *Service) List(ctx context.Context, archived bool) ([]BankEntry, error) 
 		var tags, hash, vhash string
 		var vat, upd int64
 		if err := rows.Scan(&sm.ID, &sm.Slug, &sm.Title, &sm.Difficulty, &tags, &sm.Origin, &sm.Archived,
-			&hash, &vhash, &vat, &upd, &sm.TestCount, &sm.Points, &sm.ShownInPractice); err != nil {
+			&sm.ArchivedSlug, &hash, &vhash, &vat, &upd, &sm.TestCount, &sm.Points, &sm.ShownInPractice); err != nil {
 			return nil, err
 		}
 		if err := json.Unmarshal([]byte(tags), &sm.Tags); err != nil {
@@ -126,12 +128,13 @@ func load(ctx context.Context, q queryer, id int64) (*Problem, error) {
 	err := q.QueryRowContext(ctx, `SELECT slug, title, statement_md, time_limit_ms, memory_limit_mb, checker, epsilon,
 		checker_source, reference_language, reference_source, brute_language, brute_source, validator_language,
 		validator_source, tags, difficulty, samples, origin, author_id, archived, created_at, updated_at,
-		content_hash, validated_hash, validated_at, generator_language, generator_source, generator_plan, starters
+		content_hash, validated_hash, validated_at, generator_language, generator_source, generator_plan, starters,
+		archived_slug
 		FROM problems WHERE id = ?`, id).Scan(
 		&p.Slug, &p.Title, &p.Statement, &p.TimeLimitMS, &p.MemoryLimitMB, &p.Checker, &p.Epsilon,
 		&p.CheckerSource, &p.Reference.Language, &p.Reference.Source, &bruteLang, &bruteSrc, &valLang,
 		&valSrc, &tags, &p.Difficulty, &samples, &p.Origin, &author, &p.Archived, &created, &updated,
-		&p.ContentHash, &vhash, &vat, &genLang, &genSrc, &plan, &starters)
+		&p.ContentHash, &vhash, &vat, &genLang, &genSrc, &plan, &starters, &p.ArchivedSlug)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
@@ -323,10 +326,16 @@ func SlugFromTitle(title string) string {
 // freeSlug returns base, or base with "-2", "-3" and so on when another
 // problem has it.
 func (s *Service) freeSlug(ctx context.Context, base string) (string, error) {
+	return freeSlugIn(ctx, s.DB, base)
+}
+
+// freeSlugIn is freeSlug reading through q, so a transaction sees its own
+// writes.
+func freeSlugIn(ctx context.Context, q queryer, base string) (string, error) {
 	slug := base
 	for i := 2; ; i++ {
 		var taken int
-		if err := s.DB.QueryRowContext(ctx, "SELECT count(*) FROM problems WHERE slug = ?", slug).Scan(&taken); err != nil {
+		if err := q.QueryRowContext(ctx, "SELECT count(*) FROM problems WHERE slug = ?", slug).Scan(&taken); err != nil {
 			return "", err
 		}
 		if taken == 0 {
@@ -556,6 +565,9 @@ func (s *Service) Update(ctx context.Context, id int64, e Edit) (*Problem, error
 	// a solution, and then the validation is withdrawn, so the problem must
 	// pass again as the person left it before a contest can take it. A save
 	// that changes neither keeps the marking.
+	if p.Archived && e.Slug != p.Slug {
+		return nil, FieldErrors{"slug": "Restore the problem to change its slug."}
+	}
 	draft := slices.ContainsFunc(p.Tags, isAIDraftTag)
 	solutionEdited := e.Reference != p.Reference || !sameSource(emptyToNil(e.Brute), p.Brute)
 	personEdit := solutionEdited || e.Statement != p.Statement
@@ -732,18 +744,6 @@ func (s *Service) ReplaceTests(ctx context.Context, id int64, zipData []byte, no
 		return nil, err
 	}
 	return p, nil
-}
-
-// Archive hides a problem from the bank. Its tests and history stay.
-func (s *Service) Archive(ctx context.Context, id int64) error {
-	res, err := s.DB.ExecContext(ctx, "UPDATE problems SET archived = 1, updated_at = ? WHERE id = ?", s.now().UnixMilli(), id)
-	if err != nil {
-		return err
-	}
-	if n, _ := res.RowsAffected(); n == 0 {
-		return ErrNotFound
-	}
-	return nil
 }
 
 // TestBlob returns the hash of one test's input or output.

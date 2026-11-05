@@ -24,28 +24,6 @@ const (
 	maxOpenQuestions = 5
 )
 
-// Archive hides a contest from students and the default list. Nothing is
-// deleted: submissions and results stay for the record. by is audited.
-func (s *Service) Archive(ctx context.Context, id int64, by Actor) error {
-	err := s.audited(ctx, id, by, AuditArchive, func(tx *sql.Tx) (any, bool, error) {
-		res, err := tx.ExecContext(ctx, "UPDATE contests SET archived = 1, updated_at = ? WHERE id = ?", s.now().UnixMilli(), id)
-		if err != nil {
-			return nil, false, err
-		}
-		if n, _ := res.RowsAffected(); n == 0 {
-			return nil, false, ErrNotFound
-		}
-		return nil, true, nil
-	})
-	if err == nil {
-		s.board.drop(id)
-		if s.Changed != nil {
-			s.Changed(id)
-		}
-	}
-	return err
-}
-
 // Clone copies a contest's settings and problems into a new, unpublished
 // contest with its own slug, title and dates. Extensions and the
 // editorial are not copied. An admin's reason to grade an

@@ -49,8 +49,11 @@ const DefaultHonour = `This contest counts. By starting you agree to these rules
 
 // Contest is one contest with its problems.
 type Contest struct {
-	ID                 int64
-	Slug               string
+	ID   int64
+	Slug string
+	// ArchivedSlug is the slug an archived contest had before archiving freed
+	// it; empty when the slug never moved.
+	ArchivedSlug       string
 	Title              string
 	Description        string
 	Schedule           Schedule
@@ -454,7 +457,7 @@ const contestColumns = `id, slug, title, description_md, starts_at, ends_at, fre
 	languages, honour_text, editorial_md, editorial_published, paused, extended_minutes, hold_reveal, coalesce(revealed_at, 0),
 	full_screen, count_focus, block_paste, block_copy, archived,
 	coalesce(created_by, 0), created_at, updated_at,
-	(SELECT coalesce(max(minutes), 0) FROM contest_extensions e WHERE e.contest_id = contests.id), audience`
+	(SELECT coalesce(max(minutes), 0) FROM contest_extensions e WHERE e.contest_id = contests.id), audience, archived_slug`
 
 func scanContest(sc interface{ Scan(...any) error }) (*Contest, error) {
 	var c Contest
@@ -464,7 +467,7 @@ func scanContest(sc interface{ Scan(...any) error }) (*Contest, error) {
 	err := sc.Scan(&c.ID, &c.Slug, &c.Title, &c.Description, &starts, &ends, &freeze,
 		&c.Published, &c.PracticeAfterEnd, &gap,
 		&c.MaxPerProblem, &langs, &c.HonourText, &c.Editorial, &c.EditorialPublished, &c.Paused, &extended, &c.HoldReveal, &revealed,
-		&c.Exam.FullScreen, &c.Exam.CountFocus, &c.Exam.BlockPaste, &c.Exam.BlockCopy, &c.Archived, &c.CreatedBy, &created, &updated, &maxExt, &c.Audience)
+		&c.Exam.FullScreen, &c.Exam.CountFocus, &c.Exam.BlockPaste, &c.Exam.BlockCopy, &c.Archived, &c.CreatedBy, &created, &updated, &maxExt, &c.Audience, &c.ArchivedSlug)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}

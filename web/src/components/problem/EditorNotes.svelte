@@ -22,7 +22,7 @@
 
 {#if problem.archived}
   <div class="banner banner-info lead">
-    <p>This problem is archived. It is hidden from the bank and kept for the contests that used it.</p>
+    <p>This problem is archived. It is hidden from the bank and kept for the contests that used it. Choose Restore in the menu to bring it back.</p>
   </div>
 {/if}
 

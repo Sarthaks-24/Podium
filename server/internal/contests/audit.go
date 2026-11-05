@@ -72,6 +72,8 @@ const (
 	AuditInvitesAdded  = "invites_added"
 	AuditInviteRemoved = "invite_removed"
 	AuditArchive       = "archive"
+	// AuditRestore is {"slug"}: the slug the contest has again.
+	AuditRestore = "restore"
 	// AuditDecision is an integrity decision about one student:
 	// {"user_id", "decision"}; the reason stays in integrity_cases.
 	AuditDecision = "integrity_decision"

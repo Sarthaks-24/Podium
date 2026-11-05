@@ -14,6 +14,7 @@
   import Badge from '../components/Badge.svelte';
   import PageState from '../components/PageState.svelte';
   import PageHeader from '../components/PageHeader.svelte';
+  import RestoreFlow from '../components/RestoreFlow.svelte';
   import { onMount, tick } from 'svelte';
   import { focusFirstInvalid } from '../lib/focus';
   import { ApiError, getJSON, sendJSON, errorText } from '../lib/api';
@@ -42,6 +43,10 @@
   import { showToast } from '../lib/toast.svelte';
 
   let contests = $state<AdminContestSummary[]>([]);
+  /** "Show archived": the list also holds archived contests, each with Restore. */
+  let showArchived = $state(false);
+  /** The archived contest the Restore dialog is open for. */
+  let restoring = $state<{ id: number; name: string } | null>(null);
 
   const defaults = defaultSettings(Date.now());
   let creating = $state(false);
@@ -69,7 +74,7 @@
   const page = loader(
     async () => {
       const sent = Date.now();
-      const data = await getJSON<{ contests: AdminContestSummary[]; server_now?: number }>('/api/admin/contests');
+      const data = await getJSON<{ contests: AdminContestSummary[]; server_now?: number }>(`/api/admin/contests${showArchived ? '?archived=1' : ''}`);
       return { data, sent, got: Date.now() };
     },
     ({ data, sent, got }) => {
@@ -102,13 +107,19 @@
     return c.state === 'live' || c.state === 'frozen';
   }
 
-  const sorted = $derived(organiserOrder(contests));
+  const sorted = $derived(organiserOrder(contests.filter((c) => !c.archived)));
+  const archivedRows = $derived(organiserOrder(contests.filter((c) => c.archived)));
   /** Published live contests, then the next published one. */
   const liveAndNext = $derived.by(() => {
     const next = sorted.find((c) => c.published && c.state === 'upcoming');
     return [...sorted.filter((c) => c.published && isLive(c)), ...(next ? [next] : [])];
   });
-  const rest = $derived(sorted.filter((c) => !liveAndNext.includes(c)));
+  const rest = $derived([...sorted.filter((c) => !liveAndNext.includes(c)), ...archivedRows]);
+
+  function toggleArchived(event: Event) {
+    showArchived = (event.currentTarget as HTMLInputElement).checked;
+    void load();
+  }
   /** "Needs you" waits until a contest has run: before that there is nothing to show. */
   const hasRun = $derived(contests.some((c) => c.published && c.state !== 'upcoming'));
 
@@ -263,6 +274,10 @@
       bind:this={newButton}
       onclick={() => (creating ? closeCreate() : openCreate())}>New contest</button
     >
+    <label class="toggle">
+      <input type="checkbox" checked={showArchived} onchange={toggleArchived} />
+      Show archived
+    </label>
   </div>
 
   {#if creating}
@@ -367,6 +382,7 @@
             <th scope="col">Length</th>
             <th scope="col" class="right">Problems</th>
             <th scope="col">State</th>
+            {#if showArchived}<th scope="col"><span class="visually-hidden">Actions</span></th>{/if}
           </tr>
         </thead>
         <tbody>
@@ -378,12 +394,33 @@
               <td class="length">{lengthText(c)}</td>
               <td class="num right problems">{c.problems.length}</td>
               <td class="state"><span class="state-word" data-state={st.kind}>{st.word}</span>{#if c.paused}<span class="paused">Judging paused</span>{/if}</td>
+              {#if showArchived}
+                <td class="try">
+                  {#if c.archived}
+                    <button type="button" class="btn btn-quiet btn-compact" aria-label="Restore {c.title}" onclick={() => (restoring = { id: c.id, name: c.title })}>Restore</button>
+                  {/if}
+                </td>
+              {/if}
             </tr>
           {/each}
         </tbody>
       </table>
     </div>
   {/if}
+{/if}
+
+{#if restoring}
+  <RestoreFlow
+    open
+    kind="contest"
+    title={restoring.name}
+    path="/api/admin/contests/{restoring.id}/restore"
+    onclose={() => (restoring = null)}
+    ondone={() => {
+      restoring = null;
+      void load();
+    }}
+  />
 {/if}
 
 <style>
@@ -474,7 +511,26 @@
   }
 
   .toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-3) var(--space-5);
     margin-top: var(--space-5);
+  }
+
+  .toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+    min-height: var(--control-h);
+    cursor: pointer;
+  }
+
+  .toggle input {
+    width: var(--space-4);
+    height: var(--space-4);
+    margin: 0;
+    accent-color: var(--act);
   }
 
   .create {

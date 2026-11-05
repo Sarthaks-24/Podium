@@ -428,7 +428,8 @@ Only one pack import, test replacement or pack download runs at a time; a second
 | Add to contest | Takes Validate's place once the problem has passed and nothing is unsaved. Pick a draft or upcoming contest; the problem goes in after its other problems under the next letter. |
 | Try as a student | Opens the problem in the student workspace (see "Trying a problem as a student"). |
 | Download pack | The same layout as an import, ready to re-import or keep in version control. Sources are named `solution`, `brute`, `validator` and `generator` with their language's extension, the plan is written to `tests.yaml`, and tests are numbered with two digits (three from test 100). Outputs not generated yet are left out. |
-| Archive | In the More menu, with Download pack and Regenerate all outputs. Asks to confirm, then hides the problem from the list. Its tests and history are kept; "Show archived" lists it again. |
+| Archive | In the More menu, with Download pack and Regenerate all outputs. Asks to confirm, then hides the problem from the list. Its tests and history are kept; "Show archived" lists it again. Archiving frees the problem's slug: the problem takes `<slug>-archived-<id>` and keeps the original, so you can import or create another problem with that slug. The dialog lists the contests that pin the problem and have not ended: it keeps working there, but you cannot update it in that contest until you restore it. An archived problem's slug cannot be changed, and Download pack writes the original slug into `problem.yaml`. |
+| Restore | In the More menu of an archived problem, and on its row in the bank with "Show archived". Asks to confirm and gives the original slug back. If another problem has taken it meanwhile, it asks for a new slug with a free one filled in. Contests have the same: Show archived on the Contests page, and Restore in a contest's More menu. |
 
 ## Example packs
 

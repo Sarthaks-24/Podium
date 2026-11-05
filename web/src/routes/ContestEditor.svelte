@@ -21,6 +21,7 @@
   import ConfirmDialog from '../components/ConfirmDialog.svelte';
   import ContestAdminNav from '../components/ContestAdminNav.svelte';
   import DuplicateDialog from '../components/DuplicateDialog.svelte';
+  import RestoreFlow from '../components/RestoreFlow.svelte';
   import InvitesPanel from '../components/InvitesPanel.svelte';
   import PageHeader from '../components/PageHeader.svelte';
   import Icon from '../components/Icon.svelte';
@@ -142,6 +143,7 @@
   let aiError = $state('');
 
   let duplicating = $state(false);
+  let restoreOpen = $state(false);
   let organisers = $state<ContestOrganiser[]>([]);
   let organiserEmail = $state('');
   let organiserError = $state('');
@@ -849,7 +851,7 @@
           id="contest-menu"
           items={[
             { label: 'Duplicate', onselect: () => (duplicating = true) },
-            { label: 'Archive', onselect: archive, danger: true },
+            ...(contest?.archived ? [{ label: 'Restore', onselect: () => (restoreOpen = true) }] : [{ label: 'Archive', onselect: archive, danger: true }]),
           ]}
         />
       </div>
@@ -1240,6 +1242,18 @@
     endsAt={contest.ends_at}
     onclose={() => (duplicating = false)}
     ondone={duplicated}
+  />
+
+  <RestoreFlow
+    open={restoreOpen}
+    kind="contest"
+    title={contest.title}
+    path="{base}/restore"
+    onclose={() => (restoreOpen = false)}
+    ondone={() => {
+      restoreOpen = false;
+      void load();
+    }}
   />
 
   <ConfirmDialog
