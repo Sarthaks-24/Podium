@@ -92,6 +92,8 @@ export function shortcutGroups(opts: { mac: boolean; organiser: boolean }): Shor
         { keys: ['Esc', 'Tab'], joiner: 'then', action: 'Leave the code editor' },
         { keys: ['[', ']'], joiner: 'or', action: 'Open the previous or next problem in a contest, when you are not typing' },
         { keys: ['Left arrow', 'Right arrow'], joiner: 'or', action: 'Switch between the Problem, Code and Result tabs on a small screen' },
+        { keys: ['Arrow keys', 'Page Up', 'Page Down'], joiner: 'or', action: 'On a pane divider from 1024 px: resize by 5 or 15 percent; Home and End go to the smallest and largest, Enter hides the statement or result' },
+        { keys: ['Settings', 'Reset layout'], joiner: 'then', action: 'Put every pane back to its default size' },
       ],
     },
     {

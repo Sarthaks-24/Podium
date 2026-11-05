@@ -10,12 +10,15 @@
   button beside it ("Hide result", "Show result") is left out when
   `button` is false; a hidden result keeps its one line (`summary`) in the
   bar. Props: `share` (percent, `min` to `max`), `collapsed`, `summary`,
-  `controls` (the pane's id), `column` (the element a drag measures),
+  `controls` (the pane's id; for columns the drag measures from its left
+  edge), `column` (the element a drag measures),
   `orientation`, `name` (the pane's name, "Result" or "Statement"),
-  `button` and `onchange` (the new share and collapsed, and whether to
+  `button`, `hideable` and `onchange` (the new share and collapsed, and whether to
   remember them now: a drag remembers on release).
 -->
 <script lang="ts">
+  import Icon from './Icon.svelte';
+
   interface Props {
     share: number;
     collapsed: boolean;
@@ -27,10 +30,11 @@
     orientation?: 'rows' | 'columns';
     name?: string;
     button?: boolean;
+    hideable?: boolean;
     onchange: (next: { share: number; collapsed: boolean }, remember: boolean) => void;
   }
 
-  let { share, collapsed, min, max, summary, controls, column, orientation = 'rows', name = 'Result', button = true, onchange }: Props = $props();
+  let { share, collapsed, min, max, summary, controls, column, orientation = 'rows', name = 'Result', button = true, hideable = true, onchange }: Props = $props();
 
   const cols = $derived(orientation === 'columns');
 
@@ -43,6 +47,7 @@
   }
 
   function toggle() {
+    if (!hideable) return;
     onchange({ share, collapsed: !collapsed }, true);
   }
 
@@ -56,7 +61,7 @@
       if (collapsed) {
         if (step > 0) set(min);
       } else if (step < 0 && share <= min) {
-        toggle();
+        if (hideable) toggle();
       } else {
         set(share + step);
       }
@@ -79,9 +84,11 @@
   function onMove(event: PointerEvent) {
     if (!dragging || !column) return;
     const box = column.getBoundingClientRect();
-    const next = cols ? ((event.clientX - box.left) / box.width) * 100 : ((box.bottom - event.clientY) / box.height) * 100;
+    // Columns measure from the left pane's edge, so a rail beside it is not counted.
+    const left = cols ? (document.getElementById(controls)?.getBoundingClientRect().left ?? box.left) : box.left;
+    const next = cols ? ((event.clientX - left) / (box.right - left)) * 100 : ((box.bottom - event.clientY) / box.height) * 100;
     // Dragged well past the smallest size: hidden, as the step down from the smallest is.
-    onchange(next < min / 2 ? { share, collapsed: true } : { share: clamp(next), collapsed: false }, false);
+    onchange(next < min / 2 && hideable ? { share, collapsed: true } : { share: clamp(next), collapsed: false }, false);
   }
 
   function onUp() {
@@ -112,6 +119,7 @@
     onpointercancel={onUp}
   >
     <span class="grip-line" aria-hidden="true"></span>
+    {#if cols}<span class="grip-icon" aria-hidden="true"><Icon name="grip-vertical" /></span>{/if}
     {#if collapsed && summary}<span class="split-summary">{summary}</span>{/if}
   </div>
   {#if button}
@@ -170,7 +178,8 @@
   }
 
   .cols .grip {
-    width: var(--space-3);
+    position: relative;
+    width: var(--space-5);
     height: 100%;
     min-height: 0;
     padding: 0;
@@ -183,6 +192,26 @@
     grid-column: 1;
     width: calc(2 * var(--rule));
     height: var(--space-7);
+  }
+
+  /* The grip icon replaces the line while the pointer or focus is on the grip. */
+  .grip-icon {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    display: none;
+    color: var(--ink-muted);
+    transform: translate(-50%, -50%);
+  }
+
+  .cols .grip:hover .grip-icon,
+  .cols .grip:focus-visible .grip-icon {
+    display: block;
+  }
+
+  .cols .grip:hover .grip-line,
+  .cols .grip:focus-visible .grip-line {
+    visibility: hidden;
   }
 
   .split-summary {

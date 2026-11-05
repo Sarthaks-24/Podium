@@ -157,11 +157,24 @@ const LANG_KEY = 'podium-editor-language';
 const TAB_SIZE_KEY = 'podium-editor-tab-size';
 const WRAP_KEY = 'podium-editor-wrap';
 const RESULT_KEY = 'podium-workspace-result';
-/** The statement's share of the width beside the code in a contest, and whether it is hidden. */
+/** The statement's share of the width beside the code, and whether it is hidden. */
 export const STATEMENT_KEY = 'podium-workspace-statement';
+/** The output's share of the "Your input" tab. */
+export const INPUT_KEY = 'podium-workspace-input';
+/** The organiser's Write share beside the preview. */
+export const WRITE_KEY = 'podium-organiser-write';
 
 /** The result panel's share of the code column, in percent, while open. */
-export const RESULT_SHARE = { min: 20, max: 80, default: 40 } as const;
+export const RESULT_SHARE = { min: 20, max: 80, default: 35 } as const;
+
+/** The statement's default share beside the code, so the code column starts wider (calibration-d.md). */
+export const STATEMENT_DEFAULT = 40;
+
+/** The output's default share of the "Your input" tab. */
+export const INPUT_DEFAULT = 45;
+
+/** Every key that holds a pane size; "Reset layout" removes these and nothing else. */
+export const LAYOUT_KEYS = [RESULT_KEY, STATEMENT_KEY, INPUT_KEY, WRITE_KEY] as const;
 
 function read(storage: DraftStorage | null, key: string): string | null {
   if (!storage) return null;
@@ -220,6 +233,18 @@ export function readResultPanel(storage: DraftStorage | null, fallback: number =
 /** Remembers the result panel's size on this device. */
 export function writeResultPanel(storage: DraftStorage | null, prefs: ResultPanelPrefs, key = RESULT_KEY): void {
   write(storage, key, JSON.stringify({ share: clampShare(prefs.share), collapsed: prefs.collapsed }));
+}
+
+/** Puts every pane back to its default size by removing the stored sizes. */
+export function resetLayout(storage: DraftStorage | null = draftStorage()): void {
+  if (!storage) return;
+  for (const key of LAYOUT_KEYS) {
+    try {
+      storage.removeItem(key);
+    } catch {
+      // The sizes reset for this page only.
+    }
+  }
 }
 
 /**

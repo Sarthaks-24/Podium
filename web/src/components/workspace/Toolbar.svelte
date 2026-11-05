@@ -6,7 +6,7 @@
   icons and narrows the select so the row holds. When Run and Submit are
   off, the reason follows on its own line (#ws-locked). Props:
   `languages`, `language` (the one shown in the select), `onlanguage`,
-  `onreset`, `settings` and `onsettings` (EditorSettings' values and
+  `onreset`, `settings`, `onsettings` and `onresetlayout` (EditorSettings' values and
   change), `locked` (the reason, or ""), `runBusy`, `onrun` and `submit`
   (a snippet, from 1024 px), and `fullscreen` (false hides Full screen: an
   exam that requires it makes its own request on Start, and leaving it there
@@ -28,6 +28,7 @@
     onreset: () => void;
     settings: EditorSettingsValue;
     onsettings: (next: Partial<EditorSettingsValue>) => void;
+    onresetlayout: () => void;
     locked: string;
     runBusy: boolean;
     onrun: () => void;
@@ -35,7 +36,7 @@
     fullscreen?: boolean;
   }
 
-  let { languages, language, onlanguage, onreset, settings, onsettings, locked, runBusy, onrun, submit, fullscreen = true }: Props = $props();
+  let { languages, language, onlanguage, onreset, settings, onsettings, onresetlayout, locked, runBusy, onrun, submit, fullscreen = true }: Props = $props();
 
   // Run's key, from the shortcut table (v4 U6).
   const runKeys = shortcutKeys('Run on the examples');
@@ -58,7 +59,7 @@
       {#each languages as l (l.id)}<option value={l.id}>{l.label}</option>{/each}
     </select>
     <button type="button" class="btn btn-quiet btn-compact" onclick={onreset}>Reset</button>
-    <EditorSettings {...settings} sizes={FONT_SIZES} onchange={onsettings} />
+    <EditorSettings {...settings} sizes={FONT_SIZES} onchange={onsettings} {onresetlayout} />
     {#if fullscreen && canFullscreen}
       <button
         type="button"

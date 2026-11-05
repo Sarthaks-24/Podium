@@ -8,7 +8,9 @@
   the preview beside it. The preview draws the statement and its examples
   with the students' own component. There is no slug field: the server
   makes it from the title when the problem is created. Under the tags,
-  the starter code (StartersField). Props: `draft`
+  the starter code (StartersField). From 1024 px a column splitter sets how
+  the width divides between Write and Preview, remembered on this device,
+  and a grip at the corner of the Write box sets its height. Props: `draft`
   (bindable), `fields` (the field errors by key) and `tests` (for the
   examples).
 -->
@@ -18,7 +20,8 @@
   import StatementPreview from '../StatementPreview.svelte';
   import StartersField from './StartersField.svelte';
   import { media } from '../../lib/breakpoints';
-  import { DEFAULT_FONT_SIZE } from '../../lib/drafts';
+  import Splitter from '../Splitter.svelte';
+  import { DEFAULT_FONT_SIZE, RESULT_SHARE, WRITE_KEY, draftStorage, readResultPanel, writeResultPanel } from '../../lib/drafts';
   import { describedBy } from '../../lib/problemFields';
   import { DIFFICULTIES, previewSamples, type Draft, type Problem } from '../../lib/problems';
 
@@ -36,6 +39,9 @@
   let phone = $state(!media('tablet').matches);
   let statementTab = $state<'write' | 'preview'>('write');
   let editor: CodeEditor | undefined = $state();
+  // From 1024 px: the Write column's share of the width beside the preview.
+  let writeShare = $state(readResultPanel(draftStorage(), 50, WRITE_KEY).share);
+  let top: HTMLDivElement | undefined = $state();
   /** The text the editor last reported, so a new working copy (a reload) is pushed into it. */
   let shown = draft.statement_md;
 
@@ -56,6 +62,11 @@
     shown = text;
     editor?.setDoc(text);
   });
+
+  function onWriteSplit(next: { share: number }, remember: boolean) {
+    writeShare = next.share;
+    if (remember) writeResultPanel(draftStorage(), { share: writeShare, collapsed: false }, WRITE_KEY);
+  }
 
   function onStatement(text: string) {
     shown = text;
@@ -79,7 +90,7 @@
   }
 </script>
 
-<div class="top" class:with-preview={!phone}>
+<div class="top" class:with-preview={!phone} bind:this={top} style:--write-cols={`minmax(0, ${writeShare}fr) auto minmax(0, ${100 - writeShare}fr)`}>
   <section class="details" aria-labelledby="details-heading">
     <h2 id="details-heading" class="visually-hidden" tabindex="-1">Statement and limits</h2>
 
@@ -228,6 +239,22 @@
   </section>
 
   {#if !phone}
+    <div class="write-split">
+      <Splitter
+        share={writeShare}
+        collapsed={false}
+        min={RESULT_SHARE.min}
+        max={RESULT_SHARE.max}
+        summary=""
+        controls="statement-panel-write"
+        column={top}
+        orientation="columns"
+        name="Write"
+        button={false}
+        hideable={false}
+        onchange={onWriteSplit}
+      />
+    </div>
     <section class="preview" aria-labelledby="preview-heading">
       <h2 id="preview-heading">Preview</h2>
       <div class="preview-body">
@@ -280,10 +307,12 @@
     display: none;
   }
 
-  /* A fixed height: the editor scrolls inside, so the tab stays short. */
+  /* A starting height the grip at the corner changes: the editor scrolls inside, so the tab stays short. */
   .statement-editor {
     height: 26rem;
-    min-height: 0;
+    min-height: 12rem;
+    overflow: hidden;
+    resize: vertical;
   }
 
   .statement-editor.invalid {
@@ -343,6 +372,11 @@
     padding: var(--space-3) var(--space-4);
   }
 
+  /* The Write and Preview splitter is for 1024 px and up; under it the preview stacks. */
+  .write-split {
+    display: none;
+  }
+
   @media (width < 768px) {
     .statement-editor {
       height: 20rem;
@@ -351,7 +385,20 @@
 
   @media (min-width: 1024px) {
     .top.with-preview {
-      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+      grid-template-columns: var(--write-cols);
+      gap: 0;
+    }
+
+    .write-split {
+      display: grid;
+    }
+
+    .top.with-preview .details {
+      padding-inline-end: var(--space-3);
+    }
+
+    .top.with-preview .preview {
+      padding-inline-start: var(--space-3);
     }
 
     .preview {

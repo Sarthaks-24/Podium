@@ -173,14 +173,14 @@ describe('the result panel size', () => {
 
   it('reads back what was written, and falls back when nothing usable is stored', () => {
     const s = memory();
-    expect(readResultPanel(s)).toEqual({ share: 40, collapsed: false });
+    expect(readResultPanel(s)).toEqual({ share: 35, collapsed: false });
     expect(readResultPanel(s, 30)).toEqual({ share: 30, collapsed: false });
     writeResultPanel(s, { share: 55, collapsed: true });
     expect(readResultPanel(s, 30)).toEqual({ share: 55, collapsed: true });
     s.data.set('podium-workspace-result', 'not json');
-    expect(readResultPanel(s)).toEqual({ share: 40, collapsed: false });
+    expect(readResultPanel(s)).toEqual({ share: 35, collapsed: false });
     s.data.set('podium-workspace-result', '{"collapsed":true}');
     expect(readResultPanel(s, 30)).toEqual({ share: 30, collapsed: false });
-    expect(readResultPanel(null)).toEqual({ share: 40, collapsed: false });
+    expect(readResultPanel(null)).toEqual({ share: 35, collapsed: false });
   });
 });

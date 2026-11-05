@@ -6,8 +6,9 @@
   tabbing out (the same behaviour as AccountMenu). Reset is not here; it
   sits beside the language in the toolbar. The fields are EditorSettingsFields,
   shared with the profile page. Props: `fontSize`, `sizes` (the
-  choices, in px), `tabSize`, `wrap`, `tabMovesFocus`, and `onchange`,
-  called with the changed setting.
+  choices, in px), `tabSize`, `wrap`, `tabMovesFocus`, `onchange`,
+  called with the changed setting, and `onresetlayout` ("Reset layout" puts
+  every pane back to its default size).
 -->
 <script lang="ts">
   import Icon from './Icon.svelte';
@@ -24,9 +25,10 @@
   interface Props extends Settings {
     sizes: readonly number[];
     onchange: (next: Partial<Settings>) => void;
+    onresetlayout: () => void;
   }
 
-  let { fontSize, sizes, tabSize, wrap, tabMovesFocus, onchange }: Props = $props();
+  let { fontSize, sizes, tabSize, wrap, tabMovesFocus, onchange, onresetlayout }: Props = $props();
 
   let open = $state(false);
   let button: HTMLButtonElement | undefined = $state();
@@ -45,6 +47,7 @@
   </button>
   <div id="ws-editor-settings" class="panel" hidden={!open}>
     <EditorSettingsFields {fontSize} {sizes} {tabSize} {wrap} {tabMovesFocus} idPrefix="ws" {onchange} />
+    <button type="button" class="btn btn-quiet btn-compact reset" onclick={onresetlayout}>Reset layout</button>
   </div>
 </div>
 
@@ -66,6 +69,10 @@
     border-radius: var(--radius);
     background: var(--surface);
     box-shadow: var(--shadow-menu);
+  }
+
+  .reset {
+    justify-self: start;
   }
 
   .panel[hidden] {
