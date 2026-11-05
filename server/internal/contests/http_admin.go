@@ -41,35 +41,37 @@ type adminProblemJSON struct {
 // adminContestJSON is AdminContest in docs/API.md: every setting, the
 // problems with their pins, and extensions.
 type adminContestJSON struct {
-	ID                 int64              `json:"id"`
-	Slug               string             `json:"slug"`
-	Title              string             `json:"title"`
-	DescriptionMD      string             `json:"description_md"`
-	StartsAt           int64              `json:"starts_at"`
-	EndsAt             int64              `json:"ends_at"`
-	CloseAt            int64              `json:"close_at"`
-	FreezeMinutes      int                `json:"freeze_minutes"`
-	Published          bool               `json:"published"`
-	PracticeAfterEnd   bool               `json:"practice_after_end"`
-	Audience           string             `json:"audience"`
-	MinGapS            int                `json:"min_gap_s"`
-	MaxPerProblem      int                `json:"max_per_problem"`
-	Languages          []string           `json:"languages"`
-	HonourText         string             `json:"honour_text"`
-	DefaultHonourText  string             `json:"default_honour_text"`
-	HoldReveal         bool               `json:"hold_reveal"`
-	EditorialMD        string             `json:"editorial_md"`
-	EditorialPublished bool               `json:"editorial_published"`
-	Paused             bool               `json:"paused"`
-	ExtendedMinutes    int                `json:"extended_minutes"`
-	RevealedAt         *int64             `json:"revealed_at"`
-	Archived           bool               `json:"archived"`
-	State              string             `json:"state"`
-	Problems           []adminProblemJSON `json:"problems"`
-	Extensions         []Extension        `json:"extensions,omitempty"`
-	CreatedAt          int64              `json:"created_at"`
-	UpdatedAt          int64              `json:"updated_at"`
-	ServerNow          int64              `json:"server_now"`
+	ID                 int64    `json:"id"`
+	Slug               string   `json:"slug"`
+	Title              string   `json:"title"`
+	DescriptionMD      string   `json:"description_md"`
+	StartsAt           int64    `json:"starts_at"`
+	EndsAt             int64    `json:"ends_at"`
+	CloseAt            int64    `json:"close_at"`
+	FreezeMinutes      int      `json:"freeze_minutes"`
+	Published          bool     `json:"published"`
+	PracticeAfterEnd   bool     `json:"practice_after_end"`
+	Audience           string   `json:"audience"`
+	MinGapS            int      `json:"min_gap_s"`
+	MaxPerProblem      int      `json:"max_per_problem"`
+	Languages          []string `json:"languages"`
+	HonourText         string   `json:"honour_text"`
+	DefaultHonourText  string   `json:"default_honour_text"`
+	HoldReveal         bool     `json:"hold_reveal"`
+	EditorialMD        string   `json:"editorial_md"`
+	EditorialPublished bool     `json:"editorial_published"`
+	Paused             bool     `json:"paused"`
+	ExtendedMinutes    int      `json:"extended_minutes"`
+	RevealedAt         *int64   `json:"revealed_at"`
+	Archived           bool     `json:"archived"`
+	// ArchivedSlug is the original slug of an archived contest; "" otherwise.
+	ArchivedSlug string             `json:"archived_slug"`
+	State        string             `json:"state"`
+	Problems     []adminProblemJSON `json:"problems"`
+	Extensions   []Extension        `json:"extensions,omitempty"`
+	CreatedAt    int64              `json:"created_at"`
+	UpdatedAt    int64              `json:"updated_at"`
+	ServerNow    int64              `json:"server_now"`
 	// Queue health for the console's attention strip.
 	Queue            *queueJSON `json:"queue,omitempty"`
 	JudgeLastClaimAt *int64     `json:"judge_last_claim_at"`
@@ -96,7 +98,7 @@ func (d *Handlers) adminContestBase(c *Contest) *adminContestJSON {
 		PracticeAfterEnd: c.PracticeAfterEnd, Audience: c.Audience, MinGapS: int(c.MinGap / time.Second),
 		MaxPerProblem: c.MaxPerProblem, Languages: c.Languages, HonourText: c.HonourText, DefaultHonourText: DefaultHonour,
 		HoldReveal: c.HoldReveal, ExamOptions: c.Exam, EditorialMD: c.Editorial, EditorialPublished: c.EditorialPublished, Paused: c.Paused,
-		ExtendedMinutes: int(c.Schedule.Extended / time.Minute), RevealedAt: httpx.Millis(c.RevealedAt), Archived: c.Archived,
+		ExtendedMinutes: int(c.Schedule.Extended / time.Minute), RevealedAt: httpx.Millis(c.RevealedAt), Archived: c.Archived, ArchivedSlug: c.ArchivedSlug,
 		State: c.Schedule.State(now, c.PracticeAfterEnd), Problems: []adminProblemJSON{},
 		CreatedAt: c.CreatedAt.UnixMilli(), UpdatedAt: c.UpdatedAt.UnixMilli(), ServerNow: now.UnixMilli()}
 	for _, p := range c.Problems {
@@ -291,6 +293,27 @@ func (d *Handlers) ArchiveContest(w http.ResponseWriter, r *http.Request) {
 	}
 	d.Log.Info("contest archived", "by", auth.UserFrom(r.Context()).ID, "contest_id", c.ID)
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// RestoreContest brings an archived contest back. The body's slug is optional:
+// empty gives the original slug back, or answers 409 with a free one.
+func (d *Handlers) RestoreContest(w http.ResponseWriter, r *http.Request) {
+	c, ok := d.OrganisedContest(w, r)
+	if !ok {
+		return
+	}
+	var req struct {
+		Slug string `json:"slug"`
+	}
+	if r.ContentLength != 0 && !httpx.DecodeJSON(w, r, &req) {
+		return
+	}
+	if _, err := d.Contests.Restore(r.Context(), c.ID, strings.TrimSpace(req.Slug), actor(r)); err != nil {
+		d.contestError(w, r, err)
+		return
+	}
+	d.Log.Info("contest restored", "by", auth.UserFrom(r.Context()).ID, "contest_id", c.ID)
+	d.writeAdminContest(w, r, c.ID, http.StatusOK)
 }
 
 func (d *Handlers) CloneContest(w http.ResponseWriter, r *http.Request) {

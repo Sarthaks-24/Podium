@@ -2,6 +2,7 @@
   "contests": [
     {
       "archived": false,
+      "archived_slug": "",
       "audience": "everyone",
       "block_copy": false,
       "block_paste": false,

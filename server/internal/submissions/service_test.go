@@ -501,3 +501,32 @@ func TestPinMovedAfterTheReadyCheck(t *testing.T) {
 		t.Errorf("rejudge after the save: %v, want ErrPinMoved", err)
 	}
 }
+
+// Archiving frees the problem's slug but not its pin: a contest that pins
+// the problem keeps taking runs and submissions on the pinned revision.
+func TestArchivedProblemStillServesItsContest(t *testing.T) {
+	r := newRig(t)
+	ctx := context.Background()
+	p := r.importPack(t, nil)
+	var rev int64
+	if err := r.svc.DB.QueryRow("SELECT id FROM problem_revisions WHERE problem_id = ? AND content_hash = ?", p.ID, p.ContentHash).Scan(&rev); err != nil {
+		t.Fatalf("pinned revision: %v", err)
+	}
+	if _, err := r.svc.DB.Exec(`INSERT INTO contests (id, slug, title, starts_at, ends_at, created_at, updated_at) VALUES (1, 'c', 'C', 0, 1, 0, 0)`); err != nil {
+		t.Fatal(err)
+	}
+	if err := r.bank.Archive(ctx, p.ID); err != nil {
+		t.Fatal(err)
+	}
+	sc := Scope{ContestID: 1, RevisionID: rev}
+	if _, _, err := r.svc.Submit(ctx, SubmitRequest{ProblemID: p.ID, UserID: 2, Scope: sc, Language: "cpp17", Source: "int main(){}", ClientKey: "k1"}); err != nil {
+		t.Errorf("submit to an archived problem's pinned revision: %v", err)
+	}
+	if _, err := r.svc.Run(ctx, RunRequest{ProblemID: p.ID, UserID: 2, Scope: sc, Language: "cpp17", Source: "int main(){}"}); err != nil {
+		t.Errorf("run on an archived problem's pinned revision: %v", err)
+	}
+	got, err := r.bank.RevisionByID(ctx, rev)
+	if err != nil || got.Statement != p.Statement {
+		t.Errorf("pinned statement after archiving: %v", err)
+	}
+}

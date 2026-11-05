@@ -472,7 +472,7 @@ func WritePack(w io.Writer, p *Problem, read func(sha string) ([]byte, error)) e
 	}
 	meta := packMeta{
 		Format: 1,
-		Title:  p.Title, Slug: p.Slug, TimeLimitMS: p.TimeLimitMS, MemoryLimitMB: p.MemoryLimitMB,
+		Title:  p.Title, Slug: p.PackSlug(), TimeLimitMS: p.TimeLimitMS, MemoryLimitMB: p.MemoryLimitMB,
 		Checker: p.Checker, Tags: p.Tags, Difficulty: p.Difficulty, Samples: p.Samples,
 		Reference: "solution" + ExtByLanguage[p.Reference.Language],
 	}
