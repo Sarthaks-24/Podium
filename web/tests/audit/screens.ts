@@ -161,7 +161,7 @@ export const AUDIT_SCREENS: AuditScreen[] = [
     steps: async (p) => {
       await importConflict(p);
       await conflictDialog(p).getByRole('radio', { name: /Archive the existing problem/ }).check();
-      await expect(conflictDialog(p).getByText('is in Week 6 practice', { exact: false })).toBeVisible();
+      await expect(conflictDialog(p).getByText('Week 6 practice', { exact: true })).toBeVisible();
     },
   },
   {
