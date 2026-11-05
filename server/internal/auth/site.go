@@ -111,6 +111,11 @@ func ValidContactEmail(s string) bool {
 	if s == "" {
 		return true
 	}
+	// ?, & and % are legal in a local part but would add headers or
+	// escapes to the mailto: link the pages build from it.
+	if strings.ContainsAny(s, "?&%") {
+		return false
+	}
 	a, err := mail.ParseAddress(s)
 	return err == nil && a.Address == s && len(s) <= 254
 }
