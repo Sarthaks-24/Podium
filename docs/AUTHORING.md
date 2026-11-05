@@ -50,7 +50,7 @@ Source files must sit at the top of the pack, with a name of up to 40 letters, d
 
 ### problem.yaml
 
-**Pack format.** Podium reads formats 1, 2 and 3. Format 2 added `open`, the open tests; v3 has none (V3-5) and imports them as samples. Format 3 (v4) added `starters`. Exports write format 3 for a problem with starter code and format 1 otherwise, so an older Podium still reads the rest; a pack without a `format` line is format 1.
+**Pack format.** Podium reads formats 1, 2 and 3. Format 2 added `open`, the open tests; v1.2 has none (V3-5) and imports them as samples. Format 3 (v1.3) added `starters`. Exports write format 3 for a problem with starter code and format 1 otherwise, so an older Podium still reads the rest; a pack without a `format` line is format 1.
 
 Parsed strictly: an unknown key is an error, so a misspelt key never silently falls back to a default. Comments are allowed.
 
@@ -132,7 +132,7 @@ Every save that changes a problem (its statement, title, starter code, tests, li
 
 - A contest pins one revision per problem when the problem is added. Students are served that revision's title, statement, starter code and samples, never the editable problem, so an edit changes nothing in a contest until an organiser chooses "Update students now" on the contest's Live tab, where a banner names the edited problem.
 - The update is accepted when the revision is the validated content of the problem. When only the statement or title changed, no rejudge is needed, and Live offers a prefilled announcement to post, which is how students learn of the change. When the tests, limits or checker changed, validate first, update, then rejudge.
-- Revisions are kept as the record of what students were served and judged against; there is no list of them in the editor. v3 removed the revision lists, statement diffs and the log of what each student was served (V3-4): each served a case no single-college contest has met yet.
+- Revisions are kept as the record of what students were served and judged against; there is no list of them in the editor. v1.2 removed the revision lists, statement diffs and the log of what each student was served (V3-4): each served a case no single-college contest has met yet.
 
 ## Checkers
 
@@ -381,7 +381,7 @@ Validation proves the tests and the reference agree with each other. It cannot p
 3. **Brute force cross-checked.** Validation passes with a brute force, and the report shows at least half the tests cross-checked. Look at which tests were not, and add small tests if the large ones carry subtasks of their own.
 4. **AI problems.** For every problem whose origin is `ai`, write a solution of your own (a brute force is enough), save it, and validate: it must pass every test. Using an AI problem as written, with a reason, is the exception, and the reason is in the audit log.
 5. **Freeze.** While the contest runs, import no packs, run no AI wizard and rejudge nothing unless a test is wrong. A rejudge is recorded in the audit log with who asked for it.
-6. **Practice shows hidden tests.** In practice after the end, a failing submission shows the first failing hidden test (D115), unless another contest that pins the problem has not closed yet, drafts and upcoming contests included (V3-6). Anyone who keeps practising can read the hidden tests one by one, so a problem used that way is public: do not reuse it in another contest without new tests. Problems and the problem picker in Setup mark such a problem "Hidden tests shown in practice", and publishing a contest that holds one names it in the confirm. A problem whose hidden tests a published contest has shown stays in that contest (it cannot be removed), so the mark cannot be lost before an exam. Every contest counts: v3 has no ungraded contests.
+6. **Practice shows hidden tests.** In practice after the end, a failing submission shows the first failing hidden test (D115), unless another contest that pins the problem has not closed yet, drafts and upcoming contests included (V3-6). Anyone who keeps practising can read the hidden tests one by one, so a problem used that way is public: do not reuse it in another contest without new tests. Problems and the problem picker in Setup mark such a problem "Hidden tests shown in practice", and publishing a contest that holds one names it in the confirm. A problem whose hidden tests a published contest has shown stays in that contest (it cannot be removed), so the mark cannot be lost before an exam. Every contest counts: v1.2 has no ungraded contests.
 
 ## Trying a problem as a student
 

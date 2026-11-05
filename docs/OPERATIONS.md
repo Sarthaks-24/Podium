@@ -320,7 +320,7 @@ Read by `podium-alert@.service` and `podium-check.service`; template `deploy/ale
 
 ### Judge token
 
-The installer sets it (v4): when `sudo ./install.sh dirs` creates `server.env` and `judge.env`, it writes one random token (32 bytes as hex) into both, mode 600 and owned by root, and never prints it. A re-run keeps the token already in either file, so the judge keeps working.
+The installer sets it (v1.3): when `sudo ./install.sh dirs` creates `server.env` and `judge.env`, it writes one random token (32 bytes as hex) into both, mode 600 and owned by root, and never prints it. A re-run keeps the token already in either file, so the judge keeps working.
 
 To rotate it:
 
@@ -570,13 +570,13 @@ How long the server keeps each kind of data. The periods are constants in `serve
 | `run_payloads` | Custom input and program output of a Run | 30 days | retention pass every 12 hours; the run's verdict row stays |
 | `backups` | Backups | 14 days | `podium-backup` (`PODIUM_BACKUP_KEEP_DAYS`) and the bucket's lifecycle rule |
 
-Everything else (submissions, scores, code, problems and their versions, audit logs, integrity decisions with their reasons) is kept until an owner erases a person with `forget-user` or deletes the database. v3 has no multi-year deletion; add one when a college policy asks for it.
+Everything else (submissions, scores, code, problems and their versions, audit logs, integrity decisions with their reasons) is kept until an owner erases a person with `forget-user` or deletes the database. v1.2 has no multi-year deletion; add one when a college policy asks for it.
 
 The retention pass starts a minute after the server and then runs every 12 hours, in batches of 2,000 rows per transaction, and logs one line (`data past retention removed`). A run job's payload (the code and custom input it named) becomes `{}` and its output excerpts are emptied; the next blob collection then removes the custom input files. A run older than 30 days shows its verdicts and no output.
 
 ## Site settings
 
-The organisation details the sign-in page, the footer and the privacy page show: name, contact email, phone and privacy contact. An owner enters them on the Organisation tab of the Dashboard (`PUT /api/admin/site-settings`); they are stored in the database's `settings` table, not in an environment variable, and every change writes a `settings_changed` row to the site audit. Until they are entered the pages show nothing for them: the footer and the sign-in page fall back to `PODIUM_OWNER_EMAIL` as the contact address. Enter a role address (for example `podium@college.edu`) as the contact email so the owner's own address stops appearing on the sign-in page. That address is how people reach the organisers: v3 has no contact form (V3-4).
+The organisation details the sign-in page, the footer and the privacy page show: name, contact email, phone and privacy contact. An owner enters them on the Organisation tab of the Dashboard (`PUT /api/admin/site-settings`); they are stored in the database's `settings` table, not in an environment variable, and every change writes a `settings_changed` row to the site audit. Until they are entered the pages show nothing for them: the footer and the sign-in page fall back to `PODIUM_OWNER_EMAIL` as the contact address. Enter a role address (for example `podium@college.edu`) as the contact email so the owner's own address stops appearing on the sign-in page. That address is how people reach the organisers: v1.2 has no contact form (V3-4).
 
 What a visitor can read without signing in is listed in `docs/API.md` (`GET /api/auth/config`): the contact address, run mode, these settings and the retention periods. Nothing about contests.
 
@@ -600,7 +600,7 @@ Not touched, by design, and listed by the command: submissions, scores and code 
 sudo -u podium podium-server check -db /var/lib/podium/db/podium.db -tests /var/lib/podium/tests
 ```
 
-It opens the database read-only and prints: SQLite's `integrity_check` and `foreign_key_check`, the migrations recorded against those this binary knows (a database written by a newer server is reported, not touched), row counts, and whether every test file and program source recorded in the database is on disk with the recorded size. `-hash` re-reads every file and compares its SHA-256 with its name. It also checks that every problem's working copy is recorded by its newest revision and every contest pin names a revision (`revisions: ok`); anything else means a write skipped its revision and is a bug to report. Exit status 0 means sound, 1 means something is damaged or missing (listed), 2 means the check could not run. The nightly backup and `podium-restore` run it on every copy they make. A database from before v3 makes the server stop with "this database predates v3": move it away or restore a v3 backup.
+It opens the database read-only and prints: SQLite's `integrity_check` and `foreign_key_check`, the migrations recorded against those this binary knows (a database written by a newer server is reported, not touched), row counts, and whether every test file and program source recorded in the database is on disk with the recorded size. `-hash` re-reads every file and compares its SHA-256 with its name. It also checks that every problem's working copy is recorded by its newest revision and every contest pin names a revision (`revisions: ok`); anything else means a write skipped its revision and is a bug to report. Exit status 0 means sound, 1 means something is damaged or missing (listed), 2 means the check could not run. The nightly backup and `podium-restore` run it on every copy they make. A database from before v1.2 makes the server stop with "this database predates v3" (v3 is the old name of v1.2): move it away or restore a v1.2 backup.
 
 ## Rehearsing a migration on a copy
 
@@ -632,11 +632,11 @@ sudo -u podium podium-server runs-report -db /var/lib/podium/db/podium.db
 
 ## When to deploy
 
-A deploy restarts the server. Do not deploy in the 48 hours before a published contest, while one runs, or while its submissions are still being judged; `docs/RUNBOOK.md` has the rule. Nothing enforces it: v3 removed the guard that did, and its override, because each served a case no single-college contest has met yet (V3-4).
+A deploy restarts the server. Do not deploy in the 48 hours before a published contest, while one runs, or while its submissions are still being judged; `docs/RUNBOOK.md` has the rule. Nothing enforces it: v1.2 removed the guard that did, and its override, because each served a case no single-college contest has met yet (V3-4).
 
 ## Upgrade
 
-The first release, `v2.0.0` with the codename Billota (V4-27; it carries v3 and v4), installs on a fresh VM (V3-12): nothing earlier was ever installed, and a database from before v3 is refused at start-up. Upgrades apply from the release after it.
+The first release, `v2.0.0` with the codename Billota (V4-27; it carries v1.2 and v1.3), installs on a fresh VM (V3-12): nothing earlier was ever installed, and a database from before v1.2 is refused at start-up. Upgrades apply from the release after it.
 
 ```sh
 sha256sum -c podium-<new>.tar.gz.sha256      # the checksum beside the tarball, from the GitHub release

@@ -4,7 +4,20 @@ A self-hosted platform for weekly programming contests at a college. Students si
 
 Everything runs on one small Linux VM (Ubuntu 24.04, amd64 or arm64, 2 GB RAM is the design target) and is built to serve 700+ students in one contest.
 
-Status (2026-11-04): v3, the v4 changes and v4.01 (four roles, sign-in by a list, the Dashboard, editor upgrades, the profile page, the public landing page) are built on `main` and CI passes. Nothing is tagged or deployed yet. The first release is `v2.0.0` Billota (V4-27), going onto a Google Cloud VM with its own domain (V4-26, see `docs/OPERATIONS.md`, "Google Cloud"); the install there and the VM drills come next. `CHANGELOG.md` lists what changed, and `docs/` describes the code on `main`.
+Status (2026-11-05): the first release, `v2.0.0` Billota (V4-27), is tagged and runs on a Google Cloud VM with its own domain (V4-26, see `docs/OPERATIONS.md`, "Google Cloud"). `v2.0.1` (archive and restore, import conflicts, contacts, resizable panes, themes) is being built on `main`. `CHANGELOG.md` lists what changed, and `docs/` describes the code on `main`.
+
+**Version names.** Releases are numbered from `v2.0.0`. The builds before it were never released, and the docs give them `v1.x` names:
+
+| Name in the docs | Earlier name | What it was |
+|---|---|---|
+| v1.0 | v1 | Milestones M0 to M7, the first build |
+| v1.1 | v2 | Phases P0 to P6 |
+| v1.2 | v3 | The refactor and cuts, stages A to D |
+| v1.3 | v4 | Four roles, sign-in by a list, the Dashboard, the profile, the landing page |
+| v1.4 | v4.01 | Contest updates and judge recovery |
+| v2.0.0 | | First release, Billota, 2026-11-04 |
+
+Decision ids keep their old prefixes (`V3-12`, `V4-27`), and so do migration file names (`0001_v3.sql`): code and records point at them.
 
 ## How it fits together
 
