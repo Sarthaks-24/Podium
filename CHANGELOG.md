@@ -4,14 +4,14 @@ Dated entries per release. Unreleased work is listed at the top.
 
 Releases are numbered from `v2.0.0`. The builds before it were never released; these entries call them v1.0 (first called v1), v1.1 (v2), v1.2 (v3), v1.3 (v4) and v1.4 (v4.01). Decision ids (`V3-n`, `V4-n`) and migration file names keep the old names.
 
-## Unreleased
+## v2.0.1 Billota (2026-11-05)
+
+Upgrades v2.0.0 with migrations 0010 to 0012.
+
+### v2.0.1 release fixes (2026-11-05)
 
 - The theme options on the profile page fit a 320 px screen: their sections no longer keep the width of the editor colour sample, which scrolls inside its own box instead (the page scrolled sideways by 1 px on Linux).
 - `dialog-focus.spec.ts` waits for the Restore slug step by its exact name, so a slow runner no longer presses Escape while the first dialog's request is still running (a test fix; Escape on the slug step always worked).
-
-## v2.0.1 Billota (2026-11-05)
-
-Installed on podium-sst.tech on 2026-11-05 from commit 5f8e86d, upgrading v2.0.0 with migrations 0010 to 0012.
 
 ### v2.0.1 stage E: themes (2026-11-05)
 
