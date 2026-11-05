@@ -185,6 +185,7 @@
   }
 
   .section {
+    min-width: 0; /* a fieldset defaults to min-content; the code sample would push it past 320 px */
     margin: 0;
     padding: 0;
     border: 0;

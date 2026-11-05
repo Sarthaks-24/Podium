@@ -27,7 +27,7 @@ test('Escape on the Restore slug step returns focus to the row Restore button', 
   const restore = page.getByRole('button', { name: 'Restore Old sorting' });
   await restore.click();
   await page.getByRole('dialog', { name: 'Restore Old sorting?' }).getByRole('button', { name: 'Restore' }).click();
-  await expect(page.getByRole('dialog', { name: 'Restore Old sorting' })).toBeVisible();
+  await expect(page.getByRole('dialog', { name: 'Restore Old sorting', exact: true })).toBeVisible();
   await page.keyboard.press('Escape');
   await expect(dialogs(page)).toHaveCount(0);
   await expect(restore).toBeFocused();
