@@ -1,16 +1,17 @@
 <!--
   EditorSettings: the "Settings" button in the workspace toolbar and the
-  small panel it opens: font size, tab size (2 or 4), word wrap and "Tab moves
-  focus". A disclosure, not a menu: the panel holds form controls. Escape
+  small panel it opens: font size, tab size (2 or 4), line spacing, word wrap,
+  a blinking cursor and "Tab moves focus". A disclosure, not a menu: the panel holds form controls. Escape
   closes it and returns focus to the button, as do a click outside and
   tabbing out (the same behaviour as AccountMenu). Reset is not here; it
   sits beside the language in the toolbar. The fields are EditorSettingsFields,
   shared with the profile page. Props: `fontSize`, `sizes` (the
-  choices, in px), `tabSize`, `wrap`, `tabMovesFocus`, `onchange`,
+  choices, in px), `tabSize`, `lineHeight`, `wrap`, `cursorBlink`, `tabMovesFocus`, `onchange`,
   called with the changed setting, and `onresetlayout` ("Reset layout" puts
   every pane back to its default size).
 -->
 <script lang="ts">
+  import type { LineHeight } from '../lib/drafts';
   import Icon from './Icon.svelte';
   import EditorSettingsFields from './EditorSettingsFields.svelte';
   import { dismissable } from '../lib/dismissable';
@@ -20,6 +21,8 @@
     tabSize: 2 | 4;
     wrap: boolean;
     tabMovesFocus: boolean;
+    lineHeight: LineHeight;
+    cursorBlink: boolean;
   }
 
   interface Props extends Settings {
@@ -28,7 +31,7 @@
     onresetlayout: () => void;
   }
 
-  let { fontSize, sizes, tabSize, wrap, tabMovesFocus, onchange, onresetlayout }: Props = $props();
+  let { fontSize, sizes, tabSize, wrap, tabMovesFocus, lineHeight, cursorBlink, onchange, onresetlayout }: Props = $props();
 
   let open = $state(false);
   let button: HTMLButtonElement | undefined = $state();
@@ -46,7 +49,7 @@
     Settings<Icon name="chevron-down" />
   </button>
   <div id="ws-editor-settings" class="panel" hidden={!open}>
-    <EditorSettingsFields {fontSize} {sizes} {tabSize} {wrap} {tabMovesFocus} idPrefix="ws" {onchange} />
+    <EditorSettingsFields {fontSize} {sizes} {tabSize} {wrap} {tabMovesFocus} {lineHeight} {cursorBlink} idPrefix="ws" {onchange} />
     <button type="button" class="btn btn-quiet btn-compact reset" onclick={onresetlayout}>Reset layout</button>
   </div>
 </div>

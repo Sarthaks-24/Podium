@@ -87,7 +87,7 @@ const theme = EditorView.theme(
       fontSize: 'var(--editor-font-size-used, var(--editor-font-size, var(--fs-0)))',
     },
     '&.cm-focused': { outline: 'none' },
-    '.cm-scroller': { fontFamily: 'var(--font-mono)', lineHeight: '1.55', overflow: 'auto' },
+    '.cm-scroller': { fontFamily: 'var(--font-mono)', lineHeight: 'var(--editor-line-height, 1.6)', overflow: 'auto' },
     '.cm-content': { caretColor: 'var(--well-ink)', padding: 'var(--space-2) 0' },
     '.cm-line': { padding: '0 var(--space-3) 0 var(--space-2)' },
     '.cm-cursor, .cm-dropCursor': { borderLeftColor: 'var(--well-ink)', borderLeftWidth: 'calc(2 * var(--rule))' },

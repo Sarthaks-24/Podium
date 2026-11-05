@@ -77,7 +77,7 @@ const adminClarifications: Widened<{ clarifications: Clarification[] }> = adminC
 const adminAnnouncements: Widened<{ announcements: Announcement[] }> = adminAnnouncementsJson;
 const adminStats: Widened<ContestStats> = adminStatsJson;
 
-const USER: Keys<User> = { id: 'required', email: 'required', name: 'required', avatar_url: 'required', role: 'required', theme: 'required', verdicts: 'required' };
+const USER: Keys<User> = { id: 'required', email: 'required', name: 'required', avatar_url: 'required', role: 'required', theme: 'required', verdicts: 'required', editor_colours: 'required', theme_custom: 'required' };
 const WINDOW: Keys<StudentWindow> = { started_at: 'required', ends_at: 'required' };
 const SUMMARY: Keys<ContestSummary> = {
   slug: 'required',

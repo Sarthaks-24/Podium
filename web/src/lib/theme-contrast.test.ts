@@ -8,7 +8,8 @@ import tokensCss from '../styles/tokens.css?raw';
 import { COLOUR_TOKENS, contrast, distance, mixSrgb, parseTokenRules, resolveFamily, resolveTheme, type Vision } from './colour';
 import { d41Failures, over } from './theme-rules';
 import { EDITOR_SCHEMES } from './editor-colours';
-import { THEMES } from './theme';
+import { THEMES, derive } from './theme';
+import { PRESETS } from './theme-presets';
 
 const rules = parseTokenRules(tokensCss);
 const HIGH_CONTRAST = new Set(['hc-light', 'hc-dark']);
@@ -335,5 +336,49 @@ describe('editor colour schemes', () => {
 
   it('is checked by the same rules for the old per-theme code tests', () => {
     expect(plainRoot['--code-focus']).toBe('var(--code-keyword)');
+  });
+});
+
+// Presets and custom themes: the interface tokens come from the engine and
+// everything else (verdicts, color-scheme) from the family rules in
+// tokens.css, exactly as the browser composes them from inline properties plus
+// data-family and data-contrast. A dark custom theme must get the dark
+// verdicts (E4b): the id-keyed rules match no preset or custom id.
+describe('presets and custom themes through the family rules', () => {
+  const inputs = [
+    ...PRESETS.map((p) => [p.id, p.input] as const),
+    ['custom dark', { background: '#1c2430', accent: '#e07a5f', contrast: 'standard' }] as const,
+    ['custom dark high contrast', { background: '#0a0a14', accent: '#44ff88', contrast: 'high' }] as const,
+    ['custom light', { background: '#f4efe6', accent: '#2f6f4f', contrast: 'standard' }] as const,
+    ['custom light high contrast', { background: '#ffffff', accent: '#0000ff', contrast: 'high' }] as const,
+  ];
+  for (const [name, input] of inputs) {
+    const d = derive(input);
+    const high = d.contrast === 'high';
+    for (const signal of [false, true]) {
+      it(`${name}${signal ? ' with colour-blind safe verdicts' : ''} meets the contrast rules`, () => {
+        const family = resolveFamily(rules, d.family, high, signal);
+        expect(family['color-scheme']).toBe(d.family);
+        expect(d41Failures({ ...family, ...d.vars }, { high, signal })).toEqual([]);
+      });
+    }
+  }
+
+  it('gives a dark family the dark verdicts and a light family the light ones', () => {
+    const dark = resolveFamily(rules, 'dark', false, false);
+    const light = resolveFamily(rules, 'light', false, false);
+    expect(dark['--ok']).toBe(resolveTheme(rules, 'dark', false)['--ok']);
+    expect(light['--ok']).toBe(resolveTheme(rules, 'light', false)['--ok']);
+    expect(dark['--ok']).not.toBe(light['--ok']);
+    expect(dark['color-scheme']).toBe('dark');
+  });
+
+  it('keeps the six presets apart from each other', () => {
+    const papers = PRESETS.map((p) => derive(p.input).vars['--paper']);
+    expect(new Set(papers).size).toBe(PRESETS.length);
+  });
+
+  it('leaves no preset needing the engine fallback', () => {
+    for (const p of PRESETS) expect(derive(p.input).adjustments.some((a) => a.startsWith('Colours replaced')), p.id).toBe(false);
   });
 });

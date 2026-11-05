@@ -11,6 +11,7 @@
 -->
 <script lang="ts">
   import { onMount } from 'svelte';
+  import { DEFAULT_LINE_HEIGHT, lineHeightValue, type LineHeight } from '../lib/drafts';
   import type { EditorHandle, EditorLanguage, EditorMark } from '../lib/editor';
 
   const isMac = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
@@ -27,6 +28,8 @@
     tabMovesFocus: boolean;
     tabSize: 2 | 4;
     wrap: boolean;
+    lineHeight?: LineHeight;
+    cursorBlink?: boolean;
     readOnly?: boolean;
     blockPaste?: boolean;
     onpasteblocked?: () => void;
@@ -49,6 +52,8 @@
     tabMovesFocus,
     tabSize,
     wrap,
+    lineHeight = DEFAULT_LINE_HEIGHT,
+    cursorBlink = true,
     readOnly = false,
     blockPaste = false,
     onpasteblocked,
@@ -156,7 +161,7 @@
   }
 </script>
 
-<div class="well" style:--editor-font-size="{fontSize}px">
+<div class="well" style:--editor-font-size="{fontSize}px" style:--editor-line-height={lineHeightValue(lineHeight)} data-cursor-blink={cursorBlink ? 'on' : 'off'}>
   <div class="host" bind:this={host}></div>
   <p class="visually-hidden" id={hintId}>
     {tabMovesFocus ? 'Tab leaves the editor.' : 'Tab indents. Press Escape, then Tab, to leave the editor.'}
@@ -187,6 +192,11 @@
     min-width: 0;
     height: 100%;
     overflow: hidden;
+  }
+
+  /* A person who turns blinking off gets a steady cursor (v2.0.1 E6). */
+  .well[data-cursor-blink='off'] :global(.cm-cursorLayer) {
+    animation: none !important;
   }
 
   /* The ring shows when the editor's text area has keyboard focus. */

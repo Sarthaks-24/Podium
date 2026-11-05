@@ -15,6 +15,7 @@ import {
   readPreferences,
   savePreferences,
   syncThemeColor,
+  type AccountPreferences,
   type Preferences,
 } from './theme';
 
@@ -41,8 +42,8 @@ export function choosePreferences(p: Preferences): void {
 }
 
 /** Applies the account's stored values once the session has loaded. */
-export function adoptAccountPreferences(theme: string | undefined, verdicts: string | undefined): void {
-  apply(fromAccount(theme, verdicts));
+export function adoptAccountPreferences(account: AccountPreferences): void {
+  apply(fromAccount(account));
 }
 
 /**

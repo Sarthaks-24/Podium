@@ -36,6 +36,10 @@ export interface User {
   /** Theme id, or "" to follow the system (lib/theme.ts). */
   theme: string;
   verdicts: string;
+  /** An editor colour scheme id (lib/editor-colours.ts). */
+  editor_colours: string;
+  /** The custom theme's inputs, or null when none is saved. */
+  theme_custom: { background: string; accent: string; contrast: string } | null;
 }
 
 export type SessionStatus = 'loading' | 'signed-out' | 'signed-in';
@@ -70,7 +74,7 @@ export async function loadSession(): Promise<ApiError | null> {
     noteSignedInUser(user.id);
     session.user = user;
     session.status = 'signed-in';
-    adoptAccountPreferences(user.theme, user.verdicts);
+    adoptAccountPreferences(user);
     return null;
   } catch (err) {
     session.user = undefined;

@@ -167,6 +167,8 @@
       tabSize={editor.tabSize}
       wrap={editor.wrap}
       tabMovesFocus={editor.tabMovesFocus}
+      lineHeight={editor.lineHeight}
+      cursorBlink={editor.cursorBlink}
       idPrefix="me"
       onchange={changeEditor}
     />
