@@ -15,10 +15,10 @@ for (const width of [375, 1440]) {
     await page.goto('/contests/week-6/problems/A');
     if (width < 1024) {
       await page.getByRole('button', { name: 'Menu' }).click();
-      const link = page.getByRole('link', { name: `Email the organisers at ${CONTACT}` });
+      const link = page.getByRole('link', { name: `Email organisers, ${CONTACT}` });
       await expect(link).toHaveAttribute('href', `mailto:${CONTACT}`);
     } else {
-      const link = page.getByRole('link', { name: `Email the organisers at ${CONTACT}` });
+      const link = page.getByRole('link', { name: `Email organisers, ${CONTACT}` });
       await expect(link).toHaveText('Email organisers');
       await expect(link).toHaveAttribute('href', `mailto:${CONTACT}`);
     }

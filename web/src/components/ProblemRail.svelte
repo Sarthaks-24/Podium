@@ -118,7 +118,7 @@
         <a class="btn btn-quiet btn-compact" href="{base}/standings?from={encodeURIComponent(current)}">Standings</a>
       {/if}
       {#if onhelp}<button type="button" class="btn btn-quiet btn-compact" aria-keyshortcuts="?" onclick={onhelp}>Help</button>{/if}
-      {#if contact}<a class="btn btn-quiet btn-compact" href="mailto:{contact}" title={contact} aria-label="Email the organisers at {contact}">Email organisers</a>{/if}
+      {#if contact}<a class="btn btn-quiet btn-compact" href="mailto:{contact}" title={contact} aria-label="Email organisers, {contact}">Email organisers</a>{/if}
     </div>
   </div>
 {:else if layout === 'strip'}
@@ -139,7 +139,7 @@
           </button>
         </li>
         {#if onhelp}<li><button type="button" class="item" onclick={() => pick(onhelp)}>Help</button></li>{/if}
-        {#if contact}<li><a class="item item-stack" href="mailto:{contact}" aria-label="Email the organisers at {contact}">Email organisers<span class="item-sub">{contact}</span></a></li>{/if}
+        {#if contact}<li><a class="item item-stack" href="mailto:{contact}" aria-label="Email organisers, {contact}">Email organisers<span class="item-sub">{contact}</span></a></li>{/if}
         <li>{@render leave('item')}</li>
       </ul>
     </div>
