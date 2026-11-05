@@ -53,6 +53,8 @@
 
   // The page loads nothing of its own: it is refused for students, or a request says so.
   let forbidden = $state(!organises(session.user?.role));
+  /** Admins and owners are told when the site uses a custom wizard prompt. */
+  const seesPromptNote = $derived(session.user?.role === 'admin' || session.user?.role === 'owner');
   let keyStatus = $state<KeyStatus | null>(null);
   let keyError = $state('');
   /** The key form shown on request, when a key and a model are already set. */
@@ -328,6 +330,9 @@
         <span class="muted">Checking the key</span>
       {/if}
     </p>
+    {#if keyStatus?.custom_prompt && seesPromptNote}
+      <p class="muted custom-prompt">This site uses a custom prompt.</p>
+    {/if}
 
     <p class="lead">
       The model writes a draft: statement, subtasks, reference and brute force solutions, a validator and a test generator. Nothing reaches

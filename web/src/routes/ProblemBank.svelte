@@ -17,6 +17,7 @@
   import PageHeader from '../components/PageHeader.svelte';
   import StaleNote from '../components/StaleNote.svelte';
   import RestoreFlow from '../components/RestoreFlow.svelte';
+  import PackPromptPanel from '../components/PackPromptPanel.svelte';
   import Badge from '../components/Badge.svelte';
   import MonoDigits from '../components/MonoDigits.svelte';
   import { onMount, tick, untrack } from 'svelte';
@@ -297,6 +298,8 @@
       </label>
     </div>
   </div>
+
+  <PackPromptPanel />
 
   {#if importing}
     <p class="status muted" role="status">Importing pack</p>
