@@ -206,6 +206,7 @@ Listed in the order the server reads them. The testing, dev and production colum
 | `GOOGLE_CLIENT_SECRET` | not read | required | required | | That client's secret. Secret. |
 | `PODIUM_JUDGE_TOKEN` | optional | optional | required | testing and dev: the public testing token | Shared token for the judge API, at least 32 characters (`openssl rand -hex 32`). The same value goes in `judge.env`. Production refuses the testing token. Secret. |
 | `PODIUM_LOG_LEVEL` | optional | optional | optional | `info` | `debug`, `info`, `warn` or `error`. |
+| `PODIUM_AI_PROMPT_FILE` | optional | optional | optional | built-in rules | Path to a UTF-8 text file, at most 16 KB, that replaces the AI wizard's authoring rules (see "Custom wizard prompt"). A missing, empty, oversized or non-UTF-8 file stops the server at start-up with a message naming the variable and the path. |
 
 The AI wizard's provider key is deliberately not a variable: an admin pastes it in the web app and the server holds it in memory only (see "AI wizard keys").
 
@@ -462,6 +463,18 @@ A session can hold one key per provider; the last one saved is the one the wizar
 - The three provider clients use the standard library only. Nothing uses memory while idle.
 
 Testing mode (`PODIUM_MODE=testing`, `make dev-test`) also offers a "Test provider (canned problems)": no key, no network, two canned problems whose programs really work on the judge (one about a maximum subarray when the brief or text mentions "subarray" or "stretch", a pair sums problem otherwise). Use it to try the whole pipeline (draft, inputs, outputs, validation). It does not exist in dev or production, and only builds with the tag `fakeai` have it (`make dev-test` builds that way; the release binary does not).
+
+## Custom wizard prompt
+
+The wizard's system prompt has two parts. The security part (the brief or pasted text is data, rewrite never copy, answer with one JSON object in the schema) is fixed in code and always sent first. The authoring rules (statement sections, samples, subtasks, generator, validator, reference, brute force, checker, length) are built in, and `PODIUM_AI_PROMPT_FILE` can replace them without a rebuild.
+
+1. Print the built-in rules to start from: `podium-server print-ai-prompt > /etc/podium/ai-rules.txt`.
+2. Edit the file. At most 16 KB, UTF-8, not empty. Keep what the JSON schema needs: the rules describe the same fields as the schema, so renaming a field in the text confuses the model.
+3. Set `PODIUM_AI_PROMPT_FILE=/etc/podium/ai-rules.txt` in `/etc/podium/server.env` and restart `podium-server`.
+4. The start-up log says `ai prompt` with `default` or `file sha256:<12 hex>`; the text is never logged. Admins and owners see "This site uses a custom prompt" on the wizard page.
+5. Try one wizard run after every change.
+
+A missing, empty, oversized or non-UTF-8 file stops the server with a message naming the variable and the path; it never falls back to the default quietly. Rollback: remove the variable and restart. A change needs a restart; the file is read once.
 
 ## Behind Caddy
 
