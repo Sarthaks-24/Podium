@@ -13,5 +13,5 @@
     "allowJs": true,
     "checkJs": true
   },
-  "include": ["src/**/*.ts", "src/**/*.svelte", "tests/**/*.ts", "vite.config.ts", "playwright.config.ts", "eslint.config.js", "svelte.config.js"]
+  "include": ["src/**/*.ts", "src/**/*.svelte", "tests/**/*.ts", "vite.config.ts", "playwright.config.ts", "playwright.audit.config.ts", "eslint.config.js", "svelte.config.js"]
 }
