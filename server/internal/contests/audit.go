@@ -178,6 +178,7 @@ func settingChanges(c *Contest, e Edit) map[string]change {
 	add("published", c.Published, e.Published)
 	add("practice_after_end", c.PracticeAfterEnd, e.PracticeAfterEnd)
 	add("audience", c.Audience, e.Audience)
+	add("contact_email", c.ContactEmail, e.ContactEmail)
 	add("min_gap_s", int(c.MinGap/time.Second), e.MinGapS)
 	add("max_per_problem", c.MaxPerProblem, e.MaxPerProblem)
 	add("languages", nonNilStrings(c.Languages), nonNilStrings(e.Languages))

@@ -77,11 +77,14 @@ type Contest struct {
 	Archived     bool
 	// Audience is AudienceEveryone or AudienceInvited (stage I): who may
 	// take part besides staff.
-	Audience  string
-	CreatedBy int64
-	CreatedAt time.Time
-	UpdatedAt time.Time
-	Problems  []ContestProblem
+	Audience string
+	// ContactEmail is the address the contest page shows for questions
+	// about this contest; "" shows none.
+	ContactEmail string
+	CreatedBy    int64
+	CreatedAt    time.Time
+	UpdatedAt    time.Time
+	Problems     []ContestProblem
 }
 
 // ExamOptions are the measures an organiser can turn on for an
@@ -163,6 +166,8 @@ type Edit struct {
 	// Audience is AudienceEveryone (the default when empty) or
 	// AudienceInvited.
 	Audience string
+	// ContactEmail is shown on the contest page; "" shows none.
+	ContactEmail string
 }
 
 // The two audiences a contest can have.
@@ -262,6 +267,10 @@ func (e *Edit) check() FieldErrors {
 	if e.Audience != AudienceEveryone && e.Audience != AudienceInvited {
 		errs["audience"] = "Choose everyone who can sign in, or only invited students."
 	}
+	e.ContactEmail = strings.ToLower(strings.TrimSpace(e.ContactEmail))
+	if !auth.ValidContactEmail(e.ContactEmail) {
+		errs["contact_email"] = "Enter a single email address, such as contest@college.edu."
+	}
 	if len(errs) == 0 {
 		return nil
 	}
@@ -299,12 +308,12 @@ func (s *Service) Create(ctx context.Context, e Edit, by int64, key string) (*Co
 		var id int64
 		err = tx.QueryRowContext(ctx, `INSERT INTO contests (slug, title, description_md, starts_at, ends_at,
 			freeze_minutes, published, practice_after_end, min_gap_s, max_per_problem, languages, honour_text, hold_reveal,
-			full_screen, count_focus, block_paste, block_copy, created_by, created_at, updated_at, client_key, audience)
-			VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
+			full_screen, count_focus, block_paste, block_copy, created_by, created_at, updated_at, client_key, audience, contact_email)
+			VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
 			slug, e.Title, e.Description, e.StartsAt.UnixMilli(), e.EndsAt.UnixMilli(),
 			e.FreezeMinutes, e.PracticeAfterEnd, e.MinGapS, e.MaxPerProblem, string(langs), e.HonourText, e.HoldReveal,
 			e.Exam.FullScreen, e.Exam.CountFocus, e.Exam.BlockPaste, e.Exam.BlockCopy,
-			nullID(by), now, now, key, e.Audience).Scan(&id)
+			nullID(by), now, now, key, e.Audience, e.ContactEmail).Scan(&id)
 		if isUniqueSlug(err) {
 			tx.Rollback()
 			continue
@@ -388,11 +397,11 @@ func (s *Service) Update(ctx context.Context, id int64, e Edit, by Actor) (*Cont
 	langs, _ := json.Marshal(e.Languages)
 	_, err = tx.ExecContext(ctx, `UPDATE contests SET title = ?, description_md = ?, starts_at = ?, ends_at = ?,
 		freeze_minutes = ?, published = ?, practice_after_end = ?, min_gap_s = ?, max_per_problem = ?, languages = ?, honour_text = ?,
-		hold_reveal = ?, full_screen = ?, count_focus = ?, block_paste = ?, block_copy = ?, audience = ?, updated_at = ? WHERE id = ?`,
+		hold_reveal = ?, full_screen = ?, count_focus = ?, block_paste = ?, block_copy = ?, audience = ?, contact_email = ?, updated_at = ? WHERE id = ?`,
 		e.Title, e.Description, e.StartsAt.UnixMilli(), e.EndsAt.UnixMilli(),
 		e.FreezeMinutes, e.Published, e.PracticeAfterEnd,
 		e.MinGapS, e.MaxPerProblem, string(langs), e.HonourText, e.HoldReveal,
-		e.Exam.FullScreen, e.Exam.CountFocus, e.Exam.BlockPaste, e.Exam.BlockCopy, e.Audience, s.now().UnixMilli(), id)
+		e.Exam.FullScreen, e.Exam.CountFocus, e.Exam.BlockPaste, e.Exam.BlockCopy, e.Audience, e.ContactEmail, s.now().UnixMilli(), id)
 	if err != nil {
 		return nil, err
 	}
@@ -457,7 +466,7 @@ const contestColumns = `id, slug, title, description_md, starts_at, ends_at, fre
 	languages, honour_text, editorial_md, editorial_published, paused, extended_minutes, hold_reveal, coalesce(revealed_at, 0),
 	full_screen, count_focus, block_paste, block_copy, archived,
 	coalesce(created_by, 0), created_at, updated_at,
-	(SELECT coalesce(max(minutes), 0) FROM contest_extensions e WHERE e.contest_id = contests.id), audience, archived_slug`
+	(SELECT coalesce(max(minutes), 0) FROM contest_extensions e WHERE e.contest_id = contests.id), audience, archived_slug, contact_email`
 
 func scanContest(sc interface{ Scan(...any) error }) (*Contest, error) {
 	var c Contest
@@ -467,7 +476,7 @@ func scanContest(sc interface{ Scan(...any) error }) (*Contest, error) {
 	err := sc.Scan(&c.ID, &c.Slug, &c.Title, &c.Description, &starts, &ends, &freeze,
 		&c.Published, &c.PracticeAfterEnd, &gap,
 		&c.MaxPerProblem, &langs, &c.HonourText, &c.Editorial, &c.EditorialPublished, &c.Paused, &extended, &c.HoldReveal, &revealed,
-		&c.Exam.FullScreen, &c.Exam.CountFocus, &c.Exam.BlockPaste, &c.Exam.BlockCopy, &c.Archived, &c.CreatedBy, &created, &updated, &maxExt, &c.Audience, &c.ArchivedSlug)
+		&c.Exam.FullScreen, &c.Exam.CountFocus, &c.Exam.BlockPaste, &c.Exam.BlockCopy, &c.Archived, &c.CreatedBy, &created, &updated, &maxExt, &c.Audience, &c.ArchivedSlug, &c.ContactEmail)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
