@@ -6,6 +6,13 @@ Releases are numbered from `v2.0.0`. The builds before it were never released; t
 
 ## Unreleased: v2.0.1 Billota
 
+### v2.0.1 stage B: import conflicts (2026-11-05)
+
+- Importing a pack whose slug is already used no longer ends in an error. The 409 now names the existing problem (`existing`, with its running and unended contests limited to those you manage and a count of the rest) and offers a free `suggested_slug`; the old advice to rename the old problem is gone.
+- `POST /api/admin/problems/import` takes `on_conflict`: `rename` (with `slug`), `archive_existing` (archives the old problem and imports under its slug, in one transaction) or `replace` (saves the pack as one new revision of the existing problem; refused with 409 `problem_live` while a contest using it is running). A replace keeps submissions and contest pins on the revisions they had, and takes origin and tags from the pack, so the AI draft gate stays right.
+- Problems, Import pack shows a dialog with the three choices and one button that follows the choice: Import as new, Archive and import, Replace problem.
+- New problem warns when a problem with the same title already exists, with Open it (or Restore it for an archived one). Create stays enabled; the slug gets a suffix as before.
+
 ### v2.0.1 stage A: archive and restore (2026-11-05)
 
 - Archiving a problem or a contest frees its slug: it takes `<slug>-archived-<id>` and keeps the original in the new `archived_slug` field, so a new problem or contest can use the address at once. Archiving twice changes nothing. Migration `0010_v201.sql` does the same for items already archived, and leaves one alone if its new slug is taken.
