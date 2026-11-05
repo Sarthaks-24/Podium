@@ -5,7 +5,11 @@
   A filter appears past ten problems. "New problem" asks only for a title
   and opens the editor; "New problem with AI" opens the wizard; "Import
   pack" sends one or more .zip files and starts validating each, staying
-  on the list so several packs need no page visits. AI drafts and
+  on the list so several packs need no page visits. A pack whose slug is
+  already a problem's opens a dialog to import it as new, archive the
+  existing problem and import, or replace it. "New problem" warns when a
+  problem with the same title exists (Open it, or Restore it when it is
+  archived). AI drafts and
   problems whose hidden tests practice showed carry a mark beside the
   title. The list loads through lib/loader, so an older answer, or one
   after the page has gone, is dropped. Students see a short explanation
@@ -17,6 +21,7 @@
   import PageHeader from '../components/PageHeader.svelte';
   import StaleNote from '../components/StaleNote.svelte';
   import RestoreFlow from '../components/RestoreFlow.svelte';
+  import ImportConflictDialog from '../components/ImportConflictDialog.svelte';
   import Badge from '../components/Badge.svelte';
   import MonoDigits from '../components/MonoDigits.svelte';
   import { onMount, tick, untrack } from 'svelte';
@@ -29,7 +34,20 @@
   import { setTitle } from '../lib/head';
   import { routeTitle } from '../lib/routing';
   import { loader } from '../lib/loader.svelte';
-  import { DIFFICULTIES, isPending, problemPath, statusWord, type Problem, type ProblemSummary, type Validation } from '../lib/problems';
+  import {
+    DIFFICULTIES,
+    importQuery,
+    isPending,
+    parseExisting,
+    problemPath,
+    sameTitle,
+    statusWord,
+    type ImportChoice,
+    type ImportExisting,
+    type Problem,
+    type ProblemSummary,
+    type Validation,
+  } from '../lib/problems';
   import { navigate, router } from '../lib/router.svelte';
   import { session } from '../lib/session.svelte';
   import { showToast } from '../lib/toast.svelte';
@@ -53,11 +71,16 @@
   let createError = $state('');
   let createFields = $state<Record<string, string>>({});
   let titleInput: HTMLInputElement | undefined = $state();
+  let allProblems = $state<ProblemSummary[]>([]);
+  const repeated = $derived(creating ? sameTitle(newTitle, allProblems) : null);
   let newButton: HTMLButtonElement | undefined = $state();
 
   let fileInput: HTMLInputElement | undefined = $state();
   let importing = $state(false);
   let importError = $state<{ message: string; problems: readonly string[] } | null>(null);
+  /** The pack whose slug is taken, while the dialog asks what to do; resolve gets the problem made, or null when skipped. */
+  let conflict = $state<{ file: File; existing: ImportExisting; suggested: string; busy: boolean; error: string } | null>(null);
+  let conflictResolve: ((p: Problem | null) => void) | null = null;
 
   /** Problems whose validation this page started and is waiting for. */
   let validating = $state<ReadonlySet<number>>(new Set());
@@ -135,8 +158,19 @@
     creating = true;
     createError = '';
     createFields = {};
+    void loadAllTitles();
     await tick();
     titleInput?.focus();
+  }
+
+  /** Every problem, archived too, so the create form can tell a repeated title. Best effort: no notice when it fails. */
+  async function loadAllTitles() {
+    try {
+      const data = await getJSON<{ problems: ProblemSummary[] }>('/api/admin/problems?archived=1');
+      allProblems = data.problems ?? [];
+    } catch {
+      allProblems = [];
+    }
   }
 
   async function closeCreate() {
@@ -227,6 +261,45 @@
     schedulePoll();
   }
 
+  /** Opens the dialog for a pack whose slug is taken and waits for it: the problem made, or null when the person cancels. */
+  function askConflict(file: File, existing: ImportExisting, suggested: string): Promise<Problem | null> {
+    conflict = { file, existing, suggested, busy: false, error: '' };
+    return new Promise((resolve) => (conflictResolve = resolve));
+  }
+
+  function finishConflict(problem: Problem | null) {
+    conflict = null;
+    conflictResolve?.(problem);
+    conflictResolve = null;
+  }
+
+  /** Sends the pack again with the person's choice; a failure stays in the dialog so they can choose again. */
+  async function chooseConflict(choice: ImportChoice, slug: string) {
+    if (!conflict) return;
+    const { file } = conflict;
+    conflict.busy = true;
+    conflict.error = '';
+    try {
+      const problem = await sendBody<Problem>('POST', `/api/admin/problems/import${importQuery(choice, slug, file.name)}`, file, 'application/zip');
+      finishConflict(problem);
+    } catch (err) {
+      if (handleAuth(err)) {
+        finishConflict(null);
+        return;
+      }
+      if (!conflict) return;
+      conflict.busy = false;
+      const existing = err instanceof ApiError && err.status === 409 ? parseExisting(err.existing) : null;
+      if (existing && err instanceof ApiError) {
+        // The chosen slug is taken too, or a contest started meanwhile: show the new state.
+        conflict.existing = existing;
+        if (err.suggestedSlug !== '') conflict.suggested = err.suggestedSlug;
+        conflict.error = err.message;
+      } else if (err instanceof ApiError && err.fields.slug) conflict.error = err.fields.slug;
+      else conflict.error = errorText(err);
+    }
+  }
+
   async function importPack() {
     const files = [...(fileInput?.files ?? [])];
     if (!fileInput || files.length === 0) return;
@@ -236,16 +309,22 @@
     const made: string[] = [];
     try {
       for (const file of files) {
-        let problem: Problem;
+        let problem: Problem | null;
         try {
           problem = await sendBody<Problem>('POST', '/api/admin/problems/import', file, 'application/zip');
         } catch (err) {
           if (handleAuth(err)) return;
-          importError = {
-            message: files.length > 1 ? `${file.name}: ${errorText(err)}` : errorText(err),
-            problems: err instanceof ApiError ? err.problems : [],
-          };
-          break;
+          const existing = err instanceof ApiError && err.status === 409 ? parseExisting(err.existing) : null;
+          if (err instanceof ApiError && existing) {
+            problem = await askConflict(file, existing, err.suggestedSlug);
+            if (problem === null) continue;
+          } else {
+            importError = {
+              message: files.length > 1 ? `${file.name}: ${errorText(err)}` : errorText(err),
+              problems: err instanceof ApiError ? err.problems : [],
+            };
+            break;
+          }
         }
         const ok = await startValidation(problem.id, problem.title, true);
         made.push(ok ? `Imported ${problem.title}. Validating.` : `Imported ${problem.title}.`);
@@ -331,6 +410,16 @@
             aria-describedby={createFields.title ? 'new-title-error' : undefined}
           />
           {#if createFields.title}<p id="new-title-error" class="field-error">{createFields.title}</p>{/if}
+          {#if repeated}
+            <p class="field-help same-title" role="status">
+              A problem called {repeated.title} already exists.
+              {#if repeated.archived}
+                <button type="button" class="btn btn-quiet btn-compact" onclick={() => (restoring = { id: repeated.id, name: repeated.title })}>Restore it</button>
+              {:else}
+                <a class="btn btn-quiet btn-compact" href="/admin/problems/{repeated.id}">Open it</a>
+              {/if}
+            </p>
+          {/if}
         </div>
       </div>
       <div class="create-actions">
@@ -406,6 +495,19 @@
   {/if}
 {/if}
 
+{#if conflict}
+  <ImportConflictDialog
+    open
+    fileName={conflict.file.name}
+    existing={conflict.existing}
+    suggestedSlug={conflict.suggested}
+    busy={conflict.busy}
+    error={conflict.error}
+    onchoose={chooseConflict}
+    oncancel={() => finishConflict(null)}
+  />
+{/if}
+
 {#if restoring}
   <RestoreFlow
     open
@@ -416,6 +518,7 @@
     ondone={() => {
       restoring = null;
       void reload();
+      if (creating) void loadAllTitles();
     }}
   />
 {/if}
@@ -509,6 +612,13 @@
     flex-wrap: wrap;
     gap: var(--space-3) var(--space-4);
     margin-top: var(--space-3);
+  }
+
+  .same-title {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-2);
   }
 
   .create-fields .grow {

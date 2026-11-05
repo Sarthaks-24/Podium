@@ -323,6 +323,9 @@ export async function mockApi(page: Page, who: 'organiser' | 'student' = 'organi
     restores: [] as Json[],
     restoreTaken: false,
     imports: [] as string[],
+    // The query string of each import (on_conflict, slug, file_name), "" when none, and whether the colliding problem is in a running contest.
+    importQueries: [] as string[],
+    importLive: false,
     generates: [] as Json[],
     generations: {} as Record<number, Json>,
     genScripts: {} as Record<number, Json[]>,
@@ -406,6 +409,28 @@ export async function mockApi(page: Page, who: 'organiser' | 'student' = 'organi
         if (type !== 'application/zip') return apiError(route, 415, 'bad_request', 'Send the pack as application/zip.');
         const text = req.postDataBuffer()?.toString('utf8') ?? '';
         state.imports.push(text);
+        state.importQueries.push(url.search);
+        const choice = url.searchParams.get('on_conflict');
+        if (text === 'dupe pack' && !choice) {
+          const week = { contest_id: 2, slug: 'week-6', title: 'Week 6 practice', label: 'A' };
+          return apiError(route, 409, 'conflict', 'A problem with the slug a-plus-b already exists. Choose what to do with this pack.', {
+            suggested_slug: 'a-plus-b-2',
+            existing: {
+              id: 1, title: 'A plus B', slug: 'a-plus-b',
+              live_contests: state.importLive ? [week] : [], hidden_live_contests: 0,
+              open_contests: state.importLive ? [] : [week], hidden_open_contests: 1,
+            },
+          });
+        }
+        if (text === 'dupe pack' && choice) {
+          if (choice === 'replace') return json(route, 201, state.problems[1]);
+          if (choice === 'archive_existing') state.problems[1].archived = true;
+          const id = state.nextId++;
+          const slug = choice === 'rename' ? (url.searchParams.get('slug') ?? '') : 'a-plus-b';
+          const p = { ...problemFixtures()[1], id, title: 'A plus B again', slug, validated: false, validated_at: null, content_hash: 'imp' };
+          state.problems[id] = p;
+          return json(route, 201, p);
+        }
         if (text.startsWith('bad')) {
           return apiError(route, 400, 'bad_request', 'The pack has 2 problems. Fix them and import it again.', {
             problems: ['problem.yaml: unknown key "timelimit". Did you mean time_limit_ms?', 'tests/03.out is missing.'],
