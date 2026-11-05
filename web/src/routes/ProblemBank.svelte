@@ -16,6 +16,7 @@
   import PageState from '../components/PageState.svelte';
   import PageHeader from '../components/PageHeader.svelte';
   import StaleNote from '../components/StaleNote.svelte';
+  import RestoreFlow from '../components/RestoreFlow.svelte';
   import Badge from '../components/Badge.svelte';
   import MonoDigits from '../components/MonoDigits.svelte';
   import { onMount, tick, untrack } from 'svelte';
@@ -36,6 +37,8 @@
   let problems = $state<ProblemSummary[]>([]);
   /** Which list the page shows: the archived ones too, or not. */
   let wantArchived = false;
+  /** The archived problem the Restore dialog is open for. */
+  let restoring = $state<{ id: number; name: string } | null>(null);
   const page = loader(
     () => getJSON<{ problems: ProblemSummary[] }>(`/api/admin/problems${wantArchived ? '?archived=1' : ''}`),
     (data) => (problems = data.problems ?? []),
@@ -375,7 +378,7 @@
               {@const word = statusOf(p)}
               <tr>
                 <th scope="row" class="title">
-                  <a class="row-link" href="/admin/problems/{p.id}">{name}</a>{#if isAIDraft(p.tags)}<span class="ai-draft"><Badge tone="wait" text="AI draft" /></span>{/if}{#if p.shown_in_practice}<span class="ai-draft"><Badge text="Hidden tests shown in practice" /></span>{/if}
+                  <a class="row-link" href="/admin/problems/{p.id}">{name}</a>{#if p.archived && p.archived_slug}<span class="orig-slug mono">{p.archived_slug}</span>{/if}{#if isAIDraft(p.tags)}<span class="ai-draft"><Badge tone="wait" text="AI draft" /></span>{/if}{#if p.shown_in_practice}<span class="ai-draft"><Badge text="Hidden tests shown in practice" /></span>{/if}
                 </th>
                 <td class="difficulty">{difficultyLabel(p.difficulty)}</td>
                 <td class="tags">{withoutAIDraft(p.tags).join(', ')}</td>
@@ -385,6 +388,9 @@
                 <td class="updated"><MonoDigits text={formatDateTime(p.updated_at)} /></td>
                 <td class="try">
                   <span class="row-actions">
+                    {#if p.archived}
+                      <button type="button" class="btn btn-quiet btn-compact" aria-label="Restore {name}" onclick={() => (restoring = { id: p.id, name })}>Restore</button>
+                    {/if}
                     {#if !p.validated && !p.archived && word !== 'Validating'}
                       <button type="button" class="btn btn-quiet btn-compact" aria-label="Validate {name}" onclick={() => startValidation(p.id, name)}>Validate</button>
                     {/if}
@@ -398,6 +404,20 @@
       </div>
     {/if}
   {/if}
+{/if}
+
+{#if restoring}
+  <RestoreFlow
+    open
+    kind="problem"
+    title={restoring.name}
+    path={problemPath(restoring.id, '/restore')}
+    onclose={() => (restoring = null)}
+    ondone={() => {
+      restoring = null;
+      void reload();
+    }}
+  />
 {/if}
 
 <style>
@@ -434,6 +454,12 @@
 
   .ai-draft {
     margin-left: var(--space-2);
+  }
+
+  .orig-slug {
+    margin-left: var(--space-2);
+    color: var(--ink-muted);
+    font-size: var(--fs-0);
   }
 
   .toggle {

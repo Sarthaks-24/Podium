@@ -383,6 +383,7 @@ export async function mockApi(page: Page, options: Options = {}) {
     ...summary(),
     id: 4,
     archived: false,
+    archived_slug: '',
     created_at: startsAt - 86_400_000,
     updated_at: startsAt - 86_400_000,
     description_md: 'Three problems.',

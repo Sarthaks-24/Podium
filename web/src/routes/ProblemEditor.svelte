@@ -18,6 +18,7 @@
   import { onMount, tick } from 'svelte';
   import { keepHeadingFocus } from '../lib/focus';
   import ConfirmDialog from '../components/ConfirmDialog.svelte';
+  import RestoreFlow from '../components/RestoreFlow.svelte';
   import ValidationReport from '../components/ValidationReport.svelte';
   import { inputGenPending, inputGenReport, isAIDraft, type InputGeneration } from '../lib/ai';
   import { ApiError, errorText, getJSON, isSignedOut, sendBody, sendJSON } from '../lib/api';
@@ -39,6 +40,7 @@
     isPending,
     judgedFieldsChanged,
     ordinal,
+    archiveWarnings,
     problemPath,
     readPlan,
     toDraft,
@@ -107,6 +109,7 @@
 
   let archiveOpen = $state(false);
   let archiving = $state(false);
+  let restoreOpen = $state(false);
   let addOpen = $state(false);
   let leaveTo = $state<string | null>(null);
 
@@ -497,6 +500,7 @@
     { label: 'Download pack', onselect: downloadPack },
     ...((problem?.tests.length ?? 0) > 0 ? [{ label: 'Regenerate all outputs', onselect: () => (regenOpen = true) }] : []),
     ...(problem && !problem.archived ? [{ label: 'Archive', onselect: () => (archiveOpen = true), danger: true }] : []),
+    ...(problem?.archived ? [{ label: 'Restore', onselect: () => (restoreOpen = true) }] : []),
   ]);
 
   const pageTitle = $derived(
@@ -669,11 +673,24 @@
   open={archiveOpen}
   title="Archive {problem?.title ?? 'this problem'}?"
   body="It leaves the list of problems. Contests that used it keep it."
+  items={problem ? archiveWarnings(problem.title.trim() !== '' ? problem.title : problem.slug, problem.open_contests ?? [], problem.hidden_open_contests ?? 0) : []}
   confirmLabel="Archive problem"
   danger
   busy={archiving}
   onconfirm={archive}
   oncancel={() => (archiveOpen = false)}
+/>
+
+<RestoreFlow
+  open={restoreOpen}
+  kind="problem"
+  title={problem ? (problem.title.trim() !== '' ? problem.title : problem.slug) : 'this problem'}
+  path={problemPath(id, '/restore')}
+  onclose={() => (restoreOpen = false)}
+  ondone={() => {
+    restoreOpen = false;
+    void load();
+  }}
 />
 
 <ConfirmDialog
