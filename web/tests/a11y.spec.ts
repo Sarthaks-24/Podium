@@ -52,6 +52,9 @@ const TARGETS: Target[] = [
  */
 const KNOWN: Record<string, string> = {
   // Empty since P1: F7's stacked rows fixed the Results statistics table at 320 px.
+  // Stage D: the editor shrinks to a quarter of the column on the Your input tab and scrolls. Its text area is a
+  // focusable contenteditable, so the scroller is reachable by keyboard, but axe cannot see that inside CodeMirror.
+  'scrollable-region-focusable@problem-try': 'v2.0.1 stage D: CodeMirror scroller on a short editor (false positive)',
 };
 
 /** Screens allowed to scroll sideways at 320 px, with the plan item that fixes them. */
