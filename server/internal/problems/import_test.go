@@ -218,6 +218,9 @@ func TestReplaceReasonIsCleaned(t *testing.T) {
 	if got := replaceReason("a\nb.zip"); got != "Replaced from pack ab.zip" {
 		t.Errorf("%q", got)
 	}
+	if got := replaceReason("a‮b\u0085.zip"); got != "Replaced from pack ab.zip" {
+		t.Errorf("bidi and C1 controls kept: %q", got)
+	}
 	if got := replaceReason(""); got != "Replaced from a pack" {
 		t.Errorf("%q", got)
 	}

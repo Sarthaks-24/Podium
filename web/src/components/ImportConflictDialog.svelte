@@ -40,6 +40,10 @@
   });
 
   const blocked = $derived(replaceBlocked(existing));
+  // A replace refused as live disables its radio; move off it.
+  $effect(() => {
+    if (blocked && choice === 'replace') choice = 'rename';
+  });
   const warnings = $derived(archiveWarnings(existing.title, [...existing.live_contests, ...existing.open_contests], existing.hidden_live_contests + existing.hidden_open_contests));
 
   function submit(event: SubmitEvent) {
