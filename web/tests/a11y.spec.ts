@@ -121,3 +121,47 @@ for (const theme of ['light', 'dark'] as const) {
     }
   });
 }
+
+// v2.0.1 stage D: the splitters added from 1024 px (statement and code outside a
+// contest, the box and output in "Your input", Write and Preview in the
+// problem editor) have a name, a value and a keyboard, and the screens
+// that hold them pass axe with the grip focused (its icon showing).
+for (const theme of ['light', 'dark'] as const) {
+  test.describe(`splitters, ${theme} theme`, () => {
+    test.use({ colorScheme: theme });
+    test.describe.configure({ timeout: 60_000 });
+
+    for (const width of [1024, 1440]) {
+      test(`the workspace splitters pass axe at ${width} px`, async ({ page }) => {
+        const t = TARGETS.find((x) => x.name === 'problem-try')!;
+        await t.mock(page);
+        await page.setViewportSize({ width, height: 800 });
+        await page.goto(t.path);
+        await t.ready(page);
+        await page.getByRole('tab', { name: 'Your input' }).click();
+        for (const name of ['Statement', 'Result', 'Output']) {
+          const grip = page.getByRole('separator', { name: `${name} panel size` });
+          await expect(grip).toHaveAttribute('aria-valuenow', /\d+/);
+          await expect(grip).toHaveAttribute('aria-controls', /.+/);
+          await expect(grip).toHaveAttribute('tabindex', '0');
+        }
+        await page.getByRole('separator', { name: 'Statement panel size' }).focus();
+        await settle(page);
+        await audit(page, t, `splitters-workspace-${width}-${theme}`);
+      });
+
+      test(`the organiser Write splitter passes axe at ${width} px`, async ({ page }) => {
+        const t = TARGETS.find((x) => x.name === 'problem-editor')!;
+        await t.mock(page);
+        await page.setViewportSize({ width, height: 800 });
+        await page.goto(t.path);
+        await t.ready(page);
+        const grip = page.getByRole('separator', { name: 'Write panel size' });
+        await expect(grip).toHaveAttribute('aria-valuenow', /\d+/);
+        await grip.focus();
+        await settle(page);
+        await audit(page, t, `splitters-organiser-${width}-${theme}`);
+      });
+    }
+  });
+}
