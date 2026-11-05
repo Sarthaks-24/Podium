@@ -542,7 +542,7 @@
         language={draft.pendingLanguage ?? draft.language}
         onlanguage={(l) => draft.choose(l)}
         onreset={() => (confirmReset = true)}
-        settings={{ fontSize: draft.fontSize, tabSize: draft.tabSize, wrap: draft.wrap, tabMovesFocus: draft.tabMovesFocus }}
+        settings={{ fontSize: draft.fontSize, tabSize: draft.tabSize, wrap: draft.wrap, tabMovesFocus: draft.tabMovesFocus, lineHeight: draft.lineHeight, cursorBlink: draft.cursorBlink }}
         onsettings={(s) => draft.settings(s)}
         onresetlayout={onResetLayout}
         locked={lockText}
@@ -562,6 +562,8 @@
           tabMovesFocus={draft.tabMovesFocus}
           tabSize={draft.tabSize}
           wrap={draft.wrap}
+          lineHeight={draft.lineHeight}
+          cursorBlink={draft.cursorBlink}
           readOnly={layout !== 'wide'}
           blockPaste={exam?.block_paste ?? false}
           onpasteblocked={() => (pasteNote = showToast(PASTE_BLOCKED))}

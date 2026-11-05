@@ -624,19 +624,53 @@ Everything spoken goes through the one announcer (`lib/announce.svelte.ts`): sub
 
 ## Themes
 
-The web app ships four colour themes plus "System", which follows the device's light or dark setting (v1.2 cut ten to four, V3-8):
+Three separate choices, all on the account: the interface theme, the editor colours and the verdict colours (v2.0.1 stage E, V201-11 amends V3-8 and D39). Colours live in `web/src/styles/tokens.css` and in the theme engine; no component holds a colour literal.
 
-| Group | Themes |
-|---|---|
-| Light | Light |
-| Dark | Dark |
-| Accessible | High contrast light, High contrast dark (all text at 7:1 or more) |
+### Interface theme
 
-All colours live in `web/src/styles/tokens.css`. A theme changes surfaces, ink, rules and the one action colour; it never changes what a verdict colour means. Light themes share one set of verdict colours and dark themes another. A separate setting, "Colour-blind safe verdict colours", replaces green and red with teal, purple and orange in any theme; the three stay apart under simulated protanopia and deuteranopia. The editor well stays dark in every theme.
+| Kind | Choices | How it is made |
+|---|---|---|
+| System | follows the device's light or dark setting | no `data-theme`; `tokens.css` uses `prefers-color-scheme` |
+| Hand-tuned (4) | Light, Dark, High contrast light, High contrast dark (7:1 or more) | token blocks in `tokens.css`, `[data-theme="<id>"]` |
+| Presets (6) | Nordic frost, Soft lavender, Overcast (light); Nordic slate, OLED black, Cosmic violet (dark) | engine inputs in `lib/theme-presets.ts` |
+| Custom | a background, an accent and a contrast choice (standard or high) | engine inputs saved on the account |
 
-The choice belongs to the account (`users.theme`, `users.verdicts`; `PUT /api/me/preferences`), because students share lab machines: a high-contrast theme chosen for low vision follows the person, and signing out returns the machine to the system theme. The browser keeps a copy in localStorage only so the first frame is painted right.
+A theme changes surfaces, ink, rules and the one action colour. It never changes what a verdict colour means: the verdict colours are fixed per family (light or dark), per contrast level and per verdict set, and are never derived from anything a person chooses.
 
-Every theme is checked by tests rather than by eye: text at 4.5:1 (7:1 in the high-contrast themes) on every surface, control borders at 3:1, verdicts at 4.5:1 on their tints, and a minimum OKLab distance between the action colour and each verdict and between the verdicts themselves. A browser test confirms the CSS cascade produces exactly the values checked. v1.2 cut ten themes to four (V3-8): each theme multiplies the contrast tests and the screenshot checks.
+### The engine
+
+`lib/theme-engine.ts` turns `{ background, accent, contrast }` into the 13 interface tokens (`--paper`, `--surface`, `--surface-2`, `--ink`, `--ink-muted`, `--ink-faint`, `--line`, `--line-strong`, `--act`, `--act-ink`, `--act-tint`, `--scrim`, `--shadow-menu`), the family and a list of what it changed. The maths is a port of the lightness search in the AdminPanelManager project's `derive.js` (not its token names); there is no new dependency.
+
+- The family comes from the background: light when black text reads better on it than white (relative luminance above 0.179).
+- The background keeps its hue, is held to a low chroma so it stays a calm base, and moves toward white or black (never across) until every fixed verdict colour is readable on `--paper`, `--surface` and `--surface-2`.
+- Ink moves from its pole until it reaches 7:1 on the three surfaces and the standard level on every verdict tint. Secondary and faint ink and the control border step from a mix of ink and paper toward ink until they pass.
+- The accent keeps its hue and chroma; its lightness moves, away from the background, until it reads as text, carries button text (white or near-black, whichever is better), and sits at least 0.09 apart in OKLab from the green, amber and red of both verdict sets. There is no second accent.
+- If nothing passes, the engine returns the matching built-in colours and says so. The property test counts these and fails above 2 percent of random inputs.
+- It returns what it moved in plain words ("Accent moved away from the green used for Accepted", "Accent darkened so text on buttons stays readable"); the custom builder lists them under "Adjusted so text stays readable".
+
+The rules are written once, in `lib/theme-rules.ts` (`d41Failures`): text 4.5:1 (7:1 at the high level) on every surface, control borders 3:1, verdicts at the text level on their tints and on every surface, the action colour and each verdict at least 0.09 apart in OKLab (the verdicts also under simulated protanopia and deuteranopia for the colour-blind safe set), text on the mixed hover and pressed fills, and a scrim that dims the page. The engine searches until the list is empty for both verdict sets; the tests call the same function.
+
+### Why a custom theme is safe
+
+`theme-engine.test.ts` runs the engine over 2,400 seeded random inputs plus edge cases (pure black and white, mid greys, the primaries, an accent equal to each verdict colour in every set, an accent equal to the background, both contrast levels) and asserts every rule in both verdict sets. `theme-contrast.test.ts` runs the six presets through the same rules, and `themes.spec.ts` checks in a browser that the cascade gives presets and custom themes exactly those values. The server checks only the shape of a custom theme (two `#RRGGBB` colours and a contrast word) and never derives a colour.
+
+### The family attribute
+
+`<html>` carries `data-theme` (the id), `data-family` (`light` or `dark`) and, for a preset or custom theme at the high level, `data-contrast="high"`. The engine's tokens arrive as inline custom properties on `<html>`. The verdict colours, `color-scheme` and the menu shadow come from `[data-family]` rules in `tokens.css`, so a theme id the CSS has never heard of (a preset, `custom`) still gets the right set: a dark custom theme gets the dark verdicts, never the light ones. The id selectors for the four built-in themes stay and win over the family rules. A unit test and a browser test check that a dark custom theme gets the dark verdicts.
+
+### Editor colours
+
+A separate axis, `data-editor` on `<html>`, five schemes: Night (the default, no block of its own: the well is each theme's own dark), Paper (a light well), Midnight (black), Dusk (a warm dark) and High contrast (7:1). Each non-default scheme is a `:root[data-editor="<id>"]` block that replaces `--well`, `--well-ink`, `--well-edge` and every `--code-*` colour together. The selection and active-line tints mix from the scheme's own keyword and ink colours, not from the interface accent, so a scheme is checkable on its own: every syntax colour at 4.5:1 (7:1 in High contrast) on the well, the selection and the active line, the gutter at 4.5:1, the focus ring at 3:1, and ink on the shared-passage tint. The picker paints each scheme's code snippet from `[data-editor-sample]` copies of the same blocks.
+
+Editor line spacing (Compact 1.4, Normal 1.6, Relaxed 1.8) and a blinking-cursor switch are local to the device with the font size, in the editor's Settings and on the profile page. Fragment Mono stays the only code face.
+
+### Where the choice lives
+
+The account holds the choice (`users.theme`, `users.verdicts`, `users.editor_colours`, `users.theme_custom`; `PUT /api/me/preferences`), because students share lab machines: a high-contrast theme chosen for low vision follows the person, and signing out returns the machine to the system theme and Night. The browser keeps a copy in localStorage only so the first frame is painted right.
+
+`public/theme-init.js` stays a static file, so the `script-src 'self'` policy needs no hash and no inline script. For a preset or custom theme it reads the stored derived variables and applies them only when the theme id is well formed, the family and contrast words are known, there is exactly one variable for each of the 13 allowlisted names and every value has the shape of a colour (or of the scrim and menu shadow). Anything else leaves the page on the system theme. A Vitest runs the real file against hostile storage.
+
+The four hand-tuned themes are still checked by tests rather than by eye, and the browser tests confirm the CSS cascade produces exactly the values checked. The manual check stays on the four built-in themes, plus two preset spot checks (one light, one dark) and one custom theme.
 
 ## Safe to run: deploys, backups and alerts
 
@@ -676,7 +710,7 @@ v1.2 refactored v1.1 in place and deleted what a first contest at one college do
 | Two kinds of test: examples, which students see, and hidden tests; v1.1's open tests import as examples (V3-5) | A third kind confused both audits and adds a code path everywhere |
 | Every contest counts; no "graded" switch and no live ungraded contest. Practice after the end may show the first failing hidden test, except while the same problem is in a contest that has not closed (V3-6) | Closes a security finding (practice could reveal the tests of a problem still in use) and removes three open questions |
 | Keep all three AI providers over plain `net/http` (V3-7 rejected) | Not every organiser has a key at the same provider |
-| Four themes: light, dark, high contrast light and dark, plus System (V3-8) | Ten themes multiplied the contrast tests and the screenshot checks |
+| Four hand-tuned themes plus System (V3-8), and from v2.0.1 six engine-derived presets and a custom theme (V201-11) | Ten hand-made themes multiplied the contrast tests and the screenshot checks; an engine with a property test does not |
 | Leave the proven core alone: the judge protocol, worker, sandbox driver, compile and blob caches, the jobs queue, the event hub, standings, the pack parser limits and the content hash (V3-9) | Every review agreed they are the part that works |
 | Backups: Litestream plus the nightly copy, and that copy also at a second provider; a timed restore by hand once a term (V3-10, V3-30) | Two v1.1 backup systems of bash had never run; on Oracle's free tier the VM can be deleted, and the test files had no copy off the VM |
 | Tag `v2.0.0` (codename Billota, V4-27) and install on a fresh VM (V3-12) | Nothing is installed, so there is no upgrade path to keep |
@@ -735,5 +769,5 @@ Earlier decisions that still shape the code keep their ids in the sections above
 | Server-sent events | WebSockets, 2 s polling | 700 clients polling every 2 s is about 350 requests per second on one core. Events only flow one way, which SSE handles natively. |
 | IOI subtasks, best per subtask | ICPC penalty scoring | Weaker students keep earning points; the owner's choice. |
 | Hand-written CSS tokens | Tailwind or a component kit | The generic generated look comes mostly from kits and their defaults. |
-| A curated theme list checked by tests | A custom theme builder | A builder's contrast search checks text against backgrounds but not whether "accepted" and "wrong" stay apart, which is what matters in a contest. |
+| Four hand-tuned themes, six presets and a custom theme, all derived or checked by one set of rules (V201-11) | A free-form theme builder; ten hand-made themes | A builder that checks only text against backgrounds can let "accepted" and "wrong" blur together, which is what matters in a contest. The engine keeps the verdict colours fixed and checks the action colour's distance from them, and a property test over thousands of inputs replaces a hand check per theme. |
 | Caddy + systemd | nginx + certbot, Docker Compose | Fewest moving parts that still give HTTPS, restarts and memory caps. |

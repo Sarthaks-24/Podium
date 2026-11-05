@@ -10,6 +10,8 @@ const student: User = {
   avatar_url: '',
   role: 'student',
   theme: 'hc-dark',
+  editor_colours: 'night',
+  theme_custom: null,
   verdicts: 'signal',
 };
 
@@ -70,13 +72,13 @@ describe('loadSession', () => {
   it("adopts the account's display preferences", async () => {
     stubFetch(() => json(200, student));
     await loadSession();
-    expect(preferences.current).toEqual({ theme: 'hc-dark', verdicts: 'signal' });
+    expect(preferences.current).toEqual({ theme: 'hc-dark', verdicts: 'signal', editor: 'night', custom: null });
   });
 
   it('treats an unknown or empty theme as the system theme', async () => {
     stubFetch(() => json(200, { ...student, theme: 'retired-theme', verdicts: 'standard' }));
     await loadSession();
-    expect(preferences.current).toEqual({ theme: 'system', verdicts: 'standard' });
+    expect(preferences.current).toEqual({ theme: 'system', verdicts: 'standard', editor: 'night', custom: null });
   });
 
   it('is signed out without an error when /api/me answers 401', async () => {
@@ -130,10 +132,10 @@ describe('signOut', () => {
   it('returns the display to the defaults for the next person', async () => {
     session.status = 'signed-in';
     session.user = student;
-    preferences.current = { theme: 'hc-dark', verdicts: 'signal' };
+    preferences.current = { theme: 'hc-dark', verdicts: 'signal', editor: 'dusk', custom: null };
     stubFetch(() => new Response(null, { status: 204 }));
     await signOut();
-    expect(preferences.current).toEqual({ theme: 'system', verdicts: 'standard' });
+    expect(preferences.current).toEqual({ theme: 'system', verdicts: 'standard', editor: 'night', custom: null });
   });
 
   it('removes every local draft mirror, so the next person never sees them', async () => {

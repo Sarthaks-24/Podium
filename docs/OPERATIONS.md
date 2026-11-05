@@ -687,6 +687,12 @@ Configuration files are never overwritten: add a new variable with `sudoedit` be
 
 `0011_v201_contact.sql` adds `contact_email TEXT NOT NULL DEFAULT ''` to `contests`. Nothing else changes and no row is rewritten. Rollback is the same as for 0010: restore the backup taken just before the upgrade.
 
+### Migration 0012 (v2.0.1): theme preferences
+
+`0012_v201_theme.sql` adds `editor_colours TEXT NOT NULL DEFAULT 'night'` and `theme_custom TEXT NOT NULL DEFAULT ''` to `users`. Nothing else changes and no row is rewritten; everyone starts on the Night editor colours with no custom theme. `theme_custom` holds a custom theme's two colours and contrast word as JSON; the server checks the shape and the browser derives the colours, so there is nothing to recompute after a restore.
+
+- **Rollback.** The previous server refuses a database that records a migration it does not know, so rolling back is the "Newer schema" case below: the backup taken just before the upgrade is restored and what was written since is lost. The migration itself loses nothing.
+
 ## Holding the compilers
 
 A gcc, JDK, Python, Node or isolate update can change how fast a reference runs or, rarely, a verdict. Before a contest season, stop apt from moving them:

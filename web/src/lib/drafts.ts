@@ -151,11 +151,30 @@ export const FONT_SIZES = [12, 13, 14, 15, 16, 18, 20, 22, 24] as const;
 /** The editor's default font size. */
 export const DEFAULT_FONT_SIZE = 14;
 
+/** Line spacing the editor offers (v2.0.1 E6): the ratio goes to --editor-line-height. */
+export const LINE_HEIGHTS = [
+  { id: 'compact', label: 'Compact', value: 1.4 },
+  { id: 'normal', label: 'Normal', value: 1.6 },
+  { id: 'relaxed', label: 'Relaxed', value: 1.8 },
+] as const;
+
+export type LineHeight = (typeof LINE_HEIGHTS)[number]['id'];
+
+/** The editor's default line spacing. */
+export const DEFAULT_LINE_HEIGHT: LineHeight = 'normal';
+
+/** The ratio for a line spacing id. */
+export function lineHeightValue(id: LineHeight): number {
+  return LINE_HEIGHTS.find((l) => l.id === id)?.value ?? 1.6;
+}
+
 const FONT_KEY = 'podium-editor-font';
 const TAB_KEY = 'podium-editor-tab-focus';
 const LANG_KEY = 'podium-editor-language';
 const TAB_SIZE_KEY = 'podium-editor-tab-size';
 const WRAP_KEY = 'podium-editor-wrap';
+const LINE_HEIGHT_KEY = 'podium-editor-line-height';
+const CURSOR_BLINK_KEY = 'podium-editor-cursor-blink';
 const RESULT_KEY = 'podium-workspace-result';
 /** The statement's share of the width beside the code, and whether it is hidden. */
 export const STATEMENT_KEY = 'podium-workspace-statement';
@@ -208,6 +227,9 @@ export interface EditorPrefs {
   tabMovesFocus: boolean;
   tabSize: 2 | 4;
   wrap: boolean;
+  lineHeight: LineHeight;
+  /** Whether the cursor blinks. */
+  cursorBlink: boolean;
   /** The last language this account chose, or null before the first choice. */
   language: Language | null;
 }
@@ -271,6 +293,8 @@ export function readEditorPrefs(storage: DraftStorage | null, owner: number, nar
     tabMovesFocus: read(storage, TAB_KEY) === '1',
     tabSize: read(storage, TAB_SIZE_KEY) === '2' ? 2 : 4,
     wrap: wrap === null ? narrow : wrap === '1',
+    lineHeight: LINE_HEIGHTS.some((l) => l.id === read(storage, LINE_HEIGHT_KEY)) ? (read(storage, LINE_HEIGHT_KEY) as LineHeight) : DEFAULT_LINE_HEIGHT,
+    cursorBlink: read(storage, CURSOR_BLINK_KEY) !== '0',
     language: lang !== null && LANGS.includes(lang) ? (lang as Language) : null,
   };
 }
@@ -281,6 +305,8 @@ export function writeEditorPrefs(storage: DraftStorage | null, prefs: EditorPref
   write(storage, TAB_KEY, prefs.tabMovesFocus ? '1' : '0');
   write(storage, TAB_SIZE_KEY, String(prefs.tabSize));
   write(storage, WRAP_KEY, prefs.wrap ? '1' : '0');
+  write(storage, LINE_HEIGHT_KEY, prefs.lineHeight);
+  write(storage, CURSOR_BLINK_KEY, prefs.cursorBlink ? '1' : '0');
   if (prefs.language) write(storage, `${LANG_KEY}:${owner}`, prefs.language);
 }
 

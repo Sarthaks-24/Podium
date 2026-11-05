@@ -18,6 +18,7 @@ import { ApiError, isSignedOut, sendJSON } from './api';
 import { serverClock } from './clock';
 import {
   DEFAULT_FONT_SIZE,
+  DEFAULT_LINE_HEIGHT,
   draftStorage,
   languageMirrorKey,
   mayMirror,
@@ -27,6 +28,7 @@ import {
   readMirror,
   writeEditorPrefs,
   writeMirror,
+  type LineHeight,
 } from './drafts';
 import { isStarterOrEmpty, starter } from './starters';
 import type { Language, Workspace } from './workspace';
@@ -39,6 +41,8 @@ export interface EditorSettingsValue {
   tabSize: 2 | 4;
   wrap: boolean;
   tabMovesFocus: boolean;
+  lineHeight: LineHeight;
+  cursorBlink: boolean;
 }
 
 /** What the draft needs of the editor component. */
@@ -57,6 +61,8 @@ export class Draft {
   tabMovesFocus = $state(false);
   tabSize = $state<2 | 4>(4);
   wrap = $state(false);
+  lineHeight = $state<LineHeight>(DEFAULT_LINE_HEIGHT);
+  cursorBlink = $state(true);
   cursor = $state({ line: 1, col: 1 });
   /** A language chosen over typed code, waiting for the confirm. */
   pendingLanguage = $state<Language | null>(null);
@@ -82,6 +88,8 @@ export class Draft {
     this.tabMovesFocus = prefs.tabMovesFocus;
     this.tabSize = prefs.tabSize;
     this.wrap = prefs.wrap;
+    this.lineHeight = prefs.lineHeight;
+    this.cursorBlink = prefs.cursorBlink;
   }
 
   /** True when the code on screen differs from the server's copy. */
@@ -210,6 +218,8 @@ export class Draft {
     if (next.tabSize !== undefined) this.tabSize = next.tabSize;
     if (next.wrap !== undefined) this.wrap = next.wrap;
     if (next.tabMovesFocus !== undefined) this.tabMovesFocus = next.tabMovesFocus;
+    if (next.lineHeight !== undefined) this.lineHeight = next.lineHeight;
+    if (next.cursorBlink !== undefined) this.cursorBlink = next.cursorBlink;
     this.savePrefs();
   }
 
@@ -229,8 +239,8 @@ export class Draft {
   }
 
   private savePrefs(): void {
-    const { fontSize, tabMovesFocus, tabSize, wrap, language } = this;
-    writeEditorPrefs(this.storage, { fontSize, tabMovesFocus, tabSize, wrap, language }, this.owner);
+    const { fontSize, tabMovesFocus, tabSize, wrap, lineHeight, cursorBlink, language } = this;
+    writeEditorPrefs(this.storage, { fontSize, tabMovesFocus, tabSize, wrap, lineHeight, cursorBlink, language }, this.owner);
   }
 
   private queueMirror(): void {
