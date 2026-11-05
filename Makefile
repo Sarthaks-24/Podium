@@ -165,6 +165,10 @@ deploy: ## Build a release and install it on HOST with install.sh upgrade (make 
 	@test -n "$(HOST)" || { echo "usage: make deploy HOST=user@vm"; exit 1; }
 	bash tools/deploy.sh "$(HOST)"
 
+.PHONY: audit
+audit: web/node_modules/.package-lock.json ## Screen audit: screenshots, overflow, axe, focus; report in cache/audit-<date>/
+	cd web && npx playwright test -c playwright.audit.config.ts
+
 .PHONY: check-secrets
 check-secrets: ## Fail if the staged diff contains a secret
 	bash tools/check-secrets.sh
