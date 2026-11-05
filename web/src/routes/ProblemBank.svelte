@@ -337,9 +337,11 @@
       importing = false;
     }
     // The dialog's opener is the hidden file input; the button is disabled until the import ends.
+    // Only when focus was lost, so a user who moved on keeps their place.
     if (asked) {
       await tick();
-      importButton?.focus();
+      const active = document.activeElement;
+      if (!active || active === document.body || !active.isConnected) importButton?.focus();
     }
     if (made.length > 0) {
       showToast(made.join(' '));
