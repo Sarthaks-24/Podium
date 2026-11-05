@@ -39,8 +39,8 @@ export const MIN = 60_000;
 
 export type Json = Record<string, unknown>;
 
-export const STUDENT = { id: 7, email: 'asha@college.edu', name: 'Asha Rao', avatar_url: '', role: 'student', theme: '', verdicts: 'standard' } satisfies MeLike;
-export const ADMIN = { id: 2, email: 'arjun.mehta@college.edu', name: 'Arjun Mehta', avatar_url: '', role: 'organiser', theme: '', verdicts: 'standard' } satisfies MeLike;
+export const STUDENT = { id: 7, email: 'asha@college.edu', name: 'Asha Rao', avatar_url: '', role: 'student', theme: '', verdicts: 'standard', editor_colours: 'night', theme_custom: null } satisfies MeLike;
+export const ADMIN = { id: 2, email: 'arjun.mehta@college.edu', name: 'Arjun Mehta', avatar_url: '', role: 'organiser', theme: '', verdicts: 'standard', editor_colours: 'night', theme_custom: null } satisfies MeLike;
 
 export const PROBLEMS = [
   { label: 'A', title: 'A plus B', id: 11, max: 100 },

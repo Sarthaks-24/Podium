@@ -1,9 +1,11 @@
 {
   "avatar_url": "https://lh3.googleusercontent.com/a/test",
+  "editor_colours": "night",
   "email": "s19@college.edu",
   "id": 20,
   "name": "Student 19",
   "role": "student",
   "theme": "",
+  "theme_custom": null,
   "verdicts": "standard"
 }

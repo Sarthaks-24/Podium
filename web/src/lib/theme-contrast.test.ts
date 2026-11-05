@@ -5,21 +5,17 @@
 // colour-blind safe set).
 import { describe, expect, it } from 'vitest';
 import tokensCss from '../styles/tokens.css?raw';
-import { COLOUR_TOKENS, contrast, distance, parseTokenRules, resolveTheme, type Vision } from './colour';
-import { THEMES } from './theme';
+import { COLOUR_TOKENS, contrast, distance, mixSrgb, parseTokenRules, resolveFamily, resolveTheme, type Vision } from './colour';
+import { d41Failures, over } from './theme-rules';
+import { EDITOR_SCHEMES } from './editor-colours';
+import { THEMES, derive } from './theme';
+import { PRESETS } from './theme-presets';
 
 const rules = parseTokenRules(tokensCss);
 const HIGH_CONTRAST = new Set(['hc-light', 'hc-dark']);
 // About four just-noticeable differences in OKLab. The worst pair shipped is
 // 0.091 (dark colour-blind set, deuteranopia).
 const MIN_DISTANCE = 0.09;
-
-/** color-mix(in srgb, a p, b): a straight mix of the encoded channels. */
-function mixSrgb(a: string, b: string, p: number): string {
-  const ch = (hex: string) => [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
-  const [x, y] = [ch(a), ch(b)];
-  return `#${x.map((v, i) => Math.round(v * p + y[i] * (1 - p)).toString(16).padStart(2, '0')).join('')}`;
-}
 
 function failures(id: string, signal: boolean): string[] {
   const t = resolveTheme(rules, id, signal);
@@ -149,9 +145,9 @@ function extraFailures(id: string, signal: boolean): string[] {
   for (const k of ['keyword', 'string', 'number', 'comment', 'type', 'function', 'meta', 'invalid', 'gutter']) {
     need(`--code-${k} on --well`, root[`--code-${k}`], t['--well'], 4.5);
   }
-  // --code-selection is color-mix(in srgb, var(--act) N%, var(--well)).
-  const pct = Number(/var\(--act\) (\d+)%/.exec(root['--code-selection'] ?? '')?.[1]);
-  need('--code-comment on --code-selection', root['--code-comment'], mixSrgb(t['--act'], t['--well'], pct / 100), 4.5);
+  // --code-selection is color-mix(in srgb, var(--code-keyword) N%, var(--well)).
+  const pct = Number(/var\(--code-keyword\) (\d+)%/.exec(root['--code-selection'] ?? '')?.[1]);
+  need('--code-comment on --code-selection', root['--code-comment'], mixSrgb(root['--code-keyword'], t['--well'], pct / 100), 4.5);
   // The error toast's Dismiss on hover keeps the toast's --bad-tint fill (Toasts.svelte).
   need('error toast Dismiss hover', t['--bad'], t['--bad-tint'], text);
   return out;
@@ -188,15 +184,6 @@ function fillFailures(id: string, signal: boolean): string[] {
   return out;
 }
 
-/** rgba(r, g, b, a) composited over an opaque #rrggbb. */
-function over(rgba: string, hex: string): string {
-  const m = /rgba\((\d+),\s*(\d+),\s*(\d+),\s*([\d.]+)\)/.exec(rgba);
-  if (!m) throw new Error(`not rgba: ${rgba}`);
-  const a = Number(m[4]);
-  const top = `#${[1, 2, 3].map((i) => Number(m[i]).toString(16).padStart(2, '0')).join('')}`;
-  return mixSrgb(top, hex, a);
-}
-
 describe('text on mixed control fills', () => {
   it('keeps text readable on every mixed control fill', () => {
     const all = THEMES.flatMap(({ id }) => [...fillFailures(id, false), ...fillFailures(id, true)]);
@@ -215,6 +202,31 @@ describe('text on mixed control fills', () => {
   });
 });
 
+// The engine also keeps verdict text readable on --surface-2 (the table header); every
+// built-in theme meets it with no exceptions.
+describe('the shared D41 rules', () => {
+  for (const { id } of THEMES) {
+    for (const signal of [false, true]) {
+      it(`${id}${signal ? ' with colour-blind safe verdicts' : ''} passes theme-rules.ts`, () => {
+        const found = d41Failures(resolveTheme(rules, id, signal), { high: HIGH_CONTRAST.has(id), signal });
+        expect(found).toEqual([]);
+      });
+    }
+  }
+
+  it('gives a dark family the Dark theme verdicts, and the high contrast family the hc-dark ones', () => {
+    for (const [family, id, high] of [['dark', 'dark', false], ['dark', 'hc-dark', true], ['light', 'light', false], ['light', 'hc-light', true]] as const) {
+      for (const signal of [false, true]) {
+        const f = resolveFamily(rules, family, high, signal);
+        const t = resolveTheme(rules, id, signal);
+        for (const k of ['--ok', '--ok-tint', '--part', '--part-tint', '--bad', '--bad-tint', '--wait', '--wait-tint']) {
+          expect(f[k], `${family} high=${high} signal=${signal} ${k}`).toBe(t[k]);
+        }
+      }
+    }
+  });
+});
+
 describe('colour maths', () => {
   it('matches known contrast ratios', () => {
     expect(contrast('#000000', '#FFFFFF')).toBeCloseTo(21, 5);
@@ -229,5 +241,141 @@ describe('colour maths', () => {
   it('shows red and green collapsing under deuteranopia', () => {
     expect(distance('#137A48', '#B42318')).toBeGreaterThan(0.2);
     expect(distance('#137A48', '#B42318', 'deutan')).toBeLessThan(distance('#137A48', '#B42318'));
+  });
+});
+
+// The editor colour schemes (styles/tokens.css, lib/editor-colours.ts). Each
+// replaces the well and every --code-* colour as a set, so it is checked on
+// its own: syntax on the well, on the selection and on the active line,
+// the gutter, the focus ring and the shared-passage tint.
+const plainRoot = rules.find((r) => r.media === null && r.selector === ':root' && '--code-selection' in r.vars)?.vars ?? {};
+
+/** Tokens of a scheme: the Night defaults in :root, then the scheme's own block. Night takes `well` from a theme. */
+function scheme(id: string, theme: Record<string, string>): Record<string, string> {
+  if (id === 'night') return { ...plainRoot, '--well': theme['--well'], '--well-ink': theme['--well-ink'] };
+  const own = rules.find((r) => r.media === null && r.selector.split(',').map((x) => x.trim()).includes(`:root[data-editor="${id}"]`));
+  if (!own) throw new Error(`no block for editor scheme ${id}`);
+  return { ...plainRoot, ...own.vars };
+}
+
+function schemeFailures(id: string, e: Record<string, string>): string[] {
+  const out: string[] = [];
+  const high = id === 'high-contrast';
+  const syntax = high ? 7 : 4.5;
+  const need = (name: string, fg: string, bg: string, min: number) => {
+    const ratio = contrast(fg, bg);
+    if (ratio < min) out.push(`${id}: ${name}: ${ratio.toFixed(2)} < ${min}`);
+  };
+  const pct = (token: string, fallback: string) => Number(new RegExp(String.raw`var\(${fallback}\) (\d+)%`).exec(e[token] ?? '')?.[1]);
+  const selection = mixSrgb(e['--code-keyword'], e['--well'], pct('--code-selection', '--code-keyword') / 100);
+  const active = mixSrgb(e['--well-ink'], e['--well'], pct('--code-active-line', '--well-ink') / 100);
+  const match = mixSrgb(e['--code-number'], e['--well'], pct('--code-match', '--code-match-edge') / 100);
+  need('--well-ink on --well', e['--well-ink'], e['--well'], 7);
+  for (const k of ['keyword', 'string', 'number', 'comment', 'type', 'function', 'meta', 'invalid']) {
+    need(`--code-${k} on --well`, e[`--code-${k}`], e['--well'], syntax);
+    need(`--code-${k} on selection`, e[`--code-${k}`], selection, syntax);
+    need(`--code-${k} on active line`, e[`--code-${k}`], active, syntax);
+  }
+  need('--well-ink on selection', e['--well-ink'], selection, syntax);
+  need('--code-gutter on --well', e['--code-gutter'], e['--well'], 4.5);
+  // The active line's own number is drawn in --well-ink (lib/editor.ts), not the gutter colour.
+  need('--well-ink on active line', e['--well-ink'], active, 7);
+  need('--code-keyword (focus ring) on --well', e['--code-keyword'], e['--well'], 3);
+  need('--well-ink on shared passage', e['--well-ink'], match, 4.5);
+  need('shared-passage edge on --well', e['--code-number'], e['--well'], 3);
+  return out;
+}
+
+describe('editor colour schemes', () => {
+  it('lists the same five ids as the server', () => {
+    expect(EDITOR_SCHEMES.map((s) => s.id)).toEqual(['night', 'paper', 'midnight', 'dusk', 'high-contrast']);
+  });
+
+  it('keeps the selection and active-line mixes in :root', () => {
+    expect(plainRoot['--code-selection']).toMatch(/^color-mix\(in srgb, var\(--code-keyword\) \d+%, var\(--well\)\)$/);
+    expect(plainRoot['--code-active-line']).toMatch(/^color-mix\(in srgb, var\(--well-ink\) \d+%, var\(--well\)\)$/);
+  });
+
+  for (const { id } of EDITOR_SCHEMES) {
+    if (id === 'night') continue;
+    it(`${id} defines every well and code colour`, () => {
+      const e = scheme(id, {});
+      const own = rules.find((r) => r.media === null && r.selector.split(',').map((x) => x.trim()).includes(`:root[data-editor="${id}"]`));
+      const names = ['--well', '--well-ink', '--well-edge', ...['keyword', 'string', 'number', 'comment', 'type', 'function', 'meta', 'invalid', 'gutter'].map((k) => `--code-${k}`)];
+      expect(names.filter((k) => !(k in (own?.vars ?? {})))).toEqual([]);
+      for (const k of names.filter((n) => n !== '--well-edge')) expect(e[k], k).toMatch(/^#[0-9a-f]{6}$/i);
+    });
+    it(`${id} paints its picker snippet from the same values`, () => {
+      const sample = rules.find((r) => r.media === null && r.selector.split(',').map((x) => x.trim()).includes(`[data-editor-sample="${id}"]`));
+      const own = rules.find((r) => r.media === null && r.selector.split(',').map((x) => x.trim()).includes(`:root[data-editor="${id}"]`));
+      expect(sample).toBe(own);
+    });
+  }
+
+  for (const { id } of EDITOR_SCHEMES) {
+    // Night keeps each theme's own well, so it is checked on all of them.
+    const wells = id === 'night' ? THEMES.map((t) => [t.id, resolveTheme(rules, t.id, false)] as const) : [['any', {}] as const];
+    for (const [theme, well] of wells) {
+      it(`${id}${id === 'night' ? ` on the ${theme} well` : ''} meets the contrast rules`, () => {
+        expect(schemeFailures(id, scheme(id, well as Record<string, string>))).toEqual([]);
+      });
+    }
+  }
+
+  it('Night as a sample equals the Night defaults', () => {
+    const sample = rules.find((r) => r.media === null && r.selector === '[data-editor-sample="night"]')?.vars ?? {};
+    for (const k of Object.keys(sample)) {
+      if (k === '--well' || k === '--well-ink') continue;
+      expect(sample[k], k).toBe(plainRoot[k]);
+    }
+    expect(sample['--well-ink']).toBe(plainRoot['--well-ink'] ?? sample['--well-ink']);
+  });
+
+  it('is checked by the same rules for the old per-theme code tests', () => {
+    expect(plainRoot['--code-focus']).toBe('var(--code-keyword)');
+  });
+});
+
+// Presets and custom themes: the interface tokens come from the engine and
+// everything else (verdicts, color-scheme) from the family rules in
+// tokens.css, exactly as the browser composes them from inline properties plus
+// data-family and data-contrast. A dark custom theme must get the dark
+// verdicts (E4b): the id-keyed rules match no preset or custom id.
+describe('presets and custom themes through the family rules', () => {
+  const inputs = [
+    ...PRESETS.map((p) => [p.id, p.input] as const),
+    ['custom dark', { background: '#1c2430', accent: '#e07a5f', contrast: 'standard' }] as const,
+    ['custom dark high contrast', { background: '#0a0a14', accent: '#44ff88', contrast: 'high' }] as const,
+    ['custom light', { background: '#f4efe6', accent: '#2f6f4f', contrast: 'standard' }] as const,
+    ['custom light high contrast', { background: '#ffffff', accent: '#0000ff', contrast: 'high' }] as const,
+  ];
+  for (const [name, input] of inputs) {
+    const d = derive(input);
+    const high = d.contrast === 'high';
+    for (const signal of [false, true]) {
+      it(`${name}${signal ? ' with colour-blind safe verdicts' : ''} meets the contrast rules`, () => {
+        const family = resolveFamily(rules, d.family, high, signal);
+        expect(family['color-scheme']).toBe(d.family);
+        expect(d41Failures({ ...family, ...d.vars }, { high, signal })).toEqual([]);
+      });
+    }
+  }
+
+  it('gives a dark family the dark verdicts and a light family the light ones', () => {
+    const dark = resolveFamily(rules, 'dark', false, false);
+    const light = resolveFamily(rules, 'light', false, false);
+    expect(dark['--ok']).toBe(resolveTheme(rules, 'dark', false)['--ok']);
+    expect(light['--ok']).toBe(resolveTheme(rules, 'light', false)['--ok']);
+    expect(dark['--ok']).not.toBe(light['--ok']);
+    expect(dark['color-scheme']).toBe('dark');
+  });
+
+  it('keeps the six presets apart from each other', () => {
+    const papers = PRESETS.map((p) => derive(p.input).vars['--paper']);
+    expect(new Set(papers).size).toBe(PRESETS.length);
+  });
+
+  it('leaves no preset needing the engine fallback', () => {
+    for (const p of PRESETS) expect(derive(p.input).adjustments.some((a) => a.startsWith('Colours replaced')), p.id).toBe(false);
   });
 });

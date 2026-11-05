@@ -39,6 +39,24 @@ const bankLoaded = (page: Page) => expect(page.getByRole('link', { name: 'Interv
 const contestsLoaded = (page: Page) => expect(page.getByRole('link', { name: 'Week 7 contest', exact: true })).toBeVisible();
 const editorLoaded = (page: Page) => expect(page.getByLabel('Title', { exact: true })).toHaveValue('Week 6 contest');
 
+/** Opens "Theme and colours" from the account menu (the Menu panel under 768 px). */
+async function themeDialog(page: Page) {
+  await page.route('**/api/me/preferences', (route) => json(route, 200, {}));
+  if ((page.viewportSize()?.width ?? 1440) < 768) {
+    await page.getByRole('button', { name: 'Menu' }).click();
+    await page.locator('#site-menu').getByRole('button', { name: 'Theme and colours' }).click();
+  } else {
+    await page.getByRole('button', { name: /Priya Raman|Account/ }).click();
+    await page.getByRole('button', { name: 'Theme and colours' }).click();
+  }
+  const dialog = page.getByRole('dialog', { name: 'Theme and colours' });
+  await expect(dialog).toBeVisible();
+  return dialog;
+}
+
+const owner = (page: Page) => screens.mockApi(page, 'owner');
+const ownerReady = (page: Page) => expect(page.locator('h1')).toBeVisible();
+
 const conflictDialog = (page: Page) => page.getByRole('dialog', { name: 'A problem with the slug a-plus-b already exists' });
 
 /** Picks a pack whose slug (a-plus-b) is taken, which opens the import conflict dialog. */
@@ -251,6 +269,53 @@ export const AUDIT_SCREENS: AuditScreen[] = [
     path: '/contests/week-6',
     mock: contestsAs({ phase: 'ready', contestContact: `${'contest-organisers-'.repeat(4)}ab@college.edu`.slice(0, 100) }),
     ready: (p) => expect(p.getByText('Questions about this contest?')).toBeVisible(),
+  },
+
+  // Theme and colours (v2.0.1 stage E): the open picker, a preset, the custom builder, an editor scheme.
+  {
+    name: 'theme-picker',
+    path: '/',
+    mock: owner,
+    ready: ownerReady,
+    steps: async (p) => {
+      await themeDialog(p);
+    },
+  },
+  {
+    name: 'theme-picker-preset',
+    path: '/',
+    mock: owner,
+    ready: ownerReady,
+    steps: async (p) => {
+      const d = await themeDialog(p);
+      await d.getByRole('radio', { name: /^Nordic slate/ }).check();
+      await expect(d).toContainText('Current theme: Nordic slate');
+    },
+  },
+  {
+    name: 'theme-picker-custom',
+    path: '/',
+    mock: owner,
+    ready: ownerReady,
+    steps: async (p) => {
+      const d = await themeDialog(p);
+      await d.getByRole('radio', { name: /^Custom/ }).check();
+      await d.getByLabel('Background', { exact: true }).fill('#1c2430');
+      await d.getByLabel('Accent', { exact: true }).fill('#5cc489');
+      await expect(d.getByText('Adjusted so text stays readable')).toBeVisible();
+      await d.getByLabel('Accent', { exact: true }).scrollIntoViewIfNeeded();
+    },
+  },
+  {
+    name: 'theme-picker-editor-paper',
+    path: '/',
+    mock: owner,
+    ready: ownerReady,
+    steps: async (p) => {
+      const d = await themeDialog(p);
+      await d.getByRole('radio', { name: /^Paper/ }).check();
+      await d.getByRole('radio', { name: /^Paper/ }).scrollIntoViewIfNeeded();
+    },
   },
 
   // Footer, sign-in and the main pages.

@@ -93,16 +93,23 @@ func (d *Handlers) MyProfile(w http.ResponseWriter, r *http.Request) {
 	httpx.WriteJSON(w, http.StatusOK, p)
 }
 
+// SetPreferences answers PUT /api/me/preferences: the theme, verdict set, editor
+// colours and custom theme (preferences.go).
 func (d *Handlers) SetPreferences(w http.ResponseWriter, r *http.Request) {
 	var p Preferences
 	if !httpx.DecodeJSON(w, r, &p) {
 		return
 	}
-	if err := d.Auth.SetPreferences(r.Context(), UserFrom(r.Context()).ID, p); err != nil {
+	err := d.Auth.SetPreferences(r.Context(), UserFrom(r.Context()).ID, p)
+	var fields FieldErrors
+	switch {
+	case errors.As(err, &fields):
+		httpx.WriteJSON(w, http.StatusBadRequest, map[string]httpx.APIError{"error": {Code: "bad_request", Message: fields.Error(), Fields: fields}})
+	case err != nil:
 		d.changeError(w, r, err)
-		return
+	default:
+		httpx.WriteJSON(w, http.StatusOK, p)
 	}
-	httpx.WriteJSON(w, http.StatusOK, p)
 }
 
 func (d *Handlers) ListPeople(w http.ResponseWriter, r *http.Request) {
