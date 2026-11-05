@@ -121,7 +121,10 @@ export function familyOf(background: string): Family {
 }
 
 const VERDICT_WORD: Record<string, string> = { '--ok': 'Accepted', '--part': 'Partial', '--bad': 'Wrong' };
-const VERDICT_COLOUR: Record<string, string> = { '--ok': 'green', '--part': 'amber', '--bad': 'red' };
+const VERDICT_COLOUR: Record<VerdictSetName, Record<string, string>> = {
+  standard: { '--ok': 'green', '--part': 'amber', '--bad': 'red' },
+  signal: { '--ok': 'teal', '--part': 'purple', '--bad': 'orange' },
+};
 
 const clamp01 = (x: number) => Math.min(1, Math.max(0, x));
 
@@ -158,7 +161,9 @@ export function deriveTheme(input: ThemeInput): DerivedTheme {
   const bg = toOklch(input.background);
   const cap = light ? 0.035 : 0.05;
   if (bg.c > cap + 0.01) note('Background made less saturated so it stays a calm base');
-  const pole = fromOklch({ l: light ? 0.2 : 0.96, c: 0.012, h: bg.h });
+  // Ink takes a trace of the background's hue; a neutral background (pure black or white) gets neutral ink.
+  const inkChroma = bg.c < 0.004 ? 0 : 0.012;
+  const pole = fromOklch({ l: light ? 0.2 : 0.96, c: inkChroma, h: bg.h });
   const surfaces = (paper: string) => ({
     paper,
     surface: light ? mixSrgb('#FFFFFF', paper, 0.7) : mixSrgb(pole, paper, 0.04),
@@ -183,7 +188,7 @@ export function deriveTheme(input: ThemeInput): DerivedTheme {
   // Ink: from the pole toward black or white until 7:1 on every ground and
   // text-level on every verdict tint.
   const allTints = sets.flatMap((s) => ['--ok-tint', '--part-tint', '--bad-tint', '--wait-tint'].map((k) => s.tokens[k]));
-  const inkOf = (l: number) => fromOklch({ l, c: 0.012, h: bg.h });
+  const inkOf = (l: number) => fromOklch({ l, c: inkChroma, h: bg.h });
   const inkL = search(light ? 0.2 : 0.96, light ? -1 : 1, 0.01, (l) => {
     const c = inkOf(l);
     return grounds.every((g) => contrast(c, g) >= 7) && allTints.every((g) => contrast(c, g) >= text);
@@ -191,7 +196,7 @@ export function deriveTheme(input: ThemeInput): DerivedTheme {
   if (inkL === null) return fallback('the text colour');
   const ink = inkOf(inkL);
   const darkInk = '#0E1012';
-  const verdictsAll = sets.flatMap((s) => ['--ok', '--part', '--bad'].map((k) => ({ k, hex: s.tokens[k] })));
+  const verdictsAll = sets.flatMap((s) => ['--ok', '--part', '--bad'].map((k) => ({ k, set: s.name, hex: s.tokens[k] })));
 
   // Accent: dark enough (light family) or light enough (dark family) to read
   // as text on the background and carry button text, and clear of every verdict.
@@ -216,7 +221,8 @@ export function deriveTheme(input: ThemeInput): DerivedTheme {
   // the reason a person would not see in a plain "darkened".
   const clash = verdictsAll.filter((x) => distance(input.accent, x.hex) < MIN_DISTANCE).sort((p, q) => distance(input.accent, p.hex) - distance(input.accent, q.hex))[0];
   if (clash && act.toLowerCase() !== input.accent.toLowerCase()) {
-    note(`Accent moved away from the ${VERDICT_COLOUR[clash.k]} used for ${VERDICT_WORD[clash.k]}`);
+    const where = clash.set === 'signal' ? ' in the colour-blind safe set' : '';
+    note(`Accent moved away from the ${VERDICT_COLOUR[clash.set][clash.k]} used for ${VERDICT_WORD[clash.k]}${where}`);
   } else if (Math.abs(toOklch(act).l - acc.l) > 0.02) {
     note(light ? 'Accent darkened so text on buttons stays readable' : 'Accent lightened so it stays readable on the background');
   }

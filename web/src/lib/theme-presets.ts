@@ -23,7 +23,7 @@ export const CUSTOM_START: ThemeInput = { background: '#f3f4f1', accent: '#2b3fd
 export const PRESETS: readonly Preset[] = [
   { id: 'nordic-frost', label: 'Nordic frost', input: { background: '#ECEFF4', accent: '#4C6A92', contrast: 'standard' } },
   { id: 'soft-lavender', label: 'Soft lavender', input: { background: '#F2EFF9', accent: '#6247B0', contrast: 'standard' } },
-  { id: 'overcast', label: 'Overcast', input: { background: '#E5E8EB', accent: '#3A5878', contrast: 'standard' } },
+  { id: 'overcast', label: 'Overcast', input: { background: '#F1F2F4', accent: '#4B5563', contrast: 'standard' } },
   { id: 'nordic-slate', label: 'Nordic slate', input: { background: '#2B313B', accent: '#88B4C8', contrast: 'standard' } },
   { id: 'oled-black', label: 'OLED black', input: { background: '#000000', accent: '#8FA8E8', contrast: 'standard' } },
   { id: 'cosmic-violet', label: 'Cosmic violet', input: { background: '#1A1428', accent: '#A898E0', contrast: 'standard' } },
