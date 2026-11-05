@@ -1,11 +1,10 @@
 // Builds cache/audit-<date>/REPORT.md from the cells the spec wrote, after the
 // run and whether or not checks failed. The exit code comes from the failed tests.
-import type { FullConfig } from '@playwright/test';
 import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { auditDir, rawDir, THEMES, WIDTHS, type Cell } from './paths';
 
-export default function report(config: FullConfig) {
-  const raw = rawDir(config.rootDir);
+export default function report() {
+  const raw = rawDir();
   const cells: Cell[] = existsSync(raw)
     ? readdirSync(raw)
         .filter((f) => f.endsWith('.json'))
@@ -53,6 +52,6 @@ export default function report(config: FullConfig) {
   if (cells.length === 0) lines.push('- No results were written: the run did not reach any screen.');
   lines.push('');
 
-  writeFileSync(`${auditDir(config.rootDir)}/REPORT.md`, lines.join('\n'));
+  writeFileSync(`${auditDir()}/REPORT.md`, lines.join('\n'));
   console.log(`Audit report: cache/audit-${process.env.AUDIT_DATE}/REPORT.md (${failing.length} of ${cells.length} cells failing)`);
 }

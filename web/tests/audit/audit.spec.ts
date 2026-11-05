@@ -81,9 +81,9 @@ for (const theme of THEMES) {
     test.describe.configure({ timeout: 120_000 });
 
     for (const s of AUDIT_SCREENS) {
-      test(s.name, async ({ page }, testInfo) => {
-        const dir = auditDir(testInfo.project.testDir);
-        mkdirSync(rawDir(testInfo.project.testDir), { recursive: true });
+      test(s.name, async ({ page }) => {
+        const dir = auditDir();
+        mkdirSync(rawDir(), { recursive: true });
         const cells: Cell[] = [];
         for (const width of WIDTHS) {
           // A fresh page per width, so one state never leaks into the next.
@@ -91,7 +91,7 @@ for (const theme of THEMES) {
           cells.push(await checkCell(fresh, s, width, theme, dir));
           await fresh.close();
         }
-        writeFileSync(`${rawDir(testInfo.project.testDir)}/${s.name}-${theme}.json`, JSON.stringify(cells, null, 2));
+        writeFileSync(`${rawDir()}/${s.name}-${theme}.json`, JSON.stringify(cells, null, 2));
         const failed = cells.filter((c) => c.failures.length > 0).map((c) => `${c.width}: ${c.failures.join('; ')}`);
         expect(failed, `${s.name}, ${theme}`).toEqual([]);
       });
