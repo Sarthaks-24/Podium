@@ -6,7 +6,9 @@
   while `busy`). Focus starts on the heading, or on what `initialFocus`
   returns, and goes back to the control that opened it when it closes;
   when that control is gone (a menu that closed with it), focus goes to the
-  page heading, never to the body.
+  title link of the list row it sat in (data-focus-row and data-focus-title
+  on the row and its link), else to the page heading, never to the body. The same happens when the caller removes
+  the whole component while the dialog is open.
   With `title` it draws the standard head, the title as an h2 and a Close
   button named `closeLabel`; without one the caller draws its own heading
   with the id `labelledby`. `kind` is 'normal', 'small' (a confirm) or
@@ -16,8 +18,9 @@
   (bindable) and `children`.
 -->
 <script lang="ts">
-  import { tick, type Snippet } from 'svelte';
+  import { onDestroy, tick, type Snippet } from 'svelte';
   import Icon from './Icon.svelte';
+  import { rowTitleLink } from '../lib/focus';
 
   interface Props {
     open: boolean;
@@ -54,20 +57,37 @@
   const titleId = `dialog-${Math.random().toString(36).slice(2, 9)}`;
   let heading: HTMLHeadingElement | undefined = $state();
   let opener: HTMLElement | null = null;
+  // The list row the opener sat in (data-focus-row), captured at open, so a re-rendered row can still be found.
+  let openerRow = '';
 
   $effect(() => {
     if (!dialog) return;
     if (open && !dialog.open) {
       opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+      openerRow = opener?.closest<HTMLElement>('[data-focus-row]')?.dataset.focusRow ?? '';
       dialog.showModal();
       void tick().then(() => (initialFocus?.() ?? heading ?? dialog?.querySelector<HTMLElement>('h2'))?.focus());
     } else if (!open && dialog.open) {
       dialog.close();
-      const back = opener;
-      opener = null;
-      if (back && back.isConnected && !back.closest('[hidden], [inert]')) back.focus();
-      else document.querySelector<HTMLElement>('main h1')?.focus();
+      returnFocus();
     }
+  });
+
+  function returnFocus() {
+    const back = opener;
+    const row = openerRow;
+    opener = null;
+    openerRow = '';
+    if (back && back.isConnected && !back.closest('[hidden], [inert]')) back.focus();
+    else (rowTitleLink(row) ?? document.querySelector<HTMLElement>('main h1'))?.focus();
+  }
+
+  // A caller that removes the dialog with an {#if} never sets `open` false,
+  // so the close branch above does not run; give focus back here instead.
+  onDestroy(() => {
+    if (!opener) return;
+    if (dialog?.open) dialog.close();
+    returnFocus();
   });
 
   function onCancel(event: Event) {
