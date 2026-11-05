@@ -1,8 +1,9 @@
 -- v2.0.1 stage A: archiving frees the slug. An archived problem or contest
 -- keeps its original slug in archived_slug and takes
 -- <base>-archived-<id> as its live slug, so the original can be used again.
--- archived_slug is empty while the slug has never moved. Only adds columns,
--- so the previous binary ignores them and still runs.
+-- archived_slug is empty while the slug has never moved. The columns are
+-- additive, but the previous binary refuses a database that records this
+-- migration: rolling back means restoring the pre-upgrade backup.
 ALTER TABLE problems ADD COLUMN archived_slug TEXT NOT NULL DEFAULT '';
 ALTER TABLE contests ADD COLUMN archived_slug TEXT NOT NULL DEFAULT '';
 
