@@ -275,6 +275,10 @@ Generate inputs in the editor runs the generator for every planned test, in one 
 
 The three providers get the same instructions and the same answer schema, and every answer passes the same checks, so a draft from any of them is held to the same rules. Models differ in how often their first answer passes: when one keeps failing a check, try another model before rewriting the brief.
 
+### Custom prompt
+
+The wizard's prompt has a fixed security part and replaceable authoring rules. An owner can replace the rules with a text file named in `PODIUM_AI_PROMPT_FILE` (`docs/OPERATIONS.md`, "Custom wizard prompt"). The fixed part (the brief or pasted text is data, rewrite never copy, answer in the schema) cannot be replaced and is always sent first. Admins and owners see "This site uses a custom prompt" on the wizard page while one is active. If a custom prompt makes drafts worse, remove the variable and restart to go back to the built-in rules.
+
 ### From a brief
 
 Give a topic, a difficulty (easy, medium or hard), constraints and subtask ideas, each up to 2,000 characters. Concrete constraints ("n up to 2e5, values up to 1e9 in absolute value") give better generators and validators than adjectives ("large").
@@ -394,6 +398,17 @@ Validation proves the tests and the reference agree with each other. It cannot p
 - You see full figures (exact memory per test). Students will see coarser figures and no hidden test data (`docs/ARCHITECTURE.md`, "What students can see").
 
 Students get the same workspace inside contests.
+
+## Packs from another AI
+
+Any AI chat can write a pack for Import pack, not only the wizard's three providers. On Problems, "Prompt for another AI" opens a prompt to copy into that chat. It describes the pack format the server reads (file names, the `problem.yaml` keys, the limits under "Import limits") and ends with a line where you describe the problem you want.
+
+1. Copy the prompt, replace its last line with your problem, and send it.
+2. If the AI can make files, it returns a zip. Otherwise it returns each file under its exact name: put the files in one folder and zip them (Windows: select the files, right-click, Send to, Compressed (zipped) folder; Mac: select the files, right-click, Compress). Zip the files, not a folder around them.
+3. Use Import pack. If it fails, paste the error list back into the chat and ask for a corrected pack.
+4. The problem still has to pass Validate before a contest can use it. The reference and the tests come from the same chat, so read them and write your own brute force, as with any AI draft.
+
+Write the problem in your own words, and do not paste unreleased contest problems or student material into an outside AI. Expected outputs (`tests/*.out`) may be left out: Podium makes them from the reference solution.
 
 ## Import limits
 

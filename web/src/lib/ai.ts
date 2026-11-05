@@ -48,6 +48,8 @@ export interface KeyStatus {
   /** Unix ms when the server forgets the active key, or null. */
   active_until: number | null;
   providers: ProviderOption[];
+  /** True when the server replaces the authoring rules with a file (never the text). */
+  custom_prompt?: boolean;
   server_now?: number;
 }
 

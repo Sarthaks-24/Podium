@@ -456,6 +456,10 @@ The wizard drafts a problem from a brief or from pasted text, with Anthropic, Op
 
 `PUT /api/admin/ai/key`: `provider` is required. `key` is required unless the session already holds one for the provider; left out, the held key stays and only the model changes. `model` is at most 128 characters of letters, digits and `. _ - :` (a leading `models/` is dropped). Empty means "no model yet": the key is checked by listing models. With a model, the key and the model are checked together by the provider's model lookup. Neither check costs tokens. A successful save makes this provider the active one.
 
+`KeyStatus` also carries `custom_prompt` (boolean): true when `PODIUM_AI_PROMPT_FILE` replaces the wizard's authoring rules. The text is never sent.
+
+`GET /api/admin/problems/pack-prompt` (organiser and up) returns 200 `{"prompt":"..."}`: the text an organiser gives to any AI so it returns a pack for Import pack. It is built from an embedded template filled with the importer's own limits and file names, and asks for pack format 1. No request body or parameters.
+
 `KeyStatus`: `{active, provider, model, active_until, providers: [{id, name, has_key, model, active_until, models}], server_now}`; without a key, `active` is false and `provider` is `anthropic`.
 
 `WizardRequest`: `{"mode":"brief","brief":{"topic","difficulty","constraints","subtasks"}}` or `{"mode":"paste","text":"..."}`. `difficulty` is `easy`, `medium` or `hard`; `topic` is required; each brief field is at most 2,000 characters and `text` at most 20,000. An optional `provider` picks which of the session's keys to use.
