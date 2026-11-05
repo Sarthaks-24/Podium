@@ -26,7 +26,7 @@
   import Badge from '../components/Badge.svelte';
   import MonoDigits from '../components/MonoDigits.svelte';
   import { onMount, tick, untrack } from 'svelte';
-  import { focusFirstInvalid } from '../lib/focus';
+  import { focusFirstInvalid, refocusRow } from '../lib/focus';
   import { problemTone } from '../lib/badges';
   import { isAIDraft, withoutAIDraft } from '../lib/ai';
   import { ApiError, errorText, getJSON, sendBody, sendJSON } from '../lib/api';
@@ -77,6 +77,7 @@
   let newButton: HTMLButtonElement | undefined = $state();
 
   let fileInput: HTMLInputElement | undefined = $state();
+  let importButton: HTMLButtonElement | undefined = $state();
   let importing = $state(false);
   let importError = $state<{ message: string; problems: readonly string[] } | null>(null);
   /** The pack whose slug is taken, while the dialog asks what to do; resolve gets the problem made, or null when skipped. */
@@ -308,6 +309,7 @@
     importError = null;
     importing = true;
     const made: string[] = [];
+    let asked = false;
     try {
       for (const file of files) {
         let problem: Problem | null;
@@ -317,6 +319,7 @@
           if (handleAuth(err)) return;
           const existing = err instanceof ApiError && err.status === 409 ? parseExisting(err.existing) : null;
           if (err instanceof ApiError && existing) {
+            asked = true;
             problem = await askConflict(file, existing, err.suggestedSlug);
             if (problem === null) continue;
           } else {
@@ -332,6 +335,11 @@
       }
     } finally {
       importing = false;
+    }
+    // The dialog's opener is the hidden file input; the button is disabled until the import ends.
+    if (asked) {
+      await tick();
+      importButton?.focus();
     }
     if (made.length > 0) {
       showToast(made.join(' '));
@@ -358,7 +366,7 @@
         New problem
       </button>
       <a class="btn btn-secondary" href="/admin/ai/new">New problem with AI</a>
-      <button type="button" class="btn btn-secondary" disabled={importing} onclick={pickPack}>Import pack</button>
+      <button type="button" class="btn btn-secondary" disabled={importing} bind:this={importButton} onclick={pickPack}>Import pack</button>
       <input
         bind:this={fileInput}
         class="file"
@@ -417,9 +425,9 @@
             <p class="field-help same-title" role="status">
               A problem called {repeated.title} already exists.
               {#if repeated.archived}
-                <button type="button" class="btn btn-quiet btn-compact" onclick={() => (restoring = { id: repeated.id, name: repeated.title })}>Restore it</button>
+                <button type="button" class="btn btn-link btn-compact" onclick={() => (restoring = { id: repeated.id, name: repeated.title })}>Restore it</button>
               {:else}
-                <a class="btn btn-quiet btn-compact" href="/admin/problems/{repeated.id}">Open it</a>
+                <a class="btn btn-link btn-compact" href="/admin/problems/{repeated.id}">Open it</a>
               {/if}
             </p>
           {/if}
@@ -468,9 +476,9 @@
             {#each shown as p (p.id)}
               {@const name = p.title.trim() !== '' ? p.title : p.slug}
               {@const word = statusOf(p)}
-              <tr>
+              <tr data-focus-row="problem-{p.id}">
                 <th scope="row" class="title">
-                  <a class="row-link" href="/admin/problems/{p.id}">{name}</a>{#if p.archived && p.archived_slug}<span class="orig-slug mono">{p.archived_slug}</span>{/if}{#if isAIDraft(p.tags)}<span class="ai-draft"><Badge tone="wait" text="AI draft" /></span>{/if}{#if p.shown_in_practice}<span class="ai-draft"><Badge text="Hidden tests shown in practice" /></span>{/if}
+                  <a class="row-link" data-focus-title href="/admin/problems/{p.id}">{name}</a>{#if p.archived && p.archived_slug}<span class="orig-slug mono">{p.archived_slug}</span>{/if}{#if isAIDraft(p.tags)}<span class="ai-draft"><Badge tone="wait" text="AI draft" /></span>{/if}{#if p.shown_in_practice}<span class="ai-draft"><Badge text="Hidden tests shown in practice" /></span>{/if}
                 </th>
                 <td class="difficulty">{difficultyLabel(p.difficulty)}</td>
                 <td class="tags">{withoutAIDraft(p.tags).join(', ')}</td>
@@ -519,8 +527,9 @@
     path={problemPath(restoring.id, '/restore')}
     onclose={() => (restoring = null)}
     ondone={() => {
+      const key = `problem-${restoring?.id}`;
       restoring = null;
-      void reload();
+      void reload().then(() => refocusRow(key));
       if (creating) void loadAllTitles();
     }}
   />
@@ -622,6 +631,11 @@
     flex-wrap: wrap;
     align-items: center;
     gap: var(--space-2);
+  }
+
+  /* The notice's action lines up with the sentence above it. */
+  .same-title .btn {
+    padding-inline: 0;
   }
 
   .create-fields .grow {
