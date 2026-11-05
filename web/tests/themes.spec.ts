@@ -9,8 +9,9 @@
 // Screenshots of the home and people screens in every theme, and of the
 // open menu, go to cache/screenshots-themes/.
 import { expect, test, type Page, type Route } from '@playwright/test';
-import { COLOUR_TOKENS, parseTokenRules, resolveTheme, type TokenRule } from '../src/lib/colour';
-import { THEMES } from '../src/lib/theme';
+import { COLOUR_TOKENS, parseTokenRules, resolveFamily, resolveTheme, type TokenRule } from '../src/lib/colour';
+import { THEMES, applyPreferences, derive, resolveInterface, DEFAULT_PREFERENCES } from '../src/lib/theme';
+import { PRESETS } from '../src/lib/theme-presets';
 
 function shots(): string {
   return `${test.info().project.testDir}/../../cache/screenshots-themes/`;
@@ -126,6 +127,52 @@ test.describe('the cascade in tokens.css', () => {
   }
 });
 
+test.describe('the cascade for presets and custom themes', () => {
+  // A preset or custom theme is inline variables from the engine plus data-family and data-contrast; the
+  // verdicts and color-scheme must come from the family rules, with and without the colour-blind safe set.
+  const cases = [
+    ...PRESETS.map((p) => ({ name: p.id, theme: p.id, custom: null })),
+    { name: 'custom dark', theme: 'custom', custom: { background: '#1c2430', accent: '#e07a5f', contrast: 'standard' as const } },
+    { name: 'custom light high contrast', theme: 'custom', custom: { background: '#ffffff', accent: '#0000ff', contrast: 'high' as const } },
+    { name: 'custom dark high contrast', theme: 'custom', custom: { background: '#0a0a14', accent: '#44ff88', contrast: 'high' as const } },
+  ];
+  for (const scheme of ['light', 'dark'] as const) {
+    test(`matches the resolved values (system ${scheme})`, async ({ page }) => {
+      await page.emulateMedia({ colorScheme: scheme });
+      await mockApi(page, false);
+      await page.goto('/signin');
+      await expect(page.locator('h1')).toBeVisible();
+      const rules = await loadRules(page);
+      for (const c of cases) {
+        for (const signal of [false, true]) {
+          const prefs = { ...DEFAULT_PREFERENCES, theme: c.theme, custom: c.custom, verdicts: signal ? ('signal' as const) : ('standard' as const) };
+          const r = resolveInterface(prefs)!;
+          // Apply exactly as the app does, on the real <html>.
+          const plan = { attrs: {} as Record<string, string>, vars: r.derived!.vars };
+          applyPreferences(
+            {
+              setAttribute: (k, v) => void (plan.attrs[k] = v),
+              removeAttribute: () => undefined,
+              style: { setProperty: () => undefined, removeProperty: () => '' },
+            },
+            prefs,
+          );
+          await page.evaluate((p) => {
+            const el = document.documentElement;
+            for (const a of ['data-theme', 'data-family', 'data-contrast', 'data-verdicts']) el.removeAttribute(a);
+            for (const [k, v] of Object.entries(p.attrs)) el.setAttribute(k, v);
+            for (const [k, v] of Object.entries(p.vars)) el.style.setProperty(k, v);
+          }, plan);
+          const want = { ...resolveFamily(rules, r.family, r.contrast === 'high', signal), ...derive(prefs.custom ?? PRESETS.find((p) => p.id === c.theme)!.input).vars };
+          const expectedTokens = Object.fromEntries(COLOUR_TOKENS.map((k) => [k, want[k].toUpperCase()]));
+          expect(await computedTokens(page), `${c.name} signal=${signal} under system ${scheme}`).toEqual(expectedTokens);
+          expect(await page.evaluate(() => getComputedStyle(document.documentElement).colorScheme)).toBe(r.family);
+        }
+      }
+    });
+  }
+});
+
 test('applies, saves and clears preferences', async ({ page }) => {
   const api = await mockApi(page, true);
   await page.setViewportSize({ width: 1440, height: 900 });
@@ -150,11 +197,11 @@ test('applies, saves and clears preferences', async ({ page }) => {
   await page.keyboard.press('ArrowDown');
   await expect(page.getByRole('radio', { name: 'High contrast dark' })).toBeChecked();
   await expect(html).toHaveAttribute('data-theme', 'hc-dark');
-  await expect.poll(() => api.saved.at(-1)).toEqual({ theme: 'hc-dark', verdicts: 'standard' });
+  await expect.poll(() => api.saved.at(-1)).toMatchObject({ theme: 'hc-dark', verdicts: 'standard' });
 
   await page.getByRole('checkbox', { name: /Colour-blind safe verdict colours/ }).check();
   await expect(html).toHaveAttribute('data-verdicts', 'signal');
-  await expect.poll(() => api.saved.at(-1)).toEqual({ theme: 'hc-dark', verdicts: 'signal' });
+  await expect.poll(() => api.saved.at(-1)).toMatchObject({ theme: 'hc-dark', verdicts: 'signal' });
   expect(await page.evaluate(() => [localStorage.getItem('podium-theme'), localStorage.getItem('podium-verdicts')])).toEqual([
     'hc-dark',
     'signal',
@@ -176,7 +223,7 @@ test('applies, saves and clears preferences', async ({ page }) => {
   await item.click();
   await page.getByRole('radio', { name: /^System/ }).check();
   await expect(html).not.toHaveAttribute('data-theme', /.*/);
-  await expect.poll(() => api.saved.at(-1)).toEqual({ theme: '', verdicts: 'signal' });
+  await expect.poll(() => api.saved.at(-1)).toMatchObject({ theme: '', verdicts: 'signal' });
 
   // Sign out: the next person at this machine starts from the defaults.
   await page.keyboard.press('Escape');
@@ -207,7 +254,7 @@ test('tabbing out of the menu closes it', async ({ page }) => {
   await mockApi(page, false);
   await page.goto('/signin');
   await page.getByRole('button', { name: 'Theme', exact: true }).click();
-  await page.getByRole('checkbox', { name: /Colour-blind safe verdict colours/ }).focus();
+  await page.getByRole('button', { name: 'Reset to default' }).focus();
   await page.keyboard.press('Tab');
   await expect(page.locator('#theme-panel')).toBeHidden();
 });
