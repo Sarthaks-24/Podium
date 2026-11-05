@@ -63,6 +63,7 @@
     | 'practice_after_end'
     | 'hold_reveal'
     | 'audience'
+    | 'contact_email'
     | ExamKey
     | 'description_md'
     | 'honour_text';
@@ -79,6 +80,7 @@
     practice_after_end: boolean;
     hold_reveal: boolean;
     audience: Audience;
+    contact_email: string;
     full_screen: boolean;
     count_focus: boolean;
     block_paste: boolean;
@@ -101,6 +103,7 @@
   /** The settings under Advanced, so an error there opens it. */
   const ADVANCED: readonly Key[] = [
     'audience',
+    'contact_email',
     'min_gap_s',
     'max_per_problem',
     'practice_after_end',
@@ -287,6 +290,7 @@
       practice_after_end: c.practice_after_end,
       hold_reveal: c.hold_reveal ?? false,
       audience: c.audience ?? 'everyone',
+      contact_email: c.contact_email ?? '',
       full_screen: c.full_screen ?? false,
       count_focus: c.count_focus ?? false,
       block_paste: c.block_paste ?? false,
@@ -383,6 +387,7 @@
         body.starts_at = start;
         body.ends_at = start + whole(f.length) * 60_000;
       } else if (k === 'title') body.title = f.title.trim();
+      else if (k === 'contact_email') body.contact_email = f.contact_email.trim();
       else if (k === 'freeze_minutes' || k === 'min_gap_s' || k === 'max_per_problem') body[k] = whole(f[k]);
       else if (k === 'languages') body.languages = [...f.languages];
       else body[k] = f[k] as never;
@@ -1198,6 +1203,24 @@
               {/each}
             </fieldset>
 
+            <div class="field">
+              <label for="f-contact_email">Contact email for this contest</label>
+              <input
+                id="f-contact_email"
+                class="input"
+                type="email"
+                autocomplete="off"
+                maxlength="254"
+                placeholder="contest@college.edu"
+                bind:value={form.contact_email}
+                oninput={() => change(['contact_email'])}
+                onchange={saveNow}
+                aria-invalid={fields.contact_email ? 'true' : undefined}
+                aria-describedby="f-contact-help{fields.contact_email ? ' f-contact_email-error' : ''}"
+              />
+              <p id="f-contact-help" class="field-help">Shown on the contest page to everyone who can open it. Leave empty to show none.</p>
+              {@render err('contact_email')}
+            </div>
             <div class="field">
               <label for="f-description_md">Description (Markdown)</label>
               <textarea

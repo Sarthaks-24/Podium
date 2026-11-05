@@ -3,7 +3,7 @@
   the heading, a line saying which Google accounts may sign in (built from
   GET /api/auth/config), an error banner when Google sign-in came back with
   ?error= (rate_limited included), the "Continue with Google" link, and a
-  contact line with the organisers' email and phone from the organisation
+  contact line with the site contact email and phone from the organisation
   details (nothing shows for a field not entered). The link is
   a full page navigation to /api/auth/google/start carrying the ?next= path
   this page was opened with. The heading names the organisation once an
@@ -63,7 +63,7 @@
   <!-- FP.2 and FP.3: the way in for anyone who cannot sign in, from the organisation's own details. -->
   {#if runMode.contactEmail !== ''}
     <p class="contact muted">
-      Cannot sign in? Contact the organisers: <a href="mailto:{runMode.contactEmail}">{runMode.contactEmail}</a>{#if org.phone !== ''}, or call
+      Cannot sign in? Email <a href="mailto:{runMode.contactEmail}">{runMode.contactEmail}</a>{#if org.phone !== ''}, or call
         <a href={telHref(org.phone)}>{org.phone}</a>{/if}.
     </p>
   {/if}

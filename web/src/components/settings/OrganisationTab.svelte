@@ -23,7 +23,7 @@
 
   const FIELDS = [
     { key: 'name', label: 'Organisation name', type: 'text', help: 'For example Example College of Engineering.' },
-    { key: 'contact_email', label: 'Contact email', type: 'email', help: 'Shown to everyone, signed in or not.' },
+    { key: 'contact_email', label: 'Site contact email', type: 'email', help: 'Shown in the footer and on sign-in, for problems with the site. Each contest can show its own contact.' },
     { key: 'phone', label: 'Phone', type: 'tel', help: 'Optional. Digits, spaces and + - ( ) only.' },
     { key: 'privacy_contact', label: 'Privacy contact', type: 'text', help: 'Who to ask about personal data: a name or an address.' },
   ] as const;
@@ -66,7 +66,7 @@
   <h2 id="org-heading">Organisation details</h2>
   <p class="intro muted">
     Shown on the sign-in page, in the footer and on the privacy page. Until a contact email is entered, those pages show no contact line.
-    Use the organisers' address, not the developer's.
+    Each contest can also show its own contact on its page.
   </p>
   <form id="org-form" class="org" novalidate onsubmit={save}>
     <div class="fields">

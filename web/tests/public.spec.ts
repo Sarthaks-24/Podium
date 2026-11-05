@@ -111,6 +111,7 @@ test('sign-in names the organisation and how to reach it, and explains a rate li
   await page.goto('/signin?error=rate_limited');
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('Weekly programming contests for Example College of Engineering');
   await expect(page.getByRole('alert')).toHaveText('Too many people are signing in from this network at once. Wait a few seconds, then start again.');
+  await expect(page.getByText('Cannot sign in? Email podium@college.edu')).toBeVisible();
   await expect(page.getByRole('link', { name: 'podium@college.edu' })).toHaveAttribute('href', 'mailto:podium@college.edu');
   await expect(page.getByRole('link', { name: '+91 80 1234 5678' })).toHaveAttribute('href', 'tel:+918012345678');
   // The approved privacy notice (D85) is linked from sign-in and the footer.
@@ -121,7 +122,7 @@ test('an organisation with nothing entered shows nothing made up', async ({ page
   await mockApi(page, 'signed-out', { config: { contact_email: '', mode: 'production', organisation: { name: '', contact_email: '', phone: '', privacy_contact: '' }, retention: [] } });
   await page.goto('/signin');
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('Weekly programming contests');
-  await expect(page.getByText('Contact the organisers')).toHaveCount(0);
+  await expect(page.getByText('Cannot sign in?')).toHaveCount(0);
 });
 
 test('the approved privacy notice lists every retention period from the config (FP.1)', async ({ page }) => {

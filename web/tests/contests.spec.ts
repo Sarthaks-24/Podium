@@ -138,6 +138,7 @@ test('a student agrees to the honour code, solves, reads an announcement and ask
   await expect(facts).toContainText('LanguagesC++17, Java 21, Python 3');
   await expect(facts).toContainText('Wait between submissions30 s');
   await expect(page.getByText('Organisers: Priya Sharma and Ravi Kumar')).toBeVisible();
+  await expect(page.getByText('Questions about this contest?')).toHaveCount(0);
   await expect(page.getByText('It is deleted 180 days after the contest.', { exact: false })).toBeVisible();
   await expect(page.getByText(/^The contest started at \d{2}:\d{2} and your time is running\. It ends in/)).toBeVisible();
   await page.getByRole('button', { name: 'Read the rules and how Run and Submit work' }).click();
@@ -1597,4 +1598,26 @@ test('setup limits a contest to invited students and invites by picker and by pa
   await expect(page.getByText('nobody@college.edu: Not a student on the sign-in list')).toBeVisible();
   await page.getByRole('button', { name: 'Invite 1 student' }).last().click();
   await expect(page.getByRole('heading', { name: 'Invited students (3)' })).toBeVisible();
+});
+
+test('the contest page names the contest contact under Organisers, and nothing when it is empty (V201-8)', async ({ page }) => {
+  await mockApi(page, { phase: 'ready', contestContact: 'week6@college.edu' });
+  await page.goto('/contests/week-6');
+  await expect(page.getByText('Organisers: Priya Sharma and Ravi Kumar')).toBeVisible();
+  const line = page.getByText('Questions about this contest?');
+  await expect(line).toHaveText('Questions about this contest? Email week6@college.edu');
+  await expect(line.getByRole('link', { name: 'week6@college.edu' })).toHaveAttribute('href', 'mailto:week6@college.edu');
+});
+
+test('the contest contact field saves from Advanced with its help text (V201-8)', async ({ page }) => {
+  const api = await mockApi(page, { who: 'organiser', phase: 'during' });
+  await page.goto('/admin/contests/4');
+  await page.locator('#advanced summary').click();
+  const field = page.getByLabel('Contact email for this contest');
+  await expect(field).toHaveValue('');
+  await expect(page.getByText('Shown on the contest page to everyone who can open it. Leave empty to show none.')).toBeVisible();
+  await field.fill('week6@college.edu');
+  await field.blur();
+  await expect.poll(() => api.settingsPuts.at(-1)?.contact_email).toBe('week6@college.edu');
+  await expect(saveStatus(page)).toHaveText('Saved');
 });

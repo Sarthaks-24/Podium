@@ -5,7 +5,7 @@
   account". It loads no data and needs no script to read, so the build
   prerenders it to dist/landing.html (scripts/prerender.mjs), and inside
   the app it is the signed-out home. The privacy link (once approved) and
-  the organisers' contact sit in the app shell's footer; the prerendered
+  the site contact sit in the app shell's footer; the prerendered
   copy carries only the privacy link, since the contact is runtime data.
   Left-aligned, one column, no animation (design.md section 2).
   Takes no props.

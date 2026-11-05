@@ -3,7 +3,7 @@
   or not. The notice is drafted in src/content/privacy.md and waits for
   the owner's approval: until lib/site.ts PRIVACY_LINKED is
   true the page says the notice is being written and names the
-  organisers' contact email, and nothing links here. "/privacy?draft"
+  site contact email, and nothing links here. "/privacy?draft"
   shows the drafted notice with a line saying it is a draft, so the owner
   can read it in place. The full notice renders the Markdown and, at its
   marker, a table of every retention period from GET /api/auth/config
@@ -37,7 +37,7 @@
   <div class="text">
     <p>The privacy notice for podium is being written. It will say what podium records about you, who can see it and how long it is kept.</p>
     {#if runMode.contactEmail !== ''}
-      <p>Until it is published, ask the organisers: <a href="mailto:{runMode.contactEmail}">{runMode.contactEmail}</a></p>
+      <p>Until it is published, email <a href="mailto:{runMode.contactEmail}">{runMode.contactEmail}</a></p>
     {/if}
   </div>
 {:else}
@@ -49,7 +49,7 @@
     {#if runMode.status === 'loading'}
       <p class="muted" role="status">Loading the retention periods</p>
     {:else if runMode.retention.length === 0}
-      <p>The list of retention periods could not load. Reload the page, or ask the organisers for it.</p>
+      <p>The list of retention periods could not load. Reload the page, or ask whoever runs this site for it.</p>
     {:else}
       <div class="table-wrap retention">
         <table class="table">

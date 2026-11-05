@@ -24,9 +24,9 @@ export function audienceLine(): string {
   return 'Sign in with the Google account of the email the organisers added.';
 }
 
-/** The person to contact: a mailto part, or plain words when none is configured. */
+/** The site contact: a mailto part, or plain words when none is configured. */
 function contact(email: string): MessagePart {
-  return email.trim() !== '' ? { email } : 'an organiser';
+  return email.trim() !== '' ? { email } : 'whoever runs this site';
 }
 
 /** The error banner for a ?error= code, or null when the code is unknown. */

@@ -1,7 +1,7 @@
 /**
  * The public site configuration from GET /api/auth/config as
  * reactive state: the server's run mode (PODIUM_MODE), the
- * organisers' contact email, the organisation details an owner enters on
+ * site contact email, the organisation details an owner enters on
  * People, and the retention periods the privacy page lists. "testing" mode
  * means sign-in is a form with no Google account behind it; the shell shows
  * a banner so nobody mistakes a testing server for the real one. Unknown
@@ -47,7 +47,7 @@ const EMPTY_ORG: Organisation = { name: '', contact_email: '', phone: '', privac
 
 class ModeState {
   mode = $state<RunMode | 'unknown'>('unknown');
-  /** The organisers' contact email, or "" until the config loads or when none is set. */
+  /** The site contact email, or "" until the config loads or when none is set. */
   contactEmail = $state('');
   signInOpen = $state(true);
   organisation = $state<Organisation>({ ...EMPTY_ORG });
