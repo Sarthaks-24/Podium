@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"unicode"
 	"unicode/utf8"
 )
 
@@ -181,7 +182,7 @@ func (s *Service) replaceIn(ctx context.Context, tx *sql.Tx, id int64, pk *Pack,
 // <file name>", the name cleaned of control characters and cut short.
 func replaceReason(fileName string) string {
 	name := strings.Map(func(r rune) rune {
-		if r < ' ' || r == 0x7f {
+		if unicode.IsControl(r) || unicode.Is(unicode.Cf, r) {
 			return -1
 		}
 		return r
