@@ -6,6 +6,16 @@ Releases are numbered from `v2.0.0`. The builds before it were never released; t
 
 ## Unreleased: v2.0.1 Billota
 
+### v2.0.1 stage D: resizable panes (2026-11-05)
+
+- From 1024 px every pane can be resized with the same splitter: statement and code on every workspace (before, only in a contest), editor and result, the box and its output in "Your input", and the problem editor's Write and Preview. Drag the grip, or use the keyboard: arrows move by 5 percent, Page Up and Page Down by 15, Home and End go to the ends, Enter hides the statement or the result. The Write pane, and the output in "Your input", are never hidden.
+- Bigger defaults: the statement starts at 40 percent of the width (was 45 in a contest, about 46 elsewhere) and the result at 35 percent of the code column (was 40; 30 on a short laptop, unchanged). The numbers and the measurements are in the stage D calibration notes.
+- "Your input" fills the result pane: the box grows with it, and a row splitter sets how much of the pane is the output. Its size is remembered.
+- The column grip is 24 px wide (it was 12) and shows a grip icon on hover and focus. Program boxes in the problem editor (checker, generator, solutions, validator) and the statement box can be resized by height from the corner, down to about six lines.
+- Editor settings has a "Reset layout" button that puts every pane back to its default size by removing the stored sizes (`podium-workspace-statement`, `podium-workspace-result`, `podium-workspace-input`, `podium-organiser-write`) and nothing else. The keyboard help lists the divider keys and Reset layout.
+- Stored sizes are clamped to 20 to 80 percent on load, so a bad value cannot hide a pane. Under 1024 px nothing changes: panes are tabs and editing stays off.
+- New: `web/tests/resize.spec.ts`; `a11y.spec.ts` covers the new splitters. `workspace.spec.ts` changed only for the new defaults (result 35, statement 40 plus one step).
+
 ### v2.0.1 stage C: contacts (2026-11-05)
 
 - The footer reads "Problems with the site? Email <address>" and sign-in "Cannot sign in? Email <address>". The Settings field is now "Site contact email" with help text; its JSON name `contact_email` is unchanged. The sign-in errors, the closed-screen line and the privacy fallback no longer call the address "the organisers'": without an address the sign-in errors say "whoever runs this site".
