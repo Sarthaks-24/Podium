@@ -21,7 +21,7 @@
   import StartersField from './StartersField.svelte';
   import { media } from '../../lib/breakpoints';
   import Splitter from '../Splitter.svelte';
-  import { DEFAULT_FONT_SIZE, RESULT_SHARE, WRITE_KEY, draftStorage, readResultPanel, writeResultPanel } from '../../lib/drafts';
+  import { DEFAULT_FONT_SIZE, LAYOUT_RESET_EVENT, RESULT_SHARE, WRITE_KEY, draftStorage, readResultPanel, writeResultPanel } from '../../lib/drafts';
   import { describedBy } from '../../lib/problemFields';
   import { DIFFICULTIES, previewSamples, type Draft, type Problem } from '../../lib/problems';
 
@@ -36,11 +36,12 @@
 
   const preview = $derived(previewSamples(tests, draft.samples));
 
+  const WRITE_DEFAULT = 50;
   let phone = $state(!media('tablet').matches);
   let statementTab = $state<'write' | 'preview'>('write');
   let editor: CodeEditor | undefined = $state();
   // From 1024 px: the Write column's share of the width beside the preview.
-  let writeShare = $state(readResultPanel(draftStorage(), 50, WRITE_KEY).share);
+  let writeShare = $state(readResultPanel(draftStorage(), WRITE_DEFAULT, WRITE_KEY).share);
   let top: HTMLDivElement | undefined = $state();
   /** The text the editor last reported, so a new working copy (a reload) is pushed into it. */
   let shown = draft.statement_md;
@@ -52,8 +53,13 @@
       if (!phone) statementTab = 'write';
     };
     sync();
+    const reset = () => (writeShare = WRITE_DEFAULT);
     query.addEventListener('change', sync);
-    return () => query.removeEventListener('change', sync);
+    window.addEventListener(LAYOUT_RESET_EVENT, reset);
+    return () => {
+      query.removeEventListener('change', sync);
+      window.removeEventListener(LAYOUT_RESET_EVENT, reset);
+    };
   });
 
   $effect(() => {

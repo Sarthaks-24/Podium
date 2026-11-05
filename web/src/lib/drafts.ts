@@ -161,6 +161,8 @@ const RESULT_KEY = 'podium-workspace-result';
 export const STATEMENT_KEY = 'podium-workspace-statement';
 /** The output's share of the "Your input" tab. */
 export const INPUT_KEY = 'podium-workspace-input';
+/** The result's share of the code column while the "Your input" tab shows. */
+export const INPUT_TAB_KEY = 'podium-workspace-input-tab';
 /** The organiser's Write share beside the preview. */
 export const WRITE_KEY = 'podium-organiser-write';
 
@@ -170,11 +172,17 @@ export const RESULT_SHARE = { min: 20, max: 80, default: 35 } as const;
 /** The statement's default share beside the code, so the code column starts wider (calibration-d.md). */
 export const STATEMENT_DEFAULT = 40;
 
+/** The result's default share of the code column on the "Your input" tab, so the box shows several lines. */
+export const INPUT_TAB_DEFAULT = 75;
+
 /** The output's default share of the "Your input" tab. */
-export const INPUT_DEFAULT = 45;
+export const INPUT_DEFAULT = 25;
+
+/** Sent on window when "Reset layout" runs, so open panes drop their remembered size. */
+export const LAYOUT_RESET_EVENT = 'podium-layout-reset';
 
 /** Every key that holds a pane size; "Reset layout" removes these and nothing else. */
-export const LAYOUT_KEYS = [RESULT_KEY, STATEMENT_KEY, INPUT_KEY, WRITE_KEY] as const;
+export const LAYOUT_KEYS = [RESULT_KEY, STATEMENT_KEY, INPUT_KEY, INPUT_TAB_KEY, WRITE_KEY] as const;
 
 function read(storage: DraftStorage | null, key: string): string | null {
   if (!storage) return null;
@@ -245,6 +253,8 @@ export function resetLayout(storage: DraftStorage | null = draftStorage()): void
       // The sizes reset for this page only.
     }
   }
+  // A page that keeps a size in memory (the organiser's Write share) listens for this.
+  if (typeof window !== 'undefined') window.dispatchEvent(new Event(LAYOUT_RESET_EVENT));
 }
 
 /**

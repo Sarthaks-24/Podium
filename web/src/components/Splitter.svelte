@@ -186,6 +186,7 @@
     grid-template-columns: 1fr;
     justify-items: center;
     cursor: col-resize;
+    touch-action: none;
   }
 
   .cols .grip-line {
