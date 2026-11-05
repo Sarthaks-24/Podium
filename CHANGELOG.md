@@ -6,6 +6,17 @@ Releases are numbered from `v2.0.0`. The builds before it were never released; t
 
 ## Unreleased: v2.0.1 Billota
 
+### v2.0.1 stage E: themes (2026-11-05)
+
+- Theme and colours has three sections and a reset. **Interface**: System, the four hand-tuned themes, six presets (Nordic frost, Soft lavender, Overcast, Nordic slate, OLED black, Cosmic violet) and Custom, where you choose a background colour, an accent colour and a contrast level (standard or high), see a live preview, and read what was adjusted ("Adjusted so text stays readable"). **Editor colours**: Night (the default), Paper (a light well), Midnight, Dusk and High contrast, each with a snippet of code in its colours. **Verdict colours**: unchanged. "Reset to default" returns all three.
+- A theme engine (`web/src/lib/theme-engine.ts`) derives a whole theme from three inputs and moves lightness until every D41 rule passes in both verdict sets. Verdict colours are fixed per family and never derived; there is no second accent. A property test over 2,400 seeded random inputs plus edge cases (black, white, mid greys, an accent equal to each verdict colour) proves it, so presets and custom themes are safe by construction (V201-11).
+- `<html>` gets `data-family` (light or dark) and, at the high contrast level, `data-contrast`, so a preset or a custom theme gets the verdict colours, `color-scheme` and menu shadow of its family: a dark custom theme gets the dark verdicts. The four hand-tuned themes are unchanged.
+- The account keeps the editor scheme and the custom theme's inputs (`users.editor_colours`, `users.theme_custom`, migration `0012_v201_theme.sql`); `PUT /api/me/preferences` checks the scheme against the five ids and the custom theme as two `#RRGGBB` colours and a contrast word, naming the field on refusal. A request that leaves the new fields out keeps the saved values. The server never derives a colour. `GET /api/me` returns both.
+- `theme-init.js` stays a static file; for a preset or custom theme it applies the cached derived variables only if every name is on its allowlist and every value is a colour, else the page follows the system theme.
+- The editor's selection tint now mixes from the scheme's own keyword colour, not the interface accent, so each editor scheme is checked on its own. Editor line spacing (Compact, Normal, Relaxed; the default is Normal, 1.6, was 1.55) and a blinking-cursor switch join the local editor settings and the profile page.
+- Tests: `theme-engine.test.ts` (property test), `theme-contrast.test.ts` (editor schemes, presets, the family rules), `theme-init.test.ts` (hostile storage), Go tests for the preferences fields, `theme-picker.spec.ts` and a cascade test for presets and custom themes in `themes.spec.ts`. The audit visits the picker open, with a preset, with Custom and with an editor scheme.
+- Upgrade: migration 0012 adds two columns, and the previous binary refuses a database that records it, so rolling back means restoring the pre-upgrade backup (OPERATIONS.md).
+
 ### v2.0.1 stage D: resizable panes (2026-11-05)
 
 - From 1024 px every pane can be resized with the same splitter: statement and code on every workspace (before, only in a contest), editor and result, the box and its output in "Your input", and the problem editor's Write and Preview. Drag the grip, or use the keyboard: arrows move by 5 percent, Page Up and Page Down by 15, Home and End go to the ends, Enter hides the statement or the result. The Write pane, and the output in "Your input", are never hidden.

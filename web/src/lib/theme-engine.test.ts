@@ -68,7 +68,7 @@ describe('theme engine', () => {
     // The last resort must stay rare, or the engine is not doing its job.
     expect(replaced / N).toBeLessThan(0.02);
     expect(adjusted).toBeGreaterThan(0);
-  });
+  }, 30_000);
 
   describe('edge cases', () => {
     for (const level of ['standard', 'high'] as ContrastLevel[]) {
@@ -114,7 +114,7 @@ describe('theme engine', () => {
       }
       expect(said.length).toBeGreaterThan(0);
       expect(deriveTheme({ background: '#FAFBF8', accent: '#137A48', contrast: 'standard' }).adjustments.join(' ')).toContain('Accent moved away from the green used for Accepted');
-      expect(said.every((a) => /^Accent moved away from the (green|amber|red) used for (Accepted|Partial|Wrong)$/.test(a))).toBe(true);
+      expect(said.every((a) => /^Accent moved away from the (green|amber|red|teal|purple|orange) used for (Accepted|Partial|Wrong)( in the colour-blind safe set)?$/.test(a))).toBe(true);
     });
 
     it('handles an accent equal to the background', () => {

@@ -190,7 +190,7 @@ Ends the current session on the server (the row is deleted, so a copied cookie i
 
 ### `GET /api/me` (student)
 
-`200 {"id":1,"email":"a@college.edu","name":"Asha Rao","avatar_url":"https://...","role":"student","theme":"","verdicts":"standard"}`. `theme` is a display theme id, or `""` to follow the system; `verdicts` is `standard` or `signal` (colour-blind safe verdict colours).
+`200 {"id":1,"email":"a@college.edu","name":"Asha Rao","avatar_url":"https://...","role":"student","theme":"","verdicts":"standard","editor_colours":"night","theme_custom":null}`. `theme` is a display theme id (a built-in theme, a preset, or `custom`), or `""` to follow the system; `verdicts` is `standard` or `signal` (colour-blind safe verdict colours); `editor_colours` is one of `night`, `paper`, `midnight`, `dusk`, `high-contrast`; `theme_custom` is `null` or the custom theme's three inputs, `{"background":"#1a2b3c","accent":"#e07a5f","contrast":"standard"}`. The server stores the inputs and never derives a colour: the web app does (`lib/theme-engine.ts`).
 
 ### `GET /api/me/profile` (student)
 
@@ -202,7 +202,16 @@ The contests the signed-in person entered (a start, or a submission that counts)
 
 ### `PUT /api/me/preferences` (student)
 
-Saves the display preferences, so they follow the account to another machine. Request: `{"theme":"dark","verdicts":"signal"}`, both required. `theme` is `""` or 1 to 32 characters of `a-z`, `0-9` and `-`; the server checks only the shape, and the web app treats an id it does not know as `""`. Response `200`: the saved preferences. Errors: `400 bad_request` for a malformed theme or an unknown verdict set.
+Saves the display preferences, so they follow the account to another machine. Request: `{"theme":"dark","verdicts":"signal","editor_colours":"dusk","theme_custom":{"background":"#1a2b3c","accent":"#e07a5f","contrast":"high"}}`.
+
+| Field | Rule |
+|---|---|
+| `theme` | required. `""` or 1 to 32 characters of `a-z`, `0-9` and `-`; the server checks only the shape, and the web app treats an id it does not know as `""`. `custom` needs a custom theme in the request or already saved |
+| `verdicts` | required. `standard` or `signal` |
+| `editor_colours` | optional. One of `night`, `paper`, `midnight`, `dusk`, `high-contrast`. Left out, the saved value is kept |
+| `theme_custom` | optional. An object with exactly `background` and `accent` (each `#RRGGBB`, either case, stored lowercase) and `contrast` (`standard` or `high`). Left out, the saved value is kept; `null` clears it |
+
+Response `200`: the request as sent. Errors: `400 bad_request` with `error.fields` naming each bad field (`theme`, `verdicts`, `editor_colours`, `theme_custom`), for example `{"error":{"code":"bad_request","message":"...","fields":{"editor_colours":"Choose an editor colour scheme from the list."}}}`. An extra key, a short colour, a colour name or an unknown contrast word in `theme_custom` is refused the same way.
 
 ## Settings: people, sign-in and organisation
 
