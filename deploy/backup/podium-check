@@ -182,12 +182,16 @@ check_litestream() {
     export RCLONE_CONFIG_LS_ACCESS_KEY_ID RCLONE_CONFIG_LS_SECRET_ACCESS_KEY RCLONE_CONFIG_LS_ENDPOINT RCLONE_CONFIG_LS_REGION
     # Only L0: every sync lands there and Litestream 0.5 always keeps the
     # newest L0 file, so one small folder answers "when was the last upload".
-    newest_remote "ls:$(envget "$f" PODIUM_BACKUP_BUCKET "")/$(envget "$f" PODIUM_BACKUP_PATH "")/ltx/0"
+    # The S3 replica names a level folder by 4 hex digits (<path>/0000/),
+    # not ltx/0 as a file replica does; an absent folder lists as empty.
+    newest_remote "ls:$(envget "$f" PODIUM_BACKUP_BUCKET "")/$(envget "$f" PODIUM_BACKUP_PATH "")/0000"
   ) || { problem litestream "bucket unreachable" "listing the Litestream bucket failed: the key, endpoint or network is wrong"; return; }
   local_t=$(stat -c %Y "$db")
   [[ -f $db-wal ]] && local_t=$(( $(stat -c %Y "$db-wal") > local_t ? $(stat -c %Y "$db-wal") : local_t ))
   if (( local_t - newest > 600 )); then
-    problem litestream "Litestream behind" "the database changed at $(date -u -d "@$local_t" '+%H:%M UTC') but the bucket's newest upload is from $( (( newest > 0 )) && date -u -d "@$newest" '+%Y-%m-%d %H:%M UTC' || echo 'over 7 days ago'). journalctl -u podium-litestream -n 30"
+    local seen="the bucket's newest upload is from $(date -u -d "@$newest" '+%Y-%m-%d %H:%M UTC')"
+    (( newest > 0 )) || seen="the bucket has no upload in $(envget "$f" PODIUM_BACKUP_PATH "")/0000"
+    problem litestream "Litestream behind" "the database changed at $(date -u -d "@$local_t" '+%H:%M UTC') but $seen. journalctl -u podium-litestream -n 30"
   else
     fine litestream "Litestream" "running; last upload $(( (now - newest) / 60 )) min ago, local change $(( (now - local_t) / 60 )) min ago"
   fi

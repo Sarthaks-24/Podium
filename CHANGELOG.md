@@ -12,6 +12,7 @@ Upgrades v2.0.0 with migrations 0010 to 0012.
 
 - The theme options on the profile page fit a 320 px screen: their sections no longer keep the width of the editor colour sample, which scrolls inside its own box instead (the page scrolled sideways by 1 px on Linux).
 - `dialog-focus.spec.ts` waits for the Restore slug step by its exact name, so a slow runner no longer presses Escape while the first dialog's request is still running (a test fix; Escape on the slug step always worked).
+- `podium-check` looks for Litestream's newest upload in `<path>/0000`, where Litestream's S3 replica keeps level 0. It listed `<path>/ltx/0`, the file replica's layout, which never exists in a bucket, so every run raised a false "Litestream behind" while replication worked. When that folder is empty the alert now says no upload was found instead of "over 7 days ago".
 
 ### v2.0.1 stage E: themes (2026-11-05)
 
@@ -76,7 +77,7 @@ Upgrades v2.0.0 with migrations 0010 to 0012.
 
 - `podium-alert` reads `PODIUM_ALERT_WEBHOOK` from `/etc/podium/alert.env` when the environment does not set it, so a hand run of `podium-alert test` or `podium-check restore-proof --corrupt` sends its alert. The file is read as data, never sourced, and the error names whether the file is unreadable or the value is empty.
 - `tools/sandbox-test.sh` copies the `-examples` folder into its private work folder before switching to the judge user, so problem packs in a private home folder no longer fail with `permission denied`.
-- Backblaze B2 list calls (class C) stay far under the free 2,500 a day (PF-5). Litestream 0.5 listed the bucket every 15 s to clean up L0 files, up to 11,520 calls a day; `/etc/litestream.yml` now sets `l0-retention-check-interval: 1h` (48 a day). `podium-check` lists only the `ltx/0` folder with one call instead of the whole replica. A normal day now uses about 150. Upgrade: install the new `/etc/litestream.yml` and restart `podium-litestream`.
+- Backblaze B2 list calls (class C) stay far under the free 2,500 a day (PF-5). Litestream 0.5 listed the bucket every 15 s to clean up L0 files, up to 11,520 calls a day; `/etc/litestream.yml` now sets `l0-retention-check-interval: 1h` (48 a day). `podium-check` lists only the level 0 folder (`<path>/0000`) with one call instead of the whole replica. A normal day now uses about 150. Upgrade: install the new `/etc/litestream.yml` and restart `podium-litestream`.
 - `podium-server migrate` and `check` read the test files from `/var/lib/podium/tests` when that folder exists and `PODIUM_TESTS_DIR` is not set, so a rehearsal with `sudo -u podium` no longer reports every test file missing (PF-6). `migrate` also takes `-tests`.
 
 ## v2.0.0 Billota (2026-11-04)
