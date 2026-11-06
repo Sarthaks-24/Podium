@@ -275,7 +275,7 @@ Read by the `podium-litestream` unit; template `deploy/litestream.env.example`. 
 | `LITESTREAM_ACCESS_KEY_ID` | Key ID of an application key limited to the backup bucket, read and write. Backblaze B2: Application Keys, Add a New Application Key. Secret. |
 | `LITESTREAM_SECRET_ACCESS_KEY` | That key's secret (B2 shows it once). Secret. |
 | `PODIUM_BACKUP_BUCKET` | The bucket: private, encrypted, "keep only the last version". |
-| `PODIUM_BACKUP_PATH` | Folder inside the bucket, for example `podium`. |
+| `PODIUM_BACKUP_PATH` | Folder inside the bucket, for example `podium`, with no leading or trailing slash (the unit refuses to start otherwise). |
 | `PODIUM_BACKUP_ENDPOINT` | The bucket's S3 endpoint with `https://`, for example `https://s3.us-west-004.backblazeb2.com` (B2 shows it on the bucket's page). |
 | `PODIUM_BACKUP_REGION` | The region in that endpoint, for example `us-west-004`. |
 
