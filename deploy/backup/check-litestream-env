@@ -19,6 +19,12 @@ if [[ -n ${PODIUM_BACKUP_ENDPOINT:-} && ${PODIUM_BACKUP_ENDPOINT} != change-me &
   bad+=(PODIUM_BACKUP_ENDPOINT)
   echo "PODIUM_BACKUP_ENDPOINT must start with https://"
 fi
+# Litestream joins the bucket keys as PATH + "/" + level, so "/podium" or
+# "podium/" would write to odd keys such as podium//0000.
+if [[ ${PODIUM_BACKUP_PATH:-} == /* || ${PODIUM_BACKUP_PATH:-} == */ ]]; then
+  bad+=(PODIUM_BACKUP_PATH)
+  echo "PODIUM_BACKUP_PATH must not start or end with /"
+fi
 if (( ${#bad[@]} > 0 )); then
   echo "podium-litestream cannot start: set ${bad[*]} in $file (see docs/OPERATIONS.md, Backups)." >&2
   exit 2

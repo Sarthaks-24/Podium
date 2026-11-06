@@ -190,7 +190,7 @@ check_litestream() {
   [[ -f $db-wal ]] && local_t=$(( $(stat -c %Y "$db-wal") > local_t ? $(stat -c %Y "$db-wal") : local_t ))
   if (( local_t - newest > 600 )); then
     local seen="the bucket's newest upload is from $(date -u -d "@$newest" '+%Y-%m-%d %H:%M UTC')"
-    (( newest > 0 )) || seen="the bucket has no upload in $(envget "$f" PODIUM_BACKUP_PATH "")/0000"
+    (( newest > 0 )) || seen="the bucket has no upload in $(envget "$f" PODIUM_BACKUP_BUCKET "")/$(envget "$f" PODIUM_BACKUP_PATH "")/0000"
     problem litestream "Litestream behind" "the database changed at $(date -u -d "@$local_t" '+%H:%M UTC') but $seen. journalctl -u podium-litestream -n 30"
   else
     fine litestream "Litestream" "running; last upload $(( (now - newest) / 60 )) min ago, local change $(( (now - local_t) / 60 )) min ago"

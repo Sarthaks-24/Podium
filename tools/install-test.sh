@@ -350,6 +350,20 @@ else
 fi
 if fn checklist | grep -q 'the same$' || ! fn checklist | grep -q 'token is already set'; then fail "the first-run checklist still asks for the judge token"; else pass "the first-run checklist no longer asks for the judge token"; fi
 
+# check-litestream-env (the podium-litestream ExecStartPre): a bucket
+# folder with a leading or trailing slash is refused, a plain one passes.
+envcheck="$here/../deploy/backup/check-litestream-env"
+lsenv() { # PATH_VALUE
+  env -i PATH="$PATH" LITESTREAM_ACCESS_KEY_ID=k LITESTREAM_SECRET_ACCESS_KEY=s \
+    PODIUM_BACKUP_BUCKET=b PODIUM_BACKUP_PATH="$1" \
+    PODIUM_BACKUP_ENDPOINT=https://s3.example.invalid PODIUM_BACKUP_REGION=r \
+    bash "$envcheck" >/dev/null 2>&1
+}
+if lsenv podium; then pass "check-litestream-env accepts a plain bucket folder"; else fail "check-litestream-env refuses PODIUM_BACKUP_PATH=podium"; fi
+for v in /podium podium/ /; do
+  if lsenv "$v"; then fail "check-litestream-env accepts PODIUM_BACKUP_PATH=$v"; else pass "check-litestream-env refuses PODIUM_BACKUP_PATH=$v"; fi
+done
+
 # Under pipefail, systemctl piped into head dies of SIGPIPE when head exits
 # before systemctl writes its footer, and set -e ends the script without a
 # word: an upgrade stopped after step 5's backup timer (2026-11-04).

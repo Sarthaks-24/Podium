@@ -12,7 +12,8 @@ Upgrades v2.0.0 with migrations 0010 to 0012.
 
 - The theme options on the profile page fit a 320 px screen: their sections no longer keep the width of the editor colour sample, which scrolls inside its own box instead (the page scrolled sideways by 1 px on Linux).
 - `dialog-focus.spec.ts` waits for the Restore slug step by its exact name, so a slow runner no longer presses Escape while the first dialog's request is still running (a test fix; Escape on the slug step always worked).
-- `podium-check` looks for Litestream's newest upload in `<path>/0000`, where Litestream's S3 replica keeps level 0. It listed `<path>/ltx/0`, the file replica's layout, which never exists in a bucket, so every run raised a false "Litestream behind" while replication worked. When that folder is empty the alert now says no upload was found instead of "over 7 days ago".
+- `podium-check` looks for Litestream's newest upload in `<path>/0000`, where Litestream's S3 replica keeps level 0. It listed `<path>/ltx/0`, the file replica's layout, which never exists in a bucket, so every run raised a false "Litestream behind" while replication worked. When that folder is empty the alert now names the bucket and folder where no upload was found instead of saying "over 7 days ago".
+- `podium-litestream` refuses to start when `PODIUM_BACKUP_PATH` starts or ends with `/`, which would make Litestream write to keys such as `podium//0000`.
 
 ### v2.0.1 stage E: themes (2026-11-05)
 
