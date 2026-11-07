@@ -121,6 +121,8 @@ func (d *Handlers) contestError(w http.ResponseWriter, r *http.Request, err erro
 		httpx.WriteError(w, http.StatusForbidden, "contest_over", err.Error())
 	case errors.Is(err, ErrNotReady):
 		httpx.WriteError(w, http.StatusConflict, "not_ready", err.Error())
+	case errors.Is(err, ErrPracticeChanged):
+		httpx.WriteError(w, http.StatusConflict, "practice_changed", err.Error())
 	case errors.Is(err, submissions.ErrProblemDeleted), errors.Is(err, problems.ErrDeleted):
 		httpx.WriteError(w, http.StatusConflict, "deleted", err.Error())
 	case errors.Is(err, ErrRevealEarly):
@@ -398,6 +400,9 @@ func (d *Handlers) contestProblem(w http.ResponseWriter, r *http.Request) (*cont
 		t.refusal = submissions.ErrProblemDeleted
 	case !t.problem.Ready:
 		t.refusal = ErrNotReady
+		if st.Over && c.PracticeOpen(st, now) {
+			t.refusal = ErrPracticeChanged
+		}
 	case st.Open:
 		t.open = true
 	case st.Over && c.PracticeOpen(st, now):
