@@ -297,6 +297,7 @@ Every change to people, the sign-in list and the site, newest first, 100 per pag
 | `account_enabled` | the person | `{}` |
 | `sessions_ended` | the person | `{count}` |
 | `google_reset` | the person | `{sessions_ended}` |
+| `problem_deleted` | `""` | `{problem_id, slug, used, contests}`: the original slug and the number of contests that held the problem; never any problem text |
 | `mode_changed` | `""` | `{from, to, sessions_ended, demoted, disabled}`: the server started in another run mode; `disabled` counts the accounts that signed in only through testing mode (V4-15) |
 | `settings_changed` | `""` | `{fields}`: the names of the site settings that changed |
 | `user_forgotten` | `""` | `{user_id, placeholder, role}` and a count per thing erased: `podium-server forget-user`; the person is named by id only |
@@ -305,7 +306,7 @@ Show an unknown action by its name.
 
 ## Problems (organiser)
 
-Every route here needs the organiser role. The pack format and the rules for tests, subtasks, checkers and generators are in `docs/AUTHORING.md`. An `{id}` that is not a problem is `404 not_found` on every route.
+Every route here needs the organiser role, except the three delete routes (`delete`, `delete-info` and the Deleted list), which need admin. The pack format and the rules for tests, subtasks, checkers and generators are in `docs/AUTHORING.md`. An `{id}` that is not a problem is `404 not_found` on every route.
 
 | Route | Request | Success |
 |---|---|---|
@@ -316,6 +317,9 @@ Every route here needs the organiser role. The pack format and the rules for tes
 | `PUT /api/admin/problems/{id}` | `ProblemEdit`, at most 512 KB | 200 `Problem` |
 | `DELETE /api/admin/problems/{id}` | | 204: archives the problem, kept with its tests. Its slug is freed: `slug` becomes `<slug>-archived-<id>` and the original moves to `archived_slug`, so a new problem can use it. Archiving an archived problem changes nothing |
 | `POST /api/admin/problems/{id}/restore` | `{"slug":""}` (the body may be left out) | 200 `Problem`, no longer archived. An empty `slug` gives the original slug back; a given `slug` must follow the slug rule. Restoring a problem that is not archived changes nothing. 409 `conflict` when the slug is used by another problem, with `fields.slug`, `suggested_slug` (a free slug built from it) and the message "Another problem now uses two-sum. Choose a new slug." The restore is logged as `problem restored` |
+| `GET /api/admin/problems/deleted` | | 200 `{"problems":[{id, slug, title, deleted_at, deleted_by, used}]}`, most recently deleted first. `slug` is the original slug, `deleted_by` the email of the person (`""` when that account is gone), `used` whether a contest held the problem or anyone submitted or ran code. Admin and owner only |
+| `GET /api/admin/problems/{id}/delete-info` | | 200 `{used, contests, unended, practice}`, each list `[{contest_id, slug, title, label}]`: every contest that holds the problem, those that have not ended (they block a delete) and the ended published contests with practice on, where practice for it closes. Admin and owner only; the Delete dialog reads it |
+| `POST /api/admin/problems/{id}/delete` | no body | 204: the problem becomes a tombstone (below). Admin and owner only; the service decides which of the two may delete which problem. 403 `not_allowed`, 409 `in_unended_contest` and 409 `deleted` are in the errors table. Logged as `problem deleted`, and written to the site audit as `problem_deleted` |
 | `PUT /api/admin/problems/{id}/tests` | a zip of `NN.in` files, each with an optional `NN.out`; `?reason=` as for a save | 200 `Problem` |
 | `GET /api/admin/problems/{id}/tests/{idx}/{part}` | `{part}` is `input` or `output` | 200 the file, `text/plain`, as an attachment `test-NN.in` or `test-NN.out`; 404 for an output not made yet |
 | `GET /api/admin/problems/{id}/export` | | 200 the pack, `application/zip`, as `<slug>.zip` (format 1; for an archived problem the slug is `archived_slug`, in the file name and in `problem.yaml`, so a re-import gets it back); outputs not made yet are left out |
@@ -426,10 +430,22 @@ When the pack's slug is already a problem's and no `on_conflict` is given, the i
 - `role` is `reference`, `brute`, `validator` or `checker` (only in `compile`). Compile verdicts are `OK` or `CE`; test verdicts are `AC`, `WA`, `TLE`, `MLE`, `RE`, `OLE`, `IE` or `SK` (a brute force that ran out of time). `message` is a checker comment or the end of a validator's error output, at most 256 bytes.
 - The server computes `summary` from the recorded results. `time_limit_ms` there is the problem's limit times the reference language's time factor. `brute_unchecked` counts the tests the brute force did not finish, so nothing cross-checked their output; when fewer than half of the tests were cross-checked, validation fails.
 
+### Deleted problems
+
+`POST .../delete` keeps the row as a tombstone and clears what only the working copy needs. The owner may delete any problem; an admin only a problem with no contest row and no submission or run (validation and generation jobs do not count). Nobody, the owner included, may delete a problem while a contest that holds it has not ended (draft, scheduled or running). In one transaction the server writes the audit row, sets `deleted`, `archived`, `deleted_at` and `deleted_by`, moves the slug (`<slug>-deleted-<id>`; the original is `archived_slug`, and for a problem that was already archived the true original stays there), clears the tests, subtasks, solutions, checker, generator and starter code, and closes the problem's waiting or running validation and generation jobs with the reason "The problem was deleted.". Revisions, their tests, submissions and contest rows are never touched, so ended contests still read. There is no restore.
+
+- Lists skip a tombstone (`GET /api/admin/problems`, even with `archived=1`); the Deleted list above shows it.
+- In contests, `problems[]` of the student contest, `AdminContest` and `ProblemStats` carry `deleted: true` (left out otherwise), and the pinned statement stays readable. The workspace of a deleted problem answers 200 with `can_submit: false` and `refusal` "This problem was deleted. Your earlier submissions are still listed.". `ready` and `update_available` are false.
+- `PUT .../problems` of a contest still refuses to drop a problem from a contest whose hidden tests practice showed; it also refuses to keep or add a deleted problem (400 `fields.problems`: "The problem for label A was deleted. Remove it from the contest.").
+
 ### Errors
 
 | Route | Status and code | When |
 |---|---|---|
+| delete | 403 `not_allowed` | an admin asks to delete a used problem: "Only the site owner can delete a problem that has been used. Archive it instead." A role below admin gets the same code from the route's guard: "You do not have access to this." |
+| delete | 409 `in_unended_contest` with `existing` (the contests) | "This problem is in contests that have not ended: <names>. Remove it from them or wait until they end." |
+| every write, open and export of a deleted problem; delete again | 409 `deleted` | "This problem was deleted and cannot be changed." Covers edit, tests, validate, generate, generate-inputs, restore, import with `on_conflict=replace`, export and `GET /api/admin/problems/{id}` |
+| Submit, Run, contest rejudge, the bank workspace of a deleted problem | 409 `deleted` | "This problem was deleted. Your earlier submissions are still listed." |
 | create, update | 400 `bad_request` with `fields` | a field is invalid. Keys are the JSON names, plus `subtasks.N.points`, `subtasks.N.title`, `subtasks.N.tests` and `subtasks.N.generator_args` (N from 0) |
 | import, tests | 415 `bad_request` | `Content-Type` is not `application/zip` or `application/x-zip-compressed` |
 | import, tests | 413 `too_large` | the zip is larger than 32 MB |
@@ -812,7 +828,7 @@ The measures apply only during a student's own contest time. Blocking happens in
 
 `AdminContest` is every `ContestEdit` field plus `id`, `slug`, `close_at` (the end plus the contest-wide extension), `default_honour_text`, `editorial_md`, `editorial_published`, `paused`, `extended_minutes`, `revealed_at`, `archived`, `archived_slug` (as for a problem), `state`, `created_at`, `updated_at`, `server_now`, and:
 
-- `problems`: `[{label, problem_id, title, pinned_hash, ready, max_score, revision_id, rev, latest_revision_id, latest_rev, update_available, update_statement_only, reconstructed}]`. `ready` is false when the problem changed since it was added. `update_available` is true when the problem has a newer validated revision than the pin, and `update_statement_only` when that revision changes only the statement. `reconstructed` is always false on a v1.2 database.
+- `problems`: `[{label, problem_id, title, pinned_hash, ready, max_score, revision_id, rev, latest_revision_id, latest_rev, update_available, update_statement_only, reconstructed, deleted}]` (`deleted` only when true: the problem was deleted). `ready` is false when the problem changed since it was added. `update_available` is true when the problem has a newer validated revision than the pin, and `update_statement_only` when that revision changes only the statement. `reconstructed` is always false on a v1.2 database.
 - `extensions`: `[{user_id, email, name, minutes, reason}]`. The reason can be health data and goes only to admins.
 - Queue health, what the console's opening sentence and banners read:
 
@@ -849,7 +865,7 @@ The measures apply only during a student's own contest time. Blocking happens in
 
 - CSV: `?tz=` (an IANA zone, optional) sets the zone the start times are written in; the web app sends the browser's, and a missing or unknown zone takes the server's own. Columns: `rank, name, email, started (<zone>)` (local time, `2026-10-28 20:12:05`), `total`, then one column per problem label, with `-` for a problem not tried. A cell starting with `=`, `+`, `-`, `@`, a tab or a carriage return gets a leading `'`, so a spreadsheet never runs a name as a formula.
 - JSON: `{contest: AdminContest, standings: [Standings row plus email, started_at], submissions: [{id, user_id, problem_label, language, state, verdict, score, created_at, practice}], audit: [AuditEntry], exported_at}`. No code and no similar-code data.
-- `ProblemStats`: `{label, title, max_score, attempted, solved, subtasks: [{idx, points, earned}], histogram: [{score, students}], median_attempts}`, over the students on the board and their submissions that count. `started` counts the students taking part, as the board does.
+- `ProblemStats`: `{label, title, deleted, max_score, attempted, solved, subtasks: [{idx, points, earned}], histogram: [{score, students}], median_attempts}`, over the students on the board and their submissions that count. `started` counts the students taking part, as the board does.
 - Students excluded by a similar-code decision leave the board, the CSV and the JSON standings.
 
 ### `AuditEntry`

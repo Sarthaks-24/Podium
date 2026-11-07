@@ -4,6 +4,22 @@ Dated entries per release. Unreleased work is listed at the top.
 
 Releases are numbered from `v2.0.0`. The builds before it were never released; these entries call them v1.0 (first called v1), v1.1 (v2), v1.2 (v3), v1.3 (v4) and v1.4 (v4.01). Decision ids (`V3-n`, `V4-n`) and migration file names keep the old names.
 
+## v2.0.2 Billota (2026-11-07)
+
+Upgrades v2.0.1 with migration 0013 (more migrations follow in later stages of this release).
+
+### v2.0.2 stage A: delete a problem (2026-11-07)
+
+- Admins and the owner can delete a problem (More, then Delete, then type the slug). An admin can delete a problem that was never used; only the owner can delete one that was used. Nobody can delete a problem while a contest holding it has not ended: the dialog names the contests.
+- A delete keeps the row as a tombstone and clears its tests, solutions, checker, generator and starter code. Revisions, submissions and contest rows stay, so ended contests keep their standings, each student's code and verdicts, and the pinned statement. The problem shows there as "Deleted problem", not as a link, in the student contest page, the contest editor, Live and Results. There is no restore.
+- Practice for a deleted problem closes: its workspace answers `can_submit: false` with "This problem was deleted. Your earlier submissions are still listed.", and Submit, Run and rejudge answer 409 `deleted`. The delete dialog lists the contests where practice closes, and offers Download pack and the results first.
+- A deleted problem refuses every write (edit, tests, Validate, Generate, generator, Restore, import replace, export): 409 `deleted`, "This problem was deleted and cannot be changed." A setter job still waiting or running is closed with "The problem was deleted." and not retried. A contest cannot add or keep a deleted problem.
+- Problems, Deleted problems (admins and the owner) lists them with who deleted each and when. The bank, with or without Show archived, skips them, and their slug is free again.
+- Each delete is one transaction that writes a `problem_deleted` row to the site audit first (person, problem id, original slug, no problem text); any failure rolls everything back.
+- New: `POST /api/admin/problems/{id}/delete`, `GET /api/admin/problems/{id}/delete-info`, `GET /api/admin/problems/deleted`; `deleted` on the contest problem lists and `ProblemStats`; migration `0013_v202_delete.sql`.
+- Known limits: a deleted problem's blobs of a pinned revision stay on disk (ended contests must stay reproducible); `TestNoWritePathSkipsTheRevision` names Delete as the one function that clears revision-recorded columns outside `save`.
+- Upgrade: migration 0013 adds three columns, and the previous binary refuses a database that records it, so rolling back means restoring the pre-upgrade backup (OPERATIONS.md).
+
 ## v2.0.1 Billota (2026-11-05)
 
 Upgrades v2.0.0 with migrations 0010 to 0012.

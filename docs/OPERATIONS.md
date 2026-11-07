@@ -693,6 +693,15 @@ Configuration files are never overwritten: add a new variable with `sudoedit` be
 
 - **Rollback.** The previous server refuses a database that records a migration it does not know, so rolling back is the "Newer schema" case below: the backup taken just before the upgrade is restored and what was written since is lost. The migration itself loses nothing.
 
+### Migration 0013 (v2.0.2): deleted problems
+
+`0013_v202_delete.sql` adds `deleted INTEGER NOT NULL DEFAULT 0`, `deleted_at INTEGER` and `deleted_by INTEGER` (the person, set to NULL if their account is erased) to `problems`. No row is rewritten: every problem starts undeleted.
+
+- **Who can delete.** The owner may delete any problem; an admin only a problem that was never used (no contest row, no submission or run). Nobody may delete a problem while a contest holding it has not ended. Organisers and students cannot. Every delete writes one `problem_deleted` row to the site audit (Dashboard, History) with the person, the problem id and its original slug.
+- **There is no restore.** A delete keeps the row, the revisions, the submissions and the contest rows, so ended contests, boards, results and a student's own history still read; it removes the working copy's tests and solutions. Blobs of an unused problem are freed by the blob cleanup; blobs of a revision a contest pins are kept. To keep a copy, download the pack first (the dialog offers it for a used problem).
+- Before the upgrade, rehearse it as for any schema change (above): `podium-server migrate -db COPY` on a copy of the newest nightly backup, then `podium-server check -db COPY`.
+- **Rollback.** The previous server refuses a database that records a migration it does not know, so rolling back is the "Newer schema" case below: restore the backup taken just before the upgrade. Anything deleted since is back, and everything else written since is lost.
+
 ## Holding the compilers
 
 A gcc, JDK, Python, Node or isolate update can change how fast a reference runs or, rarely, a verdict. Before a contest season, stop apt from moving them:
