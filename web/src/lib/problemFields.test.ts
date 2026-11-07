@@ -38,6 +38,13 @@ describe('fieldTarget', () => {
     expect(fieldTarget('subtasks.0.generator_args', DRAFT, true).id).toBe('subtask-0-args');
   });
 
+  it("points a function problem's locked code errors at their boxes", () => {
+    expect(fieldTarget('locked_top', { ...DRAFT, mode: 'function' }, false)).toEqual({ id: 'locked-top', label: 'Locked top' });
+    expect(fieldTarget('locked_bottom', { ...DRAFT, mode: 'function' }, false)).toEqual({ id: 'locked-bottom', label: 'Locked bottom' });
+    expect(fieldTarget('locked_bottom', { ...DRAFT, mode: 'whole' }, false).id).toBeNull();
+    expect(fieldTarget('mode', DRAFT, false)).toEqual({ id: null, label: 'What students write' });
+  });
+
   it('names unknown keys with no label', () => {
     expect(fieldTarget('something', DRAFT, false)).toEqual({ id: null, label: '' });
   });

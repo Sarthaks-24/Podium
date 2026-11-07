@@ -130,6 +130,30 @@ describe('toDraft and toEdit', () => {
     expect(Object.keys(result.fields).sort()).toEqual(['samples', 'subtasks.0.points', 'subtasks.1.tests', 'time_limit_ms']);
   });
 
+  it("carries a function problem's mode and locked code, dropping emptied languages", () => {
+    const draft = toDraft({
+      ...PROBLEM,
+      mode: 'function',
+      locked_top: { cpp17: '#include <bits/stdc++.h>\n', python3: 'import sys\n' },
+      locked_bottom: { cpp17: 'int main() {}\n', python3: 'print(1)\n' },
+      starters: { cpp17: 'int f() {}\n', python3: 'def f():\n    pass\n' },
+    });
+    expect(draft.mode).toBe('function');
+    draft.locked_top!.python3 = '  ';
+    draft.locked_bottom!.python3 = '';
+    const result = toEdit(draft);
+    expect(result.ok && result.edit.mode).toBe('function');
+    expect(result.ok && result.edit.locked_top).toEqual({ cpp17: '#include <bits/stdc++.h>\n' });
+    expect(result.ok && result.edit.locked_bottom).toEqual({ cpp17: 'int main() {}\n' });
+  });
+
+  it('leaves mode and locked code out for a server without function problems', () => {
+    const draft = toDraft(PROBLEM);
+    expect('mode' in draft || 'locked_top' in draft || 'locked_bottom' in draft).toBe(false);
+    const edit = toEdit(draft);
+    expect(edit.ok && ('mode' in edit.edit || 'locked_top' in edit.edit || 'locked_bottom' in edit.edit)).toBe(false);
+  });
+
   it('leaves the generator out for a server without generators', () => {
     const draft = toDraft(PROBLEM);
     expect('generator' in draft).toBe(false);

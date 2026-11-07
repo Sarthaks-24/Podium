@@ -24,6 +24,9 @@ export const FIELD_LABELS: Record<string, string> = {
   validator: 'Validator',
   generator: 'Generator',
   plan: 'Planned tests',
+  mode: 'What students write',
+  locked_top: 'Locked top',
+  locked_bottom: 'Locked bottom',
 };
 
 const PLAN_PARTS: Record<string, string> = { idx: 'test', subtask: 'subtask', seed: 'seed', args: 'arguments' };
@@ -74,6 +77,12 @@ export function fieldTarget(key: string, draft: Draft | null, hasGenerator: bool
     return { id: present ? `${role}-${part}` : null, label: FIELD_LABELS[role] };
   }
   if (key === 'subtasks') return { id: 'add-subtask', label: FIELD_LABELS.subtasks };
+  // The mode is a pair of radio buttons; the locked code boxes show only
+  // for a function problem.
+  if (key === 'mode') return { id: null, label: FIELD_LABELS.mode };
+  if (key === 'locked_top' || key === 'locked_bottom') {
+    return { id: draft?.mode === 'function' ? key.replace('_', '-') : null, label: FIELD_LABELS[key] };
+  }
   if (key === 'epsilon' && draft?.checker !== 'float') return { id: null, label: FIELD_LABELS.epsilon };
   if (key === 'checker_source' && draft?.checker !== 'custom') return { id: null, label: FIELD_LABELS.checker_source };
   if (FIELD_LABELS[key]) return { id: key, label: FIELD_LABELS[key] };
