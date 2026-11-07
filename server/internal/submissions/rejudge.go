@@ -71,12 +71,19 @@ func (s *Service) Rejudge(ctx context.Context, r RejudgeRequest) (int, error) {
 		return 0, err
 	}
 	defer tx.Rollback()
-	q := `SELECT s.id, s.problem_id, s.language, s.source_sha, s.source, s.state, coalesce(s.job_id, 0), coalesce(j.state, ''), coalesce(j.payload, ''),
+	// Only a function problem needs the stored text, to compose it again;
+	// a whole problem's rejudge reads hashes only, as before (up to 64 KB
+	// a submission would add up across a contest).
+	function := false
+	for _, p := range loaded {
+		function = function || p.IsFunction()
+	}
+	q := `SELECT s.id, s.problem_id, s.language, s.source_sha, CASE WHEN ? THEN s.source ELSE '' END, s.state, coalesce(s.job_id, 0), coalesce(j.state, ''), coalesce(j.payload, ''),
 		coalesce(cp.revision_id, 0)
 		FROM submissions s LEFT JOIN jobs j ON j.id = s.job_id
 		LEFT JOIN contest_problems cp ON cp.contest_id = s.contest_id AND cp.problem_id = s.problem_id
 		WHERE s.contest_id = ? AND s.kind = 'submit'`
-	args := []any{r.ContestID}
+	args := []any{function, r.ContestID}
 	if r.SubmissionID > 0 {
 		q += " AND s.id = ?"
 		args = append(args, r.SubmissionID)

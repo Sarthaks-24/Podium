@@ -178,7 +178,8 @@ type row struct {
 	createdAt                 int64
 	judgedAt                  sql.NullInt64
 	// topLines, source and sourceSHA place compile output lines in a
-	// function problem's composed file (lineMapOf).
+	// function problem's composed file (lineMapOf). source is read only for
+	// a composed file, so a whole problem's view reads no code.
 	topLines          int
 	source, sourceSHA string
 }
@@ -187,7 +188,8 @@ func (s *Service) loadRow(ctx context.Context, id int64) (row, error) {
 	var r row
 	var job sql.NullInt64
 	err := s.DB.QueryRowContext(ctx, `SELECT id, problem_id, job_id, kind, language, state, verdict, result, error,
-		score, max_score, max_time_ms, max_memory_kb, created_at, judged_at, top_lines, source, source_sha FROM submissions WHERE id = ?`, id).
+		score, max_score, max_time_ms, max_memory_kb, created_at, judged_at, top_lines,
+		CASE WHEN top_lines > 0 THEN source ELSE '' END, source_sha FROM submissions WHERE id = ?`, id).
 		Scan(&r.id, &r.problemID, &job, &r.kind, &r.language, &r.state, &r.verdict, &r.result, &r.errorMsg,
 			&r.score, &r.maxScore, &r.maxTime, &r.maxMem, &r.createdAt, &r.judgedAt, &r.topLines, &r.source, &r.sourceSHA)
 	if errors.Is(err, sql.ErrNoRows) {
