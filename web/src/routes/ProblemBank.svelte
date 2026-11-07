@@ -16,13 +16,14 @@
   instead.
 -->
 <script lang="ts">
-  import { organises } from '../lib/roles';
+  import { administers, organises } from '../lib/roles';
   import PageState from '../components/PageState.svelte';
   import PageHeader from '../components/PageHeader.svelte';
   import StaleNote from '../components/StaleNote.svelte';
   import RestoreFlow from '../components/RestoreFlow.svelte';
   import ImportConflictDialog from '../components/ImportConflictDialog.svelte';
   import PackPromptPanel from '../components/PackPromptPanel.svelte';
+  import DeletedProblems from '../components/problem/DeletedProblems.svelte';
   import Badge from '../components/Badge.svelte';
   import MonoDigits from '../components/MonoDigits.svelte';
   import { onMount, tick, untrack } from 'svelte';
@@ -107,6 +108,9 @@
 
   const isOrganiser = $derived(organises(session.user?.role));
   const showArchived = $derived(router.query.get('archived') === '1');
+  /** Admins and the owner can read the list of deleted problems instead of the bank. */
+  const canSeeDeleted = $derived(administers(session.user?.role));
+  const showDeleted = $derived(canSeeDeleted && router.query.get('deleted') === '1');
 
   /** Handles errors every request can hit; returns true when it did. */
   function handleAuth(err: unknown): boolean {
@@ -381,13 +385,25 @@
       />
     </div>
     <div class="aside">
-      <label class="toggle">
-        <input type="checkbox" checked={showArchived} onchange={toggleArchived} />
-        Show archived
-      </label>
+      {#if !showDeleted}
+        <label class="toggle">
+          <input type="checkbox" checked={showArchived} onchange={toggleArchived} />
+          Show archived
+        </label>
+      {/if}
+      {#if canSeeDeleted}
+        {#if showDeleted}
+          <a class="btn btn-quiet" href="/admin/problems">Back to problems</a>
+        {:else}
+          <a class="btn btn-quiet" href="/admin/problems?deleted=1">Deleted problems</a>
+        {/if}
+      {/if}
     </div>
   </div>
 
+  {#if showDeleted}
+    <DeletedProblems />
+  {:else}
   <PackPromptPanel />
 
   {#if importing}
@@ -505,6 +521,7 @@
         </table>
       </div>
     {/if}
+  {/if}
   {/if}
 {/if}
 

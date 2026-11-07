@@ -98,6 +98,8 @@ export interface Options {
   starters?: Record<string, string>;
   /** The contest's own contact address on its page (V201-8); none by default. */
   contestContact?: string;
+  /** Problem B was deleted after the contest: the student, organiser and stats views carry `deleted: true` for it (v2.0.2). */
+  deletedB?: boolean;
 }
 
 /** When B's statement changed, minutes before the page loads (the C3 fixture). */
@@ -223,7 +225,7 @@ export async function mockApi(page: Page, options: Options = {}) {
     posted: [] as Json[],
     answers: [] as { id: string; body: Json }[],
     paused: false,
-    adminProblems: [{ label: 'A', problem_id: 11, title: 'A plus B', ready: true, max_score: 100 }] as Json[],
+    adminProblems: [{ label: 'A', problem_id: 11, title: 'A plus B', ready: true, max_score: 100 }, ...(options.deletedB ? [{ label: 'B', problem_id: 12, title: 'Interval covering', ready: true, max_score: 100 }] : [])] as Json[],
     holdReveal: false,
     revealedAt: null as number | null,
     reveals: 0,
@@ -313,6 +315,7 @@ export async function mockApi(page: Page, options: Options = {}) {
             max_score: p.max,
             my_submission_count: state.submissions.filter((s) => s.problem_id === p.id).length,
             revision_id: 10 + p.id,
+            ...(options.deletedB && p.label === 'B' ? { deleted: true } : {}),
             ...(state.who === 'organiser-view' ? { statement_md: STATEMENT } : {}),
             statement_updated_at: p.label === 'B' ? state.statementAt : null,
             ...(options.zeroB && p.label === 'B' ? { my_score: 0, zero_by_decision: true, zero_case_id: 12 } : {}),
@@ -403,7 +406,7 @@ export async function mockApi(page: Page, options: Options = {}) {
     extended_minutes: 0,
     editorial_md: '## A\n\nUse long long.',
     editorial_published: false,
-    problems: state.adminProblems.map((p) => pinFields(p)),
+    problems: state.adminProblems.map((p) => ({ ...pinFields(p), ...(options.deletedB && p.label === 'B' ? { deleted: true, ready: false } : {}) })),
     pin_history: [
       ...state.pinPuts.map((x, i) => ({ label: x.label, problem_id: 11, revision_id: Number(x.body.revision_id), rev: 3, from_at: now + i, actor: { user_id: 2, email: 'arjun.mehta@college.edu', role: 'organiser' } })).reverse(),
       { label: 'A', problem_id: 11, revision_id: 12, rev: 2, from_at: startsAt - 60 * MIN, actor: { user_id: 1, email: 'priya@college.edu', role: 'owner' } },
@@ -779,7 +782,7 @@ export async function mockApi(page: Page, options: Options = {}) {
           started: 30,
           problems: [
             { label: 'A', title: 'A plus B', max_score: 100, solved: 21, attempted: 27, median_attempts: 2, subtasks: [], histogram: [{ score: 0, students: 6 }, { score: 40, students: 3 }, { score: 100, students: 21 }] },
-            { label: 'B', title: 'Interval covering', max_score: 100, solved: 4, attempted: 19, median_attempts: 4, subtasks: [], histogram: [{ score: 0, students: 11 }, { score: 40, students: 8 }, { score: 100, students: 4 }] },
+            { label: 'B', title: 'Interval covering', ...(options.deletedB ? { deleted: true } : {}), max_score: 100, solved: 4, attempted: 19, median_attempts: 4, subtasks: [], histogram: [{ score: 0, students: 11 }, { score: 40, students: 8 }, { score: 100, students: 4 }] },
           ],
         });
       }

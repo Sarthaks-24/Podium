@@ -11,13 +11,14 @@
   contest using the problem asks for a reason with each save.
 -->
 <script lang="ts">
-  import { organises } from '../lib/roles';
+  import { administers, organises } from '../lib/roles';
   import PageState from '../components/PageState.svelte';
   import PageHeader from '../components/PageHeader.svelte';
   import ActionMenu from '../components/ActionMenu.svelte';
   import { onMount, tick } from 'svelte';
   import { keepHeadingFocus } from '../lib/focus';
   import ConfirmDialog from '../components/ConfirmDialog.svelte';
+  import DeleteProblemDialog from '../components/problem/DeleteProblemDialog.svelte';
   import RestoreFlow from '../components/RestoreFlow.svelte';
   import ValidationReport from '../components/ValidationReport.svelte';
   import { inputGenPending, inputGenReport, isAIDraft, type InputGeneration } from '../lib/ai';
@@ -41,6 +42,7 @@
     judgedFieldsChanged,
     ordinal,
     archiveWarnings,
+    confirmSlug,
     problemPath,
     readPlan,
     toDraft,
@@ -108,6 +110,7 @@
   let replaceOpen = $state(false);
 
   let archiveOpen = $state(false);
+  let deleteOpen = $state(false);
   let archiving = $state(false);
   let restoreOpen = $state(false);
   let addOpen = $state(false);
@@ -501,6 +504,7 @@
     ...((problem?.tests.length ?? 0) > 0 ? [{ label: 'Regenerate all outputs', onselect: () => (regenOpen = true) }] : []),
     ...(problem && !problem.archived ? [{ label: 'Archive', onselect: () => (archiveOpen = true), danger: true }] : []),
     ...(problem?.archived ? [{ label: 'Restore', onselect: () => (restoreOpen = true) }] : []),
+    ...(problem && administers(session.user?.role) ? [{ label: 'Delete', onselect: () => (deleteOpen = true), danger: true }] : []),
   ]);
 
   const pageTitle = $derived(
@@ -680,6 +684,22 @@
   onconfirm={archive}
   oncancel={() => (archiveOpen = false)}
 />
+
+{#if problem}
+  <DeleteProblemDialog
+    open={deleteOpen}
+    problemId={problem.id}
+    name={problem.title.trim() !== '' ? problem.title : problem.slug}
+    slug={confirmSlug(problem)}
+    role={session.user?.role}
+    onclose={() => (deleteOpen = false)}
+    ondone={() => {
+      deleteOpen = false;
+      baseline = JSON.stringify(draft);
+      navigate('/admin/problems');
+    }}
+  />
+{/if}
 
 <RestoreFlow
   open={restoreOpen}

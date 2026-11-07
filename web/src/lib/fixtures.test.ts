@@ -101,7 +101,7 @@ const RULES: Keys<ContestRules> = {
   block_paste: 'optional',
   block_copy: 'optional',
 };
-const PROBLEM: Keys<ContestProblem> = { label: 'required', title: 'required', statement_md: 'optional', my_score: 'required', max_score: 'required', my_submission_count: 'optional' };
+const PROBLEM: Keys<ContestProblem> = { label: 'required', title: 'required', statement_md: 'optional', my_score: 'required', max_score: 'required', my_submission_count: 'optional', deleted: 'optional' };
 const ANNOUNCEMENT: Keys<Announcement> = { id: 'required', body_md: 'required', created_at: 'required' };
 const CLARIFICATION: Keys<Clarification> = {
   id: 'required',
@@ -197,6 +197,7 @@ const ADMIN_PROBLEM: Keys<AdminContestProblem> = {
   update_available: 'optional',
   update_statement_only: 'optional',
   reconstructed: 'optional',
+  deleted: 'optional',
 };
 const ADMIN_SUMMARY: Keys<AdminContestSummary> = {
   id: 'required',
@@ -269,6 +270,7 @@ const PROBLEM_STATS: Keys<ProblemStats> = {
   median_attempts: 'required',
   histogram: 'required',
   max_score: 'required',
+  deleted: 'optional',
 };
 
 /** The required keys of `keys` that `value` lacks, as "where.key". */

@@ -122,6 +122,8 @@ export interface ContestProblem {
   max_score: number;
   /** How many times the student submitted it; read as 0 when missing. */
   my_submission_count?: number;
+  /** The problem was deleted: the statement and the student's submissions stay, the workspace is closed. */
+  deleted?: boolean;
 }
 
 export interface Announcement {
@@ -506,6 +508,8 @@ export interface AdminContestProblem extends Partial<Omit<ProblemPin, 'label' | 
   title: string;
   max_score?: number;
   ready?: boolean;
+  /** The problem was deleted: it stays in the contest, the editor cannot open it. */
+  deleted?: boolean;
 }
 
 /**
@@ -759,6 +763,8 @@ export interface ProblemStats {
   solved: number;
   attempted: number;
   median_attempts: number | null;
+  /** The problem was deleted. */
+  deleted?: boolean;
   /** Students per score; buckets are subtask score sums. */
   histogram: { score: number; students: number }[];
   max_score: number;
