@@ -26,7 +26,7 @@ func TestUpdatePinOvertaken(t *testing.T) {
 	read := ContestProblem{Label: "A", ProblemID: 100, RevisionID: 1}
 	from := &problems.Revision{ID: 1, ProblemID: 100, Rev: 1}
 	to := &problems.Revision{ID: 3, ProblemID: 100, Rev: 3}
-	_, err := r.svc.applyPin(ctx, c, read, "A", from, to, Actor{ID: 1})
+	_, err := r.svc.applyPin(ctx, c, read, "A", from, to, Actor{ID: 1}, false)
 	if !errors.Is(err, ErrPinMoved) {
 		t.Fatalf("update from a stale pin: %v, want ErrPinMoved", err)
 	}

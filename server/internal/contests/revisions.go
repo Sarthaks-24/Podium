@@ -116,12 +116,15 @@ func (s *Service) UpdatePin(ctx context.Context, contestID int64, label string, 
 			return nil, err
 		}
 	}
-	if !s.now().Before(c.Final()) && !confirmEnded {
+	// One clock read decides both the guard and the audit action, so a
+	// contest that closes mid-request is never recorded as an unconfirmed ended_repin.
+	ended := !s.now().Before(c.Final())
+	if ended && !confirmEnded {
 		if err := s.endedScoresChange(ctx, c, *cp, to); err != nil {
 			return nil, err
 		}
 	}
-	return s.applyPin(ctx, c, *cp, label, from, to, by)
+	return s.applyPin(ctx, c, *cp, label, from, to, by, ended)
 }
 
 // endedScoresChange is nil when moving cp to revision to leaves the pinned
@@ -169,7 +172,7 @@ func (s *Service) endedScoresChange(ctx context.Context, c *Contest, cp ContestP
 // transaction that first re-reads the label's pin: one moved since cp was
 // read is ErrPinMoved, so two organisers never both update from the same
 // revision.
-func (s *Service) applyPin(ctx context.Context, c *Contest, cp ContestProblem, label string, from, to *problems.Revision, by Actor) (*PinUpdate, error) {
+func (s *Service) applyPin(ctx context.Context, c *Contest, cp ContestProblem, label string, from, to *problems.Revision, by Actor, ended bool) (*PinUpdate, error) {
 	contestID := c.ID
 	tx, err := s.DB.BeginTx(ctx, nil)
 	if err != nil {
@@ -217,7 +220,7 @@ func (s *Service) applyPin(ctx context.Context, c *Contest, cp ContestProblem, l
 		details["from_revision_id"], details["from_rev"] = from.ID, from.Rev
 	}
 	action := AuditRevision
-	if u.PointsChanged && !s.now().Before(c.Final()) {
+	if u.PointsChanged && ended {
 		action = AuditEndedRepin
 		details["points_from"], details["points_to"] = cp.Points, points
 	}
