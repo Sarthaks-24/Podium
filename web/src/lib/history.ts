@@ -86,6 +86,7 @@ export const SITE_ACTIONS: readonly { id: string; label: string }[] = [
   { id: 'mode_changed', label: 'Run mode changed' },
   { id: 'settings_changed', label: 'Organisation changed' },
   { id: 'user_forgotten', label: 'Account erased' },
+  { id: 'problem_deleted', label: 'Problem deleted' },
 ];
 
 /** The organisation's fields as the Organisation tab names them. */
@@ -153,6 +154,8 @@ export function siteAuditSummary(e: Pick<SiteAuditEntry, 'action' | 'subject_ema
       const fields = Array.isArray(d.fields) ? (d.fields as unknown[]).map((f) => ORG_FIELDS[String(f)] ?? String(f)) : [];
       return fields.length > 0 ? `Changed the organisation's ${listWords(fields)}` : "Changed the organisation's details";
     }
+    case 'problem_deleted':
+      return `Deleted problem ${str('slug') || (typeof d.problem_id === 'number' ? d.problem_id : '')}`.trim();
     case 'user_forgotten':
       return `Erased account ${typeof d.user_id === 'number' ? d.user_id : ''} at the person's request`.replace('  ', ' ');
   }

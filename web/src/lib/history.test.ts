@@ -3,6 +3,7 @@ import {
   actorText,
   feedQuery,
   pinPath,
+  SITE_ACTIONS,
   siteAuditSummary,
   updateEffect,
 } from './history';
@@ -41,6 +42,8 @@ describe('site audit (People History)', () => {
       "Changed the organisation's name, phone and contact email",
     );
     expect(siteAuditSummary(row('user_forgotten', { user_id: 7 }, ''))).toBe("Erased account 7 at the person's request");
+    expect(siteAuditSummary(row('problem_deleted', { problem_id: 4, slug: 'two-sum' }, ''))).toBe('Deleted problem two-sum');
+    expect(SITE_ACTIONS.some((a) => a.id === 'problem_deleted')).toBe(true);
     // A later release may add actions; they show by name.
     expect(siteAuditSummary(row('something_new', {}, ''))).toBe('something_new');
   });
