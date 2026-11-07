@@ -47,6 +47,8 @@ web/.vite/
 release/
 *.tar.gz
 *.zip
+# Test packs are data, not release artefacts.
+!server/internal/problems/testdata/**/*.zip
 
 # SQLite databases and their side files
 *.db
