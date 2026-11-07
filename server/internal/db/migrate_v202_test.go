@@ -73,3 +73,39 @@ func TestDeleteMigrationKeepsEveryRow(t *testing.T) {
 		t.Errorf("second Migrate applied %v (%v)", again, err)
 	}
 }
+
+// 0015 adds the prompt versions table. A row can be inserted; an update or
+// a delete aborts; an unknown kind is refused; a second Migrate has nothing
+// to apply.
+func TestPromptVersionsMigrationIsAppendOnly(t *testing.T) {
+	ctx := context.Background()
+	d, err := Open(ctx, filepath.Join(t.TempDir(), "p.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer d.Close()
+	if _, err := Migrate(ctx, d); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := d.ExecContext(ctx, `INSERT INTO users (id, email, role, created_at) VALUES (1, 'owner@x.edu', 'owner', 1)`); err != nil {
+		t.Fatal(err)
+	}
+	for _, kind := range []string{"wizard_rules", "pack_rules", "preferences"} {
+		if _, err := d.ExecContext(ctx, `INSERT INTO ai_prompt_versions (kind, body, created_by, created_at) VALUES (?, 'x', 1, 5)`, kind); err != nil {
+			t.Errorf("insert %s: %v", kind, err)
+		}
+	}
+	if _, err := d.ExecContext(ctx, `INSERT INTO ai_prompt_versions (kind, body, created_at) VALUES ('other', 'x', 5)`); err == nil {
+		t.Error("an unknown kind was accepted")
+	}
+	if _, err := d.ExecContext(ctx, `UPDATE ai_prompt_versions SET body = 'y'`); err == nil {
+		t.Error("an update was accepted")
+	}
+	if _, err := d.ExecContext(ctx, `DELETE FROM ai_prompt_versions`); err == nil {
+		t.Error("a delete was accepted")
+	}
+	again, err := Migrate(ctx, d)
+	if err != nil || len(again) != 0 {
+		t.Errorf("second Migrate applied %v (%v)", again, err)
+	}
+}
