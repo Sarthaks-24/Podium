@@ -1,0 +1,105 @@
+{
+  "about": "Function problems: the locked top, the student's code and the locked bottom, and the one file the judge compiles from them. Each part is cut after its last line and given one newline; an empty part adds nothing. top_lines is the line offset of the student's code, code_lines its length. Read by the Go test on problems.Compose and by the editor's join (V202-34), so the two cannot drift.",
+  "cases": [
+    {
+      "name": "C++ with a function",
+      "language": "cpp17",
+      "top": "#include <bits/stdc++.h>\nusing namespace std;\n",
+      "code": "long long twice(long long n) {\n    return 2 * n;\n}\n",
+      "bottom": "int main() {\n    long long n;\n    cin >> n;\n    cout << twice(n) << endl;\n}\n",
+      "composed": "#include <bits/stdc++.h>\nusing namespace std;\nlong long twice(long long n) {\n    return 2 * n;\n}\nint main() {\n    long long n;\n    cin >> n;\n    cout << twice(n) << endl;\n}\n",
+      "top_lines": 2,
+      "code_lines": 3
+    },
+    {
+      "name": "Java class Solution and public class Main",
+      "language": "java21",
+      "top": "import java.util.*;\n",
+      "code": "class Solution {\n    long twice(long n) {\n        return 2 * n;\n    }\n}\n",
+      "bottom": "public class Main {\n    public static void main(String[] args) {\n        Scanner in = new Scanner(System.in);\n        System.out.println(new Solution().twice(in.nextLong()));\n    }\n}\n",
+      "composed": "import java.util.*;\nclass Solution {\n    long twice(long n) {\n        return 2 * n;\n    }\n}\npublic class Main {\n    public static void main(String[] args) {\n        Scanner in = new Scanner(System.in);\n        System.out.println(new Solution().twice(in.nextLong()));\n    }\n}\n",
+      "top_lines": 1,
+      "code_lines": 5
+    },
+    {
+      "name": "no newline at the end of any part",
+      "language": "python3",
+      "top": "import sys",
+      "code": "def twice(n):\n    return 2 * n",
+      "bottom": "print(twice(int(sys.stdin.readline())))",
+      "composed": "import sys\ndef twice(n):\n    return 2 * n\nprint(twice(int(sys.stdin.readline())))\n",
+      "top_lines": 1,
+      "code_lines": 2
+    },
+    {
+      "name": "blank lines at the end are cut",
+      "language": "node22",
+      "top": "'use strict';\n\n\n",
+      "code": "function twice(n) {\n  return 2 * n;\n}\n\n\n",
+      "bottom": "const n = Number(require('fs').readFileSync(0, 'utf8'));\nconsole.log(twice(n));\n\n",
+      "composed": "'use strict';\nfunction twice(n) {\n  return 2 * n;\n}\nconst n = Number(require('fs').readFileSync(0, 'utf8'));\nconsole.log(twice(n));\n",
+      "top_lines": 1,
+      "code_lines": 3
+    },
+    {
+      "name": "blank lines at the start of the code are kept",
+      "language": "python3",
+      "top": "import sys\n",
+      "code": "\n\ndef twice(n):\n    return 2 * n\n",
+      "bottom": "print(twice(1))\n",
+      "composed": "import sys\n\n\ndef twice(n):\n    return 2 * n\nprint(twice(1))\n",
+      "top_lines": 1,
+      "code_lines": 4
+    },
+    {
+      "name": "Windows line ends: only the last one of each part changes",
+      "language": "python3",
+      "top": "import sys\r\n",
+      "code": "def twice(n):\r\n    return 2 * n\r\n",
+      "bottom": "print(twice(1))\r\n\r\n",
+      "composed": "import sys\ndef twice(n):\r\n    return 2 * n\nprint(twice(1))\n",
+      "top_lines": 1,
+      "code_lines": 2
+    },
+    {
+      "name": "empty code",
+      "language": "cpp17",
+      "top": "#include <cstdio>\n",
+      "code": "",
+      "bottom": "int main() {}\n",
+      "composed": "#include <cstdio>\nint main() {}\n",
+      "top_lines": 1,
+      "code_lines": 0
+    },
+    {
+      "name": "code of blank lines only",
+      "language": "cpp17",
+      "top": "#include <cstdio>\n",
+      "code": "\n\r\n\n",
+      "bottom": "int main() {}\n",
+      "composed": "#include <cstdio>\nint main() {}\n",
+      "top_lines": 1,
+      "code_lines": 0
+    },
+    {
+      "name": "spaces on the last line are kept",
+      "language": "python3",
+      "top": "import sys\n",
+      "code": "x = 1\n    ",
+      "bottom": "print(x)\n",
+      "composed": "import sys\nx = 1\n    \nprint(x)\n",
+      "top_lines": 1,
+      "code_lines": 2
+    },
+    {
+      "name": "text beyond ASCII",
+      "language": "java21",
+      "top": "import java.util.*;\n",
+      "code": "class Solution {\n    String hi() { return \"héllo, नमस्ते\"; }\n}",
+      "bottom": "public class Main { public static void main(String[] a) { System.out.println(new Solution().hi()); } }\n",
+      "composed": "import java.util.*;\nclass Solution {\n    String hi() { return \"héllo, नमस्ते\"; }\n}\npublic class Main { public static void main(String[] a) { System.out.println(new Solution().hi()); } }\n",
+      "top_lines": 1,
+      "code_lines": 3
+    }
+  ]
+}
