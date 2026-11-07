@@ -123,9 +123,22 @@ func TestAdminDeletesAnUnusedProblem(t *testing.T) {
 	if err != nil || len(deleted) != 1 || deleted[0].Slug != "a-plus-b" || deleted[0].DeletedBy != "admin@college.edu" || deleted[0].Used {
 		t.Errorf("deleted list %+v %v", deleted, err)
 	}
+	fkClean(t, s)
 	// The slug is free for a new problem.
 	if _, err := s.Create(ctx, "A plus B", "a-plus-b", 3, ""); err != nil {
 		t.Errorf("slug not freed: %v", err)
+	}
+}
+
+// fkClean fails when the database has a dangling reference or fails its integrity check.
+func fkClean(t *testing.T, s *Service) {
+	t.Helper()
+	if n := count(t, s, "SELECT count(*) FROM pragma_foreign_key_check"); n != 0 {
+		t.Errorf("foreign_key_check reports %d rows", n)
+	}
+	var ok string
+	if err := s.DB.QueryRow("PRAGMA integrity_check").Scan(&ok); err != nil || ok != "ok" {
+		t.Errorf("integrity_check: %q %v", ok, err)
 	}
 }
 
@@ -179,6 +192,7 @@ func TestWhoMayDelete(t *testing.T) {
 	if err := s.Delete(ctx, submitted.ID, ownerActor); err != nil {
 		t.Errorf("owner on a submitted problem: %v", err)
 	}
+	fkClean(t, s)
 }
 
 // Nobody, owner included, deletes a problem while a contest holding it has
