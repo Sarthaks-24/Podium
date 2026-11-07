@@ -693,6 +693,13 @@ Configuration files are never overwritten: add a new variable with `sudoedit` be
 
 - **Rollback.** The previous server refuses a database that records a migration it does not know, so rolling back is the "Newer schema" case below: the backup taken just before the upgrade is restored and what was written since is lost. The migration itself loses nothing.
 
+### Migration 0014 (v2.0.2): function problems
+
+`0014_v202_function.sql` adds `mode TEXT NOT NULL DEFAULT 'whole'`, `locked_top` and `locked_bottom` (JSON, default `{}`) to `problems` and `problem_revisions`, and `top_lines INTEGER NOT NULL DEFAULT 0` to `submissions`. No row is rewritten: every existing problem and revision reads as a whole-program problem and keeps its content hash, so nothing needs validating again and no contest pin moves.
+
+- **Upgrade the judge with the server.** A function problem's composed file can be up to 72 KB (64 KB of the student's code plus a 4 KB locked top and a 4 KB locked bottom), and a v2.0.1 judge refuses any source over 64 KB. `install.sh upgrade` installs both binaries from one release; never run a v2.0.1 `podium-judge` against a v2.0.2 server. After the upgrade, run the sandbox check ("Verify the sandbox on the VM", above).
+- **Rollback.** As for 0010 to 0012: the previous server refuses a database that records 0014, so rolling back means restoring the backup taken just before the upgrade. Function problems made since are lost with everything else written after it.
+
 ## Holding the compilers
 
 A gcc, JDK, Python, Node or isolate update can change how fast a reference runs or, rarely, a verdict. Before a contest season, stop apt from moving them:

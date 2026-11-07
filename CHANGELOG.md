@@ -4,6 +4,23 @@ Dated entries per release. Unreleased work is listed at the top.
 
 Releases are numbered from `v2.0.0`. The builds before it were never released; these entries call them v1.0 (first called v1), v1.1 (v2), v1.2 (v3), v1.3 (v4) and v1.4 (v4.01). Decision ids (`V3-n`, `V4-n`) and migration file names keep the old names.
 
+## v2.0.2 Billota (2026-11-07)
+
+Upgrades v2.0.1 with migrations 0013 to 0015. **Upgrade the judge together with the server**: a v2.0.1 judge refuses the larger source files function problems send (`install.sh upgrade` installs both from one release).
+
+### v2.0.2 stage B: function problems (2026-11-07)
+
+- A problem can be a function problem: the student writes only a function, and locked code before it (the locked top, common imports) and after it (the locked bottom, which reads the input, calls the function and prints the answer) makes the whole program. Each problem offers the languages it has locked code for, in any of C++17, Java 21, Python 3 and JavaScript; Java reads with `Scanner` in `public class Main` in the locked bottom and the student writes `class Solution`. Whole-program problems work exactly as before.
+- The judge compiles one composed file: locked top, the student's code, locked bottom. Submit, Run, contest rejudge, Validate and output generation all compose with the problem's current locked code, which in a contest is always the pinned revision's (a changed problem refuses until "Update students now"). The reference solution and brute force are bare functions and are composed too; the validator, checker and generator stay whole programs. The submission keeps only the student's part.
+- Compile errors show the student's own line numbers; a line in locked code reads "locked code, line N". Each submission keeps the locked top's line count it was judged with, so the numbers stay right after the top changes. Runtime stack traces are not rewritten, apart from the first line of a JavaScript error.
+- The problem editor's Statement tab has "What students write": the whole program, or one function with a locked top and bottom per language. The mode cannot change once a student has a submission, run or draft (409 `mode_locked`); locked code can, and needs validating again, like a solution.
+- Pack format 4 carries function problems (`mode: function`, `locked_top`, `locked_bottom`). Only function problems export as format 4; every other problem exports byte for byte as before (format 1, or 3 with starters). v2.0.1 refuses format 4 packs.
+- Content hashes of existing problems are unchanged: the new fields join the hash only for function problems (pinned by a test against the v2.0.1 hashes).
+- New example pack `problems/array-sum`, a function problem in all four languages; the sandbox suite and the load test use it.
+- The judge reads program sources up to 72 KB (was 64 KB): a student's 64 KB plus a 4 KB top and a 4 KB bottom.
+- Migration `0014_v202_function.sql` adds `mode`, `locked_top` and `locked_bottom` to problems and revisions and `top_lines` to submissions; rolling back means restoring the pre-upgrade backup (OPERATIONS.md).
+- Known limits: locked code is a teaching aid, not an integrity control (a student can still read input or print from their own code); the AI wizard writes whole-program problems only; the students' editor that shows locked code as read-only blocks comes with stage C.
+
 ## v2.0.1 Billota (2026-11-05)
 
 Upgrades v2.0.0 with migrations 0010 to 0012.

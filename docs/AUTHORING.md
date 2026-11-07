@@ -4,7 +4,7 @@ Admins and owners write problems in the problem editor (Problems, in the header)
 
 ## Input and output
 
-Every problem reads standard input and writes standard output. Problems in the style of LeetCode (a function signature) are rewritten into this form.
+Every problem reads standard input and writes standard output. A problem is either a whole program (the student writes all of it) or a function problem in the style of LeetCode (the student writes only a function, and locked code around it reads the input and prints the answer; see "Function problems").
 
 ## Limits and languages
 
@@ -17,7 +17,7 @@ The time limit you set applies to C++. Other languages get a multiple of it, and
 | Python 3 | `python3` | 3.0 x | limit + 64 MB |
 | JavaScript (Node 22) | `node22` | 2.0 x | limit + 128 MB |
 
-Java sources must declare `public class Main`.
+Java sources must declare `public class Main`. In a function problem that class is in the locked bottom, and the student writes a non-public `class Solution`.
 
 Guidelines that keep a 700-student contest moving on one VM:
 
@@ -50,7 +50,7 @@ Source files must sit at the top of the pack, with a name of up to 40 letters, d
 
 ### problem.yaml
 
-**Pack format.** Podium reads formats 1, 2 and 3. Format 2 added `open`, the open tests; v1.2 has none (V3-5) and imports them as samples. Format 3 (v1.3) added `starters`. Exports write format 3 for a problem with starter code and format 1 otherwise, so an older Podium still reads the rest; a pack without a `format` line is format 1.
+**Pack format.** Podium reads formats 1 to 4. Format 2 added `open`, the open tests; v1.2 has none (V3-5) and imports them as samples. Format 3 (v1.3) added `starters`. Format 4 (v2.0.2) added function problems: `mode`, `locked_top` and `locked_bottom`. Exports write format 4 for a function problem, format 3 for a whole problem with starter code and format 1 otherwise, so an older Podium still reads every whole problem; a pack without a `format` line is format 1. Podium v2.0.1 and older refuse a format 4 pack ("this server reads format 3 and older").
 
 Parsed strictly: an unknown key is an error, so a misspelt key never silently falls back to a default. Comments are allowed.
 
@@ -69,6 +69,9 @@ brute: brute.js                 # optional: a slow, obviously correct solution
 validator: validator.py         # optional: checks every input against the constraints
 generator: generator.py         # optional: makes the inputs planned in tests.yaml
 starters: [starter.cpp, starter.py]  # optional, format 3: what a student's editor opens with, one file per language
+# mode: function                # format 4: the student writes only a function (see "Function problems")
+# locked_top: [top.cpp, top.py]        # format 4, with mode: function: the locked code before the student's, one file per language
+# locked_bottom: [bottom.cpp, bottom.py]  # format 4, with mode: function: the locked code after it
 samples: [1, 2]                 # test numbers shown with the statement; they carry no points
 subtasks:                       # at least one; scored all or nothing
   - points: 30                  # 1 to 1000; the subtasks should add up to 100
@@ -89,6 +92,47 @@ Quote every `tests` value, so YAML reads it as text.
 - An output without its input is refused.
 - At most 16 MB per file.
 - A test planned in `tests.yaml` needs no files: Generate inputs makes its input, then its output is made from the reference. A pack must have at least one test file or one planned test.
+
+## Function problems
+
+In a function problem the student writes only a function. The file has three parts:
+
+| Part | Who writes it | What it holds |
+|---|---|---|
+| Locked top | You | Common imports or includes only, no declarations. Never empty: a comment is enough if the language needs nothing. |
+| Your code | The student | The function. It opens with the language's starter, the stub you write. |
+| Locked bottom | You | Reads the input, calls the student's function and prints what it returns. |
+
+The judge compiles the three parts as one file (the composed file): each part is cut after its last line and given one newline, then they are joined in order. Students see the locked code and cannot change it. The judge, the checker and the hidden tests work exactly as for a whole program.
+
+**Making one.** In the editor, on the Statement tab, open "What students write" and choose "One function, between locked code". For each language you offer, fill in the locked top and the locked bottom there, and the stub under "Starter code". In a pack, use format 4 (see `problems/array-sum`):
+
+```yaml
+format: 4
+mode: function
+starters: [starter.cpp, starter.java, starter.js, starter.py]
+locked_top: [top.cpp, top.java, top.js, top.py]
+locked_bottom: [bottom.cpp, bottom.java, bottom.js, bottom.py]
+```
+
+Rules, checked on every save and import:
+
+- A language is offered only when it has a locked top, a locked bottom and a starter. A student can choose only the offered languages, and Submit, Run and drafts in another language are refused ("This problem takes C++17 or Python 3.").
+- The reference solution and the brute force are bare functions, like a student's answer, written in offered languages: each is judged composed with its own language's top and bottom. The validator, the checker and the generator are whole programs, as always.
+- Each locked top and each locked bottom is at most 4 KB.
+- The mode cannot change once a student has a submission, a run or a draft on the problem: "This problem already has submissions or drafts, so its mode cannot change. Make a new problem instead." Locked code can still be edited.
+
+**Java.** The locked top holds the imports (`import java.util.*;`). The student writes `class Solution { ... }`, not public. The locked bottom holds `public class Main`, reads the input with `Scanner` and calls `new Solution().yourFunction(...)`. The judge always compiles `Main.java` and runs `Main`.
+
+**Imports.** Imports cannot be hidden, so the locked top supplies the common ones and students may add their own at the start of their code (a Java file allows more imports before the first class). C++, Java and Python accept an import twice. A JavaScript top declares nothing a student might declare again; `'use strict';` is a good top. Students see: "Common imports are already added. Add more if you need them."
+
+**Changing locked code.** The mode and the locked code are judging content, like the reference solution: a change needs Validate again, and a contest that pins the problem keeps judging with the pinned locked code until "Update students now". Starters are not judging content, so a stub edit needs no new validation.
+
+**Compile errors.** The compiler sees the composed file, so Podium rewrites the line numbers in compile output before anyone sees them: a line in the student's code is counted from their first line, and a line in locked code reads "locked code, line N", counted within that block. Each submission keeps the number of locked top lines it was judged with, so an old submission still shows the right lines after you edit the top. A compile error in locked code usually means the student renamed the function or changed its parameters. Runtime stack traces are not rewritten; for JavaScript, which has no compile step, the first line of an error (the place) is.
+
+**What locked code is not.** It is a teaching aid, not an integrity control. A student can still read standard input or print from their own code, redefine things in C++, or close the function early and write more code. Everything runs in the sandbox, and the checker and the hidden tests decide the verdict, so such tricks only help a student who could solve the problem anyway.
+
+**AI.** The AI wizard writes whole-program problems only. To make a function problem with AI, use "Packs from another AI" and ask for a format 4 pack, or convert a draft by hand.
 
 ## Statement
 
@@ -443,16 +487,17 @@ Only one pack import, test replacement or pack download runs at a time; a second
 | Validate | Saves unsaved changes first, makes missing outputs, then queues the run. The title row keeps one status line ("Validated, 7 tests, slowest 286 ms", "Validation failed on test 5"), a link to the report. Under the bar, on every tab: what stops validation (a test in no subtask), and, for an unsaved change to a judged field (limits, checker, solutions, validator, examples, subtask points and tests), that saving needs a new validation; a change to the title, statement, tags or subtask titles does not, except on an AI draft, whose statement counts. Advice ("Before you validate", "Worth adding") sits with the report. |
 | Add to contest | Takes Validate's place once the problem has passed and nothing is unsaved. Pick a draft or upcoming contest; the problem goes in after its other problems under the next letter. |
 | Try as a student | Opens the problem in the student workspace (see "Trying a problem as a student"). |
-| Download pack | The same layout as an import, ready to re-import or keep in version control. Sources are named `solution`, `brute`, `validator` and `generator` with their language's extension, the plan is written to `tests.yaml`, and tests are numbered with two digits (three from test 100). Outputs not generated yet are left out. |
+| Download pack | The same layout as an import, ready to re-import or keep in version control. Sources are named `solution`, `brute`, `validator` and `generator` with their language's extension (a function problem's locked code goes to `top` and `bottom` files, its stubs to `starter` files), the plan is written to `tests.yaml`, and tests are numbered with two digits (three from test 100). Outputs not generated yet are left out. |
 | Archive | In the More menu, with Download pack and Regenerate all outputs. Asks to confirm, then hides the problem from the list. Its tests and history are kept; "Show archived" lists it again. Archiving frees the problem's slug: the problem takes `<slug>-archived-<id>` and keeps the original, so you can import or create another problem with that slug. The dialog lists the contests that pin the problem and have not ended: it keeps working there, but you cannot update it in that contest until you restore it. An archived problem's slug cannot be changed, and Download pack writes the original slug into `problem.yaml`. |
 | Restore | In the More menu of an archived problem, and on its row in the bank with "Show archived". Asks to confirm and gives the original slug back. If another problem has taken it meanwhile, it asks for a new slug with a free one filled in. Contests have the same: Show archived on the Contests page, and Restore in a contest's More menu. |
 
 ## Example packs
 
-`problems/` in the repository holds three packs that pass validation. Zip a folder to import it.
+`problems/` in the repository holds four packs that pass validation. Zip a folder to import it.
 
 | Pack | Shows |
 |---|---|
 | `a-plus-b` | `tokens` checker, C++ reference, Python brute force and validator, 2 samples, 2 subtasks |
 | `average-speed` | `float` checker with `epsilon`, Java reference, Python brute force and validator, and two samples |
 | `pair-with-sum` | `custom` testlib checker accepting any valid pair, C++ reference, JavaScript brute force |
+| `array-sum` | A function problem (format 4) in C++17, Java 21, Python 3 and JavaScript: locked tops, stubs and locked bottoms; Java reads with `Scanner` in `public class Main`; the reference and brute force are bare functions |
