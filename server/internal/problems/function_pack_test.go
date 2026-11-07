@@ -159,3 +159,52 @@ func FuzzReadPackFormat4(f *testing.F) {
 		}
 	})
 }
+
+// The example function pack (problems/array-sum) offers all four
+// languages, its Java bottom is public class Main and its stub a
+// non-public class Solution, every part composes into one file, and it
+// survives an export and an import as format 4.
+func TestExampleFunctionPack(t *testing.T) {
+	pk, err := ReadPack(zipDir(t, filepath.Join(examples, "array-sum")))
+	if err != nil {
+		t.Fatal(err)
+	}
+	p := &pk.Problem
+	if !p.IsFunction() || strings.Join(p.Offered(), ",") != "cpp17,java21,node22,python3" {
+		t.Fatalf("mode %q offers %v", p.Mode, p.Offered())
+	}
+	if !strings.Contains(p.LockedBottom["java21"], "public class Main") || !strings.Contains(p.Starters["java21"], "class Solution") ||
+		strings.Contains(p.Starters["java21"], "public class") || !strings.Contains(p.LockedBottom["java21"], "new Scanner(System.in)") {
+		t.Errorf("java parts: bottom %q stub %q", p.LockedBottom["java21"], p.Starters["java21"])
+	}
+	for _, lang := range p.Offered() {
+		c := p.ComposeFor(lang, p.Starters[lang])
+		if c.TopLines < 1 || !strings.HasPrefix(c.Source, p.LockedTop[lang]) || !strings.HasSuffix(c.Source, p.LockedBottom[lang]) {
+			t.Errorf("%s composes as %q", lang, c.Source)
+		}
+	}
+	blobs := map[string][]byte{}
+	for i := range p.Tests {
+		in, out := pk.Inputs[p.Tests[i].Idx], pk.Outputs[p.Tests[i].Idx]
+		p.Tests[i].InputSHA, p.Tests[i].OutputSHA = SHA(in), SHA(out)
+		blobs[SHA(in)], blobs[SHA(out)] = in, out
+	}
+	var buf bytes.Buffer
+	if err := WritePack(&buf, p, func(sha string) ([]byte, error) { return blobs[sha], nil }); err != nil {
+		t.Fatal(err)
+	}
+	if y := packYAML(t, buf.Bytes()); !strings.HasPrefix(y, "format: 4\nmode: function\n") {
+		t.Errorf("exported problem.yaml:\n%s", y)
+	}
+	again, err := ReadPack(buf.Bytes())
+	if err != nil {
+		t.Fatal(err)
+	}
+	q := again.Problem
+	for i := range q.Tests {
+		q.Tests[i].InputSHA, q.Tests[i].OutputSHA = SHA(again.Inputs[q.Tests[i].Idx]), SHA(again.Outputs[q.Tests[i].Idx])
+	}
+	if ContentHash(&q) != ContentHash(p) {
+		t.Error("export and import changed the content hash")
+	}
+}

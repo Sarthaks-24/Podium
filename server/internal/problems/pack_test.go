@@ -99,6 +99,7 @@ func TestExamplePacksImport(t *testing.T) {
 		"a-plus-b":      {"tokens", "cpp17", 6, true, true},
 		"average-speed": {"float", "java21", 7, true, true},
 		"pair-with-sum": {"custom", "cpp17", 6, true, false},
+		"array-sum":     {"tokens", "cpp17", 6, true, true},
 	} {
 		pk, err := ReadPack(zipDir(t, filepath.Join(examples, slug)))
 		if err != nil {

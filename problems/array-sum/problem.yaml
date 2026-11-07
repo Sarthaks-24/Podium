@@ -1,0 +1,23 @@
+format: 4
+mode: function
+title: Sum of an array
+slug: array-sum
+time_limit_ms: 1000
+memory_limit_mb: 256
+checker: tokens
+tags: [implementation]
+difficulty: easy
+reference: solution.cpp
+brute: brute.py
+validator: validator.py
+samples: [1, 2]
+subtasks:
+  - points: 40
+    title: Small numbers
+    tests: "3-4"
+  - points: 60
+    title: Full range
+    tests: "5-6"
+starters: [starter.cpp, starter.java, starter.js, starter.py]
+locked_top: [top.cpp, top.java, top.js, top.py]
+locked_bottom: [bottom.cpp, bottom.java, bottom.js, bottom.py]
