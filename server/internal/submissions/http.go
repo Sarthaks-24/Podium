@@ -61,6 +61,8 @@ func WriteError(log *slog.Logger, w http.ResponseWriter, r *http.Request, err er
 		httpx.WriteError(w, http.StatusNotFound, "not_found", "There is no such problem or submission.")
 	case errors.Is(err, ErrPinMoved):
 		httpx.WriteError(w, http.StatusConflict, "not_ready", err.Error())
+	case errors.Is(err, ErrProblemDeleted):
+		httpx.WriteError(w, http.StatusConflict, "deleted", err.Error())
 	case errors.As(err, &notReady):
 		httpx.WriteJSON(w, http.StatusConflict, map[string]httpx.APIError{"error": {Code: "not_ready",
 			Message: "This problem cannot be judged yet. An organiser needs to fix these first.", Problems: notReady.Problems}})

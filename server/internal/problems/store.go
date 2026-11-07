@@ -21,6 +21,8 @@ import (
 // Errors the API maps to status codes.
 var (
 	ErrNotFound = errors.New("problem not found")
+	// ErrDeleted refuses any change to a deleted problem (409 deleted).
+	ErrDeleted = errors.New("This problem was deleted and cannot be changed.")
 )
 
 // Service manages the problem bank.
@@ -77,7 +79,7 @@ func (s *Service) List(ctx context.Context, archived bool) ([]BankEntry, error) 
 		p.archived_slug, p.content_hash, coalesce(p.validated_hash, ''), coalesce(p.validated_at, 0), p.updated_at,
 		(SELECT count(*) FROM testcases t WHERE t.problem_id = p.id),
 		(SELECT coalesce(sum(points), 0) FROM subtasks st WHERE st.problem_id = p.id), `+shownInPractice+`
-		FROM problems p WHERE p.archived = 0 OR ? ORDER BY p.updated_at DESC, p.id DESC`, s.now().UnixMilli(), archived)
+		FROM problems p WHERE (p.archived = 0 OR ?) AND p.deleted = 0 ORDER BY p.updated_at DESC, p.id DESC`, s.now().UnixMilli(), archived)
 	if err != nil {
 		return nil, err
 	}
@@ -129,12 +131,12 @@ func load(ctx context.Context, q queryer, id int64) (*Problem, error) {
 		checker_source, reference_language, reference_source, brute_language, brute_source, validator_language,
 		validator_source, tags, difficulty, samples, origin, author_id, archived, created_at, updated_at,
 		content_hash, validated_hash, validated_at, generator_language, generator_source, generator_plan, starters,
-		archived_slug
+		archived_slug, deleted
 		FROM problems WHERE id = ?`, id).Scan(
 		&p.Slug, &p.Title, &p.Statement, &p.TimeLimitMS, &p.MemoryLimitMB, &p.Checker, &p.Epsilon,
 		&p.CheckerSource, &p.Reference.Language, &p.Reference.Source, &bruteLang, &bruteSrc, &valLang,
 		&valSrc, &tags, &p.Difficulty, &samples, &p.Origin, &author, &p.Archived, &created, &updated,
-		&p.ContentHash, &vhash, &vat, &genLang, &genSrc, &plan, &starters, &p.ArchivedSlug)
+		&p.ContentHash, &vhash, &vat, &genLang, &genSrc, &plan, &starters, &p.ArchivedSlug, &p.Deleted)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
@@ -565,6 +567,9 @@ func (s *Service) Update(ctx context.Context, id int64, e Edit) (*Problem, error
 	// a solution, and then the validation is withdrawn, so the problem must
 	// pass again as the person left it before a contest can take it. A save
 	// that changes neither keeps the marking.
+	if p.Deleted {
+		return nil, ErrDeleted
+	}
 	if p.Archived && e.Slug != p.Slug {
 		return nil, FieldErrors{"slug": "Restore the problem to change its slug."}
 	}
@@ -648,6 +653,9 @@ func emptyToNil(src *Source) *Source {
 // changed, a new revision. Every write of a problem, its subtasks or its
 // tests goes through save or insert.
 func (s *Service) save(ctx context.Context, tx *sql.Tx, p *Problem, note RevisionNote) error {
+	if p.Deleted {
+		return ErrDeleted
+	}
 	p.UpdatedAt = s.now()
 	p.ContentHash = ContentHash(p)
 	_, err := tx.ExecContext(ctx, `UPDATE problems SET slug = ?, title = ?, statement_md = ?, time_limit_ms = ?,

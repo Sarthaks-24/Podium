@@ -21,8 +21,12 @@ func (e *SlugTakenError) Error() string {
 // archivedForm is the slug an archived problem takes so its own can be used
 // again: base, "-archived-" and the id, with base cut so the whole fits 64
 // characters and does not end in a hyphen.
-func archivedForm(base string, id int64) string {
-	suffix := "-archived-" + strconv.FormatInt(id, 10)
+func archivedForm(base string, id int64) string { return slugForm(base, "-archived-", id) }
+
+// slugForm is base, tag and the id, with base cut so the whole fits 64
+// characters and does not end in a hyphen.
+func slugForm(base, tag string, id int64) string {
+	suffix := tag + strconv.FormatInt(id, 10)
 	if len(base) > 64-len(suffix) {
 		base = base[:64-len(suffix)]
 	}
@@ -88,13 +92,16 @@ func (s *Service) Restore(ctx context.Context, id int64, slug string) (*Problem,
 	}
 	defer tx.Rollback()
 	var current, original string
-	var archived bool
-	err = tx.QueryRowContext(ctx, "SELECT slug, archived_slug, archived FROM problems WHERE id = ?", id).Scan(&current, &original, &archived)
+	var archived, deleted bool
+	err = tx.QueryRowContext(ctx, "SELECT slug, archived_slug, archived, deleted FROM problems WHERE id = ?", id).Scan(&current, &original, &archived, &deleted)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
 	if err != nil {
 		return nil, err
+	}
+	if deleted {
+		return nil, ErrDeleted
 	}
 	if archived {
 		want := slug

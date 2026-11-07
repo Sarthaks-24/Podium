@@ -36,6 +36,8 @@ type adminProblemJSON struct {
 	UpdateAvailable     bool  `json:"update_available"`
 	UpdateStatementOnly bool  `json:"update_statement_only"`
 	Reconstructed       bool  `json:"reconstructed"`
+	// Deleted: the problem was deleted; its pinned statement still reads.
+	Deleted bool `json:"deleted,omitempty"`
 }
 
 // adminContestJSON is AdminContest in docs/API.md: every setting, the
@@ -107,7 +109,7 @@ func (d *Handlers) adminContestBase(c *Contest) *adminContestJSON {
 			PinnedHash: p.PinnedHash, Ready: p.Ready, MaxScore: p.MaxScore(),
 			RevisionID: p.RevisionID, Rev: p.Rev, LatestRevisionID: p.LatestRevisionID, LatestRev: p.LatestRev,
 			UpdateAvailable:     p.LatestRevisionID != p.RevisionID && p.LatestReady,
-			UpdateStatementOnly: p.LatestRevisionID != p.RevisionID && p.LatestStatementOnly, Reconstructed: p.Reconstructed}
+			UpdateStatementOnly: p.LatestRevisionID != p.RevisionID && p.LatestStatementOnly, Reconstructed: p.Reconstructed, Deleted: p.Deleted}
 		out.Problems = append(out.Problems, ap)
 	}
 	return out
@@ -490,6 +492,10 @@ func (d *Handlers) Rejudge(w http.ResponseWriter, r *http.Request) {
 	var judgedProblem int64
 	check := func(pid int64) bool {
 		for _, p := range c.Problems {
+			if p.ProblemID == pid && p.Deleted {
+				d.contestError(w, r, submissions.ErrProblemDeleted)
+				return false
+			}
 			if p.ProblemID == pid && !p.Ready {
 				d.contestError(w, r, ErrNotReady)
 				return false

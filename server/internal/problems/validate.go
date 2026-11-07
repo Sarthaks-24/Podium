@@ -85,6 +85,9 @@ func (s *Service) RequestValidation(ctx context.Context, id, userID int64) (*Val
 	if err != nil {
 		return nil, err
 	}
+	if p.Deleted {
+		return nil, ErrDeleted
+	}
 	if probs := p.Problems(); len(probs) > 0 {
 		return nil, &NotReadyError{probs}
 	}
@@ -357,6 +360,12 @@ func (k ValidateKind) Finish(ctx context.Context, tx *sql.Tx, job *jobs.Job) err
 	}
 	if job.State == jobs.Failed {
 		return nil // the run did not happen; the last verdict stands
+	}
+	if gone, err := closeIfDeleted(ctx, tx, pl.ProblemID, job); gone || err != nil {
+		if gone {
+			job.Result.Summary, _ = json.Marshal(Summary{Problems: []string{deletedReason}, Warnings: []string{}, BruteUncheckedTests: []int{}})
+		}
+		return err
 	}
 	sm := summarise(pl, job.Result)
 	b, err := json.Marshal(sm)

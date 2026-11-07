@@ -82,6 +82,10 @@ type Problem struct {
 	Origin     string
 	AuthorID   int64
 	Archived   bool
+	// Deleted marks a tombstone: the row stays so ended contests and old
+	// submissions still read, but its working data is cleared and nothing
+	// may write to it (Delete in delete.go).
+	Deleted bool
 	// Samples are test numbers shown in the statement; they carry no points.
 	Samples  []int
 	Subtasks []Subtask

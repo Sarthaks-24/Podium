@@ -217,6 +217,7 @@ var revisionFreeWrites = map[string]string{
 	"replaceIn":     "origin and solution_by_person after save",
 	"Restore":       "archived and slug",
 	"Finish":        "validated_hash after a validation",
+	"Delete":        "the tombstone: it clears the working copy and no revision is wanted (v2.0.2)",
 }
 
 // No code writes problems, subtasks or testcases except through save and
@@ -257,7 +258,7 @@ func TestNoWritePathSkipsTheRevision(t *testing.T) {
 					t.Errorf("%s: %s writes %s without going through save or insert", where, fn.Name.Name, m[3])
 				}
 				if strings.EqualFold(m[3], "problems") && strings.HasPrefix(strings.ToUpper(m[1]), "UPDATE") &&
-					fn.Name.Name != "save" {
+					fn.Name.Name != "save" && fn.Name.Name != "Delete" {
 					set := strings.ToLower(m[4])
 					if i := strings.Index(set, " where "); i >= 0 {
 						set = set[:i]

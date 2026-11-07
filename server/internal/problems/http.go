@@ -324,9 +324,18 @@ func (d *Handlers) problemError(w http.ResponseWriter, r *http.Request, err erro
 	var pack *PackError
 	var taken *SlugTakenError
 	var notReady *NotReadyError
+	var notAllowed *NotAllowedError
+	var unended *UnendedContestsError
 	switch {
 	case errors.Is(err, ErrNotFound):
 		httpx.WriteError(w, http.StatusNotFound, "not_found", "There is no such problem.")
+	case errors.Is(err, ErrDeleted):
+		httpx.WriteError(w, http.StatusConflict, "deleted", err.Error())
+	case errors.As(err, &notAllowed):
+		httpx.WriteError(w, http.StatusForbidden, "not_allowed", notAllowed.Message)
+	case errors.As(err, &unended):
+		httpx.WriteJSON(w, http.StatusConflict, map[string]httpx.APIError{"error": {Code: "in_unended_contest",
+			Message: unended.Error(), Existing: unended.Contests}})
 	case errors.As(err, &taken):
 		httpx.WriteJSON(w, http.StatusConflict, map[string]httpx.APIError{"error": {Code: "conflict", Message: taken.Error(),
 			Fields: FieldErrors{"slug": taken.Error()}, SuggestedSlug: taken.Suggested}})
@@ -527,6 +536,9 @@ func (d *Handlers) GetProblem(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	p, err := d.Problems.Get(r.Context(), id)
+	if err == nil && p.Deleted {
+		err = ErrDeleted
+	}
 	if err != nil {
 		d.problemError(w, r, err)
 		return
@@ -666,6 +678,9 @@ func (d *Handlers) ExportProblem(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	p, err := d.Problems.Get(r.Context(), id)
+	if err == nil && p.Deleted {
+		err = ErrDeleted
+	}
 	if err != nil {
 		d.problemError(w, r, err)
 		return
@@ -698,6 +713,60 @@ func (d *Handlers) ArchiveProblem(w http.ResponseWriter, r *http.Request) {
 	}
 	d.Log.Info("problem archived", "by", auth.UserFrom(r.Context()).ID, "problem_id", id)
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// DeleteProblem tombstones a problem. The route is guarded by admin; the
+// service decides owner versus admin.
+func (d *Handlers) DeleteProblem(w http.ResponseWriter, r *http.Request) {
+	id, ok := problemID(w, r)
+	if !ok {
+		return
+	}
+	u := auth.UserFrom(r.Context())
+	if err := d.Problems.Delete(r.Context(), id, auth.Actor{ID: u.ID, Email: u.Email, Role: u.Role}); err != nil {
+		d.problemError(w, r, err)
+		return
+	}
+	d.Log.Info("problem deleted", "by", u.ID, "problem_id", id)
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// GetDeleteInfo is what the delete dialog shows: whether the problem was
+// used and the contests that hold it.
+func (d *Handlers) GetDeleteInfo(w http.ResponseWriter, r *http.Request) {
+	id, ok := problemID(w, r)
+	if !ok {
+		return
+	}
+	info, err := d.Problems.DeleteInfo(r.Context(), id)
+	if err != nil {
+		d.problemError(w, r, err)
+		return
+	}
+	httpx.WriteJSON(w, http.StatusOK, info)
+}
+
+type deletedProblemJSON struct {
+	ID        int64  `json:"id"`
+	Slug      string `json:"slug"`
+	Title     string `json:"title"`
+	DeletedAt int64  `json:"deleted_at"`
+	DeletedBy string `json:"deleted_by"`
+	Used      bool   `json:"used"`
+}
+
+// ListDeletedProblems lists the tombstones for admins and the owner.
+func (d *Handlers) ListDeletedProblems(w http.ResponseWriter, r *http.Request) {
+	list, err := d.Problems.ListDeleted(r.Context())
+	if err != nil {
+		d.internalError(w, r, err)
+		return
+	}
+	out := make([]deletedProblemJSON, 0, len(list))
+	for _, e := range list {
+		out = append(out, deletedProblemJSON{ID: e.ID, Slug: e.Slug, Title: e.Title, DeletedAt: e.DeletedAt.UnixMilli(), DeletedBy: e.DeletedBy, Used: e.Used})
+	}
+	httpx.WriteJSON(w, http.StatusOK, map[string]any{"problems": out})
 }
 
 // RestoreProblem brings an archived problem back. The body's slug is optional:

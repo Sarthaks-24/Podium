@@ -200,6 +200,9 @@ func (s *Service) RequestInputGeneration(ctx context.Context, id, userID int64) 
 	if err != nil {
 		return nil, err
 	}
+	if p.Deleted {
+		return nil, ErrDeleted
+	}
 	switch {
 	case p.Generator == nil:
 		return nil, &NotReadyError{[]string{"Add a generator before generating inputs."}}
@@ -390,6 +393,12 @@ func (k GenerateInputsKind) Finish(ctx context.Context, tx *sql.Tx, job *jobs.Jo
 	defer func() {
 		job.Result.Summary, _ = json.Marshal(sm)
 	}()
+	if gone, err := closeIfDeleted(ctx, tx, pl.ProblemID, job); gone || err != nil {
+		if gone {
+			sm.Problems = append(sm.Problems, deletedReason)
+		}
+		return err
+	}
 	for _, c := range job.Result.Compile {
 		if c.Verdict == string(judge.CompileError) {
 			sm.Problems = append(sm.Problems, "The generator does not compile, so no inputs were made.")

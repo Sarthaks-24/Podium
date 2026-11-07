@@ -123,8 +123,12 @@ type ContestProblem struct {
 	PinnedHash string
 	// Ready is false when the problem changed since it was added, or lost
 	// its validation: the contest refuses to publish until it is re-added.
-	Ready  bool
-	Points []int
+	// A deleted problem is never ready.
+	Ready bool
+	// Deleted: the problem was deleted. The pinned statement and every
+	// submission still read; the workspace is closed.
+	Deleted bool
+	Points  []int
 	// RevisionID and Rev name the pinned revision; Reconstructed
 	// marks one the upgrade to v1.2.0 rebuilt from judging jobs.
 	RevisionID    int64
@@ -536,10 +540,10 @@ func (s *Service) loadProblemsOf(ctx context.Context, list []*Contest) error {
 	}
 	idsJSON, _ := json.Marshal(ids)
 	rows, err := s.DB.QueryContext(ctx, `SELECT cp.contest_id, cp.label, cp.problem_id, coalesce(r.title, p.title), coalesce(r.content_hash, ''), cp.points,
-		coalesce(coalesce(p.validated_hash, '') = r.content_hash AND p.content_hash = r.content_hash, 0),
+		coalesce(p.deleted = 0 AND coalesce(p.validated_hash, '') = r.content_hash AND p.content_hash = r.content_hash, 0),
 		coalesce(r.id, 0), coalesce(r.rev, 0), coalesce(r.reconstructed, 0), coalesce(l.id, 0), coalesce(l.rev, 0),
-		l.id IS NOT NULL AND l.reconstructed = 0 AND coalesce(p.validated_hash, '') = l.content_hash AND p.content_hash = l.content_hash,
-		coalesce(l.id IS NOT NULL AND l.content_hash = r.content_hash, 0)
+		l.id IS NOT NULL AND l.reconstructed = 0 AND p.deleted = 0 AND coalesce(p.validated_hash, '') = l.content_hash AND p.content_hash = l.content_hash,
+		coalesce(l.id IS NOT NULL AND l.content_hash = r.content_hash, 0), p.deleted
 		FROM contest_problems cp JOIN problems p ON p.id = cp.problem_id
 		LEFT JOIN problem_revisions r ON r.id = cp.revision_id
 		LEFT JOIN problem_revisions l ON l.problem_id = cp.problem_id
@@ -554,7 +558,7 @@ func (s *Service) loadProblemsOf(ctx context.Context, list []*Contest) error {
 		var cid int64
 		var points string
 		if err := rows.Scan(&cid, &p.Label, &p.ProblemID, &p.Title, &p.PinnedHash, &points, &p.Ready,
-			&p.RevisionID, &p.Rev, &p.Reconstructed, &p.LatestRevisionID, &p.LatestRev, &p.LatestReady, &p.LatestStatementOnly); err != nil {
+			&p.RevisionID, &p.Rev, &p.Reconstructed, &p.LatestRevisionID, &p.LatestRev, &p.LatestReady, &p.LatestStatementOnly, &p.Deleted); err != nil {
 			return err
 		}
 		if err := json.Unmarshal([]byte(points), &p.Points); err != nil {
@@ -693,13 +697,17 @@ func (s *Service) SetProblems(ctx context.Context, id int64, choices []ProblemCh
 		seenLabel[ch.Label], seenProblem[ch.ProblemID] = true, true
 		var hash, tags string
 		var validated sql.NullString
-		err := tx.QueryRowContext(ctx, "SELECT content_hash, validated_hash, tags FROM problems WHERE id = ? AND archived = 0", ch.ProblemID).
-			Scan(&hash, &validated, &tags)
+		var deleted bool
+		err := tx.QueryRowContext(ctx, "SELECT content_hash, validated_hash, tags, deleted FROM problems WHERE id = ? AND (archived = 0 OR deleted = 1)", ch.ProblemID).
+			Scan(&hash, &validated, &tags, &deleted)
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, FieldErrors{"problems": fmt.Sprintf("The problem for label %s no longer exists.", ch.Label)}
 		}
 		if err != nil {
 			return nil, err
+		}
+		if deleted {
+			return nil, FieldErrors{"problems": fmt.Sprintf("The problem for label %s was deleted. Remove it from the contest.", ch.Label)}
 		}
 		// The message names the label the organiser chose, never the
 		// problem's title, so ids cannot be used to list the bank.
