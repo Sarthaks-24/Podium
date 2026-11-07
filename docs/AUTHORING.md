@@ -143,6 +143,7 @@ Archive hides a problem and you can restore it. **Delete** is for a problem you 
 - Before you delete a used problem the dialog offers Download pack and a link to each contest's results, and names the ended contests where practice for the problem closes.
 - The problem leaves the bank, and its tests, solutions, checker and generator are removed. The list at Problems, Deleted problems (admins and the owner) shows it with who deleted it and when. Its slug is free to use again.
 - **Ended contests keep everything students and you saw**: the standings, each student's code and verdicts, and the statement as it was pinned. The problem shows there with the label Deleted problem and no link. Practice for it closes, and Submit, Run and judging again are refused with "This problem was deleted. Your earlier submissions are still listed." An ended contest keeps the deleted problem; it cannot be taken out of a contest whose practice already showed students its hidden tests.
+- **Problems to finish.** Once a contest has fully ended, each student sees the problems they have not finished on their profile (/me), with a practice link; a problem you changed after the contest shows there as "Practice closed", and the workspace says "This problem was changed after the contest ended, so practice for it is closed here."
 
 ## Checkers
 

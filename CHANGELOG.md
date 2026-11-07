@@ -8,6 +8,14 @@ Releases are numbered from `v2.0.0`. The builds before it were never released; t
 
 Unreleased. Upgrades v2.0.1 with migration 0013 (more migrations follow in later stages of this release).
 
+### v2.0.2 stage U: problems to finish (2026-11-07)
+
+- On /me, each contest whose every window is over, and which the student may still open, lists "Problems to finish": the problems where neither the contest score nor the best practice score reaches the maximum, never-tried ones included. Each links to practice, or only reads the statement when practice is off, or says "Practice closed: this problem changed after the contest". A link to the editorial shows once it is published and every window is over.
+- Live, frozen, upcoming and before-the-last-window contests carry an empty list. A deleted problem is left out. A withdrawn invite gives no list. Titles are the pinned titles.
+- A student whose practice is open on a problem that changed after the contest now gets 409 `practice_changed` ("This problem was changed after the contest ended, so practice for it is closed here.") instead of "Try again in a few minutes".
+- New: `to_finish` and `editorial` on each row of `GET /api/me/contests`; every existing field is unchanged. No migration, no change to the board, standings or scoring.
+- Known limit: one extra indexed query per entered contest on /me, not measured under load yet.
+
 ### v2.0.2 stage A: delete a problem (2026-11-07)
 
 - Admins and the owner can delete a problem (More, then Delete, then type the slug). An admin can delete a problem that was never used; only the owner can delete one that was used. Nobody can delete a problem while a contest holding it has not ended: the dialog names the contests.
