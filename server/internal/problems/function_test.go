@@ -209,3 +209,40 @@ func TestModeLockedOnceUsed(t *testing.T) {
 		t.Errorf("top edit on a used function problem: %v", err)
 	}
 }
+
+// The mode and locked parts are judging content: a function problem's hash
+// differs from the same problem as a whole one, and any change to a top
+// or a bottom moves it, so validation is needed again and a contest pin
+// holds until "Update students now" (V202-32). A whole problem's hash
+// ignores stray locked parts, so old hashes stay as they were.
+func TestLockedPartsAreInTheHash(t *testing.T) {
+	p := &Problem{TimeLimitMS: 1000, MemoryLimitMB: 256, Checker: CheckerTokens, Reference: Source{"cpp17", "x"}}
+	whole := ContentHash(p)
+	p.LockedTop, p.LockedBottom = maps.Clone(fnTop), maps.Clone(fnBottom)
+	if ContentHash(p) != whole {
+		t.Error("locked parts moved a whole problem's hash")
+	}
+	p.Mode = ModeWhole
+	if ContentHash(p) != whole {
+		t.Error("mode whole moved the hash")
+	}
+	p.Mode = ModeFunction
+	fn := ContentHash(p)
+	if fn == whole {
+		t.Fatal("a function problem has a whole problem's hash")
+	}
+	p.LockedTop["cpp17"] += "#include <cmath>\n"
+	if ContentHash(p) == fn {
+		t.Error("a top edit kept the hash")
+	}
+	p.LockedTop = maps.Clone(fnTop)
+	p.LockedBottom["python3"] = "print(twice(2))\n"
+	if ContentHash(p) == fn {
+		t.Error("a bottom edit kept the hash")
+	}
+	p.LockedBottom = maps.Clone(fnBottom)
+	p.Starters = map[string]string{"cpp17": "long long twice(long long n) {}\n"}
+	if ContentHash(p) != fn {
+		t.Error("a stub edit moved the hash; stubs are starters, outside it")
+	}
+}

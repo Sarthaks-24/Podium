@@ -55,9 +55,14 @@ type Pack struct {
 // higher number was written by a newer Podium and is refused, rather than
 // read with fields silently ignored. Format 2 (v1.2.0) added open
 // tests; v3 has none, so it imports them as samples. Format 3 (v4 E5)
-// added starter code. Export writes format 3 only for a problem with
-// starters and format 1 otherwise, so older servers still read the rest.
-const PackFormat = 3
+// added starter code. Format 4 (v2.0.2) added function problems: mode,
+// locked_top and locked_bottom. Export writes format 4 only for a function
+// problem, format 3 for a whole problem with starters and format 1
+// otherwise, so older servers still read every other problem.
+const PackFormat = 4
+
+// packFormatFunction is the first format with function problems.
+const packFormatFunction = 4
 
 // packFormatStarters is the first format with starters.
 const packFormatStarters = 3
@@ -67,7 +72,10 @@ const packFormatOpen = 2
 
 // packMeta is problem.yaml.
 type packMeta struct {
-	Format        int           `yaml:"format,omitempty"`
+	Format int `yaml:"format,omitempty"`
+	// Mode is "function" for a function problem (format 4); left out for
+	// a whole one.
+	Mode          string        `yaml:"mode,omitempty"`
 	Title         string        `yaml:"title"`
 	Slug          string        `yaml:"slug"`
 	TimeLimitMS   int           `yaml:"time_limit_ms"`
@@ -86,6 +94,10 @@ type packMeta struct {
 	// Starters names one file per language (the extension says which) whose
 	// text a student's editor starts with.
 	Starters []string `yaml:"starters,omitempty,flow"`
+	// LockedTop and LockedBottom name one file per language with the code
+	// the judge puts before and after the student's (format 4).
+	LockedTop    []string `yaml:"locked_top,omitempty,flow"`
+	LockedBottom []string `yaml:"locked_bottom,omitempty,flow"`
 }
 
 type packSubtask struct {
@@ -222,6 +234,20 @@ func parsePackFiles(files map[string][]byte) (*Pack, error) {
 	if len(meta.Open) > 0 && meta.Format < packFormatOpen {
 		return nil, &PackError{[]string{fmt.Sprintf("problem.yaml lists open tests, which need format: %d. Add that line at the top.", packFormatOpen)}}
 	}
+	switch meta.Mode {
+	case "", ModeWhole, ModeFunction:
+	default:
+		return nil, &PackError{[]string{fmt.Sprintf("problem.yaml: mode must be whole or function, not %q.", meta.Mode)}}
+	}
+	if meta.Mode == ModeFunction && meta.Format < packFormatFunction {
+		return nil, &PackError{[]string{fmt.Sprintf("problem.yaml says mode: function, which needs format: %d. Add that line at the top.", packFormatFunction)}}
+	}
+	if meta.Mode != ModeFunction && len(meta.LockedTop) > 0 {
+		return nil, &PackError{[]string{"problem.yaml lists locked_top, which needs mode: function."}}
+	}
+	if meta.Mode != ModeFunction && len(meta.LockedBottom) > 0 {
+		return nil, &PackError{[]string{"problem.yaml lists locked_bottom, which needs mode: function."}}
+	}
 
 	pk := &Pack{Inputs: map[int][]byte{}, Outputs: map[int][]byte{}}
 	p := &pk.Problem
@@ -285,6 +311,27 @@ func parsePackFiles(files map[string][]byte) (*Pack, error) {
 			continue
 		}
 		p.Starters[st.Language] = st.Source
+	}
+	p.Mode = meta.Mode
+	for _, part := range []struct {
+		field string
+		names []string
+		code  *map[string]string
+	}{{"locked_top", meta.LockedTop, &p.LockedTop}, {"locked_bottom", meta.LockedBottom, &p.LockedBottom}} {
+		for _, name := range part.names {
+			src := source(part.field, name)
+			if src == nil {
+				continue
+			}
+			if *part.code == nil {
+				*part.code = map[string]string{}
+			}
+			if _, dup := (*part.code)[src.Language]; dup {
+				add("problem.yaml lists two %s files for %s; keep one.", part.field, src.Language)
+				continue
+			}
+			(*part.code)[src.Language] = src.Source
+		}
 	}
 	if raw, ok := files[packPlanFile]; ok {
 		used[packPlanFile] = true
@@ -503,6 +550,20 @@ func WritePack(w io.Writer, p *Problem, read func(sha string) ([]byte, error)) e
 		meta.Format = packFormatStarters
 		meta.Starters = append(meta.Starters, name)
 		files = append(files, packFile{name, []byte(p.Starters[lang])})
+	}
+	if p.IsFunction() {
+		meta.Format, meta.Mode = packFormatFunction, ModeFunction
+		for _, part := range []struct {
+			prefix string
+			code   map[string]string
+			names  *[]string
+		}{{"top", p.LockedTop, &meta.LockedTop}, {"bottom", p.LockedBottom, &meta.LockedBottom}} {
+			for _, lang := range slices.Sorted(maps.Keys(part.code)) {
+				name := part.prefix + ExtByLanguage[lang]
+				*part.names = append(*part.names, name)
+				files = append(files, packFile{name, []byte(part.code[lang])})
+			}
+		}
 	}
 	if p.Generator != nil {
 		meta.Generator = "generator" + ExtByLanguage[p.Generator.Language]
