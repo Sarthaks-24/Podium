@@ -27,6 +27,7 @@ var released = map[string]string{
 	"0010_v201.sql":                    "2b36b03392a81d52154f4684b0e31636dfef563839225ed03e7878d63abd1cc2",
 	"0011_v201_contact.sql":            "81388c2f4936de486ed9e3e0fe34031df7b8a491e972c6d1b7c1bb13e0249e11",
 	"0012_v201_theme.sql":              "e1d57bba371f0a0f13f64f94d9b36e8dab1e10f7e561fe920671f01bda2b87fb",
+	"0014_v202_function.sql":           "5b73b66d82e1de81cff9acccbd6e4fc07ef9184addb944a42720da9c49737492",
 }
 
 func TestMigrationsAreAppendOnly(t *testing.T) {

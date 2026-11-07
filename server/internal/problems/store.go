@@ -21,6 +21,11 @@ import (
 // Errors the API maps to status codes.
 var (
 	ErrNotFound = errors.New("problem not found")
+	// ErrModeLocked refuses a change of mode once a student has a
+	// submission, run or draft on the problem (V202-31): whole-file
+	// sources would be wrapped on rejudge and drafts would load as the
+	// student's part. The words are PLAN 3.8's.
+	ErrModeLocked = errors.New("This problem already has submissions or drafts, so its mode cannot change. Make a new problem instead.")
 )
 
 // Service manages the problem bank.
@@ -121,7 +126,7 @@ type queryer interface {
 
 func load(ctx context.Context, q queryer, id int64) (*Problem, error) {
 	p := &Problem{ID: id}
-	var tags, samples, bruteLang, bruteSrc, valLang, valSrc, genLang, genSrc, plan, starters string
+	var tags, samples, bruteLang, bruteSrc, valLang, valSrc, genLang, genSrc, plan, starters, top, bottom string
 	var vhash sql.NullString
 	var vat, author sql.NullInt64
 	var created, updated int64
@@ -129,12 +134,12 @@ func load(ctx context.Context, q queryer, id int64) (*Problem, error) {
 		checker_source, reference_language, reference_source, brute_language, brute_source, validator_language,
 		validator_source, tags, difficulty, samples, origin, author_id, archived, created_at, updated_at,
 		content_hash, validated_hash, validated_at, generator_language, generator_source, generator_plan, starters,
-		archived_slug
+		archived_slug, mode, locked_top, locked_bottom
 		FROM problems WHERE id = ?`, id).Scan(
 		&p.Slug, &p.Title, &p.Statement, &p.TimeLimitMS, &p.MemoryLimitMB, &p.Checker, &p.Epsilon,
 		&p.CheckerSource, &p.Reference.Language, &p.Reference.Source, &bruteLang, &bruteSrc, &valLang,
 		&valSrc, &tags, &p.Difficulty, &samples, &p.Origin, &author, &p.Archived, &created, &updated,
-		&p.ContentHash, &vhash, &vat, &genLang, &genSrc, &plan, &starters, &p.ArchivedSlug)
+		&p.ContentHash, &vhash, &vat, &genLang, &genSrc, &plan, &starters, &p.ArchivedSlug, &p.Mode, &top, &bottom)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
@@ -161,6 +166,13 @@ func load(ctx context.Context, q queryer, id int64) (*Problem, error) {
 	}
 	if err := json.Unmarshal([]byte(starters), &p.Starters); err != nil {
 		return nil, fmt.Errorf("problem %d starters: %w", id, err)
+	}
+	// The locked parts decide verdicts: unreadable ones are an error.
+	if err := json.Unmarshal([]byte(top), &p.LockedTop); err != nil {
+		return nil, fmt.Errorf("problem %d locked_top: %w", id, err)
+	}
+	if err := json.Unmarshal([]byte(bottom), &p.LockedBottom); err != nil {
+		return nil, fmt.Errorf("problem %d locked_bottom: %w", id, err)
 	}
 	if p.Tags == nil {
 		p.Tags = []string{}
@@ -448,8 +460,8 @@ func (s *Service) insert(ctx context.Context, tx *sql.Tx, p *Problem, note Revis
 	err := tx.QueryRowContext(ctx, `INSERT INTO problems (slug, title, statement_md, time_limit_ms, memory_limit_mb,
 		checker, epsilon, checker_source, reference_language, reference_source, brute_language, brute_source,
 		validator_language, validator_source, tags, difficulty, samples, generator_language, generator_source,
-		generator_plan, starters, content_hash, origin, author_id, created_at, updated_at, client_key)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
+		generator_plan, starters, mode, locked_top, locked_bottom, content_hash, origin, author_id, created_at, updated_at, client_key)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
 		append(cols, p.Origin, author, now.UnixMilli(), now.UnixMilli(), key)...).Scan(&p.ID)
 	if isUnique(err) {
 		return FieldErrors{"slug": fmt.Sprintf("Another problem already uses the slug %s.", p.Slug)}
@@ -480,9 +492,20 @@ func rowValues(p *Problem) []any {
 	samples, _ := json.Marshal(nonNilInts(p.Samples))
 	plan, _ := json.Marshal(nonNilPlan(p.Plan))
 	starters, _ := json.Marshal(startersOrEmpty(p.Starters))
+	top, _ := json.Marshal(startersOrEmpty(p.LockedTop))
+	bottom, _ := json.Marshal(startersOrEmpty(p.LockedBottom))
 	return []any{p.Slug, p.Title, p.Statement, p.TimeLimitMS, p.MemoryLimitMB, p.Checker, p.Epsilon,
 		p.CheckerSource, p.Reference.Language, p.Reference.Source, bl, bs, vl, vs,
-		string(tags), p.Difficulty, string(samples), gl, gs, string(plan), string(starters), p.ContentHash}
+		string(tags), p.Difficulty, string(samples), gl, gs, string(plan), string(starters),
+		modeOrWhole(p.Mode), string(top), string(bottom), p.ContentHash}
+}
+
+// modeOrWhole is an unset mode as ModeWhole, as the column's default.
+func modeOrWhole(m string) string {
+	if m == "" {
+		return ModeWhole
+	}
+	return m
 }
 
 // startersOrEmpty is a nil map as an empty one, so the column is '{}', never null.
@@ -532,6 +555,10 @@ type Edit struct {
 	// Starters, when set, replaces the starter code; nil keeps it, so an
 	// editor that does not know about starters cannot erase them.
 	Starters *map[string]string
+	// Mode, LockedTop and LockedBottom, when set, replace the problem's;
+	// nil keeps them, so an older editor cannot erase them.
+	Mode                    *string
+	LockedTop, LockedBottom *map[string]string
 	// By is the person saving; Reason is why, required while a live
 	// contest pins the problem and the save changes it.
 	By     int64
@@ -586,6 +613,15 @@ func (s *Service) Update(ctx context.Context, id int64, e Edit) (*Problem, error
 	p.Samples, p.Subtasks = nonNilInts(e.Samples), e.Subtasks
 	if e.Starters != nil {
 		p.Starters = *e.Starters
+	}
+	if e.Mode != nil {
+		p.Mode = *e.Mode
+	}
+	if e.LockedTop != nil {
+		p.LockedTop = *e.LockedTop
+	}
+	if e.LockedBottom != nil {
+		p.LockedBottom = *e.LockedBottom
 	}
 	if e.Generator != nil {
 		p.Generator, p.Plan = emptyToNil(e.Generator.Source), e.Generator.Plan
@@ -648,12 +684,16 @@ func emptyToNil(src *Source) *Source {
 // changed, a new revision. Every write of a problem, its subtasks or its
 // tests goes through save or insert.
 func (s *Service) save(ctx context.Context, tx *sql.Tx, p *Problem, note RevisionNote) error {
+	if err := checkModeChange(ctx, tx, p); err != nil {
+		return err
+	}
 	p.UpdatedAt = s.now()
 	p.ContentHash = ContentHash(p)
 	_, err := tx.ExecContext(ctx, `UPDATE problems SET slug = ?, title = ?, statement_md = ?, time_limit_ms = ?,
 		memory_limit_mb = ?, checker = ?, epsilon = ?, checker_source = ?, reference_language = ?, reference_source = ?,
 		brute_language = ?, brute_source = ?, validator_language = ?, validator_source = ?, tags = ?, difficulty = ?,
-		samples = ?, generator_language = ?, generator_source = ?, generator_plan = ?, starters = ?, content_hash = ?, updated_at = ? WHERE id = ?`,
+		samples = ?, generator_language = ?, generator_source = ?, generator_plan = ?, starters = ?,
+		mode = ?, locked_top = ?, locked_bottom = ?, content_hash = ?, updated_at = ? WHERE id = ?`,
 		append(rowValues(p), p.UpdatedAt.UnixMilli(), p.ID)...)
 	if isUnique(err) {
 		return FieldErrors{"slug": fmt.Sprintf("Another problem already uses the slug %s.", p.Slug)}
@@ -666,6 +706,31 @@ func (s *Service) save(ctx context.Context, tx *sql.Tx, p *Problem, note Revisio
 	}
 	_, _, err = writeRevision(ctx, tx, p, note, p.UpdatedAt)
 	return err
+}
+
+// checkModeChange refuses, inside the save's transaction, a new mode for a
+// problem a student has used: any submission or run, or a saved draft.
+// Every write path goes through save, so the editor, pack replace and the
+// jobs are all covered.
+func checkModeChange(ctx context.Context, tx *sql.Tx, p *Problem) error {
+	var mode string
+	if err := tx.QueryRowContext(ctx, "SELECT mode FROM problems WHERE id = ?", p.ID).Scan(&mode); err != nil {
+		return err
+	}
+	if mode == modeOrWhole(p.Mode) {
+		return nil
+	}
+	// No index leads with problem_id, so this scan runs only when the
+	// mode really changes, which is rare.
+	var used bool
+	if err := tx.QueryRowContext(ctx, `SELECT EXISTS (SELECT 1 FROM submissions WHERE problem_id = ?)
+		OR EXISTS (SELECT 1 FROM drafts WHERE problem_id = ?)`, p.ID, p.ID).Scan(&used); err != nil {
+		return err
+	}
+	if used {
+		return ErrModeLocked
+	}
+	return nil
 }
 
 var looseTestFile = regexp.MustCompile(`^(?:tests/)?0*([1-9][0-9]{0,2})\.(in|out)$`)

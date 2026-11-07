@@ -133,7 +133,12 @@ type problemJSON struct {
 	Subtasks      []subtaskJSON `json:"subtasks"`
 	Tests         []testJSON    `json:"tests"`
 	// Starters is the starter code by language; {} when the problem has none.
-	Starters      map[string]string `json:"starters"`
+	Starters map[string]string `json:"starters"`
+	// Mode is "whole" or "function"; LockedTop and LockedBottom are a
+	// function problem's locked code by language, {} for a whole problem.
+	Mode          string            `json:"mode"`
+	LockedTop     map[string]string `json:"locked_top"`
+	LockedBottom  map[string]string `json:"locked_bottom"`
 	ContentHash   string            `json:"content_hash"`
 	ValidatedHash *string           `json:"validated_hash"`
 	Problems      []string          `json:"problems"`
@@ -169,6 +174,11 @@ type problemEditJSON struct {
 	Subtasks      []subtaskJSON `json:"subtasks"`
 	// Starters, when present, replaces the starter code; left out, it is kept.
 	Starters *map[string]string `json:"starters"`
+	// Mode, LockedTop and LockedBottom, when present, replace the
+	// problem's; left out, they are kept.
+	Mode         *string            `json:"mode"`
+	LockedTop    *map[string]string `json:"locked_top"`
+	LockedBottom *map[string]string `json:"locked_bottom"`
 	// Reason says why the problem changed; required while a live contest
 	// pins it.
 	Reason string `json:"reason"`
@@ -249,6 +259,7 @@ func (d *Handlers) problemJSON(ctx context.Context, p *Problem) (problemJSON, er
 		Brute:     optSource(p.Brute), Validator: optSource(p.Validator), Generator: optSource(p.Generator),
 		Plan:    []planJSON{},
 		Samples: p.Samples, Subtasks: []subtaskJSON{}, Tests: []testJSON{}, Starters: startersOrEmpty(p.Starters),
+		Mode: modeOrWhole(p.Mode), LockedTop: startersOrEmpty(p.LockedTop), LockedBottom: startersOrEmpty(p.LockedBottom),
 		ContentHash: p.ContentHash, Problems: httpx.NonNil(p.Problems()), Warnings: httpx.NonNil(p.Warnings()),
 	}
 	if out.Samples == nil {
@@ -327,6 +338,8 @@ func (d *Handlers) problemError(w http.ResponseWriter, r *http.Request, err erro
 	switch {
 	case errors.Is(err, ErrNotFound):
 		httpx.WriteError(w, http.StatusNotFound, "not_found", "There is no such problem.")
+	case errors.Is(err, ErrModeLocked):
+		httpx.WriteError(w, http.StatusConflict, "mode_locked", ErrModeLocked.Error())
 	case errors.As(err, &taken):
 		httpx.WriteJSON(w, http.StatusConflict, map[string]httpx.APIError{"error": {Code: "conflict", Message: taken.Error(),
 			Fields: FieldErrors{"slug": taken.Error()}, SuggestedSlug: taken.Suggested}})
@@ -549,7 +562,8 @@ func (d *Handlers) UpdateProblem(w http.ResponseWriter, r *http.Request) {
 		Reference: Source{Language: req.Reference.Language, Source: req.Reference.Source},
 		Brute:     fromSourceJSON(req.Brute), Validator: fromSourceJSON(req.Validator),
 		Tags: req.Tags, Difficulty: req.Difficulty, Samples: req.Samples,
-		Starters: req.Starters, By: auth.UserFrom(r.Context()).ID, Reason: req.Reason}
+		Starters: req.Starters, Mode: req.Mode, LockedTop: req.LockedTop, LockedBottom: req.LockedBottom,
+		By: auth.UserFrom(r.Context()).ID, Reason: req.Reason}
 	for _, st := range req.Subtasks {
 		e.Subtasks = append(e.Subtasks, Subtask{Points: st.Points, Title: st.Title, Tests: st.Tests, GeneratorArgs: st.GeneratorArgs})
 	}

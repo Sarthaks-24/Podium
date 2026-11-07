@@ -47,6 +47,33 @@ const (
 	CheckerCustom = string(judge.CheckCustom)
 )
 
+// Modes.
+const (
+	ModeWhole    = "whole"
+	ModeFunction = "function"
+)
+
+// IsFunction reports whether p is a function problem.
+func (p *Problem) IsFunction() bool { return p.Mode == ModeFunction }
+
+// Offered lists, sorted, the languages a function problem offers: those
+// with a locked bottom. It is nil for a whole problem, which offers all.
+func (p *Problem) Offered() []string {
+	if !p.IsFunction() {
+		return nil
+	}
+	return slices.Sorted(maps.Keys(p.LockedBottom))
+}
+
+// Offers reports whether a student may write the problem in lang.
+func (p *Problem) Offers(lang string) bool {
+	if !p.IsFunction() {
+		return true
+	}
+	_, ok := p.LockedBottom[lang]
+	return ok
+}
+
 // Origins.
 const (
 	OriginManual = "manual"
@@ -89,7 +116,20 @@ type Problem struct {
 	// Starters is the code a student's editor shows before they type, by
 	// language id; a language without one uses the web app's starter (v4
 	// E5). Statement-like content: in each revision, outside ContentHash.
+	// In a function problem it holds each language's stub, the student's
+	// part as it first opens.
 	Starters map[string]string
+	// Mode is ModeWhole (the student writes the whole program) or
+	// ModeFunction (the student writes only the middle of the file; the
+	// judge compiles LockedTop, their code and LockedBottom as one file).
+	// It cannot change once a student has a submission or draft (V202-31).
+	Mode string
+	// LockedTop and LockedBottom are a function problem's locked code by
+	// language id, empty for a whole problem. They decide verdicts, so
+	// they are in ContentHash and every revision (V202-32). The languages
+	// with a locked bottom are the ones the problem offers.
+	LockedTop    map[string]string
+	LockedBottom map[string]string
 
 	ContentHash   string
 	ValidatedHash string
@@ -188,6 +228,7 @@ func checkFields(p *Problem) FieldErrors {
 			break
 		}
 	}
+	checkMode(errs, p)
 	if p.TimeLimitMS < MinTimeLimitMS || p.TimeLimitMS > MaxTimeLimitMS {
 		errs["time_limit_ms"] = fmt.Sprintf("Set a time limit from %d to %d ms.", MinTimeLimitMS, MaxTimeLimitMS)
 	}
@@ -247,6 +288,80 @@ func checkFields(p *Problem) FieldErrors {
 		return nil
 	}
 	return errs
+}
+
+// checkMode applies the function problem rules (PLAN 3.3): each offered
+// language has a locked top, a locked bottom and a stub; nothing else has
+// any of them; each part is at most 4 KB of UTF-8. A whole problem keeps
+// no locked parts, as a non-custom checker keeps no checker source.
+func checkMode(errs FieldErrors, p *Problem) {
+	switch p.Mode {
+	case "", ModeWhole:
+		p.Mode, p.LockedTop, p.LockedBottom = ModeWhole, nil, nil
+		return
+	case ModeFunction:
+	default:
+		errs["mode"] = "Choose whole program or function."
+		return
+	}
+	for _, part := range []struct {
+		field, name string
+		code        map[string]string
+	}{{"locked_top", "locked top", p.LockedTop}, {"locked_bottom", "locked bottom", p.LockedBottom}} {
+		for _, lang := range slices.Sorted(maps.Keys(part.code)) {
+			switch code := part.code[lang]; {
+			case ExtByLanguage[lang] == "":
+				errs[part.field] = fmt.Sprintf("There is no language %q. Use cpp17, java21, python3 or node22.", lang)
+			case len(code) > MaxStarter:
+				errs[part.field] = fmt.Sprintf("The %s %s is longer than 4 KB.", lang, part.name)
+			case !utf8.ValidString(code):
+				errs[part.field] = fmt.Sprintf("The %s %s is not valid UTF-8 text.", lang, part.name)
+			}
+		}
+	}
+	if len(p.LockedBottom) == 0 {
+		errs["locked_bottom"] = "Add the locked code for at least one language."
+	}
+	langs := map[string]bool{}
+	for _, m := range []map[string]string{p.LockedTop, p.LockedBottom, p.Starters} {
+		for lang := range m {
+			langs[lang] = true
+		}
+	}
+	for _, lang := range slices.Sorted(maps.Keys(langs)) {
+		top, hasTop := p.LockedTop[lang]
+		bottom, hasBottom := p.LockedBottom[lang]
+		switch {
+		case !hasTop && !hasBottom:
+			errs["starters"] = fmt.Sprintf("There is a starter for %s but no locked code. Add its locked top and bottom, or remove the starter.", lang)
+		case !hasBottom || strings.TrimSpace(bottom) == "":
+			errs["locked_bottom"] = fmt.Sprintf("Add a locked bottom for %s, or remove its locked top and starter.", lang)
+		case !hasTop || strings.TrimSpace(top) == "":
+			// A top is never empty, so a judged file always starts with at
+			// least one locked line: top_lines > 0 marks a composed file.
+			errs["locked_top"] = fmt.Sprintf("Add a locked top for %s. Common imports go there.", lang)
+		case strings.TrimSpace(p.Starters[lang]) == "":
+			errs["starters"] = fmt.Sprintf("Add a starter for %s: the function a student fills in.", lang)
+		}
+	}
+	offered := []string{}
+	for _, lang := range p.Offered() {
+		offered = append(offered, judge.Languages[lang].Name)
+	}
+	if len(offered) > 0 && !p.Offers(p.Reference.Language) {
+		errs["reference"] = "Write the reference in a language this problem offers: " + orList(offered) + "."
+	}
+	if len(offered) > 0 && p.Brute != nil && !p.Offers(p.Brute.Language) {
+		errs["brute"] = "Write the brute force in a language this problem offers: " + orList(offered) + "."
+	}
+}
+
+// orList joins words as "a, b or c".
+func orList(w []string) string {
+	if len(w) < 2 {
+		return strings.Join(w, "")
+	}
+	return strings.Join(w[:len(w)-1], ", ") + " or " + w[len(w)-1]
 }
 
 func checkSource(errs FieldErrors, field string, s *Source, required bool) {
