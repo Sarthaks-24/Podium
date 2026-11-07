@@ -738,7 +738,7 @@ func (s *Service) RecordEvents(ctx context.Context, problemID, userID int64, sc 
 	}
 	var have, exists int
 	if err := s.DB.QueryRowContext(ctx, `SELECT (SELECT count(*) FROM integrity_events WHERE user_id = ? AND problem_id = ? AND contest_id = ?),
-		(SELECT count(*) FROM problems WHERE id = ?)`, userID, problemID, sc.ContestID, problemID).Scan(&have, &exists); err != nil {
+		(SELECT count(*) FROM problems WHERE id = ? AND (deleted = 0 OR ? > 0))`, userID, problemID, sc.ContestID, problemID, sc.RevisionID).Scan(&have, &exists); err != nil {
 		return err
 	}
 	if exists == 0 {

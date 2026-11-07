@@ -100,6 +100,9 @@ func (s *Service) UpdatePin(ctx context.Context, contestID int64, label string, 
 	if cp == nil {
 		return nil, ErrNotFound
 	}
+	if cp.Deleted {
+		return nil, problems.ErrDeleted
+	}
 	to, err := s.Problems.RevisionByID(ctx, revisionID)
 	if errors.Is(err, problems.ErrNotFound) || (err == nil && to.ProblemID != cp.ProblemID) {
 		return nil, ErrNotFound

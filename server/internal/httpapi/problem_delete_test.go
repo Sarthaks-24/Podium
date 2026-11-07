@@ -260,3 +260,36 @@ func TestDeleteWritesOneAuditRowWithoutText(t *testing.T) {
 		t.Errorf("the audit row holds problem text: %v", raw)
 	}
 }
+
+// "Update students now" cannot move the pin of a deleted problem, even by a
+// direct API call: Delete keeps the hashes, so only the deleted flag stops it.
+func TestUpdatePinRefusesADeletedProblem(t *testing.T) {
+	s, owner, _, _, _ := deleteSite(t)
+	o := s.srv.URL
+	pa := s.importProblem(owner, "pin-p")
+	start := time.Now().Add(time.Hour).Truncate(time.Minute)
+	cid := s.createContest(owner, "pin", start, map[string]int64{"A": pa}, nil)
+	s.at(start, 1)
+	tests := packZip(t, "pin-p", map[string]string{"tests/01.in": "2\n5 6\n7 8\n", "tests/01.out": "11\n15\n"}, true)
+	if code, out := owner.raw("PUT", fmt.Sprintf("/api/admin/problems/%d/tests?reason=More+tests", pa), "application/zip", tests, o); code != 200 {
+		t.Fatalf("edit during the contest: %d %v", code, out)
+	}
+	s.validate(pa)
+	var rev int64
+	if err := s.db.QueryRow("SELECT max(id) FROM problem_revisions WHERE problem_id = ?", pa).Scan(&rev); err != nil {
+		t.Fatal(err)
+	}
+	s.at(start, 121)
+	if code, out := owner.do("POST", fmt.Sprintf("/api/admin/problems/%d/delete", pa), nil, o); code != 204 {
+		t.Fatalf("delete: %d %v", code, out)
+	}
+	var before int64
+	s.db.QueryRow("SELECT revision_id FROM contest_problems WHERE contest_id = ?", cid).Scan(&before)
+	code, out := owner.do("PUT", fmt.Sprintf("/api/admin/contests/%d/problems/A/revision", cid), map[string]any{"revision_id": rev, "confirm_ended": true}, o)
+	errIs(t, "update pin", code, out, 409, "deleted", copyDeletedWrite)
+	var after int64
+	s.db.QueryRow("SELECT revision_id FROM contest_problems WHERE contest_id = ?", cid).Scan(&after)
+	if after != before {
+		t.Errorf("pin moved from %d to %d", before, after)
+	}
+}

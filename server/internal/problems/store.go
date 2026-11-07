@@ -300,7 +300,11 @@ func (s *Service) byClientKey(ctx context.Context, authorID int64, key string) (
 	if err != nil {
 		return nil, err
 	}
-	return s.Get(ctx, id)
+	p, err := s.Get(ctx, id)
+	if err == nil && p.Deleted {
+		return nil, ErrDeleted
+	}
+	return p, err
 }
 
 // isRepeat is true when an insert lost to an earlier one with the same key:

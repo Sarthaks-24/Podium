@@ -446,3 +446,20 @@ func TestFinishAfterDeleteClosesCleanly(t *testing.T) {
 		t.Error("a finished job wrote to the tombstone")
 	}
 }
+
+// A repeated create with the key of a deleted problem is refused, not answered
+// with the tombstone as if it had succeeded.
+func TestRepeatedCreateOfADeletedProblemIsRefused(t *testing.T) {
+	s, _ := deleteBank(t)
+	ctx := context.Background()
+	p, err := s.Create(ctx, "Keyed", "", 3, "key-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Delete(ctx, p.ID, ownerActor); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := s.Create(ctx, "Keyed", "", 3, "key-1"); !errors.Is(err, ErrDeleted) || got != nil {
+		t.Errorf("repeat create: %v %v", got, err)
+	}
+}
