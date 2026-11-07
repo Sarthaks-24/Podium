@@ -9,6 +9,7 @@ import (
 
 	"github.com/Sarthaks-24/podium/internal/jobs"
 	"github.com/Sarthaks-24/podium/internal/judgeapi"
+	"github.com/Sarthaks-24/podium/internal/problems"
 )
 
 // SubmissionView is a submission as its author sees it: verdicts, times
@@ -176,15 +177,19 @@ type row struct {
 	maxTime, maxMem           int
 	createdAt                 int64
 	judgedAt                  sql.NullInt64
+	// topLines, source and sourceSHA place compile output lines in a
+	// function problem's composed file (lineMapOf).
+	topLines          int
+	source, sourceSHA string
 }
 
 func (s *Service) loadRow(ctx context.Context, id int64) (row, error) {
 	var r row
 	var job sql.NullInt64
 	err := s.DB.QueryRowContext(ctx, `SELECT id, problem_id, job_id, kind, language, state, verdict, result, error,
-		score, max_score, max_time_ms, max_memory_kb, created_at, judged_at FROM submissions WHERE id = ?`, id).
+		score, max_score, max_time_ms, max_memory_kb, created_at, judged_at, top_lines, source, source_sha FROM submissions WHERE id = ?`, id).
 		Scan(&r.id, &r.problemID, &job, &r.kind, &r.language, &r.state, &r.verdict, &r.result, &r.errorMsg,
-			&r.score, &r.maxScore, &r.maxTime, &r.maxMem, &r.createdAt, &r.judgedAt)
+			&r.score, &r.maxScore, &r.maxTime, &r.maxMem, &r.createdAt, &r.judgedAt, &r.topLines, &r.source, &r.sourceSHA)
 	if errors.Is(err, sql.ErrNoRows) {
 		return row{}, ErrNotFound
 	}
@@ -234,7 +239,8 @@ func (s *Service) GetWith(ctx context.Context, id int64, o ViewOptions) (*Submis
 		}
 		view := Score{Samples: sc.Samples, Subtasks: sc.Subtasks, MaxTimeMS: v.MaxTimeMS, MaxMemoryKB: v.MaxMemoryKB}
 		applyView(&view, o)
-		v.Subtasks, v.Samples, v.CompileOutput, v.MaxTimeMS, v.MaxMemoryKB = view.Subtasks, view.Samples, sc.CompileOutput, view.MaxTimeMS, view.MaxMemoryKB
+		v.Subtasks, v.Samples, v.MaxTimeMS, v.MaxMemoryKB = view.Subtasks, view.Samples, view.MaxTimeMS, view.MaxMemoryKB
+		v.CompileOutput = s.lineMapOf(r).rewrite(sc.CompileOutput, r.language)
 		if sc.Revealed != nil {
 			v.Revealed = s.revealed(sc.Revealed)
 		}
@@ -271,7 +277,7 @@ func (s *Service) GetWith(ctx context.Context, id int64, o ViewOptions) (*Submis
 		maskUnfinished(&sc)
 	}
 	v.Subtasks, v.Samples, v.Score, v.MaxTimeMS, v.MaxMemoryKB = sc.Subtasks, sc.Samples, sc.Score, sc.MaxTimeMS, sc.MaxMemoryKB
-	v.CompileOutput = compileOutput(program)
+	v.CompileOutput = s.lineMapOf(r).rewrite(compileOutput(program), r.language)
 	return v, nil
 }
 
@@ -366,7 +372,8 @@ func (s *Service) GetRunWith(ctx context.Context, id int64, o ViewOptions) (*Run
 	if err := json.Unmarshal(job.Payload, &pl); err != nil {
 		return nil, err
 	}
-	v.CompileOutput = compileOutput(job.Result.Compile)
+	lines := s.lineMapOf(r)
+	v.CompileOutput = lines.rewrite(compileOutput(job.Result.Compile), r.language)
 	got := map[int]judgeapi.TestResult{}
 	for _, t := range job.Result.Tests {
 		got[t.Idx] = t
@@ -388,7 +395,7 @@ func (s *Service) GetRunWith(ctx context.Context, id int64, o ViewOptions) (*Run
 		if ok {
 			res.Verdict, res.TimeMS, res.MemoryKB, res.Message = t.Verdict, roundTo(t.TimeMS, step), t.MemoryKB, t.Message
 			res.Output = t.Output
-			res.Stderr = clipText([]byte(t.Stderr), judgeapi.MaxRunOutput)
+			res.Stderr = lines.rewriteRunStderr(clipText([]byte(t.Stderr), judgeapi.MaxRunOutput), r.language)
 			// The worker cuts at MaxRunOutput and drops a split rune (at
 			// most 3 bytes), so anything that close to the cap was cut.
 			res.OutputTruncated = len(t.Output) >= judgeapi.MaxRunOutput-3
@@ -446,4 +453,20 @@ func (s *Service) listMine(ctx context.Context, userID, problemID, contestID int
 		out = append(out, *v)
 	}
 	return out, nil
+}
+
+// lineMapOf places the lines of the file a submission or run was judged
+// with: the top's line count stored at judging time (a practice
+// submission has no pinned revision to look it up in, V202-33) and the
+// length of the student's own code. A run keeps its code only as a blob.
+func (s *Service) lineMapOf(r row) lineMap {
+	if r.topLines == 0 {
+		return lineMap{}
+	}
+	src := r.source
+	if r.kind == "run" {
+		b, _ := s.Problems.Blobs.Read(r.sourceSHA, MaxSource+1)
+		src = string(b)
+	}
+	return lineMap{top: r.topLines, code: problems.CodeLines(src)}
 }
