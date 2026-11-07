@@ -9,6 +9,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -218,5 +219,20 @@ func TestContestRejudgeComposesWithTheLiveTop(t *testing.T) {
 	// queues nothing.
 	if n, err := r.svc.Rejudge(ctx, RejudgeRequest{ContestID: 1, ProblemID: p.ID, By: 1}); err != nil || n != 0 {
 		t.Errorf("repeat rejudge: %d %v", n, err)
+	}
+}
+
+// The largest file a function problem can send the judge is the student's
+// 64 KB plus a 4 KB top and a 4 KB bottom; the judge's read cap is exactly
+// that (V202-39), so no valid submission is refused and nothing larger is
+// read.
+func TestTheJudgeReadsTheLargestComposedFile(t *testing.T) {
+	if MaxSource+2*problems.MaxStarter != judgeapi.MaxProgramSource {
+		t.Fatalf("largest composed file %d bytes, judge reads %d", MaxSource+2*problems.MaxStarter, judgeapi.MaxProgramSource)
+	}
+	c := problems.Compose(strings.Repeat("a", problems.MaxStarter-1)+"\n", strings.Repeat("b", MaxSource-1)+"\n",
+		strings.Repeat("c", problems.MaxStarter-1)+"\n")
+	if len(c.Source) != judgeapi.MaxProgramSource {
+		t.Errorf("largest composed file is %d bytes", len(c.Source))
 	}
 }
