@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
   actorText,
+  endedChange,
+  endedItems,
   feedQuery,
   pinPath,
   siteAuditSummary,
@@ -16,6 +18,21 @@ describe('pins', () => {
     expect(updateEffect({ label: 'B', update_statement_only: false })).toMatch(/judge the problem again afterwards/);
   });
 
+});
+
+describe('an update on an ended contest', () => {
+  const existing = { problems: [{ label: 'A', from: [40, 60], to: [30, 70] }], students: 1 };
+
+  it('reads the 409 detail and lists what changes', () => {
+    const change = endedChange('ended_scores_change', existing);
+    expect(change).toEqual({ problems: [{ label: 'A', from: [40, 60], to: [30, 70] }], students: 1 });
+    expect(endedItems(change!)).toEqual(['Problem A: points per part 40, 60 become 30, 70 (total 100 to 100).']);
+  });
+
+  it('ignores every other error', () => {
+    expect(endedChange('conflict', existing)).toBeNull();
+    expect(endedChange('ended_scores_change', null)).toBeNull();
+  });
 });
 
 describe('site audit (People History)', () => {

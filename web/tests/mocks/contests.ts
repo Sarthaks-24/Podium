@@ -86,6 +86,8 @@ export interface Options {
   statementUpdated?: boolean;
   /** Problem A has a newer validated revision to update the contest to (C4). */
   updateAvailable?: boolean;
+  /** The pin update would change the pinned points of an ended contest: the first request answers 409 ended_scores_change (PF-10). */
+  endedScoresChange?: boolean;
   /** A review decision set Asha's problem B to zero (C9, D77). */
   zeroB?: boolean;
   /** The contest's results are not final yet: the class view answers 409 not_final. */
@@ -235,6 +237,7 @@ export async function mockApi(page: Page, options: Options = {}) {
     statementAt: options.statementUpdated ? now - STATEMENT_CHANGED_MIN * MIN : (null as number | null),
     revisionQueries: [] as string[],
     pinPuts: [] as { label: string; body: Json }[],
+    pinRefusals: [] as Json[],
     pinnedRev: { A: options.updateAvailable ? 2 : 3 } as Record<string, number>,
     auditQueries: [] as string[],
     notes: [
@@ -674,6 +677,12 @@ export async function mockApi(page: Page, options: Options = {}) {
       const pin = path.match(/^\/api\/admin\/contests\/4\/problems\/([A-Z])\/revision$/);
       if (pin && method === 'PUT') {
         const body = req.postDataJSON() as Json;
+        if (options.endedScoresChange && body.confirm_ended !== true) {
+          state.pinRefusals.push(body);
+          return apiError(route, 409, 'ended_scores_change', 'This contest has ended. Updating students now changes the points of problem A, so final scores change for 12 students. Confirm to update anyway.', {
+            existing: { problems: [{ label: pin[1], from: [40, 60], to: [30, 70] }], students: 12 },
+          });
+        }
         state.pinPuts.push({ label: pin[1], body });
         state.pinnedRev[pin[1]] = Number(body.revision_id) - 10;
         return json(route, 200, {

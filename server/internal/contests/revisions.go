@@ -219,6 +219,7 @@ func (s *Service) applyPin(ctx context.Context, c *Contest, cp ContestProblem, l
 	action := AuditRevision
 	if u.PointsChanged && !s.now().Before(c.Final()) {
 		action = AuditEndedRepin
+		details["points_from"], details["points_to"] = cp.Points, points
 	}
 	if err := s.recordTx(ctx, tx, contestID, by, action, details); err != nil {
 		return nil, err

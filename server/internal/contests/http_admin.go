@@ -832,7 +832,7 @@ func (d *Handlers) UpdatePin(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteJSON(w, http.StatusConflict, map[string]any{"error": map[string]any{
 			"code":     "ended_scores_change",
 			"message":  fmt.Sprintf("This contest has ended. Updating students now changes the points of problem %s, so final scores change for %d %s. Confirm to update anyway.", label, ended.Students, plural(ended.Students, "student", "students")),
-			"problems": ended.Problems, "students": ended.Students}})
+			"existing": map[string]any{"problems": ended.Problems, "students": ended.Students}}})
 		return
 	case errors.Is(err, ErrNotFound):
 		httpx.WriteError(w, http.StatusNotFound, "not_found", "There is no such problem in this contest, or the revision is not one of its problem's.")

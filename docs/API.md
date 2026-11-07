@@ -772,7 +772,7 @@ Every route here needs the organiser role and manage access to the contest. List
 | `POST /api/admin/contests/{id}/restore` | `{"slug":""}` (the body may be left out) | 200 `AdminContest`, no longer archived, with a `restore` audit row `{slug}`. Slug rules and the 409 `conflict` with `suggested_slug` are as for a problem (the message says "Another contest now uses week-3. Choose a new slug."). Restoring a contest that is not archived changes nothing |
 | `POST /api/admin/contests/{id}/clone` | `{title, starts_at, ends_at}` (`title` empty keeps the old one; `slug` is accepted and ignored) | 201 `AdminContest`: settings (the audience among them), problems, organisers and invites copied atomically; the cloner is added, extensions and editorial are not copied |
 | `PUT /api/admin/contests/{id}/problems` | `[{"problem_id":3,"label":"A","ai_reason":"..."}]` | 200 `AdminContest` (rules below) |
-| `PUT /api/admin/contests/{id}/problems/{label}/revision` | `{"revision_id":14}` | 200 `{contest: AdminContest, announcement_md, statement_changed, rejudge_needed, server_now}`: "Update students now" |
+| `PUT /api/admin/contests/{id}/problems/{label}/revision` | `{"revision_id":14,"confirm_ended":true}`; `confirm_ended` is optional and false when left out | 200 `{contest: AdminContest, announcement_md, statement_changed, rejudge_needed, server_now}`: "Update students now". Once every window is over (the close plus the longest personal extension) and the update would change the pinned points, 409 `ended_scores_change` unless `confirm_ended` is true (below) |
 | `PUT /api/admin/contests/{id}/extensions/{user}` | `{"minutes":15,"reason":"..."}`, 0 to 1440; 0 removes | 200 `AdminContest`; the student gets a `contest` event |
 | `POST /api/admin/contests/{id}/extend` | `{"minutes":10}`, 1 to 240, added to earlier extensions | 200 `AdminContest`; everyone gets a `contest` event |
 | `POST /api/admin/contests/{id}/pause` | | 200 `AdminContest` |
@@ -833,6 +833,7 @@ The measures apply only during a student's own contest time. Blocking happens in
 
 `PUT .../problems/{label}/revision` moves the contest's pin of a label to the problem's newest validated revision, after an organiser edited a problem in a live contest.
 
+- Once the contest has ended (now is at or after the close plus the longest personal extension) and the new revision's subtask points differ from the pinned ones, the update changes final scores and every student's total. Without `confirm_ended: true` the answer is `409 ended_scores_change` and nothing is written: the `error` has the usual `code` and `message` plus `existing: {problems: [{label, from: [40, 60], to: [30, 70]}], students: 12}`, where `students` counts the board's students whose total would change with their current submissions. The same request with `confirm_ended: true` applies it and writes one `ended_repin` audit row in place of the `revision` row. When no points differ, an ended contest updates as before, and a live or upcoming contest never asks. A student gets 403 either way.
 - The pin and its subtask points change in one transaction with a `revision` audit row. Students of a published contest get a `statement` event and their next load serves the new statement.
 - `announcement_md` is a prefilled announcement for the console to offer; it is not posted. With `rejudge_needed` (the tests, limits or checker changed) it says submissions will be judged again, and the console offers Rejudge.
 - Errors: `404 not_found` (no such label, or the revision is not this problem's); `409 conflict` (the contest already uses this revision, or someone else moved the pin a moment ago); `409 not_ready` (the revision is not the validated version).
@@ -862,6 +863,7 @@ The measures apply only during a student's own contest time. Blocking happens in
 | `problems` | `{"from": [{label, problem_id, pinned_hash, revision_id, rev}], "to": [...]}` |
 | `ai_problem` | `{label, problem_id, reason}`: an organiser's reason to grade an AI problem as written |
 | `revision` | "Update students now": `{label, problem_id, from_revision_id, from_rev, to_revision_id, to_rev, statement_changed, judging_changed}` |
+| `ended_repin` | "Update students now" confirmed on an ended contest whose points changed: the `revision` fields plus `points_from` and `points_to` |
 | `extension` | `{user_id, from_minutes, minutes, reason_given}` |
 | `extend` | `{minutes, extended_minutes}` |
 | `pause`, `resume`, `reveal`, `archive` | `{}` |

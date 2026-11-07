@@ -142,9 +142,13 @@ func TestEndedRepinAsksBeforeChangingScores(t *testing.T) {
 	if code != 409 || e["code"] != "ended_scores_change" {
 		t.Fatalf("repin on an ended contest: %d %v, want 409 ended_scores_change", code, out)
 	}
-	probs, _ := e["problems"].([]any)
-	if len(probs) != 1 || probs[0].(map[string]any)["label"] != "A" || e["students"] != float64(1) {
-		t.Errorf("problems %v students %v, want A and 1 student (Bilal has no score to change)", e["problems"], e["students"])
+	ex, _ := e["existing"].(map[string]any)
+	probs, _ := ex["problems"].([]any)
+	if len(probs) != 1 || probs[0].(map[string]any)["label"] != "A" || ex["students"] != float64(1) {
+		t.Errorf("existing %v, want problem A and 1 student (Bilal has no score to change)", ex)
+	}
+	if p, _ := probs[0].(map[string]any); fmt.Sprint(p["from"]) != "[40 60]" || fmt.Sprint(p["to"]) != "[30 70]" {
+		t.Errorf("points %v to %v, want [40 60] to [30 70]", p["from"], p["to"])
 	}
 	if msg, _ := e["message"].(string); !strings.Contains(msg, "ended") {
 		t.Errorf("message %q does not say the contest ended", msg)

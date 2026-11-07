@@ -51,6 +51,44 @@ export function updateEffect(p: Pick<ProblemPin, 'label' | 'update_statement_onl
     : `${lead} The tests or limits changed too: judge the problem again afterwards so every score uses the new tests.`;
 }
 
+/** One problem whose points an update on an ended contest would change. */
+export interface EndedProblem {
+  label: string;
+  from: number[];
+  to: number[];
+}
+
+/** What a 409 ended_scores_change says: the problems and how many students' totals move. */
+export interface EndedChange {
+  problems: EndedProblem[];
+  students: number;
+}
+
+function pointList(v: unknown): number[] {
+  return Array.isArray(v) ? v.filter((n): n is number => typeof n === 'number') : [];
+}
+
+/** The detail of an ended_scores_change error (its `existing` field), or null when it is not one. */
+export function endedChange(code: string, existing: unknown): EndedChange | null {
+  if (code !== 'ended_scores_change' || typeof existing !== 'object' || existing === null) return null;
+  const { problems, students } = existing as { problems?: unknown; students?: unknown };
+  const list = Array.isArray(problems) ? problems : [];
+  return {
+    problems: list.flatMap((p) => {
+      if (typeof p !== 'object' || p === null) return [];
+      const { label, from, to } = p as Record<string, unknown>;
+      return typeof label === 'string' ? [{ label, from: pointList(from), to: pointList(to) }] : [];
+    }),
+    students: typeof students === 'number' ? students : 0,
+  };
+}
+
+/** The list the second confirmation shows: each problem's points (the message already counts the students). */
+export function endedItems(c: EndedChange): string[] {
+  const sum = (n: number[]) => n.reduce((a, b) => a + b, 0);
+  return c.problems.map((p) => `Problem ${p.label}: points per part ${p.from.join(', ')} become ${p.to.join(', ')} (total ${sum(p.from)} to ${sum(p.to)}).`);
+}
+
 export interface SiteAuditEntry {
   id: number;
   at: number;

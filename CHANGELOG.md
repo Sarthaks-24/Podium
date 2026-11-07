@@ -4,6 +4,17 @@ Dated entries per release. Unreleased work is listed at the top.
 
 Releases are numbered from `v2.0.0`. The builds before it were never released; these entries call them v1.0 (first called v1), v1.1 (v2), v1.2 (v3), v1.3 (v4) and v1.4 (v4.01). Decision ids (`V3-n`, `V4-n`) and migration file names keep the old names.
 
+## v2.0.2 (2026-11-07)
+
+Unreleased. Stage 0, the pending fixes.
+
+### v2.0.2 stage 0: pending fixes (2026-11-07)
+
+- "Update students now" on an ended contest asks before it changes final scores (PF-10). When every window is over and the new revision has different subtask points, the update is refused with `409 ended_scores_change`, naming the problem and how many students' totals would change, and nothing is written. The Live tab's dialog shows that list and asks a second time; confirming sends `confirm_ended: true`, applies the update and writes one `ended_repin` row in the history of changes. An update that changes no points, and any update on a live or upcoming contest, works as before. Known limit: the count uses the submissions as judged now; a judging edit that is judged again afterwards can move scores further.
+- The Live tab lists an edited problem's "Update students now" banner after the contest has closed too. It was hidden at the close, which left no way to open practice again on a changed problem in the console.
+- `podium-check` says "Backblaze's daily transaction cap is used up; listings work again after midnight UTC" when B2 refuses a listing for the daily cap, instead of blaming the key, and no longer pipes an empty answer to `jq` (PF-7). `tools/install-test.sh` runs it against a fake `rclone`.
+- A compatibility corpus (the three example packs and one format 3 pack with starters) and golden `ContentHash` values and export digests guard that old packs import, export and hash as before.
+
 ## v2.0.1 Billota (2026-11-05)
 
 Upgrades v2.0.0 with migrations 0010 to 0012.
