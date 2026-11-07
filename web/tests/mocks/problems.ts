@@ -114,6 +114,9 @@ export function problemFixtures(): Record<number, Json> {
         test_(5, 2, '1000000000 1000000000\n', '2000000000\n'),
       ],
       starters: {},
+      mode: 'whole',
+      locked_top: {},
+      locked_bottom: {},
       content_hash: 'h1',
     },
     2: {

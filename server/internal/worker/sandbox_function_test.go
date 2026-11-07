@@ -261,3 +261,64 @@ func TestFunctionStudentCodeIsContained(t *testing.T) {
 		}
 	}
 }
+
+// Validate judges the reference and the brute force composed: a correct
+// bare-function reference in each language passes, a wrong one fails.
+// The pack's stub file stands in as the reference, so no file is added.
+func TestFunctionValidateInEveryLanguage(t *testing.T) {
+	r := newRig(t)
+	yaml := mustRead(t, filepath.Join(*examplesDir, "array-sum", "problem.yaml"))
+	ext := map[string]string{"cpp17": "cpp", "java21": "java", "python3": "py", "node22": "js"}
+	for lang, byKind := range functionCode {
+		for _, kind := range []string{"AC", "WA"} {
+			slug := "array-sum-" + ext[lang] + "-" + strings.ToLower(kind)
+			p := r.importPack(t, "array-sum", map[string]string{
+				"starter." + ext[lang]: byKind[kind],
+				"problem.yaml": strings.NewReplacer("slug: array-sum", "slug: "+slug,
+					"reference: solution.cpp", "reference: starter."+ext[lang]).Replace(yaml)})
+			v := r.validate(t, p.ID)
+			want := problems.ValidationPassed
+			if kind == "WA" {
+				want = problems.ValidationFailed
+			}
+			if v.State != want {
+				t.Errorf("%s: %s, want %s\n%s", slug, v.State, want, describe(v))
+				continue
+			}
+			t.Logf("%s: %s", slug, v.State)
+		}
+	}
+}
+
+// Generate makes the expected outputs by running the composed reference,
+// then validation passes.
+func TestFunctionGenerateOutputsThenValidate(t *testing.T) {
+	r := newRig(t)
+	ctx := context.Background()
+	p := r.importPack(t, "array-sum", nil)
+	if _, err := r.bank.ReplaceTests(ctx, p.ID, inputsOnly(t, filepath.Join(*examplesDir, "array-sum", "tests")), problems.RevisionNote{}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := r.bank.RequestGeneration(ctx, p.ID, 1, false); err != nil {
+		t.Fatal(err)
+	}
+	deadline := time.Now().Add(3 * time.Minute)
+	var g *problems.Generation
+	for time.Now().Before(deadline) {
+		g, _ = r.bank.LatestGeneration(ctx, p.ID)
+		if g != nil && (g.State == "done" || g.State == "error") {
+			break
+		}
+		time.Sleep(300 * time.Millisecond)
+	}
+	if g == nil || g.State != "done" || g.Summary == nil || g.Summary.Applied != 6 {
+		t.Fatalf("generation %+v", g)
+	}
+	got, _ := r.bank.Get(ctx, p.ID)
+	if out, _ := r.bank.Blobs.Read(got.Tests[0].OutputSHA, 100); strings.TrimSpace(string(out)) != "15" {
+		t.Errorf("generated output of test 1: %q", out)
+	}
+	if v := r.validate(t, p.ID); v.State != problems.ValidationPassed {
+		t.Errorf("validation after generating outputs:\n%s", describe(v))
+	}
+}
