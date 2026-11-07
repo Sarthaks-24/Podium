@@ -26,7 +26,7 @@ func TestUpdatePinOvertaken(t *testing.T) {
 	read := ContestProblem{Label: "A", ProblemID: 100, RevisionID: 1}
 	from := &problems.Revision{ID: 1, ProblemID: 100, Rev: 1}
 	to := &problems.Revision{ID: 3, ProblemID: 100, Rev: 3}
-	_, err := r.svc.applyPin(ctx, c, read, "A", from, to, Actor{ID: 1})
+	_, err := r.svc.applyPin(ctx, c, read, "A", from, to, Actor{ID: 1}, false)
 	if !errors.Is(err, ErrPinMoved) {
 		t.Fatalf("update from a stale pin: %v, want ErrPinMoved", err)
 	}
@@ -54,7 +54,7 @@ func TestPinUpdateRefusesUnreadableSubtasks(t *testing.T) {
 			VALUES (1, 100, 1, 'h1', 'A plus B', 0, '[{"idx":1,"points":100}]'), (2, 100, 2, 'h2', 'A plus B', 0, '"twenty"')`,
 		fmt.Sprintf(`INSERT INTO contest_problems (contest_id, problem_id, label, ord, revision_id, points)
 			VALUES (%d, 100, 'A', 0, 1, '[100]')`, c.ID))
-	_, err := r.svc.UpdatePin(ctx, c.ID, "A", 2, Actor{ID: 1})
+	_, err := r.svc.UpdatePin(ctx, c.ID, "A", 2, Actor{ID: 1}, false)
 	if err == nil || !strings.Contains(err.Error(), "subtasks") {
 		t.Fatalf("pin to an unreadable revision: %v, want an error naming subtasks", err)
 	}

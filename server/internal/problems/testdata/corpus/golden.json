@@ -1,0 +1,18 @@
+{
+  "a-plus-b": {
+    "content_hash": "5d619b5ed61a0990340b4f8146b036c76409dfa8ce1f4e0bce797bb20561107a",
+    "export_digest": "be93c49ec012427c1c6e8b563d3f637eba6ea76e3cff7d29192b33c081ab76af"
+  },
+  "pair-with-sum": {
+    "content_hash": "1e3a250004e9f1c7b57f16099b89d26fdb6cdbc40c52b64a24c9a8ef77b74e1e",
+    "export_digest": "089c22b0a4e7b7c956003be445f175809383e861e1095af22525884e3f8c5457"
+  },
+  "average-speed": {
+    "content_hash": "10f8d64cddfb217546aa7fa83eb7aa6bee36411a3d7f4ded59706a33506c7bb7",
+    "export_digest": "1196ed93f24ab698b9403412f0fade0e443cd913ecaacabab31528eed1d10088"
+  },
+  "format3-starters": {
+    "content_hash": "5d619b5ed61a0990340b4f8146b036c76409dfa8ce1f4e0bce797bb20561107a",
+    "export_digest": "a3b5fd24950d535400a8b4d85ca7003d912516f830d4a30496698cc14c5cbc93"
+  }
+}

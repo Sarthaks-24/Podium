@@ -6,7 +6,7 @@ Releases are numbered from `v2.0.0`. The builds before it were never released; t
 
 ## v2.0.2 Billota (2026-11-07)
 
-Upgrades v2.0.1 with migration 0013 (more migrations follow in later stages of this release).
+Unreleased. Upgrades v2.0.1 with migration 0013 (more migrations follow in later stages of this release).
 
 ### v2.0.2 stage A: delete a problem (2026-11-07)
 
@@ -19,6 +19,13 @@ Upgrades v2.0.1 with migration 0013 (more migrations follow in later stages of t
 - New: `POST /api/admin/problems/{id}/delete`, `GET /api/admin/problems/{id}/delete-info`, `GET /api/admin/problems/deleted`; `deleted` on the contest problem lists and `ProblemStats`; migration `0013_v202_delete.sql`.
 - Known limits: a deleted problem's blobs of a pinned revision stay on disk (ended contests must stay reproducible); `TestNoWritePathSkipsTheRevision` names Delete as the one function that clears revision-recorded columns outside `save`.
 - Upgrade: migration 0013 adds three columns, and the previous binary refuses a database that records it, so rolling back means restoring the pre-upgrade backup (OPERATIONS.md).
+
+### v2.0.2 stage 0: pending fixes (2026-11-07)
+
+- "Update students now" on an ended contest asks before it changes final scores (PF-10). When every window is over and the new revision has different subtask points, the update is refused with `409 ended_scores_change`, naming the problem and how many students' totals would change, and nothing is written. The Live tab's dialog shows that list and asks a second time; confirming sends `confirm_ended: true`, applies the update and writes one `ended_repin` row in the history of changes. An update that changes no points, and any update on a live or upcoming contest, works as before. Known limit: the count uses the submissions as judged now; a judging edit that is judged again afterwards can move scores further.
+- The Live tab lists an edited problem's "Update students now" banner after the contest has closed too. It was hidden at the close, which left no way to open practice again on a changed problem in the console.
+- `podium-check` says "Backblaze's daily transaction cap is used up; listings work again after midnight UTC" when B2 refuses a listing for the daily cap, instead of blaming the key, and no longer pipes an empty answer to `jq` (PF-7). `tools/install-test.sh` runs it against a fake `rclone`.
+- A compatibility corpus (the three example packs and one format 3 pack with starters) and golden `ContentHash` values and export digests guard that old packs import, export and hash as before.
 
 ## v2.0.1 Billota (2026-11-05)
 

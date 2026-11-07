@@ -314,6 +314,12 @@ describe('auditSummary', () => {
     expect(auditSummary({ action: 'revision', details: { label: 'B', from_rev: 1, to_rev: 2, statement_changed: false, judging_changed: true } })).toContain('(tests changed)');
   });
 
+  it('names an update that changed final scores', () => {
+    expect(
+      auditSummary({ action: 'ended_repin', details: { label: 'A', from_rev: 2, to_rev: 3, points_from: [40, 60], points_to: [30, 70] } }),
+    ).toBe('Moved problem A from revision 2 to revision 3 after the contest ended; points per part 40, 60 became 30, 70');
+  });
+
   it('names each change in the past tense', () => {
     expect(
       auditSummary({

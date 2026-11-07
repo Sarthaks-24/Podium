@@ -636,6 +636,7 @@ export const AUDIT_ACTIONS: readonly { id: string; label: string }[] = [
   { id: 'settings', label: 'Settings' },
   { id: 'problems', label: 'Problems' },
   { id: 'revision', label: 'Problem revisions' },
+  { id: 'ended_repin', label: 'Final scores changed by an update' },
   { id: 'extension', label: 'Extra time for a student' },
   { id: 'extend', label: 'Contest extended' },
   { id: 'pause', label: 'Judging paused' },
@@ -711,6 +712,10 @@ export function auditSummary(e: Pick<AuditEntry, 'action' | 'details'>, names?: 
     case 'revision': {
       const what = d.statement_changed === true && d.judging_changed === true ? 'statement and tests' : d.judging_changed === true ? 'tests' : 'statement';
       return `Moved problem ${str('label')} from revision ${num('from_rev')} to revision ${num('to_rev')} (${what} changed)`;
+    }
+    case 'ended_repin': {
+      const pts = (v: unknown) => (Array.isArray(v) ? v.join(', ') : '');
+      return `Moved problem ${str('label')} from revision ${num('from_rev')} to revision ${num('to_rev')} after the contest ended; points per part ${pts(d.points_from)} became ${pts(d.points_to)}`;
     }
     case 'extension': {
       const who = str('email') || names?.get(num('user_id')) || `user ${num('user_id')}`;
