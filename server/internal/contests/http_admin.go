@@ -10,6 +10,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
@@ -816,13 +817,23 @@ func (d *Handlers) UpdatePin(w http.ResponseWriter, r *http.Request) {
 	}
 	var req struct {
 		RevisionID int64 `json:"revision_id"`
+		// ConfirmEnded accepts the change to final scores that an update on
+		// an ended contest makes (PF-10).
+		ConfirmEnded bool `json:"confirm_ended"`
 	}
 	if !httpx.DecodeJSON(w, r, &req) {
 		return
 	}
 	label := r.PathValue("label")
-	u, err := d.Contests.UpdatePin(r.Context(), c.ID, label, req.RevisionID, actor(r))
+	u, err := d.Contests.UpdatePin(r.Context(), c.ID, label, req.RevisionID, actor(r), req.ConfirmEnded)
+	var ended *EndedScoresChange
 	switch {
+	case errors.As(err, &ended):
+		httpx.WriteJSON(w, http.StatusConflict, map[string]any{"error": map[string]any{
+			"code":     "ended_scores_change",
+			"message":  fmt.Sprintf("This contest has ended. Updating students now changes the points of problem %s, so final scores change for %d %s. Confirm to update anyway.", label, ended.Students, plural(ended.Students, "student", "students")),
+			"problems": ended.Problems, "students": ended.Students}})
+		return
 	case errors.Is(err, ErrNotFound):
 		httpx.WriteError(w, http.StatusNotFound, "not_found", "There is no such problem in this contest, or the revision is not one of its problem's.")
 		return
@@ -852,4 +863,12 @@ func (d *Handlers) UpdatePin(w http.ResponseWriter, r *http.Request) {
 	}
 	httpx.WriteJSON(w, http.StatusOK, map[string]any{"contest": out, "announcement_md": u.AnnouncementMD,
 		"statement_changed": u.StatementChanged, "rejudge_needed": u.JudgingChanged, "server_now": d.Contests.Clock().UnixMilli()})
+}
+
+// plural picks the singular for 1 and the plural otherwise.
+func plural(n int, one, many string) string {
+	if n == 1 {
+		return one
+	}
+	return many
 }

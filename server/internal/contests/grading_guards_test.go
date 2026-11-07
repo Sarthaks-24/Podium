@@ -54,7 +54,7 @@ func TestPinUpdateRefusesUnreadableSubtasks(t *testing.T) {
 			VALUES (1, 100, 1, 'h1', 'A plus B', 0, '[{"idx":1,"points":100}]'), (2, 100, 2, 'h2', 'A plus B', 0, '"twenty"')`,
 		fmt.Sprintf(`INSERT INTO contest_problems (contest_id, problem_id, label, ord, revision_id, points)
 			VALUES (%d, 100, 'A', 0, 1, '[100]')`, c.ID))
-	_, err := r.svc.UpdatePin(ctx, c.ID, "A", 2, Actor{ID: 1})
+	_, err := r.svc.UpdatePin(ctx, c.ID, "A", 2, Actor{ID: 1}, false)
 	if err == nil || !strings.Contains(err.Error(), "subtasks") {
 		t.Fatalf("pin to an unreadable revision: %v, want an error naming subtasks", err)
 	}
