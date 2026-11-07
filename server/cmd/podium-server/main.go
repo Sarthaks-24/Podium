@@ -4,7 +4,7 @@
 //
 // With no argument it runs the server. The subcommands are operator tools
 // that open the database themselves (usage in flag.Usage below, details in
-// docs/OPERATIONS.md): check, runs-report, migrate, print-ai-prompt and forget-user.
+// docs/OPERATIONS.md): check, runs-report, migrate, print-ai-prompt, print-pack-prompt and forget-user.
 // forget-user is a dry run unless given -apply.
 package main
 
@@ -28,6 +28,7 @@ import (
 	"github.com/Sarthaks-24/podium/internal/db"
 	"github.com/Sarthaks-24/podium/internal/httpapi"
 	"github.com/Sarthaks-24/podium/internal/jobs/judgeserver"
+	"github.com/Sarthaks-24/podium/internal/problems"
 	"github.com/Sarthaks-24/podium/internal/schedule"
 )
 
@@ -44,6 +45,7 @@ func main() {
 		fmt.Fprintln(os.Stderr, "       podium-server runs-report [-db F]          runs with a custom input, per contest")
 		fmt.Fprintln(os.Stderr, "       podium-server migrate -db COPY             rehearse an upgrade on a copy of the database")
 		fmt.Fprintln(os.Stderr, "       podium-server print-ai-prompt              print the wizard's built-in authoring rules")
+		fmt.Fprintln(os.Stderr, "       podium-server print-pack-prompt            print the outside-AI prompt's built-in rules")
 		fmt.Fprintln(os.Stderr, "       podium-server forget-user [-db F] [-apply] EMAIL  erase one person (a dry run without -apply)")
 	}
 	flag.Parse()
@@ -62,6 +64,10 @@ func main() {
 	}
 	if flag.Arg(0) == "print-ai-prompt" {
 		fmt.Fprintln(os.Stdout, ai.DefaultRules)
+		return
+	}
+	if flag.Arg(0) == "print-pack-prompt" {
+		fmt.Fprintln(os.Stdout, problems.DefaultPackRules())
 		return
 	}
 	if flag.Arg(0) == "runs-report" {
@@ -121,6 +127,8 @@ func run(envFile string) error {
 	if len(applied) > 0 {
 		log.Info("applied migrations", "versions", applied)
 	}
+
+	logPromptSources(ctx, log, &ai.Prompts{DB: database})
 
 	svc, err := newServices(ctx, cfg, database, log)
 	if err != nil {
@@ -216,5 +224,26 @@ func judgeServer(addr string, h http.Handler) *http.Server {
 		WriteTimeout:      5 * time.Minute, // a 16 MB blob over a slow link
 		IdleTimeout:       120 * time.Second,
 		MaxHeaderBytes:    16 << 10,
+	}
+}
+
+// logPromptSources names, for each prompt kind, where its active text comes
+// from: a database version, the rules file (with its hash) or the built-in
+// text. Never the text itself.
+func logPromptSources(ctx context.Context, log *slog.Logger, p *ai.Prompts) {
+	for _, kind := range []string{ai.KindWizardRules, ai.KindPackRules, ai.KindPreferences} {
+		a, err := p.Active(ctx, kind)
+		if err != nil {
+			log.Warn("ai prompt source unknown", "kind", kind, "err", err)
+			continue
+		}
+		attrs := []any{"kind", kind, "source", a.Source}
+		if a.Version != nil {
+			attrs = append(attrs, "version_id", a.Version.ID, "by", a.Version.By, "at", a.Version.At)
+		}
+		if a.FileSHA != "" {
+			attrs = append(attrs, "file_sha256", a.FileSHA)
+		}
+		log.Info("ai prompt source", attrs...)
 	}
 }

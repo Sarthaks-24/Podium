@@ -146,6 +146,11 @@ func New(d Deps) http.Handler {
 			access, err := d.Contests.AccessFor(ctx, c, contests.Viewer{UserID: user.ID, Role: user.Role})
 			return access == contests.AccessManage, err
 		}}
+	prompts := &ai.Prompts{DB: d.DB}
+	if d.AI != nil {
+		prompts.Keys = d.AI.Keys
+	}
+	bank.Prompts = prompts
 	work := &submissions.Handlers{Submissions: d.Submissions, Log: d.Log}
 	mux.HandleFunc("GET /api/admin/people/{id}/submissions", admin(work.ListPersonSubmissions))
 	if d.Contests != nil {
@@ -180,7 +185,7 @@ func New(d Deps) http.Handler {
 	mux.HandleFunc("POST /api/admin/problems/{id}/generate-inputs", organiser(bank.GenerateInputs))
 	mux.HandleFunc("GET /api/admin/problems/{id}/input-generation", organiser(bank.GetInputGeneration))
 	if d.AI != nil {
-		wizard := &ai.Handlers{Wizard: d.AI, Problems: d.Problems, Hub: d.Hub, Log: d.Log,
+		wizard := &ai.Handlers{Wizard: d.AI, Problems: d.Problems, Prompts: prompts, Hub: d.Hub, Log: d.Log,
 			Testing: d.Mode == "testing", SessionToken: d.sessionToken}
 		mux.HandleFunc("GET /api/admin/ai/providers", organiser(wizard.GetAIProviders))
 		mux.HandleFunc("GET /api/admin/ai/models", organiser(wizard.GetAIModels))
@@ -189,6 +194,11 @@ func New(d Deps) http.Handler {
 		mux.HandleFunc("DELETE /api/admin/ai/key", organiser(wizard.DeleteAIKey))
 		mux.HandleFunc("POST /api/admin/ai/wizard", organiser(wizard.StartWizard))
 		mux.HandleFunc("GET /api/admin/ai/wizard/{id}", organiser(wizard.GetWizard))
+		// Admins and the owner reach these; the role by kind (owner: the
+		// rules, admin: the preferences) is checked inside.
+		mux.HandleFunc("GET /api/admin/ai/prompts", admin(wizard.GetPrompts))
+		mux.HandleFunc("PUT /api/admin/ai/prompts/{kind}", admin(wizard.PutPrompt))
+		mux.HandleFunc("POST /api/admin/ai/prompts/{kind}/reset", admin(wizard.ResetPrompt))
 	}
 
 	// The organisers' workspace: an organiser tries a problem from the bank

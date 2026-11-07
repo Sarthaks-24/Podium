@@ -46,6 +46,9 @@ type Brief struct {
 type Request struct {
 	Brief  *Brief
 	Pasted string
+	// System is the whole system prompt, built once when the run starts so
+	// the retry sees the same text. Empty means the start-up rules.
+	System string
 	// The one retry: the previous answer and what was wrong with it, or
 	// Shorter after an answer was cut off.
 	Previous string
@@ -215,4 +218,12 @@ func NewProvider(c Config, testing bool) (Provider, error) {
 // a model; the routes refuse earlier with 409 no_model.
 func needModel(provider string) error {
 	return &Error{Code: CodeInput, Message: "Choose a model for " + ProviderName(provider) + " first."}
+}
+
+// system is the prompt this request sends.
+func (r Request) system() string {
+	if r.System != "" {
+		return r.System
+	}
+	return systemPrompt()
 }
