@@ -2,10 +2,13 @@ package problems
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"maps"
 	"strings"
 	"testing"
+
+	"github.com/Sarthaks-24/podium/internal/judgeapi"
 )
 
 // Locked parts of a small function problem in two languages.
@@ -244,5 +247,58 @@ func TestLockedPartsAreInTheHash(t *testing.T) {
 	p.Starters = map[string]string{"cpp17": "long long twice(long long n) {}\n"}
 	if ContentHash(p) != fn {
 		t.Error("a stub edit moved the hash; stubs are starters, outside it")
+	}
+}
+
+// Validate and Generate judge the reference and the brute force composed
+// with their own language's locked parts; the validator (and the checker
+// and generator) are whole programs and are sent as written.
+func TestValidateAndGenerateComposeTheSolutions(t *testing.T) {
+	s := newGenBank(t)
+	ctx := context.Background()
+	p := importExample(t, s, "a-plus-b")
+	e := functionEdit(p)
+	e.Validator = p.Validator
+	fn, err := s.Update(ctx, p.ID, e)
+	if err != nil {
+		t.Fatal(err)
+	}
+	blob := func(sha string) string {
+		b, err := s.Blobs.Read(sha, 1<<20)
+		if err != nil {
+			t.Fatalf("blob %s: %v", sha, err)
+		}
+		return string(b)
+	}
+	if _, err := s.RequestValidation(ctx, fn.ID, 1); err != nil {
+		t.Fatal(err)
+	}
+	c, err := s.Jobs.Claim(ctx, judgeapi.ClaimRequest{Kinds: []string{judgeapi.KindValidate}, Worker: "fake"})
+	if err != nil || c == nil {
+		t.Fatalf("claim: %v %v", c, err)
+	}
+	var vp judgeapi.ValidatePayload
+	json.Unmarshal(c.Payload, &vp)
+	if got, want := blob(vp.Programs.Reference.SourceSHA), fnTop["cpp17"]+fn.Reference.Source+fnBottom["cpp17"]; got != want {
+		t.Errorf("reference judged as %q, want %q", got, want)
+	}
+	if got, want := blob(vp.Programs.Brute.SourceSHA), fnTop["python3"]+fn.Brute.Source+fnBottom["python3"]; got != want {
+		t.Errorf("brute judged as %q, want %q", got, want)
+	}
+	if got := blob(vp.Programs.Validator.SourceSHA); got != p.Validator.Source {
+		t.Errorf("validator judged as %q", got)
+	}
+
+	if _, err := s.RequestGeneration(ctx, fn.ID, 1, true); err != nil {
+		t.Fatal(err)
+	}
+	c, err = s.Jobs.Claim(ctx, judgeapi.ClaimRequest{Kinds: []string{judgeapi.KindGenerate}, Worker: "fake"})
+	if err != nil || c == nil {
+		t.Fatalf("claim generate: %v %v", c, err)
+	}
+	var gp judgeapi.GeneratePayload
+	json.Unmarshal(c.Payload, &gp)
+	if got, want := blob(gp.Program.SourceSHA), fnTop["cpp17"]+fn.Reference.Source+fnBottom["cpp17"]; got != want {
+		t.Errorf("generate runs %q, want %q", got, want)
 	}
 }
