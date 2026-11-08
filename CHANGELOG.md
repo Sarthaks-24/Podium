@@ -60,6 +60,14 @@ Unreleased. Upgrades v2.0.1 with migrations 0013, 0014 and 0015 (more follow in 
 - Known limits: the wizard stays whole-program (no function problems). Only a live model call shows whether edited rules still produce a usable pack; the preview and the importer are the guards.
 - Upgrade: migration 0015 creates `ai_prompt_versions`; the previous binary refuses a database that records it, so rolling back means restoring the pre-upgrade backup.
 
+### v2.0.2 stage E: AI edit of a problem (2026-11-08)
+
+- The problem editor has "Edit with AI" in its More menu. You describe a change; the model gets the problem's pack files (statement, programs, settings, a custom checker, function problem files) but not the test data, and answers with the files it changes. The page shows what the model says it did and a line diff of each file against the current text. Nothing is saved until you press "Accept the edit"; "Reject the edit" forgets the draft.
+- Accept saves the edit as one new revision, marks the problem as an AI draft (origin `ai`, the "ai draft" tag, so a contest asks before taking it), withdraws its validation and queues Validate. A contest that holds the problem keeps its pinned revision until "Update students now". Accept is refused while a contest holding the problem is running (409 `contest_running`), for a deleted problem (409 `deleted`), and when the problem changed after the draft was made (409 `changed`).
+- Whatever a pack cannot carry is refused with a message: test data, a changed slug, files that are not pack files, an answer the pack parser rejects. The model uses the same in-memory key as the wizard; the key is never stored or logged. The prompt puts the fixed security text first, then the pack format with the owner's pack rules and the Preferences box, and sends the files and the instruction as data blocks.
+- New: `POST /api/admin/problems/{id}/ai-edit`, `POST /api/admin/problems/{id}/ai-edit/{draft}/accept`, `DELETE /api/admin/problems/{id}/ai-edit/{draft}`. No migration, no new environment variable.
+- Known limits: the model cannot delete a file or change test data, so a change that needs new tests is made in the editor. Drafts live in server memory for one hour and are lost on a restart. The edit is one model call, with no retry. Only a live model call shows how well a real model follows the pack format.
+
 ## v2.0.1 Billota (2026-11-05)
 
 Upgrades v2.0.0 with migrations 0010 to 0012.

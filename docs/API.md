@@ -527,6 +527,36 @@ The wizard drafts a problem from a brief or from pasted text, with Anthropic, Op
 
 A run's `error.code` is one of `key_refused`, `no_quota`, `no_access`, `model_not_found`, `unsupported_model`, `rate_limited`, `unavailable`, `bad_request`, `refused` (the model declined), `cut_off` (too long, after one shorter retry), `invalid_answer` (with `reasons`, after one retry with them), `timeout`, `canceled`, `input`, `not_found` or `internal`. The messages name the provider and say what to do, for example "OpenAI refused the key. Check it and paste it again."
 
+### AI edit of a problem (organiser, v2.0.2)
+
+An organiser or above asks a model to edit one problem. The key and provider are the wizard's (the session's in-memory keys). The model receives the problem's exported pack files except `tests/`, plus the instruction, as data. A draft lives in server memory for an hour and holds text files only. Nothing is saved until Accept.
+
+| Route | Request | Success |
+|---|---|---|
+| `POST /api/admin/problems/{id}/ai-edit` | `{"instruction": "...", "provider": "anthropic"}` (instruction 1 to 4,000 characters; `provider` may be left out to use the active key), at most 256 KB | 200 `{"draft_id","summary","files":[{"path","status","before","after"}],"provider","model","server_now"}`; `status` is `changed` or `added`; only changed files are listed |
+| `POST /api/admin/problems/{id}/ai-edit/{draft}/accept` | none | 200 `{"problem_id","validation_queued","not_ready":[...]}` |
+| `DELETE /api/admin/problems/{id}/ai-edit/{draft}` | none | 204, also for an unknown draft |
+
+The call waits for the model, for at most 3 minutes, and takes the admin's one AI slot (429 `busy` otherwise).
+
+| Status and code | When |
+|---|---|
+| 400 `bad_request` | empty, too long or invalid instruction |
+| 401, 403 `forbidden` | signed out, or a student |
+| 404 `not_found` | unknown problem, or an unknown, used, rejected or expired draft ("There is no such AI draft. It may have expired, been rejected, or been lost in a restart. Ask for the edit again.") |
+| 409 `no_key`, `no_model` | as for the wizard |
+| 409 `deleted` | the problem was deleted ("This problem was deleted and cannot be changed.") |
+| 409 `bad_request` | the problem is archived: restore it first |
+| 409 `contest_running` | Accept while a contest that holds the problem runs ("A contest that holds this problem is running. Accept after it ends.") |
+| 409 `changed` | Accept after the problem changed since the draft ("The problem changed after this draft was made. Ask for the edit again.") |
+| 409 `mode_locked` | Accept would change the mode or drop a used language of a function problem |
+| 422 `invalid_answer` | the answer cannot be used; `problems` lists why (test data, a changed slug, a file that is not a pack file, a pack parser or field error) |
+| 422 `not_in_pack` | the model says the change cannot be carried by a pack |
+| 422 `no_change` | the model changed nothing |
+| 502 | a provider failure, with the wizard's codes (`key_refused`, `no_quota`, `rate_limited`, `refused`, `cut_off`, `timeout` and so on) and a fixed sentence |
+
+Accept makes one new revision (note "AI edit: " and the first 80 characters of the instruction), sets origin `ai` and the "ai draft" tag, withdraws the validation and queues Validate; `not_ready` lists what stops Validate from queueing.
+
 ### AI prompts (admin and owner, v2.0.2)
 
 The owner edits the rules text of the wizard prompt (`wizard_rules`) and of the prompt for another AI (`pack_rules`); an admin or the owner edits the Preferences box (`preferences`). Rules are data: they are placed in the prompt and never parsed as template source. The fixed security part of the wizard prompt and the generated format-and-limits part of the pack prompt are not editable; `GET` returns them as `fixed`, read-only. Every version is an insert-only row; the newest row of a kind is its active text. All routes need the admin role or above; the kind then decides (owner: the two rules kinds, admin and owner: `preferences`). A student or an organiser gets 403 `forbidden` from the role check. An admin on a rules kind gets 403 `not_allowed` ("You do not have access to this."). Writes carry the cross-site guard of every write route.

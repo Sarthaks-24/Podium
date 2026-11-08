@@ -357,6 +357,17 @@ The model's code is never run on the server: it goes to the judge, in isolate, l
 
 One AI request per admin runs at a time, for at most 3 minutes. A refusal by the model, a cut-off answer, a rate limit or a provider outage is shown in words; nothing is created.
 
+## Editing a problem with AI
+
+The editor's More menu has "Edit with AI". Type what should change ("add a note that sums can be negative", "make the brute force simpler", "use a custom checker for ties") and press "Ask for a draft". The model sees the problem as a pack: `problem.yaml`, `statement.md`, the programs, starters, locked top and bottom of a function problem, `tests.yaml` and a custom `checker.cpp`. It does not see the tests and cannot change them. It returns only the files it changes; every other file stays as it is, and the slug stays.
+
+The page shows what the model says it changed and a diff of each file. Read it as you would read a colleague's change. "Accept the edit" saves it as one new revision, tags the problem "ai draft", withdraws its validation and starts Validate. Until a person saves the problem in the editor and Validate passes, a contest refuses it (see "A contest needs a person's solution" above). "Reject the edit" throws the draft away.
+
+- You cannot accept while a contest that holds the problem is running. Accept after it ends. A contest that already holds the problem keeps the revision it was pinned to until you press "Update students now".
+- A change that needs new or different tests (a new sample, new generated inputs) is made in the editor: the model cannot write test data. Ask it to change the generator or `tests.yaml`, accept, then use Generate inputs.
+- If the model asks for something a pack cannot carry, or its answer does not parse, the page says so and nothing changes.
+- Save or discard your own unsaved changes first: the model works on the saved problem, and a draft made from an older version is refused.
+
 ## Validation
 
 Validation runs the problem on the real judge, in isolate, exactly as a contest would. Choose Validate in the editor; the report updates every 2 seconds while the job waits and runs. Validation has the lowest priority, behind all contest work.

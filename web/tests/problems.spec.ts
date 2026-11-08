@@ -468,7 +468,7 @@ test('archiving is in the menu, asks first and returns to the bank', async ({ pa
   await page.goto('/admin/problems/1');
   const menu = page.getByRole('button', { name: 'More' });
   await menu.click();
-  await expect(page.locator('#problem-menu').getByRole('button')).toHaveText(['Download pack', 'Regenerate all outputs', 'Archive']);
+  await expect(page.locator('#problem-menu').getByRole('button')).toHaveText(['Download pack', 'Edit with AI', 'Regenerate all outputs', 'Archive']);
   await page.locator('#problem-menu').getByRole('button', { name: 'Archive' }).click();
   const dialog = page.getByRole('dialog', { name: 'Archive A plus B?' });
   await expect(dialog).toContainText('It leaves the list of problems. Contests that used it keep it.');

@@ -31,6 +31,7 @@
   import TestsSection from '../components/problem/TestsSection.svelte';
   import CheckingSection from '../components/problem/CheckingSection.svelte';
   import AddToContestDialog from '../components/problem/AddToContestDialog.svelte';
+  import AiEditPanel from '../components/problem/AiEditPanel.svelte';
   import '../components/problem/editor.css';
   import { setTitle } from '../lib/head';
   import { loader } from '../lib/loader.svelte';
@@ -107,6 +108,7 @@
   /** Set while an output generation runs that a validation follows (Validate, or generated inputs). */
   let chained = $state(false);
   let regenOpen = $state(false);
+  let aiEditOpen = $state(false);
   let replaceOpen = $state(false);
 
   let archiveOpen = $state(false);
@@ -501,11 +503,23 @@
 
   const menu = $derived([
     { label: 'Download pack', onselect: downloadPack },
+    ...(problem && !problem.archived ? [{ label: 'Edit with AI', onselect: openAiEdit }] : []),
     ...((problem?.tests.length ?? 0) > 0 ? [{ label: 'Regenerate all outputs', onselect: () => (regenOpen = true) }] : []),
     ...(problem && !problem.archived ? [{ label: 'Archive', onselect: () => (archiveOpen = true), danger: true }] : []),
     ...(problem?.archived ? [{ label: 'Restore', onselect: () => (restoreOpen = true) }] : []),
     ...(problem && administers(session.user?.role) ? [{ label: 'Delete', onselect: () => (deleteOpen = true), danger: true }] : []),
   ]);
+
+  async function openAiEdit() {
+    aiEditOpen = true;
+    await tick();
+    document.getElementById('aiedit-heading')?.focus();
+  }
+
+  async function aiEditAccepted() {
+    aiEditOpen = false;
+    await load();
+  }
 
   const pageTitle = $derived(
     page.state === 'missing' ? 'Problem not found' : problem ? (problem.title.trim() !== '' ? problem.title : problem.slug) : 'Problem',
@@ -556,6 +570,10 @@
     <PageState kind="error" message={page.error} onretry={load} />
   {:else if problem && draft}
     <EditorNotes {problem} {aiDraft} bind:reason {fields} />
+
+    {#if aiEditOpen}
+      <AiEditPanel problemId={problem.id} {dirty} origin={problem.origin} onaccepted={aiEditAccepted} />
+    {/if}
 
     <EditorBar
       {tab}
