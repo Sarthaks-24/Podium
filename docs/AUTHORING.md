@@ -353,7 +353,7 @@ A practice set is a contest that exists only so students can practise its proble
 - A failing practice submission shows the first failing hidden test (see "When hidden tests are shown"). Do not reuse the problems of a practice set in an exam.
 - Problems can be added to a published contest but not removed from it, because practice has shown students their hidden tests.
 - A judging edit (tests, limits, checker, solutions, locked code) closes practice for that problem: students see "This problem was changed after the contest ended, so practice for it is closed here." A contest that holds the changed problem cannot be saved or published until you press "Update students now" on its Live tab. Read the warning under "Revisions" first: on an ended contest that update can change final scores.
-- A student who never started the contest before it ended is not listed on their profile, and "Problems to finish" lists only contests the student started. In a practice set the students open the contest page from the invite link or the contest list, see each problem with a score of 0 until they try it, and practise from there. Practice scores show on the contest page, not on the profile.
+- A student who never started the contest before it ended is not listed on their profile, and "Problems to finish" lists only contests the student started. In a practice set students open the contest page from the link you send them and practise each problem there. The contest page keeps the contest score (0 for them), practice does not change it, and the profile does not list the set.
 
 ## The AI wizard
 
