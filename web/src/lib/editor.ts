@@ -368,6 +368,12 @@ const lockGuard = (notify: () => void): Extension =>
           }
         }
       }
+      // Replace all skips the matches in locked text and replaces the rest.
+      if (touched && tr.isUserEvent('input.replace')) {
+        const hi = lock.bottomStart < 0 ? doc.length : lock.bottomStart;
+        const inside = edits.filter((e) => e.from >= lock.topEnd && e.to <= hi).map((e) => ({ from: e.from, to: e.to, insert: e.text }));
+        if (inside.length > 0) return [{ changes: inside, userEvent: 'input.replace.all', scrollIntoView: true }];
+      }
       if (touched) {
         notify();
         return [];

@@ -92,8 +92,7 @@ func TestWorkspaceServesThePinnedLockedCode(t *testing.T) {
 	}
 }
 
-// A submission that already holds the locked top and bottom (a whole file
-// pasted past an old client) is judged with each once, and the stored
+// A submission that is a whole file, with the locked top and bottom (pasted past an old client) is judged with each once, and the stored
 // source is the student's part only.
 func TestSubmitStripsLockedTextAlreadyInTheCode(t *testing.T) {
 	r := newRig(t)
@@ -110,7 +109,7 @@ func TestSubmitStripsLockedTextAlreadyInTheCode(t *testing.T) {
 		t.Errorf("stored %q, top_lines %d, judged %q", source, topLines, r.blob(t, pl.Program.SourceSHA))
 	}
 	// Run strips the same way.
-	if _, err := r.svc.Run(ctx, RunRequest{ProblemID: p.ID, UserID: 1, Language: "python3", Source: fnTopPy + "def add(a, b):\n    return a + b\n"}); err != nil {
+	if _, err := r.svc.Run(ctx, RunRequest{ProblemID: p.ID, UserID: 1, Language: "python3", Source: fnTopPy + "def add(a, b):\n    return a + b\n" + fnBottomPy}); err != nil {
 		t.Fatal(err)
 	}
 	var runPayload string
@@ -121,5 +120,23 @@ func TestSubmitStripsLockedTextAlreadyInTheCode(t *testing.T) {
 	json.Unmarshal([]byte(runPayload), &rp)
 	if got, want := r.blob(t, rp.Program.SourceSHA), fnTopPy+"def add(a, b):\n    return a + b\n"+fnBottomPy; got != want {
 		t.Errorf("run judged %q, want %q", got, want)
+	}
+}
+
+// A top typed on its own is the student's code: it is kept, the judged file
+// has it twice, and top_lines stays the locked top's, so a compile error on
+// the student's line N is reported as line N, the line the editor showed.
+func TestSubmitKeepsATypedTopAlone(t *testing.T) {
+	r := newRig(t)
+	p := r.importFunction(t)
+	v, _, err := r.svc.Submit(context.Background(), SubmitRequest{ProblemID: p.ID, UserID: 1, Language: "cpp17", Source: fnTopCpp + fnCode})
+	if err != nil {
+		t.Fatal(err)
+	}
+	source, sha, topLines, payload := r.row(t, v.ID)
+	var pl judgeapi.SubmitPayload
+	json.Unmarshal([]byte(payload), &pl)
+	if source != fnTopCpp+fnCode || r.blob(t, sha) != source || topLines != 2 || r.blob(t, pl.Program.SourceSHA) != fnTopCpp+fnTopCpp+fnCode+fnBottomCpp {
+		t.Errorf("stored %q, top_lines %d, judged %q", source, topLines, r.blob(t, pl.Program.SourceSHA))
 	}
 }

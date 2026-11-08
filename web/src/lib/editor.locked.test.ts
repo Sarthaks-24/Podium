@@ -107,7 +107,7 @@ describe('locked code', () => {
     expect(view.state.doc.toString()).toBe(`${TOP}def g(n):\n    return 2 * n\nprint(f(1))\nprint(f(2))`);
     expect(events.refused).toBe(0);
     view.dispatch({ changes: { from: topEnd, insert: `${TOP}# new\n` }, userEvent: 'input.paste' });
-    expect(handle?.getDoc()).toBe('# new\ndef g(n):\n    return 2 * n');
+    // A top alone is the student's own text and stays, as on the server.\n    expect(handle?.getDoc()).toBe(`${TOP}# new\ndef g(n):\n    return 2 * n`);
   });
 
   it('keeps the cursor and Select all inside the code', () => {
@@ -121,6 +121,17 @@ describe('locked code', () => {
     expect(view.state.selection.main.to).toBe(codeEnd);
     view.dispatch({ selection: { anchor: topEnd + 'def f(n):\n    '.length } });
     expect(events.cursors.at(-1)).toEqual([2, 5]);
+  });
+
+  it('replace all skips matches in locked text and replaces the rest', () => {
+    const { view, events } = locked({ doc: 'sys = 1\nsys = 2\n' });
+    const at = (v: string, from: number) => v.indexOf('sys', from);
+    const doc = view.state.doc.toString();
+    const changes = [at(doc, 0), at(doc, topEnd), at(doc, topEnd + 5)].map((p) => ({ from: p, to: p + 3, insert: 'x' }));
+    view.dispatch({ changes, userEvent: 'input.replace.all' });
+    expect(view.state.doc.toString().startsWith(TOP)).toBe(true);
+    expect(handle?.getDoc()).toBe('x = 1\nx = 2');
+    expect(events.refused).toBe(0);
   });
 
   it('replaces the student code with setDoc and keeps the locked parts', () => {

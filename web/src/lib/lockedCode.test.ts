@@ -39,23 +39,21 @@ describe('the shared compose fixture', () => {
   }
 });
 
-describe('stripLocked', () => {
-  const top = 'import sys\n';
-  const bottom = 'print(f(1))\n';
-  const body = 'def f(n):\n    return n\n';
-  it('cuts an exact top and bottom', () => {
-    expect(stripLocked(top + body + bottom, top, bottom)).toEqual({ text: body, top: true, bottom: true });
-  });
-  it('cuts a bottom with no newline at its end', () => {
-    expect(stripLocked(top + body + 'print(f(1))', top, bottom).text).toBe(body);
-  });
-  it('leaves a near miss and text inside a line alone', () => {
-    expect(stripLocked('import os\n' + body, top, bottom)).toEqual({ text: 'import os\n' + body, top: false, bottom: false });
-    expect(stripLocked(body + 'x print(f(1))\n', top, bottom).bottom).toBe(false);
-  });
-  it('does nothing without locked parts', () => {
-    expect(stripLocked(body, '', '')).toEqual({ text: body, top: false, bottom: false });
-  });
+interface StripCase {
+  name: string;
+  top: string;
+  bottom: string;
+  input: string;
+  want: string;
+}
+const stripCases: StripCase[] = JSON.parse(readFileSync(new URL('../../tests/fixtures/strip.json', import.meta.url), 'utf8')).cases;
+
+describe('stripLocked reads the shared strip fixture', () => {
+  for (const c of stripCases) {
+    it(c.name, () => {
+      expect(stripLocked(c.input, normalise(c.top), normalise(c.bottom)).text).toBe(c.want);
+    });
+  }
 });
 
 describe('hints', () => {

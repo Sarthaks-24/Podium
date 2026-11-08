@@ -266,6 +266,11 @@ func (s *Service) Workspace(ctx context.Context, problemID, userID int64, sc Sco
 		}
 		// A revision reconstructed at the upgrade has no statement; the
 		// working copy is what v1.1.0 served for it.
+		// It predates function problems, and judging refuses it unless its
+		// hash is the working copy's, so it is a whole problem: no locked code.
+		if rev.Reconstructed {
+			offered = &problems.Problem{Mode: problems.ModeWhole}
+		}
 		if !rev.Reconstructed && rev.ProblemID == p.ID {
 			w.Title, w.StatementMD = rev.Title, rev.Statement
 			w.Starters = map[string]string{}

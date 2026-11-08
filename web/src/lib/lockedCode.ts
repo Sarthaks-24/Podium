@@ -59,29 +59,26 @@ const lineStart = (s: string, i: number) => i === 0 || s[i - 1] === '\n';
 
 /**
  * Cuts the exact locked top off the start of `text` and the exact locked
- * bottom off its end, each on whole lines; anything else is left as written
- * (the Go side does the same, problems.StripLocked). `top` and `bottom` are
- * the locked parts as normalised text.
+ * bottom off its end, each on whole lines, only when both are there (a whole
+ * file); a top or bottom alone is the student's own text and stays (the Go
+ * side does the same, problems.StripLocked; web/tests/fixtures/strip.json is
+ * read by both tests). `top` and `bottom` are the locked parts as normalised
+ * text; an empty one is not required.
  */
 export function stripLocked(text: string, top: string, bottom: string): { text: string; top: boolean; bottom: boolean } {
+  const none = { text, top: false, bottom: false };
+  if (top === '' && bottom === '') return none;
   let out = text;
-  let cutTop = false;
-  let cutBottom = false;
-  if (top !== '' && out.startsWith(top)) {
+  if (top !== '') {
+    if (!out.startsWith(top)) return none;
     out = out.slice(top.length);
-    cutTop = true;
   }
   if (bottom !== '') {
-    const bare = bottom.slice(0, -1);
-    for (const tail of [bottom, bare]) {
-      if (out.endsWith(tail) && lineStart(out, out.length - tail.length)) {
-        out = out.slice(0, out.length - tail.length);
-        cutBottom = true;
-        break;
-      }
-    }
+    const tail = [bottom, bottom.slice(0, -1)].find((t) => out.endsWith(t) && lineStart(out, out.length - t.length));
+    if (tail === undefined) return none;
+    out = out.slice(0, out.length - tail.length);
   }
-  return { text: out, top: cutTop, bottom: cutBottom };
+  return { text: out, top: top !== '', bottom: bottom !== '' };
 }
 
 /** The "Locked code, N lines" label of a fold. */

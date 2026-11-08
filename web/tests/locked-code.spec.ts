@@ -270,3 +270,21 @@ for (const theme of THEMES) {
     }
   });
 }
+
+test('the fold chords list in the shortcut help, and Enter on a focused fold button unfolds it', async ({ page }) => {
+  await open(page);
+  await clickCode(page);
+  await page.keyboard.press('Control+k');
+  await page.keyboard.press('Control+0');
+  const labels = page.getByRole('button', { name: /^Locked code, \d+ lines?, show$/ });
+  await expect(labels).toHaveCount(2);
+  await labels.first().focus();
+  await page.keyboard.press('Enter');
+  await expect(labels).toHaveCount(1);
+  await page.keyboard.press('Escape');
+  await page.locator('main h1').focus();
+  await page.keyboard.press('Shift+?');
+  const help = page.getByRole('dialog');
+  await expect(help).toContainText('Fold all');
+  await expect(help).toContainText('Unfold all');
+});

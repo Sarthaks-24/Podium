@@ -1,0 +1,13 @@
+{
+  "about": "When a whole file is sent, the exact locked top at its start and the exact locked bottom at its end are cut off, both or neither (V202-34). Read by the Go test on problems.StripLocked and by the Vitest test on the editor's stripLocked, so the two cannot drift. top and bottom are the locked parts as stored.",
+  "cases": [
+    { "name": "whole file", "top": "import sys\n", "bottom": "print(f(1))\n", "input": "import sys\ndef f(n):\n    return n\nprint(f(1))\n", "want": "def f(n):\n    return n\n" },
+    { "name": "bottom has no newline at its end", "top": "import sys\n", "bottom": "print(f(1))\n", "input": "import sys\ndef f(n):\n    return n\nprint(f(1))", "want": "def f(n):\n    return n\n" },
+    { "name": "stored parts have no final newline", "top": "import sys", "bottom": "print(f(1))", "input": "import sys\nx = 1\nprint(f(1))\n", "want": "x = 1\n" },
+    { "name": "a typed top alone is kept", "top": "import sys\n", "bottom": "print(f(1))\n", "input": "import sys\ndef f(n):\n    return n\n", "want": "import sys\ndef f(n):\n    return n\n" },
+    { "name": "a typed bottom alone is kept", "top": "import sys\n", "bottom": "print(f(1))\n", "input": "def f(n):\n    return n\nprint(f(1))\n", "want": "def f(n):\n    return n\nprint(f(1))\n" },
+    { "name": "a near miss top keeps everything", "top": "import sys\n", "bottom": "print(f(1))\n", "input": "import os\ndef f(n):\n    return n\nprint(f(1))\n", "want": "import os\ndef f(n):\n    return n\nprint(f(1))\n" },
+    { "name": "bottom inside a line is kept", "top": "import sys\n", "bottom": "print(f(1))\n", "input": "import sys\nx print(f(1))\n", "want": "import sys\nx print(f(1))\n" },
+    { "name": "no locked parts", "top": "", "bottom": "", "input": "x = 1\n", "want": "x = 1\n" }
+  ]
+}
