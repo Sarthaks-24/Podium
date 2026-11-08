@@ -153,3 +153,34 @@ func TestExcludedStudentIsAbsentFromBoardAndCSV(t *testing.T) {
 		t.Errorf("CSV:\n%s", csv.String())
 	}
 }
+
+// An AI-edited problem nobody confirmed cannot be pinned through "Update
+// students now" either: SetProblems refuses it, and so does the pin update,
+// which also never offers it as ready.
+func TestPinUpdateRefusesAnAIDraft(t *testing.T) {
+	r := newSvc(t)
+	ctx := context.Background()
+	r.svc.Problems = &problems.Service{DB: r.svc.DB}
+	c := r.contest(t, nil)
+	execNoFK(t, r,
+		`INSERT INTO problems (id, slug, title, time_limit_ms, memory_limit_mb, checker, reference_language, created_at, updated_at, content_hash, validated_hash, tags)
+			VALUES (100, 'a-plus-b', 'A plus B', 1000, 256, 'tokens', 'cpp17', 0, 0, 'h2', 'h2', '["`+problems.AIDraftTag+`"]')`,
+		`INSERT INTO problem_revisions (id, problem_id, rev, content_hash, title, created_at, subtasks)
+			VALUES (1, 100, 1, 'h1', 'A plus B', 0, '[{"idx":1,"points":100}]'), (2, 100, 2, 'h2', 'A plus B', 0, '[{"idx":1,"points":100}]')`,
+		fmt.Sprintf(`INSERT INTO contest_problems (contest_id, problem_id, label, ord, revision_id, points)
+			VALUES (%d, 100, 'A', 0, 1, '[100]')`, c.ID))
+	if err := r.svc.loadProblems(ctx, c); err != nil {
+		t.Fatal(err)
+	}
+	if c.Problems[0].LatestReady {
+		t.Error("an unconfirmed AI draft is offered as a ready update")
+	}
+	_, err := r.svc.UpdatePin(ctx, c.ID, "A", 2, Actor{ID: 1}, false)
+	var fe FieldErrors
+	if !errors.As(err, &fe) || !strings.Contains(fe["problems"], "The problem for label A is an AI draft. Read it and save it in the editor before adding it to a contest.") {
+		t.Fatalf("pin to an AI draft: %v", err)
+	}
+	if n := count(t, r, "SELECT revision_id FROM contest_problems WHERE contest_id = ?", c.ID); n != 1 {
+		t.Errorf("pin moved to revision %d", n)
+	}
+}

@@ -520,6 +520,22 @@ func (s *Service) GetBySlug(ctx context.Context, slug string) (*Contest, error) 
 	return c, s.loadProblems(ctx, c)
 }
 
+// refuseAIDraft is a FieldErrors refusal when the problem's tags carry the AI
+// draft tag, and an error when they cannot be read, so the guard never fails
+// open. Both SetProblems and the pin update use it.
+func refuseAIDraft(tags string, problemID int64, label string) error {
+	var tagList []string
+	if err := json.Unmarshal([]byte(tags), &tagList); err != nil {
+		return fmt.Errorf("problem %d tags: %w", problemID, err)
+	}
+	for _, t := range tagList {
+		if t == problems.AIDraftTag {
+			return FieldErrors{"problems": fmt.Sprintf("The problem for label %s is an AI draft. Read it and save it in the editor before adding it to a contest.", label)}
+		}
+	}
+	return nil
+}
+
 func (s *Service) loadProblems(ctx context.Context, c *Contest) error {
 	return s.loadProblemsOf(ctx, []*Contest{c})
 }
@@ -542,13 +558,13 @@ func (s *Service) loadProblemsOf(ctx context.Context, list []*Contest) error {
 	rows, err := s.DB.QueryContext(ctx, `SELECT cp.contest_id, cp.label, cp.problem_id, coalesce(r.title, p.title), coalesce(r.content_hash, ''), cp.points,
 		coalesce(p.deleted = 0 AND coalesce(p.validated_hash, '') = r.content_hash AND p.content_hash = r.content_hash, 0),
 		coalesce(r.id, 0), coalesce(r.rev, 0), coalesce(r.reconstructed, 0), coalesce(l.id, 0), coalesce(l.rev, 0),
-		l.id IS NOT NULL AND l.reconstructed = 0 AND p.deleted = 0 AND coalesce(p.validated_hash, '') = l.content_hash AND p.content_hash = l.content_hash,
+		l.id IS NOT NULL AND l.reconstructed = 0 AND p.deleted = 0 AND NOT EXISTS (SELECT 1 FROM json_each(p.tags) WHERE value = ?) AND coalesce(p.validated_hash, '') = l.content_hash AND p.content_hash = l.content_hash,
 		coalesce(l.id IS NOT NULL AND l.content_hash = r.content_hash, 0), p.deleted
 		FROM contest_problems cp JOIN problems p ON p.id = cp.problem_id
 		LEFT JOIN problem_revisions r ON r.id = cp.revision_id
 		LEFT JOIN problem_revisions l ON l.problem_id = cp.problem_id
 			AND l.rev = (SELECT max(m.rev) FROM problem_revisions m WHERE m.problem_id = cp.problem_id)
-		WHERE cp.contest_id IN (SELECT value FROM json_each(?)) ORDER BY cp.contest_id, cp.ord`, string(idsJSON))
+		WHERE cp.contest_id IN (SELECT value FROM json_each(?)) ORDER BY cp.contest_id, cp.ord`, problems.AIDraftTag, string(idsJSON))
 	if err != nil {
 		return err
 	}
@@ -717,14 +733,8 @@ func (s *Service) SetProblems(ctx context.Context, id int64, choices []ProblemCh
 		// The wizard's chain can validate a draft on its own; a person
 		// must still read and save it before students can see it.
 		// Unreadable tags are an error, so the guard never fails open.
-		var tagList []string
-		if err := json.Unmarshal([]byte(tags), &tagList); err != nil {
-			return nil, fmt.Errorf("problem %d tags: %w", ch.ProblemID, err)
-		}
-		for _, t := range tagList {
-			if t == problems.AIDraftTag {
-				return nil, FieldErrors{"problems": fmt.Sprintf("The problem for label %s is an AI draft. Read it and save it in the editor before adding it to a contest.", ch.Label)}
-			}
+		if err := refuseAIDraft(tags, ch.ProblemID, ch.Label); err != nil {
+			return nil, err
 		}
 		needs, err := unconfirmedAI(ctx, tx, id, ch.ProblemID)
 		if err != nil {

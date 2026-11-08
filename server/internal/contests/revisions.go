@@ -190,9 +190,12 @@ func (s *Service) applyPin(ctx context.Context, c *Contest, cp ContestProblem, l
 	if current.Int64 != cp.RevisionID {
 		return nil, ErrPinMoved
 	}
-	var hash string
+	var hash, tags string
 	var validated sql.NullString
-	if err := tx.QueryRowContext(ctx, "SELECT content_hash, validated_hash FROM problems WHERE id = ?", cp.ProblemID).Scan(&hash, &validated); err != nil {
+	if err := tx.QueryRowContext(ctx, "SELECT content_hash, validated_hash, tags FROM problems WHERE id = ?", cp.ProblemID).Scan(&hash, &validated, &tags); err != nil {
+		return nil, err
+	}
+	if err := refuseAIDraft(tags, cp.ProblemID, label); err != nil {
 		return nil, err
 	}
 	if to.Reconstructed || to.ContentHash != hash || validated.String != hash {
