@@ -62,9 +62,10 @@ const MaxCompileOutput = 16 << 10
 
 // MaxProgramSource is the largest program source the judge reads: a
 // student's 64 KB plus a function problem's 4 KB locked top and 4 KB
-// locked bottom (v2.0.2, V202-39). A v2.0.1 judge reads at most 64 KB, so
-// the judge is upgraded together with the server.
-const MaxProgramSource = 72 << 10
+// locked bottom (v2.0.2, V202-39), plus the newline Compose may add to
+// each of the three parts. A v2.0.1 judge reads at most 64 KB, so the
+// judge is upgraded together with the server.
+const MaxProgramSource = 64<<10 + 2*(4<<10) + 3
 
 var shaPattern = regexp.MustCompile(`^[0-9a-f]{64}$`)
 

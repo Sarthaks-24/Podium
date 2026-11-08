@@ -223,17 +223,19 @@ func TestContestRejudgeComposesWithTheLiveTop(t *testing.T) {
 }
 
 // The largest file a function problem can send the judge is the student's
-// 64 KB plus a 4 KB top and a 4 KB bottom; the judge's read cap is exactly
-// that (V202-39), so no valid submission is refused and nothing larger is
-// read.
+// (or the reference's or brute force's) 64 KB plus a 4 KB top and a 4 KB
+// bottom, with none ending in a newline: Compose adds one to each, 3 bytes
+// in all. The judge's read cap is exactly that (V202-39), so no valid
+// submission or solution is refused.
 func TestTheJudgeReadsTheLargestComposedFile(t *testing.T) {
-	if MaxSource+2*problems.MaxStarter != judgeapi.MaxProgramSource {
-		t.Fatalf("largest composed file %d bytes, judge reads %d", MaxSource+2*problems.MaxStarter, judgeapi.MaxProgramSource)
+	for name, code := range map[string]int{"student": MaxSource, "reference or brute": problems.MaxSource} {
+		c := problems.Compose(strings.Repeat("a", problems.MaxStarter), strings.Repeat("b", code), strings.Repeat("c", problems.MaxStarter))
+		if len(c.Source) > judgeapi.MaxProgramSource {
+			t.Errorf("%s: largest composed file %d bytes, the judge reads %d", name, len(c.Source), judgeapi.MaxProgramSource)
+		}
 	}
-	c := problems.Compose(strings.Repeat("a", problems.MaxStarter-1)+"\n", strings.Repeat("b", MaxSource-1)+"\n",
-		strings.Repeat("c", problems.MaxStarter-1)+"\n")
-	if len(c.Source) != judgeapi.MaxProgramSource {
-		t.Errorf("largest composed file is %d bytes", len(c.Source))
+	if worst := MaxSource + 2*problems.MaxStarter + 3; worst != judgeapi.MaxProgramSource {
+		t.Errorf("worst case %d bytes, cap %d", worst, judgeapi.MaxProgramSource)
 	}
 }
 

@@ -16,6 +16,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Sarthaks-24/podium/internal/judgeapi"
 	"github.com/Sarthaks-24/podium/internal/problems"
 	"github.com/Sarthaks-24/podium/internal/submissions"
 )
@@ -221,26 +222,35 @@ func TestFunctionContestRejudge(t *testing.T) {
 	}
 }
 
-// The largest composed file: a 4 KB top, 64 KB of student code and a 4 KB
-// bottom, exactly 72 KB, is read by the judge and accepted.
+// The largest composed files are read by the judge and accepted: a 4 KB
+// top, 64 KB of student code and a 4 KB bottom, each ending in a newline
+// (exactly 72 KB), and the same with no part ending in one, so Compose adds
+// three newlines (72 KB and 3 bytes, the cap).
 func TestFunctionLargestComposedFile(t *testing.T) {
 	r := newRig(t)
 	dir := filepath.Join(*examplesDir, "array-sum")
-	pad := func(code string, size int) string {
-		// One comment line fills the part to size bytes, ending in a newline.
-		return code + "//" + strings.Repeat("x", size-len(code)-3) + "\n"
-	}
-	top := pad(mustRead(t, filepath.Join(dir, "top.cpp")), problems.MaxStarter)
-	bottom := pad(mustRead(t, filepath.Join(dir, "bottom.cpp")), problems.MaxStarter)
-	p := r.importPack(t, "array-sum", map[string]string{"top.cpp": top, "bottom.cpp": bottom,
-		"problem.yaml": strings.Replace(mustRead(t, filepath.Join(dir, "problem.yaml")), "slug: array-sum", "slug: array-sum-72k", 1)})
-	code := pad(functionCode["cpp17"]["AC"], submissions.MaxSource)
-	if c := p.ComposeFor("cpp17", code); len(c.Source) != 72<<10 {
-		t.Fatalf("composed file is %d bytes", len(c.Source))
-	}
-	v := r.submitAs(t, submissions.Scope{}, p.ID, "cpp17", code, "72k")
-	if v.Verdict != "AC" || v.Score != 100 {
-		t.Errorf("72 KB composed file: %s %d (%s)\n%s", v.Verdict, v.Score, v.Error, v.CompileOutput)
+	for _, nl := range []string{"\n", ""} {
+		// One comment line fills the part to size bytes.
+		pad := func(code string, size int) string {
+			return code + "//" + strings.Repeat("x", size-len(code)-2-len(nl)) + nl
+		}
+		slug := "array-sum-72k" + map[string]string{"\n": "", "": "-bare"}[nl]
+		top := pad(mustRead(t, filepath.Join(dir, "top.cpp")), problems.MaxStarter)
+		bottom := pad(mustRead(t, filepath.Join(dir, "bottom.cpp")), problems.MaxStarter)
+		p := r.importPack(t, "array-sum", map[string]string{"top.cpp": top, "bottom.cpp": bottom,
+			"problem.yaml": strings.Replace(mustRead(t, filepath.Join(dir, "problem.yaml")), "slug: array-sum", "slug: "+slug, 1)})
+		code := pad(functionCode["cpp17"]["AC"], submissions.MaxSource)
+		want := 72 << 10
+		if nl == "" {
+			want = judgeapi.MaxProgramSource
+		}
+		if c := p.ComposeFor("cpp17", code); len(c.Source) != want {
+			t.Fatalf("%s: composed file is %d bytes, want %d", slug, len(c.Source), want)
+		}
+		v := r.submitAs(t, submissions.Scope{}, p.ID, "cpp17", code, slug)
+		if v.Verdict != "AC" || v.Score != 100 {
+			t.Errorf("%s: %s %d (%s)\n%s", slug, v.Verdict, v.Score, v.Error, v.CompileOutput)
+		}
 	}
 }
 
