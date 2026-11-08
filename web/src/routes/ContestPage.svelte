@@ -14,6 +14,7 @@
   board as students see them, with no honour code and no start button.
 -->
 <script lang="ts">
+  import Badge from '../components/Badge.svelte';
   import ConfirmDialog from '../components/ConfirmDialog.svelte';
   import ContactLine from '../components/ContactLine.svelte';
   import Dialog from '../components/Dialog.svelte';
@@ -577,7 +578,13 @@
             {#if readonlyView}
               <li><h3>{p.label}. {p.title}</h3>{#if p.statement_md}<Markdown source={p.statement_md} />{/if}</li>
             {:else}
-              <li><a href="/contests/{encodeURIComponent(slug)}/problems/{encodeURIComponent(p.label)}">{p.label}. {p.title}</a></li>
+              <li>
+                {#if p.deleted}
+                  {p.label}. {p.title} <Badge text="Deleted problem" />
+                {:else}
+                  <a href="/contests/{encodeURIComponent(slug)}/problems/{encodeURIComponent(p.label)}">{p.label}. {p.title}</a>
+                {/if}
+              </li>
             {/if}
           {/each}
         </ul>
@@ -691,11 +698,13 @@
                   <details class="subs" open={latestLabel === p.label} ontoggle={(e) => onToggle(e, p.label)}>
                     <summary>
                       <span class="mono letter">{p.label}</span>
-                      <span class="ptitle">{p.title}</span>
+                      <span class="ptitle">{p.title}{#if p.deleted} <Badge text="Deleted problem" />{/if}</span>
                       <span class="score"><MonoDigits parts={scoreParts(p.my_score ?? 0, p.max_score)} /></span>
                     </summary>
                     <div class="subs-body">
-                      <a class="btn btn-secondary btn-compact" href="/contests/{encodeURIComponent(slug)}/problems/{encodeURIComponent(p.label)}" aria-label="Open problem {p.label}">Open</a>
+                      {#if !p.deleted}
+                        <a class="btn btn-secondary btn-compact" href="/contests/{encodeURIComponent(slug)}/problems/{encodeURIComponent(p.label)}" aria-label="Open problem {p.label}">Open</a>
+                      {/if}
                       {#if (p.my_submission_count ?? 0) === 0}
                         <p class="muted small">Not tried.</p>
                       {:else if h === 'loading' || h === undefined}

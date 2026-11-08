@@ -1000,3 +1000,57 @@ export function sameTitle<T extends { title: string; archived: boolean }>(title:
   const same = list.filter((p) => titleKey(p.title) === key);
   return same.find((p) => !p.archived) ?? same[0] ?? null;
 }
+
+// Deleting a problem (v2.0.2). Words match the server's refusals (docs/API.md).
+
+/** GET /api/admin/problems/{id}/delete-info: what the delete dialog says before anyone confirms. */
+export interface DeleteInfo {
+  /** A contest holds the problem, or someone submitted or ran code on it. */
+  used: boolean;
+  /** Every contest that holds the problem. */
+  contests: LiveContest[];
+  /** Those that have not ended: they block the delete. */
+  unended: LiveContest[];
+  /** Ended contests with practice on: practice for this problem closes there. */
+  practice: LiveContest[];
+}
+
+/** One row of GET /api/admin/problems/deleted. */
+export interface DeletedProblem {
+  id: number;
+  /** The original slug. */
+  slug: string;
+  title: string;
+  deleted_at: number;
+  /** The email of the person who deleted it, or "" when that account is gone. */
+  deleted_by: string;
+  used: boolean;
+}
+
+/**
+ * Why this person cannot delete the problem, in the server's words, or ""
+ * when they can. Contests that have not ended block everyone; an admin may
+ * delete only a problem that was never used.
+ */
+export function deleteRefusal(info: DeleteInfo, role: string | undefined): string {
+  if (info.unended.length > 0) {
+    return `This problem is in contests that have not ended: ${info.unended.map((c) => c.title).join(', ')}. Remove it from them or wait until they end.`;
+  }
+  if (info.used && role !== 'owner') return 'Only the site owner can delete a problem that has been used. Archive it instead.';
+  return '';
+}
+
+/** The sentence naming the contests where practice closes, or "" when there are none. */
+export function practiceClosing(info: Pick<DeleteInfo, 'practice'>): string {
+  return info.practice.length === 0 ? '' : `Practice for this problem closes in: ${info.practice.map((c) => c.title).join(', ')}.`;
+}
+
+/** True when what was typed is the slug, ignoring spaces around it. */
+export function slugConfirmed(typed: string, slug: string): boolean {
+  return slug !== '' && typed.trim() === slug;
+}
+
+/** The slug a person types to confirm: the original one, also for an archived problem. */
+export function confirmSlug(p: Pick<ProblemSummary, 'slug' | 'archived' | 'archived_slug'>): string {
+  return p.archived && p.archived_slug ? p.archived_slug : p.slug;
+}

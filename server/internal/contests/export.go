@@ -180,6 +180,7 @@ func (s *Service) ExportSubmissions(ctx context.Context, c *Contest) ([]ExportSu
 type ProblemStats struct {
 	Label     string `json:"label"`
 	Title     string `json:"title"`
+	Deleted   bool   `json:"deleted,omitempty"`
 	MaxScore  int    `json:"max_score"`
 	Attempted int    `json:"attempted"`
 	// Solved counts students with the full score.
@@ -223,7 +224,7 @@ func (s *Service) Stats(ctx context.Context, c *Contest) ([]ProblemStats, error)
 	}
 	out := make([]ProblemStats, 0, len(c.Problems))
 	for _, p := range c.Problems {
-		ps := ProblemStats{Label: p.Label, Title: p.Title, MaxScore: p.MaxScore(), Subtasks: []SubtaskStat{}, Histogram: []ScoreBucket{}}
+		ps := ProblemStats{Label: p.Label, Title: p.Title, Deleted: p.Deleted, MaxScore: p.MaxScore(), Subtasks: []SubtaskStat{}, Histogram: []ScoreBucket{}}
 		attempts := map[int64]int{}
 		best := map[int64][]int{}
 		bestSingle := map[int64]int{}

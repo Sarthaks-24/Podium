@@ -6,7 +6,34 @@ Releases are numbered from `v2.0.0`. The builds before it were never released; t
 
 ## v2.0.2 Billota (2026-11-07)
 
-Upgrades v2.0.1 with migrations 0013 to 0015. **Upgrade the judge together with the server**: a v2.0.1 judge refuses the larger source files function problems send (`install.sh upgrade` installs both from one release).
+Unreleased. Upgrades v2.0.1 with migrations 0013 and 0014 (more follow in later stages of this release). **Upgrade the judge together with the server**: a v2.0.1 judge refuses the larger source files function problems send (`install.sh upgrade` installs both from one release).
+
+### v2.0.2 stage 0: pending fixes (2026-11-07)
+
+- "Update students now" on an ended contest asks before it changes final scores (PF-10). When every window is over and the new revision has different subtask points, the update is refused with `409 ended_scores_change`, naming the problem and how many students' totals would change, and nothing is written. The Live tab's dialog shows that list and asks a second time; confirming sends `confirm_ended: true`, applies the update and writes one `ended_repin` row in the history of changes. An update that changes no points, and any update on a live or upcoming contest, works as before. Known limit: the count uses the submissions as judged now; a judging edit that is judged again afterwards can move scores further.
+- The Live tab lists an edited problem's "Update students now" banner after the contest has closed too. It was hidden at the close, which left no way to open practice again on a changed problem in the console.
+- `podium-check` says "Backblaze's daily transaction cap is used up; listings work again after midnight UTC" when B2 refuses a listing for the daily cap, instead of blaming the key, and no longer pipes an empty answer to `jq` (PF-7). `tools/install-test.sh` runs it against a fake `rclone`.
+- A compatibility corpus (the three example packs and one format 3 pack with starters) and golden `ContentHash` values and export digests guard that old packs import, export and hash as before.
+
+### v2.0.2 stage A: delete a problem (2026-11-07)
+
+- Admins and the owner can delete a problem (More, then Delete, then type the slug). An admin can delete a problem that was never used; only the owner can delete one that was used. Nobody can delete a problem while a contest holding it has not ended: the dialog names the contests.
+- A delete keeps the row as a tombstone and clears its tests, solutions, checker, generator and starter code. Revisions, submissions and contest rows stay, so ended contests keep their standings, each student's code and verdicts, and the pinned statement. The problem shows there as "Deleted problem", not as a link, in the student contest page, the contest editor, Live and Results. There is no restore.
+- Practice for a deleted problem closes: its workspace answers `can_submit: false` with "This problem was deleted. Your earlier submissions are still listed.", and Submit, Run and rejudge answer 409 `deleted`. The delete dialog lists the contests where practice closes, and offers Download pack and the results first.
+- A deleted problem refuses every write (edit, tests, Validate, Generate, generator, Restore, import replace, export): 409 `deleted`, "This problem was deleted and cannot be changed." A setter job still waiting or running is closed with "The problem was deleted." and not retried. A contest cannot add or keep a deleted problem.
+- Problems, Deleted problems (admins and the owner) lists them with who deleted each and when. The bank, with or without Show archived, skips them, and their slug is free again.
+- Each delete is one transaction that writes a `problem_deleted` row to the site audit first (person, problem id, original slug, no problem text); any failure rolls everything back.
+- New: `POST /api/admin/problems/{id}/delete`, `GET /api/admin/problems/{id}/delete-info`, `GET /api/admin/problems/deleted`; `deleted` on the contest problem lists and `ProblemStats`; migration `0013_v202_delete.sql`.
+- Known limits: a deleted problem's blobs of a pinned revision stay on disk (ended contests must stay reproducible); `TestNoWritePathSkipsTheRevision` names Delete as the one function that clears revision-recorded columns outside `save`.
+- Upgrade: migration 0013 adds three columns, and the previous binary refuses a database that records it, so rolling back means restoring the pre-upgrade backup (OPERATIONS.md).
+
+### v2.0.2 stage U: problems to finish (2026-11-07)
+
+- On /me, each contest whose every window is over, and which the student may still open, lists "Problems to finish": the problems where neither the contest score nor the best practice score reaches the maximum, never-tried ones included. Each links to practice, or only reads the statement when practice is off, or says "Practice closed: this problem changed after the contest". A link to the editorial shows once it is published and every window is over.
+- Live, frozen, upcoming and before-the-last-window contests carry an empty list. A deleted problem is left out. A withdrawn invite gives no list. Titles are the pinned titles.
+- A student whose practice is open on a problem that changed after the contest now gets 409 `practice_changed` ("This problem was changed after the contest ended, so practice for it is closed here.") instead of "Try again in a few minutes".
+- New: `to_finish` and `editorial` on each row of `GET /api/me/contests`; every existing field is unchanged. No migration, no change to the board, standings or scoring.
+- Known limit: one extra indexed query per entered contest on /me, not measured under load yet.
 
 ### v2.0.2 stage B: function problems (2026-11-07)
 

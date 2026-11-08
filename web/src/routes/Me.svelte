@@ -5,7 +5,9 @@
   loads or when it fails, the name, then email, role, member since and
   last sign-in (GET /api/me/profile). Then Your contests (v4 M2, GET
   /api/me/contests): each one entered, with its date, score and place (none
-  while the contest shows students a frozen board). Below: the theme and colours
+  while the contest shows students a frozen board). Once every window of a
+  contest is over, its row also lists Problems to finish, each with a practice
+  link, and a link to the editorial when it is published. Below: the theme and colours
   (ThemePicker, the same control as the account menu's dialog) and the
   code editor's preferences (EditorSettingsFields, the same fields as the
   workspace's Settings), which are kept on this device. Takes no props.
@@ -68,6 +70,16 @@
     max_score: number;
     place?: number;
     of?: number;
+    // Older servers send neither of these two.
+    to_finish?: ToFinish[];
+    editorial?: boolean;
+  }
+  interface ToFinish {
+    label: string;
+    title: string;
+    score: number;
+    max: number;
+    can_practice: boolean;
   }
   let entered = $state<MyContest[]>([]);
   const contestsPage = loader(
@@ -144,7 +156,30 @@
             {#if c.state === 'live' || c.state === 'frozen' || c.state === 'upcoming'}<span>{studentStateWord(c.state)}</span>{/if}
             <span>Score <MonoDigits parts={scoreParts(c.score, c.max_score)} /></span>
             <span>{c.place && c.of ? `${ordinal(c.place)} of ${c.of}` : 'Place not shown yet'}</span>
+            {#if c.editorial}<a href="/contests/{encodeURIComponent(c.slug)}">Read the editorial</a>{/if}
           </span>
+          {#if c.to_finish?.length}
+            <div class="finish">
+              <p class="finish-title">Problems to finish</p>
+              <ul aria-label="Problems to finish in {c.title}">
+                {#each c.to_finish as p (p.label)}
+                  <li>
+                    {#if p.can_practice}
+                      <a href="/contests/{encodeURIComponent(c.slug)}/problems/{encodeURIComponent(p.label)}">Practice {p.label}. {p.title}</a>
+                    {:else if c.state === 'practice'}
+                      <span>{p.label}. {p.title}</span>
+                    {:else}
+                      <a href="/contests/{encodeURIComponent(c.slug)}/problems/{encodeURIComponent(p.label)}">Read {p.label}. {p.title}</a>
+                    {/if}
+                    <span class="meta"><MonoDigits parts={scoreParts(p.score, p.max)} /></span>
+                    {#if !p.can_practice && c.state === 'practice'}
+                      <span class="meta">Practice closed: this problem changed after the contest</span>
+                    {/if}
+                  </li>
+                {/each}
+              </ul>
+            </div>
+          {/if}
         </li>
       {/each}
     </ul>
@@ -280,6 +315,34 @@
     color: var(--ink-muted);
     font-size: var(--fs-0);
     font-variant-numeric: tabular-nums;
+  }
+
+  .finish {
+    display: grid;
+    gap: var(--space-1);
+    margin-top: var(--space-2);
+  }
+
+  .finish-title {
+    color: var(--ink-muted);
+    font-size: var(--fs-0);
+  }
+
+  .finish ul {
+    display: grid;
+    gap: var(--space-1);
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .entered .finish li {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: var(--space-1) var(--space-4);
+    padding-block: 0;
+    border-bottom: 0;
   }
 
   /* Short choices: a select as wide as the column reads as a text field. */

@@ -181,6 +181,51 @@ else
   echo "skip: jq not installed, podium-check's judge rule not run"
 fi
 
+# podium-check against a fake rclone on PATH (PF-7). The shim answers by
+# FAKE_RCLONE: cap prints B2's daily cap refusal, fail prints another error,
+# ok lists one file. A message printed inside newest_remote never reaches the
+# caller (it runs in $( )), so the callers must act on the exit code.
+if command -v jq >/dev/null; then
+  shim=$tmp/shim; mkdir -p "$shim"
+  cat > "$shim/rclone" <<'SHIM'
+#!/usr/bin/env bash
+case $FAKE_RCLONE in
+  cap)  echo "ERROR : error listing: AccessDenied: Transaction cap exceeded (403)" >&2; exit 1 ;;
+  fail) echo "ERROR : error listing: dial tcp: no such host" >&2; exit 1 ;;
+  ok)   echo '[{"Path":"a","ModTime":"2026-11-07T10:00:00Z"}]' ;;
+esac
+SHIM
+  chmod +x "$shim/rclone"
+  rclone_check() { # FAKE_RCLONE_MODE FUNCTION
+    (
+      export PATH="$shim:$PATH" FAKE_RCLONE=$1
+      set -euo pipefail
+      now=$(date -u +%s) db=$tmp/none.db
+      envget() { printf '%s' "${3:-x}"; }
+      litestream_ready() { return 0; }
+      systemctl() { return 0; }
+      problem() { echo "PROBLEM $2: $3"; }
+      fine() { echo "ok $2"; }
+      eval "$(sed -n '/^newest_remote() {/,/^}/p' "$check")"
+      eval "$(sed -n "/^$2() {/,/^}/p" "$check")"
+      "$2" 2>/dev/null
+    )
+  }
+  cap_text="Backblaze's daily transaction cap is used up; listings work again after midnight UTC (raise it in B2, Caps & Alerts)"
+  for fnc in check_offsite check_litestream; do
+    out=$(rclone_check cap "$fnc" || true)
+    if [[ $out == *"$cap_text"* && $out != *"the key, endpoint or network"* ]]; then pass "$fnc names the daily cap, not the key"; else fail "$fnc on a cap refusal: $out"; fi
+    out=$(rclone_check fail "$fnc" || true)
+    if [[ $out == *"the key, endpoint or network"* && $out != *"$cap_text"* ]]; then pass "$fnc keeps the old text for another failure"; else fail "$fnc on another failure: $out"; fi
+  done
+  nr_rc=0; (export PATH="$shim:$PATH" FAKE_RCLONE=cap; eval "$(sed -n '/^newest_remote() {/,/^}/p' "$check")"; newest_remote x:y >/dev/null 2>&1) || nr_rc=$?
+  if (( nr_rc == 2 )); then pass "newest_remote returns 2 on the cap"; else fail "newest_remote returned $nr_rc on the cap"; fi
+  nr_rc=0; (export PATH="$shim:$PATH" FAKE_RCLONE=fail; eval "$(sed -n '/^newest_remote() {/,/^}/p' "$check")"; newest_remote x:y >/dev/null 2>&1) || nr_rc=$?
+  if (( nr_rc == 1 )); then pass "newest_remote returns 1 on another failure"; else fail "newest_remote returned $nr_rc on another failure"; fi
+  out=$( (export PATH="$shim:$PATH" FAKE_RCLONE=ok; eval "$(sed -n '/^newest_remote() {/,/^}/p' "$check")"; newest_remote x:y) )
+  if [[ $out == 1794045600 ]]; then pass "newest_remote prints the newest time on success"; else fail "newest_remote printed $out"; fi
+fi
+
 # The backup folder comes from backup.env, as podium-backup reads it
 # (C2-009): an upgrade under a moved PODIUM_BACKUP_DIR must find its
 # pre-upgrade backup, and rollback must record that folder.

@@ -236,3 +236,29 @@ func TestTheJudgeReadsTheLargestComposedFile(t *testing.T) {
 		t.Errorf("largest composed file is %d bytes", len(c.Source))
 	}
 }
+
+// A deleted function problem refuses Submit and Run with the deleted copy
+// before anything is composed or stored.
+func TestDeletedFunctionProblemRefusesBeforeComposing(t *testing.T) {
+	r := newRig(t)
+	ctx := context.Background()
+	p := r.importFunction(t)
+	if _, err := r.svc.DB.Exec("UPDATE problems SET deleted = 1, archived = 1 WHERE id = ?", p.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := r.svc.Submit(ctx, SubmitRequest{ProblemID: p.ID, UserID: 1, Language: "cpp17", Source: fnCode}); !errors.Is(err, ErrProblemDeleted) {
+		t.Errorf("submit: %v, want ErrProblemDeleted", err)
+	}
+	if _, err := r.svc.Run(ctx, RunRequest{ProblemID: p.ID, UserID: 1, Language: "cpp17", Source: fnCode}); !errors.Is(err, ErrProblemDeleted) {
+		t.Errorf("run: %v, want ErrProblemDeleted", err)
+	}
+	var rows, blobs int
+	composed := problems.Compose(fnTopCpp, fnCode, fnBottomCpp).Source
+	if err := r.svc.DB.QueryRow(`SELECT (SELECT count(*) FROM submissions WHERE problem_id = ?), (SELECT count(*) FROM blobs WHERE sha = ?)`,
+		p.ID, problems.SHA([]byte(composed))).Scan(&rows, &blobs); err != nil {
+		t.Fatal(err)
+	}
+	if rows != 0 || blobs != 0 {
+		t.Errorf("after the refusals: %d submissions, %d composed blobs", rows, blobs)
+	}
+}

@@ -124,14 +124,17 @@ func (s *Service) cloneProblems(ctx context.Context, tx *sql.Tx, cloneID int64, 
 	for i, p := range src.Problems {
 		var hash, tagsJSON, origin string
 		var validated sql.NullString
-		var solutionByPerson bool
-		err := tx.QueryRowContext(ctx, "SELECT content_hash, validated_hash, tags, origin, solution_by_person FROM problems WHERE id = ? AND archived = 0", p.ProblemID).
-			Scan(&hash, &validated, &tagsJSON, &origin, &solutionByPerson)
+		var solutionByPerson, deleted bool
+		err := tx.QueryRowContext(ctx, "SELECT content_hash, validated_hash, tags, origin, solution_by_person, deleted FROM problems WHERE id = ? AND (archived = 0 OR deleted = 1)", p.ProblemID).
+			Scan(&hash, &validated, &tagsJSON, &origin, &solutionByPerson, &deleted)
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, FieldErrors{"problems": fmt.Sprintf("The problem for label %s no longer exists.", p.Label)}
 		}
 		if err != nil {
 			return nil, err
+		}
+		if deleted {
+			return nil, FieldErrors{"problems": fmt.Sprintf("The problem for label %s was deleted. Remove it from the contest.", p.Label)}
 		}
 		if validated.String != hash {
 			return nil, FieldErrors{"problems": fmt.Sprintf("The problem for label %s is not validated. Validate it before adding it to a contest.", p.Label)}

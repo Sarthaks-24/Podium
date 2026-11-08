@@ -154,6 +154,9 @@ func (s *Service) replaceIn(ctx context.Context, tx *sql.Tx, id int64, pk *Pack,
 	if err != nil {
 		return nil, err
 	}
+	if old.Deleted {
+		return nil, ErrDeleted
+	}
 	if old.Archived {
 		return nil, FieldErrors{"on_conflict": "Restore the problem before replacing it from a pack."}
 	}

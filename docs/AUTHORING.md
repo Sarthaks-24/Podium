@@ -178,6 +178,17 @@ Every save that changes a problem (its statement, title, starter code, tests, li
 - The update is accepted when the revision is the validated content of the problem. When only the statement or title changed, no rejudge is needed, and Live offers a prefilled announcement to post, which is how students learn of the change. When the tests, limits or checker changed, validate first, update, then rejudge.
 - Revisions are kept as the record of what students were served and judged against; there is no list of them in the editor. v1.2 removed the revision lists, statement diffs and the log of what each student was served (V3-4): each served a case no single-college contest has met yet.
 
+## Deleting a problem
+
+Archive hides a problem and you can restore it. **Delete** is for a problem you never want again, and it cannot be undone. Open the problem, choose More, then Delete, and type the problem's slug to confirm.
+
+- An **admin** can delete a problem that was never used: no contest holds it and nobody submitted or ran code on it. The **owner** can also delete a problem that was used.
+- Nobody can delete a problem while a contest that holds it has not ended (a draft, a scheduled or a running one). The dialog names the contests; take the problem out of them or wait.
+- Before you delete a used problem the dialog offers Download pack and a link to each contest's results, and names the ended contests where practice for the problem closes.
+- The problem leaves the bank, and its tests, solutions, checker and generator are removed. The list at Problems, Deleted problems (admins and the owner) shows it with who deleted it and when. Its slug is free to use again.
+- **Ended contests keep everything students and you saw**: the standings, each student's code and verdicts, and the statement as it was pinned. The problem shows there with the label Deleted problem and no link. Practice for it closes, and Submit, Run and judging again are refused with "This problem was deleted. Your earlier submissions are still listed." An ended contest keeps the deleted problem; it cannot be taken out of a contest whose practice already showed students its hidden tests.
+- **Problems to finish.** Once a contest has fully ended, each student sees the problems they have not finished on their profile (/me), with a practice link; a problem you changed after the contest shows there as "Practice closed", and the workspace says "This problem was changed after the contest ended, so practice for it is closed here."
+
 ## Checkers
 
 | Checker | Use when |

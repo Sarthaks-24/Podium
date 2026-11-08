@@ -15,6 +15,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"time"
 )
 
 // Site audit actions (docs/API.md, GET /api/admin/site-audit; the Dashboard's Audit tab).
@@ -29,6 +30,8 @@ const (
 	AuditSessionsEnded   = "sessions_ended"
 	AuditGoogleReset     = "google_reset"
 	AuditModeChanged     = "mode_changed"
+	// AuditProblemDeleted is written by problems.Delete (v2.0.2).
+	AuditProblemDeleted = "problem_deleted"
 )
 
 // Actor is the person an audit row names, as they were when they acted.
@@ -58,6 +61,15 @@ type execer interface {
 
 // recordSite appends a site audit row for the change tx makes.
 func (s *Service) recordSite(ctx context.Context, tx execer, action, subject string, details map[string]any) error {
+	return RecordSite(ctx, tx, s.now(), action, subject, details)
+}
+
+// RecordSite appends a site audit row, stamped at, in the transaction tx of
+// a change made outside this package (problem delete). The actor comes from
+// ctx (WithActor). The header invariant holds for every caller: details
+// carry fixed fields only, never a secret, a header or text from a request
+// body.
+func RecordSite(ctx context.Context, tx execer, at time.Time, action, subject string, details map[string]any) error {
 	if details == nil {
 		details = map[string]any{}
 	}
@@ -71,7 +83,7 @@ func (s *Service) recordSite(ctx context.Context, tx execer, action, subject str
 		id, email, role = a.ID, a.Email, string(a.Role)
 	}
 	if _, err := tx.ExecContext(ctx, `INSERT INTO site_audit (at, actor_id, actor_email, actor_role, action, subject_email, details)
-		VALUES (?, ?, ?, ?, ?, ?, ?)`, s.now().UnixMilli(), id, email, role, action, strings.ToLower(subject), string(b)); err != nil {
+		VALUES (?, ?, ?, ?, ?, ?, ?)`, at.UnixMilli(), id, email, role, action, strings.ToLower(subject), string(b)); err != nil {
 		return fmt.Errorf("record %s in the site audit: %w", action, err)
 	}
 	return nil

@@ -81,14 +81,15 @@ func (d *Handlers) RunIntegrity(w http.ResponseWriter, r *http.Request) {
 
 // problemRef names a problem as the integrity pages show it.
 type problemRef struct {
-	Label string `json:"label"`
-	Title string `json:"title"`
+	Label   string `json:"label"`
+	Title   string `json:"title"`
+	Deleted bool   `json:"deleted,omitempty"`
 }
 
 func problemRefs(c *contests.Contest) map[int64]problemRef {
 	out := map[int64]problemRef{}
 	for _, p := range c.Problems {
-		out[p.ProblemID] = problemRef{Label: p.Label, Title: p.Title}
+		out[p.ProblemID] = problemRef{Label: p.Label, Title: p.Title, Deleted: p.Deleted}
 	}
 	return out
 }

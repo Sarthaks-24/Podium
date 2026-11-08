@@ -11,6 +11,7 @@
   titles), `queue` (optional) and `onrejudge(label)`.
 -->
 <script lang="ts">
+  import Badge from '../Badge.svelte';
   import MonoDigits from '../MonoDigits.svelte';
   import type { AdminContestProblem, ContestStats, QueueHealth } from '../../lib/contests';
 
@@ -27,7 +28,7 @@
   const rows = $derived(
     problems.map((p) => {
       const s = stats?.problems.find((x) => x.label === p.label);
-      return { label: p.label, title: p.title, solved: s?.solved ?? 0, attempted: s?.attempted ?? 0 };
+      return { label: p.label, title: p.title, deleted: p.deleted === true, solved: s?.solved ?? 0, attempted: s?.attempted ?? 0 };
     }),
   );
   // The bars share one scale: everyone who started, or the most attempts when that is larger.
@@ -49,13 +50,13 @@
     <ul class="probs">
       {#each rows as r (r.label)}
         <li>
-          <span class="plabel" title={r.title}><span class="mono">{r.label}</span> {r.title}</span>
+          <span class="plabel" title={r.title}><span class="mono">{r.label}</span> {r.title}{#if r.deleted} <Badge text="Deleted problem" />{/if}</span>
           <span class="bar" aria-hidden="true">
             <span class="tried" style:width={share(r.attempted)}></span>
             <span class="solved" style:width={share(r.solved)}></span>
           </span>
           <span class="nums small"><MonoDigits text={`${r.solved} solved of ${r.attempted} attempted`} /></span>
-          <button type="button" class="btn btn-quiet btn-compact again" aria-label="Judge problem {r.label} again" onclick={() => onrejudge(r.label)}>Judge again</button>
+          <button type="button" class="btn btn-quiet btn-compact again" aria-label="Judge problem {r.label} again" disabled={r.deleted} title={r.deleted ? 'This problem was deleted.' : undefined} onclick={() => onrejudge(r.label)}>Judge again</button>
         </li>
       {/each}
     </ul>

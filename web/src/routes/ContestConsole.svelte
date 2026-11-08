@@ -51,7 +51,7 @@
   import { keepHeadingFocus } from '../lib/focus';
   import { countOf } from '../lib/format';
   import { setTitle } from '../lib/head';
-  import { pinPath, updateEffect, type PinUpdate } from '../lib/history';
+  import { endedChange, endedItems, pinPath, updateEffect, type PinUpdate } from '../lib/history';
   import { RequestSequence } from '../lib/requestSequence';
   import { routeTitle } from '../lib/routing';
   import { session } from '../lib/session.svelte';
@@ -105,7 +105,9 @@
   let questionNews = $state('');
 
   // The one confirmation for pause, resume, end now, updates and every "Judge again".
-  let confirm = $state<null | { title: string; body: string; items?: string[]; label: string; danger: boolean; run: () => Promise<void> }>(null);
+  // A run may return a second confirmation to show in its place.
+  type Confirm = { title: string; body: string; items?: string[]; label: string; danger: boolean; run: () => Promise<void | Confirm> };
+  let confirm = $state<null | Confirm>(null);
   let confirmBusy = $state(false);
   let confirmError = $state('');
 
@@ -139,8 +141,9 @@
   const sentence = $derived(contest ? consoleSentence(contest, ticker.now, { unanswered, started: stats?.started ?? null }) : null);
   /** Names by user id, for change rows that name a student by id only. */
   const names = $derived(new Map([...students.map((s) => [s.user_id, s.name] as const), ...(contest?.extensions ?? []).map((x) => [x.user_id, x.name || x.email] as const)]));
-  // Edits waiting for students; after the close they no longer need anyone.
-  const updates = $derived(contest && !ended ? contest.problems.filter((p) => p.update_available) : []);
+  // Edits waiting for students. They stay listed after the close: an ended contest's practice stays shut on a changed problem
+  // until the update, and the server asks for a second confirmation when it would change final scores (PF-10).
+  const updates = $derived(contest ? contest.problems.filter((p) => p.update_available) : []);
   const judgeErrors = $derived(contest?.queue?.errors ?? 0);
   const judgeTrouble = $derived(sentence !== null && /judge/i.test(sentence.trouble));
   const hasBanners = $derived(updates.length > 0 || judgeErrors > 0 || judgeTrouble || rejudgeNeeded !== '');
@@ -225,7 +228,7 @@
     }
   }
 
-  function ask(title: string, body: string, label: string, danger: boolean, run: () => Promise<void>, items?: string[]) {
+  function ask(title: string, body: string, label: string, danger: boolean, run: () => Promise<void | Confirm>, items?: string[]) {
     confirmError = '';
     confirm = { title, body, label, danger, run, items };
   }
@@ -235,9 +238,13 @@
     confirmBusy = true;
     confirmError = '';
     try {
-      await confirm.run();
+      const next = await confirm.run();
       confirm = null;
-      void openAnnouncePending();
+      if (next) {
+        // Close and reopen, so focus starts on Cancel again and a second Enter cannot confirm.
+        await tick();
+        confirm = next;
+      } else void openAnnouncePending();
     } catch (e) {
       // The refusal stays in the dialog, where it can be read over the backdrop.
       if (handleAuth(e)) confirm = null;
@@ -382,8 +389,24 @@
     const p = contest?.problems.find((x) => x.label === label);
     if (!p || p.latest_revision_id === undefined) return;
     const target = p.latest_revision_id;
-    ask(`Update students now to the edited problem ${label}?`, updateEffect({ label, update_statement_only: p.update_statement_only }), 'Update students now', false, async () => {
-      const out = await sendJSON<PinUpdate<AdminContest>>('PUT', pinPath(id, label), { revision_id: target });
+    const apply = async (confirmEnded: boolean): Promise<void | Confirm> => {
+      let out: PinUpdate<AdminContest>;
+      try {
+        out = await sendJSON<PinUpdate<AdminContest>>('PUT', pinPath(id, label), confirmEnded ? { revision_id: target, confirm_ended: true } : { revision_id: target });
+      } catch (e) {
+        // An ended contest: say what would change and ask again before changing final scores.
+        if (!(e instanceof ApiError)) throw e;
+        const change = endedChange(e.code, e.existing);
+        if (!change) throw e;
+        return {
+          title: `Change the final scores of problem ${label}?`,
+          body: e.message,
+          items: endedItems(change),
+          label: 'Update students now',
+          danger: true,
+          run: () => apply(true),
+        };
+      }
       if (out.contest && typeof out.contest === 'object') contest = out.contest;
       showToast(`Students now get the edited problem ${label}`);
       if (out.rejudge_needed) rejudgeNeeded = label;
@@ -392,7 +415,8 @@
       annTemplate = '';
       annBody = out.announcement_md ?? '';
       announcePending = annBody !== '';
-    });
+    };
+    ask(`Update students now to the edited problem ${label}?`, updateEffect({ label, update_statement_only: p.update_statement_only }), 'Update students now', false, () => apply(false));
   }
 
   async function afterExtend(minutes: number) {

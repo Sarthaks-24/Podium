@@ -122,6 +122,8 @@ export interface ContestProblem {
   max_score: number;
   /** How many times the student submitted it; read as 0 when missing. */
   my_submission_count?: number;
+  /** The problem was deleted: the statement and the student's submissions stay, the workspace is closed. */
+  deleted?: boolean;
 }
 
 export interface Announcement {
@@ -506,6 +508,8 @@ export interface AdminContestProblem extends Partial<Omit<ProblemPin, 'label' | 
   title: string;
   max_score?: number;
   ready?: boolean;
+  /** The problem was deleted: it stays in the contest, the editor cannot open it. */
+  deleted?: boolean;
 }
 
 /**
@@ -632,6 +636,7 @@ export const AUDIT_ACTIONS: readonly { id: string; label: string }[] = [
   { id: 'settings', label: 'Settings' },
   { id: 'problems', label: 'Problems' },
   { id: 'revision', label: 'Problem revisions' },
+  { id: 'ended_repin', label: 'Final scores changed by an update' },
   { id: 'extension', label: 'Extra time for a student' },
   { id: 'extend', label: 'Contest extended' },
   { id: 'pause', label: 'Judging paused' },
@@ -708,6 +713,10 @@ export function auditSummary(e: Pick<AuditEntry, 'action' | 'details'>, names?: 
       const what = d.statement_changed === true && d.judging_changed === true ? 'statement and tests' : d.judging_changed === true ? 'tests' : 'statement';
       return `Moved problem ${str('label')} from revision ${num('from_rev')} to revision ${num('to_rev')} (${what} changed)`;
     }
+    case 'ended_repin': {
+      const pts = (v: unknown) => (Array.isArray(v) ? v.join(', ') : '');
+      return `Moved problem ${str('label')} from revision ${num('from_rev')} to revision ${num('to_rev')} after the contest ended; points per part ${pts(d.points_from)} became ${pts(d.points_to)}`;
+    }
     case 'extension': {
       const who = str('email') || names?.get(num('user_id')) || `user ${num('user_id')}`;
       if (num('minutes') === 0) return `Removed the extension for ${who}`;
@@ -759,6 +768,8 @@ export interface ProblemStats {
   solved: number;
   attempted: number;
   median_attempts: number | null;
+  /** The problem was deleted. */
+  deleted?: boolean;
   /** Students per score; buckets are subtask score sums. */
   histogram: { score: number; students: number }[];
   max_score: number;

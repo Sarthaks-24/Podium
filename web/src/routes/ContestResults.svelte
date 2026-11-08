@@ -21,6 +21,7 @@
 <script lang="ts">
   import { organises } from '../lib/roles';
   import PageState from '../components/PageState.svelte';
+  import Badge from '../components/Badge.svelte';
   import { onMount } from 'svelte';
   import ConfirmDialog from '../components/ConfirmDialog.svelte';
   import ContestAdminNav from '../components/ContestAdminNav.svelte';
@@ -281,7 +282,7 @@
           <tbody>
             {#each stats as p (p.label)}
               <tr>
-                <th scope="row" class="pname"><span class="mono letter">{p.label}</span>{p.title ?? ''}</th>
+                <th scope="row" class="pname"><span class="mono letter">{p.label}</span>{p.title ?? ''}{#if p.deleted} <Badge text="Deleted problem" />{/if}</th>
                 <td class="num right solved"><span class="cell-label">Solved</span>{p.solved}</td>
                 <td class="num right tried"><span class="cell-label">Attempted</span>{p.attempted ?? ''}</td>
                 <td class="num right median"><span class="cell-label">Median attempts</span>{p.median_attempts ?? '-'}</td>

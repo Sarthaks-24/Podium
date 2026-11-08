@@ -9,3 +9,8 @@ import type { Role } from './session.svelte';
 export function organises(role: Role | undefined): boolean {
   return role === 'organiser' || role === 'admin' || role === 'owner';
 }
+
+/** True for admins and the owner: the roles that may delete a problem and read the Deleted list. */
+export function administers(role: Role | undefined): boolean {
+  return role === 'admin' || role === 'owner';
+}

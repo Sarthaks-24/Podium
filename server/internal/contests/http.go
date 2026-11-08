@@ -59,6 +59,9 @@ type contestProblemJSON struct {
 	// RevisionID is the pinned revision.
 	RevisionID  int64  `json:"revision_id"`
 	StatementMD string `json:"statement_md,omitempty"`
+	// Deleted: the problem was deleted. The statement and the viewer's
+	// submissions stay; the workspace is closed.
+	Deleted bool `json:"deleted,omitempty"`
 }
 
 // contestJSON is Contest in docs/API.md.
@@ -118,6 +121,10 @@ func (d *Handlers) contestError(w http.ResponseWriter, r *http.Request, err erro
 		httpx.WriteError(w, http.StatusForbidden, "contest_over", err.Error())
 	case errors.Is(err, ErrNotReady):
 		httpx.WriteError(w, http.StatusConflict, "not_ready", err.Error())
+	case errors.Is(err, ErrPracticeChanged):
+		httpx.WriteError(w, http.StatusConflict, "practice_changed", err.Error())
+	case errors.Is(err, submissions.ErrProblemDeleted), errors.Is(err, problems.ErrDeleted):
+		httpx.WriteError(w, http.StatusConflict, "deleted", err.Error())
 	case errors.Is(err, ErrRevealEarly):
 		httpx.WriteError(w, http.StatusConflict, "too_early", err.Error())
 	case errors.Is(err, ErrExtendEnded):
@@ -248,7 +255,7 @@ func (d *Handlers) contestDetail(ctx context.Context, c *Contest, u auth.User, a
 		}
 		for _, p := range c.Problems {
 			pj := contestProblemJSON{Label: p.Label, Title: p.Title, MaxScore: p.MaxScore(), MySubmissionCount: counts[p.ProblemID],
-				RevisionID: p.RevisionID}
+				RevisionID: p.RevisionID, Deleted: p.Deleted}
 			if access == AccessView || access == AccessManage {
 				revision, err := d.Problems.RevisionByID(ctx, p.RevisionID)
 				if err != nil {
@@ -372,7 +379,9 @@ func (d *Handlers) contestProblem(w http.ResponseWriter, r *http.Request) (*cont
 	if organiser {
 		t.open = true
 		t.scope.MinGap = submissions.OrganiserGap
-		if !t.problem.Ready {
+		if t.problem.Deleted {
+			t.open, t.refusal = false, submissions.ErrProblemDeleted
+		} else if !t.problem.Ready {
 			t.open, t.refusal = false, ErrNotReady
 		}
 		return t, true
@@ -387,8 +396,13 @@ func (d *Handlers) contestProblem(w http.ResponseWriter, r *http.Request) (*cont
 	}
 	t.scope.MinGap, t.scope.MaxPerProblem, t.scope.View = c.MinGap, c.MaxPerProblem, c.ViewOptions(st)
 	switch {
+	case t.problem.Deleted:
+		t.refusal = submissions.ErrProblemDeleted
 	case !t.problem.Ready:
 		t.refusal = ErrNotReady
+		if st.Over && c.PracticeOpen(st, now) {
+			t.refusal = ErrPracticeChanged
+		}
 	case st.Open:
 		t.open = true
 	case st.Over && c.PracticeOpen(st, now):

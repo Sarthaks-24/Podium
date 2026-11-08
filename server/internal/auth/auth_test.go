@@ -454,3 +454,28 @@ func TestProviderRejectsWrongVerifier(t *testing.T) {
 		t.Error("exchange succeeded with a different PKCE verifier")
 	}
 }
+
+// RecordSite is the one writer other packages use: the row names the actor
+// from ctx, lowercases the subject and keeps only the fixed fields given.
+func TestRecordSiteWritesTheActorAndFixedFields(t *testing.T) {
+	s, c := newService(t)
+	ctx := asOwner(context.Background())
+	tx, err := s.DB.BeginTx(ctx, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := auth.RecordSite(ctx, tx, c.t, auth.AuditProblemDeleted, "", map[string]any{"problem_id": 4, "slug": "two-sum"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := tx.Commit(); err != nil {
+		t.Fatal(err)
+	}
+	rows, _, err := s.SiteAudit(context.Background(), auth.SiteAuditFilter{Action: auth.AuditProblemDeleted})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 1 || rows[0].Actor == nil || rows[0].Actor.Email != ownerEmail || rows[0].At != c.t.UnixMilli() ||
+		string(rows[0].Details) != `{"problem_id":4,"slug":"two-sum"}` {
+		t.Fatalf("rows = %+v", rows)
+	}
+}

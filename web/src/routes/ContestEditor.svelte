@@ -18,6 +18,7 @@
   import PageState from '../components/PageState.svelte';
   import { onMount, tick } from 'svelte';
   import ActionMenu from '../components/ActionMenu.svelte';
+  import Badge from '../components/Badge.svelte';
   import ConfirmDialog from '../components/ConfirmDialog.svelte';
   import ContestAdminNav from '../components/ContestAdminNav.svelte';
   import DuplicateDialog from '../components/DuplicateDialog.svelte';
@@ -967,9 +968,11 @@
                     }}
                   />
                   <span class="pick-title">
-                    {p.title}
+                    {p.title}{#if p.deleted} <Badge text="Deleted problem" />{/if}
                     <span class="pick-meta">
-                      {#if p.max_score !== undefined}<MonoDigits text={countOf(p.max_score, 'point')} />{/if}{#if p.ready === false}
+                      {#if p.max_score !== undefined}<MonoDigits text={countOf(p.max_score, 'point')} />{/if}{#if p.deleted}
+                        <span class="muted">It stays here because students used it. It cannot be changed.</span>
+                      {:else if p.ready === false}
                         <span class="warn"><Icon name="alert-triangle" /> Changed since it was added. Validate it, then add it again.</span>
                       {/if}
                     </span>

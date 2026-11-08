@@ -1,8 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
   actorText,
+  endedChange,
+  endedItems,
   feedQuery,
   pinPath,
+  SITE_ACTIONS,
   siteAuditSummary,
   updateEffect,
 } from './history';
@@ -16,6 +19,21 @@ describe('pins', () => {
     expect(updateEffect({ label: 'B', update_statement_only: false })).toMatch(/judge the problem again afterwards/);
   });
 
+});
+
+describe('an update on an ended contest', () => {
+  const existing = { problems: [{ label: 'A', from: [40, 60], to: [30, 70] }], students: 1 };
+
+  it('reads the 409 detail and lists what changes', () => {
+    const change = endedChange('ended_scores_change', existing);
+    expect(change).toEqual({ problems: [{ label: 'A', from: [40, 60], to: [30, 70] }], students: 1 });
+    expect(endedItems(change!)).toEqual(['Problem A: points per part 40, 60 become 30, 70 (total 100 to 100).']);
+  });
+
+  it('ignores every other error', () => {
+    expect(endedChange('conflict', existing)).toBeNull();
+    expect(endedChange('ended_scores_change', null)).toBeNull();
+  });
 });
 
 describe('site audit (People History)', () => {
@@ -41,6 +59,8 @@ describe('site audit (People History)', () => {
       "Changed the organisation's name, phone and contact email",
     );
     expect(siteAuditSummary(row('user_forgotten', { user_id: 7 }, ''))).toBe("Erased account 7 at the person's request");
+    expect(siteAuditSummary(row('problem_deleted', { problem_id: 4, slug: 'two-sum' }, ''))).toBe('Deleted problem two-sum');
+    expect(SITE_ACTIONS.some((a) => a.id === 'problem_deleted')).toBe(true);
     // A later release may add actions; they show by name.
     expect(siteAuditSummary(row('something_new', {}, ''))).toBe('something_new');
   });

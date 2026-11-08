@@ -132,19 +132,28 @@ litestream_ready() {
 # newest_remote REMOTE_PATH [rclone filter flags...]: Unix time of the
 # newest file, or 0. Server-side times only: no request per object, and
 # --fast-list makes it one list call per 1,000 objects (B2 caps list calls
-# at 2,500 a day on the free tier, PF-5).
+# at 2,500 a day on the free tier, PF-5). The callers run it inside $( ), so
+# a message printed here is lost: it answers by exit code instead. 2 means
+# the provider's daily transaction cap is used up, 1 is any other failure.
 newest_remote() {
   local path=$1; shift
-  local t
-  t=$(rclone --config "" --cache-dir /tmp/rclone lsjson -R --fast-list --files-only --no-mimetype --use-server-modtime "$@" "$path" \
-      | jq -r 'map(.ModTime) | max // empty') || return 1
+  local out t err rc=0
+  err=$(mktemp)
+  out=$(rclone --config "" --cache-dir /tmp/rclone lsjson -R --fast-list --files-only --no-mimetype --use-server-modtime "$@" "$path" 2>"$err") || rc=$?
+  if (( rc != 0 )); then
+    if grep -q 'Transaction cap exceeded' "$err"; then rc=2; else cat "$err" >&2; rc=1; fi
+    rm -f "$err"
+    return "$rc"
+  fi
+  rm -f "$err"
+  t=$(jq -r 'map(.ModTime) | max // empty' <<<"$out") || return 1
   [[ -n $t ]] && date -u -d "$t" +%s || echo 0
 }
 
 # check_offsite: the offsite copy of the nightly backup (V3-30), when
 # configured. One listing of the folder per run.
 check_offsite() {
-  local f=/etc/podium/backup.env bucket newest
+  local f=/etc/podium/backup.env bucket newest rc=0
   bucket=$(envget "$f" PODIUM_OFFSITE_BUCKET "")
   [[ -n $bucket ]] || return 0
   newest=$(
@@ -155,7 +164,9 @@ check_offsite() {
     RCLONE_CONFIG_OFF_REGION=$(envget "$f" PODIUM_OFFSITE_REGION "")
     export RCLONE_CONFIG_OFF_ACCESS_KEY_ID RCLONE_CONFIG_OFF_SECRET_ACCESS_KEY RCLONE_CONFIG_OFF_ENDPOINT RCLONE_CONFIG_OFF_REGION
     newest_remote "off:$bucket/$(envget "$f" PODIUM_OFFSITE_PATH podium-nightly)" --s3-no-check-bucket --include '20*.tar.gz' --max-age 7d
-  ) || { problem offsite "offsite bucket unreachable" "listing the offsite bucket failed: the key, endpoint or network in /etc/podium/backup.env is wrong"; return; }
+  ) || rc=$?
+  if (( rc == 2 )); then problem offsite "offsite bucket unreachable" "Backblaze's daily transaction cap is used up; listings work again after midnight UTC (raise it in B2, Caps & Alerts)"; return; fi
+  if (( rc != 0 )); then problem offsite "offsite bucket unreachable" "listing the offsite bucket failed: the key, endpoint or network in /etc/podium/backup.env is wrong"; return; fi
   if (( now - newest > 36 * 3600 )); then
     problem offsite "offsite copy behind" "the newest nightly archive in the offsite bucket is from $( (( newest > 0 )) && date -u -d "@$newest" '+%Y-%m-%d %H:%M UTC' || echo 'over 7 days ago'). journalctl -u podium-backup -n 30"
   else
@@ -172,7 +183,7 @@ check_litestream() {
     problem litestream "Litestream not running" "podium-litestream is $(systemctl is-active podium-litestream 2>/dev/null || true): database changes are not leaving the VM. Start it: sudo systemctl start podium-litestream; journalctl -u podium-litestream -n 30"
     return
   fi
-  local f=/etc/podium/litestream.env newest local_t
+  local f=/etc/podium/litestream.env newest local_t rc=0
   newest=$(
     export RCLONE_CONFIG_LS_TYPE=s3 RCLONE_CONFIG_LS_PROVIDER=Other
     RCLONE_CONFIG_LS_ACCESS_KEY_ID=$(envget "$f" LITESTREAM_ACCESS_KEY_ID "")
@@ -185,7 +196,9 @@ check_litestream() {
     # The S3 replica names a level folder by 4 hex digits (<path>/0000/),
     # not ltx/0 as a file replica does; an absent folder lists as empty.
     newest_remote "ls:$(envget "$f" PODIUM_BACKUP_BUCKET "")/$(envget "$f" PODIUM_BACKUP_PATH "")/0000"
-  ) || { problem litestream "bucket unreachable" "listing the Litestream bucket failed: the key, endpoint or network is wrong"; return; }
+  ) || rc=$?
+  if (( rc == 2 )); then problem litestream "bucket unreachable" "Backblaze's daily transaction cap is used up; listings work again after midnight UTC (raise it in B2, Caps & Alerts)"; return; fi
+  if (( rc != 0 )); then problem litestream "bucket unreachable" "listing the Litestream bucket failed: the key, endpoint or network is wrong"; return; fi
   local_t=$(stat -c %Y "$db")
   [[ -f $db-wal ]] && local_t=$(( $(stat -c %Y "$db-wal") > local_t ? $(stat -c %Y "$db-wal") : local_t ))
   if (( local_t - newest > 600 )); then

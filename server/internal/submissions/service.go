@@ -51,6 +51,9 @@ var (
 	// the pinned revision's. The words are contests'
 	// ErrNotReady's, for a student.
 	ErrPinMoved = errors.New("This problem is being updated by the organisers. Try again in a few minutes.")
+	// ErrProblemDeleted refuses a submit, run or rejudge on a deleted
+	// problem, and the workspace of one outside a contest (409 deleted).
+	ErrProblemDeleted = errors.New("This problem was deleted. Your earlier submissions are still listed.")
 )
 
 // InputError is a request the student can fix (400).
@@ -227,6 +230,11 @@ func (s *Service) Workspace(ctx context.Context, problemID, userID int64, sc Sco
 	}
 	if err != nil {
 		return nil, err
+	}
+	// In a contest the pinned revision is served, so a deleted problem's
+	// statement still reads there; the bank's tombstone has nothing to show.
+	if p.Deleted && sc.RevisionID <= 0 {
+		return nil, ErrProblemDeleted
 	}
 	w := &Workspace{ProblemID: p.ID, Title: p.Title, StatementMD: p.Statement, TimeLimitMS: p.TimeLimitMS,
 		MemoryLimitMB: p.MemoryLimitMB, Languages: []Language{}, Samples: []Sample{}, Submissions: []SubmissionView{},
@@ -601,6 +609,9 @@ func (s *Service) problemForJudging(ctx context.Context, id int64) (*problems.Pr
 	if err != nil {
 		return nil, err
 	}
+	if p.Deleted {
+		return nil, ErrProblemDeleted
+	}
 	if probs := p.Problems(); len(probs) > 0 {
 		return nil, &NotReadyError{probs}
 	}
@@ -788,7 +799,7 @@ func (s *Service) RecordEvents(ctx context.Context, problemID, userID int64, sc 
 	}
 	var have, exists int
 	if err := s.DB.QueryRowContext(ctx, `SELECT (SELECT count(*) FROM integrity_events WHERE user_id = ? AND problem_id = ? AND contest_id = ?),
-		(SELECT count(*) FROM problems WHERE id = ?)`, userID, problemID, sc.ContestID, problemID).Scan(&have, &exists); err != nil {
+		(SELECT count(*) FROM problems WHERE id = ? AND (deleted = 0 OR ? > 0))`, userID, problemID, sc.ContestID, problemID, sc.RevisionID).Scan(&have, &exists); err != nil {
 		return err
 	}
 	if exists == 0 {

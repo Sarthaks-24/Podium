@@ -39,6 +39,31 @@ const EventStatement = "statement"
 // AuditRevision is the audit action of "Update students now".
 const AuditRevision = "revision"
 
+// AuditEndedRepin is the audit action of "Update students now" confirmed on
+// a contest whose windows are over and whose points it changed. It takes
+// the place of the revision row, so one update is one row.
+const AuditEndedRepin = "ended_repin"
+
+// PointsChange is one problem whose pinned points an update would change.
+type PointsChange struct {
+	Label string `json:"label"`
+	From  []int  `json:"from"`
+	To    []int  `json:"to"`
+}
+
+// EndedScoresChange refuses "Update students now" on a contest whose windows
+// are over when it would change the pinned points: that rewrites final
+// scores, so the caller must repeat the request with confirmation.
+type EndedScoresChange struct {
+	Problems []PointsChange
+	// Students is how many students' totals the new points would change.
+	Students int
+}
+
+func (e *EndedScoresChange) Error() string {
+	return fmt.Sprintf("the update would change the final scores of %d students", e.Students)
+}
+
 // PinUpdate is what "Update students now" changed.
 type PinUpdate struct {
 	Label            string
@@ -58,8 +83,10 @@ type PinUpdate struct {
 // problem now (its content hash equals the problem's, and a passing
 // validation covers it). The pin and the subtask points
 // change in one transaction with an audit row.
-// Students get a statement event.
-func (s *Service) UpdatePin(ctx context.Context, contestID int64, label string, revisionID int64, by Actor) (*PinUpdate, error) {
+// Students get a statement event. Once every window is over, an update that
+// changes the pinned points is refused with *EndedScoresChange unless
+// confirmEnded is set, and is then recorded as AuditEndedRepin.
+func (s *Service) UpdatePin(ctx context.Context, contestID int64, label string, revisionID int64, by Actor, confirmEnded bool) (*PinUpdate, error) {
 	c, err := s.Get(ctx, contestID)
 	if err != nil {
 		return nil, err
@@ -72,6 +99,9 @@ func (s *Service) UpdatePin(ctx context.Context, contestID int64, label string, 
 	}
 	if cp == nil {
 		return nil, ErrNotFound
+	}
+	if cp.Deleted {
+		return nil, problems.ErrDeleted
 	}
 	to, err := s.Problems.RevisionByID(ctx, revisionID)
 	if errors.Is(err, problems.ErrNotFound) || (err == nil && to.ProblemID != cp.ProblemID) {
@@ -89,14 +119,63 @@ func (s *Service) UpdatePin(ctx context.Context, contestID int64, label string, 
 			return nil, err
 		}
 	}
-	return s.applyPin(ctx, c, *cp, label, from, to, by)
+	// One clock read decides both the guard and the audit action, so a
+	// contest that closes mid-request is never recorded as an unconfirmed ended_repin.
+	ended := !s.now().Before(c.Final())
+	if ended && !confirmEnded {
+		if err := s.endedScoresChange(ctx, c, *cp, to); err != nil {
+			return nil, err
+		}
+	}
+	return s.applyPin(ctx, c, *cp, label, from, to, by, ended)
+}
+
+// endedScoresChange is nil when moving cp to revision to leaves the pinned
+// points alone, and otherwise says which problem changes and how many
+// students' totals move, scoring the contest's own submissions under the old
+// and the new points.
+func (s *Service) endedScoresChange(ctx context.Context, c *Contest, cp ContestProblem, to *problems.Revision) error {
+	points := make([]int, 0, len(to.Subtasks))
+	for _, st := range to.Subtasks {
+		points = append(points, st.Points)
+	}
+	if slices.Equal(points, cp.Points) {
+		return nil
+	}
+	people, err := s.participants(ctx, c)
+	if err != nil {
+		return err
+	}
+	entries, _, err := s.entries(ctx, c, 0)
+	if err != nil {
+		return err
+	}
+	board := s.scoringBoard(c)
+	moved := board
+	moved.Problems = slices.Clone(board.Problems)
+	for i := range moved.Problems {
+		if moved.Problems[i].Label == cp.Label {
+			moved.Problems[i].Points = points
+		}
+	}
+	was := map[int64]int{}
+	for _, row := range Compute(board, people, entries, false) {
+		was[row.UserID] = row.Total
+	}
+	students := 0
+	for _, row := range Compute(moved, people, entries, false) {
+		if was[row.UserID] != row.Total {
+			students++
+		}
+	}
+	return &EndedScoresChange{Problems: []PointsChange{{Label: cp.Label, From: cp.Points, To: points}}, Students: students}
 }
 
 // applyPin writes the update UpdatePin read and checked, in one
 // transaction that first re-reads the label's pin: one moved since cp was
 // read is ErrPinMoved, so two organisers never both update from the same
 // revision.
-func (s *Service) applyPin(ctx context.Context, c *Contest, cp ContestProblem, label string, from, to *problems.Revision, by Actor) (*PinUpdate, error) {
+func (s *Service) applyPin(ctx context.Context, c *Contest, cp ContestProblem, label string, from, to *problems.Revision, by Actor, ended bool) (*PinUpdate, error) {
 	contestID := c.ID
 	tx, err := s.DB.BeginTx(ctx, nil)
 	if err != nil {
@@ -143,7 +222,12 @@ func (s *Service) applyPin(ctx context.Context, c *Contest, cp ContestProblem, l
 	if from != nil {
 		details["from_revision_id"], details["from_rev"] = from.ID, from.Rev
 	}
-	if err := s.recordTx(ctx, tx, contestID, by, AuditRevision, details); err != nil {
+	action := AuditRevision
+	if u.PointsChanged && ended {
+		action = AuditEndedRepin
+		details["points_from"], details["points_to"] = cp.Points, points
+	}
+	if err := s.recordTx(ctx, tx, contestID, by, action, details); err != nil {
 		return nil, err
 	}
 	if err := tx.Commit(); err != nil {
