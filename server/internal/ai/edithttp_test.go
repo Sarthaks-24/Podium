@@ -80,3 +80,31 @@ func TestDraftIsSingleUse(t *testing.T) {
 		t.Error("a released draft was refused")
 	}
 }
+
+// A draft stuck in accepting is dropped once its deadline passes, and an
+// accept that is still within it is left alone.
+func TestStuckAcceptingDraftIsSwept(t *testing.T) {
+	var e editDrafts
+	d := draftOf(1, 1, 10)
+	d.id = "stuck"
+	if err := e.put(d); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := e.begin("stuck", 1, 1); !ok {
+		t.Fatal("begin refused a fresh draft")
+	}
+	e.mu.Lock()
+	e.sweep()
+	e.mu.Unlock()
+	if _, ok := e.m["stuck"]; !ok {
+		t.Fatal("a draft within its accept deadline was swept")
+	}
+	e.mu.Lock()
+	d.acceptingSince = time.Now().Add(-acceptingKeep - time.Second)
+	d.created = time.Now().Add(-editKeep - time.Second)
+	e.sweep()
+	e.mu.Unlock()
+	if _, ok := e.m["stuck"]; ok {
+		t.Error("a draft stuck in accepting was never swept")
+	}
+}

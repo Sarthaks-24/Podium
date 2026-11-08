@@ -41,6 +41,9 @@ const (
 	maxDraftBytes = 32 << 20
 	// maxDraftSize bounds one merged draft.
 	maxDraftSize = 2 << 20
+	// acceptingKeep is how long a draft may stay in accepting; after it
+	// the sweep drops the draft, so a stuck Accept cannot hold it forever.
+	acceptingKeep = 2 * time.Minute
 )
 
 // errDraftsFull says the server holds too many drafts to keep another.
@@ -58,7 +61,8 @@ type editDraft struct {
 	created     time.Time
 	// accepting is set while an Accept of this draft runs, so a second
 	// Accept does not run beside it.
-	accepting bool
+	accepting      bool
+	acceptingSince time.Time
 }
 
 func (d *editDraft) size() int {
@@ -80,7 +84,11 @@ type editDrafts struct {
 func (e *editDrafts) sweep() {
 	now := time.Now()
 	for id, d := range e.m {
-		if now.Sub(d.created) > editKeep && !d.accepting {
+		if d.accepting {
+			if now.Sub(d.acceptingSince) > acceptingKeep {
+				delete(e.m, id)
+			}
+		} else if now.Sub(d.created) > editKeep {
 			delete(e.m, id)
 		}
 	}
@@ -147,7 +155,7 @@ func (e *editDrafts) begin(id string, userID, problemID int64) (*editDraft, bool
 	if !ok || d.userID != userID || d.problemID != problemID || d.accepting {
 		return nil, false
 	}
-	d.accepting = true
+	d.accepting, d.acceptingSince = true, time.Now()
 	return d, true
 }
 
