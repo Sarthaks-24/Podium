@@ -71,3 +71,17 @@ for (const theme of ['light', 'dark'] as const) {
     }
   });
 }
+
+test('Add standard imports fills the top and the preview joins it with the starter and the bottom', async ({ page }) => {
+  await problems.mockApi(page);
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto('/admin/problems/1');
+  await page.locator('summary', { hasText: 'What students write' }).click();
+  await page.getByLabel('One function, between locked code').check();
+  await page.getByRole('button', { name: 'Add standard imports' }).click();
+  await expect(page.getByLabel('Locked top in C++17')).toHaveValue('#include <bits/stdc++.h>\nusing namespace std;\n');
+  await page.getByLabel('Locked bottom in C++17').fill('int main() {}\n');
+  const preview = page.getByLabel(/^What students see in C\+\+17/);
+  await expect(preview).toContainText('using namespace std;');
+  await expect(preview).toContainText('int main() {}');
+});

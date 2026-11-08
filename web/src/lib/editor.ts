@@ -668,7 +668,13 @@ export function createEditor(o: EditorOptions): EditorHandle {
         lockField.init(() => ({ topEnd: first.topEnd, bottomStart: first.bottomStart })),
         lockGuard(() => o.onLockedEdit?.()),
         lockedLines,
-        lineNumbers(),
+        // Locked lines have no number; the student's lines count from 1, as compiler messages do.
+        lineNumbers({
+          formatNumber: (n, state) => {
+            const top = topLinesOf(state);
+            return n <= top || n > state.doc.lineAt(codeRange(state).to).number ? '' : String(n - top);
+          },
+        }),
         // Code only: the statement is prose.
         o.language === 'text' ? [] : [foldGutter(), lockFolds, lintGutter(), dropEditedMarks],
         highlightActiveLineGutter(),

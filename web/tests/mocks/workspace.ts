@@ -130,6 +130,8 @@ export interface MockOptions {
   draft?: { language: string; source: string } | null;
   submissions?: Json[];
   failDrafts?: boolean;
+  /** Fields merged over the workspace answer, such as a function problem's mode and locked code. */
+  workspace?: Json;
 }
 
 /** Installs the API mock for one page and returns its mutable state. */
@@ -192,6 +194,7 @@ export async function mockApi(page: Page, options: MockOptions = {}) {
           draft: state.draft,
           submissions: [...state.submissions].sort((a, b) => Number(b.id) - Number(a.id)),
           server_now: T0,
+          ...options.workspace,
         });
       }
       if (path === '/api/workspace/404' && method === 'GET') {
