@@ -722,6 +722,14 @@
           {/if}
         </section>
 
+        <!-- After the list, so the problems stay in the first screen on a phone. -->
+        {#if contest.description_md.trim() !== ''}
+          <section class="section" aria-labelledby="about-title">
+            <h2 id="about-title">About this contest</h2>
+            <div class="description"><Markdown source={contest.description_md} /></div>
+          </section>
+        {/if}
+
         {#if contest.editorial_md && contest.editorial_md.trim() !== ''}
           <section class="section" aria-labelledby="editorial-title">
             <h2 id="editorial-title">Editorial</h2>

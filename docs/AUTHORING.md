@@ -345,7 +345,7 @@ A practice set is a contest that exists only so students can practise its proble
 
 1. Create a contest and add the problems (validated, and not tagged "ai draft").
 2. Set its start and end in the past, for example last month, and turn "practice after the end" on.
-3. Write the introduction in the contest's description: it is what students read first.
+3. Write the introduction in the contest's description: students see it as "About this contest" on the contest page, below their problem list.
 4. Publish it. It is already ended, so students invited to it can open each problem in practice at once.
 
 **Limits.**
