@@ -10,10 +10,18 @@
  * counted from each transaction's user event, never from timing. A
  * contest that blocks paste gets a compartment that refuses every paste
  * and drop and tells the caller, so the workspace can say why.
+ *
+ * A function problem (v2.0.2) has locked code: the document holds the locked
+ * top, the student's code and the locked bottom, but everything the caller
+ * sees (getDoc, setDoc, onChange, cursor and mark lines, jumpTo) is the
+ * student's code alone. A transaction filter refuses any change that touches
+ * a locked range and tells the caller; a pasted whole file that holds the
+ * exact top or bottom has them cut off; the cursor stays inside the student's
+ * code; each locked block can be folded to "Locked code, N lines".
  */
 import { autocompletion, closeBrackets, closeBracketsKeymap, closeCompletion, completeAnyWord, completeFromList, currentCompletions, snippetCompletion, type Completion } from '@codemirror/autocomplete';
 import { copyLineDown, copyLineUp, defaultKeymap, history, historyKeymap, indentMore, indentWithTab, selectParentSyntax } from '@codemirror/commands';
-import { bracketMatching, foldGutter, HighlightStyle, indentOnInput, indentRange, indentUnit, syntaxHighlighting } from '@codemirror/language';
+import { bracketMatching, codeFolding, foldEffect, foldedRanges, foldGutter, foldService, HighlightStyle, indentOnInput, indentRange, indentUnit, syntaxHighlighting, unfoldEffect } from '@codemirror/language';
 import { forEachDiagnostic, lintGutter, previousDiagnostic, setDiagnostics, setDiagnosticsEffect, type Diagnostic } from '@codemirror/lint';
 import {
   findNext,
@@ -25,9 +33,10 @@ import {
   SearchQuery,
   setSearchQuery,
 } from '@codemirror/search';
-import { Compartment, EditorSelection, EditorState, type Extension } from '@codemirror/state';
+import { Annotation, Compartment, EditorSelection, EditorState, RangeSetBuilder, StateEffect, StateField, type ChangeSpec, type Extension, Transaction, type TransactionSpec } from '@codemirror/state';
 import {
   crosshairCursor,
+  Decoration,
   drawSelection,
   EditorView,
   highlightActiveLine,
@@ -41,6 +50,7 @@ import {
 } from '@codemirror/view';
 import { tags as t } from '@lezer/highlight';
 import { vscodeKeymap } from '@replit/codemirror-vscode-keymap';
+import { layoutDoc, lockedLabel, normalise, stripLocked, type LockedParts } from './lockedCode';
 import type { Language } from './workspace';
 
 const MODES: Record<Language, () => Promise<Extension>> = {
@@ -123,6 +133,19 @@ const theme = EditorView.theme(
     '.cm-diagnostic-warning': { borderLeftColor: 'var(--code-function)' },
     '.cm-diagnostic-info': { borderLeftColor: 'var(--code-gutter)' },
     '.cm-foldGutter .cm-gutterElement': { padding: '0 var(--space-1)', cursor: 'pointer' },
+    // Locked code (v2.0.2): muted lines, and the fold's label as a button.
+    '.cm-lockedLine': { backgroundColor: 'color-mix(in srgb, var(--code-gutter) 8%, var(--well))' },
+    '.cm-foldPlaceholder': {
+      padding: '0 var(--space-2)',
+      border: 'var(--rule) solid var(--code-gutter)',
+      borderRadius: 'var(--radius)',
+      backgroundColor: 'var(--code-active-line)',
+      color: 'var(--well-ink)',
+      font: 'inherit',
+      fontFamily: 'var(--font-sans)',
+      fontSize: 'var(--fs-0)',
+      cursor: 'pointer',
+    },
     '.cm-tooltip-autocomplete > ul > li[aria-selected]': { backgroundColor: 'var(--code-selection)', color: 'var(--well-ink)' },
   },
   { dark: true },
@@ -140,6 +163,8 @@ export interface EditorCallbacks {
   onCursor?: (line: number, col: number) => void;
   /** A paste or drop was refused because `blockPaste` is on. */
   onPasteBlocked?: () => void;
+  /** An edit was refused because it touched locked code. */
+  onLockedEdit?: () => void;
 }
 
 export interface EditorOptions extends EditorCallbacks {
@@ -158,6 +183,10 @@ export interface EditorOptions extends EditorCallbacks {
   readOnly?: boolean;
   /** Refuse pastes and drops into the editor (a contest's exam option). */
   blockPaste?: boolean;
+  /** A function problem's locked top and bottom for the language; `doc` is then the student's code alone. */
+  locked?: LockedParts | null;
+  /** Start with the locked blocks folded. */
+  collapseLocked?: boolean;
 }
 
 /** The handle the component keeps. */
@@ -168,16 +197,194 @@ export interface EditorHandle {
   setWrap(on: boolean): void;
   setReadOnly(on: boolean): void;
   setBlockPaste(on: boolean): void;
-  /** Replaces the whole document; not counted as typing. */
+  /** Replaces the student's code (the whole document when nothing is locked); not counted as typing. */
   setDoc(doc: string): void;
+  /** The student's code, without the locked top and bottom. */
   getDoc(): string;
-  /** Marks compiler messages in the code (underline, gutter, hover); an empty list clears them. */
+  /** Swaps the locked top and bottom (a language switch), keeping the code; null removes them. */
+  setLocked(parts: LockedParts | null): void;
+  /** Folds or unfolds both locked blocks. */
+  setLockedCollapsed(on: boolean): void;
+  /** Marks compiler messages in the code (underline, gutter, hover); an empty list clears them. Lines count from the student's first line. */
   setMarks(marks: readonly EditorMark[]): void;
   /** Moves the cursor to a line (and column), scrolls it into view and focuses. */
   jumpTo(line: number, col: number | null): void;
   focus(): void;
   destroy(): void;
 }
+
+// Locked code (v2.0.2). The document is top + student's code + bottom. The
+// field holds where the student's code starts (`topEnd`, after the top and
+// its newline) and where the locked bottom starts (`bottomStart`, at the
+// newline that ends the student's last line; -1 for none). Everything locked
+// is before `topEnd` or from `bottomStart` on.
+
+interface Lock {
+  topEnd: number;
+  bottomStart: number;
+}
+
+const NO_LOCK: Lock = { topEnd: 0, bottomStart: -1 };
+const setLock = StateEffect.define<Lock>();
+/** Marks a transaction that replaces the locked parts themselves. */
+const lockBypass = Annotation.define<boolean>();
+
+const lockField = StateField.define<Lock>({
+  create: () => NO_LOCK,
+  update(l, tr) {
+    for (const e of tr.effects) if (e.is(setLock)) return e.value;
+    if (!tr.docChanged || (l.topEnd === 0 && l.bottomStart < 0)) return l;
+    // Text typed at the edge of the student's code belongs to the code.
+    return { topEnd: tr.changes.mapPos(l.topEnd, -1), bottomStart: l.bottomStart < 0 ? -1 : tr.changes.mapPos(l.bottomStart, 1) };
+  },
+});
+
+const lockOf = (state: EditorState): Lock => state.field(lockField, false) ?? NO_LOCK;
+const isLocked = (l: Lock) => l.topEnd > 0 || l.bottomStart >= 0;
+
+/** The student's part of the document. */
+function codeRange(state: EditorState): { from: number; to: number } {
+  const l = lockOf(state);
+  return { from: l.topEnd, to: l.bottomStart < 0 ? state.doc.length : l.bottomStart };
+}
+
+function codeOf(state: EditorState): string {
+  const r = codeRange(state);
+  return state.doc.sliceString(r.from, r.to);
+}
+
+/** How many lines the locked top takes: the offset of the student's first line. */
+function topLinesOf(state: EditorState): number {
+  const l = lockOf(state);
+  return l.topEnd === 0 ? 0 : state.doc.lineAt(l.topEnd - 1).number;
+}
+
+/** The two blocks a fold can hide, without their line ends; `bottom` says which is which. */
+function lockBlocks(state: EditorState): { from: number; to: number; bottom: boolean }[] {
+  const l = lockOf(state);
+  const out: { from: number; to: number; bottom: boolean }[] = [];
+  if (l.topEnd > 1) out.push({ from: 0, to: l.topEnd - 1, bottom: false });
+  if (l.bottomStart >= 0 && state.doc.length > l.bottomStart + 1) out.push({ from: l.bottomStart + 1, to: state.doc.length, bottom: true });
+  return out;
+}
+
+const lockedLines = EditorView.decorations.compute([lockField], (state) => {
+  const l = lockOf(state);
+  const b = new RangeSetBuilder<Decoration>();
+  const line = Decoration.line({ class: 'cm-lockedLine' });
+  if (l.topEnd > 0) for (let n = 1; n <= topLinesOf(state); n++) b.add(state.doc.line(n).from, state.doc.line(n).from, line);
+  if (l.bottomStart >= 0) for (let n = state.doc.lineAt(l.bottomStart + 1).number; n <= state.doc.lines; n++) b.add(state.doc.line(n).from, state.doc.line(n).from, line);
+  return b.finish();
+});
+
+/** A fold per locked block, labelled "Locked code, N lines". */
+const lockFolds: Extension = [
+  foldService.of((state, lineStart) => lockBlocks(state).find((b) => b.from === lineStart) ?? null),
+  codeFolding({
+    preparePlaceholder: (state, range) => {
+      const b = lockBlocks(state).find((x) => x.from === range.from && x.to === range.to);
+      return b ? lockedLabel(state.doc.lineAt(b.to).number - state.doc.lineAt(b.from).number + 1) : null;
+    },
+    placeholderDOM: (view, onclick, prepared) => {
+      if (typeof prepared === 'string') {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'cm-foldPlaceholder';
+        button.textContent = prepared;
+        button.setAttribute('aria-label', `${prepared}, show`);
+        button.onclick = onclick;
+        return button;
+      }
+      const span = document.createElement('span');
+      span.className = 'cm-foldPlaceholder';
+      span.textContent = '…';
+      span.setAttribute('aria-label', view.state.phrase('folded code'));
+      span.title = view.state.phrase('unfold');
+      span.onclick = onclick;
+      return span;
+    },
+  }),
+];
+
+/** Which locked blocks are folded now. */
+function foldedBlocks(state: EditorState): { top: boolean; bottom: boolean } {
+  const out = { top: false, bottom: false };
+  const blocks = lockBlocks(state);
+  foldedRanges(state).between(0, state.doc.length, (from, to) => {
+    const b = blocks.find((x) => x.from === from && x.to === to);
+    if (b) out[b.bottom ? 'bottom' : 'top'] = true;
+  });
+  return out;
+}
+
+/** The selection kept inside the student's code, or null when it already is. */
+function clampToCode(state: EditorState, sel: EditorSelection, docLength: number): EditorSelection | null {
+  const l = lockOf(state);
+  const lo = l.topEnd;
+  const hi = l.bottomStart < 0 ? docLength : l.bottomStart;
+  const at = (n: number) => Math.min(Math.max(n, lo), hi);
+  let moved = false;
+  const ranges = sel.ranges.map((r) => {
+    const a = at(r.anchor);
+    const h = at(r.head);
+    if (a !== r.anchor || h !== r.head) moved = true;
+    return EditorSelection.range(a, h);
+  });
+  return moved ? EditorSelection.create(ranges, sel.mainIndex) : null;
+}
+
+/**
+ * The guard on every transaction: a change that touches locked text is
+ * refused (and the caller told); a pasted or dropped whole file that holds
+ * the exact top or bottom is cut back to the student's part and replaces
+ * only the student's code, even when the selection covered everything; the
+ * cursor is kept inside the student's code.
+ */
+const lockGuard = (notify: () => void): Extension =>
+  EditorState.transactionFilter.of((tr): Transaction | readonly TransactionSpec[] => {
+    const lock = lockOf(tr.startState);
+    if (!isLocked(lock) || tr.annotation(lockBypass)) return tr;
+    const doc = tr.startState.doc;
+    if (tr.docChanged) {
+      const edits: { from: number; to: number; text: string }[] = [];
+      tr.changes.iterChanges((from, to, _a, _b, text) => edits.push({ from, to, text: text.toString() }));
+      let touched = false;
+      tr.changes.iterChangedRanges((from, to) => {
+        if (from < lock.topEnd || (lock.bottomStart >= 0 && to > lock.bottomStart)) touched = true;
+      });
+      const drop = tr.isUserEvent('input.drop');
+      if (edits.length === 1 && (drop || tr.isUserEvent('input.paste'))) {
+        const top = doc.sliceString(0, lock.topEnd);
+        const bottom = lock.bottomStart < 0 ? '' : `${doc.sliceString(lock.bottomStart + 1)}\n`;
+        const cut = stripLocked(edits[0].text, top, bottom);
+        if (cut.top || cut.bottom) {
+          const hi = lock.bottomStart < 0 ? doc.length : lock.bottomStart;
+          const from = Math.max(edits[0].from, lock.topEnd);
+          const to = Math.min(edits[0].to, hi);
+          // The newline that ends the student's last line is the lock's own.
+          const text = cut.bottom && lock.bottomStart >= 0 && to === hi ? cut.text.replace(/\n$/, '') : cut.text;
+          if (from <= to) {
+            return [{ changes: { from, to, insert: text }, selection: EditorSelection.cursor(from + text.length), scrollIntoView: true, userEvent: drop ? 'input.drop' : 'input.paste' }];
+          }
+        }
+      }
+      if (touched) {
+        notify();
+        return [];
+      }
+    }
+    if (!tr.docChanged && !tr.selection) return tr;
+    const clamped = clampToCode(tr.state, tr.state.selection, tr.newDoc.length);
+    return clamped ? [tr as unknown as TransactionSpec, { selection: clamped, sequential: true }] : tr;
+  });
+
+/** Mod-A selects the student's code, not the locked parts around it. */
+const selectCode: Command = (view) => {
+  if (!isLocked(lockOf(view.state))) return false;
+  const r = codeRange(view.state);
+  view.dispatch({ selection: { anchor: r.from, head: r.to }, userEvent: 'select' });
+  return true;
+};
 
 function inserted(tr: { changes: { iterChanges: (fn: (a: number, b: number, c: number, d: number, text: { length: number }) => void) => void } }): number {
   let n = 0;
@@ -192,8 +399,11 @@ function inserted(tr: { changes: { iterChanges: (fn: (a: number, b: number, c: n
 /** Mod+Shift+Enter: a new line above each cursor, at the line's indent. */
 export const insertLineAbove: Command = (view) => {
   if (view.state.readOnly) return false;
+  const code = codeRange(view.state);
   const tr = view.state.changeByRange((r) => {
     const line = view.state.doc.lineAt(r.head);
+    // A cursor in locked code adds nothing there.
+    if (line.from < code.from || line.from > code.to) return { range: r };
     const indent = /^\s*/.exec(line.text)?.[0] ?? '';
     return { changes: { from: line.from, insert: indent + view.state.lineBreak }, range: EditorSelection.cursor(line.from + indent.length) };
   });
@@ -204,11 +414,14 @@ export const insertLineAbove: Command = (view) => {
 /**
  * Shift+Alt+F: re-indents the whole file with the language's own indent
  * rules, VS Code's "Format Document" key (V4-5). Not a formatter: spacing
- * inside a line is left as typed. The cursor stays on its code.
+ * inside a line is left as typed. The cursor stays on its code. Locked
+ * lines are skipped.
  */
 export const reindentFile: Command = (view) => {
   if (view.state.readOnly) return false;
-  const changes = indentRange(view.state, 0, view.state.doc.length);
+  // Locked lines keep their text; only the student's code is re-indented.
+  const code = codeRange(view.state);
+  const changes = indentRange(view.state, code.from, code.to);
   if (changes.empty) return true;
   view.dispatch({ changes, userEvent: 'input.indent' });
   return true;
@@ -289,10 +502,13 @@ export interface EditorMark {
  * The marks as diagnostics, from the column to the line's end. With no
  * column, or one at the end ("expected ';'" points past the last
  * character), the line's code is underlined from its first non-blank.
+ * `offset` is the number of locked lines above the student's code, so a
+ * mark's line (counted from the student's first line) lands on the right
+ * line of the document.
  */
-export function markDiagnostics(doc: EditorState['doc'], marks: readonly EditorMark[]): Diagnostic[] {
+export function markDiagnostics(doc: EditorState['doc'], marks: readonly EditorMark[], offset = 0): Diagnostic[] {
   return marks.map((m) => {
-    const l = doc.line(Math.min(Math.max(1, m.line), doc.lines));
+    const l = doc.line(Math.min(Math.max(1, m.line + offset), doc.lines));
     const at = l.from + Math.max(0, (m.col ?? 1) - 1);
     const from = m.col !== null && at < l.to ? at : l.from + (l.text.length - l.text.trimStart().length);
     return { from: Math.min(from, l.to), to: l.to, severity: m.severity, message: m.text };
@@ -419,11 +635,14 @@ export function createEditor(o: EditorOptions): EditorHandle {
     return true;
   };
   const blockPasteExt = (on: boolean) => (on ? EditorView.domEventHandlers({ paste: refuse, drop: refuse }) : []);
+  const first = layoutDoc(o.locked?.top ?? '', o.doc, o.locked?.bottom ?? '');
+  let lastCode = first.doc.slice(first.topEnd, first.bottomStart < 0 ? undefined : first.bottomStart);
 
   // Podium's own keys win over VS Code's (Mod-Enter would insert a line there).
   const own = keymap.of([
     { key: 'Mod-Enter', preventDefault: true, run: () => (o.onSubmit(), true) },
     { key: "Mod-'", preventDefault: true, run: () => (o.onRun(), true) },
+    { key: 'Mod-a', preventDefault: true, run: selectCode },
   ]);
 
   const tabKeys = (on: boolean) => (on ? [] : keymap.of([indentWithTab]));
@@ -444,11 +663,14 @@ export function createEditor(o: EditorOptions): EditorHandle {
   const view = new EditorView({
     parent: o.parent,
     state: EditorState.create({
-      doc: o.doc,
+      doc: first.doc,
       extensions: [
+        lockField.init(() => ({ topEnd: first.topEnd, bottomStart: first.bottomStart })),
+        lockGuard(() => o.onLockedEdit?.()),
+        lockedLines,
         lineNumbers(),
         // Code only: the statement is prose.
-        o.language === 'text' ? [] : [foldGutter(), lintGutter(), dropEditedMarks],
+        o.language === 'text' ? [] : [foldGutter(), lockFolds, lintGutter(), dropEditedMarks],
         highlightActiveLineGutter(),
         highlightSpecialChars(),
         history(),
@@ -482,7 +704,12 @@ export function createEditor(o: EditorOptions): EditorHandle {
             if (tr.isUserEvent('input.paste')) o.onPaste(inserted(tr));
             else if (tr.isUserEvent('input.type')) o.onTyped(inserted(tr));
           }
-          if (u.docChanged) o.onChange(u.state.doc.toString());
+          if (u.docChanged) {
+            // Locked code never leaves the editor: the caller hears the student's code only.
+            const code = codeOf(u.state);
+            if (code !== lastCode || !isLocked(lockOf(u.state))) o.onChange(code);
+            lastCode = code;
+          }
           if (u.focusChanged && !u.view.hasFocus) o.onBlur();
           if (u.selectionSet || u.docChanged) report(u.state);
         }),
@@ -493,9 +720,18 @@ export function createEditor(o: EditorOptions): EditorHandle {
   function report(state: EditorState) {
     const head = state.selection.main.head;
     const line = state.doc.lineAt(head);
-    o.onCursor?.(line.number, head - line.from + 1);
+    o.onCursor?.(Math.max(1, line.number - topLinesOf(state)), head - line.from + 1);
   }
   report(view.state);
+  const foldBlocks = (on: boolean, which: { top: boolean; bottom: boolean } = { top: true, bottom: true }) => {
+    const effects = lockBlocks(view.state)
+      .filter((b) => (b.bottom ? which.bottom : which.top))
+      .map((b) => (on ? foldEffect.of({ from: b.from, to: b.to }) : unfoldEffect.of({ from: b.from, to: b.to })));
+    if (effects.length > 0) view.dispatch({ effects });
+  };
+  // The cursor starts in the student's code, not in the locked top.
+  if (first.topEnd > 0) view.dispatch({ selection: { anchor: first.topEnd } });
+  if (o.collapseLocked) foldBlocks(true);
 
   // The newest request wins, so a slow first mode never replaces a later choice.
   let wanted: EditorLanguage = o.language;
@@ -532,18 +768,54 @@ export function createEditor(o: EditorOptions): EditorHandle {
       view.dispatch({ effects: blockPasteConf.reconfigure(blockPasteExt(on)) });
     },
     setDoc(doc) {
-      if (doc === view.state.doc.toString()) return;
-      view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: doc } });
+      const r = codeRange(view.state);
+      // With a locked bottom the code's own last newline is the lock's.
+      const text = lockOf(view.state).bottomStart >= 0 ? doc.replace(/[\r\n]+$/, '') : doc;
+      if (text === view.state.doc.sliceString(r.from, r.to)) return;
+      view.dispatch({ changes: { from: r.from, to: r.to, insert: text } });
     },
     getDoc() {
-      return view.state.doc.toString();
+      return codeOf(view.state);
+    },
+    setLocked(parts) {
+      const cur = lockOf(view.state);
+      const doc = view.state.doc;
+      const code = codeRange(view.state);
+      const top = normalise(parts?.top ?? '');
+      const bottom = normalise(parts?.bottom ?? '');
+      const bottomText = bottom === '' ? '' : `\n${bottom.slice(0, -1)}`;
+      const sameTop = top === doc.sliceString(0, cur.topEnd);
+      const sameBottom = bottomText === (cur.bottomStart < 0 ? '' : doc.sliceString(cur.bottomStart));
+      if (sameTop && sameBottom) return;
+      const was = foldedBlocks(view.state);
+      const changes: ChangeSpec[] = [];
+      if (!sameTop) changes.push({ from: 0, to: cur.topEnd, insert: top });
+      if (!sameBottom) changes.push({ from: code.to, to: doc.length, insert: bottomText });
+      const shift = top.length - cur.topEnd;
+      const next: Lock = { topEnd: top.length, bottomStart: bottom === '' ? -1 : code.to + shift };
+      const sel = view.state.selection;
+      view.dispatch({
+        changes,
+        effects: setLock.of(next),
+        selection: EditorSelection.create(sel.ranges.map((r) => EditorSelection.range(Math.min(Math.max(r.anchor, code.from), code.to) + shift, Math.min(Math.max(r.head, code.from), code.to) + shift)), sel.mainIndex),
+        annotations: [lockBypass.of(true), Transaction.addToHistory.of(false)],
+      });
+      // A language switch keeps the blocks as they were shown.
+      foldBlocks(true, was);
+    },
+    setLockedCollapsed(on) {
+      foldBlocks(on);
     },
     setMarks(marks) {
-      view.dispatch(setDiagnostics(view.state, markDiagnostics(view.state.doc, marks)));
+      const offset = topLinesOf(view.state);
+      const last = view.state.doc.lineAt(codeRange(view.state).to).number - offset;
+      view.dispatch(setDiagnostics(view.state, markDiagnostics(view.state.doc, marks.map((m) => ({ ...m, line: Math.min(m.line, Math.max(1, last)) })), offset)));
     },
     jumpTo(line, col) {
       const doc = view.state.doc;
-      const l = doc.line(Math.min(Math.max(1, line), doc.lines));
+      const offset = topLinesOf(view.state);
+      const last = doc.lineAt(codeRange(view.state).to).number;
+      const l = doc.line(Math.min(Math.max(1, line + offset), last));
       const pos = Math.min(l.from + Math.max(0, (col ?? 1) - 1), l.to);
       view.dispatch({ selection: { anchor: pos }, effects: EditorView.scrollIntoView(pos, { y: 'center' }) });
       view.focus();

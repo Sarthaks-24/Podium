@@ -23,6 +23,7 @@
     type Submission,
     type TestResult,
   } from '../lib/workspace';
+  import { LOCKED_HINT, pointsIntoLocked } from '../lib/lockedCode';
   import CompileOutput from './CompileOutput.svelte';
   import SubtaskStrip from './SubtaskStrip.svelte';
   import TestDetail from './TestDetail.svelte';
@@ -102,6 +103,7 @@
   {#if submission.compile_output}
     <div class="compile">
       <p class="label" id="{idPrefix}-compile">Compiler output</p>
+      {#if pointsIntoLocked(submission.compile_output)}<p class="advice">{LOCKED_HINT}</p>{/if}
       <CompileOutput output={submission.compile_output} language={submission.language} {onjump} />
     </div>
   {/if}

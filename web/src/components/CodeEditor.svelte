@@ -6,13 +6,16 @@
   editor; the font size is at least 16 px on touch screens so iOS never
   zooms in. A visually hidden line, referenced by aria-describedby, says
   how to leave the editor and which keys run and submit. Under 1024 px it
-  is read only, and a contest may block paste. Callers reach jumpTo(),
+  is read only, and a contest may block paste. A function problem passes
+  its locked top and bottom (the code is then the student's part alone, and
+  an edit that touches the locked text calls onlockededit). Callers reach jumpTo(),
   setDoc() and focus() through bind:this.
 -->
 <script lang="ts">
   import { onMount } from 'svelte';
   import { DEFAULT_LINE_HEIGHT, lineHeightValue, type LineHeight } from '../lib/drafts';
   import type { EditorHandle, EditorLanguage, EditorMark } from '../lib/editor';
+  import type { LockedParts } from '../lib/lockedCode';
 
   const isMac = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
   const mod = isMac ? 'Cmd' : 'Ctrl';
@@ -33,6 +36,11 @@
     readOnly?: boolean;
     blockPaste?: boolean;
     onpasteblocked?: () => void;
+    /** The locked top and bottom of a function problem; `initial` and `onchange` are then the student's code alone. */
+    locked?: LockedParts | null;
+    /** Fold the locked blocks (under 768 px they start folded). */
+    collapseLocked?: boolean;
+    onlockededit?: () => void;
     onchange: (source: string) => void;
     ontyped?: (chars: number) => void;
     onpaste?: (chars: number) => void;
@@ -57,6 +65,9 @@
     readOnly = false,
     blockPaste = false,
     onpasteblocked,
+    locked = null,
+    collapseLocked = false,
+    onlockededit,
     onchange,
     ontyped,
     onpaste,
@@ -92,6 +103,9 @@
           readOnly,
           blockPaste,
           onPasteBlocked: () => onpasteblocked?.(),
+          locked,
+          collapseLocked,
+          onLockedEdit: () => onlockededit?.(),
           onChange: (s) => onchange(s),
           onTyped: (n) => ontyped?.(n),
           onPaste: (n) => onpaste?.(n),
@@ -136,6 +150,14 @@
 
   $effect(() => {
     handle?.setBlockPaste(blockPaste);
+  });
+
+  $effect(() => {
+    handle?.setLocked(locked);
+  });
+
+  $effect(() => {
+    handle?.setLockedCollapsed(collapseLocked);
   });
 
   /** Moves the cursor to a line and column and focuses the editor. */

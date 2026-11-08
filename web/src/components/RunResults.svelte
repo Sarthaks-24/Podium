@@ -37,6 +37,7 @@
     type RunResult,
     type Sample,
   } from '../lib/workspace';
+  import { LOCKED_HINT, pointsIntoLocked } from '../lib/lockedCode';
   import CompileOutput from './CompileOutput.svelte';
   import TestDetail from './TestDetail.svelte';
 
@@ -73,6 +74,7 @@
   {#if run.compile_output}
     <div class="block">
       <p class="label">Compiler output</p>
+      {#if pointsIntoLocked(run.compile_output)}<p class="advice">{LOCKED_HINT}</p>{/if}
       <CompileOutput output={run.compile_output} {language} {onjump} />
     </div>
   {/if}

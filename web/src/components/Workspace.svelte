@@ -34,6 +34,7 @@
   import { isTypingTarget } from '../lib/shortcuts';
   import { RequestSequence } from '../lib/requestSequence';
   import { dismissToast, showToast } from '../lib/toast.svelte';
+  import { IMPORTS_HINT } from '../lib/lockedCode';
   import { LANGUAGES, bestScore, headline, isWaiting, languageLabel, limitsText, runCompileFailed, runHeadline, type Language, type Workspace } from '../lib/workspace';
   import CodeEditor from './CodeEditor.svelte';
   import ConfirmDialog from './ConfirmDialog.svelte';
@@ -115,6 +116,9 @@
   /** The "Pasting is blocked" toast on screen, until the next key, Run or Submit. */
   let pasteNote = 0;
 
+  /** The "locked code" toast on screen; a new refusal replaces it. */
+  let lockNote = 0;
+
   function clearPasteNote() {
     if (pasteNote === 0) return;
     dismissToast(pasteNote);
@@ -157,6 +161,11 @@
   let inputShare = $state(readResultPanel(draftStorage(), INPUT_DEFAULT, INPUT_KEY).share);
   let grid: HTMLDivElement | undefined = $state();
   const cols = $derived(statementHidden ? 'minmax(0, 1fr)' : `minmax(0, ${statementShare}fr) auto minmax(22.5rem, ${100 - statementShare}fr)`);
+
+  // A function problem: the locked top and bottom of the language shown; the code stays the student's part alone.
+  const lockedParts = $derived(
+    ws?.mode === 'function' ? { top: ws.locked_top?.[draft.language] ?? '', bottom: ws.locked_bottom?.[draft.language] ?? '' } : null,
+  );
 
   // The contest may allow fewer languages than the judge knows.
   const languages = $derived.by(() => {
@@ -567,6 +576,12 @@
           readOnly={layout !== 'wide'}
           blockPaste={exam?.block_paste ?? false}
           onpasteblocked={() => (pasteNote = showToast(PASTE_BLOCKED))}
+          locked={lockedParts}
+          collapseLocked={layout === 'phone'}
+          onlockededit={() => {
+            dismissToast(lockNote);
+            lockNote = showToast('That part of the file is locked. Write your code between the locked blocks.');
+          }}
           oncursor={(line, col) => {
             draft.cursor = { line, col };
           }}
@@ -581,6 +596,7 @@
           onrun={() => judging.runExamples()}
         />
       </div>
+      {#if lockedParts && lockedParts.top !== ''}<p class="imports">{IMPORTS_HINT}</p>{/if}
       <StatusLine pace={judging.paceText} used={usedNow && !lockText ? usedNow : null} saveState={draft.saveState} cursor={draft.cursor} />
     {/snippet}
     {#snippet colSplit()}
@@ -691,6 +707,12 @@
 
   .narrow {
     padding-bottom: var(--space-2);
+    color: var(--ink-muted);
+    font-size: var(--fs-0);
+  }
+
+  .imports {
+    padding-top: var(--space-2);
     color: var(--ink-muted);
     font-size: var(--fs-0);
   }
