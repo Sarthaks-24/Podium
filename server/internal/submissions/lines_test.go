@@ -3,6 +3,8 @@ package submissions
 import (
 	"context"
 	"math/rand/v2"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -201,5 +203,31 @@ func TestRunOutputMapsLines(t *testing.T) {
 	py := "Traceback (most recent call last):\n  File \"/box/main.py\", line 9, in <module>\n"
 	if got := m.rewriteRunStderr(py, "python3"); got != py {
 		t.Errorf("a Python runtime trace was remapped: %q", got)
+	}
+}
+
+// When a run's code cannot be read back (its blob is gone), its output is
+// shown as the compiler printed it, never mapped as if the code were empty.
+func TestRunOutputIsLeftAloneWithoutItsCode(t *testing.T) {
+	r := newRig(t)
+	ctx := context.Background()
+	p := r.importFunction(t)
+	run, err := r.svc.Run(ctx, RunRequest{ProblemID: p.ID, UserID: 1, Language: "cpp17", Source: fnCode})
+	if err != nil {
+		t.Fatal(err)
+	}
+	c, _ := r.jobs.Claim(ctx, judgeapi.ClaimRequest{Kinds: []string{judgeapi.KindRun}, Worker: "fake"})
+	out := "main.cpp:4:1: error: x\n"
+	if err := r.jobs.Report(ctx, judgeapi.Report{JobID: c.JobID, Lease: c.Lease, Final: true,
+		Compile: []judgeapi.CompileResult{{Role: judgeapi.RoleProgram, Verdict: "CE", Output: out}}}); err != nil {
+		t.Fatal(err)
+	}
+	var sha string
+	r.svc.DB.QueryRow("SELECT source_sha FROM submissions WHERE id = ?", run.ID).Scan(&sha)
+	if err := os.Remove(filepath.Join(r.bank.Blobs.Dir, sha[:2], sha)); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := r.svc.GetRunWith(ctx, run.ID, ViewOptions{}); got.CompileOutput != out {
+		t.Errorf("compile output %q, want it as printed", got.CompileOutput)
 	}
 }

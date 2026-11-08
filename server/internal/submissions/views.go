@@ -467,7 +467,10 @@ func (s *Service) lineMapOf(r row) lineMap {
 	}
 	src := r.source
 	if r.kind == "run" {
-		b, _ := s.Problems.Blobs.Read(r.sourceSHA, MaxSource+1)
+		b, err := s.Problems.Blobs.Read(r.sourceSHA, MaxSource+1)
+		if err != nil {
+			return lineMap{} // without the code, show the output as printed
+		}
 		src = string(b)
 	}
 	return lineMap{top: r.topLines, code: problems.CodeLines(src)}
