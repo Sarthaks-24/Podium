@@ -65,7 +65,8 @@ def main():
     busy = [r["finished_last_minute"] for r in rows if r["queued"] > 10]
     print(f"polls: {len(rows)}, csv: {out}")
     if contest:
-        print(f"contest: {contest['slug']} ({contest['mode']}, {contest['vus']} students), "
+        mode = f"{contest['mode']}, " if "mode" in contest else ""  # only older contest.js logs carry mode
+        print(f"contest: {contest['slug']} ({mode}{contest['vus']} students), "
               f"{(contest['ends_at'] - contest['starts_at']) / 60000:.1f} min")
     print(f"peak queue: {peak['queued']} queued at t={round((peak['t'] - t0) / 1000)} s")
     if busy:
