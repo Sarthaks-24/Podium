@@ -208,6 +208,8 @@
     display: grid;
     gap: var(--space-3);
     justify-items: start;
+    /* A track of minmax(0, 1fr), so a long line in the compare box scrolls inside it. */
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .field,

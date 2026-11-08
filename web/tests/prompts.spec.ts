@@ -237,3 +237,27 @@ test('the tab is in the address and keyboard reachable', async ({ page }) => {
   await tab(page).click();
   await expect(page).toHaveURL(/tab=prompts/);
 });
+
+test('with a dry run open and a diff shown, no editor runs wider than the page', async ({ page }) => {
+  await setup(page, 'owner');
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await openTab(page);
+  const long = `- ${'a very long rule line without any break '.repeat(12)}`;
+  const boxes = page.getByLabel('Rules text');
+  for (let i = 0; i < (await boxes.count()); i++) {
+    await boxes.nth(i).fill(long);
+    await page.getByRole('button', { name: 'Preview the full prompt' }).nth(i).click();
+  }
+  await expect(page.getByRole('region', { name: 'Your edit compared with the active text' }).first()).toBeVisible();
+  await expect(page.locator('.preview textarea').first()).toBeVisible();
+  for (const width of WIDTHS) {
+    await page.setViewportSize({ width, height: width < 768 ? 812 : 900 });
+    await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => resolve(null))));
+    const o = await page.evaluate(() => ({ scroll: document.documentElement.scrollWidth, client: document.documentElement.clientWidth }));
+    expect(o.scroll, `horizontal overflow at ${width}px`).toBeLessThanOrEqual(o.client);
+    for (const el of await page.locator('.editor textarea, .editor .compare').all()) {
+      const box = await el.boundingBox();
+      if (box) expect(box.x + box.width, `an editor box passes the viewport at ${width}px`).toBeLessThanOrEqual(width);
+    }
+  }
+});
