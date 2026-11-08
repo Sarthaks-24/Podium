@@ -351,3 +351,64 @@ func TestAIEditKeyNeverStored(t *testing.T) {
 		t.Errorf("read only %d files", read)
 	}
 }
+
+// bulkFiles are n unused source files of 64 KB: they pass the pack parser (it
+// ignores unused files) and make a draft large.
+func bulkFiles(n int) []ai.EditFile {
+	var files []ai.EditFile
+	for i := 0; i < n; i++ {
+		files = append(files, ai.EditFile{Path: fmt.Sprintf("bulk%d.py", i), Content: strings.Repeat("a", 64<<10)})
+	}
+	return files
+}
+
+// A merged draft above 2 MB is refused, and a refusal lists at most 20
+// parser messages.
+func TestAIEditSizeAndReasonCaps(t *testing.T) {
+	s, org, id := editSite(t)
+	fakeai.EditHook = func(ai.EditRequest) (*ai.EditAnswer, error) { return &ai.EditAnswer{Files: bulkFiles(33)}, nil }
+	code, out := org.do("POST", editPath(id, ""), map[string]any{"instruction": "x"}, s.srv.URL)
+	errIs(t, "huge draft", code, out, 422, "invalid_answer", "The edited problem would be larger than 2 MB of text. Ask for a smaller change.")
+
+	fakeai.EditHook = func(ai.EditRequest) (*ai.EditAnswer, error) {
+		var files []ai.EditFile
+		for i := 0; i < 30; i++ {
+			files = append(files, ai.EditFile{Path: fmt.Sprintf("notes%d.txt", i), Content: "x"})
+		}
+		return &ai.EditAnswer{Files: files}, nil
+	}
+	code, out = org.do("POST", editPath(id, ""), map[string]any{"instruction": "x"}, s.srv.URL)
+	list, _ := out["error"].(map[string]any)["problems"].([]any)
+	if code != 422 || len(list) != 21 || list[20] != "And 10 more." {
+		t.Errorf("many reasons: %d %d %v", code, len(list), out)
+	}
+}
+
+// Too many drafts held by the server: a clear busy answer, nothing saved.
+func TestAIEditDraftMemoryFull(t *testing.T) {
+	s, org, id := editSite(t)
+	users := []*browser{org}
+	for i := 1; i < 4; i++ {
+		b := s.testSignIn(fmt.Sprintf("ta%d@college.edu", i+1), "organiser")
+		b.do("PUT", "/api/admin/ai/key", map[string]string{"provider": "fake", "key": "ignored"}, s.srv.URL)
+		users = append(users, b)
+	}
+	fakeai.EditHook = func(ai.EditRequest) (*ai.EditAnswer, error) { return &ai.EditAnswer{Files: bulkFiles(31)}, nil }
+	ok, last := 0, 0
+	var out map[string]any
+	for i := 0; i < 20; i++ {
+		pid := id
+		if i > 0 {
+			pid = s.importProblem(org, fmt.Sprintf("fill-%d", i))
+		}
+		last, out = users[i%4].do("POST", editPath(pid, ""), map[string]any{"instruction": "x"}, s.srv.URL)
+		if last != 200 {
+			break
+		}
+		ok++
+	}
+	errIs(t, "memory full", last, out, 429, "busy", "The server holds too many AI drafts right now. Accept or reject one, or try again in a minute.")
+	if ok < 10 || ok > 16 {
+		t.Errorf("%d drafts held before the cap", ok)
+	}
+}

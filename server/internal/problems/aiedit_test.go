@@ -205,3 +205,44 @@ func TestEditCustomCheckerAndFunctionProblemsRoundTrip(t *testing.T) {
 		}
 	}
 }
+
+// Two Accepts of one draft make one revision: the second finds the pack
+// changed under it, whether it runs after the first or at the same time.
+func TestAcceptEditTwiceMakesOneRevision(t *testing.T) {
+	s, p := editTestBank(t, "a-plus-b")
+	ctx := context.Background()
+	snap, _ := s.EditSnapshot(ctx, p.ID)
+	merged, _ := s.MergeEdit(ctx, snap, map[string][]byte{"statement.md": []byte(string(snap.Files["statement.md"]) + "\nOnce.\n")})
+	errs := make(chan error, 2)
+	for i := 0; i < 2; i++ {
+		go func() {
+			_, err := s.AcceptEdit(ctx, p.ID, snap.Hash, merged, 0, "x")
+			errs <- err
+		}()
+	}
+	ok := 0
+	for i := 0; i < 2; i++ {
+		if err := <-errs; err == nil {
+			ok++
+		} else if !errors.Is(err, ErrEditStale) {
+			t.Errorf("second accept: %v", err)
+		}
+	}
+	if n := revisionCount(t, s, p.ID); ok != 1 || n != 2 {
+		t.Errorf("%d accepts succeeded, %d revisions", ok, n)
+	}
+}
+
+// A change to the tests since the draft is a stale draft too.
+func TestEditStaleWhenTestsChange(t *testing.T) {
+	s, p := editTestBank(t, "a-plus-b")
+	ctx := context.Background()
+	snap, _ := s.EditSnapshot(ctx, p.ID)
+	merged, _ := s.MergeEdit(ctx, snap, map[string][]byte{"statement.md": []byte(string(snap.Files["statement.md"]) + "\nMore.\n")})
+	if _, err := s.DB.Exec("UPDATE testcases SET input_sha = output_sha, output_sha = input_sha WHERE problem_id = ? AND idx = 1", p.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.AcceptEdit(ctx, p.ID, snap.Hash, merged, 0, "x"); !errors.Is(err, ErrEditStale) {
+		t.Errorf("tests changed: %v", err)
+	}
+}

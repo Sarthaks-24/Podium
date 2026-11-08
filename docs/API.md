@@ -529,7 +529,7 @@ A run's `error.code` is one of `key_refused`, `no_quota`, `no_access`, `model_no
 
 ### AI edit of a problem (organiser, v2.0.2)
 
-An organiser or above asks a model to edit one problem. The key and provider are the wizard's (the session's in-memory keys). The model receives the problem's exported pack files except `tests/`, plus the instruction, as data. A draft lives in server memory for an hour and holds text files only. Nothing is saved until Accept.
+An organiser or above asks a model to edit one problem. The key and provider are the wizard's (the session's in-memory keys). The model receives the problem's exported pack files except `tests/`, plus the instruction, as data. A draft lives in server memory for an hour, is used once, and holds text files only. Accept also refuses (409 `changed`) when the tests changed since the draft. Nothing is saved until Accept.
 
 | Route | Request | Success |
 |---|---|---|
@@ -550,7 +550,8 @@ The call waits for the model, for at most 3 minutes, and takes the admin's one A
 | 409 `contest_running` | Accept while a contest that holds the problem runs ("A contest that holds this problem is running. Accept after it ends.") |
 | 409 `changed` | Accept after the problem changed since the draft ("The problem changed after this draft was made. Ask for the edit again.") |
 | 409 `mode_locked` | Accept would change the mode or drop a used language of a function problem |
-| 422 `invalid_answer` | the answer cannot be used; `problems` lists why (test data, a changed slug, a file that is not a pack file, a pack parser or field error) |
+| 422 `invalid_answer` | the answer cannot be used; `problems` lists why (test data, a changed slug, a file that is not a pack file, a pack parser or field error), at most 20 lines then "And N more."; also when the edited text would exceed 2 MB |
+| 429 `busy` | one AI call at a time, or the server holds too many drafts (an organiser keeps 5, the server 32 MB in all) |
 | 422 `not_in_pack` | the model says the change cannot be carried by a pack |
 | 422 `no_change` | the model changed nothing |
 | 502 | a provider failure, with the wizard's codes (`key_refused`, `no_quota`, `rate_limited`, `refused`, `cut_off`, `timeout` and so on) and a fixed sentence |

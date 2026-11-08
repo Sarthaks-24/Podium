@@ -47,6 +47,11 @@ func (s *Service) EditSnapshot(ctx context.Context, id int64) (*EditSnapshot, er
 	if err != nil {
 		return nil, err
 	}
+	return snapshotOf(p)
+}
+
+// snapshotOf builds the snapshot of a loaded problem.
+func snapshotOf(p *Problem) (*EditSnapshot, error) {
 	if p.Deleted {
 		return nil, ErrDeleted
 	}
@@ -67,7 +72,18 @@ func (s *Service) EditSnapshot(ctx context.Context, id int64) (*EditSnapshot, er
 			delete(files, name)
 		}
 	}
-	return &EditSnapshot{ID: id, Hash: filesHash(files), Slug: p.Slug, Files: files}, nil
+	return &EditSnapshot{ID: p.ID, Hash: stateHash(p, files), Slug: p.Slug, Files: files}, nil
+}
+
+// stateHash fingerprints the text files and the tests (by their SHAs), so a
+// draft goes stale when either changes.
+func stateHash(p *Problem, files map[string][]byte) string {
+	h := sha256.New()
+	h.Write([]byte(filesHash(files)))
+	for _, t := range p.Tests {
+		fmt.Fprintf(h, "|%d:%s:%s", t.Idx, t.InputSHA, t.OutputSHA)
+	}
+	return hex.EncodeToString(h.Sum(nil))
 }
 
 // filesHash fingerprints the text files. The content hash is not used
@@ -232,6 +248,19 @@ func (s *Service) AcceptEdit(ctx context.Context, id int64, baseHash string, fil
 		return nil, err
 	}
 	defer tx.Rollback()
+	// The check that counts: inside the transaction that writes, so a save
+	// or another Accept of this draft that got in first makes this one stale.
+	cur, err := load(ctx, tx, id)
+	if err != nil {
+		return nil, err
+	}
+	curSnap, err := snapshotOf(cur)
+	if err != nil {
+		return nil, err
+	}
+	if curSnap.Hash != baseHash {
+		return nil, ErrEditStale
+	}
 	out, err := s.replaceIn(ctx, tx, id, pk, userID, reason)
 	if err != nil {
 		return nil, err
