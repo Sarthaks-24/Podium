@@ -135,7 +135,7 @@ func (s *Service) importOver(ctx context.Context, pk *Pack, authorID int64, o Im
 		}
 		out = p
 	default:
-		out, err = s.replaceIn(ctx, tx, existing, pk, authorID, o.FileName)
+		out, err = s.replaceIn(ctx, tx, existing, pk, authorID, replaceReason(o.FileName))
 		if err != nil {
 			return nil, err
 		}
@@ -149,7 +149,7 @@ func (s *Service) importOver(ctx context.Context, pk *Pack, authorID int64, o Im
 // replaceIn saves the pack over problem id as one new revision, in tx.
 // It goes through save, not Update, so the AI draft marking follows the
 // pack's tags and the samples and subtasks are the pack's, as in Import.
-func (s *Service) replaceIn(ctx context.Context, tx *sql.Tx, id int64, pk *Pack, authorID int64, fileName string) (*Problem, error) {
+func (s *Service) replaceIn(ctx context.Context, tx *sql.Tx, id int64, pk *Pack, authorID int64, reason string) (*Problem, error) {
 	old, err := load(ctx, tx, id)
 	if err != nil {
 		return nil, err
@@ -169,7 +169,7 @@ func (s *Service) replaceIn(ctx context.Context, tx *sql.Tx, id int64, pk *Pack,
 	}
 	np := pk.Problem
 	np.ID, np.Slug, np.AuthorID, np.CreatedAt, np.Archived, np.ArchivedSlug = old.ID, old.Slug, old.AuthorID, old.CreatedAt, false, ""
-	note := RevisionNote{By: authorID, Reason: replaceReason(fileName)}
+	note := RevisionNote{By: authorID, Reason: reason}
 	if err := s.save(ctx, tx, &np, note); err != nil {
 		return nil, err
 	}
@@ -181,19 +181,26 @@ func (s *Service) replaceIn(ctx context.Context, tx *sql.Tx, id int64, pk *Pack,
 	return load(ctx, tx, id)
 }
 
-// replaceReason is the revision note of a replace: "Replaced from pack
-// <file name>", the name cleaned of control characters and cut short.
-func replaceReason(fileName string) string {
-	name := strings.Map(func(r rune) rune {
+// cleanNote removes control characters from text a person typed and cuts
+// it to 80 characters, so it can sit in a revision note.
+func cleanNote(text string) string {
+	text = strings.Map(func(r rune) rune {
 		if unicode.IsControl(r) || unicode.Is(unicode.Cf, r) {
 			return -1
 		}
 		return r
-	}, fileName)
-	name = strings.TrimSpace(name)
-	if utf8.RuneCountInString(name) > 80 {
-		name = strings.ToValidUTF8(string([]rune(name)[:80]), "")
+	}, text)
+	text = strings.TrimSpace(text)
+	if utf8.RuneCountInString(text) > 80 {
+		text = strings.ToValidUTF8(string([]rune(text)[:80]), "")
 	}
+	return text
+}
+
+// replaceReason is the revision note of a replace: "Replaced from pack
+// <file name>", the name cleaned of control characters and cut short.
+func replaceReason(fileName string) string {
+	name := cleanNote(fileName)
 	if name == "" {
 		return "Replaced from a pack"
 	}

@@ -215,6 +215,7 @@ var revisionFreeWrites = map[string]string{
 	"Update":        "validated_hash and solution_by_person after save",
 	"archiveIn":     "archived and slug",
 	"replaceIn":     "origin and solution_by_person after save",
+	"AcceptEdit":    "validated_hash after replaceIn saved the revision (AI edit)",
 	"Restore":       "archived and slug",
 	"Finish":        "validated_hash after a validation",
 	"Delete":        "the tombstone: it clears the working copy and no revision is wanted (v2.0.2)",
