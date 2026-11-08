@@ -88,6 +88,9 @@ type Service struct {
 
 	pub    publisher
 	limits rateLimiter
+	// beforeWrite, when set, runs after the problem is loaded and before the
+	// write transaction begins; tests change the problem there.
+	beforeWrite func()
 }
 
 // New returns the service. hashKey is HashKey; contestView is
@@ -344,13 +347,33 @@ func (s *Service) SaveDraft(ctx context.Context, problemID, userID int64, sc Sco
 	if err := s.limits.allow(userID, "draft", draftGap, s.now(), "Drafts are saved"); err != nil {
 		return err
 	}
-	_, err = s.DB.ExecContext(ctx, `INSERT INTO drafts (user_id, problem_id, contest_id, language, source, updated_at) VALUES (?, ?, ?, ?, ?, ?)
+	if s.beforeWrite != nil {
+		s.beforeWrite()
+	}
+	// The mode is read again inside the write, as for Submit: a draft of the
+	// wrong kind would load as the student's part.
+	tx, err := s.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	var mode string
+	if err := tx.QueryRowContext(ctx, "SELECT mode FROM problems WHERE id = ?", problemID).Scan(&mode); err != nil {
+		return err
+	}
+	if mode != p.Mode {
+		return ErrPinMoved
+	}
+	_, err = tx.ExecContext(ctx, `INSERT INTO drafts (user_id, problem_id, contest_id, language, source, updated_at) VALUES (?, ?, ?, ?, ?, ?)
 		ON CONFLICT (user_id, problem_id, contest_id) DO UPDATE SET language = excluded.language, source = excluded.source, updated_at = excluded.updated_at`,
 		userID, problemID, sc.ContestID, language, source, s.now().UnixMilli())
 	if err != nil && strings.Contains(err.Error(), "FOREIGN KEY") {
 		return ErrNotFound
 	}
-	return err
+	if err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 // SubmitRequest is one press of Submit.
@@ -401,12 +424,18 @@ func (s *Service) Submit(ctx context.Context, r SubmitRequest) (v *SubmissionVie
 	if err := checkOffered(p, r.Language); err != nil {
 		return nil, false, err
 	}
+	if s.beforeWrite != nil {
+		s.beforeWrite()
+	}
 	tx, err := s.DB.BeginTx(ctx, nil)
 	if err != nil {
 		return nil, false, err
 	}
 	defer tx.Rollback()
 	if err := checkPin(ctx, tx, p, r.Scope.RevisionID); err != nil {
+		return nil, false, err
+	}
+	if err := checkUnchanged(ctx, tx, p); err != nil {
 		return nil, false, err
 	}
 	if r.ClientKey != "" {
@@ -597,6 +626,22 @@ func checkPin(ctx context.Context, tx *sql.Tx, p *problems.Problem, revisionID i
 	return nil
 }
 
+// checkUnchanged refuses, inside the write transaction, a problem whose
+// mode or content changed after it was loaded (the load runs before the
+// transaction, so that a second connection does not wait behind writers):
+// composing with the stale copy would wrap a whole program or judge old
+// locked code.
+func checkUnchanged(ctx context.Context, tx *sql.Tx, p *problems.Problem) error {
+	var mode, hash string
+	if err := tx.QueryRowContext(ctx, "SELECT mode, content_hash FROM problems WHERE id = ?", p.ID).Scan(&mode, &hash); err != nil {
+		return err
+	}
+	if mode != p.Mode || hash != p.ContentHash {
+		return ErrPinMoved
+	}
+	return nil
+}
+
 // problemForJudging loads a problem that can be judged: tests, samples
 // and subtasks fit together and every test has its expected output.
 // (Contests also require validation; organisers may try an unvalidated
@@ -675,12 +720,18 @@ func (s *Service) Run(ctx context.Context, r RunRequest) (*RunView, error) {
 	if err := checkOffered(p, r.Language); err != nil {
 		return nil, err
 	}
+	if s.beforeWrite != nil {
+		s.beforeWrite()
+	}
 	tx, err := s.DB.BeginTx(ctx, nil)
 	if err != nil {
 		return nil, err
 	}
 	defer tx.Rollback()
 	if err := checkPin(ctx, tx, p, r.Scope.RevisionID); err != nil {
+		return nil, err
+	}
+	if err := checkUnchanged(ctx, tx, p); err != nil {
 		return nil, err
 	}
 	var pending int

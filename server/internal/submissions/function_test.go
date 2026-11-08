@@ -296,3 +296,40 @@ func TestRejudgeNeverJudgesAnUncomposedPart(t *testing.T) {
 		t.Errorf("jobs %d to %d, submission %s %q", jobs, after, got.State, got.Error)
 	}
 }
+
+// The problem is loaded before the write transaction; if its mode or
+// content changes in between, Submit, Run and the draft save refuse
+// instead of composing with a stale copy.
+func TestModeChangeBetweenLoadAndWriteIsRefused(t *testing.T) {
+	r := newRig(t)
+	ctx := context.Background()
+	p := r.importFunction(t)
+	r.svc.beforeWrite = func() {
+		if _, err := r.svc.DB.Exec(`UPDATE problems SET mode = 'whole', locked_top = '{}', locked_bottom = '{}' WHERE id = ?`, p.ID); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, _, err := r.svc.Submit(ctx, SubmitRequest{ProblemID: p.ID, UserID: 1, Language: "cpp17", Source: fnCode}); !errors.Is(err, ErrPinMoved) {
+		t.Errorf("submit: %v, want ErrPinMoved", err)
+	}
+	restore := func() {
+		if _, err := r.svc.DB.Exec(`UPDATE problems SET mode = 'function', locked_top = ?, locked_bottom = ? WHERE id = ?`,
+			`{"cpp17":"x"}`, `{"cpp17":"y"}`, p.ID); err != nil {
+			t.Fatal(err)
+		}
+	}
+	restore()
+	if _, err := r.svc.Run(ctx, RunRequest{ProblemID: p.ID, UserID: 1, Language: "cpp17", Source: fnCode}); !errors.Is(err, ErrPinMoved) {
+		t.Errorf("run: %v, want ErrPinMoved", err)
+	}
+	restore()
+	if err := r.svc.SaveDraft(ctx, p.ID, 1, Scope{}, "cpp17", fnCode); !errors.Is(err, ErrPinMoved) {
+		t.Errorf("draft: %v, want ErrPinMoved", err)
+	}
+	var rows int
+	r.svc.DB.QueryRow(`SELECT (SELECT count(*) FROM submissions WHERE problem_id = ?) + (SELECT count(*) FROM drafts WHERE problem_id = ?)`,
+		p.ID, p.ID).Scan(&rows)
+	if rows != 0 {
+		t.Errorf("%d rows written", rows)
+	}
+}
