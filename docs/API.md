@@ -507,7 +507,7 @@ The wizard drafts a problem from a brief or from pasted text, with Anthropic, Op
 
 `KeyStatus` also carries `custom_prompt` (boolean): true when `PODIUM_AI_PROMPT_FILE` replaces the wizard's authoring rules. The text is never sent.
 
-`GET /api/admin/problems/pack-prompt` (organiser and up) returns 200 `{"prompt":"..."}`: the text an organiser gives to any AI so it returns a pack for Import pack. It is built from an embedded template filled with the importer's own limits and file names, and asks for pack format 1. Its first line is a stamp, "Podium <release> pack prompt, pack format 1", with no release for a plain dev build. No request body or parameters.
+`GET /api/admin/problems/pack-prompt` (organiser and up) returns 200 `{"prompt":"..."}`: the text an organiser gives to any AI so it returns a pack for Import pack. It is built from an embedded template filled with the importer's own limits and file names, and teaches pack format 1 for a whole problem and format 4 for a function problem, with an example pack of each. Its first line is a stamp, "Podium <release> pack prompt, pack formats 1 and 4", with no release for a plain dev build. No request body or parameters. Saved pack rules and preferences are applied (see AI prompts).
 
 `KeyStatus`: `{active, provider, model, active_until, providers: [{id, name, has_key, model, active_until, models}], server_now}`; without a key, `active` is false and `provider` is `anthropic`.
 
@@ -526,6 +526,29 @@ The wizard drafts a problem from a brief or from pasted text, with Anthropic, Op
 | 404 `not_found` | another organiser's run, an unknown id, or a run that ended over an hour ago or before a restart |
 
 A run's `error.code` is one of `key_refused`, `no_quota`, `no_access`, `model_not_found`, `unsupported_model`, `rate_limited`, `unavailable`, `bad_request`, `refused` (the model declined), `cut_off` (too long, after one shorter retry), `invalid_answer` (with `reasons`, after one retry with them), `timeout`, `canceled`, `input`, `not_found` or `internal`. The messages name the provider and say what to do, for example "OpenAI refused the key. Check it and paste it again."
+
+### AI prompts (admin and owner, v2.0.2)
+
+The owner edits the rules text of the wizard prompt (`wizard_rules`) and of the prompt for another AI (`pack_rules`); an admin or the owner edits the Preferences box (`preferences`). Rules are data: they are placed in the prompt and never parsed as template source. The fixed security part of the wizard prompt and the generated format-and-limits part of the pack prompt are not editable; `GET` returns them as `fixed`, read-only. Every version is an insert-only row; the newest row of a kind is its active text. All routes need the admin role or above; the kind then decides (owner: the two rules kinds, admin and owner: `preferences`). A student or an organiser gets 403 `forbidden` from the role check. An admin on a rules kind gets 403 `not_allowed` ("You do not have access to this."). Writes carry the cross-site guard of every write route.
+
+| Route | Request | Success |
+|---|---|---|
+| `GET /api/admin/ai/prompts` | | 200 `{kinds: [PromptKind], server_now}`: all three kinds for the owner, `preferences` only for an admin |
+| `PUT /api/admin/ai/prompts/{kind}` | `{body, base_id, dry_run?}` saves; `{restore_of, base_id}` restores; at most 128 KB | 200 `{kind: PromptKind, server_now}`; with `dry_run: true`, 200 `{dry_run: true, previews: [{label, text}]}` and nothing is written |
+| `POST /api/admin/ai/prompts/{kind}/reset` | `{base_id}` | 200 `{kind: PromptKind, server_now}` |
+
+`PromptKind`: `{kind, label, can_edit, active: {text, source, version?, file_sha?}, default, default_changed, fixed, history: [Version], limit}`. `source` is `database` (with `version`), `file` (`PODIUM_AI_PROMPT_FILE`, with its `file_sha`) or `built-in`. `Version`: `{id, kind, body, is_reset, default_sha, by, at, default_changed}`; `history` is the newest 30, newest first. `default_changed` is true when the built-in text changed since that version was saved. `base_id` is the id of the newest version of the kind (including reset rows) that the editor loaded, `0` when there was none. The dry run builds the full prompt through the same builder a run uses: for `wizard_rules` the wizard prompt, for `pack_rules` the prompt for another AI, for `preferences` both.
+
+Active text: the newest row unless it is a reset or there is none. Then the wizard rules come from `PODIUM_AI_PROMPT_FILE` when set, else the built-in text; the pack rules come from the built-in text; the preferences are empty. A reset never brings back an older edit; Restore inserts a new row with the old body. A save takes effect on the next wizard run or pack prompt request, needs no restart and never changes a run in progress.
+
+| Status and code | Meaning and copy |
+|---|---|
+| 409 `stale_version` | `base_id` is not the newest version: "Someone saved a newer version. Reload to see it, then save again." |
+| 400 `invalid_prompt` | empty ("The text is empty."), too long ("The rules are longer than 16 KB.", "The preferences are longer than 2,000 characters."), not UTF-8 ("The text is not valid UTF-8."), or a key ("The text looks like a secret key. Remove it."): the body matches a key pattern of `tools/check-secrets.sh` or contains a provider key held in a session's memory |
+| 403 `not_allowed` | an admin on a rules kind: "You do not have access to this." |
+| 404 `not_found` | unknown kind, or `restore_of` is not a version of that kind |
+
+Each save, restore and reset writes one site audit row (`prompt_saved`, `prompt_restored`, `prompt_reset`) with the version id, the kind and a sha256 of the body, never the text. `GET /api/admin/ai/key` gains `prompt_source` (`database`, `file` or `built-in`) beside `custom_prompt`, which stays for old clients. `GET /api/admin/problems/pack-prompt` now uses the saved pack rules and preferences.
 
 ## Workspace, runs and submissions
 

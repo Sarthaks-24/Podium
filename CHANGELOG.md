@@ -6,7 +6,7 @@ Releases are numbered from `v2.0.0`. The builds before it were never released; t
 
 ## v2.0.2 Billota (2026-11-07)
 
-Unreleased. Upgrades v2.0.1 with migrations 0013 and 0014 (more follow in later stages of this release). **Upgrade the judge together with the server**: a v2.0.1 judge refuses the larger source files function problems send (`install.sh upgrade` installs both from one release).
+Unreleased. Upgrades v2.0.1 with migrations 0013, 0014 and 0015 (more follow in later stages of this release). **Upgrade the judge together with the server**: a v2.0.1 judge refuses the larger source files function problems send (`install.sh upgrade` installs both from one release).
 
 ### v2.0.2 stage 0: pending fixes (2026-11-07)
 
@@ -59,6 +59,18 @@ Unreleased. Upgrades v2.0.1 with migrations 0013 and 0014 (more follow in later 
 - The workspace answer has `mode`, `locked_top` and `locked_bottom` for the offered languages, from the pinned revision in a contest (a top edit reaches students only after "Update students now") and from the working copy otherwise.
 - The problem editor has an "Add standard imports" button and a preview of what students see, joined by the editor's own join.
 - Known limits: the editor and the server both match locked text exactly, so a pasted file with an edited top is refused or kept as written; Windows line ends in a pasted whole file are not matched.
+
+### v2.0.2 stage D: AI prompts (2026-11-08)
+
+- The Dashboard has an AI prompts tab. Admins and the owner fill the Preferences box (2,000 characters of style choices, applied to every AI-generated problem, in the wizard and in the prompt for another AI). The owner also edits the rules text of both prompts, with a diff against the active text, the fixed part and the built-in default shown read-only, a preview of the full prompt, a history with who and when, Restore this version and Reset to default.
+- Versions are insert-only rows (migration `0015_v202_prompts.sql`). The active text of a kind is its newest row; a reset means the default and never brings back an older edit. A save needs no restart, never changes a wizard run in progress (the retry sees the same prompt), and is refused when the text is empty, too long, not UTF-8, looks like a key, or contains a key a session holds. Two tabs saving at once: the second is told "Someone saved a newer version" (409 `stale_version`).
+- Precedence: database, then `PODIUM_AI_PROMPT_FILE`, then built-in for the wizard rules; database, then built-in for the pack rules. No new environment variable. `GET /api/admin/ai/key` reports `prompt_source` beside `custom_prompt`. Start-up logs the source of each kind.
+- The prompt for another AI is split: the rules (advice, and function-problem teaching) are editable data, the limits and format stay generated. The wizard's fixed prompt now names the `<preferences>` block (new golden file `system_prompt_v2.0.2.txt`). `podium-server print-pack-prompt` prints the built-in pack rules.
+- Each save, restore and reset writes a site audit row with the version id, kind and hash, never the text.
+- New: `GET /api/admin/ai/prompts`, `PUT /api/admin/ai/prompts/{kind}`, `POST /api/admin/ai/prompts/{kind}/reset`.
+- The prompt for another AI now teaches format 1 (a whole problem) and format 4 (a function problem), with an example pack of each (`array-max`, C++17 and Python 3). Its first line reads "pack formats 1 and 4". Both example packs are imported by a test, with and without a hostile preferences string.
+- Known limits: the wizard stays whole-program (no function problems). Only a live model call shows whether edited rules still produce a usable pack; the preview and the importer are the guards.
+- Upgrade: migration 0015 creates `ai_prompt_versions`; the previous binary refuses a database that records it, so rolling back means restoring the pre-upgrade backup.
 
 ## v2.0.1 Billota (2026-11-05)
 

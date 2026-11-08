@@ -467,9 +467,9 @@ func TestPackPromptIsFilledFromTheCode(t *testing.T) {
 // has no release and says only the format.
 func TestPackPromptStamp(t *testing.T) {
 	for _, c := range []struct{ version, first string }{
-		{"v2.0.1", "Podium v2.0.1 pack prompt, pack format 1"},
-		{"dev", "Podium pack prompt, pack format 1"},
-		{"", "Podium pack prompt, pack format 1"},
+		{"v2.0.1", "Podium v2.0.1 pack prompt, pack formats 1 and 4"},
+		{"dev", "Podium pack prompt, pack formats 1 and 4"},
+		{"", "Podium pack prompt, pack formats 1 and 4"},
 	} {
 		text, err := packPrompt(c.version)
 		if err != nil {
@@ -483,7 +483,7 @@ func TestPackPromptStamp(t *testing.T) {
 			t.Errorf("version %q: the stamp is not followed by a blank line and the prompt: %q", c.version, rest[:40])
 		}
 	}
-	if got, _ := PackPrompt(); !strings.HasPrefix(got, "Podium pack prompt, pack format 1\n") {
+	if got, _ := PackPrompt(); !strings.HasPrefix(got, "Podium pack prompt, pack formats 1 and 4\n") {
 		t.Errorf("a plain test build should carry no version: %q", got[:40])
 	}
 }

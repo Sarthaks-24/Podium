@@ -202,11 +202,13 @@ func TestGenerateRetriesOnceWithReasons(t *testing.T) {
 	}
 }
 
-// The default prompt must stay what v2.0.0 sent: the fixed part, one
+// The default prompt is the v2.0.2 text (the v2.0.0 file is kept, not
+// edited: v2.0.2 only added the sentence about <preferences> to the fixed
+// part). It is the fixed part, one
 // newline, then the default rules. The newline is the only joining
 // character the split added.
 func TestPromptSeamKeepsTheOldText(t *testing.T) {
-	old, err := os.ReadFile("testdata/system_prompt_v2.0.0.txt")
+	old, err := os.ReadFile("testdata/system_prompt_v2.0.2.txt")
 	if err != nil {
 		t.Fatal(err)
 	}

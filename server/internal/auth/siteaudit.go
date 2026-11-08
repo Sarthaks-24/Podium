@@ -32,6 +32,11 @@ const (
 	AuditModeChanged     = "mode_changed"
 	// AuditProblemDeleted is written by problems.Delete (v2.0.2).
 	AuditProblemDeleted = "problem_deleted"
+	// The prompt actions are written by ai.Prompts (v2.0.2). Their details
+	// are the version id, the kind and a hash, never the text.
+	AuditPromptSaved    = "prompt_saved"
+	AuditPromptRestored = "prompt_restored"
+	AuditPromptReset    = "prompt_reset"
 )
 
 // Actor is the person an audit row names, as they were when they acted.

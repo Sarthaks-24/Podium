@@ -125,7 +125,12 @@ export const SITE_ACTIONS: readonly { id: string; label: string }[] = [
   { id: 'settings_changed', label: 'Organisation changed' },
   { id: 'user_forgotten', label: 'Account erased' },
   { id: 'problem_deleted', label: 'Problem deleted' },
+  { id: 'prompt_saved', label: 'AI prompt saved' },
+  { id: 'prompt_restored', label: 'AI prompt restored' },
+  { id: 'prompt_reset', label: 'AI prompt reset' },
 ];
+
+const PROMPT_KINDS: Record<string, string> = { wizard_rules: 'wizard rules', pack_rules: 'outside-AI rules', preferences: 'preferences' };
 
 /** The organisation's fields as the Organisation tab names them. */
 const ORG_FIELDS: Record<string, string> = {
@@ -194,6 +199,13 @@ export function siteAuditSummary(e: Pick<SiteAuditEntry, 'action' | 'subject_ema
     }
     case 'problem_deleted':
       return `Deleted problem ${str('slug') || (typeof d.problem_id === 'number' ? d.problem_id : '')}`.trim();
+    case 'prompt_saved':
+    case 'prompt_restored':
+    case 'prompt_reset': {
+      const verb = e.action === 'prompt_saved' ? 'Saved' : e.action === 'prompt_restored' ? 'Restored' : 'Reset';
+      const kind = PROMPT_KINDS[str('kind')] ?? 'AI prompt';
+      return `${verb} the ${kind}${typeof d.version_id === 'number' ? ` (version ${d.version_id})` : ''}`;
+    }
     case 'user_forgotten':
       return `Erased account ${typeof d.user_id === 'number' ? d.user_id : ''} at the person's request`.replace('  ', ' ');
   }

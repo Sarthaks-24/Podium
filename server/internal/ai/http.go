@@ -100,6 +100,9 @@ func (a *Wizard) ForgetKey(token string) {
 type Handlers struct {
 	Wizard   *Wizard
 	Problems *problems.Service
+	// Prompts holds the edited rules and preferences. Nil means the
+	// start-up rules and no preferences.
+	Prompts *Prompts
 	// Hub carries a finished run to the admin's open pages.
 	Hub *events.Hub
 	Log *slog.Logger
@@ -221,6 +224,9 @@ type keyStatusJSON struct {
 	// CustomPrompt is true when PODIUM_AI_PROMPT_FILE replaces the
 	// authoring rules. Never the text.
 	CustomPrompt bool `json:"custom_prompt"`
+	// PromptSource says where the wizard's rules come from: database,
+	// file or built-in (v2.0.2). Never the text.
+	PromptSource string `json:"prompt_source"`
 }
 
 // providerEntries returns what the session holds for each provider.
@@ -241,11 +247,24 @@ func (d *Handlers) providerEntries(r *http.Request) []keyProviderJSON {
 }
 
 func (d *Handlers) keyStatus(r *http.Request) keyStatusJSON {
-	out := keyStatusJSON{Provider: ProviderAnthropic, Providers: d.providerEntries(r), ServerNow: time.Now().UnixMilli(), CustomPrompt: CustomPrompt()}
+	out := keyStatusJSON{Provider: ProviderAnthropic, Providers: d.providerEntries(r), ServerNow: time.Now().UnixMilli(), CustomPrompt: CustomPrompt(), PromptSource: d.wizardRulesSource(r)}
 	if st, ok := d.Wizard.Keys.Status(d.sessionToken(r)); ok {
 		out.Active, out.Provider, out.Model, out.ActiveUntil = true, st.Provider, st.Model, httpx.Millis(st.ActiveUntil)
 	}
 	return out
+}
+
+// wizardRulesSource is where the wizard's rules come from right now.
+func (d *Handlers) wizardRulesSource(r *http.Request) string {
+	if d.Prompts != nil {
+		if a, err := d.Prompts.Active(r.Context(), KindWizardRules); err == nil {
+			return a.Source
+		}
+	}
+	if CustomPrompt() {
+		return SourceFile
+	}
+	return SourceBuiltIn
 }
 
 func (d *Handlers) GetAIProviders(w http.ResponseWriter, r *http.Request) {
@@ -491,6 +510,16 @@ func (d *Handlers) StartWizard(w http.ResponseWriter, r *http.Request) {
 	if err := CheckRequest(req); err != nil {
 		httpx.WriteError(w, http.StatusBadRequest, "bad_request", wizardError(err).Message)
 		return
+	}
+	if d.Prompts != nil {
+		// Built once here: the retry and every provider call of this run
+		// use the same text, whatever is saved meanwhile.
+		system, err := d.Prompts.WizardSystem(r.Context())
+		if err != nil {
+			httpx.InternalError(d.Log, w, r, err)
+			return
+		}
+		req.System = system
 	}
 	release, ok := d.takeSlot(w, u.ID)
 	if !ok {

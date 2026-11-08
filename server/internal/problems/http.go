@@ -29,6 +29,9 @@ import (
 type Handlers struct {
 	Problems *Service
 	Log      *slog.Logger
+	// Prompts gives the outside-AI prompt its edited rules and the
+	// preferences; nil means the built-in text.
+	Prompts PromptSource
 	// CanManageContest applies the contest package's access rule to each live contest.
 	CanManageContest func(context.Context, int64, auth.User) (bool, error)
 }
