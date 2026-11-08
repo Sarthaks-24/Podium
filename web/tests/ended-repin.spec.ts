@@ -37,6 +37,12 @@ test('an ended contest asks a second time and shows what changes', async ({ page
   expect(api.pinPuts[0].body.confirm_ended).toBe(true);
 });
 
+test('the second dialog says raised points need Judge again', async ({ page }) => {
+  await openSecondDialog(page, 1440);
+  const second = page.getByRole('dialog', { name: 'Change the final scores of problem A?' });
+  await expect(second).toContainText('Points you raise show in scores only after you press "Judge again" for that problem. Points you lower apply at once.');
+});
+
 test('Cancel on the second dialog changes nothing', async ({ page }) => {
   const api = await openSecondDialog(page, 1440);
   const second = page.getByRole('dialog', { name: 'Change the final scores of problem A?' });

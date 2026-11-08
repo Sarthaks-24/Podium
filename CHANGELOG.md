@@ -91,6 +91,7 @@ Unreleased. It upgrades v2.0.1 with migrations 0013, 0014 and 0015. **Upgrade th
 - An AI edit reply above 2 MB is refused before it is merged. A provider error that is logged has the session's key removed from its text first, for the edit and the wizard.
 - An AI edit draft stuck in "accepting" is dropped after 2 minutes instead of being kept.
 - AUTHORING "Practice sets" no longer promises "Problems to finish" for a practice set: a student who never started the contest is not listed there, by design.
+- The second dialog of an ended-contest update says that raised points show in scores only after "Judge again"; lowered points apply at once.
 - The AI prompts tab no longer runs wider than the page when an edit is compared or a dry run is open: a long line scrolls inside its box.
 - A fix to the contest page: an ended contest and a practice set now show the description ("About this contest", after the list of problems). It showed only before the start.
 - A compile that ran out of time or memory is no longer cached. On a cold judge the first compile could time out and the same code then failed at once for 10 minutes; now it compiles again after the 60 second refusal. Compile errors and successes are still cached.

@@ -3,6 +3,7 @@ import {
   actorText,
   endedChange,
   endedItems,
+  endedRaisesPoints,
   feedQuery,
   pinPath,
   SITE_ACTIONS,
@@ -28,6 +29,12 @@ describe('an update on an ended contest', () => {
     const change = endedChange('ended_scores_change', existing);
     expect(change).toEqual({ problems: [{ label: 'A', from: [40, 60], to: [30, 70] }], students: 1 });
     expect(endedItems(change!)).toEqual(['Problem A: points per part 40, 60 become 30, 70 (total 100 to 100).']);
+  });
+
+  it('tells a raise from a lowering', () => {
+    expect(endedRaisesPoints(endedChange('ended_scores_change', existing)!)).toBe(true);
+    const lowered = { problems: [{ label: 'A', from: [50, 50], to: [40, 50] }], students: 1 };
+    expect(endedRaisesPoints(endedChange('ended_scores_change', lowered)!)).toBe(false);
   });
 
   it('ignores every other error', () => {

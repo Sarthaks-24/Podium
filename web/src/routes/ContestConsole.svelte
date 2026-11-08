@@ -51,7 +51,7 @@
   import { keepHeadingFocus } from '../lib/focus';
   import { countOf } from '../lib/format';
   import { setTitle } from '../lib/head';
-  import { endedChange, endedItems, pinPath, updateEffect, type PinUpdate } from '../lib/history';
+  import { endedChange, endedItems, endedRaisesPoints, pinPath, updateEffect, type PinUpdate } from '../lib/history';
   import { RequestSequence } from '../lib/requestSequence';
   import { routeTitle } from '../lib/routing';
   import { session } from '../lib/session.svelte';
@@ -385,6 +385,8 @@
     );
   }
 
+  const RAISED_NOTE = 'Points you raise show in scores only after you press "Judge again" for that problem. Points you lower apply at once.';
+
   function updatePin(label: string) {
     const p = contest?.problems.find((x) => x.label === label);
     if (!p || p.latest_revision_id === undefined) return;
@@ -400,7 +402,7 @@
         if (!change) throw e;
         return {
           title: `Change the final scores of problem ${label}?`,
-          body: e.message,
+          body: endedRaisesPoints(change) ? `${e.message} ${RAISED_NOTE}` : e.message,
           items: endedItems(change),
           label: 'Update students now',
           danger: true,

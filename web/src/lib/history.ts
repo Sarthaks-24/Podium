@@ -89,6 +89,11 @@ export function endedItems(c: EndedChange): string[] {
   return c.problems.map((p) => `Problem ${p.label}: points per part ${p.from.join(', ')} become ${p.to.join(', ')} (total ${sum(p.from)} to ${sum(p.to)}).`);
 }
 
+/** True when any part of any problem gets more points: scores rise only after Judge again, lowering applies at once. */
+export function endedRaisesPoints(c: EndedChange): boolean {
+  return c.problems.some((p) => p.to.some((n, i) => n > (p.from[i] ?? 0)));
+}
+
 export interface SiteAuditEntry {
   id: number;
   at: number;
