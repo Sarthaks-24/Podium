@@ -83,6 +83,9 @@ func TestFunctionMigrationKeepsEveryRow(t *testing.T) {
 		`UPDATE problems SET mode = 'half' WHERE id = 1`,
 		`UPDATE problems SET locked_top = 'not json' WHERE id = 1`,
 		`UPDATE problems SET locked_bottom = 'not json' WHERE id = 1`,
+		`UPDATE problems SET locked_top = '[]' WHERE id = 1`,
+		`UPDATE problems SET locked_bottom = '"x"' WHERE id = 1`,
+		`UPDATE problems SET locked_top = 'null' WHERE id = 1`,
 	} {
 		if _, err := d.ExecContext(ctx, bad); err == nil {
 			t.Errorf("accepted: %s", bad)

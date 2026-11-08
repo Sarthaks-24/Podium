@@ -12,9 +12,9 @@
 -- previous binary refuses a database that records this migration: rolling
 -- back means restoring the pre-upgrade backup.
 ALTER TABLE problems ADD COLUMN mode TEXT NOT NULL DEFAULT 'whole' CHECK (mode IN ('whole', 'function'));
-ALTER TABLE problems ADD COLUMN locked_top TEXT NOT NULL DEFAULT '{}' CHECK (json_valid(locked_top));
-ALTER TABLE problems ADD COLUMN locked_bottom TEXT NOT NULL DEFAULT '{}' CHECK (json_valid(locked_bottom));
+ALTER TABLE problems ADD COLUMN locked_top TEXT NOT NULL DEFAULT '{}' CHECK (json_type(locked_top) = 'object');
+ALTER TABLE problems ADD COLUMN locked_bottom TEXT NOT NULL DEFAULT '{}' CHECK (json_type(locked_bottom) = 'object');
 ALTER TABLE problem_revisions ADD COLUMN mode TEXT NOT NULL DEFAULT 'whole' CHECK (mode IN ('whole', 'function'));
-ALTER TABLE problem_revisions ADD COLUMN locked_top TEXT NOT NULL DEFAULT '{}' CHECK (json_valid(locked_top));
-ALTER TABLE problem_revisions ADD COLUMN locked_bottom TEXT NOT NULL DEFAULT '{}' CHECK (json_valid(locked_bottom));
+ALTER TABLE problem_revisions ADD COLUMN locked_top TEXT NOT NULL DEFAULT '{}' CHECK (json_type(locked_top) = 'object');
+ALTER TABLE problem_revisions ADD COLUMN locked_bottom TEXT NOT NULL DEFAULT '{}' CHECK (json_type(locked_bottom) = 'object');
 ALTER TABLE submissions ADD COLUMN top_lines INTEGER NOT NULL DEFAULT 0 CHECK (top_lines >= 0);
