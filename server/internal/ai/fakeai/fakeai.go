@@ -52,6 +52,30 @@ func (f *Fake) Generate(ctx context.Context, req ai.Request) (*ai.WizardPack, er
 	return ai.FakePairSums(), nil
 }
 
+// EditHook lets a test choose the fake's answer to an edit. Nil means the
+// default: the instruction is appended to statement.md.
+var EditHook func(req ai.EditRequest) (*ai.EditAnswer, error)
+
+// Edit implements ai.Provider. The default answer appends the instruction to
+// the statement, so a page driven in testing mode has something to show.
+func (f *Fake) Edit(ctx context.Context, req ai.EditRequest) (*ai.EditAnswer, error) {
+	f.calls.Add(1)
+	if err := ctx.Err(); err != nil {
+		return nil, &ai.Error{Code: ai.CodeCanceled, Message: "The request was cancelled."}
+	}
+	if EditHook != nil {
+		return EditHook(req)
+	}
+	for _, file := range req.Files {
+		if file.Path == "statement.md" {
+			return &ai.EditAnswer{Files: []ai.EditFile{{Path: "statement.md",
+				Content: strings.TrimRight(file.Content, "\n") + "\n\nNote from the test provider: " + req.Instruction + "\n"}},
+				Summary: "Added a note to the statement."}, nil
+		}
+	}
+	return &ai.EditAnswer{Unsupported: "There is no statement to edit."}, nil
+}
+
 // Check implements ai.Provider.
 func (f *Fake) Check(context.Context) error { return nil }
 

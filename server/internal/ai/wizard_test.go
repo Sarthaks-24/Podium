@@ -152,6 +152,9 @@ func (s *stub) Generate(_ context.Context, req Request) (*WizardPack, error) {
 	s.answers = s.answers[1:]
 	return f()
 }
+func (s *stub) Edit(context.Context, EditRequest) (*EditAnswer, error) {
+	return nil, &Error{Code: CodeBadRequest, Message: "stub"}
+}
 func (s *stub) Check(context.Context) error                 { return nil }
 func (s *stub) ListModels(context.Context) ([]Model, error) { return nil, nil }
 

@@ -210,6 +210,15 @@ func (o *OpenAI) call(ctx context.Context, system string, msgs []openAIMessage, 
 	return text.String(), nil
 }
 
+// Edit implements Provider.
+func (o *OpenAI) Edit(ctx context.Context, req EditRequest) (*EditAnswer, error) {
+	text, err := o.call(ctx, req.System, []openAIMessage{{Role: "user", Content: EditUserPrompt(req)}}, "pack_edit", EditSchema())
+	if err != nil {
+		return nil, err
+	}
+	return DecodeEdit(text)
+}
+
 // Generate implements Provider.
 func (o *OpenAI) Generate(ctx context.Context, req Request) (*WizardPack, error) {
 	msgs := []openAIMessage{{Role: "user", Content: UserPrompt(req)}}

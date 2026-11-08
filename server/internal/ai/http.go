@@ -52,8 +52,9 @@ type Wizard struct {
 	// name. Tests only: nothing a request carries can set it.
 	BaseURLs map[string]string
 
-	mu   sync.Mutex
-	runs map[string]*wizardRun
+	mu    sync.Mutex
+	runs  map[string]*wizardRun
+	edits editDrafts
 }
 
 // wizardRun is one Generate, readable by the admin who started

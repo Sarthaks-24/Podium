@@ -194,6 +194,9 @@ func New(d Deps) http.Handler {
 		mux.HandleFunc("DELETE /api/admin/ai/key", organiser(wizard.DeleteAIKey))
 		mux.HandleFunc("POST /api/admin/ai/wizard", organiser(wizard.StartWizard))
 		mux.HandleFunc("GET /api/admin/ai/wizard/{id}", organiser(wizard.GetWizard))
+		mux.HandleFunc("POST /api/admin/problems/{id}/ai-edit", organiser(wizard.AIEdit))
+		mux.HandleFunc("POST /api/admin/problems/{id}/ai-edit/{draft}/accept", organiser(wizard.AIEditAccept))
+		mux.HandleFunc("DELETE /api/admin/problems/{id}/ai-edit/{draft}", organiser(wizard.AIEditReject))
 		// Admins and the owner reach these; the role by kind (owner: the
 		// rules, admin: the preferences) is checked inside.
 		mux.HandleFunc("GET /api/admin/ai/prompts", admin(wizard.GetPrompts))

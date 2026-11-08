@@ -194,7 +194,7 @@ func systemPrompt() string { return BuildSystemPrompt(fileRules(), "") }
 
 // delimiter tags around user data. Occurrences inside the data are
 // defused so the data cannot close its block early.
-var defuse = regexp.MustCompile(`(?i)<(/?)(brief|problem_text|statement|preferences)\b`)
+var defuse = regexp.MustCompile(`(?i)<(/?)(brief|problem_text|statement|preferences|instruction|pack_files|file)\b`)
 
 func dataBlock(tag, text string) string {
 	text = defuse.ReplaceAllString(text, "&lt;$1$2")

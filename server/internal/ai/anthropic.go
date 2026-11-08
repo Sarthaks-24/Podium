@@ -263,6 +263,15 @@ func (a *Anthropic) Generate(ctx context.Context, req Request) (*WizardPack, err
 	return DecodePack(text)
 }
 
+// Edit implements Provider.
+func (a *Anthropic) Edit(ctx context.Context, req EditRequest) (*EditAnswer, error) {
+	text, err := a.call(ctx, req.System, []anthropicMessage{anthropicTurn("user", EditUserPrompt(req))}, EditSchema())
+	if err != nil {
+		return nil, err
+	}
+	return DecodeEdit(text)
+}
+
 // claudeModel is a model as /v1/models describes it.
 type claudeModel struct {
 	ID           string `json:"id"`

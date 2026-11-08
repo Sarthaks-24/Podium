@@ -262,6 +262,16 @@ func geminiSchema(s map[string]any) map[string]any {
 	return out
 }
 
+// Edit implements Provider.
+func (g *Gemini) Edit(ctx context.Context, req EditRequest) (*EditAnswer, error) {
+	msgs := []geminiContent{{Role: "user", Parts: []geminiPart{{Text: EditUserPrompt(req)}}}}
+	text, err := g.call(ctx, req.System, msgs, EditSchema())
+	if err != nil {
+		return nil, err
+	}
+	return DecodeEdit(text)
+}
+
 // Generate implements Provider.
 func (g *Gemini) Generate(ctx context.Context, req Request) (*WizardPack, error) {
 	msgs := []geminiContent{{Role: "user", Parts: []geminiPart{{Text: UserPrompt(req)}}}}

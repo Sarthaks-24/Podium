@@ -19,6 +19,9 @@ type Provider interface {
 	// Generate asks for a problem. A refused, cut off or unusable answer
 	// comes back as *Error.
 	Generate(ctx context.Context, req Request) (*WizardPack, error)
+	// Edit asks for changes to a problem's pack files. A refused, cut off
+	// or unusable answer comes back as *Error.
+	Edit(ctx context.Context, req EditRequest) (*EditAnswer, error)
 	// Check makes the cheapest call that proves the key works: a lookup
 	// of the model, or a model listing when no model is chosen yet.
 	Check(ctx context.Context) error
