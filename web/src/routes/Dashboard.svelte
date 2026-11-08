@@ -9,6 +9,8 @@
   - Sign-in (SignInTab): account help for one address (end sessions,
     disable or enable; resetting a Google link is for owners).
   - Audit (AuditTab): the site's history of changes, filterable.
+  - AI prompts (PromptsTab): the admin Preferences box; the owner also
+    edits the rules of both AI prompts there.
   - Organisation (OrganisationTab, owners only): the details the public
     pages show.
   The tab is in the address (?tab=live, ?tab=sign-in, ?tab=audit,
@@ -26,6 +28,7 @@
   import AuditTab from '../components/settings/AuditTab.svelte';
   import LiveTab from '../components/settings/LiveTab.svelte';
   import OrganisationTab from '../components/settings/OrganisationTab.svelte';
+  import PromptsTab from '../components/settings/PromptsTab.svelte';
   import PeopleTab from '../components/settings/PeopleTab.svelte';
   import SignInTab from '../components/settings/SignInTab.svelte';
   import { UNEXPECTED_MESSAGE, getJSON } from '../lib/api';
@@ -37,13 +40,14 @@
   import { forbiddenText, routeTitle } from '../lib/routing';
   import { session } from '../lib/session.svelte';
 
-  type Tab = 'people' | 'live' | 'sign-in' | 'audit' | 'organisation';
+  type Tab = 'people' | 'live' | 'sign-in' | 'audit' | 'prompts' | 'organisation';
   const isOwner = $derived(session.user?.role === 'owner');
   const tabs = $derived<{ id: Tab; label: string }[]>([
     { id: 'people', label: 'People' },
     { id: 'live', label: 'Live' },
     { id: 'sign-in', label: 'Sign-in' },
     { id: 'audit', label: 'Audit' },
+    { id: 'prompts', label: 'AI prompts' },
     ...(isOwner ? [{ id: 'organisation' as Tab, label: 'Organisation' }] : []),
   ]);
 
@@ -123,6 +127,9 @@
     </div>
     <div id="settings-panel-audit" role="tabpanel" aria-labelledby="settings-tab-audit" hidden={tab !== 'audit'}>
       <AuditTab active={tab === 'audit'} />
+    </div>
+    <div id="settings-panel-prompts" role="tabpanel" aria-labelledby="settings-tab-prompts" hidden={tab !== 'prompts'}>
+      <PromptsTab active={tab === 'prompts'} />
     </div>
     {#if isOwner}
       <div id="settings-panel-organisation" role="tabpanel" aria-labelledby="settings-tab-organisation" hidden={tab !== 'organisation'}>

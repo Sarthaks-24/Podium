@@ -190,7 +190,7 @@ test('a role changes only after the owner confirms it', async ({ page }) => {
 test('an admin gives and takes the organiser role, and never sees admin, owner or their own row as changeable (V4-16)', async ({ page }) => {
   await mockApi(page, 'admin');
   await page.goto('/admin/dashboard');
-  await expect(page.getByRole('tab')).toHaveText(['People', 'Live', 'Sign-in', 'Audit']);
+  await expect(page.getByRole('tab')).toHaveText(['People', 'Live', 'Sign-in', 'Audit', 'AI prompts']);
   const asha = page.getByRole('combobox', { name: 'Role for Asha Rao' });
   await expect(asha.getByRole('option')).toHaveText(['Student', 'Organiser']);
   await expect(page.getByRole('combobox', { name: 'Role for Bilal Khan' })).toHaveCount(0);
