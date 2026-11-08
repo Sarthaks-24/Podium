@@ -372,7 +372,7 @@ Checked by the server before anything is queued. Every refusal is `429` with the
 | Submissions per problem | the contest's `max_per_problem` (default 15); none for practice | Submit in a contest (`400`) |
 | Pending runs | one per user, across problems | Run |
 | Gap between runs | 2 s per user | Run |
-| After a compile that ran out of time or memory | that user's Run and Submit in the same contest are refused for 60 s; kept in memory, so a restart forgets it. The judge also caches that compile error for the same language and source for 10 minutes, so resending the same code does not hold the compile lock again. Rejudges do not count | Run, Submit |
+| After a compile that ran out of time or memory | that user's Run and Submit in the same contest are refused for 60 s; kept in memory, so a restart forgets it. The judge does not cache that compile, so the same code compiles again after the 60 s. Rejudges do not count | Run, Submit |
 | Draft saves | one per user every 2 s | drafts |
 | Code | 64 KB, UTF-8 | Run, Submit, drafts |
 | Custom input | 64 KB | Run |

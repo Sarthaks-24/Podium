@@ -108,3 +108,30 @@ func TestCompileReportCarriesTimedOut(t *testing.T) {
 		t.Errorf("compile report %+v, want CE with timed_out", c)
 	}
 }
+
+func TestTimedOutCompileIsNotStored(t *testing.T) {
+	c := &CompileCache{Dir: t.TempDir()}
+	lang := judge.Languages["cpp17"]
+	src := []byte("slow")
+	calls := 0
+	c.build = func(_ context.Context, _ *judge.Runner, _ int, _ judge.Language, _ []byte, _ string) (judge.CompileResult, error) {
+		calls++
+		if calls == 1 {
+			return judge.CompileResult{Verdict: judge.CompileError, Output: "Compilation took longer than 10 seconds.", Transient: true}, nil
+		}
+		return judge.CompileResult{Verdict: judge.OK}, nil
+	}
+	_, res, release, err := c.Compile(context.Background(), nil, 0, lang, src)
+	if err != nil || !res.Transient {
+		t.Fatalf("first compile: %+v %v", res, err)
+	}
+	release()
+	if _, err := os.Stat(filepath.Join(c.Dir, compileKey(lang, src))); err == nil {
+		t.Fatal("a timed-out compile was stored")
+	}
+	_, res, release, err = c.Compile(context.Background(), nil, 0, lang, src)
+	if err != nil || res.Verdict != judge.OK || calls != 2 {
+		t.Fatalf("second compile: calls=%d %+v %v", calls, res, err)
+	}
+	release()
+}

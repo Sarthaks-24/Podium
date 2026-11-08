@@ -23,8 +23,9 @@ const DefaultCompileCacheBytes = 500 << 20
 // compile command and source. "Run on samples" followed by "Submit" of the
 // same code, identical resubmissions, and a problem's checker compile once.
 // Compile errors are cached too, so the same broken code is not rebuilt.
-// A compile that ran out of time or memory is cached for transientTTL
-// only. Entries in use by a running job are never evicted.
+// A compile that ran out of time or memory is never cached: it says
+// something about the judge's load, not the code. Entries in use by a
+// running job are never evicted.
 type CompileCache struct {
 	Dir      string
 	MaxBytes int64
@@ -32,12 +33,12 @@ type CompileCache struct {
 	mu    sync.Mutex
 	inUse map[string]int
 	now   func() time.Time // tests replace it
+	// build replaces the real compile in tests.
+	build func(ctx context.Context, r *judge.Runner, box int, lang judge.Language, src []byte, bin string) (judge.CompileResult, error)
 }
 
-// transientTTL bounds how long a compile that ran out of time or memory is
-// cached: long enough that a student resending the same code does not hold
-// the judge-wide compile lock again, short enough that a failure caused by
-// load stops being reported once the load has passed.
+// transientTTL bounds how long a transient entry written by an older
+// version still counts. New transient results are not stored.
 const transientTTL = 10 * time.Minute
 
 type cachedResult struct {
@@ -104,10 +105,21 @@ func (c *CompileCache) Compile(ctx context.Context, r *judge.Runner, box int, la
 		os.RemoveAll(tmp)
 		return fail(err)
 	}
-	_, res, err := r.Compile(ctx, box, lang, src, bin)
+	var res judge.CompileResult
+	if c.build != nil {
+		res, err = c.build(ctx, r, box, lang, src, bin)
+	} else {
+		_, res, err = r.Compile(ctx, box, lang, src, bin)
+	}
 	if err != nil {
 		os.RemoveAll(tmp)
 		return fail(err)
+	}
+	if res.Transient {
+		// Not stored: the next submission of the same code compiles again.
+		// The student's resubmission rate is limited by the 60 second
+		// refusal in the submissions package.
+		return judge.Program{Lang: lang, Dir: bin}, res, func() { release(); os.RemoveAll(tmp) }, nil
 	}
 	moved, err := c.store(tmp, dir, res)
 	if err != nil {
