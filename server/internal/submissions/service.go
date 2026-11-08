@@ -195,10 +195,17 @@ type Workspace struct {
 	Samples       []Sample   `json:"samples"`
 	// Starters is the problem's own starter code by language, {} when it
 	// has none; the web app falls back to its own (v4 E5).
-	Starters    map[string]string `json:"starters"`
-	Draft       *Draft            `json:"draft"`
-	Submissions []SubmissionView  `json:"submissions"`
-	ServerNow   int64             `json:"server_now"`
+	Starters map[string]string `json:"starters"`
+	// Mode is "whole" or "function". For a function problem LockedTop and
+	// LockedBottom hold the locked code of each offered language, from the
+	// same copy of the problem the judge uses: the pinned revision in a
+	// contest, the working copy otherwise. Both are {} for a whole problem.
+	Mode         string            `json:"mode"`
+	LockedTop    map[string]string `json:"locked_top"`
+	LockedBottom map[string]string `json:"locked_bottom"`
+	Draft        *Draft            `json:"draft"`
+	Submissions  []SubmissionView  `json:"submissions"`
+	ServerNow    int64             `json:"server_now"`
 }
 
 // Language is a choice in the editor's language select.
@@ -245,12 +252,9 @@ func (s *Service) Workspace(ctx context.Context, problemID, userID int64, sc Sco
 	for l, code := range p.Starters {
 		w.Starters[l] = code
 	}
-	// A function problem lists only the languages it has locked code for.
-	for _, l := range languages {
-		if sc.allows(l.ID) && p.Offers(l.ID) {
-			w.Languages = append(w.Languages, l)
-		}
-	}
+	// The copy that supplies the mode, the locked code and the offered
+	// languages: the working copy, or the pinned revision below.
+	offered := p
 	tests := make([]problems.RevisionTest, 0, len(p.Tests))
 	for _, t := range p.Tests {
 		tests = append(tests, problems.RevisionTest{Idx: t.Idx, Kind: p.TestKind(t.Idx), InputSHA: t.InputSHA, OutputSHA: t.OutputSHA})
@@ -268,12 +272,27 @@ func (s *Service) Workspace(ctx context.Context, problemID, userID int64, sc Sco
 			for l, code := range rev.Starters {
 				w.Starters[l] = code
 			}
+			offered = &problems.Problem{Mode: rev.Mode, LockedTop: rev.LockedTop, LockedBottom: rev.LockedBottom}
 			if rev.TimeLimitMS != nil && rev.MemoryLimitMB != nil {
 				w.TimeLimitMS, w.MemoryLimitMB = *rev.TimeLimitMS, *rev.MemoryLimitMB
 			}
 			if tests, err = s.Problems.RevisionTests(ctx, rev.ID); err != nil {
 				return nil, err
 			}
+		}
+	}
+	// A function problem lists only the languages it has locked code for.
+	w.Mode, w.LockedTop, w.LockedBottom = problems.ModeWhole, map[string]string{}, map[string]string{}
+	if offered.IsFunction() {
+		w.Mode = problems.ModeFunction
+	}
+	for _, l := range languages {
+		if !sc.allows(l.ID) || !offered.Offers(l.ID) {
+			continue
+		}
+		w.Languages = append(w.Languages, l)
+		if offered.IsFunction() {
+			w.LockedTop[l.ID], w.LockedBottom[l.ID] = offered.LockedTop[l.ID], offered.LockedBottom[l.ID]
 		}
 	}
 	for _, t := range tests {
@@ -424,6 +443,7 @@ func (s *Service) Submit(ctx context.Context, r SubmitRequest) (v *SubmissionVie
 	if err := checkOffered(p, r.Language); err != nil {
 		return nil, false, err
 	}
+	r.Source = p.StripLocked(r.Language, r.Source)
 	if s.beforeWrite != nil {
 		s.beforeWrite()
 	}
@@ -720,6 +740,7 @@ func (s *Service) Run(ctx context.Context, r RunRequest) (*RunView, error) {
 	if err := checkOffered(p, r.Language); err != nil {
 		return nil, err
 	}
+	r.Source = p.StripLocked(r.Language, r.Source)
 	if s.beforeWrite != nil {
 		s.beforeWrite()
 	}

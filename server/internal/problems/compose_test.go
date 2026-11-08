@@ -133,3 +133,28 @@ func FuzzCompose(f *testing.F) {
 		checkComposed(t, top, code, bottom)
 	})
 }
+
+// A whole file that already holds the locked top or bottom is cut back to
+// the student's part, on an exact match only (V202-34).
+func TestStripLocked(t *testing.T) {
+	p := &Problem{Mode: ModeFunction, LockedTop: map[string]string{"python3": "import sys\n"}, LockedBottom: map[string]string{"python3": "print(f(1))"}}
+	body := "def f(n):\n    return n\n"
+	for name, c := range map[string]struct{ in, want string }{
+		"top and bottom":     {"import sys\n" + body + "print(f(1))\n", body},
+		"bottom has no end":  {"import sys\n" + body + "print(f(1))", body},
+		"top only":           {"import sys\n" + body, body},
+		"bottom only":        {body + "print(f(1))\n", body},
+		"neither":            {body, body},
+		"near miss kept":     {"import os\n" + body, "import os\n" + body},
+		"top inside a line":  {"x import sys\n" + body, "x import sys\n" + body},
+		"bottom on one line": {body + "x print(f(1))\n", body + "x print(f(1))\n"},
+	} {
+		if got := p.StripLocked("python3", c.in); got != c.want {
+			t.Errorf("%s: got %q, want %q", name, got, c.want)
+		}
+	}
+	whole := &Problem{Mode: ModeWhole}
+	if got := whole.StripLocked("python3", "import sys\n"); got != "import sys\n" {
+		t.Errorf("whole problem changed the code: %q", got)
+	}
+}

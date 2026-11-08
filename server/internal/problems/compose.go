@@ -49,3 +49,30 @@ func (p *Problem) ComposeFor(lang, code string) Composed {
 	}
 	return Compose(p.LockedTop[lang], code, p.LockedBottom[lang])
 }
+
+// StripLocked cuts the locked top and bottom off code that already holds
+// them, so a whole file pasted into the editor is composed once. The match
+// is exact: the top must be the start of the code and the bottom its end,
+// each on whole lines; anything else is left as the student wrote it. A
+// whole problem returns the code unchanged.
+func (p *Problem) StripLocked(lang, code string) string {
+	if !p.IsFunction() {
+		return code
+	}
+	if t := normalise(p.LockedTop[lang]); t != "" && strings.HasPrefix(code, t) {
+		code = code[len(t):]
+	}
+	if b := normalise(p.LockedBottom[lang]); b != "" {
+		bare := b[:len(b)-1]
+		switch {
+		case strings.HasSuffix(code, b) && lineStart(code, len(code)-len(b)):
+			code = code[:len(code)-len(b)]
+		case strings.HasSuffix(code, bare) && lineStart(code, len(code)-len(bare)):
+			code = code[:len(code)-len(bare)]
+		}
+	}
+	return code
+}
+
+// lineStart reports whether offset i of s is the start of a line.
+func lineStart(s string, i int) bool { return i == 0 || s[i-1] == '\n' }

@@ -552,6 +552,7 @@ The workspace is where code is written, run and submitted. Under `/api/workspace
                  { "id": "python3", "name": "Python 3", "time_factor": 3 }, { "id": "node22", "name": "JavaScript (Node 22)", "time_factor": 2 } ],
   "samples": [ { "idx": 1, "input": "2\n1 2\n", "output": "3\n", "truncated": false } ],
   "starters": { "cpp17": "#include <bits/stdc++.h>\n..." },
+  "mode": "whole", "locked_top": {}, "locked_bottom": {},
   "draft": { "language": "cpp17", "source": "...", "updated_at": 1792183192359 },
   "submissions": [], "server_now": 1792183192400 }
 ```
@@ -560,6 +561,7 @@ The workspace is where code is written, run and submitted. Under `/api/workspace
 - `time_factor` multiplies `time_limit_ms` for that language on the judge, so the editor shows the limit a program really gets.
 - `draft` is `null` when nothing was saved. `submissions` is the viewer's newest 20 on this problem, newest first. `starters` is the problem's own starter code by language, from the pinned revision in a contest, `{}` when it has none; a language without one uses the web app's starter.
 - For a function problem (v2.0.2), `languages` lists only the languages it offers.
+- `mode` (v2.0.2) is `whole` or `function`. For a function problem, `locked_top` and `locked_bottom` hold the locked code of each offered language; both are `{}` for a whole problem. They come from the same copy of the problem the judge uses: the pinned revision in a contest (so after an edit and before "Update students now" a student still sees the pinned top, bottom and languages), the working copy otherwise. A client that does not know these fields still works: it sends whole files, and a file that already starts with the exact locked top or ends with the exact locked bottom has them cut off on Run and Submit, so each is judged once.
 
 ### `Run`
 
