@@ -139,8 +139,35 @@ func (r *rig) importPack(t *testing.T, slug string, edit map[string]string) *pro
 	return p
 }
 
-// validate queues a validation and waits for it to finish.
+// validate queues a validation and waits for it to finish. A validation
+// whose compile ran out of time is queued again, up to three attempts: in
+// WSL2 the guest counts the time Windows takes its CPUs away as CPU time,
+// so on a busy machine a 1.3 s compile can pass the 10 s limit. No test
+// here expects a compile to run out of time, so a retry hides nothing it
+// checks, and each retry is logged.
 func (r *rig) validate(t *testing.T, id int64) *problems.Validation {
+	t.Helper()
+	for attempt := 1; ; attempt++ {
+		v := r.validateOnce(t, id)
+		if attempt == 3 || !compileTimedOut(v) {
+			return v
+		}
+		t.Logf("attempt %d: a compile ran out of time, validating again:\n%s", attempt, describe(v))
+	}
+}
+
+// compileTimedOut reports whether a program of v failed to compile only
+// because the compiler ran out of time.
+func compileTimedOut(v *problems.Validation) bool {
+	for _, c := range v.Compile {
+		if c.Verdict == string(judge.CompileError) && strings.Contains(c.Output, "Compilation took longer than") {
+			return true
+		}
+	}
+	return false
+}
+
+func (r *rig) validateOnce(t *testing.T, id int64) *problems.Validation {
 	t.Helper()
 	ctx := context.Background()
 	if _, err := r.bank.RequestValidation(ctx, id, 0); err != nil {
@@ -223,21 +250,22 @@ func TestBrokenOutputNamesTheTest(t *testing.T) {
 
 func TestHostileCheckerIsContained(t *testing.T) {
 	r := newRig(t)
-	for name, src := range map[string]string{
-		"fork bomb":     "#include <unistd.h>\nint main(){ for(;;) fork(); }\n",
-		"infinite loop": "int main(){ volatile int x = 0; for(;;) x++; }\n",
-		"reads secrets": "#include <cstdio>\nint main(){ FILE* f = fopen(\"/etc/shadow\", \"r\"); return f ? 0 : 3; }\n",
+	for _, c := range []struct{ name, src string }{
+		{"fork bomb", "#include <unistd.h>\nint main(){ for(;;) fork(); }\n"},
+		{"infinite loop", "int main(){ volatile int x = 0; for(;;) x++; }\n"},
+		{"reads secrets", "#include <cstdio>\nint main(){ FILE* f = fopen(\"/etc/shadow\", \"r\"); return f ? 0 : 3; }\n"},
 	} {
-		p := r.importPack(t, "pair-with-sum", map[string]string{"checker.cpp": src, "problem.yaml": strings.Replace(
-			mustRead(t, filepath.Join(*examplesDir, "pair-with-sum", "problem.yaml")), "slug: pair-with-sum", "slug: hostile-"+strings.ReplaceAll(name, " ", "-"), 1)})
-		v := r.validate(t, p.ID)
-		if v.State != problems.ValidationFailed {
-			t.Errorf("%s: checker should fail validation, got:\n%s", name, describe(v))
-			continue
-		}
-		if !strings.Contains(strings.Join(v.Summary.Problems, "\n"), "reference solution got an internal error") {
-			t.Errorf("%s: expected the checker failure to be reported:\n%s", name, describe(v))
-		}
+		t.Run(c.name, func(t *testing.T) {
+			p := r.importPack(t, "pair-with-sum", map[string]string{"checker.cpp": c.src, "problem.yaml": strings.Replace(
+				mustRead(t, filepath.Join(*examplesDir, "pair-with-sum", "problem.yaml")), "slug: pair-with-sum", "slug: hostile-"+strings.ReplaceAll(c.name, " ", "-"), 1)})
+			v := r.validate(t, p.ID)
+			if v.State != problems.ValidationFailed {
+				t.Fatalf("checker should fail validation, got:\n%s", describe(v))
+			}
+			if !strings.Contains(strings.Join(v.Summary.Problems, "\n"), "reference solution got an internal error") {
+				t.Errorf("expected the checker failure to be reported:\n%s", describe(v))
+			}
+		})
 	}
 }
 
