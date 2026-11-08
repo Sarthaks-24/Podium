@@ -30,6 +30,7 @@ server/dist/
 *.out
 # Expected outputs of the example packs are test data, not build output.
 !problems/*/tests/*.out
+!server/internal/problems/packprompt/*/tests/*.out
 coverage.*
 
 # graphify knowledge graph of the repo (local, rebuilt on demand)
