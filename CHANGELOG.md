@@ -103,6 +103,7 @@ Unreleased. It upgrades v2.0.1 with migrations 0013, 0014 and 0015. **Upgrade th
 - Windows line ends in a pasted whole file are not stripped: the locked top and bottom are matched exactly, so such a file is kept as written.
 - The AI wizard stays whole-program; function problems come from the editor or from a format 4 pack.
 - AI edit is one model call with no retry, and it cannot write test data.
+- In Python and JavaScript a renamed function is a runtime error, so the locked-code hint does not show (C++ and Java show it).
 - Restoring a deleted problem is not possible.
 - A deleted problem's pinned blobs stay on disk, so ended contests stay reproducible.
 - "Update students now" on an ended contest can change final scores when points differ; it asks twice.
