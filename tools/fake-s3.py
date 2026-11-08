@@ -4,19 +4,28 @@ a folder, no signatures checked. It answers what rclone needs for the
 offsite nightly copy (put, list v1 and v2, head, get) and nothing more.
 Loopback only.
 
-    python3 tools/fake-s3.py ROOT PORT
+    python3 tools/fake-s3.py ROOT PORT [LOGFILE]
+
+With LOGFILE, every request is appended as one line: the call class,
+the method, the path with its query and the Unix time, separated by tabs. The class is
+"C" for what Backblaze B2 bills as class C (a bucket-level GET, which is
+ListObjects, ListObjectsV2 or a bucket query, and HEAD on a bucket), "A"
+for a write (PUT, POST, DELETE), "B" for an object GET or HEAD. B2's
+classes are from its price page, as remembered: check them there.
 """
 import hashlib
 import http.server
 import os
+import re
 import sys
 import time
 import urllib.parse
 from email.utils import formatdate
-from xml.sax.saxutils import escape
+from xml.sax.saxutils import escape, unescape
 
 ROOT = sys.argv[1]
 PORT = int(sys.argv[2])
+LOGFILE = sys.argv[3] if len(sys.argv) > 3 else ""
 NS = "http://s3.amazonaws.com/doc/2006-03-01/"
 
 
@@ -34,6 +43,35 @@ def iso(t):
 class Handler(http.server.BaseHTTPRequestHandler):
     def log_message(self, *args):
         pass
+
+    def log_call(self):
+        if not LOGFILE:
+            return
+        bucket, key, _ = self.split()
+        if self.command in ("GET", "HEAD"):
+            cls = "B" if key else "C"
+        else:
+            cls = "A"
+        with open(LOGFILE, "a") as f:
+            f.write("%s\t%s\t%s\t%d\n" % (cls, self.command, self.path, time.time()))
+
+    def handle_one_request(self):
+        # Wrap the standard dispatch so every method is logged once.
+        self.raw_requestline = None
+        try:
+            self.raw_requestline = self.rfile.readline(65537)
+        except (ConnectionError, TimeoutError):
+            self.close_connection = True
+            return
+        if not self.raw_requestline or not self.parse_request():
+            self.close_connection = True
+            return
+        self.log_call()
+        fn = getattr(self, "do_" + self.command, None)
+        if fn is None:
+            return self.reply(501)
+        fn()
+        self.wfile.flush()
 
     def split(self):
         u = urllib.parse.urlsplit(self.path)
@@ -81,6 +119,28 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 if k.lower().startswith("x-amz-meta-"):
                     f.write("%s:%s\n" % (k, v))
         self.reply(200, headers={"ETag": '"%s"' % hashlib.md5(data).hexdigest()})
+
+    def do_DELETE(self):
+        bucket, key, _ = self.split()
+        if key:
+            for p in (path_of(bucket, key), path_of(bucket, key) + ".meta"):
+                if os.path.isfile(p):
+                    os.remove(p)
+        self.reply(204)
+
+    def do_POST(self):
+        # Multi-object delete (POST /bucket?delete), which Litestream uses.
+        bucket, key, q = self.split()
+        n = int(self.headers.get("Content-Length", "0"))
+        body = self.rfile.read(n).decode("utf-8", "replace")
+        if "delete" not in q:
+            return self.reply(501)
+        for k in re.findall(r"<Key>([^<]*)</Key>", body):
+            for p in (path_of(bucket, unescape(k)), path_of(bucket, unescape(k)) + ".meta"):
+                if os.path.isfile(p):
+                    os.remove(p)
+        self.reply(200, b'<?xml version="1.0" encoding="UTF-8"?><DeleteResult xmlns="%s"></DeleteResult>' % NS.encode(),
+                   {"Content-Type": "application/xml"})
 
     def do_HEAD(self):
         self.do_GET()
