@@ -8,7 +8,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Sarthaks-24/podium/internal/auth"
 	"github.com/Sarthaks-24/podium/internal/db"
+	"github.com/Sarthaks-24/podium/internal/jobs"
 	"github.com/Sarthaks-24/podium/internal/problems"
 )
 
@@ -53,5 +55,39 @@ func TestCheckCommand(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(dir, "nope.db")); err == nil {
 		t.Error("check created a database")
+	}
+}
+
+// A deleted problem is a tombstone with no revision to match; check still
+// reports ok, so the nightly backup keeps its copies.
+func TestCheckCommandPassesWithADeletedProblem(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+	dbPath, tests := filepath.Join(dir, "podium.db"), filepath.Join(dir, "tests")
+	d, err := db.Open(ctx, dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Migrate(ctx, d); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := d.Exec(`INSERT INTO users (id, email, role, created_at) VALUES (2, 'admin@college.edu', 'admin', 0)`); err != nil {
+		t.Fatal(err)
+	}
+	s := &problems.Service{DB: d, Blobs: problems.Blobs{Dir: tests}, Jobs: &jobs.Service{DB: d}}
+	p, err := s.Create(ctx, "A plus B", "a-plus-b", 2, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Update(ctx, p.ID, problems.Edit{Title: "A plus B", Slug: "a-plus-b", Statement: "Add two numbers.", TimeLimitMS: 1000, MemoryLimitMB: 256, Checker: p.Checker, Starters: &map[string]string{"python3": "# start"}, Reference: problems.Source{Language: "python3", Source: "print(1)"}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Delete(ctx, p.ID, auth.Actor{ID: 2, Email: "admin@college.edu", Role: auth.Admin}); err != nil {
+		t.Fatal(err)
+	}
+	d.Close()
+	var out bytes.Buffer
+	if code := checkCmd([]string{"-db", dbPath, "-tests", tests, "-hash"}, &out); code != 0 || !strings.Contains(out.String(), "result: ok") {
+		t.Fatalf("exit %d\n%s", code, out.String())
 	}
 }

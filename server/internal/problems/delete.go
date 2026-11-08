@@ -171,7 +171,7 @@ func (s *Service) Delete(ctx context.Context, id int64, by auth.Actor) error {
 	if _, err := tx.ExecContext(ctx, `UPDATE problems SET deleted = 1, archived = 1, deleted_at = ?, deleted_by = ?,
 		archived_slug = ?, slug = ?, updated_at = ?, checker_source = '', reference_source = '', brute_language = '', brute_source = '',
 		validator_language = '', validator_source = '', generator_language = '', generator_source = '', generator_plan = '[]',
-		starters = '{}', samples = '[]' WHERE id = ? AND deleted = 0`,
+		starters = '{}', samples = '[]', locked_top = '{}', locked_bottom = '{}' WHERE id = ? AND deleted = 0`,
 		now.UnixMilli(), by.ID, original, form, now.UnixMilli(), id); err != nil {
 		return err
 	}

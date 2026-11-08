@@ -463,3 +463,34 @@ func TestRepeatedCreateOfADeletedProblemIsRefused(t *testing.T) {
 		t.Errorf("repeat create: %v %v", got, err)
 	}
 }
+
+// A tombstone has no working copy to compare, so the revision check passes
+// after a delete (podium-server check, the nightly backup and the upgrade
+// gate all rely on it).
+func TestRevisionCheckPassesAfterADelete(t *testing.T) {
+	s, _ := deleteBank(t)
+	p := importExample(t, s, "a-plus-b")
+	if err := s.Delete(context.Background(), p.ID, adminActor); err != nil {
+		t.Fatal(err)
+	}
+	assertRevisions(t, s)
+}
+
+// The tombstone drops the locked text with the rest of the working copy.
+func TestDeleteClearsLockedText(t *testing.T) {
+	s, _ := deleteBank(t)
+	p := importExample(t, s, "a-plus-b")
+	if _, err := s.DB.Exec(`UPDATE problems SET locked_top = '{"python":"import sys"}', locked_bottom = '{"python":"main()"}' WHERE id = ?`, p.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Delete(context.Background(), p.ID, adminActor); err != nil {
+		t.Fatal(err)
+	}
+	var top, bottom string
+	if err := s.DB.QueryRow("SELECT locked_top, locked_bottom FROM problems WHERE id = ?", p.ID).Scan(&top, &bottom); err != nil {
+		t.Fatal(err)
+	}
+	if top != "{}" || bottom != "{}" {
+		t.Errorf("locked_top %s, locked_bottom %s", top, bottom)
+	}
+}

@@ -383,12 +383,13 @@ func (s *Service) RevisionTests(ctx context.Context, revisionID int64) ([]Revisi
 	return out, rows.Err()
 }
 
-// CheckRevisions lists every problem whose working copy is not recorded by
-// its newest revision, and every contest pin without a revision. An empty
+// CheckRevisions lists every live problem whose working copy is not recorded
+// by its newest revision, and every contest pin without a revision. An empty
 // list means no write skipped its revision; podium-server check
 // reports it.
 func CheckRevisions(ctx context.Context, db *sql.DB) ([]string, error) {
-	rows, err := db.QueryContext(ctx, "SELECT id FROM problems ORDER BY id")
+	// A tombstone keeps its old revisions but has no working copy to match.
+	rows, err := db.QueryContext(ctx, "SELECT id FROM problems WHERE deleted = 0 ORDER BY id")
 	if err != nil {
 		return nil, err
 	}
