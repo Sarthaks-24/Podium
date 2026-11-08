@@ -255,7 +255,13 @@ for (const theme of THEMES) {
         await page.evaluate(() => document.fonts.ready);
         await page.screenshot({ path: `${dir}locked-${width}-${theme}.png`, fullPage: width < 1024 });
         const results = await new AxeBuilder({ page }).withTags(AXE_TAGS).analyze();
-        expect(results.violations.map((v) => `${v.id}: ${v.nodes[0]?.target}`)).toEqual([]);
+        // The CodeMirror scroller holds the focusable editor, which axe does not
+        // count; the same known false positive as in a11y.spec.ts (v2.0.1 stage D).
+        // It shows only where the fonts make the editor scroll (Linux CI).
+        const violations = results.violations
+          .map((v) => `${v.id}: ${v.nodes[0]?.target}`)
+          .filter((v) => v !== 'scrollable-region-focusable: .cm-scroller');
+        expect(violations).toEqual([]);
         const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
         expect(overflow).toBeLessThanOrEqual(0);
         if (width >= 1024) {
