@@ -38,7 +38,11 @@ type Case struct {
 
 // Hostile lists the programs that try to escape or starve the sandbox.
 var Hostile = []Case{
-	{Name: "fork bomb (C++)", Lang: "cpp17", File: "fork_bomb.cpp", Want: []judge.Verdict{judge.RuntimeError, judge.TimeLimit}},
+	// The process limit makes every fork fail (EAGAIN). On Ubuntu's 6.8
+	// kernels the failed forks still charge memory to the box faster than
+	// it is freed, so the box's own memory limit can end it first: MLE is
+	// contained too (v2.0.2, seen on a 2 vCPU Ubuntu 24.04 VM).
+	{Name: "fork bomb (C++)", Lang: "cpp17", File: "fork_bomb.cpp", Want: []judge.Verdict{judge.RuntimeError, judge.TimeLimit, judge.MemoryLimit}},
 	{Name: "malloc 2 GB and touch pages (C++)", Lang: "cpp17", File: "malloc_2g.cpp", Want: []judge.Verdict{judge.MemoryLimit}},
 	{Name: "infinite loop (C++)", Lang: "cpp17", File: "infinite_loop.cpp", Want: []judge.Verdict{judge.TimeLimit}},
 	{Name: "sleep forever (C++)", Lang: "cpp17", File: "sleep_forever.cpp", Want: []judge.Verdict{judge.TimeLimit}},
@@ -56,7 +60,10 @@ var Hostile = []Case{
 	// An unreadable output file reads as empty; a runner error here would
 	// let the program choose when the judge fails.
 	{Name: "output chmod 000 (C++)", Lang: "cpp17", File: "chmod_output.cpp", Want: []judge.Verdict{judge.OK}},
-	{Name: "endless output (Java)", Lang: "java21", File: "java_print.java", Want: []judge.Verdict{judge.OutputLimit}, Time: 5 * time.Second},
+	// Java reaches the output limit only after about 10 s of CPU on a 2 vCPU
+	// VM (calibrate, v2.0.2), so 5 s (10 s with Java's factor) sat on the
+	// edge; 10 s keeps the case proving OLE with twice the headroom (PF-3).
+	{Name: "endless output (Java)", Lang: "java21", File: "java_print.java", Want: []judge.Verdict{judge.OutputLimit}, Time: 10 * time.Second},
 	{Name: "endless output (Python)", Lang: "python3", File: "py_print.py", Want: []judge.Verdict{judge.OutputLimit}},
 	{Name: "fill /tmp with 16 MB files (C++)", Lang: "cpp17", File: "disk_fill.cpp", Want: []judge.Verdict{judge.MemoryLimit, judge.RuntimeError}, Time: 5 * time.Second},
 }
