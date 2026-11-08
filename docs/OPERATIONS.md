@@ -811,7 +811,18 @@ Disk snapshots from your VM provider are a fine addition but not a replacement: 
 
 Litestream has only been rehearsed against a local file replica so far; the first restore from your bucket in step 5 is the real test; repeat it once a term with `podium-check restore-proof` (see "Alerts"). If the first sync fails with an error about checksums or a header the provider does not support, note the exact message: Litestream 0.5 has per-provider options (`sign-payload`, `require-content-md5`) under the replica in `/etc/litestream.yml`.
 
-**B2 transaction caps.** A free B2 account allows 2,500 class C calls (listings) a day; once the cap is hit, B2 refuses listings until midnight UTC, so `podium-check` reports "bucket unreachable" and a restore fails, while uploads go on. A normal day uses about 150: Litestream lists the bucket once an hour to clean up uploaded L0 files (`l0-retention-check-interval: 1h` in `/etc/litestream.yml`; the 0.5 default of 15 s alone would use up to 11,520), plus about 10 calls at each Litestream start; `podium-check` lists only the level 0 folder (`<path>/0000` in the bucket), one call every 15 minutes. Restores, `restore-proof` and repeated restarts add to it, so on a day of heavy testing raise the cap in B2's "Caps and alerts" page, or wait for the reset.
+**B2 transaction caps.** A free B2 account allows 2,500 class C calls (listings) a day; once the cap is hit, B2 refuses listings until midnight UTC, so `podium-check` reports "bucket unreachable" and a restore fails, while uploads go on. The measurement (PF-11, real Litestream 0.5.16 and the real scripts against a counting fake S3, with a write load of 2 to 3 commits a second standing in for a contest; a few clock jumps make the load figures good to about 20 %):
+
+| Source | List calls |
+|---|---|
+| Litestream with the 0.5 default levels (30 s, 5 min, 1 h), database written | about 3 per 30 s, about 9,000 a day |
+| Litestream, database idle | about 17 an hour, about 410 a day |
+| Litestream start | 22 each |
+| Litestream L0 clean-up (`l0-retention-check-interval: 1h`) | 2 an hour |
+| `podium-check`, every 15 minutes | 2 a run (1 if the offsite bucket is at another provider), at most 192 a day |
+| `podium-backup`, nightly offsite upload | 1 |
+
+The biggest source was level 1 compaction, so `/etc/litestream.yml` sets `levels:` to 15 minutes, 1 hour and 6 hours: about 460 a day under constant writes, 650 with `podium-check` and the backup. The newest 15 minutes of changes stay as small level 0 files; restores work as before. `tools/b2-calls-test.sh` (in `make check`) counts one simulated day of this schedule and fails above 1,000. A deploy installs the file and restarts Litestream; check `journalctl -u podium-litestream` shows "compaction monitor" lines with `interval=15m0s`. Restores, `restore-proof` and repeated restarts add to the count, so on a day of heavy testing raise the cap in B2's "Caps and alerts" page, or wait for the reset. Read the daily report by call type in B2 the day after a contest to confirm the real class C count.
 
 ### Nightly backup
 

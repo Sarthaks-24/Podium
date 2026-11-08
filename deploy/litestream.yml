@@ -32,6 +32,18 @@ dbs:
 # bucket up to an hour longer; the newest one is always kept.
 l0-retention-check-interval: 1h
 
+# Compaction levels 1 to 3 (level 0 is the upload itself). The 0.5 defaults
+# are 30 s, 5 min and 1 h. While the database is being written, each level 1
+# compaction lists the bucket about 3 times, so every 30 s that is about
+# 8,600 list calls a day, over B2's 2,500 class C cap (PF-11, measured in
+# docs/OPERATIONS.md "B2 transaction caps"). At 15 min, 1 h and 6 h it is
+# about 300 a day. A restore reads the same files, only grouped in larger
+# steps; the newest 15 minutes of changes stay as level 0 files.
+levels:
+  - interval: 15m
+  - interval: 1h
+  - interval: 6h
+
 # A full snapshot every day, kept for 14 days; point-in-time restore works
 # anywhere inside that window.
 snapshot:

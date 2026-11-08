@@ -16,6 +16,7 @@ Unreleased. It upgrades v2.0.1 with migrations 0013, 0014 and 0015. **Upgrade th
 - The Live tab lists an edited problem's "Update students now" banner after the contest has closed too. It was hidden at the close, which left no way to open practice again on a changed problem in the console.
 - `podium-check` says "Backblaze's daily transaction cap is used up; listings work again after midnight UTC" when B2 refuses a listing for the daily cap, instead of blaming the key, and no longer pipes an empty answer to `jq` (PF-7). `tools/install-test.sh` runs it against a fake `rclone`.
 - A compatibility corpus (the three example packs and one format 3 pack with starters) and golden `ContentHash` values and export digests guard that old packs import, export and hash as before.
+- Backblaze list calls (class C) no longer reach the cap on a busy day (PF-11, which absorbs PF-8). Measured with real Litestream 0.5.16 against a counting fake S3: level 1 compaction listed the bucket about 3 times every 30 s while the database was written, about 9,000 a day. `deploy/litestream.yml` now sets compaction levels to 15 minutes, 1 hour and 6 hours, about 650 a day with `podium-check` and the backup. `tools/b2-calls-test.sh` counts a simulated day and fails above 1,000. A deploy installs the file and restarts Litestream. Known limit: the load figures come from a write-load script, not a real contest; read B2's class C count after the next one.
 
 ### v2.0.2 stage A: delete a problem (2026-11-07)
 
