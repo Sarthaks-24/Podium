@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"strings"
 	"sync"
 	"time"
 )
@@ -35,6 +36,15 @@ func (s Secret) reveal() string {
 		return ""
 	}
 	return *s.p
+}
+
+// scrub returns text with the key replaced by "[redacted]", for an error a
+// provider client did not wrap in an *Error and that is about to be logged.
+func (s Secret) scrub(text string) string {
+	if k := s.reveal(); k != "" {
+		return strings.ReplaceAll(text, k, redacted)
+	}
+	return text
 }
 
 // String implements fmt.Stringer.

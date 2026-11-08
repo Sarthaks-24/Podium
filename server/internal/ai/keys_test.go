@@ -178,3 +178,21 @@ func TestNewProvider(t *testing.T) {
 		t.Errorf("models/ prefix kept: %q", g.(*Gemini).Model)
 	}
 }
+
+// An error a provider client did not wrap is logged without the held key,
+// for the edit and the wizard alike.
+func TestProviderFaultIsLoggedWithoutTheKey(t *testing.T) {
+	var buf bytes.Buffer
+	d := &Handlers{Log: slog.New(slog.NewJSONHandler(&buf, nil)), Wizard: &Wizard{}}
+	const key = "PODIUMTEST-held-key-4711"
+	err := fmt.Errorf("dial failed with header x-api-key: %s", key)
+	d.logProviderFault("ai edit failed", NewSecret(key), err, "problem_id", 7)
+	d.failWizard(&wizardRun{id: "w1"}, err, NewSecret(key))
+	out := buf.String()
+	if !strings.Contains(out, "ai edit failed") || !strings.Contains(out, "ai request failed") {
+		t.Fatalf("not logged; the check below would prove nothing:\n%s", out)
+	}
+	if strings.Contains(out, key) || !strings.Contains(out, "[redacted]") {
+		t.Errorf("key in the log:\n%s", out)
+	}
+}

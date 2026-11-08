@@ -412,3 +412,15 @@ func TestAIEditDraftMemoryFull(t *testing.T) {
 		t.Errorf("%d drafts held before the cap", ok)
 	}
 }
+
+// A reply above the 2 MB draft limit is refused on its size alone, before
+// the merge reads it (here the merge would report a repeated path).
+func TestAIEditRefusesAnOversizedReplyBeforeMerging(t *testing.T) {
+	s, org, id := editSite(t)
+	fakeai.EditHook = func(ai.EditRequest) (*ai.EditAnswer, error) {
+		files := bulkFiles(33)
+		return &ai.EditAnswer{Files: append(files, files[0])}, nil
+	}
+	code, out := org.do("POST", editPath(id, ""), map[string]any{"instruction": "x"}, s.srv.URL)
+	errIs(t, "huge reply", code, out, 422, "invalid_answer", "The edited problem would be larger than 2 MB of text. Ask for a smaller change.")
+}

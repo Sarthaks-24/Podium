@@ -530,18 +530,18 @@ func (d *Handlers) StartWizard(w http.ResponseWriter, r *http.Request) {
 	d.Log.Info("ai wizard started", "user_id", u.ID, "wizard_id", run.id, "mode", body.Mode, "provider", entry.Provider, "model", entry.Model)
 	go func() {
 		defer release()
-		d.publishWizard(u.ID, d.runGenerate(run, prov, req, u.ID))
+		d.publishWizard(u.ID, d.runGenerate(run, prov, req, u.ID, entry.Key))
 	}()
 	httpx.WriteJSON(w, http.StatusAccepted, map[string]any{"wizard_id": run.id, "server_now": time.Now().UnixMilli()})
 }
 
 // runGenerate is the background half of startWizard.
-func (d *Handlers) runGenerate(run *wizardRun, prov Provider, req Request, userID int64) wizardJSON {
+func (d *Handlers) runGenerate(run *wizardRun, prov Provider, req Request, userID int64, key Secret) wizardJSON {
 	ctx, cancel := context.WithTimeout(context.Background(), CallTimeout)
 	pack, err := Generate(ctx, prov, req)
 	cancel()
 	if err != nil {
-		return d.failWizard(run, err)
+		return d.failWizard(run, err, key)
 	}
 	ctx, cancel = context.WithTimeout(context.Background(), draftTimeout)
 	defer cancel()
@@ -556,7 +556,7 @@ func (d *Handlers) runGenerate(run *wizardRun, prov Provider, req Request, userI
 		err = &Error{Code: CodeInvalidAnswer, Message: "The model's answer could not be used.", Reasons: reasons}
 	}
 	if err != nil {
-		return d.failWizard(run, err)
+		return d.failWizard(run, err, key)
 	}
 	d.Log.Info("ai draft created", "user_id", userID, "wizard_id", run.id, "problem_id", p.ID)
 	if g, err := d.Problems.RequestInputGeneration(ctx, p.ID, userID); err != nil {
@@ -570,15 +570,21 @@ func (d *Handlers) runGenerate(run *wizardRun, prov Provider, req Request, userI
 
 // failWizard records a failed run. An *Error is logged by its code
 // only (it never holds the key); anything else is a server fault.
-func (d *Handlers) failWizard(run *wizardRun, err error) wizardJSON {
+func (d *Handlers) failWizard(run *wizardRun, err error, key Secret) wizardJSON {
 	var aiErr *Error
 	if errors.As(err, &aiErr) {
 		d.Log.Info("ai request ended without a result", "user_id", run.userID, "wizard_id", run.id, "code", aiErr.Code)
 	} else {
-		d.Log.Error("ai request failed", "wizard_id", run.id, "err", err)
+		d.logProviderFault("ai request failed", key, err, "wizard_id", run.id)
 	}
 	e := wizardError(err)
 	return d.Wizard.finish(run, func(r *wizardRun) { r.state, r.err = wizardFailed, e })
+}
+
+// logProviderFault logs an error a provider client did not wrap in an *Error,
+// with the session's key stripped from its text first.
+func (d *Handlers) logProviderFault(msg string, key Secret, err error, attrs ...any) {
+	d.Log.Error(msg, append(attrs, "err", key.scrub(err.Error()))...)
 }
 
 func (d *Handlers) publishWizard(userID int64, v wizardJSON) {

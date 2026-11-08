@@ -292,7 +292,7 @@ func (d *Handlers) AIEdit(w http.ResponseWriter, r *http.Request) {
 		if errors.As(err, &e) {
 			d.Log.Info("ai edit ended without a result", "user_id", u.ID, "problem_id", id, "provider", entry.Provider, "code", e.Code)
 		} else {
-			d.Log.Error("ai edit failed", "problem_id", id, "err", err)
+			d.logProviderFault("ai edit failed", entry.Key, err, "problem_id", id)
 		}
 		we := wizardError(err)
 		status := http.StatusBadGateway
@@ -312,6 +312,14 @@ func (d *Handlers) AIEdit(w http.ResponseWriter, r *http.Request) {
 	}
 	reply := map[string][]byte{}
 	var dup []string
+	replySize := 0
+	for _, f := range answer.Files {
+		replySize += len(f.Content)
+	}
+	if replySize > maxDraftSize {
+		httpx.WriteError(w, http.StatusUnprocessableEntity, CodeInvalidAnswer, "The edited problem would be larger than 2 MB of text. Ask for a smaller change.")
+		return
+	}
 	for _, f := range answer.Files {
 		if _, seen := reply[f.Path]; seen {
 			dup = append(dup, f.Path+" appears twice in the answer.")
