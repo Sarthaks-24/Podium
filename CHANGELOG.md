@@ -6,7 +6,18 @@ Releases are numbered from `v2.0.0`. The builds before it were never released; t
 
 ## v2.0.2 Billota (2026-11-07)
 
-Unreleased. Upgrades v2.0.1 with migration 0013 (more migrations follow in later stages of this release).
+Unreleased. Upgrades v2.0.1 with migrations 0013 and 0015 (more migrations follow in later stages of this release).
+
+### v2.0.2 stage D: AI prompts (2026-11-08)
+
+- The Dashboard has an AI prompts tab. Admins and the owner fill the Preferences box (2,000 characters of style choices, applied to every AI-generated problem, in the wizard and in the prompt for another AI). The owner also edits the rules text of both prompts, with a diff against the active text, the fixed part and the built-in default shown read-only, a preview of the full prompt, a history with who and when, Restore this version and Reset to default.
+- Versions are insert-only rows (migration `0015_v202_prompts.sql`). The active text of a kind is its newest row; a reset means the default and never brings back an older edit. A save needs no restart, never changes a wizard run in progress (the retry sees the same prompt), and is refused when the text is empty, too long, not UTF-8, looks like a key, or contains a key a session holds. Two tabs saving at once: the second is told "Someone saved a newer version" (409 `stale_version`).
+- Precedence: database, then `PODIUM_AI_PROMPT_FILE`, then built-in for the wizard rules; database, then built-in for the pack rules. No new environment variable. `GET /api/admin/ai/key` reports `prompt_source` beside `custom_prompt`. Start-up logs the source of each kind.
+- The prompt for another AI is split: the rules (advice, and function-problem teaching) are editable data, the limits and format stay generated. The wizard's fixed prompt now names the `<preferences>` block (new golden file `system_prompt_v2.0.2.txt`). `podium-server print-pack-prompt` prints the built-in pack rules.
+- Each save, restore and reset writes a site audit row with the version id, kind and hash, never the text.
+- New: `GET /api/admin/ai/prompts`, `PUT /api/admin/ai/prompts/{kind}`, `POST /api/admin/ai/prompts/{kind}/reset`.
+- Known limits: the wizard stays whole-program (no function problems). The function-problem wording in the built-in pack rules is provisional until the function pack format (stage B) is final, and the second example pack for a function problem comes with it. Only a live model call shows whether edited rules still produce a usable pack; the preview and the importer are the guards.
+- Upgrade: migration 0015 creates `ai_prompt_versions`; the previous binary refuses a database that records it, so rolling back means restoring the pre-upgrade backup.
 
 ### v2.0.2 stage A: delete a problem (2026-11-07)
 

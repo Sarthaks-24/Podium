@@ -477,6 +477,22 @@ The wizard's system prompt has two parts. The security part (the brief or pasted
 
 A missing, empty, oversized or non-UTF-8 file stops the server with a message naming the variable and the path; it never falls back to the default quietly. Rollback: remove the variable and restart. A change needs a restart; the file is read once.
 
+## Prompt source precedence
+
+Each AI prompt kind has an active text with one source, in this order:
+
+| Kind | 1. Database | 2. File | 3. Built-in |
+|---|---|---|---|
+| Wizard rules | newest non-reset row of `ai_prompt_versions` | `PODIUM_AI_PROMPT_FILE` when set | the text `podium-server print-ai-prompt` prints |
+| Pack rules (prompt for another AI) | newest non-reset row | none: there is no `PODIUM_PACK_PROMPT_FILE` | the text `podium-server print-pack-prompt` prints |
+| Preferences | newest non-reset row | none | empty |
+
+The owner edits the two rules kinds and an admin or the owner edits the preferences in the Dashboard, tab AI prompts. A reset row means "use the next source" and never brings back an older edit. A save needs no restart and takes effect on the next wizard run or pack prompt request; a run already started keeps the text it began with. The fixed security part of the wizard prompt and the generated format-and-limits part of the pack prompt are in code and cannot be edited. No new environment variable was added.
+
+The start-up log has one `ai prompt source` line per kind: `source` (database, file or built-in), and the version id, who and when for a database row, or the file's sha256. The text is never logged. A save refuses a body that is empty, over 16 KB (rules) or 2,000 characters (preferences), not UTF-8, or that looks like a key, so a database text cannot stop the server from starting.
+
+History lives in `ai_prompt_versions`, an insert-only table (triggers refuse update and delete), and is included in backups. Migration 0015 creates it; the previous binary refuses a database that records it, so rolling back means restoring the pre-upgrade backup. After a release changes the built-in text, the editor warns "The default changed since this version was saved" on a stored version that was saved against the old default.
+
 ## Behind Caddy
 
 | Setting | Where | Why |

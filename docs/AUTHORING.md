@@ -409,6 +409,10 @@ Validation proves the tests and the reference agree with each other. It cannot p
 
 Students get the same workspace inside contests.
 
+### Editing the prompts and the Preferences box
+
+The owner can edit the rules text of the wizard prompt and of the prompt for another AI in the Dashboard, tab AI prompts: the editor shows a diff of the edit against the active text, the fixed part and the built-in default read-only, the history with who saved each version and when, Restore this version, Reset to default and a preview of the full prompt. An admin or the owner can also fill the Preferences box (2,000 characters), style choices that are added to every AI-generated problem, in the wizard's prompt and in the prompt for another AI, always inside a block marked as the admin's choices. Neither changes the answer schema: the wizard writes whole programs that read standard input; it cannot write a function problem. To get a function problem from an AI, use the prompt for another AI, whose built-in rules teach function problems (a locked top and bottom per language, Java reading with `Scanner`, exact parameter and return types, array or list, imports in the top only), and import the pack.
+
 ## Packs from another AI
 
 Any AI chat can write a pack for Import pack, not only the wizard's three providers. On Problems, "Prompt for another AI" opens a prompt to copy into that chat. Its first line names the Podium release and the pack format (for example "Podium v2.0.1 pack prompt, pack format 1"), so a saved copy says which build it came from. "Download as file" saves it as `podium-pack-prompt.txt`. It describes the pack format the server reads (file names, the `problem.yaml` keys, the limits under "Import limits") and ends with a line where you describe the problem you want.
