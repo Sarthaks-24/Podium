@@ -295,3 +295,45 @@ func TestPackPromptInputsFollowTheNewestRows(t *testing.T) {
 		t.Errorf("after a reset the built-in text applies: %q", rules)
 	}
 }
+
+// An admin's dry run of the preferences shows only the block as inserted,
+// never the owner's active rules.
+func TestPreferencesPreviewForANonOwnerHidesTheRules(t *testing.T) {
+	p, _ := newPrompts(t)
+	ctx := ctxOwner()
+	p.Save(ctx, KindWizardRules, "- SECRET-OWNER-RULES", 0)
+	p.Save(ctx, KindPackRules, "- SECRET-PACK-RULES", 0)
+	got, err := p.Preview(ctx, KindPreferences, "Short names.", false)
+	if err != nil || len(got) != 1 {
+		t.Fatalf("preview: %v %v", err, got)
+	}
+	if strings.Contains(got[0].Text, "SECRET-") || strings.Contains(got[0].Text, "You write competitive") || !strings.Contains(got[0].Text, "<preferences>\nShort names.\n</preferences>") {
+		t.Errorf("admin preview:\n%s", got[0].Text)
+	}
+	full, _ := p.Preview(ctx, KindPreferences, "Short names.", true)
+	if len(full) != 2 || !strings.Contains(full[0].Text, "SECRET-OWNER-RULES") {
+		t.Errorf("owner preview: %v", full)
+	}
+}
+
+// A held key pasted with spaces or line breaks inside it is still refused.
+func TestHeldKeyWithWhitespaceIsRefused(t *testing.T) {
+	p, _ := newPrompts(t)
+	p.Keys.Put("s", KeyEntry{Provider: ProviderAnthropic, Key: NewSecret("held-test-key-0123456789")})
+	_, err := p.Save(ctxOwner(), KindPreferences, "note: held-test-\nkey-0123 456789", 0)
+	if got := promptErr(err); got != "The text looks like a secret key. Remove it." {
+		t.Errorf("got %q", got)
+	}
+}
+
+func TestVersionLookupByID(t *testing.T) {
+	p, _ := newPrompts(t)
+	v, _ := p.Save(ctxOwner(), KindPackRules, "- one", 0)
+	got, err := p.Version(ctxOwner(), KindPackRules, v.ID)
+	if err != nil || got.Body != "- one" || got.ByID != 1 {
+		t.Errorf("%v %+v", err, got)
+	}
+	if _, err := p.Version(ctxOwner(), KindWizardRules, v.ID); !errors.Is(err, ErrNoVersion) {
+		t.Errorf("other kind: %v", err)
+	}
+}

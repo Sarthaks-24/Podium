@@ -205,23 +205,17 @@ func (d *Handlers) PutPrompt(w http.ResponseWriter, r *http.Request) {
 	if body.DryRun {
 		text := body.Body
 		if body.RestoreOf > 0 {
-			hist, err := p.History(ctx, kind, 1<<20)
+			v, err := p.Version(ctx, kind, body.RestoreOf)
+			if err == nil && v.IsReset {
+				err = ErrNoVersion
+			}
 			if err != nil {
 				d.promptWriteError(w, r, err)
 				return
 			}
-			found := false
-			for _, v := range hist {
-				if v.ID == body.RestoreOf && !v.IsReset {
-					text, found = v.Body, true
-				}
-			}
-			if !found {
-				d.promptWriteError(w, r, ErrNoVersion)
-				return
-			}
+			text = v.Body
 		}
-		previews, err := p.Preview(ctx, kind, text)
+		previews, err := p.Preview(ctx, kind, text, u.Role.AtLeast(auth.Owner))
 		if err != nil {
 			d.promptWriteError(w, r, err)
 			return

@@ -93,13 +93,14 @@ func (k *Keys) contains(text string) bool {
 	if k == nil {
 		return false
 	}
+	squeezed := strings.Join(strings.Fields(text), "")
 	k.mu.Lock()
 	defer k.mu.Unlock()
 	now := k.now()
 	for _, m := range k.m {
 		for _, e := range m {
 			if now.Before(e.Expires) {
-				if key := e.Key.reveal(); len(key) >= minHeldKey && strings.Contains(text, key) {
+				if key := e.Key.reveal(); len(key) >= minHeldKey && (strings.Contains(text, key) || strings.Contains(squeezed, key)) {
 					return true
 				}
 			}
@@ -116,7 +117,9 @@ type PromptVersion struct {
 	IsReset    bool   `json:"is_reset"`
 	DefaultSHA string `json:"default_sha"`
 	By         string `json:"by"`
-	At         int64  `json:"at"`
+	// ByID is the saver's user id, 0 when unknown. Never sent to the browser.
+	ByID int64 `json:"-"`
+	At   int64 `json:"at"`
 }
 
 // ActivePrompt is the text a kind uses now and where it comes from.
@@ -176,12 +179,12 @@ func (p *Prompts) DefaultChanged(v PromptVersion) bool {
 	return !v.IsReset && v.DefaultSHA != "" && v.DefaultSHA != sha(DefaultText(v.Kind))
 }
 
-const versionColumns = `v.id, v.kind, v.body, v.is_reset, v.default_sha, COALESCE(u.email, ''), v.created_at`
+const versionColumns = `v.id, v.kind, v.body, v.is_reset, v.default_sha, COALESCE(u.email, ''), v.created_at, COALESCE(v.created_by, 0)`
 
 func scanVersion(row interface{ Scan(...any) error }) (PromptVersion, error) {
 	var v PromptVersion
 	var reset int
-	err := row.Scan(&v.ID, &v.Kind, &v.Body, &reset, &v.DefaultSHA, &v.By, &v.At)
+	err := row.Scan(&v.ID, &v.Kind, &v.Body, &reset, &v.DefaultSHA, &v.By, &v.At, &v.ByID)
 	v.IsReset = reset == 1
 	return v, err
 }
@@ -278,9 +281,13 @@ func (p *Prompts) PackPromptInputs(ctx context.Context) (string, string, error) 
 // Preview builds the full prompt or prompts that would be sent if body
 // became the active text of kind, through the builders the runs use.
 // Nothing is written.
-func (p *Prompts) Preview(ctx context.Context, kind, body string) ([]Preview, error) {
+func (p *Prompts) Preview(ctx context.Context, kind, body string, owner bool) ([]Preview, error) {
 	if err := p.check(kind, body); err != nil {
 		return nil, err
+	}
+	if kind == KindPreferences && !owner {
+		// An admin may not read the owner's rules: only the block as inserted.
+		return []Preview{{Label: "Preferences", Text: dataBlock("preferences", body)}}, nil
 	}
 	rules := map[string]string{}
 	for _, k := range []string{KindWizardRules, KindPackRules, KindPreferences} {
@@ -349,14 +356,20 @@ func (p *Prompts) Reset(ctx context.Context, kind string, baseID int64) (PromptV
 	return p.insert(ctx, kind, "", true, baseID, auth.AuditPromptReset, nil)
 }
 
-// Restore inserts a new row with the body of an older version of the same
-// kind. A reset row cannot be restored; use Reset.
-func (p *Prompts) Restore(ctx context.Context, kind string, versionID, baseID int64) (PromptVersion, error) {
+// Version is one row of a kind by id, or ErrNoVersion.
+func (p *Prompts) Version(ctx context.Context, kind string, id int64) (PromptVersion, error) {
 	v, err := scanVersion(p.DB.QueryRowContext(ctx, `SELECT `+versionColumns+` FROM ai_prompt_versions v
-		LEFT JOIN users u ON u.id = v.created_by WHERE v.id = ? AND v.kind = ?`, versionID, kind))
+		LEFT JOIN users u ON u.id = v.created_by WHERE v.id = ? AND v.kind = ?`, id, kind))
 	if errors.Is(err, sql.ErrNoRows) {
 		return PromptVersion{}, ErrNoVersion
 	}
+	return v, err
+}
+
+// Restore inserts a new row with the body of an older version of the same
+// kind. A reset row cannot be restored; use Reset.
+func (p *Prompts) Restore(ctx context.Context, kind string, versionID, baseID int64) (PromptVersion, error) {
+	v, err := p.Version(ctx, kind, versionID)
 	if err != nil {
 		return PromptVersion{}, err
 	}

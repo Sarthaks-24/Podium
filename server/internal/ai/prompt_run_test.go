@@ -46,7 +46,7 @@ func TestDryRunEqualsWhatTheProviderReceives(t *testing.T) {
 	p, _ := newPrompts(t)
 	ctx := ctxOwner()
 	p.Save(ctx, KindPreferences, "Prefer short names.", 0)
-	got, err := p.Preview(ctx, KindWizardRules, "- dry rules")
+	got, err := p.Preview(ctx, KindWizardRules, "- dry rules", true)
 	if err != nil || len(got) != 1 {
 		t.Fatalf("preview: %v %v", err, got)
 	}

@@ -27,7 +27,8 @@ BEGIN
   SELECT RAISE(ABORT, 'ai_prompt_versions is append only');
 END;
 
-CREATE TRIGGER ai_prompt_versions_no_update BEFORE UPDATE ON ai_prompt_versions
+-- created_by is left out so the foreign key can set it to NULL when a user is deleted.
+CREATE TRIGGER ai_prompt_versions_no_update BEFORE UPDATE OF kind, body, is_reset, default_sha, created_at ON ai_prompt_versions
 BEGIN
   SELECT RAISE(ABORT, 'ai_prompt_versions is append only');
 END;

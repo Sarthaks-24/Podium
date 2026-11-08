@@ -239,7 +239,7 @@ func logPromptSources(ctx context.Context, log *slog.Logger, p *ai.Prompts) {
 		}
 		attrs := []any{"kind", kind, "source", a.Source}
 		if a.Version != nil {
-			attrs = append(attrs, "version_id", a.Version.ID, "by", a.Version.By, "at", a.Version.At)
+			attrs = append(attrs, "version_id", a.Version.ID, "by_user_id", a.Version.ByID, "at", a.Version.At)
 		}
 		if a.FileSHA != "" {
 			attrs = append(attrs, "file_sha256", a.FileSHA)
