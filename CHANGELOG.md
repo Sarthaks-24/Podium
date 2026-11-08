@@ -90,6 +90,7 @@ Unreleased. It upgrades v2.0.1 with migrations 0013, 0014 and 0015. **Upgrade th
 - Deleting a problem also clears its locked top and bottom text.
 - An AI edit reply above 2 MB is refused before it is merged. A provider error that is logged has the session's key removed from its text first, for the edit and the wizard.
 - An AI edit draft stuck in "accepting" is dropped after 2 minutes instead of being kept.
+- AUTHORING "Practice sets" no longer promises "Problems to finish" for a practice set: a student who never started the contest is not listed there, by design.
 - A fix to the contest page: an ended contest and a practice set now show the description ("About this contest", after the list of problems). It showed only before the start.
 - A compile that ran out of time or memory is no longer cached. On a cold judge the first compile could time out and the same code then failed at once for 10 minutes; now it compiles again after the 60 second refusal. Compile errors and successes are still cached.
 
