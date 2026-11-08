@@ -48,6 +48,18 @@ Unreleased. Upgrades v2.0.1 with migrations 0013, 0014 and 0015 (more follow in 
 - Migration `0014_v202_function.sql` adds `mode`, `locked_top` and `locked_bottom` to problems and revisions and `top_lines` to submissions; rolling back means restoring the pre-upgrade backup (OPERATIONS.md).
 - Known limits: locked code is a teaching aid, not an integrity control (a student can still read input or print from their own code); the AI wizard writes whole-program problems only; the students' editor that shows locked code as read-only blocks comes with stage C.
 
+### v2.0.2 stage C: locked code in the editor (2026-11-08)
+
+- A function problem opens with the locked top above and the locked bottom below the student's code. The locked lines are muted and have no line number; the student's lines count from 1, as compiler messages do.
+- An edit that touches locked text is refused with a short message. The cursor and Select all stay inside the student's code, so arrow keys never enter the locked blocks.
+- Pasting a whole file that starts with the exact locked top and ends with the exact locked bottom cuts both off; the server does the same on Run and Submit, so a file is composed once. A top or bottom typed on its own stays as the student's code (a repeated import is harmless), so compiler line numbers match the editor. Anything else pasted over a locked range is refused. Replace all skips matches in locked text.
+- Each locked block folds to a button, "Locked code, N lines". Under 768 px both start folded. Ctrl+K Ctrl+0 and Ctrl+K Ctrl+J fold and unfold them from the keyboard.
+- Run, Submit and draft saves send only the student's code. Re-indent and "insert line above" skip locked lines.
+- A compile error that points into locked code shows "Your code no longer matches the function the locked code calls. Keep the name and parameters from the starter." above the compiler output.
+- The workspace answer has `mode`, `locked_top` and `locked_bottom` for the offered languages, from the pinned revision in a contest (a top edit reaches students only after "Update students now") and from the working copy otherwise.
+- The problem editor has an "Add standard imports" button and a preview of what students see, joined by the editor's own join.
+- Known limits: the editor and the server both match locked text exactly, so a pasted file with an edited top is refused or kept as written; Windows line ends in a pasted whole file are not matched.
+
 ### v2.0.2 stage D: AI prompts (2026-11-08)
 
 - The Dashboard has an AI prompts tab. Admins and the owner fill the Preferences box (2,000 characters of style choices, applied to every AI-generated problem, in the wizard and in the prompt for another AI). The owner also edits the rules text of both prompts, with a diff against the active text, the fixed part and the built-in default shown read-only, a preview of the full prompt, a history with who and when, Restore this version and Reset to default.

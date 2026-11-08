@@ -25,7 +25,10 @@
       "time_factor": 2
     }
   ],
+  "locked_bottom": {},
+  "locked_top": {},
   "memory_limit_mb": 256,
+  "mode": "whole",
   "practice": false,
   "problem_id": 1,
   "refusal": null,

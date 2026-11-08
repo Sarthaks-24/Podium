@@ -49,3 +49,41 @@ func (p *Problem) ComposeFor(lang, code string) Composed {
 	}
 	return Compose(p.LockedTop[lang], code, p.LockedBottom[lang])
 }
+
+// StripLocked cuts the locked top and bottom off a whole file sent as the
+// student's code, so it is composed once. Only the whole-file case counts:
+// the code must start with the exact top and end with the exact bottom, each
+// on whole lines. A top or bottom alone is the student's own text (a repeated
+// import is harmless) and stays, so the line numbers in compiler output match
+// what the editor showed. A whole problem returns the code unchanged.
+func (p *Problem) StripLocked(lang, code string) string {
+	if !p.IsFunction() {
+		return code
+	}
+	t, b := normalise(p.LockedTop[lang]), normalise(p.LockedBottom[lang])
+	if t == "" && b == "" {
+		return code
+	}
+	rest := code
+	if t != "" {
+		if !strings.HasPrefix(rest, t) {
+			return code
+		}
+		rest = rest[len(t):]
+	}
+	if b != "" {
+		bare := b[:len(b)-1]
+		switch {
+		case strings.HasSuffix(rest, b) && lineStart(rest, len(rest)-len(b)):
+			rest = rest[:len(rest)-len(b)]
+		case strings.HasSuffix(rest, bare) && lineStart(rest, len(rest)-len(bare)):
+			rest = rest[:len(rest)-len(bare)]
+		default:
+			return code
+		}
+	}
+	return rest
+}
+
+// lineStart reports whether offset i of s is the start of a line.
+func lineStart(s string, i int) bool { return i == 0 || s[i-1] == '\n' }

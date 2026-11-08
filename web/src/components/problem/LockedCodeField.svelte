@@ -12,6 +12,7 @@
   `draft` (bindable) and `fields` (the field errors by key).
 -->
 <script lang="ts">
+  import { layoutDoc } from '../../lib/lockedCode';
   import type { Draft } from '../../lib/problems';
 
   interface Props {
@@ -35,6 +36,22 @@
   });
   const offered = $derived(LANGUAGES.filter((l) => (draft.locked_bottom?.[l.id] ?? '').trim() !== '').map((l) => l.label));
   const label = $derived(LANGUAGES.find((l) => l.id === language)?.label ?? language);
+
+  // Imports most solutions need; the top holds imports only (no declarations).
+  const STANDARD_IMPORTS: Record<string, string> = {
+    cpp17: '#include <bits/stdc++.h>\nusing namespace std;\n',
+    java21: 'import java.util.*;\nimport java.io.*;\n',
+    python3: 'import sys\nimport math\n',
+    node22: "'use strict';\n",
+  };
+
+  // What a student sees, joined by the editor's own join (lib/lockedCode.ts).
+  const preview = $derived.by(() => {
+    const top = draft.locked_top?.[language] ?? '';
+    const bottom = draft.locked_bottom?.[language] ?? '';
+    const l = layoutDoc(top, draft.starters?.[language] ?? '', bottom);
+    return { top: l.doc.slice(0, l.topEnd), code: l.doc.slice(l.topEnd, l.bottomStart < 0 ? undefined : l.bottomStart), bottom: l.bottomStart < 0 ? '' : l.doc.slice(l.bottomStart) };
+  });
 
   function write(part: 'locked_top' | 'locked_bottom', code: string) {
     draft[part] = { ...(draft[part] ?? {}), [language]: code };
@@ -82,6 +99,7 @@
             aria-invalid={fields.locked_top ? 'true' : undefined}
           ></textarea>
           <p id="locked-top-help" class="field-help">Common imports or includes only, no declarations.</p>
+          <button type="button" class="btn small" onclick={() => write('locked_top', STANDARD_IMPORTS[language] ?? '')}>Add standard imports</button>
           {#if fields.locked_top}<p id="locked-top-error" class="field-error">{fields.locked_top}</p>{/if}
         </div>
         <div class="field">
@@ -102,6 +120,10 @@
             student writes class Solution.
           </p>
           {#if fields.locked_bottom}<p id="locked-bottom-error" class="field-error">{fields.locked_bottom}</p>{/if}
+        </div>
+        <div class="field">
+          <p class="preview-label" id="locked-preview-label">What students see in {label}, with the starter between the locked parts</p>
+          <pre class="preview mono" aria-labelledby="locked-preview-label" translate="no"><span class="locked">{preview.top}</span>{preview.code}<span class="locked">{preview.bottom}</span></pre>
         </div>
       {/if}
     </fieldset>
@@ -155,6 +177,27 @@
     height: 1rem;
     margin: 0;
     accent-color: var(--act);
+  }
+
+  .preview-label {
+    color: var(--ink);
+    font-weight: 500;
+  }
+
+  .preview {
+    max-height: 16rem;
+    margin: var(--space-1) 0 0;
+    padding: var(--space-2) var(--space-3);
+    overflow: auto;
+    border: var(--rule) solid var(--line);
+    background: var(--surface-2);
+    color: var(--ink);
+    font-size: var(--fs-0);
+    white-space: pre;
+  }
+
+  .locked {
+    color: var(--ink-muted);
   }
 
   .lang {

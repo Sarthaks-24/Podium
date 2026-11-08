@@ -42,6 +42,11 @@ export interface Workspace {
   samples: Sample[];
   /** The problem's own starter code by language ({} when it has none; v4 E5). */
   starters: Record<string, string>;
+  /** `function` when students write only a function between locked code (v2.0.2); absent from older servers. */
+  mode?: 'whole' | 'function';
+  /** The locked code before and after the student's, by offered language. */
+  locked_top?: Record<string, string>;
+  locked_bottom?: Record<string, string>;
   draft: Draft | null;
   /** Own submissions, newest first, at most 20. */
   submissions: Submission[];

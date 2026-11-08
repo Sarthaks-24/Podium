@@ -133,3 +133,29 @@ func FuzzCompose(f *testing.F) {
 		checkComposed(t, top, code, bottom)
 	})
 }
+
+// A whole file that already holds the locked top and bottom is cut back to
+// the student's part; a top or bottom alone is the student's own text and
+// stays. The editor reads the same fixture (V202-34).
+func TestStripLockedMatchesTheSharedFixture(t *testing.T) {
+	b, err := os.ReadFile("../../../web/tests/fixtures/strip.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var f struct {
+		Cases []struct{ Name, Top, Bottom, Input, Want string } `json:"cases"`
+	}
+	if err := json.Unmarshal(b, &f); err != nil || len(f.Cases) < 6 {
+		t.Fatalf("fixture: %v, %d cases", err, len(f.Cases))
+	}
+	for _, c := range f.Cases {
+		p := &Problem{Mode: ModeFunction, LockedTop: map[string]string{"python3": c.Top}, LockedBottom: map[string]string{"python3": c.Bottom}}
+		if got := p.StripLocked("python3", c.Input); got != c.Want {
+			t.Errorf("%s: got %q, want %q", c.Name, got, c.Want)
+		}
+	}
+	whole := &Problem{Mode: ModeWhole}
+	if got := whole.StripLocked("python3", "import sys\n"); got != "import sys\n" {
+		t.Errorf("whole problem changed the code: %q", got)
+	}
+}
