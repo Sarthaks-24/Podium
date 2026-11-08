@@ -156,7 +156,11 @@ func (iso Isolate) initBox(ctx context.Context, box int) (string, error) {
 			}
 			return filepath.Join(root, "box"), nil
 		}
-		if !strings.Contains(err.Error(), boxBusyText) || ctx.Err() != nil {
+		if ctx.Err() != nil {
+			// The deadline wins over whatever isolate said after it.
+			return "", fmt.Errorf("isolate init box %d: %w", box, ctx.Err())
+		}
+		if !strings.Contains(err.Error(), boxBusyText) {
 			return "", fmt.Errorf("isolate init box %d: %w", box, err)
 		}
 		if try == len(initBackoff) {

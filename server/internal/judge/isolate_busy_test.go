@@ -44,6 +44,11 @@ func fakeIsolate(dir string, args []string) int {
 	calls, _ := os.ReadFile(filepath.Join(dir, "calls.txt"))
 	inits := strings.Count(string(calls), "--init")
 	switch m := strings.TrimSpace(string(mode)); m {
+	case "slowbusy":
+		// A loaded host: busy, but only after the caller's deadline.
+		time.Sleep(500 * time.Millisecond)
+		fmt.Fprintln(os.Stderr, "This box is currently in use by another process")
+		return 2
 	case "fail":
 		fmt.Fprintln(os.Stderr, "Cannot create control group")
 		return 2
@@ -137,6 +142,19 @@ func TestInitRetriesABusyBox(t *testing.T) {
 	start := time.Now()
 	if _, err := iso.Init(cctx, 7); !errors.Is(err, context.DeadlineExceeded) || time.Since(start) > 10*time.Second {
 		t.Errorf("cancelled wait: %v after %v", err, time.Since(start))
+	}
+}
+
+// A busy answer that arrives after the job's deadline still reports the
+// deadline, not the box, so a cancelled job is never logged as a busy box
+// (it flaked this way on a loaded machine, v2.0.2).
+func TestInitAfterTheDeadlineReportsTheDeadline(t *testing.T) {
+	iso, _ := newFakeIsolate(t, "slowbusy")
+	initBackoff = []time.Duration{time.Hour}
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+	if _, err := iso.Init(ctx, 8); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("got %v, want the deadline", err)
 	}
 }
 
