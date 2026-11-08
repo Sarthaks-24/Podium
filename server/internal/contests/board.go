@@ -336,7 +336,18 @@ const entriesQuery = `SELECT user_id, problem_id, created_at, state, score, earn
 // userID is set) with their earned points per subtask, and how many are
 // still waiting for the judge.
 func (s *Service) entries(ctx context.Context, c *Contest, userID int64) ([]Entry, int, error) {
-	rows, err := s.DB.QueryContext(ctx, entriesQuery, c.ID, userID, userID)
+	return s.readEntries(ctx, c, entriesQuery, c.ID, userID, userID)
+}
+
+// practiceEntriesQuery is entriesQuery for one student's practice rows. It
+// feeds only MyPracticeScore: the board never reads practice submissions.
+const practiceEntriesQuery = `SELECT user_id, problem_id, created_at, state, score, earned
+	FROM submissions INDEXED BY submissions_by_board
+	WHERE contest_id = ? AND kind = 'submit' AND practice = 1 AND state <> 'error' AND user_id = ?`
+
+// readEntries runs one of the two entries queries and scans its rows.
+func (s *Service) readEntries(ctx context.Context, c *Contest, query string, args ...any) ([]Entry, int, error) {
+	rows, err := s.DB.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, 0, err
 	}

@@ -53,7 +53,7 @@ const INVITE_ONLY = num(__ENV.INVITE_ONLY, 1) === 1;
 // Staff open a student's code (and write a code_viewed audit row) this
 // often across the contest: a few a minute, as during a real one.
 const CODE_VIEWS_PER_MIN = num(__ENV.CODE_VIEWS_PER_MIN, 3);
-const SLUGS = (__ENV.PROBLEMS || 'a-plus-b,average-speed,pair-with-sum').split(',');
+const SLUGS = (__ENV.PROBLEMS || 'a-plus-b,average-speed,pair-with-sum,array-sum').split(',');
 const LABELS = SLUGS.map((_, i) => String.fromCharCode(65 + i));
 
 export const options = {
@@ -136,6 +136,16 @@ const SOURCES = {
     { w: 25, lang: 'cpp17', src: '#include <cstdio>\nint main(){puts("-1");}\n' },
     { w: 15, lang: 'python3', src: 'n, s = map(int, input().split())\nprint(1, 2)\n' },
     { w: 5, lang: 'cpp17', src: 'int main() { return x; }\n' },
+  ],
+  // A function problem: students send only their function, and the server
+  // composes it with the locked code (v2.0.2).
+  'array-sum': [
+    { w: 30, lang: 'cpp17', src: open(P + 'array-sum/solution.cpp') },
+    { w: 20, lang: 'python3', src: open(P + 'array-sum/brute.py') },
+    // A 32-bit sum: right on small numbers, overflows on the full range.
+    { w: 25, lang: 'java21', src: 'class Solution {\n    long arraySum(int[] a) {\n        int s = 0;\n        for (int x : a) s += x;\n        return s;\n    }\n}\n' },
+    { w: 15, lang: 'node22', src: 'function arraySum(a) {\n  return 0;\n}\n' },
+    { w: 10, lang: 'cpp17', src: 'long long arraySum(const vector<int>& a) {\n  return s;\n}\n' },
   ],
 };
 

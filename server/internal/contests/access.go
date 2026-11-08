@@ -17,7 +17,10 @@ var (
 	ErrContestOver  = errors.New("The contest has ended.")
 	ErrPracticeWait = errors.New("Your time is up. Practice opens when every student's time is up.")
 	ErrNotReady     = errors.New("This problem is being updated by the organisers. Try again in a few minutes.")
-	ErrRevealEarly  = errors.New("The reveal opens when every student's time is up.")
+	// ErrPracticeChanged is ErrNotReady once practice is open: the problem
+	// changed after the contest ended, so waiting will not help.
+	ErrPracticeChanged = errors.New("This problem was changed after the contest ended, so practice for it is closed here.")
+	ErrRevealEarly     = errors.New("The reveal opens when every student's time is up.")
 	// ErrExtendEnded refuses "Extend for everyone" once the contest has
 	// closed: adding minutes then would reopen it for every student.
 	ErrExtendEnded = errors.New("The contest has ended, so it cannot be extended. Extending it now would reopen it for every student.")
@@ -133,4 +136,20 @@ func (s *Service) MyScore(ctx context.Context, c *Contest, st StudentState, user
 		cells[cell.Label] = cell
 	}
 	return rows[0].Total, cells, nil
+}
+
+// MyPracticeScore is a student's best practice result per problem label,
+// from their practice submissions only. It is read-only and separate from
+// MyScore: practice never counts for the board or the contest score.
+func (s *Service) MyPracticeScore(ctx context.Context, c *Contest, userID int64) (map[string]Cell, error) {
+	entries, _, err := s.readEntries(ctx, c, practiceEntriesQuery, c.ID, userID)
+	if err != nil {
+		return nil, err
+	}
+	rows := Compute(s.scoringBoard(c), []Participant{{UserID: userID}}, entries, false)
+	cells := map[string]Cell{}
+	for _, cell := range rows[0].Cells {
+		cells[cell.Label] = cell
+	}
+	return cells, nil
 }

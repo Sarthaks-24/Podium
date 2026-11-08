@@ -6,18 +6,14 @@ Releases are numbered from `v2.0.0`. The builds before it were never released; t
 
 ## v2.0.2 Billota (2026-11-07)
 
-Unreleased. Upgrades v2.0.1 with migrations 0013 and 0015 (more migrations follow in later stages of this release).
+Unreleased. Upgrades v2.0.1 with migrations 0013, 0014 and 0015 (more follow in later stages of this release). **Upgrade the judge together with the server**: a v2.0.1 judge refuses the larger source files function problems send (`install.sh upgrade` installs both from one release).
 
-### v2.0.2 stage D: AI prompts (2026-11-08)
+### v2.0.2 stage 0: pending fixes (2026-11-07)
 
-- The Dashboard has an AI prompts tab. Admins and the owner fill the Preferences box (2,000 characters of style choices, applied to every AI-generated problem, in the wizard and in the prompt for another AI). The owner also edits the rules text of both prompts, with a diff against the active text, the fixed part and the built-in default shown read-only, a preview of the full prompt, a history with who and when, Restore this version and Reset to default.
-- Versions are insert-only rows (migration `0015_v202_prompts.sql`). The active text of a kind is its newest row; a reset means the default and never brings back an older edit. A save needs no restart, never changes a wizard run in progress (the retry sees the same prompt), and is refused when the text is empty, too long, not UTF-8, looks like a key, or contains a key a session holds. Two tabs saving at once: the second is told "Someone saved a newer version" (409 `stale_version`).
-- Precedence: database, then `PODIUM_AI_PROMPT_FILE`, then built-in for the wizard rules; database, then built-in for the pack rules. No new environment variable. `GET /api/admin/ai/key` reports `prompt_source` beside `custom_prompt`. Start-up logs the source of each kind.
-- The prompt for another AI is split: the rules (advice, and function-problem teaching) are editable data, the limits and format stay generated. The wizard's fixed prompt now names the `<preferences>` block (new golden file `system_prompt_v2.0.2.txt`). `podium-server print-pack-prompt` prints the built-in pack rules.
-- Each save, restore and reset writes a site audit row with the version id, kind and hash, never the text.
-- New: `GET /api/admin/ai/prompts`, `PUT /api/admin/ai/prompts/{kind}`, `POST /api/admin/ai/prompts/{kind}/reset`.
-- Known limits: the wizard stays whole-program (no function problems). The function-problem wording in the built-in pack rules is provisional until the function pack format (stage B) is final, and the second example pack for a function problem comes with it. Only a live model call shows whether edited rules still produce a usable pack; the preview and the importer are the guards.
-- Upgrade: migration 0015 creates `ai_prompt_versions`; the previous binary refuses a database that records it, so rolling back means restoring the pre-upgrade backup.
+- "Update students now" on an ended contest asks before it changes final scores (PF-10). When every window is over and the new revision has different subtask points, the update is refused with `409 ended_scores_change`, naming the problem and how many students' totals would change, and nothing is written. The Live tab's dialog shows that list and asks a second time; confirming sends `confirm_ended: true`, applies the update and writes one `ended_repin` row in the history of changes. An update that changes no points, and any update on a live or upcoming contest, works as before. Known limit: the count uses the submissions as judged now; a judging edit that is judged again afterwards can move scores further.
+- The Live tab lists an edited problem's "Update students now" banner after the contest has closed too. It was hidden at the close, which left no way to open practice again on a changed problem in the console.
+- `podium-check` says "Backblaze's daily transaction cap is used up; listings work again after midnight UTC" when B2 refuses a listing for the daily cap, instead of blaming the key, and no longer pipes an empty answer to `jq` (PF-7). `tools/install-test.sh` runs it against a fake `rclone`.
+- A compatibility corpus (the three example packs and one format 3 pack with starters) and golden `ContentHash` values and export digests guard that old packs import, export and hash as before.
 
 ### v2.0.2 stage A: delete a problem (2026-11-07)
 
@@ -31,12 +27,38 @@ Unreleased. Upgrades v2.0.1 with migrations 0013 and 0015 (more migrations follo
 - Known limits: a deleted problem's blobs of a pinned revision stay on disk (ended contests must stay reproducible); `TestNoWritePathSkipsTheRevision` names Delete as the one function that clears revision-recorded columns outside `save`.
 - Upgrade: migration 0013 adds three columns, and the previous binary refuses a database that records it, so rolling back means restoring the pre-upgrade backup (OPERATIONS.md).
 
-### v2.0.2 stage 0: pending fixes (2026-11-07)
+### v2.0.2 stage U: problems to finish (2026-11-07)
 
-- "Update students now" on an ended contest asks before it changes final scores (PF-10). When every window is over and the new revision has different subtask points, the update is refused with `409 ended_scores_change`, naming the problem and how many students' totals would change, and nothing is written. The Live tab's dialog shows that list and asks a second time; confirming sends `confirm_ended: true`, applies the update and writes one `ended_repin` row in the history of changes. An update that changes no points, and any update on a live or upcoming contest, works as before. Known limit: the count uses the submissions as judged now; a judging edit that is judged again afterwards can move scores further.
-- The Live tab lists an edited problem's "Update students now" banner after the contest has closed too. It was hidden at the close, which left no way to open practice again on a changed problem in the console.
-- `podium-check` says "Backblaze's daily transaction cap is used up; listings work again after midnight UTC" when B2 refuses a listing for the daily cap, instead of blaming the key, and no longer pipes an empty answer to `jq` (PF-7). `tools/install-test.sh` runs it against a fake `rclone`.
-- A compatibility corpus (the three example packs and one format 3 pack with starters) and golden `ContentHash` values and export digests guard that old packs import, export and hash as before.
+- On /me, each contest whose every window is over, and which the student may still open, lists "Problems to finish": the problems where neither the contest score nor the best practice score reaches the maximum, never-tried ones included. Each links to practice, or only reads the statement when practice is off, or says "Practice closed: this problem changed after the contest". A link to the editorial shows once it is published and every window is over.
+- Live, frozen, upcoming and before-the-last-window contests carry an empty list. A deleted problem is left out. A withdrawn invite gives no list. Titles are the pinned titles.
+- A student whose practice is open on a problem that changed after the contest now gets 409 `practice_changed` ("This problem was changed after the contest ended, so practice for it is closed here.") instead of "Try again in a few minutes".
+- New: `to_finish` and `editorial` on each row of `GET /api/me/contests`; every existing field is unchanged. No migration, no change to the board, standings or scoring.
+- Known limit: one extra indexed query per entered contest on /me, not measured under load yet.
+
+### v2.0.2 stage B: function problems (2026-11-07)
+
+- A problem can be a function problem: the student writes only a function, and locked code before it (the locked top, common imports) and after it (the locked bottom, which reads the input, calls the function and prints the answer) makes the whole program. Each problem offers the languages it has locked code for, in any of C++17, Java 21, Python 3 and JavaScript; Java reads with `Scanner` in `public class Main` in the locked bottom and the student writes `class Solution`. Whole-program problems work exactly as before.
+- The judge compiles one composed file: locked top, the student's code, locked bottom. Submit, Run, contest rejudge, Validate and output generation all compose with the problem's current locked code, which in a contest is always the pinned revision's (a changed problem refuses until "Update students now"). The reference solution and brute force are bare functions and are composed too; the validator, checker and generator stay whole programs. The submission keeps only the student's part.
+- Compile errors show the student's own line numbers; a line in locked code reads "locked code, line N". Each submission keeps the locked top's line count it was judged with, so the numbers stay right after the top changes. Runtime stack traces are not rewritten, apart from the first line of a JavaScript error.
+- The problem editor's Statement tab has "What students write": the whole program, or one function with a locked top and bottom per language. The mode cannot change once a student has a submission, run or draft (409 `mode_locked`); locked code can, and needs validating again, like a solution.
+- Pack format 4 carries function problems (`mode: function`, `locked_top`, `locked_bottom`). Only function problems export as format 4; every other problem exports byte for byte as before (format 1, or 3 with starters). v2.0.1 refuses format 4 packs.
+- Content hashes of existing problems are unchanged: the new fields join the hash only for function problems (pinned by a test against the v2.0.1 hashes).
+- New example pack `problems/array-sum`, a function problem in all four languages; the sandbox suite and the load test use it.
+- The judge reads program sources up to 72 KB (was 64 KB): a student's 64 KB plus a 4 KB top and a 4 KB bottom.
+- Migration `0014_v202_function.sql` adds `mode`, `locked_top` and `locked_bottom` to problems and revisions and `top_lines` to submissions; rolling back means restoring the pre-upgrade backup (OPERATIONS.md).
+- Known limits: locked code is a teaching aid, not an integrity control (a student can still read input or print from their own code); the AI wizard writes whole-program problems only; the students' editor that shows locked code as read-only blocks comes with stage C.
+
+### v2.0.2 stage D: AI prompts (2026-11-08)
+
+- The Dashboard has an AI prompts tab. Admins and the owner fill the Preferences box (2,000 characters of style choices, applied to every AI-generated problem, in the wizard and in the prompt for another AI). The owner also edits the rules text of both prompts, with a diff against the active text, the fixed part and the built-in default shown read-only, a preview of the full prompt, a history with who and when, Restore this version and Reset to default.
+- Versions are insert-only rows (migration `0015_v202_prompts.sql`). The active text of a kind is its newest row; a reset means the default and never brings back an older edit. A save needs no restart, never changes a wizard run in progress (the retry sees the same prompt), and is refused when the text is empty, too long, not UTF-8, looks like a key, or contains a key a session holds. Two tabs saving at once: the second is told "Someone saved a newer version" (409 `stale_version`).
+- Precedence: database, then `PODIUM_AI_PROMPT_FILE`, then built-in for the wizard rules; database, then built-in for the pack rules. No new environment variable. `GET /api/admin/ai/key` reports `prompt_source` beside `custom_prompt`. Start-up logs the source of each kind.
+- The prompt for another AI is split: the rules (advice, and function-problem teaching) are editable data, the limits and format stay generated. The wizard's fixed prompt now names the `<preferences>` block (new golden file `system_prompt_v2.0.2.txt`). `podium-server print-pack-prompt` prints the built-in pack rules.
+- Each save, restore and reset writes a site audit row with the version id, kind and hash, never the text.
+- New: `GET /api/admin/ai/prompts`, `PUT /api/admin/ai/prompts/{kind}`, `POST /api/admin/ai/prompts/{kind}/reset`.
+- The prompt for another AI now teaches format 1 (a whole problem) and format 4 (a function problem), with an example pack of each (`array-max`, C++17 and Python 3). Its first line reads "pack formats 1 and 4". Both example packs are imported by a test, with and without a hostile preferences string.
+- Known limits: the wizard stays whole-program (no function problems). Only a live model call shows whether edited rules still produce a usable pack; the preview and the importer are the guards.
+- Upgrade: migration 0015 creates `ai_prompt_versions`; the previous binary refuses a database that records it, so rolling back means restoring the pre-upgrade backup.
 
 ## v2.0.1 Billota (2026-11-05)
 

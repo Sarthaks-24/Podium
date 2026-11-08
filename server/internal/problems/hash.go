@@ -5,7 +5,8 @@ import (
 )
 
 // ContentHash is the SHA-256 of everything validation depends on:
-// limits, checker, solutions, samples,
+// limits, checker, solutions, samples, a function problem's mode and
+// locked parts,
 // subtasks and tests.
 // Title, slug, statement, tags and subtask titles are left out, so fixing
 // a typo in the statement keeps a problem validated. The judge build is
@@ -45,6 +46,12 @@ func ContentHash(p *Problem) string {
 		Samples    []int     `json:"samples"`
 		Subtasks   []subtask `json:"subtasks"`
 		Tests      []test    `json:"tests"`
+		// Function problems only (v2.0.2): left out of a whole problem, so
+		// every hash made before them is unchanged. Each part is hashed by
+		// language.
+		Mode         string            `json:"mode,omitempty"`
+		LockedTop    map[string]string `json:"locked_top,omitempty"`
+		LockedBottom map[string]string `json:"locked_bottom,omitempty"`
 	}{
 		V: 1, TimeLimit: p.TimeLimitMS, Memory: p.MemoryLimitMB, Checker: p.Checker, Epsilon: p.Epsilon,
 		Reference: src{p.Reference.Language, SHA([]byte(p.Reference.Source))},
@@ -54,6 +61,9 @@ func ContentHash(p *Problem) string {
 	if p.Checker == CheckerCustom {
 		m.CheckerSHA = SHA([]byte(p.CheckerSource))
 	}
+	if p.IsFunction() {
+		m.Mode, m.LockedTop, m.LockedBottom = p.Mode, shaByLanguage(p.LockedTop), shaByLanguage(p.LockedBottom)
+	}
 	for _, st := range p.Subtasks {
 		m.Subtasks = append(m.Subtasks, subtask{st.Idx, st.Points, st.Tests})
 	}
@@ -62,4 +72,14 @@ func ContentHash(p *Problem) string {
 	}
 	b, _ := json.Marshal(m)
 	return SHA(b)
+}
+
+// shaByLanguage hashes each language's code; never nil, so a function
+// problem always writes both fields.
+func shaByLanguage(code map[string]string) map[string]string {
+	out := map[string]string{}
+	for lang, c := range code {
+		out[lang] = SHA([]byte(c))
+	}
+	return out
 }

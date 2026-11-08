@@ -99,6 +99,7 @@ func TestExamplePacksImport(t *testing.T) {
 		"a-plus-b":      {"tokens", "cpp17", 6, true, true},
 		"average-speed": {"float", "java21", 7, true, true},
 		"pair-with-sum": {"custom", "cpp17", 6, true, false},
+		"array-sum":     {"tokens", "cpp17", 6, true, true},
 	} {
 		pk, err := ReadPack(zipDir(t, filepath.Join(examples, slug)))
 		if err != nil {
@@ -159,7 +160,8 @@ func TestPackRefusals(t *testing.T) {
 		"duplicate test number": {minimalPack(entry{name: "tests/1.in", body: "x"}), "two in files"},
 		// B1.7: a pack from a newer Podium is refused by its format, with
 		// the version named, even though it also has fields unknown here.
-		"newer format":           {[]entry{{name: "problem.yaml", body: "format: 4\n" + minimalYAML + "hints: [3]\n"}}, "pack format 4, and this server reads format 3"},
+		// v2.0.1 (format 3) refused format 4 this way; v2.0.2 reads 4.
+		"newer format":           {[]entry{{name: "problem.yaml", body: "format: 5\n" + minimalYAML + "hints: [3]\n"}}, "pack format 5, and this server reads format 4"},
 		"starters need format 3": {[]entry{{name: "problem.yaml", body: minimalYAML + "starters: [starter.cpp]\n"}, {name: "starter.cpp", body: "int main() {}\n"}}, "need format: 3"},
 	} {
 		_, err := ReadPack(zipEntries(t, tc.entries...))
@@ -465,9 +467,9 @@ func TestPackPromptIsFilledFromTheCode(t *testing.T) {
 // has no release and says only the format.
 func TestPackPromptStamp(t *testing.T) {
 	for _, c := range []struct{ version, first string }{
-		{"v2.0.1", "Podium v2.0.1 pack prompt, pack format 1"},
-		{"dev", "Podium pack prompt, pack format 1"},
-		{"", "Podium pack prompt, pack format 1"},
+		{"v2.0.1", "Podium v2.0.1 pack prompt, pack formats 1 and 4"},
+		{"dev", "Podium pack prompt, pack formats 1 and 4"},
+		{"", "Podium pack prompt, pack formats 1 and 4"},
 	} {
 		text, err := packPrompt(c.version)
 		if err != nil {
@@ -481,7 +483,7 @@ func TestPackPromptStamp(t *testing.T) {
 			t.Errorf("version %q: the stamp is not followed by a blank line and the prompt: %q", c.version, rest[:40])
 		}
 	}
-	if got, _ := PackPrompt(); !strings.HasPrefix(got, "Podium pack prompt, pack format 1\n") {
+	if got, _ := PackPrompt(); !strings.HasPrefix(got, "Podium pack prompt, pack formats 1 and 4\n") {
 		t.Errorf("a plain test build should carry no version: %q", got[:40])
 	}
 }

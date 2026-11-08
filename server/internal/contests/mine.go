@@ -13,6 +13,7 @@ package contests
 
 import (
 	"context"
+	"errors"
 	"net/http"
 
 	"github.com/Sarthaks-24/podium/internal/auth"
@@ -30,6 +31,20 @@ type myContestJSON struct {
 	// for someone the board leaves out (an organiser, or excluded).
 	Place *int `json:"place,omitempty"`
 	Of    *int `json:"of,omitempty"`
+	// ToFinish lists the problems not finished once every window is over,
+	// and Editorial says the editorial is open to read (v2.0.2 stage U).
+	ToFinish  []toFinishJSON `json:"to_finish"`
+	Editorial bool           `json:"editorial"`
+}
+
+// toFinishJSON is one problem a student has not finished: its pinned
+// title, their best score (contest or practice) and whether practice is open.
+type toFinishJSON struct {
+	Label       string `json:"label"`
+	Title       string `json:"title"`
+	Score       int    `json:"score"`
+	Max         int    `json:"max"`
+	CanPractice bool   `json:"can_practice"`
 }
 
 // Entered lists the contests userID entered, newest start first.
@@ -87,7 +102,7 @@ func (d *Handlers) MyContests(w http.ResponseWriter, r *http.Request) {
 }
 
 func (d *Handlers) myContest(ctx context.Context, c *Contest, me int64) (myContestJSON, error) {
-	item := myContestJSON{Slug: c.Slug, Title: c.Title, StartsAt: c.Schedule.StartsAt.UnixMilli()}
+	item := myContestJSON{Slug: c.Slug, Title: c.Title, StartsAt: c.Schedule.StartsAt.UnixMilli(), ToFinish: []toFinishJSON{}}
 	st, err := d.Contests.State(ctx, c, me)
 	if err != nil {
 		return item, err
@@ -100,6 +115,9 @@ func (d *Handlers) myContest(ctx context.Context, c *Contest, me int64) (myConte
 	item.Score = total
 	for _, cell := range cells {
 		item.MaxScore += cell.Max
+	}
+	if err := d.fillFinish(ctx, c, st, me, cells, &item); err != nil {
+		return item, err
 	}
 	variant, err := d.Contests.StudentVariant(ctx, c, st)
 	if err != nil || variant != VariantFull {
@@ -116,4 +134,42 @@ func (d *Handlers) myContest(ctx context.Context, c *Contest, me int64) (myConte
 		}
 	}
 	return item, nil
+}
+
+// fillFinish sets ToFinish and Editorial once every window is over and the
+// student may still open the contest. A withdrawn invite or an archived
+// contest leaves both empty, like the rest of the row's links.
+func (d *Handlers) fillFinish(ctx context.Context, c *Contest, st StudentState, me int64, cells map[string]Cell, item *myContestJSON) error {
+	now := d.Contests.Clock()
+	if now.Before(c.Final()) {
+		return nil
+	}
+	access, err := d.Contests.contestAccess(ctx, c, viewerOf(auth.UserFrom(ctx)))
+	if err != nil {
+		if errors.Is(err, ErrNotFound) {
+			return nil
+		}
+		return err
+	}
+	if access != AccessParticipate {
+		return nil
+	}
+	item.Editorial = c.EditorialVisible(st, now)
+	practice, err := d.Contests.MyPracticeScore(ctx, c, me)
+	if err != nil {
+		return err
+	}
+	for _, p := range c.Problems {
+		cell := cells[p.Label]
+		best := cell.Score
+		if pc := practice[p.Label]; pc.Score > best {
+			best = pc.Score
+		}
+		if p.Deleted || cell.Max <= 0 || best >= cell.Max {
+			continue
+		}
+		item.ToFinish = append(item.ToFinish, toFinishJSON{Label: p.Label, Title: p.Title, Score: best, Max: cell.Max,
+			CanPractice: c.PracticeAfterEnd && p.Ready})
+	}
+	return nil
 }

@@ -1,0 +1,21 @@
+format: 4
+mode: function
+title: Largest in an array
+slug: array-max
+time_limit_ms: 1000
+memory_limit_mb: 256
+checker: tokens
+tags: [implementation]
+difficulty: easy
+reference: solution.cpp
+samples: [1]
+subtasks:
+  - points: 40
+    title: Small numbers
+    tests: "2"
+  - points: 60
+    title: Negative numbers
+    tests: "3"
+starters: [starter.cpp, starter.py]
+locked_top: [top.cpp, top.py]
+locked_bottom: [bottom.cpp, bottom.py]

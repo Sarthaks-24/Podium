@@ -25,6 +25,9 @@ var packPromptFS embed.FS
 // It is the format the exporter writes for a problem without starters.
 const promptPackFormat = 1
 
+// promptFunctionFormat is the pack format of a function problem.
+const promptFunctionFormat = 4
+
 var packPromptTmpl = template.Must(template.ParseFS(packPromptFS, "packprompt/prompt.tmpl"))
 
 // DefaultPackRules is the built-in rules text of the outside-AI prompt: the
@@ -87,9 +90,9 @@ func preferencesBlock(text string) string {
 // release to name.
 func packPromptStamp(version string) string {
 	if version == "" || version == "dev" {
-		return fmt.Sprintf("Podium pack prompt, pack format %d", promptPackFormat)
+		return fmt.Sprintf("Podium pack prompt, pack formats %d and %d", promptPackFormat, promptFunctionFormat)
 	}
-	return fmt.Sprintf("Podium %s pack prompt, pack format %d", version, promptPackFormat)
+	return fmt.Sprintf("Podium %s pack prompt, pack formats %d and %d", version, promptPackFormat, promptFunctionFormat)
 }
 
 func packPrompt(version string) (string, error) { return packPromptWith(version, "", "") }
@@ -102,7 +105,20 @@ func packPromptWith(version, rules, preferences string) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	fn := map[string]string{}
+	for _, f := range []string{"problem.yaml", "solution.cpp", "bottom.py"} {
+		b, err := packPromptFS.ReadFile("packprompt/example_function/" + f)
+		if err != nil {
+			return "", err
+		}
+		fn[f] = string(b)
+	}
 	data := map[string]any{
+		"FunctionFormat":   promptFunctionFormat,
+		"FunctionYAML":     fn["problem.yaml"],
+		"FunctionSolution": fn["solution.cpp"],
+		"FunctionBottom":   fn["bottom.py"],
+		"MaxStarterKB":     MaxStarter >> 10,
 		"Stamp":            packPromptStamp(version),
 		"Rules":            strings.TrimRight(rules, "\n"),
 		"PreferencesBlock": preferencesBlock(preferences),

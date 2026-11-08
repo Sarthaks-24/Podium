@@ -137,6 +137,19 @@ Arguments are limited to letters, digits and `_ . , : = + -` (64 characters, 16 
 
 **The generator is not part of the content hash (D53).** The content hash covers the tests the generator made, which is what students are judged on. Hashing the generator too would unvalidate a problem when someone tidies the generator without making the tests again, although nothing a student sees changed. Instead a separate plan hash (generator language and source hash, plus the plan) travels in the `generate_inputs` payload, next to the content hash; `Finish` applies nothing if either changed while the job ran, so inputs from an older generator are never mixed in. Editing a generator therefore leaves validated tests alone until someone presses Generate inputs again.
 
+**Function problems (v2.0.2, V202-6 and V202-29 to V202-34).** A problem's `mode` is `whole` or `function`. A function problem stores a locked top and a locked bottom per language (`problems.locked_top`, `locked_bottom`, JSON objects keyed by language id, so a new language needs no migration); its stub is the existing starter. The judging side changes in one place only: `problems.Compose` joins top, the student's code and bottom (each part cut after its last line and given one newline, so the student's offset is the top's line count), and the submissions service sends that composed file to the judge as a separate blob while the submission keeps only the student's part. The judge and `server/internal/judge` are untouched but for the source read cap, raised from 64 KB to exactly 72 KB.
+
+| Choice | Why |
+|---|---|
+| Compose with the live problem's locked code, not a revision's | Judging always loads the live problem (`problemForJudging`); in a contest `checkPin` refuses a moved pin, so the live locked code is the pinned one. No revision-based judging path is needed. |
+| Locked code in its own fields and in the content hash, not inside the starter | Starters are outside the hash, so a driver hidden in one would change verdicts without moving the pin. The new hash fields are `omitempty` and set only for function problems, so every older hash is byte-identical. |
+| The mode is fixed once a student has a submission, run or draft | Switching would wrap whole-file sources on rejudge (two `main`s) and load whole-file drafts as the student's part. |
+| `submissions.top_lines` stored per submission | Compile output is rewritten to the student's line numbers with it; a practice submission has no pinned revision to look the old top up in. |
+| One shared fixture (`web/tests/fixtures/compose.json`) instead of a compose endpoint | The editor joins the parts itself to place the locked ranges; a Go test and a Vitest test read the same cases, so the two joins cannot drift. |
+| A locked top is never empty | `top_lines > 0` then marks a composed file, so the server knows which output to rewrite without another column. |
+
+Integrity compares the stored student parts only, so shared locked code never raises similarity. Locked code is a teaching aid: the sandbox, the checker and the hidden tests stay what decides a verdict.
+
 ## AI wizard
 
 The `ai` package (three providers, D111) is the model side: the key store, the provider clients, the problem schema and prompts, and the checks that turn a model's answer into a draft. `ai/http.go` holds the routes' handlers and the in-memory wizard runs; `problems` turns a checked answer into a draft and runs the generator chain.

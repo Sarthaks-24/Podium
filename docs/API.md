@@ -200,6 +200,8 @@ The signed-in person's own dates for the `/me` page (v1.3): `200 {"member_since"
 
 The contests the signed-in person entered (a start, or a submission that counts), newest first, archived ones left out, for the `/me` page (v1.3): `200 {"contests":[{"slug","title","starts_at","state","score","max_score","place","of"}],"server_now"}`. `score` is their own total, always shown, as on the contest page. `place` and `of` (their rank and the number of rows on the board) come from the board students see now and are left out while it is frozen (during the freeze, and after the end while the organisers hold the reveal), and for anyone the board leaves out. No other person's data is ever in it.
 
+Each row also carries `to_finish` and `editorial` (v2.0.2). `to_finish` is `[{"label","title","score","max","can_practice"}]`: once every window of the contest is over (the close plus the longest personal extension) and the person may still open it, the problems where neither their contest score nor their best practice score reaches `max` (never-tried ones included, deleted ones left out). `title` is the pinned title and `score` the better of the two scores. `can_practice` is true when the contest allows practice after the end and the problem is ready; when practice is open but the problem changed after the contest, it is false and the workspace refuses with `409 practice_changed`. It is `[]` for live, frozen and upcoming contests, before the last window closes, and after an invite is withdrawn. `editorial` is true when the editorial is published and every window is over. A client that ignores both fields behaves as before.
+
 ### `PUT /api/me/preferences` (student)
 
 Saves the display preferences, so they follow the account to another machine. Request: `{"theme":"dark","verdicts":"signal","editor_colours":"dusk","theme_custom":{"background":"#1a2b3c","accent":"#e07a5f","contrast":"high"}}`.
@@ -378,6 +380,7 @@ When the pack's slug is already a problem's and no `on_conflict` is given, the i
   "tests": [ { "idx": 1, "sample": true, "subtask_idx": null, "input_size": 8, "output_size": 3,
                "input_preview": "2\n1 2\n", "output_preview": "3\n", "output_missing": false } ],
   "starters": { "python3": "import sys\n..." },
+  "mode": "whole", "locked_top": {}, "locked_bottom": {},
   "content_hash": "9f2c...", "validated_hash": "9f2c...",
   "revision": { "id": 14, "rev": 3 }, "live_contests": [ { "contest_id": 4, "slug": "week-6", "title": "Week 6", "label": "B" } ],
   "open_contests": [ { "contest_id": 5, "slug": "week-7", "title": "Week 7", "label": "A" } ], "hidden_open_contests": 0,
@@ -391,6 +394,7 @@ When the pack's slug is already a problem's and no `on_conflict` is given, the i
 - `tests[].subtask_idx` is `null` for an example. Previews are the first 200 bytes, cut at a whole UTF-8 character. `output_missing` is true while a test has no expected output; Validate makes it first.
 - `revision` is the problem's newest revision. `live_contests` are the published contests that pin the problem and are running now; while there are any, a save needs a `reason`. `open_contests` are the published contests that pin the problem and have not ended, started or not, limited to those the caller manages; `hidden_open_contests` counts the others. The archive dialog lists them: an archived problem keeps working in a contest, but cannot be updated there until restored.
 - `problems` lists what stops validation and judging (a test in no subtask, a range naming a missing test, a test with no expected output); `warnings` is advice that does not (points not adding up to 100, no brute force, no validator, more than 10 hidden tests).
+- `mode` (v2.0.2) is `whole` (the student writes the whole program) or `function` (the student writes only a function). For a function problem, `locked_top` and `locked_bottom` hold the locked code before and after the student's, by language, and `starters` holds each language's stub; the languages with a locked bottom are the ones the problem offers. Both are `{}` for a whole problem. See `docs/AUTHORING.md`, "Function problems".
 
 `ProblemEdit` replaces every editable field at once:
 
@@ -403,6 +407,7 @@ When the pack's slug is already a problem's and no `on_conflict` is given, the i
 ```
 
 - `starters` (optional) replaces the starter code by language (`cpp17`, `java21`, `python3`, `node22`, at most 4 KB each); left out, the stored starters are kept. A change makes a revision but not a judging change.
+- `mode`, `locked_top` and `locked_bottom` (optional, v2.0.2) replace the problem's; each one left out keeps its stored value, so an older editor cannot erase them. For `function`, every offered language needs a non-blank locked top, a locked bottom and a starter, each at most 4 KB, and the reference and brute force must be in offered languages (`400` with `fields.mode`, `fields.locked_top`, `fields.locked_bottom`, `fields.starters`, `fields.reference` or `fields.brute`). For `whole`, locked code sent is dropped. The mode and the locked code are part of the content hash, so a change needs validation again and makes a revision.
 
 - A `brute` or `validator` with empty source counts as none. Subtasks are numbered in the order sent; each `tests` range list is stored in its shortest form (`"3, 4, 5"` becomes `"3-5"`).
 - `generator` (`{language, source}` or `null`) and `plan` may be sent too. Leave both out to keep the generator, the plan and each subtask's `generator_args`, so an editor that does not show them cannot erase them. Send either to replace them: the one left out keeps its stored value. `null`, or empty source, removes the generator, and the plan must then be empty.
@@ -454,6 +459,7 @@ When the pack's slug is already a problem's and no `on_conflict` is given, the i
 | restore | 409 `conflict` with `fields.slug` and `suggested_slug` | another problem now uses the slug the restore would give back (or the one chosen) |
 | restore | 400 `bad_request` with `fields.slug` | a chosen slug breaks the slug rule |
 | import, tests, export | 429 `busy` (`Retry-After: 5`) | another pack is being processed; one runs at a time |
+| update, import replace | 409 `mode_locked` | the save changes the mode of a problem a student has a submission, run or draft on: "This problem already has submissions or drafts, so its mode cannot change. Make a new problem instead." |
 | validate | 409 `not_ready` with `problems` | no tests, no subtask, tests outside the subtasks, or tests without an expected output |
 | generate | 409 `not_ready` with `problems` | no tests, no reference, a generation still queued or running, or (with `all` false) no output missing; with `then_validate`, also anything else that stops validation. 400 when `all` and `then_validate` are both set |
 | generate-inputs | 409 `not_ready` with `problems` | no generator, no planned tests, no reference, or an input or output generation still queued or running |
@@ -501,7 +507,7 @@ The wizard drafts a problem from a brief or from pasted text, with Anthropic, Op
 
 `KeyStatus` also carries `custom_prompt` (boolean): true when `PODIUM_AI_PROMPT_FILE` replaces the wizard's authoring rules. The text is never sent.
 
-`GET /api/admin/problems/pack-prompt` (organiser and up) returns 200 `{"prompt":"..."}`: the text an organiser gives to any AI so it returns a pack for Import pack. It is built from an embedded template filled with the importer's own limits and file names, and asks for pack format 1. Its first line is a stamp, "Podium <release> pack prompt, pack format 1", with no release for a plain dev build. No request body or parameters. Saved pack rules and preferences are applied (see AI prompts).
+`GET /api/admin/problems/pack-prompt` (organiser and up) returns 200 `{"prompt":"..."}`: the text an organiser gives to any AI so it returns a pack for Import pack. It is built from an embedded template filled with the importer's own limits and file names, and teaches pack format 1 for a whole problem and format 4 for a function problem, with an example pack of each. Its first line is a stamp, "Podium <release> pack prompt, pack formats 1 and 4", with no release for a plain dev build. No request body or parameters. Saved pack rules and preferences are applied (see AI prompts).
 
 `KeyStatus`: `{active, provider, model, active_until, providers: [{id, name, has_key, model, active_until, models}], server_now}`; without a key, `active` is false and `provider` is `anthropic`.
 
@@ -576,6 +582,7 @@ The workspace is where code is written, run and submitted. Under `/api/workspace
 - `samples` are the examples, each input and output at most 4 KB cut at a whole UTF-8 character (`truncated` says so). An example whose output is not made yet is left out.
 - `time_factor` multiplies `time_limit_ms` for that language on the judge, so the editor shows the limit a program really gets.
 - `draft` is `null` when nothing was saved. `submissions` is the viewer's newest 20 on this problem, newest first. `starters` is the problem's own starter code by language, from the pinned revision in a contest, `{}` when it has none; a language without one uses the web app's starter.
+- For a function problem (v2.0.2), `languages` lists only the languages it offers.
 
 ### `Run`
 
@@ -631,6 +638,8 @@ A submission that counts never carries the input, output or checker comment of a
 
 **The revealed hidden test.** A practice submission carries `revealed` for its first failing hidden test, in judging order: `{idx, subtask_idx, input, expected, output, truncated}`, each text at most 4 KB. It is present only when the submission was made in practice after the contest's end (and no other contest that pins the problem is still open, drafts and upcoming ones included) or in the organisers' `/api/workspace/`; a hidden test failed; judging is done; and the viewer is the author or an admin. It is never on a submission that counts, and never in the console feed, the exports, the standings or any event but the author's own. A problem used in a contest with practice therefore has its hidden tests readable one at a time; `docs/AUTHORING.md` says what that means for setters.
 
+**Function problems (v2.0.2).** `source` and the stored code are only the student's part; the judge compiles the composed file (locked top, the student's code, locked bottom), stored as a separate blob that only the job names. `compile_output` of a submission or run, and the `stderr` of a JavaScript run (Node has no compile step), have their line numbers rewritten for every viewer: a line in the student's code counts from its first line in the shape the compiler printed (`main.cpp:3:5`, `Main.java:3`, `File "main.py", line 3`, `main.js:3`), and a line in locked code reads `locked code, line N`, N counted within that block. The server uses the locked top's line count stored with the submission when it was judged, so a later edit of the top does not shift it. Runtime stack traces are not rewritten.
+
 ### Submit and run rules
 
 | Rule | Value | Refusal |
@@ -643,6 +652,7 @@ A submission that counts never carries the input, output or checker comment of a
 | Compile that ran out of time | 60 s before the next Run or Submit in the same scope | `429 rate_limited` "Your last program took too long to compile. Try again in N seconds; ..." |
 | Drafts | one save per user every 2 s | `429 rate_limited` |
 | Code and input | 64 KB each, UTF-8, a known language (in a contest, one it allows) | `400 bad_request` |
+| Function problems | the language must be one the problem offers; drafts too | `400 bad_request` "This problem takes C++17 or Python 3." |
 | `client_key` | optional, at most 64 characters | `400 bad_request` |
 | Problem | tests, examples and subtasks fit together and every test has an expected output | `409 not_ready` with `problems` |
 

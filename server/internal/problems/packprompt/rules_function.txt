@@ -1,9 +1,10 @@
 ## Function problems
 
-Use a function problem only when the description asks for one: the student writes a function and the platform reads the input and prints the result.
+Use a function problem only when the description asks for one: the student writes a function, and locked code around it reads the input, calls the function and prints what it returns. Write it as a format 4 pack, as in the function example below.
 
-- Each language has one locked top and one locked bottom. The student edits only the part between them.
-- The locked top holds every import. The student never needs to add one.
-- In Java the locked bottom reads the input with Scanner.
-- State the exact parameter types and the return type of the function for every language.
-- Say whether a collection is an array or a list: an array or an ArrayList in Java, an array or a vector in C++, a list in Python.
+- Offer one to four languages. Each offered language has one locked top, one starter and one locked bottom, and the student edits only the part between top and bottom.
+- The locked top holds only imports or includes, no declarations, and is never empty: a comment is enough when the language needs nothing. It supplies the common imports so the student rarely needs to add one. A JavaScript top is `'use strict';`.
+- In Java the student writes a non-public `class Solution`; the locked bottom holds `public class Main`, reads the input with `Scanner` and calls `new Solution().yourFunction(...)`.
+- The reference solution and the brute force are bare functions (no `main`), in an offered language.
+- State the exact parameter types and the return type of the function for every language in a table in the statement, and say whether a collection is an array or a list: an array or an `ArrayList` in Java, an array or a `vector` in C++, a list in Python or JavaScript.
+- Use `long` or `long long` for a result that can exceed 32 bits.

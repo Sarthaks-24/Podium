@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"database/sql"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"math"
@@ -87,6 +88,9 @@ type Service struct {
 
 	pub    publisher
 	limits rateLimiter
+	// beforeWrite, when set, runs after the problem is loaded and before the
+	// write transaction begins; tests change the problem there.
+	beforeWrite func()
 }
 
 // New returns the service. hashKey is HashKey; contestView is
@@ -241,8 +245,9 @@ func (s *Service) Workspace(ctx context.Context, problemID, userID int64, sc Sco
 	for l, code := range p.Starters {
 		w.Starters[l] = code
 	}
+	// A function problem lists only the languages it has locked code for.
 	for _, l := range languages {
-		if sc.allows(l.ID) {
+		if sc.allows(l.ID) && p.Offers(l.ID) {
 			w.Languages = append(w.Languages, l)
 		}
 	}
@@ -323,16 +328,52 @@ func (s *Service) SaveDraft(ctx context.Context, problemID, userID int64, sc Sco
 	if err := sc.checkLanguage(language); err != nil {
 		return err
 	}
+	// Only the mode and the offered languages are needed, not the tests.
+	p := &problems.Problem{}
+	var bottom string
+	err := s.DB.QueryRowContext(ctx, "SELECT mode, locked_bottom FROM problems WHERE id = ?", problemID).Scan(&p.Mode, &bottom)
+	if errors.Is(err, sql.ErrNoRows) {
+		return ErrNotFound
+	}
+	if err != nil {
+		return err
+	}
+	if err := json.Unmarshal([]byte(bottom), &p.LockedBottom); err != nil {
+		return fmt.Errorf("problem %d locked_bottom: %w", problemID, err)
+	}
+	if err := checkOffered(p, language); err != nil {
+		return err
+	}
 	if err := s.limits.allow(userID, "draft", draftGap, s.now(), "Drafts are saved"); err != nil {
 		return err
 	}
-	_, err := s.DB.ExecContext(ctx, `INSERT INTO drafts (user_id, problem_id, contest_id, language, source, updated_at) VALUES (?, ?, ?, ?, ?, ?)
+	if s.beforeWrite != nil {
+		s.beforeWrite()
+	}
+	// The mode is read again inside the write, as for Submit: a draft of the
+	// wrong kind would load as the student's part.
+	tx, err := s.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	var mode string
+	if err := tx.QueryRowContext(ctx, "SELECT mode FROM problems WHERE id = ?", problemID).Scan(&mode); err != nil {
+		return err
+	}
+	if mode != p.Mode {
+		return ErrPinMoved
+	}
+	_, err = tx.ExecContext(ctx, `INSERT INTO drafts (user_id, problem_id, contest_id, language, source, updated_at) VALUES (?, ?, ?, ?, ?, ?)
 		ON CONFLICT (user_id, problem_id, contest_id) DO UPDATE SET language = excluded.language, source = excluded.source, updated_at = excluded.updated_at`,
 		userID, problemID, sc.ContestID, language, source, s.now().UnixMilli())
 	if err != nil && strings.Contains(err.Error(), "FOREIGN KEY") {
 		return ErrNotFound
 	}
-	return err
+	if err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 // SubmitRequest is one press of Submit.
@@ -380,12 +421,21 @@ func (s *Service) Submit(ctx context.Context, r SubmitRequest) (v *SubmissionVie
 	if err != nil {
 		return nil, false, err
 	}
+	if err := checkOffered(p, r.Language); err != nil {
+		return nil, false, err
+	}
+	if s.beforeWrite != nil {
+		s.beforeWrite()
+	}
 	tx, err := s.DB.BeginTx(ctx, nil)
 	if err != nil {
 		return nil, false, err
 	}
 	defer tx.Rollback()
 	if err := checkPin(ctx, tx, p, r.Scope.RevisionID); err != nil {
+		return nil, false, err
+	}
+	if err := checkUnchanged(ctx, tx, p); err != nil {
 		return nil, false, err
 	}
 	if r.ClientKey != "" {
@@ -445,6 +495,7 @@ func (s *Service) Submit(ctx context.Context, r SubmitRequest) (v *SubmissionVie
 				time.Duration(secs) * time.Second}
 		}
 	}
+	comp := p.ComposeFor(r.Language, r.Source)
 	srcSHA, err := s.Problems.Blobs.Put(ctx, tx, []byte(r.Source))
 	if err != nil {
 		return nil, false, err
@@ -459,14 +510,19 @@ func (s *Service) Submit(ctx context.Context, r SubmitRequest) (v *SubmissionVie
 	}
 	var id int64
 	err = tx.QueryRowContext(ctx, `INSERT INTO submissions (problem_id, contest_id, user_id, kind, language, source, source_sha,
-		max_score, client_key, typed_chars, pasted_chars, focus_losses, fullscreen_exits, client_hash, practice, created_at, revision_id)
-		VALUES (?, ?, ?, 'submit', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
+		max_score, client_key, typed_chars, pasted_chars, focus_losses, fullscreen_exits, client_hash, practice, created_at, revision_id, top_lines)
+		VALUES (?, ?, ?, 'submit', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
 		r.ProblemID, contest, r.UserID, r.Language, r.Source, srcSHA, maxScore, r.ClientKey,
-		clamp(r.Typed), clamp(r.Pasted), clamp(r.Blur), clamp(r.Exits), r.ClientHash, r.Scope.Practice, now.UnixMilli(), nullID(r.Scope.RevisionID)).Scan(&id)
+		clamp(r.Typed), clamp(r.Pasted), clamp(r.Blur), clamp(r.Exits), r.ClientHash, r.Scope.Practice, now.UnixMilli(), nullID(r.Scope.RevisionID),
+		comp.TopLines).Scan(&id)
 	if err != nil {
 		return nil, false, err
 	}
-	pl := submitPayload(p, id, judgeapi.Program{Language: r.Language, SourceSHA: srcSHA})
+	progSHA, err := s.programSHA(ctx, tx, p, srcSHA, comp)
+	if err != nil {
+		return nil, false, err
+	}
+	pl := submitPayload(p, id, judgeapi.Program{Language: r.Language, SourceSHA: progSHA})
 	pl.StopOnSampleFail = true
 	pl.Reveal = r.Scope.Reveal
 	if p.Checker == problems.CheckerCustom {
@@ -507,6 +563,32 @@ func nullID(id int64) any {
 	return nil
 }
 
+// checkOffered refuses a language a function problem does not offer: it
+// has no locked code to compose with.
+func checkOffered(p *problems.Problem, language string) error {
+	if p.Offers(language) {
+		return nil
+	}
+	names := []string{}
+	for _, l := range p.Offered() {
+		names = append(names, judge.Languages[l].Name)
+	}
+	if len(names) > 1 {
+		names = append(names[:len(names)-2], names[len(names)-2]+" or "+names[len(names)-1])
+	}
+	return &InputError{"This problem takes " + strings.Join(names, ", ") + "."}
+}
+
+// programSHA stores the file the judge compiles: for a whole problem the
+// student's own text (srcSHA), for a function problem the composed file,
+// a separate blob that only the job payload names and pins (PLAN 3.3).
+func (s *Service) programSHA(ctx context.Context, tx *sql.Tx, p *problems.Problem, srcSHA string, c problems.Composed) (string, error) {
+	if !p.IsFunction() {
+		return srcSHA, nil
+	}
+	return s.Problems.Blobs.Put(ctx, tx, []byte(c.Source))
+}
+
 // tagJob records a job's contest (so a paused contest's jobs wait) and the
 // revision it judges against.
 func tagJob(ctx context.Context, tx *sql.Tx, jobID int64, sc Scope) error {
@@ -539,6 +621,22 @@ func checkPin(ctx context.Context, tx *sql.Tx, p *problems.Problem, revisionID i
 		return err
 	}
 	if hash != p.ContentHash {
+		return ErrPinMoved
+	}
+	return nil
+}
+
+// checkUnchanged refuses, inside the write transaction, a problem whose
+// mode or content changed after it was loaded (the load runs before the
+// transaction, so that a second connection does not wait behind writers):
+// composing with the stale copy would wrap a whole program or judge old
+// locked code.
+func checkUnchanged(ctx context.Context, tx *sql.Tx, p *problems.Problem) error {
+	var mode, hash string
+	if err := tx.QueryRowContext(ctx, "SELECT mode, content_hash FROM problems WHERE id = ?", p.ID).Scan(&mode, &hash); err != nil {
+		return err
+	}
+	if mode != p.Mode || hash != p.ContentHash {
 		return ErrPinMoved
 	}
 	return nil
@@ -619,12 +717,21 @@ func (s *Service) Run(ctx context.Context, r RunRequest) (*RunView, error) {
 	if err != nil {
 		return nil, err
 	}
+	if err := checkOffered(p, r.Language); err != nil {
+		return nil, err
+	}
+	if s.beforeWrite != nil {
+		s.beforeWrite()
+	}
 	tx, err := s.DB.BeginTx(ctx, nil)
 	if err != nil {
 		return nil, err
 	}
 	defer tx.Rollback()
 	if err := checkPin(ctx, tx, p, r.Scope.RevisionID); err != nil {
+		return nil, err
+	}
+	if err := checkUnchanged(ctx, tx, p); err != nil {
 		return nil, err
 	}
 	var pending int
@@ -646,7 +753,12 @@ func (s *Service) Run(ctx context.Context, r RunRequest) (*RunView, error) {
 	if err != nil {
 		return nil, err
 	}
-	pl := judgeapi.RunPayload{Program: judgeapi.Program{Language: r.Language, SourceSHA: srcSHA},
+	comp := p.ComposeFor(r.Language, r.Source)
+	progSHA, err := s.programSHA(ctx, tx, p, srcSHA, comp)
+	if err != nil {
+		return nil, err
+	}
+	pl := judgeapi.RunPayload{Program: judgeapi.Program{Language: r.Language, SourceSHA: progSHA},
 		TimeLimitMS: p.TimeLimitMS, MemoryLimitMB: p.MemoryLimitMB, Checker: judgeapi.Checker{Type: p.Checker, Epsilon: p.Epsilon}}
 	input := ""
 	if r.Input != nil {
@@ -680,9 +792,9 @@ func (s *Service) Run(ctx context.Context, r RunRequest) (*RunView, error) {
 	// later scan of the table walk overflow pages. The custom input is
 	// likewise kept only as a blob (in the job payload).
 	var id int64
-	if err := tx.QueryRowContext(ctx, `INSERT INTO submissions (problem_id, contest_id, user_id, kind, language, source, source_sha, input, created_at, revision_id)
-		VALUES (?, ?, ?, 'run', ?, '', ?, '', ?, ?) RETURNING id`, r.ProblemID, contest, r.UserID, r.Language, srcSHA,
-		s.now().UnixMilli(), nullID(r.Scope.RevisionID)).Scan(&id); err != nil {
+	if err := tx.QueryRowContext(ctx, `INSERT INTO submissions (problem_id, contest_id, user_id, kind, language, source, source_sha, input, created_at, revision_id, top_lines)
+		VALUES (?, ?, ?, 'run', ?, '', ?, '', ?, ?, ?) RETURNING id`, r.ProblemID, contest, r.UserID, r.Language, srcSHA,
+		s.now().UnixMilli(), nullID(r.Scope.RevisionID), comp.TopLines).Scan(&id); err != nil {
 		return nil, err
 	}
 	pl.SubmissionID = id

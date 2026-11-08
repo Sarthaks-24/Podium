@@ -145,21 +145,28 @@ func (q queue) enqueueValidation(ctx context.Context, tx *sql.Tx, p *Problem, us
 		TimeLimitMS: p.TimeLimitMS, MemoryLimitMB: p.MemoryLimitMB,
 		Checker: judgeapi.Checker{Type: p.Checker, Epsilon: p.Epsilon},
 	}
-	putSource := func(src Source) (judgeapi.Program, error) {
-		sha, err := q.blobs.Put(ctx, tx, []byte(src.Source))
+	// The reference and brute force are a function problem's student part
+	// and are judged composed; the validator is a whole program.
+	putSource := func(src Source, composed bool) (judgeapi.Program, error) {
+		text := src.Source
+		if composed {
+			text = p.ComposeFor(src.Language, src.Source).Source
+		}
+		sha, err := q.blobs.Put(ctx, tx, []byte(text))
 		return judgeapi.Program{Language: src.Language, SourceSHA: sha}, err
 	}
-	if payload.Programs.Reference, err = putSource(p.Reference); err != nil {
+	if payload.Programs.Reference, err = putSource(p.Reference, true); err != nil {
 		return false, err
 	}
 	for _, opt := range []struct {
-		src  *Source
-		dest **judgeapi.Program
-	}{{p.Brute, &payload.Programs.Brute}, {p.Validator, &payload.Programs.Validator}} {
+		src      *Source
+		dest     **judgeapi.Program
+		composed bool
+	}{{p.Brute, &payload.Programs.Brute, true}, {p.Validator, &payload.Programs.Validator, false}} {
 		if opt.src == nil {
 			continue
 		}
-		prog, err := putSource(*opt.src)
+		prog, err := putSource(*opt.src, opt.composed)
 		if err != nil {
 			return false, err
 		}

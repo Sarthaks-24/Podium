@@ -133,7 +133,9 @@ func (q queue) enqueueGeneration(ctx context.Context, tx *sql.Tx, p *Problem, us
 	if len(pl.Inputs) == 0 {
 		return &NotReadyError{[]string{"Every test already has an output. Use Regenerate all outputs to replace them."}}
 	}
-	sha, err := q.blobs.Put(ctx, tx, []byte(p.Reference.Source))
+	// A function problem's reference is a bare function: it is run
+	// composed with its locked parts, as Validate and Submit judge it.
+	sha, err := q.blobs.Put(ctx, tx, []byte(p.ComposeFor(p.Reference.Language, p.Reference.Source).Source))
 	if err != nil {
 		return err
 	}

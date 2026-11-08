@@ -21,7 +21,7 @@ const (
 	validatorMemoryMB = 256
 	bruteFactor       = 10
 	bruteTimeCap      = 10 * time.Second
-	maxSourceBytes    = 64 << 10
+	maxSourceBytes    = judgeapi.MaxProgramSource
 	heartbeatEvery    = 20 * time.Second
 )
 

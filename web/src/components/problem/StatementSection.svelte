@@ -8,8 +8,9 @@
   the preview beside it. The preview draws the statement and its examples
   with the students' own component. There is no slug field: the server
   makes it from the title when the problem is created. Under the tags,
-  the starter code (StartersField). From 1024 px a column splitter sets how
-  the width divides between Write and Preview, remembered on this device,
+  the starter code (StartersField) and what students write: the whole
+  program, or a function between locked code (LockedCodeField). From
+  1024 px a column splitter sets how the width divides between Write and Preview, remembered on this device,
   and a grip at the corner of the Write box sets its height. Props: `draft`
   (bindable), `fields` (the field errors by key) and `tests` (for the
   examples).
@@ -19,6 +20,7 @@
   import CodeEditor from '../CodeEditor.svelte';
   import StatementPreview from '../StatementPreview.svelte';
   import StartersField from './StartersField.svelte';
+  import LockedCodeField from './LockedCodeField.svelte';
   import { media } from '../../lib/breakpoints';
   import Splitter from '../Splitter.svelte';
   import { DEFAULT_FONT_SIZE, LAYOUT_RESET_EVENT, RESULT_SHARE, WRITE_KEY, draftStorage, readResultPanel, writeResultPanel } from '../../lib/drafts';
@@ -242,6 +244,7 @@
     </div>
 
     <StartersField bind:draft {fields} />
+    <LockedCodeField bind:draft {fields} />
   </section>
 
   {#if !phone}

@@ -181,7 +181,7 @@ func describe(v *problems.Validation) string {
 
 func TestExamplePacksValidate(t *testing.T) {
 	r := newRig(t)
-	for _, slug := range []string{"a-plus-b", "average-speed", "pair-with-sum"} {
+	for _, slug := range []string{"a-plus-b", "average-speed", "pair-with-sum", "array-sum"} {
 		start := time.Now()
 		p := r.importPack(t, slug, nil)
 		v := r.validate(t, p.ID)
