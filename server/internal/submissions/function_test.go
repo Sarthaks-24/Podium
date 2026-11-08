@@ -264,3 +264,35 @@ func TestDeletedFunctionProblemRefusesBeforeComposing(t *testing.T) {
 		t.Errorf("after the refusals: %d submissions, %d composed blobs", rows, blobs)
 	}
 }
+
+// A submission in a language the problem no longer offers is never judged
+// uncomposed on rejudge: it is closed with an error that says why. (The
+// editor refuses removing a used language; this covers a database that
+// got there anyway.)
+func TestRejudgeNeverJudgesAnUncomposedPart(t *testing.T) {
+	r := newRig(t)
+	ctx := context.Background()
+	p := r.importFunction(t)
+	v, _, err := r.svc.Submit(ctx, SubmitRequest{ProblemID: p.ID, UserID: 1, Scope: Scope{ContestID: 9}, Language: "python3",
+		Source: "def add(a, b):\n    return a + b\n"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	r.judgeNext(t, judgeapi.KindSubmit, nil)
+	if _, err := r.svc.DB.Exec(`UPDATE problems SET locked_top = json_remove(locked_top, '$.python3'),
+		locked_bottom = json_remove(locked_bottom, '$.python3') WHERE id = ?`, p.ID); err != nil {
+		t.Fatal(err)
+	}
+	var jobs int
+	r.svc.DB.QueryRow("SELECT count(*) FROM jobs WHERE kind = 'submit'").Scan(&jobs)
+	n, err := r.svc.Rejudge(ctx, RejudgeRequest{ContestID: 9, ProblemID: p.ID, By: 1})
+	if err != nil || n != 0 {
+		t.Fatalf("rejudge: %d %v", n, err)
+	}
+	var after int
+	r.svc.DB.QueryRow("SELECT count(*) FROM jobs WHERE kind = 'submit'").Scan(&after)
+	got, _ := r.svc.Get(ctx, v.ID)
+	if after != jobs || got.State != "error" || got.Error != ErrLanguageDropped {
+		t.Errorf("jobs %d to %d, submission %s %q", jobs, after, got.State, got.Error)
+	}
+}

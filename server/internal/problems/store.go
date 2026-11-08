@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"path"
 	"regexp"
 	"slices"
@@ -721,16 +722,17 @@ func (s *Service) save(ctx context.Context, tx *sql.Tx, p *Problem, note Revisio
 }
 
 // checkModeChange refuses, inside the save's transaction, a new mode for a
-// problem a student has used: any submission or run, or a saved draft.
-// Every write path goes through save, so the editor, pack replace and the
-// jobs are all covered.
+// problem a student has used (any submission or run, or a saved draft),
+// and the removal of a language a student has used in a function problem:
+// that code could no longer be composed on rejudge. Every write path goes
+// through save, so the editor, pack replace and the jobs are all covered.
 func checkModeChange(ctx context.Context, tx *sql.Tx, p *Problem) error {
-	var mode string
-	if err := tx.QueryRowContext(ctx, "SELECT mode FROM problems WHERE id = ?", p.ID).Scan(&mode); err != nil {
+	var mode, bottom string
+	if err := tx.QueryRowContext(ctx, "SELECT mode, locked_bottom FROM problems WHERE id = ?", p.ID).Scan(&mode, &bottom); err != nil {
 		return err
 	}
 	if mode == modeOrWhole(p.Mode) {
-		return nil
+		return checkLanguagesKept(ctx, tx, p, mode, bottom)
 	}
 	// No index leads with problem_id, so this scan runs only when the
 	// mode really changes, which is rare.
@@ -860,4 +862,41 @@ func nonNilInts(s []int) []int {
 		return []int{}
 	}
 	return s
+}
+
+// LanguageLockedError refuses removing a language from a function problem
+// once a student has a submission, run or draft in it (409 mode_locked).
+type LanguageLockedError struct{ Language string }
+
+// Error names the language in PLAN 3.8's words for a locked mode.
+func (e *LanguageLockedError) Error() string {
+	return fmt.Sprintf("This problem already has submissions in %s, so that language cannot be removed. Make a new problem instead.",
+		judge.Languages[e.Language].Name)
+}
+
+// checkLanguagesKept refuses a save that drops an offered language a
+// student has used. Like the mode check, its scans run only when a
+// language really goes.
+func checkLanguagesKept(ctx context.Context, tx *sql.Tx, p *Problem, mode, bottom string) error {
+	if mode != ModeFunction {
+		return nil
+	}
+	var was map[string]string
+	if err := json.Unmarshal([]byte(bottom), &was); err != nil {
+		return fmt.Errorf("problem %d locked_bottom: %w", p.ID, err)
+	}
+	for _, lang := range slices.Sorted(maps.Keys(was)) {
+		if p.Offers(lang) {
+			continue
+		}
+		var used bool
+		if err := tx.QueryRowContext(ctx, `SELECT EXISTS (SELECT 1 FROM submissions WHERE problem_id = ? AND language = ?)
+			OR EXISTS (SELECT 1 FROM drafts WHERE problem_id = ? AND language = ?)`, p.ID, lang, p.ID, lang).Scan(&used); err != nil {
+			return err
+		}
+		if used {
+			return &LanguageLockedError{lang}
+		}
+	}
+	return nil
 }

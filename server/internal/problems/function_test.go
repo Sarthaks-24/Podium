@@ -302,3 +302,46 @@ func TestValidateAndGenerateComposeTheSolutions(t *testing.T) {
 		t.Errorf("generate runs %q, want %q", got, want)
 	}
 }
+
+// A language with a student's submission, run or draft in it cannot be
+// removed from a function problem: its stored code could no longer be
+// composed on rejudge. Unused languages can be removed.
+func TestUsedLanguageCannotBeRemoved(t *testing.T) {
+	s := newGenBank(t)
+	ctx := context.Background()
+	p, _ := s.Create(ctx, "Drop", "", 1, "")
+	fn, err := s.Update(ctx, p.ID, functionEdit(p))
+	if err != nil {
+		t.Fatal(err)
+	}
+	drop := func(lang string) error {
+		e := editOf(fn)
+		top, bottom, stubs := maps.Clone(fnTop), maps.Clone(fnBottom), maps.Clone(fnStubs)
+		delete(top, lang)
+		delete(bottom, lang)
+		delete(stubs, lang)
+		e.LockedTop, e.LockedBottom, e.Starters = &top, &bottom, &stubs
+		e.Brute = nil // the brute force is in Python
+		_, err := s.Update(ctx, p.ID, e)
+		return err
+	}
+	if _, err := s.DB.Exec(`INSERT INTO drafts (problem_id, user_id, language, source, updated_at) VALUES (?, 1, 'python3', 'x', 0)`, p.ID); err != nil {
+		t.Fatal(err)
+	}
+	var locked *LanguageLockedError
+	if err := drop("python3"); !errors.As(err, &locked) ||
+		err.Error() != "This problem already has submissions in Python 3, so that language cannot be removed. Make a new problem instead." {
+		t.Errorf("dropping a used language: %v", err)
+	}
+	// An unused language comes and goes freely.
+	e := editOf(fn)
+	top, bottom, stubs := maps.Clone(fnTop), maps.Clone(fnBottom), maps.Clone(fnStubs)
+	top["node22"], bottom["node22"], stubs["node22"] = "'use strict';\n", "console.log(1);\n", "function twice(n) {}\n"
+	e.LockedTop, e.LockedBottom, e.Starters = &top, &bottom, &stubs
+	if fn, err = s.Update(ctx, p.ID, e); err != nil {
+		t.Fatal(err)
+	}
+	if err := drop("node22"); err != nil {
+		t.Errorf("dropping an unused language: %v", err)
+	}
+}

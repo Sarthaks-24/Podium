@@ -335,6 +335,7 @@ func (d *Handlers) problemError(w http.ResponseWriter, r *http.Request, err erro
 	var pack *PackError
 	var taken *SlugTakenError
 	var notReady *NotReadyError
+	var langLocked *LanguageLockedError
 	var notAllowed *NotAllowedError
 	var unended *UnendedContestsError
 	switch {
@@ -349,6 +350,8 @@ func (d *Handlers) problemError(w http.ResponseWriter, r *http.Request, err erro
 			Message: unended.Error(), Existing: unended.Contests}})
 	case errors.Is(err, ErrModeLocked):
 		httpx.WriteError(w, http.StatusConflict, "mode_locked", ErrModeLocked.Error())
+	case errors.As(err, &langLocked):
+		httpx.WriteError(w, http.StatusConflict, "mode_locked", langLocked.Error())
 	case errors.As(err, &taken):
 		httpx.WriteJSON(w, http.StatusConflict, map[string]httpx.APIError{"error": {Code: "conflict", Message: taken.Error(),
 			Fields: FieldErrors{"slug": taken.Error()}, SuggestedSlug: taken.Suggested}})

@@ -88,3 +88,32 @@ func TestFunctionProblemOverHTTP(t *testing.T) {
 		t.Errorf("mode change after a draft: %d %v", code, body)
 	}
 }
+
+// Removing a language a student has a draft in answers 409 mode_locked
+// with the language named.
+func TestUsedLanguageRemovalOverHTTP(t *testing.T) {
+	s := newSiteMode(t, "testing")
+	org := s.testSignIn("org@college.edu", "organiser")
+	_, p := org.do("POST", "/api/admin/problems", map[string]any{"title": "Twice"}, s.srv.URL)
+	id := strconv.Itoa(int(p["id"].(float64)))
+	path := "/api/admin/problems/" + id
+	two := fnFields()
+	two["locked_top"] = map[string]string{"cpp17": "#include <cstdio>\n", "python3": "import sys\n"}
+	two["locked_bottom"] = map[string]string{"cpp17": "int main() {}\n", "python3": "print(twice(1))\n"}
+	two["starters"] = map[string]string{"cpp17": "long long twice(long long n) {}\n", "python3": "def twice(n):\n    pass\n"}
+	code, got := org.do("PUT", path, editBody(p, two), s.srv.URL)
+	if code != 200 {
+		t.Fatalf("save: %d %v", code, got)
+	}
+	s.testSignIn("stu@college.edu", "student")
+	if _, err := s.db.Exec(`INSERT INTO drafts (user_id, problem_id, language, source, updated_at)
+		SELECT id, ?, 'python3', 'x', 0 FROM users WHERE email = 'stu@college.edu'`, id); err != nil {
+		t.Fatal(err)
+	}
+	code, body := org.do("PUT", path, editBody(got, fnFields()), s.srv.URL)
+	e, _ := body["error"].(map[string]any)
+	if code != 409 || e["code"] != "mode_locked" ||
+		e["message"] != "This problem already has submissions in Python 3, so that language cannot be removed. Make a new problem instead." {
+		t.Errorf("removing python3: %d %v", code, body)
+	}
+}

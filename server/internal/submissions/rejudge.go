@@ -25,6 +25,11 @@ type RejudgeRequest struct {
 // rejudgeReason is the error a replaced job is closed with.
 const rejudgeReason = "Replaced by a rejudge."
 
+// ErrLanguageDropped closes, on rejudge, a function problem's submission
+// whose language the problem no longer offers: its code cannot be
+// composed, and judging it bare would be wrong.
+const ErrLanguageDropped = "This problem no longer offers this submission's language, so it was not judged again."
+
 // Rejudge queues the submissions again with the problem's current tests,
 // at RejudgePriority, and returns how many were queued. Each new job and
 // its submission record the revision the contest pins now; the
@@ -124,6 +129,12 @@ func (s *Service) Rejudge(ctx context.Context, r RejudgeRequest) (int, error) {
 		if err := checkPin(ctx, tx, p, t.revision); err != nil {
 			return 0, err
 		}
+		if p.IsFunction() && !p.Offers(t.language) {
+			if err := s.closeUncomposable(ctx, tx, t.id, t.job, t.state, t.jobState, now); err != nil {
+				return 0, err
+			}
+			continue
+		}
 		// The stored student part is composed with the live locked parts,
 		// which checkPin has just shown are the pinned revision's. The
 		// composed blob is written again: only young jobs pin it.
@@ -184,4 +195,20 @@ func (s *Service) Rejudge(ctx context.Context, r RejudgeRequest) (int, error) {
 		return 0, err
 	}
 	return queued, nil
+}
+
+// closeUncomposable ends a submission whose language its function problem
+// no longer offers: a waiting job is cancelled, and the submission shows
+// ErrLanguageDropped as a judge failure, which is never counted.
+func (s *Service) closeUncomposable(ctx context.Context, tx *sql.Tx, id, job int64, state, jobState string, now int64) error {
+	if (state == "queued" || state == "running") && (jobState == "queued" || jobState == "leased") {
+		if err := s.Jobs.Cancel(ctx, tx, job, rejudgeReason); err != nil {
+			return err
+		}
+	}
+	if _, err := tx.ExecContext(ctx, `UPDATE submissions SET state = 'error', verdict = '', score = 0, max_time_ms = 0, max_memory_kb = 0,
+		result = '', earned = '', error = ?, judged_at = ?, rejudged_at = ? WHERE id = ?`, ErrLanguageDropped, now, now, id); err != nil {
+		return fmt.Errorf("close submission %d: %w", id, err)
+	}
+	return nil
 }
