@@ -239,3 +239,24 @@ func TestEndedRepinRefusesStudents(t *testing.T) {
 		t.Errorf("a student's request changed state")
 	}
 }
+
+// Update students now on an AI-edited problem nobody confirmed is a 400 with
+// the wording SetProblems uses, and writes nothing.
+func TestRepinRefusesAnUnconfirmedAIDraft(t *testing.T) {
+	r := newRepinRig(t)
+	r.s.at(r.start, -30)
+	r.edit(40, 60, 2000)
+	r.s.at(r.start, -10)
+	if _, err := r.s.db.Exec(`UPDATE problems SET tags = '["ai draft"]' WHERE id = ?`, r.pid); err != nil {
+		t.Fatal(err)
+	}
+	before := r.state()
+	code, out := r.repin(r.owner, nil)
+	msg, _ := out["error"].(map[string]any)["message"].(string)
+	if code != 400 || !strings.Contains(msg, "The problem for label A is an AI draft. Read it and save it in the editor before adding it to a contest.") {
+		t.Fatalf("repin an AI draft: %d %v", code, out)
+	}
+	if r.state() != before {
+		t.Error("the refused update changed the contest")
+	}
+}

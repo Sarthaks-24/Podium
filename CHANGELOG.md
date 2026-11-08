@@ -82,6 +82,14 @@ Unreleased. It upgrades v2.0.1 with migrations 0013, 0014 and 0015. **Upgrade th
 - New: `POST /api/admin/problems/{id}/ai-edit`, `POST /api/admin/problems/{id}/ai-edit/{draft}/accept`, `DELETE /api/admin/problems/{id}/ai-edit/{draft}`. No migration, no new environment variable.
 - Known limits: the model cannot delete a file or change test data, so a change that needs new tests is made in the editor. Drafts live in server memory for one hour and are lost on a restart. The edit is one model call, with no retry. Only a live model call shows how well a real model follows the pack format.
 
+### v2.0.2 release fixes (2026-11-08)
+
+- `podium-server check` no longer reports a deleted problem as differing from its newest revision. That report made the nightly backup drop its copies and `install.sh upgrade` refuse to run.
+- "Update students now" refuses a problem edited by AI that nobody has confirmed, with the same message as adding it to a contest, and the console no longer offers that update.
+- Deleting a problem also clears its locked top and bottom text.
+- An AI edit reply above 2 MB is refused before it is merged. A provider error that is logged has the session's key removed from its text first, for the edit and the wizard.
+- An AI edit draft stuck in "accepting" is dropped after 2 minutes instead of being kept.
+
 ### v2.0.2 known limits
 
 - Locked code is a teaching aid, not an integrity control: a student can still read input or print from their own code, and the checker and hidden tests decide the verdict.
