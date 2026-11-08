@@ -809,6 +809,8 @@ The `Workspace` plus `{label, contest, window, can_submit, practice, refusal, re
 | `403 contest_over` "The contest has ended." | the student's time is over and practice is off |
 | `403 contest_over` "Your time is up. Practice opens when every student's time is up." | the student's time is over, but others still have extra time |
 | `409 not_ready` | the problem changed since it was added to the contest; an organiser validates it and adds it again |
+| `409 practice_changed` "This problem was changed after the contest ended, so practice for it is closed here." (v2.0.2) | practice after the end, for a student, on a problem whose newest revision differs from the pin; `can_submit` is false. Organisers update the pin with "Update students now" |
+| `409 deleted` "This problem was deleted. Your earlier submissions are still listed." (v2.0.2) | Run, Submit and rejudge on a deleted problem; `can_submit` is false and the pinned statement still reads |
 | `429 rate_limited`, `400 bad_request` | the submit rules above |
 
 ### `Standings`

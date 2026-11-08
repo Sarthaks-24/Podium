@@ -105,6 +105,18 @@ In a function problem the student writes only a function. The file has three par
 
 The judge compiles the three parts as one file (the composed file): each part is cut after its last line and given one newline, then they are joined in order. Students see the locked code and cannot change it. The judge, the checker and the hidden tests work exactly as for a whole program.
 
+**Terms used in the editor and in this guide.**
+
+| Term | Meaning |
+|---|---|
+| Function problem | A problem where the student writes one function; the locked code around it makes the program. The opposite is a whole-program problem, the default. |
+| Locked top | The locked code before the student's code: common imports only. |
+| Your code | The student's part. It starts as the starter, and it is all a submission stores. |
+| Locked bottom | The locked code after the student's code: reads the input, calls the function, prints the answer. |
+| Composed file | The three parts joined in order. This is the one file the compiler sees. |
+| Tombstone | What Delete leaves behind: the problem's row, revisions, submissions and contest rows, with its tests, solutions, checker, generator and starters cleared. See "Deleting a problem". |
+| Problems to finish | The list on a student's profile (/me) of problems in fully ended contests where neither the contest score nor the best practice score is the maximum. |
+
 **Making one.** In the editor, on the Statement tab, open "What students write" and choose "One function, between locked code". For each language you offer, fill in the locked top and the locked bottom there, and the stub under "Starter code". In a pack, use format 4 (see `problems/array-sum`):
 
 ```yaml
@@ -132,7 +144,7 @@ Rules, checked on every save and import:
 
 **What locked code is not.** It is a teaching aid, not an integrity control. A student can still read standard input or print from their own code, redefine things in C++, or close the function early and write more code. Everything runs in the sandbox, and the checker and the hidden tests decide the verdict, so such tricks only help a student who could solve the problem anyway.
 
-**AI.** The AI wizard writes whole-program problems only. To make a function problem with AI, use "Packs from another AI" and ask for a format 4 pack, or convert a draft by hand.
+**AI.** The AI wizard stays whole-program: it writes whole-program problems only, and neither the wizard nor the Preferences box can ask it for a function problem. To make a function problem with AI, use "Packs from another AI" and ask for a format 4 pack, or convert a draft by hand.
 
 ## Statement
 
@@ -176,6 +188,7 @@ Every save that changes a problem (its statement, title, starter code, tests, li
 
 - A contest pins one revision per problem when the problem is added. Students are served that revision's title, statement, starter code and samples, never the editable problem, so an edit changes nothing in a contest until an organiser chooses "Update students now" on the contest's Live tab, where a banner names the edited problem.
 - The update is accepted when the revision is the validated content of the problem. When only the statement or title changed, no rejudge is needed, and Live offers a prefilled announcement to post, which is how students learn of the change. When the tests, limits or checker changed, validate first, update, then rejudge.
+- **"Update students now" on an ended contest can change final scores.** When the new revision's subtask points differ from the pinned ones, every student's total changes. Podium refuses at first (409 `ended_scores_change`) and the Live tab's dialog lists each problem with its old and new points and how many students are affected. Only a second confirmation applies it, and the history of changes records "Final scores changed by an update". If no points differ, it applies at once. A contest that holds a problem changed since it was added will not publish, and an ended contest keeps practice closed for that problem, until the update is made.
 - Revisions are kept as the record of what students were served and judged against; there is no list of them in the editor. v1.2 removed the revision lists, statement diffs and the log of what each student was served (V3-4): each served a case no single-college contest has met yet.
 
 ## Deleting a problem
@@ -323,6 +336,24 @@ Generate inputs in the editor runs the generator for every planned test, in one 
 - A planned input replaces any test with the same number, and that test's expected output is cleared until outputs are generated.
 - If the problem, the generator or the plan changed while the job ran, nothing is applied. Generate again.
 - Only one input or output generation per problem runs at a time.
+
+## Practice sets
+
+A practice set is a contest that exists only so students can practise its problems. There is no separate feature: use a contest.
+
+**Recipe.**
+
+1. Create a contest and add the problems (validated, and not tagged "ai draft").
+2. Set its start and end in the past, for example last month, and turn "practice after the end" on.
+3. Write the introduction in the contest's description: it is what students read first.
+4. Publish it. It is already ended, so students invited to it can open each problem in practice at once.
+
+**Limits.**
+
+- A failing practice submission shows the first failing hidden test (see "When hidden tests are shown"). Do not reuse the problems of a practice set in an exam.
+- Problems can be added to a published contest but not removed from it, because practice has shown students their hidden tests.
+- A judging edit (tests, limits, checker, solutions, locked code) closes practice for that problem: students see "This problem was changed after the contest ended, so practice for it is closed here." A contest that holds the changed problem cannot be saved or published until you press "Update students now" on its Live tab. Read the warning under "Revisions" first: on an ended contest that update can change final scores.
+- Students see what is left to do in "Problems to finish" on their profile.
 
 ## The AI wizard
 

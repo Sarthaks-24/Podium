@@ -6,7 +6,9 @@ Releases are numbered from `v2.0.0`. The builds before it were never released; t
 
 ## v2.0.2 Billota (2026-11-07)
 
-Unreleased. Upgrades v2.0.1 with migrations 0013, 0014 and 0015 (more follow in later stages of this release). **Upgrade the judge together with the server**: a v2.0.1 judge refuses the larger source files function problems send (`install.sh upgrade` installs both from one release).
+v2.0.2 lets organisers delete a problem, write function problems (the student writes one function between locked code), and edit a problem or the AI prompts with AI, and gives students a "Problems to finish" list on /me.
+
+Unreleased. It upgrades v2.0.1 with migrations 0013, 0014 and 0015. **Upgrade the judge together with the server**: a v2.0.1 judge refuses the larger source files function problems send (`install.sh upgrade` installs both from one release).
 
 ### v2.0.2 stage 0: pending fixes (2026-11-07)
 
@@ -46,7 +48,7 @@ Unreleased. Upgrades v2.0.1 with migrations 0013, 0014 and 0015 (more follow in 
 - New example pack `problems/array-sum`, a function problem in all four languages; the sandbox suite and the load test use it.
 - The judge reads program sources up to 72 KB (was 64 KB): a student's 64 KB plus a 4 KB top and a 4 KB bottom.
 - Migration `0014_v202_function.sql` adds `mode`, `locked_top` and `locked_bottom` to problems and revisions and `top_lines` to submissions; rolling back means restoring the pre-upgrade backup (OPERATIONS.md).
-- Known limits: locked code is a teaching aid, not an integrity control (a student can still read input or print from their own code); the AI wizard writes whole-program problems only; the students' editor that shows locked code as read-only blocks comes with stage C.
+- Known limits: locked code is a teaching aid, not an integrity control (a student can still read input or print from their own code); the AI wizard writes whole-program problems only.
 
 ### v2.0.2 stage C: locked code in the editor (2026-11-08)
 
@@ -79,6 +81,17 @@ Unreleased. Upgrades v2.0.1 with migrations 0013, 0014 and 0015 (more follow in 
 - Whatever a pack cannot carry is refused with a message: test data, a changed slug, files that are not pack files, an answer the pack parser rejects. The model uses the same in-memory key as the wizard; the key is never stored or logged. The prompt puts the fixed security text first, then the pack format with the owner's pack rules and the Preferences box, and sends the files and the instruction as data blocks.
 - New: `POST /api/admin/problems/{id}/ai-edit`, `POST /api/admin/problems/{id}/ai-edit/{draft}/accept`, `DELETE /api/admin/problems/{id}/ai-edit/{draft}`. No migration, no new environment variable.
 - Known limits: the model cannot delete a file or change test data, so a change that needs new tests is made in the editor. Drafts live in server memory for one hour and are lost on a restart. The edit is one model call, with no retry. Only a live model call shows how well a real model follows the pack format.
+
+### v2.0.2 known limits
+
+- Locked code is a teaching aid, not an integrity control: a student can still read input or print from their own code, and the checker and hidden tests decide the verdict.
+- Raw runtime stack traces are not remapped to the student's line numbers (only compile output, and the first line of a JavaScript error).
+- Windows line ends in a pasted whole file are not stripped: the locked top and bottom are matched exactly, so such a file is kept as written.
+- The AI wizard stays whole-program; function problems come from the editor or from a format 4 pack.
+- AI edit is one model call with no retry, and it cannot write test data.
+- Restoring a deleted problem is not possible.
+- A deleted problem's pinned blobs stay on disk, so ended contests stay reproducible.
+- "Update students now" on an ended contest can change final scores when points differ; it asks twice.
 
 ## v2.0.1 Billota (2026-11-05)
 

@@ -726,6 +726,35 @@ Configuration files are never overwritten: add a new variable with `sudoedit` be
 - **Upgrade the judge with the server.** A function problem's composed file can be up to 72 KB (64 KB of the student's code plus a 4 KB locked top and a 4 KB locked bottom), and a v2.0.1 judge refuses any source over 64 KB. `install.sh upgrade` installs both binaries from one release; never run a v2.0.1 `podium-judge` against a v2.0.2 server. After the upgrade, run the sandbox check ("Verify the sandbox on the VM", above).
 - **Rollback.** As for 0010 to 0012: the previous server refuses a database that records 0014, so rolling back means restoring the backup taken just before the upgrade. Function problems made since are lost with everything else written after it.
 
+### Migration 0015 (v2.0.2): AI prompt versions
+
+`0015_v202_prompts.sql` creates `ai_prompt_versions`, an insert-only table (triggers refuse update and delete) of the owner's saved prompt rules and the Preferences box, one row per save, restore or reset. It rewrites no row. Backups include it. See "Prompt source precedence".
+
+- **Rollback.** The previous server refuses a database that records 0015, so rolling back means restoring the backup taken just before the upgrade.
+
+## Upgrading to v2.0.2
+
+v2.0.2 adds migrations 0013, 0014 and 0015 (above). Steps, in this order:
+
+| Step | What |
+|---|---|
+| 1. Deploy window | No contest is published for the next 48 hours, none runs, and no submission is waiting. `podium-check status` shows Litestream ok before you start. |
+| 2. Upgrade | Run `sudo ./install.sh upgrade` as in "Upgrade". It installs the judge and the server from one release: **the judge binary must be upgraded with the server**, because a v2.0.1 judge refuses the larger composed files function problems send. It takes the pre-upgrade backup first. |
+| 3. Checks | `sudo ./install.sh verify`; `curl -s 127.0.0.1:8080/healthz` shows version v2.0.2 and schema `0015_v202_prompts`; send the alert test ("Alerts"); run the canary (below). |
+| 4. Go or no-go | Decide within 2 hours of the upgrade, before students are told. |
+
+**Rollback is the pre-upgrade backup.** The previous server refuses a database that records 0013, 0014 or 0015, so `sudo ./install.sh rollback` restores the backup taken just before the upgrade and everything written since is lost.
+
+**Rollback cut-off.** Roll back only until the go or no-go deadline (2 hours after the upgrade) or the first student submission on v2.0.2, whichever comes first. `install.sh rollback` prints the number of submissions and runs it would lose. After the cut-off, fix forward only: write the fix, test it and upgrade again.
+
+**The canary.** One problem is kept for checking deploys: a function problem that has a permanent hidden practice contest around it, created once and never deleted, so deploys leave no deleted rows behind. After an upgrade the owner presses Run once in each of C++17, Java 21, Python 3 and JavaScript on it, and each must give the expected output. There is no write script for production: test sign-in exists only in testing mode, and every write on production leaves a permanent row.
+
+**Toolchain parity.** Before the release, record the output of `g++ --version`, `javac -version`, `python3 --version` and `node --version` on production and on the host where the release was rehearsed. They must match (same Ubuntu release, `install.sh packages`); if they do not, bring the rehearsal host in line and rehearse again.
+
+**Ended contests.** "Update students now" on an ended contest changes its final scores when the new revision's points differ. The dialog lists the problems and the number of students affected and asks twice. The row "A problem was edited after the contest ended" in "Running a contest" has the steps.
+
+The owner's release checklist is a script kept outside the repo; it runs the checks and the upgrade over SSH.
+
 ## Holding the compilers
 
 A gcc, JDK, Python, Node or isolate update can change how fast a reference runs or, rarely, a verdict. Before a contest season, stop apt from moving them:

@@ -711,6 +711,23 @@ The four hand-tuned themes are still checked by tests rather than by eye, and th
 
 isolate places every box under `isolate.service`, not under the `podium-judge` unit, which is why the sandbox cap sits on `isolate.slice`. A 1 GB swap file protects the server from a transient spike; boxes cannot swap (isolate sets `memory.swap.max=0` on every box with a memory limit).
 
+## The v2.0.2 choices
+
+v2.0.2 added deleting a problem, function problems, Problems to finish, owner-edited AI prompts and AI edit. Each row is a choice that is hard to reverse, with its reason.
+
+| Choice | Why |
+|---|---|
+| Delete leaves a tombstone instead of removing the row | Revisions are append-only and contests, submissions and boards point at them, so a hard delete would break ended contests or force their history to be rewritten. The tombstone keeps the row, revisions, submissions and contest rows and clears only the working copy (tests, solutions, checker, generator, starters). An ended contest stays reproducible: standings, each student's code and verdicts, and the pinned statement all still read. Every write route refuses a tombstone (409 `deleted`) and its slug is free again. |
+| Each delete is one transaction that writes its `problem_deleted` audit row first | A delete that cannot be recorded does not happen, and a failure rolls everything back. The audit row holds the person, problem id and original slug, never problem text. |
+| Compose in the submissions service, with the live problem and `checkPin` | Judging already loads the live problem (`problemForJudging`) and `checkPin` refuses a moved pin, so the live locked code is the pinned one. One composing site (plus Validate and Generate, which call the same function) means no revision-based judging path to keep in step. The submission stores only the student's part. |
+| Locked parts join `ContentHash` only for function problems | The fields are `omitempty`, so every whole-program problem hashes byte for byte as in v2.0.1. A golden test of old hashes pins this. Old hashes never move, so no contest pin is invalidated by the upgrade. |
+| Locked parts are per-language JSON objects keyed by language id | A new language needs no migration. Migration 0014 requires JSON objects, so a malformed value cannot be stored. |
+| The worker's source cap is derived from its parts | The cap is 64 KB of student code plus two 4 KB locked parts plus 3 newline bytes, so the largest legal composed file always fits and nothing larger does. It is not a rounded number that drifts from the limits it comes from. The judge ships with the server for this reason. |
+| Owner-edited AI rules are template data, never template source | The owner's text is inserted into the prompt as a value, never parsed as a template, so it cannot break or take over the generated parts (the limits, the format, the fixed security text). Rules are resolved once per run, so a save never changes a run in progress. |
+| Prompt versions are insert-only | `ai_prompt_versions` has triggers that refuse update and delete, like the other history tables. The active text is the newest row, a reset is a new row holding the default, and the history never loses an edit. A save carries `base_id` so a stale editor gets 409 `stale_version`. |
+| AI edit goes through the pack parser and `replaceIn` | The model receives the problem as a pack and returns changed files. They are parsed by the same pack code as an import, so everything an import refuses (test data, a changed slug, a file outside the pack) is refused here, and the result is saved as one revision through the existing replace path. The draft is held on the server, so Accept applies exactly what was shown, and a stale check inside the save transaction refuses a draft made from an older version. |
+| Accept always withdraws validation and tags the problem "ai draft" | The statement is outside `ContentHash`, so a statement-only edit would otherwise keep a validation that never covered the new text. |
+
 ## The v1.2 choices
 
 v1.2 refactored v1.1 in place and deleted what a first contest at one college does not need. Each row is a choice that is hard to reverse, with its reason; the ids point to the owner's decision records, which are not in this repository.
