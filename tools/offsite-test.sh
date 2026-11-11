@@ -8,16 +8,20 @@
 #   bash tools/offsite-test.sh        (Linux or WSL2: needs rclone, sqlite3,
 #                                      jq and python3)
 #
-# Not as root: as root podium-backup switches to the podium user, which
-# cannot write the test's temporary folders. In WSL2, whose default user
-# is often root: runuser -u nobody -- bash tools/offsite-test.sh
+# As root it runs itself again as nobody, because as root podium-backup
+# switches to the podium user, which cannot write the test's temporary
+# folders. It is skipped (exit 0) when a tool is missing, as
+# tools/b2-calls-test.sh is; make check runs it and CI installs rclone.
 set -euo pipefail
-(( EUID != 0 )) || { echo "offsite-test: run as a normal user, not root (runuser -u nobody -- bash $0)"; exit 1; }
+for c in rclone sqlite3 jq python3; do
+  command -v "$c" >/dev/null || { echo "skip: $c is not installed, offsite rehearsal not run"; exit 0; }
+done
+python3 -c 1 2>/dev/null || { echo "skip: python3 does not run, offsite rehearsal not run"; exit 0; }
+if (( EUID == 0 )); then exec runuser -u nobody -- bash "$0" "$@"; fi
 
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 backup="$here/../deploy/backup/podium-backup"
 restore="$here/../deploy/backup/podium-restore"
-for c in rclone sqlite3 jq python3; do command -v "$c" >/dev/null || { echo "offsite-test: $c is not installed"; exit 1; }; done
 
 fails=0
 fail() { echo "FAIL: $*"; fails=$((fails + 1)); }
