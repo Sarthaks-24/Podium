@@ -181,6 +181,7 @@ func (w *Worker) runSubmit(ctx context.Context, box int, lease Lease, rep *repor
 			if err != nil {
 				return err
 			}
+			rep.tm.test(res, limit)
 			tr = testResult(t.Idx, judgeapi.RoleProgram, res)
 			if res.Verdict == judge.OK {
 				if err := w.check(ctx, box, pl.Checker, checker, in, out, answer, &tr, &rep.tm); err != nil {
@@ -288,6 +289,7 @@ func (w *Worker) runRun(ctx context.Context, box int, lease Lease, rep *reporter
 		if err != nil {
 			return err
 		}
+		rep.tm.test(res, limit)
 		tr := testResult(input.Idx, judgeapi.RoleProgram, res)
 		if res.Verdict == judge.OK && input.ExpectedSHA != "" {
 			answer, err := w.Cache.Path(ctx, lease, input.ExpectedSHA)

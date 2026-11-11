@@ -216,3 +216,16 @@ func TestJobTimingLineOnTheRealJudge(t *testing.T) {
 		t.Errorf("timing line %v", line)
 	}
 }
+
+// S9: the checker's comment on a hidden test never leaves the judge. The
+// server refuses a report that carries one, which would turn the whole
+// submission into an error, so a wrong answer on a hidden test that still
+// finishes as judged proves the worker blanked the message.
+func TestHiddenTestMessageNeverReachesTheServer(t *testing.T) {
+	r := newRig(t)
+	p := r.importPack(t, "a-plus-b", nil)
+	v := r.submitAndWait(t, p.ID, "cpp17", solutions["cpp17"]["WA"], "hidden-message")
+	if v.State != "done" || v.Error != "" || v.Verdict != "WA" || v.Score != 40 {
+		t.Fatalf("a wrong answer on a hidden test: state %q, error %q, verdict %s, score %d", v.State, v.Error, v.Verdict, v.Score)
+	}
+}
