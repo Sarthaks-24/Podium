@@ -1106,6 +1106,24 @@ The body streams to a temporary file while it is hashed and is renamed into plac
 | `generate` | 2 minutes plus, per input, 30 s and six times the time limit, at most 1 hour |
 | A failed job | a submission ends in `error` and is not counted; a run ends in `error`; a generation applies nothing |
 
+## Changes in v2.1.0
+
+Each stage of v2.1.0 describes its new or changed routes under its own heading below; the route tables above are updated by the same stage.
+
+### Stage A: AI edit
+
+### Stage B: keep me signed in
+
+### Stage F: function problems from the wizard
+
+### Stage K: other AI providers
+
+### Stage W: rewrite with AI
+
+### Stage H: bring back a version
+
+### Stage J: judge protocol
+
 ## Static files
 
 Every path that is not under `/api/` serves the embedded web app (`server/internal/webui`), for `GET` and `HEAD` only.
