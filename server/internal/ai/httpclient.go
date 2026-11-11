@@ -32,7 +32,7 @@ const (
 var retryDelay = func(n int) time.Duration { return time.Duration(n) * time.Second }
 
 func errRateLimited() *Error {
-	return &Error{Code: CodeRateLimited, Message: "Rate limited by the provider; try again in a minute."}
+	return &Error{Code: CodeRateLimited, Message: "The provider says too many requests were sent. Try again in a minute."}
 }
 
 func errUnavailable() *Error {

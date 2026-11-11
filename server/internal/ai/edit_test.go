@@ -1,6 +1,7 @@
 package ai
 
 import (
+	"errors"
 	"strings"
 	"testing"
 )
@@ -51,6 +52,41 @@ func TestCheckInstruction(t *testing.T) {
 	for _, bad := range []string{"", "   ", strings.Repeat("a", MaxInstruction+1), "\xff"} {
 		if CheckInstruction(bad) == nil {
 			t.Errorf("accepted %.10q", bad)
+		}
+	}
+}
+
+func TestDecodeEditKeepsTheReplyText(t *testing.T) {
+	text := `{"files":[],"summary":"s","unsupported":""}`
+	a, err := DecodeEdit(text)
+	if err != nil || a.Raw != text {
+		t.Fatalf("raw %q, %v", a.Raw, err)
+	}
+	// An answer that cannot be read keeps its text for the retry too.
+	_, err = DecodeEdit("not json")
+	var e *Error
+	if !errors.As(err, &e) || e.Code != CodeInvalidAnswer || e.answer != "not json" {
+		t.Errorf("%v", err)
+	}
+}
+
+func TestEditRetryPrompts(t *testing.T) {
+	if p := EditUserPrompt(EditRequest{Instruction: "x"}); strings.Contains(p, "cut off") {
+		t.Error("the first prompt asks for a shorter answer")
+	}
+	if p := EditUserPrompt(EditRequest{Instruction: "x", Shorter: true}); !strings.Contains(p, "cut off") {
+		t.Error("a retry after a cut-off does not ask for a shorter answer")
+	}
+	fix := EditFixPrompt([]string{"problem.yaml: bad", "b"})
+	if !strings.Contains(fix, "- problem.yaml: bad\n- b\n") || !strings.Contains(fix, "same schema") {
+		t.Errorf("fix prompt: %q", fix)
+	}
+}
+
+func TestEditFixedPromptNamesWhatToKeep(t *testing.T) {
+	for _, want := range []string{"generator_args", "tests.yaml", "Keep every key", "never invent test data", "mode"} {
+		if !strings.Contains(editFixedPrompt, want) {
+			t.Errorf("the fixed prompt lacks %q", want)
 		}
 	}
 }

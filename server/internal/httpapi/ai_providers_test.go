@@ -34,9 +34,12 @@ type standIn struct {
 	provider string
 	key      string
 	answer   string
+	// first, when set, answers the first generation request instead of answer.
+	first string
 
-	mu   sync.Mutex
-	seen []string // the key header of every request
+	mu    sync.Mutex
+	seen  []string // the key header of every request
+	posts []string // the body of every POST
 }
 
 func (s *standIn) keyOf(r *http.Request) string {
@@ -65,10 +68,13 @@ func claudeCaps(id string, usable bool) string {
 }
 
 func (s *standIn) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	io.Copy(io.Discard, r.Body)
+	body, _ := io.ReadAll(r.Body)
 	got := s.keyOf(r)
 	s.mu.Lock()
 	s.seen = append(s.seen, got)
+	if r.Method == "POST" {
+		s.posts = append(s.posts, string(body))
+	}
 	s.mu.Unlock()
 	if got != s.key {
 		switch s.provider {
@@ -91,6 +97,16 @@ func (s *standIn) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// pick is the answer to the generation request being served.
+func (s *standIn) pick() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.first != "" && len(s.posts) == 1 {
+		return s.first
+	}
+	return s.answer
+}
+
 func (s *standIn) claude(w http.ResponseWriter, r *http.Request) {
 	switch {
 	case r.Method == "GET" && r.URL.Path == "/v1/models":
@@ -100,7 +116,7 @@ func (s *standIn) claude(w http.ResponseWriter, r *http.Request) {
 		writeJSONBody(w, 200, claudeCaps(id, id != "claude-old-1"))
 	case r.Method == "POST" && r.URL.Path == "/v1/messages":
 		w.Header().Set("Content-Type", "text/event-stream")
-		io.WriteString(w, sseMessage(s.answer))
+		io.WriteString(w, sseMessage(s.pick()))
 	default:
 		w.WriteHeader(404)
 	}
@@ -129,7 +145,7 @@ func (s *standIn) openai(w http.ResponseWriter, r *http.Request) {
 	case r.Method == "GET" && strings.HasPrefix(r.URL.Path, "/v1/models/"):
 		writeJSONBody(w, 200, fmt.Sprintf(`{"id":%q,"object":"model","created":1,"owned_by":"system"}`, strings.TrimPrefix(r.URL.Path, "/v1/models/")))
 	case r.Method == "POST" && r.URL.Path == "/v1/responses":
-		text, _ := json.Marshal(s.answer)
+		text, _ := json.Marshal(s.pick())
 		writeJSONBody(w, 200, `{"id":"resp_1","object":"response","status":"completed","output":[{"type":"reasoning","summary":[]},`+
 			`{"type":"message","role":"assistant","content":[{"type":"output_text","text":`+string(text)+`}]}]}`)
 	default:
@@ -152,7 +168,7 @@ func (s *standIn) gemini(w http.ResponseWriter, r *http.Request) {
 {"name":"models/gemini-x-flash-preview-tts","displayName":"Gemini X TTS","supportedGenerationMethods":["generateContent"]},
 {"name":"models/aqa","displayName":"AQA","supportedGenerationMethods":["generateAnswer"]}]}`)
 	case r.Method == "POST" && strings.HasSuffix(r.URL.Path, ":generateContent"):
-		text, _ := json.Marshal(s.answer)
+		text, _ := json.Marshal(s.pick())
 		writeJSONBody(w, 200, `{"candidates":[{"content":{"role":"model","parts":[{"text":"thinking about it","thought":true},{"text":`+string(text)+`}]},"finishReason":"STOP"}]}`)
 	case r.Method == "GET" && strings.HasPrefix(r.URL.Path, "/v1beta/models/"):
 		id := strings.TrimPrefix(r.URL.Path, "/v1beta/models/")

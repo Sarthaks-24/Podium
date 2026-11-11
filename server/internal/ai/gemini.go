@@ -265,6 +265,11 @@ func geminiSchema(s map[string]any) map[string]any {
 // Edit implements Provider.
 func (g *Gemini) Edit(ctx context.Context, req EditRequest) (*EditAnswer, error) {
 	msgs := []geminiContent{{Role: "user", Parts: []geminiPart{{Text: EditUserPrompt(req)}}}}
+	if req.Previous != "" && len(req.Fix) > 0 {
+		msgs = append(msgs,
+			geminiContent{Role: "model", Parts: []geminiPart{{Text: req.Previous}}},
+			geminiContent{Role: "user", Parts: []geminiPart{{Text: EditFixPrompt(req.Fix)}}})
+	}
 	text, err := g.call(ctx, req.System, msgs, EditSchema())
 	if err != nil {
 		return nil, err

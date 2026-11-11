@@ -163,7 +163,7 @@ func TestOpenAIModelsAndErrors(t *testing.T) {
 		{429, "insufficient_quota", CodeNoQuota, "used up its quota"},
 		{404, "model_not_found", CodeModelNotFound, "OpenAI does not offer the model gpt-x"},
 		{403, "unsupported_country_region_territory", CodeNoAccess, "cannot use gpt-x"},
-		{429, "rate_limit_exceeded", CodeRateLimited, "Rate limited"},
+		{429, "rate_limit_exceeded", CodeRateLimited, "too many requests"},
 		{503, "", CodeUnavailable, "unavailable"},
 		{400, "invalid_json_schema", CodeBadRequest, "OpenAI could not accept"},
 	}

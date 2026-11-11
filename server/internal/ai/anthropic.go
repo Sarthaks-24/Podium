@@ -265,7 +265,11 @@ func (a *Anthropic) Generate(ctx context.Context, req Request) (*WizardPack, err
 
 // Edit implements Provider.
 func (a *Anthropic) Edit(ctx context.Context, req EditRequest) (*EditAnswer, error) {
-	text, err := a.call(ctx, req.System, []anthropicMessage{anthropicTurn("user", EditUserPrompt(req))}, EditSchema())
+	msgs := []anthropicMessage{anthropicTurn("user", EditUserPrompt(req))}
+	if req.Previous != "" && len(req.Fix) > 0 {
+		msgs = append(msgs, anthropicTurn("assistant", req.Previous), anthropicTurn("user", EditFixPrompt(req.Fix)))
+	}
+	text, err := a.call(ctx, req.System, msgs, EditSchema())
 	if err != nil {
 		return nil, err
 	}

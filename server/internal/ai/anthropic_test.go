@@ -183,7 +183,7 @@ func TestAnthropicErrorMapping(t *testing.T) {
 		{402, "billing_error", CodeNoQuota, "no credit left"},
 		{403, "permission_error", CodeNoAccess, "cannot use claude-opus-5-5"},
 		{404, "not_found_error", CodeModelNotFound, "does not offer the model"},
-		{429, "rate_limit_error", CodeRateLimited, "Rate limited by the provider; try again in a minute."},
+		{429, "rate_limit_error", CodeRateLimited, "The provider says too many requests were sent. Try again in a minute."},
 		{500, "api_error", CodeUnavailable, "The provider is unavailable"},
 		{529, "overloaded_error", CodeUnavailable, "The provider is unavailable"},
 		{400, "invalid_request_error", CodeBadRequest, "could not accept the request"},

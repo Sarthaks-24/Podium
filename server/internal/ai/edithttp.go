@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"net/http"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -185,25 +186,83 @@ type editFileJSON struct {
 }
 
 func problemIDOf(w http.ResponseWriter, r *http.Request) (int64, bool) {
-	var id int64
-	for _, c := range r.PathValue("id") {
-		if c < '0' || c > '9' || id > 1<<40 {
-			id = 0
-			break
-		}
-		id = id*10 + int64(c-'0')
-	}
-	if id <= 0 {
+	id, ok := httpx.ParseID(r.PathValue("id"))
+	if !ok {
 		httpx.WriteError(w, http.StatusNotFound, "not_found", "There is no such problem.")
-		return 0, false
 	}
-	return id, true
+	return id, ok
+}
+
+// copyEditRefused leads every refusal of a reply the pack cannot take; the
+// reasons go under "Details".
+const copyEditRefused = "The AI's edit would break this problem, so nothing was saved. Press Ask for a draft to try again, describe a smaller change, or rewrite the whole problem."
+
+// maxSentBack bounds the model's text shown with a refusal.
+const maxSentBack = 200 << 10
+
+// editFail is a refusal of the reply that is not retried and has its own
+// status and code.
+type editFail struct {
+	status        int
+	code, message string
+}
+
+func (e *editFail) Error() string { return e.message }
+
+type sentFile struct {
+	Path    string `json:"path"`
+	Content string `json:"content"`
+}
+
+// sentAnswer is one answer of the model as shown under a refusal: its summary
+// and returned files, and whether the cap cut it short.
+type sentAnswer struct {
+	Summary string     `json:"summary"`
+	Files   []sentFile `json:"files"`
+	Cut     bool       `json:"cut"`
+}
+
+// sentBack lists what the AI sent back, newest first, from this request's
+// answers only. Test data is left out and the whole text is capped.
+func sentBack(answers []*EditAnswer) map[string][]sentAnswer {
+	budget := maxSentBack
+	out := []sentAnswer{}
+	for i := len(answers) - 1; i >= 0; i-- {
+		a := sentAnswer{Summary: answers[i].Summary, Files: []sentFile{}}
+		for _, f := range answers[i].Files {
+			if strings.HasPrefix(f.Path, "tests/") {
+				continue
+			}
+			content := f.Content
+			if len(content) > budget {
+				content, a.Cut = clipText(content, budget), true
+			}
+			budget -= len(content)
+			a.Files = append(a.Files, sentFile{Path: f.Path, Content: content})
+		}
+		out = append(out, a)
+	}
+	return map[string][]sentAnswer{"answers": out}
+}
+
+// editRefusal writes a refusal of a reply: the first sentence, the reasons
+// (at most maxEditReasons) and what the AI sent back.
+func editRefusal(w http.ResponseWriter, status int, code, message string, reasons []string, answers []*EditAnswer) {
+	if len(reasons) > maxEditReasons {
+		reasons = append(append([]string{}, reasons[:maxEditReasons]...), fmt.Sprintf("And %d more.", len(reasons)-maxEditReasons))
+	}
+	e := httpx.APIError{Code: code, Message: message, Problems: reasons}
+	if len(answers) > 0 {
+		e.SentBack = sentBack(answers)
+	}
+	httpx.WriteJSON(w, status, map[string]httpx.APIError{"error": e})
 }
 
 // editProblemError answers the errors the problems package gives an edit.
 func (d *Handlers) editProblemError(w http.ResponseWriter, r *http.Request, err error) {
 	var fields problems.FieldErrors
 	var pack *problems.PackError
+	var policy *problems.EditPolicyError
 	var live *problems.ReplaceLiveError
 	var langLocked *problems.LanguageLockedError
 	switch {
@@ -220,12 +279,9 @@ func (d *Handlers) editProblemError(w http.ResponseWriter, r *http.Request, err 
 	case errors.As(err, &langLocked):
 		httpx.WriteError(w, http.StatusConflict, "mode_locked", err.Error())
 	case errors.As(err, &pack):
-		list := pack.Problems
-		if len(list) > maxEditReasons {
-			list = append(append([]string{}, list[:maxEditReasons]...), fmt.Sprintf("And %d more.", len(list)-maxEditReasons))
-		}
-		httpx.WriteJSON(w, http.StatusUnprocessableEntity, map[string]httpx.APIError{"error": {Code: CodeInvalidAnswer,
-			Message: "The edit cannot be used. Fix these or ask again.", Problems: list}})
+		editRefusal(w, http.StatusUnprocessableEntity, CodeInvalidAnswer, copyEditRefused, pack.Problems, nil)
+	case errors.As(err, &policy):
+		editRefusal(w, http.StatusUnprocessableEntity, CodeInvalidAnswer, copyEditRefused, policy.Problems, nil)
 	case errors.As(err, &fields):
 		msg := "Some fields need fixing."
 		keys := make([]string, 0, len(fields))
@@ -292,31 +348,71 @@ func (d *Handlers) AIEdit(w http.ResponseWriter, r *http.Request) {
 	for name, content := range snap.Files {
 		req.Files = append(req.Files, EditFile{Path: name, Content: string(content)})
 	}
+	// Both calls share one deadline: the retry runs inside CallTimeout.
 	ctx, cancel := context.WithTimeout(r.Context(), CallTimeout)
-	answer, err := prov.Edit(ctx, req)
-	cancel()
+	defer cancel()
+	var answers []*EditAnswer
+	res, err := Repair(func(rt Retry) (*editResult, error) {
+		req.Previous, req.Fix, req.Shorter = rt.Previous, rt.Fix, rt.Shorter
+		answer, err := prov.Edit(ctx, req)
+		if err != nil {
+			return nil, err
+		}
+		answers = append(answers, answer)
+		return d.mergeAnswer(ctx, snap, answer)
+	})
 	if err != nil {
-		var e *Error
-		if errors.As(err, &e) {
-			d.Log.Info("ai edit ended without a result", "user_id", u.ID, "problem_id", id, "provider", entry.Provider, "code", e.Code)
-		} else {
-			d.logProviderFault("ai edit failed", entry.Key, err, "problem_id", id)
-		}
-		we := wizardError(err)
-		status := http.StatusBadGateway
-		if we.Code == CodeInvalidAnswer {
-			status = http.StatusUnprocessableEntity
-		}
-		httpx.WriteJSON(w, status, map[string]httpx.APIError{"error": {Code: we.Code, Message: we.Message, Problems: we.Reasons}})
+		d.editRefused(w, r, err, u.ID, id, entry, answers)
 		return
 	}
+	draft := &editDraft{id: res.id, userID: u.ID, problemID: id, baseHash: snap.Hash,
+		instruction: body.Instruction, files: res.merged, created: time.Now()}
+	if draft.size() > maxDraftSize {
+		httpx.WriteError(w, http.StatusUnprocessableEntity, CodeInvalidAnswer, copyEditTooLarge)
+		return
+	}
+	if err := d.Wizard.edits.put(draft); err != nil {
+		httpx.WriteBusy(w, 30, "The server holds too many AI drafts right now. Accept or reject one, or try again in a minute.")
+		return
+	}
+
+	files := []editFileJSON{}
+	for _, path := range sortedKeys(res.merged) {
+		old, had := snap.Files[path]
+		if had && string(old) == string(res.merged[path]) {
+			continue
+		}
+		status := "changed"
+		if !had {
+			status = "added"
+		}
+		files = append(files, editFileJSON{Path: path, Status: status, Before: string(old), After: string(res.merged[path])})
+	}
+	d.Log.Info("ai edit drafted", "user_id", u.ID, "problem_id", id, "provider", entry.Provider, "model", entry.Model, "files", len(files), "kept", len(res.kept))
+	httpx.WriteJSON(w, http.StatusOK, map[string]any{"draft_id": draft.id, "summary": res.summary, "files": files, "kept": httpx.NonNil(res.kept),
+		"provider": entry.Provider, "model": entry.Model, "server_now": time.Now().UnixMilli()})
+}
+
+const copyEditTooLarge = "The edited problem would be larger than 2 MB of text. Ask for a smaller change."
+
+// editResult is a merged draft before it is stored.
+type editResult struct {
+	id      string
+	merged  map[string][]byte
+	kept    []string
+	summary string
+}
+
+// mergeAnswer turns one model answer into a merged draft. A refusal that
+// asking again cannot fix comes back as *editFail or *problems.EditPolicyError
+// and ends the run; one the pack parser gives comes back as an invalid_answer
+// *Error carrying the answer, which Repair retries once.
+func (d *Handlers) mergeAnswer(ctx context.Context, snap *problems.EditSnapshot, answer *EditAnswer) (*editResult, error) {
 	if len(answer.Files) == 0 {
 		if answer.Unsupported != "" {
-			httpx.WriteError(w, http.StatusUnprocessableEntity, "not_in_pack", "A pack cannot carry that change: "+answer.Unsupported)
-		} else {
-			httpx.WriteError(w, http.StatusUnprocessableEntity, "no_change", "The model did not change anything. Say more exactly what to change and ask again.")
+			return nil, &editFail{http.StatusUnprocessableEntity, "not_in_pack", "A pack cannot carry that change: " + answer.Unsupported}
 		}
-		return
+		return nil, &editFail{http.StatusUnprocessableEntity, "no_change", "The model did not change anything. Say more exactly what to change and ask again."}
 	}
 	reply := map[string][]byte{}
 	var dup []string
@@ -325,8 +421,7 @@ func (d *Handlers) AIEdit(w http.ResponseWriter, r *http.Request) {
 		replySize += len(f.Content)
 	}
 	if replySize > maxDraftSize {
-		httpx.WriteError(w, http.StatusUnprocessableEntity, CodeInvalidAnswer, "The edited problem would be larger than 2 MB of text. Ask for a smaller change.")
-		return
+		return nil, &editFail{http.StatusUnprocessableEntity, CodeInvalidAnswer, copyEditTooLarge}
 	}
 	for _, f := range answer.Files {
 		if _, seen := reply[f.Path]; seen {
@@ -335,45 +430,66 @@ func (d *Handlers) AIEdit(w http.ResponseWriter, r *http.Request) {
 		reply[f.Path] = []byte(f.Content)
 	}
 	if len(dup) > 0 {
-		d.editProblemError(w, r, &problems.PackError{Problems: dup})
-		return
+		return nil, &Error{Code: CodeInvalidAnswer, Message: "The model's answer could not be used.", Reasons: dup, answer: answer.Raw}
 	}
-	merged, err := d.Problems.MergeEdit(r.Context(), snap, reply)
+	merged, kept, err := d.Problems.MergeEdit(ctx, snap, reply)
+	var pack *problems.PackError
+	if errors.As(err, &pack) {
+		return nil, &Error{Code: CodeInvalidAnswer, Message: "The model's answer could not be used.", Reasons: pack.Problems, answer: answer.Raw}
+	}
 	if err != nil {
-		d.editProblemError(w, r, err)
-		return
+		return nil, err
 	}
 	var b [16]byte
 	if _, err := rand.Read(b[:]); err != nil {
-		httpx.InternalError(d.Log, w, r, err)
-		return
+		return nil, err
 	}
-	draft := &editDraft{id: hex.EncodeToString(b[:]), userID: u.ID, problemID: id, baseHash: snap.Hash,
-		instruction: body.Instruction, files: merged, created: time.Now()}
-	if draft.size() > maxDraftSize {
-		httpx.WriteError(w, http.StatusUnprocessableEntity, CodeInvalidAnswer, "The edited problem would be larger than 2 MB of text. Ask for a smaller change.")
-		return
-	}
-	if err := d.Wizard.edits.put(draft); err != nil {
-		httpx.WriteBusy(w, 30, "The server holds too many AI drafts right now. Accept or reject one, or try again in a minute.")
-		return
-	}
+	return &editResult{id: hex.EncodeToString(b[:]), merged: merged, kept: kept, summary: answer.Summary}, nil
+}
 
-	var files []editFileJSON
-	for _, path := range sortedKeys(merged) {
-		old, had := snap.Files[path]
-		if had && string(old) == string(merged[path]) {
-			continue
+// editRefused answers a run that ended without a draft and logs it: who, which
+// problem and model, the names of the files the last answer carried, and the
+// number of reasons with the start of each. Never the content, never the key.
+func (d *Handlers) editRefused(w http.ResponseWriter, r *http.Request, err error, userID, problemID int64, entry KeyEntry, answers []*EditAnswer) {
+	var fail *editFail
+	var policy *problems.EditPolicyError
+	var e *Error
+	var reasons []string
+	switch {
+	case errors.As(err, &fail):
+		httpx.WriteError(w, fail.status, fail.code, fail.message)
+		return
+	case errors.As(err, &policy):
+		reasons = policy.Problems
+		if policy.ModeChange {
+			editRefusal(w, http.StatusUnprocessableEntity, "mode_change", policy.Problems[0], nil, answers)
+		} else {
+			editRefusal(w, http.StatusUnprocessableEntity, CodeInvalidAnswer, copyEditRefused, reasons, answers)
 		}
-		status := "changed"
-		if !had {
-			status = "added"
+	case errors.As(err, &e):
+		if e.Code != CodeInvalidAnswer {
+			d.Log.Info("ai edit ended without a result", "user_id", userID, "problem_id", problemID, "provider", entry.Provider, "code", e.Code)
+			we := wizardError(err)
+			httpx.WriteJSON(w, http.StatusBadGateway, map[string]httpx.APIError{"error": {Code: we.Code, Message: we.Message, Problems: we.Reasons}})
+			return
 		}
-		files = append(files, editFileJSON{Path: path, Status: status, Before: string(old), After: string(merged[path])})
+		reasons = e.Reasons
+		editRefusal(w, http.StatusUnprocessableEntity, CodeInvalidAnswer, copyEditRefused, reasons, answers)
+	default:
+		d.editProblemError(w, r, err)
+		return
 	}
-	d.Log.Info("ai edit drafted", "user_id", u.ID, "problem_id", id, "provider", entry.Provider, "model", entry.Model, "files", len(files))
-	httpx.WriteJSON(w, http.StatusOK, map[string]any{"draft_id": draft.id, "summary": answer.Summary, "files": files,
-		"provider": entry.Provider, "model": entry.Model, "server_now": time.Now().UnixMilli()})
+	var names, starts []string
+	if len(answers) > 0 {
+		for _, f := range answers[len(answers)-1].Files {
+			names = append(names, f.Path)
+		}
+	}
+	for _, reason := range reasons {
+		starts = append(starts, clipText(reason, 200))
+	}
+	d.Log.Info("ai edit refused", "user_id", userID, "problem_id", problemID, "provider", entry.Provider, "model", entry.Model,
+		"reply_files", names, "reasons", len(reasons), "reason_starts", starts)
 }
 
 func sortedKeys(m map[string][]byte) []string {

@@ -200,7 +200,7 @@ func (o *OpenAI) call(ctx context.Context, system string, msgs []openAIMessage, 
 	}
 	if resp.Status == "incomplete" {
 		if resp.IncompleteDetails != nil && resp.IncompleteDetails.Reason == "content_filter" {
-			return "", &Error{Code: CodeRefused, Category: "content_filter", Message: "The model declined this request (category: content_filter). Rephrase it and try again."}
+			return "", &Error{Code: CodeRefused, Category: "content_filter", Message: "The model declined this request. Rephrase it and try again."}
 		}
 		return "", &Error{Code: CodeCutOff, Message: "The answer was cut off before it was complete."}
 	}
@@ -212,7 +212,11 @@ func (o *OpenAI) call(ctx context.Context, system string, msgs []openAIMessage, 
 
 // Edit implements Provider.
 func (o *OpenAI) Edit(ctx context.Context, req EditRequest) (*EditAnswer, error) {
-	text, err := o.call(ctx, req.System, []openAIMessage{{Role: "user", Content: EditUserPrompt(req)}}, "pack_edit", EditSchema())
+	msgs := []openAIMessage{{Role: "user", Content: EditUserPrompt(req)}}
+	if req.Previous != "" && len(req.Fix) > 0 {
+		msgs = append(msgs, openAIMessage{Role: "assistant", Content: req.Previous}, openAIMessage{Role: "user", Content: EditFixPrompt(req.Fix)})
+	}
+	text, err := o.call(ctx, req.System, msgs, "pack_edit", EditSchema())
 	if err != nil {
 		return nil, err
 	}

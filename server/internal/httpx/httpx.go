@@ -41,6 +41,9 @@ type APIError struct {
 	// Existing describes what a conflict is with, when the caller needs more
 	// than a sentence to choose: the problem a pack's slug collides with.
 	Existing any `json:"existing,omitempty"`
+	// SentBack is what an AI edit refused: the model's own answers, shown
+	// with the refusal and never stored.
+	SentBack any `json:"sent_back,omitempty"`
 }
 
 // WriteError writes an APIError.

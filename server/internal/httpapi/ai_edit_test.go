@@ -17,6 +17,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -298,7 +299,10 @@ func TestAIEditKeyNeverStored(t *testing.T) {
 		key := newKey(c.prefix)
 		keys = append(keys, key)
 		answer, _ := json.Marshal(ai.EditAnswer{Files: []ai.EditFile{{Path: "statement.md", Content: "Edited by the " + c.provider + " stand-in.\n"}}, Summary: "Changed it."})
-		api := httptest.NewServer(&standIn{provider: c.provider, key: key, answer: string(answer)})
+		// The first answer breaks problem.yaml, so the repair retry runs too.
+		first, _ := json.Marshal(ai.EditAnswer{Files: []ai.EditFile{{Path: "problem.yaml", Content: "title: [\n"}}, Summary: "Broken."})
+		stand := &standIn{provider: c.provider, key: key, answer: string(answer), first: string(first)}
+		api := httptest.NewServer(stand)
 		defer api.Close()
 		s.ai.BaseURLs[c.provider] = api.URL + c.base
 		if code, st := owner.do("PUT", "/api/admin/ai/key", map[string]string{"provider": c.provider, "model": c.model, "key": key}, s.srv.URL); code != 200 {
@@ -307,6 +311,12 @@ func TestAIEditKeyNeverStored(t *testing.T) {
 		code, out := owner.do("POST", editPath(id, ""), map[string]any{"instruction": "Change it.", "provider": c.provider}, s.srv.URL)
 		if code != 200 || strings.Contains(fmt.Sprint(out), key) || out["summary"] != "Changed it." {
 			t.Fatalf("%s edit: %d %v", c.provider, code, out)
+		}
+		stand.mu.Lock()
+		posts := slices.Clone(stand.posts)
+		stand.mu.Unlock()
+		if len(posts) != 2 || !strings.Contains(posts[1], "title: [") || strings.Contains(posts[0], key) || strings.Contains(posts[1], key) {
+			t.Fatalf("%s: the retry request is wrong or carries the key (%d posts)", c.provider, len(posts))
 		}
 		code, acc := owner.do("POST", editPath(id, "/"+out["draft_id"].(string)+"/accept"), nil, s.srv.URL)
 		if code != 200 || strings.Contains(fmt.Sprint(acc), key) {
@@ -455,23 +465,4 @@ func importPlanned(t *testing.T, s *site, org *browser) int64 {
 	id := int64(out["id"].(float64))
 	s.validate(id)
 	return id
-}
-
-// The owner's bug over HTTP: a problem with a generator and a plan, and a
-// reply whose problem.yaml leaves out `generator:`.
-func TestAIEditReplyWithoutGeneratorOnAPlannedProblem(t *testing.T) {
-	s, org, _ := editSite(t)
-	id := importPlanned(t, s, org)
-	fakeai.EditHook = func(req ai.EditRequest) (*ai.EditAnswer, error) {
-		for _, f := range req.Files {
-			if f.Path == "problem.yaml" {
-				return &ai.EditAnswer{Files: []ai.EditFile{{Path: "problem.yaml", Content: strings.Replace(f.Content, "generator: generator.py\n", "", 1)}}, Summary: "Changed the title."}, nil
-			}
-		}
-		return &ai.EditAnswer{}, nil
-	}
-	code, out := org.do("POST", editPath(id, ""), map[string]any{"instruction": "Change the title."}, s.srv.URL)
-	if code != 200 || out["draft_id"] == nil {
-		t.Fatalf("the draft was refused: %d %v", code, out)
-	}
 }

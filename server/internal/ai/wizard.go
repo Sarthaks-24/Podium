@@ -262,7 +262,7 @@ func DecodePack(text string) (*WizardPack, error) {
 	var p WizardPack
 	if err := dec.Decode(&p); err != nil {
 		return nil, &Error{Code: CodeInvalidAnswer, Message: "The model's answer could not be used.",
-			Reasons: []string{"The answer is not valid JSON in the requested schema: " + clipText(err.Error(), 200)}, answer: text}
+			Reasons: []string{"The answer was not in the format Podium asked for: " + clipText(err.Error(), 200)}, answer: text}
 	}
 	return &p, nil
 }
