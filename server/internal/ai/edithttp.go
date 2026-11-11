@@ -209,6 +209,13 @@ type editFail struct {
 
 func (e *editFail) Error() string { return e.message }
 
+// providerFault is an error of the provider call that is not an *Error: it is
+// logged with the key scrubbed and answered as a failure of the provider.
+type providerFault struct{ err error }
+
+func (e *providerFault) Error() string { return e.err.Error() }
+func (e *providerFault) Unwrap() error { return e.err }
+
 type sentFile struct {
 	Path    string `json:"path"`
 	Content string `json:"content"`
@@ -219,30 +226,48 @@ type sentFile struct {
 type sentAnswer struct {
 	Summary string     `json:"summary"`
 	Files   []sentFile `json:"files"`
-	Cut     bool       `json:"cut"`
+	// Raw is the text of an answer that could not be read as the schema.
+	Raw string `json:"raw,omitempty"`
+	Cut bool   `json:"cut"`
 }
 
 // sentBack lists what the AI sent back, newest first, from this request's
 // answers only. Test data is left out and the whole text is capped.
 func sentBack(answers []*EditAnswer) map[string][]sentAnswer {
 	budget := maxSentBack
+	// take returns text cut to what is left of the cap.
+	take := func(text string, cut *bool) string {
+		if len(text) > budget {
+			text, *cut = clipText(text, budget), true
+		}
+		budget -= len(text)
+		return text
+	}
 	out := []sentAnswer{}
 	for i := len(answers) - 1; i >= 0; i-- {
-		a := sentAnswer{Summary: answers[i].Summary, Files: []sentFile{}}
+		a := sentAnswer{Files: []sentFile{}}
+		a.Summary = take(answers[i].Summary, &a.Cut)
+		if len(answers[i].Files) == 0 && answers[i].Summary == "" {
+			a.Raw = take(answers[i].Raw, &a.Cut)
+		}
 		for _, f := range answers[i].Files {
-			if strings.HasPrefix(f.Path, "tests/") {
+			if isTestPath(f.Path) {
 				continue
 			}
-			content := f.Content
-			if len(content) > budget {
-				content, a.Cut = clipText(content, budget), true
-			}
-			budget -= len(content)
-			a.Files = append(a.Files, sentFile{Path: f.Path, Content: content})
+			path := take(f.Path, &a.Cut)
+			a.Files = append(a.Files, sentFile{Path: path, Content: take(f.Content, &a.Cut)})
 		}
 		out = append(out, a)
 	}
 	return map[string][]sentAnswer{"answers": out}
+}
+
+// isTestPath reports whether a returned file name points into tests/, however
+// the model spelled the folder.
+func isTestPath(path string) bool {
+	p := strings.ToLower(strings.ReplaceAll(path, "\\", "/"))
+	p = strings.TrimLeft(strings.TrimPrefix(p, "./"), "/")
+	return strings.HasPrefix(p, "tests/")
 }
 
 // editRefusal writes a refusal of a reply: the first sentence, the reasons
@@ -348,18 +373,27 @@ func (d *Handlers) AIEdit(w http.ResponseWriter, r *http.Request) {
 	for name, content := range snap.Files {
 		req.Files = append(req.Files, EditFile{Path: name, Content: string(content)})
 	}
-	// Both calls share one deadline: the retry runs inside CallTimeout.
-	ctx, cancel := context.WithTimeout(r.Context(), CallTimeout)
-	defer cancel()
+	// Both calls share one deadline: the retry runs inside CallTimeout. The
+	// merge does not: an answer that arrives near the deadline is still merged.
+	deadline := time.Now().Add(CallTimeout)
 	var answers []*EditAnswer
 	res, err := Repair(func(rt Retry) (*editResult, error) {
 		req.Previous, req.Fix, req.Shorter = rt.Previous, rt.Fix, rt.Shorter
-		answer, err := prov.Edit(ctx, req)
+		callCtx, cancel := context.WithDeadline(r.Context(), deadline)
+		answer, err := prov.Edit(callCtx, req)
+		cancel()
 		if err != nil {
+			var e *Error
+			if !errors.As(err, &e) {
+				return nil, &providerFault{err}
+			}
+			if e.Code == CodeInvalidAnswer && e.answer != "" {
+				answers = append(answers, &EditAnswer{Raw: e.answer})
+			}
 			return nil, err
 		}
 		answers = append(answers, answer)
-		return d.mergeAnswer(ctx, snap, answer)
+		return d.mergeAnswer(r.Context(), snap, answer)
 	})
 	if err != nil {
 		d.editRefused(w, r, err, u.ID, id, entry, answers)
@@ -452,10 +486,16 @@ func (d *Handlers) mergeAnswer(ctx context.Context, snap *problems.EditSnapshot,
 // number of reasons with the start of each. Never the content, never the key.
 func (d *Handlers) editRefused(w http.ResponseWriter, r *http.Request, err error, userID, problemID int64, entry KeyEntry, answers []*EditAnswer) {
 	var fail *editFail
+	var fault *providerFault
 	var policy *problems.EditPolicyError
 	var e *Error
 	var reasons []string
 	switch {
+	case errors.As(err, &fault):
+		d.logProviderFault("ai edit failed", entry.Key, fault.err, "problem_id", problemID)
+		we := wizardError(fault.err)
+		httpx.WriteJSON(w, http.StatusBadGateway, map[string]httpx.APIError{"error": {Code: we.Code, Message: we.Message, Problems: we.Reasons}})
+		return
 	case errors.As(err, &fail):
 		httpx.WriteError(w, fail.status, fail.code, fail.message)
 		return

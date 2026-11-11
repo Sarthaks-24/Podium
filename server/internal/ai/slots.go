@@ -5,8 +5,9 @@ import (
 	"time"
 )
 
-// CallTimeout bounds one wizard call, retry included (m5-plan section 2).
-const CallTimeout = 3 * time.Minute
+// CallTimeout bounds one wizard call, retry included (m5-plan section 2). It
+// is a variable only so a test can shorten it.
+var CallTimeout = 3 * time.Minute
 
 // Slots allows one wizard call per admin at a time: a second Generate
 // while one runs is refused rather than queued, so a double click

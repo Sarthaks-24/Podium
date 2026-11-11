@@ -389,3 +389,21 @@ func TestRestoreOmittedFileKeyOtherNameSent(t *testing.T) {
 		t.Errorf("%v %v", got, kept)
 	}
 }
+
+// A key present with a null value counts as omitted: the current value comes
+// back in its place.
+func TestRestoreOmittedNullValues(t *testing.T) {
+	snapYAML := []byte("title: T\ngenerator: gen.py\nchecker: custom\nsubtasks:\n  - points: 1\n    tests: 1\n    generator_args: [n=1]\n")
+	reply := []byte("title: T\ngenerator:\nchecker: ~\nsubtasks:\n  - points: 1\n    tests: 1\n    generator_args:\n")
+	out, kept := restoreOmitted(snapYAML, reply, nil)
+	got := yamlOf(t, out)
+	sub := got["subtasks"].([]any)[0].(map[string]any)
+	if got["generator"] != "gen.py" || got["checker"] != "custom" || fmt.Sprint(sub["generator_args"]) != "[n=1]" || len(kept) != 3 {
+		t.Errorf("%v kept %v", got, kept)
+	}
+	// With tests.yaml sent the generator keys are left as the reply wrote them.
+	out, _ = restoreOmitted(snapYAML, reply, map[string][]byte{"tests.yaml": nil})
+	if yamlOf(t, out)["generator"] != nil {
+		t.Errorf("generator restored over a new plan: %s", out)
+	}
+}

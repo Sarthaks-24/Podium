@@ -7,8 +7,10 @@ package httpapi
 
 import (
 	"fmt"
+	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Sarthaks-24/podium/internal/ai"
 	"github.com/Sarthaks-24/podium/internal/ai/fakeai"
@@ -299,4 +301,69 @@ func TestAIEditRefusesAMergeAbove2MB(t *testing.T) {
 	hook(ai.EditAnswer{Files: bulkFiles(32)})
 	code, out := org.do("POST", editPath(id, ""), map[string]any{"instruction": "x"}, s.srv.URL)
 	errIs(t, "merge too large", code, out, 422, "invalid_answer", copyEditTooLarge)
+}
+
+// A provider failure that is not an *ai.Error is logged with the key scrubbed
+// and answered as before: 502, a fixed sentence, nothing from the error.
+func TestAIEditProviderFaultIsScrubbedAndAnswered502(t *testing.T) {
+	s, org, id := editSite(t)
+	const key = "PODIUMTESTSECRETKEY123456"
+	if code, out := org.do("PUT", "/api/admin/ai/key", map[string]string{"provider": "fake", "key": key}, s.srv.URL); code != 200 {
+		t.Fatalf("key: %d %v", code, out)
+	}
+	s.logLevel.Set(-4)
+	fakeai.EditHook = func(ai.EditRequest) (*ai.EditAnswer, error) {
+		return nil, fmt.Errorf("transport broke while sending key %s", key)
+	}
+	code, out := org.do("POST", editPath(id, ""), map[string]any{"instruction": "x"}, s.srv.URL)
+	if code != 502 || strings.Contains(fmt.Sprint(out), key) || strings.Contains(fmt.Sprint(out), "transport") {
+		t.Errorf("%d %v", code, out)
+	}
+	logs := s.logs.String()
+	if !strings.Contains(logs, `"msg":"ai edit failed"`) {
+		t.Errorf("log lacks the fault line or holds the key:\n%s", logs)
+	}
+}
+
+// The merge does not run under the model call's deadline.
+func TestAIEditMergeOutlivesTheCallDeadline(t *testing.T) {
+	s, org, id := editSite(t)
+	old := ai.CallTimeout
+	ai.CallTimeout = 60 * time.Millisecond
+	t.Cleanup(func() { ai.CallTimeout = old })
+	fakeai.EditHook = func(req ai.EditRequest) (*ai.EditAnswer, error) {
+		time.Sleep(120 * time.Millisecond)
+		return &ai.EditAnswer{Files: []ai.EditFile{{Path: "statement.md", Content: "Late.\n"}}, Summary: "Late."}, nil
+	}
+	code, out := org.do("POST", editPath(id, ""), map[string]any{"instruction": "x"}, s.srv.URL)
+	if code != 200 {
+		t.Errorf("%d %v", code, out)
+	}
+}
+
+// An answer that is not JSON is part of what the AI sent back: here a real
+// provider client reads the stand-in's text, so the decoder keeps it.
+func TestAIEditSentBackHoldsAnswersThatWereNotJSON(t *testing.T) {
+	for name, second := range map[string]string{
+		"not JSON twice":           "second text, not json",
+		"not JSON then a bad pack": `{"files":[{"path":"problem.yaml","content":"title: [\n"}],"summary":"Second.","unsupported":""}`,
+	} {
+		s := newSite(t)
+		s.ai.BaseURLs = map[string]string{}
+		owner := s.signedIn("owner@college.edu", "Owner")
+		id := s.importProblem(owner, "raw-p")
+		key := "sk-ant-api" + "03-PODIUMTESTrawanswers"
+		api := httptest.NewServer(&standIn{provider: ai.ProviderAnthropic, key: key, answer: second, first: "first text, not json"})
+		defer api.Close()
+		s.ai.BaseURLs[ai.ProviderAnthropic] = api.URL
+		if code, st := owner.do("PUT", "/api/admin/ai/key", map[string]string{"provider": "anthropic", "model": "claude-new-1", "key": key}, s.srv.URL); code != 200 {
+			t.Fatalf("key: %d %v", code, st)
+		}
+		code, out := owner.do("POST", editPath(id, ""), map[string]any{"instruction": "x", "provider": "anthropic"}, s.srv.URL)
+		errIs(t, name, code, out, 422, "invalid_answer", copyEditRefused)
+		answers, _ := out["error"].(map[string]any)["sent_back"].(map[string]any)["answers"].([]any)
+		if len(answers) != 2 || answers[1].(map[string]any)["raw"] != "first text, not json" {
+			t.Errorf("%s: %v", name, answers)
+		}
+	}
 }

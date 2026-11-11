@@ -1,6 +1,11 @@
 package ai
 
 import (
+	"bytes"
+	"errors"
+	"log/slog"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
@@ -106,5 +111,54 @@ func TestStuckAcceptingDraftIsSwept(t *testing.T) {
 	e.mu.Unlock()
 	if _, ok := e.m["stuck"]; ok {
 		t.Error("a draft stuck in accepting was never swept")
+	}
+}
+
+// sent_back counts summaries, paths and raw text against the cap and finds
+// test data under any spelling of the folder.
+func TestSentBackCapCountsEverythingAndHidesTestData(t *testing.T) {
+	var files []EditFile
+	for _, p := range []string{"tests/1.in", "./tests/1.in", "Tests/1.in", `tests\1.in`, "/tests/1.in", "keep.py"} {
+		files = append(files, EditFile{Path: p, Content: "x"})
+	}
+	files = append(files, EditFile{Path: strings.Repeat("p", 150<<10), Content: ""})
+	out := sentBack([]*EditAnswer{{Summary: strings.Repeat("s", 120<<10), Files: files}})
+	a := out["answers"][0]
+	total := len(a.Summary) + len(a.Raw)
+	for _, f := range a.Files {
+		total += len(f.Path) + len(f.Content)
+		if strings.Contains(strings.ToLower(f.Path), "tests") {
+			t.Errorf("test data shown: %q", f.Path)
+		}
+	}
+	if total > maxSentBack || !a.Cut {
+		t.Errorf("%d bytes shown, cut %v", total, a.Cut)
+	}
+}
+
+func TestEditUserPromptCarriesTheReasonsOfARetry(t *testing.T) {
+	p := EditUserPrompt(EditRequest{Instruction: "x", Fix: []string{"problem.yaml: bad"}})
+	if !strings.Contains(p, "- problem.yaml: bad") {
+		t.Errorf("the reasons are not in the prompt: %s", p)
+	}
+	if p := EditUserPrompt(EditRequest{Instruction: "x", Previous: "{}", Fix: []string{"r"}}); strings.Contains(p, "- r") {
+		t.Error("the reasons are sent twice when the previous answer carries them as a turn")
+	}
+}
+
+// A failure of the provider call that is not an *Error is logged with the key
+// scrubbed and answered as 502 with a fixed sentence.
+func TestEditRefusedScrubsAProviderFault(t *testing.T) {
+	var logs bytes.Buffer
+	d := &Handlers{Log: slog.New(slog.NewJSONHandler(&logs, nil))}
+	const key = "PODIUMTESTSECRETKEY123456"
+	w := httptest.NewRecorder()
+	d.editRefused(w, httptest.NewRequest("POST", "/", nil), &providerFault{errors.New("transport broke with " + key)}, 1, 2,
+		KeyEntry{Provider: "anthropic", Key: NewSecret(key)}, nil)
+	if w.Code != http.StatusBadGateway || strings.Contains(w.Body.String(), key) || strings.Contains(w.Body.String(), "transport") {
+		t.Errorf("%d %s", w.Code, w.Body)
+	}
+	if !strings.Contains(logs.String(), `"msg":"ai edit failed"`) || strings.Contains(logs.String(), key) || !strings.Contains(logs.String(), "[redacted]") {
+		t.Errorf("log: %s", logs.String())
 	}
 }

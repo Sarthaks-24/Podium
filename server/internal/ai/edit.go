@@ -98,6 +98,14 @@ func EditUserPrompt(req EditRequest) string {
 	}
 	b.WriteString("</pack_files>\n\n")
 	b.WriteString(dataBlock("instruction", req.Instruction))
+	// With the previous answer the reasons travel as a second turn; without
+	// it they still reach the model here.
+	if len(req.Fix) > 0 && req.Previous == "" {
+		b.WriteString("\n\nAn earlier answer could not be used:\n")
+		for _, r := range req.Fix {
+			b.WriteString("- " + r + "\n")
+		}
+	}
 	if req.Shorter {
 		b.WriteString("\n\nAn earlier answer was cut off because it was too long. Return only the files you change, and keep each one as short as it can be.")
 	}

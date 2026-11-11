@@ -315,7 +315,7 @@ func TestAIEditKeyNeverStored(t *testing.T) {
 		stand.mu.Lock()
 		posts := slices.Clone(stand.posts)
 		stand.mu.Unlock()
-		if len(posts) != 2 || !strings.Contains(posts[1], "title: [") || strings.Contains(posts[0], key) || strings.Contains(posts[1], key) {
+		if len(posts) != 2 || !strings.Contains(posts[1], "title: [") || !strings.Contains(posts[1], "could not be used") || strings.Contains(posts[0], key) || strings.Contains(posts[1], key) {
 			t.Fatalf("%s: the retry request is wrong or carries the key (%d posts)", c.provider, len(posts))
 		}
 		code, acc := owner.do("POST", editPath(id, "/"+out["draft_id"].(string)+"/accept"), nil, s.srv.URL)

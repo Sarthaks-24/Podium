@@ -87,8 +87,7 @@ func restoreOmitted(current, reply []byte, sent map[string][]byte) ([]byte, []st
 	var keys []string
 	for i := 0; i+1 < len(cur.Content); i += 2 {
 		k, v := cur.Content[i], cur.Content[i+1]
-		if mapValue(rep, k.Value) == nil && !replyDealtWith(k.Value, sent) {
-			rep.Content = append(rep.Content, k, v)
+		if !replyDealtWith(k.Value, sent) && putBack(rep, k, v) {
 			keys = append(keys, k.Value)
 		}
 	}
@@ -99,8 +98,8 @@ func restoreOmitted(current, reply []byte, sent map[string][]byte) ([]byte, []st
 			if st.Kind != yaml.MappingNode || rs.Kind != yaml.MappingNode {
 				continue
 			}
-			if args := mapValue(st, "generator_args"); args != nil && mapValue(rs, "generator_args") == nil && !replyDealtWith("generator_args", sent) {
-				rs.Content = append(rs.Content, &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: "generator_args"}, args)
+			if args := mapValue(st, "generator_args"); args != nil && !replyDealtWith("generator_args", sent) &&
+				putBack(rs, &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: "generator_args"}, args) {
 				keys = append(keys, "generator_args")
 			}
 		}
@@ -124,6 +123,22 @@ func restoreOmitted(current, reply []byte, sent map[string][]byte) ([]byte, []st
 		}
 	}
 	return buf.Bytes(), kept
+}
+
+// putBack sets key to value in the mapping m when m lacks the key or holds a
+// null for it (`generator:` or `checker: ~`), and reports whether it did.
+func putBack(m, key, value *yaml.Node) bool {
+	for i := 0; i+1 < len(m.Content); i += 2 {
+		if m.Content[i].Value == key.Value {
+			if m.Content[i+1].Tag != "!!null" {
+				return false
+			}
+			m.Content[i+1] = value
+			return true
+		}
+	}
+	m.Content = append(m.Content, key, value)
+	return true
 }
 
 func mapValue(m *yaml.Node, key string) *yaml.Node {
