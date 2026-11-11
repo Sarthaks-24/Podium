@@ -1112,6 +1112,29 @@ Each stage of v2.1.0 describes its new or changed routes under its own heading b
 
 ### Stage A: AI edit
 
+`POST /api/admin/problems/{id}/ai-edit` changes in three ways. A request without new fields behaves as before.
+
+- **A reply that leaves keys out is repaired.** When the model's `problem.yaml` lacks a top-level key the current one has, the server puts the current value back, and does the same for each subtask's `generator_args` when the number of subtasks is unchanged. The exception: a key that names a file is not put back when the reply sends that file, and `generator` and `generator_args` are not put back when the reply sends `tests.yaml`. The 200 answer lists what was put back in `kept`, from a fixed list: `the test generator`, `the generator settings of each subtask`, `the input validator`, `the brute force`, `the checker`, `the samples`, `the limits`, `the starting code`, `the locked code`, `other settings`. `kept` is `[]` when nothing was.
+- **One repair retry.** A reply the pack parser refuses, an answer that is not JSON in the schema, and a cut-off answer get one more call inside the same 3 minutes, carrying the reasons (or asking for a shorter answer). Refusals of policy and provider failures are not retried.
+- **Refusals carry what the AI sent back.**
+
+200 now also returns `"kept": ["the test generator"]`.
+
+| Status and code | When |
+|---|---|
+| 422 `invalid_answer` | `message` is "The AI's edit would break this problem, so nothing was saved. Press Ask for a draft to try again, describe a smaller change, or rewrite the whole problem."; `problems` lists the reasons (at most 20, then "And N more."): after the retry for a parser refusal, at once for a policy refusal (test data in the reply, a changed slug, more than 40 files, a file that is not a pack file, no change after the kept keys came back). An oversized edit keeps its own message |
+| 422 `mode_change` | the reply changes `mode`. A reply that leaves `mode` out is not a change. `message`: "Edit with AI cannot change whether students write a whole program or one function. Use Rewrite with AI and choose there." No retry |
+
+Both 422 answers add `error.sent_back`, so the page can show what the model returned:
+
+```json
+{"error": {"code": "invalid_answer", "message": "...", "problems": ["..."],
+  "sent_back": {"answers": [
+    {"summary": "...", "files": [{"path": "problem.yaml", "content": "..."}], "cut": false}]}}}
+```
+
+`answers` is newest first and holds two entries when the retry ran. The text comes from this response only and is never stored. Test data (`tests/`) is left out. All `content` together is capped at 200 KB; `cut` says an answer was shortened. An answer that was not JSON has no files to show and no entry. A refusal is logged with the user id, problem id, provider, model, the reply's file names, the number of reasons and the first 200 characters of each, never content and never the key.
+
 ### Stage B: keep me signed in
 
 ### Stage F: function problems from the wizard

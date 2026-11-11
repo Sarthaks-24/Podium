@@ -10,6 +10,15 @@ Not released yet. Each stage adds plain-English entries and known limits under i
 
 ### v2.1.0 stage A: AI edit
 
+- Fixed: "Edit with AI" on a problem made by the wizard no longer fails with "Planned tests need a generator". The model's rewrite of `problem.yaml` used to drop the `generator:` line it had not been told about. Podium now puts back any setting the reply leaves out (generator, generator settings of each subtask, checker, samples, limits, starting code, locked code and the rest) and the draft says which ones it kept.
+- Edit with AI tries a second time when the AI's first answer does not fit the problem, passing it the reasons. It never tries a second time for things a retry cannot fix: test data, a changed slug, too many files, no change.
+- Edit with AI refuses a change between "whole program" and "one function" with its own message and points to Rewrite with AI.
+- A refused edit says in one sentence what happened. The reasons are under "Details", and "What the AI sent back" shows the model's summary and files with a Copy button for each. This text is shown once, is never stored and never includes test data or the key.
+- The edit prompt now tells the model about `generator`, `generator_args`, `tests.yaml` and to keep every key it does not mean to change. The copy-paste pack prompt is unchanged.
+- Three provider messages are plainer ("The provider says too many requests were sent", no "category: content_filter", "not in the format Podium asked for" instead of "valid JSON in the requested schema").
+- New Close button on the Edit with AI panel; "Draft rejected" toast.
+- Known limits: Edit with AI cannot remove a setting by leaving it out of the reply (ask for the removal in the editor). A reply that leaves a key out but sends the file that key names is judged as sent. The link to Rewrite with AI in the refusal arrives with that feature.
+
 ### v2.1.0 stage B: keep me signed in
 
 ### v2.1.0 stage C: judge and security

@@ -728,6 +728,16 @@ v2.0.2 added deleting a problem, function problems, Problems to finish, owner-ed
 | AI edit goes through the pack parser and `replaceIn` | The model receives the problem as a pack and returns changed files. They are parsed by the same pack code as an import, so everything an import refuses (test data, a changed slug, a file outside the pack) is refused here, and the result is saved as one revision through the existing replace path. The draft is held on the server, so Accept applies exactly what was shown, and a stale check inside the save transaction refuses a draft made from an older version. |
 | Accept always withdraws validation and tags the problem "ai draft" | The statement is outside `ContentHash`, so a statement-only edit would otherwise keep a validation that never covered the new text. |
 
+## The v2.1.0 choices
+
+| Choice | Reason |
+|---|---|
+| The server owns the keys a model's `problem.yaml` leaves out | The edit prompt told the model unknown keys are refused and never listed `generator`, so a rewrite of `problem.yaml` dropped it, `tests.yaml` stayed from the snapshot, and the parser refused with "Planned tests need a generator". Worse, a dropped `checker`, `samples` or limit passes the parser and changes judging silently. `restoreOmitted` (`problems/aiedit_guard.go`) puts every omitted top-level key and each subtask's `generator_args` back from the current file, so an edit cannot remove a setting by leaving it out. The exception, a reply that sends the file a key names (or `tests.yaml` for the generator keys), keeps a deliberate change possible. |
+| Mode is compared after the guard | A function problem's reply that drops `mode` must not read as a change to whole. A different mode is refused as policy: it is too large and unproven for a free-text edit, and the mode locks at the first submission. |
+| Policy refusals and parser refusals are different types | `*problems.EditPolicyError` (test data, slug, more than 40 files, not a pack file, no change, mode) is never retried: the model cannot fix it by looking again. `*problems.PackError` (the parser or a field rule) is retried once with the reasons. |
+| One shared retry rule, `ai.Repair` | One more call with the reasons and the previous answer, or a shorter ask after a cut-off; any other error ends the run; two bad answers return the second error without the answer text; the second call sends the same system prompt and carries no key. The wizard and AI edit use it, and later stages that call a model will too. The edit's two calls share one `CallTimeout`. |
+| A refusal returns the model's own answers | `error.sent_back` (200 KB cap, no test data) is built from this request's answers, sent once and never stored, so a person can read what the model did without server access. The refusal is logged with file names and the start of each reason, not content. |
+
 ## The v1.2 choices
 
 v1.2 refactored v1.1 in place and deleted what a first contest at one college does not need. Each row is a choice that is hard to reverse, with its reason; the ids point to the owner's decision records, which are not in this repository.
