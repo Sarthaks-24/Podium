@@ -20,21 +20,33 @@ import (
 // the form asked for; RecordMode undoes the roles it grants to everyone
 // else when the server next starts in another mode.
 func (s *Service) TestSignIn(ctx context.Context, email, name string, role Role, ip, userAgent string) (User, string, time.Time, error) {
+	u, token, st, err := s.TestSignInKeep(ctx, email, name, role, ip, userAgent, false)
+	return u, token, st.Expires, err
+}
+
+// TestSignInKeep is TestSignIn with the person's choice to stay signed in,
+// which the setting for their role decides on as it does at Google sign-in
+// (keep.go).
+func (s *Service) TestSignInKeep(ctx context.Context, email, name string, role Role, ip, userAgent string, tick bool) (User, string, Started, error) {
 	email = strings.ToLower(strings.TrimSpace(email))
 	if a, err := mail.ParseAddress(email); err != nil || a.Address != email {
-		return User{}, "", time.Time{}, invalid("Enter an email address, for example asha@college.edu.")
+		return User{}, "", Started{}, invalid("Enter an email address, for example asha@college.edu.")
 	}
 	switch role {
 	case Student, Organiser, Admin, Owner:
 	default:
-		return User{}, "", time.Time{}, invalid("Choose student, organiser, admin or owner.")
+		return User{}, "", Started{}, invalid("Choose student, organiser, admin or owner.")
 	}
 	if s.isConfiguredOwner(email) {
 		role = Owner
 	}
+	policy, err := s.KeepPolicy(ctx)
+	if err != nil {
+		return User{}, "", Started{}, err
+	}
 	tx, err := s.DB.BeginTx(ctx, nil)
 	if err != nil {
-		return User{}, "", time.Time{}, err
+		return User{}, "", Started{}, err
 	}
 	defer tx.Rollback()
 	// A disabled account stays disabled here too; an admin or an owner
@@ -42,10 +54,10 @@ func (s *Service) TestSignIn(ctx context.Context, email, name string, role Role,
 	var disabled bool
 	err = tx.QueryRowContext(ctx, "SELECT disabled FROM users WHERE email = ?", email).Scan(&disabled)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
-		return User{}, "", time.Time{}, err
+		return User{}, "", Started{}, err
 	}
 	if disabled && !s.isConfiguredOwner(email) {
-		return User{}, "", time.Time{}, ErrDisabled
+		return User{}, "", Started{}, ErrDisabled
 	}
 	now := s.now()
 	u := User{Email: email, Name: limit(strings.TrimSpace(name), 200)}
@@ -59,13 +71,12 @@ func (s *Service) TestSignIn(ctx context.Context, email, name string, role Role,
 		Scan(&u.ID, &u.Role, &u.Theme, &u.Verdicts, &u.EditorColours, &custom)
 	u.ThemeCustom = customJSON(custom)
 	if err != nil {
-		return User{}, "", time.Time{}, fmt.Errorf("record test user: %w", err)
+		return User{}, "", Started{}, fmt.Errorf("record test user: %w", err)
 	}
-	token := randomToken(32)
-	expires := now.Add(SessionTTL)
-	if _, err := tx.ExecContext(ctx, `INSERT INTO sessions (id, user_id, created_at, expires_at, ip, user_agent) VALUES (?, ?, ?, ?, ?, ?)`,
-		hashToken(token), u.ID, now.UnixMilli(), expires.UnixMilli(), limit(ip, 64), limit(userAgent, 300)); err != nil {
-		return User{}, "", time.Time{}, fmt.Errorf("create session: %w", err)
+	token, st, err := startSession(ctx, tx, policy, u.ID, u.Role, tick, now, ip, userAgent)
+	if err != nil {
+		return User{}, "", Started{}, fmt.Errorf("create session: %w", err)
 	}
-	return u, token, expires, tx.Commit()
+	u.Remembered = st.Remembered
+	return u, token, st, tx.Commit()
 }

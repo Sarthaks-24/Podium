@@ -58,11 +58,11 @@ func (s *Service) RecordMode(ctx context.Context, mode string) (ModeChange, erro
 	if err != nil {
 		return ModeChange{}, err
 	}
-	res, err := tx.ExecContext(ctx, "DELETE FROM sessions")
+	ended, err := deleteSessions(ctx, tx, "1 = 1")
 	if err != nil {
 		return ModeChange{}, err
 	}
-	ch.SessionsEnded, _ = res.RowsAffected()
+	ch.SessionsEnded = int64(len(ended))
 	if mode != "testing" {
 		res, err := tx.ExecContext(ctx, `UPDATE users SET role = 'student'
 			WHERE role IN ('organiser', 'admin', 'owner') AND google_sub IS NULL AND id <> ?`, ownerID)
@@ -94,5 +94,9 @@ func (s *Service) RecordMode(ctx context.Context, mode string) (ModeChange, erro
 		"sessions_ended": ch.SessionsEnded, "demoted": ch.Demoted, "disabled": ch.Disabled}); err != nil {
 		return ModeChange{}, err
 	}
-	return ch, tx.Commit()
+	if err := tx.Commit(); err != nil {
+		return ModeChange{}, err
+	}
+	s.sessionsEnded(ended)
+	return ch, nil
 }

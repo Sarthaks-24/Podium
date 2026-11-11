@@ -56,15 +56,19 @@ func (s *Service) EndSessions(ctx context.Context, email string) (Account, int64
 	if err := s.changeAllowed(ctx, a.Email, a.Role, a.Role); err != nil {
 		return Account{}, 0, err
 	}
-	res, err := tx.ExecContext(ctx, "DELETE FROM sessions WHERE user_id = ?", a.ID)
+	ended, err := deleteSessions(ctx, tx, "user_id = ?", a.ID)
 	if err != nil {
 		return Account{}, 0, err
 	}
-	n, _ := res.RowsAffected()
+	n := int64(len(ended))
 	if err := s.recordSite(ctx, tx, AuditSessionsEnded, a.Email, map[string]any{"count": n}); err != nil {
 		return Account{}, 0, err
 	}
-	return a, n, tx.Commit()
+	if err := tx.Commit(); err != nil {
+		return Account{}, 0, err
+	}
+	s.sessionsEnded(ended)
+	return a, n, nil
 }
 
 // SetDisabled disables or re-enables an account. A disabled account cannot
@@ -96,22 +100,24 @@ func (s *Service) SetDisabled(ctx context.Context, email string, disabled bool, 
 		return Account{}, 0, err
 	}
 	a.Disabled = disabled
-	var ended int64
+	var ended []string
 	if disabled {
-		res, err := tx.ExecContext(ctx, "DELETE FROM sessions WHERE user_id = ?", a.ID)
-		if err != nil {
+		if ended, err = deleteSessions(ctx, tx, "user_id = ?", a.ID); err != nil {
 			return Account{}, 0, err
 		}
-		ended, _ = res.RowsAffected()
 	}
 	action, details := AuditAccountEnabled, map[string]any{}
 	if disabled {
-		action, details = AuditAccountDisabled, map[string]any{"sessions_ended": ended}
+		action, details = AuditAccountDisabled, map[string]any{"sessions_ended": len(ended)}
 	}
 	if err := s.recordSite(ctx, tx, action, a.Email, details); err != nil {
 		return Account{}, 0, err
 	}
-	return a, ended, tx.Commit()
+	if err := tx.Commit(); err != nil {
+		return Account{}, 0, err
+	}
+	s.sessionsEnded(ended)
+	return a, int64(len(ended)), nil
 }
 
 // DisabledAccounts lists the disabled accounts, by email.

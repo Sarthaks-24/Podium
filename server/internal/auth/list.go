@@ -322,21 +322,23 @@ func (s *Service) Remove(ctx context.Context, email string) (deleted bool, err e
 	}
 	n, _ := res.RowsAffected()
 	deleted = n == 1
-	var ended int64
+	var ended []string
 	if !deleted {
 		if _, err := tx.ExecContext(ctx, "UPDATE users SET disabled = 1 WHERE id = ?", a.ID); err != nil {
 			return false, err
 		}
-		res, err := tx.ExecContext(ctx, "DELETE FROM sessions WHERE user_id = ?", a.ID)
-		if err != nil {
+		if ended, err = deleteSessions(ctx, tx, "user_id = ?", a.ID); err != nil {
 			return false, err
 		}
-		ended, _ = res.RowsAffected()
 	}
-	if err := s.recordSite(ctx, tx, AuditPersonRemoved, a.Email, map[string]any{"deleted": deleted, "sessions_ended": ended}); err != nil {
+	if err := s.recordSite(ctx, tx, AuditPersonRemoved, a.Email, map[string]any{"deleted": deleted, "sessions_ended": len(ended)}); err != nil {
 		return false, err
 	}
-	return deleted, tx.Commit()
+	if err := tx.Commit(); err != nil {
+		return false, err
+	}
+	s.sessionsEnded(ended)
+	return deleted, nil
 }
 
 // ListedPerson is one row of the list as People shows it.

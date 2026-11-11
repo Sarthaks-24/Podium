@@ -61,6 +61,9 @@ type User struct {
 	AvatarURL string `json:"avatar_url"`
 	Role      Role   `json:"role"`
 	Disabled  bool   `json:"-"`
+	// Remembered marks a kept session (keep.go): the account menu offers to
+	// turn it off.
+	Remembered bool `json:"remembered"`
 	// Theme, Verdicts, EditorColours and ThemeCustom are the display
 	// preferences (preferences.go). ThemeCustom is the custom theme's three
 	// inputs as a JSON object, or null when none was saved.
@@ -70,10 +73,10 @@ type User struct {
 	ThemeCustom   json.RawMessage `json:"theme_custom"`
 }
 
-// SessionTTL is how long a session lasts: 12 hours from sign-in, however
-// much it is used, so a session left open on a shared lab PC is gone by
-// the next day at the latest. The cookie itself has
-// no expiry, so closing the browser ends it sooner.
+// SessionTTL is how long an ordinary session lasts: 12 hours from sign-in,
+// however much it is used, so a session left open on a shared lab PC is gone
+// by the next day at the latest. The cookie itself has no expiry, so closing
+// the browser ends it sooner. A kept session (keep.go) lasts as an owner set.
 const SessionTTL = retention.Sessions
 
 // Sign-in refusals. Handlers map them to the /signin?error= codes.
@@ -108,8 +111,15 @@ type Service struct {
 	// Now is the clock; tests replace it.
 	Now func() time.Time
 
+	// OnSessionsEnded, when set, is called with the ids of sessions the
+	// server has just ended, so the provider keys held for them are
+	// forgotten. An id is the session token's hash.
+	OnSessionsEnded func(ids []string)
+
 	// org caches the site settings (site.go).
 	org orgCache
+	// keep caches the keep-signed-in setting (keep.go).
+	keep keepCache
 }
 
 func (s *Service) now() time.Time {
@@ -144,68 +154,81 @@ func (s *Service) Bootstrap(ctx context.Context) error {
 	return tx.Commit()
 }
 
-// SignIn applies the sign-in rules to a verified identity and starts a
+// SignIn is SignInKeep for a person who did not tick "Keep me signed in".
+// It returns the session token for the cookie and its expiry.
+func (s *Service) SignIn(ctx context.Context, id Identity, ip, userAgent string) (User, string, time.Time, error) {
+	u, token, st, err := s.SignInKeep(ctx, id, ip, userAgent, false)
+	return u, token, st.Expires, err
+}
+
+// SignInKeep applies the sign-in rules to a verified identity and starts a
 // session. The email may sign in only when it is on the list (list.go) and
 // not disabled; an address that is not is recorded as refused. The row is
-// bound to the first Google account that signs in with it. It returns the
-// session token for the cookie and its expiry.
-func (s *Service) SignIn(ctx context.Context, id Identity, ip, userAgent string) (User, string, time.Time, error) {
+// bound to the first Google account that signs in with it. tick is the
+// person's choice to stay signed in; the setting for their role decides
+// whether it counts (keep.go). It returns the session token for the cookie
+// and how the session began.
+func (s *Service) SignInKeep(ctx context.Context, id Identity, ip, userAgent string, tick bool) (User, string, Started, error) {
 	if !id.EmailVerified {
-		return User{}, "", time.Time{}, ErrUnverified
+		return User{}, "", Started{}, ErrUnverified
 	}
 	email := strings.ToLower(strings.TrimSpace(id.Email))
 	if !validEmail(email) {
-		return User{}, "", time.Time{}, ErrNotListed
+		return User{}, "", Started{}, ErrNotListed
+	}
+	policy, err := s.KeepPolicy(ctx)
+	if err != nil {
+		return User{}, "", Started{}, err
 	}
 	tx, err := s.DB.BeginTx(ctx, nil)
 	if err != nil {
-		return User{}, "", time.Time{}, err
+		return User{}, "", Started{}, err
 	}
 	defer tx.Rollback()
 
 	userID, _, found, err := listed(ctx, tx, email)
 	if err != nil {
-		return User{}, "", time.Time{}, err
+		return User{}, "", Started{}, err
 	}
 	if !found {
 		tx.Rollback()
 		if err := s.recordRefusal(ctx, email); err != nil {
-			return User{}, "", time.Time{}, err
+			return User{}, "", Started{}, err
 		}
-		return User{}, "", time.Time{}, ErrNotListed
+		return User{}, "", Started{}, ErrNotListed
 	}
 	var disabled bool
 	var role Role
 	var boundSub sql.NullString
 	if err := tx.QueryRowContext(ctx, "SELECT role, disabled, google_sub FROM users WHERE id = ?", userID).Scan(&role, &disabled, &boundSub); err != nil {
-		return User{}, "", time.Time{}, err
+		return User{}, "", Started{}, err
 	}
 	// The account is bound to the first Google account that signed in with
 	// this email. Email addresses get reassigned; Google's subject id does
 	// not, so a different subject means a different person.
 	if id.Subject == "" || (boundSub.Valid && boundSub.String != id.Subject) {
-		return User{}, "", time.Time{}, ErrAccount
+		return User{}, "", Started{}, ErrAccount
 	}
 	var otherID int64
 	err = tx.QueryRowContext(ctx, "SELECT id FROM users WHERE google_sub = ? AND id <> ?", id.Subject, userID).Scan(&otherID)
 	if err == nil {
-		return User{}, "", time.Time{}, ErrAccount // this Google account is linked to another address
+		return User{}, "", Started{}, ErrAccount // this Google account is linked to another address
 	}
 	if !errors.Is(err, sql.ErrNoRows) {
-		return User{}, "", time.Time{}, err
+		return User{}, "", Started{}, err
 	}
 	if disabled {
-		return User{}, "", time.Time{}, ErrDisabled
+		return User{}, "", Started{}, ErrDisabled
 	}
 	// A closed switch keeps everyone below admin out, so admins and owners
 	// can always get in to open it again.
 	if !role.AtLeast(Admin) {
 		open, err := signInOpen(ctx, tx)
 		if err != nil {
-			return User{}, "", time.Time{}, err
+			return User{}, "", Started{}, err
 		}
 		if !open {
-			return User{}, "", time.Time{}, ErrSignInClosed
+			return User{}, "", Started{}, ErrSignInClosed
 		}
 	}
 
@@ -219,33 +242,35 @@ func (s *Service) SignIn(ctx context.Context, id Identity, ip, userAgent string)
 		Scan(&u.Email, &u.Role, &u.Theme, &u.Verdicts, &u.EditorColours, &custom)
 	u.ThemeCustom = customJSON(custom)
 	if err != nil {
-		return User{}, "", time.Time{}, fmt.Errorf("record user: %w", err)
+		return User{}, "", Started{}, fmt.Errorf("record user: %w", err)
 	}
-	token := randomToken(32)
-	expires := now.Add(SessionTTL)
-	if _, err := tx.ExecContext(ctx, `INSERT INTO sessions (id, user_id, created_at, expires_at, ip, user_agent) VALUES (?, ?, ?, ?, ?, ?)`,
-		hashToken(token), u.ID, now.UnixMilli(), expires.UnixMilli(), limit(ip, 64), limit(userAgent, 300)); err != nil {
-		return User{}, "", time.Time{}, fmt.Errorf("create session: %w", err)
+	token, st, err := startSession(ctx, tx, policy, u.ID, u.Role, tick, now, ip, userAgent)
+	if err != nil {
+		return User{}, "", Started{}, fmt.Errorf("create session: %w", err)
 	}
-	return u, token, expires, tx.Commit()
+	u.Remembered = st.Remembered
+	return u, token, st, tx.Commit()
 }
 
-// Authenticate resolves a session token to its user. Sessions never
-// renew: one ends SessionTTL after sign-in (a session made before that
-// rule, with a later expiry, ends at the same cap), when its user is
-// disabled, or at sign-out. renewed is always zero; it stays in the
-// signature so callers that re-send a renewed cookie need no change.
+// Authenticate resolves a session token to its user. An ordinary session
+// never renews: it ends SessionTTL after sign-in (a session made before
+// that rule, with a later expiry, ends at the same cap), when its user is
+// disabled, or at sign-out, and renewed is zero. A kept session (keep.go)
+// ends when it has gone unused for the setting's period, and a use at least
+// an hour after the last renewal moves its expiry forward: renewed is then
+// the new expiry, for the caller to put in a fresh cookie.
 func (s *Service) Authenticate(ctx context.Context, token string) (u User, renewed time.Time, err error) {
 	if token == "" || len(token) > 100 {
 		return User{}, time.Time{}, ErrNoSession
 	}
 	id := hashToken(token)
 	now := s.now()
-	var created, expires int64
+	var created, expires, lastSeen int64
 	var custom string
 	err = s.DB.QueryRowContext(ctx, `SELECT u.id, u.email, u.name, u.avatar_url, u.role, u.disabled, u.theme, u.verdicts,
-		u.editor_colours, u.theme_custom, s.created_at, s.expires_at FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.id = ?`, id).
-		Scan(&u.ID, &u.Email, &u.Name, &u.AvatarURL, &u.Role, &u.Disabled, &u.Theme, &u.Verdicts, &u.EditorColours, &custom, &created, &expires)
+		u.editor_colours, u.theme_custom, s.created_at, s.expires_at, s.remember, coalesce(s.last_seen_at, s.created_at)
+		FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.id = ?`, id).
+		Scan(&u.ID, &u.Email, &u.Name, &u.AvatarURL, &u.Role, &u.Disabled, &u.Theme, &u.Verdicts, &u.EditorColours, &custom, &created, &expires, &u.Remembered, &lastSeen)
 	u.ThemeCustom = customJSON(custom)
 	if errors.Is(err, sql.ErrNoRows) {
 		return User{}, time.Time{}, ErrNoSession
@@ -253,12 +278,32 @@ func (s *Service) Authenticate(ctx context.Context, token string) (u User, renew
 	if err != nil {
 		return User{}, time.Time{}, err
 	}
+	var idle time.Duration
 	end := min(expires, created+SessionTTL.Milliseconds())
+	if u.Remembered {
+		p, err := s.KeepPolicy(ctx)
+		if err != nil {
+			return User{}, time.Time{}, err
+		}
+		idle = p.Idle()
+		end = min(expires, lastSeen+idle.Milliseconds())
+	}
 	if now.UnixMilli() >= end || u.Disabled {
-		s.DB.ExecContext(ctx, "DELETE FROM sessions WHERE id = ?", id)
+		if ended, err := deleteSessions(ctx, s.DB, "id = ?", id); err == nil {
+			s.sessionsEnded(ended)
+		}
 		return User{}, time.Time{}, ErrNoSession
 	}
-	return u, time.Time{}, nil
+	if u.Remembered && now.UnixMilli()-lastSeen >= renewEvery.Milliseconds() {
+		// Best effort: a failed write leaves the session as it was, still
+		// valid until its stored expiry.
+		next := now.Add(idle)
+		if _, err := s.DB.ExecContext(ctx, "UPDATE sessions SET last_seen_at = ?, expires_at = ? WHERE id = ? AND remember = 1",
+			now.UnixMilli(), next.UnixMilli(), id); err == nil {
+			renewed = next
+		}
+	}
+	return u, renewed, nil
 }
 
 // ResetGoogleAccount unbinds an account from its Google account, so the
@@ -280,15 +325,18 @@ func (s *Service) ResetGoogleAccount(ctx context.Context, email string) error {
 	if err != nil {
 		return err
 	}
-	res, err := tx.ExecContext(ctx, "DELETE FROM sessions WHERE user_id = ?", id)
+	ended, err := deleteSessions(ctx, tx, "user_id = ?", id)
 	if err != nil {
 		return err
 	}
-	ended, _ := res.RowsAffected()
-	if err := s.recordSite(ctx, tx, AuditGoogleReset, email, map[string]any{"sessions_ended": ended}); err != nil {
+	if err := s.recordSite(ctx, tx, AuditGoogleReset, email, map[string]any{"sessions_ended": len(ended)}); err != nil {
 		return err
 	}
-	return tx.Commit()
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+	s.sessionsEnded(ended)
+	return nil
 }
 
 // SignOut ends the session for token, if any. Sign-out needs no session,
@@ -308,19 +356,25 @@ func (s *Service) SignOut(ctx context.Context, token string) error {
 	if err != nil {
 		return err
 	}
-	_, err = s.DB.ExecContext(ctx, "DELETE FROM sessions WHERE id = ?", id)
+	ended, err := deleteSessions(ctx, s.DB, "id = ?", id)
+	s.sessionsEnded(ended)
 	return err
 }
 
-// DeleteExpiredSessions removes sessions past their expiry or SessionTTL
-// after sign-in.
+// DeleteExpiredSessions removes the sessions that have ended: an ordinary
+// one past its expiry or SessionTTL after sign-in, a kept one past its
+// expiry or the setting's period without use.
 func (s *Service) DeleteExpiredSessions(ctx context.Context) (int64, error) {
-	now := s.now().UnixMilli()
-	res, err := s.DB.ExecContext(ctx, "DELETE FROM sessions WHERE expires_at <= ? OR created_at <= ?", now, now-SessionTTL.Milliseconds())
+	p, err := s.KeepPolicy(ctx)
 	if err != nil {
 		return 0, err
 	}
-	return res.RowsAffected()
+	now := s.now().UnixMilli()
+	ended, err := deleteSessions(ctx, s.DB, `(remember = 0 AND (expires_at <= ?1 OR created_at <= ?2))
+		OR (remember = 1 AND (expires_at <= ?1 OR coalesce(last_seen_at, created_at) <= ?3))`,
+		now, now-SessionTTL.Milliseconds(), now-p.Idle().Milliseconds())
+	s.sessionsEnded(ended)
+	return int64(len(ended)), err
 }
 
 // Person is an organiser, admin or owner as listed on the Dashboard's People tab.
@@ -405,6 +459,7 @@ func (s *Service) GrantRole(ctx context.Context, email string, role Role) (Perso
 	if err != nil {
 		return Person{}, err
 	}
+	var kept []string
 	if current != role {
 		from := string(current)
 		if from == "" {
@@ -413,8 +468,17 @@ func (s *Service) GrantRole(ctx context.Context, email string, role Role) (Perso
 		if err := s.recordSite(ctx, tx, AuditRoleGranted, email, map[string]any{"role": string(role), "from_role": from}); err != nil {
 			return Person{}, err
 		}
+		// A kept session does not carry into another role; an ordinary one
+		// is read with the new role on its next request.
+		if kept, err = deleteSessions(ctx, tx, "user_id = ? AND remember = 1", p.ID); err != nil {
+			return Person{}, err
+		}
 	}
-	return p, tx.Commit()
+	if err := tx.Commit(); err != nil {
+		return Person{}, err
+	}
+	s.sessionsEnded(kept)
+	return p, nil
 }
 
 // lastOwnerGuard refuses a change that would leave no owner.
@@ -462,15 +526,18 @@ func (s *Service) RevokeRole(ctx context.Context, id int64) error {
 	if _, err := tx.ExecContext(ctx, "UPDATE users SET role = 'student' WHERE id = ?", id); err != nil {
 		return err
 	}
-	res, err := tx.ExecContext(ctx, "DELETE FROM sessions WHERE user_id = ?", id)
+	ended, err := deleteSessions(ctx, tx, "user_id = ?", id)
 	if err != nil {
 		return err
 	}
-	ended, _ := res.RowsAffected()
-	if err := s.recordSite(ctx, tx, AuditRoleRevoked, email, map[string]any{"from_role": string(role), "sessions_ended": ended}); err != nil {
+	if err := s.recordSite(ctx, tx, AuditRoleRevoked, email, map[string]any{"from_role": string(role), "sessions_ended": len(ended)}); err != nil {
 		return err
 	}
-	return tx.Commit()
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+	s.sessionsEnded(ended)
+	return nil
 }
 
 func hashToken(token string) string {
