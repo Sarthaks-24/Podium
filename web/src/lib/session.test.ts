@@ -12,6 +12,8 @@ const student: User = {
   theme: 'hc-dark',
   editor_colours: 'night',
   theme_custom: null,
+  keep_mode: 'nobody',
+  remembered: false,
   verdicts: 'signal',
 };
 

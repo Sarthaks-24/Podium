@@ -42,9 +42,9 @@ export interface User {
   /** The custom theme's inputs, or null when none is saved. */
   theme_custom: { background: string; accent: string; contrast: string } | null;
   /** What the setting says about staying signed in for this role (v2.1.0). */
-  keep_mode?: KeepMode;
+  keep_mode: KeepMode;
   /** True when this session is a kept one. */
-  remembered?: boolean;
+  remembered: boolean;
 }
 
 export type SessionStatus = 'loading' | 'signed-out' | 'signed-in';

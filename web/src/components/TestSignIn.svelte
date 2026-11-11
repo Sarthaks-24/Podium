@@ -1,11 +1,11 @@
 <!--
   TestSignIn: the sign-in form used instead of "Continue with Google" when
-  the server runs in testing mode. It asks for an email, an
-  optional name and a role, posts them to /api/auth/test-signin, reloads the
-  session and goes to the page the visitor was heading for. When students are
-  set to "Each person chooses" the form also has the "Keep me signed in"
-  checkbox. Errors from the server appear inline under the form. Props: next, the path to open after
-  signing in.
+  the server runs in testing mode. It asks for an email, an optional name
+  and a role, posts them to /api/auth/test-signin, reloads the session and
+  goes to the page the visitor was heading for. When students are set to
+  "Each person chooses" the form also has the "Keep me signed in" checkbox.
+  Errors from the server appear inline under the form. Props: next, the
+  path to open after signing in.
 -->
 <script lang="ts">
   import { ApiError, sendJSON } from '../lib/api';

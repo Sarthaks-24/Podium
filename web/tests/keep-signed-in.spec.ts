@@ -150,11 +150,13 @@ for (const theme of THEMES) {
 
       await sw.check();
       await expect(sw).toBeChecked();
+      await expect(sw).toBeFocused();
       expect(state.keep.meKeepPuts).toEqual([true]);
-      await expect(page.getByText('You stay signed in on this device')).toBeVisible();
+      await expect(page.getByText('Saved')).toBeVisible();
       await sweep(page, 'account-menu-on', theme, () => openAccount(page));
       await sw.uncheck();
       await expect(sw).not.toBeChecked();
+      await expect(sw).toBeFocused();
       expect(state.keep.meKeepPuts).toEqual([true, false]);
     });
 
@@ -205,7 +207,7 @@ for (const theme of THEMES) {
         await expect(group.getByRole('radio', { name: 'Nobody' })).toBeChecked();
         await expect(group.getByRole('radio')).toHaveCount(3);
       }
-      await expect(section.getByRole('radio', { name: 'A number of days without use' })).toBeDisabled();
+      await expect(section.getByRole('radio', { name: 'Sign out after a number of days without use' })).toBeDisabled();
       await expect(section.getByRole('radio', { name: 'Only when they sign out' })).toBeDisabled();
       await expect(section.getByText('Not used while nobody is kept signed in.')).toBeVisible();
       await expect(section.getByText('Nobody: signed out when the browser closes, or after 12 hours.')).toBeVisible();
@@ -224,14 +226,14 @@ for (const theme of THEMES) {
       await section.getByRole('group', { name: 'Admins', exact: true }).getByRole('radio', { name: 'Everyone' }).check();
       await expect(section.getByText('A signed-in admin can change contests and paste AI keys. Use this only on your own computer.')).toBeVisible();
       await expect(section.getByText('On a shared or lab computer the next person will be signed in as the last one unless they sign out.')).toBeVisible();
-      await section.getByLabel('Days', { exact: true }).fill('45');
+      await section.getByLabel('days without use', { exact: true }).fill('45');
       await sweep(page, 'dashboard-keep-chosen', theme);
 
       await section.getByRole('button', { name: 'Save' }).click();
       await expect(page.getByText('Saved', { exact: true })).toBeVisible();
       expect(state.keep.puts).toEqual([{ students: 'choose', organisers: 'nobody', admins: 'everyone', owner: 'nobody', days: 45, until_sign_out: false }]);
       await section.getByRole('radio', { name: 'Only when they sign out' }).check();
-      await expect(section.getByLabel('Days', { exact: true })).toBeDisabled();
+      await expect(section.getByLabel('days without use', { exact: true })).toBeDisabled();
       await section.getByRole('button', { name: 'Save' }).click();
       await expect.poll(() => state.keep.puts.length).toBe(2);
       expect(state.keep.puts[1]).toMatchObject({ days: 45, until_sign_out: true });
@@ -242,7 +244,7 @@ for (const theme of THEMES) {
       await page.goto('/admin/dashboard?tab=sign-in');
       const section = page.getByRole('region', { name: 'Staying signed in' });
       await section.getByRole('group', { name: 'Students', exact: true }).getByRole('radio', { name: 'Everyone' }).check();
-      const days = section.getByLabel('Days', { exact: true });
+      const days = section.getByLabel('days without use', { exact: true });
       for (const bad of ['0', '366', '', 'ten', '1.5']) {
         await days.fill(bad);
         await section.getByRole('button', { name: 'Save' }).click();
@@ -276,6 +278,7 @@ for (const theme of THEMES) {
       await section.getByRole('button', { name: 'Save' }).click();
       await page.getByRole('dialog', { name: 'Sign out 42 people?' }).getByRole('button', { name: 'Sign out 42 people' }).click();
       await expect(page.getByText('Saved. 42 people were signed out.')).toBeVisible();
+      await expect(section.getByRole('button', { name: 'Save' })).toBeFocused();
       expect(state.keep.puts).toHaveLength(1);
       expect(state.keep.puts[0]).toMatchObject({ students: 'nobody', owner: 'nobody' });
     });
@@ -289,7 +292,7 @@ for (const theme of THEMES) {
       await page.keyboard.press('ArrowDown');
       await expect(students.getByRole('radio', { name: 'Each person chooses' })).toBeChecked();
       await expect(students.getByRole('radio', { name: 'Each person chooses' })).toBeFocused();
-      await tabTo(page, section.getByLabel('Days', { exact: true }));
+      await tabTo(page, section.getByLabel('days without use', { exact: true }));
       await page.keyboard.press('Control+a');
       await page.keyboard.type('14');
       await tabTo(page, section.getByRole('button', { name: 'Save' }));

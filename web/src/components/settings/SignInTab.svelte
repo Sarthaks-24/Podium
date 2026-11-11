@@ -10,11 +10,10 @@
   under their form, tied to the inputs. Above them, the sign-in switch:
   closing it keeps everyone below admin from starting a new session (it
   asks first), opening it is one press. Owners also see "Staying signed in"
-  (KeepSignedIn). Props: `open` (bindable, the
-  switch), `owner` (only owners may
-  reset a Google link; admins do not see it), `disabled` and
-  `people` (all bindable; a disable or enable marks the organiser's row
-  too) and `onforbidden` (the person is no longer an owner).
+  (KeepSignedIn). Props: `open` (bindable, the switch), `owner` (only owners
+  may reset a Google link; admins do not see it), `disabled` and `people`
+  (all bindable; a disable or enable marks the organiser's row too) and
+  `onforbidden` (the person is no longer an owner).
 -->
 <script lang="ts">
   import { untrack } from 'svelte';

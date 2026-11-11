@@ -55,11 +55,16 @@
   async function toggleKeep(event: Event) {
     const input = event.currentTarget as HTMLInputElement;
     const keep = input.checked;
+    // The checkbox stays focusable while a request runs; a second press does nothing.
+    if (keepBusy) {
+      input.checked = !keep;
+      return;
+    }
     keepBusy = true;
     try {
       const out = await sendJSON<{ remembered: boolean }>('PUT', '/api/me/keep-signed-in', { keep });
       session.user = { ...user, remembered: out.remembered };
-      showToast(out.remembered ? 'You stay signed in on this device' : 'You are signed out when the browser closes or after 12 hours');
+      showToast('Saved');
     } catch (e) {
       input.checked = !keep;
       showToast(errorText(e), 'error');
@@ -106,7 +111,7 @@
   {#if showKeep}
     <div class="keep">
       <label class="choice">
-        <input type="checkbox" checked={user.remembered === true} disabled={keepBusy} aria-describedby={helpId} onchange={toggleKeep} />
+        <input type="checkbox" checked={user.remembered === true} aria-disabled={keepBusy ? 'true' : undefined} aria-describedby={helpId} onchange={toggleKeep} />
         Keep me signed in on this device
       </label>
       <p id={helpId} class="field-help">{keepHelp(runMode.keep.days, runMode.keep.untilSignOut)} {KEEP_WARNING}</p>

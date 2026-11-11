@@ -11,9 +11,9 @@
   once for the whole app. When students are set to "Each person chooses"
   (config keep_signed_in.offer_tick) a "Keep me signed in" checkbox, off by
   default, sits before the link and adds &remember=1 to it. When the server
-  runs in testing mode the link
-  is replaced by the TestSignIn form. The privacy link joins the contact
-  line once the owner approves the text (lib/site.ts PRIVACY_LINKED).
+  runs in testing mode the link is replaced by the TestSignIn form. The
+  privacy link joins the contact line once the owner approves the text
+  (lib/site.ts PRIVACY_LINKED).
   Signed-in visitors are redirected away by the app shell before this
   renders. Takes no props.
 -->
