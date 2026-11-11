@@ -35,7 +35,7 @@ type reporter struct {
 
 	mu   sync.Mutex
 	lost bool
-	// tm is guarded by mu while the heartbeat runs.
+	// tm is the job's timing; see jobTiming for what is shared.
 	tm jobTiming
 }
 
@@ -49,7 +49,7 @@ func (r *reporter) send(ctx context.Context, rep judgeapi.Report) error {
 		return ErrLease
 	}
 	start := time.Now()
-	defer func() { r.tm.reportWall += time.Since(start) }()
+	defer func() { r.tm.reportWall.Add(int64(time.Since(start))) }()
 	rep.JobID, rep.Lease = r.jobID, r.lease
 	wait := time.Second
 	deadline := time.Now().Add(judgeapi.LeaseSeconds * time.Second * 3 / 4)

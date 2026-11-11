@@ -93,6 +93,30 @@ func TestJobTimingLine(t *testing.T) {
 	}
 }
 
+// A send holds rep.mu through its whole retry loop; writing the timing line
+// must not wait for it.
+func TestTimingLineDoesNotWaitForASend(t *testing.T) {
+	var logs bytes.Buffer
+	w := &Worker{Log: slog.New(slog.NewJSONHandler(&logs, nil))}
+	rep := &reporter{}
+	rep.tm = jobTiming{kind: judgeapi.KindRun, started: time.Now()}
+	rep.mu.Lock()
+	defer rep.mu.Unlock()
+	done := make(chan struct{})
+	go func() {
+		w.logTiming(&judgeapi.Claim{JobID: 9, Kind: judgeapi.KindRun}, rep)
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("logTiming waited for a send in flight")
+	}
+	if !bytes.Contains(logs.Bytes(), []byte("job timing")) {
+		t.Errorf("no timing line: %s", logs.String())
+	}
+}
+
 func TestOtherJobKindsWriteNoTimingLine(t *testing.T) {
 	var logs bytes.Buffer
 	w := &Worker{Log: slog.New(slog.NewJSONHandler(&logs, nil))}

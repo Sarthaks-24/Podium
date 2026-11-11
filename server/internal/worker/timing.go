@@ -2,23 +2,27 @@ package worker
 
 import (
 	"log/slog"
+	"sync/atomic"
 	"time"
 
 	"github.com/Sarthaks-24/podium/internal/judge"
 )
 
 // jobTiming collects where one judged job spent its time, for the single
-// "job timing" log line written when the job ends. It is read and written
-// by the one lane that runs the job, so it needs no lock.
+// "job timing" log line written when the job ends. The lane that runs the
+// job writes every field but reportWall and reads them all at the end, so
+// they need no lock. reportWall is also written by the heartbeat, so it is
+// atomic and the end of the job never waits for a send.
 type jobTiming struct {
 	kind, language string
 	lane           int
 	started        time.Time
 	// Compiles of the program and the checker: how many, how many came from
 	// the cache, and the time spent in them.
-	compiles, compilesCached   int
-	compileWall, compileLock   time.Duration
-	setup, cleanup, reportWall time.Duration
+	compiles, compilesCached int
+	compileWall, compileLock time.Duration
+	setup, cleanup           time.Duration
+	reportWall               atomic.Int64 // nanoseconds spent in reporter.send
 	// Every program run, tests and custom checker alike.
 	tests, checkerRuns      int
 	testsWall, checkerWall  time.Duration
@@ -70,5 +74,5 @@ func (t *jobTiming) log(l *slog.Logger, jobID int64, total time.Duration) {
 		"tests", t.tests, "tests_wall_ms", ms(t.testsWall),
 		"slowest_cpu_ms", ms(t.slowestCPU), "slowest_wall_ms", ms(t.slowestWall), "slowest_limit_ms", ms(t.slowestLimit),
 		"checker_runs", t.checkerRuns, "checker_wall_ms", ms(t.checkerWall),
-		"report_ms", ms(t.reportWall))
+		"report_ms", ms(time.Duration(t.reportWall.Load())))
 }

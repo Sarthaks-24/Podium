@@ -44,18 +44,15 @@ func (w *Worker) startJob(ctx context.Context, c *judgeapi.Claim, payload any) (
 	}, nil
 }
 
-// hold and held keep the compile-cache releases of a running job.
 // logTiming writes the timing line of a finished submit or run job.
 func (w *Worker) logTiming(c *judgeapi.Claim, rep *reporter) {
 	if c.Kind != judgeapi.KindSubmit && c.Kind != judgeapi.KindRun {
 		return
 	}
-	rep.mu.Lock()
-	tm := rep.tm
-	rep.mu.Unlock()
-	tm.log(w.Log, c.JobID, time.Since(tm.started))
+	rep.tm.log(w.Log, c.JobID, time.Since(rep.tm.started))
 }
 
+// hold and held keep the compile-cache releases of a running job.
 func (w *Worker) hold(jobID int64) *[]func() {
 	w.mu.Lock()
 	defer w.mu.Unlock()
