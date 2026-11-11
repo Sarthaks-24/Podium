@@ -90,3 +90,16 @@ func TestEditFixedPromptNamesWhatToKeep(t *testing.T) {
 		}
 	}
 }
+
+func TestDecodeEditRefusesTooManyFilesAndKeepsTheText(t *testing.T) {
+	var files []string
+	for i := 0; i <= maxEditAnswerFiles; i++ {
+		files = append(files, `{"path":"a.py","content":"x"}`)
+	}
+	text := `{"files":[` + strings.Join(files, ",") + `],"summary":"","unsupported":""}`
+	_, err := DecodeEdit(text)
+	var e *Error
+	if !errors.As(err, &e) || e.Code != CodeInvalidAnswer || e.answer != text {
+		t.Errorf("%v", err)
+	}
+}

@@ -14,6 +14,7 @@ import (
 	"github.com/Sarthaks-24/podium/internal/ai/fakeai"
 )
 
+const copyEditTooLarge = "The edited problem would be larger than 2 MB of text. Ask for a smaller change."
 const copyEditRefused = "The AI's edit would break this problem, so nothing was saved. Press Ask for a draft to try again, describe a smaller change, or rewrite the whole problem."
 const copyEditModeChange = "Edit with AI cannot change whether students write a whole program or one function. Use Rewrite with AI and choose there."
 
@@ -278,4 +279,24 @@ func TestAIEditBadIDs(t *testing.T) {
 		code, out := org.do("POST", "/api/admin/problems/"+id+"/ai-edit", map[string]any{"instruction": "x"}, s.srv.URL)
 		errIs(t, id, code, out, 404, "not_found", "There is no such problem.")
 	}
+}
+
+// A path that appears twice is a parser-kind refusal: it is retried once.
+func TestAIEditRetriesARepeatedPath(t *testing.T) {
+	s, org, id := editSite(t)
+	twice := ai.EditAnswer{Files: []ai.EditFile{{Path: "statement.md", Content: "a\n"}, {Path: "statement.md", Content: "b\n"}}}
+	seen := hook(twice, ai.EditAnswer{Files: []ai.EditFile{{Path: "statement.md", Content: "c\n"}}, Summary: "Once."})
+	code, out := org.do("POST", editPath(id, ""), map[string]any{"instruction": "x"}, s.srv.URL)
+	if code != 200 || len(*seen) != 2 || !strings.Contains(strings.Join((*seen)[1].Fix, " "), "appears twice") {
+		t.Errorf("%d %v after %d calls", code, out, len(*seen))
+	}
+}
+
+// Files that each fit but together with the current pack pass 2 MB are refused
+// after the merge.
+func TestAIEditRefusesAMergeAbove2MB(t *testing.T) {
+	s, org, id := editSite(t)
+	hook(ai.EditAnswer{Files: bulkFiles(32)})
+	code, out := org.do("POST", editPath(id, ""), map[string]any{"instruction": "x"}, s.srv.URL)
+	errIs(t, "merge too large", code, out, 422, "invalid_answer", copyEditTooLarge)
 }

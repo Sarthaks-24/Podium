@@ -337,3 +337,17 @@ func TestMergeEditTakingAnOfferedLanguageOutIsTheParsersCall(t *testing.T) {
 		t.Errorf("%v", err)
 	}
 }
+
+func TestRestoreOmittedStartersLockedCodeAndOddSubtasks(t *testing.T) {
+	snapYAML := []byte("title: T\nstarters: [s.py]\nlocked_top: [top.py]\nsubtasks:\n  - points: 1\n    tests: 1\n    generator_args: [n=1]\n")
+	// The reply sends top.py, so locked_top is judged as sent; starters come back.
+	_, kept := restoreOmitted(snapYAML, []byte("title: T\nsubtasks:\n  - points: 1\n    tests: 1\n    generator_args: [n=1]\n"), map[string][]byte{"top.py": nil})
+	if fmt.Sprint(kept) != "[the starting code]" {
+		t.Errorf("kept %v", kept)
+	}
+	// A subtask that is not a mapping is left alone.
+	_, kept = restoreOmitted(snapYAML, []byte("title: T\nstarters: [s.py]\nlocked_top: [top.py]\nsubtasks:\n  - 5\n"), nil)
+	if len(kept) != 0 {
+		t.Errorf("kept %v", kept)
+	}
+}
