@@ -270,3 +270,70 @@ func TestMergeEditOfAFunctionProblemWithoutLockedCode(t *testing.T) {
 		t.Errorf("merged %v kept %v", m, kept)
 	}
 }
+
+// Every reply shape ends in a draft or a clean refusal, never a panic or an
+// error of another kind.
+func TestMergeEditReplyShapes(t *testing.T) {
+	ctx := context.Background()
+	gen, planned := editTestBank(t, "largest-gap")
+	gsnap, _ := gen.EditSnapshot(ctx, planned.ID)
+	fn, fnp := editTestBank(t, "array-sum")
+	fsnap, _ := fn.EditSnapshot(ctx, fnp.ID)
+	gyaml := string(gsnap.Files["problem.yaml"])
+	fyaml := string(fsnap.Files["problem.yaml"])
+	newPlan := strings.Replace(string(gsnap.Files["tests.yaml"]), "n=100, maxv=1000", "n=90, maxv=1000", 1)
+
+	for _, c := range []struct {
+		name  string
+		svc   *Service
+		snap  *EditSnapshot
+		reply map[string][]byte
+		want  string // "draft", "pack" or "policy"
+	}{
+		{"tests.yaml only", gen, gsnap, map[string][]byte{"tests.yaml": []byte(newPlan)}, "draft"},
+		{"new generator and plan, key kept", gen, gsnap, map[string][]byte{"generator.py": []byte("print(1)\n"), "tests.yaml": []byte(newPlan)}, "draft"},
+		{"new generator and plan, key dropped", gen, gsnap, map[string][]byte{"generator.py": []byte("print(1)\n"), "tests.yaml": []byte(newPlan), "problem.yaml": []byte(dropKey(gyaml, "generator"))}, "pack"},
+		{"generator file only", gen, gsnap, map[string][]byte{"generator.py": []byte("print(1)\n")}, "draft"},
+		{"offered language removed", fn, fsnap, map[string][]byte{"problem.yaml": []byte(strings.NewReplacer(", starter.py]", "]", ", top.py]", "]", ", bottom.py]", "]").Replace(fyaml))}, "any"},
+		{"function title only", fn, fsnap, map[string][]byte{"problem.yaml": []byte(strings.Replace(fyaml, "title: ", "title: New ", 1))}, "draft"},
+		{"function mode dropped", fn, fsnap, map[string][]byte{"problem.yaml": []byte(dropKey(fyaml, "mode")), "statement.md": []byte("New.\n")}, "draft"},
+		{"format changed", gen, gsnap, map[string][]byte{"problem.yaml": []byte(strings.Replace(gyaml, "format: 1", "format: 9", 1))}, "pack"},
+		{"empty problem.yaml", gen, gsnap, map[string][]byte{"problem.yaml": {}}, "pack"},
+		{"problem.yaml not YAML", gen, gsnap, map[string][]byte{"problem.yaml": []byte("\x00\x01: [")}, "pack"},
+		{"problem.yaml a list", gen, gsnap, map[string][]byte{"problem.yaml": []byte("- a\n- b\n")}, "pack"},
+	} {
+		merged, _, err := c.svc.MergeEdit(ctx, c.snap, c.reply)
+		var pol *EditPolicyError
+		var pack *PackError
+		switch {
+		case err == nil:
+			if c.want == "pack" || c.want == "policy" || merged["problem.yaml"] == nil {
+				t.Errorf("%s: a draft, want %s", c.name, c.want)
+			}
+		case errors.As(err, &pol):
+			if c.want != "policy" && c.want != "any" {
+				t.Errorf("%s: policy refusal %v", c.name, err)
+			}
+		case errors.As(err, &pack):
+			if c.want != "pack" && c.want != "any" {
+				t.Errorf("%s: parser refusal %v", c.name, err)
+			}
+		default:
+			t.Errorf("%s: another kind of error: %T %v", c.name, err, err)
+		}
+	}
+}
+
+// Taking a language out of the lists is the parser's call: here the brute
+// force is in that language, so it is a parser refusal the retry can fix.
+func TestMergeEditTakingAnOfferedLanguageOutIsTheParsersCall(t *testing.T) {
+	s, p := editTestBank(t, "array-sum")
+	ctx := context.Background()
+	snap, _ := s.EditSnapshot(ctx, p.ID)
+	text := strings.NewReplacer(", starter.py]", "]", ", top.py]", "]", ", bottom.py]", "]").Replace(string(snap.Files["problem.yaml"]))
+	_, _, err := s.MergeEdit(ctx, snap, map[string][]byte{"problem.yaml": []byte(text)})
+	var pack *PackError
+	if !errors.As(err, &pack) || !strings.Contains(err.Error(), "brute") {
+		t.Errorf("%v", err)
+	}
+}
