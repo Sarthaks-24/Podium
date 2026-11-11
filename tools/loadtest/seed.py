@@ -73,13 +73,17 @@ def zip_pack(folder):
 
 
 def import_packs(owner, problems_dir):
+    """Returns the problem ids by slug and the slugs whose pack plans generated tests."""
     code, out = owner.call("GET", "/api/admin/problems")
     if code != 200:
         sys.exit(f"seed: listing problems failed ({code} {out})")
     existing = {p["slug"]: p["id"] for p in out["problems"]}
     ids = {}
+    planned = set()
     for folder in sorted(p for p in problems_dir.iterdir() if (p / "problem.yaml").is_file()):
         slug = folder.name
+        if (folder / "tests.yaml").is_file():
+            planned.add(slug)
         if slug in existing:
             ids[slug] = existing[slug]
             print(f"problem {slug}: already imported (id {ids[slug]})")
@@ -89,18 +93,21 @@ def import_packs(owner, problems_dir):
             sys.exit(f"seed: importing {slug} failed ({code} {out})")
         ids[slug] = out["id"]
         print(f"problem {slug}: imported (id {ids[slug]})")
-    return ids
+    return ids, planned
 
 
-def validate(owner, ids, timeout_s):
+def validate(owner, ids, planned, timeout_s):
     for slug, pid in ids.items():
         code, out = owner.call("GET", f"/api/admin/problems/{pid}/validation")
         if code == 200 and out and out.get("current") and out.get("state") == "passed":
             print(f"problem {slug}: already validated")
             continue
-        code, out = owner.call("POST", f"/api/admin/problems/{pid}/validate")
+        # A planned pack has no inputs yet: Generate inputs makes them, then
+        # the server chains output generation and validation by itself.
+        route = "generate-inputs" if slug in planned else "validate"
+        code, out = owner.call("POST", f"/api/admin/problems/{pid}/{route}")
         if code != 202:
-            sys.exit(f"seed: validating {slug} failed to start ({code} {out})")
+            sys.exit(f"seed: {route} for {slug} failed to start ({code} {out})")
         deadline = time.time() + timeout_s
         while True:
             code, out = owner.call("GET", f"/api/admin/problems/{pid}/validation")
@@ -142,8 +149,8 @@ def main():
     if code != 200 or out.get("mode") != "testing":
         sys.exit(f"seed: {args.base} is not a podium server in testing mode ({code} {out})")
     owner.sign_in(OWNER, "owner", "Load owner")
-    ids = import_packs(owner, pathlib.Path(args.problems))
-    validate(owner, ids, args.validate_timeout)
+    ids, planned = import_packs(owner, pathlib.Path(args.problems))
+    validate(owner, ids, planned, args.validate_timeout)
     create_users(args.base, args.origin, args.users)
     print(json.dumps({"problems": ids, "users": args.users}))
 

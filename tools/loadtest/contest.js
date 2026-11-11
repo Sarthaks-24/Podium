@@ -53,7 +53,7 @@ const INVITE_ONLY = num(__ENV.INVITE_ONLY, 1) === 1;
 // Staff open a student's code (and write a code_viewed audit row) this
 // often across the contest: a few a minute, as during a real one.
 const CODE_VIEWS_PER_MIN = num(__ENV.CODE_VIEWS_PER_MIN, 3);
-const SLUGS = (__ENV.PROBLEMS || 'a-plus-b,average-speed,pair-with-sum,array-sum').split(',');
+const SLUGS = (__ENV.PROBLEMS || 'a-plus-b,average-speed,pair-with-sum,array-sum,largest-gap').split(',');
 const LABELS = SLUGS.map((_, i) => String.fromCharCode(65 + i));
 
 export const options = {
@@ -136,6 +136,15 @@ const SOURCES = {
     { w: 25, lang: 'cpp17', src: '#include <cstdio>\nint main(){puts("-1");}\n' },
     { w: 15, lang: 'python3', src: 'n, s = map(int, input().split())\nprint(1, 2)\n' },
     { w: 5, lang: 'cpp17', src: 'int main() { return x; }\n' },
+  ],
+  // The pack with a generator: its tests come from Generate inputs (v2.1.0).
+  'largest-gap': [
+    { w: 35, lang: 'cpp17', src: open(P + 'largest-gap/solution.cpp') },
+    { w: 15, lang: 'python3', src: open(P + 'largest-gap/brute.py') },
+    // A 32-bit difference: right on small numbers, overflows on the full range.
+    { w: 20, lang: 'cpp17', src: '#include <algorithm>\n#include <cstdio>\n#include <vector>\nint main(){int n;scanf("%d",&n);std::vector<int> v(n);for(int&x:v)scanf("%d",&x);std::sort(v.begin(),v.end());int b=0;for(int i=1;i<n;i++)b=std::max(b,v[i]-v[i-1]);printf("%d\\n",b);}\n' },
+    { w: 20, lang: 'python3', src: 'print(0)\n' },
+    { w: 10, lang: 'cpp17', src: 'int main( { return 0 }\n' },
   ],
   // A function problem: students send only their function, and the server
   // composes it with the locked code (v2.0.2).
