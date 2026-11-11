@@ -4,6 +4,30 @@ Dated entries per release. Unreleased work is listed at the top.
 
 Releases are numbered from `v2.0.0`. The builds before it were never released; these entries call them v1.0 (first called v1), v1.1 (v2), v1.2 (v3), v1.3 (v4) and v1.4 (v4.01). Decision ids (`V3-n`, `V4-n`) and migration file names keep the old names.
 
+## v2.1.0 Billota (unreleased)
+
+Not released yet. Each stage adds plain-English entries and known limits under its own heading.
+
+### v2.1.0 stage A: AI edit
+
+### v2.1.0 stage B: keep me signed in
+
+### v2.1.0 stage C: judge and security
+
+### v2.1.0 stage V: frontend fixes
+
+### v2.1.0 stage F: function problems from the wizard
+
+### v2.1.0 stage K: other AI providers
+
+### v2.1.0 stage J: judge speed and sizing
+
+### v2.1.0 stage P: server measurement
+
+### v2.1.0 stage W: rewrite with AI
+
+### v2.1.0 stage H: bring back a version
+
 ## v2.0.2 Billota (2026-11-07)
 
 v2.0.2 lets organisers delete a problem, write function problems (the student writes one function between locked code), and edit a problem or the AI prompts with AI, and gives students a "Problems to finish" list on /me.
