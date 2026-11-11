@@ -10,12 +10,14 @@ import (
 	"archive/zip"
 	"bytes"
 	"context"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/Sarthaks-24/podium/internal/judgeapi"
 	"github.com/Sarthaks-24/podium/internal/problems"
 	"github.com/Sarthaks-24/podium/internal/submissions"
 )
@@ -187,4 +189,30 @@ func inputsOnly(t *testing.T, dir string) []byte {
 	}
 	zw.Close()
 	return buf.Bytes()
+}
+
+// TestJobTimingLineOnTheRealJudge judges one accepted C++ submission and
+// reads the worker's timing line for it: a real compile, real boxes.
+func TestJobTimingLineOnTheRealJudge(t *testing.T) {
+	r := newRig(t)
+	p := r.importPack(t, "a-plus-b", nil)
+	v := r.submitAndWait(t, p.ID, "cpp17", solutions["cpp17"]["AC"], "timing")
+	if v.State != "done" {
+		t.Fatalf("submission %+v", v)
+	}
+	var line map[string]any
+	for _, l := range strings.Split(r.timing.String(), "\n") {
+		var m map[string]any
+		if json.Unmarshal([]byte(l), &m) == nil && m["msg"] == "job timing" && m["kind"] == judgeapi.KindSubmit {
+			line = m
+		}
+	}
+	if line == nil {
+		t.Fatalf("no job timing line in %s", r.timing.String())
+	}
+	num := func(k string) float64 { f, _ := line[k].(float64); return f }
+	if line["language"] != "cpp17" || num("compiles") != 1 || num("compile_wall_ms") <= 0 || num("setup_ms") <= 0 ||
+		num("cleanup_ms") <= 0 || num("tests") < 1 || num("tests_wall_ms") <= 0 || num("slowest_limit_ms") <= 0 {
+		t.Errorf("timing line %v", line)
+	}
 }

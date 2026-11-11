@@ -124,6 +124,15 @@ type Program struct {
 	Dir  string
 }
 
+// StepTiming is where the time of one compile or run went besides the
+// program itself: waiting for the exclusive lock, setting the box up and
+// cleaning it afterwards. It feeds the worker's per-job timing log line.
+type StepTiming struct {
+	LockWait time.Duration
+	Setup    time.Duration
+	Cleanup  time.Duration
+}
+
 // CompileResult reports a compile step.
 type CompileResult struct {
 	// Verdict is OK or CompileError.
@@ -132,6 +141,10 @@ type CompileResult struct {
 	Output string
 	Time   time.Duration
 	Wall   time.Duration
+	Timing StepTiming
+	// Cached is set by the worker's compile cache when the program was not
+	// built for this job.
+	Cached bool
 	// Transient marks a compile error caused by load (the compiler ran out
 	// of time or memory) rather than by the code, so it is not cached.
 	Transient bool
@@ -139,14 +152,17 @@ type CompileResult struct {
 
 // Compile writes source into a fresh box, compiles it, and copies the
 // resulting regular files into outDir, which must exist and be empty.
-func (r *Runner) Compile(ctx context.Context, box int, lang Language, source []byte, outDir string) (Program, CompileResult, error) {
-	prog := Program{Lang: lang, Dir: outDir}
+func (r *Runner) Compile(ctx context.Context, box int, lang Language, source []byte, outDir string) (prog Program, res CompileResult, err error) {
+	prog = Program{Lang: lang, Dir: outDir}
 	if lang.Compile == nil {
 		err := os.WriteFile(filepath.Join(outDir, lang.Source), source, 0o644)
 		return prog, CompileResult{Verdict: OK}, err
 	}
+	var timing StepTiming
 	if lang.CompileExclusive {
+		start := time.Now()
 		r.exclusive.Lock()
+		timing.LockWait = time.Since(start)
 		defer r.exclusive.Unlock()
 	}
 	lim := Limits{CPU: compileCPU, Wall: compileWall, MemoryKB: lang.CompileMemoryMB * 1024,
@@ -159,11 +175,18 @@ func (r *Runner) Compile(ctx context.Context, box int, lang Language, source []b
 		return prog, CompileResult{}, err
 	}
 	defer release()
+	start := time.Now()
 	dir, err := r.Iso.Init(ctx, box)
+	timing.Setup = time.Since(start)
 	if err != nil {
 		return prog, CompileResult{}, boxInitFailure(ctx, err)
 	}
-	defer r.cleanup(ctx, box)
+	defer func() {
+		start := time.Now()
+		r.cleanup(ctx, box)
+		res.Timing = timing
+		res.Timing.Cleanup = time.Since(start)
+	}()
 
 	if err := os.WriteFile(filepath.Join(dir, lang.Source), source, 0o644); err != nil {
 		return prog, CompileResult{}, err
@@ -177,7 +200,7 @@ func (r *Runner) Compile(ctx context.Context, box int, lang Language, source []b
 		return prog, CompileResult{}, err
 	}
 	out, _ := readBoxHead(filepath.Join(dir, "compile.txt"), CompileOutputLimit)
-	res := CompileResult{Verdict: OK, Output: string(out), Time: meta.Time, Wall: meta.WallTime}
+	res = CompileResult{Verdict: OK, Output: string(out), Time: meta.Time, Wall: meta.WallTime}
 	switch {
 	case meta.Status == "XX":
 		return prog, res, fmt.Errorf("compile box %d: isolate internal error: %s", box, meta.Message)
@@ -201,6 +224,7 @@ func (r *Runner) Compile(ctx context.Context, box int, lang Language, source []b
 type ExecResult struct {
 	Verdict Verdict
 	Meta    Meta
+	Timing  StepTiming
 	// Stderr is the tail of the program's stderr.
 	Stderr []byte
 }
@@ -217,11 +241,14 @@ func (l Language) LimitsFor(timeLimit time.Duration, memoryMB int) Limits {
 // before language adjustment. A missing or non-regular output file (the
 // program replaced it with a symlink, FIFO or directory) counts as empty
 // output.
-func (r *Runner) Execute(ctx context.Context, box int, prog Program, timeLimit time.Duration, memoryMB int, inputPath, outputPath string) (ExecResult, error) {
+func (r *Runner) Execute(ctx context.Context, box int, prog Program, timeLimit time.Duration, memoryMB int, inputPath, outputPath string) (res ExecResult, err error) {
 	lang := prog.Lang
 	lim := lang.LimitsFor(timeLimit, memoryMB)
+	var timing StepTiming
 	if lang.RunExclusive {
+		start := time.Now()
 		r.exclusive.Lock()
+		timing.LockWait = time.Since(start)
 		defer r.exclusive.Unlock()
 	}
 	release, err := r.reserve(ctx, lim.MemoryKB)
@@ -229,11 +256,18 @@ func (r *Runner) Execute(ctx context.Context, box int, prog Program, timeLimit t
 		return ExecResult{}, err
 	}
 	defer release()
+	start := time.Now()
 	dir, err := r.Iso.Init(ctx, box)
+	timing.Setup = time.Since(start)
 	if err != nil {
 		return ExecResult{}, boxInitFailure(ctx, err)
 	}
-	defer r.cleanup(ctx, box)
+	defer func() {
+		start := time.Now()
+		r.cleanup(ctx, box)
+		res.Timing = timing
+		res.Timing.Cleanup = time.Since(start)
+	}()
 
 	if err := copyRegularFiles(prog.Dir, dir, nil); err != nil {
 		return ExecResult{}, err
@@ -250,7 +284,7 @@ func (r *Runner) Execute(ctx context.Context, box int, prog Program, timeLimit t
 		return ExecResult{}, err
 	}
 	tail, _ := readBoxTail(filepath.Join(dir, "stderr.txt"), stderrTailLimit)
-	res := ExecResult{Verdict: Classify(meta, lim, lang, tail), Meta: meta, Stderr: tail}
+	res = ExecResult{Verdict: Classify(meta, lim, lang, tail), Meta: meta, Stderr: tail}
 
 	capBytes := int64(lim.FileSizeKB) * 1024
 	n, err := copyBoxOutput(filepath.Join(dir, "output.txt"), outputPath, capBytes)

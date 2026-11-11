@@ -90,6 +90,7 @@ func (c *CompileCache) Compile(ctx context.Context, r *judge.Runner, box int, la
 	dir := filepath.Join(c.Dir, key)
 	release := c.acquire(key)
 	if res, ok := c.load(dir); ok {
+		res.Cached = true
 		return judge.Program{Lang: lang, Dir: filepath.Join(dir, "bin")}, res, release, nil
 	}
 	fail := func(err error) (judge.Program, judge.CompileResult, func(), error) {
