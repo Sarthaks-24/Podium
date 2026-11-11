@@ -472,10 +472,11 @@ func TestKeepCountsPeopleWithARememberedSession(t *testing.T) {
 	f.signIn(auth.Student, false)
 	f.signIn(auth.Student, false)
 	f.signIn(auth.Admin, false)
-	f.policy(auth.KeepPolicy{Students: auth.KeepEveryone, Organisers: auth.KeepNobody, Admins: auth.KeepEveryone, Owner: auth.KeepNobody, Days: 30})
+	f.signIn(auth.Organiser, false)
+	f.signIn(auth.Owner, false)
 	got, err := f.s.KeepCounts(context.Background())
-	if err != nil || got != (auth.KeepCounts{Students: 1, Admins: 1}) {
-		t.Errorf("counts %+v (%v), want one student (two sessions, one person) and one admin", got, err)
+	if err != nil || got != (auth.KeepCounts{Students: 1, Organisers: 1, Admins: 1, Owner: 1}) {
+		t.Errorf("counts %+v (%v), want one of each role (two student sessions, one person)", got, err)
 	}
 }
 
