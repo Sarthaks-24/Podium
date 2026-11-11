@@ -246,3 +246,48 @@ func TestEditStaleWhenTestsChange(t *testing.T) {
 		t.Errorf("tests changed: %v", err)
 	}
 }
+
+// dropKey removes the top-level key from a problem.yaml text, with its
+// indented lines, the way a model that rewrites the file by a key list does.
+func dropKey(yamlText, key string) string {
+	var out []string
+	skipping := false
+	for _, line := range strings.Split(yamlText, "\n") {
+		if strings.HasPrefix(line, key+":") {
+			skipping = true
+			continue
+		}
+		if skipping && (strings.HasPrefix(line, " ") || strings.HasPrefix(line, "-")) {
+			continue
+		}
+		skipping = false
+		out = append(out, line)
+	}
+	return strings.Join(out, "\n")
+}
+
+// The owner's bug: a problem with a generator, its arguments and a plan, and a
+// reply whose problem.yaml leaves out `generator:`.
+func TestMergeEditReplyWithoutGeneratorOnAPlannedProblem(t *testing.T) {
+	s, p := editTestBank(t, "largest-gap")
+	ctx := context.Background()
+	snap, err := s.EditSnapshot(ctx, p.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := snap.Files["tests.yaml"]; !ok || !strings.Contains(string(snap.Files["problem.yaml"]), "generator: generator.py") {
+		t.Fatalf("setup: the snapshot has no generator or plan: %v", snap.Files)
+	}
+	reply := dropKey(string(snap.Files["problem.yaml"]), "generator")
+	if strings.Contains(reply, "generator: ") {
+		t.Fatal("setup: the key is still in the reply")
+	}
+	merged, err := s.MergeEdit(ctx, snap, map[string][]byte{"problem.yaml": []byte(reply)})
+	if err != nil {
+		t.Fatalf("a reply that only left out the generator was refused: %v", err)
+	}
+	if !strings.Contains(string(merged["problem.yaml"]), "generator: generator.py") {
+		t.Errorf("the generator was not kept:\n%s", merged["problem.yaml"])
+	}
+}
+

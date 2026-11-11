@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"regexp"
 	"sort"
@@ -416,31 +415,19 @@ func Generate(ctx context.Context, p Provider, req Request) (*WizardPack, error)
 	if err := CheckRequest(req); err != nil {
 		return nil, err
 	}
-	req.Previous, req.Fix, req.Shorter = "", nil, false
-	var last *Error
-	for attempt := 0; attempt < 2; attempt++ {
+	return Repair(func(r Retry) (*WizardPack, error) {
+		req.Previous, req.Fix, req.Shorter = r.Previous, r.Fix, r.Shorter
 		pack, err := p.Generate(ctx, req)
-		var e *Error
-		switch {
-		case err == nil:
-			reasons := Check(pack)
-			if len(reasons) == 0 {
-				return pack, nil
-			}
-			answer, _ := json.Marshal(pack)
-			e = &Error{Code: CodeInvalidAnswer, Message: "The model's answer could not be used.", Reasons: reasons, answer: string(answer)}
-		case errors.As(err, &e) && (e.Code == CodeInvalidAnswer || e.Code == CodeCutOff):
-		default:
+		if err != nil {
 			return nil, err
 		}
-		last = e
-		if e.Code == CodeCutOff {
-			req.Previous, req.Fix, req.Shorter = "", nil, true
-		} else {
-			req.Previous, req.Fix, req.Shorter = e.answer, e.Reasons, false
+		reasons := Check(pack)
+		if len(reasons) == 0 {
+			return pack, nil
 		}
-	}
-	return nil, &Error{Code: last.Code, Message: last.Message, Reasons: last.Reasons}
+		answer, _ := json.Marshal(pack)
+		return nil, &Error{Code: CodeInvalidAnswer, Message: "The model's answer could not be used.", Reasons: reasons, answer: string(answer)}
+	})
 }
 
 func clipText(s string, n int) string {

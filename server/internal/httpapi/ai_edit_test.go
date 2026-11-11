@@ -6,6 +6,8 @@ package httpapi
 // written through every path never reaches a log, the database or a blob.
 
 import (
+	"archive/zip"
+	"bytes"
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
@@ -423,4 +425,53 @@ func TestAIEditRefusesAnOversizedReplyBeforeMerging(t *testing.T) {
 	}
 	code, out := org.do("POST", editPath(id, ""), map[string]any{"instruction": "x"}, s.srv.URL)
 	errIs(t, "huge reply", code, out, 422, "invalid_answer", "The edited problem would be larger than 2 MB of text. Ask for a smaller change.")
+}
+
+// importPlanned imports the largest-gap example, a pack with a generator,
+// generator arguments and a plan, and marks it validated.
+func importPlanned(t *testing.T, s *site, org *browser) int64 {
+	t.Helper()
+	dir := "../../../problems/largest-gap"
+	var buf bytes.Buffer
+	zw := zip.NewWriter(&buf)
+	err := filepath.WalkDir(dir, func(p string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() {
+			return err
+		}
+		rel, _ := filepath.Rel(dir, p)
+		b, _ := os.ReadFile(p)
+		w, _ := zw.Create(filepath.ToSlash(rel))
+		w.Write(b)
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	zw.Close()
+	code, out := org.raw("POST", "/api/admin/problems/import", "application/zip", buf.Bytes(), s.srv.URL)
+	if code != 201 {
+		t.Fatalf("import largest-gap: %d %v", code, out)
+	}
+	id := int64(out["id"].(float64))
+	s.validate(id)
+	return id
+}
+
+// The owner's bug over HTTP: a problem with a generator and a plan, and a
+// reply whose problem.yaml leaves out `generator:`.
+func TestAIEditReplyWithoutGeneratorOnAPlannedProblem(t *testing.T) {
+	s, org, _ := editSite(t)
+	id := importPlanned(t, s, org)
+	fakeai.EditHook = func(req ai.EditRequest) (*ai.EditAnswer, error) {
+		for _, f := range req.Files {
+			if f.Path == "problem.yaml" {
+				return &ai.EditAnswer{Files: []ai.EditFile{{Path: "problem.yaml", Content: strings.Replace(f.Content, "generator: generator.py\n", "", 1)}}, Summary: "Changed the title."}, nil
+			}
+		}
+		return &ai.EditAnswer{}, nil
+	}
+	code, out := org.do("POST", editPath(id, ""), map[string]any{"instruction": "Change the title."}, s.srv.URL)
+	if code != 200 || out["draft_id"] == nil {
+		t.Fatalf("the draft was refused: %d %v", code, out)
+	}
 }
