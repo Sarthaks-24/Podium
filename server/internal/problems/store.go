@@ -15,6 +15,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Sarthaks-24/podium/internal/db"
 	"github.com/Sarthaks-24/podium/internal/jobs"
 	"github.com/Sarthaks-24/podium/internal/judge"
 )
@@ -284,7 +285,7 @@ func (s *Service) Create(ctx context.Context, title, slug string, authorID int64
 	}
 	defer tx.Rollback()
 	if err := s.insert(ctx, tx, p, RevisionNote{By: authorID}, key); err != nil {
-		if isRepeat(err) {
+		if errors.Is(err, errRepeat) {
 			tx.Rollback()
 			return s.byClientKey(ctx, authorID, key)
 		}
@@ -320,11 +321,9 @@ func (s *Service) byClientKey(ctx context.Context, authorID int64, key string) (
 	return p, err
 }
 
-// isRepeat is true when an insert lost to an earlier one with the same key:
-// two copies of one request crossed.
-func isRepeat(err error) bool {
-	return err != nil && strings.Contains(err.Error(), "UNIQUE constraint failed") && strings.Contains(err.Error(), "problems_by_key")
-}
+// errRepeat is what insert returns when it lost to an earlier insert with
+// the same request key: two copies of one request crossed.
+var errRepeat = errors.New("an earlier request with this key made the problem")
 
 var slugUnsafe = regexp.MustCompile(`[^a-z0-9]+`)
 
@@ -470,7 +469,19 @@ func (s *Service) insert(ctx context.Context, tx *sql.Tx, p *Problem, note Revis
 		generator_plan, starters, mode, locked_top, locked_bottom, content_hash, origin, author_id, created_at, updated_at, client_key)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
 		append(cols, p.Origin, author, now.UnixMilli(), now.UnixMilli(), key)...).Scan(&p.ID)
-	if isUnique(err) {
+	if db.IsUnique(err) {
+		// The slug and the request key are both unique; the key's own row
+		// says which one was taken.
+		var n int
+		if key != "" {
+			if qerr := tx.QueryRowContext(ctx, `SELECT count(*) FROM problems WHERE coalesce(author_id, 0) = ? AND client_key = ?`,
+				p.AuthorID, key).Scan(&n); qerr != nil {
+				return qerr
+			}
+		}
+		if n > 0 {
+			return errRepeat
+		}
 		return FieldErrors{"slug": fmt.Sprintf("Another problem already uses the slug %s.", p.Slug)}
 	}
 	if err != nil {
@@ -708,7 +719,7 @@ func (s *Service) save(ctx context.Context, tx *sql.Tx, p *Problem, note Revisio
 		samples = ?, generator_language = ?, generator_source = ?, generator_plan = ?, starters = ?,
 		mode = ?, locked_top = ?, locked_bottom = ?, content_hash = ?, updated_at = ? WHERE id = ?`,
 		append(rowValues(p), p.UpdatedAt.UnixMilli(), p.ID)...)
-	if isUnique(err) {
+	if db.IsUnique(err) {
 		return FieldErrors{"slug": fmt.Sprintf("Another problem already uses the slug %s.", p.Slug)}
 	}
 	if err != nil {
@@ -844,10 +855,6 @@ func nullIfEmpty(s string) any {
 		return nil
 	}
 	return s
-}
-
-func isUnique(err error) bool {
-	return err != nil && strings.Contains(err.Error(), "UNIQUE constraint failed: problems.slug")
 }
 
 func nonNil(s []string) []string {

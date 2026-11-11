@@ -111,7 +111,7 @@ func newRig(t *testing.T) *rig {
 		Log: slog.New(slog.NewMultiHandler(
 			slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelWarn}),
 			slog.NewJSONHandler(timing, nil))),
-		Lanes:    2, WorkDir: filepath.Join(work, "jobs"), Name: "sandbox-test", Version: "test",
+		Lanes: 2, WorkDir: filepath.Join(work, "jobs"), Name: "sandbox-test", Version: "test",
 	}
 	done := make(chan struct{})
 	go func() { w.Drain(ctx, ctx); close(done) }()

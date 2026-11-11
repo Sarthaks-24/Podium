@@ -15,6 +15,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/Sarthaks-24/podium/internal/auth"
+	"github.com/Sarthaks-24/podium/internal/db"
 	"github.com/Sarthaks-24/podium/internal/events"
 	"github.com/Sarthaks-24/podium/internal/judge"
 	"github.com/Sarthaks-24/podium/internal/problems"
@@ -317,13 +318,14 @@ func (s *Service) Create(ctx context.Context, e Edit, by int64, key string) (*Co
 			e.FreezeMinutes, e.PracticeAfterEnd, e.MinGapS, e.MaxPerProblem, string(langs), e.HonourText, e.HoldReveal,
 			e.Exam.FullScreen, e.Exam.CountFocus, e.Exam.BlockPaste, e.Exam.BlockCopy,
 			nullID(by), now, now, key, e.Audience, e.ContactEmail).Scan(&id)
-		if isUniqueSlug(err) {
+		if db.IsUnique(err) {
 			tx.Rollback()
+			// Either the slug is taken or an earlier copy of this request
+			// won the key; the key's contest, if there is one, answers.
+			if c, err := s.repeated(ctx, byKey, by, key); c != nil || err != nil {
+				return c, err
+			}
 			continue
-		}
-		if isRepeat(err, "contests_by_key") {
-			tx.Rollback()
-			return s.repeated(ctx, byKey, by, key)
 		}
 		if err != nil {
 			tx.Rollback()
@@ -427,10 +429,6 @@ func nullID(id int64) any {
 	return nil
 }
 
-func isUniqueSlug(err error) bool {
-	return err != nil && strings.Contains(err.Error(), "UNIQUE constraint failed: contests.slug")
-}
-
 // maxClientKey is the longest request key a create takes, as for Submit.
 const maxClientKey = 64
 
@@ -439,12 +437,6 @@ func checkClientKey(key string) error {
 		return FieldErrors{"client_key": "The request key is too long."}
 	}
 	return nil
-}
-
-// isRepeat is true when an insert lost to an earlier one with the same key
-// (index names the *_by_key index): two copies of one request crossed.
-func isRepeat(err error, index string) bool {
-	return err != nil && strings.Contains(err.Error(), "UNIQUE constraint failed") && strings.Contains(err.Error(), index)
 }
 
 // repeated loads the contest an earlier request with this key made, or
