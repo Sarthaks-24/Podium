@@ -456,6 +456,26 @@ if [[ -n $good_fp && -n $other_fp && $good_fp != "$other_fp" ]]; then
 else
   fail "could not make throwaway gpg keys for the add_repo test"
 fi
+# install.sh runs under set -euo pipefail, and errexit is off inside an if or
+# ||, so this case runs add_repo in a script of its own with the same flags.
+printf 'this is not a key
+' > "$tmp/notkey.asc"
+cat > "$tmp/strict.sh" <<STRICT
+set -euo pipefail
+die() { printf '%s
+' "\$*"; exit 1; }
+APT_KEYRINGS=$tmp/apt/keyrings APT_SOURCES=$tmp/apt/sources
+rm -rf "$tmp/apt"; mkdir -p "\$APT_SOURCES"
+curl() { cp "$tmp/notkey.asc" "\${@: -1}"; }
+$(fn add_repo)
+add_repo repo https://repo.example.invalid/key.asc $good_fp "deb x"
+STRICT
+out=$(bash "$tmp/strict.sh" 2>&1 || true)
+if [[ $out == *"not the expected $good_fp"* && ! -e $tmp/apt/keyrings/repo.asc && ! -e $tmp/apt/sources/repo.list ]]; then
+  pass "add_repo removes a download that is not a key and says so"
+else
+  fail "add_repo on a download that is not a key: '$out' (key file left: $([[ -e $tmp/apt/keyrings/repo.asc ]] && echo yes || echo no))"
+fi
 for site in 'add_repo nodesource' 'add_repo isolate' 'add_repo caddy'; do
   if grep -Eq "$site https://[^ ]+ [0-9A-F]{40} " "$script"; then pass "$site passes a 40-character fingerprint"; else fail "$site has no expected fingerprint"; fi
 done

@@ -94,7 +94,7 @@ add_repo() {
   if [[ ! -s $key ]]; then
     curl -fsSL "$key_url" -o "$key"
   fi
-  got=$(gpg --show-keys --with-colons "$key" 2>/dev/null | awk -F: '/^pub:/ { p = 1; next } /^sub:/ { p = 0 } /^fpr:/ && p { print $10; p = 0 }' | paste -sd, -)
+  got=$(gpg --show-keys --with-colons "$key" 2>/dev/null | awk -F: '/^pub:/ { p = 1; next } /^sub:/ { p = 0 } /^fpr:/ && p { print $10; p = 0 }' | paste -sd, -) || got=
   if [[ $got != "$want" ]]; then
     rm -f "$key"
     die "the $name signing key from $key_url has fingerprint ${got:-none}, not the expected $want; it was removed and nothing was trusted. Check the repository's own site before changing the expected fingerprint in install.sh"
@@ -998,6 +998,8 @@ EOF
   echo "rolled back to $prev_release"
 }
 
+# A release kept without the slice drop-in leaves the current one in place: a fresh install
+# always installs it (step_isolate), so no VM is expected to lack it.
 restore_previous_files() {
   install -m 755 "$PREVIOUS/bin/podium-server" "$PREVIOUS/bin/podium-judge" /usr/local/bin/
   local u
