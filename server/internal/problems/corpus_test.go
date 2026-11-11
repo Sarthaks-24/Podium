@@ -19,6 +19,9 @@ import (
 // exporter writes, both captured on main 42ef60b before any v2.0.2 change.
 // Old packs must keep importing, exporting the same entries and hashing the
 // same, so a stored content_hash and an old export never move.
+// largest-gap, the pack with a generator, generator arguments and a plan, was
+// added to the corpus in v2.1.0 (captured on 69e0e4f); the other four entries
+// did not change.
 const corpusDir = "testdata/corpus"
 
 type corpusGolden struct {
@@ -99,7 +102,7 @@ func zipDigest(t *testing.T, data []byte) string {
 
 func TestCorpusGoldenContentHash(t *testing.T) {
 	golden := loadGolden(t)
-	for _, name := range []string{"a-plus-b", "pair-with-sum", "average-speed", "format3-starters"} {
+	for _, name := range []string{"a-plus-b", "pair-with-sum", "average-speed", "largest-gap", "format3-starters"} {
 		hash, exported := exportPack(t, corpusSource(t, name))
 		want, ok := golden[name]
 		if !ok {
@@ -117,7 +120,7 @@ func TestCorpusGoldenContentHash(t *testing.T) {
 // An export imports again and exports the same entries: nothing is lost or
 // reordered on the way through.
 func TestCorpusRoundTripIsIdentical(t *testing.T) {
-	for _, name := range []string{"a-plus-b", "pair-with-sum", "average-speed", "format3-starters"} {
+	for _, name := range []string{"a-plus-b", "pair-with-sum", "average-speed", "largest-gap", "format3-starters"} {
 		h1, first := exportPack(t, corpusSource(t, name))
 		h2, second := exportPack(t, first)
 		if h1 != h2 || zipDigest(t, first) != zipDigest(t, second) {

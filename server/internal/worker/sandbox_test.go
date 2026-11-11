@@ -277,3 +277,23 @@ func mustRead(t *testing.T, p string) string {
 	}
 	return string(b)
 }
+
+// largest-gap has no test files beyond its two samples: Generate inputs runs
+// its generator in isolate with the plan's seeds and arguments, outputs come
+// from the reference, and validation passes (v2.1.0 stage 0).
+func TestGeneratorExamplePackGeneratesAndValidates(t *testing.T) {
+	r := newRig(t)
+	ctx := context.Background()
+	p := r.importPack(t, "largest-gap", nil)
+	if _, err := r.bank.RequestInputGeneration(ctx, p.ID, 1); err != nil {
+		t.Fatal(err)
+	}
+	v := r.waitPipeline(t, p.ID)
+	if v.State != problems.ValidationPassed {
+		t.Fatalf("largest-gap did not validate:\n%s", describe(v))
+	}
+	got, _ := r.bank.Get(ctx, p.ID)
+	if !got.Validated() || len(got.Tests) != 8 {
+		t.Errorf("validated %v with %d tests, want validated with 8", got.Validated(), len(got.Tests))
+	}
+}

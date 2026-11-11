@@ -188,7 +188,7 @@ func TestPackRefusesTooMuchUnpacked(t *testing.T) {
 }
 
 func TestPackRoundTrip(t *testing.T) {
-	for _, slug := range []string{"a-plus-b", "average-speed", "pair-with-sum"} {
+	for _, slug := range []string{"a-plus-b", "average-speed", "pair-with-sum", "largest-gap"} {
 		pk, err := ReadPack(zipDir(t, filepath.Join(examples, slug)))
 		if err != nil {
 			t.Fatal(err)
@@ -485,5 +485,38 @@ func TestPackPromptStamp(t *testing.T) {
 	}
 	if got, _ := PackPrompt(); !strings.HasPrefix(got, "Podium pack prompt, pack formats 1 and 4\n") {
 		t.Errorf("a plain test build should carry no version: %q", got[:40])
+	}
+}
+
+// largest-gap carries a generator, subtask generator arguments and a plan:
+// the plan reaches the problem and its tests need no files.
+func TestGeneratorExamplePack(t *testing.T) {
+	pk, err := ReadPack(zipDir(t, filepath.Join(examples, "largest-gap")))
+	if err != nil {
+		t.Fatal(err)
+	}
+	p := pk.Problem
+	if p.Generator == nil || len(p.Plan) != 6 || len(p.Tests) != 2 {
+		t.Fatalf("generator %v, plan %d, tests %d; want a generator, 6 planned and 2 sample tests", p.Generator != nil, len(p.Plan), len(p.Tests))
+	}
+	for _, st := range p.Subtasks {
+		if len(st.GeneratorArgs) != 2 {
+			t.Errorf("subtask %d generator args %v", st.Idx, st.GeneratorArgs)
+		}
+	}
+	for _, pt := range p.Plan {
+		if pt.Test < 3 || pt.Test > 8 || pt.Subtask != (pt.Test-3)/3+1 {
+			t.Errorf("planned test %+v is outside its subtask's range", pt)
+		}
+	}
+	// Until inputs are generated, the only problems are the planned tests that do not exist yet.
+	probs := p.Problems()
+	if len(probs) != 6 {
+		t.Errorf("problems %v, want one per planned test", probs)
+	}
+	for _, msg := range probs {
+		if !strings.HasSuffix(msg, "does not exist.") {
+			t.Errorf("unexpected problem %q", msg)
+		}
 	}
 }

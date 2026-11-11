@@ -1,0 +1,24 @@
+- test: 3
+  subtask: 1
+  seed: 3
+  args: [n=100, maxv=1000]
+- test: 4
+  subtask: 1
+  seed: 4
+  args: [n=2, maxv=1000]
+- test: 5
+  subtask: 1
+  seed: 5
+  args: [n=50, maxv=1000, shape=equal]
+- test: 6
+  subtask: 2
+  seed: 6
+  args: [n=200000, maxv=1000000000]
+- test: 7
+  subtask: 2
+  seed: 7
+  args: [n=200000, maxv=1000000000, shape=spread]
+- test: 8
+  subtask: 2
+  seed: 8
+  args: [n=2, maxv=1000000000]

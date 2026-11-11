@@ -552,7 +552,7 @@ Only one pack import, test replacement or pack download runs at a time; a second
 
 ## Example packs
 
-`problems/` in the repository holds four packs that pass validation. Zip a folder to import it.
+`problems/` in the repository holds five packs that pass validation. Zip a folder to import it.
 
 | Pack | Shows |
 |---|---|
@@ -560,3 +560,4 @@ Only one pack import, test replacement or pack download runs at a time; a second
 | `average-speed` | `float` checker with `epsilon`, Java reference, Python brute force and validator, and two samples |
 | `pair-with-sum` | `custom` testlib checker accepting any valid pair, C++ reference, JavaScript brute force |
 | `array-sum` | A function problem (format 4) in C++17, Java 21, Python 3 and JavaScript: locked tops, stubs and locked bottoms; Java reads with `Scanner` in `public class Main`; the reference and brute force are bare functions |
+| `largest-gap` | Tests from a generator: a Python generator with `key=value` arguments, a plan in `tests.yaml` of six planned tests, `generator_args` on each subtask, and two sample tests as files. Press Generate inputs after importing; it generates, then validates |

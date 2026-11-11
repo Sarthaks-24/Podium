@@ -11,6 +11,10 @@
     "content_hash": "10f8d64cddfb217546aa7fa83eb7aa6bee36411a3d7f4ded59706a33506c7bb7",
     "export_digest": "1196ed93f24ab698b9403412f0fade0e443cd913ecaacabab31528eed1d10088"
   },
+  "largest-gap": {
+    "content_hash": "07c4e62bd0d2feb7908cd6f53867573a092c16de8c9558ef0fe46578e564aee5",
+    "export_digest": "4d69d012b16546963e565bf0dd9594fe50810a1cd32132f2b9b28c855a319641"
+  },
   "format3-starters": {
     "content_hash": "5d619b5ed61a0990340b4f8146b036c76409dfa8ce1f4e0bce797bb20561107a",
     "export_digest": "6331383d6d59539d2d31afe9a48ed1f8ef3179c77d9c85c46211c1debf7b7bb5"

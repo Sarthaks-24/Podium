@@ -1,0 +1,22 @@
+format: 1
+title: Largest gap
+slug: largest-gap
+time_limit_ms: 1000
+memory_limit_mb: 256
+checker: tokens
+tags: [sorting, implementation]
+difficulty: easy
+reference: solution.cpp
+brute: brute.py
+validator: validator.py
+generator: generator.py
+samples: [1, 2]
+subtasks:
+  - points: 40
+    title: Small n
+    tests: "3-5"
+    generator_args: [n=100, maxv=1000]
+  - points: 60
+    title: Large n
+    tests: "6-8"
+    generator_args: [n=200000, maxv=1000000000]
