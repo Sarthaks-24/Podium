@@ -28,6 +28,7 @@
   import Icon from '../components/Icon.svelte';
   import MonoDigits from '../components/MonoDigits.svelte';
   import { polite } from '../lib/announce.svelte';
+  import { isAIDraft } from '../lib/ai';
   import { ApiError, errorText, getJSON, isSignedOut, sendJSON } from '../lib/api';
   import {
     fromLocalInput,
@@ -223,7 +224,10 @@
   const pastStartUnpublished = $derived(!!contest && !contest.published && startedOrOver);
   /** A change waits for its save, or failed: leaving asks first. */
   const dirty = $derived(pending.length > 0);
-  const available = $derived(bank.filter((p) => p.validated && !p.archived && !picked.some((x) => x.problem_id === p.id)));
+  const candidates = $derived(bank.filter((p) => p.validated && !p.archived && !picked.some((x) => x.problem_id === p.id)));
+  /** Problems the picker can add; an AI draft is listed apart, because the server refuses it until it is saved in the editor. */
+  const available = $derived(candidates.filter((p) => !isAIDraft(p.tags)));
+  const aiDrafts = $derived(candidates.filter((p) => isAIDraft(p.tags)));
 
   /** The checklist, from the settings as typed and the problems as saved. */
   const checks = $derived.by(() => {
@@ -989,14 +993,16 @@
           <div class="row">
             <div class="field grow">
               <label for="add-problem">Add a validated problem</label>
-              <select id="add-problem" class="select" bind:value={addId}>
+              <select id="add-problem" class="select" bind:value={addId} aria-describedby={aiDrafts.length > 0 ? 'add-problem-note' : undefined}>
                 <option value="">Choose a problem</option>
                 {#each available as p (p.id)}<option value={String(p.id)}>{p.title || p.slug} ({p.points} points){p.shown_in_practice ? ', hidden tests shown in practice' : ''}</option>{/each}
+                {#each aiDrafts as p (p.id)}<option value={String(p.id)} disabled>{p.title || p.slug} (AI draft, not selectable: read it and save it in the editor first)</option>{/each}
               </select>
+              {#if aiDrafts.length > 0}<p id="add-problem-note" class="muted small">An AI draft cannot be added until you read it and save it in the editor.</p>{/if}
             </div>
             <button type="button" class="btn btn-secondary" disabled={addId === '' || problemsBusy} title={addId === '' ? 'Choose a problem first.' : undefined} onclick={addProblem}>Add problem</button>
           </div>
-          {#if bank.length > 0 && available.length === 0}
+          {#if bank.length > 0 && candidates.length === 0}
             <p class="muted small">Every validated problem is in this contest. <a href="/admin/problems">Go to the problem bank</a> to validate more.</p>
           {/if}
           {#if problemsError}<p class="field-error" role="alert">{problemsError}</p>{/if}
