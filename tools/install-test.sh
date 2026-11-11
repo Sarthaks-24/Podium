@@ -418,5 +418,101 @@ else
   pass "install.sh never pipes systemctl into head"
 fi
 
+# add_repo (S1): a signing key whose fingerprint is not the expected one is
+# removed and the install stops. The key is a throwaway made here.
+export GNUPGHOME=$tmp/gnupg
+mkdir "$GNUPGHOME"
+chmod 700 "$GNUPGHOME" 2>/dev/null || true
+mkkey() { # NAME: writes $tmp/NAME.asc, prints its fingerprint
+  gpg --batch --quiet --pinentry-mode loopback --passphrase '' --quick-gen-key "$1 <$1@example.invalid>" ed25519 sign never 2>/dev/null
+  gpg --batch --armor --export "$1@example.invalid" > "$tmp/$1.asc" 2>/dev/null
+  gpg --batch --with-colons --list-keys "$1@example.invalid" 2>/dev/null | awk -F: '/^fpr:/ { print $10; exit }'
+}
+good_fp=$(mkkey good)
+other_fp=$(mkkey other)
+add_repo_try() { # KEYFILE_TO_SERVE EXPECTED_FP PRESEED(yes|no)
+  (
+    die() { printf '%s\n' "$*"; exit 1; }
+    APT_KEYRINGS=$tmp/apt/keyrings APT_SOURCES=$tmp/apt/sources
+    rm -rf "$tmp/apt"; mkdir -p "$APT_SOURCES"
+    if [[ $3 == yes ]]; then mkdir -p "$APT_KEYRINGS"; cp "$1" "$APT_KEYRINGS/repo.asc"; fi
+    curl() { cp "$tmp/served.asc" "${@: -1}"; }
+    cp "$1" "$tmp/served.asc"
+    eval "$(fn add_repo)"
+    add_repo repo https://repo.example.invalid/key.asc "$2" "deb [signed-by=$APT_KEYRINGS/repo.asc] https://repo.example.invalid stable main"
+    test -s "$APT_SOURCES/repo.list"
+  )
+}
+if [[ -n $good_fp && -n $other_fp && $good_fp != "$other_fp" ]]; then
+  if out=$(add_repo_try "$tmp/good.asc" "$good_fp" no); then pass "add_repo accepts a key with the expected fingerprint and writes the source"; else fail "add_repo refused the right key: $out"; fi
+  if out=$(add_repo_try "$tmp/good.asc" "$other_fp" no); then
+    fail "add_repo accepted a key with the wrong fingerprint"
+  elif [[ $out == *"not the expected $other_fp"* && ! -e $tmp/apt/keyrings/repo.asc && ! -e $tmp/apt/sources/repo.list ]]; then
+    pass "add_repo stops on a wrong fingerprint, removes the key and writes no source"
+  else
+    fail "unexpected add_repo result for a wrong fingerprint: $out"
+  fi
+  if out=$(add_repo_try "$tmp/good.asc" "$other_fp" yes); then fail "add_repo trusted an old key file with the wrong fingerprint"; else pass "add_repo checks a key file that was already there"; fi
+else
+  fail "could not make throwaway gpg keys for the add_repo test"
+fi
+for site in 'add_repo nodesource' 'add_repo isolate' 'add_repo caddy'; do
+  if grep -Eq "$site https://[^ ]+ [0-9A-F]{40} " "$script"; then pass "$site passes a 40-character fingerprint"; else fail "$site has no expected fingerprint"; fi
+done
+
+# PF-13: an upgrade keeps the running slice drop-in and judge unit for
+# rollback, installs the new ones, and a rollback puts the old ones back.
+# The functions are run with their /etc and /usr paths moved under a fake
+# root; nothing outside $tmp changes.
+root=$tmp/root
+rel=$tmp/release
+inroot() { fn "$1" | sed -e "s|/etc/systemd/system|$root/etc/systemd/system|g" -e "s|/usr/local/bin|$root/usr/local/bin|g"; }
+carry() { # runs install_app_files, keep_previous_units or restore_previous_files
+  (
+    die() { printf '%s
+' "$*"; exit 1; }
+    systemctl() { :; }
+    id() { return 1; }
+    db_path() { echo "$tmp/none/podium.db"; }
+    HERE=$rel LIB=$root/usr/local/lib/podium PREVIOUS=$tmp/prev
+    eval "$(grep '^SLICE_DROPIN=' "$script")"
+    eval "$(sed -n '/^UNITS=(/,/)$/p' "$script")"
+    eval "$(inroot install_app_files)"
+    eval "$(inroot keep_previous_units)"
+    eval "$(inroot restore_previous_files)"
+    "$@"
+  )
+}
+rm -rf "$root" "$rel" "$tmp/prev"
+mkdir -p "$root/etc/systemd/system/isolate.slice.d" "$root/usr/local/bin" "$rel/bin" "$rel/backup" "$rel/systemd/isolate.slice.d" "$tmp/prev/bin" "$tmp/prev/systemd"
+for u in podium-server.service podium-judge.service podium-alert@.service; do
+  echo "$u old" > "$root/etc/systemd/system/$u"
+  echo "$u new" > "$rel/systemd/$u"
+done
+echo "User=nobody" > "$root/etc/systemd/system/podium-litestream.service"
+echo "slice old" > "$root/etc/systemd/system/isolate.slice.d/podium.conf"
+echo "slice new" > "$rel/systemd/isolate.slice.d/podium.conf"
+for b in podium-server podium-judge; do echo new > "$rel/bin/$b"; echo old > "$tmp/prev/bin/$b"; done
+echo reset > "$rel/reset-boxes"; echo alert > "$rel/backup/podium-alert"; echo script > "$rel/install.sh"
+carry keep_previous_units "$tmp/prev/systemd"
+carry install_app_files
+if [[ $(cat "$tmp/prev/systemd/isolate.slice.d/podium.conf") == "slice old" && $(cat "$tmp/prev/systemd/podium-judge.service") == "podium-judge.service old" ]]; then
+  pass "an upgrade keeps the running slice drop-in and judge unit for rollback"
+else
+  fail "the previous slice drop-in or judge unit was not kept"
+fi
+if [[ $(cat "$root/etc/systemd/system/isolate.slice.d/podium.conf") == "slice new" && $(cat "$root/etc/systemd/system/podium-judge.service") == "podium-judge.service new" ]]; then
+  pass "an upgrade installs the new slice drop-in and judge unit"
+else
+  fail "install_app_files did not install the slice drop-in and judge unit"
+fi
+carry restore_previous_files
+if [[ $(cat "$root/etc/systemd/system/isolate.slice.d/podium.conf") == "slice old" && $(cat "$root/etc/systemd/system/podium-judge.service") == "podium-judge.service old" ]]; then
+  pass "a rollback puts the old slice drop-in and judge unit back"
+else
+  fail "restore_previous_files did not bring back the slice drop-in and judge unit"
+fi
+if fn cmd_upgrade | grep -q 'keep_previous_units "\$PREVIOUS.new/systemd"'; then pass "cmd_upgrade keeps the units and the slice drop-in through keep_previous_units"; else fail "cmd_upgrade must call keep_previous_units"; fi
+
 if (( fails > 0 )); then echo "$fails install.sh check(s) failed"; exit 1; fi
 echo "install.sh checks passed"
