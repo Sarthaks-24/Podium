@@ -69,13 +69,13 @@ export interface KeyForm {
 }
 
 /** The provider that needs no key. */
-export const FAKE_PROVIDER = 'fake';
+const FAKE_PROVIDER = 'fake';
 
 /** Pasted text and briefs are refused past this many characters. */
 export const MAX_TEXT = 20_000;
 
 /** The longest model id the server takes, and the characters it allows. */
-export const MAX_MODEL_ID = 128;
+const MAX_MODEL_ID = 128;
 const MODEL_ID = /^[A-Za-z0-9._:-]*$/;
 
 /** True when the provider is the testing-mode fake, which needs no key. */

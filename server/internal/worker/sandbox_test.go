@@ -20,6 +20,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -42,6 +43,26 @@ const testToken = "sandbox-test-token-sandbox-test-token-0001"
 type rig struct {
 	bank *problems.Service
 	subs *submissions.Service
+	// timing holds the worker's job timing lines as JSON, one per line.
+	timing *syncBuffer
+}
+
+// syncBuffer is a bytes.Buffer the worker's lanes and the test can share.
+type syncBuffer struct {
+	mu  sync.Mutex
+	buf bytes.Buffer
+}
+
+func (b *syncBuffer) Write(p []byte) (int, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.Write(p)
+}
+
+func (b *syncBuffer) String() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.String()
 }
 
 func newRig(t *testing.T) *rig {
@@ -78,6 +99,7 @@ func newRig(t *testing.T) *rig {
 	t.Cleanup(srv.Close)
 
 	client := &Client{BaseURL: srv.URL, Token: testToken, HTTP: &http.Client{Timeout: time.Minute}}
+	timing := &syncBuffer{}
 	work := t.TempDir()
 	os.MkdirAll(filepath.Join(work, "blobs"), 0o700)
 	os.MkdirAll(filepath.Join(work, "jobs"), 0o700)
@@ -86,13 +108,15 @@ func newRig(t *testing.T) *rig {
 		Runner: &judge.Runner{Iso: judge.Isolate{Path: *isolatePath}},
 		Client: client, Cache: &Cache{Dir: filepath.Join(work, "blobs"), Client: client},
 		Compiled: &CompileCache{Dir: filepath.Join(work, "compiled")},
-		Log:      slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelWarn})),
-		Lanes:    2, WorkDir: filepath.Join(work, "jobs"), Name: "sandbox-test", Version: "test",
+		Log: slog.New(slog.NewMultiHandler(
+			slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelWarn}),
+			slog.NewJSONHandler(timing, nil))),
+		Lanes: 2, WorkDir: filepath.Join(work, "jobs"), Name: "sandbox-test", Version: "test",
 	}
 	done := make(chan struct{})
 	go func() { w.Drain(ctx, ctx); close(done) }()
 	t.Cleanup(func() { cancel(); <-done })
-	return &rig{bank: bank, subs: subs}
+	return &rig{bank: bank, subs: subs, timing: timing}
 }
 
 func zipPack(t *testing.T, dir string, edit map[string]string) []byte {

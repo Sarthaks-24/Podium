@@ -4,7 +4,7 @@
  */
 
 /** The product name, always the last part of the title. */
-export const SITE_NAME = 'podium';
+const SITE_NAME = 'podium';
 
 /** Joins non-empty parts and the product name with a middle dot. */
 export function formatTitle(...parts: string[]): string {

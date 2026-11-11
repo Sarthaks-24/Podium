@@ -109,13 +109,13 @@ export function readPlan(raw: unknown): PlannedTest[] {
 }
 
 /** One generator argument: letters, digits and _ . , : = + -, up to 64 characters. */
-export const ARG_PATTERN = /^[A-Za-z0-9_.,:=+-]{1,64}$/;
+const ARG_PATTERN = /^[A-Za-z0-9_.,:=+-]{1,64}$/;
 
 /** At most this many arguments per test or subtask. */
-export const MAX_ARGS = 16;
+const MAX_ARGS = 16;
 
 /** The largest seed a planned test may use. */
-export const MAX_SEED = 1_000_000_000;
+const MAX_SEED = 1_000_000_000;
 
 /** Splits typed arguments on spaces; an empty string is no arguments. */
 export function splitArgs(text: string): string[] {
@@ -362,7 +362,7 @@ export function formatTestList(tests: readonly number[]): string {
 }
 
 /** A subtask's test list in the one form the editor writes ("3-5, 8"), so a role moved and moved back leaves no change. */
-export function rangesOf(text: string): string {
+function rangesOf(text: string): string {
   const r = parseTestList(text);
   return r.ok ? rangeText(r.tests) : text;
 }
@@ -641,7 +641,7 @@ export interface Report {
 }
 
 /** Programs in the order the report lists them. */
-export const ROLE_ORDER: readonly Role[] = ['reference', 'checker', 'validator', 'brute'];
+const ROLE_ORDER: readonly Role[] = ['reference', 'checker', 'validator', 'brute'];
 
 /** A failing test as a line: "Wrong answer on test 7", or the role's own wording. */
 export function testFailureText(t: { idx: number; role: Role; verdict: string }): string {
@@ -652,7 +652,7 @@ export function testFailureText(t: { idx: number; role: Role; verdict: string })
 }
 
 /** One line of guidance for a setter, by program and verdict. */
-export function setterGuidance(role: Role, verdict: string): string {
+function setterGuidance(role: Role, verdict: string): string {
   if (role === 'validator') return 'Fix this input so it meets the constraints, or fix the validator.';
   if (role === 'checker') return 'Check that the checker accepts every valid output and exits with 0, 1 or 2.';
   if (role === 'brute') {
@@ -986,7 +986,7 @@ export function replaceBlocked(e: ImportExisting): string {
 }
 
 /** A title for comparing: lowercase, with every space removed. */
-export function titleKey(title: string): string {
+function titleKey(title: string): string {
   return title.replace(/\s+/g, '').toLowerCase();
 }
 

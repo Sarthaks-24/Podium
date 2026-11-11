@@ -6,6 +6,8 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
+
+	"github.com/Sarthaks-24/podium/internal/db"
 )
 
 // SlugTakenError says a restore found the slug used by another problem.
@@ -123,7 +125,7 @@ func (s *Service) Restore(ctx context.Context, id int64, slug string) (*Problem,
 		}
 		_, err = tx.ExecContext(ctx, "UPDATE problems SET archived = 0, archived_slug = '', slug = ?, updated_at = ? WHERE id = ? AND archived = 1",
 			want, s.now().UnixMilli(), id)
-		if isUnique(err) {
+		if db.IsUnique(err) {
 			return nil, slugTaken(ctx, tx, want)
 		}
 		if err != nil {

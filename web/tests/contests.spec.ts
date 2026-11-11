@@ -10,7 +10,9 @@
 // title and no horizontal overflow. The flows cover the student before,
 // during and after a contest, a result the server hides, the frozen board,
 // the editor, the console and the reveal.
+import AxeBuilder from '@axe-core/playwright';
 import { expect, test } from '@playwright/test';
+import { AXE_TAGS } from './axe';
 import { activate, hasFocus, tabTo } from './keyboard';
 import { shots, WIDTHS, THEMES, submission, hidden, mockApi, settle, SCREENS, freezeClock } from './mocks/contests';
 import { codeEditor, contestBanner, feedRows, saveStatus, toasts } from './locators';
@@ -889,6 +891,47 @@ test('the console feed filters waiting or judging and judge errors', async ({ pa
   await expect(feedRows(page)).toHaveCount(1);
   await expect(feedRows(page)).toContainText('Meera Iyer');
 });
+
+test('the picker lists an AI draft marked and not selectable, with the reason', async ({ page }) => {
+  const api = await mockApi(page, { who: 'organiser', phase: 'upcoming', aiDraftInBank: true });
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto('/admin/contests/4');
+  const picker = page.getByLabel('Add a validated problem');
+  const draft = picker.locator('option', { hasText: 'Greedy coins' });
+  await expect(draft).toHaveText('Greedy coins (AI draft, not selectable: read it and save it in the editor first)');
+  await expect(draft).toBeDisabled();
+  await expect(picker.locator('option', { hasText: 'Interval covering' })).toBeEnabled();
+  await expect(page.getByText('An AI draft cannot be added until you read it and save it in the editor.')).toBeVisible();
+  await expect(picker).toHaveAccessibleDescription('An AI draft cannot be added until you read it and save it in the editor.');
+  // Keyboard: the arrow keys skip the disabled option, so Add problem never sees it.
+  await picker.focus();
+  for (let i = 0; i < 4; i++) await page.keyboard.press('ArrowDown');
+  await expect(picker).not.toHaveValue('15');
+  expect(api.problemPuts).toEqual([]);
+});
+
+for (const theme of THEMES) {
+  test(`the picker with an AI draft holds at every width, ${theme} theme, keyboard only, axe clean`, async ({ page }) => {
+    await page.emulateMedia({ colorScheme: theme });
+    await mockApi(page, { who: 'organiser', phase: 'upcoming', aiDraftInBank: true });
+    await page.goto('/admin/contests/4');
+    const picker = page.getByLabel('Add a validated problem');
+    for (const width of WIDTHS) {
+      await page.setViewportSize({ width, height: width < 768 ? 812 : 900 });
+      await expect(picker).toBeVisible();
+      await tabTo(page, picker);
+      const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+      expect(overflow, `horizontal overflow at ${width}px`).toBeLessThanOrEqual(0);
+      const note = page.locator('#add-problem-note');
+      await expect(note).toBeVisible();
+      const box = await note.boundingBox();
+      expect(box!.x + box!.width, `the note leaves the page at ${width}px`).toBeLessThanOrEqual(width);
+      const axe = await new AxeBuilder({ page }).withTags(AXE_TAGS).analyze();
+      expect(axe.violations.map((v) => `${v.id}: ${v.nodes[0]?.target}`), `axe at ${width}px`).toEqual([]);
+      if (process.env.PODIUM_SHOTS) await page.screenshot({ path: `${process.env.PODIUM_SHOTS}/picker-${width}-${theme}.png`, fullPage: true });
+    }
+  });
+}
 
 test('a contest asks for a reason before it takes an AI problem nobody solved', async ({ page }) => {
   const api = await mockApi(page, { who: 'organiser', phase: 'upcoming', aiGate: true });

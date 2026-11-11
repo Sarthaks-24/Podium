@@ -45,7 +45,7 @@ export interface DiffLine {
 }
 
 /** Above this many line pairs left after the shared start and end, lineDiff gives up. */
-export const DIFF_LIMIT = 1_000_000;
+const DIFF_LIMIT = 1_000_000;
 
 /**
  * A line diff of two programs by longest common subsequence, after taking

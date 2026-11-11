@@ -52,7 +52,7 @@ const realPacing: Pacing = {
 };
 
 /** Sends a JSON body that should outlive the page. */
-export function sendKeepalive(url: string, body: string): void {
+function sendKeepalive(url: string, body: string): void {
   try {
     void fetch(url, {
       method: 'POST',

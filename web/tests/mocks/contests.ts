@@ -74,6 +74,8 @@ export interface Options {
   shownHere?: boolean;
   /** Bank problems whose hidden tests a contest showed in practice (D115, C1-015). */
   shownInPractice?: number[];
+  /** A validated problem still tagged "AI draft", which a contest refuses. */
+  aiDraftInBank?: boolean;
   /** A second live contest in the student's list, under the pinned one (C1-031). */
   secondLive?: boolean;
   /** PUT settings may publish (by default it refuses with a changed problem, P3). */
@@ -593,6 +595,9 @@ export async function mockApi(page: Page, options: Options = {}) {
             { id: 11, slug: 'a-plus-b', title: 'A plus B', difficulty: 'easy', tags: [], origin: 'import', archived: false, test_count: 6, points: 100, validated: true, validated_at: now, updated_at: now },
             { id: 12, slug: 'interval-covering', title: 'Interval covering', difficulty: 'medium', tags: [], origin: 'import', archived: false, test_count: 15, points: 100, validated: true, validated_at: now, updated_at: now },
             { id: 14, slug: 'draft-problem', title: 'Unfinished draft', difficulty: '', tags: [], origin: 'manual', archived: false, test_count: 0, points: 0, validated: false, validated_at: null, updated_at: now },
+            ...(options.aiDraftInBank
+              ? [{ id: 15, slug: 'greedy-coins', title: 'Greedy coins', difficulty: 'medium', tags: ['greedy', 'AI draft'], origin: 'ai', archived: false, test_count: 8, points: 100, validated: true, validated_at: now, updated_at: now }]
+              : []),
           ] as Json[]).map(shown),
         });
       }

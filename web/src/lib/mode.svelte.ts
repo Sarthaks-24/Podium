@@ -95,7 +95,7 @@ export function parseConfig(raw: unknown): SiteConfig {
 }
 
 /** Puts a parsed config into the shared state. */
-export function applyConfig(c: SiteConfig): void {
+function applyConfig(c: SiteConfig): void {
   runMode.mode = c.mode;
   runMode.contactEmail = c.contact_email;
   runMode.signInOpen = c.signin_open;

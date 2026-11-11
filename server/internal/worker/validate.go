@@ -35,6 +35,8 @@ type reporter struct {
 
 	mu   sync.Mutex
 	lost bool
+	// tm is the job's timing; see jobTiming for what is shared.
+	tm jobTiming
 }
 
 // send delivers a report, retrying a server that is briefly unavailable
@@ -46,6 +48,8 @@ func (r *reporter) send(ctx context.Context, rep judgeapi.Report) error {
 	if r.lost {
 		return ErrLease
 	}
+	start := time.Now()
+	defer func() { r.tm.reportWall.Add(int64(time.Since(start))) }()
 	rep.JobID, rep.Lease = r.jobID, r.lease
 	wait := time.Second
 	deadline := time.Now().Add(judgeapi.LeaseSeconds * time.Second * 3 / 4)
@@ -210,7 +214,7 @@ func (w *Worker) runValidation(ctx context.Context, box int, pl judgeapi.Validat
 			}
 			tr := testResult(t.Idx, role, res)
 			if res.Verdict == judge.OK {
-				if err := w.check(ctx, box, pl.Checker, programs[judgeapi.RoleChecker], in, out, answer, &tr); err != nil {
+				if err := w.check(ctx, box, pl.Checker, programs[judgeapi.RoleChecker], in, out, answer, &tr, &rep.tm); err != nil {
 					return err
 				}
 			} else if role == judgeapi.RoleBrute && res.Verdict == judge.TimeLimit {
@@ -227,12 +231,13 @@ func (w *Worker) runValidation(ctx context.Context, box int, pl judgeapi.Validat
 }
 
 // check judges an output with the problem's checker.
-func (w *Worker) check(ctx context.Context, box int, c judgeapi.Checker, custom *judge.Program, in, out, answer string, tr *judgeapi.TestResult) error {
+func (w *Worker) check(ctx context.Context, box int, c judgeapi.Checker, custom *judge.Program, in, out, answer string, tr *judgeapi.TestResult, tm *jobTiming) error {
 	if c.Type == string(judge.CheckCustom) {
 		res, err := w.Runner.RunChecker(ctx, box, *custom, in, out, answer)
 		if err != nil {
 			return err
 		}
+		tm.checker(res)
 		tr.Verdict, tr.Message = string(res.Verdict), clip(res.Message, judgeapi.MaxMessage)
 		return nil
 	}

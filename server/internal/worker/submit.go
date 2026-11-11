@@ -29,6 +29,7 @@ func (w *Worker) startJob(ctx context.Context, c *judgeapi.Claim, payload any) (
 		return nil, "", nil, err
 	}
 	rep = &reporter{client: w.Client, jobID: c.JobID, lease: c.Lease}
+	rep.tm = jobTiming{kind: c.Kind, started: time.Now()}
 	hbCtx, stop := context.WithCancel(ctx)
 	go rep.heartbeat(hbCtx)
 	return rep, work, func() {
@@ -41,6 +42,14 @@ func (w *Worker) startJob(ctx context.Context, c *judgeapi.Claim, payload any) (
 		w.Cache.Release(c.JobID)
 		w.Cache.Evict()
 	}, nil
+}
+
+// logTiming writes the timing line of a finished submit or run job.
+func (w *Worker) logTiming(c *judgeapi.Claim, rep *reporter) {
+	if c.Kind != judgeapi.KindSubmit && c.Kind != judgeapi.KindRun {
+		return
+	}
+	rep.tm.log(w.Log, c.JobID, time.Since(rep.tm.started))
 }
 
 // hold and held keep the compile-cache releases of a running job.
@@ -68,6 +77,7 @@ func (w *Worker) held(jobID int64) []func() {
 
 // finish sends the closing report, or a fatal one when the run broke.
 func (w *Worker) finish(ctx context.Context, c *judgeapi.Claim, rep *reporter, err error) error {
+	defer w.logTiming(c, rep)
 	if errors.Is(err, ErrLease) || ctx.Err() != nil {
 		return err
 	}
@@ -94,6 +104,7 @@ func (w *Worker) compile(ctx context.Context, box int, lease Lease, rep *reporte
 		return nil, false, err
 	}
 	*held = append(*held, release)
+	rep.tm.compile(res)
 	verdict := string(judge.OK)
 	if res.Verdict != judge.OK {
 		verdict = string(judge.CompileError)
@@ -128,6 +139,7 @@ func (w *Worker) submit(ctx context.Context, box int, c *judgeapi.Claim) error {
 		return err
 	}
 	defer done()
+	rep.tm.lane, rep.tm.language = box, pl.Program.Language
 	return w.finish(ctx, c, rep, w.runSubmit(ctx, box, Lease{c.JobID, c.Lease}, rep, work, pl, w.hold(c.JobID)))
 }
 
@@ -166,9 +178,10 @@ func (w *Worker) runSubmit(ctx context.Context, box int, lease Lease, rep *repor
 			if err != nil {
 				return err
 			}
+			rep.tm.test(res, limit)
 			tr = testResult(t.Idx, judgeapi.RoleProgram, res)
 			if res.Verdict == judge.OK {
-				if err := w.check(ctx, box, pl.Checker, checker, in, out, answer, &tr); err != nil {
+				if err := w.check(ctx, box, pl.Checker, checker, in, out, answer, &tr, &rep.tm); err != nil {
 					return err
 				}
 			}
@@ -232,6 +245,7 @@ func (w *Worker) run(ctx context.Context, box int, c *judgeapi.Claim) error {
 		return err
 	}
 	defer done()
+	rep.tm.lane, rep.tm.language = box, pl.Program.Language
 	return w.finish(ctx, c, rep, w.runRun(ctx, box, Lease{c.JobID, c.Lease}, rep, work, pl, w.hold(c.JobID)))
 }
 
@@ -272,13 +286,14 @@ func (w *Worker) runRun(ctx context.Context, box int, lease Lease, rep *reporter
 		if err != nil {
 			return err
 		}
+		rep.tm.test(res, limit)
 		tr := testResult(input.Idx, judgeapi.RoleProgram, res)
 		if res.Verdict == judge.OK && input.ExpectedSHA != "" {
 			answer, err := w.Cache.Path(ctx, lease, input.ExpectedSHA)
 			if err != nil {
 				return err
 			}
-			if err := w.check(ctx, box, pl.Checker, checker, in, out, answer, &tr); err != nil {
+			if err := w.check(ctx, box, pl.Checker, checker, in, out, answer, &tr, &rep.tm); err != nil {
 				return err
 			}
 		}

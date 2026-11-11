@@ -17,7 +17,7 @@ sudo ./install.sh
 
 | Step | What it does |
 |---|---|
-| `packages` | g++, OpenJDK 21, Python 3, Node 22 (NodeSource repository), sqlite3, jq |
+| `packages` | g++, OpenJDK 21, Python 3, Node 22 (NodeSource repository), sqlite3, jq. Every apt signing key (NodeSource, isolate, Caddy) must have the fingerprint written into `install.sh`, or the key is removed and the install stops before apt can trust it. If a repository rotates its key, check the new fingerprint on that project's own site before changing it in `add_repo`. |
 | `isolate` | isolate from its upstream apt repository; mounts its box root `/var/lib/isolate` on a 1200 MB tmpfs (so files a program writes count against its memory limit); caps all sandboxes at 1100 MB through `isolate.slice`; enables `isolate.service`; makes the tuning below survive a reboot; runs `isolate-check-environment` |
 | `testlib` | `testlib.h` (release 0.9.41) into `/usr/local/include` for custom checkers. Downloaded from GitHub at a pinned commit and refused unless its SHA-256 matches the one in the script. Skipped when the installed file already matches. |
 | `users` | system users `podium`, `judge` and `podium-backup` (Litestream and the heartbeat, in group podium; D116); adds `judge` to group `isolate` (the isolate binary is executable only by that group) |
@@ -561,6 +561,25 @@ Set up and prove it once:
 
 `podium-check restore-proof` restores the bucket's newest database into a scratch folder with `litestream restore` and runs `podium-server check -hash` on it against the live test files. Run it by hand once a term and write down how long it took (V3-10); `--corrupt` overwrites the scratch copy's schema page before the check, so it must alert.
 
+## Judge timing line
+
+For every submission and every Run the judge writes one line to `journalctl -u podium-judge` when the job ends, with the message `job timing`. It changes nothing about how a job is judged; it says where the time went. The fields, all times in milliseconds:
+
+| Field | Meaning |
+|---|---|
+| `job_id`, `kind`, `language`, `lane` | the job, `submit` or `run`, the language id, and the lane's box number |
+| `total_ms` | from the claim to the end of the final report |
+| `compiles`, `compiles_cached` | compiles this job needed (the program, and a custom checker) and how many came from the compile cache |
+| `compile_wall_ms` | wall time of the compiles that ran; a cache hit adds nothing |
+| `lock_wait_ms` | time spent waiting for the lock that lets one g++, javac or java run at a time |
+| `setup_ms`, `cleanup_ms` | box set-up and clean-up, summed over every compile and test of the job |
+| `tests`, `tests_wall_ms` | tests the student's program ran, and their summed wall time |
+| `slowest_cpu_ms`, `slowest_wall_ms`, `slowest_limit_ms` | the test with the most CPU time: its CPU, its wall time, and the problem's time limit before the language factor |
+| `checker_runs`, `checker_wall_ms` | custom checker runs and their wall time |
+| `report_ms` | time spent sending reports and heartbeats to the server |
+
+Not on the line, because the judge does not know them: how long the job queued, and its verdict. Validation and generation jobs write no timing line.
+
 ## Metrics
 
 `GET /api/admin/metrics` (organisers and above) answers what to watch during a contest, from two indexed queries and in-memory counters, so polling it every few seconds costs nothing noticeable. The route is in `docs/API.md`.
@@ -686,8 +705,8 @@ From Windows, `tools/deploy.sh HOST` (or `make deploy HOST=user@vm`) does all of
 1. **Release files, path and configuration names**: every file must match `SHA256SUMS`; the release must be built for this machine's processor; the installed version (from `/usr/local/lib/podium/MANIFEST`) must be at least the new release's `upgrades_from` and not newer than the new release (a downgrade is a rollback). An upgrade that stopped half-way is refused too: when the installed `podium-server` is not the binary `MANIFEST` names (the start failed after the install), or when `previous/MANIFEST` says this same release was already installed by an upgrade, a rerun would put the new binaries in `previous/` and lose the release to roll back to, so it stops before changing anything and names `sudo /usr/local/lib/podium/install.sh rollback`. Roll back first, fix the cause, then upgrade again. Then every variable the new example files list must be named in the matching `/etc/podium/*.env`. A missing required one stops the upgrade and is named with its file; a missing optional one is listed and keeps its default. Names only, never values.
 2. **Judge drain**: `systemctl stop podium-judge`, graceful (see "Stopping the judge"): running jobs finish and report.
 3. **Backup**: `podium-backup` runs now; the upgrade stops (and starts the judge again) unless a new local backup folder appeared.
-4. **Keep the running release**: binaries, units and `MANIFEST` go to `/usr/local/lib/podium/previous/`, with the applied migrations, the backup folder and the time.
-5. **Install**: binaries, units, scripts, Litestream configuration, backup and alert files of the new release.
+4. **Keep the running release**: binaries, units, the sandbox slice drop-in (`isolate.slice.d/podium.conf`) and `MANIFEST` go to `/usr/local/lib/podium/previous/`, with the applied migrations, the backup folder and the time.
+5. **Install**: binaries, units, the sandbox slice drop-in, scripts, Litestream configuration, backup and alert files of the new release. Before v2.1.0 an upgrade did not install the slice drop-in, so a change to it reached a VM only on a fresh install; `tools/install-test.sh` now proves an upgrade and a rollback carry it.
 6. **Start**: the server (migrations run now), wait up to 60 s for `/healthz`, then the judge; keep the release's `MANIFEST` as `/usr/local/lib/podium/MANIFEST`, with the install time, the binaries' hashes and the applied migrations added. If the judge's protocol differs from the server's (a half-done upgrade), the judge stops with "judge protocol N needed, this judge speaks M: install the same release on both" in `journalctl -u podium-judge`, and does not restart until you install one release on both.
 7. **Verify**: `install.sh verify`, then it prints the backup folder and the rollback command.
 
@@ -773,7 +792,7 @@ After an update of any of them: `sudo systemctl restart podium-judge` (it report
 
 | Case | What happens |
 |---|---|
-| Same schema (the upgrade applied no migration) | stop the judge (gracefully) and the server, put the previous binaries and units back, start, wait for `/healthz`, verify |
+| Same schema (the upgrade applied no migration) | stop the judge (gracefully) and the server, put the previous binaries, units and sandbox slice drop-in back (a release that predates the kept drop-in leaves the current one in place), start, wait for `/healthz`, verify |
 | Newer schema (the upgrade applied a migration the previous server does not know, so it would refuse to start) | it names the backup taken just before the upgrade and what is lost: everything written since that backup, with the count of submissions and runs, plus sign-ins, drafts, clarifications and settings. It also counts the accounts erased with `podium-server forget-user` since that backup: the restore brings their data back, so after the rollback it writes the forget-user commands to run again to `/var/tmp/podium-rollback-forget-<time>.<random>.txt` (root only, since it holds addresses) and prints the name. You type `ROLLBACK` to go on. The backup is restored into a scratch folder and checked by the previous binary; the current database folder is kept as `db.before-rollback-<time>` (the nightly backup deletes it after `PODIUM_BACKUP_KEEP_DAYS`, 14 by default); the backup goes in place (folder group podium, mode 2770, files 660, so Litestream can write), missing test files are copied back, the previous binaries start, Litestream starts a new history |
 
 Both cases are rehearsed on the VM before the first contest and before each schema-changing release (`docs/RUNBOOK.md`, "Proving the safety net"), with builds named so they never share a name with a real release (for example `v3.0.90` installed, `v3.0.91` with the same schema, `v3.0.92` with one extra migration file that is never committed). The new-schema build is made with `make package VERSION=v3.0.92 UPGRADES_FROM=v3.0.90`: `package` is `release` without `make check`, whose migration tests list the real migrations and fail on that tree by design. Not yet proven on the VM: the drill has not run.

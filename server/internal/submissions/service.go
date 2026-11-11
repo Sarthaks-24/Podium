@@ -14,6 +14,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/Sarthaks-24/podium/internal/db"
 	"github.com/Sarthaks-24/podium/internal/events"
 	"github.com/Sarthaks-24/podium/internal/jobs"
 	"github.com/Sarthaks-24/podium/internal/judge"
@@ -391,7 +392,7 @@ func (s *Service) SaveDraft(ctx context.Context, problemID, userID int64, sc Sco
 	_, err = tx.ExecContext(ctx, `INSERT INTO drafts (user_id, problem_id, contest_id, language, source, updated_at) VALUES (?, ?, ?, ?, ?, ?)
 		ON CONFLICT (user_id, problem_id, contest_id) DO UPDATE SET language = excluded.language, source = excluded.source, updated_at = excluded.updated_at`,
 		userID, problemID, sc.ContestID, language, source, s.now().UnixMilli())
-	if err != nil && strings.Contains(err.Error(), "FOREIGN KEY") {
+	if db.IsForeignKey(err) {
 		return ErrNotFound
 	}
 	if err != nil {

@@ -3,6 +3,8 @@ package problems
 import (
 	"reflect"
 	"testing"
+
+	"github.com/Sarthaks-24/podium/internal/judge"
 )
 
 // A zip of six inputs without outputs and no subtasks yet read as twelve
@@ -35,5 +37,21 @@ func TestProblemsGroupTestsInOneLine(t *testing.T) {
 	}
 	if got := p.Problems(); !reflect.DeepEqual(got, want) {
 		t.Errorf("got %q\nwant %q", got, want)
+	}
+}
+
+// S3: a problem may not ask for more memory than the judge can reserve, so
+// a save above the budget is refused and the cap equals the default budget.
+func TestMemoryLimitCapIsTheJudgeBudget(t *testing.T) {
+	if MaxMemoryLimitMB > judge.DefaultMemoryBudgetMB {
+		t.Fatalf("MaxMemoryLimitMB %d is above the judge's default budget %d", MaxMemoryLimitMB, judge.DefaultMemoryBudgetMB)
+	}
+	p := &Problem{Title: "t", Slug: "t", TimeLimitMS: 1000, MemoryLimitMB: judge.DefaultMemoryBudgetMB}
+	if msg := checkFields(p)["memory_limit_mb"]; msg != "" {
+		t.Errorf("the budget itself was refused: %s", msg)
+	}
+	p.MemoryLimitMB = judge.DefaultMemoryBudgetMB + 1
+	if msg := checkFields(p)["memory_limit_mb"]; msg != "Set a memory limit from 16 to 1024 MB." {
+		t.Errorf("a memory limit above the budget gave %q", msg)
 	}
 }

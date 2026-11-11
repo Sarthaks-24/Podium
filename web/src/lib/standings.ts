@@ -56,7 +56,7 @@ export function cellFor(row: Pick<StandingsRow, 'cells'>, label: string): Standi
 }
 
 /** True when a cell was attempted. */
-export function isTried(cell: StandingsCell | undefined): boolean {
+function isTried(cell: StandingsCell | undefined): boolean {
   if (!cell) return false;
   if (typeof cell.tried === 'boolean') return cell.tried || cell.pending > 0;
   return cell.score > 0 || cell.pending > 0;

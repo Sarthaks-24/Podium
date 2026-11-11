@@ -37,7 +37,7 @@ interface Pattern {
 const num = (s: string | undefined): number | null => (s === undefined ? null : Number(s));
 
 /** Only this much of each line is searched for locations. */
-export const MAX_LINE = 2000;
+const MAX_LINE = 2000;
 
 const CPP: Pattern = {
   // Headers such as /usr/include/c++/12/bits/stl_vector.h are not the

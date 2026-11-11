@@ -10,6 +10,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/Sarthaks-24/podium/internal/db"
 	"github.com/Sarthaks-24/podium/internal/problems"
 )
 
@@ -79,7 +80,7 @@ func (s *Service) Clone(ctx context.Context, id int64, slug, title string, start
 			e.FreezeMinutes, e.PracticeAfterEnd, e.MinGapS, e.MaxPerProblem, string(langs), e.HonourText, e.HoldReveal,
 			e.Exam.FullScreen, e.Exam.CountFocus, e.Exam.BlockPaste, e.Exam.BlockCopy,
 			nullID(by.ID), now, now, e.Audience, e.ContactEmail).Scan(&cloneID)
-		if isUniqueSlug(err) {
+		if db.IsUnique(err) {
 			continue
 		}
 		if err != nil {
@@ -367,7 +368,7 @@ func (s *Service) Announce(ctx context.Context, c *Contest, body string, by int6
 	a := Announcement{BodyMD: body, CreatedAt: s.now().UnixMilli()}
 	err := s.DB.QueryRowContext(ctx, `INSERT INTO announcements (contest_id, body_md, created_by, created_at, client_key) VALUES (?, ?, ?, ?, ?) RETURNING id`,
 		c.ID, body, nullID(by), a.CreatedAt, key).Scan(&a.ID)
-	if isRepeat(err, "announcements_by_key") {
+	if db.IsUnique(err) {
 		return repeat()
 	}
 	if err != nil {
@@ -453,7 +454,7 @@ func (s *Service) Ask(ctx context.Context, c *Contest, userID int64, label *stri
 	err := s.DB.QueryRowContext(ctx, `INSERT INTO clarifications (contest_id, problem_label, asked_by, question, created_at, client_key)
 		SELECT ?, ?, ?, ?, ?, ? WHERE (SELECT count(*) FROM clarifications WHERE contest_id = ? AND asked_by = ? AND answered_at IS NULL) < ?
 		RETURNING id`, c.ID, lbl, userID, question, cl.CreatedAt, key, c.ID, userID, maxOpenQuestions).Scan(&cl.ID)
-	if isRepeat(err, "clarifications_by_key") {
+	if db.IsUnique(err) {
 		return repeat()
 	}
 	if errors.Is(err, sql.ErrNoRows) {

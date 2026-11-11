@@ -238,7 +238,7 @@ export function isBad(verdict: string): boolean {
 }
 
 /** Every test in judging order: samples first, then each subtask's tests. */
-export function testsInOrder(s: Pick<Submission, 'samples' | 'subtasks'>): (TestResult & { sample: boolean })[] {
+function testsInOrder(s: Pick<Submission, 'samples' | 'subtasks'>): (TestResult & { sample: boolean })[] {
   return [...s.samples.map((t) => ({ ...t, sample: true })), ...s.subtasks.flatMap((st) => st.tests.map((t) => ({ ...t, sample: false })))];
 }
 
@@ -277,7 +277,7 @@ export function waitingText(x: { state: JudgeState; queue_position?: number | nu
  * button's word: "Submitted, 3rd in queue",
  * "Submitted, waiting for the judge", "Submitted, judging".
  */
-export function submittedText(x: { state: JudgeState; queue_position?: number | null }): string {
+function submittedText(x: { state: JudgeState; queue_position?: number | null }): string {
   const rest = waitingText(x);
   return `Submitted, ${rest.charAt(0).toLowerCase()}${rest.slice(1)}`;
 }

@@ -45,6 +45,9 @@ MANIFEST=$LIB/MANIFEST
 HOLD_PACKAGES=(build-essential gcc g++ cpp gcc-13 g++-13 cpp-13 libstdc++-13-dev libgcc-13-dev
                "$JAVA_PKG" openjdk-21-jre-headless python3 python3.12 python3.12-minimal libpython3.12-stdlib
                nodejs isolate)
+# The sandbox slice drop-in is installed, kept for rollback and restored
+# with the units; the path is relative to /etc/systemd/system.
+SLICE_DROPIN=isolate.slice.d/podium.conf
 UNITS=(podium-server.service podium-judge.service podium-litestream.service podium-backup.service
        podium-backup.timer podium-alert@.service podium-check.service podium-check.timer)
 
@@ -78,14 +81,25 @@ check_arch "$HERE/MANIFEST" "$(dpkg --print-architecture)"
 
 export DEBIAN_FRONTEND=noninteractive
 
-# add_repo NAME KEY_URL "DEB_LINE"
+# add_repo NAME KEY_URL FINGERPRINT "DEB_LINE": the repository's signing
+# key must be exactly one key with the expected fingerprint, or the key is
+# removed and the install stops before apt can trust it. The fingerprints
+# at the call sites are those of the keys published on 2026-11-11.
+APT_KEYRINGS=/etc/apt/keyrings
+APT_SOURCES=/etc/apt/sources.list.d
 add_repo() {
-  local name=$1 key_url=$2 line=$3
-  install -d -m 755 /etc/apt/keyrings
-  if [[ ! -s /etc/apt/keyrings/$name.asc ]]; then
-    curl -fsSL "$key_url" -o "/etc/apt/keyrings/$name.asc"
+  local name=$1 key_url=$2 want=$3 line=$4 key got
+  key=$APT_KEYRINGS/$name.asc
+  install -d -m 755 "$APT_KEYRINGS"
+  if [[ ! -s $key ]]; then
+    curl -fsSL "$key_url" -o "$key"
   fi
-  echo "$line" > "/etc/apt/sources.list.d/$name.list"
+  got=$(gpg --show-keys --with-colons "$key" 2>/dev/null | awk -F: '/^pub:/ { p = 1; next } /^sub:/ { p = 0 } /^fpr:/ && p { print $10; p = 0 }' | paste -sd, -) || got=
+  if [[ $got != "$want" ]]; then
+    rm -f "$key"
+    die "the $name signing key from $key_url has fingerprint ${got:-none}, not the expected $want; it was removed and nothing was trusted. Check the repository's own site before changing the expected fingerprint in install.sh"
+  fi
+  echo "$line" > "$APT_SOURCES/$name.list"
 }
 
 # envval FILE NAME: a variable's value from an env file (last assignment,
@@ -127,7 +141,7 @@ step_packages() {
   log "packages: compilers, runtimes, tools"
   apt-get update -q
   apt-get install -y -q ca-certificates curl gnupg sqlite3 jq
-  add_repo nodesource https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key \
+  add_repo nodesource https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key 6F71F525282841EEDAF851B42F59B5F99B1BE0B4 \
     "deb [signed-by=/etc/apt/keyrings/nodesource.asc] https://deb.nodesource.com/node_${NODE_MAJOR}.x nodistro main"
   apt-get update -q
   # g++ with static libstdc++ for -static builds, Java 21, Python 3.12, Node 22.
@@ -171,7 +185,7 @@ step_isolate() {
     log "isolate: sandbox from the upstream apt repository"
     # Upstream packages are signed and receive security fixes through apt
     # (decision D21). The suite follows the Ubuntu codename.
-    add_repo isolate https://www.ucw.cz/isolate/debian/signing-key.asc \
+    add_repo isolate https://www.ucw.cz/isolate/debian/signing-key.asc F8CE984BFF6610CB898F821FB7F7E53D1D3A150D \
       "deb [arch=amd64 signed-by=/etc/apt/keyrings/isolate.asc] http://www.ucw.cz/isolate/debian/ ${VERSION_CODENAME}-isolate main"
     apt-get update -q
     apt-get install -y -q isolate
@@ -347,6 +361,8 @@ install_app_files() {
   done
   install -m 644 "$HERE/systemd/podium-server.service" "$HERE/systemd/podium-judge.service" \
     "$HERE/systemd/podium-alert@.service" /etc/systemd/system/
+  install -d -m 755 "/etc/systemd/system/$(dirname "$SLICE_DROPIN")"
+  install -m 644 "$HERE/systemd/$SLICE_DROPIN" "/etc/systemd/system/$SLICE_DROPIN"
   install -d -m 755 "$LIB"
   install -m 755 "$HERE/reset-boxes" "$LIB/reset-boxes"
   install -m 755 "$HERE/backup/podium-alert" "$LIB/podium-alert"
@@ -542,7 +558,7 @@ step_caddy() {
     echo "caddy skipped: no certificate is requested until DNS points here"
     return 0
   fi
-  add_repo caddy https://dl.cloudsmith.io/public/caddy/stable/gpg.key \
+  add_repo caddy https://dl.cloudsmith.io/public/caddy/stable/gpg.key 65760C51EDEA2017CEA2CA15155B6D79CA56EA34 \
     "deb [signed-by=/etc/apt/keyrings/caddy.asc] https://dl.cloudsmith.io/public/caddy/stable/deb/debian any-version main"
   apt-get update -q
   apt-get install -y -q caddy
@@ -762,6 +778,20 @@ env_names_check() {
   [[ -z $missing_req ]] || die "this release needs variables the VM does not have:$missing_req. Add each with sudoedit (docs/OPERATIONS.md, Configuration), then run the upgrade again"
 }
 
+# keep_previous_units DIR: copies the installed units and the slice
+# drop-in into DIR, for rollback.
+keep_previous_units() {
+  local u
+  for u in "${UNITS[@]}"; do
+    [[ -f /etc/systemd/system/$u ]] && cp -a "/etc/systemd/system/$u" "$1/"
+  done
+  if [[ -f /etc/systemd/system/$SLICE_DROPIN ]]; then
+    install -d -m 755 "$1/$(dirname "$SLICE_DROPIN")"
+    cp -a "/etc/systemd/system/$SLICE_DROPIN" "$1/$SLICE_DROPIN"
+  fi
+  return 0
+}
+
 cmd_upgrade() {
   [[ $# -eq 0 ]] || die "upgrade: unknown argument '$1' (usage: sudo ./install.sh upgrade)"
   [[ -x /usr/local/bin/podium-server ]] || die "no podium installed here; run sudo ./install.sh for a fresh install"
@@ -800,10 +830,7 @@ cmd_upgrade() {
   rm -rf "$PREVIOUS.new"
   install -d -m 755 "$PREVIOUS.new/bin" "$PREVIOUS.new/systemd"
   cp -a /usr/local/bin/podium-server /usr/local/bin/podium-judge "$PREVIOUS.new/bin/"
-  local u
-  for u in "${UNITS[@]}"; do
-    [[ -f /etc/systemd/system/$u ]] && cp -a "/etc/systemd/system/$u" "$PREVIOUS.new/systemd/"
-  done
+  keep_previous_units "$PREVIOUS.new/systemd"
   if [[ -f $MANIFEST ]]; then cp "$MANIFEST" "$PREVIOUS.new/MANIFEST"; else
     echo "release=unknown (installed before MANIFEST existed)" > "$PREVIOUS.new/MANIFEST"
   fi
@@ -971,12 +998,17 @@ EOF
   echo "rolled back to $prev_release"
 }
 
+# A release kept without the slice drop-in leaves the current one in place: a fresh install
+# always installs it (step_isolate), so no VM is expected to lack it.
 restore_previous_files() {
   install -m 755 "$PREVIOUS/bin/podium-server" "$PREVIOUS/bin/podium-judge" /usr/local/bin/
   local u
   for u in "$PREVIOUS"/systemd/*; do
     [[ -f $u ]] && install -m 644 "$u" /etc/systemd/system/
   done
+  if [[ -f $PREVIOUS/systemd/$SLICE_DROPIN ]]; then
+    install -m 644 "$PREVIOUS/systemd/$SLICE_DROPIN" "/etc/systemd/system/$SLICE_DROPIN"
+  fi
   systemctl daemon-reload
   # Litestream's state belongs to the user its restored unit runs as
   # (podium before v1.1.0, podium-backup since).

@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"regexp"
 	"strconv"
+
+	"github.com/Sarthaks-24/podium/internal/db"
 )
 
 // SlugTakenError says a restore found the slug used by another contest.
@@ -127,7 +129,7 @@ func (s *Service) Restore(ctx context.Context, id int64, slug string, by Actor) 
 			if err == nil {
 				return map[string]any{"slug": want}, true, nil
 			}
-			if !isUniqueSlug(err) {
+			if !db.IsUnique(err) {
 				return nil, false, err
 			}
 		}

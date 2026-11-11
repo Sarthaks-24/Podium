@@ -43,7 +43,7 @@ export interface EventSourceLike {
 export type StreamMode = 'live' | 'polling' | 'connecting' | 'replaced';
 
 /** The event the server sends a stream it is about to drop for a newer one. */
-export const REPLACED_EVENT = 'replaced';
+const REPLACED_EVENT = 'replaced';
 
 export interface StreamOptions {
   url: string;
