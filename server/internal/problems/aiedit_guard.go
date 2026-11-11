@@ -8,7 +8,6 @@ package problems
 import (
 	"bytes"
 	"reflect"
-	"slices"
 
 	"go.yaml.in/yaml/v3"
 )
@@ -55,31 +54,14 @@ func keptLabel(key string) string {
 	return keptLabels[9]
 }
 
-// namesFile lists the keys whose value is a file name, or a list of them.
-var namesFile = []string{"reference", "brute", "validator", "generator", "starters", "locked_top", "locked_bottom"}
-
-// replyDealtWith reports whether the reply sent the file a key names or, for
-// the generator keys, tests.yaml: then the model dealt with the key itself and
-// the parser judges the reply as sent.
-func replyDealtWith(key string, value *yaml.Node, sent map[string][]byte) bool {
-	if _, ok := sent[packPlanFile]; ok && (key == "generator" || key == "generator_args") {
-		return true
-	}
-	if !slices.Contains(namesFile, key) {
-		return false
-	}
-	switch value.Kind {
-	case yaml.ScalarNode:
-		_, ok := sent[value.Value]
-		return ok
-	case yaml.SequenceNode:
-		for _, n := range value.Content {
-			if _, ok := sent[n.Value]; ok {
-				return true
-			}
-		}
-	}
-	return false
+// replyDealtWith reports whether the reply replaced the plan: a reply that
+// sends tests.yaml has dealt with the generator keys itself, so they are not
+// put back and the parser reads the reply as sent. A key that names a file is
+// always put back, even when the reply sends that file: the edited file is
+// then used under the restored key.
+func replyDealtWith(key string, sent map[string][]byte) bool {
+	_, ok := sent[packPlanFile]
+	return ok && (key == "generator" || key == "generator_args")
 }
 
 func mappingOf(raw []byte) (*yaml.Node, *yaml.Node) {
@@ -105,7 +87,7 @@ func restoreOmitted(current, reply []byte, sent map[string][]byte) ([]byte, []st
 	var keys []string
 	for i := 0; i+1 < len(cur.Content); i += 2 {
 		k, v := cur.Content[i], cur.Content[i+1]
-		if mapValue(rep, k.Value) == nil && !replyDealtWith(k.Value, v, sent) {
+		if mapValue(rep, k.Value) == nil && !replyDealtWith(k.Value, sent) {
 			rep.Content = append(rep.Content, k, v)
 			keys = append(keys, k.Value)
 		}
@@ -117,7 +99,7 @@ func restoreOmitted(current, reply []byte, sent map[string][]byte) ([]byte, []st
 			if st.Kind != yaml.MappingNode || rs.Kind != yaml.MappingNode {
 				continue
 			}
-			if args := mapValue(st, "generator_args"); args != nil && mapValue(rs, "generator_args") == nil && !replyDealtWith("generator_args", args, sent) {
+			if args := mapValue(st, "generator_args"); args != nil && mapValue(rs, "generator_args") == nil && !replyDealtWith("generator_args", sent) {
 				rs.Content = append(rs.Content, &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: "generator_args"}, args)
 				keys = append(keys, "generator_args")
 			}

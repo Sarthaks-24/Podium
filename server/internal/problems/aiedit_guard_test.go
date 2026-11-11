@@ -61,8 +61,8 @@ func TestRestoreOmittedGeneratorArgsOfEachSubtask(t *testing.T) {
 	}
 }
 
-// A reply that sends the file a key names, or tests.yaml for the generator
-// keys, is judged as sent.
+// A reply that sends tests.yaml has dealt with the generator keys; sending a
+// file a key names does not.
 func TestRestoreOmittedSkipsKeysTheReplyDealtWith(t *testing.T) {
 	snapYAML := []byte("title: T\ngenerator: gen.py\nbrute: brute.py\nsubtasks:\n  - points: 1\n    tests: 1\n    generator_args: [n=1]\n")
 	reply := []byte("title: T\nsubtasks:\n  - points: 1\n    tests: 1\n")
@@ -73,8 +73,8 @@ func TestRestoreOmittedSkipsKeysTheReplyDealtWith(t *testing.T) {
 	}{
 		{"nothing sent", nil, []string{"the test generator", "the generator settings of each subtask", "the brute force"}},
 		{"tests.yaml", map[string][]byte{"tests.yaml": nil}, []string{"the brute force"}},
-		{"generator file", map[string][]byte{"gen.py": nil}, []string{"the generator settings of each subtask", "the brute force"}},
-		{"brute file", map[string][]byte{"brute.py": nil}, []string{"the test generator", "the generator settings of each subtask"}},
+		{"generator file", map[string][]byte{"gen.py": nil}, []string{"the test generator", "the generator settings of each subtask", "the brute force"}},
+		{"brute file", map[string][]byte{"brute.py": nil}, []string{"the test generator", "the generator settings of each subtask", "the brute force"}},
 	} {
 		_, kept := restoreOmitted(snapYAML, reply, c.sent)
 		if fmt.Sprint(kept) != fmt.Sprint(c.kept) {
@@ -340,14 +340,52 @@ func TestMergeEditTakingAnOfferedLanguageOutIsTheParsersCall(t *testing.T) {
 
 func TestRestoreOmittedStartersLockedCodeAndOddSubtasks(t *testing.T) {
 	snapYAML := []byte("title: T\nstarters: [s.py]\nlocked_top: [top.py]\nsubtasks:\n  - points: 1\n    tests: 1\n    generator_args: [n=1]\n")
-	// The reply sends top.py, so locked_top is judged as sent; starters come back.
+	// Sending top.py does not stop locked_top from coming back with the starters.
 	_, kept := restoreOmitted(snapYAML, []byte("title: T\nsubtasks:\n  - points: 1\n    tests: 1\n    generator_args: [n=1]\n"), map[string][]byte{"top.py": nil})
-	if fmt.Sprint(kept) != "[the starting code]" {
+	if fmt.Sprint(kept) != "[the starting code the locked code]" {
 		t.Errorf("kept %v", kept)
 	}
 	// A subtask that is not a mapping is left alone.
 	_, kept = restoreOmitted(snapYAML, []byte("title: T\nstarters: [s.py]\nlocked_top: [top.py]\nsubtasks:\n  - 5\n"), nil)
 	if len(kept) != 0 {
 		t.Errorf("kept %v", kept)
+	}
+}
+
+// A reply that omits a key that names a file and also sends an edited copy of
+// a file that key names must not lose the setting: it is restored and the
+// edited file is used under it.
+func TestMergeEditOmittedFileKeyWithItsFileSent(t *testing.T) {
+	s, p := editTestBank(t, "array-sum")
+	ctx := context.Background()
+	snap, _ := s.EditSnapshot(ctx, p.ID)
+	current := yamlOf(t, snap.Files["problem.yaml"])
+	for _, c := range []struct{ key, file string }{
+		{"validator", "validator.py"}, {"brute", "brute.py"}, {"starters", "starter.py"},
+		{"locked_top", "top.py"}, {"locked_bottom", "bottom.py"}, {"reference", "solution.cpp"},
+	} {
+		edited := string(snap.Files[c.file]) + "\n# edited\n"
+		merged, _, err := s.MergeEdit(ctx, snap, map[string][]byte{"problem.yaml": []byte(dropKey(string(snap.Files["problem.yaml"]), c.key)), c.file: []byte(edited)})
+		if err != nil {
+			t.Logf("%s: refused: %v", c.key, err)
+			t.Errorf("%s: the reply was refused instead of kept", c.key)
+			continue
+		}
+		got := yamlOf(t, merged["problem.yaml"])
+		if fmt.Sprint(got[c.key]) != fmt.Sprint(current[c.key]) || string(merged[c.file]) != edited {
+			t.Errorf("%s: setting %v want %v, edited file used %t", c.key, got[c.key], current[c.key], string(merged[c.file]) == edited)
+		}
+	}
+}
+
+// A file sent under a different name, with its own key left untouched, is
+// not a reason to restore anything.
+func TestRestoreOmittedFileKeyOtherNameSent(t *testing.T) {
+	snapYAML := []byte("title: T\nbrute: brute.py\nvalidator: v.py\n")
+	reply := []byte("title: T\nbrute: brute2.py\n")
+	out, kept := restoreOmitted(snapYAML, reply, map[string][]byte{"brute2.py": nil})
+	got := yamlOf(t, out)
+	if got["brute"] != "brute2.py" || got["validator"] != "v.py" || fmt.Sprint(kept) != "[the input validator]" {
+		t.Errorf("%v %v", got, kept)
 	}
 }

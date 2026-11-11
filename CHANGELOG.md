@@ -17,7 +17,7 @@ Not released yet. Each stage adds plain-English entries and known limits under i
 - The edit prompt now tells the model about `generator`, `generator_args`, `tests.yaml` and to keep every key it does not mean to change. The copy-paste pack prompt is unchanged.
 - Three provider messages are plainer ("The provider says too many requests were sent", no "category: content_filter", "not in the format Podium asked for" instead of "valid JSON in the requested schema").
 - New Close button on the Edit with AI panel; "Draft rejected" toast.
-- Known limits: Edit with AI cannot remove a setting by leaving it out of the reply (ask for the removal in the editor). A reply that leaves a key out but sends the file that key names is judged as sent. The link to Rewrite with AI in the refusal arrives with that feature.
+- Known limits: Edit with AI cannot remove a setting by leaving it out of the reply (ask for the removal in the editor). A reply that sends `tests.yaml` is the only case where the generator keys are not put back. The link to Rewrite with AI in the refusal arrives with that feature.
 
 ### v2.1.0 stage B: keep me signed in
 
