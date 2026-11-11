@@ -10,6 +10,7 @@
  * all read this one copy.
  */
 import { getJSON } from './api';
+import { NO_KEEP, type KeepConfig } from './keep';
 
 export type RunMode = 'testing' | 'dev' | 'production';
 
@@ -41,6 +42,8 @@ export interface SiteConfig {
   retention: RetentionPeriod[];
   /** The release's codename for the footer, "" on a plain build; never the version. */
   codename: string;
+  /** What the sign-in page's "Keep me signed in" tick needs (v2.1.0). */
+  keep: KeepConfig;
 }
 
 const EMPTY_ORG: Organisation = { name: '', contact_email: '', phone: '', privacy_contact: '' };
@@ -53,6 +56,7 @@ class ModeState {
   organisation = $state<Organisation>({ ...EMPTY_ORG });
   retention = $state<RetentionPeriod[]>([]);
   codename = $state('');
+  keep = $state<KeepConfig>({ ...NO_KEEP });
   /** "loading" until the first answer; "failed" when it could not be read. */
   status = $state<'loading' | 'ready' | 'failed'>('loading');
 }
@@ -91,6 +95,17 @@ export function parseConfig(raw: unknown): SiteConfig {
       }))
       .filter((r) => r.data !== '' && r.kept !== ''),
     codename: text(c.codename),
+    keep: parseKeep(c.keep_signed_in),
+  };
+}
+
+/** Reads the tick's setting defensively: absent or odd means no tick. */
+function parseKeep(raw: unknown): KeepConfig {
+  const k = (typeof raw === 'object' && raw !== null ? raw : {}) as Record<string, unknown>;
+  return {
+    offerTick: k.offer_tick === true,
+    days: typeof k.days === 'number' && Number.isInteger(k.days) && k.days >= 1 ? k.days : NO_KEEP.days,
+    untilSignOut: k.until_sign_out === true,
   };
 }
 
@@ -102,6 +117,7 @@ function applyConfig(c: SiteConfig): void {
   runMode.organisation = c.organisation;
   runMode.retention = c.retention;
   runMode.codename = c.codename;
+  runMode.keep = c.keep;
   runMode.status = 'ready';
 }
 

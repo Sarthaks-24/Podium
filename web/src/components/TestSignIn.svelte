@@ -2,16 +2,21 @@
   TestSignIn: the sign-in form used instead of "Continue with Google" when
   the server runs in testing mode. It asks for an email, an
   optional name and a role, posts them to /api/auth/test-signin, reloads the
-  session and goes to the page the visitor was heading for. Errors from the
-  server appear inline under the form. Props: next, the path to open after
+  session and goes to the page the visitor was heading for. When students are
+  set to "Each person chooses" the form also has the "Keep me signed in"
+  checkbox. Errors from the server appear inline under the form. Props: next, the path to open after
   signing in.
 -->
 <script lang="ts">
   import { ApiError, sendJSON } from '../lib/api';
   import { navigate } from '../lib/router.svelte';
+  import { keepHelp, KEEP_WARNING } from '../lib/keep';
+  import { runMode } from '../lib/mode.svelte';
   import { loadSession, type Role } from '../lib/session.svelte';
 
   let { next }: { next: string } = $props();
+  const keep = $derived(runMode.keep);
+  let remember = $state(false);
 
   let email = $state('');
   let name = $state('');
@@ -24,7 +29,7 @@
     busy = true;
     error = '';
     try {
-      const res = await sendJSON<{ next: string }>('POST', '/api/auth/test-signin', { email, name, role, next });
+      const res = await sendJSON<{ next: string }>('POST', '/api/auth/test-signin', { email, name, role, next, remember: remember && keep.offerTick });
       const failed = await loadSession();
       if (failed) throw failed;
       navigate(res.next || '/');
@@ -66,6 +71,12 @@
       <option value="owner">Owner</option>
     </select>
   </div>
+  {#if keep.offerTick}
+    <div class="keep">
+      <label class="choice"><input type="checkbox" bind:checked={remember} aria-describedby="test-keep-help" /> Keep me signed in</label>
+      <p id="test-keep-help" class="field-help">{keepHelp(keep.days, keep.untilSignOut)} {KEEP_WARNING}</p>
+    </div>
+  {/if}
   {#if error !== ''}
     <p id="test-error" class="field-error" role="alert">{error}</p>
   {/if}
@@ -80,5 +91,27 @@
     gap: var(--space-4);
     max-width: 24rem;
     margin-top: var(--space-5);
+  }
+
+  .keep {
+    display: grid;
+    gap: var(--space-1);
+  }
+
+  .choice {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+    min-height: var(--control-h);
+    width: fit-content;
+    font-weight: 500;
+    cursor: pointer;
+  }
+
+  .choice input {
+    width: var(--space-4);
+    height: var(--space-4);
+    margin: 0;
+    accent-color: var(--act);
   }
 </style>

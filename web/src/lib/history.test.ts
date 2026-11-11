@@ -67,6 +67,9 @@ describe('site audit (People History)', () => {
     );
     expect(siteAuditSummary(row('user_forgotten', { user_id: 7 }, ''))).toBe("Erased account 7 at the person's request");
     expect(siteAuditSummary(row('problem_deleted', { problem_id: 4, slug: 'two-sum' }, ''))).toBe('Deleted problem two-sum');
+    expect(siteAuditSummary(row('keep_signed_in_changed', { sessions_ended: 0 }, ''))).toBe('Changed who stays signed in');
+    expect(siteAuditSummary(row('keep_signed_in_changed', { sessions_ended: 2 }, ''))).toBe('Changed who stays signed in; 2 sessions ended');
+    expect(SITE_ACTIONS.some((a) => a.id === 'keep_signed_in_changed')).toBe(true);
     expect(SITE_ACTIONS.some((a) => a.id === 'problem_deleted')).toBe(true);
     // A later release may add actions; they show by name.
     expect(siteAuditSummary(row('something_new', {}, ''))).toBe('something_new');

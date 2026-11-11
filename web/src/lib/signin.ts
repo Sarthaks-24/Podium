@@ -73,7 +73,7 @@ export function safeNext(value: string | null): string {
   return value;
 }
 
-/** The link that starts Google sign-in and comes back to `next`. */
-export function startHref(next: string): string {
-  return `/api/auth/google/start?next=${encodeURIComponent(safeNext(next))}`;
+/** The link that starts Google sign-in and comes back to `next`; `remember` carries the "Keep me signed in" tick. */
+export function startHref(next: string, remember = false): string {
+  return `/api/auth/google/start?next=${encodeURIComponent(safeNext(next))}${remember ? '&remember=1' : ''}`;
 }

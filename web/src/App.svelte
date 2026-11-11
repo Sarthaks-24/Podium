@@ -27,6 +27,7 @@
   import { setTitle } from './lib/head';
   import { loadMode, runMode, telHref } from './lib/mode.svelte';
   import { forbiddenText, installLinkInterception, mainNav, matchRoute, mayOpen, navigate, router, type RouteName } from './lib/router.svelte';
+  import { KEEP_IGNORED_NOTICE, takeKeepNotice } from './lib/keep';
   import { loadSession, session, signOut, signOutGuard } from './lib/session.svelte';
   import { stopAllStreams } from './lib/stream';
   import { shell } from './lib/shell.svelte';
@@ -154,6 +155,7 @@
     const removeInterception = installLinkInterception();
     loadSession().then((err) => {
       if (err) showToast(err.message, 'error');
+      else if (session.status === 'signed-in' && takeKeepNotice()) showToast(KEEP_IGNORED_NOTICE);
     });
     void loadMode();
     return removeInterception;

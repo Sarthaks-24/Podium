@@ -13,7 +13,10 @@
   a click outside and tabbing out; the panel stays open behind a dialog it
   opened, so closing the dialog lands back on the item. Inline (inside the
   organiser's phone menu panel) the same items are listed in place, with no
-  second popover.
+  second popover. An organiser, admin or owner whose role the owner set to
+  "Each person chooses" also gets a "Keep me signed in on this device" switch
+  (PUT /api/me/keep-signed-in), with the same two help lines as the sign-in
+  page's tick.
 
   Props: `user` (the signed-in user), `inline`, and `onsignout`.
 -->
@@ -23,7 +26,9 @@
   import { errorText, sendJSON } from '../lib/api';
   import { dismissable } from '../lib/dismissable';
   import { roleLabel } from '../lib/format';
-  import { displayName, type User } from '../lib/session.svelte';
+  import { keepHelp, KEEP_WARNING } from '../lib/keep';
+  import { runMode } from '../lib/mode.svelte';
+  import { displayName, session, type User } from '../lib/session.svelte';
   import { shell } from '../lib/shell.svelte';
   import { showToast } from '../lib/toast.svelte';
   import Icon from './Icon.svelte';
@@ -40,7 +45,28 @@
   let button: HTMLButtonElement | undefined = $state();
 
   const panelId = 'account-panel';
+  // The popover and the phone menu each render one copy, so the ids differ.
+  const helpId = $derived(inline ? 'account-keep-help-inline' : 'account-keep-help-panel');
   const organiser = $derived(organises(user.role));
+  const showKeep = $derived(organiser && user.keep_mode === 'choose');
+  let keepBusy = $state(false);
+
+  /** Turns this session into a kept one, or back into an ordinary one. */
+  async function toggleKeep(event: Event) {
+    const input = event.currentTarget as HTMLInputElement;
+    const keep = input.checked;
+    keepBusy = true;
+    try {
+      const out = await sendJSON<{ remembered: boolean }>('PUT', '/api/me/keep-signed-in', { keep });
+      session.user = { ...user, remembered: out.remembered };
+      showToast(out.remembered ? 'You stay signed in on this device' : 'You are signed out when the browser closes or after 12 hours');
+    } catch (e) {
+      input.checked = !keep;
+      showToast(errorText(e), 'error');
+    } finally {
+      keepBusy = false;
+    }
+  }
 
   async function toggle() {
     open = !open;
@@ -77,6 +103,15 @@
     <span class="who-line">Signed in as <span class="email">{user.email}</span></span>
     <span class="role">{roleLabel(user.role)}</span>
   </p>
+  {#if showKeep}
+    <div class="keep">
+      <label class="choice">
+        <input type="checkbox" checked={user.remembered === true} disabled={keepBusy} aria-describedby={helpId} onchange={toggleKeep} />
+        Keep me signed in on this device
+      </label>
+      <p id={helpId} class="field-help">{keepHelp(runMode.keep.days, runMode.keep.untilSignOut)} {KEEP_WARNING}</p>
+    </div>
+  {/if}
   <ul class="items">
     <li><a class="item" href="/me" onclick={() => (open = false)}>Your profile</a></li>
     <li><button type="button" class="item" onclick={() => openDialog('theme')}>Theme and colours</button></li>
@@ -183,6 +218,34 @@
 
   .role {
     color: var(--ink-muted);
+  }
+
+  .keep {
+    display: grid;
+    gap: var(--space-1);
+    padding: var(--space-1) var(--space-2) var(--space-2);
+    border-bottom: var(--rule) solid var(--line);
+  }
+
+  .choice {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    min-height: var(--control-h);
+    font-weight: 500;
+    cursor: pointer;
+  }
+
+  .choice input {
+    flex: none;
+    width: var(--space-4);
+    height: var(--space-4);
+    margin: 0;
+    accent-color: var(--act);
+  }
+
+  .inline .keep {
+    padding-inline: 0;
   }
 
   .items {

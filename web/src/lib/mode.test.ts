@@ -35,3 +35,19 @@ describe('site config', () => {
     expect(telHref('(080) 1234-5678')).toBe('tel:08012345678');
   });
 });
+
+describe('the keep-me-signed-in config', () => {
+  it('reads whether the tick is offered and its period', () => {
+    expect(parseConfig({ keep_signed_in: { offer_tick: true, days: 45, until_sign_out: false } }).keep).toEqual({ offerTick: true, days: 45, untilSignOut: false });
+    expect(parseConfig({ keep_signed_in: { offer_tick: true, days: 30, until_sign_out: true } }).keep.untilSignOut).toBe(true);
+  });
+
+  it('offers no tick when the server says nothing or something odd', () => {
+    const none = { offerTick: false, days: 30, untilSignOut: false };
+    expect(parseConfig({}).keep).toEqual(none);
+    expect(parseConfig(null).keep).toEqual(none);
+    expect(parseConfig({ keep_signed_in: 'yes' }).keep).toEqual(none);
+    expect(parseConfig({ keep_signed_in: { offer_tick: 'true', days: -5 } }).keep).toEqual(none);
+    expect(parseConfig({ keep_signed_in: { offer_tick: true, days: 2.5 } }).keep.days).toBe(30);
+  });
+});

@@ -90,3 +90,12 @@ describe('safeNext and startHref', () => {
     expect(startHref('//evil.example')).toBe('/api/auth/google/start?next=%2F');
   });
 });
+
+describe('startHref with the keep-me-signed-in tick', () => {
+  it('adds remember=1 only when ticked', () => {
+    expect(startHref('/contests/week-6')).toBe('/api/auth/google/start?next=%2Fcontests%2Fweek-6');
+    expect(startHref('/contests/week-6', false)).toBe('/api/auth/google/start?next=%2Fcontests%2Fweek-6');
+    expect(startHref('/contests/week-6', true)).toBe('/api/auth/google/start?next=%2Fcontests%2Fweek-6&remember=1');
+    expect(startHref('//evil.example', true)).toBe('/api/auth/google/start?next=%2F&remember=1');
+  });
+});

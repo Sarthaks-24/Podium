@@ -9,7 +9,8 @@
   confirmation names the person. Successes are toasts; form errors sit
   under their form, tied to the inputs. Above them, the sign-in switch:
   closing it keeps everyone below admin from starting a new session (it
-  asks first), opening it is one press. Props: `open` (bindable, the
+  asks first), opening it is one press. Owners also see "Staying signed in"
+  (KeepSignedIn). Props: `open` (bindable, the
   switch), `owner` (only owners may
   reset a Google link; admins do not see it), `disabled` and
   `people` (all bindable; a disable or enable marks the organiser's row
@@ -18,6 +19,7 @@
 <script lang="ts">
   import { untrack } from 'svelte';
   import ConfirmDialog from '../ConfirmDialog.svelte';
+  import KeepSignedIn from './KeepSignedIn.svelte';
   import MonoDigits from '../MonoDigits.svelte';
   import { ApiError, errorText, getJSON, sendJSON } from '../../lib/api';
   import { countOf, formatDateTime } from '../../lib/format';
@@ -205,6 +207,8 @@
     <button type="button" class="btn btn-primary switch" disabled={switching} onclick={() => setOpen(true)}>Open sign-in</button>
   {/if}
 </section>
+
+{#if owner}<KeepSignedIn {onforbidden} />{/if}
 
 <section class="section" aria-labelledby="help-heading">
   <h2 id="help-heading">Account help</h2>

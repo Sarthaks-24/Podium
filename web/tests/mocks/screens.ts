@@ -69,6 +69,17 @@ export async function mockApi(page: Page, who: Who) {
     lookups: [] as string[],
     organisation: { name: '', contact_email: '', phone: '', privacy_contact: '' },
     settingsPuts: [] as Record<string, string>[],
+    // Keep me signed in (v2.1.0): the setting, who holds a kept session, and what the config and /api/me say.
+    keep: {
+      policy: { students: 'nobody', organisers: 'nobody', admins: 'nobody', owner: 'nobody', days: 30, until_sign_out: false } as Record<string, unknown>,
+      remembered: { students: 0, organisers: 0, admins: 0, owner: 0 },
+      youRemembered: false,
+      puts: [] as Record<string, unknown>[],
+      signedOutByPut: 0,
+      meMode: 'nobody',
+      meRemembered: false,
+      meKeepPuts: [] as boolean[],
+    },
   };
 
   await page.route(
@@ -77,12 +88,23 @@ export async function mockApi(page: Page, who: Who) {
       const req = route.request();
       const path = new URL(req.url()).pathname;
       const method = req.method();
-      const me = state.who === 'owner' ? OWNER : state.who === 'admin' ? ADMIN : state.who === 'student' ? STUDENT : null;
+      const base = state.who === 'owner' ? OWNER : state.who === 'admin' ? ADMIN : state.who === 'student' ? STUDENT : null;
+      const me = base && { ...base, keep_mode: state.keep.meMode, remembered: state.keep.meRemembered };
       if (state.who === 'admin' && !state.people.some((p) => p.id === ADMIN.id)) {
         state.people.push({ id: ADMIN.id, email: ADMIN.email, name: ADMIN.name, role: 'admin', last_login_at: 1792180000000, locked: false });
       }
 
-      if (path === '/api/auth/config' && method === 'GET') return json(route, 200, { ...CONFIG, signin_open: state.signinOpen });
+      if (path === '/api/auth/config' && method === 'GET') {
+        const p = state.keep.policy;
+        return json(route, 200, { ...CONFIG, signin_open: state.signinOpen, keep_signed_in: { offer_tick: p.students === 'choose', days: p.days, until_sign_out: p.until_sign_out } });
+      }
+      if (path === '/api/me/keep-signed-in' && method === 'PUT') {
+        if (!me) return apiError(route, 401, 'signed_out', 'Sign in to continue.');
+        const keep = (req.postDataJSON() as { keep: boolean }).keep;
+        state.keep.meKeepPuts.push(keep);
+        state.keep.meRemembered = keep;
+        return json(route, 200, { remembered: keep });
+      }
       if (path === '/api/auth/logout' && method === 'POST') {
         state.who = 'signed-out';
         return json(route, 204);
@@ -109,7 +131,7 @@ export async function mockApi(page: Page, who: Who) {
       }
       if (path.startsWith('/api/admin/')) {
         if (!me) return apiError(route, 401, 'signed_out', 'Sign in to continue.');
-        const ownerOnly = path === '/api/admin/site-settings' || path === '/api/admin/accounts/reset-google';
+        const ownerOnly = path === '/api/admin/site-settings' || path === '/api/admin/accounts/reset-google' || path === '/api/admin/keep-signed-in';
         if (me.role !== 'owner' && (ownerOnly || me.role !== 'admin')) return apiError(route, 403, 'forbidden', 'Only owners can do that.');
       }
       if (path === '/api/admin/contests' && method === 'GET') {
@@ -187,6 +209,18 @@ export async function mockApi(page: Page, who: Who) {
           return json(route, 200, { account: { id: STUDENT.id, email, name: STUDENT.name, role: 'student', disabled: off, last_login_at: 1792100000000 }, server_now: Date.now() });
         }
         return apiError(route, 404, 'not_found', 'Nobody with that email has an account.');
+      }
+      if (path === '/api/admin/keep-signed-in' && method === 'GET') {
+        return json(route, 200, { policy: state.keep.policy, remembered: state.keep.remembered, you_remembered: state.keep.youRemembered });
+      }
+      if (path === '/api/admin/keep-signed-in' && method === 'PUT') {
+        const body = req.postDataJSON() as Record<string, unknown>;
+        state.keep.puts.push(body);
+        if (typeof body.days !== 'number' || body.days < 1 || body.days > 365) {
+          return json(route, 400, { error: { code: 'bad_request', message: 'Enter a whole number of days from 1 to 365.', fields: { days: 'Enter a whole number of days from 1 to 365.' } } });
+        }
+        state.keep.policy = body;
+        return json(route, 200, { policy: body, signed_out: state.keep.signedOutByPut });
       }
       if (path === '/api/admin/site-settings' && method === 'PUT') {
         const body = req.postDataJSON() as Record<string, string>;
