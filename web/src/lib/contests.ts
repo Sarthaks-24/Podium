@@ -222,7 +222,7 @@ export function bannerItems(
 }
 
 /** The storage key of a contest's last read time on this device. */
-export function messagesReadKey(slug: string): string {
+function messagesReadKey(slug: string): string {
   return `podium-messages-read:${slug}`;
 }
 
@@ -274,7 +274,7 @@ export function isForContest(data: unknown, c: { id?: number; slug: string }): b
 }
 
 /** The state word. */
-export function stateWord(state: ContestState): string {
+function stateWord(state: ContestState): string {
   switch (state) {
     case 'upcoming':
       return 'Upcoming';
@@ -404,7 +404,7 @@ export function startLine(c: Pick<Contest, 'starts_at' | 'ends_at'>, now: number
 }
 
 /** Minutes left at which the clock is announced, largest first. */
-export const MILESTONES_MIN = [30, 10, 5, 1] as const;
+const MILESTONES_MIN = [30, 10, 5, 1] as const;
 
 /**
  * The sentence for a clock milestone crossed between two readings of the
@@ -433,7 +433,7 @@ export function allowedLanguages(ids: readonly string[] | undefined): { id: Lang
 }
 
 /** The three sentences that teach the two buttons. */
-export const WORKSPACE_SENTENCES: readonly string[] = [
+const WORKSPACE_SENTENCES: readonly string[] = [
   'Run tries your code on the examples in the statement. It never counts.',
   'Submit grades your code on hidden tests, in parts called subtasks.',
   'A later, worse submission never lowers your score.',
@@ -840,10 +840,10 @@ export interface QueueHealth {
 }
 
 /** A judge asks for work every few seconds; a minute without that means none is working. */
-export const JUDGE_SILENT_MS = 60_000;
+const JUDGE_SILENT_MS = 60_000;
 
 /** A wait the queue should not reach in a calm contest. */
-export const SLOW_WAIT_S = 60;
+const SLOW_WAIT_S = 60;
 
 /** The console's opening line: trouble first when there is any, then how the contest is going. */
 export interface ConsoleSentence {

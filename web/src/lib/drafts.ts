@@ -33,7 +33,7 @@ function isDraft(v: unknown): v is Draft {
 }
 
 /** Every mirror key starts with this. */
-export const MIRROR_PREFIX = 'podium-draft:';
+const MIRROR_PREFIX = 'podium-draft:';
 
 /** Remembers which account last signed in on this device. */
 const LAST_USER_KEY = 'podium-last-user';
@@ -201,7 +201,7 @@ export const INPUT_DEFAULT = 25;
 export const LAYOUT_RESET_EVENT = 'podium-layout-reset';
 
 /** Every key that holds a pane size; "Reset layout" removes these and nothing else. */
-export const LAYOUT_KEYS = [RESULT_KEY, STATEMENT_KEY, INPUT_KEY, INPUT_TAB_KEY, WRITE_KEY] as const;
+const LAYOUT_KEYS = [RESULT_KEY, STATEMENT_KEY, INPUT_KEY, INPUT_TAB_KEY, WRITE_KEY] as const;
 
 function read(storage: DraftStorage | null, key: string): string | null {
   if (!storage) return null;

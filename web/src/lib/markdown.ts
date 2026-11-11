@@ -12,7 +12,7 @@ import DOMPurify from 'dompurify';
 import { Marked, type TokenizerAndRendererExtension, type Tokens } from 'marked';
 
 /** Escapes text for use inside HTML text or a double-quoted attribute. */
-export function escapeHtml(text: string): string {
+function escapeHtml(text: string): string {
   return text
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
@@ -166,7 +166,7 @@ function loadKatex(): Promise<Katex> {
  * first. Resolves at once when there is no placeholder; when KaTeX cannot
  * load, the placeholders keep their TeX text.
  */
-export async function renderMath(root: ParentNode): Promise<void> {
+async function renderMath(root: ParentNode): Promise<void> {
   const placeholders = [...root.querySelectorAll<HTMLElement>('.math[data-tex]')];
   if (placeholders.length === 0) return;
   let katex: Katex;

@@ -90,7 +90,7 @@ export async function loadSession(): Promise<ApiError | null> {
 }
 
 /** The longest sign out waits for registered saves. */
-export const SIGN_OUT_WAIT_MS = 3000;
+const SIGN_OUT_WAIT_MS = 3000;
 
 // Not reactive state: nothing renders from it.
 // eslint-disable-next-line svelte/prefer-svelte-reactivity

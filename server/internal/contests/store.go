@@ -22,8 +22,7 @@ import (
 
 // Errors the API maps to status codes.
 var (
-	ErrNotFound  = errors.New("contest not found")
-	ErrForbidden = errors.New("not allowed in this contest")
+	ErrNotFound = errors.New("contest not found")
 )
 
 // FieldErrors maps a field to a sentence saying what to fix.
