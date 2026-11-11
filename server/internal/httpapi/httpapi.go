@@ -95,6 +95,10 @@ func New(d Deps) http.Handler {
 		d.known = newKnownSessions(nil)
 	}
 	d.flows = newUsedFlows()
+	// A session the server ends takes its provider keys with it.
+	if d.Auth != nil && d.AI != nil && d.Auth.OnSessionsEnded == nil {
+		d.Auth.OnSessionsEnded = d.AI.ForgetSessions
+	}
 
 	health := &ops.Handlers{DB: d.DB, Log: d.Log, Jobs: d.queue(), Hub: d.Hub, Version: d.Version, DBPath: d.DBPath, BackupDir: d.BackupDir}
 
@@ -113,6 +117,7 @@ func New(d Deps) http.Handler {
 	mux.HandleFunc("GET /api/me", d.requireRole(auth.Student, people.Me))
 	mux.HandleFunc("GET /api/me/profile", d.requireRole(auth.Student, people.MyProfile))
 	mux.HandleFunc("PUT /api/me/preferences", d.requireRole(auth.Student, people.SetPreferences))
+	mux.HandleFunc("PUT /api/me/keep-signed-in", d.requireRole(auth.Student, d.setKeep))
 
 	owner := func(h http.HandlerFunc) http.HandlerFunc { return d.requireRole(auth.Owner, h) }
 	// Admins manage students and organisers; which person they may change
@@ -132,6 +137,8 @@ func New(d Deps) http.Handler {
 	mux.HandleFunc("PUT /api/admin/signin", admin(people.SetSignIn))
 	mux.HandleFunc("GET /api/admin/site-audit", admin(people.SiteAudit))
 	mux.HandleFunc("PUT /api/admin/site-settings", owner(people.SetSiteSettings))
+	mux.HandleFunc("GET /api/admin/keep-signed-in", owner(people.KeepSettings))
+	mux.HandleFunc("PUT /api/admin/keep-signed-in", owner(people.SetKeepSettings))
 
 	organiser := func(h http.HandlerFunc) http.HandlerFunc { return d.requireRole(auth.Organiser, h) }
 	bank := &problems.Handlers{Problems: d.Problems, Log: d.Log,

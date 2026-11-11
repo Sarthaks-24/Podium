@@ -23,6 +23,10 @@ type Flow struct {
 	Verifier string `json:"v"`
 	Next     string `json:"x"`
 	Expires  int64  `json:"e"`
+	// Remember is the person's tick on "Keep me signed in". It is inside the
+	// signed cookie, so a browser cannot add it; a state made before it
+	// existed has none.
+	Remember bool `json:"r,omitempty"`
 }
 
 // FlowTTL is how long a sign-in attempt may take.

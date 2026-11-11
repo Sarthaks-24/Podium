@@ -338,3 +338,7 @@ func (s *Service) sessionsEnded(ids []string) {
 		s.OnSessionsEnded(ids)
 	}
 }
+
+// Until is how long remains until t on the service's clock: the Max-Age of a
+// kept session's cookie.
+func (s *Service) Until(t time.Time) time.Duration { return t.Sub(s.now()) }

@@ -553,3 +553,27 @@ func TestKeepEveryServerSideEndForgetsTheSessionsKeys(t *testing.T) {
 		}
 	}
 }
+
+// The tick is inside the signed sign-in state: it round-trips, and a state
+// sealed before the field existed opens with no tick.
+func TestKeepTheTickTravelsInTheSignedState(t *testing.T) {
+	secret := []byte("0123456789abcdef0123456789abcdef")
+	now := time.Date(2026, 11, 11, 9, 0, 0, 0, time.UTC)
+	f := auth.NewFlow("/", now)
+	if f.Remember {
+		t.Fatal("a new flow starts with the tick on")
+	}
+	f.Remember = true
+	v, err := auth.SealFlow(secret, f)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, err := auth.OpenFlow(secret, v, now); err != nil || !got.Remember {
+		t.Errorf("ticked flow: %+v %v", got, err)
+	}
+	f.Remember = false
+	v, _ = auth.SealFlow(secret, f)
+	if got, err := auth.OpenFlow(secret, v, now); err != nil || got.Remember {
+		t.Errorf("unticked flow: %+v %v", got, err)
+	}
+}

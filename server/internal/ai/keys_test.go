@@ -196,3 +196,21 @@ func TestProviderFaultIsLoggedWithoutTheKey(t *testing.T) {
 		t.Errorf("key in the log:\n%s", out)
 	}
 }
+
+// A session the server ends is named by the hash the sessions table stores;
+// the keys held for it go, other sessions' keys stay.
+func TestForgetSessionsDropsKeysByTokenHash(t *testing.T) {
+	k := &Keys{}
+	k.Put("token-a", KeyEntry{Provider: ProviderAnthropic, Key: NewSecret(testKey)})
+	k.Put("token-b", KeyEntry{Provider: ProviderAnthropic, Key: NewSecret(testKey)})
+	w := &Wizard{Keys: k}
+	w.ForgetSessions([]string{sessionKey("token-a"), "not-a-session"})
+	if _, ok := k.Get("token-a"); ok {
+		t.Error("the ended session's key was kept")
+	}
+	if _, ok := k.Get("token-b"); !ok {
+		t.Error("another session's key was dropped")
+	}
+	(*Wizard)(nil).ForgetSessions([]string{"x"})
+	(&Wizard{}).ForgetSessions([]string{"x"})
+}

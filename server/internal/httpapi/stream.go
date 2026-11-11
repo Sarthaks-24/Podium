@@ -147,6 +147,6 @@ func (d Deps) sessionLive(r *http.Request) bool {
 	if err != nil {
 		return false
 	}
-	u, err := d.authenticate(r.Context(), c.Value)
+	u, _, err := d.authenticate(r.Context(), c.Value)
 	return err == nil && u.ID == auth.UserFrom(r.Context()).ID
 }

@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/Sarthaks-24/podium/internal/ai"
+	"github.com/Sarthaks-24/podium/internal/auth"
 )
 
 // Fake secrets that look like real ones.
@@ -90,6 +91,7 @@ func TestSiteAuditRecordsPeopleChangesAndNoSecret(t *testing.T) {
 		body         any
 		want         int
 	}{
+		{"PUT", "/api/admin/keep-signed-in", keepPolicy(auth.KeepChoose, auth.KeepNobody, auth.KeepNobody, auth.KeepNobody), 200},
 		{"POST", "/api/admin/people", map[string]string{"email": "ta@college.edu", "role": "organiser"}, 200},
 		{"POST", "/api/admin/people", map[string]string{"email": "ta@college.edu", "role": "owner"}, 200},
 		{"POST", "/api/admin/people/import", map[string]any{"text": "new1@school.edu, new2@school.edu"}, 200},
@@ -126,7 +128,8 @@ func TestSiteAuditRecordsPeopleChangesAndNoSecret(t *testing.T) {
 	for _, e := range hist["entries"].([]any) {
 		actions = append(actions, e.(map[string]any)["action"].(string))
 	}
-	want := "mode_changed role_revoked google_reset account_enabled account_disabled sessions_ended person_removed list_imported role_granted role_granted"
+	want := "mode_changed role_revoked google_reset account_enabled account_disabled sessions_ended person_removed list_imported role_granted role_granted keep_signed_in_changed"
+
 	if got := strings.Join(actions, " "); !strings.HasPrefix(got, want) {
 		t.Errorf("actions %s\nwant start %s", got, want)
 	}

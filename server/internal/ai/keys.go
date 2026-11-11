@@ -224,7 +224,16 @@ func (k *Keys) Forget(session string) {
 	delete(k.m, sessionKey(session))
 }
 
+// ForgetHashed drops every key of the session whose id is the SHA-256 of its
+// token, which is how the sessions table names a session.
+func (k *Keys) ForgetHashed(id string) {
+	k.mu.Lock()
+	defer k.mu.Unlock()
+	delete(k.m, id)
+}
+
 // ForgetProvider drops the session's key for one provider.
+
 func (k *Keys) ForgetProvider(session, provider string) {
 	k.mu.Lock()
 	defer k.mu.Unlock()

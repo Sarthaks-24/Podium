@@ -86,8 +86,27 @@ func row(id, data string, d time.Duration, after string) Period {
 	return p
 }
 
+// SessionsKept is the sessions row while an owner lets some roles stay
+// signed in: the ordinary 12 hours, and the idle period of a kept session.
+// GET /api/auth/config serves it in place of the first row of Periods, so
+// the privacy page says what the setting does.
+func SessionsKept(days int, untilSignOut bool) Period {
+	p := Periods()[0]
+	if untilSignOut {
+		p.Kept += ", or until they sign out for people who stay signed in (a browser forgets the sign-in after about 13 months without a visit)"
+		return p
+	}
+	unit := "days"
+	if days == 1 {
+		unit = "day"
+	}
+	p.Kept += fmt.Sprintf(", or %d %s after last use for people who stay signed in", days, unit)
+	return p
+}
+
 // Periods returns the retention table in the order the privacy page lists
 // it.
+
 func Periods() []Period {
 	return []Period{
 		row("sessions", "Sign-in sessions", Sessions, "sign_in"),

@@ -41,7 +41,7 @@ func TestConfigCarriesOrganisationAndRetention(t *testing.T) {
 	// release's codename is public on purpose (the footer shows it).
 	for k := range body {
 		switch k {
-		case "contact_email", "mode", "organisation", "retention", "signin_open", "codename":
+		case "contact_email", "mode", "organisation", "retention", "signin_open", "codename", "keep_signed_in":
 		default:
 			t.Errorf("config carries %q", k)
 		}

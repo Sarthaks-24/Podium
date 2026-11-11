@@ -78,9 +78,70 @@ func (d *Handlers) internalError(w http.ResponseWriter, r *http.Request, err err
 	httpx.InternalError(d.Log, w, r, err)
 }
 
-// Me is GET /api/me: the signed-in user.
+// Me is GET /api/me: the signed-in user, and what the setting says about
+// staying signed in for their role (the account menu shows its switch when
+// that is "choose").
 func (d *Handlers) Me(w http.ResponseWriter, r *http.Request) {
-	httpx.WriteJSON(w, http.StatusOK, UserFrom(r.Context()))
+	u := UserFrom(r.Context())
+	p, err := d.Auth.KeepPolicy(r.Context())
+	if err != nil {
+		d.internalError(w, r, err)
+		return
+	}
+	httpx.WriteJSON(w, http.StatusOK, struct {
+		User
+		KeepMode KeepMode `json:"keep_mode"`
+	}{u, p.For(u.Role)})
+}
+
+// KeepSettings is GET /api/admin/keep-signed-in: the setting, how many
+// people hold a kept session for each role, and whether the owner's own
+// session is one, which the confirm before a switch to Nobody says.
+func (d *Handlers) KeepSettings(w http.ResponseWriter, r *http.Request) {
+	p, err := d.Auth.KeepPolicy(r.Context())
+	if err != nil {
+		d.internalError(w, r, err)
+		return
+	}
+	counts, err := d.Auth.KeepCounts(r.Context())
+	if err != nil {
+		d.internalError(w, r, err)
+		return
+	}
+	httpx.WriteJSON(w, http.StatusOK, map[string]any{"policy": p, "remembered": counts, "you_remembered": UserFrom(r.Context()).Remembered})
+}
+
+// SetKeepSettings is PUT /api/admin/keep-signed-in: it saves the whole
+// setting and answers with it and how many people were signed out. A refused
+// field says what to fix under itself.
+func (d *Handlers) SetKeepSettings(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Students     *KeepMode `json:"students"`
+		Organisers   *KeepMode `json:"organisers"`
+		Admins       *KeepMode `json:"admins"`
+		Owner        *KeepMode `json:"owner"`
+		Days         *int      `json:"days"`
+		UntilSignOut *bool     `json:"until_sign_out"`
+	}
+	if !httpx.DecodeJSON(w, r, &req) {
+		return
+	}
+	if req.Students == nil || req.Organisers == nil || req.Admins == nil || req.Owner == nil || req.Days == nil || req.UntilSignOut == nil {
+		httpx.WriteError(w, http.StatusBadRequest, "bad_request", "Send students, organisers, admins, owner, days and until_sign_out.")
+		return
+	}
+	res, err := d.Auth.SetKeepPolicy(r.Context(), KeepPolicy{Students: *req.Students, Organisers: *req.Organisers,
+		Admins: *req.Admins, Owner: *req.Owner, Days: *req.Days, UntilSignOut: *req.UntilSignOut})
+	var fields FieldErrors
+	switch {
+	case errors.As(err, &fields):
+		httpx.WriteJSON(w, http.StatusBadRequest, map[string]httpx.APIError{"error": {Code: "bad_request", Message: fields.Error(), Fields: fields}})
+	case err != nil:
+		d.internalError(w, r, err)
+	default:
+		d.Log.Info("keep signed in changed", "by", UserFrom(r.Context()).ID, "signed_out", res.SignedOut)
+		httpx.WriteJSON(w, http.StatusOK, map[string]any{"policy": res.Policy, "signed_out": res.SignedOut})
+	}
 }
 
 // MyProfile answers GET /api/me/profile: the signed-in person's own dates (v4 M1).

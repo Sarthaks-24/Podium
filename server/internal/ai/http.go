@@ -97,7 +97,19 @@ func (a *Wizard) ForgetKey(token string) {
 	}
 }
 
+// ForgetSessions drops the keys of sessions the server has ended, named by
+// the hash the sessions table stores.
+func (a *Wizard) ForgetSessions(ids []string) {
+	if a == nil || a.Keys == nil {
+		return
+	}
+	for _, id := range ids {
+		a.Keys.ForgetHashed(id)
+	}
+}
+
 // Handlers serve the wizard's routes for the admins.
+
 type Handlers struct {
 	Wizard   *Wizard
 	Problems *problems.Service

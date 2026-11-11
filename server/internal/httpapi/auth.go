@@ -44,15 +44,39 @@ func (d Deps) flowCookie() (name, path string) {
 
 func (d Deps) secure() bool { return strings.HasPrefix(d.BaseURL, "https://") }
 
-// setSessionCookie sets a browser-session cookie: no Expires or Max-Age,
-// so closing the browser forgets it (a shared lab PC). The server ends the
-// session itself auth.SessionTTL after sign-in.
-func (d Deps) setSessionCookie(w http.ResponseWriter, token string) {
+// setSessionCookie sets the session cookie. An ordinary session (maxAge 0)
+// gets a browser-session cookie: no Expires or Max-Age, so closing the
+// browser forgets it (a shared lab PC), and the server ends the session
+// itself auth.SessionTTL after sign-in. A kept session gets a Max-Age of the
+// seconds until it would end unused.
+func (d Deps) setSessionCookie(w http.ResponseWriter, token string, maxAge int) {
 	d.known.add(token)
 	http.SetCookie(w, &http.Cookie{
-		Name: d.sessionCookieName(), Value: token, Path: "/",
+		Name: d.sessionCookieName(), Value: token, Path: "/", MaxAge: maxAge,
 		HttpOnly: true, Secure: d.secure(), SameSite: http.SameSiteLaxMode,
 	})
+}
+
+// maxAge is the whole seconds from now until a kept session ends.
+func (d Deps) maxAge(expires time.Time) int {
+	return int(d.Auth.Until(expires).Round(time.Second) / time.Second)
+}
+
+// startedCookie sets the cookie of a session that has just begun, and, when
+
+// the person ticked "Keep me signed in" and their role is not set to keep
+// them, a short-lived cookie that tells the first page so once (the page
+// reads it and clears it).
+func (d Deps) startedCookie(w http.ResponseWriter, token string, st auth.Started) {
+	maxAge := 0
+	if st.Remembered {
+		maxAge = d.maxAge(st.Expires)
+	}
+	d.setSessionCookie(w, token, maxAge)
+	if st.Ignored {
+		http.SetCookie(w, &http.Cookie{Name: "podium_notice", Value: "keep_ignored", Path: "/", MaxAge: 120,
+			Secure: d.secure(), SameSite: http.SameSiteLaxMode})
+	}
 }
 
 func (d Deps) clearCookie(w http.ResponseWriter, name, path string) {
@@ -127,10 +151,24 @@ func (d Deps) authConfig(w http.ResponseWriter, r *http.Request) {
 		d.internalError(w, r, err)
 		return
 	}
+	// The sign-in page shows its tick only when students may choose (the
+	// role is unknown until Google answers); the privacy page's session row
+	// says what the setting does.
+	keep, err := d.Auth.KeepPolicy(r.Context())
+	if err != nil {
+		d.internalError(w, r, err)
+		return
+	}
+	periods := retention.Periods()
+	if keep.Any() {
+		periods[0] = retention.SessionsKept(keep.Days, keep.UntilSignOut)
+	}
 	// The codename is public (owner, 2026-11-04: the footer shows it); the
 	// version number stays loopback-only, see ops.Health.
 	httpx.WriteJSON(w, http.StatusOK, map[string]any{"contact_email": contactEmail, "mode": mode, "signin_open": open,
-		"organisation": org, "retention": retention.Periods(), "codename": buildinfo.Codename})
+		"organisation": org, "retention": periods, "codename": buildinfo.Codename,
+		"keep_signed_in": map[string]any{"offer_tick": keep.Students == auth.KeepChoose, "days": keep.Days, "until_sign_out": keep.UntilSignOut}})
+
 }
 
 // testSignIn signs in as anyone with any role, for testing mode only (the
@@ -151,11 +189,14 @@ func (d Deps) testSignIn(w http.ResponseWriter, r *http.Request) {
 		Name  string    `json:"name"`
 		Role  auth.Role `json:"role"`
 		Next  string    `json:"next"`
+		// Remember is the tick on "Keep me signed in"; an old client sends
+		// none.
+		Remember bool `json:"remember"`
 	}
 	if !httpx.DecodeJSON(w, r, &req) {
 		return
 	}
-	u, token, _, err := d.Auth.TestSignIn(r.Context(), req.Email, req.Name, req.Role, httpx.ClientIP(r), r.UserAgent())
+	u, token, st, err := d.Auth.TestSignInKeep(r.Context(), req.Email, req.Name, req.Role, httpx.ClientIP(r), r.UserAgent(), req.Remember)
 	if errors.Is(err, auth.ErrDisabled) {
 		httpx.WriteError(w, http.StatusForbidden, "disabled", "This account is disabled. An admin or an owner can enable it on the Dashboard, People tab.")
 		return
@@ -169,13 +210,16 @@ func (d Deps) testSignIn(w http.ResponseWriter, r *http.Request) {
 		d.Auth.SignOut(r.Context(), old.Value)
 		d.forgetKey(old.Value)
 	}
-	d.setSessionCookie(w, token)
+	d.startedCookie(w, token, st)
 	d.Log.Info("test sign-in", "user_id", u.ID, "role", u.Role)
 	httpx.WriteJSON(w, http.StatusOK, map[string]string{"next": auth.SafeNext(req.Next)})
 }
 
 func (d Deps) googleStart(w http.ResponseWriter, r *http.Request) {
 	f := auth.NewFlow(r.URL.Query().Get("next"), time.Now())
+	// The tick rides in the signed state cookie, so it cannot be added on
+	// the way back from Google.
+	f.Remember = r.URL.Query().Get("remember") == "1"
 	sealed, err := auth.SealFlow(d.SessionSecret, f)
 	if err != nil {
 		d.internalError(w, r, err)
@@ -229,7 +273,7 @@ func (d Deps) googleCallback(w http.ResponseWriter, r *http.Request) {
 		fail("google")
 		return
 	}
-	u, token, _, err := d.Auth.SignIn(r.Context(), id, httpx.ClientIP(r), r.UserAgent())
+	u, token, st, err := d.Auth.SignInKeep(r.Context(), id, httpx.ClientIP(r), r.UserAgent(), f.Remember)
 	switch {
 	case errors.Is(err, auth.ErrNotListed):
 		d.Log.Info("sign-in refused: not on the list", "domain", auth.DomainOf(id.Email))
@@ -261,7 +305,7 @@ func (d Deps) googleCallback(w http.ResponseWriter, r *http.Request) {
 		d.forgetKey(old.Value)
 	}
 	d.Log.Info("signed in", "user_id", u.ID, "role", u.Role)
-	d.setSessionCookie(w, token)
+	d.startedCookie(w, token, st)
 	w.Header().Set("Cache-Control", "no-store")
 	http.Redirect(w, r, auth.SafeNext(f.Next), http.StatusFound)
 }
@@ -281,16 +325,42 @@ func (d Deps) logout(w http.ResponseWriter, r *http.Request) {
 }
 
 // authenticate looks the session up and keeps knownSessions in step with
-// the answer.
-func (d Deps) authenticate(ctx context.Context, token string) (auth.User, error) {
-	u, _, err := d.Auth.Authenticate(ctx, token)
+// the answer. renewed is when a kept session now ends if it is not used
+// again, or zero when this request did not renew it.
+func (d Deps) authenticate(ctx context.Context, token string) (u auth.User, renewed time.Time, err error) {
+	u, renewed, err = d.Auth.Authenticate(ctx, token)
 	switch {
 	case err == nil:
 		d.known.add(token)
 	case errors.Is(err, auth.ErrNoSession):
 		d.known.forget(token)
 	}
-	return u, err
+	return u, renewed, err
+}
+
+// setKeep is PUT /api/me/keep-signed-in: the account menu's switch, which
+// turns the current session into a kept one or back into an ordinary one
+// for a person whose role is set to "Each person chooses". The cookie is
+// sent again with or without its Max-Age.
+func (d Deps) setKeep(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Keep *bool `json:"keep"`
+	}
+	if !httpx.DecodeJSON(w, r, &req) {
+		return
+	}
+	if req.Keep == nil {
+		httpx.WriteError(w, http.StatusBadRequest, "bad_request", "Send keep as true or false.")
+		return
+	}
+	token := d.sessionToken(r)
+	st, err := d.Auth.SetRemember(r.Context(), token, *req.Keep)
+	if err != nil {
+		auth.WriteChangeError(d.Log, w, r, err)
+		return
+	}
+	d.startedCookie(w, token, st)
+	httpx.WriteJSON(w, http.StatusOK, map[string]bool{"remembered": st.Remembered})
 }
 
 // requireRole wraps h so it runs only for a signed-in user holding at least
@@ -315,7 +385,7 @@ func (d Deps) requireRole(min auth.Role, h http.HandlerFunc) http.HandlerFunc {
 			httpx.WriteError(w, http.StatusTooManyRequests, "rate_limited", "Too many requests from your network. Wait a few seconds and try again.")
 			return
 		}
-		u, err := d.authenticate(r.Context(), c.Value)
+		u, renewed, err := d.authenticate(r.Context(), c.Value)
 		if errors.Is(err, auth.ErrNoSession) {
 			if !httpx.Loopback(r) {
 				d.authFailLimit.allow(addr)
@@ -331,6 +401,9 @@ func (d Deps) requireRole(min auth.Role, h http.HandlerFunc) http.HandlerFunc {
 		if !u.Role.AtLeast(min) {
 			httpx.WriteError(w, http.StatusForbidden, "forbidden", "You do not have access to this. Ask an admin or an owner if you need it.")
 			return
+		}
+		if !renewed.IsZero() {
+			d.setSessionCookie(w, c.Value, d.maxAge(renewed))
 		}
 		// The actor rides on the context so every change the request makes
 		// names them in the site audit.
