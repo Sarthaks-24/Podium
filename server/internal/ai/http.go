@@ -109,7 +109,6 @@ func (a *Wizard) ForgetSessions(ids []string) {
 }
 
 // Handlers serve the wizard's routes for the admins.
-
 type Handlers struct {
 	Wizard   *Wizard
 	Problems *problems.Service

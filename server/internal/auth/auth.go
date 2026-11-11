@@ -287,6 +287,11 @@ func (s *Service) Authenticate(ctx context.Context, token string) (u User, renew
 		}
 		idle = p.Idle()
 		end = min(expires, lastSeen+idle.Milliseconds())
+		// A row on a role set to Nobody is not a session: a switch that
+		// raced its write, a testing-mode re-role or Bootstrap can leave one.
+		if p.For(u.Role) == KeepNobody {
+			end = 0
+		}
 	}
 	if now.UnixMilli() >= end || u.Disabled {
 		if ended, err := deleteSessions(ctx, s.DB, "id = ?", id); err == nil {

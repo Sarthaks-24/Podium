@@ -233,7 +233,6 @@ func (k *Keys) ForgetHashed(id string) {
 }
 
 // ForgetProvider drops the session's key for one provider.
-
 func (k *Keys) ForgetProvider(session, provider string) {
 	k.mu.Lock()
 	defer k.mu.Unlock()

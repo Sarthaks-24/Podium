@@ -23,3 +23,18 @@ func TestSessionsKeptSaysWhatTheSettingDoes(t *testing.T) {
 
 	}
 }
+
+func TestPeriodsKeptReplacesOnlyTheSessionsRowAndKeepsTheOrder(t *testing.T) {
+	plain, kept := retention.Periods(), retention.PeriodsKept(7, false)
+	if len(plain) != len(kept) {
+		t.Fatalf("%d rows became %d", len(plain), len(kept))
+	}
+	for i := range plain {
+		if plain[i].ID != kept[i].ID {
+			t.Errorf("row %d: %s became %s", i, plain[i].ID, kept[i].ID)
+		}
+		if (plain[i].ID == "sessions") == (plain[i].Kept == kept[i].Kept) {
+			t.Errorf("row %s: %q then %q", plain[i].ID, plain[i].Kept, kept[i].Kept)
+		}
+	}
+}

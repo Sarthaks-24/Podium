@@ -91,7 +91,7 @@ func row(id, data string, d time.Duration, after string) Period {
 // GET /api/auth/config serves it in place of the first row of Periods, so
 // the privacy page says what the setting does.
 func SessionsKept(days int, untilSignOut bool) Period {
-	p := Periods()[0]
+	p := sessionsRow(Periods())
 	if untilSignOut {
 		p.Kept += ", or until they sign out for people who stay signed in (a browser forgets the sign-in after about 13 months without a visit)"
 		return p
@@ -104,9 +104,28 @@ func SessionsKept(days int, untilSignOut bool) Period {
 	return p
 }
 
+// PeriodsKept is Periods with the sessions row replaced by SessionsKept.
+func PeriodsKept(days int, untilSignOut bool) []Period {
+	all := Periods()
+	for i := range all {
+		if all[i].ID == "sessions" {
+			all[i] = SessionsKept(days, untilSignOut)
+		}
+	}
+	return all
+}
+
+func sessionsRow(all []Period) Period {
+	for _, p := range all {
+		if p.ID == "sessions" {
+			return p
+		}
+	}
+	panic("retention: no sessions period")
+}
+
 // Periods returns the retention table in the order the privacy page lists
 // it.
-
 func Periods() []Period {
 	return []Period{
 		row("sessions", "Sign-in sessions", Sessions, "sign_in"),

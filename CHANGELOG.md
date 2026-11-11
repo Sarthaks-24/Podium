@@ -27,6 +27,7 @@ Not released yet. Each stage adds plain-English entries and known limits under i
 - Every session the server ends now also forgets that session's AI provider keys. Before, only sign-out did.
 - The privacy page's session row follows the setting. Migration `0016_v210_sessions.sql` adds two columns to `sessions`; existing sessions are ordinary. The previous binary refuses a database that records it: roll back by restoring the pre-upgrade backup.
 - Known limits: the setting is read per role at sign-in, so the checkbox on the sign-in page shows only when students may choose; an organiser on "Each person chooses" turns it on in the account menu. "Everyone" and "Only when they sign out" are for a person's own computer; a lab computer needs "Nobody". `podium-server forget-user` (a separate process) cannot make a running server drop a key it holds; the key's own 2 hour limit does. Restarting the server in a different mode ends every session as before.
+
 ### v2.1.0 stage C: judge and security
 
 - The judge writes one `job timing` line per submission and Run: language, compile time and cache hits, time waiting for the compile lock, box set-up and clean-up, test wall time, the slowest test against its limit, and report time. Nothing about judging changes. The fields are in `docs/OPERATIONS.md`.

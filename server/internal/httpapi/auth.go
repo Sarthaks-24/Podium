@@ -63,7 +63,6 @@ func (d Deps) maxAge(expires time.Time) int {
 }
 
 // startedCookie sets the cookie of a session that has just begun, and, when
-
 // the person ticked "Keep me signed in" and their role is not set to keep
 // them, a short-lived cookie that tells the first page so once (the page
 // reads it and clears it).
@@ -161,14 +160,13 @@ func (d Deps) authConfig(w http.ResponseWriter, r *http.Request) {
 	}
 	periods := retention.Periods()
 	if keep.Any() {
-		periods[0] = retention.SessionsKept(keep.Days, keep.UntilSignOut)
+		periods = retention.PeriodsKept(keep.Days, keep.UntilSignOut)
 	}
 	// The codename is public (owner, 2026-11-04: the footer shows it); the
 	// version number stays loopback-only, see ops.Health.
 	httpx.WriteJSON(w, http.StatusOK, map[string]any{"contact_email": contactEmail, "mode": mode, "signin_open": open,
 		"organisation": org, "retention": periods, "codename": buildinfo.Codename,
 		"keep_signed_in": map[string]any{"offer_tick": keep.Students == auth.KeepChoose, "days": keep.Days, "until_sign_out": keep.UntilSignOut}})
-
 }
 
 // testSignIn signs in as anyone with any role, for testing mode only (the

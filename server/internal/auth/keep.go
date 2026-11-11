@@ -269,7 +269,8 @@ func (s *Service) SetRemember(ctx context.Context, token string, keep bool) (Sta
 	}
 	id := hashToken(token)
 	var role Role
-	err = s.DB.QueryRowContext(ctx, "SELECT u.role FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.id = ?", id).Scan(&role)
+	var created int64
+	err = s.DB.QueryRowContext(ctx, "SELECT u.role, s.created_at FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.id = ?", id).Scan(&role, &created)
 	if errors.Is(err, sql.ErrNoRows) {
 		return Started{}, ErrNoSession
 	}
@@ -280,16 +281,24 @@ func (s *Service) SetRemember(ctx context.Context, token string, keep bool) (Sta
 		return Started{}, conflict("Podium does not let you choose whether to stay signed in.")
 	}
 	now := s.now()
-	st := Started{Remembered: keep, Expires: now.Add(SessionTTL)}
-	q := "UPDATE sessions SET remember = 0, created_at = ?1, expires_at = ?2, last_seen_at = NULL WHERE id = ?3"
 	if keep {
-		st.Expires = now.Add(p.Idle())
-		q = "UPDATE sessions SET remember = 1, last_seen_at = ?1, expires_at = ?2 WHERE id = ?3"
+		st := Started{Remembered: true, Expires: now.Add(p.Idle())}
+		_, err := s.DB.ExecContext(ctx, "UPDATE sessions SET remember = 1, last_seen_at = ?, expires_at = ? WHERE id = ?", now.UnixMilli(), st.Expires.UnixMilli(), id)
+		return st, err
 	}
-	if _, err := s.DB.ExecContext(ctx, q, now.UnixMilli(), st.Expires.UnixMilli(), id); err != nil {
-		return Started{}, err
+	// Back to an ordinary session, which ends 12 hours after sign-in:
+	// toggling cannot buy a fresh 12 hours. One already past that ends.
+	st := Started{Expires: time.UnixMilli(created).Add(SessionTTL)}
+	if !st.Expires.After(now) {
+		ended, err := deleteSessions(ctx, s.DB, "id = ?", id)
+		s.sessionsEnded(ended)
+		if err != nil {
+			return Started{}, err
+		}
+		return Started{}, ErrNoSession
 	}
-	return st, nil
+	_, err = s.DB.ExecContext(ctx, "UPDATE sessions SET remember = 0, last_seen_at = NULL, expires_at = ? WHERE id = ?", st.Expires.UnixMilli(), id)
+	return st, err
 }
 
 // startSession inserts a session for a person of role and says how it

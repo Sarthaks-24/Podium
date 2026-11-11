@@ -176,11 +176,22 @@ func TestKeepTestingModeSignInTakesTheSameTick(t *testing.T) {
 		resp.Body.Close()
 		return resp
 	}
-	if c := sessionOf(post(map[string]any{"email": "asha@college.edu", "role": "student", "remember": true})); c == nil || c.MaxAge != thirtyDays {
-		t.Errorf("ticked: %+v", c)
+	// The whole header, as on the Google path (http base URL: no Secure, no __Host- prefix).
+	keptHeader := regexp.MustCompile(`^podium_session=[A-Za-z0-9_-]{43}; Path=/; Max-Age=2592000; HttpOnly; SameSite=Lax$`)
+	plainHeader := regexp.MustCompile(`^podium_session=[A-Za-z0-9_-]{43}; Path=/; HttpOnly; SameSite=Lax$`)
+	raw := func(resp *http.Response) string {
+		for _, v := range resp.Header.Values("Set-Cookie") {
+			if strings.HasPrefix(v, "podium_session=") {
+				return v
+			}
+		}
+		return ""
 	}
-	if c := sessionOf(post(map[string]any{"email": "asha@college.edu", "role": "student"})); c == nil || c.MaxAge != 0 {
-		t.Errorf("no tick (an old client): %+v", c)
+	if h := raw(post(map[string]any{"email": "asha@college.edu", "role": "student", "remember": true})); !keptHeader.MatchString(h) {
+		t.Errorf("ticked: %q, want Path=/; Max-Age=2592000; HttpOnly; SameSite=Lax", h)
+	}
+	if h := raw(post(map[string]any{"email": "asha@college.edu", "role": "student"})); !plainHeader.MatchString(h) {
+		t.Errorf("no tick (an old client): %q, want a browser-session cookie with HttpOnly; SameSite=Lax", h)
 	}
 	resp := post(map[string]any{"email": "ta@college.edu", "role": "organiser", "remember": true})
 	if c := sessionOf(resp); c == nil || c.MaxAge != 0 || cookieNamed(resp.Cookies(), "podium_notice") == nil {

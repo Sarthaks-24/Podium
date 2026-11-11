@@ -50,6 +50,9 @@ func newServices(ctx context.Context, cfg config.Server, database *sql.DB, log *
 		aiKeys:    &ai.Keys{},
 		retention: &retention.Job{DB: database, Log: log}}
 	s.auth = &auth.Service{DB: database, OwnerEmail: cfg.OwnerEmail}
+	// Set here, before the scheduler starts the session sweep, so nothing
+	// reads the hook while it is written.
+	s.auth.OnSessionsEnded = (&ai.Wizard{Keys: s.aiKeys}).ForgetSessions
 	if err := s.auth.Bootstrap(ctx); err != nil {
 		return nil, err
 	}

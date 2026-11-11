@@ -484,6 +484,7 @@ func TestKeepSetRememberTurnsTheCurrentSessionOnAndOff(t *testing.T) {
 	f := newKeepFixture(t)
 	f.policy(all(auth.KeepChoose))
 	ctx := context.Background()
+	start := f.c.t
 	tok, _ := f.signIn(auth.Admin, false)
 	f.c.t = f.c.t.Add(2 * time.Hour)
 	st, err := f.s.SetRemember(ctx, tok, true)
@@ -493,15 +494,15 @@ func TestKeepSetRememberTurnsTheCurrentSessionOnAndOff(t *testing.T) {
 	if remember, _, seen := f.row(tok); !remember || seen == nil {
 		t.Error("row not remembered")
 	}
-	f.c.t = f.c.t.Add(day)
+	f.c.t = f.c.t.Add(3 * time.Hour)
 	if !f.alive(tok) {
-		t.Fatal("remembered session dead after a day")
+		t.Fatal("remembered session dead after 3 hours")
 	}
 	st, err = f.s.SetRemember(ctx, tok, false)
-	if err != nil || st.Remembered || !st.Expires.Equal(f.c.t.Add(12*time.Hour)) {
-		t.Fatalf("off: %+v %v, want an ordinary session of 12 hours from now", st, err)
+	if err != nil || st.Remembered || !st.Expires.Equal(start.Add(12*time.Hour)) {
+		t.Fatalf("off: %+v %v, want an ordinary session ending 12 hours after sign-in", st, err)
 	}
-	if remember, expires, seen := f.row(tok); remember || seen != nil || expires != f.c.t.Add(12*time.Hour).UnixMilli() {
+	if remember, expires, seen := f.row(tok); remember || seen != nil || expires != start.Add(12*time.Hour).UnixMilli() {
 		t.Error("row not ordinary after turning off")
 	}
 	if !f.alive(tok) {
@@ -576,5 +577,84 @@ func TestKeepTheTickTravelsInTheSignedState(t *testing.T) {
 	v, _ = auth.SealFlow(secret, f)
 	if got, err := auth.OpenFlow(secret, v, now); err != nil || got.Remember {
 		t.Errorf("unticked flow: %+v %v", got, err)
+	}
+}
+
+// A remembered row whose role is on Nobody is not a session: a switch that
+// raced the write, a testing-mode re-role or Bootstrap can leave one.
+func TestKeepARememberedRowOnARoleSetToNobodyIsRefusedAndItsKeysForgotten(t *testing.T) {
+	f := newKeepFixture(t)
+	f.policy(all(auth.KeepEveryone))
+	tok, _ := f.signIn(auth.Student, false)
+	// The late write of a request that read the old setting.
+	f.s.DB.Exec("UPDATE sessions SET remember = 0")
+	f.policy(all(auth.KeepNobody))
+	f.s.DB.Exec("UPDATE sessions SET remember = 1, last_seen_at = ?, expires_at = ?", f.c.t.UnixMilli(), f.c.t.Add(400*day).UnixMilli())
+	f.ended = nil
+	if f.alive(tok) {
+		t.Fatal("a remembered session on a role set to Nobody was accepted")
+	}
+	if len(f.ended) != 1 || f.ended[0] != hash(tok) || f.sessions() != 0 {
+		t.Errorf("ended %v, sessions left %d; want the row deleted and its keys forgotten", f.ended, f.sessions())
+	}
+}
+
+func TestKeepATestingModeReRoleCannotKeepALongSession(t *testing.T) {
+	f := newKeepFixture(t)
+	f.policy(auth.KeepPolicy{Students: auth.KeepNobody, Organisers: auth.KeepNobody, Admins: auth.KeepEveryone, Owner: auth.KeepNobody, Days: 30})
+	ctx := context.Background()
+	_, tok, st, err := f.s.TestSignInKeep(ctx, "x@college.edu", "", auth.Admin, "", "", false)
+	if err != nil || !st.Remembered {
+		t.Fatalf("setup: %+v %v", st, err)
+	}
+	// The same person signs in again as a student: the row keeps its stored role unless unlinked.
+	f.s.DB.Exec("UPDATE users SET role = 'student' WHERE email = 'x@college.edu'")
+	if f.alive(tok) {
+		t.Error("a remembered admin session survived the person becoming a student on Nobody")
+	}
+}
+
+// Turning keep off keeps the original sign-in time: toggling cannot buy a
+// fresh 12 hours.
+func TestKeepTurningOffKeepsTheOriginalSignInTime(t *testing.T) {
+	f := newKeepFixture(t)
+	f.policy(all(auth.KeepChoose))
+	ctx := context.Background()
+	start := f.c.t
+	tok, _ := f.signIn(auth.Admin, false)
+	f.c.t = start.Add(5 * time.Hour)
+	if _, err := f.s.SetRemember(ctx, tok, true); err != nil {
+		t.Fatal(err)
+	}
+	f.c.t = start.Add(10 * time.Hour)
+	st, err := f.s.SetRemember(ctx, tok, false)
+	if err != nil || !st.Expires.Equal(start.Add(12*time.Hour)) {
+		t.Fatalf("off at 10h: %+v %v, want the original 12 hour end", st, err)
+	}
+	var created int64
+	f.s.DB.QueryRow("SELECT created_at FROM sessions").Scan(&created)
+	if created != start.UnixMilli() {
+		t.Errorf("created_at moved to %v", time.UnixMilli(created).UTC())
+	}
+	f.c.t = start.Add(12 * time.Hour)
+	if f.alive(tok) {
+		t.Error("alive at 12 hours after sign-in after toggling on and off")
+	}
+}
+
+func TestKeepTurningOffAfter12HoursEndsTheSession(t *testing.T) {
+	f := newKeepFixture(t)
+	f.policy(all(auth.KeepChoose))
+	ctx := context.Background()
+	start := f.c.t
+	tok, _ := f.signIn(auth.Admin, false)
+	f.s.SetRemember(ctx, tok, true)
+	f.c.t = start.Add(3 * day)
+	f.ended = nil
+	if _, err := f.s.SetRemember(ctx, tok, false); !errors.Is(err, auth.ErrNoSession) {
+		t.Fatalf("off on day 3: %v, want ErrNoSession", err)
+	}
+	if f.sessions() != 0 || len(f.ended) != 1 {
+		t.Errorf("sessions %d, ended %v; want the row deleted and its keys forgotten", f.sessions(), f.ended)
 	}
 }
